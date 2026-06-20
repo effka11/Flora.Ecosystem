@@ -54,7 +54,7 @@ export async function initWebClientCore(): Promise<void> {
     session: webSessionStore,
     clientIdentity: {
       platform: "web",
-      appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0-alpha.1",
+      appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0-alpha",
     },
     onUnauthorized: () => {
       clearSession();
