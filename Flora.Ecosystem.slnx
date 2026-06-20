@@ -1,0 +1,58 @@
+<Solution>
+  <Folder Name="/Infrastructure/">
+    <Project Path="Infrastructure/Flora.gRPC/Flora.gRPC.csproj" />
+  </Folder>
+  <Folder Name="/Modules/">
+    <Project Path="Modules/Flora.Auth/Flora.Auth.csproj" />
+    <Project Path="Modules/Flora.Notifications/Flora.Notifications.csproj" />
+    <Project Path="Modules/Flora.Users/Flora.Users.csproj" />
+    <Project Path="Modules/Flora.Verification/Flora.Verification.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Flora.Auth/">
+    <Project Path="Modules/Flora.Auth/Flora.Auth.Application/Flora.Auth.Application.csproj" />
+    <Project Path="Modules/Flora.Auth/Flora.Auth.Contracts/Flora.Auth.Contracts.csproj" />
+    <Project Path="Modules/Flora.Auth/Flora.Auth.Domain/Flora.Auth.Domain.csproj" />
+    <Project Path="Modules/Flora.Auth/Flora.Auth.Infrastructure/Flora.Auth.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Flora.Notifications/">
+    <Project Path="Modules/Flora.Notifications/Flora.Notifications.Application/Flora.Notifications.Application.csproj" />
+    <Project Path="Modules/Flora.Notifications/Flora.Notifications.Contracts/Flora.Notifications.Contracts.csproj" />
+    <Project Path="Modules/Flora.Notifications/Flora.Notifications.Domain/Flora.Notifications.Domain.csproj" />
+    <Project Path="Modules/Flora.Notifications/Flora.Notifications.Infrastructure/Flora.Notifications.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Flora.Users/">
+    <Project Path="Modules/Flora.Users/Flora.Users.Application/Flora.Users.Application.csproj" />
+    <Project Path="Modules/Flora.Users/Flora.Users.Contracts/Flora.Users.Contracts.csproj" />
+    <Project Path="Modules/Flora.Users/Flora.Users.Domain/Flora.Users.Domain.csproj" />
+    <Project Path="Modules/Flora.Users/Flora.Users.Infrastructure/Flora.Users.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Flora.Verification/">
+    <Project Path="Modules/Flora.Verification/Flora.Verification.Application/Flora.Verification.Application.csproj" />
+    <Project Path="Modules/Flora.Verification/Flora.Verification.Contracts/Flora.Verification.Contracts.csproj" />
+    <Project Path="Modules/Flora.Verification/Flora.Verification.Domain/Flora.Verification.Domain.csproj" />
+    <Project Path="Modules/Flora.Verification/Flora.Verification.Infrastructure/Flora.Verification.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Products/">
+    <Project Path="Products/Flora.Social/Flora.Social.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Flora.Content/">
+    <Project Path="Modules/Flora.Content/Flora.Content.csproj" />
+    <Project Path="Modules/Flora.Content/Flora.Content.Application/Flora.Content.Application.csproj" />
+    <Project Path="Modules/Flora.Content/Flora.Content.Contracts/Flora.Content.Contracts.csproj" />
+    <Project Path="Modules/Flora.Content/Flora.Content.Domain/Flora.Content.Domain.csproj" />
+    <Project Path="Modules/Flora.Content/Flora.Content.Infrastructure/Flora.Content.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Flora.Messaging/">
+    <Project Path="Modules/Flora.Messaging/Flora.Messaging.csproj" />
+    <Project Path="Modules/Flora.Messaging/Flora.Messaging.Application/Flora.Messaging.Application.csproj" />
+    <Project Path="Modules/Flora.Messaging/Flora.Messaging.Contracts/Flora.Messaging.Contracts.csproj" />
+    <Project Path="Modules/Flora.Messaging/Flora.Messaging.Domain/Flora.Messaging.Domain.csproj" />
+    <Project Path="Modules/Flora.Messaging/Flora.Messaging.Infrastructure/Flora.Messaging.Infrastructure.csproj" />
+  </Folder>
+  <Project Path="Flora.API/Flora.API.csproj" />
+  <Project Path="Flora.Migrations/Flora.Migrations.csproj" />
+  <Project Path="Flora.Shared/Flora.Shared.csproj" />
+  <Folder Name="/tests/">
+    <Project Path="tests/Flora.ContractFixtures/Flora.ContractFixtures.csproj" />
+  </Folder>
+</Solution>

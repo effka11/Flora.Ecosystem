@@ -1,0 +1,24 @@
+/**
+ * Flora motion — длительности и easing для всего Apps/Web.
+ * Подключается из `globals.css`; в TS для таймаутов — `lib/floraMotion.ts` (шаг = тот же).
+ */
+:root {
+  /*
+   * Характер: энергично и «молодёжно» за счёт быстрого старта и асимметричного ease-out,
+   * без пружинки и bounce — спокойно для широкой аудитории.
+   * Правило: длительности только кратно --flora-motion-base; кривые — только named easings ниже.
+   */
+  --flora-motion-base: 150ms;
+  --flora-duration-1: var(--flora-motion-base);
+  --flora-duration-2: calc(2 * var(--flora-motion-base));
+  --flora-duration-3: calc(3 * var(--flora-motion-base));
+  --flora-duration-4: calc(4 * var(--flora-motion-base));
+  --flora-duration-5: calc(5 * var(--flora-motion-base));
+  --flora-duration-6: calc(6 * var(--flora-motion-base));
+  /* Уверенное приземление (вкладки ленты, панели, крупные сдвиги) */
+  --flora-ease-out: cubic-bezier(0.33, 1, 0.2, 1);
+  /* Поповеры, плавные пары transform + opacity */
+  --flora-ease-in-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Уход к якорю / dismiss */
+  --flora-ease-in: cubic-bezier(0.36, 0, 0.64, 1);
+}

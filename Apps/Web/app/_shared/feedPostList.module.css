@@ -1,0 +1,478 @@
+/* Shared post card list (feed + profile walls). */
+.root {
+  --g20: calc(4 * var(--flora-grid-step-fine));
+  --g30: calc(2 * var(--flora-grid-step));
+  --g45: calc(3 * var(--flora-grid-step));
+  --feed-post-avatar-size: var(--g45);
+  --feed-post-nickname-row-between: var(--flora-grid-step-fine);
+  --feed-post-actions-anchor-col: 42;
+  --feed-post-action-like-col: 42;
+  --feed-post-action-comment-col: 48;
+  --feed-post-action-repost-col: 54;
+  --feed-post-text-col-start: 38;
+  --feed-post-text-col-end: 87;
+  --feed-post-meta-timer-end-col: 81;
+  --feed-post-meta-views-icon-col: 85;
+  --feed-post-comments-rule-col-start: 40;
+  --feed-post-comments-rule-col-end: 92;
+  --feed-separator-rule-width: calc((90 - 37 + 1) * var(--flora-grid-step));
+  --feed-post-text-col-span: calc(var(--feed-post-text-col-end) - var(--feed-post-text-col-start) + 1);
+  --feed-primary-text-col-start-inset: calc(
+    var(--flora-grid-step) + var(--feed-post-avatar-size) + var(--flora-grid-step)
+  );
+  --feed-comment-timer-overlay-line-end: 265;
+  --feed-comment-timer-overlay-line-measured: 249;
+  --feed-comment-timer-secondary-end-nudge: calc(
+    (var(--feed-comment-timer-overlay-line-end) - var(--feed-comment-timer-overlay-line-measured)) * 1px
+  );
+}
+
+/* Profile wall: без отрицательного margin первой карточки (под шапкой профиля). */
+.rootProfile .postItem:first-child {
+  margin-top: 0;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--g30);
+}
+
+.root .list {
+  width: var(--feed-separator-rule-width);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.postItem {
+  display: grid;
+  grid-template-columns: var(--feed-post-avatar-size) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "post-avatar post-head"
+    ". post-body"
+    ". post-comments";
+  column-gap: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  row-gap: var(--flora-grid-step-fine);
+  align-items: start;
+  padding-top: var(--g30);
+  padding-bottom: var(--g30);
+  padding-left: 0;
+  padding-right: var(--flora-grid-step);
+  border-bottom: none;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* Ð Ð°Ð·Ð´ÐµÐ»Ð¸Ñ‚ÐµÐ»ÑŒ: Ñ„Ð¾Ð½ Ð½Ð° Ð²ÑÑŽ ÑˆÐ¸Ñ€Ð¸Ð½Ñƒ ÐºÐ°Ñ€Ñ‚Ð¾Ñ‡ÐºÐ¸ (ÐºÐ°Ñ€Ñ‚Ð¾Ñ‡ÐºÐ° = Ð²ÐµÑ€Ñ‚Ð¸ÐºÐ°Ð»Ð¸ 37â€¦90). */
+.postItem:not(:last-child) {
+  background-image: linear-gradient(
+    to right,
+    var(--flora-gray-divider),
+    var(--flora-gray-divider)
+  );
+  background-size: 100% 1px;
+  background-position: left 100%;
+  background-repeat: no-repeat;
+}
+
+.root .postItem:not(:last-child) {
+  /* Ð’Ñ‹ÑˆÐµ Ð½Ð¸Ð¶Ð½ÐµÐ³Ð¾ ÐºÑ€Ð°Ñ ÐºÐ°Ñ€Ñ‚Ð¾Ñ‡ÐºÐ¸: Ð²ÐµÑ€Ð½ÑƒÑ‚ÑŒ Ð»Ð¸Ð½Ð¸ÑŽ Ð¿Ð¾ÑÐ»Ðµ Ð¾Ð¿ÑƒÑÐºÐ°Ð½Ð¸Ñ ÑˆÐ°Ð¿ÐºÐ¸ (ÐºÐ½Ð¾Ð¿ÐºÐ° Â«ÐžÐ±Ð½Ð¾Ð²Ð¸Ñ‚ÑŒÂ»). */
+  background-position: left calc(100% - (2 * var(--flora-grid-step-fine) - 1px));
+}
+
+.root .postItem {
+  padding-left: var(--flora-grid-step);
+  padding-right: var(--g45);
+  /* +2px: Ð½Ð¸Ð¶Ð½Ð¸Ð¹ Ð¾Ñ‚ÑÑ‚ÑƒÐ¿ Ð´Ð¾ Ð¿Ð¾Ð»Ð¾ÑÐºÐ¸ Ð¼ÐµÐ¶Ð´Ñƒ Ð¿Ð¾ÑÑ‚Ð°Ð¼Ð¸ (:not(:last-child)). */
+  padding-bottom: calc(2 * var(--flora-grid-step) + 2px);
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+}
+
+/* Ð•Ð´Ð¸Ð½Ñ‹Ð¹ padding-bottom ÐºÐ°Ñ€Ñ‚Ð¾Ñ‡ÐºÐ¸: ÑÐ¼ÐµÐ½Ð° Ð¾Ñ‚ÑÑ‚ÑƒÐ¿Ð° Ð¿Ñ€Ð¸ ÑÐ²Ñ‘Ñ€Ð½ÑƒÑ‚Ñ‹Ñ… ÐºÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸ÑÑ… Ð´Ð°Ð²Ð°Ð»Ð° Ð»Ð¸ÑˆÐ½Ð¸Ð¹ reflow Ð²Ð¼ÐµÑÑ‚Ðµ Ñ grid Ð¿Ð°Ð½ÐµÐ»Ð¸. */
+
+.root .postItem:first-child {
+  margin-top: calc(-1 * var(--flora-grid-step));
+}
+
+/* ÐŸÐ¾ÑÐ»Ðµ Ñ€Ð°Ð·Ð´ÐµÐ»Ð¸Ñ‚ÐµÐ»Ñ: Ð²ÐµÑ€Ñ… ÐºÐ°Ñ€Ñ‚Ð¾Ñ‡ÐºÐ¸ Ð½Ð° 2 Ð²Ñ‚Ð¾Ñ€Ð¸Ñ‡Ð½Ñ‹Ðµ ÐºÐ»ÐµÑ‚ÐºÐ¸ Ð²Ñ‹ÑˆÐµ Ð¿Ñ€ÐµÐ¶Ð½ÐµÐ³Ð¾ Ð¾Ñ‚ÑÑ‚ÑƒÐ¿Ð°. */
+.root .postItem:not(:first-child) {
+  padding-top: calc(var(--g30) - 2 * var(--flora-grid-step-fine));
+}
+
+.postAvatar {
+  grid-area: post-avatar;
+  width: var(--feed-post-avatar-size);
+  height: var(--feed-post-avatar-size);
+  min-width: var(--feed-post-avatar-size);
+  min-height: var(--feed-post-avatar-size);
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: var(--flora-tracking-16);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.postAvatarLink {
+  text-decoration: none;
+  color: var(--flora-green-light);
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.postAvatarLink:hover {
+  opacity: 0.9;
+}
+
+.postBody {
+  grid-area: post-body;
+  min-width: 0;
+}
+
+.postCommentsRegion {
+  grid-area: post-comments;
+  min-width: 0;
+}
+
+.root .postCommentsRegion {
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.root .postBody {
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  margin-top: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.postHeader {
+  grid-area: post-head;
+  display: flex;
+  align-items: flex-start;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  margin-bottom: 0;
+}
+
+.root .postHeader {
+  margin-top: 0;
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  padding-top: calc(var(--feed-post-nickname-row-between) + var(--flora-grid-step-fine));
+}
+
+.root .postMoreWrap {
+  position: absolute;
+  left: calc((89 - 38) * var(--flora-grid-step) - 0.5 * var(--flora-grid-step) + 1px);
+  top: calc(var(--g30) - 0.5 * var(--flora-grid-step) + 1px);
+  margin: 0;
+}
+
+.postMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
+}
+
+.postMetaLink {
+  text-decoration: none;
+  color: inherit;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
+}
+
+.root .postMetaLink {
+  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - 2px);
+}
+
+.postMetaLink:hover .postAuthor,
+.postMetaLink:hover .postHandle {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.postAuthor {
+  line-height: 1;
+  color: var(--flora-white-template);
+}
+
+.postHandle {
+  line-height: 1;
+  color: var(--flora-gray);
+}
+
+.root .postAuthor,
+.root .postHandle {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.postMoreWrap {
+  margin-left: auto;
+  margin-right: calc(-1 * var(--g20));
+  position: relative;
+  /* Ð’Ð¸Ð·ÑƒÐ°Ð»ÑŒÐ½Ñ‹Ð¹ Ð½Ð¸Ð· â‹®: + fine+3px Ð¸Ð·-Ð·Ð° translateY Ñƒ .triggerLift. */
+  --flora-rect-menu-gap-below: calc(var(--flora-grid-step) + var(--flora-grid-step-fine) + 3px);
+}
+
+.postMoreBtn {
+  padding: var(--flora-grid-step-fine);
+  color: var(--flora-gray);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.15s ease,
+    text-shadow 0.2s ease;
+}
+
+.postMoreBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.78);
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.postMoreBtn:active:not(:disabled) {
+  transform: translateY(calc(var(--flora-grid-step-fine) + 3px)) scale(0.92);
+}
+
+.postContent {
+  margin: 0 0 var(--flora-grid-step) 0;
+  line-height: 1.7;
+  color: var(--flora-gray-light);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.postMedia {
+  display: block;
+  margin: calc(2 * var(--flora-grid-step-fine)) 0 var(--flora-grid-step);
+  width: 100%;
+  border-radius: calc(var(--flora-grid-step-fine));
+  max-height: min(560px, 70vh);
+  object-fit: cover;
+}
+
+.postBody > .postMedia:first-child {
+  margin-top: 0;
+}
+
+.postBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--flora-grid-step);
+  margin-top: var(--flora-grid-step);
+}
+
+.root .postBar {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: calc(4 * var(--flora-grid-step-fine));
+}
+
+.postActions {
+  display: flex;
+  align-items: center;
+  gap: var(--g20);
+}
+
+.root .postActions {
+  display: block;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: calc(var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+  gap: 0;
+}
+
+.root .postAction {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step-fine);
+  padding: 0;
+  margin: 0;
+}
+
+.root .postAction:nth-child(1) {
+  left: calc((var(--feed-post-action-like-col) - var(--feed-post-actions-anchor-col)) * var(--flora-grid-step));
+}
+
+.root .postAction:nth-child(2) {
+  left: calc((var(--feed-post-action-comment-col) - var(--feed-post-actions-anchor-col)) * var(--flora-grid-step));
+}
+
+.root .postAction:nth-child(3) {
+  left: calc((var(--feed-post-action-repost-col) - var(--feed-post-actions-anchor-col)) * var(--flora-grid-step));
+}
+
+.root .postAction svg {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.root .postAction span {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.root .postAction:nth-child(1) span {
+  left: calc((44 - var(--feed-post-action-like-col)) * var(--flora-grid-step));
+}
+
+.root .postAction:nth-child(2) span {
+  left: calc((50 - var(--feed-post-action-comment-col)) * var(--flora-grid-step));
+}
+
+.root .postAction:nth-child(3) span {
+  left: calc((56 - var(--feed-post-action-repost-col)) * var(--flora-grid-step));
+}
+
+.postAction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step-fine);
+  padding: var(--flora-grid-step-fine) 0;
+  border: none;
+  background: none;
+  color: var(--flora-gray);
+  cursor: pointer;
+  font-size: 14px;
+  letter-spacing: var(--flora-tracking-15);
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.postAction:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 10%, rgba(var(--flora-white-template-rgb), 0.76));
+  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+}
+
+.root .postActionCommentsOpen,
+.postAction.postActionCommentsOpen {
+  color: color-mix(in srgb, var(--flora-green-light) 78%, var(--flora-gray) 22%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+}
+
+.root .postActionLikeOn,
+.postAction.postActionLikeOn {
+  color: color-mix(in srgb, var(--flora-like) 92%, var(--flora-gray) 8%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-like) 55%, transparent);
+}
+
+.root .postActionRepostOn,
+.postAction.postActionRepostOn {
+  color: color-mix(in srgb, var(--flora-green-light) 78%, var(--flora-gray) 22%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+}
+
+.postAction svg {
+  width: 18px;
+  height: 18px;
+}
+
+.postMetaRight {
+  color: var(--flora-gray);
+}
+
+.root .postMetaRight {
+  position: absolute;
+  left: auto;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  /* Ð¢Ð¾Ð»ÑŒÐºÐ¾ Ð¿Ð¾Ð»Ð¾ÑÐ° Ñ‚ÐµÐºÑÑ‚Ð° 38â€¦87, Ð¿Ñ€Ð¸Ð¶Ð°Ñ‚Ð°Ñ Ð²Ð¿Ñ€Ð°Ð²Ð¾; Ð½Ðµ Ð½Ð° Ð²ÑÑŽ ÑˆÐ¸Ñ€Ð¸Ð½Ñƒ Ð±Ð°Ñ€Ð° â€” Ð¸Ð½Ð°Ñ‡Ðµ % Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°/Ð¿Ñ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€Ð¾Ð² ÑÑ‡Ð¸Ñ‚Ð°ÑŽÑ‚ÑÑ Ð¾Ñ‚ ÑˆÐ¸Ñ€Ð¸Ð½Ñ‹ Â«Ð»Ð°Ð¹ÐºÐ¸ + Ð¼ÐµÑ‚Ð°Â». */
+  width: min(
+    100%,
+    calc((var(--feed-post-text-col-end) - var(--feed-post-text-col-start) + 1) * var(--flora-grid-step))
+  );
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  z-index: 1;
+  pointer-events: none;
+  display: block;
+}
+
+.root .postMetaRight > * {
+  pointer-events: auto;
+}
+
+.postTime {
+  font-size: 13px;
+  letter-spacing: 0.39px;
+  color: var(--flora-gray);
+}
+
+.root .postTime {
+  position: absolute;
+  /* ÐšÐ°Ðº .actions .time: +1Ã—primary Ðº right â€” Ð½Ð° Ð¾Ð´Ð½Ñƒ ÐºÐ»ÐµÑ‚ÐºÑƒ Ð»ÐµÐ²ÐµÐµ. */
+  right: calc(
+    (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) -
+      2 * var(--flora-grid-step-fine) +
+      var(--flora-grid-step)
+  );
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  margin: 0;
+}
+
+.postViews {
+  font-size: 13px;
+  letter-spacing: 0.39px;
+  color: var(--flora-gray);
+}
+
+.root .postViews {
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+
+.root .postViews svg {
+  position: absolute;
+  left: calc(
+    100% * (var(--feed-post-meta-views-icon-col) - var(--feed-post-text-col-start)) / var(--feed-post-text-col-span)
+  );
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+}
+
+.root .postViews > span:last-child {
+  position: absolute;
+  left: calc(
+    100% * (var(--feed-post-meta-views-icon-col) - var(--feed-post-text-col-start)) / var(--feed-post-text-col-span) +
+      16px + var(--flora-grid-step)
+  );
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+@supports (text-box-trim: trim-start) {
+  .root .postContent {
+    text-box-trim: trim-start;
+    text-box-edge: cap alphabetic;
+  }
+}

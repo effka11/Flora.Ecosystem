@@ -1,0 +1,502 @@
+.page {
+  --g20: calc(4 * var(--flora-grid-step-fine));
+  --search-left: calc(1 * var(--flora-grid-step));
+  --search-top: calc(2 * var(--flora-grid-step));
+  --search-width: calc((89 - 38 + 1) * var(--flora-grid-step));
+  --search-height: calc((5 - 3 + 1) * var(--flora-grid-step));
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--flora-bg);
+}
+
+.peopleScroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.peopleTopBlock {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+  background: var(--flora-bg);
+}
+
+.peopleTopBlock::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(9 * var(--flora-grid-step));
+  width: 100%;
+  height: 1px;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  pointer-events: none;
+}
+
+.peopleTopInner {
+  position: relative;
+  height: calc(9 * var(--flora-grid-step));
+}
+
+.peopleSearchHeader {
+  position: relative;
+  height: calc(6 * var(--flora-grid-step));
+}
+
+.peopleSearchWrap {
+  position: absolute;
+  left: var(--search-left);
+  top: var(--search-top);
+  width: var(--search-width);
+  box-sizing: border-box;
+  height: var(--search-height);
+}
+
+.peopleSearchBox {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  height: 100%;
+  padding: 0 calc(var(--flora-grid-step) - 1px);
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--flora-green-dark);
+  background: transparent;
+}
+
+.peopleSearchIcon {
+  width: 20px;
+  height: 20px;
+  color: var(--flora-gray);
+  flex-shrink: 0;
+}
+
+.peopleSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.peopleSearchInput::placeholder {
+  color: var(--flora-gray);
+}
+
+.peopleSearchSendBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flora-green-light) 14%, transparent);
+  color: var(--flora-green-light);
+  transition: opacity 0.16s ease;
+}
+
+.peopleSearchSendBtnHidden {
+  opacity: 0.45;
+}
+
+.peopleSearchSendBtnShown {
+  opacity: 1;
+}
+
+.peopleFiltersBlock {
+  position: absolute;
+  left: calc(1 * var(--flora-grid-step));
+  right: calc(1 * var(--flora-grid-step));
+  top: calc(9 * var(--flora-grid-step) - (2 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine)));
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--flora-grid-step);
+}
+
+.peopleTabsWrap {
+  position: relative;
+  min-width: 0;
+  top: 5px;
+}
+
+.peopleTabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border-bottom: none;
+}
+
+.peopleTab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step) + var(--flora-grid-step-fine));
+  border: none;
+  border-bottom: none;
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+  border-radius: 999px;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px !important;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15) !important;
+  line-height: 1;
+}
+
+.peopleTabLabel {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+  font-family: inherit;
+  font-size: 15px !important;
+  font-weight: inherit;
+  letter-spacing: var(--flora-tracking-15) !important;
+  line-height: inherit;
+}
+
+.peopleTab:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.85);
+}
+
+.peopleTabActive {
+  color: var(--flora-green-light);
+}
+
+.peopleTabActive:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+}
+
+.peopleTabIndicator {
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: var(--people-tab-indicator-width, 0px);
+  background: var(--flora-green-light);
+  border-radius: 999px;
+  transform: translate3d(var(--people-tab-indicator-left, 0px), 0, 0);
+  transition:
+    transform var(--flora-duration-3) var(--flora-ease-out),
+    width var(--flora-duration-3) var(--flora-ease-out);
+  will-change: transform, width;
+  pointer-events: none;
+}
+
+.peopleTabIndicatorStatic {
+  transition: none !important;
+}
+
+.peopleListSection {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.peopleListContent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.peopleListContentFromLeft {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: peopleListInFromLeft var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+.peopleListContentFromRight {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: peopleListInFromRight var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+@keyframes peopleListInFromLeft {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateX(-8px) translateZ(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@keyframes peopleListInFromRight {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateX(8px) translateZ(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peopleListContentFromLeft,
+  .peopleListContentFromRight {
+    animation: none;
+  }
+}
+
+.peopleListContent::-webkit-scrollbar {
+  display: none;
+}
+
+.peopleListContent .list {
+  overflow-y: visible;
+  flex: unset;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.list::-webkit-scrollbar {
+  display: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--flora-grid-step);
+  /* −1px снизу: border-bottom + высота текста; иначе разделитель уезжает от сетки. */
+  padding: calc(var(--flora-list-row-pad-y) - 1px) var(--flora-grid-step) calc(var(--flora-list-row-pad-y) - 2px);
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  transition: background 0.15s;
+  position: relative;
+}
+
+.item:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.04);
+}
+
+.userMain {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+}
+
+.userMain:hover {
+  color: inherit;
+}
+
+.userMain:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.avatar {
+  width: calc(3 * var(--flora-grid-step));
+  height: calc(3 * var(--flora-grid-step));
+  border-radius: 50%;
+  background: rgba(164, 209, 138, 0.15);
+  color: var(--flora-green-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 19px;
+  letter-spacing: 0.57px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.userBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+}
+
+.userPrimaryLine {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  font-weight: 300;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-white-template);
+  /* Как .messagesChatHeaderNameRow */
+  transform: translateY(1px);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+}
+
+.displayName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.userName {
+  color: var(--flora-gray);
+  flex-shrink: 0;
+}
+
+.userSecondaryLine {
+  display: flex;
+  align-items: baseline;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Как .messagesChatHeaderStatus */
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+}
+
+.followersCountValue {
+  font-weight: 300;
+}
+
+/* Правый край блока действий — на вертикали после колонки 87 (на 1 клетку левее 88); высота 3 клетки, верх = аватар. */
+.rowActions {
+  position: absolute;
+  left: calc((1 + (88 - 38)) * var(--flora-grid-step));
+  top: calc(var(--flora-list-row-pad-y) - 1px);
+  transform: translateX(-100%);
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.rowActionsFadeIn {
+  animation: peopleRowActionsFadeIn var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+@keyframes peopleRowActionsFadeIn {
+  0%,
+  8% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowActionsFadeIn {
+    animation: none;
+  }
+}
+
+.btnMain,
+.btnIcon {
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+  background: transparent;
+  color: var(--flora-green-light);
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  height: calc(3 * var(--flora-grid-step));
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.btnMain {
+  padding: 0 calc(2 * var(--flora-grid-step));
+}
+
+.btnIcon {
+  width: calc(3 * var(--flora-grid-step));
+  padding: 0;
+}
+
+.btnIconUnsubscribe {
+  border: none;
+  color: var(--flora-gray);
+}
+
+.btnIconSvg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.btnMain:hover,
+.btnIcon:hover:not(.btnIconUnsubscribe) {
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+}
+
+.btnIconUnsubscribe:hover {
+  background: color-mix(in srgb, #fff 8%, transparent);
+  color: rgba(var(--flora-white-template-rgb), 0.72);
+}
+
+.btnMain:focus-visible,
+.btnIcon:focus-visible:not(.btnIconUnsubscribe) {
+  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.btnIconUnsubscribe:focus-visible {
+  outline: 2px solid rgba(var(--flora-white-template-rgb), 0.28);
+  outline-offset: 2px;
+}
+
+.peopleLoadError {
+  margin: 0;
+  padding: calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step)) 0;
+  color: #e88;
+  font-size: 13px;
+}

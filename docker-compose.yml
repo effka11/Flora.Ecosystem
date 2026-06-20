@@ -1,0 +1,26 @@
+# Локальный PostgreSQL для разработки Flora.Ecosystem
+# Запуск: docker compose up -d
+# Полная настройка: ./Scripts/setup-local-postgres.ps1
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: flora-local-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: flora_social
+      POSTGRES_USER: flora
+      POSTGRES_PASSWORD: change-me
+    volumes:
+      - flora_pg_data:/var/lib/postgresql/data
+      - ./Scripts/local-postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flora -d flora_social"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  flora_pg_data:

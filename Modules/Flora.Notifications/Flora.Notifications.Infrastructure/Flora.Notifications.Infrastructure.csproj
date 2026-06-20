@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FirebaseAdmin" Version="3.2.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Flora.Notifications.Application\Flora.Notifications.Application.csproj" />
+    <ProjectReference Include="..\Flora.Notifications.Domain\Flora.Notifications.Domain.csproj" />
+    <ProjectReference Include="..\Flora.Notifications.Contracts\Flora.Notifications.Contracts.csproj" />
+    <ProjectReference Include="..\..\Flora.Messaging\Flora.Messaging.Contracts\Flora.Messaging.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Flora.Shared\Flora.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

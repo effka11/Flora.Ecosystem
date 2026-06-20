@@ -1,0 +1,29 @@
+.banner {
+  margin: 0 calc(15px * 2) calc(15px * 1);
+  padding: calc(15px * 1);
+  border-radius: 8px;
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid rgba(255, 193, 7, 0.35);
+}
+
+.text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--flora-text, #e8e8e8);
+}
+
+.link {
+  color: var(--flora-accent, #7eb8ff);
+  text-decoration: underline;
+}
+
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--flora-accent, #7eb8ff);
+  text-decoration: underline;
+  cursor: pointer;
+}

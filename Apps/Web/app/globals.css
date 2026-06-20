@@ -1,0 +1,141 @@
+@import "./flora-motion.css";
+
+:root {
+  --flora-bg: #0c0c0c;
+  --flora-white-template: #fafafa;
+  --flora-white-template-rgb: 250, 250, 250;
+  --flora-green-light: #a4d18a;
+  --flora-green-dark: #2c3527;
+  /* Живой тёплый красный — лайки; контрастирует с flora-green-light, не кислотный на тёмном фоне */
+  --flora-like: #e8382c;
+
+  /* Резерв: производные от --flora-bg / --flora-green-light / --flora-white-template — только #hex, без alpha. */
+  /* 6% green-light + 94% bg */
+  --flora-accent-fill-subtle: #151814;
+  /* 14% green-light + 86% bg */
+  --flora-accent-fill-subtle-hover: #21281e;
+  /* 40% green-light + 60% bg — обводка чужого пузыря, меню */
+  --flora-green-bubble: #495b3e;
+  /* 8% green-bubble + 92% bg — фон чужого пузыря, панель эмодзи, меню чата */
+  --flora-reserve-surface-them: #111210;
+  --flora-reserve-bubble-them-bg: var(--flora-reserve-surface-them);
+  --flora-reserve-popover-bg: var(--flora-reserve-surface-them);
+  --flora-reserve-popover-border: var(--flora-green-bubble);
+  --flora-reserve-popover-shadow: 0 18px 50px #00000057;
+  /* 8% white-template + 92% bg — подложки списков (лента, people) */
+  --flora-reserve-substrate-template: #1f1f1f;
+  /* 8% flora-gray + 92% surface-them — rail категорий и вкладки эмодзи/стикеры */
+  --flora-reserve-substrate-gray-muted: #1c1d1b;
+  /* 5% white + 95% surface-them — ячейки эмодзи в сетке */
+  --flora-reserve-popover-inset: #1d1e1c;
+  --flora-reserve-popover-rail: var(--flora-reserve-substrate-gray-muted);
+  /* 18% green-light + 82% surface-them */
+  --flora-reserve-popover-accent-selected: #2b3426;
+  /* 12% green-light + 88% surface-them */
+  --flora-reserve-popover-accent-chip: #23291f;
+  /* 12% white + 88% surface-them */
+  --flora-reserve-popover-divider: #2d2e2c;
+  /* 12% green-bubble + 88% bg — hover пункта меню чата */
+  --flora-reserve-surface-them-hover: #131512;
+  /* 8% white + 92% bg */
+  --flora-reserve-hover-surface: #1f1f1f;
+  /* 8% white + 92% surface-them — hover внутри панели эмодзи */
+  --flora-reserve-hover-on-surface-them: #242523;
+  --flora-gray-light: var(--flora-white-template);
+  /* 55% white + 45% bg — единый приглушённый серый (текст, иконки, счётчики, плейсхолдеры) */
+  --flora-gray: #8f8f8f;
+  /* Неактивные зелёные кнопки: сильно приглушён относительно flora-green-light */
+  --flora-green-muted: color-mix(in srgb, var(--flora-green-light) 24%, var(--flora-gray) 76%);
+  /* 85% white + 15% bg */
+  --flora-gray-hover: #d6d6d6;
+  /* Линии разделения — приглушённый оттенок flora-gray на фоне */
+  --flora-gray-divider: color-mix(in srgb, var(--flora-gray) 14%, var(--flora-bg) 86%);
+  --flora-grid-step: 15px;
+  --flora-grid-step-fine: 5px;
+  --flora-list-row-pad-y: calc(2 * var(--flora-grid-step));
+  /* 20% / 10% green-light + bg — линии сетки (в градиентах «transparent» — маска, не цвет заливки) */
+  --flora-grid-line: #2a3325;
+  --flora-grid-line-fine: #1b2019;
+  --flora-frame-width: 1920px;
+  --flora-frame-height: 945px;
+  --flora-frame-left: 0px;
+  --flora-frame-top: 0px;
+  --flora-crop-x: 0px;
+  --flora-crop-y: 0px;
+
+  --flora-auth-bg: var(--flora-bg);
+
+  --flora-tracking-15: 0.45px;
+  --flora-tracking-16: 0.48px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  font-weight: 300 !important;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--flora-auth-bg);
+}
+
+html {
+  font-size: 16px;
+  font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+}
+
+body {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 300;
+}
+
+/* Не скрываем body до гидратации — иначе при долгой dev-компиляции страница кажется «мёртвой». */
+body.fonts-ready {
+  visibility: visible;
+}
+
+button,
+input,
+textarea,
+select,
+option {
+  font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  font-style: normal !important;
+}
+
+.flora-type-15 {
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.flora-type-16 {
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: var(--flora-tracking-16);
+}
+
+.flora-grid-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(3 * var(--flora-grid-step));
+  padding-left: calc(2 * var(--flora-grid-step));
+  padding-right: calc(2 * var(--flora-grid-step));
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  font-weight: 300;
+  line-height: 1;
+  white-space: nowrap;
+}

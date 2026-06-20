@@ -1,0 +1,21 @@
+﻿/* Пустые экраны: как .messagesEmpty — padding 2×primary / 4×fine (30px / 20px). */
+.hint {
+  margin: 0;
+  padding: calc(2 * var(--flora-grid-step)) calc(4 * var(--flora-grid-step-fine));
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.45;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  flex-shrink: 0;
+}
+
+.hintInList {
+  list-style: none;
+}
+
+.hintCentered {
+  text-align: center;
+}
+

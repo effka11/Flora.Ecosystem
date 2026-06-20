@@ -1,0 +1,88 @@
+﻿.gridToggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 70;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 45%, var(--flora-gray));
+  background: color-mix(in srgb, var(--flora-bg) 78%, #000);
+  color: var(--flora-gray-light);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 1.1px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.gridToggleSecondary {
+  right: 122px;
+}
+
+.gridToggle.on {
+  border-color: var(--flora-green-light);
+  color: var(--flora-green-light);
+}
+
+.gridViewport {
+  position: fixed;
+  left: var(--flora-frame-left);
+  top: var(--flora-frame-top);
+  width: var(--flora-frame-width);
+  height: var(--flora-frame-height);
+  overflow: hidden;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.gridOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--flora-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--flora-grid-line) 1px, transparent 1px);
+  background-size: var(--flora-grid-step) var(--flora-grid-step);
+  background-position: calc(-1 * var(--flora-crop-x)) calc(-1 * var(--flora-crop-y));
+}
+
+.gridOverlayFine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--flora-grid-line-fine) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--flora-grid-line-fine) 1px, transparent 1px);
+  background-size: var(--flora-grid-step-fine) var(--flora-grid-step-fine);
+  background-position: calc(-1 * var(--flora-crop-x)) calc(-1 * var(--flora-crop-y));
+}
+
+.gridCoords {
+  position: fixed;
+  z-index: 75;
+  pointer-events: none;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, var(--flora-gray));
+  background: color-mix(in srgb, var(--flora-bg) 82%, #000);
+  color: var(--flora-white-template);
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.7px;
+}
+
+.gridCenterDot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--flora-green-light) 85%, #fff);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 70%, transparent);
+  opacity: 0.9;
+  pointer-events: none;
+}

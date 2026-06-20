@@ -1,0 +1,430 @@
+.page {
+  min-height: 100vh;
+  background: var(--flora-bg);
+  color: var(--flora-gray-light);
+}
+
+.appRoot {
+  /* Для страниц с fixed-панелями (напр. рейл чатов) — правый край холста, не только .content. */
+  --flora-app-root-w: 1920px;
+  --flora-app-root-h: 945px;
+  position: fixed;
+  left: calc(var(--flora-frame-left) - var(--flora-crop-x));
+  top: calc(var(--flora-frame-top) - var(--flora-crop-y));
+  width: var(--flora-app-root-w);
+  min-width: var(--flora-app-root-w);
+  height: var(--flora-app-root-h);
+  min-height: var(--flora-app-root-h);
+  margin: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  position: absolute;
+  left: calc((18 - 1) * var(--flora-grid-step));
+  top: 0;
+  width: calc((33 - 18 + 1) * var(--flora-grid-step));
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: calc(2 * var(--flora-grid-step)) var(--flora-grid-step) calc(var(--flora-grid-step) + var(--flora-grid-step-fine)) 0;
+}
+
+.logo {
+  position: absolute;
+  left: 0;
+  top: calc(2 * var(--flora-grid-step));
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  color: var(--flora-green-light);
+  text-decoration: none;
+  letter-spacing: calc(var(--flora-grid-step-fine) - 1px);
+  font-weight: 300;
+  font-size: 17px;
+  padding: 0;
+  min-height: calc(2 * var(--flora-grid-step));
+}
+
+.logoMark {
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
+}
+
+.logoMark svg {
+  width: 15px;
+  height: 15px;
+}
+
+.navList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  top: calc(7 * var(--flora-grid-step));
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(3 * var(--flora-grid-step));
+}
+
+.navLink {
+  border: none;
+  background: transparent;
+  color: var(--flora-gray-light);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--flora-grid-step) - var(--flora-grid-step-fine));
+  height: var(--flora-grid-step);
+  padding: 0 var(--flora-grid-step);
+  border-radius: 999px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.navText {
+  position: absolute;
+  left: calc(3 * var(--flora-grid-step));
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+.navIconWrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.navIconBadge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--flora-green-light);
+  color: #10200e;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  box-shadow: 0 0 0 1.5px var(--flora-bg);
+}
+
+.navLink:hover {
+  background: transparent;
+}
+
+.navLinkActive,
+.postCta.navLinkActive {
+  color: var(--flora-green-light);
+}
+
+.navIcon {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  flex-shrink: 0;
+  margin-left: calc(-1 * var(--flora-grid-step) + 4px);
+  margin-top: -2px;
+}
+
+.navList li:first-child .navIcon {
+  margin-top: -3px;
+}
+
+.navIconMessages {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  margin-top: -3px;
+}
+
+.navIconCommunities {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  transform: scale(0.92);
+}
+
+.navIconMusic {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  margin-top: -3px;
+  transform: scale(0.9);
+  transform-origin: center;
+}
+
+.navIconNotifications {
+  width: 23px;
+  height: 23px;
+  min-width: 23px;
+  min-height: 23px;
+  margin-top: -3px;
+}
+
+.navIconPeople {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  margin-top: -3px;
+}
+
+.postCta {
+  position: absolute;
+  left: 0;
+  top: calc(31 * var(--flora-grid-step));
+  border: none;
+  background: transparent;
+  color: var(--flora-gray-light);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--flora-grid-step) - var(--flora-grid-step-fine));
+  height: var(--flora-grid-step);
+  padding: 0 var(--flora-grid-step);
+  border-radius: 999px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.postCta:hover {
+  background: transparent;
+}
+
+.sidebarBottom {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step-fine);
+  position: static;
+}
+
+.settingsLink {
+  position: absolute;
+  left: calc((-3 + 0.5) * var(--flora-grid-step) + 1px);
+  top: calc(59 * var(--flora-grid-step));
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+  border-radius: 0;
+  color: var(--flora-white-template);
+  display: block;
+}
+
+.settingsLink:hover {
+  color: var(--flora-green-light);
+}
+
+.settingsIcon {
+  position: absolute;
+  left: calc((var(--flora-grid-step) - 22px) / 2);
+  top: calc((var(--flora-grid-step) - 22px) / 2);
+  width: 22px;
+  height: 22px;
+}
+
+.userCard {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  --sidebar-user-avatar-d: calc(3 * var(--flora-grid-step));
+  /* Как шапка чата: 1 первичная клетка между аватаром и колонкой текста (имя + @ник, аватар absolute). */
+  gap: var(--flora-grid-step);
+  padding: calc(var(--flora-grid-step) - 6px) calc(var(--flora-grid-step) - 4px);
+  padding-left: calc(4 * var(--flora-grid-step));
+  border-radius: 0;
+  background: transparent;
+}
+
+.avatarLink {
+  text-decoration: none;
+  color: inherit;
+}
+
+.userProfileStackLink {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: var(--sidebar-user-avatar-d);
+  gap: var(--flora-grid-step-fine);
+  text-decoration: none;
+  color: inherit;
+}
+
+.userProfileStackLink:hover .userDisplayName {
+  color: var(--flora-green-light);
+}
+
+.avatarLink:hover {
+  opacity: 0.92;
+}
+
+.avatar {
+  position: absolute;
+  left: 0;
+  top: calc(58 * var(--flora-grid-step));
+  width: calc(3 * var(--flora-grid-step));
+  height: calc(3 * var(--flora-grid-step));
+  min-width: calc(3 * var(--flora-grid-step));
+  min-height: calc(3 * var(--flora-grid-step));
+  border-radius: 50%;
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  letter-spacing: var(--flora-tracking-16);
+  font-weight: 300;
+}
+
+.userMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* Как .messagesChatRailBody — две строки + gap по высоте аватара 3×15. */
+  gap: var(--flora-grid-step-fine);
+}
+
+.userDisplayName {
+  position: relative;
+  top: 0;
+  line-height: calc((var(--sidebar-user-avatar-d) - var(--flora-grid-step-fine)) / 2);
+  color: var(--flora-white-template);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateY(1px);
+}
+
+.userAtHandle {
+  position: relative;
+  top: 0;
+  line-height: calc((var(--sidebar-user-avatar-d) - var(--flora-grid-step-fine)) / 2);
+  color: var(--flora-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateY(1px);
+}
+
+.content {
+  position: absolute;
+  left: calc(37 * var(--flora-grid-step));
+  top: 0;
+  width: calc((90 - 37 + 1) * var(--flora-grid-step));
+  height: calc((62 - 0 + 1) * var(--flora-grid-step));
+  min-height: calc((62 - 0 + 1) * var(--flora-grid-step));
+  overflow: hidden;
+  background: var(--flora-bg);
+  z-index: 10;
+}
+
+.contentInner {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+}
+
+.contentRoutePanel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Тайминг как у подвкладок ленты; только opacity, без translate. */
+.contentInnerRouteInFromLeft {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: dashboardRouteInFromLeft var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+.contentInnerRouteInFromRight {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: dashboardRouteInFromRight var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+@keyframes dashboardRouteInFromLeft {
+  0%,
+  8% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes dashboardRouteInFromRight {
+  0%,
+  8% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentInnerRouteInFromLeft,
+  .contentInnerRouteInFromRight {
+    animation: none;
+  }
+}
+
+/* Сообщения: пузыри уходят под поле ввода — иначе .content режет по overflow:hidden. */
+.contentMessagesOverflow {
+  overflow: visible;
+}
+
+@media (max-width: 1280px) {
+  .logoText,
+  .navText,
+  .userProfileStackLink .userAtHandle {
+    display: none;
+  }
+
+  .sidebar {
+    width: calc(7 * var(--flora-grid-step));
+    align-items: center;
+  }
+
+  .navLink {
+    justify-content: center;
+    width: calc(4 * var(--flora-grid-step));
+    height: calc(4 * var(--flora-grid-step));
+    padding: 0;
+  }
+
+  .postCta {
+    justify-content: center;
+    width: calc(4 * var(--flora-grid-step));
+    height: calc(4 * var(--flora-grid-step));
+    padding: 0;
+  }
+}

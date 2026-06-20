@@ -1,0 +1,1418 @@
+.feedPage {
+  --g20: calc(4 * var(--flora-grid-step-fine));
+  --g30: calc(2 * var(--flora-grid-step));
+  --g45: calc(3 * var(--flora-grid-step));
+  --feed-post-avatar-size: var(--g45);
+  --feed-post-item-width: calc((87 - 38 + 1) * var(--flora-grid-step) + var(--g45));
+  --feed-post-nickname-row-between: var(--flora-grid-step-fine);
+  --feed-post-actions-anchor-col: 42;
+  --feed-post-action-like-col: 42;
+  --feed-post-action-comment-col: 48;
+  --feed-post-action-repost-col: 54;
+  /* Вертикали сетки (колонка X): правый край таймера — 81; левый край иконки просмотров — 85; текст поста 38…87 */
+  --feed-post-text-col-start: 38;
+  --feed-post-text-col-end: 87;
+  /* Поле комментария: первичные 38…85. */
+  --feed-post-comment-composer-field-col-start: 38;
+  --feed-post-comment-composer-col-end: 85;
+  --feed-post-meta-timer-end-col: 81;
+  --feed-post-meta-views-icon-col: 85;
+  /* Число первичных колонок текста поста (38…87 включительно) — для % от фактической ширины ряда. */
+  --feed-post-text-col-span: calc(var(--feed-post-text-col-end) - var(--feed-post-text-col-start) + 1);
+  /* Базовые колонки линии «пост — комментарии» (40…92); отрисовка — .thread::before в FeedPostComments.module.css. */
+  --feed-post-comments-rule-col-start: 40;
+  --feed-post-comments-rule-col-end: 92;
+  /* Левый край колонки текста поста (локальная «38» в карточке): padding + аватар + gap − margin −fine у body/comments. */
+  --feed-primary-text-col-start-inset: calc(
+    var(--flora-grid-step) + var(--feed-post-avatar-size) + var(--flora-grid-step)
+  );
+  /* Холст шапки/ленты: левая граница полосы контента = первичная 37 (как у .feedFiltersBlock left: 1×step). */
+  --feed-content-primary-col-left: 37;
+  /* Поиск в шапке: глобальные первичные 38…89 относительно 37 — не inset текста поста. */
+  --feed-search-primary-col-start: 38;
+  --feed-search-primary-col-end: 89;
+  /* Оверлей вторичных: правый край таймера комментария — линия 265 (замер «как сейчас» ~249 → −(265−249)×1px к right). */
+  --feed-comment-timer-overlay-line-end: 265;
+  --feed-comment-timer-overlay-line-measured: 249;
+  --feed-comment-timer-secondary-end-nudge: calc(
+    (var(--feed-comment-timer-overlay-line-end) - var(--feed-comment-timer-overlay-line-measured)) * 1px
+  );
+  /* Ширина колонки .content (вертикали 37…90) — список постов и линия-разделитель на всю неё. */
+  --feed-separator-rule-width: calc((90 - 37 + 1) * var(--flora-grid-step));
+  --feed-g75: calc(5 * var(--flora-grid-step));
+  --feed-compact-duration: 0.4s;
+  --feed-compact-delay: 0.02s;
+  --feed-refresh-col: 87;
+  --feed-refresh-row: 7;
+  --feed-layout-col-end: 90;
+  --feed-refresh-right: calc(
+    (var(--feed-layout-col-end) + 1 - (var(--feed-refresh-col) + 1)) * var(--flora-grid-step)
+  );
+  /* Компакт: иконка «Обновить» — первичная клетка 88.3 (якорь контента 37). */
+  --feed-refresh-compact-col: 88;
+  --feed-refresh-compact-row: 3;
+  --feed-scroll-top-compact-col: 85;
+  --feed-scroll-top-compact-row: 3;
+  /* Компакт: поиск 38.2…56.3 (19 клеток); вкладки с 61 (+4 от конца поиска). */
+  --feed-search-compact-col-start: 38;
+  --feed-search-compact-col-end: 56;
+  --feed-search-compact-row-start: 2;
+  --feed-search-compact-row-end: 3;
+  --feed-tabs-compact-gap-cols: 4;
+  --feed-tabs-compact-col-start: calc(
+    var(--feed-search-compact-col-end) + var(--feed-tabs-compact-gap-cols) + 1
+  );
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--flora-bg);
+}
+
+.feedPage::-webkit-scrollbar {
+  display: none;
+}
+
+.feedTopBlock {
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  background: var(--flora-bg);
+}
+
+.feedTopBlock::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(9 * var(--flora-grid-step));
+  width: 100%;
+  height: 1px;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  pointer-events: none;
+}
+
+.feedTopBlock:not(.feedTopBlockCompact) {
+  height: calc(9 * var(--flora-grid-step));
+  min-height: calc(9 * var(--flora-grid-step));
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.feedTopBlock:not(.feedTopBlockCompact) .feedTopBlockInner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.feedTopBlockInner {
+  position: relative;
+  padding: 0;
+  height: calc(9 * var(--flora-grid-step));
+  transition: padding 0.25s ease, gap 0.25s ease;
+}
+
+.searchHeader {
+  position: relative;
+  height: calc(6 * var(--flora-grid-step));
+}
+
+.peopleSearchWrap {
+  position: absolute;
+  left: calc(
+    (var(--feed-search-primary-col-start) - var(--feed-content-primary-col-left, 37)) * var(--flora-grid-step)
+  );
+  top: calc(2 * var(--flora-grid-step));
+  width: calc(
+    (var(--feed-search-primary-col-end) - var(--feed-search-primary-col-start) + 1) * var(--flora-grid-step)
+  );
+  box-sizing: border-box;
+  height: calc((5 - 3 + 1) * var(--flora-grid-step));
+}
+
+.peopleSearchBox {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  height: 100%;
+  padding: 0 calc(var(--flora-grid-step) - 1px);
+  border-radius: 12px;
+  border: 1px solid var(--flora-green-dark);
+  background: transparent;
+}
+
+.peopleSearchIcon {
+  width: 20px;
+  height: 20px;
+  color: var(--flora-gray);
+  flex-shrink: 0;
+}
+
+.peopleSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.peopleSearchInput::placeholder {
+  color: var(--flora-gray);
+}
+
+.peopleSearchSendBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flora-green-light) 14%, transparent);
+  color: var(--flora-green-light);
+  transition: opacity 0.16s ease;
+}
+
+.peopleSearchSendBtnHidden {
+  opacity: 0.45;
+}
+
+.peopleSearchSendBtnShown {
+  opacity: 1;
+}
+
+.feedFiltersBlock {
+  position: absolute;
+  left: calc(1 * var(--flora-grid-step));
+  right: calc(1 * var(--flora-grid-step));
+  top: calc(9 * var(--flora-grid-step) - (2 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine)));
+  display: flex;
+  align-items: flex-end;
+  gap: var(--flora-grid-step);
+  border-bottom: none;
+  padding: 0;
+}
+
+.peopleTabsWrap {
+  position: relative;
+  min-width: 0;
+  top: 5px;
+  overflow: visible;
+}
+
+.peopleTabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: visible;
+}
+
+.peopleTab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(2 * var(--flora-grid-step) + var(--flora-grid-step-fine));
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px !important;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15) !important;
+  line-height: 1;
+}
+
+.peopleTabLabel {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+  font-family: inherit;
+  font-size: 15px !important;
+  font-weight: inherit;
+  letter-spacing: var(--flora-tracking-15) !important;
+  line-height: inherit;
+}
+
+.peopleTab:hover {
+  color: var(--flora-gray-hover);
+}
+
+.peopleTabActive {
+  color: var(--flora-green-light);
+}
+
+.peopleTabIndicator {
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: var(--feed-tab-indicator-width, 0px);
+  background: var(--flora-green-light);
+  border-radius: 999px;
+  transform: translate3d(var(--feed-tab-indicator-left, 0px), 0, 0);
+  transition:
+    transform var(--flora-duration-3) var(--flora-ease-out),
+    width var(--flora-duration-3) var(--flora-ease-out);
+  will-change: transform, width;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Первый кадр без transition, чтобы не «проигрывать» скачок от дефолтных var. */
+.peopleTabIndicatorStatic {
+  transition: none !important;
+}
+
+.feedTabRefreshBtn {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* +1 вторичная клетка вниз + небольшой px-дожим */
+  top: calc(2 * var(--flora-grid-step-fine) + 2px);
+  height: var(--flora-grid-step);
+  min-height: var(--flora-grid-step);
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--flora-gray);
+  padding: 0;
+  box-sizing: border-box;
+  white-space: nowrap;
+  margin: 0;
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+  pointer-events: none;
+}
+
+.feedTabRefreshBtn:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.84);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+}
+
+.feedTabRefreshBtnExpand {
+  display: block;
+}
+
+.feedScrollTopBtn {
+  display: none;
+}
+
+.feedTabRefreshLabel {
+  position: absolute;
+  top: 50%;
+  right: calc(100% - 49 * var(--flora-grid-step));
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.feedTabRefreshIcon {
+  width: calc(var(--flora-grid-step) - 2px);
+  height: calc(var(--flora-grid-step) - 2px);
+  display: block;
+  object-fit: contain;
+  position: absolute;
+  left: calc(50 * var(--flora-grid-step));
+  top: 50%;
+  transform: translateY(-50%) scaleX(-1);
+  color: var(--flora-green-light);
+  pointer-events: none;
+  transition: color 0.18s ease, filter 0.22s ease;
+}
+
+/* Обычный режим: кнопка только над «Обновить» + иконкой, не перекрывает вкладки. */
+.feedTopBlock:not(.feedTopBlockCompact) .feedTabRefreshBtnExpand {
+  position: absolute;
+  left: auto;
+  /* На 2 первичные клетки правее якоря кол. 87 (как раньше с icon left: 50×step). */
+  right: calc(var(--feed-refresh-right) - 2 * var(--flora-grid-step));
+  top: calc(2 * var(--flora-grid-step-fine) + 2px);
+  width: auto;
+  height: var(--flora-grid-step);
+  min-height: var(--flora-grid-step);
+  padding: 0 0 0 calc(2 * var(--flora-grid-step));
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--flora-grid-step);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.feedTopBlock:not(.feedTopBlockCompact) .feedTabRefreshLabel {
+  position: static;
+  right: auto;
+  top: auto;
+  transform: none;
+}
+
+.feedTopBlock:not(.feedTopBlockCompact) .feedTabRefreshIcon {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: scaleX(-1);
+}
+
+.feedTabRefreshSpin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+  transform-origin: center center;
+}
+
+.feedTabRefreshSpin.refreshSpinning {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: feedRefreshIconSpin 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes feedRefreshIconSpin {
+  from {
+    transform: translateZ(0) rotate(0deg);
+  }
+
+  to {
+    transform: translateZ(0) rotate(-360deg);
+  }
+}
+
+.feedTabRefreshBtn:hover .feedTabRefreshIcon,
+.feedTopBlock:not(.feedTopBlockCompact) .feedTabRefreshBtnExpand:hover .feedTabRefreshIcon {
+  color: color-mix(in srgb, var(--flora-green-light) 92%, #fff 8%);
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--flora-green-light) 55%, transparent));
+}
+
+.feedList {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.peopleListSection {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  /* Без левого padding: левый край списка = колонка 37 (.content); отступ «колонка 38» — на карточке поста. */
+  padding: var(--flora-grid-step) 0 var(--flora-grid-step) 0;
+}
+
+.feed {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.peopleListContent {
+  flex: 0 0 auto;
+  min-width: 0;
+  /* Список на ширину 37…90; padding-right убран — иначе полоска не доходит до верт. 90. ⋮ — внутри широкой карточки. */
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+/* Переключение Рекомендации ↔ Подписки (как people-content-from-left/right в 2142-1). */
+.peopleListContentFromLeft {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: feedListInFromLeft var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+.peopleListContentFromRight {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: feedListInFromRight var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+.feedListRefreshBody {
+  min-width: 0;
+}
+
+/* Обновление ленты — шаблонный fade (как .settingsSectionPanelFade). */
+.feedListRefreshFade {
+  min-width: 0;
+  animation: feedListRefreshFadeIn var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+@keyframes feedListRefreshFadeIn {
+  0%,
+  8% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes feedListInFromLeft {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateX(-8px) translateZ(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@keyframes feedListInFromRight {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateX(8px) translateZ(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peopleListContentFromLeft,
+  .peopleListContentFromRight,
+  .feedListRefreshFade {
+    animation: none;
+  }
+}
+
+.peopleListContent::-webkit-scrollbar {
+  display: none;
+}
+
+.profilePostsList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--g30);
+}
+
+.feedList .feed .profilePostsList {
+  width: var(--feed-separator-rule-width);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.profilePostItem {
+  display: grid;
+  grid-template-columns: var(--feed-post-avatar-size) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "post-avatar post-head"
+    ". post-body"
+    ". post-comments";
+  column-gap: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  row-gap: var(--flora-grid-step-fine);
+  align-items: start;
+  padding-top: var(--g30);
+  padding-bottom: var(--g30);
+  padding-left: 0;
+  padding-right: var(--flora-grid-step);
+  border-bottom: none;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* Разделитель: фон на всю ширину карточки (карточка = вертикали 37…90). */
+.profilePostItem:not(:last-child) {
+  background-image: linear-gradient(
+    to right,
+    var(--flora-gray-divider),
+    var(--flora-gray-divider)
+  );
+  background-size: 100% 1px;
+  background-position: left 100%;
+  background-repeat: no-repeat;
+}
+
+.feedList .feed .profilePostItem:not(:last-child) {
+  /* Выше нижнего края карточки: вернуть линию после опускания шапки (кнопка «Обновить»). */
+  background-position: left calc(100% - (2 * var(--flora-grid-step-fine) - 1px));
+}
+
+.feedList .feed .profilePostItem {
+  padding-left: var(--flora-grid-step);
+  padding-right: var(--g45);
+  /* +2px: нижний отступ до полоски между постами (:not(:last-child)). */
+  padding-bottom: calc(2 * var(--flora-grid-step) + 2px);
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+}
+
+/* Единый padding-bottom карточки: смена отступа при свёрнутых комментариях давала лишний reflow вместе с grid панели. */
+
+.feedList .feed .profilePostItem:first-child {
+  margin-top: calc(-1 * var(--flora-grid-step));
+}
+
+/* После разделителя: верх карточки на 2 вторичные клетки выше прежнего отступа. */
+.feedList .feed .profilePostItem:not(:first-child) {
+  padding-top: calc(var(--g30) - 2 * var(--flora-grid-step-fine));
+}
+
+.profilePostAvatar {
+  grid-area: post-avatar;
+  width: var(--feed-post-avatar-size);
+  height: var(--feed-post-avatar-size);
+  min-width: var(--feed-post-avatar-size);
+  border-radius: 50%;
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: var(--flora-tracking-16);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.profilePostAvatarLink {
+  text-decoration: none;
+  color: var(--flora-green-light);
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.profilePostAvatarLink:hover {
+  opacity: 0.9;
+}
+
+.profilePostBody {
+  grid-area: post-body;
+  min-width: 0;
+}
+
+.profilePostCommentsRegion {
+  grid-area: post-comments;
+  min-width: 0;
+}
+
+.feedList .feed .profilePostCommentsRegion {
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.feedList .feed .profilePostBody {
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  margin-top: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.profilePostHeader {
+  grid-area: post-head;
+  display: flex;
+  align-items: flex-start;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  margin-bottom: 0;
+}
+
+.feedList .feed .profilePostHeader {
+  margin-top: 0;
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  padding-top: calc(var(--feed-post-nickname-row-between) + var(--flora-grid-step-fine));
+}
+
+.feedList .feed .profilePostMoreWrap {
+  position: absolute;
+  left: calc((89 - 38) * var(--flora-grid-step) - 0.5 * var(--flora-grid-step) + 1px);
+  top: calc(var(--g30) - 0.5 * var(--flora-grid-step) + 1px);
+  margin: 0;
+}
+
+.profilePostMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
+}
+
+.profilePostMetaLink {
+  text-decoration: none;
+  color: inherit;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
+}
+
+.feedList .feed .profilePostMetaLink {
+  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - 2px);
+}
+
+.profilePostMetaLink:hover .profilePostAuthor,
+.profilePostMetaLink:hover .profilePostHandle {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.profilePostAuthor {
+  line-height: 1;
+  color: var(--flora-white-template);
+}
+
+.profilePostHandle {
+  line-height: 1;
+  color: var(--flora-gray);
+}
+
+.feedList .feed .profilePostAuthor,
+.feedList .feed .profilePostHandle {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.profilePostMoreWrap {
+  margin-left: auto;
+  margin-right: calc(-1 * var(--g20));
+  position: relative;
+  /* Визуальный низ ⋮: + fine+3px из-за translateY у .triggerLift. */
+  --flora-rect-menu-gap-below: calc(var(--flora-grid-step) + var(--flora-grid-step-fine) + 3px);
+}
+
+.profilePostMoreBtn {
+  padding: var(--flora-grid-step-fine);
+  color: var(--flora-gray);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.15s ease,
+    text-shadow 0.2s ease;
+}
+
+.profilePostMoreBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.78);
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.profilePostMoreBtn:active:not(:disabled) {
+  transform: translateY(calc(var(--flora-grid-step-fine) + 3px)) scale(0.92);
+}
+
+.profilePostContent {
+  margin: 0 0 var(--flora-grid-step) 0;
+  line-height: 1.7;
+  color: var(--flora-gray-light);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.profilePostMedia {
+  display: block;
+  margin: calc(2 * var(--flora-grid-step-fine)) 0 var(--flora-grid-step);
+  width: 100%;
+  border-radius: calc(var(--flora-grid-step-fine));
+  max-height: min(560px, 70vh);
+  object-fit: cover;
+}
+
+.profilePostBody > .profilePostMedia:first-child {
+  margin-top: 0;
+}
+
+.profilePostBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--flora-grid-step);
+  margin-top: var(--flora-grid-step);
+}
+
+.feedList .feed .profilePostBar {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: calc(4 * var(--flora-grid-step-fine));
+}
+
+.profilePostActions {
+  display: flex;
+  align-items: center;
+  gap: var(--g20);
+}
+
+.feedList .feed .profilePostActions {
+  display: block;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: calc(var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+  gap: 0;
+}
+
+.feedList .feed .profilePostAction {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step-fine);
+  padding: 0;
+  margin: 0;
+}
+
+.feedList .feed .profilePostAction:nth-child(1) {
+  left: calc((var(--feed-post-action-like-col) - var(--feed-post-actions-anchor-col)) * var(--flora-grid-step));
+}
+
+.feedList .feed .profilePostAction:nth-child(2) {
+  left: calc((var(--feed-post-action-comment-col) - var(--feed-post-actions-anchor-col)) * var(--flora-grid-step));
+}
+
+.feedList .feed .profilePostAction:nth-child(3) {
+  left: calc((var(--feed-post-action-repost-col) - var(--feed-post-actions-anchor-col)) * var(--flora-grid-step));
+}
+
+.feedList .feed .profilePostAction svg {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.feedList .feed .profilePostAction span {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.feedList .feed .profilePostAction:nth-child(1) span {
+  left: calc((44 - var(--feed-post-action-like-col)) * var(--flora-grid-step));
+}
+
+.feedList .feed .profilePostAction:nth-child(2) span {
+  left: calc((50 - var(--feed-post-action-comment-col)) * var(--flora-grid-step));
+}
+
+.feedList .feed .profilePostAction:nth-child(3) span {
+  left: calc((56 - var(--feed-post-action-repost-col)) * var(--flora-grid-step));
+}
+
+/* Стек аватаров подписок, репостнувших пост — справа от кнопки репоста (первичная 58). */
+.feedList .feed .profilePostFollowedReposts {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc((58 - var(--feed-post-actions-anchor-col)) * var(--flora-grid-step));
+  display: flex;
+  align-items: center;
+}
+
+.profilePostAction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step-fine);
+  padding: var(--flora-grid-step-fine) 0;
+  border: none;
+  background: none;
+  color: var(--flora-gray);
+  cursor: pointer;
+  font-size: 14px;
+  letter-spacing: var(--flora-tracking-15);
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.profilePostAction:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 10%, rgba(var(--flora-white-template-rgb), 0.76));
+  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+}
+
+.feedList .feed .profilePostActionCommentsOpen,
+.profilePostAction.profilePostActionCommentsOpen {
+  color: color-mix(in srgb, var(--flora-green-light) 78%, var(--flora-gray) 22%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+}
+
+.feedList .feed .profilePostActionLikeOn,
+.profilePostAction.profilePostActionLikeOn {
+  color: color-mix(in srgb, var(--flora-like) 92%, var(--flora-gray) 8%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-like) 55%, transparent);
+}
+
+.feedList .feed .profilePostActionRepostOn,
+.profilePostAction.profilePostActionRepostOn {
+  color: color-mix(in srgb, var(--flora-green-light) 78%, var(--flora-gray) 22%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+}
+
+.profilePostAction svg {
+  width: 18px;
+  height: 18px;
+}
+
+.profilePostMetaRight {
+  color: var(--flora-gray);
+}
+
+.feedList .feed .profilePostMetaRight {
+  position: absolute;
+  left: auto;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  /* Только полоса текста 38…87, прижатая вправо; не на всю ширину бара — иначе % таймера/просмотров считаются от ширины «лайки + мета». */
+  width: min(
+    100%,
+    calc((var(--feed-post-text-col-end) - var(--feed-post-text-col-start) + 1) * var(--flora-grid-step))
+  );
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  z-index: 1;
+  pointer-events: none;
+  display: block;
+}
+
+.feedList .feed .profilePostMetaRight > * {
+  pointer-events: auto;
+}
+
+.profilePostTime {
+  font-size: 13px;
+  letter-spacing: 0.39px;
+  color: var(--flora-gray);
+}
+
+.feedList .feed .profilePostTime {
+  position: absolute;
+  /* Как .actions .time: +1×primary к right — на одну клетку левее. */
+  right: calc(
+    (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) -
+      2 * var(--flora-grid-step-fine) +
+      var(--flora-grid-step)
+  );
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  margin: 0;
+}
+
+.profilePostViews {
+  font-size: 13px;
+  letter-spacing: 0.39px;
+  color: var(--flora-gray);
+}
+
+.feedList .feed .profilePostViews {
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+
+.feedList .feed .profilePostViews svg {
+  position: absolute;
+  left: calc(
+    100% * (var(--feed-post-meta-views-icon-col) - var(--feed-post-text-col-start)) / var(--feed-post-text-col-span)
+  );
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+}
+
+.feedList .feed .profilePostViews > span:last-child {
+  position: absolute;
+  left: calc(
+    100% * (var(--feed-post-meta-views-icon-col) - var(--feed-post-text-col-start)) / var(--feed-post-text-col-span) +
+      16px + var(--flora-grid-step)
+  );
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+/* --- Компактная шапка ленты (как feed-top-block--compact в 2142-1) --- */
+
+.feedTopBlockCompact {
+  position: sticky;
+  top: var(--compact-stick-top, 0);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.feedTopBlockCompact::after {
+  display: none;
+}
+
+/* Только layout-transition: enter-анимации выхода из компакта не глушим (в 2142 они выше по смыслу кадра). */
+.feedTopBlockNoTransition,
+.feedTopBlockNoTransition .feedTopBlockInner,
+.feedTopBlockNoTransition .feedTopBlockInner * {
+  transition: none !important;
+}
+
+.feedTopBlockNoTransition .peopleTabIndicator {
+  transition: none !important;
+  animation: none !important;
+}
+
+.feedTopBlockCompact .feedTopBlockInner {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--flora-grid-step) calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  padding: calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step)) 0;
+  height: var(--feed-g75);
+  min-height: var(--feed-g75);
+  box-sizing: border-box;
+}
+
+/* Позиция поиска: только keyframe-анимации (compact-in / expanded-stretch), без transition — иначе моргание. */
+.feedTopBlock:not(.feedTopBlockCompact) .peopleSearchWrap {
+  transition: none;
+}
+
+.feedTopBlockCompact .searchHeader {
+  position: static;
+  flex: none;
+  width: 0;
+  height: 0;
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+  margin: 0;
+}
+
+.feedTopBlockCompact .peopleSearchWrap {
+  position: absolute;
+  left: calc(
+    (var(--feed-search-compact-col-start) - var(--feed-content-primary-col-left)) * var(--flora-grid-step)
+  );
+  top: calc(var(--feed-search-compact-row-start) * var(--flora-grid-step));
+  width: calc(
+    (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
+  );
+  min-width: calc(
+    (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
+  );
+  max-width: calc(
+    (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
+  );
+  height: calc(
+    (var(--feed-search-compact-row-end) - var(--feed-search-compact-row-start) + 1) * var(--flora-grid-step)
+  );
+  min-height: calc(
+    (var(--feed-search-compact-row-end) - var(--feed-search-compact-row-start) + 1) * var(--flora-grid-step)
+  );
+  max-height: calc(
+    (var(--feed-search-compact-row-end) - var(--feed-search-compact-row-start) + 1) * var(--flora-grid-step)
+  );
+  margin: 0;
+  padding: 0;
+  z-index: 2;
+  animation: feedSearchToCompactIn var(--feed-compact-duration) var(--feed-compact-delay) cubic-bezier(0.33, 1, 0.2, 1)
+    both;
+}
+
+.feedTopBlockCompact .peopleSearchBox {
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  height: 100%;
+  min-height: 100%;
+  max-height: 100%;
+  padding: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
+  border-radius: calc(var(--flora-grid-step) * 2 / 3);
+}
+
+.feedTopBlockCompact .peopleSearchIcon {
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+}
+
+.feedTopBlockCompact .peopleSearchInput {
+  font-size: 0.9rem;
+}
+
+.feedTopBlockCompact .feedFiltersBlock {
+  position: absolute;
+  left: calc(1 * var(--flora-grid-step));
+  right: calc(1 * var(--flora-grid-step));
+  top: calc(var(--feed-search-compact-row-start) * var(--flora-grid-step));
+  bottom: 0;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border-bottom: none;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  justify-content: flex-start;
+  align-items: flex-end;
+}
+
+.feedTopBlockCompact .peopleTabsWrap {
+  /* Базовый top: 5px (= 1 fine) — поднять на 1 вторичную клетку, как в обычном режиме по сетке. */
+  top: calc(5px - var(--flora-grid-step-fine));
+  margin-left: calc(
+    (var(--feed-tabs-compact-col-start) - var(--feed-content-primary-col-left) - 1) * var(--flora-grid-step)
+  );
+  margin-right: 0;
+  flex-shrink: 0;
+}
+
+.feedTopBlock:not(.feedTopBlockCompact) .peopleTabs {
+  overflow: visible;
+  animation: none;
+  transform: none;
+  opacity: 1;
+}
+
+/* Выход из компакта: классы на строке вкладок/поиска (рестарт через reflow в JS, как feed-tabs-expanding в 2142). */
+.feedTopBlock:not(.feedTopBlockCompact) .peopleTabs.peopleTabsExpanding {
+  animation: feedTabsExpandedIn var(--feed-compact-duration) var(--feed-compact-delay) cubic-bezier(0.33, 1, 0.2, 1)
+    both !important;
+  transition: none !important;
+}
+
+.feedTopBlock:not(.feedTopBlockCompact) .peopleSearchWrap.peopleSearchExpanding {
+  transition: none !important;
+}
+
+.feedTopBlock:not(.feedTopBlockCompact) .peopleSearchWrap.peopleSearchExpanding .peopleSearchBox {
+  overflow: hidden;
+  animation: feedSearchBoxExpandedStretch var(--feed-compact-duration) var(--feed-compact-delay)
+    cubic-bezier(0.33, 1, 0.2, 1) both !important;
+}
+
+.feedTopBlockLeavingCompact:not(.feedTopBlockCompact) .feedTabRefreshBtnExpand .feedTabRefreshLabel {
+  position: static;
+  right: auto;
+  top: auto;
+  transform: none;
+  visibility: visible;
+  width: auto;
+  overflow: visible;
+  pointer-events: none;
+  animation: feedSearchExpandedContentFade var(--feed-compact-duration) var(--feed-compact-delay)
+    cubic-bezier(0.33, 1, 0.2, 1) forwards !important;
+}
+
+.peopleTabsCompact {
+  padding: 0;
+  border: none;
+  transform: none;
+  animation: feedTabsCompactIn var(--feed-compact-duration) var(--feed-compact-delay) cubic-bezier(0.33, 1, 0.2, 1)
+    both;
+}
+
+/* Компакт: вкладки наследуют .peopleTab / .peopleTabLabel (как в обычном режиме). */
+
+/* Компакт: подчёркивание и иконка обновления — те же правила, что в обычном режиме. */
+.feedTopBlockCompact .feedTabRefreshLabel {
+  opacity: 0;
+  visibility: hidden;
+  width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.feedTopBlockCompact .feedTabRefreshBtnExpand {
+  position: absolute;
+  left: calc(
+    (var(--feed-refresh-compact-col) - var(--feed-content-primary-col-left) - 1) * var(--flora-grid-step)
+  );
+  top: calc(
+    (var(--feed-refresh-compact-row) - var(--feed-search-compact-row-start)) * var(--flora-grid-step) + 3px
+  );
+  right: auto;
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+  min-height: var(--flora-grid-step);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.feedTopBlockCompact .feedTabRefreshIcon {
+  position: static;
+  left: auto;
+  top: auto;
+  width: calc(var(--flora-grid-step) - 2px);
+  height: calc(var(--flora-grid-step) - 2px);
+  transform: scaleX(-1);
+}
+
+.feedTopBlockCompact .feedScrollTopBtn {
+  display: flex;
+  position: absolute;
+  left: calc(
+    (var(--feed-scroll-top-compact-col) - var(--feed-content-primary-col-left) - 1) * var(--flora-grid-step)
+  );
+  top: calc(
+    (var(--feed-scroll-top-compact-row) - var(--feed-search-compact-row-start)) * var(--flora-grid-step) +
+      var(--flora-grid-step-fine)
+  );
+  right: auto;
+  bottom: auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.feedTopBlockCompact:not(.feedTopBlockCompactAnimate) .feedScrollTopBtn {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.feedTopBlockCompact.feedTopBlockCompactAnimate .feedScrollTopBtn {
+  animation: feedScrollTopCompactIn var(--feed-compact-duration) var(--feed-compact-delay) cubic-bezier(0.33, 1, 0.2, 1)
+    both;
+  pointer-events: auto;
+}
+
+.feedScrollTopBtn svg {
+  width: calc(var(--flora-grid-step) + 3px);
+  height: calc(var(--flora-grid-step) + 3px);
+  display: block;
+}
+
+.feedScrollTopBtn:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.84);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+}
+
+@keyframes feedSearchToCompactIn {
+  0% {
+    opacity: 0;
+    left: calc(
+      (var(--feed-search-compact-col-start) - var(--feed-content-primary-col-left)) * var(--flora-grid-step)
+    );
+    width: calc(
+      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1 + 2) * var(--flora-grid-step)
+    );
+    min-width: calc(
+      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1 + 2) * var(--flora-grid-step)
+    );
+    max-width: calc(
+      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1 + 2) * var(--flora-grid-step)
+    );
+  }
+  100% {
+    opacity: 1;
+    left: calc(
+      (var(--feed-search-compact-col-start) - var(--feed-content-primary-col-left)) * var(--flora-grid-step)
+    );
+    width: calc(
+      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
+    );
+    min-width: calc(
+      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
+    );
+    max-width: calc(
+      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
+    );
+  }
+}
+
+@keyframes feedTabsCompactIn {
+  0% {
+    opacity: 0;
+    transform: translateX(calc(-2 * var(--flora-grid-step))) translateZ(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@keyframes feedTabsExpandedIn {
+  0% {
+    opacity: 0;
+    transform: translateX(var(--flora-grid-step)) translateZ(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@keyframes feedSearchBoxExpandedStretch {
+  0% {
+    width: calc(
+      100% * (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) /
+        (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 3)
+    );
+    min-width: calc(
+      100% * (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) /
+        (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 3)
+    );
+    max-width: calc(
+      100% * (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) /
+        (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 3)
+    );
+    opacity: 0;
+  }
+  100% {
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+    opacity: 1;
+  }
+}
+
+@keyframes feedSearchExpandedContentFade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes feedScrollTopCompactIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feedTabRefreshSpin.refreshSpinning {
+    animation: none;
+  }
+
+  .feedTopBlock .peopleSearchWrap,
+  .feedTopBlock .peopleTabs,
+  .feedTopBlockCompact .peopleSearchWrap,
+  .peopleTabsCompact,
+  .peopleTabsExpanding,
+  .peopleSearchExpanding {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@supports (text-box-trim: trim-start) {
+  .feedList .feed .profilePostContent {
+    text-box-trim: trim-start;
+    text-box-edge: cap alphabetic;
+  }
+}
+
+/* ─── Баннер «Новые посты» (FIRA-F has-new polling) ──────────────────────── */
+
+.newPostsBanner {
+  /* Стикает под компактной шапкой (5 рядов = 75px = FEED_COMPACT_LEVEL_PX). */
+  position: sticky;
+  top: calc(5 * var(--flora-grid-step));
+  z-index: 8;
+  width: 100%;
+  padding: calc(var(--flora-grid-step) * 0.6) calc(2 * var(--flora-grid-step));
+  background: color-mix(in srgb, var(--flora-green-light) 14%, var(--flora-bg) 86%);
+  border: none;
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  cursor: pointer;
+  color: var(--flora-green-light);
+  font-size: 13px;
+  font-family: inherit;
+  letter-spacing: 0.03em;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--flora-grid-step) * 0.5);
+  box-sizing: border-box;
+  animation: newPostsBannerIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: background 0.15s ease;
+}
+
+.newPostsBanner:hover {
+  background: color-mix(in srgb, var(--flora-green-light) 22%, var(--flora-bg) 78%);
+}
+
+.newPostsBannerIcon {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+@keyframes newPostsBannerIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Бесконечная прокрутка ─────────────────────────────────────────────── */
+
+.feedLoadMoreSentinel {
+  height: calc(3 * var(--flora-grid-step));
+  flex-shrink: 0;
+}
+
+.feedLoadingMore {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: calc(var(--flora-grid-step)) 0 calc(2 * var(--flora-grid-step));
+}
+
+.feedLoadMoreSpinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(var(--flora-white-template-rgb), 0.12);
+  border-top-color: rgba(var(--flora-white-template-rgb), 0.55);
+  border-radius: 50%;
+  animation: feedSpinnerSpin 0.72s linear infinite;
+  display: block;
+  flex-shrink: 0;
+}
+
+@keyframes feedSpinnerSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .newPostsBanner {
+    animation: none;
+  }
+  .feedLoadMoreSpinner {
+    animation: none;
+    border-top-color: rgba(var(--flora-white-template-rgb), 0.55);
+  }
+}

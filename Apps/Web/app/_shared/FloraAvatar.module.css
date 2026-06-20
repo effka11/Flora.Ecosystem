@@ -1,0 +1,49 @@
+.root {
+  display: inline-flex;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  vertical-align: top;
+  /* Задаётся из FloraAvatar.tsx — масштаб инициалов от диаметра. */
+  --flora-avatar-size: 45px;
+}
+
+.link {
+  text-decoration: none;
+  color: inherit;
+  transition: opacity 0.15s ease;
+}
+
+.link:hover {
+  opacity: 0.9;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.defaultArt {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: max(12px, calc(var(--flora-avatar-size) * 0.36));
+  letter-spacing: calc(var(--flora-avatar-size) * 0.01067);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.initials {
+  line-height: 1;
+  font-size: inherit;
+  letter-spacing: inherit;
+}

@@ -1,0 +1,205 @@
+.images {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  grid-auto-rows: calc(7 * var(--flora-grid-step));
+  gap: var(--flora-grid-step-fine);
+  margin-bottom: 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100%;
+  max-width: min(100%, calc(48 * var(--flora-grid-step)));
+}
+
+.images[data-count="1"] {
+  display: block;
+  max-width: 100%;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.imageCell {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: rgba(var(--flora-white-template-rgb), 0.05);
+  grid-column: span 4;
+}
+
+.images[data-count="1"] .imageCell {
+  --feed-post-single-max-w: calc(22 * var(--flora-grid-step));
+  --feed-post-single-max-h: calc(24 * var(--flora-grid-step));
+  border-radius: var(--flora-grid-step-fine);
+  background: none;
+  display: inline-block;
+  width: auto;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.images[data-count="1"] .imageCell[data-shape="narrow"] {
+  --feed-post-single-max-w: calc(16 * var(--flora-grid-step));
+  --feed-post-single-max-h: calc(22 * var(--flora-grid-step));
+}
+
+.images[data-count="1"] .imageCell[data-shape="portrait"] {
+  --feed-post-single-max-w: calc(20 * var(--flora-grid-step));
+  --feed-post-single-max-h: calc(24 * var(--flora-grid-step));
+}
+
+.images[data-count="1"] .imageCell[data-shape="square"] {
+  --feed-post-single-max-w: calc(26 * var(--flora-grid-step));
+  --feed-post-single-max-h: calc(26 * var(--flora-grid-step));
+}
+
+.images[data-count="1"] .imageCell[data-shape="wide"] {
+  --feed-post-single-max-w: calc(36 * var(--flora-grid-step));
+  --feed-post-single-max-h: calc(20 * var(--flora-grid-step));
+}
+
+.images[data-count="2"] .imageCell {
+  grid-column: span 6;
+  grid-row: span 2;
+}
+
+.images[data-count="3"] .imageCell:first-child {
+  grid-column: span 8;
+  grid-row: span 2;
+}
+
+.images[data-count="4"] .imageCell {
+  grid-column: span 6;
+}
+
+.images[data-count="5"] .imageCell:nth-child(-n + 2),
+.images[data-count="7"] .imageCell:nth-child(-n + 2),
+.images[data-count="8"] .imageCell:nth-child(-n + 2),
+.images[data-count="10"] .imageCell:nth-child(-n + 2) {
+  grid-column: span 6;
+  grid-row: span 2;
+}
+
+.images[data-count="7"] .imageCell:nth-child(n + 6) {
+  grid-column: span 6;
+}
+
+.images[data-count="10"] .imageCell:nth-child(n + 3) {
+  grid-column: span 3;
+}
+
+.imageButton {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.removePreviewBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f2f4f2;
+  border-radius: 9999px;
+  width: 28px;
+  height: 28px;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.removePreviewBtn:hover {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.image {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 0;
+  max-height: none;
+  display: block;
+}
+
+.images[data-count="1"] .imageButton {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.images[data-count="1"] .image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, var(--feed-post-single-max-w));
+  max-height: var(--feed-post-single-max-h);
+  object-fit: contain;
+  object-position: center;
+  border-radius: 0;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  background: rgba(0, 0, 0, 0.85);
+  animation: feedPostImageModalIn 0.22s ease both;
+}
+
+.modal {
+  width: min(90vw, 1200px);
+  height: 85vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modalImage {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+@keyframes feedPostImageModalIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modalBackdrop {
+    animation: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .images {
+    grid-auto-rows: calc(6 * var(--flora-grid-step));
+  }
+}

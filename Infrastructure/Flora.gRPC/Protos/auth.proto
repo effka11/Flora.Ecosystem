@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+option csharp_namespace = "Flora.Grpc";
+
+package auth;
+
+service AuthService {
+  rpc Register (RegisterRequest) returns (AuthResponse);
+  rpc Login (LoginRequest) returns (AuthResponse);
+  rpc ValidateToken (ValidateTokenRequest) returns (ValidateTokenResponse);
+  rpc RefreshToken (RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc GetUserProfile (GetUserProfileRequest) returns (UserProfileResponse);
+}
+
+message RegisterRequest {
+  string username = 1;
+  string phone = 2;
+  string password = 3;
+  string email = 4;
+  bool privacy_accepted = 5;
+  bool tos_accepted = 6;
+}
+
+message LoginRequest {
+  string identifier = 1;
+  string password = 2;
+  string ip_address = 3;
+  string user_agent = 4;
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message GetUserProfileRequest {
+  string user_uuid = 1;
+}
+
+message PendingEmailRegistrationPayload {
+  string verification_token = 1;
+  int64 expires_at = 2;
+}
+
+message AuthResponse {
+  bool success = 1;
+  string message = 2;
+  AuthData data = 3;
+  PendingEmailRegistrationPayload pending_registration = 4;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_uuid = 2;
+  string username = 3;
+  repeated string claims = 4;
+}
+
+message RefreshTokenResponse {
+  string new_token = 1;
+  string new_refresh_token = 2;
+  int64 expires_at = 3;
+}
+
+message UserProfileResponse {
+  string user_uuid = 1;
+  string username = 2;
+  string phone = 3;
+  string email = 4;
+  string display_name = 5;
+  string avatar_uuid = 6;
+  string status = 7;
+  int64 created_at = 8;
+}
+
+message AuthData {
+  string token = 1;
+  string refresh_token = 2;
+  UserProfileResponse user = 3;
+  int64 expires_at = 4;
+  SessionInfo session = 5;
+}
+
+message SessionInfo {
+  string session_id = 1;
+  string ip_address = 2;
+  string user_agent = 3;
+  int64 created_at = 4;
+  int64 expires_at = 5;
+}

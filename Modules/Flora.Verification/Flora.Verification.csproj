@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <Compile Include="Class1.cs" />
+    <ProjectReference Include="Flora.Verification.Application\Flora.Verification.Application.csproj" />
+    <ProjectReference Include="Flora.Verification.Domain\Flora.Verification.Domain.csproj" />
+    <ProjectReference Include="Flora.Verification.Infrastructure\Flora.Verification.Infrastructure.csproj" />
+    <ProjectReference Include="Flora.Verification.Contracts\Flora.Verification.Contracts.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

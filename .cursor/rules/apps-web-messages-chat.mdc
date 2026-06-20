@@ -1,0 +1,125 @@
+---
+description: >-
+  Чат Messages (Apps/Web): сетка compose, стикеры/эмодзи, голосовые сообщения,
+  плеер в пузыре — зафиксированные координаты и антипаттерны (июнь 2026).
+globs: Apps/Web/app/(dashboard)/messages/**/*
+alwaysApply: false
+---
+
+# Messages chat — compose, стикеры, голос
+
+Применять при правках `Apps/Web/app/(dashboard)/messages/**` и связанного API голосовых ассетов.
+
+## Архитектура (границы)
+
+| Слой | Что здесь |
+|------|-----------|
+| **Modules / Products** | Загрузка/скачивание voice asset, FSCP-блоки, лимиты (`MaxVoiceAssetBytes`, длительность) |
+| **Apps/Web** | Запись, waveform UI, `VoiceMessageCard`, compose, вставка emoji — **без** бизнес-правил в API |
+
+Зависимости: `Apps → API → Products → Modules`. Не тащить логику Messaging в Shared.
+
+Ключевые файлы:
+
+- `page.tsx` — лента, compose, панель стикеров
+- `messages.module.css` — сетка compose и пузыри
+- `voiceCapture.ts`, `useVoiceRecorder.ts`, `voiceWaveform.ts`, `voiceCrypto.ts`
+- `VoiceMessageCard.tsx`, `messageBlocks.ts`, `useMessageComposeDraft.ts`
+
+## Сетка поля ввода (первичная 15px)
+
+Якорь для `position: absolute` внутри `.messagesComposeField`:
+
+- **`--messages-compose-field-col: 38`** — левый край поля (колонка overlay)
+- Поле в `.messagesChatCompose`: `left: (38 - 37) * step` от чата; внутри поля считать от **38**
+
+Зафиксированные колонки:
+
+| Элемент | Колонки / линия | Примечание |
+|---------|-----------------|------------|
+| Плюс вложений | ~39 | `margin-left: 1 * step` от левого края поля |
+| Таймер записи | 41 | `.messagesVoiceInlineDuration` |
+| Волна при записи | 45–81 | `space-between`, 84 полоски |
+| **Центр кнопки стикеров** | **между 84 и 85** → `84.5` | см. § «Стикеры» |
+| Центр mic | между 87 и 88 | flex + `margin-right` fine на `.messagesComposeActions` |
+| Правый край поля | 90 | `--messages-compose-field-right-col` |
+
+`textarea`: `padding-right: calc(4 * var(--flora-grid-step))` — место под стикер.
+
+## Кнопка стикеров (не повторять сдвиг на 84)
+
+**Требование:** центр круга 2×15px **между вертикалями 84 и 85** (линия `84.5`).
+
+**Рабочая формула** (проверено overlay, июнь 2026):
+
+```css
+.messagesComposeField {
+  --messages-compose-field-col: 38;
+  --messages-sticker-center-col: 84.5;
+}
+
+/* anchorRow=38, центр 2×15px на 84.5 */
+.messagesStickerButton {
+  position: absolute;
+  left: calc(
+    (var(--messages-sticker-center-col) - var(--messages-compose-field-col) - 0.5) *
+      var(--flora-grid-step)
+  );
+  top: 50%;
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  transform: translateY(-50%);
+}
+```
+
+**Почему `- 0.5`, а не `- 1`:** для ширины 2 клетки вычитание целой `1` визуально садит центр **на линию 84**; `- 0.5` даёт центр **между 84 и 85**.
+
+**Запрещено «чинить» позицию так** (ломает снова):
+
+- `left: (84.5 - 38) * step` + `transform: translate(-50%, -50%)` — в этом layout центр уезжает на **84**
+- Чередовать `- 1` / `- 0.5` / `translateX(-50%)` без сверки с overlay
+- Двигать mic/send «на глаз», если не совпала только стикер-кнопка
+
+**Панель стикеров:** правый край на **вертикали 89** — `right: 0` у `.messagesStickerPanel` в `.messagesComposeStack` (ширина compose = 38…89; `(90−89)×step` давало 88, не 89).
+
+**Иконка:** круглый emoji-sticker (круг + загнутый угол), не квадратный «лист». SVG в `page.tsx`, класс `.messagesStickerButton`.
+
+**Поведение:** `aria-expanded`, закрытие Escape / клик вне `composeSurfaceRef`; при старте записи голоса панель закрывать; emoji/sticker вставляются в caret (`insertComposeToken`). Вверху панели — **вкладки** «Эмодзи» / «Стикеры» (`role="tablist"`), контент одной вкладки за раз, не два блока подряд.
+
+**Текстовый compose:** пустое поле — только **mic**; есть текст — **send** (не оба сразу), иначе налезание на стикер.
+
+## Голосовые — запись и compose
+
+- Запись: `MediaRecorder` в `voiceCapture.ts` (без Web Audio в пути записи; без AGC/echo/NS в constraints, если не согласовано иначе).
+- Лимиты: `VOICE_MAX_DURATION_MS` (30 мин), `VOICE_MAX_UPLOAD_BYTES` (~14 MiB, HE-AAC 48k) — синхронно web + `ImportedSocialController`. Голос: wasm HE-AAC до шифрования (`lib/voiceTranscode.ts`).
+- Live-метр: ~60 ms, scrolling 84 уровня; пост-обработка `extractVoiceWaveformFromBlob` → 84 бара в черновике.
+- Inline-волна при записи: колонки **45–81**, `justify-content: space-between` (не `flex-end` — иначе кластер справа).
+- Режим записи: `.messagesComposeFieldRecording`, trash слева вместо «+».
+
+## Голосовые — пузырь (`VoiceMessageCard`)
+
+- Высота карточки в пузыре: **3×15px** (90px), фиксированная — иначе дрейф сетки ленты.
+- Play: **`FlowPlayIcon`**, не текстовые `▶`/`Ⅱ`.
+- Зазор play ↔ волна: **`gap: var(--flora-grid-step)`** (1 первичная клетка) в `.messagesBubble .voiceCard`.
+- Волна в пузыре: **48** баров (`VOICE_BUBBLE_WAVE_BAR_COUNT`) из 84 через `bucketVoiceWaveformByMax`.
+- Цвета play: **me** — светлый круг + тёмно-зелёная иконка; **them** — `--flora-green-light` + `--flora-on-accent`.
+- Иконка play в пузыре: ~20px, `translateX(-1px) scale(1.08)` на `[data-state="play"]` (оптический центр в SVG).
+
+## Z-index (чат)
+
+| Слой | z-index |
+|------|---------|
+| Лента `.messagesChatScrollShell` | 1 |
+| Линия `.messagesChatView::after` (лента ↔ ввод) | **4** — не 25 |
+| `.messagesChatCompose` | 5 |
+| `.messagesStickerPanel` | 8 |
+
+Линия `position: fixed` с `z-index: 25` оказывалась **поверх** поповера эмодзи.
+
+## Диагностика
+
+1. **Сетка:** одна правка → сверка с overlay; комментарий `anchorRow` + целевые вертикали в CSS.
+2. **«Сначала верно, потом снова на 84»** — почти всегда откат к `translateX(-50%)` или `- 1`; вернуть **`- 0.5` + `translateY(-50%)` только**.
+3. **Качество звука:** не добавлять Web Audio destination / `recorder.start(250)` без архитектурного решения; чоппинг часто браузер/Opus, не CSS.
+
+См. также: `apps-web-grid-placement.mdc` (общий контракт сетки).

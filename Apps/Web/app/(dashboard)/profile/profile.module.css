@@ -1,0 +1,622 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  --g20: calc(4 * var(--flora-grid-step-fine));
+  --g30: calc(2 * var(--flora-grid-step));
+  --g45: calc(3 * var(--flora-grid-step));
+  --profile-cover-h: calc((9 - 2 + 1) * var(--flora-grid-step));
+  --profile-avatar-d: calc((44 - 39 + 1) * var(--flora-grid-step));
+  --profile-avatar-trim-right: 7px;
+  --profile-avatar-size: calc(
+    var(--profile-avatar-d) - var(--profile-avatar-trim-right) + var(--flora-grid-step)
+  );
+  /* .profileCard padding-top 10 − .profileInfo margin-top 3 → верх .profileInfo на строке 7 */
+  --profile-info-anchor-row: 7;
+  --profile-name-row-line: 14;
+  --profile-name-row-nudge-y: calc(7px + 2 * var(--flora-grid-step));
+  --profile-stats-nudge-y: 6px;
+  --profile-actions-row-start: 22;
+  --profile-actions-row-end: 24;
+  --profile-actions-band-h: calc(
+    (var(--profile-actions-row-end) - var(--profile-actions-row-start) + 1) * var(--flora-grid-step)
+  );
+  --profile-action-btn-h: calc(var(--profile-actions-band-h) - var(--flora-grid-step-fine));
+  --profile-actions-nudge-y: calc(-1 * var(--flora-grid-step));
+  --feed-post-avatar-size: var(--g45);
+  --feed-post-item-width: calc((87 - 38 + 1) * var(--flora-grid-step) + var(--g45));
+  --feed-post-nickname-row-between: var(--flora-grid-step-fine);
+  --feed-post-actions-anchor-col: 42;
+  --feed-post-action-like-col: 42;
+  --feed-post-action-comment-col: 48;
+  --feed-post-action-repost-col: 54;
+  --feed-post-text-col-start: 38;
+  --feed-post-text-col-end: 87;
+  --feed-post-comment-composer-field-col-start: 38;
+  --feed-post-comment-composer-col-end: 85;
+  --feed-post-meta-timer-end-col: 81;
+  --feed-post-meta-views-icon-col: 85;
+  --feed-post-comments-rule-col-start: 40;
+  --feed-post-comments-rule-col-end: 92;
+  --feed-separator-rule-width: calc((90 - 37 + 1) * var(--flora-grid-step));
+  --feed-post-text-col-span: calc(var(--feed-post-text-col-end) - var(--feed-post-text-col-start) + 1);
+  --feed-primary-text-col-start-inset: calc(
+    var(--flora-grid-step) + var(--feed-post-avatar-size) + var(--flora-grid-step)
+  );
+  --feed-comment-timer-overlay-line-end: 265;
+  --feed-comment-timer-overlay-line-measured: 249;
+  --feed-comment-timer-secondary-end-nudge: calc(
+    (var(--feed-comment-timer-overlay-line-end) - var(--feed-comment-timer-overlay-line-measured)) * 1px
+  );
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  background: var(--flora-bg);
+  position: relative;
+}
+
+.page::-webkit-scrollbar {
+  display: none;
+}
+
+.page::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(26 * var(--flora-grid-step));
+  width: 100%;
+  height: 1px;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  pointer-events: none;
+}
+
+.profileHeader {
+  display: none;
+}
+
+.profileCard {
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-top: calc(10 * var(--flora-grid-step));
+}
+
+.profileCover {
+  position: absolute;
+  left: 0;
+  top: calc(2 * var(--flora-grid-step));
+  width: 100%;
+  height: var(--profile-cover-h);
+  background: #2c3527;
+  border-radius: 12px;
+}
+
+.profileInfo {
+  position: relative;
+  box-sizing: border-box;
+  padding: 0 var(--flora-grid-step) var(--g30) calc(4 * var(--flora-grid-step-fine));
+  /* Обложка absolute до низа padding-top; подтягиваем блок на g45, как 2142-1 */
+  margin-top: calc(-1 * var(--g45));
+  /* Низ блока кнопок 22–24: до линии 25 (anchorRow=7) */
+  min-height: calc((var(--profile-actions-row-end) + 1 - var(--profile-info-anchor-row)) * var(--flora-grid-step));
+}
+
+/* Ряд: аватар + статус (статус вне потока — не сдвигает имя), как 2142-1 */
+.profileInfoTop {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--flora-grid-step);
+  position: relative;
+  min-height: var(--profile-avatar-size);
+}
+
+.profileAvatar {
+  flex-shrink: 0;
+  width: var(--profile-avatar-size);
+  height: var(--profile-avatar-size);
+  min-width: var(--profile-avatar-size);
+  min-height: var(--profile-avatar-size);
+  margin-left: calc((39 - 38) * var(--flora-grid-step) - 8px);
+  margin-top: -4px;
+  border-radius: 50%;
+  border: 4px solid var(--flora-bg);
+  box-sizing: border-box;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+/* Статус: как в 2142-1 app.css — top:60px, padding-left:280px чтобы текст уходил вправо */
+.profileInfoTop .profileStatus {
+  display: block;
+  position: absolute;
+  left: calc(var(--profile-avatar-size) + var(--flora-grid-step));
+  right: 0;
+  top: calc(4 * var(--flora-grid-step) + 4px);
+  margin: 0;
+  padding: 0 0 var(--flora-grid-step-fine) 280px;
+  transform: translateX(calc(-1 * var(--flora-grid-step)));
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  line-height: 2.1;
+  text-align: right;
+  pointer-events: none;
+}
+
+.profileInfoTop .profileStatusText {
+  display: block;
+  transform: translateY(var(--flora-grid-step-fine));
+  text-decoration-line: underline;
+  text-decoration-color: rgba(var(--flora-white-template-rgb), 0.08);
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--flora-grid-step-fine);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.profileNameRow {
+  position: absolute;
+  left: calc(4 * var(--flora-grid-step-fine));
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  /* anchorRow=7 (.profileInfo), низ имени и ника на горизонтали 14 */
+  top: calc(
+    (var(--profile-name-row-line) - var(--profile-info-anchor-row)) * var(--flora-grid-step) + var(--profile-name-row-nudge-y)
+  );
+  transform: translateY(-100%);
+  display: flex;
+  align-items: baseline;
+  gap: var(--flora-grid-step);
+  margin-top: 0;
+  margin-bottom: 0;
+  z-index: 1;
+}
+
+.profileName {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 300;
+  color: var(--flora-white-template);
+}
+
+.profileHandle {
+  margin: 0;
+  font-size: 15px;
+  color: var(--flora-gray);
+}
+
+.profileStats {
+  position: absolute;
+  left: calc(4 * var(--flora-grid-step-fine));
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  /* ниже горизонтали 14: отступ 1 клетка + 6px + доп. сдвиг счётчиков */
+  top: calc(
+    (var(--profile-name-row-line) - var(--profile-info-anchor-row)) * var(--flora-grid-step) + var(--flora-grid-step) + 6px +
+      var(--profile-name-row-nudge-y) + var(--profile-stats-nudge-y)
+  );
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--flora-grid-step);
+  margin-top: 0;
+  z-index: 1;
+}
+
+.profileStatBtn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--flora-grid-step-fine);
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: var(--flora-gray);
+  font-size: 14px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.profileStatBtn strong {
+  color: var(--flora-white-template);
+  font-weight: 400;
+}
+
+.profileStatBtn:hover {
+  color: var(--flora-green-light);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--flora-green-light) 35%, transparent);
+}
+
+.profileStatBtn:hover strong {
+  color: var(--flora-green-light);
+}
+
+.profileHeaderActions {
+  position: absolute;
+  /* anchorRow=7 (.profileInfo), диапазон 22–24; −1 вторичная клетка сверху */
+  top: calc(
+    (var(--profile-actions-row-start) - var(--profile-info-anchor-row)) * var(--flora-grid-step) + var(--flora-grid-step-fine) +
+      var(--profile-actions-nudge-y)
+  );
+  left: calc(4 * var(--flora-grid-step-fine));
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--flora-grid-step);
+  height: var(--profile-action-btn-h);
+  z-index: 2;
+}
+
+/* Кнопка действия профиля — как profile-action-btn в референсе */
+.profileActionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 calc(4 * var(--flora-grid-step-fine));
+  height: var(--profile-action-btn-h);
+  min-height: var(--profile-action-btn-h);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1.25;
+  white-space: nowrap;
+  text-decoration: none;
+  box-sizing: border-box;
+  color: var(--flora-green-light);
+  background: transparent;
+  border: 1px solid rgba(164, 209, 138, 0.4);
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  cursor: pointer;
+  transition: background 0.15s ease, text-shadow 0.2s ease;
+}
+
+.profileActionBtn:hover {
+  background: rgba(164, 209, 138, 0.1);
+}
+
+/* Вторичная кнопка (Написать, Отписаться) */
+.profileActionBtnSecondary {
+  color: var(--flora-gray) !important;
+  border-color: rgba(var(--flora-white-template-rgb), 0.2) !important;
+}
+
+.profileActionBtnSecondary:hover {
+  color: var(--flora-green-light) !important;
+  border-color: color-mix(in srgb, var(--flora-green-light) 30%, transparent) !important;
+  background: color-mix(in srgb, var(--flora-green-light) 10%, transparent) !important;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--flora-green-light) 30%, transparent);
+}
+
+/* Кнопка-триггер описания профиля (нижний правый угол .profileInfo) */
+.profileDetailsTriggerWrap {
+  position: absolute;
+  right: calc(2 * var(--flora-grid-step));
+  bottom: var(--flora-grid-step);
+}
+
+.profileDetailsTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(8 * var(--flora-grid-step-fine));
+  height: calc(8 * var(--flora-grid-step-fine));
+  padding: 0;
+  color: rgba(var(--flora-white-template-rgb), 0.7);
+  background: transparent;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.profileDetailsTrigger:hover {
+  color: var(--flora-green-light);
+  border-color: rgba(164, 209, 138, 0.3);
+}
+
+.profileDetailsTriggerIcon {
+  width: calc(4 * var(--flora-grid-step-fine));
+  height: calc(4 * var(--flora-grid-step-fine));
+}
+
+/* Анимации модальных окон */
+@keyframes profileModalBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes profileModalBackdropOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes profileModalDialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateZ(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+}
+
+@keyframes profileModalDialogOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateZ(0);
+  }
+}
+
+.profileListModalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 40;
+  animation: profileModalBackdropIn 0.22s ease-out;
+}
+
+.profileListModalBackdropClosing {
+  animation: profileModalBackdropOut 0.22s ease-out forwards;
+}
+
+.profileListModal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(2 * var(--flora-grid-step));
+  z-index: 41;
+  pointer-events: none;
+}
+
+.profileListModalDialog {
+  pointer-events: auto;
+  width: min(560px, 92vw);
+  min-height: calc(56 * var(--flora-grid-step-fine));
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--flora-grid-step);
+  background: color-mix(in srgb, var(--flora-bg) 92%, #1e1e1e 8%);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
+  animation: profileModalDialogIn 0.25s ease-out;
+}
+
+.profileListModalDialogClosing {
+  animation: profileModalDialogOut 0.22s ease-in forwards;
+}
+
+.profileListModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--flora-grid-step) calc(4 * var(--flora-grid-step-fine));
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
+  flex-shrink: 0;
+}
+
+.profileListModalTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--flora-white-template);
+}
+
+.profileListModalClose {
+  margin: 0;
+  padding: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--flora-gray);
+  cursor: pointer;
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.profileListModalClose:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.85);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--flora-green-light) 30%, transparent);
+}
+
+/* Вкладки в модальном окне */
+.profileListModalTabs {
+  display: flex;
+  gap: 0;
+  padding: 0 calc(4 * var(--flora-grid-step-fine));
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
+  flex-shrink: 0;
+}
+
+.profileListModalTab {
+  margin: 0;
+  padding: var(--flora-grid-step) var(--flora-grid-step);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  cursor: pointer;
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.profileListModalTab:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.72);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--flora-green-light) 25%, transparent);
+}
+
+.profileListModalTabActive {
+  color: var(--flora-green-light);
+  border-bottom-color: var(--flora-green-light);
+}
+
+.profileListModalTabActive:hover {
+  color: var(--flora-green-light);
+}
+
+.profileListModalBody {
+  padding: var(--flora-grid-step) calc(4 * var(--flora-grid-step-fine));
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.profileUsersList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.profileUsersList li,
+.profileCommunitiesList li {
+  padding: calc(2 * var(--flora-grid-step-fine)) 0;
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  font-size: 14px;
+  color: var(--flora-white-template);
+}
+
+.profileCommunitiesList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.profileCommunitiesList a {
+  color: var(--flora-green-light);
+  text-decoration: none;
+}
+
+.profileCommunitiesList a:hover {
+  text-decoration: underline;
+}
+
+.profileDescriptionBody {
+  color: rgba(var(--flora-white-template-rgb), 0.85);
+}
+
+.profileDescriptionDl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: calc(2 * var(--flora-grid-step-fine)) calc(6 * var(--flora-grid-step-fine));
+  font-size: 14px;
+}
+
+.profileDescriptionDl dt {
+  margin: 0;
+  color: var(--flora-gray);
+  font-weight: 300;
+}
+
+.profileDescriptionDl dd {
+  margin: 0;
+  color: var(--flora-white-template);
+}
+
+.profileLoadingText {
+  margin: var(--flora-grid-step) 0;
+  font-size: 14px;
+  color: var(--flora-gray);
+}
+
+.profileSection {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: calc((26 - 24) * var(--flora-grid-step));
+  display: block;
+}
+
+.profileEditForm {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--flora-grid-step) - 4px);
+  padding: var(--flora-grid-step) 0 0;
+}
+
+.profileEditLabel {
+  font-size: 13px;
+  color: var(--flora-gray);
+  margin: 0;
+}
+
+.profileEditInput,
+.profileEditTextarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
+  color: var(--flora-white-template);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: inherit;
+}
+
+.profileEditTextarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.profileEditError {
+  color: #c98a7a;
+  font-size: 14px;
+  margin: 0;
+}
+
+.profileEditActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--flora-grid-step-fine);
+  margin-top: var(--flora-grid-step-fine);
+  align-items: center;
+}
+
+.profileEditCancelBtn {
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.2);
+  background: transparent;
+  color: var(--flora-gray-light);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.profileEditCancelBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.profileEditSaveBtn {
+  min-width: 120px;
+}
+
+.profilePostsHint,
+.profilePostsError {
+  padding: 0 calc(4 * var(--flora-grid-step-fine)) var(--flora-grid-step);
+  margin: 0;
+  font-size: 15px;
+  color: var(--flora-gray);
+}
+
+.profilePostsError {
+  color: #c98a7a;
+}

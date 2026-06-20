@@ -1,0 +1,14 @@
+{
+  "vectorId": "fingerprint_v1_success",
+  "fscpProtocolVersion": 1,
+  "description": "Safety number 1:1: SHA-256(UTF-8(preimage)); preimage см. docs/fscp/FSCP.md §Safety number",
+  "keyEpochId": "22222222-2222-4222-8222-222222222222",
+  "conversationUuid": "11111111-1111-4111-8111-111111111111",
+  "epochAccountIdentityPublicKeysBase64UrlSorted": [
+    "Wg8lBhcfAbWkQ5bYZUVBnYqRVNbkOkFXEfoV95IiNIc",
+    "Xkz0a9llBN1A_36RPfjzO9Y_D58GCXIDDLtFpQRxafQ"
+  ],
+  "preimageUtf8": "flora.fscp.v1.safety-number|22222222-2222-4222-8222-222222222222|11111111-1111-4111-8111-111111111111|Wg8lBhcfAbWkQ5bYZUVBnYqRVNbkOkFXEfoV95IiNIc|Xkz0a9llBN1A_36RPfjzO9Y_D58GCXIDDLtFpQRxafQ",
+  "fingerprintSha256Hex": "00677d9844b995897e50b1fa7e2e1c20fdfa27eb6a387b566d12d5e8ac91fd26",
+  "keyDerivationNote": "Пары ключей для этого вектора получены из SHA256-семян: Ed25519PrivateKey.from_private_bytes(SHA256(b'fscp_fp|alice_epoch')) и то же для bob; в проде — настоящие epoch account identity keys."
+}

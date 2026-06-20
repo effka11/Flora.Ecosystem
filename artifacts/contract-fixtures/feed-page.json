@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "postUuid": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "authorUserUuid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "authorUsername": "flora_user",
+      "authorDisplayName": "Flora User",
+      "text": "Hello Flora",
+      "createdAt": "2026-06-12T10:00:00.000Z",
+      "likeCount": 0,
+      "commentCount": 0,
+      "repostCount": 0,
+      "viewCount": 0,
+      "likedByMe": false,
+      "repostedByMe": false,
+      "imageUuids": [],
+      "videoUuid": null,
+      "videoStatus": null
+    }
+  ],
+  "nextCursor": null
+}

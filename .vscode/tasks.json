@@ -1,0 +1,302 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Flora DB: start (Docker)",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "docker compose up -d; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $deadline = (Get-Date).AddSeconds(90); do { $status = docker inspect -f '{{.State.Health.Status}}' flora-local-postgres 2>$null; if ($status -eq 'healthy') { Write-Host 'PostgreSQL ready (flora-local-postgres).'; exit 0 }; if ($status -eq 'unhealthy') { Write-Error 'flora-local-postgres is unhealthy.' }; Start-Sleep -Seconds 2 } while ((Get-Date) -lt $deadline); Write-Error 'PostgreSQL did not become healthy in time. Is Docker Desktop running?'"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora dev: stop conflicting processes (API)",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\stop-dev-localhost.ps1",
+        "-Api"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora API: dev localhost",
+      "dependsOn": [
+        "Flora DB: start (Docker)",
+        "Flora dev: stop conflicting processes (API)"
+      ],
+      "dependsOrder": "sequence",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "watch",
+        "run",
+        "--project",
+        "Flora.API/Flora.API.csproj",
+        "--urls",
+        "http://localhost:5284"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": {
+        "owner": "dotnet",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "(Now listening on:|Application started\\.)"
+        }
+      }
+    },
+    {
+      "label": "Flora API: dev localhost (silent)",
+      "dependsOn": [
+        "Flora DB: start (Docker)",
+        "Flora dev: stop conflicting processes (API)"
+      ],
+      "dependsOrder": "sequence",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "watch",
+        "run",
+        "--project",
+        "Flora.API/Flora.API.csproj",
+        "--urls",
+        "http://localhost:5284"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": {
+        "owner": "dotnet",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "(Now listening on:|Application started\\.)"
+        }
+      }
+    },
+    {
+      "label": "Flora Web: dev localhost",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\web-dev-localhost.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora: API + Web dev localhost",
+      "dependsOn": [
+        "Flora API: dev localhost",
+        "Flora Web: dev localhost"
+      ],
+      "dependsOrder": "sequence",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora Android: debug (USB)",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\mobile-debug-android.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "problemMatcher": {
+        "owner": "expo",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "(Metro waiting on|Waiting on http://localhost:8081|Logs for your project)"
+        }
+      }
+    },
+    {
+      "label": "Flora Web: dev offline demo (dev-token, no API)",
+      "dependsOn": [
+        "Flora DB: start (Docker)"
+      ],
+      "dependsOrder": "sequence",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$env:NEXT_PUBLIC_DEV_AUTO_AUTH='1'; npm run dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}\\Apps\\Web"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora Web: publish to VPS (full)",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".\\scripts\\deploy.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}\\Apps\\Web"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora Android: release APK",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\mobile-release-android.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}\\Apps\\Mobile"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora Android: install release APK",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\mobile-install-release-android.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}\\Apps\\Mobile"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    }
+  ]
+}

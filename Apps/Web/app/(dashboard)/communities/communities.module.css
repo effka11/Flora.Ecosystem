@@ -1,0 +1,762 @@
+.page {
+  --search-left: calc(1 * var(--flora-grid-step));
+  --search-top: calc(2 * var(--flora-grid-step));
+  --search-width: calc((89 - 38 + 1) * var(--flora-grid-step));
+  --search-height: calc((5 - 3 + 1) * var(--flora-grid-step));
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--flora-bg);
+}
+
+.communitiesScroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.communitiesTopBlock {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+  background: var(--flora-bg);
+}
+
+.communitiesTopBlock::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(9 * var(--flora-grid-step));
+  width: 100%;
+  height: 1px;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  pointer-events: none;
+}
+
+.communitiesTopInner {
+  position: relative;
+  height: calc(9 * var(--flora-grid-step));
+}
+
+.communitiesSearchHeader {
+  position: relative;
+  height: calc(6 * var(--flora-grid-step));
+}
+
+.communitiesSearchWrap {
+  position: absolute;
+  left: var(--search-left);
+  top: var(--search-top);
+  width: var(--search-width);
+  height: var(--search-height);
+}
+
+.communitiesSearchBox {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  height: 100%;
+  padding: 0 calc(var(--flora-grid-step) - 1px);
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--flora-green-dark);
+  background: transparent;
+}
+
+.communitiesSearchIcon {
+  width: 20px;
+  height: 20px;
+  color: var(--flora-gray);
+  flex-shrink: 0;
+}
+
+.communitiesSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.communitiesSearchInput::placeholder {
+  color: var(--flora-gray);
+}
+
+.communitiesSearchSendBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flora-green-light) 14%, transparent);
+  color: var(--flora-green-light);
+  transition: opacity 0.16s ease;
+}
+
+.communitiesSearchSendBtnHidden {
+  opacity: 0.45;
+}
+
+.communitiesSearchSendBtnShown {
+  opacity: 1;
+}
+
+.communitiesFiltersBlock {
+  position: absolute;
+  left: calc(1 * var(--flora-grid-step));
+  right: calc(1 * var(--flora-grid-step));
+  top: calc(9 * var(--flora-grid-step) - (2 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine)));
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: var(--flora-grid-step);
+}
+
+.communitiesTabsWrap {
+  position: relative;
+  min-width: 0;
+  top: 5px;
+  max-width: calc((87 - 38 + 1) * var(--flora-grid-step) - (14 * var(--flora-grid-step)));
+}
+
+.communitiesTabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border-bottom: none;
+}
+
+.communitiesTab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step) + var(--flora-grid-step-fine));
+  border: none;
+  border-bottom: none;
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.communitiesTabLabel {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+}
+
+.communitiesTab:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.85);
+}
+
+.communitiesTabActive {
+  color: var(--flora-green-light);
+}
+
+.communitiesTabActive:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+}
+
+.communitiesTabIndicator {
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: var(--communities-tab-indicator-width, 0px);
+  background: var(--flora-green-light);
+  border-radius: 999px;
+  transform: translate3d(var(--communities-tab-indicator-left, 0px), 0, 0);
+  transition:
+    transform var(--flora-duration-3) var(--flora-ease-out),
+    width var(--flora-duration-3) var(--flora-ease-out);
+  will-change: transform, width;
+  pointer-events: none;
+}
+
+.communitiesTabIndicatorStatic {
+  transition: none !important;
+}
+
+/* Правый край подписи — на вертикали сетки после колонки 87 (как ширина поста 38…87). */
+.communitiesCreateBtn {
+  position: absolute;
+  left: calc((87 - 38 + 1) * var(--flora-grid-step));
+  bottom: 2px;
+  transform: translateX(-100%);
+  margin: 0;
+  padding: calc(2 * var(--flora-grid-step-fine)) 0 calc(2 * var(--flora-grid-step-fine)) var(--flora-grid-step);
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.contentPlaceholder {
+  flex: 1;
+  min-height: 0;
+}
+
+.ownedEmptyState {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+}
+
+.ownedEmptyCreateBtn {
+  margin: 0 0 0 calc(4 * var(--flora-grid-step-fine));
+  height: calc(3 * var(--flora-grid-step) - var(--flora-grid-step-fine));
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border: 1px solid rgba(164, 209, 138, 0.4);
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: transparent;
+  color: var(--flora-green-light);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  cursor: pointer;
+  transition: background var(--flora-duration-1) var(--flora-ease-out);
+}
+
+.ownedEmptyCreateBtn:hover {
+  background: rgba(164, 209, 138, 0.1);
+}
+
+.communitiesListSection {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.communitiesListContent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.communitiesListContentFromLeft {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: communitiesListInFromLeft var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+.communitiesListContentFromRight {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: communitiesListInFromRight var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+@keyframes communitiesListInFromLeft {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateX(-8px) translateZ(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@keyframes communitiesListInFromRight {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateX(8px) translateZ(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .communitiesListContentFromLeft,
+  .communitiesListContentFromRight {
+    animation: none;
+  }
+}
+
+.communitiesListContent::-webkit-scrollbar {
+  display: none;
+}
+
+.communitiesListContent .list {
+  overflow-y: visible;
+  flex: unset;
+}
+
+/* Список сообществ — та же разметка строк, что во вкладке «Люди» */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.list::-webkit-scrollbar {
+  display: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--flora-grid-step);
+  /* −1px снизу: border-bottom + высота текста; иначе разделитель уезжает от сетки. */
+  padding: calc(var(--flora-list-row-pad-y) - 1px) var(--flora-grid-step) calc(var(--flora-list-row-pad-y) - 2px);
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  transition: background 0.15s;
+  position: relative;
+}
+
+.rowMainLink {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.rowMainLink:hover {
+  text-decoration: none;
+}
+
+.item:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.04);
+}
+
+.userMain {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+}
+
+.avatar {
+  width: calc(3 * var(--flora-grid-step));
+  height: calc(3 * var(--flora-grid-step));
+  border-radius: 50%;
+  background: rgba(164, 209, 138, 0.15);
+  color: var(--flora-green-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 19px;
+  letter-spacing: 0.57px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.userBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+}
+
+.userPrimaryLine {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  font-weight: 300;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-white-template);
+  /* Как .messagesChatHeaderNameRow */
+  transform: translateY(1px);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+}
+
+.displayName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.userSecondaryLine {
+  display: flex;
+  align-items: baseline;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Как .messagesChatHeaderStatus */
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+}
+
+.followersCountValue {
+  font-weight: 300;
+}
+
+/* Правый край — на вертикали после колонки 87 (на 1 клетку левее 88); высота 3 клетки, верх = аватар. */
+.btn {
+  position: absolute;
+  left: calc((1 + (88 - 38)) * var(--flora-grid-step));
+  right: auto;
+  top: calc(var(--flora-list-row-pad-y) - 1px);
+  transform: translateX(-100%);
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+  background: transparent;
+  color: var(--flora-green-light);
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  height: calc(3 * var(--flora-grid-step));
+  padding: 0 calc(2 * var(--flora-grid-step));
+  box-sizing: border-box;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.btnJoined {
+  border-color: color-mix(in srgb, var(--flora-green-light) 25%, transparent);
+  color: var(--flora-gray);
+  cursor: default;
+}
+
+.btnJoined:hover {
+  background: transparent;
+}
+
+button.btnJoined {
+  cursor: pointer;
+  color: var(--flora-gray);
+}
+
+button.btnJoined:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+  color: rgba(var(--flora-white-template-rgb), 0.72);
+}
+
+.btn:hover {
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+}
+
+@keyframes createCommunityModalBackdropIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes createCommunityModalBackdropOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes createCommunityModalDialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateZ(0);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+}
+
+@keyframes createCommunityModalDialogOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateZ(0);
+  }
+}
+
+.createCommunityModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.65);
+  animation: createCommunityModalBackdropIn var(--flora-duration-2) var(--flora-ease-out);
+}
+
+.createCommunityModalBackdropClosing {
+  animation: createCommunityModalBackdropOut var(--flora-duration-2) var(--flora-ease-in) forwards;
+}
+
+.createCommunityModal {
+  position: fixed;
+  inset: 0;
+  z-index: 41;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(2 * var(--flora-grid-step));
+  pointer-events: none;
+}
+
+.createCommunityModalDialog {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 92vw);
+  min-height: 0;
+  max-height: 85vh;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
+  background: var(--flora-bg);
+  box-shadow: var(--flora-reserve-popover-shadow);
+  animation: createCommunityModalDialogIn var(--flora-duration-3) var(--flora-ease-out);
+}
+
+.createCommunityModalDialogClosing {
+  animation: createCommunityModalDialogOut var(--flora-duration-2) var(--flora-ease-in) forwards;
+}
+
+.createCommunityModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: var(--flora-grid-step) calc(2 * var(--flora-grid-step));
+  border-bottom: 1px solid var(--flora-reserve-popover-divider);
+}
+
+.createCommunityModalTitle {
+  margin: 0;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-white-template);
+}
+
+.createCommunityModalClose {
+  margin: 0;
+  padding: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--flora-gray);
+  cursor: pointer;
+  transition: color var(--flora-duration-1) var(--flora-ease-out);
+}
+
+.createCommunityModalClose:hover {
+  color: var(--flora-gray-hover);
+}
+
+.createCommunityModalBody {
+  padding: calc(2 * var(--flora-grid-step));
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.createCommunityForm {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.createCommunityField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+  margin-bottom: calc(2 * var(--flora-grid-step));
+}
+
+.createCommunityLabel {
+  margin: 0;
+  padding-left: 2px;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--flora-gray);
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.createCommunityInput {
+  width: 100%;
+  box-sizing: border-box;
+  height: calc(3 * var(--flora-grid-step));
+  padding: 0 calc(1 * var(--flora-grid-step));
+  border: 1px solid var(--flora-green-dark);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  transition: border-color var(--flora-duration-1) var(--flora-ease-out);
+  color-scheme: dark;
+}
+
+.createCommunityInput:focus {
+  outline: none;
+  border-color: var(--flora-green-light);
+}
+
+.createCommunityInput::placeholder {
+  color: var(--flora-gray);
+}
+
+.createCommunityInput:disabled {
+  opacity: 0.45;
+}
+
+.createCommunitySlugRow {
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step-fine);
+}
+
+.createCommunitySlugPrefix {
+  flex-shrink: 0;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  white-space: nowrap;
+}
+
+.createCommunitySlugRow .createCommunityInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.createCommunityError {
+  margin: 0;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 300;
+  color: #f6a8a8;
+}
+
+.createCommunityActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--flora-grid-step);
+  padding: var(--flora-grid-step) calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step));
+  border-top: 1px solid var(--flora-reserve-popover-divider);
+  flex-shrink: 0;
+}
+
+.createCommunityCancelBtn,
+.createCommunitySubmitBtn {
+  margin: 0;
+  height: calc(3 * var(--flora-grid-step) - var(--flora-grid-step-fine));
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--flora-duration-1) var(--flora-ease-out),
+    border-color var(--flora-duration-1) var(--flora-ease-out),
+    color var(--flora-duration-1) var(--flora-ease-out);
+}
+
+.createCommunityCancelBtn {
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.18);
+  background: transparent;
+  color: rgba(var(--flora-white-template-rgb), 0.82);
+}
+
+.createCommunityCancelBtn:hover:not(:disabled) {
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  color: var(--flora-white-template);
+}
+
+.createCommunitySubmitBtn {
+  border: 1px solid rgba(164, 209, 138, 0.4);
+  background: transparent;
+  color: var(--flora-green-light);
+}
+
+.createCommunitySubmitBtn:hover:not(:disabled) {
+  background: rgba(164, 209, 138, 0.1);
+}
+
+.createCommunityCancelBtn:disabled,
+.createCommunitySubmitBtn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.createCommunitySubmitBtn:disabled {
+  border-color: rgba(164, 209, 138, 0.2);
+}
+
+.formFeedbackError {
+  margin: 0 0 calc(2 * var(--flora-grid-step));
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1.4;
+  color: #f6a8a8;
+}

@@ -1,0 +1,1055 @@
+/*
+ * Высота: 0fr↔1fr (дорогой layout; не дублируем transform на том же кадре — только opacity на .threadWrap).
+ * Открытие: первый paint с 0fr, затем commit с 1fr в useEffect (без доп. кадра rAF); закрытие: сразу 1fr→0fr + fade.
+ */
+.panelLayoutShell {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--flora-duration-3) var(--flora-ease-out);
+}
+
+.panelLayoutShell[data-layout-expanded="true"] {
+  grid-template-rows: 1fr;
+}
+
+.panelLayoutInner {
+  min-height: 0;
+  /* visible: иначе обрезается правый край ряда и ⋮ (hidden режет по border-box вложенного grid). */
+  overflow-x: visible;
+  overflow-y: visible;
+}
+
+.threadWrap {
+  width: 100%;
+  min-width: 0;
+  /* Не hidden: иначе обрезается абсолютное ⋮ и правый край ряда при translate. */
+  overflow: visible;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+}
+
+.threadWrap[data-phase="idle"] {
+  transition: none;
+  opacity: 0;
+}
+
+/* Только opacity — один канал в композитор, меньше конкуренции с анимацией grid-template-rows */
+.threadWrap[data-phase="open"],
+.threadWrap[data-phase="closing"] {
+  transition: opacity var(--flora-duration-3) var(--flora-ease-out);
+}
+
+.threadWrap[data-phase="open"] {
+  opacity: 1;
+}
+
+.threadWrap[data-phase="closing"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panelLayoutShell {
+    transition: none;
+  }
+
+  .threadWrap[data-phase="idle"] {
+    opacity: 0;
+  }
+
+  .threadWrap[data-phase="open"],
+  .threadWrap[data-phase="closing"] {
+    transition: opacity var(--flora-duration-3) var(--flora-ease-out);
+  }
+
+  .threadWrap[data-phase="open"] {
+    opacity: 1;
+  }
+
+  .threadWrap[data-phase="closing"] {
+    opacity: 0;
+  }
+}
+
+.thread {
+  --feed-post-text-col-span: calc(
+    var(--feed-post-text-col-end, 87) - var(--feed-post-text-col-start, 38) + 1
+  );
+  --comment-avatar-d: calc(3 * var(--flora-grid-step));
+  /* Левый край .main относительно .thread (= как у поста: аватар комментария + column-gap). */
+  --thread-text-origin-offset: calc(
+    var(--comment-avatar-d) + var(--flora-grid-step) + var(--flora-grid-step-fine)
+  );
+  /* Левый край поля ввода: первичная 42 — левый край текста 38 = +4×primary от левого края .thread (= начало колонки текста поста). */
+  --thread-composer-field-margin-left: calc(
+    (var(--feed-post-comment-composer-field-col-start, 38) - var(--feed-post-text-col-start, 38)) *
+      var(--flora-grid-step)
+  );
+  /* Поле ввода корня: только первичные колонки ленты [start … end], не ширина ряда .actions (таймеры отдельно). */
+  --feed-comment-composer-field-col-start: var(--feed-post-comment-composer-field-col-start, 38);
+  --feed-comment-composer-field-col-end: var(--feed-post-comment-composer-col-end, 85);
+  /* Вложенные ответы: первичная колонка начала текста ответа (44 = на 2 левее прежних 46). */
+  --feed-comment-nested-content-col: 44;
+  /* Горизонталь между комментарием и ответами (сетка текста поста 38…87). */
+  --feed-comment-replies-rule-col-start: 41;
+  --feed-comment-replies-rule-col-end: 91;
+  /* Отступ слева у .replyList (= сдвиг начала ответа); «4 клетки» = 4×вторичная; −2×fine — доп. сдвиг. */
+  --reply-list-pad: max(
+    0px,
+    calc(
+      (var(--feed-comment-nested-content-col, 44) - var(--feed-post-text-col-start, 38)) * var(--flora-grid-step) -
+        var(--comment-avatar-d) -
+        var(--flora-grid-step) -
+        var(--flora-grid-step-fine) -
+        4 * var(--flora-grid-step-fine) -
+        2 * var(--flora-grid-step-fine)
+    )
+  );
+  width: 100%;
+  margin-left: 0;
+  min-width: 0;
+  /* row-gap между post-body и post-comments = 1×вторичная клетка; margin-top дополняет до линии от панели счётчиков (−3px к прежнему зазору). */
+  margin-top: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) - 3px);
+  /* От верхней линии раздела до первого ряда (аватар) — 2 первичные клетки. */
+  padding-top: calc(2 * var(--flora-grid-step));
+  border-top: none;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* Верхняя линия блока комментариев: на 1×primary левее и 3×primary правее ширины .thread. */
+.thread::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--flora-grid-step));
+  right: calc(-3 * var(--flora-grid-step));
+  top: 0;
+  height: 1px;
+  background: var(--flora-gray-divider);
+  pointer-events: none;
+}
+
+/* Список и композер — строго в ширину .thread (без компенсации «расширенной» нити). */
+.thread > .list,
+.thread > .composerWrap,
+.thread > .statusLine {
+  margin-left: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.item {
+  /* Как .profilePostItem (две верхние строки): аватар | шапка; пусто под аватаром | тело+действия. */
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--comment-avatar-d) minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "comment-avatar comment-head"
+    ". comment-main";
+  /* Как у поста: primary + fine между аватаром и текстом. */
+  column-gap: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  row-gap: var(--flora-grid-step-fine);
+  align-items: start;
+  min-width: 0;
+}
+
+/* Корень и вложенный ответ: ник и наполнение (−1 fine); ⋮ — +1 fine вправо только у корня (.item .commentMoreWrap). */
+.item > .metaRow,
+.replyItem > .metaRow {
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.item > .main > .body,
+.item > .main > .actions,
+.replyItem > .main > .body,
+.replyItem > .main > .actions {
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.item .commentMoreWrap {
+  left: calc(
+    (88 - var(--feed-post-text-col-start, 38)) * var(--flora-grid-step) - 0.5 * var(--flora-grid-step) + 1px -
+      var(--feed-post-avatar-size, calc(3 * var(--flora-grid-step))) - var(--flora-grid-step)
+  );
+}
+
+/* Линия между корневыми комментариями — см. .item:not(:last-child)::after. */
+.item:not(:last-child) {
+  /* Как у поста в ленте (свернутые комментарии): row-gap + padding-bottom карточки → 2×primary − 1×fine до линии; +3px — линия ниже. */
+  padding-bottom: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) + 3px);
+  margin-bottom: calc(2 * var(--flora-grid-step));
+}
+
+/* Линия между корневыми комментариями: −1×primary слева, −2×primary справа (на 1 клетку правее симметрии). */
+.item:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--flora-grid-step));
+  right: calc(-2 * var(--flora-grid-step));
+  bottom: 0;
+  height: 1px;
+  background: var(--flora-gray-divider);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.avatar {
+  grid-area: comment-avatar;
+  width: var(--comment-avatar-d);
+  height: var(--comment-avatar-d);
+  min-width: var(--comment-avatar-d);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--flora-green-dark) 92%, #000 8%);
+  color: var(--flora-green-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: var(--flora-tracking-16, 0.03em);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  text-decoration: none;
+  overflow: hidden;
+  transition: opacity 0.15s ease;
+}
+
+.avatar:hover {
+  opacity: 0.92;
+}
+
+.main {
+  grid-area: comment-main;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* Тело + действия (зазор шапка→тело — row-gap сетки .item, как у поста). */
+  gap: 0;
+  /* Поднять наполнение на 2 вторичные клетки относительно шапки. */
+  margin-top: calc(-2 * var(--flora-grid-step-fine));
+}
+
+.metaRow {
+  grid-area: comment-head;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  min-width: 0;
+  width: 100%;
+  white-space: nowrap;
+  overflow-x: visible;
+  overflow-y: visible;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  /* Как у поста, но на одну вторичную клетку выше: только --feed-post-nickname-row-between (без +1 fine). */
+  padding-top: var(--feed-post-nickname-row-between, var(--flora-grid-step-fine));
+}
+
+/*
+ * ⋮ на вертикали 88 той же сетки, что .feedList .feed .profilePostMoreWrap (feed.module.css).
+ * CB — .item (левый край = начало строки комментария после аватара поста). Вертикаль как у поста:
+ * top относительно аватара = −0.5×primary + 1px (см. profilePostMoreWrap top vs padding-top g30 и аватар).
+ */
+.commentMoreWrap {
+  position: absolute;
+  left: calc(
+    (88 - var(--feed-post-text-col-start, 38)) * var(--flora-grid-step) - 0.5 * var(--flora-grid-step) + 1px -
+      var(--feed-post-avatar-size, calc(3 * var(--flora-grid-step))) - var(--flora-grid-step) -
+      var(--flora-grid-step-fine)
+  );
+  top: calc(-0.5 * var(--flora-grid-step) + 1px);
+  margin: 0;
+  z-index: 2;
+}
+
+/* Та же вертикаль 88; CB — .replyItem; + reply-list-pad; +7×вторичная — троеточие ответа вправо. */
+.commentMoreWrapNested {
+  position: absolute;
+  left: calc(
+    (88 - var(--feed-post-text-col-start, 38)) * var(--flora-grid-step) - 0.5 * var(--flora-grid-step) + 1px -
+      var(--feed-post-avatar-size, calc(3 * var(--flora-grid-step))) - var(--flora-grid-step) -
+      var(--flora-grid-step-fine) -
+      (var(--feed-comment-nested-content-col, 44) - var(--feed-post-text-col-start, 38)) * var(--flora-grid-step) +
+      var(--reply-list-pad) +
+      7 * var(--flora-grid-step-fine)
+  );
+  top: calc(-0.5 * var(--flora-grid-step) + 1px);
+  margin: 0;
+  z-index: 2;
+}
+
+.commentMoreBtn {
+  padding: var(--flora-grid-step-fine);
+  color: var(--flora-gray);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.15s ease,
+    text-shadow 0.2s ease;
+}
+
+.commentMoreBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.78);
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.commentMoreBtn:active:not(:disabled) {
+  transform: translateY(calc(var(--flora-grid-step-fine) + 3px)) scale(0.92);
+}
+
+.authorLink {
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  /* Как .feedList .feed .profilePostMetaLink: имя — ник. */
+  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - 2px);
+}
+
+.author {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine));
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15, 0.02em);
+  color: var(--flora-white-template);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.handle {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine));
+  flex-shrink: 0;
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15, 0.02em);
+  color: var(--flora-gray);
+  white-space: nowrap;
+}
+
+.body {
+  margin: 0;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15, 0.02em);
+  line-height: 1.45;
+  /* Как .profilePostContent в ленте/профиле. */
+  color: var(--flora-gray-light);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.actions {
+  /* Как .feedList .feed .profilePostActions: якорь 42, лайк на 42, комментарий на 48 — шаг между счётчиками как у поста. */
+  display: block;
+  position: relative;
+  min-width: 0;
+  min-height: calc(var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+  margin-top: calc(1px + max(var(--flora-grid-step), calc(4 * var(--flora-grid-step-fine))));
+  /* Резерв под таймер; −3×primary — на одну клетку левее прежнего −4×. */
+  padding-right: calc(
+    (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) +
+      var(--flora-grid-step) -
+      var(--feed-comment-timer-secondary-end-nudge, calc(16 * 1px)) -
+      2 * var(--flora-grid-step-fine) -
+      3 * var(--flora-grid-step)
+  );
+}
+
+.actions .time {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  right: calc(
+    (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) -
+      var(--feed-comment-timer-secondary-end-nudge, calc(16 * 1px)) -
+      2 * var(--flora-grid-step-fine) -
+      3 * var(--flora-grid-step)
+  );
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  font-weight: 300;
+  font-size: 13px;
+  letter-spacing: 0.39px;
+  line-height: 1;
+  color: var(--flora-gray);
+  white-space: nowrap;
+}
+
+/* Ответ: таймер на 1×вторичную правее корневого комментария. */
+.replyItem .actions {
+  padding-right: calc(
+    (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) +
+      var(--flora-grid-step) -
+      var(--feed-comment-timer-secondary-end-nudge, calc(16 * 1px)) -
+      2 * var(--flora-grid-step-fine) -
+      3 * var(--flora-grid-step) -
+      var(--flora-grid-step-fine)
+  );
+}
+
+.replyItem .actions .time {
+  right: calc(
+    (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) -
+      var(--feed-comment-timer-secondary-end-nudge, calc(16 * 1px)) -
+      2 * var(--flora-grid-step-fine) -
+      3 * var(--flora-grid-step) -
+      var(--flora-grid-step-fine)
+  );
+}
+
+.actions .actionBtn {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.actions .actionBtn:nth-child(1) {
+  left: calc((var(--feed-post-action-like-col, 42) - var(--feed-post-actions-anchor-col, 42)) * var(--flora-grid-step));
+  min-width: calc((var(--feed-post-action-comment-col, 48) - var(--feed-post-action-like-col, 42)) * var(--flora-grid-step));
+}
+
+.actions .actionBtn svg {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.actions .actionBtn span {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.actions .actionBtn:nth-child(1) span {
+  left: calc((44 - var(--feed-post-action-like-col, 42)) * var(--flora-grid-step));
+}
+
+/* Иконка комментария + счётчик ответов — колонка 48. */
+.actions .replyThreadBtn {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  margin: 0;
+  left: calc((var(--feed-post-action-comment-col, 48) - var(--feed-post-actions-anchor-col, 42)) * var(--flora-grid-step));
+  max-width: calc((var(--feed-post-action-repost-col, 54) - var(--feed-post-action-comment-col, 48)) * var(--flora-grid-step));
+  min-width: 0;
+}
+
+.actions .replyThreadBtn svg {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.actions .replyThreadBtn span {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: calc((50 - var(--feed-post-action-comment-col, 48)) * var(--flora-grid-step));
+}
+
+/* Корень: «Ответить» — колонка 54 (как репост у поста). */
+.actions .replyAnswerBtn {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc((var(--feed-post-action-repost-col, 54) - var(--feed-post-actions-anchor-col, 42)) * var(--flora-grid-step));
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* Вложенный ответ: только лайк + «Ответить» на колонке 48 (без счётчика ветки). */
+.replyItem .actions .replyAnswerBtn {
+  left: calc((var(--feed-post-action-comment-col, 48) - var(--feed-post-actions-anchor-col, 42)) * var(--flora-grid-step));
+}
+
+.replyThreadBtnOpen {
+  color: color-mix(in srgb, var(--flora-green-light) 78%, var(--flora-gray) 22%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+}
+
+.repliesPanel {
+  position: relative;
+  margin-top: var(--flora-grid-step-fine);
+  margin-left: 0;
+  padding-left: 0;
+}
+
+/* Только под корневым/вложенным комментарием (после RepliesReveal .repliesPanel не прямой ребёнок .main). */
+.item .main .repliesPanel,
+.replyItem .main .repliesPanel {
+  margin-top: calc(2 * var(--flora-grid-step));
+  padding-top: calc(2 * var(--flora-grid-step) + 1px - 2 * var(--flora-grid-step-fine));
+  overflow-x: visible;
+  box-shadow: none;
+}
+
+.item .main .repliesPanel::before,
+.replyItem .main .repliesPanel::before {
+  content: "";
+  position: absolute;
+  left: calc(-4 * var(--flora-grid-step-fine));
+  right: calc(-1 * var(--flora-grid-step));
+  top: calc(1px - 4px);
+  height: 1px;
+  background: var(--flora-gray-divider);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.replyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Левый край аватара ответа: --reply-list-pad; при pad=0 max() — ещё −1×вторичная через margin (иначе сдвиг не виден). */
+.item .main .repliesPanel > .replyList,
+.replyItem .main .repliesPanel > .replyList {
+  padding-left: var(--reply-list-pad);
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.replyItem {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--comment-avatar-d) minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "comment-avatar comment-head"
+    ". comment-main";
+  column-gap: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  row-gap: var(--flora-grid-step-fine);
+  align-items: start;
+  min-width: 0;
+  width: 100%;
+  padding-top: var(--flora-grid-step-fine);
+}
+
+.replyItem:not(:last-child) {
+  padding-bottom: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) + 3px);
+  margin-bottom: calc(2 * var(--flora-grid-step));
+  box-shadow: none;
+}
+
+.replyItem:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--flora-grid-step));
+  right: calc(-1 * var(--flora-grid-step));
+  bottom: 0;
+  height: 1px;
+  background: var(--flora-gray-divider);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.repliesEmpty {
+  margin: 0;
+  padding: 0 0 calc(2 * var(--flora-grid-step-fine));
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 14px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1.45;
+  color: var(--flora-gray);
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step-fine);
+  padding: var(--flora-grid-step-fine) 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 14px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1;
+  color: var(--flora-gray);
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.actionBtn span {
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.actionBtn:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 10%, rgba(var(--flora-white-template-rgb), 0.76));
+  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+}
+
+.actionBtnLikeOn {
+  color: color-mix(in srgb, var(--flora-like) 92%, var(--flora-gray) 8%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-like) 55%, transparent);
+}
+
+.actionBtn svg {
+  flex-shrink: 0;
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.statusLine {
+  margin: 0 0 calc(2 * var(--flora-grid-step-fine));
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1.45;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+}
+
+.statusLineErr {
+  color: color-mix(in srgb, #f87171 85%, var(--flora-white-template) 15%);
+}
+
+.composerWrap {
+  position: relative;
+  /* Зазор от последнего комментария до линии над полем: 2×primary − fine (раньше было 4×primary — минус 2 клетки). */
+  margin-top: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine));
+  padding-top: calc(2 * var(--flora-grid-step));
+  border-top: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--flora-grid-step-fine) + var(--flora-grid-step));
+  /* От низа композера до линии между постами — 2 первичные клетки (поле ввода без подсказки — тот же зазор). */
+  padding-bottom: calc(2 * var(--flora-grid-step));
+  /* Компенсация единого padding-bottom карточки поста (.postItem / .profilePostItem). */
+  margin-bottom: calc((2 * var(--flora-grid-step-fine) - 1px) - (2 * var(--flora-grid-step) + 2px));
+}
+
+/* Линия над полем ввода: как у ::after между корнями (−1 слева, −2 справа). */
+.composerWrap::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--flora-grid-step));
+  right: calc(-2 * var(--flora-grid-step));
+  top: 0;
+  height: 1px;
+  background: var(--flora-gray-divider);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.composerRow {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--flora-grid-step-fine) + var(--flora-grid-step));
+}
+
+.replyComposerHint {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1.35;
+  color: var(--flora-gray);
+}
+
+.replyComposerHintHandle {
+  color: var(--flora-white-template);
+}
+
+.composerFieldWrap {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  /* stretch: иначе при column-flex + align-self:flex-start ширина 100% в min() не определена — поле сжимается до «50–57». */
+  align-self: stretch;
+  box-sizing: border-box;
+  margin-left: var(--thread-composer-field-margin-left);
+  width: calc(
+    (var(--feed-comment-composer-field-col-end, 85) - var(--feed-comment-composer-field-col-start, 38) + 1) *
+      var(--flora-grid-step)
+  );
+  max-width: calc(100% - var(--thread-composer-field-margin-left));
+}
+
+.composerInputBox {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: calc(6 * var(--flora-grid-step));
+  border-radius: 12px;
+  border: 1px solid var(--flora-green-dark);
+  background: transparent;
+  padding: calc(var(--flora-grid-step))
+    calc(var(--flora-grid-step) + 3 * (var(--flora-grid-step) + var(--flora-grid-step-fine)) + 3 * var(--flora-grid-step) - 3 * var(--flora-grid-step-fine))
+    calc(var(--flora-grid-step)) calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+}
+
+.composerInputBox:focus-within {
+  border-color: var(--flora-green-dark);
+  box-shadow: none;
+  outline: none;
+}
+
+.composerInputRow {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.composerEditor {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: calc(4 * var(--flora-grid-step));
+  max-height: calc(12 * var(--flora-grid-step));
+  overflow-y: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: var(--flora-tracking-15, 0.02em);
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.composerEditor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--flora-gray);
+  pointer-events: none;
+}
+
+.composerEditor:focus,
+.composerEditor:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.mentionChip {
+  display: inline;
+  vertical-align: baseline;
+  color: var(--flora-gray);
+  font: inherit;
+  letter-spacing: inherit;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.body .mentionChip {
+  text-decoration: none;
+}
+
+.body .mentionChip:hover {
+  color: var(--flora-gray-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mentionSuggest {
+  position: absolute;
+  z-index: 8;
+  list-style: none;
+  margin: 0;
+  padding: var(--flora-grid-step-fine);
+  min-width: min(100%, calc(18 * var(--flora-grid-step)));
+  max-width: min(calc(100vw - 32px), calc(24 * var(--flora-grid-step)));
+  max-height: calc(8 * var(--flora-grid-step));
+  overflow-y: auto;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 28%, rgba(var(--flora-white-template-rgb), 0.14) 72%);
+  background: color-mix(in srgb, #0a1210 88%, var(--flora-green-dark) 12%);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(0, 0, 0, 0.22) inset;
+}
+
+.mentionSuggestItem {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--flora-grid-step-fine) + 2px);
+  width: 100%;
+  padding: calc(var(--flora-grid-step-fine) + 3px) calc(var(--flora-grid-step-fine) + 2px);
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--flora-gray-light);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.mentionSuggestItem:hover,
+.mentionSuggestItemActive {
+  background: color-mix(in srgb, var(--flora-green-light) 10%, rgba(var(--flora-white-template-rgb), 0.06) 90%);
+}
+
+.mentionSuggestHandle {
+  color: color-mix(in srgb, var(--flora-green-light) 82%, var(--flora-white-template) 18%);
+  white-space: nowrap;
+}
+
+.mentionSuggestName {
+  color: var(--flora-gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composerFieldIcons {
+  position: absolute;
+  /* Верхняя строка поля: совпадает с padding-top у .composerInputBox */
+  top: calc(var(--flora-grid-step));
+  /* 1 первичная клетка от правого края поля до иконки отправки */
+  right: var(--flora-grid-step);
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  z-index: 2;
+}
+
+/* 1 первичная клетка между эмодзи и скрепкой */
+.composerFieldIcons > button.composerIconBtn:first-of-type {
+  margin-left: var(--flora-grid-step);
+}
+
+/* 2 первичные клетки минус 3 вторичные — между скрепкой и отправкой */
+.composerFieldIcons > .composerIconBtnSend {
+  margin-left: calc(2 * var(--flora-grid-step) - 3 * var(--flora-grid-step-fine));
+}
+
+.composerEmojiAnchor {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.emojiPopover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--flora-grid-step-fine));
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1.35em));
+  gap: var(--flora-grid-step-fine);
+  padding: calc(var(--flora-grid-step-fine) + 2px);
+  border-radius: calc(var(--flora-grid-step-fine) + 2px);
+  background: color-mix(in srgb, var(--flora-green-dark) 88%, #000 12%);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 6;
+  min-width: min(100vw - 32px, calc(12 * var(--flora-grid-step)));
+}
+
+.emojiPick {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: inherit;
+  transition: background-color 0.12s ease;
+}
+
+.emojiPick:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.1);
+}
+
+.composerIconBtn {
+  display: grid;
+  place-items: center;
+  width: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  height: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: calc(var(--flora-grid-step-fine) + 2px);
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.composerIconBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.82);
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.composerIconBtn:disabled {
+  opacity: 1;
+  color: var(--flora-gray);
+  cursor: not-allowed;
+}
+
+.composerIconBtnSend:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--flora-green-light) 72%, rgba(var(--flora-white-template-rgb), 0.82) 28%);
+}
+
+.composerIconBtnSend.composerIconBtnSendReady:not(:disabled) {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, var(--flora-gray) 12%);
+}
+
+.composerIconBtnSend.composerIconBtnSendReady:not(:disabled):hover {
+  color: color-mix(in srgb, var(--flora-green-light) 96%, #fff 4%);
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.fileInputHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+}
+
+.attachNotice {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 300;
+  color: rgba(var(--flora-green-light), 0.78);
+}
+
+.composerActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  align-self: stretch;
+  margin-left: var(--thread-composer-field-margin-left);
+  width: calc(
+    (var(--feed-comment-composer-field-col-end, 85) - var(--feed-comment-composer-field-col-start, 38) + 1) *
+      var(--flora-grid-step)
+  );
+  max-width: calc(100% - var(--thread-composer-field-margin-left));
+  box-sizing: border-box;
+}
+
+.textarea {
+  /* Начальная высота ровно 6 первичных клеток (rows даёт высоту по строкам текста, не по сетке). */
+  height: calc(6 * var(--flora-grid-step));
+  min-height: calc(6 * var(--flora-grid-step));
+  max-height: calc(14 * var(--flora-grid-step));
+  resize: vertical;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  /* Место под ряд иконок: отступ справа 1×primary + ширина ряда */
+  padding: calc(var(--flora-grid-step))
+    calc(var(--flora-grid-step) + 3 * (var(--flora-grid-step) + var(--flora-grid-step-fine)) + 3 * var(--flora-grid-step) - 3 * var(--flora-grid-step-fine))
+    calc(var(--flora-grid-step)) calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  /* Обводка как у поисковых полей: шаблонный тёмно-зелёный (--flora-green-dark). */
+  border-radius: 12px;
+  border: 1px solid var(--flora-green-dark);
+  background: transparent;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: var(--flora-tracking-15, 0.02em);
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.textarea::placeholder {
+  color: var(--flora-gray);
+}
+
+.textarea:focus,
+.textarea:focus-visible {
+  border-color: var(--flora-green-dark);
+  box-shadow: none;
+  outline: none;
+}
+
+.submitErr {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 300;
+  color: color-mix(in srgb, #f87171 88%, var(--flora-white-template) 12%);
+}

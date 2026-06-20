@@ -1,0 +1,3596 @@
+.page {
+  --g2: calc(2 * var(--flora-grid-step-fine));
+  --g20: calc(4 * var(--flora-grid-step-fine));
+  --g30: calc(2 * var(--flora-grid-step));
+  --g45: calc(3 * var(--flora-grid-step));
+  --search-left: calc(1 * var(--flora-grid-step));
+  --search-top: calc(2 * var(--flora-grid-step));
+  --search-width: calc((89 - 38 + 1) * var(--flora-grid-step));
+  --search-height: calc((5 - 3 + 1) * var(--flora-grid-step));
+  --flora-bg-base: var(--flora-bg);
+  --flora-accent: var(--flora-green-light);
+  --flora-accent-hover: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+  --flora-on-accent: #10200e;
+  --flora-text-primary: var(--flora-white-template);
+  --flora-secondary-hover-bg: var(--flora-reserve-hover-surface);
+  --flora-bg-elevated: color-mix(in srgb, var(--flora-bg) 92%, #1c1c1c 8%);
+  --flora-hover-surface-tint: color-mix(in srgb, #fff 6%, transparent);
+  --flora-font: var(--font-manrope), system-ui, sans-serif;
+  --flora-text-on-bubble: #f2f4f2;
+  --flora-hover-accent-glow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+  /* Как .messagesSearchBox — общий вид полей ввода на экране сообщений. */
+  --messages-field-border: 1px solid var(--flora-green-dark);
+  --messages-field-radius: 12px;
+  --messages-field-bg: transparent;
+  --messages-field-text: var(--flora-white-template);
+  --messages-field-placeholder: var(--flora-gray);
+  --messages-field-icon: var(--flora-gray);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--flora-bg-base);
+}
+
+.messagesListView {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.messagesChatView {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: visible;
+  background: var(--flora-bg-base);
+  box-sizing: border-box;
+  /* Место под абсолютное .messagesChatCompose (bottom + height), иначе flex-лента уходит под поле ввода. */
+  --messages-chat-compose-line: 55;
+  --messages-chat-compose-bottom-line: 60;
+  /* Центр кнопок +/стикер/mic — между горизонталями 58 и 59 (от верха .messagesChatView). */
+  --messages-compose-chrome-center-row: 58.5;
+  /* Высота одной строки textarea (синхронно с .messagesComposeInput min-height). */
+  --messages-compose-line-block-height: 35px;
+  --messages-chat-input-rows: 4;
+  --messages-compose-extra-height: 0px;
+  /* Высота полосы превью фото над textarea (5 клеток, когда есть вложения). */
+  --messages-compose-images-extra: 0px;
+  padding-bottom: calc(
+    (2 + (var(--messages-chat-compose-bottom-line) - var(--messages-chat-compose-line) + 1)) * var(--flora-grid-step) +
+      var(--messages-compose-extra-height) + var(--messages-compose-images-extra)
+  );
+  transition: padding-bottom 0.18s var(--flora-ease-out);
+  /**
+   * Первичная сетка 15px: низ ленты — горизонталь compose-line (от верха .messagesChatView).
+   * База шапки 8 клеток (высота .messagesChatHeader).
+   */
+  --messages-chat-clip-line: var(--messages-chat-compose-line);
+  --messages-chat-header-base: 8;
+  --messages-chat-scroll-extend: 0;
+}
+
+/* Вход чата и мини-рейла — только opacity, без translate (как musicTabPanelInnerFade). */
+.messagesChatAnimFromRight,
+.messagesChatAnimFromTop,
+.messagesChatAnimFromBottom,
+.messagesListAnimFromLeft,
+.messagesChatRail.messagesChatAnimFromRight,
+.messagesChatRail.messagesChatAnimFromTop,
+.messagesChatRail.messagesChatAnimFromBottom {
+  animation: messagesPanelFadeIn var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+.messagesChatPanelInner {
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.messagesChatPanelInner > .messagesChatView {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
+
+
+@keyframes messagesPanelFadeIn {
+  0%,
+  8% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messagesChatAnimFromRight,
+  .messagesChatAnimFromTop,
+  .messagesChatAnimFromBottom,
+  .messagesListAnimFromLeft,
+  .messagesChatRail.messagesChatAnimFromRight,
+  .messagesChatRail.messagesChatAnimFromTop,
+  .messagesChatRail.messagesChatAnimFromBottom {
+    animation: none;
+  }
+}
+
+/* Горизонталь compose-line: верх нижнего блока (было 56, +1 клетка вверх → 55). */
+.messagesChatView::after {
+  content: "";
+  position: fixed;
+  left: calc(var(--flora-frame-left) - var(--flora-crop-x) + 38 * var(--flora-grid-step));
+  width: calc((89 - 38 + 1) * var(--flora-grid-step));
+  top: calc(
+    var(--flora-frame-top) - var(--flora-crop-y) + var(--messages-chat-compose-line) * var(--flora-grid-step) -
+      var(--messages-compose-extra-height) - var(--messages-compose-images-extra)
+  );
+  height: 1px;
+  background: rgba(var(--flora-white-template-rgb), 0.14);
+  /* Над лентой (1), под .messagesChatCompose (5) и .messagesStickerPanel (8) — иначе линия режет поповер. */
+  z-index: 4;
+  pointer-events: none;
+  transition: top 0.18s var(--flora-ease-out);
+}
+
+.messagesChatTop {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 4;
+}
+
+/* Лента между шапкой и полем: без overflow:hidden на оболочке; вертикальный скролл и обрезка — у .messagesChatMessagesScroll внутри .messagesChatMessages. */
+.messagesChatScrollShell {
+  /* 0% — иначе flex-basis:auto даёт «минимум по контенту» и полоса под шапкой может не добирать высоту ряда. */
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
+  width: 100%;
+  /* На 1 клетку вверх под нижнюю зону шапки: там фон шапки сделан прозрачным — пузырь не «режется» непрозрачным слоем (высота шапки не меняется). */
+  margin-top: calc(-1 * var(--flora-grid-step));
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.messagesJumpToLatest {
+  position: absolute;
+  right: calc((90 - 89) * var(--flora-grid-step));
+  bottom: calc(2 * var(--flora-grid-step));
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  padding: calc(2 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine))
+    calc(2 * var(--flora-grid-step-fine)) calc(3 * var(--flora-grid-step-fine));
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 42%, var(--flora-gray));
+  background: color-mix(in srgb, var(--flora-bg) 90%, #000 10%);
+  color: var(--flora-accent);
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.38);
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.messagesJumpToLatest:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--flora-bg) 84%, #1a1a1a 16%);
+  border-color: color-mix(in srgb, var(--flora-green-light) 65%, var(--flora-gray));
+}
+
+.messagesJumpToLatestIcon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.messagesJumpToLatestBadge {
+  min-width: calc(4 * var(--flora-grid-step-fine));
+  min-height: calc(4 * var(--flora-grid-step-fine));
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--flora-green-light) 22%, transparent);
+  color: var(--flora-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.messagesListHeader {
+  position: relative;
+  height: calc(9 * var(--flora-grid-step));
+  min-height: calc(9 * var(--flora-grid-step));
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Как .feedTopBlock::after — верхний край линии на границе 9-й строки первичной сетки. */
+.messagesListHeader::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(9 * var(--flora-grid-step));
+  width: 100%;
+  height: 1px;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.messagesSearchHeader {
+  position: relative;
+  height: calc(6 * var(--flora-grid-step));
+  flex-shrink: 0;
+}
+
+.messagesSearchWrap {
+  position: absolute;
+  left: var(--search-left);
+  top: var(--search-top);
+  width: var(--search-width);
+  min-width: var(--search-width);
+  max-width: var(--search-width);
+  height: var(--search-height);
+  padding: 0;
+}
+
+.messagesSearchBox {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  height: 100%;
+  padding: 0 calc(var(--flora-grid-step) - 1px);
+  box-sizing: border-box;
+  background: var(--messages-field-bg);
+  border: var(--messages-field-border);
+  border-radius: var(--messages-field-radius);
+}
+
+.messagesSearchIcon {
+  width: 20px;
+  height: 20px;
+  color: var(--messages-field-icon);
+  flex-shrink: 0;
+}
+
+.messagesSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--messages-field-text);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.messagesSearchInput::placeholder {
+  color: var(--messages-field-placeholder);
+}
+
+.messagesSearchSendBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flora-green-light) 14%, transparent);
+  color: var(--flora-green-light);
+  transition: opacity 0.16s ease;
+}
+
+.messagesSearchSendBtnHidden {
+  opacity: 0.45;
+}
+
+.messagesSearchSendBtnShown {
+  opacity: 1;
+}
+
+/* anchorRow=0 в .messagesListHeader; кнопки в ячейках 85.7 и 88.7 (кол. 37…89). */
+.messagesListScopeNav {
+  display: none;
+}
+
+.messagesListScopeBtn {
+  position: absolute;
+  top: calc(7 * var(--flora-grid-step));
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.messagesListScopeBtn svg {
+  width: calc(var(--flora-grid-step) - 2px);
+  height: calc(var(--flora-grid-step) - 2px);
+}
+
+.messagesListScopeBtnArchive {
+  left: calc((85 - 37) * var(--flora-grid-step));
+}
+
+.messagesListScopeBtnAll {
+  left: calc((88 - 37) * var(--flora-grid-step));
+}
+
+.messagesListScopeBtn:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.78);
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.messagesListScopeBtnActive {
+  color: var(--flora-accent);
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+}
+
+.messagesListScopeBtnLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.messagesDropdowns {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(9 * var(--flora-grid-step) - (2 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine)));
+  height: calc(2 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 0;
+  min-width: 0;
+  margin-top: 0;
+  padding: 0 var(--flora-grid-step);
+  box-sizing: border-box;
+  isolation: isolate;
+}
+
+.messagesDropdownWrap {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  min-width: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.messagesDropdownBtn.messagesDropdownBtnOpen::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: var(--flora-accent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.messagesDropdownBtn {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns:
+    calc(2 * var(--flora-grid-step))
+    max-content
+    calc(2 * var(--flora-grid-step));
+  align-items: center;
+  justify-items: stretch;
+  column-gap: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  min-height: calc(2 * var(--flora-grid-step) + var(--flora-grid-step-fine));
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  font-family: var(--flora-font);
+  font-size: 15px !important;
+  letter-spacing: var(--flora-tracking-15) !important;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  appearance: none;
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.messagesDropdownBtnLeft {
+  grid-column: 1;
+  grid-row: 1;
+  display: block;
+  width: 100%;
+  min-height: 1px;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.messagesDropdownBtnText {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.messagesDropdownBtnRight {
+  grid-column: 3;
+  grid-row: 1;
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine) + 3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.messagesDropdownBtn:hover {
+  color: var(--flora-gray-hover);
+  text-shadow: var(--flora-hover-accent-glow);
+}
+
+.messagesDropdownBtnOpen {
+  color: var(--flora-accent);
+}
+
+.messagesDropdownIcon {
+  flex-shrink: 0;
+  color: var(--flora-accent);
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+
+.messagesDropdownBtnOpen .messagesDropdownIcon {
+  transform: rotate(0deg);
+}
+
+.messagesDropdownMenu {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: 0;
+  z-index: 11;
+  min-width: calc(12 * var(--flora-grid-step));
+  padding: var(--flora-grid-step-fine);
+  background: var(--flora-reserve-surface-them);
+  border: 1px solid var(--flora-green-bubble);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+.messagesDropdownItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: calc(2 * var(--flora-grid-step-fine)) var(--flora-grid-step);
+  border: none;
+  background: transparent;
+  color: rgba(242, 244, 246, 0.96);
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1;
+  font-weight: 300;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--flora-grid-step-fine);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.messagesDropdownItem:hover {
+  background: var(--flora-reserve-surface-them-hover);
+}
+
+.messagesDropdownItemActive {
+  color: var(--flora-accent);
+  background: rgba(168, 214, 140, 0.14);
+}
+
+.messagesDropdownItemActive:hover {
+  background: rgba(168, 214, 140, 0.2);
+}
+
+.messagesError {
+  padding: var(--g20) var(--g20) 0;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  flex-shrink: 0;
+  color: color-mix(in srgb, #f6a8a8 92%, var(--flora-text-primary) 8%);
+}
+
+.messagesConversationList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.messagesConversationList::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.messagesConversationSkeletonRow {
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  padding: calc(var(--flora-list-row-pad-y) - 1px) var(--flora-grid-step) calc(var(--flora-list-row-pad-y) - 2px);
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.messagesConversationSkeletonAvatar {
+  flex-shrink: 0;
+  width: var(--g45);
+  height: var(--g45);
+  border-radius: 50%;
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.messagesConversationSkeletonBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+}
+
+.messagesConversationSkeletonLinePrimary,
+.messagesConversationSkeletonLineSecondary {
+  height: calc(2 * var(--flora-grid-step-fine));
+  border-radius: calc(1 * var(--flora-grid-step-fine));
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.messagesConversationSkeletonLinePrimary {
+  width: 58%;
+}
+
+.messagesConversationSkeletonLineSecondary {
+  width: 42%;
+}
+
+.messagesConversationRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  transition: background 0.15s;
+}
+
+.messagesConversationRow:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.04);
+}
+
+.messagesConversationItem {
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  flex: 1;
+  min-width: 0;
+  /* −1px снизу: border-bottom строки + высота текста; иначе разделитель уезжает от сетки. */
+  padding: calc(var(--flora-list-row-pad-y) - 1px) var(--flora-grid-step) calc(var(--flora-list-row-pad-y) - 2px);
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.messagesConversationAvatarWrap {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--g45);
+  height: var(--g45);
+}
+
+.messagesConversationAvatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(164, 209, 138, 0.15);
+  color: var(--flora-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: 19px;
+  letter-spacing: 0.57px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.messagesConversationBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+}
+
+.messagesConversationTitleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  /* Как «Люди» .userPrimaryLine: @ сразу после имени, 2 вторичные клетки. */
+  gap: calc(2 * var(--flora-grid-step-fine));
+  min-width: 0;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Как .messagesChatHeaderNameRow — одна и та же вертикаль относительно аватара. */
+  transform: translateY(1px);
+  font-family: var(--flora-font);
+}
+
+.messagesConversationName {
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  font-family: var(--flora-font);
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+/* @никнейм + иконка мута: 1 первичная клетка между ними. */
+.messagesConversationHandleGroup {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--flora-grid-step);
+}
+
+.messagesConversationMuteIcon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  color: var(--flora-gray);
+}
+
+.messagesConversationHandle {
+  flex-shrink: 0;
+  font-weight: 300;
+  /* Как «Люди» .userPrimaryLine / .userName */
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  font-family: var(--flora-font);
+  white-space: nowrap;
+}
+
+.messagesConversationPreview {
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.messagesConversationActions {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  flex-shrink: 0;
+  align-self: stretch;
+  /* Зона под ⋮ на 88: 3 первичные + 2 вторичные клетки до бейджа + ширина ⋮. */
+  padding: calc(var(--flora-list-row-pad-y) - 1px)
+    calc(
+      3 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine) + (2 * var(--flora-grid-step-fine) + 18px) +
+        var(--flora-grid-step-fine)
+    )
+    calc(var(--flora-list-row-pad-y) - 2px) 0;
+}
+
+.messagesConversationUnread {
+  background: rgba(164, 209, 138, 0.9);
+  color: var(--flora-on-accent);
+  font-size: 13px;
+  letter-spacing: 0.39px;
+  font-weight: 300;
+  min-width: var(--g20);
+  height: var(--g20);
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--flora-grid-step-fine);
+  flex-shrink: 0;
+}
+
+/* ⋮ — как .feedList .feed .profilePostMoreWrap: вертикаль 88 (центр между 88–89), якорь строки = кол. 37. */
+.messagesConversationList .messagesConversationMoreWrap {
+  position: absolute;
+  left: calc((89 - 38) * var(--flora-grid-step) - 0.5 * var(--flora-grid-step) + 2px);
+  top: 50%;
+  margin: 0;
+  transform: translateY(-50%);
+  /* z-index только у закрытого ⋮; открытое меню — 200 на wrap (PostMoreMenuRect). */
+  z-index: 1;
+  --flora-rect-menu-gap-below: var(--flora-grid-step);
+}
+
+.messagesConversationMoreWrap .messagesConversationMoreBtn {
+  box-sizing: border-box;
+  padding: var(--flora-grid-step-fine);
+  color: var(--flora-gray);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+  /* Без translateY у .triggerLift — иначе зазор до меню ≠ 1 клетка. */
+  transform: none;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.messagesConversationMoreWrap .messagesConversationMoreBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.78);
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.messagesConversationMoreWrap .messagesConversationMoreBtn:active:not(:disabled) {
+  transform: scale(0.92) !important;
+}
+
+.messagesChatHeader {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  box-sizing: border-box;
+  /* 8×15px: нижняя клетка прозрачная под заход ленты; линия ::after на 1 клетку выше низа. */
+  height: calc(var(--messages-chat-header-base) * var(--flora-grid-step));
+  min-height: calc(var(--messages-chat-header-base) * var(--flora-grid-step));
+  padding: calc(6 * var(--flora-grid-step-fine) - 0.5 * var(--flora-grid-step)) var(--g20)
+    calc(2 * var(--flora-grid-step) + 0.5 * var(--flora-grid-step)) var(--flora-grid-step);
+  flex-shrink: 0;
+  border-bottom: none;
+  /* Нижняя первичная клетка — прозрачная: лента с margin-top −1×15px заходит сюда; аватар/текст остаются на непрозрачной части. */
+  background: linear-gradient(
+    to bottom,
+    var(--flora-bg-base) 0 calc(100% - var(--flora-grid-step)),
+    transparent calc(100% - var(--flora-grid-step)) 100%
+  );
+}
+
+.messagesChatHeader::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Линия на 1 первичную клетку выше низа блока — аватар и текст не смещаются. */
+  bottom: var(--flora-grid-step);
+  height: 1px;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.messagesChatHeaderAvatarWrap {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--g45);
+  height: var(--g45);
+}
+
+.messagesChatHeaderAvatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(164, 209, 138, 0.15);
+  color: var(--flora-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: 19px;
+  letter-spacing: 0.57px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+/* Как .profileAvatar: кольцо цветом фона «вырезает» край шапки: индикатор в сети у правого нижнего края аватара. */
+.messagesChatHeaderOnlineBadge {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  min-height: 15px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: var(--flora-green-light);
+  border: 3.5px solid var(--flora-bg-base);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.messagesChatHeaderInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+}
+
+.messagesChatHeaderNameLink {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  min-width: 0;
+}
+
+/* Как «Люди» .userPrimaryLine — одна типографическая строка, высота как в списке людей. */
+.messagesChatHeaderNameRow {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateY(1px);
+}
+
+/* Как «Люди» .displayName */
+.messagesChatHeaderName {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Как «Люди» .userName */
+.messagesChatHeaderHandle {
+  flex-shrink: 0;
+  color: var(--flora-gray);
+}
+
+/** Как «Люди» .userSecondaryLine — только текст статуса; точка «в сети» — .messagesChatHeaderOnlineBadge у аватара. */
+.messagesChatHeaderStatus {
+  display: block;
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  white-space: nowrap;
+}
+
+/* ← в шапке чата: anchorRow=0, ячейка 85.3 (центр между 85–86 и 3–4; origin кол. 37). */
+.messagesChatHeaderBackBtn {
+  position: absolute;
+  left: calc((85.5 - 37) * var(--flora-grid-step) + 0.5px);
+  top: calc(3.5 * var(--flora-grid-step));
+  transform: translate(-50%, -50%);
+  margin: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  padding: var(--flora-grid-step-fine);
+  color: var(--flora-gray);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+  transition:
+    color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.messagesChatHeaderBackBtn svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.messagesChatHeaderBackBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.78);
+  background: none;
+}
+
+.messagesChatHeaderBackBtn:active:not(:disabled) {
+  transform: translate(-50%, -50%) scale(0.92);
+}
+
+/* ⋮ в шапке чата: anchorRow=0, ячейка 88.3 (центр между 88–89 и 3–4; origin кол. 37). */
+.messagesChatHeaderMoreWrap {
+  position: absolute;
+  left: calc((88.5 - 37) * var(--flora-grid-step) + 0.5px);
+  top: calc(3.5 * var(--flora-grid-step));
+  transform: translate(-50%, -50%);
+  margin: 0;
+  z-index: 2;
+  --flora-rect-menu-gap-below: var(--flora-grid-step);
+}
+
+.messagesChatHeaderMoreWrap .messagesChatHeaderMoreBtn {
+  box-sizing: border-box;
+  padding: var(--flora-grid-step-fine);
+  color: var(--flora-gray);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+  /* Без translateY у .triggerLift — иначе зазор до меню ≠ 1 клетка. */
+  transform: none;
+  transition:
+    color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.messagesChatHeaderMoreWrap .messagesChatHeaderMoreBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.78);
+  background: none;
+  box-shadow: none;
+}
+
+/* Без подложки/обводки из PostMoreMenu.triggerLift (⋮ и ✕). */
+.messagesChatHeaderMoreWrap .messagesChatHeaderMoreBtn:global(.triggerLift):hover:not(:disabled) {
+  box-shadow: none;
+  background: none;
+}
+
+.messagesChatHeaderMoreWrap .messagesChatHeaderMoreBtn:global(.triggerLift)::before {
+  display: none;
+}
+
+.messagesChatHeaderMoreWrap .messagesChatHeaderMoreBtn:global(.triggerLift.triggerOpen):active:not(:disabled) {
+  transform: none !important;
+}
+
+.messagesChatHeaderMoreWrap .messagesChatHeaderMoreBtn:active:not(:disabled) {
+  transform: scale(0.92) !important;
+}
+
+/* Внешний слой без overflow — flex min-height:0; обрезка только у внутреннего скролла (меньше артефактов Chrome с hidden+auto). */
+.messagesChatMessages {
+  flex: 1 1 0%;
+  align-self: stretch;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.messagesChatMessagesScroll {
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step));
+  /* stretch — колонка на всю ширину полосы чата; выравнивание пузырей — align-self на .messagesBubbleWrap. */
+  align-items: stretch;
+  align-content: flex-start;
+  /* Сверху и снизу по 2 первичные клетки — как у низа ленты. */
+  padding: calc(2 * var(--flora-grid-step)) 0 calc(2 * var(--flora-grid-step));
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+@supports (overflow-x: clip) {
+  .messagesChatMessagesScroll {
+    overflow-x: clip;
+  }
+}
+
+.messagesChatMessagesScroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.messagesBubbleWrap {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--flora-grid-step-fine);
+  align-self: flex-start;
+  padding-left: calc((38 - 37) * var(--flora-grid-step));
+  padding-right: calc((90 - 89) * var(--flora-grid-step));
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+
+.messagesBubbleWrapMe {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+/* Чужие: 1 первичная клетка между аватаром и пузырём (только у нижнего в группе). */
+.messagesBubbleWrap:not(.messagesBubbleWrapMe) {
+  gap: var(--flora-grid-step);
+}
+
+/* Верхние сообщения группы: без аватара, пузырь на той же вертикали, что у нижнего. */
+.messagesBubbleWrapPeerIndented {
+  padding-left: calc((38 - 37) * var(--flora-grid-step) + var(--g45) + var(--flora-grid-step));
+}
+
+/* Мини-аватар собеседника: 3×15px (--g45), у нижнего сообщения группы. */
+.messagesBubblePeerAvatar {
+  flex-shrink: 0;
+  width: var(--g45);
+  height: var(--g45);
+  align-self: flex-end;
+  border-radius: 50%;
+  background: rgba(164, 209, 138, 0.14);
+  color: var(--flora-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: 19px;
+  letter-spacing: 0.57px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+/* Якорь пузыря: ⋮ снаружи overflow clip у фото-пузыря. */
+.messagesBubbleAnchor {
+  position: relative;
+  max-width: 78%;
+  width: fit-content;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.messagesBubble {
+  position: relative;
+  max-width: 100%;
+  padding: var(--flora-grid-step) var(--flora-grid-step);
+  border-radius: 18px;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1.45;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/*
+ * ⋮ сообщения: портал в body (position:fixed из measureMessageBubbleMoreTriggerPosition),
+ * 1 первичная клетка правее пузыря; z-index над лентой (6), не обрезается overflow-x у скролла.
+ */
+.messagesBubbleMoreWrap {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  --flora-rect-menu-gap-below: var(--flora-grid-step-fine);
+}
+
+.messagesBubbleMoreWrap[data-messages-bubble-more-visible],
+.messagesBubbleMoreWrap[data-messages-bubble-more-open] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.messagesBubbleMoreWrap .messagesBubbleMoreBtn {
+  box-sizing: border-box;
+  padding: var(--flora-grid-step-fine);
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+  transform: none;
+  transition:
+    color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.messagesBubbleMoreWrap:not([data-messages-bubble-more-me]) .messagesBubbleMoreBtn {
+  color: var(--flora-gray);
+}
+
+.messagesBubbleMoreWrap[data-messages-bubble-more-me] .messagesBubbleMoreBtn {
+  color: rgba(var(--flora-white-template-rgb), 0.72);
+}
+
+.messagesBubbleMoreWrap .messagesBubbleMoreBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.9);
+  background: none;
+  box-shadow: none;
+}
+
+/* Без подложки/обводки из PostMoreMenu.triggerLift. */
+.messagesBubbleMoreWrap .messagesBubbleMoreBtn:global(.triggerLift):hover:not(:disabled) {
+  box-shadow: none;
+  background: none;
+}
+
+.messagesBubbleMoreWrap .messagesBubbleMoreBtn:global(.triggerLift)::before {
+  display: none;
+}
+
+.messagesBubbleMoreWrap .messagesBubbleMoreBtn:active:not(:disabled) {
+  transform: scale(0.92) !important;
+}
+
+/* Цитата ответа в пузыре (стиль TG). */
+.messagesBubbleReply {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: calc(2 * var(--flora-grid-step-fine));
+  padding: calc(2 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine))
+    calc(2 * var(--flora-grid-step-fine)) calc(3 * var(--flora-grid-step-fine) + 3px);
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.messagesBubbleReply::before {
+  content: "";
+  position: absolute;
+  left: calc(2 * var(--flora-grid-step-fine));
+  top: calc(2 * var(--flora-grid-step-fine));
+  bottom: calc(2 * var(--flora-grid-step-fine));
+  width: 3px;
+  border-radius: 2px;
+  background: var(--flora-accent);
+}
+
+.messagesBubbleReplyThem {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.messagesBubbleReplyMe {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.messagesBubbleReplyAuthor {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--flora-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.messagesBubbleReplyPreview {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: rgba(var(--flora-white-template-rgb), 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.messagesBubblePhoto .messagesBubbleReply {
+  margin: var(--flora-grid-step-fine) var(--flora-grid-step-fine) 0;
+}
+
+
+.messagesComposeReplyItem {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: calc(4 * var(--flora-grid-step));
+  min-height: calc(4 * var(--flora-grid-step));
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.messagesComposeReplyAccent {
+  flex-shrink: 0;
+  width: 3px;
+  background: var(--flora-accent);
+}
+
+.messagesComposeReplyText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: calc(2 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  padding-right: calc(18px + 2 * var(--flora-grid-step-fine));
+}
+
+.messagesComposeReplyAuthor {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--flora-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.messagesComposeReplyPreview {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: rgba(var(--flora-white-template-rgb), 0.68);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.messagesBubbleMe {
+  background: var(--flora-green-dark);
+  color: var(--flora-text-on-bubble);
+  border-bottom-right-radius: 6px;
+}
+
+/*
+ * Голосовое-only: 6×15px border-box (как у ленты по сетке).
+ * 13.5 + 45 (карточка 3×) + 18 (время) + 13.5 = 90px; иначе ~87px и сдвиг ~½ клетки на сообщение.
+ */
+.messagesBubbleVoiceOnly {
+  width: calc((62 - 38 + 1) * var(--flora-grid-step));
+  max-width: 100%;
+  box-sizing: border-box;
+  height: calc(6 * var(--flora-grid-step));
+  padding: calc(var(--flora-grid-step) - 1.5px) var(--flora-grid-step);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.messagesBubbleVoiceOnly .voiceCard {
+  width: 100%;
+  max-width: none;
+  height: calc(3 * var(--flora-grid-step));
+  min-height: calc(3 * var(--flora-grid-step));
+  flex: 0 0 calc(3 * var(--flora-grid-step));
+  gap: var(--flora-grid-step);
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+}
+
+.messagesBubbleVoiceOnly .voiceCardBody {
+  height: 100%;
+  justify-content: space-between;
+  gap: 0;
+}
+
+.messagesBubbleVoiceOnly .voiceWaveform {
+  flex: 0 0 calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+}
+
+.messagesBubbleVoiceOnly .voiceDuration {
+  flex: 0 0 calc(1 * var(--flora-grid-step));
+  line-height: calc(1 * var(--flora-grid-step));
+  height: calc(1 * var(--flora-grid-step));
+}
+
+.messagesBubbleVoiceOnly .messagesBubbleTime {
+  flex: 0 0 18px;
+  line-height: 18px;
+  height: 18px;
+}
+
+.messagesBubble .voiceCard {
+  width: 100%;
+  max-width: none;
+  gap: var(--flora-grid-step);
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.messagesBubble .voiceCardBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.messagesBubble .voiceWaveform {
+  width: 100%;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.messagesBubble .voiceWaveform span {
+  width: 2px;
+  flex: 0 0 2px;
+}
+
+.messagesVoiceCompose .voiceCardBody {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.messagesVoiceCompose .voiceWaveform {
+  flex: none;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.messagesBubbleMe .voiceWaveform span {
+  background: color-mix(in srgb, var(--flora-text-on-bubble) 58%, transparent);
+  opacity: 0.95;
+}
+
+.messagesBubbleMe .voiceDuration {
+  color: color-mix(in srgb, var(--flora-text-on-bubble) 78%, transparent);
+  text-align: left;
+}
+
+.messagesBubble .voiceDuration {
+  display: block;
+  text-align: left;
+}
+
+.messagesBubbleMe .voicePlayButton {
+  background: color-mix(in srgb, var(--flora-text-on-bubble) 96%, var(--flora-green-dark) 4%);
+  color: var(--flora-green-dark);
+  box-shadow: 0 1px 5px color-mix(in srgb, #000 22%, transparent);
+}
+
+.messagesBubbleMe .voicePlayButton:hover:not(:disabled) {
+  background: var(--flora-text-on-bubble);
+}
+
+.messagesBubbleThem .voicePlayButton {
+  background: var(--flora-green-light);
+  color: var(--flora-on-accent);
+  box-shadow: 0 1px 8px color-mix(in srgb, var(--flora-green-light) 28%, transparent);
+}
+
+.messagesBubbleThem .voicePlayButton:hover:not(:disabled) {
+  background: var(--flora-accent-hover);
+}
+
+.messagesBubble .voicePlayButton:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.messagesBubble .voicePlayButton:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.messagesBubbleThem .voiceWaveform span {
+  background: color-mix(in srgb, var(--flora-green-light) 68%, var(--flora-white-template) 32%);
+  opacity: 0.9;
+}
+
+.messagesBubbleThem .voiceDuration {
+  color: color-mix(in srgb, var(--flora-gray) 60%, var(--flora-reserve-substrate-gray-muted) 40%);
+}
+
+.messagesBubbleThem {
+  /* Приглушённее своего (--flora-green-dark): лёгкий зелёный тон, чуть менее насыщенный. */
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--flora-reserve-bubble-them-bg) 10%, var(--flora-accent-fill-subtle-hover) 90%) 75%,
+    var(--flora-reserve-substrate-gray-muted) 25%
+  );
+  color: color-mix(in srgb, var(--flora-text-on-bubble) 74%, var(--flora-gray) 26%);
+  border: none;
+  box-shadow: none;
+  border-bottom-left-radius: 6px;
+}
+
+.messagesBubbleThem .messagesBubbleTime:not(.messagesBubblePhotoTime) {
+  color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--flora-text-on-bubble) 74%, var(--flora-gray) 26%) 26%,
+    var(--flora-gray) 74%
+  );
+  opacity: 1;
+}
+
+/*
+ * Текстовый пузырь: 5×15px при одной строке; каждая следующая строка +25px.
+ * 13.5 + 25 (текст) + 5 (зазор) + 18 (время) + 13.5 = 75px.
+ */
+.messagesBubble:not(.messagesBubbleVoiceOnly) {
+  --messages-bubble-line-step: 25px;
+  padding-top: calc(var(--flora-grid-step) - 1.5px);
+  padding-bottom: calc(var(--flora-grid-step) - 1.5px);
+}
+
+.messagesBubbleText {
+  margin: 0;
+  line-height: var(--messages-bubble-line-step, 25px);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.messagesBubbleInlineTime .messagesBubbleText::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.messagesBubble > .messagesBubbleText {
+  margin-bottom: var(--flora-grid-step-fine);
+}
+
+.messagesBubbleTime {
+  --messages-bubble-time-line-height: 18px;
+  display: block;
+  font-size: 12px;
+  line-height: var(--messages-bubble-time-line-height);
+  letter-spacing: 0.36px;
+  opacity: 0.85;
+}
+
+.messagesBubbleReceipt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 9px;
+  margin-left: calc(2 * var(--flora-grid-step-fine));
+  color: currentColor;
+  opacity: 0.82;
+  vertical-align: 0;
+}
+
+.messagesBubbleReceipt svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.messagesBubbleReceiptSending {
+  width: 10px;
+  height: 10px;
+}
+
+.messagesBubbleReceiptSent {
+  width: 13px;
+  height: 9px;
+}
+
+.messagesBubbleReceiptRead {
+  width: 18px;
+  height: 9px;
+  justify-content: flex-start;
+  color: var(--flora-green-light);
+  opacity: 1;
+}
+
+.messagesBubbleReceiptRead svg {
+  width: 13px;
+  height: 9px;
+  flex: 0 0 auto;
+}
+
+.messagesBubbleReceiptRead svg + svg {
+  margin-left: -8px;
+}
+
+.messagesBubbleMe .messagesBubbleTime {
+  text-align: right;
+}
+
+/*
+ * Время в строке текста (как в TG): пузырь-однострочник 3 кл. (10 + 25 + 10 = 45px вместо 75px);
+ * спейсер в конце последней текстовой строки резервирует место под абсолютное время справа внизу.
+ * Идёт после .messagesBubble:not(.messagesBubbleVoiceOnly) — перебивает его padding 13.5px.
+ */
+.messagesBubble.messagesBubbleInlineTime {
+  padding-top: calc(2 * var(--flora-grid-step-fine));
+  padding-bottom: calc(2 * var(--flora-grid-step-fine));
+}
+
+.messagesBubbleInlineTime > .messagesBubbleText {
+  margin-bottom: 0;
+}
+
+.messagesBubbleInlineTime .messagesBubbleBlocks {
+  margin-bottom: 0;
+}
+
+/*
+ * Время в потоке текста (как в TG): float:right привязывает метку к последней строке,
+ * сразу справа от короткого хвоста; при нехватке места — отдельная строка (.messagesBubbleTimeBelowRow).
+ */
+.messagesBubbleTimeFloat {
+  float: right;
+  position: relative;
+  top: calc(var(--messages-bubble-line-step, 25px) - var(--messages-bubble-time-line-height, 18px));
+  margin-left: var(--flora-grid-step);
+  height: var(--messages-bubble-time-line-height, 18px);
+  line-height: var(--messages-bubble-time-line-height, 18px);
+}
+
+.messagesBubbleTimeBelowRow {
+  display: block;
+  text-align: right;
+  margin-top: 0;
+}
+
+/* Поле ввода поверх ленты (z-index); фон только у .messagesComposeField — иначе непрозрачная обёртка «режет» пузыри по прямой. */
+.messagesChatCompose {
+  position: absolute;
+  left: calc((38 - 37) * var(--flora-grid-step));
+  width: calc((89 - 38 + 1) * var(--flora-grid-step));
+  max-width: calc(100% - (38 - 37) * var(--flora-grid-step));
+  bottom: calc(2 * var(--flora-grid-step));
+  min-height: calc(
+    (var(--messages-chat-compose-bottom-line) - var(--messages-chat-compose-line) + 1) * var(--flora-grid-step) +
+      var(--messages-compose-extra-height) + var(--messages-compose-images-extra)
+  );
+  max-height: calc(13 * var(--flora-grid-step) + var(--messages-compose-images-extra));
+  box-sizing: border-box;
+  /* +2 клетки над полем ввода; само поле — 4 клетки. */
+  padding-top: calc((1 + 2) * var(--flora-grid-step));
+  background: transparent;
+  display: flex;
+  align-items: flex-end;
+  z-index: 5;
+  transition: min-height 0.18s var(--flora-ease-out);
+  /* Клики в прозрачной зоне над полем — в ленту (прокрутка); по самому полю и кнопкам — как обычно. */
+  pointer-events: none;
+}
+
+/* Голосовая форма: на всю ширину .messagesChatView (текстовое поле уже 38–89 и упирается в max-width). */
+.messagesChatComposeVoice {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: none;
+}
+
+.messagesComposeStack {
+  position: relative;
+  --messages-compose-field-col: 38;
+  --messages-compose-field-right-col: 90;
+  --messages-sticker-panel-right-col: 89;
+  --messages-sticker-center-col: 84.5;
+  --messages-sticker-panel-gap-above-field: var(--flora-grid-step);
+  display: flex;
+  flex-direction: column;
+  gap: var(--messages-sticker-panel-gap-above-field);
+  width: 100%;
+  pointer-events: auto;
+}
+
+.messagesComposeField {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: visible;
+  width: 100%;
+  box-sizing: border-box;
+  /* Левый край поля — колонка 38; плюс с margin-left 1×15 — на вертикали 39. */
+  --messages-compose-content-col: 39;
+  --messages-compose-chrome-btn: calc(2 * var(--flora-grid-step));
+  /*
+   * anchorRow=56 (низ border-box поля ≈ compose-bottom-line 60), кнопки 2×15px.
+   * Центр на 58.5 (между 58 и 59); +½ кл. — border-box низ поля на overlay чуть ниже линии 60.
+   */
+  padding: calc(2 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine))
+    calc(
+      (var(--messages-chat-compose-bottom-line) - var(--messages-compose-chrome-center-row)) * var(--flora-grid-step) -
+        var(--messages-compose-chrome-btn) / 2 + var(--flora-grid-step) / 2
+    )
+    0;
+  border: var(--messages-field-border);
+  border-radius: var(--messages-field-radius);
+  background: var(--messages-field-bg);
+  transition: border-color 0.15s;
+  pointer-events: auto;
+}
+
+/*
+ * Оболочка строки ввода: height анимируется, текст внутри — мгновенно (без дёрганья строк).
+ * Контент прижат к низу shell → рост визуально вверх, низ (кнопки) на месте.
+ */
+.messagesComposeFieldShell {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  height: calc(var(--messages-compose-line-block-height) + var(--messages-compose-extra-height));
+  max-height: calc(var(--messages-compose-line-block-height) + 75px);
+  overflow: hidden;
+  transition: height 0.18s var(--flora-ease-out);
+}
+
+.messagesComposeFieldBody {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+/* Нулевая высота: панель растёт вверх; 1 кл. до поля — gap у .messagesComposeStack. */
+.messagesComposePanelAnchor {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  height: 0;
+  overflow: visible;
+  z-index: 8;
+}
+
+/* Ответ и медиа над строкой ввода; левый край — вертикаль 39. */
+.messagesComposeField:has(.messagesComposeAttachStrips) {
+  /* Верхний отступ поля переносим в полосу вложений — ровно 1 первичная клетка до карточек. */
+  padding-top: 0;
+}
+
+.messagesComposeAttachStrips {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  min-width: 0;
+  overflow: visible;
+  padding-top: var(--flora-grid-step);
+  padding-left: calc((var(--messages-compose-content-col) - var(--messages-compose-field-col)) * var(--flora-grid-step));
+  padding-right: 0;
+  box-sizing: border-box;
+}
+
+.messagesComposeRow {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  min-width: 0;
+}
+
+.messagesComposeBlocks {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-height: calc(10 * var(--flora-grid-step));
+  overflow-y: auto;
+  overflow-x: visible;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.messagesComposeBlocks::-webkit-scrollbar {
+  display: none;
+}
+
+.messagesComposeImageStrip,
+.messagesComposeReplyStrip {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+}
+
+.messagesComposeImageStrip::-webkit-scrollbar,
+.messagesComposeReplyStrip::-webkit-scrollbar {
+  display: none;
+}
+
+.messagesComposeImageItem {
+  position: relative;
+  width: calc(4 * var(--flora-grid-step));
+  height: calc(4 * var(--flora-grid-step));
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
+  box-sizing: border-box;
+}
+
+.messagesComposeImageThumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.messagesComposeImageRemove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.messagesComposeVideoDownload {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+/*
+ * Карточка фото: фиксированная ширина 18 кл. (пузырь = 18 + 2×1 кл. паддинга = 20 кл.).
+ * Не использовать max-width с процентом: percent не резолвится в intrinsic-ширине пузыря,
+ * и пузырь растягивается до 78% по натуральной ширине файла (пустое поле справа от фото).
+ */
+.messageImageCard {
+  position: relative;
+  margin: 0;
+  width: calc(18 * var(--flora-grid-step));
+  max-width: 100%;
+}
+
+.messageImageButton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.messageImage {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(18 * var(--flora-grid-step));
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.messageImagePlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: calc(8 * var(--flora-grid-step));
+  border-radius: 10px;
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+  font-size: 13px;
+  color: rgba(var(--flora-white-template-rgb), 0.7);
+}
+
+.messageImageRemove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Видео в пузыре: та же геометрия, что у фото (18 кл. в обычном пузыре, 100% в фото-пузыре). */
+.messageVideoCard {
+  position: relative;
+  margin: 0;
+  width: calc(18 * var(--flora-grid-step));
+  max-width: 100%;
+}
+
+/* Превью видео в полосе compose: тот же размер, что у фото 4×4 кл. */
+.messagesComposeVideoThumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #000;
+}
+
+.messagesComposeVideoBadge {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  pointer-events: none;
+}
+
+/*
+ * Пузырь с фото (стиль TG в нашем дизайне): ширина фиксирована 20 кл.,
+ * медиа от края до края (padding 0, overflow clip по радиусу пузыря),
+ * подпись — под фото с отступами текстового пузыря, время photo-only — пилюлей поверх снимка.
+ * Идёт после .messagesBubble:not(.messagesBubbleVoiceOnly) — перебивает его padding.
+ */
+.messagesBubble.messagesBubblePhoto {
+  width: calc(20 * var(--flora-grid-step));
+  max-width: 100%;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.messagesBubblePhotoMedia {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/*
+ * Коллаж 2+ фото: без зелёного пузыря — только сетка снимков (как альбом в TG).
+ * Подпись под коллажем сохраняет фон своего/чужого пузыря.
+ */
+.messagesBubble.messagesBubblePhotoCollage,
+.messagesBubble.messagesBubblePhoto:has(.messageImageCard[data-has-alpha="true"]) {
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+/* Прозрачные PNG/WebP (стикеры и т.п.): без зелёной подложки, размер по содержимому. */
+.messagesBubblePhoto:has(.messageImageCard[data-has-alpha="true"]) .messageImageCard {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.messagesBubblePhoto:has(.messageImageCard[data-has-alpha="true"]) .messageImageButton {
+  width: auto;
+  max-width: 100%;
+}
+
+.messagesBubblePhoto:has(.messageImageCard[data-has-alpha="true"]) .messageImage {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(24 * var(--flora-grid-step));
+  object-fit: contain;
+}
+
+.messagesBubblePhoto:has(.messageImageCard[data-has-alpha="true"]):not(:has(.messagesBubblePhotoCaption)) {
+  width: fit-content;
+  max-width: calc(20 * var(--flora-grid-step));
+}
+
+.messagesBubblePhoto.messagesBubbleMe:has(.messageImageCard[data-has-alpha="true"]):has(.messagesBubblePhotoCaption)
+  .messagesBubblePhotoCaption {
+  background: var(--flora-green-dark);
+  color: var(--flora-text-on-bubble);
+  border-radius: 0 0 6px 18px;
+}
+
+.messagesBubblePhoto.messagesBubbleThem:has(.messageImageCard[data-has-alpha="true"]):has(.messagesBubblePhotoCaption)
+  .messagesBubblePhotoCaption {
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--flora-reserve-bubble-them-bg) 10%, var(--flora-accent-fill-subtle-hover) 90%) 75%,
+    var(--flora-reserve-substrate-gray-muted) 25%
+  );
+  color: color-mix(in srgb, var(--flora-text-on-bubble) 74%, var(--flora-gray) 26%);
+  border-radius: 0 0 18px 6px;
+}
+
+/* Только коллаж: скругление со всех сторон. */
+.messagesBubblePhotoCollage:not(:has(.messagesBubblePhotoCaption)) .messagesBubblePhotoMedia {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.messagesBubblePhotoCollage:not(:has(.messagesBubblePhotoCaption)) .messagesImageCollage {
+  border-radius: 12px;
+}
+
+/* Коллаж + подпись: верх у медиа, низ у текста — без острых стыков посередине. */
+.messagesBubblePhotoCollage:has(.messagesBubblePhotoCaption) .messagesBubblePhotoMedia {
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+}
+
+.messagesBubblePhotoCollage:has(.messagesBubblePhotoCaption) .messagesImageCollage {
+  border-radius: 0;
+}
+
+.messagesBubblePhotoCollage.messagesBubbleMe:has(.messagesBubblePhotoCaption) .messagesBubblePhotoCaption {
+  background: var(--flora-green-dark);
+  color: var(--flora-text-on-bubble);
+  border-radius: 0 0 6px 18px;
+}
+
+.messagesBubblePhotoCollage.messagesBubbleThem:has(.messagesBubblePhotoCaption) .messagesBubblePhotoCaption {
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--flora-reserve-bubble-them-bg) 10%, var(--flora-accent-fill-subtle-hover) 90%) 75%,
+    var(--flora-reserve-substrate-gray-muted) 25%
+  );
+  color: color-mix(in srgb, var(--flora-text-on-bubble) 74%, var(--flora-gray) 26%);
+  border-radius: 0 0 18px 6px;
+}
+
+.messagesBubblePhotoCollage .messagesBubbleReply {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+}
+
+/* Коллаж нескольких фото в пузыре — та же сетка, что у постов; ширина пузыря 20 кл. */
+.messagesImageCollage {
+  margin-bottom: 0;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 0;
+  grid-auto-rows: calc(5 * var(--flora-grid-step));
+}
+
+.messagesBubblePhotoCollage .messagesImageCollage .imageCell {
+  border-radius: 0;
+  background: transparent;
+}
+
+.messagesBubblePhotoCollage .messagesImageCollage .image {
+  border-radius: 0;
+}
+
+.messagesBubblePhoto:not(.messagesBubblePhotoCollage) .messagesImageCollage .imageCell {
+  border-radius: 0;
+}
+
+.messagesBubblePhoto:not(.messagesBubblePhotoCollage) .messagesImageCollage .image {
+  border-radius: 0;
+}
+
+.messagesBubblePhoto .messageImageCard,
+.messagesBubblePhoto .messageVideoCard {
+  width: 100%;
+}
+
+/* Время сообщения чуть выше тонкой полосы прогресса видео (как в TG). */
+.messagesBubblePhotoMedia .messageVideoCard ~ .messagesBubblePhotoTime {
+  bottom: calc(2 * var(--flora-grid-step-fine) + 4px);
+}
+
+.messagesBubblePhoto .messageImage {
+  border-radius: 0;
+  max-height: calc(24 * var(--flora-grid-step));
+}
+
+.messagesBubblePhoto .messageImagePlaceholder {
+  border-radius: 0;
+}
+
+.messagesBubblePhotoTime {
+  position: absolute;
+  right: calc(2 * var(--flora-grid-step-fine));
+  bottom: calc(2 * var(--flora-grid-step-fine));
+  padding: 1px calc(2 * var(--flora-grid-step-fine));
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(242, 244, 246, 0.96);
+  opacity: 1;
+  backdrop-filter: blur(6px);
+  /* Клик сквозь пилюлю — открытие фото. */
+  pointer-events: none;
+}
+
+.messagesBubblePhotoCaption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+  padding: calc(var(--flora-grid-step) - 1.5px) var(--flora-grid-step);
+}
+
+/* Подпись с инлайн-временем: компактные вертикальные отступы как у текстового однострочника. */
+.messagesBubbleInlineTime .messagesBubblePhotoCaption {
+  padding-top: calc(2 * var(--flora-grid-step-fine));
+  padding-bottom: calc(2 * var(--flora-grid-step-fine));
+}
+
+.messagesDraftDropZone,
+.messagesDraftDropZoneEnd {
+  min-width: 0;
+}
+
+.messagesDraftDropZoneEnd {
+  min-height: 6px;
+}
+
+.messagesComposeAttachWrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-left: var(--flora-grid-step);
+  z-index: 2;
+  overflow: visible;
+}
+
+.messagesComposePlus {
+  flex-shrink: 0;
+  margin-left: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--messages-field-icon);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.messagesComposeTrash {
+  flex-shrink: 0;
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  margin-left: var(--flora-grid-step);
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #ff5f5f;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, transform 0.08s;
+}
+
+.messagesComposeTrash:hover:not(:disabled) {
+  background: color-mix(in srgb, #ff5f5f 13%, transparent);
+  color: #ff7a7a;
+}
+
+.messagesComposeTrash:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.messagesComposePlus:hover {
+  background: var(--flora-secondary-hover-bg);
+  color: var(--flora-gray-hover);
+}
+
+.messagesComposeField:focus-within {
+  border-color: var(--flora-green-dark);
+}
+
+/* Запись: волна 45–81 по первичной сетке (левый край поля = колонка 38). */
+.messagesComposeFieldRecording {
+  --messages-voice-wave-col-start: 45;
+  --messages-voice-wave-col-end: 81;
+  --messages-voice-time-col: 41;
+}
+
+.messagesComposeInput {
+  /* В колонке .messagesComposeBlocks нельзя flex: 1 — flex-basis 0% перебивает height, textarea схлопывается до min-height и скроллит строки. */
+  flex: 0 0 auto;
+  width: 100%;
+  height: calc(var(--messages-compose-line-block-height) + var(--messages-compose-extra-height));
+  min-height: var(--messages-compose-line-block-height);
+  max-height: calc(var(--messages-compose-line-block-height) + 75px);
+  box-sizing: border-box;
+  /*
+   * +½ вторичной клетки сверху / −½ снизу — строка 1 с кнопками (58–59); pad-y = 10px всегда,
+   * без смены при 2-й строке (иначе курсор прыгает).
+   */
+  padding-top: calc(var(--flora-grid-step-fine) * 1.5);
+  padding-right: calc(4 * var(--flora-grid-step));
+  padding-bottom: calc(var(--flora-grid-step-fine) * 0.5);
+  padding-left: 0;
+  border: none;
+  background: transparent;
+  color: var(--messages-field-text);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 25px;
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.messagesComposeInput::-webkit-scrollbar {
+  display: none;
+}
+
+.messagesBubbleBlocks {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  margin-bottom: var(--flora-grid-step-fine);
+}
+
+.messagesComposeInput::placeholder {
+  color: var(--messages-field-placeholder);
+}
+
+.messagesComposeFieldRecording .messagesVoiceInlineCard {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 35px;
+  display: block;
+  color: var(--messages-field-text);
+  pointer-events: none;
+}
+
+.messagesVoiceInlineDuration {
+  position: absolute;
+  left: calc((var(--messages-voice-time-col) - var(--messages-compose-field-col)) * var(--flora-grid-step));
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--messages-field-placeholder);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.messagesVoiceInlineWave {
+  position: absolute;
+  left: calc((var(--messages-voice-wave-col-start) - var(--messages-compose-field-col)) * var(--flora-grid-step));
+  width: calc(
+    (var(--messages-voice-wave-col-end) - var(--messages-voice-wave-col-start) + 1) * var(--flora-grid-step)
+  );
+  height: calc(2 * var(--flora-grid-step));
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  /* От 45-й до 81-й: полоски по всей ширине (flex-end давал кластер ~65–81). */
+  justify-content: space-between;
+  gap: 3px;
+  overflow: hidden;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.messagesVoiceInlineWave span {
+  width: 3px;
+  flex: 0 0 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--flora-green-light) 65%, var(--flora-white-template) 35%);
+  opacity: 0.88;
+  transition: height 0.08s linear, opacity 0.12s ease;
+}
+
+.messagesVoiceInlineError {
+  min-width: 0;
+  color: #ff7a7a;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.messagesComposeFieldRecording .messagesComposeActions {
+  position: relative;
+  z-index: 1;
+}
+
+.messagesComposeActions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-end;
+  gap: var(--flora-grid-step-fine);
+  /* Центр mic — ровно между вертикалями 87 и 88 по overlay. */
+  margin-right: calc(0.5 * var(--flora-grid-step-fine) + 1px);
+}
+
+/*
+ * Стикер — с +/mic у низа строки ввода (без переключения по числу строк).
+ * anchorRow=38, центр 2×15px — между 84 и 85 (84.5); -0.5 клетки.
+ */
+.messagesStickerButton {
+  position: absolute;
+  left: calc(
+    (var(--messages-sticker-center-col) - var(--messages-compose-field-col) - 0.5) * var(--flora-grid-step)
+  );
+  bottom: 0;
+  top: auto;
+  z-index: 2;
+  width: var(--messages-compose-chrome-btn);
+  height: var(--messages-compose-chrome-btn);
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--messages-field-icon);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+  transition: background 0.15s, color 0.15s, transform 0.08s;
+}
+
+.messagesStickerButton:hover:not(:disabled),
+.messagesStickerButton[aria-expanded="true"] {
+  background: var(--flora-secondary-hover-bg);
+  color: var(--flora-gray-hover);
+  text-shadow: var(--flora-hover-accent-glow);
+}
+
+.messagesStickerButton:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.messagesStickerButton:focus-visible {
+  outline: 1px solid var(--flora-green-light);
+  outline-offset: 2px;
+}
+
+.messagesStickerButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.messagesStickerPanel {
+  --messages-sticker-panel-inset: var(--flora-grid-step);
+  --messages-sticker-tabs-height: calc(3 * var(--flora-grid-step));
+  --messages-sticker-tab-selected-height: calc(2 * var(--flora-grid-step));
+  /* Зазор серая подложка ↔ зелёная (сверху/снизу = слева/справа внутри вкладки) */
+  --messages-sticker-tab-selected-inset: calc(
+    (var(--messages-sticker-tabs-height) - var(--messages-sticker-tab-selected-height)) / 2
+  );
+  --messages-sticker-tab-text-pad-x: calc(3 * var(--flora-grid-step));
+  /* Две вкладки: 2×(inset зелёной + 3 кл. до текста) + подпись «Стикеры» (~5 кл.) + зазор между вкладками */
+  --messages-sticker-tab-pad-x: calc(
+    var(--messages-sticker-tab-selected-inset) + var(--messages-sticker-tab-text-pad-x)
+  );
+  /* Синхрон с MESSAGE_EMOJI_GRID_COLS в messageEmojiLayout.ts */
+  --messages-emoji-grid-cols: 10;
+  /* Кнопка эмодзи: подложка 2×15px; зазор между кнопками — 2×5px */
+  --messages-emoji-pick-size: calc(2 * var(--flora-grid-step));
+  --messages-emoji-pick-gap: calc(2 * var(--flora-grid-step-fine));
+  --messages-emoji-grid-inset: var(--flora-grid-step);
+  /* Правый край 10-й колонки эмодзи: 10×2 кл. + 9×(2 вторичн.) */
+  --messages-emoji-grid-content-width: calc(
+    var(--messages-emoji-grid-cols) * var(--messages-emoji-pick-size) +
+      (var(--messages-emoji-grid-cols) - 1) * var(--messages-emoji-pick-gap)
+  );
+  /* Вкладки — та же ширина, что и сетка эмодзи */
+  --messages-sticker-tabs-width: var(--messages-emoji-grid-content-width);
+  --messages-sticker-body-width: var(--messages-emoji-grid-content-width);
+  /* border-box: 1px border по периметру входит в width/height */
+  --messages-sticker-panel-border-x: 2px;
+  --messages-sticker-panel-border-y: 2px;
+  --flora-secondary-hover-bg: var(--flora-reserve-hover-on-surface-them);
+  --flora-reserve-hover-surface: var(--flora-secondary-hover-bg);
+  background-color: var(--flora-reserve-popover-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  position: absolute;
+  /* Правый край панели = вертикаль 89 (правый край compose 38–89; inset давал 88). */
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  width: calc(
+    var(--messages-sticker-body-width) + 2 * var(--messages-sticker-panel-inset) + var(--messages-sticker-panel-border-x)
+  );
+  box-sizing: border-box;
+  padding: var(--messages-sticker-panel-inset);
+  border: 1px solid var(--flora-reserve-popover-border);
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  box-shadow: var(--flora-reserve-popover-shadow);
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+  transform-origin: bottom right;
+}
+
+.messagesStickerPanel.messagesStickerPanelLayoutMotion:not(.messagesStickerPanelClosing) {
+  transition:
+    width var(--flora-duration-2) var(--flora-ease-in-out),
+    min-height var(--flora-duration-2) var(--flora-ease-in-out),
+    max-height var(--flora-duration-2) var(--flora-ease-in-out);
+}
+
+/* Не reverse: после `both` у входа браузер не перезапускает анимацию на том же элементе.
+   Портал compose имеет собственные анимации — исключаем его отсюда. */
+.messagesStickerPanel:not(.messagesStickerPanelClosing):not([data-flora-compose-sticker-panel]) {
+  animation: messagesStickerPanelIn var(--flora-duration-2) var(--flora-ease-in-out) both;
+}
+
+.messagesStickerPanel.messagesStickerPanelClosing:not([data-flora-compose-sticker-panel]) {
+  pointer-events: none;
+  animation: messagesStickerPanelOut var(--flora-duration-2) var(--flora-ease-in-out) forwards;
+}
+
+@keyframes messagesStickerPanelIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--flora-grid-step-fine), 0) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes messagesStickerPanelOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(0, var(--flora-grid-step-fine), 0) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messagesStickerPanel.messagesStickerPanelLayoutMotion {
+    transition: none;
+  }
+
+  .messagesStickerPanel:not(.messagesStickerPanelClosing) {
+    animation: none;
+  }
+
+  .messagesStickerPanel.messagesStickerPanelClosing {
+    animation: none;
+    opacity: 0;
+  }
+
+  .messagesStickerTabIndicator,
+  .messagesEmojiCategoryRail,
+  .messagesStickerTabPanelAnim {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Эмодзи: слева rail категорий задаёт высоту; панель растёт вверх (anchor bottom). */
+.messagesStickerPanelWithCategories {
+  --messages-emoji-category-count: 9;
+  --messages-emoji-rail-size: calc(3 * var(--flora-grid-step));
+  --messages-emoji-rail-btn: calc(2 * var(--flora-grid-step));
+  --messages-emoji-rail-gap: calc(2 * var(--flora-grid-step-fine));
+  --messages-emoji-rail-pad-y: calc(2 * var(--flora-grid-step-fine));
+  --messages-emoji-rail-content-height: calc(
+    2 * var(--messages-emoji-rail-pad-y) + var(--messages-emoji-category-count) * var(--messages-emoji-rail-btn) +
+      (var(--messages-emoji-category-count) - 1) * var(--messages-emoji-rail-gap)
+  );
+  --messages-emoji-rail-block-height: var(--messages-emoji-rail-content-height);
+  --messages-sticker-panel-gap: var(--flora-grid-step);
+  --messages-sticker-tabs-height: calc(3 * var(--flora-grid-step));
+  gap: var(--messages-sticker-panel-gap);
+  width: calc(
+    var(--messages-emoji-rail-size) + var(--messages-sticker-panel-gap) + var(--messages-sticker-body-width) +
+      2 * var(--messages-sticker-panel-inset) + var(--messages-sticker-panel-border-x)
+  );
+  height: auto;
+  min-height: calc(
+    2 * var(--messages-sticker-panel-inset) + var(--messages-emoji-rail-block-height) +
+      var(--messages-sticker-panel-border-y)
+  );
+  max-height: min(
+    calc((var(--messages-chat-compose-line) - 4) * var(--flora-grid-step)),
+    calc(
+      2 * var(--messages-sticker-panel-inset) + var(--messages-emoji-rail-block-height) +
+        var(--messages-sticker-panel-border-y)
+    )
+  );
+}
+
+.messagesStickerPanelWithCategories .messagesStickerPanelBody {
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: var(--messages-sticker-body-width);
+  min-width: var(--messages-sticker-body-width);
+  max-width: var(--messages-sticker-body-width);
+  min-height: 0;
+  overflow-x: visible;
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+}
+
+/* Эмодзи: 1 кл. до сетки — только padding-top у wrap, без gap + margin (сломалось после tabPanelAnim). */
+.messagesStickerPanelBody:has(.messagesEmojiGridWrap) {
+  gap: 0;
+}
+
+.messagesStickerPanelBody {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+}
+
+/* Подложка категорий: ширина 3×15px (первичная сетка). */
+.messagesEmojiCategoryRail {
+  flex: 0 0 auto;
+  width: var(--messages-emoji-rail-size, calc(3 * var(--flora-grid-step)));
+  min-height: var(--messages-emoji-rail-block-height);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--messages-emoji-rail-gap, calc(2 * var(--flora-grid-step-fine)));
+  padding-top: var(--messages-emoji-rail-pad-y, calc(2 * var(--flora-grid-step-fine)));
+  padding-bottom: var(--messages-emoji-rail-pad-y, calc(2 * var(--flora-grid-step-fine)));
+  padding-left: 0;
+  padding-right: 0;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: var(--flora-reserve-popover-rail);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  opacity: 1;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  transition:
+    width var(--flora-duration-2) var(--flora-ease-in-out),
+    min-height var(--flora-duration-2) var(--flora-ease-in-out),
+    padding var(--flora-duration-2) var(--flora-ease-in-out),
+    opacity var(--flora-duration-2) var(--flora-ease-in-out);
+}
+
+.messagesEmojiCategoryRailCollapsed {
+  width: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.messagesEmojiCategoryRail::-webkit-scrollbar {
+  display: none;
+}
+
+/* Вкладки «Эмодзи / Стикеры»: 3×15px по высоте; ширина = 10×2 кл. + 9×2 вторичн. (как сетка эмодзи). */
+.messagesStickerTabs {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: var(--messages-sticker-tabs-width, var(--messages-emoji-grid-content-width));
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step-fine);
+  height: var(--messages-sticker-tabs-height, calc(3 * var(--flora-grid-step)));
+  min-height: var(--messages-sticker-tabs-height, calc(3 * var(--flora-grid-step)));
+  padding: 0;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: var(--flora-reserve-popover-rail);
+  box-sizing: border-box;
+}
+
+.messagesStickerTabIndicator {
+  position: absolute;
+  z-index: 0;
+  top: var(--messages-sticker-tab-selected-inset);
+  bottom: var(--messages-sticker-tab-selected-inset);
+  left: var(--messages-sticker-tab-selected-inset);
+  width: calc(
+    (100% - var(--flora-grid-step-fine)) / 2 - 2 * var(--messages-sticker-tab-selected-inset)
+  );
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  /* Как фон своего пузыря (.messagesBubbleMe) */
+  background: var(--flora-green-dark);
+  transition: left var(--flora-duration-2) var(--flora-ease-in-out);
+  pointer-events: none;
+}
+
+.messagesStickerTabs[data-active-tab="stickers"] .messagesStickerTabIndicator {
+  left: calc(
+    (100% + var(--flora-grid-step-fine)) / 2 + var(--messages-sticker-tab-selected-inset)
+  );
+}
+
+.messagesStickerTab {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding-left: var(--messages-sticker-tab-pad-x);
+  padding-right: var(--messages-sticker-tab-pad-x);
+  border: none;
+  white-space: nowrap;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: transparent;
+  color: var(--flora-gray);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color var(--flora-duration-1) var(--flora-ease-in-out);
+}
+
+.messagesStickerTab:hover {
+  color: var(--flora-text-primary);
+}
+
+.messagesStickerTab[aria-selected="true"] {
+  color: var(--flora-text-on-bubble);
+}
+
+.messagesStickerTab:focus-visible {
+  outline: 1px solid var(--flora-green-light);
+  outline-offset: 2px;
+}
+
+.messagesStickerTabPanel {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 1 кл. под вкладками вне скролла; эмодзи обрезаются по верху viewport сетки. */
+.messagesStickerTabPanel:has(.messagesEmojiGridWrap),
+.messagesStickerTabPanelAnim:has(.messagesEmojiGridWrap) {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  padding-top: var(--messages-emoji-grid-inset, var(--flora-grid-step));
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.messagesStickerTabPanelAnim {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  animation: messagesStickerTabPanelIn var(--flora-duration-2) var(--flora-ease-in-out) both;
+}
+
+@keyframes messagesStickerTabPanelIn {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--messages-sticker-tab-panel-shift, 0), 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.messagesStickerTabPanelToEmoji {
+  --messages-sticker-tab-panel-shift: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.messagesStickerTabPanelToStickers {
+  --messages-sticker-tab-panel-shift: var(--flora-grid-step-fine);
+}
+
+.messagesStickersPlaceholder {
+  margin: 0;
+  padding: var(--flora-grid-step) 0;
+  color: var(--flora-gray);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 13px;
+  line-height: calc(4 * var(--flora-grid-step-fine));
+  letter-spacing: 0.02em;
+}
+
+.messagesStickersPlaceholderLink {
+  color: var(--flora-green-light);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.messagesStickersPlaceholderLink:hover {
+  color: var(--flora-accent-hover);
+  text-decoration: underline;
+}
+
+.messagesStickersPlaceholderLink:focus-visible {
+  outline: 1px solid var(--flora-green-light);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.messagesEmojiCategorySection {
+  scroll-margin-top: var(--flora-grid-step-fine);
+  padding-top: 0;
+  padding-bottom: var(--messages-emoji-grid-inset, var(--flora-grid-step));
+  box-sizing: border-box;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
+.messagesEmojiCategorySection:not(:first-child) {
+  padding-top: var(--messages-emoji-grid-inset, var(--flora-grid-step));
+}
+
+.messagesEmojiCategorySection:not(:last-child) {
+  border-bottom: 1px solid var(--flora-reserve-popover-divider);
+}
+
+/* Круг 2×15px; зазор между кнопками — 2×5px (см. --messages-emoji-rail-gap). */
+.messagesEmojiCategoryButton {
+  width: var(--messages-emoji-rail-btn, calc(2 * var(--flora-grid-step)));
+  height: var(--messages-emoji-rail-btn, calc(2 * var(--flora-grid-step)));
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--messages-field-icon);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s, transform 0.08s;
+}
+
+.messagesEmojiCategoryButton:hover {
+  background: var(--flora-secondary-hover-bg);
+  color: var(--flora-gray-hover);
+  text-shadow: var(--flora-hover-accent-glow);
+}
+
+.messagesEmojiCategoryButton[aria-current="true"] {
+  background: var(--flora-reserve-popover-accent-selected);
+  color: var(--flora-text-primary);
+}
+
+.messagesEmojiCategoryButton:active {
+  transform: scale(0.97);
+}
+
+.messagesEmojiCategoryButton:focus-visible {
+  outline: 1px solid var(--flora-green-light);
+  outline-offset: 2px;
+}
+
+.messagesEmojiGridWrap {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  max-height: calc(10 * var(--flora-grid-step) + 4 * var(--flora-grid-step-fine));
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  /* Отступ 1 кл. под вкладками — у tabpanel (:has), здесь только обрезка при скролле. */
+  padding-top: 0;
+  /* Чтобы последняя категория могла «дойти» до верха ленты при скролле вниз. */
+  padding-bottom: calc(8 * var(--flora-grid-step));
+  box-sizing: border-box;
+}
+
+.messagesStickerPanelBody:has(.messagesEmojiGridWrap) .messagesEmojiGridWrap {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
+.messagesStickerPanelWithCategories .messagesEmojiGridWrap {
+  flex: 1 1 0%;
+  min-height: calc(6 * var(--flora-grid-step));
+  max-height: none;
+}
+
+.messagesEmojiGridWrap::-webkit-scrollbar {
+  display: none;
+}
+
+.messagesStickerGrid {
+  display: grid;
+  grid-template-columns: repeat(6, calc(2 * var(--flora-grid-step)));
+  gap: var(--flora-grid-step-fine);
+}
+
+/* Сетка эмодзи в панели (стикеры — .messagesStickerGrid без обёртки). */
+.messagesEmojiGridWrap .messagesStickerGrid {
+  width: max-content;
+  grid-template-columns: repeat(
+    var(--messages-emoji-grid-cols, 10),
+    var(--messages-emoji-pick-size, calc(2 * var(--flora-grid-step)))
+  );
+  gap: var(--messages-emoji-pick-gap, calc(2 * var(--flora-grid-step-fine)));
+}
+
+.messagesEmojiVirtualBody {
+  position: relative;
+  width: max-content;
+  box-sizing: border-box;
+}
+
+.messagesEmojiVirtualRow {
+  position: absolute;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(
+    var(--messages-emoji-grid-cols, 10),
+    var(--messages-emoji-pick-size, calc(2 * var(--flora-grid-step)))
+  );
+  gap: var(--messages-emoji-pick-gap, calc(2 * var(--flora-grid-step-fine)));
+  height: var(--messages-emoji-pick-size, calc(2 * var(--flora-grid-step)));
+  contain: layout style paint;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 30px;
+}
+
+/* 2 кл. над линией внутри блока последнего ряда; снизу линии — только в offset-модели (messageEmojiLayout.ts). */
+.messagesEmojiVirtualRowSectionEnd {
+  height: calc(var(--messages-emoji-pick-size) + 2 * var(--flora-grid-step) + 1px);
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--flora-reserve-popover-divider);
+  box-sizing: border-box;
+  align-items: start;
+}
+
+.messagesEmojiGridWrap .messagesEmojiChoice {
+  width: var(--messages-emoji-pick-size, calc(2 * var(--flora-grid-step)));
+  height: var(--messages-emoji-pick-size, calc(2 * var(--flora-grid-step)));
+}
+
+.messagesEmojiChoice,
+.messagesStickerChoice {
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--flora-reserve-popover-inset);
+  color: var(--flora-text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.messagesEmojiChoice {
+  contain: layout style paint;
+  touch-action: manipulation;
+}
+
+.messagesStickerChoice {
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: var(--flora-reserve-popover-accent-chip);
+  font-size: 19px;
+  transition: background 0.15s, transform 0.08s;
+}
+
+@media (hover: hover) {
+  .messagesEmojiChoice:hover,
+  .messagesStickerChoice:hover {
+    background: var(--flora-secondary-hover-bg);
+  }
+
+  .messagesStickerChoice:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.messagesEmojiChoice:focus-visible,
+.messagesStickerChoice:focus-visible {
+  outline: 1px solid var(--flora-green-light);
+  outline-offset: 2px;
+}
+
+/* Высота полосы 3×15px — кнопки не g45, иначе не влезают. */
+.messagesComposeField .messagesComposePlus,
+.messagesComposeField .messagesComposeMic,
+.messagesComposeField .messagesComposeSend {
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+}
+
+.messagesComposeMic {
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--messages-field-icon);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.messagesComposeStop {
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--flora-white-template) 9%, transparent);
+  color: var(--messages-field-icon);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, transform 0.08s;
+}
+
+.messagesComposeStop span {
+  width: calc(2 * var(--flora-grid-step-fine));
+  height: calc(2 * var(--flora-grid-step-fine));
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.messagesComposeStop:hover:not(:disabled) {
+  background: var(--flora-secondary-hover-bg);
+  color: var(--flora-gray-hover);
+}
+
+.messagesComposeStop:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.messagesComposeMicIcon,
+.messagesVoiceComposeMicIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.messagesComposeMic:hover {
+  background: var(--flora-secondary-hover-bg);
+  color: var(--flora-gray-hover);
+  text-shadow: var(--flora-hover-accent-glow);
+}
+
+.messagesComposeMicRecording {
+  color: var(--flora-accent);
+  background: color-mix(in srgb, var(--flora-green-light) 14%, transparent);
+}
+
+.messagesVoiceCompose {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  min-width: 0;
+  padding: calc(2 * var(--flora-grid-step-fine)) var(--flora-grid-step);
+  box-sizing: border-box;
+  border: var(--messages-field-border);
+  border-radius: var(--messages-field-radius);
+  background: var(--messages-field-bg);
+  pointer-events: auto;
+}
+
+.messagesVoiceComposeHeader {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+}
+
+.messagesVoiceComposeBack {
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  font-family: var(--flora-font);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.messagesVoiceComposeBack:hover {
+  color: var(--flora-text-primary);
+}
+
+.messagesVoiceComposeTitle {
+  color: var(--flora-gray);
+  font-family: var(--flora-font);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.messagesVoiceComposeBody {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step-fine));
+  width: 100%;
+  min-width: 0;
+}
+
+.messagesVoiceComposeRecordArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  padding: calc(3 * var(--flora-grid-step)) 0;
+  box-sizing: border-box;
+}
+
+.messagesVoiceComposeRecordBtn {
+  width: calc(5 * var(--flora-grid-step));
+  height: calc(5 * var(--flora-grid-step));
+  border: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+  color: var(--flora-accent);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.messagesVoiceComposeRecordBtn:hover {
+  background: color-mix(in srgb, var(--flora-green-light) 22%, transparent);
+}
+
+.messagesVoiceComposeRecordBtnActive {
+  background: color-mix(in srgb, var(--flora-accent) 24%, transparent);
+  transform: scale(1.04);
+}
+
+.messagesVoiceComposeHint {
+  color: var(--flora-gray);
+  font-family: var(--flora-font);
+  font-size: 13px;
+}
+
+.messagesVoiceComposeError {
+  margin: 0;
+  color: var(--flora-danger, #e57373);
+  font-family: var(--flora-font);
+  font-size: 12px;
+}
+
+.messagesVoiceComposeActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(2 * var(--flora-grid-step-fine));
+}
+
+.messagesVoiceComposeSecondary {
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  font-family: var(--flora-font);
+  font-size: 13px;
+  cursor: pointer;
+  margin-right: auto;
+}
+
+.messagesVoiceComposeSecondary:hover {
+  color: var(--flora-text-primary);
+}
+
+.voiceCard {
+  width: 100%;
+  min-height: calc(3 * var(--flora-grid-step));
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  padding: calc(1 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: color-mix(in srgb, var(--flora-bg) 72%, transparent);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
+  box-sizing: border-box;
+}
+
+.voiceCardComposeForm {
+  width: 100%;
+  max-width: none;
+  background: color-mix(in srgb, var(--flora-green-light) 10%, transparent);
+}
+
+.messagesVoiceCompose .voiceCard,
+.messagesVoiceCompose .voiceCardComposeForm {
+  width: 100%;
+  max-width: none;
+}
+
+.messagesVoiceCompose .voiceWaveform {
+  flex: 1;
+}
+
+.voiceCardDelete {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--flora-gray);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.voiceCardDelete:hover {
+  color: var(--flora-text-primary);
+  background: var(--flora-secondary-hover-bg);
+}
+
+.voicePlayButton {
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  background: var(--flora-green-light);
+  color: var(--flora-on-accent);
+  transition: background 0.16s var(--flora-ease-out), transform 0.1s var(--flora-ease-out),
+    box-shadow 0.16s var(--flora-ease-out);
+}
+
+.voicePlayButton:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.voicePlayIcon {
+  /* Чуть крупнее; play в viewBox смещён вправо — подправляем ниже. */
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.voicePlayIcon [data-part="halo"] {
+  display: none;
+}
+
+.voicePlayIcon [data-state] {
+  transform-origin: center;
+  transform-box: fill-box;
+  transition: opacity 0.16s var(--flora-ease-out), transform 0.16s var(--flora-ease-out);
+}
+
+.voicePlayIcon [data-state="play"] {
+  opacity: 1;
+  transform: translateX(-1px) scale(1.08);
+}
+
+.voicePlayIcon [data-state="pause"] {
+  opacity: 0;
+  transform: scale(0.94);
+  pointer-events: none;
+}
+
+.voicePlayIcon[data-playing] [data-state="play"] {
+  opacity: 0;
+  transform: translateX(-1px) scale(0.94);
+}
+
+.voicePlayIcon[data-playing] [data-state="pause"] {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.voiceCardBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.voiceWaveform {
+  height: calc(2 * var(--flora-grid-step));
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.voiceWaveform span {
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--flora-green-light) 72%, var(--flora-white-template) 28%);
+  opacity: 0.8;
+}
+
+.voiceDuration {
+  color: var(--flora-gray);
+  font-family: var(--flora-font);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
+.voiceDraftActions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.voiceDraftActions button {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+}
+
+.voiceDraftActions button:hover {
+  background: var(--flora-secondary-hover-bg);
+  color: var(--flora-gray-hover);
+}
+
+.messagesComposeSend {
+  width: var(--g45);
+  height: var(--g45);
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 32%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--flora-green-light) 13%, transparent);
+  color: var(--flora-green-light);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--flora-white-template) 4%, transparent);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    box-shadow 0.15s,
+    transform 0.08s;
+}
+
+.messagesComposeSend:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--flora-green-light) 48%, transparent);
+  background: color-mix(in srgb, var(--flora-green-light) 21%, transparent);
+  color: var(--flora-accent-hover);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--flora-white-template) 7%, transparent),
+    var(--flora-hover-accent-glow);
+  transform: scale(1.03);
+}
+
+.messagesComposeSend:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.messagesComposeSend:focus-visible {
+  outline: 1px solid var(--flora-green-light);
+  outline-offset: 2px;
+}
+
+.messagesComposeSend:disabled {
+  cursor: default;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+/* --- Чат + мини-список: рейл 97–113 — список 97–110, зазор 111–112, счётчики на 113-й вертикали --- */
+.messagesChatSplit {
+  --rail-list-w: calc((110 - 97 + 1) * var(--flora-grid-step));
+  --rail-unread-col-w: var(--flora-grid-step);
+  --rail-list-unread-gap: calc(2 * var(--flora-grid-step));
+  --messages-chat-rail-w: calc(var(--rail-list-w) + var(--rail-list-unread-gap) + var(--rail-unread-col-w));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.messagesChatSplit > .messagesChatPanelInner {
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.messagesChatRail {
+  position: fixed;
+  z-index: 12;
+  left: calc(var(--flora-frame-left) - var(--flora-crop-x) + 97 * var(--flora-grid-step));
+  top: calc(var(--flora-frame-top) - var(--flora-crop-y));
+  width: var(--messages-chat-rail-w);
+  min-width: 0;
+  max-width: var(--messages-chat-rail-w);
+  height: calc((62 - 0 + 1) * var(--flora-grid-step));
+  box-sizing: border-box;
+  /* Ровно столько строк списка между полосами фейда (без оверлея на чаты). */
+  --rail-visible-rows: 5;
+  /* Высота верх/низ зоны маски (внутри скролла; 5 строк между — без затемнения). */
+  --rail-edge-fade-h: calc(4 * var(--flora-grid-step));
+  /* Диаметр аватара: 2 первичные + 2 вторичные клетки; шапка — 3 первичные (кегль от соотношения). */
+  --rail-header-avatar-d: calc(3 * var(--flora-grid-step));
+  --rail-avatar-d: calc(2 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+  /* Высота строки: +2 вторичные клетки к 4 первичным. */
+  --rail-row: calc(4 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+  --rail-type-size: clamp(12px, calc(15px * var(--rail-avatar-d) / var(--rail-header-avatar-d)), 15px);
+  --rail-avatar-initials-size: clamp(12px, calc(19px * var(--rail-avatar-d) / var(--rail-header-avatar-d)), 15px);
+  --rail-type-tracking: calc(var(--flora-tracking-15) * var(--rail-avatar-d) / var(--rail-header-avatar-d));
+  /* Как шапка: там gap аватар↔текст = 1 первичная клетка при диаметре 3×; здесь то же отношение к --rail-avatar-d. */
+  --rail-avatar-text-gap: calc(var(--flora-grid-step) * var(--rail-avatar-d) / var(--rail-header-avatar-d));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+/* Скролл = зоны фейда + ровно 5 строк; маска в px — пять центральных строк без затемнения. */
+.messagesChatRailViewport {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: var(--flora-bg-base);
+  height: calc(var(--rail-edge-fade-h) * 2 + var(--rail-visible-rows) * var(--rail-row));
+  max-height: calc(var(--rail-edge-fade-h) * 2 + var(--rail-visible-rows) * var(--rail-row));
+}
+
+.messagesChatRailScroll {
+  flex-shrink: 0;
+  width: 100%;
+  height: calc(var(--rail-edge-fade-h) * 2 + var(--rail-visible-rows) * var(--rail-row));
+  min-height: calc(var(--rail-edge-fade-h) * 2 + var(--rail-visible-rows) * var(--rail-row));
+  max-height: calc(var(--rail-edge-fade-h) * 2 + var(--rail-visible-rows) * var(--rail-row));
+  background: var(--flora-bg-base);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  /* Плато alpha=1 ровно на 5 строках; перо только в верх/нижней полосе высоты --rail-edge-fade-h. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0.28) calc(var(--rail-edge-fade-h) * 0.35),
+    rgba(0, 0, 0, 0.82) calc(var(--rail-edge-fade-h) * 0.82),
+    rgba(0, 0, 0, 1) var(--rail-edge-fade-h),
+    rgba(0, 0, 0, 1) calc(100% - var(--rail-edge-fade-h)),
+    rgba(0, 0, 0, 0.82) calc(100% - var(--rail-edge-fade-h) * 0.82),
+    rgba(0, 0, 0, 0.28) calc(100% - var(--rail-edge-fade-h) * 0.35),
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0.28) calc(var(--rail-edge-fade-h) * 0.35),
+    rgba(0, 0, 0, 0.82) calc(var(--rail-edge-fade-h) * 0.82),
+    rgba(0, 0, 0, 1) var(--rail-edge-fade-h),
+    rgba(0, 0, 0, 1) calc(100% - var(--rail-edge-fade-h)),
+    rgba(0, 0, 0, 0.82) calc(100% - var(--rail-edge-fade-h) * 0.82),
+    rgba(0, 0, 0, 0.28) calc(100% - var(--rail-edge-fade-h) * 0.35),
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+}
+
+.messagesChatRailScrollInner {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--rail-list-unread-gap);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.messagesChatRailScroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+@supports (overflow-x: clip) {
+  .messagesChatRailScroll {
+    overflow-x: clip;
+  }
+}
+
+.messagesChatRailList {
+  list-style: none;
+  margin: 0;
+  flex: 0 0 var(--rail-list-w);
+  width: var(--rail-list-w);
+  min-width: 0;
+  /* Контент начинается под верхним пером и заканчивается над нижним — 5 строк в зоне mask alpha=1. */
+  padding: var(--rail-edge-fade-h) 0;
+}
+
+/* Столбик счётчиков: та же маска скролла, те же высоты строк и отступы под фейд. */
+.messagesChatRailUnreadTrack {
+  flex: 0 0 var(--rail-unread-col-w);
+  width: var(--rail-unread-col-w);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--rail-edge-fade-h) 0;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.messagesChatRailUnreadRow {
+  min-height: var(--rail-row);
+  max-height: var(--rail-row);
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.messagesChatRailUnreadBadge {
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  font-size: calc(var(--rail-type-size) * 0.92);
+  letter-spacing: var(--rail-type-tracking);
+  line-height: 1;
+  color: var(--flora-accent);
+}
+
+.messagesChatRailItem {
+  margin: 0;
+  padding: 0;
+}
+
+.messagesChatRailRow {
+  display: flex;
+  align-items: center;
+  gap: var(--rail-avatar-text-gap);
+  width: 100%;
+  min-height: var(--rail-row);
+  max-height: var(--rail-row);
+  box-sizing: border-box;
+  padding: 0 calc(2 * var(--flora-grid-step-fine));
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+/* Кнопка всегда единственный ребёнок <li> — :last-child у кнопки бессмысленен; нижнюю линию снимаем у последнего пункта списка. */
+.messagesChatRailItem:last-child .messagesChatRailRow {
+  border-bottom: none;
+}
+
+.messagesChatRailRow:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.messagesChatRailRow:disabled {
+  cursor: default;
+}
+
+.messagesChatRailRowActive .messagesChatRailName {
+  color: var(--flora-accent);
+}
+
+.messagesChatRailAvatarWrap {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--rail-avatar-d);
+  height: var(--rail-avatar-d);
+}
+
+.messagesChatRailAvatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(164, 209, 138, 0.14);
+  color: var(--flora-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: var(--rail-avatar-initials-size);
+  letter-spacing: var(--rail-type-tracking);
+}
+
+/* Как .messagesChatHeaderOnlineBadge, масштаб от диаметра аватара рейла к шапке (45px). */
+.messagesChatRailOnlineBadge {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: calc(15px * var(--rail-avatar-d) / var(--rail-header-avatar-d));
+  height: calc(15px * var(--rail-avatar-d) / var(--rail-header-avatar-d));
+  min-width: calc(15px * var(--rail-avatar-d) / var(--rail-header-avatar-d));
+  min-height: calc(15px * var(--rail-avatar-d) / var(--rail-header-avatar-d));
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: var(--flora-green-light);
+  border: calc(3.5px * var(--rail-avatar-d) / var(--rail-header-avatar-d)) solid var(--flora-bg-base);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.messagesChatRailBody {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--rail-avatar-d);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* Как .messagesChatHeaderInfo / «Люди» .userBody — одна вторичная клетка между строками. */
+  gap: var(--flora-grid-step-fine);
+}
+
+/* Имя / превью: кегль от шапки; line-height: две строки + gap = диаметр аватара. */
+.messagesChatRailName {
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: var(--rail-type-size);
+  letter-spacing: var(--rail-type-tracking);
+  line-height: calc((var(--rail-avatar-d) - var(--flora-grid-step-fine)) / 2);
+  color: var(--flora-text-primary);
+  transform: translateY(1px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.messagesChatRailPreview {
+  font-family: var(--flora-font);
+  font-weight: 300;
+  font-size: var(--rail-type-size);
+  letter-spacing: var(--rail-type-tracking);
+  line-height: calc((var(--rail-avatar-d) - var(--flora-grid-step-fine)) / 2);
+  color: var(--flora-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

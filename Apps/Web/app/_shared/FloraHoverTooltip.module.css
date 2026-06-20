@@ -1,0 +1,42 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.bubble {
+  position: fixed;
+  z-index: 300;
+  max-width: min(280px, calc(100vw - 2 * var(--flora-grid-step)));
+  padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  border-radius: 8px;
+  background: var(--flora-bg);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  font-family: var(--flora-font, var(--font-manrope), system-ui, sans-serif);
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  color: rgba(var(--flora-white-template-rgb), 0.9);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease;
+}
+
+.bubbleVisible {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    transition: none;
+  }
+}

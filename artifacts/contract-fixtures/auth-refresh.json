@@ -1,0 +1,6 @@
+{
+  "accessToken": "eyJ.sample.access.rotated",
+  "refreshToken": "refresh-token-rotated",
+  "expiresAt": "2026-06-12T13:00:00.000Z",
+  "requiresProfileCompletion": false
+}

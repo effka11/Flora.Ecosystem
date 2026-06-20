@@ -1,0 +1,323 @@
+﻿.wrapOpen {
+  position: relative;
+  /* Как PostMoreMenu.wrapOpen; при конфликте с page CSS — inline z-index на wrap в PostMoreMenuRect. */
+  z-index: 200;
+}
+
+/* Прямоугольное меню (как вложения в Messages). */
+.menuPanel {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: calc(1.5 * var(--flora-grid-step-fine));
+  border-radius: 12px;
+  background: var(--flora-bg);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Портал в body — не обрезается overflow у .feedPage и других скроллов. */
+.menuPanelDetached {
+  position: fixed;
+  margin: 0;
+  z-index: 200;
+}
+
+/* Отступ под триггером: --flora-rect-menu-gap-below (по умолчанию 1×15px). */
+.menuPanelAnchorTopRight {
+  top: calc(100% + var(--flora-rect-menu-gap-below, var(--flora-grid-step)));
+  right: 0;
+  transform-origin: top right;
+  animation: floraRectMenuInTopRight var(--flora-duration-1) var(--flora-ease-in-out) both;
+}
+
+.menuPanelAnchorBottomLeft {
+  bottom: calc(100% - 8px - var(--flora-grid-step) + 2px);
+  left: calc(1px - 2px);
+  transform-origin: 2px calc(100% - 2px);
+  animation: floraRectMenuInBottomLeft var(--flora-duration-1) var(--flora-ease-in-out) both;
+}
+
+.menuPanelClosing {
+  animation-duration: var(--flora-duration-1);
+  animation-timing-function: var(--flora-ease-in);
+  animation-fill-mode: forwards;
+}
+
+.menuPanelAnchorTopRight.menuPanelClosing {
+  animation-name: floraRectMenuOutTopRight;
+}
+
+.menuPanelAnchorBottomLeft.menuPanelClosing {
+  animation-name: floraRectMenuOutBottomLeft;
+}
+
+@keyframes floraRectMenuInTopRight {
+  from {
+    opacity: 0;
+    transform: translate3d(
+        calc(0.5 * var(--flora-grid-step-fine)),
+        calc(-1 * var(--flora-rect-menu-gap-below, var(--flora-grid-step)) - var(--flora-grid-step-fine) - 3px),
+        0
+      )
+      scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes floraRectMenuOutTopRight {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(
+        calc(0.5 * var(--flora-grid-step-fine)),
+        calc(-1 * var(--flora-rect-menu-gap-below, var(--flora-grid-step)) - var(--flora-grid-step-fine) - 3px),
+        0
+      )
+      scale(0.92);
+  }
+}
+
+@keyframes floraRectMenuInBottomLeft {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(-0.5 * var(--flora-grid-step-fine)), calc(var(--flora-grid-step-fine) + 3px), 0)
+      scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes floraRectMenuOutBottomLeft {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(calc(-0.5 * var(--flora-grid-step-fine)), calc(var(--flora-grid-step-fine) + 3px), 0)
+      scale(0.92);
+  }
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  width: 100%;
+  padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: rgba(var(--flora-white-template-rgb), 0.9);
+  font-family: var(--flora-font, inherit);
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  text-decoration: none;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.menuItem:hover {
+  background-color: var(--flora-secondary-hover-bg, var(--flora-reserve-hover-surface));
+  color: var(--flora-accent-hover, var(--flora-green-light));
+}
+
+.menuItem:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.menuItemIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--flora-gray);
+  transition: color 0.15s ease;
+}
+
+.menuItem:hover .menuItemIcon {
+  color: var(--flora-accent-hover, var(--flora-green-light));
+}
+
+.menuItemLabel {
+  flex: 1;
+  text-align: left;
+}
+
+.menuItemChevron {
+  flex-shrink: 0;
+  margin-left: calc(1 * var(--flora-grid-step-fine));
+  font-size: 14px;
+  line-height: 1;
+  color: var(--flora-gray);
+  transition: color 0.15s ease;
+}
+
+.menuItem:hover .menuItemChevron {
+  color: var(--flora-accent-hover, var(--flora-green-light));
+}
+
+.menuItemDanger {
+  color: rgba(var(--flora-white-template-rgb), 0.9);
+}
+
+.menuItemDanger .menuItemIcon {
+  color: color-mix(in srgb, #f6a8a8 85%, var(--flora-white-template) 15%);
+}
+
+.menuItemDanger:hover {
+  background-color: color-mix(in srgb, #f6a8a8 12%, transparent);
+  color: #f6a8a8;
+}
+
+.menuItemDanger:hover .menuItemIcon {
+  color: #f6a8a8;
+}
+
+.menuItemSubmenuWrap {
+  position: relative;
+}
+
+.menuSubmenuPanel {
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: calc(1.5 * var(--flora-grid-step-fine));
+  border-radius: 12px;
+  background: var(--flora-bg);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Портал справа от основного меню: origin слева сверху, выезд из зазора 1×15px. */
+.menuSubmenuPanelDetached {
+  position: fixed;
+  margin: 0;
+  transform-origin: top left;
+  animation: floraRectSubmenuIn var(--flora-duration-1) var(--flora-ease-in-out) both;
+}
+
+.menuSubmenuPanelClosing {
+  animation: floraRectSubmenuOut var(--flora-duration-1) var(--flora-ease-in) forwards;
+  pointer-events: none;
+}
+
+@keyframes floraRectSubmenuIn {
+  from {
+    opacity: 0;
+    transform: translate3d(
+        calc(-1 * var(--flora-grid-step) - var(--flora-grid-step-fine) - 3px),
+        0,
+        0
+      )
+      scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes floraRectSubmenuOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(
+        calc(-1 * var(--flora-grid-step) - var(--flora-grid-step-fine) - 3px),
+        0,
+        0
+      )
+      scale(0.92);
+  }
+}
+
+.menuItemSubmenuTriggerOpen {
+  background-color: var(--flora-secondary-hover-bg, var(--flora-reserve-hover-surface));
+  color: var(--flora-accent-hover, var(--flora-green-light));
+}
+
+.menuItemSubmenuTriggerOpen .menuItemIcon,
+.menuItemSubmenuTriggerOpen .menuItemChevron {
+  color: var(--flora-accent-hover, var(--flora-green-light));
+}
+
+.menuSubmenuItem {
+  display: block;
+  width: 100%;
+  padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(var(--flora-white-template-rgb), 0.9);
+  font-family: var(--flora-font, inherit);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.menuSubmenuItem:hover {
+  background-color: var(--flora-secondary-hover-bg, var(--flora-reserve-hover-surface));
+  color: var(--flora-accent-hover, var(--flora-green-light));
+}
+
+.menuSubmenuItem:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.menuSubmenuItem:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  color: var(--flora-gray);
+}
+
+.menuSubmenuItem:disabled:hover {
+  background: transparent;
+  color: var(--flora-gray);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menuPanel,
+  .menuPanelClosing {
+    animation: none;
+  }
+  .menuPanelClosing {
+    opacity: 0;
+  }
+
+  .menuSubmenuPanelDetached,
+  .menuSubmenuPanelClosing {
+    animation: none;
+  }
+
+  .menuSubmenuPanelClosing {
+    opacity: 0;
+  }
+}

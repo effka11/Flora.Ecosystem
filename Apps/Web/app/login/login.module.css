@@ -1,0 +1,729 @@
+﻿/* Luna.VPN / Flora auth visual (Colors.xaml + AuthStyles.xaml) */
+.page {
+  min-height: 100vh;
+  background: var(--flora-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 20px 28px;
+  font-family: inherit;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  --flora-grid-origin-x: calc(var(--flora-frame-left) - var(--flora-crop-x));
+  --flora-grid-origin-y: calc(var(--flora-frame-top) - var(--flora-crop-y));
+}
+
+.gridToggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 70;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 45%, var(--flora-gray));
+  background: color-mix(in srgb, var(--flora-bg) 78%, #000);
+  color: var(--flora-gray-light);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 1.1px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.gridToggleSecondary {
+  right: 122px;
+}
+
+.gridToggle.on {
+  border-color: var(--flora-green-light);
+  color: var(--flora-green-light);
+}
+
+.gridViewport {
+  position: fixed;
+  left: var(--flora-frame-left);
+  top: var(--flora-frame-top);
+  width: var(--flora-frame-width);
+  height: var(--flora-frame-height);
+  overflow: hidden;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.gridOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--flora-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--flora-grid-line) 1px, transparent 1px);
+  background-size: var(--flora-grid-step) var(--flora-grid-step);
+  background-position: calc(-1 * var(--flora-crop-x)) calc(-1 * var(--flora-crop-y));
+}
+
+.gridOverlayFine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--flora-grid-line-fine) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--flora-grid-line-fine) 1px, transparent 1px);
+  background-size: var(--flora-grid-step-fine) var(--flora-grid-step-fine);
+  background-position: calc(-1 * var(--flora-crop-x)) calc(-1 * var(--flora-crop-y));
+}
+
+.gridCoords {
+  position: fixed;
+  z-index: 75;
+  pointer-events: none;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, var(--flora-gray));
+  background: color-mix(in srgb, var(--flora-bg) 82%, #000);
+  color: var(--flora-white-template);
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.7px;
+}
+
+.gridCenterDot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--flora-green-light) 85%, #fff);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 70%, transparent);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.devBypassButton {
+  position: fixed;
+  right: calc(2 * var(--flora-grid-step));
+  bottom: calc(2 * var(--flora-grid-step));
+  z-index: 60;
+  height: calc(2 * var(--flora-grid-step));
+  padding: 0 calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 45%, var(--flora-gray));
+  background: color-mix(in srgb, var(--flora-bg) 80%, #000);
+  color: var(--flora-green-light);
+  font: 300 12px/1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.devBypassButton:hover {
+  border-color: var(--flora-green-light);
+  background: color-mix(in srgb, var(--flora-green-dark) 24%, var(--flora-bg));
+}
+
+.inner {
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.snapBound {
+  position: fixed;
+  margin: 0;
+  z-index: 30;
+}
+
+.logoRow {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 54 * var(--flora-grid-step));
+  top: calc(var(--flora-grid-origin-y) + 20 * var(--flora-grid-step));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 0 12px;
+  margin: 0;
+  min-height: 66px;
+  z-index: 31;
+}
+
+.page.registerMode .logoRow {
+  top: calc(var(--flora-grid-origin-y) + 18 * var(--flora-grid-step));
+}
+
+.page.profileSetupMode .logoRow {
+  top: calc(var(--flora-grid-origin-y) + 20 * var(--flora-grid-step));
+}
+
+.backToLoginFooter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--flora-gray);
+  transition: color 0.18s ease;
+}
+
+.backToLoginFooter:hover,
+.backToLoginFooter:focus-visible {
+  color: var(--flora-green-light);
+}
+
+.backToLoginFooter:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: 3px;
+}
+
+.backToLoginLabel {
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: 1.55px;
+  text-align: center;
+}
+
+.backToLoginFooter:hover .backToLoginLabel,
+.backToLoginFooter:focus-visible .backToLoginLabel {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.page.profileSetupMode .backToLoginFooter {
+  color: color-mix(in srgb, var(--flora-white-template) 78%, var(--flora-gray));
+}
+
+.page.profileSetupMode .backToLoginFooter:hover,
+.page.profileSetupMode .backToLoginFooter:focus-visible {
+  color: var(--flora-green-light);
+}
+
+.logoLetter {
+  font-size: 40px;
+  font-weight: 300;
+  line-height: 30px;
+  color: var(--flora-green-light);
+  letter-spacing: calc(var(--flora-grid-step-fine) - 2px);
+  user-select: none;
+}
+
+.formStack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fieldBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: 24px 1fr 26px;
+  column-gap: 11px;
+  align-items: center;
+  min-height: 42px;
+}
+
+.iconCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+}
+
+.emailIconCell,
+.passwordIconCell {
+  position: fixed;
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+  z-index: 31;
+}
+
+.emailIconCell {
+  left: calc(var(--flora-grid-origin-x) + 51 * var(--flora-grid-step) - 2 * var(--flora-grid-step-fine));
+  top: calc(var(--flora-grid-origin-y) + 27 * var(--flora-grid-step));
+}
+
+.passwordIconCell {
+  left: calc(var(--flora-grid-origin-x) + 51 * var(--flora-grid-step) - 2 * var(--flora-grid-step-fine));
+  top: calc(var(--flora-grid-origin-y) + 31 * var(--flora-grid-step));
+}
+
+.confirmPasswordIconCell {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 51 * var(--flora-grid-step) - 2 * var(--flora-grid-step-fine));
+  top: calc(var(--flora-grid-origin-y) + 33 * var(--flora-grid-step));
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+  z-index: 31;
+}
+
+.iconSvg {
+  width: 18px;
+  height: 18px;
+  color: color-mix(in srgb, var(--flora-gray-light) 86%, var(--flora-gray));
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+}
+
+.passwordIconSvg {
+  width: 23px;
+  height: 23px;
+}
+
+.fieldInputWrap {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 53 * var(--flora-grid-step));
+  width: calc((77 - 53 + 1) * var(--flora-grid-step));
+  min-height: calc(var(--flora-grid-step) + 4px);
+  z-index: 31;
+  display: flex;
+  align-items: center;
+}
+
+.emailIconCell + .fieldInputWrap {
+  top: calc(var(--flora-grid-origin-y) + 27 * var(--flora-grid-step));
+}
+
+.passwordIconCell + .fieldInputWrap {
+  top: calc(var(--flora-grid-origin-y) + 31 * var(--flora-grid-step));
+}
+
+.confirmPasswordIconCell + .fieldInputWrap {
+  top: calc(var(--flora-grid-origin-y) + 33 * var(--flora-grid-step));
+}
+
+.page.registerMode .emailIconCell + .fieldInputWrap {
+  top: calc(var(--flora-grid-origin-y) + 25 * var(--flora-grid-step));
+}
+
+.page.registerMode .passwordIconCell + .fieldInputWrap {
+  top: calc(var(--flora-grid-origin-y) + 29 * var(--flora-grid-step));
+}
+
+.page.registerMode .emailIconCell {
+  top: calc(var(--flora-grid-origin-y) + 25 * var(--flora-grid-step));
+}
+
+.page.registerMode .passwordIconCell {
+  top: calc(var(--flora-grid-origin-y) + 29 * var(--flora-grid-step));
+}
+
+.page.profileSetupMode .fieldInput {
+  color: var(--flora-white-template);
+}
+
+.page.profileSetupMode .fieldInput::placeholder {
+  color: color-mix(in srgb, var(--flora-white-template) 68%, transparent);
+}
+
+.page.profileSetupMode .iconSvg {
+  color: var(--flora-white-template);
+}
+
+.fieldInput {
+  font: 300 15px / 1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  width: 100%;
+  min-height: calc(var(--flora-grid-step) + 4px);
+  border: none;
+  outline: none;
+  background: transparent !important;
+  color: var(--flora-gray-light);
+  letter-spacing: 1.8px !important;
+  font-style: normal !important;
+  line-height: 1.2 !important;
+  padding: 0 0 2px 0;
+  padding-right: calc(var(--flora-grid-step) + 4px);
+}
+
+.fieldInput::placeholder {
+  color: color-mix(in srgb, var(--flora-gray) 92%, transparent);
+  transition: color 0.2s ease;
+}
+
+.fieldInput:-webkit-autofill,
+.fieldInput:-webkit-autofill:hover,
+.fieldInput:-webkit-autofill:focus,
+.fieldInput:-webkit-autofill:active {
+  font: 300 15px / 1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  letter-spacing: 1.8px !important;
+  font-style: normal !important;
+  -webkit-text-fill-color: var(--flora-gray-light);
+  box-shadow: 0 0 0 1000px transparent inset !important;
+  background-color: transparent !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+.fieldInput:-webkit-autofill::first-line {
+  font: 300 15px / 1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  letter-spacing: 1.8px !important;
+}
+
+.underlineTrack {
+  position: relative;
+  height: 1px;
+  background: color-mix(in srgb, var(--flora-gray) 78%, transparent);
+}
+
+.emailUnderlineTrack {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 50 * var(--flora-grid-step));
+  top: calc(var(--flora-grid-origin-y) + 29 * var(--flora-grid-step));
+  width: calc((78 - 50) * var(--flora-grid-step));
+}
+
+.passwordUnderlineTrack {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 50 * var(--flora-grid-step));
+  top: calc(var(--flora-grid-origin-y) + 33 * var(--flora-grid-step));
+  width: calc((77 - 50 + 1) * var(--flora-grid-step));
+}
+
+.confirmPasswordUnderlineTrack {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 50 * var(--flora-grid-step));
+  top: calc(var(--flora-grid-origin-y) + 35 * var(--flora-grid-step));
+  width: calc((77 - 50 + 1) * var(--flora-grid-step));
+}
+
+.page.registerMode .emailUnderlineTrack {
+  top: calc(var(--flora-grid-origin-y) + 27 * var(--flora-grid-step));
+}
+
+.page.registerMode .passwordUnderlineTrack {
+  top: calc(var(--flora-grid-origin-y) + 31 * var(--flora-grid-step));
+}
+
+.underlineActive {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--flora-green-light);
+  transform-origin: center;
+  transform: scaleX(0.35);
+  opacity: 0;
+  transition:
+    transform 0.18s cubic-bezier(0.33, 1, 0.68, 1),
+    opacity 0.18s ease;
+}
+
+.underlineActive.on {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: var(--flora-grid-step-fine);
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  height: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--flora-white-template);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.passwordToggle svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.passwordToggle.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.passwordToggle:focus-visible {
+  outline: 1px solid var(--flora-green-dark);
+  outline-offset: 2px;
+}
+
+.submit {
+  margin-top: 15px;
+  width: 100%;
+  height: 52px;
+  border-radius: 16px;
+  border: 1px solid var(--flora-gray);
+  background: transparent;
+  color: var(--flora-gray-light);
+  font: 300 15px / 1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  letter-spacing: 1.6px !important;
+  padding: 0 22px 3px;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease,
+    opacity 0.15s ease,
+    box-shadow 0.2s ease;
+}
+
+.submitGrid {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 50 * var(--flora-grid-step));
+  top: calc(var(--flora-grid-origin-y) + 36 * var(--flora-grid-step));
+  width: calc((77 - 50 + 1) * var(--flora-grid-step));
+  height: calc((37 - 35 + 2) * var(--flora-grid-step));
+  border-radius: 20px;
+  margin-top: 0;
+  z-index: 31;
+}
+
+.page.registerMode .submitGrid {
+  top: calc(var(--flora-grid-origin-y) + 38 * var(--flora-grid-step));
+}
+
+.submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--flora-green-dark) 22%, transparent);
+  border-color: var(--flora-green-light);
+  box-shadow: none;
+}
+
+.submit:active:not(:disabled) {
+  transform: scale(0.988);
+  opacity: 0.94;
+}
+
+.submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.links {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 50 * var(--flora-grid-step));
+  top: calc(var(--flora-grid-origin-y) + 42 * var(--flora-grid-step));
+  width: calc((77 - 50 + 1) * var(--flora-grid-step));
+  margin-top: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  z-index: 31;
+}
+
+.page.registerMode .links {
+  top: calc(var(--flora-grid-origin-y) + 44 * var(--flora-grid-step));
+}
+
+.page.verifyMode .fieldInput,
+.page.profileSetupMode .fieldInput,
+.page.verifyMode .submit,
+.page.profileSetupMode .submit,
+.page.verifyMode .linkMuted,
+.page.profileSetupMode .linkMuted,
+.page.verifyMode .linkAccent,
+.page.profileSetupMode .linkAccent {
+  color: var(--flora-white-template);
+}
+
+.page.verifyMode .fieldInput::placeholder,
+.page.profileSetupMode .fieldInput::placeholder {
+  color: color-mix(in srgb, var(--flora-white-template) 68%, transparent);
+}
+
+.page.verifyMode .iconSvg,
+.page.profileSetupMode .iconSvg {
+  color: var(--flora-white-template);
+}
+
+@keyframes fadeSlideLeftOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(-26px, 0, 0);
+  }
+}
+
+@keyframes fadeSlideLeftIn {
+  from {
+    opacity: 0;
+    transform: translate3d(22px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fadeSlideRightOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(26px, 0, 0);
+  }
+}
+
+@keyframes fadeSlideRightIn {
+  from {
+    opacity: 0;
+    transform: translate3d(-22px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.page.modeExitLeft .logoRow,
+.page.modeExitLeft .emailIconCell,
+.page.modeExitLeft .passwordIconCell,
+.page.modeExitLeft .confirmPasswordIconCell,
+.page.modeExitLeft .fieldInputWrap,
+.page.modeExitLeft .emailUnderlineTrack,
+.page.modeExitLeft .passwordUnderlineTrack,
+.page.modeExitLeft .confirmPasswordUnderlineTrack,
+.page.modeExitLeft .submitGrid,
+.page.modeExitLeft .links {
+  animation: fadeSlideLeftOut 0.15s cubic-bezier(0.4, 0, 1, 1) both;
+  will-change: transform, opacity;
+}
+
+.page.modeEnterLeft .logoRow,
+.page.modeEnterLeft .emailIconCell,
+.page.modeEnterLeft .passwordIconCell,
+.page.modeEnterLeft .confirmPasswordIconCell,
+.page.modeEnterLeft .fieldInputWrap,
+.page.modeEnterLeft .emailUnderlineTrack,
+.page.modeEnterLeft .passwordUnderlineTrack,
+.page.modeEnterLeft .confirmPasswordUnderlineTrack,
+.page.modeEnterLeft .submitGrid,
+.page.modeEnterLeft .links {
+  animation: fadeSlideLeftIn 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.page.modeExitRight .logoRow,
+.page.modeExitRight .emailIconCell,
+.page.modeExitRight .passwordIconCell,
+.page.modeExitRight .confirmPasswordIconCell,
+.page.modeExitRight .fieldInputWrap,
+.page.modeExitRight .emailUnderlineTrack,
+.page.modeExitRight .passwordUnderlineTrack,
+.page.modeExitRight .confirmPasswordUnderlineTrack,
+.page.modeExitRight .submitGrid,
+.page.modeExitRight .links {
+  animation: fadeSlideRightOut 0.15s cubic-bezier(0.4, 0, 1, 1) both;
+  will-change: transform, opacity;
+}
+
+.page.modeEnterRight .logoRow,
+.page.modeEnterRight .emailIconCell,
+.page.modeEnterRight .passwordIconCell,
+.page.modeEnterRight .confirmPasswordIconCell,
+.page.modeEnterRight .fieldInputWrap,
+.page.modeEnterRight .emailUnderlineTrack,
+.page.modeEnterRight .passwordUnderlineTrack,
+.page.modeEnterRight .confirmPasswordUnderlineTrack,
+.page.modeEnterRight .submitGrid,
+.page.modeEnterRight .links {
+  animation: fadeSlideRightIn 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.linkMuted {
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: 1.8px;
+  color: var(--flora-gray);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
+.linkAccent {
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: 1.8px;
+  color: var(--flora-green-light);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
+.linkMuted:hover,
+.linkAccent:hover {
+  text-decoration: underline;
+}
+
+.error {
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--flora-gray);
+  text-align: center;
+  line-height: 1.4;
+  margin: 0 0 4px;
+}
+
+.devVerificationHint {
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--flora-gray);
+  text-align: center;
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+
+.devVerificationHint strong {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.busyOverlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  z-index: 50;
+  background: color-mix(in srgb, var(--flora-bg) 35%, transparent);
+}
+
+.busyDot {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--flora-green-light);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

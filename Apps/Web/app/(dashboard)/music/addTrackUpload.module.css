@@ -1,0 +1,1482 @@
+.addTrackScroll {
+  /* Непрозрачные поверхности меню (без --flora-green-bubble из messages). */
+  --add-track-menu-bg: color-mix(in srgb, var(--flora-bg) 90%, #1a2218 10%);
+  --add-track-menu-border: color-mix(in srgb, var(--flora-green-light) 30%, var(--flora-green-dark));
+  --add-track-menu-hover-bg: color-mix(in srgb, var(--flora-green-light) 14%, var(--flora-bg));
+  --add-track-menu-active-bg: color-mix(in srgb, var(--flora-green-light) 20%, var(--flora-bg));
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow-x: visible;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Колонки 38…89 внутри .content (37…90): как padding в messages.module.css. */
+  padding: calc(2 * var(--flora-grid-step))
+    calc((90 - 89) * var(--flora-grid-step))
+    calc(4 * var(--flora-grid-step))
+    calc((38 - 37) * var(--flora-grid-step));
+  box-sizing: border-box;
+}
+
+.addTrackScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.addTrackForm {
+  /* Полоса формы 38…89; поля ввода — до вертикали 65. */
+  --add-track-band-width: calc((89 - 38 + 1) * var(--flora-grid-step));
+  /* 38…65 минус 3 клетки справа → 25 клеток (до вертикали 62). */
+  --add-track-fields-width: calc((65 - 38 + 1 - 3) * var(--flora-grid-step));
+  --add-track-fields-gap: calc(4 * var(--flora-grid-step));
+  --add-track-cover-span: 15;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(3 * var(--flora-grid-step));
+}
+
+/* Поля 38…62, зазор 4 клетки (обложка на месте), превью 15×15. */
+.addTrackFormGrid {
+  flex: 0 0 auto;
+  width: calc(
+    (65 - 38 + 1 - 3 + 4 + 15) * var(--flora-grid-step)
+  );
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, var(--add-track-fields-width))
+    calc(var(--add-track-cover-span) * var(--flora-grid-step));
+  gap: var(--add-track-fields-gap);
+  align-items: start;
+}
+
+.addTrackFormMain {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step) - 1px);
+  width: var(--add-track-fields-width);
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+}
+
+.addTrackFormAside {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step));
+  width: calc(var(--add-track-cover-span) * var(--flora-grid-step));
+  max-width: calc(var(--add-track-cover-span) * var(--flora-grid-step));
+  min-width: 0;
+  overflow: visible;
+  margin-left: 0;
+  margin-top: calc(-1 * var(--flora-grid-step-fine));
+}
+
+/* Только «На площадку»: обложка на 8 клеток правее полей. */
+.addTrackFormPlatform {
+  --add-track-cover-shift: calc(8 * var(--flora-grid-step));
+}
+
+.addTrackFormPlatform .addTrackFormGrid {
+  width: calc((65 - 38 + 1 - 3 + 4 + 8 + 15) * var(--flora-grid-step));
+  overflow: visible;
+}
+
+.addTrackFormPlatform .addTrackFormAside {
+  margin-left: var(--add-track-cover-shift);
+}
+
+.addTrackFormPlatform .addTrackFormMain {
+  position: relative;
+  overflow: visible;
+}
+
+/* Исполнитель + «+» (3×3), зазор 2; +5 клеток в зазор до обложки (поле и «+»), обложка не сдвигается. */
+.addTrackFormPlatform .addTrackArtistInputRow {
+  display: grid;
+  grid-template-columns:
+    minmax(
+      0,
+      calc(
+        var(--add-track-fields-width) - 2 * var(--flora-grid-step) - 3 * var(--flora-grid-step) +
+          5 * var(--flora-grid-step)
+      )
+    )
+    calc(3 * var(--flora-grid-step));
+  gap: calc(2 * var(--flora-grid-step));
+  align-items: center;
+  width: calc(var(--add-track-fields-width) + 5 * var(--flora-grid-step));
+  max-width: none;
+}
+
+.addTrackArtistPlusBtn {
+  width: calc(3 * var(--flora-grid-step));
+  height: calc(3 * var(--flora-grid-step));
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid var(--flora-green-dark);
+  border-radius: calc(3 * var(--flora-grid-step-fine));
+  background: var(--flora-accent-fill-subtle);
+  color: var(--flora-green-light);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.addTrackArtistPlusBtn svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.addTrackArtistPlusBtn:hover {
+  background: var(--flora-accent-fill-subtle-hover);
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+  border-color: color-mix(in srgb, var(--flora-green-light) 42%, rgba(var(--flora-white-template-rgb), 0.25));
+}
+
+.addTrackArtistPlusBtn[data-open] {
+  background: var(--flora-accent-fill-subtle-hover);
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+  border-color: color-mix(in srgb, var(--flora-green-light) 42%, rgba(var(--flora-white-template-rgb), 0.25));
+}
+
+.addTrackArtistPlusWrap {
+  position: relative;
+  z-index: 2;
+}
+
+.addTrackArtistJoinMenu {
+  position: absolute;
+  top: calc(100% + var(--flora-grid-step-fine));
+  right: 0;
+  z-index: 30;
+  min-width: calc(10 * var(--flora-grid-step));
+  padding: var(--flora-grid-step-fine);
+  background: var(--add-track-menu-bg);
+  border: 1px solid var(--add-track-menu-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  isolation: isolate;
+}
+
+.addTrackArtistJoinItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: calc(2 * var(--flora-grid-step-fine)) var(--flora-grid-step);
+  border: none;
+  background: var(--add-track-menu-bg);
+  color: var(--flora-gray);
+  font-weight: 300;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--flora-grid-step-fine);
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.addTrackArtistJoinItem:hover {
+  background: var(--add-track-menu-hover-bg);
+  color: var(--flora-gray-hover);
+}
+
+.addTrackArtistJoinItemActive {
+  color: var(--flora-green-light);
+  background: var(--add-track-menu-active-bg);
+}
+
+.addTrackArtistJoinItemActive:hover {
+  background: var(--add-track-menu-active-bg);
+  color: var(--flora-green-light);
+}
+
+/* Под полями, в свободной зоне колонки до драг-н-дропа; не двигает drop. */
+.addTrackFormPlatform .addTrackFormMain .addTrackCheckboxes {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  width: 100%;
+  margin-top: calc(5 * var(--flora-grid-step));
+  gap: calc(1.5 * var(--flora-grid-step));
+  z-index: 1;
+}
+
+.addTrackFormPlatform .addTrackFormMain .addTrackCheckboxRow .addTrackCheckboxLabel {
+  transform: translateY(-3px);
+}
+
+.addTrackFormPlatform .addTrackDropSection {
+  margin-top: calc(7 * var(--flora-grid-step));
+}
+
+.addTrackField {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  min-width: 0;
+}
+
+.addTrackFieldRow {
+  display: flex;
+  gap: calc(2 * var(--flora-grid-step));
+  width: 100%;
+}
+
+.addTrackFieldRow > .addTrackField {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Жанр 16 + зазор 2 + лицензия (W−10); +8 клеток жанра в зазор до обложки, обложка не сдвигается. */
+.addTrackFieldRow:has(.addTrackFieldLicense) {
+  display: grid;
+  grid-template-columns:
+    minmax(0, calc(16 * var(--flora-grid-step)))
+    minmax(0, calc(var(--add-track-fields-width) - 10 * var(--flora-grid-step)));
+  gap: calc(2 * var(--flora-grid-step));
+  align-items: start;
+  width: calc(var(--add-track-fields-width) + 8 * var(--flora-grid-step));
+  max-width: none;
+}
+
+.addTrackFieldRow:has(.addTrackFieldLicense) > .addTrackField {
+  flex: none;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.addTrackLabel {
+  margin: 0;
+  color: var(--flora-white-template);
+  font-weight: 300;
+}
+
+/* Как .musicSearchBox / .musicSearchInput в music.module.css */
+.addTrackInputBox {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: calc((5 - 3 + 1) * var(--flora-grid-step));
+  padding: 0 calc(var(--flora-grid-step) - 1px);
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--flora-green-dark);
+  background: transparent;
+}
+
+.addTrackInput {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.addTrackInput::placeholder {
+  color: var(--flora-gray);
+}
+
+/* Исполнитель: зеркало под прозрачным текстом input — joiner серым (.addTrackArtistJoiner). */
+.addTrackArtistInputOverlayWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.addTrackArtistInputMirror {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: pre;
+  pointer-events: none;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.addTrackArtistInputMirrorText {
+  color: var(--flora-white-template);
+}
+
+.addTrackArtistJoiner {
+  color: var(--flora-gray);
+  font-weight: 300;
+}
+
+.addTrackArtistInputOverlay {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--flora-white-template);
+}
+
+.addTrackArtistInputOverlay::placeholder {
+  color: var(--flora-gray);
+  -webkit-text-fill-color: var(--flora-gray);
+}
+
+.addTrackArtistInputOverlay:focus::placeholder {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.artistPicker {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.5 * var(--flora-grid-step));
+  width: 100%;
+  min-width: 0;
+}
+
+.artistPickerSelected {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step-fine));
+}
+
+.artistPickerSelectedRow {
+  min-height: calc(3 * var(--flora-grid-step));
+  box-sizing: border-box;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
+  border-radius: 12px;
+  background: rgba(var(--flora-white-template-rgb), 0.03);
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  padding: calc(1 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+}
+
+.artistPickerJoinerSelect {
+  flex: 0 0 calc(5 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  border: 1px solid var(--flora-green-dark);
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: var(--add-track-menu-bg);
+  color: var(--flora-green-light);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  outline: none;
+}
+
+.artistPickerJoinerText {
+  flex: 0 0 calc(5 * var(--flora-grid-step));
+  color: var(--flora-gray);
+  font-weight: 300;
+}
+
+.artistPickerSelectedName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.artistPickerRemoveBtn {
+  flex: 0 0 calc(2 * var(--flora-grid-step));
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--flora-gray);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.artistPickerRemoveBtn:hover {
+  color: #ff7e7e;
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.artistPickerRemoveBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.artistPickerSearchBlock {
+  position: relative;
+  z-index: 5;
+}
+
+.artistPickerSearchRow {
+  display: flex;
+  align-items: stretch;
+  gap: calc(1 * var(--flora-grid-step));
+}
+
+.artistPickerSearchRow .addTrackInputBox {
+  flex: 1;
+  min-width: 0;
+}
+
+.artistPickerAddBtn {
+  flex: 0 0 calc(3 * var(--flora-grid-step));
+  width: calc(3 * var(--flora-grid-step));
+  height: calc((5 - 3 + 1) * var(--flora-grid-step));
+  margin: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--flora-green-light);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.artistPickerAddBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+  border-color: color-mix(in srgb, var(--flora-green-light) 60%, transparent);
+}
+
+.artistPickerAddBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.artistPickerAddBtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.artistPickerResults {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--flora-grid-step-fine));
+  z-index: 40;
+  max-height: calc(16 * var(--flora-grid-step));
+  overflow-y: auto;
+  border: 1px solid var(--add-track-menu-border);
+  border-radius: 12px;
+  background: var(--add-track-menu-bg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: var(--flora-grid-step-fine);
+}
+
+.artistPickerResultBtn {
+  width: 100%;
+  margin: 0;
+  padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  border: none;
+  border-radius: var(--flora-grid-step-fine);
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.artistPickerResultBtn:hover:not(:disabled),
+.artistPickerResultBtn:focus-visible:not(:disabled) {
+  background: var(--add-track-menu-hover-bg);
+}
+
+.artistPickerResultBtn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.artistPickerResultName {
+  color: var(--flora-white-template);
+  font-weight: 300;
+}
+
+.artistPickerResultMeta,
+.artistPickerResultHint {
+  color: var(--flora-gray);
+  font-weight: 300;
+}
+
+.artistPickerResultHint {
+  margin: 0;
+  padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+}
+
+.artistCreateModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.artistCreateModal {
+  position: fixed;
+  inset: 0;
+  z-index: 81;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(2 * var(--flora-grid-step));
+  pointer-events: none;
+}
+
+.artistCreateModalDialog {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(calc(36 * var(--flora-grid-step)), 92vw);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
+  border-radius: 12px;
+  background: var(--flora-bg);
+  box-shadow: var(--flora-reserve-popover-shadow);
+}
+
+.artistCreateModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(1 * var(--flora-grid-step));
+  padding: calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step)) calc(1 * var(--flora-grid-step));
+}
+
+.artistCreateModalTitle {
+  margin: 0;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.artistCreateModalClose {
+  width: calc(3 * var(--flora-grid-step));
+  height: calc(3 * var(--flora-grid-step));
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--flora-gray);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.artistCreateModalClose:hover:not(:disabled) {
+  color: var(--flora-gray-hover);
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.artistCreateModalBody {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step));
+  padding: 0 calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step));
+}
+
+.artistCreateModalText {
+  margin: 0;
+  color: var(--flora-gray);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.45;
+}
+
+.artistCreateCoverField {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step-fine));
+}
+
+.artistCreateCoverRow {
+  display: grid;
+  grid-template-columns: calc(6 * var(--flora-grid-step)) minmax(0, 1fr);
+  gap: calc(1 * var(--flora-grid-step));
+  align-items: center;
+}
+
+.artistCreateCoverPreview {
+  width: calc(6 * var(--flora-grid-step));
+  height: calc(6 * var(--flora-grid-step));
+  overflow: hidden;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 76% 18%, color-mix(in srgb, var(--flora-green-light) 18%, transparent) 0%, transparent 58%),
+    linear-gradient(145deg, color-mix(in srgb, var(--flora-green-light) 24%, #121212) 0%, #121212 100%);
+  display: grid;
+  place-items: center;
+  color: var(--flora-green-light);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 32px;
+  font-weight: 400;
+}
+
+.artistCreateCoverImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-position: center;
+  background-size: cover;
+}
+
+.artistCreateCoverControls {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step-fine));
+  min-width: 0;
+}
+
+.artistCreateCoverInput {
+  width: 100%;
+  color: var(--flora-gray);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 14px;
+}
+
+.artistCreateCoverHint {
+  margin: 0;
+  color: var(--flora-gray);
+  font-weight: 300;
+}
+
+.artistCreateModalActions {
+  display: flex;
+  gap: calc(1 * var(--flora-grid-step));
+  padding: 0 calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step));
+}
+
+.artistCreateModalBtnPrimary,
+.artistCreateModalBtnCancel {
+  min-height: calc(3 * var(--flora-grid-step));
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  cursor: pointer;
+}
+
+.artistCreateModalBtnPrimary {
+  color: var(--flora-green-light);
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+  border-color: color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+}
+
+.artistCreateModalBtnPrimary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--flora-green-light) 18%, transparent);
+  border-color: color-mix(in srgb, var(--flora-green-light) 60%, transparent);
+}
+
+.artistCreateModalBtnCancel {
+  color: var(--flora-gray);
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+  border-color: rgba(var(--flora-white-template-rgb), 0.1);
+}
+
+.artistCreateModalBtnCancel:hover:not(:disabled) {
+  color: var(--flora-gray-hover);
+  background: rgba(var(--flora-white-template-rgb), 0.1);
+}
+
+.artistCreateModalClose:disabled,
+.artistCreateModalBtnPrimary:disabled,
+.artistCreateModalBtnCancel:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.addTrackHint {
+  margin: 0;
+  color: var(--flora-gray);
+  font-weight: 300;
+  line-height: 1.35;
+}
+
+.addTrackCoverPanel {
+  /* Квадратики палитр: 3×3 клетки, зазор 1 клетка (первичная сетка). */
+  --cover-swatch-gap: calc(1 * var(--flora-grid-step));
+  --cover-swatch-size: calc(3 * var(--flora-grid-step));
+  display: flex;
+  flex-direction: column;
+  gap: var(--cover-swatch-gap);
+  overflow: visible;
+  width: 100%;
+}
+
+/* Квадрат на месте (100% колонки); типы записи 2×4 — абсолютно справа от квадрата. */
+.addTrackCoverPreviewRow {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+}
+
+.addTrackCoverPreview {
+  position: relative;
+  width: calc(var(--add-track-cover-span) * var(--flora-grid-step));
+  height: calc(var(--add-track-cover-span) * var(--flora-grid-step));
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  transition: background 0.2s ease;
+}
+
+.addTrackCoverPreviewKindIcon {
+  display: block;
+  flex-shrink: 0;
+  width: calc(8 * var(--flora-grid-step));
+  height: calc(8 * var(--flora-grid-step));
+  color: rgba(var(--flora-white-template-rgb), 0.92);
+  filter: drop-shadow(0 2px 16px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+}
+
+.addTrackCoverSwatches {
+  display: grid;
+  grid-template-columns: repeat(4, var(--cover-swatch-size));
+  gap: var(--cover-swatch-gap);
+  width: calc(4 * var(--cover-swatch-size) + 3 * var(--cover-swatch-gap));
+}
+
+.addTrackCoverSymbolPalette {
+  position: absolute;
+  left: calc(100% + var(--flora-grid-step));
+  top: 0;
+  width: calc(2 * var(--cover-swatch-size) + var(--cover-swatch-gap));
+  height: 100%;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.addTrackCoverSymbolSwatches {
+  display: grid;
+  grid-template-columns: repeat(2, var(--cover-swatch-size));
+  grid-template-rows: repeat(4, var(--cover-swatch-size));
+  gap: var(--cover-swatch-gap);
+  width: fit-content;
+  height: fit-content;
+}
+
+.addTrackCoverSwatch {
+  width: var(--cover-swatch-size);
+  height: var(--cover-swatch-size);
+  padding: 0;
+  box-sizing: border-box;
+  border: 2px solid transparent;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+
+.addTrackCoverSwatch:hover {
+  transform: scale(1.04);
+}
+
+.addTrackCoverSwatch[data-selected] {
+  border-color: var(--flora-green-light);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--flora-green-light) 35%, transparent);
+}
+
+.addTrackCoverSymbolSwatch {
+  width: var(--cover-swatch-size);
+  height: var(--cover-swatch-size);
+  padding: 0;
+  box-sizing: border-box;
+  border: 2px solid transparent;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+  color: var(--flora-gray);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+
+.addTrackCoverSymbolSwatch:hover {
+  transform: scale(1.04);
+  background: rgba(var(--flora-white-template-rgb), 0.1);
+  color: var(--flora-white-template);
+}
+
+.addTrackCoverSymbolSwatch[data-selected] {
+  border-color: var(--flora-green-light);
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+  color: var(--flora-green-light);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--flora-green-light) 35%, transparent);
+}
+
+.addTrackCoverKindSwatchIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.addTrackDropSection {
+  flex: 1 1 0;
+  min-height: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  max-width: 100%;
+  margin-top: calc(1 * var(--flora-grid-step));
+}
+
+.addTrackDropSectionCompact {
+  flex: 0 0 auto;
+  min-height: auto;
+  width: var(--add-track-band-width);
+}
+
+.addTrackDropZone {
+  position: relative;
+  flex: 0 0 auto;
+  height: calc(20 * var(--flora-grid-step));
+  min-height: calc(20 * var(--flora-grid-step));
+  width: 100%;
+  padding: calc(2 * var(--flora-grid-step));
+  box-sizing: border-box;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  border: 1px dashed color-mix(in srgb, var(--flora-green-light) 28%, rgba(var(--flora-white-template-rgb), 0.2));
+  background: var(--flora-accent-fill-subtle);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.addTrackDropZoneCompact {
+  height: calc(5 * var(--flora-grid-step));
+  min-height: calc(5 * var(--flora-grid-step));
+  flex-direction: row;
+  justify-content: flex-start;
+  padding: 0 calc(2 * var(--flora-grid-step));
+  text-align: left;
+}
+
+.addTrackDropZone:hover {
+  border-color: color-mix(in srgb, var(--flora-green-light) 42%, rgba(var(--flora-white-template-rgb), 0.25));
+}
+
+.addTrackDropZone[data-drag-over] {
+  border-color: var(--flora-green-light);
+}
+
+.addTrackDropZone[data-has-file] {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--flora-green-light) 35%, transparent);
+  cursor: default;
+}
+
+.addTrackDropZone[data-error] {
+  border-color: color-mix(in srgb, #e07a7a 55%, transparent);
+}
+
+.addTrackDropIcon {
+  width: calc(4 * var(--flora-grid-step));
+  height: calc(4 * var(--flora-grid-step));
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flora-green-light) 14%, transparent);
+  color: var(--flora-green-light);
+}
+
+.addTrackDropZoneCompact .addTrackDropIcon {
+  width: calc(3 * var(--flora-grid-step));
+  height: calc(3 * var(--flora-grid-step));
+}
+
+.addTrackDropZoneCompact .addTrackDropIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.addTrackDropZoneText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.addTrackDropTitle {
+  margin: 0;
+  color: var(--flora-white-template);
+  font-weight: 300;
+}
+
+.addTrackDropHint {
+  margin: 0;
+  max-width: calc(28 * var(--flora-grid-step));
+  color: var(--flora-gray);
+  font-weight: 300;
+  line-height: 1.4;
+}
+
+.addTrackDropFileName {
+  margin: 0;
+  max-width: 100%;
+  color: var(--flora-green-light);
+  font-weight: 300;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.addTrackDropError {
+  margin: 0;
+  color: #e8a0a0;
+  font-weight: 300;
+}
+
+.addTrackFileInput {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.addTrackChooseBtn {
+  height: calc(3 * var(--flora-grid-step));
+  padding: 0 calc(3 * var(--flora-grid-step));
+  border: none;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: color-mix(in srgb, var(--flora-green-light) 16%, transparent);
+  color: var(--flora-green-light);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.addTrackChooseBtn:hover {
+  background: color-mix(in srgb, var(--flora-green-light) 24%, transparent);
+  color: color-mix(in srgb, var(--flora-green-light) 92%, #fff 8%);
+}
+
+.addTrackReplaceBtn {
+  margin-top: calc(1 * var(--flora-grid-step-fine));
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+
+.addTrackReplaceBtn:hover {
+  color: var(--flora-gray-hover);
+}
+
+.addTrackSubmitBtnInZone {
+  margin-top: calc(2 * var(--flora-grid-step));
+}
+
+.addTrackSubmitBtn {
+  height: calc(4 * var(--flora-grid-step));
+  padding: 0 calc(4 * var(--flora-grid-step));
+  border: none;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: var(--flora-green-light);
+  color: var(--flora-bg);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.addTrackSubmitBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+}
+
+.addTrackSubmitBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.addTrackUploadSuccess {
+  margin: calc(2 * var(--flora-grid-step)) 0 0;
+  color: var(--flora-green-light);
+}
+
+.addTrackPlaceholder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(4 * var(--flora-grid-step)) var(--flora-grid-step);
+  color: var(--flora-gray);
+  text-align: center;
+}
+
+/* Кастомные дропдауны: жанр и лицензия */
+.addTrackGenreSelectWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  z-index: 2;
+}
+
+.addTrackGenreTrigger {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: var(--flora-tracking-15);
+  text-align: left;
+  cursor: pointer;
+}
+
+.addTrackGenreTriggerValue {
+  color: var(--flora-white-template);
+}
+
+.addTrackGenreTriggerPlaceholder {
+  color: var(--flora-gray);
+}
+
+.addTrackGenreMenu {
+  position: absolute;
+  top: calc(100% + var(--flora-grid-step-fine));
+  left: 0;
+  min-width: 100%;
+  z-index: 30;
+  max-height: calc(18 * var(--flora-grid-step));
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: var(--flora-grid-step-fine);
+  background: var(--add-track-menu-bg);
+  border: 1px solid var(--add-track-menu-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  isolation: isolate;
+}
+
+.addTrackGenreMenu::-webkit-scrollbar {
+  display: none;
+}
+
+.addTrackGenreMenuItem,
+.addTrackGenreMenuBack {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: calc(2 * var(--flora-grid-step-fine)) var(--flora-grid-step);
+  border: none;
+  background: var(--add-track-menu-bg);
+  font-weight: 300;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--flora-grid-step-fine);
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.addTrackGenreMenuItem {
+  color: var(--flora-gray);
+}
+
+.addTrackGenreMenuItem:hover {
+  background: var(--add-track-menu-hover-bg);
+  color: var(--flora-gray-hover);
+}
+
+.addTrackGenreMenuItemActive {
+  color: var(--flora-green-light);
+  background: var(--add-track-menu-active-bg);
+}
+
+.addTrackGenreMenuItemActive:hover {
+  background: var(--add-track-menu-active-bg);
+  color: var(--flora-green-light);
+}
+
+.addTrackGenreMenuBack {
+  color: var(--flora-green-light);
+  background: var(--add-track-menu-bg);
+  border-bottom: 1px solid var(--add-track-menu-border);
+  border-radius: var(--flora-grid-step-fine) var(--flora-grid-step-fine) 0 0;
+  margin-bottom: 2px;
+}
+
+.addTrackGenreMenuBack:hover {
+  background: var(--add-track-menu-hover-bg);
+}
+
+.addTrackSelectIcon {
+  width: 20px;
+  height: 20px;
+  color: var(--flora-gray);
+  pointer-events: none;
+  margin-left: calc(2 * var(--flora-grid-step-fine));
+}
+
+.addTrackLabelRow {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+}
+
+.addTrackLabelInfoGroup {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+}
+
+.addTrackLabelInfoBtn {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(var(--flora-white-template-rgb), 0.1);
+  color: var(--flora-gray);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.addTrackLabelInfoBtn:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.2);
+  color: var(--flora-gray-hover);
+}
+
+.addTrackLabelWarningWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.addTrackLabelWarningBtn {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in srgb, #e0a843 15%, transparent);
+  color: #e0a843;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.addTrackLabelWarningBtn:hover {
+  color: #f2c063;
+  background: color-mix(in srgb, #e0a843 25%, transparent);
+}
+
+.addTrackLabelInfoTooltip {
+  position: absolute;
+  left: calc(100% + 2 * var(--flora-grid-step-fine));
+  top: 50%;
+  transform: translateY(-50%);
+  width: 280px;
+  padding: calc(1.5 * var(--flora-grid-step));
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  background: color-mix(in srgb, var(--flora-bg) 95%, #e0a843);
+  border: 1px solid color-mix(in srgb, #e0a843 35%, transparent);
+  color: #e0a843;
+  line-height: 1.4;
+  font-size: 13px;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.addTrackLabelWarningWrap:hover .addTrackLabelInfoTooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.addTrackWarning {
+  display: none;
+}
+
+.addTrackCoverUploadBtn {
+  position: relative;
+  width: calc(var(--add-track-cover-span) * var(--flora-grid-step));
+  height: calc(var(--add-track-cover-span) * var(--flora-grid-step));
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  border: 1px dashed color-mix(in srgb, var(--flora-green-light) 28%, rgba(var(--flora-white-template-rgb), 0.2));
+  background: var(--flora-accent-fill-subtle);
+  color: var(--flora-green-light);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  overflow: hidden;
+}
+
+.addTrackCoverUploadBtn:hover {
+  border-color: color-mix(in srgb, var(--flora-green-light) 42%, rgba(var(--flora-white-template-rgb), 0.25));
+  background: var(--flora-accent-fill-subtle-hover);
+}
+
+.addTrackCoverUploadImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.addTrackCheckboxes {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step));
+  margin-top: calc(2 * var(--flora-grid-step));
+}
+
+.addTrackCheckboxRow {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(3 * var(--flora-grid-step-fine));
+  cursor: pointer;
+}
+
+.addTrackCheckboxInput {
+  appearance: none;
+  width: calc(var(--flora-grid-step) + 1px);
+  height: calc(var(--flora-grid-step) + 1px);
+  box-sizing: border-box;
+  border: 1px solid var(--flora-gray);
+  border-radius: calc(1 * var(--flora-grid-step-fine));
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  margin: 0;
+  transform: translateY(1px);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.addTrackCheckboxInput:checked {
+  border-color: var(--flora-green-light);
+  background: var(--flora-green-light);
+}
+
+.addTrackCheckboxInput::after {
+  content: "";
+  width: calc(0.65 * var(--flora-grid-step));
+  height: calc(0.5 * var(--flora-grid-step));
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  background: var(--flora-bg);
+  transform: scale(0);
+  transition: transform 0.15s ease;
+}
+
+.addTrackCheckboxInput:checked::after {
+  transform: scale(1);
+}
+
+.addTrackCheckboxLabel {
+  margin: 0;
+  color: var(--flora-gray);
+  font-weight: 300;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.addTrackCheckboxLabelTwoLines {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+  gap: 0;
+}
+
+.addTrackCheckboxLabelLine {
+  display: block;
+  white-space: nowrap;
+}
+
+.addTrackCheckboxLabel a {
+  color: var(--flora-green-light);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.addTrackCheckboxLabel a:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 80%, #fff);
+}
+
+.addTrackActions {
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--flora-grid-step));
+  margin-top: calc(4 * var(--flora-grid-step));
+}
+
+.addTrackFooter {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: calc(4 * var(--flora-grid-step));
+  margin-top: calc(0.5 * var(--flora-grid-step));
+  width: var(--add-track-band-width);
+  max-width: 100%;
+}
+
+.addTrackCheckboxesCompact {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.5 * var(--flora-grid-step));
+  flex: 1;
+  min-width: 0;
+}
+
+.addTrackActionsCompact {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step));
+  flex-shrink: 0;
+}
+
+.addTrackPrimaryBtn {
+  height: calc(8 * var(--flora-grid-step-fine));
+  padding: 0 calc(6 * var(--flora-grid-step-fine));
+  border-radius: 999px;
+  border: none;
+  background: var(--flora-green-light);
+  color: var(--flora-bg);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.addTrackPrimaryBtn:hover {
+  background: color-mix(in srgb, var(--flora-green-light) 85%, #fff);
+}
+
+.addTrackSecondaryBtn {
+  height: calc(8 * var(--flora-grid-step-fine));
+  padding: 0 calc(4 * var(--flora-grid-step-fine));
+  border-radius: 999px;
+  border: 1px solid var(--flora-gray);
+  background: transparent;
+  color: var(--flora-gray);
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.addTrackSecondaryBtn:hover {
+  border-color: var(--flora-gray-hover);
+  background: rgba(var(--flora-white-template-rgb), 0.05);
+  color: var(--flora-gray-hover);
+}
+
+@media (max-width: 900px) {
+  .addTrackFormGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .addTrackFormMain {
+    margin-left: 0;
+  }
+
+  .addTrackFormAside {
+    order: -1;
+  }
+
+  .addTrackFormAside {
+    width: calc(10 * var(--flora-grid-step));
+    max-width: calc(10 * var(--flora-grid-step));
+    margin-left: 0;
+  }
+
+}

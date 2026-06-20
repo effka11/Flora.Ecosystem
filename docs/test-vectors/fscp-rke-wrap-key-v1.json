@@ -1,0 +1,32 @@
+{
+  "vectorId": "fscp_rke_wrap_key_v1_success",
+  "fscpProtocolVersion": 1,
+  "messageEnvelopeVersion": 1,
+  "algorithm": "x25519-hkdf-xchacha20poly1305",
+  "uuids": {
+    "conversationUuid": "11111111-1111-4111-8111-111111111111",
+    "keyEpochId": "22222222-2222-4222-8222-222222222222",
+    "messageUuid": "33333333-3333-4333-8333-333333333333",
+    "messageKeyId": "44444444-4444-4444-8444-444444444444",
+    "senderUserUuid": "55555555-5555-4555-8555-555555555555",
+    "senderDeviceUuid": "66666666-6666-4666-8666-666666666666",
+    "recipientUserUuid": "77777777-7777-4777-8777-777777777777",
+    "recipientDeviceUuid": "88888888-8888-4888-8888-888888888888",
+    "recipientAgreementPublicKeyId": "99999999-9999-4999-8999-999999999999"
+  },
+  "aadUtf8": "flora.messaging.recipient-key-envelope.v1 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222 | 33333333-3333-4333-8333-333333333333 | 44444444-4444-4444-8444-444444444444 | 55555555-5555-4555-8555-555555555555 | 66666666-6666-4666-8666-666666666666 | 77777777-7777-4777-8777-777777777777 | 88888888-8888-4888-8888-888888888888 | 99999999-9999-4999-8999-999999999999",
+  "aliceEphemeralPrivateKeyBase64Url": "4N9L7sTXFVxn8LEiBzTlIN2Ls-a55AiZo8n3n28icak",
+  "aliceEphemeralPublicKeyBase64Url": "JnudMX315uvEA6bqZQbesFgJGKHaMs-DXM3ORiMCRnI",
+  "bobAgreementPrivateKeyBase64Url": "i3tCbqxIv4X1p_sjtzemLr0X8xTEYMGvwlpgVMCtanw",
+  "bobAgreementPublicKeyBase64Url": "IYsmxSZEoOurjorQKJDxiBTHK0XAIo4Z6Bs7m-p5PFw",
+  "x25519SharedSecretBase64Url": "qw2rGEPze60Pbog3j4M9CsjvcXikgJRq5jqCKUv7oi4",
+  "hkdfSaltBase64Url": "mZgj9R5oKpFHkPp6x1pXeasyV4GY8WdKD-3XrO6ar0c",
+  "hkdfInfoIsAad": true,
+  "wrapKeyBase64Url": "0jhvOIzCO_otNl0jcnig_oEjH5kNSuKNIl-Pr7H2ctM",
+  "messageKeyBase64Url": "0wsgr4DRZTjfa3ZuWKm_YHja8mI9UYbaHg8HR902uD0",
+  "aead": {
+    "name": "xchacha20-poly1305",
+    "nonceBase64Url": "Ny7zhLjW3_0hjEMO_Xj7VVfRn9AuzA2s",
+    "ciphertextBase64Url": "aGU_X5H2_PaPaEAHfKkP-qYSVkNQK-LkHO_Y2fT4DV-JLKUfr6Mfnr1OU7jhkxOZ"
+  }
+}

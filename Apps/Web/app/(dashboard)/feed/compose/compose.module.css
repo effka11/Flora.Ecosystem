@@ -1,0 +1,1045 @@
+.composePage {
+  --g30: calc(2 * var(--flora-grid-step));
+  --g45: calc(3 * var(--flora-grid-step));
+  --feed-separator-rule-width: calc((90 - 37 + 1) * var(--flora-grid-step));
+  --avatar-size: var(--g45);
+  --feed-post-nickname-row-between: var(--flora-grid-step-fine);
+  --compose-tools-anchor-col: 42;
+  --compose-content-right-col: 90;
+  --compose-actions-bar-left-col: 37;
+  --compose-actions-left-col: 38;
+  --compose-actions-right-col: 88;
+  --compose-sidebar-col-start: 92;
+  --compose-sidebar-w: calc(16 * var(--flora-grid-step));
+  --flora-accent: var(--flora-green-light);
+  /* глифы в viewBox начинаются правее левого края svg — подравниваем по сетке */
+  --compose-tool-x-nudge: calc(-3 * var(--flora-grid-step-fine) / 5 + 1px);
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--flora-bg);
+  box-sizing: border-box;
+}
+
+.composeMainColumn {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Как feedTopBlock: липкая шапка + линия снизу на 9-й строке */
+.composeTopBlock {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+  background: var(--flora-bg);
+}
+
+.composeTopBlock::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(9 * var(--flora-grid-step));
+  width: 100%;
+  height: 1px;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  pointer-events: none;
+}
+
+.composeTopBlockInner {
+  position: relative;
+  padding: 0;
+  height: calc(9 * var(--flora-grid-step));
+}
+
+/* Поиск черновиков: ячейки 38.2–89.5 — как peopleSearchWrap на ленте */
+.composeSearchHeader {
+  position: relative;
+  height: calc(6 * var(--flora-grid-step));
+}
+
+.composeSearchWrap {
+  position: absolute;
+  left: calc(1 * var(--flora-grid-step));
+  top: calc(2 * var(--flora-grid-step));
+  width: calc((89 - 38 + 1) * var(--flora-grid-step));
+  height: calc((5 - 3 + 1) * var(--flora-grid-step));
+  box-sizing: border-box;
+}
+
+.composeSearchBox {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  width: 100%;
+  height: 100%;
+  padding: 0 calc(var(--flora-grid-step) - 1px);
+  border-radius: 12px;
+  border: 1px solid var(--flora-green-dark);
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.composeSearchIcon {
+  width: 20px;
+  height: 20px;
+  color: var(--flora-gray);
+  flex-shrink: 0;
+}
+
+.composeSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--flora-white-template);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.composeSearchInput::placeholder {
+  color: var(--flora-gray);
+}
+
+/* Правый сайдбар черновиков — как .settingsSidebar в настройках */
+.composeDraftsSidebar {
+  position: absolute;
+  z-index: 12;
+  left: calc((var(--compose-sidebar-col-start) - 37) * var(--flora-grid-step));
+  top: 0;
+  width: var(--compose-sidebar-w);
+  height: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  pointer-events: auto;
+  overflow: visible;
+}
+
+.composeDraftsSidebarNav {
+  position: sticky;
+  top: 0;
+  padding: calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step-fine))
+    calc(2 * var(--flora-grid-step)) calc(3 * var(--flora-grid-step));
+  overflow: visible;
+}
+
+.composeDraftsNavList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+  overflow: visible;
+}
+
+.composeDraftRow {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  transform: translateZ(0);
+}
+
+.composeDraftRow:hover .composeDraftNavItem:not(.composeDraftNavItemActive),
+.composeDraftRow:focus-within .composeDraftNavItem:not(.composeDraftNavItemActive) {
+  color: rgba(var(--flora-white-template-rgb), 0.86);
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.composeDraftRowActions {
+  position: absolute;
+  left: calc(100% + var(--flora-grid-step-fine) / 2);
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--flora-grid-step-fine) / 2);
+}
+
+.composeDraftActionBtn {
+  width: calc(6 * var(--flora-grid-step-fine));
+  height: calc(6 * var(--flora-grid-step-fine));
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.composeDraftActionBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.composeDraftActionBtn:hover:not(:disabled) {
+  color: rgba(var(--flora-white-template-rgb), 0.78);
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.composeDraftActionBtnDanger:hover:not(:disabled) {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.composeDraftActionBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.composeDraftNavItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: calc(8 * var(--flora-grid-step-fine));
+  margin: 0;
+  padding: 0 calc(2 * var(--flora-grid-step-fine));
+  box-sizing: border-box;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1;
+  color: var(--flora-gray);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.composeDraftNavLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composeDraftNavItemActive {
+  color: var(--flora-accent);
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+}
+
+.composeDraftNavItemActive:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+  background: color-mix(in srgb, var(--flora-green-light) 16%, transparent);
+}
+
+.composeDraftAddNavItem {
+  color: var(--flora-green-light);
+}
+
+.composeDraftAddNavItem:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+}
+
+.composeDraftReturnNavItem {
+  color: var(--flora-gray);
+}
+
+.composeDraftReturnNavItem:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.86);
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+/* Нижний блок: отступ сверху = высота одной кнопки + gap списка (как пустая строка). */
+.composeDraftsFooter {
+  margin-top: calc(8 * var(--flora-grid-step-fine));
+  list-style: none;
+  transform: translateZ(0);
+}
+
+.composeDraftsFooterFlush {
+  margin-top: 0;
+}
+
+.composeDraftsFooterList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+}
+
+.composeTabsBlock {
+  position: absolute;
+  left: calc(1 * var(--flora-grid-step));
+  right: calc(1 * var(--flora-grid-step));
+  top: calc(9 * var(--flora-grid-step) - (2 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine)));
+  display: flex;
+  align-items: flex-end;
+  gap: var(--flora-grid-step);
+  padding: 0;
+  border-bottom: none;
+}
+
+.composeTabsWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  top: 5px;
+  overflow: visible;
+}
+
+.composeTabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.composeTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.composeTab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(2 * var(--flora-grid-step) + var(--flora-grid-step-fine));
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border-radius: 999px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: color 0.15s ease;
+}
+
+.composeTabLabel {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+}
+
+.composeTab:hover {
+  color: rgba(var(--flora-white-template-rgb), 0.85);
+}
+
+.composeTabActive {
+  color: var(--flora-green-light);
+}
+
+.composeTabIndicator {
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: var(--compose-tab-indicator-width, 0px);
+  background: var(--flora-green-light);
+  border-radius: 999px;
+  transform: translate3d(var(--compose-tab-indicator-left, 0px), 0, 0);
+  transition:
+    transform var(--flora-duration-3) var(--flora-ease-out),
+    width var(--flora-duration-3) var(--flora-ease-out);
+  will-change: transform, width;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.composeTabIndicatorStatic {
+  transition: none !important;
+}
+
+.composeScroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--g30) var(--flora-grid-step) calc(4 * var(--flora-grid-step));
+  scrollbar-width: none;
+}
+
+.composeScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.composeEditor {
+  min-height: calc(15 * var(--flora-grid-step));
+  max-width: 100%;
+  width: min(100%, calc((87 - 38 + 1) * var(--flora-grid-step) + var(--avatar-size)));
+}
+
+/* Сетка поста в ленте — пересоздаётся при смене черновика/нейтрального режима. */
+.composeDraftScope {
+  display: grid;
+  grid-template-columns: var(--avatar-size) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "post-avatar post-head"
+    ". post-body";
+  column-gap: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  row-gap: var(--flora-grid-step-fine);
+  align-items: start;
+}
+
+/* Тайминг как у dashboardRouteInFromLeft/Right — только opacity. */
+.composeDraftScopeIn {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: composeDraftScopeIn var(--flora-duration-6) 0.02s var(--flora-ease-out) both;
+}
+
+@keyframes composeDraftScopeIn {
+  0%,
+  8% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composeDraftScopeIn {
+    animation: none;
+  }
+}
+
+.composeAvatar {
+  grid-area: post-avatar;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  min-width: var(--avatar-size);
+  border-radius: 50%;
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: var(--flora-tracking-16);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+.composeHeader {
+  grid-area: post-head;
+  display: flex;
+  align-items: flex-start;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  margin: 0;
+  padding-top: calc(var(--feed-post-nickname-row-between) + var(--flora-grid-step-fine));
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  min-width: 0;
+  border: none;
+  background: none;
+}
+
+.composeBody {
+  grid-area: post-body;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  margin-left: calc(-1 * var(--flora-grid-step-fine));
+  margin-top: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.composeBodyStack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  --messages-compose-field-col: 38;
+  --messages-compose-field-right-col: 90;
+  --messages-sticker-panel-right-col: 89;
+  --messages-sticker-center-col: 84.5;
+  --messages-sticker-panel-gap-above-field: var(--flora-grid-step);
+  /* Синхрон с .messagesChatView — без этого max-height панели эмодзи в portal некорректен. */
+  --messages-chat-compose-line: 55;
+  --messages-field-icon: var(--flora-gray);
+  --flora-text-on-bubble: #f2f4f2;
+  --flora-hover-accent-glow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+  --compose-post-base-height: calc(5 * var(--flora-grid-step) + var(--flora-grid-step-fine));
+  --compose-post-extra-height: 0px;
+  gap: 0;
+  min-width: 0;
+}
+
+/* ── Портал панели стикеров/эмодзи в compose ──────────────────────────────── */
+@keyframes composeStickerPanelIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--flora-grid-step-fine), 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes composeStickerPanelInLifted {
+  from {
+    opacity: 0;
+    transform: translate3d(0, calc(-1 * var(--flora-grid-step-fine)), 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes composeStickerPanelOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, var(--flora-grid-step-fine), 0) scale(0.96);
+  }
+}
+
+@keyframes composeStickerPanelOutLifted {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, calc(-1 * var(--flora-grid-step-fine)), 0) scale(0.96);
+  }
+}
+
+.composeStickerPanelDetached {
+  position: fixed !important;
+  margin: 0;
+  z-index: 200;
+  bottom: auto;
+  right: auto;
+  transform-origin: top right;
+  --messages-chat-compose-line: 55;
+  --messages-field-icon: var(--flora-gray);
+  --flora-text-on-bubble: #f2f4f2;
+  --flora-hover-accent-glow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+}
+
+/* Вход: только пока анимация открытия ещё не сыграла.
+   composeStickerPanelOpenDone добавляется через ~300ms после монтирования,
+   тем самым предотвращая повторный запуск при FLIP-цикле. */
+.composeStickerPanelDetached:not(.composeStickerPanelOpenDone):not(.composeStickerPanelClosing) {
+  animation: composeStickerPanelIn var(--flora-duration-2) var(--flora-ease-in-out) both;
+}
+
+/* Вход в поднятом состоянии — скользит сверху вниз. */
+.composeStickerPanelDetached[data-compose-popover-lifted]:not(.composeStickerPanelOpenDone):not(.composeStickerPanelClosing) {
+  animation: composeStickerPanelInLifted var(--flora-duration-2) var(--flora-ease-in-out) both;
+}
+
+/* Закрытие — нормальное состояние. */
+.composeStickerPanelDetached.composeStickerPanelClosing {
+  animation: composeStickerPanelOut var(--flora-duration-2) var(--flora-ease-in-out) forwards;
+  pointer-events: none;
+}
+
+/* Закрытие в поднятом состоянии — уходит вверх. */
+.composeStickerPanelDetached[data-compose-popover-lifted].composeStickerPanelClosing {
+  animation: composeStickerPanelOutLifted var(--flora-duration-2) var(--flora-ease-in-out) forwards;
+}
+
+.composeStickerPanelDetached[data-compose-popover-lifted] {
+  transform-origin: bottom right;
+}
+
+.composeStickerPanelDetached.composePopoverLiftAnimating {
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composeStickerPanelDetached:not(.composeStickerPanelOpenDone):not(.composeStickerPanelClosing),
+  .composeStickerPanelDetached[data-compose-popover-lifted]:not(.composeStickerPanelOpenDone):not(.composeStickerPanelClosing) {
+    animation: none;
+  }
+  .composeStickerPanelDetached.composeStickerPanelClosing,
+  .composeStickerPanelDetached[data-compose-popover-lifted].composeStickerPanelClosing {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+.composeFieldWrap {
+  position: relative;
+  width: 100%;
+  min-height: calc(var(--compose-post-base-height) + var(--compose-post-extra-height));
+  transition: min-height 0.18s var(--flora-ease-out);
+}
+
+.composePublishError {
+  margin: 0 0 var(--flora-grid-step-fine);
+  font-size: 14px;
+  color: #c98a7a;
+}
+
+.composeIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - 2px);
+}
+
+.composeDisplayName {
+  line-height: 1;
+  color: var(--flora-white-template);
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.composeHandle {
+  line-height: 1;
+  color: var(--flora-gray);
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine));
+}
+
+.composePostInput,
+.composeRichEditor {
+  display: block;
+  width: 100%;
+  min-height: calc(var(--compose-post-base-height) + var(--compose-post-extra-height));
+  height: calc(var(--compose-post-base-height) + var(--compose-post-extra-height));
+  max-height: calc(var(--compose-post-base-height) + 20 * 25px);
+  overflow-y: auto;
+  margin: calc(-1 * var(--flora-grid-step-fine)) 0 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  /* Рост поля только программный (useComposePostFieldHeight) — ручное растягивание запрещено. */
+  resize: none;
+  background: transparent;
+  color: var(--flora-gray-light);
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 25px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+  box-sizing: border-box;
+  scrollbar-width: none;
+  transition: height 0.18s var(--flora-ease-out), min-height 0.18s var(--flora-ease-out);
+}
+
+.composePostInput::-webkit-scrollbar,
+.composeRichEditor::-webkit-scrollbar {
+  display: none;
+}
+
+.composePostInput::placeholder {
+  color: var(--flora-gray);
+}
+
+.composeRichEditor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--flora-gray);
+  pointer-events: none;
+}
+
+.composeRichEditor:focus {
+  outline: none;
+}
+
+.composeRichEditor [data-flora-bold],
+.composeRichEditor strong,
+.composeRichEditor b {
+  font-weight: 700 !important;
+  font-variation-settings: "wght" 700;
+}
+
+.composeRichEditor [data-flora-italic],
+.composeRichEditor em,
+.composeRichEditor i {
+  font-style: italic !important;
+}
+
+.composeRichEditor u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.composeRichEditor s,
+.composeRichEditor strike,
+.composeRichEditor del {
+  text-decoration: line-through;
+}
+
+.composeRichEditor code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.94em;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  border-radius: 3px;
+}
+
+.composeRichEditor a {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.composeRichEditor [data-flora-mention] {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+}
+
+.composeRichEditor [data-flora-spoiler] {
+  border-radius: 4px;
+  padding: 0 2px;
+  background: rgba(var(--flora-white-template-rgb), 0.16);
+  color: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.composeRichEditor [data-flora-spoiler]:hover {
+  color: inherit;
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.composeFieldDivider {
+  /* На всю ширину ленты (первичные 37…90), как разделители постов. */
+  margin: var(--flora-grid-step) 0 calc(2 * var(--flora-grid-step));
+  margin-left: calc(-1 * (var(--g45) + 2 * var(--flora-grid-step) - var(--flora-grid-step-fine)));
+  border: none;
+  border-top: 1px solid var(--flora-gray-divider);
+  width: calc(var(--feed-separator-rule-width) + var(--flora-grid-step));
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.composeActions {
+  margin-top: 0;
+  position: relative;
+  min-height: calc(3 * var(--flora-grid-step));
+  /* Как .composeFieldDivider: полоса действий на ширину ленты 37…90. */
+  width: calc(var(--feed-separator-rule-width) + var(--flora-grid-step));
+  max-width: none;
+  margin-left: calc(-1 * (var(--g45) + 2 * var(--flora-grid-step) - var(--flora-grid-step-fine)));
+  box-sizing: border-box;
+}
+
+/* «Стереть все» — левый край на вертикали 38. */
+.composeClearAllBtn {
+  position: absolute;
+  left: calc(
+    (var(--compose-actions-left-col) - var(--compose-actions-bar-left-col)) * var(--flora-grid-step)
+  );
+  top: 50%;
+  transform: translateY(calc(-50% - var(--flora-grid-step) - 4px));
+  margin: 0;
+  padding: calc(2 * var(--flora-grid-step-fine)) var(--flora-grid-step);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  font-weight: 300;
+  line-height: 1;
+  color: var(--flora-gray);
+  background: transparent;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  appearance: none;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.composeClearAllBtn:hover:not(:disabled) {
+  background: rgba(var(--flora-white-template-rgb), 0.1);
+  color: var(--flora-text-primary);
+}
+
+.composeClearAllBtn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.composeClearAllBtnIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--flora-green-light);
+}
+
+.composeActionsTrailing {
+  position: absolute;
+  /* Правый край «Опубликовать» — вертикаль 88 (правый край полосы ≈ 90). */
+  left: auto;
+  right: calc(
+    (var(--compose-content-right-col) - var(--compose-actions-right-col)) * var(--flora-grid-step)
+  );
+  top: 50%;
+  transform: translateY(calc(-50% - var(--flora-grid-step) - 4px));
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+}
+
+.composeActionsLeading {
+  position: absolute;
+  right: 100%;
+  margin-right: calc(2 * var(--flora-grid-step));
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+}
+
+.composeActionsTrailing .composeToolBtn {
+  position: static;
+  top: auto;
+  left: auto;
+  transform: none;
+}
+
+.composeActionsTrailing .composeToolBtn:hover {
+  transform: scale(1.06);
+}
+
+.composeActionsTrailing .composeAttachWrap {
+  position: static;
+  top: auto;
+  left: auto;
+  transform: none;
+  z-index: 4;
+}
+
+.composeAttachWrap {
+  position: relative;
+  display: inline-flex;
+  overflow: visible;
+  z-index: 4;
+}
+
+.composeAttachTrigger {
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--flora-gray);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.composeAttachTrigger:hover:not(:disabled) {
+  color: var(--flora-gray);
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+}
+
+.composeToolBtn svg.composeEmojiStickerIcon {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.55;
+}
+
+.saveBtn {
+  position: static;
+  height: calc(3 * var(--flora-grid-step) - var(--flora-grid-step-fine));
+  flex-shrink: 0;
+  box-sizing: border-box;
+  color: rgba(var(--flora-white-template-rgb), 0.82);
+  background: transparent;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.18);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  color: var(--flora-white-template);
+}
+
+.saveBtn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  border-color: rgba(var(--flora-white-template-rgb), 0.1);
+}
+
+.publishBtn {
+  position: static;
+  height: calc(3 * var(--flora-grid-step) - var(--flora-grid-step-fine));
+  flex-shrink: 0;
+  box-sizing: border-box;
+  color: var(--flora-green-light);
+  background: transparent;
+  border: 1px solid rgba(164, 209, 138, 0.4);
+  cursor: pointer;
+  transition: background 0.15s ease, text-shadow 0.2s ease;
+}
+
+.composeToolBtn {
+  --compose-tool-hit-size: calc(2 * var(--flora-grid-step));
+  --compose-tool-icon-size: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  position: absolute;
+  left: calc(
+    (var(--compose-tool-col) - var(--compose-tools-anchor-col)) * var(--flora-grid-step) + var(--compose-tool-x-nudge)
+  );
+  top: 50%;
+  width: var(--compose-tool-hit-size);
+  height: var(--compose-tool-hit-size);
+  transform: translateY(-50%);
+  transform-origin: left center;
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.composeToolBtn:hover {
+  color: var(--flora-gray);
+  transform: translateY(-50%) scale(1.06);
+}
+
+.composeToolBtnActive {
+  color: color-mix(in srgb, var(--flora-green-light) 90%, #fff 10%);
+  background: rgba(var(--flora-white-template-rgb), 0.1);
+  border-radius: 50%;
+}
+
+.composeToolBtnActive:hover {
+  color: color-mix(in srgb, var(--flora-green-light) 96%, #fff 4%);
+  background: rgba(var(--flora-white-template-rgb), 0.14);
+}
+
+.composeActionsTrailing .composeToolBtn.composeToolBtnAttach:hover {
+  color: var(--flora-gray);
+}
+
+.composeToolBtnAttach {
+  color: var(--flora-gray);
+}
+
+.composeToolBtn svg {
+  display: block;
+  flex-shrink: 0;
+  width: var(--compose-tool-icon-size);
+  height: var(--compose-tool-icon-size);
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.composeToolBtn svg.composeToolIconItalicLg {
+  width: calc(var(--compose-tool-icon-size) + 3px);
+  height: calc(var(--compose-tool-icon-size) + 3px);
+  transform: translateX(-1px);
+}
+
+.composeToolLetterB {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--compose-tool-icon-size);
+  height: var(--compose-tool-icon-size);
+  position: relative;
+  top: 1px;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 19px;
+  line-height: 1;
+  color: currentColor;
+  letter-spacing: 0.38px;
+}
+
+.publishBtn:hover:not(:disabled) {
+  background: rgba(164, 209, 138, 0.1);
+}
+
+.publishBtn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  border-color: rgba(164, 209, 138, 0.2);
+}
+
+/* Превью фото в compose — та же сетка, что в ленте; ниже строки ввода. */
+.composePostImages {
+  margin-top: var(--flora-grid-step-fine);
+  margin-bottom: 0;
+}
+
+.composePostVideoWrap {
+  position: relative;
+  margin-top: var(--flora-grid-step-fine);
+  max-width: min(100%, calc(42 * var(--flora-grid-step)));
+}
+
+.composePostVideo {
+  display: block;
+  width: 100%;
+  max-height: calc(30 * var(--flora-grid-step));
+  border-radius: 12px;
+  background: #000;
+}
+
+.composePostVideoRemove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f2f4f2;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.composePostVideoRemove:hover {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+@supports (text-box-trim: trim-start) {
+  .composeRichEditor {
+    text-box-trim: trim-start;
+    text-box-edge: cap alphabetic;
+  }
+}

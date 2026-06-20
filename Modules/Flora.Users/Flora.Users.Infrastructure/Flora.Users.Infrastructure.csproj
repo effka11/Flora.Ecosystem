@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Flora.Users.Application\Flora.Users.Application.csproj" />
+    <ProjectReference Include="..\Flora.Users.Domain\Flora.Users.Domain.csproj" />
+    <ProjectReference Include="..\Flora.Users.Contracts\Flora.Users.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Flora.Shared\Flora.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

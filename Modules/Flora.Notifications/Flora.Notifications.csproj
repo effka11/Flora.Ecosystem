@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <Compile Include="Class1.cs" />
+    <ProjectReference Include="Flora.Notifications.Application\Flora.Notifications.Application.csproj" />
+    <ProjectReference Include="Flora.Notifications.Domain\Flora.Notifications.Domain.csproj" />
+    <ProjectReference Include="Flora.Notifications.Infrastructure\Flora.Notifications.Infrastructure.csproj" />
+    <ProjectReference Include="Flora.Notifications.Contracts\Flora.Notifications.Contracts.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

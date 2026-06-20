@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <Compile Include="UsersModuleComposition.cs" />
+    <ProjectReference Include="Flora.Users.Application\Flora.Users.Application.csproj" />
+    <ProjectReference Include="Flora.Users.Domain\Flora.Users.Domain.csproj" />
+    <ProjectReference Include="Flora.Users.Infrastructure\Flora.Users.Infrastructure.csproj" />
+    <ProjectReference Include="Flora.Users.Contracts\Flora.Users.Contracts.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

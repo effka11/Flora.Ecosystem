@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "notificationUuid": "44444444-4444-4444-4444-444444444444",
+      "type": "follow",
+      "category": "social",
+      "text": "Новый подписчик @friend",
+      "createdAt": "2026-06-12T09:00:00.000Z",
+      "isRead": false
+    }
+  ]
+}

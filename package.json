@@ -1,0 +1,28 @@
+{
+  "name": "flora-ecosystem-js",
+  "private": true,
+  "workspaces": [
+    "Apps/Mobile",
+    "Packages/*"
+  ],
+  "scripts": {
+    "mobile": "npm run dev --workspace=@flora/mobile",
+    "mobile:android": "powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/mobile-android.ps1",
+    "mobile:android:install": "powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/mobile-install-debug-android.ps1",
+    "mobile:android:usb": "npm run android:usb --workspace=@flora/mobile",
+    "debug:android:usb": "powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/mobile-debug-android.ps1",
+    "debug:mobile:usb": "npm run debug:android:usb",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "ci": "npm run typecheck && npm run lint && npm run test",
+    "version:sync": "node Scripts/sync-version.mjs",
+    "postinstall": "node Scripts/patch-rn-foojay.mjs && node Scripts/patch-react-native-libsodium.mjs && node Scripts/patch-ffmpeg-kit.mjs"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "devDependencies": {
+    "sharp": "^0.34.3"
+  }
+}

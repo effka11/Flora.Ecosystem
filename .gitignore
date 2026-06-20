@@ -1,0 +1,71 @@
+# .NET
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+*.user
+*.userosscache
+*.suo
+*.cache
+*.ncrunch*
+_ReSharper*/
+*.DotSettings.user
+
+# Node / JS monorepo
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+
+# Next.js (Apps/Web)
+.next/
+out/
+
+# Expo / React Native (Apps/Mobile)
+.expo/
+.metro-health-check*
+**/android/
+**/ios/
+.kotlin/
+
+# Environment — never commit secrets; examples are ok
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Secrets / local-only config (never commit; *.example.* templates are ok)
+appsettings.Local.json
+appsettings.Production.json
+appsettings.*.Local.json
+Flora.API/cursor-temp-bootstrap.sql
+SECRETS-ROTATION.local.md
+*.secrets.local.*
+
+# Firebase Admin SDK / any real service-account creds (local API push) — keep only *.example
+Flora.API/secrets/*
+!Flora.API/secrets/*.example
+!Flora.API/secrets/*.example.*
+
+# Build / test artifacts (keep contract-fixtures for CI clones)
+artifacts/*
+!artifacts/contract-fixtures/
+!artifacts/contract-fixtures/**
+.tmp-build-check/
+.tmp-apk-inspect/
+.expo-export-test/
+**/.expo-export-test/
+**/android_gen/
+**/.prebuild-stage*/
+**/dist/
+**/vendor/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/

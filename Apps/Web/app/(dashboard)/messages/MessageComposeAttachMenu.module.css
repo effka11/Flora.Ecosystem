@@ -1,0 +1,207 @@
+.wrapOpen {
+  position: relative;
+  z-index: 100;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Меню вложений (прямоугольник)
+──────────────────────────────────────────────────────────────── */
+.menuPanel {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: calc(1.5 * var(--flora-grid-step-fine));
+  border-radius: 12px;
+  background: var(--flora-bg);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  transform-origin: bottom left;
+}
+
+.menuPanel:not(.menuPanelDetached) {
+  animation: menuPanelIn var(--flora-duration-1) var(--flora-ease-in-out) both;
+}
+
+/* Портал в body — не обрезается overflow у composeScroll и других скроллов. */
+.menuPanelDetached {
+  position: fixed;
+  margin: 0;
+  z-index: 200;
+  bottom: auto;
+  transform-origin: top left;
+}
+
+.menuPanelDetached[data-compose-popover-lifted] {
+  transform-origin: bottom left;
+  animation: menuPanelInAbove var(--flora-duration-1) var(--flora-ease-in-out) both;
+}
+
+.menuPanelDetached[data-compose-popover-lifted].menuPanelClosing {
+  animation: menuPanelOutAbove var(--flora-duration-1) var(--flora-ease-in) forwards;
+}
+
+.menuPanelDetached.menuPanelLiftAnimating {
+  will-change: transform;
+}
+
+.menuPanelClosing {
+  animation: menuPanelOut var(--flora-duration-1) var(--flora-ease-in) forwards;
+}
+
+@keyframes menuPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes menuPanelOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+}
+
+@keyframes menuPanelInAbove {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes menuPanelOutAbove {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  width: 100%;
+  padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: rgba(var(--flora-white-template-rgb), 0.9);
+  font-family: var(--flora-font, inherit);
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.menuItem:hover {
+  background-color: var(--flora-secondary-hover-bg);
+  color: var(--flora-accent-hover);
+}
+
+.menuItem:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.menuItemIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--flora-gray);
+  transition: color 0.15s ease;
+}
+
+.menuItem:hover .menuItemIcon {
+  color: var(--flora-accent-hover);
+}
+
+.menuItemLabel {
+  flex: 1;
+  text-align: left;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Кнопка-триггер «+» / «×»
+──────────────────────────────────────────────────────────────── */
+.composeTrigger {
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+.composeTriggerGlyphStack {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.composeTriggerGlyph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  transform: scale(0.92);
+  pointer-events: none;
+  transition:
+    opacity 0.17s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.17s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.composeTriggerGlyphVisible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Скрытые file inputs
+──────────────────────────────────────────────────────────────── */
+.hiddenFileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Reduced motion
+──────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .menuPanel,
+  .menuPanelClosing {
+    animation: none;
+  }
+  .menuPanelClosing {
+    opacity: 0;
+  }
+  .composeTriggerGlyph {
+    transition: none;
+  }
+}

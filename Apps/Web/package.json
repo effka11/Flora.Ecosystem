@@ -1,0 +1,43 @@
+{
+  "name": "flora-web",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "prepare:standalone": "node --import tsx ./scripts/prepare-standalone.ts",
+    "publish:build": "npm run build && npm run prepare:standalone",
+    "start": "next start",
+    "lint": "eslint .",
+    "generate:emoji-categories": "tsx ./scripts/generate-message-emoji-categories.ts",
+    "postinstall": "node ./scripts/copy-ffmpeg-core.mjs"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.6",
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.2",
+    "@fontsource-variable/cormorant": "^5.2.8",
+    "@fontsource-variable/manrope": "^5.2.8",
+    "@fontsource-variable/unbounded": "^5.2.8",
+    "@noble/hashes": "^2.2.0",
+    "libsodium-wrappers": "^0.8.4",
+    "libsodium-wrappers-sumo": "^0.8.4",
+    "next": "^16.2.4",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tweetnacl": "^1.0.3",
+    "unicode-emoji-json": "^0.8.0",
+    "uuid": "^14.0.0",
+    "@flora/client-core": "file:../../Packages/flora-client-core"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "eslint": "^9",
+    "eslint-config-next": "^16.2.4",
+    "jiti": "^2.6.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.2"
+  }
+}

@@ -1,0 +1,2 @@
+# Shell on the VPS must stay LF-only (avoid bash / pipe breakage from Windows CRLF).
+scripts/*.sh text eol=lf

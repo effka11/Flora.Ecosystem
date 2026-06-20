@@ -1,0 +1,461 @@
+﻿@keyframes postMorePopoverIn {
+  from {
+    opacity: 0;
+    /* Из-под крестика: сдвиг к триггеру (вверх-вправо) + чуть меньше масштаб от угла выреза. */
+    transform: translate3d(calc(0.5 * var(--flora-grid-step-fine)), calc(-1 * var(--flora-grid-step-fine) - 3px), 0)
+      scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Отдельное имя keyframes (не reverse входа): иначе после `both` у входа часть браузеров даёт кадр «from» и модалка пропадает мгновенно. */
+@keyframes postMorePopoverOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(calc(0.5 * var(--flora-grid-step-fine)), calc(-1 * var(--flora-grid-step-fine) - 3px), 0)
+      scale(0.92);
+  }
+}
+
+.wrapOpen {
+  z-index: 200;
+}
+
+/* Список чатов: ⋮/✕ на 1px левее (класс на wrap вместе с messagesConversationMoreWrap). */
+.wrapGlyphNudgeLeft1 .triggerGlyphStack {
+  transform: translateX(-1px);
+}
+
+/* Список чатов: подложка при открытом меню (::before) на 1px левее, глифы — .wrapGlyphNudgeLeft1. */
+.wrapBackdropNudgeLeft1 .triggerLift.triggerOpen::before {
+  transform: translateX(-1px);
+}
+
+.popover {
+  position: absolute;
+  /* На 1 вторичную клетку правее (чем fine+1px); ещё +2px вправо. */
+  right: calc(1px - 2px);
+  top: calc(100% - 8px - var(--flora-grid-step) + 2px);
+  padding: 0;
+  pointer-events: none;
+  opacity: 1;
+}
+
+/*
+ * Зеркало .popover: над + слева, вырез снизу слева.
+ * Не комбинировать с .popover — у того заданы right+top, и при left+right: auto
+ * блок растягивается на всю ширину position:relative предка (поле ввода).
+ */
+.popoverAnchorBottomLeft {
+  position: absolute;
+  left: calc(1px - 2px);
+  right: auto;
+  top: auto;
+  bottom: calc(100% - 8px - var(--flora-grid-step) + 2px);
+  width: max-content;
+  max-width: min(100vw, 360px);
+  padding: 0;
+  pointer-events: none;
+  opacity: 1;
+}
+
+@keyframes notchPopoverInBottomLeft {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(-0.5 * var(--flora-grid-step-fine)), calc(var(--flora-grid-step-fine) + 3px), 0)
+      scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes notchPopoverOutBottomLeft {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(calc(-0.5 * var(--flora-grid-step-fine)), calc(var(--flora-grid-step-fine) + 3px), 0)
+      scale(0.92);
+  }
+}
+
+.popoverAnchorBottomLeft .popoverClip {
+  transform-origin: 2px calc(100% - 2px);
+  animation: notchPopoverInBottomLeft var(--flora-duration-1) var(--flora-ease-in-out) both;
+}
+
+.popoverClosing.popoverAnchorBottomLeft .popoverClip {
+  animation: notchPopoverOutBottomLeft var(--flora-duration-1) var(--flora-ease-in) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popoverAnchorBottomLeft .popoverClip {
+    animation: none;
+  }
+
+  .popoverClosing.popoverAnchorBottomLeft .popoverClip {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Закрытие: тот же keyframes, что и вход, в обратном направлении (выскальзывание к триггеру + fade). */
+.popoverClosing {
+  pointer-events: none;
+}
+
+.popoverClosing .popoverClip {
+  pointer-events: none;
+  animation: postMorePopoverOut var(--flora-duration-1) var(--flora-ease-in) forwards;
+}
+
+.popoverClip {
+  position: relative;
+  box-sizing: border-box;
+  max-width: 100%;
+  width: max-content;
+  pointer-events: auto;
+  transform-origin: calc(100% - 2px) 2px;
+  animation: postMorePopoverIn var(--flora-duration-1) var(--flora-ease-in-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popoverClip {
+    animation: none;
+  }
+
+  .popoverClosing .popoverClip {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* SVG-обводка: надёжнее, чем filter: drop-shadow (часто не видна / обрезается) */
+.outlineSvg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.outlinePath {
+  /* Как полоска между постами в ленте (.profilePostItem — нижний фон-разделитель) */
+  stroke: rgba(var(--flora-white-template-rgb), 0.06);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  shape-rendering: crispEdges;
+}
+
+/* clip-path на панели; ширина задаётся измерением max-content в layout-эффекте. */
+.popoverInner {
+  position: relative;
+  z-index: 0;
+  display: inline-block;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(100vw, 360px);
+  max-height: min(320px, 60vh);
+  height: auto;
+  /* Верхний отступ под вырез ⋮; первая кнопка накладывается absolute с top:0. */
+  --post-more-notch-top: calc(38px + var(--flora-grid-step-fine));
+  /* Слева: 2 первичные клетки до иконки, минус 6px; справа: 3 первичные − 1 вторичная + базовая правка 2px + ещё 1px. */
+  --post-more-pad-x-left: calc(2 * var(--flora-grid-step) - 6px);
+  --post-more-pad-x-right: calc(3 * var(--flora-grid-step) - 1 * var(--flora-grid-step-fine) + 2px + 1px);
+  padding: var(--post-more-notch-top) 0 0;
+  background: var(--flora-bg);
+  overflow: visible;
+  color-scheme: dark;
+}
+
+/* Разделитель под первой строкой («Сохранить»). */
+.popoverInner::after {
+  content: "";
+  position: absolute;
+  top: calc(3 * var(--flora-grid-step) - 1px);
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+/* Строки 2–5: под первой линией; padding-top совмещает сетку с абсолютной первой полосой. */
+.popoverScroll {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  /* 100% ширины панели; max-content оставлял колонку по тексту — линии не доходили до правого края. */
+  width: 100%;
+  box-sizing: border-box;
+  padding-top: calc(3 * var(--flora-grid-step) - var(--post-more-notch-top));
+  padding-left: 0;
+  padding-right: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--flora-white-template-rgb), 0.22) rgba(0, 0, 0, 0.25);
+}
+
+.popoverScroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.popoverScroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.popoverScroll::-webkit-scrollbar-thumb {
+  background: rgba(var(--flora-white-template-rgb), 0.22);
+  border-radius: 4px;
+}
+
+/* Первая кнопка: отступ слева до иконки — 2 первичные клетки − 6px (см. --post-more-pad-x-left). */
+.menuFirstBand {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  height: calc(3 * var(--flora-grid-step));
+  padding: 0 var(--post-more-pad-x-right) 0 var(--post-more-pad-x-left);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  pointer-events: auto;
+}
+
+.menuScrollBand {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-start;
+  align-self: stretch;
+  min-height: calc(3 * var(--flora-grid-step));
+  box-sizing: border-box;
+  padding-left: var(--post-more-pad-x-left);
+  padding-right: var(--post-more-pad-x-right);
+  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.menuScrollBand:last-child {
+  border-bottom: none;
+}
+
+.menuFirstBand .menuItemButton {
+  max-width: none;
+}
+
+.menuItemIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--flora-gray);
+}
+
+.menuItemIcon svg {
+  display: block;
+}
+
+.menuItemLabel {
+  min-width: 0;
+}
+
+.menuItemButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(var(--flora-white-template-rgb), 0.9);
+  font-family: var(--flora-font, inherit);
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15, 0.02em);
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.menuItemButton .menuItemIcon {
+  transition: color 0.12s ease;
+}
+
+.menuItemButton:hover {
+  background: transparent;
+  color: var(--flora-gray);
+}
+
+.menuItemButton:hover .menuItemIcon {
+  color: var(--flora-gray);
+}
+
+.menuItemButton:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.triggerLift {
+  position: relative;
+  z-index: 1;
+  /* Вниз на 1 вторичную клетку + 3px без сдвига модалки (translate не влияет на высоту wrap для top: % у .popover). */
+  transform: translateY(calc(var(--flora-grid-step-fine) + 3px));
+  /*
+   * Иконка «закрыть» меньше (10px), но подложка как у ⋮: тот же квадрат с padding и тем же R=6px.
+   * Без min-size кнопка сжималась бы до ~20×20, а R=10 превращал подложку в круг.
+   */
+  box-sizing: border-box;
+  min-width: calc(2 * var(--flora-grid-step-fine) + 18px);
+  min-height: calc(2 * var(--flora-grid-step-fine) + 18px);
+}
+
+/* Два глифа в одном слоте: кроссфейд ⋮ ↔ ✕ без размонтирования (transition). */
+.triggerGlyphStack {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.triggerGlyph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  transform: scale(0.88);
+  z-index: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.17s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.17s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.triggerGlyphVisible {
+  opacity: 1;
+  transform: scale(1);
+  z-index: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .triggerGlyph {
+    transition: none;
+  }
+}
+
+/* Ровно 10×10: штрих с round caps без overflow="visible" иначе визуально ~12×12. */
+.triggerCloseWrap {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: block;
+  line-height: 0;
+}
+
+.triggerCloseWrap svg {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+
+/* Скругление как у .profilePostMoreBtn (6px), не «под контур модалки» — иначе на маленьком квадрате читается как круг. */
+button.triggerLift:hover:not(:disabled) {
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(var(--flora-white-template-rgb), 0.1);
+}
+
+button.triggerLift.triggerOpen:hover:not(:disabled) {
+  /* Подложка и обводка на ::before — без дубля с hover. */
+  box-shadow: none;
+}
+
+/*
+ * Подложка + обводка: не background на кнопке, а ::before с opacity — тот же fade, что у глифа (showCloseGlyph).
+ * .triggerOpen пока меню в DOM (в т.ч. isClosing) — псевдо есть; .triggerBackdropVisible только при видимом ✕.
+ */
+.triggerLift.triggerOpen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 6px;
+  background: var(--flora-bg);
+  box-shadow: 0 0 0 1px rgba(var(--flora-white-template-rgb), 0.1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.17s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.triggerLift.triggerOpen.triggerBackdropVisible::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .triggerLift.triggerOpen::before {
+    transition: none;
+  }
+}
+
+/* Два класса на кнопке при open — иначе .profilePostMoreBtn перебивает одну .triggerOpen. */
+.triggerLift.triggerOpen {
+  border-radius: 6px;
+}
+
+/*
+ * Когда меню открыто, на кнопке висят .profilePostMoreBtn:active { transform: … scale(0.92) } — перебивают .triggerLift
+ * и дают сжатие + второй «отскок» при отпускании. Для .triggerOpen оставляем только тот же translateY без scale.
+ */
+button.triggerLift.triggerOpen:active:not(:disabled) {
+  transform: translateY(calc(var(--flora-grid-step-fine) + 3px)) !important;
+}
+
+/* Без подложки и обводки у ⋮/✕ (шапка чата и др.). */
+.triggerLiftNoBackdrop::before {
+  display: none !important;
+}
+
+button.triggerLiftNoBackdrop:hover:not(:disabled),
+button.triggerLiftNoBackdrop.triggerOpen:hover:not(:disabled) {
+  box-shadow: none;
+  background: none;
+}

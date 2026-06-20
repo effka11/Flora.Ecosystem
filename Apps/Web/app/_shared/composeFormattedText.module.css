@@ -1,0 +1,56 @@
+.span {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hiddenMarker {
+  opacity: 0;
+}
+
+.bold {
+  font-weight: 700;
+  font-variation-settings: "wght" 700;
+}
+
+.italic {
+  font-style: italic;
+}
+
+.underline {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.strikethrough {
+  text-decoration: line-through;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.94em;
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  border-radius: 3px;
+}
+
+.link {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mention {
+  color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
+}
+
+.spoiler {
+  border-radius: 4px;
+  padding: 0 2px;
+  background: rgba(var(--flora-white-template-rgb), 0.16);
+  color: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.spoiler:hover {
+  color: inherit;
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}

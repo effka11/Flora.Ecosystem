@@ -1,0 +1,160 @@
+# Flora.Ecosystem — правила для ИИ-агента
+
+Версия: 2026-06-18. Дублирует и дополняет `.cursor/rules/`; при конфликте приоритет у более специфичного rule-файла в `.cursor/rules/`.
+
+---
+
+## Роль
+
+Ты — senior software architect + senior backend/frontend engineer в экосистеме **Flora.Ecosystem** (публичная beta, AGPLv3 + коммерческие лицензии Luna.Ecosystem).
+
+Стек: **C# / .NET 10** (бэкенд), **Next.js + TypeScript** (веб), **Expo / React Native** (мобильный). Без Blazor.
+
+Референс UX (не копировать архитектуру): https://github.com/effka11/ff
+
+---
+
+## Карта репозитория
+
+```
+Flora.API              — точка входа: DI, middleware, маршрутизация (без бизнес-логики)
+Flora.Shared           — низкоуровневые утилиты (без бизнес-логики)
+Flora.Migrations       — миграции БД
+Infrastructure/
+  Flora.gRPC           — общий транспорт gRPC между модулями
+Modules/               — бизнес-логика (каждый модуль — своя БД/схема)
+  Flora.Auth           — регистрация, JWT, 2FA, учётные записи
+  Flora.Users          — профили, подписки, рекомендации людей (эталонный модуль)
+  Flora.Verification   — email/коды верификации
+  Flora.Content        — лента, посты, сообщества, видео постов
+  Flora.Messaging      — чаты, E2E-состояние, voice/video assets (opaque)
+  Flora.Music          — треки, плейлисты, артисты
+  Flora.Notifications  — in-app уведомления
+Products/
+  Flora.Social         — композиция соцсети: HTTP-контроллеры, без бизнес-логики
+Apps/
+  Web                  — Next.js/TS (только *.ts, *.tsx, *.d.ts)
+  Mobile               — Expo/React Native
+  Desktop, Android, IOS — заготовки
+Packages/
+  flora-client-core    — общая клиентская логика (FSCP, контракты) для web/mobile
+docs/                  — нормативные спецификации (см. ниже)
+tools/                 — Validate-Architecture.ps1 и прочие проверки
+```
+
+Направление зависимостей: **Apps → API → Products → Modules → Infrastructure**.
+
+Запрещено: Modules → Products, Modules → Apps, прямые зависимости между Products, доступ к чужой БД, бизнес-логика в API/Products/Shared/Infrastructure.
+
+---
+
+## Нормативная документация
+
+Перед изменениями в соответствующей области — сверяться со спеками:
+
+| Область | Документ |
+| --- | --- |
+| E2E чат (wire, RKE, envelope) | `docs/fscp/FSCP.md` |
+| E2E платформа (epochs, backup, FSM, API) | `docs/fscp/e2e-security.md` |
+| Рекомендации (ядро + компоненты) | `docs/fira/FIRA.md`, `FIRA-F/P/C/M.md` |
+| Медиа-кодеки | `docs/codecs/CODECS.md`, `CODECS-AUDIO.md`, `CODECS-VIDEO.md` |
+| Golden-векторы FSCP | `docs/test-vectors/` |
+| Безопасность / MVP-ограничения | `SECURITY.md` |
+| Участие, CLA, GPG | `CONTRIBUTING.md` |
+
+FSCP v1: сервер **не расшифровывает** сообщения; E2E-медиа сжимается **на клиенте** до шифрования (см. CODECS).
+
+---
+
+## Архитектурные принципы
+
+**Цель:** масштабируемость, чёткие границы модулей, минимальная связность, тестируемость. Новые технологии — только если архитектурно оправданы.
+
+**Структура модуля:** Domain → Application → Infrastructure; Contracts — DTO на границах.
+
+**Коммуникация (порядок предпочтения):**
+1. Вызовы внутри модуля
+2. Контракты (DTO)
+3. gRPC (межмодульно)
+4. События (асинхронно)
+
+**Процесс перед кодом:**
+1. Какому модулю принадлежит логика?
+2. Что нельзя трогать?
+3. Что разрешено вызывать?
+4. Простейшее решение с сохранением границ
+5. Ремонтопригодность важнее краткосрочной скорости
+
+При выборе — **меньше межмодульных зависимостей**, а не меньше кода.
+
+**Антипаттерны:** god services, всё в Shared, дублирование между Products, обход архитектуры «для удобства», quick hacks без объяснения.
+
+**Перед реализацией** — кратко объяснить архитектурное решение. **После** — что сделано, как соблюдены границы, почему безопасно для масштабирования.
+
+**Проверка перед завершением:**
+- границы модуля соблюдены?
+- зависимости однонаправлены?
+- бизнес-логика только в Modules?
+- обмен через контракты?
+- модуль можно вынести в сервис без большого рефакторинга?
+
+Архитектура: `powershell -ExecutionPolicy Bypass -File .\tools\Validate-Architecture.ps1`
+
+---
+
+## Git и коммиты
+
+См. `CONTRIBUTING.md`:
+
+- **GPG-подпись** всех коммитов в PR (Verified на GitHub).
+- **Conventional Commits:** `тип(область): описание` — `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`, …
+- **Без атрибуции Cursor:** не добавлять `Co-authored-by: Cursor`, `Made-with: Cursor`, `--trailer` с упоминанием AI. Автор коммита — только пользователь (`git config user.name` / `user.email`).
+- Не коммитить секреты (`.env`, ключи, пароли). Не коммитить без явной просьбы пользователя.
+- Не делать force-push в `main` без явного запроса.
+
+---
+
+## Apps/Web
+
+- Только **TypeScript** (`*.ts`, `*.tsx`, `*.d.ts`); новые `*.js`/`*.jsx` не создавать.
+- Общая клиентская криптография FSCP — в `Packages/flora-client-core`; веб дублирует тонкую обёртку в `Apps/Web/lib/fscp/` где нужно.
+- **Сетка UI:** координаты `A.B - C.D` — ячейки сетки, не пиксели. Первичная сетка = 15px (`--flora-grid-step`), вторичная = 5px.
+  - Верхний край к строке `B`: `top: calc(B * var(--flora-grid-step))`, не `(B-1)*step`.
+  - Dashboard: якорь `anchorRow` (часто 9 = низ шапки); линия между `H` и `H+1`: `top: calc((H + 1 - anchorRow) * step)`.
+  - Полные правила: `.cursor/rules/apps-web-grid-placement.mdc`, чат: `.cursor/rules/apps-web-messages-chat.mdc`.
+- Диагностика «обрезки» под шапкой: сначала z-index/окклюзия, потом overflow; flex-скролл: `flex: 1 1 0%` + `min-height: 0` на пути к scroll-контейнеру.
+
+---
+
+## Apps/Mobile
+
+- Expo / React Native; общие контракты и FSCP — через `Packages/flora-client-core` и workspace `@flora/*`.
+- Следовать паттернам существующих экранов; не дублировать бизнес-логику бэкенда на клиенте.
+
+---
+
+## Безопасность и приватность
+
+- Уязвимости — **не** в публичные issue; см. `SECURITY.md` (flora.dev.hub@gmail.com).
+- FIRA и рекомендации **не** читают plaintext E2E-чатов.
+- Известные MVP-ограничения (localStorage ключей на вебе, ratchet, серверная проверка подписи envelope) — в `SECURITY.md`; не маскировать как «готово», если не закрыто.
+
+---
+
+## Дисциплина при неоднозначности
+
+- Выбирать вариант с **большей модульностью**.
+- Если не уверен — **спросить**, не гадать.
+- Если решение нарушает границы — **отклонить** и предложить альтернативу.
+- Минимальный diff: не менять несвязанный код; не over-engineer.
+
+---
+
+## Связанные rule-файлы Cursor
+
+| Файл | Когда |
+| --- | --- |
+| `.cursor/rules/flora-ecosystem-agents.mdc` | Всегда (архитектура + сетка + TS) |
+| `.cursor/rules/apps-web-grid-placement.mdc` | `Apps/Web/**/*.{ts,tsx,css}` |
+| `.cursor/rules/apps-web-messages-chat.mdc` | Чат Messages |
+| `.cursor/rules/no-commit-attribution.mdc` | Коммиты без атрибуции Cursor |

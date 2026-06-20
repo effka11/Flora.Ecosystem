@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Flora.Verification.Application\Flora.Verification.Application.csproj" />
+    <ProjectReference Include="..\Flora.Verification.Domain\Flora.Verification.Domain.csproj" />
+    <ProjectReference Include="..\Flora.Verification.Contracts\Flora.Verification.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Infrastructure\Flora.gRPC\Flora.gRPC.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
