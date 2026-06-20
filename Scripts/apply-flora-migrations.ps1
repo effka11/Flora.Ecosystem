@@ -21,7 +21,8 @@ $steps = @(
     @{ Context = "UsersDbContext"; Project = "Modules\Flora.Users\Flora.Users.Infrastructure\Flora.Users.Infrastructure.csproj" },
     @{ Context = "ContentDbContext"; Project = "Modules\Flora.Content\Flora.Content.Infrastructure\Flora.Content.Infrastructure.csproj" },
     @{ Context = "MessagingDbContext"; Project = "Modules\Flora.Messaging\Flora.Messaging.Infrastructure\Flora.Messaging.Infrastructure.csproj" },
-    @{ Context = "NotificationsDbContext"; Project = "Modules\Flora.Notifications\Flora.Notifications.Infrastructure\Flora.Notifications.Infrastructure.csproj" }
+    @{ Context = "NotificationsDbContext"; Project = "Modules\Flora.Notifications\Flora.Notifications.Infrastructure\Flora.Notifications.Infrastructure.csproj" },
+    @{ Context = "MusicDbContext"; Project = "Modules\Flora.Music\Flora.Music.Infrastructure\Flora.Music.Infrastructure.csproj" }
 )
 
 if (-not $env:ConnectionStrings__FloraDatabase) {
