@@ -1,6 +1,6 @@
 # Full deploy: Next.js standalone + self-contained Flora.API to VPS (one SSH tarball).
 # Usage:
-#   .\scripts\deploy.ps1
+#   .\scripts\deploy.ps1                    # prompts for VPS IP, then SSH key path (user: root)
 #   .\scripts\deploy.ps1 -SkipBuild
 #   .\scripts\deploy.ps1 -ApiUpstreamUrl "http://127.0.0.1:5000"
 #   .\scripts\deploy.ps1 -PublicApiBaseUrl "https://origin.flora-s.net"
@@ -12,7 +12,7 @@
 # Windows: scp tarball then ssh (avoids broken cmd pipe to ssh). Non-Windows: tar | ssh in one shot.
 param(
     [string] $Server = "",
-    [string] $User = "deploy",
+    [string] $User = "root",
     [string] $IdentityFile = "",
     [string] $RemotePath = "/opt/flora-ecosystem/runtime/web",
     [string] $Domain = "flora-s.net",
@@ -26,20 +26,46 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-if ([string]::IsNullOrWhiteSpace($IdentityFile)) {
-    $IdentityFile = Join-Path $env:USERPROFILE ".ssh\flora_cursor_temp"
-    if (-not (Test-Path -LiteralPath $IdentityFile)) {
-        $IdentityFile = Join-Path $env:USERPROFILE ".ssh\id_ed25519_flora"
+
+function Resolve-FloraSshKeyPath {
+    param([string] $RawPath)
+    $path = $RawPath.Trim().Trim('"')
+    if ([string]::IsNullOrWhiteSpace($path)) { return "" }
+    if ($path.StartsWith("~")) {
+        $path = Join-Path $env:USERPROFILE $path.Substring(1).TrimStart("\", "/")
     }
+    return $path
 }
+
 if ([string]::IsNullOrWhiteSpace($Server)) {
     $Server = $env:FLORA_DEPLOY_HOST
 }
 if ([string]::IsNullOrWhiteSpace($Server)) {
-    throw "Server host required: pass -Server <host> or set FLORA_DEPLOY_HOST."
+    $Server = (Read-Host "VPS IP or hostname").Trim()
 }
+if ([string]::IsNullOrWhiteSpace($Server)) {
+    throw "Server host required: pass -Server <host>, set FLORA_DEPLOY_HOST, or enter at prompt."
+}
+
+if ([string]::IsNullOrWhiteSpace($IdentityFile)) {
+    $IdentityFile = $env:FLORA_SSH_KEY
+}
+if ([string]::IsNullOrWhiteSpace($IdentityFile)) {
+    $defaultKey = Join-Path $env:USERPROFILE ".ssh\id_ed25519_flora"
+    $hint = if (Test-Path -LiteralPath $defaultKey) { " [Enter = $defaultKey]" } else { "" }
+    $IdentityFile = Resolve-FloraSshKeyPath (Read-Host "Path to SSH private key$hint")
+    if ([string]::IsNullOrWhiteSpace($IdentityFile) -and (Test-Path -LiteralPath $defaultKey)) {
+        $IdentityFile = $defaultKey
+    }
+} else {
+    $IdentityFile = Resolve-FloraSshKeyPath $IdentityFile
+}
+
+Write-Host "Deploy target: ${User}@${Server}"
 if (-not [string]::IsNullOrWhiteSpace($IdentityFile) -and (-not (Test-Path -LiteralPath $IdentityFile))) {
     Write-Warning "SSH key file not found: $IdentityFile (password fallback will apply)."
+} elseif (-not [string]::IsNullOrWhiteSpace($IdentityFile)) {
+    Write-Host "SSH key: $IdentityFile"
 }
 
 $WebRoot = Split-Path $PSScriptRoot -Parent
