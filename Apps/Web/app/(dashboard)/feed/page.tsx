@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FeedPostComments } from "@/app/_shared/FeedPostComments";
+import { ExpandablePostText } from "@/app/_shared/ExpandablePostText";
 import { FeedPostImages } from "@/app/_shared/FeedPostImages";
 import { FeedPostVideo } from "@/app/_shared/FeedPostVideo";
 import { FloraAvatar } from "@/app/_shared/FloraAvatar";
@@ -877,6 +878,7 @@ function FeedPageContent() {
                   const commentsOpen = commentsOpenPostUuid === post.postUuid;
                   const engagement = snapshotFor(post);
                   const viewsCount = viewsCountFor(post);
+                  const hasMedia = post.imageUuids.length > 0 || Boolean(post.video);
                   return (
                     <li
                       key={post.postUuid}
@@ -912,7 +914,11 @@ function FeedPageContent() {
                       </div>
                       <div className={styles.profilePostBody}>
                         {post.content.trim().length > 0 ? (
-                          <p className={`${styles.profilePostContent} flora-type-15`}>{post.content}</p>
+                          <ExpandablePostText
+                            text={post.content}
+                            hasMedia={hasMedia}
+                            className={`${styles.profilePostContent} flora-type-15`}
+                          />
                         ) : null}
                         {post.imageUuids.length > 0 ? (
                           <FeedPostImages imageUuids={post.imageUuids} />
