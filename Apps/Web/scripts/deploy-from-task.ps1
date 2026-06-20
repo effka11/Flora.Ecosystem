@@ -1,5 +1,5 @@
-# Вызывается из VS Code/Cursor tasks. Путь к ключу передаётся через FLORA_SSH_KEY (env),
-# чтобы пустое поле ввода не ломало разбор аргументов (-SshKey без значения).
+# Вызывается из VS Code/Cursor tasks. Хост/ключ можно задать через FLORA_DEPLOY_HOST / FLORA_SSH_KEY;
+# иначе deploy.ps1 запросит IP и путь к ключу интерактивно (подключение как root).
 param(
     [string] $SshHost = "",
     [switch] $SkipBuild
@@ -8,32 +8,21 @@ param(
 $ErrorActionPreference = "Stop"
 $deploy = Join-Path $PSScriptRoot "deploy.ps1"
 
-if ([string]::IsNullOrWhiteSpace($SshHost)) {
-    $SshHost = $env:FLORA_DEPLOY_HOST
-}
-if ([string]::IsNullOrWhiteSpace($SshHost)) {
-    throw "Deploy host required: pass -SshHost <host> or set FLORA_DEPLOY_HOST."
+$params = @{}
+if (-not [string]::IsNullOrWhiteSpace($SshHost)) {
+    $params.Server = $SshHost.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($env:FLORA_DEPLOY_HOST)) {
+    $params.Server = $env:FLORA_DEPLOY_HOST.Trim()
 }
 
 $SshKey = $env:FLORA_SSH_KEY
 if ($null -eq $SshKey) { $SshKey = "" }
-if ([string]::IsNullOrWhiteSpace($SshKey)) {
-    $defaultKey = Join-Path $env:USERPROFILE ".ssh\flora_cursor_temp"
-    if (Test-Path -LiteralPath $defaultKey) {
-        $SshKey = $defaultKey
-    }
-}
-
-$keyForLog = "<deploy.ps1 default>"
-$params = @{ Server = $SshHost }
 if (-not [string]::IsNullOrWhiteSpace($SshKey)) {
-    $trimmed = $SshKey.Trim()
-    $params.IdentityFile = $trimmed
-    $keyForLog = $trimmed
+    $params.IdentityFile = $SshKey.Trim()
 }
 if ($SkipBuild) {
     $params.SkipBuild = $true
 }
 
-Write-Host "Flora deploy (task): Server=$SshHost IdentityFile=$keyForLog SkipBuild=$([bool]$SkipBuild)"
+Write-Host "Flora deploy (task): root@VPS; prompts if host/key not in env or -SshHost."
 & $deploy @params
