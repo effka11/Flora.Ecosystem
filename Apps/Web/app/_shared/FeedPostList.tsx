@@ -6,7 +6,7 @@ import { formatAtHandle, handlesEqual, profileDisplayName } from "@/app/_dashboa
 import { formatRelativeTimeRu } from "@/lib/formatRelativeTimeRu";
 import { usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
-import { ComposeFormattedContent } from "./composeFormattedText";
+import { ExpandablePostText } from "./ExpandablePostText";
 import { FeedPostComments } from "./FeedPostComments";
 import { FeedPostImages } from "./FeedPostImages";
 import { FeedPostVideo } from "./FeedPostVideo";
@@ -121,6 +121,7 @@ export function FeedPostList({
           const canDeletePost =
             Boolean(onDeletePost) &&
             (canManageAllPosts || handlesEqual(currentUsername ?? "", post.authorUsername));
+          const hasMedia = Boolean(post.video) || Boolean(post.imageUuids && post.imageUuids.length > 0);
 
           return (
             <li key={post.postUuid} ref={getPostItemRef(post.postUuid, post.viewsCount)} className={styles.postItem}>
@@ -151,9 +152,11 @@ export function FeedPostList({
               </div>
               <div className={styles.postBody}>
                 {post.content.trim().length > 0 ? (
-                  <p className={`${styles.postContent} flora-type-15`}>
-                    <ComposeFormattedContent text={post.content} />
-                  </p>
+                  <ExpandablePostText
+                    text={post.content}
+                    hasMedia={hasMedia}
+                    className={`${styles.postContent} flora-type-15`}
+                  />
                 ) : null}
                 {post.imageUuids && post.imageUuids.length > 0 ? (
                   <FeedPostImages imageUuids={post.imageUuids} />

@@ -1,0 +1,44 @@
+.root {
+  position: relative;
+  margin: 0 0 var(--flora-grid-step);
+}
+
+.content {
+  margin-bottom: 0;
+}
+
+.rootExpandable:not(.rootExpanded) .content {
+  max-height: calc(var(--flora-post-text-lines) * 1.7em);
+  overflow: hidden;
+}
+
+.fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  height: calc(2 * var(--flora-grid-step));
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--flora-bg));
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--flora-grid-step-fine);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--flora-green-light) 72%, var(--flora-gray-light) 28%);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.3;
+  letter-spacing: var(--flora-tracking-15);
+  cursor: pointer;
+  transition: color 0.15s ease, text-shadow 0.2s ease;
+}
+
+.toggle:hover {
+  color: var(--flora-green-light);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 38%, transparent);
+}
