@@ -8,7 +8,7 @@ export function isCommunityUuid(value: string): boolean {
 }
 
 export function communityListItemToRecord(
-  item: Pick<OwnedCommunityDto, "communityId" | "name" | "slug" | "memberCount">,
+  item: Pick<OwnedCommunityDto, "communityId" | "name" | "slug" | "memberCount" | "avatarUuid">,
   tab: CommunityTab,
 ): CommunityRecord {
   return {
@@ -19,6 +19,7 @@ export function communityListItemToRecord(
     tab,
     description: "",
     posts: [],
+    avatarUuid: item.avatarUuid ?? null,
   };
 }
 
