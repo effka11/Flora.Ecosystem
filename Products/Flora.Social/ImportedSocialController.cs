@@ -24,6 +24,7 @@ using Flora.Notifications.Contracts;
 using Flora.Social.Models;
 using Flora.Shared;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats;
 
 namespace Flora.Social;
 
@@ -1404,8 +1405,11 @@ public sealed class ImportedSocialController : ControllerBase
     [HttpPost("posts/{postUuid:guid}/images")]
     [Authorize]
     [EnableRateLimiting(SocialRateLimitPolicies.Upload)]
-    public async Task<IActionResult> UploadPostImages(Guid postUuid, IFormFileCollection? files, CancellationToken ct = default)
+    [RequestSizeLimit(MaxPostImageSizeBytes * MaxPostImagesCount + 4 * 1024 * 1024)]
+    public async Task<IActionResult> UploadPostImages(Guid postUuid, [FromForm] IFormFileCollection? files, CancellationToken ct = default)
     {
+        try
+        {
         var sub = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(sub) || !Guid.TryParse(sub, out var userUuid))
             return Unauthorized(new { error = "Не удалось определить пользователя." });
@@ -1433,12 +1437,12 @@ public sealed class ImportedSocialController : ControllerBase
                 return BadRequest(new { error = "Допустимые форматы: JPEG, PNG, WebP." });
             using var stream = file.OpenReadStream();
             byte[] data;
-            string avifContentType;
+            string storedContentType;
             try
             {
-                (data, avifContentType) = await PostImageProcessor.ProcessAsync(stream, ct);
+                (data, storedContentType) = await PostImageProcessor.ProcessAsync(stream, ct);
             }
-            catch (UnknownImageFormatException)
+            catch (Exception ex) when (ex is UnknownImageFormatException or InvalidImageContentException or InvalidOperationException)
             {
                 return BadRequest(new { error = "Не удалось прочитать изображение. Допустимые форматы: JPEG, PNG, WebP." });
             }
@@ -1446,7 +1450,7 @@ public sealed class ImportedSocialController : ControllerBase
             {
                 Uuid = FloraUuid.NewGuid(),
                 PostUuid = postUuid,
-                ContentType = avifContentType,
+                ContentType = storedContentType,
                 Data = data,
                 SortOrder = existingCount + i
             };
@@ -1455,6 +1459,13 @@ public sealed class ImportedSocialController : ControllerBase
         }
         await SaveAllAsync(ct);
         return Ok(new { imageUuids = uploaded });
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "UploadPostImages failed for post {PostUuid}", postUuid);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Не удалось сохранить фото. Попробуйте другой файл или позже." });
+        }
     }
 
     /// <summary>Получить изображение поста по UUID (публичный доступ).</summary>

@@ -4,15 +4,15 @@ using System.Text.Json;
 using Flora.Content.Application.Videos;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using NeoSolve.ImageSharp.AVIF;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Processing;
 
 namespace Flora.Content.Infrastructure;
 
 /// <summary>
 /// Транскодер на внешнем ffmpeg: видео → AV1 (SVT-AV1) в MP4 c faststart, аудио → Opus,
-/// постер — первый кадр в AVIF (тот же пайплайн качества, что у фото постов).
+/// постер — первый кадр в WebP (тот же пайплайн качества, что у фото постов).
 /// </summary>
 public sealed class FfmpegVideoTranscoder : IVideoTranscoder
 {
@@ -22,12 +22,12 @@ public sealed class FfmpegVideoTranscoder : IVideoTranscoder
     private const int SvtCrf = 32;
     private const int SvtPreset = 7;
     private const int PosterMaxDimension = 1280;
-    private const int PosterAvifQuality = 75;
+    private const int PosterWebpQuality = 82;
 
-    /// <summary>CQ 0–63 (ниже = лучше); как в PostImageProcessor.</summary>
-    private static readonly AVIFEncoder PosterEncoder = new()
+    private static readonly WebpEncoder PosterEncoder = new()
     {
-        CQLevel = (int)Math.Round((100 - PosterAvifQuality) * 63.0 / 100.0),
+        Quality = PosterWebpQuality,
+        FileFormat = WebpFileFormatType.Lossy,
     };
 
     private readonly MediaTranscodingOptions _options;
@@ -149,7 +149,7 @@ public sealed class FfmpegVideoTranscoder : IVideoTranscoder
             if (posterCode != 0)
                 throw new InvalidOperationException($"ffmpeg (постер) завершился с кодом {posterCode}: {Tail(posterStderr)}");
 
-            var (posterData, posterContentType) = await EncodePosterAvifAsync(posterPath, ct);
+            var (posterData, posterContentType) = await EncodePosterWebpAsync(posterPath, ct);
             var videoData = await File.ReadAllBytesAsync(outPath, ct);
 
             byte[]? h264Data = null;
@@ -200,7 +200,7 @@ public sealed class FfmpegVideoTranscoder : IVideoTranscoder
         }
     }
 
-    private static async Task<(byte[] Data, string ContentType)> EncodePosterAvifAsync(string posterPngPath, CancellationToken ct)
+    private static async Task<(byte[] Data, string ContentType)> EncodePosterWebpAsync(string posterPngPath, CancellationToken ct)
     {
         using var image = await Image.LoadAsync(posterPngPath, ct);
         if (image.Width > PosterMaxDimension || image.Height > PosterMaxDimension)
@@ -214,7 +214,7 @@ public sealed class FfmpegVideoTranscoder : IVideoTranscoder
         }
         using var ms = new MemoryStream();
         await image.SaveAsync(ms, PosterEncoder, ct);
-        return (ms.ToArray(), "image/avif");
+        return (ms.ToArray(), "image/webp");
     }
 
     /// <summary>Default wall-clock cap for fast ffprobe/`-encoders` calls.</summary>

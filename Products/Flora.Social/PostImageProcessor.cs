@@ -1,15 +1,14 @@
-using NeoSolve.ImageSharp.AVIF;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Processing;
 
 namespace Flora.Social;
 
-/// <summary>Конвертация загруженных фото поста в AVIF: ресайз, стриппинг метаданных, сжатие.</summary>
+/// <summary>Конвертация загруженных фото поста в WebP: ресайз, стриппинг метаданных, сжатие (без внешних avifenc).</summary>
 internal static class PostImageProcessor
 {
     private const int MaxDimension = 2048;
-    private const int AvifQuality = 75;
-    // libavif default speed = 6 (NeoSolve AVIFEncoder не экспонирует Speed).
+    private const int WebpQuality = 82;
 
     /// <summary>
     /// Pixel budget guarding against decompression bombs — a tiny file that decodes into a huge
@@ -17,20 +16,19 @@ internal static class PostImageProcessor
     /// </summary>
     private const long MaxPixels = 50_000_000;
 
-    /// <summary>CQ 0–63 (ниже = лучше). Quality 75 → CQ ≈ 16 (перцептивно ≈ JPEG Q92).</summary>
-    private static readonly AVIFEncoder Encoder = new()
+    private static readonly WebpEncoder Encoder = new()
     {
-        CQLevel = (int)Math.Round((100 - AvifQuality) * 63.0 / 100.0),
+        Quality = WebpQuality,
+        FileFormat = WebpFileFormatType.Lossy,
     };
 
     /// <summary>
-    /// Validates and re-encodes an uploaded image to AVIF. Decoding doubles as content validation
+    /// Validates and re-encodes an uploaded image to WebP. Decoding doubles as content validation
     /// (non-images throw), and re-encoding strips any embedded payload/metadata. Throws
     /// <see cref="InvalidOperationException"/> if the declared pixel dimensions exceed the budget.
     /// </summary>
     public static async Task<(byte[] Data, string ContentType)> ProcessAsync(Stream input, CancellationToken ct)
     {
-        // Buffer once so we can read the header (bomb check) before committing to a full pixel decode.
         using var buffer = new MemoryStream();
         await input.CopyToAsync(buffer, ct);
         buffer.Position = 0;
@@ -58,6 +56,6 @@ internal static class PostImageProcessor
 
         using var ms = new MemoryStream();
         await image.SaveAsync(ms, Encoder, ct);
-        return (ms.ToArray(), "image/avif");
+        return (ms.ToArray(), "image/webp");
     }
 }
