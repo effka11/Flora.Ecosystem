@@ -21,6 +21,7 @@ export type CommunityRecord = {
   tab: CommunityTab;
   description: string;
   posts: CommunityPost[];
+  avatarUuid?: string | null;
 };
 
 export type CommunityLinkTarget = Pick<CommunityRecord, "id" | "slug">;

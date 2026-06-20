@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { FeedPostList, type FeedPostListItem } from "@/app/_shared/FeedPostList";
+import { FloraAvatar, FLORA_PROFILE_AVATAR_INNER_PX } from "@/app/_shared/FloraAvatar";
 import { ProfileCardStatus } from "@/app/(dashboard)/profile/ProfileCardStatus";
 import type { CommunityRecord } from "@/app/(dashboard)/communities/communitiesSeed";
 import { isCommunityUuid } from "@/app/(dashboard)/communities/communityProfile";
@@ -19,6 +20,7 @@ import { CommunityOwnHeaderActions } from "./CommunityOwnHeaderActions";
 import styles from "@/app/(dashboard)/profile/profile.module.css";
 
 const MODAL_CLOSE_MS = 220;
+const PROFILE_AVATAR_INNER_PX = FLORA_PROFILE_AVATAR_INNER_PX;
 
 function useAnimatedModal() {
   const [open, setOpen] = useState(false);
@@ -43,14 +45,6 @@ function useAnimatedModal() {
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   return { open, closing, openModal, closeModal };
-}
-
-function communityAvatarLabel(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0]!.slice(0, 1) + parts[1]!.slice(0, 1)).toUpperCase();
-  }
-  return name.trim().slice(0, 2).toUpperCase() || "?";
 }
 
 function seedPostsToFeedItems(community: CommunityRecord): FeedPostListItem[] {
@@ -112,8 +106,6 @@ export function CommunityPageContent({
   const [feedPosts, setFeedPosts] = useState<FeedPostListItem[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [postsError, setPostsError] = useState<string | null>(null);
-
-  const avatar = communityAvatarLabel(community.name);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,7 +215,15 @@ export function CommunityPageContent({
         <div className={styles.profileCover} />
         <div className={styles.profileInfo}>
           <div className={styles.profileInfoTop}>
-            <div className={styles.profileAvatar}>{avatar}</div>
+            <div className={styles.profileAvatar}>
+              <FloraAvatar
+                size={PROFILE_AVATAR_INNER_PX}
+                avatarUuid={community.avatarUuid}
+                displayName={community.name}
+                communityName={community.name}
+                seed={community.id}
+              />
+            </div>
             <ProfileCardStatus status={community.description} />
           </div>
           <div className={styles.profileNameRow}>
