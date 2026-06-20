@@ -2,7 +2,7 @@
 // Runtime host is Flora.API; this project only supplies connection configuration
 // via appsettings.json / environment variables and IDesignTimeDbContextFactory types.
 //
-// Apply order on an empty database: Auth → Users → Content → Messaging → Notifications (FK dependencies).
+// Apply order on an empty database: Auth → Users → Content → Messaging → Notifications → Music (FK dependencies).
 //
 // PowerShell examples (run from repo root: Flora.Ecosystem):
 //
