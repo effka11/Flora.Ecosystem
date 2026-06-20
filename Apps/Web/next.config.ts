@@ -19,7 +19,7 @@ function loadFloraVersions(): FloraVersionManifest {
   } catch {
     // fall through
   }
-  return { ecosystem: "0.1.0-alpha.1", products: { social: "0.1.0-alpha.1" } };
+  return { ecosystem: "0.1.0-alpha", products: { social: "0.1.0-alpha" } };
 }
 
 const floraVersions = loadFloraVersions();
