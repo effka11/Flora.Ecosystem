@@ -1,4 +1,4 @@
-# Политика безопасности Flora.Ecosystem (Security Policy)
+ # Политика безопасности Flora.Ecosystem (Security Policy)
 
 ## Сообщение об уязвимостях (Reporting)
 
@@ -90,4 +90,4 @@
 
 ---
 
-Контакт по вопросам безопасности и коммерческих гарантий: **legal@flora-s.net** (Luna.Ecosystem).
+Контакт по вопросам безопасности и коммерческих гарантий: **flora.dev.hub@gmail.com** (Luna.Ecosystem).
