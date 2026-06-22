@@ -10,7 +10,7 @@
 ### Попробовать (MVP alpha)
 
 * **Веб:** https://social.flora-s.net
-* **Android:** APK в [релизе `social/v0.1.0-alpha.1`](https://github.com/effka11/Flora.Ecosystem/releases/tag/social/v0.1.0-alpha.1) (`flora.social-v0.1.0-alpha.1-android.apk`)
+* **Android:** APK в [релизе `social/v0.1.0-alpha`](https://github.com/effka11/Flora.Ecosystem/releases/tag/social/v0.1.0-alpha) (`flora.social-v0.1.0-alpha-android.apk`)
 
 Ограничения текущей alpha-версии описаны в [SECURITY.md — Known Limitations](SECURITY.md#известные-ограничения-mvp-known-limitations).
 
