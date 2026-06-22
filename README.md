@@ -2,7 +2,8 @@
 
 Экосистема **FLORA** —  это модульная некоммерческая экосистема, развивающаяся в соответствии с уникальными ценностями в новейшей цифровой эпохе.
 
-* **Лицензия:** двойное лицензирование  –  **GNU AGPLv3** для сообщества, и **коммерческие лицензии** через Luna.Ecosystem. См. [`LICENSE`](LICENSE) и [`LEGAL.md`](LEGAL.md).
+* **Лицензия кода:** двойное лицензирование — **GNU AGPLv3** для сообщества или коммерческая лицензия через Luna.Ecosystem. См. [`LICENSE`](LICENSE) и [`LEGAL.md`](LEGAL.md).
+* **Лицензия некодовых материалов:** **CC BY-SA 4.0 International** или коммерческая лицензия через Luna.Ecosystem. См. [`LICENSE-CONTENT.md`](LICENSE-CONTENT.md) и [`LEGAL.md`](LEGAL.md).
 * **Безопасность:** см. [`SECURITY.md`](SECURITY.md). 
 * **Участие в разработке:** см. [`CONTRIBUTING.md`](CONTRIBUTING.md).
 * **Документация:** [FSCP](docs/fscp/FSCP.md), [E2E-платформа](docs/fscp/e2e-security.md), [FIRA](docs/fira/FIRA.md), [CODECS](docs/codecs/CODECS.md).
