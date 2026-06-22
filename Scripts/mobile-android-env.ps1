@@ -75,8 +75,48 @@ function Initialize-FloraAndroidBuildEnv {
     return @{ Sdk = $sdk; Jdk = $jdk }
 }
 
+function Invoke-Adb {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]] $ArgumentList
+    )
+
+    # adb writes informational lines (e.g. daemon startup) to stderr; with
+    # $ErrorActionPreference = Stop that becomes a terminating NativeCommandError.
+    $prevErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $raw = & adb @ArgumentList 2>&1
+        $exitCode = $LASTEXITCODE
+        $lines = @(
+            foreach ($item in @($raw)) {
+                if ($item -is [System.Management.Automation.ErrorRecord]) {
+                    [string]$item.ToString()
+                } else {
+                    [string]$item
+                }
+            }
+        )
+        return [PSCustomObject]@{
+            Output   = $lines
+            ExitCode = $exitCode
+        }
+    }
+    finally {
+        $ErrorActionPreference = $prevErrorAction
+    }
+}
+
+function Ensure-AdbReady {
+    Invoke-Adb start-server | Out-Null
+}
+
 function Get-AdbDeviceSerial {
-    $lines = @(adb devices | Select-Object -Skip 1 | Where-Object { $_.Trim() -ne "" })
+    $result = Invoke-Adb devices
+    if ($result.ExitCode -ne 0) {
+        throw "adb devices failed with exit code $($result.ExitCode)."
+    }
+    $lines = @($result.Output | Select-Object -Skip 1 | Where-Object { $_.Trim() -ne "" })
     $authorized = @($lines | Where-Object { $_ -match "\tdevice$" })
     if ($authorized.Count -eq 0) {
         throw "No authorized Android device. Connect USB debugging and run 'Flora Android: debug (USB)'."
@@ -105,15 +145,17 @@ function Test-FloraPackageInstalled {
         [string] $Variant = "production"
     )
     $packageId = Get-FloraAndroidPackageId $Variant
-    $path = adb shell pm path $packageId 2>$null
-    return ($LASTEXITCODE -eq 0) -and ($path -match "package:")
+    $result = Invoke-Adb shell pm path $packageId
+    $path = $result.Output -join "`n"
+    return ($result.ExitCode -eq 0) -and ($path -match "package:")
 }
 
 function Test-FloraDevClientInstalled {
     if (-not (Test-FloraPackageInstalled -Variant development)) { return $false }
     $packageId = Get-FloraAndroidPackageId development
-    $dump = adb shell dumpsys package $packageId 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
+    $result = Invoke-Adb shell dumpsys package $packageId
+    if ($result.ExitCode -ne 0) { return $false }
+    $dump = $result.Output -join "`n"
     return ($dump -match "expo\.modules\.devlauncher|expo\.modules\.devmenu")
 }
 

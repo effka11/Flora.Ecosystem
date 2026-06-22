@@ -5,11 +5,19 @@
 #>
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "mobile-android-env.ps1")
+
 if (-not (Get-Command adb -ErrorAction SilentlyContinue)) {
     throw "adb not found. Install Android SDK platform-tools and add to PATH."
 }
 
-$lines = @(adb devices | Select-Object -Skip 1 | Where-Object { $_.Trim() -ne "" })
+Ensure-AdbReady
+
+$result = Invoke-Adb devices
+if ($result.ExitCode -ne 0) {
+    throw "adb devices failed with exit code $($result.ExitCode)."
+}
+$lines = @($result.Output | Select-Object -Skip 1 | Where-Object { $_.Trim() -ne "" })
 $authorized = @($lines | Where-Object { $_ -match "\tdevice$" })
 $unauthorized = @($lines | Where-Object { $_ -match "\tunauthorized$" })
 
@@ -43,9 +51,9 @@ Phone not visible in adb.
 }
 
 Write-Host "Devices: $($authorized.Count)"
-adb reverse tcp:8081 tcp:8081
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-adb reverse tcp:5284 tcp:5284
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$reverse8081 = Invoke-Adb reverse tcp:8081 tcp:8081
+if ($reverse8081.ExitCode -ne 0) { exit $reverse8081.ExitCode }
+$reverse5284 = Invoke-Adb reverse tcp:5284 tcp:5284
+if ($reverse5284.ExitCode -ne 0) { exit $reverse5284.ExitCode }
 
 Write-Host "USB reverse OK: Metro 8081, API 5284"

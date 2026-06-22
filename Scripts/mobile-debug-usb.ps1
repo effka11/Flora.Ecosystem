@@ -49,7 +49,14 @@ function Start-OpenFloraWhenMetroReady {
         }
         $metroUrl = [uri]::EscapeDataString("http://127.0.0.1:8081")
         $deepLink = "exp+flora-mobile://expo-development-client/?url=$metroUrl"
-        adb shell am start -a android.intent.action.VIEW -d $deepLink | Out-Null
+        $prevErrorAction = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & adb shell am start -a android.intent.action.VIEW -d $deepLink 2>&1 | Out-Null
+        }
+        finally {
+            $ErrorActionPreference = $prevErrorAction
+        }
     } | Out-Null
 }
 
@@ -57,6 +64,7 @@ Require-Node
 Require-Adb
 
 . (Join-Path $PSScriptRoot "mobile-android-env.ps1")
+Ensure-AdbReady
 
 if (-not (Test-FloraDevClientInstalled) -or $ReplaceExistingDev) {
     if ($ReplaceExistingDev) {

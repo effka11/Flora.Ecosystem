@@ -42,7 +42,7 @@ if ($hasDevClient -and -not $ReplaceExisting) {
 
 if ($ReplaceExisting -and (Test-FloraPackageInstalled -Variant development)) {
     Write-Host "Removing existing Flora Dev ($devPackage) ..."
-    adb uninstall $devPackage 2>$null | Out-Null
+    Invoke-Adb uninstall $devPackage | Out-Null
 }
 
 Write-Host @"
