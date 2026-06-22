@@ -3,6 +3,7 @@ import { formatAtHandle, profileDisplayName } from "@flora/client-core/display";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ExpandablePostText } from "@/components/feed/ExpandablePostText";
 import { FeedPostComments } from "@/components/feed/FeedPostComments";
 import { FeedPostImages } from "@/components/feed/FeedPostImages";
 import {
@@ -68,6 +69,7 @@ export function PostCard({
   const profileHref = `/profile/${post.authorUsername}` as const;
   const timeLabel = formatRelativeTime(post.createdAt);
   const isOwnPost = handlesEqual(me?.username ?? "", post.authorUsername);
+  const hasMedia = post.imageUuids.length > 0 || Boolean(post.videoUuid);
 
   return (
     <View style={styles.card}>
@@ -111,7 +113,14 @@ export function PostCard({
           </View>
 
           <View style={styles.postBody}>
-            {post.text.trim() ? <Text style={styles.text}>{post.text}</Text> : null}
+            {post.text.trim() ? (
+              <ExpandablePostText
+                text={post.text}
+                hasMedia={hasMedia}
+                containerStyle={styles.postText}
+                textStyle={styles.text}
+              />
+            ) : null}
 
             {post.imageUuids.length > 0 ? <FeedPostImages imageUuids={post.imageUuids} /> : null}
             {post.videoUuid ? (
@@ -216,6 +225,9 @@ const styles = StyleSheet.create({
   postBody: {
     marginTop: floraFeedPost.contentNudgeX,
   },
+  postText: {
+    marginBottom: floraFeedPost.textMarginBottom,
+  },
   postMetaPressable: {
     alignSelf: "flex-start",
     maxWidth: "100%",
@@ -255,7 +267,6 @@ const styles = StyleSheet.create({
     lineHeight: 25.5,
     letterSpacing: 0.45,
     includeFontPadding: false,
-    marginBottom: floraFeedPost.textMarginBottom,
   },
   mediaPill: {
     alignSelf: "flex-start",
