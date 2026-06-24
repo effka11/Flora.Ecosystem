@@ -13,13 +13,12 @@
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.7" />
   </ItemGroup>
 
+  <!-- Products depend only on module ROOTS (+ Flora.Shared). Each root re-exports its Application/
+       Infrastructure/Contracts transitively, so the legacy controllers still compile while the product
+       stays within the "module roots only" architecture rule (enforced by tools/Validate-Architecture.ps1). -->
   <ItemGroup>
-    <ProjectReference Include="..\..\Modules\Flora.Auth\Flora.Auth.Application\Flora.Auth.Application.csproj" />
     <ProjectReference Include="..\..\Modules\Flora.Auth\Flora.Auth.csproj" />
-    <ProjectReference Include="..\..\Modules\Flora.Auth\Flora.Auth.Infrastructure\Flora.Auth.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Flora.Users\Flora.Users.csproj" />
-    <ProjectReference Include="..\..\Modules\Flora.Users\Flora.Users.Infrastructure\Flora.Users.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\Modules\Flora.Users\Flora.Users.Contracts\Flora.Users.Contracts.csproj" />
     <ProjectReference Include="..\..\Modules\Flora.Content\Flora.Content.csproj" />
     <ProjectReference Include="..\..\Modules\Flora.Messaging\Flora.Messaging.csproj" />
     <ProjectReference Include="..\..\Modules\Flora.Music\Flora.Music.csproj" />

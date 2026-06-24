@@ -193,10 +193,8 @@ public sealed class ImportedSocialController : ControllerBase
         if (!Guid.TryParse(request.VerificationToken, out var verificationToken))
             return Ok();
 
-        var pending = await _auth.PendingRegistrations.FirstOrDefaultAsync(p => p.VerificationToken == verificationToken, ct);
-        if (pending == null) return Ok();
-        _auth.PendingRegistrations.Remove(pending);
-        await _auth.SaveChangesAsync(ct);
+        // Cleanup (draft + challenge) is owned by Auth's orchestrator with safe cross-context ordering.
+        await _authRegistration.CancelAsync(verificationToken, ct);
         return Ok();
     }
 

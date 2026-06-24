@@ -4,6 +4,7 @@ using Flora.Messaging.Infrastructure;
 using Flora.Music.Infrastructure;
 using Flora.Notifications.Infrastructure;
 using Flora.Users.Infrastructure;
+using Flora.Verification.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
@@ -113,5 +114,20 @@ public sealed class MusicDbContextFactory : IDesignTimeDbContextFactory<MusicDbC
             n.MigrationsHistoryTable("__EFMigrationsHistory_Music", "flora_core");
         });
         return new MusicDbContext(o.Options);
+    }
+}
+
+public sealed class VerificationDbContextFactory : IDesignTimeDbContextFactory<VerificationDbContext>
+{
+    public VerificationDbContext CreateDbContext(string[] args)
+    {
+        var cs = DesignTimeConfiguration.GetConnectionString();
+        var o = new DbContextOptionsBuilder<VerificationDbContext>();
+        o.UseNpgsql(cs, n =>
+        {
+            n.MigrationsAssembly(typeof(VerificationDbContext).Assembly.FullName);
+            n.MigrationsHistoryTable("__EFMigrationsHistory_Verification", "flora_core");
+        });
+        return new VerificationDbContext(o.Options);
     }
 }

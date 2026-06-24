@@ -83,6 +83,7 @@ foreach ($projectFile in $projectFiles) {
 
         $isShared = $referenceName -eq "Flora.Shared"
         $isModuleLayer = $referenceName -match '\.(Application|Domain|Infrastructure|Contracts)$'
+        $isAnyContracts = ($referenceName -match '\.Contracts$') -and $relativeReferencePath.StartsWith("Modules/")
         $isModuleRoot = $relativeReferencePath.StartsWith("Modules/") -and -not $isModuleLayer
         $isProductRoot = $relativeReferencePath.StartsWith("Products/") -and -not $isModuleLayer
         $isGrpc = $referenceName -eq "Flora.gRPC"
@@ -119,8 +120,8 @@ foreach ($projectFile in $projectFiles) {
                     "Flora.Shared"
                 )
 
-                if ($allowed -notcontains $referenceName) {
-                    $errors.Add("[$relativeProjectPath] invalid reference to [$relativeReferencePath]. Application may depend only on its own Domain, Contracts, or Flora.Shared.")
+                if (-not (($allowed -contains $referenceName) -or $isAnyContracts)) {
+                    $errors.Add("[$relativeProjectPath] invalid reference to [$relativeReferencePath]. Application may depend only on its own Domain, any module Contracts, or Flora.Shared.")
                 }
             }
             "module-domain" {
@@ -143,8 +144,8 @@ foreach ($projectFile in $projectFiles) {
                     "Flora.Shared"
                 )
 
-                if ($allowed -notcontains $referenceName) {
-                    $errors.Add("[$relativeProjectPath] invalid reference to [$relativeReferencePath]. Infrastructure may depend only on its own Application, Domain, Contracts, Flora.gRPC, or Flora.Shared.")
+                if (-not (($allowed -contains $referenceName) -or $isAnyContracts)) {
+                    $errors.Add("[$relativeProjectPath] invalid reference to [$relativeReferencePath]. Infrastructure may depend only on its own Application, Domain, any module Contracts, Flora.gRPC, or Flora.Shared.")
                 }
             }
         }

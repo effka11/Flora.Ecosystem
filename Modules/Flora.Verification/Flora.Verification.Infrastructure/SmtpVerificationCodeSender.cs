@@ -1,12 +1,11 @@
 using System.Net;
 using System.Net.Mail;
-using Flora.Auth.Application;
-using Flora.Auth.Infrastructure.Options;
+using Flora.Verification.Application;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Flora.Auth.Infrastructure.Services;
+namespace Flora.Verification.Infrastructure;
 
 public sealed class SmtpVerificationCodeSender(
     IOptions<SmtpOptions> options,

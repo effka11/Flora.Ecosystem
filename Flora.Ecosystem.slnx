@@ -49,6 +49,13 @@
     <Project Path="Modules/Flora.Messaging/Flora.Messaging.Domain/Flora.Messaging.Domain.csproj" />
     <Project Path="Modules/Flora.Messaging/Flora.Messaging.Infrastructure/Flora.Messaging.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/Modules/Flora.Music/">
+    <Project Path="Modules/Flora.Music/Flora.Music.csproj" />
+    <Project Path="Modules/Flora.Music/Flora.Music.Application/Flora.Music.Application.csproj" />
+    <Project Path="Modules/Flora.Music/Flora.Music.Contracts/Flora.Music.Contracts.csproj" />
+    <Project Path="Modules/Flora.Music/Flora.Music.Domain/Flora.Music.Domain.csproj" />
+    <Project Path="Modules/Flora.Music/Flora.Music.Infrastructure/Flora.Music.Infrastructure.csproj" />
+  </Folder>
   <Project Path="Flora.API/Flora.API.csproj" />
   <Project Path="Flora.Migrations/Flora.Migrations.csproj" />
   <Project Path="Flora.Shared/Flora.Shared.csproj" />

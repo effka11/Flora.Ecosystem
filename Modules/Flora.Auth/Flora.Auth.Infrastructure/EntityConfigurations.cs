@@ -87,25 +87,6 @@ public class UserSessionConfiguration : IEntityTypeConfiguration<UserSession>
     }
 }
 
-public class PendingEmailChangeConfiguration : IEntityTypeConfiguration<PendingEmailChange>
-{
-    public void Configure(EntityTypeBuilder<PendingEmailChange> builder)
-    {
-        builder.ToTable("pending_email_changes", "flora_core");
-        builder.HasKey(e => e.ChangeToken).HasName("pk_pending_email_changes");
-        builder.Property(e => e.ChangeToken).HasColumnName("change_token");
-        builder.Property(e => e.UserUuid).HasColumnName("user_uuid");
-        builder.Property(e => e.NewEmail).HasColumnName("new_email").IsRequired().HasMaxLength(255);
-        builder.Property(e => e.VerificationCodeHash).HasColumnName("verification_code_hash").IsRequired().HasMaxLength(128);
-        builder.Property(e => e.ExpiresAt).HasColumnName("expires_at").IsRequired();
-        builder.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
-        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("CURRENT_TIMESTAMP").ValueGeneratedOnAddOrUpdate();
-        builder.HasIndex(e => e.UserUuid).HasDatabaseName("ix_pending_email_changes_user_uuid");
-        builder.HasIndex(e => e.NewEmail).HasDatabaseName("ix_pending_email_changes_new_email");
-        builder.HasIndex(e => e.ExpiresAt).HasDatabaseName("ix_pending_email_changes_expires_at");
-    }
-}
-
 public class PendingRegistrationConfiguration : IEntityTypeConfiguration<PendingRegistration>
 {
     public void Configure(EntityTypeBuilder<PendingRegistration> builder)
@@ -116,7 +97,6 @@ public class PendingRegistrationConfiguration : IEntityTypeConfiguration<Pending
         builder.Property(e => e.Email).HasColumnName("email").IsRequired().HasMaxLength(255);
         builder.Property(e => e.Username).HasColumnName("username").IsRequired().HasMaxLength(50);
         builder.Property(e => e.PasswordHash).HasColumnName("password_hash").IsRequired();
-        builder.Property(e => e.VerificationCodeHash).HasColumnName("verification_code_hash").IsRequired().HasMaxLength(128);
         builder.Property(e => e.ExpiresAt).HasColumnName("expires_at").IsRequired();
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("CURRENT_TIMESTAMP").ValueGeneratedOnAddOrUpdate();

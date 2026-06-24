@@ -17,6 +17,8 @@
     <ProjectReference Include="..\Flora.Notifications.Domain\Flora.Notifications.Domain.csproj" />
     <ProjectReference Include="..\Flora.Notifications.Contracts\Flora.Notifications.Contracts.csproj" />
     <ProjectReference Include="..\..\Flora.Messaging\Flora.Messaging.Contracts\Flora.Messaging.Contracts.csproj" />
+    <ProjectReference Include="..\..\Flora.Users\Flora.Users.Contracts\Flora.Users.Contracts.csproj" />
+    <ProjectReference Include="..\..\Flora.Auth\Flora.Auth.Contracts\Flora.Auth.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Flora.Shared\Flora.Shared.csproj" />
   </ItemGroup>
 

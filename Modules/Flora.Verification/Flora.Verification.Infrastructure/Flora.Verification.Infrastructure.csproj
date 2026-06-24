@@ -1,16 +1,22 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\Flora.Verification.Application\Flora.Verification.Application.csproj" />
-    <ProjectReference Include="..\Flora.Verification.Domain\Flora.Verification.Domain.csproj" />
-    <ProjectReference Include="..\Flora.Verification.Contracts\Flora.Verification.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\Infrastructure\Flora.gRPC\Flora.gRPC.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Flora.Verification.Application\Flora.Verification.Application.csproj" />
+    <ProjectReference Include="..\Flora.Verification.Domain\Flora.Verification.Domain.csproj" />
+    <ProjectReference Include="..\Flora.Verification.Contracts\Flora.Verification.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Flora.Shared\Flora.Shared.csproj" />
+  </ItemGroup>
 
 </Project>

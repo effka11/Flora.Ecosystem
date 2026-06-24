@@ -21,7 +21,6 @@ public static class AuthModuleComposition
             ?? throw new InvalidOperationException("Connection string 'FloraDatabase' is not configured.");
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
-        services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
         services.AddDbContext<AuthDbContext>((sp, o) =>
         {
             o.UseNpgsql(connectionString, n =>
@@ -35,7 +34,6 @@ public static class AuthModuleComposition
         services.AddScoped<IPasswordHasher, Argon2PasswordHasher>();
         services.AddScoped<ITokenService, JwtTokenService>();
         services.AddScoped<IAccountReadQueries, AccountReadQueries>();
-        services.AddScoped<IVerificationCodeSender, SmtpVerificationCodeSender>();
         services.AddScoped<IAuthEmailRegistrationOrchestrator, AuthEmailRegistrationOrchestrator>();
         services.AddScoped<IAuthCredentialOperations, AuthCredentialOperations>();
         services.AddScoped<IAuthAccountSecurityService, AuthAccountSecurityService>();

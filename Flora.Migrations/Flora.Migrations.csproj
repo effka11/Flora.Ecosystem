@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Modules\Flora.Messaging\Flora.Messaging.Infrastructure\Flora.Messaging.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Flora.Music\Flora.Music.Infrastructure\Flora.Music.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Flora.Notifications\Flora.Notifications.Infrastructure\Flora.Notifications.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Flora.Verification\Flora.Verification.Infrastructure\Flora.Verification.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

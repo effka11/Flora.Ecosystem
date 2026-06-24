@@ -18,6 +18,7 @@ $startupProject = Join-Path $repoRoot "Flora.Migrations\Flora.Migrations.csproj"
 
 $steps = @(
     @{ Context = "AuthDbContext"; Project = "Modules\Flora.Auth\Flora.Auth.Infrastructure\Flora.Auth.Infrastructure.csproj" },
+    @{ Context = "VerificationDbContext"; Project = "Modules\Flora.Verification\Flora.Verification.Infrastructure\Flora.Verification.Infrastructure.csproj" },
     @{ Context = "UsersDbContext"; Project = "Modules\Flora.Users\Flora.Users.Infrastructure\Flora.Users.Infrastructure.csproj" },
     @{ Context = "ContentDbContext"; Project = "Modules\Flora.Content\Flora.Content.Infrastructure\Flora.Content.Infrastructure.csproj" },
     @{ Context = "MessagingDbContext"; Project = "Modules\Flora.Messaging\Flora.Messaging.Infrastructure\Flora.Messaging.Infrastructure.csproj" },

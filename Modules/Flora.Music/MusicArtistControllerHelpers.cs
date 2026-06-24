@@ -3,7 +3,7 @@ using Flora.Music.Application.Artists;
 using Flora.Music.Contracts;
 using Flora.Music.Domain;
 
-namespace Flora.Social;
+namespace Flora.Music;
 
 internal static class MusicArtistControllerHelpers
 {

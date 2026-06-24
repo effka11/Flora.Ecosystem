@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <Compile Include="Class1.cs" />
+    <Compile Include="NotificationsController.cs" />
+    <Compile Include="PushTokenController.cs" />
+    <Compile Include="SignalsController.cs" />
     <ProjectReference Include="Flora.Notifications.Application\Flora.Notifications.Application.csproj" />
     <ProjectReference Include="Flora.Notifications.Domain\Flora.Notifications.Domain.csproj" />
     <ProjectReference Include="Flora.Notifications.Infrastructure\Flora.Notifications.Infrastructure.csproj" />

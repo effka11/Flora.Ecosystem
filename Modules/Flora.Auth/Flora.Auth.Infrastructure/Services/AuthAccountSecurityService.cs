@@ -1,9 +1,8 @@
 using System.Security.Cryptography;
-using System.Text;
 using Flora.Auth.Application;
-using Flora.Auth.Domain;
+using Flora.Verification.Contracts;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using OtpNet;
 
 namespace Flora.Auth.Infrastructure.Services;
@@ -11,10 +10,9 @@ namespace Flora.Auth.Infrastructure.Services;
 public sealed class AuthAccountSecurityService(
     AuthDbContext auth,
     IPasswordHasher passwordHasher,
-    IVerificationCodeSender verificationCodeSender,
-    IHostEnvironment hostEnvironment) : IAuthAccountSecurityService
+    IVerificationChallengeService verification,
+    ILogger<AuthAccountSecurityService> logger) : IAuthAccountSecurityService
 {
-    private const int PendingExpirationMinutes = 15;
     private const string TotpIssuer = "FLORA";
 
     public async Task<SecurityStatusOutcome> GetStatusAsync(Guid userUuid, CancellationToken cancellationToken)
@@ -59,48 +57,25 @@ public sealed class AuthAccountSecurityService(
         if (await auth.UserAccounts.AnyAsync(u => u.Email == email && u.UserUuid != userUuid, cancellationToken).ConfigureAwait(false))
             return ConflictEmailBegin("Этот email уже используется.");
 
-        await CleanupExpiredPendingEmailChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        var code = GenerateVerificationCode();
-        var changeToken = Guid.NewGuid();
-        var now = DateTime.UtcNow;
-        var expiresAt = now.AddMinutes(PendingExpirationMinutes);
-        var codeHash = HashVerificationCode(code);
-
-        var existing = await auth.PendingEmailChanges
-            .FirstOrDefaultAsync(p => p.UserUuid == userUuid, cancellationToken)
-            .ConfigureAwait(false);
-        if (existing != null)
+        // Verification owns the code/challenge; the change token returned to the client is the challenge token.
+        ChallengeBeginResult challenge;
+        try
         {
-            existing.NewEmail = email;
-            existing.VerificationCodeHash = codeHash;
-            existing.ChangeToken = changeToken;
-            existing.ExpiresAt = expiresAt;
-            existing.UpdatedAt = now;
+            challenge = await verification
+                .BeginAsync(VerificationChallengeKind.EmailChange, email, userUuid, cancellationToken)
+                .ConfigureAwait(false);
         }
-        else
+        catch (Exception ex) when (ex is System.Net.Mail.SmtpException or InvalidOperationException)
         {
-            auth.PendingEmailChanges.Add(new PendingEmailChange
-            {
-                ChangeToken = changeToken,
-                UserUuid = userUuid,
-                NewEmail = email,
-                VerificationCodeHash = codeHash,
-                ExpiresAt = expiresAt,
-                CreatedAt = now,
-                UpdatedAt = now,
-            });
+            return FailEmailBegin("Не удалось отправить код на email. Сервис почты временно недоступен — попробуйте позже.");
         }
-
-        await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        await verificationCodeSender.SendEmailVerificationCodeAsync(email, code, cancellationToken).ConfigureAwait(false);
 
         return new EmailChangeBeginOutcome
         {
             Success = true,
-            ChangeToken = changeToken.ToString("D"),
-            ExpiresAtUtc = expiresAt,
-            DevVerificationCode = hostEnvironment.IsDevelopment() ? code : null,
+            ChangeToken = challenge.Token.ToString("D"),
+            ExpiresAtUtc = challenge.ExpiresAtUtc,
+            DevVerificationCode = challenge.DevCode,
         };
     }
 
@@ -115,34 +90,41 @@ public sealed class AuthAccountSecurityService(
         if (string.IsNullOrWhiteSpace(code))
             return FailEmailConfirm("Укажите код подтверждения.");
 
-        var pending = await auth.PendingEmailChanges
-            .FirstOrDefaultAsync(p => p.ChangeToken == changeToken && p.UserUuid == userUuid, cancellationToken)
-            .ConfigureAwait(false);
-        if (pending == null || pending.ExpiresAt <= DateTime.UtcNow)
+        var validation = await verification.ValidateAsync(changeToken, code, cancellationToken).ConfigureAwait(false);
+        if (!validation.Success)
+        {
+            return validation.Status == ChallengeValidateStatus.CodeMismatch
+                ? FailEmailConfirm("Неверный код подтверждения.")
+                : FailEmailConfirm("Запрос на смену email истёк. Начните заново.");
+        }
+
+        // Bind the challenge to the authenticated user and read the new email from its target.
+        if (validation.SubjectUserUuid != userUuid || string.IsNullOrWhiteSpace(validation.Target))
             return FailEmailConfirm("Запрос на смену email истёк. Начните заново.");
 
-        if (!FixedTimeHashEquals(pending.VerificationCodeHash, HashVerificationCode(code.Trim())))
-            return FailEmailConfirm("Неверный код подтверждения.");
+        var newEmail = validation.Target;
 
         var account = await auth.UserAccounts.FirstOrDefaultAsync(u => u.UserUuid == userUuid, cancellationToken)
             .ConfigureAwait(false);
         if (account == null)
             return FailEmailConfirm("Аккаунт не найден.");
 
-        if (await auth.UserAccounts.AnyAsync(u => u.Email == pending.NewEmail && u.UserUuid != userUuid, cancellationToken).ConfigureAwait(false))
+        if (await auth.UserAccounts.AnyAsync(u => u.Email == newEmail && u.UserUuid != userUuid, cancellationToken).ConfigureAwait(false))
             return FailEmailConfirm("Этот email уже используется.");
 
-        account.Email = pending.NewEmail;
+        account.Email = newEmail;
         account.HasEmail = true;
         account.EmailVerified = true;
         account.UpdatedAt = DateTime.UtcNow;
-        auth.PendingEmailChanges.Remove(pending);
         await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // Email applied in AuthDbContext; consume the challenge best-effort (TTL covers any failure).
+        await SafeCancelChallengeAsync(changeToken, cancellationToken).ConfigureAwait(false);
 
         return new EmailChangeConfirmOutcome
         {
             Success = true,
-            NewEmail = pending.NewEmail,
+            NewEmail = newEmail,
         };
     }
 
@@ -286,32 +268,18 @@ public sealed class AuthAccountSecurityService(
         return digits.Length > 20 ? digits[..20] : digits;
     }
 
-    private async Task CleanupExpiredPendingEmailChangesAsync(CancellationToken cancellationToken)
+    private async Task SafeCancelChallengeAsync(Guid token, CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
-        var expired = await auth.PendingEmailChanges.Where(p => p.ExpiresAt <= now).ToListAsync(cancellationToken).ConfigureAwait(false);
-        if (expired.Count == 0) return;
-        auth.PendingEmailChanges.RemoveRange(expired);
-        await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await verification.CancelAsync(token, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort: an orphaned challenge self-expires via TTL. Never fail the caller on cleanup.
+            logger.LogWarning(ex, "Best-effort cancel of email-change challenge {Token} failed.", token);
+        }
     }
-
-    private static string GenerateVerificationCode()
-    {
-        var value = RandomNumberGenerator.GetInt32(0, 1_000_000);
-        return value.ToString("D6");
-    }
-
-    private static string HashVerificationCode(string code)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(code));
-        return Convert.ToHexString(bytes);
-    }
-
-    /// <summary>Constant-time comparison of two code hashes to avoid leaking match progress via timing.</summary>
-    private static bool FixedTimeHashEquals(string expected, string actual) =>
-        CryptographicOperations.FixedTimeEquals(
-            Encoding.ASCII.GetBytes(expected ?? ""),
-            Encoding.ASCII.GetBytes(actual ?? ""));
 
     private static EmailChangeBeginOutcome FailEmailBegin(string message) =>
         new() { Success = false, ErrorMessage = message };

@@ -11,7 +11,6 @@ public class AuthDbContext : DbContext
     public DbSet<UserSecurityLogs> UserSecurityLogs => Set<UserSecurityLogs>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<PendingRegistration> PendingRegistrations => Set<PendingRegistration>();
-    public DbSet<PendingEmailChange> PendingEmailChanges => Set<PendingEmailChange>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

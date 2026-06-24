@@ -21,6 +21,7 @@
     <ProjectReference Include="..\Flora.Auth.Domain\Flora.Auth.Domain.csproj" />
     <ProjectReference Include="..\Flora.Auth.Contracts\Flora.Auth.Contracts.csproj" />
     <ProjectReference Include="..\..\Flora.Users\Flora.Users.Contracts\Flora.Users.Contracts.csproj" />
+    <ProjectReference Include="..\..\Flora.Verification\Flora.Verification.Contracts\Flora.Verification.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Infrastructure\Flora.gRPC\Flora.gRPC.csproj" />
     <ProjectReference Include="..\..\..\Flora.Shared\Flora.Shared.csproj" />
   </ItemGroup>

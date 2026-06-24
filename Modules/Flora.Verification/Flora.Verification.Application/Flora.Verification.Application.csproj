@@ -1,8 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Flora.Verification.Domain\Flora.Verification.Domain.csproj" />
     <ProjectReference Include="..\Flora.Verification.Contracts\Flora.Verification.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Flora.Shared\Flora.Shared.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

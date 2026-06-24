@@ -12,6 +12,12 @@ public interface IAuthEmailRegistrationOrchestrator
         string codePlain,
         RemoteSessionHints sessionHints,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Abandons a pending registration: removes the local account draft, then best-effort cancels the
+    /// verification challenge. Safe to call repeatedly and when the token no longer exists.
+    /// </summary>
+    Task CancelAsync(Guid verificationToken, CancellationToken cancellationToken);
 }
 
 /// <summary>Password login + refresh-token rotation backed by Auth DB.</summary>

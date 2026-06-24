@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Flora.Social;
+namespace Flora.Music;
 
 [ApiController]
 [Route("api/music")]
@@ -556,5 +556,3 @@ public sealed class MusicController(
 }
 
 public sealed record CreateMusicPlaylistBody(string? Title);
-
-public sealed record CreateMusicArtistBody(string? DisplayName, bool LinkToMyProfile);

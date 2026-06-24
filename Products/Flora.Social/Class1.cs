@@ -3,7 +3,6 @@ using Flora.Content;
 using Flora.Messaging;
 using Flora.Music;
 using Flora.Notifications;
-using Flora.Notifications.Application;
 using Flora.Shared.Persistence;
 using Flora.Users;
 using Flora.Verification;
@@ -24,14 +23,12 @@ public static class FloraSocialComposition
 
         services
             .AddUsersModule(configuration)
+            .AddVerificationModule(configuration)
             .AddAuthModule(configuration)
-            .AddVerificationModule()
             .AddNotificationsModule(configuration)
             .AddContentModule(configuration)
             .AddMessagingModule(configuration)
             .AddMusicModule(configuration);
-
-        services.AddScoped<IUserDisplayNameResolver, SocialUserDisplayNameResolver>();
 
         services.AddFloraJwtBearer(configuration);
 
@@ -41,6 +38,8 @@ public static class FloraSocialComposition
 
         services.AddControllers()
             .AddApplicationPart(typeof(ImportedSocialController).Assembly)
+            .AddMusicModuleControllers()
+            .AddNotificationsModuleControllers()
             .AddJsonOptions(options =>
             {
                 options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;

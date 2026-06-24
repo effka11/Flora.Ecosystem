@@ -28,12 +28,20 @@ public static class NotificationsModuleComposition
 
         services.AddScoped<INotificationInboxService, NotificationInboxService>();
         services.AddScoped<IPushTokenService, PushTokenService>();
+        services.AddScoped<IUserDisplayNameResolver, UserDisplayNameResolver>();
         services.AddSingleton<IUserRealtimeHub, UserRealtimeHub>();
         services.AddScoped<IUserRealtimePublisher, UserRealtimePublisher>();
         services.AddScoped<IMessagePushDispatcher, FcmPushSender>();
         services.AddScoped<IMessageSentNotifier, MessagePushNotifier>();
         return services;
     }
+
+    /// <summary>
+    /// Registers this module's HTTP controllers (notifications, push-token, signals) as an MVC application
+    /// part, so any product host exposes them by chaining this onto <c>AddControllers()</c>.
+    /// </summary>
+    public static IMvcBuilder AddNotificationsModuleControllers(this IMvcBuilder builder) =>
+        builder.AddApplicationPart(typeof(NotificationsModuleComposition).Assembly);
 
     public static IEndpointRouteBuilder MapNotificationsModuleEndpoints(this IEndpointRouteBuilder endpoints) => endpoints;
 }

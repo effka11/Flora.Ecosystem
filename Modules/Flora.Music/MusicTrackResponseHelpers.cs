@@ -1,6 +1,6 @@
 using Flora.Music.Contracts;
 
-namespace Flora.Social;
+namespace Flora.Music;
 
 internal static class MusicTrackResponseHelpers
 {

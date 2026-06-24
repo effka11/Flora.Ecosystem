@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <Compile Include="MusicModuleComposition.cs" />
+    <Compile Include="MusicController.cs" />
+    <Compile Include="MusicArtistControllerHelpers.cs" />
+    <Compile Include="MusicTrackResponseHelpers.cs" />
     <ProjectReference Include="Flora.Music.Application\Flora.Music.Application.csproj" />
     <ProjectReference Include="Flora.Music.Domain\Flora.Music.Domain.csproj" />
     <ProjectReference Include="Flora.Music.Infrastructure\Flora.Music.Infrastructure.csproj" />

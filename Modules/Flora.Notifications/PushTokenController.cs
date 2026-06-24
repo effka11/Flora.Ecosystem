@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
-namespace Flora.Social;
+namespace Flora.Notifications;
 
 [ApiController]
 [Route("api/auth/push-token")]

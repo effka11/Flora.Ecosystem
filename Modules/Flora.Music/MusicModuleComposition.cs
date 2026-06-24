@@ -56,5 +56,12 @@ public static class MusicModuleComposition
         return services;
     }
 
+    /// <summary>
+    /// Registers this module's HTTP controllers (route prefix <c>api/music</c>) as an MVC application part,
+    /// so any product host exposes them by chaining this onto <c>AddControllers()</c>.
+    /// </summary>
+    public static IMvcBuilder AddMusicModuleControllers(this IMvcBuilder builder) =>
+        builder.AddApplicationPart(typeof(MusicModuleComposition).Assembly);
+
     public static IEndpointRouteBuilder MapMusicModuleEndpoints(this IEndpointRouteBuilder endpoints) => endpoints;
 }

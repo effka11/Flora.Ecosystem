@@ -1,12 +1,11 @@
-using System.Security.Cryptography;
-using System.Text;
 using Flora.Auth.Application;
 using Flora.Auth.Domain;
 using Flora.Auth.Infrastructure.Options;
 using Flora.Shared;
 using Flora.Users.Contracts;
+using Flora.Verification.Contracts;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Flora.Auth.Infrastructure.Services;
@@ -14,14 +13,12 @@ namespace Flora.Auth.Infrastructure.Services;
 public sealed class AuthEmailRegistrationOrchestrator(
     AuthDbContext auth,
     IPasswordHasher passwordHasher,
-    IVerificationCodeSender verificationCodeSender,
+    IVerificationChallengeService verification,
     ITokenService tokenService,
     IOptions<JwtOptions> jwtOptions,
-    IHostEnvironment hostEnvironment,
-    IUserProfileProvisioner profileProvisioner) : IAuthEmailRegistrationOrchestrator
+    IUserProfileProvisioner profileProvisioner,
+    ILogger<AuthEmailRegistrationOrchestrator> logger) : IAuthEmailRegistrationOrchestrator
 {
-    private const int PendingExpirationMinutes = 15;
-
     public async Task<RegistrationBeginOutcome> BeginAsync(string emailOrEmpty, string password, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(password))
@@ -37,58 +34,57 @@ public sealed class AuthEmailRegistrationOrchestrator(
             return ConflictBegin("Аккаунт с этим email уже существует.");
 
         var passwordHash = passwordHasher.Hash(password);
-        var code = GenerateVerificationCode();
-        var verificationToken = FloraUuid.NewGuid();
-        var now = DateTime.UtcNow;
-        var expiresAt = now.AddMinutes(PendingExpirationMinutes);
+        var username = BuildUsernameFromEmail(email);
 
-        var existingPending = await auth.PendingRegistrations
-            .FirstOrDefaultAsync(p => p.Email == email, cancellationToken)
-            .ConfigureAwait(false);
-
-        var codeHash = HashVerificationCode(code);
-        if (existingPending != null)
-        {
-            existingPending.PasswordHash = passwordHash;
-            existingPending.VerificationCodeHash = codeHash;
-            existingPending.ExpiresAt = expiresAt;
-            existingPending.UpdatedAt = now;
-            // VerificationToken is the PK — reuse it on retry (e.g. after SMTP failure).
-            verificationToken = existingPending.VerificationToken;
-        }
-        else
-        {
-            var username = BuildUsernameFromEmail(email);
-            auth.PendingRegistrations.Add(new PendingRegistration
-            {
-                VerificationToken = verificationToken,
-                Email = email,
-                Username = username,
-                PasswordHash = passwordHash,
-                VerificationCodeHash = codeHash,
-                ExpiresAt = expiresAt,
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-        }
-
-        await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
+        // Issue the challenge first (also sends the code). On a delivery failure we return early WITHOUT
+        // touching any existing draft, so a retry that fails to email does not destroy prior state.
+        ChallengeBeginResult challenge;
         try
         {
-            await verificationCodeSender.SendEmailVerificationCodeAsync(email, code, cancellationToken).ConfigureAwait(false);
+            challenge = await verification
+                .BeginAsync(VerificationChallengeKind.EmailRegistration, email, null, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is System.Net.Mail.SmtpException or InvalidOperationException)
         {
             return FailBegin("Не удалось отправить код на email. Сервис почты временно недоступен — попробуйте позже.");
         }
 
+        // Replace any prior draft for this email with one keyed by the new challenge token.
+        var supersededTokens = new List<Guid>();
+        var existingPending = await auth.PendingRegistrations
+            .Where(p => p.Email == email)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (existingPending.Count > 0)
+        {
+            supersededTokens.AddRange(existingPending.Select(p => p.VerificationToken));
+            auth.PendingRegistrations.RemoveRange(existingPending);
+        }
+
+        var now = DateTime.UtcNow;
+        auth.PendingRegistrations.Add(new PendingRegistration
+        {
+            VerificationToken = challenge.Token,
+            Email = email,
+            Username = username,
+            PasswordHash = passwordHash,
+            ExpiresAt = challenge.ExpiresAtUtc,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // Drafts are gone; their now-orphaned challenges self-expire, but cancel best-effort to free them sooner.
+        foreach (var token in supersededTokens.Where(t => t != challenge.Token))
+            await SafeCancelChallengeAsync(token, cancellationToken).ConfigureAwait(false);
+
         return new RegistrationBeginOutcome
         {
             Success = true,
-            VerificationToken = verificationToken,
-            ExpiresAtUtc = expiresAt,
-            DevVerificationCode = hostEnvironment.IsDevelopment() ? code : null
+            VerificationToken = challenge.Token,
+            ExpiresAtUtc = challenge.ExpiresAtUtc,
+            DevVerificationCode = challenge.DevCode
         };
     }
 
@@ -111,19 +107,26 @@ public sealed class AuthEmailRegistrationOrchestrator(
             return FailAuth("Токен верификации истек или недействителен.");
 
         if (pending.ExpiresAt <= DateTime.UtcNow)
-        {
-            auth.PendingRegistrations.Remove(pending);
-            await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            return FailAuth("Код верификации истек.");
-        }
+            return await ExpirePendingAsync(pending, verificationToken, "Код верификации истек.", cancellationToken).ConfigureAwait(false);
 
-        if (!FixedTimeHashEquals(pending.VerificationCodeHash, HashVerificationCode(codePlain.Trim())))
-            return FailAuth("Неверный код из сообщения.");
+        var validation = await verification.ValidateAsync(verificationToken, codePlain, cancellationToken).ConfigureAwait(false);
+        if (!validation.Success)
+        {
+            return validation.Status switch
+            {
+                ChallengeValidateStatus.Expired =>
+                    await ExpirePendingAsync(pending, verificationToken, "Код верификации истек.", cancellationToken).ConfigureAwait(false),
+                ChallengeValidateStatus.NotFound =>
+                    await ExpirePendingAsync(pending, verificationToken, "Токен верификации истек или недействителен.", cancellationToken).ConfigureAwait(false),
+                _ => FailAuth("Неверный код из сообщения.")
+            };
+        }
 
         if (await auth.UserAccounts.AnyAsync(u => u.Email == pending.Email, cancellationToken).ConfigureAwait(false))
         {
             auth.PendingRegistrations.Remove(pending);
             await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await SafeCancelChallengeAsync(verificationToken, cancellationToken).ConfigureAwait(false);
             return ConflictAuth("Аккаунт с этим email уже существует.");
         }
 
@@ -157,9 +160,13 @@ public sealed class AuthEmailRegistrationOrchestrator(
             Status = UserSessionStatus.Active
         });
 
+        // One SaveChanges commits account + session and removes the draft atomically in AuthDbContext.
         auth.PendingRegistrations.Remove(pending);
         await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await profileProvisioner.EnsureInitialProfileAsync(userUuid, "", cancellationToken).ConfigureAwait(false);
+
+        // Account exists and draft is gone; consume the challenge best-effort (TTL covers any failure).
+        await SafeCancelChallengeAsync(verificationToken, cancellationToken).ConfigureAwait(false);
 
         var (accessToken, _, _) = tokenService.CreateTokenPair(userUuid, pending.Email, jwtId, refreshToken);
 
@@ -171,6 +178,47 @@ public sealed class AuthEmailRegistrationOrchestrator(
             RefreshToken = refreshToken,
             AccessExpiresAtUtc = expiresAtAccess
         };
+    }
+
+    public async Task CancelAsync(Guid verificationToken, CancellationToken cancellationToken)
+    {
+        // Architect's guidance: no distributed transaction across Auth/Verification contexts. Remove the
+        // local draft first (so an "eternal" draft is impossible), then best-effort cancel the challenge.
+        var pending = await auth.PendingRegistrations
+            .FirstOrDefaultAsync(p => p.VerificationToken == verificationToken, cancellationToken)
+            .ConfigureAwait(false);
+        if (pending != null)
+        {
+            auth.PendingRegistrations.Remove(pending);
+            await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await SafeCancelChallengeAsync(verificationToken, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<AuthenticatedSessionOutcome> ExpirePendingAsync(
+        PendingRegistration pending,
+        Guid verificationToken,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        auth.PendingRegistrations.Remove(pending);
+        await auth.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await SafeCancelChallengeAsync(verificationToken, cancellationToken).ConfigureAwait(false);
+        return FailAuth(message);
+    }
+
+    private async Task SafeCancelChallengeAsync(Guid verificationToken, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await verification.CancelAsync(verificationToken, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort: an orphaned challenge self-expires via TTL. Never fail the caller on cleanup.
+            logger.LogWarning(ex, "Best-effort cancel of verification challenge {Token} failed.", verificationToken);
+        }
     }
 
     private static AuthenticatedSessionOutcome ConflictAuth(string message) =>
@@ -208,22 +256,4 @@ public sealed class AuthEmailRegistrationOrchestrator(
     }
 
     private static string NormalizeUsername(string? raw) => LatinIdentifiers.NormalizeUsername(raw);
-
-    private static string GenerateVerificationCode()
-    {
-        var value = RandomNumberGenerator.GetInt32(0, 1_000_000);
-        return value.ToString("D6");
-    }
-
-    private static string HashVerificationCode(string code)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(code));
-        return Convert.ToHexString(bytes);
-    }
-
-    /// <summary>Constant-time comparison of two code hashes to avoid leaking match progress via timing.</summary>
-    private static bool FixedTimeHashEquals(string expected, string actual) =>
-        CryptographicOperations.FixedTimeEquals(
-            Encoding.ASCII.GetBytes(expected ?? ""),
-            Encoding.ASCII.GetBytes(actual ?? ""));
 }

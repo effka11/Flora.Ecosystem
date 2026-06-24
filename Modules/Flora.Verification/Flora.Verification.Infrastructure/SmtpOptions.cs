@@ -1,5 +1,10 @@
-namespace Flora.Auth.Infrastructure.Options;
+namespace Flora.Verification.Infrastructure;
 
+/// <summary>
+/// SMTP settings bound from the existing "Smtp" configuration section. The section name is kept
+/// unchanged so Smtp__* environment variables and Scripts/enable-prod-verification.ps1 keep working
+/// after verification moved out of Auth.
+/// </summary>
 public sealed class SmtpOptions
 {
     public const string SectionName = "Smtp";
