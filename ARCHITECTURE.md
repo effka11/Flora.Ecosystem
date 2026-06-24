@@ -10,7 +10,7 @@ Flora.Ecosystem — модульная некоммерческая цифров
 
 Конкретные пользовательские приложения собираются в слое **Products** как композиция модулей. Сегодня существует один продукт — [`Flora.Social`](Products/Flora.Social) (социальная сеть: лента, сообщения, музыка, сообщества, люди, уведомления). Направление зависимостей строго однонаправлено: `Apps → API → Products → Modules → Infrastructure`. Бизнес-логика разрешена **только** в `Modules`; `API`, `Products`, `Infrastructure`, `Flora.Shared` её не содержат (API — маршрутизация и middleware, Products — композиция и HTTP-адаптеры).
 
-Стек: **C# / .NET 10** на бэкенде (PostgreSQL, EF Core, опционально gRPC), **Next.js 16 / TypeScript** в вебе и **Expo / React Native** на мобильных. Клиенты разделяют общий TypeScript-SDK [`@flora/client-core`](Packages/flora-client-core). Две сквозные доменные концепции определяют облик системы: **FSCP** (Flora Secure Chat Protocol — собственный E2E-протокол, при котором сервер хранит только шифртекст) и **FIRA** (Flora Individual Recommendation Algorithm — рекомендации для ленты, музыки, людей и сообществ). Данные хранятся в одной БД PostgreSQL (схема `flora_core`), логически разделённой по одному `DbContext` на модуль с отдельными таблицами истории миграций.
+Стек: **C# / .NET 10** на бэкенде (PostgreSQL, EF Core, опционально gRPC), **Next.js 16 / TypeScript** в вебе и **Expo / React Native** на мобильных. Клиенты разделяют общий TypeScript-SDK [`@flora/client-core`](Packages/flora-client-core). Две сквозные доменные концепции определяют облик системы: **FSCP** (Flora Secure Chat Protocol — собственный E2E-протокол, при котором сервер хранит только шифртекст) и **FIRA** (Flora Individual Recommendation Algorithm — рекомендации для ленты, музыки, людей и сообществ). Данные хранятся в одной БД PostgreSQL (схема `flora_core`), логически разделённой по **семи** `DbContext` (по одному на модуль: Auth, Verification, Users, Content, Messaging, Notifications, Music) с отдельными таблицами истории миграций.
 
 ---
 
@@ -31,7 +31,7 @@ flowchart TD
         Program["Program.cs: middleware, JWT, CORS, rate limit"]
     end
     subgraph product [Products]
-        Social["Flora.Social: композиция + HTTP-контроллеры"]
+        Social["Flora.Social: композиция + legacy HTTP"]
     end
     subgraph modules [Modules — бизнес-логика]
         Auth["Flora.Auth"]
@@ -40,7 +40,7 @@ flowchart TD
         Messaging["Flora.Messaging"]
         Music["Flora.Music"]
         Notifications["Flora.Notifications"]
-        Verification["Flora.Verification — заглушка"]
+        Verification["Flora.Verification — email-коды"]
     end
     subgraph infra [Infrastructure и Shared]
         Grpc["Flora.gRPC — auth.proto, opt-in"]
@@ -61,6 +61,7 @@ flowchart TD
     Social --> Music
     Social --> Notifications
     Social --> Verification
+    Auth -->|"IVerificationChallengeService"| Verification
     Auth --> Grpc
     Auth --> Shared
     Users --> Shared
@@ -74,6 +75,7 @@ flowchart TD
     Messaging --> Db
     Music --> Db
     Notifications --> Db
+    Verification --> Db
     Migrations -.->|"design-time"| Db
 ```
 
@@ -82,7 +84,7 @@ flowchart TD
 | Компонент | Зона ответственности | Точки входа | Связанность |
 | --- | --- | --- | --- |
 | **Flora.API** | Хостинг, конвейер middleware (CORS, проверка версии клиента, JWT-аутентификация, авторизация, rate limit), служебные эндпоинты `GET /`, `/health`, `/version`. **Не содержит** бизнес-логики и ссылок на модули. | [`Flora.API/Program.cs`](Flora.API/Program.cs), [`FloraClientVersionMiddleware.cs`](Flora.API/FloraClientVersionMiddleware.cs), [`FloraVersions.cs`](Flora.API/FloraVersions.cs) | Единственная зависимость — `Flora.Social`. Всю реальную регистрацию DI делегирует продукту. |
-| **Products/Flora.Social** | Фактический composition root: регистрирует все 7 модулей, настраивает JWT/rate-limit, монтирует HTTP-контроллеры и (опционально) gRPC. Содержит HTTP-адаптеры и продуктовые «мосты». | [`Products/Flora.Social/Class1.cs`](Products/Flora.Social/Class1.cs) (`FloraSocialComposition`), контроллеры [`MessagingController.cs`](Products/Flora.Social/MessagingController.cs), [`MusicController.cs`](Products/Flora.Social/MusicController.cs), [`NotificationsController.cs`](Products/Flora.Social/NotificationsController.cs), [`SignalsController.cs`](Products/Flora.Social/SignalsController.cs) | Ссылается на все модули. Порядок регистрации значим: `Users → Auth` (Auth требует `IUserProfileProvisioner`), `Notifications → Messaging` (Messaging требует `IMessageSentNotifier`). |
+| **Products/Flora.Social** | Composition root: регистрирует 7 модулей, настраивает JWT/rate-limit, монтирует HTTP-контроллеры (legacy в продукте + application parts модулей Music/Notifications) и (опционально) gRPC. Ссылается **только** на корни модулей и `Flora.Shared`. | [`Products/Flora.Social/Class1.cs`](Products/Flora.Social/Class1.cs) (`FloraSocialComposition`), legacy-контроллеры [`ImportedSocialController.cs`](Products/Flora.Social/ImportedSocialController.cs), [`MessagingController.cs`](Products/Flora.Social/MessagingController.cs); модульные HTTP: [`Modules/Flora.Music/MusicController.cs`](Modules/Flora.Music/MusicController.cs), [`Modules/Flora.Notifications/NotificationsController.cs`](Modules/Flora.Notifications/NotificationsController.cs) и др. | Ссылается на корни 7 модулей + `Flora.Shared` (без прямых `*.Application`/`*.Infrastructure`). Порядок регистрации: `Users → Verification → Auth` (Auth зависит от `IVerificationChallengeService`), затем `Notifications → Content → Messaging → Music`. |
 
 Порядок middleware: `CORS → FloraClientVersionMiddleware → Authentication (JWT) → Authorization → RateLimiter`.
 
@@ -90,13 +92,13 @@ flowchart TD
 
 | Модуль | Отвечает за | НЕ отвечает за | DbContext / владение данными | Точка входа | Межмодульная связанность (через Contracts) |
 | --- | --- | --- | --- | --- | --- |
-| **Flora.Auth** | Аккаунты, пароли (Argon2), JWT/refresh-сессии, 2FA/TOTP, регистрация по email, смена email, журнал безопасности | Профили, аватары, граф подписок, контент, сообщения | `AuthDbContext` — `UserAccount`, `UserSession`, `PendingRegistration`, `PendingEmailChange`, `UserSecurityLogs` | [`AuthModuleComposition.cs`](Modules/Flora.Auth/AuthModuleComposition.cs) (`AddAuthModule`, `MapAuthModuleGrpc`) | → `Flora.Users.Contracts` (`IUserProfileProvisioner`, `IUserProfileReadQueries`); использует `Flora.gRPC` |
+| **Flora.Auth** | Аккаунты, пароли (Argon2), JWT/refresh-сессии, 2FA/TOTP, оркестрация регистрации по email (через Verification), смена email, журнал безопасности | Профили, аватары, граф подписок, контент, сообщения, **хранение кодов верификации** (делегирует Verification) | `AuthDbContext` — `UserAccount`, `UserSession`, `PendingRegistration` (черновик аккаунта, без кода), `UserSecurityLogs` | [`AuthModuleComposition.cs`](Modules/Flora.Auth/AuthModuleComposition.cs) (`AddAuthModule`, `MapAuthModuleGrpc`) | → `Flora.Users.Contracts` (`IUserProfileProvisioner`, `IUserProfileReadQueries`); → `Flora.Verification.Contracts` (`IVerificationChallengeService`); использует `Flora.gRPC` |
 | **Flora.Users** | Профили, аватары, граф подписок, приватность, блокировки, presence, рекомендации людей (**FIRA-P**) | Учётные данные, контент, сообщения | `UsersDbContext` — `UserProfile`, `UserAvatar`, `UserFollower`, `UserPrivacySettings`, `UserBlock`, `UserPresence` | [`UsersModuleComposition.cs`](Modules/Flora.Users/UsersModuleComposition.cs) (`AddUsersModule`) | **Нет исходящих** зависимостей (эталонный модуль). Публикует широкий набор портов в `Flora.Users.Contracts` |
 | **Flora.Content** | Посты, черновики, комментарии/лайки/репосты/просмотры, сообщества и членство, ранжирование ленты (**FIRA-F**), рекомендации сообществ (**FIRA-C**), транскод видео (ffmpeg) | Учётные данные, граф подписок (читает через порт), сообщения, музыка | `ContentDbContext` — `UserPost`, `PostDraft`, `PostComment/Like/Repost/View`, `PostImage/Video`, `Community`, `UserCommunity` | [`ContentModuleComposition.cs`](Modules/Flora.Content/ContentModuleComposition.cs) (`AddContentModule`) | → `Flora.Users.Contracts` (`IFollowGraphReader`); **реализует** `IPublicCommunityFollowingStats` (порт, объявленный в Users) |
-| **Flora.Messaging** | DM (хранение **шифртекста** FSCP), список/пагинация диалогов, voice/image/video-ассеты, E2E-инфраструктура (epochs, key/recovery backup, устройства, unlock-challenge), идемпотентность | Доставка push (делегирует), отображаемые имена (мост в продукте), аутентификация | `MessagingDbContext` — `UserMessage`, `UserE2EKey`, ассеты, `KeyEpochPublicIdentity`, `UserDeviceKey`, `UserE2EUnlockChallenge` и др. | [`MessagingModuleComposition.cs`](Modules/Flora.Messaging/MessagingModuleComposition.cs) (`AddMessagingModule`) | **Объявляет порт** `IMessageSentNotifier` (реализуется Notifications) |
-| **Flora.Notifications** | In-app inbox, реестр FCM push-токенов, realtime-хаб (SSE, in-memory), диспетчер push для сообщений | Хранение сообщений, аутентификация, контент | `NotificationsDbContext` — `UserNotification`, `UserPushToken` | [`Class1.cs`](Modules/Flora.Notifications/Class1.cs) (`NotificationsModuleComposition.AddNotificationsModule`) | → `Flora.Messaging.Contracts` (**реализует** `IMessageSentNotifier`); зависит от продуктового `IUserDisplayNameResolver` |
-| **Flora.Music** | Треки, плейлисты, избранное, артисты, транскод аудио (ffmpeg), рекомендации (**FIRA-M**), таксономия жанров, фоновые hosted-сервисы | Профили, лента, сообщения, аутентификация | `MusicDbContext` — `MusicTrack`, `MusicFavorite`, `MusicPlaylist(+Track)`, `MusicArtist`, `MusicTrackArtist` | [`MusicModuleComposition.cs`](Modules/Flora.Music/MusicModuleComposition.cs) (`AddMusicModule`) | **Нет** межмодульных зависимостей |
-| **Flora.Verification** | По замыслу — KYC/верификация. Фактически **заглушка**: реальная email-верификация живёт в `Flora.Auth` | — | Нет DbContext | [`Class1.cs`](Modules/Flora.Verification/Class1.cs) (пустой `AddVerificationModule`) | Нет (см. раздел 4) |
+| **Flora.Messaging** | DM (хранение **шифртекста** FSCP), список/пагинация диалогов, voice/image/video-ассеты, E2E-инфраструктура (epochs, key/recovery backup, устройства, unlock-challenge), идемпотентность | Доставка push (делегирует Notifications), отображаемые имена в push (делегирует Notifications), аутентификация | `MessagingDbContext` — `UserMessage`, `UserE2EKey`, ассеты, `KeyEpochPublicIdentity`, `UserDeviceKey`, `UserE2EUnlockChallenge` и др. | [`MessagingModuleComposition.cs`](Modules/Flora.Messaging/MessagingModuleComposition.cs) (`AddMessagingModule`) | **Объявляет порт** `IMessageSentNotifier` (реализуется Notifications) |
+| **Flora.Notifications** | In-app inbox, реестр FCM push-токенов, realtime-хаб (SSE, in-memory), диспетчер push для сообщений, разрешение display name для push | Хранение сообщений, аутентификация, контент | `NotificationsDbContext` — `UserNotification`, `UserPushToken` | [`Class1.cs`](Modules/Flora.Notifications/Class1.cs) (`NotificationsModuleComposition.AddNotificationsModule`); HTTP: [`NotificationsController.cs`](Modules/Flora.Notifications/NotificationsController.cs), [`PushTokenController.cs`](Modules/Flora.Notifications/PushTokenController.cs), [`SignalsController.cs`](Modules/Flora.Notifications/SignalsController.cs) | → `Flora.Messaging.Contracts` (**реализует** `IMessageSentNotifier`); → `Flora.Users.Contracts` + `Flora.Auth.Contracts` (`IUserProfileReadQueries`, `IAccountReadQueries` для `IUserDisplayNameResolver`) |
+| **Flora.Music** | Треки, плейлисты, избранное, артисты, транскод аудио (ffmpeg), рекомендации (**FIRA-M**), таксономия жанров, фоновые hosted-сервисы | Профили, лента, сообщения, аутентификация | `MusicDbContext` — `MusicTrack`, `MusicFavorite`, `MusicPlaylist(+Track)`, `MusicArtist`, `MusicTrackArtist` | [`MusicModuleComposition.cs`](Modules/Flora.Music/MusicModuleComposition.cs) (`AddMusicModule`, `AddMusicModuleControllers`); HTTP: [`MusicController.cs`](Modules/Flora.Music/MusicController.cs) | **Нет** межмодульных зависимостей |
+| **Flora.Verification** | Одноразовые email-challenge: генерация 6-значного кода, SHA-256-хеш, SMTP-доставка, TTL 15 мин, validate/cancel | Учётные записи, профили, JWT, черновики регистрации (владеет Auth) | `VerificationDbContext` — `VerificationChallenge` (таблица `verification_challenges`) | [`Class1.cs`](Modules/Flora.Verification/Class1.cs) (`VerificationModuleComposition.AddVerificationModule`); порт: [`IVerificationChallengeService`](Modules/Flora.Verification/Flora.Verification.Contracts/IVerificationChallengeService.cs) | **Нет исходящих** зависимостей; потребители: `Flora.Auth.Infrastructure` |
 
 ### 2.4. Инфраструктура и общий код
 
@@ -104,7 +106,7 @@ flowchart TD
 | --- | --- | --- |
 | **Infrastructure/Flora.gRPC** | Транспорт gRPC между модулями. Содержит единственный контракт [`Protos/auth.proto`](Infrastructure/Flora.gRPC/Protos/auth.proto) (генерация **только server-side**). | Включается флагом `Grpc:AuthService:Enabled`; клиентов в репозитории нет, межмодульно фактически не используется (см. раздел 4). |
 | **Flora.Shared** | Низкоуровневые утилиты: [`FloraUuid.cs`](Flora.Shared/FloraUuid.cs) (UUID v7), [`UuidV5.cs`](Flora.Shared/UuidV5.cs) (детерминированные ID, синхронизированы с TS-клиентом), `LatinIdentifiers`, `TimestampAuditInterceptor`. | Бизнес-логики нет — соответствует правилам. |
-| **Flora.Migrations** | Design-time проект для `dotnet ef`. Мигрирует 6 DbContext (кроме Verification) в **одну** БД PostgreSQL с отдельными таблицами истории на модуль. | Порядок применения (по FK): `Auth → Users → Content → Messaging → Notifications → Music`. |
+| **Flora.Migrations** | Design-time проект для `dotnet ef`. Мигрирует **7** DbContext в **одну** БД PostgreSQL с отдельными таблицами истории на модуль. | Порядок применения: `Auth → Verification → Users → Content → Messaging → Notifications → Music`. Скрипт: [`Scripts/apply-flora-migrations.ps1`](Scripts/apply-flora-migrations.ps1). |
 | **tests/Flora.ContractFixtures** | Контрактные тесты HTTP-поверхности и биндинга DTO; генерирует JSON-фикстуры в `artifacts/contract-fixtures/`. | Используется TS-парсерами client-core для проверки паритета контрактов. |
 
 ### 2.5. Клиентский слой
@@ -124,15 +126,19 @@ flowchart LR
     Content["Flora.Content"]
     Messaging["Flora.Messaging"]
     Notifications["Flora.Notifications"]
+    Verification["Flora.Verification"]
     Music["Flora.Music — изолирован"]
 
     Auth -->|"IUserProfileProvisioner, IUserProfileReadQueries"| Users
+    Auth -->|"IVerificationChallengeService"| Verification
     Content -->|"IFollowGraphReader"| Users
     Content -.->|"реализует IPublicCommunityFollowingStats"| Users
     Notifications -->|"реализует IMessageSentNotifier"| Messaging
+    Notifications -->|"IUserProfileReadQueries, IAccountReadQueries"| Users
+    Notifications -->|"IAccountReadQueries"| Auth
 ```
 
-Связанность **низкая** и однонаправленная. Внутри `Modules/` нет ни одной ссылки на чужой `Domain`/`Infrastructure` — все связи идут через `Contracts`. Используются две корректные инверсии портов (порт объявлен в одном модуле, реализован в другом): `IMessageSentNotifier` (Messaging → Notifications) и `IPublicCommunityFollowingStats` (Users → Content). `Flora.Music` и `Flora.Users` не имеют исходящих межмодульных зависимостей. Нарушения границ присутствуют только в продуктовом слое (см. раздел 4).
+Связанность **низкая** и однонаправленная. Внутри `Modules/` нет ссылок на чужой `Domain`/`Infrastructure` — связи идут через `Contracts` (в т.ч. межмодульные `*.Contracts`, разрешённые [`tools/Validate-Architecture.ps1`](tools/Validate-Architecture.ps1)). Инверсии портов: `IMessageSentNotifier` (Messaging → Notifications), `IPublicCommunityFollowingStats` (Users → Content). `Flora.Music` и `Flora.Verification` не имеют исходящих межмодульных зависимостей. Остаточные нарушения — только в legacy-контроллерах продукта (см. раздел 4).
 
 ---
 
@@ -198,7 +204,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     Msg["Flora.Messaging: новое сообщение"]
-    Notif["Flora.Notifications: UserRealtimeHub"]
+    Notif["Flora.Notifications: UserRealtimeHub + SignalsController"]
     Sse["SSE GET /api/auth/signals/stream"]
     Sig["@flora/client-core/signals"]
     UI["UI: бейджи, инвалидация кэшей"]
@@ -212,7 +218,44 @@ flowchart LR
     Fcm -.-> UI
 ```
 
-Realtime реализован через **SSE** (in-memory хаб в `Flora.Notifications`), без WebSocket и без брокера сообщений. Клиент получает лёгкие сигналы `message`/`notification` и инвалидирует кэши/счётчики; параллельно работает polling счётчиков (`has-new`, `unread-count`). На мобильном в release добавляется доставка через FCM. Межмодульное событие «сообщение отправлено» проходит синхронным вызовом порта `IMessageSentNotifier` (Messaging → Notifications), а не через шину событий.
+Realtime реализован через **SSE** (in-memory хаб в `Flora.Notifications`), без WebSocket и без брокера сообщений. Эндпоинт `GET /api/auth/signals/stream` живёт в [`Modules/Flora.Notifications/SignalsController.cs`](Modules/Flora.Notifications/SignalsController.cs). Клиент получает лёгкие сигналы `message`/`notification` и инвалидирует кэши/счётчики; параллельно работает polling счётчиков (`has-new`, `unread-count`). На мобильном в release добавляется доставка через FCM. Межмодульное событие «сообщение отправлено» проходит синхронным вызовом порта `IMessageSentNotifier` (Messaging → Notifications), а не через шину событий.
+
+### 3.4. Регистрация по email и смена email (Auth + Verification)
+
+```mermaid
+sequenceDiagram
+    participant C as Клиент
+    participant API as Flora.Social (HTTP)
+    participant Auth as Flora.Auth
+    participant V as Flora.Verification
+    participant DB_A as AuthDbContext
+    participant DB_V as VerificationDbContext
+    participant SMTP as SMTP
+
+    Note over C,SMTP: Регистрация — begin
+    C->>API: POST register { email, password }
+    API->>Auth: BeginAsync
+    Auth->>V: BeginAsync(EmailRegistration, email)
+    V->>DB_V: INSERT VerificationChallenge (code hash)
+    V->>SMTP: SendEmailVerificationCodeAsync
+    V-->>Auth: token, expiresAt, devCode (Development)
+    Auth->>DB_A: INSERT PendingRegistration (черновик)
+    Auth-->>C: verificationToken (+ devCode)
+
+    Note over C,SMTP: Регистрация — complete
+    C->>API: POST verify-registration { token, code }
+    API->>Auth: CompleteVerificationAsync
+    Auth->>V: ValidateAsync(token, code)
+    V->>DB_V: проверка hash, TTL
+    V-->>Auth: Success
+    Auth->>DB_A: UserAccount + UserSession, DELETE PendingRegistration
+    Auth->>V: CancelAsync (best-effort)
+    Auth-->>C: JWT + refresh
+
+    Note over C,DB_A: Отмена / смена email — тот же порт Verification; черновик Auth удаляется первым (без распределённой транзакции), challenge гасится best-effort или по TTL
+```
+
+Верификация **владеет** challenge и SMTP; Auth **владеет** черновиком регистрации (`PendingRegistration`) и финальным аккаунтом. Между `AuthDbContext` и `VerificationDbContext` нет общей транзакции: при `CancelAsync`/`Complete` сначала коммитится состояние Auth, затем best-effort `Verification.CancelAsync` (см. [`AuthEmailRegistrationOrchestrator`](Modules/Flora.Auth/Flora.Auth.Infrastructure/Services/AuthEmailRegistrationOrchestrator.cs)). Просроченные строки чистятся по TTL в обоих модулях.
 
 ---
 
@@ -222,9 +265,9 @@ Realtime реализован через **SSE** (in-memory хаб в `Flora.Not
 
 ### 4.1. Нарушения границ (высокий приоритет)
 
-- **God-контроллер.** [`Products/Flora.Social/ImportedSocialController.cs`](Products/Flora.Social/ImportedSocialController.cs) — **3563 строки**. Внедряет `AuthDbContext`, `UsersDbContext`, `ContentDbContext`, `MessagingDbContext` и выполняет прямые EF-запросы, `Add`/`Remove`, `SaveChangesAsync` над доменными сущностями. Это бизнес-логика и персистентность в продуктовом слое — прямое нарушение правила «бизнес-логика только в Modules». Самый крупный долг; декомпозировать на use-cases в `Application`-слоях модулей, оставив в продукте тонкие HTTP-адаптеры.
-- **Межмодульный доступ к БД в продукте.** [`Products/Flora.Social/SocialUserDisplayNameResolver.cs`](Products/Flora.Social/SocialUserDisplayNameResolver.cs) читает `AuthDbContext` и `UsersDbContext` напрямую. Кроме того, `Flora.Social.csproj` ссылается на `Flora.Auth.Infrastructure` и `Flora.Users.Infrastructure` (в обход `Contracts`). Заменить на вызовы портов модулей.
-- **Интерфейсы в Application, а не в Contracts.** `IConversationService`, `INotificationInboxService`, `IContentFeedQueries` объявлены в `Application`-проектах, из-за чего продукт зависит от `Application` модулей, а не только от `Contracts`. Поднять публичные интерфейсы в `Contracts`.
+- **God-контроллер.** [`Products/Flora.Social/ImportedSocialController.cs`](Products/Flora.Social/ImportedSocialController.cs) — **~3560 строк**. Внедряет `AuthDbContext`, `UsersDbContext`, `ContentDbContext`, `MessagingDbContext` и выполняет прямые EF-запросы, `Add`/`Remove`, `SaveChangesAsync` над доменными сущностями. Это бизнес-логика и персистентность в продуктовом слое — прямое нарушение правила «бизнес-логика только в Modules». Самый крупный долг; декомпозировать на use-cases в `Application`-слоях модулей, оставив в продукте тонкие HTTP-адаптеры.
+- **MessagingController с прямым EF.** [`Products/Flora.Social/MessagingController.cs`](Products/Flora.Social/MessagingController.cs) — аналогично обращается к `MessagingDbContext` из продукта. Вынести в `Flora.Messaging` по образцу Music/Notifications.
+- **Интерфейсы в Application, а не в Contracts.** `IConversationService`, `INotificationInboxService`, `IContentFeedQueries` объявлены в `Application`-проектах, из-за чего продукт тянет `Application` модулей транзитивно через корни. Поднять публичные интерфейсы в `Contracts`.
 
 ### 4.2. Дублирование
 
@@ -232,8 +275,7 @@ Realtime реализован через **SSE** (in-memory хаб в `Flora.Not
 
 ### 4.3. Заглушки и неиспользуемый код
 
-- **Модуль-заглушка.** [`Modules/Flora.Verification`](Modules/Flora.Verification) состоит из маркеров `Class1.cs`; `AddVerificationModule()` пуст; реальную верификацию выполняет `Flora.Auth`. Либо наполнить модуль ответственностью, либо удалить до момента реальной потребности.
-- **No-op эндпоинты.** `MapUsersModuleEndpoints()`, `MapContentModuleEndpoints()`, `MapMessagingModuleEndpoints()`, `MapMusicModuleEndpoints()` в композиции продукта — пустые заглушки.
+- **No-op эндпоинты.** `MapUsersModuleEndpoints()`, `MapContentModuleEndpoints()`, `MapMessagingModuleEndpoints()`, `MapMusicModuleEndpoints()` в композиции продукта — пустые заглушки (маршруты Music/Notifications уже подхватываются через `AddApplicationPart` модулей).
 - **Неиспользуемая зависимость.** `tweetnacl` присутствует в [`Apps/Web/package.json`](Apps/Web/package.json), но не импортируется в исходниках.
 
 ### 4.4. Преждевременная сложность (overengineering)
@@ -242,11 +284,18 @@ Realtime реализован через **SSE** (in-memory хаб в `Flora.Not
 
 ### 4.5. Косметика (naming smells)
 
-- **Файлы `Class1.cs` как composition root.** Дефолтные имена не переименованы: [`Products/Flora.Social/Class1.cs`](Products/Flora.Social/Class1.cs) (содержит `FloraSocialComposition`), [`Modules/Flora.Notifications/Class1.cs`](Modules/Flora.Notifications/Class1.cs), маркеры в `Flora.Verification` и `Flora.gRPC`. Переименовать в осмысленные (`*ModuleComposition.cs`, `*Marker.cs`) для навигации.
+- **Файлы `Class1.cs` как composition root.** Дефолтные имена не переименованы: [`Products/Flora.Social/Class1.cs`](Products/Flora.Social/Class1.cs) (содержит `FloraSocialComposition`), [`Modules/Flora.Notifications/Class1.cs`](Modules/Flora.Notifications/Class1.cs), [`Modules/Flora.Verification/Class1.cs`](Modules/Flora.Verification/Class1.cs) (уже содержит `VerificationModuleComposition`, но имя файла — `Class1.cs`), [`Flora.gRPC`](Infrastructure/Flora.gRPC). Переименовать в осмысленные (`*ModuleComposition.cs`) для навигации.
 
 ### 4.6. Контроль регрессий границ
 
-Проверку однонаправленности зависимостей и изоляции модулей автоматизирует [`tools/Validate-Architecture.ps1`](tools/Validate-Architecture.ps1). Рекомендуется прогонять его в CI, чтобы перечисленные нарушения не воспроизводились в новом коде.
+Проверку однонаправленности зависимостей и изоляции модулей автоматизирует [`tools/Validate-Architecture.ps1`](tools/Validate-Architecture.ps1): для `module-application` и `module-infrastructure` разрешены ссылки на любой `Modules/**/*.Contracts`, запрещены чужие `Application`/`Domain`/`Infrastructure`. Продукт (`Flora.Social`) должен ссылаться только на **корни** модулей и `Flora.Shared`. Рекомендуется прогонять скрипт в CI.
+
+### 4.7. Недавно закрыто (для контекста)
+
+- **Flora.Verification** — выделен из Auth: `VerificationDbContext`, `IVerificationChallengeService`, SMTP (`Smtp` в конфиге), миграция `verification_challenges`; из Auth удалены `PendingEmailChange`, `verification_code_hash`, локальный SMTP.
+- **IUserDisplayNameResolver** — реализация перенесена в [`Modules/Flora.Notifications/Flora.Notifications.Infrastructure/UserDisplayNameResolver.cs`](Modules/Flora.Notifications/Flora.Notifications.Infrastructure/UserDisplayNameResolver.cs) через `IUserProfileReadQueries` + `IAccountReadQueries`.
+- **HTTP-образец переиспользования** — контроллеры Music и Notifications/Push/Signals в корневых сборках модулей; продукт подключает их через `AddMusicModuleControllers()` / `AddNotificationsModuleControllers()`.
+- **Flora.Social.csproj** — только корни 7 модулей + `Flora.Shared` (без прямых ссылок на слои).
 
 ---
 
@@ -256,6 +305,8 @@ Realtime реализован через **SSE** (in-memory хаб в `Flora.Not
 | --- | --- |
 | Точку входа и middleware | [`Flora.API/Program.cs`](Flora.API/Program.cs) |
 | Что и как собирается в продукт | [`Products/Flora.Social/Class1.cs`](Products/Flora.Social/Class1.cs) |
+| Email-верификация (модуль) | [`Modules/Flora.Verification`](Modules/Flora.Verification), порт [`IVerificationChallengeService`](Modules/Flora.Verification/Flora.Verification.Contracts/IVerificationChallengeService.cs) |
+| HTTP Music / Notifications (в модулях) | [`Modules/Flora.Music/MusicController.cs`](Modules/Flora.Music/MusicController.cs), [`Modules/Flora.Notifications/`](Modules/Flora.Notifications/) |
 | Границы и правила | [`docs/agent-rules.txt`](docs/agent-rules.txt), [`.cursor/rules/`](.cursor/rules) |
 | E2E-протокол | [`docs/fscp/FSCP.md`](docs/fscp/FSCP.md), [`Packages/flora-client-core/src/fscp/`](Packages/flora-client-core/src/fscp) |
 | Рекомендации | [`docs/fira/FIRA.md`](docs/fira/FIRA.md) |
