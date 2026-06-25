@@ -60,6 +60,12 @@ public sealed class AccountReadQueries(AuthDbContext db) : IAccountReadQueries
         return list.Select(Map).ToList();
     }
 
+    public async Task<IReadOnlyList<Guid>> ListActiveUserUuidsAsync(CancellationToken cancellationToken = default) =>
+        await db.UserAccounts.AsNoTracking()
+            .Where(a => a.Status == UserAccountStatus.Active)
+            .Select(a => a.UserUuid)
+            .ToListAsync(cancellationToken);
+
     private static AccountRow Map(UserAccount u) => new(
         u.UserUuid,
         u.Username,

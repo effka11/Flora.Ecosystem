@@ -9,6 +9,7 @@ public class NotificationsDbContext : DbContext
 
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<UserPushToken> UserPushTokens => Set<UserPushToken>();
+    public DbSet<UserClientPlatform> UserClientPlatforms => Set<UserClientPlatform>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

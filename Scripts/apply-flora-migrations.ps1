@@ -16,6 +16,39 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $startupProject = Join-Path $repoRoot "Flora.Migrations\Flora.Migrations.csproj"
 
+function Resolve-FloraDatabaseConnectionString {
+    if ($env:ConnectionStrings__FloraDatabase) {
+        return $env:ConnectionStrings__FloraDatabase.Trim()
+    }
+
+    $apiDir = Join-Path $repoRoot "Flora.API"
+    $candidates = @(
+        (Join-Path $apiDir "appsettings.Local.json"),
+        (Join-Path $apiDir "appsettings.Development.json")
+    )
+
+    foreach ($path in $candidates) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        try {
+            $json = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+            $conn = $json.ConnectionStrings.FloraDatabase
+            if (-not [string]::IsNullOrWhiteSpace($conn)) {
+                return $conn.Trim()
+            }
+        }
+        catch {
+            Write-Warning "Could not read connection string from $path"
+        }
+    }
+
+    return "Host=localhost;Port=5432;Database=flora_social;Username=flora;Password=change-me;Include Error Detail=true;Search Path=flora_core"
+}
+
+if (-not $env:ConnectionStrings__FloraDatabase) {
+    $env:ConnectionStrings__FloraDatabase = Resolve-FloraDatabaseConnectionString
+    Write-Host "Using ConnectionStrings:FloraDatabase from appsettings / localhost default." -ForegroundColor DarkGray
+}
+
 $steps = @(
     @{ Context = "AuthDbContext"; Project = "Modules\Flora.Auth\Flora.Auth.Infrastructure\Flora.Auth.Infrastructure.csproj" },
     @{ Context = "VerificationDbContext"; Project = "Modules\Flora.Verification\Flora.Verification.Infrastructure\Flora.Verification.Infrastructure.csproj" },
@@ -25,10 +58,6 @@ $steps = @(
     @{ Context = "NotificationsDbContext"; Project = "Modules\Flora.Notifications\Flora.Notifications.Infrastructure\Flora.Notifications.Infrastructure.csproj" },
     @{ Context = "MusicDbContext"; Project = "Modules\Flora.Music\Flora.Music.Infrastructure\Flora.Music.Infrastructure.csproj" }
 )
-
-if (-not $env:ConnectionStrings__FloraDatabase) {
-    Write-Error "Set environment variable ConnectionStrings__FloraDatabase to your PostgreSQL connection string before running."
-}
 
 Push-Location $repoRoot
 try {

@@ -16,6 +16,7 @@ public class UserNotificationConfiguration : IEntityTypeConfiguration<UserNotifi
         builder.Property(e => e.Type).HasColumnName("type").HasMaxLength(32).IsRequired();
         builder.Property(e => e.Category).HasColumnName("category").HasMaxLength(16).IsRequired();
         builder.Property(e => e.Text).HasColumnName("text").HasMaxLength(500).IsRequired();
+        builder.Property(e => e.TargetPlatform).HasColumnName("target_platform").HasMaxLength(16);
         builder.Property(e => e.PostUuid).HasColumnName("post_uuid");
         builder.Property(e => e.CommentUuid).HasColumnName("comment_uuid");
         builder.Property(e => e.IsRead).HasColumnName("is_read").IsRequired();

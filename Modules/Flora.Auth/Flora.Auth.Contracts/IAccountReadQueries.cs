@@ -10,4 +10,6 @@ public interface IAccountReadQueries
     Task<IReadOnlyList<AccountRow>> GetByUuidsAsync(IReadOnlyCollection<Guid> userUuids, CancellationToken cancellationToken = default);
     Task<bool> UsernameTakenAsync(Guid excludeUserUuid, string username, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AccountRow>> SearchAccountsAsync(Guid excludeUserUuid, string queryLower, int skip, int take, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Guid>> ListActiveUserUuidsAsync(CancellationToken cancellationToken = default);
 }

@@ -22,7 +22,8 @@ public sealed class NotificationsController(INotificationInboxService notificati
         if (!TryGetUserUuid(out var userUuid))
             return Unauthorized(new { error = "Не удалось определить пользователя." });
 
-        var items = await notifications.ListAsync(userUuid, category, search, skip, take, ct);
+        var clientPlatform = FloraClientHeader.TryGetPlatform(Request.Headers["X-Flora-Client"].ToString());
+        var items = await notifications.ListAsync(userUuid, category, search, skip, take, clientPlatform, ct);
         return Ok(items.Select(n => new
         {
             notificationUuid = n.NotificationUuid,
@@ -41,7 +42,8 @@ public sealed class NotificationsController(INotificationInboxService notificati
     {
         if (!TryGetUserUuid(out var userUuid))
             return Unauthorized(new { error = "Не удалось определить пользователя." });
-        var count = await notifications.GetUnreadCountAsync(userUuid, ct);
+        var clientPlatform = FloraClientHeader.TryGetPlatform(Request.Headers["X-Flora-Client"].ToString());
+        var count = await notifications.GetUnreadCountAsync(userUuid, clientPlatform, ct);
         return Ok(new { unreadCount = count });
     }
 
@@ -60,7 +62,8 @@ public sealed class NotificationsController(INotificationInboxService notificati
     {
         if (!TryGetUserUuid(out var userUuid))
             return Unauthorized(new { error = "Не удалось определить пользователя." });
-        var marked = await notifications.MarkAllReadAsync(userUuid, ct);
+        var clientPlatform = FloraClientHeader.TryGetPlatform(Request.Headers["X-Flora-Client"].ToString());
+        var marked = await notifications.MarkAllReadAsync(userUuid, clientPlatform, ct);
         return Ok(new { marked });
     }
 
@@ -69,7 +72,8 @@ public sealed class NotificationsController(INotificationInboxService notificati
     {
         if (!TryGetUserUuid(out var userUuid))
             return Unauthorized(new { error = "Не удалось определить пользователя." });
-        var deleted = await notifications.DeleteAllAsync(userUuid, ct);
+        var clientPlatform = FloraClientHeader.TryGetPlatform(Request.Headers["X-Flora-Client"].ToString());
+        var deleted = await notifications.DeleteAllAsync(userUuid, clientPlatform, ct);
         return Ok(new { deleted });
     }
 

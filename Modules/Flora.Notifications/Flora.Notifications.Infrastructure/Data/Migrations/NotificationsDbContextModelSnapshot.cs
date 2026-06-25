@@ -68,6 +68,11 @@ namespace Flora.Notifications.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("text");
 
+                    b.Property<string>("TargetPlatform")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("target_platform");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -84,6 +89,32 @@ namespace Flora.Notifications.Infrastructure.Data.Migrations
                         .HasDatabaseName("ix_user_notifications_recipient_read");
 
                     b.ToTable("user_notifications", "flora_core");
+                });
+
+            modelBuilder.Entity("Flora.Notifications.Domain.UserClientPlatform", b =>
+                {
+                    b.Property<Guid>("UserUuid")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_uuid");
+
+                    b.Property<string>("Platform")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("platform");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("UserUuid", "Platform")
+                        .HasName("pk_user_client_platforms");
+
+                    b.HasIndex("Platform", "UserUuid")
+                        .HasDatabaseName("ix_user_client_platforms_platform_user");
+
+                    b.ToTable("user_client_platforms", "flora_core");
                 });
 
             modelBuilder.Entity("Flora.Notifications.Domain.UserPushToken", b =>

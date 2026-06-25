@@ -12,6 +12,8 @@ public class UserNotification
     /// <summary>social | developer</summary>
     public string Category { get; set; } = "social";
     public string Text { get; set; } = "";
+    /// <summary>null = all clients; android | ios | web = visible only on that client.</summary>
+    public string? TargetPlatform { get; set; }
     public Guid? PostUuid { get; set; }
     public Guid? CommentUuid { get; set; }
     public bool IsRead { get; set; }

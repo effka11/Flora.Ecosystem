@@ -20,6 +20,12 @@ public record CreateUserNotificationCommand(
     Guid? PostUuid = null,
     Guid? CommentUuid = null);
 
+public record CreateBroadcastNotificationCommand(
+    string Type,
+    string Category,
+    string Text,
+    string? AudiencePlatform = null);
+
 public record DeleteNotificationsCommand(Guid RecipientUserUuid, IReadOnlyList<Guid> NotificationUuids);
 
 public record RegisterPushTokenCommand(Guid UserUuid, string Token, string Platform);

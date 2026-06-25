@@ -56,6 +56,16 @@ public sealed class PushTokenService(NotificationsDbContext db) : IPushTokenServ
             .Select(t => t.Token)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Guid>> ListUserUuidsByPlatformAsync(string platform, CancellationToken ct = default)
+    {
+        var plat = NormalizePlatform(platform);
+        return await db.UserPushTokens.AsNoTracking()
+            .Where(t => t.Platform == plat)
+            .Select(t => t.UserUuid)
+            .Distinct()
+            .ToListAsync(ct);
+    }
+
     private static string NormalizePlatform(string platform)
     {
         var p = platform.Trim().ToLowerInvariant();

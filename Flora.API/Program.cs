@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Flora.API;
+using Flora.Notifications;
 using Flora.Social;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,6 +46,7 @@ app.UseMiddleware<FloraClientVersionMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseNotificationsModule();
 
 // Enforce the rate-limit policies declared by the Social product and Messaging module. Placed
 // after authentication so user-partitioned policies can read the JWT subject claim.

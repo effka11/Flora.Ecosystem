@@ -5,6 +5,8 @@ public interface IPushTokenService
     Task RegisterAsync(Guid userUuid, string token, string platform, CancellationToken ct = default);
     Task UnregisterAsync(Guid userUuid, string token, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetTokensForUserAsync(Guid userUuid, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Guid>> ListUserUuidsByPlatformAsync(string platform, CancellationToken ct = default);
 }
 
 public interface IMessagePushDispatcher

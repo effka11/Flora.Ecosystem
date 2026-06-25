@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <Compile Include="Class1.cs" />
+    <Compile Include="AdminNotificationsController.cs" />
+    <Compile Include="ClientPlatformTouchMiddleware.cs" />
+    <Compile Include="FloraClientHeader.cs" />
     <Compile Include="NotificationsController.cs" />
     <Compile Include="PushTokenController.cs" />
     <Compile Include="SignalsController.cs" />

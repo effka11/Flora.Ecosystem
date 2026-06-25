@@ -2,6 +2,7 @@ using Flora.Messaging.Contracts;
 using Flora.Notifications.Application;
 using Flora.Notifications.Infrastructure;
 using Flora.Shared.Persistence;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -27,6 +28,7 @@ public static class NotificationsModuleComposition
         });
 
         services.AddScoped<INotificationInboxService, NotificationInboxService>();
+        services.AddScoped<IClientPlatformService, ClientPlatformService>();
         services.AddScoped<IPushTokenService, PushTokenService>();
         services.AddScoped<IUserDisplayNameResolver, UserDisplayNameResolver>();
         services.AddSingleton<IUserRealtimeHub, UserRealtimeHub>();
@@ -42,6 +44,12 @@ public static class NotificationsModuleComposition
     /// </summary>
     public static IMvcBuilder AddNotificationsModuleControllers(this IMvcBuilder builder) =>
         builder.AddApplicationPart(typeof(NotificationsModuleComposition).Assembly);
+
+    public static IApplicationBuilder UseNotificationsModule(this IApplicationBuilder app)
+    {
+        app.UseMiddleware<ClientPlatformTouchMiddleware>();
+        return app;
+    }
 
     public static IEndpointRouteBuilder MapNotificationsModuleEndpoints(this IEndpointRouteBuilder endpoints) => endpoints;
 }
