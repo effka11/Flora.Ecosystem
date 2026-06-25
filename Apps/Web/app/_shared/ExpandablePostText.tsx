@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ComposeFormattedContent } from "./composeFormattedText";
 import styles from "./ExpandablePostText.module.css";
 
@@ -10,63 +10,117 @@ type ExpandablePostTextProps = {
   className?: string;
 };
 
-const TEXT_ONLY_LINES = 8;
-const WITH_MEDIA_LINES = 4;
+const COLLAPSED_TEXT_LINES = 8;
+const COLLAPSED_WITH_MEDIA_LINES = 4;
+const EXPAND_CHUNK_TEXT_LINES = 15;
+const EXPAND_CHUNK_WITH_MEDIA_LINES = 15;
+const LAST_PART_EXTRA_LINES = 5;
 
-type ClampStyle = CSSProperties & {
-  "--flora-post-text-lines": number;
+type TextMetrics = {
+  lineHeightPx: number;
+  totalLines: number;
+  fullHeightPx: number;
 };
+
+function getLineHeight(node: HTMLElement): number {
+  const computed = window.getComputedStyle(node);
+  const lineHeight = Number.parseFloat(computed.lineHeight);
+  const fallbackLineHeight = Number.parseFloat(computed.fontSize) * 1.7;
+  return Number.isFinite(lineHeight) ? lineHeight : fallbackLineHeight;
+}
+
+function measureText(node: HTMLElement): TextMetrics {
+  const lineHeightPx = getLineHeight(node);
+  const totalLines = Math.max(1, Math.ceil((node.scrollHeight - 1) / lineHeightPx));
+  return {
+    lineHeightPx,
+    totalLines,
+    fullHeightPx: node.scrollHeight,
+  };
+}
+
+function nextVisibleLines(current: number, total: number, chunk: number): number {
+  const remaining = total - current;
+
+  if (remaining <= chunk) {
+    return total;
+  }
+
+  if (remaining - chunk < LAST_PART_EXTRA_LINES) {
+    return Math.min(total, current + chunk + LAST_PART_EXTRA_LINES);
+  }
+
+  return current + chunk;
+}
+
+function clampHeightPx(metrics: TextMetrics, visibleLines: number, fullyExpanded: boolean): number {
+  if (fullyExpanded) {
+    return metrics.fullHeightPx;
+  }
+
+  return Math.min(metrics.fullHeightPx, visibleLines * metrics.lineHeightPx);
+}
 
 export function ExpandablePostText({ text, hasMedia = false, className }: ExpandablePostTextProps) {
   const contentRef = useRef<HTMLParagraphElement | null>(null);
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const [canExpand, setCanExpand] = useState(false);
-  const collapsedLines = hasMedia ? WITH_MEDIA_LINES : TEXT_ONLY_LINES;
-  const textKey = `${collapsedLines}:${text}`;
-  const expanded = expandedKey === textKey;
+  const collapsedLines = hasMedia ? COLLAPSED_WITH_MEDIA_LINES : COLLAPSED_TEXT_LINES;
+  const expandChunkLines = hasMedia ? EXPAND_CHUNK_WITH_MEDIA_LINES : EXPAND_CHUNK_TEXT_LINES;
+  const [visibleLines, setVisibleLines] = useState(collapsedLines);
+  const [metrics, setMetrics] = useState<TextMetrics | null>(null);
+
+  useEffect(() => {
+    setVisibleLines(collapsedLines);
+  }, [text, collapsedLines]);
 
   useEffect(() => {
     const node = contentRef.current;
     if (!node) return;
 
-    const measure = () => {
-      const computed = window.getComputedStyle(node);
-      const lineHeight = Number.parseFloat(computed.lineHeight);
-      const fallbackLineHeight = Number.parseFloat(computed.fontSize) * 1.7;
-      const oneLine = Number.isFinite(lineHeight) ? lineHeight : fallbackLineHeight;
-      const collapsedHeight = oneLine * collapsedLines;
-      setCanExpand(node.scrollHeight > collapsedHeight + 1);
+    const updateMetrics = () => {
+      setMetrics(measureText(node));
     };
 
-    measure();
-    const observer = new ResizeObserver(measure);
+    updateMetrics();
+    const observer = new ResizeObserver(updateMetrics);
     observer.observe(node);
     return () => observer.disconnect();
   }, [text, collapsedLines]);
 
-  const rootClassName = [
-    styles.root,
-    expanded ? styles.rootExpanded : "",
-    canExpand ? styles.rootExpandable : "",
-  ]
+  const totalLines = metrics?.totalLines ?? collapsedLines;
+  const fullyExpanded = visibleLines >= totalLines;
+  const canExpand = totalLines > collapsedLines;
+
+  const handleToggle = useCallback(() => {
+    if (fullyExpanded) {
+      setVisibleLines(collapsedLines);
+      return;
+    }
+
+    setVisibleLines((current) => nextVisibleLines(current, totalLines, expandChunkLines));
+  }, [collapsedLines, expandChunkLines, fullyExpanded, totalLines]);
+
+  const contentClassName = [className, styles.content].filter(Boolean).join(" ");
+  const clipClassName = [styles.contentClip, canExpand ? styles.contentClipExpandable : ""]
     .filter(Boolean)
     .join(" ");
-  const contentClassName = [className, styles.content].filter(Boolean).join(" ");
-  const contentStyle: ClampStyle = { "--flora-post-text-lines": collapsedLines, margin: 0 };
+  const maxHeightPx =
+    metrics && canExpand ? clampHeightPx(metrics, visibleLines, fullyExpanded) : undefined;
 
   return (
-    <div className={rootClassName}>
-      <p ref={contentRef} className={contentClassName} style={contentStyle}>
-        <ComposeFormattedContent text={text} />
-      </p>
-      {canExpand && !expanded ? <div className={styles.fade} aria-hidden /> : null}
+    <div className={styles.root}>
+      <div className={styles.clipWrap}>
+        <div className={clipClassName} style={maxHeightPx === undefined ? undefined : { maxHeight: maxHeightPx }}>
+          <p ref={contentRef} className={contentClassName} style={{ margin: 0 }}>
+            <ComposeFormattedContent text={text} />
+          </p>
+        </div>
+        {canExpand ? (
+          <div className={[styles.fade, fullyExpanded ? styles.fadeHidden : ""].filter(Boolean).join(" ")} aria-hidden />
+        ) : null}
+      </div>
       {canExpand ? (
-        <button
-          type="button"
-          className={styles.toggle}
-          onClick={() => setExpandedKey((value) => (value === textKey ? null : textKey))}
-        >
-          {expanded ? "Свернуть" : "Показать полностью"}
+        <button type="button" className={styles.toggle} onClick={handleToggle}>
+          {fullyExpanded ? "Свернуть" : "Показать полностью"}
         </button>
       ) : null}
     </div>

@@ -3,23 +3,36 @@
   margin: 0 0 var(--flora-grid-step);
 }
 
-.content {
-  margin-bottom: 0;
+.clipWrap {
+  position: relative;
 }
 
-.rootExpandable:not(.rootExpanded) .content {
-  max-height: calc(var(--flora-post-text-lines) * 1.7em);
+.contentClip {
   overflow: hidden;
+}
+
+.contentClipExpandable {
+  transition: max-height 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.content {
+  margin-bottom: 0;
 }
 
 .fade {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
+  bottom: 0;
   height: calc(2 * var(--flora-grid-step));
   pointer-events: none;
   background: linear-gradient(to bottom, transparent, var(--flora-bg));
+  opacity: 1;
+  transition: opacity 0.28s ease;
+}
+
+.fadeHidden {
+  opacity: 0;
 }
 
 .toggle {
@@ -41,4 +54,11 @@
 .toggle:hover {
   color: var(--flora-green-light);
   text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 38%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentClipExpandable,
+  .fade {
+    transition: none;
+  }
 }
