@@ -2,7 +2,7 @@
   "expo": {
     "name": "Flora",
     "slug": "flora-mobile",
-    "version": "0.1.0-alpha",
+    "version": "0.2.0-alpha",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "flora",

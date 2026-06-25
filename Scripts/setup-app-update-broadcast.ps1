@@ -23,7 +23,8 @@ Write-Host ""
 $ok = $true
 
 if (Test-IsLocalBroadcastApiUrl $apiUrl) {
-    Write-Host "[!!] API URL is local ($apiUrl). For prod release use Scripts/broadcast.env or -ApiBaseUrl." -ForegroundColor Yellow
+    Write-Host 'WARN: API URL is local' -ForegroundColor Yellow
+    Write-Host "       $apiUrl — for prod use Scripts/broadcast.env or -ApiBaseUrl." -ForegroundColor Yellow
     $ok = $false
 } else {
     Write-Host "[OK] API URL: $apiUrl" -ForegroundColor Green
@@ -31,7 +32,7 @@ if (Test-IsLocalBroadcastApiUrl $apiUrl) {
 
 if ([string]::IsNullOrWhiteSpace($token)) {
     $ok = $false
-    Write-Host "[!!] Missing FLORA_ADMIN_BROADCAST_TOKEN (Scripts/broadcast.env or env var)" -ForegroundColor Yellow
+    Write-Host 'WARN: Missing FLORA_ADMIN_BROADCAST_TOKEN (Scripts/broadcast.env or env var)' -ForegroundColor Yellow
 } else {
     Write-Host "[OK] Admin broadcast token configured locally" -ForegroundColor Green
 }
@@ -47,7 +48,7 @@ $mobileEnv = Join-Path $root "Apps\Mobile\.env"
 if (Test-Path $mobileEnv) {
     $mobileApi = Read-DotEnvValue $mobileEnv "EXPO_PUBLIC_API_URL"
     if ($mobileApi -and $mobileApi.TrimEnd("/") -ne $apiUrl.TrimEnd("/")) {
-        Write-Host "[!!] Apps/Mobile/.env EXPO_PUBLIC_API_URL ($mobileApi) differs from broadcast API ($apiUrl)" -ForegroundColor Yellow
+        Write-Host "WARN: Apps/Mobile/.env EXPO_PUBLIC_API_URL ($mobileApi) differs from broadcast API ($apiUrl)" -ForegroundColor Yellow
         $ok = $false
     } elseif ($mobileApi) {
         Write-Host "[OK] Apps/Mobile/.env API matches broadcast target" -ForegroundColor Green
@@ -65,7 +66,7 @@ if (-not (Test-IsLocalBroadcastApiUrl $apiUrl)) {
             -Headers @{ "X-Flora-Admin-Token" = "flora-broadcast-probe" } `
             -Body "{}" -ContentType "application/json; charset=utf-8" `
             -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
-        Write-Host "[!!] Unexpected 2xx on probe (check API)" -ForegroundColor Yellow
+        Write-Host 'WARN: Unexpected 2xx on probe (check API)' -ForegroundColor Yellow
     }
     catch {
         $status = $null
@@ -74,7 +75,7 @@ if (-not (Test-IsLocalBroadcastApiUrl $apiUrl)) {
         }
         if ($status -eq 404) {
             $ok = $false
-            Write-Host "[!!] Broadcast disabled on API (404). Set Flora__AdminBroadcastToken on server and restart flora-api." -ForegroundColor Yellow
+            Write-Host 'WARN: Broadcast disabled on API (404). Set Flora__AdminBroadcastToken on server and restart flora-api.' -ForegroundColor Yellow
         }
         elseif ($status -eq 401) {
             Write-Host "[OK] Broadcast endpoint enabled (401 on probe token)" -ForegroundColor Green
@@ -84,7 +85,7 @@ if (-not (Test-IsLocalBroadcastApiUrl $apiUrl)) {
         }
         else {
             $ok = $false
-            Write-Host "[!!] Probe failed: HTTP $status - $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "WARN: Probe failed: HTTP $status - $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
 }

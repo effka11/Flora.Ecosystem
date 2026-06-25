@@ -17,7 +17,7 @@ $ok = $true
 Write-Host ""
 Write-Host "Flora Android push (release APK only)" -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan
-Write-Host "Flora Dev (USB): no FCM — use SSE + polling while app is open." -ForegroundColor DarkGray
+Write-Host 'Flora Dev (USB): no FCM - use SSE + polling while app is open.' -ForegroundColor DarkGray
 Write-Host ""
 
 if (Test-Path $prodGoogle) {
@@ -33,11 +33,11 @@ if (Test-Path $prodGoogle) {
         Write-Host "[OK] google-services.json (social.flora.mobile)" -ForegroundColor Green
     } else {
         $ok = $false
-        Write-Host "[!!] google-services.json missing client social.flora.mobile" -ForegroundColor Yellow
+        Write-Host 'WARN: google-services.json missing client social.flora.mobile' -ForegroundColor Yellow
     }
 } else {
     $ok = $false
-    Write-Host "[!!] Missing Apps\Mobile\google-services.json" -ForegroundColor Yellow
+    Write-Host 'WARN: Missing Apps\Mobile\google-services.json' -ForegroundColor Yellow
 }
 
 $hasServiceAccount = $false
@@ -70,7 +70,7 @@ if (-not $hasServiceAccount -and (Test-Path $localSettings)) {
 
 if (-not $hasServiceAccount) {
     $ok = $false
-    Write-Host "[!!] Firebase Admin SDK not configured on API" -ForegroundColor Yellow
+    Write-Host 'WARN: Firebase Admin SDK not configured on API' -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -86,7 +86,7 @@ Write-Host ""
 Write-Host "3. Test on release APK" -ForegroundColor Cyan
 Write-Host "   Install Flora (not Flora Dev), login, allow notifications, send DM."
 Write-Host ""
-Write-Host "4. App-update broadcast (optional, after GitHub release)" -ForegroundColor Cyan
+Write-Host '4. App-update broadcast (optional, after GitHub release)' -ForegroundColor Cyan
 Write-Host "   VPS: Flora__AdminBroadcastToken in /etc/flora-ecosystem/flora-api.env"
 Write-Host "   Local: Scripts/broadcast.env (see broadcast.env.example)"
 Write-Host "   Check: .\Scripts\setup-app-update-broadcast.ps1"
