@@ -2,6 +2,7 @@ import type { FeedPostDto, PostEngagementSnapshot } from "@flora/client-core/con
 import { formatAtHandle, profileDisplayName } from "@flora/client-core/display";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
+import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ExpandablePostText } from "@/components/feed/ExpandablePostText";
 import { FeedPostComments } from "@/components/feed/FeedPostComments";
@@ -48,7 +49,7 @@ function formatRelativeTime(date: string) {
   return new Date(date).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
 }
 
-export function PostCard({
+export const PostCard = memo(function PostCard({
   post,
   engagement,
   commentCount,
@@ -115,6 +116,8 @@ export function PostCard({
           <View style={styles.postBody}>
             {post.text.trim() ? (
               <ExpandablePostText
+                key={post.postUuid}
+                postUuid={post.postUuid}
                 text={post.text}
                 hasMedia={hasMedia}
                 containerStyle={styles.postText}
@@ -182,7 +185,7 @@ export function PostCard({
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

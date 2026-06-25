@@ -69,7 +69,7 @@ function truncateTextForVisibleLines(
 
   let low = 0;
   let high = text.length;
-  let best = 0;
+  let bestCandidate = "";
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
@@ -80,15 +80,14 @@ function truncateTextForVisibleLines(
     }
 
     if (countPlainTextLines(measureNode, withEllipsis(candidate)) <= maxLines) {
-      best = mid;
+      bestCandidate = candidate;
       low = mid + 1;
     } else {
       high = mid - 1;
     }
   }
 
-  const finalText = trimToLastCompleteWord(text.slice(0, best).trimEnd());
-  return finalText ? withEllipsis(finalText) : TRUNCATION_ELLIPSIS;
+  return bestCandidate ? withEllipsis(bestCandidate) : TRUNCATION_ELLIPSIS;
 }
 
 function nextVisibleLines(current: number, total: number, chunk: number): number {

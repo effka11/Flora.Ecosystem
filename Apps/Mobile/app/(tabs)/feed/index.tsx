@@ -107,6 +107,8 @@ function FeedPane({ kind, search, pageWidth }: FeedPaneProps) {
       <FlashList
         data={visiblePosts}
         keyExtractor={(item) => item.postUuid}
+        estimatedItemSize={320}
+        drawDistance={480}
         contentContainerStyle={styles.listContent}
         nestedScrollEnabled
         refreshControl={
