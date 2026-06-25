@@ -43,6 +43,11 @@ appsettings.Production.json
 appsettings.*.Local.json
 Flora.API/cursor-temp-bootstrap.sql
 SECRETS-ROTATION.local.md
+# App-update broadcast (prod): Scripts/broadcast.env.example is committed
+Scripts/broadcast.env
+Scripts/broadcast.env.local
+**/flora-broadcast-token-once.txt
+!Scripts/broadcast.env.example
 *.secrets.local.*
 
 # Firebase Admin SDK / any real service-account creds (local API push) — keep only *.example

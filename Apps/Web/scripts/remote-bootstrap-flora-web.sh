@@ -71,6 +71,8 @@ if [ ! -f /etc/flora-ecosystem/flora-api.env.example ]; then
     echo 'Smtp__EnableSsl=true'
     echo '# FCM push (release mobile + message notifications):'
     echo 'Push__Firebase__CredentialsPath=/etc/flora-ecosystem/firebase-service-account.json'
+    echo '# App-update broadcast (Scripts/broadcast-app-update.ps1 -Production):'
+    echo 'Flora__AdminBroadcastToken=CHANGE_ME_LONG_RANDOM_SECRET'
   } >/etc/flora-ecosystem/flora-api.env.example
 fi
 
@@ -148,6 +150,19 @@ emit_nginx_proxy_next_static() {
   echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
   echo '        proxy_set_header X-Forwarded-Proto $scheme;'
   echo '    }'
+}
+
+emit_nginx_api_admin() {
+  echo '    location /api/admin/ {'
+  echo '        proxy_pass http://127.0.0.1:5000;'
+  echo '        proxy_http_version 1.1;'
+  echo '        proxy_set_header Host $host;'
+  echo '        proxy_set_header X-Real-IP $remote_addr;'
+  echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
+  echo '        proxy_set_header X-Forwarded-Proto $scheme;'
+  echo '        client_max_body_size 1m;'
+  echo '    }'
+  echo ''
 }
 
 emit_nginx_api_sse_stream() {
@@ -271,6 +286,7 @@ fi
   echo
   emit_nginx_proxy_next_static
   echo
+  emit_nginx_api_admin
   emit_nginx_api_sse_stream
   echo
   emit_nginx_proxy_next_app
@@ -314,6 +330,7 @@ if [[ -f "$ORIGIN_CERT" && -f "$ORIGIN_KEY" ]]; then
     echo
     emit_nginx_proxy_next_static
     echo
+    emit_nginx_api_admin
     emit_nginx_api_sse_stream
     echo
     emit_nginx_proxy_next_app

@@ -23,6 +23,7 @@ function New-HexSecret([int]$byteCount) {
 $dbPass = New-HexSecret 20
 $jwtSecret = New-HexSecret 32
 $smtpPass = New-HexSecret 16
+$broadcastToken = New-HexSecret 32
 
 $dbConn = "Host=$ServerHost;Port=5432;Database=flora_social;Username=flora;Password=$dbPass;Include Error Detail=false;Search Path=flora_core;SSL Mode=Require"
 
@@ -61,10 +62,21 @@ $doc = [ordered]@{
   FloraWeb         = @{
     CorsOrigins = $CorsOrigins
   }
+  Flora            = @{
+    AdminBroadcastToken = $broadcastToken
+  }
 }
 
 $json = ($doc | ConvertTo-Json -Depth 12)
 [System.IO.File]::WriteAllText($apiPath, $json)
+
+$broadcastEnvPath = Join-Path $repo "Scripts\broadcast.env"
+$broadcastEnv = @(
+  "# Generated with appsettings.Production.json — same AdminBroadcastToken"
+  "FLORA_API_URL=https://origin.$ServerHost"
+  "FLORA_ADMIN_BROADCAST_TOKEN=$broadcastToken"
+) -join "`r`n"
+[System.IO.File]::WriteAllText($broadcastEnvPath, $broadcastEnv + "`r`n")
 
 $webPath = Join-Path $repo "Apps\Web\.env.production.local"
 $web = @(
@@ -73,4 +85,6 @@ $web = @(
 ) -join "`r`n"
 [System.IO.File]::WriteAllText($webPath, $web + "`r`n")
 
-Write-Host "OK: wrote Flora.API/appsettings.Production.json and Apps/Web/.env.production.local (secrets not printed)."
+Write-Host "OK: wrote Flora.API/appsettings.Production.json, Scripts/broadcast.env, and Apps/Web/.env.production.local (secrets not printed)."
+Write-Host "On VPS add to /etc/flora-ecosystem/flora-api.env:"
+Write-Host "  Flora__AdminBroadcastToken=<same as Scripts/broadcast.env>"

@@ -1,4 +1,8 @@
 # Production Android release (AAB/APK) via Gradle after expo prebuild.
+param(
+    [switch] $BroadcastUpdate
+)
+
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 
@@ -301,4 +305,10 @@ try {
 }
 finally {
     Pop-Location
+}
+
+if ($BroadcastUpdate) {
+    Write-Host ""
+    Write-Host "Broadcast app-update notification (production) ..."
+    & (Join-Path $PSScriptRoot "broadcast-app-update.ps1") -Production -Confirm
 }

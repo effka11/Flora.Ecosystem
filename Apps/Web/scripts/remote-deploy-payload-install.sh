@@ -28,6 +28,7 @@ if [ -d "$HERE/api" ] && [ -f "$HERE/api/Flora.API" ]; then
   cp -a "$HERE/api/." "$API_REMOTE/"
   chmod 755 "$API_REMOTE"
   chmod +x "$API_REMOTE/Flora.API" || true
+  rm -f "$API_REMOTE/appsettings.Local.json"
   systemctl daemon-reload
   systemctl enable flora-api >/dev/null 2>&1 || true
   systemctl restart flora-api

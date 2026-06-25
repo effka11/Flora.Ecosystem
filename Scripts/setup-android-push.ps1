@@ -86,6 +86,12 @@ Write-Host ""
 Write-Host "3. Test on release APK" -ForegroundColor Cyan
 Write-Host "   Install Flora (not Flora Dev), login, allow notifications, send DM."
 Write-Host ""
+Write-Host "4. App-update broadcast (optional, after GitHub release)" -ForegroundColor Cyan
+Write-Host "   VPS: Flora__AdminBroadcastToken in /etc/flora-ecosystem/flora-api.env"
+Write-Host "   Local: Scripts/broadcast.env (see broadcast.env.example)"
+Write-Host "   Check: .\Scripts\setup-app-update-broadcast.ps1"
+Write-Host "   Send:  .\Scripts\broadcast-app-update.ps1 -Production -Confirm"
+Write-Host ""
 
 if ($ok) {
     Write-Host "Release push config looks ready." -ForegroundColor Green

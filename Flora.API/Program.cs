@@ -5,7 +5,11 @@ using Flora.Social;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+if (builder.Environment.IsDevelopment())
+{
+    // Dev-only overrides (never load on Production — would shadow Flora__AdminBroadcastToken etc.).
+    builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+}
 
 // Never ship a static JWT secret. In Development, mint an ephemeral in-memory secret so a fresh
 // clone runs out of the box (tokens reset on restart). appsettings.Local.json may copy example

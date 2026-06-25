@@ -299,7 +299,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Flora: broadcast app-update notification",
+      "label": "Flora: broadcast app-update (local)",
       "type": "process",
       "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
@@ -315,6 +315,50 @@
           "FLORA_API_URL": "http://localhost:5284",
           "FLORA_ADMIN_BROADCAST_TOKEN": "dev-local-broadcast-token-change-me"
         }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora: broadcast app-update (production)",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\broadcast-app-update.ps1",
+        "-Production",
+        "-Confirm"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora: setup app-update broadcast (prod check)",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\setup-app-update-broadcast.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
       },
       "presentation": {
         "reveal": "always",

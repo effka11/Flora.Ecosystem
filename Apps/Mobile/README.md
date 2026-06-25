@@ -17,6 +17,36 @@ OS push (FCM) **не используется** в **Flora Dev** (`social.flora.
 
 Push: новые DM (без текста E2E в payload).
 
+## Уведомление о новой версии (Android release)
+
+После публикации APK на GitHub Releases можно разослать in-app уведомление «Новая версия Android» всем пользователям release APK.
+
+### Один раз на сервере
+
+На VPS в `/etc/flora-ecosystem/flora-api.env`:
+
+```bash
+Flora__AdminBroadcastToken=<длинный случайный секрет>
+```
+
+Тот же секрет локально в `Scripts/broadcast.env` (скопировать из `Scripts/broadcast.env.example`). При генерации prod-конфига:
+
+```powershell
+.\Scripts\generate-prod-local-config.ps1 -ServerHost flora-s.net
+```
+
+создаёт `appsettings.Production.json` и `Scripts/broadcast.env` с одним токеном — значение нужно перенести на VPS и перезапустить `flora-api`.
+
+### Перед каждым релизом
+
+```powershell
+.\Scripts\setup-app-update-broadcast.ps1    # проверка токена и API
+# 1. сборка APK, 2. GitHub release, 3. deploy API при необходимости
+.\Scripts\broadcast-app-update.ps1 -Production -Confirm
+```
+
+Опционально сразу после сборки: `.\Scripts\mobile-release-android.ps1 -BroadcastUpdate` (лучше после публикации APK на GitHub).
+
 ## Локальная разработка
 
 Metro dev-client **всегда** ходит на `http://localhost:5284` (локальный Flora.API). JS-бандл приходит с Metro (`:8081`).
