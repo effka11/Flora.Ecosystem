@@ -29,7 +29,7 @@ const floraVersions = loadFloraVersions();
 
 const isProd = process.env.NODE_ENV === "production";
 
-/** Browser fetch targets for /api/* when NEXT_PUBLIC_API_BASE_URL is a cross-origin host (e.g. origin.<apex>). */
+/** Cross-origin API/realtime hosts embedded at build (e.g. origin.<apex> when using -PublicApiBaseUrl). */
 function resolveConnectSrcExtraOrigins(): string[] {
   const origins = new Set<string>();
   for (const raw of [
@@ -57,16 +57,17 @@ function resolveConnectSrcExtraOrigins(): string[] {
  * eval. Migrating to a per-request nonce (strict-dynamic) is a post-release hardening step. The
  * high-value directives below (frame-ancestors, object-src, base-uri, form-action) are already strict.
  */
-const connectSrcExtra = resolveConnectSrcExtraOrigins().join(" ");
+const crossOriginApiOrigins = resolveConnectSrcExtraOrigins();
+const crossOriginApiOriginsCsp = crossOriginApiOrigins.join(" ");
 const contentSecurityPolicy = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "media-src 'self' blob:",
+  `img-src 'self' data: blob:${crossOriginApiOriginsCsp ? ` ${crossOriginApiOriginsCsp}` : ""}`,
+  `media-src 'self' blob:${crossOriginApiOriginsCsp ? ` ${crossOriginApiOriginsCsp}` : ""}`,
   "font-src 'self' data:",
   "worker-src 'self' blob:",
-  `connect-src 'self' blob:${connectSrcExtra ? ` ${connectSrcExtra}` : ""}`,
+  `connect-src 'self' blob:${crossOriginApiOriginsCsp ? ` ${crossOriginApiOriginsCsp}` : ""}`,
   "frame-ancestors 'none'",
   "frame-src 'self'",
   "object-src 'none'",

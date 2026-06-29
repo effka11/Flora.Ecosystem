@@ -180,6 +180,20 @@ emit_nginx_api_sse_stream() {
   echo '    }'
 }
 
+emit_nginx_api_post_media() {
+  echo '    # Public post media GET (anonymous <img>/<video>); bypass Next for binary + Range.'
+  echo '    location ~ ^/api/auth/posts/(images|videos)/ {'
+  echo '        proxy_pass http://127.0.0.1:5000;'
+  echo '        proxy_http_version 1.1;'
+  echo '        proxy_set_header Host $host;'
+  echo '        proxy_set_header X-Real-IP $remote_addr;'
+  echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
+  echo '        proxy_set_header X-Forwarded-Proto $scheme;'
+  echo '        proxy_buffering off;'
+  echo '    }'
+  echo ''
+}
+
 emit_nginx_proxy_next_app() {
   if [[ -n "$WEB_BUILD_ID" ]]; then
     echo '    # CDN keys by full URL; ?b=buildId fetches fresh HTML without panel purge.'
@@ -288,6 +302,7 @@ fi
   echo
   emit_nginx_api_admin
   emit_nginx_api_sse_stream
+  emit_nginx_api_post_media
   echo
   emit_nginx_proxy_next_app
   echo '}'
@@ -332,6 +347,7 @@ if [[ -f "$ORIGIN_CERT" && -f "$ORIGIN_KEY" ]]; then
     echo
     emit_nginx_api_admin
     emit_nginx_api_sse_stream
+    emit_nginx_api_post_media
     echo
     emit_nginx_proxy_next_app
     echo '}'

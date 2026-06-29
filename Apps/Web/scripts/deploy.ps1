@@ -267,6 +267,10 @@ try {
     Write-Host "  Next: curl -sI http://127.0.0.1:3000/ ; curl -s http://127.0.0.1:5000/health"
     Write-Host ('  Open https://' + $PublicSubdomain + '.' + $Domain + '/login?b=' + $webBuildId + ' (or flora-s.net redirect).')
     Write-Host '  Selectel CDN: disable HTML cache or cache only /_next/static/ — then purge is rarely needed.'
+    if (-not [string]::IsNullOrWhiteSpace($resolvedPublic)) {
+        Write-Host '  Post-media fix: if images still fail after deploy, purge CDN for /api/auth/posts/images/* (build embeds cross-origin API URLs).'
+    }
+    Write-Host '  After nginx bootstrap changes: re-run remote-bootstrap on VPS or redeploy so post-media GET bypasses Next.'
 }
 finally {
     if ($isWindows -and (Test-Path -LiteralPath $tarballPath)) {

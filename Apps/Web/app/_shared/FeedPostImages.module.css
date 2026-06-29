@@ -126,6 +126,44 @@
   background: rgba(0, 0, 0, 0.72);
 }
 
+.imageFailed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: calc(12 * var(--flora-grid-step));
+  padding: calc(2 * var(--flora-grid-step));
+  text-align: center;
+  background: rgba(var(--flora-white-template-rgb), 0.05);
+  border-radius: 10px;
+}
+
+.images[data-count="1"] .imageFailed {
+  min-height: calc(16 * var(--flora-grid-step));
+  border-radius: var(--flora-grid-step-fine);
+}
+
+.imageFailedText {
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: rgba(var(--flora-white-template-rgb), 0.55);
+}
+
+.imageRetryBtn {
+  border: none;
+  background: rgba(var(--flora-white-template-rgb), 0.1);
+  color: rgba(var(--flora-white-template-rgb), 0.85);
+  border-radius: 9999px;
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.imageRetryBtn:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.16);
+}
+
 .image {
   width: 100%;
   max-width: 100%;
