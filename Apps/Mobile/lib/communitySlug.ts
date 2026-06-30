@@ -2,6 +2,8 @@
 export const COMMUNITY_SLUG_FORMAT_MESSAGE =
   "Ссылка: только латиница, цифры, дефис и подчёркивание.";
 
+export const COMMUNITY_SLUG_RE = /^[a-zA-Z0-9_-]{1,100}$/;
+
 export function hasOnlyCommunitySlugChars(raw: string): boolean {
   const trimmed = raw.trim();
   return trimmed.length > 0 && [...trimmed].every((c) => /[a-zA-Z0-9_-]/.test(c));

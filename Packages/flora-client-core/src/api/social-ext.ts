@@ -1,4 +1,4 @@
-import { authFetch, authGetJson, authPostJson, authDelete } from "./client.js";
+import { authDelete, authFetch, authGetJson, authPatchJson, authPostJson } from "./client.js";
 import { getApiClientConfig } from "./client.js";
 import { parsePostComment, parsePostCommentsList } from "../contracts/comments.js";
 import { parseRepostMutation } from "../contracts/engagement.js";
@@ -6,8 +6,12 @@ import { parsePeopleUsersList, type PeopleUserDto } from "../contracts/people.js
 import {
   parseCommunityList,
   parseCommunityListItem,
+  parseCommunityPostsList,
+  parseCommunityProfile,
   parseProfileCommunitiesList,
   type CommunityListItemDto,
+  type CommunityPostDto,
+  type CommunityProfileDto,
   type CommunitySearchDto,
   type ProfileCommunityDto,
 } from "../contracts/communities.js";
@@ -144,17 +148,60 @@ export async function apiSearchCommunities(
   return out;
 }
 
-export async function apiGetCommunityBySlug(slug: string) {
+export async function apiGetCommunityBySlug(slug: string): Promise<CommunityProfileDto> {
   const enc = encodeURIComponent(slug.trim().toLowerCase());
-  return authGetJson(`/api/auth/communities/slug/${enc}`);
+  const raw = await authGetJson(`/api/auth/communities/slug/${enc}`);
+  const parsed = parseCommunityProfile(raw, ctx());
+  if (!parsed) throw new ApiRequestError(404, "Сообщество не найдено.");
+  return parsed;
+}
+
+export async function apiGetCommunityPosts(
+  communityId: string,
+  options?: { skip?: number; take?: number },
+): Promise<CommunityPostDto[]> {
+  const id = communityId.trim();
+  if (!id) throw new ApiRequestError(400, "Укажите сообщество.");
+  const skip = options?.skip ?? 0;
+  const take = options?.take ?? 30;
+  const q = new URLSearchParams({ skip: String(skip), take: String(take) });
+  const raw = await authGetJson(`/api/auth/communities/${encodeURIComponent(id)}/posts?${q}`);
+  return parseCommunityPostsList(raw, ctx());
 }
 
 export async function apiCreateCommunity(body: Record<string, unknown>) {
   return authPostJson("/api/auth/communities", body);
 }
 
-export async function apiJoinCommunity(id: string): Promise<void> {
-  await authPostJson(`/api/auth/communities/${encodeURIComponent(id)}/join`, {});
+export async function apiJoinCommunity(id: string): Promise<CommunityProfileDto> {
+  const enc = encodeURIComponent(id.trim());
+  if (!enc) throw new ApiRequestError(400, "Укажите сообщество.");
+  const raw = await authPostJson(`/api/auth/communities/${enc}/join`, {});
+  const parsed = parseCommunityProfile(raw, ctx());
+  if (!parsed) throw new ApiRequestError(500, "Некорректный ответ сервера.");
+  return { ...parsed, role: parsed.role ?? "Member" };
+}
+
+export async function apiUpdateCommunity(
+  communityId: string,
+  input: { name?: string; slug?: string; isPrivate?: boolean },
+): Promise<CommunityProfileDto> {
+  const id = communityId.trim();
+  if (!id) throw new ApiRequestError(400, "Укажите сообщество.");
+  const body: Record<string, unknown> = {};
+  if (input.name !== undefined) body.name = input.name;
+  if (input.slug !== undefined) body.slug = input.slug;
+  if (input.isPrivate !== undefined) body.isPrivate = input.isPrivate;
+  const raw = await authPatchJson(`/api/auth/communities/${encodeURIComponent(id)}`, body);
+  const parsed = parseCommunityProfile(raw, ctx());
+  if (!parsed) throw new ApiRequestError(500, "Некорректный ответ сервера.");
+  return { ...parsed, role: "Owner" as const };
+}
+
+export async function apiDeleteCommunity(communityId: string): Promise<void> {
+  const id = communityId.trim();
+  if (!id) throw new ApiRequestError(400, "Укажите сообщество.");
+  await authDelete(`/api/auth/communities/${encodeURIComponent(id)}`);
 }
 
 export async function apiLeaveCommunity(id: string): Promise<void> {

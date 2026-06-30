@@ -30,6 +30,8 @@ type Props = {
   onToggleRepost: () => void;
   onToggleComments: () => void;
   onCommentAdded?: (postUuid: string) => void;
+  canDeletePost?: boolean;
+  onDeletePost?: () => void;
 };
 
 function handlesEqual(a: string, b: string) {
@@ -61,6 +63,8 @@ export const PostCard = memo(function PostCard({
   onToggleRepost,
   onToggleComments,
   onCommentAdded,
+  canDeletePost,
+  onDeletePost,
 }: Props) {
   const me = useSessionStore((s) => s.me);
 
@@ -106,7 +110,11 @@ export const PostCard = memo(function PostCard({
               </Link>
             </View>
             <View style={styles.postMore}>
-              <PostMoreMenuTrigger isOwnPost={isOwnPost} />
+              <PostMoreMenuTrigger
+                isOwnPost={isOwnPost}
+                canDeletePost={canDeletePost}
+                onDeletePost={onDeletePost}
+              />
             </View>
           </View>
 

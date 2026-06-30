@@ -15,9 +15,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   COMMUNITY_SLUG_FORMAT_MESSAGE,
+  COMMUNITY_SLUG_RE,
   hasOnlyCommunitySlugChars,
   normalizeCommunitySlug,
 } from "@/lib/communitySlug";
+import { isReservedCommunitySlug, RESERVED_COMMUNITY_SLUG_MESSAGE } from "@/lib/communityReservedSlugs";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 type Props = {
@@ -74,6 +76,14 @@ export function CreateCommunitySheet({ visible, onClose, onCreated }: Props) {
     const normalizedSlug = normalizeCommunitySlug(slugTouched ? slug : trimmedName);
     if (!normalizedSlug) {
       setError("Ссылка не может быть пустой. Используйте латиницу, цифры, дефис или подчёркивание.");
+      return;
+    }
+    if (!COMMUNITY_SLUG_RE.test(normalizedSlug)) {
+      setError(COMMUNITY_SLUG_FORMAT_MESSAGE);
+      return;
+    }
+    if (isReservedCommunitySlug(normalizedSlug)) {
+      setError(RESERVED_COMMUNITY_SLUG_MESSAGE);
       return;
     }
 

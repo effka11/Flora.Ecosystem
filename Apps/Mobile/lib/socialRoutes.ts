@@ -1,4 +1,5 @@
 import type { Href } from "expo-router";
+import { normalizeCommunitySlug } from "@/lib/communitySlug";
 
 function normalizeUsername(raw: string): string {
   return raw.trim().replace(/^@+/, "");
@@ -34,8 +35,18 @@ export function isOwnUsername(username: string, meUsername?: string | null): boo
 
 /** Страница сообщества внутри скрытого tab communities. */
 export function communityScreenHref(slug: string): Href {
+  const normalized = normalizeCommunitySlug(slug) || slug.trim();
   return {
     pathname: "/(tabs)/communities/[slug]",
-    params: { slug: slug.trim() },
+    params: { slug: normalized },
+  };
+}
+
+/** Настройки сообщества (root stack). */
+export function communitySettingsScreenHref(slug: string): Href {
+  const normalized = normalizeCommunitySlug(slug) || slug.trim();
+  return {
+    pathname: "/community-settings/[slug]",
+    params: { slug: normalized },
   };
 }

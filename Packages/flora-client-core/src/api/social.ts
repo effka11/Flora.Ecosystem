@@ -1,4 +1,4 @@
-import { authFetch, authGetJson, authPostJson } from "./client.js";
+import { authDelete, authFetch, authGetJson, authPostJson } from "./client.js";
 import { getApiClientConfig } from "./client.js";
 import { parseLikeMutation, parseViewMutation } from "../contracts/engagement.js";
 import { parseFeedPage, parseHasNewFeed } from "../contracts/feed.js";
@@ -37,6 +37,12 @@ export async function apiCreatePost(body: {
   communityUuid?: string | null;
 }) {
   return authPostJson("/api/auth/posts", body);
+}
+
+export async function apiDeletePost(postUuid: string): Promise<void> {
+  const id = postUuid.trim();
+  if (!id) throw new ApiRequestError(400, "Не указан пост.");
+  await authDelete(`/api/auth/posts/${encodeURIComponent(id)}`);
 }
 
 export async function apiLikePost(

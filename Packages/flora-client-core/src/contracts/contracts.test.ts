@@ -7,6 +7,11 @@ import { parseFeedPage } from "./feed.js";
 import { parseProfilePostsList } from "./profile.js";
 import { parseConversationsPage, parseMessagesPage } from "./messaging.js";
 import { parseNotificationsList, parseUnreadCount } from "./notifications.js";
+import {
+  communityPostToFeedPost,
+  parseCommunityPost,
+  parseCommunityProfile,
+} from "./communities.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "../../../../artifacts/contract-fixtures");
 
@@ -105,5 +110,41 @@ describe("contract fixtures", () => {
     expect(parsed).toBe(3);
     const list = parseNotificationsList(loadFixture("notifications-page.json"));
     expect(list.length).toBeGreaterThan(0);
+  });
+
+  it("parses community profile and maps community post to feed", () => {
+    const profile = parseCommunityProfile({
+      communityId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      name: "My Group",
+      slug: "my-group",
+      memberCount: 42,
+      role: "Owner",
+      avatarUuid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      isPrivate: false,
+    });
+    expect(profile?.slug).toBe("my-group");
+    expect(profile?.role).toBe("Owner");
+
+    const post = parseCommunityPost({
+      postUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      content: "Hello community",
+      createdAt: "2026-06-12T10:00:00.000Z",
+      authorUserUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      authorUsername: "founder",
+      authorDisplayName: "Founder",
+      commentsCount: 1,
+      likesCount: 2,
+      repostsCount: 0,
+      viewsCount: 10,
+      liked: true,
+      reposted: false,
+      imageUuids: [],
+    });
+    expect(post?.authorUserUuid).toBe("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+    const feed = communityPostToFeedPost(post!, profile!);
+    expect(feed.communityName).toBe("My Group");
+    expect(feed.communitySlug).toBe("my-group");
+    expect(feed.likedByMe).toBe(true);
   });
 });
