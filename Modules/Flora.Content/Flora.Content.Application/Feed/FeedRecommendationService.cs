@@ -92,8 +92,8 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
         if (following.Count == 0)
             return new FeedPage { PostUuids = Array.Empty<Guid>() };
 
-        var since         = DateTime.UtcNow.AddDays(-Math.Max(_subOptions.FollowingPostsDays, 30));
-        var maxCandidates = Math.Clamp(_subOptions.MaxCandidates, 50, 5000);
+        var since         = SinceSubscriptionUtc(DateTime.UtcNow, SubscriptionWindowDays);
+        var maxCandidates = SubscriptionPostsTakeLimit;
 
         // Посты от подписок (позиция = время публикации).
         var authorPosts = await _feedQueries.GetPostsByAuthorsSinceAsync(
@@ -242,14 +242,37 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
             && (nowUtc - post.CreatedAt).TotalMinutes < _fira.RefreshOwnPostProtectMinutes;
     }
 
-    private static string FiraCacheKey(Guid userUuid) => $"flora:fira-f:v2:{userUuid:N}";
+    private static string FiraCacheKey(Guid userUuid) => $"flora:fira-f:v3:{userUuid:N}";
+
+    private int MinFeedSize =>
+        Math.Clamp(_fira.MinFeedSize, 1, _fira.MaxCandidates);
+
+    /// <summary>Окно подписного контента — единое для «Подписок» и FIRA-F (не короче 30 дней).</summary>
+    private int SubscriptionWindowDays =>
+        Math.Max(Math.Max(_fira.FollowingWindowDays, _subOptions.FollowingPostsDays), 30);
+
+    private int SubscriptionPostsTakeLimit =>
+        Math.Clamp(_subOptions.MaxCandidates, 50, 5000);
+
+    private static DateTime SinceSubscriptionUtc(DateTime nowUtc, int subscriptionWindowDays) =>
+        nowUtc.AddDays(-subscriptionWindowDays);
+
+    private Task<List<FeedPostLite>> LoadSubscriptionPostsAsync(
+        IReadOnlyList<Guid> following,
+        DateTime sinceSubscription,
+        CancellationToken ct) =>
+        following.Count == 0
+            ? Task.FromResult(new List<FeedPostLite>())
+            : _feedQueries.GetPostsByAuthorsSinceAsync(
+                following, sinceSubscription, SubscriptionPostsTakeLimit, ct);
 
     private async Task<List<Guid>> ComputeFiraFeedAsync(Guid userUuid, CancellationToken ct)
     {
-        var nowUtc           = DateTime.UtcNow;
-        var sinceFollowing   = nowUtc.AddDays(-_fira.FollowingWindowDays);
-        var sinceTrending    = nowUtc.AddDays(-_fira.TrendingWindowDays);
-        var sinceInteraction = nowUtc.AddDays(-_fira.InteractionHistoryDays);
+        var nowUtc              = DateTime.UtcNow;
+        var subscriptionWindow  = SubscriptionWindowDays;
+        var sinceSubscription   = SinceSubscriptionUtc(nowUtc, subscriptionWindow);
+        var sinceTrending       = nowUtc.AddDays(-_fira.TrendingWindowDays);
+        var sinceInteraction    = nowUtc.AddDays(-_fira.InteractionHistoryDays);
 
         // ═════════════════════════════════════════════════════════════════
         // Шаг 1 — Генерация кандидатов (5 источников §FIRA-F.md)
@@ -257,6 +280,7 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
 
         var following    = (await _followGraph.GetFollowingUserIdsAsync(userUuid, ct)).ToList();
         var followingSet = following.ToHashSet();
+        var subscriptionPosts = await LoadSubscriptionPostsAsync(following, sinceSubscription, ct);
 
         // Граф второй степени (подписки подписок)
         var secondDegree = await _followGraph
@@ -264,19 +288,15 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
 
         var pool = new Dictionary<Guid, (FeedPostLite Post, double PoolWeight)>();
 
-        // Источник 1: посты 1-й степени (вес 1.0)
-        if (following.Count > 0)
-        {
-            var fromFollowing = await _feedQueries.GetPostsByAuthorsSinceAsync(
-                following, sinceFollowing, PoolLimit(0.50), ct);
-            MergePool(pool, fromFollowing, 1.0);
-        }
+        // Источник 1: посты 1-й степени (вес 1.0) — окно как у вкладки «Подписки»
+        if (subscriptionPosts.Count > 0)
+            MergePool(pool, subscriptionPosts.Take(PoolLimit(0.50)), 1.0);
 
         // Источник 2: посты 2-й степени (вес 0.4)
         if (secondDegree.Count > 0)
         {
             var from2nd = await _feedQueries.GetPostsByAuthorsSinceAsync(
-                secondDegree.ToList(), sinceTrending, PoolLimit(0.15), ct);
+                secondDegree.ToList(), sinceSubscription, PoolLimit(0.15), ct);
             MergePool(pool, from2nd, 0.4);
         }
 
@@ -287,7 +307,7 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
         if (trendingIds.Count == 0)
         {
             trendingIds = await _feedQueries.GetTrendingPostIdsAsync(
-                sinceFollowing, PoolLimit(0.15), followingSet, ct);
+                sinceSubscription, PoolLimit(0.15), followingSet, ct);
         }
         if (trendingIds.Count == 0)
         {
@@ -302,12 +322,12 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
 
         // Источник 4: посты из сообществ пользователя (вес 0.6)
         var communityPosts = await _feedQueries.GetCommunityPostsForUserAsync(
-            userUuid, sinceFollowing, PoolLimit(0.20), ct);
+            userUuid, sinceSubscription, PoolLimit(0.20), ct);
         MergePool(pool, communityPosts, 0.6);
 
         // Репосты от подписок → новые кандидаты (вес 0.6) + сигнал для SocialProximity
         var followedReposts = await _feedQueries.GetRepostsFromUsersAsync(
-            following, sinceTrending, PoolLimit(0.10), ct);
+            following, sinceSubscription, PoolLimit(0.10), ct);
 
         var repostPostIds = followedReposts
             .Select(r => r.PostUuid)
@@ -325,8 +345,14 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
             .GroupBy(r => r.PostUuid)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        if (pool.Count < MinFeedSize)
+            BackfillSparsePoolFromCache(subscriptionPosts, pool);
+
+        if (pool.Count < MinFeedSize)
+            await BackfillSparsePoolWithExplorationAsync(sinceSubscription, pool, ct);
+
         if (pool.Count == 0)
-            return await BuildColdStartFeedAsync(userUuid, sinceFollowing, ct);
+            return await BuildColdStartFeedAsync(userUuid, sinceSubscription, ct);
 
         // ═════════════════════════════════════════════════════════════════
         // Шаг 2 — Feature Extraction
@@ -401,9 +427,10 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
         var mainPostIds  = diversified.Take(mainSlots).Select(c => c.PostUuid).ToList();
         var excludedSet  = mainPostIds.ToHashSet();
 
-        var explorationPosts = await _feedQueries.GetExplorationPostsAsync(
-            sinceTrending, excludedSet, explorationSlots * 2, ct);
-        var explorationIds = explorationPosts.Take(explorationSlots).Select(p => p.PostUuid).ToList();
+        var explorationIds = (await GetExplorationIdsWithFallbackAsync(
+            sinceSubscription, excludedSet, explorationSlots * 2, ct))
+            .Take(explorationSlots)
+            .ToList();
 
         // Перемежаем exploration-посты с основными равномерно
         var merged = InterleaveExploration(mainPostIds, explorationIds, _fira.ExplorationQuota);
@@ -413,7 +440,7 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
         var ownSet       = ownPostUuids.ToHashSet();
 
         var result = ownPostUuids.Concat(merged.Where(id => !ownSet.Contains(id))).ToList();
-        return await EnsureNonEmptyFeedAsync(result, ct);
+        return await EnsureMinFeedSizeAsync(result, subscriptionPosts, sinceSubscription, ct);
     }
 
     // ─── Вспомогательные методы ──────────────────────────────────────────────
@@ -426,13 +453,13 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
     /// </summary>
     private async Task<List<Guid>> BuildColdStartFeedAsync(
         Guid userUuid,
-        DateTime sinceFollowing,
+        DateTime sinceSubscription,
         CancellationToken ct)
     {
         var ownPostUuids = await _feedQueries.GetOwnPostIdsAsync(userUuid, DateTime.MinValue, 100, ct);
         var explorationTake = Math.Clamp(PoolLimit(0.15), 20, 100);
         var explorationIds = await GetExplorationIdsWithFallbackAsync(
-            sinceFollowing,
+            sinceSubscription,
             ownPostUuids.ToHashSet(),
             explorationTake,
             ct);
@@ -441,7 +468,94 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
 
         var ownSet = ownPostUuids.ToHashSet();
         var merged = ownPostUuids.Concat(explorationIds.Where(id => !ownSet.Contains(id))).ToList();
-        return await EnsureNonEmptyFeedAsync(merged, ct);
+        return await EnsureMinFeedSizeAsync(merged, [], sinceSubscription, ct);
+    }
+
+    /// <summary>Дозаполняет пул оставшимися постами подписок из уже загруженного среза (без повторного запроса к БД).</summary>
+    private static void BackfillSparsePoolFromCache(
+        IReadOnlyList<FeedPostLite> subscriptionPosts,
+        Dictionary<Guid, (FeedPostLite Post, double PoolWeight)> pool)
+    {
+        if (subscriptionPosts.Count == 0)
+            return;
+
+        MergePool(pool, subscriptionPosts, 1.0);
+    }
+
+    private async Task BackfillSparsePoolWithExplorationAsync(
+        DateTime sinceSubscription,
+        Dictionary<Guid, (FeedPostLite Post, double PoolWeight)> pool,
+        CancellationToken ct)
+    {
+        if (pool.Count >= MinFeedSize)
+            return;
+
+        var excludeIds = pool.Keys.ToHashSet();
+        var explorationIds = await GetExplorationIdsWithFallbackAsync(
+            sinceSubscription,
+            excludeIds,
+            MinFeedSize - pool.Count,
+            ct);
+        if (explorationIds.Count == 0)
+            return;
+
+        var explorationPosts = await _feedQueries.GetPostsByIdsAsync(explorationIds, ct);
+        MergePool(pool, explorationPosts, 0.15);
+    }
+
+    /// <summary>
+    /// Гарантирует минимальный размер snapshot. Дописывает в конец посты подписок (по дате),
+    /// затем exploration и latest — без пересчёта score у уже ранжированной «головы» ленты.
+    /// </summary>
+    private async Task<List<Guid>> EnsureMinFeedSizeAsync(
+        List<Guid> feed,
+        IReadOnlyList<FeedPostLite> subscriptionPosts,
+        DateTime sinceSubscription,
+        CancellationToken ct)
+    {
+        if (feed.Count >= MinFeedSize)
+            return feed;
+
+        var result = feed.ToList();
+        var seen   = result.ToHashSet();
+
+        foreach (var post in subscriptionPosts.OrderByDescending(p => p.CreatedAt))
+        {
+            if (seen.Add(post.PostUuid))
+                result.Add(post.PostUuid);
+            if (result.Count >= MinFeedSize)
+                return result;
+        }
+
+        var explorationIds = await GetExplorationIdsWithFallbackAsync(
+            sinceSubscription,
+            seen,
+            MinFeedSize - result.Count,
+            ct);
+        foreach (var postId in explorationIds)
+        {
+            if (seen.Add(postId))
+                result.Add(postId);
+            if (result.Count >= MinFeedSize)
+                return result;
+        }
+
+        if (result.Count == 0)
+            return await _feedQueries.GetLatestPostIdsAsync(Math.Min(_fira.MaxCandidates, 50), ct);
+
+        if (result.Count < MinFeedSize)
+        {
+            var latest = await _feedQueries.GetLatestPostIdsAsync(Math.Min(_fira.MaxCandidates, 50), ct);
+            foreach (var postId in latest)
+            {
+                if (seen.Add(postId))
+                    result.Add(postId);
+                if (result.Count >= MinFeedSize)
+                    break;
+            }
+        }
+
+        return result;
     }
 
     private async Task<List<Guid>> GetExplorationIdsWithFallbackAsync(
@@ -463,12 +577,6 @@ public sealed class FeedRecommendationService : IFeedRecommendationService
                 return posts.Select(p => p.PostUuid).ToList();
         }
         return [];
-    }
-
-    private async Task<List<Guid>> EnsureNonEmptyFeedAsync(List<Guid> feed, CancellationToken ct)
-    {
-        if (feed.Count > 0) return feed;
-        return await _feedQueries.GetLatestPostIdsAsync(Math.Min(_fira.MaxCandidates, 50), ct);
     }
 
     /// <summary>Добавляет посты в пул; при дублировании оставляет вариант с бо́льшим начальным весом.</summary>

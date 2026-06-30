@@ -75,6 +75,8 @@ public sealed class FiraFeedConfig
 
     // --- Пул кандидатов ---
     public int MaxCandidates          { get; set; } = 1000;
+    /// <summary>Минимальный размер snapshot; при меньшем пуле/результате — backfill подписок → exploration → latest.</summary>
+    public int MinFeedSize            { get; set; } = 20;
     public int FollowingWindowDays    { get; set; } = 7;
     public int TrendingWindowDays     { get; set; } = 2;
     public int InteractionHistoryDays { get; set; } = 90;
