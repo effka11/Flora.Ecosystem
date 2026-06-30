@@ -74,7 +74,12 @@ export async function apiRecordPostView(postUuid: string): Promise<{ viewsCount:
   });
   // Старые сборки API могут не иметь POST /view — не бросаем, чтобы не засорять RN LogBox.
   if (r.status === 405 || r.status === 404) return null;
-  if (!r.ok) return null;
+  if (!r.ok) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn("[api] POST view failed", r.status, id);
+    }
+    return null;
+  }
   const raw = await r.json().catch(() => ({}));
   return parseViewMutation(raw);
 }

@@ -21,6 +21,7 @@ import { useSessionStore } from "@/stores/sessionStore";
 
 type Props = {
   post: FeedPostDto;
+  viewCount?: number;
   engagement: PostEngagementSnapshot;
   commentCount: number;
   commentsOpen: boolean;
@@ -54,6 +55,7 @@ function formatRelativeTime(date: string) {
 
 export const PostCard = memo(function PostCard({
   post,
+  viewCount,
   engagement,
   commentCount,
   commentsOpen,
@@ -176,7 +178,7 @@ export const PostCard = memo(function PostCard({
                 {timeLabel ? <Text style={styles.time}>{timeLabel}</Text> : null}
                 <View style={styles.views}>
                   <FeedPostViewsIcon color={floraColors.gray} />
-                  <Text style={styles.time}>{post.viewCount}</Text>
+                  <Text style={styles.time}>{viewCount ?? post.viewCount}</Text>
                 </View>
               </View>
             </View>

@@ -4,12 +4,13 @@ import { profilePostToFeedPost } from "@flora/client-core/contracts";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "@tanstack/react-query";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfileCardHeader } from "@/components/profile/ProfileCardHeader";
 import { PostCard } from "@/components/PostCard";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
+import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -19,6 +20,8 @@ export default function ProfileScreen() {
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
+  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
+    usePostViewTracking();
 
   const username = me?.username ?? "";
   const postsQuery = useQuery({
@@ -38,6 +41,11 @@ export default function ProfileScreen() {
       }),
     );
   }, [me, postsQuery.data]);
+
+  useEffect(() => {
+    if (posts.length === 0) return;
+    return refreshViewability();
+  }, [posts.length, refreshViewability]);
 
   useFocusEffect(
     useCallback(() => {
@@ -84,10 +92,12 @@ export default function ProfileScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <FlashList
+        ref={flashListRef}
         data={posts}
         keyExtractor={(item) => item.postUuid}
         ListHeaderComponent={header}
         contentContainerStyle={styles.listContent}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         refreshControl={
           <RefreshControl
             refreshing={postsQuery.isRefetching}
@@ -102,6 +112,7 @@ export default function ProfileScreen() {
           return (
             <PostCard
               post={item}
+              viewCount={viewsCountFor(item)}
               engagement={engagement}
               commentCount={commentCountFor(item)}
               commentsOpen={commentsOpen}

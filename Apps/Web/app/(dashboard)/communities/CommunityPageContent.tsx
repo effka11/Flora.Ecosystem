@@ -158,6 +158,14 @@ export function CommunityPageContent({
     [],
   );
 
+  const syncPostViewsCount = useCallback((postUuid: string, viewsCount: number) => {
+    setFeedPosts((items) =>
+      items.map((post) => (post.postUuid === postUuid ? { ...post, viewsCount } : post)),
+    );
+  }, []);
+
+  const pageScrollRef = useRef<HTMLElement>(null);
+
   const handleDeletePost = useCallback(async (postUuid: string) => {
     try {
       await apiDeletePost(postUuid);
@@ -208,7 +216,7 @@ export function CommunityPageContent({
   };
 
   return (
-    <section className={styles.page} id={scrollId}>
+    <section ref={pageScrollRef} className={styles.page} id={scrollId}>
       <header className={styles.profileHeader} aria-hidden />
 
       <div className={styles.profileCard} data-profile-status-measure>
@@ -371,8 +379,10 @@ export function CommunityPageContent({
           <FeedPostList
             variant="profile"
             posts={feedPosts}
+            scrollRootRef={pageScrollRef}
             onCommentCountChange={bumpCommentCount}
             onEngagementChange={syncPostEngagement}
+            onViewsCountChange={syncPostViewsCount}
             hideAuthorHandle
             authorHref={() => communityPageHref}
             sharePathForPost={() => communityPageHref}

@@ -28,6 +28,7 @@ import {
   decodeRouteParam,
 } from "@/lib/socialRoutes";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
+import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 export default function CommunityScreen() {
@@ -42,6 +43,8 @@ export default function CommunityScreen() {
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [deletedPostUuids, setDeletedPostUuids] = useState<Set<string>>(() => new Set());
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
+  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
+    usePostViewTracking();
 
   const communityQuery = useQuery({
     queryKey: ["community", slug],
@@ -90,6 +93,11 @@ export default function CommunityScreen() {
       .filter((post) => !deletedPostUuids.has(post.postUuid))
       .map((post) => communityPostToFeedPost(post, community));
   }, [community, deletedPostUuids, postsQuery.data]);
+
+  useEffect(() => {
+    if (posts.length === 0) return;
+    return refreshViewability();
+  }, [posts.length, refreshViewability]);
 
   const commentCountFor = useCallback(
     (post: FeedPostDto) => localCommentCounts[post.postUuid] ?? post.commentCount,
@@ -236,11 +244,13 @@ export default function CommunityScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <FlashList
+        ref={flashListRef}
         key={slug}
         data={posts}
         keyExtractor={(item) => item.postUuid}
         ListHeaderComponent={header}
         contentContainerStyle={styles.listContent}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         refreshControl={
           <RefreshControl
             refreshing={communityQuery.isRefetching || postsQuery.isRefetching}
@@ -255,6 +265,7 @@ export default function CommunityScreen() {
           return (
             <PostCard
               post={item}
+              viewCount={viewsCountFor(item)}
               engagement={engagement}
               commentCount={commentCountFor(item)}
               commentsOpen={commentsOpen}

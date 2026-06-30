@@ -126,6 +126,14 @@ function ProfilePageContent() {
     [],
   );
 
+  const syncPostViewsCount = useCallback((postUuid: string, viewsCount: number) => {
+    setProfilePosts((items) =>
+      items.map((p) => (p.postUuid === postUuid ? { ...p, viewsCount } : p)),
+    );
+  }, []);
+
+  const pageScrollRef = useRef<HTMLElement>(null);
+
   const handleDeletePost = useCallback(async (postUuid: string) => {
     try {
       await apiDeletePost(postUuid);
@@ -141,7 +149,7 @@ function ProfilePageContent() {
   }, [me?.username]);
 
   return (
-    <section className={styles.page}>
+    <section ref={pageScrollRef} className={styles.page}>
       <header className={styles.profileHeader} aria-hidden />
 
       <div className={styles.profileCard} data-profile-status-measure>
@@ -352,8 +360,10 @@ function ProfilePageContent() {
           <FeedPostList
             variant="profile"
             posts={feedPosts}
+            scrollRootRef={pageScrollRef}
             onCommentCountChange={bumpCommentCount}
             onEngagementChange={syncPostEngagement}
+            onViewsCountChange={syncPostViewsCount}
             canManageAllPosts
             onDeletePost={handleDeletePost}
           />

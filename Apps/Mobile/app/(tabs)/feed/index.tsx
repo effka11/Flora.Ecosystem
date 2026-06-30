@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FeedHamburgerMenu } from "@/components/FeedHamburgerMenu";
 import { PostCard } from "@/components/PostCard";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
+import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 type FeedKind = "recommendations" | "subscriptions";
@@ -60,6 +61,8 @@ function FeedPane({ kind, search, pageWidth }: FeedPaneProps) {
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
+  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
+    usePostViewTracking();
 
   const feedQuery = useInfiniteQuery({
     queryKey: ["feed", kind],
@@ -102,15 +105,22 @@ function FeedPane({ kind, search, pageWidth }: FeedPaneProps) {
     }));
   }, [posts]);
 
+  useEffect(() => {
+    if (visiblePosts.length === 0) return;
+    return refreshViewability();
+  }, [refreshViewability, visiblePosts.length]);
+
   return (
     <View style={[styles.feedPage, { width: pageWidth }]}>
       <FlashList
+        ref={flashListRef}
         data={visiblePosts}
         keyExtractor={(item) => item.postUuid}
         estimatedItemSize={320}
         drawDistance={480}
         contentContainerStyle={styles.listContent}
         nestedScrollEnabled
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         refreshControl={
           <RefreshControl
             refreshing={feedQuery.isRefetching}
@@ -130,6 +140,7 @@ function FeedPane({ kind, search, pageWidth }: FeedPaneProps) {
           return (
             <PostCard
               post={item}
+              viewCount={viewsCountFor(item)}
               engagement={engagement}
               commentCount={commentCountFor(item)}
               commentsOpen={commentsOpen}

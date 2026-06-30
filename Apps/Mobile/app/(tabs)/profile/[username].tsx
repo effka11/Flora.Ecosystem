@@ -4,7 +4,7 @@ import { profilePostToFeedPost } from "@flora/client-core/contracts";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, Redirect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfileCardHeader } from "@/components/profile/ProfileCardHeader";
@@ -12,6 +12,7 @@ import { PostCard } from "@/components/PostCard";
 import { openDmWithUser } from "@/lib/openDm";
 import { decodeRouteParam, isOwnUsername } from "@/lib/socialRoutes";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
+import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -24,6 +25,8 @@ export default function UserProfileScreen() {
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const [followBusy, setFollowBusy] = useState(false);
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
+  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
+    usePostViewTracking();
   const isSelfProfile = isOwnUsername(username, me?.username);
   const profileQuery = useQuery({
     queryKey: ["profile", username],
@@ -51,6 +54,11 @@ export default function UserProfileScreen() {
     };
     return (postsQuery.data ?? []).map((post) => profilePostToFeedPost(post, author));
   }, [postsQuery.data, profile, username]);
+
+  useEffect(() => {
+    if (posts.length === 0) return;
+    return refreshViewability();
+  }, [posts.length, refreshViewability]);
 
   const commentCountFor = useCallback(
     (post: FeedPostDto) => localCommentCounts[post.postUuid] ?? post.commentCount,
@@ -129,10 +137,12 @@ export default function UserProfileScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <FlashList
+        ref={flashListRef}
         data={posts}
         keyExtractor={(item) => item.postUuid}
         ListHeaderComponent={header}
         contentContainerStyle={styles.listContent}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         refreshControl={
           <RefreshControl
             refreshing={profileQuery.isRefetching || postsQuery.isRefetching}
@@ -147,6 +157,7 @@ export default function UserProfileScreen() {
           return (
             <PostCard
               post={item}
+              viewCount={viewsCountFor(item)}
               engagement={engagement}
               commentCount={commentCountFor(item)}
               commentsOpen={commentsOpen}
