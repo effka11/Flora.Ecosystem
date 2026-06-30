@@ -324,20 +324,6 @@
 }
 
 .avatar {
-  width: calc(3 * var(--flora-grid-step));
-  height: calc(3 * var(--flora-grid-step));
-  border-radius: 50%;
-  background: rgba(164, 209, 138, 0.15);
-  color: var(--flora-green-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-manrope), system-ui, sans-serif;
-  font-weight: 300;
-  font-size: 19px;
-  letter-spacing: 0.57px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
   flex-shrink: 0;
 }
 

@@ -1962,6 +1962,7 @@ public sealed class ImportedSocialController : ControllerBase
         {
             Username = accBy.GetValueOrDefault(uid)?.Username ?? "",
             displayName = prBy.GetValueOrDefault(uid)?.DisplayName ?? "",
+            avatarUuid = prBy.GetValueOrDefault(uid)?.AvatarUuid?.ToString(),
             followerCount = followerCounts.GetValueOrDefault(uid, 0),
         }).ToList();
         return Ok(list);
@@ -1997,6 +1998,7 @@ public sealed class ImportedSocialController : ControllerBase
         {
             Username = accBy.GetValueOrDefault(uid)?.Username ?? "",
             displayName = prBy.GetValueOrDefault(uid)?.DisplayName ?? "",
+            avatarUuid = prBy.GetValueOrDefault(uid)?.AvatarUuid?.ToString(),
             followerCount = followerCounts.GetValueOrDefault(uid, 0),
         }).ToList();
         return Ok(list);

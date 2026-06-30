@@ -34,6 +34,7 @@ type Person = {
   displayName: string;
   username: string;
   followers: number;
+  avatarUuid?: string | null;
 };
 
 type PeopleTab = 0 | 1 | 2;
@@ -60,7 +61,12 @@ type PeoplePanelTransition = null | "fromLeft" | "fromRight";
 type PeopleTabIndicatorStyle = CSSProperties &
   Record<"--people-tab-indicator-left" | "--people-tab-indicator-width", string>;
 
-function toPerson(row: { username: string; displayName: string; followerCount?: number }): Person {
+function toPerson(row: {
+  username: string;
+  displayName: string;
+  followerCount?: number;
+  avatarUuid?: string | null;
+}): Person {
   const username = row.username.startsWith("@") ? row.username : `@${row.username}`;
   const id = row.username.replace(/^@+/, "");
   return {
@@ -68,6 +74,7 @@ function toPerson(row: { username: string; displayName: string; followerCount?: 
     displayName: row.displayName,
     username,
     followers: row.followerCount ?? 0,
+    avatarUuid: row.avatarUuid ?? null,
   };
 }
 

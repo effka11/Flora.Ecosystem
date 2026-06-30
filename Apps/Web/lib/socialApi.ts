@@ -1838,6 +1838,7 @@ export type PeopleSearchUserDto = {
   displayName: string;
   isFollowing: boolean;
   followerCount?: number;
+  avatarUuid?: string | null;
 };
 
 export type RecommendedUserDto = PeopleSearchUserDto & {
@@ -1854,6 +1855,7 @@ function parseRecommendedUser(raw: unknown): RecommendedUserDto | null {
     displayName: readStr(o, ["displayName", "DisplayName"]) || username,
     followerCount: readNum(o, ["followerCount", "FollowerCount", "followersCount", "FollowersCount"]),
     isFollowing: readBool(o, ["isFollowing", "IsFollowing"]),
+    avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
   };
 }
 
@@ -1861,6 +1863,7 @@ export type PeopleListEntryDto = {
   username: string;
   displayName: string;
   followerCount?: number;
+  avatarUuid?: string | null;
 };
 
 function parsePeopleListEntry(raw: unknown): PeopleListEntryDto | null {
@@ -1870,7 +1873,12 @@ function parsePeopleListEntry(raw: unknown): PeopleListEntryDto | null {
   if (!username) return null;
   const displayName = readStr(o, ["displayName", "DisplayName"]) || username;
   const followerCount = readNum(o, ["followerCount", "FollowerCount", "followersCount", "FollowersCount"]);
-  return { username, displayName, followerCount };
+  return {
+    username,
+    displayName,
+    followerCount,
+    avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
+  };
 }
 
 export async function apiSearchUsers(q: string, skip = 0, take = 20): Promise<PeopleSearchUserDto[]> {
@@ -1885,6 +1893,7 @@ export async function apiSearchUsers(q: string, skip = 0, take = 20): Promise<Pe
       displayName: u.displayName,
       followerCount: u.followers,
       isFollowing: false,
+      avatarUuid: null,
     }));
   }
   const params = new URLSearchParams({ q: q.trim(), skip: String(skip), take: String(take) });
@@ -1901,6 +1910,7 @@ export async function apiSearchUsers(q: string, skip = 0, take = 20): Promise<Pe
       displayName: readStr(o, ["displayName", "DisplayName"]) || username,
       followerCount: readNum(o, ["followerCount", "FollowerCount", "followersCount", "FollowersCount"]),
       isFollowing: readBool(o, ["isFollowing", "IsFollowing"]),
+      avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
     });
   }
   return out;
@@ -1917,6 +1927,7 @@ export async function apiGetRecommendedUsers(take = 40): Promise<RecommendedUser
         displayName: u.displayName,
         followerCount: u.followers,
         isFollowing: false,
+        avatarUuid: null,
       }));
   }
   const raw = await authGetJson(apiUrl(`/api/auth/users/recommended?take=${take}`));

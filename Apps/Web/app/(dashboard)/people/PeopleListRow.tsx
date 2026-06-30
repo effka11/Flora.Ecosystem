@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { profilePathFromUsername } from "@/app/_dashboard/userDisplay";
+import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { PeopleRowActions, type PeopleRowUser } from "./PeopleRowActions";
 import styles from "./people.module.css";
 
@@ -16,9 +17,14 @@ export function PeopleListRow({ user, isSubscribed, actionAnimEpoch, onToggleSub
   return (
     <li className={styles.item}>
       <Link href={profilePathFromUsername(user.username)} className={styles.userMain}>
-        <div className={styles.avatar} aria-hidden>
-          {user.displayName.slice(0, 1)}
-        </div>
+        <FloraAvatar
+          size={45}
+          avatarUuid={user.avatarUuid}
+          displayName={user.displayName}
+          username={user.username}
+          seed={user.id}
+          className={styles.avatar}
+        />
         <div className={styles.userBody}>
           <span className={styles.userPrimaryLine}>
             <span className={styles.displayName}>{user.displayName}</span>

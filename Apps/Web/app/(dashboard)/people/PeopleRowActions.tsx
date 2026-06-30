@@ -10,6 +10,7 @@ export type PeopleRowUser = {
   displayName: string;
   username: string;
   followers: number;
+  avatarUuid?: string | null;
 };
 
 type PeopleRowActionsProps = {
