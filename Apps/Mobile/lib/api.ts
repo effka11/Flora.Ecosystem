@@ -15,7 +15,7 @@ export function initFloraClient(): void {
     session: mobileSessionStore,
     clientIdentity: {
       platform: "android",
-      appVersion: Constants.expoConfig?.version ?? "0.2.0-alpha",
+      appVersion: Constants.expoConfig?.version ?? "0.3.0-alpha",
     },
     onUnauthorized: () => {
       router.replace("/(auth)/login");

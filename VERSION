@@ -1,6 +1,6 @@
 {
-  "ecosystem": "0.2.0-alpha",
+  "ecosystem": "0.3.0-alpha",
   "products": {
-    "social": "0.2.0-alpha"
+    "social": "0.3.0-alpha"
   }
 }
