@@ -135,6 +135,8 @@ export function profilePostToFeedPost(post: ProfilePostDto, author: ProfilePostA
     authorAvatarUuid: author.avatarUuid ?? null,
     communityUuid: null,
     communityName: null,
+    communitySlug: null,
+    communityAvatarUuid: null,
     text: post.content,
     createdAt: post.createdAt,
     likeCount: post.likesCount,

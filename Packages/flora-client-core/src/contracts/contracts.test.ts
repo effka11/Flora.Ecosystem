@@ -38,6 +38,38 @@ describe("contract fixtures", () => {
     expect(parsed.items[0]?.text).toBe("Hello Flora");
   });
 
+  it("parses community fields on feed posts", () => {
+    const parsed = parseFeedPage({
+      items: [
+        {
+          postUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          authorUserUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          authorUsername: "founder",
+          authorDisplayName: "Founder",
+          communityId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          communityName: "My Group",
+          communitySlug: "my-group",
+          communityAvatarUuid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+          content: "Community post",
+          createdAt: "2026-06-12T10:00:00.000Z",
+          likesCount: 0,
+          commentsCount: 0,
+          repostsCount: 0,
+          viewsCount: 0,
+          liked: false,
+          reposted: false,
+          imageUuids: [],
+        },
+      ],
+    });
+    expect(parsed.items).toHaveLength(1);
+    const post = parsed.items[0]!;
+    expect(post.communityUuid).toBe("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    expect(post.communityName).toBe("My Group");
+    expect(post.communitySlug).toBe("my-group");
+    expect(post.communityAvatarUuid).toBe("dddddddd-dddd-dddd-dddd-dddddddddddd");
+  });
+
   it("parses profile posts array", () => {
     const parsed = parseProfilePostsList([
       {

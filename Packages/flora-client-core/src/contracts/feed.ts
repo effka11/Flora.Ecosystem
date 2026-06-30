@@ -8,6 +8,8 @@ export type FeedPostDto = {
   authorAvatarUuid: string | null;
   communityUuid: string | null;
   communityName: string | null;
+  communitySlug: string | null;
+  communityAvatarUuid: string | null;
   text: string;
   createdAt: string;
   likeCount: number;
@@ -45,8 +47,11 @@ function parsePost(raw: unknown, ctx?: ParseContext): FeedPostDto | null {
     authorUsername: readStr(o, ["authorUsername", "AuthorUsername"], fb),
     authorDisplayName: readStr(o, ["authorDisplayName", "AuthorDisplayName"], fb),
     authorAvatarUuid: readStr(o, ["authorAvatarUuid", "AuthorAvatarUuid"], fb) || null,
-    communityUuid: readStr(o, ["communityUuid", "CommunityUuid"], fb) || null,
+    communityUuid:
+      readStr(o, ["communityUuid", "CommunityUuid", "communityId", "CommunityId"], fb) || null,
     communityName: readStr(o, ["communityName", "CommunityName"], fb) || null,
+    communitySlug: readStr(o, ["communitySlug", "CommunitySlug"], fb) || null,
+    communityAvatarUuid: readStr(o, ["communityAvatarUuid", "CommunityAvatarUuid"], fb) || null,
     text: readStr(o, ["content", "Content", "text", "Text"], fb),
     createdAt: readStr(o, ["createdAt", "CreatedAt"], fb),
     likeCount:

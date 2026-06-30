@@ -1,5 +1,5 @@
 import type { FeedPostDto, PostEngagementSnapshot } from "@flora/client-core/contracts";
-import { formatAtHandle, profileDisplayName } from "@flora/client-core/display";
+import { formatAtHandle } from "@flora/client-core/display";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { memo } from "react";
@@ -15,6 +15,7 @@ import {
 } from "@/components/feed/FeedPostIcons";
 import { PostMoreMenuTrigger } from "@/components/feed/PostMoreMenu";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { feedPostAuthor } from "@/lib/feedPostAuthor";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -63,11 +64,7 @@ export const PostCard = memo(function PostCard({
 }: Props) {
   const me = useSessionStore((s) => s.me);
 
-  const isCommunityPost = Boolean(post.communityName);
-  const authorLabel = isCommunityPost
-    ? post.communityName!
-    : profileDisplayName(post.authorDisplayName, post.authorUsername);
-  const profileHref = `/profile/${post.authorUsername}` as const;
+  const authorMeta = feedPostAuthor(post);
   const timeLabel = formatRelativeTime(post.createdAt);
   const isOwnPost = handlesEqual(me?.username ?? "", post.authorUsername);
   const hasMedia = post.imageUuids.length > 0 || Boolean(post.videoUuid);
@@ -78,11 +75,11 @@ export const PostCard = memo(function PostCard({
         <View style={styles.avatarCell}>
           <FloraAvatar
             size={floraFeedPost.avatarSize}
-            href={post.communityName ? undefined : profileHref}
-            avatarUuid={post.authorAvatarUuid}
-            displayName={post.authorDisplayName}
-            username={post.authorUsername}
-            seed={post.communityUuid ?? post.authorUserUuid ?? post.authorUsername}
+            href={authorMeta.href}
+            avatarUuid={authorMeta.avatarUuid}
+            displayName={authorMeta.displayName}
+            username={authorMeta.username}
+            seed={authorMeta.seed}
             communityName={post.communityName ?? undefined}
           />
         </View>
@@ -90,13 +87,13 @@ export const PostCard = memo(function PostCard({
         <View style={styles.contentColumn}>
           <View style={styles.headerBand}>
             <View style={styles.postMeta}>
-              <Link href={profileHref} asChild>
+              <Link href={authorMeta.href} asChild>
                 <Pressable style={({ pressed }) => [styles.postMetaPressable, pressed && styles.pressed]}>
                   <View style={styles.postMetaLink}>
                     <Text style={styles.author} numberOfLines={1} ellipsizeMode="tail">
-                      {authorLabel}
+                      {authorMeta.label}
                     </Text>
-                    {!isCommunityPost ? (
+                    {authorMeta.showHandle ? (
                       <>
                         <View style={styles.postMetaGap} />
                         <Text style={styles.handle} numberOfLines={1} ellipsizeMode="tail">
