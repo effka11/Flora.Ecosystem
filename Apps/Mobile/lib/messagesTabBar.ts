@@ -22,6 +22,16 @@ function focusedChildRouteName(route: FocusableRoute | undefined): string | unde
   return typeof screen === "string" ? screen : undefined;
 }
 
+/** Вложенный тред: /messages/<id> — любой сегмент после «messages», не только литерал [conversationUuid]. */
+export function isMessagesInThread(segments: readonly string[]): boolean {
+  const messagesIdx = segments.indexOf("messages");
+  return messagesIdx >= 0 && messagesIdx < segments.length - 1;
+}
+
+export function isMessagesInThreadPath(pathname: string): boolean {
+  return /^\/messages\/[^/]+/.test(pathname.replace(/\/$/, ""));
+}
+
 /** Tab bar для вкладки «Сообщения»: скрыт внутри треда, виден на списке диалогов. */
 export function messagesTabBarStyleForRoute(
   route: FocusableRoute | undefined,

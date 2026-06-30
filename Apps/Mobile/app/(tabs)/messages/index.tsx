@@ -3,7 +3,7 @@ import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "@tanstack/react-query";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,6 +19,7 @@ import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropdownPicker";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
+import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -84,6 +85,8 @@ const EMPTY_CONVERSATIONS: MsgConversationDto[] = [];
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const tabBarBottomInset = Math.max(insets.bottom, 8);
   const me = useSessionStore((s) => s.me);
   const fscpStatus = useFscpStore((s) => s.status);
   const publishLocalKeyConfirmed = useFscpStore((s) => s.publishLocalKeyConfirmed);
@@ -126,10 +129,11 @@ export default function MessagesScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
       if (fscpStatus === "registration_pending") {
         void retryPendingOperation();
       }
-    }, [fscpStatus, retryPendingOperation]),
+    }, [fscpStatus, navigation, retryPendingOperation, tabBarBottomInset]),
   );
 
   const banner = fscpBannerMessage(fscpStatus);

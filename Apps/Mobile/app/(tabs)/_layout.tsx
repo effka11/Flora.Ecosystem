@@ -3,7 +3,7 @@ import { TabBarIconWithBadge } from "@/components/TabBarIconWithBadge";
 import { MusicMiniPlayer } from "@/components/MusicMiniPlayer";
 import { messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
 import { floraColors, floraTabBarStyle } from "@/lib/theme";
-import { Tabs } from "expo-router";
+import { router, Tabs } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -48,6 +48,12 @@ export default function TabsLayout() {
         />
         <Tabs.Screen
           name="messages"
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.replace("/(tabs)/messages");
+            },
+          }}
           options={({ route }) => ({
             title: "Сообщения",
             headerShown: false,
@@ -100,6 +106,12 @@ export default function TabsLayout() {
         />
         <Tabs.Screen
           name="profile"
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.replace("/(tabs)/profile");
+            },
+          }}
           options={{
             title: "Профиль",
             headerShown: false,

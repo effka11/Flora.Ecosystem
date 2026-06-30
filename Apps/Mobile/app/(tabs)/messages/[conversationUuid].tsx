@@ -135,6 +135,9 @@ export default function ThreadScreen() {
   useFocusEffect(
     useCallback(() => {
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+      return () => {
+        applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+      };
     }, [navigation, tabBarBottomInset]),
   );
 

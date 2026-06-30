@@ -1,18 +1,17 @@
-import { Stack, useNavigation, useSegments } from "expo-router";
+import { Stack, useNavigation, usePathname, useSegments } from "expo-router";
 import { useLayoutEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
+import { applyMessagesTabBarHidden, isMessagesInThread, isMessagesInThreadPath } from "@/lib/messagesTabBar";
 import { floraColors, floraNativeStackOptions } from "@/lib/theme";
 
 export default function MessagesLayout() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
-  // SDK 56: вместо useNavigationState из @react-navigation/native — сегменты expo-router.
-  // В треде путь содержит динамический сегмент [conversationUuid].
   const segments = useSegments();
-  const inThread = segments.includes("[conversationUuid]");
+  const pathname = usePathname();
+  const inThread = isMessagesInThread(segments) || isMessagesInThreadPath(pathname);
 
   useLayoutEffect(() => {
     applyMessagesTabBarHidden(navigation, tabBarBottomInset, inThread);
