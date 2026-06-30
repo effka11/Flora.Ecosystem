@@ -111,7 +111,13 @@ export default function UserProfileScreen() {
         actionVariant={canShowOtherActions ? "other" : undefined}
         onWritePress={
           canShowOtherActions && profile?.canMessageByMe
-            ? () => openDmWithUser(me!.userUuid, profile.userUuid)
+            ? () =>
+                openDmWithUser(me!.userUuid, {
+                  otherUserUuid: profile.userUuid,
+                  otherUsername: profile.username,
+                  otherDisplayName: profile.displayName,
+                  otherAvatarUuid: profile.avatarUuid,
+                })
             : undefined
         }
         isFollowing={profile?.isFollowingByMe}

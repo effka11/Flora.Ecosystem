@@ -6,26 +6,46 @@ import { getQueryClientRef } from "@/lib/queryClientRef";
 import { messageThreadCache, messageThreadDecryptCache } from "@/stores/messageThreadCache";
 import { useSessionStore } from "@/stores/sessionStore";
 
+export type DmPeerParams = {
+  otherUserUuid: string;
+  otherUsername?: string;
+  otherDisplayName?: string;
+  otherAvatarUuid?: string | null;
+  otherUserIsOnline?: boolean;
+  otherUserLastSeenAt?: string | null;
+};
+
 function threadParamsFromConversation(item: MsgConversationDto): Record<string, string> {
-  return {
-    conversationUuid: item.conversationUuid,
+  return threadParamsFromPeer(item.conversationUuid, {
     otherUserUuid: item.otherUserUuid,
-    otherDisplayName: item.otherDisplayName,
     otherUsername: item.otherUsername,
-    otherAvatarUuid: item.otherAvatarUuid ?? "",
-    otherUserIsOnline: item.otherUserIsOnline ? "1" : "0",
-    otherUserLastSeenAt: item.otherUserLastSeenAt ?? "",
+    otherDisplayName: item.otherDisplayName,
+    otherAvatarUuid: item.otherAvatarUuid,
+    otherUserIsOnline: item.otherUserIsOnline,
+    otherUserLastSeenAt: item.otherUserLastSeenAt,
+  });
+}
+
+export function threadParamsFromPeer(
+  conversationUuid: string,
+  peer: DmPeerParams,
+): Record<string, string> {
+  return {
+    conversationUuid,
+    otherUserUuid: peer.otherUserUuid,
+    otherDisplayName: peer.otherDisplayName ?? "",
+    otherUsername: peer.otherUsername ?? "",
+    otherAvatarUuid: peer.otherAvatarUuid ?? "",
+    otherUserIsOnline: peer.otherUserIsOnline ? "1" : "0",
+    otherUserLastSeenAt: peer.otherUserLastSeenAt ?? "",
   };
 }
 
-export function openDmWithUser(meUserUuid: string, otherUserUuid: string): void {
-  const conversationUuid = dmConversationUuid(meUserUuid, otherUserUuid);
+export function openDmWithUser(meUserUuid: string, peer: DmPeerParams): void {
+  const conversationUuid = dmConversationUuid(meUserUuid, peer.otherUserUuid);
   router.push({
     pathname: "/(tabs)/messages/[conversationUuid]",
-    params: {
-      conversationUuid,
-      otherUserUuid,
-    },
+    params: threadParamsFromPeer(conversationUuid, peer),
   });
 }
 
@@ -96,9 +116,6 @@ export async function openMessageFromPush(data: unknown): Promise<void> {
 
   router.push({
     pathname: "/(tabs)/messages/[conversationUuid]",
-    params: {
-      conversationUuid,
-      otherUserUuid,
-    },
+    params: threadParamsFromPeer(conversationUuid, { otherUserUuid }),
   });
 }

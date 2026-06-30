@@ -213,7 +213,7 @@ export default function ThreadScreen() {
     return {
       otherUserUuid: paramOtherUserUuid,
       otherUsername: paramOtherUsername,
-      otherDisplayName: paramOtherDisplayName || "Пользователь",
+      otherDisplayName: paramOtherDisplayName || paramOtherUsername || "Пользователь",
       otherAvatarUuid: paramOtherAvatarUuid.trim() ? paramOtherAvatarUuid : null,
       otherUserIsOnline: parseBoolParam(paramOtherUserIsOnline),
       otherUserLastSeenAt: paramOtherUserLastSeenAt.trim() || null,
