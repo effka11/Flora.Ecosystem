@@ -4,6 +4,8 @@ import { parseLikeMutation, parseViewMutation } from "../contracts/engagement.js
 import { parseFeedPage, parseHasNewFeed } from "../contracts/feed.js";
 import { ApiRequestError } from "./errors.js";
 
+declare const __DEV__: boolean | undefined;
+
 function ctx() {
   return { onPascalFallback: getApiClientConfig().onPascalFallback };
 }
