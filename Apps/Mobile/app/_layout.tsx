@@ -23,9 +23,9 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="compose" options={{ title: "Новый пост" }} />
         <Stack.Screen name="people" options={{ headerShown: false }} />
-        <Stack.Screen name="profile/[username]" options={{ title: "Профиль" }} />
+        <Stack.Screen name="profile/[username]" options={{ headerShown: false }} />
         <Stack.Screen name="communities/index" options={{ headerShown: false }} />
-        <Stack.Screen name="communities/[slug]" options={{ title: "Сообщество" }} />
+        <Stack.Screen name="communities/[slug]" options={{ headerShown: false }} />
         <Stack.Screen name="settings/index" options={{ title: "Настройки" }} />
         <Stack.Screen name="upgrade-required" options={{ title: "Обновление" }} />
       </Stack>

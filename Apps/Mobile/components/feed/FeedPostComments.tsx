@@ -11,11 +11,13 @@ import {
   View,
 } from "react-native";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { profileScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 type Props = {
   postUuid: string;
   open: boolean;
+  meUsername?: string | null;
   onCommentAdded?: (postUuid: string) => void;
 };
 
@@ -36,9 +38,10 @@ function formatRelativeTime(date: string) {
 type CommentRowProps = {
   comment: PostCommentDto;
   nested?: boolean;
+  meUsername?: string | null;
 };
 
-function CommentRow({ comment, nested }: CommentRowProps) {
+function CommentRow({ comment, nested, meUsername }: CommentRowProps) {
   const author = profileDisplayName(comment.authorDisplayName, comment.authorUsername);
   const timeLabel = formatRelativeTime(comment.createdAt);
 
@@ -46,7 +49,7 @@ function CommentRow({ comment, nested }: CommentRowProps) {
     <View style={[styles.commentRow, nested && styles.commentRowNested]}>
       <FloraAvatar
         size={nested ? 28 : 32}
-        href={`/profile/${comment.authorUsername}`}
+        href={profileScreenHref(comment.authorUsername, meUsername)}
         avatarUuid={comment.authorAvatarUuid}
         displayName={comment.authorDisplayName}
         username={comment.authorUsername}
@@ -64,14 +67,14 @@ function CommentRow({ comment, nested }: CommentRowProps) {
         </View>
         <Text style={styles.commentText}>{comment.content}</Text>
         {comment.replies.map((reply) => (
-          <CommentRow key={reply.commentUuid} comment={reply} nested />
+          <CommentRow key={reply.commentUuid} comment={reply} nested meUsername={meUsername} />
         ))}
       </View>
     </View>
   );
 }
 
-export function FeedPostComments({ postUuid, open, onCommentAdded }: Props) {
+export function FeedPostComments({ postUuid, open, meUsername, onCommentAdded }: Props) {
   const [items, setItems] = useState<PostCommentDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,7 +137,7 @@ export function FeedPostComments({ postUuid, open, onCommentAdded }: Props) {
         <Text style={styles.emptyText}>Комментариев пока нет.</Text>
       ) : null}
       {items.map((comment) => (
-        <CommentRow key={comment.commentUuid} comment={comment} />
+        <CommentRow key={comment.commentUuid} comment={comment} meUsername={meUsername} />
       ))}
       <View style={styles.composer}>
         <TextInput

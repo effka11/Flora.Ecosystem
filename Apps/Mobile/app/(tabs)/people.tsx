@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { profileScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -62,10 +63,11 @@ type PeopleRowProps = {
   following: boolean;
   actionBusy: boolean;
   onToggleFollow: () => void;
+  meUsername?: string | null;
 };
 
-function PeopleRow({ user, following, actionBusy, onToggleFollow }: PeopleRowProps) {
-  const profileHref = { pathname: "/profile/[username]", params: { username: user.username } } as const;
+function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: PeopleRowProps) {
+  const profileHref = profileScreenHref(user.username, meUsername);
   return (
     <View style={styles.shell}>
       <Pressable
@@ -413,6 +415,7 @@ export default function PeopleScreen() {
             following={isFollowing(item)}
             actionBusy={busyUsername === item.username}
             onToggleFollow={() => void toggleFollow(item)}
+            meUsername={me?.username}
           />
         )}
         ListEmptyComponent={

@@ -5,7 +5,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { formatWasOnlineRu } from "@/lib/lastSeenRu";
+import { profileScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { useSessionStore } from "@/stores/sessionStore";
 
 export type ChatPeerInfo = {
   otherUserUuid: string;
@@ -24,6 +26,7 @@ type Props = {
 
 export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
   const insets = useSafeAreaInsets();
+  const me = useSessionStore((s) => s.me);
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
   const username = peer.otherUsername.replace(/^@+/, "") || "…";
   const [presenceClock, setPresenceClock] = useState(0);
@@ -57,11 +60,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
           displayName={displayName}
           username={peer.otherUsername}
           seed={peer.otherUserUuid}
-          href={
-            username !== "…"
-              ? { pathname: "/profile/[username]", params: { username } }
-              : undefined
-          }
+          href={username !== "…" ? profileScreenHref(username, me?.username) : undefined}
         />
         {peer.otherUserIsOnline ? <View style={styles.onlineBadge} /> : null}
       </View>

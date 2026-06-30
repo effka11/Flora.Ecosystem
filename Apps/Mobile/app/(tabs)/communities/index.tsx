@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { CreateCommunitySheet } from "@/components/communities/CreateCommunitySheet";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { communityScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -95,7 +96,7 @@ function CommunityRow({ community, showLeave, showJoin, actionBusy, onJoin, onLe
         accessibilityRole="button"
         accessibilityLabel={`Открыть сообщество ${community.name}`}
         style={({ pressed }) => [styles.rowMain, pressed && styles.rowMainPressed]}
-        onPress={() => router.push(`/communities/${community.slug}`)}
+        onPress={() => router.push(communityScreenHref(community.slug))}
       >
         <FloraAvatar
           size={AVATAR_SIZE}
@@ -315,7 +316,7 @@ export default function CommunitiesScreen() {
 
   const handleCommunityCreated = (community: CommunityListItemDto) => {
     refreshCommunities();
-    router.push(`/communities/${community.slug}`);
+    router.push(communityScreenHref(community.slug));
   };
 
   return (

@@ -64,7 +64,7 @@ export const PostCard = memo(function PostCard({
 }: Props) {
   const me = useSessionStore((s) => s.me);
 
-  const authorMeta = feedPostAuthor(post);
+  const authorMeta = feedPostAuthor(post, me?.username);
   const timeLabel = formatRelativeTime(post.createdAt);
   const isOwnPost = handlesEqual(me?.username ?? "", post.authorUsername);
   const hasMedia = post.imageUuids.length > 0 || Boolean(post.videoUuid);
@@ -80,7 +80,7 @@ export const PostCard = memo(function PostCard({
             displayName={authorMeta.displayName}
             username={authorMeta.username}
             seed={authorMeta.seed}
-            communityName={post.communityName ?? undefined}
+            communityName={authorMeta.communityName}
           />
         </View>
 
@@ -175,6 +175,7 @@ export const PostCard = memo(function PostCard({
             <FeedPostComments
               postUuid={post.postUuid}
               open={commentsOpen}
+              meUsername={me?.username}
               onCommentAdded={onCommentAdded}
             />
           </View>
