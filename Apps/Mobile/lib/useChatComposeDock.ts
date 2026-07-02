@@ -1,435 +1,539 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Animated, Dimensions, Easing, Keyboard, Platform, type ViewStyle } from "react-native";
-import { useKeyboardHandler } from "react-native-keyboard-controller";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Dimensions, Keyboard, Platform, type ViewStyle } from "react-native";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import {
+  cancelAnimation,
+  Easing as ReanimatedEasing,
   runOnJS,
-  runOnUI,
   useAnimatedReaction,
   useAnimatedStyle,
-  useDerivedValue,
   useSharedValue,
+  withTiming,
   type AnimatedStyle,
+  type SharedValue,
 } from "react-native-reanimated";
+import {
+  COMPOSE_BASELINE_FALLBACK_PX,
+  emojiSlotTargetHeight,
+} from "@/lib/messagesDockInsets";
+import { floraSpacing } from "@/lib/theme";
 
-/** Запасная высота панели, пока реальная высота клавиатуры ещё не измерена. */
+/**
+ * Compose dock v7 — KeyboardStickyView + KCSV (no manual translateY lift).
+ * HANDOFF_STRATEGY: 'A' = OverKeyboardView when KB open (KB stays open).
+ */
+
+/** HANDOFF_STRATEGY from emoji-swap-spike gate — 'A' | 'D' */
+export const HANDOFF_STRATEGY: "A" | "D" = "A";
+
+const DockMode = {
+  Idle: 0,
+  Keyboard: 1,
+  EmojiSlot: 2,
+  EmojiClosing: 3,
+  OverKeyboard: 4,
+  EmojiToKeyboard: 5,
+} as const;
+
+type DockModeValue = (typeof DockMode)[keyof typeof DockMode];
+
 function fallbackPanelHeight(): number {
   const windowHeight = Dimensions.get("window").height;
   return Math.round(Math.min(Math.max(windowHeight * 0.4, 260), 340));
 }
 
-/** Последняя измеренная высота IME в сессии — точнее fallback при первом открытии эмодзi. */
-let sessionKeyboardHeightPx = 0;
-
-/** Длительность выезда панели — близко к системной клавиатуре. */
 const PANEL_ANIM_MS = Platform.OS === "ios" ? 250 : 200;
+const PANEL_EASING = ReanimatedEasing.out(ReanimatedEasing.cubic);
+const KB_HEIGHT_EPSILON_PX = 2;
 
-const KB_HEIGHT_SYNC_EPSILON_PX = 2;
+function blocksKeyboardOnEndZero(mode: DockModeValue): boolean {
+  "worklet";
+  return (
+    mode === DockMode.EmojiSlot ||
+    mode === DockMode.EmojiClosing ||
+    mode === DockMode.OverKeyboard ||
+    mode === DockMode.EmojiToKeyboard
+  );
+}
+
+function canCalibrateComposeBaseline(mode: DockModeValue, emojiSlotOpen: boolean): boolean {
+  return !emojiSlotOpen && (mode === DockMode.Idle || mode === DockMode.Keyboard);
+}
 
 export type ChatComposeDock = {
-  liftStyle: AnimatedStyle<ViewStyle>;
-  panelSlide: Animated.Value;
+  emojiSlotStyle: AnimatedStyle<ViewStyle>;
+  jumpBtnBottomStyle: AnimatedStyle<ViewStyle>;
+  dockExtraPaddingSv: SharedValue<number>;
+  dockColumnHeightSv: SharedValue<number>;
+  freezeListSv: SharedValue<boolean>;
+  composeBaselinePx: number;
+  onComposeShellLayout: (height: number) => void;
+  onDockColumnIdleLayout: (height: number) => void;
+  setDeleteBarHeightPx: (height: number) => void;
+  recalibrateComposeBaseline: () => void;
+  overKeyboardVisible: boolean;
   emojiPanelMounted: boolean;
   emojiContentReady: boolean;
-  bottomInset: number;
-  panelHeight: number;
   emojiOpen: boolean;
   keyboardOpen: boolean;
+  panelHeight: number;
   openEmoji: () => void;
   closeEmoji: () => void;
   showKeyboard: (focusInput: () => void) => void;
+  resetDock: () => void;
 };
 
-/**
- * Док поля ввода: lift через Reanimated + keyboard-controller;
- * панель эмодзi — panelSlide; эмодзi → клавиатура через panelHideForKeyboardRef.
- */
-export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
-  const panelSlide = useRef(new Animated.Value(0)).current;
-  const [bottomInset, setBottomInset] = useState(0);
+export function useChatComposeDock(): ChatComposeDock {
+  const [composeBaselinePx, setComposeBaselinePx] = useState(0);
   const [panelHeight, setPanelHeight] = useState(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [emojiPanelMounted, setEmojiPanelMounted] = useState(false);
   const [emojiContentReady, setEmojiContentReady] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [panelOpenToken, setPanelOpenToken] = useState(0);
+  const [overKeyboardVisible, setOverKeyboardVisible] = useState(false);
 
-  const keyboardInsetPx = useSharedValue(0);
-  const emojiPanelInsetPx = useSharedValue(0);
-  const liftAdjustPxSv = useSharedValue(liftAdjustPx);
-  const emojiOpenSv = useSharedValue(false);
-  const panelClosingSv = useSharedValue(false);
-  const panelHideForKbSv = useSharedValue(false);
-  const lastSyncedKbHeightSv = useSharedValue(0);
+  const { height: kbHeightSv } = useReanimatedKeyboardAnimation();
 
-  const blockKeyboardInsetSv = useDerivedValue(
-    () => emojiOpenSv.value && !panelHideForKbSv.value,
-  );
+  const emojiAccessoryPx = useSharedValue(0);
+  const composeGrowthSv = useSharedValue(0);
+  const deleteBarHeightSv = useSharedValue(0);
+  const dockExtraPaddingSv = useSharedValue(0);
+  const composeBaselineSv = useSharedValue(COMPOSE_BASELINE_FALLBACK_PX);
+  const dockColumnHeightSv = useSharedValue(COMPOSE_BASELINE_FALLBACK_PX);
+  const freezeListSv = useSharedValue(false);
 
-  const effectiveInsetPx = useDerivedValue(() =>
-    Math.max(keyboardInsetPx.value, emojiPanelInsetPx.value),
-  );
+  const dockModeSv = useSharedValue<DockModeValue>(DockMode.Idle);
+  const keyboardOpenSv = useSharedValue(false);
+  const panelOpenGenerationSv = useSharedValue(0);
 
-  const frameAnimCancelRef = useRef<(() => void) | null>(null);
-  const emojiOpenRef = useRef(false);
+  const dockModeRef = useRef<DockModeValue>(DockMode.Idle);
   const keyboardOpenRef = useRef(false);
   const lastKbHeightRef = useRef(0);
   const panelHeightRef = useRef(0);
-  const panelSlidePxRef = useRef(0);
-  const panelClosingRef = useRef(false);
-  const panelHideForKeyboardRef = useRef(false);
-  const panelOpenAnimStartedRef = useRef(0);
-  const keyboardSwitchRef = useRef(false);
+  const composeBaselineRef = useRef(0);
+  const panelOpenGenerationRef = useRef(0);
+  const emojiSlotOpenRef = useRef(false);
 
-  const emojiPanelInsetPxRef = useRef(emojiPanelInsetPx);
-  emojiPanelInsetPxRef.current = emojiPanelInsetPx;
-  const lastSyncedKbHeightSvRef = useRef(lastSyncedKbHeightSv);
-  lastSyncedKbHeightSvRef.current = lastSyncedKbHeightSv;
-  const keyboardInsetPxRef = useRef(keyboardInsetPx);
-  keyboardInsetPxRef.current = keyboardInsetPx;
+  const setDockMode = useCallback((mode: DockModeValue) => {
+    dockModeRef.current = mode;
+    dockModeSv.value = mode;
+    if (__DEV__) {
+      console.debug("[chat-compose-dock] mode", mode);
+    }
+  }, [dockModeSv]);
 
-  useEffect(() => {
-    liftAdjustPxSv.value = liftAdjustPx;
-  }, [liftAdjustPx, liftAdjustPxSv]);
-
-  const syncGuardRefsToSv = useCallback(() => {
-    emojiOpenSv.value = emojiOpenRef.current;
-    panelClosingSv.value = panelClosingRef.current;
-    panelHideForKbSv.value = panelHideForKeyboardRef.current;
-  }, [emojiOpenSv, panelClosingSv, panelHideForKbSv]);
-
-  const stopPanelAnim = useCallback(() => {
-    frameAnimCancelRef.current?.();
-    frameAnimCancelRef.current = null;
-  }, []);
-
-  const resolvePanelHeight = useCallback(() => {
-    const fromSession = lastKbHeightRef.current || sessionKeyboardHeightPx;
-    return fromSession > 0 ? fromSession : fallbackPanelHeight();
-  }, []);
-
-  const clearEmojiPanelState = useCallback(
-    (opts?: { keepEmojiInset?: boolean }) => {
-      emojiOpenRef.current = false;
-      setEmojiOpen(false);
-      setEmojiPanelMounted(false);
-      setEmojiContentReady(false);
-      panelHeightRef.current = 0;
-      setPanelHeight(0);
-      panelClosingRef.current = false;
-
-      const keepInset =
-        opts?.keepEmojiInset ??
-        (panelHideForKeyboardRef.current || keyboardSwitchRef.current);
-      if (!keepInset) {
-        emojiPanelInsetPxRef.current.value = 0;
-      }
-
-      syncGuardRefsToSv();
-    },
-    [syncGuardRefsToSv],
-  );
-
-  const slidePanelDownRef = useRef<
-    (syncLift: boolean, onEnd?: () => void) => boolean
-  >(() => false);
-
-  const syncKeyboardFromHandler = useCallback(
-    (px: number) => {
-      if (px <= 0) return;
-
-      const wasOpen = keyboardOpenRef.current;
-      const wasPanelHideForKb = panelHideForKeyboardRef.current;
-
-      lastKbHeightRef.current = px;
-      sessionKeyboardHeightPx = px;
-      keyboardOpenRef.current = true;
-      if (!wasOpen) setKeyboardOpen(true);
-
-      if (
-        Platform.OS === "ios" &&
-        emojiOpenRef.current &&
-        !wasPanelHideForKb &&
-        !keyboardSwitchRef.current
-      ) {
-        panelHideForKeyboardRef.current = true;
-        syncGuardRefsToSv();
-        slidePanelDownRef.current(false, () => {
-          emojiPanelInsetPxRef.current.value = 0;
-          panelHideForKeyboardRef.current = false;
-          syncGuardRefsToSv();
-          clearEmojiPanelState();
-        });
-        if (__DEV__) console.debug("[chat-compose-dock] kb height", px);
+  const syncKeyboardOpen = useCallback(
+    (open: boolean) => {
+      keyboardOpenRef.current = open;
+      keyboardOpenSv.value = open;
+      setKeyboardOpen(open);
+      if (open) {
+        freezeListSv.value = false;
+        if (dockModeRef.current === DockMode.Idle) {
+          setDockMode(DockMode.Keyboard);
+        }
+        if (dockModeRef.current === DockMode.EmojiToKeyboard) {
+          setDockMode(DockMode.Keyboard);
+        }
         return;
       }
-
-      if (wasPanelHideForKb) {
-        panelHideForKeyboardRef.current = false;
-        keyboardSwitchRef.current = false;
-        emojiPanelInsetPxRef.current.value = 0;
-        syncGuardRefsToSv();
+      if (dockModeRef.current === DockMode.Keyboard) {
+        setDockMode(DockMode.Idle);
       }
-
-      if (__DEV__) console.debug("[chat-compose-dock] kb height", px);
     },
-    [clearEmojiPanelState, syncGuardRefsToSv],
+    [freezeListSv, keyboardOpenSv, setDockMode],
   );
-
-  const syncKeyboardClosed = useCallback(() => {
-    keyboardOpenRef.current = false;
-    setKeyboardOpen(false);
-    keyboardInsetPxRef.current.value = 0;
-    lastSyncedKbHeightSvRef.current.value = 0;
-  }, []);
 
   const syncKeyboardDismissed = useCallback(() => {
     keyboardOpenRef.current = false;
+    keyboardOpenSv.value = false;
     setKeyboardOpen(false);
+  }, [keyboardOpenSv]);
+
+  const syncKeyboardClosed = useCallback(() => {
+    syncKeyboardDismissed();
+    setDockMode(DockMode.Idle);
+  }, [setDockMode, syncKeyboardDismissed]);
+
+  const resolvePanelHeight = useCallback(() => {
+    const fromSession = lastKbHeightRef.current;
+    return fromSession > 0 ? fromSession : fallbackPanelHeight();
   }, []);
 
-  useKeyboardHandler(
-    {
-      onMove: (event) => {
-        "worklet";
-        if (blockKeyboardInsetSv.value) return;
-        if (event.height > 0) {
-          keyboardInsetPx.value = event.height;
-          const delta = Math.abs(event.height - lastSyncedKbHeightSv.value);
-          if (delta >= KB_HEIGHT_SYNC_EPSILON_PX) {
-            lastSyncedKbHeightSv.value = event.height;
-            runOnJS(syncKeyboardFromHandler)(event.height);
-          }
+  const clearEmojiPanelState = useCallback(() => {
+    setEmojiOpen(false);
+    setEmojiPanelMounted(false);
+    setEmojiContentReady(false);
+    setOverKeyboardVisible(false);
+    emojiSlotOpenRef.current = false;
+    panelHeightRef.current = 0;
+    setPanelHeight(0);
+  }, []);
+
+  useEffect(() => {
+    emojiSlotOpenRef.current = emojiPanelMounted && !overKeyboardVisible;
+  }, [emojiPanelMounted, overKeyboardVisible]);
+
+  useAnimatedReaction(
+    () => ({
+      emoji: emojiAccessoryPx.value,
+      growth: composeGrowthSv.value,
+      deleteBar: deleteBarHeightSv.value,
+      baseline: composeBaselineSv.value,
+    }),
+    (cur) => {
+      const extra = cur.emoji + cur.growth + cur.deleteBar;
+      dockExtraPaddingSv.value = extra;
+      dockColumnHeightSv.value = cur.baseline + extra;
+    },
+  );
+
+  const rememberKbHeight = useCallback((px: number) => {
+    lastKbHeightRef.current = px;
+  }, []);
+
+  useAnimatedReaction(
+    () => kbHeightSv.value,
+    (h, prev) => {
+      if (h > KB_HEIGHT_EPSILON_PX) {
+        runOnJS(rememberKbHeight)(h);
+        if (!keyboardOpenSv.value) {
+          runOnJS(syncKeyboardOpen)(true);
         }
-      },
-      onEnd: (event) => {
-        "worklet";
-        if (event.height > 0) {
-          if (!blockKeyboardInsetSv.value) {
-            keyboardInsetPx.value = event.height;
-            lastSyncedKbHeightSv.value = event.height;
-            runOnJS(syncKeyboardFromHandler)(event.height);
-          }
-          return;
-        }
-        if (emojiOpenSv.value || panelClosingSv.value || panelHideForKbSv.value) {
+        return;
+      }
+      if ((prev ?? 0) > KB_HEIGHT_EPSILON_PX && h <= KB_HEIGHT_EPSILON_PX) {
+        const mode = dockModeSv.value;
+        if (blocksKeyboardOnEndZero(mode)) {
           runOnJS(syncKeyboardDismissed)();
           return;
         }
-        keyboardInsetPx.value = 0;
-        runOnJS(syncKeyboardClosed)();
-      },
-    },
-    [syncKeyboardClosed, syncKeyboardDismissed, syncKeyboardFromHandler],
-  );
-
-  useAnimatedReaction(
-    () => effectiveInsetPx.value,
-    (value, prev) => {
-      if (value !== prev) {
-        runOnJS(setBottomInset)(value);
+        if (mode === DockMode.Keyboard && keyboardOpenSv.value) {
+          runOnJS(syncKeyboardClosed)();
+        }
       }
     },
-    [],
+    [rememberKbHeight, syncKeyboardClosed, syncKeyboardDismissed, syncKeyboardOpen],
   );
 
-  const liftStyle = useAnimatedStyle(() => {
-    const inset = effectiveInsetPx.value;
-    // Порт targetLift(px): composeLiftAdjust только при поднятом dock (KB/emoji), не в idle.
-    const lifted = inset > 0 ? inset + liftAdjustPxSv.value : 0;
-    return {
-      transform: [{ translateY: -lifted }],
-    };
-  });
+  const emojiSlotStyle = useAnimatedStyle(() => ({
+    height: emojiAccessoryPx.value,
+    overflow: "hidden" as const,
+  }));
 
-  const runPanelFrameAnim = useCallback(
-    (
-      from: number,
-      to: number,
-      opts: { syncLift: boolean; onEnd?: () => void },
-    ) => {
-      stopPanelAnim();
-      let cancelled = false;
-      const startTime = Date.now();
-      const height = panelHeightRef.current;
-      const emojiSv = emojiPanelInsetPxRef.current;
+  const jumpBtnBottomStyle = useAnimatedStyle(() => ({
+    bottom: dockColumnHeightSv.value + floraSpacing.grid,
+  }));
 
-      frameAnimCancelRef.current = () => {
-        cancelled = true;
-      };
-
-      const tick = () => {
-        if (cancelled) return;
-        const t = Math.min(1, (Date.now() - startTime) / PANEL_ANIM_MS);
-        const eased = Easing.out(Easing.cubic)(t);
-        const slideY = from + (to - from) * eased;
-        panelSlidePxRef.current = slideY;
-        panelSlide.setValue(slideY);
-
-        if (opts.syncLift && height > 0) {
-          emojiSv.value = Math.max(0, height - slideY);
-        }
-
-        if (t < 1) {
-          requestAnimationFrame(tick);
-          return;
-        }
-
-        frameAnimCancelRef.current = null;
-        opts.onEnd?.();
-      };
-
-      requestAnimationFrame(tick);
+  const commitComposeBaseline = useCallback(
+    (shellHeight: number) => {
+      const prev = composeBaselineRef.current;
+      const baseline = prev > 0 ? Math.min(prev, shellHeight) : shellHeight;
+      if (prev !== baseline || prev <= 0) {
+        composeBaselineRef.current = baseline;
+        composeBaselineSv.value = baseline;
+        setComposeBaselinePx(baseline);
+      }
+      composeGrowthSv.value = Math.max(0, shellHeight - baseline);
     },
-    [panelSlide, stopPanelAnim],
+    [composeBaselineSv, composeGrowthSv],
   );
 
-  const slidePanelUp = useCallback(
-    (height: number, onEnd?: () => void) => {
-      panelSlidePxRef.current = height;
-      panelSlide.setValue(height);
-      runPanelFrameAnim(height, 0, { syncLift: false, onEnd });
-    },
-    [panelSlide, runPanelFrameAnim],
-  );
-
-  const slidePanelDown = useCallback(
-    (syncLift: boolean, onEnd?: () => void) => {
-      if (panelClosingRef.current) return false;
-      panelClosingRef.current = true;
-      syncGuardRefsToSv();
-      const height = panelHeightRef.current || resolvePanelHeight();
-      runPanelFrameAnim(panelSlidePxRef.current, height, {
-        syncLift,
-        onEnd: () => {
-          panelClosingRef.current = false;
-          syncGuardRefsToSv();
-          onEnd?.();
-        },
-      });
-      return true;
-    },
-    [resolvePanelHeight, runPanelFrameAnim, syncGuardRefsToSv],
-  );
-
-  slidePanelDownRef.current = slidePanelDown;
-
-  const beginEmojiToKeyboard = useCallback(
-    (focusInput: () => void) => {
-      if (!emojiOpenRef.current && !emojiPanelMounted) {
-        focusInput();
+  const onComposeShellLayout = useCallback(
+    (height: number) => {
+      if (height <= 0) return;
+      const mode = dockModeRef.current;
+      const emojiSlotOpen = emojiSlotOpenRef.current;
+      if (!canCalibrateComposeBaseline(mode, emojiSlotOpen)) {
+        const baseline = composeBaselineRef.current || COMPOSE_BASELINE_FALLBACK_PX;
+        composeGrowthSv.value = Math.max(0, height - baseline);
         return;
       }
-      if (keyboardSwitchRef.current) return;
-
-      keyboardSwitchRef.current = true;
-      panelHideForKeyboardRef.current = true;
-      syncGuardRefsToSv();
-      setEmojiOpen(false);
-      setEmojiContentReady(false);
-
-      const started = slidePanelDown(false, () => {
-        clearEmojiPanelState({ keepEmojiInset: true });
-        keyboardSwitchRef.current = false;
-        syncGuardRefsToSv();
-      });
-      if (!started) {
-        keyboardSwitchRef.current = false;
-        panelHideForKeyboardRef.current = false;
-        syncGuardRefsToSv();
-      }
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(focusInput);
-      });
+      commitComposeBaseline(height);
     },
-    [clearEmojiPanelState, emojiPanelMounted, slidePanelDown, syncGuardRefsToSv],
+    [commitComposeBaseline, composeGrowthSv],
   );
 
-  useEffect(() => {
-    return () => {
-      stopPanelAnim();
-      keyboardInsetPx.value = 0;
-      emojiPanelInsetPx.value = 0;
-      lastSyncedKbHeightSv.value = 0;
-      emojiOpenSv.value = false;
-      panelClosingSv.value = false;
-      panelHideForKbSv.value = false;
-    };
-  }, [
-    emojiOpenSv,
-    emojiPanelInsetPx,
-    keyboardInsetPx,
-    lastSyncedKbHeightSv,
-    panelClosingSv,
-    panelHideForKbSv,
-    stopPanelAnim,
-  ]);
+  const onDockColumnIdleLayout = useCallback(
+    (height: number) => {
+      if (height <= 0) return;
+      if (composeBaselineRef.current > 0) return;
+      const mode = dockModeRef.current;
+      if (!canCalibrateComposeBaseline(mode, emojiSlotOpenRef.current)) return;
+      const shellOnly = height - deleteBarHeightSv.value;
+      if (shellOnly <= 0) return;
+      commitComposeBaseline(shellOnly);
+    },
+    [commitComposeBaseline, deleteBarHeightSv],
+  );
+
+  const recalibrateComposeBaseline = useCallback(() => {
+    if (!canCalibrateComposeBaseline(dockModeRef.current, emojiSlotOpenRef.current)) {
+      return;
+    }
+    composeBaselineRef.current = 0;
+    composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX;
+    setComposeBaselinePx(0);
+    composeGrowthSv.value = 0;
+  }, [composeBaselineSv, composeGrowthSv]);
+
+  const setDeleteBarHeightPx = useCallback(
+    (height: number) => {
+      deleteBarHeightSv.value = height;
+    },
+    [deleteBarHeightSv],
+  );
+
+  const animateEmojiSlotOpen = useCallback(
+    (targetH: number, generation: number) => {
+      cancelAnimation(emojiAccessoryPx);
+      emojiAccessoryPx.value = withTiming(
+        targetH,
+        { duration: PANEL_ANIM_MS, easing: PANEL_EASING },
+        (finished) => {
+          if (finished && generation === panelOpenGenerationSv.value) {
+            runOnJS(setEmojiContentReady)(true);
+          }
+        },
+      );
+    },
+    [emojiAccessoryPx, panelOpenGenerationSv],
+  );
+
+  const animateEmojiSlotClose = useCallback(
+    (onEnd?: () => void) => {
+      cancelAnimation(emojiAccessoryPx);
+      emojiAccessoryPx.value = withTiming(
+        0,
+        { duration: PANEL_ANIM_MS, easing: PANEL_EASING },
+        (finished) => {
+          if (finished && onEnd) {
+            runOnJS(onEnd)();
+          }
+        },
+      );
+    },
+    [emojiAccessoryPx],
+  );
+
+  const openOverKeyboard = useCallback(
+    (height: number, generation: number) => {
+      panelHeightRef.current = height;
+      setPanelHeight(height);
+      setEmojiOpen(true);
+      setEmojiContentReady(false);
+      setEmojiPanelMounted(true);
+      setOverKeyboardVisible(true);
+      freezeListSv.value = true;
+      setDockMode(DockMode.OverKeyboard);
+      requestAnimationFrame(() => {
+        if (generation === panelOpenGenerationRef.current) {
+          setEmojiContentReady(true);
+        }
+      });
+    },
+    [freezeListSv, setDockMode],
+  );
+
+  const openEmojiSlot = useCallback(
+    (height: number, generation: number) => {
+      const targetH = emojiSlotTargetHeight(height);
+      panelHeightRef.current = height;
+      setPanelHeight(height);
+      setEmojiOpen(true);
+      setEmojiContentReady(false);
+      setEmojiPanelMounted(true);
+      emojiSlotOpenRef.current = true;
+      setDockMode(DockMode.EmojiSlot);
+      animateEmojiSlotOpen(targetH, generation);
+    },
+    [animateEmojiSlotOpen, setDockMode],
+  );
 
   const openEmoji = useCallback(() => {
-    const height = resolvePanelHeight();
-    panelHeightRef.current = height;
-    setPanelHeight(height);
-    emojiOpenRef.current = true;
-    setEmojiOpen(true);
-    setEmojiContentReady(false);
-    setEmojiPanelMounted(true);
-    panelHideForKeyboardRef.current = false;
-    panelClosingRef.current = false;
-    syncGuardRefsToSv();
-
-    runOnUI((panelH: number) => {
-      "worklet";
-      keyboardInsetPx.value = 0;
-      emojiPanelInsetPx.value = panelH;
-      lastSyncedKbHeightSv.value = 0;
-    })(height);
-
-    setPanelOpenToken((token) => token + 1);
-
-    if (keyboardOpenRef.current) {
-      Keyboard.dismiss();
+    if (dockModeRef.current === DockMode.EmojiClosing) return;
+    if (
+      dockModeRef.current === DockMode.EmojiSlot ||
+      dockModeRef.current === DockMode.OverKeyboard
+    ) {
+      return;
     }
-  }, [resolvePanelHeight, syncGuardRefsToSv]);
+    if (dockModeRef.current === DockMode.EmojiToKeyboard) return;
 
-  useLayoutEffect(() => {
-    if (panelOpenToken === 0 || !emojiPanelMounted) return;
-    if (panelOpenAnimStartedRef.current === panelOpenToken) return;
-    panelOpenAnimStartedRef.current = panelOpenToken;
+    const height = resolvePanelHeight();
+    const generation = panelOpenGenerationRef.current + 1;
+    panelOpenGenerationRef.current = generation;
+    panelOpenGenerationSv.value = generation;
 
-    const height = panelHeightRef.current;
-    if (height <= 0) return;
+    const kbOpen = keyboardOpenRef.current || kbHeightSv.value > KB_HEIGHT_EPSILON_PX;
 
-    slidePanelUp(height, () => {
-      setEmojiContentReady(true);
-    });
-  }, [panelOpenToken, emojiPanelMounted, slidePanelUp]);
+    if (kbOpen && HANDOFF_STRATEGY === "A") {
+      openOverKeyboard(height, generation);
+      return;
+    }
+
+    if (kbOpen && HANDOFF_STRATEGY === "D") {
+      freezeListSv.value = true;
+      setDockMode(DockMode.EmojiToKeyboard);
+      setEmojiOpen(true);
+      setEmojiPanelMounted(true);
+      emojiSlotOpenRef.current = true;
+      panelHeightRef.current = height;
+      setPanelHeight(height);
+      animateEmojiSlotOpen(emojiSlotTargetHeight(height), generation);
+      Keyboard.dismiss();
+      return;
+    }
+
+    openEmojiSlot(height, generation);
+  }, [
+    animateEmojiSlotOpen,
+    freezeListSv,
+    kbHeightSv,
+    openEmojiSlot,
+    openOverKeyboard,
+    panelOpenGenerationSv,
+    resolvePanelHeight,
+    setDockMode,
+  ]);
 
   const closeEmoji = useCallback(() => {
-    if (!emojiOpenRef.current || panelClosingRef.current) return;
+    const mode = dockModeRef.current;
+    if (mode === DockMode.EmojiClosing) return;
+
+    panelOpenGenerationRef.current += 1;
+    panelOpenGenerationSv.value = panelOpenGenerationRef.current;
     setEmojiContentReady(false);
-    slidePanelDown(true, () => {
+    setDockMode(DockMode.EmojiClosing);
+
+    if (mode === DockMode.OverKeyboard || overKeyboardVisible) {
+      setOverKeyboardVisible(false);
+      freezeListSv.value = false;
       clearEmojiPanelState();
+      setDockMode(keyboardOpenRef.current ? DockMode.Keyboard : DockMode.Idle);
+      return;
+    }
+
+    if (mode !== DockMode.EmojiSlot && mode !== DockMode.EmojiToKeyboard) {
+      setDockMode(mode);
+      return;
+    }
+
+    animateEmojiSlotClose(() => {
+      clearEmojiPanelState();
+      freezeListSv.value = false;
+      setDockMode(keyboardOpenRef.current ? DockMode.Keyboard : DockMode.Idle);
     });
-  }, [clearEmojiPanelState, slidePanelDown]);
+  }, [
+    animateEmojiSlotClose,
+    clearEmojiPanelState,
+    freezeListSv,
+    overKeyboardVisible,
+    panelOpenGenerationSv,
+    setDockMode,
+  ]);
 
   const showKeyboard = useCallback(
     (focusInput: () => void) => {
-      beginEmojiToKeyboard(focusInput);
+      if (dockModeRef.current === DockMode.EmojiClosing) return;
+
+      if (overKeyboardVisible) {
+        setOverKeyboardVisible(false);
+        freezeListSv.value = false;
+        clearEmojiPanelState();
+        setDockMode(DockMode.Keyboard);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(focusInput);
+        });
+        return;
+      }
+
+      if (dockModeRef.current === DockMode.EmojiSlot || emojiSlotOpenRef.current) {
+        freezeListSv.value = true;
+        setDockMode(DockMode.EmojiToKeyboard);
+        setEmojiOpen(false);
+        setEmojiContentReady(false);
+        animateEmojiSlotClose(() => {
+          clearEmojiPanelState();
+          setDockMode(DockMode.Idle);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(focusInput);
+          });
+        });
+        return;
+      }
+
+      focusInput();
     },
-    [beginEmojiToKeyboard],
+    [animateEmojiSlotClose, clearEmojiPanelState, freezeListSv, overKeyboardVisible, setDockMode],
   );
 
+  const resetDockInner = useCallback(() => {
+    cancelAnimation(emojiAccessoryPx);
+    emojiAccessoryPx.value = 0;
+    composeGrowthSv.value = 0;
+    deleteBarHeightSv.value = 0;
+    freezeListSv.value = false;
+    dockModeSv.value = DockMode.Idle;
+    keyboardOpenSv.value = false;
+    panelOpenGenerationRef.current += 1;
+    panelOpenGenerationSv.value = panelOpenGenerationRef.current;
+    dockModeRef.current = DockMode.Idle;
+    keyboardOpenRef.current = false;
+    lastKbHeightRef.current = 0;
+    emojiSlotOpenRef.current = false;
+    composeBaselineRef.current = 0;
+    composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX;
+    setComposeBaselinePx(0);
+    setKeyboardOpen(false);
+    clearEmojiPanelState();
+    Keyboard.dismiss();
+    setDockMode(DockMode.Idle);
+  }, [
+    clearEmojiPanelState,
+    composeBaselineSv,
+    composeGrowthSv,
+    deleteBarHeightSv,
+    dockModeSv,
+    emojiAccessoryPx,
+    freezeListSv,
+    keyboardOpenSv,
+    panelOpenGenerationSv,
+    setDockMode,
+  ]);
+
+  const resetDock = useCallback(() => {
+    resetDockInner();
+  }, [resetDockInner]);
+
+  useEffect(() => {
+    return () => {
+      cancelAnimation(emojiAccessoryPx);
+      emojiAccessoryPx.value = 0;
+      freezeListSv.value = false;
+    };
+  }, [emojiAccessoryPx, freezeListSv]);
+
   return {
-    liftStyle,
-    panelSlide,
+    emojiSlotStyle,
+    jumpBtnBottomStyle,
+    dockExtraPaddingSv,
+    dockColumnHeightSv,
+    freezeListSv,
+    composeBaselinePx,
+    onComposeShellLayout,
+    onDockColumnIdleLayout,
+    setDeleteBarHeightPx,
+    recalibrateComposeBaseline,
+    overKeyboardVisible,
     emojiPanelMounted,
     emojiContentReady,
-    bottomInset,
-    panelHeight,
     emojiOpen,
     keyboardOpen,
+    panelHeight,
     openEmoji,
     closeEmoji,
     showKeyboard,
+    resetDock,
   };
 }

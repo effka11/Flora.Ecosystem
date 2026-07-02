@@ -20,10 +20,10 @@ import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated as RNAnimated,
   BackHandler,
   FlatList,
   InteractionManager,
+  Keyboard,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -32,8 +32,13 @@ import {
   Text,
   View,
   Alert,
+  type ScrollViewProps,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  KeyboardStickyView,
+  OverKeyboardView,
+} from "react-native-keyboard-controller";
 import Reanimated from "react-native-reanimated";
 import {
   ChatComposeField,
@@ -50,6 +55,19 @@ import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
 import { subscribeMessageRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useChatComposeDock } from "@/lib/useChatComposeDock";
+import {
+  ChatScrollView,
+  type ChatScrollViewRef,
+} from "@/lib/ChatScrollView";
+import {
+  CHAT_AT_BOTTOM_THRESHOLD_PX,
+  composeKcsvOffsetPx,
+  emojiPanelChromePadding,
+  emojiSlotTargetHeight,
+  KEYBOARD_STICKY_CLOSED_OFFSET_PX,
+  KEYBOARD_STICKY_OPENED_OFFSET_PX,
+  resolveMessagesDockBottomInset,
+} from "@/lib/messagesDockInsets";
 import { uploadPreparedMessageImage } from "@/lib/messageImageAssets";
 import { appendOutgoingThreadMessage } from "@/lib/messageThreadOutgoing";
 import { uploadPreparedMessageVoice } from "@/lib/messageVoiceAssets";
@@ -96,31 +114,48 @@ export default function ThreadScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
-  const composeBottomInset = Math.max(insets.bottom, floraSpacing.gridFine);
-  // Лишний нижний padding прячем за клавиатуру → зазор над IME = composeShellPaddingKeyboard.
-  // §3 калибровка composeLiftAdjust: pending visual QA (п.27), offset TBD.
-  // При систематическом сдвиге на всех кадрах одного OEM — только эта константа (±N px), не screenY.
-  const composeLiftAdjust =
-    floraMessages.composeShellPaddingKeyboard -
-    (composeBottomInset + floraMessages.composeShellPaddingBottomExtra);
+  const systemNavBottomInset = resolveMessagesDockBottomInset(insets);
   const {
-    liftStyle: composeLiftStyle,
-    panelSlide,
+    emojiSlotStyle,
+    jumpBtnBottomStyle,
+    dockExtraPaddingSv,
+    freezeListSv,
+    composeBaselinePx,
+    onComposeShellLayout,
+    onDockColumnIdleLayout,
+    setDeleteBarHeightPx,
+    recalibrateComposeBaseline,
+    overKeyboardVisible,
     emojiPanelMounted,
     emojiContentReady,
-    bottomInset: dockInset,
     panelHeight,
     emojiOpen,
+    keyboardOpen,
     openEmoji,
     closeEmoji,
     showKeyboard,
-  } = useChatComposeDock(composeLiftAdjust);
-  const listRef = useRef<FlatList<ListRow>>(null);
+    resetDock,
+  } = useChatComposeDock();
+
+  const [kcsvOffsetPx, setKcsvOffsetPx] = useState(() =>
+    composeKcsvOffsetPx(0, systemNavBottomInset),
+  );
+
+  useEffect(() => {
+    setKcsvOffsetPx(composeKcsvOffsetPx(composeBaselinePx, systemNavBottomInset));
+  }, [systemNavBottomInset, composeBaselinePx]);
+
+  const chatScrollViewRef = useRef<ChatScrollViewRef>(null);
   const composeRef = useRef<ChatComposeFieldHandle>(null);
   const moreBtnRef = useRef<View>(null);
   const atBottomRef = useRef(true);
   const prevListLengthRef = useRef(0);
   const [actionMessageUuid, setActionMessageUuid] = useState<string | null>(null);
+
+  const dismissDeleteBar = useCallback(() => {
+    setActionMessageUuid(null);
+    setDeleteBarHeightPx(0);
+  }, [setDeleteBarHeightPx]);
 
   const params = useLocalSearchParams<{
     conversationUuid: string;
@@ -135,13 +170,18 @@ export default function ThreadScreen() {
   const conversationUuid = routeParam(params.conversationUuid);
   const paramOtherUserUuid = routeParam(params.otherUserUuid);
 
+  useEffect(() => {
+    resetDock();
+  }, [conversationUuid, resetDock]);
+
   useFocusEffect(
     useCallback(() => {
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
       return () => {
         applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+        resetDock();
       };
-    }, [navigation, tabBarBottomInset]),
+    }, [navigation, tabBarBottomInset, resetDock]),
   );
 
   const paramOtherDisplayName = routeParam(params.otherDisplayName);
@@ -181,6 +221,24 @@ export default function ThreadScreen() {
   const voiceRecorder = useVoiceRecorder({
     onRecorded: setVoiceFromRecording,
   });
+
+  const prevVoiceModeRef = useRef(voiceMode);
+  const prevComposeImageCountRef = useRef(composeImages.length);
+  useEffect(() => {
+    const wasVoice = prevVoiceModeRef.current === "voice";
+    prevVoiceModeRef.current = voiceMode;
+    if (wasVoice && voiceMode !== "voice") {
+      recalibrateComposeBaseline();
+    }
+  }, [voiceMode, recalibrateComposeBaseline]);
+
+  useEffect(() => {
+    const prevCount = prevComposeImageCountRef.current;
+    prevComposeImageCountRef.current = composeImages.length;
+    if (prevCount > 0 && composeImages.length === 0) {
+      recalibrateComposeBaseline();
+    }
+  }, [composeImages.length, recalibrateComposeBaseline]);
 
   useEffect(() => {
     if (voiceRecorder.error) {
@@ -350,10 +408,33 @@ export default function ThreadScreen() {
 
   const scrollToEnd = useCallback((animated = true) => {
     if (listData.length === 0) return;
-    listRef.current?.scrollToEnd({ animated });
+    chatScrollViewRef.current?.scrollToEnd({ animated });
     atBottomRef.current = true;
     setShowJumpToLatest(false);
   }, [listData.length]);
+
+  const onEndVisible = useCallback((visible: boolean) => {
+    atBottomRef.current = visible;
+    if (visible) setShowJumpToLatest(false);
+  }, []);
+
+  const renderScrollComponent = useCallback(
+    (props: ScrollViewProps) => (
+      <ChatScrollView
+        {...props}
+        offset={kcsvOffsetPx}
+        extraContentPadding={dockExtraPaddingSv}
+        freeze={freezeListSv}
+        keyboardLiftBehavior="whenAtEnd"
+        chatScrollViewRef={chatScrollViewRef}
+      />
+    ),
+    [dockExtraPaddingSv, freezeListSv, kcsvOffsetPx],
+  );
+
+  const onComposeTextChange = useCallback((next: string) => {
+    setText(next);
+  }, []);
 
   useEffect(() => {
     const prevLen = prevListLengthRef.current;
@@ -369,27 +450,34 @@ export default function ThreadScreen() {
   }, [listData.length, scrollToEnd]);
 
   useEffect(() => {
-    if (dockInset <= 0 || !atBottomRef.current) return;
-    requestAnimationFrame(() => scrollToEnd(true));
-  }, [dockInset, scrollToEnd]);
-
-  useEffect(() => {
-    if (Platform.OS !== "android" || !emojiPanelMounted) return;
+    if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      closeEmoji();
-      return true;
+      if (overKeyboardVisible || emojiPanelMounted) {
+        closeEmoji();
+        return true;
+      }
+      if (keyboardOpen) {
+        Keyboard.dismiss();
+        return true;
+      }
+      return false;
     });
     return () => sub.remove();
-  }, [emojiPanelMounted, closeEmoji]);
+  }, [emojiPanelMounted, keyboardOpen, closeEmoji, overKeyboardVisible]);
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-    const atBottom = distanceFromBottom < floraSpacing.grid * 2;
+    const atBottom = distanceFromBottom < CHAT_AT_BOTTOM_THRESHOLD_PX;
     atBottomRef.current = atBottom;
-    if (atBottom) setShowJumpToLatest(false);
-    setActionMessageUuid(null);
-  }, []);
+    onEndVisible(atBottom);
+    dismissDeleteBar();
+  }, [dismissDeleteBar, onEndVisible]);
+
+  useEffect(() => {
+    if (!keyboardOpen || !atBottomRef.current) return;
+    requestAnimationFrame(() => scrollToEnd(true));
+  }, [keyboardOpen, scrollToEnd]);
 
   const onMessageLongPress = useCallback((messageUuid: string) => {
     setActionMessageUuid(messageUuid);
@@ -399,7 +487,7 @@ export default function ThreadScreen() {
     (messageUuid: string) => {
       if (!conversationUuid) return;
       Alert.alert("Удалить сообщение?", "Сообщение исчезнет у обоих участников.", [
-        { text: "Отмена", style: "cancel", onPress: () => setActionMessageUuid(null) },
+        { text: "Отмена", style: "cancel", onPress: dismissDeleteBar },
         {
           text: "Удалить",
           style: "destructive",
@@ -417,7 +505,7 @@ export default function ThreadScreen() {
                     return { ...old, items };
                   },
                 );
-                setActionMessageUuid(null);
+                dismissDeleteBar();
                 void queryClient.invalidateQueries({ queryKey: ["conversations"] });
               } catch (e) {
                 Alert.alert(
@@ -616,12 +704,19 @@ export default function ThreadScreen() {
         : "Расшифровка недоступна. Нажмите, чтобы ввести пароль и восстановить ключи.";
   const decryptFailHint =
     "Не удалось расшифровать. Нажмите, чтобы ввести пароль и восстановить ключи.";
+  const insertEmoji = useCallback((emoji: string) => {
+    composeRef.current?.insertToken(emoji);
+  }, []);
 
-  // Compose поднимается на dockInset + composeLiftAdjust (нижний safe-area padding уходит за IME).
-  // paddingBottom ленты должен совпадать с визуальным подъёмом, иначе зазор до divider растёт.
-  // Зазор до линии compose — marginBottom последнего пузыря (bubbleRowGap).
-  const listPaddingBottom = Math.max(0, dockInset + composeLiftAdjust);
-  const jumpBtnBottom = listPaddingBottom + floraSpacing.grid;
+  const emojiPanel =
+    emojiContentReady ? (
+      <ChatMessageEmojiPanel onPickEmoji={insertEmoji} />
+    ) : null;
+
+  const ksvOffset = {
+    closed: KEYBOARD_STICKY_CLOSED_OFFSET_PX,
+    opened: KEYBOARD_STICKY_OPENED_OFFSET_PX,
+  };
 
   return (
     <View style={styles.root}>
@@ -645,10 +740,12 @@ export default function ThreadScreen() {
 
       <View style={styles.messagesArea}>
         <FlatList
-          ref={listRef}
+          key={conversationUuid}
           data={listData}
           keyExtractor={(item) => item.messageUuid}
-          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          style={styles.listFill}
+          contentContainerStyle={styles.listContent}
+          renderScrollComponent={renderScrollComponent}
           onScroll={onScroll}
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
@@ -672,86 +769,99 @@ export default function ThreadScreen() {
         />
 
         {showJumpToLatest ? (
-          <Pressable
-            style={[styles.jumpBtn, { bottom: jumpBtnBottom }]}
-            onPress={() => scrollToEnd(true)}
-          >
-            <Text style={styles.jumpBtnText}>Новые сообщения</Text>
-          </Pressable>
+          <Reanimated.View style={[styles.jumpBtn, jumpBtnBottomStyle]}>
+            <Pressable onPress={() => scrollToEnd(true)}>
+              <Text style={styles.jumpBtnText}>Новые сообщения</Text>
+            </Pressable>
+          </Reanimated.View>
         ) : null}
       </View>
 
-      {actionMessageUuid ? (
-        <View style={styles.messageDeleteBar}>
-          <Pressable
-            style={styles.messageDeleteBtn}
-            onPress={() => confirmDeleteMessage(actionMessageUuid)}
-            accessibilityRole="button"
-            accessibilityLabel="Удалить сообщение"
-          >
-            <Text style={styles.messageDeleteBtnText}>Удалить</Text>
-          </Pressable>
-          <Pressable
-            style={styles.messageDeleteCancelBtn}
-            onPress={() => setActionMessageUuid(null)}
-            accessibilityRole="button"
-            accessibilityLabel="Отмена"
-          >
-            <Text style={styles.messageDeleteCancelText}>Отмена</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      <Reanimated.View style={[styles.composeDock, composeLiftStyle]}>
-        <ChatComposeField
-          ref={composeRef}
-          value={text}
-          onChangeText={setText}
-          onSend={onSend}
-          sending={sending}
-          disabled={!canSend() || !otherUserUuid}
-          placeholder={blocked ? "Отправка недоступна" : "Сообщение"}
-          bottomInset={composeBottomInset}
-          emojiOpen={emojiOpen}
-          onRequestEmoji={openEmoji}
-          onRequestKeyboard={() => showKeyboard(() => composeRef.current?.focusInput())}
-          images={composeImages}
-          onRemoveImageAt={removeImageAt}
-          onPickImages={() => void onPickImages()}
-          hasPendingImages={hasPendingPrepare}
-          voiceMode={voiceMode === "voice"}
-          voiceRecording={voiceRecorder.recording}
-          voiceShowStopControl={voiceRecorder.showStopControl}
-          voiceRecordingStartedAt={voiceRecorder.recordingStartedAt}
-          voiceWaveform={voiceDraft?.waveform ?? []}
-          voiceTranscoding={voiceDraft?.transcoding ?? false}
-          voiceCanSend={canSendVoice}
-          onStartVoice={() => void onStartVoice()}
-          onDiscardVoice={() => void onDiscardVoice()}
-          onStopVoice={onStopVoice}
-          onSendVoice={() => void onSendVoice()}
-        />
-      </Reanimated.View>
-
-      {/* Панель эмодзи — absolute, выезжает снизу (panelSlide). Поле ввода сразу в целевой позиции. */}
-      {emojiPanelMounted ? (
-        <RNAnimated.View
-          style={[
-            styles.emojiPanelOuter,
-            {
-              height: panelHeight + floraMessages.emojiPanelOuterGap,
-              paddingBottom: insets.bottom + floraMessages.emojiPanelBottomExtra,
-              transform: [{ translateY: panelSlide }],
-            },
-          ]}
+      <KeyboardStickyView offset={ksvOffset} style={styles.dockFooter}>
+        <Reanimated.View
+          style={styles.dockColumn}
+          onLayout={(e) => onDockColumnIdleLayout(e.nativeEvent.layout.height)}
         >
-          <View style={styles.emojiPanelCard}>
-            {emojiContentReady ? (
-              <ChatMessageEmojiPanel onPickEmoji={(emoji) => composeRef.current?.insertToken(emoji)} />
-            ) : null}
+          {actionMessageUuid ? (
+            <View
+              style={styles.messageDeleteBar}
+              onLayout={(e) => setDeleteBarHeightPx(e.nativeEvent.layout.height)}
+            >
+              <Pressable
+                style={styles.messageDeleteBtn}
+                onPress={() => confirmDeleteMessage(actionMessageUuid)}
+                accessibilityRole="button"
+                accessibilityLabel="Удалить сообщение"
+              >
+                <Text style={styles.messageDeleteBtnText}>Удалить</Text>
+              </Pressable>
+              <Pressable
+                style={styles.messageDeleteCancelBtn}
+                onPress={() => {
+                  dismissDeleteBar();
+                  setDeleteBarHeightPx(0);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Отмена"
+              >
+                <Text style={styles.messageDeleteCancelText}>Отмена</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <ChatComposeField
+            ref={composeRef}
+            value={text}
+            onChangeText={onComposeTextChange}
+            onSend={onSend}
+            sending={sending}
+            disabled={!canSend() || !otherUserUuid}
+            placeholder={blocked ? "Отправка недоступна" : "Сообщение"}
+            bottomInset={systemNavBottomInset}
+            onShellLayout={onComposeShellLayout}
+            emojiOpen={emojiOpen}
+            onRequestEmoji={openEmoji}
+            onRequestKeyboard={() => showKeyboard(() => composeRef.current?.focusInput())}
+            images={composeImages}
+            onRemoveImageAt={removeImageAt}
+            onPickImages={() => void onPickImages()}
+            hasPendingImages={hasPendingPrepare}
+            voiceMode={voiceMode === "voice"}
+            voiceRecording={voiceRecorder.recording}
+            voiceShowStopControl={voiceRecorder.showStopControl}
+            voiceRecordingStartedAt={voiceRecorder.recordingStartedAt}
+            voiceWaveform={voiceDraft?.waveform ?? []}
+            voiceTranscoding={voiceDraft?.transcoding ?? false}
+            voiceCanSend={canSendVoice}
+            onStartVoice={() => void onStartVoice()}
+            onDiscardVoice={() => void onDiscardVoice()}
+            onStopVoice={onStopVoice}
+            onSendVoice={() => void onSendVoice()}
+          />
+
+          {!overKeyboardVisible && emojiPanelMounted ? (
+            <Reanimated.View style={[styles.emojiSlot, emojiSlotStyle]}>
+              <View style={styles.emojiPanelCard}>{emojiPanel}</View>
+            </Reanimated.View>
+          ) : null}
+        </Reanimated.View>
+      </KeyboardStickyView>
+
+      <OverKeyboardView visible={overKeyboardVisible}>
+        <View style={styles.overKeyboardRoot} pointerEvents="box-none">
+          <View style={styles.overKeyboardPassThrough} pointerEvents="none" />
+          <View
+            style={[
+              styles.overKeyboardPanel,
+              emojiPanelChromePadding,
+              { height: emojiSlotTargetHeight(panelHeight) },
+            ]}
+            pointerEvents="auto"
+          >
+            <View style={styles.emojiPanelCard}>{emojiPanel}</View>
           </View>
-        </RNAnimated.View>
-      ) : null}
+        </View>
+      </OverKeyboardView>
 
       <ChatMoreMenu
         open={moreMenuOpen}
@@ -777,6 +887,7 @@ export default function ThreadScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    minHeight: 0,
     backgroundColor: floraColors.bg,
   },
   blockedBanner: {
@@ -796,14 +907,29 @@ const styles = StyleSheet.create({
     minHeight: 0,
     position: "relative",
   },
-  emojiPanelOuter: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingTop: floraMessages.emojiPanelOuterGap,
-    paddingHorizontal: floraMessages.emojiPanelOuterGap,
+  listFill: {
+    ...StyleSheet.absoluteFill,
   },
+  dockFooter: {
+    zIndex: 20,
+    elevation: 20,
+    backgroundColor: floraColors.bg,
+  },
+  dockColumn: {
+    backgroundColor: floraColors.bg,
+  },
+  emojiSlot: {
+    overflow: "hidden",
+    ...emojiPanelChromePadding,
+  },
+  overKeyboardRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  overKeyboardPassThrough: {
+    flex: 1,
+  },
+  overKeyboardPanel: {},
   emojiPanelCard: {
     flex: 1,
     borderRadius: floraMessages.emojiPanelRadius,
@@ -811,9 +937,6 @@ const styles = StyleSheet.create({
     borderColor: floraMessages.composeBorderColor,
     overflow: "hidden",
     backgroundColor: floraColors.surfaceElevated,
-  },
-  composeDock: {
-    backgroundColor: floraColors.bg,
   },
   messageDeleteBar: {
     flexDirection: "row",
@@ -825,8 +948,6 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: floraMessages.composeBorderColor,
     backgroundColor: floraColors.bg,
-    zIndex: 20,
-    elevation: 8,
   },
   messageDeleteBtn: {
     paddingVertical: floraSpacing.gridFine + 2,
@@ -867,6 +988,8 @@ const styles = StyleSheet.create({
   jumpBtn: {
     position: "absolute",
     alignSelf: "center",
+    zIndex: 10,
+    elevation: 10,
     backgroundColor: floraColors.greenDark,
     borderRadius: 16,
     paddingHorizontal: floraSpacing.grid,

@@ -33,6 +33,7 @@ type Props = {
   onRemoveImageAt?: (index: number) => void;
   onPickImages?: () => void;
   hasPendingImages?: boolean;
+  onShellLayout?: (height: number) => void;
   voiceMode?: boolean;
   voiceRecording?: boolean;
   voiceShowStopControl?: boolean;
@@ -62,6 +63,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     onRemoveImageAt,
     onPickImages,
     hasPendingImages = false,
+    onShellLayout,
     voiceMode = false,
     voiceRecording = false,
     voiceShowStopControl = false,
@@ -136,9 +138,17 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     onRequestKeyboard();
   }, [disabled, emojiOpen, onRequestKeyboard]);
 
+  const reportShellLayout = useCallback(
+    (event: { nativeEvent: { layout: { height: number } } }) => {
+      onShellLayout?.(event.nativeEvent.layout.height);
+    },
+    [onShellLayout],
+  );
+
   if (voiceMode) {
     return (
       <View
+        onLayout={reportShellLayout}
         style={{
           paddingBottom: bottomInset + floraMessages.composeShellPaddingBottomExtra,
         }}
@@ -161,6 +171,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
 
   return (
     <View
+      onLayout={reportShellLayout}
       style={[
         styles.shell,
         {

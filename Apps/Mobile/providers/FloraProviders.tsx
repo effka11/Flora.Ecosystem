@@ -141,7 +141,11 @@ export function FloraProviders({ children }: { children: ReactNode }) {
 
   return (
     <SafeAreaProvider>
-      <KeyboardProvider>
+      <KeyboardProvider
+        statusBarTranslucent
+        navigationBarTranslucent
+        preserveEdgeToEdge
+      >
         <QueryClientProvider client={queryClient}>
           <QueryClientRefBridge client={queryClient} />
           <FloraAppServices enabled={isAuthenticated} />

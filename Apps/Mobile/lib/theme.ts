@@ -178,7 +178,7 @@ export const floraMessages = {
   composeFieldPaddingVertical: 0,
   /** Панель эмодзи в доке — как messagesStickerPanel на вебе. */
   emojiPanelRadius: 12,
-  emojiPanelOuterGap: floraSpacing.gridFine,
+  emojiPanelOuterGap: floraSpacing.grid,
   emojiPanelBottomExtra: floraSpacing.grid,
   themBubbleBg: t.messagesBubbleThemBg,
   themBubbleText: t.messagesBubbleThemText,
