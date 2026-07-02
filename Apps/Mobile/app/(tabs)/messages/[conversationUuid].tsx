@@ -62,10 +62,10 @@ import {
 import {
   CHAT_AT_BOTTOM_THRESHOLD_PX,
   composeKcsvOffsetPx,
+  DEV_DISABLE_KSV_ON_ANDROID,
   emojiPanelChromePadding,
   emojiSlotTargetHeight,
-  KEYBOARD_STICKY_CLOSED_OFFSET_PX,
-  KEYBOARD_STICKY_OPENED_OFFSET_PX,
+  keyboardStickyOffsets,
   resolveMessagesDockBottomInset,
 } from "@/lib/messagesDockInsets";
 import { uploadPreparedMessageImage } from "@/lib/messageImageAssets";
@@ -115,6 +115,14 @@ export default function ThreadScreen() {
   const navigation = useNavigation();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const systemNavBottomInset = resolveMessagesDockBottomInset(insets);
+  const gapDiag = useMemo(
+    () => ({
+      insetsBottom: insets.bottom,
+      systemNavBottomInset,
+    }),
+    [insets.bottom, systemNavBottomInset],
+  );
+
   const {
     emojiSlotStyle,
     jumpBtnBottomStyle,
@@ -135,15 +143,13 @@ export default function ThreadScreen() {
     closeEmoji,
     showKeyboard,
     resetDock,
-  } = useChatComposeDock();
+  } = useChatComposeDock(gapDiag);
 
-  const [kcsvOffsetPx, setKcsvOffsetPx] = useState(() =>
-    composeKcsvOffsetPx(0, systemNavBottomInset),
-  );
+  const [kcsvOffsetPx, setKcsvOffsetPx] = useState(() => composeKcsvOffsetPx(0));
 
   useEffect(() => {
-    setKcsvOffsetPx(composeKcsvOffsetPx(composeBaselinePx, systemNavBottomInset));
-  }, [systemNavBottomInset, composeBaselinePx]);
+    setKcsvOffsetPx(composeKcsvOffsetPx(composeBaselinePx));
+  }, [composeBaselinePx]);
 
   const chatScrollViewRef = useRef<ChatScrollViewRef>(null);
   const composeRef = useRef<ChatComposeFieldHandle>(null);
@@ -713,10 +719,14 @@ export default function ThreadScreen() {
       <ChatMessageEmojiPanel onPickEmoji={insertEmoji} />
     ) : null;
 
-  const ksvOffset = {
-    closed: KEYBOARD_STICKY_CLOSED_OFFSET_PX,
-    opened: KEYBOARD_STICKY_OPENED_OFFSET_PX,
-  };
+  const ksvOffset = keyboardStickyOffsets(systemNavBottomInset);
+
+  const composeBottomInset =
+    Platform.OS === "android"
+      ? 0
+      : keyboardOpen || overKeyboardVisible
+        ? 0
+        : systemNavBottomInset;
 
   return (
     <View style={styles.root}>
@@ -777,7 +787,11 @@ export default function ThreadScreen() {
         ) : null}
       </View>
 
-      <KeyboardStickyView offset={ksvOffset} style={styles.dockFooter}>
+      <KeyboardStickyView
+        enabled={!(__DEV__ && Platform.OS === "android" && DEV_DISABLE_KSV_ON_ANDROID)}
+        offset={ksvOffset}
+        style={styles.dockFooter}
+      >
         <Reanimated.View
           style={styles.dockColumn}
           onLayout={(e) => onDockColumnIdleLayout(e.nativeEvent.layout.height)}
@@ -817,7 +831,7 @@ export default function ThreadScreen() {
             sending={sending}
             disabled={!canSend() || !otherUserUuid}
             placeholder={blocked ? "Отправка недоступна" : "Сообщение"}
-            bottomInset={systemNavBottomInset}
+            bottomInset={composeBottomInset}
             onShellLayout={onComposeShellLayout}
             emojiOpen={emojiOpen}
             onRequestEmoji={openEmoji}

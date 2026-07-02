@@ -46,6 +46,40 @@ const PANEL_ANIM_MS = Platform.OS === "ios" ? 250 : 200;
 const PANEL_EASING = ReanimatedEasing.out(ReanimatedEasing.cubic);
 const KB_HEIGHT_EPSILON_PX = 2;
 
+export type DockGapDiagContext = {
+  insetsBottom: number;
+  systemNavBottomInset: number;
+};
+
+function logDockGapDiagnostics(
+  tag: string,
+  fields: {
+    kbHeight?: number;
+    shellHeight?: number;
+    dockColumnHeight?: number;
+    growth?: number;
+    baseline?: number;
+    keyboardOpen?: boolean;
+    insetsBottom?: number;
+    systemNavBottomInset?: number;
+  },
+  gapDiag?: DockGapDiagContext,
+): void {
+  if (!__DEV__) return;
+  const windowHeight = Dimensions.get("window").height;
+  const screenHeight = Dimensions.get("screen").height;
+  console.debug("[chat-compose-dock] gap-diag", {
+    tag,
+    platform: Platform.OS,
+    windowHeight,
+    screenHeight,
+    windowDeltaFromScreen: screenHeight - windowHeight,
+    insetsBottom: gapDiag?.insetsBottom ?? fields.insetsBottom,
+    systemNavBottomInset: gapDiag?.systemNavBottomInset ?? fields.systemNavBottomInset,
+    ...fields,
+  });
+}
+
 function blocksKeyboardOnEndZero(mode: DockModeValue): boolean {
   "worklet";
   return (
@@ -83,7 +117,9 @@ export type ChatComposeDock = {
   resetDock: () => void;
 };
 
-export function useChatComposeDock(): ChatComposeDock {
+export function useChatComposeDock(gapDiag?: DockGapDiagContext): ChatComposeDock {
+  const gapDiagRef = useRef(gapDiag);
+  gapDiagRef.current = gapDiag;
   const [composeBaselinePx, setComposeBaselinePx] = useState(0);
   const [panelHeight, setPanelHeight] = useState(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -127,6 +163,12 @@ export function useChatComposeDock(): ChatComposeDock {
       keyboardOpenRef.current = open;
       keyboardOpenSv.value = open;
       setKeyboardOpen(open);
+      logDockGapDiagnostics(open ? "keyboard-open" : "keyboard-closed", {
+        kbHeight: lastKbHeightRef.current,
+        baseline: composeBaselineRef.current,
+        growth: composeGrowthSv.value,
+        keyboardOpen: open,
+      }, gapDiagRef.current);
       if (open) {
         freezeListSv.value = false;
         if (dockModeRef.current === DockMode.Idle) {
@@ -171,6 +213,11 @@ export function useChatComposeDock(): ChatComposeDock {
   }, []);
 
   useEffect(() => {
+    if (!gapDiag) return;
+    logDockGapDiagnostics("thread-insets", {}, gapDiag);
+  }, [gapDiag?.insetsBottom, gapDiag?.systemNavBottomInset]);
+
+  useEffect(() => {
     emojiSlotOpenRef.current = emojiPanelMounted && !overKeyboardVisible;
   }, [emojiPanelMounted, overKeyboardVisible]);
 
@@ -190,7 +237,14 @@ export function useChatComposeDock(): ChatComposeDock {
 
   const rememberKbHeight = useCallback((px: number) => {
     lastKbHeightRef.current = px;
-  }, []);
+    logDockGapDiagnostics("kb-height", {
+      kbHeight: px,
+      shellHeight: composeBaselineRef.current + composeGrowthSv.value,
+      baseline: composeBaselineRef.current,
+      growth: composeGrowthSv.value,
+      keyboardOpen: keyboardOpenRef.current,
+    }, gapDiagRef.current);
+  }, [composeGrowthSv]);
 
   useAnimatedReaction(
     () => kbHeightSv.value,
@@ -228,13 +282,20 @@ export function useChatComposeDock(): ChatComposeDock {
   const commitComposeBaseline = useCallback(
     (shellHeight: number) => {
       const prev = composeBaselineRef.current;
-      const baseline = prev > 0 ? Math.min(prev, shellHeight) : shellHeight;
+      const baseline = prev > 0 ? prev : shellHeight;
       if (prev !== baseline || prev <= 0) {
         composeBaselineRef.current = baseline;
         composeBaselineSv.value = baseline;
         setComposeBaselinePx(baseline);
       }
       composeGrowthSv.value = Math.max(0, shellHeight - baseline);
+      logDockGapDiagnostics("shell-baseline", {
+        shellHeight,
+        baseline: composeBaselineRef.current,
+        growth: composeGrowthSv.value,
+        keyboardOpen: keyboardOpenRef.current,
+        kbHeight: lastKbHeightRef.current,
+      }, gapDiagRef.current);
     },
     [composeBaselineSv, composeGrowthSv],
   );
@@ -242,6 +303,13 @@ export function useChatComposeDock(): ChatComposeDock {
   const onComposeShellLayout = useCallback(
     (height: number) => {
       if (height <= 0) return;
+      logDockGapDiagnostics("shell-layout", {
+        shellHeight: height,
+        baseline: composeBaselineRef.current,
+        growth: composeGrowthSv.value,
+        keyboardOpen: keyboardOpenRef.current,
+        kbHeight: lastKbHeightRef.current,
+      }, gapDiagRef.current);
       const mode = dockModeRef.current;
       const emojiSlotOpen = emojiSlotOpenRef.current;
       if (!canCalibrateComposeBaseline(mode, emojiSlotOpen)) {
@@ -262,6 +330,12 @@ export function useChatComposeDock(): ChatComposeDock {
       if (!canCalibrateComposeBaseline(mode, emojiSlotOpenRef.current)) return;
       const shellOnly = height - deleteBarHeightSv.value;
       if (shellOnly <= 0) return;
+      logDockGapDiagnostics("dock-column-layout", {
+        dockColumnHeight: height,
+        shellHeight: shellOnly,
+        keyboardOpen: keyboardOpenRef.current,
+        kbHeight: lastKbHeightRef.current,
+      }, gapDiagRef.current);
       commitComposeBaseline(shellOnly);
     },
     [commitComposeBaseline, deleteBarHeightSv],

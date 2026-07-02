@@ -13,8 +13,8 @@ export const COMPOSE_BASELINE_FALLBACK_PX =
 export const CHAT_AT_BOTTOM_THRESHOLD_PX = floraSpacing.grid * 2;
 
 /**
- * Bottom inset for thread compose dock (system nav on 3-button Android).
- * Phase 1: max(safe area, Android fallback). Calibrate per OEM after visual QA.
+ * Nav height for KSV offsets (Android A+) and iOS compose padding.
+ * Gesture Android: use reported insets.bottom; 3-button: fallback when bottom=0.
  */
 export function resolveMessagesDockBottomInset(insets: EdgeInsets): number {
   if (Platform.OS === "ios") {
@@ -22,25 +22,37 @@ export function resolveMessagesDockBottomInset(insets: EdgeInsets): number {
   }
   // TODO: replace with measured navigation bar height when available
   const androidNavFallbackPx = 48;
-  return Math.max(insets.bottom, androidNavFallbackPx);
+  return insets.bottom > 0 ? insets.bottom : androidNavFallbackPx;
 }
 
 /**
- * KCSV offset = closed dock height. Baseline from onLayout includes compose bottomInset (nav).
- * Before first layout, add navInsetFallback to shell fallback.
+ * KSV closed/opened offsets — Android: nav at idle via translateY (shell has no nav padding).
+ * opened: 0 = full KSV lift when IME open; tune to composeShellPaddingKeyboard (15px) if gap > ~18px.
+ * Do not use opened: +navInset — over-compensates on Samsung 3-button + adjustPan.
  */
-export function composeKcsvOffsetPx(
-  composeBaselinePx: number,
-  navInsetFallback: number,
-): number {
-  return composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX + navInsetFallback;
+export function keyboardStickyOffsets(navInsetPx: number): {
+  closed: number;
+  opened: number;
+} {
+  if (Platform.OS === "ios") {
+    return { closed: 0, opened: 0 };
+  }
+  return {
+    closed: -navInsetPx,
+    opened: 0,
+  };
 }
 
-/** KSV offset.closed — nav lives in compose padding, not translateY. */
-export const KEYBOARD_STICKY_CLOSED_OFFSET_PX = 0;
+/** KCSV offset = closed dock shell height (baseline from onLayout, without nav padding on Android A+). */
+export function composeKcsvOffsetPx(composeBaselinePx: number): number {
+  return composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
+}
 
-/** KSV offset.opened — 15px gap between pill and IME (T3). */
-export const KEYBOARD_STICKY_OPENED_OFFSET_PX = floraMessages.composeShellPaddingKeyboard;
+/**
+ * __DEV__ only: set true to disable KeyboardStickyView on Android and confirm resize+KSV
+ * double-lift (gap should shrink if adjustResize alone positions the dock). Revert before merge.
+ */
+export const DEV_DISABLE_KSV_ON_ANDROID = false;
 
 /**
  * Animated emoji slot outer height: gap above panel + panel + gap below.
