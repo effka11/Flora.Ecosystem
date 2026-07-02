@@ -57,7 +57,7 @@ if (-not $Force -and ($Confirm -or -not $isLocal)) {
     }
     Write-Host "  API:     $ApiBaseUrl"
     Write-Host "  Version: $versionPreview"
-    Write-Host "  Text:    $(if ($Text) { $Text } else { "Новая версия Android - $versionPreview" })"
+    Write-Host "  Text:    $(if ($Text) { $Text } else { Get-AppUpdateBroadcastText $versionPreview })"
     Write-Host ""
     $answer = (Read-Host "Send to all Android clients? [y/N]").Trim().ToLowerInvariant()
     if ($answer -ne "y" -and $answer -ne "yes") {
@@ -68,7 +68,7 @@ if (-not $Force -and ($Confirm -or -not $isLocal)) {
 
 $version = Get-FloraSocialVersion $root
 if ([string]::IsNullOrWhiteSpace($Text)) {
-    $Text = "Новая версия Android - $version"
+    $Text = Get-AppUpdateBroadcastText $version
 }
 
 $uri = "$ApiBaseUrl/api/admin/notifications/broadcast"
@@ -82,7 +82,7 @@ $bodyJson = @{
 Write-Host "POST $uri"
 Write-Host "Text: $Text"
 
-# Windows PowerShell 5.1 sends string bodies in the system ANSI code page; API expects UTF-8 JSON.
+# Windows PowerShell 5.1: send UTF-8 bytes (not a .NET string body).
 $bodyUtf8 = [System.Text.Encoding]::UTF8.GetBytes($bodyJson)
 
 $headers = @{
