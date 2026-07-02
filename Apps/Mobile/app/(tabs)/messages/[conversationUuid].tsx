@@ -20,7 +20,7 @@ import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
+  Animated as RNAnimated,
   BackHandler,
   FlatList,
   InteractionManager,
@@ -34,6 +34,7 @@ import {
   Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Reanimated from "react-native-reanimated";
 import {
   ChatComposeField,
   type ChatComposeFieldHandle,
@@ -97,11 +98,13 @@ export default function ThreadScreen() {
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const composeBottomInset = Math.max(insets.bottom, floraSpacing.gridFine);
   // Лишний нижний padding прячем за клавиатуру → зазор над IME = composeShellPaddingKeyboard.
+  // §3 калибровка composeLiftAdjust: pending visual QA (п.27), offset TBD.
+  // При систематическом сдвиге на всех кадрах одного OEM — только эта константа (±N px), не screenY.
   const composeLiftAdjust =
     floraMessages.composeShellPaddingKeyboard -
     (composeBottomInset + floraMessages.composeShellPaddingBottomExtra);
   const {
-    lift: keyboardLift,
+    liftStyle: composeLiftStyle,
     panelSlide,
     emojiPanelMounted,
     emojiContentReady,
@@ -699,7 +702,7 @@ export default function ThreadScreen() {
         </View>
       ) : null}
 
-      <Animated.View style={[styles.composeDock, { transform: [{ translateY: keyboardLift }] }]}>
+      <Reanimated.View style={[styles.composeDock, composeLiftStyle]}>
         <ChatComposeField
           ref={composeRef}
           value={text}
@@ -728,11 +731,11 @@ export default function ThreadScreen() {
           onStopVoice={onStopVoice}
           onSendVoice={() => void onSendVoice()}
         />
-      </Animated.View>
+      </Reanimated.View>
 
       {/* Панель эмодзи — absolute, выезжает снизу (panelSlide). Поле ввода сразу в целевой позиции. */}
       {emojiPanelMounted ? (
-        <Animated.View
+        <RNAnimated.View
           style={[
             styles.emojiPanelOuter,
             {
@@ -747,7 +750,7 @@ export default function ThreadScreen() {
               <ChatMessageEmojiPanel onPickEmoji={(emoji) => composeRef.current?.insertToken(emoji)} />
             ) : null}
           </View>
-        </Animated.View>
+        </RNAnimated.View>
       ) : null}
 
       <ChatMoreMenu

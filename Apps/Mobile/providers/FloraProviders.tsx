@@ -4,6 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { initFloraClient } from "@/lib/api";
 import {
@@ -140,12 +141,14 @@ export function FloraProviders({ children }: { children: ReactNode }) {
 
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <QueryClientRefBridge client={queryClient} />
-        <FloraAppServices enabled={isAuthenticated} />
-        <OfflineBanner />
-        {children}
-      </QueryClientProvider>
+      <KeyboardProvider>
+        <QueryClientProvider client={queryClient}>
+          <QueryClientRefBridge client={queryClient} />
+          <FloraAppServices enabled={isAuthenticated} />
+          <OfflineBanner />
+          {children}
+        </QueryClientProvider>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

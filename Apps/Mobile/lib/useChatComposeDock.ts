@@ -1,37 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Animated, Dimensions, Easing, Keyboard, Platform, type ViewStyle } from "react-native";
+import { useKeyboardHandler } from "react-native-keyboard-controller";
 import {
-  Animated,
-  Dimensions,
-  Easing,
-  Keyboard,
-  Platform,
-  StatusBar,
-  type EmitterSubscription,
-  type KeyboardEvent,
-} from "react-native";
-
-function androidStatusBarHeight(): number {
-  return StatusBar.currentHeight ?? 0;
-}
-
-/** Высота клавиатуры от низа окна (верх IME до layout-bottom). */
-function keyboardInsetPx(event: KeyboardEvent): number {
-  const { screenY } = event.endCoordinates;
-  if (screenY <= 0) return 0;
-
-  if (Platform.OS === "ios") {
-    return event.endCoordinates.height;
-  }
-
-  const statusBar = androidStatusBarHeight();
-  const windowHeight = Dimensions.get("window").height;
-  const candidates = [windowHeight - screenY, windowHeight + statusBar - screenY].filter(
-    (v) => v > 0,
-  );
-  if (candidates.length === 0) return 0;
-
-  return Math.min(...candidates);
-}
+  runOnJS,
+  runOnUI,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+  type AnimatedStyle,
+} from "react-native-reanimated";
 
 /** Запасная высота панели, пока реальная высота клавиатуры ещё не измерена. */
 function fallbackPanelHeight(): number {
@@ -45,8 +23,10 @@ let sessionKeyboardHeightPx = 0;
 /** Длительность выезда панели — близко к системной клавиатуре. */
 const PANEL_ANIM_MS = Platform.OS === "ios" ? 250 : 200;
 
+const KB_HEIGHT_SYNC_EPSILON_PX = 2;
+
 export type ChatComposeDock = {
-  lift: Animated.Value;
+  liftStyle: AnimatedStyle<ViewStyle>;
   panelSlide: Animated.Value;
   emojiPanelMounted: boolean;
   emojiContentReady: boolean;
@@ -60,11 +40,10 @@ export type ChatComposeDock = {
 };
 
 /**
- * Док поля ввода: поле сразу в целевой позиции (lift в useLayoutEffect, до paint);
- * панель выезжает отдельно; эмодзi → клавиатура через panelHideForKeyboardRef.
+ * Док поля ввода: lift через Reanimated + keyboard-controller;
+ * панель эмодзi — panelSlide; эмодзi → клавиатура через panelHideForKeyboardRef.
  */
 export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
-  const lift = useRef(new Animated.Value(0)).current;
   const panelSlide = useRef(new Animated.Value(0)).current;
   const [bottomInset, setBottomInset] = useState(0);
   const [panelHeight, setPanelHeight] = useState(0);
@@ -74,8 +53,22 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [panelOpenToken, setPanelOpenToken] = useState(0);
 
-  const liftAdjustRef = useRef(liftAdjustPx);
-  liftAdjustRef.current = liftAdjustPx;
+  const keyboardInsetPx = useSharedValue(0);
+  const emojiPanelInsetPx = useSharedValue(0);
+  const liftAdjustPxSv = useSharedValue(liftAdjustPx);
+  const emojiOpenSv = useSharedValue(false);
+  const panelClosingSv = useSharedValue(false);
+  const panelHideForKbSv = useSharedValue(false);
+  const lastSyncedKbHeightSv = useSharedValue(0);
+
+  const blockKeyboardInsetSv = useDerivedValue(
+    () => emojiOpenSv.value && !panelHideForKbSv.value,
+  );
+
+  const effectiveInsetPx = useDerivedValue(() =>
+    Math.max(keyboardInsetPx.value, emojiPanelInsetPx.value),
+  );
+
   const frameAnimCancelRef = useRef<(() => void) | null>(null);
   const emojiOpenRef = useRef(false);
   const keyboardOpenRef = useRef(false);
@@ -87,53 +80,166 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
   const panelOpenAnimStartedRef = useRef(0);
   const keyboardSwitchRef = useRef(false);
 
+  const emojiPanelInsetPxRef = useRef(emojiPanelInsetPx);
+  emojiPanelInsetPxRef.current = emojiPanelInsetPx;
+  const lastSyncedKbHeightSvRef = useRef(lastSyncedKbHeightSv);
+  lastSyncedKbHeightSvRef.current = lastSyncedKbHeightSv;
+  const keyboardInsetPxRef = useRef(keyboardInsetPx);
+  keyboardInsetPxRef.current = keyboardInsetPx;
+
+  useEffect(() => {
+    liftAdjustPxSv.value = liftAdjustPx;
+  }, [liftAdjustPx, liftAdjustPxSv]);
+
+  const syncGuardRefsToSv = useCallback(() => {
+    emojiOpenSv.value = emojiOpenRef.current;
+    panelClosingSv.value = panelClosingRef.current;
+    panelHideForKbSv.value = panelHideForKeyboardRef.current;
+  }, [emojiOpenSv, panelClosingSv, panelHideForKbSv]);
+
   const stopPanelAnim = useCallback(() => {
     frameAnimCancelRef.current?.();
     frameAnimCancelRef.current = null;
   }, []);
-
-  const targetLift = useCallback(
-    (px: number) => (px > 0 ? Math.max(0, px + liftAdjustRef.current) : 0),
-    [],
-  );
-
-  const setLiftImmediate = useCallback(
-    (px: number) => {
-      lift.setValue(-targetLift(px));
-    },
-    [lift, targetLift],
-  );
 
   const resolvePanelHeight = useCallback(() => {
     const fromSession = lastKbHeightRef.current || sessionKeyboardHeightPx;
     return fromSession > 0 ? fromSession : fallbackPanelHeight();
   }, []);
 
-  const syncKeyboardInset = useCallback(
+  const clearEmojiPanelState = useCallback(
+    (opts?: { keepEmojiInset?: boolean }) => {
+      emojiOpenRef.current = false;
+      setEmojiOpen(false);
+      setEmojiPanelMounted(false);
+      setEmojiContentReady(false);
+      panelHeightRef.current = 0;
+      setPanelHeight(0);
+      panelClosingRef.current = false;
+
+      const keepInset =
+        opts?.keepEmojiInset ??
+        (panelHideForKeyboardRef.current || keyboardSwitchRef.current);
+      if (!keepInset) {
+        emojiPanelInsetPxRef.current.value = 0;
+      }
+
+      syncGuardRefsToSv();
+    },
+    [syncGuardRefsToSv],
+  );
+
+  const slidePanelDownRef = useRef<
+    (syncLift: boolean, onEnd?: () => void) => boolean
+  >(() => false);
+
+  const syncKeyboardFromHandler = useCallback(
     (px: number) => {
       if (px <= 0) return;
+
+      const wasOpen = keyboardOpenRef.current;
+      const wasPanelHideForKb = panelHideForKeyboardRef.current;
+
       lastKbHeightRef.current = px;
       sessionKeyboardHeightPx = px;
       keyboardOpenRef.current = true;
-      setKeyboardOpen(true);
-      setBottomInset(px);
-      setLiftImmediate(px);
-      if (panelHideForKeyboardRef.current) {
+      if (!wasOpen) setKeyboardOpen(true);
+
+      if (
+        Platform.OS === "ios" &&
+        emojiOpenRef.current &&
+        !wasPanelHideForKb &&
+        !keyboardSwitchRef.current
+      ) {
+        panelHideForKeyboardRef.current = true;
+        syncGuardRefsToSv();
+        slidePanelDownRef.current(false, () => {
+          emojiPanelInsetPxRef.current.value = 0;
+          panelHideForKeyboardRef.current = false;
+          syncGuardRefsToSv();
+          clearEmojiPanelState();
+        });
+        if (__DEV__) console.debug("[chat-compose-dock] kb height", px);
+        return;
+      }
+
+      if (wasPanelHideForKb) {
         panelHideForKeyboardRef.current = false;
         keyboardSwitchRef.current = false;
+        emojiPanelInsetPxRef.current.value = 0;
+        syncGuardRefsToSv();
       }
+
+      if (__DEV__) console.debug("[chat-compose-dock] kb height", px);
     },
-    [setLiftImmediate],
+    [clearEmojiPanelState, syncGuardRefsToSv],
   );
 
-  const applyVisiblePanelHeight = useCallback(
-    (visiblePx: number) => {
-      const px = Math.max(0, visiblePx);
-      setBottomInset(px);
-      setLiftImmediate(px);
+  const syncKeyboardClosed = useCallback(() => {
+    keyboardOpenRef.current = false;
+    setKeyboardOpen(false);
+    keyboardInsetPxRef.current.value = 0;
+    lastSyncedKbHeightSvRef.current.value = 0;
+  }, []);
+
+  const syncKeyboardDismissed = useCallback(() => {
+    keyboardOpenRef.current = false;
+    setKeyboardOpen(false);
+  }, []);
+
+  useKeyboardHandler(
+    {
+      onMove: (event) => {
+        "worklet";
+        if (blockKeyboardInsetSv.value) return;
+        if (event.height > 0) {
+          keyboardInsetPx.value = event.height;
+          const delta = Math.abs(event.height - lastSyncedKbHeightSv.value);
+          if (delta >= KB_HEIGHT_SYNC_EPSILON_PX) {
+            lastSyncedKbHeightSv.value = event.height;
+            runOnJS(syncKeyboardFromHandler)(event.height);
+          }
+        }
+      },
+      onEnd: (event) => {
+        "worklet";
+        if (event.height > 0) {
+          if (!blockKeyboardInsetSv.value) {
+            keyboardInsetPx.value = event.height;
+            lastSyncedKbHeightSv.value = event.height;
+            runOnJS(syncKeyboardFromHandler)(event.height);
+          }
+          return;
+        }
+        if (emojiOpenSv.value || panelClosingSv.value || panelHideForKbSv.value) {
+          runOnJS(syncKeyboardDismissed)();
+          return;
+        }
+        keyboardInsetPx.value = 0;
+        runOnJS(syncKeyboardClosed)();
+      },
     },
-    [setLiftImmediate],
+    [syncKeyboardClosed, syncKeyboardDismissed, syncKeyboardFromHandler],
   );
+
+  useAnimatedReaction(
+    () => effectiveInsetPx.value,
+    (value, prev) => {
+      if (value !== prev) {
+        runOnJS(setBottomInset)(value);
+      }
+    },
+    [],
+  );
+
+  const liftStyle = useAnimatedStyle(() => {
+    const inset = effectiveInsetPx.value;
+    // Порт targetLift(px): composeLiftAdjust только при поднятом dock (KB/emoji), не в idle.
+    const lifted = inset > 0 ? inset + liftAdjustPxSv.value : 0;
+    return {
+      transform: [{ translateY: -lifted }],
+    };
+  });
 
   const runPanelFrameAnim = useCallback(
     (
@@ -145,6 +251,7 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
       let cancelled = false;
       const startTime = Date.now();
       const height = panelHeightRef.current;
+      const emojiSv = emojiPanelInsetPxRef.current;
 
       frameAnimCancelRef.current = () => {
         cancelled = true;
@@ -159,7 +266,7 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
         panelSlide.setValue(slideY);
 
         if (opts.syncLift && height > 0) {
-          applyVisiblePanelHeight(height - slideY);
+          emojiSv.value = Math.max(0, height - slideY);
         }
 
         if (t < 1) {
@@ -173,18 +280,8 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
 
       requestAnimationFrame(tick);
     },
-    [applyVisiblePanelHeight, panelSlide, stopPanelAnim],
+    [panelSlide, stopPanelAnim],
   );
-
-  const clearEmojiPanelState = useCallback(() => {
-    emojiOpenRef.current = false;
-    setEmojiOpen(false);
-    setEmojiPanelMounted(false);
-    setEmojiContentReady(false);
-    panelHeightRef.current = 0;
-    setPanelHeight(0);
-    panelClosingRef.current = false;
-  }, []);
 
   const slidePanelUp = useCallback(
     (height: number, onEnd?: () => void) => {
@@ -199,18 +296,22 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
     (syncLift: boolean, onEnd?: () => void) => {
       if (panelClosingRef.current) return false;
       panelClosingRef.current = true;
+      syncGuardRefsToSv();
       const height = panelHeightRef.current || resolvePanelHeight();
       runPanelFrameAnim(panelSlidePxRef.current, height, {
         syncLift,
         onEnd: () => {
           panelClosingRef.current = false;
+          syncGuardRefsToSv();
           onEnd?.();
         },
       });
       return true;
     },
-    [resolvePanelHeight, runPanelFrameAnim],
+    [resolvePanelHeight, runPanelFrameAnim, syncGuardRefsToSv],
   );
+
+  slidePanelDownRef.current = slidePanelDown;
 
   const beginEmojiToKeyboard = useCallback(
     (focusInput: () => void) => {
@@ -222,89 +323,47 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
 
       keyboardSwitchRef.current = true;
       panelHideForKeyboardRef.current = true;
+      syncGuardRefsToSv();
       setEmojiOpen(false);
       setEmojiContentReady(false);
 
       const started = slidePanelDown(false, () => {
-        clearEmojiPanelState();
+        clearEmojiPanelState({ keepEmojiInset: true });
         keyboardSwitchRef.current = false;
+        syncGuardRefsToSv();
       });
       if (!started) {
         keyboardSwitchRef.current = false;
         panelHideForKeyboardRef.current = false;
+        syncGuardRefsToSv();
       }
 
-      // Один focus после commit emojiOpen=false → showSoftInputOnFocus=true.
       requestAnimationFrame(() => {
         requestAnimationFrame(focusInput);
       });
     },
-    [clearEmojiPanelState, emojiPanelMounted, slidePanelDown],
+    [clearEmojiPanelState, emojiPanelMounted, slidePanelDown, syncGuardRefsToSv],
   );
 
   useEffect(() => {
-    const onShow = (event: KeyboardEvent) => {
-      const px = keyboardInsetPx(event);
-      if (px <= 0) return;
-      syncKeyboardInset(px);
-      if (emojiOpenRef.current && !panelHideForKeyboardRef.current) {
-        panelHideForKeyboardRef.current = true;
-        setEmojiOpen(false);
-        setEmojiContentReady(false);
-        slidePanelDown(false, clearEmojiPanelState);
-      }
-    };
-
-    const onDidShow = (event: KeyboardEvent) => {
-      const px = keyboardInsetPx(event);
-      if (px > 0) syncKeyboardInset(px);
-      keyboardOpenRef.current = true;
-      setKeyboardOpen(true);
-    };
-
-    const onHide = () => {
-      keyboardOpenRef.current = false;
-      setKeyboardOpen(false);
-      if (emojiOpenRef.current || panelClosingRef.current || panelHideForKeyboardRef.current) return;
-      setBottomInset(0);
-      setLiftImmediate(0);
-    };
-
-    const onFrame = (event: KeyboardEvent) => {
-      const px = keyboardInsetPx(event);
-
-      if (panelHideForKeyboardRef.current) {
-        if (px > 0) syncKeyboardInset(px);
-        return;
-      }
-
-      if (emojiOpenRef.current) {
-        if (px > 0) syncKeyboardInset(px);
-        return;
-      }
-
-      if (panelClosingRef.current) return;
-
-      if (px > 0) syncKeyboardInset(px);
-      else setLiftImmediate(px);
-    };
-
-    const subs: EmitterSubscription[] = [];
-    if (Platform.OS === "ios") {
-      subs.push(Keyboard.addListener("keyboardWillShow", onShow));
-      subs.push(Keyboard.addListener("keyboardDidShow", onDidShow));
-      subs.push(Keyboard.addListener("keyboardWillHide", onHide));
-    } else {
-      subs.push(Keyboard.addListener("keyboardDidChangeFrame", onFrame));
-      subs.push(Keyboard.addListener("keyboardDidShow", onDidShow));
-      subs.push(Keyboard.addListener("keyboardDidHide", onHide));
-    }
-
     return () => {
       stopPanelAnim();
-      subs.forEach((sub) => sub.remove());
+      keyboardInsetPx.value = 0;
+      emojiPanelInsetPx.value = 0;
+      lastSyncedKbHeightSv.value = 0;
+      emojiOpenSv.value = false;
+      panelClosingSv.value = false;
+      panelHideForKbSv.value = false;
     };
-  }, [clearEmojiPanelState, setLiftImmediate, slidePanelDown, stopPanelAnim, syncKeyboardInset]);
+  }, [
+    emojiOpenSv,
+    emojiPanelInsetPx,
+    keyboardInsetPx,
+    lastSyncedKbHeightSv,
+    panelClosingSv,
+    panelHideForKbSv,
+    stopPanelAnim,
+  ]);
 
   const openEmoji = useCallback(() => {
     const height = resolvePanelHeight();
@@ -316,13 +375,21 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
     setEmojiPanelMounted(true);
     panelHideForKeyboardRef.current = false;
     panelClosingRef.current = false;
+    syncGuardRefsToSv();
+
+    runOnUI((panelH: number) => {
+      "worklet";
+      keyboardInsetPx.value = 0;
+      emojiPanelInsetPx.value = panelH;
+      lastSyncedKbHeightSv.value = 0;
+    })(height);
+
     setPanelOpenToken((token) => token + 1);
 
     if (keyboardOpenRef.current) {
       Keyboard.dismiss();
     }
-    // lift/bottomInset — в useLayoutEffect до paint, чтобы поле не «проваливалось» на кадр.
-  }, [resolvePanelHeight]);
+  }, [resolvePanelHeight, syncGuardRefsToSv]);
 
   useLayoutEffect(() => {
     if (panelOpenToken === 0 || !emojiPanelMounted) return;
@@ -332,27 +399,18 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
     const height = panelHeightRef.current;
     if (height <= 0) return;
 
-    if (!keyboardOpenRef.current) {
-      setBottomInset(height);
-      setLiftImmediate(height);
-    }
-
     slidePanelUp(height, () => {
       setEmojiContentReady(true);
     });
-  }, [panelOpenToken, emojiPanelMounted, setLiftImmediate, slidePanelUp]);
+  }, [panelOpenToken, emojiPanelMounted, slidePanelUp]);
 
   const closeEmoji = useCallback(() => {
     if (!emojiOpenRef.current || panelClosingRef.current) return;
     setEmojiContentReady(false);
     slidePanelDown(true, () => {
       clearEmojiPanelState();
-      if (!keyboardOpenRef.current) {
-        setBottomInset(0);
-        setLiftImmediate(0);
-      }
     });
-  }, [clearEmojiPanelState, setLiftImmediate, slidePanelDown]);
+  }, [clearEmojiPanelState, slidePanelDown]);
 
   const showKeyboard = useCallback(
     (focusInput: () => void) => {
@@ -362,7 +420,7 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
   );
 
   return {
-    lift,
+    liftStyle,
     panelSlide,
     emojiPanelMounted,
     emojiContentReady,
@@ -374,4 +432,4 @@ export function useChatComposeDock(liftAdjustPx = 0): ChatComposeDock {
     closeEmoji,
     showKeyboard,
   };
-};
+}

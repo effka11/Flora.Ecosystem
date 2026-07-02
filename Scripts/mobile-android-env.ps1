@@ -217,3 +217,125 @@ function Invoke-FromShortRoot([string]$longRoot, [scriptblock]$Action) {
         if ($mapped) { subst $drive /d | Out-Null }
     }
 }
+
+function Stop-AndroidGradleDaemons {
+    param([string]$MobileDir)
+    $androidDir = Join-Path $MobileDir "android"
+    $gradlew = Join-Path $androidDir "gradlew.bat"
+    if (-not (Test-Path $gradlew)) { return }
+    Write-Host "Stopping Gradle daemons (unlock android/) ..."
+    Push-Location $androidDir
+    try {
+        & .\gradlew.bat --stop 2>$null | Out-Null
+    }
+    finally {
+        Pop-Location
+    }
+    Start-Sleep -Seconds 2
+}
+
+function Remove-LockedDirectory {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return }
+    for ($i = 0; $i -lt 8; $i++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($i -ge 7) {
+                throw @"
+Cannot remove locked folder: $Path
+Close Android Studio, Gradle builds, and file explorers on Apps/Mobile/android, then retry.
+$($_.Exception.Message)
+"@
+            }
+            Write-Host "Retry remove $Path ($($i + 1)/8) ..."
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
+function Sync-AndroidFromStaging {
+    param(
+        [string]$SourceAndroidDir,
+        [string]$TargetAndroidDir
+    )
+    New-Item -ItemType Directory -Path $TargetAndroidDir -Force | Out-Null
+    Write-Host "Sync $SourceAndroidDir -> $TargetAndroidDir ..."
+    & robocopy $SourceAndroidDir $TargetAndroidDir /MIR /E /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
+    $robocopyExit = $LASTEXITCODE
+    if ($robocopyExit -ge 8) {
+        throw "robocopy android sync failed with exit code $robocopyExit"
+    }
+}
+
+function Assert-FloraAndroidDevPackage([string]$AndroidDir) {
+    $gradle = Join-Path $AndroidDir "app\build.gradle"
+    if (-not (Test-Path $gradle)) {
+        throw "Missing $gradle after prebuild."
+    }
+    $content = Get-Content $gradle -Raw
+    if ($content -notmatch "social\.flora\.mobile\.dev") {
+        throw "android/ is not Flora Dev (expected applicationId social.flora.mobile.dev). Set APP_VARIANT=development."
+    }
+}
+
+function Invoke-ExpoAndroidPrebuildClean {
+    param([string]$MobileDir)
+    $androidDir = Join-Path $MobileDir "android"
+    $stage = Join-Path $MobileDir (".prebuild-stage-dev-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+    $skipNames = @(
+        "android", "android_gen", "node_modules", ".expo", "dist",
+        ".prebuild-stage", ".prebuild-stage-dev", ".git", ".kotlin"
+    )
+
+    Stop-AndroidGradleDaemons $MobileDir
+
+    Remove-LockedDirectory $stage
+    New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+    Get-ChildItem $MobileDir -Force |
+        Where-Object {
+            $skipNames -notcontains $_.Name -and
+            $_.Name -notlike ".prebuild-stage*" -and
+            $_.Name -notlike ".prebuild-stage-dev*"
+        } |
+        ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $stage $_.Name) -Recurse -Force
+        }
+
+    $nmLink = Join-Path $stage "node_modules"
+    if (-not (Test-Path $nmLink)) {
+        cmd /c mklink /J "$nmLink" (Join-Path $MobileDir "node_modules") | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Failed to junction node_modules into prebuild stage." }
+    }
+
+    Write-Host "expo prebuild in staging folder (avoids locked Apps/Mobile/android) ..."
+    Push-Location $stage
+    try {
+        npx expo prebuild --platform android --no-install
+        if ($LASTEXITCODE -ne 0) {
+            throw "expo prebuild failed with exit code $LASTEXITCODE"
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    $generatedAndroid = Join-Path $stage "android"
+    if (-not (Test-Path $generatedAndroid)) {
+        throw "expo prebuild did not create android/ in staging folder."
+    }
+
+    Stop-AndroidGradleDaemons $MobileDir
+    Sync-AndroidFromStaging $generatedAndroid $androidDir
+    Assert-FloraAndroidDevPackage $androidDir
+
+    try {
+        Remove-LockedDirectory $stage
+    }
+    catch {
+        Write-Host "warning: could not remove staging folder (safe to ignore): $($_.Exception.Message)"
+    }
+}

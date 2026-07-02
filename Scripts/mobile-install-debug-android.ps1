@@ -63,10 +63,7 @@ $env:CI = "1"
 Push-Location $mobile
 try {
     Write-Host "expo prebuild (android, development variant) ..."
-    npx expo prebuild --platform android --clean
-    if ($LASTEXITCODE -ne 0) {
-        throw "expo prebuild failed with exit code $LASTEXITCODE"
-    }
+    Invoke-ExpoAndroidPrebuildClean $mobile
 
     npx expo run:android --no-bundler
     if ($LASTEXITCODE -ne 0) {
