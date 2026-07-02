@@ -26,9 +26,13 @@ export function resolveMessagesDockBottomInset(insets: EdgeInsets): number {
 }
 
 /**
+ * Android KSV opened offset. 0 = v3 Samsung. Step 2: composeShellPaddingKeyboard if gap > ~18px on a profile.
+ * Re-QA profile 1 (Samsung) after changing 0 → 15. Do not use +navInset.
+ */
+export const ANDROID_KSV_OPENED_OFFSET_PX = 0;
+
+/**
  * KSV closed/opened offsets — Android: nav at idle via translateY (shell has no nav padding).
- * opened: 0 = full KSV lift when IME open; tune to composeShellPaddingKeyboard (15px) if gap > ~18px.
- * Do not use opened: +navInset — over-compensates on Samsung 3-button + adjustPan.
  */
 export function keyboardStickyOffsets(navInsetPx: number): {
   closed: number;
@@ -39,7 +43,7 @@ export function keyboardStickyOffsets(navInsetPx: number): {
   }
   return {
     closed: -navInsetPx,
-    opened: 0,
+    opened: ANDROID_KSV_OPENED_OFFSET_PX,
   };
 }
 

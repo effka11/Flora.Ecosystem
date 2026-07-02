@@ -49,6 +49,8 @@ const KB_HEIGHT_EPSILON_PX = 2;
 export type DockGapDiagContext = {
   insetsBottom: number;
   systemNavBottomInset: number;
+  ksvClosed?: number;
+  ksvOpened?: number;
 };
 
 function logDockGapDiagnostics(
@@ -62,6 +64,8 @@ function logDockGapDiagnostics(
     keyboardOpen?: boolean;
     insetsBottom?: number;
     systemNavBottomInset?: number;
+    ksvClosed?: number;
+    ksvOpened?: number;
   },
   gapDiag?: DockGapDiagContext,
 ): void {
@@ -76,6 +80,8 @@ function logDockGapDiagnostics(
     windowDeltaFromScreen: screenHeight - windowHeight,
     insetsBottom: gapDiag?.insetsBottom ?? fields.insetsBottom,
     systemNavBottomInset: gapDiag?.systemNavBottomInset ?? fields.systemNavBottomInset,
+    ksvClosed: gapDiag?.ksvClosed ?? fields.ksvClosed,
+    ksvOpened: gapDiag?.ksvOpened ?? fields.ksvOpened,
     ...fields,
   });
 }
@@ -282,7 +288,14 @@ export function useChatComposeDock(gapDiag?: DockGapDiagContext): ChatComposeDoc
   const commitComposeBaseline = useCallback(
     (shellHeight: number) => {
       const prev = composeBaselineRef.current;
-      const baseline = prev > 0 ? prev : shellHeight;
+      const baseline =
+        Platform.OS === "android"
+          ? prev > 0
+            ? prev
+            : shellHeight
+          : prev > 0
+            ? Math.min(prev, shellHeight)
+            : shellHeight;
       if (prev !== baseline || prev <= 0) {
         composeBaselineRef.current = baseline;
         composeBaselineSv.value = baseline;

@@ -115,12 +115,15 @@ export default function ThreadScreen() {
   const navigation = useNavigation();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const systemNavBottomInset = resolveMessagesDockBottomInset(insets);
+  const dockKsvOffsets = keyboardStickyOffsets(systemNavBottomInset);
   const gapDiag = useMemo(
     () => ({
       insetsBottom: insets.bottom,
       systemNavBottomInset,
+      ksvClosed: dockKsvOffsets.closed,
+      ksvOpened: dockKsvOffsets.opened,
     }),
-    [insets.bottom, systemNavBottomInset],
+    [insets.bottom, systemNavBottomInset, dockKsvOffsets.closed, dockKsvOffsets.opened],
   );
 
   const {
