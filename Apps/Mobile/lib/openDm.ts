@@ -15,7 +15,10 @@ export type DmPeerParams = {
   otherUserLastSeenAt?: string | null;
 };
 
-function threadParamsFromConversation(item: MsgConversationDto): Record<string, string> {
+/** Типизированные маршруты expo-router требуют явного conversationUuid в params. */
+type ThreadRouteParams = Record<string, string> & { conversationUuid: string };
+
+function threadParamsFromConversation(item: MsgConversationDto): ThreadRouteParams {
   return threadParamsFromPeer(item.conversationUuid, {
     otherUserUuid: item.otherUserUuid,
     otherUsername: item.otherUsername,
@@ -29,7 +32,7 @@ function threadParamsFromConversation(item: MsgConversationDto): Record<string, 
 export function threadParamsFromPeer(
   conversationUuid: string,
   peer: DmPeerParams,
-): Record<string, string> {
+): ThreadRouteParams {
   return {
     conversationUuid,
     otherUserUuid: peer.otherUserUuid,

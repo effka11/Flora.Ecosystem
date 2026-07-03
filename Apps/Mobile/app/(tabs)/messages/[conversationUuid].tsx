@@ -23,7 +23,6 @@ import {
   BackHandler,
   FlatList,
   InteractionManager,
-  Keyboard,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -35,10 +34,7 @@ import {
   type ScrollViewProps,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  KeyboardStickyView,
-  OverKeyboardView,
-} from "react-native-keyboard-controller";
+import { KeyboardGestureArea } from "react-native-keyboard-controller";
 import Reanimated from "react-native-reanimated";
 import {
   ChatComposeField,
@@ -61,10 +57,8 @@ import {
 } from "@/lib/ChatScrollView";
 import {
   CHAT_AT_BOTTOM_THRESHOLD_PX,
-  composeKcsvOffsetPx,
-  DEV_DISABLE_KSV_ON_ANDROID,
+  COMPOSE_BASELINE_FALLBACK_PX,
   emojiPanelChromePadding,
-  emojiSlotTargetHeight,
   keyboardStickyOffsets,
   resolveMessagesDockBottomInset,
 } from "@/lib/messagesDockInsets";
@@ -115,44 +109,35 @@ export default function ThreadScreen() {
   const navigation = useNavigation();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const systemNavBottomInset = resolveMessagesDockBottomInset(insets);
-  const dockKsvOffsets = keyboardStickyOffsets(systemNavBottomInset);
-  const gapDiag = useMemo(
-    () => ({
-      insetsBottom: insets.bottom,
-      systemNavBottomInset,
-      ksvClosed: dockKsvOffsets.closed,
-      ksvOpened: dockKsvOffsets.opened,
-    }),
-    [insets.bottom, systemNavBottomInset, dockKsvOffsets.closed, dockKsvOffsets.opened],
-  );
 
   const {
+    dockStickyStyle,
     emojiSlotStyle,
     jumpBtnBottomStyle,
     dockExtraPaddingSv,
     freezeListSv,
+    listAnimatedRef,
+    onListLayout,
+    onListContentSizeChange,
     composeBaselinePx,
+    emojiPanelHeightPx,
     onComposeShellLayout,
     onDockColumnIdleLayout,
     setDeleteBarHeightPx,
     recalibrateComposeBaseline,
-    overKeyboardVisible,
     emojiPanelMounted,
-    emojiContentReady,
-    panelHeight,
-    emojiOpen,
+    emojiAccessoryActive,
     keyboardOpen,
+    composeDockActive,
     openEmoji,
     closeEmoji,
     showKeyboard,
+    dismissKeyboard,
     resetDock,
-  } = useChatComposeDock(gapDiag);
+  } = useChatComposeDock({ systemNavBottomInsetPx: systemNavBottomInset });
 
-  const [kcsvOffsetPx, setKcsvOffsetPx] = useState(() => composeKcsvOffsetPx(0));
-
-  useEffect(() => {
-    setKcsvOffsetPx(composeKcsvOffsetPx(composeBaselinePx));
-  }, [composeBaselinePx]);
+  /** Зона интерактивного свайпа над клавиатурой = высота закрытого дока. */
+  const kgaOffsetPx = composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
 
   const chatScrollViewRef = useRef<ChatScrollViewRef>(null);
   const composeRef = useRef<ChatComposeFieldHandle>(null);
@@ -181,7 +166,9 @@ export default function ThreadScreen() {
 
   useEffect(() => {
     resetDock();
-  }, [conversationUuid, resetDock]);
+    // resetDock is stable (ref-backed); only re-run on thread change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationUuid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -431,14 +418,23 @@ export default function ThreadScreen() {
     (props: ScrollViewProps) => (
       <ChatScrollView
         {...props}
-        offset={kcsvOffsetPx}
+        offset={kgaOffsetPx}
         extraContentPadding={dockExtraPaddingSv}
         freeze={freezeListSv}
-        keyboardLiftBehavior="whenAtEnd"
         chatScrollViewRef={chatScrollViewRef}
+        animatedRef={listAnimatedRef}
+        onListLayoutHeight={onListLayout}
+        onListContentHeight={onListContentSizeChange}
       />
     ),
-    [dockExtraPaddingSv, freezeListSv, kcsvOffsetPx],
+    [
+      dockExtraPaddingSv,
+      freezeListSv,
+      kgaOffsetPx,
+      listAnimatedRef,
+      onListContentSizeChange,
+      onListLayout,
+    ],
   );
 
   const onComposeTextChange = useCallback((next: string) => {
@@ -461,18 +457,23 @@ export default function ThreadScreen() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (overKeyboardVisible || emojiPanelMounted) {
+      if (emojiAccessoryActive) {
         closeEmoji();
         return true;
       }
       if (keyboardOpen) {
-        Keyboard.dismiss();
+        dismissKeyboard();
+        return true;
+      }
+      if (emojiPanelMounted) {
+        // Хвост перехода (панель ещё дотлевает под клавиатурой) — закрыть.
+        closeEmoji();
         return true;
       }
       return false;
     });
     return () => sub.remove();
-  }, [emojiPanelMounted, keyboardOpen, closeEmoji, overKeyboardVisible]);
+  }, [emojiAccessoryActive, emojiPanelMounted, keyboardOpen, closeEmoji, dismissKeyboard]);
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -482,11 +483,6 @@ export default function ThreadScreen() {
     onEndVisible(atBottom);
     dismissDeleteBar();
   }, [dismissDeleteBar, onEndVisible]);
-
-  useEffect(() => {
-    if (!keyboardOpen || !atBottomRef.current) return;
-    requestAnimationFrame(() => scrollToEnd(true));
-  }, [keyboardOpen, scrollToEnd]);
 
   const onMessageLongPress = useCallback((messageUuid: string) => {
     setActionMessageUuid(messageUuid);
@@ -527,7 +523,7 @@ export default function ThreadScreen() {
         },
       ]);
     },
-    [conversationUuid, otherUserUuid, queryClient],
+    [conversationUuid, otherUserUuid, queryClient, dismissDeleteBar],
   );
 
   const renderMessage = useCallback(
@@ -717,17 +713,13 @@ export default function ThreadScreen() {
     composeRef.current?.insertToken(emoji);
   }, []);
 
-  const emojiPanel =
-    emojiContentReady ? (
-      <ChatMessageEmojiPanel onPickEmoji={insertEmoji} />
-    ) : null;
-
-  const ksvOffset = keyboardStickyOffsets(systemNavBottomInset);
+  /** Хвост-заглушка под доком: idle-подъём на navInset не должен оголять ленту. */
+  const dockTailHeightPx = -keyboardStickyOffsets(systemNavBottomInset).closed;
 
   const composeBottomInset =
     Platform.OS === "android"
       ? 0
-      : keyboardOpen || overKeyboardVisible
+      : composeDockActive
         ? 0
         : systemNavBottomInset;
 
@@ -751,6 +743,12 @@ export default function ThreadScreen() {
         </Pressable>
       ) : null}
 
+      <KeyboardGestureArea
+        style={styles.chatBody}
+        interpolator="ios"
+        textInputNativeID="chat-compose-input"
+        offset={kgaOffsetPx}
+      >
       <View style={styles.messagesArea}>
         <FlatList
           key={conversationUuid}
@@ -790,12 +788,8 @@ export default function ThreadScreen() {
         ) : null}
       </View>
 
-      <KeyboardStickyView
-        enabled={!(__DEV__ && Platform.OS === "android" && DEV_DISABLE_KSV_ON_ANDROID)}
-        offset={ksvOffset}
-        style={styles.dockFooter}
-      >
-        <Reanimated.View
+      <Reanimated.View style={[styles.dockFooter, dockStickyStyle]}>
+        <View
           style={styles.dockColumn}
           onLayout={(e) => onDockColumnIdleLayout(e.nativeEvent.layout.height)}
         >
@@ -836,9 +830,11 @@ export default function ThreadScreen() {
             placeholder={blocked ? "Отправка недоступна" : "Сообщение"}
             bottomInset={composeBottomInset}
             onShellLayout={onComposeShellLayout}
-            emojiOpen={emojiOpen}
+            emojiAccessoryActive={emojiAccessoryActive}
             onRequestEmoji={openEmoji}
-            onRequestKeyboard={() => showKeyboard(() => composeRef.current?.focusInput())}
+            onRequestKeyboard={() =>
+              showKeyboard(() => composeRef.current?.showInputKeyboard())
+            }
             images={composeImages}
             onRemoveImageAt={removeImageAt}
             onPickImages={() => void onPickImages()}
@@ -856,29 +852,25 @@ export default function ThreadScreen() {
             onSendVoice={() => void onSendVoice()}
           />
 
-          {!overKeyboardVisible && emojiPanelMounted ? (
+          {emojiPanelMounted ? (
             <Reanimated.View style={[styles.emojiSlot, emojiSlotStyle]}>
-              <View style={styles.emojiPanelCard}>{emojiPanel}</View>
+              {/* Контент — фиксированная высота, top-anchored: слот лишь клипует,
+                  наполнение панели никогда не влияет на её высоту и не лэйаутится
+                  в кадрах анимации. */}
+              <View style={[styles.emojiPanelFixed, { height: emojiPanelHeightPx }]}>
+                <View style={styles.emojiPanelCard}>
+                  <ChatMessageEmojiPanel onPickEmoji={insertEmoji} />
+                </View>
+              </View>
             </Reanimated.View>
           ) : null}
-        </Reanimated.View>
-      </KeyboardStickyView>
-
-      <OverKeyboardView visible={overKeyboardVisible}>
-        <View style={styles.overKeyboardRoot} pointerEvents="box-none">
-          <View style={styles.overKeyboardPassThrough} pointerEvents="none" />
-          <View
-            style={[
-              styles.overKeyboardPanel,
-              emojiPanelChromePadding,
-              { height: emojiSlotTargetHeight(panelHeight) },
-            ]}
-            pointerEvents="auto"
-          >
-            <View style={styles.emojiPanelCard}>{emojiPanel}</View>
-          </View>
         </View>
-      </OverKeyboardView>
+
+        {dockTailHeightPx > 0 ? (
+          <View style={[styles.dockTail, { height: dockTailHeightPx }]} />
+        ) : null}
+      </Reanimated.View>
+      </KeyboardGestureArea>
 
       <ChatMoreMenu
         open={moreMenuOpen}
@@ -919,6 +911,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  chatBody: {
+    flex: 1,
+    minHeight: 0,
+  },
   messagesArea: {
     flex: 1,
     minHeight: 0,
@@ -927,7 +923,15 @@ const styles = StyleSheet.create({
   listFill: {
     ...StyleSheet.absoluteFill,
   },
+  /**
+   * Док — absolute-оверлей у низа: рост слота не влияет на layout ленты
+   * (лента компенсируется через extraContentPadding), двигается transform-ом.
+   */
   dockFooter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 20,
     elevation: 20,
     backgroundColor: floraColors.bg,
@@ -935,18 +939,25 @@ const styles = StyleSheet.create({
   dockColumn: {
     backgroundColor: floraColors.bg,
   },
+  /** Заглушка под доком: закрывает полосу navInset при idle-подъёме (Android). */
+  dockTail: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    backgroundColor: floraColors.bg,
+  },
   emojiSlot: {
     overflow: "hidden",
+  },
+  /** Фиксированный слой панели: высота = panelTarget, живёт под верхом слота. */
+  emojiPanelFixed: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     ...emojiPanelChromePadding,
   },
-  overKeyboardRoot: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  overKeyboardPassThrough: {
-    flex: 1,
-  },
-  overKeyboardPanel: {},
   emojiPanelCard: {
     flex: 1,
     borderRadius: floraMessages.emojiPanelRadius,

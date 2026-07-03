@@ -1,31 +1,38 @@
 import { forwardRef, useCallback, type RefObject } from "react";
-import { Platform, type ScrollViewProps } from "react-native";
+import { Platform, type LayoutChangeEvent, type ScrollViewProps } from "react-native";
 import { KeyboardChatScrollView } from "react-native-keyboard-controller";
-import type { SharedValue } from "react-native-reanimated";
+import type Reanimated from "react-native-reanimated";
+import type { AnimatedRef, SharedValue } from "react-native-reanimated";
 
 export type ChatScrollViewRef = React.ElementRef<typeof KeyboardChatScrollView>;
 
-type KeyboardLiftBehavior = "always" | "whenAtEnd" | "persistent" | "never";
-
 export type ChatScrollViewKcsvProps = {
+  /** KGA/KCSV offset (не используется при freeze=true, оставлен для контракта). */
   offset: number;
   extraContentPadding: SharedValue<number>;
   freeze: SharedValue<boolean>;
-  keyboardLiftBehavior?: KeyboardLiftBehavior;
 };
 
 type Props = ScrollViewProps &
   ChatScrollViewKcsvProps & {
     chatScrollViewRef?: RefObject<ChatScrollViewRef | null>;
+    /** Animated-ref дока (worklet-scrollTo) — регистрируется на том же инстансе. */
+    animatedRef?: AnimatedRef<Reanimated.ScrollView>;
+    onListLayoutHeight?: (height: number) => void;
+    onListContentHeight?: (height: number) => void;
   };
 
 export const ChatScrollView = forwardRef<ChatScrollViewRef, Props>(function ChatScrollView(
   {
     chatScrollViewRef,
+    animatedRef,
+    onListLayoutHeight,
+    onListContentHeight,
     offset,
     extraContentPadding,
     freeze,
-    keyboardLiftBehavior = "whenAtEnd",
+    onLayout,
+    onContentSizeChange,
     ...scrollProps
   },
   ref,
@@ -40,8 +47,27 @@ export const ChatScrollView = forwardRef<ChatScrollViewRef, Props>(function Chat
       if (chatScrollViewRef) {
         chatScrollViewRef.current = instance;
       }
+      if (animatedRef && instance) {
+        animatedRef(instance);
+      }
     },
-    [chatScrollViewRef, ref],
+    [animatedRef, chatScrollViewRef, ref],
+  );
+
+  const handleLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      onListLayoutHeight?.(e.nativeEvent.layout.height);
+      onLayout?.(e);
+    },
+    [onLayout, onListLayoutHeight],
+  );
+
+  const handleContentSizeChange = useCallback(
+    (w: number, h: number) => {
+      onListContentHeight?.(h);
+      onContentSizeChange?.(w, h);
+    },
+    [onContentSizeChange, onListContentHeight],
   );
 
   return (
@@ -53,7 +79,10 @@ export const ChatScrollView = forwardRef<ChatScrollViewRef, Props>(function Chat
       offset={offset}
       extraContentPadding={extraContentPadding}
       freeze={freeze}
-      keyboardLiftBehavior={keyboardLiftBehavior}
+      keyboardLiftBehavior="whenAtEnd"
+      keyboardDismissMode="interactive"
+      onLayout={handleLayout}
+      onContentSizeChange={handleContentSizeChange}
       {...scrollProps}
     />
   );

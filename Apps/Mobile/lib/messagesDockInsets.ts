@@ -47,30 +47,31 @@ export function keyboardStickyOffsets(navInsetPx: number): {
   };
 }
 
-/** KCSV offset = closed dock shell height (baseline from onLayout, without nav padding on Android A+). */
-export function composeKcsvOffsetPx(composeBaselinePx: number): number {
-  return composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
-}
+/** Защита от floating/split-клавиатур: панель не может быть ниже этого. */
+export const EMOJI_PANEL_MIN_PX = 180;
+
+/** Панель не выше 55% окна (защита от мусорных значений высоты IME). */
+export const EMOJI_PANEL_MAX_WINDOW_RATIO = 0.55;
 
 /**
- * __DEV__ only: set true to disable KeyboardStickyView on Android and confirm resize+KSV
- * double-lift (gap should shrink if adjustResize alone positions the dock). Revert before merge.
+ * Высота панели в координатах подъёма дока.
+ *
+ * Подъём дока при полностью открытой клавиатуре = kbH + ksvClosed - ksvOpened
+ * (Android: kbH - navInset, iOS: kbH). Чтобы поле ввода при переключении
+ * клавиатура <-> эмодзи стояло на месте, панель обязана занять ровно этот подъём.
  */
-export const DEV_DISABLE_KSV_ON_ANDROID = false;
-
-/**
- * Animated emoji slot outer height: gap above panel + panel + gap below.
- * Padding on the slot view must match {@link emojiPanelChromePadding}.
- */
-export function emojiSlotTargetHeight(panelHeightPx: number): number {
-  return (
-    panelHeightPx +
-    floraMessages.emojiPanelOuterGap +
-    floraMessages.emojiPanelBottomExtra
-  );
+export function emojiPanelDockHeightPx(
+  keyboardHeightPx: number,
+  ksvClosedPx: number,
+  ksvOpenedPx: number,
+  windowHeightPx: number,
+): number {
+  const raw = keyboardHeightPx + ksvClosedPx - ksvOpenedPx;
+  const max = Math.round(windowHeightPx * EMOJI_PANEL_MAX_WINDOW_RATIO);
+  return Math.min(Math.max(raw, EMOJI_PANEL_MIN_PX), max);
 }
 
-/** Padding inside emoji slot / OverKeyboard panel — must match emojiSlotTargetHeight formula. */
+/** Внутренние отступы контента панели (панель = fixed-height слой в слоте дока). */
 export const emojiPanelChromePadding = {
   paddingTop: floraMessages.emojiPanelOuterGap,
   paddingHorizontal: floraMessages.emojiPanelOuterGap,

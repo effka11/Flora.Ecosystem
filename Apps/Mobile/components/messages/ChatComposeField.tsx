@@ -8,6 +8,7 @@ import {
   View,
   type TextInputSelectionChangeEvent,
 } from "react-native";
+import { KeyboardController } from "react-native-keyboard-controller";
 import { ChatComposeImageStrip } from "@/components/messages/ChatComposeImageStrip";
 import { ChatVoiceComposeBar } from "@/components/messages/ChatVoiceComposeBar";
 import type { DraftMessageImage } from "@/lib/useMessageComposeImages";
@@ -16,6 +17,12 @@ import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 export type ChatComposeFieldHandle = {
   insertToken: (token: string) => void;
   focusInput: () => void;
+  blurInput: () => void;
+  /**
+   * Поднять IME. После dismiss({keepFocus}) инпут остаётся сфокусированным,
+   * и JS focus() — no-op; setFocusTo("current") форсит показ клавиатуры нативно.
+   */
+  showInputKeyboard: () => void;
 };
 
 type Props = {
@@ -26,7 +33,7 @@ type Props = {
   disabled: boolean;
   placeholder?: string;
   bottomInset?: number;
-  emojiOpen: boolean;
+  emojiAccessoryActive: boolean;
   onRequestEmoji: () => void;
   onRequestKeyboard: () => void;
   images?: DraftMessageImage[];
@@ -34,6 +41,7 @@ type Props = {
   onPickImages?: () => void;
   hasPendingImages?: boolean;
   onShellLayout?: (height: number) => void;
+  onInputFocus?: () => void;
   voiceMode?: boolean;
   voiceRecording?: boolean;
   voiceShowStopControl?: boolean;
@@ -56,7 +64,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     disabled,
     placeholder = "Сообщение",
     bottomInset = floraSpacing.grid,
-    emojiOpen,
+    emojiAccessoryActive,
     onRequestEmoji,
     onRequestKeyboard,
     images = [],
@@ -64,6 +72,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     onPickImages,
     hasPendingImages = false,
     onShellLayout,
+    onInputFocus,
     voiceMode = false,
     voiceRecording = false,
     voiceShowStopControl = false,
@@ -112,13 +121,24 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     [onChangeText],
   );
 
+  const showInputKeyboard = useCallback(() => {
+    if (inputRef.current?.isFocused()) {
+      // Фокус сохранён после dismiss({keepFocus}) — JS focus() был бы no-op.
+      KeyboardController.setFocusTo("current");
+      return;
+    }
+    inputRef.current?.focus();
+  }, []);
+
   useImperativeHandle(
     ref,
     () => ({
       insertToken,
       focusInput: () => inputRef.current?.focus(),
+      blurInput: () => inputRef.current?.blur(),
+      showInputKeyboard,
     }),
-    [insertToken],
+    [insertToken, showInputKeyboard],
   );
 
   const handleEmojiPress = useCallback(() => {
@@ -126,17 +146,16 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     if (voiceMode) {
       onDiscardVoice?.();
     }
-    if (emojiOpen) {
+    if (emojiAccessoryActive) {
       onRequestKeyboard();
     } else {
       onRequestEmoji();
     }
-  }, [disabled, emojiOpen, onDiscardVoice, onRequestEmoji, onRequestKeyboard, voiceMode]);
+  }, [disabled, emojiAccessoryActive, onDiscardVoice, onRequestEmoji, onRequestKeyboard, voiceMode]);
 
-  const handleInputPress = useCallback(() => {
-    if (disabled || !emojiOpen) return;
-    onRequestKeyboard();
-  }, [disabled, emojiOpen, onRequestKeyboard]);
+  const handleInputFocus = useCallback(() => {
+    onInputFocus?.();
+  }, [onInputFocus]);
 
   const reportShellLayout = useCallback(
     (event: { nativeEvent: { layout: { height: number } } }) => {
@@ -144,6 +163,8 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     },
     [onShellLayout],
   );
+
+  const emojiChrome = emojiAccessoryActive;
 
   if (voiceMode) {
     return (
@@ -194,8 +215,12 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
         </Pressable>
 
         <View style={styles.inputWrap}>
+          {/* Инпут всегда с showSoftInputOnFocus: тап по сфокусированному полю
+              при открытой панели сам поднимает IME, keyboardWillShow в хуке дока
+              переводит режим в keyboard. Оверлеи и переключение флага не нужны. */}
           <TextInput
             ref={inputRef}
+            nativeID="chat-compose-input"
             style={styles.input}
             placeholder={placeholder}
             placeholderTextColor={floraColors.gray}
@@ -206,30 +231,22 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
             multiline
             maxLength={4000}
             textAlignVertical="center"
-            showSoftInputOnFocus={!emojiOpen}
+            onFocus={handleInputFocus}
           />
-          {emojiOpen ? (
-            <Pressable
-              style={styles.inputOverlay}
-              onPress={handleInputPress}
-              accessibilityRole="button"
-              accessibilityLabel="Показать клавиатуру"
-            />
-          ) : null}
         </View>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={emojiOpen ? "Показать клавиатуру" : "Стикеры и эмодзи"}
-          accessibilityState={{ expanded: emojiOpen }}
+          accessibilityLabel={emojiChrome ? "Показать клавиатуру" : "Стикеры и эмодзи"}
+          accessibilityState={{ expanded: emojiChrome }}
           style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
           onPress={handleEmojiPress}
           disabled={disabled}
         >
           <Ionicons
-            name={emojiOpen ? "happy" : "happy-outline"}
+            name={emojiChrome ? "keypad-outline" : "happy-outline"}
             size={20}
-            color={emojiOpen ? floraColors.greenLight : floraColors.gray}
+            color={floraColors.gray}
           />
         </Pressable>
 
@@ -301,10 +318,6 @@ const styles = StyleSheet.create({
     maxHeight: floraSpacing.grid * 10,
     justifyContent: "center",
     alignSelf: "stretch",
-    position: "relative",
-  },
-  inputOverlay: {
-    ...StyleSheet.absoluteFill,
   },
   input: {
     color: floraColors.whiteTemplate,

@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "social.flora.mobile",
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "resize",
       "versionCode": 2,
       "googleServicesFile": "./google-services.json",
       "backgroundColor": "#0c0c0c",

@@ -10,11 +10,11 @@ import { messageDeliveryState } from "@/lib/messageDeliveryState";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 import {
   StyleSheet,
-  Text,
   View,
   Pressable,
   useWindowDimensions,
   type LayoutChangeEvent,
+  type StyleProp,
   type ViewStyle,
 } from "react-native";
 import type { ChatPeerInfo } from "./ChatThreadHeader";
@@ -118,7 +118,7 @@ function MessageBubbleColumn({
   onLongPressOwn,
   children,
 }: {
-  anchorStyle: ViewStyle | ViewStyle[];
+  anchorStyle: StyleProp<ViewStyle>;
   onLayout?: (event: LayoutChangeEvent) => void;
   isFromMe: boolean;
   selected?: boolean;

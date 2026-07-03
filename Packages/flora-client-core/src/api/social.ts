@@ -12,7 +12,7 @@ function ctx() {
 
 export async function apiGetFeed(input?: {
   kind?: "recommendations" | "subscriptions";
-  cursor?: string;y
+  cursor?: string;
   refresh?: boolean;
   take?: number;
 }) {
