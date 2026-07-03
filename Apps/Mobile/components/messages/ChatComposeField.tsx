@@ -34,8 +34,12 @@ type Props = {
   placeholder?: string;
   bottomInset?: number;
   emojiAccessoryActive: boolean;
-  onRequestEmoji: () => void;
-  onRequestKeyboard: () => void;
+  /**
+   * Единый тап по кнопке эмодзи/клавиатуры: решение «что делать» принимает
+   * хук дока по своему свежему ref-состоянию, а не по prop-у рендера —
+   * быстрая серия тапов не расходится с фактическим режимом.
+   */
+  onToggleEmoji: () => void;
   images?: DraftMessageImage[];
   onRemoveImageAt?: (index: number) => void;
   onPickImages?: () => void;
@@ -65,8 +69,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     placeholder = "Сообщение",
     bottomInset = floraSpacing.grid,
     emojiAccessoryActive,
-    onRequestEmoji,
-    onRequestKeyboard,
+    onToggleEmoji,
     images = [],
     onRemoveImageAt,
     onPickImages,
@@ -146,12 +149,8 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     if (voiceMode) {
       onDiscardVoice?.();
     }
-    if (emojiAccessoryActive) {
-      onRequestKeyboard();
-    } else {
-      onRequestEmoji();
-    }
-  }, [disabled, emojiAccessoryActive, onDiscardVoice, onRequestEmoji, onRequestKeyboard, voiceMode]);
+    onToggleEmoji();
+  }, [disabled, onDiscardVoice, onToggleEmoji, voiceMode]);
 
   const handleInputFocus = useCallback(() => {
     onInputFocus?.();
@@ -166,30 +165,6 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
 
   const emojiChrome = emojiAccessoryActive;
 
-  if (voiceMode) {
-    return (
-      <View
-        onLayout={reportShellLayout}
-        style={{
-          paddingBottom: bottomInset + floraMessages.composeShellPaddingBottomExtra,
-        }}
-      >
-        <ChatVoiceComposeBar
-          recording={voiceRecording}
-          showStopControl={voiceShowStopControl}
-          recordingStartedAt={voiceRecordingStartedAt}
-          waveform={voiceWaveform}
-          transcoding={voiceTranscoding}
-          onDiscard={() => onDiscardVoice?.()}
-          onStop={() => onStopVoice?.()}
-          onSend={() => onSendVoice?.()}
-          sending={sending}
-          canSend={voiceCanSend}
-        />
-      </View>
-    );
-  }
-
   return (
     <View
       onLayout={reportShellLayout}
@@ -200,85 +175,112 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
         },
       ]}
     >
-      {images.length > 0 && onRemoveImageAt ? (
+      {!voiceMode && images.length > 0 && onRemoveImageAt ? (
         <ChatComposeImageStrip images={images} onRemoveAt={onRemoveImageAt} />
       ) : null}
-      <View style={styles.field}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Прикрепить фото"
-          style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
-          disabled={disabled || !onPickImages}
-          onPress={onPickImages}
+
+      <View style={styles.fieldZone}>
+        {/* В voice-режиме строка поля остаётся в потоке С ПОЛНЫМ layout-ом
+            (только opacity:0 под оверлеем): TextInput не перемещается и не
+            клипается — Android IME не получает поводов закрыться, а высота
+            shell тождественна текстовому режиму (baseline не плывёт). */}
+        <View
+          style={[styles.field, voiceMode && styles.fieldUnderVoice]}
+          pointerEvents={voiceMode ? "none" : "auto"}
         >
-          <Ionicons name="add" size={20} color={disabled || !onPickImages ? floraColors.gray : floraColors.greenLight} />
-        </Pressable>
-
-        <View style={styles.inputWrap}>
-          {/* Инпут всегда с showSoftInputOnFocus: тап по сфокусированному полю
-              при открытой панели сам поднимает IME, keyboardWillShow в хуке дока
-              переводит режим в keyboard. Оверлеи и переключение флага не нужны. */}
-          <TextInput
-            ref={inputRef}
-            nativeID="chat-compose-input"
-            style={styles.input}
-            placeholder={placeholder}
-            placeholderTextColor={floraColors.gray}
-            value={value}
-            onChangeText={onChangeText}
-            onSelectionChange={onSelectionChange}
-            editable={!disabled}
-            multiline
-            maxLength={4000}
-            textAlignVertical="center"
-            onFocus={handleInputFocus}
-          />
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={emojiChrome ? "Показать клавиатуру" : "Стикеры и эмодзи"}
-          accessibilityState={{ expanded: emojiChrome }}
-          style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
-          onPress={handleEmojiPress}
-          disabled={disabled}
-        >
-          <Ionicons
-            name={emojiChrome ? "keypad-outline" : "happy-outline"}
-            size={20}
-            color={floraColors.gray}
-          />
-        </Pressable>
-
-        {canSendText ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Отправить"
+            accessibilityLabel="Прикрепить фото"
             style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
-            onPress={onSend}
-            disabled={!canSendText}
+            disabled={disabled || !onPickImages}
+            onPress={onPickImages}
           >
-            {sending ? (
-              <ActivityIndicator color={floraColors.greenLight} size="small" />
-            ) : (
-              <Ionicons name="send" size={18} color={floraColors.greenLight} />
-            )}
+            <Ionicons name="add" size={20} color={disabled || !onPickImages ? floraColors.gray : floraColors.greenLight} />
           </Pressable>
-        ) : (
+
+          <View style={styles.inputWrap}>
+            {/* Инпут всегда с showSoftInputOnFocus: тап по сфокусированному полю
+                при открытой панели сам поднимает IME, keyboardWillShow в хуке дока
+                переводит режим в keyboard. Оверлеи и переключение флага не нужны. */}
+            <TextInput
+              ref={inputRef}
+              nativeID="chat-compose-input"
+              style={styles.input}
+              placeholder={placeholder}
+              placeholderTextColor={floraColors.gray}
+              value={value}
+              onChangeText={onChangeText}
+              onSelectionChange={onSelectionChange}
+              editable={!disabled}
+              multiline
+              maxLength={4000}
+              textAlignVertical="center"
+              onFocus={handleInputFocus}
+            />
+          </View>
+
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Голосовое сообщение"
+            accessibilityLabel={emojiChrome ? "Показать клавиатуру" : "Стикеры и эмодзи"}
+            accessibilityState={{ expanded: emojiChrome }}
             style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
-            disabled={!canStartVoice}
-            onPress={onStartVoice}
+            onPress={handleEmojiPress}
+            disabled={disabled}
           >
             <Ionicons
-              name="mic-outline"
+              name={emojiChrome ? "keypad-outline" : "happy-outline"}
               size={20}
-              color={canStartVoice ? floraColors.greenLight : floraColors.gray}
+              color={floraColors.gray}
             />
           </Pressable>
-        )}
+
+          {canSendText ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Отправить"
+              style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
+              onPress={onSend}
+              disabled={!canSendText}
+            >
+              {sending ? (
+                <ActivityIndicator color={floraColors.greenLight} size="small" />
+              ) : (
+                <Ionicons name="send" size={18} color={floraColors.greenLight} />
+              )}
+            </Pressable>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Голосовое сообщение"
+              style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
+              disabled={!canStartVoice}
+              onPress={onStartVoice}
+            >
+              <Ionicons
+                name="mic-outline"
+                size={20}
+                color={canStartVoice ? floraColors.greenLight : floraColors.gray}
+              />
+            </Pressable>
+          )}
+        </View>
+
+        {voiceMode ? (
+          <View style={styles.voiceOverlay}>
+            <ChatVoiceComposeBar
+              recording={voiceRecording}
+              showStopControl={voiceShowStopControl}
+              recordingStartedAt={voiceRecordingStartedAt}
+              waveform={voiceWaveform}
+              transcoding={voiceTranscoding}
+              onDiscard={() => onDiscardVoice?.()}
+              onStop={() => onStopVoice?.()}
+              onSend={() => onSendVoice?.()}
+              sending={sending}
+              canSend={voiceCanSend}
+            />
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -302,6 +304,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: floraMessages.composeFieldPaddingHorizontal,
     paddingVertical: floraMessages.composeFieldPaddingVertical,
     minHeight: floraMessages.composeFieldMinHeight,
+  },
+  /** Стек «поле + voice-оверлей»: оба слоя одной геометрии pill. */
+  fieldZone: {
+    position: "relative",
+  },
+  /**
+   * Voice-режим: поле полностью сохраняет layout и фокус (только прозрачное).
+   * Любые манипуляции с размером/клипом сфокусированного TextInput на части
+   * Android IME приводят к закрытию клавиатуры — поэтому только opacity.
+   */
+  fieldUnderVoice: {
+    opacity: 0,
+  },
+  /** Оверлей voice-бара строго поверх поля; фон гасит просветы под pill. */
+  voiceOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    backgroundColor: floraColors.bg,
   },
   chromeBtn: {
     width: floraMessages.composeChromeBtn,

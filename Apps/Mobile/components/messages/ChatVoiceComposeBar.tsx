@@ -3,7 +3,7 @@ import { memo, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { ChatVoiceLiveWaveform } from "@/components/messages/ChatVoiceLiveWaveform";
 import { ChatVoiceWaveform } from "@/components/messages/ChatVoiceWaveform";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { floraColors, floraMessages } from "@/lib/theme";
 import { formatVoiceDuration } from "@/lib/voiceWaveform";
 
 type Props = {
@@ -48,74 +48,69 @@ function ChatVoiceComposeBarInner({
   const stopVisible = showStopControl || recording;
 
   return (
-    <View style={styles.shell}>
-      <View style={styles.row}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Удалить запись"
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
-          onPress={onDiscard}
-        >
-          <Ionicons name="trash-outline" size={20} color={floraColors.gray} />
-        </Pressable>
+    <View style={styles.row}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Удалить запись"
+        style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+        onPress={onDiscard}
+      >
+        <Ionicons name="trash-outline" size={20} color={floraColors.gray} />
+      </Pressable>
 
-        <Text style={styles.timer}>{timerLabel}</Text>
+      <Text style={styles.timer}>{timerLabel}</Text>
 
-        <View style={styles.waveArea}>
-          {recording ? (
-            <ChatVoiceLiveWaveform isFromMe />
-          ) : (
-            <ChatVoiceWaveform levels={waveform} isFromMe />
-          )}
-        </View>
-
-        {stopVisible ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Остановить запись"
-            hitSlop={10}
-            android_disableSound
-            style={({ pressed }) => [styles.stopBtn, pressed && styles.iconBtnPressed]}
-            onPress={onStop}
-          >
-            <View style={styles.stopSquare} />
-          </Pressable>
-        ) : transcoding ? (
-          <View style={styles.iconBtn}>
-            <ActivityIndicator color={floraColors.greenLight} size="small" />
-          </View>
+      <View style={styles.waveArea}>
+        {recording ? (
+          <ChatVoiceLiveWaveform isFromMe />
         ) : (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Отправить голосовое"
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
-            onPress={onSend}
-            disabled={!canSend || sending}
-          >
-            {sending ? (
-              <ActivityIndicator color={floraColors.greenLight} size="small" />
-            ) : (
-              <Ionicons
-                name="send"
-                size={18}
-                color={canSend ? floraColors.greenLight : floraColors.gray}
-              />
-            )}
-          </Pressable>
+          <ChatVoiceWaveform levels={waveform} isFromMe />
         )}
       </View>
+
+      {stopVisible ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Остановить запись"
+          hitSlop={10}
+          android_disableSound
+          style={({ pressed }) => [styles.stopBtn, pressed && styles.iconBtnPressed]}
+          onPress={onStop}
+        >
+          <View style={styles.stopSquare} />
+        </Pressable>
+      ) : transcoding ? (
+        <View style={styles.iconBtn}>
+          <ActivityIndicator color={floraColors.greenLight} size="small" />
+        </View>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Отправить голосовое"
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+          onPress={onSend}
+          disabled={!canSend || sending}
+        >
+          {sending ? (
+            <ActivityIndicator color={floraColors.greenLight} size="small" />
+          ) : (
+            <Ionicons
+              name="send"
+              size={18}
+              color={canSend ? floraColors.greenLight : floraColors.gray}
+            />
+          )}
+        </Pressable>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  shell: {
-    paddingHorizontal: floraSpacing.grid,
-    paddingTop: floraMessages.composeShellPaddingTop,
-    borderTopWidth: 1,
-    borderTopColor: floraMessages.divider,
-    backgroundColor: floraColors.bg,
-  },
+  /**
+   * Ровно та же геометрия pill, что у styles.field в ChatComposeField:
+   * бар рендерится внутри общего shell и обязан совпадать по высоте с полем.
+   */
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -124,7 +119,7 @@ const styles = StyleSheet.create({
     borderColor: floraMessages.composeBorderColor,
     borderRadius: floraMessages.composeRadius,
     paddingHorizontal: floraMessages.composeFieldPaddingHorizontal,
-    paddingVertical: floraSpacing.gridFine * 2,
+    paddingVertical: floraMessages.composeFieldPaddingVertical,
     minHeight: floraMessages.composeFieldMinHeight,
   },
   iconBtn: {

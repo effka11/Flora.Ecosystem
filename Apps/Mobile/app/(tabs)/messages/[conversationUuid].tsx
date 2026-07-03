@@ -112,7 +112,7 @@ export default function ThreadScreen() {
 
   const {
     dockStickyStyle,
-    emojiSlotStyle,
+    emojiPanelLayerStyle,
     jumpBtnBottomStyle,
     dockExtraPaddingSv,
     freezeListSv,
@@ -121,6 +121,7 @@ export default function ThreadScreen() {
     onListContentSizeChange,
     composeBaselinePx,
     emojiPanelHeightPx,
+    emojiPanelReady,
     onComposeShellLayout,
     onDockColumnIdleLayout,
     setDeleteBarHeightPx,
@@ -129,9 +130,8 @@ export default function ThreadScreen() {
     emojiAccessoryActive,
     keyboardOpen,
     composeDockActive,
-    openEmoji,
     closeEmoji,
-    showKeyboard,
+    toggleEmoji,
     dismissKeyboard,
     resetDock,
   } = useChatComposeDock({ systemNavBottomInsetPx: systemNavBottomInset });
@@ -548,12 +548,13 @@ export default function ThreadScreen() {
     if (error) Alert.alert("Фото", error);
   }, [canSend, pickImages]);
 
+  // Голосовой режим не трогает клавиатуру/панель: инпут остаётся смонтированным
+  // и сфокусированным (ChatComposeField прячет его, не размонтируя).
   const onStartVoice = useCallback(async () => {
     if (!canSend() || !otherUserUuid) return;
-    closeEmoji();
     enterVoiceMode();
     await voiceRecorder.start();
-  }, [canSend, closeEmoji, enterVoiceMode, otherUserUuid, voiceRecorder]);
+  }, [canSend, enterVoiceMode, otherUserUuid, voiceRecorder]);
 
   const onDiscardVoice = useCallback(async () => {
     await voiceRecorder.discard();
@@ -831,9 +832,8 @@ export default function ThreadScreen() {
             bottomInset={composeBottomInset}
             onShellLayout={onComposeShellLayout}
             emojiAccessoryActive={emojiAccessoryActive}
-            onRequestEmoji={openEmoji}
-            onRequestKeyboard={() =>
-              showKeyboard(() => composeRef.current?.showInputKeyboard())
+            onToggleEmoji={() =>
+              toggleEmoji(() => composeRef.current?.showInputKeyboard())
             }
             images={composeImages}
             onRemoveImageAt={removeImageAt}
@@ -852,24 +852,51 @@ export default function ThreadScreen() {
             onSendVoice={() => void onSendVoice()}
           />
 
-          {emojiPanelMounted ? (
-            <Reanimated.View style={[styles.emojiSlot, emojiSlotStyle]}>
-              {/* Контент — фиксированная высота, top-anchored: слот лишь клипует,
-                  наполнение панели никогда не влияет на её высоту и не лэйаутится
-                  в кадрах анимации. */}
-              <View style={[styles.emojiPanelFixed, { height: emojiPanelHeightPx }]}>
-                <View style={styles.emojiPanelCard}>
-                  <ChatMessageEmojiPanel onPickEmoji={insertEmoji} />
-                </View>
-              </View>
-            </Reanimated.View>
-          ) : null}
         </View>
 
-        {dockTailHeightPx > 0 ? (
+        {/* При смонтированной панели полосу navInset закрывает статичная
+            шторка (см. emojiNavShutter): хвост едет с доком и при открытой
+            панели перекрыл бы её верх (z дока выше). Подмена одноимённой
+            полосы происходит в одном коммите — попиксельно незаметна. */}
+        {dockTailHeightPx > 0 && !emojiPanelMounted ? (
           <View style={[styles.dockTail, { height: dockTailHeightPx }]} />
         ) : null}
       </Reanimated.View>
+
+      {emojiPanelMounted ? (
+        /* Панель — фиксированный слой у низа экрана (top: 100% контейнера),
+           едет тем же transform-ом, что и док: верх слоя всегда совпадает с
+           нижней гранью дока, layout считается один раз при маунте.
+           +navInset к высоте: нижняя полоса подложки доводит фон до низа окна
+           при полностью открытой панели. */
+        <Reanimated.View
+          style={[
+            styles.emojiPanelUnderlay,
+            { height: emojiPanelHeightPx + dockTailHeightPx },
+            emojiPanelLayerStyle,
+          ]}
+        >
+          <View style={[styles.emojiPanelFixed, { height: emojiPanelHeightPx }]}>
+            <View style={styles.emojiPanelCard}>
+              {/* Тяжёлый контент — после осадки дока: React-коммит грида не
+                  должен попадать в кадры transform-анимации (источник рывков). */}
+              {emojiPanelReady ? <ChatMessageEmojiPanel onPickEmoji={insertEmoji} /> : null}
+            </View>
+          </View>
+        </Reanimated.View>
+      ) : null}
+
+      {emojiPanelMounted && dockTailHeightPx > 0 ? (
+        /* Статичная шторка nav-зоны (z между панелью и доком): в покое слой
+           панели выглядывал бы из-за нижней грани на navInset (там transform
+           дока даёт зазор) — шторка прячет его до старта анимации и превращает
+           закрытие в уход карточки за край. При открытой панели она же —
+           пустая полоса над системной навигацией (как у IME). */
+        <View
+          pointerEvents="none"
+          style={[styles.emojiNavShutter, { height: dockTailHeightPx }]}
+        />
+      ) : null}
       </KeyboardGestureArea>
 
       <ChatMoreMenu
@@ -947,16 +974,32 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: floraColors.bg,
   },
-  emojiSlot: {
-    overflow: "hidden",
-  },
-  /** Фиксированный слой панели: высота = panelTarget, живёт под верхом слота. */
-  emojiPanelFixed: {
+  /**
+   * Слой панели: сиблинг дока, верх на нижней грани контейнера чата (top:100%),
+   * двигается тем же transform-ом, что и док. z ниже дока, выше ленты.
+   */
+  emojiPanelUnderlay: {
     position: "absolute",
-    top: 0,
+    top: "100%",
     left: 0,
     right: 0,
+    zIndex: 15,
+    elevation: 15,
+    backgroundColor: floraColors.bg,
+  },
+  /** Фиксированный слой панели: высота = panelTarget, лэйаутится один раз. */
+  emojiPanelFixed: {
     ...emojiPanelChromePadding,
+  },
+  /** Статичная шторка nav-зоны при смонтированной панели (z: панель < шторка < док). */
+  emojiNavShutter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 18,
+    elevation: 18,
+    backgroundColor: floraColors.bg,
   },
   emojiPanelCard: {
     flex: 1,

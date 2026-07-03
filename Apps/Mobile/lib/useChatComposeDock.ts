@@ -41,13 +41,16 @@ import { floraSpacing } from "@/lib/theme";
  * Compose dock v11 — единый Reanimated-конвейер, один «писатель» скролла.
  *
  * Геометрия. Док — absolute-оверлей у нижней грани экрана; его layout не
- * влияет на ленту. Подъём раскладывается на два слагаемых:
- *  - translateY дока = ksvClosed - kbLift — чистый follower клавиатуры (transform);
- *  - высота слота под полем = max(0, emojiLift - kbLift) — заполняет зазор
- *    между полем ввода и клавиатурой/низом экрана.
- * Позиция поля ввода = idle + max(kbLift, emojiLift) = idle + totalLift.
- * При переключении «клавиатура <-> эмодзи» totalLift константен по построению —
- * поле стоит на месте, панели меняются под ним (Telegram-паттерн).
+ * влияет на ленту. Всё движение — только transform (никаких layout-анимаций,
+ * которые отстают от transform на кадр и дают «клевки»):
+ *  - translateY дока = ksvClosed - totalLift, totalLift = max(kbLift, emojiLift);
+ *  - панель — absolute-слой фиксированной высоты (сиблинг дока, top:100%
+ *    контейнера чата, z ниже) с тем же transform-ом: верх слоя всегда совпадает
+ *    с нижней гранью дока, слой лэйаутится один раз при маунте и выезжает
+ *    из-за нижней грани экрана вместе с подъёмом.
+ * Позиция поля ввода = idle + totalLift. При переключении «клавиатура <->
+ * эмодзи» totalLift константен по построению — поле и док не двигаются ни на
+ * пиксель, клавиатура уезжает и открывает панель за собой (Telegram-паттерн).
  *
  * Лента. Клавиатурная механика KeyboardChatScrollView всегда заморожена
  * (freeze=true): её внутренний padding не растёт и она не скроллит. Весь
@@ -56,6 +59,17 @@ import { floraSpacing } from "@/lib/theme";
  * в начале движения (чтобы worklet-scrollTo не клампился о старый диапазон)
  * и оседает к фактическому lift на осадке. Скролл докручивает единственный
  * worklet этого хука (whenAtEnd-семантика). Один писатель — нет гонок scrollTo.
+ *
+ * Плавность холодного открытия: React-коммиты не попадают в кадры анимации.
+ * Порядок: коммит пустого слоя -> transform-полёт (UI-поток) -> осадка ->
+ * emojiPanelReady=true (монтаж тяжёлого контента). Страховка — таймер
+ * PANEL_OPEN_MS+120.
+ *
+ * Быстрые тапы: единая toggleEmoji решает по свежему ref; openEmoji всегда
+ * гасит IME (в т.ч. поднимающуюся); показы IME в EMOJI_INTENT_GRACE_MS после
+ * openEmoji считаются устаревшими и гасятся повторно; несостоявшийся показ
+ * после showKeyboard добивают retry из onEnd(height=0) и JS-вотчдог — панель
+ * при этом держит док (totalLift = max), ничего не проваливается в idle.
  */
 
 const KB_HEIGHT_EPSILON_PX = 2;
@@ -64,6 +78,23 @@ const PANEL_OPEN_MS = Platform.OS === "ios" ? 250 : 220;
 const PANEL_CLOSE_MS = 200;
 const PANEL_RELEASE_MS = 160;
 const PANEL_EASING = ReanimatedEasing.out(ReanimatedEasing.cubic);
+/**
+ * Окно, в котором показ IME после openEmoji считается устаревшим (запрошен
+ * ДО нажатия эмодзи) и повторно гасится вместо перехвата режима.
+ */
+const EMOJI_INTENT_GRACE_MS = 350;
+/**
+ * Окно повторного показа IME: если после showKeyboard клавиатура вместо
+ * появления доехала до нуля (dismiss был в полёте и съел setFocusTo),
+ * показываем её ещё раз, не роняя панель.
+ */
+const KB_SHOW_RETRY_WINDOW_MS = 900;
+/**
+ * Вотчдог показа IME: если после showKeyboard не пришло ВООБЩЕ никаких
+ * keyboard-событий (show проглочен без встречного движения), повторяем показ
+ * один раз. Обычный показ даёт willShow за <150 мс.
+ */
+const KB_SHOW_WATCHDOG_MS = 500;
 
 export type ChatComposeDockConfig = {
   /** Нижний системный инсет (nav bar) — из resolveMessagesDockBottomInset. */
@@ -71,10 +102,13 @@ export type ChatComposeDockConfig = {
 };
 
 export type ChatComposeDock = {
-  /** translateY дока — замена KeyboardStickyView (док = absolute-оверлей снизу). */
+  /** translateY дока = ksvClosed - totalLift (док = absolute-оверлей снизу). */
   dockStickyStyle: AnimatedStyle<ViewStyle>;
-  /** Анимированная высота слота панели (под полем ввода, overflow hidden). */
-  emojiSlotStyle: AnimatedStyle<ViewStyle>;
+  /**
+   * translateY слоя панели (тот же, что у дока): слой — сиблинг дока с
+   * top:100% контейнера чата, верхом всегда примыкает к нижней грани дока.
+   */
+  emojiPanelLayerStyle: AnimatedStyle<ViewStyle>;
   jumpBtnBottomStyle: AnimatedStyle<ViewStyle>;
   /** Полный bottom-inset ленты: navInset + column + insetLift. */
   dockExtraPaddingSv: SharedValue<number>;
@@ -85,8 +119,13 @@ export type ChatComposeDock = {
   onListLayout: (height: number) => void;
   onListContentSizeChange: (height: number) => void;
   composeBaselinePx: number;
-  /** Фиксированная высота контента панели (top-anchored внутри слота). */
+  /** Фиксированная высота контента панели (слой top:100% под доком). */
   emojiPanelHeightPx: number;
+  /**
+   * true, когда док осел и тяжёлый контент панели (грид) можно монтировать:
+   * React-коммит грида не должен попадать в кадры transform-анимации.
+   */
+  emojiPanelReady: boolean;
   onComposeShellLayout: (height: number) => void;
   onDockColumnIdleLayout: (height: number) => void;
   setDeleteBarHeightPx: (height: number) => void;
@@ -99,6 +138,11 @@ export type ChatComposeDock = {
   closeEmoji: () => void;
   /** Эмодзи -> клавиатура: переключает режим и просит IME через showInput(). */
   showKeyboard: (showInput: () => void) => void;
+  /**
+   * Единая кнопка «эмодзи/клавиатура»: решение по свежему ref, а не по
+   * возможно устаревшему prop — быстрые тапы не двоят одно действие.
+   */
+  toggleEmoji: (showInput: () => void) => void;
   dismissKeyboard: () => void;
   resetDock: () => void;
 };
@@ -120,6 +164,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const [composeBaselinePx, setComposeBaselinePx] = useState(0);
   const [emojiPanelMounted, setEmojiPanelMounted] = useState(false);
   const [emojiPanelHeightPx, setEmojiPanelHeightPx] = useState(0);
+  const [emojiPanelReady, setEmojiPanelReady] = useState(false);
   const [emojiAccessoryActive, setEmojiAccessoryActive] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
@@ -142,6 +187,18 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const emojiActiveRef = useRef(false);
   const emojiPanelMountedRef = useRef(false);
   const composeBaselineRef = useRef(0);
+  /** Отложенный старт холодного открытия: анимацию запускаем ПОСЛЕ коммита слоя. */
+  const pendingColdOpenTargetRef = useRef<number | null>(null);
+  /** Таймер страховки готовности контента панели. */
+  const panelReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Момент openEmoji: показы IME старше этого окна — устаревшие, гасим повторно. */
+  const emojiIntentAtRef = useRef(0);
+  /** Момент showKeyboard (для retry показа IME); shared — читается в onEnd-воркалете. */
+  const kbShowRequestAtSv = useSharedValue(0);
+  /** Колбэк показа IME для retry из onEnd (после несостоявшегося setFocusTo). */
+  const showInputRef = useRef<(() => void) | null>(null);
+  /** Вотчдог показа IME (нет событий клавиатуры вообще). */
+  const kbShowWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Лента: состояние для единственного писателя скролла ---
 
@@ -184,20 +241,31 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     Math.max(kbLiftSv.value, emojiLiftSv.value),
   );
 
-  const slotHeightSv = useDerivedValue(() =>
-    Math.max(0, emojiLiftSv.value - kbLiftSv.value),
-  );
-
+  /**
+   * Единственный движущийся стиль — transform. Панель приклеена под нижней
+   * гранью дока (absolute top:100%, фиксированная высота), поэтому подъём по
+   * totalLift одновременно поднимает поле и вывозит панель из-за нижней грани
+   * экрана. Layout не анимируется вообще: нет покадрового Yoga-пересчёта и
+   * рассинхрона transform/height (причина «клевков» при переключениях).
+   */
   const dockStickyStyle = useAnimatedStyle(
     () => ({
-      transform: [{ translateY: ksvClosedPx - kbLiftSv.value }],
+      transform: [{ translateY: ksvClosedPx - totalLiftSv.value }],
     }),
     [ksvClosedPx],
   );
 
-  const emojiSlotStyle = useAnimatedStyle(() => ({
-    height: slotHeightSv.value,
-  }));
+  /**
+   * Слой панели (absolute, top:100% контейнера чата = нижняя грань экрана)
+   * едет тем же transform-ом, что и док: его верх всегда совпадает с нижней
+   * гранью дока, контент уходит вниз за экран и выезжает вместе с подъёмом.
+   */
+  const emojiPanelLayerStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: ksvClosedPx - totalLiftSv.value }],
+    }),
+    [ksvClosedPx],
+  );
 
   useAnimatedReaction(
     () => ({
@@ -427,14 +495,75 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     setEmojiPanelHeightPx(Math.round(heightPx));
   }, []);
 
-  const unmountEmojiPanel = useCallback(() => {
-    emojiPanelMountedRef.current = false;
-    setEmojiPanelMounted(false);
+  const clearPanelReadyTimer = useCallback(() => {
+    if (panelReadyTimerRef.current) {
+      clearTimeout(panelReadyTimerRef.current);
+      panelReadyTimerRef.current = null;
+    }
   }, []);
+
+  /** Разрешить тяжёлый контент панели (док осел — коммит не попадёт в анимацию). */
+  const markEmojiPanelReady = useCallback(() => {
+    clearPanelReadyTimer();
+    if (emojiPanelMountedRef.current) {
+      setEmojiPanelReady(true);
+    }
+  }, [clearPanelReadyTimer]);
+
+  const unmountEmojiPanel = useCallback(
+    (reason: string) => {
+      emojiPanelMountedRef.current = false;
+      pendingColdOpenTargetRef.current = null;
+      clearPanelReadyTimer();
+      setEmojiPanelMounted(false);
+      setEmojiPanelReady(false);
+      if (__DEV__) {
+        console.debug("[chat-compose-dock] unmount-panel", { reason });
+      }
+    },
+    [clearPanelReadyTimer],
+  );
 
   const currentKbLiftPx = useCallback(
     () => Math.max(0, -kbHeightSv.value - liftLossPx * kbProgressSv.value),
     [kbHeightSv, kbProgressSv, liftLossPx],
+  );
+
+  /** Страховка: контент монтируем после окна анимации, даже если completion
+   * не пришёл (анимация была перехвачена/отменена). */
+  const armPanelReadyFallback = useCallback(() => {
+    clearPanelReadyTimer();
+    panelReadyTimerRef.current = setTimeout(markEmojiPanelReady, PANEL_OPEN_MS + 120);
+  }, [clearPanelReadyTimer, markEmojiPanelReady]);
+
+  /** Холодный подъём панели: transform-анимация + осадка потолка inset. */
+  const startColdOpenAnimation = useCallback(
+    (target: number) => {
+      followArmedSv.value = false;
+      followSuppressedSv.value = false;
+      cancelAnimation(emojiLiftSv);
+      armPanelReadyFallback();
+      emojiLiftSv.value = withTiming(
+        target,
+        { duration: PANEL_OPEN_MS, easing: PANEL_EASING },
+        (finished) => {
+          "worklet";
+          if (finished) {
+            insetLiftSv.value = totalLiftSv.value;
+            runOnJS(markEmojiPanelReady)();
+          }
+        },
+      );
+    },
+    [
+      armPanelReadyFallback,
+      emojiLiftSv,
+      followArmedSv,
+      followSuppressedSv,
+      insetLiftSv,
+      markEmojiPanelReady,
+      totalLiftSv,
+    ],
   );
 
   const openEmoji = useCallback(() => {
@@ -444,8 +573,8 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     const hot = kbLiftNow > KB_HEIGHT_EPSILON_PX;
     const kbSettled = kbProgressSv.value >= KB_PROGRESS_SETTLED;
     // Живой подъём точнее кеша: при переключении с осевшей клавиатуры панель
-    // занимает ровно текущий подъём — слот стартует с 0 и растёт по мере её
-    // ухода, поле ввода не шевелится. Если клавиатура ещё в полёте, берём
+    // занимает ровно текущий подъём — totalLift не меняется, док стоит, IME
+    // уезжает и открывает панель за собой. Если клавиатура ещё в полёте, берём
     // максимум с кешем, чтобы не зафиксировать половинную высоту.
     const target = hot
       ? kbSettled
@@ -453,6 +582,9 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         : Math.max(kbLiftNow, resolveColdPanelHeightPx())
       : resolveColdPanelHeightPx();
 
+    const wasMounted = emojiPanelMountedRef.current;
+    emojiIntentAtRef.current = Date.now();
+    kbShowRequestAtSv.value = 0;
     emojiActiveRef.current = true;
     emojiActiveSv.value = true;
     setEmojiAccessoryActive(true);
@@ -460,55 +592,90 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
 
     cancelAnimation(emojiLiftSv);
     insetLiftSv.value = Math.max(insetLiftSv.value, target);
+
+    // Гасим и уже открытую, и ещё поднимающуюся IME (быстрый тап после
+    // запроса клавиатуры): панель — последнее намерение пользователя.
+    // При закрытой клавиатуре вызов — безвредный no-op.
+    void KeyboardController.dismiss({ keepFocus: true });
+
     if (hot) {
-      if (target > kbLiftNow + KB_HEIGHT_EPSILON_PX) {
-        // Клавиатура ещё в полёте, а цель выше её текущего подъёма: якорим
-        // на kbLiftNow и доезжаем анимацией — totalLift непрерывен, без скачка.
-        emojiLiftSv.value = kbLiftNow;
-        emojiLiftSv.value = withTiming(target, {
-          duration: PANEL_OPEN_MS,
-          easing: PANEL_EASING,
-        });
+      // Якорь — максимум текущего подъёма панели и клавиатуры: при повторном
+      // быстром тапе panel->kb->panel emojiLift ещё держит полную высоту, и
+      // опускание якоря на kbLiftNow дало бы провал дока.
+      const anchor = Math.max(emojiLiftSv.value, kbLiftNow);
+      if (target > anchor + KB_HEIGHT_EPSILON_PX) {
+        // Клавиатура ещё в полёте, а цель выше текущего подъёма: якорим и
+        // доезжаем анимацией — totalLift непрерывен, без скачка.
+        armPanelReadyFallback();
+        emojiLiftSv.value = anchor;
+        emojiLiftSv.value = withTiming(
+          target,
+          { duration: PANEL_OPEN_MS, easing: PANEL_EASING },
+          (finished) => {
+            "worklet";
+            if (finished) {
+              runOnJS(markEmojiPanelReady)();
+            }
+          },
+        );
       } else {
-        emojiLiftSv.value = target;
+        emojiLiftSv.value = Math.max(target, anchor);
+        // Горячий свап: док неподвижен, наш transform не анимируется, IME
+        // анимирует система в своём окне — коммит контента не срывает кадры.
+        markEmojiPanelReady();
       }
       setKeyboardOpen(false);
-      // keepFocus: каретка остаётся в поле (Telegram-паттерн), IME уезжает.
-      void KeyboardController.dismiss({ keepFocus: true });
+    } else if (wasMounted) {
+      // Слой уже в дереве (реопен во время закрытия) — коммита не будет,
+      // стартуем сразу.
+      startColdOpenAnimation(target);
     } else {
-      followArmedSv.value = false;
-      followSuppressedSv.value = false;
-      emojiLiftSv.value = withTiming(
-        target,
-        { duration: PANEL_OPEN_MS, easing: PANEL_EASING },
-        (finished) => {
-          "worklet";
-          if (finished) {
-            insetLiftSv.value = totalLiftSv.value;
-          }
-        },
-      );
+      // Холодное открытие: анимацию стартуем ПОСЛЕ коммита слоя (effect по
+      // emojiPanelMounted), иначе React-коммит срывает первые кадры полёта.
+      pendingColdOpenTargetRef.current = target;
     }
 
     if (__DEV__) {
-      console.debug("[chat-compose-dock] open-emoji", { hot, kbSettled, target });
+      console.debug("[chat-compose-dock] open-emoji", { hot, kbSettled, target, wasMounted });
     }
   }, [
+    armPanelReadyFallback,
     currentKbLiftPx,
     emojiActiveSv,
     emojiLiftSv,
-    followArmedSv,
-    followSuppressedSv,
     insetLiftSv,
     kbProgressSv,
+    kbShowRequestAtSv,
+    markEmojiPanelReady,
     mountEmojiPanel,
     resolveColdPanelHeightPx,
-    totalLiftSv,
+    startColdOpenAnimation,
   ]);
+
+  /**
+   * Старт холодной анимации строго после коммита слоя панели: пустой слой
+   * (фон) уже в дереве, тяжёлый контент придержан emojiPanelReady — в кадрах
+   * полёта нет ни одного React-коммита.
+   */
+  useEffect(() => {
+    if (!emojiPanelMounted) return;
+    const target = pendingColdOpenTargetRef.current;
+    if (target === null) return;
+    pendingColdOpenTargetRef.current = null;
+    if (!emojiActiveRef.current) {
+      // Пользователь успел перещёлкнуть на клавиатуру до коммита слоя —
+      // подъём не нужен, пустой слой (lift=0, за краем экрана) убираем.
+      unmountEmojiPanel("cold-open-abandoned");
+      return;
+    }
+    startColdOpenAnimation(target);
+  }, [emojiPanelMounted, startColdOpenAnimation, unmountEmojiPanel]);
 
   const closeEmoji = useCallback(() => {
     if (!emojiActiveRef.current && !emojiPanelMountedRef.current) return;
 
+    emojiIntentAtRef.current = 0;
+    kbShowRequestAtSv.value = 0;
     emojiActiveRef.current = false;
     emojiActiveSv.value = false;
     setEmojiAccessoryActive(false);
@@ -523,7 +690,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         "worklet";
         if (finished) {
           insetLiftSv.value = totalLiftSv.value;
-          runOnJS(unmountEmojiPanel)();
+          runOnJS(unmountEmojiPanel)("close");
         }
       },
     );
@@ -533,28 +700,76 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     followArmedSv,
     followSuppressedSv,
     insetLiftSv,
+    kbShowRequestAtSv,
     totalLiftSv,
     unmountEmojiPanel,
   ]);
 
   const showKeyboard = useCallback(
     (showInput: () => void) => {
+      emojiIntentAtRef.current = 0;
       if (emojiActiveRef.current) {
         emojiActiveRef.current = false;
         emojiActiveSv.value = false;
         setEmojiAccessoryActive(false);
       }
-      // Панель остаётся смонтированной: клавиатура накрывает её, слот
-      // сжимается воркалетом, остаток отпускаем на onEnd клавиатуры.
+      // Запоминаем запрос: если dismiss был в полёте и съел показ IME
+      // (быстрый двойной тап), onEnd(height=0) повторит показ, не роняя панель.
+      showInputRef.current = showInput;
+      kbShowRequestAtSv.value = Date.now();
+      // Панель остаётся смонтированной: клавиатура накрывает её (totalLift
+      // держит max), остаток emojiLift отпускаем на onEnd клавиатуры.
       showInput();
+      // Вотчдог: показ проглочен без каких-либо keyboard-событий (редкие
+      // OEM-IME при dismiss в полёте) — один повтор. Любое реальное событие
+      // клавиатуры обнуляет kbShowRequestAtSv, и вотчдог не срабатывает.
+      if (kbShowWatchdogRef.current) clearTimeout(kbShowWatchdogRef.current);
+      kbShowWatchdogRef.current = setTimeout(() => {
+        kbShowWatchdogRef.current = null;
+        if (emojiActiveRef.current) return;
+        if (kbShowRequestAtSv.value <= 0) return;
+        kbShowRequestAtSv.value = -1;
+        if (__DEV__) {
+          console.debug("[chat-compose-dock] kb-show-watchdog-retry");
+        }
+        showInput();
+      }, KB_SHOW_WATCHDOG_MS);
     },
-    [emojiActiveSv],
+    [emojiActiveSv, kbShowRequestAtSv],
   );
 
+  /**
+   * Единая кнопка «эмодзи/клавиатура». Решение — по emojiActiveRef на момент
+   * тапа, а не по prop-у рендера: при быстрой серии тапов каждый тап честно
+   * инвертирует режим, двойной тап возвращает исходное состояние.
+   */
+  const toggleEmoji = useCallback(
+    (showInput: () => void) => {
+      if (emojiActiveRef.current) {
+        showKeyboard(showInput);
+      } else {
+        openEmoji();
+      }
+    },
+    [openEmoji, showKeyboard],
+  );
+
+  /** Retry показа IME из onEnd-воркалета (запрошенный показ не состоялся). */
+  const retryShowKeyboard = useCallback(() => {
+    if (emojiActiveRef.current) return;
+    const showInput = showInputRef.current;
+    if (!showInput) return;
+    if (__DEV__) {
+      console.debug("[chat-compose-dock] retry-show-keyboard");
+    }
+    showInput();
+  }, []);
+
   const dismissKeyboard = useCallback(() => {
+    kbShowRequestAtSv.value = 0;
     Keyboard.dismiss();
     setKeyboardOpen(false);
-  }, []);
+  }, [kbShowRequestAtSv]);
 
   /**
    * Клавиатура пошла вверх (кнопка, тап по инпуту, авто-фокус): переключаем
@@ -562,12 +777,19 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    */
   useEffect(() => {
     const onKeyboardShow = () => {
-      setKeyboardOpen(true);
       if (emojiActiveRef.current) {
+        // Показ, стартовавший до openEmoji (быстрый тап «клавиатура→эмодзи»):
+        // не отдаём режим устаревшему событию — повторно гасим IME.
+        if (Date.now() - emojiIntentAtRef.current < EMOJI_INTENT_GRACE_MS) {
+          void KeyboardController.dismiss({ keepFocus: true });
+          return;
+        }
         emojiActiveRef.current = false;
         emojiActiveSv.value = false;
         setEmojiAccessoryActive(false);
       }
+      kbShowRequestAtSv.value = 0;
+      setKeyboardOpen(true);
     };
     const willShowSub = KeyboardEvents.addListener("keyboardWillShow", onKeyboardShow);
     const didShowSub = KeyboardEvents.addListener("keyboardDidShow", onKeyboardShow);
@@ -581,7 +803,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       didShowSub.remove();
       didHideSub.remove();
     };
-  }, [emojiActiveSv]);
+  }, [emojiActiveSv, kbShowRequestAtSv]);
 
   useKeyboardHandler(
     {
@@ -610,7 +832,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         followArmedSv.value = false;
         followSuppressedSv.value = false;
 
-        const releasePanelRemainder = () => {
+        const releasePanelRemainder = (reason: string) => {
           emojiLiftSv.value = withTiming(
             0,
             { duration: PANEL_RELEASE_MS, easing: PANEL_EASING },
@@ -618,24 +840,35 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
               "worklet";
               if (finished) {
                 insetLiftSv.value = totalLiftSv.value;
-                runOnJS(unmountEmojiPanel)();
+                runOnJS(unmountEmojiPanel)(reason);
               }
             },
           );
         };
 
         if (e.height <= KB_HEIGHT_EPSILON_PX) {
-          // Клавиатура полностью ушла. Если панель не является целевым
-          // режимом (например back в середине перехода эмодзи->клавиатура),
-          // не даём ей «залипнуть» — плавно опускаем остаток.
+          // Клавиатура полностью ушла.
           if (!emojiActiveSv.value && emojiLiftSv.value > 0) {
-            releasePanelRemainder();
+            const requestedAt = kbShowRequestAtSv.value;
+            if (requestedAt > 0 && Date.now() - requestedAt < KB_SHOW_RETRY_WINDOW_MS) {
+              // Пользователь просил клавиатуру, а IME доехала до нуля: показ
+              // съел параллельный dismiss (быстрый двойной тап). Панель НЕ
+              // роняем — она держит док; показываем IME повторно. -1 = retry
+              // использован, второй раз не пытаемся.
+              kbShowRequestAtSv.value = -1;
+              runOnJS(retryShowKeyboard)();
+              return;
+            }
+            // Панель не целевой режим (back в середине перехода) — плавно
+            // опускаем остаток, не даём «залипнуть».
+            releasePanelRemainder("kb-hidden-release");
           } else {
             insetLiftSv.value = totalLiftSv.value;
           }
           return;
         }
 
+        kbShowRequestAtSv.value = 0;
         runOnJS(commitCanonicalImeHeight)(e.height);
         if (emojiActiveSv.value || emojiLiftSv.value <= 0) {
           insetLiftSv.value = totalLiftSv.value;
@@ -643,22 +876,29 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         }
         // Клавиатура осела поверх панели: плавно отпустить остаток слота
         // (если новая клавиатура ниже панели) и размонтировать контент.
-        releasePanelRemainder();
+        releasePanelRemainder("kb-covered");
       },
     },
-    [commitCanonicalImeHeight, liftLossPx, unmountEmojiPanel],
+    [commitCanonicalImeHeight, liftLossPx, retryShowKeyboard, unmountEmojiPanel],
   );
 
   const resetDockInner = useCallback(() => {
     emojiActiveRef.current = false;
     emojiActiveSv.value = false;
+    emojiIntentAtRef.current = 0;
+    kbShowRequestAtSv.value = 0;
+    showInputRef.current = null;
+    if (kbShowWatchdogRef.current) {
+      clearTimeout(kbShowWatchdogRef.current);
+      kbShowWatchdogRef.current = null;
+    }
     cancelAnimation(emojiLiftSv);
     emojiLiftSv.value = 0;
     insetLiftSv.value = 0;
     followArmedSv.value = false;
     followSuppressedSv.value = false;
     followBaseScrollSv.value = -1;
-    unmountEmojiPanel();
+    unmountEmojiPanel("reset");
     setEmojiAccessoryActive(false);
     setKeyboardOpen(false);
     composeGrowthSv.value = 0;
@@ -677,6 +917,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     followBaseScrollSv,
     followSuppressedSv,
     insetLiftSv,
+    kbShowRequestAtSv,
     unmountEmojiPanel,
   ]);
 
@@ -694,12 +935,20 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       emojiActiveSv.value = false;
       emojiActiveRef.current = false;
       emojiPanelMountedRef.current = false;
+      if (panelReadyTimerRef.current) {
+        clearTimeout(panelReadyTimerRef.current);
+        panelReadyTimerRef.current = null;
+      }
+      if (kbShowWatchdogRef.current) {
+        clearTimeout(kbShowWatchdogRef.current);
+        kbShowWatchdogRef.current = null;
+      }
     };
   }, [emojiActiveSv, emojiLiftSv, insetLiftSv]);
 
   return {
     dockStickyStyle,
-    emojiSlotStyle,
+    emojiPanelLayerStyle,
     jumpBtnBottomStyle,
     dockExtraPaddingSv,
     freezeListSv,
@@ -708,6 +957,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     onListContentSizeChange,
     composeBaselinePx,
     emojiPanelHeightPx,
+    emojiPanelReady,
     onComposeShellLayout,
     onDockColumnIdleLayout,
     setDeleteBarHeightPx,
@@ -719,6 +969,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     openEmoji,
     closeEmoji,
     showKeyboard,
+    toggleEmoji,
     dismissKeyboard,
     resetDock,
   };
