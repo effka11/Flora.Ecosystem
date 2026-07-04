@@ -11,5 +11,9 @@ public interface IUserRealtimePublisher
         string? pushBody = null,
         CancellationToken ct = default);
 
-    Task PublishNotificationAsync(Guid recipientUserUuid, RealtimeNotificationSignal signal, CancellationToken ct = default);
+    Task PublishNotificationAsync(
+        Guid recipientUserUuid,
+        RealtimeNotificationSignal signal,
+        bool skipPush = false,
+        CancellationToken ct = default);
 }

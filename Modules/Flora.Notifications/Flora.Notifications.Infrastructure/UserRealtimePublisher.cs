@@ -46,6 +46,7 @@ public sealed class UserRealtimePublisher(
     public async Task PublishNotificationAsync(
         Guid recipientUserUuid,
         RealtimeNotificationSignal signal,
+        bool skipPush = false,
         CancellationToken ct = default)
     {
         if (recipientUserUuid == Guid.Empty) return;
@@ -53,6 +54,7 @@ public sealed class UserRealtimePublisher(
         try
         {
             await hub.PublishNotificationAsync(recipientUserUuid, signal, ct);
+            if (skipPush) return;
 
             var tokens = await pushTokens.GetTokensForUserAsync(recipientUserUuid, ct);
             if (tokens.Count == 0) return;

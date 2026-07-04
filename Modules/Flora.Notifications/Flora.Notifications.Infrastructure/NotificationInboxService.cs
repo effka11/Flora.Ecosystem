@@ -46,7 +46,7 @@ public sealed class NotificationInboxService(
             row.CommentUuid,
             row.CreatedAt);
 
-        await realtimePublisher.PublishNotificationAsync(command.RecipientUserUuid, signal, ct);
+        await realtimePublisher.PublishNotificationAsync(command.RecipientUserUuid, signal, ct: ct);
     }
 
     public async Task<int> BroadcastAsync(CreateBroadcastNotificationCommand command, CancellationToken ct = default)
@@ -88,7 +88,7 @@ public sealed class NotificationInboxService(
                 row.PostUuid,
                 row.CommentUuid,
                 row.CreatedAt);
-            await realtimePublisher.PublishNotificationAsync(row.RecipientUserUuid, signal, ct);
+            await realtimePublisher.PublishNotificationAsync(row.RecipientUserUuid, signal, skipPush: true, ct);
         }
 
         return rows.Count;
