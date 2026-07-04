@@ -16,6 +16,8 @@
     "postinstall": "node ../../Scripts/patch-ffmpeg-kit.mjs",
     "assets:icons": "node ../../Scripts/render-flora-mobile-assets.mjs",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint .",
     "prebuild:android": "expo prebuild --platform android --clean",
     "prebuild:ios": "expo prebuild --platform ios --clean",
@@ -72,6 +74,7 @@
     "eas-cli": "^16.28.0",
     "eslint": "^9.39.1",
     "eslint-config-expo": "~10.0.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.6"
   }
 }

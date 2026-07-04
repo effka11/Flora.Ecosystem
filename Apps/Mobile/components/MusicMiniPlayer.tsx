@@ -152,6 +152,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
+    zIndex: 11,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: floraColors.surfaceElevated,

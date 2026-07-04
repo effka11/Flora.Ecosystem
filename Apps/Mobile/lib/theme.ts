@@ -136,6 +136,10 @@ export const floraProfile = {
 
 export const floraMotion = {
   baseMs: 150,
+  /** dashboardShell — var(--flora-duration-6). */
+  tabTransitionDurationMs: 900,
+  /** dashboardShell — animation-delay 0.02s. */
+  tabTransitionDelayMs: 20,
 };
 
 /** Чат — messages.module.css / messagesChatView */

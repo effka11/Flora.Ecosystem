@@ -1,30 +1,44 @@
 import { SignalsTabBarIcon } from "@/components/SignalsTabBarIcon";
 import { TabBarIconWithBadge } from "@/components/TabBarIconWithBadge";
 import { MusicMiniPlayer } from "@/components/MusicMiniPlayer";
+import { useTabRouteTransition } from "@/components/TabRouteTransition";
 import { messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
+import { useFloraReduceMotion } from "@/lib/useFloraReduceMotion";
 import { floraColors, floraTabBarStyle } from "@/lib/theme";
 import { router, Tabs } from "expo-router";
+import { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
+  const reduceMotion = useFloraReduceMotion();
+  const { screenListeners, overlay } = useTabRouteTransition(reduceMotion, tabBarBottomInset);
+
+  const screenOptions = useMemo(
+    () => ({
+      animation: "none" as const,
+      freezeOnBlur: true,
+      headerStyle: { backgroundColor: floraColors.surface },
+      headerTintColor: floraColors.text,
+      tabBarStyle: floraTabBarStyle(tabBarBottomInset),
+      tabBarIconStyle: styles.tabBarIcon,
+      sceneStyle: { backgroundColor: floraColors.bg },
+      tabBarItemStyle: styles.tabBarItem,
+      tabBarLabelStyle: styles.tabBarLabel,
+      tabBarActiveTintColor: floraColors.accent,
+      tabBarInactiveTintColor: floraColors.textMuted,
+    }),
+    [tabBarBottomInset],
+  );
 
   return (
     <View style={styles.tabsRoot}>
       <Tabs
-        screenOptions={{
-          headerStyle: { backgroundColor: floraColors.surface },
-          headerTintColor: floraColors.text,
-          tabBarStyle: floraTabBarStyle(tabBarBottomInset),
-          tabBarIconStyle: styles.tabBarIcon,
-          sceneStyle: { backgroundColor: floraColors.bg },
-          tabBarItemStyle: styles.tabBarItem,
-          tabBarLabelStyle: styles.tabBarLabel,
-          tabBarActiveTintColor: floraColors.accent,
-          tabBarInactiveTintColor: floraColors.textMuted,
-        }}
+        detachInactiveScreens={false}
+        screenListeners={screenListeners}
+        screenOptions={screenOptions}
       >
         <Tabs.Screen
           name="feed/index"
@@ -122,6 +136,7 @@ export default function TabsLayout() {
         />
       </Tabs>
       <MusicMiniPlayer />
+      {overlay}
     </View>
   );
 }
