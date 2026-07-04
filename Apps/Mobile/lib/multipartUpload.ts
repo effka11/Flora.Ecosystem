@@ -3,6 +3,7 @@ import {
   ApiRequestError,
   getApiClientConfig,
   refreshSessionIfPossible,
+  rejectUploadUnauthorized,
 } from "@flora/client-core/api";
 import { File, UploadType } from "expo-file-system";
 import { assertExpoFileUpload } from "@/lib/expoFileBytes";
@@ -60,7 +61,9 @@ export async function uploadMultipartFile(params: {
     return await uploadOnce();
   } catch (err) {
     if (!(err instanceof ApiRequestError) || err.status !== 401) throw err;
-    if (!(await refreshSessionIfPossible())) throw err;
+    if (!(await refreshSessionIfPossible())) {
+      await rejectUploadUnauthorized(401, err.message);
+    }
     return await uploadOnce();
   }
 }

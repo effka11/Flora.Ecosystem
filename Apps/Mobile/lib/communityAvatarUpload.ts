@@ -4,6 +4,7 @@ import {
   getApiClientConfig,
   isApiRequestError,
   refreshSessionIfPossible,
+  rejectUploadUnauthorized,
 } from "@flora/client-core/api";
 import { parseCommunityAvatarUploadResponse } from "@flora/client-core/contracts";
 import Constants from "expo-constants";
@@ -56,7 +57,7 @@ async function uploadCommunityAvatarFile(communityId: string, prepared: AvatarUp
   }
 
   if (result.status === 401) {
-    throw new ApiRequestError(401, parseUploadError(result.body, result.status));
+    await rejectUploadUnauthorized(401, parseUploadError(result.body, result.status));
   }
   if (result.status < 200 || result.status >= 300) {
     throw new ApiRequestError(result.status, parseUploadError(result.body, result.status));

@@ -3,7 +3,9 @@ import { createPollingSignalsProvider } from "@flora/client-core/signals";
 import { configureTelemetry, getTelemetry } from "@flora/client-core/telemetry";
 import Constants from "expo-constants";
 import { router } from "expo-router";
+import { getQueryClientRef } from "@/lib/queryClientRef";
 import { mobileSessionStore, resolveApiBaseUrl } from "./session";
+import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
 
 /** Повторный вызов безопасен (HMR сбрасывает _config в client-core, но не этот модуль). */
@@ -18,6 +20,13 @@ export function initFloraClient(): void {
       appVersion: Constants.expoConfig?.version ?? "0.3.0-alpha",
     },
     onUnauthorized: () => {
+      useSessionStore.setState({
+        me: null,
+        isAuthenticated: false,
+        pendingProfileSetup: false,
+      });
+      useFscpStore.getState().clearRuntimeState();
+      getQueryClientRef()?.clear();
       router.replace("/(auth)/login");
     },
     onUpgradeRequired: () => {

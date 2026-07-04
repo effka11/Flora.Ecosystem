@@ -1,4 +1,4 @@
-export { ApiRequestError, isApiRequestError, isUpgradeRequired } from "./errors.js";
+export { ApiRequestError, isApiRequestError, isNetworkError, isUpgradeRequired } from "./errors.js";
 export {
   configureApiClient,
   primeApiBaseUrl,
@@ -11,7 +11,12 @@ export {
   authPostForm,
   publicPostJson,
   publicGetJson,
+  ensureFreshAccessToken,
+  notifyIfSessionRevoked,
+  notifyUnauthorized,
+  rejectUploadUnauthorized,
   refreshSessionIfPossible,
+  syncStoredSessionTokens,
   type ApiClientConfig,
 } from "./client.js";
 export * from "./social.js";

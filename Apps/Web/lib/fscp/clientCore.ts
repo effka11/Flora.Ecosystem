@@ -4,6 +4,7 @@ import {
   clearPendingProfileSetup,
   clearSession,
   getAccessToken,
+  getExpiresAt,
   hasPendingProfileSetup,
   resolvePublicApiRoot,
   saveSession,
@@ -26,6 +27,9 @@ const webSessionStore = {
   async getRefreshToken() {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("flora_refresh_token");
+  },
+  async getExpiresAt() {
+    return getExpiresAt();
   },
   async saveSession(tokens: {
     accessToken: string;

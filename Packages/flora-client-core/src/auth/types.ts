@@ -7,6 +7,7 @@ export type SessionTokens = {
 export type SessionStore = {
   getAccessToken(): Promise<string | null>;
   getRefreshToken(): Promise<string | null>;
+  getExpiresAt(): Promise<string | null>;
   saveSession(tokens: SessionTokens): Promise<void>;
   clearSession(clearKeys?: boolean): Promise<void>;
   hasPendingProfileSetup(): Promise<boolean>;

@@ -26,6 +26,9 @@ export const mobileSessionStore: SessionStore = {
   async getRefreshToken() {
     return SecureStore.getItemAsync(REFRESH);
   },
+  async getExpiresAt() {
+    return SecureStore.getItemAsync(EXPIRES);
+  },
   async saveSession(tokens: SessionTokens) {
     await SecureStore.setItemAsync(ACCESS, tokens.accessToken);
     await SecureStore.setItemAsync(REFRESH, tokens.refreshToken);
