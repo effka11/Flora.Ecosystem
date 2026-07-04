@@ -2,10 +2,11 @@ import { SignalsTabBarIcon } from "@/components/SignalsTabBarIcon";
 import { TabBarIconWithBadge } from "@/components/TabBarIconWithBadge";
 import { MusicMiniPlayer } from "@/components/MusicMiniPlayer";
 import { useTabRouteTransition } from "@/components/TabRouteTransition";
-import { messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
+import { isTabActive, isTabRoot } from "@/lib/getActiveTabRouteKey";
+import { isMessagesInThreadPath, messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
 import { useFloraReduceMotion } from "@/lib/useFloraReduceMotion";
 import { floraColors, floraTabBarStyle } from "@/lib/theme";
-import { router, Tabs } from "expo-router";
+import { router, Tabs, usePathname, useSegments } from "expo-router";
 import { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +15,8 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const reduceMotion = useFloraReduceMotion();
+  const pathname = usePathname();
+  const segments = useSegments();
   const { screenListeners, overlay } = useTabRouteTransition(reduceMotion, tabBarBottomInset);
 
   const screenOptions = useMemo(
@@ -64,7 +67,13 @@ export default function TabsLayout() {
           name="messages"
           listeners={{
             tabPress: (e) => {
+              if (!isTabActive(segments, "messages")) {
+                return;
+              }
               e.preventDefault();
+              if (isTabRoot(segments, "messages") && !isMessagesInThreadPath(pathname)) {
+                return;
+              }
               router.replace("/(tabs)/messages");
             },
           }}
@@ -122,7 +131,13 @@ export default function TabsLayout() {
           name="profile"
           listeners={{
             tabPress: (e) => {
+              if (!isTabActive(segments, "profile")) {
+                return;
+              }
               e.preventDefault();
+              if (isTabRoot(segments, "profile")) {
+                return;
+              }
               router.replace("/(tabs)/profile");
             },
           }}

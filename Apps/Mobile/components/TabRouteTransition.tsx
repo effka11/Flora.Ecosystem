@@ -1,3 +1,4 @@
+import { getActiveTabRouteKey } from "@/lib/getActiveTabRouteKey";
 import {
   floraRouteKeyframeEasing,
   floraRouteTransitionClearMs,
@@ -88,7 +89,7 @@ export function useTabRouteTransition(
         return;
       }
 
-      const activeKey = state.routes[state.index]?.key;
+      const activeKey = getActiveTabRouteKey(state);
       if (activeKey === targetRouteKey) {
         return;
       }
@@ -121,16 +122,11 @@ export function useTabRouteTransition(
       tabPress: (event: { target?: string }) => {
         coverIfSwitchingTab(event.target);
       },
-      transitionStart: () => {
-        if (!coverActiveRef.current) {
-          coverContent();
-        }
-      },
       transitionEnd: () => {
         revealContent();
       },
     }),
-    [coverContent, coverIfSwitchingTab, revealContent],
+    [coverIfSwitchingTab, revealContent],
   );
 
   const overlayStyle = useAnimatedStyle(() => ({

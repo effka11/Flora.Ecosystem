@@ -1,3 +1,4 @@
+import { isTabActive, tabSegmentIndex } from "@/lib/getActiveTabRouteKey";
 import { floraTabBarHiddenStyle, floraTabBarStyle } from "@/lib/theme";
 
 // SDK 56: expo-router запрещает прямой импорт из @react-navigation/native.
@@ -22,10 +23,14 @@ function focusedChildRouteName(route: FocusableRoute | undefined): string | unde
   return typeof screen === "string" ? screen : undefined;
 }
 
-/** Вложенный тред: /messages/<id> — любой сегмент после «messages», не только литерал [conversationUuid]. */
+/** Вложенный тред: /messages/<id> — сегмент после активной вкладки «messages». */
 export function isMessagesInThread(segments: readonly string[]): boolean {
-  const messagesIdx = segments.indexOf("messages");
-  return messagesIdx >= 0 && messagesIdx < segments.length - 1;
+  if (!isTabActive(segments, "messages")) {
+    return false;
+  }
+  const idx = tabSegmentIndex(segments);
+  const nested = segments[idx + 1];
+  return nested !== undefined && nested !== "index";
 }
 
 export function isMessagesInThreadPath(pathname: string): boolean {
