@@ -17,6 +17,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins.push("./plugins/withGoogleServices");
   }
 
+  if (!isDev && !plugins.some((p) => p === "./plugins/withReleaseGradle" || (Array.isArray(p) && p[0] === "./plugins/withReleaseGradle"))) {
+    plugins.push("./plugins/withReleaseGradle");
+  }
+
   const androidBase = { ...config.android };
 
   return {

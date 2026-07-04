@@ -33,6 +33,7 @@ $env:JAVA_HOME = $jdk
 $env:Path = "$jdk\bin;" + $env:Path
 
 . (Join-Path $PSScriptRoot "mobile-flora-version.ps1")
+. (Join-Path $PSScriptRoot "patch-release-gradle-props.ps1")
 
 function Stop-AndroidGradleDaemons([string]$androidDir) {
     $gradlew = Join-Path $androidDir "gradlew.bat"
@@ -268,6 +269,12 @@ try {
     $localProps = Join-Path $androidDir "local.properties"
     $gradleSdk = ($sdk -replace '\\', '/').Trim()
     [System.IO.File]::WriteAllText($localProps, "sdk.dir=$gradleSdk`n", [System.Text.Encoding]::ASCII)
+
+    Invoke-ReleaseGradlePropertiesPatch -AndroidDir $androidDir
+    $androidGenDir = Join-Path $mobile "android_gen"
+    if (Test-Path (Join-Path $androidGenDir "gradle.properties")) {
+        Invoke-ReleaseGradlePropertiesPatch -AndroidDir $androidGenDir
+    }
 
     Invoke-GradleRelease $androidDir
 

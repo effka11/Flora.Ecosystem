@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { NotificationDto } from "@flora/client-core/contracts";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { formatNotificationTimeAgoRu } from "@/lib/formatNotificationTimeAgoRu";
-import { FLORA_GITHUB_RELEASES_URL } from "@/lib/appLinks";
+import { resolveAppUpdateApkDownloadUrl } from "@/lib/appLinks";
 import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -37,14 +37,21 @@ function iconColorsForType(type: string) {
   return { bg: "rgba(255, 255, 255, 0.08)", color: "rgba(250, 250, 250, 0.7)" };
 }
 
-function openAppUpdateReleases(): void {
-  void Linking.openURL(FLORA_GITHUB_RELEASES_URL);
+function openAppUpdateDownload(text: string): void {
+  void Linking.openURL(resolveAppUpdateApkDownloadUrl(text));
 }
 
 export function NotificationRow({ item, onPress }: NotificationRowProps) {
   const iconName = iconForType(item.type);
   const iconColors = iconColorsForType(item.type);
   const showUpdateButton = item.type === "app_update";
+
+  const handlePress = () => {
+    if (item.type === "app_update") {
+      openAppUpdateDownload(item.text);
+    }
+    onPress();
+  };
 
   return (
     <View style={styles.shell}>
@@ -54,7 +61,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           !item.isRead && styles.itemUnread,
           pressed && styles.itemPressed,
         ]}
-        onPress={onPress}
+        onPress={handlePress}
         accessibilityRole="button"
       >
         <View style={[styles.iconWrap, { backgroundColor: iconColors.bg }]}>
@@ -70,7 +77,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
       {showUpdateButton ? (
         <Pressable
           style={({ pressed }) => [styles.updateBtn, pressed && styles.itemPressed]}
-          onPress={openAppUpdateReleases}
+          onPress={() => openAppUpdateDownload(item.text)}
           accessibilityRole="button"
           accessibilityLabel="Обновить приложение"
         >
