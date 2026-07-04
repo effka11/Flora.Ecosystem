@@ -7,6 +7,14 @@ import { ChatMessageBubbleTime } from "@/components/messages/ChatMessageBubbleTi
 import { ChatMessageBubbleTextBody } from "@/components/messages/ChatMessageBubbleTextBody";
 import { formatChatTime } from "@/lib/formatChatTime";
 import { messageDeliveryState } from "@/lib/messageDeliveryState";
+import {
+  maxPhotoBubbleWidth,
+  maxTextBubbleInnerWidth,
+  maxTextBubbleWidth,
+  maxVoiceBubbleWidth,
+  photoCaptionInnerWidth,
+  voiceCaptionInnerWidth,
+} from "@/lib/messageBubbleLayout";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 import {
   StyleSheet,
@@ -74,42 +82,6 @@ function photoTailStyle(isFromMe: boolean): ViewStyle {
       };
 }
 
-function maxPhotoBubbleWidth(
-  screenWidth: number,
-  isFromMe: boolean,
-  showPeerAvatar: boolean,
-  isPeerIndented: boolean,
-): number {
-  if (screenWidth <= 0) return floraMessages.photoBubbleWidth;
-
-  const horizontalPad = floraSpacing.grid * 2;
-  const peerInset =
-    !isFromMe && (showPeerAvatar || isPeerIndented)
-      ? floraMessages.peerBubbleAvatarSize + floraSpacing.grid
-      : 0;
-  const maxByRatio = Math.floor(screenWidth * floraMessages.bubbleMaxWidthRatio);
-  const maxByRow = screenWidth - horizontalPad - peerInset;
-  return Math.max(0, Math.min(floraMessages.photoBubbleWidth, maxByRatio, maxByRow));
-}
-
-function maxVoiceBubbleWidth(
-  screenWidth: number,
-  isFromMe: boolean,
-  showPeerAvatar: boolean,
-  isPeerIndented: boolean,
-): number {
-  if (screenWidth <= 0) return floraMessages.voiceBubbleWidth;
-
-  const horizontalPad = floraSpacing.grid * 2;
-  const peerInset =
-    !isFromMe && (showPeerAvatar || isPeerIndented)
-      ? floraMessages.peerBubbleAvatarSize + floraSpacing.grid
-      : 0;
-  const maxByRatio = Math.floor(screenWidth * floraMessages.bubbleMaxWidthRatio);
-  const maxByRow = screenWidth - horizontalPad - peerInset;
-  return Math.max(0, Math.min(floraMessages.voiceBubbleWidth, maxByRatio, maxByRow));
-}
-
 function MessageBubbleColumn({
   anchorStyle,
   onLayout,
@@ -148,14 +120,21 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   onLongPressOwn,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
-  const maxPhotoWidth = useMemo(
-    () => maxPhotoBubbleWidth(screenWidth, message.isFromMe, showPeerAvatar, isPeerIndented),
+  const layoutCtx = useMemo(
+    () => ({
+      screenWidth,
+      isFromMe: message.isFromMe,
+      showPeerAvatar,
+      isPeerIndented,
+    }),
     [screenWidth, message.isFromMe, showPeerAvatar, isPeerIndented],
   );
-  const maxVoiceWidth = useMemo(
-    () => maxVoiceBubbleWidth(screenWidth, message.isFromMe, showPeerAvatar, isPeerIndented),
-    [screenWidth, message.isFromMe, showPeerAvatar, isPeerIndented],
-  );
+  const maxPhotoWidth = useMemo(() => maxPhotoBubbleWidth(layoutCtx), [layoutCtx]);
+  const maxVoiceWidth = useMemo(() => maxVoiceBubbleWidth(layoutCtx), [layoutCtx]);
+  const maxTextWidth = useMemo(() => maxTextBubbleWidth(layoutCtx), [layoutCtx]);
+  const textInnerWidth = useMemo(() => maxTextBubbleInnerWidth(layoutCtx), [layoutCtx]);
+  const voiceCaptionInner = useMemo(() => voiceCaptionInnerWidth(layoutCtx), [layoutCtx]);
+  const photoCaptionInner = useMemo(() => photoCaptionInnerWidth(layoutCtx), [layoutCtx]);
   const [anchorWidth, setAnchorWidth] = useState(0);
 
   const onAnchorLayout = useCallback((event: LayoutChangeEvent) => {
@@ -210,6 +189,12 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   ];
 
   if (!hasImages && !hasVoice) {
+    const textAnchorStyle = [
+      styles.bubbleAnchor,
+      !message.isFromMe ? styles.bubbleAnchorThem : null,
+      { maxWidth: maxTextWidth },
+    ];
+
     return (
       <View style={wrapStyle}>
         {!message.isFromMe && showPeerAvatar ? (
@@ -224,7 +209,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           </View>
         ) : null}
         <MessageBubbleColumn
-          anchorStyle={anchorStyle}
+          anchorStyle={textAnchorStyle}
           isFromMe={message.isFromMe}
           selected={showDeleteAction}
           onLongPressOwn={onLongPressOwn}
@@ -234,6 +219,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               body={body}
               timeLabel={timeLabel}
               deliveryState={deliveryState}
+              maxBubbleInnerWidthPx={textInnerWidth}
               bodyStyle={[styles.body, message.isFromMe ? styles.bodyMe : styles.bodyThem]}
               timeStyle={inlineTimeStyle}
               receiptColor={receiptColor}
@@ -290,6 +276,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                   body={body}
                   timeLabel={timeLabel}
                   deliveryState={deliveryState}
+                  maxBubbleInnerWidthPx={voiceCaptionInner}
                   bodyStyle={[styles.body, message.isFromMe ? styles.bodyMe : styles.bodyThem]}
                   timeStyle={inlineTimeStyle}
                   receiptColor={receiptColor}
@@ -388,6 +375,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                 body={body}
                 timeLabel={timeLabel}
                 deliveryState={deliveryState}
+                maxBubbleInnerWidthPx={photoCaptionInner}
                 bodyStyle={[styles.body, message.isFromMe ? styles.bodyMe : styles.bodyThem]}
                 timeStyle={inlineTimeStyle}
                 receiptColor={receiptColor}

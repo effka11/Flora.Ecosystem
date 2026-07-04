@@ -1,8 +1,14 @@
 /** Разбиение текста пузыря на визуальные строки (явные \n и перенос по max-width). */
 
-export type BubbleTimePlacement = "inline" | "below";
+import {
+  TIME_INLINE_GAP_PX,
+  resolveBubbleTimePlacementFromLineWidths,
+  type BubbleTimePlacement,
+} from "@flora/client-core/display";
 
-const TIME_INLINE_GAP_PX = 15;
+export type { BubbleTimePlacement };
+
+export { TIME_INLINE_GAP_PX };
 
 export function measureTextWidth(text: string, font: string): number {
   const canvas = document.createElement("canvas");
@@ -48,18 +54,11 @@ export function resolveBubbleTimePlacement(
   timeFont: string,
   timeLabel: string,
   maxBubbleWidthPx: number,
-  timeExtraWidthPx = 0
+  timeExtraWidthPx = 0,
 ): BubbleTimePlacement {
-  if (lines.length === 0) return "inline";
-
   const lineWidths = lines.map((line) => measureTextWidth(line, textFont));
-  const lastLineWidth = lineWidths[lineWidths.length - 1] ?? 0;
-  const maxOtherWidth = lineWidths.length > 1 ? Math.max(...lineWidths.slice(0, -1)) : 0;
   const timeWidth = measureTextWidth(timeLabel, timeFont) + TIME_INLINE_GAP_PX + timeExtraWidthPx;
-  const widthWithInlineTime = Math.max(maxOtherWidth, lastLineWidth + timeWidth);
-  const limit = maxBubbleWidthPx > 0 ? maxBubbleWidthPx : Infinity;
-
-  return widthWithInlineTime <= limit ? "inline" : "below";
+  return resolveBubbleTimePlacementFromLineWidths(lineWidths, timeWidth, maxBubbleWidthPx);
 }
 
 export function bubbleInnerMaxWidthPx(bubbleEl: HTMLElement): number {
