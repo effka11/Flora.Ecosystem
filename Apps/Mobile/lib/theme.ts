@@ -155,9 +155,13 @@ export const floraMessages = {
   /** Отступ меню от края пузыря (= ½ bubbleRowGap). */
   bubbleMenuGap: floraSpacing.grid / 2,
   bubbleGap: 2 * floraSpacing.grid,
+  /** Горизонтальный padding текстового пузыря (= var(--flora-grid-step) на вебе). */
   bubblePadding: floraSpacing.grid,
+  /** Вертикальный padding при inline-времени — 2×gridFine; однострочник 10+25+10=45px (.messagesBubbleInlineTime). */
+  bubblePaddingVerticalInline: 2 * floraSpacing.gridFine,
   bubbleFontSize: 15,
-  bubbleLineHeight: 22,
+  /** Шаг строки текста — паритет web --messages-bubble-line-step. */
+  bubbleLineHeight: 25,
   bubbleTimeFontSize: 12,
   /** Пузырь с фото — 20 кл. первичной сетки (messages.module.css). */
   photoBubbleWidth: 20 * floraSpacing.grid,

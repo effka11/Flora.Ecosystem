@@ -32,7 +32,7 @@ export function maxTextBubbleWidth({
   return Math.max(0, Math.min(maxByRatio, maxByRow));
 }
 
-/** Inner text width for text-only bubbles (minus horizontal bubble padding). */
+/** Inner text width for text-only bubbles (minus horizontal bubble padding only). */
 export function maxTextBubbleInnerWidth(ctx: BubbleRowContext): number {
   return Math.max(0, maxTextBubbleWidth(ctx) - floraMessages.bubblePadding * 2);
 }

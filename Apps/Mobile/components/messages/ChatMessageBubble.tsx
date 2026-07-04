@@ -256,7 +256,11 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           <View
             ref={bubbleMeasureRef}
             collapsable={false}
-            style={[styles.bubble, message.isFromMe ? styles.bubbleMe : styles.bubbleThem]}
+            style={[
+              styles.bubble,
+              styles.bubbleTextInline,
+              message.isFromMe ? styles.bubbleMe : styles.bubbleThem,
+            ]}
           >
             {replyQuote}
             <ChatMessageBubbleTextBody
@@ -495,6 +499,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
+  /** Однострочник 10+25+10=45px — паритет .messagesBubbleInlineTime; только вертикаль, горизонталь из bubble. */
+  bubbleTextInline: {
+    paddingTop: floraMessages.bubblePaddingVerticalInline,
+    paddingBottom: floraMessages.bubblePaddingVerticalInline,
+  },
   bubbleMe: {
     backgroundColor: floraColors.greenDark,
     borderBottomRightRadius: floraMessages.bubbleTailRadius,
@@ -605,6 +614,7 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.45,
     lineHeight: floraMessages.bubbleLineHeight,
+    includeFontPadding: false,
   },
   bodyMe: {
     color: floraColors.whiteTemplate,
@@ -615,6 +625,7 @@ const styles = StyleSheet.create({
   timeInline: {
     fontSize: floraMessages.bubbleTimeFontSize,
     lineHeight: 18,
+    includeFontPadding: false,
     opacity: 0.85,
   },
   timeMe: {
