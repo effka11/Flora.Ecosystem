@@ -171,7 +171,7 @@ export default function ThreadScreen() {
   const syncFeedBoundsY = useCallback(() => {
     dockFooterRef.current?.measureInWindow((_dockX, dockY) => {
       chatHeaderWrapRef.current?.measureInWindow((_headerX, headerY, _headerW, headerH) => {
-        const dividerY = headerY + headerH - floraSpacing.grid;
+        const dividerY = headerY + headerH;
         setFeedTopY(dividerY);
         setFeedBottomY(dockY);
       });
@@ -1078,6 +1078,10 @@ const styles = StyleSheet.create({
   listFill: {
     ...StyleSheet.absoluteFill,
   },
+  /** Сверху — как marginBottom пузыря до линии compose (bubbleRowGap). */
+  listContent: {
+    paddingTop: floraMessages.bubbleRowGap,
+  },
   /**
    * Док — absolute-оверлей у низа: рост слота не влияет на layout ленты
    * (лента компенсируется через extraContentPadding), двигается transform-ом.
@@ -1136,9 +1140,6 @@ const styles = StyleSheet.create({
     borderColor: floraMessages.composeBorderColor,
     overflow: "hidden",
     backgroundColor: floraColors.surfaceElevated,
-  },
-  listContent: {
-    paddingTop: floraMessages.bubbleGap,
   },
   empty: {
     alignItems: "center",
