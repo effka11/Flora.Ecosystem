@@ -548,13 +548,14 @@ export default function ThreadScreen() {
     if (error) Alert.alert("Фото", error);
   }, [canSend, pickImages]);
 
-  // Голосовой режим не трогает клавиатуру/панель: инпут остаётся смонтированным
-  // и сфокусированным (ChatComposeField прячет его, не размонтируя).
+  // Голосовой режим закрывает панель эмодзи (closeEmoji); клавиатуру явно не трогаем.
+  // Инпут остаётся смонтированным и сфокусированным (ChatComposeField прячет его).
   const onStartVoice = useCallback(async () => {
     if (!canSend() || !otherUserUuid) return;
+    closeEmoji();
     enterVoiceMode();
     await voiceRecorder.start();
-  }, [canSend, enterVoiceMode, otherUserUuid, voiceRecorder]);
+  }, [canSend, closeEmoji, enterVoiceMode, otherUserUuid, voiceRecorder]);
 
   const onDiscardVoice = useCallback(async () => {
     await voiceRecorder.discard();
