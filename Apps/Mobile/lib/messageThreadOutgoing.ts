@@ -1,23 +1,30 @@
 import type { MsgMessageDto, MsgSentMessageDto } from "@flora/client-core/contracts";
-import type { FscpMessageBlock } from "@flora/client-core/fscp";
+import type { FscpMessageBlock, FscpMessageReplyRef } from "@flora/client-core/fscp";
 import {
   extractTextFromPlaintext,
   getImageBlocksFromPlaintext,
   getPrimaryVoiceBlock,
   messagePlaintextFromBlocks,
+  plaintextToPreview,
 } from "@flora/client-core/fscp";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
 import { messageDecryptCacheKey } from "@/lib/useThreadMessageDecrypt";
 import { messageThreadCache, messageThreadDecryptCache } from "@/stores/messageThreadCache";
 
-function rowFromBlocks(message: MsgMessageDto, blocks: FscpMessageBlock[]): ThreadBubbleItem {
+function rowFromBlocks(
+  message: MsgMessageDto,
+  blocks: FscpMessageBlock[],
+  replyTo?: FscpMessageReplyRef,
+): ThreadBubbleItem {
   const plain = messagePlaintextFromBlocks(blocks, message.createdAt);
   return {
     messageUuid: message.messageUuid,
     text: extractTextFromPlaintext(plain),
+    previewText: plaintextToPreview(plain),
     imageBlocks: getImageBlocksFromPlaintext(plain),
     voiceBlock: getPrimaryVoiceBlock(plain),
+    replyTo,
     isFromMe: message.isFromMe,
     createdAt: message.createdAt,
     decryptState: "ok",
@@ -34,6 +41,7 @@ export function appendOutgoingThreadMessage(params: {
   sent: MsgSentMessageDto;
   wire: string;
   blocks: FscpMessageBlock[];
+  replyTo?: FscpMessageReplyRef;
 }): void {
   const dto: MsgMessageDto = {
     messageUuid: params.sent.messageUuid,
@@ -46,7 +54,10 @@ export function appendOutgoingThreadMessage(params: {
   };
 
   const cacheKey = messageDecryptCacheKey(dto);
-  messageThreadDecryptCache.setMessage(cacheKey, rowFromBlocks(dto, params.blocks));
+  messageThreadDecryptCache.setMessage(
+    cacheKey,
+    rowFromBlocks(dto, params.blocks, params.replyTo),
+  );
 
   const queryKey = ["messages", params.conversationUuid, params.otherUserUuid?.trim() || ""] as const;
   type MessagesQuery = { items: MsgMessageDto[]; nextCursor: string | null };

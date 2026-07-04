@@ -35,6 +35,7 @@
     "@tanstack/react-query": "^5.90.2",
     "expo": "~56.0.11",
     "expo-audio": "~56.0.12",
+    "expo-clipboard": "~56.0.4",
     "expo-constants": "~56.0.18",
     "expo-dev-client": "~56.0.10",
     "expo-device": "^56.0.4",

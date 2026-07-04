@@ -148,6 +148,8 @@ export const floraMessages = {
   bubbleMaxWidthRatio: 0.78,
   /** Вертикальный зазор между строками сообщений в ленте (и до линии compose у последнего). */
   bubbleRowGap: floraSpacing.grid,
+  /** Отступ меню от края пузыря (= ½ bubbleRowGap). */
+  bubbleMenuGap: floraSpacing.grid / 2,
   bubbleGap: 2 * floraSpacing.grid,
   bubblePadding: floraSpacing.grid,
   bubbleFontSize: 15,

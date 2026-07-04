@@ -1,10 +1,12 @@
-import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ChatMessageImageCollage } from "@/components/messages/ChatMessageImageCollage";
 import { ChatVoiceMessageCard } from "@/components/messages/ChatVoiceMessageCard";
-import type { FscpImageBlock, FscpVoiceBlock } from "@flora/client-core/fscp";
+import type { FscpImageBlock, FscpMessageReplyRef, FscpVoiceBlock } from "@flora/client-core/fscp";
 import { ChatMessageBubbleTime } from "@/components/messages/ChatMessageBubbleTime";
 import { ChatMessageBubbleTextBody } from "@/components/messages/ChatMessageBubbleTextBody";
+import { ChatMessageReplyQuote } from "@/components/messages/ChatMessageReplyQuote";
+import type { BubbleAnchorRect } from "@/components/messages/MessageBubbleMoreMenu";
 import { formatChatTime } from "@/lib/formatChatTime";
 import { messageDeliveryState } from "@/lib/messageDeliveryState";
 import {
@@ -30,8 +32,10 @@ import type { ChatPeerInfo } from "./ChatThreadHeader";
 export type ThreadBubbleItem = {
   messageUuid: string;
   text: string;
+  previewText: string;
   imageBlocks: FscpImageBlock[];
   voiceBlock?: FscpVoiceBlock;
+  replyTo?: FscpMessageReplyRef;
   isFromMe: boolean;
   createdAt: string;
   decryptState: "ok" | "decrypting" | "failed";
@@ -43,8 +47,9 @@ type Props = {
   peer: ChatPeerInfo;
   showPeerAvatar: boolean;
   isPeerIndented: boolean;
-  showDeleteAction?: boolean;
-  onLongPressOwn?: () => void;
+  isMenuTarget?: boolean;
+  onPress?: (anchor: BubbleAnchorRect) => void;
+  onAnchorSync?: (anchor: BubbleAnchorRect) => void;
 };
 
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
@@ -82,32 +87,51 @@ function photoTailStyle(isFromMe: boolean): ViewStyle {
       };
 }
 
+function measureBubbleAnchor(
+  bubbleRef: RefObject<View | null>,
+  handler?: (anchor: BubbleAnchorRect) => void,
+) {
+  const node = bubbleRef.current;
+  if (!node || !handler) return;
+  node.measureInWindow((pageX, pageY, width, height) => {
+    handler({
+      top: pageY,
+      left: pageX,
+      right: pageX + width,
+      bottom: pageY + height,
+    });
+  });
+}
+
 function MessageBubbleColumn({
+  tapLaneStyle,
   anchorStyle,
+  bubbleRef,
   onLayout,
-  isFromMe,
-  selected,
-  onLongPressOwn,
+  onPress,
   children,
 }: {
+  tapLaneStyle: StyleProp<ViewStyle>;
   anchorStyle: StyleProp<ViewStyle>;
+  bubbleRef: RefObject<View | null>;
   onLayout?: (event: LayoutChangeEvent) => void;
-  isFromMe: boolean;
-  selected?: boolean;
-  onLongPressOwn?: () => void;
+  onPress?: (anchor: BubbleAnchorRect) => void;
   children: ReactNode;
 }) {
+  const handlePress = useCallback(() => {
+    measureBubbleAnchor(bubbleRef, onPress);
+  }, [bubbleRef, onPress]);
+
   return (
-    <View style={anchorStyle} onLayout={onLayout}>
-      <Pressable
-        disabled={!isFromMe || !onLongPressOwn}
-        onLongPress={onLongPressOwn}
-        delayLongPress={400}
-        style={selected ? styles.bubbleSelected : undefined}
-      >
+    <Pressable
+      style={[styles.tapLane, tapLaneStyle]}
+      disabled={!onPress}
+      onPress={handlePress}
+    >
+      <View style={anchorStyle} onLayout={onLayout}>
         {children}
-      </Pressable>
-    </View>
+      </View>
+    </Pressable>
   );
 }
 
@@ -116,8 +140,9 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   peer,
   showPeerAvatar,
   isPeerIndented,
-  showDeleteAction,
-  onLongPressOwn,
+  isMenuTarget = false,
+  onPress,
+  onAnchorSync,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const layoutCtx = useMemo(
@@ -136,6 +161,14 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const voiceCaptionInner = useMemo(() => voiceCaptionInnerWidth(layoutCtx), [layoutCtx]);
   const photoCaptionInner = useMemo(() => photoCaptionInnerWidth(layoutCtx), [layoutCtx]);
   const [anchorWidth, setAnchorWidth] = useState(0);
+  const bubbleMeasureRef = useRef<View>(null);
+
+  useLayoutEffect(() => {
+    if (!isMenuTarget) return;
+    measureBubbleAnchor(bubbleMeasureRef, onAnchorSync);
+    const frame = requestAnimationFrame(() => measureBubbleAnchor(bubbleMeasureRef, onAnchorSync));
+    return () => cancelAnimationFrame(frame);
+  }, [isMenuTarget, onAnchorSync]);
 
   const onAnchorLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.floor(event.nativeEvent.layout.width);
@@ -169,6 +202,11 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const singleWithCaption = hasImages && hasText && !photoCollage;
   const fixedPhotoWidth = photoCollage || singleWithCaption;
 
+  const replyQuote =
+    message.replyTo != null ? (
+      <ChatMessageReplyQuote reply={message.replyTo} isFromMe={message.isFromMe} />
+    ) : null;
+
   const mediaWidth =
     fixedPhotoWidth && anchorWidth > 0
       ? Math.min(anchorWidth, maxPhotoWidth)
@@ -179,6 +217,12 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
     message.isFromMe ? styles.wrapMe : styles.wrapThem,
     !message.isFromMe && isPeerIndented ? styles.wrapIndented : null,
   ];
+
+  const bubbleColumnProps = {
+    bubbleRef: bubbleMeasureRef,
+    onPress,
+    tapLaneStyle: message.isFromMe ? styles.tapLaneMe : styles.tapLaneThem,
+  };
 
   const anchorStyle = [
     styles.bubbleAnchor,
@@ -208,13 +252,13 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             />
           </View>
         ) : null}
-        <MessageBubbleColumn
-          anchorStyle={textAnchorStyle}
-          isFromMe={message.isFromMe}
-          selected={showDeleteAction}
-          onLongPressOwn={onLongPressOwn}
-        >
-          <View style={[styles.bubble, message.isFromMe ? styles.bubbleMe : styles.bubbleThem]}>
+        <MessageBubbleColumn anchorStyle={textAnchorStyle} {...bubbleColumnProps}>
+          <View
+            ref={bubbleMeasureRef}
+            collapsable={false}
+            style={[styles.bubble, message.isFromMe ? styles.bubbleMe : styles.bubbleThem]}
+          >
+            {replyQuote}
             <ChatMessageBubbleTextBody
               body={body}
               timeLabel={timeLabel}
@@ -250,11 +294,11 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             !message.isFromMe ? styles.bubbleAnchorThem : null,
             { maxWidth: maxVoiceWidth },
           ]}
-          isFromMe={message.isFromMe}
-          selected={showDeleteAction}
-          onLongPressOwn={onLongPressOwn}
+          {...bubbleColumnProps}
         >
           <View
+            ref={bubbleMeasureRef}
+            collapsable={false}
             style={[
               styles.bubble,
               message.isFromMe ? styles.bubbleMe : styles.bubbleThem,
@@ -262,6 +306,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               voiceOnly ? { width: maxVoiceWidth } : null,
             ]}
           >
+            {replyQuote}
             <View style={voiceOnly ? styles.voiceCardSlot : null}>
               <ChatVoiceMessageCard
                 voiceBlock={voiceBlock}
@@ -336,11 +381,20 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
       <MessageBubbleColumn
         anchorStyle={anchorStyle}
         onLayout={fixedPhotoWidth ? onAnchorLayout : undefined}
-        isFromMe={message.isFromMe}
-        selected={showDeleteAction}
-        onLongPressOwn={onLongPressOwn}
+        {...bubbleColumnProps}
       >
-        <View style={bubbleStyles}>
+        <View ref={bubbleMeasureRef} collapsable={false} style={bubbleStyles}>
+          {replyQuote ? (
+            <View
+              style={[
+                styles.photoReplyWrap,
+                !photoOnly ? (message.isFromMe ? styles.photoCaptionMe : styles.photoCaptionThem) : null,
+                photoCollage && !photoOnly ? styles.photoCaptionAfterCollage : null,
+              ]}
+            >
+              {replyQuote}
+            </View>
+          ) : null}
           <View
             style={[
               styles.photoMedia,
@@ -409,6 +463,18 @@ const styles = StyleSheet.create({
     width: floraMessages.peerBubbleAvatarSize,
     flexShrink: 0,
   },
+  /** Зона тапа — почти вся ширина строки; пузырь остаётся по краю. */
+  tapLane: {
+    flex: 1,
+    minWidth: 0,
+    alignSelf: "stretch",
+  },
+  tapLaneMe: {
+    alignItems: "flex-end",
+  },
+  tapLaneThem: {
+    alignItems: "flex-start",
+  },
   bubbleAnchor: {
     flexShrink: 1,
     minWidth: 0,
@@ -419,9 +485,6 @@ const styles = StyleSheet.create({
   bubbleAnchorThemFlex: {
     flex: 1,
     minWidth: 0,
-  },
-  bubbleSelected: {
-    opacity: 0.92,
   },
   bubble: {
     padding: floraMessages.bubblePadding,
@@ -497,6 +560,11 @@ const styles = StyleSheet.create({
   photoCaptionAfterCollage: {
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
+  },
+  photoReplyWrap: {
+    paddingHorizontal: floraSpacing.grid,
+    paddingTop: floraSpacing.gridFine * 2,
+    paddingBottom: 0,
   },
   voiceCardSlot: {
     height: floraSpacing.grid * 3,

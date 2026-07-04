@@ -20,6 +20,7 @@ export function messageDecryptCacheKey(m: MsgMessageDto): string {
 function normalizeRow(row: ThreadBubbleItem): ThreadBubbleItem {
   return {
     ...row,
+    previewText: row.previewText ?? row.text ?? "",
     imageBlocks: row.imageBlocks ?? [],
     voiceBlock: row.voiceBlock,
   };
@@ -29,6 +30,7 @@ function buildDecryptingRow(m: MsgMessageDto): ThreadBubbleItem {
   return {
     messageUuid: m.messageUuid,
     text: "",
+    previewText: "",
     imageBlocks: [],
     voiceBlock: undefined,
     isFromMe: m.isFromMe,
@@ -42,8 +44,10 @@ function rowFromPlaintext(m: MsgMessageDto, plain: FscpMessagePlaintext): Thread
   return {
     messageUuid: m.messageUuid,
     text: extractTextFromPlaintext(plain),
+    previewText: plaintextToPreview(plain),
     imageBlocks: getImageBlocksFromPlaintext(plain),
     voiceBlock: getPrimaryVoiceBlock(plain),
+    replyTo: plain.replyTo,
     isFromMe: m.isFromMe,
     createdAt: m.createdAt,
     decryptState: "ok",
@@ -55,6 +59,7 @@ function rowFromPreviewText(m: MsgMessageDto, preview: string): ThreadBubbleItem
   return {
     messageUuid: m.messageUuid,
     text: preview,
+    previewText: preview,
     imageBlocks: [],
     voiceBlock: undefined,
     isFromMe: m.isFromMe,
@@ -249,11 +254,13 @@ export function useThreadMessageDecrypt({
                 row = {
                   messageUuid: m.messageUuid,
                   text: "",
+                  previewText: "",
                   imageBlocks: [],
                   voiceBlock: undefined,
                   isFromMe: m.isFromMe,
                   createdAt: m.createdAt,
                   decryptState: "failed",
+                  isRead: m.isRead,
                 };
               }
             } else {

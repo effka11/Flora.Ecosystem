@@ -40,9 +40,15 @@ import {
   ChatComposeField,
   type ChatComposeFieldHandle,
 } from "@/components/messages/ChatComposeField";
+import { ChatComposeReplyBar } from "@/components/messages/ChatComposeReplyBar";
 import { ChatMessageBubble, type ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
 import { ChatMessageEmojiPanel } from "@/components/messages/ChatMessageEmojiPanel";
 import { ChatMoreMenu } from "@/components/messages/ChatMoreMenu";
+import {
+  MessageBubbleMoreMenu,
+  bubbleAnchorsEqual,
+  type BubbleAnchorRect,
+} from "@/components/messages/MessageBubbleMoreMenu";
 import { ChatThreadHeader, type ChatPeerInfo } from "@/components/messages/ChatThreadHeader";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
@@ -63,7 +69,9 @@ import {
   resolveMessagesDockBottomInset,
 } from "@/lib/messagesDockInsets";
 import { uploadPreparedMessageImage } from "@/lib/messageImageAssets";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { appendOutgoingThreadMessage } from "@/lib/messageThreadOutgoing";
+import { replyDraftFromMessage, type MessageReplyDraft } from "@/lib/messageReply";
 import { uploadPreparedMessageVoice } from "@/lib/messageVoiceAssets";
 import { registerPendingVoiceUri } from "@/lib/pendingVoiceOutgoing";
 import { useMessageComposeImages } from "@/lib/useMessageComposeImages";
@@ -142,12 +150,43 @@ export default function ThreadScreen() {
   const chatScrollViewRef = useRef<ChatScrollViewRef>(null);
   const composeRef = useRef<ChatComposeFieldHandle>(null);
   const moreBtnRef = useRef<View>(null);
+  const dockFooterRef = useRef<View>(null);
+  const chatHeaderWrapRef = useRef<View>(null);
   const atBottomRef = useRef(true);
   const prevListLengthRef = useRef(0);
-  const [actionMessageUuid, setActionMessageUuid] = useState<string | null>(null);
+  const [menuTarget, setMenuTarget] = useState<{
+    message: ThreadBubbleItem;
+    anchor: BubbleAnchorRect;
+  } | null>(null);
+  const [feedTopY, setFeedTopY] = useState<number | null>(null);
+  const [feedBottomY, setFeedBottomY] = useState<number | null>(null);
+  const [replyTo, setReplyTo] = useState<MessageReplyDraft | null>(null);
 
-  const dismissDeleteBar = useCallback(() => {
-    setActionMessageUuid(null);
+  const closeMessageMenu = useCallback(() => {
+    setMenuTarget(null);
+    setFeedTopY(null);
+    setFeedBottomY(null);
+  }, []);
+
+  const syncFeedBoundsY = useCallback(() => {
+    dockFooterRef.current?.measureInWindow((_dockX, dockY) => {
+      chatHeaderWrapRef.current?.measureInWindow((_headerX, headerY, _headerW, headerH) => {
+        const dividerY = headerY + headerH - floraSpacing.grid;
+        setFeedTopY(dividerY);
+        setFeedBottomY(dockY);
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!menuTarget) return;
+    syncFeedBoundsY();
+    const frame = requestAnimationFrame(syncFeedBoundsY);
+    return () => cancelAnimationFrame(frame);
+  }, [menuTarget, syncFeedBoundsY]);
+
+  const clearReplyDraft = useCallback(() => {
+    setReplyTo(null);
     setDeleteBarHeightPx(0);
   }, [setDeleteBarHeightPx]);
 
@@ -166,6 +205,8 @@ export default function ThreadScreen() {
 
   useEffect(() => {
     resetDock();
+    setMenuTarget(null);
+    setReplyTo(null);
     // resetDock is stable (ref-backed); only re-run on thread change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationUuid]);
@@ -287,6 +328,7 @@ export default function ThreadScreen() {
   ]);
 
   const otherUserUuid = peer.otherUserUuid || paramOtherUserUuid;
+  const peerDisplayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
 
   useEffect(() => {
     if (!conversationUuid || otherUserUuid) return;
@@ -470,29 +512,63 @@ export default function ThreadScreen() {
         closeEmoji();
         return true;
       }
+      if (menuTarget) {
+        closeMessageMenu();
+        return true;
+      }
       return false;
     });
     return () => sub.remove();
-  }, [emojiAccessoryActive, emojiPanelMounted, keyboardOpen, closeEmoji, dismissKeyboard]);
+  }, [
+    emojiAccessoryActive,
+    emojiPanelMounted,
+    keyboardOpen,
+    closeEmoji,
+    dismissKeyboard,
+    menuTarget,
+    closeMessageMenu,
+  ]);
 
-  const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-    const atBottom = distanceFromBottom < CHAT_AT_BOTTOM_THRESHOLD_PX;
-    atBottomRef.current = atBottom;
-    onEndVisible(atBottom);
-    dismissDeleteBar();
-  }, [dismissDeleteBar, onEndVisible]);
+  const onScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+      const atBottom = distanceFromBottom < CHAT_AT_BOTTOM_THRESHOLD_PX;
+      atBottomRef.current = atBottom;
+      onEndVisible(atBottom);
+      closeMessageMenu();
+    },
+    [closeMessageMenu, onEndVisible],
+  );
 
-  const onMessageLongPress = useCallback((messageUuid: string) => {
-    setActionMessageUuid(messageUuid);
+  const copyMessageContent = useCallback(async (previewText: string) => {
+    const ok = await copyTextToClipboard(previewText);
+    if (!ok) {
+      Alert.alert(
+        "Копирование",
+        "Буфер обмена недоступен. Пересоберите dev-client: npm run install:android:debug с флагом -ReplaceExisting.",
+      );
+    }
   }, []);
 
-  const confirmDeleteMessage = useCallback(
+  const beginReplyToMessage = useCallback(
+    (message: ThreadBubbleItem) => {
+      const draft = replyDraftFromMessage(message, message.previewText, peerDisplayName);
+      if (!draft) return;
+      closeMessageMenu();
+      setReplyTo(draft);
+      closeEmoji();
+      composeRef.current?.focusInput();
+    },
+    [closeEmoji, closeMessageMenu, peerDisplayName],
+  );
+
+  const handleDeleteMessage = useCallback(
     (messageUuid: string) => {
+      closeMessageMenu();
       if (!conversationUuid) return;
       Alert.alert("Удалить сообщение?", "Сообщение исчезнет у обоих участников.", [
-        { text: "Отмена", style: "cancel", onPress: dismissDeleteBar },
+        { text: "Отмена", style: "cancel" },
         {
           text: "Удалить",
           style: "destructive",
@@ -510,7 +586,6 @@ export default function ThreadScreen() {
                     return { ...old, items };
                   },
                 );
-                dismissDeleteBar();
                 void queryClient.invalidateQueries({ queryKey: ["conversations"] });
               } catch (e) {
                 Alert.alert(
@@ -523,23 +598,46 @@ export default function ThreadScreen() {
         },
       ]);
     },
-    [conversationUuid, otherUserUuid, queryClient, dismissDeleteBar],
+    [closeMessageMenu, conversationUuid, otherUserUuid, queryClient],
   );
 
+  const onMessagePress = useCallback(
+    (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => {
+      closeEmoji();
+      dismissKeyboard();
+      setMenuTarget((prev) =>
+        prev?.message.messageUuid === message.messageUuid ? null : { message, anchor },
+      );
+    },
+    [closeEmoji, dismissKeyboard],
+  );
+
+  const syncMenuAnchor = useCallback((messageUuid: string, anchor: BubbleAnchorRect) => {
+    setMenuTarget((prev) => {
+      if (prev?.message.messageUuid !== messageUuid) return prev;
+      if (bubbleAnchorsEqual(prev.anchor, anchor)) return prev;
+      return { ...prev, anchor };
+    });
+  }, []);
+
   const renderMessage = useCallback(
-    ({ item }: { item: ListRow }) => (
-      <ChatMessageBubble
-        message={item}
-        peer={peer}
-        showPeerAvatar={item.showPeerAvatar}
-        isPeerIndented={item.isPeerIndented}
-        showDeleteAction={item.isFromMe && actionMessageUuid === item.messageUuid}
-        onLongPressOwn={
-          item.isFromMe ? () => onMessageLongPress(item.messageUuid) : undefined
-        }
-      />
-    ),
-    [peer, actionMessageUuid, onMessageLongPress],
+    ({ item }: { item: ListRow }) => {
+      const isMenuTarget = menuTarget?.message.messageUuid === item.messageUuid;
+      return (
+        <ChatMessageBubble
+          message={item}
+          peer={peer}
+          showPeerAvatar={item.showPeerAvatar}
+          isPeerIndented={item.isPeerIndented}
+          isMenuTarget={isMenuTarget}
+          onPress={(anchor) => onMessagePress(item, anchor)}
+          onAnchorSync={
+            isMenuTarget ? (anchor) => syncMenuAnchor(item.messageUuid, anchor) : undefined
+          }
+        />
+      );
+    },
+    [menuTarget?.message.messageUuid, onMessagePress, peer, syncMenuAnchor],
   );
 
   const onPickImages = useCallback(async () => {
@@ -578,6 +676,7 @@ export default function ThreadScreen() {
 
     const sourceUri = voiceDraft.uri;
     const contentType = voiceDraft.contentType;
+    const activeReply = replyTo;
 
     setSending(true);
     try {
@@ -600,6 +699,7 @@ export default function ThreadScreen() {
         material,
         receiverAgreementPublicKeyBase64: peerKey.publicKeyBase64,
         blocks: [voiceBlock],
+        replyTo: activeReply ?? undefined,
       });
       const sent = await sendTextMessage({
         conversationUuid,
@@ -615,9 +715,12 @@ export default function ThreadScreen() {
         sent,
         wire,
         blocks: [voiceBlock],
+        replyTo: activeReply ?? undefined,
       });
       await voiceRecorder.discard();
       clearVoiceDraft();
+      setReplyTo(null);
+      setDeleteBarHeightPx(0);
       atBottomRef.current = true;
       void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
     } catch (err) {
@@ -634,6 +737,8 @@ export default function ThreadScreen() {
     me?.userUuid,
     otherUserUuid,
     queryClient,
+    replyTo,
+    setDeleteBarHeightPx,
     voiceDraft,
     voiceRecorder,
   ]);
@@ -645,6 +750,7 @@ export default function ThreadScreen() {
     if (!canSend() || hasPendingPrepare) return;
     const material = useFscpStore.getState().material;
     if (!material) return;
+    const activeReply = replyTo;
     setSending(true);
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
@@ -673,6 +779,7 @@ export default function ThreadScreen() {
         material,
         receiverAgreementPublicKeyBase64: peerKey.publicKeyBase64,
         blocks,
+        replyTo: activeReply ?? undefined,
       });
       const previewPlain = messagePlaintextFromBlocks(blocks);
       const sent = await sendTextMessage({
@@ -689,9 +796,12 @@ export default function ThreadScreen() {
         sent,
         wire,
         blocks,
+        replyTo: activeReply ?? undefined,
       });
       setText("");
       clearImages();
+      setReplyTo(null);
+      setDeleteBarHeightPx(0);
       atBottomRef.current = true;
       void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
     } catch (err) {
@@ -727,11 +837,13 @@ export default function ThreadScreen() {
 
   return (
     <View style={styles.root}>
-      <ChatThreadHeader
-        peer={peer}
-        moreButtonRef={moreBtnRef}
-        onMorePress={() => setMoreMenuOpen(true)}
-      />
+      <View ref={chatHeaderWrapRef} collapsable={false}>
+        <ChatThreadHeader
+          peer={peer}
+          moreButtonRef={moreBtnRef}
+          onMorePress={() => setMoreMenuOpen(true)}
+        />
+      </View>
 
       {blocked ? (
         <Pressable style={styles.blockedBanner} onPress={() => setUnlockOpen(true)}>
@@ -788,38 +900,53 @@ export default function ThreadScreen() {
             </Pressable>
           </Reanimated.View>
         ) : null}
+
+        <MessageBubbleMoreMenu
+          open={menuTarget != null}
+          anchor={menuTarget?.anchor ?? null}
+          feedTopY={feedTopY}
+          feedBottomY={feedBottomY}
+          isFromMe={menuTarget?.message.isFromMe ?? false}
+          canReplyCopy={
+            menuTarget != null &&
+            menuTarget.message.decryptState === "ok" &&
+            menuTarget.message.previewText.length > 0
+          }
+          canDelete={
+            menuTarget != null &&
+            menuTarget.message.isFromMe &&
+            menuTarget.message.sendStatus !== "sending"
+          }
+          onClose={closeMessageMenu}
+          onReply={
+            menuTarget
+              ? () => beginReplyToMessage(menuTarget.message)
+              : undefined
+          }
+          onCopy={
+            menuTarget
+              ? () => void copyMessageContent(menuTarget.message.previewText)
+              : undefined
+          }
+          onDelete={
+            menuTarget?.message.isFromMe
+              ? () => handleDeleteMessage(menuTarget.message.messageUuid)
+              : undefined
+          }
+        />
       </View>
 
-      <Reanimated.View style={[styles.dockFooter, dockStickyStyle]}>
+      <Reanimated.View ref={dockFooterRef} collapsable={false} style={[styles.dockFooter, dockStickyStyle]}>
         <View
           style={styles.dockColumn}
           onLayout={(e) => onDockColumnIdleLayout(e.nativeEvent.layout.height)}
         >
-          {actionMessageUuid ? (
-            <View
-              style={styles.messageDeleteBar}
-              onLayout={(e) => setDeleteBarHeightPx(e.nativeEvent.layout.height)}
-            >
-              <Pressable
-                style={styles.messageDeleteBtn}
-                onPress={() => confirmDeleteMessage(actionMessageUuid)}
-                accessibilityRole="button"
-                accessibilityLabel="Удалить сообщение"
-              >
-                <Text style={styles.messageDeleteBtnText}>Удалить</Text>
-              </Pressable>
-              <Pressable
-                style={styles.messageDeleteCancelBtn}
-                onPress={() => {
-                  dismissDeleteBar();
-                  setDeleteBarHeightPx(0);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Отмена"
-              >
-                <Text style={styles.messageDeleteCancelText}>Отмена</Text>
-              </Pressable>
-            </View>
+          {replyTo ? (
+            <ChatComposeReplyBar
+              reply={replyTo}
+              onDismiss={clearReplyDraft}
+              onLayout={(height) => setDeleteBarHeightPx(height)}
+            />
           ) : null}
 
           <ChatComposeField
@@ -1009,37 +1136,6 @@ const styles = StyleSheet.create({
     borderColor: floraMessages.composeBorderColor,
     overflow: "hidden",
     backgroundColor: floraColors.surfaceElevated,
-  },
-  messageDeleteBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: floraSpacing.grid,
-    paddingHorizontal: floraSpacing.grid,
-    paddingVertical: floraSpacing.gridFine * 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: floraMessages.composeBorderColor,
-    backgroundColor: floraColors.bg,
-  },
-  messageDeleteBtn: {
-    paddingVertical: floraSpacing.gridFine + 2,
-    paddingHorizontal: floraSpacing.grid * 2,
-    borderRadius: floraMessages.composeRadius,
-    backgroundColor: "rgba(220, 53, 69, 0.14)",
-  },
-  messageDeleteBtnText: {
-    color: "#dc3545",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  messageDeleteCancelBtn: {
-    paddingVertical: floraSpacing.gridFine + 2,
-    paddingHorizontal: floraSpacing.grid,
-  },
-  messageDeleteCancelText: {
-    color: floraColors.gray,
-    fontSize: 15,
-    fontWeight: "500",
   },
   listContent: {
     paddingTop: floraMessages.bubbleGap,
