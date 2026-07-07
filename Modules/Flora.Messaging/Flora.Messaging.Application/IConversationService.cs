@@ -58,4 +58,11 @@ public interface IConversationService
         Guid conversationUuid,
         Guid messageUuid,
         CancellationToken ct);
+
+    /// <summary>Deletes the entire DM thread between the viewer and the resolved peer.</summary>
+    Task<DeleteConversationResult> DeleteConversationAsync(
+        Guid userUuid,
+        Guid conversationUuid,
+        Guid? otherUserUuid,
+        CancellationToken ct);
 }

@@ -136,3 +136,10 @@ public enum DeleteMessageResult
     Forbidden,
     Success,
 }
+
+/// <summary>Outcome of DELETE conversation for the current user.</summary>
+public enum DeleteConversationResult
+{
+    NotFound,
+    Success,
+}

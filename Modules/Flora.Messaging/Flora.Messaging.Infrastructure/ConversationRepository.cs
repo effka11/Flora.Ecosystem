@@ -227,8 +227,78 @@ public sealed class ConversationRepository(MessagingDbContext db) : IConversatio
         if (msg.SenderUserUuid != viewerUuid)
             return DeleteMessageResult.Forbidden;
 
+        await RemoveMessageAssetsAsync(messageUuid, ct);
         db.UserMessages.Remove(msg);
         await db.SaveChangesAsync(ct);
         return DeleteMessageResult.Success;
+    }
+
+    /// <inheritdoc/>
+    public async Task<DeleteConversationResult> DeleteConversationAsync(
+        Guid viewerUuid,
+        Guid otherUserUuid,
+        CancellationToken ct)
+    {
+        if (otherUserUuid == Guid.Empty || otherUserUuid == viewerUuid)
+            return DeleteConversationResult.NotFound;
+
+        var toDelete = await db.UserMessages
+            .Where(m => (m.SenderUserUuid == viewerUuid && m.ReceiverUserUuid == otherUserUuid) ||
+                        (m.SenderUserUuid == otherUserUuid && m.ReceiverUserUuid == viewerUuid))
+            .ToListAsync(ct);
+
+        await RemovePeerAssetsAsync(viewerUuid, otherUserUuid, ct);
+
+        if (toDelete.Count > 0)
+            db.UserMessages.RemoveRange(toDelete);
+
+        await db.SaveChangesAsync(ct);
+
+        return DeleteConversationResult.Success;
+    }
+
+    private async Task RemoveMessageAssetsAsync(Guid messageUuid, CancellationToken ct)
+    {
+        var voices = await db.UserMessageVoiceAssets
+            .Where(a => a.MessageUuid == messageUuid)
+            .ToListAsync(ct);
+        if (voices.Count > 0)
+            db.UserMessageVoiceAssets.RemoveRange(voices);
+
+        var images = await db.UserMessageImageAssets
+            .Where(a => a.MessageUuid == messageUuid)
+            .ToListAsync(ct);
+        if (images.Count > 0)
+            db.UserMessageImageAssets.RemoveRange(images);
+
+        var videos = await db.UserMessageVideoAssets
+            .Where(a => a.MessageUuid == messageUuid)
+            .ToListAsync(ct);
+        if (videos.Count > 0)
+            db.UserMessageVideoAssets.RemoveRange(videos);
+    }
+
+    private async Task RemovePeerAssetsAsync(Guid userA, Guid userB, CancellationToken ct)
+    {
+        var voices = await db.UserMessageVoiceAssets
+            .Where(a => (a.SenderUserUuid == userA && a.ReceiverUserUuid == userB) ||
+                        (a.SenderUserUuid == userB && a.ReceiverUserUuid == userA))
+            .ToListAsync(ct);
+        if (voices.Count > 0)
+            db.UserMessageVoiceAssets.RemoveRange(voices);
+
+        var images = await db.UserMessageImageAssets
+            .Where(a => (a.SenderUserUuid == userA && a.ReceiverUserUuid == userB) ||
+                        (a.SenderUserUuid == userB && a.ReceiverUserUuid == userA))
+            .ToListAsync(ct);
+        if (images.Count > 0)
+            db.UserMessageImageAssets.RemoveRange(images);
+
+        var videos = await db.UserMessageVideoAssets
+            .Where(a => (a.SenderUserUuid == userA && a.ReceiverUserUuid == userB) ||
+                        (a.SenderUserUuid == userB && a.ReceiverUserUuid == userA))
+            .ToListAsync(ct);
+        if (videos.Count > 0)
+            db.UserMessageVideoAssets.RemoveRange(videos);
     }
 }

@@ -192,4 +192,20 @@ public sealed class ConversationService(IConversationRepository repo, IMessageSe
         Guid messageUuid,
         CancellationToken ct) =>
         repo.DeleteMessageAsync(userUuid, conversationUuid, messageUuid, ct);
+
+    /// <inheritdoc/>
+    public async Task<DeleteConversationResult> DeleteConversationAsync(
+        Guid userUuid,
+        Guid conversationUuid,
+        Guid? otherUserUuid,
+        CancellationToken ct)
+    {
+        var peers = await repo.GetPeerRowsAsync(userUuid, ct);
+        var otherUuid = ResolveOtherUser(
+            userUuid, peers.Select(p => p.OtherUserUuid), conversationUuid, otherUserUuid);
+        if (otherUuid is null)
+            return DeleteConversationResult.NotFound;
+
+        return await repo.DeleteConversationAsync(userUuid, otherUuid.Value, ct);
+    }
 }

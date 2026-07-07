@@ -138,7 +138,8 @@ export type PostMoreMenuRectProps = {
   onChatSearch?: () => void;
   onChatMedia?: () => void;
   onChatPin?: () => void;
-  onChatDelete?: () => void;
+  /** Удалить весь диалог (список чатов и шапка открытого чата). */
+  onDeleteConversation?: () => void;
 };
 
 export function PostMoreMenuRect({
@@ -160,8 +161,9 @@ export function PostMoreMenuRect({
   onChatSearch,
   onChatMedia,
   onChatPin,
-  onChatDelete,
+  onDeleteConversation,
 }: PostMoreMenuRectProps) {
+  const deleteConversation = onDeleteConversation;
   const a11y = {
     ...(variant === "conversation"
       ? CONVERSATION_A11Y
@@ -298,6 +300,7 @@ export function PostMoreMenuRect({
             conversationIsArchived={conversationIsArchived}
             onConversationArchive={onConversationArchive}
             onConversationUnarchive={onConversationUnarchive}
+            onDelete={deleteConversation}
           />
         ) : variant === "chat" ? (
           <ChatMoreMenuPanel
@@ -306,7 +309,7 @@ export function PostMoreMenuRect({
             onSearch={onChatSearch}
             onMedia={onChatMedia}
             onPin={onChatPin}
-            onDelete={onChatDelete}
+            onDelete={deleteConversation}
             muteSubmenuOpen={muteSubmenu.muteSubmenuOpen}
             isSubmenuClosing={muteSubmenu.isSubmenuClosing}
             onToggleMuteSubmenu={muteSubmenu.toggleMuteSubmenu}

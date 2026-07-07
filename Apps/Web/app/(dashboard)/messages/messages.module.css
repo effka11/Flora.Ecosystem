@@ -3594,3 +3594,196 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── Delete conversation confirm modal (как musicDeleteModal / settingsConfirmModal) ── */
+
+@keyframes messagesDeleteModalBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes messagesDeleteModalBackdropOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes messagesDeleteModalDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(calc(2 * var(--flora-grid-step-fine))) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes messagesDeleteModalDialogOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(calc(2 * var(--flora-grid-step-fine))) scale(0.98);
+  }
+}
+
+.messagesDeleteModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  background: rgba(0, 0, 0, 0.65);
+  animation: messagesDeleteModalBackdropIn var(--flora-duration-2) var(--flora-ease-out);
+}
+
+.messagesDeleteModalBackdropClosing {
+  animation: messagesDeleteModalBackdropOut var(--flora-duration-2) var(--flora-ease-in) forwards;
+}
+
+.messagesDeleteModal {
+  position: fixed;
+  inset: 0;
+  z-index: 211;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(2 * var(--flora-grid-step));
+  pointer-events: none;
+}
+
+.messagesDeleteModalDialog {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 92vw);
+  border-radius: 12px;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
+  background: var(--flora-bg);
+  box-shadow: var(--flora-reserve-popover-shadow);
+  animation: messagesDeleteModalDialogIn var(--flora-duration-3) var(--flora-ease-out);
+}
+
+.messagesDeleteModalDialogClosing {
+  animation: messagesDeleteModalDialogOut var(--flora-duration-2) var(--flora-ease-in) forwards;
+}
+
+.messagesDeleteModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  padding: calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step)) calc(1 * var(--flora-grid-step));
+}
+
+.messagesDeleteModalTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--flora-white-template);
+}
+
+.messagesDeleteModalClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(6 * var(--flora-grid-step-fine));
+  height: calc(6 * var(--flora-grid-step-fine));
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--flora-gray);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.messagesDeleteModalClose:hover:not(:disabled) {
+  color: var(--flora-gray-hover);
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.messagesDeleteModalBody {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  padding: 0 calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step));
+}
+
+.messagesDeleteModalText {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--flora-gray);
+}
+
+.messagesDeleteModalError {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--flora-danger, #e85d5d);
+}
+
+.messagesDeleteModalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  padding: 0 calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step));
+}
+
+.messagesDeleteModalBtnDanger,
+.messagesDeleteModalBtnCancel {
+  min-height: calc(8 * var(--flora-grid-step-fine));
+  padding: 0 calc(3 * var(--flora-grid-step-fine));
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.messagesDeleteModalBtnDanger {
+  color: var(--flora-white-template);
+  background: rgba(232, 93, 93, 0.22);
+  border-color: rgba(232, 93, 93, 0.35);
+}
+
+.messagesDeleteModalBtnDanger:hover:not(:disabled) {
+  background: rgba(232, 93, 93, 0.32);
+}
+
+.messagesDeleteModalBtnCancel {
+  color: var(--flora-gray);
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+  border-color: rgba(var(--flora-white-template-rgb), 0.1);
+}
+
+.messagesDeleteModalBtnCancel:hover:not(:disabled) {
+  background: rgba(var(--flora-white-template-rgb), 0.1);
+}
+
+.messagesDeleteModalBtnDanger:disabled,
+.messagesDeleteModalBtnCancel:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messagesDeleteModalBackdrop,
+  .messagesDeleteModalBackdropClosing,
+  .messagesDeleteModalDialog,
+  .messagesDeleteModalDialogClosing {
+    animation: none;
+  }
+}

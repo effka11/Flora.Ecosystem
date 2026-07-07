@@ -67,6 +67,7 @@ type ConversationMoreMenuPanelProps = {
   conversationIsArchived?: boolean;
   onConversationArchive?: () => void;
   onConversationUnarchive?: () => void;
+  onDelete?: () => void;
 };
 
 function MenuRow({
@@ -115,6 +116,7 @@ export function ConversationMoreMenuPanel({
   conversationIsArchived = false,
   onConversationArchive,
   onConversationUnarchive,
+  onDelete,
 }: ConversationMoreMenuPanelProps) {
   const submenuExpanded = muteSubmenuOpen && !isSubmenuClosing;
 
@@ -144,7 +146,15 @@ export function ConversationMoreMenuPanel({
           onAction();
         }}
       />
-      <MenuRow icon={<IconDelete />} label="Удалить чат" onClick={onAction} danger />
+      <MenuRow
+        icon={<IconDelete />}
+        label="Удалить чат"
+        danger
+        onClick={() => {
+          onDelete?.();
+          onAction();
+        }}
+      />
     </>
   );
 }

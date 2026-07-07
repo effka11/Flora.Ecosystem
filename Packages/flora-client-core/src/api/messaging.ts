@@ -70,6 +70,18 @@ export async function apiDeleteMessage(conversationUuid: string, messageUuid: st
   await authDelete(`/api/messaging/conversations/${conv}/messages/${msg}`);
 }
 
+export async function apiDeleteConversation(
+  conversationUuid: string,
+  otherUserUuid?: string,
+): Promise<void> {
+  const q = new URLSearchParams();
+  if (otherUserUuid?.trim()) q.set("otherUserUuid", otherUserUuid.trim());
+  const qs = q.toString();
+  await authDelete(
+    `/api/messaging/conversations/${encodeURIComponent(conversationUuid.trim())}${qs ? `?${qs}` : ""}`,
+  );
+}
+
 export async function apiGetE2EState(): Promise<MsgE2EState> {
   const raw = await authGetJson("/api/messaging/e2e/state");
   const o = asRecord(raw) ?? {};

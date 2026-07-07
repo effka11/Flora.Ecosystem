@@ -56,6 +56,7 @@ import {
   type MessagesChangedDetail,
   msgSendMessageToUser,
   msgDeleteMessageForUser,
+  msgDeleteConversationForUser,
   type MsgConversationDto,
   type MsgConversationsPage,
   type MsgMessageDto,
@@ -72,11 +73,13 @@ import {
   isDemoPlaintextWire,
   parseDemoPlaintextWire,
   devDemoGetThread,
+  devDemoDeleteConversation,
 } from "@/lib/devLocalDemoData";
 import { formatWasOnlineRu } from "@/lib/lastSeenRu";
 import { ImageMessageCard } from "./ImageMessageCard";
 import { MessageImageCollage } from "./MessageImageCollage";
 import { MessageBubbleAnchor } from "./MessageBubbleMoreMenu";
+import { MessagesDeleteConversationModal } from "./MessagesDeleteConversationModal";
 import { MessageBubbleReplyQuote } from "./MessageBubbleReplyQuote";
 import { MessageBubbleText } from "./MessageBubbleText";
 import { MessageComposeReplyBar } from "./MessageComposeReplyBar";
@@ -177,6 +180,7 @@ const STICKER_PANEL_CLOSE_MS = floraDurationMs(2) + 50;
 
 /** Синхронно с переключением вкладок / layout панели (`--flora-duration-2`). */
 const STICKER_TAB_TRANSITION_MS = floraDurationMs(2);
+const DELETE_CONVERSATION_MODAL_CLOSE_MS = floraDurationMs(2);
 
 type MessagesPanelTransition = null | "fromLeft" | "fromRight" | "fromTop" | "fromBottom";
 
@@ -385,6 +389,13 @@ function MessagesChatInner() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "unread">("recent");
+  const [pendingDeleteConversation, setPendingDeleteConversation] = useState<{
+    peerUuid: string;
+    displayName: string;
+  } | null>(null);
+  const [deleteConversationModalClosing, setDeleteConversationModalClosing] = useState(false);
+  const [deleteConversationBusy, setDeleteConversationBusy] = useState(false);
+  const [deleteConversationError, setDeleteConversationError] = useState<string | null>(null);
   const [chatListScope, setChatListScope] = useState<MessagesChatListScope>("all");
   /** Архив по UUID собеседника (пока только UI, без API). */
   const [archivedByPeer, setArchivedByPeer] = useState<Record<string, true>>({});
@@ -1242,6 +1253,98 @@ function MessagesChatInner() {
     [me?.userUuid, refreshConversationList, selectedOtherUuid, viewerNorm],
   );
 
+  const deleteConversationCloseTimerRef = useRef<number | null>(null);
+
+  const dismissDeleteConversationModal = useCallback(() => {
+    setDeleteConversationModalClosing(true);
+    if (deleteConversationCloseTimerRef.current) {
+      window.clearTimeout(deleteConversationCloseTimerRef.current);
+    }
+    deleteConversationCloseTimerRef.current = window.setTimeout(() => {
+      setPendingDeleteConversation(null);
+      setDeleteConversationModalClosing(false);
+      setDeleteConversationError(null);
+      deleteConversationCloseTimerRef.current = null;
+    }, DELETE_CONVERSATION_MODAL_CLOSE_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (deleteConversationCloseTimerRef.current) {
+        window.clearTimeout(deleteConversationCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleDeleteConversation = useCallback(
+    async (peerUuid: string) => {
+      const peer = peerUuid.trim();
+      const myUuid = me?.userUuid?.trim();
+      if (!peer || !myUuid) return;
+
+      const deletingOpenChat = selectedOtherUuid === peer;
+      setDeleteConversationBusy(true);
+      setDeleteConversationError(null);
+
+      try {
+        if (isDevLocalOfflineSession()) {
+          devDemoDeleteConversation(peer);
+        } else {
+          await msgDeleteConversationForUser(myUuid, peer);
+        }
+
+        invalidateConversationThread(viewerNorm, peer);
+        conversationsCache.invalidate();
+        clearPeerMuted(peer);
+        unarchivePeer(peer);
+        setConversations((prev) => prev.filter((c) => c.otherUserUuid !== peer));
+
+        if (deletingOpenChat) {
+          closeChat();
+        }
+
+        notifyMessagesUnreadChanged();
+        dismissDeleteConversationModal();
+      } catch (e) {
+        setDeleteConversationError(
+          e instanceof ApiRequestError ? e.message : "Не удалось удалить чат.",
+        );
+      } finally {
+        setDeleteConversationBusy(false);
+      }
+    },
+    [
+      clearPeerMuted,
+      closeChat,
+      dismissDeleteConversationModal,
+      me?.userUuid,
+      selectedOtherUuid,
+      unarchivePeer,
+      viewerNorm,
+    ],
+  );
+
+  const openDeleteConversationModal = useCallback((peerUuid: string, displayName: string) => {
+    if (deleteConversationCloseTimerRef.current) {
+      window.clearTimeout(deleteConversationCloseTimerRef.current);
+      deleteConversationCloseTimerRef.current = null;
+    }
+    setDeleteConversationError(null);
+    setDeleteConversationModalClosing(false);
+    setPendingDeleteConversation({ peerUuid, displayName });
+  }, []);
+
+  const closeDeleteConversationModal = useCallback(() => {
+    if (deleteConversationBusy) return;
+    dismissDeleteConversationModal();
+  }, [deleteConversationBusy, dismissDeleteConversationModal]);
+
+  const confirmDeleteConversation = useCallback(() => {
+    if (!pendingDeleteConversation) return;
+    void handleDeleteConversation(pendingDeleteConversation.peerUuid);
+  }, [handleDeleteConversation, pendingDeleteConversation]);
+
   useEffect(() => {
     setReplyTo(null);
   }, [selectedOtherUuid]);
@@ -1951,6 +2054,7 @@ function MessagesChatInner() {
   const voiceComposeDurationMs = voiceRecorder.recording ? voiceRecorder.recordingMs : compose.voice?.durationMs ?? 0;
 
   return (
+    <>
     <section className={styles.page}>
         {selectedOtherUuid == null ? (
           <div
@@ -2187,6 +2291,12 @@ function MessagesChatInner() {
                       onConversationUnmute={() => clearPeerMuted(chat.otherUserUuid)}
                       onConversationArchive={() => archivePeer(chat.otherUserUuid)}
                       onConversationUnarchive={() => unarchivePeer(chat.otherUserUuid)}
+                      onDeleteConversation={() =>
+                        openDeleteConversationModal(
+                          chat.otherUserUuid,
+                          chatDisplayName,
+                        )
+                      }
                       accessibility={{
                         dialog: `Меню чата с ${chatDisplayName}`,
                         triggerOpen: `Действия — ${chatDisplayName}`,
@@ -2274,6 +2384,14 @@ function MessagesChatInner() {
                     onConversationMuteForever={() => setPeerMutedForever(selectedOtherUuid)}
                     onConversationMuteTemporary={() => setPeerMutedTemporary(selectedOtherUuid)}
                     onConversationUnmute={() => clearPeerMuted(selectedOtherUuid)}
+                    onDeleteConversation={() =>
+                      openDeleteConversationModal(
+                        selectedOtherUuid,
+                        chatHeaderPeer.otherDisplayName ||
+                          chatHeaderPeer.otherUsername ||
+                          "Пользователь",
+                      )
+                    }
                     accessibility={{
                       dialog: `Меню чата с ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
                       triggerOpen: `Действия — ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
@@ -2885,6 +3003,16 @@ function MessagesChatInner() {
           </div>
         ) : null}
       </section>
+      <MessagesDeleteConversationModal
+        open={pendingDeleteConversation != null}
+        closing={deleteConversationModalClosing}
+        busy={deleteConversationBusy}
+        error={deleteConversationError}
+        peerDisplayName={pendingDeleteConversation?.displayName ?? ""}
+        onClose={closeDeleteConversationModal}
+        onConfirm={confirmDeleteConversation}
+      />
+    </>
   );
 }
 

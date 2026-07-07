@@ -564,6 +564,26 @@ public sealed class MessagingController(
         return File(asset.EncryptedBytes, "application/octet-stream");
     }
 
+    // ── DELETE /api/messaging/conversations/{conversationUuid} ───────────────
+
+    /// <summary>Удалить диалог с пользователем (все сообщения между вами).</summary>
+    [HttpDelete("conversations/{conversationUuid:guid}")]
+    public async Task<IActionResult> DeleteConversation(
+        Guid conversationUuid,
+        [FromQuery] Guid? otherUserUuid,
+        CancellationToken ct = default)
+    {
+        if (!TryGetCurrentUser(out var myUuid))
+            return Unauthorized(new { error = "Не удалось определить пользователя." });
+
+        var result = await conversations.DeleteConversationAsync(myUuid, conversationUuid, otherUserUuid, ct);
+        return result switch
+        {
+            DeleteConversationResult.NotFound => NotFound(new { error = "Разговор не найден." }),
+            _ => NoContent(),
+        };
+    }
+
     // ── POST /api/messaging/conversations/{conversationUuid}/read ────────────
 
     /// <summary>Marks all incoming messages in the conversation as read.</summary>

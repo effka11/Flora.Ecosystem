@@ -51,4 +51,10 @@ public interface IConversationRepository
         Guid conversationUuid,
         Guid messageUuid,
         CancellationToken ct);
+
+    /// <summary>Hard-deletes all messages and media between the viewer and the peer.</summary>
+    Task<DeleteConversationResult> DeleteConversationAsync(
+        Guid viewerUuid,
+        Guid otherUserUuid,
+        CancellationToken ct);
 }

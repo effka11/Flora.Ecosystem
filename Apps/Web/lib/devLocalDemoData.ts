@@ -397,6 +397,11 @@ export function devDemoMarkRead(peerUuid: string): void {
   );
 }
 
+export function devDemoDeleteConversation(peerUuid: string): void {
+  devThreads.delete(peerUuid);
+  devConversationList = devConversationList.filter((c) => c.otherUserUuid !== peerUuid);
+}
+
 /** Доп. строки для вкладки «Люди» при DEV_LOCAL_RICH_UI. */
 export function devDemoPeopleRows(): { id: string; displayName: string; username: string; followers: number }[] {
   return Array.from({ length: 42 }, (_, i) => {

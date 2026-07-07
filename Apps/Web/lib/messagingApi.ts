@@ -442,6 +442,27 @@ export async function msgDeleteMessageForUser(
   return msgDeleteMessage(conversationUuid, messageUuid);
 }
 
+/** DELETE /api/messaging/conversations/{conversationUuid} */
+export async function msgDeleteConversation(
+  conversationUuid: string,
+  otherUserUuid?: string | null,
+): Promise<void> {
+  const q = otherUserUuid?.trim()
+    ? `?otherUserUuid=${encodeURIComponent(otherUserUuid.trim())}`
+    : "";
+  await authDelete(
+    apiUrl(`/api/messaging/conversations/${encodeURIComponent(conversationUuid)}${q}`),
+  );
+}
+
+export async function msgDeleteConversationForUser(
+  myUuid: string,
+  otherUserUuid: string,
+): Promise<void> {
+  const conversationUuid = dmConversationUuid(myUuid, otherUserUuid);
+  return msgDeleteConversation(conversationUuid, otherUserUuid);
+}
+
 /**
  * Convenience: derives conversationUuid and fetches messages for an (otherUserUuid) conversation.
  */
