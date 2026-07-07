@@ -50,11 +50,6 @@ import {
 import { useComposeOwnedCommunities } from "./useComposeOwnedCommunities";
 import { useComposePostDrafts } from "./useComposePostDrafts";
 
-function communityHandle(slug: string): string {
-  const trimmed = slug.trim();
-  return trimmed ? `@${trimmed}` : "@community";
-}
-
 /* Форматирование поста — отложено до лучших времён.
 type ComposeTool = {
   id: string;
@@ -281,8 +276,9 @@ function ComposePostPageContent() {
   }, [activeComposeMode, ownedCommunities]);
 
   const editorDisplayName = activeOwnedCommunity?.name ?? profileDisplayNameValue;
-  const editorHandle = activeOwnedCommunity ? communityHandle(activeOwnedCommunity.slug) : profileHandle;
-  const editorAvatarUuid = activeOwnedCommunity?.avatarUuid ?? me?.avatarUuid ?? null;
+  const editorAvatarUuid = activeOwnedCommunity
+    ? activeOwnedCommunity.avatarUuid?.trim() || null
+    : me?.avatarUuid ?? null;
   const editorAvatarSeed = activeOwnedCommunity?.communityId ?? me?.userUuid ?? me?.username ?? "";
   const editorCommunityName = activeOwnedCommunity?.name;
 
@@ -576,7 +572,7 @@ function ComposePostPageContent() {
             <FloraAvatar
               avatarUuid={editorAvatarUuid}
               displayName={editorDisplayName}
-              username={activeOwnedCommunity ? activeOwnedCommunity.slug : me?.username ?? ""}
+              username={activeOwnedCommunity ? "" : me?.username ?? ""}
               seed={editorAvatarSeed}
               communityName={editorCommunityName}
               className={styles.composeAvatar}
@@ -584,7 +580,9 @@ function ComposePostPageContent() {
             <header className={styles.composeHeader}>
               <div className={styles.composeIdentity}>
                 <span className={`${styles.composeDisplayName} flora-type-15`}>{editorDisplayName}</span>
-                <span className={`${styles.composeHandle} flora-type-15`}>{editorHandle}</span>
+                {!activeOwnedCommunity ? (
+                  <span className={`${styles.composeHandle} flora-type-15`}>{profileHandle}</span>
+                ) : null}
               </div>
             </header>
             <div className={styles.composeBody}>
