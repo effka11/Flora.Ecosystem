@@ -1,9 +1,6 @@
 ---
-description: >-
-  Чат Messages (Apps/Web): сетка compose, стикеры/эмодзи, голосовые сообщения,
-  плеер в пузыре — зафиксированные координаты и антипаттерны (июнь 2026).
-globs: Apps/Web/app/(dashboard)/messages/**/*
-alwaysApply: false
+name: apps-web-messages-chat
+description: Чат Messages (Apps/Web Flora) — сетка compose, стикеры/эмодзи, голосовые сообщения, плеер в пузыре. Вызывай перед правками Apps/Web/app/(dashboard)/messages/** и voice assets API.
 ---
 
 # Messages chat — compose, стикеры, голос
@@ -122,4 +119,4 @@ alwaysApply: false
 2. **«Сначала верно, потом снова на 84»** — почти всегда откат к `translateX(-50%)` или `- 1`; вернуть **`- 0.5` + `translateY(-50%)` только**.
 3. **Качество звука:** не добавлять Web Audio destination / `recorder.start(250)` без архитектурного решения; чоппинг часто браузер/Opus, не CSS.
 
-См. также: `apps-web-grid-placement.mdc` (общий контракт сетки).
+См. также: skill `/apps-web-grid-placement` (общий контракт сетки).

@@ -57,21 +57,21 @@ npm run prepare:standalone
 
 На Linux после сборки то же делает `npm run prepare:standalone`.
 
-## Публикация с вашей машины (Cursor / VS Code)
+## Публикация с вашей машины (Zed / VS Code)
 
 В репозитории: **[`.vscode/tasks.json`](../../.vscode/tasks.json)**.
 
-Откройте в Cursor **корень репозитория `Flora.Ecosystem`** (папка с `Flora.API`, `Apps`, `.vscode`). Если открыта только `Apps/Web`, переменная `${workspaceFolder}` будет неверной и задачи не найдут скрипты.
+Откройте в Zed **корень репозитория `Flora.Ecosystem`** (папка с `Flora.API`, `Apps`, `.vscode`). Если открыта только `Apps/Web`, переменная `${workspaceFolder}` будет неверной и задачи не найдут скрипты.
 
 Задачи вызывают **`powershell.exe`** (встроенный Windows PowerShell). Отдельный **PowerShell 7 (`pwsh`) не нужен**.
 
 1. **Terminal → Run Task…** (или Command Palette: `Tasks: Run Task`).
-2. Сначала запустите **«Flora Web: test (terminal)»** — должен открыться терминал и появиться строки `Flora task OK` и путь workspace. Если этого нет, проблема в окружении Cursor, а не в скриптах.
+2. Сначала запустите **«Flora Web: test (terminal)»** — должен открыться терминал и появиться строки `Flora task OK` и путь workspace. Если этого нет, проблема в окружении Zed, а не в скриптах.
 3. **«Flora Web: build (production standalone)»** — сборка через [`scripts/task-build.cmd`](scripts/task-build.cmd) (надёжнее, чем одна строка в shell).
 4. **«Flora Web: publish to VPS (full)»** — запрос хоста и ключа, затем [`scripts/deploy.ps1`](scripts/deploy.ps1) (сборка + выгрузка). Пустой ключ → дефолт из `deploy.ps1`.
 5. **«Flora Web: publish to VPS (upload only)»** — то же, но `-SkipBuild`.
 
-Задачи объявлены как **`type: process`** (прямой запуск `cmd.exe` / `powershell.exe`), чтобы интегрированный терминал стабильно открывался в Cursor/VS Code на Windows.
+Задачи объявлены как **`type: process`** (прямой запуск `cmd.exe` / `powershell.exe`), чтобы интегрированный терминал стабильно открывался в Zed/VS Code на Windows.
 
 ## Деплой на сервер (standalone + systemd `flora-web`)
 

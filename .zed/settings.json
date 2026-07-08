@@ -1,0 +1,30 @@
+// Zed project settings — Flora.Ecosystem (перекрывают пользовательские)
+{
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/node_modules",
+    "**/bin",
+    "**/obj",
+    "**/artifacts",
+    "**/.next",
+    "**/dist"
+  ],
+  "auto_install_extensions": {
+    "csharp": true,
+    "dockerfile": true,
+    "env": true
+  },
+  // Extension IDs: verify in Zed → Extensions if auto-install fails (csharp = C# + netcoredbg)
+  "languages": {
+    "C#": { "tab_size": 4 },
+    "TypeScript": {
+      "tab_size": 2,
+      "code_actions_on_format": { "source.organizeImports": true }
+    },
+    "TSX": { "tab_size": 2 },
+    "JavaScript": {
+      // Правило проекта: новые JS-файлы запрещены, только TS
+      "format_on_save": "on"
+    }
+  }
+}

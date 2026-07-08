@@ -1,9 +1,6 @@
 ---
-description: >-
-  Точное позиционирование Apps/Web по сетке: координаты A.B, якорь position:absolute,
-  разделители между горизонталями H–(H+1), dashboard (шапка 9 / контент 11).
-globs: Apps/Web/**/*.{ts,tsx,css,scss}
-alwaysApply: false
+name: apps-web-grid-placement
+description: Точное позиционирование Apps/Web по сетке Flora — координаты A.B, anchorRow, разделители между горизонталями H–(H+1), dashboard (шапка 9 / контент 11). Вызывай перед правками top/margin/absolute/fixed в Apps/Web.
 ---
 
 # Apps/Web: точное позиционирование по сетке
@@ -113,7 +110,7 @@ transform: translateY(-50%); /* только по Y */
 | `- 1` без калибровки | центр визуально на **84** |
 | `left: (L.5 - anchorCol) * step` + `translateX(-50%)` | снова уезжает на **84** — **не использовать** |
 
-Полный чеклист compose / голос / стикеры: **`apps-web-messages-chat.mdc`**.
+Полный чеклист compose / голос / стикеры: skill `/apps-web-messages-chat`.
 
 ## 9) «Между горизонталями H и H+1» — не `(H + 0.5) * step` (июнь 2026)
 

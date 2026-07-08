@@ -1,0 +1,17 @@
+[
+  {
+    "label": "Flora.API: debug",
+    "adapter": "netcoredbg",
+    "request": "launch",
+    "program": "$ZED_WORKTREE_ROOT/Flora.API/bin/Debug/{targetFramework}/Flora.API.dll",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "env": {
+      "ASPNETCORE_ENVIRONMENT": "Development",
+      "ASPNETCORE_URLS": "http://localhost:5284"
+    },
+    "build": {
+      "command": "dotnet",
+      "args": ["build", "Flora.API/Flora.API.csproj", "-c", "Debug"]
+    }
+  }
+]
