@@ -79,6 +79,7 @@ export function FloraAvatar({
   const rootClass = [
     styles.root,
     plain ? styles.plain : null,
+    size <= 28 ? styles.smallInitials : null,
     className,
   ]
     .filter(Boolean)

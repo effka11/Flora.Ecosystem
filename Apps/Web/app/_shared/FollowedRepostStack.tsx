@@ -24,6 +24,7 @@ export function FollowedRepostStack({ reposters, profileHref, className }: Follo
       <div className={styles.stack}>
         {visible.map((reposter, index) => (
           <FloraAvatar
+            plain
             key={reposter.username}
             href={profileHref(reposter.username)}
             avatarUuid={reposter.avatarUuid}
