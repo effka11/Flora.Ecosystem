@@ -42,6 +42,11 @@
   box-shadow: inset 0 0 0 1px rgba(var(--flora-white-template-rgb), 0.08);
 }
 
+.plain .defaultArt {
+  box-shadow: none;
+  text-shadow: none;
+}
+
 .initials {
   line-height: 1;
   font-size: inherit;

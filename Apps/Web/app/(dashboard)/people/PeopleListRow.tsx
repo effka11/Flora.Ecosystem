@@ -18,6 +18,7 @@ export function PeopleListRow({ user, isSubscribed, actionAnimEpoch, onToggleSub
     <li className={styles.item}>
       <Link href={profilePathFromUsername(user.username)} className={styles.userMain}>
         <FloraAvatar
+          plain
           size={45}
           avatarUuid={user.avatarUuid}
           displayName={user.displayName}

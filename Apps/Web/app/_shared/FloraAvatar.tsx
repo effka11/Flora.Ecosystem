@@ -24,6 +24,8 @@ export type FloraAvatarProps = {
   onLinkClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   /** Сообщество: инициалы из name, seed для цвета. */
   communityName?: string;
+  /** Без inset-обводки и text-shadow (лента, compose, люди). */
+  plain?: boolean;
 };
 
 type DefaultAvatarArtProps = {
@@ -64,6 +66,7 @@ export function FloraAvatar({
   style,
   onLinkClick,
   communityName,
+  plain = false,
 }: FloraAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const trimmedUuid = avatarUuid?.trim() ?? "";
@@ -73,7 +76,13 @@ export function FloraAvatar({
     ? communityInitials(communityName)
     : profileInitials(displayName, username);
   const backgroundColor = resolveDefaultAvatarColor(colorSeed);
-  const rootClass = className ? `${styles.root} ${className}` : styles.root;
+  const rootClass = [
+    styles.root,
+    plain ? styles.plain : null,
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const rootStyle = avatarRootStyle(size, style);
 
   const content = showImage ? (

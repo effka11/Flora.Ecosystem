@@ -886,6 +886,7 @@ function FeedPageContent() {
                       className={styles.profilePostItem}
                     >
                       <FloraAvatar
+                        plain
                         href={authorMeta.href}
                         avatarUuid={authorMeta.avatarUuid}
                         displayName={authorMeta.displayName}

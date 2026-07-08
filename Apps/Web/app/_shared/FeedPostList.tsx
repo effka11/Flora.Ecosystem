@@ -126,6 +126,7 @@ export function FeedPostList({
           return (
             <li key={post.postUuid} ref={getPostItemRef(post.postUuid, post.viewsCount)} className={styles.postItem}>
               <FloraAvatar
+                plain
                 href={postAuthorHref}
                 avatarUuid={post.authorAvatarUuid}
                 displayName={post.authorDisplayName}

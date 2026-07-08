@@ -570,6 +570,7 @@ function ComposePostPageContent() {
               className={`${styles.composeDraftScope}${composeDraftScopePrimedRef.current ? ` ${styles.composeDraftScopeIn}` : ""}`}
             >
             <FloraAvatar
+              plain
               avatarUuid={editorAvatarUuid}
               displayName={editorDisplayName}
               username={activeOwnedCommunity ? "" : me?.username ?? ""}
