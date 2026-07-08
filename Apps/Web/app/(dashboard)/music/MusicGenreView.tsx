@@ -12,6 +12,7 @@ import {
   type SVGProps,
 } from "react";
 import { useRouter } from "next/navigation";
+import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import {
   GenreArtPop,
   GenreArtHipHop,
@@ -466,6 +467,16 @@ export function MusicGenreView({ genreId, subgenreId, initialPage }: MusicGenreV
   const collectionsTransitionClearRef = useRef<number | null>(null);
   const [collectionsAnimEpoch, setCollectionsAnimEpoch] = useState(0);
   const [collectionsPanelIn, setCollectionsPanelIn] = useState(false);
+
+  const genrePageTitle = useMemo(() => {
+    const baseTitle = genre?.title || localGenreTitle(genreId);
+    const subgenreTitle = subgenreId
+      ? genre?.subgenres.find((subgenre) => subgenre.id === subgenreId)?.title
+      : null;
+    return [baseTitle, subgenreTitle].filter(Boolean).join(" / ");
+  }, [genre, genreId, subgenreId]);
+
+  useFloraPageTitleOverride(loading ? null : genrePageTitle || null);
 
   const applyCollectionsTransition = useCallback(() => {
     if (prefersReducedDashboardMotion()) return;

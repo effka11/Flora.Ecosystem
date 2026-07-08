@@ -10,6 +10,7 @@ import { mapMusicTrackDtoToItem } from "@/app/(dashboard)/music/musicTrackMapper
 import { MyMusicTracksList } from "@/app/(dashboard)/music/MyMusicTracksList";
 import { mapMusicTrackItemsToPlayerTracks } from "@/app/(dashboard)/music/player/mapPlayerTrack";
 import { useMusicPlayer } from "@/app/(dashboard)/music/player/MusicPlayerProvider";
+import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import { invalidateMusicCaches } from "@/lib/dashboardPreload";
 import { apiDeleteMusicPlaylist, apiGetMusicPlaylist } from "@/lib/musicApi";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
@@ -83,6 +84,8 @@ export function MusicPlaylistView({ playlistId }: MusicPlaylistViewProps) {
   const [canDelete, setCanDelete] = useState(false);
   const [tracks, setTracks] = useState(() => [] as ReturnType<typeof mapMusicTrackDtoToItem>[]);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  useFloraPageTitleOverride(loading ? null : title || null);
 
   const loadPlaylist = useCallback(async () => {
     setLoading(true);

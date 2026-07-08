@@ -7,6 +7,7 @@ import { mapMusicTrackDtoToItem } from "@/app/(dashboard)/music/musicTrackMapper
 import { MyMusicTracksList } from "@/app/(dashboard)/music/MyMusicTracksList";
 import { mapMusicTrackItemsToPlayerTracks } from "@/app/(dashboard)/music/player/mapPlayerTrack";
 import { useMusicPlayer } from "@/app/(dashboard)/music/player/MusicPlayerProvider";
+import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import {
   apiFetchMusicArtistCoverBlob,
   apiGetMusicArtist,
@@ -55,6 +56,8 @@ export function MusicArtistView({ artistId }: MusicArtistViewProps) {
   const [tracks, setTracks] = useState(() => [] as ReturnType<typeof mapMusicTrackDtoToItem>[]);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  useFloraPageTitleOverride(artist?.displayName);
 
   useEffect(() => {
     let cancelled = false;

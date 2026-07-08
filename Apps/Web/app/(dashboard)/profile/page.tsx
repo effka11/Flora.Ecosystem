@@ -6,6 +6,7 @@ import { FeedPostList, type FeedPostListItem } from "@/app/_shared/FeedPostList"
 import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { formatAtHandle, profileDisplayName } from "@/app/_dashboard/userDisplay";
+import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import { FloraAvatar, FLORA_PROFILE_AVATAR_INNER_PX } from "@/app/_shared/FloraAvatar";
 import { ApiRequestError } from "@/lib/auth";
 import { invalidateProfileCache, profileBundleCache } from "@/lib/dashboardPreload";
@@ -94,6 +95,9 @@ function ProfilePageContent() {
 
   const isOwnProfile = true;
   const name = me ? profileDisplayName(me.displayName, me.username) : loading ? "…" : "Профиль";
+
+  useFloraPageTitleOverride(me ? name : null);
+
   const handle = me ? formatAtHandle(me.username) : loading ? "…" : "@…";
   const profileStatus = publicProfile?.status ?? me?.status;
   const followers = publicProfile?.followersCount ?? me?.followersCount ?? 0;

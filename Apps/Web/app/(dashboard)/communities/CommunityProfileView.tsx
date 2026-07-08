@@ -6,6 +6,7 @@ import { communityHref, getCommunityById, isOwnedCommunityId } from "@/app/(dash
 import { isDevLocalOfflineSession } from "@/lib/auth";
 import { communityProfileToRecord, isCommunityUuid } from "@/app/(dashboard)/communities/communityProfile";
 import { CommunityNotFound, CommunityPageContent } from "@/app/(dashboard)/communities/CommunityPageContent";
+import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import { apiGetCommunityBySlug, apiListOwnedCommunities } from "@/lib/socialApi";
 import type { CommunityRecord } from "@/app/(dashboard)/communities/communitiesSeed";
 import styles from "@/app/(dashboard)/profile/profile.module.css";
@@ -26,6 +27,8 @@ export function CommunityProfileView({ routeKey }: { routeKey: string }) {
   const [isOwn, setIsOwn] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  useFloraPageTitleOverride(community?.name);
 
   useEffect(() => {
     if (isOwnedCommunityId(routeKey)) {

@@ -39,6 +39,7 @@ import { useNotificationsUnreadCount } from "@/app/_dashboard/useNotificationsUn
 import { formatNavBadge } from "@/lib/formatNavBadge";
 import { formatAtHandle, profileDisplayName } from "@/app/_dashboard/userDisplay";
 import { FloraAvatar } from "@/app/_shared/FloraAvatar";
+import { FloraDocumentTitleProvider } from "@/app/_shared/useFloraDocumentTitle";
 import { MusicNavIcon } from "@/app/_dashboard/icons/MusicNavIcon";
 import { MusicMiniPlayer } from "@/app/(dashboard)/music/player/MusicMiniPlayer";
 import { MusicPlayerProvider } from "@/app/(dashboard)/music/player/MusicPlayerProvider";
@@ -419,7 +420,9 @@ export function DashboardShell({ children }: DashboardShellProps) {
   return (
     <CurrentUserProvider>
       <MusicPlayerProvider>
-        <DashboardShellInner>{children}</DashboardShellInner>
+        <FloraDocumentTitleProvider>
+          <DashboardShellInner>{children}</DashboardShellInner>
+        </FloraDocumentTitleProvider>
       </MusicPlayerProvider>
     </CurrentUserProvider>
   );

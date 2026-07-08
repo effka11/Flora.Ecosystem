@@ -34,8 +34,11 @@ const manrope = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Flora ID — вход",
-  description: "Вход в Flora",
+  title: {
+    default: "Flora",
+    template: "Flora — %s",
+  },
+  description: "Flora",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

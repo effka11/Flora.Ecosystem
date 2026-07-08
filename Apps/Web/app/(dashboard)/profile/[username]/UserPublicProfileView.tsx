@@ -8,6 +8,7 @@ import { FeedPostList, type FeedPostListItem } from "@/app/_shared/FeedPostList"
 import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { formatAtHandle, profileDisplayName } from "@/app/_dashboard/userDisplay";
+import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import { FloraAvatar, FLORA_PROFILE_AVATAR_INNER_PX } from "@/app/_shared/FloraAvatar";
 import { ApiRequestError } from "@/lib/auth";
 import { messagesOpenChatQuery } from "@/lib/messagesUrl";
@@ -76,6 +77,10 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
 
   const [isFollowing, setIsFollowing] = useState<boolean>(false);
   const [localFollowersCount, setLocalFollowersCount] = useState<number>(0);
+
+  useFloraPageTitleOverride(
+    publicProfile ? profileDisplayName(publicProfile.displayName, publicProfile.username) : null,
+  );
 
   const followersModal = useAnimatedModal();
   const followingModal = useAnimatedModal();

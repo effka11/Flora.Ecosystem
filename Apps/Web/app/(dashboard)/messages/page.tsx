@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { fscpStatusNeedsPassword, useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
+import { profileDisplayName } from "@/app/_dashboard/userDisplay";
+import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { PostMoreMenuRect } from "@/app/_shared/PostMoreMenuRect";
 import postMoreMenuStyles from "@/app/_shared/PostMoreMenu.module.css";
@@ -1122,6 +1124,13 @@ function MessagesChatInner() {
       otherUserLastSeenAt: null,
     };
   }, [conversations, selectedOtherUuid, selectedPeer]);
+
+  const messagesPageTitle = useMemo(() => {
+    if (!chatHeaderPeer) return null;
+    return profileDisplayName(chatHeaderPeer.otherDisplayName, chatHeaderPeer.otherUsername);
+  }, [chatHeaderPeer]);
+
+  useFloraPageTitleOverride(messagesPageTitle);
 
   const [presenceClock, setPresenceClock] = useState(0);
   useEffect(() => {

@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
+import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import { communityHref, isOwnedCommunityId } from "@/app/(dashboard)/communities/communitiesSeed";
 import { isCommunityUuid } from "@/app/(dashboard)/communities/communityProfile";
 import { apiGetCommunityBySlug, apiListOwnedCommunities, type CommunityProfileDto } from "@/lib/socialApi";
@@ -58,6 +59,8 @@ function CommunitySettingsPageInner({ routeKey }: { routeKey: string }) {
   const [panelTransition, setPanelTransition] = useState<SettingsPanelTransition>(null);
   const [panelAnimEpoch, setPanelAnimEpoch] = useState(0);
   const panelTransitionClearRef = useRef<number | null>(null);
+
+  useFloraPageTitleOverride(community?.name ?? null);
 
   const loadCommunity = useCallback(async () => {
     setLoading(true);
