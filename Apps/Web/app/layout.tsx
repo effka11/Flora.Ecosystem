@@ -39,6 +39,14 @@ export const metadata: Metadata = {
     template: "Flora — %s",
   },
   description: "Flora",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon-32.png", type: "image/png", sizes: "32x32" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: "/favicon-32.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

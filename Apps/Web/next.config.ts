@@ -129,7 +129,7 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
-      { source: "/favicon.ico", destination: "/icon.svg", permanent: false },
+      { source: "/favicon.ico", destination: "/favicon-32.png", permanent: false },
       { source: "/feed/compose", destination: "/compose", permanent: false }
     ];
   },
