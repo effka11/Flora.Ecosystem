@@ -510,7 +510,6 @@
 
 .replyThreadBtnOpen {
   color: color-mix(in srgb, var(--flora-green-light) 78%, var(--flora-gray) 22%);
-  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 42%, transparent);
 }
 
 .repliesPanel {
@@ -620,7 +619,7 @@
   letter-spacing: var(--flora-tracking-15);
   line-height: 1;
   color: var(--flora-gray);
-  transition: color 0.15s ease, text-shadow 0.2s ease;
+  transition: color 0.15s ease;
 }
 
 .actionBtn span {
@@ -632,12 +631,10 @@
 
 .actionBtn:hover {
   color: color-mix(in srgb, var(--flora-green-light) 10%, rgba(var(--flora-white-template-rgb), 0.76));
-  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
 }
 
 .actionBtnLikeOn {
   color: color-mix(in srgb, var(--flora-like) 92%, var(--flora-gray) 8%);
-  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-like) 55%, transparent);
 }
 
 .actionBtn svg {

@@ -840,30 +840,26 @@
   cursor: pointer;
   font-size: 14px;
   letter-spacing: var(--flora-tracking-15);
-  transition: color 0.15s ease, text-shadow 0.2s ease;
+  transition: color 0.15s ease;
 }
 
 .profilePostAction:hover {
   color: color-mix(in srgb, var(--flora-green-light) 10%, rgba(var(--flora-white-template-rgb), 0.76));
-  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
 }
 
 .feedList .feed .profilePostActionCommentsOpen,
 .profilePostAction.profilePostActionCommentsOpen {
   color: color-mix(in srgb, var(--flora-green-light) 78%, var(--flora-gray) 22%);
-  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 42%, transparent);
 }
 
 .feedList .feed .profilePostActionLikeOn,
 .profilePostAction.profilePostActionLikeOn {
   color: color-mix(in srgb, var(--flora-like) 92%, var(--flora-gray) 8%);
-  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-like) 55%, transparent);
 }
 
 .feedList .feed .profilePostActionRepostOn,
 .profilePostAction.profilePostActionRepostOn {
   color: color-mix(in srgb, var(--flora-green-light) 78%, var(--flora-gray) 22%);
-  text-shadow: 0 0 10px color-mix(in srgb, var(--flora-green-light) 42%, transparent);
 }
 
 .profilePostAction svg {
