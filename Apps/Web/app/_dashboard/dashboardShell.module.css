@@ -58,6 +58,8 @@
 .logoMark svg {
   width: 15px;
   height: 15px;
+  transform: rotate(7deg);
+  transform-origin: center;
 }
 
 .navList {
