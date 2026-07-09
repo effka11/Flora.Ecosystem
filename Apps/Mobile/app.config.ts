@@ -3,6 +3,13 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 const PRODUCTION_PACKAGE = "social.flora.mobile";
 const DEVELOPMENT_PACKAGE = "social.flora.mobile.dev";
 
+const PROD_ICON = "./assets/images/icon.png";
+const DEV_ICON = "./assets/images/icon-dev.png";
+const ADAPTIVE_FOREGROUND = "./assets/images/android-icon-foreground.png";
+const ADAPTIVE_MONOCHROME = "./assets/images/android-icon-monochrome.png";
+const PROD_ADAPTIVE_BG = "#2c3527";
+const DEV_ADAPTIVE_BG = "#0c0c0c";
+
 export const isDevelopmentVariant = () => process.env.APP_VARIANT === "development";
 
 export default ({ config }: ConfigContext): ExpoConfig => {
@@ -22,12 +29,19 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   }
 
   const androidBase = { ...config.android };
+  const adaptiveIcon = {
+    ...(androidBase?.adaptiveIcon ?? {}),
+    foregroundImage: ADAPTIVE_FOREGROUND,
+    monochromeImage: ADAPTIVE_MONOCHROME,
+    backgroundColor: isDev ? DEV_ADAPTIVE_BG : PROD_ADAPTIVE_BG,
+  };
 
   return {
     ...config,
     name: isDev ? "Flora Dev" : (config.name ?? "Flora"),
     slug: config.slug ?? "flora-mobile",
     scheme: isDev ? "flora-dev" : (config.scheme ?? "flora"),
+    icon: isDev ? DEV_ICON : (config.icon ?? PROD_ICON),
     plugins,
     extra: {
       ...(config.extra ?? {}),
@@ -43,10 +57,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           package: DEVELOPMENT_PACKAGE,
           googleServicesFile: undefined,
           intentFilters: undefined,
+          adaptiveIcon,
         }
       : {
           ...androidBase,
           package: androidBase.package ?? PRODUCTION_PACKAGE,
+          adaptiveIcon,
         },
   };
 };

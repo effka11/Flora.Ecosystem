@@ -8,6 +8,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
+const FLORA_BG = "#0c0c0c";
+const FLORA_GREEN_DARK = "#2c3527";
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mobile = join(root, "Apps", "Mobile");
 const assets = join(mobile, "assets");
@@ -40,7 +43,7 @@ async function splashPng(outPath, size) {
     .png()
     .toBuffer();
   await sharp({
-    create: { width: size, height: size, channels: 4, background: { r: 12, g: 12, b: 12, alpha: 255 } },
+    create: { width: size, height: size, channels: 4, background: { r: 0x0c, g: 0x0c, b: 0x0c, alpha: 255 } },
   })
     .composite([{ input: leafBuf, gravity: "center" }])
     .png()
@@ -95,7 +98,7 @@ async function syncAndroidGenRes() {
     const dir = join(resRoot, folder);
     if (!existsSync(dir)) continue;
     await sharp(splashSource)
-      .resize(size, size, { fit: "contain", background: { r: 12, g: 12, b: 12, alpha: 255 } })
+      .resize(size, size, { fit: "contain", background: { r: 0x0c, g: 0x0c, b: 0x0c, alpha: 255 } })
       .png()
       .toFile(join(dir, "splashscreen_logo.png"));
   }
@@ -113,7 +116,7 @@ async function syncAndroidGenRes() {
     if (!existsSync(dir)) continue;
     await sharp(fgSource).resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toFile(join(dir, "ic_launcher_foreground.webp"));
     await sharp(monoSource).resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toFile(join(dir, "ic_launcher_monochrome.webp"));
-    await solidWebp(join(dir, "ic_launcher_background.webp"), size, "#1a472a");
+    await solidWebp(join(dir, "ic_launcher_background.webp"), size, FLORA_GREEN_DARK);
   }
 
   console.log("Synced Flora splash/icons into Apps/Mobile/android_gen/");
@@ -123,9 +126,11 @@ async function main() {
   await mkdir(images, { recursive: true });
 
   await pngFromSvg(join(assets, "flora-mark.svg"), join(images, "icon.png"), 1024);
+  await pngFromSvg(join(assets, "flora-mark-dev.svg"), join(images, "icon-dev.png"), 1024);
   await pngFromSvg(join(assets, "flora-mark-foreground.svg"), join(images, "android-icon-foreground.png"), 1024);
   await pngFromSvg(join(assets, "flora-mark-monochrome.svg"), join(images, "android-icon-monochrome.png"), 1024);
-  await solidPng(join(images, "android-icon-background.png"), 1024, "#0c0c0c");
+  await solidPng(join(images, "android-icon-background.png"), 1024, FLORA_GREEN_DARK);
+  await solidPng(join(images, "android-icon-background-dev.png"), 1024, FLORA_BG);
   await splashPng(join(images, "splash-icon.png"), 1024);
   await splashPng(join(images, "favicon.png"), 48);
 
