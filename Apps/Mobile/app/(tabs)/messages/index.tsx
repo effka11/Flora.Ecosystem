@@ -20,7 +20,7 @@ import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropd
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -87,6 +87,7 @@ export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
+  const listPaddingBottom = floraTabBarContentPadding(tabBarBottomInset);
   const me = useSessionStore((s) => s.me);
   const fscpStatus = useFscpStore((s) => s.status);
   const publishLocalKeyConfirmed = useFscpStore((s) => s.publishLocalKeyConfirmed);
@@ -214,6 +215,7 @@ export default function MessagesScreen() {
     <View style={styles.root}>
       <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
         <TabScreenSearchHeader
+          title="Сообщения"
           placeholder="Поиск чатов и сообщений"
           value={search}
           onChangeText={(value) => {
@@ -265,7 +267,7 @@ export default function MessagesScreen() {
         style={styles.list}
         data={listData}
         keyExtractor={(item) => item.conversationUuid}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -340,9 +342,7 @@ const styles = StyleSheet.create({
   list: {
     flex: 1,
   },
-  listContent: {
-    paddingBottom: floraSpacing.grid * 2,
-  },
+  listContent: {},
   loading: {
     alignItems: "center",
     gap: floraSpacing.grid,

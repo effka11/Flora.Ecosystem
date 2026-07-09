@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mobileSessionStore } from "@/lib/session";
 import { useMusicStore } from "@/stores/musicStore";
 import { formatMusicDuration } from "@/lib/music/musicModels";
-import { floraColors, floraSpacing, floraTabBarHeight } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentHeight } from "@/lib/theme";
 
 function isMessagesPath(pathname: string): boolean {
   return pathname === "/messages" || pathname.startsWith("/messages/");
@@ -99,7 +99,7 @@ export function MusicMiniPlayer() {
     <View
       style={[
         styles.bar,
-        { bottom: floraTabBarHeight + insets.bottom },
+        { bottom: floraTabBarContentHeight() + Math.max(insets.bottom, 8) },
       ]}
     >
       <View style={[styles.cover, { backgroundColor: current.coverColor }]}>

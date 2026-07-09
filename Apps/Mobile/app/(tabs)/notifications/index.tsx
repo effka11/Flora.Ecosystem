@@ -28,7 +28,7 @@ import { NotificationRow } from "@/components/notifications/NotificationRow";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { subscribeNotificationRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 
 const TABS = NOTIFICATION_CATEGORY_TABS;
 
@@ -47,6 +47,7 @@ const EMPTY_NOTIFICATIONS: NotificationDto[] = [];
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -169,6 +170,7 @@ export default function NotificationsScreen() {
     <View style={styles.root}>
       <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
         <TabScreenSearchHeader
+          title="Уведомления"
           placeholder="Поиск по уведомлениям"
           value={search}
           onChangeText={(value) => {
@@ -214,7 +216,7 @@ export default function NotificationsScreen() {
         <FlashList
           data={items}
           keyExtractor={(item) => item.notificationUuid}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           refreshControl={
             <RefreshControl
               refreshing={isPullRefreshing}
@@ -312,9 +314,7 @@ const styles = StyleSheet.create({
   listFlex: {
     flex: 1,
   },
-  listContent: {
-    paddingBottom: floraSpacing.grid * 2,
-  },
+  listContent: {},
   loading: {
     alignItems: "center",
     gap: floraSpacing.grid,

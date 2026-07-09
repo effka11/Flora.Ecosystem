@@ -29,7 +29,7 @@ import { FloraAvatar } from "@/components/FloraAvatar";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 
 type PeopleMainTab = "recommended" | "friends";
 type FriendsFilter = "friends" | "followers" | "following";
@@ -124,6 +124,7 @@ function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: 
 
 export default function PeopleScreen() {
   const insets = useSafeAreaInsets();
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
   const [search, setSearch] = useState("");
@@ -307,6 +308,7 @@ export default function PeopleScreen() {
     <View style={styles.root}>
       <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
         <TabScreenSearchHeader
+          title="Люди"
           placeholder="Поиск по имени или нику"
           value={search}
           onChangeText={(value) => {
@@ -401,7 +403,7 @@ export default function PeopleScreen() {
         data={visibleUsers}
         extraData={`${mainTab}:${friendsFilter}:${queryText}`}
         keyExtractor={(item) => item.username}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
         refreshControl={
           <RefreshControl
             refreshing={listRefreshing}
@@ -544,9 +546,7 @@ const styles = StyleSheet.create({
     backgroundColor: floraColors.greenLight,
     zIndex: 2,
   },
-  listContent: {
-    paddingBottom: floraSpacing.grid * 2,
-  },
+  listContent: {},
   shell: {
     flexDirection: "row",
     alignItems: "center",

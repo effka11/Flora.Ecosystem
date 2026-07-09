@@ -10,7 +10,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
@@ -30,9 +29,9 @@ import {
   type MusicBrowseTab,
   type MusicUploadTab,
 } from "@/components/music/MusicTabBar";
-import { FeedHamburgerMenu } from "@/components/FeedHamburgerMenu";
+import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { mapMusicTracksDto, mapPlaylistSummaryDto } from "@/lib/music/musicModels";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 
 type TabLayout = { x: number; width: number };
 
@@ -82,6 +81,7 @@ export default function MusicScreen() {
     recommendations: null,
     myMusic: null,
   });
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
 
   const libraryQuery = useQuery({
     queryKey: ["music-library"],
@@ -191,32 +191,19 @@ export default function MusicScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
-        <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
-            <Ionicons name="search-outline" size={20} color={floraColors.gray} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Поиск по музыке"
-              placeholderTextColor={floraColors.gray}
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 ? (
-              <Pressable style={styles.searchClear} onPress={() => setSearch("")} hitSlop={10}>
-                <Ionicons name="close" size={18} color={floraColors.greenLight} />
-              </Pressable>
-            ) : null}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Меню"
-            style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
-            onPress={() => setMenuOpen(true)}
-          >
-            <Ionicons name="menu-outline" size={24} color={floraColors.gray} />
-          </Pressable>
-        </View>
-        <FeedHamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
+        <TabScreenSearchHeader
+          title="Музыка"
+          placeholder="Поиск по музыке"
+          value={search}
+          onChangeText={setSearch}
+          menuOpen={menuOpen}
+          onMenuOpen={() => setMenuOpen(true)}
+          onMenuClose={() => setMenuOpen(false)}
+          createAction={{
+            accessibilityLabel: "Добавить трек",
+            onPress: () => setAddTrackOpen(true),
+          }}
+        />
 
         <View style={styles.navigationRow}>
           <View style={styles.tabs}>
@@ -249,18 +236,10 @@ export default function MusicScreen() {
               </Animated.Text>
             </Pressable>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Добавить трек"
-            style={({ pressed }) => [styles.composeBtn, pressed && styles.pressed]}
-            onPress={() => setAddTrackOpen(true)}
-          >
-            <Ionicons name="add" size={22} color={floraColors.greenLight} />
-          </Pressable>
         </View>
       </View>
 
-      <View style={styles.body}>
+      <View style={[styles.body, { paddingBottom: listPaddingBottom }]}>
         {hasSearch ? (
           <MusicSearchResults query={search} tracks={tracks} />
         ) : loading ? (
@@ -343,63 +322,10 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     gap: 13,
   },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  searchBox: {
-    flex: 1,
-    minHeight: 45,
-    borderColor: floraColors.greenDark,
-    borderWidth: 1,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 14,
-    backgroundColor: "transparent",
-  },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    color: floraColors.whiteTemplate,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    paddingVertical: 0,
-  },
-  searchClear: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(164, 209, 138, 0.12)",
-  },
-  menuButton: {
-    width: 45,
-    minHeight: 45,
-    borderColor: floraColors.greenDark,
-    borderWidth: 1,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-  },
   navigationRow: {
     position: "relative",
     minHeight: 35,
     width: "100%",
-  },
-  composeBtn: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    width: 45,
-    height: 35,
-    alignItems: "center",
-    justifyContent: "center",
   },
   tabs: {
     position: "relative",
@@ -407,7 +333,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     overflow: "visible",
-    paddingRight: 45 + 10,
   },
   tabButton: {
     height: 35,

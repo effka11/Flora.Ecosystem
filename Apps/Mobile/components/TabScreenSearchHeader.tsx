@@ -1,55 +1,122 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { ReactNode } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { FeedHamburgerMenu } from "@/components/FeedHamburgerMenu";
-import { floraColors } from "@/lib/theme";
+import { floraColors, floraSpacing } from "@/lib/theme";
 
 type TabScreenSearchHeaderProps = {
+  title: string;
   placeholder: string;
   value: string;
   onChangeText: (value: string) => void;
   menuOpen: boolean;
   onMenuOpen: () => void;
   onMenuClose: () => void;
-  prefix?: ReactNode;
+  /** Кнопка создания справа (правее поиска). */
+  createAction?: {
+    accessibilityLabel: string;
+    onPress: () => void;
+  };
 };
 
 export function TabScreenSearchHeader({
+  title,
   placeholder,
   value,
   onChangeText,
   menuOpen,
   onMenuOpen,
   onMenuClose,
-  prefix,
+  createAction,
 }: TabScreenSearchHeaderProps) {
+  const [searchOpen, setSearchOpen] = useState(value.length > 0);
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (value.length > 0) {
+      setSearchOpen(true);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    if (searchOpen) {
+      const id = requestAnimationFrame(() => inputRef.current?.focus());
+      return () => cancelAnimationFrame(id);
+    }
+  }, [searchOpen]);
+
+  const closeSearch = () => {
+    onChangeText("");
+    setSearchOpen(false);
+  };
+
   return (
     <>
-      <View style={styles.searchRow}>
-        {prefix}
-        <View style={styles.searchBox}>
-          <Ionicons name="search-outline" size={20} color={floraColors.gray} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder={placeholder}
-            placeholderTextColor={floraColors.gray}
-            value={value}
-            onChangeText={onChangeText}
-          />
-          {value.length > 0 ? (
-            <Pressable style={styles.searchClear} onPress={() => onChangeText("")} hitSlop={10}>
-              <Ionicons name="close" size={18} color={floraColors.greenLight} />
-            </Pressable>
-          ) : null}
-        </View>
+      <View style={styles.chromeRow}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Меню"
-          style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           onPress={onMenuOpen}
         >
           <Ionicons name="menu-outline" size={24} color={floraColors.gray} />
         </Pressable>
+
+        {searchOpen ? (
+          <View style={styles.searchBox}>
+            <Ionicons name="search-outline" size={20} color={floraColors.gray} />
+            <TextInput
+              ref={inputRef}
+              style={styles.searchInput}
+              placeholder={placeholder}
+              placeholderTextColor={floraColors.gray}
+              value={value}
+              onChangeText={onChangeText}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            <Pressable
+              style={styles.searchClear}
+              onPress={closeSearch}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Закрыть поиск"
+            >
+              <Ionicons name="close" size={18} color={floraColors.greenLight} />
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.title} numberOfLines={1}>
+              {title}
+            </Text>
+            <View style={styles.spacer} />
+          </>
+        )}
+
+        <View style={styles.trailingActions}>
+          {!searchOpen ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Поиск"
+              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+              onPress={() => setSearchOpen(true)}
+            >
+              <Ionicons name="search-outline" size={22} color={floraColors.gray} />
+            </Pressable>
+          ) : null}
+          {createAction ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={createAction.accessibilityLabel}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+              onPress={createAction.onPress}
+            >
+              <Ionicons name="add" size={24} color={floraColors.greenLight} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
       <FeedHamburgerMenu visible={menuOpen} onClose={onMenuClose} />
     </>
@@ -57,14 +124,43 @@ export function TabScreenSearchHeader({
 }
 
 const styles = StyleSheet.create({
-  searchRow: {
+  chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 0,
+    minHeight: 45,
+  },
+  title: {
+    flexShrink: 1,
+    marginLeft: floraSpacing.grid,
+    color: floraColors.whiteTemplate,
+    fontSize: 22,
+    fontWeight: "300",
+    letterSpacing: 0.88,
+    lineHeight: 28,
+  },
+  spacer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  trailingActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginLeft: floraSpacing.gridFine,
+  },
+  iconButton: {
+    width: 45,
+    minHeight: 45,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
   },
   searchBox: {
     flex: 1,
+    minWidth: 0,
     minHeight: 45,
+    marginLeft: floraSpacing.gridFine * 2,
     borderColor: floraColors.greenDark,
     borderWidth: 1,
     borderRadius: 12,
@@ -90,16 +186,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(164, 209, 138, 0.12)",
-  },
-  menuButton: {
-    width: 45,
-    minHeight: 45,
-    borderColor: floraColors.greenDark,
-    borderWidth: 1,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
   },
   pressed: {
     opacity: 0.72,

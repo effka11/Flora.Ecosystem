@@ -30,7 +30,7 @@ import { CreateCommunitySheet } from "@/components/communities/CreateCommunitySh
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { communityScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 
 type CommunityTab = "recommended" | "subscriptions";
 
@@ -143,6 +143,7 @@ function CommunityRow({ community, showLeave, showJoin, actionBusy, onJoin, onLe
 
 export default function CommunitiesScreen() {
   const insets = useSafeAreaInsets();
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
   const [search, setSearch] = useState("");
@@ -323,12 +324,17 @@ export default function CommunitiesScreen() {
     <View style={styles.root}>
       <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
         <TabScreenSearchHeader
+          title="Сообщества"
           placeholder="Поиск по названию или ссылке"
           value={search}
           onChangeText={setSearch}
           menuOpen={menuOpen}
           onMenuOpen={() => setMenuOpen(true)}
           onMenuClose={() => setMenuOpen(false)}
+          createAction={{
+            accessibilityLabel: "Создать сообщество",
+            onPress: () => setCreateOpen(true),
+          }}
         />
 
         {!hasSearch ? (
@@ -350,14 +356,6 @@ export default function CommunitiesScreen() {
                 </Pressable>
               ))}
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Создать сообщество"
-              style={({ pressed }) => [styles.composeBtn, pressed && styles.pressed]}
-              onPress={() => setCreateOpen(true)}
-            >
-              <Ionicons name="add" size={22} color={floraColors.greenLight} />
-            </Pressable>
           </View>
         ) : null}
       </View>
@@ -367,7 +365,7 @@ export default function CommunitiesScreen() {
         data={visibleCommunities}
         extraData={`${activeTab}:${queryText}:${JSON.stringify(localJoined)}`}
         keyExtractor={(item) => item.communityId}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
         refreshControl={
           <RefreshControl
             refreshing={listRefreshing}
@@ -433,22 +431,12 @@ const styles = StyleSheet.create({
     minHeight: 35,
     width: "100%",
   },
-  composeBtn: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    width: 45,
-    height: 35,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   tabs: {
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
     overflow: "visible",
-    paddingRight: 45 + 10,
   },
   tabButton: {
     height: 35,
@@ -479,9 +467,7 @@ const styles = StyleSheet.create({
     backgroundColor: floraColors.greenLight,
     zIndex: 2,
   },
-  listContent: {
-    paddingBottom: floraSpacing.grid * 2,
-  },
+  listContent: {},
   shell: {
     flexDirection: "row",
     alignItems: "center",

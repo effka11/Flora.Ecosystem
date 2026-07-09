@@ -1,3 +1,4 @@
+import { FloraTabBarBackground } from "@/components/FloraTabBarBackground";
 import { SignalsTabBarIcon } from "@/components/SignalsTabBarIcon";
 import { TabBarIconWithBadge } from "@/components/TabBarIconWithBadge";
 import { MusicMiniPlayer } from "@/components/MusicMiniPlayer";
@@ -26,12 +27,13 @@ export default function TabsLayout() {
       headerStyle: { backgroundColor: floraColors.surface },
       headerTintColor: floraColors.text,
       tabBarStyle: floraTabBarStyle(tabBarBottomInset),
+      tabBarBackground: () => <FloraTabBarBackground />,
+      tabBarShowLabel: false,
       tabBarIconStyle: styles.tabBarIcon,
       sceneStyle: { backgroundColor: floraColors.bg },
       tabBarItemStyle: styles.tabBarItem,
-      tabBarLabelStyle: styles.tabBarLabel,
       tabBarActiveTintColor: floraColors.accent,
-      tabBarInactiveTintColor: floraColors.textMuted,
+      tabBarInactiveTintColor: "rgba(250, 250, 250, 0.55)",
     }),
     [tabBarBottomInset],
   );
@@ -163,12 +165,9 @@ const styles = StyleSheet.create({
   },
   tabBarItem: {
     paddingVertical: 0,
+    justifyContent: "center",
   },
   tabBarIcon: {
     overflow: "visible",
-  },
-  tabBarLabel: {
-    fontSize: 10,
-    marginTop: 2,
   },
 });

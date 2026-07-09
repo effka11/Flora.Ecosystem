@@ -12,10 +12,11 @@ import { PostCard } from "@/components/PostCard";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { useSessionStore } from "@/stores/sessionStore";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const me = useSessionStore((s) => s.me);
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
@@ -96,7 +97,7 @@ export default function ProfileScreen() {
         data={posts}
         keyExtractor={(item) => item.postUuid}
         ListHeaderComponent={header}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
         viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         refreshControl={
           <RefreshControl
@@ -145,9 +146,7 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
-  listContent: {
-    paddingBottom: floraSpacing.grid * 2,
-  },
+  listContent: {},
   loading: {
     paddingVertical: floraSpacing.grid * 3,
   },

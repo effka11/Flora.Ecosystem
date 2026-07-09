@@ -4,7 +4,7 @@ import {
   floraRouteTransitionClearMs,
 } from "@/lib/floraRouteEnterFade";
 import { shouldSkipFloraMotion } from "@/lib/useFloraReduceMotion";
-import { floraColors, floraMotion, floraTabBarHeight } from "@/lib/theme";
+import { floraColors, floraMotion, floraTabBarContentHeight } from "@/lib/theme";
 import { useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native";
@@ -37,7 +37,7 @@ export function useTabRouteTransition(
 ) {
   const navigation = useNavigation();
   const overlayOpacity = useSharedValue(0);
-  const overlayBottom = floraTabBarHeight + tabBarBottomInset;
+  const overlayBottom = floraTabBarContentHeight() + tabBarBottomInset;
   const skipAnimation = shouldSkipFloraMotion(reduceMotion);
   const coverActiveRef = useRef(false);
   const revealSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

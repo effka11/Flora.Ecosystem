@@ -83,26 +83,46 @@ export const floraFeedPost = {
   moreMenuGapBelow: floraSpacing.grid * 2 + floraSpacing.gridFine + 3,
 };
 
-/** Высота контента нижнего tab bar (UIKit default в React Navigation). */
+/** Высота зоны иконок нижнего tab bar. */
 export const floraTabBarHeight = 49;
 
-/** Единый стиль tab bar — использовать и при восстановлении после скрытия в чате. */
+/** Отступ от верхней линии до иконок. */
+export const floraTabBarTopPad = floraSpacing.gridFine * 2;
+
+/** Полная высота контента tab bar без safe-area. */
+export function floraTabBarContentHeight() {
+  return floraTabBarHeight + floraTabBarTopPad;
+}
+
+/** Нижний отступ списков, чтобы контент не прятался под absolute tab bar. */
+export function floraTabBarContentPadding(bottomInset: number) {
+  return floraTabBarContentHeight() + bottomInset + floraSpacing.grid;
+}
+
+/** Единый стиль tab bar — чёрный фон, absolute. */
 export function floraTabBarStyle(bottomInset: number) {
   return {
-    backgroundColor: floraColors.surface,
-    borderTopColor: floraColors.border,
+    position: "absolute" as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "transparent",
+    borderTopWidth: 0,
+    elevation: 0,
+    paddingTop: floraTabBarTopPad,
     paddingBottom: bottomInset,
-    height: floraTabBarHeight + bottomInset,
+    height: floraTabBarContentHeight() + bottomInset,
   };
 }
 
 /** Скрытый tab bar: не схлопываем высоту (нет белой вспышки), убираем из потока через absolute. */
 export function floraTabBarHiddenStyle(bottomInset: number) {
   return {
-    backgroundColor: floraColors.bg,
+    backgroundColor: "transparent",
     borderTopWidth: 0,
-    height: floraTabBarHeight + bottomInset,
-    minHeight: floraTabBarHeight + bottomInset,
+    height: floraTabBarContentHeight() + bottomInset,
+    minHeight: floraTabBarContentHeight() + bottomInset,
+    paddingTop: floraTabBarTopPad,
     paddingBottom: bottomInset,
     opacity: 0,
     position: "absolute" as const,

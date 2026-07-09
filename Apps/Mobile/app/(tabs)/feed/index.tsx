@@ -12,7 +12,6 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
@@ -21,11 +20,15 @@ import {
   type ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { FeedHamburgerMenu } from "@/components/FeedHamburgerMenu";
 import { PostCard } from "@/components/PostCard";
+import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+
+/** chromeRow 45 + gap 13 + tabs 35 + border 1 */
+const FEED_CHROME_BODY_HEIGHT = 45 + 13 + 35 + 1;
 
 type FeedKind = "recommendations" | "subscriptions";
 
@@ -55,9 +58,19 @@ type FeedPaneProps = {
   kind: FeedKind;
   search: string;
   pageWidth: number;
+  contentPaddingTop: number;
+  contentPaddingBottom: number;
+  renderScrollComponent: ReturnType<typeof useCollapsibleHeader>["renderScrollComponents"][number];
 };
 
-function FeedPane({ kind, search, pageWidth }: FeedPaneProps) {
+function FeedPane({
+  kind,
+  search,
+  pageWidth,
+  contentPaddingTop,
+  contentPaddingBottom,
+  renderScrollComponent,
+}: FeedPaneProps) {
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
@@ -117,8 +130,13 @@ function FeedPane({ kind, search, pageWidth }: FeedPaneProps) {
         data={visiblePosts}
         keyExtractor={(item) => item.postUuid}
         drawDistance={480}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom },
+        ]}
         nestedScrollEnabled
+        scrollEventThrottle={16}
+        renderScrollComponent={renderScrollComponent}
         viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         refreshControl={
           <RefreshControl
@@ -127,6 +145,7 @@ function FeedPane({ kind, search, pageWidth }: FeedPaneProps) {
               void feedQuery.refetch();
             }}
             tintColor={floraColors.greenLight}
+            progressViewOffset={contentPaddingTop}
           />
         }
         onEndReached={() => {
@@ -188,6 +207,17 @@ export default function FeedScreen() {
   });
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const estimatedHeaderHeight = insets.top + floraSpacing.grid + FEED_CHROME_BODY_HEIGHT;
+  const {
+    headerHeightPx,
+    onHeaderLayout,
+    headerAnimatedStyle,
+    renderScrollComponents,
+    setActivePane,
+  } = useCollapsibleHeader({
+    estimatedHeight: estimatedHeaderHeight,
+  });
 
   const recordTabLayout = useCallback((tab: FeedKind, event: LayoutChangeEvent) => {
     const { x, width } = event.nativeEvent.layout;
@@ -272,21 +302,23 @@ export default function FeedScreen() {
     (next: FeedKind) => {
       if (next === kind) return;
       setKind(next);
+      setActivePane(feedKindIndex(next));
       pagerRef.current?.scrollTo({
         x: feedKindIndex(next) * pageWidth,
         animated: true,
       });
     },
-    [kind, pageWidth],
+    [kind, pageWidth, setActivePane],
   );
 
   const onPagerScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const index = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
       const next: FeedKind = index === 0 ? "recommendations" : "subscriptions";
+      setActivePane(index);
       setKind((current) => (current === next ? current : next));
     },
-    [pageWidth],
+    [pageWidth, setActivePane],
   );
 
   const refreshFeeds = useCallback(() => {
@@ -298,89 +330,7 @@ export default function FeedScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
-        <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
-            <Ionicons name="search-outline" size={20} color={floraColors.gray} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Поиск в ленте"
-              placeholderTextColor={floraColors.gray}
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 ? (
-              <Pressable style={styles.searchClear} onPress={() => setSearch("")} hitSlop={10}>
-                <Ionicons name="close" size={18} color={floraColors.greenLight} />
-              </Pressable>
-            ) : null}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Меню"
-            style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
-            onPress={() => setMenuOpen(true)}
-          >
-            <Ionicons name="menu-outline" size={24} color={floraColors.gray} />
-          </Pressable>
-        </View>
-        <FeedHamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
-
-        <View style={styles.navigationRow}>
-          <View style={styles.tabs}>
-            {tabIndicatorStyle ? (
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.tabIndicator, tabIndicatorStyle]}
-              />
-            ) : null}
-            <Pressable
-              style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
-              onLayout={(event) => recordTabLayout("recommendations", event)}
-              onPress={() => switchKind("recommendations")}
-            >
-              <Animated.Text
-                style={[
-                  styles.tabLabel,
-                  tabLabelColors ? { color: tabLabelColors.recommendations } : styles.tabLabelActive,
-                ]}
-              >
-                Рекомендации
-              </Animated.Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
-              onLayout={(event) => recordTabLayout("subscriptions", event)}
-              onPress={() => switchKind("subscriptions")}
-            >
-              <Animated.Text
-                style={[
-                  styles.tabLabel,
-                  tabLabelColors ? { color: tabLabelColors.subscriptions } : null,
-                ]}
-              >
-                Подписки
-              </Animated.Text>
-            </Pressable>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Создать пост"
-            style={({ pressed }) => [styles.composeBtn, pressed && styles.pressed]}
-            onPress={() => router.push("/compose")}
-          >
-            <Ionicons name="add" size={22} color={floraColors.greenLight} />
-          </Pressable>
-        </View>
-      </View>
-
       <View style={styles.feedBody}>
-        {showNewPostsBanner ? (
-          <Pressable style={({ pressed }) => [styles.banner, pressed && styles.pressed]} onPress={refreshFeeds}>
-            <Ionicons name="arrow-up-outline" size={14} color={floraColors.greenLight} />
-            <Text style={styles.bannerText}>Новые посты — нажмите, чтобы обновить</Text>
-          </Pressable>
-        ) : null}
         <Animated.ScrollView
           ref={pagerRef}
           horizontal
@@ -393,16 +343,121 @@ export default function FeedScreen() {
           style={styles.pager}
           contentContainerStyle={styles.pagerContent}
         >
-          <FeedPane kind="recommendations" search={search} pageWidth={pageWidth} />
-          <FeedPane kind="subscriptions" search={search} pageWidth={pageWidth} />
+          <FeedPane
+            kind="recommendations"
+            search={search}
+            pageWidth={pageWidth}
+            contentPaddingTop={headerHeightPx}
+            contentPaddingBottom={listPaddingBottom}
+            renderScrollComponent={renderScrollComponents[0]}
+          />
+          <FeedPane
+            kind="subscriptions"
+            search={search}
+            pageWidth={pageWidth}
+            contentPaddingTop={headerHeightPx}
+            contentPaddingBottom={listPaddingBottom}
+            renderScrollComponent={renderScrollComponents[1]}
+          />
         </Animated.ScrollView>
       </View>
+
+      <Animated.View style={[styles.topChrome, headerAnimatedStyle]}>
+        <View
+          style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}
+          onLayout={onHeaderLayout}
+        >
+          <TabScreenSearchHeader
+            title="Лента"
+            placeholder="Поиск в ленте"
+            value={search}
+            onChangeText={setSearch}
+            menuOpen={menuOpen}
+            onMenuOpen={() => setMenuOpen(true)}
+            onMenuClose={() => setMenuOpen(false)}
+            createAction={{
+              accessibilityLabel: "Создать пост",
+              onPress: () => router.push("/compose"),
+            }}
+          />
+
+          <View style={styles.navigationRow}>
+            <View style={styles.tabs}>
+              {tabIndicatorStyle ? (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.tabIndicator, tabIndicatorStyle]}
+                />
+              ) : null}
+              <Pressable
+                style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
+                onLayout={(event) => recordTabLayout("recommendations", event)}
+                onPress={() => switchKind("recommendations")}
+              >
+                <Animated.Text
+                  style={[
+                    styles.tabLabel,
+                    tabLabelColors ? { color: tabLabelColors.recommendations } : styles.tabLabelActive,
+                  ]}
+                >
+                  Рекомендации
+                </Animated.Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
+                onLayout={(event) => recordTabLayout("subscriptions", event)}
+                onPress={() => switchKind("subscriptions")}
+              >
+                <Animated.Text
+                  style={[
+                    styles.tabLabel,
+                    tabLabelColors ? { color: tabLabelColors.subscriptions } : null,
+                  ]}
+                >
+                  Подписки
+                </Animated.Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+
+        {showNewPostsBanner ? (
+          <Pressable
+            style={({ pressed }) => [styles.banner, pressed && styles.pressed]}
+            onPress={refreshFeeds}
+          >
+            <Ionicons name="arrow-up-outline" size={14} color={floraColors.greenLight} />
+            <Text style={styles.bannerText}>Новые посты — нажмите, чтобы обновить</Text>
+          </Pressable>
+        ) : null}
+      </Animated.View>
+
+      {/* Закреплённый фон статус-бара — не уезжает вместе с chrome. */}
+      <View
+        pointerEvents="none"
+        style={[styles.statusBarFill, { height: insets.top }]}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
+  topChrome: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  statusBarFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    backgroundColor: floraColors.bg,
+  },
   topBlock: {
     backgroundColor: floraColors.bg,
     borderBottomColor: "rgba(250, 250, 250, 0.08)",
@@ -410,50 +465,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
     paddingBottom: 0,
     gap: 13,
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  searchBox: {
-    flex: 1,
-    minHeight: 45,
-    borderColor: floraColors.greenDark,
-    borderWidth: 1,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 14,
-    backgroundColor: "transparent",
-  },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    color: floraColors.whiteTemplate,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    paddingVertical: 0,
-  },
-  searchClear: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(164, 209, 138, 0.12)",
-  },
-  menuButton: {
-    width: 45,
-    minHeight: 45,
-    borderColor: floraColors.greenDark,
-    borderWidth: 1,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
   },
   feedBody: {
     flex: 1,
@@ -474,22 +485,12 @@ const styles = StyleSheet.create({
     minHeight: 35,
     width: "100%",
   },
-  composeBtn: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    width: 45,
-    height: 35,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   tabs: {
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
     overflow: "visible",
-    paddingRight: 45 + 10,
   },
   tabButton: {
     height: 35,
@@ -541,9 +542,7 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.39,
   },
-  listContent: {
-    paddingBottom: 24,
-  },
+  listContent: {},
   loadingMore: {
     paddingVertical: 20,
     alignItems: "center",
