@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { FscpLocalMaterial } from "@/lib/fscp";
 import { preloadConversationThreads } from "@/lib/conversationThreadsCache";
+import { TOP_THREAD_PRELOAD_COUNT } from "@/lib/dashboardPreload";
 import { preloadConversationThreadMedia } from "@/lib/preloadConversationThreadMedia";
 import type { ConversationListItemDto } from "@/lib/socialApi";
-
-const TOP_THREAD_PRELOAD_COUNT = 4;
 
 export function usePreloadConversationThreads(
   viewerNorm: string,

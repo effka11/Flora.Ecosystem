@@ -135,13 +135,11 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     if (!isClient || !hasToken) return;
-    queueMicrotask(() => {
-      const saved = window.localStorage.getItem(NOTIFICATIONS_TAB_STORAGE_KEY);
-      if (saved === "0" || saved === "1" || saved === "2") {
-        setActiveTab(Number(saved));
-      }
-      setTabRestoreReady(true);
-    });
+    const saved = window.localStorage.getItem(NOTIFICATIONS_TAB_STORAGE_KEY);
+    if (saved === "0" || saved === "1" || saved === "2") {
+      setActiveTab(Number(saved));
+    }
+    setTabRestoreReady(true);
   }, [isClient, hasToken]);
 
   useEffect(() => {

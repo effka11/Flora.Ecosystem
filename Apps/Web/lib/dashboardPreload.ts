@@ -1,4 +1,5 @@
 import { apiGetMe, apiGetPrivacySettings, avatarImageUrl, isDevLocalOfflineSession } from "@/lib/auth";
+import { preloadConversationThreads } from "@/lib/conversationThreadsCache";
 import { msgGetConversations, type MsgConversationsPage } from "@/lib/messagingApi";
 import {
   apiGetMusicLibrary,
@@ -29,9 +30,13 @@ import {
 } from "@/lib/socialApi";
 
 const DEFAULT_TTL_MS = 60_000;
-const PREFETCH_WAVE_DELAY_MS = 300;
-const PREFETCH_START_DELAY_MS = 1_000;
+/** Пауза между задачами внутри фоновой волны (некритичные вкладки). */
+const PREFETCH_WAVE_DELAY_MS = 250;
+/** Старт фоновых волн после критического prefetch (feed/messages/notifications уже без задержки). */
+const PREFETCH_BACKGROUND_START_MS = 400;
 const IMAGE_WARMUP_LIMIT = 12;
+/** Сколько верхних диалогов прогревать до открытия Messages. */
+export const TOP_THREAD_PRELOAD_COUNT = 4;
 
 type CacheEntry<T> = {
   value: T;
@@ -65,15 +70,18 @@ function createCachedResource<T>(fetcher: () => Promise<T>, ttlMs = DEFAULT_TTL_
     return inFlight;
   };
 
+  const isFresh = (): boolean => Boolean(entry && Date.now() - entry.fetchedAt < ttlMs);
+
   return {
     prefetch() {
+      if (isFresh()) return;
       void fetchFresh().catch(() => {});
     },
     peek() {
       return entry?.value ?? null;
     },
     get() {
-      if (entry && Date.now() - entry.fetchedAt < ttlMs) {
+      if (isFresh() && entry) {
         return Promise.resolve(entry.value);
       }
       return fetchFresh();
@@ -119,8 +127,14 @@ function createKeyedCachedResource<K, T>(
     return promise;
   };
 
+  const isFresh = (key: K): boolean => {
+    const entry = entries.get(key);
+    return Boolean(entry && Date.now() - entry.fetchedAt < ttlMs);
+  };
+
   return {
     prefetch(key) {
+      if (isFresh(key)) return;
       void fetchFresh(key).catch(() => {});
     },
     peek(key) {
@@ -128,7 +142,7 @@ function createKeyedCachedResource<K, T>(
     },
     get(key) {
       const entry = entries.get(key);
-      if (entry && Date.now() - entry.fetchedAt < ttlMs) {
+      if (entry && isFresh(key)) {
         return Promise.resolve(entry.value);
       }
       return fetchFresh(key);
@@ -285,7 +299,7 @@ function scheduleIdleTask(task: () => void, delayMs = 0): void {
   if (typeof window === "undefined") return;
   const run = () => {
     if ("requestIdleCallback" in window) {
-      window.requestIdleCallback(() => task(), { timeout: 4_000 });
+      window.requestIdleCallback(() => task(), { timeout: 2_000 });
       return;
     }
     task();
@@ -303,50 +317,169 @@ function runPrefetchWave(tasks: Array<() => void>, startDelayMs: number): void {
   });
 }
 
-/** Ранний prefetch вкладки «Сообщения» (наведение / pointerdown в сайдбаре). */
-export function startMessagesTabPrefetch(): void {
-  if (typeof window === "undefined") return;
-  conversationsCache.prefetch();
+function preloadMessageEmojiPickerChunk(): void {
   void import("@/app/(dashboard)/messages/MessageEmojiPicker")
     .then((mod) => mod.preloadMessageEmojiPicker())
     .catch(() => {});
 }
 
-/** Тихая фоновая предзагрузка данных всех вкладок после входа в дашборд. */
-export function startDashboardDataPrefetch(username?: string | null): void {
+/** Dedupe фоновых волн + pending thread prefetch до появления viewerUuid. */
+let backgroundPrefetchUserKey: string | null = null;
+let pendingThreadPrefetch: Promise<MsgConversationsPage | null> | null = null;
+let pendingThreadViewerNorm = "";
+let lastThreadPrefetchSignature = "";
+
+function runTopThreadPrefetch(viewerNorm: string, page: MsgConversationsPage): void {
+  const peerUuids = page.items
+    .slice(0, TOP_THREAD_PRELOAD_COUNT)
+    .map((item) => item.otherUserUuid)
+    .filter(Boolean);
+  if (peerUuids.length === 0) return;
+  const signature = `${viewerNorm}|${peerUuids.join(",")}`;
+  if (lastThreadPrefetchSignature === signature) return;
+  lastThreadPrefetchSignature = signature;
+  preloadConversationThreads(viewerNorm, peerUuids);
+}
+
+/**
+ * После списка чатов — прогреть верхние треды.
+ * Без viewerUuid только держит список в pending; треды стартуют через attachPendingThreadPrefetchViewer.
+ */
+function prefetchTopConversationThreads(viewerUuid?: string | null): void {
+  const viewerNorm = viewerUuid?.trim().toLowerCase() ?? pendingThreadViewerNorm;
+
+  const finish = (page: MsgConversationsPage | null) => {
+    if (!page?.items.length) return;
+    if (!viewerNorm) {
+      pendingThreadPrefetch = Promise.resolve(page);
+      return;
+    }
+    pendingThreadPrefetch = null;
+    runTopThreadPrefetch(viewerNorm, page);
+  };
+
+  const cached = conversationsCache.peek();
+  if (cached) {
+    finish(cached);
+    return;
+  }
+
+  if (!pendingThreadPrefetch) {
+    pendingThreadPrefetch = conversationsCache.get().catch(() => null);
+  }
+  void pendingThreadPrefetch.then(finish);
+}
+
+/** Когда apiGetMe вернул uuid — догрузить треды, если список уже прогрет без viewer. */
+export function attachPendingThreadPrefetchViewer(viewerUuid: string): void {
+  const viewerNorm = viewerUuid.trim().toLowerCase();
+  if (!viewerNorm) return;
+  pendingThreadViewerNorm = viewerNorm;
+  prefetchTopConversationThreads(viewerNorm);
+}
+
+/** Сброс dedupe фоновых волн / pending thread prefetch (logout / смена сессии). */
+export function resetDashboardPrefetchState(): void {
+  backgroundPrefetchUserKey = null;
+  pendingThreadPrefetch = null;
+  pendingThreadViewerNorm = "";
+  lastThreadPrefetchSignature = "";
+}
+
+/** Ранний prefetch вкладки «Сообщения» (наведение / pointerdown в сайдбаре). */
+export function startMessagesTabPrefetch(viewerUuid?: string | null): void {
+  if (typeof window === "undefined") return;
+  conversationsCache.prefetch();
+  preloadMessageEmojiPickerChunk();
+  prefetchTopConversationThreads(viewerUuid);
+}
+
+/** Prefetch данных вкладки по href сайдбара (hover / pointerdown до перехода). */
+export function startTabPrefetch(href: string, options?: { username?: string | null; viewerUuid?: string | null }): void {
+  if (typeof window === "undefined") return;
+  const path = href.split("?")[0]?.split("#")[0] ?? href;
+  const username = options?.username ? normalizeUsernameKey(options.username) : "";
+
+  if (path === "/messages" || path.startsWith("/messages/")) {
+    startMessagesTabPrefetch(options?.viewerUuid);
+    return;
+  }
+  if (path === "/feed" || path.startsWith("/feed/")) {
+    feedRecommendationsCache.prefetch();
+    feedSubscriptionsCache.prefetch();
+    return;
+  }
+  if (path === "/notifications" || path.startsWith("/notifications/")) {
+    notificationsAllCache.prefetch();
+    return;
+  }
+  if (path === "/people" || path.startsWith("/people/")) {
+    peopleRecommendedCache.prefetch();
+    if (username) {
+      peopleFollowersCache.prefetch(username);
+      peopleFollowingCache.prefetch(username);
+    }
+    return;
+  }
+  if (path === "/communities" || path.startsWith("/communities/")) {
+    communitiesBundleCache.prefetch();
+    return;
+  }
+  if (path === "/music" || path.startsWith("/music/")) {
+    musicLibraryCache.prefetch();
+    musicPlaylistsCache.prefetch();
+    return;
+  }
+  if (path === "/settings" || path.startsWith("/settings/")) {
+    privacySettingsCache.prefetch();
+    return;
+  }
+  if (path === "/profile" || path.startsWith("/profile/")) {
+    if (username) profileBundleCache.prefetch(username);
+  }
+}
+
+/**
+ * Тихая фоновая предзагрузка данных всех вкладок после входа в дашборд.
+ * Критичные вкладки (лента / сообщения / уведомления) стартуют сразу;
+ * остальное — короткими idle-волнами, чтобы не конкурировать с первым экраном.
+ */
+
+/** Критический prefetch без ожидания профиля — можно вызывать сразу при наличии токена. */
+export function startCriticalDashboardPrefetch(): void {
+  if (typeof window === "undefined") return;
+  feedRecommendationsCache.prefetch();
+  feedSubscriptionsCache.prefetch();
+  conversationsCache.prefetch();
+  notificationsAllCache.prefetch();
+  preloadMessageEmojiPickerChunk();
+  // Список чатов → pending треды; сами треды стартуют после attachPendingThreadPrefetchViewer.
+  prefetchTopConversationThreads();
+}
+
+export function startDashboardDataPrefetch(username?: string | null, viewerUuid?: string | null): void {
   if (typeof window === "undefined") return;
 
   const normalizedUsername = username ? normalizeUsernameKey(username) : "";
+  const viewerNorm = viewerUuid?.trim().toLowerCase() ?? "";
+
+  startCriticalDashboardPrefetch();
+  if (viewerNorm) {
+    attachPendingThreadPrefetchViewer(viewerNorm);
+  }
+
+  const userKey = viewerNorm || normalizedUsername || "_";
+  if (backgroundPrefetchUserKey === userKey) return;
+  backgroundPrefetchUserKey = userKey;
 
   runPrefetchWave(
     [
-      () => conversationsCache.prefetch(),
-      () => notificationsAllCache.prefetch(),
-      () => {
-        void import("@/app/(dashboard)/messages/MessageEmojiPicker")
-          .then((mod) => mod.preloadMessageEmojiPicker())
-          .catch(() => {});
-      },
-    ],
-    PREFETCH_START_DELAY_MS,
-  );
-
-  runPrefetchWave(
-    [
-      () => feedRecommendationsCache.prefetch(),
-      () => feedSubscriptionsCache.prefetch(),
       () => peopleRecommendedCache.prefetch(),
-    ],
-    PREFETCH_START_DELAY_MS + PREFETCH_WAVE_DELAY_MS * 3,
-  );
-
-  runPrefetchWave(
-    [
       () => communitiesBundleCache.prefetch(),
       () => musicLibraryCache.prefetch(),
       () => musicPlaylistsCache.prefetch(),
     ],
-    PREFETCH_START_DELAY_MS + PREFETCH_WAVE_DELAY_MS * 6,
+    PREFETCH_BACKGROUND_START_MS,
   );
 
   runPrefetchWave(
@@ -366,7 +499,7 @@ export function startDashboardDataPrefetch(username?: string | null): void {
         ]).finally(() => warmupDashboardAvatarImages());
       },
     ],
-    PREFETCH_START_DELAY_MS + PREFETCH_WAVE_DELAY_MS * 9,
+    PREFETCH_BACKGROUND_START_MS + PREFETCH_WAVE_DELAY_MS * 4,
   );
 }
 

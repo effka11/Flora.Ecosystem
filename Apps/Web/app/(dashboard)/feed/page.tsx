@@ -422,11 +422,8 @@ function FeedPageContent() {
 
   useEffect(() => {
     if (!tabRestoreReady) return;
-    const id = window.setTimeout(() => {
-      void loadFeedTab("recommendations");
-      void loadFeedTab("subscriptions");
-    }, 0);
-    return () => window.clearTimeout(id);
+    void loadFeedTab("recommendations");
+    void loadFeedTab("subscriptions");
   }, [tabRestoreReady, loadFeedTab]);
 
   useLayoutEffect(() => {
@@ -678,13 +675,11 @@ function FeedPageContent() {
   }, [activeTab, feeds.recommendations.generatedAt]);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      const savedTab = window.localStorage.getItem(FEED_TAB_STORAGE_KEY);
-      if (savedTab === "recommendations" || savedTab === "subscriptions") {
-        setActiveTab(savedTab);
-      }
-      setTabRestoreReady(true);
-    });
+    const savedTab = window.localStorage.getItem(FEED_TAB_STORAGE_KEY);
+    if (savedTab === "recommendations" || savedTab === "subscriptions") {
+      setActiveTab(savedTab);
+    }
+    setTabRestoreReady(true);
   }, []);
 
   useEffect(() => {
