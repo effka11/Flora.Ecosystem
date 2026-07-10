@@ -172,9 +172,12 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           return;
         }
 
-        // System installer UI — dismiss our progress sheet.
+        // System installer UI still open (legacy native). Keep sheet until final.
         if (result.status === "pending_user_action") {
-          closeModal();
+          onProgress({
+            phase: "installing",
+            message: "Подтвердите установку в системном окне",
+          });
         }
       } catch (err: unknown) {
         if (cancelledRef.current) {

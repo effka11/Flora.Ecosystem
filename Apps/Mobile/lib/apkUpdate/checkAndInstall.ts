@@ -29,6 +29,7 @@ import {
   wasInstallPermissionPrompted,
 } from "@/lib/apkUpdate/permissionState";
 import type { ApkUpdateProgressListener } from "@/lib/apkUpdate/progress";
+import { compareFloraSocialVersions, getFloraSocialAppVersion } from "@/lib/appLinks";
 import { mmkv } from "@/lib/mmkv";
 
 const LAST_CHECK_KEY = "apkUpdate.lastCheckAt";
@@ -217,6 +218,16 @@ async function runCheckAndInstall(
     return { ok: true, status: "up_to_date" };
   }
 
+  // Legacy interactive manifests (no versionCode): still refuse downgrade/same
+  // by semver string so tapping an old notification cannot open PackageInstaller.
+  if (
+    manifest.versionCode == null &&
+    compareFloraSocialVersions(getFloraSocialAppVersion(), manifest.version) >= 0
+  ) {
+    report({ phase: "done", message: "Уже установлена актуальная версия" });
+    return { ok: true, status: "up_to_date" };
+  }
+
   if (!options.allowUserAction) {
     if (manifest.sizeBytes == null) {
       return { ok: true, status: "skipped" };
@@ -314,15 +325,16 @@ async function runCheckAndInstall(
       report({ phase: "done", message: "Обновление установлено" });
       return { ok: true, status: "installed" };
     }
-    // System confirm UI takes over — no in-app "confirm" modal.
-    // PackageInstaller owns a full session copy now; source APK can be removed.
-    await clearPendingApk();
+    // Legacy native: resolved early on system confirm UI. Keep the APK until a
+    // final success/failure callback exists in the current native module.
     return { ok: true, status: "pending_user_action" };
   } catch (e) {
     if (isCancelError(e)) return cancelledResult();
     await clearPendingApk();
     const code =
       e && typeof e === "object" && "code" in e ? String((e as { code?: string }).code) : "";
+    const detail =
+      e instanceof Error && e.message.trim().length > 0 ? e.message.trim() : "";
     if (!options.allowUserAction) {
       return { ok: true, status: "skipped" };
     }
@@ -346,8 +358,14 @@ async function runCheckAndInstall(
         code: "INSTALL",
       };
     }
-    report({ phase: "error", message: "Установка не удалась" });
-    return { ok: false, error: "Установка не удалась", code: "INSTALL" };
+    const downgrade =
+      /version.?downgrade|INSTALL_FAILED_VERSION_DOWNGRADE/i.test(detail) ||
+      /downgrade/i.test(detail);
+    const message = downgrade
+      ? "Нельзя установить более старую версию"
+      : detail || "Установка не удалась";
+    report({ phase: "error", message, code: "INSTALL" });
+    return { ok: false, error: message, code: "INSTALL" };
   }
 }
 
