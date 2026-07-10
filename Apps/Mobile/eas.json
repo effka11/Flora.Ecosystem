@@ -23,7 +23,8 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://origin.flora-s.net"
+        "EXPO_PUBLIC_API_URL": "https://origin.flora-s.net",
+        "FLORA_DISABLE_SIDELOAD_UPDATES": "1"
       },
       "android": {
         "buildType": "app-bundle"

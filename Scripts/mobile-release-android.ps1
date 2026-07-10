@@ -1,6 +1,7 @@
 # Production Android release (AAB/APK) via Gradle after expo prebuild.
 param(
-    [switch] $BroadcastUpdate
+    [switch] $BroadcastUpdate,
+    [switch] $PublishGitHub
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +32,18 @@ $env:ANDROID_HOME = $sdk
 $env:ANDROID_SDK_ROOT = $sdk
 $env:JAVA_HOME = $jdk
 $env:Path = "$jdk\bin;" + $env:Path
+
+$buildPlayAab = $env:FLORA_ANDROID_BUILD_AAB -eq "1"
+if ($buildPlayAab) {
+    # A bundle is a Play artifact: exclude PackageInstaller code and permissions
+    # before Expo autolinking/prebuild, exactly like the EAS production profile.
+    $env:FLORA_DISABLE_SIDELOAD_UPDATES = "1"
+}
+$nativeBuildMode = if ($env:FLORA_DISABLE_SIDELOAD_UPDATES -eq "1") { "play" } else { "sideload" }
+if ($PublishGitHub -and $nativeBuildMode -eq "play") {
+    throw "-PublishGitHub requires a sideload APK build. Unset FLORA_ANDROID_BUILD_AAB / FLORA_DISABLE_SIDELOAD_UPDATES."
+}
+Write-Host "Android native mode: $nativeBuildMode"
 
 . (Join-Path $PSScriptRoot "mobile-flora-version.ps1")
 . (Join-Path $PSScriptRoot "patch-release-gradle-props.ps1")
@@ -98,10 +111,13 @@ function Assert-FloraNativeSplash([string]$mobileDir, [string]$androidDir) {
     Write-Host "native splash OK: $splash"
 }
 
-function Test-AndroidGenFresh([string]$mobileDir) {
+function Test-AndroidGenFresh([string]$mobileDir, [string]$buildMode) {
     $splash = Join-Path $mobileDir "android_gen\app\src\main\res\drawable-xxhdpi\splashscreen_logo.png"
     $source = Join-Path $mobileDir "assets\images\splash-icon.png"
     if (-not ((Test-Path $splash) -and (Test-Path $source))) { return $false }
+    $modeMarker = Join-Path $mobileDir "android_gen\.flora-build-mode"
+    if (-not (Test-Path -LiteralPath $modeMarker)) { return $false }
+    if ((Get-Content -LiteralPath $modeMarker -Raw).Trim() -ne $buildMode) { return $false }
     $sourceTime = (Get-Item $source).LastWriteTimeUtc
     $nativeTime = (Get-Item $splash).LastWriteTimeUtc
     if ($nativeTime -lt $sourceTime.AddSeconds(-5)) { return $false }
@@ -125,10 +141,10 @@ function Test-AndroidGenProductionPackage([string]$mobileDir) {
     return $true
 }
 
-function Invoke-ExpoAndroidPrebuild([string]$mobileDir) {
+function Invoke-ExpoAndroidPrebuild([string]$mobileDir, [string]$buildMode) {
     $androidOut = Join-Path $mobileDir "android_gen"
-    if (Test-AndroidGenFresh $mobileDir) {
-        Write-Host "android_gen already has Flora splash/icons; skipping expo prebuild."
+    if (Test-AndroidGenFresh $mobileDir $buildMode) {
+        Write-Host "android_gen already has Flora splash/icons and mode=$buildMode; skipping expo prebuild."
         return $androidOut
     }
 
@@ -155,6 +171,10 @@ function Invoke-ExpoAndroidPrebuild([string]$mobileDir) {
         if ($LASTEXITCODE -ne 0) { throw "Failed to junction node_modules into prebuild stage." }
     }
 
+    Write-Host "configure updater autolinking for mode=$buildMode ..."
+    & node (Join-Path $root "Scripts\configure-mobile-play-autolinking.mjs") $stage
+    if ($LASTEXITCODE -ne 0) { throw "Failed to configure mobile autolinking." }
+
     Write-Host "expo prebuild in staging folder (avoids locked android/) ..."
     Push-Location $stage
     try {
@@ -172,6 +192,11 @@ function Invoke-ExpoAndroidPrebuild([string]$mobileDir) {
 
     Remove-LockedDirectory $androidOut
     Move-Item -LiteralPath $generatedAndroid -Destination $androidOut
+    [System.IO.File]::WriteAllText(
+        (Join-Path $androidOut ".flora-build-mode"),
+        "$buildMode`n",
+        [System.Text.Encoding]::ASCII
+    )
 
     $splashCheck = Join-Path $androidOut "app\src\main\res\drawable-xxhdpi\splashscreen_logo.png"
     if (-not (Test-Path $splashCheck)) {
@@ -258,7 +283,7 @@ try {
     $legacyAndroid = Join-Path $mobile "android"
     Stop-AndroidGradleDaemons $legacyAndroid
 
-    $androidGenDir = Invoke-ExpoAndroidPrebuild $mobile
+    $androidGenDir = Invoke-ExpoAndroidPrebuild $mobile $nativeBuildMode
     $androidDir = Sync-AndroidProjectFromGen $mobile
     Assert-FloraNativeSplash $mobile $androidDir
     Assert-GoogleServicesInAndroid $androidDir
@@ -280,6 +305,8 @@ try {
 
     $apk = Get-ChildItem -Recurse -Filter "app-release.apk" (Join-Path $androidDir "app\build\outputs\apk\release") -ErrorAction SilentlyContinue |
         Select-Object -First 1
+    $distApk = $null
+    $updateManifestPath = $null
     if ($apk) {
         $distDir = Join-Path $mobile "dist"
         New-Item -ItemType Directory -Force -Path $distDir | Out-Null
@@ -300,6 +327,38 @@ try {
         finally {
             $zip.Dispose()
         }
+
+        if ($nativeBuildMode -eq "sideload") {
+            $appJsonPath = Join-Path $mobile "app.json"
+            $appJson = Get-Content -LiteralPath $appJsonPath -Raw | ConvertFrom-Json
+            $versionCode = [int]$appJson.expo.android.versionCode
+            if ($versionCode -lt 1) {
+                throw "Apps/Mobile/app.json expo.android.versionCode must be a positive integer"
+            }
+
+            $apkItem = Get-Item -LiteralPath $distApk
+            $sha256 = (Get-FileHash -LiteralPath $distApk -Algorithm SHA256).Hash.ToLowerInvariant()
+            $apkFileName = $apkItem.Name
+            $apkUrl = "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v$socialVersion/$apkFileName"
+            $updateManifest = [ordered]@{
+                version      = $socialVersion
+                versionCode  = $versionCode
+                apkFileName  = $apkFileName
+                apkUrl       = $apkUrl
+                sha256       = $sha256
+                sizeBytes    = [int64]$apkItem.Length
+            }
+            $updateManifestPath = Join-Path $distDir "flora.social-android-update.json"
+            $json = ($updateManifest | ConvertTo-Json -Depth 4) + "`n"
+            $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+            [System.IO.File]::WriteAllText($updateManifestPath, $json, $utf8NoBom)
+            Write-Host "Update manifest: $updateManifestPath (versionCode=$versionCode, sizeBytes=$($apkItem.Length))"
+        }
+        else {
+            $staleManifest = Join-Path $distDir "flora.social-android-update.json"
+            Remove-Item -LiteralPath $staleManifest -Force -ErrorAction SilentlyContinue
+            Write-Host "Play-mode APK: update manifest intentionally not generated."
+        }
     }
     $aab = Get-ChildItem -Recurse -Filter "app-release.aab" (Join-Path $androidDir "app\build\outputs\bundle\release") -ErrorAction SilentlyContinue |
         Select-Object -First 1
@@ -312,6 +371,43 @@ try {
 }
 finally {
     Pop-Location
+}
+
+if ($PublishGitHub) {
+    if (-not $distApk -or -not (Test-Path -LiteralPath $distApk)) {
+        throw "-PublishGitHub requires a built APK at dist/"
+    }
+    if (-not $updateManifestPath -or -not (Test-Path -LiteralPath $updateManifestPath)) {
+        throw "-PublishGitHub requires flora.social-android-update.json"
+    }
+
+    $gh = Get-Command gh -ErrorAction SilentlyContinue
+    if (-not $gh) {
+        throw "GitHub CLI (gh) not found. Install from https://cli.github.com/ and run gh auth login."
+    }
+
+    $tag = "social/v$socialVersion"
+    Write-Host ""
+    Write-Host "Publishing GitHub release $tag ..."
+
+    $viewOut = & gh release view $tag --repo effka11/Flora.Ecosystem 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Release $tag exists; uploading assets (clobber) ..."
+        & gh release upload $tag --repo effka11/Flora.Ecosystem --clobber $distApk $updateManifestPath
+        if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
+    }
+    else {
+        Write-Host "Creating release $tag ..."
+        $notes = @"
+Flora Social Android $socialVersion
+
+Sideload APK + update manifest for in-app PackageInstaller updates.
+Keep the same release signing keystore across updates.
+"@
+        & gh release create $tag --repo effka11/Flora.Ecosystem --title "Flora Social v$socialVersion" --notes $notes $distApk $updateManifestPath
+        if ($LASTEXITCODE -ne 0) { throw "gh release create failed (ensure tag $tag exists on remote, or pass --generate-notes after pushing the tag)" }
+    }
+    Write-Host "GitHub release assets published."
 }
 
 if ($BroadcastUpdate) {

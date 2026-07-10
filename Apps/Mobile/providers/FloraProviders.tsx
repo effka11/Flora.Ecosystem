@@ -7,6 +7,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { InstallPermissionHost } from "@/components/apkUpdate/InstallPermissionHost";
 import { initFloraClient } from "@/lib/api";
 import {
   handleColdStartPushNavigation,
@@ -15,12 +16,20 @@ import {
   unregisterPushTokenFromServer,
 } from "@/lib/pushNotifications";
 import { isNativePushEnabled } from "@/lib/pushCapabilities";
+import {
+  ensureInstallPackagesPermission,
+  canPromptInstallPermission,
+  isPlayStoreBuildRuntime,
+  isSideloadUpdatesEnabled,
+  runSilentUpdateCheck,
+} from "@/lib/apkUpdate";
 import { FloraAppServices, QueryClientRefBridge } from "@/providers/FloraAppServices";
 import { initMobileSodium } from "@/lib/fscp/sodium";
 import { initStorageMigrations } from "@/lib/mmkv";
 import { initSentry, initTelemetry } from "@/lib/sentry";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useFscpStore } from "@/stores/fscpStore";
+import { canRequestPackageInstalls } from "flora-apk-updater";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -137,24 +146,49 @@ export function FloraProviders({ children }: { children: ReactNode }) {
   }, [ready]);
 
   useEffect(() => {
-    if (!ready || !isAuthenticated || !isNativePushEnabled()) return;
+    if (!ready || !isAuthenticated) return;
 
-    const syncPush = () => {
-      void registerPushTokenWithServer().catch(() => undefined);
+    let cancelled = false;
+
+    const runPostLogin = async () => {
+      if (isNativePushEnabled()) {
+        await registerPushTokenWithServer().catch(() => undefined);
+      }
+      if (cancelled) return;
+      // Permission prompt whenever native updater is linked (Dev + sideload release).
+      if (canPromptInstallPermission()) {
+        await ensureInstallPackagesPermission().catch(() => undefined);
+        if (cancelled) return;
+      }
+      // Silent GitHub update only on production sideload APK.
+      if (isSideloadUpdatesEnabled() && canRequestPackageInstalls()) {
+        void runSilentUpdateCheck(true).catch(() => undefined);
+      }
     };
 
-    syncPush();
     if (!coldStartPushHandledRef.current) {
       coldStartPushHandledRef.current = true;
       void handleColdStartPushNavigation().catch(() => undefined);
     }
-    const removePushListeners = installPushNotificationListeners();
+
+    const removePushListeners = isNativePushEnabled()
+      ? installPushNotificationListeners()
+      : () => undefined;
+
+    void runPostLogin();
 
     const appSub = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (state === "active") syncPush();
+      if (state !== "active") return;
+      if (isNativePushEnabled()) {
+        void registerPushTokenWithServer().catch(() => undefined);
+      }
+      if (isSideloadUpdatesEnabled() && canRequestPackageInstalls()) {
+        void runSilentUpdateCheck(false).catch(() => undefined);
+      }
     });
 
     return () => {
+      cancelled = true;
       removePushListeners();
       appSub.remove();
     };
@@ -179,6 +213,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
           <QueryClientRefBridge client={queryClient} />
           <FloraAppServices enabled={isAuthenticated} />
           <OfflineBanner />
+          {!isPlayStoreBuildRuntime() ? <InstallPermissionHost /> : null}
           {children}
         </QueryClientProvider>
       </KeyboardProvider>

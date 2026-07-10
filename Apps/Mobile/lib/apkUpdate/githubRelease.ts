@@ -1,0 +1,170 @@
+import { nativeBuildVersion } from "expo-application";
+import { Platform } from "react-native";
+import { mmkv } from "@/lib/mmkv";
+import { parseAppUpdateVersionFromText } from "@/lib/appLinks";
+
+export type AndroidUpdateManifest = {
+  version: string;
+  /** Missing only for legacy interactive releases without update.json. */
+  versionCode: number | null;
+  apkFileName: string;
+  apkUrl: string;
+  sha256: string;
+  sizeBytes?: number;
+};
+
+const GITHUB_REPO = "effka11/Flora.Ecosystem";
+const RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30`;
+const UPDATE_ASSET_NAME = "flora.social-android-update.json";
+
+const ETAG_KEY = "apkUpdate.releasesEtag";
+const BODY_KEY = "apkUpdate.releasesBody";
+const MANIFEST_ETAG_PREFIX = "apkUpdate.manifestEtag.";
+const MANIFEST_BODY_PREFIX = "apkUpdate.manifestBody.";
+
+type GitHubAsset = {
+  name: string;
+  browser_download_url: string;
+  digest?: string | null;
+  size?: number;
+};
+
+type GitHubRelease = {
+  tag_name: string;
+  assets: GitHubAsset[];
+};
+
+function userAgent(): string {
+  const build = nativeBuildVersion ?? "0";
+  return `FloraSocial-Android/${build}`;
+}
+
+async function githubFetch(
+  url: string,
+  etagKey: string,
+  bodyKey: string,
+): Promise<{ status: number; body: string | null }> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": userAgent(),
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  const etag = mmkv.getString(etagKey);
+  if (etag) headers["If-None-Match"] = etag;
+
+  const res = await fetch(url, { headers });
+  if (res.status === 304) {
+    return { status: 304, body: mmkv.getString(bodyKey) ?? null };
+  }
+  if (!res.ok) {
+    throw new Error(`GitHub HTTP ${res.status} for ${url}`);
+  }
+  const body = await res.text();
+  const newEtag = res.headers.get("etag");
+  if (newEtag) mmkv.set(etagKey, newEtag);
+  mmkv.set(bodyKey, body);
+  return { status: res.status, body };
+}
+
+function pickSocialRelease(releases: GitHubRelease[]): GitHubRelease | null {
+  for (const release of releases) {
+    if (!release.tag_name?.startsWith("social/v")) continue;
+    const hasManifest = (release.assets ?? []).some((a) => a.name === UPDATE_ASSET_NAME);
+    if (hasManifest) return release;
+  }
+  return null;
+}
+
+async function fetchReleases(): Promise<GitHubRelease[]> {
+  const list = await githubFetch(RELEASES_URL, ETAG_KEY, BODY_KEY);
+  if (!list.body) return [];
+
+  const parsed = JSON.parse(list.body.replace(/^\uFEFF/, "")) as unknown;
+  return Array.isArray(parsed) ? (parsed as GitHubRelease[]) : [];
+}
+
+function parseAssetSha256(digest: string | null | undefined): string | null {
+  const match = digest?.match(/^sha256:([a-f0-9]{64})$/i);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+export async function fetchLatestUpdateManifest(): Promise<AndroidUpdateManifest | null> {
+  if (Platform.OS !== "android") return null;
+
+  const releases = await fetchReleases();
+  const release = pickSocialRelease(releases);
+  if (!release) return null;
+
+  const asset = release.assets.find((a) => a.name === UPDATE_ASSET_NAME);
+  if (!asset?.browser_download_url) return null;
+
+  const tagKey = release.tag_name.replace(/[^\w.-]+/g, "_");
+  const manifestRes = await githubFetch(
+    asset.browser_download_url,
+    `${MANIFEST_ETAG_PREFIX}${tagKey}`,
+    `${MANIFEST_BODY_PREFIX}${tagKey}`,
+  );
+  if (!manifestRes.body) return null;
+
+  const parsed = JSON.parse(manifestRes.body.replace(/^\uFEFF/, "")) as Partial<AndroidUpdateManifest>;
+  if (
+    typeof parsed.version !== "string" ||
+    typeof parsed.versionCode !== "number" ||
+    !Number.isInteger(parsed.versionCode) ||
+    parsed.versionCode < 1 ||
+    typeof parsed.apkUrl !== "string" ||
+    typeof parsed.sha256 !== "string" ||
+    !/^[a-f0-9]{64}$/i.test(parsed.sha256)
+  ) {
+    return null;
+  }
+
+  return {
+    version: parsed.version,
+    versionCode: parsed.versionCode,
+    apkFileName: parsed.apkFileName ?? `flora.social-v${parsed.version}-android.apk`,
+    apkUrl: parsed.apkUrl,
+    sha256: parsed.sha256.toLowerCase(),
+    sizeBytes: typeof parsed.sizeBytes === "number" ? parsed.sizeBytes : undefined,
+  };
+}
+
+/**
+ * Legacy interactive fallback for releases created before update.json existed.
+ * Integrity still comes from GitHub's immutable release-asset SHA-256 metadata;
+ * versionCode remains unknown, so this result must never be used silently.
+ */
+export async function fetchUpdateManifestFromNotificationText(
+  text: string,
+): Promise<AndroidUpdateManifest | null> {
+  if (Platform.OS !== "android") return null;
+
+  const version = parseAppUpdateVersionFromText(text);
+  if (!version) return null;
+
+  const releases = await fetchReleases();
+  const release = releases.find((candidate) => candidate.tag_name === `social/v${version}`);
+  if (!release) return null;
+
+  const expectedName = `flora.social-v${version}-android.apk`;
+  const asset = (release.assets ?? []).find((candidate) => candidate.name === expectedName);
+  const sha256 = parseAssetSha256(asset?.digest);
+  if (!asset?.browser_download_url || !sha256) return null;
+
+  return {
+    version,
+    versionCode: null,
+    apkFileName: expectedName,
+    apkUrl: asset.browser_download_url,
+    sha256,
+    sizeBytes:
+      typeof asset.size === "number" && asset.size > 0 ? asset.size : undefined,
+  };
+}
+
+export function getInstalledVersionCode(): number {
+  if (Platform.OS !== "android") return 0;
+  const raw = nativeBuildVersion;
+  const n = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}

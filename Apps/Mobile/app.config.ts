@@ -12,8 +12,18 @@ const DEV_ADAPTIVE_BG = "#0c0c0c";
 
 export const isDevelopmentVariant = () => process.env.APP_VARIANT === "development";
 
+/** Exclude native module only for Play/EAS AAB (`FLORA_DISABLE_SIDELOAD_UPDATES=1`). Dev keeps it for permission UX. */
+export const isPlayStoreBuild = () => process.env.FLORA_DISABLE_SIDELOAD_UPDATES === "1";
+
+/** GitHub sideload self-update flag (production APK, not Dev, not Play). */
+export const isSideloadUpdatesBuild = () =>
+  !isDevelopmentVariant() && !isPlayStoreBuild();
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isDev = isDevelopmentVariant();
+  const playBuild = isPlayStoreBuild();
+  const sideloadUpdates = isSideloadUpdatesBuild();
+
   const plugins = [...(config.plugins ?? [])];
 
   if (isDev && !plugins.some((p) => p === "expo-dev-client" || (Array.isArray(p) && p[0] === "expo-dev-client"))) {
@@ -26,6 +36,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   if (!isDev && !plugins.some((p) => p === "./plugins/withReleaseGradle" || (Array.isArray(p) && p[0] === "./plugins/withReleaseGradle"))) {
     plugins.push("./plugins/withReleaseGradle");
+  }
+
+  // Permissions for Dev (test prompt) + sideload release; never for Play.
+  if (!playBuild && !plugins.some((p) => p === "./plugins/withFloraApkUpdater" || (Array.isArray(p) && p[0] === "./plugins/withFloraApkUpdater"))) {
+    plugins.push("./plugins/withFloraApkUpdater");
   }
 
   const androidBase = { ...config.android };
@@ -46,6 +61,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       ...(config.extra ?? {}),
       pushEnabled: !isDev,
+      /** GitHub PackageInstaller self-update (sideload APK only). */
+      sideloadUpdates,
+      /** EAS Play AAB — never prompt for install-unknown-apps. */
+      playStoreBuild: playBuild,
     },
     ios: {
       ...config.ios,

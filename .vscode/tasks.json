@@ -297,6 +297,80 @@
       "problemMatcher": []
     },
     {
+      "label": "Flora Android: release APK + publish GitHub",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\mobile-release-android.ps1",
+        "-PublishGitHub"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}\\Apps\\Mobile"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora: send auto-update (production)",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\send-apk-auto-update.ps1",
+        "-Production",
+        "-Confirm"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora: send auto-update (local)",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\send-apk-auto-update.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "FLORA_API_URL": "http://localhost:5284",
+          "FLORA_ADMIN_BROADCAST_TOKEN": "dev-local-broadcast-token-change-me"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Flora Android: install release APK",
       "type": "process",
       "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",

@@ -36,19 +36,27 @@ npm run ci
 cd Apps/Web; .\scripts\deploy.ps1
 
 # Android APK → Apps/Mobile/dist/flora.social-v<version>-android.apk
+# (+ flora.social-android-update.json with versionCode / sha256 / sizeBytes)
 .\Scripts\mobile-release-android.ps1
+
+# Publish APK + update manifest to GitHub Release (tag social/v<version> must exist on remote)
+.\Scripts\mobile-release-android.ps1 -PublishGitHub
 ```
 
-GitHub Release: тег `social/v<version>`, APK во вложениях.
+GitHub Release assets: APK + `flora.social-android-update.json` (sideload auto-update). Prefer `-PublishGitHub` over manual upload.
 
-Опционально — in-app уведомление о версии (после публикации APK):
+**Signing:** use the same release keystore for every sideload APK; rotating the key breaks PackageInstaller self-updates.
+
+Опционально — in-app уведомление о версии (после публикации APK; нужен для пользователей без silent-update permission / Android < 12):
 
 ```powershell
 .\Scripts\setup-app-update-broadcast.ps1
-.\Scripts\broadcast-app-update.ps1 -Production -Confirm
+.\Scripts\send-apk-auto-update.ps1 -Production -Confirm
 ```
 
-Подробности broadcast — [`Apps/Mobile/README.md`](../../Apps/Mobile/README.md).
+Или одной командой после сборки: `.\Scripts\mobile-release-android.ps1 -PublishGitHub -BroadcastUpdate`
+
+Подробности broadcast и silent update — [`Apps/Mobile/README.md`](../../Apps/Mobile/README.md).
 
 ## Чеклист
 
@@ -61,8 +69,7 @@ GitHub Release: тег `social/v<version>`, APK во вложениях.
 - [ ] `dotnet test tests/Flora.ContractFixtures`
 - [ ] `npm run ci`
 - [ ] `git commit -S` — `chore(ecosystem): v<version> release`
-- [ ] Теги `ecosystem/v<version>`, `social/v<version>`
+- [ ] Теги `ecosystem/v<version>`, `social/v<version>` (push на remote)
 - [ ] `Apps/Web/scripts/deploy.ps1`
-- [ ] `Scripts/mobile-release-android.ps1`
-- [ ] GitHub Release + APK
-- [ ] `broadcast-app-update.ps1` (опционально)
+- [ ] `Scripts/mobile-release-android.ps1 -PublishGitHub`
+- [ ] `send-apk-auto-update.ps1` (рекомендуется: fallback UX)

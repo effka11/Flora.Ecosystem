@@ -1,8 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { NotificationDto } from "@flora/client-core/contracts";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { AppUpdateProgressModal } from "@/components/notifications/AppUpdateProgressModal";
 import { formatNotificationTimeAgoRu } from "@/lib/formatNotificationTimeAgoRu";
-import { resolveAppUpdateApkDownloadUrl } from "@/lib/appLinks";
+import {
+  checkAndInstall,
+  cancelInteractiveApkUpdate,
+  fetchUpdateManifestFromNotificationText,
+  isApkUpdaterNativeReady,
+} from "@/lib/apkUpdate";
+import type { ApkUpdateProgress } from "@/lib/apkUpdate/progress";
+import { resolveAppUpdateReleasePageUrl } from "@/lib/appLinks";
 import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -37,20 +53,119 @@ function iconColorsForType(type: string) {
   return { bg: "rgba(255, 255, 255, 0.08)", color: "rgba(250, 250, 250, 0.7)" };
 }
 
-function openAppUpdateDownload(text: string): void {
-  void Linking.openURL(resolveAppUpdateApkDownloadUrl(text));
-}
-
 export function NotificationRow({ item, onPress }: NotificationRowProps) {
   const iconName = iconForType(item.type);
   const iconColors = iconColorsForType(item.type);
   const showUpdateButton = item.type === "app_update";
+  const [updating, setUpdating] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [progress, setProgress] = useState<ApkUpdateProgress | null>(null);
+  const mountedRef = useRef(true);
+  const cancelledRef = useRef(false);
 
-  const handlePress = () => {
-    if (item.type === "app_update") {
-      openAppUpdateDownload(item.text);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const closeModal = () => {
+    if (!mountedRef.current) return;
+    setUpdating(false);
+    setCancelling(false);
+    setProgress(null);
+  };
+
+  const handleCancel = () => {
+    if (cancelling) return;
+    const phase = progress?.phase;
+    if (phase === "error" || phase === "done") {
+      closeModal();
+      return;
     }
-    onPress();
+    cancelledRef.current = true;
+    setCancelling(true);
+    void cancelInteractiveApkUpdate()
+      .catch(() => undefined)
+      .finally(() => {
+        closeModal();
+      });
+  };
+
+  const handleUpdate = () => {
+    if (updating) return;
+    cancelledRef.current = false;
+    setUpdating(true);
+    setCancelling(false);
+    setProgress({ phase: "checking" });
+
+    const onProgress = (next: ApkUpdateProgress) => {
+      if (!mountedRef.current || cancelledRef.current) return;
+      setProgress(next);
+    };
+
+    void (async () => {
+      try {
+        if (!isApkUpdaterNativeReady()) {
+          onProgress({ phase: "checking", message: "Открытие страницы релиза…" });
+          await Linking.openURL(resolveAppUpdateReleasePageUrl(item.text));
+          if (cancelledRef.current) return;
+          onProgress({ phase: "done", message: "Страница релиза открыта" });
+          return;
+        }
+
+        let result = await checkAndInstall({
+          allowUserAction: true,
+          force: true,
+          onProgress,
+        });
+        if (cancelledRef.current || (result.ok && result.status === "cancelled")) {
+          closeModal();
+          return;
+        }
+        if (!result.ok && (result.code === "NO_MANIFEST" || result.code === "GITHUB")) {
+          const fallback = await fetchUpdateManifestFromNotificationText(item.text).catch(
+            () => null,
+          );
+          if (fallback) {
+            onProgress({ phase: "checking" });
+            result = await checkAndInstall({
+              allowUserAction: true,
+              force: true,
+              manifest: fallback,
+              onProgress,
+            });
+          }
+        }
+
+        if (cancelledRef.current || (result.ok && result.status === "cancelled")) {
+          closeModal();
+          return;
+        }
+
+        if (!result.ok) {
+          onProgress({
+            phase: "error",
+            message: result.error || "Не удалось обновить приложение",
+          });
+          return;
+        }
+
+        // System installer UI — dismiss our progress sheet.
+        if (result.status === "pending_user_action") {
+          closeModal();
+        }
+      } catch (err: unknown) {
+        if (cancelledRef.current) {
+          closeModal();
+          return;
+        }
+        const detail =
+          err instanceof Error && err.message ? err.message : "Не удалось запустить обновление";
+        onProgress({ phase: "error", message: detail });
+      }
+    })();
   };
 
   return (
@@ -61,7 +176,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           !item.isRead && styles.itemUnread,
           pressed && styles.itemPressed,
         ]}
-        onPress={handlePress}
+        onPress={onPress}
         accessibilityRole="button"
       >
         <View style={[styles.iconWrap, { backgroundColor: iconColors.bg }]}>
@@ -77,12 +192,26 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
       {showUpdateButton ? (
         <Pressable
           style={({ pressed }) => [styles.updateBtn, pressed && styles.itemPressed]}
-          onPress={() => openAppUpdateDownload(item.text)}
+          onPress={handleUpdate}
+          disabled={updating}
           accessibilityRole="button"
           accessibilityLabel="Обновить приложение"
         >
-          <Text style={styles.updateBtnText}>Обновить</Text>
+          {updating ? (
+            <ActivityIndicator color={floraColors.bg} size="small" />
+          ) : (
+            <Text style={styles.updateBtnText}>Обновить</Text>
+          )}
         </Pressable>
+      ) : null}
+      {showUpdateButton ? (
+        <AppUpdateProgressModal
+          visible={updating}
+          progress={progress}
+          onClose={closeModal}
+          onCancel={handleCancel}
+          cancelling={cancelling}
+        />
       ) : null}
     </View>
   );
@@ -151,6 +280,9 @@ const styles = StyleSheet.create({
     paddingVertical: floraSpacing.gridFine * 2,
     borderRadius: 9999,
     backgroundColor: floraColors.greenLight,
+    minWidth: 88,
+    alignItems: "center",
+    justifyContent: "center",
   },
   updateBtnText: {
     color: floraColors.bg,

@@ -149,6 +149,52 @@
     "reveal": "always"
   },
   {
+    "label": "Flora Android: release APK + publish GitHub",
+    "command": "powershell",
+    "args": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/Scripts/mobile-release-android.ps1",
+      "-PublishGitHub"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT/Apps/Mobile",
+    "reveal": "always"
+  },
+  {
+    "label": "Flora: send auto-update (production)",
+    "command": "powershell",
+    "args": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/Scripts/send-apk-auto-update.ps1",
+      "-Production",
+      "-Confirm"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "always"
+  },
+  {
+    "label": "Flora: send auto-update (local)",
+    "command": "powershell",
+    "args": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/Scripts/send-apk-auto-update.ps1"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "env": {
+      "FLORA_API_URL": "http://localhost:5284",
+      "FLORA_ADMIN_BROADCAST_TOKEN": "dev-local-broadcast-token-change-me"
+    },
+    "reveal": "always"
+  },
+  {
     "label": "Flora Android: install release APK",
     "command": "powershell",
     "args": [

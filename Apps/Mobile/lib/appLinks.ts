@@ -16,6 +16,12 @@ export function buildFloraSocialApkDownloadUrl(version: string): string {
   return `https://github.com/effka11/Flora.Ecosystem/releases/download/social/v${v}/flora.social-v${v}-android.apk`;
 }
 
+/** HTML release page (more reliable for Linking than a direct .apk URL on Android). */
+export function buildFloraSocialReleasePageUrl(version: string): string {
+  const v = version.trim();
+  return `https://github.com/effka11/Flora.Ecosystem/releases/tag/social/v${v}`;
+}
+
 /** Parse version from broadcast text: «Новая версия Android - 0.4.0-alpha». */
 export function parseAppUpdateVersionFromText(text: string): string | null {
   const match = text.match(/Android\s*-\s*(.+)$/i);
@@ -27,4 +33,10 @@ export function parseAppUpdateVersionFromText(text: string): string | null {
 export function resolveAppUpdateApkDownloadUrl(notificationText?: string): string {
   const fromText = notificationText ? parseAppUpdateVersionFromText(notificationText) : null;
   return buildFloraSocialApkDownloadUrl(fromText ?? getFloraSocialAppVersion());
+}
+
+/** Bootstrap fallback when PackageInstaller module is not in the binary. */
+export function resolveAppUpdateReleasePageUrl(notificationText?: string): string {
+  const fromText = notificationText ? parseAppUpdateVersionFromText(notificationText) : null;
+  return buildFloraSocialReleasePageUrl(fromText ?? getFloraSocialAppVersion());
 }

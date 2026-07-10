@@ -25,7 +25,8 @@
     "install:android:release": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../Scripts/mobile-install-release-android.ps1",
     "build:ios:production": "eas build --platform ios --profile production --non-interactive",
     "build:android:production": "eas build --platform android --profile production --non-interactive",
-    "build:production": "eas build --platform all --profile production --non-interactive"
+    "build:production": "eas build --platform all --profile production --non-interactive",
+    "eas-build-pre-install": "node ../../Scripts/configure-mobile-play-autolinking.mjs ."
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -36,6 +37,7 @@
     "@shopify/flash-list": "2.0.2",
     "@tanstack/react-query": "^5.90.2",
     "expo": "~56.0.11",
+    "expo-application": "~56.0.0",
     "expo-audio": "~56.0.12",
     "expo-clipboard": "~56.0.4",
     "expo-constants": "~56.0.18",
@@ -55,6 +57,7 @@
     "expo-status-bar": "~56.0.4",
     "expo-video": "~56.1.3",
     "ffmpeg-kit-react-native": "^6.0.2",
+    "flora-apk-updater": "file:./modules/flora-apk-updater",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.85.3",
@@ -77,5 +80,12 @@
     "eslint-config-expo": "~10.0.0",
     "typescript": "~6.0.3",
     "vitest": "^3.2.6"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": []
+      }
+    }
   }
 }
