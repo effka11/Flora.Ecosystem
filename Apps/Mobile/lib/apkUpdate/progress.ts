@@ -12,6 +12,8 @@ export type ApkUpdateProgress = {
   /** 0..1 when known (download). */
   fraction?: number;
   message?: string;
+  /** Machine code for UI actions (e.g. NO_PERMISSION → «Разрешить»). */
+  code?: string;
 };
 
 export type ApkUpdateProgressListener = (progress: ApkUpdateProgress) => void;

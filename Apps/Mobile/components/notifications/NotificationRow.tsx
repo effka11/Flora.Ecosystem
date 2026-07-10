@@ -148,6 +148,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           onProgress({
             phase: "error",
             message: result.error || "Не удалось обновить приложение",
+            code: result.code,
           });
           return;
         }

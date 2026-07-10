@@ -157,7 +157,11 @@ async function runCheckAndInstall(
     const granted = await ensureInstallPackagesPermission({ force: true });
     if (isApkUpdateCancelled()) return cancelledResult();
     if (!granted || !canRequestPackageInstalls()) {
-      report({ phase: "error", message: "Нужно разрешить установку из этого источника" });
+      report({
+        phase: "error",
+        message: "Нужно разрешить установку из этого источника",
+        code: "NO_PERMISSION",
+      });
       return { ok: false, error: "Нужно разрешить установку из этого источника", code: "NO_PERMISSION" };
     }
     report({ phase: "checking" });
@@ -323,11 +327,15 @@ async function runCheckAndInstall(
       return { ok: true, status: "skipped" };
     }
     if (code === "E_NO_PERMISSION") {
-      report({ phase: "error", message: "Нужно разрешить установку из этого источника" });
+      report({
+        phase: "error",
+        message: "Нужно разрешить установку из этого источника",
+        code: "NO_PERMISSION",
+      });
       return {
         ok: false,
         error: "Нужно разрешить установку из этого источника",
-        code,
+        code: "NO_PERMISSION",
       };
     }
     if (code === "E_USER_ACTION_REQUIRED") {
