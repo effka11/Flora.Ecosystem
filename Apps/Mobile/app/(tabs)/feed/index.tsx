@@ -19,6 +19,7 @@ import {
   type NativeSyntheticEvent,
   type ScrollView,
 } from "react-native";
+import Reanimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PostCard } from "@/components/PostCard";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
@@ -362,7 +363,7 @@ export default function FeedScreen() {
         </Animated.ScrollView>
       </View>
 
-      <Animated.View style={[styles.topChrome, headerAnimatedStyle]}>
+      <Reanimated.View style={[styles.topChrome, headerAnimatedStyle]}>
         <View
           style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}
           onLayout={onHeaderLayout}
@@ -430,7 +431,7 @@ export default function FeedScreen() {
             <Text style={styles.bannerText}>Новые посты — нажмите, чтобы обновить</Text>
           </Pressable>
         ) : null}
-      </Animated.View>
+      </Reanimated.View>
 
       {/* Закреплённый фон статус-бара — не уезжает вместе с chrome. */}
       <View
