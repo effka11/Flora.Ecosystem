@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    Install permissions are added only by Apps/Mobile/plugins/withFloraApkUpdater.js
+    for sideload builds. Keep them out of this module manifest so Play/EAS AAB
+    (FLORA_DISABLE_SIDELOAD_UPDATES=1) does not pick up REQUEST_INSTALL_PACKAGES via merge.
+  -->
+  <application>
+    <provider
+      android:name="androidx.core.content.FileProvider"
+      android:authorities="${applicationId}.flora.apk.provider"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/flora_apk_file_paths" />
+    </provider>
+
+    <receiver
+      android:name=".FloraApkInstallReceiver"
+      android:exported="false" />
+  </application>
+</manifest>

@@ -21,6 +21,7 @@ import {
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ProfileStatusField } from "@/components/profile/ProfileStatusField";
 import { avatarUploadErrorMessage, uploadAvatarFromPickerAsset } from "@/lib/avatarUpload";
+import { getFloraSocialAppVersion } from "@/lib/appLinks";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -172,6 +173,9 @@ function AccountSettingsTab() {
 
   return (
     <View style={styles.tabBody}>
+      <View style={styles.buildMarker}>
+        <Text style={styles.buildMarkerText}>★ TEST BUILD {getFloraSocialAppVersion()}</Text>
+      </View>
       <View style={styles.avatarSection}>
         <FloraAvatar
           size={96}
@@ -557,6 +561,20 @@ const styles = StyleSheet.create({
   },
   tabBody: {
     gap: floraSpacing.grid,
+  },
+  buildMarker: {
+    alignSelf: "stretch",
+    borderRadius: 12,
+    paddingVertical: floraSpacing.gridFine * 2,
+    paddingHorizontal: floraSpacing.grid,
+    backgroundColor: "#e8b84a",
+    alignItems: "center",
+  },
+  buildMarkerText: {
+    color: "#1a1408",
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.4,
   },
   avatarSection: {
     alignItems: "center",

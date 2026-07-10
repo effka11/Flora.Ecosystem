@@ -6,6 +6,8 @@ import { floraColors, floraSpacing } from "@/lib/theme";
 
 type TabScreenSearchHeaderProps = {
   title: string;
+  /** Optional pill next to the title (e.g. build marker). */
+  titleBadge?: string;
   placeholder: string;
   value: string;
   onChangeText: (value: string) => void;
@@ -21,6 +23,7 @@ type TabScreenSearchHeaderProps = {
 
 export function TabScreenSearchHeader({
   title,
+  titleBadge,
   placeholder,
   value,
   onChangeText,
@@ -88,9 +91,18 @@ export function TabScreenSearchHeader({
           </View>
         ) : (
           <>
-            <Text style={styles.title} numberOfLines={1}>
-              {title}
-            </Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+              {titleBadge ? (
+                <View style={styles.titleBadge} accessibilityRole="text">
+                  <Text style={styles.titleBadgeText} numberOfLines={1}>
+                    {titleBadge}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <View style={styles.spacer} />
           </>
         )}
@@ -138,6 +150,26 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.88,
     lineHeight: 28,
+  },
+  titleRow: {
+    flexShrink: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: floraSpacing.gridFine,
+  },
+  titleBadge: {
+    marginLeft: 0,
+    paddingHorizontal: floraSpacing.gridFine * 2,
+    paddingVertical: 3,
+    borderRadius: 9999,
+    backgroundColor: "#e8b84a",
+  },
+  titleBadgeText: {
+    color: "#1a1408",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
   spacer: {
     flex: 1,

@@ -14,6 +14,7 @@ export {
 export {
   fetchLatestUpdateManifest,
   fetchUpdateManifestFromNotificationText,
+  buildDirectUpdateManifestFromNotificationText,
   getInstalledVersionCode,
 } from "@/lib/apkUpdate/githubRelease";
 export {

@@ -46,7 +46,7 @@ async function uploadCommunityAvatarFile(communityId: string, prepared: AvatarUp
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
-        "X-Flora-Client": `${clientIdentity.platform}/${clientIdentity.appVersion ?? Constants.expoConfig?.version ?? "0.4.0-alpha"}`,
+        "X-Flora-Client": `${clientIdentity.platform}/${clientIdentity.appVersion ?? Constants.expoConfig?.version ?? "0.5.0-alpha"}`,
       },
     });
   };

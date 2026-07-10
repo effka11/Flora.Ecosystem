@@ -29,6 +29,7 @@ import {
   wasInstallPermissionPrompted,
 } from "@/lib/apkUpdate/permissionState";
 import type { ApkUpdateProgressListener } from "@/lib/apkUpdate/progress";
+import { compareFloraSocialVersions, getFloraSocialAppVersion } from "@/lib/appLinks";
 import { mmkv } from "@/lib/mmkv";
 
 const LAST_CHECK_KEY = "apkUpdate.lastCheckAt";
@@ -138,7 +139,10 @@ async function runCheckAndInstall(
   if (isApkUpdateCancelled()) return cancelledResult();
 
   const installed = getInstalledVersionCode();
-  await cleanupStalePending(installed);
+  // Don't wipe a pending older APK when the user explicitly requested install.
+  if (!options.allowUserAction) {
+    await cleanupStalePending(installed);
+  }
   if (isApkUpdateCancelled()) return cancelledResult();
 
   if (!options.force && !options.allowUserAction) {
@@ -193,15 +197,18 @@ async function runCheckAndInstall(
   }
 
   if (!/^[a-f0-9]{64}$/i.test(manifest.sha256)) {
-    if (options.allowUserAction) {
+    if (options.allowUserAction && manifest.sha256.trim() === "") {
+      // Interactive direct-URL path: integrity check skipped on purpose.
+    } else if (options.allowUserAction) {
       report({ phase: "error", message: "У релиза нет контрольной суммы APK" });
       return {
         ok: false,
         error: "У релиза нет контрольной суммы APK",
         code: "INVALID_MANIFEST",
       };
+    } else {
+      return { ok: true, status: "skipped" };
     }
-    return { ok: true, status: "skipped" };
   }
 
   // A legacy GitHub asset has no trustworthy versionCode. It is allowed only
@@ -212,9 +219,20 @@ async function runCheckAndInstall(
 
   mmkv.set(LAST_CHECK_KEY, String(Date.now()));
 
-  if (manifest.versionCode != null && manifest.versionCode <= installed) {
-    report({ phase: "done", message: "Уже установлена актуальная версия" });
-    return { ok: true, status: "up_to_date" };
+  // Silent path only: skip same/older APKs. Interactive (notification tap) may
+  // install any release — including older test builds / downgrades.
+  if (!options.allowUserAction) {
+    if (manifest.versionCode != null && manifest.versionCode <= installed) {
+      report({ phase: "done", message: "Уже установлена актуальная версия" });
+      return { ok: true, status: "up_to_date" };
+    }
+    if (
+      manifest.versionCode == null &&
+      compareFloraSocialVersions(getFloraSocialAppVersion(), manifest.version) >= 0
+    ) {
+      report({ phase: "done", message: "Уже установлена актуальная версия" });
+      return { ok: true, status: "up_to_date" };
+    }
   }
 
   if (!options.allowUserAction) {
@@ -230,16 +248,8 @@ async function runCheckAndInstall(
     try {
       if (manifest.sizeBytes != null) {
         await assertEnoughDiskSpace(manifest.sizeBytes);
-      } else {
-        // Best-effort size probe; do not block install if HEAD fails (GitHub redirects / CDN).
-        try {
-          const head = await fetch(manifest.apkUrl, { method: "HEAD" });
-          const len = Number(head.headers.get("content-length") ?? "0");
-          if (len > 0) await assertEnoughDiskSpace(len);
-        } catch {
-          // skip disk preflight
-        }
       }
+      // No HEAD probe: GitHub release URLs often hang on HEAD from the device.
     } catch (e) {
       if (isApkUpdateCancelled()) return cancelledResult();
       const msg = e instanceof Error ? e.message : "";
@@ -256,7 +266,7 @@ async function runCheckAndInstall(
 
   let fileUri: string;
   try {
-    report({ phase: "downloading", fraction: 0 });
+    report({ phase: "downloading" });
     let lastPct = -1;
     fileUri = await downloadApkResumable(manifest, (fraction) => {
       if (isApkUpdateCancelled()) return;
@@ -273,8 +283,15 @@ async function runCheckAndInstall(
     if (isCancelError(e)) return cancelledResult();
     await clearPendingApk();
     if (options.allowUserAction) {
-      report({ phase: "error", message: "Ошибка загрузки APK" });
-      return { ok: false, error: "Ошибка загрузки APK", code: "DOWNLOAD" };
+      const detail = e instanceof Error ? e.message : "";
+      const message =
+        detail === "DOWNLOAD_STALLED"
+          ? "Загрузка зависла. Проверьте сеть и попробуйте снова"
+          : detail && detail !== "DOWNLOAD_FAILED"
+            ? `Ошибка загрузки: ${detail}`
+            : "Ошибка загрузки APK";
+      report({ phase: "error", message });
+      return { ok: false, error: message, code: "DOWNLOAD" };
     }
     return { ok: true, status: "skipped" };
   }
@@ -283,15 +300,20 @@ async function runCheckAndInstall(
 
   try {
     report({ phase: "verifying" });
-    const hash = await sha256File(fileUri);
-    if (isApkUpdateCancelled()) return cancelledResult();
-    if (hash.toLowerCase() !== manifest.sha256.toLowerCase()) {
-      await clearPendingApk();
-      if (options.allowUserAction) {
-        report({ phase: "error", message: "Контрольная сумма APK не совпала" });
-        return { ok: false, error: "Контрольная сумма APK не совпала", code: "SHA256" };
+    if (manifest.sha256.trim() === "") {
+      // Interactive direct download — no digest available without GitHub API.
+      report({ phase: "verifying", message: "Проверка пропущена" });
+    } else {
+      const hash = await sha256File(fileUri);
+      if (isApkUpdateCancelled()) return cancelledResult();
+      if (hash.toLowerCase() !== manifest.sha256.toLowerCase()) {
+        await clearPendingApk();
+        if (options.allowUserAction) {
+          report({ phase: "error", message: "Контрольная сумма APK не совпала" });
+          return { ok: false, error: "Контрольная сумма APK не совпала", code: "SHA256" };
+        }
+        return { ok: true, status: "skipped" };
       }
-      return { ok: true, status: "skipped" };
     }
   } catch (e) {
     if (isCancelError(e)) return cancelledResult();
@@ -314,15 +336,16 @@ async function runCheckAndInstall(
       report({ phase: "done", message: "Обновление установлено" });
       return { ok: true, status: "installed" };
     }
-    // System confirm UI takes over — no in-app "confirm" modal.
-    // PackageInstaller owns a full session copy now; source APK can be removed.
-    await clearPendingApk();
+    // Legacy native: resolved early on system confirm UI. Keep the APK until a
+    // final success/failure callback exists in the current native module.
     return { ok: true, status: "pending_user_action" };
   } catch (e) {
     if (isCancelError(e)) return cancelledResult();
     await clearPendingApk();
     const code =
       e && typeof e === "object" && "code" in e ? String((e as { code?: string }).code) : "";
+    const detail =
+      e instanceof Error && e.message.trim().length > 0 ? e.message.trim() : "";
     if (!options.allowUserAction) {
       return { ok: true, status: "skipped" };
     }
@@ -346,8 +369,16 @@ async function runCheckAndInstall(
         code: "INSTALL",
       };
     }
-    report({ phase: "error", message: "Установка не удалась" });
-    return { ok: false, error: "Установка не удалась", code: "INSTALL" };
+    const downgrade =
+      /version.?downgrade|INSTALL_FAILED_VERSION_DOWNGRADE/i.test(detail) ||
+      /downgrade/i.test(detail);
+    // Android itself rejects lower versionCode for non-privileged installers.
+    // Our app does not block — surface a short actionable message.
+    const message = downgrade
+      ? "Android запретил установку: versionCode APK ниже установленного"
+      : detail || "Установка не удалась";
+    report({ phase: "error", message, code: "INSTALL" });
+    return { ok: false, error: message, code: "INSTALL" };
   }
 }
 

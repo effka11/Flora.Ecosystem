@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+  <cache-path name="flora_apk_update" path="flora-update/" />
+  <external-files-path name="flora_apk_ext" path="flora-update/" />
+  <files-path name="flora_apk_files" path="flora-update/" />
+</paths>

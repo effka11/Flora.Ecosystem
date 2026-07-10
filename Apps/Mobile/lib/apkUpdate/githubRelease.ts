@@ -1,7 +1,7 @@
 import { nativeBuildVersion } from "expo-application";
 import { Platform } from "react-native";
 import { mmkv } from "@/lib/mmkv";
-import { parseAppUpdateVersionFromText } from "@/lib/appLinks";
+import { parseAppUpdateVersionFromText, buildFloraSocialApkDownloadUrl } from "@/lib/appLinks";
 
 export type AndroidUpdateManifest = {
   version: string;
@@ -9,6 +9,7 @@ export type AndroidUpdateManifest = {
   versionCode: number | null;
   apkFileName: string;
   apkUrl: string;
+  /** Empty string = skip integrity check (interactive notification direct URL). */
   sha256: string;
   sizeBytes?: number;
 };
@@ -16,6 +17,7 @@ export type AndroidUpdateManifest = {
 const GITHUB_REPO = "effka11/Flora.Ecosystem";
 const RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30`;
 const UPDATE_ASSET_NAME = "flora.social-android-update.json";
+const GITHUB_FETCH_TIMEOUT_MS = 20_000;
 
 const ETAG_KEY = "apkUpdate.releasesEtag";
 const BODY_KEY = "apkUpdate.releasesBody";
@@ -24,6 +26,8 @@ const MANIFEST_BODY_PREFIX = "apkUpdate.manifestBody.";
 
 type GitHubAsset = {
   name: string;
+  /** API asset URL — use with Accept: application/octet-stream for binary download. */
+  url?: string;
   browser_download_url: string;
   digest?: string | null;
   size?: number;
@@ -43,20 +47,37 @@ async function githubFetch(
   url: string,
   etagKey: string,
   bodyKey: string,
+  options?: { accept?: string },
 ): Promise<{ status: number; body: string | null }> {
   const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
+    Accept: options?.accept ?? "application/vnd.github+json",
     "User-Agent": userAgent(),
     "X-GitHub-Api-Version": "2022-11-28",
   };
   const etag = mmkv.getString(etagKey);
   if (etag) headers["If-None-Match"] = etag;
 
-  const res = await fetch(url, { headers });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GITHUB_FETCH_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, { headers, signal: controller.signal });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(`GitHub timeout after ${GITHUB_FETCH_TIMEOUT_MS}ms for ${url}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+
   if (res.status === 304) {
     return { status: 304, body: mmkv.getString(bodyKey) ?? null };
   }
   if (!res.ok) {
+    // Stale ETag / deleted asset — drop cache so the next attempt refetches.
+    mmkv.delete(etagKey);
+    mmkv.delete(bodyKey);
     throw new Error(`GitHub HTTP ${res.status} for ${url}`);
   }
   const body = await res.text();
@@ -99,10 +120,13 @@ export async function fetchLatestUpdateManifest(): Promise<AndroidUpdateManifest
   if (!asset?.browser_download_url) return null;
 
   const tagKey = release.tag_name.replace(/[^\w.-]+/g, "_");
+  // Release asset download URLs are not the GitHub REST API — use */* so CDN
+  // redirects work (application/vnd.github+json can hang on browser_download_url).
   const manifestRes = await githubFetch(
     asset.browser_download_url,
     `${MANIFEST_ETAG_PREFIX}${tagKey}`,
     `${MANIFEST_BODY_PREFIX}${tagKey}`,
+    { accept: "*/*" },
   );
   if (!manifestRes.body) return null;
 
@@ -126,6 +150,26 @@ export async function fetchLatestUpdateManifest(): Promise<AndroidUpdateManifest
     apkUrl: parsed.apkUrl,
     sha256: parsed.sha256.toLowerCase(),
     sizeBytes: typeof parsed.sizeBytes === "number" ? parsed.sizeBytes : undefined,
+  };
+}
+
+/**
+ * Interactive notification path: build APK URL from notification text with
+ * zero network calls (no api.github.com). Avoids infinite "checking" when the
+ * GitHub API is slow/blocked while release CDN still works.
+ */
+export function buildDirectUpdateManifestFromNotificationText(
+  text: string,
+): AndroidUpdateManifest | null {
+  if (Platform.OS !== "android") return null;
+  const version = parseAppUpdateVersionFromText(text);
+  if (!version) return null;
+  return {
+    version,
+    versionCode: null,
+    apkFileName: `flora.social-v${version}-android.apk`,
+    apkUrl: buildFloraSocialApkDownloadUrl(version),
+    sha256: "",
   };
 }
 

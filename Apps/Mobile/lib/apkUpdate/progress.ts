@@ -29,7 +29,7 @@ export function labelForApkUpdatePhase(phase: ApkUpdatePhase): string {
     case "verifying":
       return "Проверка файла…";
     case "installing":
-      return "Установка…";
+      return "Установка… Подтвердите в системном окне, если появится";
     case "done":
       return "Готово";
     case "error":

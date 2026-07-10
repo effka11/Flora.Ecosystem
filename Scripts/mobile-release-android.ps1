@@ -121,6 +121,19 @@ function Test-AndroidGenFresh([string]$mobileDir, [string]$buildMode) {
     $sourceTime = (Get-Item $source).LastWriteTimeUtc
     $nativeTime = (Get-Item $splash).LastWriteTimeUtc
     if ($nativeTime -lt $sourceTime.AddSeconds(-5)) { return $false }
+
+    # Invalidate when Expo version / versionCode changed (otherwise stale APK labels).
+    $appJsonPath = Join-Path $mobileDir "app.json"
+    $gradlePath = Join-Path $mobileDir "android_gen\app\build.gradle"
+    if ((Test-Path $appJsonPath) -and (Test-Path $gradlePath)) {
+        $appJson = Get-Content -LiteralPath $appJsonPath -Raw | ConvertFrom-Json
+        $wantName = [string]$appJson.expo.version
+        $wantCode = [string]$appJson.expo.android.versionCode
+        $gradle = Get-Content -LiteralPath $gradlePath -Raw
+        if ($gradle -notmatch [regex]::Escape("versionName `"$wantName`"")) { return $false }
+        if ($gradle -notmatch "(?m)^\s*versionCode\s+$wantCode\b") { return $false }
+    }
+
     return Test-AndroidGenProductionPackage $mobileDir
 }
 

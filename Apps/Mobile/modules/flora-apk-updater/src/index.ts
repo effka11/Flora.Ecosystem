@@ -6,13 +6,30 @@ export type InstallApkResult = {
   message: string;
 };
 
+export type DownloadFileResult = {
+  uri: string;
+  bytes: number;
+};
+
+export type DownloadProgressEvent = {
+  written: number;
+  total: number;
+};
+
 type FloraApkUpdaterNativeModule = {
   isAvailable(): boolean;
   canRequestPackageInstalls(): boolean;
   sdkInt(): number;
+  getUpdateDir(): string;
   requestInstallPermission(): Promise<boolean>;
   sha256File(filePath: string): Promise<string>;
   installApk(filePath: string, allowUserAction: boolean): Promise<InstallApkResult>;
+  downloadFile(url: string, filePath: string): Promise<DownloadFileResult>;
+  cancelDownload(): boolean;
+  addListener?(
+    eventName: "onDownloadProgress",
+    listener: (event: DownloadProgressEvent) => void,
+  ): { remove: () => void };
 };
 
 const native =
@@ -34,6 +51,16 @@ export function getAndroidSdkInt(): number {
   return native.sdkInt();
 }
 
+export function getNativeUpdateDir(): string | null {
+  if (!native || typeof native.getUpdateDir !== "function") return null;
+  try {
+    const dir = native.getUpdateDir();
+    return dir && dir.length > 0 ? dir : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function requestInstallPermission(): Promise<boolean> {
   if (!native) return false;
   return native.requestInstallPermission();
@@ -52,11 +79,41 @@ export async function installApk(
   return native.installApk(filePath, allowUserAction);
 }
 
+export function canNativeDownload(): boolean {
+  return native != null && typeof native.downloadFile === "function";
+}
+
+export async function downloadFile(
+  url: string,
+  filePath: string,
+): Promise<DownloadFileResult> {
+  if (!native) throw new Error("FloraApkUpdater is Android-only");
+  return native.downloadFile(url, filePath);
+}
+
+export function cancelNativeDownload(): void {
+  native?.cancelDownload();
+}
+
+export function addDownloadProgressListener(
+  listener: (event: DownloadProgressEvent) => void,
+): { remove: () => void } {
+  if (!native || typeof native.addListener !== "function") {
+    return { remove: () => undefined };
+  }
+  return native.addListener("onDownloadProgress", listener);
+}
+
 export default {
   isFloraApkUpdaterAvailable,
   canRequestPackageInstalls,
   getAndroidSdkInt,
+  getNativeUpdateDir,
   requestInstallPermission,
   sha256File,
   installApk,
+  canNativeDownload,
+  downloadFile,
+  cancelNativeDownload,
+  addDownloadProgressListener,
 };

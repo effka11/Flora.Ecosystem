@@ -27,6 +27,7 @@ import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { composeScreenHref } from "@/lib/socialRoutes";
+import { getFloraSocialAppVersion } from "@/lib/appLinks";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 
 /** chromeRow 45 + gap 5 + tabs 35 + border 1 */
@@ -371,6 +372,7 @@ export default function FeedScreen() {
         >
           <TabScreenSearchHeader
             title="Лента"
+            titleBadge={`★ ${getFloraSocialAppVersion()}`}
             placeholder="Поиск в ленте"
             value={search}
             onChangeText={setSearch}

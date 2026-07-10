@@ -29,6 +29,11 @@ out/
 .metro-health-check*
 **/android/
 **/ios/
+# Local Expo native modules must stay in git (not prebuild output).
+!Apps/Mobile/modules/*/android/
+!Apps/Mobile/modules/*/android/**
+Apps/Mobile/modules/*/android/build/
+Apps/Mobile/modules/*/android/.gradle/
 .kotlin/
 
 # Environment — never commit secrets; examples are ok

@@ -17,7 +17,7 @@ export function initFloraClient(): void {
     session: mobileSessionStore,
     clientIdentity: {
       platform: "android",
-      appVersion: Constants.expoConfig?.version ?? "0.4.0-alpha",
+      appVersion: Constants.expoConfig?.version ?? "0.5.0-alpha",
     },
     onUnauthorized: () => {
       useSessionStore.setState({

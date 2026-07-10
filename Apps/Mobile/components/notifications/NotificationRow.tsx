@@ -14,7 +14,7 @@ import { formatNotificationTimeAgoRu } from "@/lib/formatNotificationTimeAgoRu";
 import {
   checkAndInstall,
   cancelInteractiveApkUpdate,
-  fetchUpdateManifestFromNotificationText,
+  buildDirectUpdateManifestFromNotificationText,
   isApkUpdaterNativeReady,
 } from "@/lib/apkUpdate";
 import type { ApkUpdateProgress } from "@/lib/apkUpdate/progress";
@@ -128,30 +128,21 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           return;
         }
 
-        let result = await checkAndInstall({
-          allowUserAction: true,
-          force: true,
-          onProgress,
-        });
-        if (cancelledRef.current || (result.ok && result.status === "cancelled")) {
-          closeModal();
+        // Direct APK URL from notification text — no GitHub API (avoids hang on api.github.com).
+        const fromNotification = buildDirectUpdateManifestFromNotificationText(item.text);
+        if (!fromNotification) {
+          onProgress({
+            phase: "error",
+            message: "Не удалось разобрать версию в уведомлении",
+          });
           return;
         }
-        if (!result.ok && (result.code === "NO_MANIFEST" || result.code === "GITHUB")) {
-          const fallback = await fetchUpdateManifestFromNotificationText(item.text).catch(
-            () => null,
-          );
-          if (fallback) {
-            onProgress({ phase: "checking" });
-            result = await checkAndInstall({
-              allowUserAction: true,
-              force: true,
-              manifest: fallback,
-              onProgress,
-            });
-          }
-        }
-
+        const result = await checkAndInstall({
+          allowUserAction: true,
+          force: true,
+          manifest: fromNotification,
+          onProgress,
+        });
         if (cancelledRef.current || (result.ok && result.status === "cancelled")) {
           closeModal();
           return;
@@ -172,9 +163,12 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           return;
         }
 
-        // System installer UI — dismiss our progress sheet.
+        // System installer UI still open (legacy native). Keep sheet until final.
         if (result.status === "pending_user_action") {
-          closeModal();
+          onProgress({
+            phase: "installing",
+            message: "Подтвердите установку в системном окне",
+          });
         }
       } catch (err: unknown) {
         if (cancelledRef.current) {
