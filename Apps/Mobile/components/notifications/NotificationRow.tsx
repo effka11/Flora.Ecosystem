@@ -18,7 +18,10 @@ import {
   isApkUpdaterNativeReady,
 } from "@/lib/apkUpdate";
 import type { ApkUpdateProgress } from "@/lib/apkUpdate/progress";
-import { resolveAppUpdateReleasePageUrl } from "@/lib/appLinks";
+import {
+  isAppUpdateNotificationInstalled,
+  resolveAppUpdateReleasePageUrl,
+} from "@/lib/appLinks";
 import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -56,7 +59,11 @@ function iconColorsForType(type: string) {
 export function NotificationRow({ item, onPress }: NotificationRowProps) {
   const iconName = iconForType(item.type);
   const iconColors = iconColorsForType(item.type);
-  const showUpdateButton = item.type === "app_update";
+  const isAppUpdate = item.type === "app_update";
+  const [alreadyInstalled, setAlreadyInstalled] = useState(() =>
+    isAppUpdate ? isAppUpdateNotificationInstalled(item.text) : false,
+  );
+  const showUpdateButton = isAppUpdate && !alreadyInstalled;
   const [updating, setUpdating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [progress, setProgress] = useState<ApkUpdateProgress | null>(null);
@@ -69,6 +76,12 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    setAlreadyInstalled(
+      item.type === "app_update" ? isAppUpdateNotificationInstalled(item.text) : false,
+    );
+  }, [item.notificationUuid, item.type, item.text]);
 
   const closeModal = () => {
     if (!mountedRef.current) return;
@@ -153,6 +166,12 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           return;
         }
 
+        if (result.status === "up_to_date" || result.status === "installed") {
+          closeModal();
+          if (mountedRef.current) setAlreadyInstalled(true);
+          return;
+        }
+
         // System installer UI — dismiss our progress sheet.
         if (result.status === "pending_user_action") {
           closeModal();
@@ -190,6 +209,11 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           <Text style={styles.time}>{formatNotificationTimeAgoRu(item.createdAt)}</Text>
         </View>
       </Pressable>
+      {isAppUpdate && alreadyInstalled ? (
+        <Text style={styles.updatedLabel} accessibilityRole="text">
+          Обновлено
+        </Text>
+      ) : null}
       {showUpdateButton ? (
         <Pressable
           style={({ pressed }) => [styles.updateBtn, pressed && styles.itemPressed]}
@@ -287,6 +311,18 @@ const styles = StyleSheet.create({
   },
   updateBtnText: {
     color: floraColors.bg,
+    fontSize: 13,
+    fontWeight: "400",
+    letterSpacing: 0.39,
+  },
+  updatedLabel: {
+    flexShrink: 0,
+    marginRight: floraSpacing.grid,
+    paddingHorizontal: floraSpacing.grid,
+    paddingVertical: floraSpacing.gridFine * 2,
+    minWidth: 88,
+    textAlign: "center",
+    color: floraColors.gray,
     fontSize: 13,
     fontWeight: "400",
     letterSpacing: 0.39,

@@ -29,6 +29,13 @@ export function parseAppUpdateVersionFromText(text: string): string | null {
   return version && version.length > 0 ? version : null;
 }
 
+/** True when the app_update notification version is already the installed app version. */
+export function isAppUpdateNotificationInstalled(notificationText: string): boolean {
+  const fromText = parseAppUpdateVersionFromText(notificationText);
+  if (!fromText) return false;
+  return fromText === getFloraSocialAppVersion();
+}
+
 /** APK URL for app_update: version from notification text, else installed app version. */
 export function resolveAppUpdateApkDownloadUrl(notificationText?: string): string {
   const fromText = notificationText ? parseAppUpdateVersionFromText(notificationText) : null;
