@@ -26,6 +26,7 @@ import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
+import { composeScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 
 /** chromeRow 45 + gap 5 + tabs 35 + border 1 */
@@ -378,7 +379,7 @@ export default function FeedScreen() {
             onMenuClose={() => setMenuOpen(false)}
             createAction={{
               accessibilityLabel: "Создать пост",
-              onPress: () => router.push("/compose"),
+              onPress: () => router.push(composeScreenHref()),
             }}
           />
 

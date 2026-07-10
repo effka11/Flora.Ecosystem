@@ -50,3 +50,15 @@ export function communitySettingsScreenHref(slug: string): Href {
     params: { slug: normalized },
   };
 }
+
+/** Создание поста внутри вкладки Feed — tab bar остаётся. */
+export function composeScreenHref(communityUuid?: string | null): Href {
+  const id = communityUuid?.trim();
+  if (id) {
+    return {
+      pathname: "/(tabs)/feed/compose",
+      params: { communityUuid: id },
+    } as unknown as Href;
+  }
+  return "/(tabs)/feed/compose" as unknown as Href;
+}

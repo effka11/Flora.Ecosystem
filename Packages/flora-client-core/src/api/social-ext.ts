@@ -15,6 +15,7 @@ import {
   type CommunitySearchDto,
   type ProfileCommunityDto,
 } from "../contracts/communities.js";
+import { parsePostDraft, parsePostDraftsList, type PostDraftDto } from "../contracts/postDrafts.js";
 import { parseProfilePostsList } from "../contracts/profile.js";
 import { parsePublicProfile, type PublicProfileDto } from "../contracts/profile.js";
 import { parseNotificationsList, parseUnreadCount } from "../contracts/notifications.js";
@@ -22,6 +23,8 @@ import { apiMarkAllNotificationsRead } from "./notifications.js";
 import { ApiRequestError } from "./errors.js";
 import type { PostCommentDto } from "../contracts/comments.js";
 import type { ProfilePostDto } from "../contracts/profile.js";
+
+export type { PostDraftDto };
 
 function ctx() {
   return { onPascalFallback: getApiClientConfig().onPascalFallback };
@@ -263,12 +266,63 @@ export async function apiAddPostComment(
   return parsed;
 }
 
-export async function apiGetPostDrafts() {
-  return authGetJson("/api/auth/post-drafts");
+export async function apiListPostDrafts(input?: { communityId?: string }): Promise<PostDraftDto[]> {
+  const communityId = input?.communityId?.trim();
+  const q = communityId ? `?communityId=${encodeURIComponent(communityId)}` : "";
+  const raw = await authGetJson(`/api/auth/post-drafts${q}`);
+  return parsePostDraftsList(raw, ctx());
 }
 
+/** @deprecated Используйте apiListPostDrafts */
+export async function apiGetPostDrafts() {
+  return apiListPostDrafts();
+}
+
+export async function apiCreatePostDraft(input: {
+  label?: string;
+  content?: string;
+  communityId?: string;
+}): Promise<PostDraftDto> {
+  const body: Record<string, unknown> = {
+    label: input.label,
+    content: input.content ?? "",
+  };
+  const communityId = input.communityId?.trim();
+  if (communityId) body.communityId = communityId;
+  const raw = await authPostJson("/api/auth/post-drafts", body);
+  const parsed = parsePostDraft(raw, ctx());
+  if (!parsed) throw new ApiRequestError(500, "Некорректный ответ сервера.");
+  return parsed;
+}
+
+/** @deprecated Используйте apiCreatePostDraft */
 export async function apiSavePostDraft(body: Record<string, unknown>) {
-  return authPostJson("/api/auth/post-drafts", body);
+  return apiCreatePostDraft({
+    label: typeof body.label === "string" ? body.label : undefined,
+    content: typeof body.content === "string" ? body.content : undefined,
+    communityId: typeof body.communityId === "string" ? body.communityId : undefined,
+  });
+}
+
+export async function apiUpdatePostDraft(
+  draftUuid: string,
+  input: { label?: string; content?: string },
+): Promise<PostDraftDto> {
+  const id = draftUuid.trim();
+  if (!id) throw new ApiRequestError(400, "Не указан черновик.");
+  const body: Record<string, unknown> = {};
+  if (input.label !== undefined) body.label = input.label;
+  if (input.content !== undefined) body.content = input.content;
+  const raw = await authPatchJson(`/api/auth/post-drafts/${encodeURIComponent(id)}`, body);
+  const parsed = parsePostDraft(raw, ctx());
+  if (!parsed) throw new ApiRequestError(500, "Некорректный ответ сервера.");
+  return parsed;
+}
+
+export async function apiDeletePostDraft(draftUuid: string): Promise<void> {
+  const id = draftUuid.trim();
+  if (!id) throw new ApiRequestError(400, "Не указан черновик.");
+  await authDelete(`/api/auth/post-drafts/${encodeURIComponent(id)}`);
 }
 
 export async function apiGetBlocklist() {

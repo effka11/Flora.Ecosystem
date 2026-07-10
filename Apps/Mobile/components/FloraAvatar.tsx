@@ -6,7 +6,7 @@ import {
 } from "@flora/client-core/display";
 import { Image } from "expo-image";
 import { Link, type Href } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { floraColors } from "@/lib/theme";
 
@@ -55,6 +55,10 @@ export function FloraAvatar({
   const colorSeed = seed?.trim() || username.trim() || displayName.trim();
   const initials = communityName ? communityInitials(communityName) : profileInitials(displayName, username);
   const backgroundColor = resolveDefaultAvatarColor(colorSeed);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [trimmedUuid]);
   const imageUri = useMemo(() => {
     if (!showImage) return null;
     const base = avatarImageUrl(trimmedUuid);

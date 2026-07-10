@@ -3,6 +3,7 @@ import {
   Modal,
   Pressable,
   StyleSheet,
+  useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
@@ -11,7 +12,9 @@ import { floraTabFilter } from "@/lib/theme";
 
 type Anchor = {
   left: number;
-  top: number;
+  width: number;
+  pageY: number;
+  height: number;
 };
 
 type Props = {
@@ -19,20 +22,35 @@ type Props = {
   onClose: () => void;
   anchorRef: RefObject<View | null>;
   menuStyle: StyleProp<ViewStyle>;
+  /** Выравнивание меню по правому краю якоря (для кнопок у правого края экрана). */
+  alignEnd?: boolean;
+  /** below — под якорем (по умолчанию); above — над якорем. */
+  placement?: "below" | "above";
   children: ReactNode;
 };
 
 function measureAnchor(ref: View, onMeasured: (anchor: Anchor) => void) {
-  ref.measure((_x, _y, _width, height, pageX, pageY) => {
+  ref.measure((_x, _y, width, height, pageX, pageY) => {
     onMeasured({
       left: pageX,
-      top: pageY + height + floraTabFilter.menuGapBelow,
+      width,
+      pageY,
+      height,
     });
   });
 }
 
 /** Modal: backdrop закрывает по тапу снаружи, меню — внутри поверх backdrop. */
-export function DropdownMenuOverlay({ open, onClose, anchorRef, menuStyle, children }: Props) {
+export function DropdownMenuOverlay({
+  open,
+  onClose,
+  anchorRef,
+  menuStyle,
+  alignEnd = false,
+  placement = "below",
+  children,
+}: Props) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [anchor, setAnchor] = useState<Anchor | null>(null);
 
   useLayoutEffect(() => {
@@ -60,6 +78,20 @@ export function DropdownMenuOverlay({ open, onClose, anchorRef, menuStyle, child
     };
   }, [anchorRef, open]);
 
+  const horizontal = anchor
+    ? alignEnd
+      ? { right: Math.max(0, windowWidth - (anchor.left + anchor.width)) }
+      : { left: anchor.left }
+    : null;
+
+  const vertical = anchor
+    ? placement === "above"
+      ? { bottom: windowHeight - anchor.pageY + floraTabFilter.menuGapBelow }
+      : { top: anchor.pageY + anchor.height + floraTabFilter.menuGapBelow }
+    : null;
+
+  const menuPosition = horizontal && vertical ? { ...horizontal, ...vertical } : null;
+
   return (
     <Modal
       visible={open}
@@ -70,9 +102,9 @@ export function DropdownMenuOverlay({ open, onClose, anchorRef, menuStyle, child
     >
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="Закрыть меню" />
-        {anchor ? (
+        {menuPosition ? (
           <View
-            style={[menuStyle, styles.menu, { left: anchor.left, top: anchor.top }]}
+            style={[menuStyle, styles.menu, menuPosition]}
             accessibilityRole="menu"
             accessibilityViewIsModal
           >

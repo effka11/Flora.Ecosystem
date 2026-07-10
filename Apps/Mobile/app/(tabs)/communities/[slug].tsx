@@ -25,6 +25,7 @@ import { CommunityCardHeader } from "@/components/communities/CommunityCardHeade
 import { PostCard } from "@/components/PostCard";
 import {
   communitySettingsScreenHref,
+  composeScreenHref,
   decodeRouteParam,
 } from "@/lib/socialRoutes";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
@@ -210,11 +211,7 @@ export default function CommunityScreen() {
         membershipError={membershipError}
         onComposePress={
           isOwner && community
-            ? () =>
-                router.push({
-                  pathname: "/compose",
-                  params: { communityUuid: community.communityId },
-                })
+            ? () => router.push(composeScreenHref(community.communityId))
             : undefined
         }
         onSettingsPress={

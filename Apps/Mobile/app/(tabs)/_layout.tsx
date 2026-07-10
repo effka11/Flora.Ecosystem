@@ -46,7 +46,19 @@ export default function TabsLayout() {
         screenOptions={screenOptions}
       >
         <Tabs.Screen
-          name="feed/index"
+          name="feed"
+          listeners={{
+            tabPress: (e) => {
+              if (!isTabActive(segments, "feed")) {
+                return;
+              }
+              e.preventDefault();
+              if (isTabRoot(segments, "feed")) {
+                return;
+              }
+              router.replace("/(tabs)/feed");
+            },
+          }}
           options={{
             title: "Лента",
             headerShown: false,
