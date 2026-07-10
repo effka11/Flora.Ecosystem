@@ -27,8 +27,8 @@ import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEnga
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 
-/** chromeRow 45 + gap 13 + tabs 35 + border 1 */
-const FEED_CHROME_BODY_HEIGHT = 45 + 13 + 35 + 1;
+/** chromeRow 45 + gap 5 + tabs 35 + border 1 */
+const FEED_CHROME_BODY_HEIGHT = 45 + 5 + 35 + 1;
 
 type FeedKind = "recommendations" | "subscriptions";
 
@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     paddingHorizontal: floraSpacing.grid,
     paddingBottom: 0,
-    gap: 13,
+    gap: floraSpacing.gridFine,
   },
   feedBody: {
     flex: 1,
