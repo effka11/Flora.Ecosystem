@@ -122,22 +122,16 @@ function ClippedImage({
   onPress,
   onLoadRatio,
   style,
-  transitionMs = 150,
+  transitionMs = 0,
 }: ClippedImageProps) {
-  const clipStyle = {
-    width,
-    height,
-    borderRadius,
-    overflow: "hidden" as const,
-  };
-
   const image = (
-    <View style={[clipStyle, style]}>
+    <View style={[{ width, height }, style]}>
       <Image
         source={{ uri }}
-        style={{ width, height }}
+        style={{ width, height, borderRadius }}
         contentFit={contentFit}
         cachePolicy="disk"
+        recyclingKey={uri}
         transition={transitionMs}
         onLoad={(event) => {
           const { width: w, height: h } = event.source;
@@ -218,11 +212,10 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
   }, [imageUuids, previewItems]);
 
   useEffect(() => {
-    if (!messageMode || items.length !== 1) return;
     singleRatioLockedRef.current = false;
     setSingleRatio(null);
     setSingleShape("square");
-  }, [items[0]?.id, items.length, messageMode]);
+  }, [items[0]?.id, items.length]);
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const w = event.nativeEvent.layout.width;
@@ -261,7 +254,6 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
             contentFit="cover"
             onPress={() => setActiveUri(items[0]!.uri)}
             onLoadRatio={lockSingleRatio}
-            transitionMs={messageMode ? 0 : 150}
           />
         );
       }
@@ -279,7 +271,6 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
           contentFit="cover"
           onPress={() => setActiveUri(items[0]!.uri)}
           onLoadRatio={lockSingleRatio}
-          transitionMs={messageMode ? 0 : 150}
         />
       );
     }
@@ -429,9 +420,11 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
               <View style={[styles.modalClip, { borderRadius: MODAL_IMAGE_RADIUS }]}>
                 <Image
                   source={{ uri: activeUri }}
-                  style={styles.modalImage}
+                  style={[styles.modalImage, { borderRadius: MODAL_IMAGE_RADIUS }]}
                   contentFit="contain"
                   cachePolicy="disk"
+                  recyclingKey={activeUri}
+                  transition={0}
                 />
               </View>
             ) : null}

@@ -71,6 +71,8 @@ export function FloraAvatar({
       style={{ width: size, height: size, borderRadius: size / 2 }}
       contentFit="cover"
       cachePolicy="disk"
+      recyclingKey={imageUri}
+      transition={0}
       onError={() => setImageFailed(true)}
     />
   ) : (
