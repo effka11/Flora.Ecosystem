@@ -1,0 +1,113 @@
+# CI Flora.Ecosystem — обязательные ворота перед merge в main.
+# Имена джобов (dotnet, architecture, ts, web, rust) используются как required status checks
+# в защите ветки — см. Scripts/setup-github-protection.ps1. Не переименовывать без синхронизации.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    name: dotnet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build
+        run: dotnet build Flora.Ecosystem.slnx --configuration Release
+      # Тесты самодостаточны: health-тест поднимает WebApplicationFactory (Development,
+      # эфемерный JWT-секрет), фикстуры контрактов закоммичены в artifacts/contract-fixtures.
+      - name: Test
+        run: dotnet test Flora.Ecosystem.slnx --configuration Release --no-build
+
+  architecture:
+    name: architecture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate C# module boundaries
+        shell: pwsh
+        run: ./tools/Validate-Architecture.ps1
+
+  ts:
+    name: ts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # Workspaces: Apps/Mobile + Packages/* (client-core). Тесты client-core читают
+      # artifacts/contract-fixtures — кросс-языковой контракт с бэкендом.
+      - name: Install
+        run: npm ci
+      - name: Typecheck + lint + test
+        run: npm run ci
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Apps/Web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: Apps/Web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      # TODO: включить после погашения eslint-долга в Apps/Web (~109 существующих ошибок
+      # react-hooks/* — чинить отдельной задачей, не в рамках настройки CI):
+      # - name: Lint
+      #   run: npm run lint
+
+  # Rust-конвейер (next-architecture.md, Фаза 0+). Пока Backend/Cargo.toml не существует,
+  # job завершается успешно и ничего не делает — его можно сразу сделать required check.
+  rust:
+    name: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect Backend workspace
+        id: backend
+        run: echo "exists=$([ -f Backend/Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Install Rust toolchain
+        if: steps.backend.outputs.exists == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Format
+        if: steps.backend.outputs.exists == 'true'
+        working-directory: Backend
+        run: cargo fmt --all --check
+      - name: Clippy
+        if: steps.backend.outputs.exists == 'true'
+        working-directory: Backend
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        if: steps.backend.outputs.exists == 'true'
+        working-directory: Backend
+        run: cargo test --workspace
+      # Включить в Фазе 0 вместе с появлением конфигов (см. next-architecture.md §2.3):
+      # - cargo deny check (EmbarkStudios/cargo-deny-action + Backend/deny.toml)
+      # - tools/validate-architecture-rust (границы crate'ов поверх cargo metadata)
+      - name: Skip note
+        if: steps.backend.outputs.exists != 'true'
+        run: echo "Backend/ ещё не создан — Rust-шаги пропущены (next-architecture.md, Фаза 0)."

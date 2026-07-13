@@ -1,0 +1,47 @@
+# Dependabot: обновления зависимостей тремя экосистемами (во время миграции — четырьмя).
+# Minor/patch группируются в один PR на экосистему, чтобы не заваливать ревью.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      nuget-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # Корневые workspaces: Apps/Mobile + Packages/*
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # Apps/Web — отдельный lock-файл (не входит в корневые workspaces)
+  - package-ecosystem: npm
+    directory: /Apps/Web
+    schedule:
+      interval: weekly
+    groups:
+      web-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Раскомментировать в Фазе 0 миграции (next-architecture.md), когда появится Backend/Cargo.toml:
+  # - package-ecosystem: cargo
+  #   directory: /Backend
+  #   schedule:
+  #     interval: weekly
+  #   groups:
+  #     cargo-minor-patch:
+  #       applies-to: version-updates
+  #       update-types: ["minor", "patch"]
