@@ -25,3 +25,8 @@ clap = { version = "4.6.1", features = ["derive"] }
 lto = "thin"
 codegen-units = 1
 strip = "debuginfo"
+
+# DSP-тесты (O(N²) MDCT) в чистом debug слишком медленные; debug_assertions остаются.
+[profile.test]
+opt-level = 2
+

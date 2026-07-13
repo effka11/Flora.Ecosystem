@@ -14,7 +14,7 @@ use crate::qmath::pow2_e8;
 pub const FRAME_N: usize = 960;
 
 const HEADER_BITS: u64 = 32;
-const LAMBDA_MAX: u32 = 63;
+const LAMBDA_MAX: u32 = 127;
 const ENERGY_RICE_K: u32 = 4;
 const ENERGY_Q_CLAMP: i32 = 1024;
 const FLAG_MS_STEREO: u32 = 1 << 3;

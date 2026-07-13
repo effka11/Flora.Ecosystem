@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn ycocg_r_is_lossless_for_all_extremes_and_sampled_space() {
-        let mut check = |r: i32, g: i32, b: i32| {
+        let check = |r: i32, g: i32, b: i32| {
             let (y, co, cg) = rgb_to_ycocg_r(r, g, b);
             assert!((0..=255).contains(&y), "y={y} вне диапазона для rgb=({r},{g},{b})");
             assert!((-255..=255).contains(&co));

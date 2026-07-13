@@ -1,25 +1,14 @@
 //! Плоскость отсчётов (компонента цвета) в i16 и прямоугольные регионы-тайлы.
 
-/// Полноразмерная плоскость одной компоненты.
+/// Полноразмерная плоскость одной компоненты (ширина + плотные строки).
 pub struct Plane {
     pub w: usize,
-    pub h: usize,
     pub data: Vec<i16>,
 }
 
 impl Plane {
     pub fn new(w: usize, h: usize) -> Self {
-        Self { w, h, data: vec![0; w * h] }
-    }
-
-    #[inline]
-    pub fn get(&self, x: usize, y: usize) -> i16 {
-        self.data[y * self.w + x]
-    }
-
-    #[inline]
-    pub fn set(&mut self, x: usize, y: usize, v: i16) {
-        self.data[y * self.w + x] = v;
+        Self { w, data: vec![0; w * h] }
     }
 
     /// Копирует прямоугольник `w x h` с позиции `(x0, y0)` в отдельный буфер.
@@ -51,7 +40,14 @@ pub struct SampleRange {
     pub mid: i32,
 }
 
-/// Яркость и альфа: 0..=255, виртуальный сосед 128.
+impl SampleRange {
+    /// Битов на отсчёт в raw-секции (FIC.md §6.4).
+    pub fn raw_bits(&self) -> u32 {
+        if self.lo == 0 { 8 } else { 9 }
+    }
+}
+
+/// Яркость, альфа и identity-RGB: 0..=255, виртуальный сосед 128.
 pub const RANGE_LUMA: SampleRange = SampleRange { lo: 0, hi: 255, mid: 128 };
 /// Обратимые цветоразности YCoCg-R: -255..=255, виртуальный сосед 0.
 pub const RANGE_CHROMA_LOSSLESS: SampleRange = SampleRange { lo: -255, hi: 255, mid: 0 };

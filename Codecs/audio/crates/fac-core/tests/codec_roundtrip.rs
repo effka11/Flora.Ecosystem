@@ -1,7 +1,8 @@
 //! Сквозные тесты кодека: качество, битрейт, детерминизм, устойчивость
 //! к повреждённым пакетам, PLC.
 
-use fac_core::{Config, Decoder, Encoder, FRAME_N};
+use fac_core::mdct::Mdct;
+use fac_core::{Config, Decoder, Encoder, FRAME_N, bands};
 
 fn xorshift(state: &mut u32) -> f32 {
     *state ^= *state << 13;
@@ -121,13 +122,55 @@ fn mix_stereo_96k_quality_and_bitrate() {
     let snr = snr_db(&pcm, &dec);
     let budget = 96_000.0 * FRAME_N as f64 / 48_000.0;
     println!("mix stereo 96k: SNR = {snr:.1} dB, avg bits/frame = {avg_bits:.0} (budget {budget:.0})");
-    assert!(snr > 8.0, "SNR too low: {snr:.1} dB");
-    assert!(avg_bits <= budget * 1.02, "budget overrun: {avg_bits}");
+    assert!(snr > 15.0, "SNR too low: {snr:.1} dB");
+    // Форма гарантированно в бюджете; +8 бит — выравнивание пакета до байта.
+    assert!(avg_bits <= budget + 8.0, "budget overrun: {avg_bits}");
     assert!(avg_bits >= budget * 0.35, "budget underrun: {avg_bits}");
 }
 
+/// Средняя лог-спектральная дистанция по полосам (дБ) между сигналами,
+/// по всем полным окнам; тихие полосы (< −60 дБFS) пропускаются.
+fn band_lsd_db(reference: &[f32], decoded: &[f32], ch: usize) -> f64 {
+    let m = Mdct::new(FRAME_N);
+    let frames = reference.len() / ch / FRAME_N - 1;
+    let mut coeffs_a = vec![0f32; FRAME_N];
+    let mut coeffs_b = vec![0f32; FRAME_N];
+    let mut sum = 0f64;
+    let mut count = 0u64;
+    for c in 0..ch {
+        for f in 0..frames {
+            let window = |src: &[f32]| -> Vec<f32> {
+                (0..2 * FRAME_N)
+                    .map(|j| src[(f * FRAME_N + j) * ch + c])
+                    .collect()
+            };
+            m.forward(&window(reference), &mut coeffs_a);
+            m.forward(&window(decoded), &mut coeffs_b);
+            for b in 0..bands::NUM_BANDS {
+                let e = |x: &[f32]| -> f64 {
+                    x[bands::band_range(b)]
+                        .iter()
+                        .map(|&v| f64::from(v) * f64::from(v))
+                        .sum::<f64>()
+                        + 1e-10
+                };
+                let ea = e(&coeffs_a);
+                if 10.0 * ea.log10() < -60.0 {
+                    continue;
+                }
+                sum += (10.0 * (ea / e(&coeffs_b)).log10()).abs();
+                count += 1;
+            }
+        }
+    }
+    sum / count as f64
+}
+
 #[test]
-fn noise_stereo_128k_is_coded_reasonably() {
+fn noise_stereo_128k_preserves_band_energies() {
+    // Waveform-SNR для шума не показателен: при нехватке бит формы кодек честно
+    // переходит на noise-fill (другая реализация того же шума). Перцептивно
+    // важно сохранение энергий полос — его и проверяем.
     let cfg = Config {
         sample_rate: 48_000,
         channels: 2,
@@ -135,9 +178,10 @@ fn noise_stereo_128k_is_coded_reasonably() {
     };
     let pcm = white_noise(48_000, 2, 0.4, 0.3);
     let (dec, _) = roundtrip(cfg, &pcm);
+    let lsd = band_lsd_db(&pcm, &dec, 2);
     let snr = snr_db(&pcm, &dec);
-    println!("noise stereo 128k: SNR = {snr:.1} dB");
-    assert!(snr > 3.0, "SNR too low: {snr:.1} dB");
+    println!("noise stereo 128k: band-LSD = {lsd:.2} dB (SNR = {snr:.1} dB, справочно)");
+    assert!(lsd < 1.5, "band energies drifted: {lsd:.2} dB");
 }
 
 #[test]
