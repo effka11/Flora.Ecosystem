@@ -47,9 +47,13 @@ public sealed class GoldenVectorTests
     }
 
     /// <summary>
-    /// Freeze-контроль формул FIRA (§15 FIRA.md): регенерация в temp-каталог обязана быть
-    /// байт-в-байт идентичной закоммиченным векторам. Расхождение = формула изменилась —
-    /// остановись и сверься с freeze-правилами (next-architecture.md §4, skill /rust-migration).
+    /// Freeze-контроль формул FIRA (§15 FIRA.md): регенерация в temp-каталог обязана
+    /// совпадать с закоммиченными векторами. Строки/ключи/порядок — точно; числа —
+    /// с относительным допуском 1e-12 (как scoreToleranceRelative в векторах и
+    /// Rust consumer). Трансцендентные (ln/exp/tanh) могут расходиться на ~1 ulp
+    /// между libm Windows/Linux — байт-в-байт сравнение JSON ломает CI кросс-платформенно.
+    /// Расхождение сверх допуска = формула изменилась — сверься с freeze-правилами
+    /// (next-architecture.md §4, skill /rust-migration).
     /// </summary>
     [Fact]
     public void Fira_vectors_match_reference_implementation()
@@ -57,6 +61,7 @@ public sealed class GoldenVectorTests
         Assert.True(Directory.Exists(FiraVectorsDir),
             $"Missing FIRA vectors dir: {FiraVectorsDir} (run Scripts/generate-golden-vectors.ps1)");
 
+        const double relativeTolerance = 1e-12;
         var tempDir = Path.Combine(Path.GetTempPath(), "flora-fira-vectors-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -66,12 +71,69 @@ public sealed class GoldenVectorTests
                 var name = Path.GetFileName(freshPath);
                 var committedPath = Path.Combine(FiraVectorsDir, name);
                 Assert.True(File.Exists(committedPath), $"Missing committed FIRA vector: {committedPath}");
-                Assert.Equal(File.ReadAllText(committedPath), File.ReadAllText(freshPath));
+                using var committed = JsonDocument.Parse(File.ReadAllText(committedPath));
+                using var fresh = JsonDocument.Parse(File.ReadAllText(freshPath));
+                AssertJsonClose(committed.RootElement, fresh.RootElement, relativeTolerance, name);
             }
         }
         finally
         {
             Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Структурное сравнение JSON: точные ключи/строки/булевы/null; числа — относительный допуск.
+    /// </summary>
+    private static void AssertJsonClose(JsonElement expected, JsonElement actual, double relativeTolerance, string path)
+    {
+        Assert.True(expected.ValueKind == actual.ValueKind,
+            $"{path}: kind {expected.ValueKind} != {actual.ValueKind}");
+
+        switch (expected.ValueKind)
+        {
+            case JsonValueKind.Object:
+            {
+                var expectedProps = expected.EnumerateObject().ToList();
+                var actualProps = actual.EnumerateObject().ToDictionary(p => p.Name, p => p.Value);
+                Assert.Equal(expectedProps.Count, actualProps.Count);
+                foreach (var prop in expectedProps)
+                {
+                    Assert.True(actualProps.TryGetValue(prop.Name, out var actualValue),
+                        $"{path}.{prop.Name}: missing in fresh");
+                    AssertJsonClose(prop.Value, actualValue, relativeTolerance, $"{path}.{prop.Name}");
+                }
+                break;
+            }
+            case JsonValueKind.Array:
+            {
+                var expectedItems = expected.EnumerateArray().ToList();
+                var actualItems = actual.EnumerateArray().ToList();
+                Assert.Equal(expectedItems.Count, actualItems.Count);
+                for (var i = 0; i < expectedItems.Count; i++)
+                    AssertJsonClose(expectedItems[i], actualItems[i], relativeTolerance, $"{path}[{i}]");
+                break;
+            }
+            case JsonValueKind.String:
+                Assert.Equal(expected.GetString(), actual.GetString());
+                break;
+            case JsonValueKind.Number:
+            {
+                var e = expected.GetDouble();
+                var a = actual.GetDouble();
+                var scale = Math.Max(Math.Abs(e), Math.Abs(a));
+                var allowed = scale == 0 ? relativeTolerance : scale * relativeTolerance;
+                Assert.True(Math.Abs(e - a) <= allowed,
+                    $"{path}: {e} vs {a} (tol {allowed})");
+                break;
+            }
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+            case JsonValueKind.Null:
+                break;
+            default:
+                Assert.Fail($"{path}: unsupported JsonValueKind {expected.ValueKind}");
+                break;
         }
     }
 
