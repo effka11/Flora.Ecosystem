@@ -79,7 +79,7 @@
     "eas-cli": "^16.28.0",
     "eslint": "^9.39.1",
     "eslint-config-expo": "~10.0.0",
-    "typescript": "~6.0.3",
+    "typescript": "~7.0.2",
     "vitest": "^3.2.6"
   },
   "expo": {
