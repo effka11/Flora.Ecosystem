@@ -12,3 +12,6 @@ workspace = true
 
 [dependencies]
 axum = { workspace = true }
+chrono = { workspace = true }
+flora-shared = { workspace = true }
+uuid = { workspace = true }

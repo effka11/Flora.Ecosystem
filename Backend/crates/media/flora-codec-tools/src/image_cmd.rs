@@ -238,8 +238,9 @@ fn cmd_bench(dir: Option<&Path>, quality: u8) -> CmdResult {
         100.0 * (1.0 - lossy_total as f64 / jpeg_total as f64),
     );
     let mp = px_total as f64 / 1e6;
+    let threads = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     println!(
-        "Скорость lossy: encode {:.1} Мп/с, decode {:.1} Мп/с",
+        "Скорость lossy ({threads} потоков): encode {:.1} Мп/с, decode {:.1} Мп/с",
         mp / (enc_ns as f64 / 1e9),
         mp / (dec_ns as f64 / 1e9),
     );

@@ -2,13 +2,14 @@
 //!
 //! Два уровня гарантий:
 //!
-//! - **v1 (decode-заморозка).** Файлы `golden-v1-*.fic` закоммичены навсегда
-//!   и никогда не регенерируются: декодер обязан читать их побайтно одинаково
-//!   в любой будущей версии кодека. Это контракт обратной совместимости.
-//! - **v2 (encode-заморозка).** Файлы `golden-v2-*.fic` фиксируют текущий
-//!   выход кодера. Меняться они могут только осознанным решением (улучшение
-//!   кодера): `FIC_UPDATE_GOLDEN=1 cargo test -p flora-image-codec --test
-//!   golden` — и коммитятся вместе с изменением.
+//! - **Decode-заморозка (v1, v2).** Файлы `golden-v1-*.fic` и `golden-v2-*.fic`
+//!   закоммичены навсегда и никогда не регенерируются: декодер обязан читать
+//!   их побайтно одинаково в любой будущей версии кодека. Это контракт
+//!   обратной совместимости.
+//! - **Encode-заморозка (v3, текущая версия кодера).** Файлы `golden-v3-*.fic`
+//!   фиксируют текущий выход кодера. Меняться они могут только осознанным
+//!   решением (улучшение кодера): `FIC_UPDATE_GOLDEN=1 cargo test -p
+//!   flora-image-codec --test golden` — и коммитятся вместе с изменением.
 
 use flora_image_codec::{EncodeMode, ImageView, PixelFormat, decode, encode, read_info};
 use std::path::PathBuf;
@@ -81,10 +82,10 @@ fn check_or_update(name: &str, produced: &[u8]) {
     );
 }
 
-// --- v2: encode-заморозка текущего кодера --------------------------------------
+// --- v3: encode-заморозка текущего кодера --------------------------------------
 
 #[test]
-fn golden_v2_lossless_bitstream_frozen() {
+fn golden_v3_lossless_bitstream_frozen() {
     let (w, h, data) = golden_source();
     let img = ImageView {
         width: w,
@@ -93,14 +94,14 @@ fn golden_v2_lossless_bitstream_frozen() {
         data: &data,
     };
     let fic = encode(&img, EncodeMode::Lossless).unwrap();
-    assert_eq!(read_info(&fic).unwrap().version, 2);
-    check_or_update("golden-v2-lossless.fic", &fic);
+    assert_eq!(read_info(&fic).unwrap().version, 3);
+    check_or_update("golden-v3-lossless.fic", &fic);
     // Lossless обязан вернуть источник побайтно.
     assert_eq!(decode(&fic).unwrap().data, data);
 }
 
 #[test]
-fn golden_v2_palette_bitstream_frozen() {
+fn golden_v3_palette_bitstream_frozen() {
     // Малоцветная графика: кодер обязан выбрать палитровый поток —
     // замораживаем и этот вид контейнера (блок палитры + плоскость индексов).
     let (w, h, data) = palette_source();
@@ -112,12 +113,12 @@ fn golden_v2_palette_bitstream_frozen() {
     };
     let fic = encode(&img, EncodeMode::Lossless).unwrap();
     assert!(read_info(&fic).unwrap().palette);
-    check_or_update("golden-v2-palette.fic", &fic);
+    check_or_update("golden-v3-palette.fic", &fic);
     assert_eq!(decode(&fic).unwrap().data, data);
 }
 
 #[test]
-fn golden_v2_lossy_bitstream_frozen() {
+fn golden_v3_lossy_bitstream_frozen() {
     let (w, h, data) = golden_source();
     let img = ImageView {
         width: w,
@@ -126,15 +127,15 @@ fn golden_v2_lossy_bitstream_frozen() {
         data: &data,
     };
     let fic = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
-    check_or_update("golden-v2-lossy-q75.fic", &fic);
+    check_or_update("golden-v3-lossy-q75.fic", &fic);
 }
 
 #[test]
-fn golden_v2_lossy_decode_is_deterministic() {
+fn golden_v3_lossy_decode_is_deterministic() {
     // Детерминизм декодера (включая f32 DCT с константным базисом):
     // хеш пиксельного выхода зафиксирован. Проверяется на закоммиченном
     // файле — потоки обязаны декодироваться одинаково всегда.
-    const EXPECTED_FNV1A: u64 = 0x2103_8208_73FC_2C44;
+    const EXPECTED_FNV1A: u64 = 0x6BDF_0913_187D_9D0C;
     if std::env::var_os("FIC_UPDATE_GOLDEN").is_some() {
         // Кодируем в процессе (не читаем файл: тесты идут параллельно).
         let (w, h, data) = golden_source();
@@ -146,10 +147,10 @@ fn golden_v2_lossy_decode_is_deterministic() {
         };
         let fic = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
         let out = decode(&fic).unwrap();
-        println!("golden v2 decode fnv1a = {:#018X}", fnv1a(&out.data));
+        println!("golden v3 decode fnv1a = {:#018X}", fnv1a(&out.data));
         return;
     }
-    let fic = std::fs::read(data_path("golden-v2-lossy-q75.fic")).expect("нет golden-файла");
+    let fic = std::fs::read(data_path("golden-v3-lossy-q75.fic")).expect("нет golden-файла");
     let out = decode(&fic).unwrap();
     assert_eq!((out.width, out.height), (97, 61));
     assert_eq!(
@@ -159,7 +160,7 @@ fn golden_v2_lossy_decode_is_deterministic() {
     );
 }
 
-// --- v1: decode-заморозка (файлы никогда не регенерируются) ---------------------
+// --- v1, v2: decode-заморозка (файлы никогда не регенерируются) -----------------
 
 #[test]
 fn golden_v1_lossless_decodes_exactly_forever() {
@@ -189,5 +190,44 @@ fn golden_v1_lossy_decodes_deterministically_forever() {
     assert_eq!(read_info(&fic).unwrap().version, 1);
     let out = decode(&fic).unwrap();
     assert_eq!((out.width, out.height), (97, 61));
-    assert_eq!(fnv1a(&out.data), EXPECTED_FNV1A, "декодирование v1 разошлось");
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "декодирование v1 разошлось"
+    );
+}
+
+#[test]
+fn golden_v2_lossless_decodes_exactly_forever() {
+    let fic = std::fs::read(data_path("golden-v2-lossless.fic")).expect("нет файла v2");
+    assert_eq!(read_info(&fic).unwrap().version, 2);
+    let (_, _, data) = golden_source();
+    assert_eq!(
+        decode(&fic).unwrap().data,
+        data,
+        "v2-поток обязан декодироваться побайтно точно в любой версии кодека"
+    );
+}
+
+#[test]
+fn golden_v2_palette_decodes_exactly_forever() {
+    let fic = std::fs::read(data_path("golden-v2-palette.fic")).expect("нет файла v2");
+    assert_eq!(read_info(&fic).unwrap().version, 2);
+    let (_, _, data) = palette_source();
+    assert_eq!(decode(&fic).unwrap().data, data);
+}
+
+#[test]
+fn golden_v2_lossy_decodes_deterministically_forever() {
+    // Хеш зафиксирован в момент заморозки v2 и не меняется никогда.
+    const EXPECTED_FNV1A: u64 = 0xD77D_5612_306C_88C0;
+    let fic = std::fs::read(data_path("golden-v2-lossy-q75.fic")).expect("нет файла v2");
+    assert_eq!(read_info(&fic).unwrap().version, 2);
+    let out = decode(&fic).unwrap();
+    assert_eq!((out.width, out.height), (97, 61));
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "декодирование v2 разошлось"
+    );
 }

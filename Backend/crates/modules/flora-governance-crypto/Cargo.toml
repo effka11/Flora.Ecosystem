@@ -1,0 +1,21 @@
+[package]
+name = "flora-governance-crypto"
+description = "Криптоядро FGP/FPP, профиль P0: детерминированная Q32.32-арифметика, реестр доменных меток, Merkle-журнал прозрачности, формулы весов FGP §4. Нормативная спецификация: docs/fgp/FGP-CRYPTO.md; golden-вектора: docs/test-vectors/governance/. Один код для native (сервер) и wasm32 (@flora/client-core)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Зависимостей на модули workspace нет (FGP §8.1) — ядро остаётся компилируемым
+# в wasm32 и переносимым в независимые верификаторы (THREATS V-11).
+[dependencies]
+blake3 = { workspace = true }
+
+# Только для генератора golden-векторов (examples/gen_vectors.rs) и consumer-теста.
+[dev-dependencies]
+serde_json = { workspace = true }
+base64 = { workspace = true }

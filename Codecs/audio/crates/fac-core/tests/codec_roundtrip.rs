@@ -458,6 +458,170 @@ fn transient_flag_set_only_on_attacks() {
     );
 }
 
+/// Пэд (двухтональный + мягкий шум) с регулярными щелчками: материал, на
+/// котором транзиентные кадры без anti-collapse дают «дыры» в тихих блоках.
+fn pad_with_clicks(rate: u32, ch: usize, secs: f32) -> Vec<f32> {
+    let total = (secs * rate as f32) as usize;
+    let mut state = 0x0ADD_5EEDu32;
+    let mut out = Vec::with_capacity(total * ch);
+    for j in 0..total {
+        let t = j as f32 / rate as f32;
+        let pad = 0.18 * (2.0 * core::f32::consts::PI * 311.0 * t).sin()
+            + 0.14 * (2.0 * core::f32::consts::PI * 733.0 * t).sin();
+        let noise = 0.04 * xorshift(&mut state);
+        let click_phase = j % 6000;
+        let click = if click_phase < 48 {
+            0.8 * xorshift(&mut state)
+        } else {
+            0.0
+        };
+        for _ in 0..ch {
+            out.push((pad + noise + click).clamp(-1.0, 1.0));
+        }
+    }
+    out
+}
+
+#[test]
+fn anti_collapse_fills_holes_in_transient_frames() {
+    let cfg = Config {
+        sample_rate: 48_000,
+        channels: 2,
+        bitrate_bps: 32_000,
+    };
+    let pcm = pad_with_clicks(48_000, 2, 0.6);
+    let mut enc = Encoder::new(cfg).unwrap();
+    let total = pcm.len() / 2;
+    let hops = total / FRAME_N;
+    let mut packets = Vec::new();
+    for h in 0..=hops {
+        let mut chunk = vec![0f32; FRAME_N * 2];
+        if h < hops {
+            chunk.copy_from_slice(&pcm[h * FRAME_N * 2..(h + 1) * FRAME_N * 2]);
+        }
+        packets.push(enc.encode_frame(&chunk).unwrap());
+    }
+    let ac_frames: Vec<usize> = packets
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p[0] & 0b11 == 0b11) // transient + anti-collapse
+        .map(|(i, _)| i)
+        .collect();
+    assert!(
+        !ac_frames.is_empty(),
+        "материал должен дать кадры с anti-collapse"
+    );
+
+    let decode_all = |strip_ac: bool| -> Vec<f32> {
+        let mut dec = Decoder::new(48_000, 2).unwrap();
+        let mut out = Vec::new();
+        for p in &packets {
+            let mut p = p.clone();
+            if strip_ac {
+                p[0] &= !0b10;
+            }
+            out.extend(dec.decode_frame(&p).unwrap());
+        }
+        out[FRAME_N * 2..][..pcm.len()].to_vec()
+    };
+    let with_ac = decode_all(false);
+    let without_ac = decode_all(true);
+
+    // «Дыра»: короткий блок (120 сэмплов) транзиентного кадра, где ВЧ-энергия
+    // упала более чем в 64 раза против оригинала. Тройной diff-фильтр давит
+    // тоны пэда (311/733 Гц) на ~60+ дБ, оставляя широкополосный шумовой пол —
+    // именно его зануление слышно как выпадение фактуры вокруг щелчка.
+    let hf = |x: &[f32]| -> Vec<f32> {
+        let mut cur: Vec<f32> = x.iter().step_by(2).copied().collect();
+        for _ in 0..3 {
+            cur = cur.windows(2).map(|w| w[1] - w[0]).collect();
+        }
+        cur
+    };
+    let pcm_hf = hf(&pcm);
+    let hole_count = |dec_hf: &[f32]| -> usize {
+        let mut holes = 0;
+        for &f in &ac_frames {
+            let start = f * FRAME_N;
+            for blk in 0..8 {
+                let s = start + blk * (FRAME_N / 8);
+                let e = s + FRAME_N / 8;
+                if e > dec_hf.len() || e > pcm_hf.len() {
+                    continue;
+                }
+                let energy =
+                    |x: &[f32]| -> f64 { x[s..e].iter().map(|&v| f64::from(v) * f64::from(v)).sum() };
+                let e_ref = energy(&pcm_hf);
+                if e_ref > 1e-8 && energy(dec_hf) < e_ref / 64.0 {
+                    holes += 1;
+                }
+            }
+        }
+        holes
+    };
+    let holes_with = hole_count(&hf(&with_ac));
+    let holes_without = hole_count(&hf(&without_ac));
+    println!(
+        "AC-кадров: {}, дыр (ВЧ): с AC = {holes_with}, без AC = {holes_without}",
+        ac_frames.len()
+    );
+    assert!(
+        holes_without > 0,
+        "материал должен давать дыры без anti-collapse, иначе тест вакуумный"
+    );
+    assert!(
+        holes_with * 2 <= holes_without,
+        "anti-collapse должен закрывать большинство дыр: с AC = {holes_with}, без = {holes_without}"
+    );
+
+    // Инъекция шума — перцептивная мера: по MMSE она может чуть снижать SNR
+    // (как и noise-fill), но не должна разваливать сигнал.
+    let snr_with = snr_db(&pcm, &with_ac);
+    let snr_without = snr_db(&pcm, &without_ac);
+    println!("SNR: with AC = {snr_with:.1} dB, without = {snr_without:.1} dB");
+    assert!(snr_with > snr_without - 1.5, "AC разваливает сигнал");
+
+    // VBR-lite: транзиентные кадры получают больший бюджет (долг гасится
+    // длинными), но средний размер потока не превышает целевой.
+    let base_bits = 32_000.0 * 960.0 / 48_000.0;
+    let avg_bits =
+        packets.iter().map(|p| p.len() as u64 * 8).sum::<u64>() as f64 / packets.len() as f64;
+    println!("средние биты/кадр: {avg_bits:.0} (цель {base_bits:.0})");
+    assert!(avg_bits <= base_bits + 24.0, "VBR-lite превысил средний бюджет");
+    let mean_len = |transient: bool| -> f64 {
+        let sel: Vec<usize> = packets
+            .iter()
+            .filter(|p| (p[0] & 1 != 0) == transient)
+            .map(|p| p.len())
+            .collect();
+        sel.iter().sum::<usize>() as f64 / sel.len().max(1) as f64
+    };
+    assert!(
+        mean_len(true) > mean_len(false),
+        "транзиентные пакеты должны быть крупнее длинных (boost бюджета)"
+    );
+}
+
+#[test]
+fn anti_collapse_flag_on_long_frame_is_rejected() {
+    let cfg = Config {
+        sample_rate: 48_000,
+        channels: 1,
+        bitrate_bps: 64_000,
+    };
+    let mut enc = Encoder::new(cfg).unwrap();
+    let pcm = sine(48_000, 1, 0.1, 440.0, 0.4);
+    // Первые кадры — стартовая атака; берём третий, стационарный.
+    let mut packet = Vec::new();
+    for h in 0..3 {
+        packet = enc.encode_frame(&pcm[h * FRAME_N..][..FRAME_N]).unwrap();
+    }
+    assert_eq!(packet[0] & 0b1, 0, "кадр стационарного синуса должен быть длинным");
+    packet[0] |= 0b10; // anti-collapse без transient — невалидно
+    let mut dec = Decoder::new(48_000, 1).unwrap();
+    assert!(dec.decode_frame(&packet).is_err());
+}
+
 #[test]
 fn low_bitrate_parametric_mode_works() {
     // 8 kbps mono: бюджета хватает почти только на энергии — кадр становится

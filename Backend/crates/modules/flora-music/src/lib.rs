@@ -2,6 +2,11 @@
 //!
 //! Внутренняя слоистость при переносе: `src/domain/`, `src/application/`,
 //! `src/infrastructure/`, `src/http/` + `compose()` (§2.2).
+//!
+//! Уже перенесено (до cutover, паритет закреплён golden-вектором `fira-m-scorer-v1.json`):
+//! чистый скорер FIRA-M «Music Flow» — [`application::recommendations`].
+
+pub mod application;
 
 /// HTTP-роутер модуля (`/api/music/*`). До cutover Фазы 1 пуст —
 /// запросы обслуживает C#-хост через gateway-fallback.

@@ -23,6 +23,7 @@ members = [
     "crates/modules/flora-notifications-contracts",
     "crates/modules/flora-verification",
     "crates/modules/flora-verification-contracts",
+    "crates/modules/flora-governance-crypto",
     "crates/infrastructure/flora-grpc-bridge",
     "crates/media/flora-image-codec",
     "crates/media/flora-codec-tools",
@@ -57,6 +58,7 @@ flora-notifications = { path = "crates/modules/flora-notifications" }
 flora-notifications-contracts = { path = "crates/modules/flora-notifications-contracts" }
 flora-verification = { path = "crates/modules/flora-verification" }
 flora-verification-contracts = { path = "crates/modules/flora-verification-contracts" }
+flora-governance-crypto = { path = "crates/modules/flora-governance-crypto" }
 flora-grpc-bridge = { path = "crates/infrastructure/flora-grpc-bridge" }
 # --- media (кодеки FMC, docs/codecs/CODECS.md §Flora Media Codecs) ---
 flora-image-codec = { path = "crates/media/flora-image-codec" }
@@ -87,6 +89,9 @@ hmac = "0.12.1"
 sha2 = "0.10.9"
 base64 = "0.22.1"
 getrandom = "0.3.3"
+# blake3: хеш/KDF криптоядра FGP (docs/fgp/FGP-CRYPTO.md §1); feature "pure" —
+# только portable Rust, без asm/C-интринсиков (инвариант workspace + паритет wasm32).
+blake3 = { version = "1.8", default-features = false, features = ["std", "pure"] }
 
 # --- БД и миграции ---
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres", "migrate"] }
@@ -103,8 +108,11 @@ argon2 = "0.5.3"
 tokio-stream = "0.1.18"
 # клиентская криптография FSCP (паритет golden-векторов с libsodium/@noble; задел Rust client-core)
 x25519-dalek = "2.0"
+ed25519-dalek = "2.0"
 hkdf = "0.12"
 chacha20poly1305 = "0.10"
+# hazmat — только ради encapsulate_deterministic в consumer-тесте golden-вектора (FIPS 203 KAT-дисциплина)
+ml-kem = { version = "0.3.2", features = ["hazmat"] }
 
 # --- только для flora-codec-tools (IO эталонных форматов в бенчмарках) ---
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }

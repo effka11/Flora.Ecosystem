@@ -1,6 +1,7 @@
 //! Паритет-харнесс (next-architecture.md §7): семантическое сравнение JSON-ответов
 //! двух бэкендов и доступ к кросс-языковым артефактам репозитория.
 
+pub mod canonical_json;
 pub mod semantic;
 
 use std::path::PathBuf;
@@ -24,6 +25,11 @@ pub fn golden_vectors_dir() -> PathBuf {
         .join("docs")
         .join("test-vectors")
         .join("backend-parity")
+}
+
+/// Вектора FIRA (FIRA.md §15): скореры четырёх компонентов + постобработка FIRA-F.
+pub fn fira_vectors_dir() -> PathBuf {
+    repo_root().join("docs").join("test-vectors").join("fira")
 }
 
 pub fn load_json(path: &std::path::Path) -> anyhow::Result<serde_json::Value> {

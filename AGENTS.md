@@ -128,7 +128,7 @@ pwsh ../tools/validate-architecture-rust.ps1  # границы crate'ов (§2.3
 
 Собственные кодеки Flora — отдельные Rust-workspace'ы вне `Backend/` (переиспользуемая технология, не бизнес-модули; потребители — клиенты и модули). Аудио: `Codecs/audio` (FAC), нормативная спецификация — `docs/codecs/FAC.md`; битстрим меняется только вместе со спекой. Прод-пайплайны по-прежнему регулирует `docs/codecs/CODECS.md` (FAC туда пока не введён). Проверки — те же cargo-команды из каталога workspace'а + `cargo check -p fac-core --target wasm32-unknown-unknown` (ядро обязано собираться под wasm32 — E2E-голосовые кодируются на клиенте).
 
-Фото: FIC — `Backend/crates/media/flora-image-codec` (категория `media` внутри Backend-workspace, чистый std, без `unsafe`), спека — `docs/codecs/FIC.md`, **битстрим v1 заморожен** golden-векторами (`FIC_UPDATE_GOLDEN=1` — только осознанно, вместе со спекой). CLI: `cargo run -p flora-codec-tools -- image ...`. Реестр сигнатур семейства FMC (FIC/FVC/FAC) — `docs/codecs/CODECS.md`.
+Фото: FIC — `Backend/crates/media/flora-image-codec` (категория `media` внутри Backend-workspace, чистый std, без `unsafe`; wasm: `--no-default-features` отключает тайловые потоки), спека — `docs/codecs/FIC.md`. Кодер пишет **битстрим v2**; **v1 и v2 заморожены** golden-векторами: `golden-v1-*` — decode-заморозка, руками не трогать никогда; `golden-v2-*` — регенерация `FIC_UPDATE_GOLDEN=1` только осознанно, вместе со спекой. CLI: `cargo run -p flora-codec-tools -- image ...`. Реестр сигнатур семейства FMC (FIC/FVC/FAC) — `docs/codecs/CODECS.md`.
 
 ## Git
 

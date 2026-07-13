@@ -1,7 +1,8 @@
 //! # FVC — Flora Video Codec
 //!
 //! Референсная реализация битстрима **FVC1** (спека: `docs/codecs/FVC.md`).
-//! v0.1: intra-only (все кадры ключевые), YUV 4:2:0, 8 бит.
+//! v1: YUV 4:2:0 8 бит, ключевые (intra) и P-кадры (компенсация движения
+//! ¼ пикселя от предыдущего кадра).
 //!
 //! Гарантии:
 //! - декодер **бит-точно** воспроизводит реконструкцию энкодера (проверяется тестами);
@@ -19,6 +20,7 @@ mod enc;
 mod frame;
 mod header;
 mod lf;
+mod mc;
 pub mod metrics;
 mod predict;
 mod quant;
@@ -28,6 +30,7 @@ mod tables;
 mod tokens;
 mod transform;
 
+pub mod container;
 pub mod ivf;
 pub mod y4m;
 
@@ -37,8 +40,9 @@ pub use frame::{Frame, Plane};
 
 /// FourCC потока FVC1 (контейнер IVF).
 pub const FOURCC: [u8; 4] = *b"FVC1";
-/// Версия битстрима, кодируемая в заголовке каждого кадра.
-pub const BITSTREAM_VERSION: u8 = 1;
+/// Версия битстрима, кодируемая в заголовке каждого кадра
+/// (2 = формат v1 c inter-кадрами; 1 был у intra-only черновика v0.1).
+pub const BITSTREAM_VERSION: u8 = 2;
 
 /// Максимальный линейный размер кадра, принимаемый кодеком.
 pub const MAX_DIMENSION: u32 = 16384;
@@ -132,17 +136,20 @@ impl core::fmt::Display for Error {
 
 impl core::error::Error for Error {}
 
-/// Конфигурация энкодера FVC1 v0.1 (intra-only).
+/// Конфигурация энкодера FVC1.
 #[derive(Debug, Clone, Copy)]
 pub struct EncoderConfig {
-    /// Ширина в пикселях. Кратна 8, `2..=MAX_DIMENSION`.
+    /// Ширина в пикселях. Кратна 8, `8..=MAX_DIMENSION`.
     pub width: u32,
-    /// Высота в пикселях. Кратна 8, `2..=MAX_DIMENSION`.
+    /// Высота в пикселях. Кратна 8, `8..=MAX_DIMENSION`.
     pub height: u32,
     /// Базовый параметр квантования, `0..=63` (шаг удваивается каждые +8).
+    /// Ключевые кадры кодируются с qp − 4 (якорь качества для GOP).
     pub qp: u8,
     /// Деблокинг-фильтр (уровень выводится из qp).
     pub loop_filter: bool,
+    /// Интервал ключевых кадров: 1 = все кадры ключевые, N — ключ каждые N кадров.
+    pub keyint: u32,
 }
 
 impl EncoderConfig {
@@ -154,12 +161,13 @@ impl EncoderConfig {
             return Err(Error::InvalidConfig("dimension exceeds MAX_DIMENSION"));
         }
         if !self.width.is_multiple_of(8) || !self.height.is_multiple_of(8) {
-            return Err(Error::InvalidConfig(
-                "dimensions must be multiples of 8 in v0.1",
-            ));
+            return Err(Error::InvalidConfig("dimensions must be multiples of 8"));
         }
         if self.qp > 63 {
             return Err(Error::InvalidConfig("qp must be in 0..=63"));
+        }
+        if self.keyint == 0 {
+            return Err(Error::InvalidConfig("keyint must be >= 1"));
         }
         Ok(())
     }

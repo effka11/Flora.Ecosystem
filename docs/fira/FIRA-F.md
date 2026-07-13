@@ -357,15 +357,15 @@ Explicit onboarding (выбор тем) переводит систему из P
 | Репосты подписок | 10 % | 0.6 | 30 дней |
 | Exploration (backfill) | до `MinFeedSize` | 0.15 | 30 дней → +23 дня → без ограничения |
 
-Trending определяется как топ по упрощённому engagement-скору `likes + 2·comments + 2.5·reposts` за окно (все взаимодействия, не 48h-срез), исключая авторов-подписок и удалённые посты. Собственные посты пользователя не скорятся: prepend в начало ленты (до 100, без окна по дате). При пустом пуле — cold-start-ветка: own + exploration, затем latest.
+Trending определяется как топ по упрощённому engagement-скору `likes + 2·comments + 2.5·reposts` за окно (все взаимодействия, не 48h-срез), исключая авторов-подписок. Окно кандидатов детерминировано (v1.1): `ORDER BY CreatedAt desc, PostUuid asc` **до** `Take(limit·3)`, ранжирование — `score desc → CreatedAt desc → PostUuid asc`. Срез видимости (не удалён; не из чужого приватного сообщества) применяется на **каждом** кандидатном запросе (`VisiblePosts`, v1.1), блокировки в любом направлении вырезаются при сборке пула (`MergePool` + фильтры источников). Собственные посты пользователя не скорятся: prepend в начало ленты (до 100, без окна по дате). При пустом пуле — cold-start-ветка: own + exploration, затем latest.
 
 **Шаг 2 — фичи.** Батч-запросы: engagement 48h по постам; кол-во подписчиков авторов; сырой балл взаимодействий пользователя с каждым автором за `InteractionHistoryDays = 90` (`likes×1 + comments×2 + reposts×2.5`); кол-во подписок-лайкеров по постам. Кол-во подписок-репостеров берётся из уже загруженного репост-среза Шага 1.
 
 **Шаг 3 — скоринг.** `Score = 0·IA + 0.70·GR + 0.30·SP` (Phase 0), формулы — как в §Скоринг с подстановками: `IA = clamp01(authorAffinity·0.3)` (cosine-часть = 0), `lifecycleMultiplier = 1.0`. Сортировка с нормативным tie-break: `Score desc → CreatedAt desc → PostUuid asc`.
 
-**Шаг 4 — постобработка.** Author diversity (`MaxConsecutiveSameAuthor = 2`; вытесненные посты уходят в конец списка); затем интерливинг exploration: `mainSlots = MaxCandidates·(1−ε)`, вставка 1 exploration-поста после каждых `period = round(1/ε) = 7` основных. Дедуп гарантирован конструкцией (exploration-запрос исключает уже выбранные id).
+**Шаг 4 — постобработка.** Author diversity (`MaxConsecutiveSameAuthor = 2`; строгий двухпроходный алгоритм v1.1: вытесненные дописываются с повторной проверкой серий, неизбежные серии одного автора — только в самом конце); затем интерливинг exploration: `mainSlots = MaxCandidates·(1−ε)`, вставка 1 exploration-поста после каждых `period = max(1, round(1/ε − 1)) = 6` основных → доля 1/7 ≈ 14.3 % (округление к чётному — паритет `MidpointRounding.ToEven` ↔ `round_ties_even`). Дедуп гарантирован конструкцией (exploration-запрос исключает уже выбранные id). Чистые функции — [`FiraFeedPostProcessing.cs`](../../Modules/Flora.Content/Flora.Content.Application/Feed/FiraFeedPostProcessing.cs).
 
-**Шаг 5 — выдача.** Snapshot (список id) в per-user кэше `flora:fira-f:v3:{userUuid}` с TTL `CacheTtlSeconds = 120`; страница — `Skip/Take` по offset-курсору; `GeneratedAt`/`ExpiresAt` из snapshot. `forceRefresh=true` на первой странице пересобирает snapshot и применяет позиционный shuffle к прежнему топу (`RefreshShuffleWindow = 5`, вероятности свопа `[1.0, 0.75, 0.55, 0.35, 0.15]`, свежий собственный пост защищён `RefreshOwnPostProtectMinutes = 60`). `has-new` проверяет только новые посты подписок (не community/trending). Инвалидация кэша — вызовами `InvalidateFeedCache` из контроллера по триггерам §13.2 FIRA.md.
+**Шаг 5 — выдача.** Snapshot (список id) в per-user кэше `flora:fira-f:v4:{userUuid}` с TTL `CacheTtlSeconds = 120`; страница — `Skip/Take` по offset-курсору; `GeneratedAt`/`ExpiresAt` из snapshot. `forceRefresh=true` на первой странице пересобирает snapshot и применяет позиционный shuffle к прежнему топу (`RefreshShuffleWindow = 5`, вероятности свопа `[1.0, 0.75, 0.55, 0.35, 0.15]`, свежий собственный пост защищён `RefreshOwnPostProtectMinutes = 60`). `has-new` проверяет только новые посты подписок (не community/trending). Инвалидация кэша — вызовами `InvalidateFeedCache` из контроллера по триггерам §13.2 FIRA.md.
 
 ### Конфигурация (production)
 
@@ -387,16 +387,23 @@ Trending определяется как топ по упрощённому enga
 
 Смежная секция `FeedRecommendation` (вкладка «Подписки», без алгоритма): `MaxCandidates = 2000`, `FollowingPostsDays = 30`, кэш 120 с.
 
-### Карта отклонений от спеки (нормативная, к исправлению в v1.1)
+### Карта отклонений от спеки (нормативная)
+
+**Закрыто в v1.1** (до снятия golden-векторов — дефекты не заморожены в паритетную поверхность):
+
+| # | Отклонение | Как закрыто |
+|---|-----------|-------------|
+| 1 | **Privacy: приватные сообщества** — trending / exploration / latest / 2-я степень не фильтровали | срез `VisiblePosts(viewerUserUuid)` на каждом кандидатном запросе ([`ContentFeedQueries.cs`](../../Modules/Flora.Content/Flora.Content.Infrastructure/ContentFeedQueries.cs)) |
+| 2 | **Privacy: блоклист** — взаимные блокировки не исключались из пула | `IUserBlocklistService.GetBlockedUserIdsBidirectionalAsync` (модуль Users); фильтр подписок/2-й степени + `MergePool` + exploration/latest/backfill |
+| 3 | Exploration-доля ≈ 12.5 % вместо ε = 15 % | `period = max(1, round(1/ε − 1)) = 6` → 1/7 ≈ 14.3 % (`FiraFeedPostProcessing.ExplorationPeriod`) |
+| 4 | Trending-недетерминизм (`Take` без `ORDER BY`) | детерминированный префикс: `ORDER BY CreatedAt desc, PostUuid asc` до `Take`, стабильное ранжирование |
+| 6 | Author diversity: серии в хвосте | строгий второй проход с повторной проверкой streak (`FiraFeedPostProcessing.ApplyAuthorDiversity`) |
+
+**Открыто:**
 
 | # | Отклонение | Факт | Требование |
 |---|-----------|------|------------|
-| 1 | **Privacy: приватные сообщества** | trending / exploration / latest / 2-я степень не фильтруют посты приватных сообществ; членство проверяется только в источнике «сообщества пользователя» | инвариант §12 FIRA.md: фильтр на каждом кандидатном запросе |
-| 2 | **Privacy: блоклист** | взаимные блокировки не исключаются из пула | инвариант §12 FIRA.md |
-| 3 | Exploration-доля | вставка после каждых 7 основных даёт ≈ 1/8 = 12.5 % вместо ε = 15 % | `period = round(1/ε − 1) = 6` → 1/7 ≈ 14.3 % |
-| 4 | Trending-недетерминизм | кандидаты окна сокращаются `Take(limit·3)` **до** ранжирования и без `ORDER BY` — состав подмножества зависит от плана запроса | ранжировать полное окно либо сортировать до `Take` (детерминизм, [`FIRA.md §15`](./FIRA.md)) |
 | 5 | `hide`-эндпоинт и toggle репостов | нет эндпоинта, нет настройки | v1.1 (§Repost Signal, §Feedback Loop) |
-| 6 | Author diversity: хвост | вытесненные посты дописываются в конец без повторной проверки streak — в хвосте возможны серии одного автора длиннее лимита | допустимо для v1 (хвост за пределами типичной глубины чтения); строгий второй проход — v1.1 |
 | 7 | `has-new` | учитывает только посты подписок | допустимо: дешёвый индикатор; полная семантика — v2 |
 
 ### Стохастические точки (исключаются из differential-диффа C# ↔ Rust)
@@ -405,6 +412,18 @@ Trending определяется как топ по упрощённому enga
 2. Refresh-shuffle: `Random.Shared` при `forceRefresh=true`.
 
 Дифф ленты гоняется при `refresh=false`; exploration-позиции детерминированно вычислимы по period-формуле и вырезаются из сравнения. Остальной pipeline детерминирован при фиксированных `nowUtc` и состоянии БД.
+
+### Rust-порт (Фаза 3, перенесён заранее)
+
+Чистые функции скоринга и постобработки уже портированы 1:1 и закреплены consumer-тестами на golden-векторах — до начала фазы формулы менять нельзя ни на одной стороне:
+
+| Что | C# (эталон) | Rust (порт) |
+|-----|-------------|-------------|
+| Скорер + `Rank` | [`FiraFeedScorer.cs`](../../Modules/Flora.Content/Flora.Content.Application/Feed/FiraFeedScorer.cs) | [`feed.rs`](../../Backend/crates/modules/flora-content/src/application/feed.rs) |
+| Author diversity + интерливинг | [`FiraFeedPostProcessing.cs`](../../Modules/Flora.Content/Flora.Content.Application/Feed/FiraFeedPostProcessing.cs) | там же (`apply_author_diversity`, `interleave_exploration`) |
+| Consumer-тест векторов | [`GoldenVectorTests.cs`](../../tests/Flora.GoldenVectors/GoldenVectorTests.cs) (freeze-контроль) | [`fira_vectors.rs`](../../Backend/tests/parity/tests/fira_vectors.rs) |
+
+Паритет времени — тики .NET (`flora_shared::dotnet_time`); tie-break строк не используется (PostUuid), сравнение `Uuid` совпадает с `Guid.CompareTo` побайтово.
 
 ---
 

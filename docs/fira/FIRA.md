@@ -726,15 +726,17 @@ GET /api/auth/{resource}/has-new?since=<generatedAt>
 
 Механизмы ядра: **не реализованы** — UIP и таксономия (§2), Session UIP (§2.7), position bias (§2.4), negative streak (§7), интерполяция фаз cold start (§6), lifecycle (§9), CF (§10), Hot Zones (§11), adaptive bandit и MMR (§5), `IFiraComponent` / `FiraContext` (§8). **Реализованы** — универсальная формула в Phase 0-профиле (F, M), exploration quota (F, M), author diversity (F), политика обновления §13 (кэш / TTL / инвалидация / `generatedAt`+`expiresAt` — все компоненты; `has-new` — F).
 
-**Отклонения, нормативно подлежащие исправлению (v1.1, §17):**
+**Отклонения (нормативный статус):**
 
-| # | Отклонение | Где | Тяжесть |
-|---|-----------|-----|---------|
-| 1 | Посты приватных сообществ не фильтруются в trending / exploration / latest / 2-й степени (§12, инвариант 1) | FIRA-F | **критично (приватность)** |
-| 2 | Блоклист не применяется в кандидатных пулах (§12, инвариант 2) | FIRA-P, FIRA-F | **критично (приватность)** |
-| 3 | Фактическая exploration-доля ≈ 12.5 % при ε = 0.15 (математика интерливинга, см. FIRA-F) | FIRA-F | низкая |
-| 4 | Жанровая аффинити занимает γ-слот конфига, семантически являясь α·IA (см. FIRA-M) | FIRA-M | средняя (техдолг конфига) |
-| 5 | Trending-пул берёт произвольное подмножество кандидатов (`Take` без `ORDER BY`) — недетерминизм на уровне БД | FIRA-F | средняя (детерминизм §15) |
+| # | Отклонение | Где | Статус |
+|---|-----------|-----|--------|
+| 1 | Посты приватных сообществ не фильтровались в trending / exploration / latest / 2-й степени (§12, инвариант 1) | FIRA-F | **закрыто в v1.1** — срез `VisiblePosts` на каждом кандидатном запросе |
+| 2 | Блоклист не применялся в кандидатных пулах (§12, инвариант 2) | FIRA-P, FIRA-F | **закрыто в v1.1** — двунаправленное исключение (`IUserBlocklistService`) до снятия golden-векторов |
+| 3 | Фактическая exploration-доля ≈ 12.5 % при ε = 0.15 (математика интерливинга) | FIRA-F | **закрыто в v1.1** — `period = round(1/ε − 1)` |
+| 4 | Жанровая аффинити занимает γ-слот конфига, семантически являясь α·IA (см. FIRA-M) | FIRA-M | открыто (техдолг конфига); ключи не переименовывать до cutover Фазы 1, исправление вместе с v2 на Rust |
+| 5 | Trending-пул брал произвольное подмножество кандидатов (`Take` без `ORDER BY`) | FIRA-F | **закрыто в v1.1** — детерминированный префикс `ORDER BY CreatedAt desc, PostUuid asc` |
+
+Карты отклонений компонентов (включая открытые пункты v1.1: `hide`-эндпоинт, fallback-сортировки C/M, dismissal) — в секциях `Implementation Status` соответствующих спек.
 
 ---
 
@@ -753,9 +755,11 @@ Rust-бэкенд пишется параллельно; формулы v1 пе�
 
 **Стохастические точки** (паритет не требуется, исключаются из differential-диффа `flora-diff`): exploration-выборка (SQL `ORDER BY random()`), случайный exploration-хвост FIRA-M, refresh-shuffle FIRA-F (`refresh=true`). Дифф ленты выполняется при `refresh=false`; exploration-позиции FIRA-F детерминированно вычислимы по period-формуле интерливинга и вырезаются из сравнения.
 
-**Golden-вектора.** [`docs/test-vectors/fira/`](../test-vectors/) — фикстуры «кандидат → Score» для всех четырёх скореров + позиционные фикстуры постобработки (author diversity, интерливинг). Генерируются из C#-реализации (эталон) **до** фазы миграции модуля-владельца: FIRA-M — до Фазы 1, FIRA-P — до Фазы 2b, FIRA-F/C — до Фазы 3. После снятия векторов и до cutover модуля изменения формул запрещены (freeze-дисциплина, next-architecture.md §5.3); v1.1-гигиена (§17) обязана войти в вектора до Фазы 1.
+**Golden-вектора (сняты).** [`docs/test-vectors/fira/`](../test-vectors/fira/) — фикстуры «кандидат → Score» для всех четырёх скореров + позиционные фикстуры постобработки (author diversity, интерливинг). Сгенерированы из C#-реализации (эталон) **после** приватностной v1.1-гигиены (§17) и до фаз миграции; генератор — [`FiraGoldenVectorGenerator.cs`](../../tests/Flora.GoldenVectors/FiraGoldenVectorGenerator.cs) (`./Scripts/generate-golden-vectors.ps1`), freeze-контроль — тест `Fira_vectors_match_reference_implementation`. Consumer-тесты обязательны с обеих сторон: C# [`GoldenVectorTests.cs`](../../tests/Flora.GoldenVectors/GoldenVectorTests.cs), Rust [`fira_vectors.rs`](../../Backend/tests/parity/tests/fira_vectors.rs). После снятия векторов и до cutover модуля изменения формул запрещены (freeze-дисциплина, next-architecture.md §5.3).
 
-**Конфигурация.** Rust читает те же секции с теми же дефолтами; **отсутствующая секция/ключ = дефолты кода**. Фактически это касается `FiraMusic` (секции в `appsettings.json` нет вовсе) и refresh-ключей `FiraFeed` (`RefreshShuffleWindow`, `RefreshPositionSwapProbabilities`, `RefreshOwnPostProtectMinutes`) — дефолты обязаны быть продублированы в Rust-коде бит-в-бит.
+**Rust-порты скореров (выполнены заранее, трафик не обслуживают до cutover):** FIRA-F/C — [`flora-content/src/application/`](../../Backend/crates/modules/flora-content/src/application/), FIRA-P — [`flora-users/src/application/people.rs`](../../Backend/crates/modules/flora-users/src/application/people.rs), FIRA-M — [`flora-music/src/application/recommendations.rs`](../../Backend/crates/modules/flora-music/src/application/recommendations.rs). Паритетные примитивы в `flora-shared`: `dotnet_time` (тики `DateTime`, `TotalHours`/`TotalDays` — то же IEEE-деление, что в .NET 10) и `ordinal` (simple-uppercase ordinal ignore-case, эквивалент `StringComparer.OrdinalIgnoreCase` для валидных Unicode-строк). Сравнение `Uuid` в Rust побайтово совпадает с `Guid.CompareTo`. Score сравнивается с относительным допуском `1e-12` (расхождение libm ≤ ~1 ulp), порядок ранжирования — точно; ожидаемый точный 0 обязан быть точным 0.
+
+**Конфигурация.** Rust читает те же секции с теми же дефолтами; **отсутствующая секция/ключ = дефолты кода**. Фактически это касается `FiraMusic` (секции в `appsettings.json` нет вовсе) и refresh-ключей `FiraFeed` (`RefreshShuffleWindow`, `RefreshPositionSwapProbabilities`, `RefreshOwnPostProtectMinutes`) — дефолты продублированы в Rust-структурах (`Default`) бит-в-бит; для FIRA-M совпадение дефолтов дополнительно сверяется паритет-тестом с вектором.
 
 ---
 
@@ -799,7 +803,7 @@ FIRA — субъект нормативных требований [`FGP.md`](.
 | Версия | Содержание | Ворота |
 |--------|-----------|--------|
 | **v1** (production) | Phase 0: формулы §14 | — |
-| **v1.1** «гигиена» | Фильтр приватных сообществ во всех источниках; блоклист в пулах F/P; точный интерливинг ε (`period = round(1/ε − 1)`); детерминированный trending-префикс (`ORDER BY` до `Take`); fallback-сортировки C/M (§16); seen-post demotion FIRA-F (постобработка) | немедленно, пока модули в статусе «не начат» (§6.0); обязана войти в golden-вектора **до** Фазы 1 |
+| **v1.1** «гигиена» | **Выполнено:** фильтр приватных сообществ во всех источниках; блоклист в пулах F/P; точный интерливинг ε (`period = round(1/ε − 1)`); детерминированный trending-префикс (`ORDER BY` до `Take`); строгий author-diversity; golden-вектора сняты после этих правок, Rust-порты скореров закреплены на них (§15). **Остаток:** `hide`-эндпоинт и toggle репостов (F); fallback-сортировки C/M (§16); dismissal (C/P); seen-post demotion FIRA-F (постобработка) | немедленно, пока модули в статусе «не начат» (§6.0); правки формул требуют регенерации векторов и синхронного обновления Rust-портов |
 | **v2** «UIP-эра» | Таксономия → теги постов → engagement-события (+`feedPosition`) → UIP с фазами cold start (§6) → нормализация Score (§3) → Session UIP (§2.7) → negative streak (§7) → lifecycle (§9) | по компоненту: **после** cutover модуля на Rust (рекомендуется — не раздувает паритетную поверхность) либо до freeze с полной регенерацией векторов; для FIRA-M — на Rust-стороне уже после Фазы 1 |
 | **v3** «связность» | CF (§10), Hot Zones (§11), adaptive bandit и MMR (§5), client-side ranking (§16) | после стабилизации v2; требует ANN-инфраструктуры |
 

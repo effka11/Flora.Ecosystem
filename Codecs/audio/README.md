@@ -57,7 +57,8 @@ let plc = dec.decode_lost();               // PLC при потере пакет
 
 v0 = классическое MDCT-ядро (рабочий сквозной кодек, метрики в тестах и `fac roundtrip`):
 низкоперекрывающееся окно, транзиентный режим (8 коротких MDCT против pre-echo, флаг bit0
-пакета), gain-shape с fine-энергиями, water-filling-аллокация, noise-fill, PLC.
+пакета), gain-shape с fine-энергиями, water-filling-аллокация, бинарный range coder с
+адаптивными контекстами (`rangecoder`), noise-fill, PLC.
 `Encoder::set_transient_detection(false)` отключает детектор для A/B-замеров.
 Дорожная карта до нейропрофиля FAC-NC — в спецификации, раздел Roadmap. Битстрим не заморожен
 до v1.

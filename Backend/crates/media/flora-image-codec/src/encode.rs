@@ -87,7 +87,7 @@ fn plane_payload(buf: &[i16], shape: PlaneShape, out: &mut Vec<u8>) {
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     lossless::encode_tile_plane(buf, shape, &mut syms, &mut raw);
-    write_predictive_section(out, lossless::N_CTX_V2, &syms, raw, buf, shape);
+    write_predictive_section(out, lossless::N_CTX, &syms, raw, buf, shape);
 }
 
 // --- lossless: планарный (YCoCg-R либо identity RGB) --------------------------
@@ -367,5 +367,5 @@ fn dct_payload(buf: &[i16], w: usize, h: usize, qmat: &[u16; 64], out: &mut Vec<
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     lossy::encode_tile_plane(buf, w, h, qmat, &mut syms, &mut raw);
-    write_dct_section(out, lossy::N_CTX_V2, &syms, raw);
+    write_dct_section(out, lossy::N_CTX_V3, &syms, raw);
 }

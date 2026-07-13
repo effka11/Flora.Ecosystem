@@ -5,7 +5,7 @@ use crate::error::DecodeError;
 /// Сигнатура файла: не-ASCII первый байт ловит порчу текстовым режимом.
 pub const MAGIC: [u8; 4] = [0x8F, b'F', b'I', b'C'];
 /// Версия, которую пишет кодер.
-pub const VERSION_CURRENT: u8 = 2;
+pub const VERSION_CURRENT: u8 = 3;
 /// Минимальная версия, которую декодер обязан читать всегда.
 pub const VERSION_MIN: u8 = 1;
 /// Длина фиксированного заголовка.
@@ -40,7 +40,7 @@ pub const TILE: usize = 1 << TILE_SHIFT;
 /// Разобранный заголовок FIC.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
-    /// Версия битстрима (1 или 2); раскладка заголовка у обеих одинаковая.
+    /// Версия битстрима (1..=3); раскладка заголовка у всех одинаковая.
     pub version: u8,
     pub width: u32,
     pub height: u32,
@@ -246,7 +246,10 @@ mod tests {
         );
         let mut bytes = base().serialize();
         bytes[4] = 0;
-        assert_eq!(Header::parse(&bytes), Err(DecodeError::UnsupportedVersion(0)));
+        assert_eq!(
+            Header::parse(&bytes),
+            Err(DecodeError::UnsupportedVersion(0))
+        );
     }
 
     #[test]

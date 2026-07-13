@@ -26,8 +26,9 @@ fn sample_fic() -> Vec<u8> {
     encode(&img, EncodeMode::Lossy { quality: 60 }).unwrap()
 }
 
-/// Представители каждого вида потока: DCT, планарный lossless, палитра (все v2)
-/// плюс закоммиченные v1-потоки — путь совместимости фуззится наравне с текущим.
+/// Представители каждого вида потока: DCT, планарный lossless, палитра
+/// (текущая версия кодера) плюс закоммиченные v1/v2-потоки — пути
+/// совместимости фуззятся наравне с текущим.
 fn sample_streams() -> Vec<Vec<u8>> {
     let (w, h) = (90u32, 70u32);
     let gradient: Vec<u8> = (0..w * h * 3).map(|i| (i % 251) as u8).collect();
@@ -60,6 +61,9 @@ fn sample_streams() -> Vec<Vec<u8>> {
         std::fs::read(data_dir.join("golden-v1-lossy-q75.fic")).expect("v1 lossy"),
         std::fs::read(data_dir.join("golden-v1-lossless.fic")).expect("v1 lossless"),
         std::fs::read(data_dir.join("golden-v1-palette.fic")).expect("v1 palette"),
+        std::fs::read(data_dir.join("golden-v2-lossy-q75.fic")).expect("v2 lossy"),
+        std::fs::read(data_dir.join("golden-v2-lossless.fic")).expect("v2 lossless"),
+        std::fs::read(data_dir.join("golden-v2-palette.fic")).expect("v2 palette"),
     ]
 }
 
@@ -79,7 +83,7 @@ fn random_garbage_never_panics() {
 #[test]
 fn garbage_with_valid_magic_never_panics() {
     let mut seed = 0xBADF00Du64;
-    for version in [1u8, 2] {
+    for version in [1u8, 2, 3] {
         for _ in 0..500 {
             let len = 20 + (xorshift(&mut seed) % 400) as usize;
             let mut bytes: Vec<u8> = (0..len)

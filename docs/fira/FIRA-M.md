@@ -421,6 +421,10 @@ Tie-break: `Score desc → PublishedAt desc → Title asc (case-insensitive)`.
 | 4 | Onboarding жанров | не реализован; Phase 0 работает без mandatory onboarding (прокси — собственные/избранные треки) | v2; требование «onboarding блокирует выдачу» смягчено — Flow работает и без выбора жанров |
 | 5 | Неалгоритмический fallback | нет отдельного топ-чарта/новых релизов без персонализации | v1.1 — требование суверенитета [`FIRA.md §16`](./FIRA.md) |
 
+### Rust-порт (Фаза 1, перенесён заранее)
+
+Чистый скорер портирован 1:1 и закреплён consumer-тестом на golden-векторе `fira-m-scorer-v1.json` — формулы и **дефолты конфига** заморожены до cutover Фазы 1: C# [`MusicFlowScorer.cs`](../../Modules/Flora.Music/Flora.Music.Application/Recommendations/MusicFlowScorer.cs) ↔ Rust [`recommendations.rs`](../../Backend/crates/modules/flora-music/src/application/recommendations.rs) (`score`, `rank`, `GenreWeights`); тесты — [`fira_vectors.rs`](../../Backend/tests/parity/tests/fira_vectors.rs). Дефолты `MusicRecommendationOptions` продублированы в Rust `Default` и сверяются тестом с вектором (снятым с дефолтов C#). Case-insensitive ключи жанров и tie-break по `Title` — ordinal ignore-case с паритетом .NET (`flora_shared::ordinal`).
+
 ---
 
 ## Open Questions / Future Work

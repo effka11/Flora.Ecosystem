@@ -5,6 +5,8 @@ export * from "./sodium.js";
 export * from "./canonicalJson.js";
 export * from "./aad.js";
 export * from "./safetyNumber.js";
+export * from "./franking.js";
+export * from "./conversationSession.js";
 export * from "./rke.js";
 export * from "./envelope.js";
 export {

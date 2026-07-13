@@ -5,6 +5,7 @@ resolver = "3"
 members = [
     "crates/fvc",
     "crates/fvc-cli",
+    "crates/fvc-wasm",
 ]
 
 [workspace.package]

@@ -149,23 +149,35 @@ fn read_coded(bytes: &[u8], n_ctx: usize) -> Result<(Section<'_>, usize), Decode
     }
     // Арифметика позиций — checked: длины приходят из недоверенного потока,
     // а на 32-битных целях (wasm) сложение usize может переполниться.
-    let lens_end = pos.checked_add(8).ok_or(DecodeError::Corrupt("section: переполнение"))?;
+    let lens_end = pos
+        .checked_add(8)
+        .ok_or(DecodeError::Corrupt("section: переполнение"))?;
     let Some(lens) = bytes.get(pos..lens_end) else {
         return Err(DecodeError::Corrupt("section: обрыв длин потоков"));
     };
     let token_len = u32::from_le_bytes(lens[0..4].try_into().expect("len 4")) as usize;
     let raw_len = u32::from_le_bytes(lens[4..8].try_into().expect("len 4")) as usize;
     pos = lens_end;
-    let tok_end =
-        pos.checked_add(token_len).ok_or(DecodeError::Corrupt("section: переполнение"))?;
+    let tok_end = pos
+        .checked_add(token_len)
+        .ok_or(DecodeError::Corrupt("section: переполнение"))?;
     let Some(tokens) = bytes.get(pos..tok_end) else {
         return Err(DecodeError::Corrupt("section: обрыв потока токенов"));
     };
     pos = tok_end;
-    let raw_end = pos.checked_add(raw_len).ok_or(DecodeError::Corrupt("section: переполнение"))?;
+    let raw_end = pos
+        .checked_add(raw_len)
+        .ok_or(DecodeError::Corrupt("section: переполнение"))?;
     let Some(raw) = bytes.get(pos..raw_end) else {
         return Err(DecodeError::Corrupt("section: обрыв потока сырых бит"));
     };
     pos = raw_end;
-    Ok((Section { tables, tokens, raw }, pos))
+    Ok((
+        Section {
+            tables,
+            tokens,
+            raw,
+        },
+        pos,
+    ))
 }

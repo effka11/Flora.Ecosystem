@@ -4,7 +4,7 @@
 **Version:** 0.2
 **Date:** 2026-07-13
 
-Компаньоны: [`FGP.md`](../fgp/FGP.md) (v0.5, потребитель аттестаций: §4.1 определяет права уровней) и [`FGP-THREATS.md`](../fgp/FGP-THREATS.md) (v0.4; V-01 — операционная программа защиты personhood). Нормативная механика уровней V0–V3, церемоний, поручительств, якорей, восстановления, nullifier'ов и замера `C_identity` — **здесь**; FGP на неё ссылается и не дублирует. История адверсариальных ревью — Приложение B (B.1: 0.1 → 0.2, 16 находок, 3 критических).
+Компаньоны: [`FGP.md`](../fgp/FGP.md) (v0.6, потребитель аттестаций: §4.1 определяет права уровней) и [`FGP-THREATS.md`](../fgp/FGP-THREATS.md) (v0.5; V-01 — операционная программа защиты personhood). Нормативная механика уровней V0–V3, церемоний, поручительств, якорей, восстановления, nullifier'ов и замера `C_identity` — **здесь**; FGP на неё ссылается и не дублирует. История адверсариальных ревью — Приложение B (B.1: 0.1 → 0.2, 16 находок, 3 критических).
 
 ---
 
@@ -46,7 +46,7 @@ FPP отвечает на один вопрос: **«за этим крипто�
 
 Владелец — модуль **Verification**. Сегодняшняя реализация (email-коды) — это V0; FPP расширяет модуль до полного personhood-стека. Governance — потребитель через контракт.
 
-Целевой стек — Rust-workspace `Backend/` ([`next-architecture.md`](../../next-architecture.md)): `Backend/crates/modules/flora-verification` + `flora-verification-contracts`. Verification переводится на Rust в **Фазе 2a** миграции; вся реализация FPP пишется **только в Rust после cutover 2a** — двойной реализации personhood не существует ни в один момент времени. До этого FPP-работы ограничены спецификацией, крипто-RFC, test vectors и песочницей.
+Целевой стек — Rust-workspace `Backend/` ([`next-architecture.md`](../../next-architecture.md)): `Backend/crates/modules/flora-verification` + `flora-verification-contracts`. Verification переводится на Rust в **Фазе 2a** миграции; вся реализация FPP пишется **только в Rust после cutover 2a** — двойной реализации personhood не существует ни в один момент времени. До этого FPP-работы ограничены спецификацией, криптослоем ([`FGP-CRYPTO.md`](../fgp/FGP-CRYPTO.md)), test vectors и песочницей.
 
 ```
 flora-governance ──→ flora-verification-contracts   (trait PersonhoodAttestor, события)
@@ -324,7 +324,7 @@ trait LaborAnchorSource {                           // реализует Govern
 
 ### 10.3. Криптография
 
-- Подписи — Ed25519 (RustCrypto-семейство, без C-зависимостей — как в остальном workspace). PRF nullifier'ов, commitment-схема и ZK-система (membership + range «level ≥ L») фиксируются **отдельным крипто-RFC** до P1/P2: выбор между ZK-friendly хешами (Poseidon) и консервативными (BLAKE3 + обвязка) — трейд-офф зрелости и производительности, решается с внешним ревью.
+- Подписи — Ed25519 (RustCrypto-семейство, без C-зависимостей — как в остальном workspace). PRF nullifier'ов, commitment-схема и ZK-система (membership + range «level ≥ L») зафиксированы в [`FGP-CRYPTO.md`](../fgp/FGP-CRYPTO.md) (§1 реестр примитивов, §2 деривации, §7 threshold-OPRF с fallback): P1 — BLAKE3-дерево + слепые токены, P2 — Poseidon2 + transparent-ZK; финальный выбор ZK-системы — гейт v2 с внешним ревью.
 - Инварианты workspace обязательны: `unsafe_code = "forbid"`, `cargo deny` (лицензии, дубли), `cargo audit`/`cargo vet` для personhood-критичных крейтов, пиновка `Cargo.lock`.
 - Верификатор пруфов — **одно Rust-ядро**, компилируемое в native (сервер) и wasm32 (`@flora/client-core`): дрейф паритета исключён по построению. Монокультурная оговорка: golden-вектора (`docs/test-vectors/personhood/`) — кросс-проверка, независимая реализация верификатора — желательный community-артефакт (THREATS V-11).
 - Consensus-critical вычисления — целочисленные/фикс-пойнт (требование FGP §8.1): float в путях, влияющих на пруфы, запрещён.
@@ -342,7 +342,7 @@ trait LaborAnchorSource {                           // реализует Govern
 | Фаза | Содержимое | Отпирает (FGP §8.3) | Предусловия |
 | --- | --- | --- | --- |
 | **P0** | email-коды (текущее) | v0 (advisory) | — |
-| **P1** | церемонии V1 (включая безопасность §3.1.1), genesis-набор V2 (§4.4), web-of-trust, асинхронный путь, замеры `C_hat` | v1 (binding R0/R1) | Rust-cutover Verification (Фаза 2a); крипто-RFC nullifier; видеоканал церемоний в Apps (E2E + TURN-релей); 2 квартальных замера `C_hat` |
+| **P1** | церемонии V1 (включая безопасность §3.1.1), genesis-набор V2 (§4.4), web-of-trust, асинхронный путь, замеры `C_hat` | v1 (binding R0/R1) | Rust-cutover Verification (Фаза 2a); криптослой профиля P1 ([`FGP-CRYPTO.md`](../fgp/FGP-CRYPTO.md) §14) с внешним ревью; видеоканал церемоний в Apps (E2E + TURN-релей); 2 квартальных замера `C_hat` |
 | **P2** | ZK-креденшалы (membership/range), внешние якоря V3 с threshold-OPRF дедупом, blind issuance (target) | v2 (binding R2/R3) | внешний криптоаудит; test vectors в CI; пул аттесторов ≥ 2 юрисдикций; DKG-церемония OPRF-ключа пула |
 
 ---

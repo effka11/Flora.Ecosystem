@@ -12,6 +12,7 @@ workspace = true
 
 # Правило §2.3: flora-shared зависит только от внешних crates.
 [dependencies]
+chrono = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }

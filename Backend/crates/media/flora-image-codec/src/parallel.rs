@@ -32,7 +32,10 @@ where
                 }
             });
             // Все слоты заполнены по построению: чанки покрывают весь срез.
-            return results.into_iter().map(|r| r.expect("par_map: слот заполнен")).collect();
+            return results
+                .into_iter()
+                .map(|r| r.expect("par_map: слот заполнен"))
+                .collect();
         }
     }
     items.iter().map(f).collect()

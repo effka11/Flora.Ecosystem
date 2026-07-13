@@ -22,6 +22,7 @@ pub mod bands;
 pub mod bitio;
 pub mod container;
 pub mod mdct;
+pub mod rangecoder;
 
 mod alloc;
 mod codec;

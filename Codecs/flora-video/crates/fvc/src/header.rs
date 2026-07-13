@@ -56,11 +56,6 @@ impl FrameHeader {
             width,
             height,
         };
-        if !header.keyframe {
-            return Err(Error::InvalidBitstream(
-                "inter frames are not defined in v0.1",
-            ));
-        }
         if width > MAX_DIMENSION || height > MAX_DIMENSION || width % 8 != 0 || height % 8 != 0 {
             return Err(Error::InvalidBitstream("invalid dimensions"));
         }
@@ -74,27 +69,29 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let h = FrameHeader {
-            keyframe: true,
-            loop_filter: true,
-            qp: 37,
-            width: 1280,
-            height: 720,
-        };
-        let mut buf = Vec::new();
-        h.write(&mut buf);
-        buf.extend_from_slice(&[9, 9, 9]);
-        let (parsed, rest) = FrameHeader::parse(&buf).unwrap();
-        assert_eq!(parsed, h);
-        assert_eq!(rest, &[9, 9, 9]);
+        for keyframe in [true, false] {
+            let h = FrameHeader {
+                keyframe,
+                loop_filter: true,
+                qp: 37,
+                width: 1280,
+                height: 720,
+            };
+            let mut buf = Vec::new();
+            h.write(&mut buf);
+            buf.extend_from_slice(&[9, 9, 9]);
+            let (parsed, rest) = FrameHeader::parse(&buf).unwrap();
+            assert_eq!(parsed, h);
+            assert_eq!(rest, &[9, 9, 9]);
+        }
     }
 
     #[test]
     fn rejects_garbage() {
         assert!(FrameHeader::parse(&[]).is_err());
-        assert!(FrameHeader::parse(&[2, 1, 10, 0, 0, 0, 0]).is_err()); // версия
-        assert!(FrameHeader::parse(&[1, 0, 10, 7, 0, 7, 0]).is_err()); // не keyframe
-        assert!(FrameHeader::parse(&[1, 1, 99, 7, 0, 7, 0]).is_err()); // qp
-        assert!(FrameHeader::parse(&[1, 1, 10, 2, 0, 7, 0]).is_err()); // ширина не кратна 8
+        assert!(FrameHeader::parse(&[1, 1, 10, 7, 0, 7, 0]).is_err()); // старая версия (v0.1)
+        assert!(FrameHeader::parse(&[3, 1, 10, 7, 0, 7, 0]).is_err()); // будущая версия
+        assert!(FrameHeader::parse(&[2, 1, 99, 7, 0, 7, 0]).is_err()); // qp
+        assert!(FrameHeader::parse(&[2, 1, 10, 2, 0, 7, 0]).is_err()); // ширина не кратна 8
     }
 }

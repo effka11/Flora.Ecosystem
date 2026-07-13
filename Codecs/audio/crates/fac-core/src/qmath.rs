@@ -34,6 +34,27 @@ pub(crate) fn pow2_e8(m: i32) -> f32 {
     pow2_e64(m.saturating_mul(8))
 }
 
+/// Детерминированный целочисленный `≈ floor(64·log2(v))`, `v ≥ 1`
+/// (метод последовательных возведений в квадрат; ошибки усечения только
+/// занижают результат, поэтому `768 − log2_x64(f)` — верхняя оценка стоимости
+/// бита с частотой `f/4096` в 1/64 бита). Без float — бит-в-бит на всех
+/// платформах: нормативная функция учёта стоимости адаптивных битов.
+pub(crate) fn log2_x64(v: u32) -> u64 {
+    debug_assert!(v >= 1);
+    let int_part = 31 - v.leading_zeros();
+    let mut m = u64::from(v) << (31 - int_part); // мантисса в [2^31, 2^32)
+    let mut frac = 0u64;
+    for _ in 0..6 {
+        m = (m * m) >> 31; // в [2^31, 2^33)
+        frac <<= 1;
+        if m >= 1u64 << 32 {
+            frac |= 1;
+            m >>= 1;
+        }
+    }
+    u64::from(int_part) * 64 + frac
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +101,21 @@ mod tests {
                 "m={m}: got {got}, exact {exact}"
             );
         }
+    }
+
+    /// `log2_x64` занижает точное значение не более чем на 2/64.
+    #[test]
+    fn log2_x64_is_tight_lower_bound() {
+        for v in 1u32..=4096 {
+            let exact = 64.0 * f64::from(v).log2();
+            let got = log2_x64(v) as f64;
+            assert!(
+                got <= exact + 1e-9 && got > exact - 2.0,
+                "v={v}: got {got}, exact {exact:.3}"
+            );
+        }
+        assert_eq!(log2_x64(1), 0);
+        assert_eq!(log2_x64(2048), 64 * 11);
+        assert_eq!(log2_x64(4096), 64 * 12);
     }
 }

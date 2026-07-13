@@ -303,4 +303,52 @@ public sealed class FscpWireValidatorVectorTests
         var b = JsonSerializer.Serialize(FscpWireValidatorVectorGenerator.BuildVector());
         Assert.Equal(a, b);
     }
+
+    /// <summary>
+    /// Кросс-вектор: реальный криптографический транскрипт (fscp-message-transcript-v1.json,
+    /// генератор — python, consumers TS/Rust) обязан проходить боевой C#-валидатор формы,
+    /// а его варианты — вести себя как задекларировано в поле serverFormValidation.
+    /// Замыкает треугольник: клиентская криптография ⇄ серверная форма ⇄ Rust-порт.
+    /// </summary>
+    [Fact]
+    public void Message_transcript_vector_agrees_with_reference_validator()
+    {
+        var path = Path.Combine(VectorsRootDir, "fscp-message-transcript-v1.json");
+        Assert.True(File.Exists(path), $"Missing golden vector: {path} (python docs/test-vectors/_gen_fscp_message_transcript_v1.py)");
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var root = doc.RootElement;
+        var sender = Guid.Parse(root.GetProperty("uuids").GetProperty("senderUserUuid").GetString()!);
+        var receiver = Guid.Parse(root.GetProperty("uuids").GetProperty("receiverUserUuid").GetString()!);
+        var wire = root.GetProperty("wire").GetString()!;
+
+        Assert.True(
+            FscpWireEnvelopeValidator.TryValidateDualWire(wire, wire, sender, receiver, out var error),
+            $"транскрипт обязан проходить серверную валидацию: {error}");
+        Assert.True(
+            FscpWireEnvelopeValidator.TryExtractReceiver(wire, sender, out var extracted, out var exErr),
+            $"TryExtractReceiver: {exErr}");
+        Assert.Equal(receiver, extracted);
+
+        foreach (var variant in root.GetProperty("variants").EnumerateArray())
+        {
+            var id = variant.GetProperty("variantId").GetString();
+            var vWire = variant.GetProperty("wire").GetString()!;
+            var valid = FscpWireEnvelopeValidator.TryValidateDualWire(vWire, vWire, sender, receiver, out var vError);
+
+            switch (variant.GetProperty("serverFormValidation").GetString())
+            {
+                case "accept":
+                    Assert.True(valid, $"{id}: форма должна проходить, error='{vError}'");
+                    break;
+                case "reject":
+                    Assert.False(valid, $"{id}: форма должна отклоняться");
+                    Assert.Equal(variant.GetProperty("serverExpectedError").GetString(), vError);
+                    break;
+                default:
+                    Assert.Fail($"{id}: неизвестный serverFormValidation");
+                    break;
+            }
+        }
+    }
 }

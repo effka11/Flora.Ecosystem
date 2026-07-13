@@ -190,7 +190,6 @@ fn decode_tile(
             payload,
             &mut pos,
             PlaneShape::new(t.w, t.h, range),
-            version,
         )?);
     } else if header.lossless {
         for range in [RANGE_LUMA, chroma_range, chroma_range] {
@@ -198,11 +197,12 @@ fn decode_tile(
                 payload,
                 &mut pos,
                 PlaneShape::new(t.w, t.h, range),
-                version,
             )?);
         }
     } else {
-        color.push(read_dct_plane(payload, &mut pos, t.w, t.h, q_luma, version)?);
+        color.push(read_dct_plane(
+            payload, &mut pos, t.w, t.h, q_luma, version,
+        )?);
         for _ in 0..2 {
             let (cw, ch) = if header.chroma420 {
                 (t.w.div_ceil(2), t.h.div_ceil(2))
@@ -223,7 +223,6 @@ fn decode_tile(
             payload,
             &mut pos,
             PlaneShape::new(t.w, t.h, RANGE_LUMA),
-            version,
         )?)
     } else {
         None
@@ -239,21 +238,15 @@ fn read_lossless_plane(
     payload: &[u8],
     pos: &mut usize,
     shape: PlaneShape,
-    version: u8,
 ) -> Result<Vec<i16>, DecodeError> {
-    let n_ctx = if version >= 2 {
-        lossless::N_CTX_V2
-    } else {
-        lossless::N_CTX_V1
-    };
-    let (section, used) = read_predictive_section(&payload[*pos..], n_ctx, shape)?;
+    let (section, used) = read_predictive_section(&payload[*pos..], lossless::N_CTX, shape)?;
     *pos += used;
     match section {
         PredictiveSection::Raw(packed) => unpack_raw(packed, shape),
         PredictiveSection::Coded(section) => {
             let mut dec = RansDecoder::new(section.tokens)?;
             let mut raw = BitReader::new(section.raw);
-            let buf = lossless::decode_tile_plane(&section, &mut dec, &mut raw, shape, version)?;
+            let buf = lossless::decode_tile_plane(&section, &mut dec, &mut raw, shape)?;
             dec.finish()?;
             if raw.unread_bytes() != 0 {
                 return Err(DecodeError::Corrupt("лишние байты в потоке сырых бит"));
@@ -272,19 +265,19 @@ fn read_dct_plane(
     qmat: &[u16; 64],
     version: u8,
 ) -> Result<Vec<i16>, DecodeError> {
-    let n_ctx = if version >= 2 {
-        lossy::N_CTX_V2
-    } else {
-        lossy::N_CTX_V1
+    let n_ctx = match version {
+        3.. => lossy::N_CTX_V3,
+        2 => lossy::N_CTX_V2,
+        _ => lossy::N_CTX_V1,
     };
     let (section, used) = read_dct_section(&payload[*pos..], n_ctx)?;
     *pos += used;
     let mut dec = RansDecoder::new(section.tokens)?;
     let mut raw = BitReader::new(section.raw);
-    let buf = if version >= 2 {
-        lossy::decode_tile_plane(&section, &mut dec, &mut raw, w, h, qmat)?
-    } else {
-        lossy::decode_tile_plane_v1(&section, &mut dec, &mut raw, w, h, qmat)?
+    let buf = match version {
+        3.. => lossy::decode_tile_plane(&section, &mut dec, &mut raw, w, h, qmat)?,
+        2 => lossy::decode_tile_plane_v2(&section, &mut dec, &mut raw, w, h, qmat)?,
+        _ => lossy::decode_tile_plane_v1(&section, &mut dec, &mut raw, w, h, qmat)?,
     };
     dec.finish()?;
     if raw.unread_bytes() != 0 {

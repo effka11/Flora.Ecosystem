@@ -281,6 +281,10 @@ Score = memberScore + activityScore + socialScore + recencyScore
 
 **Не реализовано (target):** UIP-матчинг и теги сообществ (v2); growth bonus по `weeklyGrowthRate` (v2); exploration-квота и тематическое разнообразие (v2); dismissal «Не интересно» (v1.1); неалгоритмическая fallback-сортировка по размеру/новизне — требование суверенитета [`FIRA.md §16`](./FIRA.md) (v1.1); CF (v3). Исключение «покинул с "Не интересно"» не отслеживается — покинутые сообщества сразу возвращаются в пул кандидатов.
 
+### Rust-порт (Фаза 3, перенесён заранее)
+
+Чистый скорер портирован 1:1 и закреплён consumer-тестом на golden-векторе `fira-c-scorer-v1.json` — формулы заморожены до cutover: C# [`CommunityRecommendationScorer.cs`](../../Modules/Flora.Content/Flora.Content.Application/Communities/CommunityRecommendationScorer.cs) ↔ Rust [`communities.rs`](../../Backend/crates/modules/flora-content/src/application/communities.rs) (`score`, `rank`); тесты — [`fira_vectors.rs`](../../Backend/tests/parity/tests/fira_vectors.rs). Tie-break по `Name` использует ordinal ignore-case сравнение с паритетом .NET (`flora_shared::ordinal`).
+
 ---
 
 ## Open Questions / Future Work
