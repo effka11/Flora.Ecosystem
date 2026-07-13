@@ -20,6 +20,7 @@ FSCP (Flora Secure Communication Protocol) — протокол защищённ
 - [`franking.md`](./franking.md) — FSCP-FRANK, RFC-draft message franking (модерация E2E по добровольной жалобе; активация v1.1+).
 - [`../fgp/FGP.md`](../fgp/FGP.md) — governance. FSCP реализует конституционные инварианты FGP §1.1–§1.2: «тайна переписки» (сервер хранит только ciphertext) и запрет обязательного клиентского сканирования (§1.2 п. 7). Модерация E2E-пространства проходит **только** по добровольной жалобе через message franking (FGP §6.5, см. §Целевой алгоритм → Message franking).
 - [`../../next-architecture.md`](../../next-architecture.md) §1.2, §4.4 — на время миграции бэкенда на Rust wire FSCP v1 и bootstrap-epoch **заморожены**; сервер лишь воспроизводит структурную валидацию бит-в-бит.
+- [`../FSCP-REVIEW.md`](../FSCP-REVIEW.md) — ревью спецификации и реализации (2026-07-14): вердикт, actionable-находки, расхождения docs↔факт, порядок remediation.
 
 **Ревизии:**
 

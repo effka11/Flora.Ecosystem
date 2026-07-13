@@ -6,6 +6,8 @@
 
 > Изменения 0.2 → 0.3 (ревью спека ↔ код ↔ миграция): статус реализации и карта отклонений (§14); детерминизм и числовой паритет для параллельно разрабатываемого Rust-бэкенда (§15, [`next-architecture.md`](../../next-architecture.md)); governance и суверенитет ленты (§16, [`FGP.md`](../fgp/FGP.md)); дорожная карта v1.1/v2/v3 (§17); нормативная нормализация компонентов Score для v2 (§3); владение UIP перенесено из `Flora.Shared` в `Flora.Users.Contracts`; закрыты open questions по UIP persistence и cross-component UIP.
 
+**Смежные документы:** [`../FIRA-REVIEW.md`](../FIRA-REVIEW.md) — ревью спека ↔ as-built C# ↔ Rust-порт ↔ golden (2026-07-14): вердикт, M1–M3, остаток v1.1, порядок remediation.
+
 ---
 
 ## Overview
