@@ -1,4 +1,4 @@
-# FSCP — Flora Secure Chat Protocol
+﻿# FSCP — Flora Secure Communication Protocol
 
 **Status:** Released  
 **Version:** 1.0  
@@ -8,7 +8,7 @@
 
 ## Overview
 
-FSCP (Flora Secure Chat Protocol) — протокол защищённого **личного чата** в экосистеме FLORA. Он задаёт криптографические цели, wire-format, состояние сессии 1:1, согласование ключей сообщения и правила серверной валидации **без расшифровки** payload.
+FSCP (Flora Secure Communication Protocol) — протокол защищённого **личного чата** в экосистеме FLORA. Он задаёт криптографические цели, wire-format, состояние сессии 1:1, согласование ключей сообщения и правила серверной валидации **без расшифровки** payload.
 
 Платформенный контур (key epochs, backup/recovery, FSM аккаунта, API messaging, freeze, rate limits) описан в [`e2e-security.md`](./e2e-security.md). FSCP **опирается** на него, но **владеет** каналом «сообщение ↔ доставка ↔ клиенты».
 

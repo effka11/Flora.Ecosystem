@@ -1,10 +1,11 @@
-# NOTICE — Flora Ecosystem
+﻿# NOTICE — Flora Ecosystem
 
 **Project:** Flora Ecosystem (repository: [`Flora.Ecosystem`](https://github.com/effka11/Flora.Ecosystem))
 
-**Copyright (c) 2026 Flora Ecosystem and contributors.**
+**Copyright (c) 2026 Egor Ozerskikh (Егор Озерских).**
 
-Commercial licensing is administered by **Luna Ecosystem** (legal@flora-s.net).
+Commercial licensing under the **Luna Ecosystem** brand is administered by the copyright holder
+(e.ozerskikh@gmail.com).
 
 Flora Ecosystem is dual-licensed. This file is the authoritative map of which license applies to
 which materials in this repository, and it contains the legal notices that must be preserved in all
@@ -18,8 +19,8 @@ and build/configuration files — is licensed, at your option, under either:
 
 1. the **GNU Affero General Public License, version 3 only (AGPL-3.0-only)** — see
    [`LICENSE`](LICENSE); or
-2. a **commercial license** granted by a separate written agreement with Luna Ecosystem — see
-   [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
+2. a **commercial license** granted by a separate written agreement with the copyright holder
+   (Luna Ecosystem brand) — see [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
 
 SPDX expression: `AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial`, where
 `LicenseRef-Flora-Ecosystem-Commercial` refers to [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
@@ -73,5 +74,6 @@ affiliated with Flora Ecosystem / Luna Ecosystem.
 
 ## 6. Contacts
 
-- Commercial and legal: **Luna Ecosystem — legal@flora-s.net**
+- Copyright holder and commercial / legal licensing: **Egor Ozerskikh** —
+  **e.ozerskikh@gmail.com** (Luna Ecosystem brand)
 - Security reports: **flora.dev.hub@gmail.com** (see [`SECURITY.md`](SECURITY.md))

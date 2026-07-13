@@ -2,7 +2,7 @@
   "name": "flora-ecosystem-js",
   "private": true,
   "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
-  "author": "Flora Ecosystem (https://github.com/effka11/Flora.Ecosystem)",
+  "author": "Egor Ozerskikh <e.ozerskikh@gmail.com>",
   "workspaces": [
     "Apps/Mobile",
     "Packages/*"

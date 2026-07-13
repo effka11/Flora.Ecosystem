@@ -1,4 +1,4 @@
-# Юридический манифест Flora Ecosystem (Legal Notice)
+﻿# Юридический манифест Flora Ecosystem (Legal Notice)
 
 > Этот документ объясняет модель лицензирования простыми словами. Он **не заменяет** и **не изменяет**
 > тексты лицензий. Для исходного кода юридически обязывающим является файл [`LICENSE`](LICENSE)
@@ -12,6 +12,8 @@
 > Брендовые имена проекта — **Flora** и **Flora Ecosystem**; коммерческое направление — **Luna** и
 > **Luna Ecosystem**. Написания с точкой (`Flora.Ecosystem`, `Luna.Ecosystem`, `Flora.Social`) —
 > технические имена репозитория, решения и пакетов, обозначающие те же бренды.
+> Правообладатель (copyright holder): **Egor Ozerskikh (Егор Озерских)** —
+> e.ozerskikh@gmail.com.
 
 ---
 
@@ -20,10 +22,12 @@
 Flora Ecosystem использует двойное лицензирование по двум отдельным категориям материалов:
 
 1. **Исходный код (Source Code):** **GNU Affero General Public License v3.0 (AGPLv3, только
-   версия 3 — AGPL-3.0-only)** для сообщества или коммерческая лицензия через **Luna Ecosystem**
+   версия 3 — AGPL-3.0-only)** для сообщества или коммерческая лицензия у правообладателя
+   **Egor Ozerskikh** под брендом **Luna Ecosystem**
    (см. [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)).
 2. **Некодовые материалы (Non-Code Materials):** **Creative Commons Attribution-ShareAlike 4.0
-   International (CC BY-SA 4.0)** или коммерческая лицензия на контент через **Luna Ecosystem**.
+   International (CC BY-SA 4.0)** или коммерческая лицензия на контент у того же правообладателя
+   под брендом **Luna Ecosystem**.
 
 SPDX-выражение для кода: `AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial`.
 
@@ -81,13 +85,14 @@ SPDX-выражение для кода: `AGPL-3.0-only OR LicenseRef-Flora-Ecos
 - получить **Enterprise-версию**, отдельные гарантии, SLA или приоритетную поддержку;
 - интегрировать компоненты Flora Ecosystem в коммерческую систему на условиях, отличных от AGPLv3,
 
-— вам необходима **коммерческая лицензия на код**, которую предоставляет **Luna Ecosystem**.
+— вам необходима **коммерческая лицензия на код** у правообладателя
+**Egor Ozerskikh (Егора Озерских)** под брендом **Luna Ecosystem**.
 Порядок получения и границы коммерческой лицензии описаны в
 [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
 
 **Контакт для коммерческих лицензий, приобретения закрытых лицензий и Enterprise-версий:**
 
-> **Luna Ecosystem — legal@flora-s.net**
+> **Egor Ozerskikh / Luna Ecosystem — e.ozerskikh@gmail.com**
 
 Без действующей коммерческой лицензии любое коммерческое использование с закрытием кода **запрещено**
 (см. §3).
@@ -137,9 +142,10 @@ SPDX-выражение для кода: `AGPL-3.0-only OR LicenseRef-Flora-Ecos
   контента.
 - Copyright-разрешение на брендовые графические материалы не даёт права использовать эти материалы
   как товарный знак, знак поддержки, знак аффилированности или обозначение происхождения продукта.
-  Такие права возможны только по отдельному письменному разрешению Luna Ecosystem.
+  Такие права возможны только по отдельному письменному разрешению правообладателя
+  (Egor Ozerskikh / Luna Ecosystem).
 - Архитектурные обозначения **FERA** (Flora Ecosystem Reference Architecture), **FIRA** (Flora
-  Individual Recommendation Algorithm), протоколы **FSCP** (Flora Secure Chat Protocol) и **FGP**
+  Individual Recommendation Algorithm), протоколы **FSCP** (Flora Secure Communication Protocol) и **FGP**
   (Flora Governance Protocol) открыты для изучения и реализации в рамках соответствующих лицензий,
   но их имена и брендинг защищены.
 - Вы **можете** форкать и модифицировать код, документацию и спецификации в рамках применимых
@@ -158,11 +164,12 @@ Luna Ecosystem.
 ## 7. Вклад в проект (Contributions)
 
 Любой вклад (Pull Request) регулируется условиями **CLA (Contributor License Agreement)**, описанными
-в [`CONTRIBUTING.md`](CONTRIBUTING.md). Отправляя вклад, вы соглашаетесь с делегированием прав на:
+в [`CONTRIBUTING.md`](CONTRIBUTING.md). Отправляя вклад, вы соглашаетесь с делегированием прав
+правообладателю **Egor Ozerskikh (Егору Озерских)** на:
 
-- распространение кода как под AGPLv3, так и под коммерческими лицензиями Luna Ecosystem;
+- распространение кода как под AGPLv3, так и под коммерческими лицензиями под брендом Luna Ecosystem;
 - распространение некодовых материалов как под CC BY-SA 4.0, так и под коммерческими лицензиями
-  Luna Ecosystem.
+  под брендом Luna Ecosystem.
 
 ---
 
@@ -175,4 +182,5 @@ Luna Ecosystem.
 
 ---
 
-© 2026 Flora Ecosystem. Коммерческие права администрирует Luna Ecosystem (legal@flora-s.net).
+© 2026 Egor Ozerskikh (Егор Озерских). Коммерческие права — Luna Ecosystem
+(e.ozerskikh@gmail.com).

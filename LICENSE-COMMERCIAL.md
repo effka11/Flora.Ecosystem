@@ -1,7 +1,8 @@
-# Flora Ecosystem — Commercial License (Notice)
+﻿# Flora Ecosystem — Commercial License (Notice)
 
 > **This document grants no rights by itself.** A commercial license to Flora Ecosystem is granted
-> **only** by an explicit written agreement executed with **Luna Ecosystem**. Unless and until such
+> **only** by an explicit written agreement executed with the copyright holder,
+> **Egor Ozerskikh (Егор Озерских)**, under the **Luna Ecosystem** brand. Unless and until such
 > an agreement is in force for you, the source code is available to you exclusively under the GNU
 > Affero General Public License, version 3 only ([`LICENSE`](LICENSE)), and non-code materials under
 > CC BY-SA 4.0 ([`LICENSE-CONTENT.md`](LICENSE-CONTENT.md)).
@@ -52,7 +53,7 @@ expressly stated in the agreement.
 
 ## 5. How to obtain a commercial license
 
-Contact **Luna Ecosystem — legal@flora-s.net** and include:
+Contact **Egor Ozerskikh / Luna Ecosystem — e.ozerskikh@gmail.com** and include:
 
 1. your organization and contact person;
 2. the product or service in which Flora Ecosystem will be used;
@@ -71,11 +72,11 @@ rights under its §8.
 ## 7. Contributions
 
 Contributions to this repository are accepted under the CLA described in
-[`CONTRIBUTING.md`](CONTRIBUTING.md) §1, which enables the project owner and Luna Ecosystem to
-license contributed material under both the open licenses (AGPLv3, CC BY-SA 4.0) and commercial
-licenses.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) §1, which enables the copyright holder
+(**Egor Ozerskikh**) to license contributed material under both the open licenses (AGPLv3,
+CC BY-SA 4.0) and commercial licenses under the Luna Ecosystem brand.
 
 ---
 
-© 2026 Flora Ecosystem. Commercial licensing is administered by Luna Ecosystem
-(legal@flora-s.net).
+© 2026 Egor Ozerskikh (Егор Озерских). Commercial licensing under the Luna Ecosystem brand:
+e.ozerskikh@gmail.com.

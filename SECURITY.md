@@ -1,4 +1,4 @@
- # Политика безопасности Flora Ecosystem (Security Policy)
+﻿ # Политика безопасности Flora Ecosystem (Security Policy)
 
 ## Сообщение об уязвимостях (Reporting)
 
@@ -91,5 +91,5 @@
 ---
 
 Контакт по вопросам безопасности: **flora.dev.hub@gmail.com**.
-Коммерческие лицензии и гарантии: **Luna Ecosystem — legal@flora-s.net**
+Коммерческие лицензии и гарантии: **Egor Ozerskikh / Luna Ecosystem — e.ozerskikh@gmail.com**
 (см. [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)).
