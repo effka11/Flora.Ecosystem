@@ -51,7 +51,10 @@ impl<W: Write> FvcWriter<W> {
         h[14..18].copy_from_slice(&header.fps_den.to_le_bytes());
         h[18..22].copy_from_slice(&header.frame_count.to_le_bytes());
         inner.write_all(&h)?;
-        Ok(FvcWriter { inner, frames_written: 0 })
+        Ok(FvcWriter {
+            inner,
+            frames_written: 0,
+        })
     }
 
     pub fn write_frame(&mut self, pts: u64, payload: &[u8]) -> io::Result<()> {
@@ -94,7 +97,10 @@ impl<R: Read> FvcReader<R> {
         let mut h = [0u8; HEADER_LEN];
         inner.read_exact(&mut h)?;
         if h[0..4] != FVC_MAGIC {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "not an FVC file"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "not an FVC file",
+            ));
         }
         if h[4] != CONTAINER_VERSION {
             return Err(io::Error::new(
@@ -122,7 +128,10 @@ impl<R: Read> FvcReader<R> {
         }
         let size = u32::from_le_bytes(size_buf) as usize;
         if size > 256 * 1024 * 1024 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "frame size implausible"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "frame size implausible",
+            ));
         }
         let mut pts_buf = [0u8; 8];
         self.inner.read_exact(&mut pts_buf)?;
@@ -152,7 +161,13 @@ mod tests {
         assert_eq!(&bytes[0..4], &FVC_MAGIC);
 
         let mut r = FvcReader::new(&bytes[..]).unwrap();
-        assert_eq!(r.header, FvcHeader { frame_count: 2, ..header });
+        assert_eq!(
+            r.header,
+            FvcHeader {
+                frame_count: 2,
+                ..header
+            }
+        );
         assert_eq!(r.read_frame().unwrap().unwrap(), (0, vec![7, 8, 9]));
         assert_eq!(r.read_frame().unwrap().unwrap(), (1, vec![1]));
         assert!(r.read_frame().unwrap().is_none());

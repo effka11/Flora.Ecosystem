@@ -4,7 +4,7 @@
 **Version:** 0.2
 **Date:** 2026-07-13
 
-Компаньоны: [`README.md`](../../README.md) (манифест ценностей — нормативная рамка для любых growth-решений), [`SECURITY.md`](../../SECURITY.md) (известные ограничения — влияют на порядок запусков), [`docs/fgp/FGP.md`](../fgp/FGP.md) и [`docs/fpp/FPP.md`](../fpp/FPP.md) (governance/personhood — механики доверия, с которыми рифмуется рост), [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (границы модулей — обязательны для growth-фич). История ревью — Приложение C.
+Компаньоны: [`README.md`](../../README.md) (манифест ценностей — нормативная рамка для любых growth-решений), [`SECURITY.md`](../../SECURITY.md) (известные ограничения — влияют на порядок запусков), [`docs/fgp/FGP.md`](../fgp/FGP.md) и [`docs/fpp/FPP.md`](../fpp/FPP.md) (governance/personhood — механики доверия, с которыми рифмуется рост), [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (границы модулей — обязательны для growth-фич). Операционный слой (пошаговые схемы, готовые тексты, чек-листы) — [`GROWTH-PLAYBOOK.md`](./GROWTH-PLAYBOOK.md). История ревью — Приложение C.
 
 ---
 

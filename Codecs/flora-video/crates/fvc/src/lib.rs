@@ -24,6 +24,7 @@ mod mc;
 pub mod metrics;
 mod predict;
 mod quant;
+mod rate;
 mod scan;
 mod syntax;
 mod tables;
@@ -150,6 +151,30 @@ pub struct EncoderConfig {
     pub loop_filter: bool,
     /// Интервал ключевых кадров: 1 = все кадры ключевые, N — ключ каждые N кадров.
     pub keyint: u32,
+    /// Целевой средний битрейт (кбит/с); `None` — фиксированный `qp`.
+    pub target_kbps: Option<u32>,
+    /// Частота кадров для rate control (числитель).
+    pub fps_num: u32,
+    /// Частота кадров для rate control (знаменатель).
+    pub fps_den: u32,
+    /// Психовизуальная настройка RDO: смешивание SSE с SSIM-прокси (v0.3).
+    pub ssim_tune: bool,
+}
+
+impl Default for EncoderConfig {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            qp: 32,
+            loop_filter: true,
+            keyint: 60,
+            target_kbps: None,
+            fps_num: 30,
+            fps_den: 1,
+            ssim_tune: false,
+        }
+    }
 }
 
 impl EncoderConfig {
@@ -168,6 +193,9 @@ impl EncoderConfig {
         }
         if self.keyint == 0 {
             return Err(Error::InvalidConfig("keyint must be >= 1"));
+        }
+        if self.fps_num == 0 || self.fps_den == 0 {
+            return Err(Error::InvalidConfig("fps_num and fps_den must be non-zero"));
         }
         Ok(())
     }

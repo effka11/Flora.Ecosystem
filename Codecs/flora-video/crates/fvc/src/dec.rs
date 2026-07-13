@@ -47,7 +47,11 @@ impl Decoder {
 
         for sb_y in (0..h).step_by(SB_SIZE) {
             for sb_x in (0..w).step_by(SB_SIZE) {
-                let sb = Blk { x: sb_x, y: sb_y, n: SB_SIZE };
+                let sb = Blk {
+                    x: sb_x,
+                    y: sb_y,
+                    n: SB_SIZE,
+                };
                 self.parse_node(&mut frame, &mut syntax, &mut grid, &mut dec, sb, &header);
             }
         }
@@ -109,12 +113,24 @@ fn parse_leaf(
             };
         }
         let (tx_split, luma, cb, cr) = parse_coeffs(syntax, dec, b);
-        LeafData { kind: LeafKind::Inter { mv, skip: false }, tx_split, luma, cb, cr }
+        LeafData {
+            kind: LeafKind::Inter { mv, skip: false },
+            tx_split,
+            luma,
+            cb,
+            cr,
+        }
     } else {
         let mode = syntax.decode_mode(dec, grid.dir_ctx(b.x, b.y));
         let chroma_mode = syntax.decode_chroma_mode(dec);
         let (tx_split, luma, cb, cr) = parse_coeffs(syntax, dec, b);
-        LeafData { kind: LeafKind::Intra { mode, chroma_mode }, tx_split, luma, cb, cr }
+        LeafData {
+            kind: LeafKind::Intra { mode, chroma_mode },
+            tx_split,
+            luma,
+            cb,
+            cr,
+        }
     }
 }
 

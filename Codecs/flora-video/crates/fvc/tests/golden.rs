@@ -106,8 +106,8 @@ fn vectors() -> Vec<Vector> {
                 width: 64,
                 height: 64,
                 qp: 32,
-                loop_filter: true,
                 keyint: 1,
+                ..EncoderConfig::default()
             },
             frames: vec![intra_base.clone(), shift(&intra_base, 1, 0)],
         },
@@ -117,8 +117,8 @@ fn vectors() -> Vec<Vector> {
                 width: 96,
                 height: 64,
                 qp: 28,
-                loop_filter: true,
                 keyint: 2,
+                ..EncoderConfig::default()
             },
             frames: vec![
                 gop_base.clone(),
@@ -135,8 +135,11 @@ fn vectors() -> Vec<Vector> {
                 qp: 40,
                 loop_filter: false,
                 keyint: 9,
+                ..EncoderConfig::default()
             },
-            frames: (0..5).map(|i| shift(&golden_frame(72, 48, 0xF12), 3 * i, -i)).collect(),
+            frames: (0..5)
+                .map(|i| shift(&golden_frame(72, 48, 0xF12), 3 * i, -i))
+                .collect(),
         },
     ]
 }
@@ -154,7 +157,8 @@ fn encode_vector(v: &Vector) -> Vec<u8> {
     let mut w = FvcWriter::new(Cursor::new(Vec::new()), header).expect("in-memory write");
     for (i, f) in v.frames.iter().enumerate() {
         let packet = enc.encode_frame(f).expect("golden encode");
-        w.write_frame(i as u64, &packet.data).expect("in-memory write");
+        w.write_frame(i as u64, &packet.data)
+            .expect("in-memory write");
     }
     w.finalize().expect("in-memory finalize").into_inner()
 }
@@ -195,8 +199,12 @@ fn golden_vectors() {
         .expect("tests/data/golden.sums missing — run with FVC_UPDATE_GOLDEN=1 once");
     for v in vectors() {
         let path = dir.join(format!("{}.fvc", v.name));
-        let stored = std::fs::read(&path)
-            .unwrap_or_else(|_| panic!("{} missing — run with FVC_UPDATE_GOLDEN=1 once", path.display()));
+        let stored = std::fs::read(&path).unwrap_or_else(|_| {
+            panic!(
+                "{} missing — run with FVC_UPDATE_GOLDEN=1 once",
+                path.display()
+            )
+        });
 
         // Пин 1: энкодер детерминированно воспроизводит замороженный поток.
         let encoded = encode_vector(&v);
@@ -222,6 +230,11 @@ fn golden_vectors() {
         // Число кадров тоже зафиксировано.
         let prefix = format!("{} ", v.name);
         let expected_count = sums_text.lines().filter(|l| l.starts_with(&prefix)).count();
-        assert_eq!(sums.len(), expected_count, "{}: frame count mismatch", v.name);
+        assert_eq!(
+            sums.len(),
+            expected_count,
+            "{}: frame count mismatch",
+            v.name
+        );
     }
 }

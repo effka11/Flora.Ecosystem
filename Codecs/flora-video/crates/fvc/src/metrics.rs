@@ -1,5 +1,6 @@
 //! Метрики качества (инструментальные, не нормативные — float допустим).
 
+use crate::Blk;
 use crate::frame::{Frame, Plane};
 
 fn plane_sse(a: &Plane, b: &Plane) -> u64 {
@@ -75,4 +76,33 @@ impl PsnrAccum {
             ),
         }
     }
+}
+
+/// Целочисленный SSIM-прокси для RDO (не нормативен): 0 = идеально, порядок величины как у SSE.
+pub(crate) fn block_ssim_dist(src: &Plane, b: Blk, pred: &[i32]) -> u64 {
+    let n = b.n;
+    let n2 = (n * n) as i64;
+    let mut sum_x = 0i64;
+    let mut sum_y = 0i64;
+    let mut sum_xx = 0i64;
+    let mut sum_yy = 0i64;
+    let mut sum_xy = 0i64;
+    for i in 0..n {
+        for j in 0..n {
+            let x = i64::from(src.get(b.x + j, b.y + i));
+            let y = i64::from(pred[i * n + j].clamp(0, 255));
+            sum_x += x;
+            sum_y += y;
+            sum_xx += x * x;
+            sum_yy += y * y;
+            sum_xy += x * y;
+        }
+    }
+    let var_x = sum_xx * n2 - sum_x * sum_x;
+    let var_y = sum_yy * n2 - sum_y * sum_y;
+    let cov = sum_xy * n2 - sum_x * sum_y;
+    let struct_d = (var_x + var_y - 2 * cov).max(0) as u64;
+    let mean_d = (sum_x - sum_y).unsigned_abs() as u64;
+    let log_n = n.trailing_zeros() as u32;
+    (struct_d >> (log_n + 6)) + (mean_d.saturating_mul(4) >> u64::from(log_n))
 }

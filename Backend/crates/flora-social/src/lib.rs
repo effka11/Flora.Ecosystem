@@ -9,11 +9,12 @@
 use flora_shared::config::FloraConfig;
 
 /// Объединённый роутер продукта. Порядок композиции повторяет C#-продукт:
-/// Users → Verification → Auth → Notifications → Content → Messaging → Music.
+/// Users → Verification → Auth → Notifications → Content → Messaging → Music,
+/// затем Rust-native модули (Economy — C#-аналога нет, fallback не задействуется).
 ///
 /// До первых cutover'ов модульные роутеры пусты: всё, что здесь не смэтчилось,
 /// хост (flora-api) отправляет в .NET через gateway-fallback (§5.1).
-pub fn product_router(_cfg: &FloraConfig) -> axum::Router {
+pub fn product_router(cfg: &FloraConfig) -> axum::Router {
     axum::Router::new()
         .merge(flora_users::router())
         .merge(flora_verification::router())
@@ -22,6 +23,37 @@ pub fn product_router(_cfg: &FloraConfig) -> axum::Router {
         .merge(flora_content::router())
         .merge(flora_messaging::router())
         .merge(flora_music::router())
+        .merge(economy_router(cfg))
+}
+
+/// Композиция Economy (FEP): включается флагом `Economy:Enabled`.
+///
+/// Хранилище журнала — JSONL-файл `Economy:LedgerPath` (по умолчанию `flora-economy.ledger.jsonl`
+/// в рабочем каталоге). Аттестор — консервативный (все V0, UBI не начисляется), пока модуль
+/// Verification не реализует уровни FPP; экономика при этом полностью работоспособна
+/// (переводы, взаимный кредит, журнал).
+///
+/// Ошибка композиции (повреждённый журнал, расхождение реплея) — модуль офлайн, продукт
+/// продолжает работать: лестница деградации FGP §7.3, статус-кво вместо работы поверх
+/// скомпрометированного состояния.
+fn economy_router(cfg: &FloraConfig) -> axum::Router {
+    if cfg.get_bool("Economy:Enabled") != Some(true) {
+        return flora_economy::router();
+    }
+    let path = cfg
+        .get_non_empty("Economy:LedgerPath")
+        .unwrap_or("flora-economy.ledger.jsonl");
+    let store = std::sync::Arc::new(flora_economy::infrastructure::JsonlLedgerStore::new(
+        std::path::PathBuf::from(path),
+    ));
+    let attestor = std::sync::Arc::new(flora_economy::infrastructure::ConservativeAttestor);
+    match flora_economy::compose(store, attestor) {
+        Ok(module) => module.router,
+        Err(e) => {
+            eprintln!("flora-economy: композиция отклонена, модуль офлайн: {e}");
+            flora_economy::router()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -44,5 +76,46 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn economy_disabled_by_default() {
+        let router = product_router(&FloraConfig::default());
+        let response = router
+            .oneshot(
+                http::Request::builder()
+                    .uri("/api/economy/ledger/head")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn economy_enabled_serves_ledger_head() {
+        let path =
+            std::env::temp_dir().join(format!("flora-social-economy-{}.jsonl", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let cfg = FloraConfig::from_layers(
+            "Development",
+            &[serde_json::json!({
+                "Economy": { "Enabled": true, "LedgerPath": path.to_string_lossy() }
+            })],
+            &[],
+        );
+        let router = product_router(&cfg);
+        let response = router
+            .oneshot(
+                http::Request::builder()
+                    .uri("/api/economy/ledger/head")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::OK);
+        let _ = std::fs::remove_file(&path);
     }
 }

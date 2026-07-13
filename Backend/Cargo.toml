@@ -23,6 +23,9 @@ members = [
     "crates/modules/flora-notifications-contracts",
     "crates/modules/flora-verification",
     "crates/modules/flora-verification-contracts",
+    "crates/modules/flora-economy",
+    "crates/modules/flora-economy-contracts",
+    "crates/modules/flora-economy-crypto",
     "crates/modules/flora-governance-crypto",
     "crates/infrastructure/flora-grpc-bridge",
     "crates/media/flora-image-codec",
@@ -58,6 +61,9 @@ flora-notifications = { path = "crates/modules/flora-notifications" }
 flora-notifications-contracts = { path = "crates/modules/flora-notifications-contracts" }
 flora-verification = { path = "crates/modules/flora-verification" }
 flora-verification-contracts = { path = "crates/modules/flora-verification-contracts" }
+flora-economy = { path = "crates/modules/flora-economy" }
+flora-economy-contracts = { path = "crates/modules/flora-economy-contracts" }
+flora-economy-crypto = { path = "crates/modules/flora-economy-crypto" }
 flora-governance-crypto = { path = "crates/modules/flora-governance-crypto" }
 flora-grpc-bridge = { path = "crates/infrastructure/flora-grpc-bridge" }
 # --- media (кодеки FMC, docs/codecs/CODECS.md §Flora Media Codecs) ---
@@ -106,7 +112,8 @@ chrono = { version = "0.4.45", default-features = false, features = ["std", "clo
 reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
 argon2 = "0.5.3"
 tokio-stream = "0.1.18"
-# клиентская криптография FSCP (паритет golden-векторов с libsodium/@noble; задел Rust client-core)
+# клиентская криптография FSCP (паритет golden-векторов с libsodium/@noble; задел Rust client-core);
+# ed25519-dalek также используется прод-ядром flora-economy-crypto (подписи FEP)
 x25519-dalek = "2.0"
 ed25519-dalek = "2.0"
 hkdf = "0.12"

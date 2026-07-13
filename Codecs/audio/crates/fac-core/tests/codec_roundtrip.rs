@@ -549,8 +549,9 @@ fn anti_collapse_fills_holes_in_transient_frames() {
                 if e > dec_hf.len() || e > pcm_hf.len() {
                     continue;
                 }
-                let energy =
-                    |x: &[f32]| -> f64 { x[s..e].iter().map(|&v| f64::from(v) * f64::from(v)).sum() };
+                let energy = |x: &[f32]| -> f64 {
+                    x[s..e].iter().map(|&v| f64::from(v) * f64::from(v)).sum()
+                };
                 let e_ref = energy(&pcm_hf);
                 if e_ref > 1e-8 && energy(dec_hf) < e_ref / 64.0 {
                     holes += 1;
@@ -587,7 +588,10 @@ fn anti_collapse_fills_holes_in_transient_frames() {
     let avg_bits =
         packets.iter().map(|p| p.len() as u64 * 8).sum::<u64>() as f64 / packets.len() as f64;
     println!("средние биты/кадр: {avg_bits:.0} (цель {base_bits:.0})");
-    assert!(avg_bits <= base_bits + 24.0, "VBR-lite превысил средний бюджет");
+    assert!(
+        avg_bits <= base_bits + 24.0,
+        "VBR-lite превысил средний бюджет"
+    );
     let mean_len = |transient: bool| -> f64 {
         let sel: Vec<usize> = packets
             .iter()
@@ -616,7 +620,11 @@ fn anti_collapse_flag_on_long_frame_is_rejected() {
     for h in 0..3 {
         packet = enc.encode_frame(&pcm[h * FRAME_N..][..FRAME_N]).unwrap();
     }
-    assert_eq!(packet[0] & 0b1, 0, "кадр стационарного синуса должен быть длинным");
+    assert_eq!(
+        packet[0] & 0b1,
+        0,
+        "кадр стационарного синуса должен быть длинным"
+    );
     packet[0] |= 0b10; // anti-collapse без transient — невалидно
     let mut dec = Decoder::new(48_000, 1).unwrap();
     assert!(dec.decode_frame(&packet).is_err());

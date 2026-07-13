@@ -5,8 +5,10 @@
 # Категории и разрешённые внутренние зависимости:
 #   flora-api        -> flora-social, flora-shared
 #   flora-social     -> корни модулей, flora-shared
-#   flora-<module>   -> свой *-contracts, чужие *-contracts, flora-shared
+#   flora-<module>   -> свой *-contracts, чужие *-contracts, свой *-crypto, flora-shared
 #   *-contracts      -> flora-shared
+#   *-crypto         -> (только внешние crates) — детерминированные ядра (FGP §8.1),
+#                       собираются в wasm32 для клиентской верификации
 #   flora-shared     -> (только внешние crates)
 #   flora-migrate    -> корни модулей (их миграторы), flora-shared
 #   flora-grpc-bridge-> любые *-contracts, flora-shared (§5.2)
@@ -53,6 +55,7 @@ function Get-CrateCategory {
     if ($relative.StartsWith("crates/media/")) { return "media" }
     if ($relative.StartsWith("crates/modules/")) {
         if ($Package.name.EndsWith("-contracts")) { return "module-contracts" }
+        if ($Package.name.EndsWith("-crypto")) { return "module-crypto" }
         return "module-root"
     }
     return "unknown"
@@ -85,8 +88,12 @@ foreach ($package in $packages) {
         $allowed = switch ($category) {
             "api" { ($dep -eq "flora-social") -or ($dep -eq "flora-shared") }
             "product" { $moduleRoots.Contains($dep) -or ($dep -eq "flora-shared") }
-            "module-root" { $dep.EndsWith("-contracts") -or ($dep -eq "flora-shared") }
+            "module-root" {
+                # Свой crypto-core: flora-economy -> flora-economy-crypto (имя ядра = имя модуля + "-crypto").
+                $dep.EndsWith("-contracts") -or ($dep -eq "flora-shared") -or ($dep -eq "$($package.name)-crypto")
+            }
             "module-contracts" { $dep -eq "flora-shared" }
+            "module-crypto" { $false }
             "shared" { $false }
             "migrate" { $moduleRoots.Contains($dep) -or ($dep -eq "flora-shared") }
             "infrastructure" { $dep.EndsWith("-contracts") -or ($dep -eq "flora-shared") }

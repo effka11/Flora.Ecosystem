@@ -167,8 +167,8 @@ fn predict_block(b: &Border, mode: u8) -> [i32; 64] {
             // Вниз-вправо: сглаженная диагональ из left / corner / above.
             // Опорный ряд: left[7..0], corner, above[0..8] (индексация d).
             let mut line = [0i32; 17];
-            for j in 0..8 {
-                line[j] = b.left[7 - j];
+            for (j, slot) in line[0..8].iter_mut().enumerate() {
+                *slot = b.left[7 - j];
             }
             line[8] = b.corner;
             line[9..17].copy_from_slice(&b.above[0..8]);

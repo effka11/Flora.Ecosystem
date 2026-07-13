@@ -1,51 +1,69 @@
 # flora-video — FVC (Flora Video Codec)
 
-Референсная реализация битстрима **FVC1 v0.1** (intra-only ядро).
-Нормативная спецификация: [`docs/codecs/FVC.md`](../../docs/codecs/FVC.md);
-семейство FMC и реестр сигнатур: [`docs/codecs/CODECS.md`](../../docs/codecs/CODECS.md).
+Референсная реализация битстрима **FVC1 v2** (v1 Released: intra + inter, GOP,
+контейнер `.fvc`, WASM-декодер). Нормативная спецификация:
+[`docs/codecs/FVC.md`](../../docs/codecs/FVC.md); семейство FMC:
+[`docs/codecs/CODECS.md`](../../docs/codecs/CODECS.md).
 
 ## Состав
 
-- `crates/fvc` — ядро: энкодер + декодер, без внешних зависимостей,
-  `unsafe` запрещён, собирается под `wasm32-unknown-unknown`.
-- `crates/fvc-cli` — бинарь `fvc`: encode / decode / info / psnr.
-- `tools/gen_tables.mjs` — генератор нормативных таблиц (`tables.rs`).
-- `tools/bench.ps1`, `tools/bdrate.mjs` — RD-кривые против x264 и BD-Rate.
+| Crate | Назначение |
+| --- | --- |
+| `crates/fvc` | Ядро: энкодер + декодер, pure std, `unsafe` запрещён |
+| `crates/fvc-cli` | `fvc`: encode / decode / info / psnr |
+| `crates/fvc-wasm` | WASM-декодер для Apps/Web (`www/fvc-player.mjs`) |
+| `tools/` | `gen_tables.mjs`, `bench.ps1`, `bdrate.mjs` |
 
 ## Использование
 
 ```powershell
 cargo build --release
-.\target\release\fvc.exe encode -i in.y4m -o out.fvc --qp 32   # y4m 4:2:0 8-бит
+.\target\release\fvc.exe encode -i in.y4m -o out.fvc --qp 32 --keyint 60
+.\target\release\fvc.exe encode -i in.y4m -o out.fvc --bitrate 500 --keyint 30 --ssim-tune
 .\target\release\fvc.exe decode -i out.fvc -o dec.y4m
 .\target\release\fvc.exe info   -i out.fvc
 .\target\release\fvc.exe psnr   --ref in.y4m --dist dec.y4m
 ```
 
-`--qp 0..63` — шаг квантования удваивается каждые +8; `--no-filter` отключает
-деблокинг; `--frames N` ограничивает число кадров.
+Опции encode:
 
-## Результаты (v0.1, intra, 30 кадров, PSNR overall)
+- `--qp 0..63` — фиксированное квантование (шаг ×2 каждые +8 qp)
+- `--bitrate <kbps>` — однопроходный rate control (смещение qp)
+- `--keyint <N>` — GOP: ключ каждые N кадров (1 = all-intra)
+- `--ssim-tune` — психовизуальная настройка RDO (SSE + SSIM-прокси)
+- `--no-filter` — без деблокинга; `--frames N` — лимит кадров
 
-BD-Rate против x264 `-preset medium -tune psnr -g 1` (отрицательное = FVC плотнее):
+Контейнер: `.fvc` (нативный, magic `8F 46 56 43`) или `.ivf` (FourCC `FVC1`).
 
-| Клип | BD-Rate |
-| --- | --- |
-| foreman_cif (352×288, натуральный) | **−0.1%** |
-| testsrc2 (640×360, синтетика)      | **−6.4%** |
+### WASM
 
-Воспроизведение: `pwsh tools/bench.ps1 -InputY4m bench/clip.y4m`,
+```powershell
+rustup target add wasm32-unknown-unknown
+cargo build -p fvc-wasm --target wasm32-unknown-unknown --release
+cargo check -p fvc --target wasm32-unknown-unknown
+```
+
+## Результаты BD-Rate (30 кадров, PSNR overall, x264 `-preset medium -tune psnr`)
+
+Отрицательное = FVC плотнее при том же PSNR.
+
+| Режим | Клип | BD-Rate |
+| --- | --- | --- |
+| intra (`-g 1`) | foreman_cif | **−0.1%** |
+| intra | testsrc2 640×360 | **−6.4%** |
+| inter (`-g 30`) | foreman_cif | запустите `pwsh tools/bench.ps1 -InputY4m bench/foreman_cif.y4m -Keyint 30` |
+
+Воспроизведение: `pwsh tools/bench.ps1 -InputY4m bench/clip.y4m [-Keyint N]`,
 затем `node tools/bdrate.mjs bench/clip.csv fvc x264`.
 
 ## Гарантии
 
-- Декодер **бит-точно** воспроизводит реконструкцию энкодера (тест на каждом прогоне).
-- Декодер **не паникует** на произвольном входе (однобайтовые/многобайтовые
-  мутации, обрезки, мусор — в тестах).
-- Нормативные пути — только целочисленная математика: детерминизм на всех
-  платформах, включая wasm32.
+- Декодер **бит-точно** воспроизводит реконструкцию энкодера.
+- Декодер **не паникует** на произвольном входе (fuzz в `tests/codec.rs`).
+- Битстрим v2 **заморожен** golden-векторами (`tests/golden.rs`, `tests/data/golden.sums`).
+- Нормативные пути — целочисленная математика; wasm32-декодер детерминирован.
 
-## Проверки перед коммитом
+## Проверки
 
 ```powershell
 cargo fmt --all --check
@@ -54,8 +72,17 @@ cargo test --workspace
 cargo check -p fvc --target wasm32-unknown-unknown
 ```
 
-## Границы v0.1 и план
+Регенерация golden (только при осознанном изменении битстрима):
 
-Только intra (все кадры ключевые), YUV 4:2:0 8-бит, размеры кратны 8.
-Дорожная карта (inter, rate control, SIMD, заморозка v1 golden-векторами) —
-[`docs/codecs/FVC.md`](../../docs/codecs/FVC.md) §14.
+```powershell
+$env:FVC_UPDATE_GOLDEN = "1"
+cargo test -p fvc --test golden
+```
+
+## Границы v1
+
+Реализовано: YUV 4:2:0 8-бит, intra + P-кадры (одна ссылка), GOP, rate control,
+SSIM-tune, `.fvc` + IVF, WASM decode.
+
+Не в v1: B-кадры, tile-параллелизм в битстриме, A/V-mux с FAC, продакшен-энкодер
+в браузере. См. [`docs/codecs/FVC.md`](../../docs/codecs/FVC.md) §14.

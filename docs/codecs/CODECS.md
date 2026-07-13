@@ -17,9 +17,9 @@ CODECS — политика сжатия и хранения медиа в эк�
 
 Нативные кодеки Flora (семейство **FMC**, разработка):
 
-- [`FIC.md`](./FIC.md) — фото (Flora Image Codec), битстрим v1 заморожен.
+- [`FIC.md`](./FIC.md) — фото (Flora Image Codec), битстрим **v3** (v1/v2 заморожены, читаются всегда).
 - [`FAC.md`](./FAC.md) — аудио (Flora Audio Codec), битстрим v0 (draft).
-- [`FVC.md`](./FVC.md) — видео (Flora Video Codec), битстрим FVC1 v0.1 (draft).
+- [`FVC.md`](./FVC.md) — видео (Flora Video Codec), битстрим FVC1 **v2** (Released v1).
 
 Этот документ нормативен: реализация пайплайнов **обязана** соответствовать описанным здесь правилам и компонентным спекам.
 
@@ -137,8 +137,8 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 
 | Кодек | Сигнатура | Расширение | MIME (предложение) | Статус |
 | --- | --- | --- | --- | --- |
-| FIC | magic `8F 46 49 43` (`\x8F FIC`) | `.fic` | `image/x-flora-fic` | битстрим v1 заморожен |
-| FVC | FourCC `FVC1` в IVF (dev); magic `8F 46 56 43` — резерв | `.ivf` (dev), `.fvc` (резерв) | `video/x-flora-fvc` | битстрим v0.1 |
+| FIC | magic `8F 46 49 43` (`\x8F FIC`) | `.fic` | `image/x-flora-fic` | битстрим **v3** (v1/v2 заморожены) |
+| FVC | FourCC `FVC1` в IVF (dev); magic `8F 46 56 43` в `.fvc` | `.fvc`, `.ivf` | `video/x-flora-fvc` | битстрим **v2** (Released) |
 | FAC | контейнер `FACS` (dev); magic `8F 46 41 43` — резерв | `.facs` (dev), `.fac` (резерв) | `audio/x-flora-fac` | битстрим v0 |
 
 ### Конвенции треков

@@ -21,6 +21,7 @@ use crate::lf::loop_filter;
 use crate::mc::{MV_CLAMP, MVD_MAX, Mv, RefFrame, mc_chroma, mc_luma};
 use crate::predict::NUM_MODES;
 use crate::quant::{ac_step, dequantize_block, quantize_block};
+use crate::rate::RateControl;
 use crate::syntax::SyntaxModel;
 use crate::transform::{forward, inverse};
 use crate::{Blk, EncoderConfig, Error, NodePlacement, SB_SIZE, place_node};
@@ -51,16 +52,21 @@ pub struct Encoder {
     recon: Frame,
     reference: Option<RefFrame>,
     frame_index: u64,
+    rate_ctrl: Option<RateControl>,
 }
 
 impl Encoder {
     pub fn new(cfg: EncoderConfig) -> Result<Self, Error> {
         cfg.validate()?;
+        let rate_ctrl = cfg
+            .target_kbps
+            .map(|kbps| RateControl::new(cfg.qp, kbps, cfg.fps_num, cfg.fps_den));
         Ok(Encoder {
             cfg,
             recon: Frame::new(cfg.width as usize, cfg.height as usize),
             reference: None,
             frame_index: 0,
+            rate_ctrl,
         })
     }
 
@@ -77,23 +83,39 @@ impl Encoder {
     pub fn encode_frame(&mut self, src: &Frame) -> Result<EncodedFrame, Error> {
         let (w, h) = (self.cfg.width as usize, self.cfg.height as usize);
         if src.width() != w || src.height() != h {
-            return Err(Error::InvalidFrame("frame dimensions do not match encoder config"));
+            return Err(Error::InvalidFrame(
+                "frame dimensions do not match encoder config",
+            ));
         }
         let keyframe =
             self.reference.is_none() || self.frame_index.is_multiple_of(u64::from(self.cfg.keyint));
+        let base_qp = self
+            .rate_ctrl
+            .as_ref()
+            .map(RateControl::qp)
+            .unwrap_or(self.cfg.qp);
         // Ключевой кадр — якорь GOP: чуть мельче квант.
-        let qp = if keyframe && self.cfg.keyint > 1 { self.cfg.qp.saturating_sub(4) } else { self.cfg.qp };
+        let qp = if keyframe && self.cfg.keyint > 1 {
+            base_qp.saturating_sub(4)
+        } else {
+            base_qp
+        };
         let (lambda_num, lambda_den) = lambda(qp);
 
         let mut fe = FrameEnc {
             src,
-            reference: if keyframe { None } else { self.reference.as_ref() },
+            reference: if keyframe {
+                None
+            } else {
+                self.reference.as_ref()
+            },
             keyframe,
             qp,
             lambda_num,
             lambda_den,
             recon: Frame::new(w, h),
             grid: LeafGrid::new(w, h),
+            ssim_tune: self.cfg.ssim_tune,
         };
         // Кадровые модели/сетка сериализации (зеркало декодера).
         let mut syntax = SyntaxModel::default();
@@ -102,7 +124,11 @@ impl Encoder {
 
         for sb_y in (0..h).step_by(SB_SIZE) {
             for sb_x in (0..w).step_by(SB_SIZE) {
-                let sb = Blk { x: sb_x, y: sb_y, n: SB_SIZE };
+                let sb = Blk {
+                    x: sb_x,
+                    y: sb_y,
+                    n: SB_SIZE,
+                };
                 let (_, tree) = fe
                     .rdo_node(&syntax, sb, None)
                     .expect("superblock origin is inside the frame");
@@ -120,6 +146,10 @@ impl Encoder {
         let mut data = Vec::new();
         header.write(&mut data);
         data.extend_from_slice(&enc.finish());
+
+        if let Some(rc) = &mut self.rate_ctrl {
+            rc.update(data.len());
+        }
 
         let mut recon = fe.recon;
         if self.cfg.loop_filter {
@@ -151,6 +181,7 @@ struct FrameEnc<'a> {
     /// Контекстная сетка RDO: заполняется по мере принятия решений,
     /// откатывается вместе с пикселями при отказе от поддерева.
     grid: LeafGrid,
+    ssim_tune: bool,
 }
 
 impl FrameEnc<'_> {
@@ -245,7 +276,12 @@ impl FrameEnc<'_> {
     // Inter
     // ------------------------------------------------------------------
 
-    fn rdo_leaf_inter(&self, syntax: &SyntaxModel, b: Blk, hint: Option<Mv>) -> Option<LeafOutcome> {
+    fn rdo_leaf_inter(
+        &self,
+        syntax: &SyntaxModel,
+        b: Blk,
+        hint: Option<Mv>,
+    ) -> Option<LeafOutcome> {
         let reference = self.reference?;
         let pred_mv = self.grid.mv_predictor(b.x, b.y, b.n);
         let bc = b.chroma();
@@ -255,16 +291,19 @@ impl FrameEnc<'_> {
         let mut pred = [0i32; 64 * 64];
         let mut skip_dist = 0u64;
         mc_luma(&reference.y, b, pred_mv, &mut pred);
-        skip_dist += sse_pred(&self.src.y, b, &pred);
+        skip_dist += plane_pred_dist(&self.src.y, b, &pred, self.ssim_tune);
         mc_chroma(&reference.cb, bc, pred_mv, &mut pred);
-        skip_dist += sse_pred(&self.src.cb, bc, &pred);
+        skip_dist += plane_pred_dist(&self.src.cb, bc, &pred, self.ssim_tune);
         mc_chroma(&reference.cr, bc, pred_mv, &mut pred);
-        skip_dist += sse_pred(&self.src.cr, bc, &pred);
+        skip_dist += plane_pred_dist(&self.src.cr, bc, &pred, self.ssim_tune);
         let skip_rate =
             inter_bit + (syntax.mvd_cost(Mv::default()) + syntax.skip_cost(true)) * self.lambda_num;
         let skip_cost = skip_dist * self.lambda_den + skip_rate;
         let skip_leaf = LeafData {
-            kind: LeafKind::Inter { mv: pred_mv, skip: true },
+            kind: LeafKind::Inter {
+                mv: pred_mv,
+                skip: true,
+            },
             tx_split: false,
             luma: Vec::new(),
             cb: Vec::new(),
@@ -272,7 +311,11 @@ impl FrameEnc<'_> {
         };
         // Идеальная статика: дальше не ищем.
         if skip_dist == 0 {
-            return Some(LeafOutcome { cost: skip_cost, dist: 0, leaf: skip_leaf });
+            return Some(LeafOutcome {
+                cost: skip_cost,
+                dist: 0,
+                leaf: skip_leaf,
+            });
         }
 
         // Поиск движения и вариант с остатком.
@@ -286,7 +329,11 @@ impl FrameEnc<'_> {
         }
         let coded = best.expect("two tx variants tried");
         if skip_cost <= coded.cost {
-            Some(LeafOutcome { cost: skip_cost, dist: skip_dist, leaf: skip_leaf })
+            Some(LeafOutcome {
+                cost: skip_cost,
+                dist: skip_dist,
+                leaf: skip_leaf,
+            })
         } else {
             Some(coded)
         }
@@ -303,7 +350,10 @@ impl FrameEnc<'_> {
         tx_split: bool,
     ) -> LeafOutcome {
         let bc = b.chroma();
-        let mvd = Mv { x: mv.x - pred_mv.x, y: mv.y - pred_mv.y };
+        let mvd = Mv {
+            x: mv.x - pred_mv.x,
+            y: mv.y - pred_mv.y,
+        };
         let mut rate = syntax.is_inter_cost(self.grid.inter_ctx(b.x, b.y), true)
             + syntax.mvd_cost(mvd)
             + syntax.skip_cost(false)
@@ -312,8 +362,14 @@ impl FrameEnc<'_> {
         let mut pred = [0i32; 64 * 64];
 
         mc_luma(&reference.y, b, mv, &mut pred);
-        let (d, r, luma) =
-            self.trial_plane(syntax, &self.src.y, &pred, b, luma_tile_size(b.n, tx_split), 0);
+        let (d, r, luma) = self.trial_plane(
+            syntax,
+            &self.src.y,
+            &pred,
+            b,
+            luma_tile_size(b.n, tx_split),
+            0,
+        );
         dist += d;
         rate += r;
         mc_chroma(&reference.cb, bc, mv, &mut pred);
@@ -348,7 +404,10 @@ impl FrameEnc<'_> {
             y: (pred_mv.y + (m.y - pred_mv.y).clamp(-(MVD_MAX - 64), MVD_MAX - 64))
                 .clamp(-MV_CLAMP, MV_CLAMP),
         };
-        let full = |m: Mv| Mv { x: (m.x >> 2) << 2, y: (m.y >> 2) << 2 };
+        let full = |m: Mv| Mv {
+            x: (m.x >> 2) << 2,
+            y: (m.y >> 2) << 2,
+        };
 
         let mut best_mv = Mv::default();
         let mut best_sad = self.sad_fullpel(rp, b, best_mv);
@@ -372,7 +431,10 @@ impl FrameEnc<'_> {
                 let base = best_mv;
                 for (dx, dy) in [(-step, 0), (step, 0), (0, -step), (0, step)] {
                     consider(
-                        Mv { x: base.x + dx, y: base.y + dy },
+                        Mv {
+                            x: base.x + dx,
+                            y: base.y + dy,
+                        },
                         &mut best_mv,
                         &mut best_sad,
                         self,
@@ -389,10 +451,20 @@ impl FrameEnc<'_> {
         for step in [2, 1] {
             for _ in 0..4 {
                 let base = best_mv;
-                for (dx, dy) in
-                    [(-step, 0), (step, 0), (0, -step), (0, step), (-step, -step), (step, step), (-step, step), (step, -step)]
-                {
-                    let m = clamp_mv(Mv { x: base.x + dx, y: base.y + dy });
+                for (dx, dy) in [
+                    (-step, 0),
+                    (step, 0),
+                    (0, -step),
+                    (0, step),
+                    (-step, -step),
+                    (step, step),
+                    (-step, step),
+                    (step, -step),
+                ] {
+                    let m = clamp_mv(Mv {
+                        x: base.x + dx,
+                        y: base.y + dy,
+                    });
                     let sad = self.sad_subpel(rp, b, m);
                     if sad < best_sub {
                         best_sub = sad;
@@ -497,7 +569,13 @@ impl FrameEnc<'_> {
         // Этап C: хрома-режим (same против DC/TM/V/H).
         let mut best_cm: Option<u8> = None;
         let mut best_chroma = u64::MAX;
-        for cm in [None, Some(crate::predict::MODE_DC), Some(crate::predict::MODE_TM), Some(crate::predict::MODE_V), Some(crate::predict::MODE_H)] {
+        for cm in [
+            None,
+            Some(crate::predict::MODE_DC),
+            Some(crate::predict::MODE_TM),
+            Some(crate::predict::MODE_V),
+            Some(crate::predict::MODE_H),
+        ] {
             if cm == Some(best_mode) {
                 continue; // покрывается вариантом `same`
             }
@@ -539,7 +617,10 @@ impl FrameEnc<'_> {
                     cost,
                     dist,
                     leaf: LeafData {
-                        kind: LeafKind::Intra { mode: best_mode, chroma_mode: best_cm },
+                        kind: LeafKind::Intra {
+                            mode: best_mode,
+                            chroma_mode: best_cm,
+                        },
                         tx_split,
                         luma,
                         cb,
@@ -640,14 +721,15 @@ impl FrameEnc<'_> {
         let mut deq = [0i32; 32 * 32];
         let mut rec_res = [0i32; 32 * 32];
 
+        let mut rec_buf = [0i32; 64 * 64];
         for ty in 0..per_row {
             for tx in 0..per_row {
                 for i in 0..tsize {
                     for j in 0..tsize {
                         let sy = b.y + ty * tsize + i;
                         let sx = b.x + tx * tsize + j;
-                        res[i * tsize + j] =
-                            i32::from(src.get(sx, sy)) - pred[(ty * tsize + i) * b.n + tx * tsize + j];
+                        res[i * tsize + j] = i32::from(src.get(sx, sy))
+                            - pred[(ty * tsize + i) * b.n + tx * tsize + j];
                     }
                 }
                 forward(&res[..t2], tsize, &mut coeffs[..t2]);
@@ -672,12 +754,20 @@ impl FrameEnc<'_> {
                         let sx = b.x + tx * tsize + j;
                         let p = pred[(ty * tsize + i) * b.n + tx * tsize + j];
                         let rec = (p + rec_res[i * tsize + j]).clamp(0, 255);
+                        let idx = (ty * tsize + i) * b.n + tx * tsize + j;
+                        rec_buf[idx] = rec;
                         let d = i64::from(src.get(sx, sy)) - i64::from(rec);
                         dist += (d * d) as u64;
                     }
                 }
                 tiles.push(levels[..t2].to_vec());
             }
+        }
+        if self.ssim_tune {
+            dist = blend_sse_ssim(
+                dist,
+                crate::metrics::block_ssim_dist(src, b, &rec_buf[..b.n * b.n]),
+            );
         }
         (dist, rate, tiles)
     }
@@ -697,7 +787,10 @@ impl FrameEnc<'_> {
         let placement = place_node(b, self.recon.width(), self.recon.height());
         match node {
             Node::Leaf(leaf) => {
-                debug_assert!(matches!(placement, NodePlacement::Leaf | NodePlacement::Choice));
+                debug_assert!(matches!(
+                    placement,
+                    NodePlacement::Leaf | NodePlacement::Choice
+                ));
                 if matches!(placement, NodePlacement::Choice) {
                     syntax.encode_split(enc, b.n, false);
                 }
@@ -729,7 +822,10 @@ impl FrameEnc<'_> {
                 debug_assert!(!self.keyframe);
                 syntax.encode_is_inter(enc, grid.inter_ctx(b.x, b.y), true);
                 let pred_mv = grid.mv_predictor(b.x, b.y, b.n);
-                let mvd = Mv { x: mv.x - pred_mv.x, y: mv.y - pred_mv.y };
+                let mvd = Mv {
+                    x: mv.x - pred_mv.x,
+                    y: mv.y - pred_mv.y,
+                };
                 debug_assert!(mvd.x.abs() <= MVD_MAX && mvd.y.abs() <= MVD_MAX);
                 syntax.encode_mvd(enc, mvd);
                 syntax.encode_skip(enc, skip);
@@ -749,7 +845,13 @@ impl FrameEnc<'_> {
         grid.fill_leaf(b, &leaf.kind);
     }
 
-    fn serialize_coeffs(&self, enc: &mut BoolEncoder, syntax: &mut SyntaxModel, b: Blk, leaf: &LeafData) {
+    fn serialize_coeffs(
+        &self,
+        enc: &mut BoolEncoder,
+        syntax: &mut SyntaxModel,
+        b: Blk,
+        leaf: &LeafData,
+    ) {
         syntax.encode_tx_split(enc, b.n, leaf.tx_split);
         let tsize = luma_tile_size(b.n, leaf.tx_split);
         for tile in &leaf.luma {
@@ -762,24 +864,72 @@ impl FrameEnc<'_> {
 }
 
 /// SSE источника против предсказания (без остатка).
+#[inline]
 fn sse_pred(src: &Plane, b: Blk, pred: &[i32]) -> u64 {
+    let n = b.n;
     let mut sse = 0u64;
-    for i in 0..b.n {
-        for j in 0..b.n {
-            let d = i64::from(src.get(b.x + j, b.y + i)) - i64::from(pred[i * b.n + j].clamp(0, 255));
+    let mut j = 0usize;
+    while j + 4 <= n {
+        for i in 0..n {
+            let row = i * n;
+            let sy = b.y + i;
+            for k in 0..4 {
+                let d = i64::from(src.get(b.x + j + k, sy))
+                    - i64::from(pred[row + j + k].clamp(0, 255));
+                sse += (d * d) as u64;
+            }
+        }
+        j += 4;
+    }
+    for i in 0..n {
+        for jj in j..n {
+            let d =
+                i64::from(src.get(b.x + jj, b.y + i)) - i64::from(pred[i * n + jj].clamp(0, 255));
             sse += (d * d) as u64;
         }
     }
     sse
 }
 
+/// Дисторсия предсказания с опциональным SSIM-RDO.
+#[inline]
+fn plane_pred_dist(src: &Plane, b: Blk, pred: &[i32], ssim_tune: bool) -> u64 {
+    let sse = sse_pred(src, b, pred);
+    if ssim_tune {
+        blend_sse_ssim(sse, crate::metrics::block_ssim_dist(src, b, pred))
+    } else {
+        sse
+    }
+}
+
+/// Смешивание SSE и SSIM-прокси (вес SSIM ≈ 22%).
+#[inline]
+fn blend_sse_ssim(sse: u64, ssim: u64) -> u64 {
+    const W: u64 = 56;
+    sse * (256 - W) / 256 + ssim * W / 256
+}
+
 /// SAD источника против предсказания.
+#[inline]
 fn sad_pred(src: &Plane, b: Blk, pred: &[i32]) -> u64 {
+    let n = b.n;
     let mut sad = 0u64;
-    for i in 0..b.n {
-        for j in 0..b.n {
-            let s = i32::from(src.get(b.x + j, b.y + i));
-            sad += s.abs_diff(pred[i * b.n + j].clamp(0, 255)) as u64;
+    let mut j = 0usize;
+    while j + 4 <= n {
+        for i in 0..n {
+            let row = i * n;
+            let sy = b.y + i;
+            for k in 0..4 {
+                let s = i32::from(src.get(b.x + j + k, sy));
+                sad += s.abs_diff(pred[row + j + k].clamp(0, 255)) as u64;
+            }
+        }
+        j += 4;
+    }
+    for i in 0..n {
+        for jj in j..n {
+            let s = i32::from(src.get(b.x + jj, b.y + i));
+            sad += s.abs_diff(pred[i * n + jj].clamp(0, 255)) as u64;
         }
     }
     sad

@@ -14,7 +14,9 @@
 
 use crate::ec::{BoolDecoder, BoolEncoder, Prob};
 use crate::mc::{MVD_MAX, Mv};
-use crate::predict::{MODE_D45, MODE_D135, MODE_DC, MODE_H, MODE_PLANAR, MODE_TM, MODE_V, is_directional};
+use crate::predict::{
+    MODE_D45, MODE_D135, MODE_DC, MODE_H, MODE_PLANAR, MODE_TM, MODE_V, is_directional,
+};
 use crate::tokens::CoeffModel;
 
 /// Категории величины MVD: r+1 ∈ [1, 2044] → c ≤ 10.
@@ -238,7 +240,11 @@ impl SyntaxModel {
     pub fn decode_mode(&mut self, dec: &mut BoolDecoder<'_>, dir_ctx: usize) -> u8 {
         if dec.get(&mut self.directional[dir_ctx]) {
             if dec.get(&mut self.diag) {
-                if dec.get(&mut self.d135) { MODE_D135 } else { MODE_D45 }
+                if dec.get(&mut self.d135) {
+                    MODE_D135
+                } else {
+                    MODE_D45
+                }
             } else if dec.get(&mut self.h) {
                 MODE_H
             } else {
@@ -293,7 +299,11 @@ impl SyntaxModel {
             return None;
         }
         Some(if dec.get(&mut self.cm_dir) {
-            if dec.get(&mut self.cm_h) { MODE_H } else { MODE_V }
+            if dec.get(&mut self.cm_h) {
+                MODE_H
+            } else {
+                MODE_V
+            }
         } else if dec.get(&mut self.cm_dc) {
             MODE_DC
         } else {
@@ -346,7 +356,10 @@ impl SyntaxModel {
     }
 
     pub fn decode_mvd(&mut self, dec: &mut BoolDecoder<'_>) -> Mv {
-        Mv { x: self.mvd_x.decode(dec), y: self.mvd_y.decode(dec) }
+        Mv {
+            x: self.mvd_x.decode(dec),
+            y: self.mvd_y.decode(dec),
+        }
     }
 
     pub fn mvd_cost(&self, d: Mv) -> u64 {
@@ -381,7 +394,9 @@ mod tests {
     /// MVD: roundtrip на характерных и крайних значениях.
     #[test]
     fn mvd_roundtrip() {
-        let values: Vec<i32> = vec![0, 1, -1, 2, -3, 4, -7, 8, 15, -16, 100, -333, 1024, -2047, 2047];
+        let values: Vec<i32> = vec![
+            0, 1, -1, 2, -3, 4, -7, 8, 15, -16, 100, -333, 1024, -2047, 2047,
+        ];
         let mut enc_model = SyntaxModel::default();
         let mut enc = BoolEncoder::new();
         for &x in &values {
@@ -402,7 +417,13 @@ mod tests {
     /// Хрома-режим: все варианты.
     #[test]
     fn chroma_mode_roundtrip() {
-        let cms = [None, Some(MODE_DC), Some(MODE_TM), Some(MODE_V), Some(MODE_H)];
+        let cms = [
+            None,
+            Some(MODE_DC),
+            Some(MODE_TM),
+            Some(MODE_V),
+            Some(MODE_H),
+        ];
         let mut enc_model = SyntaxModel::default();
         let mut enc = BoolEncoder::new();
         for _ in 0..40 {

@@ -20,14 +20,16 @@ const USAGE: &str = "\
 FVC — Flora Video Codec (битстрим FVC1 v1)
 
 Использование:
-  fvc encode -i <in.y4m> -o <out.fvc|out.ivf> [--qp <0..63>] [--keyint <N>] [--no-filter] [--frames <N>]
+  fvc encode -i <in.y4m> -o <out.fvc|out.ivf> [--qp <0..63>] [--bitrate <kbps>] [--keyint <N>] [--ssim-tune] [--no-filter] [--frames <N>]
   fvc decode -i <in.fvc|in.ivf> -o <out.y4m>
   fvc info   -i <in.fvc|in.ivf>
   fvc psnr   --ref <ref.y4m> --dist <dist.y4m>
 
 Опции encode:
   --qp <N>      параметр квантования, 0 (почти без потерь) .. 63 (максимальное сжатие); по умолчанию 32
+  --bitrate <N> целевой средний битрейт (кбит/с); включает однопроходный rate control (смещение qp)
   --keyint <N>  интервал ключевых кадров (1 = все intra); по умолчанию 60
+  --ssim-tune   психовизуальная настройка RDO (смешивание SSE с SSIM-прокси)
   --no-filter   отключить деблокинг-фильтр
   --frames <N>  закодировать не более N кадров
 
@@ -112,7 +114,9 @@ impl<W: Write + Seek> PacketSink<W> {
                 timebase_num: p.fps_den,
                 frame_count: 0, // патчится в finalize()
             };
-            Ok(PacketSink::Ivf(IvfWriter::new(out, header).map_err(|e| e.to_string())?))
+            Ok(PacketSink::Ivf(
+                IvfWriter::new(out, header).map_err(|e| e.to_string())?,
+            ))
         } else {
             let header = FvcHeader {
                 width: p.width as u16,
@@ -121,7 +125,9 @@ impl<W: Write + Seek> PacketSink<W> {
                 fps_den: p.fps_den,
                 frame_count: 0,
             };
-            Ok(PacketSink::Fvc(FvcWriter::new(out, header).map_err(|e| e.to_string())?))
+            Ok(PacketSink::Fvc(
+                FvcWriter::new(out, header).map_err(|e| e.to_string())?,
+            ))
         }
     }
 
@@ -224,6 +230,11 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
         .unwrap_or("60")
         .parse()
         .map_err(|_| "неверный --keyint".to_string())?;
+    let target_kbps: Option<u32> = opt(args, "--bitrate")?
+        .map(str::parse)
+        .transpose()
+        .map_err(|_| "неверный --bitrate".to_string())?;
+    let ssim_tune = flag(args, "--ssim-tune");
     let max_frames: u64 = opt(args, "--frames")?
         .map(str::parse)
         .transpose()
@@ -239,6 +250,10 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
         qp,
         loop_filter,
         keyint,
+        target_kbps,
+        fps_num: p.fps_num,
+        fps_den: p.fps_den,
+        ssim_tune,
     };
     let mut encoder = Encoder::new(cfg).map_err(|e| e.to_string())?;
 
@@ -272,10 +287,15 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
     let kbps =
         total_bytes as f64 * 8.0 / 1000.0 * f64::from(p.fps_num) / f64::from(p.fps_den) / n as f64;
     println!(
-        "encoded {n} frames ({keyframes} key) {}x{} qp={qp} keyint={keyint}: {total_bytes} bytes \
+        "encoded {n} frames ({keyframes} key) {}x{} qp={qp} keyint={keyint}{}: {total_bytes} bytes \
          ({bpp:.4} bpp, {kbps:.0} kbps), PSNR Y {:.2} dB / Cb {:.2} / Cr {:.2} / overall {:.2}, {:.2} fps",
         p.width,
         p.height,
+        if target_kbps.is_some() {
+            format!(" bitrate={}kbps", target_kbps.unwrap())
+        } else {
+            String::new()
+        },
         q.y,
         q.cb,
         q.cr,

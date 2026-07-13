@@ -1,0 +1,33 @@
+# Flora Ecosystem
+
+> Flora is an open-source (AGPLv3), non-commercial social ecosystem: an ad-free social network with end-to-end encrypted messaging (FSCP protocol — the server stores ciphertext only), a recommendation algorithm published as an open specification (FIRA), music hosting, and communities. No ads, no behavioral tracking, no paid promotion. Backend: C#/.NET migrating to Rust; web: Next.js; mobile: Expo/React Native.
+
+Key facts:
+
+- License: AGPLv3 (community) or commercial via Luna Ecosystem; non-code content under CC BY-SA 4.0.
+- The server physically cannot read private messages: FSCP end-to-end encryption on libsodium primitives (X25519, Ed25519, XChaCha20-Poly1305).
+- The feed/recommendation algorithm (FIRA) is a public, human-readable specification, not a black box.
+- Brand/business content is labeled and can be switched off by any user; posts of brands rank exactly like posts of people.
+- Status: MVP alpha. Known security limitations are documented honestly in SECURITY.md.
+
+## Docs
+
+- [Repository](https://github.com/effka11/Flora.Ecosystem): source code, issues, discussions
+- [README](https://github.com/effka11/Flora.Ecosystem/blob/main/README.md): manifesto and quick start
+- [FSCP — Flora Secure Communication Protocol](https://github.com/effka11/Flora.Ecosystem/blob/main/docs/fscp/FSCP.md): E2E encryption specification
+- [E2E security platform](https://github.com/effka11/Flora.Ecosystem/blob/main/docs/fscp/e2e-security.md): key epochs, device migration, backups
+- [FIRA — Flora Individual Recommendation Algorithm](https://github.com/effka11/Flora.Ecosystem/blob/main/docs/fira/FIRA.md): open recommendation spec (feed, music, people, communities)
+- [CODECS](https://github.com/effka11/Flora.Ecosystem/blob/main/docs/codecs/CODECS.md): media codec policy, incl. FAC — our own audio codec written in Rust
+- [ARCHITECTURE](https://github.com/effka11/Flora.Ecosystem/blob/main/ARCHITECTURE.md): modular monolith map (7 modules, Clean Architecture)
+- [SECURITY](https://github.com/effka11/Flora.Ecosystem/blob/main/SECURITY.md): security posture and known alpha limitations
+
+## Try
+
+- [Web alpha](https://social.flora-s.net): invite-based alpha
+- [Android APK](https://github.com/effka11/Flora.Ecosystem/releases): releases
+
+## Optional
+
+- [FGP — Flora Governance Protocol](https://github.com/effka11/Flora.Ecosystem/blob/main/docs/fgp/FGP.md): capture-resistant governance (consent, sortition, right to fork)
+- [FPP — Flora Personhood Protocol](https://github.com/effka11/Flora.Ecosystem/blob/main/docs/fpp/FPP.md): proof-of-personhood without biometrics or KYC
+- [CONTRIBUTING](https://github.com/effka11/Flora.Ecosystem/blob/main/CONTRIBUTING.md): how to contribute (CLA, GPG-signed commits)

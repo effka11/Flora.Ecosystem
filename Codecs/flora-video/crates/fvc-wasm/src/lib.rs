@@ -58,7 +58,11 @@ struct WasmDecoder {
 /// Создаёт декодер; хэндл освобождать `fvc_decoder_free`.
 #[unsafe(no_mangle)]
 pub extern "C" fn fvc_decoder_new() -> *mut core::ffi::c_void {
-    Box::into_raw(Box::new(WasmDecoder { inner: Decoder::new(), last: None })).cast()
+    Box::into_raw(Box::new(WasmDecoder {
+        inner: Decoder::new(),
+        last: None,
+    }))
+    .cast()
 }
 
 /// # Safety
@@ -98,7 +102,11 @@ pub unsafe extern "C" fn fvc_decode(
     }
 }
 
-fn with_decoder<T>(handle: *mut core::ffi::c_void, f: impl FnOnce(&WasmDecoder) -> T, default: T) -> T {
+fn with_decoder<T>(
+    handle: *mut core::ffi::c_void,
+    f: impl FnOnce(&WasmDecoder) -> T,
+    default: T,
+) -> T {
     if handle.is_null() {
         return default;
     }
@@ -113,7 +121,11 @@ fn with_decoder<T>(handle: *mut core::ffi::c_void, f: impl FnOnce(&WasmDecoder) 
 /// `handle` — живой декодер.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fvc_frame_width(handle: *mut core::ffi::c_void) -> u32 {
-    with_decoder(handle, |d| d.last.as_ref().map_or(0, |f| f.width() as u32), 0)
+    with_decoder(
+        handle,
+        |d| d.last.as_ref().map_or(0, |f| f.width() as u32),
+        0,
+    )
 }
 
 /// Высота последнего кадра (0 — кадра ещё нет).
@@ -122,7 +134,11 @@ pub unsafe extern "C" fn fvc_frame_width(handle: *mut core::ffi::c_void) -> u32 
 /// `handle` — живой декодер.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fvc_frame_height(handle: *mut core::ffi::c_void) -> u32 {
-    with_decoder(handle, |d| d.last.as_ref().map_or(0, |f| f.height() as u32), 0)
+    with_decoder(
+        handle,
+        |d| d.last.as_ref().map_or(0, |f| f.height() as u32),
+        0,
+    )
 }
 
 /// Пишет последний кадр как RGBA8888 в `out` (ёмкость `cap` байт).
@@ -191,8 +207,8 @@ mod tests {
             width: 64,
             height: 64,
             qp: 30,
-            loop_filter: true,
             keyint: 2,
+            ..EncoderConfig::default()
         })
         .unwrap();
         let key = enc.encode_frame(&frame).unwrap();
@@ -213,7 +229,10 @@ mod tests {
             assert_eq!(fvc_frame_width(dec), 64);
             assert_eq!(fvc_frame_height(dec), 64);
             let mut rgba = vec![0u8; 64 * 64 * 4];
-            assert_eq!(fvc_frame_rgba(dec, rgba.as_mut_ptr(), rgba.len()), 64 * 64 * 4);
+            assert_eq!(
+                fvc_frame_rgba(dec, rgba.as_mut_ptr(), rgba.len()),
+                64 * 64 * 4
+            );
             assert!(rgba.chunks_exact(4).all(|px| px[3] == 255));
             // Мусор не проходит.
             let junk = [7u8; 5];

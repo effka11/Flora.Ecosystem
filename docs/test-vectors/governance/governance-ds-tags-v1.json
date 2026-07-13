@@ -1,0 +1,142 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_ds_tags_v1",
+  "description": "Реестр доменных меток (байт-в-байт) и BLAKE3 derive_key деривации; civic-пайплайн P1 (FGP-CRYPTO §1.1, §2).",
+  "deriveMaterial": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "tags": [
+    {
+      "name": "civic/sign",
+      "tag": "flora/civic/v1/sign",
+      "tagBytes": "ZmxvcmEvY2l2aWMvdjEvc2lnbg",
+      "output": "5_7Iqd-B8-eLrL5nNSk6XNYlbwBKkTgseK6zXO8OYJE"
+    },
+    {
+      "name": "civic/commit",
+      "tag": "flora/civic/v1/commit",
+      "tagBytes": "ZmxvcmEvY2l2aWMvdjEvY29tbWl0",
+      "output": "myd-dGHWJvoabogRcn_IsiRdJdWr_Ii7zWhbU2vllko"
+    },
+    {
+      "name": "civic/id",
+      "tag": "flora/civic/v1/id",
+      "tagBytes": "ZmxvcmEvY2l2aWMvdjEvaWQ",
+      "output": "32Pj-nGyxURCf-zV0YPORIV9FbK_bqiFepAXoc3k9WM"
+    },
+    {
+      "name": "nullifier/nk",
+      "tag": "flora/nullifier/v1/nk",
+      "tagBytes": "ZmxvcmEvbnVsbGlmaWVyL3YxL25r",
+      "output": "4SvKQpva1hd_XkdPtM4xqghWZJHDKH5EEz6RMNTPC3k"
+    },
+    {
+      "name": "nullifier/ctx",
+      "tag": "flora/nullifier/v1/ctx",
+      "tagBytes": "ZmxvcmEvbnVsbGlmaWVyL3YxL2N0eA",
+      "output": "bn7m4OpWbEQ5fgQto2A_qvSacqoefMBrJpvdacz_794"
+    },
+    {
+      "name": "mask/register",
+      "tag": "flora/mask/v1/register",
+      "tagBytes": "ZmxvcmEvbWFzay92MS9yZWdpc3Rlcg",
+      "output": "5hQnktAwXi4SnD9M0cEHjZiZh2bcFJMHdVJ_o_0MiDQ"
+    },
+    {
+      "name": "mask/dv-sim",
+      "tag": "flora/mask/v1/dv-sim",
+      "tagBytes": "ZmxvcmEvbWFzay92MS9kdi1zaW0",
+      "output": "4yaaWcfoh1rurZQ5kJ4jP6YfwZyIhGavOd6v-bWQwwY"
+    },
+    {
+      "name": "token/credit",
+      "tag": "flora/token/v1/credit",
+      "tagBytes": "ZmxvcmEvdG9rZW4vdjEvY3JlZGl0",
+      "output": "fXMZaZBLcvSHd3ATSuie3r0RDx8JRueFu-mnjehoHuc"
+    },
+    {
+      "name": "ballot/encrypt",
+      "tag": "flora/ballot/v1/encrypt",
+      "tagBytes": "ZmxvcmEvYmFsbG90L3YxL2VuY3J5cHQ",
+      "output": "tpWO_ZhGRpl2Uxz7gM58THuYozoxIh3Nc1LWePKCxHA"
+    },
+    {
+      "name": "ballot/overwrite",
+      "tag": "flora/ballot/v1/overwrite",
+      "tagBytes": "ZmxvcmEvYmFsbG90L3YxL292ZXJ3cml0ZQ",
+      "output": "mOB3yj1VvaHqpQUNiE69mRmaCS0kE22-5i4IPtY2jW4"
+    },
+    {
+      "name": "tally/partial-dec",
+      "tag": "flora/tally/v1/partial-dec",
+      "tagBytes": "ZmxvcmEvdGFsbHkvdjEvcGFydGlhbC1kZWM",
+      "output": "HKaGP9aRGbUgl_gtBMnnK1J3Zy37QM3kpb0NmExLp7U"
+    },
+    {
+      "name": "vrf/sortition",
+      "tag": "flora/vrf/v1/sortition",
+      "tagBytes": "ZmxvcmEvdnJmL3YxL3NvcnRpdGlvbg",
+      "output": "6mq7H8XJfya2vdLR5ZTN-hfHDMhBOi5Sc55uKSwBvBE"
+    },
+    {
+      "name": "vrf/ceremony-pair",
+      "tag": "flora/vrf/v1/ceremony-pair",
+      "tagBytes": "ZmxvcmEvdnJmL3YxL2NlcmVtb255LXBhaXI",
+      "output": "4ikS7G4mvu0Y7oHpkInFBSQ-sEeCUt1HQ7dhyRAts4s"
+    },
+    {
+      "name": "vrf/attestor-assign",
+      "tag": "flora/vrf/v1/attestor-assign",
+      "tagBytes": "ZmxvcmEvdnJmL3YxL2F0dGVzdG9yLWFzc2lnbg",
+      "output": "4L847XZvlL4rWBTXmgnpBSe3lGzBwC2M2xWSfIKKZyE"
+    },
+    {
+      "name": "vrf/self-select",
+      "tag": "flora/vrf/v1/self-select",
+      "tagBytes": "ZmxvcmEvdnJmL3YxL3NlbGYtc2VsZWN0",
+      "output": "s2sq5m8QpoWSEV9418r6s7WhdWkLHHvS_UMzf7J_pLE"
+    },
+    {
+      "name": "log/leaf",
+      "tag": "flora/log/v1/leaf",
+      "tagBytes": "ZmxvcmEvbG9nL3YxL2xlYWY",
+      "output": "VCpsexMMunB1k69gTarJCpcO9D1vNFj3p-QehYg81Vo"
+    },
+    {
+      "name": "log/node",
+      "tag": "flora/log/v1/node",
+      "tagBytes": "ZmxvcmEvbG9nL3YxL25vZGU",
+      "output": "h4_qpJJ8H606PW-cpABPFcVewo61dbuHANHxzA0AxPY"
+    },
+    {
+      "name": "log/sth",
+      "tag": "flora/log/v1/sth",
+      "tagBytes": "ZmxvcmEvbG9nL3YxL3N0aA",
+      "output": "vASM7uv3_cann2pB2Wsu8qkc87qUGKtSpseY2qPWX1c"
+    },
+    {
+      "name": "log/anchor",
+      "tag": "flora/log/v1/anchor",
+      "tagBytes": "ZmxvcmEvbG9nL3YxL2FuY2hvcg",
+      "output": "7iA80eG1i5feYF26UHpndQRaNVyTEBOAhJTVvY2fGOg"
+    },
+    {
+      "name": "oprf/doc-dedup",
+      "tag": "flora/oprf/v1/doc-dedup",
+      "tagBytes": "ZmxvcmEvb3ByZi92MS9kb2MtZGVkdXA",
+      "output": "GkBjEBPccR4lMUVWy8eI_0T5IUIU_qVj8WbBSUdVeXI"
+    },
+    {
+      "name": "treasury/ledger",
+      "tag": "flora/treasury/v1/ledger",
+      "tagBytes": "ZmxvcmEvdHJlYXN1cnkvdjEvbGVkZ2Vy",
+      "output": "MlgPE5ppbpTNOQE97p7D3I-8s6L73FFsiYh7OLlI3go"
+    }
+  ],
+  "civicPipeline": {
+    "skCivic": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+    "nullifierKey": "vCE83H_BisyMSp0qm1W_kMixrKlO82A7rzsOnYW3ozg",
+    "pkCivic": "sLGys7S1tre4ubq7vL2-v8DBwsPExcbHyMnKy8zNzs8",
+    "saltDev": "wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t8",
+    "commitment": "UL35skkFU4PRhC99B8FbEJXERk66vlok_eNwg-84sUc",
+    "civicId": "Ph3FNdjAka80f-WCIIuiHqOsSMAYWt_iK5hSes9FXvk"
+  }
+}

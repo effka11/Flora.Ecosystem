@@ -69,8 +69,8 @@ fn cfg(w: u32, h: u32, qp: u8) -> EncoderConfig {
         width: w,
         height: h,
         qp,
-        loop_filter: true,
         keyint: 1,
+        ..EncoderConfig::default()
     }
 }
 
@@ -79,8 +79,8 @@ fn cfg_gop(w: u32, h: u32, qp: u8, keyint: u32) -> EncoderConfig {
         width: w,
         height: h,
         qp,
-        loop_filter: true,
         keyint,
+        ..EncoderConfig::default()
     }
 }
 
@@ -108,9 +108,18 @@ fn multi_frame_parity_with_motion() {
     for &qp in &[16u8, 36] {
         let mut enc = Encoder::new(cfg_gop(w as u32, h as u32, qp, 4)).unwrap();
         let mut dec = Decoder::new();
-        for (i, &(dx, dy)) in [(0, 0), (2, 1), (5, 3), (7, 4), (10, 6), (12, 8), (13, 9), (15, 10)]
-            .iter()
-            .enumerate()
+        for (i, &(dx, dy)) in [
+            (0, 0),
+            (2, 1),
+            (5, 3),
+            (7, 4),
+            (10, 6),
+            (12, 8),
+            (13, 9),
+            (15, 10),
+        ]
+        .iter()
+        .enumerate()
         {
             let src = shifted_frame(&base, dx, dy);
             let packet = enc.encode_frame(&src).unwrap();
@@ -306,7 +315,9 @@ fn dimension_change_rules() {
     let mut enc_big = Encoder::new(cfg_gop(128, 128, 30, 2)).unwrap();
     let key_small = enc_small.encode_frame(&small).unwrap();
     let key_big = enc_big.encode_frame(&big).unwrap();
-    let p_small = enc_small.encode_frame(&shifted_frame(&small, 1, 0)).unwrap();
+    let p_small = enc_small
+        .encode_frame(&shifted_frame(&small, 1, 0))
+        .unwrap();
     assert!(!p_small.keyframe);
 
     let mut dec = Decoder::new();
@@ -369,6 +380,38 @@ fn flat_frame_compresses_hard() {
     assert!(psnr(&src, &out).overall > 46.0);
 }
 
+/// Rate control увеличивает расход бит при систематическом недоборе относительно фиксированного qp.
+#[test]
+fn rate_control_increases_size_when_undershooting() {
+    let (w, h) = (128u32, 96u32);
+    let fixed_cfg = EncoderConfig {
+        width: w,
+        height: h,
+        qp: 46,
+        keyint: 1,
+        ..EncoderConfig::default()
+    };
+    let rc_cfg = EncoderConfig {
+        target_kbps: Some(250),
+        fps_num: 30,
+        fps_den: 1,
+        ..fixed_cfg
+    };
+    let mut fixed_enc = Encoder::new(fixed_cfg).unwrap();
+    let mut rc_enc = Encoder::new(rc_cfg).unwrap();
+    let mut sum_fixed = 0usize;
+    let mut sum_rc = 0usize;
+    for i in 0..24usize {
+        let src = test_frame(w as usize, h as usize, 0xD00D + i as u64 * 0x9E37);
+        sum_fixed += fixed_enc.encode_frame(&src).unwrap().data.len();
+        sum_rc += rc_enc.encode_frame(&src).unwrap().data.len();
+    }
+    assert!(
+        sum_rc > sum_fixed,
+        "RC sum {sum_rc} should exceed fixed {sum_fixed}"
+    );
+}
+
 /// Конфигурационные ошибки ловятся.
 #[test]
 fn config_validation() {
@@ -383,6 +426,7 @@ fn config_validation() {
             qp: 1,
             loop_filter: false,
             keyint: 1,
+            ..EncoderConfig::default()
         })
         .is_err()
     );

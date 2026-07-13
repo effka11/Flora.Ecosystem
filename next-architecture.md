@@ -60,6 +60,9 @@ Backend/
       flora-music/              flora-music-contracts/
       flora-notifications/      flora-notifications-contracts/
       flora-verification/       flora-verification-contracts/
+      flora-economy/            flora-economy-contracts/      # FEP, Rust-native (§6.0)
+      flora-economy-crypto/     # детерминированное ядро FEP (native + wasm32), только внешние deps
+      flora-governance-crypto/  # детерминированное ядро FGP (native + wasm32), только внешние deps
     infrastructure/
       flora-grpc-bridge/        # переходный: tonic-серверы/клиенты межъязыковых портов (см. §5.2)
     media/                      # вне скоупа миграции: нативные кодеки FMC (docs/codecs/CODECS.md)
@@ -81,8 +84,9 @@ Backend/
 | --- | --- |
 | `flora-api` | `flora-social`, `flora-shared` |
 | `flora-social` | корни модулей `flora-<module>`, `flora-shared` |
-| `flora-<module>` | свой `*-contracts`, **чужие `*-contracts`**, `flora-shared` |
+| `flora-<module>` | свой `*-contracts`, **чужие `*-contracts`**, свой `*-crypto`, `flora-shared` |
 | `flora-<module>-contracts` | `flora-shared` |
+| `flora-<module>-crypto` | только внешние crates — детерминированные ядра (FGP §8.1, FEP `docs/fep/FEP.md`), собираются и в native, и в wasm32 (клиентская верификация) |
 | `flora-shared` | только внешние crates |
 | `crates/media/*` (кодеки FMC) | только другие media-crates; **вне скоупа миграции** — модули используют кодеки через свой Infrastructure-слой (см. `docs/codecs/CODECS.md`) |
 
@@ -262,6 +266,7 @@ flowchart LR
 | Content | C# | не начат | — |
 | Messaging | C# | не начат | — |
 | Notifications | C# | не начат | — |
+| Economy (FEP) | **Rust** (родной, C#-аналога нет) | вне strangler-миграции; выключен флагом `Economy:Enabled` до включения продуктом | — |
 
 Статусы: `не начат → в переносе (владелец C#) → freeze → cutover N% → Rust (соак) → Rust`.
 

@@ -1,0 +1,152 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_log_merkle_v1",
+  "description": "Merkle-журнал CT-класса: BLAKE3-домены flora/log/v1/{leaf,node}, RFC 6962/9162 алгоритмы (FGP-CRYPTO §8). Листья — UTF-8 строки governance-leaf-{i}.",
+  "emptyRoot": "06KNF-EFlinzXOb0wS-a1lFXIsHiGdbhub7jTUDE1nA",
+  "leafContentPrefix": "governance-leaf-",
+  "treeSize": 13,
+  "leafHashes": [
+    "Ba-aFZd65DUaYyom9aBDn-4KA8cllKXWHVtff3hUrYo",
+    "jlOqRcHdlEfiYS43GfyLL6fP03ojANhiIsY2Oa0JNPY",
+    "7OXfBl6o343RxB3lxsyllUJ3dCixiHhongpn8Que1zw",
+    "_Ni3vLIXJxvgCKrU6nmVtEMKNkgPxNNDO_siw1FbMVE",
+    "-m47J8LRGpnTplH54yzVPz6Xjnfwnyg05FptuHL1nQA",
+    "3Iek3Eu3T9IjOBHDKg6O3n-jC3-1D6Fa1GU7Lz06mzE",
+    "2FJCjvMUCdGM2GEgg8btg6fpm_tu7d9AR6jtbUBWt7o",
+    "-ZbYZ2ZuWLcPiivU0auMxnU-nWEfyDL8UOGCjgCReo8",
+    "k7RbxtDYqxv9jJno5wgXN-dy5mAUdljSP-4wssv499M",
+    "mg0j_Q6j4WSxg4G5s_fdqehGoKCqgiBTtLXbVg0AogE",
+    "MaUxv5_8cXMAx7fKTMUhDLsG_Fo7xtE3QuhtzIsM03M",
+    "5EzVU5fycExbX2lZ9YUdpG8xaA9DXc0FiqUflerA_u8",
+    "OXCA62KbEtKM9DhDxNfLQ7rzlZU8MZi0coI9eJFGmM4"
+  ],
+  "prefixRoots": [
+    {
+      "size": 1,
+      "root": "Ba-aFZd65DUaYyom9aBDn-4KA8cllKXWHVtff3hUrYo"
+    },
+    {
+      "size": 2,
+      "root": "EAigryuwdtuZYmemQKAb_DjkGqiUCzStWaorvwB4OLk"
+    },
+    {
+      "size": 3,
+      "root": "DhiDhm5qsMRQQqwrn6agK5o7NSMrYSpK-QlKZ0vX1iQ"
+    },
+    {
+      "size": 4,
+      "root": "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI"
+    },
+    {
+      "size": 5,
+      "root": "BgL8RsVFoKYkeBMfT2HkJJJjXY-8eQNSJr5HqEzONxM"
+    },
+    {
+      "size": 6,
+      "root": "I47raE6YQFg291SKjYsFsCGTCKutG-0U8soDVS5nFvs"
+    },
+    {
+      "size": 7,
+      "root": "t64l1f2kSpDIfzkAU_Y5zuNQuDfD-vNn70LZRfWAtTo"
+    },
+    {
+      "size": 8,
+      "root": "eHgn1v-PVNBTXSgkOBNfKPyHWg4G4ThaCZJDlYz46dY"
+    },
+    {
+      "size": 9,
+      "root": "utw_GifT-HLryHrH-keFgpGCU2L8HvcDNJKSh-Cilxc"
+    },
+    {
+      "size": 10,
+      "root": "QKGuMqnmqXfG-WYI74mTjOonxEJQnYNcaJeP47i2MuM"
+    },
+    {
+      "size": 11,
+      "root": "Ab5esuofVse0ZOibD98z7PPOxB_ifbIixfxOOMAToCE"
+    },
+    {
+      "size": 12,
+      "root": "gsYYh1BpVRWP-9UcgirwrO_dtkvdbOh7KzVoFXI0lCM"
+    },
+    {
+      "size": 13,
+      "root": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY"
+    }
+  ],
+  "inclusionProofs": [
+    {
+      "leafIndex": 0,
+      "treeSize": 13,
+      "leafHash": "Ba-aFZd65DUaYyom9aBDn-4KA8cllKXWHVtff3hUrYo",
+      "proof": [
+        "jlOqRcHdlEfiYS43GfyLL6fP03ojANhiIsY2Oa0JNPY",
+        "mvT7X1twdDXTusQINoDzlSJI5M_8msZjFTBt_RejqNE",
+        "jyd5lpM9qCZp3YD0mlfb_FreMml23yPuqIsp7gton1c",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ]
+    },
+    {
+      "leafIndex": 5,
+      "treeSize": 13,
+      "leafHash": "3Iek3Eu3T9IjOBHDKg6O3n-jC3-1D6Fa1GU7Lz06mzE",
+      "proof": [
+        "-m47J8LRGpnTplH54yzVPz6Xjnfwnyg05FptuHL1nQA",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ]
+    },
+    {
+      "leafIndex": 12,
+      "treeSize": 13,
+      "leafHash": "OXCA62KbEtKM9DhDxNfLQ7rzlZU8MZi0coI9eJFGmM4",
+      "proof": [
+        "A0EVEf05ar6VPmsTKRWH2e-Z6NuXb_zizRBG4m72Cdg",
+        "eHgn1v-PVNBTXSgkOBNfKPyHWg4G4ThaCZJDlYz46dY"
+      ]
+    }
+  ],
+  "consistencyProofs": [
+    {
+      "oldSize": 6,
+      "newSize": 13,
+      "oldRoot": "I47raE6YQFg291SKjYsFsCGTCKutG-0U8soDVS5nFvs",
+      "newRoot": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+      "proof": [
+        "V6w9oSmTebAFH65j8TBpcI2j69jem1GIdEE3mo6LBNw",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ]
+    },
+    {
+      "oldSize": 8,
+      "newSize": 13,
+      "oldRoot": "eHgn1v-PVNBTXSgkOBNfKPyHWg4G4ThaCZJDlYz46dY",
+      "newRoot": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+      "proof": [
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ]
+    },
+    {
+      "oldSize": 13,
+      "newSize": 13,
+      "oldRoot": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+      "newRoot": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+      "proof": []
+    },
+    {
+      "oldSize": 1,
+      "newSize": 13,
+      "oldRoot": "Ba-aFZd65DUaYyom9aBDn-4KA8cllKXWHVtff3hUrYo",
+      "newRoot": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+      "proof": [
+        "jlOqRcHdlEfiYS43GfyLL6fP03ojANhiIsY2Oa0JNPY",
+        "mvT7X1twdDXTusQINoDzlSJI5M_8msZjFTBt_RejqNE",
+        "jyd5lpM9qCZp3YD0mlfb_FreMml23yPuqIsp7gton1c",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ]
+    }
+  ]
+}

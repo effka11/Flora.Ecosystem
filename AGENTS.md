@@ -18,7 +18,9 @@
 
 Стек: C# / .NET 10, PostgreSQL (схема `flora_core`, 7 DbContext — по одному на модуль), EF Core, Next.js 16 / TypeScript, Expo / React Native.
 
-Подробная карта: `ARCHITECTURE.md`. Спецификации: `docs/` (FSCP — E2E-протокол, FIRA — рекомендации).
+Подробная карта: `ARCHITECTURE.md`. Спецификации: `docs/` (FSCP — E2E-протокол, FIRA — рекомендации, FGP — governance, FPP — personhood, FEP — экономика Pollen).
+
+Модуль Economy (FEP) живёт только в Rust (`Backend/crates/modules/flora-economy*`, C#-аналога нет): нормативная спека — `docs/fep/FEP.md`; детерминированное ядро `flora-economy-crypto` обязано собираться под wasm32 (`cargo check -p flora-economy-crypto --target wasm32-unknown-unknown`) и не зависит ни от одного бизнес-модуля.
 
 ## Направления зависимостей
 
@@ -128,7 +130,7 @@ pwsh ../tools/validate-architecture-rust.ps1  # границы crate'ов (§2.3
 
 Собственные кодеки Flora — отдельные Rust-workspace'ы вне `Backend/` (переиспользуемая технология, не бизнес-модули; потребители — клиенты и модули). Аудио: `Codecs/audio` (FAC), нормативная спецификация — `docs/codecs/FAC.md`; битстрим меняется только вместе со спекой. Прод-пайплайны по-прежнему регулирует `docs/codecs/CODECS.md` (FAC туда пока не введён). Проверки — те же cargo-команды из каталога workspace'а + `cargo check -p fac-core --target wasm32-unknown-unknown` (ядро обязано собираться под wasm32 — E2E-голосовые кодируются на клиенте).
 
-Фото: FIC — `Backend/crates/media/flora-image-codec` (категория `media` внутри Backend-workspace, чистый std, без `unsafe`; wasm: `--no-default-features` отключает тайловые потоки), спека — `docs/codecs/FIC.md`. Кодер пишет **битстрим v2**; **v1 и v2 заморожены** golden-векторами: `golden-v1-*` — decode-заморозка, руками не трогать никогда; `golden-v2-*` — регенерация `FIC_UPDATE_GOLDEN=1` только осознанно, вместе со спекой. CLI: `cargo run -p flora-codec-tools -- image ...`. Реестр сигнатур семейства FMC (FIC/FVC/FAC) — `docs/codecs/CODECS.md`.
+Фото: FIC — `Backend/crates/media/flora-image-codec` (категория `media` внутри Backend-workspace, чистый std, без `unsafe`; wasm: `--no-default-features` отключает тайловые потоки), спека — `docs/codecs/FIC.md`. Кодер пишет **битстрим v3**; **v1–v3 заморожены** golden-векторами: `golden-v1-*`/`golden-v2-*` — decode-заморозка, руками не трогать никогда; `golden-v3-*` — регенерация `FIC_UPDATE_GOLDEN=1` только осознанно, вместе со спекой. CLI: `cargo run -p flora-codec-tools -- image ...`. Реестр сигнатур семейства FMC (FIC/FVC/FAC) — `docs/codecs/CODECS.md`.
 
 ## Git
 

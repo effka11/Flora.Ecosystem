@@ -72,7 +72,13 @@ impl PadPlane {
             let dst = (border + h + y) * stride;
             data[dst..dst + stride].copy_from_slice(&bot_row);
         }
-        PadPlane { data, stride, w, h, border }
+        PadPlane {
+            data,
+            stride,
+            w,
+            h,
+            border,
+        }
     }
 
     #[inline]
@@ -216,12 +222,24 @@ mod tests {
         let b = Blk { x: 16, y: 8, n: 16 };
         let mut pred = [0i32; 64 * 64];
         for &(dx, dy) in &[(0i32, 0i32), (4, 0), (-8, 4), (16, -12)] {
-            mc_luma(&rp, b, Mv { x: dx * 4, y: dy * 4 }, &mut pred);
+            mc_luma(
+                &rp,
+                b,
+                Mv {
+                    x: dx * 4,
+                    y: dy * 4,
+                },
+                &mut pred,
+            );
             for r in 0..16 {
                 for c in 0..16 {
                     let sx = (b.x as i32 + c as i32 + dx).clamp(0, 63) as usize;
                     let sy = (b.y as i32 + r as i32 + dy).clamp(0, 47) as usize;
-                    assert_eq!(pred[r * 16 + c], i32::from(p.get(sx, sy)), "d=({dx},{dy}) r={r} c={c}");
+                    assert_eq!(
+                        pred[r * 16 + c],
+                        i32::from(p.get(sx, sy)),
+                        "d=({dx},{dy}) r={r} c={c}"
+                    );
                 }
             }
         }
@@ -260,9 +278,18 @@ mod tests {
         let b = Blk { x: 0, y: 0, n: 16 };
         let mut pred = [0i32; 64 * 64];
         for &mv in &[
-            Mv { x: -100_000, y: -100_000 },
-            Mv { x: 100_000, y: 100_000 },
-            Mv { x: -100_000, y: 100_000 },
+            Mv {
+                x: -100_000,
+                y: -100_000,
+            },
+            Mv {
+                x: 100_000,
+                y: 100_000,
+            },
+            Mv {
+                x: -100_000,
+                y: 100_000,
+            },
         ] {
             mc_luma(&rp, b, mv, &mut pred);
             for v in &pred[..256] {
@@ -270,7 +297,15 @@ mod tests {
             }
         }
         let rpc = PadPlane::from_plane(&p, CHROMA_BORDER);
-        mc_chroma(&rpc, Blk { x: 0, y: 0, n: 8 }, Mv { x: 99_999, y: -99_999 }, &mut pred);
+        mc_chroma(
+            &rpc,
+            Blk { x: 0, y: 0, n: 8 },
+            Mv {
+                x: 99_999,
+                y: -99_999,
+            },
+            &mut pred,
+        );
         for v in &pred[..64] {
             assert!((0..=255).contains(v));
         }

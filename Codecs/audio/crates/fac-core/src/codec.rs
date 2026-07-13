@@ -265,9 +265,8 @@ impl Encoder {
         // Некодируемые полосы транзиентного кадра зануляются целиком — они тоже
         // кандидаты на anti-collapse, если энергия жива сейчас и в истории.
         if transient && !collapse_audible {
-            collapse_audible = (0..planes * NUM_BANDS).any(|idx| {
-                beta[idx] == 0 && q[idx].min(h1[idx]).min(h2[idx]) > Q_SILENCE_X4
-            });
+            collapse_audible = (0..planes * NUM_BANDS)
+                .any(|idx| beta[idx] == 0 && q[idx].min(h1[idx]).min(h2[idx]) > Q_SILENCE_X4);
         }
 
         std::mem::swap(&mut self.q_hist2, &mut self.q_hist1);
@@ -463,11 +462,7 @@ impl Decoder {
                 };
                 let mut injected = false;
                 for j in 0..SHORT_BLOCKS {
-                    let collapsed = dst
-                        .iter()
-                        .skip(j)
-                        .step_by(SHORT_BLOCKS)
-                        .all(|&v| v == 0.0);
+                    let collapsed = dst.iter().skip(j).step_by(SHORT_BLOCKS).all(|&v| v == 0.0);
                     if collapsed {
                         inject_block_noise(dst, j, self.frame_index, p as u32, b as u32, r);
                         injected = true;

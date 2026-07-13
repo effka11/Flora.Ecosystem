@@ -1,0 +1,203 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_fgp_weights_v1",
+  "description": "Consensus-critical формулы FGP §4 на Q32.32 (FGP-CRYPTO §10): затухания, вес голоса, кап и насыщение делегаций, conviction, θ_eff, QV. Эти значения нормативны; вещественные формулы FGP — пояснение.",
+  "decayFactor": [
+    {
+      "dtBits": 0,
+      "halfLifeBits": 51539607552,
+      "bits": 4294967296
+    },
+    {
+      "dtBits": 51539607552,
+      "halfLifeBits": 51539607552,
+      "bits": 2147483648
+    },
+    {
+      "dtBits": 154618822656,
+      "halfLifeBits": 51539607552,
+      "bits": 536870912
+    },
+    {
+      "dtBits": -21474836480,
+      "halfLifeBits": 51539607552,
+      "bits": 4294967296
+    },
+    {
+      "dtBits": 21474836480,
+      "halfLifeBits": 0,
+      "bits": 0
+    },
+    {
+      "dtBits": 4294967296,
+      "halfLifeBits": 30064771072,
+      "bits": 3890057010
+    },
+    {
+      "dtBits": 15032385536,
+      "halfLifeBits": 30064771072,
+      "bits": 3037000500
+    }
+  ],
+  "voteWeight": [
+    {
+      "reputationBits": 0,
+      "betaLog2Bits": 4294967296,
+      "wMaxBits": 34359738368,
+      "bits": 4294967296
+    },
+    {
+      "reputationBits": 4294967296,
+      "betaLog2Bits": 4294967296,
+      "wMaxBits": 34359738368,
+      "bits": 8589934592
+    },
+    {
+      "reputationBits": 21474836480,
+      "betaLog2Bits": 4294967296,
+      "wMaxBits": 34359738368,
+      "bits": 15397296697
+    },
+    {
+      "reputationBits": 545460846592,
+      "betaLog2Bits": 4294967296,
+      "wMaxBits": 34359738368,
+      "bits": 34359738368
+    },
+    {
+      "reputationBits": 4294967296000000,
+      "betaLog2Bits": 4294967296,
+      "wMaxBits": 34359738368,
+      "bits": 34359738368
+    },
+    {
+      "reputationBits": -30064771072,
+      "betaLog2Bits": 4294967296,
+      "wMaxBits": 34359738368,
+      "bits": 4294967296
+    }
+  ],
+  "delegationCap": [
+    {
+      "nActive": 0,
+      "bits": 85899345920
+    },
+    {
+      "nActive": 100,
+      "bits": 85899345920
+    },
+    {
+      "nActive": 101,
+      "bits": 86327774242
+    },
+    {
+      "nActive": 10000,
+      "bits": 858993459200
+    },
+    {
+      "nActive": 1000000,
+      "bits": 8589934592000
+    }
+  ],
+  "effectiveWeight": [
+    {
+      "ownWeightBits": 34359738368,
+      "inflowBits": 0,
+      "cDBits": 85899345920,
+      "bits": 34359738368
+    },
+    {
+      "ownWeightBits": 34359738368,
+      "inflowBits": 21474836480,
+      "cDBits": 85899345920,
+      "bits": 48026632228
+    },
+    {
+      "ownWeightBits": 34359738368,
+      "inflowBits": 85899345920,
+      "cDBits": 85899345920,
+      "bits": 77309411328
+    },
+    {
+      "ownWeightBits": 34359738368,
+      "inflowBits": 858993459200,
+      "cDBits": 85899345920,
+      "bits": 120175198208
+    },
+    {
+      "ownWeightBits": 34359738368,
+      "inflowBits": 4294967296000000,
+      "cDBits": 85899345920,
+      "bits": 120259084288
+    }
+  ],
+  "conviction": {
+    "gammaBits": 3890057010,
+    "supportBits": 42949672960,
+    "initialBits": 0,
+    "states": [
+      {
+        "step": 1,
+        "bits": 42949672960
+      },
+      {
+        "step": 10,
+        "bits": 286328696923
+      },
+      {
+        "step": 100,
+        "bits": 455553267306
+      }
+    ]
+  },
+  "thetaEff": [
+    {
+      "thetaBaseBits": 429496729600,
+      "etaBits": 4294967296,
+      "qHatBits": 0,
+      "bits": 429496729600
+    },
+    {
+      "thetaBaseBits": 429496729600,
+      "etaBits": 4294967296,
+      "qHatBits": 4294967296,
+      "bits": 214748364800
+    },
+    {
+      "thetaBaseBits": 429496729600,
+      "etaBits": 4294967296,
+      "qHatBits": 2147483648,
+      "bits": 286331153067
+    },
+    {
+      "thetaBaseBits": 429496729600,
+      "etaBits": 4294967296,
+      "qHatBits": 21474836480,
+      "bits": 214748364800
+    },
+    {
+      "thetaBaseBits": 429496729600,
+      "etaBits": 4294967296,
+      "qHatBits": -21474836480,
+      "bits": 429496729600
+    }
+  ],
+  "qvCost": [
+    {
+      "votes": 0,
+      "cost": 0
+    },
+    {
+      "votes": 1,
+      "cost": 1
+    },
+    {
+      "votes": 5,
+      "cost": 25
+    },
+    {
+      "votes": 10,
+      "cost": 100
+    }
+  ]
+}

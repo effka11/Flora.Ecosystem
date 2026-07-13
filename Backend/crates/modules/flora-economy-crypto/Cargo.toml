@@ -1,0 +1,24 @@
+[package]
+name = "flora-economy-crypto"
+description = "Детерминированное ядро Flora Economic Protocol (FEP): фикс-пойнт арифметика, демерредж, эмиссия (PoP-UBI), взаимный кредит, транзакции, хеш-цепочный журнал и Merkle-доказательства. Компилируется в native (сервер) и wasm32 (@flora/client-core — клиентская верификация журнала). Зависимостей на бизнес-модули нет (FGP §8.1)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Правило §2.3 (расширенное для *-crypto ядер, ср. flora-governance-crypto, FGP §8.1):
+# ядро зависит только от внешних crates и не видит ни один бизнес-модуль.
+# Криптопримитивы — RustCrypto/dalek без C-зависимостей (AGENTS.md, next-architecture.md §4.4);
+# нет uuid/getrandom в графе, поэтому сборка под wasm32-unknown-unknown чистая.
+[dependencies]
+sha2 = { workspace = true }
+# default features (fast, std, zeroize) — ни одна не тянет getrandom; keygen (OsRng) в ядре
+# не вызывается (только детерминированная подпись и верификация), поэтому wasm32 собирается.
+ed25519-dalek = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

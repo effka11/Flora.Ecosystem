@@ -48,7 +48,14 @@ pub fn intra_pred_plane(plane: &Plane, b: Blk, luma: bool, mode: u8, pred: &mut 
 
 /// Добавление остатков к предсказанию: тайлы в raster-порядке,
 /// dequant → inverse → clamp(pred + res).
-pub fn add_residual_tiles(plane: &mut Plane, b: Blk, tsize: usize, pred: &[i32], tiles: &[Vec<i32>], qp: u8) {
+pub fn add_residual_tiles(
+    plane: &mut Plane,
+    b: Blk,
+    tsize: usize,
+    pred: &[i32],
+    tiles: &[Vec<i32>],
+    qp: u8,
+) {
     let per_row = b.n / tsize;
     let t2 = tsize * tsize;
     let mut deq = [0i32; 32 * 32];
@@ -78,7 +85,13 @@ pub fn write_pred(plane: &mut Plane, b: Blk, pred: &[i32]) {
 
 /// Полная реконструкция листа (нормативная, общая для энкодера и декодера).
 /// Для inter-листьев `reference` обязан существовать.
-pub fn reconstruct_leaf(frame: &mut Frame, reference: Option<&RefFrame>, b: Blk, leaf: &LeafData, qp: u8) {
+pub fn reconstruct_leaf(
+    frame: &mut Frame,
+    reference: Option<&RefFrame>,
+    b: Blk,
+    leaf: &LeafData,
+    qp: u8,
+) {
     let bc = b.chroma();
     let mut pred = [0i32; 64 * 64];
     match leaf.kind {
@@ -88,9 +101,23 @@ pub fn reconstruct_leaf(frame: &mut Frame, reference: Option<&RefFrame>, b: Blk,
             add_residual_tiles(&mut frame.y, b, tsize, &pred, &leaf.luma, qp);
             let cmode = chroma_mode.unwrap_or(mode);
             intra_pred_plane(&frame.cb, bc, false, cmode, &mut pred);
-            add_residual_tiles(&mut frame.cb, bc, bc.n, &pred, std::slice::from_ref(&leaf.cb), qp);
+            add_residual_tiles(
+                &mut frame.cb,
+                bc,
+                bc.n,
+                &pred,
+                std::slice::from_ref(&leaf.cb),
+                qp,
+            );
             intra_pred_plane(&frame.cr, bc, false, cmode, &mut pred);
-            add_residual_tiles(&mut frame.cr, bc, bc.n, &pred, std::slice::from_ref(&leaf.cr), qp);
+            add_residual_tiles(
+                &mut frame.cr,
+                bc,
+                bc.n,
+                &pred,
+                std::slice::from_ref(&leaf.cr),
+                qp,
+            );
         }
         LeafKind::Inter { mv, skip } => {
             let r = reference.expect("inter leaf requires a reference frame");
@@ -105,13 +132,27 @@ pub fn reconstruct_leaf(frame: &mut Frame, reference: Option<&RefFrame>, b: Blk,
             if skip {
                 write_pred(&mut frame.cb, bc, &pred);
             } else {
-                add_residual_tiles(&mut frame.cb, bc, bc.n, &pred, std::slice::from_ref(&leaf.cb), qp);
+                add_residual_tiles(
+                    &mut frame.cb,
+                    bc,
+                    bc.n,
+                    &pred,
+                    std::slice::from_ref(&leaf.cb),
+                    qp,
+                );
             }
             mc_chroma(&r.cr, bc, mv, &mut pred);
             if skip {
                 write_pred(&mut frame.cr, bc, &pred);
             } else {
-                add_residual_tiles(&mut frame.cr, bc, bc.n, &pred, std::slice::from_ref(&leaf.cr), qp);
+                add_residual_tiles(
+                    &mut frame.cr,
+                    bc,
+                    bc.n,
+                    &pred,
+                    std::slice::from_ref(&leaf.cr),
+                    qp,
+                );
             }
         }
     }
@@ -134,7 +175,11 @@ impl LeafGrid {
     pub fn new(width: usize, height: usize) -> Self {
         let w8 = width / MIN_BLOCK;
         let cells = w8 * (height / MIN_BLOCK);
-        LeafGrid { w8, modes: vec![MODE_UNAVAILABLE; cells], mvs: vec![Mv::default(); cells] }
+        LeafGrid {
+            w8,
+            modes: vec![MODE_UNAVAILABLE; cells],
+            mvs: vec![Mv::default(); cells],
+        }
     }
 
     #[inline]
@@ -239,7 +284,10 @@ impl LeafGrid {
     /// Снимок ячеек региона (для отката split-проб энкодера).
     pub fn save_region(&self, b: Blk) -> SavedCells {
         let (cx0, cy0) = (b.x / 8, b.y / 8);
-        let (cx1, cy1) = (((b.x + b.n) / 8).min(self.w8), ((b.y + b.n) / 8).min(self.modes.len() / self.w8));
+        let (cx1, cy1) = (
+            ((b.x + b.n) / 8).min(self.w8),
+            ((b.y + b.n) / 8).min(self.modes.len() / self.w8),
+        );
         let mut modes = Vec::with_capacity((cx1 - cx0) * (cy1 - cy0));
         let mut mvs = Vec::with_capacity((cx1 - cx0) * (cy1 - cy0));
         for cy in cy0..cy1 {
@@ -253,7 +301,10 @@ impl LeafGrid {
 
     pub fn restore_region(&mut self, b: Blk, saved: &SavedCells) {
         let (cx0, cy0) = (b.x / 8, b.y / 8);
-        let (cx1, cy1) = (((b.x + b.n) / 8).min(self.w8), ((b.y + b.n) / 8).min(self.modes.len() / self.w8));
+        let (cx1, cy1) = (
+            ((b.x + b.n) / 8).min(self.w8),
+            ((b.y + b.n) / 8).min(self.modes.len() / self.w8),
+        );
         let mut i = 0;
         for cy in cy0..cy1 {
             for cx in cx0..cx1 {
