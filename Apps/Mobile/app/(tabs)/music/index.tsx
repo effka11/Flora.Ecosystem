@@ -73,7 +73,6 @@ export default function MusicScreen() {
   const scrollX = useRef(new Animated.Value(0)).current;
 
   const [search, setSearch] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<MusicBrowseTab>("recommendations");
   const [addTrackOpen, setAddTrackOpen] = useState(false);
   const [uploadTab, setUploadTab] = useState<MusicUploadTab>("forSelf");
@@ -196,9 +195,6 @@ export default function MusicScreen() {
           placeholder="Поиск по музыке"
           value={search}
           onChangeText={setSearch}
-          menuOpen={menuOpen}
-          onMenuOpen={() => setMenuOpen(true)}
-          onMenuClose={() => setMenuOpen(false)}
           createAction={{
             accessibilityLabel: "Добавить трек",
             onPress: () => setAddTrackOpen(true),

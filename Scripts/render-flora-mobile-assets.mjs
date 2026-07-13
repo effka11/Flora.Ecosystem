@@ -129,6 +129,7 @@ async function main() {
   await pngFromSvg(join(assets, "flora-mark-dev.svg"), join(images, "icon-dev.png"), 1024);
   await pngFromSvg(join(assets, "flora-mark-foreground.svg"), join(images, "android-icon-foreground.png"), 1024);
   await pngFromSvg(join(assets, "flora-mark-monochrome.svg"), join(images, "android-icon-monochrome.png"), 1024);
+  await pngFromSvg(join(assets, "flora-logo-mark-glyph.svg"), join(images, "logo-mark-glyph.png"), 128);
   await solidPng(join(images, "android-icon-background.png"), 1024, FLORA_GREEN_DARK);
   await solidPng(join(images, "android-icon-background-dev.png"), 1024, FLORA_BG);
   await splashPng(join(images, "splash-icon.png"), 1024);

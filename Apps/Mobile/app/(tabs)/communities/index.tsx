@@ -147,7 +147,6 @@ export default function CommunitiesScreen() {
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
   const [search, setSearch] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<CommunityTab>("recommended");
   const [localJoined, setLocalJoined] = useState<Record<string, boolean>>({});
@@ -328,9 +327,6 @@ export default function CommunitiesScreen() {
           placeholder="Поиск по названию или ссылке"
           value={search}
           onChangeText={setSearch}
-          menuOpen={menuOpen}
-          onMenuOpen={() => setMenuOpen(true)}
-          onMenuClose={() => setMenuOpen(false)}
           createAction={{
             accessibilityLabel: "Создать сообщество",
             onPress: () => setCreateOpen(true),

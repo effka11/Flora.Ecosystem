@@ -128,7 +128,6 @@ export default function PeopleScreen() {
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
   const [search, setSearch] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [mainTab, setMainTab] = useState<PeopleMainTab>("recommended");
   const [friendsFilter, setFriendsFilter] = useState<FriendsFilter>("friends");
   const [friendsFilterOpen, setFriendsFilterOpen] = useState(false);
@@ -315,12 +314,7 @@ export default function PeopleScreen() {
             setSearch(value);
             setFriendsFilterOpen(false);
           }}
-          menuOpen={menuOpen}
-          onMenuOpen={() => {
-            setFriendsFilterOpen(false);
-            setMenuOpen(true);
-          }}
-          onMenuClose={() => setMenuOpen(false)}
+          onBeforeMenuOpen={() => setFriendsFilterOpen(false)}
         />
 
         {!hasSearch ? (

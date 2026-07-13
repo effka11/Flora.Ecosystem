@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropdownPicker";
+import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
@@ -94,9 +95,9 @@ export default function MessagesScreen() {
   const retryPendingOperation = useFscpStore((s) => s.retryPendingOperation);
 
   const [search, setSearch] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const { closeMenu } = useHamburgerMenu();
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   const [filterFrom, setFilterFrom] = useState<FilterFrom>("all");
   const [unlockOpen, setUnlockOpen] = useState(false);
@@ -184,17 +185,17 @@ export default function MessagesScreen() {
     setSortOpen(open);
     if (open) {
       setFilterOpen(false);
-      setMenuOpen(false);
+      closeMenu();
     }
-  }, []);
+  }, [closeMenu]);
 
   const handleFilterOpenChange = useCallback((open: boolean) => {
     setFilterOpen(open);
     if (open) {
       setSortOpen(false);
-      setMenuOpen(false);
+      closeMenu();
     }
-  }, []);
+  }, [closeMenu]);
 
   const onBannerAction = () => {
     if (fscpStatus === "orphan_local_profile") {
@@ -222,12 +223,7 @@ export default function MessagesScreen() {
             setSearch(value);
             closeDropdowns();
           }}
-          menuOpen={menuOpen}
-          onMenuOpen={() => {
-            closeDropdowns();
-            setMenuOpen(true);
-          }}
-          onMenuClose={() => setMenuOpen(false)}
+          onBeforeMenuOpen={closeDropdowns}
         />
 
         {banner ? (

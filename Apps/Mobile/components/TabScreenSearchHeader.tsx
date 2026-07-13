@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { FeedHamburgerMenu } from "@/components/FeedHamburgerMenu";
+import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 type TabScreenSearchHeaderProps = {
@@ -11,9 +11,8 @@ type TabScreenSearchHeaderProps = {
   placeholder: string;
   value: string;
   onChangeText: (value: string) => void;
-  menuOpen: boolean;
-  onMenuOpen: () => void;
-  onMenuClose: () => void;
+  /** Перед открытием меню (закрыть дропдауны фильтров и т.п.). */
+  onBeforeMenuOpen?: () => void;
   /** Кнопка создания справа (правее поиска). */
   createAction?: {
     accessibilityLabel: string;
@@ -27,11 +26,10 @@ export function TabScreenSearchHeader({
   placeholder,
   value,
   onChangeText,
-  menuOpen,
-  onMenuOpen,
-  onMenuClose,
+  onBeforeMenuOpen,
   createAction,
 }: TabScreenSearchHeaderProps) {
+  const { openMenu } = useHamburgerMenu();
   const [searchOpen, setSearchOpen] = useState(value.length > 0);
   const inputRef = useRef<TextInput>(null);
 
@@ -53,85 +51,87 @@ export function TabScreenSearchHeader({
     setSearchOpen(false);
   };
 
+  const handleMenuPressIn = () => {
+    onBeforeMenuOpen?.();
+    openMenu();
+  };
+
   return (
-    <>
-      <View style={styles.chromeRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Меню"
-          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-          onPress={onMenuOpen}
-        >
-          <Ionicons name="menu-outline" size={24} color={floraColors.gray} />
-        </Pressable>
+    <View style={styles.chromeRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Меню"
+        style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+        onPressIn={handleMenuPressIn}
+      >
+        <Ionicons name="menu-outline" size={24} color={floraColors.gray} />
+      </Pressable>
 
-        {searchOpen ? (
-          <View style={styles.searchBox}>
-            <Ionicons name="search-outline" size={20} color={floraColors.gray} />
-            <TextInput
-              ref={inputRef}
-              style={styles.searchInput}
-              placeholder={placeholder}
-              placeholderTextColor={floraColors.gray}
-              value={value}
-              onChangeText={onChangeText}
-              returnKeyType="search"
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-            <Pressable
-              style={styles.searchClear}
-              onPress={closeSearch}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Закрыть поиск"
-            >
-              <Ionicons name="close" size={18} color={floraColors.greenLight} />
-            </Pressable>
-          </View>
-        ) : (
-          <>
-            <View style={styles.titleRow}>
-              <Text style={styles.title} numberOfLines={1}>
-                {title}
-              </Text>
-              {titleBadge ? (
-                <View style={styles.titleBadge} accessibilityRole="text">
-                  <Text style={styles.titleBadgeText} numberOfLines={1}>
-                    {titleBadge}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={styles.spacer} />
-          </>
-        )}
-
-        <View style={styles.trailingActions}>
-          {!searchOpen ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Поиск"
-              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-              onPress={() => setSearchOpen(true)}
-            >
-              <Ionicons name="search-outline" size={22} color={floraColors.gray} />
-            </Pressable>
-          ) : null}
-          {createAction ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={createAction.accessibilityLabel}
-              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-              onPress={createAction.onPress}
-            >
-              <Ionicons name="add" size={24} color={floraColors.greenLight} />
-            </Pressable>
-          ) : null}
+      {searchOpen ? (
+        <View style={styles.searchBox}>
+          <Ionicons name="search-outline" size={20} color={floraColors.gray} />
+          <TextInput
+            ref={inputRef}
+            style={styles.searchInput}
+            placeholder={placeholder}
+            placeholderTextColor={floraColors.gray}
+            value={value}
+            onChangeText={onChangeText}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          <Pressable
+            style={styles.searchClear}
+            onPress={closeSearch}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть поиск"
+          >
+            <Ionicons name="close" size={18} color={floraColors.greenLight} />
+          </Pressable>
         </View>
+      ) : (
+        <>
+          <View style={styles.titleRow}>
+            <Text style={styles.title} numberOfLines={1}>
+              {title}
+            </Text>
+            {titleBadge ? (
+              <View style={styles.titleBadge} accessibilityRole="text">
+                <Text style={styles.titleBadgeText} numberOfLines={1}>
+                  {titleBadge}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.spacer} />
+        </>
+      )}
+
+      <View style={styles.trailingActions}>
+        {!searchOpen ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Поиск"
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+            onPress={() => setSearchOpen(true)}
+          >
+            <Ionicons name="search-outline" size={22} color={floraColors.gray} />
+          </Pressable>
+        ) : null}
+        {createAction ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={createAction.accessibilityLabel}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+            onPress={createAction.onPress}
+          >
+            <Ionicons name="add" size={24} color={floraColors.greenLight} />
+          </Pressable>
+        ) : null}
       </View>
-      <FeedHamburgerMenu visible={menuOpen} onClose={onMenuClose} />
-    </>
+    </View>
   );
 }
 

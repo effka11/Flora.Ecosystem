@@ -25,6 +25,7 @@ import {
   NotificationCategoryPicker,
 } from "@/components/notifications/NotificationCategoryPicker";
 import { NotificationRow } from "@/components/notifications/NotificationRow";
+import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { subscribeNotificationRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
@@ -50,8 +51,8 @@ export default function NotificationsScreen() {
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const { closeMenu } = useHamburgerMenu();
   const [activeTab, setActiveTab] = useState(0);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -141,8 +142,8 @@ export default function NotificationsScreen() {
 
   const handleFilterOpenChange = useCallback((open: boolean) => {
     setFilterOpen(open);
-    if (open) setMenuOpen(false);
-  }, []);
+    if (open) closeMenu();
+  }, [closeMenu]);
 
   const markAsRead = useCallback(
     async (item: NotificationDto) => {
@@ -177,12 +178,7 @@ export default function NotificationsScreen() {
             setSearch(value);
             if (value.trim().length > 0) setFilterOpen(false);
           }}
-          menuOpen={menuOpen}
-          onMenuOpen={() => {
-            setFilterOpen(false);
-            setMenuOpen(true);
-          }}
-          onMenuClose={() => setMenuOpen(false)}
+          onBeforeMenuOpen={() => setFilterOpen(false)}
         />
 
         {!hasSearch ? (

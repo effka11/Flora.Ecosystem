@@ -208,7 +208,6 @@ export default function FeedScreen() {
     subscriptions: null,
   });
   const [search, setSearch] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const estimatedHeaderHeight = insets.top + floraSpacing.grid + FEED_CHROME_BODY_HEIGHT;
   const {
@@ -374,9 +373,6 @@ export default function FeedScreen() {
             placeholder="Поиск в ленте"
             value={search}
             onChangeText={setSearch}
-            menuOpen={menuOpen}
-            onMenuOpen={() => setMenuOpen(true)}
-            onMenuClose={() => setMenuOpen(false)}
             createAction={{
               accessibilityLabel: "Создать пост",
               onPress: () => router.push(composeScreenHref()),

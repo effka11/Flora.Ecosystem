@@ -1,4 +1,5 @@
 import { FloraTabBarBackground } from "@/components/FloraTabBarBackground";
+import { HamburgerMenuProvider } from "@/components/HamburgerMenuProvider";
 import { SignalsTabBarIcon } from "@/components/SignalsTabBarIcon";
 import { TabBarIconWithBadge } from "@/components/TabBarIconWithBadge";
 import { MusicMiniPlayer } from "@/components/MusicMiniPlayer";
@@ -39,134 +40,136 @@ export default function TabsLayout() {
   );
 
   return (
-    <View style={styles.tabsRoot}>
-      <Tabs
-        detachInactiveScreens={false}
-        screenListeners={screenListeners}
-        screenOptions={screenOptions}
-      >
-        <Tabs.Screen
-          name="feed"
-          listeners={{
-            tabPress: (e) => {
-              if (!isTabActive(segments, "feed")) {
-                return;
-              }
-              e.preventDefault();
-              if (isTabRoot(segments, "feed")) {
-                return;
-              }
-              router.replace("/(tabs)/feed");
-            },
-          }}
-          options={{
-            title: "Лента",
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <TabBarIconWithBadge name="newspaper-outline" color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="music"
-          options={{
-            title: "Музыка",
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <TabBarIconWithBadge name="musical-notes-outline" color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="messages"
-          listeners={{
-            tabPress: (e) => {
-              if (!isTabActive(segments, "messages")) {
-                return;
-              }
-              e.preventDefault();
-              if (isTabRoot(segments, "messages") && !isMessagesInThreadPath(pathname)) {
-                return;
-              }
-              router.replace("/(tabs)/messages");
-            },
-          }}
-          options={({ route }) => ({
-            title: "Сообщения",
-            headerShown: false,
-            tabBarStyle: messagesTabBarStyleForRoute(route, tabBarBottomInset),
-            tabBarIcon: ({ color, size }) => (
-              <SignalsTabBarIcon
-                name="chatbubbles-outline"
-                badgeKey="messagesUnread"
-                color={color}
-                size={size}
-              />
-            ),
-          })}
-        />
-        <Tabs.Screen
-          name="notifications/index"
-          options={{
-            title: "Уведомления",
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <SignalsTabBarIcon
-                name="notifications-outline"
-                badgeKey="notificationsUnread"
-                color={color}
-                size={size}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="people"
-          options={{
-            href: null,
-            headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="communities"
-          options={{
-            href: null,
-            headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="github"
-          options={{
-            href: null,
-            headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          listeners={{
-            tabPress: (e) => {
-              if (!isTabActive(segments, "profile")) {
-                return;
-              }
-              e.preventDefault();
-              if (isTabRoot(segments, "profile")) {
-                return;
-              }
-              router.replace("/(tabs)/profile");
-            },
-          }}
-          options={{
-            title: "Профиль",
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <TabBarIconWithBadge name="person-outline" color={color} size={size} />
-            ),
-          }}
-        />
-      </Tabs>
-      <MusicMiniPlayer />
-      {overlay}
-    </View>
+    <HamburgerMenuProvider>
+      <View style={styles.tabsRoot}>
+        <Tabs
+          detachInactiveScreens={false}
+          screenListeners={screenListeners}
+          screenOptions={screenOptions}
+        >
+          <Tabs.Screen
+            name="feed"
+            listeners={{
+              tabPress: (e) => {
+                if (!isTabActive(segments, "feed")) {
+                  return;
+                }
+                e.preventDefault();
+                if (isTabRoot(segments, "feed")) {
+                  return;
+                }
+                router.replace("/(tabs)/feed");
+              },
+            }}
+            options={{
+              title: "Лента",
+              headerShown: false,
+              tabBarIcon: ({ color, size }) => (
+                <TabBarIconWithBadge name="newspaper-outline" color={color} size={size} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="music"
+            options={{
+              title: "Музыка",
+              headerShown: false,
+              tabBarIcon: ({ color, size }) => (
+                <TabBarIconWithBadge name="musical-notes-outline" color={color} size={size} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="messages"
+            listeners={{
+              tabPress: (e) => {
+                if (!isTabActive(segments, "messages")) {
+                  return;
+                }
+                e.preventDefault();
+                if (isTabRoot(segments, "messages") && !isMessagesInThreadPath(pathname)) {
+                  return;
+                }
+                router.replace("/(tabs)/messages");
+              },
+            }}
+            options={({ route }) => ({
+              title: "Сообщения",
+              headerShown: false,
+              tabBarStyle: messagesTabBarStyleForRoute(route, tabBarBottomInset),
+              tabBarIcon: ({ color, size }) => (
+                <SignalsTabBarIcon
+                  name="chatbubbles-outline"
+                  badgeKey="messagesUnread"
+                  color={color}
+                  size={size}
+                />
+              ),
+            })}
+          />
+          <Tabs.Screen
+            name="notifications/index"
+            options={{
+              title: "Уведомления",
+              headerShown: false,
+              tabBarIcon: ({ color, size }) => (
+                <SignalsTabBarIcon
+                  name="notifications-outline"
+                  badgeKey="notificationsUnread"
+                  color={color}
+                  size={size}
+                />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="people"
+            options={{
+              href: null,
+              headerShown: false,
+            }}
+          />
+          <Tabs.Screen
+            name="communities"
+            options={{
+              href: null,
+              headerShown: false,
+            }}
+          />
+          <Tabs.Screen
+            name="github"
+            options={{
+              href: null,
+              headerShown: false,
+            }}
+          />
+          <Tabs.Screen
+            name="profile"
+            listeners={{
+              tabPress: (e) => {
+                if (!isTabActive(segments, "profile")) {
+                  return;
+                }
+                e.preventDefault();
+                if (isTabRoot(segments, "profile")) {
+                  return;
+                }
+                router.replace("/(tabs)/profile");
+              },
+            }}
+            options={{
+              title: "Профиль",
+              headerShown: false,
+              tabBarIcon: ({ color, size }) => (
+                <TabBarIconWithBadge name="person-outline" color={color} size={size} />
+              ),
+            }}
+          />
+        </Tabs>
+        <MusicMiniPlayer />
+        {overlay}
+      </View>
+    </HamburgerMenuProvider>
   );
 }
 
