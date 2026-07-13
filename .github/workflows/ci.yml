@@ -114,3 +114,33 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           manifest-path: Backend/Cargo.toml
+
+  # Аудио-кодек FAC (docs/codecs/FAC.md) — отдельный workspace Codecs/audio.
+  # Ядро дополнительно проверяется на wasm32: E2E-голосовые кодируются на клиенте.
+  codecs-audio:
+    name: codecs-audio
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Codecs/audio
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Codecs/audio
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Check core on wasm32
+        run: cargo check -p fac-core --target wasm32-unknown-unknown --locked
+      - name: Licenses, bans, advisories (cargo deny)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: Codecs/audio/Cargo.toml

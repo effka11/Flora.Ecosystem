@@ -2,11 +2,11 @@
 //! DC-предсказание от предыдущего блока, run/level кодирование AC-коэффициентов.
 
 use crate::bits::{BitReader, BitWriter};
-use crate::dct::{fdct8x8, idct8x8, ZIGZAG};
+use crate::dct::{ZIGZAG, fdct8x8, idct8x8};
 use crate::error::DecodeError;
 use crate::rans::RansDecoder;
 use crate::section::Section;
-use crate::tokens::{detokenize, tokenize, unzigzag, zigzag, write_raw};
+use crate::tokens::{detokenize, tokenize, unzigzag, write_raw, zigzag};
 
 /// Контексты DCT-плоскости: DC, run (низкие/высокие частоты), level (низкие/высокие).
 pub const N_CTX: usize = 5;
@@ -140,7 +140,9 @@ pub fn decode_tile_plane(
                     break;
                 }
                 let run = detokenize(rsym, raw)? as usize;
-                pos = pos.checked_add(run).ok_or(DecodeError::Corrupt("dct: run overflow"))?;
+                pos = pos
+                    .checked_add(run)
+                    .ok_or(DecodeError::Corrupt("dct: run overflow"))?;
                 if pos >= 64 {
                     return Err(DecodeError::Corrupt("dct: позиция AC вне блока"));
                 }
@@ -175,8 +177,8 @@ pub fn decode_tile_plane(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dct::{quant_matrix, BASE_LUMA};
-    use crate::section::{read_section, write_section};
+    use crate::dct::{BASE_LUMA, quant_matrix};
+    use crate::section::{read_dct_section, write_dct_section};
 
     fn psnr(a: &[i16], b: &[i16]) -> f64 {
         let mse: f64 = a
@@ -215,9 +217,9 @@ mod tests {
         let mut raw = BitWriter::new();
         encode_tile_plane(&buf, w, h, &qmat, &mut syms, &mut raw);
         let mut out = Vec::new();
-        write_section(&mut out, N_CTX, &syms, raw);
+        write_dct_section(&mut out, N_CTX, &syms, raw);
 
-        let (section, used) = read_section(&out, N_CTX).unwrap();
+        let (section, used) = read_dct_section(&out, N_CTX).unwrap();
         assert_eq!(used, out.len());
         let mut dec = RansDecoder::new(section.tokens).unwrap();
         let mut raw_reader = BitReader::new(section.raw);
@@ -236,7 +238,10 @@ mod tests {
     fn quality_monotonic_in_fidelity() {
         let p30 = roundtrip_psnr(64, 64, 30);
         let p90 = roundtrip_psnr(64, 64, 90);
-        assert!(p90 > p30, "q=90 ({p90:.1} dB) должен быть точнее q=30 ({p30:.1} dB)");
+        assert!(
+            p90 > p30,
+            "q=90 ({p90:.1} dB) должен быть точнее q=30 ({p30:.1} dB)"
+        );
     }
 
     #[test]

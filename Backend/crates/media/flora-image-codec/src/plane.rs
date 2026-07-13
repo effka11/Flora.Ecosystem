@@ -8,7 +8,10 @@ pub struct Plane {
 
 impl Plane {
     pub fn new(w: usize, h: usize) -> Self {
-        Self { w, data: vec![0; w * h] }
+        Self {
+            w,
+            data: vec![0; w * h],
+        }
     }
 
     /// Копирует прямоугольник `w x h` с позиции `(x0, y0)` в отдельный буфер.
@@ -41,13 +44,31 @@ pub struct SampleRange {
 }
 
 impl SampleRange {
-    /// Битов на отсчёт в raw-секции (FIC.md §6.4).
+    /// Битов на отсчёт в raw-секции (FIC.md §4.1): битовая длина размаха.
     pub fn raw_bits(&self) -> u32 {
-        if self.lo == 0 { 8 } else { 9 }
+        let span = (self.hi - self.lo) as u32;
+        32 - span.max(1).leading_zeros()
     }
 }
 
 /// Яркость, альфа и identity-RGB: 0..=255, виртуальный сосед 128.
-pub const RANGE_LUMA: SampleRange = SampleRange { lo: 0, hi: 255, mid: 128 };
+pub const RANGE_LUMA: SampleRange = SampleRange {
+    lo: 0,
+    hi: 255,
+    mid: 128,
+};
 /// Обратимые цветоразности YCoCg-R: -255..=255, виртуальный сосед 0.
-pub const RANGE_CHROMA_LOSSLESS: SampleRange = SampleRange { lo: -255, hi: 255, mid: 0 };
+pub const RANGE_CHROMA_LOSSLESS: SampleRange = SampleRange {
+    lo: -255,
+    hi: 255,
+    mid: 0,
+};
+
+/// Диапазон плоскости индексов палитры из `count` записей (1..=256).
+pub fn palette_range(count: usize) -> SampleRange {
+    SampleRange {
+        lo: 0,
+        hi: count as i32 - 1,
+        mid: count as i32 / 2,
+    }
+}

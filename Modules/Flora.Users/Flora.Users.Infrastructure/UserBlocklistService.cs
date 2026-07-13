@@ -12,6 +12,16 @@ public sealed class UserBlocklistService(UsersDbContext db) : IUserBlocklistServ
                 b => b.OwnerUserUuid == ownerUserUuid && b.BlockedUserUuid == viewerUserUuid,
                 cancellationToken);
 
+    public async Task<IReadOnlySet<Guid>> GetBlockedUserIdsBidirectionalAsync(
+        Guid userUuid, CancellationToken cancellationToken = default)
+    {
+        var rows = await db.UserBlocks.AsNoTracking()
+            .Where(b => b.OwnerUserUuid == userUuid || b.BlockedUserUuid == userUuid)
+            .Select(b => b.OwnerUserUuid == userUuid ? b.BlockedUserUuid : b.OwnerUserUuid)
+            .ToListAsync(cancellationToken);
+        return rows.ToHashSet();
+    }
+
     public async Task<IReadOnlyList<UserBlockRecord>> ListAsync(Guid ownerUserUuid, CancellationToken cancellationToken = default)
     {
         var rows = await db.UserBlocks.AsNoTracking()

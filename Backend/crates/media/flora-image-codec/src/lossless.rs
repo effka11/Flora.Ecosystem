@@ -1,13 +1,13 @@
-//! Lossless-кодер плоскости (FIC.md §6): MED-предиктор + контексты по
+//! Lossless-кодер плоскости (FIC.md §5): MED-предиктор + контексты по
 //! градиентам + hybrid-uint токены. Работает на одном тайле одной плоскости.
 
 use crate::bits::{BitReader, BitWriter};
 use crate::error::DecodeError;
 use crate::plane::SampleRange;
-use crate::predict::{grad_context, med, neighbors, N_CTX_LOSSLESS};
+use crate::predict::{grad_context, med, neighbors};
 use crate::rans::RansDecoder;
 use crate::section::Section;
-use crate::tokens::{detokenize, tokenize, unzigzag, zigzag, write_raw};
+use crate::tokens::{detokenize, tokenize, unzigzag, write_raw, zigzag};
 
 /// Кодирует тайл-плоскость `w x h`, добавляя токены в `syms` и биты в `raw`.
 pub fn encode_tile_plane(
@@ -71,36 +71,43 @@ pub fn decode_tile_plane(
     Ok(buf)
 }
 
-/// Число контекстов секции lossless-плоскости.
-pub const N_CTX: usize = N_CTX_LOSSLESS;
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::plane::{RANGE_CHROMA_LOSSLESS, RANGE_LUMA};
-    use crate::section::{read_section, write_section};
+    use crate::section::{
+        PredictiveSection, read_predictive_section, unpack_raw, write_predictive_section,
+    };
 
     fn roundtrip(buf: &[i16], w: usize, h: usize, range: SampleRange) {
         let mut syms = Vec::new();
         let mut raw = BitWriter::new();
         encode_tile_plane(buf, w, h, range, &mut syms, &mut raw);
         let mut out = Vec::new();
-        write_section(&mut out, N_CTX, &syms, raw);
+        write_predictive_section(&mut out, &syms, raw, buf, w, h, range);
 
-        let (section, used) = read_section(&out, N_CTX).unwrap();
+        let (section, used) = read_predictive_section(&out, w, h, range).unwrap();
         assert_eq!(used, out.len());
-        let mut dec = RansDecoder::new(section.tokens).unwrap();
-        let mut raw_reader = BitReader::new(section.raw);
-        let decoded =
-            decode_tile_plane(&section, &mut dec, &mut raw_reader, w, h, range).unwrap();
-        dec.finish().unwrap();
+        let decoded = match section {
+            PredictiveSection::Raw(packed) => unpack_raw(packed, w, h, range).unwrap(),
+            PredictiveSection::Coded(section) => {
+                let mut dec = RansDecoder::new(section.tokens).unwrap();
+                let mut raw_reader = BitReader::new(section.raw);
+                let decoded =
+                    decode_tile_plane(&section, &mut dec, &mut raw_reader, w, h, range).unwrap();
+                dec.finish().unwrap();
+                decoded
+            }
+        };
         assert_eq!(decoded, buf);
     }
 
     #[test]
     fn roundtrip_gradient_luma() {
         let (w, h) = (37, 23);
-        let buf: Vec<i16> = (0..w * h).map(|i| ((i % w) * 255 / w.max(1)) as i16).collect();
+        let buf: Vec<i16> = (0..w * h)
+            .map(|i| ((i % w) * 255 / w.max(1)) as i16)
+            .collect();
         roundtrip(&buf, w, h, RANGE_LUMA);
     }
 

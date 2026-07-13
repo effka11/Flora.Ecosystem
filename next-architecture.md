@@ -62,6 +62,9 @@ Backend/
       flora-verification/       flora-verification-contracts/
     infrastructure/
       flora-grpc-bridge/        # переходный: tonic-серверы/клиенты межъязыковых портов (см. §5.2)
+    media/                      # вне скоупа миграции: нативные кодеки FMC (docs/codecs/CODECS.md)
+      flora-image-codec/        # FIC — фото-кодек (docs/codecs/FIC.md)
+      flora-codec-tools/        # CLI flora-codec (image; video/audio добавят треки FVC/FAC)
   tests/
     parity/                     # replay contract fixtures + differential harness (flora-diff)
 ```
@@ -81,6 +84,7 @@ Backend/
 | `flora-<module>` | свой `*-contracts`, **чужие `*-contracts`**, `flora-shared` |
 | `flora-<module>-contracts` | `flora-shared` |
 | `flora-shared` | только внешние crates |
+| `crates/media/*` (кодеки FMC) | только другие media-crates; **вне скоупа миграции** — модули используют кодеки через свой Infrastructure-слой (см. `docs/codecs/CODECS.md`) |
 
 Проверка — скрипт `tools/validate-architecture-rust` поверх `cargo metadata` (замена [`tools/Validate-Architecture.ps1`](tools/Validate-Architecture.ps1)), в CI вместе с `cargo fmt --check`, `clippy -D warnings`, `cargo deny` (лицензии — совместимость с AGPLv3, запреты дублей).
 
@@ -149,6 +153,8 @@ Rust-реализация обязана воспроизводить следу
 ### 4.4. FSCP (серверная валидация формы конверта)
 
 Сервер не расшифровывает — только структурная валидация `fscp1:base64url(JSON)`. Паритет с [`FscpWireEnvelopeValidator.cs`](Products/Flora.Social/FscpWireEnvelopeValidator.cs): версия=1, лимиты (конверт ≤200k символов, внутренний JSON ≤120k байт, тело ≤64 KB), bootstrap-epoch `00000000-0000-4000-8000-000000000001`, ровно 2 получателя (1:1 DM), `conversationUuid`/`agreementPublicKeyId` через UUID v5 (§4.2), RKE `x25519-hkdf-xchacha20poly1305` (ephemeral 32 B, salt 32 B, nonce 24 B), Ed25519 (pub 32 B, подпись 64 B), совпадение `encryptedForReceiver == encryptedForSender`. Проверяется на golden-векторах [`docs/test-vectors/`](docs/test-vectors/README.md) + негативных кейсах, извлечённых из C#-тестов. Нормативные спецификации: [`docs/fscp/FSCP.md`](docs/fscp/FSCP.md), [`docs/fscp/e2e-security.md`](docs/fscp/e2e-security.md).
+
+**Статус:** порт выполнен заранее (чистая функция без БД/HTTP, форма заморожена): [`flora-messaging/src/fscp.rs`](Backend/crates/modules/flora-messaging/src/fscp.rs). Паритет закреплён вектором `fscp-wire-validator-v1.json` (позитив + 22 негатива, **точные строки ошибок**) и consumer-тестами с обеих сторон — C# [`FscpWireValidatorVectors.cs`](tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs), Rust [`fscp_wire_vectors.rs`](Backend/tests/parity/tests/fscp_wire_vectors.rs); клиентская криптография RKE/fingerprint дополнительно сверена на RustCrypto ([`fscp_client_crypto_vectors.rs`](Backend/tests/parity/tests/fscp_client_crypto_vectors.rs)). Владение модулем **не меняется** (§6.0): до cutover Фазы 4 Rust-код трафик не обслуживает. Осознанные отличия на патологических входах задокументированы в шапке `fscp.rs` (дубликаты JSON-ключей, не-объектный корень в `TryExtractReceiver`, X-форма GUID).
 
 ### 4.5. Rate limiting (fixed window, 429)
 
@@ -258,6 +264,8 @@ flowchart LR
 | Notifications | C# | не начат | — |
 
 Статусы: `не начат → в переносе (владелец C#) → freeze → cutover N% → Rust (соак) → Rust`.
+
+> Примечание: FSCP-валидатор Messaging перенесён заранее как чистая функция с golden-паритетом (§4.4) — это **не** меняет владение модулем и не открывает Фазу 4; трафик обслуживает C# до её cutover.
 
 ### Фаза 0 — Фундамент и шлюз
 

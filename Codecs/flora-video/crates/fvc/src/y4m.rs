@@ -24,17 +24,24 @@ fn read_line<R: Read>(r: &mut R, max: usize) -> io::Result<String> {
     loop {
         let n = r.read(&mut byte)?;
         if n == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "eof in y4m header"));
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "eof in y4m header",
+            ));
         }
         if byte[0] == b'\n' {
             break;
         }
         if buf.len() >= max {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "y4m header too long"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "y4m header too long",
+            ));
         }
         buf.push(byte[0]);
     }
-    String::from_utf8(buf).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "y4m header not utf8"))
+    String::from_utf8(buf)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "y4m header not utf8"))
 }
 
 impl<R: Read> Y4mReader<R> {
@@ -42,34 +49,60 @@ impl<R: Read> Y4mReader<R> {
         let header = read_line(&mut inner, 512)?;
         let mut parts = header.split(' ');
         if parts.next() != Some("YUV4MPEG2") {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "not a y4m stream"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "not a y4m stream",
+            ));
         }
         let (mut w, mut h, mut fn_, mut fd) = (0usize, 0usize, 25u32, 1u32);
         for p in parts {
             let (tag, val) = p.split_at(1);
             match tag {
-                "W" => w = val.parse().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad W"))?,
-                "H" => h = val.parse().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad H"))?,
-                "F" => {
-                    let (n, d) = val.split_once(':').ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad F"))?;
-                    fn_ = n.parse().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad F num"))?;
-                    fd = d.parse().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad F den"))?;
+                "W" => {
+                    w = val
+                        .parse()
+                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad W"))?
                 }
-                "C" => {
-                    if !matches!(val, "420" | "420jpeg" | "420mpeg2" | "420paldv") {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "only 4:2:0 8-bit y4m is supported",
-                        ));
-                    }
+                "H" => {
+                    h = val
+                        .parse()
+                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad H"))?
+                }
+                "F" => {
+                    let (n, d) = val
+                        .split_once(':')
+                        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad F"))?;
+                    fn_ = n
+                        .parse()
+                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad F num"))?;
+                    fd = d
+                        .parse()
+                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad F den"))?;
+                }
+                "C" if !matches!(val, "420" | "420jpeg" | "420mpeg2" | "420paldv") => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "only 4:2:0 8-bit y4m is supported",
+                    ));
                 }
                 _ => {} // I, A, X — игнорируем
             }
         }
         if w == 0 || h == 0 || w % 2 != 0 || h % 2 != 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "bad y4m dimensions"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "bad y4m dimensions",
+            ));
         }
-        Ok(Y4mReader { inner, params: VideoParams { width: w, height: h, fps_num: fn_, fps_den: fd } })
+        Ok(Y4mReader {
+            inner,
+            params: VideoParams {
+                width: w,
+                height: h,
+                fps_num: fn_,
+                fps_den: fd,
+            },
+        })
     }
 
     /// Читает следующий кадр; `Ok(None)` — конец потока.
@@ -79,14 +112,20 @@ impl<R: Read> Y4mReader<R> {
             0 => return Ok(None),
             _ => {
                 if first[0] != b'F' {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "bad FRAME marker"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "bad FRAME marker",
+                    ));
                 }
             }
         }
         // Дочитываем строку "RAME...\n"
         let rest = read_line(&mut self.inner, 512)?;
         if !rest.starts_with("RAME") {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "bad FRAME marker"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "bad FRAME marker",
+            ));
         }
         let (w, h) = (self.params.width, self.params.height);
         let mut read_plane = |pw: usize, ph: usize| -> io::Result<Plane> {
@@ -138,7 +177,12 @@ mod tests {
         for (i, v) in f.y.data_mut().iter_mut().enumerate() {
             *v = (i * 7 % 256) as u8;
         }
-        let params = VideoParams { width: 16, height: 8, fps_num: 30, fps_den: 1 };
+        let params = VideoParams {
+            width: 16,
+            height: 8,
+            fps_num: 30,
+            fps_den: 1,
+        };
         let mut w = Y4mWriter::new(Vec::new(), params).unwrap();
         w.write_frame(&f).unwrap();
         w.write_frame(&f).unwrap();

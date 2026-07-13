@@ -124,6 +124,12 @@ pwsh ../tools/validate-architecture-rust.ps1  # границы crate'ов (§2.3
 
 Структура `Backend/` и команды запуска — `Backend/README.md`. Кросс-языковые golden-векторы: `docs/test-vectors/backend-parity/` (C#-эталон — `./Scripts/generate-golden-vectors.ps1`; Rust-вектор — `cargo run -p flora-parity --bin gen-cross-vectors`).
 
+## Медиакодеки (Codecs/)
+
+Собственные кодеки Flora — отдельные Rust-workspace'ы вне `Backend/` (переиспользуемая технология, не бизнес-модули; потребители — клиенты и модули). Аудио: `Codecs/audio` (FAC), нормативная спецификация — `docs/codecs/FAC.md`; битстрим меняется только вместе со спекой. Прод-пайплайны по-прежнему регулирует `docs/codecs/CODECS.md` (FAC туда пока не введён). Проверки — те же cargo-команды из каталога workspace'а + `cargo check -p fac-core --target wasm32-unknown-unknown` (ядро обязано собираться под wasm32 — E2E-голосовые кодируются на клиенте).
+
+Фото: FIC — `Backend/crates/media/flora-image-codec` (категория `media` внутри Backend-workspace, чистый std, без `unsafe`), спека — `docs/codecs/FIC.md`, **битстрим v1 заморожен** golden-векторами (`FIC_UPDATE_GOLDEN=1` — только осознанно, вместе со спекой). CLI: `cargo run -p flora-codec-tools -- image ...`. Реестр сигнатур семейства FMC (FIC/FVC/FAC) — `docs/codecs/CODECS.md`.
+
 ## Git
 
 - **Не делать `git commit`, `git push` и не готовить коммиты** без явного запроса пользователя.

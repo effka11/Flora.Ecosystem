@@ -1,21 +1,25 @@
 //! MDCT/iMDCT c окном Vorbis и 50% overlap-add (FAC.md, «Нормативные формулы»).
 //!
-//! Прямая O(N²)-реализация с предвычисленной cos-таблицей: приоритет v0 —
-//! корректность и точное соответствие спецификации. Быстрый FFT-путь — v0.1
-//! (Roadmap), с тестом эквивалентности против этой реализации.
+//! Реализация через TDA-fold (2N → N) + DCT-IV размера N — математически
+//! тождественна прямой формуле спецификации (проверяется тестом против
+//! наивной реализации). Быстрый FFT-путь для DCT-IV — v0.1 (Roadmap): fold
+//! останется, заменится только матричное DCT-IV.
 
 use core::f64::consts::{FRAC_PI_2, PI};
 
 pub struct Mdct {
     n: usize,
     window: Vec<f64>,
-    /// `table[k * 2n + j] = cos(π/n · (j + 0.5 + n/2) · (k + 0.5))`
-    table: Vec<f64>,
+    /// Симметричная матрица DCT-IV: `dct4[k * n + m] = cos(π/n · (m + 0.5) · (k + 0.5))`.
+    dct4: Vec<f64>,
 }
 
 impl Mdct {
     pub fn new(n: usize) -> Self {
-        assert!(n > 0 && n % 2 == 0, "MDCT size must be positive and even");
+        assert!(
+            n > 0 && n.is_multiple_of(2),
+            "MDCT size must be positive and even"
+        );
         let two_n = 2 * n;
         let window: Vec<f64> = (0..two_n)
             .map(|i| {
@@ -23,56 +27,80 @@ impl Mdct {
                 (FRAC_PI_2 * inner * inner).sin()
             })
             .collect();
-        let mut table = vec![0f64; n * two_n];
+        let mut dct4 = vec![0f64; n * n];
         for k in 0..n {
-            let row = &mut table[k * two_n..(k + 1) * two_n];
-            for (j, t) in row.iter_mut().enumerate() {
-                *t = (PI / n as f64 * (j as f64 + 0.5 + n as f64 / 2.0) * (k as f64 + 0.5)).cos();
+            let row = &mut dct4[k * n..(k + 1) * n];
+            for (m, t) in row.iter_mut().enumerate() {
+                *t = (PI / n as f64 * (m as f64 + 0.5) * (k as f64 + 0.5)).cos();
             }
         }
-        Self { n, window, table }
+        Self { n, window, dct4 }
     }
 
     pub fn n(&self) -> usize {
         self.n
     }
 
+    /// TDA-fold windowed-входа: 2N сэмплов → N значений так, что
+    /// `MDCT(x) = DCT-IV(fold(w·x))`. Выведено из тождеств
+    /// `cos(θ + 2π(k+0.5)) = −cos θ` и чётности косинуса:
+    /// `t[m] = −v[3N/2−1−m] − v[3N/2+m]` для `m < N/2`,
+    /// `t[m] =  v[m−N/2]   − v[3N/2−1−m]` для `m ≥ N/2`, где `v = w·x`.
+    fn fold(&self, x: &[f32], t: &mut [f64]) {
+        let n = self.n;
+        let h = n / 2;
+        let v = |i: usize| f64::from(x[i]) * self.window[i];
+        for (m, out) in t.iter_mut().enumerate() {
+            *out = if m < h {
+                -v(3 * h - 1 - m) - v(3 * h + m)
+            } else {
+                v(m - h) - v(3 * h - 1 - m)
+            };
+        }
+    }
+
     /// `x` — 2N сэмплов (окно применяется внутри), `out` — N коэффициентов.
     pub fn forward(&self, x: &[f32], out: &mut [f32]) {
-        let two_n = 2 * self.n;
-        assert_eq!(x.len(), two_n);
+        assert_eq!(x.len(), 2 * self.n);
         assert_eq!(out.len(), self.n);
-        let wx: Vec<f64> = x
-            .iter()
-            .zip(&self.window)
-            .map(|(&s, &w)| f64::from(s) * w)
-            .collect();
+        let mut t = vec![0f64; self.n];
+        self.fold(x, &mut t);
         for (k, o) in out.iter_mut().enumerate() {
-            let row = &self.table[k * two_n..(k + 1) * two_n];
-            let acc: f64 = row.iter().zip(&wx).map(|(&t, &v)| t * v).sum();
+            let row = &self.dct4[k * self.n..(k + 1) * self.n];
+            let acc: f64 = row.iter().zip(&t).map(|(&c, &v)| c * v).sum();
             *o = acc as f32;
         }
     }
 
     /// `coeffs` — N коэффициентов, `out` — 2N windowed-сэмплов для overlap-add.
     pub fn inverse(&self, coeffs: &[f32], out: &mut [f32]) {
-        let two_n = 2 * self.n;
-        assert_eq!(coeffs.len(), self.n);
-        assert_eq!(out.len(), two_n);
-        let mut acc = vec![0f64; two_n];
+        let n = self.n;
+        assert_eq!(coeffs.len(), n);
+        assert_eq!(out.len(), 2 * n);
+        // d = DCT-IV(coeffs); матрица симметрична, поэтому строки те же.
+        let mut d = vec![0f64; n];
         for (k, &c) in coeffs.iter().enumerate() {
             if c == 0.0 {
                 continue;
             }
             let c = f64::from(c);
-            let row = &self.table[k * two_n..(k + 1) * two_n];
-            for (a, &t) in acc.iter_mut().zip(row) {
-                *a += c * t;
+            let row = &self.dct4[k * n..(k + 1) * n];
+            for (acc, &t) in d.iter_mut().zip(row) {
+                *acc += c * t;
             }
         }
-        let scale = 2.0 / self.n as f64;
-        for ((o, &a), &w) in out.iter_mut().zip(&acc).zip(&self.window) {
-            *o = (scale * w * a) as f32;
+        // Unfold — транспонирование fold'а, затем окно и масштаб 2/N.
+        let h = n / 2;
+        let scale = 2.0 / n as f64;
+        for (i, o) in out.iter_mut().enumerate() {
+            let pre = if i < h {
+                d[i + h]
+            } else if i < 3 * h {
+                -d[3 * h - 1 - i]
+            } else {
+                -d[i - 3 * h]
+            };
+            *o = (scale * self.window[i] * pre) as f32;
         }
     }
 }
@@ -88,12 +116,83 @@ mod tests {
         (*state as f32 / 2f32.powi(31)) - 1.0
     }
 
+    /// Прямая реализация нормативных формул FAC.md — эталон для fold-версии.
+    struct NaiveMdct {
+        n: usize,
+        window: Vec<f64>,
+    }
+
+    impl NaiveMdct {
+        fn new(n: usize) -> Self {
+            let two_n = 2 * n;
+            let window = (0..two_n)
+                .map(|i| {
+                    let inner = (PI * (i as f64 + 0.5) / two_n as f64).sin();
+                    (FRAC_PI_2 * inner * inner).sin()
+                })
+                .collect();
+            Self { n, window }
+        }
+
+        fn arg(&self, j: usize, k: usize) -> f64 {
+            PI / self.n as f64 * (j as f64 + 0.5 + self.n as f64 / 2.0) * (k as f64 + 0.5)
+        }
+
+        fn forward(&self, x: &[f32], out: &mut [f32]) {
+            for (k, o) in out.iter_mut().enumerate() {
+                let acc: f64 = (0..2 * self.n)
+                    .map(|j| f64::from(x[j]) * self.window[j] * self.arg(j, k).cos())
+                    .sum();
+                *o = acc as f32;
+            }
+        }
+
+        fn inverse(&self, coeffs: &[f32], out: &mut [f32]) {
+            let scale = 2.0 / self.n as f64;
+            for (j, o) in out.iter_mut().enumerate() {
+                let acc: f64 = coeffs
+                    .iter()
+                    .enumerate()
+                    .map(|(k, &c)| f64::from(c) * self.arg(j, k).cos())
+                    .sum();
+                *o = (scale * self.window[j] * acc) as f32;
+            }
+        }
+    }
+
     #[test]
     fn window_is_power_complementary() {
         let m = Mdct::new(64);
         for i in 0..64 {
             let s = m.window[i] * m.window[i] + m.window[i + 64] * m.window[i + 64];
             assert!((s - 1.0).abs() < 1e-12, "i={i}: {s}");
+        }
+    }
+
+    #[test]
+    fn fold_matches_naive_normative_formula() {
+        for n in [32usize, 480, 960] {
+            let fast = Mdct::new(n);
+            let naive = NaiveMdct::new(n);
+            let mut state = 0xF01D_1234u32;
+            let x: Vec<f32> = (0..2 * n).map(|_| xorshift(&mut state)).collect();
+            let coeffs: Vec<f32> = (0..n).map(|_| xorshift(&mut state)).collect();
+
+            let mut a = vec![0f32; n];
+            let mut b = vec![0f32; n];
+            fast.forward(&x, &mut a);
+            naive.forward(&x, &mut b);
+            for (i, (&fa, &na)) in a.iter().zip(&b).enumerate() {
+                assert!((fa - na).abs() < 1e-3, "n={n} fwd[{i}]: {fa} vs {na}");
+            }
+
+            let mut ya = vec![0f32; 2 * n];
+            let mut yb = vec![0f32; 2 * n];
+            fast.inverse(&coeffs, &mut ya);
+            naive.inverse(&coeffs, &mut yb);
+            for (i, (&fa, &na)) in ya.iter().zip(&yb).enumerate() {
+                assert!((fa - na).abs() < 1e-4, "n={n} inv[{i}]: {fa} vs {na}");
+            }
         }
     }
 

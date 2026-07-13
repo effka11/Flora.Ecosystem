@@ -3,8 +3,9 @@
 use crate::tables::{AC_STEP, DC_STEP};
 use crate::transform::COEFF_CLAMP;
 
-/// Максимальный кодируемый уровень (класс 13, см. tokens.rs).
-pub const MAX_LEVEL: i32 = 8192;
+/// Кламп уровня в энкодере. Худший случай DC: 8·32·255/dc_step(0) = 10 880,
+/// поэтому 16 384 покрывает любой валидный вход (кодируемый максимум токенов выше).
+pub const MAX_LEVEL: i32 = 16_384;
 
 #[inline]
 pub fn ac_step(qp: u8) -> i32 {
@@ -68,7 +69,12 @@ mod tests {
         dequantize_block(&levels, &mut deq, 0);
         inverse(&deq, n, &mut recon);
         for i in 0..64 {
-            assert!((input[i] - recon[i]).abs() <= 4, "pos {i}: {} vs {}", input[i], recon[i]);
+            assert!(
+                (input[i] - recon[i]).abs() <= 4,
+                "pos {i}: {} vs {}",
+                input[i],
+                recon[i]
+            );
         }
     }
 

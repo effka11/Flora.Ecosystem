@@ -13,11 +13,14 @@ console.log("//! Файл сгенерирован `tools/gen_tables.mjs` — р
 console.log("//! перегенерация: `node tools/gen_tables.mjs`. Формулы — в генераторе и в docs/codecs/FVC.md.");
 console.log("");
 
-// Матрица T[k][j] = round(64*sqrt(2)*ck*cos(pi*(2j+1)k / 2N)), ck = 1/sqrt(2) при k=0.
-// Это T ≈ 64*sqrt(N) * O, где O — ортонормальная DCT-II; DC-строка = 64 для всех N,
-// максимум |T| = 91 — одинаковая относительная точность у всех размеров.
+// Матрица T[k][j] = round(2^(13-log2 N) * sqrt(2) * ck * cos(pi*(2j+1)k / 2N)),
+// ck = 1/sqrt(2) при k=0. Это T = 2^(13-log2 N)*sqrt(N) * O, где O — ортонормальная
+// DCT-II. Масштаб обратен размеру: N·max|T| ≈ 2^13·sqrt(2) — константа, поэтому
+// границы i64-аккумуляторов одинаковы у всех размеров, а относительная ошибка
+// округления ≤0.14% (см. transform.rs). Сдвиги нормализации: forward 23-log2 N,
+// inverse 29-log2 N — домен коэффициентов у всех размеров равен 8×ортонормальному.
 function dctMatrix(n) {
-  const scale = 64 * Math.SQRT2;
+  const scale = Math.pow(2, 13 - Math.log2(n)) * Math.SQRT2;
   const rows = [];
   for (let k = 0; k < n; k++) {
     const ck = k === 0 ? Math.SQRT1_2 : 1;

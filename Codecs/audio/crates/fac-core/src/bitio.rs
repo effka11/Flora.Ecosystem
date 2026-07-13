@@ -66,7 +66,7 @@ impl BitWriter {
                 self.write_bit(true);
             }
             self.write_bit(false);
-            self.write_bits(val & ((1u32 << k) - 1).max(0), k);
+            self.write_bits(val & ((1u32 << k) - 1), k);
         }
     }
 

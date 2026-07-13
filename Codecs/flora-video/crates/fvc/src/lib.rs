@@ -12,6 +12,7 @@
 //!
 //! Ядро сознательно не имеет внешних зависимостей.
 
+mod block;
 mod dec;
 mod ec;
 mod enc;
@@ -22,6 +23,7 @@ pub mod metrics;
 mod predict;
 mod quant;
 mod scan;
+mod syntax;
 mod tables;
 mod tokens;
 mod transform;
@@ -30,7 +32,7 @@ pub mod ivf;
 pub mod y4m;
 
 pub use dec::Decoder;
-pub use enc::Encoder;
+pub use enc::{EncodedFrame, Encoder};
 pub use frame::{Frame, Plane};
 
 /// FourCC потока FVC1 (контейнер IVF).
@@ -45,6 +47,67 @@ pub const MAX_DIMENSION: u32 = 16384;
 pub(crate) const SB_SIZE: usize = 64;
 /// Минимальный размер листа разбиения (люма).
 pub(crate) const MIN_BLOCK: usize = 8;
+
+/// Позиция и размер квадратного блока в плоскости (люма-координаты).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Blk {
+    pub x: usize,
+    pub y: usize,
+    pub n: usize,
+}
+
+impl Blk {
+    /// Квадрант i quadtree-разбиения (0 TL, 1 TR, 2 BL, 3 BR).
+    #[inline]
+    pub fn child(self, i: usize) -> Blk {
+        let half = self.n / 2;
+        Blk {
+            x: self.x + if i % 2 == 1 { half } else { 0 },
+            y: self.y + if i >= 2 { half } else { 0 },
+            n: half,
+        }
+    }
+
+    /// Соответствующий блок хрома-плоскости (4:2:0).
+    #[inline]
+    pub fn chroma(self) -> Blk {
+        Blk {
+            x: self.x / 2,
+            y: self.y / 2,
+            n: self.n / 2,
+        }
+    }
+}
+
+/// Классификация узла quadtree (нормативная геометрия, общая для энкодера и декодера).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NodePlacement {
+    /// Начало блока за границей кадра — узел не существует (без синтаксиса).
+    Outside,
+    /// Блок частично выходит за кадр — принудительное разбиение (без флага).
+    MustSplit,
+    /// Минимальный размер — всегда лист (без флага).
+    Leaf,
+    /// Полностью внутри и крупнее минимума — флаг разбиения кодируется.
+    Choice,
+}
+
+#[inline]
+pub(crate) fn place_node(b: Blk, w: usize, h: usize) -> NodePlacement {
+    if b.x >= w || b.y >= h {
+        return NodePlacement::Outside;
+    }
+    if b.x + b.n > w || b.y + b.n > h {
+        // Размеры кадра кратны 8, поэтому блок 8×8 не может пересекать границу.
+        debug_assert!(b.n > MIN_BLOCK);
+        return NodePlacement::MustSplit;
+    }
+    if b.n == MIN_BLOCK {
+        NodePlacement::Leaf
+    } else {
+        NodePlacement::Choice
+    }
+}
 
 /// Ошибки кодека.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,8 +153,10 @@ impl EncoderConfig {
         if self.width > MAX_DIMENSION || self.height > MAX_DIMENSION {
             return Err(Error::InvalidConfig("dimension exceeds MAX_DIMENSION"));
         }
-        if self.width % 8 != 0 || self.height % 8 != 0 {
-            return Err(Error::InvalidConfig("dimensions must be multiples of 8 in v0.1"));
+        if !self.width.is_multiple_of(8) || !self.height.is_multiple_of(8) {
+            return Err(Error::InvalidConfig(
+                "dimensions must be multiples of 8 in v0.1",
+            ));
         }
         if self.qp > 63 {
             return Err(Error::InvalidConfig("qp must be in 0..=63"));

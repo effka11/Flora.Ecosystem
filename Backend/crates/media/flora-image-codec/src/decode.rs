@@ -3,13 +3,13 @@
 
 use crate::bits::BitReader;
 use crate::color::{upsample_420, ycbcr_to_rgb, ycocg_r_to_rgb};
-use crate::dct::{quant_matrix, BASE_CHROMA, BASE_LUMA};
+use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
 use crate::error::DecodeError;
-use crate::format::{tile_grid, Header, HEADER_LEN};
-use crate::plane::{Plane, SampleRange, RANGE_CHROMA_LOSSLESS, RANGE_LUMA};
+use crate::format::{HEADER_LEN, Header, tile_grid};
+use crate::plane::{Plane, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, SampleRange, palette_range};
 use crate::rans::RansDecoder;
-use crate::section::read_section;
-use crate::{lossless, lossy, DecodeLimits, DecodedImage, PixelFormat};
+use crate::section::{PredictiveSection, read_dct_section, read_predictive_section, unpack_raw};
+use crate::{DecodeLimits, DecodedImage, PixelFormat, lossless, lossy};
 
 pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, DecodeError> {
     let header = Header::parse(bytes)?;
@@ -22,44 +22,78 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
         });
     }
     let (w, h) = (header.width as usize, header.height as usize);
-    let tiles = tile_grid(header.width, header.height);
-    let table_len = tiles.len() * 4;
-    let table_end = HEADER_LEN + table_len;
-    let Some(table) = bytes.get(HEADER_LEN..table_end) else {
-        return Err(DecodeError::Corrupt("обрыв таблицы тайлов"));
+
+    // Опциональный блок палитры сразу после заголовка.
+    let mut offset = HEADER_LEN;
+    let palette: Option<Vec<[u8; 4]>> = if header.palette {
+        let Some(&count_minus_1) = bytes.get(offset) else {
+            return Err(DecodeError::Corrupt("обрыв счётчика палитры"));
+        };
+        offset += 1;
+        let count = usize::from(count_minus_1) + 1;
+        let entry_len = header.palette_entry_len();
+        let end = offset + count * entry_len;
+        let Some(block) = bytes.get(offset..end) else {
+            return Err(DecodeError::Corrupt("обрыв записей палитры"));
+        };
+        offset = end;
+        Some(
+            block
+                .chunks_exact(entry_len)
+                .map(|e| [e[0], e[1], e[2], if entry_len == 4 { e[3] } else { 255 }])
+                .collect(),
+        )
+    } else {
+        None
     };
 
-    let mut p0 = Plane::new(w, h);
-    let mut p1 = Plane::new(w, h);
-    let mut p2 = Plane::new(w, h);
-    let mut pa = header.alpha.then(|| Plane::new(w, h));
+    let tiles = tile_grid(header.width, header.height);
+    let table_len = tiles.len() * 4;
+    let table_end = offset
+        .checked_add(table_len)
+        .ok_or(DecodeError::Corrupt("переполнение таблицы"))?;
+    let Some(table) = bytes.get(offset..table_end) else {
+        return Err(DecodeError::Corrupt("обрыв таблицы тайлов"));
+    };
+    offset = table_end;
+
+    // Плоскости: палитра — одна, иначе 3 (+ альфа).
+    let n_color_planes = if palette.is_some() { 1 } else { 3 };
+    let mut planes: Vec<Plane> = (0..n_color_planes).map(|_| Plane::new(w, h)).collect();
+    let mut pa = (header.alpha && palette.is_none()).then(|| Plane::new(w, h));
 
     let q_luma = quant_matrix(&BASE_LUMA, header.quality.max(1));
     let q_chroma = quant_matrix(&BASE_CHROMA, header.quality.max(1));
+    let chroma_range = if header.identity {
+        RANGE_LUMA
+    } else {
+        RANGE_CHROMA_LOSSLESS
+    };
 
-    let mut offset = table_end;
     for (i, t) in tiles.iter().enumerate() {
         let len = u32::from_le_bytes(table[i * 4..i * 4 + 4].try_into().expect("len 4")) as usize;
-        let end = offset.checked_add(len).ok_or(DecodeError::Corrupt("переполнение смещения"))?;
+        let end = offset
+            .checked_add(len)
+            .ok_or(DecodeError::Corrupt("переполнение смещения"))?;
         let Some(payload) = bytes.get(offset..end) else {
             return Err(DecodeError::Corrupt("обрыв данных тайла"));
         };
         offset = end;
 
         let mut pos = 0usize;
-        if header.lossless {
-            for (plane, range) in [
-                (&mut p0, RANGE_LUMA),
-                (&mut p1, RANGE_CHROMA_LOSSLESS),
-                (&mut p2, RANGE_CHROMA_LOSSLESS),
-            ] {
+        if let Some(palette) = palette.as_ref() {
+            let range = palette_range(palette.len());
+            let buf = read_lossless_plane(payload, &mut pos, t.w, t.h, range)?;
+            planes[0].insert(t.x0, t.y0, t.w, t.h, &buf);
+        } else if header.lossless {
+            for (idx, range) in [(0usize, RANGE_LUMA), (1, chroma_range), (2, chroma_range)] {
                 let buf = read_lossless_plane(payload, &mut pos, t.w, t.h, range)?;
-                plane.insert(t.x0, t.y0, t.w, t.h, &buf);
+                planes[idx].insert(t.x0, t.y0, t.w, t.h, &buf);
             }
         } else {
             let buf = read_dct_plane(payload, &mut pos, t.w, t.h, &q_luma)?;
-            p0.insert(t.x0, t.y0, t.w, t.h, &buf);
-            for plane in [&mut p1, &mut p2] {
+            planes[0].insert(t.x0, t.y0, t.w, t.h, &buf);
+            for idx in [1usize, 2] {
                 let (cw, ch) = if header.chroma420 {
                     (t.w.div_ceil(2), t.h.div_ceil(2))
                 } else {
@@ -71,7 +105,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
                 } else {
                     cbuf
                 };
-                plane.insert(t.x0, t.y0, t.w, t.h, &full);
+                planes[idx].insert(t.x0, t.y0, t.w, t.h, &full);
             }
         }
         if let Some(pa) = pa.as_mut() {
@@ -86,29 +120,56 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
         return Err(DecodeError::Corrupt("лишние байты после последнего тайла"));
     }
 
-    // Обратное цветовое преобразование в интерливленный RGB(A).
-    let format = if header.alpha { PixelFormat::Rgba8 } else { PixelFormat::Rgb8 };
+    // Сборка интерливленного RGB(A).
+    let format = if header.alpha {
+        PixelFormat::Rgba8
+    } else {
+        PixelFormat::Rgb8
+    };
     let bpp = if header.alpha { 4 } else { 3 };
     let mut data = vec![0u8; w * h * bpp];
-    for i in 0..w * h {
-        let (c0, c1, c2) = (i32::from(p0.data[i]), i32::from(p1.data[i]), i32::from(p2.data[i]));
-        let (r, g, b) = if header.lossless {
-            let (r, g, b) = ycocg_r_to_rgb(c0, c1, c2);
-            (r.clamp(0, 255), g.clamp(0, 255), b.clamp(0, 255))
-        } else {
-            ycbcr_to_rgb(c0, c1, c2)
-        };
-        data[i * bpp] = r as u8;
-        data[i * bpp + 1] = g as u8;
-        data[i * bpp + 2] = b as u8;
-        if let Some(pa) = pa.as_ref() {
-            data[i * bpp + 3] = pa.data[i].clamp(0, 255) as u8;
+    if let Some(palette) = palette.as_ref() {
+        for i in 0..w * h {
+            // Индекс валиден по построению: диапазон плоскости клампился
+            // в 0..=len-1 при декодировании.
+            let [r, g, b, a] = palette[planes[0].data[i] as usize];
+            data[i * bpp] = r;
+            data[i * bpp + 1] = g;
+            data[i * bpp + 2] = b;
+            if bpp == 4 {
+                data[i * bpp + 3] = a;
+            }
+        }
+    } else {
+        for i in 0..w * h {
+            let c0 = i32::from(planes[0].data[i]);
+            let c1 = i32::from(planes[1].data[i]);
+            let c2 = i32::from(planes[2].data[i]);
+            let (r, g, b) = if header.identity {
+                (c0, c1, c2)
+            } else if header.lossless {
+                let (r, g, b) = ycocg_r_to_rgb(c0, c1, c2);
+                (r.clamp(0, 255), g.clamp(0, 255), b.clamp(0, 255))
+            } else {
+                ycbcr_to_rgb(c0, c1, c2)
+            };
+            data[i * bpp] = r as u8;
+            data[i * bpp + 1] = g as u8;
+            data[i * bpp + 2] = b as u8;
+            if let Some(pa) = pa.as_ref() {
+                data[i * bpp + 3] = pa.data[i].clamp(0, 255) as u8;
+            }
         }
     }
-    Ok(DecodedImage { width: header.width, height: header.height, format, data })
+    Ok(DecodedImage {
+        width: header.width,
+        height: header.height,
+        format,
+        data,
+    })
 }
 
-/// Читает одну lossless-секцию, полностью валидируя завершение потоков.
+/// Читает предиктивную секцию (coded либо raw), валидируя завершение потоков.
 fn read_lossless_plane(
     payload: &[u8],
     pos: &mut usize,
@@ -116,16 +177,21 @@ fn read_lossless_plane(
     h: usize,
     range: SampleRange,
 ) -> Result<Vec<i16>, DecodeError> {
-    let (section, used) = read_section(&payload[*pos..], lossless::N_CTX)?;
+    let (section, used) = read_predictive_section(&payload[*pos..], w, h, range)?;
     *pos += used;
-    let mut dec = RansDecoder::new(section.tokens)?;
-    let mut raw = BitReader::new(section.raw);
-    let buf = lossless::decode_tile_plane(&section, &mut dec, &mut raw, w, h, range)?;
-    dec.finish()?;
-    if raw.unread_bytes() != 0 {
-        return Err(DecodeError::Corrupt("лишние байты в потоке сырых бит"));
+    match section {
+        PredictiveSection::Raw(packed) => unpack_raw(packed, w, h, range),
+        PredictiveSection::Coded(section) => {
+            let mut dec = RansDecoder::new(section.tokens)?;
+            let mut raw = BitReader::new(section.raw);
+            let buf = lossless::decode_tile_plane(&section, &mut dec, &mut raw, w, h, range)?;
+            dec.finish()?;
+            if raw.unread_bytes() != 0 {
+                return Err(DecodeError::Corrupt("лишние байты в потоке сырых бит"));
+            }
+            Ok(buf)
+        }
     }
-    Ok(buf)
 }
 
 /// Читает одну DCT-секцию, полностью валидируя завершение потоков.
@@ -136,7 +202,7 @@ fn read_dct_plane(
     h: usize,
     qmat: &[u16; 64],
 ) -> Result<Vec<i16>, DecodeError> {
-    let (section, used) = read_section(&payload[*pos..], lossy::N_CTX)?;
+    let (section, used) = read_dct_section(&payload[*pos..], lossy::N_CTX)?;
     *pos += used;
     let mut dec = RansDecoder::new(section.tokens)?;
     let mut raw = BitReader::new(section.raw);

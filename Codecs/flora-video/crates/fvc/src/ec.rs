@@ -28,7 +28,7 @@ impl Default for Prob {
 impl Prob {
     #[inline]
     pub fn new(p: u16) -> Self {
-        debug_assert!(p >= 1 && p < PROB_ONE);
+        debug_assert!((1..PROB_ONE).contains(&p));
         Prob(p)
     }
 
@@ -50,7 +50,7 @@ impl Prob {
     pub fn cost(&self, bit: bool) -> u32 {
         let idx0 = (self.0 >> (PROB_BITS - 8)) as usize; // 0..=255
         let idx = if bit { 256 - idx0 } else { idx0 };
-        u32::from(BIT_COST_256[idx.min(255)])
+        u32::from(BIT_COST_256[idx.clamp(1, 255)])
     }
 }
 
@@ -71,7 +71,13 @@ impl Default for BoolEncoder {
 
 impl BoolEncoder {
     pub fn new() -> Self {
-        BoolEncoder { low: 0, range: u32::MAX, cache: 0, cache_size: 1, out: Vec::new() }
+        BoolEncoder {
+            low: 0,
+            range: u32::MAX,
+            cache: 0,
+            cache_size: 1,
+            out: Vec::new(),
+        }
     }
 
     #[inline]
@@ -155,7 +161,12 @@ pub struct BoolDecoder<'a> {
 
 impl<'a> BoolDecoder<'a> {
     pub fn new(data: &'a [u8]) -> Self {
-        let mut d = BoolDecoder { data, pos: 0, code: 0, range: u32::MAX };
+        let mut d = BoolDecoder {
+            data,
+            pos: 0,
+            code: 0,
+            range: u32::MAX,
+        };
         d.next_byte(); // нулевой стартовый байт энкодера
         for _ in 0..4 {
             let b = d.next_byte();
@@ -233,7 +244,10 @@ mod tests {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self) -> u32 {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (self.0 >> 33) as u32
         }
     }
@@ -244,7 +258,8 @@ mod tests {
         // Несколько прогонов с разными наборами контекстов.
         for run in 0..8u32 {
             let n = 20_000 + (run * 3_777) as usize;
-            let mut probs_enc: Vec<Prob> = (0..17).map(|i| Prob::new(1 + (i * 1931) % 32700)).collect();
+            let mut probs_enc: Vec<Prob> =
+                (0..17).map(|i| Prob::new(1 + (i * 1931) % 32700)).collect();
             let mut probs_dec = probs_enc.clone();
             let mut bits = Vec::with_capacity(n);
             let mut ctxs = Vec::with_capacity(n);
@@ -282,7 +297,12 @@ mod tests {
         }
         let data = enc.finish();
         // Энтропия источника ~0.19 бит/бит: ждём < 0.25 бита на символ.
-        assert!(data.len() * 8 < n / 4, "len={} bytes for {} bits", data.len(), n);
+        assert!(
+            data.len() * 8 < n / 4,
+            "len={} bytes for {} bits",
+            data.len(),
+            n
+        );
     }
 
     #[test]

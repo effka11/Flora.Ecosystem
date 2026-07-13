@@ -1,0 +1,41 @@
+# cargo-deny для Codecs/audio: лицензии — совместимость с AGPL-3.0-only,
+# запрет дублей версий, аудит advisories. Запуск: cargo deny check (CI: job codecs-audio).
+# Конфигурация зеркалит Backend/deny.toml.
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# Собственные (publish = false) crates не проверяем: они AGPL-3.0-only по определению,
+# allow-список ниже описывает только внешние зависимости.
+private = { ignore = true }
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Внутренние path-deps объявлены без версий (publish = false) — это не wildcard-риск.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

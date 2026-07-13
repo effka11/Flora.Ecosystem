@@ -137,17 +137,19 @@ SPDX-выражение для кода: `AGPL-3.0-only OR LicenseRef-Flora-Ecos
 
 - Названия **«Flora», «Flora Ecosystem», «Flora Social», «Luna», «Luna Ecosystem»** (в том числе в
   технических написаниях `Flora.Ecosystem`, `Flora.Social`, `Luna.Ecosystem`), обозначения
-  **«FERA», «FIRA», «FSCP», «FGP»**, а также логотипы и фирменное оформление являются
-  **обозначениями проекта (project identity / trademarks)** и охраняются отдельно от кода и
-  контента.
+  **«FERA», «FIRA», «FSCP», «FGP», «FPP», «FMC», «FIC», «FVC», «FAC»**, а также логотипы и
+  фирменное оформление являются **обозначениями проекта (project identity / trademarks)** и
+  охраняются отдельно от кода и контента.
 - Copyright-разрешение на брендовые графические материалы не даёт права использовать эти материалы
   как товарный знак, знак поддержки, знак аффилированности или обозначение происхождения продукта.
   Такие права возможны только по отдельному письменному разрешению правообладателя
   (Egor Ozerskikh / Luna Ecosystem).
 - Архитектурные обозначения **FERA** (Flora Ecosystem Reference Architecture), **FIRA** (Flora
-  Individual Recommendation Algorithm), протоколы **FSCP** (Flora Secure Communication Protocol) и **FGP**
-  (Flora Governance Protocol) открыты для изучения и реализации в рамках соответствующих лицензий,
-  но их имена и брендинг защищены.
+  Individual Recommendation Algorithm), протоколы **FSCP** (Flora Secure Communication Protocol),
+  **FGP** (Flora Governance Protocol), **FPP** (Flora Personhood Protocol) и медиа-форматы
+  семейства **FMC** (Flora Media Codecs: **FIC** — фото, **FVC** — видео, **FAC** — аудио)
+  открыты для изучения и реализации в рамках соответствующих лицензий, но их имена и брендинг
+  защищены.
 - Вы **можете** форкать и модифицировать код, документацию и спецификации в рамках применимых
   лицензий, но вы **не вправе**:
   - выдавать свой форк или клон за официальный Flora Ecosystem;

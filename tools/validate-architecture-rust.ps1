@@ -11,6 +11,8 @@
 #   flora-migrate    -> корни модулей (их миграторы), flora-shared
 #   flora-grpc-bridge-> любые *-contracts, flora-shared (§5.2)
 #   flora-parity     -> без ограничений (диф-харнесс сравнивает реализации)
+#   crates/media/*   -> другие media-crates (кодеки FMC, docs/codecs/CODECS.md);
+#                       бизнес-модули их используют через свой Infrastructure-слой
 
 param(
     [string]$BackendDir = (Resolve-Path (Join-Path $PSScriptRoot "..\Backend"))
@@ -48,6 +50,7 @@ function Get-CrateCategory {
     if ($relative -eq "crates/flora-migrate") { return "migrate" }
     if ($relative -eq "tests/parity") { return "parity" }
     if ($relative.StartsWith("crates/infrastructure/")) { return "infrastructure" }
+    if ($relative.StartsWith("crates/media/")) { return "media" }
     if ($relative.StartsWith("crates/modules/")) {
         if ($Package.name.EndsWith("-contracts")) { return "module-contracts" }
         return "module-root"
@@ -56,10 +59,11 @@ function Get-CrateCategory {
 }
 
 $moduleRoots = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+$mediaCrates = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($package in $packages) {
-    if ((Get-CrateCategory -Package $package -BackendRoot $BackendDir) -eq "module-root") {
-        [void]$moduleRoots.Add($package.name)
-    }
+    $category = Get-CrateCategory -Package $package -BackendRoot $BackendDir
+    if ($category -eq "module-root") { [void]$moduleRoots.Add($package.name) }
+    if ($category -eq "media") { [void]$mediaCrates.Add($package.name) }
 }
 
 $errors = [System.Collections.Generic.List[string]]::new()
@@ -86,6 +90,7 @@ foreach ($package in $packages) {
             "shared" { $false }
             "migrate" { $moduleRoots.Contains($dep) -or ($dep -eq "flora-shared") }
             "infrastructure" { $dep.EndsWith("-contracts") -or ($dep -eq "flora-shared") }
+            "media" { $mediaCrates.Contains($dep) }
         }
         if (-not $allowed) {
             $errors.Add("[$($package.name)] ($category) недопустимая зависимость -> [$dep]. Правила: next-architecture.md §2.3.")

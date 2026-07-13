@@ -76,7 +76,12 @@ impl Scans {
 /// Глобальные сканы (детерминированная генерация).
 pub fn scans() -> &'static Scans {
     static SCANS: OnceLock<Scans> = OnceLock::new();
-    SCANS.get_or_init(|| Scans { s4: zigzag(4), s8: zigzag(8), s16: zigzag(16), s32: zigzag(32) })
+    SCANS.get_or_init(|| Scans {
+        s4: zigzag(4),
+        s8: zigzag(8),
+        s16: zigzag(16),
+        s32: zigzag(32),
+    })
 }
 
 #[cfg(test)]

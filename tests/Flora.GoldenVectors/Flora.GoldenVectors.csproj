@@ -17,5 +17,9 @@
     <ProjectReference Include="..\..\Modules\Flora.Auth\Flora.Auth.csproj" />
     <!-- Эталон серверной валидации FSCP wire для golden-вектора (FSCP.md §Test vectors). -->
     <ProjectReference Include="..\..\Products\Flora.Social\Flora.Social.csproj" />
+    <!-- Эталонные чистые функции FIRA-скореров (FIRA.md §15): F/C — Content, P — Users, M — Music. -->
+    <ProjectReference Include="..\..\Modules\Flora.Content\Flora.Content.Application\Flora.Content.Application.csproj" />
+    <ProjectReference Include="..\..\Modules\Flora.Users\Flora.Users.Application\Flora.Users.Application.csproj" />
+    <ProjectReference Include="..\..\Modules\Flora.Music\Flora.Music.Application\Flora.Music.Application.csproj" />
   </ItemGroup>
 </Project>

@@ -10,7 +10,10 @@ use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 
 #[derive(Parser)]
-#[command(name = "flora-codec", about = "Инструменты кодеков FMC (Flora Media Codecs)")]
+#[command(
+    name = "flora-codec",
+    about = "Инструменты кодеков FMC (Flora Media Codecs)"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: TopCommand,

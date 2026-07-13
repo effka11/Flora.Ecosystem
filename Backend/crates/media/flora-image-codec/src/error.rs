@@ -44,7 +44,11 @@ pub enum DecodeError {
     /// Структурное повреждение потока; текст — диагностика для логов.
     Corrupt(&'static str),
     /// Заявленные размеры превышают лимиты декодера.
-    TooLarge { width: u32, height: u32, max_pixels: u64 },
+    TooLarge {
+        width: u32,
+        height: u32,
+        max_pixels: u64,
+    },
 }
 
 impl fmt::Display for DecodeError {
@@ -54,7 +58,11 @@ impl fmt::Display for DecodeError {
             Self::UnsupportedVersion(v) => write!(f, "версия FIC {v} не поддерживается"),
             Self::UnsupportedFeature(what) => write!(f, "неподдерживаемая возможность: {what}"),
             Self::Corrupt(what) => write!(f, "повреждённый поток: {what}"),
-            Self::TooLarge { width, height, max_pixels } => {
+            Self::TooLarge {
+                width,
+                height,
+                max_pixels,
+            } => {
                 write!(f, "{width}x{height} превышает лимит {max_pixels} пикселей")
             }
         }

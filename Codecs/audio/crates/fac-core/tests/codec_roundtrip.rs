@@ -27,7 +27,9 @@ fn sine(rate: u32, ch: usize, secs: f32, freq: f32, amp: f32) -> Vec<f32> {
 fn white_noise(rate: u32, ch: usize, secs: f32, amp: f32) -> Vec<f32> {
     let total = (secs * rate as f32) as usize;
     let mut state = 0xDEAD_BEEFu32;
-    (0..total * ch).map(|_| amp * xorshift(&mut state)).collect()
+    (0..total * ch)
+        .map(|_| amp * xorshift(&mut state))
+        .collect()
 }
 
 /// Музыкоподобный сигнал: аккорд с тремоло + фильтрованный шум + щелчки.
@@ -39,19 +41,19 @@ fn mix_signal(rate: u32, ch: usize, secs: f32) -> Vec<f32> {
     for j in 0..total {
         let t = j as f32 / rate as f32;
         let trem = 0.7 + 0.3 * (2.0 * core::f32::consts::PI * 3.0 * t).sin();
-        for c in 0..ch {
+        for (c, lp_c) in lp.iter_mut().enumerate().take(ch) {
             let det = 1.0 + 0.001 * c as f32;
             let chord = 0.30 * (2.0 * core::f32::consts::PI * 220.0 * det * t).sin()
                 + 0.22 * (2.0 * core::f32::consts::PI * 277.18 * det * t).sin()
                 + 0.18 * (2.0 * core::f32::consts::PI * 329.63 * det * t + c as f32).sin();
-            lp[c] = 0.85 * lp[c] + 0.15 * xorshift(&mut state);
+            *lp_c = 0.85 * *lp_c + 0.15 * xorshift(&mut state);
             let click_phase = j % (rate as usize / 2);
             let click = if click_phase < 240 {
                 0.35 * xorshift(&mut state) * (-(click_phase as f32) / 40.0).exp()
             } else {
                 0.0
             };
-            out.push((chord * trem + 0.10 * lp[c] + click).clamp(-0.95, 0.95));
+            out.push((chord * trem + 0.10 * *lp_c + click).clamp(-0.95, 0.95));
         }
     }
     out
@@ -107,7 +109,7 @@ fn sine_mono_96k_has_high_snr() {
     let (dec, _) = roundtrip(cfg, &pcm);
     let snr = snr_db(&pcm, &dec);
     println!("sine mono 96k: SNR = {snr:.1} dB");
-    assert!(snr > 20.0, "SNR too low: {snr:.1} dB");
+    assert!(snr > 35.0, "SNR too low: {snr:.1} dB");
 }
 
 #[test]
@@ -121,8 +123,10 @@ fn mix_stereo_96k_quality_and_bitrate() {
     let (dec, avg_bits) = roundtrip(cfg, &pcm);
     let snr = snr_db(&pcm, &dec);
     let budget = 96_000.0 * FRAME_N as f64 / 48_000.0;
-    println!("mix stereo 96k: SNR = {snr:.1} dB, avg bits/frame = {avg_bits:.0} (budget {budget:.0})");
-    assert!(snr > 15.0, "SNR too low: {snr:.1} dB");
+    println!(
+        "mix stereo 96k: SNR = {snr:.1} dB, avg bits/frame = {avg_bits:.0} (budget {budget:.0})"
+    );
+    assert!(snr > 22.0, "SNR too low: {snr:.1} dB");
     // Форма гарантированно в бюджете; +8 бит — выравнивание пакета до байта.
     assert!(avg_bits <= budget + 8.0, "budget overrun: {avg_bits}");
     assert!(avg_bits >= budget * 0.35, "budget underrun: {avg_bits}");
@@ -181,7 +185,7 @@ fn noise_stereo_128k_preserves_band_energies() {
     let lsd = band_lsd_db(&pcm, &dec, 2);
     let snr = snr_db(&pcm, &dec);
     println!("noise stereo 128k: band-LSD = {lsd:.2} dB (SNR = {snr:.1} dB, справочно)");
-    assert!(lsd < 1.5, "band energies drifted: {lsd:.2} dB");
+    assert!(lsd < 1.0, "band energies drifted: {lsd:.2} dB");
 }
 
 #[test]
@@ -193,8 +197,12 @@ fn silence_stays_silent() {
     };
     let pcm = vec![0f32; 48_000];
     let (dec, avg_bits) = roundtrip(cfg, &pcm);
-    let rms =
-        (dec.iter().map(|&x| f64::from(x) * f64::from(x)).sum::<f64>() / dec.len() as f64).sqrt();
+    let rms = (dec
+        .iter()
+        .map(|&x| f64::from(x) * f64::from(x))
+        .sum::<f64>()
+        / dec.len() as f64)
+        .sqrt();
     println!("silence: RMS = {rms:.2e}, avg bits/frame = {avg_bits:.0}");
     assert!(rms < 1e-3, "silence leaked energy: rms={rms}");
 }
@@ -297,6 +305,63 @@ fn channel_mode_mismatch_is_rejected() {
 }
 
 #[test]
+fn works_at_44100_hz() {
+    let cfg = Config {
+        sample_rate: 44_100,
+        channels: 2,
+        bitrate_bps: 96_000,
+    };
+    let pcm = mix_signal(44_100, 2, 0.3);
+    let (dec, avg_bits) = roundtrip(cfg, &pcm);
+    let snr = snr_db(&pcm, &dec);
+    // Бюджет кадра при 44.1 кГц больше: кадр длиннее по времени (960/44100 с).
+    let budget = 96_000.0 * FRAME_N as f64 / 44_100.0;
+    println!("mix stereo 96k @44.1: SNR = {snr:.1} dB, avg bits/frame = {avg_bits:.0}");
+    assert!(snr > 15.0, "SNR too low: {snr:.1} dB");
+    assert!(avg_bits <= budget + 8.0, "budget overrun: {avg_bits}");
+}
+
+#[test]
+fn invalid_configs_are_rejected() {
+    let bad = [
+        Config {
+            sample_rate: 32_000,
+            channels: 1,
+            bitrate_bps: 64_000,
+        },
+        Config {
+            sample_rate: 48_000,
+            channels: 3,
+            bitrate_bps: 64_000,
+        },
+        Config {
+            sample_rate: 48_000,
+            channels: 1,
+            bitrate_bps: 4_000,
+        },
+        Config {
+            sample_rate: 48_000,
+            channels: 1,
+            bitrate_bps: 1_000_000,
+        },
+    ];
+    for cfg in bad {
+        assert!(Encoder::new(cfg).is_err(), "accepted invalid {cfg:?}");
+    }
+    assert!(Decoder::new(96_000, 1).is_err());
+    assert!(Decoder::new(48_000, 0).is_err());
+
+    let mut enc = Encoder::new(Config {
+        sample_rate: 48_000,
+        channels: 2,
+        bitrate_bps: 96_000,
+    })
+    .unwrap();
+    // Неверная длина PCM-буфера.
+    assert!(enc.encode_frame(&vec![0f32; FRAME_N]).is_err());
+}
+
+#[test]
 fn low_bitrate_parametric_mode_works() {
     // 8 kbps mono: бюджета хватает почти только на энергии — кадр становится
     // параметрическим (noise-fill по энергиям полос). Должен остаться стабильным.
@@ -309,7 +374,11 @@ fn low_bitrate_parametric_mode_works() {
     let (dec, avg_bits) = roundtrip(cfg, &pcm);
     println!("8k mono parametric: avg bits/frame = {avg_bits:.0}");
     assert!(dec.iter().all(|x| x.is_finite()));
-    let rms =
-        (dec.iter().map(|&x| f64::from(x) * f64::from(x)).sum::<f64>() / dec.len() as f64).sqrt();
+    let rms = (dec
+        .iter()
+        .map(|&x| f64::from(x) * f64::from(x))
+        .sum::<f64>()
+        / dec.len() as f64)
+        .sqrt();
     assert!(rms > 1e-4 && rms < 1.0, "implausible output level: {rms}");
 }

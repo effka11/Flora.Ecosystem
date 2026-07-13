@@ -60,11 +60,13 @@ public sealed class UserRecommendationService : IUserRecommendationService
         if (_cache.TryGetValue(CacheKey(userUuid), out PeopleSnapshot? cached))
             return cached!;
 
+        // Единый nowUtc на snapshot — детерминизм скоринга при фиксированном времени (§15 FIRA.md).
+        var nowUtc     = DateTime.UtcNow;
         var following  = await _followGraph.GetFollowingUserIdsAsync(userUuid, ct);
         var candidates = await _queries.GetCandidatesAsync(userUuid, following, ct);
 
         var fullList = candidates
-            .Select(c => (Candidate: c, Score: ScoreCandidate(c)))
+            .Select(c => (Candidate: c, Score: UserRecommendationScorer.Score(c, _options, nowUtc)))
             .OrderByDescending(x => x.Score)
             .ThenBy(x => x.Candidate.DisplayName, StringComparer.OrdinalIgnoreCase)
             .Select(x => new RecommendedUserDto
@@ -76,23 +78,11 @@ public sealed class UserRecommendationService : IUserRecommendationService
             })
             .ToList();
 
-        var snapshot = new PeopleSnapshot(fullList, DateTime.UtcNow);
+        var snapshot = new PeopleSnapshot(fullList, nowUtc);
         _cache.Set(CacheKey(userUuid), snapshot,
             TimeSpan.FromSeconds(Math.Max(10, _options.CacheTtlSeconds)));
 
         return snapshot;
-    }
-
-    private double ScoreCandidate(UserRecommendationCandidate candidate)
-    {
-        var followerScore = Math.Log10(Math.Max(candidate.FollowerCount, 0) + 1) * _options.WeightFollowers;
-        var socialScore   = Math.Log10(Math.Max(candidate.FollowedByFollowingCount, 0) + 1) * _options.WeightSocial;
-
-        var ageDays      = Math.Max((DateTime.UtcNow - candidate.UpdatedAt).TotalDays, 0);
-        var boostWindow  = Math.Max(_options.RecencyBoostDays, 1);
-        var recencyScore = Math.Max(0, boostWindow - ageDays) / boostWindow * _options.WeightRecency;
-
-        return followerScore + socialScore + recencyScore;
     }
 
     private static string CacheKey(Guid userUuid) => $"flora:fira-p:v1:{userUuid:N}";

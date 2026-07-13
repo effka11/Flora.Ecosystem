@@ -5,7 +5,9 @@
 //! заморожен golden-векторами в `tests/`.
 //!
 //! Два режима в одном контейнере:
-//! - **lossless** — обратимый YCoCg-R, MED-предиктор, контексты по градиентам;
+//! - **lossless** — обратимый YCoCg-R (либо identity-RGB, либо палитра до
+//!   256 цветов — кодер выбирает лучшее), MED-предиктор, контексты по
+//!   градиентам, raw-fallback как потолок худшего случая;
 //! - **lossy** — YCbCr, опциональный 4:2:0, DCT 8x8, перцептивное квантование.
 //!
 //! Энтропийное ядро общее: rANS (12-битные вероятности) + hybrid-uint токены.
@@ -47,8 +49,8 @@ pub use error::{DecodeError, EncodeError};
 /// вне `Backend/crates/media/` не использовать.
 pub mod entropy {
     pub use crate::bits::{BitReader, BitWriter};
-    pub use crate::rans::{encode_symbols, FreqTable, RansDecoder, PROB_BITS, PROB_SCALE};
-    pub use crate::tokens::{detokenize, tokenize, unzigzag, zigzag, ALPHABET};
+    pub use crate::rans::{FreqTable, PROB_BITS, PROB_SCALE, RansDecoder, encode_symbols};
+    pub use crate::tokens::{ALPHABET, detokenize, tokenize, unzigzag, zigzag};
 }
 
 /// Формат пикселей интерливленного буфера.
@@ -98,7 +100,9 @@ pub struct DecodeLimits {
 
 impl Default for DecodeLimits {
     fn default() -> Self {
-        Self { max_pixels: format::DEFAULT_MAX_PIXELS }
+        Self {
+            max_pixels: format::DEFAULT_MAX_PIXELS,
+        }
     }
 }
 
@@ -110,6 +114,10 @@ pub struct ImageInfo {
     pub lossless: bool,
     pub has_alpha: bool,
     pub chroma420: bool,
+    /// Lossless без цветового преобразования (плоскости R, G, B).
+    pub identity: bool,
+    /// Палитровый lossless (до 256 цветов).
+    pub palette: bool,
     /// `None` для lossless, иначе 1..=100.
     pub quality: Option<u8>,
 }
@@ -125,10 +133,7 @@ pub fn decode(bytes: &[u8]) -> Result<DecodedImage, DecodeError> {
 }
 
 /// Декодирует FIC-поток с явными лимитами.
-pub fn decode_with_limits(
-    bytes: &[u8],
-    limits: DecodeLimits,
-) -> Result<DecodedImage, DecodeError> {
+pub fn decode_with_limits(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, DecodeError> {
     decode::decode(bytes, limits)
 }
 
@@ -141,6 +146,8 @@ pub fn read_info(bytes: &[u8]) -> Result<ImageInfo, DecodeError> {
         lossless: h.lossless,
         has_alpha: h.alpha,
         chroma420: h.chroma420,
+        identity: h.identity,
+        palette: h.palette,
         quality: (!h.lossless).then_some(h.quality),
     })
 }

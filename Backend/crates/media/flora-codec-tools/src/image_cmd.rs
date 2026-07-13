@@ -2,7 +2,7 @@
 
 use clap::Subcommand;
 use flora_image_codec::{
-    decode, encode, read_info, DecodedImage, EncodeMode, ImageView, PixelFormat,
+    DecodedImage, EncodeMode, ImageView, PixelFormat, decode, encode, read_info,
 };
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
@@ -11,6 +11,7 @@ use std::error::Error;
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 type CmdResult = Result<(), Box<dyn Error>>;
 
@@ -44,9 +45,12 @@ pub enum ImageCommand {
 
 pub fn run(cmd: ImageCommand) -> CmdResult {
     match cmd {
-        ImageCommand::Encode { input, output, quality, lossless } => {
-            cmd_encode(&input, &output, quality, lossless)
-        }
+        ImageCommand::Encode {
+            input,
+            output,
+            quality,
+            lossless,
+        } => cmd_encode(&input, &output, quality, lossless),
         ImageCommand::Decode { input, output } => cmd_decode(&input, &output),
         ImageCommand::Info { input } => cmd_info(&input),
         ImageCommand::Bench { dir, quality } => cmd_bench(dir.as_deref(), quality),
@@ -64,19 +68,39 @@ struct SourceImage {
 
 impl SourceImage {
     fn view(&self) -> ImageView<'_> {
-        ImageView { width: self.width, height: self.height, format: self.format, data: &self.data }
+        ImageView {
+            width: self.width,
+            height: self.height,
+            format: self.format,
+            data: &self.data,
+        }
     }
 
     fn load(path: &Path) -> Result<Self, Box<dyn Error>> {
         let dynamic = ImageReader::open(path)?.decode()?;
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let (width, height) = (dynamic.width(), dynamic.height());
         Ok(if dynamic.color().has_alpha() {
             let rgba = dynamic.to_rgba8();
-            Self { name, width, height, format: PixelFormat::Rgba8, data: rgba.into_raw() }
+            Self {
+                name,
+                width,
+                height,
+                format: PixelFormat::Rgba8,
+                data: rgba.into_raw(),
+            }
         } else {
             let rgb = dynamic.to_rgb8();
-            Self { name, width, height, format: PixelFormat::Rgb8, data: rgb.into_raw() }
+            Self {
+                name,
+                width,
+                height,
+                format: PixelFormat::Rgb8,
+                data: rgb.into_raw(),
+            }
         })
     }
 }
@@ -86,7 +110,9 @@ fn cmd_encode(input: &Path, output: &Path, quality: Option<u8>, lossless: bool) 
     let mode = if lossless {
         EncodeMode::Lossless
     } else {
-        EncodeMode::Lossy { quality: quality.unwrap_or(75) }
+        EncodeMode::Lossy {
+            quality: quality.unwrap_or(75),
+        }
     };
     let fic = encode(&src.view(), mode)?;
     fs::write(output, &fic)?;
@@ -109,7 +135,13 @@ fn cmd_decode(input: &Path, output: &Path) -> CmdResult {
         PixelFormat::Rgba8 => ExtendedColorType::Rgba8,
     };
     image::save_buffer(output, &img.data, img.width, img.height, color)?;
-    println!("{} -> {} ({}x{})", input.display(), output.display(), img.width, img.height);
+    println!(
+        "{} -> {} ({}x{})",
+        input.display(),
+        output.display(),
+        img.width,
+        img.height
+    );
     Ok(())
 }
 
@@ -117,10 +149,22 @@ fn cmd_info(input: &Path) -> CmdResult {
     let fic = fs::read(input)?;
     let info = read_info(&fic)?;
     println!("FIC v1, {}x{}", info.width, info.height);
-    println!("режим:      {}", if info.lossless { "lossless" } else { "lossy" });
+    let mode = if info.palette {
+        "lossless (палитра)"
+    } else if info.identity {
+        "lossless (identity RGB)"
+    } else if info.lossless {
+        "lossless (YCoCg-R)"
+    } else {
+        "lossy (DCT)"
+    };
+    println!("режим:      {mode}");
     if let Some(q) = info.quality {
         println!("quality:    {q}");
-        println!("chroma:     {}", if info.chroma420 { "4:2:0" } else { "4:4:4" });
+        println!(
+            "chroma:     {}",
+            if info.chroma420 { "4:2:0" } else { "4:4:4" }
+        );
     }
     println!("альфа:      {}", if info.has_alpha { "да" } else { "нет" });
     println!("размер:     {} байт", fic.len());
@@ -137,21 +181,32 @@ fn cmd_bench(dir: Option<&Path>, quality: u8) -> CmdResult {
     if corpus.is_empty() {
         return Err("корпус пуст: в каталоге нет PNG/JPEG".into());
     }
-    println!("Корпус: {} изображений; lossy-качество: {quality}\n", corpus.len());
+    println!(
+        "Корпус: {} изображений; lossy-качество: {quality}\n",
+        corpus.len()
+    );
     println!(
         "{:<18} {:>11} {:>11} {:>7} | {:>11} {:>9} {:>11} {:>9}",
         "изображение", "PNG", "FIC-ll", "выигр.", "JPEG", "PSNR", "FIC-lossy", "PSNR"
     );
 
     let (mut png_total, mut ll_total, mut jpeg_total, mut lossy_total) = (0u64, 0u64, 0u64, 0u64);
+    let (mut enc_ns, mut dec_ns, mut px_total) = (0u128, 0u128, 0u64);
     for src in &corpus {
         let png = encode_png(src)?;
         let fic_ll = encode(&src.view(), EncodeMode::Lossless)?;
         let jpeg = encode_jpeg(src, quality)?;
+        let t1 = Instant::now();
         let fic_lossy = encode(&src.view(), EncodeMode::Lossy { quality })?;
+        let t2 = Instant::now();
+        let fic_decoded = decode(&fic_lossy)?;
+        let t3 = Instant::now();
+        enc_ns += (t2 - t1).as_nanos();
+        dec_ns += (t3 - t2).as_nanos();
+        px_total += u64::from(src.width) * u64::from(src.height);
 
         let jpeg_psnr = psnr_against(src, &decode_jpeg(&jpeg)?);
-        let fic_psnr = psnr_against(src, &decoded_pixels(&decode(&fic_lossy)?));
+        let fic_psnr = psnr_against(src, &decoded_pixels(&fic_decoded));
 
         png_total += png.len() as u64;
         ll_total += fic_ll.len() as u64;
@@ -177,10 +232,16 @@ fn cmd_bench(dir: Option<&Path>, quality: u8) -> CmdResult {
         100.0 * (1.0 - ll_total as f64 / png_total as f64),
     );
     println!(
-        "Итого lossy q={quality}: FIC {} vs JPEG {} ({:.1}% меньше при своих PSNR выше)",
+        "Итого lossy q={quality}: FIC {} vs JPEG {} ({:.1}% меньше; PSNR — по строкам выше)",
         lossy_total,
         jpeg_total,
         100.0 * (1.0 - lossy_total as f64 / jpeg_total as f64),
+    );
+    let mp = px_total as f64 / 1e6;
+    println!(
+        "Скорость lossy: encode {:.1} Мп/с, decode {:.1} Мп/с",
+        mp / (enc_ns as f64 / 1e9),
+        mp / (dec_ns as f64 / 1e9),
     );
     Ok(())
 }
@@ -191,7 +252,10 @@ fn load_corpus(dir: &Path) -> Result<Vec<SourceImage>, Box<dyn Error>> {
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
             matches!(
-                p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(),
+                p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(str::to_ascii_lowercase)
+                    .as_deref(),
                 Some("png" | "jpg" | "jpeg")
             )
         })
@@ -232,18 +296,22 @@ fn decode_jpeg(bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
 fn decoded_pixels(img: &DecodedImage) -> Vec<u8> {
     match img.format {
         PixelFormat::Rgb8 => img.data.clone(),
-        PixelFormat::Rgba8 => {
-            img.data.chunks_exact(4).flat_map(|px| [px[0], px[1], px[2]]).collect()
-        }
+        PixelFormat::Rgba8 => img
+            .data
+            .chunks_exact(4)
+            .flat_map(|px| [px[0], px[1], px[2]])
+            .collect(),
     }
 }
 
 fn rgb_only(src: &SourceImage) -> Vec<u8> {
     match src.format {
         PixelFormat::Rgb8 => src.data.clone(),
-        PixelFormat::Rgba8 => {
-            src.data.chunks_exact(4).flat_map(|px| [px[0], px[1], px[2]]).collect()
-        }
+        PixelFormat::Rgba8 => src
+            .data
+            .chunks_exact(4)
+            .flat_map(|px| [px[0], px[1], px[2]])
+            .collect(),
     }
 }
 
@@ -281,8 +349,9 @@ fn value_noise(w: usize, h: usize, cell: usize, seed: u64) -> Vec<f64> {
     let gw = w / cell + 2;
     let gh = h / cell + 2;
     let mut s = seed;
-    let grid: Vec<f64> =
-        (0..gw * gh).map(|_| (xorshift(&mut s) % 10_000) as f64 / 10_000.0).collect();
+    let grid: Vec<f64> = (0..gw * gh)
+        .map(|_| (xorshift(&mut s) % 10_000) as f64 / 10_000.0)
+        .collect();
     let mut out = Vec::with_capacity(w * h);
     for y in 0..h {
         let gy = y / cell;
@@ -396,7 +465,9 @@ fn synthetic_graphics(w: usize, h: usize) -> SourceImage {
 /// Чистый шум — худший случай для любого кодека (честность бенчмарка).
 fn synthetic_noise(w: usize, h: usize) -> SourceImage {
     let mut seed = 99u64;
-    let data: Vec<u8> = (0..w * h * 3).map(|_| (xorshift(&mut seed) & 0xFF) as u8).collect();
+    let data: Vec<u8> = (0..w * h * 3)
+        .map(|_| (xorshift(&mut seed) & 0xFF) as u8)
+        .collect();
     source("noise-512", w, h, data)
 }
 

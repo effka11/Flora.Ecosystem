@@ -1,4 +1,4 @@
-//! Битовые потоки для «сырых» бит (raw-bits section, FIC.md §5.3).
+//! Битовые потоки для «сырых» бит (raw-bits section, FIC.md §3.4).
 //!
 //! Порядок: биты пишутся и читаются MSB-first внутри байта. Последний байт
 //! дописывается нулями. Чтение за концом буфера — `DecodeError::Corrupt`.
@@ -58,7 +58,12 @@ pub struct BitReader<'a> {
 
 impl<'a> BitReader<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, pos: 0, acc: 0, nbits: 0 }
+        Self {
+            bytes,
+            pos: 0,
+            acc: 0,
+            nbits: 0,
+        }
     }
 
     /// Число целых байт, ещё не тронутых чтением (хвост после последнего

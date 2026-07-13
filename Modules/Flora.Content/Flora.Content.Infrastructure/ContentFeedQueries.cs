@@ -6,17 +6,30 @@ namespace Flora.Content.Infrastructure;
 
 public sealed class ContentFeedQueries(ContentDbContext db) : IContentFeedQueries
 {
+    /// <summary>
+    /// Базовый срез видимости (инвариант §12 FIRA.md, п.1): пост из приватного сообщества
+    /// виден только его участникам. Применяется в каждом кандидатном запросе — фильтр в одном
+    /// источнике не покрывает остальные пути утечки.
+    /// </summary>
+    private IQueryable<UserPost> VisiblePosts(Guid viewerUserUuid) =>
+        db.UserPosts.AsNoTracking()
+            .Where(p => !p.IsDeleted)
+            .Where(p => p.CommunityId == null
+                || !db.Communities.Any(c => c.CommunityId == p.CommunityId && c.IsPrivate)
+                || db.UserCommunities.Any(m => m.CommunityId == p.CommunityId && m.UserUuid == viewerUserUuid));
+
     // --- Существующие методы ---
 
     public async Task<List<FeedPostLite>> GetPostsByAuthorsSinceAsync(
         IReadOnlyCollection<Guid> authorIds,
         DateTime sinceUtc,
         int take,
+        Guid viewerUserUuid,
         CancellationToken cancellationToken = default)
     {
         if (authorIds.Count == 0) return [];
-        return await db.UserPosts.AsNoTracking()
-            .Where(p => p.CreatedAt >= sinceUtc && authorIds.Contains(p.AuthorUserUuid) && !p.IsDeleted)
+        return await VisiblePosts(viewerUserUuid)
+            .Where(p => p.CreatedAt >= sinceUtc && authorIds.Contains(p.AuthorUserUuid))
             .OrderByDescending(p => p.CreatedAt)
             .Take(take)
             .Select(p => new FeedPostLite(p.PostUuid, p.AuthorUserUuid, p.CreatedAt, p.Content))
@@ -25,11 +38,12 @@ public sealed class ContentFeedQueries(ContentDbContext db) : IContentFeedQuerie
 
     public async Task<List<FeedPostLite>> GetPostsByIdsAsync(
         IReadOnlyCollection<Guid> postIds,
+        Guid viewerUserUuid,
         CancellationToken cancellationToken = default)
     {
         if (postIds.Count == 0) return [];
-        return await db.UserPosts.AsNoTracking()
-            .Where(p => postIds.Contains(p.PostUuid) && !p.IsDeleted)
+        return await VisiblePosts(viewerUserUuid)
+            .Where(p => postIds.Contains(p.PostUuid))
             .Select(p => new FeedPostLite(p.PostUuid, p.AuthorUserUuid, p.CreatedAt, p.Content))
             .ToListAsync(cancellationToken);
     }
@@ -47,14 +61,14 @@ public sealed class ContentFeedQueries(ContentDbContext db) : IContentFeedQuerie
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<List<Guid>> GetLatestPostIdsAsync(
-        int take, CancellationToken cancellationToken = default)
+    public async Task<List<FeedPostLite>> GetLatestPostsAsync(
+        int take, Guid viewerUserUuid, CancellationToken cancellationToken = default)
     {
-        return await db.UserPosts.AsNoTracking()
-            .Where(p => !p.IsDeleted)
+        return await VisiblePosts(viewerUserUuid)
             .OrderByDescending(p => p.CreatedAt)
+            .ThenBy(p => p.PostUuid)
             .Take(take)
-            .Select(p => p.PostUuid)
+            .Select(p => new FeedPostLite(p.PostUuid, p.AuthorUserUuid, p.CreatedAt, p.Content))
             .ToListAsync(cancellationToken);
     }
 
@@ -62,17 +76,22 @@ public sealed class ContentFeedQueries(ContentDbContext db) : IContentFeedQuerie
         DateTime sinceUtc,
         int limit,
         IReadOnlySet<Guid> excludeAuthors,
+        Guid viewerUserUuid,
         CancellationToken cancellationToken = default)
     {
-        var candidates = await db.UserPosts.AsNoTracking()
-            .Where(p => p.CreatedAt >= sinceUtc && !excludeAuthors.Contains(p.AuthorUserUuid) && !p.IsDeleted)
-            .Select(p => p.PostUuid)
+        // Детерминированный префикс окна (§15 FIRA.md): свежайшие limit×3 постов с полным
+        // tie-break — состав кандидатов не зависит от плана запроса.
+        var window = await VisiblePosts(viewerUserUuid)
+            .Where(p => p.CreatedAt >= sinceUtc && !excludeAuthors.Contains(p.AuthorUserUuid))
+            .OrderByDescending(p => p.CreatedAt)
+            .ThenBy(p => p.PostUuid)
+            .Take(limit * 3)
+            .Select(p => new { p.PostUuid, p.CreatedAt })
             .ToListAsync(cancellationToken);
 
-        if (candidates.Count == 0) return [];
+        if (window.Count == 0) return [];
 
-        // Берём увеличенный пул для ранжирования
-        var postIds = candidates.Take(limit * 3).ToList();
+        var postIds = window.Select(x => x.PostUuid).ToList();
 
         var likes    = await db.PostLikes.AsNoTracking()
             .Where(l => postIds.Contains(l.PostUuid))
@@ -96,17 +115,20 @@ public sealed class ContentFeedQueries(ContentDbContext db) : IContentFeedQuerie
         var commentDict = comments.ToDictionary(x => x.Key, x => x.Count);
         var repostDict  = reposts.ToDictionary(x => x.Key, x => x.Count);
 
-        return postIds
-            .Select(pid =>
+        // Упрощённый engagement score для быстрого trending-ранжирования.
+        // Tie-break нормативен (§15 FIRA.md): Score desc → CreatedAt desc → PostUuid asc.
+        return window
+            .Select(w =>
             {
-                var l = likeDict.GetValueOrDefault(pid, 0);
-                var c = commentDict.GetValueOrDefault(pid, 0);
-                var r = repostDict.GetValueOrDefault(pid, 0);
-                // Упрощённый engagement score для быстрого trending-ранжирования
+                var l = likeDict.GetValueOrDefault(w.PostUuid, 0);
+                var c = commentDict.GetValueOrDefault(w.PostUuid, 0);
+                var r = repostDict.GetValueOrDefault(w.PostUuid, 0);
                 var score = l + c * 2.0 + r * 2.5;
-                return (PostUuid: pid, Score: score);
+                return (w.PostUuid, w.CreatedAt, Score: score);
             })
             .OrderByDescending(x => x.Score)
+            .ThenByDescending(x => x.CreatedAt)
+            .ThenBy(x => x.PostUuid)
             .Take(limit)
             .Select(x => x.PostUuid)
             .ToList();
@@ -175,13 +197,14 @@ public sealed class ContentFeedQueries(ContentDbContext db) : IContentFeedQuerie
         DateTime sinceUtc,
         IReadOnlySet<Guid> excludePostIds,
         int limit,
+        Guid viewerUserUuid,
         CancellationToken cancellationToken = default)
     {
         // ORDER BY random() достаточно для v1 при небольших БД.
         // При масштабировании > 1M постов заменить на materialized random sample.
-        return await db.UserPosts.AsNoTracking()
+        // Стохастическая точка §15 FIRA.md — исключается из differential-диффа.
+        return await VisiblePosts(viewerUserUuid)
             .Where(p => (sinceUtc == DateTime.MinValue || p.CreatedAt >= sinceUtc)
-                     && !p.IsDeleted
                      && !excludePostIds.Contains(p.PostUuid))
             .OrderBy(_ => EF.Functions.Random())
             .Take(limit)
@@ -268,13 +291,12 @@ public sealed class ContentFeedQueries(ContentDbContext db) : IContentFeedQuerie
     public async Task<bool> HasNewerPostsAsync(
         IReadOnlyCollection<Guid> followedUserIds,
         DateTime sinceUtc,
+        Guid viewerUserUuid,
         CancellationToken cancellationToken = default)
     {
         if (followedUserIds.Count == 0) return false;
-        return await db.UserPosts.AsNoTracking()
-            .AnyAsync(p => followedUserIds.Contains(p.AuthorUserUuid)
-                        && p.CreatedAt > sinceUtc
-                        && !p.IsDeleted,
+        return await VisiblePosts(viewerUserUuid)
+            .AnyAsync(p => followedUserIds.Contains(p.AuthorUserUuid) && p.CreatedAt > sinceUtc,
                       cancellationToken);
     }
 

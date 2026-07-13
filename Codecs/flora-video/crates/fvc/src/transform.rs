@@ -1,15 +1,17 @@
 //! Целочисленные DCT-преобразования 4/8/16/32 (нормативные).
 //!
-//! Матрицы `DCT{N}` (tables.rs) — целочисленное приближение `64·√N · O`, где `O` —
-//! ортонормальная DCT-II. Масштабы подобраны так, что **домен коэффициентов равен
-//! 8 × ортонормальному**: квантующий шаг 8 ≈ 1 ортонормальная единица, энергия
-//! сохраняется, одна таблица шагов подходит всем размерам.
+//! Матрицы `DCT{N}` (tables.rs) — целочисленное приближение `2^(13−log₂N)·√N · O`,
+//! где `O` — ортонормальная DCT-II (масштаб обратен размеру: N·max|T| ≈ 2¹³·√2 —
+//! константа). Сдвиги подобраны так, что **домен коэффициентов равен
+//! 8 × ортонормальному**: шаг квантования 8 ≈ 1 ортонормальная единица, одна
+//! таблица шагов на все размеры.
 //!
-//! Прямое: C = T·X·Tᵗ  >> (9 + log2 N)  (сумма сдвигов двух стадий)
-//! Обратное: X = Tᵗ·C·T >> (15 + log2 N)
+//! Прямое: C = (T·X·Tᵗ) >> (23 − log₂N); обратное: X = (Tᵗ·C·T) >> (29 − log₂N).
 //!
-//! Аккумуляция в i64 (переполнение исключено при нормативном клампе dequant),
-//! округление `(v + 2^(s-1)) >> s` — детерминировано на всех платформах.
+//! Аккумуляция обеих стадий в i64 **без промежуточного округления** — единственный
+//! `(v + 2^(s-1)) >> s` в конце. Переполнение исключено: (N·max|T|)² ≈ 2²⁷,
+//! вход обратного клампирован `COEFF_CLAMP` (2¹⁷) → |acc| < 2⁴⁴ ≪ i64.
+//! Детерминировано на всех платформах.
 
 use crate::tables::{DCT4, DCT8, DCT16, DCT32};
 
@@ -39,13 +41,10 @@ fn row(n: usize, m: usize) -> &'static [i32] {
 /// для детерминизма). `input` и `output` — raster-буферы длиной n².
 pub fn forward(input: &[i32], n: usize, output: &mut [i32]) {
     debug_assert!(matches!(n, 4 | 8 | 16 | 32));
-    let log2n = n.trailing_zeros();
-    let total = 9 + log2n;
-    let s1 = total / 2;
-    let s2 = total - s1;
+    let shift = 23 - n.trailing_zeros();
 
     let mut tmp = [0i64; 32 * 32];
-    // Стадия 1: строки. A[i][k] = Σ_j X[i][j]·T[k][j]
+    // Стадия 1: строки. A[i][k] = Σ_j X[i][j]·T[k][j] (без округления)
     for i in 0..n {
         for k in 0..n {
             let t = row(n, k);
@@ -53,10 +52,10 @@ pub fn forward(input: &[i32], n: usize, output: &mut [i32]) {
             for j in 0..n {
                 acc += i64::from(input[i * n + j]) * i64::from(t[j]);
             }
-            tmp[i * n + k] = round_shift(acc, s1);
+            tmp[i * n + k] = acc;
         }
     }
-    // Стадия 2: столбцы. C[k][l] = Σ_i T[k][i]·A[i][l]
+    // Стадия 2: столбцы. C[k][l] = (Σ_i T[k][i]·A[i][l]) >> shift
     for k in 0..n {
         let t = row(n, k);
         for l in 0..n {
@@ -64,7 +63,7 @@ pub fn forward(input: &[i32], n: usize, output: &mut [i32]) {
             for i in 0..n {
                 acc += i64::from(t[i]) * tmp[i * n + l];
             }
-            output[k * n + l] = round_shift(acc, s2) as i32;
+            output[k * n + l] = round_shift(acc, shift) as i32;
         }
     }
 }
@@ -73,29 +72,27 @@ pub fn forward(input: &[i32], n: usize, output: &mut [i32]) {
 /// коэффициенты (кламп `COEFF_CLAMP`), выход — остаток (кламп `RESIDUAL_CLAMP`).
 pub fn inverse(coeffs: &[i32], n: usize, output: &mut [i32]) {
     debug_assert!(matches!(n, 4 | 8 | 16 | 32));
-    let log2n = n.trailing_zeros();
-    let s1 = 7u32;
-    let s2 = 8 + log2n;
+    let shift = 29 - n.trailing_zeros();
 
     let mut tmp = [0i64; 32 * 32];
-    // Стадия 1: A[i][l] = Σ_k T[k][i]·C[k][l]
+    // Стадия 1: A[i][l] = Σ_k T[k][i]·C[k][l] (без округления)
     for i in 0..n {
         for l in 0..n {
             let mut acc = 0i64;
             for k in 0..n {
                 acc += i64::from(row(n, k)[i]) * i64::from(coeffs[k * n + l]);
             }
-            tmp[i * n + l] = round_shift(acc, s1);
+            tmp[i * n + l] = acc;
         }
     }
-    // Стадия 2: X[i][j] = Σ_l A[i][l]·T[l][j]
+    // Стадия 2: X[i][j] = (Σ_l A[i][l]·T[l][j]) >> shift
     for i in 0..n {
         for j in 0..n {
             let mut acc = 0i64;
             for l in 0..n {
                 acc += tmp[i * n + l] * i64::from(row(n, l)[j]);
             }
-            let v = round_shift(acc, s2) as i32;
+            let v = round_shift(acc, shift) as i32;
             output[i * n + j] = v.clamp(-RESIDUAL_CLAMP, RESIDUAL_CLAMP);
         }
     }
@@ -108,7 +105,10 @@ mod tests {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self) -> u32 {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (self.0 >> 33) as u32
         }
         fn residual(&mut self) -> i32 {
@@ -116,11 +116,14 @@ mod tests {
         }
     }
 
-    /// Прямое+обратное без квантования восстанавливает вход с точностью округления.
+    /// Прямое+обратное без квантования восстанавливает вход с точностью ≤2 LSB
+    /// (погрешность целочисленной матрицы; заведомо ниже шума квантования).
     #[test]
     fn forward_inverse_roundtrip() {
         let mut rng = Lcg(7);
         for &n in &[4usize, 8, 16, 32] {
+            let mut total_err = 0u64;
+            let mut count = 0u64;
             for _ in 0..50 {
                 let input: Vec<i32> = (0..n * n).map(|_| rng.residual()).collect();
                 let mut coeffs = vec![0i32; n * n];
@@ -128,10 +131,18 @@ mod tests {
                 forward(&input, n, &mut coeffs);
                 inverse(&coeffs, n, &mut recon);
                 for i in 0..n * n {
-                    let err = (input[i] - recon[i]).abs();
-                    assert!(err <= 2, "n={n} pos={i} in={} out={} err={err}", input[i], recon[i]);
+                    let err = (input[i] - recon[i]).unsigned_abs() as u64;
+                    assert!(err <= 2, "n={n} pos={i} in={} out={}", input[i], recon[i]);
+                    total_err += err;
+                    count += 1;
                 }
             }
+            // Средняя ошибка на случайных остатках — доли LSB.
+            assert!(
+                total_err * 4 < count,
+                "n={n}: mean error {} too high",
+                total_err as f64 / count as f64
+            );
         }
     }
 

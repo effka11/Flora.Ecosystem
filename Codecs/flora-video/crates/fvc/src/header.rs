@@ -57,7 +57,9 @@ impl FrameHeader {
             height,
         };
         if !header.keyframe {
-            return Err(Error::InvalidBitstream("inter frames are not defined in v0.1"));
+            return Err(Error::InvalidBitstream(
+                "inter frames are not defined in v0.1",
+            ));
         }
         if width > MAX_DIMENSION || height > MAX_DIMENSION || width % 8 != 0 || height % 8 != 0 {
             return Err(Error::InvalidBitstream("invalid dimensions"));
@@ -72,7 +74,13 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let h = FrameHeader { keyframe: true, loop_filter: true, qp: 37, width: 1280, height: 720 };
+        let h = FrameHeader {
+            keyframe: true,
+            loop_filter: true,
+            qp: 37,
+            width: 1280,
+            height: 720,
+        };
         let mut buf = Vec::new();
         h.write(&mut buf);
         buf.extend_from_slice(&[9, 9, 9]);

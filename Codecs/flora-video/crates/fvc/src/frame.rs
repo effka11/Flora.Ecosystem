@@ -10,14 +10,22 @@ pub struct Plane {
 
 impl Plane {
     pub fn new(width: usize, height: usize) -> Self {
-        Plane { data: vec![128; width * height], width, height }
+        Plane {
+            data: vec![128; width * height],
+            width,
+            height,
+        }
     }
 
     pub fn from_data(data: Vec<u8>, width: usize, height: usize) -> Option<Self> {
         if data.len() != width * height {
             return None;
         }
-        Some(Plane { data, width, height })
+        Some(Plane {
+            data,
+            width,
+            height,
+        })
     }
 
     #[inline]

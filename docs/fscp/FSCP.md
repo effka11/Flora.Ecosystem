@@ -556,7 +556,9 @@ MLS или sender keys — отдельная спецификация. Не с�
 
 - клиентский тест [`goldenVectors.test.ts`](../../Packages/flora-client-core/src/fscp/goldenVectors.test.ts): RKE unwrap даёт `messageKeyBase64Url` бит-в-бит (плюс покомпонентно: AAD-строка, X25519 shared secret, HKDF wrap key, детерминированный AEAD-шифротекст); `fingerprint-v1.json` — реализация safety number даёт `fingerprintSha256Hex`; `backend-parity/uuid-v1.json` — клиентские `deriveIds` сходятся с C#-эталоном;
 - **cross-impl parity:** [`webParity.test.ts`](../../Packages/flora-client-core/src/fscp/webParity.test.ts) утверждает, что `Apps/Web/lib/fscp/{constants,aad,canonicalJson,deriveIds}` дают **идентичный** результат с `Packages/flora-client-core/src/fscp/*` на общих входах (защита от дрейфа двух клиентских реализаций до их консолидации, [`next-architecture.md`](../../next-architecture.md) §9);
-- серверный тест (C#) [`FscpWireValidatorVectors.cs`](../../tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs) прогоняет позитив и негативы `FscpWireEnvelopeValidator` из `fscp-wire-validator-v1.json`, сверяя accept/reject и **точную строку ошибки**.
+- серверный тест (C#) [`FscpWireValidatorVectors.cs`](../../tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs) прогоняет позитив и негативы `FscpWireEnvelopeValidator` из `fscp-wire-validator-v1.json`, сверяя accept/reject и **точную строку ошибки**;
+- серверный тест (Rust) [`fscp_wire_vectors.rs`](../../Backend/tests/parity/tests/fscp_wire_vectors.rs) прогоняет тот же вектор через порт [`flora-messaging/src/fscp.rs`](../../Backend/crates/modules/flora-messaging/src/fscp.rs) — кросс-языковой паритет валидации до Фазы 4;
+- клиентская криптография на RustCrypto: [`fscp_client_crypto_vectors.rs`](../../Backend/tests/parity/tests/fscp_client_crypto_vectors.rs) воспроизводит RKE-вектор (X25519, HKDF, XChaCha20-Poly1305) и fingerprint-вектор — тройная верификация (python-генератор ↔ TS ↔ Rust) и задел Rust client-core.
 
 Полный каталог платформенных векторов (backup, unlock, device): [`e2e-security.md`](./e2e-security.md) §Test vectors.
 

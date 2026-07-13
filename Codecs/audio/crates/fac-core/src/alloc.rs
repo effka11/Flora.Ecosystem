@@ -74,9 +74,9 @@ mod tests {
 
     #[test]
     fn log2w_table_matches_band_widths() {
-        for b in 0..NUM_BANDS {
+        for (b, &logw) in LOG2W_X4.iter().enumerate() {
             let exact = (4.0 * (band_width(b) as f64).log2()).round() as i32;
-            assert_eq!(LOG2W_X4[b], exact, "band {b}");
+            assert_eq!(logw, exact, "band {b}");
         }
     }
 

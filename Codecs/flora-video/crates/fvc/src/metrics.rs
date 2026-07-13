@@ -69,7 +69,10 @@ impl PsnrAccum {
             y: mse_to_psnr(self.sse_y, self.n_y),
             cb: mse_to_psnr(self.sse_cb, self.n_c),
             cr: mse_to_psnr(self.sse_cr, self.n_c),
-            overall: mse_to_psnr(self.sse_y + self.sse_cb + self.sse_cr, self.n_y + 2 * self.n_c),
+            overall: mse_to_psnr(
+                self.sse_y + self.sse_cb + self.sse_cr,
+                self.n_y + 2 * self.n_c,
+            ),
         }
     }
 }

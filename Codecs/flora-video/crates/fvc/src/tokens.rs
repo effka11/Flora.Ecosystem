@@ -96,7 +96,14 @@ impl CoeffModel {
         }
     }
 
-    fn encode_magnitude(&mut self, enc: &mut BoolEncoder, pt: usize, b: usize, pctx: usize, mag: u32) {
+    fn encode_magnitude(
+        &mut self,
+        enc: &mut BoolEncoder,
+        pt: usize,
+        b: usize,
+        pctx: usize,
+        mag: u32,
+    ) {
         debug_assert!(mag >= 1 && mag <= MAX_LEVEL as u32);
         enc.put(&mut self.gt1[pt][b][pctx], mag > 1);
         if mag == 1 {
@@ -123,7 +130,13 @@ impl CoeffModel {
     }
 
     /// Декодирует блок в `out` (raster, длина `n²`, будет обнулён). Возвращает cbf.
-    pub fn decode_block(&mut self, dec: &mut BoolDecoder<'_>, pt: usize, n: usize, out: &mut [i32]) -> bool {
+    pub fn decode_block(
+        &mut self,
+        dec: &mut BoolDecoder<'_>,
+        pt: usize,
+        n: usize,
+        out: &mut [i32],
+    ) -> bool {
         let n2 = n * n;
         out[..n2].fill(0);
         let si = size_idx(n);
@@ -143,16 +156,20 @@ impl CoeffModel {
             let neg = dec.get_raw();
             out[rp as usize] = if neg { -(mag as i32) } else { mag as i32 };
             prev_mag = mag;
-            if pos < n2 - 1 {
-                if dec.get(&mut self.eob[pt][b]) {
-                    break;
-                }
+            if pos < n2 - 1 && dec.get(&mut self.eob[pt][b]) {
+                break;
             }
         }
         true
     }
 
-    fn decode_magnitude(&mut self, dec: &mut BoolDecoder<'_>, pt: usize, b: usize, pctx: usize) -> u32 {
+    fn decode_magnitude(
+        &mut self,
+        dec: &mut BoolDecoder<'_>,
+        pt: usize,
+        b: usize,
+        pctx: usize,
+    ) -> u32 {
         if !dec.get(&mut self.gt1[pt][b][pctx]) {
             return 1;
         }
@@ -169,6 +186,66 @@ impl CoeffModel {
         let extra = dec.get_raw_bits(c as u32);
         let mag = 3 + (1u32 << c) + extra;
         mag.min(MAX_LEVEL as u32)
+    }
+
+    /// RD-оптимизация квантованных уровней (только энкодер, битстрим не меняется).
+    ///
+    /// Жадный проход по ненулевым уровням от хвоста скана: для каждого пробуем
+    /// |l|−1 и 0; принимаем, если `ΔD·λ_den + ΔR·λ_num·64 < 0` (дисторсия в домене
+    /// коэффициентов ×64 = пиксельный SSE: домен 8×ортонормальный). Наибольший
+    /// выигрыш — обрезка хвостовых ±1 (сдвиг EOB к началу).
+    #[allow(clippy::too_many_arguments)]
+    pub fn optimize_levels(
+        &self,
+        pt: usize,
+        n: usize,
+        coeffs: &[i32],
+        levels: &mut [i32],
+        qp: u8,
+        lambda_num: u64,
+        lambda_den: u64,
+    ) {
+        use crate::quant::{ac_step, dc_step};
+        /// Дороже не считаем: у плотных блоков (низкий qp) выигрыш RDOQ минимален.
+        const MAX_VISITS: usize = 48;
+
+        let scan = scans().get(n);
+        let nz: Vec<usize> = scan
+            .iter()
+            .map(|&rp| rp as usize)
+            .filter(|&rp| levels[rp] != 0)
+            .collect();
+        let mut rate = i128::from(self.estimate_block(pt, n, levels));
+        for &rp in nz.iter().rev().take(MAX_VISITS) {
+            let l = levels[rp];
+            let step = i128::from(if rp == 0 { dc_step(qp) } else { ac_step(qp) });
+            let c = i128::from(coeffs[rp]);
+            let sign = if l < 0 { -1i32 } else { 1 };
+            let mag = l.unsigned_abs() as i32;
+            let err = |m: i32| -> i128 {
+                let e = c - i128::from(sign) * i128::from(m) * step;
+                e * e
+            };
+            let base_err = err(mag);
+            let mut best: Option<(i128, i32, i128)> = None; // (Δcost, уровень, rate)
+            let candidates: &[i32] = if mag == 1 { &[0] } else { &[mag - 1, 0] };
+            for &cand in candidates {
+                levels[rp] = sign * cand;
+                let new_rate = i128::from(self.estimate_block(pt, n, levels));
+                let d_cost = (err(cand) - base_err) * i128::from(lambda_den)
+                    + (new_rate - rate) * i128::from(lambda_num) * 64;
+                if d_cost < 0 && best.as_ref().is_none_or(|(bc, _, _)| d_cost < *bc) {
+                    best = Some((d_cost, sign * cand, new_rate));
+                }
+            }
+            match best {
+                Some((_, new_l, new_rate)) => {
+                    levels[rp] = new_l;
+                    rate = new_rate;
+                }
+                None => levels[rp] = l,
+            }
+        }
     }
 
     /// Оценка стоимости кодирования блока в 1/256 бита (без адаптации моделей).
@@ -237,7 +314,10 @@ mod tests {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self) -> u32 {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (self.0 >> 33) as u32
         }
     }
@@ -258,8 +338,12 @@ mod tests {
                 let p = 100 * i as u32 / (n * n) as u32; // позиция в %
                 if rng.next() % 100 < density.saturating_sub(p / 2) {
                     let m = 1 + (rng.next() % 200) as i32;
-                    let m = if rng.next() % 7 == 0 { m * 97 } else { m };
-                    *l = if rng.next() % 2 == 0 { -m } else { m };
+                    let m = if rng.next().is_multiple_of(7) {
+                        m * 97
+                    } else {
+                        m
+                    };
+                    *l = if rng.next().is_multiple_of(2) { -m } else { m };
                 }
             }
             enc_model.encode_block(&mut enc, pt, n, &levels);

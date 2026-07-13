@@ -5,7 +5,7 @@ use core::f32::consts::FRAC_1_SQRT_2;
 use crate::alloc::{compute_alloc, rice_k_for_beta};
 use crate::bands::{NUM_BANDS, band_range};
 use crate::bitio::{BitReader, BitWriter, rice_len, unzigzag, zigzag};
-use crate::energy::{analyze_plane, dequant_gain};
+use crate::energy::{FINE_BITS, analyze_plane, dequant_gain, dequant_gain_fine};
 use crate::error::Error;
 use crate::mdct::Mdct;
 use crate::qmath::pow2_e8;
@@ -114,11 +114,13 @@ impl Encoder {
         }
 
         let mut q = vec![0i32; planes * NUM_BANDS];
+        let mut fine = vec![0u8; planes * NUM_BANDS];
         let mut gains = vec![0f32; planes * NUM_BANDS];
         for p in 0..planes {
             analyze_plane(
                 &coeffs[p * FRAME_N..][..FRAME_N],
                 &mut q[p * NUM_BANDS..][..NUM_BANDS],
+                &mut fine[p * NUM_BANDS..][..NUM_BANDS],
                 &mut gains[p * NUM_BANDS..][..NUM_BANDS],
             );
         }
@@ -126,14 +128,21 @@ impl Encoder {
         let budget = self.cfg.frame_budget_bits();
         let energy_bits = energy_bit_cost(&q, planes);
         let shape_budget = u64::from(budget).saturating_sub(HEADER_BITS + energy_bits);
-        let beta = compute_alloc(&q, planes, shape_budget);
+        // Аллокация получает бюджет за вычетом резерва fine-битов — вместе с
+        // правилом «β ≥ 8» это гарантирует, что подходящий λ существует всегда.
+        let alloc_budget = shape_budget.saturating_sub(fine_reserve_bits(planes));
+        let beta = compute_alloc(&q, planes, alloc_budget);
 
         // λ: минимальный индекс (самый тонкий шаг), при котором форма помещается
         // в бюджет. Биты формы нестрого убывают по λ, поэтому бисекция точна.
         let bits_for = |lambda: u32| -> u64 {
             let mut total = 0u64;
-            for_each_shape_symbol(&coeffs, &gains, &beta, planes, lambda, |sym, k| {
-                total += rice_len(sym, k);
+            for_each_coded_band(&beta, planes, lambda, |p, b, k, step| {
+                total += u64::from(FINE_BITS);
+                let g = gains[p * NUM_BANDS + b];
+                for &x in &coeffs[p * FRAME_N..][..FRAME_N][band_range(b)] {
+                    total += rice_len(zigzag(quantize(x, g, step)), k);
+                }
             });
             total
         };
@@ -158,8 +167,12 @@ impl Encoder {
         w.write_bits(u32::from(budget) & 0xFF, 8);
         w.write_bits(u32::from(budget) >> 8, 8);
         write_energies(&mut w, &q, planes);
-        for_each_shape_symbol(&coeffs, &gains, &beta, planes, lambda, |sym, k| {
-            w.write_rice(sym, k);
+        for_each_coded_band(&beta, planes, lambda, |p, b, k, step| {
+            w.write_bits(u32::from(fine[p * NUM_BANDS + b]), FINE_BITS);
+            let g = gains[p * NUM_BANDS + b];
+            for &x in &coeffs[p * FRAME_N..][..FRAME_N][band_range(b)] {
+                w.write_rice(zigzag(quantize(x, g, step)), k);
+            }
         });
         Ok(w.finish())
     }
@@ -214,26 +227,26 @@ impl Decoder {
             let mut prev = 0i32;
             for b in 0..NUM_BANDS {
                 let d = unzigzag(r.read_rice(ENERGY_RICE_K)?);
-                let v = prev
-                    .wrapping_add(d)
-                    .clamp(-ENERGY_Q_CLAMP, ENERGY_Q_CLAMP);
+                let v = prev.wrapping_add(d).clamp(-ENERGY_Q_CLAMP, ENERGY_Q_CLAMP);
                 q[p * NUM_BANDS + b] = v;
                 prev = v;
             }
         }
         let energy_bits = r.bit_pos() - pos_energy;
         let shape_budget = u64::from(budget).saturating_sub(HEADER_BITS + energy_bits);
-        let beta = compute_alloc(&q, planes, shape_budget);
+        let alloc_budget = shape_budget.saturating_sub(fine_reserve_bits(planes));
+        let beta = compute_alloc(&q, planes, alloc_budget);
 
         let mut coeffs = vec![0f32; planes * FRAME_N];
         for p in 0..planes {
             for b in 0..NUM_BANDS {
                 let idx = p * NUM_BANDS + b;
-                let gain = dequant_gain(q[idx]);
                 let range = band_range(b);
                 let dst = &mut coeffs[p * FRAME_N + range.start..p * FRAME_N + range.end];
                 let be = beta[idx];
                 if be > 0 {
+                    let fine = r.read_bits(FINE_BITS)? as u8;
+                    let gain = dequant_gain_fine(q[idx], fine);
                     let k = rice_k_for_beta(be);
                     let step = pow2_e8(lambda as i32 - 32 - i32::from(be));
                     for v in dst.iter_mut() {
@@ -250,7 +263,13 @@ impl Decoder {
                         continue;
                     }
                 }
-                noise_fill(dst, self.frame_index, p as u32, b as u32, gain);
+                noise_fill(
+                    dst,
+                    self.frame_index,
+                    p as u32,
+                    b as u32,
+                    dequant_gain(q[idx]),
+                );
             }
         }
         for v in coeffs.iter_mut() {
@@ -327,15 +346,13 @@ fn write_energies(w: &mut BitWriter, q: &[i32], planes: usize) {
     }
 }
 
-/// Обходит символы формы (zigzag-квантованные коэффициенты) в нормативном
-/// порядке; общий код для подсчёта битов и фактической записи.
-fn for_each_shape_symbol(
-    coeffs: &[f32],
-    gains: &[f32],
+/// Обходит кодируемые полосы (β > 0) в нормативном порядке с их параметрами
+/// Райса и шагом; общий код для подсчёта битов и фактической записи.
+fn for_each_coded_band(
     beta: &[u8],
     planes: usize,
     lambda: u32,
-    mut f: impl FnMut(u32, u32),
+    mut f: impl FnMut(usize, usize, u32, f32),
 ) {
     for p in 0..planes {
         for b in 0..NUM_BANDS {
@@ -345,13 +362,19 @@ fn for_each_shape_symbol(
             }
             let k = rice_k_for_beta(be);
             let step = pow2_e8(lambda as i32 - 32 - i32::from(be));
-            let g = gains[p * NUM_BANDS + b];
-            for &x in &coeffs[p * FRAME_N..][..FRAME_N][band_range(b)] {
-                let y = (x / g / step).round() as i32;
-                f(zigzag(y), k);
-            }
+            f(p, b, k, step);
         }
     }
+}
+
+fn quantize(x: f32, gain: f32, step: f32) -> i32 {
+    (x / gain / step).round() as i32
+}
+
+/// Резерв на fine-биты энергий: по FINE_BITS на каждую потенциально
+/// кодируемую полосу кадра.
+fn fine_reserve_bits(planes: usize) -> u64 {
+    u64::from(FINE_BITS) * (planes * NUM_BANDS) as u64
 }
 
 fn shape_norm(v: &[f32]) -> f32 {

@@ -1,0 +1,129 @@
+{
+  "vectorId": "fira_m_scorer_v1",
+  "reference": "Modules/Flora.Music/Flora.Music.Application/Recommendations/MusicFlowScorer.cs",
+  "nowUtc": "2026-07-13T12:00:00.000Z",
+  "scoreToleranceRelative": 1E-12,
+  "optionsSource": "code defaults — секция FiraMusic в appsettings.json отсутствует",
+  "options": {
+    "weightAlpha": 0,
+    "weightBeta": 0.75,
+    "weightGamma": 0.25,
+    "recencyBoostDays": 14,
+    "explorationQuota": 0.15,
+    "maxCandidates": 500,
+    "cacheTtlSeconds": 180
+  },
+  "genreWeights": {
+    "rock": 6,
+    "jazz": 3
+  },
+  "maxGenreWeight": 6,
+  "cases": [
+    {
+      "name": "top_genre_fresh_release",
+      "track": {
+        "trackUuid": "0b000000-0000-4000-8000-000000000001",
+        "title": "Solar Bloom",
+        "genreId": "rock",
+        "publishedAt": "2026-07-12T12:00:00.000Z"
+      },
+      "expectedScore": 0.9464285714285714
+    },
+    {
+      "name": "weak_genre_mid_age",
+      "track": {
+        "trackUuid": "0b000000-0000-4000-8000-000000000002",
+        "title": "Night Drive",
+        "genreId": "jazz",
+        "publishedAt": "2026-07-06T12:00:00.000Z"
+      },
+      "expectedScore": 0.5
+    },
+    {
+      "name": "no_genre_old_release",
+      "track": {
+        "trackUuid": "0b000000-0000-4000-8000-000000000003",
+        "title": "Untitled Sketch",
+        "genreId": null,
+        "publishedAt": "2026-06-13T12:00:00.000Z"
+      },
+      "expectedScore": 0
+    },
+    {
+      "name": "unknown_genre_new",
+      "track": {
+        "trackUuid": "0b000000-0000-4000-8000-000000000004",
+        "title": "Petals",
+        "genreId": "pop",
+        "publishedAt": "2026-07-13T12:00:00.000Z"
+      },
+      "expectedScore": 0.75
+    },
+    {
+      "name": "boundary_exact_window",
+      "track": {
+        "trackUuid": "0b000000-0000-4000-8000-000000000005",
+        "title": "Fourteen Days",
+        "genreId": "rock",
+        "publishedAt": "2026-06-29T12:00:00.000Z"
+      },
+      "expectedScore": 0.25
+    }
+  ],
+  "ranking": {
+    "comment": "tie-break: Score desc → PublishedAt desc → Title asc (ordinal, ignore case)",
+    "tracks": [
+      {
+        "trackUuid": "0b000000-0000-4000-8000-000000000001",
+        "title": "Solar Bloom",
+        "genreId": "rock",
+        "publishedAt": "2026-07-12T12:00:00.000Z"
+      },
+      {
+        "trackUuid": "0b000000-0000-4000-8000-000000000002",
+        "title": "Night Drive",
+        "genreId": "jazz",
+        "publishedAt": "2026-07-06T12:00:00.000Z"
+      },
+      {
+        "trackUuid": "0b000000-0000-4000-8000-000000000003",
+        "title": "Untitled Sketch",
+        "genreId": null,
+        "publishedAt": "2026-06-13T12:00:00.000Z"
+      },
+      {
+        "trackUuid": "0b000000-0000-4000-8000-000000000004",
+        "title": "Petals",
+        "genreId": "pop",
+        "publishedAt": "2026-07-13T12:00:00.000Z"
+      },
+      {
+        "trackUuid": "0b000000-0000-4000-8000-000000000005",
+        "title": "Fourteen Days",
+        "genreId": "rock",
+        "publishedAt": "2026-06-29T12:00:00.000Z"
+      },
+      {
+        "trackUuid": "0b000000-0000-4000-8000-000000000006",
+        "title": "ambient dusk",
+        "genreId": "jazz",
+        "publishedAt": "2026-07-10T12:00:00.000Z"
+      },
+      {
+        "trackUuid": "0b000000-0000-4000-8000-000000000007",
+        "title": "Ambient Dawn",
+        "genreId": "jazz",
+        "publishedAt": "2026-07-10T12:00:00.000Z"
+      }
+    ],
+    "expectedOrder": [
+      "0b000000-0000-4000-8000-000000000001",
+      "0b000000-0000-4000-8000-000000000004",
+      "0b000000-0000-4000-8000-000000000007",
+      "0b000000-0000-4000-8000-000000000006",
+      "0b000000-0000-4000-8000-000000000002",
+      "0b000000-0000-4000-8000-000000000005",
+      "0b000000-0000-4000-8000-000000000003"
+    ]
+  }
+}

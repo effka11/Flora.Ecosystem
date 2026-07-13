@@ -1,4 +1,4 @@
-//! rANS-энтропийный кодер (range Asymmetric Numeral Systems, FIC.md §5.2).
+//! rANS-энтропийный кодер (range Asymmetric Numeral Systems, FIC.md §3.2).
 //!
 //! 32-битное состояние, побайтовая ренормализация, точность вероятностей
 //! 12 бит (сумма частот таблицы всегда 4096). Кодер пишет символы в обратном
@@ -6,7 +6,7 @@
 //! `[state: u32 LE][байты потока]`.
 //!
 //! Таблицы частот статические per-tile/per-context, сериализуются разреженно
-//! (§5.5): `first_sym u8, n_syms u8, затем n_syms по 12 бит (freq-1)`.
+//! (§3.3): `first_sym u8, n_syms u8, затем n_syms по 12 бит (freq-1)`.
 
 use crate::bits::{BitReader, BitWriter};
 use crate::error::DecodeError;
@@ -55,7 +55,9 @@ impl FreqTable {
         // Детерминированно (стабильный порядок обхода) — важно для golden-векторов.
         while assigned != PROB_SCALE {
             if assigned < PROB_SCALE {
-                let i = (first..=last).max_by_key(|&i| (hist[i], usize::MAX - i)).unwrap_or(first);
+                let i = (first..=last)
+                    .max_by_key(|&i| (hist[i], usize::MAX - i))
+                    .unwrap_or(first);
                 let add = (PROB_SCALE - assigned).min(u32::from(u16::MAX - freq[i]));
                 freq[i] += add as u16;
                 assigned += add;
@@ -112,7 +114,7 @@ impl FreqTable {
         sym as u8
     }
 
-    /// Разреженная сериализация таблицы (FIC.md §5.5).
+    /// Разреженная сериализация таблицы (FIC.md §3.3).
     pub fn serialize(&self, out: &mut Vec<u8>) {
         let first = self.freq.iter().position(|&f| f > 0).unwrap_or(0);
         let last = self.freq.iter().rposition(|&f| f > 0).unwrap_or(0);
@@ -134,7 +136,9 @@ impl FreqTable {
         let first = usize::from(*first);
         let n = usize::from(*n);
         if n == 0 || first + n > ALPHABET {
-            return Err(DecodeError::Corrupt("freq-table: диапазон символов вне алфавита"));
+            return Err(DecodeError::Corrupt(
+                "freq-table: диапазон символов вне алфавита",
+            ));
         }
         let packed_len = (n * 12).div_ceil(8);
         let Some(packed) = rest.get(..packed_len) else {
@@ -192,9 +196,15 @@ impl<'a> RansDecoder<'a> {
         };
         let state = u32::from_le_bytes(head.try_into().expect("len == 4"));
         if state < RANS_L {
-            return Err(DecodeError::Corrupt("rans: начальное состояние вне диапазона"));
+            return Err(DecodeError::Corrupt(
+                "rans: начальное состояние вне диапазона",
+            ));
         }
-        Ok(Self { state, bytes, pos: 4 })
+        Ok(Self {
+            state,
+            bytes,
+            pos: 4,
+        })
     }
 
     /// Декодирует один символ в контексте `table`.
@@ -207,7 +217,9 @@ impl<'a> RansDecoder<'a> {
         self.state = freq * (self.state >> PROB_BITS) + slot - start;
         while self.state < RANS_L {
             let Some(&b) = self.bytes.get(self.pos) else {
-                return Err(DecodeError::Corrupt("rans: поток закончился до последнего символа"));
+                return Err(DecodeError::Corrupt(
+                    "rans: поток закончился до последнего символа",
+                ));
             };
             self.pos += 1;
             self.state = (self.state << 8) | u32::from(b);
@@ -218,7 +230,9 @@ impl<'a> RansDecoder<'a> {
     /// Проверка корректного завершения: все байты съедены, состояние вернулось к L.
     pub fn finish(&self) -> Result<(), DecodeError> {
         if self.state != RANS_L {
-            return Err(DecodeError::Corrupt("rans: некорректное финальное состояние"));
+            return Err(DecodeError::Corrupt(
+                "rans: некорректное финальное состояние",
+            ));
         }
         if self.pos != self.bytes.len() {
             return Err(DecodeError::Corrupt("rans: лишние байты в секции токенов"));
@@ -261,7 +275,13 @@ mod tests {
             let ctx = (xorshift(&mut seed) % 3) as u8;
             // Скошенное распределение: маленькие символы чаще.
             let r = xorshift(&mut seed) % 100;
-            let sym = if r < 60 { 0 } else if r < 85 { (r % 4) as u8 } else { (r % 20) as u8 };
+            let sym = if r < 60 {
+                0
+            } else if r < 85 {
+                (r % 4) as u8
+            } else {
+                (r % 20) as u8
+            };
             hists[usize::from(ctx)][usize::from(sym)] += 1;
             syms.push((ctx, sym));
         }

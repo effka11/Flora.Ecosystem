@@ -1,0 +1,124 @@
+{
+  "vectorId": "fira_c_scorer_v1",
+  "reference": "Modules/Flora.Content/Flora.Content.Application/Communities/CommunityRecommendationScorer.cs",
+  "nowUtc": "2026-07-13T12:00:00.000Z",
+  "scoreToleranceRelative": 1E-12,
+  "options": {
+    "weightMembers": 2,
+    "weightActivity": 3,
+    "weightSocial": 4,
+    "weightRecency": 1.5,
+    "newCommunityBoostDays": 14
+  },
+  "cases": [
+    {
+      "name": "empty_new_community",
+      "candidate": {
+        "communityId": "0c000000-0000-4000-8000-000000000001",
+        "name": "Botany Circle",
+        "createdAt": "2026-07-13T00:00:00.000Z",
+        "memberCount": 0,
+        "recentPostCount": 0,
+        "followedMembersCount": 0
+      },
+      "expectedScore": 1.4464285714285714
+    },
+    {
+      "name": "large_active",
+      "candidate": {
+        "communityId": "0c000000-0000-4000-8000-000000000002",
+        "name": "Флора и фауна",
+        "createdAt": "2025-06-08T12:00:00.000Z",
+        "memberCount": 12000,
+        "recentPostCount": 340,
+        "followedMembersCount": 9
+      },
+      "expectedScore": 19.756698008470625
+    },
+    {
+      "name": "social_pull",
+      "candidate": {
+        "communityId": "0c000000-0000-4000-8000-000000000003",
+        "name": "Piano Friends",
+        "createdAt": "2026-06-13T12:00:00.000Z",
+        "memberCount": 45,
+        "recentPostCount": 12,
+        "followedMembersCount": 14
+      },
+      "expectedScore": 11.371710756506383
+    },
+    {
+      "name": "recency_boost_partial",
+      "candidate": {
+        "communityId": "0c000000-0000-4000-8000-000000000004",
+        "name": "Rust Migration Club",
+        "createdAt": "2026-07-06T12:00:00.000Z",
+        "memberCount": 100,
+        "recentPostCount": 5,
+        "followedMembersCount": 1
+      },
+      "expectedScore": 8.297216481372141
+    }
+  ],
+  "ranking": {
+    "comment": "tie-break: Score desc → Name asc (ordinal, ignore case)",
+    "candidates": [
+      {
+        "communityId": "0c000000-0000-4000-8000-000000000001",
+        "name": "Botany Circle",
+        "createdAt": "2026-07-13T00:00:00.000Z",
+        "memberCount": 0,
+        "recentPostCount": 0,
+        "followedMembersCount": 0
+      },
+      {
+        "communityId": "0c000000-0000-4000-8000-000000000002",
+        "name": "Флора и фауна",
+        "createdAt": "2025-06-08T12:00:00.000Z",
+        "memberCount": 12000,
+        "recentPostCount": 340,
+        "followedMembersCount": 9
+      },
+      {
+        "communityId": "0c000000-0000-4000-8000-000000000003",
+        "name": "Piano Friends",
+        "createdAt": "2026-06-13T12:00:00.000Z",
+        "memberCount": 45,
+        "recentPostCount": 12,
+        "followedMembersCount": 14
+      },
+      {
+        "communityId": "0c000000-0000-4000-8000-000000000004",
+        "name": "Rust Migration Club",
+        "createdAt": "2026-07-06T12:00:00.000Z",
+        "memberCount": 100,
+        "recentPostCount": 5,
+        "followedMembersCount": 1
+      },
+      {
+        "communityId": "0c000000-0000-4000-8000-000000000005",
+        "name": "zeta garden",
+        "createdAt": "2026-05-14T12:00:00.000Z",
+        "memberCount": 10,
+        "recentPostCount": 2,
+        "followedMembersCount": 3
+      },
+      {
+        "communityId": "0c000000-0000-4000-8000-000000000006",
+        "name": "Alpha Garden",
+        "createdAt": "2026-05-14T12:00:00.000Z",
+        "memberCount": 10,
+        "recentPostCount": 2,
+        "followedMembersCount": 3
+      }
+    ],
+    "expectedOrder": [
+      "0c000000-0000-4000-8000-000000000002",
+      "0c000000-0000-4000-8000-000000000003",
+      "0c000000-0000-4000-8000-000000000004",
+      "0c000000-0000-4000-8000-000000000006",
+      "0c000000-0000-4000-8000-000000000005",
+      "0c000000-0000-4000-8000-000000000001"
+    ]
+  }
+}

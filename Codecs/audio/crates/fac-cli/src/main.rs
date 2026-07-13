@@ -256,7 +256,11 @@ fn decode(input: &std::path::Path, output: &std::path::Path) -> CliResult<()> {
     Ok(())
 }
 
-fn roundtrip(input: &std::path::Path, bitrate: u32, output: Option<&std::path::Path>) -> CliResult<()> {
+fn roundtrip(
+    input: &std::path::Path,
+    bitrate: u32,
+    output: Option<&std::path::Path>,
+) -> CliResult<()> {
     let (pcm, rate, ch) = read_wav(input)?;
     let cfg = stream_config(rate, ch, bitrate)?;
     let num_samples = (pcm.len() / ch as usize) as u64;
@@ -311,7 +315,7 @@ fn generate(
     let mut sweep_phase = 0f64;
     for j in 0..total {
         let t = j as f32 / sample_rate as f32;
-        for c in 0..ch {
+        for (c, lp_c) in lp.iter_mut().enumerate().take(ch) {
             let s = match signal {
                 Signal::Sine => 0.5 * (2.0 * core::f32::consts::PI * 440.0 * t).sin(),
                 Signal::Noise => 0.3 * xorshift(&mut noise_state),
@@ -328,14 +332,14 @@ fn generate(
                     let chord = 0.30 * (2.0 * core::f32::consts::PI * 220.0 * det * t).sin()
                         + 0.22 * (2.0 * core::f32::consts::PI * 277.18 * det * t).sin()
                         + 0.18 * (2.0 * core::f32::consts::PI * 329.63 * det * t + c as f32).sin();
-                    lp[c] = 0.85 * lp[c] + 0.15 * xorshift(&mut noise_state);
+                    *lp_c = 0.85 * *lp_c + 0.15 * xorshift(&mut noise_state);
                     let click_phase = j % (sample_rate as usize / 2);
                     let click = if click_phase < 240 {
                         0.35 * xorshift(&mut noise_state) * (-(click_phase as f32) / 40.0).exp()
                     } else {
                         0.0
                     };
-                    chord * trem + 0.10 * lp[c] + click
+                    chord * trem + 0.10 * *lp_c + click
                 }
             };
             out.push(s.clamp(-0.95, 0.95));

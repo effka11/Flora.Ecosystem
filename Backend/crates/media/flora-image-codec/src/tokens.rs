@@ -1,4 +1,4 @@
-//! Hybrid-uint токенизация (FIC.md §5.4).
+//! Hybrid-uint токенизация (FIC.md §3.1).
 //!
 //! Целое `v < 2^20` разбивается на токен (алфавит 32 символа) и «сырые» биты:
 //! - `v < 16` — токен равен `v`, сырых бит нет;
@@ -57,7 +57,9 @@ pub fn detokenize(sym: u8, reader: &mut BitReader<'_>) -> Result<u32, DecodeErro
     }
     let n = u32::from(sym) - 16 + 5; // 5..=20 (символ < 32 гарантирован таблицей частот)
     if n > 20 {
-        return Err(DecodeError::Corrupt("token: символ вне диапазона hybrid-uint"));
+        return Err(DecodeError::Corrupt(
+            "token: символ вне диапазона hybrid-uint",
+        ));
     }
     let raw_bits = n - 1;
     let raw = reader.read(raw_bits)?;

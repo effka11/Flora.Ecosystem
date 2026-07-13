@@ -6,7 +6,7 @@
 //! Декодер обязан читать старые файлы всегда: это проверка совместимости,
 //! аналог contract fixtures бэкенда (AGENTS.md).
 
-use flora_image_codec::{decode, encode, EncodeMode, ImageView, PixelFormat};
+use flora_image_codec::{EncodeMode, ImageView, PixelFormat, decode, encode};
 use std::path::PathBuf;
 
 /// Детерминированное тестовое изображение 97x61 RGBA: градиенты, границы, шум.
@@ -34,7 +34,9 @@ fn golden_source() -> (u32, u32, Vec<u8>) {
 }
 
 fn data_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/data")
+        .join(name)
 }
 
 /// FNV-1a — контрольная сумма пиксельного выхода без внешних зависимостей.
@@ -57,8 +59,7 @@ fn check_or_update(name: &str, produced: &[u8]) {
     let expected = std::fs::read(&path)
         .unwrap_or_else(|_| panic!("нет golden-файла {name}; сгенерируй FIC_UPDATE_GOLDEN=1"));
     assert_eq!(
-        expected,
-        produced,
+        expected, produced,
         "битстрим {name} разошёлся с golden-вектором: формат менять только осознанно"
     );
 }
@@ -66,7 +67,12 @@ fn check_or_update(name: &str, produced: &[u8]) {
 #[test]
 fn golden_lossless_bitstream_frozen() {
     let (w, h, data) = golden_source();
-    let img = ImageView { width: w, height: h, format: PixelFormat::Rgba8, data: &data };
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
     let fic = encode(&img, EncodeMode::Lossless).unwrap();
     check_or_update("golden-lossless.fic", &fic);
     // Lossless обязан вернуть источник побайтно.
@@ -74,9 +80,37 @@ fn golden_lossless_bitstream_frozen() {
 }
 
 #[test]
+fn golden_palette_bitstream_frozen() {
+    // Малоцветная графика: кодер обязан выбрать палитровый поток —
+    // замораживаем и этот вид контейнера (блок палитры + плоскость индексов).
+    let (w, h) = (80u32, 50u32);
+    let colors: [[u8; 3]; 4] = [[250, 250, 245], [16, 16, 24], [214, 40, 40], [0, 121, 107]];
+    let data: Vec<u8> = (0..w * h)
+        .flat_map(|i| {
+            let (x, y) = (i % w, i / w);
+            colors[((x / 10 + y / 10) % 4) as usize]
+        })
+        .collect();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgb8,
+        data: &data,
+    };
+    let fic = encode(&img, EncodeMode::Lossless).unwrap();
+    check_or_update("golden-palette.fic", &fic);
+    assert_eq!(decode(&fic).unwrap().data, data);
+}
+
+#[test]
 fn golden_lossy_bitstream_frozen() {
     let (w, h, data) = golden_source();
-    let img = ImageView { width: w, height: h, format: PixelFormat::Rgba8, data: &data };
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
     let fic = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
     check_or_update("golden-lossy-q75.fic", &fic);
 }
@@ -90,7 +124,12 @@ fn golden_lossy_decode_is_deterministic() {
     if std::env::var_os("FIC_UPDATE_GOLDEN").is_some() {
         // Кодируем в процессе (не читаем файл: тесты идут параллельно).
         let (w, h, data) = golden_source();
-        let img = ImageView { width: w, height: h, format: PixelFormat::Rgba8, data: &data };
+        let img = ImageView {
+            width: w,
+            height: h,
+            format: PixelFormat::Rgba8,
+            data: &data,
+        };
         let fic = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
         let out = decode(&fic).unwrap();
         println!("golden decode fnv1a = {:#018X}", fnv1a(&out.data));
@@ -99,5 +138,9 @@ fn golden_lossy_decode_is_deterministic() {
     let fic = std::fs::read(data_path("golden-lossy-q75.fic")).expect("нет golden-файла");
     let out = decode(&fic).unwrap();
     assert_eq!((out.width, out.height), (97, 61));
-    assert_eq!(fnv1a(&out.data), EXPECTED_FNV1A, "выход декодера недетерминирован");
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "выход декодера недетерминирован"
+    );
 }
