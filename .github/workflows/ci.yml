@@ -20,7 +20,7 @@ jobs:
     name: dotnet
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
@@ -35,7 +35,7 @@ jobs:
     name: architecture
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate C# module boundaries
         shell: pwsh
         run: ./tools/Validate-Architecture.ps1
@@ -44,7 +44,7 @@ jobs:
     name: ts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -60,7 +60,7 @@ jobs:
     name: web
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -90,7 +90,7 @@ jobs:
     name: rust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Detect Backend workspace
         id: backend
         run: echo "exists=$([ -f Backend/Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
