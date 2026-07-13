@@ -52,6 +52,11 @@ function writeDirectoryBuildProps(ecosystemVersion) {
 <Project>
   <PropertyGroup>
     <Version>${ecosystemVersion}</Version>
+    <Authors>Flora Ecosystem</Authors>
+    <Company>Flora Ecosystem</Company>
+    <Product>Flora Ecosystem</Product>
+    <Copyright>Copyright (c) 2026 Flora Ecosystem and contributors. Dual-licensed: AGPL-3.0-only OR commercial license from Luna Ecosystem (legal@flora-s.net).</Copyright>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
   </PropertyGroup>
 </Project>
 `;

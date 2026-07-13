@@ -24,6 +24,7 @@ python _gen_fscp_rke_v1.py
 - поле `protocolVersion` / `fscpProtocolVersion` в каждом файле;
 - base64url **без padding**;
 - для строк AAD — **байт-в-байт** совпадение с нормативным текстом в [fscp/FSCP.md](../fscp/FSCP.md);
-- негативные векторы — отдельные файлы с полем `expectedError`.
+- негативные векторы — отдельные файлы с полем `expectedError`;
+- каждый вектор **обязан** иметь consumer-тест (клиент + сервер), иначе compliance-пункт не выполнен — см. [fscp/FSCP.md](../fscp/FSCP.md) §Test vectors «требование потребления». Файлы здесь — regenerate-only (не редактировать руками).
 
 Ссылки: [fscp/FSCP.md](../fscp/FSCP.md), [e2e-security.md](../fscp/e2e-security.md).

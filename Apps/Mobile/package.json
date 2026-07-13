@@ -3,6 +3,7 @@
   "main": "./index.ts",
   "version": "0.5.0-alpha",
   "private": true,
+  "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
   "scripts": {
     "dev": "expo start --dev-client",
     "dev:usb": "expo start --dev-client --port 8081",

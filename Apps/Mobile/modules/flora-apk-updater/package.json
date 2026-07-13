@@ -2,6 +2,7 @@
   "name": "flora-apk-updater",
   "version": "1.0.0",
   "private": true,
+  "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {},

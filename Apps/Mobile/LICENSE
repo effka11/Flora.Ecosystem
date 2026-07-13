@@ -1,3 +1,27 @@
+Flora Ecosystem — mobile client (Flora Social)
+
+Copyright (c) 2026 Flora Ecosystem and contributors.
+
+This directory is part of the Flora Ecosystem project and is dual-licensed under
+the GNU Affero General Public License, version 3 only (AGPL-3.0-only), or a
+commercial license granted by Luna Ecosystem (legal@flora-s.net).
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial
+
+See the repository root for the governing documents:
+
+  ../../LICENSE                — GNU AGPLv3 (version 3 only)
+  ../../LICENSE-COMMERCIAL.md  — commercial license notice
+  ../../LICENSE-CONTENT.md     — license for non-code materials
+  ../../NOTICE.md              — licensing map and legal notices
+  ../../LEGAL.md               — plain-language licensing overview
+
+--------------------------------------------------------------------------------
+
+Third-party attribution: this application was originally bootstrapped from the
+Expo template (create-expo-app). Portions derived from that template remain
+subject to the following license:
+
 The MIT License (MIT)
 
 Copyright (c) 2015-present 650 Industries, Inc. (aka Expo)
