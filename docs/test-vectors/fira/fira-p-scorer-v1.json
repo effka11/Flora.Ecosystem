@@ -1,0 +1,113 @@
+{
+  "vectorId": "fira_p_scorer_v1",
+  "reference": "Modules/Flora.Users/Flora.Users.Application/People/UserRecommendationScorer.cs",
+  "nowUtc": "2026-07-13T12:00:00.000Z",
+  "scoreToleranceRelative": 1E-12,
+  "options": {
+    "weightFollowers": 2,
+    "weightSocial": 4,
+    "weightRecency": 1,
+    "recencyBoostDays": 30
+  },
+  "cases": [
+    {
+      "name": "fresh_profile_no_signals",
+      "candidate": {
+        "userUuid": "0d000000-0000-4000-8000-000000000001",
+        "displayName": "Nova",
+        "followerCount": 0,
+        "followedByFollowingCount": 0,
+        "updatedAt": "2026-07-13T12:00:00.000Z"
+      },
+      "expectedScore": 1
+    },
+    {
+      "name": "popular_and_social",
+      "candidate": {
+        "userUuid": "0d000000-0000-4000-8000-000000000002",
+        "displayName": "Мария",
+        "followerCount": 1000,
+        "followedByFollowingCount": 5,
+        "updatedAt": "2026-07-03T12:00:00.000Z"
+      },
+      "expectedScore": 9.780139823159878
+    },
+    {
+      "name": "stale_profile_recency_zero",
+      "candidate": {
+        "userUuid": "0d000000-0000-4000-8000-000000000003",
+        "displayName": "Old Timer",
+        "followerCount": 50,
+        "followedByFollowingCount": 0,
+        "updatedAt": "2026-05-29T12:00:00.000Z"
+      },
+      "expectedScore": 3.4151403521958725
+    },
+    {
+      "name": "social_dominates",
+      "candidate": {
+        "userUuid": "0d000000-0000-4000-8000-000000000004",
+        "displayName": "connector",
+        "followerCount": 12,
+        "followedByFollowingCount": 9,
+        "updatedAt": "2026-07-11T12:00:00.000Z"
+      },
+      "expectedScore": 7.1612200379470075
+    }
+  ],
+  "ranking": {
+    "comment": "tie-break: Score desc → DisplayName asc (ordinal, ignore case)",
+    "candidates": [
+      {
+        "userUuid": "0d000000-0000-4000-8000-000000000001",
+        "displayName": "Nova",
+        "followerCount": 0,
+        "followedByFollowingCount": 0,
+        "updatedAt": "2026-07-13T12:00:00.000Z"
+      },
+      {
+        "userUuid": "0d000000-0000-4000-8000-000000000002",
+        "displayName": "Мария",
+        "followerCount": 1000,
+        "followedByFollowingCount": 5,
+        "updatedAt": "2026-07-03T12:00:00.000Z"
+      },
+      {
+        "userUuid": "0d000000-0000-4000-8000-000000000003",
+        "displayName": "Old Timer",
+        "followerCount": 50,
+        "followedByFollowingCount": 0,
+        "updatedAt": "2026-05-29T12:00:00.000Z"
+      },
+      {
+        "userUuid": "0d000000-0000-4000-8000-000000000004",
+        "displayName": "connector",
+        "followerCount": 12,
+        "followedByFollowingCount": 9,
+        "updatedAt": "2026-07-11T12:00:00.000Z"
+      },
+      {
+        "userUuid": "0d000000-0000-4000-8000-000000000005",
+        "displayName": "боб",
+        "followerCount": 10,
+        "followedByFollowingCount": 2,
+        "updatedAt": "2026-06-03T12:00:00.000Z"
+      },
+      {
+        "userUuid": "0d000000-0000-4000-8000-000000000006",
+        "displayName": "Анна",
+        "followerCount": 10,
+        "followedByFollowingCount": 2,
+        "updatedAt": "2026-06-03T12:00:00.000Z"
+      }
+    ],
+    "expectedOrder": [
+      "0d000000-0000-4000-8000-000000000002",
+      "0d000000-0000-4000-8000-000000000004",
+      "0d000000-0000-4000-8000-000000000006",
+      "0d000000-0000-4000-8000-000000000005",
+      "0d000000-0000-4000-8000-000000000003",
+      "0d000000-0000-4000-8000-000000000001"
+    ]
+  }
+}

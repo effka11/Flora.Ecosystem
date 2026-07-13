@@ -1,0 +1,10 @@
+# Тот же зафиксированный toolchain, что и Backend/rust-toolchain.toml.
+#
+# Windows без MSVC Build Tools: линковка msvc-toolchain падает (нет msvcrt.lib / Windows SDK).
+# Вариант без установки VS: локальный override на GNU-хост (состояние rustup, не файл в репо):
+#   rustup toolchain install 1.97.0-x86_64-pc-windows-gnu
+#   rustup override set 1.97.0-x86_64-pc-windows-gnu --path Codecs/audio
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

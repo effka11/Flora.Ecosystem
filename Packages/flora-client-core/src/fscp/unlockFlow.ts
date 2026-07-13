@@ -263,8 +263,9 @@ export async function signUnlockCompletePayload(
     });
   }
 
-  signatures.sort((a, b) => a.keyEpochId.localeCompare(b.keyEpochId));
-  publicKeys.sort((a, b) => a.keyEpochId.localeCompare(b.keyEpochId));
+  // Code-unit порядок (не localeCompare) — для UUID-строк детерминирован в любом окружении.
+  signatures.sort((a, b) => (a.keyEpochId < b.keyEpochId ? -1 : a.keyEpochId > b.keyEpochId ? 1 : 0));
+  publicKeys.sort((a, b) => (a.keyEpochId < b.keyEpochId ? -1 : a.keyEpochId > b.keyEpochId ? 1 : 0));
 
   return {
     epochIdentityPublicKeys: publicKeys,

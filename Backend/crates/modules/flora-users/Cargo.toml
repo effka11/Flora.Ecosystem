@@ -1,0 +1,17 @@
+[package]
+name = "flora-users"
+description = "Модуль Users: профили, подписки, блокировки, FIRA-P (переносится в Фазе 2b)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true }
+flora-shared = { workspace = true }
+uuid = { workspace = true }

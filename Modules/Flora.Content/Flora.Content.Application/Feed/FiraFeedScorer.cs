@@ -11,7 +11,7 @@ namespace Flora.Content.Application.Feed;
 ///   Результирующая формула: Score = β·GlobalRelevance + γ·SocialProximity.
 ///   Как только тематические векторы постов появятся, α сдвинется в Phase 2 (0.45).
 /// </summary>
-internal static class FiraFeedScorer
+public static class FiraFeedScorer
 {
     // §3 Универсальная формула скоринга
     // Score(post) = α·IndividualAffinity + β·GlobalRelevance + γ·SocialProximity
@@ -25,6 +25,25 @@ internal static class FiraFeedScorer
              + cfg.BetaPhase0  * gr
              + cfg.GammaPhase0 * sp;
     }
+
+    /// <summary>
+    /// Ранжирование пула с нормативным tie-break (§15 FIRA.md):
+    /// Score desc → CreatedAt desc → PostUuid asc. Единственная точка сортировки FIRA-F —
+    /// используется и pipeline'ом, и генератором golden-векторов.
+    /// </summary>
+    public static List<FeedCandidate> Rank(
+        IReadOnlyList<FeedCandidate> candidates, FiraFeedConfig cfg, DateTime nowUtc) =>
+        candidates
+            .Select(c => (Candidate: c, Score: Score(c, cfg, nowUtc)))
+            .OrderByDescending(x => x.Score)
+            .ThenByDescending(x => x.Candidate.CreatedAt)
+            .ThenBy(x => x.Candidate.PostUuid)
+            .Select(x => x.Candidate)
+            .ToList();
+
+    /// <summary>authorAffinity = tanh(max(0, rawInteractionScore) / affinityScale) — §IndividualAffinity FIRA-F.md.</summary>
+    public static double AuthorAffinity(double rawInteractionScore, double affinityScale) =>
+        Math.Tanh(Math.Max(0, rawInteractionScore) / affinityScale);
 
     // § IndividualAffinity
     // Полная формула: clamp01(cosine(postTopicVector, effectiveUip) × 0.7 + authorAffinity × 0.3)

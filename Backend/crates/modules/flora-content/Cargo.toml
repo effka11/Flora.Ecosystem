@@ -1,0 +1,17 @@
+[package]
+name = "flora-content"
+description = "Модуль Content: лента, посты, комментарии, сообщества, FIRA-F/C (переносится в Фазе 3)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true }
+flora-shared = { workspace = true }
+uuid = { workspace = true }

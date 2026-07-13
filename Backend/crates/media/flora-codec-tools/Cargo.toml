@@ -1,0 +1,21 @@
+[package]
+name = "flora-codec-tools"
+description = "CLI семейства кодеков FMC: encode/decode/info/bench для FIC (фото); видео/аудио субкоманды добавляются рядом (docs/codecs/CODECS.md)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "flora-codec"
+path = "src/main.rs"
+
+[dependencies]
+flora-image-codec = { workspace = true }
+clap = { workspace = true }
+# PNG/JPEG — только как эталоны сравнения в бенчмарках и IO обменных форматов.
+image = { workspace = true }

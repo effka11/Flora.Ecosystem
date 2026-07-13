@@ -1,0 +1,301 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_fx_q32_v1",
+  "description": "Q32.32: round-half-even, насыщение, exp2/log2/sqrt (FGP-CRYPTO §10). bits — сырое i64-представление; изменение таблицы exp2 = R3.",
+  "exp2Table": {
+    "nodes": 257,
+    "blake3Le64": "-XRiLRf9oDvV6Lp6vyd-rBFL4DxzZzQpIAbEzYIPpwc",
+    "first": 4294967296,
+    "mid128": 6074001000,
+    "last": 8589934592
+  },
+  "fromRatio": [
+    {
+      "num": 1,
+      "den": 1,
+      "bits": 4294967296
+    },
+    {
+      "num": 1,
+      "den": 2,
+      "bits": 2147483648
+    },
+    {
+      "num": 3,
+      "den": 2,
+      "bits": 6442450944
+    },
+    {
+      "num": -3,
+      "den": 2,
+      "bits": -6442450944
+    },
+    {
+      "num": 1,
+      "den": 3,
+      "bits": 1431655765
+    },
+    {
+      "num": 2,
+      "den": 3,
+      "bits": 2863311531
+    },
+    {
+      "num": -1,
+      "den": 3,
+      "bits": -1431655765
+    },
+    {
+      "num": 37,
+      "den": 100,
+      "bits": 1589137900
+    },
+    {
+      "num": 1,
+      "den": 0,
+      "bits": 9223372036854775807
+    },
+    {
+      "num": -1,
+      "den": 0,
+      "bits": -9223372036854775808
+    },
+    {
+      "num": 0,
+      "den": 0,
+      "bits": 0
+    }
+  ],
+  "mulSaturating": [
+    {
+      "aBits": 3,
+      "bBits": 2147483648,
+      "bits": 2
+    },
+    {
+      "aBits": 1,
+      "bBits": 2147483648,
+      "bits": 0
+    },
+    {
+      "aBits": 1431655765,
+      "bBits": 12884901888,
+      "bits": 4294967295
+    },
+    {
+      "aBits": 4503599627370496,
+      "bBits": 4503599627370496,
+      "bits": 9223372036854775807
+    },
+    {
+      "aBits": -4503599627370496,
+      "bBits": 4503599627370496,
+      "bits": -9223372036854775808
+    },
+    {
+      "aBits": -15032385536,
+      "bBits": 5368709120,
+      "bits": -18790481920
+    }
+  ],
+  "divSaturating": [
+    {
+      "aBits": 1,
+      "bBits": 8589934592,
+      "bits": 0
+    },
+    {
+      "aBits": 3,
+      "bBits": 8589934592,
+      "bits": 2
+    },
+    {
+      "aBits": -1,
+      "bBits": 8589934592,
+      "bits": 0
+    },
+    {
+      "aBits": -3,
+      "bBits": 8589934592,
+      "bits": -2
+    },
+    {
+      "aBits": 4294967296,
+      "bBits": 12884901888,
+      "bits": 1431655765
+    },
+    {
+      "aBits": 21474836480,
+      "bBits": 0,
+      "bits": 9223372036854775807
+    },
+    {
+      "aBits": -21474836480,
+      "bBits": 0,
+      "bits": -9223372036854775808
+    },
+    {
+      "aBits": 0,
+      "bBits": 0,
+      "bits": 0
+    }
+  ],
+  "exp2": [
+    {
+      "inputBits": 0,
+      "outputBits": 4294967296
+    },
+    {
+      "inputBits": 4294967296,
+      "outputBits": 8589934592
+    },
+    {
+      "inputBits": 42949672960,
+      "outputBits": 4398046511104
+    },
+    {
+      "inputBits": -4294967296,
+      "outputBits": 2147483648
+    },
+    {
+      "inputBits": 2147483648,
+      "outputBits": 6074001000
+    },
+    {
+      "inputBits": -2147483648,
+      "outputBits": 3037000500
+    },
+    {
+      "inputBits": 1589137900,
+      "outputBits": 5550617243
+    },
+    {
+      "inputBits": 128849018880,
+      "outputBits": 4611686018427387904
+    },
+    {
+      "inputBits": 133143986176,
+      "outputBits": 9223372036854775807
+    },
+    {
+      "inputBits": 429496729600,
+      "outputBits": 9223372036854775807
+    },
+    {
+      "inputBits": -171798691840,
+      "outputBits": 0
+    },
+    {
+      "inputBits": -429496729600,
+      "outputBits": 0
+    }
+  ],
+  "log2": [
+    {
+      "inputBits": 4294967296,
+      "outputBits": 0
+    },
+    {
+      "inputBits": 8589934592,
+      "outputBits": 4294967296
+    },
+    {
+      "inputBits": 4398046511104,
+      "outputBits": 42949672960
+    },
+    {
+      "inputBits": 2147483648,
+      "outputBits": -4294967296
+    },
+    {
+      "inputBits": 6442450944,
+      "outputBits": 2512394809
+    },
+    {
+      "inputBits": 1,
+      "outputBits": -137438953472
+    },
+    {
+      "inputBits": 9223372036854775807,
+      "outputBits": 133143986175
+    },
+    {
+      "inputBits": 0,
+      "outputBits": null
+    },
+    {
+      "inputBits": -12884901888,
+      "outputBits": null
+    }
+  ],
+  "sqrt": [
+    {
+      "inputBits": 0,
+      "outputBits": 0
+    },
+    {
+      "inputBits": 4294967296,
+      "outputBits": 4294967296
+    },
+    {
+      "inputBits": 8589934592,
+      "outputBits": 6074000999
+    },
+    {
+      "inputBits": 17179869184,
+      "outputBits": 8589934592
+    },
+    {
+      "inputBits": 38654705664,
+      "outputBits": 12884901888
+    },
+    {
+      "inputBits": 1073741824,
+      "outputBits": 2147483648
+    },
+    {
+      "inputBits": 9223372036854775807,
+      "outputBits": 199032864766430
+    },
+    {
+      "inputBits": -4294967296,
+      "outputBits": null
+    }
+  ],
+  "intSqrtQ32": [
+    {
+      "n": 0,
+      "bits": 0
+    },
+    {
+      "n": 1,
+      "bits": 4294967296
+    },
+    {
+      "n": 2,
+      "bits": 6074000999
+    },
+    {
+      "n": 100,
+      "bits": 42949672960
+    },
+    {
+      "n": 10000,
+      "bits": 429496729600
+    },
+    {
+      "n": 1000000,
+      "bits": 4294967296000
+    },
+    {
+      "n": 18446744073709551615,
+      "bits": 9223372036854775807
+    }
+  ],
+  "saturation": {
+    "maxPlusOneBits": 9223372036854775807,
+    "minMinusOneBits": -9223372036854775808,
+    "negMinBits": 9223372036854775807,
+    "absMinBits": 9223372036854775807
+  }
+}

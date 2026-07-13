@@ -1,0 +1,72 @@
+{
+  "vectorId": "fscp_hybrid_kem_v2draft_v1_success",
+  "fscpProtocolVersion": "2-draft",
+  "status": "prototype: FSCP.md §Целевой алгоритм → Post-quantum; в норму v1 не входит, wire v1 не меняет",
+  "algorithm": "x25519+ml-kem-768 | hkdf-sha256 | xchacha20-poly1305",
+  "combiner": {
+    "ikmOrder": "ss_x25519 || ss_mlkem",
+    "transcriptHash": "SHA-256(utf8(prefix) || ephPub32 || agreementPub32 || ek1184 || ct1088)",
+    "transcriptPrefixUtf8": "flora.fscp.v2draft.hybrid-transcript",
+    "hkdfInfoIsAad": true,
+    "aadPrefixUtf8": "flora.messaging.recipient-key-envelope.v2draft"
+  },
+  "uuids": {
+    "conversationUuid": "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1",
+    "keyEpochId": "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2",
+    "messageUuid": "c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3",
+    "messageKeyId": "d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4",
+    "senderUserUuid": "e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5",
+    "senderDeviceUuid": "f6f6f6f6-6666-4666-8666-f6f6f6f6f6f6",
+    "recipientUserUuid": "a7a7a7a7-7777-4777-8777-a7a7a7a7a7a7",
+    "recipientDeviceUuid": "b8b8b8b8-8888-4888-8888-b8b8b8b8b8b8",
+    "recipientAgreementPublicKeyId": "c9c9c9c9-9999-4999-8999-c9c9c9c9c9c9",
+    "recipientMlKemEncapsulationKeyId": "d0d0d0d0-0000-4000-8000-d0d0d0d0d0d0"
+  },
+  "x25519": {
+    "aliceEphemeralPrivateKeyBase64Url": "jGM4aZnhNez5I7TdTgY6HGq_Grevmd5SWtNA_xUUGrw",
+    "aliceEphemeralPublicKeyBase64Url": "hL-HQfPxkt0LRL2XFt9guTdmoBOKT9l6Th_bAuHPOB8",
+    "bobAgreementPrivateKeyBase64Url": "mw3X5E43ZHIqYzyyzx_zB68v3gAJYOrnwt72a3l1uis",
+    "bobAgreementPublicKeyBase64Url": "48tyi9O7J1hJ1XX7MCt2o-gmMvX9YOqG3Fu4cf8C6kw",
+    "sharedSecretBase64Url": "jDvrI3shyzdnk6u1BLKh174aRV3Eels2uEQGb6NVJzk"
+  },
+  "mlKem768": {
+    "dSeedBase64Url": "_nvkacwNyQGGosTXzjBrTLAvGxqjvNDv7tLstZ1OY_U",
+    "zSeedBase64Url": "FuC2cd_mLIFL5IG3lrjfpDe2xVhjHEsoZ3fu3WafAeI",
+    "keygenSeedBase64Url": "_nvkacwNyQGGosTXzjBrTLAvGxqjvNDv7tLstZ1OY_UW4LZx3-YsgUvkgbeWuN-kN7bFWGMcSyhnd-7dZp8B4g",
+    "encapsulationKeyBase64Url": "FpFemrm78-w7aIULy7ww3LOKDlrAaySLNMaD1AswIJaFmSGNz9MiI0FXmGdlHSnODBsCr0QB_cU1ASjF8pTDDwFqtqPOVHwv4OdHx6Gitot1CHnHh_cR3RQLU-tfglR_lGtLOGsopIUoE7NiDEGtqjlQ7yt0ZUILADDC7EHI9erC0WUHJtuMFpchOFWosMEyhQSdB0soEqQe2GgyF7QZV3i6sHFVbLyGavZLc_wGrEuwJKVWsruCzYo3vmdyH7XC3XmzTmc08CpDXnsp9oE9NjUuUWHB3KOkKXVzSrahE1aNTYNGzBosHyarUna6nHaft7u2S_E21tgJgwrNJrJElvdJCcnHoLAG2yiVZ9wAj5WBfsJLUFxYI3VBVHoQmQt5AwxybZEKNXQKOzEtu4leO3CJX2Yv6wS-n0YFVNqorLO1F2m7eQVHyLkLVzW1MlzJa7qOLahyIWBaTSZmkZNhS6luvjxsXVZvjBqu-egm8xUDJ0YgWazIFoqAK3mWMBBxkRizbkS2RaRZrnxC7vsCTuRUjck1tKlBXSeK3IIl91kZHrGj8MMSv3V9fAgOk_UkJcKOD-ES3AtTiYY9ZOck6yxSuopGXHTIubwpOdkyi8RmUjhl2US4N6ufQsGcamMbl6BUxHMqliWb9fSVzMwWGIC8U7giBakF6wtaaBduj_AowpQtMat9EkVXuHYg9Amv7jJCiRm_xmpcf7hyZTU_LFx3vqmOc8A1rSkR2DFgjmShKmFjl3mxsSG5hFMTe7JYUdOcskMzH5bIGcoYLliSErkHT9RpkeUXzpB1X7Y7BrPNcQGsGpdeBfeBq5yvIkAEE0jCLxIaZhJ5oXMEeJPOQ3cnrraPCHuGjwwIclibeEuH7oq8YdhV2Bi7raaRGIgxHEY5HwKGf6epOfqzWlyLJ6GPDdaEpqCWvHo5MqJEiWZbBnbKV6WXWKBG2LwyqtN8npc9u1FgFKYGeKQTMwrHpwnJG8RMtalTpAZAQ9ga9Cgw6zdFryWUZREvWRMul-E0x-JLmwM0XkCy0bmn7AltSkWnKxc7EdxcGZpOUjNiyjKdlGGYg5kyYqgyB5uAUVVvxHlmHVmVCRS9IEUtPqKWJuyP1XfGr-KKQ2C1raVZcci4O2F-axyhElVJgshda1KCsUiiRAxPB9e5DyR6eKi-VIjMf_okiWxX20UI2dotG-svLPWamgZKDwk3ZQUZi6m5teMZaKdXCimeSlyHLoVI-5gZ06JAAYEPc9YG1fAygzq2oZMk-OVX_cN7hjKIWylFRUJ7hocqNuEYEQG9BnO3JdBaFcBGmKE4ZXlmxRQXuJlmr-Ihbpq37_ufhlYANdwRSjpXdnAJBytMHcGTx4WWEWS5XjCQudwDtAIkeqwuZ5aeygt_HCG7H9i_q3I-8XRJWsOM6Bs5IcSEL1O5MMuQ5KVUwuqXSYRR-rh3xEY_shwbmUWXmSJ_07FKyfNITIYMcEqE9_VPRRYRF7xCrUJjA6IcVAkNoBFJaYUD2YkFbsQpt5R7tkuyzoZAR8s-xDy_S7at_kyH6xxHx7EPe02msr_5XN6J9uCRgVP0n_wQN5I",
+    "decapsulationKeyExpandedBase64Url": "j4xd3vBM9gClZ-kDNrSXr-qR3Cwbw-lf4NrKywuUezkNW2lj1KZOiKclXlDL13GFVCok9ZlkC5YSg1M5SRbGpRlbH0YB47cV8zckqytN66hc4sp5BPsZq2gHFLGo9mk0ZGOg3gevoveOYKFUcic0JROUW2MP5DVcNfC9FZqAUiwZd3ADjyl3-qg56Wa92WduWFB6rXyzyCE5TtuvCjR2dhQpUgW_yiBNnEazSqxLA3UWI6qwbwU4aip8GwcwSrgUm9hs4_qKRnRjl3pfu_eTwbGonkBpouKZwEOgfIc4nxSbVYduz4Sef0c7tXIs7Ga6XEGtyhoMAKNDyKcgNdo-adOkaNAI2eu194uIYOlqjBEebtESoGSk1JWuPNI6-lbKjcq2_CwTOGEeGFwZsKSDvugk6Ai43Mwuffi3n-pc5EcSdfsUYoQ0piAdwgBdB7tgx_ppxdBANTluBcYCKiU5HkIG7NITs6bH2MCXQrlvE8COPqpwKypIgdAbFbO91UKxqxS7V7lpiUtz97JMAMJETWIL8SwotqOp6rOpPqO4mEca7HSQkpY2a8V_VNOVkZhOtUeG-WGFZIs0_iIoXrJjFHFeA2hCDTyLDsN9JVZeL5lggJQ6MYw0l-t196KLMTolqXO4b4mgVoJEahez7wt_VngGf6FwwxekYkTAVWQx_TpWfUTKNfpvpNyUJtSl0lvN4DOn1bpHg5CAksc3M-HKW8EkqDpGwMmf2OYzX8aJaHiPVdsVMyEGpEZqdDiMOfJ0ZtliLCkBdzg6S5wPGhbOc3y3cUyysWaWKYAUrvJrmqM9druEmkSMJjnLrIgsDFCp5TSKSiBYObp1rbotxUwfcCSJqaxoC3OPFFK5cUFarVRrw3etiPW9pWI6XZFrD2QKknGzNfy6N_OFEcoqfrUQhIGxe6uhjaSE44xFi8IkrbBYNAEcFiAVz4c6OrmCiLNMLfkCuaV2JDslR5s5S2VzJEWBZgVTdSCPoYCBriHGvYRBDxsWNyJIMvNxKTLL92YQfcUkPWW7IhlurNJoYQJmfXgm0MmsKSs63DYxG8CX_WA2n6Er6WnESLtwOSVF5FxpFqFll-gXwuBBs5k5CZUYbEYTyvqw5UZuNhFJ6QKiT8sPZ7RXI_hX1kh8icOIEEWoONwhPkTASeVO9_SAcMq3gqBqavUno3WC9MgLyIpMATbFBJy9_VmGlAavZOsW_KUA7tV007dkMxGEHdhcIZRuGRoXidSi61p-5yNNe5BBS0GVtwkYgaRNSGc9zUExMdZXOQnEwOFvTNw0AiiJsiaqyEcRchMAFlckJ3G8pCQGzRXPKcccD2l70vpB5HAeHmwG_CHIoONtZQYzZNOx3LiBsuC_90CJ-ZWp7eWgIdW3A0M8cCtVZGSreuyXN6K7mnVPUJlT1haMYqamtzy2mkR_LZpQ9NNSZofFKSY4txHICyteWeQKFRzEkCiTgRptVMJqoZFQxex5mya6FoPBQmJJ3Ex8UUwfQus_4jRe4IpRNneix9hSlEJKYmOt_YS1avzMFpFemrm78-w7aIULy7ww3LOKDlrAaySLNMaD1AswIJaFmSGNz9MiI0FXmGdlHSnODBsCr0QB_cU1ASjF8pTDDwFqtqPOVHwv4OdHx6Gitot1CHnHh_cR3RQLU-tfglR_lGtLOGsopIUoE7NiDEGtqjlQ7yt0ZUILADDC7EHI9erC0WUHJtuMFpchOFWosMEyhQSdB0soEqQe2GgyF7QZV3i6sHFVbLyGavZLc_wGrEuwJKVWsruCzYo3vmdyH7XC3XmzTmc08CpDXnsp9oE9NjUuUWHB3KOkKXVzSrahE1aNTYNGzBosHyarUna6nHaft7u2S_E21tgJgwrNJrJElvdJCcnHoLAG2yiVZ9wAj5WBfsJLUFxYI3VBVHoQmQt5AwxybZEKNXQKOzEtu4leO3CJX2Yv6wS-n0YFVNqorLO1F2m7eQVHyLkLVzW1MlzJa7qOLahyIWBaTSZmkZNhS6luvjxsXVZvjBqu-egm8xUDJ0YgWazIFoqAK3mWMBBxkRizbkS2RaRZrnxC7vsCTuRUjck1tKlBXSeK3IIl91kZHrGj8MMSv3V9fAgOk_UkJcKOD-ES3AtTiYY9ZOck6yxSuopGXHTIubwpOdkyi8RmUjhl2US4N6ufQsGcamMbl6BUxHMqliWb9fSVzMwWGIC8U7giBakF6wtaaBduj_AowpQtMat9EkVXuHYg9Amv7jJCiRm_xmpcf7hyZTU_LFx3vqmOc8A1rSkR2DFgjmShKmFjl3mxsSG5hFMTe7JYUdOcskMzH5bIGcoYLliSErkHT9RpkeUXzpB1X7Y7BrPNcQGsGpdeBfeBq5yvIkAEE0jCLxIaZhJ5oXMEeJPOQ3cnrraPCHuGjwwIclibeEuH7oq8YdhV2Bi7raaRGIgxHEY5HwKGf6epOfqzWlyLJ6GPDdaEpqCWvHo5MqJEiWZbBnbKV6WXWKBG2LwyqtN8npc9u1FgFKYGeKQTMwrHpwnJG8RMtalTpAZAQ9ga9Cgw6zdFryWUZREvWRMul-E0x-JLmwM0XkCy0bmn7AltSkWnKxc7EdxcGZpOUjNiyjKdlGGYg5kyYqgyB5uAUVVvxHlmHVmVCRS9IEUtPqKWJuyP1XfGr-KKQ2C1raVZcci4O2F-axyhElVJgshda1KCsUiiRAxPB9e5DyR6eKi-VIjMf_okiWxX20UI2dotG-svLPWamgZKDwk3ZQUZi6m5teMZaKdXCimeSlyHLoVI-5gZ06JAAYEPc9YG1fAygzq2oZMk-OVX_cN7hjKIWylFRUJ7hocqNuEYEQG9BnO3JdBaFcBGmKE4ZXlmxRQXuJlmr-Ihbpq37_ufhlYANdwRSjpXdnAJBytMHcGTx4WWEWS5XjCQudwDtAIkeqwuZ5aeygt_HCG7H9i_q3I-8XRJWsOM6Bs5IcSEL1O5MMuQ5KVUwuqXSYRR-rh3xEY_shwbmUWXmSJ_07FKyfNITIYMcEqE9_VPRRYRF7xCrUJjA6IcVAkNoBFJaYUD2YkFbsQpt5R7tkuyzoZAR8s-xDy_S7at_kyH6xxHx7EPe02msr_5XN6J9uCRgVP0n_wQN5J5yncFQ6HzGxBczT63mcDcjJRT-aj0o89Hn1EbRC6BihbgtnHf5iyBS-SBt5a436Q3tsVYYxxLKGd37t1mnwHi",
+    "encapsMSeedBase64Url": "ax58qHMyicAoWI2kndsrPqjMYUW-i_ursIq_V7lyU50",
+    "ciphertextBase64Url": "vaHp4w9Yi_duwL2KB2XP40I23jewWOX5Fo0edCmPunHYS0Pme6GOxwZzk7lQom5VSsBNsACmwYylODOL4qdnOT_h---AbdiVEzmz-yWAhrjmvKjmKB7IASOj98glKAtBZfIZIMxGFLrKxfjqhHW1bFHvcOblHnl5sozoAtdBXztvYZrowkETh2aY8HKQyMW6X-t_qZb48djmHiKmCbG_RSfyurXyARTY4ahX2FDTguvpBYwM6JQspu7ROuDEFHQ8lEmgR8wOPnqVJdIso3q9C7kEUmSlaVyGbBrGB-7_l7bxhWhOQ8SgYBCr_BKc9CQ1Y0rr_BgRFmmtRAjbdF8gqvi9BtCzFrup0w8DyTbbRUjS5Avf2zM-wNNSEdfBaJsu-zsvTwLpAxD5L-THuV7R7vvCnc16pO-OiF-lyqYfaw66uTIFO07G1SQKE8wtJi-b-B-Jo2B1re_0Be-8ys0ylfIX-l6VoG-0jN4PP3E-wUh0YWnzjUe2pnRxrhndg7jwrw2hvMZZze2kYyZQbk6N6Jg0zMBID4JKtgZjR2nJafHG2hpp3r6bNNfFewFgKITNLX9MHKAMon7tHhCwmHYIe1eWjtvI7W5KNuU7kQABlC30KrUlFnDhBPR9DPM1WghsoZ6hbe-aIolrxKvSm3O-UCV1E32SO3bj-zPMwRny9k302PO8Do2098W_gNBY5_7co8L6ZvClpjM5ADUmEqWaGxFoXuc54Ma-SgNekAFnXIsJVusdhTIWA2SnUHww-ZmyAT9H5eckY0CMyaV0N0Evksn5g_MAtrHUn4IfAMAeIiZH8u6bz9ucl14Ack960Azjs9UJbrVXWnmrnIuqdRqjGLTlsNDsoqQmbAF9KGnAsbvp0iRpczT4KrHb3bKexTXThPICme_5oMWjptmRK-7eOVWFAHFOV5ecnsGa4f5ODM2v2_Wh7MsoxOJfYl_jxEZLQxMWKnVZpYOwr2PY57s57hv6s6w-_wA9pVOSu9bj567N2JI02Td7KMCHaoYnduxlqR4I8xeBkD_agfJuEdjZVBMQY4mqqS6JwuaGYPmeUJbYUHSs6QFi2HFOuhoiBu1gUsY5OjXonpM1hwT3jwU5cDmFIjyrAJ0Z6kuoA3Jb9_P2qW9B3xTzv8PGRmRKtGDNewR5NFt9n-G381mJQaS9pahJDparcdHHfF0WFQJiwqQMEiGkPy0qcGINYhj8sTwG6AeC1qe_gfe6BRLBHG-oDixdO1YVJRRKCuhCyWh1IVYvLenFUjzsu91dLWzG60tNmXXML1GLrBp4FDFDp8heAMXruPGEfZZr9FfVTJkIFyaowPgc3_69w-9GYQQ4L3387tzKHwGbKIaPXavkrXVe2zHC_gehtTSyCOfVzoxZiBgs-5tk3qpO5TEFV_exXgpG3O6E3jh9dANWuQyvgH96sf-SN3gvSZhQF6cI_G93Gto",
+    "sharedSecretBase64Url": "C6KFPomsY5aQnmjgj6OeqLwsUd4vDqKDXbSpj1SIvxA"
+  },
+  "hybrid": {
+    "transcriptHashBase64Url": "ge44imuRXA6lx87oHzcS-wMgIlWhki0-Lxvq2eLE9Go",
+    "aadUtf8": "flora.messaging.recipient-key-envelope.v2draft | a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1 | b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2 | c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3 | d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4 | e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5 | f6f6f6f6-6666-4666-8666-f6f6f6f6f6f6 | a7a7a7a7-7777-4777-8777-a7a7a7a7a7a7 | b8b8b8b8-8888-4888-8888-b8b8b8b8b8b8 | c9c9c9c9-9999-4999-8999-c9c9c9c9c9c9 | d0d0d0d0-0000-4000-8000-d0d0d0d0d0d0 | pq:ge44imuRXA6lx87oHzcS-wMgIlWhki0-Lxvq2eLE9Go",
+    "hkdfSaltBase64Url": "vDJl94KOJgaRwnb6XdZGQi6rQwVmnvF7awIqi2d2aMI",
+    "ikmBase64Url": "jDvrI3shyzdnk6u1BLKh174aRV3Eels2uEQGb6NVJzkLooU-iaxjlpCeaOCPo56ovCxR3i8OooNdtKmPVIi_EA",
+    "wrapKeyBase64Url": "h__liFFTMDVG2OI9sBd3xpREy4zyH0AKixHByaQNwd0"
+  },
+  "aead": {
+    "name": "xchacha20-poly1305",
+    "messageKeyBase64Url": "eFZf-vLoYtYbNXFeMydk2lJ2vY8qYQLxjdJFxrp3dUw",
+    "nonceBase64Url": "XBDNSvag_fH3HR-HdHF7VRJO0-kifrVH",
+    "ciphertextBase64Url": "IJbtDwLK8me92Iwt39r15CmVG-EDWP3GioKOqBMscGJJ3CmBBYzWBKPfgn5Gmu0C"
+  },
+  "negativeCases": [
+    {
+      "caseId": "mlkem_ciphertext_tampered",
+      "description": "последний байт ct_mlkem инвертирован: FIPS 203 implicit rejection даёт K̄=J(z||c); транскрипт-хэш и AAD получателя расходятся с отправителем — AEAD не открывается",
+      "tamperedCiphertextBase64Url": "vaHp4w9Yi_duwL2KB2XP40I23jewWOX5Fo0edCmPunHYS0Pme6GOxwZzk7lQom5VSsBNsACmwYylODOL4qdnOT_h---AbdiVEzmz-yWAhrjmvKjmKB7IASOj98glKAtBZfIZIMxGFLrKxfjqhHW1bFHvcOblHnl5sozoAtdBXztvYZrowkETh2aY8HKQyMW6X-t_qZb48djmHiKmCbG_RSfyurXyARTY4ahX2FDTguvpBYwM6JQspu7ROuDEFHQ8lEmgR8wOPnqVJdIso3q9C7kEUmSlaVyGbBrGB-7_l7bxhWhOQ8SgYBCr_BKc9CQ1Y0rr_BgRFmmtRAjbdF8gqvi9BtCzFrup0w8DyTbbRUjS5Avf2zM-wNNSEdfBaJsu-zsvTwLpAxD5L-THuV7R7vvCnc16pO-OiF-lyqYfaw66uTIFO07G1SQKE8wtJi-b-B-Jo2B1re_0Be-8ys0ylfIX-l6VoG-0jN4PP3E-wUh0YWnzjUe2pnRxrhndg7jwrw2hvMZZze2kYyZQbk6N6Jg0zMBID4JKtgZjR2nJafHG2hpp3r6bNNfFewFgKITNLX9MHKAMon7tHhCwmHYIe1eWjtvI7W5KNuU7kQABlC30KrUlFnDhBPR9DPM1WghsoZ6hbe-aIolrxKvSm3O-UCV1E32SO3bj-zPMwRny9k302PO8Do2098W_gNBY5_7co8L6ZvClpjM5ADUmEqWaGxFoXuc54Ma-SgNekAFnXIsJVusdhTIWA2SnUHww-ZmyAT9H5eckY0CMyaV0N0Evksn5g_MAtrHUn4IfAMAeIiZH8u6bz9ucl14Ack960Azjs9UJbrVXWnmrnIuqdRqjGLTlsNDsoqQmbAF9KGnAsbvp0iRpczT4KrHb3bKexTXThPICme_5oMWjptmRK-7eOVWFAHFOV5ecnsGa4f5ODM2v2_Wh7MsoxOJfYl_jxEZLQxMWKnVZpYOwr2PY57s57hv6s6w-_wA9pVOSu9bj567N2JI02Td7KMCHaoYnduxlqR4I8xeBkD_agfJuEdjZVBMQY4mqqS6JwuaGYPmeUJbYUHSs6QFi2HFOuhoiBu1gUsY5OjXonpM1hwT3jwU5cDmFIjyrAJ0Z6kuoA3Jb9_P2qW9B3xTzv8PGRmRKtGDNewR5NFt9n-G381mJQaS9pahJDparcdHHfF0WFQJiwqQMEiGkPy0qcGINYhj8sTwG6AeC1qe_gfe6BRLBHG-oDixdO1YVJRRKCuhCyWh1IVYvLenFUjzsu91dLWzG60tNmXXML1GLrBp4FDFDp8heAMXruPGEfZZr9FfVTJkIFyaowPgc3_69w-9GYQQ4L3387tzKHwGbKIaPXavkrXVe2zHC_gehtTSyCOfVzoxZiBgs-5tk3qpO5TEFV_exXgpG3O6E3jh9dANWuQyvgH96sf-SN3gvSZhQF6cI_G93Gts",
+      "impliedSharedSecretBase64Url": "COz5RI6RqoaogUm_rRsrVaBMnU0aN56S1q1hmap6e1I",
+      "tamperedTranscriptHashBase64Url": "AELKz0xzSXfoQ4leAE7aXPxLxUYRaS3pxcnWW-apIHg",
+      "tamperedAadUtf8": "flora.messaging.recipient-key-envelope.v2draft | a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1 | b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2 | c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3 | d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4 | e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5 | f6f6f6f6-6666-4666-8666-f6f6f6f6f6f6 | a7a7a7a7-7777-4777-8777-a7a7a7a7a7a7 | b8b8b8b8-8888-4888-8888-b8b8b8b8b8b8 | c9c9c9c9-9999-4999-8999-c9c9c9c9c9c9 | d0d0d0d0-0000-4000-8000-d0d0d0d0d0d0 | pq:AELKz0xzSXfoQ4leAE7aXPxLxUYRaS3pxcnWW-apIHg",
+      "expected": "aead-open-fails"
+    },
+    {
+      "caseId": "aad_metadata_mismatch",
+      "description": "получатель подставляет чужой recipientDeviceUuid: HKDF-info и AAD меняются — AEAD не открывается",
+      "mismatchedAadUtf8": "flora.messaging.recipient-key-envelope.v2draft | a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1 | b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2 | c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3 | d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4 | e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5 | f6f6f6f6-6666-4666-8666-f6f6f6f6f6f6 | a7a7a7a7-7777-4777-8777-a7a7a7a7a7a7 | b8b8b8b8-8888-4888-8888-000000000000 | c9c9c9c9-9999-4999-8999-c9c9c9c9c9c9 | d0d0d0d0-0000-4000-8000-d0d0d0d0d0d0 | pq:ge44imuRXA6lx87oHzcS-wMgIlWhki0-Lxvq2eLE9Go",
+      "expected": "aead-open-fails"
+    }
+  ]
+}

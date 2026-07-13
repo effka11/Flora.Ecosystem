@@ -2,5 +2,13 @@
 <Project>
   <PropertyGroup>
     <Version>0.5.0-alpha</Version>
+    <!-- /version.api must stay the clean ecosystem version on both hosts (C# and Rust);
+         the build sha has its own dedicated field (commit, via FLORA_BUILD_COMMIT). -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Authors>Egor Ozerskikh</Authors>
+    <Company>Flora Ecosystem</Company>
+    <Product>Flora Ecosystem</Product>
+    <Copyright>Copyright (c) 2026 Egor Ozerskikh (Егор Озерских). Dual-licensed: AGPL-3.0-only OR commercial license from Luna Ecosystem (e.ozerskikh@gmail.com).</Copyright>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
   </PropertyGroup>
 </Project>

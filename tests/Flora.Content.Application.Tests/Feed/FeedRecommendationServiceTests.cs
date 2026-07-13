@@ -132,6 +132,35 @@ public sealed class FeedRecommendationServiceTests
     }
 
     [Fact]
+    public async Task Blocked_author_posts_are_excluded_from_recommendations_and_subscriptions()
+    {
+        var blockedAuthor = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var followedPost  = Post(FollowedAuthorId, daysAgo: 2);
+        var blockedPost   = Post(blockedAuthor, daysAgo: 1);
+
+        var fake = new FakeFeedDependencies(ViewerId, [FollowedAuthorId, blockedAuthor])
+        {
+            PostsByAuthor =
+            {
+                [FollowedAuthorId] = [followedPost],
+                [blockedAuthor]    = [blockedPost],
+            },
+            TrendingPostIds = [blockedPost.PostUuid],
+        };
+        fake.PostsById[followedPost.PostUuid] = followedPost;
+        fake.PostsById[blockedPost.PostUuid]  = blockedPost;
+        fake.BlockedBidirectional.Add(blockedAuthor);
+
+        var service = CreateService(fake, minFeedSize: 1);
+        var recommendations = await service.GetRecommendedFeedAsync(ViewerId, take: 30, forceRefresh: true);
+        var subscriptions   = await service.GetSubscriptionsFeedAsync(ViewerId, take: 30);
+
+        Assert.Contains(followedPost.PostUuid, recommendations.PostUuids);
+        Assert.DoesNotContain(blockedPost.PostUuid, recommendations.PostUuids);
+        Assert.DoesNotContain(blockedPost.PostUuid, subscriptions.PostUuids);
+    }
+
+    [Fact]
     public async Task Recommendations_do_not_replace_followed_posts_with_discovery_only_page()
     {
         var followedPosts = Enumerable.Range(0, 8)
@@ -178,6 +207,7 @@ public sealed class FeedRecommendationServiceTests
         return new FeedRecommendationService(
             fake,
             fake,
+            fake,
             new MemoryCache(new MemoryCacheOptions()),
             Options.Create(fira),
             Options.Create(sub));
@@ -186,7 +216,7 @@ public sealed class FeedRecommendationServiceTests
     private static FeedPostLite Post(Guid authorId, int daysAgo) =>
         new(Guid.NewGuid(), authorId, DateTime.UtcNow.AddDays(-daysAgo), "content");
 
-    private sealed class FakeFeedDependencies : IFollowGraphReader, IContentFeedQueries
+    private sealed class FakeFeedDependencies : IFollowGraphReader, IContentFeedQueries, IUserBlocklistService
     {
         private readonly Guid _viewerId;
         private readonly IReadOnlyList<Guid> _following;
@@ -202,7 +232,25 @@ public sealed class FeedRecommendationServiceTests
         public List<Guid> TrendingPostIds { get; set; } = [];
         public Dictionary<DateTime, List<FeedPostLite>> ExplorationPostsBySinceUtc { get; } = [];
         public List<DateTime> ExplorationSinceValues { get; } = [];
+        public HashSet<Guid> BlockedBidirectional { get; } = [];
         public int SubscriptionPostsQueryCount { get; private set; }
+
+        // --- IUserBlocklistService ---
+
+        public Task<bool> IsBlockedByAsync(Guid ownerUserUuid, Guid viewerUserUuid, CancellationToken cancellationToken = default) =>
+            Task.FromResult(BlockedBidirectional.Contains(ownerUserUuid));
+
+        public Task<IReadOnlySet<Guid>> GetBlockedUserIdsBidirectionalAsync(Guid userUuid, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<Guid>>(BlockedBidirectional);
+
+        public Task<IReadOnlyList<UserBlockRecord>> ListAsync(Guid ownerUserUuid, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<UserBlockRecord>>([]);
+
+        public Task BlockAsync(Guid ownerUserUuid, Guid blockedUserUuid, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task UnblockAsync(Guid ownerUserUuid, Guid blockedUserUuid, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
 
         public Task<IReadOnlyList<Guid>> GetFollowingUserIdsAsync(Guid followerUserUuid, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Guid>>(followerUserUuid == _viewerId ? _following : []);
@@ -228,6 +276,7 @@ public sealed class FeedRecommendationServiceTests
             IReadOnlyCollection<Guid> authorIds,
             DateTime sinceUtc,
             int take,
+            Guid viewerUserUuid,
             CancellationToken cancellationToken = default)
         {
             SubscriptionPostsQueryCount++;
@@ -242,6 +291,7 @@ public sealed class FeedRecommendationServiceTests
 
         public Task<List<FeedPostLite>> GetPostsByIdsAsync(
             IReadOnlyCollection<Guid> postIds,
+            Guid viewerUserUuid,
             CancellationToken cancellationToken = default)
         {
             var posts = postIds
@@ -255,13 +305,15 @@ public sealed class FeedRecommendationServiceTests
             Guid userUuid, DateTime sinceUtc, int take, CancellationToken cancellationToken = default) =>
             Task.FromResult(new List<Guid>());
 
-        public Task<List<Guid>> GetLatestPostIdsAsync(int take, CancellationToken cancellationToken = default) =>
-            Task.FromResult(PostsById.Keys.Take(take).ToList());
+        public Task<List<FeedPostLite>> GetLatestPostsAsync(
+            int take, Guid viewerUserUuid, CancellationToken cancellationToken = default) =>
+            Task.FromResult(PostsById.Values.Take(take).ToList());
 
         public Task<List<Guid>> GetTrendingPostIdsAsync(
             DateTime sinceUtc,
             int limit,
             IReadOnlySet<Guid> excludeAuthors,
+            Guid viewerUserUuid,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(TrendingPostIds
                 .Where(id => PostsById.TryGetValue(id, out var p)
@@ -286,6 +338,7 @@ public sealed class FeedRecommendationServiceTests
             DateTime sinceUtc,
             IReadOnlySet<Guid> excludePostIds,
             int limit,
+            Guid viewerUserUuid,
             CancellationToken cancellationToken = default)
         {
             ExplorationSinceValues.Add(sinceUtc);
@@ -320,7 +373,7 @@ public sealed class FeedRecommendationServiceTests
             Task.FromResult(postIds.ToDictionary(id => id, _ => (0, 0, 0, 0)));
 
         public Task<bool> HasNewerPostsAsync(
-            IReadOnlyCollection<Guid> followedUserIds, DateTime sinceUtc, CancellationToken cancellationToken = default) =>
+            IReadOnlyCollection<Guid> followedUserIds, DateTime sinceUtc, Guid viewerUserUuid, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
 
         public Task<Dictionary<Guid, IReadOnlyList<Guid>>> GetFollowedReposterIdsByPostsAsync(

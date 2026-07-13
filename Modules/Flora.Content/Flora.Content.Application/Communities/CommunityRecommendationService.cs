@@ -61,13 +61,15 @@ public sealed class CommunityRecommendationService : ICommunityRecommendationSer
         if (_cache.TryGetValue(CacheKey(userUuid), out CommunitySnapshot? cached))
             return cached!;
 
+        // Единый nowUtc на snapshot — детерминизм скоринга при фиксированном времени (§15 FIRA.md).
+        var nowUtc           = DateTime.UtcNow;
         var following        = await _followGraph.GetFollowingUserIdsAsync(userUuid, ct);
-        var activitySinceUtc = DateTime.UtcNow.AddDays(-Math.Max(_options.ActivityDays, 1));
+        var activitySinceUtc = nowUtc.AddDays(-Math.Max(_options.ActivityDays, 1));
         var candidates       = await _queries.GetCandidatesAsync(
             userUuid, following, activitySinceUtc, ct);
 
         var fullList = candidates
-            .Select(c => (Candidate: c, Score: ScoreCandidate(c)))
+            .Select(c => (Candidate: c, Score: CommunityRecommendationScorer.Score(c, _options, nowUtc)))
             .OrderByDescending(x => x.Score)
             .ThenBy(x => x.Candidate.Name, StringComparer.OrdinalIgnoreCase)
             .Select(x => new RecommendedCommunityDto
@@ -80,24 +82,11 @@ public sealed class CommunityRecommendationService : ICommunityRecommendationSer
             })
             .ToList();
 
-        var snapshot = new CommunitySnapshot(fullList, DateTime.UtcNow);
+        var snapshot = new CommunitySnapshot(fullList, nowUtc);
         _cache.Set(CacheKey(userUuid), snapshot,
             TimeSpan.FromSeconds(Math.Max(10, _options.CacheTtlSeconds)));
 
         return snapshot;
-    }
-
-    private double ScoreCandidate(CommunityRecommendationCandidate candidate)
-    {
-        var memberScore   = Math.Log10(Math.Max(candidate.MemberCount, 0) + 1)     * _options.WeightMembers;
-        var activityScore = Math.Log10(Math.Max(candidate.RecentPostCount, 0) + 1)  * _options.WeightActivity;
-        var socialScore   = Math.Log10(Math.Max(candidate.FollowedMembersCount, 0) + 1) * _options.WeightSocial;
-
-        var ageDays      = Math.Max((DateTime.UtcNow - candidate.CreatedAt).TotalDays, 0);
-        var boostWindow  = Math.Max(_options.NewCommunityBoostDays, 1);
-        var recencyScore = Math.Max(0, boostWindow - ageDays) / boostWindow * _options.WeightRecency;
-
-        return memberScore + activityScore + socialScore + recencyScore;
     }
 
     private static string CacheKey(Guid userUuid) => $"flora:fira-c:v1:{userUuid:N}";

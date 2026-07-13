@@ -1,0 +1,15 @@
+[package]
+name = "fvc"
+description = "FVC — Flora Video Codec. Референсная реализация битстрима FVC1 (энкодер + декодер). Ядро без внешних зависимостей."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Ядро сознательно без зависимостей: аудируемость, тривиальная сборка в wasm32,
+# нулевая supply-chain-поверхность. Не добавлять зависимости без веской причины.
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,9 +1,11 @@
 # FIRA-P — People Recommendations
 
-**Status:** Draft  
-**Version:** 0.2  
-**Date:** 2026-06-09  
+**Status:** Active — целевая спека; в production упрощённая эвристика v1 (§Implementation Status)  
+**Version:** 0.3  
+**Date:** 2026-07-13  
 **Depends on:** [`FIRA.md`](./FIRA.md)
+
+> Изменения 0.2 → 0.3: добавлен нормативный раздел **Implementation Status (as-built v1)** с картой отклонений — включая **критичное**: pre-filter приватности v1 не исключает блокировки. Формулы §Скоринг — целевые (v2); референс паритета Rust-миграции — формулы as-built. **Внимание миграции:** FIRA-P живёт в `Flora.Users` и уезжает в Rust в Фазе 2b — раньше остальных компонентов FIRA.
 
 ---
 
@@ -41,9 +43,11 @@ Flora.Social (HTTP controller)
               └─→ ProfileAccessPolicy  (Flora.Users.Infrastructure)
 ```
 
-Данные о подписках и граф читаются из `Flora.Users`. Для вычисления `IndividualAffinity` нужен `topicVector` кандидата (темы его публичных постов), который хранится в `Flora.Content`. Этот вектор запрашивается через gRPC-контракт `IContentTopicVectorService` (Flora.Content.Contracts) и передаётся в `FiraContext` как предвычисленная структура — прямого обращения к БД `Flora.Content` из `Flora.Users` нет.
+Данные о подписках и граф читаются из `Flora.Users`. Для вычисления `IndividualAffinity` (target v2) нужен `topicVector` кандидата (темы его публичных постов), который хранится в `Flora.Content`. Этот вектор запрашивается через gRPC-контракт `IContentTopicVectorService` (Flora.Content.Contracts) и передаётся в `FiraContext` как предвычисленная структура — прямого обращения к БД `Flora.Content` из `Flora.Users` нет.
 
-**Механизм (§8.1 FIRA.md):** `Flora.Social` при построении `FiraContext` также вызывает `Flora.Content` для получения `CandidateTopicVectors` — словаря `{userUuid → TopicVector}` для набора кандидатов, и включает его в `FiraRequestMetadata`.
+**Механизм (§8.1 FIRA.md, target v2):** `Flora.Social` при построении `FiraContext` также вызывает `Flora.Content` для получения `CandidateTopicVectors` — словаря `{userUuid → TopicVector}` для набора кандидатов, и включает его в `FiraRequestMetadata`.
+
+**Миграционное замечание.** После Фазы 2b (`Flora.Users` → Rust) FIRA-P исполняется на Rust-стороне, тогда как `Flora.Content` ещё на C#. Контракт `IContentTopicVectorService` спроектирован под этот разрыв: gRPC-вызов Rust → C# в переходный период, затем Rust → Rust. Это дополнительный аргумент вводить UIP-скоринг FIRA-P уже после переноса (см. [`FIRA.md §17`](./FIRA.md)).
 
 ---
 
@@ -77,6 +81,8 @@ Flora.Social (HTTP controller)
 - **graphDepth** — кратчайшее расстояние в графе подписок. Определение: `depth=1` означает, что хотя бы одна подписка текущего пользователя подписана на кандидата (кандидат — «друг друга»); `depth=2` — общий подписчик есть на расстоянии 2 рёбер. Пользователи, на которых текущий пользователь уже подписан, исключены pre-filter'ом и в граф не попадают.
 
 ### Шаг 3 — Скоринг
+
+*Target v2* — формулы ниже требуют UIP и topic-векторов кандидатов; production-скоринг v1 описан в §Implementation Status.
 
 ```
 Score(user) = α · IndividualAffinity(user, UIP)
@@ -226,6 +232,55 @@ Score(c)                    = 0.35 · IndividualAffinity(c)
 | Размер пула кандидатов | Configurable (`candidatePoolSize`, дефолт: 200) |
 | Глубина обхода графа | Configurable (`maxGraphDepth`, дефолт: 2) |
 | Политика обновления (полная) | [`FIRA.md §13`](./FIRA.md) |
+
+---
+
+## Implementation Status (as-built v1)
+
+Production-реализация: [`UserRecommendationService.cs`](../../Modules/Flora.Users/Flora.Users.Application/People/UserRecommendationService.cs) + [`UserRecommendationQueries.cs`](../../Modules/Flora.Users/Flora.Users.Infrastructure/UserRecommendationQueries.cs). **Референс паритета для Rust-порта Фазы 2b — FIRA-P мигрирует первым из C/P/F**; golden-вектора снимаются с этих формул до начала Фазы 2b ([`FIRA.md §15`](./FIRA.md)).
+
+**Почему v1 не следует §Скоринг** — та же причина, что в FIRA-C: без UIP α-компонент не существует, эвристика оперирует двумя доступными сигналами (популярность, социальная близость) плюс recency.
+
+**Кандидаты (один запрос):** все профили, кроме самого пользователя, его подписок и профилей с блокировкой в любом направлении (v1.1, инвариант §12 FIRA.md — исключение, не понижение; [`UserRecommendationQueries.cs`](../../Modules/Flora.Users/Flora.Users.Infrastructure/UserRecommendationQueries.cs)). Источников/весов пула и лимита пула нет — скорятся все профили инсталляции (приемлемо сейчас; пагинация кандидатов потребуется при масштабировании).
+
+**Скоринг v1:**
+
+```
+followerScore = log10(max(followerCount, 0) + 1)           × WeightFollowers   // 2.0
+socialScore   = log10(max(followedByFollowing, 0) + 1)     × WeightSocial      // 4.0
+recencyScore  = max(0, BoostDays − ageDays) / BoostDays    × WeightRecency     // 1.0; BoostDays = 30
+                // ageDays — от UpdatedAt профиля (недавно активные), НЕ от даты регистрации
+
+Score = followerScore + socialScore + recencyScore
+```
+
+Tie-break: `Score desc → DisplayName asc (case-insensitive)`.
+
+**Выдача:** snapshot полного списка в per-user кэше `flora:fira-p:v1:{userUuid}`, TTL `CacheTtlSeconds = 300`; `Take(take)` после чтения кэша (take ≤ 100); инвалидация при follow/unfollow. Стохастических точек нет — детерминирован при фиксированных `nowUtc` и БД.
+
+**Конфигурация** — секция `UserRecommendation` (в `appsettings.json` присутствует полностью, значения = дефолтам кода): `WeightFollowers = 2.0`, `WeightSocial = 4.0`, `WeightRecency = 1.0`, `RecencyBoostDays = 30`, `CacheTtlSeconds = 300`.
+
+### Карта отклонений (нормативная)
+
+**Закрыто в v1.1:**
+
+| # | Отклонение | Как закрыто |
+|---|-----------|-------------|
+| 1 | **Блоклист не применялся** — заблокировавший пользователя аккаунт мог появиться у него в «Людях» (нарушение не-полномочий приватности) | двунаправленное исключение в кандидатном запросе (`GetCandidatesAsync`) + `IUserBlocklistService.GetBlockedUserIdsBidirectionalAsync`; закрыто **до** снятия golden-векторов — дефект не заморожен в паритетную поверхность |
+
+**Открыто:**
+
+| # | Отклонение | Факт | Требование | Приоритет |
+|---|-----------|------|------------|-----------|
+| 2 | `DiscoverableByRecommendations` | поля в `UserPrivacySettings` нет | §Privacy Boundaries: opt-out из FIRA-P | v1.1 (поле + фильтр + UI) |
+| 3 | Закрытые аккаунты | понятия приватного аккаунта в Users v1 нет (есть field-level visibility) | правило «private без mutual — исключён» активируется вместе с приватными аккаунтами | v2 |
+| 4 | `sharedFollowers`, `graphDepth` | не вычисляются (в SP только `followedByFollowing`) | §Шаг 2–3 | v2 |
+| 5 | Recency по `UpdatedAt` | буст получают недавно **обновлённые** профили | целевой new-account boost: возраст аккаунта + порог активности (≥ 5 постов) | v2 |
+| 6 | Diversity по источникам, dismissal | нет (источник один) | §Шаг 4, §Feedback Loop | v2 / v1.1 |
+
+### Rust-порт (Фаза 2b, перенесён заранее)
+
+Чистый скорер портирован 1:1 и закреплён consumer-тестом на golden-векторе — формулы заморожены до cutover: C# [`UserRecommendationScorer.cs`](../../Modules/Flora.Users/Flora.Users.Application/People/UserRecommendationScorer.cs) ↔ Rust [`people.rs`](../../Backend/crates/modules/flora-users/src/application/people.rs) (`score`, `rank`); тесты — [`fira_vectors.rs`](../../Backend/tests/parity/tests/fira_vectors.rs). Tie-break по `DisplayName` использует ordinal ignore-case сравнение с паритетом .NET (`flora_shared::ordinal`).
 
 ---
 

@@ -1,0 +1,316 @@
+{
+  "vectorId": "fira_f_scorer_v1",
+  "reference": "Modules/Flora.Content/Flora.Content.Application/Feed/FiraFeedScorer.cs",
+  "nowUtc": "2026-07-13T12:00:00.000Z",
+  "scoreToleranceRelative": 1E-12,
+  "config": {
+    "alphaPhase0": 0,
+    "betaPhase0": 0.7,
+    "gammaPhase0": 0.3,
+    "decayLambda": 0.05,
+    "authorAffinityScale": 5,
+    "affinityThreshold": 0,
+    "socialRepostThreshold": 1,
+    "repostWeight": 1.5,
+    "repostCap": 3
+  },
+  "cases": [
+    {
+      "name": "zero_everything",
+      "candidate": {
+        "postUuid": "0f000000-0000-4000-8000-000000000001",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000a1",
+        "createdAt": "2026-07-13T11:00:00.000Z",
+        "likes48h": 0,
+        "comments48h": 0,
+        "reposts48h": 0,
+        "views48h": 0,
+        "authorFollowerCount": 0,
+        "rawAuthorInteractionScore": 0,
+        "authorAffinity": 0,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      },
+      "expected": {
+        "authorAffinity": 0,
+        "individualAffinity": 0,
+        "globalRelevance": 0,
+        "socialProximity": 0,
+        "repostBoost": 0,
+        "score": 0
+      }
+    },
+    {
+      "name": "fresh_viral",
+      "candidate": {
+        "postUuid": "0f000000-0000-4000-8000-000000000002",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000a2",
+        "createdAt": "2026-07-13T10:00:00.000Z",
+        "likes48h": 50,
+        "comments48h": 10,
+        "reposts48h": 5,
+        "views48h": 1000,
+        "authorFollowerCount": 100,
+        "rawAuthorInteractionScore": 0,
+        "authorAffinity": 0,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      },
+      "expected": {
+        "authorAffinity": 0,
+        "individualAffinity": 0,
+        "globalRelevance": 2.597358882187364,
+        "socialProximity": 0,
+        "repostBoost": 0,
+        "score": 1.8181512175311545
+      }
+    },
+    {
+      "name": "old_viral_decayed",
+      "candidate": {
+        "postUuid": "0f000000-0000-4000-8000-000000000003",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000a3",
+        "createdAt": "2026-07-10T12:00:00.000Z",
+        "likes48h": 50,
+        "comments48h": 10,
+        "reposts48h": 5,
+        "views48h": 1000,
+        "authorFollowerCount": 100,
+        "rawAuthorInteractionScore": 0,
+        "authorAffinity": 0,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      },
+      "expected": {
+        "authorAffinity": 0,
+        "individualAffinity": 0,
+        "globalRelevance": 0.07843344205077642,
+        "socialProximity": 0,
+        "repostBoost": 0,
+        "score": 0.05490340943554349
+      }
+    },
+    {
+      "name": "author_affinity_saturated",
+      "candidate": {
+        "postUuid": "0f000000-0000-4000-8000-000000000004",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000a4",
+        "createdAt": "2026-07-13T07:00:00.000Z",
+        "likes48h": 3,
+        "comments48h": 0,
+        "reposts48h": 0,
+        "views48h": 40,
+        "authorFollowerCount": 10,
+        "rawAuthorInteractionScore": 20.5,
+        "authorAffinity": 0.9994508436877974,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      },
+      "expected": {
+        "authorAffinity": 0.9994508436877974,
+        "individualAffinity": 0.2998352531063392,
+        "globalRelevance": 0.4461207677309066,
+        "socialProximity": 0,
+        "repostBoost": 0,
+        "score": 0.3122845374116346
+      }
+    },
+    {
+      "name": "social_likers",
+      "candidate": {
+        "postUuid": "0f000000-0000-4000-8000-000000000005",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000a5",
+        "createdAt": "2026-07-13T06:00:00.000Z",
+        "likes48h": 2,
+        "comments48h": 1,
+        "reposts48h": 0,
+        "views48h": 30,
+        "authorFollowerCount": 25,
+        "rawAuthorInteractionScore": 3.5,
+        "authorAffinity": 0.6043677771171635,
+        "followedLikersCount": 7,
+        "followedRepostersCount": 0
+      },
+      "expected": {
+        "authorAffinity": 0.6043677771171635,
+        "individualAffinity": 0.18131033313514905,
+        "globalRelevance": 0.5662609533297115,
+        "socialProximity": 6.238324625039507,
+        "repostBoost": 0,
+        "score": 2.26788005484265
+      }
+    },
+    {
+      "name": "repost_tandem_active",
+      "candidate": {
+        "postUuid": "0f000000-0000-4000-8000-000000000006",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000a6",
+        "createdAt": "2026-07-13T08:00:00.000Z",
+        "likes48h": 1,
+        "comments48h": 0,
+        "reposts48h": 2,
+        "views48h": 15,
+        "authorFollowerCount": 5,
+        "rawAuthorInteractionScore": 1,
+        "authorAffinity": 0.197375320224904,
+        "followedLikersCount": 2,
+        "followedRepostersCount": 3
+      },
+      "expected": {
+        "authorAffinity": 0.197375320224904,
+        "individualAffinity": 0.0592125960674712,
+        "globalRelevance": 1.4588906466941367,
+        "socialProximity": 5.375278407684165,
+        "repostBoost": 2.0794415416798357,
+        "score": 2.6338069749911455
+      }
+    },
+    {
+      "name": "repost_cap_reached",
+      "candidate": {
+        "postUuid": "0f000000-0000-4000-8000-000000000007",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000a7",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "likes48h": 10,
+        "comments48h": 2,
+        "reposts48h": 30,
+        "views48h": 500,
+        "authorFollowerCount": 1000,
+        "rawAuthorInteractionScore": 0,
+        "authorAffinity": 0,
+        "followedLikersCount": 12,
+        "followedRepostersCount": 100
+      },
+      "expected": {
+        "authorAffinity": 0,
+        "individualAffinity": 0,
+        "globalRelevance": 1.649510932191586,
+        "socialProximity": 12.19484807238461,
+        "repostBoost": 4.5,
+        "score": 4.813112074249493
+      }
+    },
+    {
+      "name": "future_created_age_clamped",
+      "candidate": {
+        "postUuid": "0f000000-0000-4000-8000-000000000008",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000a8",
+        "createdAt": "2026-07-13T14:00:00.000Z",
+        "likes48h": 4,
+        "comments48h": 1,
+        "reposts48h": 1,
+        "views48h": 10,
+        "authorFollowerCount": 3,
+        "rawAuthorInteractionScore": 0.5,
+        "authorAffinity": 0.09966799462495582,
+        "followedLikersCount": 1,
+        "followedRepostersCount": 1
+      },
+      "expected": {
+        "authorAffinity": 0.09966799462495582,
+        "individualAffinity": 0.029900398387486746,
+        "globalRelevance": 2.9529434723543186,
+        "socialProximity": 3.1191623125197534,
+        "repostBoost": 1.0397207708399179,
+        "score": 3.002809124403949
+      }
+    }
+  ],
+  "ranking": {
+    "comment": "tie-break: Score desc → CreatedAt desc → PostUuid asc",
+    "candidates": [
+      {
+        "postUuid": "0f000000-0000-4000-8000-0000000000b1",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000c1",
+        "createdAt": "2026-07-13T10:00:00.000Z",
+        "likes48h": 50,
+        "comments48h": 10,
+        "reposts48h": 5,
+        "views48h": 1000,
+        "authorFollowerCount": 100,
+        "rawAuthorInteractionScore": null,
+        "authorAffinity": 0,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      },
+      {
+        "postUuid": "0f000000-0000-4000-8000-0000000000b2",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000c2",
+        "createdAt": "2026-07-13T06:00:00.000Z",
+        "likes48h": 2,
+        "comments48h": 1,
+        "reposts48h": 0,
+        "views48h": 30,
+        "authorFollowerCount": 25,
+        "rawAuthorInteractionScore": null,
+        "authorAffinity": 0.6043677771171635,
+        "followedLikersCount": 7,
+        "followedRepostersCount": 0
+      },
+      {
+        "postUuid": "0f000000-0000-4000-8000-0000000000b3",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000c3",
+        "createdAt": "2026-07-13T10:00:00.000Z",
+        "likes48h": 0,
+        "comments48h": 0,
+        "reposts48h": 0,
+        "views48h": 0,
+        "authorFollowerCount": 4,
+        "rawAuthorInteractionScore": null,
+        "authorAffinity": 0,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      },
+      {
+        "postUuid": "0f000000-0000-4000-8000-0000000000b4",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000c4",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "likes48h": 0,
+        "comments48h": 0,
+        "reposts48h": 0,
+        "views48h": 0,
+        "authorFollowerCount": 9,
+        "rawAuthorInteractionScore": null,
+        "authorAffinity": 0,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      },
+      {
+        "postUuid": "0f000000-0000-4000-8000-0000000000b6",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000c5",
+        "createdAt": "2026-07-13T08:00:00.000Z",
+        "likes48h": 0,
+        "comments48h": 0,
+        "reposts48h": 0,
+        "views48h": 0,
+        "authorFollowerCount": 0,
+        "rawAuthorInteractionScore": null,
+        "authorAffinity": 0,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      },
+      {
+        "postUuid": "0f000000-0000-4000-8000-0000000000b5",
+        "authorUserUuid": "0a000000-0000-4000-8000-0000000000c6",
+        "createdAt": "2026-07-13T08:00:00.000Z",
+        "likes48h": 0,
+        "comments48h": 0,
+        "reposts48h": 0,
+        "views48h": 0,
+        "authorFollowerCount": 0,
+        "rawAuthorInteractionScore": null,
+        "authorAffinity": 0,
+        "followedLikersCount": 0,
+        "followedRepostersCount": 0
+      }
+    ],
+    "expectedOrder": [
+      "0f000000-0000-4000-8000-0000000000b2",
+      "0f000000-0000-4000-8000-0000000000b1",
+      "0f000000-0000-4000-8000-0000000000b3",
+      "0f000000-0000-4000-8000-0000000000b4",
+      "0f000000-0000-4000-8000-0000000000b5",
+      "0f000000-0000-4000-8000-0000000000b6"
+    ]
+  }
+}

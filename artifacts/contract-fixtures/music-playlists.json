@@ -1,0 +1,21 @@
+{
+  "playlists": [
+    {
+      "id": "system:favorites",
+      "title": "Favorites",
+      "trackCount": 12,
+      "kind": 0,
+      "variant": "favorites",
+      "canDelete": false,
+      "coverColorId": "sunset"
+    },
+    {
+      "id": "88888888-8888-8888-8888-888888888888",
+      "title": "My Mix",
+      "trackCount": 3,
+      "kind": 1,
+      "variant": "user",
+      "canDelete": true
+    }
+  ]
+}

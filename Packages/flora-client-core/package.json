@@ -2,6 +2,8 @@
   "name": "@flora/client-core",
   "version": "0.5.0-alpha",
   "private": true,
+  "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
+  "author": "Egor Ozerskikh <e.ozerskikh@gmail.com>",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -69,6 +71,7 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "@noble/post-quantum": "^0.6.1",
     "libsodium": "^0.7.15",
     "libsodium-wrappers": "^0.7.15",
     "libsodium-wrappers-sumo": "^0.8.4",

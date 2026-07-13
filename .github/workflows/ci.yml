@@ -39,6 +39,10 @@ jobs:
       - name: Validate C# module boundaries
         shell: pwsh
         run: ./tools/Validate-Architecture.ps1
+      # cargo metadata сам подтянет toolchain из Backend/rust-toolchain.toml.
+      - name: Validate Rust crate boundaries
+        shell: pwsh
+        run: ./tools/validate-architecture-rust.ps1
 
   ts:
     name: ts
@@ -84,36 +88,59 @@ jobs:
       #   working-directory: Apps/Web
       #   run: npm run lint
 
-  # Rust-конвейер (next-architecture.md, Фаза 0+). Пока Backend/Cargo.toml не существует,
-  # job завершается успешно и ничего не делает — его можно сразу сделать required check.
+  # Rust-конвейер (next-architecture.md §2.3, Фаза 0).
+  # Toolchain не задаётся в workflow: rustup читает Backend/rust-toolchain.toml —
+  # единственный источник версии (обновление — осознанным коммитом).
   rust:
     name: rust
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend
     steps:
       - uses: actions/checkout@v4
-      - name: Detect Backend workspace
-        id: backend
-        run: echo "exists=$([ -f Backend/Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-      - name: Install Rust toolchain
-        if: steps.backend.outputs.exists == 'true'
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
         with:
-          components: rustfmt, clippy
+          workspaces: Backend
       - name: Format
-        if: steps.backend.outputs.exists == 'true'
-        working-directory: Backend
         run: cargo fmt --all --check
       - name: Clippy
-        if: steps.backend.outputs.exists == 'true'
-        working-directory: Backend
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
-        if: steps.backend.outputs.exists == 'true'
-        working-directory: Backend
-        run: cargo test --workspace
-      # Включить в Фазе 0 вместе с появлением конфигов (см. next-architecture.md §2.3):
-      # - cargo deny check (EmbarkStudios/cargo-deny-action + Backend/deny.toml)
-      # - tools/validate-architecture-rust (границы crate'ов поверх cargo metadata)
-      - name: Skip note
-        if: steps.backend.outputs.exists != 'true'
-        run: echo "Backend/ ещё не создан — Rust-шаги пропущены (next-architecture.md, Фаза 0)."
+        run: cargo test --workspace --locked
+      - name: Licenses, bans, advisories (cargo deny)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: Backend/Cargo.toml
+
+  # Аудио-кодек FAC (docs/codecs/FAC.md) — отдельный workspace Codecs/audio.
+  # Ядро дополнительно проверяется на wasm32: E2E-голосовые кодируются на клиенте.
+  codecs-audio:
+    name: codecs-audio
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Codecs/audio
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Codecs/audio
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Check core on wasm32
+        run: cargo check -p fac-core --target wasm32-unknown-unknown --locked
+      - name: Licenses, bans, advisories (cargo deny)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: Codecs/audio/Cargo.toml

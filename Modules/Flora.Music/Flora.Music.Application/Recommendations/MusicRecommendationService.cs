@@ -86,7 +86,7 @@ public sealed class MusicRecommendationService : IMusicRecommendationService
         var nowUtc = DateTime.UtcNow;
 
         var ranked = candidates
-            .Select(c => new ScoredCandidate(c, ScoreCandidate(c, genreWeights, maxGenreWeight, nowUtc)))
+            .Select(c => new ScoredCandidate(c, MusicFlowScorer.Score(c, genreWeights, maxGenreWeight, _options, nowUtc)))
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Track.PublishedAt)
             .ThenBy(x => x.Track.Title, StringComparer.OrdinalIgnoreCase)
@@ -95,30 +95,6 @@ public sealed class MusicRecommendationService : IMusicRecommendationService
         var snapshot = new FlowSnapshot(ranked, nowUtc);
         _cache.Set(cacheKey, snapshot, TimeSpan.FromSeconds(Math.Max(10, _options.CacheTtlSeconds)));
         return snapshot;
-    }
-
-    private double ScoreCandidate(
-        MusicFlowCandidateRow track,
-        IReadOnlyDictionary<string, int> genreWeights,
-        int maxGenreWeight,
-        DateTime nowUtc)
-    {
-        var recencyDays = Math.Max((nowUtc - track.PublishedAt).TotalDays, 0);
-        var recencyWindow = Math.Max(_options.RecencyBoostDays, 1);
-        var globalRelevance = Math.Max(0, recencyWindow - recencyDays) / recencyWindow;
-
-        var genreAffinity = 0.0;
-        if (!string.IsNullOrWhiteSpace(track.GenreId)
-            && genreWeights.TryGetValue(track.GenreId, out var weight)
-            && maxGenreWeight > 0)
-        {
-            genreAffinity = weight / (double)maxGenreWeight;
-        }
-
-        // Phase 0: alpha is intentionally 0 until listening events are implemented.
-        return _options.WeightAlpha * 0.0
-            + _options.WeightBeta * globalRelevance
-            + _options.WeightGamma * genreAffinity;
     }
 
     private List<ScoredCandidate> PickWaveBatch(IReadOnlyList<ScoredCandidate> ranked, int take)

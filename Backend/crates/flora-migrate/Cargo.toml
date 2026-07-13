@@ -1,0 +1,24 @@
+[package]
+name = "flora-migrate"
+description = "Применение миграций всех модулей: sqlx migrate, отдельная таблица истории на модуль (замена Flora.Migrations)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "flora-migrate"
+path = "src/main.rs"
+
+[dependencies]
+flora-shared = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

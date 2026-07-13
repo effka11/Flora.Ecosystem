@@ -1,0 +1,4 @@
+/target/
+# Локальные и боевые конфиги хоста — только шаблоны в git (как у Flora.API)
+appsettings.Local.json
+appsettings.Production.json

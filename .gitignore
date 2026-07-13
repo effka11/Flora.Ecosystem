@@ -1,5 +1,8 @@
 # .NET
 [Bb]in/
+# Rust Cargo [[bin]] sources live under src/bin/ — not .NET build output.
+!**/src/bin/
+!**/src/bin/**
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/

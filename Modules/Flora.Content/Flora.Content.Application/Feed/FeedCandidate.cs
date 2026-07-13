@@ -4,7 +4,7 @@ namespace Flora.Content.Application.Feed;
 /// Обогащённый кандидат после шага Feature Extraction (§Шаг 2 FIRA-F).
 /// Все данные, необходимые для вычисления IndividualAffinity, GlobalRelevance и SocialProximity.
 /// </summary>
-internal sealed record FeedCandidate(
+public sealed record FeedCandidate(
     Guid   PostUuid,
     Guid   AuthorUserUuid,
     DateTime CreatedAt,

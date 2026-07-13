@@ -13,6 +13,14 @@ public sealed class UserRecommendationQueries(UsersDbContext db) : IUserRecommen
         var excluded = followingUserIds.ToHashSet();
         excluded.Add(userUuid);
 
+        // Инвариант §12 FIRA.md (v1.1, критично): блокировка в любом направлении
+        // исключает кандидата из пула — она не «понижает», а исключает.
+        var blocked = await db.UserBlocks.AsNoTracking()
+            .Where(b => b.OwnerUserUuid == userUuid || b.BlockedUserUuid == userUuid)
+            .Select(b => b.OwnerUserUuid == userUuid ? b.BlockedUserUuid : b.OwnerUserUuid)
+            .ToListAsync(cancellationToken);
+        excluded.UnionWith(blocked);
+
         var profiles = await db.UserProfiles.AsNoTracking()
             .Where(p => !excluded.Contains(p.UserUuid))
             .ToListAsync(cancellationToken);

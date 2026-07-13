@@ -1,0 +1,18 @@
+[package]
+name = "flora-shared"
+description = "Порт Flora.Shared: низкоуровневые утилиты без бизнес-логики (uuid v5/v7, latin-identifiers, конфиг, npgsql-строка)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Правило §2.3: flora-shared зависит только от внешних crates.
+[dependencies]
+chrono = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }

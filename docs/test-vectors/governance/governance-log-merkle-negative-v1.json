@@ -1,0 +1,100 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_log_merkle_negative_v1",
+  "description": "Негативы Merkle-журнала: каждая проверка обязана вернуть false (правило README: негативы — отдельным файлом).",
+  "root": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+  "treeSize": 13,
+  "inclusionCases": [
+    {
+      "name": "wrong_index",
+      "leafIndex": 6,
+      "leafHash": "3Iek3Eu3T9IjOBHDKg6O3n-jC3-1D6Fa1GU7Lz06mzE",
+      "proof": [
+        "-m47J8LRGpnTplH54yzVPz6Xjnfwnyg05FptuHL1nQA",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ],
+      "expectedError": "inclusion_verify_failed"
+    },
+    {
+      "name": "tampered_proof_element",
+      "leafIndex": 5,
+      "leafHash": "3Iek3Eu3T9IjOBHDKg6O3n-jC3-1D6Fa1GU7Lz06mzE",
+      "proof": [
+        "LWpsU0laVLjQy8KUrLBNQw-2oMX6BzGoEl3IzFDSOxY",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ],
+      "expectedError": "inclusion_verify_failed"
+    },
+    {
+      "name": "truncated_proof",
+      "leafIndex": 5,
+      "leafHash": "3Iek3Eu3T9IjOBHDKg6O3n-jC3-1D6Fa1GU7Lz06mzE",
+      "proof": [
+        "-m47J8LRGpnTplH54yzVPz6Xjnfwnyg05FptuHL1nQA",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI"
+      ],
+      "expectedError": "inclusion_verify_failed"
+    },
+    {
+      "name": "index_out_of_tree",
+      "leafIndex": 13,
+      "leafHash": "3Iek3Eu3T9IjOBHDKg6O3n-jC3-1D6Fa1GU7Lz06mzE",
+      "proof": [
+        "-m47J8LRGpnTplH54yzVPz6Xjnfwnyg05FptuHL1nQA",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ],
+      "expectedError": "inclusion_verify_failed"
+    }
+  ],
+  "consistencyCases": [
+    {
+      "name": "forked_prefix",
+      "oldSize": 6,
+      "newSize": 13,
+      "oldRoot": "bpyrkIsi4PN-YZ3pyKLnINiNd5dj91Mst5oy957R2Mk",
+      "newRoot": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+      "proof": [
+        "V6w9oSmTebAFH65j8TBpcI2j69jem1GIdEE3mo6LBNw",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ],
+      "expectedError": "consistency_verify_failed"
+    },
+    {
+      "name": "old_size_zero",
+      "oldSize": 0,
+      "newSize": 13,
+      "oldRoot": "I47raE6YQFg291SKjYsFsCGTCKutG-0U8soDVS5nFvs",
+      "newRoot": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+      "proof": [
+        "V6w9oSmTebAFH65j8TBpcI2j69jem1GIdEE3mo6LBNw",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ],
+      "expectedError": "consistency_verify_failed"
+    },
+    {
+      "name": "old_larger_than_new",
+      "oldSize": 14,
+      "newSize": 13,
+      "oldRoot": "I47raE6YQFg291SKjYsFsCGTCKutG-0U8soDVS5nFvs",
+      "newRoot": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+      "proof": [
+        "V6w9oSmTebAFH65j8TBpcI2j69jem1GIdEE3mo6LBNw",
+        "tmOdVGtlRktKKmYpc-A9Yf83g2Bb3hDFwwzFMLZLdAc",
+        "gL5vuT11Lu-iy2OxA-TNLyNxY401vWcWLl8Xo_VN_lI",
+        "09oR-lp8fSY0ALus9dvG4iW7z4v2eiDaUoArjNCTv3A"
+      ],
+      "expectedError": "consistency_verify_failed"
+    }
+  ]
+}
