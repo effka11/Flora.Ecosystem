@@ -1,0 +1,21 @@
+[package]
+name = "flora-auth"
+description = "Модуль Auth: сессии, JWT, 2FA (переносится в Фазе 2b; JWT-примитивы — с Фазы 0)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+flora-shared = { workspace = true }
+axum = { workspace = true }
+base64 = { workspace = true }
+hmac = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }

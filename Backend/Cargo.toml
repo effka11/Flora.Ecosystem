@@ -1,0 +1,106 @@
+# Cargo-workspace бэкенда Flora (next-architecture.md §2).
+# Правила зависимостей между crate'ами — §2.3, проверяются tools/validate-architecture-rust.ps1.
+# Версии зависимостей объявляются только здесь (workspace.dependencies); фактическая пиновка — Cargo.lock.
+
+[workspace]
+resolver = "3"
+members = [
+    "crates/flora-api",
+    "crates/flora-social",
+    "crates/flora-shared",
+    "crates/flora-migrate",
+    "crates/modules/flora-auth",
+    "crates/modules/flora-auth-contracts",
+    "crates/modules/flora-users",
+    "crates/modules/flora-users-contracts",
+    "crates/modules/flora-content",
+    "crates/modules/flora-content-contracts",
+    "crates/modules/flora-messaging",
+    "crates/modules/flora-messaging-contracts",
+    "crates/modules/flora-music",
+    "crates/modules/flora-music-contracts",
+    "crates/modules/flora-notifications",
+    "crates/modules/flora-notifications-contracts",
+    "crates/modules/flora-verification",
+    "crates/modules/flora-verification-contracts",
+    "crates/infrastructure/flora-grpc-bridge",
+    "tests/parity",
+]
+
+[workspace.package]
+version = "0.5.0-alpha" # synced-from-VERSION
+edition = "2024"
+rust-version = "1.93"
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.dependencies]
+# --- внутренние crates ---
+flora-shared = { path = "crates/flora-shared" }
+flora-social = { path = "crates/flora-social" }
+flora-auth = { path = "crates/modules/flora-auth" }
+flora-auth-contracts = { path = "crates/modules/flora-auth-contracts" }
+flora-users = { path = "crates/modules/flora-users" }
+flora-users-contracts = { path = "crates/modules/flora-users-contracts" }
+flora-content = { path = "crates/modules/flora-content" }
+flora-content-contracts = { path = "crates/modules/flora-content-contracts" }
+flora-messaging = { path = "crates/modules/flora-messaging" }
+flora-messaging-contracts = { path = "crates/modules/flora-messaging-contracts" }
+flora-music = { path = "crates/modules/flora-music" }
+flora-music-contracts = { path = "crates/modules/flora-music-contracts" }
+flora-notifications = { path = "crates/modules/flora-notifications" }
+flora-notifications-contracts = { path = "crates/modules/flora-notifications-contracts" }
+flora-verification = { path = "crates/modules/flora-verification" }
+flora-verification-contracts = { path = "crates/modules/flora-verification-contracts" }
+flora-grpc-bridge = { path = "crates/infrastructure/flora-grpc-bridge" }
+
+# --- HTTP-стек ---
+axum = "0.8.9"
+tower = "0.5.3"
+tower-http = "0.7.0"
+hyper = "1.10.1"
+hyper-util = { version = "0.1.20", features = ["client-legacy", "http1", "tokio"] }
+http = "1.4.2"
+http-body-util = "0.1.3"
+bytes = "1.12.1"
+
+# --- рантайм и наблюдаемость ---
+tokio = "1.52.3"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+
+# --- сериализация ---
+serde = { version = "1.0.228", features = ["derive"] }
+# preserve_order: паритет порядка членов JSON с System.Text.Json (порядок объявления, не сортировка).
+serde_json = { version = "1.0.150", features = ["preserve_order"] }
+
+# --- идентификаторы и криптопримитивы (RustCrypto, без C-зависимостей) ---
+uuid = { version = "1.23.5", features = ["v5", "v7", "serde"] }
+hmac = "0.12.1"
+sha2 = "0.10.9"
+base64 = "0.22.1"
+getrandom = "0.3.3"
+
+# --- БД и миграции ---
+# 0.8.x сознательно: 0.9.0 вышел на днях и требует rustc новее зафиксированного toolchain;
+# API миграций (Migrator + dangerous_set_table_name) одинаков. Апгрейд — осознанным коммитом.
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "postgres", "migrate"] }
+
+# --- утилиты ---
+anyhow = "1.0.103"
+thiserror = "2.0.18"
+clap = { version = "4.6.1", features = ["derive"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
+
+# --- только для тестов/инструментов паритета ---
+reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
+argon2 = "0.5.3"
+tokio-stream = "0.1.18"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

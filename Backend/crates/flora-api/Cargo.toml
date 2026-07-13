@@ -1,0 +1,42 @@
+[package]
+name = "flora-api"
+description = "Хост Flora: конфиг, tracing, нативные маршруты и gateway-fallback на .NET (переходно)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "flora-api"
+path = "src/main.rs"
+
+# Правило §2.3: хост зависит только от flora-social и flora-shared.
+[dependencies]
+flora-shared = { workspace = true }
+flora-social = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true, features = ["cors"] }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "net"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true }
+getrandom = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true, features = ["util"] }
+reqwest = { workspace = true }
+tokio-stream = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "sync"] }

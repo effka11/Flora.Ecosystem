@@ -1,0 +1,73 @@
+{
+  "vectorId": "backend_parity_uuid_v1",
+  "namespaceDns": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "v5FromNamespaceAndUtf8Name": [
+    {
+      "name": "flora.example",
+      "expected": "e2833a12-c389-59ee-9d2c-b4a5d4b2c654"
+    },
+    {
+      "name": "",
+      "expected": "4ebd0208-8328-5d69-8c44-ec50939c0967"
+    },
+    {
+      "name": "\u044E\u043D\u0438\u043A\u043E\u0434-\u0438\u043C\u044F-\uD83C\uDF38",
+      "expected": "dfb3db19-35e7-58f2-a77b-b0d81940c7a9"
+    },
+    {
+      "name": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa|bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb|fscp-dm-v1",
+      "expected": "17caed55-ccf4-5fd2-8dc6-286a38ddea14"
+    }
+  ],
+  "dmConversationUuid": [
+    {
+      "userA": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "userB": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "expected": "17caed55-ccf4-5fd2-8dc6-286a38ddea14"
+    },
+    {
+      "userA": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "userB": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "expected": "17caed55-ccf4-5fd2-8dc6-286a38ddea14"
+    },
+    {
+      "userA": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "userB": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "expected": "4f8a12ca-1e5d-591b-a426-98e2624648e6"
+    },
+    {
+      "userA": "0198c5b6-7e2d-7abc-9def-0123456789ab",
+      "userB": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "expected": "39bd6963-f56c-5eb4-b91b-edcac10702b7"
+    }
+  ],
+  "agreementPublicKeyId": [
+    {
+      "userUuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "keyEpochId": "00000000-0000-4000-8000-000000000001",
+      "expected": "23971987-91da-5b01-a5d7-4b857b80031c"
+    },
+    {
+      "userUuid": "0198c5b6-7e2d-7abc-9def-0123456789ab",
+      "keyEpochId": "00000000-0000-4000-8000-000000000001",
+      "expected": "ea7148eb-728f-5807-ac89-c7b33befd921"
+    }
+  ],
+  "v7Samples": [
+    {
+      "bytesHex": "00000000000070008000000000000000",
+      "expectedString": "00000000-0000-7000-8000-000000000000",
+      "unixTimestampMs": 0
+    },
+    {
+      "bytesHex": "01977420dc007123856789abcdef0100",
+      "expectedString": "01977420-dc00-7123-8567-89abcdef0100",
+      "unixTimestampMs": 1750000000000
+    },
+    {
+      "bytesHex": "047a1f0f08007edcba9876543210fe00",
+      "expectedString": "047a1f0f-0800-7edc-ba98-76543210fe00",
+      "unixTimestampMs": 4922553600000
+    }
+  ]
+}

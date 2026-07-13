@@ -62,5 +62,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Flora.ContractFixtures/Flora.ContractFixtures.csproj" />
     <Project Path="tests/Flora.Content.Application.Tests/Flora.Content.Application.Tests.csproj" />
+    <Project Path="tests/Flora.GoldenVectors/Flora.GoldenVectors.csproj" />
   </Folder>
 </Solution>

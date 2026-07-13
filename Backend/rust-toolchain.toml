@@ -1,0 +1,5 @@
+# Зафиксированный toolchain (next-architecture.md §2.1). Обновление — осознанным коммитом.
+[toolchain]
+channel = "1.93.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

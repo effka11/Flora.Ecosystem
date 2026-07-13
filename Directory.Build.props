@@ -2,6 +2,9 @@
 <Project>
   <PropertyGroup>
     <Version>0.5.0-alpha</Version>
+    <!-- /version.api must stay the clean ecosystem version on both hosts (C# and Rust);
+         the build sha has its own dedicated field (commit, via FLORA_BUILD_COMMIT). -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>Egor Ozerskikh</Authors>
     <Company>Flora Ecosystem</Company>
     <Product>Flora Ecosystem</Product>

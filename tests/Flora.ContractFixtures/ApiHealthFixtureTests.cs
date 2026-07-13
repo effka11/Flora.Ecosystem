@@ -22,14 +22,6 @@ public sealed class ApiHealthFixtureTests : IClassFixture<WebApplicationFactory<
         Assert.Contains("healthy", body, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public void Generator_can_refresh_static_fixtures()
-    {
-        if (!string.Equals(Environment.GetEnvironmentVariable("UPDATE_CONTRACT_FIXTURES"), "1", StringComparison.Ordinal))
-            return;
-
-        var dir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "artifacts", "contract-fixtures"));
-        ContractFixtureGenerator.WriteAll(dir);
-        Assert.True(Directory.Exists(dir));
-    }
+    // Генерация статических фикстур живёт в ContractFixtureValidationTests.Generator_writes_fixtures_when_env_set
+    // (раньше здесь был дубль, писавший в неверный каталог tests/artifacts).
 }

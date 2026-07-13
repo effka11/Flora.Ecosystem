@@ -1,0 +1,17 @@
+{
+  "vectorId": "backend_parity_argon2id_v1",
+  "format": "base64(salt16 || hash32)",
+  "iterations": 4,
+  "memoryKib": 65536,
+  "parallelism": 2,
+  "cases": [
+    {
+      "password": "correct horse battery staple \u2014 \u0444\u043B\u043E\u0440\u0430",
+      "storedHash": "AAECAwQFBgcICQoLDA0OD5rJuYGCZ7aCbZnzFTBVDDB5hfJtgQ5ITAsh\u002BGWK57Gz"
+    },
+    {
+      "password": "\u043F\u0440\u043E\u0441\u0442\u043E\u0439-\u043F\u0430\u0440\u043E\u043B\u044C-123",
+      "storedHash": "8OHSw7Sllod4aVpLPC0eD0W2OWZGOzFd9mmPwRicJvM8XHz2Y/DIKgTVA6aqL/Hc"
+    }
+  ]
+}

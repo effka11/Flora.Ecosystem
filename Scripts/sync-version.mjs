@@ -52,6 +52,9 @@ function writeDirectoryBuildProps(ecosystemVersion) {
 <Project>
   <PropertyGroup>
     <Version>${ecosystemVersion}</Version>
+    <!-- /version.api must stay the clean ecosystem version on both hosts (C# and Rust);
+         the build sha has its own dedicated field (commit, via FLORA_BUILD_COMMIT). -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>Egor Ozerskikh</Authors>
     <Company>Flora Ecosystem</Company>
     <Product>Flora Ecosystem</Product>
@@ -75,6 +78,20 @@ function writeApiManifest(manifest) {
   return true;
 }
 
+function patchBackendCargoToml(ecosystemVersion) {
+  const path = join(root, "Backend", "Cargo.toml");
+  if (!existsSync(path)) return false; // Rust workspace appears in Phase 0 (next-architecture.md)
+  const toml = readFileSync(path, "utf8");
+  const marker = /^version = ".*" # synced-from-VERSION$/m;
+  if (!marker.test(toml)) {
+    throw new Error("Backend/Cargo.toml: missing 'version = \"...\" # synced-from-VERSION' marker line");
+  }
+  const next = toml.replace(marker, `version = "${ecosystemVersion}" # synced-from-VERSION`);
+  if (next === toml) return false;
+  writeFileSync(path, next, "utf8");
+  return true;
+}
+
 const manifest = readManifest();
 const { ecosystem, products } = manifest;
 const social = products.social;
@@ -88,6 +105,9 @@ if (patchPackageJson("Packages/flora-client-core/package.json", ecosystem)) {
 if (patchAppJson(social)) changes.push(`Apps/Mobile/app.json → ${social}`);
 if (writeDirectoryBuildProps(ecosystem)) changes.push(`Directory.Build.props → ${ecosystem}`);
 if (writeApiManifest(manifest)) changes.push("Flora.API/flora-versions.json");
+if (patchBackendCargoToml(ecosystem)) {
+  changes.push(`Backend/Cargo.toml → ${ecosystem} (run 'cargo check' in Backend/ to refresh Cargo.lock)`);
+}
 
 if (changes.length === 0) {
   console.log("VERSION sync: already up to date.");
