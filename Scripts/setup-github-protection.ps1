@@ -19,9 +19,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# Определяем owner/repo из origin
+# Определяем owner/repo из origin (имя репо может содержать точки: Flora.Ecosystem)
 $originUrl = git remote get-url origin
-if ($originUrl -notmatch "github\.com[:/](?<owner>[^/]+)/(?<repo>[^/.]+)") {
+if ($originUrl -notmatch "github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?/?$") {
     throw "Не удалось разобрать origin '$originUrl' как GitHub-репозиторий."
 }
 $owner = $Matches.owner
@@ -30,6 +30,22 @@ $slug = "$owner/$repo"
 Write-Host "Репозиторий: $slug, ветка: $Branch"
 
 gh auth status | Out-Null
+
+function Invoke-GhApiChecked {
+    param(
+        [Parameter(Mandatory)][string]$Method,
+        [Parameter(Mandatory)][string]$Path,
+        [string]$Body
+    )
+    if ($PSBoundParameters.ContainsKey("Body") -and $null -ne $Body) {
+        $Body | gh api -X $Method $Path -H "Accept: application/vnd.github+json" --input -
+    } else {
+        gh api -X $Method $Path -H "Accept: application/vnd.github+json"
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh api $Method $Path failed with exit code $LASTEXITCODE"
+    }
+}
 
 # --- 1. Защита ветки -------------------------------------------------------
 # required_approving_review_count = 0: PR обязателен (мержит человек, ИИ не может),
@@ -51,11 +67,12 @@ $protection = @{
     lock_branch            = $false
 } | ConvertTo-Json -Depth 5
 
-$protection | gh api -X PUT "repos/$slug/branches/$Branch/protection" `
-    -H "Accept: application/vnd.github+json" --input - | Out-Null
+Invoke-GhApiChecked -Method PUT -Path "repos/$slug/branches/$Branch/protection" -Body $protection | Out-Null
 Write-Host "✓ Защита ветки $Branch включена (PR + required checks: dotnet, architecture, ts, web, rust)"
 
 # --- 2. Secret scanning + push protection ----------------------------------
+# На публичных репозиториях GitHub Free secret scanning может быть недоступен
+# через API — тогда пишем предупреждение и продолжаем.
 $securityPayload = @{
     security_and_analysis = @{
         secret_scanning                 = @{ status = "enabled" }
@@ -63,14 +80,21 @@ $securityPayload = @{
     }
 } | ConvertTo-Json -Depth 5
 
-$securityPayload | gh api -X PATCH "repos/$slug" `
-    -H "Accept: application/vnd.github+json" --input - | Out-Null
-Write-Host "✓ Secret scanning + push protection включены"
+try {
+    Invoke-GhApiChecked -Method PATCH -Path "repos/$slug" -Body $securityPayload | Out-Null
+    Write-Host "✓ Secret scanning + push protection включены"
+} catch {
+    Write-Warning "Secret scanning / push protection не включены (часто недоступно на текущем плане): $_"
+}
 
 # --- 3. Dependabot alerts + security-фиксы ----------------------------------
-gh api -X PUT "repos/$slug/vulnerability-alerts" | Out-Null
-gh api -X PUT "repos/$slug/automated-security-fixes" | Out-Null
-Write-Host "✓ Dependabot alerts и automated security fixes включены"
+try {
+    Invoke-GhApiChecked -Method PUT -Path "repos/$slug/vulnerability-alerts" | Out-Null
+    Invoke-GhApiChecked -Method PUT -Path "repos/$slug/automated-security-fixes" | Out-Null
+    Write-Host "✓ Dependabot alerts и automated security fixes включены"
+} catch {
+    Write-Warning "Dependabot alerts/security fixes не включены: $_"
+}
 
 Write-Host ""
 Write-Host "Готово. Проверить: https://github.com/$slug/settings/branches"
