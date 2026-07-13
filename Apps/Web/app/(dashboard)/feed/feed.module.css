@@ -67,6 +67,8 @@
   min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  /* Иначе Chromium scroll-anchoring гоняет scrollTop вокруг порога compact↔normal. */
+  overflow-anchor: none;
   scrollbar-width: none;
   display: flex;
   flex-direction: column;
@@ -82,6 +84,7 @@
   z-index: 10;
   flex-shrink: 0;
   background: var(--flora-bg);
+  overflow-anchor: none;
 }
 
 .feedTopBlock::after {

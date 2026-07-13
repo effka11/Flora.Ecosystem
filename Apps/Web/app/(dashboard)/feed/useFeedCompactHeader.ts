@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { flushSync } from "react-dom";
 
 /** Высота компактной шапки (5 рядов первичной сетки), как --g75 в референсе. */
 export const FEED_COMPACT_LEVEL_PX = 75;
+
+/**
+ * Гистерезис у порога (1× primary grid): без него trackpad/wheel вокруг
+ * `blockHeight - 75` гоняет compact↔normal и sticky «залипает».
+ */
+export const FEED_COMPACT_HYSTERESIS_PX = 15;
 
 const MIN_HEIGHT_CLEAR_MS = 450;
 const COMPACT_ANIMATE_DELAY_MS = 50;
@@ -16,8 +23,25 @@ export type FeedCompactHeaderState = {
 };
 
 /**
+ * Нужен ли компакт при текущем scrollTop.
+ * Вход: строго выше порога; выход: только после гистерезиса вверх — иначе дребезг у границы.
+ */
+export function shouldFeedHeaderBeCompact(
+  scrollTop: number,
+  threshold: number,
+  wasCompact: boolean,
+  hysteresisPx: number = FEED_COMPACT_HYSTERESIS_PX
+): boolean {
+  if (wasCompact) {
+    return scrollTop > Math.max(0, threshold - hysteresisPx);
+  }
+  return scrollTop > threshold;
+}
+
+/**
  * Порог и sticky/minHeight — как FloraScrollLoad.observeScrollForCompact в 2142-1.
- * Класс компакта на блоке — через React state; геометрия sticky — через inline style на DOM.
+ * Геометрия sticky — inline style; класс компакта — через React, но commit через flushSync
+ * в том же rAF, что и порог (иначе sticky опаздывает на кадр и лента «залипает» у перехода).
  */
 export function useFeedCompactHeader(
   scrollRef: RefObject<HTMLElement | null>,
@@ -59,12 +83,15 @@ export function useFeedCompactHeader(
 
     const enterCompact = (block: HTMLElement, blockHeight: number) => {
       clearTimers();
-      setIsLeavingCompact(false);
+      /* Сначала геометрия, затем sync-commit класса — как classList в 2142 до paint. */
       block.style.minHeight = `${blockHeight}px`;
       block.style.setProperty("--compact-stick-top", `${FEED_COMPACT_LEVEL_PX - blockHeight}px`);
-      setNoTransition(false);
-      setIsCompact(true);
-      setCompactAnimate(false);
+      flushSync(() => {
+        setIsLeavingCompact(false);
+        setNoTransition(false);
+        setIsCompact(true);
+        setCompactAnimate(false);
+      });
       compactAnimateRef.current = window.setTimeout(() => {
         setCompactAnimate(true);
         compactAnimateRef.current = null;
@@ -73,12 +100,14 @@ export function useFeedCompactHeader(
 
     const leaveCompact = (block: HTMLElement) => {
       clearTimers();
-      /* Всё в одном батче: без кадра «развёрнуто, но ещё без анимации». */
-      setNoTransition(true);
-      setIsCompact(false);
-      setCompactAnimate(false);
-      setIsLeavingCompact(true);
       block.style.removeProperty("--compact-stick-top");
+      /* Всё в одном sync-батче: без кадра «развёрнуто, но ещё без анимации». */
+      flushSync(() => {
+        setNoTransition(true);
+        setIsCompact(false);
+        setCompactAnimate(false);
+        setIsLeavingCompact(true);
+      });
       /* Как scroll-load.js в 2142: no-transition до снятия minHeight (~450ms), иначе layout-transition бьётся с keyframes. */
       leaveExpandClearRef.current = window.setTimeout(() => {
         setIsLeavingCompact(false);
@@ -98,7 +127,8 @@ export function useFeedCompactHeader(
       const blockHeight = block?.offsetHeight ?? 0;
       const scrollTop = root.scrollTop;
       const threshold = Math.max(0, blockHeight - FEED_COMPACT_LEVEL_PX);
-      const compact = scrollTop > threshold;
+      const wasCompact = lastCompactRef.current === true;
+      const compact = shouldFeedHeaderBeCompact(scrollTop, threshold, wasCompact);
 
       if (lastCompactRef.current !== compact) {
         if (block) {
@@ -108,9 +138,11 @@ export function useFeedCompactHeader(
             leaveCompact(block);
           }
         } else {
-          setIsCompact(compact);
-          setCompactAnimate(false);
-          setIsLeavingCompact(false);
+          flushSync(() => {
+            setIsCompact(compact);
+            setCompactAnimate(false);
+            setIsLeavingCompact(false);
+          });
         }
         lastCompactRef.current = compact;
       }
