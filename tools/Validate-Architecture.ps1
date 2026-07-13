@@ -17,10 +17,12 @@ function Get-RelativePath {
         [string]$TargetPath
     )
 
-    $baseUri = [System.Uri]((Resolve-Path $BasePath).Path.TrimEnd("\") + "\")
-    $targetUri = [System.Uri](Resolve-Path $TargetPath).Path
-    $relativePath = $baseUri.MakeRelativeUri($targetUri).ToString()
-    return [System.Uri]::UnescapeDataString($relativePath).Replace("\", "/")
+    # Path.GetRelativePath is cross-platform (Linux CI + Windows). Uri.MakeRelativeUri
+    # fails on Linux when given a bare absolute path (treated as relative URI).
+    $relativePath = [System.IO.Path]::GetRelativePath(
+        (Resolve-Path $BasePath).Path,
+        (Resolve-Path $TargetPath).Path)
+    return $relativePath.Replace("\", "/")
 }
 
 function Get-ModuleBaseName {

@@ -103,6 +103,23 @@ dotnet test Flora.Ecosystem.slnx
 
 Каждое решение должно позволять: вынести модуль в отдельный сервис; заменить транспорт (REST ↔ gRPC); сменить реализацию без изменения контрактов.
 
+## Миграция бэкенда на Rust
+
+Нормативный план — **`next-architecture.md`**. Перед любыми правками в `Backend/` обязательно прочитать §4 (инварианты совместимости) и §5.3 (владение данными).
+
+- **Владелец модуля** (C# или Rust) определяется только таблицей статуса — `next-architecture.md` §6.0. В freeze-окно модуль не менять **ни на одной из сторон**.
+- Публичный HTTP-контракт и схема БД **заморожены**. Формулы (FIRA и пр.) переносятся 1:1, «улучшения» при переносе запрещены.
+- `docs/test-vectors/**` и `artifacts/contract-fixtures/**` руками не редактировать — только регенерация из эталонной реализации.
+- Правила зависимостей crate'ов — `next-architecture.md` §2.3: модуль видит чужие только через `*-contracts`; публичные порты объявляются только в contracts-crate.
+- Перенос эндпоинта/модуля: вызови skill **`/rust-migration`** перед началом работы.
+
+```sh
+# Rust (Backend/, появится в Фазе 0)
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
 ## Git
 
 - **Не делать `git commit`, `git push` и не готовить коммиты** без явного запроса пользователя.
@@ -111,4 +128,4 @@ dotnet test Flora.Ecosystem.slnx
 
 См. **`docs/ZED.md`** — tasks, skills, debugger, ACP. Глобально: `%APPDATA%\Zed\docs\ZED-GLOBAL.md`.
 
-Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`.
+Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/rust-migration`.
