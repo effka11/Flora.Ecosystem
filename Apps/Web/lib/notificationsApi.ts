@@ -1,6 +1,7 @@
 import {
   ApiRequestError,
-  clearSession,
+  clearSessionOnUnauthorizedIfNeeded,
+  ensureFreshAccessToken,
   getAccessToken,
   isDevLocalOfflineSession,
   refreshSessionIfPossible,
@@ -56,6 +57,7 @@ async function authJson(
   url: string,
   init: (token: string) => RequestInit,
 ): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   let r = await fetch(url, init(token));
@@ -66,7 +68,7 @@ async function authJson(
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const detail = await r.text().catch(() => "");
     throw new ApiRequestError(r.status, detail || r.statusText);
   }

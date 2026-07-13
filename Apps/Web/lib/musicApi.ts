@@ -1,6 +1,7 @@
 import {
   ApiRequestError,
-  clearSession,
+  clearSessionOnUnauthorizedIfNeeded,
+  ensureFreshAccessToken,
   getAccessToken,
   refreshSessionIfPossible,
   resolvePublicApiRoot,
@@ -116,6 +117,7 @@ async function parseErr(r: Response): Promise<string> {
 }
 
 async function authPostForm(url: string, body: FormData): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -131,13 +133,14 @@ async function authPostForm(url: string, body: FormData): Promise<unknown> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
 }
 
 async function authGetJson(url: string): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -149,13 +152,14 @@ async function authGetJson(url: string): Promise<unknown> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
 }
 
 async function authDelete(url: string): Promise<void> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -170,7 +174,7 @@ async function authDelete(url: string): Promise<void> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
 }
@@ -638,6 +642,7 @@ export async function apiDeleteMusicTrack(trackUuid: string): Promise<void> {
 }
 
 async function authGetBlob(url: string): Promise<Blob> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -649,7 +654,7 @@ async function authGetBlob(url: string): Promise<Blob> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   const contentType = r.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
@@ -724,6 +729,7 @@ function parsePlaylistDetail(raw: unknown): MusicPlaylistDetailDto | null {
 }
 
 async function authPostJson(url: string, body: unknown): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -739,7 +745,7 @@ async function authPostJson(url: string, body: unknown): Promise<unknown> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
@@ -773,6 +779,7 @@ export async function apiDeleteMusicPlaylist(playlistId: string): Promise<void> 
 }
 
 export async function apiAddMusicTrackFavorite(trackUuid: string): Promise<void> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const url = apiUrl(`/api/music/tracks/${encodeURIComponent(trackUuid)}/favorite`);
@@ -788,7 +795,7 @@ export async function apiAddMusicTrackFavorite(trackUuid: string): Promise<void>
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
 }

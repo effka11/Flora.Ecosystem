@@ -6,7 +6,8 @@
 
 import {
   ApiRequestError,
-  clearSession,
+  clearSessionOnUnauthorizedIfNeeded,
+  ensureFreshAccessToken,
   getAccessToken,
   refreshSessionIfPossible,
   resolvePublicApiRoot,
@@ -37,6 +38,7 @@ async function parseErr(r: Response): Promise<string> {
 }
 
 async function authGetJson(url: string): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -48,7 +50,7 @@ async function authGetJson(url: string): Promise<unknown> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
@@ -58,6 +60,7 @@ async function authPostJson(
   url: string,
   body: Record<string, unknown>
 ): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -76,13 +79,14 @@ async function authPostJson(
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
 }
 
 async function authPost204(url: string): Promise<void> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -97,12 +101,13 @@ async function authPost204(url: string): Promise<void> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
 }
 
 async function authDelete(url: string): Promise<void> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -117,7 +122,7 @@ async function authDelete(url: string): Promise<void> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
 }
@@ -495,6 +500,7 @@ async function authPutJson(
   url: string,
   body: Record<string, unknown>
 ): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -513,7 +519,7 @@ async function authPutJson(
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));

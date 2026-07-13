@@ -69,7 +69,7 @@ const MIN_PROACTIVE_REFRESH_MS = 60_000;
 let refreshInFlight: Promise<boolean> | null = null;
 let lastProactiveRefreshAttemptAt = 0;
 
-type RefreshAttemptResult = "success" | "auth_failed" | "transient_failed";
+type RefreshAttemptResult = "success" | "auth_failed" | "transient_failed" | "persist_failed";
 
 function decodeJwtExpMs(accessToken: string): number | null {
   const parts = accessToken.split(".");
@@ -128,6 +128,20 @@ export async function notifyIfSessionRevoked(onUnauthorized?: () => void): Promi
   return true;
 }
 
+/** Clear only if the refresh we sent is still stored — avoids wiping a concurrent successful rotation. */
+async function clearSessionIfRefreshUnchanged(
+  session: SessionStore,
+  refreshTokenWeSent: string,
+): Promise<"auth_failed" | "success"> {
+  const still = await session.getRefreshToken();
+  if (still === refreshTokenWeSent) {
+    await session.clearSession(false);
+    return "auth_failed";
+  }
+  const access = await session.getAccessToken();
+  return access && still ? "success" : "auth_failed";
+}
+
 async function refreshSessionOnce(): Promise<RefreshAttemptResult> {
   const { session, fetchImpl = fetch } = getApiClientConfig();
   const refreshToken = await session.getRefreshToken();
@@ -140,8 +154,7 @@ async function refreshSessionOnce(): Promise<RefreshAttemptResult> {
       body: JSON.stringify({ refreshToken }),
     });
     if (r.status === 401 || r.status === 403) {
-      await session.clearSession(false);
-      return "auth_failed";
+      return clearSessionIfRefreshUnchanged(session, refreshToken);
     }
     if (!r.ok) {
       return "transient_failed";
@@ -157,7 +170,14 @@ async function refreshSessionOnce(): Promise<RefreshAttemptResult> {
       });
       return "success";
     } catch {
-      await session.clearSession(false);
+      // Bad payload / save failure — keep prior session and do NOT retry: the server may
+      // already have rotated the refresh token; retrying R1 would 401 and wipe via compare-and-clear.
+      const still = await session.getRefreshToken();
+      if (still && still !== refreshToken) {
+        const access = await session.getAccessToken();
+        if (access) return "success";
+      }
+      if (still && (await session.getAccessToken())) return "persist_failed";
       return "auth_failed";
     }
   } catch {

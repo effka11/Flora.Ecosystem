@@ -83,6 +83,33 @@ describe("session refresh client", () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
+  it("keeps session when refresh 401 but token already rotated by another caller", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchImpl = vi.fn(async () => {
+      // Simulate concurrent rotation: store already has new tokens before 401 response is handled.
+      session.state.accessToken = "new-access";
+      session.state.refreshToken = "new-refresh";
+      session.state.expiresAt = new Date(Date.now() + 900_000).toISOString();
+      return new Response(JSON.stringify({ error: "Invalid" }), { status: 401 });
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const ok = await refreshSessionIfPossible();
+    expect(ok).toBe(true);
+    expect(session.state.accessToken).toBe("new-access");
+    expect(session.state.refreshToken).toBe("new-refresh");
+  });
+
   it("keeps session on transient refresh failure", async () => {
     const session = createSessionStore({
       accessToken: "old-access",
@@ -202,6 +229,166 @@ describe("session refresh client", () => {
     );
     expect(session.state.refreshToken).toBeNull();
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps session when refresh returns 200 with invalid payload", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "oops" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const ok = await refreshSessionIfPossible();
+    expect(ok).toBe(false);
+    expect(session.state.accessToken).toBe("old-access");
+    expect(session.state.refreshToken).toBe("old-refresh");
+    // persist_failed — no retry (server may already have rotated)
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps session when refresh returns 429", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 429 }));
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const ok = await refreshSessionIfPossible();
+    expect(ok).toBe(false);
+    expect(session.state.accessToken).toBe("old-access");
+    expect(session.state.refreshToken).toBe("old-refresh");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps session when saveSession throws after valid refresh payload", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    session.saveSession = async () => {
+      throw new Error("QuotaExceeded");
+    };
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            accessToken: "new-access",
+            refreshToken: "new-refresh",
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const ok = await refreshSessionIfPossible();
+    expect(ok).toBe(false);
+    expect(session.state.accessToken).toBe("old-access");
+    expect(session.state.refreshToken).toBe("old-refresh");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not wipe session when save fails then retry would have used rotated-away token", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    let refreshCalls = 0;
+    session.saveSession = async () => {
+      throw new Error("QuotaExceeded");
+    };
+    const fetchImpl = vi.fn(async () => {
+      refreshCalls += 1;
+      // Server rotated; client cannot persist. A second call with R1 would 401.
+      return new Response(
+        JSON.stringify({
+          accessToken: "new-access",
+          refreshToken: "new-refresh",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const ok = await refreshSessionIfPossible();
+    expect(ok).toBe(false);
+    expect(refreshCalls).toBe(1);
+    expect(session.state.accessToken).toBe("old-access");
+    expect(session.state.refreshToken).toBe("old-refresh");
+  });
+
+  it("authFetch does not logout when API 401 persists but refresh token remains", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    const session = createSessionStore({
+      accessToken: makeJwt(exp),
+      refreshToken: "still-valid-refresh",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+    const onUnauthorized = vi.fn();
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith("/api/auth/refresh")) {
+        return new Response(
+          JSON.stringify({
+            accessToken: makeJwt(exp),
+            refreshToken: "still-valid-refresh",
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+      onUnauthorized,
+    });
+
+    await expect(authFetch("/api/auth/me")).rejects.toSatisfy(
+      (err) => isApiRequestError(err) && err.status === 401,
+    );
+    expect(session.state.refreshToken).toBe("still-valid-refresh");
+    expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
   it("syncStoredSessionTokens notifies when proactive refresh revokes session", async () => {

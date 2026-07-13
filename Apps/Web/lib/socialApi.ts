@@ -5,7 +5,8 @@ import {
 import { floraNewUuid } from "@/lib/floraUuid";
 import {
   ApiRequestError,
-  clearSession,
+  clearSessionOnUnauthorizedIfNeeded,
+  ensureFreshAccessToken,
   getAccessToken,
   isDevLocalOfflineSession,
   refreshSessionIfPossible,
@@ -44,6 +45,7 @@ async function parseErr(r: Response): Promise<string> {
 }
 
 async function authGetJson(url: string): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -55,13 +57,14 @@ async function authGetJson(url: string): Promise<unknown> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
 }
 
 async function authPatch(url: string): Promise<void> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -76,12 +79,13 @@ async function authPatch(url: string): Promise<void> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
 }
 
 async function authPutJson(url: string, body: Record<string, unknown>): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -97,13 +101,14 @@ async function authPutJson(url: string, body: Record<string, unknown>): Promise<
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
 }
 
 async function authPostJson(url: string, body: Record<string, unknown>, err: string): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -119,13 +124,14 @@ async function authPostJson(url: string, body: Record<string, unknown>, err: str
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
 }
 
 async function authPostForm(url: string, body: FormData): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -141,13 +147,14 @@ async function authPostForm(url: string, body: FormData): Promise<unknown> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
 }
 
 async function authGetBlob(url: string): Promise<Blob> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -159,7 +166,7 @@ async function authGetBlob(url: string): Promise<Blob> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.blob();
@@ -533,6 +540,7 @@ function parseViewMutation(raw: unknown): { viewsCount: number } {
 }
 
 async function authDeleteJson(url: string): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -547,7 +555,7 @@ async function authDeleteJson(url: string): Promise<unknown> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
@@ -920,6 +928,7 @@ function postDraftsListUrl(communityId?: string): string {
 }
 
 async function authPatchJson(url: string, body: Record<string, unknown>): Promise<unknown> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -935,13 +944,14 @@ async function authPatchJson(url: string, body: Record<string, unknown>): Promis
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   return r.json().catch(() => ({}));
 }
 
 async function authDelete(url: string): Promise<void> {
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -956,7 +966,7 @@ async function authDelete(url: string): Promise<void> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
 }
@@ -1218,6 +1228,7 @@ export async function apiLeaveCommunity(communityId: string): Promise<void> {
   if (isDevLocalOfflineSession()) {
     throw new ApiRequestError(501, "Отписка от сообщества недоступна в офлайн-режиме.");
   }
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -1232,7 +1243,7 @@ export async function apiLeaveCommunity(communityId: string): Promise<void> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
 }
@@ -1469,6 +1480,7 @@ export async function apiGetProfilePosts(username: string, skip = 0, take = 20):
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
   const q = new URLSearchParams({ skip: String(skip), take: String(take) });
   const url = apiUrl(`/api/auth/profile/${enc}/posts?${q}`);
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   const authHeaders = (t: string): HeadersInit => ({ Authorization: `Bearer ${t}` });
   let r = await fetch(url, token ? { headers: authHeaders(token) } : {});
@@ -1479,7 +1491,7 @@ export async function apiGetProfilePosts(username: string, skip = 0, take = 20):
     }
   }
   if (!r.ok) {
-    if (r.status === 401 && token) clearSession();
+    if (r.status === 401 && token) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   const raw = await r.json().catch(() => []);
@@ -1497,6 +1509,7 @@ export async function apiGetProfileLikes(username: string, skip = 0, take = 20):
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
   const q = new URLSearchParams({ skip: String(skip), take: String(take) });
   const url = apiUrl(`/api/auth/profile/${enc}/likes?${q}`);
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   const authHeaders = (t: string): HeadersInit => ({ Authorization: `Bearer ${t}` });
   let r = await fetch(url, token ? { headers: authHeaders(token) } : {});
@@ -1507,7 +1520,7 @@ export async function apiGetProfileLikes(username: string, skip = 0, take = 20):
     }
   }
   if (!r.ok) {
-    if (r.status === 401 && token) clearSession();
+    if (r.status === 401 && token) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   const raw = await r.json().catch(() => []);
@@ -1525,6 +1538,7 @@ export async function apiGetProfileReposts(username: string, skip = 0, take = 20
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
   const q = new URLSearchParams({ skip: String(skip), take: String(take) });
   const url = apiUrl(`/api/auth/profile/${enc}/reposts?${q}`);
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   const authHeaders = (t: string): HeadersInit => ({ Authorization: `Bearer ${t}` });
   let r = await fetch(url, token ? { headers: authHeaders(token) } : {});
@@ -1535,7 +1549,7 @@ export async function apiGetProfileReposts(username: string, skip = 0, take = 20
     }
   }
   if (!r.ok) {
-    if (r.status === 401 && token) clearSession();
+    if (r.status === 401 && token) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
   const raw = await r.json().catch(() => []);
@@ -1981,6 +1995,7 @@ export async function apiFollowUser(username: string): Promise<void> {
 export async function apiUnfollowUser(username: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
+  await ensureFreshAccessToken();
   let token = getAccessToken();
   if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   const init = (t: string): RequestInit => ({
@@ -1995,7 +2010,7 @@ export async function apiUnfollowUser(username: string): Promise<void> {
     }
   }
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     throw new ApiRequestError(r.status, await parseErr(r));
   }
 }

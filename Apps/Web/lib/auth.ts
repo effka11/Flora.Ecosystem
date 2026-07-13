@@ -179,14 +179,23 @@ function authEndpoint(path: string): string {
   return root ? `${root}${path}` : path;
 }
 
-const STORAGE_ACCESS = "flora_access_token";
-const STORAGE_REFRESH = "flora_refresh_token";
-const STORAGE_EXPIRES = "flora_expires_at";
+export const STORAGE_ACCESS = "flora_access_token";
+export const STORAGE_REFRESH = "flora_refresh_token";
+export const STORAGE_EXPIRES = "flora_expires_at";
+/** Same-tab signal after local session wipe (storage events only reach other tabs). */
+export const SESSION_CLEARED_EVENT = "flora:session-cleared";
+
+const DEFAULT_ACCESS_SKEW_MS = 120_000;
+const MIN_PROACTIVE_REFRESH_MS = 60_000;
+const REFRESH_LOCK_NAME = "flora-auth-refresh";
+
 // Hard guard: the offline "login without auth" bypass is only ever active in non-production builds,
 // even if a production build is accidentally created with NEXT_PUBLIC_DEV_AUTO_AUTH=1. NODE_ENV is
 // "production" under `next build`/`next start`, so this branch is compiled out and tree-shaken there.
 const DEV_AUTO_AUTH =
   process.env.NEXT_PUBLIC_DEV_AUTO_AUTH === "1" && process.env.NODE_ENV !== "production";
+
+type RefreshAttemptResult = "success" | "auth_failed" | "transient_failed" | "persist_failed";
 
 export function saveSession(raw: unknown): void {
   const res = parseLoginPayload(raw);
@@ -201,8 +210,22 @@ export function getExpiresAt(): string | null {
   return localStorage.getItem(STORAGE_EXPIRES);
 }
 
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(STORAGE_REFRESH);
+}
+
+function notifySessionCleared(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(SESSION_CLEARED_EVENT));
+}
+
 export function clearSession() {
   if (typeof window === "undefined") return;
+  const hadSession =
+    Boolean(localStorage.getItem(STORAGE_ACCESS)) ||
+    Boolean(localStorage.getItem(STORAGE_REFRESH)) ||
+    Boolean(localStorage.getItem(STORAGE_EXPIRES));
   localStorage.removeItem(STORAGE_ACCESS);
   localStorage.removeItem(STORAGE_REFRESH);
   localStorage.removeItem(STORAGE_EXPIRES);
@@ -213,6 +236,7 @@ export function clearSession() {
    * тот же браузер восстанавливает ключи и может расшифровать историю (см. docs/fscp/FSCP.md — device-held material).
    * Полный сброс ключей на этом устройстве — явный вызов {@link clearFscpMaterialForUser} / {@link clearFscpLocalStorage}.
    */
+  if (hadSession) notifySessionCleared();
 }
 
 export function getAccessToken(): string | null {
@@ -230,48 +254,151 @@ export function isDevLocalOfflineSession(): boolean {
   return getAccessToken() === "dev-token";
 }
 
+/** Clear local session only when refresh token is already gone (align with client-core). */
+export function clearSessionOnUnauthorizedIfNeeded(): void {
+  if (typeof window === "undefined") return;
+  if (getRefreshToken()) return;
+  clearSession();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function decodeJwtExpMs(accessToken: string): number | null {
+  const parts = accessToken.split(".");
+  if (parts.length !== 3) return null;
+  const payloadPart = parts[1];
+  if (!payloadPart) return null;
+  try {
+    const payload = JSON.parse(
+      atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/")),
+    ) as { exp?: unknown };
+    if (typeof payload.exp === "number" && Number.isFinite(payload.exp)) {
+      return payload.exp * 1000;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function resolveAccessExpiresAtMs(accessToken: string): number | null {
+  const stored = getExpiresAt();
+  if (stored) {
+    const ms = Date.parse(stored);
+    if (!Number.isNaN(ms)) return ms;
+  }
+  return decodeJwtExpMs(accessToken);
+}
+
+/** Clear only if the refresh we sent is still stored — avoids wiping a concurrent successful rotation. */
+function clearSessionIfRefreshUnchanged(refreshTokenWeSent: string): RefreshAttemptResult {
+  const still = localStorage.getItem(STORAGE_REFRESH);
+  if (still === refreshTokenWeSent) {
+    clearSession();
+    return "auth_failed";
+  }
+  return getAccessToken() && still ? "success" : "auth_failed";
+}
+
 let refreshSessionInFlight: Promise<boolean> | null = null;
+let lastProactiveRefreshAttemptAt = 0;
+
+async function refreshSessionOnce(refreshToken: string): Promise<RefreshAttemptResult> {
+  try {
+    const r = await fetch(authEndpoint("/api/auth/refresh"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (r.status === 401 || r.status === 403) {
+      return clearSessionIfRefreshUnchanged(refreshToken);
+    }
+    if (!r.ok) {
+      return "transient_failed";
+    }
+    const raw = await r.json().catch(() => ({}));
+    try {
+      saveSession(raw);
+      return "success";
+    } catch {
+      // Bad payload / QuotaExceeded — keep prior session; do NOT retry (server may have rotated).
+      const still = localStorage.getItem(STORAGE_REFRESH);
+      if (still && still !== refreshToken && getAccessToken()) return "success";
+      if (still && getAccessToken()) return "persist_failed";
+      return "auth_failed";
+    }
+  } catch {
+    return "transient_failed";
+  }
+}
+
+async function runRefreshAttempt(): Promise<boolean> {
+  // Another tab/caller may have rotated while we waited for the lock.
+  let refreshToken = localStorage.getItem(STORAGE_REFRESH);
+  if (!refreshToken) return false;
+
+  let result = await refreshSessionOnce(refreshToken);
+  if (result === "transient_failed") {
+    await sleep(500);
+    refreshToken = localStorage.getItem(STORAGE_REFRESH) ?? refreshToken;
+    result = await refreshSessionOnce(refreshToken);
+  }
+  if (result === "success") return true;
+  if (result === "auth_failed") {
+    const still = localStorage.getItem(STORAGE_REFRESH);
+    if (still && still !== refreshToken && getAccessToken()) return true;
+  }
+  return false;
+}
 
 /**
  * Выдаёт новую пару токенов по refresh (POST /api/auth/refresh).
  * После смены Jwt:Secret на сервере старый access невалиден, но сессия в БД жива — без этого пользователю приходилось бы входить заново.
+ * Transient errors (network / 429 / 5xx) do not clear the session.
  */
 export async function refreshSessionIfPossible(): Promise<boolean> {
   if (typeof window === "undefined") return false;
+  if (isDevLocalOfflineSession()) return false;
   if (refreshSessionInFlight) return refreshSessionInFlight;
 
-  const refreshToken = localStorage.getItem(STORAGE_REFRESH);
-  if (!refreshToken) return false;
-
   const attempt = (async (): Promise<boolean> => {
-    try {
-      const r = await fetch(authEndpoint("/api/auth/refresh"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
-      });
-      const raw = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        clearSession();
-        return false;
-      }
+    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+    if (locks?.request) {
       try {
-        saveSession(raw);
+        return await locks.request(REFRESH_LOCK_NAME, () => runRefreshAttempt());
       } catch {
-        clearSession();
-        return false;
+        return runRefreshAttempt();
       }
-      return true;
-    } catch {
-      clearSession();
-      return false;
     }
+    return runRefreshAttempt();
   })();
 
   refreshSessionInFlight = attempt.finally(() => {
     refreshSessionInFlight = null;
   });
   return refreshSessionInFlight;
+}
+
+/** Proactive refresh when access token is near expiry (client-core skew semantics). */
+export async function ensureFreshAccessToken(options?: { skewMs?: number }): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (isDevLocalOfflineSession()) return;
+
+  const accessToken = getAccessToken();
+  if (!accessToken) return;
+  if (!getRefreshToken()) return;
+
+  const skewMs = options?.skewMs ?? DEFAULT_ACCESS_SKEW_MS;
+  const expiresAtMs = resolveAccessExpiresAtMs(accessToken);
+  const now = Date.now();
+  const shouldRefresh = expiresAtMs === null ? true : now >= expiresAtMs - skewMs;
+  if (!shouldRefresh) return;
+
+  if (now - lastProactiveRefreshAttemptAt < MIN_PROACTIVE_REFRESH_MS) return;
+  lastProactiveRefreshAttemptAt = now;
+  await refreshSessionIfPossible();
 }
 
 async function postAuthJson<T>(url: string, payload: Record<string, unknown>, defaultError: string): Promise<T> {
@@ -289,6 +416,7 @@ async function postAuthJson<T>(url: string, payload: Record<string, unknown>, de
 }
 
 async function getAuthorizedJson<T>(url: string, defaultError: string): Promise<T> {
+  await ensureFreshAccessToken();
   let accessToken = getAccessToken();
   if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
@@ -303,7 +431,7 @@ async function getAuthorizedJson<T>(url: string, defaultError: string): Promise<
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const msg = typeof data.error === "string" ? data.error : defaultError;
     throw new ApiRequestError(r.status, msg);
   }
@@ -311,6 +439,7 @@ async function getAuthorizedJson<T>(url: string, defaultError: string): Promise<
 }
 
 async function postAuthorizedForm<T>(url: string, formData: FormData, defaultError: string): Promise<T> {
+  await ensureFreshAccessToken();
   let accessToken = getAccessToken();
   if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
@@ -330,7 +459,7 @@ async function postAuthorizedForm<T>(url: string, formData: FormData, defaultErr
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const msg = typeof data.error === "string" ? data.error : defaultError;
     throw new ApiRequestError(r.status, msg);
   }
@@ -338,6 +467,7 @@ async function postAuthorizedForm<T>(url: string, formData: FormData, defaultErr
 }
 
 async function deleteAuthorizedJson(url: string, defaultError: string): Promise<void> {
+  await ensureFreshAccessToken();
   let accessToken = getAccessToken();
   if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
@@ -356,13 +486,14 @@ async function deleteAuthorizedJson(url: string, defaultError: string): Promise<
   }
   if (!r.ok) {
     const data = (await r.json().catch(() => ({}))) as ApiError;
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const msg = typeof data.error === "string" ? data.error : defaultError;
     throw new ApiRequestError(r.status, msg);
   }
 }
 
 async function patchAuthorizedJson<T>(url: string, payload: Record<string, unknown>, defaultError: string): Promise<T> {
+  await ensureFreshAccessToken();
   let accessToken = getAccessToken();
   if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
@@ -385,7 +516,7 @@ async function patchAuthorizedJson<T>(url: string, payload: Record<string, unkno
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const msg = typeof data.error === "string" ? data.error : defaultError;
     throw new ApiRequestError(r.status, msg);
   }
@@ -533,6 +664,7 @@ async function postAuthorizedJsonWithBody<T>(
   payload: Record<string, unknown>,
   defaultError: string,
 ): Promise<T> {
+  await ensureFreshAccessToken();
   let accessToken = getAccessToken();
   if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
@@ -555,7 +687,7 @@ async function postAuthorizedJsonWithBody<T>(
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const msg = typeof data.error === "string" ? data.error : defaultError;
     throw new ApiRequestError(r.status, msg);
   }
@@ -567,6 +699,7 @@ async function deleteAuthorizedJsonWithBody(
   payload: Record<string, unknown>,
   defaultError: string,
 ): Promise<void> {
+  await ensureFreshAccessToken();
   let accessToken = getAccessToken();
   if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
@@ -589,13 +722,14 @@ async function deleteAuthorizedJsonWithBody(
   }
   if (!r.ok) {
     const data = (await r.json().catch(() => ({}))) as ApiError;
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const msg = typeof data.error === "string" ? data.error : defaultError;
     throw new ApiRequestError(r.status, msg);
   }
 }
 
 async function postAuthorizedJson<T>(url: string, defaultError: string): Promise<T> {
+  await ensureFreshAccessToken();
   let accessToken = getAccessToken();
   if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
@@ -614,7 +748,7 @@ async function postAuthorizedJson<T>(url: string, defaultError: string): Promise
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
   if (!r.ok) {
-    if (r.status === 401) clearSession();
+    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const msg = typeof data.error === "string" ? data.error : defaultError;
     throw new ApiRequestError(r.status, msg);
   }

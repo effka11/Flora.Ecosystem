@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiGetMe, getAccessToken, type MeResponse } from "@/lib/auth";
+import { apiGetMe, ensureFreshAccessToken, getAccessToken, type MeResponse } from "@/lib/auth";
 import type { FscpBootstrapStatus, FscpLocalMaterial } from "@flora/client-core/fscp";
 import { getTelemetry } from "@flora/client-core/telemetry";
 import { webResolveFscpMaterial } from "@/lib/fscp/bootstrap";
@@ -83,14 +83,33 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true);
     try {
+      await ensureFreshAccessToken();
       setMe(await apiGetMe());
     } catch {
-      fscpMaterialOwnerRef.current = null;
-      setMe(null);
-      setFscpMaterial(null);
-      setFscpBootstrapError(null);
-      setFscpStatus(null);
-      setFscpBootstrapLoading(false);
+      // Keep prior me when tokens are still present (transient network / refresh blip).
+      if (!getAccessToken()) {
+        fscpMaterialOwnerRef.current = null;
+        setMe(null);
+        setFscpMaterial(null);
+        setFscpBootstrapError(null);
+        setFscpStatus(null);
+        setFscpBootstrapLoading(false);
+      } else {
+        try {
+          await ensureFreshAccessToken();
+          setMe(await apiGetMe());
+        } catch {
+          if (!getAccessToken()) {
+            fscpMaterialOwnerRef.current = null;
+            setMe(null);
+            setFscpMaterial(null);
+            setFscpBootstrapError(null);
+            setFscpStatus(null);
+            setFscpBootstrapLoading(false);
+          }
+          // else: leave previous me as-is
+        }
+      }
     } finally {
       setLoading(false);
     }

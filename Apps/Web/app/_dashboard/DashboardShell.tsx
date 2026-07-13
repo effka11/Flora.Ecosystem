@@ -32,6 +32,7 @@ import {
   stripDashboardHref
 } from "@/app/_dashboard/dashboardRouteTransition";
 import { useDashboardDataPrefetch } from "@/app/_dashboard/useDashboardDataPrefetch";
+import { useSessionKeepAlive } from "@/app/_dashboard/useSessionKeepAlive";
 import { startTabPrefetch } from "@/lib/dashboardPreload";
 import { useDashboardRealtime } from "@/app/_dashboard/useDashboardRealtime";
 import { useMessagesUnreadCount } from "@/app/_dashboard/useMessagesUnreadCount";
@@ -311,6 +312,7 @@ function DashboardShellInner({ children }: DashboardShellProps) {
   const { me, loading } = useCurrentUser();
   useDashboardRealtime(!loading && Boolean(me));
   useDashboardDataPrefetch();
+  useSessionKeepAlive();
   useViewportFrameCssVars(true);
 
   const [displayPath, setDisplayPath] = useState(() => stripDashboardHref(pathname));
