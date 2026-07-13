@@ -15,5 +15,7 @@
     <!-- Эталонные реализации, из которых генерируются golden-вектора (next-architecture.md §7.1). -->
     <ProjectReference Include="..\..\Flora.Shared\Flora.Shared.csproj" />
     <ProjectReference Include="..\..\Modules\Flora.Auth\Flora.Auth.csproj" />
+    <!-- Эталон серверной валидации FSCP wire для golden-вектора (FSCP.md §Test vectors). -->
+    <ProjectReference Include="..\..\Products\Flora.Social\Flora.Social.csproj" />
   </ItemGroup>
 </Project>

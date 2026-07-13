@@ -31,7 +31,10 @@ pub fn normalize_slug(raw: Option<&str>, max_len: usize) -> String {
     }
     // Как в C#: сначала ToLowerInvariant всей строки, затем фильтр допустимых символов.
     let lowered = raw.trim().to_lowercase();
-    let filtered: String = lowered.chars().filter(|c| is_allowed_slug_char(*c)).collect();
+    let filtered: String = lowered
+        .chars()
+        .filter(|c| is_allowed_slug_char(*c))
+        .collect();
     truncate_ascii(filtered, max_len)
 }
 
@@ -68,8 +71,14 @@ mod tests {
 
     #[test]
     fn normalize_username_strips_at_and_invalid_chars() {
-        assert_eq!(normalize_username(Some("@flora_user"), USERNAME_MAX), "flora_user");
-        assert_eq!(normalize_username(Some("  фло flora-123  "), USERNAME_MAX), "flora123");
+        assert_eq!(
+            normalize_username(Some("@flora_user"), USERNAME_MAX),
+            "flora_user"
+        );
+        assert_eq!(
+            normalize_username(Some("  фло flora-123  "), USERNAME_MAX),
+            "flora123"
+        );
         assert_eq!(normalize_username(None, USERNAME_MAX), "");
         assert_eq!(normalize_username(Some("   "), USERNAME_MAX), "");
     }

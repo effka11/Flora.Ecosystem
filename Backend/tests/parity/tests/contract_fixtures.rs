@@ -17,7 +17,10 @@ fn all_fixtures() -> Vec<(String, serde_json::Value)> {
             result.push((name, load_json(&path).unwrap()));
         }
     }
-    assert!(result.len() >= 8, "ожидались фикстуры в artifacts/contract-fixtures");
+    assert!(
+        result.len() >= 8,
+        "ожидались фикстуры в artifacts/contract-fixtures"
+    );
     result
 }
 
@@ -32,7 +35,10 @@ fn fixtures_exist_and_are_valid_json() {
         "feed-page.json",
         "messaging-conversations.json",
     ] {
-        assert!(names.iter().any(|n| n == required), "нет обязательной фикстуры {required}");
+        assert!(
+            names.iter().any(|n| n == required),
+            "нет обязательной фикстуры {required}"
+        );
     }
 }
 
@@ -63,7 +69,11 @@ fn uuid_like_strings_are_lowercase_hyphenated() {
     fn walk(name: &str, value: &serde_json::Value) {
         match value {
             serde_json::Value::String(s) if s.len() == 36 && s.parse::<uuid::Uuid>().is_ok() => {
-                assert_eq!(s, &s.to_lowercase(), "{name}: GUID обязан быть lowercase (§4.2)");
+                assert_eq!(
+                    s,
+                    &s.to_lowercase(),
+                    "{name}: GUID обязан быть lowercase (§4.2)"
+                );
             }
             serde_json::Value::Object(map) => map.values().for_each(|v| walk(name, v)),
             serde_json::Value::Array(items) => items.iter().for_each(|v| walk(name, v)),

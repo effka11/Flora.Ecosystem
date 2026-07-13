@@ -10,6 +10,9 @@ yanked = "deny"
 
 [licenses]
 version = 2
+# Собственные (publish = false) crates не проверяем: они AGPL-3.0-only по определению,
+# allow-список ниже описывает только внешние зависимости.
+private = { ignore = true }
 allow = [
     "MIT",
     "Apache-2.0",
@@ -28,7 +31,8 @@ confidence-threshold = 0.9
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# Дубли ниже допускаются временно (транзитивные экосистемные переходы); прочие дубли — warning в CI.
+# Внутренние path-deps объявлены без версий (publish = false) — это не wildcard-риск.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

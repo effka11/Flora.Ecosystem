@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "backupRevision": 2,
+  "backupKeyId": "99999999-9999-9999-9999-999999999999",
+  "userUuid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "primaryKeyEpochId": "00000000-0000-4000-8000-000000000001",
+  "epochSetRevision": 1,
+  "epochSetHashBase64Url": "5qXpkc9M2xJHhYQpqSMLPg",
+  "kdf": {
+    "name": "argon2id",
+    "memoryKiB": 65536,
+    "iterations": 4,
+    "parallelism": 2,
+    "saltBase64Url": "c2FsdC1zYWx0LXNhbHQtMTY"
+  },
+  "aead": {
+    "name": "xchacha20poly1305",
+    "nonceBase64Url": "bm9uY2UtMjQtYnl0ZXMtbm9uY2UtMjQ"
+  },
+  "ciphertextBase64Url": "Y2lwaGVydGV4dC1zYW1wbGU"
+}

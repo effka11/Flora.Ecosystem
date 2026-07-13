@@ -5,11 +5,11 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use axum::Router;
 use axum::body::Body;
 use axum::extract::Request;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
-use axum::Router;
 use flora_api::versions::FloraVersionResponse;
 use flora_shared::config::FloraConfig;
 use http_body_util::BodyExt;
@@ -68,7 +68,10 @@ async fn spawn_upstream() -> SocketAddr {
                     .unwrap()
             }),
         )
-        .route("/api/error", get(|| async { http::StatusCode::CONFLICT.into_response() }));
+        .route(
+            "/api/error",
+            get(|| async { http::StatusCode::CONFLICT.into_response() }),
+        );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -82,13 +85,17 @@ fn futures_stream() -> tokio_stream::wrappers::ReceiverStream<Result<bytes::Byte
 {
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<bytes::Bytes, std::io::Error>>(2);
     tokio::spawn(async move {
-        tx.send(Ok(bytes::Bytes::from("event: message\ndata: {\"n\":1}\n\n")))
-            .await
-            .ok();
+        tx.send(Ok(bytes::Bytes::from(
+            "event: message\ndata: {\"n\":1}\n\n",
+        )))
+        .await
+        .ok();
         tokio::time::sleep(Duration::from_millis(300)).await;
-        tx.send(Ok(bytes::Bytes::from("event: message\ndata: {\"n\":2}\n\n")))
-            .await
-            .ok();
+        tx.send(Ok(bytes::Bytes::from(
+            "event: message\ndata: {\"n\":2}\n\n",
+        )))
+        .await
+        .ok();
     });
     tokio_stream::wrappers::ReceiverStream::new(rx)
 }
@@ -211,7 +218,10 @@ async fn proxy_streams_request_bodies_to_upstream() {
         .await
         .unwrap();
     assert_eq!(response.status().as_u16(), 200);
-    assert_eq!(response.text().await.unwrap(), format!("received:{}", 8 * 1024 * 1024));
+    assert_eq!(
+        response.text().await.unwrap(),
+        format!("received:{}", 8 * 1024 * 1024)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

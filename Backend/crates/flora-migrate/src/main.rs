@@ -123,9 +123,15 @@ async fn apply_module(
     pool: &sqlx::PgPool,
     module: &registry::ModuleMigrations,
 ) -> anyhow::Result<()> {
-    let Some(migrator) = module.migrator else { return Ok(()) };
+    let Some(source) = module.migrator else {
+        return Ok(());
+    };
     // Отдельная таблица истории на модуль — инвариант §3 (как __EFMigrationsHistory_*).
-    let mut migrator = migrator.clone();
+    // Migrator не Clone; собираем копию по публичным полям и переименовываем таблицу истории.
+    let mut migrator = sqlx::migrate::Migrator {
+        migrations: source.migrations.clone(),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
     migrator.dangerous_set_table_name(module.history_table());
     tracing::info!(module = module.module, "применение миграций");
     migrator.run(pool).await?;

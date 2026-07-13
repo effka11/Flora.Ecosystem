@@ -546,16 +546,17 @@ MLS или sender keys — отдельная спецификация. Не с�
 | --- | --- | --- |
 | `fscp_rke_wrap_key_v1_success` | [fscp-rke-wrap-key-v1.json](../test-vectors/fscp-rke-wrap-key-v1.json) | X25519 + HKDF + AEAD → 32-байтовый `messageKey` |
 | `fingerprint_v1_success` | [fingerprint-v1.json](../test-vectors/fingerprint-v1.json) | Safety number preimage + SHA-256 |
+| `fscp_wire_validator_v1` | [fscp-wire-validator-v1.json](../test-vectors/fscp-wire-validator-v1.json) | Серверная структурная валидация wire: позитив + 22 негатива, точные строки ошибок (форма заморожена, [`next-architecture.md`](../../next-architecture.md) §4.4 — Rust воспроизводит байт-в-байт) |
 
-Регенерация RKE golden: `python docs/test-vectors/_gen_fscp_rke_v1.py` (нужны `cryptography`, `PyNaCl`). Файлы `docs/test-vectors/**` — **regenerate-only**, руками не редактировать ([`AGENTS.md`](../../AGENTS.md)).
+Регенерация: RKE — `python docs/test-vectors/_gen_fscp_rke_v1.py` (нужны `cryptography`, `PyNaCl`); wire-validator — `Scripts/generate-golden-vectors.ps1` (из C#-эталона). Файлы `docs/test-vectors/**` — **regenerate-only**, руками не редактировать ([`AGENTS.md`](../../AGENTS.md)).
 
-Правила новых векторов: `protocolVersion` / `fscpProtocolVersion` в JSON, base64url без padding, AAD **байт-в-байт** как в этом документе; негативы — отдельные файлы с `expectedError`.
+Правила новых векторов: `protocolVersion` / `fscpProtocolVersion` в JSON, base64url без padding, AAD **байт-в-байт** как в этом документе; негативы — отдельные файлы или блок `cases` с `expectedError`.
 
-**Требование потребления (v1.0-errata-1, устраняет разрыв «вектор есть, но не проверяется»):** golden-векторы обязаны иметь **consumer-тесты**, иначе compliance-пункт считается невыполненным:
+**Требование потребления (v1.0-errata-1, устраняет разрыв «вектор есть, но не проверяется»):** golden-векторы обязаны иметь **consumer-тесты**, иначе compliance-пункт считается невыполненным. Текущие потребители (все в CI через `npm run test` / `dotnet test`):
 
-- клиентский тест (`Packages/flora-client-core`) загружает `fscp-rke-wrap-key-v1.json` и проверяет, что RKE unwrap даёт `messageKeyBase64Url` бит-в-бит; и `fingerprint-v1.json` — что реализация safety number даёт `fingerprintSha256Hex`;
-- **cross-impl parity:** тест, утверждающий, что `Apps/Web/lib/fscp/aad.ts` и `canonicalJson.ts` дают **идентичный** результат с `Packages/flora-client-core/src/fscp/*` на общих входах (защита от дрейфа двух клиентских реализаций до их консолидации, [`next-architecture.md`](../../next-architecture.md) §9);
-- серверный тест (C#) прогоняет позитив и негативы `FscpWireEnvelopeValidator` на форме, соответствующей вектору.
+- клиентский тест [`goldenVectors.test.ts`](../../Packages/flora-client-core/src/fscp/goldenVectors.test.ts): RKE unwrap даёт `messageKeyBase64Url` бит-в-бит (плюс покомпонентно: AAD-строка, X25519 shared secret, HKDF wrap key, детерминированный AEAD-шифротекст); `fingerprint-v1.json` — реализация safety number даёт `fingerprintSha256Hex`; `backend-parity/uuid-v1.json` — клиентские `deriveIds` сходятся с C#-эталоном;
+- **cross-impl parity:** [`webParity.test.ts`](../../Packages/flora-client-core/src/fscp/webParity.test.ts) утверждает, что `Apps/Web/lib/fscp/{constants,aad,canonicalJson,deriveIds}` дают **идентичный** результат с `Packages/flora-client-core/src/fscp/*` на общих входах (защита от дрейфа двух клиентских реализаций до их консолидации, [`next-architecture.md`](../../next-architecture.md) §9);
+- серверный тест (C#) [`FscpWireValidatorVectors.cs`](../../tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs) прогоняет позитив и негативы `FscpWireEnvelopeValidator` из `fscp-wire-validator-v1.json`, сверяя accept/reject и **точную строку ошибки**.
 
 Полный каталог платформенных векторов (backup, unlock, device): [`e2e-security.md`](./e2e-security.md) §Test vectors.
 
@@ -588,10 +589,10 @@ E2E-переписка **не** используется для рекоменд
 | Bootstrap key epoch + sentinel device UUID | by design (v1) | нет per-device ratchet; single epoch |
 | E2E-ключи на вебе в `localStorage` | **известный риск** | `Apps/Web/lib/fscp/storage.ts`; target — non-extractable WebCrypto / IndexedDB |
 | Legacy dual-ciphertext API | мост | `encryptedForReceiver`/`encryptedForSender` идентичны; путь к единому `fscp1:` |
-| Safety number / fingerprint в UI | **не реализовано** | спека требует MUST после `ready`; в коде отсутствует вычисление preimage → выполнить до release gate |
+| Safety number / fingerprint в UI | **частично** | расчёт реализован: `safetyNumber.ts` в `@flora/client-core/fscp` (golden-тест зелёный); UI-поверхность после `ready` отсутствует → выполнить до release gate |
 | `FscpV1ConversationSession` / session state | **не реализовано** | `uninitialized/ready/compromised_local` и re-handshake только в спеке |
-| Golden-векторы в CI | **не подключены** | JSON есть, consumer-тестов нет (см. §Test vectors — обязательное требование) |
-| Две параллельные клиентские реализации FSCP | **дрейф-риск** | `Apps/Web/lib/fscp` vs `Packages/flora-client-core/src/fscp`; байт-критичные `aad.ts`/`canonicalJson.ts` сейчас идентичны, но не покрыты parity-тестом; консолидация — [`next-architecture.md`](../../next-architecture.md) §9 |
+| Golden-векторы в CI | ✅ подключены | consumer-тесты: `goldenVectors.test.ts` (клиент), `FscpWireValidatorVectors.cs` (сервер); см. §Test vectors |
+| Две параллельные клиентские реализации FSCP | **дрейф-риск, огорожен** | `Apps/Web/lib/fscp` vs `Packages/flora-client-core/src/fscp`; байт-критичные модули покрыты parity-тестом `webParity.test.ts`; консолидация остаётся — [`next-architecture.md`](../../next-architecture.md) §9 |
 | Golden transcript после device revoke | **не реализовано** | `message_session_revoked_device_v1_failure` — TODO; approve/recover-key HTTP-эндпоинты не выставлены |
 
 ---
@@ -606,13 +607,13 @@ E2E-переписка **не** используется для рекоменд
 
 Изменения, **несовместимые с wire**, — только через bump major (`messageEnvelopeVersion`). Текстовые errata без смены байтов — в этом файле с пометкой `docs(fscp): errata` в commit message.
 
-**Compliance checklist (v1.0)** — статус на errata-1:
+**Compliance checklist (v1.0)** — статус на errata-1 (обновлено после подключения векторов):
 
-1. ⛔ Golden `fscp_rke_wrap_key_v1_success` и `fingerprint_v1_success` в CI — **не выполнено** (векторы не подключены к тестам; см. §Test vectors → требование потребления).
-2. ✅ Server-side validation без отклонений от §Server-side validation (реализовано, включая проверку `recipientAgreementPublicKeyId`).
-3. ✅ Клиент: AAD и HKDF-info **байт-в-байт** как в §MessageEnvelope / §Key agreement (совпадает в обеих реализациях; parity-тест — п. 4).
-4. ⛔ Cross-impl parity-тест `Apps/Web/lib/fscp` ↔ `Packages/flora-client-core` — **не выполнено** (добавить до release gate).
-5. ⛔ Safety number в UI 1:1 после `ready` — **не выполнено** (см. §Known limitations).
+1. ✅ Golden `fscp_rke_wrap_key_v1_success` и `fingerprint_v1_success` в CI — consumer-тесты `Packages/flora-client-core/src/fscp/goldenVectors.test.ts` (`npm run test`).
+2. ✅ Server-side validation без отклонений от §Server-side validation (реализовано, включая проверку `recipientAgreementPublicKeyId`); поведение закреплено golden-вектором `fscp_wire_validator_v1` + consumer `tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs`.
+3. ✅ Клиент: AAD и HKDF-info **байт-в-байт** как в §MessageEnvelope / §Key agreement (подтверждено consumer-тестами RKE-вектора).
+4. ✅ Cross-impl parity-тест `Apps/Web/lib/fscp` ↔ `Packages/flora-client-core` — `webParity.test.ts` (constants, AAD, canonical JSON, deriveIds).
+5. ⛔ Safety number в UI 1:1 после `ready` — **не выполнено**: расчёт реализован (`safetyNumber.ts`, golden-тест зелёный), UI-поверхность отсутствует (см. §Known limitations).
 
 ---
 
@@ -620,8 +621,8 @@ E2E-переписка **не** используется для рекоменд
 
 - Серверная криптопроверка Ed25519 подписи envelope (defense-in-depth).
 - Golden transcript `message_session_revoked_device_v1_failure`; выставить HTTP `approve`/`recover-key`.
-- Реализовать safety number в UI и `FscpV1ConversationSession` (сейчас только в спеке).
-- Consumer-тесты golden-векторов + cross-impl parity; консолидация двух клиентских реализаций на `@flora/client-core` ([`next-architecture.md`](../../next-architecture.md) §9).
+- Safety number: UI-поверхность 1:1 (расчёт уже в `@flora/client-core/fscp` — `computeSafetyNumberV1`); `FscpV1ConversationSession` (сейчас только в спеке).
+- Консолидация двух клиентских реализаций на `@flora/client-core` ([`next-architecture.md`](../../next-architecture.md) §9); parity-тест уже защищает от дрейфа байт-критичных модулей.
 - Переход с bootstrap epoch на реальные per-device UUID и key epochs.
 - Полная спецификация wire/AAD **message franking** (target модерации, FGP §6.5).
 - Key transparency phase 2.

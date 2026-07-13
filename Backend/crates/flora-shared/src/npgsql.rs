@@ -84,7 +84,10 @@ mod tests {
         assert_eq!(parsed.username.as_deref(), Some("flora"));
         assert_eq!(parsed.password.as_deref(), Some("change-me"));
         assert_eq!(parsed.search_path.as_deref(), Some("flora_core"));
-        assert_eq!(parsed.extra.get("Include Error Detail").map(String::as_str), Some("true"));
+        assert_eq!(
+            parsed.extra.get("Include Error Detail").map(String::as_str),
+            Some("true")
+        );
     }
 
     #[test]

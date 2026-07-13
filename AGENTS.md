@@ -114,11 +114,15 @@ dotnet test Flora.Ecosystem.slnx
 - Перенос эндпоинта/модуля: вызови skill **`/rust-migration`** перед началом работы.
 
 ```sh
-# Rust (Backend/, появится в Фазе 0)
+# Rust (из Backend/; toolchain пиновая — rust-toolchain.toml)
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo deny check                          # лицензии (AGPL-совместимость), дубли, advisories
+pwsh ../tools/validate-architecture-rust.ps1  # границы crate'ов (§2.3)
 ```
+
+Структура `Backend/` и команды запуска — `Backend/README.md`. Кросс-языковые golden-векторы: `docs/test-vectors/backend-parity/` (C#-эталон — `./Scripts/generate-golden-vectors.ps1`; Rust-вектор — `cargo run -p flora-parity --bin gen-cross-vectors`).
 
 ## Git
 

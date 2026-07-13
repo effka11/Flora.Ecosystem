@@ -18,7 +18,10 @@ fn repo_root() -> std::path::PathBuf {
 }
 
 fn load_fixture(name: &str) -> serde_json::Value {
-    let path = repo_root().join("artifacts").join("contract-fixtures").join(name);
+    let path = repo_root()
+        .join("artifacts")
+        .join("contract-fixtures")
+        .join(name);
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("фикстура {} недоступна: {e}", path.display()));
     serde_json::from_str(&text).expect("фикстура должна быть валидным JSON")
@@ -37,7 +40,9 @@ async fn get_json(path: &str) -> serde_json::Value {
         .await
         .unwrap();
     assert_eq!(response.status(), http::StatusCode::OK, "GET {path}");
-    let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .unwrap();
     serde_json::from_slice(&bytes).unwrap()
 }
 
@@ -61,7 +66,12 @@ async fn version_matches_csharp_fixture() {
 #[tokio::test]
 async fn unmatched_route_is_404_without_upstream() {
     let response = native_router()
-        .oneshot(Request::builder().uri("/api/anything").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/anything")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
@@ -86,7 +96,9 @@ async fn outdated_client_gets_426_on_native_route() {
         .await
         .unwrap();
     assert_eq!(response.status(), http::StatusCode::UPGRADE_REQUIRED);
-    let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["minClientVersion"], "1.2.0");
 }
@@ -114,11 +126,15 @@ async fn cors_preflight_allows_configured_origin_with_credentials() {
         .unwrap();
     let headers = response.headers();
     assert_eq!(
-        headers.get("access-control-allow-origin").and_then(|v| v.to_str().ok()),
+        headers
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok()),
         Some("http://localhost:3000"),
     );
     assert_eq!(
-        headers.get("access-control-allow-credentials").and_then(|v| v.to_str().ok()),
+        headers
+            .get("access-control-allow-credentials")
+            .and_then(|v| v.to_str().ok()),
         Some("true"),
     );
 }

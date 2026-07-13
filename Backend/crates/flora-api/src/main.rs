@@ -61,7 +61,9 @@ async fn serve(addr: SocketAddr, router: axum::Router) -> anyhow::Result<()> {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        tokio::signal::ctrl_c().await.expect("установка обработчика Ctrl+C");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("установка обработчика Ctrl+C");
     };
     #[cfg(unix)]
     let terminate = async {
@@ -92,6 +94,9 @@ fn init_tracing() {
     if development {
         tracing_subscriber::fmt().with_env_filter(filter).init();
     } else {
-        tracing_subscriber::fmt().with_env_filter(filter).json().init();
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .json()
+            .init();
     }
 }

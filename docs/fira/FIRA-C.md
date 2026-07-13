@@ -1,9 +1,11 @@
 # FIRA-C — Communities Recommendations
 
-**Status:** Draft  
-**Version:** 0.2  
-**Date:** 2026-06-09  
+**Status:** Active — целевая спека; в production упрощённая эвристика v1 (§Implementation Status)  
+**Version:** 0.3  
+**Date:** 2026-07-13  
 **Depends on:** [`FIRA.md`](./FIRA.md)
+
+> Изменения 0.2 → 0.3: добавлен нормативный раздел **Implementation Status (as-built v1)**. Важно: реализация v1 сознательно **не** следует формулам §Скоринг — используется компактная эвристика без α/β/γ-структуры (см. объяснение в разделе). Формулы §Скоринг — целевые (v2). Референс паритета Rust-миграции — формулы as-built.
 
 ---
 
@@ -36,11 +38,12 @@ FIRA-C — компонент системы FIRA, отвечающий за р�
 Flora.Social (HTTP controller)
   └─→ ICommunityRecommendationService  (Flora.Content.Contracts)
         └─→ CommunityRecommendationService  (Flora.Content.Application)
-              ├─→ ICommunityRecommendationQueries  (Flora.Content.Infrastructure)
-              └─→ FiraContext (UIP + social graph snapshot)
+              ├─→ ICommunityRecommendationQueries  (порт; реализация в Flora.Content.Infrastructure)
+              ├─→ IFollowGraphReader  (Flora.Users.Contracts — соц. граф; as-built)
+              └─→ FiraContext (UIP + social graph snapshot — target v2)
 ```
 
-Данные о членстве в сообществах хранятся в `Flora.Content` (`UserCommunity`). Граф подписок читается через `FiraContext.Graph`, переданный из `Flora.Users` через контракт — прямого обращения к `Flora.Users` БД нет.
+Данные о членстве в сообществах хранятся в `Flora.Content` (`UserCommunity`). Граф подписок читается через контракт `IFollowGraphReader` (`Flora.Users.Contracts`) — прямого обращения к БД `Flora.Users` нет. В v2 источником графа станет `FiraContext.Graph`, собираемый composition-слоем ([`FIRA.md §8.1`](./FIRA.md)).
 
 ---
 
@@ -73,6 +76,8 @@ Flora.Social (HTTP controller)
 - **weeklyGrowthRate** — прирост числа участников за последние 7 дней / memberCount.
 
 ### Шаг 3 — Скоринг
+
+*Target v2* — формулы ниже требуют UIP и тегов сообществ; production-скоринг v1 описан в §Implementation Status.
 
 ```
 Score(community) = α · IndividualAffinity(community, UIP)
@@ -246,6 +251,35 @@ Growth bonus применяется во всех фазах — он не за�
 | Индикатор новых (has-new) | Не поддерживается; обновление по TTL |
 | Размер пула кандидатов | Configurable (`candidatePoolSize`, дефолт: 150) |
 | Политика обновления (полная) | [`FIRA.md §13`](./FIRA.md) |
+
+---
+
+## Implementation Status (as-built v1)
+
+Production-реализация: [`CommunityRecommendationService.cs`](../../Modules/Flora.Content/Flora.Content.Application/Communities/CommunityRecommendationService.cs) + [`CommunityRecommendationQueries.cs`](../../Modules/Flora.Content/Flora.Content.Infrastructure/CommunityRecommendationQueries.cs). Референс паритета для Rust-порта (Фаза 3; [`FIRA.md §15`](./FIRA.md)).
+
+**Почему v1 не следует §Скоринг.** Без UIP компонент `α·IA` не существует, а нормируемая α/β/γ-тройка над двумя оставшимися сигналами не даёт преимуществ перед прямой взвешенной суммой. v1 использует компактную эвристику с теми же смысловыми сигналами (размер, активность, социальная близость, новизна); переход на структуру §Скоринг — вместе с UIP (v2).
+
+**Кандидаты (один запрос):** все публичные сообщества, где пользователь не состоит. Приватные исключаются на уровне SQL (`!IsPrivate`) — инвариант §12 FIRA.md для FIRA-C соблюдён. Отдельных источников/весов пула нет; лимита пула нет (все кандидаты скорятся — приемлемо при текущем количестве сообществ, лимит потребуется при масштабировании).
+
+**Скоринг v1:**
+
+```
+memberScore   = log10(max(memberCount, 0) + 1)          × WeightMembers    // 2.0
+activityScore = log10(max(recentPostCount, 0) + 1)      × WeightActivity   // 3.0; посты за ActivityDays = 14
+socialScore   = log10(max(followedMembers, 0) + 1)      × WeightSocial     // 4.0
+recencyScore  = max(0, BoostDays − ageDays) / BoostDays × WeightRecency    // 1.5; BoostDays = 14, линейное убывание
+
+Score = memberScore + activityScore + socialScore + recencyScore
+```
+
+`recencyScore` — линейный аналог целевого `growthBonus` (без `weeklyGrowthRate`: история изменений численности не хранится). Tie-break: `Score desc → Name asc (case-insensitive)`.
+
+**Выдача:** snapshot полного списка в per-user кэше `flora:fira-c:v1:{userUuid}`, TTL `CacheTtlSeconds = 600`; `Take(take)` после чтения кэша (take ≤ 100); инвалидация при join/leave. Стохастических точек нет — компонент полностью детерминирован при фиксированных `nowUtc` и БД.
+
+**Конфигурация** — секция `CommunityRecommendation` (в `appsettings.json` присутствует полностью, значения = дефолтам кода): `ActivityDays = 14`, `NewCommunityBoostDays = 14`, `WeightMembers = 2.0`, `WeightActivity = 3.0`, `WeightSocial = 4.0`, `WeightRecency = 1.5`, `CacheTtlSeconds = 600`.
+
+**Не реализовано (target):** UIP-матчинг и теги сообществ (v2); growth bonus по `weeklyGrowthRate` (v2); exploration-квота и тематическое разнообразие (v2); dismissal «Не интересно» (v1.1); неалгоритмическая fallback-сортировка по размеру/новизне — требование суверенитета [`FIRA.md §16`](./FIRA.md) (v1.1); CF (v3). Исключение «покинул с "Не интересно"» не отслеживается — покинутые сообщества сразу возвращаются в пул кандидатов.
 
 ---
 

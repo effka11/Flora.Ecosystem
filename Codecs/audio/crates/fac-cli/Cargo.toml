@@ -1,0 +1,20 @@
+[package]
+name = "fac-cli"
+description = "Инструмент разработки FAC: encode/decode/roundtrip/gen поверх WAV + метрики качества."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "fac"
+path = "src/main.rs"
+
+[dependencies]
+fac-core.workspace = true
+hound.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

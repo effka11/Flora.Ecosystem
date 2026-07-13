@@ -24,13 +24,15 @@ members = [
     "crates/modules/flora-verification",
     "crates/modules/flora-verification-contracts",
     "crates/infrastructure/flora-grpc-bridge",
+    "crates/media/flora-image-codec",
+    "crates/media/flora-codec-tools",
     "tests/parity",
 ]
 
 [workspace.package]
 version = "0.5.0-alpha" # synced-from-VERSION
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 license = "AGPL-3.0-only"
 publish = false
 
@@ -56,6 +58,8 @@ flora-notifications-contracts = { path = "crates/modules/flora-notifications-con
 flora-verification = { path = "crates/modules/flora-verification" }
 flora-verification-contracts = { path = "crates/modules/flora-verification-contracts" }
 flora-grpc-bridge = { path = "crates/infrastructure/flora-grpc-bridge" }
+# --- media (кодеки FMC, docs/codecs/CODECS.md §Flora Media Codecs) ---
+flora-image-codec = { path = "crates/media/flora-image-codec" }
 
 # --- HTTP-стек ---
 axum = "0.8.9"
@@ -85,9 +89,7 @@ base64 = "0.22.1"
 getrandom = "0.3.3"
 
 # --- БД и миграции ---
-# 0.8.x сознательно: 0.9.0 вышел на днях и требует rustc новее зафиксированного toolchain;
-# API миграций (Migrator + dangerous_set_table_name) одинаков. Апгрейд — осознанным коммитом.
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "postgres", "migrate"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres", "migrate"] }
 
 # --- утилиты ---
 anyhow = "1.0.103"
@@ -99,6 +101,9 @@ chrono = { version = "0.4.45", default-features = false, features = ["std", "clo
 reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
 argon2 = "0.5.3"
 tokio-stream = "0.1.18"
+
+# --- только для flora-codec-tools (IO эталонных форматов в бенчмарках) ---
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 
 [profile.release]
 lto = "thin"

@@ -2,7 +2,7 @@ import { floraNewUuid } from "./floraUuid.js";
 import { FSCP_BOOTSTRAP_DEVICE_UUID, FSCP_BOOTSTRAP_KEY_EPOCH_ID, FSCP_WIRE_PREFIX } from "./constants.js";
 import { agreementPublicKeyId, dmConversationUuid } from "./deriveIds.js";
 import { messageBodyAadLine, recipientKeyEnvelopeAadLine } from "./aad.js";
-import { canonicalJson } from "./canonicalJson.js";
+import { canonicalJson, compareCodeUnits } from "./canonicalJson.js";
 import { fromBase64Url, utf8Bytes } from "./base64url.js";
 import { rkeUnwrapMessageKey, rkeWrapMessageKey } from "./rke.js";
 import { getSodium, scalarmultBase } from "./sodium.js";
@@ -222,9 +222,9 @@ function normalizePlaintextPayload(raw: unknown): FscpMessagePlaintext {
 
 function sortRecipients(rec: FscpRecipientWire[]): FscpRecipientWire[] {
   return [...rec].sort((a, b) => {
-    const c = a.userUuid.toLowerCase().localeCompare(b.userUuid.toLowerCase());
+    const c = compareCodeUnits(a.userUuid.toLowerCase(), b.userUuid.toLowerCase());
     if (c !== 0) return c;
-    return a.deviceUuid.toLowerCase().localeCompare(b.deviceUuid.toLowerCase());
+    return compareCodeUnits(a.deviceUuid.toLowerCase(), b.deviceUuid.toLowerCase());
   });
 }
 

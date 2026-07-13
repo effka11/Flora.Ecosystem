@@ -112,6 +112,9 @@ mod tests {
     #[test]
     fn null_commit_serializes_explicitly() {
         let json = serde_json::to_string(&FloraVersionResponse::build(None, None)).unwrap();
-        assert!(json.contains("\"commit\":null"), "нет explicit null: {json}");
+        assert!(
+            json.contains("\"commit\":null"),
+            "нет explicit null: {json}"
+        );
     }
 }

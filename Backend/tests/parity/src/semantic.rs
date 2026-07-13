@@ -14,7 +14,9 @@ pub struct CompareOptions {
 
 impl Default for CompareOptions {
     fn default() -> Self {
-        Self { float_tolerance: 0.0 }
+        Self {
+            float_tolerance: 0.0,
+        }
     }
 }
 
@@ -99,7 +101,10 @@ fn walk(path: &str, left: &Value, right: &Value, options: CompareOptions, out: &
             if (lf - rf).abs() > options.float_tolerance {
                 out.push(Mismatch {
                     path: path.to_string(),
-                    reason: format!("числа различаются: {l} vs {r} (допуск {})", options.float_tolerance),
+                    reason: format!(
+                        "числа различаются: {l} vs {r} (допуск {})",
+                        options.float_tolerance
+                    ),
                 });
             }
         }
@@ -127,7 +132,10 @@ mod tests {
 
     fn assert_equal(left: serde_json::Value, right: serde_json::Value) {
         let mismatches = diff(&left, &right, CompareOptions::default());
-        assert!(mismatches.is_empty(), "неожиданные расхождения: {mismatches:?}");
+        assert!(
+            mismatches.is_empty(),
+            "неожиданные расхождения: {mismatches:?}"
+        );
     }
 
     fn assert_differs(left: serde_json::Value, right: serde_json::Value) {
@@ -172,7 +180,16 @@ mod tests {
         let l = json!({ "score": 0.30000000000000004 });
         let r = json!({ "score": 0.3 });
         assert!(!diff(&l, &r, CompareOptions::default()).is_empty());
-        assert!(diff(&l, &r, CompareOptions { float_tolerance: 1e-9 }).is_empty());
+        assert!(
+            diff(
+                &l,
+                &r,
+                CompareOptions {
+                    float_tolerance: 1e-9
+                }
+            )
+            .is_empty()
+        );
     }
 
     #[test]

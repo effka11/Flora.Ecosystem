@@ -1,5 +1,10 @@
 # Зафиксированный toolchain (next-architecture.md §2.1). Обновление — осознанным коммитом.
+#
+# Windows без MSVC Build Tools: линковка msvc-toolchain падает (нет msvcrt.lib / Windows SDK).
+# Вариант без установки VS: локальный override на GNU-хост (состояние rustup, не файл в репо):
+#   rustup toolchain install 1.97.0-x86_64-pc-windows-gnu
+#   rustup override set 1.97.0-x86_64-pc-windows-gnu --path Backend
 [toolchain]
-channel = "1.93.1"
+channel = "1.97.0"
 components = ["rustfmt", "clippy"]
 profile = "minimal"

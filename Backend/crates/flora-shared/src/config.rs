@@ -170,7 +170,11 @@ fn push_json_layer(layers: &mut Vec<serde_json::Value>, path: &Path) -> Result<(
     Ok(())
 }
 
-fn flatten_json(prefix: &str, value: &serde_json::Value, out: &mut HashMap<String, Option<String>>) {
+fn flatten_json(
+    prefix: &str,
+    value: &serde_json::Value,
+    out: &mut HashMap<String, Option<String>>,
+) {
     match value {
         serde_json::Value::Object(map) => {
             for (key, child) in map {
@@ -231,8 +235,14 @@ mod tests {
             ],
             &[
                 ("Jwt__Secret".into(), "from-env-var".into()),
-                ("ConnectionStrings__FloraDatabase".into(), "Host=x;Port=5432".into()),
-                ("FloraWeb__CorsOrigins__0".into(), "https://flora.example".into()),
+                (
+                    "ConnectionStrings__FloraDatabase".into(),
+                    "Host=x;Port=5432".into(),
+                ),
+                (
+                    "FloraWeb__CorsOrigins__0".into(),
+                    "https://flora.example".into(),
+                ),
             ],
         )
     }
@@ -254,7 +264,10 @@ mod tests {
     #[test]
     fn env_double_underscore_maps_to_sections() {
         let cfg = sample();
-        assert_eq!(cfg.get("ConnectionStrings:FloraDatabase"), Some("Host=x;Port=5432"));
+        assert_eq!(
+            cfg.get("ConnectionStrings:FloraDatabase"),
+            Some("Host=x;Port=5432")
+        );
     }
 
     #[test]
@@ -262,7 +275,10 @@ mod tests {
         let cfg = sample();
         assert_eq!(
             cfg.get_string_array("FloraWeb:CorsOrigins"),
-            vec!["https://flora.example".to_string(), "http://localhost:3001".to_string()],
+            vec![
+                "https://flora.example".to_string(),
+                "http://localhost:3001".to_string()
+            ],
         );
     }
 
@@ -272,7 +288,11 @@ mod tests {
         assert_eq!(cfg.get("Smtp:EnableSsl"), Some("True"));
         assert_eq!(cfg.get_bool("Smtp:EnableSsl"), Some(true));
         assert_eq!(cfg.get_i64("Smtp:Port"), Some(587));
-        assert_eq!(cfg.get("Media:FfprobePath"), None, "JSON null = отсутствие значения");
+        assert_eq!(
+            cfg.get("Media:FfprobePath"),
+            None,
+            "JSON null = отсутствие значения"
+        );
         assert_eq!(cfg.get_non_empty("Jwt:Secret"), Some("from-env-var"));
     }
 

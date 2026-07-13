@@ -1,0 +1,15 @@
+[package]
+name = "flora-image-codec"
+description = "FIC (Flora Image Codec) — нативный фото-кодек Flora: lossless (YCoCg-R + MED + rANS) и lossy (DCT 8x8 + rANS). Спецификация: docs/codecs/FIC.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Ядро кодека сознательно без зависимостей (чистый std):
+# аудируемость, детерминизм и будущая компиляция декодера в WASM для Apps/Web.
+[dependencies]

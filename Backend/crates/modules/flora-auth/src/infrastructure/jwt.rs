@@ -42,7 +42,10 @@ impl JwtOptions {
     /// продукт (flora-social), как `AddFloraJwtBearer` в C#.
     pub fn from_config(cfg: &flora_shared::config::FloraConfig) -> Self {
         Self {
-            issuer: cfg.get_non_empty("Jwt:Issuer").unwrap_or("Flora.Auth").to_string(),
+            issuer: cfg
+                .get_non_empty("Jwt:Issuer")
+                .unwrap_or("Flora.Auth")
+                .to_string(),
             audience: cfg
                 .get_non_empty("Jwt:Audience")
                 .unwrap_or("Flora.Ecosystem")
@@ -134,7 +137,8 @@ pub fn validate_access_token(
     let mut mac = HmacSha256::new_from_slice(options.secret.as_bytes())
         .expect("HMAC принимает ключ любой длины");
     mac.update(signing_input.as_bytes());
-    mac.verify_slice(&signature).map_err(|_| JwtError::Signature)?;
+    mac.verify_slice(&signature)
+        .map_err(|_| JwtError::Signature)?;
 
     let payload = decode_json_part(payload_b64)?;
 
@@ -158,7 +162,9 @@ pub fn validate_access_token(
     match payload.get("aud") {
         Some(serde_json::Value::String(aud)) if aud == &options.audience => {}
         Some(serde_json::Value::Array(auds))
-            if auds.iter().any(|a| a.as_str() == Some(options.audience.as_str())) => {}
+            if auds
+                .iter()
+                .any(|a| a.as_str() == Some(options.audience.as_str())) => {}
         _ => return Err(JwtError::Audience),
     }
 
@@ -177,7 +183,9 @@ fn sign(secret: &[u8], input: &[u8]) -> Vec<u8> {
 }
 
 fn decode_json_part(b64: &str) -> Result<serde_json::Value, JwtError> {
-    let bytes = URL_SAFE_NO_PAD.decode(b64).map_err(|_| JwtError::Malformed)?;
+    let bytes = URL_SAFE_NO_PAD
+        .decode(b64)
+        .map_err(|_| JwtError::Malformed)?;
     serde_json::from_slice(&bytes).map_err(|_| JwtError::Malformed)
 }
 
@@ -185,10 +193,7 @@ fn as_unix_seconds(value: &serde_json::Value) -> Option<i64> {
     value.as_i64().or_else(|| value.as_f64().map(|f| f as i64))
 }
 
-fn required_string(
-    payload: &serde_json::Value,
-    claim: &'static str,
-) -> Result<String, JwtError> {
+fn required_string(payload: &serde_json::Value, claim: &'static str) -> Result<String, JwtError> {
     payload
         .get(claim)
         .and_then(|v| v.as_str())
@@ -233,7 +238,12 @@ mod tests {
         let token = issue_access_token(&options(), &claims(NOW + 900));
         let payload_b64 = token.split('.').nth(1).unwrap();
         let payload = decode_json_part(payload_b64).unwrap();
-        let keys: Vec<&str> = payload.as_object().unwrap().keys().map(String::as_str).collect();
+        let keys: Vec<&str> = payload
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
         assert_eq!(
             keys,
             vec![
@@ -256,7 +266,10 @@ mod tests {
             secret: "another-secret-0123456789-0123456789".into(),
             ..options()
         };
-        assert_eq!(validate_access_token(&other, &token, NOW), Err(JwtError::Signature));
+        assert_eq!(
+            validate_access_token(&other, &token, NOW),
+            Err(JwtError::Signature)
+        );
     }
 
     #[test]
@@ -274,9 +287,18 @@ mod tests {
     #[test]
     fn rejects_wrong_issuer_or_audience() {
         let token = issue_access_token(&options(), &claims(NOW + 900));
-        let wrong_issuer = JwtOptions { issuer: "Evil".into(), ..options() };
-        assert_eq!(validate_access_token(&wrong_issuer, &token, NOW), Err(JwtError::Issuer));
-        let wrong_audience = JwtOptions { audience: "Evil".into(), ..options() };
+        let wrong_issuer = JwtOptions {
+            issuer: "Evil".into(),
+            ..options()
+        };
+        assert_eq!(
+            validate_access_token(&wrong_issuer, &token, NOW),
+            Err(JwtError::Issuer)
+        );
+        let wrong_audience = JwtOptions {
+            audience: "Evil".into(),
+            ..options()
+        };
         assert_eq!(
             validate_access_token(&wrong_audience, &token, NOW),
             Err(JwtError::Audience),

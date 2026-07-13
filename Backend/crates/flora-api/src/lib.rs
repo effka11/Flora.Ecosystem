@@ -49,10 +49,7 @@ fn cors_layer(cfg: &FloraConfig) -> Option<CorsLayer> {
     if origins.is_empty() {
         return None;
     }
-    let parsed: Vec<http::HeaderValue> = origins
-        .iter()
-        .filter_map(|o| o.parse().ok())
-        .collect();
+    let parsed: Vec<http::HeaderValue> = origins.iter().filter_map(|o| o.parse().ok()).collect();
     Some(
         CorsLayer::new()
             .allow_origin(AllowOrigin::list(parsed))
@@ -65,7 +62,9 @@ fn cors_layer(cfg: &FloraConfig) -> Option<CorsLayer> {
 /// Адрес прослушивания хоста: `Gateway:Listen`, по умолчанию локальный порт 5290
 /// (рядом с 5284 у .NET — nginx смотрит на этот порт с Фазы 0).
 pub fn listen_addr(cfg: &FloraConfig) -> anyhow::Result<SocketAddr> {
-    let raw = cfg.get_non_empty("Gateway:Listen").unwrap_or("127.0.0.1:5290");
+    let raw = cfg
+        .get_non_empty("Gateway:Listen")
+        .unwrap_or("127.0.0.1:5290");
     raw.parse()
         .map_err(|e| anyhow::anyhow!("Gateway:Listen '{raw}' не является адресом host:port: {e}"))
 }

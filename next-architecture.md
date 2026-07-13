@@ -248,7 +248,7 @@ flowchart LR
 
 | Единица | Владелец сейчас | Статус | Freeze-окно |
 | --- | --- | --- | --- |
-| Хост / шлюз (`/`, `/health`, `/version`) | C# `Flora.API` | Фаза 0 не начата | — |
+| Хост / шлюз (`/`, `/health`, `/version`) | C# `Flora.API` | Фаза 0: код готов (`Backend/` собран, паритет-тесты зелёные), ждёт деплой + nginx-флип и соак | — |
 | Music | C# | не начат | — |
 | Verification | C# | не начат | — |
 | Users | C# | не начат | — |
@@ -269,6 +269,8 @@ flowchart LR
 
 Идеальный пилот: ни входящих, ни исходящих межмодульных зависимостей, свой контроллер уже в модуле. Скоуп: 22 эндпоинта `/api/music/*`, аудио-транскод ffmpeg, обложки/аудио из `bytea`, FIRA-M (`/flow`), таксономия жанров, воркеры `MusicArtistBackfillHostedService` (однократный) и `MusicArtistOrphanCleanupHostedService` (5 мин). Нативные JWT-валидация и rate-limit в Rust для этих маршрутов.
 
+FIRA-M: формулы as-built ([`FIRA-M.md`](docs/fira/FIRA-M.md) §Implementation Status) переносятся 1:1; golden-вектора скорера снимаются с C# до начала фазы. Конфиг-секция `FiraMusic` в `appsettings.json` **отсутствует** — production работает на дефолтах кода (`WeightBeta = 0.75`, `WeightGamma = 0.25`, `RecencyBoostDays = 14`, `MaxCandidates = 500` и др., см. `MusicRecommendationOptions`), Rust обязан продублировать эти дефолты бит-в-бит. Exploration-хвост волны стохастический — исключается из diff-сравнения (`flora-diff` сравнивает детерминированный префикс).
+
 **Выход:** фикстуры и диффы зелёные; канарейка (например, `GET`-маршруты → 10% → 100%, затем записи) без регрессий; p95 и память не хуже .NET. **Откат:** флип маршрутов на прокси + остановка Rust-воркеров.
 
 ### Фаза 2a — Verification (пилот межъязыкового порта)
@@ -281,11 +283,13 @@ flowchart LR
 
 Мигрируют вместе (Auth → `IUserProfileProvisioner`/`IUserProfileReadQueries` остаются in-process). Скоуп: 35 эндпоинтов (login/refresh/logout/2FA/sessions/email-change; профили/аватары/подписки/блокировки/поиск/FIRA-P), таблицы `user_accounts`, `user_sessions`, `pending_registrations`, `user_security_logs`, `user_profiles`, `user_avatars`, `user_followers` и др. Все инварианты §4.1 доказываются до флипа; сессии продолжают жить в той же таблице — активные пользователи ничего не замечают. Поднимаются мосты: Rust-серверы users-read/auth-read для C# Content/Notifications; Rust-клиент к C# content-stats.
 
+FIRA-P: формулы as-built ([`FIRA-P.md`](docs/fira/FIRA-P.md) §Implementation Status) и конфиг-секция `UserRecommendation` переносятся 1:1; golden-вектора скорера — до начала фазы. Гигиена FIRA v1.1 (блоклист в кандидатном пуле FIRA-P — критичное приватностное отклонение) закрывается на C#-стороне **до** снятия векторов, чтобы не тащить дефект через freeze (см. [`FIRA.md`](docs/fira/FIRA.md) §17).
+
 **Выход:** логин, refresh-ротация, 2FA, регистрация с email-кодом — в проде на Rust; кросс-языковая валидность JWT подтверждена в бою. **Откат:** флип маршрутов (сессии совместимы, C#-код на месте).
 
 ### Фаза 3 — Content
 
-Самая большая HTTP-поверхность (39): лента + FIRA-F, посты/черновики/комментарии/лайки/репосты/просмотры, изображения/видео (`PostVideoTranscodeWorker`), сообщества + FIRA-C. Мосты Users↔Content умирают (порты снова in-process). Особое внимание — **числовой паритет FIRA**: формулы те же (f64), сравнение ранжирования differential-тестами top-K с допуском; конфиг-секции `FiraFeed`/`FeedRecommendation`/`CommunityRecommendation` читаются без изменений.
+Самая большая HTTP-поверхность (39): лента + FIRA-F, посты/черновики/комментарии/лайки/репосты/просмотры, изображения/видео (`PostVideoTranscodeWorker`), сообщества + FIRA-C. Мосты Users↔Content умирают (порты снова in-process). Особое внимание — **числовой паритет FIRA**: формулы те же (f64), сравнение ранжирования differential-тестами top-K с допуском; конфиг-секции `FiraFeed`/`FeedRecommendation`/`CommunityRecommendation` читаются без изменений (refresh-ключи `FiraFeed` в `appsettings.json` отсутствуют — дефолты кода дублируются в Rust). Нормативные as-built формулы и стохастические точки (exploration `ORDER BY random()`, refresh-shuffle — исключаются из диффа): [`FIRA-F.md`](docs/fira/FIRA-F.md), [`FIRA-C.md`](docs/fira/FIRA-C.md) §Implementation Status; golden-вектора скореров и постобработки (author diversity, интерливинг) — до начала фазы; дифф ленты — при `refresh=false` ([`FIRA.md`](docs/fira/FIRA.md) §15).
 
 **Выход:** дифф ленты в допуске, транскод стабилен, канарейка → 100%. **Откат:** флип маршрутов + остановка воркера транскода.
 
@@ -303,7 +307,7 @@ flowchart LR
 
 ## 7. Стратегия верификации
 
-1. **Golden-вектора (unit):** UUID v5/v7, Argon2 (verify хешей, созданных C#), TOTP, JWT (кросс-языковая валидация), FSCP-конверты ([`docs/test-vectors/`](docs/test-vectors/README.md) + негативные кейсы). Вектора генерируются из C# **до** переноса соответствующего кода.
+1. **Golden-вектора (unit):** UUID v5/v7, Argon2 (verify хешей, созданных C#), TOTP, JWT (кросс-языковая валидация), FSCP-конверты, FIRA-скореры всех четырёх компонентов «кандидат → Score» + позиционные фикстуры постобработки FIRA-F ([`docs/test-vectors/`](docs/test-vectors/README.md) + негативные кейсы; детерминизм и tie-break'и — [`FIRA.md`](docs/fira/FIRA.md) §15). Вектора генерируются из C# **до** переноса соответствующего кода.
 2. **Contract fixtures (контракт):** существующий механизм [`tests/Flora.ContractFixtures`](tests/Flora.ContractFixtures) → `artifacts/contract-fixtures/` → TS-тесты client-core. Расширяется на все мигрируемые поверхности; Rust-интеграционные тесты обязаны выдавать те же формы. Один и тот же набор фикстур проверяет **оба** бэкенда, пока они живы.
 3. **Differential/shadow (система):** `flora-diff` — replay реального GET-трафика на оба апстрима с семантическим диффом (нормализация дат, tolerance для FIRA-скоринга); на staging — постоянно, в проде — зеркалирование читающих маршрутов перед канарейкой фазы.
 4. **Смоки клиентов (e2e):** `npm run ci` (contract-парсеры client-core) на фикстурах обоих бэкендов + ручной прогон критических сценариев Web/Mobile на staging перед каждым cutover (логин, лента, отправка E2E-сообщения, пуш).
@@ -351,7 +355,10 @@ flowchart LR
 
 ## 11. Открытые вопросы (закрыть до соответствующей фазы)
 
-1. **До Фазы 0:** выбор инструмента миграций (sqlx migrate vs refinery) под требование «история на модуль»; пиновка версий crates; где живёт конфиг Rust-хоста (формат файла, порядок override).
+1. **До Фазы 0 — закрыто:**
+   - Миграции — **sqlx migrate**: история на модуль через `Migrator::dangerous_set_table_name("__flora_migrations_<module>")` (продолжение паттерна `__EFMigrationsHistory_*`; реестр — `Backend/crates/flora-migrate/src/registry.rs`). refinery отвергнут: sqlx уже в стеке, второй инструмент не нужен.
+   - Пиновка версий — toolchain в `Backend/rust-toolchain.toml` (обновление осознанным коммитом); версии crates объявляются только в `workspace.dependencies`, фактическая пиновка — закоммиченный `Cargo.lock` (CI собирает с `--locked`); `cargo deny` следит за лицензиями (AGPL-совместимость), дублями и advisories.
+   - Конфиг Rust-хоста — те же слои и семантика, что у ASP.NET (§4.8): `Backend/appsettings.json` → `appsettings.{Environment}.json` → (Development) `appsettings.Local.json` → env-переменные с `__`; ключи регистронезависимы; каталог переопределяется `FLORA_CONFIG_DIR`; реализация — `flora_shared::config`.
 2. **До Фазы 1:** применяются ли какие-то rate-limit политики к `/api/music/*` в текущем .NET (проверить и воспроизвести); есть ли серверная обработка изображений (resize обложек) или байты хранятся как загружены.
 3. **До Фазы 2b:** фикстура фактического JWT (полный wire-набор клеймов); инвентаризация форматов `nextCursor` по всем эндпоинтам identity; серверный пайплайн аватаров (resize?).
 4. **До Фазы 4:** решение по 13 legacy-маршрутам messaging (вывод vs перенос) — зависит от консолидации веба на client-core; стратегия дренажа SSE-подключений при cutover (мягкое закрытие → reconnect на Rust).

@@ -20,7 +20,10 @@ pub fn contract_fixtures_dir() -> PathBuf {
 }
 
 pub fn golden_vectors_dir() -> PathBuf {
-    repo_root().join("docs").join("test-vectors").join("backend-parity")
+    repo_root()
+        .join("docs")
+        .join("test-vectors")
+        .join("backend-parity")
 }
 
 pub fn load_json(path: &std::path::Path) -> anyhow::Result<serde_json::Value> {

@@ -1,11 +1,11 @@
 # FIRA-M — Music Recommendations
 
-**Status:** Draft  
-**Version:** 0.2  
-**Date:** 2026-06-09  
+**Status:** Active — целевая спека; в production Phase 0 «Music Flow» (§Implementation Status)  
+**Version:** 0.3  
+**Date:** 2026-07-13  
 **Depends on:** [`FIRA.md`](./FIRA.md)
 
-> **Forward Spec.** Модуль `Modules/Flora.Music` на момент написания не реализован. Этот документ описывает целевую архитектуру. Реализация требует создания `Flora.Music` согласно разделу «Требуемая инфраструктура».
+> Изменения 0.2 → 0.3: снята пометка Forward Spec — модуль `Flora.Music` создан (треки, артисты, жанры, плейлисты, избранное) и **Phase 0 FIRA-M работает в production** как «Music Flow» (`GET /api/music/flow`). Listening-инфраструктура (`ListeningEvent`, onboarding, skip-сигналы) остаётся целевой (v2). Добавлен раздел **Implementation Status (as-built v1)**. **Критично для миграции:** `Flora.Music` — **Фаза 1** Rust-миграции, первый FIRA-компонент, уходящий в Rust; формулы as-built замораживаются и переносятся 1:1, целевые расширения (v2) реализуются уже на Rust-стороне (`next-architecture.md` §5.1, §6).
 
 ---
 
@@ -33,24 +33,24 @@ FIRA-M — компонент системы FIRA, отвечающий за р�
 
 ## Architecture Position
 
-**Модуль-владелец:** `Modules/Flora.Music` (подлежит созданию)
+**Модуль-владелец:** `Modules/Flora.Music` (реализован)
 
 ```
-Flora.Social (HTTP controller)  ← или будущий Flora.Music.API
+MusicController (Modules/Flora.Music, /api/music/flow)
   └─→ IMusicRecommendationService  (Flora.Music.Contracts)
         └─→ MusicRecommendationService  (Flora.Music.Application)
-              ├─→ IMusicRecommendationQueries  (Flora.Music.Infrastructure)
-              ├─→ IListeningHistoryRepository  (Flora.Music.Infrastructure)
-              └─→ FiraContext (UIP расширенный + social graph snapshot)
+              ├─→ IMusicRecommendationRepository  (порт; реализация в Flora.Music.Infrastructure)
+              ├─→ IListeningHistoryRepository  (target v2)
+              └─→ FiraContext (UIP расширенный + social graph snapshot — target v2)
 ```
 
-`Flora.Music` — самостоятельный модуль с собственной БД. Никакой бизнес-логики музыкальных рекомендаций не должно быть в `Flora.Content`, `Flora.Social` или `Flora.Shared`.
+`Flora.Music` — самостоятельный модуль с собственной БД (`MusicDbContext`, схема `flora_core`) и **собственным контроллером** — в отличие от F/C/P, HTTP-поверхность музыки не проходит через `Flora.Social`. Никакой бизнес-логики музыкальных рекомендаций нет в `Flora.Content`, `Flora.Social` или `Flora.Shared`.
 
 ---
 
 ## Требуемая инфраструктура (Flora.Music module)
 
-Для реализации FIRA-M необходимо создать полноценный модуль:
+Базовый модуль создан: `MusicTrack`, `MusicArtist` (+credits), `MusicFavorite`, `MusicPlaylist`, жанровый каталог, transcoding. Из перечисленного ниже **не реализовано** (target v2): `ListeningEvent` + `ListeningContext`, `UserMusicPreferences` (onboarding), `UserFollowedArtist`, `MusicUipExtensionService`, `TemporalPatternAnalyzer`, `ArtistGraphReader`. Сигнатуры ниже — целевые; фактические контракты см. [`MusicRecommendationContracts.cs`](../../Modules/Flora.Music/Flora.Music.Contracts/MusicRecommendationContracts.cs):
 
 ### Flora.Music.Domain
 
@@ -148,6 +148,8 @@ record MusicRecommendationOptions(int PageSize = 30, bool IncludeExplored = true
 - **temporalContext** — время суток и день недели текущего запроса.
 
 ### Шаг 3 — Скоринг
+
+*Target v2* — формулы ниже требуют listening-событий и музыкального UIP; production-скоринг v1 описан в §Implementation Status.
 
 ```
 Score(track) = α · IndividualAffinity(track, UIP)
@@ -381,6 +383,43 @@ FIRA-M — единственный компонент, где cold start **не
 | Размер пула кандидатов | Configurable (`candidatePoolSize`, дефолт: 300) |
 | История для CF | Последние 500 `ListeningEvent` пользователя |
 | Политика обновления (полная) | [`FIRA.md §13`](./FIRA.md) |
+
+---
+
+## Implementation Status (as-built v1 — «Music Flow»)
+
+Production-реализация: [`MusicRecommendationService.cs`](../../Modules/Flora.Music/Flora.Music.Application/Recommendations/MusicRecommendationService.cs) + [`MusicRecommendationRepository.cs`](../../Modules/Flora.Music/Flora.Music.Infrastructure/MusicRecommendationRepository.cs); эндпоинт `GET /api/music/flow` (`MusicController`). **Референс паритета для Rust-порта Фазы 1 — первый переносимый FIRA-компонент**; golden-вектора снимаются с этих формул до начала Фазы 1 ([`FIRA.md §15`](./FIRA.md)).
+
+**Кандидаты:** опубликованные платформенные треки — весь каталог либо срез по `genreId`/`subgenreId` из запроса, лимит `MaxCandidates = 500`. Отдельных источников/весов пула нет.
+
+**Жанровые веса пользователя** (прокси музыкального вкуса при отсутствии listening-событий): `weight(genre) = 2 × собственные треки жанра + 1 × избранные треки жанра`; нормируются на максимум по жанрам пользователя → `genreAffinity ∈ [0, 1]`.
+
+**Скоринг v1:**
+
+```
+globalRelevance = max(0, RecencyBoostDays − releaseAgeDays) / RecencyBoostDays   // линейный, 14 дней
+genreAffinity   = genreWeight(track.GenreId) / maxGenreWeight                   // 0 если жанра нет / нет весов
+
+Score = WeightAlpha × 0.0              // 0.0  — α-слот зарезервирован под listening-based IA (v2)
+      + WeightBeta  × globalRelevance  // 0.75
+      + WeightGamma × genreAffinity    // 0.25 — см. семантическое отклонение ниже
+```
+
+Tie-break: `Score desc → PublishedAt desc → Title asc (case-insensitive)`.
+
+**Выдача («волна»):** snapshot ранжированного списка в кэше `flora:fira-m:v1:{userUuid}:{genre}:{subgenre}` (**per-user + per-scope**), TTL `CacheTtlSeconds = 180`; из snapshot исключаются `ExcludeTrackUuids` клиента (уже проигранные в сессии — серверного skip-трекинга нет); батч = топ `take·(1−ε)` + случайные `take·ε` из хвоста (`ExplorationQuota = 0.15`, clamp ≤ 0.5). Инвалидации нет — обновление по TTL; `generatedAt`/`expiresAt` в `MusicFlowWaveDto`.
+
+**Конфигурация** — секция `FiraMusic`. **В `appsettings.json` секция отсутствует — действуют дефолты кода** (для Rust-порта их обязательно продублировать бит-в-бит; см. [`FIRA.md §15`](./FIRA.md)): `WeightAlpha = 0.0`, `WeightBeta = 0.75`, `WeightGamma = 0.25`, `ExplorationQuota = 0.15`, `CacheTtlSeconds = 180`, `RecencyBoostDays = 14`, `MaxCandidates = 500`.
+
+### Карта отклонений (нормативная)
+
+| # | Отклонение | Факт | Решение |
+|---|-----------|------|---------|
+| 1 | **γ-слот занят жанровой аффинити** | `WeightGamma` умножается на `genreAffinity`, семантически это α·IA-сигнал (личный вкус), а не SocialProximity | техдолг конфига: при введении listening-based IA (v2) жанровая аффинити переезжает в α-слагаемое, γ освобождается под социальные сигналы (`likedByFollowed`, `followedArtistBoost`). До Фазы 1 ключи не переименовывать (freeze) — исправление на Rust-стороне вместе с v2 |
+| 2 | Exploration недетерминирован и не в snapshot | случайная выборка хвоста `Random.Shared` на каждый запрос волны | допустимо; исключается из differential-диффа ([`FIRA.md §15`](./FIRA.md)) |
+| 3 | Dislike / skip-исключения | нет listening-событий — исключение только клиентским `ExcludeTrackUuids` | v2 |
+| 4 | Onboarding жанров | не реализован; Phase 0 работает без mandatory onboarding (прокси — собственные/избранные треки) | v2; требование «onboarding блокирует выдачу» смягчено — Flow работает и без выбора жанров |
+| 5 | Неалгоритмический fallback | нет отдельного топ-чарта/новых релизов без персонализации | v1.1 — требование суверенитета [`FIRA.md §16`](./FIRA.md) |
 
 ---
 

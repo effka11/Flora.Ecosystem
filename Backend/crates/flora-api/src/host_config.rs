@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use flora_shared::config::{environment_name, FloraConfig};
+use flora_shared::config::{FloraConfig, environment_name};
 
 /// Плейсхолдеры, при которых секрет считается «не заданным» —
 /// порт `FloraJwtExtensions.IsWeakOrPlaceholderSecret`.
@@ -59,9 +59,7 @@ pub fn load_host_config() -> anyhow::Result<FloraConfig> {
     let mut cfg = FloraConfig::load(&environment, &dir)
         .map_err(|e| anyhow::anyhow!("конфигурация ({}): {e}", dir.display()))?;
 
-    if cfg.is_development()
-        && should_mint_ephemeral_development_secret(cfg.get("Jwt:Secret"))
-    {
+    if cfg.is_development() && should_mint_ephemeral_development_secret(cfg.get("Jwt:Secret")) {
         cfg = with_ephemeral_jwt_secret(cfg);
         tracing::info!("Development: выпущен эфемерный Jwt:Secret (сбрасывается при рестарте)");
     }

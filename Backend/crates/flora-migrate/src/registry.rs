@@ -29,13 +29,41 @@ impl ModuleMigrations {
 /// Порядок применения повторяет порядок композиции продукта (§2.4).
 pub fn registry() -> Vec<ModuleMigrations> {
     vec![
-        ModuleMigrations { module: "users", current_owner: "C#", migrator: None },
-        ModuleMigrations { module: "verification", current_owner: "C#", migrator: None },
-        ModuleMigrations { module: "auth", current_owner: "C#", migrator: None },
-        ModuleMigrations { module: "notifications", current_owner: "C#", migrator: None },
-        ModuleMigrations { module: "content", current_owner: "C#", migrator: None },
-        ModuleMigrations { module: "messaging", current_owner: "C#", migrator: None },
-        ModuleMigrations { module: "music", current_owner: "C#", migrator: None },
+        ModuleMigrations {
+            module: "users",
+            current_owner: "C#",
+            migrator: None,
+        },
+        ModuleMigrations {
+            module: "verification",
+            current_owner: "C#",
+            migrator: None,
+        },
+        ModuleMigrations {
+            module: "auth",
+            current_owner: "C#",
+            migrator: None,
+        },
+        ModuleMigrations {
+            module: "notifications",
+            current_owner: "C#",
+            migrator: None,
+        },
+        ModuleMigrations {
+            module: "content",
+            current_owner: "C#",
+            migrator: None,
+        },
+        ModuleMigrations {
+            module: "messaging",
+            current_owner: "C#",
+            migrator: None,
+        },
+        ModuleMigrations {
+            module: "music",
+            current_owner: "C#",
+            migrator: None,
+        },
     ]
 }
 
@@ -45,11 +73,18 @@ mod tests {
 
     #[test]
     fn history_tables_are_per_module_and_snake_case() {
-        let names: Vec<String> = registry().iter().map(ModuleMigrations::history_table).collect();
+        let names: Vec<String> = registry()
+            .iter()
+            .map(ModuleMigrations::history_table)
+            .collect();
         assert_eq!(names.len(), 7);
         assert!(names.contains(&"__flora_migrations_music".to_string()));
         let unique: std::collections::HashSet<&String> = names.iter().collect();
-        assert_eq!(unique.len(), names.len(), "таблицы истории не должны совпадать");
+        assert_eq!(
+            unique.len(),
+            names.len(),
+            "таблицы истории не должны совпадать"
+        );
     }
 
     #[test]

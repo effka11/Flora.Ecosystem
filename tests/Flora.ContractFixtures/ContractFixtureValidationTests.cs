@@ -18,6 +18,10 @@ public sealed class ContractFixtureValidationTests
         ["messaging-messages.json", new[] { "items" }],
         ["messaging-unread-count.json", new[] { "unreadCount" }],
         ["notifications-page.json", new[] { "items" }],
+        ["music-library.json", new[] { "tracks" }],
+        ["music-playlists.json", new[] { "playlists" }],
+        ["e2e-state.json", new[] { "state", "freeze", "updatedAt" }],
+        ["e2e-key-backup.json", new[] { "version", "backupKeyId", "kdf", "aead", "ciphertextBase64Url" }],
     ];
 
     [Theory]
@@ -31,6 +35,24 @@ public sealed class ContractFixtureValidationTests
         foreach (var key in requiredKeys)
         {
             Assert.True(doc.RootElement.TryGetProperty(key, out _), $"Fixture {fileName} missing key '{key}'");
+        }
+    }
+
+    [Fact]
+    public void Recovery_backups_fixture_is_array_without_ciphertext()
+    {
+        // GET /api/messaging/e2e/recovery-backups — массив RecoveryBackupMeta в корне;
+        // ciphertext отдаёт только точечный GET recovery-backup/{id}.
+        var path = Path.Combine(FixturesDir, "e2e-recovery-backups.json");
+        Assert.True(File.Exists(path), $"Missing fixture: {path}");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
+        foreach (var entry in doc.RootElement.EnumerateArray())
+        {
+            Assert.True(entry.TryGetProperty("recoveryKeyId", out _));
+            Assert.False(
+                entry.TryGetProperty("ciphertextBase64Url", out _),
+                "метаданные recovery-backups не должны содержать ciphertext");
         }
     }
 

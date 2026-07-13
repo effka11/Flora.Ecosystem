@@ -1,0 +1,18 @@
+[package]
+name = "fvc-cli"
+description = "CLI видеокодека FVC: encode / decode / info / psnr."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "fvc"
+path = "src/main.rs"
+
+[dependencies]
+fvc = { path = "../fvc" }
+
+[lints]
+workspace = true

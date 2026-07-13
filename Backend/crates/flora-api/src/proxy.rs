@@ -13,8 +13,8 @@ use axum::extract::ConnectInfo;
 use axum::response::{IntoResponse, Response};
 use http::uri::{Authority, Scheme};
 use http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode, Uri};
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
+use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 
 /// Апстрим .NET-хоста (`Gateway:DotnetUpstream`, например `http://127.0.0.1:5284`).
@@ -78,9 +78,15 @@ pub fn proxy_service(upstream: DotnetUpstream) -> axum::routing::MethodRouter {
         .build(connector);
 
     let state = ProxyState { upstream, client };
-    axum::routing::any(move |connect: Option<ConnectInfo<SocketAddr>>, request: Request<Body>| {
+    axum::routing::any(move |request: Request<Body>| {
         let state = state.clone();
-        async move { forward(state, connect.map(|c| c.0), request).await }
+        // ConnectInfo берём из extensions (into_make_service_with_connect_info),
+        // а не экстрактором: в тестах без TCP-подключения его нет — это допустимо.
+        let peer = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|c| c.0);
+        async move { forward(state, peer, request).await }
     })
 }
 
@@ -177,7 +183,10 @@ mod tests {
         assert!(DotnetUpstream::parse("http://127.0.0.1:5284").is_some());
         assert!(DotnetUpstream::parse("http://127.0.0.1:5284/").is_some());
         assert!(DotnetUpstream::parse("http://127.0.0.1:5284/api").is_none());
-        assert!(DotnetUpstream::parse("127.0.0.1:5284").is_none(), "нужна схема");
+        assert!(
+            DotnetUpstream::parse("127.0.0.1:5284").is_none(),
+            "нужна схема"
+        );
         assert!(DotnetUpstream::parse("").is_none());
     }
 
@@ -186,7 +195,10 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(X_FORWARDED_FOR, HeaderValue::from_static("203.0.113.7"));
         append_forwarded_for(&mut headers, Some("127.0.0.1:9999".parse().unwrap()));
-        assert_eq!(headers.get(X_FORWARDED_FOR).unwrap(), "203.0.113.7, 127.0.0.1");
+        assert_eq!(
+            headers.get(X_FORWARDED_FOR).unwrap(),
+            "203.0.113.7, 127.0.0.1"
+        );
     }
 
     #[test]
@@ -199,9 +211,18 @@ mod tests {
     #[test]
     fn hop_by_hop_headers_are_stripped_including_connection_listed() {
         let mut headers = HeaderMap::new();
-        headers.insert(http::header::CONNECTION, HeaderValue::from_static("close, x-custom-hop"));
-        headers.insert(HeaderName::from_static("x-custom-hop"), HeaderValue::from_static("1"));
-        headers.insert(HeaderName::from_static("keep-alive"), HeaderValue::from_static("30"));
+        headers.insert(
+            http::header::CONNECTION,
+            HeaderValue::from_static("close, x-custom-hop"),
+        );
+        headers.insert(
+            HeaderName::from_static("x-custom-hop"),
+            HeaderValue::from_static("1"),
+        );
+        headers.insert(
+            HeaderName::from_static("keep-alive"),
+            HeaderValue::from_static("30"),
+        );
         headers.insert(http::header::ACCEPT, HeaderValue::from_static("*/*"));
         strip_hop_by_hop(&mut headers);
         assert!(headers.get("x-custom-hop").is_none());

@@ -9,8 +9,14 @@ use crate::versions::FloraVersionResponse;
 
 pub fn host_router(versions: FloraVersionResponse) -> Router {
     Router::new()
-        .route("/", get(|| async { Json(json!({ "service": "Flora.API", "status": "ready" })) }))
-        .route("/health", get(|| async { Json(json!({ "status": "healthy" })) }))
+        .route(
+            "/",
+            get(|| async { Json(json!({ "service": "Flora.API", "status": "ready" })) }),
+        )
+        .route(
+            "/health",
+            get(|| async { Json(json!({ "status": "healthy" })) }),
+        )
         .route("/version", get(move || async move { Json(versions) }))
 }
 
@@ -27,7 +33,9 @@ mod tests {
             .await
             .unwrap();
         let status = response.status();
-        let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
     }
 
@@ -54,7 +62,10 @@ mod tests {
         let (status, body) = get_json(host_router(sample_versions()), "/version").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["api"], env!("CARGO_PKG_VERSION"));
-        assert!(body.as_object().unwrap().contains_key("commit"), "commit обязан присутствовать");
+        assert!(
+            body.as_object().unwrap().contains_key("commit"),
+            "commit обязан присутствовать"
+        );
     }
 
     #[tokio::test]

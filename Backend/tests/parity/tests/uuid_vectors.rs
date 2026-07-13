@@ -5,9 +5,8 @@ use flora_shared::uuid_v5;
 use uuid::Uuid;
 
 fn vector() -> serde_json::Value {
-    load_json(&golden_vectors_dir().join("uuid-v1.json")).expect(
-        "нет uuid-v1.json — сгенерируйте из C#: ./Scripts/generate-golden-vectors.ps1",
-    )
+    load_json(&golden_vectors_dir().join("uuid-v1.json"))
+        .expect("нет uuid-v1.json — сгенерируйте из C#: ./Scripts/generate-golden-vectors.ps1")
 }
 
 #[test]
@@ -69,7 +68,11 @@ fn v7_bytes_interpretation_matches_csharp() {
         }
         let parsed = Uuid::from_bytes(bytes);
 
-        assert_eq!(parsed.to_string(), expected_string, "форматирование из байт");
+        assert_eq!(
+            parsed.to_string(),
+            expected_string,
+            "форматирование из байт"
+        );
         assert_eq!(parsed.get_version_num(), 7);
 
         let (secs, nanos) = parsed.get_timestamp().unwrap().to_unix();

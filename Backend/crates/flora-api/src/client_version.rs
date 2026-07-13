@@ -4,11 +4,11 @@
 //! ответ 426 с телом `{ error, minClientVersion }` (§4.7). Неразборчивые значения
 //! пропускаются без блокировки — как в эталоне.
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::State;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 
 pub const CLIENT_HEADER: &str = "X-Flora-Client";
@@ -19,7 +19,10 @@ pub struct MinClientVersion(pub Option<String>);
 
 impl MinClientVersion {
     pub fn from_config(cfg: &flora_shared::config::FloraConfig) -> Self {
-        Self(cfg.get_non_empty("FloraMobile:MinClientVersion").map(str::to_string))
+        Self(
+            cfg.get_non_empty("FloraMobile:MinClientVersion")
+                .map(str::to_string),
+        )
     }
 }
 
@@ -42,8 +45,10 @@ pub async fn enforce_min_client_version(
         .join(",");
 
     if let Some(client_raw) = extract_client_version(&header)
-        && let (Some(client), Some(min_version)) =
-            (DotnetVersion::parse(client_raw), DotnetVersion::parse(min_raw))
+        && let (Some(client), Some(min_version)) = (
+            DotnetVersion::parse(client_raw),
+            DotnetVersion::parse(min_raw),
+        )
         && client < min_version
     {
         return (
@@ -105,17 +110,17 @@ impl DotnetVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::routing::get;
     use axum::Router;
+    use axum::routing::get;
     use tower::util::ServiceExt;
 
     fn app(min: Option<&str>) -> Router {
-        Router::new()
-            .route("/", get(|| async { "ok" }))
-            .layer(axum::middleware::from_fn_with_state(
+        Router::new().route("/", get(|| async { "ok" })).layer(
+            axum::middleware::from_fn_with_state(
                 MinClientVersion(min.map(str::to_string)),
                 enforce_min_client_version,
-            ))
+            ),
+        )
     }
 
     async fn status_for(app: Router, header: Option<&str>) -> http::StatusCode {
@@ -123,7 +128,10 @@ mod tests {
         if let Some(h) = header {
             builder = builder.header(CLIENT_HEADER, h);
         }
-        app.oneshot(builder.body(Body::empty()).unwrap()).await.unwrap().status()
+        app.oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status()
     }
 
     #[tokio::test]
@@ -139,7 +147,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), http::StatusCode::UPGRADE_REQUIRED);
-        let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
         let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(body["error"], UPGRADE_MESSAGE);
         assert_eq!(body["minClientVersion"], "1.2.0");
@@ -148,11 +158,23 @@ mod tests {
     #[tokio::test]
     async fn passthrough_cases_match_reference() {
         // Выключено конфигом.
-        assert_eq!(status_for(app(None), Some("android/0.0.1")).await, http::StatusCode::OK);
+        assert_eq!(
+            status_for(app(None), Some("android/0.0.1")).await,
+            http::StatusCode::OK
+        );
         // Нет заголовка / нет слэша / мусорная версия / build-метка после '+'.
-        assert_eq!(status_for(app(Some("1.2.0")), None).await, http::StatusCode::OK);
-        assert_eq!(status_for(app(Some("1.2.0")), Some("android")).await, http::StatusCode::OK);
-        assert_eq!(status_for(app(Some("1.2.0")), Some("android/abc")).await, http::StatusCode::OK);
+        assert_eq!(
+            status_for(app(Some("1.2.0")), None).await,
+            http::StatusCode::OK
+        );
+        assert_eq!(
+            status_for(app(Some("1.2.0")), Some("android")).await,
+            http::StatusCode::OK
+        );
+        assert_eq!(
+            status_for(app(Some("1.2.0")), Some("android/abc")).await,
+            http::StatusCode::OK
+        );
         assert_eq!(
             status_for(app(Some("1.2.0")), Some("android/1.2.0+45")).await,
             http::StatusCode::OK,
@@ -170,7 +192,10 @@ mod tests {
 
     #[test]
     fn version_parse_matches_system_version_semantics() {
-        assert!(DotnetVersion::parse("1").is_none(), "System.Version требует ≥2 компонентов");
+        assert!(
+            DotnetVersion::parse("1").is_none(),
+            "System.Version требует ≥2 компонентов"
+        );
         assert!(DotnetVersion::parse("1.0.0.0.0").is_none());
         assert!(DotnetVersion::parse("1.a").is_none());
         assert!(DotnetVersion::parse("-1.0").is_none());
