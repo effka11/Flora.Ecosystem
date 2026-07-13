@@ -7,18 +7,24 @@ use crate::bands::{NUM_BANDS, band_range};
 use crate::bitio::{BitReader, BitWriter, rice_len, unzigzag, zigzag};
 use crate::energy::{FINE_BITS, analyze_plane, dequant_gain, dequant_gain_fine};
 use crate::error::Error;
-use crate::mdct::Mdct;
 use crate::qmath::pow2_e8;
-
-/// Шаг кадра в сэмплах (20 мс @ 48 кГц); окно MDCT — `2 * FRAME_N`.
-pub const FRAME_N: usize = 960;
+use crate::transform::{FRAME_N, FrameTransform, SHORT_BLOCKS};
 
 const HEADER_BITS: u64 = 32;
 const LAMBDA_MAX: u32 = 127;
 const ENERGY_RICE_K: u32 = 4;
 const ENERGY_Q_CLAMP: i32 = 1024;
+const FLAG_TRANSIENT: u32 = 1 << 0;
 const FLAG_MS_STEREO: u32 = 1 << 3;
 const PLC_DECAY: f32 = 0.7;
+
+/// Порог детектора транзиентов: скачок HF-энергии суб-блока относительно
+/// максимума двух предыдущих (нормативен только флаг в битстриме, не детектор).
+const TRANSIENT_RATIO: f32 = 8.0;
+const TRANSIENT_FLOOR: f32 = 1e-7;
+/// Ниже этого бюджета кадра транзиентный режим не используется: короткие кадры
+/// не получают noise-fill, и при почти нулевой аллокации дали бы провалы звука.
+const TRANSIENT_MIN_BUDGET: u16 = 512;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Config {
@@ -56,9 +62,10 @@ fn validate_stream_params(sample_rate: u32, channels: u8) -> Result<(), Error> {
 
 pub struct Encoder {
     cfg: Config,
-    mdct: Mdct,
+    transform: FrameTransform,
     /// Хвост предыдущего hop'а по каналам (домен L/R), planar.
     prev: Vec<f32>,
+    transient_detection: bool,
 }
 
 impl Encoder {
@@ -66,9 +73,16 @@ impl Encoder {
         cfg.validate()?;
         Ok(Self {
             cfg,
-            mdct: Mdct::new(FRAME_N),
+            transform: FrameTransform::new(),
             prev: vec![0.0; usize::from(cfg.channels) * FRAME_N],
+            transient_detection: true,
         })
+    }
+
+    /// Отключение детектора транзиентов (все кадры длинные) — для A/B-замеров
+    /// и отладки; битстрим остаётся валидным.
+    pub fn set_transient_detection(&mut self, enabled: bool) {
+        self.transient_detection = enabled;
     }
 
     /// Кодирует один hop из `FRAME_N * channels` interleaved-сэмплов.
@@ -94,6 +108,10 @@ impl Encoder {
             self.prev[c * FRAME_N..][..FRAME_N]
                 .copy_from_slice(&time[c * 2 * FRAME_N + FRAME_N..][..FRAME_N]);
         }
+        // Детектор — до M/S, на «сырых» каналах.
+        let transient = self.transient_detection
+            && self.cfg.frame_budget_bits() >= TRANSIENT_MIN_BUDGET
+            && detect_transient(&time, ch);
         if ch == 2 {
             let (l, r) = time.split_at_mut(2 * FRAME_N);
             for (a, b) in l.iter_mut().zip(r.iter_mut()) {
@@ -107,7 +125,8 @@ impl Encoder {
         let planes = ch;
         let mut coeffs = vec![0f32; planes * FRAME_N];
         for p in 0..planes {
-            self.mdct.forward(
+            self.transform.forward(
+                transient,
                 &time[p * 2 * FRAME_N..][..2 * FRAME_N],
                 &mut coeffs[p * FRAME_N..][..FRAME_N],
             );
@@ -162,7 +181,11 @@ impl Encoder {
         };
 
         let mut w = BitWriter::new();
-        w.write_bits(if ch == 2 { FLAG_MS_STEREO } else { 0 }, 8);
+        let mut flags = if ch == 2 { FLAG_MS_STEREO } else { 0 };
+        if transient {
+            flags |= FLAG_TRANSIENT;
+        }
+        w.write_bits(flags, 8);
         w.write_bits(lambda, 8);
         w.write_bits(u32::from(budget) & 0xFF, 8);
         w.write_bits(u32::from(budget) >> 8, 8);
@@ -180,11 +203,13 @@ impl Encoder {
 
 pub struct Decoder {
     channels: u8,
-    mdct: Mdct,
+    transform: FrameTransform,
     /// Хвост overlap-add по каналам, planar.
     ola: Vec<f32>,
     /// Последний декодированный спектр по плоскостям (для PLC).
     last_coeffs: Vec<f32>,
+    /// Режим последнего кадра — PLC синтезирует в том же режиме.
+    last_transient: bool,
     frame_index: u32,
 }
 
@@ -194,9 +219,10 @@ impl Decoder {
         let ch = usize::from(channels);
         Ok(Self {
             channels,
-            mdct: Mdct::new(FRAME_N),
+            transform: FrameTransform::new(),
             ola: vec![0.0; ch * FRAME_N],
             last_coeffs: vec![0.0; ch * FRAME_N],
+            last_transient: false,
             frame_index: 0,
         })
     }
@@ -209,12 +235,13 @@ impl Decoder {
         let mut r = BitReader::new(packet);
 
         let flags = r.read_bits(8)?;
-        if flags & !FLAG_MS_STEREO != 0 {
+        if flags & !(FLAG_MS_STEREO | FLAG_TRANSIENT) != 0 {
             return Err(Error::InvalidPacket("reserved flag bits set"));
         }
         if (flags & FLAG_MS_STEREO != 0) != (ch == 2) {
             return Err(Error::InvalidPacket("channel mode mismatch"));
         }
+        let transient = flags & FLAG_TRANSIENT != 0;
         let lambda = r.read_bits(8)?;
         if lambda > LAMBDA_MAX {
             return Err(Error::InvalidPacket("lambda out of range"));
@@ -263,13 +290,18 @@ impl Decoder {
                         continue;
                     }
                 }
-                noise_fill(
-                    dst,
-                    self.frame_index,
-                    p as u32,
-                    b as u32,
-                    dequant_gain(q[idx]),
-                );
+                // В транзиентных кадрах noise-fill выключен: детерминированный шум
+                // без временной огибающей размазался бы на все 8 блоков и вернул
+                // pre-echo, ради устранения которого кадр и стал коротким.
+                if !transient {
+                    noise_fill(
+                        dst,
+                        self.frame_index,
+                        p as u32,
+                        b as u32,
+                        dequant_gain(q[idx]),
+                    );
+                }
             }
         }
         for v in coeffs.iter_mut() {
@@ -279,23 +311,25 @@ impl Decoder {
         }
 
         self.last_coeffs.copy_from_slice(&coeffs);
-        let out = self.synthesize(&coeffs);
+        self.last_transient = transient;
+        let out = self.synthesize(transient, &coeffs);
         self.frame_index = self.frame_index.wrapping_add(1);
         Ok(out)
     }
 
-    /// PLC: потерянный пакет — повтор последнего спектра с затуханием.
+    /// PLC: потерянный пакет — повтор последнего спектра с затуханием,
+    /// в режиме последнего кадра.
     pub fn decode_lost(&mut self) -> Vec<f32> {
         for v in self.last_coeffs.iter_mut() {
             *v *= PLC_DECAY;
         }
         let coeffs = self.last_coeffs.clone();
-        let out = self.synthesize(&coeffs);
+        let out = self.synthesize(self.last_transient, &coeffs);
         self.frame_index = self.frame_index.wrapping_add(1);
         out
     }
 
-    fn synthesize(&mut self, plane_coeffs: &[f32]) -> Vec<f32> {
+    fn synthesize(&mut self, transient: bool, plane_coeffs: &[f32]) -> Vec<f32> {
         let ch = usize::from(self.channels);
         let mut chan = plane_coeffs.to_vec();
         if ch == 2 {
@@ -310,8 +344,8 @@ impl Decoder {
         let mut out = vec![0f32; FRAME_N * ch];
         let mut synth = vec![0f32; 2 * FRAME_N];
         for c in 0..ch {
-            self.mdct
-                .inverse(&chan[c * FRAME_N..][..FRAME_N], &mut synth);
+            self.transform
+                .inverse(transient, &chan[c * FRAME_N..][..FRAME_N], &mut synth);
             let ola = &mut self.ola[c * FRAME_N..][..FRAME_N];
             for j in 0..FRAME_N {
                 out[j * ch + c] = ola[j] + synth[j];
@@ -369,6 +403,33 @@ fn for_each_coded_band(
 
 fn quantize(x: f32, gain: f32, step: f32) -> i32 {
     (x / gain / step).round() as i32
+}
+
+/// Детектор транзиентов (только энкодер; нормативен лишь флаг в битстриме).
+/// Критерий: скачок энергии первой разности (подчёркивает ВЧ, где живут атаки,
+/// и подавляет стационарный бас) в суб-блоке длиной N/8 относительно максимума
+/// двух предыдущих суб-блоков. Анализ — текущий hop + хвост предыдущего.
+fn detect_transient(time: &[f32], channels: usize) -> bool {
+    const SUB: usize = FRAME_N / SHORT_BLOCKS;
+    const HISTORY: usize = 2;
+    let mut e = [0f32; HISTORY + SHORT_BLOCKS];
+    let start = FRAME_N - HISTORY * SUB;
+    for c in 0..channels {
+        let buf = &time[c * 2 * FRAME_N..][..2 * FRAME_N];
+        for (blk, eb) in e.iter_mut().enumerate() {
+            let s = start + blk * SUB;
+            let mut acc = 0f32;
+            for i in s..s + SUB {
+                let d = buf[i] - buf[i - 1];
+                acc += d * d;
+            }
+            *eb += acc;
+        }
+    }
+    (HISTORY..HISTORY + SHORT_BLOCKS).any(|j| {
+        let past = e[j - 1].max(e[j - 2]);
+        e[j] > TRANSIENT_FLOOR && e[j] > TRANSIENT_RATIO * past + TRANSIENT_FLOOR
+    })
 }
 
 /// Резерв на fine-биты энергий: по FINE_BITS на каждую потенциально

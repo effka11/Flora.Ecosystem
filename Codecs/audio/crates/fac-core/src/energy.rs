@@ -2,7 +2,7 @@
 //! + fine-уточнение в шестнадцатых log2 для кодируемых полос (FAC.md, «Энергии»).
 
 use crate::bands::{NUM_BANDS, band_range};
-use crate::qmath::pow2_e8;
+use crate::qmath::{pow2_e8, pow2_e64};
 
 pub(crate) const ENERGY_EPS: f64 = 1e-10;
 
@@ -40,10 +40,11 @@ pub(crate) fn dequant_gain(q: i32) -> f32 {
     pow2_e8(q)
 }
 
-/// Gain с fine-уточнением: `ê16 = 4q + (u − 1.5)`, gain `= 2^(ê16/32)`.
+/// Gain с fine-уточнением: `ê16 = 4q + (u − 1.5)`, gain `= 2^(ê16/32)`
+/// — вычисляется точной таблицей 1/64 (`qmath`), детерминированно на всех
+/// платформах: `8q + 2u − 3` шестьдесятчетвёртых log2.
 pub(crate) fn dequant_gain_fine(q: i32, u: u8) -> f32 {
-    let exp = f64::from(8 * q + 2 * i32::from(u) - 3) / 64.0;
-    exp.clamp(-126.0, 126.0).exp2() as f32
+    pow2_e64(8 * q + 2 * i32::from(u) - 3)
 }
 
 #[cfg(test)]

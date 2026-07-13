@@ -28,6 +28,8 @@ mod codec;
 mod energy;
 mod error;
 mod qmath;
+mod transform;
 
-pub use codec::{Config, Decoder, Encoder, FRAME_N};
+pub use codec::{Config, Decoder, Encoder};
 pub use error::Error;
+pub use transform::FRAME_N;

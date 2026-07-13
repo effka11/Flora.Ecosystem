@@ -283,6 +283,10 @@ fn roundtrip(
     };
     let secs = num_samples as f64 / f64::from(rate);
 
+    let transients = packets
+        .iter()
+        .filter(|p| p.first().is_some_and(|b| b & 1 != 0))
+        .count();
     println!("вход:      {secs:.2} с, {rate} Гц, {ch} ch");
     println!(
         "битрейт:   цель {bitrate} kbps, факт {:.1} kbps (payload, {} кадров)",
@@ -290,6 +294,7 @@ fn roundtrip(
         packets.len()
     );
     println!("SNR:       {snr:.1} дБ");
+    println!("транзиенты: {transients} кадров");
     if let Some(path) = output {
         write_wav_i16(path, &decoded, rate, ch)?;
         println!("декод:     записан в {}", path.display());

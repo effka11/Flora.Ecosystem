@@ -1,11 +1,38 @@
-//! MDCT/iMDCT c окном Vorbis и 50% overlap-add (FAC.md, «Нормативные формулы»).
+//! MDCT/iMDCT c низкоперекрывающимся окном и 50% overlap-add по hop'у
+//! (FAC.md, «Нормативные формулы»).
+//!
+//! Окно (CELT-подход): носитель `N + L` по центру формального 2N-окна — нули по
+//! `s = (N − L)/2` с краёв, подъём/спад Vorbis-формы длиной `L`, единицы между.
+//! При `L = N` вырождается в классическое полноперекрывающееся окно Vorbis.
+//! Благодаря общей длине склейки `L` длинные и короткие кадры стыкуются без
+//! переходных окон (TDAC-пары «спад‑подъём» всегда одной формы).
 //!
 //! Реализация через TDA-fold (2N → N) + DCT-IV размера N — математически
 //! тождественна прямой формуле спецификации (проверяется тестом против
-//! наивной реализации). Быстрый FFT-путь для DCT-IV — v0.1 (Roadmap): fold
+//! наивной реализации). Быстрый FFT-путь для DCT-IV — v0.3 (Roadmap): fold
 //! останется, заменится только матричное DCT-IV.
 
 use core::f64::consts::{FRAC_PI_2, PI};
+
+/// Нормативное окно: длина `2n`, носитель `n + l` по центру.
+pub(crate) fn low_overlap_window(n: usize, l: usize) -> Vec<f64> {
+    assert!(l > 0 && l <= n && (n - l).is_multiple_of(2));
+    let two_n = 2 * n;
+    let s = (n - l) / 2;
+    let rise = |i: usize| {
+        let inner = (PI * (i as f64 + 0.5) / (2 * l) as f64).sin();
+        (FRAC_PI_2 * inner * inner).sin()
+    };
+    let mut w = vec![0f64; two_n];
+    for i in 0..l {
+        w[s + i] = rise(i);
+        w[two_n - s - l + i] = rise(l - 1 - i);
+    }
+    for v in w.iter_mut().take(two_n - s - l).skip(s + l) {
+        *v = 1.0;
+    }
+    w
+}
 
 pub struct Mdct {
     n: usize,
@@ -15,18 +42,13 @@ pub struct Mdct {
 }
 
 impl Mdct {
-    pub fn new(n: usize) -> Self {
+    /// `n` — hop (число коэффициентов), `overlap` — длина склейки `L`.
+    pub fn new(n: usize, overlap: usize) -> Self {
         assert!(
             n > 0 && n.is_multiple_of(2),
             "MDCT size must be positive and even"
         );
-        let two_n = 2 * n;
-        let window: Vec<f64> = (0..two_n)
-            .map(|i| {
-                let inner = (PI * (i as f64 + 0.5) / two_n as f64).sin();
-                (FRAC_PI_2 * inner * inner).sin()
-            })
-            .collect();
+        let window = low_overlap_window(n, overlap);
         let mut dct4 = vec![0f64; n * n];
         for k in 0..n {
             let row = &mut dct4[k * n..(k + 1) * n];
@@ -123,15 +145,11 @@ mod tests {
     }
 
     impl NaiveMdct {
-        fn new(n: usize) -> Self {
-            let two_n = 2 * n;
-            let window = (0..two_n)
-                .map(|i| {
-                    let inner = (PI * (i as f64 + 0.5) / two_n as f64).sin();
-                    (FRAC_PI_2 * inner * inner).sin()
-                })
-                .collect();
-            Self { n, window }
+        fn new(n: usize, overlap: usize) -> Self {
+            Self {
+                n,
+                window: low_overlap_window(n, overlap),
+            }
         }
 
         fn arg(&self, j: usize, k: usize) -> f64 {
@@ -161,19 +179,25 @@ mod tests {
     }
 
     #[test]
-    fn window_is_power_complementary() {
-        let m = Mdct::new(64);
-        for i in 0..64 {
-            let s = m.window[i] * m.window[i] + m.window[i + 64] * m.window[i + 64];
-            assert!((s - 1.0).abs() < 1e-12, "i={i}: {s}");
+    fn window_satisfies_princen_bradley() {
+        for (n, l) in [(64, 64), (960, 120), (120, 120)] {
+            let w = low_overlap_window(n, l);
+            for i in 0..n {
+                let s = w[i] * w[i] + w[i + n] * w[i + n];
+                assert!((s - 1.0).abs() < 1e-12, "n={n} l={l} i={i}: {s}");
+            }
+            // Симметрия окна (условие TDAC).
+            for i in 0..2 * n {
+                assert!((w[i] - w[2 * n - 1 - i]).abs() < 1e-12);
+            }
         }
     }
 
     #[test]
     fn fold_matches_naive_normative_formula() {
-        for n in [32usize, 480, 960] {
-            let fast = Mdct::new(n);
-            let naive = NaiveMdct::new(n);
+        for (n, l) in [(32usize, 32usize), (480, 120), (960, 120), (120, 120)] {
+            let fast = Mdct::new(n, l);
+            let naive = NaiveMdct::new(n, l);
             let mut state = 0xF01D_1234u32;
             let x: Vec<f32> = (0..2 * n).map(|_| xorshift(&mut state)).collect();
             let coeffs: Vec<f32> = (0..n).map(|_| xorshift(&mut state)).collect();
@@ -198,8 +222,8 @@ mod tests {
 
     #[test]
     fn perfect_reconstruction_via_overlap_add() {
-        for n in [32usize, 960] {
-            let m = Mdct::new(n);
+        for (n, l) in [(32usize, 32usize), (960, 120), (120, 120)] {
+            let m = Mdct::new(n, l);
             let hops = 6;
             let mut state = 0xC0FF_EE01u32;
             let x: Vec<f32> = (0..hops * n).map(|_| xorshift(&mut state)).collect();
@@ -233,7 +257,7 @@ mod tests {
                 let got = recon[n + i];
                 assert!(
                     (got - orig).abs() < 1e-4,
-                    "n={n}, sample {i}: {got} vs {orig}"
+                    "n={n} l={l}, sample {i}: {got} vs {orig}"
                 );
             }
         }

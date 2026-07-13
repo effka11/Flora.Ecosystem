@@ -1,8 +1,8 @@
 //! Файловый контейнер FACS (FAC.md, «Контейнер FACS»). Транспорт Flora (FSCP/HTTP)
 //! передаёт пакеты собственным способом — контейнер нужен инструментам и файлам.
 
-use crate::codec::FRAME_N;
 use crate::error::Error;
+use crate::transform::FRAME_N;
 
 pub const MAGIC: [u8; 4] = *b"FACS";
 pub const VERSION: u8 = 1;

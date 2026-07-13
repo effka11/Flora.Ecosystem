@@ -76,8 +76,13 @@ fn snr_db(reference: &[f32], decoded: &[f32]) -> f64 {
 
 /// Кодирует и декодирует поток; возвращает (выровненный выход, средние биты на кадр).
 fn roundtrip(cfg: Config, pcm: &[f32]) -> (Vec<f32>, f64) {
+    roundtrip_with(cfg, pcm, true)
+}
+
+fn roundtrip_with(cfg: Config, pcm: &[f32], transients: bool) -> (Vec<f32>, f64) {
     let ch = cfg.channels as usize;
     let mut enc = Encoder::new(cfg).unwrap();
+    enc.set_transient_detection(transients);
     let mut dec = Decoder::new(cfg.sample_rate, cfg.channels).unwrap();
     let total = pcm.len() / ch;
     let hops = total.div_ceil(FRAME_N);
@@ -109,7 +114,7 @@ fn sine_mono_96k_has_high_snr() {
     let (dec, _) = roundtrip(cfg, &pcm);
     let snr = snr_db(&pcm, &dec);
     println!("sine mono 96k: SNR = {snr:.1} dB");
-    assert!(snr > 35.0, "SNR too low: {snr:.1} dB");
+    assert!(snr > 38.0, "SNR too low: {snr:.1} dB");
 }
 
 #[test]
@@ -126,7 +131,7 @@ fn mix_stereo_96k_quality_and_bitrate() {
     println!(
         "mix stereo 96k: SNR = {snr:.1} dB, avg bits/frame = {avg_bits:.0} (budget {budget:.0})"
     );
-    assert!(snr > 22.0, "SNR too low: {snr:.1} dB");
+    assert!(snr > 25.0, "SNR too low: {snr:.1} dB");
     // Форма гарантированно в бюджете; +8 бит — выравнивание пакета до байта.
     assert!(avg_bits <= budget + 8.0, "budget overrun: {avg_bits}");
     assert!(avg_bits >= budget * 0.35, "budget underrun: {avg_bits}");
@@ -135,7 +140,8 @@ fn mix_stereo_96k_quality_and_bitrate() {
 /// Средняя лог-спектральная дистанция по полосам (дБ) между сигналами,
 /// по всем полным окнам; тихие полосы (< −60 дБFS) пропускаются.
 fn band_lsd_db(reference: &[f32], decoded: &[f32], ch: usize) -> f64 {
-    let m = Mdct::new(FRAME_N);
+    // Полноперекрывающееся окно анализа — независимая метрика, не окно кодека.
+    let m = Mdct::new(FRAME_N, FRAME_N);
     let frames = reference.len() / ch / FRAME_N - 1;
     let mut coeffs_a = vec![0f32; FRAME_N];
     let mut coeffs_b = vec![0f32; FRAME_N];
@@ -317,7 +323,7 @@ fn works_at_44100_hz() {
     // Бюджет кадра при 44.1 кГц больше: кадр длиннее по времени (960/44100 с).
     let budget = 96_000.0 * FRAME_N as f64 / 44_100.0;
     println!("mix stereo 96k @44.1: SNR = {snr:.1} dB, avg bits/frame = {avg_bits:.0}");
-    assert!(snr > 15.0, "SNR too low: {snr:.1} dB");
+    assert!(snr > 22.0, "SNR too low: {snr:.1} dB");
     assert!(avg_bits <= budget + 8.0, "budget overrun: {avg_bits}");
 }
 
@@ -359,6 +365,97 @@ fn invalid_configs_are_rejected() {
     .unwrap();
     // Неверная длина PCM-буфера.
     assert!(enc.encode_frame(&vec![0f32; FRAME_N]).is_err());
+}
+
+/// Тихий фон + громкий широкополосный щелчок в известной позиции.
+fn click_signal(rate: u32, ch: usize, secs: f32, click_at: usize) -> Vec<f32> {
+    let total = (secs * rate as f32) as usize;
+    let mut state = 0x0BAD_5EEDu32;
+    let mut out = Vec::with_capacity(total * ch);
+    for j in 0..total {
+        let t = j as f32 / rate as f32;
+        let base = 0.05 * (2.0 * core::f32::consts::PI * 300.0 * t).sin();
+        let click = if (click_at..click_at + 96).contains(&j) {
+            0.85 * xorshift(&mut state)
+        } else {
+            0.0
+        };
+        for _ in 0..ch {
+            out.push((base + click).clamp(-1.0, 1.0));
+        }
+    }
+    out
+}
+
+#[test]
+fn transient_mode_reduces_pre_echo() {
+    let cfg = Config {
+        sample_rate: 48_000,
+        channels: 2,
+        bitrate_bps: 96_000,
+    };
+    let click_at = 30_000;
+    let pcm = click_signal(48_000, 2, 1.0, click_at);
+    let (on, _) = roundtrip_with(cfg, &pcm, true);
+    let (off, _) = roundtrip_with(cfg, &pcm, false);
+
+    // Ошибка в окне 13 мс ПЕРЕД щелчком (защитный зазор 2 мс до атаки).
+    let pre_rms = |dec: &[f32]| -> f64 {
+        let (a, b) = (click_at - 720, click_at - 96);
+        let mut acc = 0f64;
+        let mut n = 0u64;
+        for j in a..b {
+            for c in 0..2 {
+                let e = f64::from(dec[j * 2 + c]) - f64::from(pcm[j * 2 + c]);
+                acc += e * e;
+                n += 1;
+            }
+        }
+        (acc / n as f64).sqrt()
+    };
+    let (rms_on, rms_off) = (pre_rms(&on), pre_rms(&off));
+    println!("pre-echo RMS: transients on = {rms_on:.2e}, off = {rms_off:.2e}");
+    assert!(
+        rms_on < rms_off / 5.0,
+        "transient mode must cut pre-echo ≥5x: on={rms_on:.2e}, off={rms_off:.2e}"
+    );
+    assert!(rms_on < 0.01, "absolute pre-echo too high: {rms_on:.2e}");
+}
+
+#[test]
+fn transient_flag_set_only_on_attacks() {
+    let cfg = Config {
+        sample_rate: 48_000,
+        channels: 1,
+        bitrate_bps: 64_000,
+    };
+    let is_transient = |p: &[u8]| p[0] & 1 != 0;
+
+    // Стационарный синус: после стартового кадра флаг не выставляется.
+    let pcm = sine(48_000, 1, 0.3, 440.0, 0.5);
+    let mut enc = Encoder::new(cfg).unwrap();
+    let flags: Vec<bool> = pcm
+        .chunks_exact(FRAME_N)
+        .map(|c| is_transient(&enc.encode_frame(c).unwrap()))
+        .collect();
+    assert!(
+        flags[2..].iter().all(|&f| !f),
+        "steady sine must not trigger transients: {flags:?}"
+    );
+
+    // Щелчок: флаг стоит именно на кадре с атакой.
+    let click_at = 10_000;
+    let pcm = click_signal(48_000, 1, 0.5, click_at);
+    let mut enc = Encoder::new(cfg).unwrap();
+    let flags: Vec<bool> = pcm
+        .chunks_exact(FRAME_N)
+        .map(|c| is_transient(&enc.encode_frame(c).unwrap()))
+        .collect();
+    let click_frame = click_at / FRAME_N;
+    assert!(
+        flags[click_frame],
+        "click frame {click_frame} must be transient: {flags:?}"
+    );
 }
 
 #[test]

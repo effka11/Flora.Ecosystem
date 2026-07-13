@@ -8,8 +8,11 @@ use crate::bits::BitWriter;
 use crate::color::{downsample_420, rgb_to_ycbcr, rgb_to_ycocg_r};
 use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
 use crate::error::EncodeError;
-use crate::format::{DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_PALETTE, tile_grid};
-use crate::plane::{Plane, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, SampleRange, palette_range};
+use crate::format::{
+    DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_PALETTE, VERSION_CURRENT, tile_grid,
+};
+use crate::parallel::par_map;
+use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
 use crate::predict::med;
 use crate::section::{write_dct_section, write_predictive_section};
 use crate::tokens::{tokenize, zigzag};
@@ -80,11 +83,11 @@ fn assemble(header: &Header, palette_block: Option<&[u8]>, payloads: &[Vec<u8>])
     out
 }
 
-fn plane_payload(buf: &[i16], w: usize, h: usize, range: SampleRange, out: &mut Vec<u8>) {
+fn plane_payload(buf: &[i16], shape: PlaneShape, out: &mut Vec<u8>) {
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
-    lossless::encode_tile_plane(buf, w, h, range, &mut syms, &mut raw);
-    write_predictive_section(out, &syms, raw, buf, w, h, range);
+    lossless::encode_tile_plane(buf, shape, &mut syms, &mut raw);
+    write_predictive_section(out, lossless::N_CTX_V2, &syms, raw, buf, shape);
 }
 
 // --- lossless: планарный (YCoCg-R либо identity RGB) --------------------------
@@ -124,6 +127,7 @@ fn encode_lossless_planar(img: &ImageView<'_>, identity: bool) -> Vec<u8> {
     };
 
     let header = Header {
+        version: VERSION_CURRENT,
         width: img.width,
         height: img.height,
         lossless: true,
@@ -134,19 +138,18 @@ fn encode_lossless_planar(img: &ImageView<'_>, identity: bool) -> Vec<u8> {
         quality: 0,
     };
     let tiles = tile_grid(img.width, img.height);
-    let mut payloads = Vec::with_capacity(tiles.len());
-    for t in &tiles {
+    let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
         for (plane, range) in [(&p0, RANGE_LUMA), (&p1, chroma_range), (&p2, chroma_range)] {
             let buf = plane.extract(t.x0, t.y0, t.w, t.h);
-            plane_payload(&buf, t.w, t.h, range, &mut payload);
+            plane_payload(&buf, PlaneShape::new(t.w, t.h, range), &mut payload);
         }
         if let Some(pa) = pa.as_ref() {
             let buf = pa.extract(t.x0, t.y0, t.w, t.h);
-            plane_payload(&buf, t.w, t.h, RANGE_LUMA, &mut payload);
+            plane_payload(&buf, PlaneShape::new(t.w, t.h, RANGE_LUMA), &mut payload);
         }
-        payloads.push(payload);
-    }
+        payload
+    });
     assemble(&header, None, &payloads)
 }
 
@@ -266,6 +269,7 @@ fn try_encode_palette(img: &ImageView<'_>, bpp: usize) -> Option<Vec<u8>> {
 
     let alpha = matches!(img.format, PixelFormat::Rgba8);
     let header = Header {
+        version: VERSION_CURRENT,
         width: img.width,
         height: img.height,
         lossless: true,
@@ -288,13 +292,12 @@ fn try_encode_palette(img: &ImageView<'_>, bpp: usize) -> Option<Vec<u8>> {
     }
 
     let tiles = tile_grid(img.width, img.height);
-    let mut payloads = Vec::with_capacity(tiles.len());
-    for t in &tiles {
+    let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
         let buf = indices.extract(t.x0, t.y0, t.w, t.h);
-        plane_payload(&buf, t.w, t.h, range, &mut payload);
-        payloads.push(payload);
-    }
+        plane_payload(&buf, PlaneShape::new(t.w, t.h, range), &mut payload);
+        payload
+    });
     Some(assemble(&header, Some(&block), &payloads))
 }
 
@@ -304,6 +307,7 @@ fn encode_lossy(img: &ImageView<'_>, bpp: usize, quality: u8) -> Vec<u8> {
     let (w, h) = (img.width as usize, img.height as usize);
     let alpha = bpp == 4;
     let header = Header {
+        version: VERSION_CURRENT,
         width: img.width,
         height: img.height,
         lossless: false,
@@ -333,8 +337,7 @@ fn encode_lossy(img: &ImageView<'_>, bpp: usize, quality: u8) -> Vec<u8> {
     let q_chroma = quant_matrix(&BASE_CHROMA, quality);
 
     let tiles = tile_grid(img.width, img.height);
-    let mut payloads = Vec::with_capacity(tiles.len());
-    for t in &tiles {
+    let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
         let buf = p0.extract(t.x0, t.y0, t.w, t.h);
         dct_payload(&buf, t.w, t.h, &q_luma, &mut payload);
@@ -353,10 +356,10 @@ fn encode_lossy(img: &ImageView<'_>, bpp: usize, quality: u8) -> Vec<u8> {
         }
         if let Some(pa) = pa.as_ref() {
             let buf = pa.extract(t.x0, t.y0, t.w, t.h);
-            plane_payload(&buf, t.w, t.h, RANGE_LUMA, &mut payload);
+            plane_payload(&buf, PlaneShape::new(t.w, t.h, RANGE_LUMA), &mut payload);
         }
-        payloads.push(payload);
-    }
+        payload
+    });
     assemble(&header, None, &payloads)
 }
 
@@ -364,5 +367,5 @@ fn dct_payload(buf: &[i16], w: usize, h: usize, qmat: &[u16; 64], out: &mut Vec<
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     lossy::encode_tile_plane(buf, w, h, qmat, &mut syms, &mut raw);
-    write_dct_section(out, lossy::N_CTX, &syms, raw);
+    write_dct_section(out, lossy::N_CTX_V2, &syms, raw);
 }

@@ -148,7 +148,7 @@ fn cmd_decode(input: &Path, output: &Path) -> CmdResult {
 fn cmd_info(input: &Path) -> CmdResult {
     let fic = fs::read(input)?;
     let info = read_info(&fic)?;
-    println!("FIC v1, {}x{}", info.width, info.height);
+    println!("FIC v{}, {}x{}", info.version, info.width, info.height);
     let mode = if info.palette {
         "lossless (палитра)"
     } else if info.identity {

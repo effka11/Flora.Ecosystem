@@ -1,11 +1,13 @@
-//! Контейнер FIC v1 (FIC.md §2): magic, заголовок, палитра, таблица тайлов, лимиты.
+//! Контейнер FIC (FIC.md §2): magic, заголовок, палитра, таблица тайлов, лимиты.
 
 use crate::error::DecodeError;
 
 /// Сигнатура файла: не-ASCII первый байт ловит порчу текстовым режимом.
 pub const MAGIC: [u8; 4] = [0x8F, b'F', b'I', b'C'];
-/// Единственная поддерживаемая версия.
-pub const VERSION: u8 = 1;
+/// Версия, которую пишет кодер.
+pub const VERSION_CURRENT: u8 = 2;
+/// Минимальная версия, которую декодер обязан читать всегда.
+pub const VERSION_MIN: u8 = 1;
 /// Длина фиксированного заголовка.
 pub const HEADER_LEN: usize = 20;
 
@@ -38,6 +40,8 @@ pub const TILE: usize = 1 << TILE_SHIFT;
 /// Разобранный заголовок FIC.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
+    /// Версия битстрима (1 или 2); раскладка заголовка у обеих одинаковая.
+    pub version: u8,
     pub width: u32,
     pub height: u32,
     pub lossless: bool,
@@ -53,7 +57,7 @@ impl Header {
     pub fn serialize(&self) -> [u8; HEADER_LEN] {
         let mut out = [0u8; HEADER_LEN];
         out[0..4].copy_from_slice(&MAGIC);
-        out[4] = VERSION;
+        out[4] = self.version;
         let mut flags = 0u8;
         if self.lossless {
             flags |= FLAG_LOSSLESS;
@@ -89,8 +93,9 @@ impl Header {
         if head[0..4] != MAGIC {
             return Err(DecodeError::NotFic);
         }
-        if head[4] != VERSION {
-            return Err(DecodeError::UnsupportedVersion(head[4]));
+        let version = head[4];
+        if !(VERSION_MIN..=VERSION_CURRENT).contains(&version) {
+            return Err(DecodeError::UnsupportedVersion(version));
         }
         let flags = head[5];
         if flags & !FLAGS_KNOWN != 0 {
@@ -135,6 +140,7 @@ impl Header {
             ));
         }
         Ok(Self {
+            version,
             width,
             height,
             lossless,
@@ -184,6 +190,7 @@ mod tests {
 
     fn base() -> Header {
         Header {
+            version: VERSION_CURRENT,
             width: 1,
             height: 1,
             lossless: true,
@@ -203,9 +210,8 @@ mod tests {
             lossless: false,
             alpha: true,
             chroma420: true,
-            identity: false,
-            palette: false,
             quality: 75,
+            ..base()
         };
         assert_eq!(Header::parse(&h.serialize()).unwrap(), h);
         let h = Header {
@@ -219,6 +225,12 @@ mod tests {
             ..base()
         };
         assert_eq!(Header::parse(&h.serialize()).unwrap(), h);
+        // v1-заголовок читается (обратная совместимость навсегда).
+        let h = Header {
+            version: 1,
+            ..base()
+        };
+        assert_eq!(Header::parse(&h.serialize()).unwrap(), h);
     }
 
     #[test]
@@ -227,11 +239,14 @@ mod tests {
         bytes[0] = b'P';
         assert_eq!(Header::parse(&bytes), Err(DecodeError::NotFic));
         let mut bytes = base().serialize();
-        bytes[4] = 2;
+        bytes[4] = VERSION_CURRENT + 1;
         assert_eq!(
             Header::parse(&bytes),
-            Err(DecodeError::UnsupportedVersion(2))
+            Err(DecodeError::UnsupportedVersion(VERSION_CURRENT + 1))
         );
+        let mut bytes = base().serialize();
+        bytes[4] = 0;
+        assert_eq!(Header::parse(&bytes), Err(DecodeError::UnsupportedVersion(0)));
     }
 
     #[test]

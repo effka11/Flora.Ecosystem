@@ -15,20 +15,22 @@
 //! ```text
 //! [freq-table x n_ctx][token_len u32][raw_len u32][tokens][raw bits]
 //! ```
+//!
+//! Число контекстов `n_ctx` фиксировано версией формата и видом секции —
+//! оно не сериализуется.
 
 use crate::bits::{BitReader, BitWriter};
 use crate::error::DecodeError;
-use crate::plane::SampleRange;
-use crate::predict::N_CTX_LOSSLESS;
+use crate::plane::PlaneShape;
 use crate::rans::{FreqTable, encode_symbols};
 use crate::tokens::ALPHABET;
 
 const MODE_CODED: u8 = 0;
 const MODE_RAW: u8 = 1;
 
-/// Число байт сырой формы плоскости `w x h`.
-pub fn raw_payload_len(w: usize, h: usize, range: SampleRange) -> usize {
-    (w * h * range.raw_bits() as usize).div_ceil(8)
+/// Число байт сырой формы плоскости.
+pub fn raw_payload_len(shape: PlaneShape) -> usize {
+    (shape.samples() * shape.range.raw_bits() as usize).div_ceil(8)
 }
 
 /// Собирает энтропийную часть секции (таблицы + потоки) без байта режима.
@@ -56,29 +58,26 @@ pub fn write_dct_section(out: &mut Vec<u8>, n_ctx: usize, syms: &[(u8, u8)], raw
     out.extend_from_slice(&build_coded(n_ctx, syms, raw));
 }
 
-/// Дописывает предиктивную секцию (контекстов всегда `N_CTX_LOSSLESS`),
-/// выбирая меньшую из coded/raw форм.
+/// Дописывает предиктивную секцию, выбирая меньшую из coded/raw форм.
 pub fn write_predictive_section(
     out: &mut Vec<u8>,
+    n_ctx: usize,
     syms: &[(u8, u8)],
     raw: BitWriter,
     samples: &[i16],
-    w: usize,
-    h: usize,
-    range: SampleRange,
+    shape: PlaneShape,
 ) {
-    debug_assert_eq!(samples.len(), w * h);
-    let coded = build_coded(N_CTX_LOSSLESS, syms, raw);
-    let raw_len = raw_payload_len(w, h, range);
-    if coded.len() <= raw_len {
+    debug_assert_eq!(samples.len(), shape.samples());
+    let coded = build_coded(n_ctx, syms, raw);
+    if coded.len() <= raw_payload_len(shape) {
         out.push(MODE_CODED);
         out.extend_from_slice(&coded);
     } else {
         out.push(MODE_RAW);
-        let bits = range.raw_bits();
+        let bits = shape.range.raw_bits();
         let mut packer = BitWriter::new();
         for &s in samples {
-            packer.write((i32::from(s) - range.lo) as u32, bits);
+            packer.write((i32::from(s) - shape.range.lo) as u32, bits);
         }
         out.extend_from_slice(&packer.finish());
     }
@@ -106,11 +105,9 @@ pub fn read_dct_section(bytes: &[u8], n_ctx: usize) -> Result<(Section<'_>, usiz
 /// Читает предиктивную секцию (mode-байт, затем coded- или raw-форма).
 pub fn read_predictive_section(
     bytes: &[u8],
-    w: usize,
-    h: usize,
-    range: SampleRange,
+    n_ctx: usize,
+    shape: PlaneShape,
 ) -> Result<(PredictiveSection<'_>, usize), DecodeError> {
-    let n_ctx = N_CTX_LOSSLESS;
     let Some((&mode, rest)) = bytes.split_first() else {
         return Err(DecodeError::Corrupt("section: обрыв байта режима"));
     };
@@ -120,7 +117,7 @@ pub fn read_predictive_section(
             Ok((PredictiveSection::Coded(section), used + 1))
         }
         MODE_RAW => {
-            let len = raw_payload_len(w, h, range);
+            let len = raw_payload_len(shape);
             let Some(payload) = rest.get(..len) else {
                 return Err(DecodeError::Corrupt("section: обрыв raw-отсчётов"));
             };
@@ -131,18 +128,13 @@ pub fn read_predictive_section(
 }
 
 /// Распаковывает raw-форму плоскости с клампом в диапазон.
-pub fn unpack_raw(
-    payload: &[u8],
-    w: usize,
-    h: usize,
-    range: SampleRange,
-) -> Result<Vec<i16>, DecodeError> {
-    let bits = range.raw_bits();
+pub fn unpack_raw(payload: &[u8], shape: PlaneShape) -> Result<Vec<i16>, DecodeError> {
+    let bits = shape.range.raw_bits();
     let mut reader = BitReader::new(payload);
-    let mut out = Vec::with_capacity(w * h);
-    for _ in 0..w * h {
-        let v = reader.read(bits)? as i32 + range.lo;
-        out.push(v.clamp(range.lo, range.hi) as i16);
+    let mut out = Vec::with_capacity(shape.samples());
+    for _ in 0..shape.samples() {
+        let v = reader.read(bits)? as i32 + shape.range.lo;
+        out.push(v.clamp(shape.range.lo, shape.range.hi) as i16);
     }
     Ok(out)
 }
@@ -157,35 +149,23 @@ fn read_coded(bytes: &[u8], n_ctx: usize) -> Result<(Section<'_>, usize), Decode
     }
     // Арифметика позиций — checked: длины приходят из недоверенного потока,
     // а на 32-битных целях (wasm) сложение usize может переполниться.
-    let lens_end = pos
-        .checked_add(8)
-        .ok_or(DecodeError::Corrupt("section: переполнение"))?;
+    let lens_end = pos.checked_add(8).ok_or(DecodeError::Corrupt("section: переполнение"))?;
     let Some(lens) = bytes.get(pos..lens_end) else {
         return Err(DecodeError::Corrupt("section: обрыв длин потоков"));
     };
     let token_len = u32::from_le_bytes(lens[0..4].try_into().expect("len 4")) as usize;
     let raw_len = u32::from_le_bytes(lens[4..8].try_into().expect("len 4")) as usize;
     pos = lens_end;
-    let tok_end = pos
-        .checked_add(token_len)
-        .ok_or(DecodeError::Corrupt("section: переполнение"))?;
+    let tok_end =
+        pos.checked_add(token_len).ok_or(DecodeError::Corrupt("section: переполнение"))?;
     let Some(tokens) = bytes.get(pos..tok_end) else {
         return Err(DecodeError::Corrupt("section: обрыв потока токенов"));
     };
     pos = tok_end;
-    let raw_end = pos
-        .checked_add(raw_len)
-        .ok_or(DecodeError::Corrupt("section: переполнение"))?;
+    let raw_end = pos.checked_add(raw_len).ok_or(DecodeError::Corrupt("section: переполнение"))?;
     let Some(raw) = bytes.get(pos..raw_end) else {
         return Err(DecodeError::Corrupt("section: обрыв потока сырых бит"));
     };
     pos = raw_end;
-    Ok((
-        Section {
-            tables,
-            tokens,
-            raw,
-        },
-        pos,
-    ))
+    Ok((Section { tables, tokens, raw }, pos))
 }

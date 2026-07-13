@@ -26,7 +26,8 @@ fn sample_fic() -> Vec<u8> {
     encode(&img, EncodeMode::Lossy { quality: 60 }).unwrap()
 }
 
-/// По одному представителю каждого вида потока: DCT, планарный lossless, палитра.
+/// Представители каждого вида потока: DCT, планарный lossless, палитра (все v2)
+/// плюс закоммиченные v1-потоки — путь совместимости фуззится наравне с текущим.
 fn sample_streams() -> Vec<Vec<u8>> {
     let (w, h) = (90u32, 70u32);
     let gradient: Vec<u8> = (0..w * h * 3).map(|i| (i % 251) as u8).collect();
@@ -51,10 +52,14 @@ fn sample_streams() -> Vec<Vec<u8>> {
         format: PixelFormat::Rgb8,
         data: &flat,
     };
+    let data_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data");
     vec![
         encode(&g, EncodeMode::Lossy { quality: 60 }).unwrap(),
         encode(&g, EncodeMode::Lossless).unwrap(),
         encode(&f, EncodeMode::Lossless).unwrap(), // палитра (2 цвета)
+        std::fs::read(data_dir.join("golden-v1-lossy-q75.fic")).expect("v1 lossy"),
+        std::fs::read(data_dir.join("golden-v1-lossless.fic")).expect("v1 lossless"),
+        std::fs::read(data_dir.join("golden-v1-palette.fic")).expect("v1 palette"),
     ]
 }
 
@@ -74,14 +79,16 @@ fn random_garbage_never_panics() {
 #[test]
 fn garbage_with_valid_magic_never_panics() {
     let mut seed = 0xBADF00Du64;
-    for _ in 0..500 {
-        let len = 20 + (xorshift(&mut seed) % 400) as usize;
-        let mut bytes: Vec<u8> = (0..len)
-            .map(|_| (xorshift(&mut seed) & 0xFF) as u8)
-            .collect();
-        bytes[0..4].copy_from_slice(&[0x8F, b'F', b'I', b'C']);
-        bytes[4] = 1;
-        let _ = decode(&bytes);
+    for version in [1u8, 2] {
+        for _ in 0..500 {
+            let len = 20 + (xorshift(&mut seed) % 400) as usize;
+            let mut bytes: Vec<u8> = (0..len)
+                .map(|_| (xorshift(&mut seed) & 0xFF) as u8)
+                .collect();
+            bytes[0..4].copy_from_slice(&[0x8F, b'F', b'I', b'C']);
+            bytes[4] = version;
+            let _ = decode(&bytes);
+        }
     }
 }
 

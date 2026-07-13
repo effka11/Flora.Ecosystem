@@ -43,6 +43,24 @@ pub struct SampleRange {
     pub mid: i32,
 }
 
+/// Геометрия и диапазон одной тайл-плоскости — общий аргумент кодеров секций.
+#[derive(Clone, Copy)]
+pub struct PlaneShape {
+    pub w: usize,
+    pub h: usize,
+    pub range: SampleRange,
+}
+
+impl PlaneShape {
+    pub fn new(w: usize, h: usize, range: SampleRange) -> Self {
+        Self { w, h, range }
+    }
+
+    pub fn samples(&self) -> usize {
+        self.w * self.h
+    }
+}
+
 impl SampleRange {
     /// Битов на отсчёт в raw-секции (FIC.md §4.1): битовая длина размаха.
     pub fn raw_bits(&self) -> u32 {

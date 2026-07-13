@@ -1,21 +1,25 @@
 //! # FIC — Flora Image Codec
 //!
 //! Нативный фото-кодек экосистемы Flora (семейство FMC, `docs/codecs/CODECS.md`).
-//! Нормативная спецификация битстрима — `docs/codecs/FIC.md`; формат v1
-//! заморожен golden-векторами в `tests/`.
+//! Нормативная спецификация битстрима — `docs/codecs/FIC.md`. Кодер пишет v2;
+//! декодер читает v1 и v2 (обе версии заморожены golden-векторами в `tests/`).
 //!
 //! Два режима в одном контейнере:
 //! - **lossless** — обратимый YCoCg-R (либо identity-RGB, либо палитра до
-//!   256 цветов — кодер выбирает лучшее), MED-предиктор, контексты по
-//!   градиентам, raw-fallback как потолок худшего случая;
-//! - **lossy** — YCbCr, опциональный 4:2:0, DCT 8x8, перцептивное квантование.
+//!   256 цветов — кодер выбирает лучшее), MED-предиктор с bias-коррекцией,
+//!   run-режим плоских областей, контексты по градиентам, raw-fallback как
+//!   потолок худшего случая;
+//! - **lossy** — YCbCr, опциональный 4:2:0, направленная intra-предикция
+//!   блоков (DC/V/H/TM), DCT 8x8 остатка, перцептивное квантование.
 //!
 //! Энтропийное ядро общее: rANS (12-битные вероятности) + hybrid-uint токены.
-//! Изображение делится на независимые тайлы 256x256.
+//! Изображение делится на независимые тайлы 256x256; тайлы кодируются и
+//! декодируются параллельно (feature `threads`, включена по умолчанию;
+//! для wasm собирать с `--no-default-features`).
 //!
 //! Свойства реализации: чистый std (без зависимостей), `unsafe` запрещён,
 //! декодер не паникует на произвольных байтах и не аллоцирует память
-//! сверх `DecodeLimits`.
+//! сверх `DecodeLimits`. Байты кодера не зависят от числа потоков.
 //!
 //! ```
 //! use flora_image_codec::{encode, decode, EncodeMode, ImageView, PixelFormat};
@@ -36,6 +40,7 @@ mod error;
 mod format;
 mod lossless;
 mod lossy;
+mod parallel;
 mod plane;
 mod predict;
 mod rans;
@@ -109,6 +114,8 @@ impl Default for DecodeLimits {
 /// Метаданные потока без декодирования тела.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageInfo {
+    /// Версия битстрима (1 или 2).
+    pub version: u8,
     pub width: u32,
     pub height: u32,
     pub lossless: bool,
@@ -122,7 +129,7 @@ pub struct ImageInfo {
     pub quality: Option<u8>,
 }
 
-/// Кодирует изображение в FIC v1.
+/// Кодирует изображение в FIC (текущая версия битстрима — v2).
 pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeError> {
     encode::encode(img, mode)
 }
@@ -141,6 +148,7 @@ pub fn decode_with_limits(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedI
 pub fn read_info(bytes: &[u8]) -> Result<ImageInfo, DecodeError> {
     let h = format::Header::parse(bytes)?;
     Ok(ImageInfo {
+        version: h.version,
         width: h.width,
         height: h.height,
         lossless: h.lossless,
