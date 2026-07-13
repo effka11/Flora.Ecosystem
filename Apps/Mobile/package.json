@@ -31,7 +31,7 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@flora/client-core": "*",
-    "@react-native-community/netinfo": "11.4.1",
+    "@react-native-community/netinfo": "12.0.1",
     "@react-navigation/native": "^7.1.8",
     "@sentry/react-native": "^6.22.0",
     "@shopify/flash-list": "2.0.2",
