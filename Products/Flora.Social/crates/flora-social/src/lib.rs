@@ -5,26 +5,70 @@
 
 mod jwt_layer;
 
+use std::sync::Arc;
+
 use flora_auth::infrastructure::jwt::JwtOptions;
 use flora_shared::config::FloraConfig;
 use flora_shared::npgsql::NpgsqlConnectionString;
+use flora_verification_contracts::VerificationChallengePort;
 use sqlx::PgPool;
+
+/// Результат композиции продукта: HTTP + фоновые хэндлы (Music workers, Verification gRPC).
+pub struct ProductComposition {
+    pub router: axum::Router,
+    pub background: Vec<BackgroundHandle>,
+}
 
 /// Объединённый роутер продукта. `pool` — общий PgPool для нативных модулей
 /// (`Music` / `Auth` ServeNative); `None` если натив не нужен.
+///
+/// Для хоста предпочтителен [`compose_product`] — один VerificationBundle на Auth + gRPC.
 pub fn product_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
-    axum::Router::new()
+    compose_product(cfg, pool).router
+}
+
+/// Композиция роутера и фоновых задач без двойного ChallengeService.
+pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductComposition {
+    let mut background = Vec::new();
+
+    let verification_port = if let Some(ref pool) = pool {
+        if let Some(bundle) = flora_verification::compose(cfg, pool.clone()) {
+            if let Some(h) = bundle.grpc_handle {
+                background.push(h);
+            }
+            Some(bundle.port)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(ref pool) = pool {
+        background.extend(spawn_music_workers(cfg, pool.clone()));
+    }
+
+    let router = axum::Router::new()
         .merge(flora_users::router())
         .merge(flora_verification::router())
-        .merge(auth_router(cfg, pool.clone()))
+        .merge(auth_router(cfg, pool.clone(), verification_port))
         .merge(flora_notifications::router())
         .merge(flora_content::router())
         .merge(flora_messaging::router())
         .merge(music_router(cfg, pool))
-        .merge(economy_router(cfg))
+        .merge(economy_router(cfg));
+
+    ProductComposition {
+        router,
+        background,
+    }
 }
 
-fn auth_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
+fn auth_router(
+    cfg: &FloraConfig,
+    pool: Option<PgPool>,
+    verification: Option<Arc<dyn VerificationChallengePort>>,
+) -> axum::Router {
     if cfg.get_bool("Auth:ServeNative") != Some(true) {
         return flora_auth::router();
     }
@@ -32,9 +76,15 @@ fn auth_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
         eprintln!("flora-auth: Auth:ServeNative=true, но PgPool недоступен — модуль офлайн");
         return flora_auth::router();
     };
+    let Some(verification) = verification else {
+        eprintln!(
+            "flora-auth: Auth:ServeNative=true, но VerificationBundle недоступен — модуль офлайн"
+        );
+        return flora_auth::router();
+    };
     let jwt = JwtOptions::from_config(cfg);
-    let profiles = flora_users::profile_read_queries(pool.clone());
-    let module = flora_auth::compose(pool, jwt, profiles);
+    let (profiles, provisioner) = flora_users::profile_ports(pool.clone());
+    let module = flora_auth::compose(pool, jwt, profiles, provisioner, verification);
     axum::Router::new()
         .merge(with_jwt(cfg, module.protected_router))
         .merge(module.public_router)
@@ -168,7 +218,8 @@ pub fn spawn_music_workers(cfg: &FloraConfig, pool: PgPool) -> Vec<MusicWorkerHa
     flora_music::spawn_workers(pool)
 }
 
-/// Verification tonic + Music workers.
+/// Фоновые задачи без роутера. Не использовать вместе с [`compose_product`] —
+/// иначе Verification ChallengeService создаётся дважды.
 pub fn spawn_background(cfg: &FloraConfig, pool: PgPool) -> Vec<BackgroundHandle> {
     let mut handles = spawn_music_workers(cfg, pool.clone());
     if let Some(h) = flora_verification::spawn_grpc(cfg, pool) {

@@ -1,6 +1,4 @@
-//! Модуль Verification. Фаза 2a: tonic-порт challenge/SMTP (next-architecture.md §6).
-//!
-//! Публичного HTTP нет — только gRPC `VerificationChallengeService` при `Verification:ServeNative`.
+//! Модуль Verification. Фаза 2a: tonic-порт + in-process порт для Auth (Фаза 2b).
 
 pub mod application;
 pub mod infrastructure;
@@ -12,15 +10,21 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use flora_shared::config::FloraConfig;
+use flora_verification_contracts::VerificationChallengePort;
 use sqlx::PgPool;
 use tokio::task::JoinHandle;
 
+use crate::application::port_adapter::as_port;
 use crate::application::service::ChallengeService;
 use crate::application::smtp::{SmtpOptions, SmtpVerificationCodeSender};
 use crate::infrastructure::repo::VerificationRepo;
 
-/// Хэндл tonic-сервера (abort при shutdown хоста).
 pub type GrpcHandle = JoinHandle<()>;
+
+pub struct VerificationBundle {
+    pub port: Arc<dyn VerificationChallengePort>,
+    pub grpc_handle: Option<GrpcHandle>,
+}
 
 pub fn router() -> axum::Router {
     axum::Router::new()
@@ -28,36 +32,47 @@ pub fn router() -> axum::Router {
 
 pub fn needs_pool(cfg: &FloraConfig) -> bool {
     cfg.get_bool("Verification:ServeNative") == Some(true)
+        || cfg.get_bool("Auth:ServeNative") == Some(true)
 }
 
-/// Поднимает tonic на `Verification:GrpcListen` (дефолт `127.0.0.1:50051`).
-pub fn spawn_grpc(cfg: &FloraConfig, pool: PgPool) -> Option<GrpcHandle> {
+/// In-process ChallengeService (+ optional gRPC при Verification:ServeNative).
+pub fn compose(cfg: &FloraConfig, pool: PgPool) -> Option<VerificationBundle> {
     if !needs_pool(cfg) {
         return None;
     }
-
-    let listen = cfg
-        .get_non_empty("Verification:GrpcListen")
-        .unwrap_or("127.0.0.1:50051");
-    let addr: SocketAddr = match listen.parse() {
-        Ok(a) => a,
-        Err(e) => {
-            tracing::error!(listen, error = %e, "Verification:GrpcListen невалиден");
-            return None;
-        }
-    };
 
     let smtp = SmtpOptions::from_config(cfg);
     let development = cfg.is_development();
     let repo = Arc::new(VerificationRepo::new(pool));
     let sender = Arc::new(SmtpVerificationCodeSender::new(smtp, development));
-    let service = ChallengeService::new(repo, sender, development);
+    let service = Arc::new(ChallengeService::new(repo, sender, development));
+    let port = as_port(service.clone());
 
-    Some(tokio::spawn(async move {
-        if let Err(e) = serve(addr, service).await {
-            tracing::error!(error = %e, "Verification gRPC server stopped");
+    let grpc_handle = if cfg.get_bool("Verification:ServeNative") == Some(true) {
+        let listen = cfg
+            .get_non_empty("Verification:GrpcListen")
+            .unwrap_or("127.0.0.1:50051");
+        match listen.parse::<SocketAddr>() {
+            Ok(addr) => Some(tokio::spawn(async move {
+                if let Err(e) = serve(addr, (*service).clone()).await {
+                    tracing::error!(error = %e, "Verification gRPC server stopped");
+                }
+            })),
+            Err(e) => {
+                tracing::error!(listen, error = %e, "Verification:GrpcListen невалиден");
+                None
+            }
         }
-    }))
+    } else {
+        None
+    };
+
+    Some(VerificationBundle { port, grpc_handle })
+}
+
+/// Обратная совместимость: только gRPC (старый API spawn_background).
+pub fn spawn_grpc(cfg: &FloraConfig, pool: PgPool) -> Option<GrpcHandle> {
+    compose(cfg, pool).and_then(|b| b.grpc_handle)
 }
 
 async fn serve(

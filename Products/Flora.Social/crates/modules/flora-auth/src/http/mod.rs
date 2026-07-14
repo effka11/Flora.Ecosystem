@@ -1,4 +1,4 @@
-//! Auth HTTP — Фаза 2b: sessions, logout, me/security, refresh.
+//! Auth HTTP — Фаза 2b: sessions, logout, me/security, refresh, login, register.
 
 mod rate_limit;
 
@@ -16,8 +16,10 @@ use uuid::Uuid;
 
 use crate::application::login::{
     LoginError, LoginService, SessionHints, agent_hash_from_user_agent, clamp_ip,
+    resolve_identifier,
 };
 use crate::application::refresh::{RefreshError, RefreshService};
+use crate::application::register::{RegisterBeginError, RegisterService, RegisterVerifyError};
 use crate::application::security::SecurityService;
 use crate::application::sessions::SessionService;
 use crate::http::rate_limit::{AnonymousAuthLimiters, anonymous_auth_rate_limit};
@@ -39,6 +41,7 @@ pub struct AuthState {
 pub struct PublicAuthState {
     pub refresh: Arc<RefreshService>,
     pub login: Arc<LoginService>,
+    pub register: Arc<RegisterService>,
 }
 
 /// Маршруты с JWT (flora-social вешает Bearer middleware).
@@ -51,12 +54,15 @@ pub fn protected_router(state: AuthState) -> Router {
         .with_state(state)
 }
 
-/// Анонимные маршруты (без JWT). Rate-limit: login 10/5м, refresh 60/5м.
+/// Анонимные маршруты (без JWT). Rate-limit: login/refresh/register/verify.
 pub fn public_router(state: PublicAuthState) -> Router {
     let limiters = AnonymousAuthLimiters::social_defaults();
     Router::new()
         .route("/api/auth/refresh", post(refresh))
         .route("/api/auth/login", post(login))
+        .route("/api/auth/register", post(register))
+        .route("/api/auth/verify-registration", post(verify_registration))
+        .route("/api/auth/cancel-registration", post(cancel_registration))
         .with_state(state)
         .layer(axum::middleware::from_fn_with_state(
             limiters,
@@ -152,6 +158,33 @@ pub struct LoginRequest {
     pub two_factor_code: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterRequest {
+    #[serde(alias = "Email")]
+    pub email: Option<String>,
+    #[serde(alias = "Phone")]
+    pub phone: Option<String>,
+    #[serde(alias = "Password")]
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyRegistrationRequest {
+    #[serde(alias = "VerificationToken")]
+    pub verification_token: Option<String>,
+    #[serde(alias = "Code")]
+    pub code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelRegistrationRequest {
+    #[serde(alias = "VerificationToken")]
+    pub verification_token: Option<String>,
+}
+
 async fn refresh(
     State(state): State<PublicAuthState>,
     Json(body): Json<RefreshRequest>,
@@ -185,20 +218,7 @@ async fn login(
     headers: HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Response {
-    let ip = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').map(str::trim).find(|p| !p.is_empty()))
-        .unwrap_or("unknown");
-    let ua = headers
-        .get(axum::http::header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let hints = SessionHints {
-        ip: clamp_ip(ip),
-        agent_hash: agent_hash_from_user_agent(ua),
-    };
-
+    let hints = session_hints_from_headers(&headers);
     match state
         .login
         .login(
@@ -230,6 +250,114 @@ async fn login(
             )
                 .into_response()
         }
+    }
+}
+
+async fn register(
+    State(state): State<PublicAuthState>,
+    Json(body): Json<RegisterRequest>,
+) -> Response {
+    let email = resolve_identifier(body.email.as_deref(), body.phone.as_deref());
+    match state
+        .register
+        .begin(&email, body.password.as_deref().unwrap_or(""))
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(RegisterBeginError::BadRequest(msg)) => {
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        Err(RegisterBeginError::Conflict(msg)) => {
+            (StatusCode::CONFLICT, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        Err(RegisterBeginError::Internal(e)) => {
+            tracing::error!(error = %e, "register begin failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn verify_registration(
+    State(state): State<PublicAuthState>,
+    headers: HeaderMap,
+    Json(body): Json<VerifyRegistrationRequest>,
+) -> Response {
+    let Some(token) = body
+        .verification_token
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s.trim()).ok())
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Некорректный токен верификации." })),
+        )
+            .into_response();
+    };
+    let hints = session_hints_from_headers(&headers);
+    match state
+        .register
+        .verify(token, body.code.as_deref().unwrap_or(""), hints)
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(RegisterVerifyError::BadRequest(msg)) => {
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        Err(RegisterVerifyError::Conflict(msg)) => {
+            (StatusCode::CONFLICT, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        Err(RegisterVerifyError::Unauthorized(msg)) => {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "error": msg })),
+            )
+                .into_response()
+        }
+        Err(RegisterVerifyError::Internal(e)) => {
+            tracing::error!(error = %e, "verify registration failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn cancel_registration(
+    State(state): State<PublicAuthState>,
+    Json(body): Json<CancelRegistrationRequest>,
+) -> Response {
+    let Some(token) = body
+        .verification_token
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s.trim()).ok())
+    else {
+        return StatusCode::OK.into_response();
+    };
+    if let Err(e) = state.register.cancel(token).await {
+        tracing::warn!(error = %e, "cancel registration best-effort failed");
+    }
+    StatusCode::OK.into_response()
+}
+
+fn session_hints_from_headers(headers: &HeaderMap) -> SessionHints {
+    let ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').map(str::trim).find(|p| !p.is_empty()))
+        .unwrap_or("unknown");
+    let ua = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    SessionHints {
+        ip: clamp_ip(ip),
+        agent_hash: agent_hash_from_user_agent(ua),
     }
 }
 
@@ -268,6 +396,14 @@ pub struct LoginResponse {
     pub expires_at: String,
     pub token_type: String,
     pub requires_profile_completion: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterInitResponse {
+    pub verification_token: String,
+    pub expires_at: String,
+    pub dev_verification_code: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -348,5 +484,21 @@ mod tests {
         assert_eq!(v["expiresAt"], "2026-07-14T12:00:00.000Z");
         assert_eq!(v["tokenType"], "Bearer");
         assert_eq!(v["requiresProfileCompletion"], true);
+    }
+
+    #[test]
+    fn register_init_response_json_shape() {
+        let v = serde_json::to_value(RegisterInitResponse {
+            verification_token: "01900000-0000-7000-8000-000000000099".into(),
+            expires_at: "2026-07-14T12:15:00.000Z".into(),
+            dev_verification_code: Some("123456".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            v["verificationToken"],
+            "01900000-0000-7000-8000-000000000099"
+        );
+        assert_eq!(v["expiresAt"], "2026-07-14T12:15:00.000Z");
+        assert_eq!(v["devVerificationCode"], "123456");
     }
 }

@@ -34,13 +34,11 @@ pub async fn build_host(cfg: &FloraConfig, versions: versions::FloraVersionRespo
         None
     };
 
-    let worker_handles = pool
-        .as_ref()
-        .map(|p| flora_social::spawn_background(cfg, p.clone()))
-        .unwrap_or_default();
+    let product = flora_social::compose_product(cfg, pool);
+    let worker_handles = product.background;
 
     let mut native = routes::host_router(versions)
-        .merge(flora_social::product_router(cfg, pool))
+        .merge(product.router)
         .layer(axum::middleware::from_fn_with_state(
             client_version::MinClientVersion::from_config(cfg),
             client_version::enforce_min_client_version,

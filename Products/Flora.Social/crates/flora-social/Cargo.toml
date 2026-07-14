@@ -20,6 +20,7 @@ flora-messaging = { workspace = true }
 flora-music = { workspace = true }
 flora-notifications = { workspace = true }
 flora-verification = { workspace = true }
+flora-verification-contracts = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }

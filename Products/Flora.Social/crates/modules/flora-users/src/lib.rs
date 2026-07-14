@@ -1,8 +1,6 @@
 //! Модуль Users. Перенос — Фаза 2b, вместе с Auth (next-architecture.md §6); владелец — §6.0.
 //!
-//! Уже перенесено (до cutover, паритет закреплён golden-вектором `fira-p-scorer-v1.json`):
-//! чистый скорер FIRA-P — [`application::people`].
-//! Порт `UserProfileReadQueries` — для Auth refresh/login (`requires_profile_completion`).
+//! Уже перенесено: FIRA-P scorer; порты profile read/provisioner для Auth.
 
 pub mod application;
 pub mod infrastructure;
@@ -11,15 +9,24 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use crate::infrastructure::profile_reads::SqlUserProfileReadQueries;
+use crate::infrastructure::profile_reads::SqlUserProfileQueries;
 
-/// HTTP-роутер модуля (профили/аватары/подписки/поиск). До cutover Фазы 2b пуст —
-/// запросы обслуживает C#-хост через gateway-fallback.
 pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
-/// Порт чтения профиля для чужих модулей (Auth) — sqlx по `user_profiles`.
+/// Порты Users для Auth (один sqlx-адаптер реализует read + provisioner).
+pub fn profile_ports(
+    pool: PgPool,
+) -> (
+    Arc<dyn flora_users_contracts::UserProfileReadQueries>,
+    Arc<dyn flora_users_contracts::UserProfileProvisioner>,
+) {
+    let q = Arc::new(SqlUserProfileQueries::new(pool));
+    (q.clone(), q)
+}
+
+/// Обратная совместимость со срезом refresh/login.
 pub fn profile_read_queries(pool: PgPool) -> Arc<dyn flora_users_contracts::UserProfileReadQueries> {
-    Arc::new(SqlUserProfileReadQueries::new(pool))
+    profile_ports(pool).0
 }

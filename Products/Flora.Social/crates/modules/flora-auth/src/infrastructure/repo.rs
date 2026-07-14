@@ -375,4 +375,149 @@ impl AuthRepo {
         .await?;
         Ok(())
     }
+
+    pub async fn email_exists(&self, email: &str) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM flora_core.user_accounts WHERE email = $1
+            )
+            "#,
+        )
+        .bind(email)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn delete_pending_by_email(&self, email: &str) -> Result<Vec<Uuid>, sqlx::Error> {
+        let tokens: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            SELECT verification_token
+            FROM flora_core.pending_registrations
+            WHERE email = $1
+            "#,
+        )
+        .bind(email)
+        .fetch_all(&self.pool)
+        .await?;
+        if !tokens.is_empty() {
+            sqlx::query("DELETE FROM flora_core.pending_registrations WHERE email = $1")
+                .bind(email)
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(tokens)
+    }
+
+    pub async fn insert_pending(
+        &self,
+        verification_token: Uuid,
+        email: &str,
+        username: &str,
+        password_hash: &str,
+        expires_at: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.pending_registrations (
+                verification_token, email, username, password_hash,
+                expires_at, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $6)
+            "#,
+        )
+        .bind(verification_token)
+        .bind(email)
+        .bind(username)
+        .bind(password_hash)
+        .bind(expires_at)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_pending(
+        &self,
+        verification_token: Uuid,
+    ) -> Result<Option<PendingRegistrationRow>, sqlx::Error> {
+        sqlx::query_as::<_, PendingRegistrationRow>(
+            r#"
+            SELECT verification_token, email, username, password_hash, expires_at
+            FROM flora_core.pending_registrations
+            WHERE verification_token = $1
+            "#,
+        )
+        .bind(verification_token)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn delete_pending(&self, verification_token: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "DELETE FROM flora_core.pending_registrations WHERE verification_token = $1",
+        )
+        .bind(verification_token)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn insert_registered_account(
+        &self,
+        user_uuid: Uuid,
+        email: &str,
+        username: &str,
+        phone: &str,
+        password_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.user_accounts (
+                user_uuid, username, phone, phone_verified, password_hash,
+                email, email_verified, two_factor_enabled, status,
+                last_login, services_mask, privacy_accepted, tos_accepted,
+                has_social_network, has_email, services_count,
+                created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, false, $4,
+                $5, true, false, 0,
+                $6, 1, false, false,
+                true, true, 1,
+                $6, $6
+            )
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(username)
+        .bind(phone)
+        .bind(password_hash)
+        .bind(email)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.user_security_logs (
+                user_uuid, password_updated_at, created_at, updated_at
+            ) VALUES ($1, $2, $2, $2)
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PendingRegistrationRow {
+    pub verification_token: Uuid,
+    pub email: String,
+    pub username: String,
+    pub password_hash: String,
+    pub expires_at: DateTime<Utc>,
 }

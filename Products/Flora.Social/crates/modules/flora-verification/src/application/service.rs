@@ -52,6 +52,7 @@ impl std::fmt::Display for ChallengeError {
     }
 }
 
+#[derive(Clone)]
 pub struct ChallengeService {
     repo: Arc<VerificationRepo>,
     sender: Arc<SmtpVerificationCodeSender>,

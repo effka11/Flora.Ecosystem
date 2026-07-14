@@ -1,34 +1,75 @@
 //! Контракты модуля Verification — DTO и trait-порты без бизнес-логики (next-architecture.md §2.2).
-//!
-//! Наполняется в Фазе 2a: сюда переезжает порт `IVerificationChallengeService`
-//! (challenge-хранилище + SMTP). Чужим модулям разрешена зависимость только от этого crate (§2.3).
-//!
-//! Уже объявлен personhood-порт (`FPP.md` §Architecture Position): потребители — Governance (FGP)
-//! и Economy (FEP). Реализация — модуль Verification (сегодня V0 = email; уровни V1+ появятся
-//! с реализацией FPP). До этого композиция может внедрять консервативную заглушку
-//! «все — V0» (FEP при этом не начисляет UBI — отказобезопасное направление).
 
+use std::future::Future;
+use std::pin::Pin;
+
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
+
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// `VerificationChallengeKind.EmailRegistration`.
+pub const KIND_EMAIL_REGISTRATION: i32 = 0;
+/// `VerificationChallengeKind.EmailChange`.
+pub const KIND_EMAIL_CHANGE: i32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ChallengeValidateStatus {
+    Success = 0,
+    NotFound = 1,
+    Expired = 2,
+    CodeMismatch = 3,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChallengeBeginResult {
+    pub token: Uuid,
+    pub expires_at_utc: DateTime<Utc>,
+    pub dev_code: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChallengeValidateResult {
+    pub status: ChallengeValidateStatus,
+    pub target: Option<String>,
+    pub subject_user_uuid: Option<Uuid>,
+}
+
+impl ChallengeValidateResult {
+    pub fn success(&self) -> bool {
+        self.status == ChallengeValidateStatus::Success
+    }
+}
+
+/// Порт `IVerificationChallengeService` — Auth и др. вызывают только через contracts.
+pub trait VerificationChallengePort: Send + Sync {
+    fn begin(
+        &self,
+        kind: i32,
+        target: &str,
+        subject_user_uuid: Option<Uuid>,
+    ) -> BoxFuture<'_, Result<ChallengeBeginResult, String>>;
+
+    fn validate(
+        &self,
+        token: Uuid,
+        code_plain: &str,
+    ) -> BoxFuture<'_, Result<ChallengeValidateResult, String>>;
+
+    fn cancel(&self, token: Uuid) -> BoxFuture<'_, Result<(), String>>;
+}
 
 /// Уровень подтверждённой человечности (FPP §2; права уровней — FGP §4.1.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PersonhoodLevel {
-    /// Email-код — не personhood (`C_identity ≈ 0`).
     V0,
-    /// Liveness-церемонии: гражданский базис (голос, UBI).
     V1,
-    /// Web-of-trust (≥ 3 поручителя V2+): жюри и панели.
     V2,
-    /// Внешний якорь: делегат, emergency circle.
     V3,
 }
 
-/// Порт «уровень человечности аккаунта» (trait `PersonhoodAttestor`, FPP).
-///
-/// Потребители обязаны трактовать ошибку/незнание как V0 (fail-safe: права не выдаются
-/// при недоступности аттестора, а не наоборот).
 pub trait PersonhoodAttestor: Send + Sync {
-    /// Актуальный (не истёкший, не приостановленный) уровень аттестации аккаунта.
     fn active_level(&self, account_uuid: Uuid) -> PersonhoodLevel;
 }
 

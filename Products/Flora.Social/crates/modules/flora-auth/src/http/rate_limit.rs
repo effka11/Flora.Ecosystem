@@ -45,6 +45,8 @@ impl FixedWindowLimiter {
 pub struct AnonymousAuthLimiters {
     pub login: Arc<FixedWindowLimiter>,
     pub refresh: Arc<FixedWindowLimiter>,
+    pub register: Arc<FixedWindowLimiter>,
+    pub verify: Arc<FixedWindowLimiter>,
 }
 
 impl AnonymousAuthLimiters {
@@ -52,6 +54,8 @@ impl AnonymousAuthLimiters {
         Self {
             login: Arc::new(FixedWindowLimiter::new(10, Duration::from_secs(5 * 60))),
             refresh: Arc::new(FixedWindowLimiter::new(60, Duration::from_secs(5 * 60))),
+            register: Arc::new(FixedWindowLimiter::new(8, Duration::from_secs(15 * 60))),
+            verify: Arc::new(FixedWindowLimiter::new(12, Duration::from_secs(15 * 60))),
         }
     }
 }
@@ -77,12 +81,14 @@ pub async fn anonymous_auth_rate_limit(
 ) -> Response {
     let key = client_ip_key(&req);
     let path = req.uri().path();
-    let allowed = if path == "/api/auth/login" {
-        limiters.login.check_and_increment(&key)
-    } else if path == "/api/auth/refresh" {
-        limiters.refresh.check_and_increment(&key)
-    } else {
-        true
+    let allowed = match path {
+        "/api/auth/login" => limiters.login.check_and_increment(&key),
+        "/api/auth/refresh" => limiters.refresh.check_and_increment(&key),
+        "/api/auth/register" | "/api/auth/cancel-registration" => {
+            limiters.register.check_and_increment(&key)
+        }
+        "/api/auth/verify-registration" => limiters.verify.check_and_increment(&key),
+        _ => true,
     };
     if !allowed {
         return StatusCode::TOO_MANY_REQUESTS.into_response();

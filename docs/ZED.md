@@ -38,7 +38,7 @@ Project skills: `.agents/skills/`.
 3. `Flora Gateway: Rust localhost` (`:5290`)
 4. `Flora Web: dev localhost` (proxy → `:5290`)
 
-Общий Jwt: `.flora/dev-jwt.secret` (`Scripts/ensure-shared-dev-jwt.ps1`). Music workers и Auth (sessions / logout / security / refresh / login) только на gateway (`Music:ServeNative` / `Auth:ServeNative`).
+Общий Jwt: `.flora/dev-jwt.secret` (`Scripts/ensure-shared-dev-jwt.ps1`). Music workers и Auth (sessions / logout / security / refresh / login / register) только на gateway (`Music:ServeNative` / `Auth:ServeNative`).
 
 ## Debugger
 

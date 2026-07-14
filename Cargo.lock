@@ -829,6 +829,7 @@ dependencies = [
  "data-encoding",
  "flora-shared",
  "flora-users-contracts",
+ "flora-verification-contracts",
  "getrandom 0.3.4",
  "hmac 0.12.1",
  "reqwest",
@@ -1046,6 +1047,7 @@ dependencies = [
  "flora-shared",
  "flora-users",
  "flora-verification",
+ "flora-verification-contracts",
  "http",
  "serde_json",
  "sqlx",
@@ -1099,6 +1101,7 @@ dependencies = [
 name = "flora-verification-contracts"
 version = "0.5.0-alpha"
 dependencies = [
+ "chrono",
  "uuid",
 ]
 

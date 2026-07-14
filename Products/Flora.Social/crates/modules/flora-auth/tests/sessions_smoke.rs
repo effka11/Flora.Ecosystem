@@ -51,6 +51,21 @@ fn gateway_login_url() -> String {
         .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/login".into())
 }
 
+fn gateway_register_url() -> String {
+    std::env::var("FLORA_AUTH_REGISTER_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/register".into())
+}
+
+fn gateway_verify_registration_url() -> String {
+    std::env::var("FLORA_AUTH_VERIFY_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/verify-registration".into())
+}
+
+fn gateway_cancel_registration_url() -> String {
+    std::env::var("FLORA_AUTH_CANCEL_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/cancel-registration".into())
+}
+
 fn smoke_user_uuid() -> Uuid {
     let s = std::env::var("FLORA_AUTH_SMOKE_USER")
         .unwrap_or_else(|_| "019e9ee8-e522-7fe5-90bb-8d1084f60366".into());
@@ -661,4 +676,146 @@ async fn login_success_with_env_password() {
     assert!(body["accessToken"].as_str().is_some_and(|s| !s.is_empty()));
     assert!(body["refreshToken"].as_str().is_some_and(|s| !s.is_empty()));
     assert_eq!(body["tokenType"], "Bearer");
+}
+
+#[tokio::test]
+async fn register_begin_bad_email() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .expect("client");
+    let res = client
+        .post(gateway_register_url())
+        .json(&serde_json::json!({ "email": "not-an-email", "password": "x" }))
+        .send()
+        .await
+        .expect("POST register");
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "body {body}");
+    assert_eq!(body["error"], "Укажите корректный email.");
+}
+
+#[tokio::test]
+async fn register_verify_cancel_roundtrip_dev_code() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let email = format!(
+        "smoke-reg-{}@flora.local",
+        Uuid::now_v7().as_simple()
+    );
+    let password = "SmokeReg-Pass-1!";
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("client");
+
+    let begin = client
+        .post(gateway_register_url())
+        .json(&serde_json::json!({ "email": email, "password": password }))
+        .send()
+        .await
+        .expect("POST register");
+    let begin_status = begin.status();
+    let begin_body: serde_json::Value = begin.json().await.expect("json");
+    assert_eq!(
+        begin_status,
+        reqwest::StatusCode::OK,
+        "register begin body {begin_body}"
+    );
+    let token = begin_body["verificationToken"]
+        .as_str()
+        .expect("verificationToken")
+        .to_string();
+    let Some(code) = begin_body["devVerificationCode"].as_str().map(str::to_string) else {
+        // cancel draft so we don't leave pending; then skip (SMTP-only env)
+        let _ = client
+            .post(gateway_cancel_registration_url())
+            .json(&serde_json::json!({ "verificationToken": token }))
+            .send()
+            .await;
+        eprintln!("skip: no devVerificationCode (SMTP production mode?)");
+        return;
+    };
+
+    let verify = client
+        .post(gateway_verify_registration_url())
+        .json(&serde_json::json!({
+            "verificationToken": token,
+            "code": code
+        }))
+        .send()
+        .await
+        .expect("POST verify");
+    let verify_status = verify.status();
+    let verify_body: serde_json::Value = verify.json().await.expect("json");
+    assert_eq!(
+        verify_status,
+        reqwest::StatusCode::OK,
+        "verify body {verify_body}"
+    );
+    assert!(
+        verify_body["accessToken"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+    );
+    assert!(
+        verify_body["refreshToken"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+    );
+    assert_eq!(verify_body["tokenType"], "Bearer");
+    assert_eq!(verify_body["requiresProfileCompletion"], true);
+
+    // cleanup account so smoke can re-run
+    let cfg = load_config();
+    let pool = connect_pool(&cfg).await;
+    let user_uuid: Uuid = sqlx::query_scalar(
+        "SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1",
+    )
+    .bind(&email)
+    .fetch_one(&pool)
+    .await
+    .expect("created user");
+    let _ = sqlx::query("DELETE FROM flora_core.user_sessions WHERE user_uuid = $1")
+        .bind(user_uuid)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM flora_core.user_security_logs WHERE user_uuid = $1")
+        .bind(user_uuid)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM flora_core.user_profiles WHERE user_uuid = $1")
+        .bind(user_uuid)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM flora_core.user_accounts WHERE user_uuid = $1")
+        .bind(user_uuid)
+        .execute(&pool)
+        .await;
+}
+
+#[tokio::test]
+async fn cancel_registration_invalid_token_ok() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .expect("client");
+    let res = client
+        .post(gateway_cancel_registration_url())
+        .json(&serde_json::json!({ "verificationToken": "not-a-uuid" }))
+        .send()
+        .await
+        .expect("POST cancel");
+    assert_eq!(res.status(), reqwest::StatusCode::OK);
 }

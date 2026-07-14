@@ -11,6 +11,22 @@ const ITERATIONS: u32 = 4;
 const MEMORY_KIB: u32 = 65536;
 const PARALLELISM: u32 = 2;
 
+/// Hash password → Base64(salt16‖hash32).
+pub fn hash_password(password: &str) -> String {
+    let mut salt = [0u8; SALT_LEN];
+    getrandom::fill(&mut salt).expect("OS CSPRNG");
+    let params = Params::new(MEMORY_KIB, ITERATIONS, PARALLELISM, Some(HASH_LEN)).expect("params");
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut hash = [0u8; HASH_LEN];
+    argon2
+        .hash_password_into(password.as_bytes(), &salt, &mut hash)
+        .expect("argon2 hash");
+    let mut combined = Vec::with_capacity(SALT_LEN + HASH_LEN);
+    combined.extend_from_slice(&salt);
+    combined.extend_from_slice(&hash);
+    STANDARD.encode(combined)
+}
+
 /// Verify Base64(salt16‖hash32). Constant-time compare; malformed → false.
 pub fn verify_password(password: &str, stored_hash: &str) -> bool {
     let Ok(combined) = STANDARD.decode(stored_hash) else {
@@ -38,6 +54,13 @@ pub fn verify_password(password: &str, stored_hash: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn roundtrip_hash_verify() {
+        let h = hash_password("secret-pass");
+        assert!(verify_password("secret-pass", &h));
+        assert!(!verify_password("other", &h));
+    }
 
     #[test]
     fn golden_vector_case_verifies() {

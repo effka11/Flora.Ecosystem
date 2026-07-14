@@ -1,6 +1,6 @@
 //! Контракты модуля Users — DTO и trait-порты без бизнес-логики (next-architecture.md §2.2).
 //!
-//! Фаза 2b: `UserProfileReadQueries` (срез refresh/login); далее — follow graph, provisioner.
+//! Фаза 2b: profile read + provisioner; далее — follow graph.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -16,4 +16,13 @@ pub trait UserProfileReadQueries: Send + Sync {
         &self,
         user_uuid: Uuid,
     ) -> BoxFuture<'_, Result<bool, String>>;
+}
+
+/// Порт `IUserProfileProvisioner` — Auth создаёт пустой профиль при регистрации.
+pub trait UserProfileProvisioner: Send + Sync {
+    fn ensure_initial_profile(
+        &self,
+        user_uuid: Uuid,
+        display_name: &str,
+    ) -> BoxFuture<'_, Result<(), String>>;
 }
