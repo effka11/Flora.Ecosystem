@@ -25,7 +25,8 @@ if [[ -z "$REMOTE_PATH" || -z "$DOMAIN" ]]; then
   exit 1
 fi
 
-[[ -z "$API_UPSTREAM" ]] && API_UPSTREAM='http://127.0.0.1:5000'
+# Phase 0+: Next → Rust gateway :5290; .NET upstream listens on :5000 (flora-api-dotnet).
+[[ -z "$API_UPSTREAM" ]] && API_UPSTREAM='http://127.0.0.1:5290'
 
 if ! command -v node >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1; then
@@ -112,7 +113,7 @@ systemctl enable flora-web >/dev/null 2>&1 || true
 mkdir -p /etc/systemd/system
 {
   echo '[Unit]'
-  echo 'Description=Flora.API (ASP.NET Core)'
+  echo 'Description=Flora.API .NET upstream (Phase 0+)'
   echo 'After=network.target'
   echo
   echo '[Service]'
@@ -128,7 +129,8 @@ mkdir -p /etc/systemd/system
   echo
   echo '[Install]'
   echo 'WantedBy=multi-user.target'
-} >/etc/systemd/system/flora-api.service
+} >/etc/systemd/system/flora-api-dotnet.service
+systemctl enable flora-api-dotnet >/dev/null 2>&1 || true
 
 {
   printf 'FloraWeb__CorsOrigins__0=https://%s.%s\n' "$PUBLIC_SUBDOMAIN" "$DOMAIN"
@@ -154,7 +156,7 @@ emit_nginx_proxy_next_static() {
 
 emit_nginx_api_admin() {
   echo '    location /api/admin/ {'
-  echo '        proxy_pass http://127.0.0.1:5000;'
+  echo '        proxy_pass http://127.0.0.1:5290;'
   echo '        proxy_http_version 1.1;'
   echo '        proxy_set_header Host $host;'
   echo '        proxy_set_header X-Real-IP $remote_addr;'
@@ -167,7 +169,7 @@ emit_nginx_api_admin() {
 
 emit_nginx_api_sse_stream() {
   echo '    location = /api/auth/signals/stream {'
-  echo '        proxy_pass http://127.0.0.1:5000;'
+  echo '        proxy_pass http://127.0.0.1:5290;'
   echo '        proxy_http_version 1.1;'
   echo '        proxy_set_header Host $host;'
   echo '        proxy_set_header X-Real-IP $remote_addr;'
@@ -183,7 +185,7 @@ emit_nginx_api_sse_stream() {
 emit_nginx_api_post_media() {
   echo '    # Public post media GET (anonymous <img>/<video>); bypass Next for binary + Range.'
   echo '    location ~ ^/api/auth/posts/(images|videos)/ {'
-  echo '        proxy_pass http://127.0.0.1:5000;'
+  echo '        proxy_pass http://127.0.0.1:5290;'
   echo '        proxy_http_version 1.1;'
   echo '        proxy_set_header Host $host;'
   echo '        proxy_set_header X-Real-IP $remote_addr;'

@@ -17,7 +17,8 @@ param(
     [string] $RemotePath = "/opt/flora-ecosystem/runtime/web",
     [string] $Domain = "flora-s.net",
     [string] $PublicSubdomain = "social",
-    [string] $ApiUpstreamUrl = "http://127.0.0.1:5000",
+    # Phase 0+: Next.js proxies /api to the Rust gateway; .NET stays on :5000 behind it.
+    [string] $ApiUpstreamUrl = "http://127.0.0.1:5290",
     [string] $PublicApiBaseUrl = "",
     [string] $CertbotEmail = "",
     [string] $AllowedClientIps = "",
