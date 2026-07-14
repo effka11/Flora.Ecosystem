@@ -258,7 +258,7 @@ flowchart LR
 
 | Единица | Владелец сейчас | Статус | Freeze-окно |
 | --- | --- | --- | --- |
-| Хост / шлюз (`/`, `/health`, `/version`) | C# `Flora.API` | Фаза 0: код готов (`Backend/` собран, паритет-тесты зелёные), ждёт деплой + nginx-флип и соак | — |
+| Хост / шлюз (`/`, `/health`, `/version`) | **Rust** `flora-api` (:5290); .NET upstream `flora-api-dotnet` (:5000) | Фаза 0: cutover 100% (2026-07-14) — nginx + `FLORA_API_UPSTREAM` → Rust gateway; соак ≥1 недели до старта Фазы 1 | — |
 | Music | C# | не начат | — |
 | Verification | C# | не начат | — |
 | Users | C# | не начат | — |

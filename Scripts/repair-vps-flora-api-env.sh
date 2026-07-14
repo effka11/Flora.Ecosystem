@@ -14,7 +14,8 @@ chmod 600 "$ENV"
 printf '%s' "$TOKEN" >/root/flora-broadcast-token-once.txt
 chmod 600 /root/flora-broadcast-token-once.txt
 systemctl daemon-reload
-systemctl restart flora-api
+systemctl restart flora-api-dotnet 2>/dev/null || systemctl restart flora-api
+systemctl try-restart flora-api 2>/dev/null || true
 sleep 4
 PID=$(pgrep -xo Flora.API)
 PROC=$(tr '\0' '\n' </proc/"$PID"/environ | grep -a '^Flora__AdminBroadcastToken=' | cut -d= -f2- || true)

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 block='    location = /api/auth/signals/stream {
-        proxy_pass http://127.0.0.1:5000;
+        proxy_pass http://127.0.0.1:5290;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -27,7 +27,7 @@ import pathlib, sys
 path = pathlib.Path(sys.argv[1])
 text = path.read_text()
 block = """    location = /api/auth/signals/stream {
-        proxy_pass http://127.0.0.1:5000;
+        proxy_pass http://127.0.0.1:5290;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

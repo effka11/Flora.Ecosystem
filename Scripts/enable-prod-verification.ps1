@@ -91,10 +91,10 @@ if (-not $SkipApiDeploy) {
     Pop-Location
 }
 else {
-    Invoke-Ssh "systemctl restart flora-api; sleep 2; systemctl is-active flora-api"
+    Invoke-Ssh "systemctl restart flora-api-dotnet 2>/dev/null || systemctl restart flora-api; systemctl try-restart flora-api 2>/dev/null || true; sleep 2; systemctl is-active flora-api-dotnet 2>/dev/null || systemctl is-active flora-api"
 }
 
 Write-Host "Done. Production verification requires working Gmail SMTP in flora-api.env."
 if (-not ($GmailAddress -and $GmailAppPassword)) {
-    Write-Host "On server: edit /etc/flora-ecosystem/flora-api.env then run systemctl restart flora-api"
+    Write-Host "On server: edit /etc/flora-ecosystem/flora-api.env then restart flora-api-dotnet (+ flora-api gateway)"
 }

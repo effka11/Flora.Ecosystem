@@ -18,7 +18,14 @@ TS="${TS:?missing TS}"
 API_REMOTE="/opt/flora-ecosystem/runtime/api"
 
 if [ -d "$HERE/api" ] && [ -f "$HERE/api/Flora.API" ]; then
-  systemctl stop flora-api 2>/dev/null || true
+  # Phase 0+: .NET upstream unit is flora-api-dotnet; flora-api is the Rust gateway.
+  DOTNET_UNIT=flora-api-dotnet
+  if systemctl cat flora-api-dotnet.service >/dev/null 2>&1; then
+    DOTNET_UNIT=flora-api-dotnet
+  elif systemctl cat flora-api.service 2>/dev/null | grep -q 'runtime/api/Flora.API'; then
+    DOTNET_UNIT=flora-api
+  fi
+  systemctl stop "$DOTNET_UNIT" 2>/dev/null || true
   BAK_API="${API_REMOTE}.bak.${TS}"
   if [ -d "$API_REMOTE" ]; then
     rm -rf "$BAK_API" || true
@@ -30,11 +37,11 @@ if [ -d "$HERE/api" ] && [ -f "$HERE/api/Flora.API" ]; then
   chmod +x "$API_REMOTE/Flora.API" || true
   rm -f "$API_REMOTE/appsettings.Local.json"
   systemctl daemon-reload
-  systemctl enable flora-api >/dev/null 2>&1 || true
-  systemctl restart flora-api
+  systemctl enable "$DOTNET_UNIT" >/dev/null 2>&1 || true
+  systemctl restart "$DOTNET_UNIT"
   sleep 2
-  systemctl is-active flora-api || {
-    echo "flora-api failed to start. Logs: journalctl -u flora-api -n 50 --no-pager" >&2
+  systemctl is-active "$DOTNET_UNIT" || {
+    echo "$DOTNET_UNIT failed to start. Logs: journalctl -u $DOTNET_UNIT -n 50 --no-pager" >&2
     exit 1
   }
 fi
