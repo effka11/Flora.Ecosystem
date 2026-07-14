@@ -1,0 +1,141 @@
+﻿# Flora.Ecosystem Cargo workspace (next-architecture.md §2).
+# Root includes Backend/crates (host) + Products/* (App + Functional).
+# Future "Platform" rename = this root layout. Rules: §2.3, tools/validate-architecture-rust.ps1.
+
+[workspace]
+resolver = "3"
+members = [
+    "Backend/crates/flora-api",
+    "Backend/crates/flora-shared",
+    "Backend/crates/flora-migrate",
+    "Backend/crates/infrastructure/flora-grpc-bridge",
+    "Backend/tests/parity",
+    # App: Flora.Social
+    "Products/Flora.Social/crates/flora-social",
+    "Products/Flora.Social/crates/modules/flora-auth",
+    "Products/Flora.Social/crates/modules/flora-auth-contracts",
+    "Products/Flora.Social/crates/modules/flora-users",
+    "Products/Flora.Social/crates/modules/flora-users-contracts",
+    "Products/Flora.Social/crates/modules/flora-content",
+    "Products/Flora.Social/crates/modules/flora-content-contracts",
+    "Products/Flora.Social/crates/modules/flora-messaging",
+    "Products/Flora.Social/crates/modules/flora-messaging-contracts",
+    "Products/Flora.Social/crates/modules/flora-music",
+    "Products/Flora.Social/crates/modules/flora-music-contracts",
+    "Products/Flora.Social/crates/modules/flora-notifications",
+    "Products/Flora.Social/crates/modules/flora-notifications-contracts",
+    "Products/Flora.Social/crates/modules/flora-verification",
+    "Products/Flora.Social/crates/modules/flora-verification-contracts",
+    # Functional: FSCP
+    "Products/FSCP/crates/fscp-contracts",
+    "Products/FSCP/crates/fscp-core",
+    "Products/FSCP/crates/fscp-crypto",
+    # Functional: FIRA
+    "Products/FIRA/crates/fira-contracts",
+    "Products/FIRA/crates/fira-core",
+    # Functional: FEP
+    "Products/FEP/crates/flora-economy",
+    "Products/FEP/crates/flora-economy-contracts",
+    "Products/FEP/crates/flora-economy-crypto",
+    # Functional: FGP
+    "Products/FGP/crates/flora-governance-crypto",
+    "Products/FGP/crates/flora-governance-contracts",
+    # Functional: FPP
+    "Products/FPP/crates/fpp-contracts",
+    "Products/FPP/crates/fpp-crypto",
+    # Functional: FRC
+    "Products/FRC/crates/frc-i",
+    "Products/FRC/crates/flora-codec-tools",
+    "Products/FRC/crates/frc-a-core",
+    "Products/FRC/crates/frc-a-cli",
+    "Products/FRC/crates/frc-v",
+    "Products/FRC/crates/frc-v-cli",
+    "Products/FRC/crates/frc-v-wasm",
+]
+
+[workspace.package]
+version = "0.5.0-alpha" # synced-from-VERSION
+edition = "2024"
+rust-version = "1.97"
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.dependencies]
+flora-shared = { path = "Backend/crates/flora-shared" }
+flora-social = { path = "Products/Flora.Social/crates/flora-social" }
+flora-auth = { path = "Products/Flora.Social/crates/modules/flora-auth" }
+flora-auth-contracts = { path = "Products/Flora.Social/crates/modules/flora-auth-contracts" }
+flora-users = { path = "Products/Flora.Social/crates/modules/flora-users" }
+flora-users-contracts = { path = "Products/Flora.Social/crates/modules/flora-users-contracts" }
+flora-content = { path = "Products/Flora.Social/crates/modules/flora-content" }
+flora-content-contracts = { path = "Products/Flora.Social/crates/modules/flora-content-contracts" }
+flora-messaging = { path = "Products/Flora.Social/crates/modules/flora-messaging" }
+flora-messaging-contracts = { path = "Products/Flora.Social/crates/modules/flora-messaging-contracts" }
+flora-music = { path = "Products/Flora.Social/crates/modules/flora-music" }
+flora-music-contracts = { path = "Products/Flora.Social/crates/modules/flora-music-contracts" }
+flora-notifications = { path = "Products/Flora.Social/crates/modules/flora-notifications" }
+flora-notifications-contracts = { path = "Products/Flora.Social/crates/modules/flora-notifications-contracts" }
+flora-verification = { path = "Products/Flora.Social/crates/modules/flora-verification" }
+flora-verification-contracts = { path = "Products/Flora.Social/crates/modules/flora-verification-contracts" }
+fscp-contracts = { path = "Products/FSCP/crates/fscp-contracts" }
+fscp-core = { path = "Products/FSCP/crates/fscp-core" }
+fscp-crypto = { path = "Products/FSCP/crates/fscp-crypto" }
+fira-contracts = { path = "Products/FIRA/crates/fira-contracts" }
+fira-core = { path = "Products/FIRA/crates/fira-core" }
+flora-economy = { path = "Products/FEP/crates/flora-economy" }
+flora-economy-contracts = { path = "Products/FEP/crates/flora-economy-contracts" }
+flora-economy-crypto = { path = "Products/FEP/crates/flora-economy-crypto" }
+flora-governance-crypto = { path = "Products/FGP/crates/flora-governance-crypto" }
+flora-governance-contracts = { path = "Products/FGP/crates/flora-governance-contracts" }
+fpp-contracts = { path = "Products/FPP/crates/fpp-contracts" }
+fpp-crypto = { path = "Products/FPP/crates/fpp-crypto" }
+frc-i = { path = "Products/FRC/crates/frc-i" }
+frc-a-core = { path = "Products/FRC/crates/frc-a-core" }
+frc-v = { path = "Products/FRC/crates/frc-v" }
+flora-grpc-bridge = { path = "Backend/crates/infrastructure/flora-grpc-bridge" }
+
+axum = "0.8.9"
+tower = "0.5.3"
+tower-http = "0.7.0"
+hyper = "1.10.1"
+hyper-util = { version = "0.1.20", features = ["client-legacy", "http1", "tokio"] }
+http = "1.4.2"
+http-body-util = "0.1.3"
+bytes = "1.12.1"
+tokio = "1.52.3"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.150", features = ["preserve_order"] }
+uuid = { version = "1.23.5", features = ["v5", "v7", "serde"] }
+hmac = "0.12.1"
+sha2 = "0.10.9"
+base64 = "0.22.1"
+getrandom = "0.3.3"
+blake3 = { version = "1.8", default-features = false, features = ["std", "pure"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres", "migrate"] }
+anyhow = "1.0.103"
+thiserror = "2.0.18"
+clap = { version = "4.6.1", features = ["derive"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
+hound = "3.5.1"
+reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
+argon2 = "0.5.3"
+tokio-stream = "0.1.18"
+x25519-dalek = "2.0"
+ed25519-dalek = "2.0"
+hkdf = "0.12"
+chacha20poly1305 = "0.10"
+ml-kem = { version = "0.3.2", features = ["hazmat"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+[profile.test]
+opt-level = 2

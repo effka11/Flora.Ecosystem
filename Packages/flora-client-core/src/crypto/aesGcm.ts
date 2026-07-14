@@ -1,5 +1,4 @@
-import { fromBase64Url } from "../fscp/base64url.js";
-import { toBase64Url } from "../fscp/unlockFlow.js";
+import { fromBase64Url, toBase64Url } from "@flora/fscp";
 
 export type AesGcmSubtle = Pick<
   SubtleCrypto,

@@ -1,0 +1,39 @@
+{
+  "name": "@flora/fscp",
+  "version": "0.5.0-alpha",
+  "private": true,
+  "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
+  "author": "Egor Ozerskikh <e.ozerskikh@gmail.com>",
+  "type": "module",
+  "description": "FSCP functional product — TypeScript SoT (wire/crypto/session). Spec: docs/fscp/FSCP.md",
+  "main": "./ts/src/index.ts",
+  "types": "./ts/src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./ts/src/index.ts",
+      "import": "./ts/src/index.ts",
+      "default": "./ts/src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p ts/tsconfig.json --noEmit",
+    "test": "vitest run --config ts/vitest.config.ts"
+  },
+  "peerDependencies": {
+    "@flora/client-core": "*"
+  },
+  "devDependencies": {
+    "@flora/client-core": "*",
+    "@noble/post-quantum": "^0.6.1",
+    "libsodium": "^0.7.15",
+    "libsodium-wrappers": "^0.7.15",
+    "libsodium-wrappers-sumo": "^0.8.4",
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^2.2.0",
+    "uuid": "^14.0.0"
+  }
+}

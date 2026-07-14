@@ -6,31 +6,31 @@
 
 ## Обзор системы
 
-Модульный монолит: единый хост `Flora.API` разворачивает слабосвязанные бизнес-модули (Clean Architecture: `Domain → Application → Infrastructure` + `Contracts`).
+Модульный монолит + **пиры продуктов** под `Products/` (App vs Functional — [`ARCHITECTURE.md`](ARCHITECTURE.md) §1.1, [`next-architecture.md`](next-architecture.md) §2.0).
 
-- **Flora.API** — точка входа (маршрутизация, DI, middleware, auth). Бизнес-логика запрещена.
-- **Flora.Shared** — только низкоуровневые утилиты. Бизнес-логика запрещена.
-- **Modules** — вся бизнес-логика (Auth, Users, Content, Messaging, Music, Notifications, Verification).
-- **Products** — композиция модулей (сейчас: `Products/Flora.Social`). Без бизнес-логики.
-- **Apps** — клиенты: `Apps/Web` (Next.js 16 / TS), `Apps/Mobile` (Expo RN).
-- **Packages** — общий TS SDK `@flora/client-core`.
-- **Infrastructure** — детали реализации (gRPC, БД, messaging). Без бизнес-правил.
+- **Flora.API** / Rust `flora-api` — точка входа (маршрутизация, middleware). Бизнес-логика запрещена.
+- **Flora.Shared** / `flora-shared` — низкоуровневые утилиты. Бизнес-логика запрещена.
+- **Products/Flora.Social** (App) — композиция; доменные модули (Auth, Users, Content, Messaging, Music, Notifications, Verification) — **внутренности Social**.
+- **Products/{FIRA,FSCP,FRC,FGP,FEP,FPP}** (Functional) — headless/embeddable; не зависят от Social.
+- **Apps** — shells: `Apps/Web`, `Apps/Mobile` (не внутри Products).
+- **Packages** — `@flora/client-core` (транспорт + реэкспорт functional TS; SoT FSCP — `@flora/fscp` / `Products/FSCP`).
+- **Backend/** — host crates (`flora-api`, …); **workspace root** — repo [`Cargo.toml`](Cargo.toml) (members включают `Products/*`).
 
-Стек: C# / .NET 10, PostgreSQL (схема `flora_core`, 7 DbContext — по одному на модуль), EF Core, Next.js 16 / TypeScript, Expo / React Native.
+Стек: C# / .NET 10 + Rust, PostgreSQL (`flora_core`), Next.js 16 / TypeScript, Expo / React Native.
 
-Подробная карта: `ARCHITECTURE.md`. Спецификации: `docs/` (FSCP — E2E-протокол, FIRA — рекомендации, FGP — governance, FPP — personhood, FEP — экономика Pollen).
-
-Модуль Economy (FEP) живёт только в Rust (`Backend/crates/modules/flora-economy*`, C#-аналога нет): нормативная спека — `docs/fep/FEP.md`; детерминированное ядро `flora-economy-crypto` обязано собираться под wasm32 (`cargo check -p flora-economy-crypto --target wasm32-unknown-unknown`) и не зависит ни от одного бизнес-модуля.
+Спеки: `docs/` (FSCP, FIRA, FGP, FPP, FEP, codecs). Economy (FEP) — Rust-native в `Products/FEP`.
 
 ## Направления зависимостей
 
-Разрешено: **Apps → API → Products → Modules → Infrastructure** (строго однонаправленно).
+Разрешено: **Apps → Packages → API/host → App-product → modules / Functional kernels**.
 
 Запрещено:
 
-- Modules → Products, Modules → Apps
-- Infrastructure → Modules (кроме интерфейсов)
-- прямые зависимости между Products
+- Functional → Social / `modules/flora-*`
+- Products → Apps
+- Modules → Apps; Infrastructure → Modules (кроме интерфейсов)
+- прямые зависимости между App-продуктами
+- functional kernel → sqlx / axum / flora-shared (portable surface)
 
 ## Жёсткие запреты
 
@@ -116,25 +116,26 @@ dotnet test Flora.Ecosystem.slnx
 - Перенос эндпоинта/модуля: вызови skill **`/rust-migration`** перед началом работы.
 
 ```sh
-# Rust (из Backend/; toolchain пиновая — rust-toolchain.toml)
+# Rust (из корня репо; toolchain — rust-toolchain.toml)
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo deny check                          # лицензии (AGPL-совместимость), дубли, advisories
-pwsh ../tools/validate-architecture-rust.ps1  # границы crate'ов (§2.3)
+cargo deny check
+pwsh ./tools/validate-architecture-rust.ps1
 ```
 
-Структура `Backend/` и команды запуска — `Backend/README.md`. Кросс-языковые golden-векторы: `docs/test-vectors/backend-parity/` (C#-эталон — `./Scripts/generate-golden-vectors.ps1`; Rust-вектор — `cargo run -p flora-parity --bin gen-cross-vectors`).
+Структура: `Cargo.toml` (workspace) + `Backend/crates` (host) + `Products/*` (App/Functional). Кросс-языковые golden-векторы: `docs/test-vectors/backend-parity/`.
 
-## Медиакодеки (Codecs/)
+## Медиакодеки (Products/FRC)
 
-Собственные кодеки Flora — семейство **FRC** (Flora Relativistic Codec): **FRC-A** (аудио), **FRC-I** (фото), **FRC-V** (видео). Отдельные Rust-workspace'ы / media-crates (переиспользуемая технология, не бизнес-модули; потребители — клиенты и модули).
+Семейство **FRC** — functional-продукт [`Products/FRC`](Products/FRC) (members общего `Backend/` workspace). Спеки — `docs/codecs/`.
 
-- Аудио: `Codecs/audio` (`frc-a-core`), спека — `docs/codecs/FRC-A.md`; битстрим меняется только вместе со спекой. Прод-пайплайны — `docs/codecs/CODECS.md` (FRC-A туда пока не введён). Проверки — cargo из каталога workspace + `cargo check -p frc-a-core --target wasm32-unknown-unknown` (ядро обязано собираться под wasm32 — E2E-голосовые кодируются на клиенте).
-- Фото: FRC-I — `Backend/crates/media/frc-i` (категория `media`, чистый std, без `unsafe`; wasm: `--no-default-features` отключает тайловые потоки), спека — `docs/codecs/FRC-I.md`. Кодер пишет текущую версию битстрима; decode-заморозка — golden текущей линии (`golden-v*-*.fri`); регенерация encode-pins — `FRC_I_UPDATE_GOLDEN=1` только осознанно, вместе со спекой. Линия прежнего FIC (magic `\x8F FIC`, v1/v2 pins) **закрыта**. CLI: `cargo run -p flora-codec-tools -- image ...`.
-- Видео: FRC-V — `Codecs/flora-video` (`frc-v`), спека — `docs/codecs/FRC-V.md`; контейнерный FourCC/magic — `FRV1` / `\x8F FRV`; `BITSTREAM_VERSION` кадра — 2. Регенерация golden — `FRC_V_UPDATE_GOLDEN=1`.
+- FRC-A: `Products/FRC/crates/frc-a-core` — `docs/codecs/FRC-A.md`; wasm32 обязателен для ядра.
+- FRC-I: `Products/FRC/crates/frc-i` — `docs/codecs/FRC-I.md`; wasm: `--no-default-features`.
+- FRC-V: `Products/FRC/crates/frc-v` — `docs/codecs/FRC-V.md`.
+- CLI: `flora-codec-tools`, `frc-a-cli`, `frc-v-cli`.
 
-Реестр сигнатур семейства FRC (бренд ↔ magic ASCII) — `docs/codecs/CODECS.md`.
+Каталог `Codecs/` — redirect на `Products/FRC` (legacy path). Реестр сигнатур — `docs/codecs/CODECS.md`.
 
 ## Git
 

@@ -82,3 +82,8 @@ Thumbs.db
 *.swp
 *.swo
 .idea/
+
+# Rust (workspace root Cargo.toml → ./target)
+/target/
+Backend/target/
+**/Cargo.toml.orig

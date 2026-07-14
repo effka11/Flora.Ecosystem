@@ -8,13 +8,16 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "src",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@flora/fscp": ["../../Products/FSCP/ts/src/index.ts"],
+      "@flora/fscp/*": ["../../Products/FSCP/ts/src/*"]
+    }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["src/**/*.ts", "../../Products/FSCP/ts/src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "../../Products/FSCP/ts/src/**/*.test.ts"]
 }
