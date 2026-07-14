@@ -46,6 +46,7 @@ Apps/Mobile/modules/*/android/.gradle/
 !.env.example
 
 # Secrets / local-only config (never commit; *.example.* templates are ok)
+.flora/
 appsettings.Local.json
 appsettings.Production.json
 appsettings.*.Local.json

@@ -86,7 +86,7 @@ function Resolve-BroadcastConfig {
         $ApiBaseUrl = $env:FLORA_API_URL
     }
     if ([string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
-        $ApiBaseUrl = "http://localhost:5284"
+        $ApiBaseUrl = "http://localhost:5290"
     }
     $ApiBaseUrl = $ApiBaseUrl.Trim().TrimEnd("/")
 

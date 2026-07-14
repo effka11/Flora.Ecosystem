@@ -1,31 +1,44 @@
 #Requires -Version 5.1
 <#
-Проверяет, что Flora.API уже слушает localhost:5284.
-Не останавливает и не перезапускает API — только предупреждение, если недоступен.
+Проверяет Rust gateway (локальный паритет с продом) на :5290.
+Опционально предупреждает, если .NET upstream :5284 недоступен.
 #>
 param(
-    [int] $Port = 5284,
+    [int] $GatewayPort = 5290,
+    [int] $UpstreamPort = 5284,
     [string] $ApiHost = "127.0.0.1"
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Continue"
 
-$url = "http://${ApiHost}:$Port/health"
+$gatewayUrl = "http://${ApiHost}:$GatewayPort/health"
+$upstreamUrl = "http://${ApiHost}:$UpstreamPort/health"
+
 try {
-    $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3
+    $response = Invoke-WebRequest -Uri $gatewayUrl -UseBasicParsing -TimeoutSec 3
     if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
-        Write-Host "Flora.API reachable at $url"
-        exit 0
+        Write-Host "Flora gateway reachable at $gatewayUrl"
     }
-    Write-Warning "Flora.API returned HTTP $($response.StatusCode) at $url"
-    exit 0
+    else {
+        Write-Warning "Flora gateway returned HTTP $($response.StatusCode) at $gatewayUrl"
+    }
 }
 catch {
     Write-Warning @"
-Flora.API is not reachable at $url.
-Start task ""Flora API: dev localhost"" (or keep it running from Mobile debug), then reload Web.
-Web will still start; API proxy routes will fail until API is up.
+Flora gateway is not reachable at $gatewayUrl.
+Start tasks: ""Flora API: .NET upstream"" then ""Flora Gateway: Rust"",
+or ""Flora: API + Web"" / Scripts/zed-dev-api-web.ps1.
+Web will still start; API proxy routes will fail until the gateway is up.
 "@
-    exit 0
 }
+
+try {
+    $null = Invoke-WebRequest -Uri $upstreamUrl -UseBasicParsing -TimeoutSec 2
+    Write-Host "Flora.API upstream reachable at $upstreamUrl"
+}
+catch {
+    Write-Warning "Flora.API upstream not reachable at $upstreamUrl (gateway will 502 non-native routes)."
+}
+
+exit 0

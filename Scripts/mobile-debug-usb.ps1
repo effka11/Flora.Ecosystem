@@ -1,7 +1,7 @@
-# Flora Android — USB Metro dev-client (adb reverse 8081 + 5284).
+# Flora Android — USB Metro dev-client (adb reverse 8081 + 5290 gateway).
 # PowerShell 5.1 safe: no && in strings.
 # USB: app loads JS from http://127.0.0.1:8081 via adb reverse (not Wi-Fi LAN IP).
-# Full stack (DB + API + install + Metro): mobile-debug-android.ps1
+# Full stack (DB + .NET + gateway + install + Metro): mobile-debug-android.ps1
 
 param(
     [switch] $ReplaceExistingDev
@@ -101,7 +101,7 @@ Write-Host ""
 Write-Host "================================================================"
 Write-Host "  PHONE ERRORS (RedBox / JS) -> THIS TERMINAL (Metro), not API"
 Write-Host "================================================================"
-Write-Host "Metro: 127.0.0.1:8081 (USB / adb reverse). API logs are in dotnet terminal."
+Write-Host "Metro: 127.0.0.1:8081 (USB / adb reverse). API: gateway :5290 (dotnet upstream :5284)."
 Write-Host "Flora Dev opens on the phone when Metro is ready. If stuck: shake -> Reload."
 Write-Host ""
 

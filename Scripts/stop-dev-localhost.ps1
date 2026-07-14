@@ -57,12 +57,27 @@ function Stop-FloraApiProcesses {
         Stop-ProcessSafe -ProcessId $_.Id -Reason "Flora.API.exe"
     }
 
+    Get-Process -Name "flora-api" -ErrorAction SilentlyContinue | ForEach-Object {
+        Stop-ProcessSafe -ProcessId $_.Id -Reason "flora-api.exe"
+    }
+
     $dotnet = Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'" -ErrorAction SilentlyContinue
     foreach ($proc in $dotnet) {
         $cmd = $proc.CommandLine
         if ($null -eq $cmd) { continue }
         if ($cmd -notmatch 'Flora\.API') { continue }
         Stop-ProcessSafe -ProcessId $proc.ProcessId -Reason "dotnet Flora.API"
+    }
+
+    # cargo run -p flora-api / run-rust-gateway-localhost.ps1
+    $procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '^(cargo|rustc|pwsh|powershell|cmd)\.exe$' -and
+            $_.CommandLine -and
+            ($_.CommandLine -match 'flora-api' -or $_.CommandLine -match 'run-rust-gateway-localhost')
+        }
+    foreach ($proc in $procs) {
+        Stop-ProcessSafe -ProcessId $proc.ProcessId -Reason "gateway launcher ($($proc.Name))"
     }
 }
 
@@ -101,11 +116,13 @@ function Stop-MetroProcesses {
 }
 
 if ($Api) {
-    Write-Host "Flora dev: freeing API port 5284..."
+    Write-Host "Flora dev: freeing API ports 5284 (.NET) + 5290 (Rust gateway)..."
     Stop-ListenersOnPort -Port 5284
+    Stop-ListenersOnPort -Port 5290
     Stop-FloraApiProcesses
     Start-Sleep -Milliseconds 400
     Stop-ListenersOnPort -Port 5284
+    Stop-ListenersOnPort -Port 5290
 }
 
 if ($Web) {

@@ -64,27 +64,23 @@
       "problemMatcher": []
     },
     {
-      "label": "Flora API: dev localhost",
+      "label": "Flora API: .NET upstream localhost",
       "dependsOn": [
         "Flora DB: start (Docker)",
         "Flora dev: stop conflicting processes (API)"
       ],
       "dependsOrder": "sequence",
       "type": "process",
-      "command": "dotnet",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
-        "watch",
-        "run",
-        "--project",
-        "Flora.API/Flora.API.csproj",
-        "--urls",
-        "http://localhost:5284"
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\run-dotnet-upstream-localhost.ps1"
       ],
       "options": {
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
-        }
+        "cwd": "${workspaceFolder}"
       },
       "isBackground": true,
       "presentation": {
@@ -105,27 +101,23 @@
       }
     },
     {
-      "label": "Flora API: dev localhost (silent)",
+      "label": "Flora API: .NET upstream localhost (silent)",
       "dependsOn": [
         "Flora DB: start (Docker)",
         "Flora dev: stop conflicting processes (API)"
       ],
       "dependsOrder": "sequence",
       "type": "process",
-      "command": "dotnet",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
-        "watch",
-        "run",
-        "--project",
-        "Flora.API/Flora.API.csproj",
-        "--urls",
-        "http://localhost:5284"
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\run-dotnet-upstream-localhost.ps1"
       ],
       "options": {
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
-        }
+        "cwd": "${workspaceFolder}"
       },
       "isBackground": true,
       "presentation": {
@@ -144,6 +136,104 @@
           "endsPattern": "(Now listening on:|Application started\\.)"
         }
       }
+    },
+    {
+      "label": "Flora Gateway: Rust localhost",
+      "dependsOn": [
+        "Flora API: .NET upstream localhost"
+      ],
+      "dependsOrder": "sequence",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\run-rust-gateway-localhost.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": {
+        "owner": "flora-api",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "(принимает подключения|Listening on|flora-api принимает)"
+        }
+      }
+    },
+    {
+      "label": "Flora Gateway: Rust localhost (silent)",
+      "dependsOn": [
+        "Flora API: .NET upstream localhost (silent)"
+      ],
+      "dependsOrder": "sequence",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\Scripts\\run-rust-gateway-localhost.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": {
+        "owner": "flora-api",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "(принимает подключения|Listening on|flora-api принимает)"
+        }
+      }
+    },
+    {
+      "label": "Flora API: dev localhost",
+      "dependsOn": [
+        "Flora Gateway: Rust localhost"
+      ],
+      "dependsOrder": "sequence",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Flora API: dev localhost (silent)",
+      "dependsOn": [
+        "Flora Gateway: Rust localhost (silent)"
+      ],
+      "dependsOrder": "sequence",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
     },
     {
       "label": "Flora Web: dev localhost",
@@ -359,7 +449,7 @@
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
-          "FLORA_API_URL": "http://localhost:5284",
+          "FLORA_API_URL": "http://localhost:5290",
           "FLORA_ADMIN_BROADCAST_TOKEN": "dev-local-broadcast-token-change-me"
         }
       },
@@ -405,7 +495,7 @@
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
-          "FLORA_API_URL": "http://localhost:5284",
+          "FLORA_API_URL": "http://localhost:5290",
           "FLORA_ADMIN_BROADCAST_TOKEN": "dev-local-broadcast-token-change-me"
         }
       },

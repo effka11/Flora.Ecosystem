@@ -59,7 +59,7 @@ try {
     Write-Host ""
     Write-Host "Local PostgreSQL is ready." -ForegroundColor Green
     Write-Host "  Connection: $conn"
-    Write-Host "  API:        dotnet run --project Flora.API (http://localhost:5284)"
+    Write-Host "  API:        ./Scripts/zed-dev-api-web.ps1  (gateway :5290, .NET :5284)"
     Write-Host "  Web:        cd Apps/Web; npm run dev"
     Write-Host "  Stop DB:    docker compose down"
 }

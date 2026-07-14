@@ -7,10 +7,10 @@ const EXPIRES = "flora_expires_at";
 const PENDING_PROFILE = "flora_pending_profile_setup";
 
 export function resolveApiBaseUrl(): string {
-  // Metro / dev-client: always local Flora.API (JS bundle still from Metro on :8081).
-  // USB: adb reverse tcp:5284 tcp:5284 (see Scripts/mobile-debug-usb.ps1).
+  // Metro / dev-client: Rust gateway (prod strangler parity). JS still from Metro :8081.
+  // USB: adb reverse tcp:5290 tcp:5290 (see Scripts/mobile-adb-reverse.ps1).
   if (__DEV__) {
-    return "http://localhost:5284";
+    return "http://localhost:5290";
   }
 
   const explicit = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");

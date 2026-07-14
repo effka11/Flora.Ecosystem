@@ -27,16 +27,18 @@ Project skills: `.agents/skills/`.
 
 `Ctrl+Shift+T` — task picker.
 
-**Один клик (Zed):** `Flora: API + Web dev localhost (Zed)` — DB + API (отдельное окно) + Web.
+**Один клик (Zed):** `Flora: API + Web dev localhost (Zed)` — DB + .NET `:5284` + Rust gateway `:5290` + Web.
 
 **Cursor:** `Flora: API + Web dev (script)` — тот же `Scripts/zed-dev-api-web.ps1`.
 
 **По шагам** (Cursor `dependsOn` или ручной запуск):
 
 1. `Flora DB: start (Docker)`
-2. `Flora dev: stop conflicting processes (API)`
-3. `Flora API: dev localhost`
-4. `Flora Web: dev localhost`
+2. `Flora API: .NET upstream localhost` (`:5284`)
+3. `Flora Gateway: Rust localhost` (`:5290`)
+4. `Flora Web: dev localhost` (proxy → `:5290`)
+
+Общий Jwt: `.flora/dev-jwt.secret` (`Scripts/ensure-shared-dev-jwt.ps1`). Music workers только на gateway (`Music:ServeNative`).
 
 ## Debugger
 

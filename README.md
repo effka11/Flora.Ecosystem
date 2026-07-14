@@ -17,7 +17,7 @@
 
 ### Быстрый старт (разработка)
 
-**Требования:** Docker Desktop, [.NET SDK 10](https://dotnet.microsoft.com/download), Node.js ≥ 20.19 (см. [`.nvmrc`](.nvmrc)).
+**Требования:** Docker Desktop, [.NET SDK 10](https://dotnet.microsoft.com/download), [Rust](https://rustup.rs/) (см. [`rust-toolchain.toml`](rust-toolchain.toml)), Node.js ≥ 20.19 (см. [`.nvmrc`](.nvmrc)).
 
 ```bash
 # 1. Зависимости JS (workspaces: Web, Mobile, client-core)
@@ -26,20 +26,15 @@ npm install
 # 2. PostgreSQL + миграции (Windows PowerShell)
 ./Scripts/setup-local-postgres.ps1
 
-# 3. API (JWT в Development генерируется автоматически)
-dotnet run --project Flora.API
-# → http://localhost:5284
-
-# 4. Web
-cp Apps/Web/.env.example Apps/Web/.env.local   # Linux/macOS
-# copy Apps\Web\.env.example Apps\Web\.env.local   # Windows
-cd Apps/Web && npm run dev
-# → http://localhost:3000
+# 3. Локальный strangler (как прод): .NET :5284 + Rust gateway :5290 + Web :3000
+./Scripts/zed-dev-api-web.ps1
+# или по шагам: run-dotnet-upstream-localhost.ps1 → run-rust-gateway-localhost.ps1 → web-dev-localhost.ps1
+# Web → http://localhost:3000 → proxy http://127.0.0.1:5290 (Music native; остальное → :5284)
 ```
 
-**Android (USB):** VS Code task **Flora Android: debug (USB)** — PostgreSQL, API, установка Flora Dev, Metro одним кликом. CLI: `./Scripts/mobile-debug-android.ps1`.
+**Android (USB):** VS Code task **Flora Android: debug (USB)** — PostgreSQL, .NET + gateway, установка Flora Dev, Metro. CLI: `./Scripts/mobile-debug-android.ps1`.
 
-На Windows удобнее использовать готовые задачи из [`.vscode/tasks.json`](.vscode/tasks.json): **Flora: API + Web dev localhost**, **Flora Android: debug (USB)**.
+На Windows удобнее задачи из [`.vscode/tasks.json`](.vscode/tasks.json): **Flora: API + Web dev localhost**, **Flora Android: debug (USB)**.
 
 ### Некоммерческий фундамент
 Для проекта, который стремится стать всеобъемлющим инструментом для всех людей в новом веке информационных технологий **недопустима** коммерческая пытка пользователей. Мы исключаем из проекта абсолютно всю деструктивную коммерцию, оставляя право лишь на точечную экосистеме **Luna**, которая покроет собой узкий круг задач для бизнеса, которые никак не будут касаться незаинтересованного пользователя. 
