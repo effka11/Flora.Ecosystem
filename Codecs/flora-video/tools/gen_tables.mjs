@@ -1,5 +1,5 @@
-// Генератор нормативных таблиц FVC1 (docs/codecs/FVC.md).
-// Запуск: node tools/gen_tables.mjs — перезаписывает crates/fvc/src/tables.rs.
+// Генератор нормативных таблиц FRV1 (docs/codecs/FRC-V.md).
+// Запуск: node tools/gen_tables.mjs — перезаписывает crates/frc-v/src/tables.rs.
 // Таблицы фиксируются в исходнике константами: нормативный путь декодера не использует float.
 
 import { writeFileSync } from "node:fs";
@@ -7,10 +7,10 @@ import { writeFileSync } from "node:fs";
 const out = [];
 console.log = (s = "") => out.push(s);
 
-console.log("//! Нормативные таблицы битстрима FVC1.");
+console.log("//! Нормативные таблицы битстрима FRV1.");
 console.log("//!");
 console.log("//! Файл сгенерирован `tools/gen_tables.mjs` — руками не редактировать,");
-console.log("//! перегенерация: `node tools/gen_tables.mjs`. Формулы — в генераторе и в docs/codecs/FVC.md.");
+console.log("//! перегенерация: `node tools/gen_tables.mjs`. Формулы — в генераторе и в docs/codecs/FRC-V.md.");
 console.log("");
 
 // Матрица T[k][j] = round(2^(13-log2 N) * sqrt(2) * ck * cos(pi*(2j+1)k / 2N)),
@@ -67,4 +67,4 @@ for (let p = 1; p <= 255; p++) {
 }
 console.log(`pub const BIT_COST_256: [u16; 256] = [${cost.join(", ")}];`);
 
-writeFileSync(new URL("../crates/fvc/src/tables.rs", import.meta.url), out.join("\n") + "\n", "utf8");
+writeFileSync(new URL("../crates/frc-v/src/tables.rs", import.meta.url), out.join("\n") + "\n", "utf8");

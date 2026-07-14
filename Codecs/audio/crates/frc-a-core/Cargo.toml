@@ -1,0 +1,13 @@
+[package]
+name = "frc-a-core"
+description = "FRC-A (Flora Relativistic Codec — Audio) — эталонная реализация битстрима v0. Чистый Rust, без зависимостей и unsafe (готов к wasm32/FFI)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

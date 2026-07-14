@@ -1,0 +1,20 @@
+[package]
+name = "frc-a-cli"
+description = "Инструмент разработки FRC-A: encode/decode/roundtrip/gen поверх WAV + метрики качества."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "frc-a"
+path = "src/main.rs"
+
+[dependencies]
+frc-a-core.workspace = true
+hound.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

@@ -13,7 +13,7 @@
 #   flora-migrate    -> корни модулей (их миграторы), flora-shared
 #   flora-grpc-bridge-> любые *-contracts, flora-shared (§5.2)
 #   flora-parity     -> без ограничений (диф-харнесс сравнивает реализации)
-#   crates/media/*   -> другие media-crates (кодеки FMC, docs/codecs/CODECS.md);
+#   crates/media/*   -> другие media-crates (кодеки FRC, docs/codecs/CODECS.md);
 #                       бизнес-модули их используют через свой Infrastructure-слой
 
 param(

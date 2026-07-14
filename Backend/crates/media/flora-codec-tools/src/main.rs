@@ -1,7 +1,7 @@
 //! CLI семейства Flora Media Codecs.
 //!
-//! Субкоманды сгруппированы по типу медиа: `image` — FIC (этот инструмент),
-//! `video`/`audio` — добавляются агентами FVC/FAC отдельными модулями
+//! Субкоманды сгруппированы по типу медиа: `image` — FRC-I (этот инструмент),
+//! `video`/`audio` — добавляются агентами FRC-V/FRC-A отдельными модулями
 //! (`video_cmd.rs`, `audio_cmd.rs`) без пересечения по файлам.
 
 mod image_cmd;
@@ -12,7 +12,7 @@ use std::process::ExitCode;
 #[derive(Parser)]
 #[command(
     name = "flora-codec",
-    about = "Инструменты кодеков FMC (Flora Media Codecs)"
+    about = "Инструменты кодеков FRC (Flora Relativistic Codec)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -21,7 +21,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum TopCommand {
-    /// Фото-кодек FIC (Flora Image Codec)
+    /// Фото-кодек FRC-I (Flora Relativistic Codec — Image)
     #[command(subcommand)]
     Image(image_cmd::ImageCommand),
 }

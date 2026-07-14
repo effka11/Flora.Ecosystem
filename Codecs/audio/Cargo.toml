@@ -1,10 +1,10 @@
-# Cargo-workspace аудио-кодека FAC (docs/codecs/FAC.md).
+# Cargo-workspace аудио-кодека FRC-A (docs/codecs/FRC-A.md).
 # Отдельный workspace: кодек — переиспользуемая медиатехнология, не бизнес-модуль Backend.
 # Конвенции (edition, rust-version, lints, лицензия) зеркалят Backend/Cargo.toml.
 
 [workspace]
 resolver = "3"
-members = ["crates/fac-core", "crates/fac-cli"]
+members = ["crates/frc-a-core", "crates/frc-a-cli"]
 
 [workspace.package]
 version = "0.4.0"
@@ -17,7 +17,7 @@ publish = false
 unsafe_code = "forbid"
 
 [workspace.dependencies]
-fac-core = { path = "crates/fac-core" }
+frc-a-core = { path = "crates/frc-a-core" }
 hound = "3.5.1"
 clap = { version = "4.6.1", features = ["derive"] }
 
@@ -29,4 +29,3 @@ strip = "debuginfo"
 # DSP-тесты (O(N²) MDCT) в чистом debug слишком медленные; debug_assertions остаются.
 [profile.test]
 opt-level = 2
-

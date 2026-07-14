@@ -1,0 +1,22 @@
+[package]
+name = "frc-i"
+description = "FRC-I (Flora Relativistic Codec — Image) — нативный фото-кодек Flora: lossless (YCoCg-R + MED + rANS) и lossy (DCT 8x8 + rANS). Спецификация: docs/codecs/FRC-I.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Ядро кодека сознательно без зависимостей (чистый std):
+# аудируемость, детерминизм и будущая компиляция декодера в WASM для Apps/Web.
+[dependencies]
+
+[features]
+default = ["threads"]
+# Параллельная обработка тайлов через std::thread::scope. Выход кодера
+# бит-в-бит не зависит от числа потоков. Для wasm32 без атомиков собирать
+# с --no-default-features.
+threads = []

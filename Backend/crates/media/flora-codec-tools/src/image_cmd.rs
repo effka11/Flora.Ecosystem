@@ -1,7 +1,7 @@
-//! Субкоманды фото-кодека FIC: encode / decode / info / bench.
+//! Субкоманды фото-кодека FRC-I: encode / decode / info / bench.
 
 use clap::Subcommand;
-use flora_image_codec::{
+use frc_i::{
     DecodedImage, EncodeMode, ImageView, PixelFormat, decode, encode, read_info,
 };
 use image::codecs::jpeg::JpegEncoder;
@@ -17,7 +17,7 @@ type CmdResult = Result<(), Box<dyn Error>>;
 
 #[derive(Subcommand)]
 pub enum ImageCommand {
-    /// Закодировать PNG/JPEG в .fic
+    /// Закодировать PNG/JPEG в .fri
     Encode {
         input: PathBuf,
         output: PathBuf,
@@ -28,11 +28,11 @@ pub enum ImageCommand {
         #[arg(long)]
         lossless: bool,
     },
-    /// Декодировать .fic в PNG
+    /// Декодировать .fri в PNG
     Decode { input: PathBuf, output: PathBuf },
-    /// Показать заголовок .fic
+    /// Показать заголовок .fri
     Info { input: PathBuf },
-    /// Сравнить FIC с PNG (lossless) и JPEG (lossy) на корпусе изображений
+    /// Сравнить FRC-I с PNG (lossless) и JPEG (lossy) на корпусе изображений
     Bench {
         /// Каталог с PNG/JPEG; без него — синтетический корпус
         #[arg(long)]
@@ -114,22 +114,22 @@ fn cmd_encode(input: &Path, output: &Path, quality: Option<u8>, lossless: bool) 
             quality: quality.unwrap_or(75),
         }
     };
-    let fic = encode(&src.view(), mode)?;
-    fs::write(output, &fic)?;
+    let fri = encode(&src.view(), mode)?;
+    fs::write(output, &fri)?;
     let raw_len = src.data.len();
     println!(
         "{} -> {} ({} байт, {:.2}% от несжатых пикселей)",
         input.display(),
         output.display(),
-        fic.len(),
-        100.0 * fic.len() as f64 / raw_len as f64,
+        fri.len(),
+        100.0 * fri.len() as f64 / raw_len as f64,
     );
     Ok(())
 }
 
 fn cmd_decode(input: &Path, output: &Path) -> CmdResult {
-    let fic = fs::read(input)?;
-    let img = decode(&fic)?;
+    let fri = fs::read(input)?;
+    let img = decode(&fri)?;
     let color = match img.format {
         PixelFormat::Rgb8 => ExtendedColorType::Rgb8,
         PixelFormat::Rgba8 => ExtendedColorType::Rgba8,
@@ -146,9 +146,9 @@ fn cmd_decode(input: &Path, output: &Path) -> CmdResult {
 }
 
 fn cmd_info(input: &Path) -> CmdResult {
-    let fic = fs::read(input)?;
-    let info = read_info(&fic)?;
-    println!("FIC v{}, {}x{}", info.version, info.width, info.height);
+    let fri = fs::read(input)?;
+    let info = read_info(&fri)?;
+    println!("FRC-I v{}, {}x{}", info.version, info.width, info.height);
     let mode = if info.palette {
         "lossless (палитра)"
     } else if info.identity {
@@ -167,7 +167,7 @@ fn cmd_info(input: &Path) -> CmdResult {
         );
     }
     println!("альфа:      {}", if info.has_alpha { "да" } else { "нет" });
-    println!("размер:     {} байт", fic.len());
+    println!("размер:     {} байт", fri.len());
     Ok(())
 }
 
@@ -187,7 +187,7 @@ fn cmd_bench(dir: Option<&Path>, quality: u8) -> CmdResult {
     );
     println!(
         "{:<18} {:>11} {:>11} {:>7} | {:>11} {:>9} {:>11} {:>9}",
-        "изображение", "PNG", "FIC-ll", "выигр.", "JPEG", "PSNR", "FIC-lossy", "PSNR"
+        "изображение", "PNG", "FRC-I-ll", "выигр.", "JPEG", "PSNR", "FRC-I-lossy", "PSNR"
     );
 
     let (mut png_total, mut ll_total, mut jpeg_total, mut lossy_total) = (0u64, 0u64, 0u64, 0u64);
@@ -226,13 +226,13 @@ fn cmd_bench(dir: Option<&Path>, quality: u8) -> CmdResult {
         );
     }
     println!(
-        "\nИтого lossless: FIC {} vs PNG {} ({:.1}% меньше)",
+        "\nИтого lossless: FRC-I {} vs PNG {} ({:.1}% меньше)",
         ll_total,
         png_total,
         100.0 * (1.0 - ll_total as f64 / png_total as f64),
     );
     println!(
-        "Итого lossy q={quality}: FIC {} vs JPEG {} ({:.1}% меньше; PSNR — по строкам выше)",
+        "Итого lossy q={quality}: FRC-I {} vs JPEG {} ({:.1}% меньше; PSNR — по строкам выше)",
         lossy_total,
         jpeg_total,
         100.0 * (1.0 - lossy_total as f64 / jpeg_total as f64),
