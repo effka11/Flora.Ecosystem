@@ -10,7 +10,6 @@ publish.workspace = true
 [lints]
 workspace = true
 
-# Правило §2.3: продукт зависит от корней модулей и flora-shared.
 [dependencies]
 flora-shared = { workspace = true }
 flora-auth = { workspace = true }
@@ -22,6 +21,10 @@ flora-music = { workspace = true }
 flora-notifications = { workspace = true }
 flora-verification = { workspace = true }
 axum = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 http = { workspace = true }

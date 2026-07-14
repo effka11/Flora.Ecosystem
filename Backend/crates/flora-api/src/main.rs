@@ -29,12 +29,13 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let router = build_router(&cfg, versions);
-
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(serve(addr, router))
+        .block_on(async {
+            let router = build_router(&cfg, versions).await;
+            serve(addr, router).await
+        })
 }
 
 async fn serve(addr: SocketAddr, router: axum::Router) -> anyhow::Result<()> {

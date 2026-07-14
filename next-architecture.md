@@ -258,7 +258,7 @@ flowchart LR
 | Единица | Владелец сейчас | Статус | Freeze-окно |
 | --- | --- | --- | --- |
 | Хост / шлюз (`/`, `/health`, `/version`) | **Rust** `flora-api` (:5290); .NET upstream `flora-api-dotnet` (:5000) | Фаза 0: cutover 100% (2026-07-14) — nginx + `FLORA_API_UPSTREAM` → Rust gateway; соак ≥1 недели до старта Фазы 1 | — |
-| Music | C# | не начат | — |
+| Music | C# | в переносе (владелец C#) — prep read-GET; нативный роутер только при `Music:ServeNative=true` (дефолт false, cutover после соака Phase 0) | — |
 | Verification | C# | не начат | — |
 | Users | C# | не начат | — |
 | Auth | C# | не начат | — |
@@ -279,7 +279,7 @@ flowchart LR
 
 ### Фаза 1 — Music (пилот модуля)
 
-Идеальный пилот: ни входящих, ни исходящих межмодульных зависимостей, свой контроллер уже в модуле. Скоуп: 22 эндпоинта `/api/music/*`, аудио-транскод ffmpeg, обложки/аудио из `bytea`, FIRA-M (`/flow`), таксономия жанров, воркеры `MusicArtistBackfillHostedService` (однократный) и `MusicArtistOrphanCleanupHostedService` (5 мин). Нативные JWT-валидация и rate-limit в Rust для этих маршрутов.
+Идеальный пилот: ни входящих, ни исходящих межмодульных зависимостей, свой контроллер уже в модуле. Скоуп: 22 эндпоинта `/api/music/*`, аудио-транскод ffmpeg, обложки/аудио из `bytea`, FIRA-M (`/flow`), таксономия жанров, воркеры `MusicArtistBackfillHostedService` (однократный) и `MusicArtistOrphanCleanupHostedService` (5 мин). Нативные JWT-валидация для `/api/music/*` при флаге **`Music:ServeNative=true`** (дефолт `false` до cutover; rate-limit на Music нет — §11.2).
 
 FIRA-M: формулы as-built ([`FIRA-M.md`](docs/fira/FIRA-M.md) §Implementation Status) переносятся 1:1. **Статус:** golden-вектор [`fira-m-scorer-v1.json`](docs/test-vectors/fira/fira-m-scorer-v1.json) снят, чистый скорер портирован заранее ([`flora-music/src/application/recommendations.rs`](Backend/crates/modules/flora-music/src/application/recommendations.rs), consumer-тест [`fira_vectors.rs`](Backend/tests/parity/tests/fira_vectors.rs)) — формулы заморожены, остаток фазы — HTTP/БД/воркеры. Конфиг-секция `FiraMusic` в `appsettings.json` **отсутствует** — production работает на дефолтах кода (`WeightBeta = 0.75`, `WeightGamma = 0.25`, `RecencyBoostDays = 14`, `MaxCandidates = 500` и др.), дефолты продублированы в Rust (`Default` в `MusicRecommendationOptions`) и сверяются паритет-тестом. Exploration-хвост волны стохастический — исключается из diff-сравнения (`flora-diff` сравнивает детерминированный префикс).
 
@@ -371,7 +371,9 @@ FIRA-P: формулы as-built ([`FIRA-P.md`](docs/fira/FIRA-P.md) §Implementa
    - Миграции — **sqlx migrate**: история на модуль через `Migrator::dangerous_set_table_name("__flora_migrations_<module>")` (продолжение паттерна `__EFMigrationsHistory_*`; реестр — `Backend/crates/flora-migrate/src/registry.rs`). refinery отвергнут: sqlx уже в стеке, второй инструмент не нужен.
    - Пиновка версий — toolchain в `Backend/rust-toolchain.toml` (обновление осознанным коммитом); версии crates объявляются только в `workspace.dependencies`, фактическая пиновка — закоммиченный `Cargo.lock` (CI собирает с `--locked`); `cargo deny` следит за лицензиями (AGPL-совместимость), дублями и advisories.
    - Конфиг Rust-хоста — те же слои и семантика, что у ASP.NET (§4.8): `Backend/appsettings.json` → `appsettings.{Environment}.json` → (Development) `appsettings.Local.json` → env-переменные с `__`; ключи регистронезависимы; каталог переопределяется `FLORA_CONFIG_DIR`; реализация — `flora_shared::config`.
-2. **До Фазы 1:** применяются ли какие-то rate-limit политики к `/api/music/*` в текущем .NET (проверить и воспроизвести); есть ли серверная обработка изображений (resize обложек) или байты хранятся как загружены.
+2. **До Фазы 1 — закрыто:**
+   - Rate-limit на `/api/music/*`: на [`MusicController`](Modules/Flora.Music/MusicController.cs) нет `[EnableRateLimiting]` — политик нет; в Rust **не** добавлять лимитер «на всякий случай».
+   - Обложки/аудио: серверного resize нет — байты и `Content-Type` хранятся as-uploaded / после ffmpeg-транскода аудио (`content_type` + `bytea`). FRC dual-read (FRC-A/I) — отдельной задачей после cutover Music, **без** смены схемы таблиц (opaque payload + MIME уже в колонках).
 3. **До Фазы 2b:** фикстура фактического JWT (полный wire-набор клеймов); инвентаризация форматов `nextCursor` по всем эндпоинтам identity; серверный пайплайн аватаров (resize?).
 4. **До Фазы 4:** решение по 13 legacy-маршрутам messaging (вывод vs перенос) — зависит от консолидации веба на client-core; стратегия дренажа SSE-подключений при cutover (мягкое закрытие → reconnect на Rust).
 5. **Фаза 5:** судьба protos (`Infrastructure/Flora.gRPC`) — контракты будущих микросервисов или архив.

@@ -19,7 +19,10 @@ public sealed class ContractFixtureValidationTests
         ["messaging-unread-count.json", new[] { "unreadCount" }],
         ["notifications-page.json", new[] { "items" }],
         ["music-library.json", new[] { "tracks" }],
+        ["music-platform.json", new[] { "tracks" }],
         ["music-playlists.json", new[] { "playlists" }],
+        ["music-playlist-detail.json", new[] { "id", "tracks", "kind" }],
+        ["music-genres.json", new[] { "genres" }],
         ["e2e-state.json", new[] { "state", "freeze", "updatedAt" }],
         ["e2e-key-backup.json", new[] { "version", "backupKeyId", "kdf", "aead", "ciphertextBase64Url" }],
     ];

@@ -106,11 +106,9 @@ public static class ContractFixtureGenerator
         });
         Write(outputDir, "messaging-unread-count.json", new { unreadCount = 3 });
 
-        // ── Music/E2E: поверхности MVC-контроллеров (расширение Фазы 0, next-architecture.md §6) ──
-        // ВАЖНО: у MVC-контроллеров продукта DefaultIgnoreCondition = WhenWritingNull
-        // (Class1.cs AddJsonOptions), поэтому null-поля в этих фикстурах ОТСУТСТВУЮТ,
-        // а enum'ы сериализуются числами (JsonStringEnumConverter не подключён).
-        // Minimal-API-эндпоинты (feed и пр.) пишут null явно — см. feed-page.json выше.
+        // ── Music: wire-форма MapTrack / MapPlaylist* (MusicController), не сырые DTO-enum int.
+        // WhenWritingNull — null-поля опускаются. Конверт envelopes {tracks}/{playlists}/{genres}
+        // — для contract-fixture тестов; live HTTP library/playlists отдаёт bare array (клиент оба).
 
         Write(outputDir, "music-library.json", new
         {
@@ -119,9 +117,18 @@ public static class ContractFixtureGenerator
                 new
                 {
                     trackUuid = "55555555-5555-5555-5555-555555555555",
-                    scope = 0, // MusicTrackScopeDto.Personal
+                    scope = "personal",
                     title = "First Light",
                     artistDisplay = "Flora Artist",
+                    artistCredits = new object[]
+                    {
+                        new
+                        {
+                            artistUuid = "66666666-6666-6666-6666-666666666666",
+                            displayName = "Flora Artist",
+                            joinerBefore = "None",
+                        },
+                    },
                     tags = "lofi,chill",
                     genreId = "lofi",
                     licenseId = "cc-by",
@@ -131,28 +138,35 @@ public static class ContractFixtureGenerator
                     durationMs = 183000,
                     createdAt = "2026-06-12T10:00:00.000Z",
                     publishedAt = "2026-06-12T11:00:00.000Z",
-                    artistCredits = new object[]
-                    {
-                        new
-                        {
-                            artistUuid = "66666666-6666-6666-6666-666666666666",
-                            displayName = "Flora Artist",
-                            joinerBefore = 0, // TrackArtistJoinerDto.None
-                        },
-                    },
                 },
                 new
                 {
-                    // Минимальный трек: nullable-поля (tags/genreId/licenseId/coverColorId/
-                    // trackKindId/publishedAt) опущены — так их отдаёт WhenWritingNull.
                     trackUuid = "77777777-7777-7777-7777-777777777777",
-                    scope = 1, // MusicTrackScopeDto.Platform
+                    scope = "platform",
                     title = "Untitled",
                     artistDisplay = "Unknown",
+                    artistCredits = Array.Empty<object>(),
                     hasCoverImage = false,
                     durationMs = 90000,
                     createdAt = "2026-06-12T09:00:00.000Z",
+                },
+            },
+        });
+        Write(outputDir, "music-platform.json", new
+        {
+            tracks = new object[]
+            {
+                new
+                {
+                    trackUuid = "77777777-7777-7777-7777-777777777777",
+                    title = "Untitled",
+                    artistDisplay = "Unknown",
                     artistCredits = Array.Empty<object>(),
+                    hasCoverImage = false,
+                    durationMs = 90000,
+                    createdAt = "2026-06-12T09:00:00.000Z",
+                    publishedAt = "2026-06-12T09:30:00.000Z",
+                    isOwnedByCurrentUser = false,
                 },
             },
         });
@@ -162,23 +176,70 @@ public static class ContractFixtureGenerator
             {
                 new
                 {
-                    id = "system:favorites",
-                    title = "Favorites",
-                    trackCount = 12,
-                    kind = 0, // MusicPlaylistKindDto.System
-                    variant = "favorites",
+                    id = "uploaded-personal",
+                    title = "Загруженное для себя",
+                    trackCount = 2,
+                    kind = "system",
+                    variant = "uploaded-personal",
                     canDelete = false,
-                    coverColorId = "sunset",
                 },
                 new
                 {
-                    // coverColorId = null опущен (WhenWritingNull).
+                    id = "uploaded-platform",
+                    title = "Загруженное на площадку",
+                    trackCount = 1,
+                    kind = "system",
+                    variant = "uploaded-platform",
+                    canDelete = false,
+                },
+                new
+                {
                     id = "88888888-8888-8888-8888-888888888888",
                     title = "My Mix",
                     trackCount = 3,
-                    kind = 1, // MusicPlaylistKindDto.User
+                    kind = "user",
                     variant = "user",
                     canDelete = true,
+                    coverColorId = "sunset",
+                },
+            },
+        });
+        Write(outputDir, "music-playlist-detail.json", new
+        {
+            id = "uploaded-personal",
+            title = "Загруженное для себя",
+            trackCount = 1,
+            kind = "system",
+            variant = "uploaded-personal",
+            canDelete = false,
+            tracks = new object[]
+            {
+                new
+                {
+                    trackUuid = "55555555-5555-5555-5555-555555555555",
+                    scope = "personal",
+                    title = "First Light",
+                    artistDisplay = "Flora Artist",
+                    artistCredits = Array.Empty<object>(),
+                    hasCoverImage = true,
+                    durationMs = 183000,
+                    createdAt = "2026-06-12T10:00:00.000Z",
+                },
+            },
+        });
+        Write(outputDir, "music-genres.json", new
+        {
+            genres = new object[]
+            {
+                new
+                {
+                    id = "pop",
+                    title = "Поп",
+                    trackCount = 0,
+                    subgenres = new object[]
+                    {
+                        new { id = "pop-indie", title = "Инди-поп", trackCount = 0 },
+                    },
                 },
             },
         });

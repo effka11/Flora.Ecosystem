@@ -2,9 +2,16 @@
   "tracks": [
     {
       "trackUuid": "55555555-5555-5555-5555-555555555555",
-      "scope": 0,
+      "scope": "personal",
       "title": "First Light",
       "artistDisplay": "Flora Artist",
+      "artistCredits": [
+        {
+          "artistUuid": "66666666-6666-6666-6666-666666666666",
+          "displayName": "Flora Artist",
+          "joinerBefore": "None"
+        }
+      ],
       "tags": "lofi,chill",
       "genreId": "lofi",
       "licenseId": "cc-by",
@@ -13,24 +20,17 @@
       "hasCoverImage": true,
       "durationMs": 183000,
       "createdAt": "2026-06-12T10:00:00.000Z",
-      "publishedAt": "2026-06-12T11:00:00.000Z",
-      "artistCredits": [
-        {
-          "artistUuid": "66666666-6666-6666-6666-666666666666",
-          "displayName": "Flora Artist",
-          "joinerBefore": 0
-        }
-      ]
+      "publishedAt": "2026-06-12T11:00:00.000Z"
     },
     {
       "trackUuid": "77777777-7777-7777-7777-777777777777",
-      "scope": 1,
+      "scope": "platform",
       "title": "Untitled",
       "artistDisplay": "Unknown",
+      "artistCredits": [],
       "hasCoverImage": false,
       "durationMs": 90000,
-      "createdAt": "2026-06-12T09:00:00.000Z",
-      "artistCredits": []
+      "createdAt": "2026-06-12T09:00:00.000Z"
     }
   ]
 }

@@ -1,20 +1,18 @@
 //! Продукт Flora.Social — единственное место композиции модулей
 //! (порт `Products/Flora.Social/FloraSocialComposition.cs`). Без бизнес-логики.
 //!
-//! Вместо DI-контейнера — явная композиция (next-architecture.md §2.4): продукт собирает
-//! состояния модулей и внедряет реализации портов конструкторами. По мере фаз миграции
-//! сюда добавляются `compose(cfg, pg_pool)` модулей, их фоновые задачи и rate-limit
-//! политики (`SocialRateLimitPolicies`, §4.5).
+//! Вместо DI-контейнера — явная композиция (next-architecture.md §2.4).
 
+mod jwt_layer;
+
+use flora_auth::infrastructure::jwt::JwtOptions;
 use flora_shared::config::FloraConfig;
+use flora_shared::npgsql::NpgsqlConnectionString;
+use sqlx::PgPool;
 
-/// Объединённый роутер продукта. Порядок композиции повторяет C#-продукт:
-/// Users → Verification → Auth → Notifications → Content → Messaging → Music,
-/// затем Rust-native модули (Economy — C#-аналога нет, fallback не задействуется).
-///
-/// До первых cutover'ов модульные роутеры пусты: всё, что здесь не смэтчилось,
-/// хост (flora-api) отправляет в .NET через gateway-fallback (§5.1).
-pub fn product_router(cfg: &FloraConfig) -> axum::Router {
+/// Объединённый роутер продукта. `pool` — общий PgPool для нативных модулей
+/// (сейчас Music при `Music:ServeNative`); `None` если натив не нужен.
+pub fn product_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
     axum::Router::new()
         .merge(flora_users::router())
         .merge(flora_verification::router())
@@ -22,20 +20,40 @@ pub fn product_router(cfg: &FloraConfig) -> axum::Router {
         .merge(flora_notifications::router())
         .merge(flora_content::router())
         .merge(flora_messaging::router())
-        .merge(flora_music::router())
+        .merge(music_router(cfg, pool))
         .merge(economy_router(cfg))
 }
 
-/// Композиция Economy (FEP): включается флагом `Economy:Enabled`.
-///
-/// Хранилище журнала — JSONL-файл `Economy:LedgerPath` (по умолчанию `flora-economy.ledger.jsonl`
-/// в рабочем каталоге). Аттестор — консервативный (все V0, UBI не начисляется), пока модуль
-/// Verification не реализует уровни FPP; экономика при этом полностью работоспособна
-/// (переводы, взаимный кредит, журнал).
-///
-/// Ошибка композиции (повреждённый журнал, расхождение реплея) — модуль офлайн, продукт
-/// продолжает работать: лестница деградации FGP §7.3, статус-кво вместо работы поверх
-/// скомпрометированного состояния.
+fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
+    if cfg.get_bool("Music:ServeNative") != Some(true) {
+        return flora_music::router();
+    }
+    let Some(pool) = pool else {
+        eprintln!("flora-music: Music:ServeNative=true, но PgPool недоступен — модуль офлайн");
+        return flora_music::router();
+    };
+    let module = flora_music::compose(pool);
+    let jwt = JwtAuthLayerState::from_config(cfg);
+    module.router.layer(axum::middleware::from_fn_with_state(
+        jwt_layer::JwtAuthState {
+            options: jwt.options,
+        },
+        jwt_layer::require_bearer_jwt,
+    ))
+}
+
+struct JwtAuthLayerState {
+    options: JwtOptions,
+}
+
+impl JwtAuthLayerState {
+    fn from_config(cfg: &FloraConfig) -> Self {
+        Self {
+            options: JwtOptions::from_config(cfg),
+        }
+    }
+}
+
 fn economy_router(cfg: &FloraConfig) -> axum::Router {
     if cfg.get_bool("Economy:Enabled") != Some(true) {
         return flora_economy::router();
@@ -56,6 +74,46 @@ fn economy_router(cfg: &FloraConfig) -> axum::Router {
     }
 }
 
+/// Подключение PgPool из `ConnectionStrings:FloraDatabase` (формат Npgsql).
+pub async fn connect_pool(cfg: &FloraConfig) -> Result<PgPool, String> {
+    let raw = cfg
+        .get_non_empty("ConnectionStrings:FloraDatabase")
+        .ok_or_else(|| "ConnectionStrings:FloraDatabase не задана".to_string())?;
+    let parsed = NpgsqlConnectionString::parse(raw).map_err(|e| e.to_string())?;
+    let mut options = sqlx::postgres::PgConnectOptions::new()
+        .host(parsed.host.as_deref().unwrap_or("localhost"))
+        .port(parsed.port.unwrap_or(5432));
+    if let Some(database) = &parsed.database {
+        options = options.database(database);
+    }
+    if let Some(username) = &parsed.username {
+        options = options.username(username);
+    }
+    if let Some(password) = &parsed.password {
+        options = options.password(password);
+    }
+    if let Some(ssl_mode) = &parsed.ssl_mode {
+        options = options.ssl_mode(match ssl_mode.to_lowercase().as_str() {
+            "disable" => sqlx::postgres::PgSslMode::Disable,
+            "require" => sqlx::postgres::PgSslMode::Require,
+            "allow" => sqlx::postgres::PgSslMode::Allow,
+            _ => sqlx::postgres::PgSslMode::Prefer,
+        });
+    }
+    if let Some(search_path) = &parsed.search_path {
+        options = options.options([("search_path", search_path.as_str())]);
+    }
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect_with(options)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub fn music_needs_pool(cfg: &FloraConfig) -> bool {
+    cfg.get_bool("Music:ServeNative") == Some(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,13 +121,11 @@ mod tests {
 
     #[tokio::test]
     async fn empty_product_router_matches_nothing() {
-        // Пока модули не перенесены, продукт не должен перехватывать ни один путь —
-        // иначе gateway-fallback не отдаст запрос в .NET.
-        let router = product_router(&FloraConfig::default());
+        let router = product_router(&FloraConfig::default(), None);
         let response = router
             .oneshot(
                 http::Request::builder()
-                    .uri("/api/music/library")
+                    .uri("/api/music/tracks/library")
                     .body(axum::body::Body::empty())
                     .unwrap(),
             )
@@ -80,7 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn economy_disabled_by_default() {
-        let router = product_router(&FloraConfig::default());
+        let router = product_router(&FloraConfig::default(), None);
         let response = router
             .oneshot(
                 http::Request::builder()
@@ -105,7 +161,7 @@ mod tests {
             })],
             &[],
         );
-        let router = product_router(&cfg);
+        let router = product_router(&cfg, None);
         let response = router
             .oneshot(
                 http::Request::builder()
@@ -117,5 +173,25 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), http::StatusCode::OK);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn music_serve_native_without_pool_stays_empty() {
+        let cfg = FloraConfig::from_layers(
+            "Development",
+            &[serde_json::json!({ "Music": { "ServeNative": true } })],
+            &[],
+        );
+        let router = product_router(&cfg, None);
+        let response = router
+            .oneshot(
+                http::Request::builder()
+                    .uri("/api/music/genres")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
     }
 }
