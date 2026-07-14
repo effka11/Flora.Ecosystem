@@ -131,6 +131,12 @@ hkdf = "0.12"
 chacha20poly1305 = "0.10"
 ml-kem = { version = "0.3.2", features = ["hazmat"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+lettre = { version = "0.11.19", default-features = false, features = ["builder", "hostname", "smtp-transport", "tokio1-rustls-tls"] }
+tonic = { version = "0.13.1", features = ["transport"] }
+tonic-build = "0.13.1"
+prost = "0.13.5"
+subtle = "2.6.1"
+hex = "0.4.3"
 
 [profile.release]
 lto = "thin"

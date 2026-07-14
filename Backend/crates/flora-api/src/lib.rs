@@ -14,19 +14,19 @@ use axum::Router;
 use flora_shared::config::FloraConfig;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 
-/// Собирает хост: роутер + опциональные Music workers (ServeNative).
+/// Собирает хост: роутер + фоновые задачи (Music workers, Verification gRPC).
 pub struct BuiltHost {
     pub router: Router,
-    pub worker_handles: Vec<flora_social::MusicWorkerHandle>,
+    pub worker_handles: Vec<flora_social::BackgroundHandle>,
 }
 
-/// Собирает полный роутер хоста. При `Music:ServeNative` поднимает PgPool и workers.
+/// Собирает полный роутер хоста. PgPool — при Music/Auth ServeNative и/или Verification gRPC.
 pub async fn build_host(cfg: &FloraConfig, versions: versions::FloraVersionResponse) -> BuiltHost {
-    let pool = if flora_social::music_needs_pool(cfg) {
+    let pool = if flora_social::host_needs_pool(cfg) {
         match flora_social::connect_pool(cfg).await {
             Ok(pool) => Some(pool),
             Err(e) => {
-                eprintln!("flora-api: не удалось открыть PgPool для Music:ServeNative: {e}");
+                eprintln!("flora-api: не удалось открыть PgPool для native-модулей: {e}");
                 None
             }
         }
@@ -36,7 +36,7 @@ pub async fn build_host(cfg: &FloraConfig, versions: versions::FloraVersionRespo
 
     let worker_handles = pool
         .as_ref()
-        .map(|p| flora_social::spawn_music_workers(cfg, p.clone()))
+        .map(|p| flora_social::spawn_background(cfg, p.clone()))
         .unwrap_or_default();
 
     let mut native = routes::host_router(versions)

@@ -17,6 +17,18 @@ public static class VerificationModuleComposition
 
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
 
+        // Dual-writer запрещён (§5.3): при UseGrpc писатель — Rust tonic.
+        var useGrpc = configuration.GetValue("Verification:UseGrpc", false);
+        if (useGrpc)
+        {
+            var address = configuration["Verification:GrpcAddress"]
+                ?? "http://127.0.0.1:50051";
+            services.AddGrpcClient<Flora.Grpc.Verification.VerificationChallengeService.VerificationChallengeServiceClient>(
+                o => o.Address = new Uri(address));
+            services.AddScoped<IVerificationChallengeService, GrpcVerificationChallengeService>();
+            return services;
+        }
+
         services.AddDbContext<VerificationDbContext>((sp, o) =>
         {
             o.UseNpgsql(connectionString, n =>

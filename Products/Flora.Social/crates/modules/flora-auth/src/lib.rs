@@ -1,12 +1,31 @@
-//! Модуль Auth. Перенос — Фаза 2b, вместе с Users (next-architecture.md §6); владелец — §6.0.
-//!
-//! JWT-примитивы ([`infrastructure::jwt`]) живут здесь с Фазы 0: они нужны хосту для
-//! защиты нативных маршрутов и для кросс-языкового паритетного теста (§4.1).
+//! Модуль Auth. Фаза 2b: JWT с Фазы 0; HTTP — по срезам (`Auth:ServeNative`).
 
+pub mod application;
+pub mod http;
 pub mod infrastructure;
 
-/// HTTP-роутер модуля (login/refresh/2FA/sessions). До cutover Фазы 2b пуст —
-/// запросы обслуживает C#-хост через gateway-fallback.
+use std::sync::Arc;
+
+use sqlx::PgPool;
+
+use crate::application::sessions::SessionService;
+use crate::http::AuthState;
+use crate::infrastructure::repo::AuthRepo;
+
+/// Собранный модуль Auth (нативные маршруты при ServeNative).
+pub struct AuthModule {
+    pub router: axum::Router,
+}
+
+/// Пустой роутер — gateway-fallback на .NET.
 pub fn router() -> axum::Router {
     axum::Router::new()
+}
+
+pub fn compose(pool: PgPool) -> AuthModule {
+    let repo = Arc::new(AuthRepo::new(pool));
+    let sessions = Arc::new(SessionService::new(repo));
+    AuthModule {
+        router: http::router(AuthState { sessions }),
+    }
 }

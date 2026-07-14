@@ -6,6 +6,7 @@ use axum::extract::State;
 use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use flora_auth::http::AuthUser;
 use flora_auth::infrastructure::jwt::{JwtOptions, validate_access_token};
 use flora_music::http::CurrentUser;
 use uuid::Uuid;
@@ -39,7 +40,12 @@ pub async fn require_bearer_jwt(
     let Ok(user_uuid) = Uuid::parse_str(&claims.sub) else {
         return unauthorized();
     };
+    // Music handlers: CurrentUser; Auth handlers: AuthUser (+ jti для isCurrent).
     req.extensions_mut().insert(CurrentUser(user_uuid));
+    req.extensions_mut().insert(AuthUser {
+        user_uuid,
+        jti: claims.jti,
+    });
     next.run(req).await
 }
 

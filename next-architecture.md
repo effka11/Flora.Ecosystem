@@ -259,9 +259,9 @@ flowchart LR
 | --- | --- | --- | --- |
 | Хост / шлюз (`/`, `/health`, `/version`) | **Rust** `flora-api` (:5290); .NET upstream `flora-api-dotnet` (:5000) | Фаза 0: cutover 100% (2026-07-14) — nginx + `FLORA_API_UPSTREAM` → Rust gateway; **соак до Фазы 1 снят** (нет прод-пользователей) | — |
 | Music | **Rust** | cutover HTTP + workers (`ServeNative`); C# Music hosted services выключены при том же флаге | — |
-| Verification | C# | не начат | — |
+| Verification | **Rust** (gRPC port) | Фаза 2a: tonic `verification.proto`; C# Auth → gRPC при `Verification:UseGrpc` | — |
 | Users | C# | не начат | — |
-| Auth | C# | не начат | — |
+| Auth | C# | в переносе: `GET /api/auth/me/sessions` (`Auth:ServeNative`); остальное — C# | — |
 | Content | C# | не начат | — |
 | Messaging | C# | не начат | — |
 | Notifications | C# | не начат | — |

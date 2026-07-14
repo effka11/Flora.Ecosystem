@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+option csharp_namespace = "Flora.Grpc.Verification";
+
+package flora.verification;
+
+// Межъязыковой порт IVerificationChallengeService (next-architecture.md §5.2 / Фаза 2a).
+// kind: 0 = EmailRegistration, 1 = EmailChange (как C# VerificationChallengeKind).
+// status: 0 = Success, 1 = NotFound, 2 = Expired, 3 = CodeMismatch.
+
+service VerificationChallengeService {
+  rpc Begin (BeginRequest) returns (BeginResponse);
+  rpc Validate (ValidateRequest) returns (ValidateResponse);
+  rpc Cancel (CancelRequest) returns (CancelResponse);
+}
+
+message BeginRequest {
+  int32 kind = 1;
+  string target = 2;
+  // Пустая строка = null (как Guid? subjectUserUuid).
+  string subject_user_uuid = 3;
+}
+
+message BeginResponse {
+  string token = 1;
+  // ISO-8601 UTC, как DateTime.UtcNow сериализация для wire.
+  string expires_at_utc = 2;
+  // Пустая строка = null; plaintext только в Development.
+  string dev_code = 3;
+}
+
+message ValidateRequest {
+  string token = 1;
+  string code_plain = 2;
+}
+
+message ValidateResponse {
+  int32 status = 1;
+  string target = 2;
+  string subject_user_uuid = 3;
+}
+
+message CancelRequest {
+  string token = 1;
+}
+
+message CancelResponse {}

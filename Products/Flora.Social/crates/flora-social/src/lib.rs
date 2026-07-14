@@ -11,17 +11,29 @@ use flora_shared::npgsql::NpgsqlConnectionString;
 use sqlx::PgPool;
 
 /// Объединённый роутер продукта. `pool` — общий PgPool для нативных модулей
-/// (сейчас Music при `Music:ServeNative`); `None` если натив не нужен.
+/// (`Music` / `Auth` ServeNative); `None` если натив не нужен.
 pub fn product_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
     axum::Router::new()
         .merge(flora_users::router())
         .merge(flora_verification::router())
-        .merge(flora_auth::router())
+        .merge(auth_router(cfg, pool.clone()))
         .merge(flora_notifications::router())
         .merge(flora_content::router())
         .merge(flora_messaging::router())
         .merge(music_router(cfg, pool))
         .merge(economy_router(cfg))
+}
+
+fn auth_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
+    if cfg.get_bool("Auth:ServeNative") != Some(true) {
+        return flora_auth::router();
+    }
+    let Some(pool) = pool else {
+        eprintln!("flora-auth: Auth:ServeNative=true, но PgPool недоступен — модуль офлайн");
+        return flora_auth::router();
+    };
+    let module = flora_auth::compose(pool);
+    with_jwt(cfg, module.router)
 }
 
 fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
@@ -40,8 +52,12 @@ fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
         ffprobe_path: cfg.get("Media:FfprobePath").unwrap_or("").to_string(),
     };
     let module = flora_music::compose(pool, media);
+    with_jwt(cfg, module.router)
+}
+
+fn with_jwt(cfg: &FloraConfig, router: axum::Router) -> axum::Router {
     let jwt = JwtAuthLayerState::from_config(cfg);
-    module.router.layer(axum::middleware::from_fn_with_state(
+    router.layer(axum::middleware::from_fn_with_state(
         jwt_layer::JwtAuthState {
             options: jwt.options,
         },
@@ -121,8 +137,24 @@ pub fn music_needs_pool(cfg: &FloraConfig) -> bool {
     cfg.get_bool("Music:ServeNative") == Some(true)
 }
 
+pub fn auth_needs_pool(cfg: &FloraConfig) -> bool {
+    cfg.get_bool("Auth:ServeNative") == Some(true)
+}
+
+pub fn verification_needs_pool(cfg: &FloraConfig) -> bool {
+    flora_verification::needs_pool(cfg)
+}
+
+/// Нужен ли PgPool хосту (Music/Auth ServeNative и/или Verification gRPC).
+pub fn host_needs_pool(cfg: &FloraConfig) -> bool {
+    music_needs_pool(cfg) || auth_needs_pool(cfg) || verification_needs_pool(cfg)
+}
+
+/// Фоновые задачи продукта (Music workers, Verification gRPC, …).
+pub type BackgroundHandle = flora_music::WorkerHandle;
+
 /// Хэндл фонового Music-воркера (abort при shutdown).
-pub type MusicWorkerHandle = flora_music::WorkerHandle;
+pub type MusicWorkerHandle = BackgroundHandle;
 
 /// Запускает Music workers только при `Music:ServeNative` + живом пуле.
 pub fn spawn_music_workers(cfg: &FloraConfig, pool: PgPool) -> Vec<MusicWorkerHandle> {
@@ -130,6 +162,15 @@ pub fn spawn_music_workers(cfg: &FloraConfig, pool: PgPool) -> Vec<MusicWorkerHa
         return Vec::new();
     }
     flora_music::spawn_workers(pool)
+}
+
+/// Verification tonic + Music workers.
+pub fn spawn_background(cfg: &FloraConfig, pool: PgPool) -> Vec<BackgroundHandle> {
+    let mut handles = spawn_music_workers(cfg, pool.clone());
+    if let Some(h) = flora_verification::spawn_grpc(cfg, pool) {
+        handles.push(h);
+    }
+    handles
 }
 
 #[cfg(test)]
@@ -205,6 +246,26 @@ mod tests {
             .oneshot(
                 http::Request::builder()
                     .uri("/api/music/genres")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn auth_serve_native_without_pool_stays_empty() {
+        let cfg = FloraConfig::from_layers(
+            "Development",
+            &[serde_json::json!({ "Auth": { "ServeNative": true } })],
+            &[],
+        );
+        let router = product_router(&cfg, None);
+        let response = router
+            .oneshot(
+                http::Request::builder()
+                    .uri("/api/auth/me/sessions")
                     .body(axum::body::Body::empty())
                     .unwrap(),
             )
