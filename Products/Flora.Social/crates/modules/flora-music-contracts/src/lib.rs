@@ -163,3 +163,39 @@ pub struct PagedMusicTracksDto {
     pub page: i32,
     pub page_size: i32,
 }
+
+/// POST /api/music/playlists — body (MusicController.CreateMusicPlaylistBody).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMusicPlaylistBody {
+    pub title: Option<String>,
+}
+
+/// POST /api/music/playlists — result (CreateMusicPlaylistResultDto).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMusicPlaylistResultDto {
+    pub playlist_id: String,
+    pub title: String,
+}
+
+/// GET /api/music/flow — wave envelope (MapFlowTrack items = MusicPlatformTrackDto).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicFlowWaveDto {
+    pub tracks: Vec<MusicPlatformTrackDto>,
+    pub generated_at: String,
+    pub expires_at: String,
+}
+
+/// Wire alias: MapFlowTrack ≡ MapPlatformTrack.
+pub type MusicFlowTrackDto = MusicPlatformTrackDto;
+
+/// POST /api/music/tracks/self|platform success.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadMusicTrackResultDto {
+    pub track_uuid: Uuid,
+    pub title: String,
+    pub artist_display: String,
+}

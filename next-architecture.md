@@ -258,7 +258,7 @@ flowchart LR
 | Единица | Владелец сейчас | Статус | Freeze-окно |
 | --- | --- | --- | --- |
 | Хост / шлюз (`/`, `/health`, `/version`) | **Rust** `flora-api` (:5290); .NET upstream `flora-api-dotnet` (:5000) | Фаза 0: cutover 100% (2026-07-14) — nginx + `FLORA_API_UPSTREAM` → Rust gateway; **соак до Фазы 1 снят** (нет прод-пользователей) | — |
-| Music | C# + Rust (read-GET) | в переносе — `Music:ServeNative=true`: JWT GET genres/library/platform/playlists/**artists** (+ cover/tracks) на Rust; upload/audio/flow — .NET fallback | — |
+| Music | **Rust** | cutover HTTP + workers (`ServeNative`); C# Music hosted services выключены при том же флаге | — |
 | Verification | C# | не начат | — |
 | Users | C# | не начат | — |
 | Auth | C# | не начат | — |

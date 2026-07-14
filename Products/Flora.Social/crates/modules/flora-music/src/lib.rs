@@ -12,11 +12,24 @@ use std::sync::Arc;
 use sqlx::PgPool;
 
 use crate::application::artists::ArtistService;
+use crate::application::flow::FlowService;
 use crate::application::genres::GenreService;
 use crate::application::playlists::PlaylistService;
 use crate::application::tracks::TrackService;
+use crate::application::upload::UploadService;
 use crate::http::MusicState;
 use crate::infrastructure::MusicRepo;
+use crate::infrastructure::ffmpeg::FfmpegMusicAudioTranscoder;
+
+pub use crate::infrastructure::ffmpeg::MusicMediaOptions;
+
+/// Хэндл фонового воркера Music (abort при shutdown хоста).
+pub type WorkerHandle = tokio::task::JoinHandle<()>;
+
+/// Фоновые воркеры (backfill + orphan cleanup) при ServeNative.
+pub fn spawn_workers(pool: PgPool) -> Vec<WorkerHandle> {
+    application::workers::spawn_workers(pool)
+}
 
 /// Собранный модуль: роутер с state (без JWT — слой навешивает flora-social).
 pub struct MusicModule {
@@ -28,17 +41,22 @@ pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
-pub fn compose(pool: PgPool) -> MusicModule {
+pub fn compose(pool: PgPool, media: MusicMediaOptions) -> MusicModule {
     let repo = Arc::new(MusicRepo::new(pool));
     let tracks = Arc::new(TrackService::new(repo.clone()));
     let playlists = Arc::new(PlaylistService::new(repo.clone(), tracks.clone()));
     let genres = Arc::new(GenreService::new(repo.clone(), tracks.clone()));
-    let artists = Arc::new(ArtistService::new(repo, tracks.clone()));
+    let artists = Arc::new(ArtistService::new(repo.clone(), tracks.clone()));
+    let flow = Arc::new(FlowService::new(repo.clone(), tracks.clone()));
+    let transcoder = Arc::new(FfmpegMusicAudioTranscoder::new(media));
+    let uploads = Arc::new(UploadService::new(repo, transcoder));
     let state = MusicState {
         tracks,
         playlists,
         genres,
         artists,
+        flow,
+        uploads,
     };
     MusicModule {
         router: http::router(state),

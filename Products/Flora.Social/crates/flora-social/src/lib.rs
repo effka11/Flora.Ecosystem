@@ -32,7 +32,14 @@ fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
         eprintln!("flora-music: Music:ServeNative=true, но PgPool недоступен — модуль офлайн");
         return flora_music::router();
     };
-    let module = flora_music::compose(pool);
+    let media = flora_music::MusicMediaOptions {
+        ffmpeg_path: cfg
+            .get_non_empty("Media:FfmpegPath")
+            .unwrap_or("ffmpeg")
+            .to_string(),
+        ffprobe_path: cfg.get("Media:FfprobePath").unwrap_or("").to_string(),
+    };
+    let module = flora_music::compose(pool, media);
     let jwt = JwtAuthLayerState::from_config(cfg);
     module.router.layer(axum::middleware::from_fn_with_state(
         jwt_layer::JwtAuthState {
@@ -112,6 +119,17 @@ pub async fn connect_pool(cfg: &FloraConfig) -> Result<PgPool, String> {
 
 pub fn music_needs_pool(cfg: &FloraConfig) -> bool {
     cfg.get_bool("Music:ServeNative") == Some(true)
+}
+
+/// Хэндл фонового Music-воркера (abort при shutdown).
+pub type MusicWorkerHandle = flora_music::WorkerHandle;
+
+/// Запускает Music workers только при `Music:ServeNative` + живом пуле.
+pub fn spawn_music_workers(cfg: &FloraConfig, pool: PgPool) -> Vec<MusicWorkerHandle> {
+    if !music_needs_pool(cfg) {
+        return Vec::new();
+    }
+    flora_music::spawn_workers(pool)
 }
 
 #[cfg(test)]

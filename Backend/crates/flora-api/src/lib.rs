@@ -14,8 +14,14 @@ use axum::Router;
 use flora_shared::config::FloraConfig;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 
-/// Собирает полный роутер хоста. При `Music:ServeNative` поднимает PgPool.
-pub async fn build_router(cfg: &FloraConfig, versions: versions::FloraVersionResponse) -> Router {
+/// Собирает хост: роутер + опциональные Music workers (ServeNative).
+pub struct BuiltHost {
+    pub router: Router,
+    pub worker_handles: Vec<flora_social::MusicWorkerHandle>,
+}
+
+/// Собирает полный роутер хоста. При `Music:ServeNative` поднимает PgPool и workers.
+pub async fn build_host(cfg: &FloraConfig, versions: versions::FloraVersionResponse) -> BuiltHost {
     let pool = if flora_social::music_needs_pool(cfg) {
         match flora_social::connect_pool(cfg).await {
             Ok(pool) => Some(pool),
@@ -27,6 +33,11 @@ pub async fn build_router(cfg: &FloraConfig, versions: versions::FloraVersionRes
     } else {
         None
     };
+
+    let worker_handles = pool
+        .as_ref()
+        .map(|p| flora_social::spawn_music_workers(cfg, p.clone()))
+        .unwrap_or_default();
 
     let mut native = routes::host_router(versions)
         .merge(flora_social::product_router(cfg, pool))
@@ -43,7 +54,15 @@ pub async fn build_router(cfg: &FloraConfig, versions: versions::FloraVersionRes
         Some(upstream) => native.fallback_service(proxy::proxy_service(upstream)),
         None => native,
     };
-    routed.layer(axum::middleware::from_fn(access_log::access_log))
+    BuiltHost {
+        router: routed.layer(axum::middleware::from_fn(access_log::access_log)),
+        worker_handles,
+    }
+}
+
+/// Обратная совместимость тестов/вызовов без workers.
+pub async fn build_router(cfg: &FloraConfig, versions: versions::FloraVersionResponse) -> Router {
+    build_host(cfg, versions).await.router
 }
 
 fn cors_layer(cfg: &FloraConfig) -> Option<CorsLayer> {

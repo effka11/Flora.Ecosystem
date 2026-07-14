@@ -5,7 +5,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use flora_api::{build_router, listen_addr, versions::FloraVersionResponse};
+use flora_api::{build_host, listen_addr, versions::FloraVersionResponse};
 
 fn main() -> anyhow::Result<()> {
     init_tracing();
@@ -33,8 +33,13 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?
         .block_on(async {
-            let router = build_router(&cfg, versions).await;
-            serve(addr, router).await
+            let host = build_host(&cfg, versions).await;
+            let worker_handles = host.worker_handles;
+            let result = serve(addr, host.router).await;
+            for h in worker_handles {
+                h.abort();
+            }
+            result
         })
 }
 

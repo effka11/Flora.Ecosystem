@@ -49,9 +49,15 @@ public static class MusicModuleComposition
         services.AddScoped<MusicArtistTrackAttachService>();
         services.AddScoped<MusicArtistObsoleteFallback>();
         services.AddScoped<MusicArtistBackfillService>();
-        services.AddHostedService<MusicArtistBackfillHostedService>();
         services.AddScoped<MusicArtistOrphanCleanupService>();
-        services.AddHostedService<MusicArtistOrphanCleanupHostedService>();
+
+        // Dual-writer запрещён (§6): при Music:ServeNative воркеры крутит Rust flora-api.
+        var serveNative = configuration.GetValue("Music:ServeNative", false);
+        if (!serveNative)
+        {
+            services.AddHostedService<MusicArtistBackfillHostedService>();
+            services.AddHostedService<MusicArtistOrphanCleanupHostedService>();
+        }
 
         return services;
     }

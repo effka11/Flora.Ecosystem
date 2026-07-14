@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::application::time::{format_utc, format_utc_opt};
 use crate::infrastructure::repo::{
-    CreditRow, MusicRepo, TrackListRow, joiner_to_wire, scope_to_wire,
+    CreditRow, MediaBlobRow, MusicRepo, TrackListRow, joiner_to_wire, scope_to_wire,
 };
 
 pub struct TrackService {
@@ -69,6 +69,39 @@ impl TrackService {
             .collect())
     }
 
+    /// MapFlowTrack / MapPlatformTrack wire.
+    pub async fn map_platform_rows(
+        &self,
+        user: Uuid,
+        rows: Vec<TrackListRow>,
+    ) -> Result<Vec<MusicPlatformTrackDto>, sqlx::Error> {
+        let credits = self.load_credit_map(&rows).await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                let track_credits = credits.get(&r.track_uuid).cloned().unwrap_or_default();
+                MusicPlatformTrackDto {
+                    track_uuid: r.track_uuid,
+                    title: r.title,
+                    artist_display: r.artist_display,
+                    artist_credits: track_credits,
+                    genre_id: r.genre_id,
+                    license_id: r.license_id,
+                    cover_color_id: r.cover_color_id,
+                    track_kind_id: r.track_kind_id,
+                    has_cover_image: r.has_cover_image,
+                    duration_ms: r.duration_ms,
+                    created_at: format_utc(r.created_at),
+                    published_at: format_utc(
+                        r.published_at
+                            .expect("flow/platform track requires published_at"),
+                    ),
+                    is_owned_by_current_user: r.owner_user_uuid == user,
+                }
+            })
+            .collect())
+    }
+
     async fn load_credit_map(
         &self,
         rows: &[TrackListRow],
@@ -76,6 +109,35 @@ impl TrackService {
         let ids: Vec<Uuid> = rows.iter().map(|r| r.track_uuid).collect();
         let credit_rows = self.repo.list_credits_for_tracks(&ids).await?;
         Ok(group_credits(credit_rows))
+    }
+
+    pub async fn get_audio(
+        &self,
+        requester: Uuid,
+        track_uuid: Uuid,
+    ) -> Result<Option<MediaBlobRow>, sqlx::Error> {
+        self.repo
+            .find_track_audio_accessible(requester, track_uuid)
+            .await
+    }
+
+    pub async fn get_cover(
+        &self,
+        requester: Uuid,
+        track_uuid: Uuid,
+    ) -> Result<Option<MediaBlobRow>, sqlx::Error> {
+        self.repo
+            .find_track_cover_accessible(requester, track_uuid)
+            .await
+    }
+
+    pub async fn delete(&self, owner: Uuid, track_uuid: Uuid) -> Result<bool, sqlx::Error> {
+        let artists = self.repo.list_artist_uuids_for_track(track_uuid).await?;
+        let deleted = self.repo.delete_owned_track(owner, track_uuid).await?;
+        if deleted && !artists.is_empty() {
+            self.repo.decrement_tracks_count(&artists).await?;
+        }
+        Ok(deleted)
     }
 }
 

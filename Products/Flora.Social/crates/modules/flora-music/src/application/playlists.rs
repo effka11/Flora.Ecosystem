@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
+use chrono::Utc;
 use flora_music_contracts::{
-    MusicPlaylistDetailDto, MusicPlaylistSummaryDto, SYSTEM_PLAYLIST_UPLOADED_PERSONAL,
-    SYSTEM_PLAYLIST_UPLOADED_PLATFORM, is_system_playlist_id,
+    CreateMusicPlaylistResultDto, MusicPlaylistDetailDto, MusicPlaylistSummaryDto,
+    SYSTEM_PLAYLIST_UPLOADED_PERSONAL, SYSTEM_PLAYLIST_UPLOADED_PLATFORM, is_system_playlist_id,
 };
+use flora_shared::flora_uuid::new_uuid;
 use uuid::Uuid;
 
 use crate::application::tracks::TrackService;
@@ -12,6 +14,17 @@ use crate::infrastructure::MusicRepo;
 pub struct PlaylistService {
     repo: Arc<MusicRepo>,
     tracks: Arc<TrackService>,
+}
+
+pub enum DeletePlaylistError {
+    Forbidden,
+    NotFound,
+    Db(sqlx::Error),
+}
+
+pub enum CreatePlaylistError {
+    Validation(String),
+    Db(sqlx::Error),
 }
 
 impl PlaylistService {
@@ -118,5 +131,60 @@ impl PlaylistService {
             cover_color_id: None,
             tracks,
         }))
+    }
+
+    pub async fn add_favorite(&self, user: Uuid, track: Uuid) -> Result<bool, sqlx::Error> {
+        if !self.repo.is_track_owned(user, track).await? {
+            return Ok(false);
+        }
+        if !self.repo.is_favorite(user, track).await? {
+            self.repo.insert_favorite(user, track, Utc::now()).await?;
+        }
+        Ok(true)
+    }
+
+    pub async fn remove_favorite(&self, user: Uuid, track: Uuid) -> Result<bool, sqlx::Error> {
+        self.repo.delete_favorite(user, track).await
+    }
+
+    pub async fn create(
+        &self,
+        user: Uuid,
+        title: Option<&str>,
+    ) -> Result<CreateMusicPlaylistResultDto, CreatePlaylistError> {
+        let normalized = title.unwrap_or("").trim();
+        if normalized.is_empty() {
+            return Err(CreatePlaylistError::Validation(
+                "Введите название плейлиста.".into(),
+            ));
+        }
+        if normalized.chars().count() > 200 {
+            return Err(CreatePlaylistError::Validation(
+                "Название плейлиста слишком длинное.".into(),
+            ));
+        }
+        let id = new_uuid();
+        self.repo
+            .insert_playlist(id, user, normalized, Utc::now())
+            .await
+            .map_err(CreatePlaylistError::Db)?;
+        Ok(CreateMusicPlaylistResultDto {
+            playlist_id: id.to_string(),
+            title: normalized.to_string(),
+        })
+    }
+
+    pub async fn delete(&self, user: Uuid, playlist_id: &str) -> Result<(), DeletePlaylistError> {
+        if is_system_playlist_id(playlist_id) {
+            return Err(DeletePlaylistError::Forbidden);
+        }
+        let Ok(uuid) = Uuid::parse_str(playlist_id) else {
+            return Err(DeletePlaylistError::NotFound);
+        };
+        match self.repo.delete_user_playlist(user, uuid).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(DeletePlaylistError::NotFound),
+            Err(e) => Err(DeletePlaylistError::Db(e)),
+        }
     }
 }
