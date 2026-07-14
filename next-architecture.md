@@ -249,7 +249,7 @@ flowchart LR
 | 4 | **Messaging + Notifications** (FSCP, SSE, FCM) | 51 (13 legacy + 27 + 11) | 3.8k + `MessagingController` | все мосты умирают |
 | 5 | Вывод .NET, смена тулинга | — | −22k | — |
 
-Каждая фаза завершается неделей соака на 100% трафика перед стартом следующей. Прогресс-порядок выбран по связанности (см. граф в ARCHITECTURE.md §2.6): сначала изолированное (Music), потом identity-ядро, затем читатели identity (Content), в конце — самое рискованное (E2E-месседжинг) на созревшем фундаменте.
+Каждая фаза **может** завершаться соаком на 100% трафика перед стартом следующей — полезно при живых пользователях. **Пока прод-аудитории нет**, обязательный соак/freeze между фазами **не требуется**: можно сразу идти в следующий срез (сейчас — Music). Прогресс-порядок по связанности без изменений (см. граф в ARCHITECTURE.md §2.6): Music → identity → Content → Messaging.
 
 ### 6.0. Статус миграции (единственный источник истины о владении)
 
@@ -257,8 +257,8 @@ flowchart LR
 
 | Единица | Владелец сейчас | Статус | Freeze-окно |
 | --- | --- | --- | --- |
-| Хост / шлюз (`/`, `/health`, `/version`) | **Rust** `flora-api` (:5290); .NET upstream `flora-api-dotnet` (:5000) | Фаза 0: cutover 100% (2026-07-14) — nginx + `FLORA_API_UPSTREAM` → Rust gateway; соак ≥1 недели до старта Фазы 1 | — |
-| Music | C# | в переносе (владелец C#) — prep read-GET; нативный роутер только при `Music:ServeNative=true` (дефолт false, cutover после соака Phase 0) | — |
+| Хост / шлюз (`/`, `/health`, `/version`) | **Rust** `flora-api` (:5290); .NET upstream `flora-api-dotnet` (:5000) | Фаза 0: cutover 100% (2026-07-14) — nginx + `FLORA_API_UPSTREAM` → Rust gateway; **соак до Фазы 1 снят** (нет прод-пользователей) | — |
+| Music | C# + Rust (read-GET) | в переносе — `Music:ServeNative=true`: JWT GET genres/library/platform/playlists на Rust; upload/audio/artists/flow — .NET fallback | — |
 | Verification | C# | не начат | — |
 | Users | C# | не начат | — |
 | Auth | C# | не начат | — |
@@ -267,7 +267,7 @@ flowchart LR
 | Notifications | C# | не начат | — |
 | Economy (FEP) | **Rust** (родной, C#-аналога нет) | вне strangler-миграции; выключен флагом `Economy:Enabled` до включения продуктом | — |
 
-Статусы: `не начат → в переносе (владелец C#) → freeze → cutover N% → Rust (соак) → Rust`.
+Статусы: `не начат → в переносе (владелец C#) → freeze (опц., при живом трафике) → cutover N% → Rust`. Пока пользователей нет — freeze/соак между фазами не ставим.
 
 > Примечание: FSCP-валидатор Messaging перенесён заранее как чистая функция с golden-паритетом (§4.4) — это **не** меняет владение модулем и не открывает Фазу 4; трафик обслуживает C# до её cutover.
 
@@ -275,7 +275,7 @@ flowchart LR
 
 **Делаем:** workspace `Backend/` (§2.1); `flora-api` с конфигом (§4.8), tracing, `/`, `/health`, `/version` (читает `flora-versions.json` — паритет с [`FloraVersions.cs`](Flora.API/FloraVersions.cs)); прозрачный реверс-прокси на .NET (§5.1); `flora-shared` с golden-тестами UUID v5/v7 против C#-векторов; parity-харнесс (`tests/parity`): прогон существующих contract fixtures + differential-инструмент `flora-diff` (replay GET-трафика на оба апстрима, семантический дифф JSON); расширение генератора фикстур (`tests/Flora.ContractFixtures`, `UPDATE_CONTRACT_FIXTURES=1`) на Music/Content/E2E-поверхности; CI: fmt, clippy, test, `validate-architecture-rust`, `cargo deny`; обновление AGENTS.md (команды cargo, правила `Backend/`).
 
-**Выход:** шлюз держит 100% прод-трафика ≥1 недели без инцидентов; SSE/multipart/медиа проходят прозрачно; кросс-языковой JWT-тест зелёный. **Откат:** nginx → .NET напрямую.
+**Выход:** шлюз в проде отвечает на `/`/`/health`/`/version`, proxy на .NET прозрачен (SSE/multipart/медиа); кросс-языковой JWT-тест зелёный. Обязательный соак ≥1 недели **не требуется**, пока нет прод-аудитории. **Откат:** nginx → .NET напрямую.
 
 ### Фаза 1 — Music (пилот модуля)
 
