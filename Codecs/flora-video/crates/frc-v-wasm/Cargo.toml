@@ -1,0 +1,42 @@
+# WASM-обёртка декодера FRV1 для Apps/Web: cdylib без wasm-bindgen и без JS-зависимостей.
+
+#
+
+# Единственный crate workspace с `unsafe`: минимальный FFI-слой (передача буферов
+
+# через линейную память wasm). Ядро `frc-v` остаётся `unsafe_code = "forbid"`.
+
+
+
+[package]
+
+name = "frc-v-wasm"
+
+version.workspace = true
+
+edition.workspace = true
+
+rust-version.workspace = true
+
+license.workspace = true
+
+publish.workspace = true
+
+
+
+[lib]
+
+crate-type = ["cdylib", "rlib"]
+
+
+
+[dependencies]
+
+frc-v = { path = "../frc-v" }
+
+
+
+[lints.rust]
+
+unsafe_op_in_unsafe_fn = "deny"
+

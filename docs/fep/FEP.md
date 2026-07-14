@@ -269,7 +269,7 @@ wasm32-сборка `flora-economy-crypto` (без изменений кода) 
 - проверку inclusion-доказательств отдельных записей (для лёгких клиентов);
 - построение и подпись транзакций локально — секретный ключ не покидает устройство.
 
-`cargo check -p flora-economy-crypto --target wasm32-unknown-unknown` — обязательная проверка CI (как у FAC/FIC).
+`cargo check -p flora-economy-crypto --target wasm32-unknown-unknown` — обязательная проверка CI (как у FRC-A/FRC-I).
 
 ## 11. HTTP API (v1)
 

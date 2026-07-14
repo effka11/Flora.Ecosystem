@@ -3,19 +3,19 @@
 version = 4
 
 [[package]]
-name = "fvc"
+name = "frc-v"
 version = "0.1.0"
 
 [[package]]
-name = "fvc-cli"
+name = "frc-v-cli"
 version = "0.1.0"
 dependencies = [
- "fvc",
+ "frc-v",
 ]
 
 [[package]]
-name = "fvc-wasm"
+name = "frc-v-wasm"
 version = "0.1.0"
 dependencies = [
- "fvc",
+ "frc-v",
 ]

@@ -115,7 +115,7 @@ jobs:
         with:
           manifest-path: Backend/Cargo.toml
 
-  # Аудио-кодек FAC (docs/codecs/FAC.md) — отдельный workspace Codecs/audio.
+  # Аудио-кодек FRC-A (docs/codecs/FRC-A.md) — отдельный workspace Codecs/audio.
   # Ядро дополнительно проверяется на wasm32: E2E-голосовые кодируются на клиенте.
   codecs-audio:
     name: codecs-audio
@@ -139,7 +139,7 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
       - name: Check core on wasm32
-        run: cargo check -p fac-core --target wasm32-unknown-unknown --locked
+        run: cargo check -p frc-a-core --target wasm32-unknown-unknown --locked
       - name: Licenses, bans, advisories (cargo deny)
         uses: EmbarkStudios/cargo-deny-action@v2
         with:

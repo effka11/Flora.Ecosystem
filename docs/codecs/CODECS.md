@@ -1,8 +1,8 @@
 # CODECS — Flora Media Codec Policy
 
 **Status:** Released  
-**Version:** 1.1  
-**Date:** 2026-07-13
+**Version:** 1.2  
+**Date:** 2026-07-14
 
 ---
 
@@ -15,11 +15,11 @@ CODECS — политика сжатия и хранения медиа в эк�
 - [`CODECS-AUDIO.md`](./CODECS-AUDIO.md) — музыка (Flora.Music) и голосовые (Flora.Messaging / Apps/Web).
 - [`CODECS-VIDEO.md`](./CODECS-VIDEO.md) — видео постов (Flora.Content) и видео в чате (Flora.Messaging / Apps/Web).
 
-Нативные кодеки Flora (семейство **FMC**, разработка):
+Нативные кодеки Flora (семейство **FRC**, Flora Relativistic Codec, разработка):
 
-- [`FIC.md`](./FIC.md) — фото (Flora Image Codec), битстрим **v3** (v1/v2 заморожены, читаются всегда).
-- [`FAC.md`](./FAC.md) — аудио (Flora Audio Codec), битстрим v0 (draft).
-- [`FVC.md`](./FVC.md) — видео (Flora Video Codec), битстрим FVC1 **v2** (Released v1).
+- [`FRC-I.md`](./FRC-I.md) — фото (FRC-I), битстрим текущей линии (ранее FMC/FIC; линия FIC v1/v2 закрыта).
+- [`FRC-A.md`](./FRC-A.md) — аудио (FRC-A), битстрим v0 (draft).
+- [`FRC-V.md`](./FRC-V.md) — видео (FRC-V), битстрим кадра **v2**; контейнерный FourCC/magic — `FRV1` / `\x8F FRV`.
 
 Этот документ нормативен: реализация пайплайнов **обязана** соответствовать описанным здесь правилам и компонентным спекам.
 
@@ -116,53 +116,66 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 | --- | --- | --- |
 | CODECS-AUDIO | Flora.Music, Flora.Messaging | [`CODECS-AUDIO.md`](./CODECS-AUDIO.md) |
 | CODECS-VIDEO | Flora.Content, Flora.Messaging | [`CODECS-VIDEO.md`](./CODECS-VIDEO.md) |
-| FIC (фото, FMC) | библиотека `Backend/crates/media/` | [`FIC.md`](./FIC.md) |
-| FAC (аудио, FMC) | библиотека `Codecs/audio/` | [`FAC.md`](./FAC.md) |
-| FVC (видео, FMC) | библиотека `Codecs/flora-video/` | [`FVC.md`](./FVC.md) |
+| FRC-I (фото, FRC) | библиотека `Backend/crates/media/frc-i` | [`FRC-I.md`](./FRC-I.md) |
+| FRC-A (аудио, FRC) | библиотека `Codecs/audio/` | [`FRC-A.md`](./FRC-A.md) |
+| FRC-V (видео, FRC) | библиотека `Codecs/flora-video/` | [`FRC-V.md`](./FRC-V.md) |
 
 ---
 
-## FMC — Flora Media Codecs (нативное семейство)
+## FRC — Flora Relativistic Codec (нативное семейство)
 
-Собственные кодеки Flora на Rust. Три параллельных трека: **FIC** (фото),
-**FVC** (видео), **FAC** (аудио). Общие конвенции семейства — здесь, чтобы
+Собственные кодеки Flora на Rust. Три параллельных трека: **FRC-I** (фото),
+**FRC-V** (видео), **FRC-A** (аудио). Общие конвенции семейства — здесь, чтобы
 треки не конфликтовали.
+
+### Бренд ↔ wire
+
+| Бренд | Magic ASCII (после `0x8F`) | FourCC / container | Файл |
+| --- | --- | --- | --- |
+| FRC-A | `FRA` (резерв под нативный `.fra`) | dev-контейнер `FRAS` (ASCII) | `.fras` (dev) / `.fra` (резерв) |
+| FRC-I | `FRI` | — | `.fri` |
+| FRC-V | `FRV` | IVF FourCC `FRV1` | `.frv` |
+
+Бренд пишется с дефисом (`FRC-I`); wire — три ASCII-байта без дефиса (`FRI`).
 
 ### Реестр сигнатур и идентификаторов
 
 Пространство magic `0x8F + ASCII-имя` (первый байт не-ASCII — защита от порчи
-текстовым режимом) закреплено за нативными контейнерами FMC. Треки видео/аудио
-на этапе разработки используют стандартные dev-контейнеры — их идентификаторы
-тоже фиксируются здесь:
+текстовым режимом) закреплено за нативными контейнерами FRC. Треки видео/аудио
+на этапе разработки используют стандартные / временные контейнеры — их
+идентификаторы тоже фиксируются здесь:
 
 | Кодек | Сигнатура | Расширение | MIME (предложение) | Статус |
 | --- | --- | --- | --- | --- |
-| FIC | magic `8F 46 49 43` (`\x8F FIC`) | `.fic` | `image/x-flora-fic` | битстрим **v3** (v1/v2 заморожены) |
-| FVC | FourCC `FVC1` в IVF (dev); magic `8F 46 56 43` в `.fvc` | `.fvc`, `.ivf` | `video/x-flora-fvc` | битстрим **v2** (Released) |
-| FAC | контейнер `FACS` (dev); magic `8F 46 41 43` — резерв | `.facs` (dev), `.fac` (резерв) | `audio/x-flora-fac` | битстрим v0 |
+| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | текущая линия битстрима |
+| FRC-V | FourCC `FRV1` в IVF (dev); magic `8F 46 52 56` (`\x8F FRV`) в `.frv` | `.frv`, `.ivf` | `video/x-flora-frc-v` | кадр `BITSTREAM_VERSION=2`; контейнер FRC-V |
+| FRC-A | **as-built:** ASCII `FRAS` (4 B) в файловом контейнере инструментов; **резерв:** magic `8F 46 52 41` (`\x8F FRA`) под нативный `.fra` | `.fras` (dev), `.fra` (резерв) | `audio/x-flora-frc-a` | битстрим v0 |
+
+Декодеры **не** принимают устаревшие идентификаторы FMC (`\x8F FIC`/`FVC`/`FAC`, FourCC `FVC1`, контейнер `FACS`).
 
 ### Конвенции треков
 
-- Размещение: FIC — `Backend/crates/media/*` (категория `media` валидатора
-  границ: видит только другие media-crates); FVC — `Codecs/flora-video`,
-  FAC — `Codecs/audio` (отдельные cargo-workspace до стабилизации).
+- Размещение: FRC-I — `Backend/crates/media/frc-i` (категория `media` валидатора
+  границ: видит только другие media-crates); FRC-V — `Codecs/flora-video`,
+  FRC-A — `Codecs/audio` (отдельные cargo-workspace до стабилизации).
   Модули бэкенда используют кодеки только через свой Infrastructure-слой.
 - Ядро кодека: **чистый Rust без C-зависимостей**, `unsafe` запрещён. Мотив:
   аудируемость, WASM-декодеры для клиентов, детерминизм тест-векторов.
 - Детерминизм: никакой платформозависимой математики (libm, FMA); константы
   преобразований фиксируются литералами/таблицами в коде и спеке.
 - Декодер обязан быть безопасным на недоверенном вводе: без паник, лимиты
-  до аллокаций, строгая валидация структуры (см. FIC.md §9 как образец).
+  до аллокаций, строгая валидация структуры (см. FRC-I.md §9 как образец).
 - Замороженные форматы фиксируются golden-векторами в `tests/data/`
-  соответствующего crate (регенерация — паттерн `FIC_UPDATE_GOLDEN=1`);
-  до заморозки (v0.x) битстримы могут меняться без совместимости.
-- Переиспользование: энтропийное ядро FIC (rANS + hybrid-uint + битовые
-  потоки) экспортировано как `flora_image_codec::entropy` — кандидат для
-  intra-кадров FVC при объединении workspace'ов.
+  соответствующего crate (регенерация — `FRC_I_UPDATE_GOLDEN=1` /
+  `FRC_V_UPDATE_GOLDEN=1`); до заморозки (v0.x) битстримы могут меняться без
+  совместимости.
+- Переиспользование: энтропийное ядро FRC-I (rANS + hybrid-uint + битовые
+  потоки) экспортировано как `frc_i::entropy` — кандидат для
+  intra-кадров FRC-V при объединении workspace'ов.
 
 ### Позиция в продукте
 
-FMC-кодеки — инфраструктурные библиотеки без бизнес-логики. Ввод в прод —
+FRC-кодеки — инфраструктурные библиотеки без бизнес-логики. Ввод в прод —
 отдельные миграционные задачи модулей-владельцев (Content/Users/Music/Messaging)
 с обратной совместимостью для старых клиентов; модель «двух контуров доверия»
 (см. выше) не меняется: E2E-медиа кодируются на клиенте до шифрования.

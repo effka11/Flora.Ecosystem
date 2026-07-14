@@ -65,9 +65,9 @@ Backend/
       flora-governance-crypto/  # детерминированное ядро FGP (native + wasm32), только внешние deps
     infrastructure/
       flora-grpc-bridge/        # переходный: tonic-серверы/клиенты межъязыковых портов (см. §5.2)
-    media/                      # вне скоупа миграции: нативные кодеки FMC (docs/codecs/CODECS.md)
-      flora-image-codec/        # FIC — фото-кодек (docs/codecs/FIC.md)
-      flora-codec-tools/        # CLI flora-codec (image; video/audio добавят треки FVC/FAC)
+    media/                      # вне скоупа миграции: нативные кодеки FRC (docs/codecs/CODECS.md)
+      frc-i/                    # FRC-I — фото-кодек (docs/codecs/FRC-I.md)
+      flora-codec-tools/        # CLI flora-codec (image; video/audio добавят треки FRC-V/FRC-A)
   tests/
     parity/                     # replay contract fixtures + differential harness (flora-diff)
 ```
@@ -88,7 +88,7 @@ Backend/
 | `flora-<module>-contracts` | `flora-shared` |
 | `flora-<module>-crypto` | только внешние crates — детерминированные ядра (FGP §8.1, FEP `docs/fep/FEP.md`), собираются и в native, и в wasm32 (клиентская верификация) |
 | `flora-shared` | только внешние crates |
-| `crates/media/*` (кодеки FMC) | только другие media-crates; **вне скоупа миграции** — модули используют кодеки через свой Infrastructure-слой (см. `docs/codecs/CODECS.md`) |
+| `crates/media/*` (кодеки FRC) | только другие media-crates; **вне скоупа миграции** — модули используют кодеки через свой Infrastructure-слой (см. `docs/codecs/CODECS.md`) |
 
 Проверка — скрипт `tools/validate-architecture-rust` поверх `cargo metadata` (замена [`tools/Validate-Architecture.ps1`](tools/Validate-Architecture.ps1)), в CI вместе с `cargo fmt --check`, `clippy -D warnings`, `cargo deny` (лицензии — совместимость с AGPLv3, запреты дублей).
 

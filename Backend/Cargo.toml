@@ -28,7 +28,7 @@ members = [
     "crates/modules/flora-economy-crypto",
     "crates/modules/flora-governance-crypto",
     "crates/infrastructure/flora-grpc-bridge",
-    "crates/media/flora-image-codec",
+    "crates/media/frc-i",
     "crates/media/flora-codec-tools",
     "tests/parity",
 ]
@@ -66,8 +66,8 @@ flora-economy-contracts = { path = "crates/modules/flora-economy-contracts" }
 flora-economy-crypto = { path = "crates/modules/flora-economy-crypto" }
 flora-governance-crypto = { path = "crates/modules/flora-governance-crypto" }
 flora-grpc-bridge = { path = "crates/infrastructure/flora-grpc-bridge" }
-# --- media (кодеки FMC, docs/codecs/CODECS.md §Flora Media Codecs) ---
-flora-image-codec = { path = "crates/media/flora-image-codec" }
+# --- media (кодеки FRC, docs/codecs/CODECS.md §Flora Relativistic Codec) ---
+frc-i = { path = "crates/media/frc-i" }
 
 # --- HTTP-стек ---
 axum = "0.8.9"

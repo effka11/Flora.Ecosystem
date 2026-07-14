@@ -24,7 +24,7 @@ Backend/
     infrastructure/
       flora-grpc-bridge/      # переходный межъязыковой мост (§5.2), оживает в Фазе 2a
     media/
-      flora-image-codec/      # FIC — фото-кодек FMC (docs/codecs/FIC.md), чистый std
+      frc-i/                  # FRC-I — фото-кодек FRC (docs/codecs/FRC-I.md), чистый std
       flora-codec-tools/      # bin flora-codec: image encode/decode/info/bench
   tests/
     parity/                   # паритет-харнесс: golden-векторы, contract fixtures, flora-diff

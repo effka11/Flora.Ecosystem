@@ -1,4 +1,4 @@
 # Rust build artifacts
 /target/
-# Локальные тестовые медиа (WAV/FAC генерируются fac-cli, в git не попадают)
+# Локальные тестовые медиа (WAV/FRC-A генерируются frc-a-cli, в git не попадают)
 /testdata/
