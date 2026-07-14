@@ -291,8 +291,8 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
          ({bpp:.4} bpp, {kbps:.0} kbps), PSNR Y {:.2} dB / Cb {:.2} / Cr {:.2} / overall {:.2}, {:.2} fps",
         p.width,
         p.height,
-        if target_kbps.is_some() {
-            format!(" bitrate={}kbps", target_kbps.unwrap())
+        if let Some(kbps) = target_kbps {
+            format!(" bitrate={kbps}kbps")
         } else {
             String::new()
         },

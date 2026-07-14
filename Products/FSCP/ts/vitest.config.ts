@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  root,
   test: {
     include: ["src/**/*.test.ts"],
     environment: "node",
