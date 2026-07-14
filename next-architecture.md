@@ -261,7 +261,7 @@ flowchart LR
 | Music | **Rust** | cutover HTTP + workers (`ServeNative`); C# Music hosted services выключены при том же флаге | — |
 | Verification | **Rust** (gRPC port) | Фаза 2a: tonic `verification.proto`; C# Auth → gRPC при `Verification:UseGrpc` | — |
 | Users | C# | не начат | — |
-| Auth | C# | в переносе: sessions list/revoke-others + `POST /api/auth/logout` (`Auth:ServeNative`); остальное — C# | — |
+| Auth | C# | в переносе: sessions + logout + security + refresh + `POST /api/auth/login` (`Auth:ServeNative`); остальное — C# | — |
 | Content | C# | не начат | — |
 | Messaging | C# | не начат | — |
 | Notifications | C# | не начат | — |

@@ -6,15 +6,23 @@ pub mod infrastructure;
 
 use std::sync::Arc;
 
+use flora_users_contracts::UserProfileReadQueries;
 use sqlx::PgPool;
 
+use crate::application::login::LoginService;
+use crate::application::refresh::RefreshService;
+use crate::application::security::SecurityService;
 use crate::application::sessions::SessionService;
-use crate::http::AuthState;
+use crate::http::{AuthState, PublicAuthState};
+use crate::infrastructure::jwt::JwtOptions;
 use crate::infrastructure::repo::AuthRepo;
 
 /// Собранный модуль Auth (нативные маршруты при ServeNative).
 pub struct AuthModule {
-    pub router: axum::Router,
+    /// JWT-защищённые маршруты.
+    pub protected_router: axum::Router,
+    /// Анонимные (login/refresh и далее register).
+    pub public_router: axum::Router,
 }
 
 /// Пустой роутер — gateway-fallback на .NET.
@@ -22,10 +30,22 @@ pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
-pub fn compose(pool: PgPool) -> AuthModule {
+pub fn compose(
+    pool: PgPool,
+    jwt: JwtOptions,
+    profiles: Arc<dyn UserProfileReadQueries>,
+) -> AuthModule {
     let repo = Arc::new(AuthRepo::new(pool));
-    let sessions = Arc::new(SessionService::new(repo));
+    let sessions = Arc::new(SessionService::new(repo.clone()));
+    let security = Arc::new(SecurityService::new(repo.clone()));
+    let refresh = Arc::new(RefreshService::new(
+        repo.clone(),
+        jwt.clone(),
+        profiles.clone(),
+    ));
+    let login = Arc::new(LoginService::new(repo, jwt, profiles));
     AuthModule {
-        router: http::router(AuthState { sessions }),
+        protected_router: http::protected_router(AuthState { sessions, security }),
+        public_router: http::public_router(PublicAuthState { refresh, login }),
     }
 }

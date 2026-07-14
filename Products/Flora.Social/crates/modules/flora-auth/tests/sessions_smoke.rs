@@ -36,6 +36,21 @@ fn gateway_logout_url() -> String {
         .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/logout".into())
 }
 
+fn gateway_security_url() -> String {
+    std::env::var("FLORA_AUTH_SECURITY_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/security".into())
+}
+
+fn gateway_refresh_url() -> String {
+    std::env::var("FLORA_AUTH_REFRESH_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/refresh".into())
+}
+
+fn gateway_login_url() -> String {
+    std::env::var("FLORA_AUTH_LOGIN_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/login".into())
+}
+
 fn smoke_user_uuid() -> Uuid {
     let s = std::env::var("FLORA_AUTH_SMOKE_USER")
         .unwrap_or_else(|_| "019e9ee8-e522-7fe5-90bb-8d1084f60366".into());
@@ -382,4 +397,268 @@ async fn logout_revokes_current_session() {
     .await
     .expect("session status");
     assert_eq!(status, 4, "RevokedUser after logout");
+}
+
+#[tokio::test]
+async fn security_unauthorized_without_bearer() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("client");
+    let res = client
+        .get(gateway_security_url())
+        .send()
+        .await
+        .expect("GET me/security — is flora-api running with Auth:ServeNative?");
+    assert_eq!(res.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn security_status_shape_with_minted_bearer() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let secret = load_dev_jwt_secret().expect(".flora/dev-jwt.secret or Jwt__Secret");
+    let user = smoke_user_uuid();
+    let cfg = load_config();
+    let pool = connect_pool(&cfg).await;
+    let jti = ensure_active_sessions(&pool, user, 1).await;
+    let token = mint_bearer(secret, user, &jti);
+
+    let expected = sqlx::query_as::<_, (bool, bool, bool)>(
+        r#"
+        SELECT two_factor_enabled, email_verified, phone_verified
+        FROM flora_core.user_accounts
+        WHERE user_uuid = $1
+        "#,
+    )
+    .bind(user)
+    .fetch_optional(&pool)
+    .await
+    .expect("account flags")
+    .unwrap_or((false, false, false));
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("client");
+    let res = client
+        .get(gateway_security_url())
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("GET me/security with bearer");
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(status, reqwest::StatusCode::OK, "body {body}");
+    assert_eq!(body["twoFactorEnabled"], expected.0);
+    assert_eq!(body["emailVerified"], expected.1);
+    assert_eq!(body["phoneVerified"], expected.2);
+}
+
+#[tokio::test]
+async fn refresh_empty_token_is_bad_request() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("client");
+    let res = client
+        .post(gateway_refresh_url())
+        .json(&serde_json::json!({ "refreshToken": "" }))
+        .send()
+        .await
+        .expect("POST refresh");
+    assert_eq!(res.status(), reqwest::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(body["error"], "Refresh token is required.");
+}
+
+#[tokio::test]
+async fn refresh_invalid_token_is_unauthorized() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("client");
+    let res = client
+        .post(gateway_refresh_url())
+        .json(&serde_json::json!({ "refreshToken": "not-a-real-refresh-token" }))
+        .send()
+        .await
+        .expect("POST refresh");
+    assert_eq!(res.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(body["error"], "Invalid or expired refresh token.");
+}
+
+#[tokio::test]
+async fn refresh_rotates_active_session() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let user = smoke_user_uuid();
+    let cfg = load_config();
+    let pool = connect_pool(&cfg).await;
+    let _ = ensure_active_sessions(&pool, user, 1).await;
+
+    let (session_id, old_refresh, old_rotation): (Uuid, String, i64) = sqlx::query_as(
+        r#"
+        SELECT session_id, refresh_token, rotation_id
+        FROM flora_core.user_sessions
+        WHERE user_uuid = $1 AND status = 0 AND expires_at > now()
+        ORDER BY last_activity DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .expect("active session for refresh");
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("client");
+    let res = client
+        .post(gateway_refresh_url())
+        .json(&serde_json::json!({ "refreshToken": old_refresh }))
+        .send()
+        .await
+        .expect("POST refresh with valid token");
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(status, reqwest::StatusCode::OK, "body {body}");
+    assert!(body["accessToken"].as_str().is_some_and(|s| !s.is_empty()));
+    let new_refresh = body["refreshToken"].as_str().expect("refreshToken");
+    assert_ne!(new_refresh, old_refresh);
+    assert_eq!(body["tokenType"], "Bearer");
+    assert!(body.get("expiresAt").is_some());
+    assert!(body.get("requiresProfileCompletion").is_some());
+
+    let (db_refresh, db_rotation): (String, i64) = sqlx::query_as(
+        "SELECT refresh_token, rotation_id FROM flora_core.user_sessions WHERE session_id = $1",
+    )
+    .bind(session_id)
+    .fetch_one(&pool)
+    .await
+    .expect("rotated row");
+    assert_eq!(db_refresh, new_refresh);
+    assert_eq!(db_rotation, old_rotation + 1);
+}
+
+#[tokio::test]
+async fn login_missing_password_is_bad_request() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("client");
+    let res = client
+        .post(gateway_login_url())
+        .json(&serde_json::json!({ "email": "x@y.z", "password": "" }))
+        .send()
+        .await
+        .expect("POST login");
+    assert_eq!(res.status(), reqwest::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(body["error"], "Пароль обязателен.");
+}
+
+#[tokio::test]
+async fn login_wrong_password_is_unauthorized() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let user = smoke_user_uuid();
+    let cfg = load_config();
+    let pool = connect_pool(&cfg).await;
+    let email: Option<String> = sqlx::query_scalar(
+        "SELECT email FROM flora_core.user_accounts WHERE user_uuid = $1",
+    )
+    .bind(user)
+    .fetch_optional(&pool)
+    .await
+    .expect("email")
+    .flatten();
+    let Some(email) = email.filter(|e| !e.is_empty()) else {
+        eprintln!("skip: smoke user has no email");
+        return;
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("client");
+    let res = client
+        .post(gateway_login_url())
+        .json(&serde_json::json!({
+            "email": email,
+            "password": "definitely-wrong-password-for-smoke"
+        }))
+        .send()
+        .await
+        .expect("POST login wrong password");
+    assert_eq!(res.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(body["error"], "Неверный email или пароль.");
+}
+
+#[tokio::test]
+async fn login_success_with_env_password() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let Ok(password) = std::env::var("FLORA_AUTH_SMOKE_PASSWORD") else {
+        eprintln!("skip: set FLORA_AUTH_SMOKE_PASSWORD for success login smoke");
+        return;
+    };
+    let user = smoke_user_uuid();
+    let cfg = load_config();
+    let pool = connect_pool(&cfg).await;
+    let email: String = sqlx::query_scalar(
+        "SELECT email FROM flora_core.user_accounts WHERE user_uuid = $1",
+    )
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .expect("email");
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .expect("client");
+    let res = client
+        .post(gateway_login_url())
+        .json(&serde_json::json!({ "email": email, "password": password }))
+        .send()
+        .await
+        .expect("POST login");
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(status, reqwest::StatusCode::OK, "body {body}");
+    if body["requiresTwoFactor"] == true {
+        eprintln!("ok: 2FA challenge (set code not required for this smoke)");
+        return;
+    }
+    assert!(body["accessToken"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(body["refreshToken"].as_str().is_some_and(|s| !s.is_empty()));
+    assert_eq!(body["tokenType"], "Bearer");
 }

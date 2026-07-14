@@ -32,8 +32,12 @@ fn auth_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
         eprintln!("flora-auth: Auth:ServeNative=true, но PgPool недоступен — модуль офлайн");
         return flora_auth::router();
     };
-    let module = flora_auth::compose(pool);
-    with_jwt(cfg, module.router)
+    let jwt = JwtOptions::from_config(cfg);
+    let profiles = flora_users::profile_read_queries(pool.clone());
+    let module = flora_auth::compose(pool, jwt, profiles);
+    axum::Router::new()
+        .merge(with_jwt(cfg, module.protected_router))
+        .merge(module.public_router)
 }
 
 fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {

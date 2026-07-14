@@ -14,3 +14,6 @@ workspace = true
 axum = { workspace = true }
 fira-core = { workspace = true }
 flora-shared = { workspace = true }
+flora-users-contracts = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
