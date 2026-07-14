@@ -1,9 +1,7 @@
 //! Субкоманды фото-кодека FRC-I: encode / decode / info / bench.
 
 use clap::Subcommand;
-use frc_i::{
-    DecodedImage, EncodeMode, ImageView, PixelFormat, decode, encode, read_info,
-};
+use frc_i::{DecodedImage, EncodeMode, ImageView, PixelFormat, decode, encode, read_info};
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::{ExtendedColorType, ImageEncoder, ImageReader};
