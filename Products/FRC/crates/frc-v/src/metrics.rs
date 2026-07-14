@@ -102,7 +102,7 @@ pub(crate) fn block_ssim_dist(src: &Plane, b: Blk, pred: &[i32]) -> u64 {
     let var_y = sum_yy * n2 - sum_y * sum_y;
     let cov = sum_xy * n2 - sum_x * sum_y;
     let struct_d = (var_x + var_y - 2 * cov).max(0) as u64;
-    let mean_d = (sum_x - sum_y).unsigned_abs() as u64;
-    let log_n = n.trailing_zeros() as u32;
+    let mean_d = (sum_x - sum_y).unsigned_abs();
+    let log_n = n.trailing_zeros();
     (struct_d >> (log_n + 6)) + (mean_d.saturating_mul(4) >> u64::from(log_n))
 }

@@ -31,9 +31,9 @@
       "default": "./src/auth/index.ts"
     },
     "./fscp": {
-      "types": "../../Products/FSCP/ts/src/index.ts",
-      "import": "../../Products/FSCP/ts/src/index.ts",
-      "default": "../../Products/FSCP/ts/src/index.ts"
+      "types": "./src/fscp/index.ts",
+      "import": "./src/fscp/index.ts",
+      "default": "./src/fscp/index.ts"
     },
     "./storage": {
       "types": "./src/storage/index.ts",

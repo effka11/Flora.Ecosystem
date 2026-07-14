@@ -121,7 +121,6 @@ impl<W: Write> FrcVWriter<W> {
 
 impl<W: Write + Seek> FrcVWriter<W> {
     /// Дописывает фактическое число кадров в заголовок и возвращает writer.
-
     pub fn finalize(mut self) -> io::Result<W> {
         let count = self.frames_written;
 
@@ -177,7 +176,6 @@ impl<R: Read> FrcVReader<R> {
     }
 
     /// Читает следующий кадр (pts, payload); `Ok(None)` — конец потока.
-
     pub fn read_frame(&mut self) -> io::Result<Option<(u64, Vec<u8>)>> {
         let mut size_buf = [0u8; 4];
 
@@ -211,7 +209,6 @@ impl<R: Read> FrcVReader<R> {
 }
 
 #[cfg(test)]
-
 mod tests {
 
     use super::*;

@@ -141,7 +141,7 @@ fn inter_frames_pay_off_on_panning() {
     let mut key_size = 0usize;
     let mut p_sizes = Vec::new();
     for i in 0..6 {
-        let src = shifted_frame(&base, 3 * i as i32, 2 * i as i32);
+        let src = shifted_frame(&base, 3 * i, 2 * i);
         let packet = enc.encode_frame(&src).unwrap();
         if packet.keyframe {
             key_size = packet.data.len();
