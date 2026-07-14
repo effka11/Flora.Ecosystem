@@ -1,7 +1,8 @@
 //! Паритет wire DTO с contract fixtures (artifacts/contract-fixtures/music-*.json).
 
 use flora_music_contracts::{
-    MusicGenreCatalogDto, MusicPlaylistDetailDto, MusicPlaylistSummaryDto, MusicTrackDto,
+    MusicArtistDetailDto, MusicArtistSummaryDto, MusicGenreCatalogDto, MusicPlaylistDetailDto,
+    MusicPlaylistSummaryDto, MusicTrackDto, PagedMusicTracksDto,
 };
 use std::path::PathBuf;
 
@@ -49,4 +50,37 @@ fn music_playlist_detail_and_genres_fixtures() {
     let genres: MusicGenreCatalogDto =
         serde_json::from_value(load("music-genres.json")).expect("genres");
     assert_eq!(genres.genres[0].id, "pop");
+}
+
+#[test]
+fn music_artists_fixtures() {
+    let root = load("music-artists.json");
+    let artists: Vec<MusicArtistSummaryDto> =
+        serde_json::from_value(root["artists"].clone()).expect("artists");
+    assert_eq!(artists.len(), 2);
+    assert!(artists[0].has_cover_image);
+    assert!(artists[1].linked_user_uuid.is_none());
+
+    let detail: MusicArtistDetailDto =
+        serde_json::from_value(load("music-artist-detail.json")).expect("detail");
+    assert_eq!(detail.tracks_count, 2);
+
+    let page: PagedMusicTracksDto =
+        serde_json::from_value(load("music-artist-tracks.json")).expect("tracks page");
+    assert_eq!(page.total_count, 1);
+    assert_eq!(page.page_size, 50);
+}
+
+#[test]
+fn artist_summary_omits_null_linked_user() {
+    let a = MusicArtistSummaryDto {
+        artist_uuid: uuid::Uuid::nil(),
+        display_name: "Solo".into(),
+        linked_user_uuid: None,
+        created_by_user_uuid: uuid::Uuid::nil(),
+        tracks_count: 0,
+        has_cover_image: false,
+    };
+    let v = serde_json::to_value(&a).unwrap();
+    assert!(v.get("linkedUserUuid").is_none());
 }

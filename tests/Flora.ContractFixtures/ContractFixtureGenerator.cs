@@ -243,6 +243,59 @@ public static class ContractFixtureGenerator
                 },
             },
         });
+        // Artists: envelope {artists} для тестов; live GET /artists — bare array.
+        Write(outputDir, "music-artists.json", new
+        {
+            artists = new object[]
+            {
+                new
+                {
+                    artistUuid = "66666666-6666-6666-6666-666666666666",
+                    displayName = "Flora Artist",
+                    linkedUserUuid = "11111111-1111-1111-1111-111111111111",
+                    createdByUserUuid = "11111111-1111-1111-1111-111111111111",
+                    tracksCount = 2,
+                    hasCoverImage = true,
+                },
+                new
+                {
+                    artistUuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    displayName = "Solo",
+                    createdByUserUuid = "11111111-1111-1111-1111-111111111111",
+                    tracksCount = 0,
+                    hasCoverImage = false,
+                },
+            },
+        });
+        Write(outputDir, "music-artist-detail.json", new
+        {
+            artistUuid = "66666666-6666-6666-6666-666666666666",
+            displayName = "Flora Artist",
+            linkedUserUuid = "11111111-1111-1111-1111-111111111111",
+            createdByUserUuid = "11111111-1111-1111-1111-111111111111",
+            tracksCount = 2,
+            hasCoverImage = true,
+        });
+        Write(outputDir, "music-artist-tracks.json", new
+        {
+            tracks = new object[]
+            {
+                new
+                {
+                    trackUuid = "55555555-5555-5555-5555-555555555555",
+                    scope = "personal",
+                    title = "First Light",
+                    artistDisplay = "Flora Artist",
+                    artistCredits = Array.Empty<object>(),
+                    hasCoverImage = true,
+                    durationMs = 183000,
+                    createdAt = "2026-06-12T10:00:00.000Z",
+                },
+            },
+            totalCount = 1,
+            page = 1,
+            pageSize = 50,
+        });
 
         Write(outputDir, "e2e-state.json", new
         {

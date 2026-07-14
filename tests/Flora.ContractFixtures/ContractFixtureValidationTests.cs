@@ -23,6 +23,9 @@ public sealed class ContractFixtureValidationTests
         ["music-playlists.json", new[] { "playlists" }],
         ["music-playlist-detail.json", new[] { "id", "tracks", "kind" }],
         ["music-genres.json", new[] { "genres" }],
+        ["music-artists.json", new[] { "artists" }],
+        ["music-artist-detail.json", new[] { "artistUuid", "displayName", "tracksCount" }],
+        ["music-artist-tracks.json", new[] { "tracks", "totalCount", "page", "pageSize" }],
         ["e2e-state.json", new[] { "state", "freeze", "updatedAt" }],
         ["e2e-key-backup.json", new[] { "version", "backupKeyId", "kdf", "aead", "ciphertextBase64Url" }],
     ];

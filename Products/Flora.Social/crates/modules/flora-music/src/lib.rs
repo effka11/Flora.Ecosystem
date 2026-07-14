@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
+use crate::application::artists::ArtistService;
 use crate::application::genres::GenreService;
 use crate::application::playlists::PlaylistService;
 use crate::application::tracks::TrackService;
@@ -31,11 +32,13 @@ pub fn compose(pool: PgPool) -> MusicModule {
     let repo = Arc::new(MusicRepo::new(pool));
     let tracks = Arc::new(TrackService::new(repo.clone()));
     let playlists = Arc::new(PlaylistService::new(repo.clone(), tracks.clone()));
-    let genres = Arc::new(GenreService::new(repo, tracks.clone()));
+    let genres = Arc::new(GenreService::new(repo.clone(), tracks.clone()));
+    let artists = Arc::new(ArtistService::new(repo, tracks.clone()));
     let state = MusicState {
         tracks,
         playlists,
         genres,
+        artists,
     };
     MusicModule {
         router: http::router(state),

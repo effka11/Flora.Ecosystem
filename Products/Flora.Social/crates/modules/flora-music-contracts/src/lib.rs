@@ -138,3 +138,28 @@ pub const SYSTEM_PLAYLIST_UPLOADED_PLATFORM: &str = "uploaded-platform";
 pub fn is_system_playlist_id(id: &str) -> bool {
     id == SYSTEM_PLAYLIST_UPLOADED_PERSONAL || id == SYSTEM_PLAYLIST_UPLOADED_PLATFORM
 }
+
+/// Wire MapArtistSummary / MapArtistDetail (MusicArtistControllerHelpers).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicArtistSummaryDto {
+    pub artist_uuid: Uuid,
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linked_user_uuid: Option<Uuid>,
+    pub created_by_user_uuid: Uuid,
+    pub tracks_count: i32,
+    pub has_cover_image: bool,
+}
+
+pub type MusicArtistDetailDto = MusicArtistSummaryDto;
+
+/// GET /api/music/artists/{uuid}/tracks — paged envelope.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PagedMusicTracksDto {
+    pub tracks: Vec<MusicTrackDto>,
+    pub total_count: i32,
+    pub page: i32,
+    pub page_size: i32,
+}

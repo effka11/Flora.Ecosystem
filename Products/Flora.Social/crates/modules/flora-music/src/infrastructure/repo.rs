@@ -418,11 +418,167 @@ impl MusicRepo {
             }
         }
     }
+
+    pub async fn list_featured_artists(
+        &self,
+        take: i32,
+    ) -> Result<Vec<ArtistListRow>, sqlx::Error> {
+        let clamped = take.clamp(1, 50);
+        sqlx::query_as::<_, ArtistListRow>(
+            r#"
+            SELECT artist_uuid, display_name, linked_user_uuid, created_by_user_uuid, tracks_count,
+                   (cover_data IS NOT NULL AND length(cover_data) > 0) AS has_cover_image
+            FROM flora_core.music_artists
+            ORDER BY tracks_count DESC, display_name ASC
+            LIMIT $1
+            "#,
+        )
+        .bind(clamped)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn search_artists(
+        &self,
+        normalized_query: &str,
+        query_len: usize,
+        limit: i32,
+    ) -> Result<Vec<ArtistListRow>, sqlx::Error> {
+        let clamped = limit.clamp(1, 20);
+        let pattern = if query_len == 1 {
+            format!("{normalized_query}%")
+        } else {
+            format!("%{normalized_query}%")
+        };
+        sqlx::query_as::<_, ArtistListRow>(
+            r#"
+            SELECT artist_uuid, display_name, linked_user_uuid, created_by_user_uuid, tracks_count,
+                   (cover_data IS NOT NULL AND length(cover_data) > 0) AS has_cover_image
+            FROM flora_core.music_artists
+            WHERE normalized_display_name ILIKE $1
+            ORDER BY tracks_count DESC, display_name ASC
+            LIMIT $2
+            "#,
+        )
+        .bind(pattern)
+        .bind(clamped)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn find_artist(
+        &self,
+        artist_uuid: Uuid,
+    ) -> Result<Option<ArtistListRow>, sqlx::Error> {
+        sqlx::query_as::<_, ArtistListRow>(
+            r#"
+            SELECT artist_uuid, display_name, linked_user_uuid, created_by_user_uuid, tracks_count,
+                   (cover_data IS NOT NULL AND length(cover_data) > 0) AS has_cover_image
+            FROM flora_core.music_artists
+            WHERE artist_uuid = $1
+            "#,
+        )
+        .bind(artist_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn find_artist_cover(
+        &self,
+        artist_uuid: Uuid,
+    ) -> Result<Option<MediaBlobRow>, sqlx::Error> {
+        sqlx::query_as::<_, MediaBlobRow>(
+            r#"
+            SELECT cover_data AS data,
+                   COALESCE(cover_content_type, 'image/jpeg') AS content_type
+            FROM flora_core.music_artists
+            WHERE artist_uuid = $1
+              AND cover_data IS NOT NULL
+              AND length(cover_data) > 0
+            "#,
+        )
+        .bind(artist_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn count_artist_tracks_visible(
+        &self,
+        artist_uuid: Uuid,
+        requester: Uuid,
+    ) -> Result<i64, sqlx::Error> {
+        let (n,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM flora_core.music_tracks t
+            WHERE EXISTS (
+                SELECT 1 FROM flora_core.music_track_artists mta
+                WHERE mta.artist_uuid = $1 AND mta.track_uuid = t.track_uuid
+            )
+              AND (t.owner_user_uuid = $2 OR (t.scope = 1 AND t.published_at IS NOT NULL))
+            "#,
+        )
+        .bind(artist_uuid)
+        .bind(requester)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(n)
+    }
+
+    pub async fn list_artist_tracks_paged(
+        &self,
+        artist_uuid: Uuid,
+        requester: Uuid,
+        page: i32,
+        page_size: i32,
+    ) -> Result<Vec<TrackListRow>, sqlx::Error> {
+        let safe_page = page.max(1);
+        let safe_size = page_size.clamp(1, 100);
+        let offset = (safe_page - 1) * safe_size;
+        sqlx::query_as::<_, TrackListRow>(
+            r#"
+            SELECT t.track_uuid, t.owner_user_uuid, t.scope, t.title, t.artist_display, t.tags,
+                   t.genre_id, t.license_id, t.cover_color_id, t.track_kind_id,
+                   (t.cover_data IS NOT NULL AND length(t.cover_data) > 0) AS has_cover_image,
+                   t.duration_ms, t.created_at, t.published_at
+            FROM flora_core.music_tracks t
+            WHERE EXISTS (
+                SELECT 1 FROM flora_core.music_track_artists mta
+                WHERE mta.artist_uuid = $1 AND mta.track_uuid = t.track_uuid
+            )
+              AND (t.owner_user_uuid = $2 OR (t.scope = 1 AND t.published_at IS NOT NULL))
+            ORDER BY COALESCE(t.published_at, t.created_at) DESC, t.created_at DESC
+            LIMIT $3 OFFSET $4
+            "#,
+        )
+        .bind(artist_uuid)
+        .bind(requester)
+        .bind(safe_size)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+    }
 }
 
 enum OrderBy {
     PublishedAt,
     CreatedThenPublished,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ArtistListRow {
+    pub artist_uuid: Uuid,
+    pub display_name: String,
+    pub linked_user_uuid: Option<Uuid>,
+    pub created_by_user_uuid: Uuid,
+    pub tracks_count: i32,
+    pub has_cover_image: bool,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct MediaBlobRow {
+    pub data: Vec<u8>,
+    pub content_type: String,
 }
 
 pub fn joiner_to_wire(joiner: i32) -> &'static str {
