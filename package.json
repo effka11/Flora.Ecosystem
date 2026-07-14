@@ -5,7 +5,8 @@
   "author": "Egor Ozerskikh <e.ozerskikh@gmail.com>",
   "workspaces": [
     "Apps/Mobile",
-    "Packages/*"
+    "Packages/*",
+    "Products/FSCP"
   ],
   "scripts": {
     "mobile": "npm run dev --workspace=@flora/mobile",

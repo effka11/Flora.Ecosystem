@@ -1,0 +1,17 @@
+[package]
+name = "fira-core"
+description = "FIRA pure scorers F/P/C/M (no SQL). Functional product FIRA."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+fira-contracts = { workspace = true }
+flora-shared = { workspace = true }
+uuid = { workspace = true }

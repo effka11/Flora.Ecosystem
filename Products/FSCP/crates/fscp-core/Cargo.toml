@@ -1,0 +1,18 @@
+[package]
+name = "fscp-core"
+description = "FSCP server wire validator (structural only; no decrypt). Functional product FSCP."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+flora-shared = { workspace = true }
+fscp-contracts = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }

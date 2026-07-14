@@ -36,21 +36,13 @@ FIRA (Flora Individual Recommendation Algorithm) — алгоритмическ�
 
 ## Architecture Position
 
-FIRA — алгоритмический слой внутри **Modules**. Бизнес-логика скоринга принадлежит соответствующим модулям:
-
-- Лента, сообщества → `Modules/Flora.Content`
-- Люди → `Modules/Flora.Users`
-- Музыка → `Modules/Flora.Music`
-
-Продукт `Products/Flora.Social` только **компонует** результаты модулей и выставляет их через HTTP (музыка выставляется контроллером модуля `Flora.Music` под `/api/music/*`). UIP определяется как read-only DTO в **`Flora.Users.Contracts`**: модуль-владелец данных UIP — `Flora.Users`, остальные компоненты читают его по правилу «модуль видит чужие Contracts». Размещение UIP в `Flora.Shared` запрещено: Shared не содержит доменных понятий (AGENTS.md), и это ограничение сохраняется в Rust-workspace (`flora-shared` — только утилиты; DTO живут в `flora-users-contracts`, next-architecture.md §2.3).
+FIRA — **functional product** [`Products/FIRA`](../../Products/FIRA) (headless/embeddable). Pure scorers live in `fira-core`; UIP DTO — `fira-contracts::InterestProfile`. Social modules (Content/Users/Music) only prepare DB candidates and call FIRA.
 
 ```
-Apps/Web
-  └─→ Flora.API
-        └─→ Flora.Social (composition only)
-              ├─→ Flora.Content  (FIRA-F, FIRA-C)
-              ├─→ Flora.Users    (FIRA-P)
-              └─→ Flora.Music    (FIRA-M)
+Apps → flora-api → flora-social
+  ├─ flora-content  → fira_core::feed / communities
+  ├─ flora-users    → fira_core::people  (persists UIP ↔ InterestProfile)
+  └─ flora-music    → fira_core::music
 ```
 
 ---

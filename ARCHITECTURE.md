@@ -1,16 +1,56 @@
 ﻿# Архитектурная карта Flora.Ecosystem
 
-> Высокоуровневая карта системы «с высоты птичьего полёта»: глобальное назначение, границы модулей, сквозные потоки данных и технический долг. Документ описывает **взаимосвязи**, а не внутренности методов. Нормативные спецификации лежат в [`docs/`](docs/), правила границ — в [`.agents/skills/`](.agents/skills/) и [`AGENTS.md`](AGENTS.md).
+> Высокоуровневая карта системы «с высоты птичьего полёта»: глобальное назначение, границы модулей, сквозные потоки данных и технический долг. Документ описывает **взаимосвязи**, а не внутренности методов. Нормативные спецификации лежат в [`docs/`](docs/), правила границ — в [`.agents/skills/`](.agents/skills/) и [`AGENTS.md`](AGENTS.md). Целевая продуктовая топология (пиры App / Functional) и путь миграции C#→Rust — [`next-architecture.md`](next-architecture.md).
 
 ---
 
 ## 1. Обзор системы (High-Level Overview)
 
-Flora.Ecosystem — модульная некоммерческая цифровая экосистема. Архитектурно это **модульный монолит**: единый процесс-хост ([`Flora.API`](Flora.API)) разворачивает набор слабосвязанных бизнес-модулей, каждый из которых построен по Clean Architecture (`Domain → Application → Infrastructure`, плюс `Contracts` как DTO/порты на границе). Модули общаются только через контракты и не имеют права читать чужую БД или ссылаться на внутренние реализации друг друга. Это позволяет в будущем вынести любой модуль в отдельный сервис без переписывания доменной логики.
+Flora.Ecosystem — модульная некоммерческая цифровая экосистема. Архитектурно это **модульный монолит** на хосте плюс набор **равноправных продуктов** под [`Products/`](Products/).
 
-Конкретные пользовательские приложения собираются в слое **Products** как композиция модулей. Сегодня существует один продукт — [`Flora.Social`](Products/Flora.Social) (социальная сеть: лента, сообщения, музыка, сообщества, люди, уведомления). Направление зависимостей строго однонаправлено: `Apps → API → Products → Modules → Infrastructure`. Бизнес-логика разрешена **только** в `Modules`; `API`, `Products`, `Infrastructure`, `Flora.Shared` её не содержат (API — маршрутизация и middleware, Products — композиция и HTTP-адаптеры).
+**As-is (пока жив .NET):** единый процесс-хост ([`Flora.API`](Flora.API)) разворачивает слабосвязанные бизнес-модули (Clean Architecture: `Domain → Application → Infrastructure` + `Contracts`). Модули общаются только через контракты. C#-продукт [`Products/Flora.Social`](Products/Flora.Social) компонует модули; параллельно растёт Rust-хост в [`Backend/`](Backend/) (будущий Platform).
 
-Стек: **C# / .NET 10** на бэкенде (PostgreSQL, EF Core, опционально gRPC), **Next.js 16 / TypeScript** в вебе и **Expo / React Native** на мобильных. Клиенты разделяют общий TypeScript-SDK [`@flora/client-core`](Packages/flora-client-core). Две сквозные доменные концепции определяют облик системы: **FSCP** (Flora Secure Communication Protocol — собственный E2E-протокол, при котором сервер хранит только шифртекст) и **FIRA** (Flora Individual Recommendation Algorithm — рекомендации для ленты, музыки, людей и сообществ). Данные хранятся в одной БД PostgreSQL (схема `flora_core`), логически разделённой по **семи** `DbContext` (по одному на модуль: Auth, Verification, Users, Content, Messaging, Notifications, Music) с отдельными таблицами истории миграций.
+**To-be (после Фазы 5):** пиры в `Products/` двух классов — **App** и **Functional** (см. §1.1); `Apps/` — отдельный слой shells; один Cargo workspace.
+
+Стек переходный: **C# / .NET 10** + **Rust** на бэкенде, **Next.js 16 / TypeScript** и **Expo / React Native** на клиентах, PostgreSQL (`flora_core`). Клиенты разделяют [`@flora/client-core`](Packages/flora-client-core); functional-клиентский код (FSCP и др.) имеет SoT в соответствующем `Products/<Name>/`.
+
+### 1.1. Продуктовая топология (пиры)
+
+Все конечные продукты экосистемы — **пиры** под `Products/` (не «всё внутри Social»). Два класса с разной формой поставки:
+
+| Класс | Примеры | Суть |
+| --- | --- | --- |
+| **App** (`PRODUCT_CLASS: app`) | Flora.Social; зарезервированы: Flora.Browser, Flora.Email, Flora.OS | Конечное приложение: composition, HTTP, свои доменные модули; опционально `client/` для shells |
+| **Functional** (`PRODUCT_CLASS: functional`) | FIRA, FSCP, FRC, FGP, FEP, FPP | Headless / **embeddable**: без своего Apps-shell; встраиваемая функция (алгоритм, крипто, кодек, экономика, governance, personhood) |
+
+Functional **не зависят** от Social; Social (и другие App) зависят от их kernel/contracts (и опционально `*-runtime`). «Вставить в чужой проект» = зависимость на **kernel** (+ contracts). `*-runtime` — Flora-host adapter (sqlx/axum + `flora-shared`); владеет только своими таблицами.
+
+**Apps/** остаются в корне (shells: Web, Mobile). Запрещено `Products/*` → `Apps/*`. Три слоя клиента: shell → optional App `client/` → functional TS/wasm SoT в продукте; `@flora/client-core` — транспорт + реэкспорт.
+
+Нормативные спеки — только в [`docs/`](docs/). Пустые каталоги будущих App не создавать.
+
+```mermaid
+flowchart TB
+  subgraph appProducts [App products]
+    Social["Flora.Social"]
+  end
+  subgraph functionalProducts [Functional products]
+    FIRA["FIRA"]
+    FSCP["FSCP"]
+    FRC["FRC"]
+    FGP["FGP"]
+    FEP["FEP"]
+    FPP["FPP"]
+  end
+  Social --> FIRA
+  Social --> FSCP
+  Social --> FRC
+  Social --> FGP
+  Social --> FEP
+  Social --> FPP
+```
+
+Детали workspace, UIP (`fira-contracts`), FPP (таблицы у Verification), scope FSCP — [`next-architecture.md`](next-architecture.md) §2.
 
 ---
 

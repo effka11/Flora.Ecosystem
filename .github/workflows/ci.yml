@@ -39,7 +39,7 @@ jobs:
       - name: Validate C# module boundaries
         shell: pwsh
         run: ./tools/Validate-Architecture.ps1
-      # cargo metadata сам подтянет toolchain из Backend/rust-toolchain.toml.
+      # cargo metadata uses repo-root Cargo.toml (Products + Backend members).
       - name: Validate Rust crate boundaries
         shell: pwsh
         run: ./tools/validate-architecture-rust.ps1
@@ -88,22 +88,18 @@ jobs:
       #   working-directory: Apps/Web
       #   run: npm run lint
 
-  # Rust-конвейер (next-architecture.md §2.3, Фаза 0).
-  # Toolchain не задаётся в workflow: rustup читает Backend/rust-toolchain.toml —
-  # единственный источник версии (обновление — осознанным коммитом).
+  # Rust pipeline (repo-root Cargo.toml: Backend + Products).
+  # Toolchain: rust-toolchain.toml at repo root.
   rust:
     name: rust
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Backend
     steps:
       - uses: actions/checkout@v4
       - name: Install pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: Backend
+          workspaces: .
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
@@ -113,16 +109,12 @@ jobs:
       - name: Licenses, bans, advisories (cargo deny)
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          manifest-path: Backend/Cargo.toml
+          manifest-path: Cargo.toml
 
-  # Аудио-кодек FRC-A (docs/codecs/FRC-A.md) — отдельный workspace Codecs/audio.
-  # Ядро дополнительно проверяется на wasm32: E2E-голосовые кодируются на клиенте.
-  codecs-audio:
-    name: codecs-audio
+  # FRC cores wasm32 (Products/FRC, same workspace).
+  codecs-frc:
+    name: codecs-frc
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Codecs/audio
     steps:
       - uses: actions/checkout@v4
       - name: Install pinned toolchain
@@ -131,16 +123,10 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: Codecs/audio
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Test
-        run: cargo test --workspace --locked
-      - name: Check core on wasm32
+          workspaces: .
+      - name: Check FRC-A core on wasm32
         run: cargo check -p frc-a-core --target wasm32-unknown-unknown --locked
-      - name: Licenses, bans, advisories (cargo deny)
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          manifest-path: Codecs/audio/Cargo.toml
+      - name: Check FRC-I on wasm32
+        run: cargo check -p frc-i --no-default-features --target wasm32-unknown-unknown --locked
+      - name: Check FRC-V on wasm32
+        run: cargo check -p frc-v --target wasm32-unknown-unknown --locked

@@ -18,20 +18,22 @@
       "import": "./src/contracts/index.ts",
       "default": "./src/contracts/index.ts"
     },
+    "./contracts/*": "./src/contracts/*",
     "./api": {
       "types": "./src/api/index.ts",
       "import": "./src/api/index.ts",
       "default": "./src/api/index.ts"
     },
+    "./api/*": "./src/api/*",
     "./auth": {
       "types": "./src/auth/index.ts",
       "import": "./src/auth/index.ts",
       "default": "./src/auth/index.ts"
     },
     "./fscp": {
-      "types": "./src/fscp/index.ts",
-      "import": "./src/fscp/index.ts",
-      "default": "./src/fscp/index.ts"
+      "types": "../../Products/FSCP/ts/src/index.ts",
+      "import": "../../Products/FSCP/ts/src/index.ts",
+      "default": "../../Products/FSCP/ts/src/index.ts"
     },
     "./storage": {
       "types": "./src/storage/index.ts",
@@ -43,6 +45,7 @@
       "import": "./src/telemetry/index.ts",
       "default": "./src/telemetry/index.ts"
     },
+    "./telemetry/*": "./src/telemetry/*",
     "./signals": {
       "types": "./src/signals/index.ts",
       "import": "./src/signals/index.ts",
@@ -66,6 +69,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@flora/fscp": "*",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^2.2.0",
     "uuid": "^14.0.0"

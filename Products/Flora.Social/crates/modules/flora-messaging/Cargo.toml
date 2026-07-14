@@ -1,0 +1,16 @@
+[package]
+name = "flora-messaging"
+description = "Модуль Messaging: FSCP E2E, идемпотентность, voice/image/video ассеты (переносится в Фазе 4)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = { workspace = true }
+fscp-core = { workspace = true }
+flora-shared = { workspace = true }

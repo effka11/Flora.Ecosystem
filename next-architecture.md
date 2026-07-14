@@ -37,64 +37,63 @@
 
 ---
 
-## 2. Конечное состояние: Rust workspace
+## 2. Конечное состояние: продукты + Rust workspace
+
+### 2.0. Продуктовая топология (App vs Functional)
+
+Пиры под [`Products/`](Products/). Классы и правила — [`ARCHITECTURE.md`](ARCHITECTURE.md) §1.1. Кратко:
+
+- **App:** Flora.Social (доменные модули Auth/Users/… — внутренности Social, не пиры). Зарезервированы без пустых папок: Browser, Email, OS.
+- **Functional (headless/embeddable):** FIRA, FSCP, FRC, FGP, FEP, FPP — kernel/contracts (+ опц. runtime); не зависят от Social.
+- **UIP** — DTO в `fira-contracts`; Users владеет персистенцией и маппит в `InterestProfile`.
+- **FPP** — kernel+contracts в `Products/FPP`; таблицы `personhood_*` пишет только Verification (Social).
+- **FSCP product scope:** wire + crypto + server validator + client session FSM. Epochs/backup/devices — Messaging / [`docs/fscp/e2e-security.md`](docs/fscp/e2e-security.md).
+- **TS SoT** functional-клиента — в `Products/<Name>/` (напр. `@flora/fscp`); `Packages/flora-client-core` реэкспортирует.
+- **Один Cargo workspace** (корень сейчас [`Backend/Cargo.toml`](Backend/Cargo.toml) = будущий Platform; rename на Фазе 5). Members включают **все** Products crates, в т.ч. FRC (отдельные Codecs workspaces снимаются). FRC-переезд — последовательные PR по frc-a / frc-i / frc-v при необходимости.
+- Functional → Social = **запрещено** (валидатор).
 
 ### 2.1. Расположение и структура
 
-Новый cargo-workspace живёт в каталоге **`Backend/`** (рядом с текущими C#-проектами; после Фазы 5 C#-каталоги удаляются):
+Единый Cargo workspace — **корень репозитория** [`Cargo.toml`](Cargo.toml) (= будущий Platform; каталог `Backend/` хранит host-crates и конфиг).
 
 ```
+Cargo.toml                      # workspace members → Backend/crates + Products/*/crates
+Products/
+  Flora.Social/                 # PRODUCT_CLASS: app (C# as-is + Rust crates/)
+  FIRA/ FSCP/ FRC/ FEP/ FGP/ FPP/
 Backend/
-  Cargo.toml                    # [workspace] + workspace.dependencies (версии в одном месте)
-  rust-toolchain.toml           # зафиксированный toolchain
-  crates/
-    flora-api/                  # bin: хост — конфиг, tracing, middleware, gateway-fallback (переходно)
-    flora-social/               # продукт: композиция модулей, объединение роутеров, rate-limit политики
-    flora-shared/               # порт Flora.Shared: uuid v7/v5, latin-identifiers (без бизнес-логики)
-    flora-migrate/              # bin: применение миграций всех модулей (замена Flora.Migrations)
-    modules/
-      flora-auth/               flora-auth-contracts/
-      flora-users/              flora-users-contracts/
-      flora-content/            flora-content-contracts/
-      flora-messaging/          flora-messaging-contracts/
-      flora-music/              flora-music-contracts/
-      flora-notifications/      flora-notifications-contracts/
-      flora-verification/       flora-verification-contracts/
-      flora-economy/            flora-economy-contracts/      # FEP, Rust-native (§6.0)
-      flora-economy-crypto/     # детерминированное ядро FEP (native + wasm32), только внешние deps
-      flora-governance-crypto/  # детерминированное ядро FGP (native + wasm32), только внешние deps
-    infrastructure/
-      flora-grpc-bridge/        # переходный: tonic-серверы/клиенты межъязыковых портов (см. §5.2)
-    media/                      # вне скоупа миграции: нативные кодеки FRC (docs/codecs/CODECS.md)
-      frc-i/                    # FRC-I — фото-кодек (docs/codecs/FRC-I.md)
-      flora-codec-tools/        # CLI flora-codec (image; video/audio добавят треки FRC-V/FRC-A)
-  tests/
-    parity/                     # replay contract fixtures + differential harness (flora-diff)
+  crates/ flora-api, flora-shared, flora-migrate, infrastructure/
+  tests/parity/
+  appsettings.json
+Apps/  Packages/  docs/
 ```
+
+C#-каталоги (`Flora.API`, `Modules/`, …) удаляются на **Фазе 5**; до cutover C# `Products/Flora.Social` не ломать.
 
 ### 2.2. Гранулярность crate'ов
 
-- **Два crate на модуль**: `flora-<module>` (реализация) + `flora-<module>-contracts` (DTO + trait-порты + ошибки, без бизнес-логики). Межмодульная граница — главная (именно она обеспечивает выносимость в микросервис) — становится **компилируемой**: другой модуль физически может зависеть только от `*-contracts`.
-- Внутренняя слоистость Clean Architecture сохраняется **внутри** crate'а модулями Rust: `src/domain/`, `src/application/`, `src/infrastructure/`, `src/http/` + `compose()` (аналог `Add<Module>Module`). Полное зеркалирование «crate на слой» (4×7 crate'ов) отвергнуто как избыточное: нагрузку несёт межмодульная граница, внутреннюю слоистость контролируют ревью и валидатор.
-- Каждый модуль экспортирует: `compose(cfg, pg_pool) -> ModuleState`, `router(state) -> axum::Router`, фоновые задачи `spawn_workers(state)`.
+- **App Social:** два crate на доменный модуль (`flora-<module>` + `*-contracts`); слоистость внутри crate (`domain/application/infrastructure/http` + `compose()`).
+- **Functional:** `*-contracts` + `*-core`/`*-crypto` (portable, wasm32 где нужно) + опц. `*-runtime` (Flora-host). FRC: `frc-a-core`, `frc-i`, `frc-v`, CLI tools — members того же workspace.
+- Модуль/runtime экспортирует: `compose` / `router` / `spawn_workers` по мере готовности HTTP.
 
 ### 2.3. Правила зависимостей (порт Validate-Architecture)
 
 | Crate | Может зависеть от |
 | --- | --- |
 | `flora-api` | `flora-social`, `flora-shared` |
-| `flora-social` | корни модулей `flora-<module>`, `flora-shared` |
-| `flora-<module>` | свой `*-contracts`, **чужие `*-contracts`**, свой `*-crypto`, `flora-shared` |
-| `flora-<module>-contracts` | `flora-shared` |
-| `flora-<module>-crypto` | только внешние crates — детерминированные ядра (FGP §8.1, FEP `docs/fep/FEP.md`), собираются и в native, и в wasm32 (клиентская верификация) |
+| `flora-social` | корни модулей Social, functional `*-runtime`/`*-core` по необходимости, `flora-shared` |
+| `flora-<module>` (Social) | свой/чужие `*-contracts`, functional contracts/core, свой crypto, `flora-shared` |
+| `*-contracts` | `flora-shared` (Social) или только внешние (functional, предпочтительно) |
+| functional `*-crypto` / FRC cores / `fscp-core` / `fira-core` | только внешние crates (+ другие crates того же functional-продукта) |
+| functional `*-runtime` | свой crypto/contracts, `flora-shared`, другие **functional**-contracts |
 | `flora-shared` | только внешние crates |
-| `crates/media/*` (кодеки FRC) | только другие media-crates; **вне скоупа миграции** — модули используют кодеки через свой Infrastructure-слой (см. `docs/codecs/CODECS.md`) |
+| Любой Functional | **не** `flora-social` и не `modules/flora-*` Social |
 
-Проверка — скрипт `tools/validate-architecture-rust` поверх `cargo metadata` (замена [`tools/Validate-Architecture.ps1`](tools/Validate-Architecture.ps1)), в CI вместе с `cargo fmt --check`, `clippy -D warnings`, `cargo deny` (лицензии — совместимость с AGPLv3, запреты дублей).
+Проверка — `tools/validate-architecture-rust.ps1` + CI (`fmt`, `clippy -D warnings`, `cargo deny`).
 
 ### 2.4. Композиция вместо DI-контейнера
 
-Вместо рефлексивного DI — явная композиция: `flora-social` собирает состояния модулей и внедряет реализации портов конструктором (инверсии сохраняются: `IMessageSentNotifier` → trait `MessageSentNotifier`, реализуемый Notifications и передаваемый в Messaging как `Arc<dyn MessageSentNotifier>`). Порядок композиции повторяет текущий: `Users → Verification → Auth → Notifications → Content → Messaging → Music`.
+`flora-social` собирает модули Social и подключает functional engines (FIRA, FSCP validator, FEP/FGP runtime, FRC через infrastructure). Порядок: `Users → Verification → Auth → Notifications → Content → Messaging → Music` (+ Economy по флагу).
 
 ---
 
