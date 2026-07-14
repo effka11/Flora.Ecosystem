@@ -3,7 +3,7 @@
   Rust flora-api gateway on :5290 — local parity with prod strangler.
   Upstream: Gateway:DotnetUpstream → http://127.0.0.1:5284 (Backend/appsettings.json).
   Music:ServeNative=true → native /api/music/* + workers.
-  Auth:ServeNative=true → native GET /api/auth/me/sessions (Фаза 2b срез).
+  Auth:ServeNative=true → native sessions + logout (Фаза 2b срез).
 
   Requires: cargo on PATH, shared Jwt from ensure-shared-dev-jwt.ps1,
   .NET upstream already listening (or start soon after).
@@ -29,7 +29,7 @@ Write-Host @"
 Flora gateway (Rust) -> http://127.0.0.1:5290
   config: $configDir
   upstream: $($env:Gateway__DotnetUpstream)
-  Music + Auth sessions + Verification ServeNative (gRPC :50051), shared Jwt
+  Music + Auth (sessions/logout) + Verification ServeNative (gRPC :50051), shared Jwt
 "@
 
 Set-Location $root

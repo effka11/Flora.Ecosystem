@@ -34,4 +34,25 @@ impl SessionService {
             })
             .collect())
     }
+
+    /// Завершить все сессии, кроме текущей. Ответ: число отозванных.
+    pub async fn revoke_others(
+        &self,
+        user_uuid: Uuid,
+        current_jti: &str,
+    ) -> Result<u64, sqlx::Error> {
+        let now = chrono::Utc::now();
+        self.repo
+            .revoke_other_sessions(user_uuid, current_jti, now)
+            .await
+    }
+
+    /// Logout текущей сессии по `jti`. Пустой `jti` — no-op (как в C#).
+    pub async fn logout_current(&self, jti: &str) -> Result<(), sqlx::Error> {
+        if jti.is_empty() {
+            return Ok(());
+        }
+        self.repo.revoke_by_jwt_id(jti).await?;
+        Ok(())
+    }
 }

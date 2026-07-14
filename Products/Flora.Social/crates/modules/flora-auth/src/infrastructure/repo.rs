@@ -1,10 +1,12 @@
-//! sqlx-репозиторий Auth (user_sessions) — только чтение в первом срезе.
+//! sqlx-репозиторий Auth (`user_sessions`).
 
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 const STATUS_ACTIVE: i32 = 0;
+/// `UserSessionStatus.RevokedUser` — паритет с C#.
+const STATUS_REVOKED_USER: i32 = 4;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SessionRow {
@@ -46,5 +48,49 @@ impl AuthRepo {
         .bind(now)
         .fetch_all(&self.pool)
         .await
+    }
+
+    /// Завершить все активные сессии пользователя, кроме текущей (по `jwt_id`).
+    /// Если `current_jti` пуст — отзываются все активные (как в C#).
+    pub async fn revoke_other_sessions(
+        &self,
+        user_uuid: Uuid,
+        current_jti: &str,
+        now: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flora_core.user_sessions
+            SET status = $1
+            WHERE user_uuid = $2
+              AND status = $3
+              AND expires_at > $4
+              AND ($5 = '' OR jwt_id <> $5)
+            "#,
+        )
+        .bind(STATUS_REVOKED_USER)
+        .bind(user_uuid)
+        .bind(STATUS_ACTIVE)
+        .bind(now)
+        .bind(current_jti)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Отозвать сессию по `jwt_id` (logout). Как в C#: без фильтра по status.
+    pub async fn revoke_by_jwt_id(&self, jwt_id: &str) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flora_core.user_sessions
+            SET status = $1
+            WHERE jwt_id = $2
+            "#,
+        )
+        .bind(STATUS_REVOKED_USER)
+        .bind(jwt_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 }

@@ -1,4 +1,4 @@
-//! Auth HTTP — Фаза 2b (первый срез: GET /api/auth/me/sessions).
+//! Auth HTTP — Фаза 2b: sessions list/revoke-others + logout.
 
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ use axum::Router;
 use axum::extract::{Extension, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{delete, get, post};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -29,6 +29,8 @@ pub struct AuthState {
 pub fn router(state: AuthState) -> Router {
     Router::new()
         .route("/api/auth/me/sessions", get(list_my_sessions))
+        .route("/api/auth/me/sessions/others", delete(revoke_other_sessions))
+        .route("/api/auth/logout", post(logout))
         .with_state(state)
 }
 
@@ -49,6 +51,40 @@ async fn list_my_sessions(
     }
 }
 
+async fn revoke_other_sessions(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+) -> Response {
+    match state.sessions.revoke_others(user.user_uuid, &user.jti).await {
+        Ok(revoked) => Json(RevokeOthersResponse { revoked }).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "revoke other sessions failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn logout(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+) -> Response {
+    match state.sessions.logout_current(&user.jti).await {
+        Ok(()) => StatusCode::OK.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "logout failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionListItem {
@@ -59,6 +95,12 @@ pub struct SessionListItem {
     pub city: Option<String>,
     pub country_code: Option<String>,
     pub is_current: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokeOthersResponse {
+    pub revoked: u64,
 }
 
 pub fn format_utc(dt: DateTime<Utc>) -> String {
@@ -91,5 +133,11 @@ mod tests {
             format_utc(Utc.with_ymd_and_hms(2026, 7, 14, 12, 0, 0).unwrap()),
             "2026-07-14T12:00:00.000Z"
         );
+    }
+
+    #[test]
+    fn revoke_others_response_json_shape() {
+        let v = serde_json::to_value(RevokeOthersResponse { revoked: 3 }).unwrap();
+        assert_eq!(v, serde_json::json!({ "revoked": 3 }));
     }
 }
