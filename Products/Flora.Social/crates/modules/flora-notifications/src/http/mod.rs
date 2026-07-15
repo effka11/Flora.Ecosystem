@@ -326,9 +326,8 @@ async fn signals_stream(
     Extension(user): Extension<CurrentUser>,
 ) -> impl IntoResponse {
     let frames = state.hub.subscribe(user.0);
-    let stream = frames.map(|frame| {
-        Ok::<Event, Infallible>(Event::default().event(frame.event).data(frame.data))
-    });
+    let stream = frames
+        .map(|frame| Ok::<Event, Infallible>(Event::default().event(frame.event).data(frame.data)));
 
     let sse = Sse::new(stream).keep_alive(
         KeepAlive::new()

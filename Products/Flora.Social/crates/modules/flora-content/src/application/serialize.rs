@@ -34,11 +34,7 @@ impl FeedSerializer {
         }
     }
 
-    pub async fn serialize_page(
-        &self,
-        viewer: Uuid,
-        page: FeedPage,
-    ) -> Result<Value, String> {
+    pub async fn serialize_page(&self, viewer: Uuid, page: FeedPage) -> Result<Value, String> {
         if page.post_uuids.is_empty() {
             return Ok(json!({
                 "items": [],

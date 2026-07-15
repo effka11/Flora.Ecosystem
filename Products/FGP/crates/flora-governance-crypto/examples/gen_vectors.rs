@@ -467,7 +467,8 @@ fn weights_vector() -> Value {
 
 fn main() {
     std::fs::create_dir_all(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../Documents/test-vectors/governance"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../Documents/test-vectors/governance"),
     )
     .expect("mkdir");
     write("governance-ds-tags-v1.json", &ds_tags_vector());

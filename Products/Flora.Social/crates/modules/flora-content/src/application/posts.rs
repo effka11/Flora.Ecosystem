@@ -112,11 +112,7 @@ impl PostService {
         })))
     }
 
-    pub async fn unlike(
-        &self,
-        user_uuid: Uuid,
-        post_uuid: Uuid,
-    ) -> Result<Value, String> {
+    pub async fn unlike(&self, user_uuid: Uuid, post_uuid: Uuid) -> Result<Value, String> {
         let like = self
             .repo
             .has_liked(post_uuid, user_uuid)
@@ -176,11 +172,7 @@ impl PostService {
         })))
     }
 
-    pub async fn unrepost(
-        &self,
-        user_uuid: Uuid,
-        post_uuid: Uuid,
-    ) -> Result<Value, String> {
+    pub async fn unrepost(&self, user_uuid: Uuid, post_uuid: Uuid) -> Result<Value, String> {
         let exists = self
             .repo
             .has_reposted(post_uuid, user_uuid)

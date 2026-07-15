@@ -51,10 +51,8 @@ pub struct CreateUserNotificationCommand {
 /// Cross-module port: insert inbox row + SSE `event: notification` (+ FCM).
 /// Implemented by Notifications; Content/Users must not touch `user_notifications`.
 pub trait UserNotificationDispatcher: Send + Sync {
-    fn dispatch(
-        &self,
-        command: CreateUserNotificationCommand,
-    ) -> BoxFuture<'_, Result<(), String>>;
+    fn dispatch(&self, command: CreateUserNotificationCommand)
+    -> BoxFuture<'_, Result<(), String>>;
 }
 
 /// No-op when Notifications ServeNative is off.

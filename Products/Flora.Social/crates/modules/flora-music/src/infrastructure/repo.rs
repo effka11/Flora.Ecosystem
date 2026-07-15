@@ -1024,9 +1024,7 @@ impl MusicRepo {
         Ok(())
     }
 
-    pub async fn list_tracks_for_backfill(
-        &self,
-    ) -> Result<Vec<(Uuid, Uuid, String)>, sqlx::Error> {
+    pub async fn list_tracks_for_backfill(&self) -> Result<Vec<(Uuid, Uuid, String)>, sqlx::Error> {
         sqlx::query_as::<_, (Uuid, Uuid, String)>(
             r#"
             SELECT track_uuid, owner_user_uuid, artist_display

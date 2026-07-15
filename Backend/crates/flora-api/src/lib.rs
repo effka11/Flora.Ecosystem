@@ -37,12 +37,12 @@ pub async fn build_host(cfg: &FloraConfig, versions: versions::FloraVersionRespo
     let product = flora_social::compose_product(cfg, pool);
     let worker_handles = product.background;
 
-    let mut native = routes::host_router(versions)
-        .merge(product.router)
-        .layer(axum::middleware::from_fn_with_state(
+    let mut native = routes::host_router(versions).merge(product.router).layer(
+        axum::middleware::from_fn_with_state(
             client_version::MinClientVersion::from_config(cfg),
             client_version::enforce_min_client_version,
-        ));
+        ),
+    );
 
     if let Some(cors) = cors_layer(cfg) {
         native = native.layer(cors);

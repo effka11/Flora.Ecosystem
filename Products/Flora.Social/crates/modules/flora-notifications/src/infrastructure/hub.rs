@@ -58,9 +58,7 @@ impl UserRealtimeHub {
         let (tx, rx) = mpsc::unbounded_channel();
         {
             let mut map = self.connections.lock().expect("hub lock");
-            map.entry(user_uuid)
-                .or_default()
-                .insert(connection_id, tx);
+            map.entry(user_uuid).or_default().insert(connection_id, tx);
         }
         HubFrameStream {
             rx,

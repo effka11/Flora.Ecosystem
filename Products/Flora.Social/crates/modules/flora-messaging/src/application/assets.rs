@@ -10,9 +10,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::infrastructure::{
-    fetch_image_asset, fetch_video_asset, fetch_voice_asset, insert_image_asset,
-    insert_video_asset, insert_voice_asset, is_message_participant, normalize_content_type,
-    ImageAssetRow, VideoAssetRow, VoiceAssetRow,
+    ImageAssetRow, VideoAssetRow, VoiceAssetRow, fetch_image_asset, fetch_video_asset,
+    fetch_voice_asset, insert_image_asset, insert_video_asset, insert_voice_asset,
+    is_message_participant, normalize_content_type,
 };
 
 pub const MAX_MESSAGE_IMAGE_BYTES: usize = 5 * 1024 * 1024;
@@ -52,7 +52,12 @@ impl AssetService {
         file_content_type: Option<&str>,
         bytes: &[u8],
     ) -> Result<UploadImageAssetResultDto, AssetError> {
-        validate_peer(sender_uuid, to_user_uuid, bytes.len(), MAX_MESSAGE_IMAGE_BYTES)?;
+        validate_peer(
+            sender_uuid,
+            to_user_uuid,
+            bytes.len(),
+            MAX_MESSAGE_IMAGE_BYTES,
+        )?;
         if bytes.is_empty() {
             return Err(AssetError::BadRequest("Файл фото пуст.".into()));
         }
@@ -85,7 +90,12 @@ impl AssetService {
         file_content_type: Option<&str>,
         bytes: &[u8],
     ) -> Result<UploadVoiceAssetResultDto, AssetError> {
-        validate_peer(sender_uuid, to_user_uuid, bytes.len(), MAX_VOICE_ASSET_BYTES)?;
+        validate_peer(
+            sender_uuid,
+            to_user_uuid,
+            bytes.len(),
+            MAX_VOICE_ASSET_BYTES,
+        )?;
         if duration_ms <= 0 || duration_ms > MAX_VOICE_ASSET_DURATION_MS {
             return Err(AssetError::BadRequest(
                 "Недопустимая длительность голосового сообщения.".into(),
@@ -128,7 +138,12 @@ impl AssetService {
         file_content_type: Option<&str>,
         bytes: &[u8],
     ) -> Result<UploadVideoAssetResultDto, AssetError> {
-        validate_peer(sender_uuid, to_user_uuid, bytes.len(), MAX_MESSAGE_VIDEO_BYTES)?;
+        validate_peer(
+            sender_uuid,
+            to_user_uuid,
+            bytes.len(),
+            MAX_MESSAGE_VIDEO_BYTES,
+        )?;
         if bytes.is_empty() {
             return Err(AssetError::BadRequest("Файл видео пуст.".into()));
         }

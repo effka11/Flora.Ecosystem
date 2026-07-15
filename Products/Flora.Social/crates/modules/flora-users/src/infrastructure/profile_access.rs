@@ -50,72 +50,84 @@ impl ProfileAccess for SqlProfileAccess {
             }
 
             let visibility: i32 = match field {
-                ProfileAccessField::Friends => fetch_visibility(
-                    &self.pool,
-                    owner_user_uuid,
-                    r#"
+                ProfileAccessField::Friends => {
+                    fetch_visibility(
+                        &self.pool,
+                        owner_user_uuid,
+                        r#"
                     SELECT friends_visibility
                     FROM flora_core.user_privacy_settings
                     WHERE user_uuid = $1
                     "#,
-                    VIS_ALL,
-                )
-                .await?,
-                ProfileAccessField::Subscriptions => fetch_visibility(
-                    &self.pool,
-                    owner_user_uuid,
-                    r#"
+                        VIS_ALL,
+                    )
+                    .await?
+                }
+                ProfileAccessField::Subscriptions => {
+                    fetch_visibility(
+                        &self.pool,
+                        owner_user_uuid,
+                        r#"
                     SELECT subscriptions_visibility
                     FROM flora_core.user_privacy_settings
                     WHERE user_uuid = $1
                     "#,
-                    VIS_ALL,
-                )
-                .await?,
-                ProfileAccessField::Posts => fetch_visibility(
-                    &self.pool,
-                    owner_user_uuid,
-                    r#"
+                        VIS_ALL,
+                    )
+                    .await?
+                }
+                ProfileAccessField::Posts => {
+                    fetch_visibility(
+                        &self.pool,
+                        owner_user_uuid,
+                        r#"
                     SELECT posts_visibility
                     FROM flora_core.user_privacy_settings
                     WHERE user_uuid = $1
                     "#,
-                    VIS_ALL,
-                )
-                .await?,
-                ProfileAccessField::Likes => fetch_visibility(
-                    &self.pool,
-                    owner_user_uuid,
-                    r#"
+                        VIS_ALL,
+                    )
+                    .await?
+                }
+                ProfileAccessField::Likes => {
+                    fetch_visibility(
+                        &self.pool,
+                        owner_user_uuid,
+                        r#"
                     SELECT likes_visibility
                     FROM flora_core.user_privacy_settings
                     WHERE user_uuid = $1
                     "#,
-                    VIS_FRIENDS,
-                )
-                .await?,
-                ProfileAccessField::Reposts => fetch_visibility(
-                    &self.pool,
-                    owner_user_uuid,
-                    r#"
+                        VIS_FRIENDS,
+                    )
+                    .await?
+                }
+                ProfileAccessField::Reposts => {
+                    fetch_visibility(
+                        &self.pool,
+                        owner_user_uuid,
+                        r#"
                     SELECT reposts_visibility
                     FROM flora_core.user_privacy_settings
                     WHERE user_uuid = $1
                     "#,
-                    VIS_ALL,
-                )
-                .await?,
-                ProfileAccessField::Comments => fetch_visibility(
-                    &self.pool,
-                    owner_user_uuid,
-                    r#"
+                        VIS_ALL,
+                    )
+                    .await?
+                }
+                ProfileAccessField::Comments => {
+                    fetch_visibility(
+                        &self.pool,
+                        owner_user_uuid,
+                        r#"
                     SELECT comments_from
                     FROM flora_core.user_privacy_settings
                     WHERE user_uuid = $1
                     "#,
-                    VIS_ALL,
-                )
-                .await?,
+                        VIS_ALL,
+                    )
+                    .await?
+                }
             };
 
             evaluate_visibility(&self.pool, viewer_user_uuid, owner_user_uuid, visibility).await

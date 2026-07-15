@@ -63,7 +63,10 @@ pub fn normalize_audience_platform(platform: Option<&str>) -> Option<String> {
 }
 
 /// Паритет `NotificationInboxService.ResolveAudiencePlatform`.
-pub fn resolve_audience_platform(notification_type: &str, audience_platform: Option<&str>) -> Option<String> {
+pub fn resolve_audience_platform(
+    notification_type: &str,
+    audience_platform: Option<&str>,
+) -> Option<String> {
     if let Some(normalized) = normalize_audience_platform(audience_platform) {
         return Some(normalized);
     }

@@ -111,15 +111,15 @@ impl ChallengeService {
         Ok(BeginResult {
             token,
             expires_at_utc: expires_at,
-            dev_code: if self.development {
-                Some(code)
-            } else {
-                None
-            },
+            dev_code: if self.development { Some(code) } else { None },
         })
     }
 
-    pub async fn validate(&self, token: Uuid, code_plain: &str) -> Result<ValidateResult, ChallengeError> {
+    pub async fn validate(
+        &self,
+        token: Uuid,
+        code_plain: &str,
+    ) -> Result<ValidateResult, ChallengeError> {
         if code_plain.trim().is_empty() {
             return Ok(ValidateResult {
                 status: ValidateStatus::CodeMismatch,

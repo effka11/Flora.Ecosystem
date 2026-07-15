@@ -100,15 +100,17 @@ impl SqlUserRecommendationQueries {
 
         Ok(profiles
             .into_iter()
-            .map(|(uid, display_name, avatar_uuid, updated_at)| RecommendationCandidateRow {
-                user_uuid: uid,
-                display_name,
-                avatar_uuid,
-                updated_at,
-                follower_count: i32::try_from(*follower_by.get(&uid).unwrap_or(&0))
-                    .unwrap_or(i32::MAX),
-                followed_by_following_count: *social_by.get(&uid).unwrap_or(&0),
-            })
+            .map(
+                |(uid, display_name, avatar_uuid, updated_at)| RecommendationCandidateRow {
+                    user_uuid: uid,
+                    display_name,
+                    avatar_uuid,
+                    updated_at,
+                    follower_count: i32::try_from(*follower_by.get(&uid).unwrap_or(&0))
+                        .unwrap_or(i32::MAX),
+                    followed_by_following_count: *social_by.get(&uid).unwrap_or(&0),
+                },
+            )
             .collect())
     }
 }

@@ -9,7 +9,9 @@ use fira_core::people::{PeopleCandidate, UserRecommendationOptions, rank};
 use flora_users_contracts::FollowGraphReader;
 use uuid::Uuid;
 
-use crate::infrastructure::recommendation::{RecommendationCandidateRow, SqlUserRecommendationQueries};
+use crate::infrastructure::recommendation::{
+    RecommendationCandidateRow, SqlUserRecommendationQueries,
+};
 
 #[derive(Debug, Clone)]
 pub struct RecommendedUser {
@@ -65,11 +67,7 @@ impl PeopleRecommendationService {
         let snapshot = self.get_or_compute_snapshot(user_uuid).await?;
         let ttl_secs = i64::from(self.options.cache_ttl_seconds.max(10));
         let expires_at = snapshot.generated_at + chrono::Duration::seconds(ttl_secs);
-        let list = snapshot
-            .full_list
-            .into_iter()
-            .take(take as usize)
-            .collect();
+        let list = snapshot.full_list.into_iter().take(take as usize).collect();
         Ok((list, snapshot.generated_at, expires_at))
     }
 
@@ -96,10 +94,8 @@ impl PeopleRecommendationService {
             .map_err(|e| e.to_string())?;
 
         let candidates: Vec<PeopleCandidate> = rows.iter().map(row_to_candidate).collect();
-        let avatar_by: HashMap<Uuid, Option<Uuid>> = rows
-            .iter()
-            .map(|r| (r.user_uuid, r.avatar_uuid))
-            .collect();
+        let avatar_by: HashMap<Uuid, Option<Uuid>> =
+            rows.iter().map(|r| (r.user_uuid, r.avatar_uuid)).collect();
         let ranked = rank(&candidates, &self.options, now_utc);
         let full_list: Vec<RecommendedUser> = ranked
             .into_iter()

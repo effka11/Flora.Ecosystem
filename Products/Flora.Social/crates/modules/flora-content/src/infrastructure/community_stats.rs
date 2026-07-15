@@ -17,10 +17,7 @@ impl SqlCommunityFollowStats {
 }
 
 impl CommunityFollowStats for SqlCommunityFollowStats {
-    fn count_public_following(
-        &self,
-        user_uuid: Uuid,
-    ) -> BoxFuture<'_, Result<i64, String>> {
+    fn count_public_following(&self, user_uuid: Uuid) -> BoxFuture<'_, Result<i64, String>> {
         Box::pin(async move {
             let count: i64 = sqlx::query_scalar(
                 r#"

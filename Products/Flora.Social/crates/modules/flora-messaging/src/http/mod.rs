@@ -57,26 +57,17 @@ pub fn protected_router(state: MessagingState) -> Router {
             "/api/messaging/conversations/{conversation_uuid}",
             delete(delete_conversation),
         )
-        .route(
-            "/api/messaging/image-assets",
-            post(assets::upload_image),
-        )
+        .route("/api/messaging/image-assets", post(assets::upload_image))
         .route(
             "/api/messaging/image-assets/{asset_uuid}",
             get(assets::get_image),
         )
-        .route(
-            "/api/messaging/voice-assets",
-            post(assets::upload_voice),
-        )
+        .route("/api/messaging/voice-assets", post(assets::upload_voice))
         .route(
             "/api/messaging/voice-assets/{asset_uuid}",
             get(assets::get_voice),
         )
-        .route(
-            "/api/messaging/video-assets",
-            post(assets::upload_video),
-        )
+        .route("/api/messaging/video-assets", post(assets::upload_video))
         .route(
             "/api/messaging/video-assets/{asset_uuid}",
             get(assets::get_video),

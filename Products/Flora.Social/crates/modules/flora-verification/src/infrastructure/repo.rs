@@ -93,12 +93,11 @@ impl VerificationRepo {
     }
 
     pub async fn remove_expired(&self, utc_now: DateTime<Utc>) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query(
-            "DELETE FROM flora_core.verification_challenges WHERE expires_at <= $1",
-        )
-        .bind(utc_now)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("DELETE FROM flora_core.verification_challenges WHERE expires_at <= $1")
+                .bind(utc_now)
+                .execute(&self.pool)
+                .await?;
         Ok(result.rows_affected())
     }
 }

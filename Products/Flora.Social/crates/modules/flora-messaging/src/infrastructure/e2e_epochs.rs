@@ -7,8 +7,8 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use flora_messaging_contracts::{
-    AddPendingDeviceRequestDto, CreateEpochRequestDto, DeviceKeyEntryDto,
-    KeyBackupPayloadDto, UnlockChallengeResponseDto, UnlockCompleteRequestDto,
+    AddPendingDeviceRequestDto, CreateEpochRequestDto, DeviceKeyEntryDto, KeyBackupPayloadDto,
+    UnlockChallengeResponseDto, UnlockCompleteRequestDto,
 };
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -43,7 +43,15 @@ pub async fn create_epoch(
         request.new_key_epoch_id,
         request.new_epoch_account_identity_public_key_base64_url
     ));
-    match check_idempotency(pool, request.idempotency_key, user_uuid, "epochs", &body_hash).await? {
+    match check_idempotency(
+        pool,
+        request.idempotency_key,
+        user_uuid,
+        "epochs",
+        &body_hash,
+    )
+    .await?
+    {
         IdempotencyCheck::Replay => return Ok(()),
         IdempotencyCheck::Conflict(msg) => {
             return Err(E2eEpochRepoError::IdempotencyConflict(msg));
@@ -175,7 +183,14 @@ pub async fn create_epoch(
         .await
         .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
 
-    record_idempotency(pool, request.idempotency_key, user_uuid, "epochs", &body_hash).await?;
+    record_idempotency(
+        pool,
+        request.idempotency_key,
+        user_uuid,
+        "epochs",
+        &body_hash,
+    )
+    .await?;
     Ok(())
 }
 
@@ -264,9 +279,7 @@ pub async fn unlock_complete(
 
     let body_hash = compute_body_hash(&format!(
         "{}:{}:{}",
-        request.idempotency_key,
-        request.challenge_id,
-        request.key_backup.epoch_set_hash_base64_url
+        request.idempotency_key, request.challenge_id, request.key_backup.epoch_set_hash_base64_url
     ));
     match check_idempotency(
         pool,
@@ -284,7 +297,11 @@ pub async fn unlock_complete(
         IdempotencyCheck::NotSeen => {}
     }
 
-    if request.recovery_unlock_token.as_deref().unwrap_or("").is_empty()
+    if request
+        .recovery_unlock_token
+        .as_deref()
+        .unwrap_or("")
+        .is_empty()
         && request
             .trusted_device_approval_token
             .as_deref()
@@ -334,9 +351,8 @@ pub async fn unlock_complete(
     .await
     .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
 
-    let challenge = challenge.ok_or_else(|| {
-        E2eEpochRepoError::ChallengeExpiredOrUsed("Challenge not found.".into())
-    })?;
+    let challenge = challenge
+        .ok_or_else(|| E2eEpochRepoError::ChallengeExpiredOrUsed("Challenge not found.".into()))?;
 
     if challenge.is_used {
         return Err(E2eEpochRepoError::ChallengeExpiredOrUsed(
@@ -369,7 +385,12 @@ pub async fn unlock_complete(
 
     let existing_identity_map: HashMap<Uuid, String> = existing_identities
         .into_iter()
-        .map(|r| (r.key_epoch_id, r.epoch_account_identity_public_key_base64url))
+        .map(|r| {
+            (
+                r.key_epoch_id,
+                r.epoch_account_identity_public_key_base64url,
+            )
+        })
         .collect();
 
     let identity_key_map: HashMap<Uuid, &str> = request
@@ -788,10 +809,7 @@ async fn check_idempotency(
             "Idempotency key belongs to a different user or operation.".into(),
         ));
     }
-    if !existing
-        .request_body_hash
-        .eq_ignore_ascii_case(body_hash)
-    {
+    if !existing.request_body_hash.eq_ignore_ascii_case(body_hash) {
         return Ok(IdempotencyCheck::Conflict(
             "Idempotency key was already used with a different request body.".into(),
         ));

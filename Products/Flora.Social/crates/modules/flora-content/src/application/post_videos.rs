@@ -140,10 +140,8 @@ impl PostVideosService {
             .extension()
             .map(|e| format!(".{}", e.to_string_lossy()))
             .unwrap_or_default();
-        let temp_path = std::env::temp_dir().join(format!(
-            "flora-upload-{}{ext}",
-            Uuid::now_v7().simple()
-        ));
+        let temp_path =
+            std::env::temp_dir().join(format!("flora-upload-{}{ext}", Uuid::now_v7().simple()));
 
         if let Err(e) = tokio::fs::write(&temp_path, &file.bytes).await {
             let _ = tokio::fs::remove_file(&temp_path).await;

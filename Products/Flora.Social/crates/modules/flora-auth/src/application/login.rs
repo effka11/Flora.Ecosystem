@@ -101,13 +101,18 @@ impl LoginService {
 
         let password_hash = user.password_hash.clone();
         let password_owned = password.to_string();
-        let ok = tokio::task::spawn_blocking(move || verify_password(&password_owned, &password_hash))
-            .await
-            .map_err(|e| LoginError::Internal(e.to_string()))?;
+        let ok =
+            tokio::task::spawn_blocking(move || verify_password(&password_owned, &password_hash))
+                .await
+                .map_err(|e| LoginError::Internal(e.to_string()))?;
 
         if !ok {
-            self.register_failure(user.user_uuid, security.as_ref().map(|s| s.login_failures), now)
-                .await?;
+            self.register_failure(
+                user.user_uuid,
+                security.as_ref().map(|s| s.login_failures),
+                now,
+            )
+            .await?;
             return Err(LoginError::Unauthorized(
                 "Неверный email или пароль.".into(),
             ));

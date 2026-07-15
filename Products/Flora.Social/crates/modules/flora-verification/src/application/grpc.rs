@@ -28,14 +28,12 @@ impl VerificationChallengeService for VerificationGrpc {
     ) -> Result<Response<BeginResponse>, Status> {
         let req = request.into_inner();
         let subject = parse_optional_uuid(&req.subject_user_uuid)?;
-        match self
-            .inner
-            .begin(req.kind, &req.target, subject)
-            .await
-        {
+        match self.inner.begin(req.kind, &req.target, subject).await {
             Ok(r) => Ok(Response::new(BeginResponse {
                 token: r.token.to_string(),
-                expires_at_utc: r.expires_at_utc.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                expires_at_utc: r
+                    .expires_at_utc
+                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
                 dev_code: r.dev_code.unwrap_or_default(),
             })),
             Err(e) => Err(map_error(e)),

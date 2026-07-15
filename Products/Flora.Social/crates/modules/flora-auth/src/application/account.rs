@@ -60,9 +60,10 @@ impl AccountService {
 
         let current_owned = current_password.to_string();
         let stored_owned = stored.clone();
-        let ok = tokio::task::spawn_blocking(move || verify_password(&current_owned, &stored_owned))
-            .await
-            .map_err(|e| ChangePasswordError::Internal(e.to_string()))?;
+        let ok =
+            tokio::task::spawn_blocking(move || verify_password(&current_owned, &stored_owned))
+                .await
+                .map_err(|e| ChangePasswordError::Internal(e.to_string()))?;
         if !ok {
             return Err(ChangePasswordError::BadRequest("Неверный текущий пароль."));
         }
@@ -106,9 +107,10 @@ impl AccountService {
 
         let password_owned = password.to_string();
         let stored_owned = stored;
-        let ok = tokio::task::spawn_blocking(move || verify_password(&password_owned, &stored_owned))
-            .await
-            .map_err(|e| DeleteAccountError::Internal(e.to_string()))?;
+        let ok =
+            tokio::task::spawn_blocking(move || verify_password(&password_owned, &stored_owned))
+                .await
+                .map_err(|e| DeleteAccountError::Internal(e.to_string()))?;
         if !ok {
             return Err(DeleteAccountError::BadRequest("Неверный пароль."));
         }

@@ -57,8 +57,7 @@ impl OnlineStatusAccess for SqlOnlineStatusAccess {
             .await
             .map_err(|e| e.to_string())?;
 
-            let (online_friends, online_strangers) =
-                row.unwrap_or((ONLINE_VISIBLE, ONLINE_HIDDEN));
+            let (online_friends, online_strangers) = row.unwrap_or((ONLINE_VISIBLE, ONLINE_HIDDEN));
 
             let is_friend: bool = sqlx::query_scalar(
                 r#"

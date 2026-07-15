@@ -36,7 +36,9 @@ fn to_dotnet_ticks(dt: DateTime<Utc>) -> i64 {
 }
 
 fn from_dotnet_ticks(ticks: i64) -> Option<DateTime<Utc>> {
-    let unix_nanos = ticks.checked_sub(DOTNET_UNIX_EPOCH_TICKS)?.checked_mul(100)?;
+    let unix_nanos = ticks
+        .checked_sub(DOTNET_UNIX_EPOCH_TICKS)?
+        .checked_mul(100)?;
     DateTime::from_timestamp(
         unix_nanos.div_euclid(1_000_000_000),
         u32::try_from(unix_nanos.rem_euclid(1_000_000_000)).ok()?,

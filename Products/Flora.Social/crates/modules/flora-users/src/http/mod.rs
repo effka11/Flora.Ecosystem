@@ -25,7 +25,9 @@ use flora_users_contracts::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::application::avatar::{AvatarService, AvatarUploadError, AvatarUploadInput, MAX_AVATAR_SIZE_BYTES};
+use crate::application::avatar::{
+    AvatarService, AvatarUploadError, AvatarUploadInput, MAX_AVATAR_SIZE_BYTES,
+};
 use crate::application::people_recommendation::PeopleRecommendationService;
 use crate::http::rate_limit::{FixedWindowLimiter, client_ip_key};
 
@@ -58,7 +60,10 @@ const AVATAR_BODY_LIMIT: usize = MAX_AVATAR_SIZE_BYTES + 64 * 1024;
 pub fn protected_router(state: UsersState) -> Router {
     Router::new()
         .route("/api/auth/me", get(get_me))
-        .route("/api/auth/me/privacy", get(get_privacy).patch(update_privacy))
+        .route(
+            "/api/auth/me/privacy",
+            get(get_privacy).patch(update_privacy),
+        )
         .route("/api/auth/me/blocks", get(list_blocks))
         .route(
             "/api/auth/me/blocks/{username}",
@@ -137,7 +142,10 @@ async fn get_profile_by_username(
         Ok(n) => n,
         Err(e) => return internal(e),
     };
-    let following_people_count = match state.profiles.following_people_count(account.user_uuid).await
+    let following_people_count = match state
+        .profiles
+        .following_people_count(account.user_uuid)
+        .await
     {
         Ok(n) => n,
         Err(e) => return internal(e),
@@ -316,10 +324,7 @@ async fn get_follow_list(
         .into_iter()
         .map(|uid| {
             let username = user_by.get(&uid).cloned().unwrap_or_default();
-            let (display_name, avatar_uuid) = profile_by
-                .get(&uid)
-                .cloned()
-                .unwrap_or_default();
+            let (display_name, avatar_uuid) = profile_by.get(&uid).cloned().unwrap_or_default();
             FollowListItem {
                 username,
                 display_name,
@@ -370,7 +375,10 @@ async fn get_me(
         Ok(n) => n,
         Err(e) => return internal(e),
     };
-    let following_communities = match state.communities.count_public_following(user.user_uuid).await
+    let following_communities = match state
+        .communities
+        .count_public_following(user.user_uuid)
+        .await
     {
         Ok(n) => n,
         Err(e) => return internal(e),
@@ -487,7 +495,9 @@ async fn block_user(
         return not_found("Пользователь не найден.");
     };
     match state.blocklist.block(user.user_uuid, target).await {
-        Ok(()) => Json(serde_json::json!({ "message": "Пользователь заблокирован." })).into_response(),
+        Ok(()) => {
+            Json(serde_json::json!({ "message": "Пользователь заблокирован." })).into_response()
+        }
         Err(e) if e.contains("Нельзя заблокировать") => bad_request(e),
         Err(e) => internal(e),
     }
@@ -520,7 +530,12 @@ async fn update_profile(
     Json(body): Json<UpdateProfileRequest>,
 ) -> Response {
     let username = normalize_username(body.username.as_deref(), 50);
-    let display_name = body.display_name.as_deref().unwrap_or("").trim().to_string();
+    let display_name = body
+        .display_name
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     if !username.is_empty() {
         if !has_only_username_chars(body.username.as_deref()) {
@@ -594,7 +609,11 @@ async fn update_profile(
             Ok(false) => {}
             Err(e) => return internal(e),
         }
-        if let Err(e) = state.accounts.update_username(user.user_uuid, &username).await {
+        if let Err(e) = state
+            .accounts
+            .update_username(user.user_uuid, &username)
+            .await
+        {
             return internal(e);
         }
     }
@@ -836,24 +855,19 @@ async fn search_users(
     };
     let count_by: std::collections::HashMap<_, _> = follower_counts.into_iter().collect();
 
-    let following_set: std::collections::HashSet<_> = match state.follows.following_among(user.user_uuid, &ids).await
-    {
-        Ok(v) => v.into_iter().collect(),
-        Err(e) => return internal(e),
-    };
+    let following_set: std::collections::HashSet<_> =
+        match state.follows.following_among(user.user_uuid, &ids).await {
+            Ok(v) => v.into_iter().collect(),
+            Err(e) => return internal(e),
+        };
 
     let list: Vec<UserSearchItem> = page
         .into_iter()
         .map(|(id, username)| {
-            let (display_name, avatar_uuid) = profile_by
-                .get(&id)
-                .cloned()
-                .unwrap_or((None, None));
+            let (display_name, avatar_uuid) = profile_by.get(&id).cloned().unwrap_or((None, None));
             UserSearchItem {
                 username: username.clone(),
-                display_name: display_name
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or(username),
+                display_name: display_name.filter(|s| !s.is_empty()).unwrap_or(username),
                 avatar_uuid: avatar_uuid.map(|u| u.to_string()),
                 follower_count: i64::from(*count_by.get(&id).unwrap_or(&0)),
                 is_following: following_set.contains(&id),
@@ -879,27 +893,27 @@ async fn upload_avatar(
     let file = match parse_avatar_file(multipart).await {
         Ok(Some(file)) => file,
         Ok(None) => {
-            return bad_request(
-                "Выберите файл изображения (JPEG, PNG или WebP, до 2 МБ).".into(),
-            );
+            return bad_request("Выберите файл изображения (JPEG, PNG или WebP, до 2 МБ).".into());
         }
         Err(resp) => return resp,
     };
 
     match state.avatars.upload(user.user_uuid, file).await {
-        Ok(avatar_uuid) => Json(serde_json::json!({ "avatarUuid": avatar_uuid.to_string() })).into_response(),
-        Err(AvatarUploadError::NoFile) => bad_request(
-            "Выберите файл изображения (JPEG, PNG или WebP, до 2 МБ).".into(),
-        ),
+        Ok(avatar_uuid) => {
+            Json(serde_json::json!({ "avatarUuid": avatar_uuid.to_string() })).into_response()
+        }
+        Err(AvatarUploadError::NoFile) => {
+            bad_request("Выберите файл изображения (JPEG, PNG или WebP, до 2 МБ).".into())
+        }
         Err(AvatarUploadError::FileTooLarge) => {
             bad_request("Файл не должен превышать 2 МБ.".into())
         }
         Err(AvatarUploadError::BadType) => {
             bad_request("Допустимые форматы: JPEG, PNG, WebP.".into())
         }
-        Err(AvatarUploadError::Unreadable) => bad_request(
-            "Файл не является корректным изображением (JPEG, PNG или WebP).".into(),
-        ),
+        Err(AvatarUploadError::Unreadable) => {
+            bad_request("Файл не является корректным изображением (JPEG, PNG или WebP).".into())
+        }
     }
 }
 
@@ -913,7 +927,9 @@ async fn delete_avatar(
     }
 }
 
-async fn parse_avatar_file(mut multipart: Multipart) -> Result<Option<AvatarUploadInput>, Response> {
+async fn parse_avatar_file(
+    mut multipart: Multipart,
+) -> Result<Option<AvatarUploadInput>, Response> {
     let mut content_type = String::new();
     let mut bytes = Vec::new();
     while let Some(field) = multipart.next_field().await.map_err(multipart_bad)? {
@@ -1051,9 +1067,7 @@ async fn get_user_by_username(
         .map(|p| p.display_name.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| account.username.clone());
-    let avatar_uuid = profile
-        .and_then(|p| p.avatar_uuid)
-        .map(|u| u.to_string());
+    let avatar_uuid = profile.and_then(|p| p.avatar_uuid).map(|u| u.to_string());
 
     Json(UserByUsernameResponse {
         user_uuid: account.user_uuid,
@@ -1095,11 +1109,19 @@ fn format_utc(dt: DateTime<Utc>) -> String {
 }
 
 fn bad_request(msg: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": msg })),
+    )
+        .into_response()
 }
 
 fn not_found(msg: &'static str) -> Response {
-    (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": msg }))).into_response()
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": msg })),
+    )
+        .into_response()
 }
 
 fn internal(e: String) -> Response {

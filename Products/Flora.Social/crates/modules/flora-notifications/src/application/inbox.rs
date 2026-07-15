@@ -206,11 +206,18 @@ impl InboxService {
         for uuid in self.client_platforms.list_user_uuids(platform).await? {
             audience.insert(uuid);
         }
-        for uuid in self.push_tokens.list_user_uuids_by_platform(platform).await? {
+        for uuid in self
+            .push_tokens
+            .list_user_uuids_by_platform(platform)
+            .await?
+        {
             audience.insert(uuid);
         }
 
-        Ok(active.into_iter().filter(|u| audience.contains(u)).collect())
+        Ok(active
+            .into_iter()
+            .filter(|u| audience.contains(u))
+            .collect())
     }
 }
 

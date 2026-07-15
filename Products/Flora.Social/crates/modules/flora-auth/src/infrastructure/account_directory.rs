@@ -37,10 +37,7 @@ impl AccountDirectory for SqlAccountDirectory {
         })
     }
 
-    fn find_uuid_by_username(
-        &self,
-        username: &str,
-    ) -> BoxFuture<'_, Result<Option<Uuid>, String>> {
+    fn find_uuid_by_username(&self, username: &str) -> BoxFuture<'_, Result<Option<Uuid>, String>> {
         let username = username.to_string();
         Box::pin(async move {
             self.repo

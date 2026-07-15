@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use flora_messaging_contracts::{ConversationPeerRow, DeleteConversationOutcome, DeleteMessageOutcome};
+use flora_messaging_contracts::{
+    ConversationPeerRow, DeleteConversationOutcome, DeleteMessageOutcome,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -104,9 +106,7 @@ impl MessagingRepo {
                 } else {
                     last.enc_receiver
                 };
-                let last_content = last
-                    .content
-                    .filter(|c| !c.is_empty());
+                let last_content = last.content.filter(|c| !c.is_empty());
                 ConversationPeerRow {
                     other_user_uuid: other,
                     last_message_uuid: last.message_uuid,
@@ -251,9 +251,18 @@ impl MessagingRepo {
                     created_at: m.created_at,
                     is_read: m.is_read,
                     is_from_me,
-                    voice_asset_uuids: voice_by_msg.get(&m.message_uuid).cloned().unwrap_or_default(),
-                    image_asset_uuids: image_by_msg.get(&m.message_uuid).cloned().unwrap_or_default(),
-                    video_asset_uuids: video_by_msg.get(&m.message_uuid).cloned().unwrap_or_default(),
+                    voice_asset_uuids: voice_by_msg
+                        .get(&m.message_uuid)
+                        .cloned()
+                        .unwrap_or_default(),
+                    image_asset_uuids: image_by_msg
+                        .get(&m.message_uuid)
+                        .cloned()
+                        .unwrap_or_default(),
+                    video_asset_uuids: video_by_msg
+                        .get(&m.message_uuid)
+                        .cloned()
+                        .unwrap_or_default(),
                 }
             })
             .collect())
@@ -446,11 +455,7 @@ impl MessagingRepo {
         Ok(())
     }
 
-    pub async fn mark_read(
-        &self,
-        viewer_uuid: Uuid,
-        other_user_uuid: Uuid,
-    ) -> Result<(), String> {
+    pub async fn mark_read(&self, viewer_uuid: Uuid, other_user_uuid: Uuid) -> Result<(), String> {
         sqlx::query(
             r#"
             UPDATE flora_core.user_messages
@@ -490,8 +495,10 @@ impl MessagingRepo {
             return Ok(DeleteMessageOutcome::NotFound);
         };
 
-        let msg_conv =
-            flora_shared::uuid_v5::dm_conversation_uuid(&msg.sender_user_uuid, &msg.receiver_user_uuid);
+        let msg_conv = flora_shared::uuid_v5::dm_conversation_uuid(
+            &msg.sender_user_uuid,
+            &msg.receiver_user_uuid,
+        );
         if msg_conv != conversation_uuid {
             return Ok(DeleteMessageOutcome::NotFound);
         }

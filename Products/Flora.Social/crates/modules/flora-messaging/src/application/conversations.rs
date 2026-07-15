@@ -5,10 +5,10 @@ use std::sync::Arc;
 use chrono::{DateTime, SecondsFormat, Utc};
 use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
-    ConversationListItemDto, ConversationsPageDto, DeleteConversationOutcome,
-    DeleteMessageOutcome, LegacyConversationListItemDto, LegacyMessageThreadItemDto,
-    LegacySendMessageRequest, LegacySendMessageResultDto, MessageItemDto, MessageSentNotifier,
-    MessageSentPushContext, MessagesPageDto, PostConversationMessageRequest, SendMessageResultDto,
+    ConversationListItemDto, ConversationsPageDto, DeleteConversationOutcome, DeleteMessageOutcome,
+    LegacyConversationListItemDto, LegacyMessageThreadItemDto, LegacySendMessageRequest,
+    LegacySendMessageResultDto, MessageItemDto, MessageSentNotifier, MessageSentPushContext,
+    MessagesPageDto, PostConversationMessageRequest, SendMessageResultDto,
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
@@ -101,10 +101,8 @@ impl ConversationService {
         let last_seen = self.presence.last_seen_by_uuids(&other_uuids).await?;
 
         let user_by: std::collections::HashMap<_, _> = usernames.into_iter().collect();
-        let prof_by: std::collections::HashMap<_, _> = profiles
-            .into_iter()
-            .map(|p| (p.user_uuid, p))
-            .collect();
+        let prof_by: std::collections::HashMap<_, _> =
+            profiles.into_iter().map(|p| (p.user_uuid, p)).collect();
         let seen_by: std::collections::HashMap<_, _> = last_seen.into_iter().collect();
 
         let utc_now = Utc::now();
@@ -233,11 +231,9 @@ impl ConversationService {
             ));
         }
 
-        let receiver_uuid = fscp_core::try_extract_receiver(
-            &request.encrypted_for_receiver,
-            sender_uuid,
-        )
-        .map_err(SendMessageError::BadRequest)?;
+        let receiver_uuid =
+            fscp_core::try_extract_receiver(&request.encrypted_for_receiver, sender_uuid)
+                .map_err(SendMessageError::BadRequest)?;
 
         let expected_conv = dm_conversation_uuid(&sender_uuid, &receiver_uuid);
         if expected_conv != conversation_uuid {
@@ -384,10 +380,8 @@ impl ConversationService {
         let last_seen = self.presence.last_seen_by_uuids(&other_uuids).await?;
 
         let user_by: std::collections::HashMap<_, _> = usernames.into_iter().collect();
-        let prof_by: std::collections::HashMap<_, _> = profiles
-            .into_iter()
-            .map(|p| (p.user_uuid, p))
-            .collect();
+        let prof_by: std::collections::HashMap<_, _> =
+            profiles.into_iter().map(|p| (p.user_uuid, p)).collect();
         let seen_by: std::collections::HashMap<_, _> = last_seen.into_iter().collect();
 
         let utc_now = Utc::now();
@@ -544,9 +538,9 @@ impl ConversationService {
                 encrypted_for_me: r.encrypted_for_me,
                 created_at: r.created_at,
             }),
-            Err(SendMessageError::NotFound(_)) => Err(SendMessageError::NotFound(
-                "Пользователь не найден.".into(),
-            )),
+            Err(SendMessageError::NotFound(_)) => {
+                Err(SendMessageError::NotFound("Пользователь не найден.".into()))
+            }
             Err(e) => Err(e),
         }
     }

@@ -456,12 +456,10 @@ impl AuthRepo {
     }
 
     pub async fn delete_pending(&self, verification_token: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "DELETE FROM flora_core.pending_registrations WHERE verification_token = $1",
-        )
-        .bind(verification_token)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("DELETE FROM flora_core.pending_registrations WHERE verification_token = $1")
+            .bind(verification_token)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -514,10 +512,7 @@ impl AuthRepo {
         Ok(())
     }
 
-    pub async fn get_password_hash(
-        &self,
-        user_uuid: Uuid,
-    ) -> Result<Option<String>, sqlx::Error> {
+    pub async fn get_password_hash(&self, user_uuid: Uuid) -> Result<Option<String>, sqlx::Error> {
         sqlx::query_scalar(
             r#"
             SELECT password_hash
@@ -803,10 +798,7 @@ impl AuthRepo {
         .await
     }
 
-    pub async fn find_uuid_by_username(
-        &self,
-        username: &str,
-    ) -> Result<Option<Uuid>, sqlx::Error> {
+    pub async fn find_uuid_by_username(&self, username: &str) -> Result<Option<Uuid>, sqlx::Error> {
         sqlx::query_scalar(
             r#"
             SELECT user_uuid

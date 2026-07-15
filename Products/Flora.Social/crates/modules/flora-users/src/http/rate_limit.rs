@@ -38,10 +38,7 @@ impl FixedWindowLimiter {
 }
 
 pub fn client_ip_key(headers: &HeaderMap) -> String {
-    if let Some(forwarded) = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-    {
+    if let Some(forwarded) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
         if let Some(first) = forwarded.split(',').map(str::trim).find(|s| !s.is_empty()) {
             return first.to_string();
         }
@@ -50,8 +47,5 @@ pub fn client_ip_key(headers: &HeaderMap) -> String {
 }
 
 pub fn default_upload_limiter() -> std::sync::Arc<FixedWindowLimiter> {
-    std::sync::Arc::new(FixedWindowLimiter::new(
-        30,
-        Duration::from_secs(10 * 60),
-    ))
+    std::sync::Arc::new(FixedWindowLimiter::new(30, Duration::from_secs(10 * 60)))
 }

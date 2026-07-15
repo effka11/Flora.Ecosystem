@@ -241,7 +241,11 @@ pub async fn add_pending_device(
     Path(key_epoch_id): Path<uuid::Uuid>,
     Json(body): Json<AddPendingDeviceRequestDto>,
 ) -> Response {
-    match state.epochs.add_pending_device(user.0, key_epoch_id, body).await {
+    match state
+        .epochs
+        .add_pending_device(user.0, key_epoch_id, body)
+        .await
+    {
         Ok(dto) => Json(dto).into_response(),
         Err(AddPendingDeviceError::AccountNotInRequiredState(msg)) => (
             StatusCode::FORBIDDEN,

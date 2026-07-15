@@ -5,9 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
-use fira_core::communities::{
-    CommunityCandidate, CommunityRecommendationOptions, score,
-};
+use fira_core::communities::{CommunityCandidate, CommunityRecommendationOptions, score};
 use flora_shared::ordinal::cmp_ordinal_ignore_case;
 use flora_users_contracts::FollowGraphReader;
 use serde_json::{Value, json};
@@ -50,11 +48,7 @@ impl CommunityRecommendationService {
         }
     }
 
-    pub async fn get_recommended(
-        &self,
-        user_uuid: Uuid,
-        take: i32,
-    ) -> Result<Value, String> {
+    pub async fn get_recommended(&self, user_uuid: Uuid, take: i32) -> Result<Value, String> {
         let take = take.clamp(1, 100);
         let snapshot = self.get_or_compute_snapshot(user_uuid).await?;
         let items: Vec<Value> = snapshot.items.into_iter().take(take as usize).collect();

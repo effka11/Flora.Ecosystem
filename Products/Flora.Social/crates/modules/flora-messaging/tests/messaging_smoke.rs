@@ -79,7 +79,10 @@ async fn unread_count_and_conversations() {
     let unread_body: serde_json::Value = unread.json().await.expect("json");
     assert_eq!(unread_status, reqwest::StatusCode::OK, "{unread_body}");
     assert!(
-        unread_body.get("unreadCount").and_then(|v| v.as_i64()).is_some(),
+        unread_body
+            .get("unreadCount")
+            .and_then(|v| v.as_i64())
+            .is_some(),
         "{unread_body}"
     );
 
@@ -97,7 +100,8 @@ async fn unread_count_and_conversations() {
     assert!(conv_body.get("nextCursor").is_some());
 
     // GET messages: existing conversation or empty DM via otherUserUuid.
-    let (conv_uuid, other_uuid) = if let Some(items) = conv_body.get("items").and_then(|v| v.as_array())
+    let (conv_uuid, other_uuid) = if let Some(items) =
+        conv_body.get("items").and_then(|v| v.as_array())
         && let Some(first) = items.first()
     {
         let cu = first
@@ -143,7 +147,9 @@ async fn unread_count_and_conversations() {
     // Unknown conversation → 404.
     let bogus = Uuid::now_v7();
     let not_found = client
-        .get(gateway(&format!("/api/messaging/conversations/{bogus}/messages")))
+        .get(gateway(&format!(
+            "/api/messaging/conversations/{bogus}/messages"
+        )))
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .await
@@ -152,7 +158,9 @@ async fn unread_count_and_conversations() {
 
     // POST message without wire → 400.
     let bad_post = client
-        .post(gateway(&format!("/api/messaging/conversations/{conv_uuid}/messages")))
+        .post(gateway(&format!(
+            "/api/messaging/conversations/{conv_uuid}/messages"
+        )))
         .header("Authorization", format!("Bearer {token}"))
         .json(&serde_json::json!({
             "encryptedForReceiver": "",

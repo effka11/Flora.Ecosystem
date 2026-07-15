@@ -46,7 +46,9 @@ impl RefreshService {
             .find_active_session_by_refresh(token, now)
             .await
             .map_err(|e| RefreshError::Internal(e.to_string()))?
-            .ok_or(RefreshError::Unauthorized("Invalid or expired refresh token."))?;
+            .ok_or(RefreshError::Unauthorized(
+                "Invalid or expired refresh token.",
+            ))?;
 
         let identity = self
             .repo

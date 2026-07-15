@@ -184,13 +184,15 @@ async fn search_and_follow_roundtrip() {
     assert_eq!(search_status, reqwest::StatusCode::OK, "{search_body}");
     assert!(search_body.is_array());
 
-    let target_username = std::env::var("FLORA_USERS_SMOKE_TARGET_USERNAME").ok().or_else(|| {
-        search_body
-            .as_array()
-            .and_then(|arr| arr.first())
-            .and_then(|row| row["username"].as_str())
-            .map(str::to_string)
-    });
+    let target_username = std::env::var("FLORA_USERS_SMOKE_TARGET_USERNAME")
+        .ok()
+        .or_else(|| {
+            search_body
+                .as_array()
+                .and_then(|arr| arr.first())
+                .and_then(|row| row["username"].as_str())
+                .map(str::to_string)
+        });
     let Some(target_username) = target_username else {
         eprintln!("skip follow roundtrip: no FLORA_USERS_SMOKE_TARGET_USERNAME and empty search");
         return;

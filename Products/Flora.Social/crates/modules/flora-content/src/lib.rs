@@ -15,7 +15,9 @@ use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
 use flora_notifications_contracts::UserNotificationDispatcher;
-use flora_users_contracts::{BidirectionalBlocklist, FeedAuthorProfiles, FollowGraphReader, ProfileAccess};
+use flora_users_contracts::{
+    BidirectionalBlocklist, FeedAuthorProfiles, FollowGraphReader, ProfileAccess,
+};
 use sqlx::PgPool;
 
 use crate::application::comments::CommentsService;
@@ -73,11 +75,7 @@ pub fn compose(
     notifications: Arc<dyn UserNotificationDispatcher>,
 ) -> ContentModule {
     let repo = Arc::new(ContentRepo::new(pool));
-    let feed = Arc::new(FeedService::new(
-        repo.clone(),
-        follow.clone(),
-        blocklist,
-    ));
+    let feed = Arc::new(FeedService::new(repo.clone(), follow.clone(), blocklist));
     let recommendations = Arc::new(CommunityRecommendationService::new(
         repo.clone(),
         follow.clone(),

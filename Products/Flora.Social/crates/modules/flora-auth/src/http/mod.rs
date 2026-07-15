@@ -54,7 +54,10 @@ pub fn protected_router(state: AuthState) -> Router {
     let sensitive = account_sensitive_limiter();
     Router::new()
         .route("/api/auth/me/sessions", get(list_my_sessions))
-        .route("/api/auth/me/sessions/others", delete(revoke_other_sessions))
+        .route(
+            "/api/auth/me/sessions/others",
+            delete(revoke_other_sessions),
+        )
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me/security", get(get_my_security))
         .route("/api/auth/me/password", patch(change_password))
@@ -109,7 +112,11 @@ async fn revoke_other_sessions(
     State(state): State<AuthState>,
     Extension(user): Extension<AuthUser>,
 ) -> Response {
-    match state.sessions.revoke_others(user.user_uuid, &user.jti).await {
+    match state
+        .sessions
+        .revoke_others(user.user_uuid, &user.jti)
+        .await
+    {
         Ok(revoked) => Json(RevokeOthersResponse { revoked }).into_response(),
         Err(e) => {
             tracing::error!(error = %e, "revoke other sessions failed");
@@ -122,10 +129,7 @@ async fn revoke_other_sessions(
     }
 }
 
-async fn logout(
-    State(state): State<AuthState>,
-    Extension(user): Extension<AuthUser>,
-) -> Response {
+async fn logout(State(state): State<AuthState>, Extension(user): Extension<AuthUser>) -> Response {
     match state.sessions.logout_current(&user.jti).await {
         Ok(()) => StatusCode::OK.into_response(),
         Err(e) => {
@@ -188,12 +192,16 @@ async fn change_password(
         .await
     {
         Ok(()) => Json(serde_json::json!({ "message": "Пароль изменён." })).into_response(),
-        Err(ChangePasswordError::BadRequest(msg)) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
-        Err(ChangePasswordError::NotFound(msg)) => {
-            (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
+        Err(ChangePasswordError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(ChangePasswordError::NotFound(msg)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
         Err(ChangePasswordError::Internal(e)) => {
             tracing::error!(error = %e, "change password failed");
             (
@@ -216,12 +224,16 @@ async fn delete_account(
         .await
     {
         Ok(()) => Json(serde_json::json!({ "message": "Аккаунт удалён." })).into_response(),
-        Err(DeleteAccountError::BadRequest(msg)) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
-        Err(DeleteAccountError::NotFound(msg)) => {
-            (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
+        Err(DeleteAccountError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(DeleteAccountError::NotFound(msg)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
         Err(DeleteAccountError::Internal(e)) => {
             tracing::error!(error = %e, "delete account failed");
             (
@@ -285,12 +297,16 @@ pub struct DisableTwoFactorRequest {
 
 fn security_mutation_response(err: SecurityMutationError) -> Response {
     match err {
-        SecurityMutationError::BadRequest(msg) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
-        SecurityMutationError::Conflict(msg) => {
-            (StatusCode::CONFLICT, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
+        SecurityMutationError::BadRequest(msg) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        SecurityMutationError::Conflict(msg) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
         SecurityMutationError::Internal(e) => {
             tracing::error!(error = %e, "account security mutation failed");
             (
@@ -475,16 +491,16 @@ async fn refresh(
     let token = body.refresh_token.unwrap_or_default();
     match state.refresh.refresh(&token).await {
         Ok(resp) => Json(resp).into_response(),
-        Err(RefreshError::BadRequest(msg)) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
-        Err(RefreshError::Unauthorized(msg)) => {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({ "error": msg })),
-            )
-                .into_response()
-        }
+        Err(RefreshError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(RefreshError::Unauthorized(msg)) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
         Err(RefreshError::Internal(e)) => {
             tracing::error!(error = %e, "refresh failed");
             (
@@ -514,16 +530,16 @@ async fn login(
         .await
     {
         Ok(resp) => Json(resp).into_response(),
-        Err(LoginError::BadRequest(msg)) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
-        Err(LoginError::Unauthorized(msg)) => {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({ "error": msg })),
-            )
-                .into_response()
-        }
+        Err(LoginError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(LoginError::Unauthorized(msg)) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
         Err(LoginError::TwoFactor(challenge)) => Json(challenge).into_response(),
         Err(LoginError::Internal(e)) => {
             tracing::error!(error = %e, "login failed");
@@ -547,12 +563,16 @@ async fn register(
         .await
     {
         Ok(resp) => Json(resp).into_response(),
-        Err(RegisterBeginError::BadRequest(msg)) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
-        Err(RegisterBeginError::Conflict(msg)) => {
-            (StatusCode::CONFLICT, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
+        Err(RegisterBeginError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(RegisterBeginError::Conflict(msg)) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
         Err(RegisterBeginError::Internal(e)) => {
             tracing::error!(error = %e, "register begin failed");
             (
@@ -587,19 +607,21 @@ async fn verify_registration(
         .await
     {
         Ok(resp) => Json(resp).into_response(),
-        Err(RegisterVerifyError::BadRequest(msg)) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
-        Err(RegisterVerifyError::Conflict(msg)) => {
-            (StatusCode::CONFLICT, Json(serde_json::json!({ "error": msg }))).into_response()
-        }
-        Err(RegisterVerifyError::Unauthorized(msg)) => {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({ "error": msg })),
-            )
-                .into_response()
-        }
+        Err(RegisterVerifyError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(RegisterVerifyError::Conflict(msg)) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(RegisterVerifyError::Unauthorized(msg)) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
         Err(RegisterVerifyError::Internal(e)) => {
             tracing::error!(error = %e, "verify registration failed");
             (

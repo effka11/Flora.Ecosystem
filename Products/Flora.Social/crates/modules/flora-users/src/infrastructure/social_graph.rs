@@ -112,13 +112,11 @@ impl BidirectionalBlocklist for SqlSocialGraph {
             .map_err(|e| e.to_string())?;
             Ok(rows
                 .into_iter()
-                .map(|(owner, blocked)| {
-                    if owner == user_uuid {
-                        blocked
-                    } else {
-                        owner
-                    }
-                })
+                .map(
+                    |(owner, blocked)| {
+                        if owner == user_uuid { blocked } else { owner }
+                    },
+                )
                 .collect())
         })
     }

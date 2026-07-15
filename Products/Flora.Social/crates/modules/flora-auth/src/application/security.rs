@@ -55,7 +55,9 @@ impl SecurityService {
     ) -> Result<EmailChangeBeginResponse, SecurityMutationError> {
         let email = new_email.trim().to_lowercase();
         if email.is_empty() || !email.contains('@') {
-            return Err(SecurityMutationError::BadRequest("Укажите корректный email."));
+            return Err(SecurityMutationError::BadRequest(
+                "Укажите корректный email.",
+            ));
         }
         if password.trim().is_empty() {
             return Err(SecurityMutationError::BadRequest("Укажите пароль."));
@@ -79,12 +81,7 @@ impl SecurityService {
             return Err(SecurityMutationError::BadRequest("Неверный пароль."));
         }
 
-        let current = account
-            .email
-            .as_deref()
-            .unwrap_or("")
-            .trim()
-            .to_lowercase();
+        let current = account.email.as_deref().unwrap_or("").trim().to_lowercase();
         if current == email {
             return Err(SecurityMutationError::BadRequest(
                 "Новый email совпадает с текущим.",
@@ -147,13 +144,15 @@ impl SecurityService {
             .map_err(SecurityMutationError::Internal)?;
 
         if !validation.success() {
-            return Err(if validation.status == ChallengeValidateStatus::CodeMismatch {
-                SecurityMutationError::BadRequest("Неверный код подтверждения.")
-            } else {
-                SecurityMutationError::BadRequest(
-                    "Запрос на смену email истёк. Начните заново.",
-                )
-            });
+            return Err(
+                if validation.status == ChallengeValidateStatus::CodeMismatch {
+                    SecurityMutationError::BadRequest("Неверный код подтверждения.")
+                } else {
+                    SecurityMutationError::BadRequest(
+                        "Запрос на смену email истёк. Начните заново.",
+                    )
+                },
+            );
         }
 
         let Some(target) = validation.target.filter(|t| !t.trim().is_empty()) else {
@@ -324,10 +323,7 @@ impl SecurityService {
             return Err(SecurityMutationError::BadRequest("Аккаунт не найден."));
         };
 
-        let Some(secret) = account
-            .two_factor_secret
-            .filter(|s| !s.trim().is_empty())
-        else {
+        let Some(secret) = account.two_factor_secret.filter(|s| !s.trim().is_empty()) else {
             return Err(SecurityMutationError::BadRequest(
                 "Сначала начните настройку 2FA.",
             ));
@@ -338,11 +334,9 @@ impl SecurityService {
 
         let code_owned = code.to_string();
         let secret_owned = secret;
-        let ok = tokio::task::spawn_blocking(move || {
-            verify_totp(Some(&secret_owned), &code_owned)
-        })
-        .await
-        .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
+        let ok = tokio::task::spawn_blocking(move || verify_totp(Some(&secret_owned), &code_owned))
+            .await
+            .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
         if !ok {
             return Err(SecurityMutationError::BadRequest(
                 "Неверный код из приложения.",
@@ -381,10 +375,7 @@ impl SecurityService {
             return Err(SecurityMutationError::BadRequest("Аккаунт не найден."));
         };
 
-        let Some(secret) = account
-            .two_factor_secret
-            .filter(|s| !s.trim().is_empty())
-        else {
+        let Some(secret) = account.two_factor_secret.filter(|s| !s.trim().is_empty()) else {
             return Err(SecurityMutationError::BadRequest("2FA не включена."));
         };
         if !account.two_factor_enabled {
@@ -402,11 +393,9 @@ impl SecurityService {
 
         let code_owned = code.to_string();
         let secret_owned = secret;
-        let ok = tokio::task::spawn_blocking(move || {
-            verify_totp(Some(&secret_owned), &code_owned)
-        })
-        .await
-        .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
+        let ok = tokio::task::spawn_blocking(move || verify_totp(Some(&secret_owned), &code_owned))
+            .await
+            .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
         if !ok {
             return Err(SecurityMutationError::BadRequest(
                 "Неверный код из приложения.",

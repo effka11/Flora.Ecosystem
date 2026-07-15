@@ -4,12 +4,13 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use flora_notifications_contracts::{
-    BoxFuture, CreateUserNotificationCommand, RealtimeNotificationSignal, UserNotificationDispatcher,
+    BoxFuture, CreateUserNotificationCommand, RealtimeNotificationSignal,
+    UserNotificationDispatcher,
 };
 use flora_shared::flora_uuid::new_uuid;
 
-use crate::application::platform::{normalize_category, normalize_type};
 use crate::application::UserRealtimePublisher;
+use crate::application::platform::{normalize_category, normalize_type};
 use crate::infrastructure::InboxRepo;
 
 pub struct InboxNotificationDispatcher {

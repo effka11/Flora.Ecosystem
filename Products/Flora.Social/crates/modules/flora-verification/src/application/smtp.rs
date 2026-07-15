@@ -86,7 +86,8 @@ impl SmtpVerificationCodeSender {
             }
             info!(
                 email,
-                code, "SMTP is not configured — email not sent. Verification code logged for Development."
+                code,
+                "SMTP is not configured — email not sent. Verification code logged for Development."
             );
             return Ok(());
         }
@@ -133,13 +134,10 @@ impl SmtpVerificationCodeSender {
             builder.build()
         };
 
-        mailer
-            .send(message)
-            .await
-            .map_err(|e| {
-                warn!(error = %e, "SMTP send failed");
-                SendError::Smtp(e.to_string())
-            })?;
+        mailer.send(message).await.map_err(|e| {
+            warn!(error = %e, "SMTP send failed");
+            SendError::Smtp(e.to_string())
+        })?;
         Ok(())
     }
 }

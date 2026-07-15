@@ -68,15 +68,7 @@ impl DraftsService {
         let draft_uuid = new_uuid();
         let now = Utc::now();
         self.repo
-            .insert_post_draft(
-                draft_uuid,
-                author,
-                community_id,
-                &label,
-                content,
-                now,
-                now,
-            )
+            .insert_post_draft(draft_uuid, author, community_id, &label, content, now, now)
             .await
             .map_err(|e| e.to_string())?;
         Ok(Ok(draft_json(PostDraftRow {
@@ -126,12 +118,7 @@ impl DraftsService {
         }
         draft.updated_at = Utc::now();
         self.repo
-            .update_post_draft(
-                draft_uuid,
-                &draft.label,
-                &draft.content,
-                draft.updated_at,
-            )
+            .update_post_draft(draft_uuid, &draft.label, &draft.content, draft.updated_at)
             .await
             .map_err(|e| e.to_string())?;
         Ok(Ok(draft_json(PostDraftRow {

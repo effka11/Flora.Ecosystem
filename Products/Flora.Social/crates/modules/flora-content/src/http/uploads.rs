@@ -6,9 +6,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use uuid::Uuid;
 
-use crate::application::post_images::{
-    MAX_POST_IMAGES_COUNT, UploadPostImagesError, UploadedFile,
-};
+use crate::application::post_images::{MAX_POST_IMAGES_COUNT, UploadPostImagesError, UploadedFile};
 use crate::application::post_videos::{UploadPostVideoError, UploadedVideoFile};
 use crate::http::rate_limit::client_ip_key;
 use crate::http::{ContentState, CurrentUser};
@@ -31,11 +29,7 @@ pub async fn upload_post_images(
         Err(resp) => return resp,
     };
 
-    match state
-        .post_images
-        .upload(user.0, post_uuid, files)
-        .await
-    {
+    match state.post_images.upload(user.0, post_uuid, files).await {
         Ok(Ok(body)) => Json(body).into_response(),
         Ok(Err(UploadPostImagesError::NotFound)) => (
             StatusCode::NOT_FOUND,
@@ -103,10 +97,7 @@ async fn parse_post_image_files(mut multipart: Multipart) -> Result<Vec<Uploaded
         if name != "files" {
             continue;
         }
-        let content_type = field
-            .content_type()
-            .map(str::to_string)
-            .unwrap_or_default();
+        let content_type = field.content_type().map(str::to_string).unwrap_or_default();
         let bytes = field.bytes().await.map_err(multipart_bad)?;
         files.push(UploadedFile {
             content_type,
@@ -220,10 +211,7 @@ async fn parse_post_video_file(
             continue;
         }
         let file_name = field.file_name().unwrap_or("").to_string();
-        let content_type = field
-            .content_type()
-            .map(str::to_string)
-            .unwrap_or_default();
+        let content_type = field.content_type().map(str::to_string).unwrap_or_default();
         let bytes = field.bytes().await.map_err(video_multipart_bad)?;
         return Ok(Some(UploadedVideoFile {
             file_name,
@@ -333,10 +321,7 @@ async fn parse_community_avatar_file(
         if name != "file" {
             continue;
         }
-        let content_type = field
-            .content_type()
-            .map(str::to_string)
-            .unwrap_or_default();
+        let content_type = field.content_type().map(str::to_string).unwrap_or_default();
         let bytes = field.bytes().await.map_err(avatar_multipart_bad)?;
         return Ok(Some(CommunityAvatarUpload {
             content_type,

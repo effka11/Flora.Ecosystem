@@ -27,9 +27,8 @@ fn gateway_sessions_url() -> String {
 }
 
 fn gateway_revoke_others_url() -> String {
-    std::env::var("FLORA_AUTH_REVOKE_OTHERS_URL").unwrap_or_else(|_| {
-        "http://127.0.0.1:5290/api/auth/me/sessions/others".into()
-    })
+    std::env::var("FLORA_AUTH_REVOKE_OTHERS_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/sessions/others".into())
 }
 
 fn gateway_logout_url() -> String {
@@ -362,7 +361,10 @@ async fn revoke_others_keeps_current_session() {
         .await
         .expect("json");
     let before_count = before.as_array().map(|a| a.len()).unwrap_or(0);
-    assert!(before_count >= 2, "expected ≥2 sessions before revoke: {before}");
+    assert!(
+        before_count >= 2,
+        "expected ≥2 sessions before revoke: {before}"
+    );
 
     let res = client
         .delete(gateway_revoke_others_url())
@@ -445,13 +447,12 @@ async fn logout_revokes_current_session() {
         "logout should be empty 200, got {body:?}"
     );
 
-    let status: i32 = sqlx::query_scalar(
-        "SELECT status FROM flora_core.user_sessions WHERE jwt_id = $1",
-    )
-    .bind(&jti)
-    .fetch_one(&pool)
-    .await
-    .expect("session status");
+    let status: i32 =
+        sqlx::query_scalar("SELECT status FROM flora_core.user_sessions WHERE jwt_id = $1")
+            .bind(&jti)
+            .fetch_one(&pool)
+            .await
+            .expect("session status");
     assert_eq!(status, 4, "RevokedUser after logout");
 }
 
@@ -645,14 +646,13 @@ async fn login_wrong_password_is_unauthorized() {
     let user = smoke_user_uuid();
     let cfg = load_config();
     let pool = connect_pool(&cfg).await;
-    let email: Option<String> = sqlx::query_scalar(
-        "SELECT email FROM flora_core.user_accounts WHERE user_uuid = $1",
-    )
-    .bind(user)
-    .fetch_optional(&pool)
-    .await
-    .expect("email")
-    .flatten();
+    let email: Option<String> =
+        sqlx::query_scalar("SELECT email FROM flora_core.user_accounts WHERE user_uuid = $1")
+            .bind(user)
+            .fetch_optional(&pool)
+            .await
+            .expect("email")
+            .flatten();
     let Some(email) = email.filter(|e| !e.is_empty()) else {
         eprintln!("skip: smoke user has no email");
         return;
@@ -689,13 +689,12 @@ async fn login_success_with_env_password() {
     let user = smoke_user_uuid();
     let cfg = load_config();
     let pool = connect_pool(&cfg).await;
-    let email: String = sqlx::query_scalar(
-        "SELECT email FROM flora_core.user_accounts WHERE user_uuid = $1",
-    )
-    .bind(user)
-    .fetch_one(&pool)
-    .await
-    .expect("email");
+    let email: String =
+        sqlx::query_scalar("SELECT email FROM flora_core.user_accounts WHERE user_uuid = $1")
+            .bind(user)
+            .fetch_one(&pool)
+            .await
+            .expect("email");
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -747,10 +746,7 @@ async fn register_verify_cancel_roundtrip_dev_code() {
         eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
         return;
     }
-    let email = format!(
-        "smoke-reg-{}@flora.local",
-        Uuid::now_v7().as_simple()
-    );
+    let email = format!("smoke-reg-{}@flora.local", Uuid::now_v7().as_simple());
     let password = "SmokeReg-Pass-1!";
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
@@ -774,7 +770,10 @@ async fn register_verify_cancel_roundtrip_dev_code() {
         .as_str()
         .expect("verificationToken")
         .to_string();
-    let Some(code) = begin_body["devVerificationCode"].as_str().map(str::to_string) else {
+    let Some(code) = begin_body["devVerificationCode"]
+        .as_str()
+        .map(str::to_string)
+    else {
         // cancel draft so we don't leave pending; then skip (SMTP-only env)
         let _ = client
             .post(gateway_cancel_registration_url())
@@ -817,13 +816,12 @@ async fn register_verify_cancel_roundtrip_dev_code() {
     // cleanup account so smoke can re-run
     let cfg = load_config();
     let pool = connect_pool(&cfg).await;
-    let user_uuid: Uuid = sqlx::query_scalar(
-        "SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1",
-    )
-    .bind(&email)
-    .fetch_one(&pool)
-    .await
-    .expect("created user");
+    let user_uuid: Uuid =
+        sqlx::query_scalar("SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1")
+            .bind(&email)
+            .fetch_one(&pool)
+            .await
+            .expect("created user");
     let _ = sqlx::query("DELETE FROM flora_core.user_sessions WHERE user_uuid = $1")
         .bind(user_uuid)
         .execute(&pool)
@@ -881,8 +879,14 @@ async fn change_password_and_delete_account_roundtrip() {
         .await
         .expect("POST register");
     let begin_body: serde_json::Value = begin.json().await.expect("json");
-    let token = begin_body["verificationToken"].as_str().expect("token").to_string();
-    let Some(code) = begin_body["devVerificationCode"].as_str().map(str::to_string) else {
+    let token = begin_body["verificationToken"]
+        .as_str()
+        .expect("token")
+        .to_string();
+    let Some(code) = begin_body["devVerificationCode"]
+        .as_str()
+        .map(str::to_string)
+    else {
         let _ = client
             .post(gateway_cancel_registration_url())
             .json(&serde_json::json!({ "verificationToken": token }))
@@ -901,17 +905,19 @@ async fn change_password_and_delete_account_roundtrip() {
     let verify_status = verify.status();
     let verify_body: serde_json::Value = verify.json().await.expect("json");
     assert_eq!(verify_status, reqwest::StatusCode::OK, "{verify_body}");
-    let access = verify_body["accessToken"].as_str().expect("access").to_string();
+    let access = verify_body["accessToken"]
+        .as_str()
+        .expect("access")
+        .to_string();
 
     let cfg = load_config();
     let pool = connect_pool(&cfg).await;
-    let user_uuid: Uuid = sqlx::query_scalar(
-        "SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1",
-    )
-    .bind(&email)
-    .fetch_one(&pool)
-    .await
-    .expect("user");
+    let user_uuid: Uuid =
+        sqlx::query_scalar("SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1")
+            .bind(&email)
+            .fetch_one(&pool)
+            .await
+            .expect("user");
     let _ = insert_active_session(&pool, user_uuid).await;
     let before_others = count_active(&pool, user_uuid).await;
     assert!(before_others >= 2, "need ≥2 sessions, got {before_others}");
@@ -1013,8 +1019,14 @@ async fn email_phone_2fa_security_roundtrip() {
         .await
         .expect("register");
     let begin_body: serde_json::Value = begin.json().await.expect("json");
-    let token = begin_body["verificationToken"].as_str().expect("token").to_string();
-    let Some(code) = begin_body["devVerificationCode"].as_str().map(str::to_string) else {
+    let token = begin_body["verificationToken"]
+        .as_str()
+        .expect("token")
+        .to_string();
+    let Some(code) = begin_body["devVerificationCode"]
+        .as_str()
+        .map(str::to_string)
+    else {
         let _ = client
             .post(gateway_cancel_registration_url())
             .json(&serde_json::json!({ "verificationToken": token }))
@@ -1032,18 +1044,20 @@ async fn email_phone_2fa_security_roundtrip() {
     let verify_status = verify.status();
     let verify_body: serde_json::Value = verify.json().await.expect("json");
     assert_eq!(verify_status, reqwest::StatusCode::OK, "{verify_body}");
-    let access = verify_body["accessToken"].as_str().expect("access").to_string();
+    let access = verify_body["accessToken"]
+        .as_str()
+        .expect("access")
+        .to_string();
     let auth = format!("Bearer {access}");
 
     let cfg = load_config();
     let pool = connect_pool(&cfg).await;
-    let user_uuid: Uuid = sqlx::query_scalar(
-        "SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1",
-    )
-    .bind(&email)
-    .fetch_one(&pool)
-    .await
-    .expect("user");
+    let user_uuid: Uuid =
+        sqlx::query_scalar("SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1")
+            .bind(&email)
+            .fetch_one(&pool)
+            .await
+            .expect("user");
 
     // phone
     let phone_res = client
@@ -1056,13 +1070,12 @@ async fn email_phone_2fa_security_roundtrip() {
     let phone_status = phone_res.status();
     let phone_body: serde_json::Value = phone_res.json().await.expect("json");
     assert_eq!(phone_status, reqwest::StatusCode::OK, "{phone_body}");
-    let phone_db: String = sqlx::query_scalar(
-        "SELECT phone FROM flora_core.user_accounts WHERE user_uuid = $1",
-    )
-    .bind(user_uuid)
-    .fetch_one(&pool)
-    .await
-    .expect("phone");
+    let phone_db: String =
+        sqlx::query_scalar("SELECT phone FROM flora_core.user_accounts WHERE user_uuid = $1")
+            .bind(user_uuid)
+            .fetch_one(&pool)
+            .await
+            .expect("phone");
     assert_eq!(phone_db, "79001112233");
 
     // email change
@@ -1076,7 +1089,11 @@ async fn email_phone_2fa_security_roundtrip() {
         .expect("email change");
     let email_begin_status = email_begin.status();
     let email_begin_body: serde_json::Value = email_begin.json().await.expect("json");
-    assert_eq!(email_begin_status, reqwest::StatusCode::OK, "{email_begin_body}");
+    assert_eq!(
+        email_begin_status,
+        reqwest::StatusCode::OK,
+        "{email_begin_body}"
+    );
     let change_token = email_begin_body["changeToken"]
         .as_str()
         .expect("changeToken")

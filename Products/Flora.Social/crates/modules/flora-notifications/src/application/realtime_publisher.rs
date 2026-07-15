@@ -57,10 +57,7 @@ impl UserRealtimePublisher {
             return;
         }
 
-        let display_name = self
-            .display_names
-            .resolve(signal.sender_user_uuid)
-            .await;
+        let display_name = self.display_names.resolve(signal.sender_user_uuid).await;
         let body = match push_body.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => s.to_string(),
             None => "Новое сообщение".into(),

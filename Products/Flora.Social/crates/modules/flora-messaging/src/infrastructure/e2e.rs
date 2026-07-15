@@ -201,7 +201,12 @@ pub async fn put_key_backup(
 
         let existing_map: std::collections::HashMap<Uuid, String> = existing_epochs
             .into_iter()
-            .map(|r| (r.key_epoch_id, r.epoch_account_identity_public_key_base64url))
+            .map(|r| {
+                (
+                    r.key_epoch_id,
+                    r.epoch_account_identity_public_key_base64url,
+                )
+            })
             .collect();
 
         for entry in &request.epoch_identity_public_keys {

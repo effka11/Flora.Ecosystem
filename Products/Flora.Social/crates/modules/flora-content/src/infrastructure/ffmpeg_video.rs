@@ -145,10 +145,7 @@ impl FfmpegVideoTranscoder {
         .await
         {
             Ok((code, stdout, _)) => {
-                let ok = code == 0
-                    && stdout
-                        .to_ascii_lowercase()
-                        .contains("libsvtav1");
+                let ok = code == 0 && stdout.to_ascii_lowercase().contains("libsvtav1");
                 if !ok {
                     warn!(
                         "ffmpeg найден, но без энкодера libsvtav1 — загрузка видео постов недоступна."
@@ -295,10 +292,13 @@ impl FfmpegVideoTranscoder {
             "1",
             poster_str.as_ref(),
         ];
-        let (poster_code, _, poster_stderr) =
-            run_async(&self.ffmpeg_path(), &poster_args, DEFAULT_PROCESS_TIMEOUT_SECS)
-                .await
-                .map_err(|e| VideoTranscodeError::Transcode(e.message().to_string()))?;
+        let (poster_code, _, poster_stderr) = run_async(
+            &self.ffmpeg_path(),
+            &poster_args,
+            DEFAULT_PROCESS_TIMEOUT_SECS,
+        )
+        .await
+        .map_err(|e| VideoTranscodeError::Transcode(e.message().to_string()))?;
         if poster_code != 0 {
             return Err(VideoTranscodeError::Transcode(format!(
                 "ffmpeg (постер) завершился с кодом {poster_code}: {}",
@@ -326,14 +326,8 @@ impl FfmpegVideoTranscoder {
         })
     }
 
-    async fn try_h264_compat(
-        &self,
-        input_path: &Path,
-    ) -> (Option<Vec<u8>>, Option<String>) {
-        let h264_out = temp_path(&format!(
-            "flora-video-h264-{}.mp4",
-            Uuid::now_v7().simple()
-        ));
+    async fn try_h264_compat(&self, input_path: &Path) -> (Option<Vec<u8>>, Option<String>) {
+        let h264_out = temp_path(&format!("flora-video-h264-{}.mp4", Uuid::now_v7().simple()));
         let input_str = input_path.to_string_lossy();
         let out_str = h264_out.to_string_lossy();
         let scale_factor = format!("min(1,min({MAX_LONG_SIDE}/iw,{MAX_LONG_SIDE}/ih))");
@@ -386,10 +380,12 @@ impl FfmpegVideoTranscoder {
     }
 }
 
-async fn encode_poster_webp(poster_png_path: &Path) -> Result<(Vec<u8>, String), VideoTranscodeError> {
-    let bytes = tokio::fs::read(poster_png_path).await.map_err(|e| {
-        VideoTranscodeError::Transcode(format!("Не удалось прочитать постер: {e}"))
-    })?;
+async fn encode_poster_webp(
+    poster_png_path: &Path,
+) -> Result<(Vec<u8>, String), VideoTranscodeError> {
+    let bytes = tokio::fs::read(poster_png_path)
+        .await
+        .map_err(|e| VideoTranscodeError::Transcode(format!("Не удалось прочитать постер: {e}")))?;
 
     // ImageSharp: ResizeMode.Max 1280 + Lossy WebP q82.
     // crate `image` даёт только lossless WebP — resize паритетен, encode ближайший доступный.
@@ -417,9 +413,8 @@ fn resize_max(img: DynamicImage, max: u32) -> DynamicImage {
 }
 
 fn parse_probe_json(stdout: &str) -> Result<VideoProbeResult, VideoTranscodeError> {
-    let root: serde_json::Value = serde_json::from_str(stdout).map_err(|_| {
-        VideoTranscodeError::Probe("Не удалось разобрать вывод ffprobe.".into())
-    })?;
+    let root: serde_json::Value = serde_json::from_str(stdout)
+        .map_err(|_| VideoTranscodeError::Probe("Не удалось разобрать вывод ffprobe.".into()))?;
 
     let streams = root
         .get("streams")

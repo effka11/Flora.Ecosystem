@@ -148,15 +148,9 @@ impl E2eKeyBackupService {
             Ok(None) => {
                 let device_uuid = requested_device.unwrap_or_else(Uuid::now_v7);
                 let now = Utc::now();
-                insert_user_e2e_key(
-                    &self.pool,
-                    user_uuid,
-                    &public_key_base64,
-                    device_uuid,
-                    now,
-                )
-                .await
-                .map_err(|detail| SetE2ePublicKeyError::Internal { detail })?;
+                insert_user_e2e_key(&self.pool, user_uuid, &public_key_base64, device_uuid, now)
+                    .await
+                    .map_err(|detail| SetE2ePublicKeyError::Internal { detail })?;
                 Ok(SetE2ePublicKeyResponseDto {
                     message: "Ключ сохранён.".into(),
                     device_uuid: Some(device_uuid),
@@ -171,15 +165,9 @@ impl E2eKeyBackupService {
                     existing.device_uuid
                 };
                 let now = Utc::now();
-                update_user_e2e_key(
-                    &self.pool,
-                    user_uuid,
-                    &public_key_base64,
-                    device_uuid,
-                    now,
-                )
-                .await
-                .map_err(|detail| SetE2ePublicKeyError::Internal { detail })?;
+                update_user_e2e_key(&self.pool, user_uuid, &public_key_base64, device_uuid, now)
+                    .await
+                    .map_err(|detail| SetE2ePublicKeyError::Internal { detail })?;
                 Ok(SetE2ePublicKeyResponseDto {
                     message: "Ключ сохранён.".into(),
                     device_uuid,

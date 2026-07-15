@@ -13,10 +13,7 @@ impl SqlUserProfileQueries {
 }
 
 impl UserProfileReadQueries for SqlUserProfileQueries {
-    fn requires_profile_completion(
-        &self,
-        user_uuid: Uuid,
-    ) -> BoxFuture<'_, Result<bool, String>> {
+    fn requires_profile_completion(&self, user_uuid: Uuid) -> BoxFuture<'_, Result<bool, String>> {
         Box::pin(async move {
             let display_name: Option<Option<String>> = sqlx::query_scalar(
                 r#"

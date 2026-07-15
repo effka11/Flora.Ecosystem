@@ -13,14 +13,8 @@ pub struct UserDisplayNameResolver {
 }
 
 impl UserDisplayNameResolver {
-    pub fn new(
-        profiles: Arc<dyn UserProfileQueries>,
-        accounts: Arc<dyn AccountDirectory>,
-    ) -> Self {
-        Self {
-            profiles,
-            accounts,
-        }
+    pub fn new(profiles: Arc<dyn UserProfileQueries>, accounts: Arc<dyn AccountDirectory>) -> Self {
+        Self { profiles, accounts }
     }
 
     pub async fn resolve(&self, user_uuid: Uuid) -> String {

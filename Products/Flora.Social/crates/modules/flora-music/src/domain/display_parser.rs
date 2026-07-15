@@ -154,7 +154,10 @@ mod tests {
     #[test]
     fn single_artist() {
         assert_eq!(names_joiners(&parse("Solo")), vec![("Solo", NONE)]);
-        assert_eq!(names_joiners(&parse("  Flora Artist  ")), vec![("Flora Artist", NONE)]);
+        assert_eq!(
+            names_joiners(&parse("  Flora Artist  ")),
+            vec![("Flora Artist", NONE)]
+        );
     }
 
     #[test]

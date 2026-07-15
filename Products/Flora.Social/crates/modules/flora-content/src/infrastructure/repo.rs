@@ -465,11 +465,15 @@ impl ContentRepo {
         }
 
         let post_ids: Vec<Uuid> = window.iter().map(|w| w.post_uuid).collect();
-        let likes = self.count_engagement("post_likes", &post_ids, false).await?;
+        let likes = self
+            .count_engagement("post_likes", &post_ids, false)
+            .await?;
         let comments = self
             .count_engagement("post_comments", &post_ids, true)
             .await?;
-        let reposts = self.count_engagement("post_reposts", &post_ids, false).await?;
+        let reposts = self
+            .count_engagement("post_reposts", &post_ids, false)
+            .await?;
 
         let mut scored: Vec<(Uuid, DateTime<Utc>, f64)> = window
             .into_iter()
@@ -691,7 +695,10 @@ impl ContentRepo {
         Ok(result)
     }
 
-    pub async fn load_posts_ordered(&self, post_uuids: &[Uuid]) -> Result<Vec<PostRow>, sqlx::Error> {
+    pub async fn load_posts_ordered(
+        &self,
+        post_uuids: &[Uuid],
+    ) -> Result<Vec<PostRow>, sqlx::Error> {
         if post_uuids.is_empty() {
             return Ok(Vec::new());
         }
@@ -1216,7 +1223,11 @@ impl ContentRepo {
         .await
     }
 
-    pub async fn has_reposted(&self, post_uuid: Uuid, user_uuid: Uuid) -> Result<bool, sqlx::Error> {
+    pub async fn has_reposted(
+        &self,
+        post_uuid: Uuid,
+        user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
         sqlx::query_scalar(
             r#"
             SELECT EXISTS (
@@ -1916,10 +1927,12 @@ impl ContentRepo {
         .bind(uuid)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.filter(|r| !r.poster_data.is_empty()).map(|r| MediaBlob {
-            data: r.poster_data,
-            content_type: r.poster_content_type,
-        }))
+        Ok(row
+            .filter(|r| !r.poster_data.is_empty())
+            .map(|r| MediaBlob {
+                data: r.poster_data,
+                content_type: r.poster_content_type,
+            }))
     }
 
     pub async fn list_public_communities(&self) -> Result<Vec<CommunityRow>, sqlx::Error> {
@@ -2004,7 +2017,10 @@ impl ContentRepo {
         .await
     }
 
-    pub async fn community_by_id(&self, community_id: Uuid) -> Result<Option<CommunityRow>, sqlx::Error> {
+    pub async fn community_by_id(
+        &self,
+        community_id: Uuid,
+    ) -> Result<Option<CommunityRow>, sqlx::Error> {
         sqlx::query_as(
             r#"
             SELECT community_id, name, slug, avatar_uuid, is_private, created_at
@@ -2017,7 +2033,10 @@ impl ContentRepo {
         .await
     }
 
-    pub async fn community_meta(&self, community_id: Uuid) -> Result<Option<CommunityMeta>, sqlx::Error> {
+    pub async fn community_meta(
+        &self,
+        community_id: Uuid,
+    ) -> Result<Option<CommunityMeta>, sqlx::Error> {
         sqlx::query_as(
             r#"
             SELECT is_private
@@ -2385,10 +2404,7 @@ impl ContentRepo {
                 created_at: c.created_at,
                 member_count: member_counts.get(&c.community_id).copied().unwrap_or(0),
                 recent_post_count: recent_posts.get(&c.community_id).copied().unwrap_or(0),
-                followed_members_count: followed_members
-                    .get(&c.community_id)
-                    .copied()
-                    .unwrap_or(0),
+                followed_members_count: followed_members.get(&c.community_id).copied().unwrap_or(0),
             })
             .collect())
     }

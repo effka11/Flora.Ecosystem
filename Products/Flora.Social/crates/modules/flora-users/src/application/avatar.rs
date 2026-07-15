@@ -59,7 +59,8 @@ impl AvatarService {
         }
         let (data, stored_content_type) = match process_post_image(&file.bytes) {
             Ok(v) => v,
-            Err(PostImageProcessError::TooManyPixels) | Err(PostImageProcessError::InvalidFormat) => {
+            Err(PostImageProcessError::TooManyPixels)
+            | Err(PostImageProcessError::InvalidFormat) => {
                 return Err(AvatarUploadError::Unreadable);
             }
         };

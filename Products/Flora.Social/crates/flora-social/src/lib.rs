@@ -78,10 +78,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         .merge(music_router(cfg, pool))
         .merge(economy_router(cfg));
 
-    ProductComposition {
-        router,
-        background,
-    }
+    ProductComposition { router, background }
 }
 
 fn auth_router_with_directory(
@@ -93,7 +90,10 @@ fn auth_router_with_directory(
     Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
 ) {
     if cfg.get_bool("Auth:ServeNative") != Some(true) {
-        return (flora_auth::router(), pool.map(flora_auth::account_directory));
+        return (
+            flora_auth::router(),
+            pool.map(flora_auth::account_directory),
+        );
     }
     let Some(pool) = pool else {
         eprintln!("flora-auth: Auth:ServeNative=true, но PgPool недоступен — модуль офлайн");
@@ -103,7 +103,10 @@ fn auth_router_with_directory(
         eprintln!(
             "flora-auth: Auth:ServeNative=true, но VerificationBundle недоступен — модуль офлайн"
         );
-        return (flora_auth::router(), Some(flora_auth::account_directory(pool)));
+        return (
+            flora_auth::router(),
+            Some(flora_auth::account_directory(pool)),
+        );
     };
     let jwt = JwtOptions::from_config(cfg);
     let (profiles, provisioner) = flora_users::profile_ports(pool.clone());
@@ -208,7 +211,9 @@ fn messaging_router(
         return flora_messaging::router();
     }
     let Some(pool) = pool else {
-        eprintln!("flora-messaging: Messaging:ServeNative=true, но PgPool недоступен — модуль офлайн");
+        eprintln!(
+            "flora-messaging: Messaging:ServeNative=true, но PgPool недоступен — модуль офлайн"
+        );
         return flora_messaging::router();
     };
     let Some(accounts) = accounts else {

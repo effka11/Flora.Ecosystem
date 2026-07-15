@@ -10,7 +10,10 @@ pub fn is_reserved(raw: &str) -> bool {
         return false;
     }
     let lower = normalized.to_ascii_lowercase();
-    if reserved_data::EXACT.iter().any(|e| e.eq_ignore_ascii_case(&lower)) {
+    if reserved_data::EXACT
+        .iter()
+        .any(|e| e.eq_ignore_ascii_case(&lower))
+    {
         return true;
     }
     let collapsed: String = lower.chars().filter(|c| *c != '_').collect();

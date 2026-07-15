@@ -8,8 +8,8 @@ use flora_notifications_contracts::RealtimeMessageSignal;
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use uuid::Uuid;
 
-use crate::application::push_preview::build_push_preview;
 use crate::application::UserRealtimePublisher;
+use crate::application::push_preview::build_push_preview;
 
 pub struct MessagePushNotifier {
     realtime: Arc<UserRealtimePublisher>,

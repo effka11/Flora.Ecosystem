@@ -34,8 +34,7 @@ pub async fn get_conversations(
             let uuids: Vec<Uuid> = items.iter().map(|i| i.other_user_uuid).collect();
             let keys = state.e2e.public_keys_by_uuids(&uuids).await;
             for item in &mut items {
-                item.other_user_e2e_public_key_base64 =
-                    keys.get(&item.other_user_uuid).cloned();
+                item.other_user_e2e_public_key_base64 = keys.get(&item.other_user_uuid).cloned();
             }
             Json(items).into_response()
         }

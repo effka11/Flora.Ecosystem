@@ -42,11 +42,7 @@ impl ProfilePostsService {
         if normalized.is_empty() {
             return Ok(ProfilePostsOutcome::BadUsername);
         }
-        let Some(owner_uuid) = self
-            .accounts
-            .find_uuid_by_username(&normalized)
-            .await?
-        else {
+        let Some(owner_uuid) = self.accounts.find_uuid_by_username(&normalized).await? else {
             return Ok(ProfilePostsOutcome::NotFound);
         };
         if !self
@@ -73,8 +69,15 @@ impl ProfilePostsService {
         skip: i32,
         take: i32,
     ) -> Result<ProfilePostsOutcome, String> {
-        self.by_interaction(username, viewer, skip, take, ProfileAccessField::Likes, true)
-            .await
+        self.by_interaction(
+            username,
+            viewer,
+            skip,
+            take,
+            ProfileAccessField::Likes,
+            true,
+        )
+        .await
     }
 
     pub async fn reposted_by_username(
@@ -84,8 +87,15 @@ impl ProfilePostsService {
         skip: i32,
         take: i32,
     ) -> Result<ProfilePostsOutcome, String> {
-        self.by_interaction(username, viewer, skip, take, ProfileAccessField::Reposts, false)
-            .await
+        self.by_interaction(
+            username,
+            viewer,
+            skip,
+            take,
+            ProfileAccessField::Reposts,
+            false,
+        )
+        .await
     }
 
     async fn by_interaction(
@@ -101,11 +111,7 @@ impl ProfilePostsService {
         if normalized.is_empty() {
             return Ok(ProfilePostsOutcome::NotFound);
         }
-        let Some(owner_uuid) = self
-            .accounts
-            .find_uuid_by_username(&normalized)
-            .await?
-        else {
+        let Some(owner_uuid) = self.accounts.find_uuid_by_username(&normalized).await? else {
             return Ok(ProfilePostsOutcome::NotFound);
         };
         if !self.access.can_access(viewer, owner_uuid, field).await? {

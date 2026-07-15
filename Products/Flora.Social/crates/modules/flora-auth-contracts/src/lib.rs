@@ -22,10 +22,7 @@ pub trait AccountDirectory: Send + Sync {
         user_uuid: Uuid,
     ) -> BoxFuture<'_, Result<Option<AccountPublicInfo>, String>>;
 
-    fn find_uuid_by_username(
-        &self,
-        username: &str,
-    ) -> BoxFuture<'_, Result<Option<Uuid>, String>>;
+    fn find_uuid_by_username(&self, username: &str) -> BoxFuture<'_, Result<Option<Uuid>, String>>;
 
     /// Пакетное чтение username по uuid (blocklist и т.п.).
     fn usernames_by_uuids(
@@ -33,11 +30,8 @@ pub trait AccountDirectory: Send + Sync {
         user_uuids: &[Uuid],
     ) -> BoxFuture<'_, Result<Vec<(Uuid, String)>, String>>;
 
-    fn update_username(
-        &self,
-        user_uuid: Uuid,
-        username: &str,
-    ) -> BoxFuture<'_, Result<(), String>>;
+    fn update_username(&self, user_uuid: Uuid, username: &str)
+    -> BoxFuture<'_, Result<(), String>>;
 
     fn username_taken_by_other(
         &self,

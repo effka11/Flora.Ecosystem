@@ -116,8 +116,14 @@ impl CommentsService {
             .map_err(|e| e.to_string())?;
 
         self.feed.invalidate(author);
-        self.try_notify_comment(author, post_uuid, post_author, comment_uuid, parent_comment_uuid)
-            .await;
+        self.try_notify_comment(
+            author,
+            post_uuid,
+            post_author,
+            comment_uuid,
+            parent_comment_uuid,
+        )
+        .await;
 
         let username = self
             .accounts

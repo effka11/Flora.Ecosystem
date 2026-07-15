@@ -141,7 +141,9 @@ impl UserPrivacySettings for SqlUsersStore {
             .fetch_optional(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
-            Ok(row.map(|r| row_to_dto(&r)).unwrap_or_else(default_privacy_dto))
+            Ok(row
+                .map(|r| row_to_dto(&r))
+                .unwrap_or_else(default_privacy_dto))
         })
     }
 
@@ -399,11 +401,7 @@ impl UserProfileQueries for SqlUsersStore {
             .await
             .map_err(|e| e.to_string())?;
             Ok(row.map(|r| ProfileSnapshot {
-                display_name: r
-                    .display_name
-                    .unwrap_or_default()
-                    .trim()
-                    .to_string(),
+                display_name: r.display_name.unwrap_or_default().trim().to_string(),
                 status: r.status.unwrap_or_default(),
                 gender: r.gender,
                 birth_date: r.birth_date.map(|d| d.format("%Y-%m-%d").to_string()),
@@ -502,8 +500,9 @@ impl UserProfileQueries for SqlUsersStore {
                 None => None,
                 Some("") => Some(None),
                 Some(s) => {
-                    let d = NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                        .map_err(|_| "Неверный формат даты рождения (ожидается ГГГГ-ММ-ДД).".to_string())?;
+                    let d = NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| {
+                        "Неверный формат даты рождения (ожидается ГГГГ-ММ-ДД).".to_string()
+                    })?;
                     Some(Some(d))
                 }
             };
@@ -520,7 +519,11 @@ impl UserProfileQueries for SqlUsersStore {
                     None => row.birth_date,
                 };
                 let new_status = match status {
-                    Some(s) => Some(if s.len() > 150 { s[..150].to_string() } else { s }),
+                    Some(s) => Some(if s.len() > 150 {
+                        s[..150].to_string()
+                    } else {
+                        s
+                    }),
                     None => row.status,
                 };
                 sqlx::query(

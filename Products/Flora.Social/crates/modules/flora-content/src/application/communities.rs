@@ -5,9 +5,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use flora_auth_contracts::AccountDirectory;
 use flora_shared::flora_uuid::new_uuid;
-use flora_shared::latin_identifiers::{
-    SLUG_FORMAT_MESSAGE, has_only_slug_chars, normalize_slug,
-};
+use flora_shared::latin_identifiers::{SLUG_FORMAT_MESSAGE, has_only_slug_chars, normalize_slug};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -76,9 +74,7 @@ impl CommunitiesService {
     }
 
     pub async fn get_recommended(&self, user_uuid: Uuid, take: i32) -> Result<Value, String> {
-        self.recommendations
-            .get_recommended(user_uuid, take)
-            .await
+        self.recommendations.get_recommended(user_uuid, take).await
     }
 
     pub async fn list_public(&self) -> Result<Vec<Value>, String> {
@@ -252,11 +248,7 @@ impl CommunitiesService {
         if normalized.is_empty() {
             return Ok(Err(CommunityError::BadRequest("Укажите юзернейм.")));
         }
-        let Some(user_uuid) = self
-            .accounts
-            .find_uuid_by_username(&normalized)
-            .await?
-        else {
+        let Some(user_uuid) = self.accounts.find_uuid_by_username(&normalized).await? else {
             return Ok(Err(CommunityError::UserNotFound));
         };
 
@@ -389,10 +381,7 @@ impl CommunitiesService {
         if posts.is_empty() {
             return Ok(Ok(Vec::new()));
         }
-        let items = self
-            .serialize
-            .serialize_post_cards(viewer, &posts)
-            .await?;
+        let items = self.serialize.serialize_post_cards(viewer, &posts).await?;
         Ok(Ok(items))
     }
 
@@ -615,7 +604,8 @@ impl CommunitiesService {
         }
         let (data, stored_content_type) = match process_post_image(&file.bytes) {
             Ok(v) => v,
-            Err(PostImageProcessError::TooManyPixels) | Err(PostImageProcessError::InvalidFormat) => {
+            Err(PostImageProcessError::TooManyPixels)
+            | Err(PostImageProcessError::InvalidFormat) => {
                 return Ok(Err(UploadCommunityAvatarError::Unreadable));
             }
         };

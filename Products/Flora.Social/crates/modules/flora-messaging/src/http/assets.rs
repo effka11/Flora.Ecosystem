@@ -15,13 +15,17 @@ pub async fn upload_image(
     multipart: Multipart,
 ) -> Response {
     match parse_image_upload(user.0, multipart).await {
-        Ok(input) => match state.assets.upload_image(
-            user.0,
-            input.to_user_uuid,
-            input.content_type.as_deref(),
-            input.file_content_type.as_deref(),
-            &input.bytes,
-        ).await {
+        Ok(input) => match state
+            .assets
+            .upload_image(
+                user.0,
+                input.to_user_uuid,
+                input.content_type.as_deref(),
+                input.file_content_type.as_deref(),
+                &input.bytes,
+            )
+            .await
+        {
             Ok(dto) => Json(dto).into_response(),
             Err(e) => asset_err(e),
         },
@@ -59,14 +63,18 @@ pub async fn upload_video(
     multipart: Multipart,
 ) -> Response {
     match parse_video_upload(user.0, multipart).await {
-        Ok(input) => match state.assets.upload_video(
-            user.0,
-            input.to_user_uuid,
-            input.duration_ms,
-            input.content_type.as_deref(),
-            input.file_content_type.as_deref(),
-            &input.bytes,
-        ).await {
+        Ok(input) => match state
+            .assets
+            .upload_video(
+                user.0,
+                input.to_user_uuid,
+                input.duration_ms,
+                input.content_type.as_deref(),
+                input.file_content_type.as_deref(),
+                &input.bytes,
+            )
+            .await
+        {
             Ok(dto) => Json(dto).into_response(),
             Err(e) => asset_err(e),
         },
@@ -80,7 +88,9 @@ pub async fn get_image(
     Path(asset_uuid): Path<Uuid>,
 ) -> Response {
     match state.assets.get_image(user.0, asset_uuid).await {
-        Ok(blob) => image_video_blob_response(blob.bytes, &blob.content_type, "X-Flora-Image-Content-Type"),
+        Ok(blob) => {
+            image_video_blob_response(blob.bytes, &blob.content_type, "X-Flora-Image-Content-Type")
+        }
         Err(e) => asset_err(e),
     }
 }
@@ -91,7 +101,11 @@ pub async fn get_voice(
     Path(asset_uuid): Path<Uuid>,
 ) -> Response {
     match state.assets.get_voice(user.0, asset_uuid).await {
-        Ok(blob) => voice_blob_response(blob.bytes, &blob.content_type, blob.duration_ms.unwrap_or(0)),
+        Ok(blob) => voice_blob_response(
+            blob.bytes,
+            &blob.content_type,
+            blob.duration_ms.unwrap_or(0),
+        ),
         Err(e) => asset_err(e),
     }
 }
@@ -102,7 +116,9 @@ pub async fn get_video(
     Path(asset_uuid): Path<Uuid>,
 ) -> Response {
     match state.assets.get_video(user.0, asset_uuid).await {
-        Ok(blob) => image_video_blob_response(blob.bytes, &blob.content_type, "X-Flora-Video-Content-Type"),
+        Ok(blob) => {
+            image_video_blob_response(blob.bytes, &blob.content_type, "X-Flora-Video-Content-Type")
+        }
         Err(e) => asset_err(e),
     }
 }
@@ -237,7 +253,11 @@ async fn parse_video_upload(user: Uuid, mut multipart: Multipart) -> Result<Uplo
     })
 }
 
-fn image_video_blob_response(bytes: Vec<u8>, content_type: &str, type_header: &'static str) -> Response {
+fn image_video_blob_response(
+    bytes: Vec<u8>,
+    content_type: &str,
+    type_header: &'static str,
+) -> Response {
     let mut headers = HeaderMap::new();
     if let Ok(v) = HeaderValue::from_str(content_type) {
         headers.insert(type_header, v);
@@ -290,10 +310,7 @@ fn multipart_bad(e: axum::extract::multipart::MultipartError) -> Response {
 }
 
 async fn field_text(field: axum::extract::multipart::Field<'_>) -> Result<String, Response> {
-    field
-        .text()
-        .await
-        .map_err(|e| bad_request(&e.to_string()))
+    field.text().await.map_err(|e| bad_request(&e.to_string()))
 }
 
 async fn field_bytes(field: axum::extract::multipart::Field<'_>) -> Result<Vec<u8>, Response> {

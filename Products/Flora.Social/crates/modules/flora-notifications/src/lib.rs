@@ -58,7 +58,10 @@ pub fn compose(
     let client_platforms = Arc::new(ClientPlatformRepo::new(pool));
     let push_tokens = Arc::new(PushTokenService::new(Arc::clone(&push_repo)));
     let fcm = Arc::new(FcmPushSender::from_config(cfg, Arc::clone(&push_repo)));
-    let display_names = Arc::new(UserDisplayNameResolver::new(profiles, Arc::clone(&accounts)));
+    let display_names = Arc::new(UserDisplayNameResolver::new(
+        profiles,
+        Arc::clone(&accounts),
+    ));
     let realtime = Arc::new(UserRealtimePublisher::new(
         Arc::clone(&hub),
         Arc::clone(&push_tokens),
@@ -74,9 +77,8 @@ pub fn compose(
     ));
     let message_sent_notifier: Arc<dyn MessageSentNotifier> =
         Arc::new(MessagePushNotifier::new(Arc::clone(&realtime)));
-    let user_notification_dispatcher: Arc<dyn UserNotificationDispatcher> = Arc::new(
-        InboxNotificationDispatcher::new(inbox_repo, realtime),
-    );
+    let user_notification_dispatcher: Arc<dyn UserNotificationDispatcher> =
+        Arc::new(InboxNotificationDispatcher::new(inbox_repo, realtime));
 
     let admin_token = cfg
         .get_non_empty("Flora:AdminBroadcastToken")

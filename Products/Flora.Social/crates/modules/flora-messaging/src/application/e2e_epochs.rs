@@ -158,7 +158,9 @@ fn map_unlock_complete_error(e: E2eEpochRepoError) -> UnlockCompleteError {
         E2eEpochRepoError::ChallengeExpiredOrUsed(msg) => {
             UnlockCompleteError::ChallengeExpiredOrUsed(msg)
         }
-        E2eEpochRepoError::IdempotencyConflict(msg) => UnlockCompleteError::IdempotencyConflict(msg),
+        E2eEpochRepoError::IdempotencyConflict(msg) => {
+            UnlockCompleteError::IdempotencyConflict(msg)
+        }
         E2eEpochRepoError::AccountNotInRequiredState(msg) => {
             UnlockCompleteError::AccountNotInRequiredState(msg)
         }

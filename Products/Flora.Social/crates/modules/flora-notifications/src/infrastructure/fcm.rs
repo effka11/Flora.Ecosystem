@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use flora_shared::config::FloraConfig;
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
@@ -52,10 +52,7 @@ pub struct FcmPushSender {
 }
 
 impl FcmPushSender {
-    pub fn from_config(
-        cfg: &FloraConfig,
-        push_tokens: std::sync::Arc<PushTokenRepo>,
-    ) -> Self {
+    pub fn from_config(cfg: &FloraConfig, push_tokens: std::sync::Arc<PushTokenRepo>) -> Self {
         let credentials = load_credentials(cfg);
         if credentials.is_some() {
             tracing::info!("FCM push enabled for message notifications.");
@@ -83,11 +80,7 @@ impl FcmPushSender {
     ) {
         let title = {
             let t = sender_display_name.trim();
-            if t.is_empty() {
-                "Flora"
-            } else {
-                t
-            }
+            if t.is_empty() { "Flora" } else { t }
         };
         let mut notification_body = {
             let b = body.trim();
@@ -227,7 +220,11 @@ impl FcmPushSender {
                 Err(FcmSendError::InvalidToken) => {
                     let prefix = if token.len() > 8 { &token[..8] } else { token };
                     tracing::info!("Removing invalid FCM token prefix {prefix}");
-                    if let Err(e) = self.push_tokens.unregister(recipient_user_uuid, token).await {
+                    if let Err(e) = self
+                        .push_tokens
+                        .unregister(recipient_user_uuid, token)
+                        .await
+                    {
                         tracing::warn!(error = %e, "failed to unregister invalid FCM token");
                     }
                 }
@@ -412,11 +409,9 @@ fn load_credentials(cfg: &FloraConfig) -> Option<ServiceAccount> {
 fn resolve_api_content_root() -> PathBuf {
     for start in [
         std::env::current_dir().ok(),
-        std::env::current_exe().ok().map(|p| {
-            p.parent()
-                .unwrap_or(Path::new("."))
-                .to_path_buf()
-        }),
+        std::env::current_exe()
+            .ok()
+            .map(|p| p.parent().unwrap_or(Path::new(".")).to_path_buf()),
     ]
     .into_iter()
     .flatten()

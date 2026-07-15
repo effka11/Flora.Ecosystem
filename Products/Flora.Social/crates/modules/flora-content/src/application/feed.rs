@@ -82,7 +82,8 @@ impl FeedService {
         if subscriptions {
             self.subscriptions_feed(user_uuid, take, cursor).await
         } else {
-            self.recommended_feed(user_uuid, take, cursor, refresh).await
+            self.recommended_feed(user_uuid, take, cursor, refresh)
+                .await
         }
     }
 
@@ -254,7 +255,11 @@ impl FeedService {
         self.store_snapshot(user_uuid, fresh)
     }
 
-    fn store_snapshot(&self, user_uuid: Uuid, post_uuids: Vec<Uuid>) -> Result<FeedSnapshot, String> {
+    fn store_snapshot(
+        &self,
+        user_uuid: Uuid,
+        post_uuids: Vec<Uuid>,
+    ) -> Result<FeedSnapshot, String> {
         let generated_at = Utc::now();
         let snapshot = FeedSnapshot {
             post_uuids,
@@ -306,11 +311,20 @@ impl FeedService {
             if prev_id.is_nil() || fresh[i] != prev_id {
                 continue;
             }
-            if is_protected_own(&meta, fresh[i], user_uuid, now, self.fira.refresh_own_post_protect_minutes)
-            {
+            if is_protected_own(
+                &meta,
+                fresh[i],
+                user_uuid,
+                now,
+                self.fira.refresh_own_post_protect_minutes,
+            ) {
                 continue;
             }
-            let candidate = fresh.iter().enumerate().skip(i + 1).find(|(_, id)| **id != prev_id);
+            let candidate = fresh
+                .iter()
+                .enumerate()
+                .skip(i + 1)
+                .find(|(_, id)| **id != prev_id);
             if let Some((j, _)) = candidate {
                 fresh.swap(i, j);
             }
@@ -341,7 +355,8 @@ impl FeedService {
         let now = Utc::now();
         let window_days = self.subscription_window_days();
         let since_sub = now - chrono::Duration::days(i64::from(window_days));
-        let since_trending = now - chrono::Duration::days(i64::from(self.fira.trending_window_days));
+        let since_trending =
+            now - chrono::Duration::days(i64::from(self.fira.trending_window_days));
         let since_interaction =
             now - chrono::Duration::days(i64::from(self.fira.interaction_history_days));
 
@@ -400,12 +415,7 @@ impl FeedService {
         if !second_degree.is_empty() {
             let from2 = self
                 .repo
-                .posts_by_authors_since(
-                    &second_degree,
-                    since_sub,
-                    self.pool_limit(0.15),
-                    user_uuid,
-                )
+                .posts_by_authors_since(&second_degree, since_sub, self.pool_limit(0.15), user_uuid)
                 .await
                 .map_err(|e| e.to_string())?;
             merge_pool(&mut pool, from2, 0.4, &blocked);
@@ -492,7 +502,13 @@ impl FeedService {
         if pool.len() < self.min_feed_size() {
             let exclude: Vec<Uuid> = pool.keys().copied().collect();
             let exploration = self
-                .get_exploration_ids(user_uuid, since_sub, &exclude, &blocked, self.min_feed_size() - pool.len())
+                .get_exploration_ids(
+                    user_uuid,
+                    since_sub,
+                    &exclude,
+                    &blocked,
+                    self.min_feed_size() - pool.len(),
+                )
                 .await?;
             if !exploration.is_empty() {
                 let posts = self
@@ -505,9 +521,7 @@ impl FeedService {
         }
 
         if pool.is_empty() {
-            return self
-                .build_cold_start(user_uuid, since_sub, &blocked)
-                .await;
+            return self.build_cold_start(user_uuid, since_sub, &blocked).await;
         }
 
         let post_ids: Vec<Uuid> = pool.keys().copied().collect();
@@ -566,8 +580,7 @@ impl FeedService {
             .collect();
 
         let scored = rank(&candidates, &self.fira, now);
-        let diversified =
-            apply_author_diversity(&scored, self.fira.max_consecutive_same_author);
+        let diversified = apply_author_diversity(&scored, self.fira.max_consecutive_same_author);
 
         let total_slots = self.fira.max_candidates as usize;
         let exploration_slots = (total_slots as f64 * self.fira.exploration_quota) as usize;
@@ -588,8 +601,12 @@ impl FeedService {
                 exploration_slots * 2,
             )
             .await?;
-        let exploration_ids: Vec<Uuid> = exploration_ids.into_iter().take(exploration_slots).collect();
-        let merged = interleave_exploration(main_ids, &exploration_ids, self.fira.exploration_quota);
+        let exploration_ids: Vec<Uuid> = exploration_ids
+            .into_iter()
+            .take(exploration_slots)
+            .collect();
+        let merged =
+            interleave_exploration(main_ids, &exploration_ids, self.fira.exploration_quota);
 
         let own = self
             .repo
@@ -624,7 +641,13 @@ impl FeedService {
             .get_exploration_ids(user_uuid, since_sub, &own, blocked, exploration_take)
             .await?;
         if own.is_empty() && exploration.is_empty() {
-            return self.latest_visible_ids(user_uuid, blocked, self.fira.max_candidates.min(50) as usize).await;
+            return self
+                .latest_visible_ids(
+                    user_uuid,
+                    blocked,
+                    self.fira.max_candidates.min(50) as usize,
+                )
+                .await;
         }
         let own_set: HashSet<Uuid> = own.iter().copied().collect();
         let merged: Vec<Uuid> = own
@@ -684,13 +707,21 @@ impl FeedService {
 
         if result.is_empty() {
             return self
-                .latest_visible_ids(user_uuid, blocked, self.fira.max_candidates.min(50) as usize)
+                .latest_visible_ids(
+                    user_uuid,
+                    blocked,
+                    self.fira.max_candidates.min(50) as usize,
+                )
                 .await;
         }
 
         if result.len() < self.min_feed_size() {
             let latest = self
-                .latest_visible_ids(user_uuid, blocked, self.fira.max_candidates.min(50) as usize)
+                .latest_visible_ids(
+                    user_uuid,
+                    blocked,
+                    self.fira.max_candidates.min(50) as usize,
+                )
                 .await?;
             for id in latest {
                 if seen.insert(id) {
@@ -827,7 +858,12 @@ fn page_from_list(
     expires_at: DateTime<Utc>,
 ) -> FeedPage {
     let offset = parse_cursor(cursor);
-    let page: Vec<Uuid> = ordered.iter().skip(offset).take(take as usize).copied().collect();
+    let page: Vec<Uuid> = ordered
+        .iter()
+        .skip(offset)
+        .take(take as usize)
+        .copied()
+        .collect();
     let next = if offset + page.len() < ordered.len() {
         Some(encode_cursor(offset + take as usize))
     } else {

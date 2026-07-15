@@ -29,7 +29,10 @@ pub fn golden_vectors_dir() -> PathBuf {
 
 /// Вектора FIRA (FIRA.md §15): скореры четырёх компонентов + постобработка FIRA-F.
 pub fn fira_vectors_dir() -> PathBuf {
-    repo_root().join("Documents").join("test-vectors").join("fira")
+    repo_root()
+        .join("Documents")
+        .join("test-vectors")
+        .join("fira")
 }
 
 pub fn load_json(path: &std::path::Path) -> anyhow::Result<serde_json::Value> {

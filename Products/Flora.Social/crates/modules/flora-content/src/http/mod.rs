@@ -94,16 +94,16 @@ pub fn protected_router(state: ContentState) -> Router {
         .route("/api/auth/posts/{post_uuid}/repost", delete(unrepost_post))
         .route("/api/auth/posts/{post_uuid}/view", post(record_view))
         .route("/api/auth/posts/{post_uuid}", delete(delete_post))
-        .route(
-            "/api/auth/posts/{post_uuid}/comments",
-            post(create_comment),
-        )
+        .route("/api/auth/posts/{post_uuid}/comments", post(create_comment))
         .route(
             "/api/auth/posts/{post_uuid}/comments/{comment_uuid}",
             delete(delete_comment),
         )
         .route("/api/auth/communities/owned", get(get_owned_communities))
-        .route("/api/auth/communities/recommended", get(get_recommended_communities))
+        .route(
+            "/api/auth/communities/recommended",
+            get(get_recommended_communities),
+        )
         .route("/api/auth/communities/search", get(search_communities))
         .route("/api/auth/communities", post(create_community))
         .route(
@@ -137,14 +137,8 @@ pub fn public_router(state: ContentState) -> Router {
             "/api/auth/posts/{post_uuid}/comments/{comment_uuid}/replies",
             get(get_comment_replies),
         )
-        .route(
-            "/api/auth/profile/{username}/posts",
-            get(get_profile_posts),
-        )
-        .route(
-            "/api/auth/profile/{username}/likes",
-            get(get_profile_likes),
-        )
+        .route("/api/auth/profile/{username}/posts", get(get_profile_posts))
+        .route("/api/auth/profile/{username}/likes", get(get_profile_likes))
         .route(
             "/api/auth/profile/{username}/reposts",
             get(get_profile_reposts),
@@ -611,11 +605,7 @@ async fn delete_comment(
     Extension(user): Extension<CurrentUser>,
     Path((post_uuid, comment_uuid)): Path<(Uuid, Uuid)>,
 ) -> Response {
-    match state
-        .comments
-        .delete(user.0, post_uuid, comment_uuid)
-        .await
-    {
+    match state.comments.delete(user.0, post_uuid, comment_uuid).await {
         Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
         Ok(Err(DeleteCommentError::NotFound)) => (
             StatusCode::NOT_FOUND,
@@ -723,10 +713,12 @@ async fn get_profile_posts(
             Json(serde_json::json!({ "error": "Пользователь не найден." })),
         )
             .into_response(),
-        Ok(ProfilePostsOutcome::Posts(posts)) => match state.profile_posts.serialize(posts, viewer_uuid).await {
-            Ok(body) => Json(body).into_response(),
-            Err(e) => internal(e),
-        },
+        Ok(ProfilePostsOutcome::Posts(posts)) => {
+            match state.profile_posts.serialize(posts, viewer_uuid).await {
+                Ok(body) => Json(body).into_response(),
+                Err(e) => internal(e),
+            }
+        }
         Err(e) => internal(e),
     }
 }
@@ -779,10 +771,12 @@ async fn profile_interaction_posts(
             Json(serde_json::json!({ "error": "Пользователь не найден." })),
         )
             .into_response(),
-        Ok(ProfilePostsOutcome::Posts(posts)) => match state.profile_posts.serialize(posts, viewer_uuid).await {
-            Ok(body) => Json(body).into_response(),
-            Err(e) => internal(e),
-        },
+        Ok(ProfilePostsOutcome::Posts(posts)) => {
+            match state.profile_posts.serialize(posts, viewer_uuid).await {
+                Ok(body) => Json(body).into_response(),
+                Err(e) => internal(e),
+            }
+        }
         Err(e) => internal(e),
     }
 }
@@ -867,14 +861,10 @@ fn community_error(err: CommunityError) -> Response {
             "Сообщество не найдено или у вас нет прав на удаление.",
         ),
         CommunityError::UserNotFound => (StatusCode::NOT_FOUND, "Пользователь не найден."),
-        CommunityError::PrivateCommunity => (
-            StatusCode::FORBIDDEN,
-            "Это приватное сообщество.",
-        ),
-        CommunityError::AlreadyMember => (
-            StatusCode::CONFLICT,
-            "Вы уже состоите в этом сообществе.",
-        ),
+        CommunityError::PrivateCommunity => (StatusCode::FORBIDDEN, "Это приватное сообщество."),
+        CommunityError::AlreadyMember => {
+            (StatusCode::CONFLICT, "Вы уже состоите в этом сообществе.")
+        }
         CommunityError::OwnerCannotLeave => (
             StatusCode::BAD_REQUEST,
             "Владелец не может отписаться от своего сообщества.",
@@ -944,7 +934,12 @@ async fn search_communities(
 ) -> Response {
     match state
         .communities
-        .search(user.0, q.q.as_deref().unwrap_or(""), q.skip.unwrap_or(0), q.take.unwrap_or(20))
+        .search(
+            user.0,
+            q.q.as_deref().unwrap_or(""),
+            q.skip.unwrap_or(0),
+            q.take.unwrap_or(20),
+        )
         .await
     {
         Ok(list) => Json(list).into_response(),
@@ -1021,7 +1016,12 @@ async fn get_community_posts(
     let viewer_uuid = viewer.map(|Extension(u)| u.0);
     match state
         .communities
-        .community_posts(community_id, viewer_uuid, q.skip.unwrap_or(0), q.take.unwrap_or(20))
+        .community_posts(
+            community_id,
+            viewer_uuid,
+            q.skip.unwrap_or(0),
+            q.take.unwrap_or(20),
+        )
         .await
     {
         Ok(Ok(list)) => Json(list).into_response(),
@@ -1111,4 +1111,3 @@ async fn delete_community(
 pub fn default_write_limiter() -> Arc<FixedWindowLimiter> {
     Arc::new(FixedWindowLimiter::new(60, Duration::from_secs(5 * 60)))
 }
-

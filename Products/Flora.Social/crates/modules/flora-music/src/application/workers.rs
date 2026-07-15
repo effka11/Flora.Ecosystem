@@ -102,6 +102,7 @@ async fn run_backfill(repo: Arc<MusicRepo>) -> Result<(), sqlx::Error> {
 }
 
 async fn run_orphan_cleanup(repo: Arc<MusicRepo>) -> Result<u64, sqlx::Error> {
-    let cutoff = Utc::now() - TimeDelta::from_std(ORPHAN_TTL).unwrap_or_else(|_| TimeDelta::hours(1));
+    let cutoff =
+        Utc::now() - TimeDelta::from_std(ORPHAN_TTL).unwrap_or_else(|_| TimeDelta::hours(1));
     repo.delete_orphaned_artists(cutoff).await
 }
