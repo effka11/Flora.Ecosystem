@@ -31,6 +31,7 @@
 //! assert_eq!(out.data, pixels);
 //! ```
 
+mod arith;
 mod bits;
 mod color;
 mod dct;
@@ -50,9 +51,9 @@ mod tokens;
 
 pub use error::{DecodeError, EncodeError};
 
-/// Новейшая версия битстрима, которую пишет и читает эта сборка
-/// (см. `Documents/codecs/FRC-I.md`): v3 lossless, v5 lossy,
-/// v6 при вложенном ICC-профиле.
+/// Новейшая версия битстрима, которую читает эта сборка
+/// (см. `Documents/codecs/FRC-I.md`): v3 lossless, v5 lossy по умолчанию,
+/// v6 при ICC, v7 экспериментально (`encode_with_version` / `--bitstream 7`).
 pub const BITSTREAM_VERSION: u8 = format::VERSION_MAX;
 
 /// Низкоуровневые примитивы энтропийного кодирования для семейства FRC:

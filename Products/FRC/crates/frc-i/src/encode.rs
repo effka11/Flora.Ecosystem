@@ -10,13 +10,13 @@ use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
 use crate::error::EncodeError;
 use crate::format::{
     CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
-    VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA, VERSION_MIN,
-    VERSION_SUPERBLOCK, build_metadata_block, tile_grid,
+    VERSION_ADAPTIVE, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA,
+    VERSION_MIN, VERSION_SUPERBLOCK, build_metadata_block, tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
 use crate::predict::med;
-use crate::section::{write_dct_section, write_predictive_section};
+use crate::section::{write_dct_section, write_dct_section_v7, write_predictive_section};
 use crate::tokens::{tokenize, zigzag};
 use crate::{EncodeMode, ImageView, PixelFormat, lossless, lossy};
 use std::collections::HashMap;
@@ -436,8 +436,13 @@ fn encode_lossy(
     let tiles = tile_grid(img.width, img.height);
     let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
+        // v7: банк адаптивных моделей общий для всех плоскостей тайла.
+        let mut bank = (version >= VERSION_ADAPTIVE).then(|| {
+            let (groups, kinds) = lossy::ctx_meta_v7();
+            crate::arith::ModelBank::new(groups, kinds)
+        });
         let buf = p0.extract(t.x0, t.y0, t.w, t.h);
-        dct_payload(&buf, t.w, t.h, &q_luma, version, &mut payload);
+        dct_payload(&buf, t.w, t.h, &q_luma, version, bank.as_mut(), &mut payload);
         for plane in [&p1, &p2] {
             let full = plane.extract(t.x0, t.y0, t.w, t.h);
             let (cbuf, cw, ch) = if header.chroma420 {
@@ -449,7 +454,7 @@ fn encode_lossy(
             } else {
                 (full, t.w, t.h)
             };
-            dct_payload(&cbuf, cw, ch, &q_chroma, version, &mut payload);
+            dct_payload(&cbuf, cw, ch, &q_chroma, version, bank.as_mut(), &mut payload);
         }
         if let Some(pa) = pa.as_ref() {
             let buf = pa.extract(t.x0, t.y0, t.w, t.h);
@@ -460,9 +465,22 @@ fn encode_lossy(
     assemble(&header, meta, None, &payloads)
 }
 
-fn dct_payload(buf: &[i16], w: usize, h: usize, qmat: &[u16; 64], version: u8, out: &mut Vec<u8>) {
+fn dct_payload(
+    buf: &[i16],
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+    version: u8,
+    bank: Option<&mut crate::arith::ModelBank>,
+    out: &mut Vec<u8>,
+) {
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
+    if version >= VERSION_ADAPTIVE {
+        lossy::encode_tile_plane_v7(buf, w, h, qmat, &mut syms, &mut raw);
+        write_dct_section_v7(out, bank.expect("v7: банк обязателен"), &syms, raw);
+        return;
+    }
     match version {
         1 => lossy::encode_tile_plane_v1(buf, w, h, qmat, &mut syms, &mut raw),
         2 => lossy::encode_tile_plane_v2(buf, w, h, qmat, &mut syms, &mut raw),

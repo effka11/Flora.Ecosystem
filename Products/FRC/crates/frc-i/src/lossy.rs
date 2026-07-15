@@ -21,6 +21,7 @@
 //! Как и в lossless (run-режим, bias-коррекция), приёмы кодеков с
 //! адаптивными вероятностями не переносятся на статические таблицы rANS.
 
+use crate::arith::{ModelBank, RangeDecoder};
 use crate::bits::{BitReader, BitWriter};
 use crate::dct::{
     ZIGZAG, ZIGZAG16, fdct8x8, fdct8x8_cols, fdct8x8_const, fdct8x8_rows, fdct16, fdct16_cols,
@@ -1309,6 +1310,478 @@ pub fn decode_tile_plane_v5(
                         let b = border(&recon, w, h, bx, by);
                         let pred = predict_block(&b, mode_sym);
                         let dc_token = decode_coeffs(section, dec, raw, qmat, &mut freq)?;
+                        freq[0] = dc_token as f32 * f32::from(qmat[0]);
+                        idct8x8(&freq, &mut spatial);
+                        store_block(&mut recon, w, h, bx, by, &spatial, &pred);
+                    }
+                }
+                _ => return Err(DecodeError::Corrupt("dct16: неизвестное split-решение")),
+            }
+        }
+    }
+    Ok(recon)
+}
+
+// --- v7: слой блоков v5 + адаптивная энтропия (FRC-I.md §11.3, v7.1) -----------
+//
+// Слой блоков (обход, RD, реконструкция) идентичен v5, меняется только
+// энтропийное моделирование: символы кодируются range-кодером с
+// адаптивными моделями (без таблиц в потоке), и раз контексты стали
+// бесплатными — их сетка гораздо богаче v5:
+//
+// - run/level: бакет позиции в зигзаге (6 градаций вместо low/high)
+//   × nnz-бакет предыдущего блока плоскости (4 градации) — возврат
+//   nnz-контекстов, отклонённых в v3 из-за цены таблиц;
+// - поверх всего — order-1 бакеты `ModelBank` (предыдущий символ
+//   того же контекста).
+
+/// Раскладка контекстов v7 (не сериализуется, фиксирована форматом).
+const CTX7_SPLIT: u8 = 0;
+const CTX7_MODE: u8 = 1;
+/// База DC-контекстов: 4 бакета по магнитуде DC предыдущего блока.
+const CTX7_DC_BASE: u8 = 2;
+/// База run-контекстов: 24 штуки (6 бакетов позиции × 4 nnz-бакета).
+const CTX7_RUN_BASE: u8 = 6;
+/// База level-контекстов: 24 (6 бакетов позиции × 4 бакета пред. уровня).
+const CTX7_LEVEL_BASE: u8 = 30;
+/// Общее число контекстов v7.
+pub const N_CTX_V7: usize = 54;
+const N_POS_BUCKETS: u8 = 6;
+
+/// Родительские группы и виды моделей контекстов v7 для иерархического
+/// прогрева (`ModelBank`): детальные run/level-контексты наследуют
+/// статистику родителя своей позиционной зоны; DC-бакеты — общего
+/// DC-родителя. `ModelKind` задаёт алфавит и prior.
+pub fn ctx_meta_v7() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
+    use crate::arith::ModelKind;
+    let mut groups = vec![0u8; N_CTX_V7];
+    let mut kinds = vec![ModelKind::Level; N_CTX_V7];
+    groups[usize::from(CTX7_SPLIT)] = 0;
+    kinds[usize::from(CTX7_SPLIT)] = ModelKind::Split;
+    groups[usize::from(CTX7_MODE)] = 1;
+    kinds[usize::from(CTX7_MODE)] = ModelKind::Mode;
+    for dc_b in 0..4u8 {
+        groups[usize::from(CTX7_DC_BASE + dc_b)] = 2;
+        kinds[usize::from(CTX7_DC_BASE + dc_b)] = ModelKind::Dc;
+    }
+    for cond in 0..4u8 {
+        for pos_b in 0..N_POS_BUCKETS {
+            let run = usize::from(run_ctx_v7(pos_b, cond));
+            let level = usize::from(level_ctx_v7(pos_b, cond));
+            groups[run] = 3 + pos_b;
+            kinds[run] = ModelKind::Run;
+            groups[level] = 3 + N_POS_BUCKETS + pos_b;
+            kinds[level] = ModelKind::Level;
+        }
+    }
+    (groups, kinds)
+}
+
+/// Контекст DC по магнитуде DC-токена предыдущего блока.
+/// A/B-замер: условность по prev_dc ухудшает (−2.43% против −2.93% без
+/// неё) — DC-статистика тайла однородна, разбавление не окупается.
+#[inline]
+fn dc_ctx_v7(prev_dc_mag: u32) -> u8 {
+    let _ = prev_dc_mag;
+    CTX7_DC_BASE
+}
+
+/// Межблочное состояние контекстов v7 одной плоскости.
+#[derive(Default)]
+struct CtxV7 {
+    /// nnz-бакет предыдущего блока (нормированный для 16×16).
+    prev_nnz: u8,
+    /// Магнитуда DC-токена предыдущего блока.
+    prev_dc: u32,
+}
+
+/// Бакет позиции зигзага 8×8: 1 / 2–3 / 4–7 / 8–15 / 16–31 / 32+.
+#[inline]
+fn pos_bucket8(pos: usize) -> u8 {
+    match pos {
+        1 => 0,
+        2..=3 => 1,
+        4..=7 => 2,
+        8..=15 => 3,
+        16..=31 => 4,
+        _ => 5,
+    }
+}
+
+/// Бакет позиции зигзага 16×16: та же спектральная доля, что и 8×8.
+#[inline]
+fn pos_bucket16(pos: usize) -> u8 {
+    pos_bucket8((pos >> 2).max(1))
+}
+
+/// Бакет заполненности предыдущего блока: 0 / 1–3 / 4–9 / 10+ ненулевых AC.
+#[inline]
+fn nnz_bucket(nnz: u32) -> u8 {
+    match nnz {
+        0 => 0,
+        1..=3 => 1,
+        4..=9 => 2,
+        _ => 3,
+    }
+}
+
+#[inline]
+fn run_ctx_v7(pos_bucket: u8, nnz_b: u8) -> u8 {
+    CTX7_RUN_BASE + pos_bucket + N_POS_BUCKETS * nnz_b
+}
+
+/// Бакет магнитуды предыдущего ненулевого уровня блока:
+/// 0 — уровней ещё не было, 1 — |lvl|=1, 2 — 2..3, 3 — 4+.
+#[inline]
+fn lvl_bucket(prev_mag: u32) -> u8 {
+    match prev_mag {
+        0 => 0,
+        1 => 1,
+        2..=3 => 2,
+        _ => 3,
+    }
+}
+
+#[inline]
+fn level_ctx_v7(pos_bucket: u8, lvl_b: u8) -> u8 {
+    CTX7_LEVEL_BASE + pos_bucket + N_POS_BUCKETS * lvl_b
+}
+
+/// Кодирует блок 8×8 в символы v7. `st` — межблочное состояние контекстов
+/// плоскости (обновляется на текущий блок).
+fn encode_coeffs_v7(
+    quantized: &[i32; 64],
+    dc_token: i32,
+    st: &mut CtxV7,
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) {
+    let nnz_b = st.prev_nnz;
+    let (sym, bits, n_bits) = tokenize(zigzag(dc_token));
+    syms.push((dc_ctx_v7(st.prev_dc), sym));
+    write_raw(raw, bits, n_bits);
+    st.prev_dc = dc_token.unsigned_abs();
+
+    let mut nnz = 0u32;
+    let mut prev_mag = 0u32;
+    let mut pos = 1usize;
+    while pos < 64 {
+        let run_start = pos;
+        let mut run = 0usize;
+        while pos < 64 && quantized[ZIGZAG[pos]] == 0 {
+            run += 1;
+            pos += 1;
+        }
+        if pos == 64 {
+            syms.push((run_ctx_v7(pos_bucket8(run_start), nnz_b), EOB_SYM));
+            break;
+        }
+        let (rsym, rbits, rn) = tokenize(run as u32);
+        syms.push((run_ctx_v7(pos_bucket8(run_start), nnz_b), rsym));
+        write_raw(raw, rbits, rn);
+
+        let level = quantized[ZIGZAG[pos]];
+        let mag = level.unsigned_abs();
+        let (lsym, lbits, ln) = tokenize(mag - 1);
+        syms.push((level_ctx_v7(pos_bucket8(pos), lvl_bucket(prev_mag)), lsym));
+        write_raw(raw, lbits, ln);
+        raw.write(u32::from(level < 0), 1);
+        prev_mag = mag;
+        nnz += 1;
+        pos += 1;
+    }
+    st.prev_nnz = nnz_bucket(nnz);
+}
+
+/// Кодирует суперблок 16×16 в символы v7 (nnz нормируется на /4 —
+/// сопоставимая с 8×8 плотность заполнения).
+fn encode_coeffs16_v7(
+    quantized: &[i32; 256],
+    st: &mut CtxV7,
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) {
+    let nnz_b = st.prev_nnz;
+    let (sym, bits, n_bits) = tokenize(zigzag(quantized[0]));
+    syms.push((dc_ctx_v7(st.prev_dc), sym));
+    write_raw(raw, bits, n_bits);
+    st.prev_dc = quantized[0].unsigned_abs();
+
+    let mut nnz = 0u32;
+    let mut prev_mag = 0u32;
+    let mut pos = 1usize;
+    while pos < 256 {
+        let run_start = pos;
+        let mut run = 0usize;
+        while pos < 256 && quantized[ZIGZAG16[pos]] == 0 {
+            run += 1;
+            pos += 1;
+        }
+        if pos == 256 {
+            syms.push((run_ctx_v7(pos_bucket16(run_start), nnz_b), EOB_SYM));
+            break;
+        }
+        let (rsym, rbits, rn) = tokenize(run as u32);
+        syms.push((run_ctx_v7(pos_bucket16(run_start), nnz_b), rsym));
+        write_raw(raw, rbits, rn);
+
+        let level = quantized[ZIGZAG16[pos]];
+        let mag = level.unsigned_abs();
+        let (lsym, lbits, ln) = tokenize(mag - 1);
+        syms.push((level_ctx_v7(pos_bucket16(pos), lvl_bucket(prev_mag)), lsym));
+        write_raw(raw, lbits, ln);
+        raw.write(u32::from(level < 0), 1);
+        prev_mag = mag;
+        nnz += 1;
+        pos += 1;
+    }
+    st.prev_nnz = nnz_bucket(nnz / 4);
+}
+
+/// Кодирует тайл-плоскость битстрима v7: слой блоков v5, контексты v7.
+pub fn encode_tile_plane_v7(
+    buf: &[i16],
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) {
+    debug_assert_eq!(buf.len(), w * h);
+    let sb_cols = w.div_ceil(16);
+    let sb_rows = h.div_ceil(16);
+    let qmat16 = quant_matrix16(qmat);
+    let lambda = plane_lambda(qmat);
+    let mut recon = vec![0i16; w * h];
+    let mut subs: Vec<SubBlock> = Vec::with_capacity(4);
+    let mut st = CtxV7::default();
+    let emit_whole = |quant16: &[i32; 256],
+                          mode16: u8,
+                          st: &mut CtxV7,
+                          syms: &mut Vec<(u8, u8)>,
+                          raw: &mut BitWriter,
+                          recon: &mut Vec<i16>,
+                          pred16: &[i32; 256],
+                          sbx: usize,
+                          sby: usize| {
+        syms.push((CTX7_SPLIT, SPLIT_WHOLE));
+        syms.push((CTX7_MODE, mode16));
+        encode_coeffs16_v7(quant16, st, syms, raw);
+        let mut freq = [0f32; 256];
+        let mut spatial = [0f32; 256];
+        for i in 0..256 {
+            freq[i] = quant16[i] as f32 * f32::from(qmat16[i]);
+        }
+        idct16(&freq, &mut spatial);
+        store_block16(recon, w, h, sbx, sby, &spatial, pred16);
+    };
+    for sby in 0..sb_rows {
+        for sbx in 0..sb_cols {
+            let orig16 = gather_block16_i32(buf, w, h, sbx, sby);
+            let hint = split_hint(&orig16);
+
+            if hint == Some(SPLIT_WHOLE) {
+                let ac_bias16 = adaptive_ac_bias(block_activity16(&orig16));
+                let b16 = border16(&recon, w, h, sbx, sby);
+                let (mode16, pred16, quant16, _) =
+                    choose_mode16(&orig16, &b16, &qmat16, lambda, ac_bias16);
+                emit_whole(
+                    &quant16,
+                    mode16,
+                    &mut st,
+                    syms,
+                    raw,
+                    &mut recon,
+                    &pred16,
+                    sbx,
+                    sby,
+                );
+                continue;
+            }
+            if hint == Some(SPLIT_QUAD) {
+                syms.push((CTX7_SPLIT, SPLIT_QUAD));
+                for (bx, by) in sub_blocks(sbx, sby, w, h) {
+                    let (sub, _) = eval_block8(buf, &mut recon, w, h, bx, by, qmat, lambda);
+                    syms.push((CTX7_MODE, sub.mode));
+                    encode_coeffs_v7(&sub.quantized, sub.quantized[0], &mut st, syms, raw);
+                }
+                continue;
+            }
+
+            let ac_bias16 = adaptive_ac_bias(block_activity16(&orig16));
+            let b16 = border16(&recon, w, h, sbx, sby);
+            let (mode16, pred16, quant16, cost16) =
+                choose_mode16(&orig16, &b16, &qmat16, lambda, ac_bias16);
+            let cost_whole = cost16 + lambda * MODE_COST_BITS as f32;
+
+            let backup = save_region16(&recon, w, h, sbx, sby);
+            let mut cost_split = 0f32;
+            subs.clear();
+            for (bx, by) in sub_blocks(sbx, sby, w, h) {
+                let (sub, cost) = eval_block8(buf, &mut recon, w, h, bx, by, qmat, lambda);
+                cost_split += cost;
+                subs.push(sub);
+                if cost_split > cost_whole {
+                    break;
+                }
+            }
+
+            if cost_whole <= cost_split {
+                restore_region16(&mut recon, w, h, sbx, sby, &backup);
+                emit_whole(
+                    &quant16,
+                    mode16,
+                    &mut st,
+                    syms,
+                    raw,
+                    &mut recon,
+                    &pred16,
+                    sbx,
+                    sby,
+                );
+            } else {
+                syms.push((CTX7_SPLIT, SPLIT_QUAD));
+                for sub in &subs {
+                    syms.push((CTX7_MODE, sub.mode));
+                    encode_coeffs_v7(&sub.quantized, sub.quantized[0], &mut st, syms, raw);
+                }
+            }
+        }
+    }
+}
+
+/// Декодирует DC + run/level блока 8×8 из адаптивного потока v7.
+fn decode_coeffs_v7(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    qmat: &[u16; 64],
+    freq: &mut [f32; 64],
+    st: &mut CtxV7,
+) -> Result<i32, DecodeError> {
+    freq.fill(0.0);
+    let nnz_b = st.prev_nnz;
+    let dc_sym = bank.decode(dec, dc_ctx_v7(st.prev_dc))?;
+    let dc_token = unzigzag(detokenize(dc_sym, raw)?);
+    st.prev_dc = dc_token.unsigned_abs();
+
+    let mut nnz = 0u32;
+    let mut prev_mag = 0u32;
+    let mut pos = 1usize;
+    while pos < 64 {
+        let rsym = bank.decode(dec, run_ctx_v7(pos_bucket8(pos), nnz_b))?;
+        if rsym == EOB_SYM {
+            break;
+        }
+        let run = detokenize(rsym, raw)? as usize;
+        let new_pos = pos
+            .checked_add(run)
+            .ok_or(DecodeError::Corrupt("dct: run overflow"))?;
+        if new_pos >= 64 {
+            return Err(DecodeError::Corrupt("dct: позиция AC вне блока"));
+        }
+        pos = new_pos;
+        let lsym = bank.decode(dec, level_ctx_v7(pos_bucket8(pos), lvl_bucket(prev_mag)))?;
+        let mag = detokenize(lsym, raw)?.wrapping_add(1);
+        let sign = raw.read(1)?;
+        let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
+        freq[ZIGZAG[pos]] = level as f32 * f32::from(qmat[ZIGZAG[pos]]);
+        prev_mag = mag;
+        nnz += 1;
+        pos += 1;
+    }
+    st.prev_nnz = nnz_bucket(nnz);
+    Ok(dc_token)
+}
+
+/// Декодирует коэффициенты 16×16 из адаптивного потока v7.
+fn decode_coeffs16_v7(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    qmat16: &[u16; 256],
+    freq: &mut [f32; 256],
+    st: &mut CtxV7,
+) -> Result<i32, DecodeError> {
+    freq.fill(0.0);
+    let nnz_b = st.prev_nnz;
+    let dc_sym = bank.decode(dec, dc_ctx_v7(st.prev_dc))?;
+    let dc_token = unzigzag(detokenize(dc_sym, raw)?);
+    st.prev_dc = dc_token.unsigned_abs();
+
+    let mut nnz = 0u32;
+    let mut prev_mag = 0u32;
+    let mut pos = 1usize;
+    while pos < 256 {
+        let rsym = bank.decode(dec, run_ctx_v7(pos_bucket16(pos), nnz_b))?;
+        if rsym == EOB_SYM {
+            break;
+        }
+        let run = detokenize(rsym, raw)? as usize;
+        let new_pos = pos
+            .checked_add(run)
+            .ok_or(DecodeError::Corrupt("dct16: run overflow"))?;
+        if new_pos >= 256 {
+            return Err(DecodeError::Corrupt("dct16: позиция AC вне блока"));
+        }
+        pos = new_pos;
+        let lsym = bank.decode(dec, level_ctx_v7(pos_bucket16(pos), lvl_bucket(prev_mag)))?;
+        let mag = detokenize(lsym, raw)?.wrapping_add(1);
+        let sign = raw.read(1)?;
+        let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
+        freq[ZIGZAG16[pos]] = level as f32 * f32::from(qmat16[ZIGZAG16[pos]]);
+        prev_mag = mag;
+        nnz += 1;
+        pos += 1;
+    }
+    st.prev_nnz = nnz_bucket(nnz / 4);
+    Ok(dc_token)
+}
+
+/// Декодирует тайл-плоскость битстрима v7 (слой v5, адаптивная энтропия).
+pub fn decode_tile_plane_v7(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+) -> Result<Vec<i16>, DecodeError> {
+    let sb_cols = w.div_ceil(16);
+    let sb_rows = h.div_ceil(16);
+    let qmat16 = quant_matrix16(qmat);
+    let mut recon = vec![0i16; w * h];
+    let mut freq16 = [0f32; 256];
+    let mut spatial16 = [0f32; 256];
+    let mut freq = [0f32; 64];
+    let mut spatial = [0f32; 64];
+    let mut st = CtxV7::default();
+    for sby in 0..sb_rows {
+        for sbx in 0..sb_cols {
+            let split = bank.decode(dec, CTX7_SPLIT)?;
+            match split {
+                SPLIT_WHOLE => {
+                    let mode = bank.decode(dec, CTX7_MODE)?;
+                    if mode >= N_MODES_V3 {
+                        return Err(DecodeError::Corrupt("dct16: неизвестная мода предикции"));
+                    }
+                    let b = border16(&recon, w, h, sbx, sby);
+                    let pred = predict_block16(&b, mode);
+                    let dc_token =
+                        decode_coeffs16_v7(bank, dec, raw, &qmat16, &mut freq16, &mut st)?;
+                    freq16[0] = dc_token as f32 * f32::from(qmat16[0]);
+                    idct16(&freq16, &mut spatial16);
+                    store_block16(&mut recon, w, h, sbx, sby, &spatial16, &pred);
+                }
+                SPLIT_QUAD => {
+                    for (bx, by) in sub_blocks(sbx, sby, w, h) {
+                        let mode_sym = bank.decode(dec, CTX7_MODE)?;
+                        if mode_sym >= N_MODES_V3 {
+                            return Err(DecodeError::Corrupt("dct: неизвестная мода предикции"));
+                        }
+                        let b = border(&recon, w, h, bx, by);
+                        let pred = predict_block(&b, mode_sym);
+                        let dc_token = decode_coeffs_v7(bank, dec, raw, qmat, &mut freq, &mut st)?;
                         freq[0] = dc_token as f32 * f32::from(qmat[0]);
                         idct8x8(&freq, &mut spatial);
                         store_block(&mut recon, w, h, bx, by, &spatial, &pred);

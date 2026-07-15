@@ -167,10 +167,13 @@ def psnr_rgb(ref: np.ndarray, dec: np.ndarray) -> float:
 
 
 def encode_frc(
-    flora: str, src: Path, out: Path, quality: int
+    flora: str, src: Path, out: Path, quality: int, bitstream: int | None = None
 ) -> tuple[int, float]:
+    cmd = [flora, "image", "encode", str(src), str(out), "--quality", str(quality)]
+    if bitstream is not None:
+        cmd += ["--bitstream", str(bitstream)]
     t0 = time.perf_counter()
-    run([flora, "image", "encode", str(src), str(out), "--quality", str(quality)])
+    run(cmd)
     ms = (time.perf_counter() - t0) * 1000.0
     return out.stat().st_size, ms
 
@@ -341,6 +344,13 @@ def main() -> int:
     ap.add_argument("--avif-cpu", type=int, default=4, help="libaom -cpu-used (0 slow/best .. 8 fast)")
     ap.add_argument("--skip-jxl", action="store_true")
     ap.add_argument("--skip-avif", action="store_true")
+    ap.add_argument("--skip-jpeg", action="store_true")
+    ap.add_argument(
+        "--frc-bitstream",
+        type=int,
+        default=None,
+        help="дополнительно прогнать FRC-I с явной версией битстрима (например 7) как кодек frc-vN",
+    )
     args = ap.parse_args()
 
     if args.fetch_kodak:
@@ -385,7 +395,20 @@ def main() -> int:
             points.append(Point("frc-i", name, f"q={q}", size, p, ms))
             print(f"  FRC-I  q={q:2d}  {size:7d} B  PSNR {p:5.2f}  enc {ms:7.0f} ms", flush=True)
 
-        for q in jpeg_qs:
+        if args.frc_bitstream is not None:
+            v = args.frc_bitstream
+            codec = f"frc-v{v}"
+            for q in frc_qs:
+                fri = work / f"{name}_frcv{v}_q{q}.fri"
+                png = work / f"{name}_frcv{v}_q{q}.png"
+                size, ms = encode_frc(flora, src, fri, q, bitstream=v)
+                decode_frc_to_png(flora, fri, png)
+                dec = load_rgb_png(png)
+                p = psnr_rgb(ref, dec)
+                points.append(Point(codec, name, f"q={q}", size, p, ms))
+                print(f"  FRCv{v}  q={q:2d}  {size:7d} B  PSNR {p:5.2f}  enc {ms:7.0f} ms", flush=True)
+
+        for q in jpeg_qs if not args.skip_jpeg else []:
             jpg = work / f"{name}_jpg_q{q}.jpg"
             size, ms = encode_jpeg(ff, src, jpg, q)
             dec = decode_any_to_rgb(ff, jpg)
@@ -423,9 +446,14 @@ def main() -> int:
             chosen.append(best)
         return chosen
 
+    extra_codec = f"frc-v{args.frc_bitstream}" if args.frc_bitstream is not None else None
+
     print("\n========== SNAPSHOT @ ~38 dB PSNR ==========", flush=True)
     snap = {}
-    for codec in ["frc-i", "jpeg", "avif", "jxl"]:
+    codec_list = ["frc-i", "jpeg", "avif", "jxl"]
+    if extra_codec:
+        codec_list.insert(1, extra_codec)
+    for codec in codec_list:
         chosen = pick_near(codec, 38.0)
         if not chosen:
             continue
@@ -440,14 +468,22 @@ def main() -> int:
 
     print("\n========== BD-RATE (отрицательное = меньше битрейт = лучше) ==========", flush=True)
     bd_results = {}
-    for test, ref in [
+    bd_pairs = [
         ("frc-i", "jpeg"),
         ("frc-i", "avif"),
         ("frc-i", "jxl"),
         ("avif", "jpeg"),
         ("jxl", "jpeg"),
         ("jxl", "avif"),
-    ]:
+    ]
+    if extra_codec:
+        bd_pairs = [
+            (extra_codec, "frc-i"),
+            (extra_codec, "jpeg"),
+            (extra_codec, "avif"),
+            (extra_codec, "jxl"),
+        ] + bd_pairs
+    for test, ref in bd_pairs:
         if any(p.codec == test for p in points) and any(p.codec == ref for p in points):
             bd = aggregate_bd(points, test, ref)
             bd_results[f"{test}_vs_{ref}"] = bd
@@ -462,6 +498,8 @@ def main() -> int:
         "avif": "crf=34",
         "jxl": "d=1.5",
     }
+    if extra_codec:
+        mid[extra_codec] = "q=70"
     for codec, knob in mid.items():
         subset = [p for p in points if p.codec == codec and p.knob == knob]
         if not subset:

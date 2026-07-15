@@ -2,7 +2,8 @@
 
 use clap::Subcommand;
 use frc_i::{
-    DecodedImage, EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc, read_info,
+    DecodedImage, EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc,
+    encode_with_version, read_info,
 };
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
@@ -30,6 +31,10 @@ pub enum ImageCommand {
         /// Вложить ICC-профиль из файла (битстрим v6)
         #[arg(long)]
         icc: Option<PathBuf>,
+        /// Экспериментально: явная версия битстрима (например, 7 —
+        /// адаптивная энтропия линии v7; несовместимо с --icc)
+        #[arg(long, conflicts_with = "icc")]
+        bitstream: Option<u8>,
     },
     /// Декодировать .fri в PNG
     Decode { input: PathBuf, output: PathBuf },
@@ -54,7 +59,8 @@ pub fn run(cmd: ImageCommand) -> CmdResult {
             quality,
             lossless,
             icc,
-        } => cmd_encode(&input, &output, quality, lossless, icc.as_deref()),
+            bitstream,
+        } => cmd_encode(&input, &output, quality, lossless, icc.as_deref(), bitstream),
         ImageCommand::Decode { input, output } => cmd_decode(&input, &output),
         ImageCommand::Info { input } => cmd_info(&input),
         ImageCommand::Bench { dir, quality } => cmd_bench(dir.as_deref(), quality),
@@ -115,6 +121,7 @@ fn cmd_encode(
     quality: Option<u8>,
     lossless: bool,
     icc: Option<&Path>,
+    bitstream: Option<u8>,
 ) -> CmdResult {
     let src = SourceImage::load(input)?;
     let mode = if lossless {
@@ -124,9 +131,10 @@ fn cmd_encode(
             quality: quality.unwrap_or(75),
         }
     };
-    let fri = match icc {
-        Some(path) => encode_with_icc(&src.view(), mode, &fs::read(path)?)?,
-        None => encode(&src.view(), mode)?,
+    let fri = match (icc, bitstream) {
+        (Some(path), _) => encode_with_icc(&src.view(), mode, &fs::read(path)?)?,
+        (None, Some(version)) => encode_with_version(&src.view(), mode, version)?,
+        (None, None) => encode(&src.view(), mode)?,
     };
     fs::write(output, &fri)?;
     let raw_len = src.data.len();

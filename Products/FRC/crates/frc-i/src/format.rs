@@ -12,8 +12,13 @@ pub const VERSION_DEBLOCK: u8 = 4;
 pub const VERSION_SUPERBLOCK: u8 = 5;
 /// Версия с блоком метаданных (флаг-бит 6): ICC-профиль и будущие чанки.
 pub const VERSION_METADATA: u8 = 6;
+/// Версия с адаптивной энтропией lossy-секций (линия v7, FRC-I.md §11.3):
+/// range-кодер + адаптивные модели вместо статического rANS; таблиц частот
+/// в DCT-секциях нет. Слой блоков — v5. Кодер пишет её только по явному
+/// запросу (`encode_with_version`), пока линия не объявлена стабильной.
+pub const VERSION_ADAPTIVE: u8 = 7;
 /// Максимальная версия, которую читает этот декодер.
-pub const VERSION_MAX: u8 = VERSION_METADATA;
+pub const VERSION_MAX: u8 = VERSION_ADAPTIVE;
 /// Минимальная версия, которую декодер обязан читать всегда.
 pub const VERSION_MIN: u8 = 1;
 /// Длина фиксированного заголовка.

@@ -2,7 +2,7 @@
 
 use frc_i::{
     DecodedImage, EncodeError, EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc,
-    read_icc, read_info,
+    encode_with_version, read_icc, read_info,
 };
 
 fn xorshift(seed: &mut u64) -> u64 {
@@ -337,6 +337,72 @@ fn icc_roundtrip_all_modes() {
     let fri = encode(&v, EncodeMode::Lossy { quality: 75 }).unwrap();
     assert_eq!(read_icc(&fri).unwrap(), None);
     assert_eq!(decode(&fri).unwrap().icc, None);
+}
+
+#[test]
+fn v7_adaptive_roundtrip_and_density() {
+    // Линия v7 (адаптивная энтропия) доступна только по явному запросу
+    // версии; публичный encode() продолжает писать v5 до стабилизации.
+    let (w, h) = (320, 240);
+    let data = synthetic(w, h, PixelFormat::Rgb8);
+    let v = view(w, h, PixelFormat::Rgb8, &data);
+    for quality in [30u8, 50, 75, 90] {
+        let v5 = encode(&v, EncodeMode::Lossy { quality }).unwrap();
+        let v7 = encode_with_version(&v, EncodeMode::Lossy { quality }, 7).unwrap();
+        assert_eq!(read_info(&v7).unwrap().version, 7);
+
+        // Слой блоков общий, поэтому пиксели v7 == пиксели v5
+        // (энтропийная секция не меняет реконструкцию).
+        let out5 = decode(&v5).unwrap();
+        let out7 = decode(&v7).unwrap();
+        assert_eq!(out7.data, out5.data, "q={quality}: реконструкции разошлись");
+
+        // Смысл v7.1 — плотность: на типовых фото адаптив обязан быть
+        // заметно компактнее статических таблиц (Kodak: ~−3..4% BD-rate).
+        assert!(
+            v7.len() < v5.len(),
+            "q={quality}: v7 {} байт не меньше v5 {}",
+            v7.len(),
+            v5.len()
+        );
+        assert!(
+            (v5.len() - v7.len()) * 100 >= v5.len(), // ≥ 1%
+            "q={quality}: выигрыш v7 слишком мал: {} → {}",
+            v5.len(),
+            v7.len()
+        );
+    }
+}
+
+#[test]
+fn v7_non_multiple_of_16_dimensions() {
+    for &(w, h) in &[(1u32, 1u32), (7, 5), (17, 33), (100, 60), (257, 255)] {
+        let data = synthetic(w, h, PixelFormat::Rgb8);
+        let v = view(w, h, PixelFormat::Rgb8, &data);
+        let fri = encode_with_version(&v, EncodeMode::Lossy { quality: 75 }, 7).unwrap();
+        let out = decode(&fri).unwrap();
+        assert_eq!((out.width, out.height), (w, h), "размеры {w}x{h}");
+    }
+}
+
+#[test]
+fn v7_alpha_stays_lossless() {
+    let (w, h) = (100, 60);
+    let data = synthetic(w, h, PixelFormat::Rgba8);
+    let fri = encode_with_version(
+        &view(w, h, PixelFormat::Rgba8, &data),
+        EncodeMode::Lossy { quality: 60 },
+        7,
+    )
+    .unwrap();
+    let out = decode(&fri).unwrap();
+    for (i, (src, dec)) in data
+        .chunks_exact(4)
+        .zip(out.data.chunks_exact(4))
+        .enumerate()
+    {
+        assert_eq!(src[3], dec[3], "альфа исказилась в пикселе {i}");
+    }
 }
 
 #[test]

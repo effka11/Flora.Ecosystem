@@ -5,7 +5,9 @@
 //! в путях декодера приводили бы к панике и провалу.
 
 use frc_i::{DecodeError, DecodeLimits, decode, decode_with_limits};
-use frc_i::{EncodeMode, ImageView, PixelFormat, encode, encode_with_icc, read_icc};
+use frc_i::{
+    EncodeMode, ImageView, PixelFormat, encode, encode_with_icc, encode_with_version, read_icc,
+};
 
 fn xorshift(seed: &mut u64) -> u64 {
     *seed ^= *seed << 13;
@@ -58,6 +60,7 @@ fn sample_streams() -> Vec<Vec<u8>> {
         encode(&g, EncodeMode::Lossless).unwrap(),
         encode(&f, EncodeMode::Lossless).unwrap(), // палитра (2 цвета)
         encode_with_icc(&g, EncodeMode::Lossy { quality: 60 }, &[1, 2, 3, 4]).unwrap(), // v6
+        encode_with_version(&g, EncodeMode::Lossy { quality: 60 }, 7).unwrap(), // v7 (адаптивный)
     ]
 }
 
@@ -77,7 +80,7 @@ fn random_garbage_never_panics() {
 #[test]
 fn garbage_with_valid_magic_never_panics() {
     let mut seed = 0xBADF00Du64;
-    for version in [1u8, 2, 3, 4, 5, 6] {
+    for version in [1u8, 2, 3, 4, 5, 6, 7] {
         for _ in 0..500 {
             let len = 20 + (xorshift(&mut seed) % 400) as usize;
             let mut bytes: Vec<u8> = (0..len)
