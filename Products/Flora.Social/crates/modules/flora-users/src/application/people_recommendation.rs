@@ -73,12 +73,11 @@ impl PeopleRecommendationService {
 
     async fn get_or_compute_snapshot(&self, user_uuid: Uuid) -> Result<PeopleSnapshot, String> {
         let ttl = Duration::from_secs(self.options.cache_ttl_seconds.max(10) as u64);
-        if let Ok(cache) = self.cache.lock() {
-            if let Some(entry) = cache.get(&user_uuid)
-                && entry.expires_at > Instant::now()
-            {
-                return Ok(entry.snapshot.clone());
-            }
+        if let Ok(cache) = self.cache.lock()
+            && let Some(entry) = cache.get(&user_uuid)
+            && entry.expires_at > Instant::now()
+        {
+            return Ok(entry.snapshot.clone());
         }
 
         let now_utc = Utc::now();

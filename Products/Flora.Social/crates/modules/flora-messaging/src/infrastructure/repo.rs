@@ -119,7 +119,7 @@ impl MessagingRepo {
             })
             .collect();
 
-        peers.sort_by(|a, b| b.last_message_at.cmp(&a.last_message_at));
+        peers.sort_by_key(|b| std::cmp::Reverse(b.last_message_at));
         Ok(peers)
     }
 
@@ -331,6 +331,7 @@ impl MessagingRepo {
         Ok(group_assets(rows))
     }
 
+    #[allow(clippy::too_many_arguments)] // mirrors messages INSERT columns
     pub async fn send_message(
         &self,
         sender_uuid: Uuid,

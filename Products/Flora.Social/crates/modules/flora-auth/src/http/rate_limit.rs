@@ -66,10 +66,9 @@ pub fn client_ip_key(req: &Request) -> String {
         .headers()
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
+        && let Some(first) = forwarded.split(',').map(str::trim).find(|s| !s.is_empty())
     {
-        if let Some(first) = forwarded.split(',').map(str::trim).find(|s| !s.is_empty()) {
-            return first.to_string();
-        }
+        return first.to_string();
     }
     "anon".into()
 }

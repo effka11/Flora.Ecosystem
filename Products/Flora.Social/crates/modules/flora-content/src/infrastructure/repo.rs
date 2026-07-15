@@ -1620,6 +1620,7 @@ impl ContentRepo {
         }
     }
 
+    #[allow(clippy::too_many_arguments)] // mirrors post_drafts INSERT columns
     pub async fn insert_post_draft(
         &self,
         draft_uuid: Uuid,

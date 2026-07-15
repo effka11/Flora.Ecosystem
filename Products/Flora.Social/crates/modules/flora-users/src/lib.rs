@@ -56,15 +56,15 @@ pub fn content_ports(
     infrastructure::social_graph::as_ports(pool)
 }
 
-/// Порты presence / профилей / online-access / messages для Messaging ServeNative.
-pub fn messaging_ports(
-    pool: PgPool,
-) -> (
+type MessagingPorts = (
     Arc<dyn flora_users_contracts::UserPresence>,
     Arc<dyn flora_users_contracts::FeedAuthorProfiles>,
     Arc<dyn flora_users_contracts::OnlineStatusAccess>,
     Arc<dyn flora_users_contracts::MessagesAccess>,
-) {
+);
+
+/// Порты presence / профилей / online-access / messages для Messaging ServeNative.
+pub fn messaging_ports(pool: PgPool) -> MessagingPorts {
     let presence: Arc<dyn flora_users_contracts::UserPresence> =
         Arc::new(SqlUsersStore::new(pool.clone()));
     let profiles: Arc<dyn flora_users_contracts::FeedAuthorProfiles> = Arc::new(

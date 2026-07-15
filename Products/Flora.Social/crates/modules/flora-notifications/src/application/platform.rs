@@ -78,13 +78,10 @@ pub fn resolve_audience_platform(
 }
 
 #[cfg(test)]
-
 mod tests {
-
     use super::*;
 
     #[test]
-
     fn parses_client_platform() {
         assert_eq!(
             client_platform_from_header(Some("android/1.2.3")).as_deref(),
@@ -102,7 +99,6 @@ mod tests {
     }
 
     #[test]
-
     fn category_filter_all_is_none() {
         assert_eq!(normalize_category_filter(Some("all")), None);
 

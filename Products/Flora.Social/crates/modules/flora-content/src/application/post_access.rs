@@ -16,7 +16,6 @@ impl PostAccessService {
     }
 
     /// `viewer` — опциональный JWT sub (для приватных сообществ).
-
     pub async fn can_view(&self, post_uuid: Uuid, viewer: Option<Uuid>) -> Result<bool, String> {
         let Some(community_id) = self
             .repo

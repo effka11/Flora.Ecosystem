@@ -10,8 +10,8 @@ use flora_parity::{fira_vectors_dir, load_json};
 use serde_json::Value;
 use uuid::Uuid;
 
-use flora_content::application::communities as fira_c;
-use flora_content::application::feed as fira_f;
+use flora_content::application::fira_communities as fira_c;
+use flora_content::application::fira_feed as fira_f;
 use flora_music::application::recommendations as fira_m;
 use flora_users::application::people as fira_p;
 

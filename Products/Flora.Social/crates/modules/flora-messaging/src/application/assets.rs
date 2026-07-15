@@ -296,12 +296,10 @@ async fn peer_can_read(
 ) -> Result<bool, AssetError> {
     let mut can_read =
         asset.sender_user_uuid() == user_uuid || asset.receiver_user_uuid() == user_uuid;
-    if !can_read {
-        if let Some(msg) = asset.message_uuid() {
-            can_read = is_message_participant(pool, msg, user_uuid)
-                .await
-                .map_err(AssetError::Internal)?;
-        }
+    if !can_read && let Some(msg) = asset.message_uuid() {
+        can_read = is_message_participant(pool, msg, user_uuid)
+            .await
+            .map_err(AssetError::Internal)?;
     }
     Ok(can_read)
 }
@@ -312,12 +310,10 @@ async fn sender_or_message_can_read(
     asset: &impl AssetAccess,
 ) -> Result<bool, AssetError> {
     let mut can_read = asset.sender_user_uuid() == user_uuid;
-    if !can_read {
-        if let Some(msg) = asset.message_uuid() {
-            can_read = is_message_participant(pool, msg, user_uuid)
-                .await
-                .map_err(AssetError::Internal)?;
-        }
+    if !can_read && let Some(msg) = asset.message_uuid() {
+        can_read = is_message_participant(pool, msg, user_uuid)
+            .await
+            .map_err(AssetError::Internal)?;
     }
     Ok(can_read)
 }

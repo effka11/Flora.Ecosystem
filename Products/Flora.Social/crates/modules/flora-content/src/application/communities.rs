@@ -498,11 +498,11 @@ impl CommunitiesService {
             if !raw_slug.trim().is_empty() && !has_only_slug_chars(Some(raw_slug)) {
                 return Ok(Err(CommunityError::BadRequest(SLUG_FORMAT_MESSAGE)));
             }
-            let slug_source = raw_slug
-                .trim()
-                .is_empty()
-                .then(|| community.name.as_str())
-                .unwrap_or(raw_slug);
+            let slug_source = if raw_slug.trim().is_empty() {
+                community.name.as_str()
+            } else {
+                raw_slug
+            };
             let normalized_slug = normalize_for_compare(Some(slug_source));
             if normalized_slug.is_empty() {
                 return Ok(Err(CommunityError::BadRequest(

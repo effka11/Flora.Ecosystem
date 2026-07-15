@@ -619,11 +619,7 @@ async fn update_profile(
     }
 
     let birth = body.birth_date.as_deref().map(str::trim);
-    let birth_arg = match birth {
-        None => None,
-        Some("") => Some(""),
-        Some(s) => Some(s),
-    };
+    let birth_arg = birth;
 
     if let Err(e) = state
         .profiles

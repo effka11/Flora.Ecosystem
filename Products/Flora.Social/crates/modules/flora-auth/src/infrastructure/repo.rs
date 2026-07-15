@@ -335,6 +335,7 @@ impl AuthRepo {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)] // mirrors user_sessions INSERT columns
     pub async fn insert_session(
         &self,
         session_id: Uuid,

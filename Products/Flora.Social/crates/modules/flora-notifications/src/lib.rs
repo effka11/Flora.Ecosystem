@@ -3,9 +3,9 @@
 //!
 //! ServeNative HTTP: inbox list/unread + mark-read + delete + push-token + SSE stream
 //! + admin broadcast (`POST /api/admin/notifications/broadcast`, `X-Flora-Admin-Token`).
-//! After Messaging send: SSE `event: message` + FCM push (паритет UserRealtimePublisher).
-//! Social inbox create (`DispatchAsync`): Content/Users call `UserNotificationDispatcher`
-//! → INSERT `user_notifications` + SSE `event: notification` + inbox FCM.
+//!   After Messaging send: SSE `event: message` + FCM push (паритет UserRealtimePublisher).
+//!   Social inbox create (`DispatchAsync`): Content/Users call `UserNotificationDispatcher`
+//!   → INSERT `user_notifications` + SSE `event: notification` + inbox FCM.
 
 pub mod application;
 pub mod http;

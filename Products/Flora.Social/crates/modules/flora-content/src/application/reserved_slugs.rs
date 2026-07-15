@@ -8,7 +8,7 @@ use flora_shared::latin_identifiers::normalize_slug;
 use reserved_slugs_data::{EXACT, PREFIXES};
 
 pub fn collapse_separators(slug: &str) -> String {
-    slug.replace('-', "").replace('_', "")
+    slug.replace(['-', '_'], "")
 }
 
 /// `normalized_slug` уже в нижнем регистре (как после `normalize_slug`).

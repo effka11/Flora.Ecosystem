@@ -78,9 +78,10 @@ pub async fn create_epoch(
     .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
 
     let state = state.ok_or_else(|| {
-        E2eEpochRepoError::AccountNotInRequiredState(format!(
+        E2eEpochRepoError::AccountNotInRequiredState(
             "POST epochs is only allowed when account state = locked. Current: not_initialized"
-        ))
+                .to_string(),
+        )
     })?;
 
     if state.state != "Locked" {
@@ -120,12 +121,12 @@ pub async fn create_epoch(
     .await
     .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
 
-    if let Some(existing) = &existing_backup {
-        if kb.backup_revision <= existing.backup_revision {
-            return Err(E2eEpochRepoError::Conflict(
-                "keyBackup.backupRevision must be greater than the current revision.".into(),
-            ));
-        }
+    if let Some(existing) = &existing_backup
+        && kb.backup_revision <= existing.backup_revision
+    {
+        return Err(E2eEpochRepoError::Conflict(
+            "keyBackup.backupRevision must be greater than the current revision.".into(),
+        ));
     }
 
     upsert_key_backup_tx(&mut tx, user_uuid, kb, now).await?;
@@ -425,12 +426,12 @@ pub async fn unlock_complete(
             .copied()
             .ok_or_else(|| E2eEpochRepoError::Conflict("Missing epoch unlock signature.".into()))?;
 
-        if let Some(stored) = existing_identity_map.get(epoch_id) {
-            if stored != identity_public_key {
-                return Err(E2eEpochRepoError::Conflict(format!(
-                    "Epoch {epoch_id}: submitted epochAccountIdentityPublicKey conflicts with the stored key."
-                )));
-            }
+        if let Some(stored) = existing_identity_map.get(epoch_id)
+            && stored != identity_public_key
+        {
+            return Err(E2eEpochRepoError::Conflict(format!(
+                "Epoch {epoch_id}: submitted epochAccountIdentityPublicKey conflicts with the stored key."
+            )));
         }
 
         if !verify_ed25519_signature(identity_public_key, &canonical_payload, signature) {

@@ -254,7 +254,7 @@ impl ConversationService {
             .accounts
             .get_public(receiver_uuid)
             .await
-            .map_err(|e| SendMessageError::BadRequest(e))?;
+            .map_err(SendMessageError::BadRequest)?;
         if receiver_exists.is_none() {
             return Err(SendMessageError::NotFound("Получатель не найден.".into()));
         }
@@ -263,7 +263,7 @@ impl ConversationService {
             .messages_access
             .can_send_messages(sender_uuid, receiver_uuid)
             .await
-            .map_err(|e| SendMessageError::BadRequest(e))?;
+            .map_err(SendMessageError::BadRequest)?;
         if !can_send {
             return Err(SendMessageError::Forbidden(
                 "Пользователь ограничил входящие сообщения.".into(),
@@ -291,7 +291,7 @@ impl ConversationService {
                 &video_uuids,
             )
             .await
-            .map_err(|e| SendMessageError::BadRequest(e))?;
+            .map_err(SendMessageError::BadRequest)?;
 
         let push_ctx = MessageSentPushContext::from_request(
             request.push_preview.as_deref(),

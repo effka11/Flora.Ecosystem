@@ -117,10 +117,10 @@ async fn pick_user(pool: &PgPool) -> Uuid {
 
 fn bearer(cfg: &FloraConfig, user_uuid: Uuid) -> String {
     let mut jwt = JwtOptions::from_config(cfg);
-    if jwt.secret.is_empty() {
-        if let Some(s) = load_dev_jwt_secret() {
-            jwt.secret = s;
-        }
+    if jwt.secret.is_empty()
+        && let Some(s) = load_dev_jwt_secret()
+    {
+        jwt.secret = s;
     }
     let now = Utc::now().timestamp();
     let token = issue_access_token(

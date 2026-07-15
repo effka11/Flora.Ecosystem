@@ -217,14 +217,12 @@ impl FeedService {
     }
 
     async fn get_or_compute_snapshot(&self, user_uuid: Uuid) -> Result<FeedSnapshot, String> {
-        if self.fira.enable_cache {
-            if let Ok(cache) = self.cache.lock() {
-                if let Some(entry) = cache.get(&user_uuid) {
-                    if Instant::now() < entry.expires_at {
-                        return Ok(entry.snapshot.clone());
-                    }
-                }
-            }
+        if self.fira.enable_cache
+            && let Ok(cache) = self.cache.lock()
+            && let Some(entry) = cache.get(&user_uuid)
+            && Instant::now() < entry.expires_at
+        {
+            return Ok(entry.snapshot.clone());
         }
         let list = self.compute_fira_feed(user_uuid).await?;
         self.store_snapshot(user_uuid, list)
@@ -246,11 +244,11 @@ impl FeedService {
             None
         };
         let mut fresh = self.compute_fira_feed(user_uuid).await?;
-        if let Some(prev) = previous_top {
-            if !prev.is_empty() {
-                self.apply_refresh_shuffle(user_uuid, &prev, &mut fresh)
-                    .await?;
-            }
+        if let Some(prev) = previous_top
+            && !prev.is_empty()
+        {
+            self.apply_refresh_shuffle(user_uuid, &prev, &mut fresh)
+                .await?;
         }
         self.store_snapshot(user_uuid, fresh)
     }
@@ -673,7 +671,7 @@ impl FeedService {
         let mut seen: HashSet<Uuid> = result.iter().copied().collect();
 
         let mut subs: Vec<&FeedPostLite> = subscription_posts.iter().collect();
-        subs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        subs.sort_by_key(|b| std::cmp::Reverse(b.created_at));
         for post in subs {
             if blocked.contains(&post.author_user_uuid) {
                 continue;

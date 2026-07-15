@@ -8,6 +8,12 @@ use uuid::Uuid;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// `(user_uuid, display_name, avatar_uuid)` — пакетный lookup для search/followers.
+pub type ProfileFieldsRow = (Uuid, Option<String>, Option<Uuid>);
+
+/// `(user_uuid, last_seen_utc)` — пакетное чтение presence.
+pub type LastSeenRow = (Uuid, DateTime<Utc>);
+
 /// Порт чтения профиля (C# `IUserProfileReadQueries` / god-controller profile checks).
 pub trait UserProfileReadQueries: Send + Sync {
     /// `true`, если нет строки профиля или `display_name` пуст (шаг «Имя» на клиенте).
@@ -69,7 +75,7 @@ pub trait UserProfileQueries: Send + Sync {
     fn profile_fields_by_uuids(
         &self,
         user_uuids: &[Uuid],
-    ) -> BoxFuture<'_, Result<Vec<(Uuid, Option<String>, Option<Uuid>)>, String>>;
+    ) -> BoxFuture<'_, Result<Vec<ProfileFieldsRow>, String>>;
 
     /// Подписчики профиля (ordered by follower_user_uuid), skip/take.
     fn list_follower_user_uuids(
@@ -176,7 +182,7 @@ pub trait UserPresence: Send + Sync {
     fn last_seen_by_uuids(
         &self,
         user_uuids: &[Uuid],
-    ) -> BoxFuture<'_, Result<Vec<(Uuid, DateTime<Utc>)>, String>>;
+    ) -> BoxFuture<'_, Result<Vec<LastSeenRow>, String>>;
 }
 
 /// Поле политики доступа к профилю (C# `ProfileAccessField`).
