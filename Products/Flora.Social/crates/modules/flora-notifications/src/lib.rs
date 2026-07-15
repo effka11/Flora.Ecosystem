@@ -1,8 +1,95 @@
-//! Модуль Notifications. Перенос — Фаза 4, вместе с Messaging (next-architecture.md §6);
+//! Модуль Notifications. Перенос — Фаза 4 (next-architecture.md §6);
 //! владелец — таблица §6.0. SSE-инварианты — §4.6.
+//!
+//! ServeNative HTTP: inbox list/unread + mark-read + delete + push-token + SSE stream
+//! + admin broadcast (`POST /api/admin/notifications/broadcast`, `X-Flora-Admin-Token`).
+//! After Messaging send: SSE `event: message` + FCM push (паритет UserRealtimePublisher).
+//! Social inbox create (`DispatchAsync`): Content/Users call `UserNotificationDispatcher`
+//! → INSERT `user_notifications` + SSE `event: notification` + inbox FCM.
 
-/// HTTP-роутер модуля (signals/stream, уведомления, push-токены). До cutover Фазы 4 пуст —
-/// запросы обслуживает C#-хост через gateway-fallback.
+pub mod application;
+pub mod http;
+pub mod infrastructure;
+
+use std::sync::Arc;
+
+use flora_auth_contracts::AccountDirectory;
+use flora_messaging_contracts::MessageSentNotifier;
+use flora_notifications_contracts::UserNotificationDispatcher;
+use flora_shared::config::FloraConfig;
+use flora_users_contracts::UserProfileQueries;
+use sqlx::PgPool;
+
+use crate::application::{
+    InboxNotificationDispatcher, InboxService, MessagePushNotifier, PushTokenService,
+    UserRealtimePublisher,
+};
+use crate::http::{AdminBroadcastState, NotificationsState, admin_router, protected_router};
+use crate::infrastructure::{
+    ClientPlatformRepo, FcmPushSender, InboxRepo, PushTokenRepo, UserDisplayNameResolver,
+    UserRealtimeHub,
+};
+
+/// Собранный модуль: protected (JWT) + admin (token header) + порты Messaging/Content/Users.
+pub struct NotificationsModule {
+    pub protected_router: axum::Router,
+    /// Без JWT — `X-Flora-Admin-Token`.
+    pub admin_router: axum::Router,
+    /// Реализация `IMessageSentNotifier` — SSE + FCM после DM.
+    pub message_sent_notifier: Arc<dyn MessageSentNotifier>,
+    /// Реализация `DispatchAsync` — inbox row + SSE `event: notification`.
+    pub user_notification_dispatcher: Arc<dyn UserNotificationDispatcher>,
+}
+
+/// Пустой роутер (ServeNative=false / нет пула) — gateway-fallback на .NET.
 pub fn router() -> axum::Router {
     axum::Router::new()
+}
+
+pub fn compose(
+    pool: PgPool,
+    cfg: &FloraConfig,
+    profiles: Arc<dyn UserProfileQueries>,
+    accounts: Arc<dyn AccountDirectory>,
+) -> NotificationsModule {
+    let hub = Arc::new(UserRealtimeHub::new());
+    let inbox_repo = Arc::new(InboxRepo::new(pool.clone()));
+    let push_repo = Arc::new(PushTokenRepo::new(pool.clone()));
+    let client_platforms = Arc::new(ClientPlatformRepo::new(pool));
+    let push_tokens = Arc::new(PushTokenService::new(Arc::clone(&push_repo)));
+    let fcm = Arc::new(FcmPushSender::from_config(cfg, Arc::clone(&push_repo)));
+    let display_names = Arc::new(UserDisplayNameResolver::new(profiles, Arc::clone(&accounts)));
+    let realtime = Arc::new(UserRealtimePublisher::new(
+        Arc::clone(&hub),
+        Arc::clone(&push_tokens),
+        fcm,
+        display_names,
+    ));
+    let inbox = Arc::new(InboxService::new(
+        Arc::clone(&inbox_repo),
+        Arc::clone(&accounts),
+        client_platforms,
+        Arc::clone(&push_tokens),
+        Arc::clone(&realtime),
+    ));
+    let message_sent_notifier: Arc<dyn MessageSentNotifier> =
+        Arc::new(MessagePushNotifier::new(Arc::clone(&realtime)));
+    let user_notification_dispatcher: Arc<dyn UserNotificationDispatcher> = Arc::new(
+        InboxNotificationDispatcher::new(inbox_repo, realtime),
+    );
+
+    let admin_token = cfg
+        .get_non_empty("Flora:AdminBroadcastToken")
+        .map(|s| Arc::<str>::from(s.to_string()));
+
+    NotificationsModule {
+        protected_router: protected_router(NotificationsState {
+            inbox: Arc::clone(&inbox),
+            push_tokens,
+            hub,
+        }),
+        admin_router: admin_router(AdminBroadcastState { inbox, admin_token }),
+        message_sent_notifier,
+        user_notification_dispatcher,
+    }
 }

@@ -17,10 +17,13 @@ flora-economy = { workspace = true }
 flora-users = { workspace = true }
 flora-content = { workspace = true }
 flora-messaging = { workspace = true }
+flora-messaging-contracts = { workspace = true }
 flora-music = { workspace = true }
 flora-notifications = { workspace = true }
+flora-notifications-contracts = { workspace = true }
 flora-verification = { workspace = true }
 flora-verification-contracts = { workspace = true }
+flora-auth-contracts = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }

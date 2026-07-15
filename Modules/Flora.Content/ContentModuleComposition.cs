@@ -41,12 +41,15 @@ public static class ContentModuleComposition
             configuration.GetSection(CommunityRecommendationOptions.SectionName));
 
         // Транскодирование видео постов: ffmpeg (SVT-AV1) + in-memory очередь + фоновый воркер.
+        // Dual-writer запрещён (§6): при Content:ServeNative воркер крутит Rust flora-api.
         services.Configure<MediaTranscodingOptions>(
             configuration.GetSection(MediaTranscodingOptions.SectionName));
         services.AddSingleton<IVideoTranscoder, FfmpegVideoTranscoder>();
         services.AddSingleton<PostVideoTranscodeQueue>();
         services.AddSingleton<IPostVideoTranscodeQueue>(sp => sp.GetRequiredService<PostVideoTranscodeQueue>());
-        services.AddHostedService<PostVideoTranscodeWorker>();
+        var contentServeNative = configuration.GetValue("Content:ServeNative", false);
+        if (!contentServeNative)
+            services.AddHostedService<PostVideoTranscodeWorker>();
 
         services.AddMemoryCache();
         services.AddScoped<IContentFeedQueries, ContentFeedQueries>();

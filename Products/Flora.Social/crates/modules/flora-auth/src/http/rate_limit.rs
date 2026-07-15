@@ -96,6 +96,42 @@ pub async fn anonymous_auth_rate_limit(
     next.run(req).await
 }
 
+/// `social-account-sensitive`: 10 / 15 мин, ключ = JWT sub (иначе IP).
+pub fn account_sensitive_limiter() -> Arc<FixedWindowLimiter> {
+    Arc::new(FixedWindowLimiter::new(10, Duration::from_secs(15 * 60)))
+}
+
+pub async fn account_sensitive_rate_limit(
+    axum::extract::State(limiter): axum::extract::State<Arc<FixedWindowLimiter>>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let path = req.uri().path();
+    let is_sensitive = matches!(
+        path,
+        "/api/auth/me/password"
+            | "/api/auth/delete-account"
+            | "/api/auth/me/email/change"
+            | "/api/auth/me/email/confirm"
+            | "/api/auth/me/phone"
+            | "/api/auth/me/2fa/setup"
+            | "/api/auth/me/2fa/enable"
+            | "/api/auth/me/2fa"
+    );
+    if !is_sensitive {
+        return next.run(req).await;
+    }
+    let key = req
+        .extensions()
+        .get::<super::AuthUser>()
+        .map(|u| u.user_uuid.to_string())
+        .unwrap_or_else(|| client_ip_key(&req));
+    if !limiter.check_and_increment(&key) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+    next.run(req).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

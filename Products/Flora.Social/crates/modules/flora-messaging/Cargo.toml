@@ -11,6 +11,27 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-axum = { workspace = true }
-fscp-core = { workspace = true }
+axum = { workspace = true, features = ["multipart"] }
+base64 = { workspace = true }
+chrono = { workspace = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+flora-auth-contracts = { workspace = true }
+flora-messaging-contracts = { workspace = true }
 flora-shared = { workspace = true }
+flora-users-contracts = { workspace = true }
+fscp-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+flora-auth = { workspace = true }
+flora-shared = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

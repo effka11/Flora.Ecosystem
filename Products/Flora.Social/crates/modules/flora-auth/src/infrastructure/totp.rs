@@ -8,6 +8,7 @@ type HmacSha1 = Hmac<Sha1>;
 
 const STEP_SECS: u64 = 30;
 const DIGITS: u32 = 6;
+const TOTP_ISSUER: &str = "FLORA";
 
 pub fn verify_totp(base32_secret: Option<&str>, code: &str) -> bool {
     let Some(secret) = base32_secret.map(str::trim).filter(|s| !s.is_empty()) else {
@@ -35,13 +36,52 @@ pub fn verify_totp(base32_secret: Option<&str>, code: &str) -> bool {
     false
 }
 
+/// Код для текущего 30-сек окна (smoke / локальные тесты).
+pub fn current_totp_code(base32_secret: &str) -> Option<String> {
+    let key = decode_base32(base32_secret).ok()?;
+    let now = chrono::Utc::now().timestamp().max(0) as u64;
+    Some(totp_code(&key, now / STEP_SECS))
+}
+
+/// 20 случайных байт → Base32 без padding (паритет OtpNet `Base32Encoding.ToString`).
+pub fn generate_totp_secret() -> String {
+    let mut bytes = [0u8; 20];
+    getrandom::fill(&mut bytes).expect("OS CSPRNG");
+    BASE32_NOPAD.encode(&bytes)
+}
+
+/// Паритет `new OtpUri(OtpType.Totp, secret, account, "FLORA").ToString()`.
+pub fn otp_auth_uri(secret: &str, account: &str) -> String {
+    let label = format!(
+        "{}:{}",
+        percent_encode(TOTP_ISSUER),
+        percent_encode(account)
+    );
+    let issuer_q = percent_encode(TOTP_ISSUER);
+    format!(
+        "otpauth://totp/{label}?secret={secret}&issuer={issuer_q}&algorithm=SHA1&digits=6&period=30"
+    )
+}
+
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(b as char);
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 fn decode_base32(secret: &str) -> Result<Vec<u8>, ()> {
     let normalized: String = secret
         .chars()
         .filter(|c| !c.is_whitespace())
         .map(|c| c.to_ascii_uppercase())
         .collect();
-    // OtpNet принимает padded и unpadded.
     let padded = match normalized.len() % 8 {
         0 => normalized.clone(),
         r => format!("{normalized}{}", "=".repeat(8 - r)),
@@ -71,8 +111,23 @@ mod tests {
 
     #[test]
     fn rfc6238_sha1_six_digits_from_known_counter() {
-        // RFC 6238 Appendix B seed; 8-digit code at T=59 (counter=1) is 94287082 → 6 digits 287082.
         let key = b"12345678901234567890";
         assert_eq!(totp_code(key, 1), "287082");
+    }
+
+    #[test]
+    fn otp_auth_uri_matches_otpnet_shape() {
+        let uri = otp_auth_uri("JBSWY3DPEHPK3PXP", "alice@google.com");
+        assert_eq!(
+            uri,
+            "otpauth://totp/FLORA:alice%40google.com?secret=JBSWY3DPEHPK3PXP&issuer=FLORA&algorithm=SHA1&digits=6&period=30"
+        );
+    }
+
+    #[test]
+    fn generate_secret_roundtrip_verify_window() {
+        let s = generate_totp_secret();
+        assert!(!s.is_empty());
+        assert!(decode_base32(&s).is_ok());
     }
 }

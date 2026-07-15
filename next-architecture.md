@@ -260,16 +260,16 @@ flowchart LR
 | Хост / шлюз (`/`, `/health`, `/version`) | **Rust** `flora-api` (:5290); .NET upstream `flora-api-dotnet` (:5000) | Фаза 0: cutover 100% (2026-07-14) — nginx + `FLORA_API_UPSTREAM` → Rust gateway; **соак до Фазы 1 снят** (нет прод-пользователей) | — |
 | Music | **Rust** | cutover HTTP + workers (`ServeNative`); C# Music hosted services выключены при том же флаге | — |
 | Verification | **Rust** (gRPC port) | Фаза 2a: tonic `verification.proto`; C# Auth → gRPC при `Verification:UseGrpc` | — |
-| Users | C# | не начат | — |
-| Auth | C# | в переносе: sessions + logout + security + refresh + login + register/verify/cancel (`Auth:ServeNative`); остальное — C# | — |
-| Content | C# | не начат | — |
-| Messaging | C# | не начат | — |
-| Notifications | C# | не начат | — |
+| Users | **Rust** (`Users:ServeNative`) | cutover HTTP: me/privacy/blocks/profile/avatar/follow/search/recommended/by-username/followers/following + FIRA-P; notify follow → Notifications contracts | — |
+| Auth | **Rust** (`Auth:ServeNative`) | cutover HTTP: login/register/verify/sessions/password/2FA/email/phone/delete-account; C# ImportedSocial — только fallback если флаг выкл. | — |
+| Content | **Rust** (`Content:ServeNative`) | cutover: feed/posts/comments/communities/drafts/media + images/video upload + SVT-AV1 worker; like/comment → Notifications dispatcher; C# video HostedService выкл. при флаге | — |
+| Messaging | **Rust** (`Messaging:ServeNative`) | cutover: `/api/messaging/*` + legacy `/api/auth/conversations|messages|*` + e2e-public-key + E2E FSM; MessageSentNotifier → SSE/FCM | — |
+| Notifications | **Rust** (`Notifications:ServeNative`) | cutover: inbox + push-token + SSE + FCM + dispatcher + admin broadcast | — |
 | Economy (FEP) | **Rust** (родной, C#-аналога нет) | вне strangler-миграции; выключен флагом `Economy:Enabled` до включения продуктом | — |
 
 Статусы: `не начат → в переносе (владелец C#) → freeze (опц., при живом трафике) → cutover N% → Rust`. Пока пользователей нет — freeze/соак между фазами не ставим.
 
-> Примечание: FSCP-валидатор Messaging перенесён заранее как чистая функция с golden-паритетом (§4.4) — это **не** меняет владение модулем и не открывает Фазу 4; трафик обслуживает C# до её cutover.
+> Примечание: FSCP-валидатор Messaging перенесён заранее как чистая функция с golden-паритетом (§4.4). При `Messaging:ServeNative` HTTP/E2E трафик обслуживает Rust; .NET upstream остаётся только как gateway-fallback для незаматченных путей.
 
 ### Фаза 0 — Фундамент и шлюз
 

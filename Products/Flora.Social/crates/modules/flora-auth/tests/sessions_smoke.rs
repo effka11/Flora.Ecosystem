@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use flora_auth::infrastructure::jwt::{AccessTokenClaims, JwtOptions, issue_access_token};
+use flora_auth::infrastructure::totp::current_totp_code;
 use flora_shared::config::FloraConfig;
 use flora_shared::npgsql::NpgsqlConnectionString;
 use sqlx::PgPool;
@@ -64,6 +65,46 @@ fn gateway_verify_registration_url() -> String {
 fn gateway_cancel_registration_url() -> String {
     std::env::var("FLORA_AUTH_CANCEL_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/cancel-registration".into())
+}
+
+fn gateway_change_password_url() -> String {
+    std::env::var("FLORA_AUTH_PASSWORD_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/password".into())
+}
+
+fn gateway_delete_account_url() -> String {
+    std::env::var("FLORA_AUTH_DELETE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/delete-account".into())
+}
+
+fn gateway_email_change_url() -> String {
+    std::env::var("FLORA_AUTH_EMAIL_CHANGE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/email/change".into())
+}
+
+fn gateway_email_confirm_url() -> String {
+    std::env::var("FLORA_AUTH_EMAIL_CONFIRM_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/email/confirm".into())
+}
+
+fn gateway_phone_url() -> String {
+    std::env::var("FLORA_AUTH_PHONE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/phone".into())
+}
+
+fn gateway_2fa_setup_url() -> String {
+    std::env::var("FLORA_AUTH_2FA_SETUP_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/2fa/setup".into())
+}
+
+fn gateway_2fa_enable_url() -> String {
+    std::env::var("FLORA_AUTH_2FA_ENABLE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/2fa/enable".into())
+}
+
+fn gateway_2fa_disable_url() -> String {
+    std::env::var("FLORA_AUTH_2FA_DISABLE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:5290/api/auth/me/2fa".into())
 }
 
 fn smoke_user_uuid() -> Uuid {
@@ -818,4 +859,312 @@ async fn cancel_registration_invalid_token_ok() {
         .await
         .expect("POST cancel");
     assert_eq!(res.status(), reqwest::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn change_password_and_delete_account_roundtrip() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let email = format!("smoke-pwd-{}@flora.local", Uuid::now_v7().as_simple());
+    let password = "SmokePwd-Pass-1!";
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("client");
+
+    let begin = client
+        .post(gateway_register_url())
+        .json(&serde_json::json!({ "email": email, "password": password }))
+        .send()
+        .await
+        .expect("POST register");
+    let begin_body: serde_json::Value = begin.json().await.expect("json");
+    let token = begin_body["verificationToken"].as_str().expect("token").to_string();
+    let Some(code) = begin_body["devVerificationCode"].as_str().map(str::to_string) else {
+        let _ = client
+            .post(gateway_cancel_registration_url())
+            .json(&serde_json::json!({ "verificationToken": token }))
+            .send()
+            .await;
+        eprintln!("skip: no devVerificationCode");
+        return;
+    };
+
+    let verify = client
+        .post(gateway_verify_registration_url())
+        .json(&serde_json::json!({ "verificationToken": token, "code": code }))
+        .send()
+        .await
+        .expect("POST verify");
+    let verify_status = verify.status();
+    let verify_body: serde_json::Value = verify.json().await.expect("json");
+    assert_eq!(verify_status, reqwest::StatusCode::OK, "{verify_body}");
+    let access = verify_body["accessToken"].as_str().expect("access").to_string();
+
+    let cfg = load_config();
+    let pool = connect_pool(&cfg).await;
+    let user_uuid: Uuid = sqlx::query_scalar(
+        "SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1",
+    )
+    .bind(&email)
+    .fetch_one(&pool)
+    .await
+    .expect("user");
+    let _ = insert_active_session(&pool, user_uuid).await;
+    let before_others = count_active(&pool, user_uuid).await;
+    assert!(before_others >= 2, "need ≥2 sessions, got {before_others}");
+
+    let bad = client
+        .patch(gateway_change_password_url())
+        .header("Authorization", format!("Bearer {access}"))
+        .json(&serde_json::json!({
+            "currentPassword": password,
+            "newPassword": "short"
+        }))
+        .send()
+        .await
+        .expect("PATCH short");
+    let bad_status = bad.status();
+    let bad_body: serde_json::Value = bad.json().await.expect("json");
+    assert_eq!(bad_status, reqwest::StatusCode::BAD_REQUEST, "{bad_body}");
+    assert_eq!(
+        bad_body["error"],
+        "Новый пароль должен быть не короче 8 символов."
+    );
+
+    let new_password = "SmokePwd-Pass-2!";
+    let changed = client
+        .patch(gateway_change_password_url())
+        .header("Authorization", format!("Bearer {access}"))
+        .json(&serde_json::json!({
+            "currentPassword": password,
+            "newPassword": new_password
+        }))
+        .send()
+        .await
+        .expect("PATCH password");
+    let changed_status = changed.status();
+    let changed_body: serde_json::Value = changed.json().await.expect("json");
+    assert_eq!(changed_status, reqwest::StatusCode::OK, "{changed_body}");
+    assert_eq!(changed_body["message"], "Пароль изменён.");
+
+    let revoked_pwd: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)::bigint
+        FROM flora_core.user_sessions
+        WHERE user_uuid = $1 AND status = 2
+        "#,
+    )
+    .bind(user_uuid)
+    .fetch_one(&pool)
+    .await
+    .expect("revoked password count");
+    assert!(
+        revoked_pwd >= 1,
+        "expected RevokedPassword sessions, got {revoked_pwd}"
+    );
+    assert_eq!(count_active(&pool, user_uuid).await, 1);
+
+    let deleted = client
+        .post(gateway_delete_account_url())
+        .header("Authorization", format!("Bearer {access}"))
+        .json(&serde_json::json!({ "password": new_password }))
+        .send()
+        .await
+        .expect("POST delete");
+    let deleted_status = deleted.status();
+    let deleted_body: serde_json::Value = deleted.json().await.expect("json");
+    assert_eq!(deleted_status, reqwest::StatusCode::OK, "{deleted_body}");
+    assert_eq!(deleted_body["message"], "Аккаунт удалён.");
+
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM flora_core.user_accounts WHERE user_uuid = $1)",
+    )
+    .bind(user_uuid)
+    .fetch_one(&pool)
+    .await
+    .expect("exists");
+    assert!(!exists);
+    let _ = sqlx::query("DELETE FROM flora_core.user_profiles WHERE user_uuid = $1")
+        .bind(user_uuid)
+        .execute(&pool)
+        .await;
+}
+
+#[tokio::test]
+async fn email_phone_2fa_security_roundtrip() {
+    if std::env::var("FLORA_AUTH_SESSIONS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_AUTH_SESSIONS_SMOKE=1");
+        return;
+    }
+    let email = format!("smoke-sec-{}@flora.local", Uuid::now_v7().as_simple());
+    let password = "SmokeSec-Pass-1!";
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(45))
+        .build()
+        .expect("client");
+
+    let begin = client
+        .post(gateway_register_url())
+        .json(&serde_json::json!({ "email": email, "password": password }))
+        .send()
+        .await
+        .expect("register");
+    let begin_body: serde_json::Value = begin.json().await.expect("json");
+    let token = begin_body["verificationToken"].as_str().expect("token").to_string();
+    let Some(code) = begin_body["devVerificationCode"].as_str().map(str::to_string) else {
+        let _ = client
+            .post(gateway_cancel_registration_url())
+            .json(&serde_json::json!({ "verificationToken": token }))
+            .send()
+            .await;
+        eprintln!("skip: no devVerificationCode");
+        return;
+    };
+    let verify = client
+        .post(gateway_verify_registration_url())
+        .json(&serde_json::json!({ "verificationToken": token, "code": code }))
+        .send()
+        .await
+        .expect("verify");
+    let verify_status = verify.status();
+    let verify_body: serde_json::Value = verify.json().await.expect("json");
+    assert_eq!(verify_status, reqwest::StatusCode::OK, "{verify_body}");
+    let access = verify_body["accessToken"].as_str().expect("access").to_string();
+    let auth = format!("Bearer {access}");
+
+    let cfg = load_config();
+    let pool = connect_pool(&cfg).await;
+    let user_uuid: Uuid = sqlx::query_scalar(
+        "SELECT user_uuid FROM flora_core.user_accounts WHERE email = $1",
+    )
+    .bind(&email)
+    .fetch_one(&pool)
+    .await
+    .expect("user");
+
+    // phone
+    let phone_res = client
+        .patch(gateway_phone_url())
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "password": password, "phone": "+7 (900) 111-22-33" }))
+        .send()
+        .await
+        .expect("phone");
+    let phone_status = phone_res.status();
+    let phone_body: serde_json::Value = phone_res.json().await.expect("json");
+    assert_eq!(phone_status, reqwest::StatusCode::OK, "{phone_body}");
+    let phone_db: String = sqlx::query_scalar(
+        "SELECT phone FROM flora_core.user_accounts WHERE user_uuid = $1",
+    )
+    .bind(user_uuid)
+    .fetch_one(&pool)
+    .await
+    .expect("phone");
+    assert_eq!(phone_db, "79001112233");
+
+    // email change
+    let new_email = format!("smoke-sec-new-{}@flora.local", Uuid::now_v7().as_simple());
+    let email_begin = client
+        .post(gateway_email_change_url())
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "password": password, "newEmail": new_email }))
+        .send()
+        .await
+        .expect("email change");
+    let email_begin_status = email_begin.status();
+    let email_begin_body: serde_json::Value = email_begin.json().await.expect("json");
+    assert_eq!(email_begin_status, reqwest::StatusCode::OK, "{email_begin_body}");
+    let change_token = email_begin_body["changeToken"]
+        .as_str()
+        .expect("changeToken")
+        .to_string();
+    let Some(email_code) = email_begin_body["devVerificationCode"]
+        .as_str()
+        .map(str::to_string)
+    else {
+        eprintln!("skip email confirm: no dev code");
+        // still cleanup via delete
+        let _ = client
+            .post(gateway_delete_account_url())
+            .header("Authorization", &auth)
+            .json(&serde_json::json!({ "password": password }))
+            .send()
+            .await;
+        return;
+    };
+    let email_confirm = client
+        .post(gateway_email_confirm_url())
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({
+            "changeToken": change_token,
+            "code": email_code
+        }))
+        .send()
+        .await
+        .expect("email confirm");
+    let email_confirm_status = email_confirm.status();
+    let email_confirm_body: serde_json::Value = email_confirm.json().await.expect("json");
+    assert_eq!(
+        email_confirm_status,
+        reqwest::StatusCode::OK,
+        "{email_confirm_body}"
+    );
+    assert_eq!(email_confirm_body["email"], new_email);
+
+    // 2FA setup → enable → disable
+    let setup = client
+        .post(gateway_2fa_setup_url())
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "password": password }))
+        .send()
+        .await
+        .expect("2fa setup");
+    let setup_status = setup.status();
+    let setup_body: serde_json::Value = setup.json().await.expect("json");
+    assert_eq!(setup_status, reqwest::StatusCode::OK, "{setup_body}");
+    let secret = setup_body["secret"].as_str().expect("secret").to_string();
+    assert!(
+        setup_body["otpAuthUri"]
+            .as_str()
+            .is_some_and(|u| u.starts_with("otpauth://totp/FLORA:"))
+    );
+    let totp = current_totp_code(&secret).expect("totp");
+    let enable = client
+        .post(gateway_2fa_enable_url())
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "code": totp }))
+        .send()
+        .await
+        .expect("2fa enable");
+    let enable_status = enable.status();
+    let enable_body: serde_json::Value = enable.json().await.expect("json");
+    assert_eq!(enable_status, reqwest::StatusCode::OK, "{enable_body}");
+
+    let totp2 = current_totp_code(&secret).expect("totp2");
+    let disable = client
+        .delete(gateway_2fa_disable_url())
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "password": password, "code": totp2 }))
+        .send()
+        .await
+        .expect("2fa disable");
+    let disable_status = disable.status();
+    let disable_body: serde_json::Value = disable.json().await.expect("json");
+    assert_eq!(disable_status, reqwest::StatusCode::OK, "{disable_body}");
+
+    let deleted = client
+        .post(gateway_delete_account_url())
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "password": password }))
+        .send()
+        .await
+        .expect("delete");
+    assert_eq!(deleted.status(), reqwest::StatusCode::OK);
+    let _ = sqlx::query("DELETE FROM flora_core.user_profiles WHERE user_uuid = $1")
+        .bind(user_uuid)
+        .execute(&pool)
+        .await;
 }

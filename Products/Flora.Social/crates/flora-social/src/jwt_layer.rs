@@ -40,12 +40,45 @@ pub async fn require_bearer_jwt(
     let Ok(user_uuid) = Uuid::parse_str(&claims.sub) else {
         return unauthorized();
     };
-    // Music handlers: CurrentUser; Auth handlers: AuthUser (+ jti для isCurrent).
+    // Music / Auth / Users / Content / Messaging / Notifications share the same JWT identity.
     req.extensions_mut().insert(CurrentUser(user_uuid));
+    req.extensions_mut()
+        .insert(flora_users::http::CurrentUser { user_uuid });
+    req.extensions_mut()
+        .insert(flora_content::http::CurrentUser(user_uuid));
+    req.extensions_mut()
+        .insert(flora_messaging::http::CurrentUser(user_uuid));
+    req.extensions_mut()
+        .insert(flora_notifications::http::CurrentUser(user_uuid));
     req.extensions_mut().insert(AuthUser {
         user_uuid,
         jti: claims.jti,
     });
+    next.run(req).await
+}
+
+/// Опциональный JWT: при валидном Bearer вставляет `CurrentUser`, иначе пропускает анонимно.
+pub async fn optional_bearer_jwt(
+    State(auth): State<JwtAuthState>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Response {
+    if let Some(header) = req.headers().get(axum::http::header::AUTHORIZATION)
+        && let Ok(value) = header.to_str()
+        && let Some(token) = value
+            .strip_prefix("Bearer ")
+            .or_else(|| value.strip_prefix("bearer "))
+    {
+        let now = chrono::Utc::now().timestamp();
+        if let Ok(claims) = validate_access_token(&auth.options, token, now)
+            && let Ok(user_uuid) = Uuid::parse_str(&claims.sub)
+        {
+            req.extensions_mut()
+                .insert(flora_content::http::CurrentUser(user_uuid));
+            req.extensions_mut()
+                .insert(flora_users::http::CurrentUser { user_uuid });
+        }
+    }
     next.run(req).await
 }
 

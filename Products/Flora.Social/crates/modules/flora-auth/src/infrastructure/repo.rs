@@ -5,6 +5,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 const STATUS_ACTIVE: i32 = 0;
+/// `UserSessionStatus.RevokedPassword` — паритет с C#.
+const STATUS_REVOKED_PASSWORD: i32 = 2;
 /// `UserSessionStatus.RevokedUser` — паритет с C#.
 const STATUS_REVOKED_USER: i32 = 4;
 
@@ -511,6 +513,412 @@ impl AuthRepo {
         .await?;
         Ok(())
     }
+
+    pub async fn get_password_hash(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<Option<String>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT password_hash
+            FROM flora_core.user_accounts
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn update_password_hash(
+        &self,
+        user_uuid: Uuid,
+        password_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_accounts
+            SET password_hash = $1, updated_at = $2
+            WHERE user_uuid = $3
+            "#,
+        )
+        .bind(password_hash)
+        .bind(now)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+
+        let updated = sqlx::query(
+            r#"
+            UPDATE flora_core.user_security_logs
+            SET password_updated_at = $1, updated_at = $1
+            WHERE user_uuid = $2
+            "#,
+        )
+        .bind(now)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+
+        if updated == 0 {
+            sqlx::query(
+                r#"
+                INSERT INTO flora_core.user_security_logs (
+                    user_uuid, password_updated_at, created_at, updated_at
+                ) VALUES ($1, $2, $2, $2)
+                "#,
+            )
+            .bind(user_uuid)
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Отозвать прочие активные сессии после смены пароля (`RevokedPassword`).
+    pub async fn revoke_other_sessions_for_password(
+        &self,
+        user_uuid: Uuid,
+        current_jti: &str,
+        now: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flora_core.user_sessions
+            SET status = $1
+            WHERE user_uuid = $2
+              AND status = $3
+              AND expires_at > $4
+              AND ($5 = '' OR jwt_id <> $5)
+            "#,
+        )
+        .bind(STATUS_REVOKED_PASSWORD)
+        .bind(user_uuid)
+        .bind(STATUS_ACTIVE)
+        .bind(now)
+        .bind(current_jti)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    pub async fn delete_user_account(&self, user_uuid: Uuid) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM flora_core.user_accounts
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    pub async fn get_security_account(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<Option<SecurityAccountRow>, sqlx::Error> {
+        sqlx::query_as::<_, SecurityAccountRow>(
+            r#"
+            SELECT password_hash, email, username, phone, phone_verified,
+                   two_factor_enabled, two_factor_secret
+            FROM flora_core.user_accounts
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn email_taken_by_other(
+        &self,
+        email: &str,
+        user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM flora_core.user_accounts
+                WHERE email = $1 AND user_uuid <> $2
+            )
+            "#,
+        )
+        .bind(email)
+        .bind(user_uuid)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn phone_taken_by_other(
+        &self,
+        phone: &str,
+        user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM flora_core.user_accounts
+                WHERE phone = $1 AND user_uuid <> $2
+            )
+            "#,
+        )
+        .bind(phone)
+        .bind(user_uuid)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn update_account_email(
+        &self,
+        user_uuid: Uuid,
+        email: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_accounts
+            SET email = $1, has_email = true, email_verified = true, updated_at = $2
+            WHERE user_uuid = $3
+            "#,
+        )
+        .bind(email)
+        .bind(now)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_account_phone(
+        &self,
+        user_uuid: Uuid,
+        phone: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_accounts
+            SET phone = $1, phone_verified = false, updated_at = $2
+            WHERE user_uuid = $3
+            "#,
+        )
+        .bind(phone)
+        .bind(now)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_two_factor_secret(
+        &self,
+        user_uuid: Uuid,
+        secret: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_accounts
+            SET two_factor_secret = $1, two_factor_enabled = false, updated_at = $2
+            WHERE user_uuid = $3
+            "#,
+        )
+        .bind(secret)
+        .bind(now)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn enable_two_factor(
+        &self,
+        user_uuid: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_accounts
+            SET two_factor_enabled = true, updated_at = $1
+            WHERE user_uuid = $2
+            "#,
+        )
+        .bind(now)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn disable_two_factor(
+        &self,
+        user_uuid: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_accounts
+            SET two_factor_enabled = false, two_factor_secret = NULL, updated_at = $1
+            WHERE user_uuid = $2
+            "#,
+        )
+        .bind(now)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_account_public(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<Option<AccountPublicRow>, sqlx::Error> {
+        sqlx::query_as::<_, AccountPublicRow>(
+            r#"
+            SELECT user_uuid, username, phone, email
+            FROM flora_core.user_accounts
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// Паритет `AccountReadQueries.ListActiveUserUuidsAsync` (`UserAccountStatus.Active = 0`).
+    pub async fn list_active_user_uuids(&self) -> Result<Vec<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT user_uuid
+            FROM flora_core.user_accounts
+            WHERE status = 0
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn find_uuid_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT user_uuid
+            FROM flora_core.user_accounts
+            WHERE username = $1
+            "#,
+        )
+        .bind(username)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn usernames_by_uuids(
+        &self,
+        user_uuids: &[Uuid],
+    ) -> Result<Vec<(Uuid, String)>, sqlx::Error> {
+        if user_uuids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query_as::<_, (Uuid, String)>(
+            r#"
+            SELECT user_uuid, username
+            FROM flora_core.user_accounts
+            WHERE user_uuid = ANY($1)
+            "#,
+        )
+        .bind(user_uuids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn update_username(
+        &self,
+        user_uuid: Uuid,
+        username: &str,
+    ) -> Result<(), sqlx::Error> {
+        let now = Utc::now();
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_accounts
+            SET username = $1, updated_at = $2
+            WHERE user_uuid = $3
+            "#,
+        )
+        .bind(username)
+        .bind(now)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn username_taken_by_other(
+        &self,
+        username: &str,
+        user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM flora_core.user_accounts
+                WHERE username = $1 AND user_uuid <> $2
+            )
+            "#,
+        )
+        .bind(username)
+        .bind(user_uuid)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn search_accounts_by_username_contains(
+        &self,
+        exclude_user_uuid: Uuid,
+        query_lower: &str,
+    ) -> Result<Vec<(Uuid, String)>, sqlx::Error> {
+        let pattern = format!("%{query_lower}%");
+        sqlx::query_as(
+            r#"
+            SELECT user_uuid, username
+            FROM flora_core.user_accounts
+            WHERE user_uuid <> $1
+              AND username IS NOT NULL
+              AND LOWER(username) LIKE $2
+            ORDER BY username
+            "#,
+        )
+        .bind(exclude_user_uuid)
+        .bind(pattern)
+        .fetch_all(&self.pool)
+        .await
+    }
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct AccountPublicRow {
+    pub user_uuid: Uuid,
+    pub username: String,
+    pub phone: String,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SecurityAccountRow {
+    pub password_hash: String,
+    pub email: Option<String>,
+    pub username: String,
+    pub phone: String,
+    pub phone_verified: bool,
+    pub two_factor_enabled: bool,
+    pub two_factor_secret: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

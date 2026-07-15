@@ -9,20 +9,24 @@ use axum::Router;
 use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::application::account::{AccountService, ChangePasswordError, DeleteAccountError};
 use crate::application::login::{
     LoginError, LoginService, SessionHints, agent_hash_from_user_agent, clamp_ip,
     resolve_identifier,
 };
 use crate::application::refresh::{RefreshError, RefreshService};
 use crate::application::register::{RegisterBeginError, RegisterService, RegisterVerifyError};
-use crate::application::security::SecurityService;
+use crate::application::security::{SecurityMutationError, SecurityService};
 use crate::application::sessions::SessionService;
-use crate::http::rate_limit::{AnonymousAuthLimiters, anonymous_auth_rate_limit};
+use crate::http::rate_limit::{
+    AnonymousAuthLimiters, account_sensitive_limiter, account_sensitive_rate_limit,
+    anonymous_auth_rate_limit,
+};
 
 /// Пользователь + jti из access-токена (внедряет flora-social JWT middleware).
 #[derive(Clone, Debug)]
@@ -35,6 +39,7 @@ pub struct AuthUser {
 pub struct AuthState {
     pub sessions: Arc<SessionService>,
     pub security: Arc<SecurityService>,
+    pub account: Arc<AccountService>,
 }
 
 #[derive(Clone)]
@@ -46,12 +51,25 @@ pub struct PublicAuthState {
 
 /// Маршруты с JWT (flora-social вешает Bearer middleware).
 pub fn protected_router(state: AuthState) -> Router {
+    let sensitive = account_sensitive_limiter();
     Router::new()
         .route("/api/auth/me/sessions", get(list_my_sessions))
         .route("/api/auth/me/sessions/others", delete(revoke_other_sessions))
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me/security", get(get_my_security))
+        .route("/api/auth/me/password", patch(change_password))
+        .route("/api/auth/delete-account", post(delete_account))
+        .route("/api/auth/me/email/change", post(begin_email_change))
+        .route("/api/auth/me/email/confirm", post(confirm_email_change))
+        .route("/api/auth/me/phone", patch(change_phone))
+        .route("/api/auth/me/2fa/setup", post(begin_two_factor_setup))
+        .route("/api/auth/me/2fa/enable", post(enable_two_factor))
+        .route("/api/auth/me/2fa", delete(disable_two_factor))
         .with_state(state)
+        .layer(axum::middleware::from_fn_with_state(
+            sensitive,
+            account_sensitive_rate_limit,
+        ))
 }
 
 /// Анонимные маршруты (без JWT). Rate-limit: login/refresh/register/verify.
@@ -135,6 +153,271 @@ async fn get_my_security(
             )
                 .into_response()
         }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordRequest {
+    #[serde(alias = "CurrentPassword")]
+    pub current_password: Option<String>,
+    #[serde(alias = "NewPassword")]
+    pub new_password: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteAccountRequest {
+    #[serde(alias = "Password")]
+    pub password: Option<String>,
+}
+
+async fn change_password(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+    Json(body): Json<ChangePasswordRequest>,
+) -> Response {
+    match state
+        .account
+        .change_password(
+            user.user_uuid,
+            &user.jti,
+            body.current_password.as_deref().unwrap_or(""),
+            body.new_password.as_deref().unwrap_or(""),
+        )
+        .await
+    {
+        Ok(()) => Json(serde_json::json!({ "message": "Пароль изменён." })).into_response(),
+        Err(ChangePasswordError::BadRequest(msg)) => {
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        Err(ChangePasswordError::NotFound(msg)) => {
+            (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        Err(ChangePasswordError::Internal(e)) => {
+            tracing::error!(error = %e, "change password failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn delete_account(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+    Json(body): Json<DeleteAccountRequest>,
+) -> Response {
+    match state
+        .account
+        .delete_account(user.user_uuid, body.password.as_deref().unwrap_or(""))
+        .await
+    {
+        Ok(()) => Json(serde_json::json!({ "message": "Аккаунт удалён." })).into_response(),
+        Err(DeleteAccountError::BadRequest(msg)) => {
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        Err(DeleteAccountError::NotFound(msg)) => {
+            (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        Err(DeleteAccountError::Internal(e)) => {
+            tracing::error!(error = %e, "delete account failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BeginEmailChangeRequest {
+    #[serde(alias = "Password")]
+    pub password: Option<String>,
+    #[serde(alias = "NewEmail")]
+    pub new_email: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmEmailChangeRequest {
+    #[serde(alias = "ChangeToken")]
+    pub change_token: Option<String>,
+    #[serde(alias = "Code")]
+    pub code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePhoneRequest {
+    #[serde(alias = "Password")]
+    pub password: Option<String>,
+    #[serde(alias = "Phone")]
+    pub phone: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwoFactorPasswordRequest {
+    #[serde(alias = "Password")]
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwoFactorCodeRequest {
+    #[serde(alias = "Code")]
+    pub code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisableTwoFactorRequest {
+    #[serde(alias = "Password")]
+    pub password: Option<String>,
+    #[serde(alias = "Code")]
+    pub code: Option<String>,
+}
+
+fn security_mutation_response(err: SecurityMutationError) -> Response {
+    match err {
+        SecurityMutationError::BadRequest(msg) => {
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        SecurityMutationError::Conflict(msg) => {
+            (StatusCode::CONFLICT, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+        SecurityMutationError::Internal(e) => {
+            tracing::error!(error = %e, "account security mutation failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn begin_email_change(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+    Json(body): Json<BeginEmailChangeRequest>,
+) -> Response {
+    match state
+        .security
+        .begin_email_change(
+            user.user_uuid,
+            body.password.as_deref().unwrap_or(""),
+            body.new_email.as_deref().unwrap_or(""),
+        )
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => security_mutation_response(e),
+    }
+}
+
+async fn confirm_email_change(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+    Json(body): Json<ConfirmEmailChangeRequest>,
+) -> Response {
+    match state
+        .security
+        .confirm_email_change(
+            user.user_uuid,
+            body.change_token.as_deref().unwrap_or(""),
+            body.code.as_deref().unwrap_or(""),
+        )
+        .await
+    {
+        Ok(email) => Json(serde_json::json!({
+            "email": email,
+            "message": "Email обновлён."
+        }))
+        .into_response(),
+        Err(e) => security_mutation_response(e),
+    }
+}
+
+async fn change_phone(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+    Json(body): Json<ChangePhoneRequest>,
+) -> Response {
+    match state
+        .security
+        .change_phone(
+            user.user_uuid,
+            body.password.as_deref().unwrap_or(""),
+            body.phone.as_deref().unwrap_or(""),
+        )
+        .await
+    {
+        Ok(()) => Json(serde_json::json!({
+            "message": "Номер телефона обновлён. Подтверждение по SMS будет доступно позже."
+        }))
+        .into_response(),
+        Err(e) => security_mutation_response(e),
+    }
+}
+
+async fn begin_two_factor_setup(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+    Json(body): Json<TwoFactorPasswordRequest>,
+) -> Response {
+    match state
+        .security
+        .begin_two_factor_setup(user.user_uuid, body.password.as_deref().unwrap_or(""))
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => security_mutation_response(e),
+    }
+}
+
+async fn enable_two_factor(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+    Json(body): Json<TwoFactorCodeRequest>,
+) -> Response {
+    match state
+        .security
+        .enable_two_factor(user.user_uuid, body.code.as_deref().unwrap_or(""))
+        .await
+    {
+        Ok(()) => Json(serde_json::json!({
+            "message": "Двухфакторная аутентификация включена."
+        }))
+        .into_response(),
+        Err(e) => security_mutation_response(e),
+    }
+}
+
+async fn disable_two_factor(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthUser>,
+    Json(body): Json<DisableTwoFactorRequest>,
+) -> Response {
+    match state
+        .security
+        .disable_two_factor(
+            user.user_uuid,
+            body.password.as_deref().unwrap_or(""),
+            body.code.as_deref().unwrap_or(""),
+        )
+        .await
+    {
+        Ok(()) => Json(serde_json::json!({
+            "message": "Двухфакторная аутентификация отключена."
+        }))
+        .into_response(),
+        Err(e) => security_mutation_response(e),
     }
 }
 
@@ -404,6 +687,21 @@ pub struct RegisterInitResponse {
     pub verification_token: String,
     pub expires_at: String,
     pub dev_verification_code: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmailChangeBeginResponse {
+    pub change_token: String,
+    pub expires_at: String,
+    pub dev_verification_code: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwoFactorSetupResponse {
+    pub secret: String,
+    pub otp_auth_uri: String,
 }
 
 #[derive(Debug, Serialize)]

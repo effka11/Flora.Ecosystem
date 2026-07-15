@@ -48,13 +48,33 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         background.extend(spawn_music_workers(cfg, pool.clone()));
     }
 
+    let (auth_routes, account_directory) =
+        auth_router_with_directory(cfg, pool.clone(), verification_port);
+
+    let (notifications_routes, message_sent_notifier, notification_dispatcher) =
+        notifications_router(cfg, pool.clone(), account_directory.clone());
+
+    let (content_routes, content_workers) =
+        content_router(cfg, pool.clone(), Arc::clone(&notification_dispatcher));
+    background.extend(content_workers);
+
     let router = axum::Router::new()
-        .merge(flora_users::router())
+        .merge(users_router(
+            cfg,
+            pool.clone(),
+            account_directory.clone(),
+            Arc::clone(&notification_dispatcher),
+        ))
         .merge(flora_verification::router())
-        .merge(auth_router(cfg, pool.clone(), verification_port))
-        .merge(flora_notifications::router())
-        .merge(flora_content::router())
-        .merge(flora_messaging::router())
+        .merge(auth_routes)
+        .merge(notifications_routes)
+        .merge(content_routes)
+        .merge(messaging_router(
+            cfg,
+            pool.clone(),
+            account_directory,
+            message_sent_notifier,
+        ))
         .merge(music_router(cfg, pool))
         .merge(economy_router(cfg));
 
@@ -64,30 +84,59 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
     }
 }
 
-fn auth_router(
+fn auth_router_with_directory(
     cfg: &FloraConfig,
     pool: Option<PgPool>,
     verification: Option<Arc<dyn VerificationChallengePort>>,
-) -> axum::Router {
+) -> (
+    axum::Router,
+    Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
+) {
     if cfg.get_bool("Auth:ServeNative") != Some(true) {
-        return flora_auth::router();
+        return (flora_auth::router(), pool.map(flora_auth::account_directory));
     }
     let Some(pool) = pool else {
         eprintln!("flora-auth: Auth:ServeNative=true, но PgPool недоступен — модуль офлайн");
-        return flora_auth::router();
+        return (flora_auth::router(), None);
     };
     let Some(verification) = verification else {
         eprintln!(
             "flora-auth: Auth:ServeNative=true, но VerificationBundle недоступен — модуль офлайн"
         );
-        return flora_auth::router();
+        return (flora_auth::router(), Some(flora_auth::account_directory(pool)));
     };
     let jwt = JwtOptions::from_config(cfg);
     let (profiles, provisioner) = flora_users::profile_ports(pool.clone());
     let module = flora_auth::compose(pool, jwt, profiles, provisioner, verification);
+    let directory = module.account_directory.clone();
+    let router = axum::Router::new()
+        .merge(with_jwt(cfg, module.protected_router))
+        .merge(module.public_router);
+    (router, Some(directory))
+}
+
+fn users_router(
+    cfg: &FloraConfig,
+    pool: Option<PgPool>,
+    accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
+    notifications: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
+) -> axum::Router {
+    if cfg.get_bool("Users:ServeNative") != Some(true) {
+        return flora_users::router();
+    }
+    let Some(pool) = pool else {
+        eprintln!("flora-users: Users:ServeNative=true, но PgPool недоступен — модуль офлайн");
+        return flora_users::router();
+    };
+    let Some(accounts) = accounts else {
+        eprintln!("flora-users: нет AccountDirectory — модуль офлайн");
+        return flora_users::router();
+    };
+    let communities = flora_content::community_follow_stats(pool.clone());
+    let module = flora_users::compose(pool, accounts, communities, notifications);
     axum::Router::new()
         .merge(with_jwt(cfg, module.protected_router))
-        .merge(module.public_router)
+        .merge(with_optional_jwt(cfg, module.public_router))
 }
 
 fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
@@ -107,6 +156,129 @@ fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
     };
     let module = flora_music::compose(pool, media);
     with_jwt(cfg, module.router)
+}
+
+fn notifications_router(
+    cfg: &FloraConfig,
+    pool: Option<PgPool>,
+    accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
+) -> (
+    axum::Router,
+    Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
+    Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
+) {
+    let noop_msg: Arc<dyn flora_messaging_contracts::MessageSentNotifier> =
+        Arc::new(flora_messaging_contracts::NoopMessageSentNotifier);
+    let noop_inbox: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher> =
+        Arc::new(flora_notifications_contracts::NoopUserNotificationDispatcher);
+    if cfg.get_bool("Notifications:ServeNative") != Some(true) {
+        return (flora_notifications::router(), noop_msg, noop_inbox);
+    }
+    let Some(pool) = pool else {
+        eprintln!(
+            "flora-notifications: Notifications:ServeNative=true, но PgPool недоступен — модуль офлайн"
+        );
+        return (flora_notifications::router(), noop_msg, noop_inbox);
+    };
+    let Some(accounts) = accounts else {
+        eprintln!(
+            "flora-notifications: нет AccountDirectory — FCM display names недоступны, модуль офлайн"
+        );
+        return (flora_notifications::router(), noop_msg, noop_inbox);
+    };
+    let profiles = flora_users::profile_queries(pool.clone());
+    let module = flora_notifications::compose(pool, cfg, profiles, accounts);
+    let router = axum::Router::new()
+        .merge(with_jwt(cfg, module.protected_router))
+        .merge(module.admin_router);
+    (
+        router,
+        module.message_sent_notifier,
+        module.user_notification_dispatcher,
+    )
+}
+
+fn messaging_router(
+    cfg: &FloraConfig,
+    pool: Option<PgPool>,
+    accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
+    sent_notifier: Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
+) -> axum::Router {
+    if cfg.get_bool("Messaging:ServeNative") != Some(true) {
+        return flora_messaging::router();
+    }
+    let Some(pool) = pool else {
+        eprintln!("flora-messaging: Messaging:ServeNative=true, но PgPool недоступен — модуль офлайн");
+        return flora_messaging::router();
+    };
+    let Some(accounts) = accounts else {
+        eprintln!("flora-messaging: нет AccountDirectory — модуль офлайн");
+        return flora_messaging::router();
+    };
+    let (presence, profiles, online, messages_access) = flora_users::messaging_ports(pool.clone());
+    let module = flora_messaging::compose(
+        pool,
+        accounts,
+        profiles,
+        presence,
+        online,
+        messages_access,
+        sent_notifier,
+    );
+    with_jwt(cfg, module.router)
+}
+
+fn content_router(
+    cfg: &FloraConfig,
+    pool: Option<PgPool>,
+    notifications: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
+) -> (axum::Router, Vec<BackgroundHandle>) {
+    if cfg.get_bool("Content:ServeNative") != Some(true) {
+        return (flora_content::router(), Vec::new());
+    }
+    let Some(pool) = pool else {
+        eprintln!("flora-content: Content:ServeNative=true, но PgPool недоступен — модуль офлайн");
+        return (flora_content::router(), Vec::new());
+    };
+    let accounts = flora_auth::account_directory(pool.clone());
+    let (follow, blocklist, profiles) = flora_users::content_ports(pool.clone());
+    let profile_access = flora_users::profile_access_port(pool.clone());
+    let media = flora_content::ContentMediaOptions {
+        ffmpeg_path: cfg
+            .get_non_empty("Media:FfmpegPath")
+            .unwrap_or("ffmpeg")
+            .to_string(),
+        ffprobe_path: cfg.get("Media:FfprobePath").unwrap_or("").to_string(),
+    };
+    let mut module = flora_content::compose(
+        pool,
+        accounts,
+        follow,
+        blocklist,
+        profiles,
+        profile_access,
+        media,
+        notifications,
+    );
+    // Dual-writer запрещён: при ServeNative воркер post_videos крутит Rust.
+    let mut workers = Vec::new();
+    if let Some(h) = flora_content::take_and_spawn_video_worker(&mut module) {
+        workers.push(h);
+    }
+    let router = axum::Router::new()
+        .merge(with_jwt(cfg, module.protected_router))
+        .merge(with_optional_jwt(cfg, module.public_router));
+    (router, workers)
+}
+
+fn with_optional_jwt(cfg: &FloraConfig, router: axum::Router) -> axum::Router {
+    let jwt = JwtAuthLayerState::from_config(cfg);
+    router.layer(axum::middleware::from_fn_with_state(
+        jwt_layer::JwtAuthState {
+            options: jwt.options,
+        },
+        jwt_layer::optional_bearer_jwt,
+    ))
 }
 
 fn with_jwt(cfg: &FloraConfig, router: axum::Router) -> axum::Router {
@@ -195,16 +367,38 @@ pub fn auth_needs_pool(cfg: &FloraConfig) -> bool {
     cfg.get_bool("Auth:ServeNative") == Some(true)
 }
 
+pub fn users_needs_pool(cfg: &FloraConfig) -> bool {
+    cfg.get_bool("Users:ServeNative") == Some(true)
+}
+
+pub fn content_needs_pool(cfg: &FloraConfig) -> bool {
+    cfg.get_bool("Content:ServeNative") == Some(true)
+}
+
+pub fn messaging_needs_pool(cfg: &FloraConfig) -> bool {
+    cfg.get_bool("Messaging:ServeNative") == Some(true)
+}
+
+pub fn notifications_needs_pool(cfg: &FloraConfig) -> bool {
+    cfg.get_bool("Notifications:ServeNative") == Some(true)
+}
+
 pub fn verification_needs_pool(cfg: &FloraConfig) -> bool {
     flora_verification::needs_pool(cfg)
 }
 
-/// Нужен ли PgPool хосту (Music/Auth ServeNative и/или Verification gRPC).
+/// Нужен ли PgPool хосту (Music/Auth/Users/Content/Messaging/Notifications ServeNative и/или Verification gRPC).
 pub fn host_needs_pool(cfg: &FloraConfig) -> bool {
-    music_needs_pool(cfg) || auth_needs_pool(cfg) || verification_needs_pool(cfg)
+    music_needs_pool(cfg)
+        || auth_needs_pool(cfg)
+        || users_needs_pool(cfg)
+        || content_needs_pool(cfg)
+        || messaging_needs_pool(cfg)
+        || notifications_needs_pool(cfg)
+        || verification_needs_pool(cfg)
 }
 
-/// Фоновые задачи продукта (Music workers, Verification gRPC, …).
+/// Фоновые задачи продукта (Music / Content video workers, Verification gRPC, …).
 pub type BackgroundHandle = flora_music::WorkerHandle;
 
 /// Хэндл фонового Music-воркера (abort при shutdown).
@@ -321,6 +515,66 @@ mod tests {
             .oneshot(
                 http::Request::builder()
                     .uri("/api/auth/me/sessions")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn messaging_serve_native_without_pool_stays_empty() {
+        let cfg = FloraConfig::from_layers(
+            "Development",
+            &[serde_json::json!({ "Messaging": { "ServeNative": true } })],
+            &[],
+        );
+        let router = product_router(&cfg, None);
+        let response = router
+            .oneshot(
+                http::Request::builder()
+                    .uri("/api/messaging/unread-count")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn content_serve_native_without_pool_stays_empty() {
+        let cfg = FloraConfig::from_layers(
+            "Development",
+            &[serde_json::json!({ "Content": { "ServeNative": true } })],
+            &[],
+        );
+        let router = product_router(&cfg, None);
+        let response = router
+            .oneshot(
+                http::Request::builder()
+                    .uri("/api/auth/feed")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn notifications_serve_native_without_pool_stays_empty() {
+        let cfg = FloraConfig::from_layers(
+            "Development",
+            &[serde_json::json!({ "Notifications": { "ServeNative": true } })],
+            &[],
+        );
+        let router = product_router(&cfg, None);
+        let response = router
+            .oneshot(
+                http::Request::builder()
+                    .uri("/api/auth/notifications/unread-count")
                     .body(axum::body::Body::empty())
                     .unwrap(),
             )

@@ -11,6 +11,7 @@ use flora_users_contracts::{UserProfileProvisioner, UserProfileReadQueries};
 use flora_verification_contracts::VerificationChallengePort;
 use sqlx::PgPool;
 
+use crate::application::account::AccountService;
 use crate::application::login::LoginService;
 use crate::application::refresh::RefreshService;
 use crate::application::register::RegisterService;
@@ -26,6 +27,8 @@ pub struct AuthModule {
     pub protected_router: axum::Router,
     /// Анонимные (login/refresh/register/verify/cancel).
     pub public_router: axum::Router,
+    /// Порт каталога аккаунтов для Users.
+    pub account_directory: Arc<dyn flora_auth_contracts::AccountDirectory>,
 }
 
 /// Пустой роутер — gateway-fallback на .NET.
@@ -42,7 +45,8 @@ pub fn compose(
 ) -> AuthModule {
     let repo = Arc::new(AuthRepo::new(pool));
     let sessions = Arc::new(SessionService::new(repo.clone()));
-    let security = Arc::new(SecurityService::new(repo.clone()));
+    let security = Arc::new(SecurityService::new(repo.clone(), verification.clone()));
+    let account = Arc::new(AccountService::new(repo.clone()));
     let refresh = Arc::new(RefreshService::new(
         repo.clone(),
         jwt.clone(),
@@ -54,18 +58,30 @@ pub fn compose(
         profiles.clone(),
     ));
     let register = Arc::new(RegisterService::new(
-        repo,
+        repo.clone(),
         jwt,
         verification,
         profiles,
         provisioner,
     ));
+    let account_directory = infrastructure::account_directory::as_directory(repo);
     AuthModule {
-        protected_router: http::protected_router(AuthState { sessions, security }),
+        protected_router: http::protected_router(AuthState {
+            sessions,
+            security,
+            account,
+        }),
         public_router: http::public_router(PublicAuthState {
             refresh,
             login,
             register,
         }),
+        account_directory,
     }
+}
+
+/// Каталог аккаунтов без полного Auth compose (Users/Content ServeNative).
+pub fn account_directory(pool: PgPool) -> Arc<dyn flora_auth_contracts::AccountDirectory> {
+    let repo = Arc::new(AuthRepo::new(pool));
+    infrastructure::account_directory::as_directory(repo)
 }
