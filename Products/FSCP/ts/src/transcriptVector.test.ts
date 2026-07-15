@@ -25,7 +25,7 @@ const sodium = require("libsodium-wrappers") as SodiumModule;
 const vectorsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..", "..", "..", "..",
-  "docs", "test-vectors",
+  "Documents", "test-vectors",
 );
 
 type TranscriptVector = {
