@@ -1,0 +1,13 @@
+{
+  "vectorId": "backend_parity_jwt_hs256_rust_v1",
+  "generatedBy": "Backend/Tests/parity (cargo run -p flora-parity --bin gen-cross-vectors)",
+  "algorithm": "HS256",
+  "secretUtf8": "flora-backend-parity-jwt-secret-v1-0123456789",
+  "issuer": "Flora.Auth",
+  "audience": "Flora.Ecosystem",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3ZjJjOWE0ZS0xYjNkLTRjNWUtOGY2YS0yZDFlMGI5YzhhN2YiLCJlbWFpbCI6InBhcml0eUBmbG9yYS5sb2NhbCIsImp0aSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvbmFtZWlkZW50aWZpZXIiOiI3ZjJjOWE0ZS0xYjNkLTRjNWUtOGY2YS0yZDFlMGI5YzhhN2YiLCJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9lbWFpbGFkZHJlc3MiOiJwYXJpdHlAZmxvcmEubG9jYWwiLCJleHAiOjQ5MjI4OTkyMDAsImlzcyI6IkZsb3JhLkF1dGgiLCJhdWQiOiJGbG9yYS5FY29zeXN0ZW0ifQ.ZgT6AZjy9trxOigrpaKnmZyoYBc-htzzJHq0fyxLFJ8",
+  "expectedSub": "7f2c9a4e-1b3d-4c5e-8f6a-2d1e0b9c8a7f",
+  "expectedEmail": "parity@flora.local",
+  "expectedJti": "0123456789abcdef0123456789abcdef",
+  "expiresAtUnix": 4922899200
+}

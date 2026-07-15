@@ -1,5 +1,5 @@
 /**
- * Cross-impl parity (docs/fscp/FSCP.md §Test vectors): байт-критичные модули
+ * Cross-impl parity (Documents/fscp/FSCP.md §Test vectors): байт-критичные модули
  * Apps/Web/lib/fscp обязаны давать идентичный результат с Packages/flora-client-core
  * до консолидации клиентов (next-architecture.md §9). Дрейф = молчаливая потеря
  * совместимости wire между Web и Mobile.

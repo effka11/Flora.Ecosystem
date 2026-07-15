@@ -1,5 +1,0 @@
-/target
-/bench
-*.frv
-!crates/frc-v/tests/data/*.frv
-*.y4m

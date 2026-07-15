@@ -137,7 +137,7 @@ Flora Ecosystem имеет строгие границы модулей. Вкл�
 
 Убедитесь, что соответствующая часть проекта собирается и проходит линтинг/типизацию:
 
-- **Backend (.NET):** `dotnet build Flora.Ecosystem.slnx`; `dotnet test tests/Flora.ContractFixtures`.
+- **Backend (.NET):** `dotnet build Flora.Ecosystem.slnx`; `dotnet test Tests/Flora.ContractFixtures`.
 - **JS (корень):** `npm run ci` (typecheck + lint + test во всех workspaces).
 - **Web (`Apps/Web`):** сборка/`lint`/`typecheck` без ошибок; TypeScript-типы строгие.
 - **Mobile (`Apps/Mobile`):** `typecheck`/`lint` без ошибок.

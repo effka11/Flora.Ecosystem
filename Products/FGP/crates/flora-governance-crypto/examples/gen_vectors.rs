@@ -1,7 +1,7 @@
 //! Генератор golden-векторов криптоядра governance (FGP-CRYPTO §12).
 //!
-//! Пишет `docs/test-vectors/governance/*.json`. Детерминирован: повторный запуск
-//! перезаписывает файлы идентичным содержимым (правило docs/test-vectors/README.md).
+//! Пишет `Documents/test-vectors/governance/*.json`. Детерминирован: повторный запуск
+//! перезаписывает файлы идентичным содержимым (правило Documents/test-vectors/README.md).
 //!
 //! ```bash
 //! cargo run -p flora-governance-crypto --example gen_vectors
@@ -26,9 +26,9 @@ fn material(start: u8, len: usize) -> Vec<u8> {
 fn out_dir() -> PathBuf {
     // crate: Backend/crates/modules/flora-governance-crypto → корень репо на 4 уровня выше.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../docs/test-vectors/governance")
+        .join("../../../../Documents/test-vectors/governance")
         .canonicalize()
-        .expect("docs/test-vectors/governance должен существовать")
+        .expect("Documents/test-vectors/governance должен существовать")
 }
 
 fn write(name: &str, value: &Value) {
@@ -467,7 +467,8 @@ fn weights_vector() -> Value {
 
 fn main() {
     std::fs::create_dir_all(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../docs/test-vectors/governance"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../Documents/test-vectors/governance"),
     )
     .expect("mkdir");
     write("governance-ds-tags-v1.json", &ds_tags_vector());

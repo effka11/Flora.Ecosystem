@@ -5,7 +5,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use flora_api::{build_router, listen_addr, versions::FloraVersionResponse};
+use flora_api::{build_host, listen_addr, versions::FloraVersionResponse};
 
 fn main() -> anyhow::Result<()> {
     init_tracing();
@@ -29,12 +29,18 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let router = build_router(&cfg, versions);
-
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(serve(addr, router))
+        .block_on(async {
+            let host = build_host(&cfg, versions).await;
+            let worker_handles = host.worker_handles;
+            let result = serve(addr, host.router).await;
+            for h in worker_handles {
+                h.abort();
+            }
+            result
+        })
 }
 
 async fn serve(addr: SocketAddr, router: axum::Router) -> anyhow::Result<()> {

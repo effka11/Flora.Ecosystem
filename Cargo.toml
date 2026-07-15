@@ -1,6 +1,6 @@
 ﻿# Flora.Ecosystem Cargo workspace (next-architecture.md §2).
 # Root includes Backend/crates (host) + Products/* (App + Functional).
-# Future "Platform" rename = this root layout. Rules: §2.3, tools/validate-architecture-rust.ps1.
+# Future "Platform" rename = this root layout. Rules: §2.3, Tools/validate-architecture-rust.ps1.
 
 [workspace]
 resolver = "3"
@@ -9,7 +9,7 @@ members = [
     "Backend/crates/flora-shared",
     "Backend/crates/flora-migrate",
     "Backend/crates/infrastructure/flora-grpc-bridge",
-    "Backend/tests/parity",
+    "Backend/Tests/parity",
     # App: Flora.Social
     "Products/Flora.Social/crates/flora-social",
     "Products/Flora.Social/crates/modules/flora-auth",
@@ -116,21 +116,30 @@ sha2 = "0.10.9"
 base64 = "0.22.1"
 getrandom = "0.3.3"
 blake3 = { version = "1.8", default-features = false, features = ["std", "pure"] }
-sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres", "migrate"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "uuid", "chrono", "derive"] }
 anyhow = "1.0.103"
 thiserror = "2.0.18"
 clap = { version = "4.6.1", features = ["derive"] }
-chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "serde"] }
 hound = "3.5.1"
 reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
+jsonwebtoken = { version = "10.4.0", default-features = false, features = ["use_pem", "rust_crypto"] }
 argon2 = "0.5.3"
+sha1 = "0.10.6"
+data-encoding = "2.9.0"
 tokio-stream = "0.1.18"
 x25519-dalek = "2.0"
 ed25519-dalek = "2.0"
 hkdf = "0.12"
 chacha20poly1305 = "0.10"
 ml-kem = { version = "0.3.2", features = ["hazmat"] }
-image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
+lettre = { version = "0.11.19", default-features = false, features = ["builder", "hostname", "smtp-transport", "tokio1-rustls-tls"] }
+tonic = { version = "0.13.1", features = ["transport"] }
+tonic-build = "0.13.1"
+prost = "0.13.5"
+subtle = "2.6.1"
+hex = "0.4.3"
 
 [profile.release]
 lto = "thin"

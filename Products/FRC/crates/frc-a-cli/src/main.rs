@@ -1,5 +1,5 @@
 //! Инструмент разработки FRC-A: генерация тестовых сигналов, кодирование,
-//! декодирование и roundtrip-метрики. Спецификация: docs/codecs/FRC-A.md.
+//! декодирование и roundtrip-метрики. Спецификация: Documents/codecs/FRC-A.md.
 
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};

@@ -1,8 +1,8 @@
-# Full deploy: Next.js standalone + self-contained Flora.API to VPS (one SSH tarball).
+# Full deploy: Next.js standalone to VPS (one SSH tarball). API is Rust flora-api (separate unit).
 # Usage:
 #   .\scripts\deploy.ps1                    # prompts for VPS IP, then SSH key path (user: root)
 #   .\scripts\deploy.ps1 -SkipBuild
-#   .\scripts\deploy.ps1 -ApiUpstreamUrl "http://127.0.0.1:5000"
+#   .\scripts\deploy.ps1 -ApiUpstreamUrl "http://127.0.0.1:5290"
 #   .\scripts\deploy.ps1 -PublicApiBaseUrl "https://origin.flora-s.net"
 #   .\scripts\deploy.ps1 -CertbotEmail "you@mail.com"   # optional: LE on VPS (origin.* + apex redirect TLS)
 #   .\scripts\deploy.ps1 -AllowedClientIps "1.2.3.4"   # optional: lock apex/www redirect only (CDN stays public)
@@ -17,13 +17,12 @@ param(
     [string] $RemotePath = "/opt/flora-ecosystem/runtime/web",
     [string] $Domain = "flora-s.net",
     [string] $PublicSubdomain = "social",
-    # Phase 0+: Next.js proxies /api to the Rust gateway; .NET stays on :5000 behind it.
+    # Next.js proxies /api to the Rust flora-api host.
     [string] $ApiUpstreamUrl = "http://127.0.0.1:5290",
     [string] $PublicApiBaseUrl = "",
     [string] $CertbotEmail = "",
     [string] $AllowedClientIps = "",
-    [switch] $SkipBuild,
-    [switch] $SkipApi
+    [switch] $SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -201,16 +200,6 @@ try {
         if ($deployArg -match '[\x00-\x08\x0B\x0C\x0E-\x1F]') {
             throw "Bootstrap args must not contain control characters."
         }
-    }
-
-    if (-not $SkipApi) {
-        $apiProj = Join-Path $RepoRoot "Flora.API\Flora.API.csproj"
-        if (-not (Test-Path -LiteralPath $apiProj)) { throw "Missing $apiProj" }
-        $apiOut = Join-Path $stageDir "api"
-        Write-Host "dotnet publish Flora.API -> $apiOut (linux-x64, self-contained)..."
-        dotnet publish $apiProj -c Release -r linux-x64 --self-contained true -o $apiOut
-        if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit $LASTEXITCODE)." }
-        if (-not (Test-Path (Join-Path $apiOut "Flora.API"))) { throw "Publish output missing Flora.API executable." }
     }
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false

@@ -9,3 +9,7 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+uuid = { workspace = true }

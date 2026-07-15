@@ -7,7 +7,7 @@
  * (HKDF/X25519/XChaCha20-Poly1305) — те же продакшн-примитивы, что в rke.ts.
  *
  * Три независимые реализации ML-KEM: kyber-py (генератор) ↔ @noble/post-quantum (этот
- * тест) ↔ RustCrypto ml-kem (Backend/tests/parity/tests/fscp_hybrid_kem_vectors.rs).
+ * тест) ↔ RustCrypto ml-kem (Backend/Tests/parity/tests/fscp_hybrid_kem_vectors.rs).
  */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -28,7 +28,7 @@ const sodium = require("libsodium-wrappers") as SodiumModule;
 const vectorsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..", "..", "..", "..",
-  "docs", "test-vectors",
+  "Documents", "test-vectors",
 );
 
 type HybridVector = {

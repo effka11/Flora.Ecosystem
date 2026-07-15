@@ -1,9 +1,9 @@
 //! FIRA-M — скорер «Music Flow», порт as-built v1. Первый переносимый FIRA-компонент (Фаза 1).
 //!
-//! Эталон (freeze до cutover Фазы 1, `docs/fira/FIRA.md` §15):
+//! Эталон (freeze до cutover Фазы 1, `Documents/fira/FIRA.md` §15):
 //! `Modules/Flora.Music/Flora.Music.Application/Recommendations/MusicFlowScorer.cs`;
 //! сортировка — `MusicRecommendationService.GetOrComputeSnapshotAsync`.
-//! Golden-вектор: `docs/test-vectors/fira/fira-m-scorer-v1.json`.
+//! Golden-вектор: `Documents/test-vectors/fira/fira-m-scorer-v1.json`.
 //!
 //! Внимание: секции `FiraMusic` в `appsettings.json` **нет** — production работает на
 //! дефолтах кода, поэтому `Default` ниже нормативен и обязан совпадать с C# бит-в-бит

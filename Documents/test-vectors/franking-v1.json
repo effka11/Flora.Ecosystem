@@ -1,0 +1,63 @@
+{
+  "vectorId": "fscp_franking_v1",
+  "fscpProtocolVersion": 1,
+  "frankingVersion": 1,
+  "description": "Message franking v1 (FSCP-FRANK, Documents/fscp/franking.md): commit -> tag -> receipt -> полная верификация жюри. Франкуется сообщение из fscp-message-transcript-v1.json (регенерировать транскрипт первым). Wire-активация franking — v1.1+; вектор закрепляет примитивы заранее.",
+  "commitContext": "flora.fscp.franking.v1",
+  "receiptContext": "flora.fscp.franking-receipt.v1",
+  "uuids": {
+    "conversationUuid": "b338d82e-ee40-53a4-a6c4-bd587cd2f7c1",
+    "messageUuid": "33333333-3333-4333-8333-333333333333",
+    "senderUserUuid": "55555555-5555-4555-8555-555555555555",
+    "senderDeviceUuid": "00000000-0000-4000-8000-000000000002",
+    "receiverUserUuid": "77777777-7777-4777-8777-777777777777"
+  },
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "plaintextUtf8": "{\"type\":\"blocks\",\"version\":1,\"blocks\":[{\"kind\":\"text\",\"body\":\"Привет, FSCP! 🌸\"}],\"clientCreatedAt\":\"2026-01-01T00:00:00.000Z\"}",
+  "plaintextSha256Base64Url": "5loG4BXXm_tmhY1M1n24-jJNHMl07DRgi2g9dSv0CIM",
+  "frankingKeyBase64Url": "6MYFL8PJn8K6KehItbxLqKwHQBErVnkBS_McmDTuTxM",
+  "commitInputUtf8": "flora.fscp.franking.v1 | b338d82e-ee40-53a4-a6c4-bd587cd2f7c1 | 33333333-3333-4333-8333-333333333333 | 55555555-5555-4555-8555-555555555555 | 00000000-0000-4000-8000-000000000002 | 77777777-7777-4777-8777-777777777777 | 2026-01-01T00:00:00.000Z | 5loG4BXXm_tmhY1M1n24-jJNHMl07DRgi2g9dSv0CIM",
+  "frankTagBase64Url": "rsJg-IwBcAD4ppXrJ7fRJraBGQCP2V2SxTQjcU78KTE",
+  "server": {
+    "frankingSigningSeedBase64Url": "iGGu6xk5YMz2C_xQUzoZcfehh-mBaelhtHWa2bIy-ro",
+    "frankingPublicKeyBase64Url": "t4CUjGfcdT4xGP4nyGWN9yP9VYg7WRX0-wLh1ak5nNE"
+  },
+  "receiptPayloadUtf8": "flora.fscp.franking-receipt.v1 | rsJg-IwBcAD4ppXrJ7fRJraBGQCP2V2SxTQjcU78KTE | 33333333-3333-4333-8333-333333333333 | b338d82e-ee40-53a4-a6c4-bd587cd2f7c1 | 55555555-5555-4555-8555-555555555555 | 77777777-7777-4777-8777-777777777777 | 2026-01-01T00:00:01.000Z",
+  "receipt": {
+    "signatureBase64Url": "N0irxWSSO2kUtABM8fOg85utcbf8fhvtAhKR2TUarLRs-fujEnyXR936rJMzb_7lAFe48eYk8JbvCKVXMvJgDQ",
+    "serverFrankingKeyId": "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+    "serverReceivedAt": "2026-01-01T00:00:01.000Z"
+  },
+  "negatives": [
+    {
+      "caseId": "plaintext_tampered",
+      "description": "Жалобщик подменил plaintext: HMAC не сойдётся (binding commitment).",
+      "plaintextUtf8": "{\"type\":\"blocks\",\"version\":1,\"blocks\":[{\"kind\":\"text\",\"body\":\"Пока, FSCP! 🌸\"}],\"clientCreatedAt\":\"2026-01-01T00:00:00.000Z\"}",
+      "expectedFailure": "commit-mismatch"
+    },
+    {
+      "caseId": "franking_key_wrong",
+      "description": "Другой frankingKey: не существует (K', m') с тем же тегом.",
+      "frankingKeyBase64Url": "vJn75kcVsDm9dVXE2BZWmvs3-rJg6ZBGSNr7gMN0uw8",
+      "expectedFailure": "commit-mismatch"
+    },
+    {
+      "caseId": "receipt_signature_tampered",
+      "description": "Бит подписи квитанции инвертирован.",
+      "receiptSignatureBase64Url": "NkirxWSSO2kUtABM8fOg85utcbf8fhvtAhKR2TUarLRs-fujEnyXR936rJMzb_7lAFe48eYk8JbvCKVXMvJgDQ",
+      "expectedFailure": "receipt-signature-invalid"
+    },
+    {
+      "caseId": "message_uuid_mismatch",
+      "description": "Жалоба про другой messageUuid: metadata-binding срабатывает уже на шаге HMAC (uuid входит в commitInput).",
+      "messageUuid": "44444444-4444-4444-8444-444444444444",
+      "expectedFailure": "commit-mismatch"
+    },
+    {
+      "caseId": "receipt_time_mismatch",
+      "description": "Подмена serverReceivedAt (есть только в receiptPayload): HMAC сходится, подпись сервера — нет.",
+      "serverReceivedAt": "2026-01-01T00:00:02.000Z",
+      "expectedFailure": "receipt-signature-invalid"
+    }
+  ]
+}

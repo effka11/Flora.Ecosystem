@@ -1,5 +1,5 @@
 /**
- * Message franking v1 — эталонная реализация FSCP-FRANK (docs/fscp/franking.md).
+ * Message franking v1 — эталонная реализация FSCP-FRANK (Documents/fscp/franking.md).
  *
  * Wire-активация — v1.1+ (после снятия заморозки, next-architecture.md §1.2);
  * сами примитивы — чистые функции без wire-побочек, реализованы заранее, чтобы

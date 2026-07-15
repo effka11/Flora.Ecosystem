@@ -12,4 +12,5 @@ workspace = true
 
 # Правило §2.3: contracts-crate — только flora-shared и внешние crates.
 [dependencies]
+chrono = { workspace = true }
 uuid = { workspace = true }

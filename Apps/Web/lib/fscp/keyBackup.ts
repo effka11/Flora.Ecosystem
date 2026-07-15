@@ -7,7 +7,7 @@
  *  - XChaCha20-Poly1305 AEAD → libsodium on the main thread (fast, microseconds).
  *  - All key material stays in memory; only opaque ciphertext reaches the server.
  *
- * docs/fscp/e2e-security.md §UserE2EKeyBackup
+ * Documents/fscp/e2e-security.md §UserE2EKeyBackup
  */
 
 import { sha256 } from "@noble/hashes/sha2.js";

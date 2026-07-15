@@ -1,10 +1,10 @@
 /**
  * Consumer полного транскрипт-вектора fscp-message-transcript-v1.json
- * (docs/fscp/FSCP.md §Test vectors): единственный вектор, покрывающий ВЕСЬ путь
+ * (Documents/fscp/FSCP.md §Test vectors): единственный вектор, покрывающий ВЕСЬ путь
  * Algorithm A/B — plaintext → body AEAD → RKE → canonical JSON → Ed25519 → wire.
  * Проверяется публичное API decryptFscpWireEnvelope (не внутренности), плюс
  * побайтовое воспроизведение canonical signing payload и plaintext JSON.
- * Файл вектора — regenerate-only: python docs/test-vectors/_gen_fscp_message_transcript_v1.py
+ * Файл вектора — regenerate-only: python Documents/test-vectors/_gen_fscp_message_transcript_v1.py
  */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -25,7 +25,7 @@ const sodium = require("libsodium-wrappers") as SodiumModule;
 const vectorsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..", "..", "..", "..",
-  "docs", "test-vectors",
+  "Documents", "test-vectors",
 );
 
 type TranscriptVector = {

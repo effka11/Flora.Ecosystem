@@ -46,6 +46,10 @@ Apps/Mobile/modules/*/android/.gradle/
 !.env.example
 
 # Secrets / local-only config (never commit; *.example.* templates are ok)
+# All machine-local files live under /Local/ (not in remote).
+/Local/
+# Legacy locations (pre-Local/); keep ignored if recreated at root
+.flora/
 appsettings.Local.json
 appsettings.Production.json
 appsettings.*.Local.json
@@ -64,9 +68,9 @@ Flora.API/secrets/*
 !Flora.API/secrets/*.example.*
 
 # Build / test artifacts (keep contract-fixtures for CI clones)
-artifacts/*
-!artifacts/contract-fixtures/
-!artifacts/contract-fixtures/**
+Artifacts/*
+!Artifacts/contract-fixtures/
+!Artifacts/contract-fixtures/**
 .tmp-build-check/
 .tmp-apk-inspect/
 .expo-export-test/
@@ -83,7 +87,9 @@ Thumbs.db
 *.swo
 .idea/
 
-# Rust (workspace root Cargo.toml → ./target)
+# Rust (workspace root Cargo.toml → ./Target via .cargo/config.toml)
+/Target/
 /target/
+Backend/Target/
 Backend/target/
 **/Cargo.toml.orig

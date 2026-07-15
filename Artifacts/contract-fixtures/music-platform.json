@@ -1,0 +1,15 @@
+{
+  "tracks": [
+    {
+      "trackUuid": "77777777-7777-7777-7777-777777777777",
+      "title": "Untitled",
+      "artistDisplay": "Unknown",
+      "artistCredits": [],
+      "hasCoverImage": false,
+      "durationMs": 90000,
+      "createdAt": "2026-06-12T09:00:00.000Z",
+      "publishedAt": "2026-06-12T09:30:00.000Z",
+      "isOwnedByCurrentUser": false
+    }
+  ]
+}

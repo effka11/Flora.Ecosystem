@@ -1,5 +1,5 @@
 /**
- * FscpV1ConversationSession — машина состояний 1:1 сессии (docs/fscp/FSCP.md §Session state).
+ * FscpV1ConversationSession — машина состояний 1:1 сессии (Documents/fscp/FSCP.md §Session state).
  *
  * Состояние ведётся на пару (conversationUuid, keyEpochId) и живёт вне нормы wire
  * (память / локальное хранилище). Реализация — чистые функции над immutable-снимком:

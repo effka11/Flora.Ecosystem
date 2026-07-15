@@ -54,7 +54,7 @@ function Invoke-GhApiChecked {
 $protection = @{
     required_status_checks = @{
         strict   = $true
-        contexts = @("dotnet", "architecture", "ts", "web", "rust")
+        contexts = @("architecture", "ts", "web", "rust")
     }
     enforce_admins                = -not $NoEnforceAdmins.IsPresent
     required_pull_request_reviews = @{
@@ -68,7 +68,7 @@ $protection = @{
 } | ConvertTo-Json -Depth 5
 
 Invoke-GhApiChecked -Method PUT -Path "repos/$slug/branches/$Branch/protection" -Body $protection | Out-Null
-Write-Host "✓ Защита ветки $Branch включена (PR + required checks: dotnet, architecture, ts, web, rust)"
+Write-Host "✓ Защита ветки $Branch включена (PR + required checks: architecture, ts, web, rust)"
 
 # --- 2. Secret scanning + push protection ----------------------------------
 # На публичных репозиториях GitHub Free secret scanning может быть недоступен

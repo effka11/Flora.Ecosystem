@@ -1,4 +1,4 @@
-﻿## Flora Ecosystem
+## Flora Ecosystem
 
 Экосистема **Flora** —  это модульная некоммерческая экосистема, развивающаяся в соответствии с уникальными ценностями в новейшей цифровой эпохе.
 
@@ -6,7 +6,7 @@
 * **Лицензия некодовых материалов:** **CC BY-SA 4.0 International** или коммерческая лицензия через **Luna Ecosystem**. См. [`LICENSE-CONTENT.md`](LICENSE-CONTENT.md) и [`LEGAL.md`](LEGAL.md).
 * **Безопасность:** см. [`SECURITY.md`](SECURITY.md). 
 * **Участие в разработке:** см. [`CONTRIBUTING.md`](CONTRIBUTING.md).
-* **Документация:** [FSCP](docs/fscp/FSCP.md), [E2E-платформа](docs/fscp/e2e-security.md), [FIRA](docs/fira/FIRA.md), [CODECS](docs/codecs/CODECS.md).
+* **Документация:** [FSCP](Documents/fscp/FSCP.md), [E2E-платформа](Documents/fscp/e2e-security.md), [FIRA](Documents/fira/FIRA.md), [CODECS](Documents/codecs/CODECS.md).
 
 ### Попробовать (MVP alpha)
 
@@ -17,7 +17,7 @@
 
 ### Быстрый старт (разработка)
 
-**Требования:** Docker Desktop, [.NET SDK 10](https://dotnet.microsoft.com/download), Node.js ≥ 20.19 (см. [`.nvmrc`](.nvmrc)).
+**Требования:** Docker Desktop, [.NET SDK 10](https://dotnet.microsoft.com/download), [Rust](https://rustup.rs/) (см. [`rust-toolchain.toml`](rust-toolchain.toml)), Node.js ≥ 20.19 (см. [`.nvmrc`](.nvmrc)).
 
 ```bash
 # 1. Зависимости JS (workspaces: Web, Mobile, client-core)
@@ -26,20 +26,15 @@ npm install
 # 2. PostgreSQL + миграции (Windows PowerShell)
 ./Scripts/setup-local-postgres.ps1
 
-# 3. API (JWT в Development генерируется автоматически)
-dotnet run --project Flora.API
-# → http://localhost:5284
-
-# 4. Web
-cp Apps/Web/.env.example Apps/Web/.env.local   # Linux/macOS
-# copy Apps\Web\.env.example Apps\Web\.env.local   # Windows
-cd Apps/Web && npm run dev
-# → http://localhost:3000
+# 3. Локальный strangler (как прод): .NET :5284 + Rust gateway :5290 + Web :3000
+./Scripts/zed-dev-api-web.ps1
+# или по шагам: run-dotnet-upstream-localhost.ps1 → run-rust-gateway-localhost.ps1 → web-dev-localhost.ps1
+# Web → http://localhost:3000 → proxy http://127.0.0.1:5290 (Music native; остальное → :5284)
 ```
 
-**Android (USB):** VS Code task **Flora Android: debug (USB)** — PostgreSQL, API, установка Flora Dev, Metro одним кликом. CLI: `./Scripts/mobile-debug-android.ps1`.
+**Android (USB):** VS Code task **Flora Android: debug (USB)** — PostgreSQL, .NET + gateway, установка Flora Dev, Metro. CLI: `./Scripts/mobile-debug-android.ps1`.
 
-На Windows удобнее использовать готовые задачи из [`.vscode/tasks.json`](.vscode/tasks.json): **Flora: API + Web dev localhost**, **Flora Android: debug (USB)**.
+На Windows удобнее задачи из [`.vscode/tasks.json`](.vscode/tasks.json): **Flora: API + Web dev localhost**, **Flora Android: debug (USB)**.
 
 ### Некоммерческий фундамент
 Для проекта, который стремится стать всеобъемлющим инструментом для всех людей в новом веке информационных технологий **недопустима** коммерческая пытка пользователей. Мы исключаем из проекта абсолютно всю деструктивную коммерцию, оставляя право лишь на точечную экосистеме **Luna**, которая покроет собой узкий круг задач для бизнеса, которые никак не будут касаться незаинтересованного пользователя. 
@@ -52,7 +47,7 @@ cd Apps/Web && npm run dev
 ### Безопасность и шифрование
 Любой цифровой инструмент, которым пользуется человек, должен быть для него безопасным. Мы уделяем **огромное внимание** к безопасности пользователей.
 
-**FSCP** (Flora Secure Communication Protocol)  —  собственный протокол **E2E** шифрования, который гарантирует что ваши сообщения не будут прочитаны третьими лицами, а пользовательский опыт от обмена сообщениями не будет ухудшен из-за сложностей в синхронизации. Ваш ключ привязан к вашим учетным данным и легко передается от устройства к устройству без лишних действий. Спецификация: [`docs/fscp/FSCP.md`](docs/fscp/FSCP.md).
+**FSCP** (Flora Secure Communication Protocol)  —  собственный протокол **E2E** шифрования, который гарантирует что ваши сообщения не будут прочитаны третьими лицами, а пользовательский опыт от обмена сообщениями не будет ухудшен из-за сложностей в синхронизации. Ваш ключ привязан к вашим учетным данным и легко передается от устройства к устройству без лишних действий. Спецификация: [`Documents/fscp/FSCP.md`](Documents/fscp/FSCP.md).
 
 Философская сторона вопроса о сквозном шифровании не столь сложна, как это пытаются преподнести людям. Все **аргументы против** E2E обычно сводятся к трем манипуляциям, которые легко разбиваются о реальность:
 
@@ -68,7 +63,7 @@ cd Apps/Web && npm run dev
 ### Индивидуальный пользовательский опыт и рекомендации
 Для того, чтобы пользователь получал самую интересную для него информацию и медиа, мы создали **FIRA**.
 
-**FIRA** (Flora Individual Recommendation Algorithm)  –  алгоритм, цель которого проста: дать пользователю **максимально эффективные** личные рекомендации. Спецификация: [`docs/fira/FIRA.md`](docs/fira/FIRA.md). FIRA подразделяется на модули на основе своего ядра:
+**FIRA** (Flora Individual Recommendation Algorithm)  –  алгоритм, цель которого проста: дать пользователю **максимально эффективные** личные рекомендации. Спецификация: [`Documents/fira/FIRA.md`](Documents/fira/FIRA.md). FIRA подразделяется на модули на основе своего ядра:
 * **FIRA-F**  –  **лента**
 * **FIRA-M**  –  **музыка**
 * **FIRA-P**  –  **люди**

@@ -1,7 +1,7 @@
 /**
- * Consumer-тесты golden-векторов FSCP (docs/fscp/FSCP.md §Test vectors, «требование
+ * Consumer-тесты golden-векторов FSCP (Documents/fscp/FSCP.md §Test vectors, «требование
  * потребления»): вектор без потребителя = невыполненный compliance-пункт.
- * Файлы docs/test-vectors/** — regenerate-only, руками не редактировать.
+ * Файлы Documents/test-vectors/** — regenerate-only, руками не редактировать.
  */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -24,7 +24,7 @@ const sodium = require("libsodium-wrappers") as SodiumModule;
 const vectorsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..", "..", "..", "..",
-  "docs", "test-vectors",
+  "Documents", "test-vectors",
 );
 
 function loadVector<T>(name: string): T {

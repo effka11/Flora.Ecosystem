@@ -45,35 +45,74 @@
     "reveal": "no_focus"
   },
   {
-    "label": "Flora API: dev localhost",
-    "command": "dotnet",
+    "label": "Flora API: Rust localhost",
+    "command": "powershell",
     "args": [
-      "watch",
-      "run",
-      "--project",
-      "Flora.API/Flora.API.csproj",
-      "--urls",
-      "http://localhost:5284"
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/Scripts/run-rust-gateway-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
-    "env": { "ASPNETCORE_ENVIRONMENT": "Development" },
     "use_new_terminal": true,
     "allow_concurrent_runs": true,
     "reveal": "always"
   },
   {
-    "label": "Flora API: dev localhost (silent)",
-    "command": "dotnet",
+    "label": "Flora API: Rust localhost (silent)",
+    "command": "powershell",
     "args": [
-      "watch",
-      "run",
-      "--project",
-      "Flora.API/Flora.API.csproj",
-      "--urls",
-      "http://localhost:5284"
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/Scripts/run-rust-gateway-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
-    "env": { "ASPNETCORE_ENVIRONMENT": "Development" },
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true,
+    "reveal": "no_focus"
+  },
+  {
+    "label": "Flora Gateway: Rust localhost",
+    "command": "powershell",
+    "args": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/Scripts/run-rust-gateway-localhost.ps1"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true,
+    "reveal": "always"
+  },
+  {
+    "label": "Flora API: dev localhost",
+    "command": "powershell",
+    "args": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      "Write-Host 'Strangler local: start «Flora API: .NET upstream» then «Flora Gateway: Rust», or one-shot «Flora: API + Web».'; exit 0"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "always"
+  },
+  {
+    "label": "Flora API: dev localhost (silent)",
+    "command": "powershell",
+    "args": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/Scripts/run-rust-gateway-localhost.ps1"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
     "allow_concurrent_runs": true,
     "reveal": "no_focus"
@@ -189,7 +228,7 @@
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "env": {
-      "FLORA_API_URL": "http://localhost:5284",
+      "FLORA_API_URL": "http://localhost:5290",
       "FLORA_ADMIN_BROADCAST_TOKEN": "dev-local-broadcast-token-change-me"
     },
     "reveal": "always"
@@ -219,7 +258,7 @@
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "env": {
-      "FLORA_API_URL": "http://localhost:5284",
+      "FLORA_API_URL": "http://localhost:5290",
       "FLORA_ADMIN_BROADCAST_TOKEN": "dev-local-broadcast-token-change-me"
     },
     "reveal": "always"

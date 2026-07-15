@@ -1,4 +1,491 @@
 //! Контракты модуля Messaging — DTO и trait-порты без бизнес-логики (next-architecture.md §2.2).
 //!
-//! Наполняется в Фазе 4 (порт `IMessageSentNotifier` и др.). Чужим модулям разрешена
-//! зависимость только от этого crate (§2.3).
+//! Публичные порты для Notifications (`MessageSentNotifier` / C# `IMessageSentNotifier`).
+//! Чужим модулям разрешена зависимость только от этого crate (§2.3).
+
+use std::future::Future;
+use std::pin::Pin;
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Client-supplied preview for push / SSE side-effects (C# `MessageSentPushContext`).
+/// Not persisted; plaintext must not be placed in FCM data.
+#[derive(Debug, Clone)]
+pub struct MessageSentPushContext {
+    pub push_preview: Option<String>,
+    pub has_voice_attachment: bool,
+    pub has_image_attachment: bool,
+    pub has_video_attachment: bool,
+}
+
+impl MessageSentPushContext {
+    /// Паритет `MessageSentPushContext.FromRequest`.
+    pub fn from_request(
+        push_preview: Option<&str>,
+        has_voice: bool,
+        has_image: bool,
+        has_video: bool,
+    ) -> Option<Self> {
+        let sanitized = sanitize_push_preview(push_preview);
+        if sanitized.is_none() && !has_voice && !has_image && !has_video {
+            return None;
+        }
+        Some(Self {
+            push_preview: sanitized,
+            has_voice_attachment: has_voice,
+            has_image_attachment: has_image,
+            has_video_attachment: has_video,
+        })
+    }
+}
+
+fn sanitize_push_preview(raw: Option<&str>) -> Option<String> {
+    let raw = raw?;
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        if matches!(ch, '\n' | '\r' | '\t') || !ch.is_control() {
+            out.push(ch);
+        }
+    }
+    let mut t = out.trim().to_string();
+    if t.is_empty() {
+        return None;
+    }
+    if t.len() > 200 {
+        t.truncate(200);
+    }
+    Some(t)
+}
+
+/// Cross-module port: notify recipient after a DM is persisted (SSE hub + FCM).
+/// Implemented by Notifications; Messaging must not reference Notifications internals.
+pub trait MessageSentNotifier: Send + Sync {
+    fn notify(
+        &self,
+        recipient_user_uuid: Uuid,
+        sender_user_uuid: Uuid,
+        push_context: Option<MessageSentPushContext>,
+    ) -> BoxFuture<'_, ()>;
+}
+
+/// No-op when Notifications ServeNative is off (SSE remains on .NET / absent).
+pub struct NoopMessageSentNotifier;
+
+impl MessageSentNotifier for NoopMessageSentNotifier {
+    fn notify(
+        &self,
+        _recipient_user_uuid: Uuid,
+        _sender_user_uuid: Uuid,
+        _push_context: Option<MessageSentPushContext>,
+    ) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+}
+
+/// Строка peer-сводки до обогащения профилем (C# `ConversationPeerRow`).
+#[derive(Debug, Clone)]
+pub struct ConversationPeerRow {
+    pub other_user_uuid: Uuid,
+    pub last_message_uuid: Uuid,
+    pub last_encrypted_for_me: Option<String>,
+    pub last_content: Option<String>,
+    pub last_message_at: DateTime<Utc>,
+    pub last_is_from_me: bool,
+    pub unread_count: i32,
+}
+
+/// Элемент списка диалогов после обогащения (ответ GET /api/messaging/conversations).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationListItemDto {
+    pub conversation_uuid: Uuid,
+    pub other_user_uuid: Uuid,
+    pub other_username: String,
+    pub other_display_name: String,
+    pub other_avatar_uuid: Option<String>,
+    pub last_message_encrypted_for_me: Option<String>,
+    pub last_message_content: Option<String>,
+    pub last_message_at: String,
+    pub last_message_is_from_me: bool,
+    pub unread_count: i32,
+    pub other_user_is_online: bool,
+    pub other_user_last_seen_at: Option<String>,
+}
+
+/// Страница диалогов.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationsPageDto {
+    pub items: Vec<ConversationListItemDto>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+/// Элемент ленты сообщений (GET …/messages).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageItemDto {
+    pub message_uuid: Uuid,
+    pub sender_user_uuid: Uuid,
+    pub encrypted_for_me: Option<String>,
+    pub content: Option<String>,
+    pub created_at: String,
+    pub is_read: bool,
+    pub is_from_me: bool,
+    pub voice_asset_uuids: Vec<Uuid>,
+    pub image_asset_uuids: Vec<Uuid>,
+    pub video_asset_uuids: Vec<Uuid>,
+}
+
+/// Страница сообщений диалога.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessagesPageDto {
+    pub items: Vec<MessageItemDto>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+/// Тело POST …/messages.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostConversationMessageRequest {
+    pub encrypted_for_receiver: String,
+    pub encrypted_for_sender: String,
+    #[serde(default)]
+    pub voice_asset_uuids: Vec<Uuid>,
+    #[serde(default)]
+    pub image_asset_uuids: Vec<Uuid>,
+    #[serde(default)]
+    pub video_asset_uuids: Vec<Uuid>,
+    pub push_preview: Option<String>,
+}
+
+/// Ответ POST …/messages.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendMessageResultDto {
+    pub message_uuid: Uuid,
+    pub created_at: String,
+    pub encrypted_for_me: String,
+}
+
+/// Исход DELETE message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeleteMessageOutcome {
+    NotFound,
+    Forbidden,
+    Success,
+}
+
+/// Исход DELETE conversation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeleteConversationOutcome {
+    NotFound,
+    Success,
+}
+
+// ── E2E key backup (GET/PUT /api/messaging/e2e/*) ───────────────────────────
+
+/// KDF parameters embedded in key/recovery backup payloads.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KdfParamsDto {
+    pub name: String,
+    pub memory_ki_b: i32,
+    pub iterations: i32,
+    pub parallelism: i32,
+    pub salt_base64_url: String,
+}
+
+/// AEAD parameters embedded in key/recovery backup payloads.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeadParamsDto {
+    pub name: String,
+    pub nonce_base64_url: String,
+}
+
+/// Full password-encrypted key backup (GET/PUT body).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyBackupPayloadDto {
+    pub version: i32,
+    pub backup_revision: i32,
+    pub backup_key_id: Uuid,
+    pub user_uuid: Uuid,
+    pub primary_key_epoch_id: Uuid,
+    pub epoch_set_revision: i32,
+    pub epoch_set_hash_base64_url: String,
+    pub kdf: KdfParamsDto,
+    pub aead: AeadParamsDto,
+    pub ciphertext_base64_url: String,
+}
+
+/// Epoch public identity entry on PUT key-backup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EpochIdentityPublicKeyEntryDto {
+    pub key_epoch_id: Uuid,
+    pub epoch_account_identity_public_key_base64_url: String,
+}
+
+/// PUT/POST /api/messaging/e2e/key-backup request body.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PutKeyBackupRequestDto {
+    pub key_backup: KeyBackupPayloadDto,
+    #[serde(default)]
+    pub epoch_identity_public_keys: Vec<EpochIdentityPublicKeyEntryDto>,
+}
+
+/// GET /api/messaging/e2e/state response.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct E2eStateResponseDto {
+    pub state: String,
+    pub freeze: bool,
+    pub updated_at: String,
+}
+
+/// Wordlist metadata embedded in recovery backup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WordlistInfoDto {
+    pub id: String,
+    pub words_count: i32,
+}
+
+/// Full recovery backup payload (PUT and GET with ciphertext).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryBackupPayloadDto {
+    pub version: i32,
+    pub recovery_revision: i32,
+    pub recovery_key_id: Uuid,
+    pub user_uuid: Uuid,
+    pub primary_key_epoch_id: Uuid,
+    pub epoch_set_revision: i32,
+    pub epoch_set_hash_base64_url: String,
+    pub wordlist: WordlistInfoDto,
+    pub kdf: KdfParamsDto,
+    pub aead: AeadParamsDto,
+    pub ciphertext_base64_url: String,
+}
+
+/// Recovery backup metadata only (GET list — no ciphertext).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryBackupMetaDto {
+    pub recovery_key_id: Uuid,
+    pub recovery_revision: i32,
+    pub primary_key_epoch_id: Uuid,
+    pub epoch_set_revision: i32,
+    pub epoch_set_hash_base64_url: String,
+    pub wordlist: WordlistInfoDto,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub used_at: Option<String>,
+}
+
+/// Request body for POST /api/messaging/e2e/epochs (Create epoch).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateEpochRequestDto {
+    pub account_recovery_session_id: Uuid,
+    pub idempotency_key: Uuid,
+    pub ux_confirmation_id: Uuid,
+    pub new_key_epoch_id: Uuid,
+    pub new_epoch_account_identity_public_key_base64_url: String,
+    pub new_device_signing_public_key_base64_url: String,
+    pub new_device_agreement_public_key_base64_url: String,
+    pub new_device_display_name: Option<String>,
+    pub key_backup: KeyBackupPayloadDto,
+}
+
+/// Response from POST .../unlock-complete/challenge.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockChallengeResponseDto {
+    pub challenge_id: Uuid,
+    pub reset_request_id: Uuid,
+    pub expires_at: String,
+    pub canonical_payload_preview: String,
+}
+
+/// One entry in epochIdentityPublicKeys / epochUnlockSignatures arrays.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EpochUnlockEntryDto {
+    pub key_epoch_id: Uuid,
+    pub value_base64_url: String,
+}
+
+/// Request body for POST /api/messaging/e2e/unlock-complete.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockCompleteRequestDto {
+    pub reset_request_id: Uuid,
+    pub idempotency_key: Uuid,
+    pub challenge_id: Uuid,
+    pub recovered_key_epoch_ids: Vec<Uuid>,
+    pub epoch_identity_public_keys: Vec<EpochUnlockEntryDto>,
+    pub epoch_unlock_signatures: Vec<EpochUnlockEntryDto>,
+    pub key_backup: KeyBackupPayloadDto,
+    pub new_device_signing_public_key_base64_url: String,
+    pub new_device_agreement_public_key_base64_url: String,
+    pub recovery_unlock_token: Option<String>,
+    pub trusted_device_approval_token: Option<String>,
+}
+
+/// Request body for POST .../epochs/{keyEpochId}/devices/pending.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddPendingDeviceRequestDto {
+    pub signing_public_key_base64_url: String,
+    pub agreement_public_key_base64_url: String,
+    pub display_name: Option<String>,
+}
+
+/// Response entry for GET .../epochs/{keyEpochId}/devices.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceKeyEntryDto {
+    pub device_uuid: Uuid,
+    pub key_epoch_id: Uuid,
+    pub display_name: String,
+    pub signing_public_key_base64_url: String,
+    pub agreement_public_key_base64_url: String,
+    pub status: String,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_seen_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revoked_at: Option<String>,
+}
+
+/// Result for POST .../epochs/{keyEpochId}/devices/pending.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddPendingDeviceResponseDto {
+    pub device_uuid: Uuid,
+}
+
+// ── Legacy E2E public key (`/api/auth/.../e2e-public-key`) ─────────────────
+
+/// PUT/POST `/api/auth/me/e2e-public-key` body (C# `SetE2EPublicKeyRequest`).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetE2ePublicKeyRequestDto {
+    pub public_key_base64: Option<String>,
+    /// Client may send a UUID string; invalid/empty → ignored (server may mint).
+    pub device_uuid: Option<String>,
+}
+
+/// PUT/POST `/api/auth/me/e2e-public-key` success body.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetE2ePublicKeyResponseDto {
+    pub message: String,
+    pub device_uuid: Option<Uuid>,
+}
+
+/// GET `/api/auth/users/{userUuid}/e2e-public-key` success body.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserE2ePublicKeyDto {
+    pub public_key_base64: String,
+    pub device_uuid: Option<Uuid>,
+}
+
+// ── Legacy `/api/auth/conversations*` + `/api/auth/messages*` (ImportedSocialController) ──
+
+/// Элемент `GET /api/auth/conversations` (массив, без cursor-page).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyConversationListItemDto {
+    pub other_user_uuid: Uuid,
+    pub other_username: String,
+    pub other_display_name: String,
+    pub other_avatar_uuid: Option<String>,
+    pub other_user_e2e_public_key_base64: Option<String>,
+    pub last_message_uuid: Uuid,
+    pub last_message_content: Option<String>,
+    pub last_message_encrypted_for_me: Option<String>,
+    pub last_message_is_from_me: bool,
+    pub last_message_at: String,
+    pub unread_count: i32,
+    pub other_user_is_online: bool,
+    pub other_user_last_seen_at: Option<String>,
+}
+
+/// Элемент `GET /api/auth/conversations/with/{otherUserUuid}`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyMessageThreadItemDto {
+    pub message_uuid: Uuid,
+    pub sender_user_uuid: Uuid,
+    pub receiver_user_uuid: Uuid,
+    pub content: Option<String>,
+    pub encrypted_for_me: Option<String>,
+    pub created_at: String,
+    pub is_read: bool,
+    pub is_from_me: bool,
+}
+
+/// Тело `POST /api/auth/messages` (C# `SendMessageRequest`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacySendMessageRequest {
+    pub to_user_uuid: Uuid,
+    pub content: Option<String>,
+    pub encrypted_for_receiver: Option<String>,
+    pub encrypted_for_sender: Option<String>,
+    #[serde(default)]
+    pub voice_asset_uuids: Vec<Uuid>,
+    #[serde(default)]
+    pub image_asset_uuids: Vec<Uuid>,
+}
+
+/// Ответ `POST /api/auth/messages`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacySendMessageResultDto {
+    pub message_uuid: Uuid,
+    pub content: Option<String>,
+    pub encrypted_for_me: String,
+    pub created_at: String,
+}
+
+/// Upload image asset response.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadImageAssetResultDto {
+    pub image_asset_uuid: Uuid,
+    pub content_type: String,
+}
+
+/// Upload voice asset response.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadVoiceAssetResultDto {
+    pub voice_asset_uuid: Uuid,
+    pub content_type: String,
+    pub duration_ms: i32,
+}
+
+/// Upload video asset response.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadVideoAssetResultDto {
+    pub video_asset_uuid: Uuid,
+    pub content_type: String,
+}

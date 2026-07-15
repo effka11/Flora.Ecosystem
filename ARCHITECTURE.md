@@ -1,6 +1,6 @@
-﻿# Архитектурная карта Flora.Ecosystem
+# Архитектурная карта Flora.Ecosystem
 
-> Высокоуровневая карта системы «с высоты птичьего полёта»: глобальное назначение, границы модулей, сквозные потоки данных и технический долг. Документ описывает **взаимосвязи**, а не внутренности методов. Нормативные спецификации лежат в [`docs/`](docs/), правила границ — в [`.agents/skills/`](.agents/skills/) и [`AGENTS.md`](AGENTS.md). Целевая продуктовая топология (пиры App / Functional) и путь миграции C#→Rust — [`next-architecture.md`](next-architecture.md).
+> Высокоуровневая карта системы «с высоты птичьего полёта»: глобальное назначение, границы модулей, сквозные потоки данных и технический долг. Документ описывает **взаимосвязи**, а не внутренности методов. Нормативные спецификации лежат в [`Documents/`](Documents/), правила границ — в [`.agents/skills/`](.agents/skills/) и [`AGENTS.md`](AGENTS.md). Целевая продуктовая топология (пиры App / Functional) и путь миграции C#→Rust — [`next-architecture.md`](next-architecture.md).
 
 ---
 
@@ -8,11 +8,9 @@
 
 Flora.Ecosystem — модульная некоммерческая цифровая экосистема. Архитектурно это **модульный монолит** на хосте плюс набор **равноправных продуктов** под [`Products/`](Products/).
 
-**As-is (пока жив .NET):** единый процесс-хост ([`Flora.API`](Flora.API)) разворачивает слабосвязанные бизнес-модули (Clean Architecture: `Domain → Application → Infrastructure` + `Contracts`). Модули общаются только через контракты. C#-продукт [`Products/Flora.Social`](Products/Flora.Social) компонует модули; параллельно растёт Rust-хост в [`Backend/`](Backend/) (будущий Platform).
+**As-is (Фаза 5+):** единый процесс-хост Rust [`flora-api`](Backend/crates/flora-api) разворачивает доменные модули Social (`Products/Flora.Social/crates/modules/*`). Модули общаются через `*-contracts`. Functional-пиры в `Products/{FIRA,FSCP,…}` — отдельные crates.
 
-**To-be (после Фазы 5):** пиры в `Products/` двух классов — **App** и **Functional** (см. §1.1); `Apps/` — отдельный слой shells; один Cargo workspace.
-
-Стек переходный: **C# / .NET 10** + **Rust** на бэкенде, **Next.js 16 / TypeScript** и **Expo / React Native** на клиентах, PostgreSQL (`flora_core`). Клиенты разделяют [`@flora/client-core`](Packages/flora-client-core); functional-клиентский код (FSCP и др.) имеет SoT в соответствующем `Products/<Name>/`.
+Стек: **Rust** на бэкенде, **Next.js 16 / TypeScript** и **Expo / React Native** на клиентах, PostgreSQL (`flora_core`). Клиенты разделяют [`@flora/client-core`](Packages/flora-client-core); functional-клиентский код (FSCP и др.) имеет SoT в соответствующем `Products/<Name>/`. Исторический план strangler C#→Rust — [`next-architecture.md`](next-architecture.md) (архив).
 
 ### 1.1. Продуктовая топология (пиры)
 
@@ -27,7 +25,7 @@ Functional **не зависят** от Social; Social (и другие App) з�
 
 **Apps/** остаются в корне (shells: Web, Mobile). Запрещено `Products/*` → `Apps/*`. Три слоя клиента: shell → optional App `client/` → functional TS/wasm SoT в продукте; `@flora/client-core` — транспорт + реэкспорт.
 
-Нормативные спеки — только в [`docs/`](docs/). Пустые каталоги будущих App не создавать.
+Нормативные спеки — только в [`Documents/`](Documents/). Пустые каталоги будущих App не создавать.
 
 ```mermaid
 flowchart TB
@@ -147,7 +145,7 @@ flowchart TD
 | **Infrastructure/Flora.gRPC**    | Транспорт gRPC между модулями. Содержит единственный контракт [`Protos/auth.proto`](Infrastructure/Flora.gRPC/Protos/auth.proto) (генерация **только server-side**).                                                          | Включается флагом `Grpc:AuthService:Enabled`; клиентов в репозитории нет, межмодульно фактически не используется (см. раздел 4).                                                     |
 | **Flora.Shared**                 | Низкоуровневые утилиты: [`FloraUuid.cs`](Flora.Shared/FloraUuid.cs) (UUID v7), [`UuidV5.cs`](Flora.Shared/UuidV5.cs) (детерминированные ID, синхронизированы с TS-клиентом), `LatinIdentifiers`, `TimestampAuditInterceptor`. | Бизнес-логики нет — соответствует правилам.                                                                                                                                          |
 | **Flora.Migrations**             | Design-time проект для `dotnet ef`. Мигрирует **7** DbContext в **одну** БД PostgreSQL с отдельными таблицами истории на модуль.                                                                                              | Порядок применения: `Auth → Verification → Users → Content → Messaging → Notifications → Music`. Скрипт: [`Scripts/apply-flora-migrations.ps1`](Scripts/apply-flora-migrations.ps1). |
-| **tests/Flora.ContractFixtures** | Контрактные тесты HTTP-поверхности и биндинга DTO; генерирует JSON-фикстуры в `artifacts/contract-fixtures/`.                                                                                                                 | Используется TS-парсерами client-core для проверки паритета контрактов.                                                                                                              |
+| **Tests/Flora.ContractFixtures** | Контрактные тесты HTTP-поверхности и биндинга DTO; генерирует JSON-фикстуры в `Artifacts/contract-fixtures/`.                                                                                                                 | Используется TS-парсерами client-core для проверки паритета контрактов.                                                                                                              |
 
 ### 2.5. Клиентский слой
 
@@ -178,7 +176,7 @@ flowchart LR
     Notifications -->|"IAccountReadQueries"| Auth
 ```
 
-Связанность **низкая** и однонаправленная. Внутри `Modules/` нет ссылок на чужой `Domain`/`Infrastructure` — связи идут через `Contracts` (в т.ч. межмодульные `*.Contracts`, разрешённые [`tools/Validate-Architecture.ps1`](tools/Validate-Architecture.ps1)). Инверсии портов: `IMessageSentNotifier` (Messaging → Notifications), `IPublicCommunityFollowingStats` (Users → Content). `Flora.Music` и `Flora.Verification` не имеют исходящих межмодульных зависимостей. Остаточные нарушения — только в legacy-контроллерах продукта (см. раздел 4).
+Связанность **низкая** и однонаправленная. Внутри `Modules/` нет ссылок на чужой `Domain`/`Infrastructure` — связи идут через `Contracts` (в т.ч. межмодульные `*.Contracts`, разрешённые [`Tools/Validate-Architecture.ps1`](Tools/Validate-Architecture.ps1)). Инверсии портов: `IMessageSentNotifier` (Messaging → Notifications), `IPublicCommunityFollowingStats` (Users → Content). `Flora.Music` и `Flora.Verification` не имеют исходящих межмодульных зависимостей. Остаточные нарушения — только в legacy-контроллерах продукта (см. раздел 4).
 
 ---
 
@@ -237,7 +235,7 @@ sequenceDiagram
     R->>R: проверка Ed25519 → unwrap RKE → расшифровка тела
 ```
 
-Ключевой инвариант: **сервер никогда не видит plaintext** — он хранит и маршрутизирует строку `fscp1:...` и проверяет только структуру конверта. Криптопримитивы: X25519 (согласование ключей, ECDH в RKE), Ed25519 (подпись конверта и привязка устройств), XChaCha20-Poly1305 (тело сообщения, обёртка ключа в RKE, бэкапы), HKDF-SHA256 (вывод wrap-ключа), Argon2id (парольный бэкап), AES-GCM (медиа-блобы). Нормативные источники: [`docs/fscp/FSCP.md`](docs/fscp/FSCP.md), [`docs/fscp/e2e-security.md`](docs/fscp/e2e-security.md); реализация — [`Packages/flora-client-core/src/fscp/`](Packages/flora-client-core/src/fscp) и (на вебе) [`Apps/Web/lib/fscp/`](Apps/Web/lib/fscp).
+Ключевой инвариант: **сервер никогда не видит plaintext** — он хранит и маршрутизирует строку `fscp1:...` и проверяет только структуру конверта. Криптопримитивы: X25519 (согласование ключей, ECDH в RKE), Ed25519 (подпись конверта и привязка устройств), XChaCha20-Poly1305 (тело сообщения, обёртка ключа в RKE, бэкапы), HKDF-SHA256 (вывод wrap-ключа), Argon2id (парольный бэкап), AES-GCM (медиа-блобы). Нормативные источники: [`Documents/fscp/FSCP.md`](Documents/fscp/FSCP.md), [`Documents/fscp/e2e-security.md`](Documents/fscp/e2e-security.md); реализация — [`Packages/flora-client-core/src/fscp/`](Packages/flora-client-core/src/fscp) и (на вебе) [`Apps/Web/lib/fscp/`](Apps/Web/lib/fscp).
 
 ### 3.3. Realtime-сигналы (новое сообщение/уведомление → UI)
 
@@ -328,7 +326,7 @@ sequenceDiagram
 
 ### 4.6. Контроль регрессий границ
 
-Проверку однонаправленности зависимостей и изоляции модулей автоматизирует [`tools/Validate-Architecture.ps1`](tools/Validate-Architecture.ps1): для `module-application` и `module-infrastructure` разрешены ссылки на любой `Modules/**/*.Contracts`, запрещены чужие `Application`/`Domain`/`Infrastructure`. Продукт (`Flora.Social`) должен ссылаться только на **корни** модулей и `Flora.Shared`. Рекомендуется прогонять скрипт в CI.
+Проверку однонаправленности зависимостей и изоляции модулей автоматизирует [`Tools/Validate-Architecture.ps1`](Tools/Validate-Architecture.ps1): для `module-application` и `module-infrastructure` разрешены ссылки на любой `Modules/**/*.Contracts`, запрещены чужие `Application`/`Domain`/`Infrastructure`. Продукт (`Flora.Social`) должен ссылаться только на **корни** модулей и `Flora.Shared`. Рекомендуется прогонять скрипт в CI.
 
 ### 4.7. Недавно закрыто (для контекста)
 
@@ -348,6 +346,6 @@ sequenceDiagram
 | Email-верификация (модуль)             | [`Modules/Flora.Verification`](Modules/Flora.Verification), порт [`IVerificationChallengeService`](Modules/Flora.Verification/Flora.Verification.Contracts/IVerificationChallengeService.cs) |
 | HTTP Music / Notifications (в модулях) | [`Modules/Flora.Music/MusicController.cs`](Modules/Flora.Music/MusicController.cs), [`Modules/Flora.Notifications/`](Modules/Flora.Notifications/)                                           |
 | Границы и правила                      | [`AGENTS.md`](AGENTS.md), [`.agents/skills/`](.agents/skills/)                                                                                                                               |
-| E2E-протокол                           | [`docs/fscp/FSCP.md`](docs/fscp/FSCP.md), [`Packages/flora-client-core/src/fscp/`](Packages/flora-client-core/src/fscp)                                                                      |
-| Рекомендации                           | [`docs/fira/FIRA.md`](docs/fira/FIRA.md)                                                                                                                                                     |
+| E2E-протокол                           | [`Documents/fscp/FSCP.md`](Documents/fscp/FSCP.md), [`Packages/flora-client-core/src/fscp/`](Packages/flora-client-core/src/fscp)                                                                      |
+| Рекомендации                           | [`Documents/fira/FIRA.md`](Documents/fira/FIRA.md)                                                                                                                                                     |
 | Схему БД и порядок миграций            | [`Flora.Migrations`](Flora.Migrations)                                                                                                                                                       |

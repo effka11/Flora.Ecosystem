@@ -1,7 +1,7 @@
 //! Нормативные таблицы битстрима FRV1.
 //!
 //! Файл сгенерирован `tools/gen_tables.mjs` — руками не редактировать,
-//! перегенерация: `node tools/gen_tables.mjs`. Формулы — в генераторе и в docs/codecs/FRC-V.md.
+//! перегенерация: `node tools/gen_tables.mjs`. Формулы — в генераторе и в Documents/codecs/FRC-V.md.
 
 pub const DCT4: [[i32; 4]; 4] = [
     [2048, 2048, 2048, 2048],

@@ -1,4 +1,4 @@
-//! Паритет нативных маршрутов с C#-фикстурами `artifacts/contract-fixtures/api-*.json`
+//! Паритет нативных маршрутов с C#-фикстурами `Artifacts/contract-fixtures/api-*.json`
 //! (захвачены с работающего Flora.API — см. HostEndpointFixtureTests.cs).
 
 use axum::body::Body;
@@ -19,7 +19,7 @@ fn repo_root() -> std::path::PathBuf {
 
 fn load_fixture(name: &str) -> serde_json::Value {
     let path = repo_root()
-        .join("artifacts")
+        .join("Artifacts")
         .join("contract-fixtures")
         .join(name);
     let text = std::fs::read_to_string(&path)
@@ -28,14 +28,15 @@ fn load_fixture(name: &str) -> serde_json::Value {
 }
 
 /// Роутер без fallback-прокси (Gateway:DotnetUpstream не задан) — нативная поверхность.
-fn native_router() -> axum::Router {
+async fn native_router() -> axum::Router {
     let manifest = repo_root().join("VERSION");
     let versions = FloraVersionResponse::build(Some(&manifest), None);
-    flora_api::build_router(&FloraConfig::default(), versions)
+    flora_api::build_router(&FloraConfig::default(), versions).await
 }
 
 async fn get_json(path: &str) -> serde_json::Value {
     let response = native_router()
+        .await
         .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
         .await
         .unwrap();
@@ -66,6 +67,7 @@ async fn version_matches_csharp_fixture() {
 #[tokio::test]
 async fn unmatched_route_is_404_without_upstream() {
     let response = native_router()
+        .await
         .oneshot(
             Request::builder()
                 .uri("/api/anything")
@@ -84,7 +86,7 @@ async fn outdated_client_gets_426_on_native_route() {
         &[serde_json::json!({ "FloraMobile": { "MinClientVersion": "1.2.0" } })],
         &[],
     );
-    let router = flora_api::build_router(&cfg, FloraVersionResponse::build(None, None));
+    let router = flora_api::build_router(&cfg, FloraVersionResponse::build(None, None)).await;
     let response = router
         .oneshot(
             Request::builder()
@@ -110,7 +112,7 @@ async fn cors_preflight_allows_configured_origin_with_credentials() {
         &[serde_json::json!({ "FloraWeb": { "CorsOrigins": ["http://localhost:3000"] } })],
         &[],
     );
-    let router = flora_api::build_router(&cfg, FloraVersionResponse::build(None, None));
+    let router = flora_api::build_router(&cfg, FloraVersionResponse::build(None, None)).await;
     let response = router
         .oneshot(
             Request::builder()

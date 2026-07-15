@@ -2,7 +2,7 @@
 //!
 //! Инварианты (next-architecture.md §4.1): HS256, issuer `Flora.Auth`, audience
 //! `Flora.Ecosystem`, clock skew 60 с, секрет ≥32 символов (UTF-8 байты — ключ HMAC).
-//! Wire-набор клеймов зафиксирован вектором `docs/test-vectors/backend-parity/jwt-hs256-v1.json`:
+//! Wire-набор клеймов зафиксирован вектором `Documents/test-vectors/backend-parity/jwt-hs256-v1.json`:
 //! `JwtSecurityToken` пишет клеймы без outbound-маппинга, поэтому дубли идут с полными
 //! URI-именами схем (`.../nameidentifier`, `.../emailaddress`) — воспроизводим 1:1.
 //!

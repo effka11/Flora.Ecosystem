@@ -1,10 +1,10 @@
 /**
- * Consumer golden-вектора franking-v1.json (docs/fscp/franking.md §5):
+ * Consumer golden-вектора franking-v1.json (Documents/fscp/franking.md §5):
  * эталонная реализация franking.ts воспроизводит commitInput/frankTag/receiptPayload
  * байт-в-байт и проходит полный verify-путь жюри; негативы падают с задекларированной
  * причиной. Вектор франкует сообщение из fscp-message-transcript-v1.json — жалоба
  * доказуема для реального транскрипта.
- * Регенерация: python docs/test-vectors/_gen_fscp_franking_v1.py
+ * Регенерация: python Documents/test-vectors/_gen_fscp_franking_v1.py
  */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -29,7 +29,7 @@ const sodium = require("libsodium-wrappers") as SodiumModule;
 const vectorsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..", "..", "..", "..",
-  "docs", "test-vectors",
+  "Documents", "test-vectors",
 );
 
 type FrankingVector = {

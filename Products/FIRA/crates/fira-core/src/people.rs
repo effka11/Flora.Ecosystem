@@ -1,9 +1,9 @@
 //! FIRA-P — скорер рекомендаций людей, порт as-built v1.
 //!
-//! Эталон (freeze до cutover Фазы 2b, `docs/fira/FIRA.md` §15):
+//! Эталон (freeze до cutover Фазы 2b, `Documents/fira/FIRA.md` §15):
 //! `Modules/Flora.Users/Flora.Users.Application/People/UserRecommendationScorer.cs`;
 //! сортировка — `UserRecommendationService.GetOrComputeSnapshotAsync`.
-//! Golden-вектор: `docs/test-vectors/fira/fira-p-scorer-v1.json` — снят **после**
+//! Golden-вектор: `Documents/test-vectors/fira/fira-p-scorer-v1.json` — снят **после**
 //! v1.1-гигиены (блоклист в кандидатном пуле), дефект через freeze не протянут (§17 FIRA.md).
 
 use chrono::{DateTime, Utc};

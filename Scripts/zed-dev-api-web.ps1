@@ -1,10 +1,11 @@
 #Requires -Version 5.1
 <#
-  Full local dev stack for Zed (no dependsOn): DB → API → Web.
+  Full local stack for Zed/Cursor: DB → Rust flora-api :5290 → Web.
 
   Zed task: "Flora: API + Web dev localhost (Zed)"
   CLI:      .\Scripts\zed-dev-api-web.ps1
-            .\Scripts\zed-dev-api-web.ps1 -SkipDb   # API already up, DB running
+            .\Scripts\zed-dev-api-web.ps1 -SkipDb
+            .\Scripts\zed-dev-api-web.ps1 -SkipApi   # web only if API already up
 #>
 param(
     [switch] $SkipDb,
@@ -43,10 +44,8 @@ function Start-FloraDb {
     }
 }
 
-function Test-FloraApiHealthy {
-    param(
-        [string] $Url = "http://127.0.0.1:5284/health"
-    )
+function Test-Healthy {
+    param([string] $Url)
     try {
         $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
         return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500)
@@ -56,43 +55,37 @@ function Test-FloraApiHealthy {
     }
 }
 
-function Ensure-FloraApiDev {
-    if (Test-FloraApiHealthy) {
-        Write-Host "Flora.API already listening on http://localhost:5284"
+function Ensure-RustApi {
+    if (Test-Healthy "http://127.0.0.1:5290/health") {
+        Write-Host "Flora API already on http://localhost:5290"
         return
     }
 
-    Write-Host "Flora.API not reachable — starting dotnet watch in a new window ..."
-    & (Join-Path $PSScriptRoot "stop-dev-localhost.ps1") -Api
-
-    $proj = Join-Path $root "Flora.API\Flora.API.csproj"
-    $env:ASPNETCORE_ENVIRONMENT = "Development"
-    Start-Process -FilePath "dotnet" `
+    Write-Host "Starting flora-api in a new window (first cargo build may take a while) ..."
+    Start-Process -FilePath "powershell.exe" `
         -ArgumentList @(
-            "watch", "run",
-            "--project", $proj,
-            "--urls", "http://localhost:5284"
+            "-NoProfile", "-ExecutionPolicy", "Bypass",
+            "-File", (Join-Path $PSScriptRoot "run-rust-gateway-localhost.ps1")
         ) `
         -WorkingDirectory $root `
         -WindowStyle Normal
 
-    $deadline = (Get-Date).AddSeconds(120)
+    $deadline = (Get-Date).AddSeconds(300)
     do {
-        if (Test-FloraApiHealthy) {
-            Write-Host "Flora.API ready at http://localhost:5284"
+        if (Test-Healthy "http://127.0.0.1:5290/health") {
+            Write-Host "flora-api ready at http://localhost:5290"
             return
         }
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 3
     } while ((Get-Date) -lt $deadline)
 
-    throw "Flora.API did not become ready on :5284 within 120s. Check the dotnet window."
+    throw "flora-api did not become ready on :5290 within 300s. Check the cargo window."
 }
 
 Write-Host @"
 
 ================================================================
-  Flora: API + Web dev localhost (Zed one-shot)
-  DB + API (new window) + Web (this terminal)
+  Flora local: DB + Rust API :5290 + Web
 ================================================================
 
 "@
@@ -103,8 +96,11 @@ if (-not $SkipDb) {
 
 & (Join-Path $PSScriptRoot "stop-dev-localhost.ps1") -Api -Web
 
+# Shared JWT before API starts
+$null = & (Join-Path $PSScriptRoot "ensure-shared-dev-jwt.ps1")
+
 if (-not $SkipApi) {
-    Ensure-FloraApiDev
+    Ensure-RustApi
 }
 
 & (Join-Path $PSScriptRoot "web-dev-localhost.ps1")

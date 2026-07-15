@@ -1,4 +1,4 @@
-/** AAD для RKE — байт-в-байт как в docs/fscp/FSCP.md (UUID в нижнем регистре). */
+/** AAD для RKE — байт-в-байт как в Documents/fscp/FSCP.md (UUID в нижнем регистре). */
 export function recipientKeyEnvelopeAadLine(params: {
   conversationUuid: string;
   keyEpochId: string;

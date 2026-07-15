@@ -1,7 +1,7 @@
 //! # FRC-I — Flora Relativistic Codec — Image
 //!
-//! Нативный фото-кодек экосистемы Flora (семейство FRC, `docs/codecs/CODECS.md`).
-//! Нормативная спецификация битстрима — `docs/codecs/FRC-I.md`. Кодер пишет v3;
+//! Нативный фото-кодек экосистемы Flora (семейство FRC, `Documents/codecs/CODECS.md`).
+//! Нормативная спецификация битстрима — `Documents/codecs/FRC-I.md`. Кодер пишет v3;
 //! decode-заморозка текущей линии — golden-вектора в `tests/` (`.fri`).
 //!
 //! Два режима в одном контейнере:

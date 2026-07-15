@@ -7,7 +7,7 @@
  *  - Device key registration and signing
  *
  * All signing uses Ed25519 via libsodium (getSodium).
- * docs/fscp/e2e-security.md §Unlock-complete contract + §UserDeviceKey
+ * Documents/fscp/e2e-security.md §Unlock-complete contract + §UserDeviceKey
  */
 
 import { getSodium } from "./sodium.js";
@@ -34,14 +34,14 @@ export function fromBase64Url(s: string): Uint8Array {
   return out;
 }
 
-// ── Canonical string builders (docs/fscp/e2e-security.md) ─────────────────────────
+// ── Canonical string builders (Documents/fscp/e2e-security.md) ─────────────────────────
 
 const SEP = " | ";
 
 /**
  * Canonical payload for unlock-complete Ed25519 signing.
  *
- * Format (docs/fscp/e2e-security.md §Unlock-complete contract):
+ * Format (Documents/fscp/e2e-security.md §Unlock-complete contract):
  *   flora.messaging.unlock-complete.v1 | userUuid | resetRequestId | challengeId |
  *   backupKeyId | backupRevision | epochSetHashBase64Url | recoveredKeyEpochIds_sorted
  *
@@ -73,7 +73,7 @@ export function buildUnlockCompleteCanonical(params: {
 /**
  * Canonical cover string for device key Ed25519 signing.
  *
- * Format (docs/fscp/e2e-security.md §UserDeviceKey):
+ * Format (Documents/fscp/e2e-security.md §UserDeviceKey):
  *   flora.messaging.device-key.v1 | userUuid | keyEpochId | deviceUuid |
  *   signingPublicKey | agreementPublicKey | createdAt
  *

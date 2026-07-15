@@ -1,0 +1,17 @@
+{
+  "tracks": [
+    {
+      "trackUuid": "55555555-5555-5555-5555-555555555555",
+      "scope": "personal",
+      "title": "First Light",
+      "artistDisplay": "Flora Artist",
+      "artistCredits": [],
+      "hasCoverImage": true,
+      "durationMs": 183000,
+      "createdAt": "2026-06-12T10:00:00.000Z"
+    }
+  ],
+  "totalCount": 1,
+  "page": 1,
+  "pageSize": 50
+}

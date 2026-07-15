@@ -1,8 +1,7 @@
 # PRODUCT_CLASS: app
 # Flora.Social — social network application product
 #
-# C# composition (as-is during strangler): this directory's *.cs / Flora.Social.csproj
-# Rust composition: crates/flora-social + crates/modules/* (members of Backend/ workspace)
+# Rust composition: crates/flora-social + crates/modules/* (members of repo Cargo workspace)
 # Optional future: client/ UI package for Apps shells
 #
 # Composes functional products: FIRA, FSCP, FRC, FEP, FGP, FPP (kernels/runtimes).

@@ -1,0 +1,16 @@
+{
+  "genres": [
+    {
+      "id": "pop",
+      "title": "\u041F\u043E\u043F",
+      "trackCount": 0,
+      "subgenres": [
+        {
+          "id": "pop-indie",
+          "title": "\u0418\u043D\u0434\u0438-\u043F\u043E\u043F",
+          "trackCount": 0
+        }
+      ]
+    }
+  ]
+}

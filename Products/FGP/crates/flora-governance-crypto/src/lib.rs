@@ -5,8 +5,8 @@
 //! и в `@flora/client-core` — дрейф паритета server↔client исключён по построению
 //! (FGP §8.1; монокультурная оговорка — THREATS V-11).
 //!
-//! Нормативная спецификация — [`docs/fgp/FGP-CRYPTO.md`]; поведение бит-в-бит
-//! зафиксировано golden-векторами `docs/test-vectors/governance/` (регенерация:
+//! Нормативная спецификация — [`Documents/fgp/FGP-CRYPTO.md`]; поведение бит-в-бит
+//! зафиксировано golden-векторами `Documents/test-vectors/governance/` (регенерация:
 //! `cargo run -p flora-governance-crypto --example gen_vectors`).
 //!
 //! Состав (профиль P0 — FGP-CRYPTO §14):

@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 <#
-  adb reverse for Flora Mobile USB debug (Metro 8081, API 5284).
+  adb reverse for Flora Mobile USB debug (Metro 8081, Rust gateway 5290).
   Used from .vscode/tasks.json and mobile-debug-usb.ps1.
 #>
 $ErrorActionPreference = "Stop"
@@ -53,7 +53,7 @@ Phone not visible in adb.
 Write-Host "Devices: $($authorized.Count)"
 $reverse8081 = Invoke-Adb reverse tcp:8081 tcp:8081
 if ($reverse8081.ExitCode -ne 0) { exit $reverse8081.ExitCode }
-$reverse5284 = Invoke-Adb reverse tcp:5284 tcp:5284
-if ($reverse5284.ExitCode -ne 0) { exit $reverse5284.ExitCode }
+$reverse5290 = Invoke-Adb reverse tcp:5290 tcp:5290
+if ($reverse5290.ExitCode -ne 0) { exit $reverse5290.ExitCode }
 
-Write-Host "USB reverse OK: Metro 8081, API 5284"
+Write-Host "USB reverse OK: Metro 8081, gateway 5290"

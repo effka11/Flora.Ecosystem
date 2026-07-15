@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
   "author": "Egor Ozerskikh <e.ozerskikh@gmail.com>",
   "type": "module",
-  "description": "FSCP functional product — TypeScript SoT (wire/crypto/session). Spec: docs/fscp/FSCP.md",
+  "description": "FSCP functional product — TypeScript SoT (wire/crypto/session). Spec: Documents/fscp/FSCP.md",
   "main": "./ts/src/index.ts",
   "types": "./ts/src/index.ts",
   "exports": {

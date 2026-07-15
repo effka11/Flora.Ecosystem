@@ -11,8 +11,8 @@ description: Правки FSCP/E2E messaging Flora — wire envelope, key epochs
 
 | Документ | Что там |
 |----------|---------|
-| [`docs/fscp/FSCP.md`](../../docs/fscp/FSCP.md) | Wire-format сообщений, envelope, AAD, версии |
-| [`docs/fscp/e2e-security.md`](../../docs/fscp/e2e-security.md) | Key epochs, backup, FSM аккаунта, HTTP API, server validation |
+| [`Documents/fscp/FSCP.md`](../../Documents/fscp/FSCP.md) | Wire-format сообщений, envelope, AAD, версии |
+| [`Documents/fscp/e2e-security.md`](../../Documents/fscp/e2e-security.md) | Key epochs, backup, FSM аккаунта, HTTP API, server validation |
 
 **FSCP** — сообщения (ciphertext, delivery). **e2e-security** — платформа (epochs, devices, recovery). Не смешивать ответственность.
 
