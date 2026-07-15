@@ -1,7 +1,8 @@
 //! Интеграционные тесты полного цикла encode → decode.
 
 use frc_i::{
-    DecodedImage, EncodeError, EncodeMode, ImageView, PixelFormat, decode, encode, read_info,
+    DecodedImage, EncodeError, EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc,
+    read_icc, read_info,
 };
 
 fn xorshift(seed: &mut u64) -> u64 {
@@ -114,10 +115,29 @@ fn lossless_flat_image_is_tiny() {
 }
 
 #[test]
+fn lossy_writes_v5_with_deblock_at_low_quality() {
+    let (w, h) = (320, 240);
+    let data = synthetic(w, h, PixelFormat::Rgb8);
+    let v = view(w, h, PixelFormat::Rgb8, &data);
+
+    let info = read_info(&encode(&v, EncodeMode::Lossy { quality: 30 }).unwrap()).unwrap();
+    assert_eq!(info.version, 5);
+    assert!(info.deblock, "q<45 должен включать деблокинг");
+
+    let info = read_info(&encode(&v, EncodeMode::Lossy { quality: 45 }).unwrap()).unwrap();
+    assert_eq!(info.version, 5);
+    assert!(!info.deblock, "q>=45 — без деблокинга");
+
+    // Lossless не использует слой блоков и не требует нового декодера.
+    let info = read_info(&encode(&v, EncodeMode::Lossless).unwrap()).unwrap();
+    assert_eq!(info.version, 3);
+}
+
+#[test]
 fn lossy_quality_thresholds() {
     let (w, h) = (320, 240);
     let data = synthetic(w, h, PixelFormat::Rgb8);
-    for (quality, min_psnr) in [(50u8, 28.0), (75, 30.0), (90, 33.0)] {
+    for (quality, min_psnr) in [(30u8, 26.0), (50, 28.0), (75, 30.0), (90, 33.0)] {
         let fic = encode(
             &view(w, h, PixelFormat::Rgb8, &data),
             EncodeMode::Lossy { quality },
@@ -272,6 +292,61 @@ fn incompressible_noise_bounded_by_raw_fallback() {
         fic.len(),
         raw
     );
+}
+
+#[test]
+fn icc_roundtrip_all_modes() {
+    let (w, h) = (64, 48);
+    let icc: Vec<u8> = (0..1000u32).map(|i| (i * 7 % 251) as u8).collect();
+
+    // Lossy: v6, пиксели декодируются, профиль возвращается байт-в-байт.
+    let data = synthetic(w, h, PixelFormat::Rgb8);
+    let v = view(w, h, PixelFormat::Rgb8, &data);
+    let fri = encode_with_icc(&v, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 6);
+    assert!(info.metadata);
+    assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
+    let out = decode(&fri).unwrap();
+    assert_eq!(out.icc.as_deref(), Some(icc.as_slice()));
+    assert_eq!((out.width, out.height), (w, h));
+
+    // Lossless: тоже v6, пиксели побайтно точны.
+    let fri = encode_with_icc(&v, EncodeMode::Lossless, &icc).unwrap();
+    assert_eq!(read_info(&fri).unwrap().version, 6);
+    let out = decode(&fri).unwrap();
+    assert_eq!(out.data, data);
+    assert_eq!(out.icc.as_deref(), Some(icc.as_slice()));
+
+    // Палитровый lossless (малоцветная графика) сохраняет метаданные.
+    let flat = vec![77u8; (w * h * 3) as usize];
+    let fri = encode_with_icc(
+        &view(w, h, PixelFormat::Rgb8, &flat),
+        EncodeMode::Lossless,
+        &icc,
+    )
+    .unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 6);
+    assert!(info.palette && info.metadata);
+    let out = decode(&fri).unwrap();
+    assert_eq!(out.data, flat);
+    assert_eq!(out.icc.as_deref(), Some(icc.as_slice()));
+
+    // Без ICC ничего не меняется: v5/v3, icc = None.
+    let fri = encode(&v, EncodeMode::Lossy { quality: 75 }).unwrap();
+    assert_eq!(read_icc(&fri).unwrap(), None);
+    assert_eq!(decode(&fri).unwrap().icc, None);
+}
+
+#[test]
+fn icc_input_validation() {
+    let data = synthetic(8, 8, PixelFormat::Rgb8);
+    let v = view(8, 8, PixelFormat::Rgb8, &data);
+    assert!(matches!(
+        encode_with_icc(&v, EncodeMode::Lossless, &[]),
+        Err(EncodeError::InvalidIcc(_))
+    ));
 }
 
 #[test]

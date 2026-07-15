@@ -4,14 +4,22 @@
 //   cargo build -p frc-v-wasm --target wasm32-unknown-unknown --release
 //   → target/wasm32-unknown-unknown/release/frc_v_wasm.wasm
 //
-// Использование:
-//   import { FrcVDecoder } from "./frc-v-player.mjs";
+// Декодирование:
+//   import { FrcVDecoder, demuxFrv } from "./frc-v-player.mjs";
 //   const dec = await FrcVDecoder.load("/frc_v_wasm.wasm");
-//   for (const packet of packets) {            // кадры из .frv/.ivf демуксера
+//   for (const packet of demuxFrv(buffer)) {   // кадры из .frv
 //     const img = dec.decode(packet);          // ImageData | null
 //     if (img) ctx.putImageData(img, 0, 0);
 //   }
 //   dec.destroy();
+//
+// Кодирование (например, кадры canvas):
+//   import { FrcVEncoder, muxFrv } from "./frc-v-player.mjs";
+//   const enc = await FrcVEncoder.load("/frc_v_wasm.wasm", { width, height, speed: 2 });
+//   const packets = [];
+//   for (const imageData of capturedFrames) packets.push(enc.encodeRGBA(imageData.data));
+//   const frv = muxFrv(packets, { width, height, fpsNum: 30, fpsDen: 1 }); // Uint8Array
+//   enc.destroy();
 
 export class FrcVDecoder {
   static async load(wasmUrl) {

@@ -1383,6 +1383,13 @@ name = "frc-i"
 version = "0.5.0-alpha"
 
 [[package]]
+name = "frc-i-wasm"
+version = "0.5.0-alpha"
+dependencies = [
+ "frc-i",
+]
+
+[[package]]
 name = "frc-v"
 version = "0.5.0-alpha"
 

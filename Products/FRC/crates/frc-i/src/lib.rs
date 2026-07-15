@@ -34,6 +34,7 @@
 mod bits;
 mod color;
 mod dct;
+mod deblock;
 mod decode;
 mod encode;
 mod error;
@@ -48,6 +49,11 @@ mod section;
 mod tokens;
 
 pub use error::{DecodeError, EncodeError};
+
+/// Новейшая версия битстрима, которую пишет и читает эта сборка
+/// (см. `Documents/codecs/FRC-I.md`): v3 lossless, v5 lossy,
+/// v6 при вложенном ICC-профиле.
+pub const BITSTREAM_VERSION: u8 = format::VERSION_MAX;
 
 /// Низкоуровневые примитивы энтропийного кодирования для семейства FRC:
 /// flora-video-codec использует их для intra-кадров. API нестабилен,
@@ -84,6 +90,8 @@ pub struct DecodedImage {
     pub height: u32,
     pub format: PixelFormat,
     pub data: Vec<u8>,
+    /// ICC-профиль из блока метаданных (v6+), байты как есть.
+    pub icc: Option<Vec<u8>>,
 }
 
 /// Режим кодирования.
@@ -114,7 +122,7 @@ impl Default for DecodeLimits {
 /// Метаданные потока без декодирования тела.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageInfo {
-    /// Версия битстрима (1..=3).
+    /// Версия битстрима (1..=6).
     pub version: u8,
     pub width: u32,
     pub height: u32,
@@ -125,13 +133,37 @@ pub struct ImageInfo {
     pub identity: bool,
     /// Палитровый lossless (до 256 цветов).
     pub palette: bool,
+    /// Деблокинг-фильтр на выходе декодера (v4+, только lossy).
+    pub deblock: bool,
+    /// Блок метаданных присутствует (v6+; ICC читается `read_icc`).
+    pub metadata: bool,
     /// `None` для lossless, иначе 1..=100.
     pub quality: Option<u8>,
 }
 
-/// Кодирует изображение в FRC-I (текущая версия битстрима — v3).
+/// Кодирует изображение в FRC-I (v5 для lossy, v3 для lossless).
 pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeError> {
     encode::encode(img, mode)
+}
+
+/// Кодирует с вложением ICC-профиля (битстрим v6: блок метаданных).
+/// Профиль возвращается декодером в `DecodedImage::icc` и читается
+/// без декодирования пикселей через [`read_icc`].
+pub fn encode_with_icc(
+    img: &ImageView<'_>,
+    mode: EncodeMode,
+    icc: &[u8],
+) -> Result<Vec<u8>, EncodeError> {
+    encode::encode_with_icc(img, mode, icc)
+}
+
+#[doc(hidden)]
+pub fn encode_with_version(
+    img: &ImageView<'_>,
+    mode: EncodeMode,
+    version: u8,
+) -> Result<Vec<u8>, EncodeError> {
+    encode::encode_with_version(img, mode, version)
 }
 
 /// Декодирует FRC-I-поток с лимитами по умолчанию (~67 Мп).
@@ -156,6 +188,13 @@ pub fn read_info(bytes: &[u8]) -> Result<ImageInfo, DecodeError> {
         chroma420: h.chroma420,
         identity: h.identity,
         palette: h.palette,
+        deblock: h.deblock,
+        metadata: h.metadata,
         quality: (!h.lossless).then_some(h.quality),
     })
+}
+
+/// Читает ICC-профиль без декодирования пикселей (`None`, если его нет).
+pub fn read_icc(bytes: &[u8]) -> Result<Option<Vec<u8>>, DecodeError> {
+    decode::read_icc(bytes)
 }

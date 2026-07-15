@@ -2,8 +2,8 @@
 
 use core::f32::consts::FRAC_1_SQRT_2;
 
-use crate::alloc::{Q_SILENCE_X4, compute_alloc, rice_k_for_beta};
-use crate::bands::{NUM_BANDS, band_range};
+use crate::alloc::{BETA_E8_MAX, LOG2W_X4, Q_SILENCE_X4, compute_alloc, rice_k_for_beta};
+use crate::bands::{NUM_BANDS, band_range, band_width};
 use crate::bitio::{unzigzag, zigzag};
 use crate::energy::{FINE_BITS, analyze_plane, dequant_gain, dequant_gain_fine};
 use crate::error::Error;
@@ -55,6 +55,18 @@ const TRANSIENT_FLOOR: f32 = 1e-7;
 /// не получают noise-fill, и при почти нулевой аллокации дали бы провалы звука.
 const TRANSIENT_MIN_BUDGET: u16 = 512;
 
+/// VBR по сложности (ненормативно — поведение референсного энкодера).
+/// Полезная потребность кадра: биты на полосы в пределах этого окна от
+/// пиковой плотности энергии кадра (80 единиц по 0.75 дБ = 60 дБ — порядок
+/// перцептивного динамического диапазона музыкального кадра); всё тише —
+/// утечка окна и цифровой фон, их закрывает noise-fill.
+const VBR_DYN_RANGE_X4: i32 = 80;
+/// Кап буста тяжёлого кадра: +50% базового бюджета.
+const VBR_BOOST_DIV: u16 = 2;
+/// Кап пула сбережений VBR в базовых бюджетах кадра: ограничивает всплеск
+/// после долгой тишины.
+const VBR_POOL_CAP_FRAMES: u64 = 4;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Config {
     pub sample_rate: u32,
@@ -98,8 +110,14 @@ pub struct Encoder {
     /// Coarse-энергии двух предыдущих кадров (для решения по anti-collapse).
     q_hist1: Vec<i32>,
     q_hist2: Vec<i32>,
-    /// Невозвращённый перерасход бюджета транзиентных кадров (VBR-lite), биты.
+    /// Невозвращённый перерасход бюджета транзиентных кадров (заём атак), биты.
     debt: u64,
+    /// VBR по сложности кадра (по умолчанию включён).
+    vbr: bool,
+    /// Пул сбережений VBR: точный баланс «цель − факт» в битах. Лёгкие кадры
+    /// пополняют его, голодающие тратят; отрицателен только на величину
+    /// транзиентного займа.
+    pool: i64,
 }
 
 impl Encoder {
@@ -114,6 +132,8 @@ impl Encoder {
             q_hist1: vec![Q_HIST_INIT; bands],
             q_hist2: vec![Q_HIST_INIT; bands],
             debt: 0,
+            vbr: true,
+            pool: 0,
         })
     }
 
@@ -121,6 +141,13 @@ impl Encoder {
     /// и отладки; битстрим остаётся валидным.
     pub fn set_transient_detection(&mut self, enabled: bool) {
         self.transient_detection = enabled;
+    }
+
+    /// Отключение VBR по сложности (бюджет каждого кадра — базовый, плюс
+    /// транзиентный заём) — для A/B-замеров и отладки; битстрим остаётся
+    /// валидным: фактический бюджет всегда записан в заголовке кадра.
+    pub fn set_vbr(&mut self, enabled: bool) {
+        self.vbr = enabled;
     }
 
     /// Кодирует один hop из `FRAME_N * channels` interleaved-сэмплов.
@@ -182,11 +209,21 @@ impl Encoder {
             );
         }
 
-        // VBR-lite: транзиентный кадр получает +25% бюджета, долг гасится
-        // следующими кадрами по base/8 — средний битрейт остаётся у цели.
-        // Декодер не участвует: фактический бюджет всегда в заголовке кадра.
+        // VBR (ненормативно — поведение референсного энкодера): бюджет кадра
+        // складывается из трёх механизмов.
+        //  1. Транзиентный заём: атака получает +25%, долг гасится следующими
+        //     кадрами по base/8 (ограниченный овердрафт, как в v0.4).
+        //  2. Лёгкий кадр (потребность ниже базового бюджета) ужимается до
+        //     потребности — сэкономленные биты копятся в пуле сбережений.
+        //  3. Тяжёлый кадр (потребность выше) докупает недостающее из пула,
+        //     не больше base/2 за кадр.
+        // Потребность — биты полос в окне динамического диапазона от пиковой
+        // плотности энергии кадра (`vbr_demand_bits`). Пул — точный баланс
+        // «цель − факт», поэтому средний битрейт не превышает целевой (плюс
+        // ограниченный транзиентный овердрафт). Декодер не участвует:
+        // фактический бюджет всегда в заголовке кадра.
         let base = self.cfg.frame_budget_bits();
-        let budget = if transient && self.debt <= u64::from(base) * 2 {
+        let budget0 = if transient && self.debt <= u64::from(base) * 2 {
             let extra = u64::from(base) / 4;
             self.debt += extra;
             (u64::from(base) + extra).min(u64::from(u16::MAX)) as u16
@@ -195,22 +232,14 @@ impl Encoder {
             self.debt -= repay;
             base - repay as u16
         };
-        let energy_cost = energy_cost_x64(&q, planes);
-        let shape_budget_x64 = (u64::from(budget) * 64)
-            .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS) * 64 + energy_cost);
-        // Аллокация получает бюджет за вычетом резерва fine-битов — вместе с
-        // правилом «β ≥ 8» это гарантирует, что подходящий λ существует всегда.
-        let alloc_budget = (shape_budget_x64 / 64).saturating_sub(fine_reserve_bits(planes));
-        let beta = compute_alloc(&q, planes, alloc_budget);
 
-        // λ: минимальный индекс (самый тонкий шаг), при котором форма помещается
-        // в бюджет. Стоимость — детерминированная симуляция адаптивных контекстов
-        // (без записи). Инвариант бисекции: возвращённый λ всегда укладывается
-        // в бюджет; при λ = 127 все y = 0 и стоимость нуля < 1 бита < β/8·коэфф.
-        let cost_for = |lambda: u32| -> u64 {
+        let energy_cost = energy_cost_x64(&q, planes);
+        // Стоимость формы при данной аллокации и λ — детерминированная
+        // симуляция адаптивных контекстов (без записи).
+        let shape_cost = |beta: &[u8], lambda: u32| -> u64 {
             let mut ctx = fresh_shape_ctx();
             let mut total = 0u64;
-            for_each_coded_band(&beta, planes, lambda, |p, b, k, step| {
+            for_each_coded_band(beta, planes, lambda, |p, b, k, step| {
                 total += u64::from(FINE_BITS) * COST_RAW_X64;
                 let g = gains[p * NUM_BANDS + b];
                 for &x in &coeffs[p * FRAME_N..][..FRAME_N][band_range(b)] {
@@ -219,20 +248,51 @@ impl Encoder {
             });
             total
         };
-        let lambda = if cost_for(LAMBDA_MAX) > shape_budget_x64 {
-            LAMBDA_MAX
-        } else {
-            let (mut lo, mut hi) = (0u32, LAMBDA_MAX);
-            while lo < hi {
-                let mid = (lo + hi) / 2;
-                if cost_for(mid) <= shape_budget_x64 {
-                    hi = mid;
-                } else {
-                    lo = mid + 1;
+        // Аллокация и минимальный λ (самый тонкий шаг), при котором форма
+        // помещается в бюджет. Аллокация получает бюджет за вычетом резерва
+        // fine-битов — вместе с правилом «β ≥ 8» это гарантирует, что
+        // подходящий λ существует всегда: при λ = 127 все y = 0 и стоимость
+        // нуля < 1 бита < β/8 на коэффициент.
+        let plan = |budget: u16| -> (Vec<u8>, u32) {
+            let shape_budget_x64 = (u64::from(budget) * 64)
+                .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS) * 64 + energy_cost);
+            let alloc_budget = (shape_budget_x64 / 64).saturating_sub(fine_reserve_bits(planes));
+            let beta = compute_alloc(&q, planes, alloc_budget);
+            let lambda = if shape_cost(&beta, LAMBDA_MAX) > shape_budget_x64 {
+                LAMBDA_MAX
+            } else {
+                let (mut lo, mut hi) = (0u32, LAMBDA_MAX);
+                while lo < hi {
+                    let mid = (lo + hi) / 2;
+                    if shape_cost(&beta, mid) <= shape_budget_x64 {
+                        hi = mid;
+                    } else {
+                        lo = mid + 1;
+                    }
                 }
-            }
-            hi
+                hi
+            };
+            (beta, lambda)
         };
+
+        let mut budget = budget0;
+        if self.vbr {
+            let demand = vbr_demand_bits(&q, planes, energy_cost);
+            if demand > u64::from(budget0) {
+                // Тяжёлый кадр: докупаем недостающее из пула сбережений.
+                // Перерасход спишется с пула после кодирования (балансом
+                // «цель − факт»), здесь только выбор размера буста.
+                let want = (demand - u64::from(budget0)).min(u64::from(base / VBR_BOOST_DIV));
+                let boost = (want as i64).min(self.pool.max(0)) as u16;
+                budget = budget0.saturating_add(boost);
+            } else if !transient {
+                // Лёгкий кадр: ужимаем бюджет до потребности — сэкономленное
+                // уйдёт в пул (транзиентные кадры не ужимаем: заём атаки
+                // выдан осознанно).
+                budget = demand.max(u64::from(base / 2)).min(u64::from(budget0)) as u16;
+            }
+        }
+        let (beta, lambda) = plan(budget);
 
         let mut enc = BinEncoder::new();
         write_energies(&mut enc, &q, planes);
@@ -284,6 +344,10 @@ impl Encoder {
         out.push(lambda as u8);
         out.extend_from_slice(&budget.to_le_bytes());
         out.extend_from_slice(&enc.finish());
+        // Пул VBR: сколько кадр реально недобрал до цели (или перебрал —
+        // тогда вклад отрицательный). Кап ограничивает всплеск после тишины.
+        self.pool = (self.pool + i64::from(base) - out.len() as i64 * 8)
+            .min(i64::from(base) * VBR_POOL_CAP_FRAMES as i64);
         Ok(out)
     }
 }
@@ -690,6 +754,39 @@ fn detect_transient(time: &[f32], channels: usize) -> bool {
 /// кодируемую полосу кадра.
 fn fine_reserve_bits(planes: usize) -> u64 {
     u64::from(FINE_BITS) * (planes * NUM_BANDS) as u64
+}
+
+/// Потребность кадра в битах (сигнал сложности VBR): water-filling до окна
+/// `VBR_DYN_RANGE_X4` от пиковой плотности энергии кадра — сколько бит нужно,
+/// чтобы прокодировать всё, что громче пика минус окно, — плюс фактическая
+/// стоимость энергий и накладные расходы. Единицы согласованы с аллокацией:
+/// 1 единица q (0.25 log2 энергии) = 1/8 бита на коэффициент. Идеализация
+/// (энтропийный кодер может уложиться дешевле), поэтому значение служит
+/// только сигналом сложности, а не точным размером пакета.
+fn vbr_demand_bits(q: &[i32], planes: usize, energy_cost_x64: u64) -> u64 {
+    let density = |i: usize| q[i] - LOG2W_X4[i % NUM_BANDS];
+    let overhead =
+        energy_cost_x64.div_ceil(64) + HEADER_BITS + RC_OVERHEAD_BITS + fine_reserve_bits(planes);
+    let peak = (0..q.len())
+        .filter(|&i| q[i] > Q_SILENCE_X4)
+        .map(density)
+        .max();
+    let Some(peak) = peak else {
+        return overhead; // цифровая тишина: только энергии и накладные
+    };
+    let floor = peak - VBR_DYN_RANGE_X4;
+    let mut shape_e8 = 0u64;
+    for i in 0..q.len() {
+        if q[i] <= Q_SILENCE_X4 {
+            continue;
+        }
+        let want = (density(i) - floor).clamp(0, BETA_E8_MAX);
+        // Правило аллокации «дешевле 1 бит/коэфф не кодируем» — та же граница.
+        if want >= 8 {
+            shape_e8 += want as u64 * band_width(i % NUM_BANDS) as u64;
+        }
+    }
+    shape_e8 / 8 + overhead
 }
 
 fn shape_norm(v: &[f32]) -> f32 {

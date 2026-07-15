@@ -4,8 +4,16 @@ use crate::error::DecodeError;
 
 /// Сигнатура файла: не-ASCII первый байт ловит порчу текстовым режимом.
 pub const MAGIC: [u8; 4] = [0x8F, b'F', b'R', b'I'];
-/// Версия, которую пишет кодер.
+/// Версия, которую пишет кодер для lossless (слой блоков не используется).
 pub const VERSION_CURRENT: u8 = 3;
+/// Версия с деблокинг-фильтром (флаг-бит 5); флаг ставится при `quality < 45`.
+pub const VERSION_DEBLOCK: u8 = 4;
+/// Версия с адаптивными суперблоками 16×16; кодер пишет её для lossy.
+pub const VERSION_SUPERBLOCK: u8 = 5;
+/// Версия с блоком метаданных (флаг-бит 6): ICC-профиль и будущие чанки.
+pub const VERSION_METADATA: u8 = 6;
+/// Максимальная версия, которую читает этот декодер.
+pub const VERSION_MAX: u8 = VERSION_METADATA;
 /// Минимальная версия, которую декодер обязан читать всегда.
 pub const VERSION_MIN: u8 = 1;
 /// Длина фиксированного заголовка.
@@ -23,7 +31,19 @@ pub const FLAG_CHROMA420: u8 = 0b0000_0100;
 pub const FLAG_IDENTITY: u8 = 0b0000_1000;
 /// Палитровый lossless: блок палитры после заголовка, одна плоскость индексов.
 pub const FLAG_PALETTE: u8 = 0b0001_0000;
-const FLAGS_KNOWN: u8 = FLAG_LOSSLESS | FLAG_ALPHA | FLAG_CHROMA420 | FLAG_IDENTITY | FLAG_PALETTE;
+/// Деблокинг-фильтр на выходе декодера (только lossy, только v4+).
+pub const FLAG_DEBLOCK: u8 = 0b0010_0000;
+/// Блок метаданных (TLV-чанки) после заголовка (только v6+).
+pub const FLAG_METADATA: u8 = 0b0100_0000;
+const FLAGS_KNOWN_V3: u8 =
+    FLAG_LOSSLESS | FLAG_ALPHA | FLAG_CHROMA420 | FLAG_IDENTITY | FLAG_PALETTE;
+const FLAGS_KNOWN_V4: u8 = FLAGS_KNOWN_V3 | FLAG_DEBLOCK;
+const FLAGS_KNOWN_V6: u8 = FLAGS_KNOWN_V4 | FLAG_METADATA;
+
+/// Тип чанка метаданных: ICC-профиль (байты профиля как есть).
+pub const CHUNK_ICC: u8 = 1;
+/// Потолок суммарного размера блока метаданных (DoS-защита декодера).
+pub const MAX_METADATA: usize = 8 << 20;
 
 /// Максимальная сторона изображения.
 pub const MAX_DIM: u32 = 32_768;
@@ -40,7 +60,7 @@ pub const TILE: usize = 1 << TILE_SHIFT;
 /// Разобранный заголовок FRC-I.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
-    /// Версия битстрима (1..=3); раскладка заголовка у всех одинаковая.
+    /// Версия битстрима (1..=5); раскладка заголовка у всех одинаковая.
     pub version: u8,
     pub width: u32,
     pub height: u32,
@@ -49,6 +69,10 @@ pub struct Header {
     pub chroma420: bool,
     pub identity: bool,
     pub palette: bool,
+    /// Деблокинг-фильтр на выходе декодера (v4+, только lossy).
+    pub deblock: bool,
+    /// Блок метаданных после заголовка (v6+; ICC и будущие чанки).
+    pub metadata: bool,
     /// 1..=100 для lossy, 0 для lossless.
     pub quality: u8,
 }
@@ -74,6 +98,12 @@ impl Header {
         if self.palette {
             flags |= FLAG_PALETTE;
         }
+        if self.deblock {
+            flags |= FLAG_DEBLOCK;
+        }
+        if self.metadata {
+            flags |= FLAG_METADATA;
+        }
         out[5] = flags;
         out[6..10].copy_from_slice(&self.width.to_le_bytes());
         out[10..14].copy_from_slice(&self.height.to_le_bytes());
@@ -94,11 +124,18 @@ impl Header {
             return Err(DecodeError::NotFrcI);
         }
         let version = head[4];
-        if !(VERSION_MIN..=VERSION_CURRENT).contains(&version) {
+        if !(VERSION_MIN..=VERSION_MAX).contains(&version) {
             return Err(DecodeError::UnsupportedVersion(version));
         }
         let flags = head[5];
-        if flags & !FLAGS_KNOWN != 0 {
+        let known = if version >= VERSION_METADATA {
+            FLAGS_KNOWN_V6
+        } else if version >= VERSION_DEBLOCK {
+            FLAGS_KNOWN_V4
+        } else {
+            FLAGS_KNOWN_V3
+        };
+        if flags & !known != 0 {
             return Err(DecodeError::UnsupportedFeature("неизвестные биты флагов"));
         }
         let width = u32::from_le_bytes(head[6..10].try_into().expect("len 4"));
@@ -131,6 +168,10 @@ impl Header {
         if lossless && chroma420 {
             return Err(DecodeError::Corrupt("сабсэмплинг несовместим с lossless"));
         }
+        let deblock = flags & FLAG_DEBLOCK != 0;
+        if deblock && lossless {
+            return Err(DecodeError::Corrupt("деблокинг несовместим с lossless"));
+        }
         if head[16] != TILE_SHIFT {
             return Err(DecodeError::UnsupportedFeature("размер тайла != 256"));
         }
@@ -148,6 +189,8 @@ impl Header {
             chroma420,
             identity,
             palette,
+            deblock,
+            metadata: flags & FLAG_METADATA != 0,
             quality,
         })
     }
@@ -156,6 +199,72 @@ impl Header {
     pub fn palette_entry_len(&self) -> usize {
         if self.alpha { 4 } else { 3 }
     }
+}
+
+// --- блок метаданных (v6+) ---------------------------------------------------
+//
+// Раскладка: `total_len: u32 LE`, затем ровно `total_len` байт TLV-чанков:
+// `type: u8`, `len: u32 LE`, `data[len]`. Неизвестные типы декодер пропускает
+// (метаданные не влияют на пиксели); повторный тип — ошибка.
+
+/// Сериализует блок метаданных. Вызывающий гарантирует непустой список
+/// чанков и суммарный размер в пределах `MAX_METADATA`.
+pub fn build_metadata_block(chunks: &[(u8, &[u8])]) -> Vec<u8> {
+    let total: usize = chunks.iter().map(|(_, d)| 5 + d.len()).sum();
+    debug_assert!(!chunks.is_empty() && total <= MAX_METADATA);
+    let mut out = Vec::with_capacity(4 + total);
+    out.extend_from_slice(&(total as u32).to_le_bytes());
+    for (ty, data) in chunks {
+        out.push(*ty);
+        out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        out.extend_from_slice(data);
+    }
+    out
+}
+
+/// Разобранные метаданные потока.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Metadata {
+    /// ICC-профиль (байты как есть), если присутствует.
+    pub icc: Option<Vec<u8>>,
+}
+
+/// Разбирает блок метаданных с позиции `offset`; возвращает метаданные и
+/// число потреблённых байт. Неизвестные чанки пропускаются.
+pub fn parse_metadata_block(bytes: &[u8], offset: usize) -> Result<(Metadata, usize), DecodeError> {
+    let total = bytes
+        .get(offset..offset + 4)
+        .map(|b| u32::from_le_bytes(b.try_into().expect("len 4")) as usize)
+        .ok_or(DecodeError::Corrupt("обрыв блока метаданных"))?;
+    if total == 0 || total > MAX_METADATA {
+        return Err(DecodeError::Corrupt("недопустимый размер метаданных"));
+    }
+    let body = bytes
+        .get(offset + 4..offset + 4 + total)
+        .ok_or(DecodeError::Corrupt("обрыв блока метаданных"))?;
+    let mut meta = Metadata::default();
+    let mut pos = 0usize;
+    while pos < body.len() {
+        let Some(head) = body.get(pos..pos + 5) else {
+            return Err(DecodeError::Corrupt("обрыв чанка метаданных"));
+        };
+        let ty = head[0];
+        let len = u32::from_le_bytes(head[1..5].try_into().expect("len 4")) as usize;
+        let Some(data) = body.get(pos + 5..pos + 5 + len) else {
+            return Err(DecodeError::Corrupt("обрыв чанка метаданных"));
+        };
+        if ty == CHUNK_ICC {
+            if meta.icc.is_some() {
+                return Err(DecodeError::Corrupt("повторный ICC-чанк"));
+            }
+            if len == 0 {
+                return Err(DecodeError::Corrupt("пустой ICC-чанк"));
+            }
+            meta.icc = Some(data.to_vec());
+        }
+        pos += 5 + len;
+    }
+    Ok((meta, 4 + total))
 }
 
 /// Прямоугольник одного тайла в координатах изображения.
@@ -198,6 +307,8 @@ mod tests {
             chroma420: false,
             identity: false,
             palette: false,
+            deblock: false,
+            metadata: false,
             quality: 0,
         }
     }
@@ -231,6 +342,103 @@ mod tests {
             ..base()
         };
         assert_eq!(Header::parse(&h.serialize()).unwrap(), h);
+        // v4 с деблокингом (lossy).
+        let h = Header {
+            version: VERSION_DEBLOCK,
+            lossless: false,
+            deblock: true,
+            chroma420: true,
+            quality: 30,
+            ..base()
+        };
+        assert_eq!(Header::parse(&h.serialize()).unwrap(), h);
+        // v6 с метаданными (любой режим).
+        let h = Header {
+            version: VERSION_METADATA,
+            metadata: true,
+            ..base()
+        };
+        assert_eq!(Header::parse(&h.serialize()).unwrap(), h);
+    }
+
+    #[test]
+    fn metadata_flag_rules() {
+        // Бит 6 в v5 — неизвестный флаг.
+        let mut bytes = Header {
+            version: VERSION_SUPERBLOCK,
+            lossless: false,
+            quality: 75,
+            ..base()
+        }
+        .serialize();
+        bytes[5] |= FLAG_METADATA;
+        assert!(matches!(
+            Header::parse(&bytes),
+            Err(DecodeError::UnsupportedFeature(_))
+        ));
+    }
+
+    #[test]
+    fn metadata_block_roundtrip_and_bounds() {
+        let icc = vec![0xAAu8; 300];
+        let block = build_metadata_block(&[(CHUNK_ICC, &icc)]);
+        let (meta, used) = parse_metadata_block(&block, 0).unwrap();
+        assert_eq!(used, block.len());
+        assert_eq!(meta.icc.as_deref(), Some(icc.as_slice()));
+
+        // Неизвестный чанк пропускается, ICC после него читается.
+        let block = build_metadata_block(&[(200, b"future"), (CHUNK_ICC, &icc)]);
+        let (meta, _) = parse_metadata_block(&block, 0).unwrap();
+        assert_eq!(meta.icc.as_deref(), Some(icc.as_slice()));
+
+        // Повторный ICC — порча.
+        let block = build_metadata_block(&[(CHUNK_ICC, &icc), (CHUNK_ICC, &icc)]);
+        assert!(matches!(
+            parse_metadata_block(&block, 0),
+            Err(DecodeError::Corrupt(_))
+        ));
+
+        // Обрыв тела и завышенный total_len.
+        let block = build_metadata_block(&[(CHUNK_ICC, &icc)]);
+        assert!(parse_metadata_block(&block[..block.len() - 1], 0).is_err());
+        let mut bad = block.clone();
+        bad[0..4].copy_from_slice(&(u32::MAX).to_le_bytes());
+        assert!(parse_metadata_block(&bad, 0).is_err());
+        // Нулевой total_len — тоже порча (флаг без содержимого).
+        assert!(parse_metadata_block(&[0, 0, 0, 0], 0).is_err());
+        // Чанк с len, выходящим за тело блока.
+        let mut bad = block;
+        let cut = bad.len() - 6;
+        bad.truncate(cut);
+        bad[0..4].copy_from_slice(&((cut - 4) as u32).to_le_bytes());
+        assert!(parse_metadata_block(&bad, 0).is_err());
+    }
+
+    #[test]
+    fn deblock_flag_rules() {
+        // Бит 5 в v3 — неизвестный флаг.
+        let mut bytes = Header {
+            lossless: false,
+            quality: 30,
+            ..base()
+        }
+        .serialize();
+        bytes[5] |= FLAG_DEBLOCK;
+        assert!(matches!(
+            Header::parse(&bytes),
+            Err(DecodeError::UnsupportedFeature(_))
+        ));
+        // Деблокинг в lossless — противоречие (даже в v4).
+        let mut bytes = Header {
+            version: VERSION_DEBLOCK,
+            ..base()
+        }
+        .serialize();
+        bytes[5] |= FLAG_DEBLOCK;
+        assert!(matches!(
+            Header::parse(&bytes),
+            Err(DecodeError::Corrupt(_))
+        ));
     }
 
     #[test]
@@ -239,10 +447,10 @@ mod tests {
         bytes[0] = b'P';
         assert_eq!(Header::parse(&bytes), Err(DecodeError::NotFrcI));
         let mut bytes = base().serialize();
-        bytes[4] = VERSION_CURRENT + 1;
+        bytes[4] = VERSION_MAX + 1;
         assert_eq!(
             Header::parse(&bytes),
-            Err(DecodeError::UnsupportedVersion(VERSION_CURRENT + 1))
+            Err(DecodeError::UnsupportedVersion(VERSION_MAX + 1))
         );
         let mut bytes = base().serialize();
         bytes[4] = 0;

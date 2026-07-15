@@ -11,6 +11,10 @@ pub enum EncodeError {
     InvalidQuality(u8),
     /// Длина буфера пикселей не равна `width * height * bytes_per_pixel`.
     BufferSizeMismatch { expected: usize, actual: usize },
+    /// Версия битстрима вне поддерживаемого диапазона (только для `encode_with_version`).
+    UnsupportedBitstreamVersion(u8),
+    /// Недопустимый ICC-профиль (пустой либо больше лимита метаданных).
+    InvalidIcc(&'static str),
 }
 
 impl fmt::Display for EncodeError {
@@ -23,6 +27,10 @@ impl fmt::Display for EncodeError {
             Self::BufferSizeMismatch { expected, actual } => {
                 write!(f, "длина буфера пикселей {actual}, ожидалось {expected}")
             }
+            Self::UnsupportedBitstreamVersion(v) => {
+                write!(f, "версия битстрима {v} не поддерживается кодером")
+            }
+            Self::InvalidIcc(what) => write!(f, "недопустимый ICC-профиль: {what}"),
         }
     }
 }

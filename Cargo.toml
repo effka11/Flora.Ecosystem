@@ -51,6 +51,7 @@ members = [
     "Products/FRC/crates/frc-v",
     "Products/FRC/crates/frc-v-cli",
     "Products/FRC/crates/frc-v-wasm",
+    "Products/FRC/crates/frc-i-wasm",
 ]
 
 [workspace.package]
@@ -95,6 +96,7 @@ fpp-crypto = { path = "Products/FPP/crates/fpp-crypto" }
 frc-i = { path = "Products/FRC/crates/frc-i" }
 frc-a-core = { path = "Products/FRC/crates/frc-a-core" }
 frc-v = { path = "Products/FRC/crates/frc-v" }
+frc-i-wasm = { path = "Products/FRC/crates/frc-i-wasm" }
 flora-grpc-bridge = { path = "Backend/crates/infrastructure/flora-grpc-bridge" }
 
 axum = "0.8.9"

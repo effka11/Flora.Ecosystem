@@ -1,6 +1,6 @@
 # FRC-V — Flora Relativistic Codec — Video
 
-**Status:** Released (битстрим **v2** заморожен golden-векторами)  
+**Status:** Draft (битстрим **v2** заморожен golden-векторами)  
 **Version:** 1.0  
 **Date:** 2026-07-14  
 **Family:** FRC — Flora Relativistic Codec (см. [`CODECS.md`](./CODECS.md))  

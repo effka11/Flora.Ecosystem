@@ -116,6 +116,7 @@ impl Encoder {
             recon: Frame::new(w, h),
             grid: LeafGrid::new(w, h),
             ssim_tune: self.cfg.ssim_tune,
+            speed: self.cfg.speed,
         };
         // Кадровые модели/сетка сериализации (зеркало декодера).
         let mut syntax = SyntaxModel::default();
@@ -182,6 +183,8 @@ struct FrameEnc<'a> {
     /// откатывается вместе с пикселями при отказе от поддерева.
     grid: LeafGrid,
     ssim_tune: bool,
+    /// Пресет скорости (0..=2): управляет объёмом перебора, не битстримом.
+    speed: u8,
 }
 
 impl FrameEnc<'_> {
@@ -205,9 +208,9 @@ impl FrameEnc<'_> {
                 let out = self.rdo_leaf(syntax, b, hint);
                 let leaf_cost = out.cost + leaf_flag;
 
-                // Прунинг: идеальный лист дешевле любого разбиения
-                // (у split минимум 4 листа синтаксиса против одного).
-                if out.dist == 0 {
+                // Прунинг: лист на уровне шума квантования дешевле любого
+                // разбиения (у split минимум 4 листа синтаксиса против одного).
+                if self.leaf_dist_negligible(b.n, out.dist) {
                     self.commit_leaf(b, &out.leaf);
                     return Some((leaf_cost, Node::Leaf(out.leaf)));
                 }
@@ -256,12 +259,30 @@ impl FrameEnc<'_> {
         self.grid.fill_leaf(b, &leaf.kind);
     }
 
+    /// Дисторсия листа на уровне шума квантования — дальнейший перебор
+    /// (разбиение, поиск движения) не окупается. Порог выводится из шага:
+    /// SSE квантования идеального кодирования ≈ n²·step²/768 (домен 8×ортонорм.,
+    /// равномерная ошибка ±step/2), поэтому speed 0 отсекает только dist == 0,
+    /// speed 1 — ниже step²/1024 на пиксель, speed 2 — ниже step²/256.
+    #[inline]
+    fn leaf_dist_negligible(&self, n: usize, dist: u64) -> bool {
+        if dist == 0 {
+            return true;
+        }
+        if self.speed == 0 {
+            return false;
+        }
+        let step = ac_step(self.qp) as u64;
+        dist * 1024 <= (n * n) as u64 * step * step
+    }
+
     /// Выбор способа кодирования листа: inter (skip / с остатком) против intra.
     fn rdo_leaf(&self, syntax: &SyntaxModel, b: Blk, hint: Option<Mv>) -> LeafOutcome {
         let inter = self.rdo_leaf_inter(syntax, b, hint);
-        // Идеальный skip: intra не догонит (минимальный синтаксис, нулевая дисторсия).
+        // Inter на уровне шума квантования: intra не догонит (больше синтаксиса,
+        // ниже шумового порога опуститься тоже не сможет).
         if let Some(o) = &inter
-            && o.dist == 0
+            && self.leaf_dist_negligible(b.n, o.dist)
         {
             return inter.expect("checked above");
         }
@@ -309,25 +330,30 @@ impl FrameEnc<'_> {
             cb: Vec::new(),
             cr: Vec::new(),
         };
-        // Идеальная статика: дальше не ищем.
-        if skip_dist == 0 {
+        // Статика на уровне шума квантования: дальше не ищем.
+        if self.leaf_dist_negligible(b.n, skip_dist) {
             return Some(LeafOutcome {
                 cost: skip_cost,
-                dist: 0,
+                dist: skip_dist,
                 leaf: skip_leaf,
             });
         }
 
         // Поиск движения и вариант с остатком.
         let mv = self.motion_search(reference, b, pred_mv, hint);
+        let tx_variants: &[bool] = if self.speed >= 2 {
+            &[false]
+        } else {
+            &[false, true]
+        };
         let mut best: Option<LeafOutcome> = None;
-        for tx_split in [false, true] {
+        for &tx_split in tx_variants {
             let out = self.trial_leaf_inter(syntax, b, reference, pred_mv, mv, tx_split);
             if best.as_ref().is_none_or(|bo| out.cost < bo.cost) {
                 best = Some(out);
             }
         }
-        let coded = best.expect("two tx variants tried");
+        let coded = best.expect("at least one tx variant tried");
         if skip_cost <= coded.cost {
             Some(LeafOutcome {
                 cost: skip_cost,
@@ -424,10 +450,15 @@ impl FrameEnc<'_> {
             consider(full(hm), &mut best_mv, &mut best_sad, self);
         }
 
-        // Целопиксельный итеративный ромб с убывающим шагом.
-        for step_px in [16i32, 8, 4, 2, 1] {
+        // Целопиксельный итеративный ромб с убывающим шагом (объём — по пресету).
+        let (fp_steps, fp_iters): (&[i32], usize) = match self.speed {
+            0 => (&[16, 8, 4, 2, 1], 12),
+            1 => (&[8, 4, 2, 1], 8),
+            _ => (&[8, 4, 2, 1], 6),
+        };
+        for &step_px in fp_steps {
             let step = step_px * 4;
-            for _ in 0..12 {
+            for _ in 0..fp_iters {
                 let base = best_mv;
                 for (dx, dy) in [(-step, 0), (step, 0), (0, -step), (0, step)] {
                     consider(
@@ -446,10 +477,16 @@ impl FrameEnc<'_> {
             }
         }
 
-        // Суб-пиксельное уточнение: ½, затем ¼ (SAD по интерполяции).
+        // Суб-пиксельное уточнение: ½, затем ¼ (SAD по интерполяции);
+        // speed 2 останавливается на полупикселе.
+        let sub_rounds: &[(i32, usize)] = match self.speed {
+            0 => &[(2, 4), (1, 4)],
+            1 => &[(2, 2), (1, 2)],
+            _ => &[(2, 2)],
+        };
         let mut best_sub = self.sad_subpel(rp, b, best_mv);
-        for step in [2, 1] {
-            for _ in 0..4 {
+        for &(step, iters) in sub_rounds {
+            for _ in 0..iters {
                 let base = best_mv;
                 for (dx, dy) in [
                     (-step, 0),
@@ -521,8 +558,9 @@ impl FrameEnc<'_> {
     // Intra
     // ------------------------------------------------------------------
 
-    /// Intra-лист: SAD-преселект люма-режимов → полный RD топ-3 → выбор
-    /// хрома-режима → финал с RDOQ при обоих размерах трансформа.
+    /// Intra-лист: SAD-преселект люма-режимов → полный RD топ-K → выбор
+    /// хрома-режима → финал (размеры трансформа, RDOQ). Объём перебора на
+    /// этапах B–D управляется пресетом скорости; speed 2 доверяет SAD-преселекту.
     fn rdo_leaf_intra(&self, syntax: &SyntaxModel, b: Blk) -> LeafOutcome {
         let dir_ctx = self.grid.dir_ctx(b.x, b.y);
         let bc = b.chroma();
@@ -542,11 +580,16 @@ impl FrameEnc<'_> {
             .collect();
         ranked.sort_unstable();
 
-        // Этап B: полный RD (без RDOQ) для топ-3, хрома = режим люмы.
+        // Этап B: полный RD (без RDOQ) для топ-K, хрома = режим люмы.
+        let rd_top = match self.speed {
+            0 => 3,
+            1 => 2,
+            _ => 0, // speed 2: режим — победитель SAD-преселекта
+        };
         let tsize = luma_tile_size(b.n, false);
         let mut best_mode = ranked[0].1;
         let mut best_cost = u64::MAX;
-        for &(_, mode) in ranked.iter().take(3) {
+        for &(_, mode) in ranked.iter().take(rd_top) {
             let mut dist = 0u64;
             let mut rate = inter_bit
                 + syntax.mode_cost(dir_ctx, mode)
@@ -556,7 +599,7 @@ impl FrameEnc<'_> {
             let (d, r, _) = self.trial_plane(syntax, &self.src.y, &pred, b, tsize, 0);
             dist += d;
             rate += r;
-            let (d, r, _, _) = self.trial_chroma(syntax, bc, mode);
+            let (d, r, _, _) = self.trial_chroma(syntax, bc, mode, false);
             dist += d;
             rate += r;
             let cost = dist * self.lambda_den + rate * self.lambda_num;
@@ -566,49 +609,67 @@ impl FrameEnc<'_> {
             }
         }
 
-        // Этап C: хрома-режим (same против DC/TM/V/H).
+        // Этап C: хрома-режим (same против отдельных; состав — по пресету).
+        let cm_cands: &[Option<u8>] = match self.speed {
+            0 => &[
+                None,
+                Some(crate::predict::MODE_DC),
+                Some(crate::predict::MODE_TM),
+                Some(crate::predict::MODE_V),
+                Some(crate::predict::MODE_H),
+            ],
+            1 => &[
+                None,
+                Some(crate::predict::MODE_DC),
+                Some(crate::predict::MODE_TM),
+            ],
+            _ => &[None],
+        };
         let mut best_cm: Option<u8> = None;
-        let mut best_chroma = u64::MAX;
-        for cm in [
-            None,
-            Some(crate::predict::MODE_DC),
-            Some(crate::predict::MODE_TM),
-            Some(crate::predict::MODE_V),
-            Some(crate::predict::MODE_H),
-        ] {
-            if cm == Some(best_mode) {
-                continue; // покрывается вариантом `same`
-            }
-            let cmode = cm.unwrap_or(best_mode);
-            let (d, r, _, _) = self.trial_chroma(syntax, bc, cmode);
-            let cost = d * self.lambda_den + (r + syntax.chroma_mode_cost(cm)) * self.lambda_num;
-            if cost < best_chroma {
-                best_chroma = cost;
-                best_cm = cm;
+        if cm_cands.len() > 1 {
+            let mut best_chroma = u64::MAX;
+            for &cm in cm_cands {
+                if cm == Some(best_mode) {
+                    continue; // покрывается вариантом `same`
+                }
+                let cmode = cm.unwrap_or(best_mode);
+                let (d, r, _, _) = self.trial_chroma(syntax, bc, cmode, false);
+                let cost =
+                    d * self.lambda_den + (r + syntax.chroma_mode_cost(cm)) * self.lambda_num;
+                if cost < best_chroma {
+                    best_chroma = cost;
+                    best_cm = cm;
+                }
             }
         }
 
-        // Этап D: финал с RDOQ, оба размера трансформа люмы.
+        // Этап D: финал; размеры трансформа люмы и RDOQ — по пресету.
+        let (tx_variants, rdoq): (&[bool], bool) = match self.speed {
+            0 => (&[false, true], true),
+            1 => (&[false, true], false),
+            _ => (&[false], false),
+        };
         let cmode = best_cm.unwrap_or(best_mode);
         let mut best: Option<LeafOutcome> = None;
-        for tx_split in [false, true] {
+        for &tx_split in tx_variants {
             let mut dist = 0u64;
             let mut rate = inter_bit
                 + syntax.mode_cost(dir_ctx, best_mode)
                 + syntax.chroma_mode_cost(best_cm)
                 + syntax.tx_split_cost(b.n, tx_split);
             intra_pred_plane(&self.recon.y, b, true, best_mode, &mut pred);
-            let (d, r, luma) = self.trial_plane_opt(
+            let (d, r, luma) = self.trial_plane_impl(
                 syntax,
                 &self.src.y,
                 &pred,
                 b,
                 luma_tile_size(b.n, tx_split),
                 0,
+                rdoq,
             );
             dist += d;
             rate += r;
-            let (d, r, cb, cr) = self.trial_chroma_opt(syntax, bc, cmode);
+            let (d, r, cb, cr) = self.trial_chroma(syntax, bc, cmode, rdoq);
             dist += d;
             rate += r;
             let cost = dist * self.lambda_den + rate * self.lambda_num;
@@ -629,40 +690,25 @@ impl FrameEnc<'_> {
                 });
             }
         }
-        best.expect("two tx variants tried")
+        best.expect("at least one tx variant tried")
     }
 
-    /// Проба обеих хрома-плоскостей интра-режимом `cmode` (без RDOQ).
+    /// Проба обеих хрома-плоскостей интра-режимом `cmode`
+    /// (`optimize` — RDOQ уровней, только в финальных пробах).
     fn trial_chroma(
         &self,
         syntax: &SyntaxModel,
         bc: Blk,
         cmode: u8,
+        optimize: bool,
     ) -> (u64, u64, Vec<i32>, Vec<i32>) {
         let mut pred = [0i32; 64 * 64];
         intra_pred_plane(&self.recon.cb, bc, false, cmode, &mut pred);
-        let (d1, r1, cb) = self.trial_plane(syntax, &self.src.cb, &pred, bc, bc.n, 1);
+        let (d1, r1, cb) =
+            self.trial_plane_impl(syntax, &self.src.cb, &pred, bc, bc.n, 1, optimize);
         intra_pred_plane(&self.recon.cr, bc, false, cmode, &mut pred);
-        let (d2, r2, cr) = self.trial_plane(syntax, &self.src.cr, &pred, bc, bc.n, 1);
-        (
-            d1 + d2,
-            r1 + r2,
-            cb.into_iter().next().expect("one tile"),
-            cr.into_iter().next().expect("one tile"),
-        )
-    }
-
-    fn trial_chroma_opt(
-        &self,
-        syntax: &SyntaxModel,
-        bc: Blk,
-        cmode: u8,
-    ) -> (u64, u64, Vec<i32>, Vec<i32>) {
-        let mut pred = [0i32; 64 * 64];
-        intra_pred_plane(&self.recon.cb, bc, false, cmode, &mut pred);
-        let (d1, r1, cb) = self.trial_plane_opt(syntax, &self.src.cb, &pred, bc, bc.n, 1);
-        intra_pred_plane(&self.recon.cr, bc, false, cmode, &mut pred);
-        let (d2, r2, cr) = self.trial_plane_opt(syntax, &self.src.cr, &pred, bc, bc.n, 1);
+        let (d2, r2, cr) =
+            self.trial_plane_impl(syntax, &self.src.cr, &pred, bc, bc.n, 1, optimize);
         (
             d1 + d2,
             r1 + r2,
@@ -683,19 +729,6 @@ impl FrameEnc<'_> {
         pt: usize,
     ) -> (u64, u64, Vec<Vec<i32>>) {
         self.trial_plane_impl(syntax, src, pred, b, tsize, pt, false)
-    }
-
-    /// То же с RDOQ (финальные пробы).
-    fn trial_plane_opt(
-        &self,
-        syntax: &SyntaxModel,
-        src: &Plane,
-        pred: &[i32],
-        b: Blk,
-        tsize: usize,
-        pt: usize,
-    ) -> (u64, u64, Vec<Vec<i32>>) {
-        self.trial_plane_impl(syntax, src, pred, b, tsize, pt, true)
     }
 
     #[allow(clippy::too_many_arguments)]

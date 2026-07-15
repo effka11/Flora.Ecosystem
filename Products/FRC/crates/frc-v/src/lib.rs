@@ -161,6 +161,10 @@ pub struct EncoderConfig {
     pub fps_den: u32,
     /// Психовизуальная настройка RDO: смешивание SSE с SSIM-прокси (v0.3).
     pub ssim_tune: bool,
+    /// Пресет скорости `0..=2`: 0 — полный RDO (максимальное качество),
+    /// 1 — сокращённый перебор, 2 — быстрый (клиентское/интерактивное кодирование).
+    /// Меняет только решения энкодера; битстрим и декодер не зависят от пресета.
+    pub speed: u8,
 }
 
 impl Default for EncoderConfig {
@@ -175,6 +179,7 @@ impl Default for EncoderConfig {
             fps_num: 30,
             fps_den: 1,
             ssim_tune: false,
+            speed: 0,
         }
     }
 }
@@ -198,6 +203,9 @@ impl EncoderConfig {
         }
         if self.fps_num == 0 || self.fps_den == 0 {
             return Err(Error::InvalidConfig("fps_num and fps_den must be non-zero"));
+        }
+        if self.speed > 2 {
+            return Err(Error::InvalidConfig("speed must be in 0..=2"));
         }
         Ok(())
     }

@@ -5,7 +5,7 @@
 //! в путях декодера приводили бы к панике и провалу.
 
 use frc_i::{DecodeError, DecodeLimits, decode, decode_with_limits};
-use frc_i::{EncodeMode, ImageView, PixelFormat, encode};
+use frc_i::{EncodeMode, ImageView, PixelFormat, encode, encode_with_icc, read_icc};
 
 fn xorshift(seed: &mut u64) -> u64 {
     *seed ^= *seed << 13;
@@ -54,8 +54,10 @@ fn sample_streams() -> Vec<Vec<u8>> {
     };
     vec![
         encode(&g, EncodeMode::Lossy { quality: 60 }).unwrap(),
+        encode(&g, EncodeMode::Lossy { quality: 30 }).unwrap(), // v4 (деблокинг)
         encode(&g, EncodeMode::Lossless).unwrap(),
         encode(&f, EncodeMode::Lossless).unwrap(), // палитра (2 цвета)
+        encode_with_icc(&g, EncodeMode::Lossy { quality: 60 }, &[1, 2, 3, 4]).unwrap(), // v6
     ]
 }
 
@@ -75,7 +77,7 @@ fn random_garbage_never_panics() {
 #[test]
 fn garbage_with_valid_magic_never_panics() {
     let mut seed = 0xBADF00Du64;
-    for version in [1u8, 2, 3] {
+    for version in [1u8, 2, 3, 4, 5, 6] {
         for _ in 0..500 {
             let len = 20 + (xorshift(&mut seed) % 400) as usize;
             let mut bytes: Vec<u8> = (0..len)
@@ -142,6 +144,24 @@ fn custom_limits_are_enforced() {
     let fri = sample_fri(); // 90x70 = 6300 пикселей
     assert!(decode_with_limits(&fri, DecodeLimits { max_pixels: 6299 }).is_err());
     assert!(decode_with_limits(&fri, DecodeLimits { max_pixels: 6300 }).is_ok());
+}
+
+#[test]
+fn metadata_block_cannot_claim_giant_length() {
+    // total_len блока метаданных = u32::MAX: декодер обязан отвергнуть
+    // по потолку MAX_METADATA, не пытаясь читать/аллоцировать 4 ГиБ.
+    let (w, h) = (16u32, 16u32);
+    let data: Vec<u8> = (0..w * h * 3).map(|i| (i % 251) as u8).collect();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgb8,
+        data: &data,
+    };
+    let mut fri = encode_with_icc(&img, EncodeMode::Lossless, &[9u8; 16]).unwrap();
+    fri[20..24].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(matches!(decode(&fri), Err(DecodeError::Corrupt(_))));
+    assert!(matches!(read_icc(&fri), Err(DecodeError::Corrupt(_))));
 }
 
 #[test]

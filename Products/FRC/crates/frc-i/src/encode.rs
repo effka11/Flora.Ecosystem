@@ -9,7 +9,9 @@ use crate::color::{downsample_420, rgb_to_ycbcr, rgb_to_ycocg_r};
 use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
 use crate::error::EncodeError;
 use crate::format::{
-    DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_PALETTE, VERSION_CURRENT, tile_grid,
+    CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
+    VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA, VERSION_MIN,
+    VERSION_SUPERBLOCK, build_metadata_block, tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
@@ -21,8 +23,60 @@ use std::collections::HashMap;
 
 /// Порог качества, ниже которого включается сабсэмплинг цветоразностей 4:2:0.
 const CHROMA420_MAX_QUALITY: u8 = 85;
+/// Порог качества, ниже которого включается деблокинг (битстрим v4):
+/// при сильном квантовании блочность видна, фильтр её маскирует.
+const DEBLOCK_MAX_QUALITY: u8 = 44;
 
 pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeError> {
+    encode_impl(img, mode, base_version(mode), None)
+}
+
+/// Кодирует с вложением ICC-профиля (битстрим v6: блок метаданных).
+pub fn encode_with_icc(
+    img: &ImageView<'_>,
+    mode: EncodeMode,
+    icc: &[u8],
+) -> Result<Vec<u8>, EncodeError> {
+    if icc.is_empty() {
+        return Err(EncodeError::InvalidIcc("пустой ICC-профиль"));
+    }
+    if icc.len() + 5 > MAX_METADATA {
+        return Err(EncodeError::InvalidIcc("ICC-профиль больше 8 МиБ"));
+    }
+    encode_impl(img, mode, VERSION_METADATA, Some(icc))
+}
+
+/// Версию диктует набор инструментов: lossy пишется v5 (суперблоки;
+/// деблокинг-флаг добавляется при q < 45), lossless — v3 (слой блоков
+/// не используется, файл не должен требовать более нового декодера).
+fn base_version(mode: EncodeMode) -> u8 {
+    match mode {
+        EncodeMode::Lossy { .. } => VERSION_SUPERBLOCK,
+        EncodeMode::Lossless => VERSION_CURRENT,
+    }
+}
+
+/// Кодирует с явной версией битстрима (1..=6). Публичный кодер выбирает
+/// версию сам (см. `encode`); явные версии — только для генерации
+/// golden-векторов и тестов.
+#[doc(hidden)]
+pub fn encode_with_version(
+    img: &ImageView<'_>,
+    mode: EncodeMode,
+    version: u8,
+) -> Result<Vec<u8>, EncodeError> {
+    encode_impl(img, mode, version, None)
+}
+
+fn encode_impl(
+    img: &ImageView<'_>,
+    mode: EncodeMode,
+    version: u8,
+    icc: Option<&[u8]>,
+) -> Result<Vec<u8>, EncodeError> {
+    if !(VERSION_MIN..=VERSION_MAX).contains(&version) {
+        return Err(EncodeError::UnsupportedBitstreamVersion(version));
+    }
     let (width, height) = (img.width, img.height);
     let too_big = u64::from(width) * u64::from(height) > DEFAULT_MAX_PIXELS;
     if width == 0 || height == 0 || width > MAX_DIM || height > MAX_DIM || too_big {
@@ -41,10 +95,13 @@ pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeEr
         });
     }
 
+    let meta_block = icc.map(|icc| build_metadata_block(&[(CHUNK_ICC, icc)]));
+    let meta = meta_block.as_deref();
+
     match mode {
         EncodeMode::Lossless => {
-            let planar = encode_lossless_planar(img, choose_identity(img, bpp));
-            Ok(match try_encode_palette(img, bpp) {
+            let planar = encode_lossless_planar(img, choose_identity(img, bpp), version, meta);
+            Ok(match try_encode_palette(img, bpp, version, meta) {
                 Some(palette) if palette.len() < planar.len() => palette,
                 _ => planar,
             })
@@ -53,10 +110,10 @@ pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeEr
             if !(1..=100).contains(&quality) {
                 return Err(EncodeError::InvalidQuality(quality));
             }
-            let dct = encode_lossy(img, bpp, quality);
+            let dct = encode_lossy(img, bpp, quality, version, meta);
             // Малоцветные изображения (графика, скриншоты): lossless-палитра
             // может быть одновременно меньше и точнее DCT — тогда она и уходит.
-            Ok(match try_encode_palette(img, bpp) {
+            Ok(match try_encode_palette(img, bpp, version, meta) {
                 Some(palette) if palette.len() < dct.len() => palette,
                 _ => dct,
             })
@@ -66,11 +123,21 @@ pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeEr
 
 // --- сборка контейнера -------------------------------------------------------
 
-fn assemble(header: &Header, palette_block: Option<&[u8]>, payloads: &[Vec<u8>]) -> Vec<u8> {
+fn assemble(
+    header: &Header,
+    meta_block: Option<&[u8]>,
+    palette_block: Option<&[u8]>,
+    payloads: &[Vec<u8>],
+) -> Vec<u8> {
     let body_len: usize = payloads.iter().map(Vec::len).sum();
+    let meta_len = meta_block.map_or(0, <[u8]>::len);
     let palette_len = palette_block.map_or(0, <[u8]>::len);
-    let mut out = Vec::with_capacity(HEADER_LEN + palette_len + payloads.len() * 4 + body_len);
+    let mut out =
+        Vec::with_capacity(HEADER_LEN + meta_len + palette_len + payloads.len() * 4 + body_len);
     out.extend_from_slice(&header.serialize());
+    if let Some(block) = meta_block {
+        out.extend_from_slice(block);
+    }
     if let Some(block) = palette_block {
         out.extend_from_slice(block);
     }
@@ -92,7 +159,12 @@ fn plane_payload(buf: &[i16], shape: PlaneShape, out: &mut Vec<u8>) {
 
 // --- lossless: планарный (YCoCg-R либо identity RGB) --------------------------
 
-fn encode_lossless_planar(img: &ImageView<'_>, identity: bool) -> Vec<u8> {
+fn encode_lossless_planar(
+    img: &ImageView<'_>,
+    identity: bool,
+    version: u8,
+    meta: Option<&[u8]>,
+) -> Vec<u8> {
     let (w, h) = (img.width as usize, img.height as usize);
     let bpp = if matches!(img.format, PixelFormat::Rgba8) {
         4
@@ -127,7 +199,7 @@ fn encode_lossless_planar(img: &ImageView<'_>, identity: bool) -> Vec<u8> {
     };
 
     let header = Header {
-        version: VERSION_CURRENT,
+        version,
         width: img.width,
         height: img.height,
         lossless: true,
@@ -135,6 +207,8 @@ fn encode_lossless_planar(img: &ImageView<'_>, identity: bool) -> Vec<u8> {
         chroma420: false,
         identity,
         palette: false,
+        deblock: false,
+        metadata: meta.is_some(),
         quality: 0,
     };
     let tiles = tile_grid(img.width, img.height);
@@ -150,7 +224,7 @@ fn encode_lossless_planar(img: &ImageView<'_>, identity: bool) -> Vec<u8> {
         }
         payload
     });
-    assemble(&header, None, &payloads)
+    assemble(&header, meta, None, &payloads)
 }
 
 /// Оценщик: identity выгоднее YCoCg-R? Считает по субвыборке пикселей
@@ -237,7 +311,20 @@ fn palette_key(px: &[u8], bpp: usize) -> [u8; 4] {
     [px[0], px[1], px[2], if bpp == 4 { px[3] } else { 255 }]
 }
 
-fn try_encode_palette(img: &ImageView<'_>, bpp: usize) -> Option<Vec<u8>> {
+fn try_encode_palette(
+    img: &ImageView<'_>,
+    bpp: usize,
+    version: u8,
+    meta: Option<&[u8]>,
+) -> Option<Vec<u8>> {
+    // Палитра — lossless-инструмент: v4-возможности (деблокинг) её не касаются,
+    // заголовок не должен требовать более нового декодера, чем нужно.
+    // Исключение — блок метаданных: он существует только с v6.
+    let version = if meta.is_some() {
+        version
+    } else {
+        version.min(VERSION_CURRENT)
+    };
     let (w, h) = (img.width as usize, img.height as usize);
     let mut order: HashMap<[u8; 4], u16> = HashMap::with_capacity(MAX_PALETTE * 2);
     for px in img.data.chunks_exact(bpp) {
@@ -269,7 +356,7 @@ fn try_encode_palette(img: &ImageView<'_>, bpp: usize) -> Option<Vec<u8>> {
 
     let alpha = matches!(img.format, PixelFormat::Rgba8);
     let header = Header {
-        version: VERSION_CURRENT,
+        version,
         width: img.width,
         height: img.height,
         lossless: true,
@@ -277,6 +364,8 @@ fn try_encode_palette(img: &ImageView<'_>, bpp: usize) -> Option<Vec<u8>> {
         chroma420: false,
         identity: false,
         palette: true,
+        deblock: false,
+        metadata: meta.is_some(),
         quality: 0,
     };
     let range = palette_range(count);
@@ -298,16 +387,22 @@ fn try_encode_palette(img: &ImageView<'_>, bpp: usize) -> Option<Vec<u8>> {
         plane_payload(&buf, PlaneShape::new(t.w, t.h, range), &mut payload);
         payload
     });
-    Some(assemble(&header, Some(&block), &payloads))
+    Some(assemble(&header, meta, Some(&block), &payloads))
 }
 
 // --- lossy: DCT ----------------------------------------------------------------
 
-fn encode_lossy(img: &ImageView<'_>, bpp: usize, quality: u8) -> Vec<u8> {
+fn encode_lossy(
+    img: &ImageView<'_>,
+    bpp: usize,
+    quality: u8,
+    version: u8,
+    meta: Option<&[u8]>,
+) -> Vec<u8> {
     let (w, h) = (img.width as usize, img.height as usize);
     let alpha = bpp == 4;
     let header = Header {
-        version: VERSION_CURRENT,
+        version,
         width: img.width,
         height: img.height,
         lossless: false,
@@ -315,6 +410,8 @@ fn encode_lossy(img: &ImageView<'_>, bpp: usize, quality: u8) -> Vec<u8> {
         chroma420: quality <= CHROMA420_MAX_QUALITY,
         identity: false,
         palette: false,
+        deblock: version >= VERSION_DEBLOCK && quality <= DEBLOCK_MAX_QUALITY,
+        metadata: meta.is_some(),
         quality,
     };
 
@@ -340,7 +437,7 @@ fn encode_lossy(img: &ImageView<'_>, bpp: usize, quality: u8) -> Vec<u8> {
     let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
         let buf = p0.extract(t.x0, t.y0, t.w, t.h);
-        dct_payload(&buf, t.w, t.h, &q_luma, &mut payload);
+        dct_payload(&buf, t.w, t.h, &q_luma, version, &mut payload);
         for plane in [&p1, &p2] {
             let full = plane.extract(t.x0, t.y0, t.w, t.h);
             let (cbuf, cw, ch) = if header.chroma420 {
@@ -352,7 +449,7 @@ fn encode_lossy(img: &ImageView<'_>, bpp: usize, quality: u8) -> Vec<u8> {
             } else {
                 (full, t.w, t.h)
             };
-            dct_payload(&cbuf, cw, ch, &q_chroma, &mut payload);
+            dct_payload(&cbuf, cw, ch, &q_chroma, version, &mut payload);
         }
         if let Some(pa) = pa.as_ref() {
             let buf = pa.extract(t.x0, t.y0, t.w, t.h);
@@ -360,12 +457,23 @@ fn encode_lossy(img: &ImageView<'_>, bpp: usize, quality: u8) -> Vec<u8> {
         }
         payload
     });
-    assemble(&header, None, &payloads)
+    assemble(&header, meta, None, &payloads)
 }
 
-fn dct_payload(buf: &[i16], w: usize, h: usize, qmat: &[u16; 64], out: &mut Vec<u8>) {
+fn dct_payload(buf: &[i16], w: usize, h: usize, qmat: &[u16; 64], version: u8, out: &mut Vec<u8>) {
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
-    lossy::encode_tile_plane(buf, w, h, qmat, &mut syms, &mut raw);
-    write_dct_section(out, lossy::N_CTX_V3, &syms, raw);
+    match version {
+        1 => lossy::encode_tile_plane_v1(buf, w, h, qmat, &mut syms, &mut raw),
+        2 => lossy::encode_tile_plane_v2(buf, w, h, qmat, &mut syms, &mut raw),
+        3 | 4 => lossy::encode_tile_plane(buf, w, h, qmat, &mut syms, &mut raw),
+        _ => lossy::encode_tile_plane_v5(buf, w, h, qmat, &mut syms, &mut raw),
+    }
+    let n_ctx = match version {
+        1 => lossy::N_CTX_V1,
+        2 => lossy::N_CTX_V2,
+        3 | 4 => lossy::N_CTX_V3,
+        _ => lossy::N_CTX_V5,
+    };
+    write_dct_section(out, n_ctx, &syms, raw);
 }

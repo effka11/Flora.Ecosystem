@@ -1,4 +1,4 @@
-# WASM-обёртка декодера FRV1. Единственный crate с `unsafe` (минимальный FFI).
+# WASM-обёртка FRV1 (декодер + энкодер). Единственный crate с `unsafe` (минимальный FFI).
 
 [package]
 name = "frc-v-wasm"

@@ -412,6 +412,113 @@ fn rate_control_increases_size_when_undershooting() {
     );
 }
 
+/// Пресеты скорости: паритет энкодер/декодер сохраняется на GOP с движением,
+/// качество и размер деградируют ограниченно относительно speed 0.
+#[test]
+fn speed_presets_parity_and_bounded_quality() {
+    let (w, h) = (128usize, 96usize);
+    let base = test_frame(w, h, 0x5EED);
+    let shifts = [(0i32, 0i32), (2, 1), (4, 3), (7, 4), (9, 6)];
+    let mut results = Vec::new();
+    for speed in 0..=2u8 {
+        let mut enc = Encoder::new(EncoderConfig {
+            width: w as u32,
+            height: h as u32,
+            qp: 30,
+            keyint: 3,
+            speed,
+            ..EncoderConfig::default()
+        })
+        .unwrap();
+        let mut dec = Decoder::new();
+        let mut bytes = 0usize;
+        let mut psnr_sum = 0.0f64;
+        for (i, &(dx, dy)) in shifts.iter().enumerate() {
+            let src = shifted_frame(&base, dx, dy);
+            let packet = enc.encode_frame(&src).unwrap();
+            bytes += packet.data.len();
+            let out = dec.decode_frame(&packet.data).unwrap();
+            assert_eq!(&out, enc.last_recon(), "parity speed={speed} frame={i}");
+            psnr_sum += psnr(&src, &out).overall;
+        }
+        results.push((bytes, psnr_sum / shifts.len() as f64));
+    }
+    let (bytes0, psnr0) = results[0];
+    for (speed, &(bytes, p)) in results.iter().enumerate().skip(1) {
+        assert!(
+            p > psnr0 - 2.0,
+            "speed {speed}: psnr {p:.2} dB vs {psnr0:.2} dB at speed 0"
+        );
+        assert!(
+            bytes < bytes0 * 8 / 5,
+            "speed {speed}: {bytes} bytes vs {bytes0} at speed 0"
+        );
+    }
+}
+
+/// Пресеты скорости детерминированы и не совпадают между собой по решениям
+/// (иначе ручки не подключены).
+#[test]
+fn speed_presets_are_deterministic_and_distinct() {
+    let (w, h) = (96usize, 64usize);
+    let f0 = test_frame(w, h, 4242);
+    let f1 = shifted_frame(&f0, 3, 2);
+    let run = |speed: u8| {
+        let mut enc = Encoder::new(EncoderConfig {
+            width: w as u32,
+            height: h as u32,
+            qp: 28,
+            keyint: 8,
+            speed,
+            ..EncoderConfig::default()
+        })
+        .unwrap();
+        let a = enc.encode_frame(&f0).unwrap();
+        let b = enc.encode_frame(&f1).unwrap();
+        (a.data, b.data)
+    };
+    let (s0, s1, s2) = (run(0), run(1), run(2));
+    assert_eq!(s0, run(0));
+    assert_eq!(s1, run(1));
+    assert_eq!(s2, run(2));
+    assert_ne!(s0, s1, "speed 1 must alter encoder decisions");
+    assert_ne!(s1, s2, "speed 2 must alter encoder decisions");
+}
+
+/// Ручной бенчмарк пресетов: `cargo test -p frc-v --release --test codec -- --ignored --nocapture speed_preset_benchmark`.
+#[test]
+#[ignore = "ручной бенчмарк, запускать в release"]
+fn speed_preset_benchmark() {
+    let (w, h) = (320usize, 192usize);
+    let base = test_frame(w, h, 0xBE9C);
+    let frames: Vec<Frame> = (0..8).map(|i| shifted_frame(&base, 3 * i, 2 * i)).collect();
+    for speed in 0..=2u8 {
+        let mut enc = Encoder::new(EncoderConfig {
+            width: w as u32,
+            height: h as u32,
+            qp: 30,
+            keyint: 4,
+            speed,
+            ..EncoderConfig::default()
+        })
+        .unwrap();
+        let started = std::time::Instant::now();
+        let mut bytes = 0usize;
+        let mut psnr_sum = 0.0f64;
+        for src in &frames {
+            let packet = enc.encode_frame(src).unwrap();
+            bytes += packet.data.len();
+            psnr_sum += psnr(src, enc.last_recon()).overall;
+        }
+        let dt = started.elapsed().as_secs_f64();
+        println!(
+            "speed {speed}: {:.2} fps, {bytes} bytes, PSNR {:.2} dB",
+            frames.len() as f64 / dt,
+            psnr_sum / frames.len() as f64
+        );
+    }
+}
+
 /// Конфигурационные ошибки ловятся.
 #[test]
 fn config_validation() {
@@ -419,6 +526,13 @@ fn config_validation() {
     assert!(Encoder::new(cfg(64, 60, 10)).is_err()); // высота не кратна 8
     assert!(Encoder::new(cfg(64, 64, 64)).is_err()); // qp вне диапазона
     assert!(Encoder::new(cfg_gop(64, 64, 10, 0)).is_err()); // keyint = 0
+    assert!(
+        Encoder::new(EncoderConfig {
+            speed: 3,
+            ..cfg(64, 64, 10)
+        })
+        .is_err()
+    ); // speed вне диапазона
     assert!(
         Encoder::new(EncoderConfig {
             width: 20_000,
