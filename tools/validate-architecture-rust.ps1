@@ -53,7 +53,7 @@ function Get-CrateCategory {
     if ($relative -eq "Backend/crates/flora-api") { return "api" }
     if ($relative -eq "Backend/crates/flora-shared") { return "shared" }
     if ($relative -eq "Backend/crates/flora-migrate") { return "migrate" }
-    if ($relative -eq "Backend/tests/parity") { return "parity" }
+    if ($relative -eq "Backend/Tests/parity") { return "parity" }
     if ($relative.StartsWith("Backend/crates/infrastructure/")) { return "infrastructure" }
 
     if ($relative -eq "Products/Flora.Social/crates/flora-social") { return "product" }
@@ -90,15 +90,20 @@ foreach ($package in $packages) {
     }
     if ($category -eq "parity") { continue }
 
-    $internalDeps = @($package.dependencies | Where-Object { $internalNames.Contains($_.name) })
+    $internalDeps = @($package.dependencies | Where-Object {
+            $internalNames.Contains($_.name) -and
+            (-not $_.kind -or $_.kind -eq "normal")
+        })
 
     foreach ($dependency in $internalDeps) {
         $dep = $dependency.name
         $allowed = switch ($category) {
             "api" { ($dep -eq "flora-social") -or ($dep -eq "flora-shared") }
             "product" {
+                # Composition: module roots + their contracts (ports) + shared + functional.
                 $socialModuleRoots.Contains($dep) -or ($dep -eq "flora-shared") -or
-                ($dep -eq "flora-economy") -or $functionalKernels.Contains($dep)
+                ($dep -eq "flora-economy") -or $functionalKernels.Contains($dep) -or
+                ($dep.StartsWith("flora-") -and $dep.EndsWith("-contracts"))
             }
             "module-root" {
                 $dep.EndsWith("-contracts") -or ($dep -eq "flora-shared") -or

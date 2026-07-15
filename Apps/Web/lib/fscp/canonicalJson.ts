@@ -1,5 +1,5 @@
 /**
- * Canonical JSON для подписи envelope (docs/fscp/FSCP.md §Canonical encoding):
+ * Canonical JSON для подписи envelope (Documents/fscp/FSCP.md §Canonical encoding):
  * сортировка ключей объекта по UTF-16 code unit (не локале-зависимая — localeCompare
  * запрещён спекой, недетерминирован между ICU-окружениями), UTF-8 строка без BOM,
  * массивы рекурсивно в исходном порядке (recipients уже отсортирован снаружи).

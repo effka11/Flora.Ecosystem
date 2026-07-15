@@ -1,7 +1,7 @@
 /**
- * Safety number (fingerprint) v1 — docs/fscp/FSCP.md §Safety number.
+ * Safety number (fingerprint) v1 — Documents/fscp/FSCP.md §Safety number.
  * Два клиента при одинаковых входах обязаны получить одинаковый hex; сверка OOB.
- * Golden: docs/test-vectors/fingerprint-v1.json (consumer: goldenVectors.test.ts).
+ * Golden: Documents/test-vectors/fingerprint-v1.json (consumer: goldenVectors.test.ts).
  */
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";

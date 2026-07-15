@@ -1,7 +1,7 @@
 //! # flora-economy-crypto — детерминированное ядро Flora Economic Protocol (FEP)
 //!
-//! Нормативная спецификация — [`docs/fep/FEP.md`](../../../../docs/fep/FEP.md); криптослой рифмуется
-//! с [`docs/fgp/FGP-CRYPTO.md`](../../../../docs/fgp/FGP-CRYPTO.md) (общие принципы: детерминизм,
+//! Нормативная спецификация — [`Documents/fep/FEP.md`](../../../../Documents/fep/FEP.md); криптослой рифмуется
+//! с [`Documents/fgp/FGP-CRYPTO.md`](../../../../Documents/fgp/FGP-CRYPTO.md) (общие принципы: детерминизм,
 //! transparent-примитивы, одно ядро native+wasm). Этот crate реализует **экономический движок**:
 //! состояние, переходы, инварианты сохранения и проверяемый журнал.
 //!

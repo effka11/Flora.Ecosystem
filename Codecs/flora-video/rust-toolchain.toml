@@ -1,9 +1,0 @@
-# Тот же канал, что и Backend/ (осознанное единообразие тулчейна).
-#
-# Windows без MSVC Build Tools: линковка msvc-toolchain падает (нет msvcrt.lib / Windows SDK).
-# Локальный override на GNU-хост (состояние rustup, не файл в репо):
-#   rustup override set 1.97.0-x86_64-pc-windows-gnu --path Codecs/flora-video
-[toolchain]
-channel = "1.97.0"
-components = ["rustfmt", "clippy"]
-profile = "minimal"

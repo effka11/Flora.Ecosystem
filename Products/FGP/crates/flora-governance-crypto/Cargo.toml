@@ -1,6 +1,6 @@
 [package]
 name = "flora-governance-crypto"
-description = "Криптоядро FGP/FPP, профиль P0: детерминированная Q32.32-арифметика, реестр доменных меток, Merkle-журнал прозрачности, формулы весов FGP §4. Нормативная спецификация: docs/fgp/FGP-CRYPTO.md; golden-вектора: docs/test-vectors/governance/. Один код для native (сервер) и wasm32 (@flora/client-core)."
+description = "Криптоядро FGP/FPP, профиль P0: детерминированная Q32.32-арифметика, реестр доменных меток, Merkle-журнал прозрачности, формулы весов FGP §4. Нормативная спецификация: Documents/fgp/FGP-CRYPTO.md; golden-вектора: Documents/test-vectors/governance/. Один код для native (сервер) и wasm32 (@flora/client-core)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

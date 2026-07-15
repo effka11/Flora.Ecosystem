@@ -1,9 +1,9 @@
 //! FIRA-C — скорер рекомендаций сообществ, порт as-built v1.
 //!
-//! Эталон (freeze до cutover Фазы 3, `docs/fira/FIRA.md` §15):
+//! Эталон (freeze до cutover Фазы 3, `Documents/fira/FIRA.md` §15):
 //! `Modules/Flora.Content/Flora.Content.Application/Communities/CommunityRecommendationScorer.cs`;
 //! сортировка — `CommunityRecommendationService.GetOrComputeSnapshotAsync`.
-//! Golden-вектор: `docs/test-vectors/fira/fira-c-scorer-v1.json`.
+//! Golden-вектор: `Documents/test-vectors/fira/fira-c-scorer-v1.json`.
 
 use chrono::{DateTime, Utc};
 use flora_shared::dotnet_time::{ticks_between, total_days};

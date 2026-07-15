@@ -1,5 +1,5 @@
 # CI Flora.Ecosystem — обязательные ворота перед merge в main.
-# Имена джобов (dotnet, architecture, ts, web, rust) используются как required status checks
+# Имена джобов (architecture, ts, web, rust) используются как required status checks
 # в защите ветки — см. Scripts/setup-github-protection.ps1. Не переименовывать без синхронизации.
 name: CI
 
@@ -16,33 +16,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  dotnet:
-    name: dotnet
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - name: Build
-        run: dotnet build Flora.Ecosystem.slnx --configuration Release
-      # Тесты самодостаточны: health-тест поднимает WebApplicationFactory (Development,
-      # эфемерный JWT-секрет), фикстуры контрактов закоммичены в artifacts/contract-fixtures.
-      - name: Test
-        run: dotnet test Flora.Ecosystem.slnx --configuration Release --no-build
-
   architecture:
     name: architecture
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate C# module boundaries
-        shell: pwsh
-        run: ./tools/Validate-Architecture.ps1
-      # cargo metadata uses repo-root Cargo.toml (Products + Backend members).
       - name: Validate Rust crate boundaries
         shell: pwsh
-        run: ./tools/validate-architecture-rust.ps1
+        run: ./Tools/validate-architecture-rust.ps1
 
   ts:
     name: ts
@@ -54,7 +35,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       # Workspaces: Apps/Mobile + Packages/* (client-core). Тесты client-core читают
-      # artifacts/contract-fixtures — кросс-языковой контракт с бэкендом.
+      # Artifacts/contract-fixtures — кросс-языковой контракт с бэкендом.
       - name: Install
         run: npm ci
       - name: Typecheck + lint + test

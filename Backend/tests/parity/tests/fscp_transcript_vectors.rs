@@ -1,10 +1,10 @@
 //! Consumer полного транскрипт-вектора fscp-message-transcript-v1.json
-//! (docs/fscp/FSCP.md §Test vectors) — единственный вектор, проходящий ВЕСЬ путь
+//! (Documents/fscp/FSCP.md §Test vectors) — единственный вектор, проходящий ВЕСЬ путь
 //! FSCP v1 на Rust: форма wire (боевой порт `flora_messaging::fscp`) →
 //! canonical JSON (`flora_parity::canonical_json`, байт-паритет с TS) →
 //! Ed25519 (ed25519-dalek) → RKE unwrap → расшифровка тела (RustCrypto).
 //!
-//! Регенерация вектора: python docs/test-vectors/_gen_fscp_message_transcript_v1.py
+//! Регенерация вектора: python Documents/test-vectors/_gen_fscp_message_transcript_v1.py
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -21,12 +21,12 @@ use x25519_dalek::x25519;
 
 fn vector() -> serde_json::Value {
     let path = repo_root()
-        .join("docs")
+        .join("Documents")
         .join("test-vectors")
         .join("fscp-message-transcript-v1.json");
     load_json(&path).expect(
         "нет fscp-message-transcript-v1.json — регенерация: \
-         python docs/test-vectors/_gen_fscp_message_transcript_v1.py",
+         python Documents/test-vectors/_gen_fscp_message_transcript_v1.py",
     )
 }
 

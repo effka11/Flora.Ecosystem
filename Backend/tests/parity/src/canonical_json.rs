@@ -1,4 +1,4 @@
-//! Canonical JSON для подписи FSCP-конверта (docs/fscp/FSCP.md §Canonical encoding) —
+//! Canonical JSON для подписи FSCP-конверта (Documents/fscp/FSCP.md §Canonical encoding) —
 //! байт-паритет с TS `canonicalJson.ts`: рекурсивная сортировка ключей объектов,
 //! массивы в исходном порядке, экранирование строк как `JSON.stringify`.
 //!

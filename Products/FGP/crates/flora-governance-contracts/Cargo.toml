@@ -1,6 +1,6 @@
 [package]
 name = "flora-governance-contracts"
-description = "FGP contracts (DTO/ports). Functional product FGP. Spec: docs/fgp/FGP.md."
+description = "FGP contracts (DTO/ports). Functional product FGP. Spec: Documents/fgp/FGP.md."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

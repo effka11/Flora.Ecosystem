@@ -27,7 +27,7 @@ fn main() -> anyhow::Result<()> {
 
     let vector = serde_json::json!({
         "vectorId": "backend_parity_jwt_hs256_rust_v1",
-        "generatedBy": "Backend/tests/parity (cargo run -p flora-parity --bin gen-cross-vectors)",
+        "generatedBy": "Backend/Tests/parity (cargo run -p flora-parity --bin gen-cross-vectors)",
         "algorithm": "HS256",
         "secretUtf8": options.secret,
         "issuer": options.issuer,

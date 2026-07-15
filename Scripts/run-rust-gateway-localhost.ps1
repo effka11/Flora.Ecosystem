@@ -1,16 +1,9 @@
 #Requires -Version 5.1
 <#
-  Rust flora-api gateway on :5290 — local parity with prod strangler.
-  Upstream: Gateway:DotnetUpstream → http://127.0.0.1:5284 (Backend/appsettings.json).
-  Music:ServeNative=true → native /api/music/* + workers.
-  Auth:ServeNative=true → native Auth HTTP (Фаза 2b).
-  Users:ServeNative=true → native me/privacy/blocks (Фаза 2b).
-  Content:ServeNative=true → native feed / has-new / create post.
-  Messaging:ServeNative=true → native unread-count + conversations.
-  Notifications:ServeNative=true → native list + unread-count.
+  Rust flora-api on :5290 — sole local API host (Phase 5: .NET removed).
 
   Requires: cargo on PATH, shared Jwt from ensure-shared-dev-jwt.ps1,
-  .NET upstream already listening (or start soon after).
+  PostgreSQL (docker compose), Backend/appsettings.json.
 #>
 $ErrorActionPreference = "Stop"
 $root = (Split-Path $PSScriptRoot -Parent | Resolve-Path).Path
@@ -29,15 +22,14 @@ $env:Messaging__ServeNative = "true"
 $env:Notifications__ServeNative = "true"
 $env:Verification__ServeNative = "true"
 $env:Verification__GrpcListen = "127.0.0.1:50051"
-# Local listen/upstream already in Backend/appsettings.json; env can override:
 if (-not $env:Gateway__Listen) { $env:Gateway__Listen = "127.0.0.1:5290" }
-if (-not $env:Gateway__DotnetUpstream) { $env:Gateway__DotnetUpstream = "http://127.0.0.1:5284" }
+# Phase 5: no .NET fallback
+$env:Gateway__DotnetUpstream = ""
 
 Write-Host @"
-Flora gateway (Rust) -> http://127.0.0.1:5290
+Flora API (Rust) -> http://127.0.0.1:5290
   config: $configDir
-  upstream: $($env:Gateway__DotnetUpstream)
-  Music + Auth + Users + Content + Messaging + Notifications + Verification ServeNative (gRPC :50051), shared Jwt
+  Music + Auth + Users + Content + Messaging + Notifications + Verification ServeNative (gRPC :50051)
 "@
 
 Set-Location $root

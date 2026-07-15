@@ -1,6 +1,6 @@
 [package]
 name = "flora-codec-tools"
-description = "CLI семейства кодеков FRC: encode/decode/info/bench для FRC-I (фото); видео/аудио субкоманды добавляются рядом (docs/codecs/CODECS.md)"
+description = "CLI семейства кодеков FRC: encode/decode/info/bench для FRC-I (фото); видео/аудио субкоманды добавляются рядом (Documents/codecs/CODECS.md)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

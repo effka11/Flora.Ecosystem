@@ -1,0 +1,3 @@
+# Cargo build output directory (repo convention: Target/, not target/).
+[build]
+target-dir = "Target"

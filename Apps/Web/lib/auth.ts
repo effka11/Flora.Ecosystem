@@ -233,7 +233,7 @@ export function clearSession() {
   clearFscpLegacyFlatKeys();
   /**
    * Профили FSCP по пользователю (`flora.fscp.profile.v1.*`) **не** удаляем: после повторного входа
-   * тот же браузер восстанавливает ключи и может расшифровать историю (см. docs/fscp/FSCP.md — device-held material).
+   * тот же браузер восстанавливает ключи и может расшифровать историю (см. Documents/fscp/FSCP.md — device-held material).
    * Полный сброс ключей на этом устройстве — явный вызов {@link clearFscpMaterialForUser} / {@link clearFscpLocalStorage}.
    */
   if (hadSession) notifySessionCleared();

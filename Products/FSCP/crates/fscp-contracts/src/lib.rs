@@ -1,5 +1,5 @@
 //! FSCP contracts — shared constants for the functional product.
-//! Spec: `docs/fscp/FSCP.md`. Server validation lives in `fscp-core`.
+//! Spec: `Documents/fscp/FSCP.md`. Server validation lives in `fscp-core`.
 
 use uuid::Uuid;
 

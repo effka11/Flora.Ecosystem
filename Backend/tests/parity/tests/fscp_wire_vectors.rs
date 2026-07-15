@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 fn vector() -> serde_json::Value {
     let path = repo_root()
-        .join("docs")
+        .join("Documents")
         .join("test-vectors")
         .join("fscp-wire-validator-v1.json");
     load_json(&path)

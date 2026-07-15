@@ -1,4 +1,4 @@
-//! Паритет скореров FIRA с C#-эталоном (golden-вектора `docs/test-vectors/fira/`, FIRA.md §15).
+//! Паритет скореров FIRA с C#-эталоном (golden-вектора `Documents/test-vectors/fira/`, FIRA.md §15).
 //!
 //! Score сравнивается с относительным допуском `scoreToleranceRelative` из вектора
 //! (трансцендентные ln/exp/tanh могут расходиться на ~1 ulp между libm-реализациями);

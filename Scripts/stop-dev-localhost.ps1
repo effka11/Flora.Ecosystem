@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 <#
-Освобождает порты локальной разработки перед dotnet watch / next dev.
+Освобождает порты локальной разработки перед flora-api / next dev.
 
   ./Scripts/stop-dev-localhost.ps1 -Api
   ./Scripts/stop-dev-localhost.ps1 -Web

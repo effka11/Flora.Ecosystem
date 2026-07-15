@@ -1,5 +1,5 @@
 //! FIRA contracts — types owned by the functional product (not Users/Content modules).
-//! Spec: `docs/fira/FIRA.md`. Users persists UIP and maps into [`InterestProfile`].
+//! Spec: `Documents/fira/FIRA.md`. Users persists UIP and maps into [`InterestProfile`].
 
 use serde::{Deserialize, Serialize};
 

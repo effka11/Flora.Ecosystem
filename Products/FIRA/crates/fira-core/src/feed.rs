@@ -1,11 +1,11 @@
 //! FIRA-F — скорер и постобработка ленты, порт as-built v1 (Phase 0, α = 0).
 //!
-//! Эталон (freeze до cutover Фазы 3, `docs/fira/FIRA.md` §15, §17):
+//! Эталон (freeze до cutover Фазы 3, `Documents/fira/FIRA.md` §15, §17):
 //! - `Modules/Flora.Content/Flora.Content.Application/Feed/FiraFeedScorer.cs`
 //! - `Modules/Flora.Content/Flora.Content.Application/Feed/FiraFeedPostProcessing.cs`
 //!
-//! Числовой паритет доказывается golden-векторами `docs/test-vectors/fira/fira-f-scorer-v1.json`
-//! и `fira-f-postprocessing-v1.json` (Rust-потребитель — `Backend/tests/parity/tests/fira_vectors.rs`).
+//! Числовой паритет доказывается golden-векторами `Documents/test-vectors/fira/fira-f-scorer-v1.json`
+//! и `fira-f-postprocessing-v1.json` (Rust-потребитель — `Backend/Tests/parity/tests/fira_vectors.rs`).
 //! Трансцендентные функции (ln/exp/tanh) сверяются с относительным допуском 1e-12;
 //! порядок ранжирования и позиционная постобработка — точно.
 

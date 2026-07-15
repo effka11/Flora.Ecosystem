@@ -1,8 +1,8 @@
 //! FRC-A (Flora Relativistic Codec — Audio) — эталонная реализация битстрима v0.
 //!
-//! Нормативная спецификация: `docs/codecs/FRC-A.md`. Чистый Rust без unsafe и без
+//! Нормативная спецификация: `Documents/codecs/FRC-A.md`. Чистый Rust без unsafe и без
 //! внешних зависимостей — переносим на wasm32 (E2E-голосовые кодируются на клиенте,
-//! см. `docs/codecs/CODECS.md`) и пригоден для FFI.
+//! см. `Documents/codecs/CODECS.md`) и пригоден для FFI.
 //!
 //! ```
 //! use frc_a_core::{Config, Decoder, Encoder, FRAME_N};

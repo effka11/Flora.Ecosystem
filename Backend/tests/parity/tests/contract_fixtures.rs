@@ -19,7 +19,7 @@ fn all_fixtures() -> Vec<(String, serde_json::Value)> {
     }
     assert!(
         result.len() >= 8,
-        "ожидались фикстуры в artifacts/contract-fixtures"
+        "ожидались фикстуры в Artifacts/contract-fixtures"
     );
     result
 }

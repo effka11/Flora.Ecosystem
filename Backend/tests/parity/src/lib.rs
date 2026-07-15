@@ -6,7 +6,7 @@ pub mod semantic;
 
 use std::path::PathBuf;
 
-/// Корень репозитория (Backend/tests/parity → три уровня вверх).
+/// Корень репозитория (Backend/Tests/parity → три уровня вверх).
 pub fn repo_root() -> PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -17,19 +17,19 @@ pub fn repo_root() -> PathBuf {
 }
 
 pub fn contract_fixtures_dir() -> PathBuf {
-    repo_root().join("artifacts").join("contract-fixtures")
+    repo_root().join("Artifacts").join("contract-fixtures")
 }
 
 pub fn golden_vectors_dir() -> PathBuf {
     repo_root()
-        .join("docs")
+        .join("Documents")
         .join("test-vectors")
         .join("backend-parity")
 }
 
 /// Вектора FIRA (FIRA.md §15): скореры четырёх компонентов + постобработка FIRA-F.
 pub fn fira_vectors_dir() -> PathBuf {
-    repo_root().join("docs").join("test-vectors").join("fira")
+    repo_root().join("Documents").join("test-vectors").join("fira")
 }
 
 pub fn load_json(path: &std::path::Path) -> anyhow::Result<serde_json::Value> {

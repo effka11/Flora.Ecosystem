@@ -1,4 +1,4 @@
-//! Паритет wire DTO с contract fixtures (artifacts/contract-fixtures/music-*.json).
+//! Паритет wire DTO с contract fixtures (Artifacts/contract-fixtures/music-*.json).
 
 use flora_music_contracts::{
     MusicArtistDetailDto, MusicArtistSummaryDto, MusicGenreCatalogDto, MusicPlaylistDetailDto,
@@ -8,9 +8,9 @@ use std::path::PathBuf;
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../../artifacts/contract-fixtures")
+        .join("../../../../../Artifacts/contract-fixtures")
         .canonicalize()
-        .expect("artifacts/contract-fixtures")
+        .expect("Artifacts/contract-fixtures")
 }
 
 fn load(name: &str) -> serde_json::Value {

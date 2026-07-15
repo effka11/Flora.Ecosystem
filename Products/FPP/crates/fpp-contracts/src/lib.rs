@@ -1,5 +1,5 @@
 //! FPP contracts — personhood ports for Governance/Economy consumers.
-//! Spec: `docs/fpp/FPP.md`. Persistence (`personhood_*`) is owned by Social Verification.
+//! Spec: `Documents/fpp/FPP.md`. Persistence (`personhood_*`) is owned by Social Verification.
 
 /// Personhood attestation level V0–V3 (normative names; full API lands with Verification cutover).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

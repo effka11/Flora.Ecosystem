@@ -8,7 +8,7 @@
 //! именно так и реализовано ниже. Непарные суррогаты (возможные в C#-строках) в Rust `&str`
 //! непредставимы и в наших данных (Postgres text = валидный UTF-8) не встречаются.
 //!
-//! Нормативные потребители — tie-break'и FIRA (`docs/fira/FIRA.md` §15):
+//! Нормативные потребители — tie-break'и FIRA (`Documents/fira/FIRA.md` §15):
 //! `Name asc` (FIRA-C), `DisplayName asc` (FIRA-P), `Title asc` (FIRA-M),
 //! а также case-insensitive ключи жанровых весов FIRA-M.
 

@@ -13,7 +13,7 @@ import {
   parseCommunityProfile,
 } from "./communities.js";
 
-const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "../../../../artifacts/contract-fixtures");
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "../../../../Artifacts/contract-fixtures");
 
 function loadFixture(name: string): unknown {
   return JSON.parse(readFileSync(join(fixturesDir, name), "utf8"));

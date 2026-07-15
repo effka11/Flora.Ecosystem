@@ -1,4 +1,4 @@
-//! Argon2id — паритет `Argon2PasswordHasher.cs` / `docs/test-vectors/backend-parity/argon2id-v1.json`.
+//! Argon2id — паритет `Argon2PasswordHasher.cs` / `Documents/test-vectors/backend-parity/argon2id-v1.json`.
 
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::Engine as _;
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn golden_vector_case_verifies() {
-        // docs/test-vectors/backend-parity/argon2id-v1.json case[1] (ASCII-friendly)
+        // Documents/test-vectors/backend-parity/argon2id-v1.json case[1] (ASCII-friendly)
         let password = "простой-пароль-123";
         let stored = "8OHSw7Sllod4aVpLPC0eD0W2OWZGOzFd9mmPwRicJvM8XHz2Y/DIKgTVA6aqL/Hc";
         assert!(verify_password(password, stored));

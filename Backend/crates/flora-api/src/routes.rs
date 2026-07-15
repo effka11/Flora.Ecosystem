@@ -1,5 +1,5 @@
 //! Нативные маршруты хоста: `/`, `/health`, `/version` — паритет с `Flora.API/Program.cs`,
-//! формы ответов зафиксированы фикстурами `artifacts/contract-fixtures/api-*.json`.
+//! формы ответов зафиксированы фикстурами `Artifacts/contract-fixtures/api-*.json`.
 
 use axum::routing::get;
 use axum::{Json, Router};

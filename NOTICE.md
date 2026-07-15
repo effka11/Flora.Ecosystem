@@ -1,8 +1,8 @@
-Ôªø# NOTICE ‚Äî Flora Ecosystem
+# NOTICE ó Flora Ecosystem
 
 **Project:** Flora Ecosystem (repository: [`Flora.Ecosystem`](https://github.com/effka11/Flora.Ecosystem))
 
-**Copyright (c) 2026 Egor Ozerskikh (–ï–≥–æ—Ä –û–∑–µ—Ä—Å–∫–∏—Ö).**
+**Copyright (c) 2026 Egor Ozerskikh (???? ????????).**
 
 Commercial licensing under the **Luna Ecosystem** brand is administered by the copyright holder
 (e.ozerskikh@gmail.com).
@@ -13,41 +13,41 @@ copies and derivative works.
 
 ## 1. Source code
 
-All source code in this repository ‚Äî including `Flora.API/`, `Flora.Migrations/`, `Flora.Shared/`,
+All source code in this repository ó including `Flora.API/`, `Flora.Migrations/`, `Flora.Shared/`,
 `Modules/`, `Products/`, `Infrastructure/`, `Apps/`, `Packages/`, `Scripts/`, `tools/`, `tests/`,
-and build/configuration files ‚Äî is licensed, at your option, under either:
+and build/configuration files ó is licensed, at your option, under either:
 
-1. the **GNU Affero General Public License, version 3 only (AGPL-3.0-only)** ‚Äî see
+1. the **GNU Affero General Public License, version 3 only (AGPL-3.0-only)** ó see
    [`LICENSE`](LICENSE); or
 2. a **commercial license** granted by a separate written agreement with the copyright holder
-   (Luna Ecosystem brand) ‚Äî see [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
+   (Luna Ecosystem brand) ó see [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
 
 SPDX expression: `AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial`, where
 `LicenseRef-Flora-Ecosystem-Commercial` refers to [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
 
 The AGPL grant is made for **version 3 of the license only**; the "or any later version" option
-described in AGPLv3 ¬ß14 is **not** offered. Only the copyright holder may relicense the code under
+described in AGPLv3 ß14 is **not** offered. Only the copyright holder may relicense the code under
 later license versions.
 
 ## 2. Non-code materials
 
-Documentation, specifications (FSCP, FIRA, FGP, CODECS and other documents under `docs/`),
+Documentation, specifications (FSCP, FIRA, FGP, CODECS and other documents under `Documents/`),
 explanatory texts, design materials, UI/UX concepts, illustrations, brand graphics, and media assets
 are licensed under **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)** or a
-commercial content license ‚Äî see [`LICENSE-CONTENT.md`](LICENSE-CONTENT.md). Code fragments,
+commercial content license ó see [`LICENSE-CONTENT.md`](LICENSE-CONTENT.md). Code fragments,
 schemas, and configuration samples inside documentation remain under the source-code licensing of
 section 1.
 
 ## 3. Additional terms under AGPLv3 section 7
 
 For the AGPL-licensed distribution of Flora Ecosystem, the following additional terms apply in
-accordance with AGPLv3 ¬ß7:
+accordance with AGPLv3 ß7:
 
-1. **Preservation of legal notices ‚Äî ¬ß7(b).** All copyright notices, this `NOTICE.md` file, the
+1. **Preservation of legal notices ó ß7(b).** All copyright notices, this `NOTICE.md` file, the
    `LICENSE`, `LICENSE-COMMERCIAL.md`, `LICENSE-CONTENT.md`, and `LEGAL.md` files, and in-file
    copyright/license headers are protected author attributions and legal notices. They must be
    preserved intact in all copies and derivative works.
-2. **No trademark grant ‚Äî ¬ß7(e).** No rights are granted to use the trade names, trademarks,
+2. **No trademark grant ó ß7(e).** No rights are granted to use the trade names, trademarks,
    service marks, or project identity listed in section 5, except for descriptive references
    required to preserve attribution.
 
@@ -60,7 +60,7 @@ by the Flora Ecosystem commercial license. Notable items:
 - **ffmpeg-kit (full-gpl builds)**, used by the mobile media pipeline, is licensed under **GPL
   v3.0**;
 - **@ffmpeg/core (ffmpeg.wasm)** builds used by the web app may include GPL-licensed codecs;
-- the mobile app was originally bootstrapped from the **Expo template** (MIT) ‚Äî see the attribution
+- the mobile app was originally bootstrapped from the **Expo template** (MIT) ó see the attribution
   in [`Apps/Mobile/LICENSE`](Apps/Mobile/LICENSE).
 
 ## 5. Trademarks and project identity
@@ -68,12 +68,12 @@ by the Flora Ecosystem commercial license. Notable items:
 "Flora", "Flora Ecosystem", "Flora Social", "Luna", "Luna Ecosystem" (including the technical
 spellings `Flora.Ecosystem`, `Flora.Social`, `Luna.Ecosystem`), the designations "FERA", "FIRA",
 "FSCP", "FGP", the project logos, and the brand identity are designations of the project and are
-protected separately from the code and content licenses. See [`LEGAL.md`](LEGAL.md) ¬ß6. Forks must
+protected separately from the code and content licenses. See [`LEGAL.md`](LEGAL.md) ß6. Forks must
 use their own distinct name and must not present themselves as the official Flora Ecosystem or as
 affiliated with Flora Ecosystem / Luna Ecosystem.
 
 ## 6. Contacts
 
-- Copyright holder and commercial / legal licensing: **Egor Ozerskikh** ‚Äî
+- Copyright holder and commercial / legal licensing: **Egor Ozerskikh** ó
   **e.ozerskikh@gmail.com** (Luna Ecosystem brand)
 - Security reports: **flora.dev.hub@gmail.com** (see [`SECURITY.md`](SECURITY.md))

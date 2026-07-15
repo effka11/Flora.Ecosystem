@@ -10,7 +10,7 @@ publish.workspace = true
 [lints]
 workspace = true
 
-# Тестовая инфраструктура: исключена из правил границ §2.3 (см. tools/validate-architecture-rust.ps1) —
+# Тестовая инфраструктура: исключена из правил границ §2.3 (см. Tools/validate-architecture-rust.ps1) —
 # ей по определению нужны реализации всех модулей для паритетных прогонов.
 [dependencies]
 flora-shared = { workspace = true }

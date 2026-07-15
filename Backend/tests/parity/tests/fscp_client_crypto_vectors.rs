@@ -1,5 +1,5 @@
 //! Клиентская криптография FSCP на RustCrypto против golden-векторов
-//! (docs/fscp/FSCP.md §Key agreement, §Safety number; вектора — docs/test-vectors/).
+//! (Documents/fscp/FSCP.md §Key agreement, §Safety number; вектора — Documents/test-vectors/).
 //!
 //! Сервер эту криптографию не исполняет (§4.4: только форма). Тест решает две задачи:
 //! 1) тройная верификация векторов (python-генератор ↔ TS consumer ↔ Rust) — расхождение
@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 use x25519_dalek::{X25519_BASEPOINT_BYTES, x25519};
 
 fn vectors_dir() -> std::path::PathBuf {
-    repo_root().join("docs").join("test-vectors")
+    repo_root().join("Documents").join("test-vectors")
 }
 
 fn b64u(s: &str) -> Vec<u8> {
@@ -36,7 +36,7 @@ fn hex_lower(bytes: &[u8]) -> String {
 
 fn rke_vector() -> serde_json::Value {
     load_json(&vectors_dir().join("fscp-rke-wrap-key-v1.json")).expect(
-        "нет fscp-rke-wrap-key-v1.json (регенерация: python docs/test-vectors/_gen_fscp_rke_v1.py)",
+        "нет fscp-rke-wrap-key-v1.json (регенерация: python Documents/test-vectors/_gen_fscp_rke_v1.py)",
     )
 }
 

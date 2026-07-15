@@ -36,7 +36,7 @@ pub fn agreement_public_key_id(user_uuid: &Uuid, key_epoch_id: &Uuid) -> Uuid {
 mod tests {
     use super::*;
 
-    // Полный паритет со значениями C#/TS проверяется на golden-векторах в tests/parity;
+    // Полный паритет со значениями C#/TS проверяется на golden-векторах в Tests/parity;
     // здесь — инварианты самой реализации.
 
     #[test]

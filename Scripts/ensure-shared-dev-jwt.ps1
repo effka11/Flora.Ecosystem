@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
-  Shared Jwt:Secret for local strangler (.NET :5284 + Rust gateway :5290).
-  File: <repo>/.flora/dev-jwt.secret (gitignored). Created once, reused.
+  Shared Jwt:Secret for local flora-api.
+  File: <repo>/Local/.flora/dev-jwt.secret (gitignored via /Local/). Created once, reused.
 
   Dot-source or capture:
     $secret = & .\Scripts\ensure-shared-dev-jwt.ps1
@@ -14,11 +14,22 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $root = (Split-Path $PSScriptRoot -Parent | Resolve-Path).Path
-$dir = Join-Path $root ".flora"
+$dir = Join-Path $root "Local\.flora"
 $path = Join-Path $dir "dev-jwt.secret"
 
+# One-time migrate from legacy <repo>/.flora/
+$legacyDir = Join-Path $root ".flora"
+$legacyPath = Join-Path $legacyDir "dev-jwt.secret"
+if ((-not (Test-Path $path)) -and (Test-Path $legacyPath)) {
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    Move-Item -LiteralPath $legacyPath -Destination $path -Force
+    Write-Host "Migrated Jwt secret: $legacyPath -> $path"
+}
+
 if (-not (Test-Path $dir)) {
-    New-Item -ItemType Directory -Path $dir | Out-Null
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
 }
 
 if (-not (Test-Path $path) -or ((Get-Item $path).Length -lt 32)) {

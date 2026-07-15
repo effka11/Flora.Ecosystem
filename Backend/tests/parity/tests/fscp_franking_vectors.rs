@@ -1,4 +1,4 @@
-//! Consumer golden-вектора franking-v1.json (docs/fscp/franking.md §5) на RustCrypto:
+//! Consumer golden-вектора franking-v1.json (Documents/fscp/franking.md §5) на RustCrypto:
 //! commitInput → HMAC-SHA-256 frankTag → receiptPayload → Ed25519-квитанция →
 //! полный verify-путь жюри + негативы с задекларированными причинами.
 //!
@@ -6,7 +6,7 @@
 //! этот тест заранее доказывает байт-совместимость примитивов с эталоном
 //! (python-генератор ↔ TS `franking.ts` ↔ Rust).
 //!
-//! Регенерация: python docs/test-vectors/_gen_fscp_franking_v1.py
+//! Регенерация: python Documents/test-vectors/_gen_fscp_franking_v1.py
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -19,11 +19,11 @@ type HmacSha256 = Hmac<Sha256>;
 
 fn vector() -> serde_json::Value {
     let path = repo_root()
-        .join("docs")
+        .join("Documents")
         .join("test-vectors")
         .join("franking-v1.json");
     load_json(&path).expect(
-        "нет franking-v1.json — регенерация: python docs/test-vectors/_gen_fscp_franking_v1.py",
+        "нет franking-v1.json — регенерация: python Documents/test-vectors/_gen_fscp_franking_v1.py",
     )
 }
 

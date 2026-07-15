@@ -1,6 +1,6 @@
 [package]
 name = "fpp-crypto"
-description = "FPP cryptographic helpers (nullifiers etc.). Spec docs/fpp + docs/fgp/FGP-CRYPTO.md."
+description = "FPP cryptographic helpers (nullifiers etc.). Spec Documents/fpp + Documents/fgp/FGP-CRYPTO.md."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

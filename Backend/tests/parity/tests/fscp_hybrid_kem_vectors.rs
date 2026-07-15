@@ -1,5 +1,5 @@
 //! Consumer golden-вектора fscp-hybrid-kem-v2draft-v1.json — прототип гибридного
-//! пост-квантового KEM X25519 + ML-KEM-768 (docs/fscp/FSCP.md §Целевой алгоритм → Post-quantum).
+//! пост-квантового KEM X25519 + ML-KEM-768 (Documents/fscp/FSCP.md §Целевой алгоритм → Post-quantum).
 //!
 //! Статус: v2-draft. Wire v1 не затрагивает; в продакшн-крейты ML-KEM не входит —
 //! ml-kem (RustCrypto) живёт только в dev-dependencies паритет-харнесса.
@@ -22,12 +22,12 @@ use x25519_dalek::{X25519_BASEPOINT_BYTES, x25519};
 fn vector() -> serde_json::Value {
     load_json(
         &repo_root()
-            .join("docs")
+            .join("Documents")
             .join("test-vectors")
             .join("fscp-hybrid-kem-v2draft-v1.json"),
     )
     .expect(
-        "нет fscp-hybrid-kem-v2draft-v1.json (регенерация: python docs/test-vectors/_gen_fscp_hybrid_kem_v2draft_v1.py)",
+        "нет fscp-hybrid-kem-v2draft-v1.json (регенерация: python Documents/test-vectors/_gen_fscp_hybrid_kem_v2draft_v1.py)",
     )
 }
 

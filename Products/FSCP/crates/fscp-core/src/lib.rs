@@ -1,7 +1,7 @@
 //! Серверная структурная валидация FSCP wire — порт `Products/Flora.Social/FscpWireEnvelopeValidator.cs`.
 //!
 //! Functional product: `Products/FSCP`. Инвариант next-architecture.md §4.4: сервер **не расшифровывает**.
-//! Golden: `docs/test-vectors/fscp-wire-validator-v1.json`.
+//! Golden: `Documents/test-vectors/fscp-wire-validator-v1.json`.
 
 use base64::Engine as _;
 use base64::alphabet;
@@ -370,7 +370,7 @@ mod tests {
     use super::*;
 
     // Полный паритет с C#-эталоном — golden-вектор fscp-wire-validator-v1.json,
-    // consumer в tests/parity/tests/fscp_wire_vectors.rs. Здесь — инварианты хелперов.
+    // consumer в Tests/parity/tests/fscp_wire_vectors.rs. Здесь — инварианты хелперов.
 
     #[test]
     fn base64_helper_matches_dotnet_quirks() {

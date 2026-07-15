@@ -110,27 +110,11 @@ mkdir -p /etc/systemd/system/flora-web.service.d
 systemctl daemon-reload
 systemctl enable flora-web >/dev/null 2>&1 || true
 
-mkdir -p /etc/systemd/system
-{
-  echo '[Unit]'
-  echo 'Description=Flora.API .NET upstream (Phase 0+)'
-  echo 'After=network.target'
-  echo
-  echo '[Service]'
-  echo 'Type=simple'
-  echo 'WorkingDirectory=/opt/flora-ecosystem/runtime/api'
-  echo 'Environment=ASPNETCORE_ENVIRONMENT=Production'
-  echo 'Environment=ASPNETCORE_URLS=http://127.0.0.1:5000'
-  echo 'EnvironmentFile=-/etc/flora-ecosystem/flora-api-cors.env'
-  echo 'EnvironmentFile=-/etc/flora-ecosystem/flora-api.env'
-  echo 'ExecStart=/opt/flora-ecosystem/runtime/api/Flora.API'
-  echo 'Restart=always'
-  echo 'RestartSec=5'
-  echo
-  echo '[Install]'
-  echo 'WantedBy=multi-user.target'
-} >/etc/systemd/system/flora-api-dotnet.service
-systemctl enable flora-api-dotnet >/dev/null 2>&1 || true
+# Phase 5: .NET Flora.API removed — do not install flora-api-dotnet.
+# Rust flora-api is managed separately under /opt/flora-ecosystem/runtime/gateway/.
+if systemctl list-unit-files flora-api-dotnet.service >/dev/null 2>&1; then
+  systemctl disable --now flora-api-dotnet >/dev/null 2>&1 || true
+fi
 
 {
   printf 'FloraWeb__CorsOrigins__0=https://%s.%s\n' "$PUBLIC_SUBDOMAIN" "$DOMAIN"

@@ -1,4 +1,4 @@
-//! Паритет нативных маршрутов с C#-фикстурами `artifacts/contract-fixtures/api-*.json`
+//! Паритет нативных маршрутов с C#-фикстурами `Artifacts/contract-fixtures/api-*.json`
 //! (захвачены с работающего Flora.API — см. HostEndpointFixtureTests.cs).
 
 use axum::body::Body;
@@ -19,7 +19,7 @@ fn repo_root() -> std::path::PathBuf {
 
 fn load_fixture(name: &str) -> serde_json::Value {
     let path = repo_root()
-        .join("artifacts")
+        .join("Artifacts")
         .join("contract-fixtures")
         .join(name);
     let text = std::fs::read_to_string(&path)
