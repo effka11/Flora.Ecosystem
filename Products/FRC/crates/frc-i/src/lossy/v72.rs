@@ -260,19 +260,6 @@ fn predict_block4(b: &Border4, mode: u8) -> [i32; 16] {
     out
 }
 
-fn coeff_cost4(quantized: &[i32; 16]) -> u32 {
-    let mut cost = 4u32;
-    let dc = quantized[0].unsigned_abs();
-    cost += 2 * (32 - dc.leading_zeros());
-    for pos in 1..16 {
-        let v = quantized[ZIGZAG4[pos]].unsigned_abs();
-        if v != 0 {
-            cost += 6 + 2 * (32 - v.leading_zeros());
-        }
-    }
-    cost
-}
-
 fn quantize_freq4(freq: &[f32; 16], qmat4: &[u16; 16], ac_bias: f32) -> ([i32; 16], f32) {
     let mut quantized = [0i32; 16];
     let mut distortion = 0f32;
@@ -365,7 +352,7 @@ fn choose_mode4(
             freq_res[i] = freq_orig[i] - freq_pred[i];
         }
         let (quantized, distortion) = quantize_freq4(&freq_res, qmat4, ac_bias);
-        let cost = distortion + lambda * coeff_cost4(&quantized) as f32;
+        let cost = distortion + lambda * legacy_coeff_cost(&quantized, &ZIGZAG4) as f32;
         if best.as_ref().is_none_or(|(_, _, _, old)| cost < *old) {
             best = Some((mode, pred, quantized, cost));
         }
@@ -427,8 +414,7 @@ fn eval_block4(
         quantized,
         cost,
         forward_tx4,
-        coeff_cost4,
-        &ZIGZAG4,
+        tx_scan4,
     );
     let mut freq = [0f32; 16];
     let mut spatial = [0f32; 16];
@@ -536,7 +522,7 @@ fn eval_node8(
     let b = border(recon, w, h, bx, by);
     let cfl_block = cfl_luma.map(|luma| gather_block_i32(luma, w, h, bx, by));
     let ac_bias = adaptive_ac_bias(block_activity(&orig));
-    let (mode, pred, quantized, whole_base) = choose_mode(
+    let (mode, pred, quantized, whole_base) = choose_mode_v7(
         &orig,
         &b,
         cfl_block.as_ref(),
@@ -554,8 +540,7 @@ fn eval_node8(
         quantized,
         whole_base,
         forward_tx8,
-        coeff_cost,
-        &ZIGZAG,
+        tx_scan8,
     );
     let whole_cost = whole_base + lambda * (MODE_COST_BITS + TX_COST_BITS) as f32;
 
@@ -695,19 +680,6 @@ fn predict_block32(b: &Border32, mode: u8) -> [i32; 1024] {
     out
 }
 
-fn coeff_cost32(quantized: &[i32; 1024]) -> u32 {
-    let mut cost = 4u32;
-    let dc = quantized[0].unsigned_abs();
-    cost += 2 * (32 - dc.leading_zeros());
-    for pos in 1..1024 {
-        let v = quantized[ZIGZAG32[pos]].unsigned_abs();
-        if v != 0 {
-            cost += 6 + 2 * (32 - v.leading_zeros());
-        }
-    }
-    cost
-}
-
 fn quantize_freq32(freq: &[f32; 1024], qmat32: &[u16; 1024], ac_bias: f32) -> ([i32; 1024], f32) {
     let mut quantized = [0i32; 1024];
     let mut distortion = 0f32;
@@ -803,7 +775,7 @@ fn choose_mode32(
             freq_res[i] = freq_orig[i] - freq_pred[i];
         }
         let (quantized, distortion) = quantize_freq32(&freq_res, qmat32, ac_bias);
-        let cost = distortion + lambda * coeff_cost32(&quantized) as f32;
+        let cost = distortion + lambda * legacy_coeff_cost(&quantized, &ZIGZAG32) as f32;
         let better = best.as_ref().is_none_or(|(_, _, _, old)| cost < *old);
         if better {
             best = Some((mode, Box::new(pred), Box::new(quantized), cost));
@@ -943,7 +915,7 @@ fn eval_node16(
         let ac_bias = adaptive_ac_bias(block_activity16(&orig16));
         let b = border16(recon, w, h, sbx, sby);
         let cfl_block = cfl_luma.map(|luma| gather_block16_i32(luma, w, h, sbx, sby));
-        let (mode, pred, quantized, cost) = choose_mode16(
+        let (mode, pred, quantized, cost) = choose_mode16_v7(
             &orig16,
             &b,
             cfl_block.as_ref(),
@@ -961,8 +933,7 @@ fn eval_node16(
             quantized,
             cost,
             forward_tx16,
-            coeff_cost16,
-            &ZIGZAG16,
+            tx_scan16,
         );
         (mode, tx, pred, quantized, cost)
     };
@@ -1034,14 +1005,14 @@ fn emit_node8(node: &Node8, st: &mut CtxV7, syms: &mut Vec<(u8, u8)>, raw: &mut 
             syms.push((CTX7_SPLIT8, SPLIT_WHOLE));
             syms.push((CTX7_MODE, sub.mode));
             syms.push((CTX7_TX, sub.tx));
-            encode_coeffs_v7(&sub.quantized, sub.quantized[0], st, syms, raw);
+            encode_coeffs_v7(&sub.quantized, sub.quantized[0], sub.tx, st, syms, raw);
         }
         Node8::Split { subs } => {
             syms.push((CTX7_SPLIT8, SPLIT_QUAD));
             for sub in subs {
                 syms.push((CTX7_MODE, sub.mode));
                 syms.push((CTX7_TX, sub.tx));
-                encode_coeffs4_v7(&sub.quantized, st, syms, raw);
+                encode_coeffs4_v7(&sub.quantized, sub.tx, st, syms, raw);
             }
         }
     }
@@ -1057,7 +1028,7 @@ fn emit_node16(node: &Node16, st: &mut CtxV7, syms: &mut Vec<(u8, u8)>, raw: &mu
             syms.push((CTX7_SPLIT, SPLIT_WHOLE));
             syms.push((CTX7_MODE, *mode));
             syms.push((CTX7_TX, *tx));
-            encode_coeffs16_v7(quantized, st, syms, raw);
+            encode_coeffs16_v7(quantized, *tx, st, syms, raw);
         }
         Node16::Split { nodes } => {
             syms.push((CTX7_SPLIT, SPLIT_QUAD));
@@ -1075,10 +1046,12 @@ fn pos_bucket4(pos: usize) -> u8 {
 
 fn encode_coeffs4_v7(
     quantized: &[i32; 16],
+    tx: u8,
     st: &mut CtxV7,
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
 ) {
+    let scan = tx_scan4(tx);
     let nnz_b = st.prev_nnz;
     let (sym, bits, n_bits) = tokenize(zigzag(quantized[0]));
     syms.push((dc_ctx_v7(st.prev_dc), sym));
@@ -1091,7 +1064,7 @@ fn encode_coeffs4_v7(
     while pos < 16 {
         let run_start = pos;
         let mut run = 0usize;
-        while pos < 16 && quantized[ZIGZAG4[pos]] == 0 {
+        while pos < 16 && quantized[scan[pos]] == 0 {
             run += 1;
             pos += 1;
         }
@@ -1105,7 +1078,7 @@ fn encode_coeffs4_v7(
         syms.push((run_ctx_v7(pos_b, nnz_b), rsym));
         write_raw(raw, rbits, rn);
 
-        let level = quantized[ZIGZAG4[pos]];
+        let level = quantized[scan[pos]];
         let mag = level.unsigned_abs();
         let (lsym, lbits, ln) = tokenize(mag - 1);
         syms.push((level_ctx_v7(pos_bucket4(pos), lvl_bucket(prev_mag)), lsym));
@@ -1125,10 +1098,12 @@ fn pos_bucket32(pos: usize) -> u8 {
 
 fn encode_coeffs32_v7(
     quantized: &[i32; 1024],
+    tx: u8,
     st: &mut CtxV7,
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
 ) {
+    let scan = tx_scan32(tx);
     let nnz_b = st.prev_nnz;
     let (sym, bits, n_bits) = tokenize(zigzag(quantized[0]));
     syms.push((dc_ctx_v7(st.prev_dc), sym));
@@ -1141,7 +1116,7 @@ fn encode_coeffs32_v7(
     while pos < 1024 {
         let run_start = pos;
         let mut run = 0usize;
-        while pos < 1024 && quantized[ZIGZAG32[pos]] == 0 {
+        while pos < 1024 && quantized[scan[pos]] == 0 {
             run += 1;
             pos += 1;
         }
@@ -1155,7 +1130,7 @@ fn encode_coeffs32_v7(
         syms.push((run_ctx_v7(pos_b, nnz_b), rsym));
         write_raw(raw, rbits, rn);
 
-        let level = quantized[ZIGZAG32[pos]];
+        let level = quantized[scan[pos]];
         let mag = level.unsigned_abs();
         let (lsym, lbits, ln) = tokenize(mag - 1);
         syms.push((level_ctx_v7(pos_bucket32(pos), lvl_bucket(prev_mag)), lsym));
@@ -1231,8 +1206,7 @@ pub(super) fn encode_tile_plane(
                 *quant32,
                 cost32,
                 forward_tx32,
-                coeff_cost32,
-                &ZIGZAG32,
+                tx_scan32,
             );
 
             if hint == Some(SPLIT_WHOLE) {
@@ -1240,7 +1214,7 @@ pub(super) fn encode_tile_plane(
                 syms.push((CTX7_SPLIT32, SPLIT_WHOLE));
                 syms.push((CTX7_MODE, mode32));
                 syms.push((CTX7_TX, tx32));
-                encode_coeffs32_v7(&quant32, &mut st, syms, raw);
+                encode_coeffs32_v7(&quant32, tx32, &mut st, syms, raw);
                 continue;
             }
 
@@ -1265,7 +1239,7 @@ pub(super) fn encode_tile_plane(
                 syms.push((CTX7_SPLIT32, SPLIT_WHOLE));
                 syms.push((CTX7_MODE, mode32));
                 syms.push((CTX7_TX, tx32));
-                encode_coeffs32_v7(&quant32, &mut st, syms, raw);
+                encode_coeffs32_v7(&quant32, tx32, &mut st, syms, raw);
             } else {
                 syms.push((CTX7_SPLIT32, SPLIT_QUAD));
                 for node in &nodes {
@@ -1282,6 +1256,7 @@ fn decode_coeffs4_v7(
     dec: &mut RangeDecoder<'_>,
     raw: &mut BitReader<'_>,
     qmat4: &[u16; 16],
+    scan: &[usize; 16],
     freq: &mut [f32; 16],
     st: &mut CtxV7,
 ) -> Result<i32, DecodeError> {
@@ -1312,7 +1287,7 @@ fn decode_coeffs4_v7(
         let mag = detokenize(lsym, raw)?.wrapping_add(1);
         let sign = raw.read(1)?;
         let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
-        let index = ZIGZAG4[pos];
+        let index = scan[pos];
         freq[index] = level as f32 * f32::from(qmat4[index]);
         prev_mag = mag;
         nnz += 1;
@@ -1327,6 +1302,7 @@ fn decode_coeffs32_v7(
     dec: &mut RangeDecoder<'_>,
     raw: &mut BitReader<'_>,
     qmat32: &[u16; 1024],
+    scan: &[usize; 1024],
     freq: &mut [f32; 1024],
     st: &mut CtxV7,
 ) -> Result<i32, DecodeError> {
@@ -1357,7 +1333,7 @@ fn decode_coeffs32_v7(
         let mag = detokenize(lsym, raw)?.wrapping_add(1);
         let sign = raw.read(1)?;
         let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
-        let index = ZIGZAG32[pos];
+        let index = scan[pos];
         freq[index] = level as f32 * f32::from(qmat32[index]);
         prev_mag = mag;
         nnz += 1;
@@ -1402,7 +1378,7 @@ fn decode_node8(
             };
             let mut freq = [0f32; 64];
             let mut spatial = [0f32; 64];
-            let dc = decode_coeffs_v7(bank, dec, raw, qmat, &mut freq, st)?;
+            let dc = decode_coeffs_v7(bank, dec, raw, qmat, tx_scan8(tx), &mut freq, st)?;
             freq[0] = dc as f32 * f32::from(qmat[0]);
             inverse_tx8(&freq, &mut spatial, tx);
             store_block(recon, w, h, bx, by, &spatial, &pred);
@@ -1427,7 +1403,7 @@ fn decode_node8(
                 } else {
                     predict_block4(&b, mode)
                 };
-                let dc = decode_coeffs4_v7(bank, dec, raw, qmat4, &mut freq, st)?;
+                let dc = decode_coeffs4_v7(bank, dec, raw, qmat4, tx_scan4(tx), &mut freq, st)?;
                 freq[0] = dc as f32 * f32::from(qmat4[0]);
                 inverse_tx4(&freq, &mut spatial, tx);
                 store_block4(recon, w, h, qx, qy, &spatial, &pred);
@@ -1474,7 +1450,7 @@ fn decode_node16(
             };
             let mut freq = [0f32; 256];
             let mut spatial = [0f32; 256];
-            let dc = decode_coeffs16_v7(bank, dec, raw, qmat16, &mut freq, st)?;
+            let dc = decode_coeffs16_v7(bank, dec, raw, qmat16, tx_scan16(tx), &mut freq, st)?;
             freq[0] = dc as f32 * f32::from(qmat16[0]);
             inverse_tx16(&freq, &mut spatial, tx);
             store_block16(recon, w, h, sbx, sby, &spatial, &pred);
@@ -1538,7 +1514,15 @@ pub(super) fn decode_tile_plane(
                     } else {
                         predict_block32(&b, mode)
                     };
-                    let dc = decode_coeffs32_v7(bank, dec, raw, &qmat32, &mut freq32, &mut st)?;
+                    let dc = decode_coeffs32_v7(
+                        bank,
+                        dec,
+                        raw,
+                        &qmat32,
+                        tx_scan32(tx),
+                        &mut freq32,
+                        &mut st,
+                    )?;
                     freq32[0] = dc as f32 * f32::from(qmat32[0]);
                     inverse_tx32(&freq32, &mut spatial32, tx);
                     store_block32(&mut recon, w, h, rx, ry, &spatial32, &pred);

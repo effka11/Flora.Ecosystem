@@ -33,6 +33,7 @@
 
 mod arith;
 mod bits;
+mod cdef;
 mod color;
 mod dct;
 mod deblock;

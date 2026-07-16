@@ -809,6 +809,22 @@ pub const ZIGZAG: [usize; 64] = [
     53, 60, 61, 54, 47, 55, 62, 63,
 ];
 
+pub fn tx_scan4(_tx: u8) -> &'static [usize; 16] {
+    &ZIGZAG4
+}
+
+pub fn tx_scan8(_tx: u8) -> &'static [usize; 64] {
+    &ZIGZAG
+}
+
+pub fn tx_scan16(_tx: u8) -> &'static [usize; 256] {
+    &ZIGZAG16
+}
+
+pub fn tx_scan32(_tx: u8) -> &'static [usize; 1024] {
+    &ZIGZAG32
+}
+
 /// Базовая перцептивная таблица квантования яркости (ITU-T T.81 Annex K.1).
 #[rustfmt::skip]
 pub const BASE_LUMA: [u16; 64] = [
@@ -835,6 +851,12 @@ pub const BASE_CHROMA: [u16; 64] = [
     99, 99, 99, 99, 99, 99, 99, 99,
 ];
 
+/// v7 A/B: scalar quantization is the neutral PSNR baseline. Unlike the
+/// legacy JPEG matrices it does not impose a 1992 display-visibility curve
+/// on ADST, recursive transforms and chroma-from-luma residuals.
+pub const BASE_LUMA_V7: [u16; 64] = [48; 64];
+pub const BASE_CHROMA_V7: [u16; 64] = [48; 64];
+
 /// Масштабирование базовой таблицы параметром качества 1..=100
 /// (классическое отображение IJG: 50 — базовая таблица, 100 — почти lossless).
 pub fn quant_matrix(base: &[u16; 64], quality: u8) -> [u16; 64] {
@@ -846,6 +868,18 @@ pub fn quant_matrix(base: &[u16; 64], quality: u8) -> [u16; 64] {
         *o = v.clamp(1, 255) as u16;
     }
     out
+}
+
+/// Normative quantization matrices for a bitstream version. v1-v6 retain
+/// Annex K compatibility; experimental v7 uses scalar matrices tuned for
+/// the recursive DCT/ADST pipeline and balanced RGB distortion.
+pub fn quant_matrices(version: u8, quality: u8) -> ([u16; 64], [u16; 64]) {
+    let (luma, chroma) = if version >= crate::format::VERSION_ADAPTIVE {
+        (&BASE_LUMA_V7, &BASE_CHROMA_V7)
+    } else {
+        (&BASE_LUMA, &BASE_CHROMA)
+    };
+    (quant_matrix(luma, quality), quant_matrix(chroma, quality))
 }
 
 #[cfg(test)]
@@ -1058,5 +1092,16 @@ mod tests {
             assert!(q95[i] <= q50[i]);
             assert!(q95[i] >= 1);
         }
+    }
+
+    #[test]
+    fn v77_quant_matrices_are_versioned_and_scalar() {
+        let (legacy_luma, legacy_chroma) = quant_matrices(crate::format::VERSION_ADAPTIVE - 1, 50);
+        assert_eq!(legacy_luma, BASE_LUMA);
+        assert_eq!(legacy_chroma, BASE_CHROMA);
+
+        let (v7_luma, v7_chroma) = quant_matrices(crate::format::VERSION_ADAPTIVE, 50);
+        assert_eq!(v7_luma, [48; 64]);
+        assert_eq!(v7_chroma, [48; 64]);
     }
 }

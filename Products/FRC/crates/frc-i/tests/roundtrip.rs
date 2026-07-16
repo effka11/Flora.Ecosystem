@@ -351,19 +351,19 @@ fn v7_adaptive_roundtrip_and_density() {
         let v7 = encode_with_version(&v, EncodeMode::Lossy { quality }, 7).unwrap();
         assert_eq!(read_info(&v7).unwrap().version, 7);
 
-        // v7.4 меняет дерево/transform и trellis, поэтому quality не обязан
-        // совпадать с v5. Kodak: −0.42 dB same-knob при −8.90% BD-rate.
+        // v7.6 меняет дерево/transform, post-filter и chroma reconstruction,
+        // поэтому quality не обязан совпадать с v5; порог ловит крупный срыв.
         let out5 = decode(&v5).unwrap();
         let out7 = decode(&v7).unwrap();
         let p5 = psnr_rgb(&data, &out5.data);
         let p7 = psnr_rgb(&data, &out7.data);
         assert!(
             p7 + 0.75 >= p5,
-            "q={quality}: v7.4 потерял слишком много fidelity: {p5:.2} → {p7:.2} dB"
+            "q={quality}: v7.6 потерял слишком много fidelity: {p5:.2} → {p7:.2} dB"
         );
 
         // Линия v7 обязана оставаться компактнее v5
-        // (Kodak v7.4: ~−15.7% BD-rate).
+        // (Kodak v7.6: ~−19.2% BD-rate).
         assert!(
             v7.len() < v5.len(),
             "q={quality}: v7 {} байт не меньше v5 {}",
@@ -388,6 +388,22 @@ fn v7_non_multiple_of_16_dimensions() {
         let out = decode(&fri).unwrap();
         assert_eq!((out.width, out.height), (w, h), "размеры {w}x{h}");
     }
+}
+
+#[test]
+fn v7_switches_to_chroma_444_after_quality_75() {
+    let (w, h) = (96, 64);
+    let data = synthetic(w, h, PixelFormat::Rgb8);
+    let image = view(w, h, PixelFormat::Rgb8, &data);
+
+    let v7_75 = encode_with_version(&image, EncodeMode::Lossy { quality: 75 }, 7).unwrap();
+    let v7_76 = encode_with_version(&image, EncodeMode::Lossy { quality: 76 }, 7).unwrap();
+    assert!(read_info(&v7_75).unwrap().chroma420);
+    assert!(!read_info(&v7_76).unwrap().chroma420);
+
+    // Замороженная линия v5 сохраняет прежний порог 85.
+    let v5_85 = encode(&image, EncodeMode::Lossy { quality: 85 }).unwrap();
+    assert!(read_info(&v5_85).unwrap().chroma420);
 }
 
 #[test]

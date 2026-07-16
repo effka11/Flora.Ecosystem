@@ -171,8 +171,10 @@ pub enum ModelKind {
     Eob,
     /// Intra/CfL-мода v7 0..14.
     Mode,
-    /// Transform v7.4: DCT/ADST/identity.
+    /// Transform v7.4: DCT/ADST.
     Tx,
+    /// Tile-plane CDEF strength v7.5.
+    Cdef,
     /// DC hybrid-uint.
     Dc,
     /// Run + EOB (sym 31).
@@ -186,7 +188,7 @@ impl ModelKind {
         match self {
             Self::Split | Self::Eob => 2,
             Self::Mode => 15,
-            Self::Tx => 4,
+            Self::Tx | Self::Cdef => 4,
             // Максимальный run в 32×32 равен 1022: hybrid-uint token = 21.
             Self::Run => 22,
             Self::Dc | Self::Level => 32,
@@ -244,6 +246,10 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
         ModelKind::Tx => {
             // DCT_DCT — сильный prior; альтернативы должны окупить сигнал.
             freq[..n].copy_from_slice(&[8, 2, 2, 1]);
+        }
+        ModelKind::Cdef => {
+            // OFF доминирует; сильные варианты должны доказать снижение SSE.
+            freq[..n].copy_from_slice(&[8, 3, 2, 1]);
         }
         ModelKind::Dc => {
             // DC: малые значения чаще, без отдельного EOB.
@@ -606,6 +612,7 @@ mod tests {
         assert_eq!(ModelKind::Eob.alphabet(), 2);
         assert_eq!(ModelKind::Mode.alphabet(), 15);
         assert_eq!(ModelKind::Tx.alphabet(), 4);
+        assert_eq!(ModelKind::Cdef.alphabet(), 4);
         assert_eq!(ModelKind::Run.alphabet(), 22);
 
         let mut eob = AdaptiveModel::new(ModelKind::Eob);

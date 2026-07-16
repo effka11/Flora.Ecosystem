@@ -29,6 +29,7 @@ use crate::dct::{
     N_TX_V7, TX_ADST_ADST, TX_ADST_DCT, TX_DCT_ADST, TX_DCT_DCT, ZIGZAG, ZIGZAG16, fdct8x8,
     fdct8x8_cols, fdct8x8_const, fdct8x8_rows, fdct16, fdct16_cols, fdct16_const, fdct16_rows,
     forward_tx8, forward_tx16, idct8x8, idct16, inverse_tx8, inverse_tx16, quant_matrix16,
+    tx_scan4, tx_scan8, tx_scan16, tx_scan32,
 };
 use crate::error::DecodeError;
 use crate::rans::RansDecoder;
@@ -380,12 +381,8 @@ fn preselect_modes<const N: usize>(
     out
 }
 
-/// Выбор моды: минимум полной RD-стоимости `D + λ·R`, где D — SSE ошибки
-/// квантования в DCT-домене (базис ортонормирован, равно SSE в пикселях),
-/// R — оценка битовой стоимости токенов. При равенстве — младшая мода.
-/// Детерминировано; решение кодера, формат не ограничивает.
-/// Возвращает и стоимость — v5 сравнивает split-варианты по ней.
-fn choose_mode(
+#[allow(clippy::too_many_arguments)]
+fn choose_mode_with_rate(
     orig: &[i32; 64],
     b: &Border,
     cfl_luma: Option<&[i32; 64]>,
@@ -393,6 +390,7 @@ fn choose_mode(
     lambda: f32,
     max_mode: u8,
     ac_bias: f32,
+    coeff_rate: fn(&[i32; 64]) -> u32,
 ) -> (u8, [i32; 64], [i32; 64], f32) {
     // Линейность DCT: F(orig - pred) = F(orig) - F(pred). Спектр источника
     // считается один раз; спектры структурных предсказаний (DC/V/H) —
@@ -470,7 +468,7 @@ fn choose_mode(
             freq_res[i] = freq_orig[i] - freq_pred[i];
         }
         let (quantized, distortion) = quantize_freq(&freq_res, qmat, ac_bias);
-        let cost = distortion + lambda * coeff_cost(&quantized) as f32;
+        let cost = distortion + lambda * coeff_rate(&quantized) as f32;
         let better = match &best {
             Some((_, _, _, c)) => cost < *c,
             None => true,
@@ -480,6 +478,38 @@ fn choose_mode(
         }
     }
     best.expect("моды всегда есть")
+}
+
+/// Выбор моды: минимум полной RD-стоимости `D + λ·R`, где D — SSE ошибки
+/// квантования в DCT-домене (базис ортонормирован, равно SSE в пикселях),
+/// R — legacy-оценка битовой стоимости токенов. При равенстве — младшая мода.
+/// Сохранён отдельно, чтобы encoder decisions v1–v6 не менялись.
+fn choose_mode(
+    orig: &[i32; 64],
+    b: &Border,
+    cfl_luma: Option<&[i32; 64]>,
+    qmat: &[u16; 64],
+    lambda: f32,
+    max_mode: u8,
+    ac_bias: f32,
+) -> (u8, [i32; 64], [i32; 64], f32) {
+    choose_mode_with_rate(
+        orig, b, cfl_luma, qmat, lambda, max_mode, ac_bias, coeff_cost,
+    )
+}
+
+fn choose_mode_v7(
+    orig: &[i32; 64],
+    b: &Border,
+    cfl_luma: Option<&[i32; 64]>,
+    qmat: &[u16; 64],
+    lambda: f32,
+    max_mode: u8,
+    ac_bias: f32,
+) -> (u8, [i32; 64], [i32; 64], f32) {
+    choose_mode_with_rate(
+        orig, b, cfl_luma, qmat, lambda, max_mode, ac_bias, coeff_cost,
+    )
 }
 
 /// Квантование спектра остатка по `qmat` с dead-zone `ac_bias` для AC.
@@ -535,17 +565,21 @@ fn quantize_residual(
 
 /// Грубая оценка битовой стоимости блока: на каждый ненулевой коэффициент —
 /// константа за run/level-токены плюс длина мантиссы; нулевые хвосты бесплатны.
-fn coeff_cost(quantized: &[i32; 64]) -> u32 {
+fn legacy_coeff_cost<const LEN: usize>(quantized: &[i32; LEN], scan: &[usize; LEN]) -> u32 {
     let mut cost = 4u32; // DC-токен + EOB
     let dc = quantized[0].unsigned_abs();
     cost += 2 * (32 - dc.leading_zeros());
-    for pos in 1..64 {
-        let v = quantized[ZIGZAG[pos]].unsigned_abs();
+    for pos in 1..LEN {
+        let v = quantized[scan[pos]].unsigned_abs();
         if v != 0 {
             cost += 6 + 2 * (32 - v.leading_zeros());
         }
     }
     cost
+}
+
+fn coeff_cost(quantized: &[i32; 64]) -> u32 {
+    legacy_coeff_cost(quantized, &ZIGZAG)
 }
 
 /// Альтернативы DCT_DCT, которые reference encoder рассматривает в v7.4.
@@ -746,14 +780,13 @@ fn choose_transform<const LEN: usize>(
     baseline_quantized: [i32; LEN],
     baseline_cost: f32,
     forward: fn(&[f32; LEN], &mut [f32; LEN], u8),
-    coeff_cost: fn(&[i32; LEN]) -> u32,
-    scan: &[usize; LEN],
+    scan_for_tx: fn(u8) -> &'static [usize; LEN],
 ) -> (u8, [i32; LEN], f32) {
     let mut residual = [0f32; LEN];
     for i in 0..LEN {
         residual[i] = (orig[i] - pred[i]) as f32;
     }
-    let base_rate = coeff_cost(&baseline_quantized);
+    let base_rate = legacy_coeff_cost(&baseline_quantized, scan_for_tx(TX_DCT_DCT));
     let base_distortion = baseline_cost - lambda * base_rate as f32;
     let mut best = (
         TX_DCT_DCT,
@@ -766,7 +799,7 @@ fn choose_transform<const LEN: usize>(
     for &tx in ENCODE_TXS_V7 {
         forward(&residual, &mut freq, tx);
         let (quantized, distortion) = quantize_freq_tx(&freq, qmat, ac_bias);
-        let rate = coeff_cost(&quantized) + tx_rate_extra_bits(tx);
+        let rate = legacy_coeff_cost(&quantized, scan_for_tx(tx)) + tx_rate_extra_bits(tx);
         let search_cost = distortion + lambda * TX_SEARCH_LAMBDA_SCALE * rate as f32;
         if search_cost < best.3 {
             let cost = distortion + lambda * rate as f32;
@@ -779,8 +812,9 @@ fn choose_transform<const LEN: usize>(
     } else {
         freq = best_freq;
     }
+    let scan = scan_for_tx(best.0);
     let (quantized, distortion) = trellis_rdoq(&freq, qmat, best.1, lambda, scan);
-    let rate = coeff_cost(&quantized) + tx_rate_extra_bits(best.0);
+    let rate = legacy_coeff_cost(&quantized, scan) + tx_rate_extra_bits(best.0);
     (best.0, quantized, distortion + lambda * rate as f32)
 }
 
@@ -1252,21 +1286,11 @@ fn predict_block16(b: &Border16, mode: u8) -> [i32; 256] {
 
 /// Оценка битовой стоимости блока 16×16 (модель `coeff_cost`).
 fn coeff_cost16(quantized: &[i32; 256]) -> u32 {
-    let mut cost = 4u32;
-    let dc = quantized[0].unsigned_abs();
-    cost += 2 * (32 - dc.leading_zeros());
-    for pos in 1..256 {
-        let v = quantized[ZIGZAG16[pos]].unsigned_abs();
-        if v != 0 {
-            cost += 6 + 2 * (32 - v.leading_zeros());
-        }
-    }
-    cost
+    legacy_coeff_cost(quantized, &ZIGZAG16)
 }
 
-/// Выбор моды суперблока (аналог `choose_mode`, 6 мод v3; та же
-/// оптимизация линейностью DCT для DC/V/H).
-fn choose_mode16(
+#[allow(clippy::too_many_arguments)]
+fn choose_mode16_with_rate(
     orig: &[i32; 256],
     b: &Border16,
     cfl_luma: Option<&[i32; 256]>,
@@ -1274,6 +1298,7 @@ fn choose_mode16(
     lambda: f32,
     max_mode: u8,
     ac_bias: f32,
+    coeff_rate: fn(&[i32; 256]) -> u32,
 ) -> (u8, [i32; 256], [i32; 256], f32) {
     let mut spatial = [0f32; 256];
     for i in 0..256 {
@@ -1350,7 +1375,7 @@ fn choose_mode16(
             freq_res[i] = freq_orig[i] - freq_pred[i];
         }
         let (quantized, distortion) = quantize_freq16(&freq_res, qmat16, ac_bias);
-        let cost = distortion + lambda * coeff_cost16(&quantized) as f32;
+        let cost = distortion + lambda * coeff_rate(&quantized) as f32;
         let better = match &best {
             Some((_, _, _, c)) => cost < *c,
             None => true,
@@ -1360,6 +1385,49 @@ fn choose_mode16(
         }
     }
     best.expect("моды всегда есть")
+}
+
+/// Выбор моды суперблока для legacy encoder decisions v1–v6.
+fn choose_mode16(
+    orig: &[i32; 256],
+    b: &Border16,
+    cfl_luma: Option<&[i32; 256]>,
+    qmat16: &[u16; 256],
+    lambda: f32,
+    max_mode: u8,
+    ac_bias: f32,
+) -> (u8, [i32; 256], [i32; 256], f32) {
+    choose_mode16_with_rate(
+        orig,
+        b,
+        cfl_luma,
+        qmat16,
+        lambda,
+        max_mode,
+        ac_bias,
+        coeff_cost16,
+    )
+}
+
+fn choose_mode16_v7(
+    orig: &[i32; 256],
+    b: &Border16,
+    cfl_luma: Option<&[i32; 256]>,
+    qmat16: &[u16; 256],
+    lambda: f32,
+    max_mode: u8,
+    ac_bias: f32,
+) -> (u8, [i32; 256], [i32; 256], f32) {
+    choose_mode16_with_rate(
+        orig,
+        b,
+        cfl_luma,
+        qmat16,
+        lambda,
+        max_mode,
+        ac_bias,
+        coeff_cost16,
+    )
 }
 
 /// Квантование спектра 16×16 (аналог `quantize_freq`).
@@ -1744,8 +1812,10 @@ const CTX7_SPLIT32: u8 = 78;
 const CTX7_SPLIT8: u8 = 79;
 /// Transform каждого whole/листа v7.4.
 const CTX7_TX: u8 = 80;
+/// Tile-plane CDEF strength v7.5.
+pub const CTX7_CDEF: u8 = 81;
 /// Общее число контекстов v7.
-pub const N_CTX_V7: usize = 81;
+pub const N_CTX_V7: usize = 82;
 const N_POS_BUCKETS: u8 = 6;
 
 /// Родительские группы и виды моделей контекстов v7 для иерархического
@@ -1766,6 +1836,8 @@ pub fn ctx_meta_v7() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
     kinds[usize::from(CTX7_SPLIT8)] = ModelKind::Split;
     groups[usize::from(CTX7_TX)] = 21;
     kinds[usize::from(CTX7_TX)] = ModelKind::Tx;
+    groups[usize::from(CTX7_CDEF)] = 22;
+    kinds[usize::from(CTX7_CDEF)] = ModelKind::Cdef;
     for dc_b in 0..4u8 {
         groups[usize::from(CTX7_DC_BASE + dc_b)] = 2;
         kinds[usize::from(CTX7_DC_BASE + dc_b)] = ModelKind::Dc;
@@ -1866,10 +1938,12 @@ fn eob_ctx_v7(pos_bucket: u8, nnz_b: u8) -> u8 {
 fn encode_coeffs_v7(
     quantized: &[i32; 64],
     dc_token: i32,
+    tx: u8,
     st: &mut CtxV7,
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
 ) {
+    let scan = tx_scan8(tx);
     let nnz_b = st.prev_nnz;
     let (sym, bits, n_bits) = tokenize(zigzag(dc_token));
     syms.push((dc_ctx_v7(st.prev_dc), sym));
@@ -1882,7 +1956,7 @@ fn encode_coeffs_v7(
     while pos < 64 {
         let run_start = pos;
         let mut run = 0usize;
-        while pos < 64 && quantized[ZIGZAG[pos]] == 0 {
+        while pos < 64 && quantized[scan[pos]] == 0 {
             run += 1;
             pos += 1;
         }
@@ -1896,7 +1970,7 @@ fn encode_coeffs_v7(
         syms.push((run_ctx_v7(pos_b, nnz_b), rsym));
         write_raw(raw, rbits, rn);
 
-        let level = quantized[ZIGZAG[pos]];
+        let level = quantized[scan[pos]];
         let mag = level.unsigned_abs();
         let (lsym, lbits, ln) = tokenize(mag - 1);
         syms.push((level_ctx_v7(pos_bucket8(pos), lvl_bucket(prev_mag)), lsym));
@@ -1913,10 +1987,12 @@ fn encode_coeffs_v7(
 /// сопоставимая с 8×8 плотность заполнения).
 fn encode_coeffs16_v7(
     quantized: &[i32; 256],
+    tx: u8,
     st: &mut CtxV7,
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
 ) {
+    let scan = tx_scan16(tx);
     let nnz_b = st.prev_nnz;
     let (sym, bits, n_bits) = tokenize(zigzag(quantized[0]));
     syms.push((dc_ctx_v7(st.prev_dc), sym));
@@ -1929,7 +2005,7 @@ fn encode_coeffs16_v7(
     while pos < 256 {
         let run_start = pos;
         let mut run = 0usize;
-        while pos < 256 && quantized[ZIGZAG16[pos]] == 0 {
+        while pos < 256 && quantized[scan[pos]] == 0 {
             run += 1;
             pos += 1;
         }
@@ -1943,7 +2019,7 @@ fn encode_coeffs16_v7(
         syms.push((run_ctx_v7(pos_b, nnz_b), rsym));
         write_raw(raw, rbits, rn);
 
-        let level = quantized[ZIGZAG16[pos]];
+        let level = quantized[scan[pos]];
         let mag = level.unsigned_abs();
         let (lsym, lbits, ln) = tokenize(mag - 1);
         syms.push((level_ctx_v7(pos_bucket16(pos), lvl_bucket(prev_mag)), lsym));
@@ -1956,7 +2032,7 @@ fn encode_coeffs16_v7(
     st.prev_nnz = nnz_bucket(nnz / 4);
 }
 
-/// Кодирует тайл-плоскость экспериментального битстрима v7.4.
+/// Кодирует дерево тайл-плоскости экспериментального битстрима v7.5.
 pub fn encode_tile_plane_v7(
     buf: &[i16],
     cfl_luma: Option<&[i16]>,
@@ -1998,7 +2074,7 @@ fn encode_tile_plane_v71(
                       sby: usize| {
         syms.push((CTX7_SPLIT, SPLIT_WHOLE));
         syms.push((CTX7_MODE, mode16));
-        encode_coeffs16_v7(quant16, st, syms, raw);
+        encode_coeffs16_v7(quant16, TX_DCT_DCT, st, syms, raw);
         let mut freq = [0f32; 256];
         let mut spatial = [0f32; 256];
         for i in 0..256 {
@@ -2027,7 +2103,14 @@ fn encode_tile_plane_v71(
                 for (bx, by) in sub_blocks(sbx, sby, w, h) {
                     let (sub, _) = eval_block8(buf, &mut recon, w, h, bx, by, qmat, lambda);
                     syms.push((CTX7_MODE, sub.mode));
-                    encode_coeffs_v7(&sub.quantized, sub.quantized[0], &mut st, syms, raw);
+                    encode_coeffs_v7(
+                        &sub.quantized,
+                        sub.quantized[0],
+                        TX_DCT_DCT,
+                        &mut st,
+                        syms,
+                        raw,
+                    );
                 }
                 continue;
             }
@@ -2059,7 +2142,14 @@ fn encode_tile_plane_v71(
                 syms.push((CTX7_SPLIT, SPLIT_QUAD));
                 for sub in &subs {
                     syms.push((CTX7_MODE, sub.mode));
-                    encode_coeffs_v7(&sub.quantized, sub.quantized[0], &mut st, syms, raw);
+                    encode_coeffs_v7(
+                        &sub.quantized,
+                        sub.quantized[0],
+                        TX_DCT_DCT,
+                        &mut st,
+                        syms,
+                        raw,
+                    );
                 }
             }
         }
@@ -2072,6 +2162,7 @@ fn decode_coeffs_v7(
     dec: &mut RangeDecoder<'_>,
     raw: &mut BitReader<'_>,
     qmat: &[u16; 64],
+    scan: &[usize; 64],
     freq: &mut [f32; 64],
     st: &mut CtxV7,
 ) -> Result<i32, DecodeError> {
@@ -2102,7 +2193,7 @@ fn decode_coeffs_v7(
         let mag = detokenize(lsym, raw)?.wrapping_add(1);
         let sign = raw.read(1)?;
         let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
-        let index = ZIGZAG[pos];
+        let index = scan[pos];
         freq[index] = level as f32 * f32::from(qmat[index]);
         prev_mag = mag;
         nnz += 1;
@@ -2118,6 +2209,7 @@ fn decode_coeffs16_v7(
     dec: &mut RangeDecoder<'_>,
     raw: &mut BitReader<'_>,
     qmat16: &[u16; 256],
+    scan: &[usize; 256],
     freq: &mut [f32; 256],
     st: &mut CtxV7,
 ) -> Result<i32, DecodeError> {
@@ -2148,7 +2240,7 @@ fn decode_coeffs16_v7(
         let mag = detokenize(lsym, raw)?.wrapping_add(1);
         let sign = raw.read(1)?;
         let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
-        let index = ZIGZAG16[pos];
+        let index = scan[pos];
         freq[index] = level as f32 * f32::from(qmat16[index]);
         prev_mag = mag;
         nnz += 1;
@@ -2158,7 +2250,7 @@ fn decode_coeffs16_v7(
     Ok(dc_token)
 }
 
-/// Декодирует тайл-плоскость экспериментального битстрима v7.4.
+/// Декодирует дерево тайл-плоскости экспериментального битстрима v7.5.
 pub fn decode_tile_plane_v7(
     bank: &mut ModelBank,
     dec: &mut RangeDecoder<'_>,
@@ -2201,8 +2293,15 @@ fn decode_tile_plane_v71(
                     }
                     let b = border16(&recon, w, h, sbx, sby);
                     let pred = predict_block16(&b, mode);
-                    let dc_token =
-                        decode_coeffs16_v7(bank, dec, raw, &qmat16, &mut freq16, &mut st)?;
+                    let dc_token = decode_coeffs16_v7(
+                        bank,
+                        dec,
+                        raw,
+                        &qmat16,
+                        &ZIGZAG16,
+                        &mut freq16,
+                        &mut st,
+                    )?;
                     freq16[0] = dc_token as f32 * f32::from(qmat16[0]);
                     idct16(&freq16, &mut spatial16);
                     store_block16(&mut recon, w, h, sbx, sby, &spatial16, &pred);
@@ -2215,7 +2314,8 @@ fn decode_tile_plane_v71(
                         }
                         let b = border(&recon, w, h, bx, by);
                         let pred = predict_block(&b, mode_sym);
-                        let dc_token = decode_coeffs_v7(bank, dec, raw, qmat, &mut freq, &mut st)?;
+                        let dc_token =
+                            decode_coeffs_v7(bank, dec, raw, qmat, &ZIGZAG, &mut freq, &mut st)?;
                         freq[0] = dc_token as f32 * f32::from(qmat[0]);
                         idct8x8(&freq, &mut spatial);
                         store_block(&mut recon, w, h, bx, by, &spatial, &pred);
