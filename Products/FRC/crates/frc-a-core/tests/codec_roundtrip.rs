@@ -663,8 +663,7 @@ fn vbr_moves_bits_from_easy_to_hard_frames() {
     let mean = |s: &[f64]| s.iter().sum::<f64>() / s.len() as f64;
 
     // Средний фактический битрейт не превышает цель (страховка губернатора).
-    let avg_bits =
-        packets.iter().map(|p| p.len() * 8).sum::<usize>() as f64 / packets.len() as f64;
+    let avg_bits = packets.iter().map(|p| p.len() * 8).sum::<usize>() as f64 / packets.len() as f64;
     // Лёгкая половина ужата (пропускаем стартовую атаку синуса), тяжёлая
     // получила кадры с бюджетом выше базового — буст из пула сбережений.
     let easy_budget = mean(&budgets[2..half_frames]);

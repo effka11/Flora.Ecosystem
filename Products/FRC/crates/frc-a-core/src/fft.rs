@@ -138,7 +138,9 @@ mod tests {
     #[test]
     fn matches_naive_dft_on_all_smooth_sizes() {
         let mut state = 0xFF7_0001u32;
-        for n in [1usize, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 25, 30, 60, 240, 480] {
+        for n in [
+            1usize, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 25, 30, 60, 240, 480,
+        ] {
             let fft = Fft::new(n);
             let inp: Vec<C64> = (0..n)
                 .map(|_| C64::new(xorshift(&mut state), xorshift(&mut state)))
