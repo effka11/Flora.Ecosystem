@@ -776,8 +776,8 @@ fn vbr_demand_bits(q: &[i32], planes: usize, energy_cost_x64: u64) -> u64 {
     };
     let floor = peak - VBR_DYN_RANGE_X4;
     let mut shape_e8 = 0u64;
-    for i in 0..q.len() {
-        if q[i] <= Q_SILENCE_X4 {
+    for (i, &qi) in q.iter().enumerate() {
+        if qi <= Q_SILENCE_X4 {
             continue;
         }
         let want = (density(i) - floor).clamp(0, BETA_E8_MAX);

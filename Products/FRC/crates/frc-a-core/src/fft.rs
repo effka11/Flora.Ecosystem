@@ -93,8 +93,8 @@ impl Fft {
             }
             for s in 0..r {
                 let mut acc = col[0];
-                for j in 1..r {
-                    acc = acc.add(col[j].mul(self.twiddle[(j * s * l * tw_stride) % self.n]));
+                for (j, &c) in col[..r].iter().enumerate().skip(1) {
+                    acc = acc.add(c.mul(self.twiddle[(j * s * l * tw_stride) % self.n]));
                 }
                 out[q + s * l] = acc;
             }
