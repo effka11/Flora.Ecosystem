@@ -6,15 +6,15 @@
 //! `threads` параллельное — декодирование тайлов, затем сборка плоскостей
 //! в порядке тайлов. Результат не зависит от числа потоков.
 
+use crate::arith::{ModelBank, RangeDecoder};
 use crate::bits::BitReader;
 use crate::color::{upsample_420, ycbcr_to_rgb, ycocg_r_to_rgb};
 use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
 use crate::error::DecodeError;
+use crate::format::VERSION_ADAPTIVE;
 use crate::format::{HEADER_LEN, Header, Metadata, TileRect, parse_metadata_block, tile_grid};
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
-use crate::arith::{ModelBank, RangeDecoder};
-use crate::format::VERSION_ADAPTIVE;
 use crate::rans::RansDecoder;
 use crate::section::{
     PredictiveSection, read_dct_section, read_dct_section_v7, read_predictive_section, unpack_raw,
@@ -226,11 +226,10 @@ fn decode_tile(
         }
     } else {
         // v7: банк адаптивных моделей общий для всех плоскостей тайла.
-        let mut bank =
-            (version >= VERSION_ADAPTIVE).then(|| {
-                let (groups, kinds) = lossy::ctx_meta_v7();
-                ModelBank::new(groups, kinds)
-            });
+        let mut bank = (version >= VERSION_ADAPTIVE).then(|| {
+            let (groups, kinds) = lossy::ctx_meta_v7();
+            ModelBank::new(groups, kinds)
+        });
         let mut luma = read_dct_plane(payload, &mut pos, t.w, t.h, q_luma, version, bank.as_mut())?;
         if header.deblock {
             crate::deblock::deblock_plane(&mut luma, t.w, t.h, q_luma[0]);

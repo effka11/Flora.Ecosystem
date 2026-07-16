@@ -12,6 +12,8 @@
 //! - **v5** — адаптивные размеры блоков: суперблок 16×16 кодируется целиком
 //!   (одна мода + DCT 16×16) либо расщепляется на четыре 8×8 (слой v3).
 //!   Новый контекст split (7 контекстов).
+//! - **v7** — адаптивная энтропия и фиксированное дерево 32→16→8→4;
+//!   экспериментальная реализация дерева изолирована в `lossy::v72`.
 //!
 //! AC-контексты по заполненности соседних блоков (сумма nnz слева/сверху,
 //! модель JXL/AV1) были реализованы и измерены при разработке v3 — на всём
@@ -31,6 +33,8 @@ use crate::error::DecodeError;
 use crate::rans::RansDecoder;
 use crate::section::Section;
 use crate::tokens::{detokenize, tokenize, unzigzag, write_raw, zigzag};
+
+mod v72;
 
 /// Контексты v1: DC, run (низкие/высокие частоты), level (низкие/высокие).
 pub const N_CTX_V1: usize = 5;
@@ -1322,12 +1326,11 @@ pub fn decode_tile_plane_v5(
     Ok(recon)
 }
 
-// --- v7: слой блоков v5 + адаптивная энтропия (FRC-I.md §11.3, v7.1) -----------
+// --- v7: адаптивная энтропия и общие примитивы дерева ---------------------------
 //
-// Слой блоков (обход, RD, реконструкция) идентичен v5, меняется только
-// энтропийное моделирование: символы кодируются range-кодером с
-// адаптивными моделями (без таблиц в потоке), и раз контексты стали
-// бесплатными — их сетка гораздо богаче v5:
+// Энтропийные примитивы общие для листьев 4/8/16/32. Символы кодируются
+// range-кодером с адаптивными моделями (без таблиц в потоке), поэтому
+// контекстная сетка богаче v5:
 //
 // - run/level: бакет позиции в зигзаге (6 градаций вместо low/high)
 //   × nnz-бакет предыдущего блока плоскости (4 градации) — возврат
@@ -1344,8 +1347,14 @@ const CTX7_DC_BASE: u8 = 2;
 const CTX7_RUN_BASE: u8 = 6;
 /// База level-контекстов: 24 (6 бакетов позиции × 4 бакета пред. уровня).
 const CTX7_LEVEL_BASE: u8 = 30;
+/// База бинарных EOB-контекстов: 24 (6 позиций × 4 nnz-бакета).
+const CTX7_EOB_BASE: u8 = 54;
+/// Split корневого узла 32×32: 0 — whole32, 1 — четыре узла 16×16.
+const CTX7_SPLIT32: u8 = 78;
+/// Split узла 8×8: 0 — whole8, 1 — четыре листа 4×4.
+const CTX7_SPLIT8: u8 = 79;
 /// Общее число контекстов v7.
-pub const N_CTX_V7: usize = 54;
+pub const N_CTX_V7: usize = 80;
 const N_POS_BUCKETS: u8 = 6;
 
 /// Родительские группы и виды моделей контекстов v7 для иерархического
@@ -1360,6 +1369,10 @@ pub fn ctx_meta_v7() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
     kinds[usize::from(CTX7_SPLIT)] = ModelKind::Split;
     groups[usize::from(CTX7_MODE)] = 1;
     kinds[usize::from(CTX7_MODE)] = ModelKind::Mode;
+    groups[usize::from(CTX7_SPLIT32)] = 0;
+    kinds[usize::from(CTX7_SPLIT32)] = ModelKind::Split;
+    groups[usize::from(CTX7_SPLIT8)] = 0;
+    kinds[usize::from(CTX7_SPLIT8)] = ModelKind::Split;
     for dc_b in 0..4u8 {
         groups[usize::from(CTX7_DC_BASE + dc_b)] = 2;
         kinds[usize::from(CTX7_DC_BASE + dc_b)] = ModelKind::Dc;
@@ -1368,10 +1381,13 @@ pub fn ctx_meta_v7() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
         for pos_b in 0..N_POS_BUCKETS {
             let run = usize::from(run_ctx_v7(pos_b, cond));
             let level = usize::from(level_ctx_v7(pos_b, cond));
+            let eob = usize::from(eob_ctx_v7(pos_b, cond));
             groups[run] = 3 + pos_b;
             kinds[run] = ModelKind::Run;
             groups[level] = 3 + N_POS_BUCKETS + pos_b;
             kinds[level] = ModelKind::Level;
+            groups[eob] = 3 + 2 * N_POS_BUCKETS + pos_b;
+            kinds[eob] = ModelKind::Eob;
         }
     }
     (groups, kinds)
@@ -1447,6 +1463,11 @@ fn level_ctx_v7(pos_bucket: u8, lvl_b: u8) -> u8 {
     CTX7_LEVEL_BASE + pos_bucket + N_POS_BUCKETS * lvl_b
 }
 
+#[inline]
+fn eob_ctx_v7(pos_bucket: u8, nnz_b: u8) -> u8 {
+    CTX7_EOB_BASE + pos_bucket + N_POS_BUCKETS * nnz_b
+}
+
 /// Кодирует блок 8×8 в символы v7. `st` — межблочное состояние контекстов
 /// плоскости (обновляется на текущий блок).
 fn encode_coeffs_v7(
@@ -1472,12 +1493,14 @@ fn encode_coeffs_v7(
             run += 1;
             pos += 1;
         }
+        let pos_b = pos_bucket8(run_start);
         if pos == 64 {
-            syms.push((run_ctx_v7(pos_bucket8(run_start), nnz_b), EOB_SYM));
+            syms.push((eob_ctx_v7(pos_b, nnz_b), 1));
             break;
         }
+        syms.push((eob_ctx_v7(pos_b, nnz_b), 0));
         let (rsym, rbits, rn) = tokenize(run as u32);
-        syms.push((run_ctx_v7(pos_bucket8(run_start), nnz_b), rsym));
+        syms.push((run_ctx_v7(pos_b, nnz_b), rsym));
         write_raw(raw, rbits, rn);
 
         let level = quantized[ZIGZAG[pos]];
@@ -1517,12 +1540,14 @@ fn encode_coeffs16_v7(
             run += 1;
             pos += 1;
         }
+        let pos_b = pos_bucket16(run_start);
         if pos == 256 {
-            syms.push((run_ctx_v7(pos_bucket16(run_start), nnz_b), EOB_SYM));
+            syms.push((eob_ctx_v7(pos_b, nnz_b), 1));
             break;
         }
+        syms.push((eob_ctx_v7(pos_b, nnz_b), 0));
         let (rsym, rbits, rn) = tokenize(run as u32);
-        syms.push((run_ctx_v7(pos_bucket16(run_start), nnz_b), rsym));
+        syms.push((run_ctx_v7(pos_b, nnz_b), rsym));
         write_raw(raw, rbits, rn);
 
         let level = quantized[ZIGZAG16[pos]];
@@ -1538,8 +1563,21 @@ fn encode_coeffs16_v7(
     st.prev_nnz = nnz_bucket(nnz / 4);
 }
 
-/// Кодирует тайл-плоскость битстрима v7: слой блоков v5, контексты v7.
+/// Кодирует тайл-плоскость экспериментального битстрима v7.2.
 pub fn encode_tile_plane_v7(
+    buf: &[i16],
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) {
+    v72::encode_tile_plane(buf, w, h, qmat, syms, raw);
+}
+
+/// Сохранённая реализация v7.1 для локального A/B во время разработки v7.2.
+#[allow(dead_code)]
+fn encode_tile_plane_v71(
     buf: &[i16],
     w: usize,
     h: usize,
@@ -1556,14 +1594,14 @@ pub fn encode_tile_plane_v7(
     let mut subs: Vec<SubBlock> = Vec::with_capacity(4);
     let mut st = CtxV7::default();
     let emit_whole = |quant16: &[i32; 256],
-                          mode16: u8,
-                          st: &mut CtxV7,
-                          syms: &mut Vec<(u8, u8)>,
-                          raw: &mut BitWriter,
-                          recon: &mut Vec<i16>,
-                          pred16: &[i32; 256],
-                          sbx: usize,
-                          sby: usize| {
+                      mode16: u8,
+                      st: &mut CtxV7,
+                      syms: &mut Vec<(u8, u8)>,
+                      raw: &mut BitWriter,
+                      recon: &mut Vec<i16>,
+                      pred16: &[i32; 256],
+                      sbx: usize,
+                      sby: usize| {
         syms.push((CTX7_SPLIT, SPLIT_WHOLE));
         syms.push((CTX7_MODE, mode16));
         encode_coeffs16_v7(quant16, st, syms, raw);
@@ -1586,15 +1624,7 @@ pub fn encode_tile_plane_v7(
                 let (mode16, pred16, quant16, _) =
                     choose_mode16(&orig16, &b16, &qmat16, lambda, ac_bias16);
                 emit_whole(
-                    &quant16,
-                    mode16,
-                    &mut st,
-                    syms,
-                    raw,
-                    &mut recon,
-                    &pred16,
-                    sbx,
-                    sby,
+                    &quant16, mode16, &mut st, syms, raw, &mut recon, &pred16, sbx, sby,
                 );
                 continue;
             }
@@ -1629,15 +1659,7 @@ pub fn encode_tile_plane_v7(
             if cost_whole <= cost_split {
                 restore_region16(&mut recon, w, h, sbx, sby, &backup);
                 emit_whole(
-                    &quant16,
-                    mode16,
-                    &mut st,
-                    syms,
-                    raw,
-                    &mut recon,
-                    &pred16,
-                    sbx,
-                    sby,
+                    &quant16, mode16, &mut st, syms, raw, &mut recon, &pred16, sbx, sby,
                 );
             } else {
                 syms.push((CTX7_SPLIT, SPLIT_QUAD));
@@ -1669,10 +1691,11 @@ fn decode_coeffs_v7(
     let mut prev_mag = 0u32;
     let mut pos = 1usize;
     while pos < 64 {
-        let rsym = bank.decode(dec, run_ctx_v7(pos_bucket8(pos), nnz_b))?;
-        if rsym == EOB_SYM {
+        let pos_b = pos_bucket8(pos);
+        if bank.decode(dec, eob_ctx_v7(pos_b, nnz_b))? == 1 {
             break;
         }
+        let rsym = bank.decode(dec, run_ctx_v7(pos_b, nnz_b))?;
         let run = detokenize(rsym, raw)? as usize;
         let new_pos = pos
             .checked_add(run)
@@ -1713,10 +1736,11 @@ fn decode_coeffs16_v7(
     let mut prev_mag = 0u32;
     let mut pos = 1usize;
     while pos < 256 {
-        let rsym = bank.decode(dec, run_ctx_v7(pos_bucket16(pos), nnz_b))?;
-        if rsym == EOB_SYM {
+        let pos_b = pos_bucket16(pos);
+        if bank.decode(dec, eob_ctx_v7(pos_b, nnz_b))? == 1 {
             break;
         }
+        let rsym = bank.decode(dec, run_ctx_v7(pos_b, nnz_b))?;
         let run = detokenize(rsym, raw)? as usize;
         let new_pos = pos
             .checked_add(run)
@@ -1738,8 +1762,21 @@ fn decode_coeffs16_v7(
     Ok(dc_token)
 }
 
-/// Декодирует тайл-плоскость битстрима v7 (слой v5, адаптивная энтропия).
+/// Декодирует тайл-плоскость экспериментального битстрима v7.2.
 pub fn decode_tile_plane_v7(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+) -> Result<Vec<i16>, DecodeError> {
+    v72::decode_tile_plane(bank, dec, raw, w, h, qmat)
+}
+
+/// Сохранённый декодер v7.1 для локального A/B.
+#[allow(dead_code)]
+fn decode_tile_plane_v71(
     bank: &mut ModelBank,
     dec: &mut RangeDecoder<'_>,
     raw: &mut BitReader<'_>,

@@ -351,14 +351,19 @@ fn v7_adaptive_roundtrip_and_density() {
         let v7 = encode_with_version(&v, EncodeMode::Lossy { quality }, 7).unwrap();
         assert_eq!(read_info(&v7).unwrap().version, 7);
 
-        // Слой блоков общий, поэтому пиксели v7 == пиксели v5
-        // (энтропийная секция не меняет реконструкцию).
+        // v7.2 меняет дерево блоков, поэтому реконструкция уже не обязана
+        // совпадать с v5, но не должна проваливаться по fidelity.
         let out5 = decode(&v5).unwrap();
         let out7 = decode(&v7).unwrap();
-        assert_eq!(out7.data, out5.data, "q={quality}: реконструкции разошлись");
+        let p5 = psnr_rgb(&data, &out5.data);
+        let p7 = psnr_rgb(&data, &out7.data);
+        assert!(
+            p7 + 0.5 >= p5,
+            "q={quality}: v7.2 потерял слишком много fidelity: {p5:.2} → {p7:.2} dB"
+        );
 
-        // Смысл v7.1 — плотность: на типовых фото адаптив обязан быть
-        // заметно компактнее статических таблиц (Kodak: ~−3..4% BD-rate).
+        // Линия v7 обязана оставаться компактнее v5
+        // (Kodak v7.2: ~−5.7% BD-rate).
         assert!(
             v7.len() < v5.len(),
             "q={quality}: v7 {} байт не меньше v5 {}",

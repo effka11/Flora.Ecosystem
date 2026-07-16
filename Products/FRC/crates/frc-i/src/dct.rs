@@ -1,4 +1,4 @@
-//! DCT 8x8 / 16x16 и квантование (FRC-I.md §7).
+//! DCT 4x4 / 8x8 / 16x16 / 32x32 и квантование (FRC-I.md §7).
 //!
 //! Ортонормированный DCT-II. Базисные коэффициенты зафиксированы литералами
 //! (не вычисляются через `cos`): реализация детерминирована на любой
@@ -9,6 +9,78 @@
 //! применимы без пересчёта масштаба.
 
 use std::sync::OnceLock;
+
+// --- 4×4 (экспериментальная линия v7.2) ---------------------------------------
+
+#[rustfmt::skip]
+const BASIS4: [[f32; 4]; 4] = [
+    [ 0.5,         0.5,         0.5,         0.5        ],
+    [ 0.653_281_5, 0.270_598_05,-0.270_598_05,-0.653_281_5],
+    [ 0.5,        -0.5,        -0.5,         0.5        ],
+    [ 0.270_598_05,-0.653_281_5,0.653_281_5, -0.270_598_05],
+];
+
+pub fn fdct4(spatial: &[f32; 16], freq: &mut [f32; 16]) {
+    let mut tmp = [0f32; 16];
+    for u in 0..4 {
+        for x in 0..4 {
+            let mut acc = 0f32;
+            for y in 0..4 {
+                acc += BASIS4[u][y] * spatial[y * 4 + x];
+            }
+            tmp[u * 4 + x] = acc;
+        }
+    }
+    for u in 0..4 {
+        for v in 0..4 {
+            let mut acc = 0f32;
+            for x in 0..4 {
+                acc += BASIS4[v][x] * tmp[u * 4 + x];
+            }
+            freq[u * 4 + v] = acc;
+        }
+    }
+}
+
+pub fn idct4(freq: &[f32; 16], spatial: &mut [f32; 16]) {
+    let mut tmp = [0f32; 16];
+    for u in 0..4 {
+        for x in 0..4 {
+            let mut acc = 0f32;
+            for v in 0..4 {
+                acc += BASIS4[v][x] * freq[u * 4 + v];
+            }
+            tmp[u * 4 + x] = acc;
+        }
+    }
+    for y in 0..4 {
+        for x in 0..4 {
+            let mut acc = 0f32;
+            for u in 0..4 {
+                acc += BASIS4[u][y] * tmp[u * 4 + x];
+            }
+            spatial[y * 4 + x] = acc;
+        }
+    }
+}
+
+#[rustfmt::skip]
+pub const ZIGZAG4: [usize; 16] = [
+     0,  1,  4,  8,
+     5,  2,  3,  6,
+     9, 12, 13, 10,
+     7, 11, 14, 15,
+];
+
+pub fn quant_matrix4(q8: &[u16; 64]) -> [u16; 16] {
+    let mut out = [0u16; 16];
+    for u in 0..4 {
+        for v in 0..4 {
+            out[u * 4 + v] = q8[(u * 2) * 8 + v * 2];
+        }
+    }
+    out
+}
 
 /// 1/(2*sqrt(2)) — базис нулевой частоты.
 const A0: f32 = 0.353_553_39;
@@ -220,6 +292,142 @@ pub fn quant_matrix16(q8: &[u16; 64]) -> [u16; 256] {
     out
 }
 
+// --- 32×32 (экспериментальная линия v7.2) -------------------------------------
+
+/// cos(k·π/64), k = 0..=32. Литералы фиксируют межплатформенный битстрим.
+#[rustfmt::skip]
+const COS64: [f32; 33] = [
+    1.0,
+    0.998_795_45, 0.995_184_7,  0.989_176_5,  0.980_785_25,
+    0.970_031_26, 0.956_940_35, 0.941_544_06, 0.923_879_5,
+    0.903_989_3,  0.881_921_3,  0.857_728_6,  0.831_469_6,
+    0.803_207_5,  0.773_010_43, 0.740_951_1,  std::f32::consts::FRAC_1_SQRT_2,
+    0.671_558_9,  0.634_393_3,  0.595_699_3,  0.555_570_24,
+    0.514_102_76, 0.471_396_74, 0.427_555_08, 0.382_683_43,
+    0.336_889_86, 0.290_284_66, 0.242_980_18, 0.195_090_32,
+    0.146_730_47, 0.098_017_14, 0.049_067_676, 0.0,
+];
+/// sqrt(1/32) — базис нулевой частоты N=32.
+const B32_C0: f32 = 0.176_776_69;
+/// sqrt(2/32) — масштаб остальных строк.
+const B32_CU: f32 = 0.25;
+
+fn cos64(m: usize) -> f32 {
+    let m = m % 128;
+    match m {
+        0..=32 => COS64[m],
+        33..=64 => -COS64[64 - m],
+        65..=96 => -COS64[m - 64],
+        _ => COS64[128 - m],
+    }
+}
+
+fn basis32() -> &'static [[f32; 32]; 32] {
+    static BASIS32: OnceLock<[[f32; 32]; 32]> = OnceLock::new();
+    BASIS32.get_or_init(|| {
+        let mut b = [[0f32; 32]; 32];
+        for (u, row) in b.iter_mut().enumerate() {
+            for (n, slot) in row.iter_mut().enumerate() {
+                *slot = if u == 0 {
+                    B32_C0
+                } else {
+                    B32_CU * cos64((2 * n + 1) * u)
+                };
+            }
+        }
+        b
+    })
+}
+
+/// Прямое 2D DCT 32×32.
+pub fn fdct32(spatial: &[f32; 1024], freq: &mut [f32; 1024]) {
+    let basis = basis32();
+    let mut tmp = [0f32; 1024];
+    for u in 0..32 {
+        for x in 0..32 {
+            let mut acc = 0f32;
+            for y in 0..32 {
+                acc += basis[u][y] * spatial[y * 32 + x];
+            }
+            tmp[u * 32 + x] = acc;
+        }
+    }
+    for u in 0..32 {
+        for v in 0..32 {
+            let mut acc = 0f32;
+            for x in 0..32 {
+                acc += basis[v][x] * tmp[u * 32 + x];
+            }
+            freq[u * 32 + v] = acc;
+        }
+    }
+}
+
+/// Обратное 2D DCT 32×32.
+pub fn idct32(freq: &[f32; 1024], spatial: &mut [f32; 1024]) {
+    let basis = basis32();
+    let mut tmp = [0f32; 1024];
+    for u in 0..32 {
+        for x in 0..32 {
+            let mut acc = 0f32;
+            for v in 0..32 {
+                acc += basis[v][x] * freq[u * 32 + v];
+            }
+            tmp[u * 32 + x] = acc;
+        }
+    }
+    for y in 0..32 {
+        for x in 0..32 {
+            let mut acc = 0f32;
+            for u in 0..32 {
+                acc += basis[u][y] * tmp[u * 32 + x];
+            }
+            spatial[y * 32 + x] = acc;
+        }
+    }
+}
+
+/// Зигзаг-сканирование 32×32.
+pub const ZIGZAG32: [usize; 1024] = {
+    let mut out = [0usize; 1024];
+    let mut u = 0usize;
+    let mut v = 0usize;
+    let mut i = 0usize;
+    while i < 1024 {
+        out[i] = u * 32 + v;
+        if (u + v).is_multiple_of(2) {
+            if v == 31 {
+                u += 1;
+            } else if u == 0 {
+                v += 1;
+            } else {
+                u -= 1;
+                v += 1;
+            }
+        } else if u == 31 {
+            v += 1;
+        } else if v == 0 {
+            u += 1;
+        } else {
+            u += 1;
+            v -= 1;
+        }
+        i += 1;
+    }
+    out
+};
+
+/// Матрица квантования 32×32 из 8×8 по относительной частоте.
+pub fn quant_matrix32(q8: &[u16; 64]) -> [u16; 1024] {
+    let mut out = [0u16; 1024];
+    for u in 0..32 {
+        for v in 0..32 {
+            out[u * 32 + v] = q8[(u / 4) * 8 + v / 4];
+        }
+    }
+    out
+}
+
 // --- спектры структурных предсказаний (кодер, свобода кодера) -------------------
 //
 // DCT линеен: F(orig - pred) = F(orig) - F(pred). Для мод с постоянной
@@ -258,6 +466,33 @@ pub fn fdct8x8_cols(col: &[f32; 8], out: &mut [f32; 64]) {
     }
 }
 
+pub fn fdct4_const(c: f32, out: &mut [f32; 16]) {
+    out.fill(0.0);
+    out[0] = 4.0 * c;
+}
+
+pub fn fdct4_rows(row: &[f32; 4], out: &mut [f32; 16]) {
+    out.fill(0.0);
+    for v in 0..4 {
+        let mut acc = 0f32;
+        for (x, &r) in row.iter().enumerate() {
+            acc += BASIS4[v][x] * r;
+        }
+        out[v] = 2.0 * acc;
+    }
+}
+
+pub fn fdct4_cols(col: &[f32; 4], out: &mut [f32; 16]) {
+    out.fill(0.0);
+    for u in 0..4 {
+        let mut acc = 0f32;
+        for (y, &c) in col.iter().enumerate() {
+            acc += BASIS4[u][y] * c;
+        }
+        out[u * 4] = 2.0 * acc;
+    }
+}
+
 /// Спектр константного блока 16×16: `freq[0] = 16c`.
 pub fn fdct16_const(c: f32, out: &mut [f32; 256]) {
     out.fill(0.0);
@@ -287,6 +522,38 @@ pub fn fdct16_cols(col: &[f32; 16], out: &mut [f32; 256]) {
             acc += basis[u][y] * c;
         }
         out[u * 16] = 16.0 * B16_C0 * acc;
+    }
+}
+
+/// Спектр константного блока 32×32.
+pub fn fdct32_const(c: f32, out: &mut [f32; 1024]) {
+    out.fill(0.0);
+    out[0] = 32.0 * c;
+}
+
+/// Спектр блока 32×32 с одинаковыми строками (V-мода).
+pub fn fdct32_rows(row: &[f32; 32], out: &mut [f32; 1024]) {
+    let basis = basis32();
+    out.fill(0.0);
+    for v in 0..32 {
+        let mut acc = 0f32;
+        for (x, &r) in row.iter().enumerate() {
+            acc += basis[v][x] * r;
+        }
+        out[v] = 32.0 * B32_C0 * acc;
+    }
+}
+
+/// Спектр блока 32×32 с одинаковыми столбцами (H-мода).
+pub fn fdct32_cols(col: &[f32; 32], out: &mut [f32; 1024]) {
+    let basis = basis32();
+    out.fill(0.0);
+    for u in 0..32 {
+        let mut acc = 0f32;
+        for (y, &c) in col.iter().enumerate() {
+            acc += basis[u][y] * c;
+        }
+        out[u * 32] = 32.0 * B32_C0 * acc;
     }
 }
 
@@ -362,6 +629,41 @@ mod tests {
     }
 
     #[test]
+    fn dct4_roundtrip_is_near_exact() {
+        let mut spatial = [0f32; 16];
+        for (i, s) in spatial.iter_mut().enumerate() {
+            *s = ((i * 37 + 11) % 256) as f32 - 128.0;
+        }
+        let mut freq = [0f32; 16];
+        let mut back = [0f32; 16];
+        fdct4(&spatial, &mut freq);
+        idct4(&freq, &mut back);
+        for (a, b) in spatial.iter().zip(back.iter()) {
+            assert!((a - b).abs() < 0.01, "{a} != {b}");
+        }
+    }
+
+    #[test]
+    fn zigzag4_is_permutation() {
+        let mut seen = [false; 16];
+        for &z in &ZIGZAG4 {
+            assert!(!seen[z]);
+            seen[z] = true;
+        }
+    }
+
+    #[test]
+    fn quant_matrix4_inherits_relative_steps() {
+        let q8 = quant_matrix(&BASE_LUMA, 75);
+        let q4 = quant_matrix4(&q8);
+        for u in 0..4 {
+            for v in 0..4 {
+                assert_eq!(q4[u * 4 + v], q8[(u * 2) * 8 + v * 2]);
+            }
+        }
+    }
+
+    #[test]
     fn dct_dc_is_scaled_mean() {
         let spatial = [80.0f32; 64];
         let mut freq = [0f32; 64];
@@ -422,6 +724,52 @@ mod tests {
         for u in 0..16 {
             for v in 0..16 {
                 assert_eq!(q16[u * 16 + v], q8[(u / 2) * 8 + v / 2]);
+            }
+        }
+    }
+
+    #[test]
+    fn dct32_roundtrip_is_near_exact() {
+        let mut spatial = [0f32; 1024];
+        for (i, s) in spatial.iter_mut().enumerate() {
+            *s = ((i * 37 + 11) % 256) as f32 - 128.0;
+        }
+        let mut freq = [0f32; 1024];
+        let mut back = [0f32; 1024];
+        fdct32(&spatial, &mut freq);
+        idct32(&freq, &mut back);
+        for (a, b) in spatial.iter().zip(back.iter()) {
+            assert!((a - b).abs() < 0.05, "{a} != {b}");
+        }
+    }
+
+    #[test]
+    fn dct32_dc_is_scaled_mean() {
+        let spatial = [80.0f32; 1024];
+        let mut freq = [0f32; 1024];
+        fdct32(&spatial, &mut freq);
+        assert!((freq[0] - 80.0 * 32.0).abs() < 0.05);
+        assert!(freq[1..].iter().all(|&c| c.abs() < 0.03));
+    }
+
+    #[test]
+    fn zigzag32_is_permutation() {
+        let mut seen = [false; 1024];
+        for &z in &ZIGZAG32 {
+            assert!(!seen[z]);
+            seen[z] = true;
+        }
+        assert_eq!(&ZIGZAG32[0..4], &[0, 1, 32, 64]);
+    }
+
+    #[test]
+    fn quant_matrix32_inherits_steps() {
+        let q8 = quant_matrix(&BASE_LUMA, 75);
+        let q32 = quant_matrix32(&q8);
+        assert_eq!(q32[0], q8[0]);
+        for u in 0..32 {
+            for v in 0..32 {
+                assert_eq!(q32[u * 32 + v], q8[(u / 4) * 8 + v / 4]);
             }
         }
     }

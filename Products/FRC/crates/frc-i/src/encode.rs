@@ -10,8 +10,8 @@ use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
 use crate::error::EncodeError;
 use crate::format::{
     CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
-    VERSION_ADAPTIVE, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA,
-    VERSION_MIN, VERSION_SUPERBLOCK, build_metadata_block, tile_grid,
+    VERSION_ADAPTIVE, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA, VERSION_MIN,
+    VERSION_SUPERBLOCK, build_metadata_block, tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
@@ -442,7 +442,15 @@ fn encode_lossy(
             crate::arith::ModelBank::new(groups, kinds)
         });
         let buf = p0.extract(t.x0, t.y0, t.w, t.h);
-        dct_payload(&buf, t.w, t.h, &q_luma, version, bank.as_mut(), &mut payload);
+        dct_payload(
+            &buf,
+            t.w,
+            t.h,
+            &q_luma,
+            version,
+            bank.as_mut(),
+            &mut payload,
+        );
         for plane in [&p1, &p2] {
             let full = plane.extract(t.x0, t.y0, t.w, t.h);
             let (cbuf, cw, ch) = if header.chroma420 {
@@ -454,7 +462,15 @@ fn encode_lossy(
             } else {
                 (full, t.w, t.h)
             };
-            dct_payload(&cbuf, cw, ch, &q_chroma, version, bank.as_mut(), &mut payload);
+            dct_payload(
+                &cbuf,
+                cw,
+                ch,
+                &q_chroma,
+                version,
+                bank.as_mut(),
+                &mut payload,
+            );
         }
         if let Some(pa) = pa.as_ref() {
             let buf = pa.extract(t.x0, t.y0, t.w, t.h);

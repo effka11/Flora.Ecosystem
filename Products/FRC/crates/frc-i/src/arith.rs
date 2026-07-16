@@ -162,11 +162,13 @@ impl<'a> RangeDecoder<'a> {
 const ADAPT_LIMIT: u32 = 1 << 13;
 
 /// Вид prior'а / алфавита модели. Разные контексты имеют разный носитель:
-/// SPLIT — 2 символа, MODE — 6, токены hybrid-uint — 32.
+/// SPLIT/EOB — 2 символа, MODE — 6, RUN — 22, прочие hybrid-uint — 32.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelKind {
     /// SPLIT_WHOLE / SPLIT_QUAD.
     Split,
+    /// Конец AC-блока: 0 = продолжить, 1 = EOB.
+    Eob,
     /// Intra-мода 0..5.
     Mode,
     /// DC hybrid-uint.
@@ -180,9 +182,11 @@ pub enum ModelKind {
 impl ModelKind {
     pub fn alphabet(self) -> usize {
         match self {
-            Self::Split => 2,
+            Self::Split | Self::Eob => 2,
             Self::Mode => 6,
-            Self::Dc | Self::Run | Self::Level => 32,
+            // Максимальный run в 32×32 равен 1022: hybrid-uint token = 21.
+            Self::Run => 22,
+            Self::Dc | Self::Level => 32,
         }
     }
 }
@@ -224,6 +228,11 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
             freq[0] = 3;
             freq[1] = 2;
         }
+        ModelKind::Eob => {
+            // До прогрева не предполагаем плотность AC: continue / EOB поровну.
+            freq[0] = 1;
+            freq[1] = 1;
+        }
         ModelKind::Mode => {
             for f in &mut freq[..n] {
                 *f = 1;
@@ -236,14 +245,13 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
             }
         }
         ModelKind::Run => {
-            // Короткие run'ы и EOB (31) — самые частые.
+            // Короткие run'ы самые частые; EOB вынесен в бинарную модель.
             for (s, f) in freq[..n].iter_mut().enumerate() {
                 *f = match s {
                     0 => 32,
                     1 => 16,
                     2 => 8,
                     3..=7 => 4,
-                    31 => 24, // EOB
                     _ => 1,
                 };
             }
@@ -354,7 +362,11 @@ impl ModelBank {
     /// обязан быть одинаковый `ModelKind` (иначе прогрев копирует чужой алфавит).
     pub fn new(group_of: Vec<u8>, kind_of: Vec<ModelKind>) -> Self {
         debug_assert_eq!(group_of.len(), kind_of.len());
-        let n_groups = group_of.iter().copied().max().map_or(0, |m| usize::from(m) + 1);
+        let n_groups = group_of
+            .iter()
+            .copied()
+            .max()
+            .map_or(0, |m| usize::from(m) + 1);
         let mut parent_kinds = vec![ModelKind::Level; n_groups];
         for (ctx, &g) in group_of.iter().enumerate() {
             parent_kinds[usize::from(g)] = kind_of[ctx];
@@ -374,16 +386,12 @@ impl ModelBank {
 
     /// Слот детальной модели (контекст × order-1 бакет) с прогревом от
     /// родителя группы при первом использовании. Order-1 включается
-    /// только для алфавитов ≥ 16 (run/level/dc); для SPLIT/MODE бакет
-    /// всегда 0 — иначе 4 пустых бакета размывают и так короткую статистику.
+    /// только для алфавитов ≥ 16 (run/level/dc); для SPLIT/MODE/EOB бакет
+    /// всегда 0 — иначе холодные модели размывают короткую статистику.
     #[inline]
     fn warm(&mut self, ctx: usize) -> (usize, usize) {
         let n = self.kind_of[ctx].alphabet();
-        let b = if n >= 16 {
-            bucket(self.prev[ctx])
-        } else {
-            0
-        };
+        let b = if n >= 16 { bucket(self.prev[ctx]) } else { 0 };
         let slot = ctx * CTX_BUCKETS + b;
         let g = usize::from(self.group_of[ctx]);
         if self.models[slot].updates == 0 && self.parents[g].updates > 0 {
@@ -583,6 +591,35 @@ mod tests {
         let mut dec = RangeDecoder::new(&bytes).unwrap();
         assert_eq!(model.decode(&mut dec).unwrap(), 0);
         assert_eq!(model.decode(&mut dec).unwrap(), 1);
+        assert_eq!(dec.consumed(), bytes.len());
+    }
+
+    #[test]
+    fn eob_and_run_use_narrow_alphabets() {
+        assert_eq!(ModelKind::Eob.alphabet(), 2);
+        assert_eq!(ModelKind::Run.alphabet(), 22);
+
+        let mut eob = AdaptiveModel::new(ModelKind::Eob);
+        let mut run = AdaptiveModel::new(ModelKind::Run);
+        let mut enc = RangeEncoder::new();
+        for &(end, run_sym) in &[(0, 0), (0, 7), (0, 21), (1, 0)] {
+            eob.encode(&mut enc, end);
+            if end == 0 {
+                run.encode(&mut enc, run_sym);
+            }
+        }
+        let bytes = enc.finish();
+
+        let mut eob = AdaptiveModel::new(ModelKind::Eob);
+        let mut run = AdaptiveModel::new(ModelKind::Run);
+        let mut dec = RangeDecoder::new(&bytes).unwrap();
+        for &(want_end, want_run) in &[(0, 0), (0, 7), (0, 21), (1, 0)] {
+            let end = eob.decode(&mut dec).unwrap();
+            assert_eq!(end, want_end);
+            if end == 0 {
+                assert_eq!(run.decode(&mut dec).unwrap(), want_run);
+            }
+        }
         assert_eq!(dec.consumed(), bytes.len());
     }
 }
