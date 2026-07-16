@@ -108,6 +108,36 @@ pub fn upsample_420(src: &[i16], cw: usize, ch: usize, w: usize, h: usize) -> Ve
     out
 }
 
+#[inline]
+fn centered_axis(position: usize, sample_len: usize) -> (usize, usize, i32, i32) {
+    let base = position / 2;
+    if position & 1 == 0 {
+        (base.saturating_sub(1), base, 1, 3)
+    } else {
+        (base, (base + 1).min(sample_len - 1), 3, 1)
+    }
+}
+
+/// Билинейный апсэмплинг center-sited 4:2:0 для v7.6.
+///
+/// `downsample_420` помещает среднее 2×2 в геометрический центр пары
+/// full-resolution отсчётов. Веса 1:3 / 3:1 восстанавливают эту фазу без
+/// полупиксельного сдвига; края реплицируются.
+pub fn upsample_420_centered(src: &[i16], cw: usize, ch: usize, w: usize, h: usize) -> Vec<i16> {
+    debug_assert_eq!(src.len(), cw * ch);
+    let mut out = vec![0i16; w * h];
+    for y in 0..h {
+        let (y0, y1, wy0, wy1) = centered_axis(y, ch);
+        for x in 0..w {
+            let (x0, x1, wx0, wx1) = centered_axis(x, cw);
+            let top = wx0 * i32::from(src[y0 * cw + x0]) + wx1 * i32::from(src[y0 * cw + x1]);
+            let bottom = wx0 * i32::from(src[y1 * cw + x0]) + wx1 * i32::from(src[y1 * cw + x1]);
+            out[y * w + x] = ((wy0 * top + wy1 * bottom + 8) >> 4) as i16;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +192,29 @@ mod tests {
         assert_eq!(down.len(), 4 * 3);
         let up = upsample_420(&down, 4, 3, w, h);
         assert_eq!(up, src);
+        let centered = upsample_420_centered(&down, 4, 3, w, h);
+        assert_eq!(centered, src);
+    }
+
+    #[test]
+    fn centered_upsample_restores_sample_phase() {
+        let src = [10i16, 30, 50];
+        assert_eq!(
+            upsample_420_centered(&src, 3, 1, 6, 1),
+            [10, 15, 25, 35, 45, 50]
+        );
+    }
+
+    #[test]
+    fn centered_upsample_is_transpose_symmetric() {
+        let src = [10i16, 30, 50, 70, 90, 110];
+        let transposed = [10i16, 70, 30, 90, 50, 110];
+        let up = upsample_420_centered(&src, 3, 2, 5, 4);
+        let up_t = upsample_420_centered(&transposed, 2, 3, 4, 5);
+        for y in 0..4 {
+            for x in 0..5 {
+                assert_eq!(up[y * 5 + x], up_t[x * 4 + y]);
+            }
+        }
     }
 }

@@ -346,6 +346,11 @@ def main() -> int:
     ap.add_argument("--skip-avif", action="store_true")
     ap.add_argument("--skip-jpeg", action="store_true")
     ap.add_argument(
+        "--skip-default-frc",
+        action="store_true",
+        help="не прогонять default FRC-I, если нужен только --frc-bitstream",
+    )
+    ap.add_argument(
         "--frc-bitstream",
         type=int,
         default=None,
@@ -385,7 +390,7 @@ def main() -> int:
         print(f"\n=== {name} ===", flush=True)
         ref = load_rgb_png(src)
 
-        for q in frc_qs:
+        for q in frc_qs if not args.skip_default_frc else []:
             fri = work / f"{name}_frc_q{q}.fri"
             png = work / f"{name}_frc_q{q}.png"
             size, ms = encode_frc(flora, src, fri, q)

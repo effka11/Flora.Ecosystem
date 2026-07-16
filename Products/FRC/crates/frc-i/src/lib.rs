@@ -1,21 +1,22 @@
 //! # FRC-I — Flora Relativistic Codec — Image
 //!
 //! Нативный фото-кодек экосистемы Flora (семейство FRC, `Documents/codecs/CODECS.md`).
-//! Нормативная спецификация битстрима — `Documents/codecs/FRC-I.md`. Кодер пишет v3;
-//! decode-заморозка текущей линии — golden-вектора в `tests/` (`.fri`).
+//! Нормативная спецификация битстрима — `Documents/codecs/FRC-I.md`. Кодер пишет
+//! v3 для lossless и замороженный v7 для lossy; совместимость фиксируют
+//! golden-вектора в `tests/data/`.
 //!
 //! Два режима в одном контейнере:
 //! - **lossless** — обратимый YCoCg-R (либо identity-RGB, либо палитра до
 //!   256 цветов — кодер выбирает лучшее), MED-предиктор, контексты по
 //!   градиентам, raw-fallback как потолок худшего случая;
-//! - **lossy** — YCbCr, опциональный 4:2:0, направленная intra-предикция
-//!   блоков (DC/V/H/TM + диагонали D45/D135), DCT 8x8 остатка, перцептивное
-//!   квантование с dead-zone, RD-выбор моды.
+//! - **lossy** — YCbCr, опциональный 4:2:0, дерево блоков 32→16→8→4,
+//!   направленная intra-предикция, DCT/ADST, перцептивное квантование,
+//!   adaptive range coding и tile-local CDEF.
 //!
-//! Энтропийное ядро общее: rANS (12-битные вероятности) + hybrid-uint токены.
-//! Изображение делится на независимые тайлы 256x256; тайлы кодируются и
-//! декодируются параллельно (feature `threads`, включена по умолчанию;
-//! для wasm собирать с `--no-default-features`).
+//! Lossless использует rANS, lossy v7 — адаптивный range coder; оба слоя
+//! используют hybrid-uint токены. Изображение делится на независимые тайлы
+//! 256x256; тайлы кодируются и декодируются параллельно (feature `threads`,
+//! включена по умолчанию; для wasm собирать с `--no-default-features`).
 //!
 //! Свойства реализации: чистый std (без зависимостей), `unsafe` запрещён,
 //! декодер не паникует на произвольных байтах и не аллоцирует память
@@ -33,6 +34,7 @@
 
 mod arith;
 mod bits;
+mod cdef;
 mod color;
 mod dct;
 mod deblock;
@@ -51,9 +53,9 @@ mod tokens;
 
 pub use error::{DecodeError, EncodeError};
 
-/// Новейшая версия битстрима, которую читает эта сборка
-/// (см. `Documents/codecs/FRC-I.md`): v3 lossless, v5 lossy по умолчанию,
-/// v6 при ICC, v7 экспериментально (`encode_with_version` / `--bitstream 7`).
+/// Новейшая замороженная версия битстрима, которую читает и пишет lossy-кодер
+/// этой сборки (см. `Documents/codecs/FRC-I.md`). Lossless без метаданных
+/// остаётся на минимальном достаточном v3.
 pub const BITSTREAM_VERSION: u8 = format::VERSION_MAX;
 
 /// Низкоуровневые примитивы энтропийного кодирования для семейства FRC:
@@ -123,7 +125,7 @@ impl Default for DecodeLimits {
 /// Метаданные потока без декодирования тела.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageInfo {
-    /// Версия битстрима (1..=6).
+    /// Версия битстрима (1..=7).
     pub version: u8,
     pub width: u32,
     pub height: u32,
@@ -142,14 +144,14 @@ pub struct ImageInfo {
     pub quality: Option<u8>,
 }
 
-/// Кодирует изображение в FRC-I (v5 для lossy, v3 для lossless).
+/// Кодирует изображение в FRC-I (v7 для lossy, v3 для lossless).
 pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeError> {
     encode::encode(img, mode)
 }
 
-/// Кодирует с вложением ICC-профиля (битстрим v6: блок метаданных).
-/// Профиль возвращается декодером в `DecodedImage::icc` и читается
-/// без декодирования пикселей через [`read_icc`].
+/// Кодирует с вложением ICC-профиля (v7 для lossy, v6 для lossless).
+/// Профиль возвращается декодером в `DecodedImage::icc` и читается без
+/// декодирования пикселей через [`read_icc`].
 pub fn encode_with_icc(
     img: &ImageView<'_>,
     mode: EncodeMode,

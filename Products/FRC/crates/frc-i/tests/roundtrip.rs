@@ -115,17 +115,17 @@ fn lossless_flat_image_is_tiny() {
 }
 
 #[test]
-fn lossy_writes_v5_with_deblock_at_low_quality() {
+fn lossy_writes_v7_with_deblock_at_low_quality() {
     let (w, h) = (320, 240);
     let data = synthetic(w, h, PixelFormat::Rgb8);
     let v = view(w, h, PixelFormat::Rgb8, &data);
 
     let info = read_info(&encode(&v, EncodeMode::Lossy { quality: 30 }).unwrap()).unwrap();
-    assert_eq!(info.version, 5);
+    assert_eq!(info.version, 7);
     assert!(info.deblock, "q<45 должен включать деблокинг");
 
     let info = read_info(&encode(&v, EncodeMode::Lossy { quality: 45 }).unwrap()).unwrap();
-    assert_eq!(info.version, 5);
+    assert_eq!(info.version, 7);
     assert!(!info.deblock, "q>=45 — без деблокинга");
 
     // Lossless не использует слой блоков и не требует нового декодера.
@@ -299,12 +299,12 @@ fn icc_roundtrip_all_modes() {
     let (w, h) = (64, 48);
     let icc: Vec<u8> = (0..1000u32).map(|i| (i * 7 % 251) as u8).collect();
 
-    // Lossy: v6, пиксели декодируются, профиль возвращается байт-в-байт.
+    // Lossy: текущий v7, пиксели декодируются, профиль возвращается байт-в-байт.
     let data = synthetic(w, h, PixelFormat::Rgb8);
     let v = view(w, h, PixelFormat::Rgb8, &data);
     let fri = encode_with_icc(&v, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
     let info = read_info(&fri).unwrap();
-    assert_eq!(info.version, 6);
+    assert_eq!(info.version, 7);
     assert!(info.metadata);
     assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
     let out = decode(&fri).unwrap();
@@ -333,7 +333,7 @@ fn icc_roundtrip_all_modes() {
     assert_eq!(out.data, flat);
     assert_eq!(out.icc.as_deref(), Some(icc.as_slice()));
 
-    // Без ICC ничего не меняется: v5/v3, icc = None.
+    // Без ICC ничего не меняется: v7/v3, icc = None.
     let fri = encode(&v, EncodeMode::Lossy { quality: 75 }).unwrap();
     assert_eq!(read_icc(&fri).unwrap(), None);
     assert_eq!(decode(&fri).unwrap().icc, None);
@@ -341,29 +341,32 @@ fn icc_roundtrip_all_modes() {
 
 #[test]
 fn v7_adaptive_roundtrip_and_density() {
-    // Линия v7 (адаптивная энтропия) доступна только по явному запросу
-    // версии; публичный encode() продолжает писать v5 до стабилизации.
+    // После заморозки публичный encode() обязан побайтно совпадать с явным v7.
     let (w, h) = (320, 240);
     let data = synthetic(w, h, PixelFormat::Rgb8);
     let v = view(w, h, PixelFormat::Rgb8, &data);
     for quality in [30u8, 50, 75, 90] {
-        let v5 = encode(&v, EncodeMode::Lossy { quality }).unwrap();
-        let v7 = encode_with_version(&v, EncodeMode::Lossy { quality }, 7).unwrap();
+        let v5 = encode_with_version(&v, EncodeMode::Lossy { quality }, 5).unwrap();
+        let v7 = encode(&v, EncodeMode::Lossy { quality }).unwrap();
         assert_eq!(read_info(&v7).unwrap().version, 7);
+        assert_eq!(
+            v7,
+            encode_with_version(&v, EncodeMode::Lossy { quality }, 7).unwrap()
+        );
 
-        // v7.2 меняет дерево блоков, поэтому реконструкция уже не обязана
-        // совпадать с v5, но не должна проваливаться по fidelity.
+        // v7 меняет дерево/transform, post-filter и chroma reconstruction,
+        // поэтому quality не обязан совпадать с v5; порог ловит крупный срыв.
         let out5 = decode(&v5).unwrap();
         let out7 = decode(&v7).unwrap();
         let p5 = psnr_rgb(&data, &out5.data);
         let p7 = psnr_rgb(&data, &out7.data);
         assert!(
-            p7 + 0.5 >= p5,
-            "q={quality}: v7.2 потерял слишком много fidelity: {p5:.2} → {p7:.2} dB"
+            p7 + 0.75 >= p5,
+            "q={quality}: v7 потерял слишком много fidelity: {p5:.2} → {p7:.2} dB"
         );
 
         // Линия v7 обязана оставаться компактнее v5
-        // (Kodak v7.2: ~−5.7% BD-rate).
+        // (Kodak v7.9a: ~−34.0% BD-rate).
         assert!(
             v7.len() < v5.len(),
             "q={quality}: v7 {} байт не меньше v5 {}",
@@ -384,20 +387,35 @@ fn v7_non_multiple_of_16_dimensions() {
     for &(w, h) in &[(1u32, 1u32), (7, 5), (17, 33), (100, 60), (257, 255)] {
         let data = synthetic(w, h, PixelFormat::Rgb8);
         let v = view(w, h, PixelFormat::Rgb8, &data);
-        let fri = encode_with_version(&v, EncodeMode::Lossy { quality: 75 }, 7).unwrap();
+        let fri = encode(&v, EncodeMode::Lossy { quality: 75 }).unwrap();
         let out = decode(&fri).unwrap();
         assert_eq!((out.width, out.height), (w, h), "размеры {w}x{h}");
     }
 }
 
 #[test]
+fn v7_switches_to_chroma_444_after_quality_85() {
+    let (w, h) = (96, 64);
+    let data = synthetic(w, h, PixelFormat::Rgb8);
+    let image = view(w, h, PixelFormat::Rgb8, &data);
+
+    let v7_85 = encode(&image, EncodeMode::Lossy { quality: 85 }).unwrap();
+    let v7_86 = encode(&image, EncodeMode::Lossy { quality: 86 }).unwrap();
+    assert!(read_info(&v7_85).unwrap().chroma420);
+    assert!(!read_info(&v7_86).unwrap().chroma420);
+
+    // Замороженная линия v5 сохраняет прежний порог 85.
+    let v5_85 = encode_with_version(&image, EncodeMode::Lossy { quality: 85 }, 5).unwrap();
+    assert!(read_info(&v5_85).unwrap().chroma420);
+}
+
+#[test]
 fn v7_alpha_stays_lossless() {
     let (w, h) = (100, 60);
     let data = synthetic(w, h, PixelFormat::Rgba8);
-    let fri = encode_with_version(
+    let fri = encode(
         &view(w, h, PixelFormat::Rgba8, &data),
         EncodeMode::Lossy { quality: 60 },
-        7,
     )
     .unwrap();
     let out = decode(&fri).unwrap();

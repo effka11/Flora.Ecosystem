@@ -6,12 +6,12 @@
 
 use crate::bits::BitWriter;
 use crate::color::{downsample_420, rgb_to_ycbcr, rgb_to_ycocg_r};
-use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
+use crate::dct::quant_matrices;
 use crate::error::EncodeError;
 use crate::format::{
     CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
     VERSION_ADAPTIVE, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA, VERSION_MIN,
-    VERSION_SUPERBLOCK, build_metadata_block, tile_grid,
+    build_metadata_block, tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
@@ -23,6 +23,8 @@ use std::collections::HashMap;
 
 /// Порог качества, ниже которого включается сабсэмплинг цветоразностей 4:2:0.
 const CHROMA420_MAX_QUALITY: u8 = 85;
+/// v7.8 threshold rebalanced for scalar qmatrix and calibrated RDOQ.
+const CHROMA420_MAX_QUALITY_V7: u8 = 85;
 /// Порог качества, ниже которого включается деблокинг (битстрим v4):
 /// при сильном квантовании блочность видна, фильтр её маскирует.
 const DEBLOCK_MAX_QUALITY: u8 = 44;
@@ -31,7 +33,8 @@ pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeEr
     encode_impl(img, mode, base_version(mode), None)
 }
 
-/// Кодирует с вложением ICC-профиля (битстрим v6: блок метаданных).
+/// Кодирует с вложением ICC-профиля. Lossy использует текущий v7, lossless —
+/// минимальный v6, в котором появился блок метаданных.
 pub fn encode_with_icc(
     img: &ImageView<'_>,
     mode: EncodeMode,
@@ -43,20 +46,25 @@ pub fn encode_with_icc(
     if icc.len() + 5 > MAX_METADATA {
         return Err(EncodeError::InvalidIcc("ICC-профиль больше 8 МиБ"));
     }
-    encode_impl(img, mode, VERSION_METADATA, Some(icc))
+    encode_impl(
+        img,
+        mode,
+        base_version(mode).max(VERSION_METADATA),
+        Some(icc),
+    )
 }
 
-/// Версию диктует набор инструментов: lossy пишется v5 (суперблоки;
-/// деблокинг-флаг добавляется при q < 45), lossless — v3 (слой блоков
-/// не используется, файл не должен требовать более нового декодера).
+/// Версию диктует набор инструментов: lossy пишет замороженный v7, lossless —
+/// v3 (слой блоков не используется, файл не должен требовать более нового
+/// декодера).
 fn base_version(mode: EncodeMode) -> u8 {
     match mode {
-        EncodeMode::Lossy { .. } => VERSION_SUPERBLOCK,
+        EncodeMode::Lossy { .. } => VERSION_ADAPTIVE,
         EncodeMode::Lossless => VERSION_CURRENT,
     }
 }
 
-/// Кодирует с явной версией битстрима (1..=6). Публичный кодер выбирает
+/// Кодирует с явной версией битстрима (1..=7). Публичный кодер выбирает
 /// версию сам (см. `encode`); явные версии — только для генерации
 /// golden-векторов и тестов.
 #[doc(hidden)]
@@ -407,7 +415,12 @@ fn encode_lossy(
         height: img.height,
         lossless: false,
         alpha,
-        chroma420: quality <= CHROMA420_MAX_QUALITY,
+        chroma420: quality
+            <= if version >= VERSION_ADAPTIVE {
+                CHROMA420_MAX_QUALITY_V7
+            } else {
+                CHROMA420_MAX_QUALITY
+            },
         identity: false,
         palette: false,
         deblock: version >= VERSION_DEBLOCK && quality <= DEBLOCK_MAX_QUALITY,
@@ -430,8 +443,7 @@ fn encode_lossy(
         }
     }
 
-    let q_luma = quant_matrix(&BASE_LUMA, quality);
-    let q_chroma = quant_matrix(&BASE_CHROMA, quality);
+    let (q_luma, q_chroma) = quant_matrices(version, quality);
 
     let tiles = tile_grid(img.width, img.height);
     let payloads = par_map(&tiles, |t| {
@@ -442,15 +454,24 @@ fn encode_lossy(
             crate::arith::ModelBank::new(groups, kinds)
         });
         let buf = p0.extract(t.x0, t.y0, t.w, t.h);
-        dct_payload(
+        let luma_recon = dct_payload(
             &buf,
-            t.w,
-            t.h,
+            None,
+            (t.w, t.h),
             &q_luma,
-            version,
+            DctConfig {
+                version,
+                deblock: header.deblock,
+                cdef: true,
+            },
             bank.as_mut(),
             &mut payload,
         );
+        // A/B Kodak: текущая CfL-модель выигрывает только при 4:2:0;
+        // decoder всё равно принимает CfL и для 4:4:4 как свободу кодера.
+        let cfl_luma = luma_recon
+            .filter(|_| header.chroma420)
+            .map(|recon| downsample_420(&recon, t.w, t.h));
         for plane in [&p1, &p2] {
             let full = plane.extract(t.x0, t.y0, t.w, t.h);
             let (cbuf, cw, ch) = if header.chroma420 {
@@ -464,10 +485,14 @@ fn encode_lossy(
             };
             dct_payload(
                 &cbuf,
-                cw,
-                ch,
+                cfl_luma.as_deref(),
+                (cw, ch),
                 &q_chroma,
-                version,
+                DctConfig {
+                    version,
+                    deblock: header.deblock,
+                    cdef: true,
+                },
                 bank.as_mut(),
                 &mut payload,
             );
@@ -481,33 +506,48 @@ fn encode_lossy(
     assemble(&header, meta, None, &payloads)
 }
 
+#[derive(Clone, Copy)]
+struct DctConfig {
+    version: u8,
+    deblock: bool,
+    cdef: bool,
+}
+
 fn dct_payload(
     buf: &[i16],
-    w: usize,
-    h: usize,
+    cfl_luma: Option<&[i16]>,
+    size: (usize, usize),
     qmat: &[u16; 64],
-    version: u8,
+    config: DctConfig,
     bank: Option<&mut crate::arith::ModelBank>,
     out: &mut Vec<u8>,
-) {
+) -> Option<Vec<i16>> {
+    let (w, h) = size;
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
-    if version >= VERSION_ADAPTIVE {
-        lossy::encode_tile_plane_v7(buf, w, h, qmat, &mut syms, &mut raw);
+    if config.version >= VERSION_ADAPTIVE {
+        let recon = lossy::encode_tile_plane_v7(buf, cfl_luma, w, h, qmat, &mut syms, &mut raw);
+        let strength = if config.cdef {
+            crate::cdef::choose_strength(buf, &recon, w, h, qmat[0], config.deblock)
+        } else {
+            0
+        };
+        syms.insert(0, (lossy::CTX7_CDEF, strength));
         write_dct_section_v7(out, bank.expect("v7: банк обязателен"), &syms, raw);
-        return;
+        return Some(recon);
     }
-    match version {
+    match config.version {
         1 => lossy::encode_tile_plane_v1(buf, w, h, qmat, &mut syms, &mut raw),
         2 => lossy::encode_tile_plane_v2(buf, w, h, qmat, &mut syms, &mut raw),
         3 | 4 => lossy::encode_tile_plane(buf, w, h, qmat, &mut syms, &mut raw),
         _ => lossy::encode_tile_plane_v5(buf, w, h, qmat, &mut syms, &mut raw),
     }
-    let n_ctx = match version {
+    let n_ctx = match config.version {
         1 => lossy::N_CTX_V1,
         2 => lossy::N_CTX_V2,
         3 | 4 => lossy::N_CTX_V3,
         _ => lossy::N_CTX_V5,
     };
     write_dct_section(out, n_ctx, &syms, raw);
+    None
 }

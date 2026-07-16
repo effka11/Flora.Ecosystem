@@ -8,8 +8,10 @@
 
 use crate::arith::{ModelBank, RangeDecoder};
 use crate::bits::BitReader;
-use crate::color::{upsample_420, ycbcr_to_rgb, ycocg_r_to_rgb};
-use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
+use crate::color::{
+    downsample_420, upsample_420, upsample_420_centered, ycbcr_to_rgb, ycocg_r_to_rgb,
+};
+use crate::dct::quant_matrices;
 use crate::error::DecodeError;
 use crate::format::VERSION_ADAPTIVE;
 use crate::format::{HEADER_LEN, Header, Metadata, TileRect, parse_metadata_block, tile_grid};
@@ -99,8 +101,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
         return Err(DecodeError::Corrupt("лишние байты после последнего тайла"));
     }
 
-    let q_luma = quant_matrix(&BASE_LUMA, header.quality.max(1));
-    let q_chroma = quant_matrix(&BASE_CHROMA, header.quality.max(1));
+    let (q_luma, q_chroma) = quant_matrices(header.version, header.quality.max(1));
     let chroma_range = if header.identity {
         RANGE_LUMA
     } else {
@@ -230,10 +231,27 @@ fn decode_tile(
             let (groups, kinds) = lossy::ctx_meta_v7();
             ModelBank::new(groups, kinds)
         });
-        let mut luma = read_dct_plane(payload, &mut pos, t.w, t.h, q_luma, version, bank.as_mut())?;
+        let luma_plane = read_dct_plane(
+            payload,
+            &mut pos,
+            (t.w, t.h),
+            None,
+            q_luma,
+            version,
+            bank.as_mut(),
+        )?;
+        let mut luma = luma_plane.buf;
+        let cfl_luma = (version >= VERSION_ADAPTIVE).then(|| {
+            if header.chroma420 {
+                downsample_420(&luma, t.w, t.h)
+            } else {
+                luma.clone()
+            }
+        });
         if header.deblock {
             crate::deblock::deblock_plane(&mut luma, t.w, t.h, q_luma[0]);
         }
+        crate::cdef::filter_plane(&mut luma, t.w, t.h, luma_plane.cdef_strength);
         color.push(luma);
         for _ in 0..2 {
             let (cw, ch) = if header.chroma420 {
@@ -241,14 +259,29 @@ fn decode_tile(
             } else {
                 (t.w, t.h)
             };
-            let mut cbuf =
-                read_dct_plane(payload, &mut pos, cw, ch, q_chroma, version, bank.as_mut())?;
+            let chroma_plane = read_dct_plane(
+                payload,
+                &mut pos,
+                (cw, ch),
+                cfl_luma.as_deref(),
+                q_chroma,
+                version,
+                bank.as_mut(),
+            )?;
+            let mut cbuf = chroma_plane.buf;
             if header.deblock {
                 // Хрома фильтруется в собственном разрешении, до апсэмплинга.
                 crate::deblock::deblock_plane(&mut cbuf, cw, ch, q_chroma[0]);
             }
+            crate::cdef::filter_plane(&mut cbuf, cw, ch, chroma_plane.cdef_strength);
             let full = if header.chroma420 {
-                upsample_420(&cbuf, cw, ch, t.w, t.h)
+                // v1–v6 сохраняют исторический co-sited upsampler; v7.6
+                // согласует фазу с center-sited средним downsample 2×2.
+                if version >= VERSION_ADAPTIVE {
+                    upsample_420_centered(&cbuf, cw, ch, t.w, t.h)
+                } else {
+                    upsample_420(&cbuf, cw, ch, t.w, t.h)
+                }
             } else {
                 cbuf
             };
@@ -293,30 +326,40 @@ fn read_lossless_plane(
     }
 }
 
+struct DctPlane {
+    buf: Vec<i16>,
+    cdef_strength: u8,
+}
+
 /// Читает одну DCT-секцию, полностью валидируя завершение потоков.
 fn read_dct_plane(
     payload: &[u8],
     pos: &mut usize,
-    w: usize,
-    h: usize,
+    size: (usize, usize),
+    cfl_luma: Option<&[i16]>,
     qmat: &[u16; 64],
     version: u8,
     bank: Option<&mut ModelBank>,
-) -> Result<Vec<i16>, DecodeError> {
+) -> Result<DctPlane, DecodeError> {
+    let (w, h) = size;
     if version >= VERSION_ADAPTIVE {
         let (section, used) = read_dct_section_v7(&payload[*pos..])?;
         *pos += used;
         let bank = bank.expect("v7: банк обязателен");
         let mut dec = RangeDecoder::new(section.tokens)?;
         let mut raw = BitReader::new(section.raw);
-        let buf = lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, qmat)?;
+        let cdef_strength = bank.decode(&mut dec, lossy::CTX7_CDEF)?;
+        if cdef_strength >= crate::cdef::N_STRENGTHS {
+            return Err(DecodeError::Corrupt("CDEF: неизвестная сила"));
+        }
+        let buf = lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?;
         if dec.consumed() != section.tokens.len() {
             return Err(DecodeError::Corrupt("лишние байты в адаптивном потоке"));
         }
         if raw.unread_bytes() != 0 {
             return Err(DecodeError::Corrupt("лишние байты в потоке сырых бит"));
         }
-        return Ok(buf);
+        return Ok(DctPlane { buf, cdef_strength });
     }
     let n_ctx = match version {
         5.. => lossy::N_CTX_V5,
@@ -338,5 +381,8 @@ fn read_dct_plane(
     if raw.unread_bytes() != 0 {
         return Err(DecodeError::Corrupt("лишние байты в потоке сырых бит"));
     }
-    Ok(buf)
+    Ok(DctPlane {
+        buf,
+        cdef_strength: 0,
+    })
 }

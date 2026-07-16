@@ -90,6 +90,12 @@ Thumbs.db
 # Rust (workspace root Cargo.toml → ./Target via .cargo/config.toml)
 /Target/
 /target/
+# Custom CARGO_TARGET_DIR for A/B benches (Target-v79-*, Target-v710-*, …)
+/Target-*/
 Backend/Target/
 Backend/target/
 **/Cargo.toml.orig
+
+# Python bytecode (compete/audit probes)
+**/__pycache__/
+*.pyc

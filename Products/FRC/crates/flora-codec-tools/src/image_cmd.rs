@@ -28,11 +28,10 @@ pub enum ImageCommand {
         /// Кодировать без потерь
         #[arg(long)]
         lossless: bool,
-        /// Вложить ICC-профиль из файла (битстрим v6)
+        /// Вложить ICC-профиль из файла (v7 lossy / v6 lossless)
         #[arg(long)]
         icc: Option<PathBuf>,
-        /// Экспериментально: явная версия битстрима (например, 7 —
-        /// адаптивная энтропия линии v7; несовместимо с --icc)
+        /// Явная версия битстрима для compatibility-тестов; несовместимо с --icc
         #[arg(long, conflicts_with = "icc")]
         bitstream: Option<u8>,
     },
