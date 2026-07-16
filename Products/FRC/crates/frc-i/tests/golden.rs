@@ -1,11 +1,21 @@
 //! Golden-вектора формата FRC-I: заморозка байтов битстрима.
 //!
-//! **Encode-заморозка (v3, текущая версия кодера).** Файлы `golden-v3-*.fri`
-//! фиксируют текущий выход кодера. Меняться они могут только осознанным
-//! решением (улучшение кодера): `FRC_I_UPDATE_GOLDEN=1 cargo test -p
-//! frc-i --test golden` — и коммитятся вместе с изменением.
+//! Два уровня гарантий (FRC-I.md §10):
+//!
+//! - **v1/v2 (decode-заморозка).** Файлы `golden-v1-*.fri`, `golden-v2-*.fri`
+//!   закоммичены навсегда и не регенерируются: декодер обязан читать их
+//!   одинаково в любой будущей версии кодека.
+//! - **v3..v6 (encode-заморозка).** Файлы `golden-v3..6-*.fri` фиксируют
+//!   текущий выход кодера соответствующей версии (v3/v4 — через явную
+//!   `encode_with_version`, v5 — публичный `encode`, v6 — `encode_with_icc`).
+//!   Меняться они могут только осознанным решением (улучшение кодера):
+//!   `FRC_I_UPDATE_GOLDEN=1 cargo test -p frc-i --test golden` —
+//!   и коммитятся вместе с изменением.
 
-use frc_i::{EncodeMode, ImageView, PixelFormat, decode, encode, read_info};
+use frc_i::{
+    EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc, encode_with_version,
+    read_icc, read_info,
+};
 use std::path::PathBuf;
 
 /// Детерминированное тестовое изображение 97x61 RGBA: градиенты, границы, шум.
@@ -76,6 +86,125 @@ fn check_or_update(name: &str, produced: &[u8]) {
     );
 }
 
+// --- v1: decode-заморозка (файлы никогда не регенерируются) ---------------------
+
+#[test]
+fn golden_v1_lossless_decodes_exactly_forever() {
+    let fri = std::fs::read(data_path("golden-v1-lossless.fri")).expect("нет файла v1");
+    assert_eq!(read_info(&fri).unwrap().version, 1);
+    let (_, _, data) = golden_source();
+    assert_eq!(
+        decode(&fri).unwrap().data,
+        data,
+        "v1-поток обязан декодироваться побайтно точно в любой версии кодека"
+    );
+}
+
+#[test]
+fn golden_v1_palette_decodes_exactly_forever() {
+    let fri = std::fs::read(data_path("golden-v1-palette.fri")).expect("нет файла v1");
+    assert_eq!(read_info(&fri).unwrap().version, 1);
+    let (_, _, data) = palette_source();
+    assert_eq!(decode(&fri).unwrap().data, data);
+}
+
+#[test]
+fn golden_v1_lossy_decodes_deterministically_forever() {
+    const EXPECTED_FNV1A: u64 = 0x0571_1566_3CEA_8D7B;
+    let fri = std::fs::read(data_path("golden-v1-lossy-q75.fri")).expect("нет файла v1");
+    assert_eq!(read_info(&fri).unwrap().version, 1);
+    let out = decode(&fri).unwrap();
+    assert_eq!((out.width, out.height), (97, 61));
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "декодирование v1 разошлось"
+    );
+}
+
+// --- v2: decode-заморозка (файлы никогда не регенерируются) ---------------------
+
+#[test]
+fn golden_v2_lossless_decodes_exactly_forever() {
+    seed_v2_golden_if_requested();
+    let fri = std::fs::read(data_path("golden-v2-lossless.fri")).expect("нет файла v2");
+    assert_eq!(read_info(&fri).unwrap().version, 2);
+    let (_, _, data) = golden_source();
+    assert_eq!(decode(&fri).unwrap().data, data);
+}
+
+#[test]
+fn golden_v2_palette_decodes_exactly_forever() {
+    seed_v2_golden_if_requested();
+    let fri = std::fs::read(data_path("golden-v2-palette.fri")).expect("нет файла v2");
+    assert_eq!(read_info(&fri).unwrap().version, 2);
+    let (_, _, data) = palette_source();
+    assert_eq!(decode(&fri).unwrap().data, data);
+}
+
+#[test]
+fn golden_v2_lossy_decodes_deterministically_forever() {
+    seed_v2_golden_if_requested();
+    let fri = std::fs::read(data_path("golden-v2-lossy-q75.fri")).expect("нет файла v2");
+    assert_eq!(read_info(&fri).unwrap().version, 2);
+    let out = decode(&fri).unwrap();
+    assert_eq!((out.width, out.height), (97, 61));
+    if std::env::var_os("FRC_I_SEED_V2_GOLDEN").is_some() {
+        println!("golden v2 decode fnv1a = {:#018X}", fnv1a(&out.data));
+        return;
+    }
+    const EXPECTED_FNV1A: u64 = 0x5EBE_4105_EC9F_4358;
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "декодирование v2 разошлось"
+    );
+}
+
+/// Однократная генерация v2 decode-freeze (потеряны при ребрендинге FIC→FRC-I).
+fn seed_v2_golden_if_requested() {
+    if !std::env::var_os("FRC_I_SEED_V2_GOLDEN").is_some() {
+        return;
+    }
+    let names = [
+        ("golden-v2-lossless.fri", {
+            let (w, h, data) = golden_source();
+            let img = ImageView {
+                width: w,
+                height: h,
+                format: PixelFormat::Rgba8,
+                data: &data,
+            };
+            frc_i::encode_with_version(&img, EncodeMode::Lossless, 2).unwrap()
+        }),
+        ("golden-v2-palette.fri", {
+            let (w, h, data) = palette_source();
+            let img = ImageView {
+                width: w,
+                height: h,
+                format: PixelFormat::Rgb8,
+                data: &data,
+            };
+            frc_i::encode_with_version(&img, EncodeMode::Lossless, 2).unwrap()
+        }),
+        ("golden-v2-lossy-q75.fri", {
+            let (w, h, data) = golden_source();
+            let img = ImageView {
+                width: w,
+                height: h,
+                format: PixelFormat::Rgba8,
+                data: &data,
+            };
+            frc_i::encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 2).unwrap()
+        }),
+    ];
+    for (name, bytes) in names {
+        let path = data_path(name);
+        std::fs::create_dir_all(path.parent().expect("data dir")).expect("mkdir");
+        std::fs::write(&path, bytes).expect("запись v2 golden");
+    }
+}
+
 // --- v3: encode-заморозка текущего кодера --------------------------------------
 
 #[test]
@@ -120,8 +249,127 @@ fn golden_v3_lossy_bitstream_frozen() {
         format: PixelFormat::Rgba8,
         data: &data,
     };
-    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 3).unwrap();
+    assert_eq!(read_info(&fri).unwrap().version, 3);
     check_or_update("golden-v3-lossy-q75.fri", &fri);
+}
+
+// --- v4: encode-заморозка (деблокинг, q < 45) ----------------------------------
+
+#[test]
+fn golden_v4_lossy_deblock_bitstream_frozen() {
+    let (w, h, data) = golden_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 30 }, 4).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 4);
+    assert!(info.deblock, "v4 q=30 должен включать деблокинг");
+    check_or_update("golden-v4-lossy-q30.fri", &fri);
+}
+
+#[test]
+fn golden_v4_lossy_decode_is_deterministic() {
+    // Детерминизм декодера с деблокингом: хеш пиксельного выхода зафиксирован.
+    const EXPECTED_FNV1A: u64 = 0x7CA1_876A_CD04_7FD4;
+    if std::env::var_os("FRC_I_UPDATE_GOLDEN").is_some() {
+        let (w, h, data) = golden_source();
+        let img = ImageView {
+            width: w,
+            height: h,
+            format: PixelFormat::Rgba8,
+            data: &data,
+        };
+        let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 30 }, 4).unwrap();
+        let out = decode(&fri).unwrap();
+        println!("golden v4 decode fnv1a = {:#018X}", fnv1a(&out.data));
+        return;
+    }
+    let fri = std::fs::read(data_path("golden-v4-lossy-q30.fri")).expect("нет golden-файла");
+    let out = decode(&fri).unwrap();
+    assert_eq!((out.width, out.height), (97, 61));
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "выход декодера v4 недетерминирован"
+    );
+}
+
+// --- v5: encode-заморозка (суперблоки 16×16, текущая версия кодера) -------------
+
+#[test]
+fn golden_v5_lossy_bitstream_frozen() {
+    let (w, h, data) = golden_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 5, "lossy-кодер должен писать v5");
+    assert!(!info.deblock, "q=75 без деблокинга");
+    check_or_update("golden-v5-lossy-q75.fri", &fri);
+}
+
+#[test]
+fn golden_v5_lossy_decode_is_deterministic() {
+    const EXPECTED_FNV1A: u64 = 0xD44B_8BBB_4520_2C1B;
+    if std::env::var_os("FRC_I_UPDATE_GOLDEN").is_some() {
+        let (w, h, data) = golden_source();
+        let img = ImageView {
+            width: w,
+            height: h,
+            format: PixelFormat::Rgba8,
+            data: &data,
+        };
+        let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+        let out = decode(&fri).unwrap();
+        println!("golden v5 decode fnv1a = {:#018X}", fnv1a(&out.data));
+        return;
+    }
+    let fri = std::fs::read(data_path("golden-v5-lossy-q75.fri")).expect("нет golden-файла");
+    let out = decode(&fri).unwrap();
+    assert_eq!((out.width, out.height), (97, 61));
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "выход декодера v5 недетерминирован"
+    );
+}
+
+// --- v6: encode-заморозка (блок метаданных: ICC) --------------------------------
+
+/// Детерминированный псевдо-ICC-профиль для golden-вектора.
+fn golden_icc() -> Vec<u8> {
+    (0..256u32).map(|i| (i * 31 % 253) as u8).collect()
+}
+
+#[test]
+fn golden_v6_lossy_icc_bitstream_frozen() {
+    let (w, h, data) = golden_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let icc = golden_icc();
+    let fri = encode_with_icc(&img, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 6, "ICC требует v6");
+    assert!(info.metadata);
+    check_or_update("golden-v6-lossy-icc-q75.fri", &fri);
+    // Метаданные не влияют на пиксели: тело совпадает с v5-потоком без ICC,
+    // отличаются только версия, флаг и вставленный блок.
+    let out = decode(&fri).unwrap();
+    assert_eq!(out.icc.as_deref(), Some(icc.as_slice()));
+    assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
 }
 
 #[test]
@@ -129,7 +377,7 @@ fn golden_v3_lossy_decode_is_deterministic() {
     // Детерминизм декодера (включая f32 DCT с константным базисом):
     // хеш пиксельного выхода зафиксирован. Проверяется на закоммиченном
     // файле — потоки обязаны декодироваться одинаково всегда.
-    const EXPECTED_FNV1A: u64 = 0x6BDF_0913_187D_9D0C;
+    const EXPECTED_FNV1A: u64 = 0x6FE6_6A87_AB82_3EFE;
     if std::env::var_os("FRC_I_UPDATE_GOLDEN").is_some() {
         // Кодируем в процессе (не читаем файл: тесты идут параллельно).
         let (w, h, data) = golden_source();
@@ -139,7 +387,7 @@ fn golden_v3_lossy_decode_is_deterministic() {
             format: PixelFormat::Rgba8,
             data: &data,
         };
-        let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+        let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 3).unwrap();
         let out = decode(&fri).unwrap();
         println!("golden v3 decode fnv1a = {:#018X}", fnv1a(&out.data));
         return;

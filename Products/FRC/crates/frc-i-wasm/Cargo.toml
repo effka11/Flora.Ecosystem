@@ -1,0 +1,20 @@
+# WASM-обёртка декодера FRC-I. Единственный crate с `unsafe` (минимальный FFI).
+
+[package]
+name = "frc-i-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+frc-i = { path = "../frc-i", default-features = false }
+
+# Override workspace unsafe_code = forbid for this FFI shim only.
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"

@@ -28,6 +28,7 @@ mod alloc;
 mod codec;
 mod energy;
 mod error;
+mod fft;
 mod qmath;
 mod transform;
 

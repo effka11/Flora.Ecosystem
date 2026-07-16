@@ -76,13 +76,14 @@ fn snr_db(reference: &[f32], decoded: &[f32]) -> f64 {
 
 /// Кодирует и декодирует поток; возвращает (выровненный выход, средние биты на кадр).
 fn roundtrip(cfg: Config, pcm: &[f32]) -> (Vec<f32>, f64) {
-    roundtrip_with(cfg, pcm, true)
+    roundtrip_with(cfg, pcm, true, true)
 }
 
-fn roundtrip_with(cfg: Config, pcm: &[f32], transients: bool) -> (Vec<f32>, f64) {
+fn roundtrip_with(cfg: Config, pcm: &[f32], transients: bool, vbr: bool) -> (Vec<f32>, f64) {
     let ch = cfg.channels as usize;
     let mut enc = Encoder::new(cfg).unwrap();
     enc.set_transient_detection(transients);
+    enc.set_vbr(vbr);
     let mut dec = Decoder::new(cfg.sample_rate, cfg.channels).unwrap();
     let total = pcm.len() / ch;
     let hops = total.div_ceil(FRAME_N);
@@ -396,8 +397,10 @@ fn transient_mode_reduces_pre_echo() {
     };
     let click_at = 30_000;
     let pcm = click_signal(48_000, 2, 1.0, click_at);
-    let (on, _) = roundtrip_with(cfg, &pcm, true);
-    let (off, _) = roundtrip_with(cfg, &pcm, false);
+    // VBR выключен в обеих ветках: A/B изолирует эффект коротких окон,
+    // а не перераспределение бюджета губернатором.
+    let (on, _) = roundtrip_with(cfg, &pcm, true, false);
+    let (off, _) = roundtrip_with(cfg, &pcm, false, false);
 
     // Ошибка в окне 13 мс ПЕРЕД щелчком (защитный зазор 2 мс до атаки).
     let pre_rms = |dec: &[f32]| -> f64 {
@@ -628,6 +631,83 @@ fn anti_collapse_flag_on_long_frame_is_rejected() {
     packet[0] |= 0b10; // anti-collapse без transient — невалидно
     let mut dec = Decoder::new(48_000, 1).unwrap();
     assert!(dec.decode_frame(&packet).is_err());
+}
+
+#[test]
+fn vbr_moves_bits_from_easy_to_hard_frames() {
+    // Первая половина — тихий синус (лёгкие кадры, губернатор ужимает бюджет
+    // и копит пул), вторая — плотный микс (голодающие кадры докупают биты).
+    let cfg = Config {
+        sample_rate: 48_000,
+        channels: 1,
+        bitrate_bps: 48_000,
+    };
+    let base = 48_000.0 * FRAME_N as f64 / 48_000.0;
+    let half_frames = 25usize;
+    let half_secs = half_frames as f32 * FRAME_N as f32 / 48_000.0;
+    let mut pcm = sine(48_000, 1, half_secs, 330.0, 0.05);
+    pcm.extend(mix_signal(48_000, 1, half_secs));
+
+    let encode_packets = |vbr: bool| -> Vec<Vec<u8>> {
+        let mut enc = Encoder::new(cfg).unwrap();
+        enc.set_vbr(vbr);
+        pcm.chunks_exact(FRAME_N)
+            .map(|c| enc.encode_frame(c).unwrap())
+            .collect()
+    };
+    let packets = encode_packets(true);
+    let budgets: Vec<f64> = packets
+        .iter()
+        .map(|p| f64::from(u16::from_le_bytes([p[2], p[3]])))
+        .collect();
+    let mean = |s: &[f64]| s.iter().sum::<f64>() / s.len() as f64;
+
+    // Средний фактический битрейт не превышает цель (страховка губернатора).
+    let avg_bits = packets.iter().map(|p| p.len() * 8).sum::<usize>() as f64 / packets.len() as f64;
+    // Лёгкая половина ужата (пропускаем стартовую атаку синуса), тяжёлая
+    // получила кадры с бюджетом выше базового — буст из пула сбережений.
+    let easy_budget = mean(&budgets[2..half_frames]);
+    let boosted = budgets[half_frames..]
+        .iter()
+        .filter(|&&b| b > base * 1.05)
+        .count();
+    println!(
+        "VBR: avg bits/frame = {avg_bits:.0} (base {base:.0}), easy budget = {easy_budget:.0}, \
+         boosted hard frames = {boosted}/{half_frames}"
+    );
+    assert!(avg_bits <= base + 8.0, "VBR превысил средний бюджет");
+    assert!(
+        easy_budget < base * 0.8,
+        "лёгкие кадры должны ужиматься: {easy_budget:.0} vs base {base:.0}"
+    );
+    assert!(boosted > 0, "тяжёлые кадры должны получать буст из пула");
+
+    // Перераспределение улучшает тяжёлую половину против CBR при среднем
+    // битрейте не выше CBR; лёгкая половина остаётся перцептивно прозрачной
+    // (λ_easy = 24 тоньше номинального шага на 6 дБ).
+    let (dec_vbr, avg_vbr) = roundtrip_with(cfg, &pcm, true, true);
+    let (dec_cbr, avg_cbr) = roundtrip_with(cfg, &pcm, true, false);
+    let hard = half_frames * FRAME_N..2 * half_frames * FRAME_N;
+    let easy = FRAME_N..half_frames * FRAME_N;
+    let snr_hard_vbr = snr_db(&pcm[hard.clone()], &dec_vbr[hard.clone()]);
+    let snr_hard_cbr = snr_db(&pcm[hard.clone()], &dec_cbr[hard]);
+    let snr_easy_vbr = snr_db(&pcm[easy.clone()], &dec_vbr[easy.clone()]);
+    let snr_easy_cbr = snr_db(&pcm[easy.clone()], &dec_cbr[easy]);
+    println!(
+        "VBR SNR: hard {snr_hard_vbr:.1} dB (CBR {snr_hard_cbr:.1}), easy {snr_easy_vbr:.1} dB \
+         (CBR {snr_easy_cbr:.1}); avg bits VBR {avg_vbr:.0} vs CBR {avg_cbr:.0}"
+    );
+    assert!(avg_vbr <= avg_cbr + 8.0, "VBR не должен тратить больше CBR");
+    assert!(
+        snr_hard_vbr > snr_hard_cbr + 0.3,
+        "буст должен улучшать тяжёлые кадры: {snr_hard_vbr:.1} vs {snr_hard_cbr:.1}"
+    );
+    // Цена ужатия лёгких кадров ограничена: не хуже CBR более чем на 6 дБ
+    // и не ниже абсолютного пола (шум на ~55 дБ под тихим сигналом).
+    assert!(
+        snr_easy_vbr > snr_easy_cbr - 6.0 && snr_easy_vbr > 25.0,
+        "ужатые лёгкие кадры деградировали: {snr_easy_vbr:.1} vs CBR {snr_easy_cbr:.1}"
+    );
 }
 
 #[test]

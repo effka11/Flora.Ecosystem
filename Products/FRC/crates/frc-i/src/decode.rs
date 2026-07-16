@@ -6,15 +6,19 @@
 //! `threads` параллельное — декодирование тайлов, затем сборка плоскостей
 //! в порядке тайлов. Результат не зависит от числа потоков.
 
+use crate::arith::{ModelBank, RangeDecoder};
 use crate::bits::BitReader;
 use crate::color::{upsample_420, ycbcr_to_rgb, ycocg_r_to_rgb};
 use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
 use crate::error::DecodeError;
-use crate::format::{HEADER_LEN, Header, TileRect, tile_grid};
+use crate::format::VERSION_ADAPTIVE;
+use crate::format::{HEADER_LEN, Header, Metadata, TileRect, parse_metadata_block, tile_grid};
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
 use crate::rans::RansDecoder;
-use crate::section::{PredictiveSection, read_dct_section, read_predictive_section, unpack_raw};
+use crate::section::{
+    PredictiveSection, read_dct_section, read_dct_section_v7, read_predictive_section, unpack_raw,
+};
 use crate::{DecodeLimits, DecodedImage, PixelFormat, lossless, lossy};
 
 /// Результат декодирования одного тайла: цветовые плоскости (1 либо 3) + альфа.
@@ -35,8 +39,17 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
     }
     let (w, h) = (header.width as usize, header.height as usize);
 
-    // Опциональный блок палитры сразу после заголовка.
+    // Опциональный блок метаданных сразу после заголовка (v6+).
     let mut offset = HEADER_LEN;
+    let meta = if header.metadata {
+        let (meta, used) = parse_metadata_block(bytes, offset)?;
+        offset += used;
+        meta
+    } else {
+        Metadata::default()
+    };
+
+    // Опциональный блок палитры (после метаданных, если они есть).
     let palette: Option<Vec<[u8; 4]>> = if header.palette {
         let Some(&count_minus_1) = bytes.get(offset) else {
             return Err(DecodeError::Corrupt("обрыв счётчика палитры"));
@@ -168,7 +181,19 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
         height: header.height,
         format,
         data,
+        icc: meta.icc,
     })
+}
+
+/// Читает ICC-профиль из потока без декодирования пикселей:
+/// разбирается только заголовок и блок метаданных.
+pub fn read_icc(bytes: &[u8]) -> Result<Option<Vec<u8>>, DecodeError> {
+    let header = Header::parse(bytes)?;
+    if !header.metadata {
+        return Ok(None);
+    }
+    let (meta, _) = parse_metadata_block(bytes, HEADER_LEN)?;
+    Ok(meta.icc)
 }
 
 /// Декодирует все секции одного тайла; валидирует точное потребление payload.
@@ -200,16 +225,28 @@ fn decode_tile(
             )?);
         }
     } else {
-        color.push(read_dct_plane(
-            payload, &mut pos, t.w, t.h, q_luma, version,
-        )?);
+        // v7: банк адаптивных моделей общий для всех плоскостей тайла.
+        let mut bank = (version >= VERSION_ADAPTIVE).then(|| {
+            let (groups, kinds) = lossy::ctx_meta_v7();
+            ModelBank::new(groups, kinds)
+        });
+        let mut luma = read_dct_plane(payload, &mut pos, t.w, t.h, q_luma, version, bank.as_mut())?;
+        if header.deblock {
+            crate::deblock::deblock_plane(&mut luma, t.w, t.h, q_luma[0]);
+        }
+        color.push(luma);
         for _ in 0..2 {
             let (cw, ch) = if header.chroma420 {
                 (t.w.div_ceil(2), t.h.div_ceil(2))
             } else {
                 (t.w, t.h)
             };
-            let cbuf = read_dct_plane(payload, &mut pos, cw, ch, q_chroma, version)?;
+            let mut cbuf =
+                read_dct_plane(payload, &mut pos, cw, ch, q_chroma, version, bank.as_mut())?;
+            if header.deblock {
+                // Хрома фильтруется в собственном разрешении, до апсэмплинга.
+                crate::deblock::deblock_plane(&mut cbuf, cw, ch, q_chroma[0]);
+            }
             let full = if header.chroma420 {
                 upsample_420(&cbuf, cw, ch, t.w, t.h)
             } else {
@@ -264,9 +301,26 @@ fn read_dct_plane(
     h: usize,
     qmat: &[u16; 64],
     version: u8,
+    bank: Option<&mut ModelBank>,
 ) -> Result<Vec<i16>, DecodeError> {
+    if version >= VERSION_ADAPTIVE {
+        let (section, used) = read_dct_section_v7(&payload[*pos..])?;
+        *pos += used;
+        let bank = bank.expect("v7: банк обязателен");
+        let mut dec = RangeDecoder::new(section.tokens)?;
+        let mut raw = BitReader::new(section.raw);
+        let buf = lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, qmat)?;
+        if dec.consumed() != section.tokens.len() {
+            return Err(DecodeError::Corrupt("лишние байты в адаптивном потоке"));
+        }
+        if raw.unread_bytes() != 0 {
+            return Err(DecodeError::Corrupt("лишние байты в потоке сырых бит"));
+        }
+        return Ok(buf);
+    }
     let n_ctx = match version {
-        3.. => lossy::N_CTX_V3,
+        5.. => lossy::N_CTX_V5,
+        3 | 4 => lossy::N_CTX_V3,
         2 => lossy::N_CTX_V2,
         _ => lossy::N_CTX_V1,
     };
@@ -275,7 +329,8 @@ fn read_dct_plane(
     let mut dec = RansDecoder::new(section.tokens)?;
     let mut raw = BitReader::new(section.raw);
     let buf = match version {
-        3.. => lossy::decode_tile_plane(&section, &mut dec, &mut raw, w, h, qmat)?,
+        5 | 6 => lossy::decode_tile_plane_v5(&section, &mut dec, &mut raw, w, h, qmat)?,
+        3 | 4 => lossy::decode_tile_plane(&section, &mut dec, &mut raw, w, h, qmat)?,
         2 => lossy::decode_tile_plane_v2(&section, &mut dec, &mut raw, w, h, qmat)?,
         _ => lossy::decode_tile_plane_v1(&section, &mut dec, &mut raw, w, h, qmat)?,
     };

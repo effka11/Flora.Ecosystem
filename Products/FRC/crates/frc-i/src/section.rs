@@ -18,7 +18,15 @@
 //!
 //! Число контекстов `n_ctx` фиксировано версией формата и видом секции —
 //! оно не сериализуется.
+//!
+//! DCT-секция v7 (адаптивная энтропия, §11.3): частотных таблиц нет вовсе,
+//! поток токенов — range-кодер с адаптивными моделями (`arith`):
+//!
+//! ```text
+//! [token_len u32][raw_len u32][arith-поток][raw bits]
+//! ```
 
+use crate::arith::{ModelBank, RangeEncoder};
 use crate::bits::{BitReader, BitWriter};
 use crate::error::DecodeError;
 use crate::plane::PlaneShape;
@@ -56,6 +64,58 @@ fn build_coded(n_ctx: usize, syms: &[(u8, u8)], raw: BitWriter) -> Vec<u8> {
 /// Дописывает DCT-секцию (всегда coded).
 pub fn write_dct_section(out: &mut Vec<u8>, n_ctx: usize, syms: &[(u8, u8)], raw: BitWriter) {
     out.extend_from_slice(&build_coded(n_ctx, syms, raw));
+}
+
+/// Дописывает DCT-секцию v7: адаптивная энтропия, таблиц частот нет.
+/// `bank` разделяется между секциями одного тайла (модели продолжают
+/// обучение от плоскости к плоскости — хрома стартует тёплой).
+pub fn write_dct_section_v7(
+    out: &mut Vec<u8>,
+    bank: &mut ModelBank,
+    syms: &[(u8, u8)],
+    raw: BitWriter,
+) {
+    let mut enc = RangeEncoder::new();
+    for &(ctx, sym) in syms {
+        bank.encode(&mut enc, ctx, sym);
+    }
+    let tokens = enc.finish();
+    let raw_bytes = raw.finish();
+    out.extend_from_slice(&(tokens.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(raw_bytes.len() as u32).to_le_bytes());
+    out.extend_from_slice(&tokens);
+    out.extend_from_slice(&raw_bytes);
+}
+
+/// Распарсенная DCT-секция v7: срезы потоков (таблиц нет).
+pub struct SectionV7<'a> {
+    pub tokens: &'a [u8],
+    pub raw: &'a [u8],
+}
+
+/// Читает DCT-секцию v7 с начала `bytes`; возвращает секцию и число съеденных байт.
+pub fn read_dct_section_v7(bytes: &[u8]) -> Result<(SectionV7<'_>, usize), DecodeError> {
+    let Some(lens) = bytes.get(..8) else {
+        return Err(DecodeError::Corrupt("section: обрыв длин потоков"));
+    };
+    let token_len = u32::from_le_bytes(lens[0..4].try_into().expect("len 4")) as usize;
+    let raw_len = u32::from_le_bytes(lens[4..8].try_into().expect("len 4")) as usize;
+    let mut pos = 8usize;
+    let tok_end = pos
+        .checked_add(token_len)
+        .ok_or(DecodeError::Corrupt("section: переполнение"))?;
+    let Some(tokens) = bytes.get(pos..tok_end) else {
+        return Err(DecodeError::Corrupt("section: обрыв потока токенов"));
+    };
+    pos = tok_end;
+    let raw_end = pos
+        .checked_add(raw_len)
+        .ok_or(DecodeError::Corrupt("section: переполнение"))?;
+    let Some(raw) = bytes.get(pos..raw_end) else {
+        return Err(DecodeError::Corrupt("section: обрыв потока сырых бит"));
+    };
+    pos = raw_end;
+    Ok((SectionV7 { tokens, raw }, pos))
 }
 
 /// Дописывает предиктивную секцию, выбирая меньшую из coded/raw форм.

@@ -9,10 +9,20 @@
 //!
 //! Реализация через TDA-fold (2N → N) + DCT-IV размера N — математически
 //! тождественна прямой формуле спецификации (проверяется тестом против
-//! наивной реализации). Быстрый FFT-путь для DCT-IV — v0.3 (Roadmap): fold
-//! останется, заменится только матричное DCT-IV.
+//! наивной реализации). DCT-IV считается быстрым путём: комплексный FFT
+//! размера N/2 (микс-радикс 2/3/5, `fft`) с пред-/пост-твиддлами:
+//!
+//! ```text
+//! z[t] = x[2t] + i·x[N−1−2t],  p[t] = z[t]·e^{−iπt/N},  P = DFT_{N/2}(p)
+//! A[m] = P[m]·e^{−iπ(m+¼)/N};  X[2m] = Re A[m],  X[N−1−2m] = −Im A[m]
+//! ```
+//!
+//! (стандартное сведение DCT-IV к DFT половинной длины: чётные входы идут
+//! в действительную часть, нечётные в обратном порядке — в мнимую).
 
 use core::f64::consts::{FRAC_PI_2, PI};
+
+use crate::fft::{C64, Fft};
 
 /// Нормативное окно: длина `2n`, носитель `n + l` по центру.
 pub(crate) fn low_overlap_window(n: usize, l: usize) -> Vec<f64> {
@@ -37,30 +47,57 @@ pub(crate) fn low_overlap_window(n: usize, l: usize) -> Vec<f64> {
 pub struct Mdct {
     n: usize,
     window: Vec<f64>,
-    /// Симметричная матрица DCT-IV: `dct4[k * n + m] = cos(π/n · (m + 0.5) · (k + 0.5))`.
-    dct4: Vec<f64>,
+    /// FFT размера `n/2` — ядро быстрого DCT-IV.
+    fft: Fft,
+    /// Пред-твиддл: `pre[t] = e^{−iπt/n}`.
+    pre: Vec<C64>,
+    /// Пост-твиддл: `post[m] = e^{−iπ(m+¼)/n}`.
+    post: Vec<C64>,
 }
 
 impl Mdct {
     /// `n` — hop (число коэффициентов), `overlap` — длина склейки `L`.
+    /// `n/2` обязан быть вида `2^a·3^b·5^c` (размеры FRC-A: 960/2, 120/2).
     pub fn new(n: usize, overlap: usize) -> Self {
         assert!(
             n > 0 && n.is_multiple_of(2),
             "MDCT size must be positive and even"
         );
         let window = low_overlap_window(n, overlap);
-        let mut dct4 = vec![0f64; n * n];
-        for k in 0..n {
-            let row = &mut dct4[k * n..(k + 1) * n];
-            for (m, t) in row.iter_mut().enumerate() {
-                *t = (PI / n as f64 * (m as f64 + 0.5) * (k as f64 + 0.5)).cos();
-            }
+        let half = n / 2;
+        let pre = (0..half)
+            .map(|t| C64::cis(-PI * t as f64 / n as f64))
+            .collect();
+        let post = (0..half)
+            .map(|m| C64::cis(-PI * (m as f64 + 0.25) / n as f64))
+            .collect();
+        Self {
+            n,
+            window,
+            fft: Fft::new(half),
+            pre,
+            post,
         }
-        Self { n, window, dct4 }
     }
 
     pub fn n(&self) -> usize {
         self.n
+    }
+
+    /// DCT-IV: `y[k] = Σ_m x[m]·cos(π/n·(m+0.5)(k+0.5))` через FFT `n/2`.
+    fn dct4(&self, x: &[f64], y: &mut [f64]) {
+        let n = self.n;
+        let half = n / 2;
+        let packed: Vec<C64> = (0..half)
+            .map(|t| C64::new(x[2 * t], x[n - 1 - 2 * t]).mul(self.pre[t]))
+            .collect();
+        let mut spec = vec![C64::default(); half];
+        self.fft.forward(&packed, &mut spec);
+        for (m, v) in spec.iter().enumerate() {
+            let a = v.mul(self.post[m]);
+            y[2 * m] = a.re;
+            y[n - 1 - 2 * m] = -a.im;
+        }
     }
 
     /// TDA-fold windowed-входа: 2N сэмплов → N значений так, что
@@ -86,11 +123,11 @@ impl Mdct {
         assert_eq!(x.len(), 2 * self.n);
         assert_eq!(out.len(), self.n);
         let mut t = vec![0f64; self.n];
+        let mut y = vec![0f64; self.n];
         self.fold(x, &mut t);
-        for (k, o) in out.iter_mut().enumerate() {
-            let row = &self.dct4[k * self.n..(k + 1) * self.n];
-            let acc: f64 = row.iter().zip(&t).map(|(&c, &v)| c * v).sum();
-            *o = acc as f32;
+        self.dct4(&t, &mut y);
+        for (o, &v) in out.iter_mut().zip(&y) {
+            *o = v as f32;
         }
     }
 
@@ -99,18 +136,10 @@ impl Mdct {
         let n = self.n;
         assert_eq!(coeffs.len(), n);
         assert_eq!(out.len(), 2 * n);
-        // d = DCT-IV(coeffs); матрица симметрична, поэтому строки те же.
+        // d = DCT-IV(coeffs): DCT-IV самообратна (с точностью до масштаба 2/N).
+        let x: Vec<f64> = coeffs.iter().map(|&c| f64::from(c)).collect();
         let mut d = vec![0f64; n];
-        for (k, &c) in coeffs.iter().enumerate() {
-            if c == 0.0 {
-                continue;
-            }
-            let c = f64::from(c);
-            let row = &self.dct4[k * n..(k + 1) * n];
-            for (acc, &t) in d.iter_mut().zip(row) {
-                *acc += c * t;
-            }
-        }
+        self.dct4(&x, &mut d);
         // Unfold — транспонирование fold'а, затем окно и масштаб 2/N.
         let h = n / 2;
         let scale = 2.0 / n as f64;

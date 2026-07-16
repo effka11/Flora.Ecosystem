@@ -1,7 +1,10 @@
 //! Субкоманды фото-кодека FRC-I: encode / decode / info / bench.
 
 use clap::Subcommand;
-use frc_i::{DecodedImage, EncodeMode, ImageView, PixelFormat, decode, encode, read_info};
+use frc_i::{
+    DecodedImage, EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc,
+    encode_with_version, read_info,
+};
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::{ExtendedColorType, ImageEncoder, ImageReader};
@@ -25,6 +28,13 @@ pub enum ImageCommand {
         /// Кодировать без потерь
         #[arg(long)]
         lossless: bool,
+        /// Вложить ICC-профиль из файла (битстрим v6)
+        #[arg(long)]
+        icc: Option<PathBuf>,
+        /// Экспериментально: явная версия битстрима (например, 7 —
+        /// адаптивная энтропия линии v7; несовместимо с --icc)
+        #[arg(long, conflicts_with = "icc")]
+        bitstream: Option<u8>,
     },
     /// Декодировать .fri в PNG
     Decode { input: PathBuf, output: PathBuf },
@@ -48,7 +58,16 @@ pub fn run(cmd: ImageCommand) -> CmdResult {
             output,
             quality,
             lossless,
-        } => cmd_encode(&input, &output, quality, lossless),
+            icc,
+            bitstream,
+        } => cmd_encode(
+            &input,
+            &output,
+            quality,
+            lossless,
+            icc.as_deref(),
+            bitstream,
+        ),
         ImageCommand::Decode { input, output } => cmd_decode(&input, &output),
         ImageCommand::Info { input } => cmd_info(&input),
         ImageCommand::Bench { dir, quality } => cmd_bench(dir.as_deref(), quality),
@@ -103,7 +122,14 @@ impl SourceImage {
     }
 }
 
-fn cmd_encode(input: &Path, output: &Path, quality: Option<u8>, lossless: bool) -> CmdResult {
+fn cmd_encode(
+    input: &Path,
+    output: &Path,
+    quality: Option<u8>,
+    lossless: bool,
+    icc: Option<&Path>,
+    bitstream: Option<u8>,
+) -> CmdResult {
     let src = SourceImage::load(input)?;
     let mode = if lossless {
         EncodeMode::Lossless
@@ -112,7 +138,11 @@ fn cmd_encode(input: &Path, output: &Path, quality: Option<u8>, lossless: bool) 
             quality: quality.unwrap_or(75),
         }
     };
-    let fri = encode(&src.view(), mode)?;
+    let fri = match (icc, bitstream) {
+        (Some(path), _) => encode_with_icc(&src.view(), mode, &fs::read(path)?)?,
+        (None, Some(version)) => encode_with_version(&src.view(), mode, version)?,
+        (None, None) => encode(&src.view(), mode)?,
+    };
     fs::write(output, &fri)?;
     let raw_len = src.data.len();
     println!(
@@ -163,8 +193,16 @@ fn cmd_info(input: &Path) -> CmdResult {
             "chroma:     {}",
             if info.chroma420 { "4:2:0" } else { "4:4:4" }
         );
+        println!("deblock:    {}", if info.deblock { "да" } else { "нет" });
     }
     println!("альфа:      {}", if info.has_alpha { "да" } else { "нет" });
+    if info.metadata {
+        let icc_len = frc_i::read_icc(&fri)
+            .ok()
+            .flatten()
+            .map_or(0, |icc| icc.len());
+        println!("icc:        {icc_len} байт");
+    }
     println!("размер:     {} байт", fri.len());
     Ok(())
 }

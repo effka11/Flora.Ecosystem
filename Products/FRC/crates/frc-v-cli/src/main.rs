@@ -20,13 +20,15 @@ const USAGE: &str = "\
 FRC-V — Flora Relativistic Codec (video, битстрим FRV1 v1)
 
 Использование:
-  frc-v encode -i <in.y4m> -o <out.frv|out.ivf> [--qp <0..63>] [--bitrate <kbps>] [--keyint <N>] [--ssim-tune] [--no-filter] [--frames <N>]
+  frc-v encode -i <in.y4m> -o <out.frv|out.ivf> [--qp <0..63>] [--speed <0..2>] [--bitrate <kbps>] [--keyint <N>] [--ssim-tune] [--no-filter] [--frames <N>]
   frc-v decode -i <in.frv|in.ivf> -o <out.y4m>
   frc-v info   -i <in.frv|in.ivf>
   frc-v psnr   --ref <ref.y4m> --dist <dist.y4m>
 
 Опции encode:
   --qp <N>      параметр квантования, 0 (почти без потерь) .. 63 (максимальное сжатие); по умолчанию 32
+  --speed <N>   пресет скорости: 0 — полный RDO (по умолчанию), 1 — сокращённый, 2 — быстрый;
+                битстрим и декодер от пресета не зависят
   --bitrate <N> целевой средний битрейт (кбит/с); включает однопроходный rate control (смещение qp)
   --keyint <N>  интервал ключевых кадров (1 = все intra); по умолчанию 60
   --ssim-tune   психовизуальная настройка RDO (смешивание SSE с SSIM-прокси)
@@ -226,6 +228,10 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
         .unwrap_or("32")
         .parse()
         .map_err(|_| "неверный --qp".to_string())?;
+    let speed: u8 = opt(args, "--speed")?
+        .unwrap_or("0")
+        .parse()
+        .map_err(|_| "неверный --speed".to_string())?;
     let keyint: u32 = opt(args, "--keyint")?
         .unwrap_or("60")
         .parse()
@@ -254,6 +260,7 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
         fps_num: p.fps_num,
         fps_den: p.fps_den,
         ssim_tune,
+        speed,
     };
     let mut encoder = Encoder::new(cfg).map_err(|e| e.to_string())?;
 
@@ -287,7 +294,7 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
     let kbps =
         total_bytes as f64 * 8.0 / 1000.0 * f64::from(p.fps_num) / f64::from(p.fps_den) / n as f64;
     println!(
-        "encoded {n} frames ({keyframes} key) {}x{} qp={qp} keyint={keyint}{}: {total_bytes} bytes \
+        "encoded {n} frames ({keyframes} key) {}x{} qp={qp} speed={speed} keyint={keyint}{}: {total_bytes} bytes \
          ({bpp:.4} bpp, {kbps:.0} kbps), PSNR Y {:.2} dB / Cb {:.2} / Cr {:.2} / overall {:.2}, {:.2} fps",
         p.width,
         p.height,
