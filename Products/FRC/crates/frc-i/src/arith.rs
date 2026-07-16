@@ -162,15 +162,17 @@ impl<'a> RangeDecoder<'a> {
 const ADAPT_LIMIT: u32 = 1 << 13;
 
 /// Вид prior'а / алфавита модели. Разные контексты имеют разный носитель:
-/// SPLIT/EOB — 2 символа, MODE — 6, RUN — 22, прочие hybrid-uint — 32.
+/// SPLIT/EOB — 2 символа, MODE — 15, RUN — 22, прочие hybrid-uint — 32.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelKind {
     /// SPLIT_WHOLE / SPLIT_QUAD.
     Split,
     /// Конец AC-блока: 0 = продолжить, 1 = EOB.
     Eob,
-    /// Intra-мода 0..5.
+    /// Intra/CfL-мода v7 0..14.
     Mode,
+    /// Transform v7.4: DCT/ADST/identity.
+    Tx,
     /// DC hybrid-uint.
     Dc,
     /// Run + EOB (sym 31).
@@ -183,7 +185,8 @@ impl ModelKind {
     pub fn alphabet(self) -> usize {
         match self {
             Self::Split | Self::Eob => 2,
-            Self::Mode => 6,
+            Self::Mode => 15,
+            Self::Tx => 4,
             // Максимальный run в 32×32 равен 1022: hybrid-uint token = 21.
             Self::Run => 22,
             Self::Dc | Self::Level => 32,
@@ -196,7 +199,7 @@ impl ModelKind {
 #[derive(Clone)]
 pub struct AdaptiveModel {
     freq: [u16; 32],
-    /// Рабочий размер алфавита (2 / 6 / 32); хвост `freq` не используется.
+    /// Рабочий размер алфавита (2 / 4 / 15 / 22 / 32); хвост не используется.
     n: u8,
     total: u32,
     updates: u32,
@@ -237,6 +240,10 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
             for f in &mut freq[..n] {
                 *f = 1;
             }
+        }
+        ModelKind::Tx => {
+            // DCT_DCT — сильный prior; альтернативы должны окупить сигнал.
+            freq[..n].copy_from_slice(&[8, 2, 2, 1]);
         }
         ModelKind::Dc => {
             // DC: малые значения чаще, без отдельного EOB.
@@ -386,7 +393,7 @@ impl ModelBank {
 
     /// Слот детальной модели (контекст × order-1 бакет) с прогревом от
     /// родителя группы при первом использовании. Order-1 включается
-    /// только для алфавитов ≥ 16 (run/level/dc); для SPLIT/MODE/EOB бакет
+    /// только для алфавитов ≥ 16 (run/level/dc); для SPLIT/TX/MODE/EOB бакет
     /// всегда 0 — иначе холодные модели размывают короткую статистику.
     #[inline]
     fn warm(&mut self, ctx: usize) -> (usize, usize) {
@@ -595,8 +602,10 @@ mod tests {
     }
 
     #[test]
-    fn eob_and_run_use_narrow_alphabets() {
+    fn v7_syntax_uses_narrow_alphabets() {
         assert_eq!(ModelKind::Eob.alphabet(), 2);
+        assert_eq!(ModelKind::Mode.alphabet(), 15);
+        assert_eq!(ModelKind::Tx.alphabet(), 4);
         assert_eq!(ModelKind::Run.alphabet(), 22);
 
         let mut eob = AdaptiveModel::new(ModelKind::Eob);

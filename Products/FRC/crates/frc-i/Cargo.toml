@@ -1,6 +1,6 @@
 [package]
 name = "frc-i"
-description = "FRC-I (Flora Relativistic Codec — Image) — нативный фото-кодек Flora: lossless (YCoCg-R + MED + rANS) и lossy (DCT 8x8 + rANS). Спецификация: Documents/codecs/FRC-I.md"
+description = "FRC-I (Flora Relativistic Codec — Image) — нативный фото-кодек Flora: lossless (YCoCg-R + MED + rANS) и lossy (DCT/ADST + range coding). Спецификация: Documents/codecs/FRC-I.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

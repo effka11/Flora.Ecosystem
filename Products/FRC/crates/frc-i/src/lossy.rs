@@ -12,8 +12,8 @@
 //! - **v5** — адаптивные размеры блоков: суперблок 16×16 кодируется целиком
 //!   (одна мода + DCT 16×16) либо расщепляется на четыре 8×8 (слой v3).
 //!   Новый контекст split (7 контекстов).
-//! - **v7** — адаптивная энтропия и фиксированное дерево 32→16→8→4;
-//!   экспериментальная реализация дерева изолирована в `lossy::v72`.
+//! - **v7** — адаптивная энтропия, дерево 32→16→8→4, SMOOTH и chroma-from-luma;
+//!   экспериментальная реализация дерева/предикции изолирована в `lossy::v72`.
 //!
 //! AC-контексты по заполненности соседних блоков (сумма nnz слева/сверху,
 //! модель JXL/AV1) были реализованы и измерены при разработке v3 — на всём
@@ -26,8 +26,9 @@
 use crate::arith::{ModelBank, RangeDecoder};
 use crate::bits::{BitReader, BitWriter};
 use crate::dct::{
-    ZIGZAG, ZIGZAG16, fdct8x8, fdct8x8_cols, fdct8x8_const, fdct8x8_rows, fdct16, fdct16_cols,
-    fdct16_const, fdct16_rows, idct8x8, idct16, quant_matrix16,
+    N_TX_V7, TX_ADST_ADST, TX_ADST_DCT, TX_DCT_ADST, TX_DCT_DCT, ZIGZAG, ZIGZAG16, fdct8x8,
+    fdct8x8_cols, fdct8x8_const, fdct8x8_rows, fdct16, fdct16_cols, fdct16_const, fdct16_rows,
+    forward_tx8, forward_tx16, idct8x8, idct16, inverse_tx8, inverse_tx16, quant_matrix16,
 };
 use crate::error::DecodeError;
 use crate::rans::RansDecoder;
@@ -71,8 +72,28 @@ const MODE_TM: u8 = 3;
 const MODE_D45: u8 = 4;
 /// Диагональ вниз-вправо (только v3).
 const MODE_D135: u8 = 5;
+/// Двумерный плавный градиент к дальним значениям top/left (v7.3).
+const MODE_SMOOTH: u8 = 6;
+/// Начало chroma-from-luma мод v7.3b; mode-base кодирует фиксированный α Q4.
+const MODE_CFL_BASE: u8 = 7;
 const N_MODES_V2: u8 = 4;
 const N_MODES_V3: u8 = 6;
+const N_MODES_V7_INTRA: u8 = 7;
+const N_MODES_V7: u8 = 15;
+/// Моды, которые encoder рассматривает в v7. Decoder принимает весь wire-
+/// диапазон `0..N_MODES_V7`, поэтому проигрышную моду можно отключить здесь,
+/// не нарушив симметрию экспериментального битстрима.
+const ENCODE_MODES_V7: &[u8] = &[
+    MODE_DC,
+    MODE_V,
+    MODE_H,
+    MODE_TM,
+    MODE_D45,
+    MODE_D135,
+    MODE_SMOOTH,
+];
+/// CfL α в Q4: −1/2, −1/4, −1/8, −1/16, +1/16, +1/8, +1/4, +1/2.
+const CFL_ALPHA_Q4: [i32; 8] = [-8, -4, -2, -1, 1, 2, 4, 8];
 
 /// Смещение округления AC при квантовании (dead-zone). DC округляется
 /// классически (0.5). Мёртвая зона обнуляет слабые коэффициенты, экономя
@@ -189,6 +210,84 @@ fn border(recon: &[i16], w: usize, h: usize, bx: usize, by: usize) -> Border {
     }
 }
 
+#[inline]
+fn smooth_sample(above: &[i32], left: &[i32], x: usize, y: usize) -> i32 {
+    let n = left.len() as i32;
+    let x_i32 = x as i32;
+    let y_i32 = y as i32;
+    let vertical = ((n - 1 - y_i32) * above[x] + (y_i32 + 1) * left[left.len() - 1] + n / 2) / n;
+    let horizontal = ((n - 1 - x_i32) * left[y] + (x_i32 + 1) * above[left.len() - 1] + n / 2) / n;
+    (vertical + horizontal + 1) >> 1
+}
+
+#[inline]
+fn cfl_alpha_q4(mode: u8) -> Option<i32> {
+    mode.checked_sub(MODE_CFL_BASE)
+        .and_then(|i| CFL_ALPHA_Q4.get(usize::from(i)).copied())
+}
+
+#[inline]
+fn round_shift_q4(value: i32) -> i32 {
+    if value >= 0 {
+        (value + 8) >> 4
+    } else {
+        -((-value + 8) >> 4)
+    }
+}
+
+fn predict_cfl<const LEN: usize>(luma: &[i32; LEN], dc: i32, mode: u8) -> [i32; LEN] {
+    let alpha = cfl_alpha_q4(mode).expect("CfL mode checked by caller");
+    let mean = (luma.iter().sum::<i32>() + LEN as i32 / 2) / LEN as i32;
+    let mut out = [0i32; LEN];
+    for (dst, &y) in out.iter_mut().zip(luma.iter()) {
+        *dst = (dc + round_shift_q4(alpha * (y - mean))).clamp(0, 255);
+    }
+    out
+}
+
+fn cfl_candidate_mode<const LEN: usize>(orig: &[i32; LEN], luma: &[i32; LEN], dc: i32) -> u8 {
+    let mean = (luma.iter().sum::<i32>() + LEN as i32 / 2) / LEN as i32;
+    let mut covariance = 0i64;
+    let mut variance = 0i64;
+    for (&c, &y) in orig.iter().zip(luma.iter()) {
+        let y_ac = i64::from(y - mean);
+        covariance += i64::from(c - dc) * y_ac;
+        variance += y_ac * y_ac;
+    }
+    if variance == 0 || covariance == 0 {
+        return 10;
+    }
+    let scaled = covariance * 16;
+    let alpha = if scaled >= 0 {
+        (scaled + variance / 2) / variance
+    } else {
+        -((-scaled + variance / 2) / variance)
+    }
+    .clamp(-8, 8);
+    let magnitude = alpha.unsigned_abs();
+    let magnitude = match magnitude {
+        0 | 1 => 1,
+        2 | 3 => 2,
+        4..=6 => 4,
+        _ => 8,
+    };
+    match (alpha < 0, magnitude) {
+        (true, 8) => 7,
+        (true, 4) => 8,
+        (true, 2) => 9,
+        (true, _) => 10,
+        (false, 1) => 11,
+        (false, 2) => 12,
+        (false, 4) => 13,
+        (false, _) => 14,
+    }
+}
+
+#[inline]
+fn mode_limit_v7(cfl: bool) -> u8 {
+    if cfl { N_MODES_V7 } else { N_MODES_V7_INTRA }
+}
+
 /// Предсказание блока модой `mode` от границы.
 fn predict_block(b: &Border, mode: u8) -> [i32; 64] {
     let mut out = [0i32; 64];
@@ -237,6 +336,13 @@ fn predict_block(b: &Border, mode: u8) -> [i32; 64] {
                 }
             }
         }
+        MODE_SMOOTH => {
+            for y in 0..8 {
+                for x in 0..8 {
+                    out[y * 8 + x] = smooth_sample(&b.above, &b.left, x, y);
+                }
+            }
+        }
         _ => {
             // DC: среднее 16 граничных отсчётов (замещённые участвуют).
             let sum: i32 = b.above[0..8].iter().sum::<i32>() + b.left.iter().sum::<i32>();
@@ -282,6 +388,7 @@ fn preselect_modes<const N: usize>(
 fn choose_mode(
     orig: &[i32; 64],
     b: &Border,
+    cfl_luma: Option<&[i32; 64]>,
     qmat: &[u16; 64],
     lambda: f32,
     max_mode: u8,
@@ -301,9 +408,9 @@ fn choose_mode(
 
     // SAD-предотбор: полный RD дорог (DCT на моду), а явно плохие моды
     // отсеиваются дешёвой пиксельной метрикой.
-    let mut sads: Vec<(u8, u64)> = Vec::with_capacity(6);
-    let mut preds = [[0i32; 64]; 6];
-    for mode in [MODE_DC, MODE_V, MODE_H, MODE_TM, MODE_D45, MODE_D135] {
+    let mut sads: Vec<(u8, u64)> = Vec::with_capacity(usize::from(max_mode));
+    let mut preds = [[0i32; 64]; N_MODES_V7 as usize];
+    for &mode in ENCODE_MODES_V7 {
         if mode >= max_mode {
             continue;
         }
@@ -315,6 +422,20 @@ fn choose_mode(
             .sum();
         preds[usize::from(mode)] = pred;
         sads.push((mode, sad));
+    }
+    if let Some(luma) = cfl_luma {
+        let dc = predict_block(b, MODE_DC)[0];
+        let mode = cfl_candidate_mode(orig, luma, dc);
+        if mode < max_mode {
+            let pred = predict_cfl(luma, dc, mode);
+            let sad = orig
+                .iter()
+                .zip(pred.iter())
+                .map(|(&o, &p)| u64::from(o.abs_diff(p)))
+                .sum();
+            preds[usize::from(mode)] = pred;
+            sads.push((mode, sad));
+        }
     }
     let candidates = preselect_modes::<RD_CANDIDATES>(&sads);
     let n_candidates = sads.len().min(RD_CANDIDATES);
@@ -425,6 +546,242 @@ fn coeff_cost(quantized: &[i32; 64]) -> u32 {
         }
     }
     cost
+}
+
+/// Альтернативы DCT_DCT, которые reference encoder рассматривает в v7.4.
+/// Отдельный список позволяет A/B-отсечение без изменения decoder wire-set.
+const ENCODE_TXS_V7: &[u8] = &[TX_ADST_DCT, TX_DCT_ADST, TX_ADST_ADST];
+const TX_COST_BITS: u32 = 2;
+/// Transform switch должен давать почти ту же ошибку, а не просто более
+/// разреженный спектр: общая λ переоценивает грубую coeff-cost для новых базисов.
+const TX_SEARCH_LAMBDA_SCALE: f32 = 0.0;
+/// Bounded trellis uses the real transform-domain SSE but a deliberately
+/// conservative fraction of plane λ because token costs are estimated.
+const TRELLIS_LAMBDA_SCALE: f32 = 0.02;
+
+#[inline]
+fn tx_rate_extra_bits(tx: u8) -> u32 {
+    match tx {
+        TX_DCT_DCT => 0,
+        TX_ADST_DCT | TX_DCT_ADST => 2,
+        TX_ADST_ADST => 3,
+        _ => unreachable!("transform ID checked by caller"),
+    }
+}
+
+fn quantize_freq_tx<const LEN: usize>(
+    freq: &[f32; LEN],
+    qmat: &[u16; LEN],
+    ac_bias: f32,
+) -> ([i32; LEN], f32) {
+    let mut quantized = [0i32; LEN];
+    let mut distortion = 0f32;
+    for (i, q) in quantized.iter_mut().enumerate() {
+        let step = f32::from(qmat[i]);
+        let scaled = freq[i] / step;
+        let bias = if i == 0 { 0.5 } else { ac_bias };
+        let magnitude = (scaled.abs() + bias).floor() as i32;
+        *q = if scaled < 0.0 { -magnitude } else { magnitude };
+        let err = freq[i] - *q as f32 * step;
+        distortion += err * err;
+    }
+    (quantized, distortion)
+}
+
+#[inline]
+fn squared_quant_error(value: f32, step: f32, level: i32) -> f32 {
+    let error = value - level as f32 * step;
+    error * error
+}
+
+#[inline]
+fn dc_rate_estimate(level: i32) -> u32 {
+    let (_, _, raw_bits) = tokenize(zigzag(level));
+    3 + raw_bits
+}
+
+#[inline]
+fn ac_level_rate_estimate(magnitude: u32) -> u32 {
+    let (_, _, raw_bits) = tokenize(magnitude - 1);
+    4 + raw_bits // model symbol + sign
+}
+
+#[inline]
+fn ac_event_rate_estimate(run: usize, magnitude: u32) -> u32 {
+    let (_, _, run_raw_bits) = tokenize(run as u32);
+    1 + 3 + run_raw_bits + ac_level_rate_estimate(magnitude)
+}
+
+fn trellis_rdoq<const LEN: usize>(
+    freq: &[f32; LEN],
+    qmat: &[u16; LEN],
+    mut quantized: [i32; LEN],
+    lambda: f32,
+    scan: &[usize; LEN],
+) -> ([i32; LEN], f32) {
+    let rd_lambda = lambda * TRELLIS_LAMBDA_SCALE;
+
+    // First refine magnitudes without changing the non-zero map.
+    for (index, level) in quantized.iter_mut().enumerate() {
+        let current = *level;
+        if index != 0 && current == 0 {
+            continue;
+        }
+        let step = f32::from(qmat[index]);
+        let nearest = (freq[index].abs() / step).round() as i32;
+        let sign = if freq[index] < 0.0 { -1 } else { 1 };
+        let current_mag = current.unsigned_abs() as i32;
+        let candidates = [
+            current_mag,
+            nearest.saturating_sub(1),
+            nearest,
+            nearest.saturating_add(1),
+        ];
+        let mut best_level = current;
+        let mut best_cost = squared_quant_error(freq[index], step, current)
+            + rd_lambda
+                * if index == 0 {
+                    dc_rate_estimate(current) as f32
+                } else {
+                    ac_level_rate_estimate(current.unsigned_abs()) as f32
+                };
+        for magnitude in candidates {
+            if index != 0 && magnitude == 0 {
+                continue;
+            }
+            let candidate = sign * magnitude;
+            let rate = if index == 0 {
+                dc_rate_estimate(candidate)
+            } else {
+                ac_level_rate_estimate(magnitude as u32)
+            };
+            let cost = squared_quant_error(freq[index], step, candidate) + rd_lambda * rate as f32;
+            if cost < best_cost {
+                best_cost = cost;
+                best_level = candidate;
+            }
+        }
+        *level = best_level;
+    }
+
+    // Then prune AC nodes in reverse scan order. Removing a node merges its
+    // two run edges, so this captures run/EOB coupling without O(N²) search.
+    #[derive(Clone, Copy)]
+    struct TrellisNode {
+        pos: usize,
+        previous: usize,
+        next: usize,
+    }
+    let mut nodes = Vec::<TrellisNode>::new();
+    for pos in 1..LEN {
+        if quantized[scan[pos]] == 0 {
+            continue;
+        }
+        let node = nodes.len();
+        if node != 0 {
+            nodes[node - 1].next = node;
+        }
+        nodes.push(TrellisNode {
+            pos,
+            previous: node.wrapping_sub(1),
+            next: usize::MAX,
+        });
+    }
+    let count = nodes.len();
+
+    for node in (0..count).rev() {
+        let pos = nodes[node].pos;
+        let index = scan[pos];
+        let prev_node = nodes[node].previous;
+        let next_node = nodes[node].next;
+        let prev_pos = if prev_node == usize::MAX {
+            0
+        } else {
+            nodes[prev_node].pos
+        };
+        let current_rate =
+            ac_event_rate_estimate(pos - prev_pos - 1, quantized[index].unsigned_abs());
+        let saved_rate = if next_node == usize::MAX {
+            current_rate as i32
+        } else {
+            let next_pos = nodes[next_node].pos;
+            let next_index = scan[next_pos];
+            let old_next =
+                ac_event_rate_estimate(next_pos - pos - 1, quantized[next_index].unsigned_abs());
+            let merged_next = ac_event_rate_estimate(
+                next_pos - prev_pos - 1,
+                quantized[next_index].unsigned_abs(),
+            );
+            current_rate as i32 + old_next as i32 - merged_next as i32
+        };
+        let step = f32::from(qmat[index]);
+        let distortion_increase =
+            freq[index] * freq[index] - squared_quant_error(freq[index], step, quantized[index]);
+        if saved_rate > 0 && distortion_increase < rd_lambda * saved_rate as f32 {
+            quantized[index] = 0;
+            if prev_node != usize::MAX {
+                nodes[prev_node].next = next_node;
+            }
+            if next_node != usize::MAX {
+                nodes[next_node].previous = prev_node;
+            }
+        }
+    }
+
+    let distortion = quantized
+        .iter()
+        .enumerate()
+        .map(|(index, &level)| squared_quant_error(freq[index], f32::from(qmat[index]), level))
+        .sum();
+    (quantized, distortion)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn choose_transform<const LEN: usize>(
+    orig: &[i32; LEN],
+    pred: &[i32; LEN],
+    qmat: &[u16; LEN],
+    lambda: f32,
+    ac_bias: f32,
+    baseline_quantized: [i32; LEN],
+    baseline_cost: f32,
+    forward: fn(&[f32; LEN], &mut [f32; LEN], u8),
+    coeff_cost: fn(&[i32; LEN]) -> u32,
+    scan: &[usize; LEN],
+) -> (u8, [i32; LEN], f32) {
+    let mut residual = [0f32; LEN];
+    for i in 0..LEN {
+        residual[i] = (orig[i] - pred[i]) as f32;
+    }
+    let base_rate = coeff_cost(&baseline_quantized);
+    let base_distortion = baseline_cost - lambda * base_rate as f32;
+    let mut best = (
+        TX_DCT_DCT,
+        baseline_quantized,
+        baseline_cost,
+        base_distortion + lambda * TX_SEARCH_LAMBDA_SCALE * base_rate as f32,
+    );
+    let mut freq = [0f32; LEN];
+    let mut best_freq = [0f32; LEN];
+    for &tx in ENCODE_TXS_V7 {
+        forward(&residual, &mut freq, tx);
+        let (quantized, distortion) = quantize_freq_tx(&freq, qmat, ac_bias);
+        let rate = coeff_cost(&quantized) + tx_rate_extra_bits(tx);
+        let search_cost = distortion + lambda * TX_SEARCH_LAMBDA_SCALE * rate as f32;
+        if search_cost < best.3 {
+            let cost = distortion + lambda * rate as f32;
+            best = (tx, quantized, cost, search_cost);
+            best_freq.copy_from_slice(&freq);
+        }
+    }
+    if best.0 == TX_DCT_DCT {
+        forward(&residual, &mut freq, best.0);
+    } else {
+        freq = best_freq;
+    }
+    let (quantized, distortion) = trellis_rdoq(&freq, qmat, best.1, lambda, scan);
+    let rate = coeff_cost(&quantized) + tx_rate_extra_bits(best.0);
+    (best.0, quantized, distortion + lambda * rate as f32)
 }
 
 // --- общее кодирование коэффициентов ------------------------------------------
@@ -582,7 +939,7 @@ fn encode_tile_plane_with_modes(
             };
             let b = border(&recon, w, h, bx, by);
             let (mode, pred, quantized, _) =
-                choose_mode(&orig, &b, qmat, lambda, max_mode, ac_bias);
+                choose_mode(&orig, &b, None, qmat, lambda, max_mode, ac_bias);
             syms.push((CTX_MODE, mode));
             encode_coeffs(&quantized, quantized[0], syms, raw);
 
@@ -877,6 +1234,13 @@ fn predict_block16(b: &Border16, mode: u8) -> [i32; 256] {
                 }
             }
         }
+        MODE_SMOOTH => {
+            for y in 0..16 {
+                for x in 0..16 {
+                    out[y * 16 + x] = smooth_sample(&b.above, &b.left, x, y);
+                }
+            }
+        }
         _ => {
             let sum: i32 = b.above[0..16].iter().sum::<i32>() + b.left.iter().sum::<i32>();
             let dc = (sum + 16) >> 5;
@@ -905,8 +1269,10 @@ fn coeff_cost16(quantized: &[i32; 256]) -> u32 {
 fn choose_mode16(
     orig: &[i32; 256],
     b: &Border16,
+    cfl_luma: Option<&[i32; 256]>,
     qmat16: &[u16; 256],
     lambda: f32,
+    max_mode: u8,
     ac_bias: f32,
 ) -> (u8, [i32; 256], [i32; 256], f32) {
     let mut spatial = [0f32; 256];
@@ -923,9 +1289,12 @@ fn choose_mode16(
     // на гладких суперблоках почти эквивалентны (измерено: топ-3 нейтрален
     // по размеру корпуса). Предсказания — на стеке (6 КБ): heap-аллокация
     // на каждый суперблок была заметна в профиле encode.
-    let mut sads: Vec<(u8, u64)> = Vec::with_capacity(6);
-    let mut preds = [[0i32; 256]; 6];
-    for mode in [MODE_DC, MODE_V, MODE_H, MODE_TM, MODE_D45, MODE_D135] {
+    let mut sads: Vec<(u8, u64)> = Vec::with_capacity(usize::from(max_mode));
+    let mut preds = [[0i32; 256]; N_MODES_V7 as usize];
+    for &mode in ENCODE_MODES_V7 {
+        if mode >= max_mode {
+            continue;
+        }
         let pred = predict_block16(b, mode);
         let sad: u64 = orig
             .iter()
@@ -934,6 +1303,20 @@ fn choose_mode16(
             .sum();
         preds[usize::from(mode)] = pred;
         sads.push((mode, sad));
+    }
+    if let Some(luma) = cfl_luma {
+        let dc = predict_block16(b, MODE_DC)[0];
+        let mode = cfl_candidate_mode(orig, luma, dc);
+        if mode < max_mode {
+            let pred = predict_cfl(luma, dc, mode);
+            let sad = orig
+                .iter()
+                .zip(pred.iter())
+                .map(|(&o, &p)| u64::from(o.abs_diff(p)))
+                .sum();
+            preds[usize::from(mode)] = pred;
+            sads.push((mode, sad));
+        }
     }
     let candidates = preselect_modes::<RD_CANDIDATES16>(&sads);
 
@@ -1101,6 +1484,7 @@ fn sub_blocks(sbx: usize, sby: usize, w: usize, h: usize) -> impl Iterator<Item 
 /// Результат RD-прогона одного подблока 8×8 (для эмиссии без пересчёта).
 struct SubBlock {
     mode: u8,
+    tx: u8,
     quantized: [i32; 64],
 }
 
@@ -1120,7 +1504,8 @@ fn eval_block8(
     let orig = gather_block_i32(buf, w, h, bx, by);
     let ac_bias = adaptive_ac_bias(block_activity(&orig));
     let b = border(recon, w, h, bx, by);
-    let (mode, pred, quantized, cost) = choose_mode(&orig, &b, qmat, lambda, N_MODES_V3, ac_bias);
+    let (mode, pred, quantized, cost) =
+        choose_mode(&orig, &b, None, qmat, lambda, N_MODES_V3, ac_bias);
     let mut freq = [0f32; 64];
     let mut spatial = [0f32; 64];
     for i in 0..64 {
@@ -1129,7 +1514,11 @@ fn eval_block8(
     idct8x8(&freq, &mut spatial);
     store_block(recon, w, h, bx, by, &spatial, &pred);
     (
-        SubBlock { mode, quantized },
+        SubBlock {
+            mode,
+            tx: TX_DCT_DCT,
+            quantized,
+        },
         cost + lambda * MODE_COST_BITS as f32,
     )
 }
@@ -1160,7 +1549,7 @@ pub fn encode_tile_plane_v5(
                 let ac_bias16 = adaptive_ac_bias(block_activity16(&orig16));
                 let b16 = border16(&recon, w, h, sbx, sby);
                 let (mode16, pred16, quant16, _) =
-                    choose_mode16(&orig16, &b16, &qmat16, lambda, ac_bias16);
+                    choose_mode16(&orig16, &b16, None, &qmat16, lambda, N_MODES_V3, ac_bias16);
                 syms.push((CTX_SPLIT, SPLIT_WHOLE));
                 syms.push((CTX_MODE, mode16));
                 encode_coeffs16(&quant16, syms, raw);
@@ -1187,7 +1576,7 @@ pub fn encode_tile_plane_v5(
             let ac_bias16 = adaptive_ac_bias(block_activity16(&orig16));
             let b16 = border16(&recon, w, h, sbx, sby);
             let (mode16, pred16, quant16, cost16) =
-                choose_mode16(&orig16, &b16, &qmat16, lambda, ac_bias16);
+                choose_mode16(&orig16, &b16, None, &qmat16, lambda, N_MODES_V3, ac_bias16);
             let cost_whole = cost16 + lambda * MODE_COST_BITS as f32;
 
             // Ранний выход: стоимости подблоков неотрицательны, поэтому как
@@ -1353,8 +1742,10 @@ const CTX7_EOB_BASE: u8 = 54;
 const CTX7_SPLIT32: u8 = 78;
 /// Split узла 8×8: 0 — whole8, 1 — четыре листа 4×4.
 const CTX7_SPLIT8: u8 = 79;
+/// Transform каждого whole/листа v7.4.
+const CTX7_TX: u8 = 80;
 /// Общее число контекстов v7.
-pub const N_CTX_V7: usize = 80;
+pub const N_CTX_V7: usize = 81;
 const N_POS_BUCKETS: u8 = 6;
 
 /// Родительские группы и виды моделей контекстов v7 для иерархического
@@ -1373,6 +1764,8 @@ pub fn ctx_meta_v7() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
     kinds[usize::from(CTX7_SPLIT32)] = ModelKind::Split;
     groups[usize::from(CTX7_SPLIT8)] = 0;
     kinds[usize::from(CTX7_SPLIT8)] = ModelKind::Split;
+    groups[usize::from(CTX7_TX)] = 21;
+    kinds[usize::from(CTX7_TX)] = ModelKind::Tx;
     for dc_b in 0..4u8 {
         groups[usize::from(CTX7_DC_BASE + dc_b)] = 2;
         kinds[usize::from(CTX7_DC_BASE + dc_b)] = ModelKind::Dc;
@@ -1563,16 +1956,17 @@ fn encode_coeffs16_v7(
     st.prev_nnz = nnz_bucket(nnz / 4);
 }
 
-/// Кодирует тайл-плоскость экспериментального битстрима v7.2.
+/// Кодирует тайл-плоскость экспериментального битстрима v7.4.
 pub fn encode_tile_plane_v7(
     buf: &[i16],
+    cfl_luma: Option<&[i16]>,
     w: usize,
     h: usize,
     qmat: &[u16; 64],
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
-) {
-    v72::encode_tile_plane(buf, w, h, qmat, syms, raw);
+) -> Vec<i16> {
+    v72::encode_tile_plane(buf, cfl_luma, w, h, qmat, syms, raw)
 }
 
 /// Сохранённая реализация v7.1 для локального A/B во время разработки v7.2.
@@ -1622,7 +2016,7 @@ fn encode_tile_plane_v71(
                 let ac_bias16 = adaptive_ac_bias(block_activity16(&orig16));
                 let b16 = border16(&recon, w, h, sbx, sby);
                 let (mode16, pred16, quant16, _) =
-                    choose_mode16(&orig16, &b16, &qmat16, lambda, ac_bias16);
+                    choose_mode16(&orig16, &b16, None, &qmat16, lambda, N_MODES_V3, ac_bias16);
                 emit_whole(
                     &quant16, mode16, &mut st, syms, raw, &mut recon, &pred16, sbx, sby,
                 );
@@ -1641,7 +2035,7 @@ fn encode_tile_plane_v71(
             let ac_bias16 = adaptive_ac_bias(block_activity16(&orig16));
             let b16 = border16(&recon, w, h, sbx, sby);
             let (mode16, pred16, quant16, cost16) =
-                choose_mode16(&orig16, &b16, &qmat16, lambda, ac_bias16);
+                choose_mode16(&orig16, &b16, None, &qmat16, lambda, N_MODES_V3, ac_bias16);
             let cost_whole = cost16 + lambda * MODE_COST_BITS as f32;
 
             let backup = save_region16(&recon, w, h, sbx, sby);
@@ -1708,7 +2102,8 @@ fn decode_coeffs_v7(
         let mag = detokenize(lsym, raw)?.wrapping_add(1);
         let sign = raw.read(1)?;
         let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
-        freq[ZIGZAG[pos]] = level as f32 * f32::from(qmat[ZIGZAG[pos]]);
+        let index = ZIGZAG[pos];
+        freq[index] = level as f32 * f32::from(qmat[index]);
         prev_mag = mag;
         nnz += 1;
         pos += 1;
@@ -1753,7 +2148,8 @@ fn decode_coeffs16_v7(
         let mag = detokenize(lsym, raw)?.wrapping_add(1);
         let sign = raw.read(1)?;
         let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
-        freq[ZIGZAG16[pos]] = level as f32 * f32::from(qmat16[ZIGZAG16[pos]]);
+        let index = ZIGZAG16[pos];
+        freq[index] = level as f32 * f32::from(qmat16[index]);
         prev_mag = mag;
         nnz += 1;
         pos += 1;
@@ -1762,16 +2158,17 @@ fn decode_coeffs16_v7(
     Ok(dc_token)
 }
 
-/// Декодирует тайл-плоскость экспериментального битстрима v7.2.
+/// Декодирует тайл-плоскость экспериментального битстрима v7.4.
 pub fn decode_tile_plane_v7(
     bank: &mut ModelBank,
     dec: &mut RangeDecoder<'_>,
     raw: &mut BitReader<'_>,
     w: usize,
     h: usize,
+    cfl_luma: Option<&[i16]>,
     qmat: &[u16; 64],
 ) -> Result<Vec<i16>, DecodeError> {
-    v72::decode_tile_plane(bank, dec, raw, w, h, qmat)
+    v72::decode_tile_plane(bank, dec, raw, w, h, cfl_luma, qmat)
 }
 
 /// Сохранённый декодер v7.1 для локального A/B.
@@ -1957,6 +2354,92 @@ mod tests {
         dec.finish().unwrap();
         assert!(psnr(&buf, &decoded) > 40.0);
         assert!(out.len() < 700, "градиент занял {} байт", out.len());
+    }
+
+    #[test]
+    fn smooth_predictor_is_integer_exact_at_8_and_16() {
+        let b8 = Border {
+            above: [0; 16],
+            left: [255; 8],
+            corner: 127,
+        };
+        let p8 = predict_block(&b8, MODE_SMOOTH);
+        assert_eq!([p8[0], p8[7], p8[56], p8[63]], [128, 16, 239, 128]);
+
+        let b16 = Border16 {
+            above: [0; 32],
+            left: [255; 16],
+            corner: 127,
+        };
+        let p16 = predict_block16(&b16, MODE_SMOOTH);
+        assert_eq!([p16[0], p16[15], p16[240], p16[255]], [128, 8, 247, 128]);
+    }
+
+    #[test]
+    fn smooth_mode_wins_exact_surfaces() {
+        let mut b8 = Border {
+            above: [0; 16],
+            left: [0; 8],
+            corner: 113,
+        };
+        for (i, v) in b8.above.iter_mut().enumerate() {
+            *v = ((i * 17 + 23) & 255) as i32;
+        }
+        for (i, v) in b8.left.iter_mut().enumerate() {
+            *v = ((i * 29 + 41) & 255) as i32;
+        }
+        let orig8 = predict_block(&b8, MODE_SMOOTH);
+        let qmat = quant_matrix(&BASE_LUMA, 90);
+        let (mode8, _, _, _) = choose_mode(
+            &orig8,
+            &b8,
+            None,
+            &qmat,
+            plane_lambda(&qmat),
+            N_MODES_V7_INTRA,
+            AC_BIAS,
+        );
+        assert_eq!(mode8, MODE_SMOOTH);
+
+        let mut b16 = Border16 {
+            above: [0; 32],
+            left: [0; 16],
+            corner: 97,
+        };
+        for (i, v) in b16.above.iter_mut().enumerate() {
+            *v = ((i * 13 + 19) & 255) as i32;
+        }
+        for (i, v) in b16.left.iter_mut().enumerate() {
+            *v = ((i * 31 + 7) & 255) as i32;
+        }
+        let orig16 = predict_block16(&b16, MODE_SMOOTH);
+        let qmat16 = quant_matrix16(&qmat);
+        let (mode16, _, _, _) = choose_mode16(
+            &orig16,
+            &b16,
+            None,
+            &qmat16,
+            plane_lambda(&qmat),
+            N_MODES_V7_INTRA,
+            AC_BIAS,
+        );
+        assert_eq!(mode16, MODE_SMOOTH);
+    }
+
+    #[test]
+    fn trellis_prunes_weak_tail_but_keeps_strong_ac() {
+        let qmat = [10u16; 64];
+        let lambda = plane_lambda(&qmat);
+        let mut freq = [0f32; 64];
+        freq[ZIGZAG[1]] = 10.0;
+        freq[ZIGZAG[2]] = 5.5;
+        let mut quantized = [0i32; 64];
+        quantized[ZIGZAG[1]] = 1;
+        quantized[ZIGZAG[2]] = 1;
+
+        let (optimized, _) = trellis_rdoq(&freq, &qmat, quantized, lambda, &ZIGZAG);
+        assert_eq!(optimized[ZIGZAG[1]], 1);
+        assert_eq!(optimized[ZIGZAG[2]], 0);
     }
 
     #[test]

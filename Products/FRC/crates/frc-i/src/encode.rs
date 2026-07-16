@@ -442,15 +442,20 @@ fn encode_lossy(
             crate::arith::ModelBank::new(groups, kinds)
         });
         let buf = p0.extract(t.x0, t.y0, t.w, t.h);
-        dct_payload(
+        let luma_recon = dct_payload(
             &buf,
-            t.w,
-            t.h,
+            None,
+            (t.w, t.h),
             &q_luma,
             version,
             bank.as_mut(),
             &mut payload,
         );
+        // A/B Kodak: текущая CfL-модель выигрывает только при 4:2:0;
+        // decoder всё равно принимает CfL и для 4:4:4 как свободу кодера.
+        let cfl_luma = luma_recon
+            .filter(|_| header.chroma420)
+            .map(|recon| downsample_420(&recon, t.w, t.h));
         for plane in [&p1, &p2] {
             let full = plane.extract(t.x0, t.y0, t.w, t.h);
             let (cbuf, cw, ch) = if header.chroma420 {
@@ -464,8 +469,8 @@ fn encode_lossy(
             };
             dct_payload(
                 &cbuf,
-                cw,
-                ch,
+                cfl_luma.as_deref(),
+                (cw, ch),
                 &q_chroma,
                 version,
                 bank.as_mut(),
@@ -483,19 +488,20 @@ fn encode_lossy(
 
 fn dct_payload(
     buf: &[i16],
-    w: usize,
-    h: usize,
+    cfl_luma: Option<&[i16]>,
+    size: (usize, usize),
     qmat: &[u16; 64],
     version: u8,
     bank: Option<&mut crate::arith::ModelBank>,
     out: &mut Vec<u8>,
-) {
+) -> Option<Vec<i16>> {
+    let (w, h) = size;
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     if version >= VERSION_ADAPTIVE {
-        lossy::encode_tile_plane_v7(buf, w, h, qmat, &mut syms, &mut raw);
+        let recon = lossy::encode_tile_plane_v7(buf, cfl_luma, w, h, qmat, &mut syms, &mut raw);
         write_dct_section_v7(out, bank.expect("v7: банк обязателен"), &syms, raw);
-        return;
+        return Some(recon);
     }
     match version {
         1 => lossy::encode_tile_plane_v1(buf, w, h, qmat, &mut syms, &mut raw),
@@ -510,4 +516,5 @@ fn dct_payload(
         _ => lossy::N_CTX_V5,
     };
     write_dct_section(out, n_ctx, &syms, raw);
+    None
 }

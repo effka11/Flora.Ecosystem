@@ -1,4 +1,4 @@
-//! DCT 4x4 / 8x8 / 16x16 / 32x32 и квантование (FRC-I.md §7).
+//! DCT/ADST 4x4 / 8x8 / 16x16 / 32x32 и квантование (FRC-I.md §7).
 //!
 //! Ортонормированный DCT-II. Базисные коэффициенты зафиксированы литералами
 //! (не вычисляются через `cos`): реализация детерминирована на любой
@@ -9,6 +9,91 @@
 //! применимы без пересчёта масштаба.
 
 use std::sync::OnceLock;
+
+/// v7.4 transform IDs (wire values).
+pub const TX_DCT_DCT: u8 = 0;
+pub const TX_ADST_DCT: u8 = 1;
+pub const TX_DCT_ADST: u8 = 2;
+pub const TX_ADST_ADST: u8 = 3;
+pub const N_TX_V7: u8 = 4;
+
+#[rustfmt::skip]
+const SIN9: [f32; 5] = [
+    0.0, 0.342_020_15, 0.642_787_64, 0.866_025_4, 0.984_807_7,
+];
+#[rustfmt::skip]
+const SIN17: [f32; 9] = [
+    0.0, 0.183_749_51, 0.361_241_67, 0.526_432_16, 0.673_695_6,
+    0.798_017_2, 0.895_163_3, 0.961_825_67, 0.995_734_16,
+];
+#[rustfmt::skip]
+const SIN33: [f32; 17] = [
+    0.0, 0.095_056_04, 0.189_251_24, 0.281_732_56, 0.371_662_47,
+    0.458_226_53, 0.540_640_83, 0.618_159, 0.690_079, 0.755_749_6,
+    0.814_575_97, 0.866_025_4, 0.909_632, 0.945_000_8, 0.971_811_6,
+    0.989_821_43, 0.998_867_33,
+];
+#[rustfmt::skip]
+const SIN65: [f32; 33] = [
+    0.0, 0.048_313_38, 0.096_513_92, 0.144_489_05, 0.192_126_72,
+    0.239_315_66, 0.285_945_68, 0.331_907_84, 0.377_094_83,
+    0.421_401_1, 0.464_723_17, 0.506_959_86, 0.548_012_5,
+    0.587_785_24, 0.626_185_2, 0.663_122_65, 0.698_511_36,
+    0.732_268_7, 0.764_315_7, 0.794_577_66, 0.822_983_86,
+    0.849_467_93, 0.873_968, 0.896_426_9, 0.916_792_2,
+    0.935_016_2, 0.951_056_54, 0.964_875_6, 0.976_441_1,
+    0.985_726_06, 0.992_708_86, 0.997_373_16, 0.999_708,
+];
+
+fn sin_odd_den<const M: usize>(table: &[f32; M], denominator: usize, multiple: usize) -> f32 {
+    let m = multiple % (2 * denominator);
+    let (negative, within_pi) = if m > denominator {
+        (true, m - denominator)
+    } else {
+        (false, m)
+    };
+    let index = if within_pi > denominator / 2 {
+        denominator - within_pi
+    } else {
+        within_pi
+    };
+    let value = table[index];
+    if negative { -value } else { value }
+}
+
+fn make_adst_basis<const N: usize, const M: usize>(
+    table: &[f32; M],
+    denominator: usize,
+    scale: f32,
+) -> [[f32; N]; N] {
+    let mut basis = [[0f32; N]; N];
+    for (k, row) in basis.iter_mut().enumerate() {
+        for (n, value) in row.iter_mut().enumerate() {
+            *value = scale * sin_odd_den(table, denominator, (2 * n + 1) * (k + 1));
+        }
+    }
+    basis
+}
+
+fn adst_basis4() -> &'static [[f32; 4]; 4] {
+    static BASIS: OnceLock<[[f32; 4]; 4]> = OnceLock::new();
+    BASIS.get_or_init(|| make_adst_basis(&SIN9, 9, 0.666_666_7))
+}
+
+fn adst_basis8() -> &'static [[f32; 8]; 8] {
+    static BASIS: OnceLock<[[f32; 8]; 8]> = OnceLock::new();
+    BASIS.get_or_init(|| make_adst_basis(&SIN17, 17, 0.485_071_24))
+}
+
+fn adst_basis16() -> &'static [[f32; 16]; 16] {
+    static BASIS: OnceLock<[[f32; 16]; 16]> = OnceLock::new();
+    BASIS.get_or_init(|| make_adst_basis(&SIN33, 33, 0.348_155_32))
+}
+
+fn adst_basis32() -> &'static [[f32; 32]; 32] {
+    static BASIS: OnceLock<[[f32; 32]; 32]> = OnceLock::new();
+    BASIS.get_or_init(|| make_adst_basis(&SIN65, 65, 0.248_069_47))
+}
 
 // --- 4×4 (экспериментальная линия v7.2) ---------------------------------------
 
@@ -428,6 +513,160 @@ pub fn quant_matrix32(q8: &[u16; 64]) -> [u16; 1024] {
     out
 }
 
+fn forward_separable<const N: usize, const LEN: usize>(
+    spatial: &[f32; LEN],
+    freq: &mut [f32; LEN],
+    vertical: &[[f32; N]; N],
+    horizontal: &[[f32; N]; N],
+) {
+    debug_assert_eq!(LEN, N * N);
+    let mut tmp = [0f32; LEN];
+    for u in 0..N {
+        for x in 0..N {
+            let mut acc = 0f32;
+            for y in 0..N {
+                acc += vertical[u][y] * spatial[y * N + x];
+            }
+            tmp[u * N + x] = acc;
+        }
+    }
+    for u in 0..N {
+        for v in 0..N {
+            let mut acc = 0f32;
+            for x in 0..N {
+                acc += horizontal[v][x] * tmp[u * N + x];
+            }
+            freq[u * N + v] = acc;
+        }
+    }
+}
+
+fn inverse_separable<const N: usize, const LEN: usize>(
+    freq: &[f32; LEN],
+    spatial: &mut [f32; LEN],
+    vertical: &[[f32; N]; N],
+    horizontal: &[[f32; N]; N],
+) {
+    debug_assert_eq!(LEN, N * N);
+    let mut tmp = [0f32; LEN];
+    for u in 0..N {
+        for x in 0..N {
+            let mut acc = 0f32;
+            for v in 0..N {
+                acc += horizontal[v][x] * freq[u * N + v];
+            }
+            tmp[u * N + x] = acc;
+        }
+    }
+    for y in 0..N {
+        for x in 0..N {
+            let mut acc = 0f32;
+            for u in 0..N {
+                acc += vertical[u][y] * tmp[u * N + x];
+            }
+            spatial[y * N + x] = acc;
+        }
+    }
+}
+
+fn forward_tx<const N: usize, const LEN: usize>(
+    spatial: &[f32; LEN],
+    freq: &mut [f32; LEN],
+    dct: &[[f32; N]; N],
+    adst: &[[f32; N]; N],
+    tx: u8,
+) {
+    let (vertical, horizontal) = match tx {
+        TX_DCT_DCT => (dct, dct),
+        TX_ADST_DCT => (adst, dct),
+        TX_DCT_ADST => (dct, adst),
+        TX_ADST_ADST => (adst, adst),
+        _ => unreachable!("transform ID validated by caller"),
+    };
+    forward_separable::<N, LEN>(spatial, freq, vertical, horizontal);
+}
+
+fn inverse_tx<const N: usize, const LEN: usize>(
+    freq: &[f32; LEN],
+    spatial: &mut [f32; LEN],
+    dct: &[[f32; N]; N],
+    adst: &[[f32; N]; N],
+    tx: u8,
+) {
+    let (vertical, horizontal) = match tx {
+        TX_DCT_DCT => (dct, dct),
+        TX_ADST_DCT => (adst, dct),
+        TX_DCT_ADST => (dct, adst),
+        TX_ADST_ADST => (adst, adst),
+        _ => unreachable!("transform ID validated by caller"),
+    };
+    inverse_separable::<N, LEN>(freq, spatial, vertical, horizontal);
+}
+
+pub fn forward_tx4(spatial: &[f32; 16], freq: &mut [f32; 16], tx: u8) {
+    if tx == TX_DCT_DCT {
+        fdct4(spatial, freq);
+    } else {
+        forward_tx::<4, 16>(spatial, freq, &BASIS4, adst_basis4(), tx);
+    }
+}
+
+pub fn inverse_tx4(freq: &[f32; 16], spatial: &mut [f32; 16], tx: u8) {
+    if tx == TX_DCT_DCT {
+        idct4(freq, spatial);
+    } else {
+        inverse_tx::<4, 16>(freq, spatial, &BASIS4, adst_basis4(), tx);
+    }
+}
+
+pub fn forward_tx8(spatial: &[f32; 64], freq: &mut [f32; 64], tx: u8) {
+    if tx == TX_DCT_DCT {
+        fdct8x8(spatial, freq);
+    } else {
+        forward_tx::<8, 64>(spatial, freq, &BASIS, adst_basis8(), tx);
+    }
+}
+
+pub fn inverse_tx8(freq: &[f32; 64], spatial: &mut [f32; 64], tx: u8) {
+    if tx == TX_DCT_DCT {
+        idct8x8(freq, spatial);
+    } else {
+        inverse_tx::<8, 64>(freq, spatial, &BASIS, adst_basis8(), tx);
+    }
+}
+
+pub fn forward_tx16(spatial: &[f32; 256], freq: &mut [f32; 256], tx: u8) {
+    if tx == TX_DCT_DCT {
+        fdct16(spatial, freq);
+    } else {
+        forward_tx::<16, 256>(spatial, freq, basis16(), adst_basis16(), tx);
+    }
+}
+
+pub fn inverse_tx16(freq: &[f32; 256], spatial: &mut [f32; 256], tx: u8) {
+    if tx == TX_DCT_DCT {
+        idct16(freq, spatial);
+    } else {
+        inverse_tx::<16, 256>(freq, spatial, basis16(), adst_basis16(), tx);
+    }
+}
+
+pub fn forward_tx32(spatial: &[f32; 1024], freq: &mut [f32; 1024], tx: u8) {
+    if tx == TX_DCT_DCT {
+        fdct32(spatial, freq);
+    } else {
+        forward_tx::<32, 1024>(spatial, freq, basis32(), adst_basis32(), tx);
+    }
+}
+
+pub fn inverse_tx32(freq: &[f32; 1024], spatial: &mut [f32; 1024], tx: u8) {
+    if tx == TX_DCT_DCT {
+        idct32(freq, spatial);
+    } else {
+        inverse_tx::<32, 1024>(freq, spatial, basis32(), adst_basis32(), tx);
+    }
+}
+
 // --- спектры структурных предсказаний (кодер, свобода кодера) -------------------
 //
 // DCT линеен: F(orig - pred) = F(orig) - F(pred). Для мод с постоянной
@@ -772,6 +1011,40 @@ mod tests {
                 assert_eq!(q32[u * 32 + v], q8[(u / 4) * 8 + v / 4]);
             }
         }
+    }
+
+    fn assert_tx_roundtrip<const LEN: usize>(
+        forward: fn(&[f32; LEN], &mut [f32; LEN], u8),
+        inverse: fn(&[f32; LEN], &mut [f32; LEN], u8),
+        tolerance: f32,
+    ) {
+        let mut spatial = [0f32; LEN];
+        for (i, sample) in spatial.iter_mut().enumerate() {
+            *sample = ((i * 37 + 11) % 256) as f32 - 128.0;
+        }
+        for tx in 0..N_TX_V7 {
+            let mut freq = [0f32; LEN];
+            let mut back = [0f32; LEN];
+            forward(&spatial, &mut freq, tx);
+            inverse(&freq, &mut back, tx);
+            let max_error = spatial
+                .iter()
+                .zip(&back)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f32, f32::max);
+            assert!(
+                max_error < tolerance,
+                "tx={tx} LEN={LEN}: max error {max_error}"
+            );
+        }
+    }
+
+    #[test]
+    fn v74_transforms_are_symmetric_at_all_sizes() {
+        assert_tx_roundtrip(forward_tx4, inverse_tx4, 0.01);
+        assert_tx_roundtrip(forward_tx8, inverse_tx8, 0.02);
+        assert_tx_roundtrip(forward_tx16, inverse_tx16, 0.03);
+        assert_tx_roundtrip(forward_tx32, inverse_tx32, 0.06);
     }
 
     #[test]

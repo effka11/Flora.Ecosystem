@@ -1,4 +1,5 @@
-//! Экспериментальное дерево блоков v7.2: 32×32 → 16×16 → 8×8.
+//! Экспериментальное дерево v7.2, предикторы v7.3 и transform v7.4:
+//! 32×32 → 16×16 → 8×8 → 4×4.
 //!
 //! Корень 32×32 либо кодируется одной intra-модой и DCT32, либо раскрывается
 //! в четыре независимых узла v5 (16×16 whole / четыре 8×8). Глубина дерева
@@ -7,7 +8,8 @@
 use super::*;
 use crate::dct::{
     ZIGZAG4, ZIGZAG32, fdct4, fdct4_cols, fdct4_const, fdct4_rows, fdct32, fdct32_cols,
-    fdct32_const, fdct32_rows, idct4, idct32, quant_matrix4, quant_matrix32,
+    fdct32_const, fdct32_rows, forward_tx4, forward_tx32, inverse_tx4, inverse_tx32, quant_matrix4,
+    quant_matrix32,
 };
 
 /// Стоимость одного бинарного split-флага в грубой RD-модели.
@@ -23,8 +25,14 @@ const RD_CANDIDATES32: usize = 2;
 // а heap-аллокация на каждый узел заметна в encode-профиле.
 #[allow(clippy::large_enum_variant)]
 enum Node16 {
-    Whole { mode: u8, quantized: [i32; 256] },
-    Split { nodes: Vec<Node8> },
+    Whole {
+        mode: u8,
+        tx: u8,
+        quantized: [i32; 256],
+    },
+    Split {
+        nodes: Vec<Node8>,
+    },
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -35,6 +43,7 @@ enum Node8 {
 
 struct SubBlock4 {
     mode: u8,
+    tx: u8,
     quantized: [i32; 16],
 }
 
@@ -235,6 +244,13 @@ fn predict_block4(b: &Border4, mode: u8) -> [i32; 16] {
                 }
             }
         }
+        MODE_SMOOTH => {
+            for y in 0..4 {
+                for x in 0..4 {
+                    out[y * 4 + x] = smooth_sample(&b.above, &b.left, x, y);
+                }
+            }
+        }
         _ => {
             let sum: i32 = b.above[0..4].iter().sum::<i32>() + b.left.iter().sum::<i32>();
             let dc = (sum + 4) >> 3;
@@ -275,6 +291,7 @@ fn quantize_freq4(freq: &[f32; 16], qmat4: &[u16; 16], ac_bias: f32) -> ([i32; 1
 fn choose_mode4(
     orig: &[i32; 16],
     b: &Border4,
+    cfl_luma: Option<&[i32; 16]>,
     qmat4: &[u16; 16],
     lambda: f32,
     ac_bias: f32,
@@ -288,11 +305,23 @@ fn choose_mode4(
     let mut freq_pred = [0f32; 16];
     let mut freq_res = [0f32; 16];
 
-    let mut sads = Vec::with_capacity(6);
-    let mut preds = [[0i32; 16]; 6];
-    for mode in [MODE_DC, MODE_V, MODE_H, MODE_TM, MODE_D45, MODE_D135] {
+    let mut sads = Vec::with_capacity(N_MODES_V7 as usize);
+    let mut preds = [[0i32; 16]; N_MODES_V7 as usize];
+    for &mode in ENCODE_MODES_V7 {
         let pred = predict_block4(b, mode);
         let sad: u64 = orig
+            .iter()
+            .zip(pred.iter())
+            .map(|(&o, &p)| u64::from(o.abs_diff(p)))
+            .sum();
+        preds[usize::from(mode)] = pred;
+        sads.push((mode, sad));
+    }
+    if let Some(luma) = cfl_luma {
+        let dc = predict_block4(b, MODE_DC)[0];
+        let mode = cfl_candidate_mode(orig, luma, dc);
+        let pred = predict_cfl(luma, dc, mode);
+        let sad = orig
             .iter()
             .zip(pred.iter())
             .map(|(&o, &p)| u64::from(o.abs_diff(p)))
@@ -375,6 +404,7 @@ fn store_block4(
 fn eval_block4(
     buf: &[i16],
     recon: &mut [i16],
+    cfl_luma: Option<&[i16]>,
     w: usize,
     h: usize,
     qx: usize,
@@ -383,24 +413,37 @@ fn eval_block4(
     lambda: f32,
 ) -> (SubBlock4, f32) {
     let orig = gather_block4_i32(buf, w, h, qx, qy);
+    let cfl_block = cfl_luma.map(|luma| gather_block4_i32(luma, w, h, qx, qy));
     let b = border4(recon, w, h, qx, qy);
-    let (mode, pred, quantized, cost) = choose_mode4(
+    let ac_bias = adaptive_ac_bias(block_activity4(&orig));
+    let (mode, pred, quantized, cost) =
+        choose_mode4(&orig, &b, cfl_block.as_ref(), qmat4, lambda, ac_bias);
+    let (tx, quantized, cost) = choose_transform(
         &orig,
-        &b,
+        &pred,
         qmat4,
         lambda,
-        adaptive_ac_bias(block_activity4(&orig)),
+        ac_bias,
+        quantized,
+        cost,
+        forward_tx4,
+        coeff_cost4,
+        &ZIGZAG4,
     );
     let mut freq = [0f32; 16];
     let mut spatial = [0f32; 16];
     for i in 0..16 {
         freq[i] = quantized[i] as f32 * f32::from(qmat4[i]);
     }
-    idct4(&freq, &mut spatial);
+    inverse_tx4(&freq, &mut spatial, tx);
     store_block4(recon, w, h, qx, qy, &spatial, &pred);
     (
-        SubBlock4 { mode, quantized },
-        cost + lambda * MODE_COST_BITS as f32,
+        SubBlock4 {
+            mode,
+            tx,
+            quantized,
+        },
+        cost + lambda * (MODE_COST_BITS + TX_COST_BITS) as f32,
     )
 }
 
@@ -447,6 +490,7 @@ fn reconstruct8(
     by: usize,
     quantized: &[i32; 64],
     qmat: &[u16; 64],
+    tx: u8,
     pred: &[i32; 64],
 ) {
     let mut freq = [0f32; 64];
@@ -454,7 +498,7 @@ fn reconstruct8(
     for i in 0..64 {
         freq[i] = quantized[i] as f32 * f32::from(qmat[i]);
     }
-    idct8x8(&freq, &mut spatial);
+    inverse_tx8(&freq, &mut spatial, tx);
     store_block(recon, w, h, bx, by, &spatial, pred);
 }
 
@@ -462,6 +506,7 @@ fn reconstruct8(
 fn eval_node8(
     buf: &[i16],
     recon: &mut [i16],
+    cfl_luma: Option<&[i16]>,
     w: usize,
     h: usize,
     bx: usize,
@@ -478,7 +523,7 @@ fn eval_node8(
         let mut subs = Vec::with_capacity(4);
         let mut split_cost = 0f32;
         for (qx, qy) in child_blocks4(bx, by, w, h) {
-            let (sub, cost) = eval_block4(buf, recon, w, h, qx, qy, qmat4, lambda);
+            let (sub, cost) = eval_block4(buf, recon, cfl_luma, w, h, qx, qy, qmat4, lambda);
             subs.push(sub);
             split_cost += cost;
         }
@@ -489,20 +534,39 @@ fn eval_node8(
     }
 
     let b = border(recon, w, h, bx, by);
+    let cfl_block = cfl_luma.map(|luma| gather_block_i32(luma, w, h, bx, by));
+    let ac_bias = adaptive_ac_bias(block_activity(&orig));
     let (mode, pred, quantized, whole_base) = choose_mode(
         &orig,
         &b,
+        cfl_block.as_ref(),
         qmat,
         lambda,
-        N_MODES_V3,
-        adaptive_ac_bias(block_activity(&orig)),
+        mode_limit_v7(cfl_luma.is_some()),
+        ac_bias,
     );
-    let whole_cost = whole_base + lambda * MODE_COST_BITS as f32;
+    let (tx, quantized, whole_base) = choose_transform(
+        &orig,
+        &pred,
+        qmat,
+        lambda,
+        ac_bias,
+        quantized,
+        whole_base,
+        forward_tx8,
+        coeff_cost,
+        &ZIGZAG,
+    );
+    let whole_cost = whole_base + lambda * (MODE_COST_BITS + TX_COST_BITS) as f32;
 
     if partial || hint == Some(SPLIT_WHOLE) {
-        reconstruct8(recon, w, h, bx, by, &quantized, qmat, &pred);
+        reconstruct8(recon, w, h, bx, by, &quantized, qmat, tx, &pred);
         return (
-            Node8::Whole(SubBlock { mode, quantized }),
+            Node8::Whole(SubBlock {
+                mode,
+                tx,
+                quantized,
+            }),
             whole_cost + lambda * SPLIT_COST_BITS as f32,
         );
     }
@@ -511,7 +575,7 @@ fn eval_node8(
     let mut subs = Vec::with_capacity(4);
     let mut split_cost = 0f32;
     for (qx, qy) in child_blocks4(bx, by, w, h) {
-        let (sub, cost) = eval_block4(buf, recon, w, h, qx, qy, qmat4, lambda);
+        let (sub, cost) = eval_block4(buf, recon, cfl_luma, w, h, qx, qy, qmat4, lambda);
         subs.push(sub);
         split_cost += cost;
         if split_cost + lambda * SPLIT8_EXTRA_BITS as f32 > whole_cost {
@@ -522,9 +586,13 @@ fn eval_node8(
 
     if whole_cost <= adjusted_split_cost {
         restore_region8(recon, w, h, bx, by, &backup);
-        reconstruct8(recon, w, h, bx, by, &quantized, qmat, &pred);
+        reconstruct8(recon, w, h, bx, by, &quantized, qmat, tx, &pred);
         (
-            Node8::Whole(SubBlock { mode, quantized }),
+            Node8::Whole(SubBlock {
+                mode,
+                tx,
+                quantized,
+            }),
             whole_cost + lambda * SPLIT_COST_BITS as f32,
         )
     } else {
@@ -611,6 +679,13 @@ fn predict_block32(b: &Border32, mode: u8) -> [i32; 1024] {
                 }
             }
         }
+        MODE_SMOOTH => {
+            for y in 0..32 {
+                for x in 0..32 {
+                    out[y * 32 + x] = smooth_sample(&b.above, &b.left, x, y);
+                }
+            }
+        }
         _ => {
             let sum = b.above[0..32].iter().sum::<i32>() + b.left.iter().sum::<i32>();
             let dc = (sum + 32) >> 6;
@@ -653,6 +728,7 @@ type Mode32Result = (u8, Box<[i32; 1024]>, Box<[i32; 1024]>, f32);
 fn choose_mode32(
     orig: &[i32; 1024],
     b: &Border32,
+    cfl_luma: Option<&[i32; 1024]>,
     qmat32: &[u16; 1024],
     lambda: f32,
     ac_bias: f32,
@@ -666,10 +742,21 @@ fn choose_mode32(
     let mut freq_pred = [0f32; 1024];
     let mut freq_res = [0f32; 1024];
 
-    let mut sads: Vec<(u8, u64)> = Vec::with_capacity(6);
-    for mode in [MODE_DC, MODE_V, MODE_H, MODE_TM, MODE_D45, MODE_D135] {
+    let mut sads: Vec<(u8, u64)> = Vec::with_capacity(N_MODES_V7 as usize);
+    for &mode in ENCODE_MODES_V7 {
         let pred = predict_block32(b, mode);
         let sad: u64 = orig
+            .iter()
+            .zip(pred.iter())
+            .map(|(&o, &p)| u64::from(o.abs_diff(p)))
+            .sum();
+        sads.push((mode, sad));
+    }
+    if let Some(luma) = cfl_luma {
+        let dc = predict_block32(b, MODE_DC)[0];
+        let mode = cfl_candidate_mode(orig, luma, dc);
+        let pred = predict_cfl(luma, dc, mode);
+        let sad = orig
             .iter()
             .zip(pred.iter())
             .map(|(&o, &p)| u64::from(o.abs_diff(p)))
@@ -680,7 +767,15 @@ fn choose_mode32(
 
     let mut best: Option<Mode32Result> = None;
     for &mode in &candidates {
-        let pred = predict_block32(b, mode);
+        let pred = if cfl_alpha_q4(mode).is_some() {
+            predict_cfl(
+                cfl_luma.expect("CfL candidate requires luma"),
+                predict_block32(b, MODE_DC)[0],
+                mode,
+            )
+        } else {
+            predict_block32(b, mode)
+        };
         match mode {
             MODE_DC => fdct32_const(pred[0] as f32, &mut freq_pred),
             MODE_V => {
@@ -753,6 +848,7 @@ fn reconstruct32(
     ry: usize,
     quantized: &[i32; 1024],
     qmat32: &[u16; 1024],
+    tx: u8,
     pred: &[i32; 1024],
 ) {
     let mut freq = [0f32; 1024];
@@ -760,7 +856,7 @@ fn reconstruct32(
     for i in 0..1024 {
         freq[i] = quantized[i] as f32 * f32::from(qmat32[i]);
     }
-    idct32(&freq, &mut spatial);
+    inverse_tx32(&freq, &mut spatial, tx);
     store_block32(recon, w, h, rx, ry, &spatial, pred);
 }
 
@@ -814,6 +910,7 @@ fn reconstruct16(
     sby: usize,
     quantized: &[i32; 256],
     qmat16: &[u16; 256],
+    tx: u8,
     pred: &[i32; 256],
 ) {
     let mut freq = [0f32; 256];
@@ -821,7 +918,7 @@ fn reconstruct16(
     for i in 0..256 {
         freq[i] = quantized[i] as f32 * f32::from(qmat16[i]);
     }
-    idct16(&freq, &mut spatial);
+    inverse_tx16(&freq, &mut spatial, tx);
     store_block16(recon, w, h, sbx, sby, &spatial, pred);
 }
 
@@ -829,6 +926,7 @@ fn reconstruct16(
 fn eval_node16(
     buf: &[i16],
     recon: &mut [i16],
+    cfl_luma: Option<&[i16]>,
     w: usize,
     h: usize,
     sbx: usize,
@@ -844,16 +942,41 @@ fn eval_node16(
     let eval_whole = |recon: &mut [i16]| {
         let ac_bias = adaptive_ac_bias(block_activity16(&orig16));
         let b = border16(recon, w, h, sbx, sby);
-        let (mode, pred, quantized, cost) = choose_mode16(&orig16, &b, qmat16, lambda, ac_bias);
-        (mode, pred, quantized, cost)
+        let cfl_block = cfl_luma.map(|luma| gather_block16_i32(luma, w, h, sbx, sby));
+        let (mode, pred, quantized, cost) = choose_mode16(
+            &orig16,
+            &b,
+            cfl_block.as_ref(),
+            qmat16,
+            lambda,
+            mode_limit_v7(cfl_luma.is_some()),
+            ac_bias,
+        );
+        let (tx, quantized, cost) = choose_transform(
+            &orig16,
+            &pred,
+            qmat16,
+            lambda,
+            ac_bias,
+            quantized,
+            cost,
+            forward_tx16,
+            coeff_cost16,
+            &ZIGZAG16,
+        );
+        (mode, tx, pred, quantized, cost)
     };
 
     if hint == Some(SPLIT_WHOLE) {
-        let (mode, pred, quantized, cost) = eval_whole(recon);
-        reconstruct16(recon, w, h, sbx, sby, &quantized, qmat16, &pred);
+        let (mode, tx, pred, quantized, cost) = eval_whole(recon);
+        reconstruct16(recon, w, h, sbx, sby, &quantized, qmat16, tx, &pred);
         return (
-            Node16::Whole { mode, quantized },
-            cost + lambda * (MODE_COST_BITS + SPLIT_COST_BITS) as f32,
+            Node16::Whole {
+                mode,
+                tx,
+                quantized,
+            },
+            cost + lambda * (MODE_COST_BITS + TX_COST_BITS + SPLIT_COST_BITS) as f32,
         );
     }
 
@@ -861,7 +984,8 @@ fn eval_node16(
         let mut nodes = Vec::with_capacity(4);
         let mut cost = 0f32;
         for (bx, by) in sub_blocks(sbx, sby, w, h) {
-            let (node, node_cost) = eval_node8(buf, recon, w, h, bx, by, qmat, qmat4, lambda);
+            let (node, node_cost) =
+                eval_node8(buf, recon, cfl_luma, w, h, bx, by, qmat, qmat4, lambda);
             nodes.push(node);
             cost += node_cost;
         }
@@ -871,13 +995,13 @@ fn eval_node16(
         );
     }
 
-    let (mode, pred, quantized, whole_cost) = eval_whole(recon);
-    let whole_cost = whole_cost + lambda * MODE_COST_BITS as f32;
+    let (mode, tx, pred, quantized, whole_cost) = eval_whole(recon);
+    let whole_cost = whole_cost + lambda * (MODE_COST_BITS + TX_COST_BITS) as f32;
     let backup = save_region16(recon, w, h, sbx, sby);
     let mut nodes = Vec::with_capacity(4);
     let mut split_cost = 0f32;
     for (bx, by) in sub_blocks(sbx, sby, w, h) {
-        let (node, node_cost) = eval_node8(buf, recon, w, h, bx, by, qmat, qmat4, lambda);
+        let (node, node_cost) = eval_node8(buf, recon, cfl_luma, w, h, bx, by, qmat, qmat4, lambda);
         nodes.push(node);
         split_cost += node_cost;
         if split_cost > whole_cost {
@@ -887,9 +1011,13 @@ fn eval_node16(
 
     if whole_cost <= split_cost {
         restore_region16(recon, w, h, sbx, sby, &backup);
-        reconstruct16(recon, w, h, sbx, sby, &quantized, qmat16, &pred);
+        reconstruct16(recon, w, h, sbx, sby, &quantized, qmat16, tx, &pred);
         (
-            Node16::Whole { mode, quantized },
+            Node16::Whole {
+                mode,
+                tx,
+                quantized,
+            },
             whole_cost + lambda * SPLIT_COST_BITS as f32,
         )
     } else {
@@ -905,12 +1033,14 @@ fn emit_node8(node: &Node8, st: &mut CtxV7, syms: &mut Vec<(u8, u8)>, raw: &mut 
         Node8::Whole(sub) => {
             syms.push((CTX7_SPLIT8, SPLIT_WHOLE));
             syms.push((CTX7_MODE, sub.mode));
+            syms.push((CTX7_TX, sub.tx));
             encode_coeffs_v7(&sub.quantized, sub.quantized[0], st, syms, raw);
         }
         Node8::Split { subs } => {
             syms.push((CTX7_SPLIT8, SPLIT_QUAD));
             for sub in subs {
                 syms.push((CTX7_MODE, sub.mode));
+                syms.push((CTX7_TX, sub.tx));
                 encode_coeffs4_v7(&sub.quantized, st, syms, raw);
             }
         }
@@ -919,9 +1049,14 @@ fn emit_node8(node: &Node8, st: &mut CtxV7, syms: &mut Vec<(u8, u8)>, raw: &mut 
 
 fn emit_node16(node: &Node16, st: &mut CtxV7, syms: &mut Vec<(u8, u8)>, raw: &mut BitWriter) {
     match node {
-        Node16::Whole { mode, quantized } => {
+        Node16::Whole {
+            mode,
+            tx,
+            quantized,
+        } => {
             syms.push((CTX7_SPLIT, SPLIT_WHOLE));
             syms.push((CTX7_MODE, *mode));
+            syms.push((CTX7_TX, *tx));
             encode_coeffs16_v7(quantized, st, syms, raw);
         }
         Node16::Split { nodes } => {
@@ -1035,13 +1170,15 @@ fn encode_coeffs32_v7(
 
 pub(super) fn encode_tile_plane(
     buf: &[i16],
+    cfl_luma: Option<&[i16]>,
     w: usize,
     h: usize,
     qmat: &[u16; 64],
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
-) {
+) -> Vec<i16> {
     debug_assert_eq!(buf.len(), w * h);
+    debug_assert!(cfl_luma.is_none_or(|luma| luma.len() == w * h));
     let root_cols = w.div_ceil(32);
     let root_rows = h.div_ceil(32);
     let qmat4 = quant_matrix4(qmat);
@@ -1060,7 +1197,7 @@ pub(super) fn encode_tile_plane(
                 syms.push((CTX7_SPLIT32, SPLIT_QUAD));
                 for (sbx, sby) in child_nodes16(rx, ry, w, h) {
                     let (node, _) = eval_node16(
-                        buf, &mut recon, w, h, sbx, sby, qmat, &qmat4, &qmat16, lambda,
+                        buf, &mut recon, cfl_luma, w, h, sbx, sby, qmat, &qmat4, &qmat16, lambda,
                     );
                     emit_node16(&node, &mut st, syms, raw);
                 }
@@ -1073,7 +1210,7 @@ pub(super) fn encode_tile_plane(
                 syms.push((CTX7_SPLIT32, SPLIT_QUAD));
                 for (sbx, sby) in child_nodes16(rx, ry, w, h) {
                     let (node, _) = eval_node16(
-                        buf, &mut recon, w, h, sbx, sby, qmat, &qmat4, &qmat16, lambda,
+                        buf, &mut recon, cfl_luma, w, h, sbx, sby, qmat, &qmat4, &qmat16, lambda,
                     );
                     emit_node16(&node, &mut st, syms, raw);
                 }
@@ -1082,24 +1219,38 @@ pub(super) fn encode_tile_plane(
 
             let ac_bias = adaptive_ac_bias(block_activity32(&orig32));
             let b32 = border32(&recon, w, h, rx, ry);
+            let cfl_block = cfl_luma.map(|luma| gather_block32_i32(luma, w, h, rx, ry));
             let (mode32, pred32, quant32, cost32) =
-                choose_mode32(&orig32, &b32, &qmat32, lambda, ac_bias);
+                choose_mode32(&orig32, &b32, cfl_block.as_ref(), &qmat32, lambda, ac_bias);
+            let (tx32, quant32, cost32) = choose_transform(
+                &orig32,
+                pred32.as_ref(),
+                &qmat32,
+                lambda,
+                ac_bias,
+                *quant32,
+                cost32,
+                forward_tx32,
+                coeff_cost32,
+                &ZIGZAG32,
+            );
 
             if hint == Some(SPLIT_WHOLE) {
-                reconstruct32(&mut recon, w, h, rx, ry, &quant32, &qmat32, &pred32);
+                reconstruct32(&mut recon, w, h, rx, ry, &quant32, &qmat32, tx32, &pred32);
                 syms.push((CTX7_SPLIT32, SPLIT_WHOLE));
                 syms.push((CTX7_MODE, mode32));
+                syms.push((CTX7_TX, tx32));
                 encode_coeffs32_v7(&quant32, &mut st, syms, raw);
                 continue;
             }
 
-            let whole_cost = cost32 + lambda * MODE_COST_BITS as f32;
+            let whole_cost = cost32 + lambda * (MODE_COST_BITS + TX_COST_BITS) as f32;
             let backup = save_region32(&recon, w, h, rx, ry);
             let mut nodes = Vec::with_capacity(4);
             let mut split_cost = 0f32;
             for (sbx, sby) in child_nodes16(rx, ry, w, h) {
                 let (node, cost) = eval_node16(
-                    buf, &mut recon, w, h, sbx, sby, qmat, &qmat4, &qmat16, lambda,
+                    buf, &mut recon, cfl_luma, w, h, sbx, sby, qmat, &qmat4, &qmat16, lambda,
                 );
                 nodes.push(node);
                 split_cost += cost;
@@ -1110,9 +1261,10 @@ pub(super) fn encode_tile_plane(
 
             if whole_cost <= split_cost {
                 restore_region32(&mut recon, w, h, rx, ry, &backup);
-                reconstruct32(&mut recon, w, h, rx, ry, &quant32, &qmat32, &pred32);
+                reconstruct32(&mut recon, w, h, rx, ry, &quant32, &qmat32, tx32, &pred32);
                 syms.push((CTX7_SPLIT32, SPLIT_WHOLE));
                 syms.push((CTX7_MODE, mode32));
+                syms.push((CTX7_TX, tx32));
                 encode_coeffs32_v7(&quant32, &mut st, syms, raw);
             } else {
                 syms.push((CTX7_SPLIT32, SPLIT_QUAD));
@@ -1122,6 +1274,7 @@ pub(super) fn encode_tile_plane(
             }
         }
     }
+    recon
 }
 
 fn decode_coeffs4_v7(
@@ -1159,7 +1312,8 @@ fn decode_coeffs4_v7(
         let mag = detokenize(lsym, raw)?.wrapping_add(1);
         let sign = raw.read(1)?;
         let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
-        freq[ZIGZAG4[pos]] = level as f32 * f32::from(qmat4[ZIGZAG4[pos]]);
+        let index = ZIGZAG4[pos];
+        freq[index] = level as f32 * f32::from(qmat4[index]);
         prev_mag = mag;
         nnz += 1;
         pos += 1;
@@ -1203,7 +1357,8 @@ fn decode_coeffs32_v7(
         let mag = detokenize(lsym, raw)?.wrapping_add(1);
         let sign = raw.read(1)?;
         let level = if sign == 1 { -(mag as i32) } else { mag as i32 };
-        freq[ZIGZAG32[pos]] = level as f32 * f32::from(qmat32[ZIGZAG32[pos]]);
+        let index = ZIGZAG32[pos];
+        freq[index] = level as f32 * f32::from(qmat32[index]);
         prev_mag = mag;
         nnz += 1;
         pos += 1;
@@ -1218,6 +1373,7 @@ fn decode_node8(
     dec: &mut RangeDecoder<'_>,
     raw: &mut BitReader<'_>,
     recon: &mut [i16],
+    cfl_luma: Option<&[i16]>,
     w: usize,
     h: usize,
     bx: usize,
@@ -1229,16 +1385,26 @@ fn decode_node8(
     match bank.decode(dec, CTX7_SPLIT8)? {
         SPLIT_WHOLE => {
             let mode = bank.decode(dec, CTX7_MODE)?;
-            if mode >= N_MODES_V3 {
+            if mode >= mode_limit_v7(cfl_luma.is_some()) {
                 return Err(DecodeError::Corrupt("dct8: неизвестная мода предикции"));
             }
+            let tx = bank.decode(dec, CTX7_TX)?;
+            if tx >= N_TX_V7 {
+                return Err(DecodeError::Corrupt("dct8: неизвестный transform"));
+            }
             let b = border(recon, w, h, bx, by);
-            let pred = predict_block(&b, mode);
+            let pred = if cfl_alpha_q4(mode).is_some() {
+                let luma =
+                    gather_block_i32(cfl_luma.expect("CfL mode requires luma"), w, h, bx, by);
+                predict_cfl(&luma, predict_block(&b, MODE_DC)[0], mode)
+            } else {
+                predict_block(&b, mode)
+            };
             let mut freq = [0f32; 64];
             let mut spatial = [0f32; 64];
             let dc = decode_coeffs_v7(bank, dec, raw, qmat, &mut freq, st)?;
             freq[0] = dc as f32 * f32::from(qmat[0]);
-            idct8x8(&freq, &mut spatial);
+            inverse_tx8(&freq, &mut spatial, tx);
             store_block(recon, w, h, bx, by, &spatial, &pred);
         }
         SPLIT_QUAD => {
@@ -1246,14 +1412,24 @@ fn decode_node8(
             let mut spatial = [0f32; 16];
             for (qx, qy) in child_blocks4(bx, by, w, h) {
                 let mode = bank.decode(dec, CTX7_MODE)?;
-                if mode >= N_MODES_V3 {
+                if mode >= mode_limit_v7(cfl_luma.is_some()) {
                     return Err(DecodeError::Corrupt("dct4: неизвестная мода предикции"));
                 }
+                let tx = bank.decode(dec, CTX7_TX)?;
+                if tx >= N_TX_V7 {
+                    return Err(DecodeError::Corrupt("dct4: неизвестный transform"));
+                }
                 let b = border4(recon, w, h, qx, qy);
-                let pred = predict_block4(&b, mode);
+                let pred = if cfl_alpha_q4(mode).is_some() {
+                    let luma =
+                        gather_block4_i32(cfl_luma.expect("CfL mode requires luma"), w, h, qx, qy);
+                    predict_cfl(&luma, predict_block4(&b, MODE_DC)[0], mode)
+                } else {
+                    predict_block4(&b, mode)
+                };
                 let dc = decode_coeffs4_v7(bank, dec, raw, qmat4, &mut freq, st)?;
                 freq[0] = dc as f32 * f32::from(qmat4[0]);
-                idct4(&freq, &mut spatial);
+                inverse_tx4(&freq, &mut spatial, tx);
                 store_block4(recon, w, h, qx, qy, &spatial, &pred);
             }
         }
@@ -1268,6 +1444,7 @@ fn decode_node16(
     dec: &mut RangeDecoder<'_>,
     raw: &mut BitReader<'_>,
     recon: &mut [i16],
+    cfl_luma: Option<&[i16]>,
     w: usize,
     h: usize,
     sbx: usize,
@@ -1280,21 +1457,33 @@ fn decode_node16(
     match bank.decode(dec, CTX7_SPLIT)? {
         SPLIT_WHOLE => {
             let mode = bank.decode(dec, CTX7_MODE)?;
-            if mode >= N_MODES_V3 {
+            if mode >= mode_limit_v7(cfl_luma.is_some()) {
                 return Err(DecodeError::Corrupt("dct16: неизвестная мода предикции"));
             }
+            let tx = bank.decode(dec, CTX7_TX)?;
+            if tx >= N_TX_V7 {
+                return Err(DecodeError::Corrupt("dct16: неизвестный transform"));
+            }
             let b = border16(recon, w, h, sbx, sby);
-            let pred = predict_block16(&b, mode);
+            let pred = if cfl_alpha_q4(mode).is_some() {
+                let luma =
+                    gather_block16_i32(cfl_luma.expect("CfL mode requires luma"), w, h, sbx, sby);
+                predict_cfl(&luma, predict_block16(&b, MODE_DC)[0], mode)
+            } else {
+                predict_block16(&b, mode)
+            };
             let mut freq = [0f32; 256];
             let mut spatial = [0f32; 256];
             let dc = decode_coeffs16_v7(bank, dec, raw, qmat16, &mut freq, st)?;
             freq[0] = dc as f32 * f32::from(qmat16[0]);
-            idct16(&freq, &mut spatial);
+            inverse_tx16(&freq, &mut spatial, tx);
             store_block16(recon, w, h, sbx, sby, &spatial, &pred);
         }
         SPLIT_QUAD => {
             for (bx, by) in sub_blocks(sbx, sby, w, h) {
-                decode_node8(bank, dec, raw, recon, w, h, bx, by, qmat, qmat4, st)?;
+                decode_node8(
+                    bank, dec, raw, recon, cfl_luma, w, h, bx, by, qmat, qmat4, st,
+                )?;
             }
         }
         _ => return Err(DecodeError::Corrupt("dct16: неизвестное split-решение")),
@@ -1308,8 +1497,12 @@ pub(super) fn decode_tile_plane(
     raw: &mut BitReader<'_>,
     w: usize,
     h: usize,
+    cfl_luma: Option<&[i16]>,
     qmat: &[u16; 64],
 ) -> Result<Vec<i16>, DecodeError> {
+    if cfl_luma.is_some_and(|luma| luma.len() != w * h) {
+        return Err(DecodeError::Corrupt("CfL: неверный размер luma"));
+    }
     let root_cols = w.div_ceil(32);
     let root_rows = h.div_ceil(32);
     let qmat4 = quant_matrix4(qmat);
@@ -1325,21 +1518,36 @@ pub(super) fn decode_tile_plane(
             match bank.decode(dec, CTX7_SPLIT32)? {
                 SPLIT_WHOLE => {
                     let mode = bank.decode(dec, CTX7_MODE)?;
-                    if mode >= N_MODES_V3 {
+                    if mode >= mode_limit_v7(cfl_luma.is_some()) {
                         return Err(DecodeError::Corrupt("dct32: неизвестная мода предикции"));
                     }
+                    let tx = bank.decode(dec, CTX7_TX)?;
+                    if tx >= N_TX_V7 {
+                        return Err(DecodeError::Corrupt("dct32: неизвестный transform"));
+                    }
                     let b = border32(&recon, w, h, rx, ry);
-                    let pred = predict_block32(&b, mode);
+                    let pred = if cfl_alpha_q4(mode).is_some() {
+                        let luma = gather_block32_i32(
+                            cfl_luma.expect("CfL mode requires luma"),
+                            w,
+                            h,
+                            rx,
+                            ry,
+                        );
+                        predict_cfl(&luma, predict_block32(&b, MODE_DC)[0], mode)
+                    } else {
+                        predict_block32(&b, mode)
+                    };
                     let dc = decode_coeffs32_v7(bank, dec, raw, &qmat32, &mut freq32, &mut st)?;
                     freq32[0] = dc as f32 * f32::from(qmat32[0]);
-                    idct32(&freq32, &mut spatial32);
+                    inverse_tx32(&freq32, &mut spatial32, tx);
                     store_block32(&mut recon, w, h, rx, ry, &spatial32, &pred);
                 }
                 SPLIT_QUAD => {
                     for (sbx, sby) in child_nodes16(rx, ry, w, h) {
                         decode_node16(
-                            bank, dec, raw, &mut recon, w, h, sbx, sby, qmat, &qmat4, &qmat16,
-                            &mut st,
+                            bank, dec, raw, &mut recon, cfl_luma, w, h, sbx, sby, qmat, &qmat4,
+                            &qmat16, &mut st,
                         )?;
                     }
                 }
@@ -1353,7 +1561,90 @@ pub(super) fn decode_tile_plane(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dct::{BASE_LUMA, quant_matrix};
+    use crate::arith::RangeEncoder;
+    use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
+
+    #[test]
+    fn smooth_predictor_is_integer_exact_at_4_and_32() {
+        let b4 = Border4 {
+            above: [0; 8],
+            left: [255; 4],
+            corner: 127,
+        };
+        let p4 = predict_block4(&b4, MODE_SMOOTH);
+        assert_eq!([p4[0], p4[3], p4[12], p4[15]], [128, 32, 223, 128]);
+
+        let b32 = Border32 {
+            above: [0; 64],
+            left: [255; 32],
+            corner: 127,
+        };
+        let p32 = predict_block32(&b32, MODE_SMOOTH);
+        assert_eq!([p32[0], p32[31], p32[992], p32[1023]], [128, 4, 251, 128]);
+    }
+
+    #[test]
+    fn cfl_predictor_is_signed_and_rd_selectable() {
+        let luma = core::array::from_fn::<_, 16, _>(|i| i as i32);
+        let positive = predict_cfl(&luma, 128, 13);
+        let negative = predict_cfl(&luma, 128, 8);
+        assert_eq!([positive[0], positive[15]], [126, 130]);
+        assert_eq!([negative[0], negative[15]], [130, 126]);
+
+        let border = Border4 {
+            above: [128; 8],
+            left: [128; 4],
+            corner: 128,
+        };
+        let qmat = quant_matrix(&BASE_LUMA, 90);
+        let qmat4 = quant_matrix4(&qmat);
+        let (mode, _, _, _) = choose_mode4(
+            &positive,
+            &border,
+            Some(&luma),
+            &qmat4,
+            plane_lambda(&qmat),
+            AC_BIAS,
+        );
+        assert_eq!(mode, 13);
+    }
+
+    #[test]
+    fn cfl_plane_decoder_matches_encoder_reconstruction() {
+        let (w, h) = (37, 29);
+        let luma: Vec<i16> = (0..w * h)
+            .map(|i| ((i % w * 7 + i / w * 5) & 255) as i16)
+            .collect();
+        let chroma: Vec<i16> = luma
+            .iter()
+            .enumerate()
+            .map(|(i, &y)| {
+                (128 + (i32::from(y) - 128) / 4 + (i % 3) as i32 - 1).clamp(0, 255) as i16
+            })
+            .collect();
+        let qmat = quant_matrix(&BASE_CHROMA, 75);
+        let mut syms = Vec::new();
+        let mut raw = BitWriter::new();
+        let expected = encode_tile_plane(&chroma, Some(&luma), w, h, &qmat, &mut syms, &mut raw);
+
+        let (groups, kinds) = ctx_meta_v7();
+        let mut enc_bank = ModelBank::new(groups.clone(), kinds.clone());
+        let mut enc = RangeEncoder::new();
+        for &(ctx, sym) in &syms {
+            enc_bank.encode(&mut enc, ctx, sym);
+        }
+        let tokens = enc.finish();
+        let raw = raw.finish();
+
+        let mut dec_bank = ModelBank::new(groups, kinds);
+        let mut dec = RangeDecoder::new(&tokens).unwrap();
+        let mut raw = BitReader::new(&raw);
+        let actual =
+            decode_tile_plane(&mut dec_bank, &mut dec, &mut raw, w, h, Some(&luma), &qmat).unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(dec.consumed(), tokens.len());
+        assert_eq!(raw.unread_bytes(), 0);
+    }
 
     #[test]
     fn flat_root_uses_whole32() {
@@ -1362,7 +1653,7 @@ mod tests {
         let qmat = quant_matrix(&BASE_LUMA, 75);
         let mut syms = Vec::new();
         let mut raw = BitWriter::new();
-        encode_tile_plane(&buf, w, h, &qmat, &mut syms, &mut raw);
+        encode_tile_plane(&buf, None, w, h, &qmat, &mut syms, &mut raw);
         assert_eq!(syms.first(), Some(&(CTX7_SPLIT32, SPLIT_WHOLE)));
     }
 
@@ -1381,7 +1672,7 @@ mod tests {
         let qmat = quant_matrix(&BASE_LUMA, 75);
         let mut syms = Vec::new();
         let mut raw = BitWriter::new();
-        encode_tile_plane(&buf, w, h, &qmat, &mut syms, &mut raw);
+        encode_tile_plane(&buf, None, w, h, &qmat, &mut syms, &mut raw);
         assert_eq!(syms.first(), Some(&(CTX7_SPLIT32, SPLIT_QUAD)));
     }
 
@@ -1394,7 +1685,7 @@ mod tests {
 
         let flat = vec![140i16; w * h];
         let mut recon = vec![0i16; w * h];
-        let (node, _) = eval_node8(&flat, &mut recon, w, h, 0, 0, &qmat, &qmat4, lambda);
+        let (node, _) = eval_node8(&flat, &mut recon, None, w, h, 0, 0, &qmat, &qmat4, lambda);
         assert!(matches!(node, Node8::Whole(_)));
 
         let mut heterogeneous = vec![128i16; w * h];
@@ -1409,6 +1700,7 @@ mod tests {
         let (node, _) = eval_node8(
             &heterogeneous,
             &mut recon,
+            None,
             w,
             h,
             0,

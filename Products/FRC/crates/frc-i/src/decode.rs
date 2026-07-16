@@ -8,7 +8,7 @@
 
 use crate::arith::{ModelBank, RangeDecoder};
 use crate::bits::BitReader;
-use crate::color::{upsample_420, ycbcr_to_rgb, ycocg_r_to_rgb};
+use crate::color::{downsample_420, upsample_420, ycbcr_to_rgb, ycocg_r_to_rgb};
 use crate::dct::{BASE_CHROMA, BASE_LUMA, quant_matrix};
 use crate::error::DecodeError;
 use crate::format::VERSION_ADAPTIVE;
@@ -230,7 +230,22 @@ fn decode_tile(
             let (groups, kinds) = lossy::ctx_meta_v7();
             ModelBank::new(groups, kinds)
         });
-        let mut luma = read_dct_plane(payload, &mut pos, t.w, t.h, q_luma, version, bank.as_mut())?;
+        let mut luma = read_dct_plane(
+            payload,
+            &mut pos,
+            (t.w, t.h),
+            None,
+            q_luma,
+            version,
+            bank.as_mut(),
+        )?;
+        let cfl_luma = (version >= VERSION_ADAPTIVE).then(|| {
+            if header.chroma420 {
+                downsample_420(&luma, t.w, t.h)
+            } else {
+                luma.clone()
+            }
+        });
         if header.deblock {
             crate::deblock::deblock_plane(&mut luma, t.w, t.h, q_luma[0]);
         }
@@ -241,8 +256,15 @@ fn decode_tile(
             } else {
                 (t.w, t.h)
             };
-            let mut cbuf =
-                read_dct_plane(payload, &mut pos, cw, ch, q_chroma, version, bank.as_mut())?;
+            let mut cbuf = read_dct_plane(
+                payload,
+                &mut pos,
+                (cw, ch),
+                cfl_luma.as_deref(),
+                q_chroma,
+                version,
+                bank.as_mut(),
+            )?;
             if header.deblock {
                 // Хрома фильтруется в собственном разрешении, до апсэмплинга.
                 crate::deblock::deblock_plane(&mut cbuf, cw, ch, q_chroma[0]);
@@ -297,19 +319,20 @@ fn read_lossless_plane(
 fn read_dct_plane(
     payload: &[u8],
     pos: &mut usize,
-    w: usize,
-    h: usize,
+    size: (usize, usize),
+    cfl_luma: Option<&[i16]>,
     qmat: &[u16; 64],
     version: u8,
     bank: Option<&mut ModelBank>,
 ) -> Result<Vec<i16>, DecodeError> {
+    let (w, h) = size;
     if version >= VERSION_ADAPTIVE {
         let (section, used) = read_dct_section_v7(&payload[*pos..])?;
         *pos += used;
         let bank = bank.expect("v7: банк обязателен");
         let mut dec = RangeDecoder::new(section.tokens)?;
         let mut raw = BitReader::new(section.raw);
-        let buf = lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, qmat)?;
+        let buf = lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?;
         if dec.consumed() != section.tokens.len() {
             return Err(DecodeError::Corrupt("лишние байты в адаптивном потоке"));
         }
