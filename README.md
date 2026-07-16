@@ -1,23 +1,23 @@
 ## Flora Ecosystem
 
-Экосистема **Flora** —  это модульная некоммерческая экосистема, развивающаяся в соответствии с уникальными ценностями в новейшей цифровой эпохе.
+Экосистема **Flora** —  это модульная некоммерческая экосистема, развивающаяся в соответствии с уникальными ценностями в новейшей цифровой эпохе. Собственный протокол E2E-шифрования, алгоритм рекомендаций и медиакодеки на Rust.
 
-* **Лицензия кода:** двойное лицензирование — **GNU AGPLv3 (только версия 3)** для сообщества или коммерческая лицензия через **Luna Ecosystem**. См. [`LICENSE`](LICENSE), [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md), [`NOTICE.md`](NOTICE.md) и [`LEGAL.md`](LEGAL.md).
+* **Лицензия кода:** двойное лицензирование — **GNU AGPLv3** для сообщества или коммерческая лицензия через **Luna Ecosystem**. См. [`LICENSE`](LICENSE), [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md), [`NOTICE.md`](NOTICE.md) и [`LEGAL.md`](LEGAL.md).
 * **Лицензия некодовых материалов:** **CC BY-SA 4.0 International** или коммерческая лицензия через **Luna Ecosystem**. См. [`LICENSE-CONTENT.md`](LICENSE-CONTENT.md) и [`LEGAL.md`](LEGAL.md).
 * **Безопасность:** см. [`SECURITY.md`](SECURITY.md). 
 * **Участие в разработке:** см. [`CONTRIBUTING.md`](CONTRIBUTING.md).
 * **Документация:** [FSCP](Documents/fscp/FSCP.md), [E2E-платформа](Documents/fscp/e2e-security.md), [FIRA](Documents/fira/FIRA.md), [CODECS](Documents/codecs/CODECS.md).
 
-### Попробовать (MVP alpha)
+### Попробовать Alpha-версию
 
 * **Веб:** https://social.flora-s.net
 * **Android:** `flora.social-v0.5.0-alpha-android.apk` (локально `Apps/Mobile/dist/`; публикация — [Releases](https://github.com/effka11/Flora.Ecosystem/releases))
 
 Ограничения текущей alpha-версии описаны в [SECURITY.md — Known Limitations](SECURITY.md#известные-ограничения-mvp-known-limitations).
 
-### Быстрый старт (разработка)
+### Разработка
 
-**Требования:** Docker Desktop, [.NET SDK 10](https://dotnet.microsoft.com/download), [Rust](https://rustup.rs/) (см. [`rust-toolchain.toml`](rust-toolchain.toml)), Node.js ≥ 20.19 (см. [`.nvmrc`](.nvmrc)).
+**Требования:** Docker Desktop, [Rust](https://rustup.rs/) (см. [`rust-toolchain.toml`](rust-toolchain.toml)), Node.js ≥ 20.19 (см. [`.nvmrc`](.nvmrc)).
 
 ```bash
 # 1. Зависимости JS (workspaces: Web, Mobile, client-core)
@@ -35,6 +35,8 @@ npm install
 **Android (USB):** VS Code task **Flora Android: debug (USB)** — PostgreSQL, .NET + gateway, установка Flora Dev, Metro. CLI: `./Scripts/mobile-debug-android.ps1`.
 
 На Windows удобнее задачи из [`.vscode/tasks.json`](.vscode/tasks.json): **Flora: API + Web dev localhost**, **Flora Android: debug (USB)**.
+
+## Философия проекта
 
 ### Некоммерческий фундамент
 Для проекта, который стремится стать всеобъемлющим инструментом для всех людей в новом веке информационных технологий **недопустима** коммерческая пытка пользователей. Мы исключаем из проекта абсолютно всю деструктивную коммерцию, оставляя право лишь на точечную экосистеме **Luna**, которая покроет собой узкий круг задач для бизнеса, которые никак не будут касаться незаинтересованного пользователя. 
