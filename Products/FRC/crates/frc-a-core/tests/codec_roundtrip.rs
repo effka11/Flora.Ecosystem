@@ -692,19 +692,22 @@ fn vbr_moves_bits_from_easy_to_hard_frames() {
     let easy = FRAME_N..half_frames * FRAME_N;
     let snr_hard_vbr = snr_db(&pcm[hard.clone()], &dec_vbr[hard.clone()]);
     let snr_hard_cbr = snr_db(&pcm[hard.clone()], &dec_cbr[hard]);
-    let snr_easy_vbr = snr_db(&pcm[easy.clone()], &dec_vbr[easy]);
+    let snr_easy_vbr = snr_db(&pcm[easy.clone()], &dec_vbr[easy.clone()]);
+    let snr_easy_cbr = snr_db(&pcm[easy.clone()], &dec_cbr[easy]);
     println!(
-        "VBR SNR: hard {snr_hard_vbr:.1} dB (CBR {snr_hard_cbr:.1}), easy {snr_easy_vbr:.1} dB; \
-         avg bits VBR {avg_vbr:.0} vs CBR {avg_cbr:.0}"
+        "VBR SNR: hard {snr_hard_vbr:.1} dB (CBR {snr_hard_cbr:.1}), easy {snr_easy_vbr:.1} dB \
+         (CBR {snr_easy_cbr:.1}); avg bits VBR {avg_vbr:.0} vs CBR {avg_cbr:.0}"
     );
     assert!(avg_vbr <= avg_cbr + 8.0, "VBR не должен тратить больше CBR");
     assert!(
         snr_hard_vbr > snr_hard_cbr + 0.3,
         "буст должен улучшать тяжёлые кадры: {snr_hard_vbr:.1} vs {snr_hard_cbr:.1}"
     );
+    // Цена ужатия лёгких кадров ограничена: не хуже CBR более чем на 6 дБ
+    // и не ниже абсолютного пола (шум на ~55 дБ под тихим сигналом).
     assert!(
-        snr_easy_vbr > 30.0,
-        "ужатые лёгкие кадры остаются качественными: {snr_easy_vbr:.1}"
+        snr_easy_vbr > snr_easy_cbr - 6.0 && snr_easy_vbr > 25.0,
+        "ужатые лёгкие кадры деградировали: {snr_easy_vbr:.1} vs CBR {snr_easy_cbr:.1}"
     );
 }
 
