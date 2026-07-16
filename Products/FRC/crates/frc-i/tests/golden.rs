@@ -2,15 +2,12 @@
 //!
 //! Два уровня гарантий (FRC-I.md §10):
 //!
-//! - **v1/v2 (decode-заморозка).** Файлы `golden-v1-*.fri`, `golden-v2-*.fri`
-//!   закоммичены навсегда и не регенерируются: декодер обязан читать их
-//!   одинаково в любой будущей версии кодека.
-//! - **v3..v6 (encode-заморозка).** Файлы `golden-v3..6-*.fri` фиксируют
-//!   текущий выход кодера соответствующей версии (v3/v4 — через явную
-//!   `encode_with_version`, v5 — публичный `encode`, v6 — `encode_with_icc`).
-//!   Меняться они могут только осознанным решением (улучшение кодера):
-//!   `FRC_I_UPDATE_GOLDEN=1 cargo test -p frc-i --test golden` —
-//!   и коммитятся вместе с изменением.
+//! - **Выпущенные версии (decode-заморозка).** Все закоммиченные `.fri`
+//!   декодируются одинаково всегда; старые v1/v2/v6 не регенерируются.
+//! - **Reference encoder.** Legacy v3/v4/v5 фиксируются через явную
+//!   `encode_with_version` и могут служебно регенерироваться с
+//!   `FRC_I_UPDATE_GOLDEN=1`. Текущий lossy v7 фиксируется через публичные
+//!   `encode`/`encode_with_icc` и неизменяем: расхождение требует v8.
 
 use frc_i::{
     EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc, encode_with_version,
@@ -83,6 +80,15 @@ fn check_or_update(name: &str, produced: &[u8]) {
     assert_eq!(
         expected, produced,
         "битстрим {name} разошёлся с golden-вектором: формат менять только осознанно"
+    );
+}
+
+fn check_frozen(name: &str, produced: &[u8]) {
+    let expected = std::fs::read(data_path(name))
+        .unwrap_or_else(|_| panic!("нет замороженного golden-файла {name}"));
+    assert_eq!(
+        expected, produced,
+        "битстрим {name} разошёлся с frozen v7: требуется новая версия формата"
     );
 }
 
@@ -299,7 +305,7 @@ fn golden_v4_lossy_decode_is_deterministic() {
     );
 }
 
-// --- v5: encode-заморозка (суперблоки 16×16, текущая версия кодера) -------------
+// --- v5: encode-заморозка (суперблоки 16×16) ------------------------------------
 
 #[test]
 fn golden_v5_lossy_bitstream_frozen() {
@@ -310,9 +316,9 @@ fn golden_v5_lossy_bitstream_frozen() {
         format: PixelFormat::Rgba8,
         data: &data,
     };
-    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 5).unwrap();
     let info = read_info(&fri).unwrap();
-    assert_eq!(info.version, 5, "lossy-кодер должен писать v5");
+    assert_eq!(info.version, 5);
     assert!(!info.deblock, "q=75 без деблокинга");
     check_or_update("golden-v5-lossy-q75.fri", &fri);
 }
@@ -328,7 +334,7 @@ fn golden_v5_lossy_decode_is_deterministic() {
             format: PixelFormat::Rgba8,
             data: &data,
         };
-        let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+        let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 5).unwrap();
         let out = decode(&fri).unwrap();
         println!("golden v5 decode fnv1a = {:#018X}", fnv1a(&out.data));
         return;
@@ -343,7 +349,7 @@ fn golden_v5_lossy_decode_is_deterministic() {
     );
 }
 
-// --- v6: encode-заморозка (блок метаданных: ICC) --------------------------------
+// --- v6: decode-заморозка (блок метаданных: ICC) --------------------------------
 
 /// Детерминированный псевдо-ICC-профиль для golden-вектора.
 fn golden_icc() -> Vec<u8> {
@@ -351,7 +357,43 @@ fn golden_icc() -> Vec<u8> {
 }
 
 #[test]
-fn golden_v6_lossy_icc_bitstream_frozen() {
+fn golden_v6_lossy_icc_decodes_forever() {
+    const EXPECTED_FNV1A: u64 = 0xD44B_8BBB_4520_2C1B;
+    let icc = golden_icc();
+    let fri = std::fs::read(data_path("golden-v6-lossy-icc-q75.fri")).expect("нет golden-файла v6");
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 6, "ICC требует v6");
+    assert!(info.metadata);
+    let out = decode(&fri).unwrap();
+    assert_eq!(out.icc.as_deref(), Some(icc.as_slice()));
+    assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
+    assert_eq!(fnv1a(&out.data), EXPECTED_FNV1A);
+}
+
+// --- v7: encode-заморозка (адаптивная lossy-линия v7.9a) ------------------------
+
+#[test]
+fn golden_v7_lossy_bitstream_frozen() {
+    let (w, h, data) = golden_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 7, "публичный lossy-кодер должен писать v7");
+    assert!(!info.metadata);
+    check_frozen("golden-v7-lossy-q75.fri", &fri);
+
+    let decoded = decode(&fri).unwrap();
+    const EXPECTED_FNV1A: u64 = 0x296E_04F9_9FB4_FEEE;
+    assert_eq!(fnv1a(&decoded.data), EXPECTED_FNV1A);
+}
+
+#[test]
+fn golden_v7_lossy_icc_bitstream_frozen() {
     let (w, h, data) = golden_source();
     let img = ImageView {
         width: w,
@@ -362,14 +404,15 @@ fn golden_v6_lossy_icc_bitstream_frozen() {
     let icc = golden_icc();
     let fri = encode_with_icc(&img, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
     let info = read_info(&fri).unwrap();
-    assert_eq!(info.version, 6, "ICC требует v6");
+    assert_eq!(info.version, 7);
     assert!(info.metadata);
-    check_or_update("golden-v6-lossy-icc-q75.fri", &fri);
-    // Метаданные не влияют на пиксели: тело совпадает с v5-потоком без ICC,
-    // отличаются только версия, флаг и вставленный блок.
-    let out = decode(&fri).unwrap();
-    assert_eq!(out.icc.as_deref(), Some(icc.as_slice()));
+    check_frozen("golden-v7-lossy-icc-q75.fri", &fri);
+
     assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
+    let decoded = decode(&fri).unwrap();
+    assert_eq!(decoded.icc.as_deref(), Some(icc.as_slice()));
+    const EXPECTED_FNV1A: u64 = 0x296E_04F9_9FB4_FEEE;
+    assert_eq!(fnv1a(&decoded.data), EXPECTED_FNV1A);
 }
 
 #[test]

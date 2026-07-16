@@ -95,7 +95,7 @@ fn adst_basis32() -> &'static [[f32; 32]; 32] {
     BASIS.get_or_init(|| make_adst_basis(&SIN65, 65, 0.248_069_47))
 }
 
-// --- 4×4 (экспериментальная линия v7.2) ---------------------------------------
+// --- 4×4 (линия v7.2+) --------------------------------------------------------
 
 #[rustfmt::skip]
 const BASIS4: [[f32; 4]; 4] = [
@@ -265,7 +265,7 @@ pub fn quant_matrix16(q8: &[u16; 64]) -> [u16; 256] {
     out
 }
 
-// --- 32×32 (экспериментальная линия v7.2) -------------------------------------
+// --- 32×32 (линия v7.2+) ------------------------------------------------------
 
 /// cos(k·π/64), k = 0..=32. Литералы фиксируют межплатформенный битстрим.
 #[rustfmt::skip]
@@ -766,8 +766,8 @@ pub fn quant_matrix(base: &[u16; 64], quality: u8) -> [u16; 64] {
 }
 
 /// Normative quantization matrices for a bitstream version. v1-v6 retain
-/// Annex K compatibility; experimental v7 uses scalar matrices tuned for
-/// the recursive DCT/ADST pipeline and balanced RGB distortion.
+/// Annex K compatibility; frozen v7 uses scalar matrices tuned for the
+/// recursive DCT/ADST pipeline and balanced RGB distortion.
 pub fn quant_matrices(version: u8, quality: u8) -> ([u16; 64], [u16; 64]) {
     let (luma, chroma) = if version >= crate::format::VERSION_ADAPTIVE {
         (&BASE_LUMA_V7, &BASE_CHROMA_V7)

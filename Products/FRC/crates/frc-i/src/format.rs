@@ -8,14 +8,14 @@ pub const MAGIC: [u8; 4] = [0x8F, b'F', b'R', b'I'];
 pub const VERSION_CURRENT: u8 = 3;
 /// Версия с деблокинг-фильтром (флаг-бит 5); флаг ставится при `quality < 45`.
 pub const VERSION_DEBLOCK: u8 = 4;
-/// Версия с адаптивными суперблоками 16×16; кодер пишет её для lossy.
+/// Legacy-версия с адаптивными суперблоками 16×16.
 pub const VERSION_SUPERBLOCK: u8 = 5;
 /// Версия с блоком метаданных (флаг-бит 6): ICC-профиль и будущие чанки.
-pub const VERSION_METADATA: u8 = 6;
+pub const VERSION_METADATA: u8 = VERSION_SUPERBLOCK + 1;
 /// Версия с адаптивной энтропией lossy-секций (линия v7, FRC-I.md §11.3):
 /// range-кодер + адаптивные модели вместо статического rANS; таблиц частот
-/// в DCT-секциях нет. Слой блоков — v5. Кодер пишет её только по явному
-/// запросу (`encode_with_version`), пока линия не объявлена стабильной.
+/// в DCT-секциях нет. Замороженная линия v7.9a; публичный lossy-кодер пишет
+/// эту версию по умолчанию.
 pub const VERSION_ADAPTIVE: u8 = 7;
 /// Максимальная версия, которую читает этот декодер.
 pub const VERSION_MAX: u8 = VERSION_ADAPTIVE;
@@ -65,7 +65,7 @@ pub const TILE: usize = 1 << TILE_SHIFT;
 /// Разобранный заголовок FRC-I.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
-    /// Версия битстрима (1..=5); раскладка заголовка у всех одинаковая.
+    /// Версия битстрима (1..=7); раскладка заголовка у всех одинаковая.
     pub version: u8,
     pub width: u32,
     pub height: u32,

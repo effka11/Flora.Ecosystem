@@ -11,7 +11,7 @@ use crate::error::EncodeError;
 use crate::format::{
     CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
     VERSION_ADAPTIVE, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA, VERSION_MIN,
-    VERSION_SUPERBLOCK, build_metadata_block, tile_grid,
+    build_metadata_block, tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
@@ -33,7 +33,8 @@ pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeEr
     encode_impl(img, mode, base_version(mode), None)
 }
 
-/// Кодирует с вложением ICC-профиля (битстрим v6: блок метаданных).
+/// Кодирует с вложением ICC-профиля. Lossy использует текущий v7, lossless —
+/// минимальный v6, в котором появился блок метаданных.
 pub fn encode_with_icc(
     img: &ImageView<'_>,
     mode: EncodeMode,
@@ -45,20 +46,25 @@ pub fn encode_with_icc(
     if icc.len() + 5 > MAX_METADATA {
         return Err(EncodeError::InvalidIcc("ICC-профиль больше 8 МиБ"));
     }
-    encode_impl(img, mode, VERSION_METADATA, Some(icc))
+    encode_impl(
+        img,
+        mode,
+        base_version(mode).max(VERSION_METADATA),
+        Some(icc),
+    )
 }
 
-/// Версию диктует набор инструментов: lossy пишется v5 (суперблоки;
-/// деблокинг-флаг добавляется при q < 45), lossless — v3 (слой блоков
-/// не используется, файл не должен требовать более нового декодера).
+/// Версию диктует набор инструментов: lossy пишет замороженный v7, lossless —
+/// v3 (слой блоков не используется, файл не должен требовать более нового
+/// декодера).
 fn base_version(mode: EncodeMode) -> u8 {
     match mode {
-        EncodeMode::Lossy { .. } => VERSION_SUPERBLOCK,
+        EncodeMode::Lossy { .. } => VERSION_ADAPTIVE,
         EncodeMode::Lossless => VERSION_CURRENT,
     }
 }
 
-/// Кодирует с явной версией битстрима (1..=6). Публичный кодер выбирает
+/// Кодирует с явной версией битстрима (1..=7). Публичный кодер выбирает
 /// версию сам (см. `encode`); явные версии — только для генерации
 /// golden-векторов и тестов.
 #[doc(hidden)]
