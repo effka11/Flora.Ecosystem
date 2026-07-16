@@ -23,8 +23,8 @@ use std::collections::HashMap;
 
 /// Порог качества, ниже которого включается сабсэмплинг цветоразностей 4:2:0.
 const CHROMA420_MAX_QUALITY: u8 = 85;
-/// v7 эффективнее кодирует chroma и раньше переключается на 4:4:4.
-const CHROMA420_MAX_QUALITY_V7: u8 = 75;
+/// v7.8 threshold rebalanced for scalar qmatrix and calibrated RDOQ.
+const CHROMA420_MAX_QUALITY_V7: u8 = 85;
 /// Порог качества, ниже которого включается деблокинг (битстрим v4):
 /// при сильном квантовании блочность видна, фильтр её маскирует.
 const DEBLOCK_MAX_QUALITY: u8 = 44;

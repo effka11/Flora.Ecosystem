@@ -391,15 +391,15 @@ fn v7_non_multiple_of_16_dimensions() {
 }
 
 #[test]
-fn v7_switches_to_chroma_444_after_quality_75() {
+fn v7_switches_to_chroma_444_after_quality_85() {
     let (w, h) = (96, 64);
     let data = synthetic(w, h, PixelFormat::Rgb8);
     let image = view(w, h, PixelFormat::Rgb8, &data);
 
-    let v7_75 = encode_with_version(&image, EncodeMode::Lossy { quality: 75 }, 7).unwrap();
-    let v7_76 = encode_with_version(&image, EncodeMode::Lossy { quality: 76 }, 7).unwrap();
-    assert!(read_info(&v7_75).unwrap().chroma420);
-    assert!(!read_info(&v7_76).unwrap().chroma420);
+    let v7_85 = encode_with_version(&image, EncodeMode::Lossy { quality: 85 }, 7).unwrap();
+    let v7_86 = encode_with_version(&image, EncodeMode::Lossy { quality: 86 }, 7).unwrap();
+    assert!(read_info(&v7_85).unwrap().chroma420);
+    assert!(!read_info(&v7_86).unwrap().chroma420);
 
     // Замороженная линия v5 сохраняет прежний порог 85.
     let v5_85 = encode(&image, EncodeMode::Lossy { quality: 85 }).unwrap();

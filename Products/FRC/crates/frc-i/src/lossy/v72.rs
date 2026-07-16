@@ -127,12 +127,6 @@ fn gather_block4_i32(buf: &[i16], w: usize, h: usize, qx: usize, qy: usize) -> [
     block
 }
 
-fn block_activity4(block: &[i32; 16]) -> f32 {
-    let mean = block.iter().sum::<i32>() / 16;
-    let mad: i32 = block.iter().map(|&v| (v - mean).abs()).sum();
-    mad as f32 / 16.0
-}
-
 fn quadrant_activity8(block: &[i32; 64], q: usize) -> f32 {
     let (x0, y0) = ((q % 2) * 4, (q / 2) * 4);
     let mut sum = 0i32;
@@ -402,7 +396,7 @@ fn eval_block4(
     let orig = gather_block4_i32(buf, w, h, qx, qy);
     let cfl_block = cfl_luma.map(|luma| gather_block4_i32(luma, w, h, qx, qy));
     let b = border4(recon, w, h, qx, qy);
-    let ac_bias = adaptive_ac_bias(block_activity4(&orig));
+    let ac_bias = AC_BIAS_V7;
     let (mode, pred, quantized, cost) =
         choose_mode4(&orig, &b, cfl_block.as_ref(), qmat4, lambda, ac_bias);
     let (tx, quantized, cost) = choose_transform(
@@ -521,7 +515,7 @@ fn eval_node8(
 
     let b = border(recon, w, h, bx, by);
     let cfl_block = cfl_luma.map(|luma| gather_block_i32(luma, w, h, bx, by));
-    let ac_bias = adaptive_ac_bias(block_activity(&orig));
+    let ac_bias = AC_BIAS_V7;
     let (mode, pred, quantized, whole_base) = choose_mode_v7(
         &orig,
         &b,
@@ -912,7 +906,7 @@ fn eval_node16(
     let hint = split_hint(&orig16);
 
     let eval_whole = |recon: &mut [i16]| {
-        let ac_bias = adaptive_ac_bias(block_activity16(&orig16));
+        let ac_bias = AC_BIAS_V7;
         let b = border16(recon, w, h, sbx, sby);
         let cfl_block = cfl_luma.map(|luma| gather_block16_i32(luma, w, h, sbx, sby));
         let (mode, pred, quantized, cost) = choose_mode16_v7(
@@ -971,16 +965,22 @@ fn eval_node16(
     let backup = save_region16(recon, w, h, sbx, sby);
     let mut nodes = Vec::with_capacity(4);
     let mut split_cost = 0f32;
+    let mut split_complete = true;
     for (bx, by) in sub_blocks(sbx, sby, w, h) {
         let (node, node_cost) = eval_node8(buf, recon, cfl_luma, w, h, bx, by, qmat, qmat4, lambda);
         nodes.push(node);
         split_cost += node_cost;
         if split_cost > whole_cost {
+            split_complete = false;
             break;
         }
     }
-
-    if whole_cost <= split_cost {
+    if split_complete && split_cost < whole_cost {
+        (
+            Node16::Split { nodes },
+            split_cost + lambda * SPLIT_COST_BITS as f32,
+        )
+    } else {
         restore_region16(recon, w, h, sbx, sby, &backup);
         reconstruct16(recon, w, h, sbx, sby, &quantized, qmat16, tx, &pred);
         (
@@ -990,11 +990,6 @@ fn eval_node16(
                 quantized,
             },
             whole_cost + lambda * SPLIT_COST_BITS as f32,
-        )
-    } else {
-        (
-            Node16::Split { nodes },
-            split_cost + lambda * SPLIT_COST_BITS as f32,
         )
     }
 }
@@ -1192,7 +1187,7 @@ pub(super) fn encode_tile_plane(
                 continue;
             }
 
-            let ac_bias = adaptive_ac_bias(block_activity32(&orig32));
+            let ac_bias = AC_BIAS_V7;
             let b32 = border32(&recon, w, h, rx, ry);
             let cfl_block = cfl_luma.map(|luma| gather_block32_i32(luma, w, h, rx, ry));
             let (mode32, pred32, quant32, cost32) =
@@ -1222,6 +1217,7 @@ pub(super) fn encode_tile_plane(
             let backup = save_region32(&recon, w, h, rx, ry);
             let mut nodes = Vec::with_capacity(4);
             let mut split_cost = 0f32;
+            let mut split_complete = true;
             for (sbx, sby) in child_nodes16(rx, ry, w, h) {
                 let (node, cost) = eval_node16(
                     buf, &mut recon, cfl_luma, w, h, sbx, sby, qmat, &qmat4, &qmat16, lambda,
@@ -1229,22 +1225,22 @@ pub(super) fn encode_tile_plane(
                 nodes.push(node);
                 split_cost += cost;
                 if split_cost > whole_cost {
+                    split_complete = false;
                     break;
                 }
             }
-
-            if whole_cost <= split_cost {
+            if split_complete && split_cost < whole_cost {
+                syms.push((CTX7_SPLIT32, SPLIT_QUAD));
+                for node in &nodes {
+                    emit_node16(node, &mut st, syms, raw);
+                }
+            } else {
                 restore_region32(&mut recon, w, h, rx, ry, &backup);
                 reconstruct32(&mut recon, w, h, rx, ry, &quant32, &qmat32, tx32, &pred32);
                 syms.push((CTX7_SPLIT32, SPLIT_WHOLE));
                 syms.push((CTX7_MODE, mode32));
                 syms.push((CTX7_TX, tx32));
                 encode_coeffs32_v7(&quant32, tx32, &mut st, syms, raw);
-            } else {
-                syms.push((CTX7_SPLIT32, SPLIT_QUAD));
-                for node in &nodes {
-                    emit_node16(node, &mut st, syms, raw);
-                }
             }
         }
     }

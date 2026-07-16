@@ -141,6 +141,11 @@ fn adaptive_ac_bias(activity: f32) -> f32 {
     AQ_BIAS_FLAT + t * (AQ_BIAS_BUSY - AQ_BIAS_FLAT)
 }
 
+/// v7.8: scalar qmatrix already balances frequency error; the legacy
+/// activity mask over-prunes textured AC. Kept separate so v1-v6 reference
+/// encoder decisions remain frozen.
+const AC_BIAS_V7: f32 = AC_BIAS;
+
 #[inline]
 fn run_ctx(pos: usize) -> u8 {
     if pos <= LOW_BAND_END {
@@ -591,7 +596,7 @@ const TX_COST_BITS: u32 = 2;
 const TX_SEARCH_LAMBDA_SCALE: f32 = 0.0;
 /// Bounded trellis uses the real transform-domain SSE but a deliberately
 /// conservative fraction of plane λ because token costs are estimated.
-const TRELLIS_LAMBDA_SCALE: f32 = 0.02;
+const TRELLIS_LAMBDA_SCALE: f32 = 0.055;
 
 #[inline]
 fn tx_rate_extra_bits(tx: u8) -> u32 {
@@ -666,7 +671,6 @@ fn trellis_rdoq<const LEN: usize>(
         let sign = if freq[index] < 0.0 { -1 } else { 1 };
         let current_mag = current.unsigned_abs() as i32;
         let candidates = [
-            current_mag,
             nearest.saturating_sub(1),
             nearest,
             nearest.saturating_add(1),
@@ -679,8 +683,11 @@ fn trellis_rdoq<const LEN: usize>(
                 } else {
                     ac_level_rate_estimate(current.unsigned_abs()) as f32
                 };
-        for magnitude in candidates {
-            if index != 0 && magnitude == 0 {
+        for (candidate_index, magnitude) in candidates.into_iter().enumerate() {
+            if magnitude == current_mag
+                || candidates[..candidate_index].contains(&magnitude)
+                || (index != 0 && magnitude == 0)
+            {
                 continue;
             }
             let candidate = sign * magnitude;
@@ -700,45 +707,55 @@ fn trellis_rdoq<const LEN: usize>(
 
     // Then prune AC nodes in reverse scan order. Removing a node merges its
     // two run edges, so this captures run/EOB coupling without O(N²) search.
+    const NO_NODE: u16 = u16::MAX;
     #[derive(Clone, Copy)]
     struct TrellisNode {
-        pos: usize,
-        previous: usize,
-        next: usize,
+        pos: u16,
+        previous: u16,
+        next: u16,
     }
-    let mut nodes = Vec::<TrellisNode>::new();
+    debug_assert!(u16::try_from(LEN).is_ok());
+    let mut nodes = [TrellisNode {
+        pos: 0,
+        previous: NO_NODE,
+        next: NO_NODE,
+    }; LEN];
+    let mut count = 0usize;
     for pos in 1..LEN {
         if quantized[scan[pos]] == 0 {
             continue;
         }
-        let node = nodes.len();
-        if node != 0 {
-            nodes[node - 1].next = node;
+        if count != 0 {
+            nodes[count - 1].next = count as u16;
         }
-        nodes.push(TrellisNode {
-            pos,
-            previous: node.wrapping_sub(1),
-            next: usize::MAX,
-        });
+        nodes[count] = TrellisNode {
+            pos: pos as u16,
+            previous: if count == 0 {
+                NO_NODE
+            } else {
+                (count - 1) as u16
+            },
+            next: NO_NODE,
+        };
+        count += 1;
     }
-    let count = nodes.len();
 
     for node in (0..count).rev() {
-        let pos = nodes[node].pos;
+        let pos = usize::from(nodes[node].pos);
         let index = scan[pos];
         let prev_node = nodes[node].previous;
         let next_node = nodes[node].next;
-        let prev_pos = if prev_node == usize::MAX {
+        let prev_pos = if prev_node == NO_NODE {
             0
         } else {
-            nodes[prev_node].pos
+            usize::from(nodes[usize::from(prev_node)].pos)
         };
         let current_rate =
             ac_event_rate_estimate(pos - prev_pos - 1, quantized[index].unsigned_abs());
-        let saved_rate = if next_node == usize::MAX {
+        let saved_rate = if next_node == NO_NODE {
             current_rate as i32
         } else {
-            let next_pos = nodes[next_node].pos;
+            let next_pos = usize::from(nodes[usize::from(next_node)].pos);
             let next_index = scan[next_pos];
             let old_next =
                 ac_event_rate_estimate(next_pos - pos - 1, quantized[next_index].unsigned_abs());
@@ -753,11 +770,11 @@ fn trellis_rdoq<const LEN: usize>(
             freq[index] * freq[index] - squared_quant_error(freq[index], step, quantized[index]);
         if saved_rate > 0 && distortion_increase < rd_lambda * saved_rate as f32 {
             quantized[index] = 0;
-            if prev_node != usize::MAX {
-                nodes[prev_node].next = next_node;
+            if prev_node != NO_NODE {
+                nodes[usize::from(prev_node)].next = next_node;
             }
-            if next_node != usize::MAX {
-                nodes[next_node].previous = prev_node;
+            if next_node != NO_NODE {
+                nodes[usize::from(next_node)].previous = prev_node;
             }
         }
     }

@@ -106,47 +106,11 @@ const BASIS4: [[f32; 4]; 4] = [
 ];
 
 pub fn fdct4(spatial: &[f32; 16], freq: &mut [f32; 16]) {
-    let mut tmp = [0f32; 16];
-    for u in 0..4 {
-        for x in 0..4 {
-            let mut acc = 0f32;
-            for y in 0..4 {
-                acc += BASIS4[u][y] * spatial[y * 4 + x];
-            }
-            tmp[u * 4 + x] = acc;
-        }
-    }
-    for u in 0..4 {
-        for v in 0..4 {
-            let mut acc = 0f32;
-            for x in 0..4 {
-                acc += BASIS4[v][x] * tmp[u * 4 + x];
-            }
-            freq[u * 4 + v] = acc;
-        }
-    }
+    forward_separable::<4, 16>(spatial, freq, &BASIS4, &BASIS4);
 }
 
 pub fn idct4(freq: &[f32; 16], spatial: &mut [f32; 16]) {
-    let mut tmp = [0f32; 16];
-    for u in 0..4 {
-        for x in 0..4 {
-            let mut acc = 0f32;
-            for v in 0..4 {
-                acc += BASIS4[v][x] * freq[u * 4 + v];
-            }
-            tmp[u * 4 + x] = acc;
-        }
-    }
-    for y in 0..4 {
-        for x in 0..4 {
-            let mut acc = 0f32;
-            for u in 0..4 {
-                acc += BASIS4[u][y] * tmp[u * 4 + x];
-            }
-            spatial[y * 4 + x] = acc;
-        }
-    }
+    inverse_separable::<4, 16>(freq, spatial, &BASIS4, &BASIS4);
 }
 
 #[rustfmt::skip]
@@ -192,52 +156,12 @@ const BASIS: [[f32; 8]; 8] = [
 
 /// Прямое 2D DCT: пространственный блок (row-major, y*8+x) → частоты (u*8+v).
 pub fn fdct8x8(spatial: &[f32; 64], freq: &mut [f32; 64]) {
-    // По столбцам: tmp[u][x] = sum_y BASIS[u][y] * spatial[y][x].
-    let mut tmp = [0f32; 64];
-    for u in 0..8 {
-        for x in 0..8 {
-            let mut acc = 0f32;
-            for y in 0..8 {
-                acc += BASIS[u][y] * spatial[y * 8 + x];
-            }
-            tmp[u * 8 + x] = acc;
-        }
-    }
-    // По строкам: freq[u][v] = sum_x BASIS[v][x] * tmp[u][x].
-    for u in 0..8 {
-        for v in 0..8 {
-            let mut acc = 0f32;
-            for x in 0..8 {
-                acc += BASIS[v][x] * tmp[u * 8 + x];
-            }
-            freq[u * 8 + v] = acc;
-        }
-    }
+    forward_separable::<8, 64>(spatial, freq, &BASIS, &BASIS);
 }
 
 /// Обратное 2D DCT: частоты → пространственный блок.
 pub fn idct8x8(freq: &[f32; 64], spatial: &mut [f32; 64]) {
-    // По строкам: tmp[u][x] = sum_v BASIS[v][x] * freq[u][v].
-    let mut tmp = [0f32; 64];
-    for u in 0..8 {
-        for x in 0..8 {
-            let mut acc = 0f32;
-            for v in 0..8 {
-                acc += BASIS[v][x] * freq[u * 8 + v];
-            }
-            tmp[u * 8 + x] = acc;
-        }
-    }
-    // По столбцам: spatial[y][x] = sum_u BASIS[u][y] * tmp[u][x].
-    for y in 0..8 {
-        for x in 0..8 {
-            let mut acc = 0f32;
-            for u in 0..8 {
-                acc += BASIS[u][y] * tmp[u * 8 + x];
-            }
-            spatial[y * 8 + x] = acc;
-        }
-    }
+    inverse_separable::<8, 64>(freq, spatial, &BASIS, &BASIS);
 }
 
 // --- 16×16 (битстрим v5) --------------------------------------------------------
@@ -288,49 +212,13 @@ fn basis16() -> &'static [[f32; 16]; 16] {
 /// Прямое 2D DCT 16×16: пространственный блок (y*16+x) → частоты (u*16+v).
 pub fn fdct16(spatial: &[f32; 256], freq: &mut [f32; 256]) {
     let basis = basis16();
-    let mut tmp = [0f32; 256];
-    for u in 0..16 {
-        for x in 0..16 {
-            let mut acc = 0f32;
-            for y in 0..16 {
-                acc += basis[u][y] * spatial[y * 16 + x];
-            }
-            tmp[u * 16 + x] = acc;
-        }
-    }
-    for u in 0..16 {
-        for v in 0..16 {
-            let mut acc = 0f32;
-            for x in 0..16 {
-                acc += basis[v][x] * tmp[u * 16 + x];
-            }
-            freq[u * 16 + v] = acc;
-        }
-    }
+    forward_separable::<16, 256>(spatial, freq, basis, basis);
 }
 
 /// Обратное 2D DCT 16×16: частоты → пространственный блок.
 pub fn idct16(freq: &[f32; 256], spatial: &mut [f32; 256]) {
     let basis = basis16();
-    let mut tmp = [0f32; 256];
-    for u in 0..16 {
-        for x in 0..16 {
-            let mut acc = 0f32;
-            for v in 0..16 {
-                acc += basis[v][x] * freq[u * 16 + v];
-            }
-            tmp[u * 16 + x] = acc;
-        }
-    }
-    for y in 0..16 {
-        for x in 0..16 {
-            let mut acc = 0f32;
-            for u in 0..16 {
-                acc += basis[u][y] * tmp[u * 16 + x];
-            }
-            spatial[y * 16 + x] = acc;
-        }
-    }
+    inverse_separable::<16, 256>(freq, spatial, basis, basis);
 }
 
 /// Зигзаг-сканирование 16×16 (то же серпантинное правило, что и 8×8).
@@ -427,49 +315,13 @@ fn basis32() -> &'static [[f32; 32]; 32] {
 /// Прямое 2D DCT 32×32.
 pub fn fdct32(spatial: &[f32; 1024], freq: &mut [f32; 1024]) {
     let basis = basis32();
-    let mut tmp = [0f32; 1024];
-    for u in 0..32 {
-        for x in 0..32 {
-            let mut acc = 0f32;
-            for y in 0..32 {
-                acc += basis[u][y] * spatial[y * 32 + x];
-            }
-            tmp[u * 32 + x] = acc;
-        }
-    }
-    for u in 0..32 {
-        for v in 0..32 {
-            let mut acc = 0f32;
-            for x in 0..32 {
-                acc += basis[v][x] * tmp[u * 32 + x];
-            }
-            freq[u * 32 + v] = acc;
-        }
-    }
+    forward_separable::<32, 1024>(spatial, freq, basis, basis);
 }
 
 /// Обратное 2D DCT 32×32.
 pub fn idct32(freq: &[f32; 1024], spatial: &mut [f32; 1024]) {
     let basis = basis32();
-    let mut tmp = [0f32; 1024];
-    for u in 0..32 {
-        for x in 0..32 {
-            let mut acc = 0f32;
-            for v in 0..32 {
-                acc += basis[v][x] * freq[u * 32 + v];
-            }
-            tmp[u * 32 + x] = acc;
-        }
-    }
-    for y in 0..32 {
-        for x in 0..32 {
-            let mut acc = 0f32;
-            for u in 0..32 {
-                acc += basis[u][y] * tmp[u * 32 + x];
-            }
-            spatial[y * 32 + x] = acc;
-        }
-    }
+    inverse_separable::<32, 1024>(freq, spatial, basis, basis);
 }
 
 /// Зигзаг-сканирование 32×32.
@@ -513,32 +365,63 @@ pub fn quant_matrix32(q8: &[u16; 64]) -> [u16; 1024] {
     out
 }
 
+fn forward_vertical<const N: usize, const LEN: usize>(
+    spatial: &[f32; LEN],
+    tmp: &mut [f32; LEN],
+    vertical: &[[f32; N]; N],
+) {
+    debug_assert_eq!(LEN, N * N);
+    let lanes = 4;
+    debug_assert_eq!(N % lanes, 0);
+    for u in 0..N {
+        for x in (0..N).step_by(lanes) {
+            let mut acc = [0f32; 8];
+            for y in 0..N {
+                let weight = vertical[u][y];
+                for lane in 0..lanes {
+                    acc[lane] += weight * spatial[y * N + x + lane];
+                }
+            }
+            for lane in 0..lanes {
+                tmp[u * N + x + lane] = acc[lane];
+            }
+        }
+    }
+}
+
+fn forward_horizontal<const N: usize, const LEN: usize>(
+    tmp: &[f32; LEN],
+    freq: &mut [f32; LEN],
+    horizontal: &[[f32; N]; N],
+) {
+    debug_assert_eq!(LEN, N * N);
+    let lanes = 4;
+    debug_assert_eq!(N % lanes, 0);
+    for u in 0..N {
+        for v in (0..N).step_by(lanes) {
+            let mut acc = [0f32; 8];
+            for x in 0..N {
+                let value = tmp[u * N + x];
+                for lane in 0..lanes {
+                    acc[lane] += horizontal[v + lane][x] * value;
+                }
+            }
+            for lane in 0..lanes {
+                freq[u * N + v + lane] = acc[lane];
+            }
+        }
+    }
+}
+
 fn forward_separable<const N: usize, const LEN: usize>(
     spatial: &[f32; LEN],
     freq: &mut [f32; LEN],
     vertical: &[[f32; N]; N],
     horizontal: &[[f32; N]; N],
 ) {
-    debug_assert_eq!(LEN, N * N);
     let mut tmp = [0f32; LEN];
-    for u in 0..N {
-        for x in 0..N {
-            let mut acc = 0f32;
-            for y in 0..N {
-                acc += vertical[u][y] * spatial[y * N + x];
-            }
-            tmp[u * N + x] = acc;
-        }
-    }
-    for u in 0..N {
-        for v in 0..N {
-            let mut acc = 0f32;
-            for x in 0..N {
-                acc += horizontal[v][x] * tmp[u * N + x];
-            }
-            freq[u * N + v] = acc;
-        }
-    }
+    forward_vertical::<N, LEN>(spatial, &mut tmp, vertical);
+    forward_horizontal::<N, LEN>(&tmp, freq, horizontal);
 }
 
 fn inverse_separable<const N: usize, const LEN: usize>(
@@ -548,23 +431,35 @@ fn inverse_separable<const N: usize, const LEN: usize>(
     horizontal: &[[f32; N]; N],
 ) {
     debug_assert_eq!(LEN, N * N);
+    let lanes = 4;
+    debug_assert_eq!(N % lanes, 0);
     let mut tmp = [0f32; LEN];
     for u in 0..N {
-        for x in 0..N {
-            let mut acc = 0f32;
+        for x in (0..N).step_by(lanes) {
+            let mut acc = [0f32; 8];
             for v in 0..N {
-                acc += horizontal[v][x] * freq[u * N + v];
+                let value = freq[u * N + v];
+                for lane in 0..lanes {
+                    acc[lane] += horizontal[v][x + lane] * value;
+                }
             }
-            tmp[u * N + x] = acc;
+            for lane in 0..lanes {
+                tmp[u * N + x + lane] = acc[lane];
+            }
         }
     }
     for y in 0..N {
-        for x in 0..N {
-            let mut acc = 0f32;
+        for x in (0..N).step_by(lanes) {
+            let mut acc = [0f32; 8];
             for u in 0..N {
-                acc += vertical[u][y] * tmp[u * N + x];
+                let weight = vertical[u][y];
+                for lane in 0..lanes {
+                    acc[lane] += weight * tmp[u * N + x + lane];
+                }
             }
-            spatial[y * N + x] = acc;
+            for lane in 0..lanes {
+                spatial[y * N + x + lane] = acc[lane];
+            }
         }
     }
 }
@@ -1079,6 +974,101 @@ mod tests {
         assert_tx_roundtrip(forward_tx8, inverse_tx8, 0.02);
         assert_tx_roundtrip(forward_tx16, inverse_tx16, 0.03);
         assert_tx_roundtrip(forward_tx32, inverse_tx32, 0.06);
+    }
+
+    fn reference_forward<const N: usize, const LEN: usize>(
+        spatial: &[f32; LEN],
+        freq: &mut [f32; LEN],
+        vertical: &[[f32; N]; N],
+        horizontal: &[[f32; N]; N],
+    ) {
+        let mut tmp = [0f32; LEN];
+        for u in 0..N {
+            for x in 0..N {
+                for y in 0..N {
+                    tmp[u * N + x] += vertical[u][y] * spatial[y * N + x];
+                }
+            }
+        }
+        for u in 0..N {
+            for v in 0..N {
+                for x in 0..N {
+                    freq[u * N + v] += horizontal[v][x] * tmp[u * N + x];
+                }
+            }
+        }
+    }
+
+    fn reference_inverse<const N: usize, const LEN: usize>(
+        freq: &[f32; LEN],
+        spatial: &mut [f32; LEN],
+        vertical: &[[f32; N]; N],
+        horizontal: &[[f32; N]; N],
+    ) {
+        let mut tmp = [0f32; LEN];
+        for u in 0..N {
+            for x in 0..N {
+                for v in 0..N {
+                    tmp[u * N + x] += horizontal[v][x] * freq[u * N + v];
+                }
+            }
+        }
+        for y in 0..N {
+            for x in 0..N {
+                for u in 0..N {
+                    spatial[y * N + x] += vertical[u][y] * tmp[u * N + x];
+                }
+            }
+        }
+    }
+
+    fn assert_grouped_tx_is_bit_exact<const N: usize, const LEN: usize>(
+        dct: &[[f32; N]; N],
+        adst: &[[f32; N]; N],
+        forward: fn(&[f32; LEN], &mut [f32; LEN], u8),
+        inverse: fn(&[f32; LEN], &mut [f32; LEN], u8),
+    ) {
+        let spatial = std::array::from_fn(|i| ((i * 37 + 11) % 251) as f32 - 125.0);
+        for tx in TX_DCT_DCT..=TX_ADST_ADST {
+            let (vertical, horizontal) = match tx {
+                TX_DCT_DCT => (dct, dct),
+                TX_ADST_DCT => (adst, dct),
+                TX_DCT_ADST => (dct, adst),
+                TX_ADST_ADST => (adst, adst),
+                _ => unreachable!(),
+            };
+            let mut expected_freq = [0f32; LEN];
+            reference_forward(&spatial, &mut expected_freq, vertical, horizontal);
+            let mut actual_freq = [0f32; LEN];
+            forward(&spatial, &mut actual_freq, tx);
+            assert!(
+                actual_freq
+                    .iter()
+                    .zip(expected_freq)
+                    .all(|(actual, expected)| actual.to_bits() == expected.to_bits()),
+                "forward tx={tx} N={N}"
+            );
+
+            let mut expected_spatial = [0f32; LEN];
+            reference_inverse(&actual_freq, &mut expected_spatial, vertical, horizontal);
+            let mut actual_spatial = [0f32; LEN];
+            inverse(&actual_freq, &mut actual_spatial, tx);
+            assert!(
+                actual_spatial
+                    .iter()
+                    .zip(expected_spatial)
+                    .all(|(actual, expected)| actual.to_bits() == expected.to_bits()),
+                "inverse tx={tx} N={N}"
+            );
+        }
+    }
+
+    #[test]
+    fn v79_grouped_transform_is_bit_exact() {
+        assert_grouped_tx_is_bit_exact(&BASIS4, adst_basis4(), forward_tx4, inverse_tx4);
+        assert_grouped_tx_is_bit_exact(&BASIS, adst_basis8(), forward_tx8, inverse_tx8);
+        assert_grouped_tx_is_bit_exact(basis16(), adst_basis16(), forward_tx16, inverse_tx16);
+        assert_grouped_tx_is_bit_exact(basis32(), adst_basis32(), forward_tx32, inverse_tx32);
     }
 
     #[test]
