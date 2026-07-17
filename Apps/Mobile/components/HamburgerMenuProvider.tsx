@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { FeedHamburgerMenu } from "@/components/FeedHamburgerMenu";
 
 type HamburgerMenuContextValue = {
@@ -18,10 +19,10 @@ export function HamburgerMenuProvider({ children }: { children: ReactNode }) {
 
   return (
     <HamburgerMenuContext.Provider value={value}>
-      <View style={styles.host}>
+      <GestureHandlerRootView style={styles.host}>
         {children}
-        <FeedHamburgerMenu visible={open} onClose={closeMenu} />
-      </View>
+        <FeedHamburgerMenu visible={open} onOpen={openMenu} onClose={closeMenu} />
+      </GestureHandlerRootView>
     </HamburgerMenuContext.Provider>
   );
 }

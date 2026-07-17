@@ -64,12 +64,15 @@ Write-Host ""
 
 $env:FLORA_ADB_SERIAL = $serial
 $env:ANDROID_SERIAL = $serial
+$previousCi = $env:CI
 $env:CI = "1"
 
 Push-Location $mobile
 try {
     Write-Host "expo prebuild (android, development variant) ..."
     Invoke-ExpoAndroidPrebuildClean $mobile
+    # prebuild /MIR пересоздаёт android/ и стирает libs/*.aar — вернуть до Gradle.
+    Ensure-FfmpegAndroid $root $mobile
 
     npx expo run:android --no-bundler
     if ($LASTEXITCODE -ne 0) {
@@ -78,6 +81,11 @@ try {
 }
 finally {
     Remove-Item Env:APP_VARIANT -ErrorAction SilentlyContinue
+    if ($null -eq $previousCi) {
+        Remove-Item Env:CI -ErrorAction SilentlyContinue
+    } else {
+        $env:CI = $previousCi
+    }
     Pop-Location
 }
 
