@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { postImageUrl } from "@/lib/socialApi";
+import { FrcImage } from "./FrcImage";
 import styles from "./FeedPostImages.module.css";
 
 export type FeedPostImagePreviewItem = {
@@ -21,10 +22,12 @@ type FeedPostImagesProps = {
 const FEED_POST_COLLAGE_MAX_ITEMS = 10;
 type FeedPostImageShape = "narrow" | "portrait" | "square" | "wide";
 
-function feedPostImageShape(image: HTMLImageElement): FeedPostImageShape {
-  const ratio = image.naturalWidth > 0 && image.naturalHeight > 0
-    ? image.naturalWidth / image.naturalHeight
-    : 1;
+function feedPostImageShape(image: HTMLImageElement | HTMLCanvasElement): FeedPostImageShape {
+  const width =
+    "naturalWidth" in image && image.naturalWidth > 0 ? image.naturalWidth : image.width;
+  const height =
+    "naturalHeight" in image && image.naturalHeight > 0 ? image.naturalHeight : image.height;
+  const ratio = width > 0 && height > 0 ? width / height : 1;
 
   if (ratio < 0.72) return "narrow";
   if (ratio < 0.95) return "portrait";
@@ -65,7 +68,7 @@ export function FeedPostImages({
     [retryVersions],
   );
 
-  const handleImageLoad = useCallback((id: string, image: HTMLImageElement) => {
+  const handleImageLoad = useCallback((id: string, image: HTMLImageElement | HTMLCanvasElement) => {
     const nextShape = feedPostImageShape(image);
     setImageShapes((prev) => (prev[id] === nextShape ? prev : { ...prev, [id]: nextShape }));
     setFailedIds((prev) => {
@@ -121,8 +124,7 @@ export function FeedPostImages({
             onClick={closeModal}
           >
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <FrcImage
                 className={styles.modalImage}
                 src={resolveSrc(activeItem)}
                 alt=""
@@ -162,13 +164,17 @@ export function FeedPostImages({
                   onClick={() => setActiveId(item.id)}
                   aria-label={`Открыть фото ${index + 1} из ${visibleItems.length}`}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <FrcImage
                     className={styles.image}
                     src={resolveSrc(item)}
                     alt=""
                     loading={isPreview ? undefined : "lazy"}
-                    onLoad={(event) => handleImageLoad(item.id, event.currentTarget)}
+                    onLoad={(event) =>
+                      handleImageLoad(
+                        item.id,
+                        event.currentTarget as HTMLImageElement | HTMLCanvasElement,
+                      )
+                    }
                     onError={() => handleImageError(item.id)}
                   />
                 </button>

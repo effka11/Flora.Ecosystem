@@ -57,24 +57,24 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
     let (content_routes, content_workers) =
         content_router(cfg, pool.clone(), Arc::clone(&notification_dispatcher));
     background.extend(content_workers);
+    let (users_routes, users_workers) = users_router(
+        cfg,
+        pool.clone(),
+        account_directory.clone(),
+        Arc::clone(&notification_dispatcher),
+    );
+    background.extend(users_workers);
+    let (messaging_routes, messaging_workers) =
+        messaging_router(cfg, pool.clone(), account_directory, message_sent_notifier);
+    background.extend(messaging_workers);
 
     let router = axum::Router::new()
-        .merge(users_router(
-            cfg,
-            pool.clone(),
-            account_directory.clone(),
-            Arc::clone(&notification_dispatcher),
-        ))
+        .merge(users_routes)
         .merge(flora_verification::router())
         .merge(auth_routes)
         .merge(notifications_routes)
         .merge(content_routes)
-        .merge(messaging_router(
-            cfg,
-            pool.clone(),
-            account_directory,
-            message_sent_notifier,
-        ))
+        .merge(messaging_routes)
         .merge(music_router(cfg, pool))
         .merge(economy_router(cfg));
 
@@ -123,23 +123,31 @@ fn users_router(
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     notifications: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
-) -> axum::Router {
+) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Users:ServeNative") != Some(true) {
-        return flora_users::router();
+        return (flora_users::router(), Vec::new());
     }
     let Some(pool) = pool else {
         eprintln!("flora-users: Users:ServeNative=true, но PgPool недоступен — модуль офлайн");
-        return flora_users::router();
+        return (flora_users::router(), Vec::new());
     };
     let Some(accounts) = accounts else {
         eprintln!("flora-users: нет AccountDirectory — модуль офлайн");
-        return flora_users::router();
+        return (flora_users::router(), Vec::new());
     };
     let communities = flora_content::community_follow_stats(pool.clone());
-    let module = flora_users::compose(pool, accounts, communities, notifications);
-    axum::Router::new()
+    let mut module = flora_users::compose(
+        pool,
+        accounts,
+        communities,
+        notifications,
+        cfg.get_bool("Media:FrcI:BackfillEnabled") == Some(true),
+    );
+    let workers = module.image_backfill.take().into_iter().collect();
+    let router = axum::Router::new()
         .merge(with_jwt(cfg, module.protected_router))
-        .merge(with_optional_jwt(cfg, module.public_router))
+        .merge(with_optional_jwt(cfg, module.public_router));
+    (router, workers)
 }
 
 fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
@@ -206,19 +214,19 @@ fn messaging_router(
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     sent_notifier: Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
-) -> axum::Router {
+) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Messaging:ServeNative") != Some(true) {
-        return flora_messaging::router();
+        return (flora_messaging::router(), Vec::new());
     }
     let Some(pool) = pool else {
         eprintln!(
             "flora-messaging: Messaging:ServeNative=true, но PgPool недоступен — модуль офлайн"
         );
-        return flora_messaging::router();
+        return (flora_messaging::router(), Vec::new());
     };
     let Some(accounts) = accounts else {
         eprintln!("flora-messaging: нет AccountDirectory — модуль офлайн");
-        return flora_messaging::router();
+        return (flora_messaging::router(), Vec::new());
     };
     let (presence, profiles, online, messages_access) = flora_users::messaging_ports(pool.clone());
     let module = flora_messaging::compose(
@@ -230,7 +238,7 @@ fn messaging_router(
         messages_access,
         sent_notifier,
     );
-    with_jwt(cfg, module.router)
+    (with_jwt(cfg, module.router), vec![module.asset_cleanup])
 }
 
 fn content_router(
@@ -248,12 +256,14 @@ fn content_router(
     let accounts = flora_auth::account_directory(pool.clone());
     let (follow, blocklist, profiles) = flora_users::content_ports(pool.clone());
     let profile_access = flora_users::profile_access_port(pool.clone());
+    let user_avatars = flora_users::avatar_media_port(pool.clone());
     let media = flora_content::ContentMediaOptions {
         ffmpeg_path: cfg
             .get_non_empty("Media:FfmpegPath")
             .unwrap_or("ffmpeg")
             .to_string(),
         ffprobe_path: cfg.get("Media:FfprobePath").unwrap_or("").to_string(),
+        frc_i_backfill_enabled: cfg.get_bool("Media:FrcI:BackfillEnabled") == Some(true),
     };
     let mut module = flora_content::compose(
         pool,
@@ -262,12 +272,16 @@ fn content_router(
         blocklist,
         profiles,
         profile_access,
+        user_avatars,
         media,
         notifications,
     );
     // Dual-writer запрещён: при ServeNative воркер post_videos крутит Rust.
     let mut workers = Vec::new();
     if let Some(h) = flora_content::take_and_spawn_video_worker(&mut module) {
+        workers.push(h);
+    }
+    if let Some(h) = flora_content::take_image_backfill(&mut module) {
         workers.push(h);
     }
     let router = axum::Router::new()

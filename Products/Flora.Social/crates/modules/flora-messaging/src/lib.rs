@@ -25,6 +25,7 @@ pub use fscp_core as fscp;
 /// Собранный модуль: защищённый роутер (JWT навешивает flora-social).
 pub struct MessagingModule {
     pub router: axum::Router,
+    pub asset_cleanup: tokio::task::JoinHandle<()>,
 }
 
 /// Пустой роутер (ServeNative=false / нет пула) — gateway-fallback отдаёт в .NET.
@@ -41,6 +42,7 @@ pub fn compose(
     messages_access: Arc<dyn MessagesAccess>,
     sent_notifier: Arc<dyn MessageSentNotifier>,
 ) -> MessagingModule {
+    let cleanup_pool = pool.clone();
     let repo = Arc::new(MessagingRepo::new(pool.clone()));
     let conversations = Arc::new(ConversationService::new(
         repo,
@@ -60,6 +62,24 @@ pub fn compose(
             assets,
             e2e,
             epochs,
+        }),
+        asset_cleanup: tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 60 * 60));
+            loop {
+                interval.tick().await;
+                let threshold = chrono::Utc::now() - chrono::Duration::hours(24);
+                match infrastructure::delete_stale_unbound_image_assets(&cleanup_pool, threshold)
+                    .await
+                {
+                    Ok(removed) if removed > 0 => {
+                        tracing::info!(removed, "removed stale unbound message image assets");
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!(%error, "message image asset cleanup failed");
+                    }
+                }
+            }
         }),
     }
 }

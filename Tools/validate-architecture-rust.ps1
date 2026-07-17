@@ -40,7 +40,8 @@ $functionalKernels = [System.Collections.Generic.HashSet[string]]::new([StringCo
     "flora-economy-crypto", "flora-economy-contracts",
     "flora-governance-crypto", "flora-governance-contracts",
     "fpp-crypto", "fpp-contracts",
-    "frc-i", "frc-a-core", "frc-v", "frc-a-cli", "frc-v-cli", "frc-v-wasm", "flora-codec-tools"
+    "frc-i", "frc-i-integration", "frc-i-wasm", "frc-i-mobile-ffi",
+    "frc-a-core", "frc-v", "frc-a-cli", "frc-v-cli", "frc-v-wasm", "flora-codec-tools"
 ) | ForEach-Object { [void]$functionalKernels.Add($_) }
 
 function Get-CrateCategory {

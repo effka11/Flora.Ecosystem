@@ -14,6 +14,7 @@ CODECS — политика сжатия и хранения медиа в эк�
 
 - [`CODECS-AUDIO.md`](./CODECS-AUDIO.md) — музыка (Flora.Music) и голосовые (Flora.Messaging / Apps/Web).
 - [`CODECS-VIDEO.md`](./CODECS-VIDEO.md) — видео постов (Flora.Content) и видео в чате (Flora.Messaging / Apps/Web).
+- [`CODECS-IMAGE.md`](./CODECS-IMAGE.md) — фото постов/аватаров и E2E-фото (FRC-I v7 + WebP fallback).
 
 Нативные кодеки Flora (семейство **FRC**, Flora Relativistic Codec, разработка):
 
@@ -37,8 +38,8 @@ CODECS — политика сжатия и хранения медиа в эк�
 **Non-Goals:**
 
 - Спецификация FSCP wire-format — [`Documents/fscp/FSCP.md`](../fscp/FSCP.md).
-- Фото/AVIF постов (отдельный пайплайн Flora.Content).
 - Выбор UI плеера и дизайн контролов — зона Apps/Web.
+  Фото-пайплайн (FRC-I + WebP) — [`CODECS-IMAGE.md`](./CODECS-IMAGE.md).
 
 ---
 
@@ -117,6 +118,7 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 | --- | --- | --- |
 | CODECS-AUDIO | Flora.Music, Flora.Messaging | [`CODECS-AUDIO.md`](./CODECS-AUDIO.md) |
 | CODECS-VIDEO | Flora.Content, Flora.Messaging | [`CODECS-VIDEO.md`](./CODECS-VIDEO.md) |
+| CODECS-IMAGE | Flora.Content, Flora.Users, Flora.Messaging | [`CODECS-IMAGE.md`](./CODECS-IMAGE.md) |
 | FRC-I (фото, FRC) | библиотека `Products/FRC/crates/frc-i` | [`FRC-I.md`](./FRC-I.md) |
 | FRC-A (аудио, FRC) | библиотека `Products/FRC/crates/frc-a-*` | [`FRC-A.md`](./FRC-A.md) |
 | FRC-V (видео, FRC) | библиотека `Products/FRC/crates/frc-v*` | [`FRC-V.md`](./FRC-V.md) |

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::application::community_recommendation::CommunityRecommendationService;
 use crate::application::feed::FeedService;
-use crate::application::post_image_processor::{PostImageProcessError, process_post_image};
+use crate::application::post_image_processor::{PostImageProcessError, process_avatar_image};
 use crate::application::reserved_slugs::{is_reserved, normalize_for_compare};
 use crate::application::serialize::FeedSerializer;
 use crate::infrastructure::repo::{CommunityRow, ContentRepo};
@@ -602,7 +602,7 @@ impl CommunitiesService {
         {
             return Ok(Err(UploadCommunityAvatarError::NotFound));
         }
-        let (data, stored_content_type) = match process_post_image(&file.bytes) {
+        let (data, stored_content_type) = match process_avatar_image(&file.bytes) {
             Ok(v) => v,
             Err(PostImageProcessError::TooManyPixels)
             | Err(PostImageProcessError::InvalidFormat) => {

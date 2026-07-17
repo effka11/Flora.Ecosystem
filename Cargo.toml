@@ -1,4 +1,4 @@
-﻿# Flora.Ecosystem Cargo workspace (next-architecture.md §2).
+# Flora.Ecosystem Cargo workspace (next-architecture.md §2).
 # Root includes Backend/crates (host) + Products/* (App + Functional).
 # Future "Platform" rename = this root layout. Rules: §2.3, Tools/validate-architecture-rust.ps1.
 
@@ -45,6 +45,8 @@ members = [
     "Products/FPP/crates/fpp-crypto",
     # Functional: FRC
     "Products/FRC/crates/frc-i",
+    "Products/FRC/crates/frc-i-integration",
+    "Products/FRC/crates/frc-i-mobile-ffi",
     "Products/FRC/crates/flora-codec-tools",
     "Products/FRC/crates/frc-a-core",
     "Products/FRC/crates/frc-a-cli",
@@ -94,6 +96,8 @@ flora-governance-contracts = { path = "Products/FGP/crates/flora-governance-cont
 fpp-contracts = { path = "Products/FPP/crates/fpp-contracts" }
 fpp-crypto = { path = "Products/FPP/crates/fpp-crypto" }
 frc-i = { path = "Products/FRC/crates/frc-i" }
+frc-i-integration = { path = "Products/FRC/crates/frc-i-integration" }
+frc-i-mobile-ffi = { path = "Products/FRC/crates/frc-i-mobile-ffi" }
 frc-a-core = { path = "Products/FRC/crates/frc-a-core" }
 frc-v = { path = "Products/FRC/crates/frc-v" }
 frc-i-wasm = { path = "Products/FRC/crates/frc-i-wasm" }

@@ -29,32 +29,38 @@ $serial = Get-AdbDeviceSerial
 Ensure-MobileEnvFile $mobile
 Initialize-FloraAndroidBuildEnv -MobileDir $mobile -RepoRoot $root | Out-Null
 Ensure-FfmpegAndroid $root $mobile
+$hadFrcINative = Test-FrcIAndroidNativePresent $root
+Ensure-FrcIAndroidNative $root
+$frcINativeJustBuilt = -not $hadFrcINative
 
 $env:APP_VARIANT = "development"
 
 $hasDevClient = Test-FloraDevClientInstalled
 
-if ($hasDevClient -and -not $ReplaceExisting) {
+if ($hasDevClient -and -not $ReplaceExisting -and -not $frcINativeJustBuilt) {
     Write-Host "Flora Dev already installed on $serial ($devPackage). Skipping Gradle build."
     Write-Host "Reinstall: .\Scripts\mobile-install-debug-android.ps1 -ReplaceExisting"
+    Write-Host "If FRI photos are blank, reinstall so libfrc_i_mobile_ffi.so is packaged into the APK."
     exit 0
 }
 
-if ($ReplaceExisting -and (Test-FloraPackageInstalled -Variant development)) {
+if ($frcINativeJustBuilt -and $hasDevClient -and -not $ReplaceExisting) {
+    Write-Host "FRC-I native was just built - reinstalling Flora Dev so .so is in the APK ..."
+}
+
+if (($ReplaceExisting -or $frcINativeJustBuilt) -and (Test-FloraPackageInstalled -Variant development)) {
     Write-Host "Removing existing Flora Dev ($devPackage) ..."
     Invoke-Adb uninstall $devPackage | Out-Null
 }
 
-Write-Host @"
-
-================================================================
-  Building Flora Dev (debug dev-client APK)
-================================================================
-Device: $serial
-Package: $devPackage (production Flora APK is not touched)
-Metro: use VS Code task 'Flora Android: debug (USB)' or .\Scripts\mobile-debug-android.ps1
-
-"@
+Write-Host ""
+Write-Host "================================================================"
+Write-Host "  Building Flora Dev (debug dev-client APK)"
+Write-Host "================================================================"
+Write-Host "Device: $serial"
+Write-Host "Package: $devPackage (production Flora APK is not touched)"
+Write-Host "Metro: VS Code task Flora Android: debug (USB) or .\Scripts\mobile-debug-android.ps1"
+Write-Host ""
 
 $env:FLORA_ADB_SERIAL = $serial
 $env:ANDROID_SERIAL = $serial
@@ -79,4 +85,4 @@ if (-not (Test-FloraDevClientInstalled)) {
     throw "Install finished but Flora Dev not detected on device. Check Gradle output above."
 }
 
-Write-Host "Flora Dev installed. Next: VS Code task 'Flora Android: debug (USB)' or .\Scripts\mobile-debug-android.ps1"
+Write-Host "Flora Dev installed. Next: VS Code task Flora Android: debug (USB) or .\Scripts\mobile-debug-android.ps1"

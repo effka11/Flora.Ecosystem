@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import lightboxStyles from "@/app/_shared/FeedPostImages.module.css";
+import { FrcImage } from "@/app/_shared/FrcImage";
 import { detectImageHasAlpha, imageMimeMayHaveAlpha } from "@/lib/imageHasAlpha";
 import type { FscpImageBlock } from "@/lib/fscp";
 import styles from "./messages.module.css";
@@ -69,8 +70,12 @@ export function ImageMessageCard({
             onClick={closeModal}
           >
             <div className={lightboxStyles.modal} onClick={(event) => event.stopPropagation()}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img className={lightboxStyles.modalImage} src={sourceUrl} alt="" onClick={closeModal} />
+              <FrcImage
+                className={lightboxStyles.modalImage}
+                src={sourceUrl}
+                alt=""
+                onClick={closeModal}
+              />
             </div>
           </div>,
           document.body,
@@ -89,8 +94,7 @@ export function ImageMessageCard({
             onClick={() => setOpen(true)}
             aria-label="Открыть фото"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className={styles.messageImage} src={sourceUrl} alt="" loading="lazy" />
+            <FrcImage className={styles.messageImage} src={sourceUrl} alt="" loading="lazy" />
           </button>
         ) : null}
         {onRemove ? (

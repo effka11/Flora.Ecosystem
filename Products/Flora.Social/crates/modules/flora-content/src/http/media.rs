@@ -6,7 +6,7 @@ use axum::response::Response;
 
 use crate::http::byte_range::parse_single_bytes_range;
 
-const CACHE_IMMUTABLE: &str = "public, max-age=31536000, immutable";
+const CACHE_IMMUTABLE: &str = "public, max-age=31536000";
 
 pub fn cached_media_response(data: Vec<u8>, content_type: &str) -> Response {
     let mut res = Response::new(Body::from(data));
@@ -17,6 +17,10 @@ pub fn cached_media_response(data: Vec<u8>, content_type: &str) -> Response {
     if let Ok(v) = HeaderValue::from_str(CACHE_IMMUTABLE) {
         res.headers_mut().insert(header::CACHE_CONTROL, v);
     }
+    res.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
     res
 }
 

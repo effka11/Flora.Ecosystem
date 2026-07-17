@@ -1,6 +1,7 @@
 //! `flora_core.user_avatars` + `user_profiles.avatar_uuid` (Users-owned).
 
 use chrono::Utc;
+use flora_users_contracts::{BoxFuture, UserAvatarMedia, UserAvatarMediaBlob};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -77,4 +78,38 @@ pub async fn clear_profile_avatar_uuid(pool: &PgPool, user_uuid: Uuid) -> Result
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+pub struct SqlUserAvatarMedia {
+    pool: PgPool,
+}
+
+impl SqlUserAvatarMedia {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl UserAvatarMedia for SqlUserAvatarMedia {
+    fn by_uuid(
+        &self,
+        avatar_uuid: Uuid,
+    ) -> BoxFuture<'_, Result<Option<UserAvatarMediaBlob>, String>> {
+        Box::pin(async move {
+            let row: Option<(Vec<u8>, String)> = sqlx::query_as(
+                r#"
+                SELECT data, content_type
+                FROM flora_core.user_avatars
+                WHERE uuid = $1
+                "#,
+            )
+            .bind(avatar_uuid)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+            Ok(row
+                .filter(|(data, _)| !data.is_empty())
+                .map(|(data, content_type)| UserAvatarMediaBlob { data, content_type }))
+        })
+    }
 }

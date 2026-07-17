@@ -3,7 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -15,9 +15,10 @@
     "noUncheckedIndexedAccess": true,
     "paths": {
       "@flora/fscp": ["../../Products/FSCP/ts/src/index.ts"],
-      "@flora/fscp/*": ["../../Products/FSCP/ts/src/*"]
+      "@flora/fscp/*": ["../../Products/FSCP/ts/src/*"],
+      "@flora/frc-i": ["../../Products/FRC/ts/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "../../Products/FSCP/ts/src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "../../Products/FSCP/ts/src/**/*.test.ts"]
+  "include": ["src/**/*.ts", "../../Products/FSCP/ts/src/**/*.ts", "../../Products/FRC/ts/src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "../../Products/FSCP/ts/src/**/*.test.ts", "../../Products/FRC/ts/test/**/*.ts"]
 }

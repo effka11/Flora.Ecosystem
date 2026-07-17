@@ -1,4 +1,5 @@
 pub mod avatars;
+pub mod image_backfill;
 pub mod messages_access;
 pub mod online_access;
 pub mod profile_access;

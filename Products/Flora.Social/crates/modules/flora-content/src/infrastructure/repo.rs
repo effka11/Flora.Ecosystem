@@ -1858,23 +1858,6 @@ impl ContentRepo {
         Ok(result.rows_affected())
     }
 
-    pub async fn user_avatar_by_uuid(&self, uuid: Uuid) -> Result<Option<MediaBlob>, sqlx::Error> {
-        let row: Option<MediaRow> = sqlx::query_as(
-            r#"
-            SELECT data, content_type
-            FROM flora_core.user_avatars
-            WHERE uuid = $1
-            "#,
-        )
-        .bind(uuid)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row.filter(|r| !r.data.is_empty()).map(|r| MediaBlob {
-            data: r.data,
-            content_type: r.content_type,
-        }))
-    }
-
     pub async fn community_avatar_by_uuid(
         &self,
         uuid: Uuid,

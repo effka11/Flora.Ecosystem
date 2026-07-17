@@ -1,6 +1,5 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require("path");
-const { resolve: resolveMetro } = require("metro-resolver");
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, "../..");
@@ -27,46 +26,42 @@ const NOBLE_HASHES_ALIASES = {
   "@noble/hashes/hkdf": "@noble/hashes/hkdf.js",
 };
 
-function isWorkspaceSource(origin) {
-  const normalized = origin.replace(/\\/g, "/");
-  return normalized.includes("/Packages/") || normalized.includes("/Apps/");
+/**
+ * NodeNext-style `foo.js` imports that actually point at TypeScript sources.
+ * Relative: Packages/Products sources. Package: `@flora/*` (exports map to `.ts`).
+ * Do not remap real `.js` files in node_modules (e.g. @noble/hashes).
+ */
+function shouldRemapJsToTs(moduleName) {
+  if (!moduleName.endsWith(".js")) return false;
+  return moduleName.startsWith(".") || moduleName.startsWith("@flora/");
 }
 
-function resolveIfFound(context, moduleName, platform) {
-  const resolved = resolveMetro(context, moduleName, platform);
-  return resolved.type === "failed" ? null : resolved;
-}
-
-const defaultResolveRequest = config.resolver.resolveRequest;
-
+/**
+ * Custom resolver must chain via `context.resolveRequest` so Expo can still
+ * apply tsconfig paths (`@/…`), autolinking, etc. (see withMetroResolvers).
+ */
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const nobleAlias = NOBLE_HASHES_ALIASES[moduleName];
   if (nobleAlias) {
-    const resolved = resolveIfFound(context, nobleAlias, platform);
-    if (resolved) {
-      return resolved;
+    try {
+      return context.resolveRequest(context, nobleAlias, platform);
+    } catch {
+      // fall through
     }
   }
 
-  const origin = context.originModulePath ?? "";
-  if (isWorkspaceSource(origin) && moduleName.startsWith(".") && moduleName.endsWith(".js")) {
-    for (const ext of [".ts", ".tsx"]) {
-      const resolved = resolveIfFound(
-        context,
-        moduleName.replace(/\.js$/, ext),
-        platform,
-      );
-      if (resolved) {
-        return resolved;
+  if (shouldRemapJsToTs(moduleName)) {
+    const stem = moduleName.slice(0, -3);
+    for (const candidate of [stem, `${stem}.ts`, `${stem}.tsx`]) {
+      try {
+        return context.resolveRequest(context, candidate, platform);
+      } catch {
+        // try next candidate
       }
     }
   }
 
-  if (defaultResolveRequest) {
-    return defaultResolveRequest(context, moduleName, platform);
-  }
-
-  return resolveMetro(context, moduleName, platform);
+  return context.resolveRequest(context, moduleName, platform);
 };
 
 module.exports = config;

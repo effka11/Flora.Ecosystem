@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@flora/frc-i": [
+        "../../Products/FRC/ts/src/index.ts"
       ]
     }
   },

@@ -8,6 +8,7 @@ import { Image } from "expo-image";
 import { Link, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { useFrcImageUri } from "@/lib/frcImage";
 import { floraColors } from "@/lib/theme";
 
 export type FloraAvatarProps = {
@@ -64,14 +65,15 @@ export function FloraAvatar({
     const base = avatarImageUrl(trimmedUuid);
     return cacheVersion > 0 ? `${base}?v=${cacheVersion}` : base;
   }, [cacheVersion, showImage, trimmedUuid]);
+  const resolvedImageUri = useFrcImageUri(imageUri ?? "");
 
   const content = showImage && imageUri ? (
     <Image
-      source={{ uri: imageUri }}
+      source={{ uri: resolvedImageUri }}
       style={{ width: size, height: size, borderRadius: size / 2 }}
       contentFit="cover"
       cachePolicy="disk"
-      recyclingKey={imageUri}
+      recyclingKey={resolvedImageUri}
       transition={0}
       onError={() => setImageFailed(true)}
     />

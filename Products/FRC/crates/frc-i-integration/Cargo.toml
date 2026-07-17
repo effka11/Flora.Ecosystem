@@ -1,0 +1,16 @@
+[package]
+name = "frc-i-integration"
+description = "Технические адаптеры FRC-I: ingest обычных изображений, dual-variant storage envelope и fallback decode"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+frc-i = { workspace = true }
+image = { workspace = true }
+thiserror = { workspace = true }

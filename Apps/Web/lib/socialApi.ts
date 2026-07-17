@@ -815,7 +815,8 @@ export async function apiCreatePost(
 /** Публичный URL изображения поста (GET без авторизации). */
 export function postImageUrl(imageUuid: string): string {
   const id = imageUuid.trim();
-  return apiUrl(`/api/auth/posts/images/${encodeURIComponent(id)}`);
+  // `fmt=fri` сбрасывает immutable browser/CDN cache от эпохи WebP/AVIF/ImageSet.
+  return apiUrl(`/api/auth/posts/images/${encodeURIComponent(id)}?fmt=fri`);
 }
 
 /** Публичный URL видеофайла поста (AV1 MP4, сервер поддерживает Range). */
@@ -824,10 +825,10 @@ export function postVideoUrl(videoUuid: string): string {
   return apiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}`);
 }
 
-/** Публичный URL AVIF-постера видео поста. */
+/** Публичный URL постера видео поста. */
 export function postVideoPosterUrl(videoUuid: string): string {
   const id = videoUuid.trim();
-  return apiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}/poster`);
+  return apiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}/poster?fmt=fri`);
 }
 
 /** Загрузить видео к посту (MP4/MOV/WebM/MKV, до 200 МБ, ≤ 10 мин). Транскодируется на сервере. */

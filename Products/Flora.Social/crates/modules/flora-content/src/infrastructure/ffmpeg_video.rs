@@ -1,15 +1,12 @@
 //! ffmpeg/ffprobe: AV1 (SVT-AV1) + Opus MP4, постер WebP, опциональный H.264.
 //! Паритет с `FfmpegVideoTranscoder.cs`.
 
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use image::codecs::webp::WebPEncoder;
-use image::imageops::FilterType;
-use image::{DynamicImage, ImageReader};
+use frc_i_integration::{FRC_I_MIME, IngestOptions, ingest};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -31,6 +28,7 @@ const STDERR_TAIL_MAX: usize = 600;
 pub struct MediaOptions {
     pub ffmpeg_path: String,
     pub ffprobe_path: String,
+    pub frc_i_backfill_enabled: bool,
 }
 
 impl Default for MediaOptions {
@@ -38,6 +36,7 @@ impl Default for MediaOptions {
         Self {
             ffmpeg_path: "ffmpeg".into(),
             ffprobe_path: String::new(),
+            frc_i_backfill_enabled: false,
         }
     }
 }
@@ -306,7 +305,7 @@ impl FfmpegVideoTranscoder {
             )));
         }
 
-        let (poster_data, poster_content_type) = encode_poster_webp(poster_path).await?;
+        let (poster_data, poster_content_type) = encode_poster_fri(poster_path).await?;
         let video_data = tokio::fs::read(out_path).await.map_err(|e| {
             VideoTranscodeError::Transcode(format!("Не удалось прочитать выход: {e}"))
         })?;
@@ -380,36 +379,22 @@ impl FfmpegVideoTranscoder {
     }
 }
 
-async fn encode_poster_webp(
+async fn encode_poster_fri(
     poster_png_path: &Path,
 ) -> Result<(Vec<u8>, String), VideoTranscodeError> {
     let bytes = tokio::fs::read(poster_png_path)
         .await
         .map_err(|e| VideoTranscodeError::Transcode(format!("Не удалось прочитать постер: {e}")))?;
-
-    // ImageSharp: ResizeMode.Max 1280 + Lossy WebP q82.
-    // crate `image` даёт только lossless WebP — resize паритетен, encode ближайший доступный.
-    let img = ImageReader::new(Cursor::new(&bytes))
-        .with_guessed_format()
-        .map_err(|e| VideoTranscodeError::Transcode(format!("постер: {e}")))?
-        .decode()
-        .map_err(|e| VideoTranscodeError::Transcode(format!("постер: {e}")))?;
-
-    let resized = resize_max(img, POSTER_MAX_DIMENSION);
-    let rgba = resized.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = Vec::new();
-    WebPEncoder::new_lossless(&mut out)
-        .encode(&rgba, w, h, image::ExtendedColorType::Rgba8)
-        .map_err(|e| VideoTranscodeError::Transcode(format!("постер WebP: {e}")))?;
-    Ok((out, "image/webp".into()))
-}
-
-fn resize_max(img: DynamicImage, max: u32) -> DynamicImage {
-    if img.width() <= max && img.height() <= max {
-        return img;
-    }
-    img.resize(max, max, FilterType::Lanczos3)
+    let encoded = ingest(
+        &bytes,
+        IngestOptions {
+            max_dimension: POSTER_MAX_DIMENSION,
+            max_pixels: 50_000_000,
+            quality: 85,
+        },
+    )
+    .map_err(|error| VideoTranscodeError::Transcode(format!("постер FRC-I: {error}")))?;
+    Ok((encoded.bytes, FRC_I_MIME.into()))
 }
 
 fn parse_probe_json(stdout: &str) -> Result<VideoProbeResult, VideoTranscodeError> {

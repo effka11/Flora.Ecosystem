@@ -27,29 +27,55 @@ if (!podspec.includes("s.default_subspec   = 'full-gpl'")) {
 }
 
 let gradle = fs.readFileSync(androidGradlePath, "utf8");
+const before = gradle;
 
-if (!gradle.includes("implementation(name: 'ffmpeg-kit-full-gpl'")) {
-  gradle = gradle.replace(
-    /dependencies\s*\{\s*\n\s*api 'com\.facebook\.react:react-native:\+'\s*\n\s*implementation 'com\.arthenica:ffmpeg-kit-[^']+:[^']+'\s*\n\}/m,
-    `dependencies {
-  api 'com.facebook.react:react-native:+'
-  implementation(name: 'ffmpeg-kit-full-gpl', ext: 'aar')
-  implementation 'com.arthenica:smart-exception-java:0.2.1'
-}`,
+const mavenCoordRe =
+  /implementation\s+'com\.arthenica:ffmpeg-kit-'\s*\+\s*safePackageName\(safeExtGet\('ffmpegKitPackage',\s*'https'\)\)\s*\+\s*':' \+\s*safePackageVersion\(safeExtGet\('ffmpegKitPackage',\s*'https'\)\)/;
+
+const localAarLines = `implementation(name: 'ffmpeg-kit-full-gpl', ext: 'aar')
+  implementation 'com.arthenica:smart-exception-java:0.2.1'`;
+
+if (mavenCoordRe.test(gradle)) {
+  gradle = gradle.replace(mavenCoordRe, localAarLines);
+} else if (!gradle.includes("implementation(name: 'ffmpeg-kit-full-gpl'")) {
+  throw new Error(
+    "[patch-ffmpeg-kit] unrecognized ffmpeg-kit dependency in " + androidGradlePath,
   );
 }
-
-const flatDirBlock = `
-  flatDir {
-    dirs "$rootDir/libs"
-  }`;
 
 if (!gradle.includes('dirs "$rootDir/libs"')) {
-  gradle = gradle.replace(
+  const withFlatDir = gradle.replace(
     /(repositories\s*\{\s*\n\s*mavenCentral\(\)\s*\n\s*google\(\))/m,
-    `$1${flatDirBlock}`,
+    `$1
+  flatDir {
+    dirs "$rootDir/libs"
+  }`,
+  );
+  if (withFlatDir === gradle) {
+    throw new Error(
+      "[patch-ffmpeg-kit] could not add flatDir to repositories in " +
+        androidGradlePath,
+    );
+  }
+  gradle = withFlatDir;
+}
+
+if (gradle.includes("com.arthenica:ffmpeg-kit-")) {
+  throw new Error(
+    "[patch-ffmpeg-kit] Maven ffmpeg-kit coordinate still present in " +
+      androidGradlePath,
   );
 }
 
-fs.writeFileSync(androidGradlePath, gradle);
-console.log("[patch-ffmpeg-kit] android/build.gradle -> local AAR + flatDir");
+if (!gradle.includes("classpath 'com.android.tools.build:gradle:")) {
+  throw new Error(
+    "[patch-ffmpeg-kit] buildscript classpath missing in " + androidGradlePath,
+  );
+}
+
+if (gradle !== before) {
+  fs.writeFileSync(androidGradlePath, gradle);
+  console.log("[patch-ffmpeg-kit] android/build.gradle -> local AAR + flatDir");
+} else {
+  console.log("[patch-ffmpeg-kit] android/build.gradle already patched");
+}

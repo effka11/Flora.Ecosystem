@@ -112,5 +112,9 @@ jobs:
         run: cargo check -p frc-a-core --target wasm32-unknown-unknown --locked
       - name: Check FRC-I on wasm32
         run: cargo check -p frc-i --no-default-features --target wasm32-unknown-unknown --locked
+      - name: Check FRC-I WASM shim on wasm32
+        run: cargo check -p frc-i-wasm --target wasm32-unknown-unknown --locked
+      - name: Test FRC-I integration adapters
+        run: cargo test -p frc-i-integration --locked
       - name: Check FRC-V on wasm32
         run: cargo check -p frc-v --target wasm32-unknown-unknown --locked

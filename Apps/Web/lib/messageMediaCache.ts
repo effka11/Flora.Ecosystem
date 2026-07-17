@@ -5,6 +5,13 @@ import {
   apiDownloadMessageVideoAsset,
   apiDownloadMessageVoiceAsset,
 } from "@/lib/socialApi";
+import { acceptsFrcI } from "@flora/client-core/frc-i";
+
+function assertFriImage(block: FscpImageBlock): void {
+  if (!acceptsFrcI(block.contentType)) {
+    throw new Error("Сообщение содержит не-FRI изображение (legacy больше не поддерживается).");
+  }
+}
 
 const TTL_MS = 300_000;
 const MAX_IDLE_PRELOAD_ASSETS = 16;
@@ -88,7 +95,20 @@ export function peekMessageMediaBlob(assetUuid: string): Blob | null {
 }
 
 export function ensureMessageImageObjectUrl(block: FscpImageBlock): Promise<string> {
-  return ensureObjectUrl(block, apiDownloadMessageImageAsset);
+  const cached = peekMessageMediaObjectUrl(block.assetUuid);
+  if (cached) return Promise.resolve(cached);
+  const id = normalizeAssetId(block.assetUuid);
+  const existing = inflight.get(id);
+  if (existing) return existing;
+  const task = (async () => {
+    assertFriImage(block);
+    // Store FRI bytes as-is; FrcImage decodes to ImageBitmap without a PNG detour.
+    return downloadAndDecrypt(block, apiDownloadMessageImageAsset);
+  })()
+    .then((blob) => storeBlob(block.assetUuid, blob))
+    .finally(() => inflight.delete(id));
+  inflight.set(id, task);
+  return task;
 }
 
 export function ensureMessageVideoObjectUrl(block: FscpVideoBlock): Promise<string> {
@@ -106,7 +126,7 @@ function preloadBlock(block: EncryptedMediaBlock, download: (assetUuid: string) 
 }
 
 export function preloadMessageImage(block: FscpImageBlock): void {
-  preloadBlock(block, apiDownloadMessageImageAsset);
+  void ensureMessageImageObjectUrl(block).catch(() => {});
 }
 
 export function preloadMessageVideo(block: FscpVideoBlock): void {

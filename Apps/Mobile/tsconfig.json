@@ -5,6 +5,12 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@flora/frc-i": [
+        "../../Products/FRC/ts/src/index.ts"
+      ],
+      "flora-frc-i": [
+        "./modules/flora-frc-i/src/index.ts"
       ]
     }
   },

@@ -32,7 +32,12 @@ import {
   type ConversationListItemDto,
   type MessageThreadItemDto,
 } from "@/lib/socialApi";
-import { extractPastedMessageImages, messageImageAttachError } from "@/lib/messageImages";
+import {
+  extractPastedMessageImages,
+  MAX_MESSAGE_IMAGE_BYTES,
+  messageImageAttachError,
+} from "@/lib/messageImages";
+import { encodeImageBlobToFrc } from "@/lib/frcImageSource";
 import {
   markMessageImageSendFinished,
   markMessageImageSendStarted,
@@ -1826,25 +1831,25 @@ function MessagesChatInner() {
           for (let index = 0; index < pendingImages.length; index += 1) {
             const prepared = preparedImages[index];
             if (!prepared) continue;
-            const file = new File([prepared.blob], prepared.fileName, {
-              type: prepared.contentType,
-              lastModified: Date.now(),
-            });
-            const encrypted = await encryptVoiceBlob(file);
-            const uploaded = await apiUploadMessageImageAsset({
+            const friBlob = await encodeImageBlobToFrc(prepared.blob, 85);
+            if (friBlob.size > MAX_MESSAGE_IMAGE_BYTES) {
+              throw new Error("FRC-I версия фото превышает лимит 5 МиБ.");
+            }
+            const encryptedFrc = await encryptVoiceBlob(friBlob);
+            const frcUploaded = await apiUploadMessageImageAsset({
               toUserUuid: selectedOtherUuid,
-              encryptedBlob: encrypted.encryptedBlob,
-              contentType: prepared.contentType,
+              encryptedBlob: encryptedFrc.encryptedBlob,
+              contentType: friBlob.type,
             });
-            imageAssetUuids.push(uploaded.imageAssetUuid);
+            imageAssetUuids.push(frcUploaded.imageAssetUuid);
             blocks.push({
               kind: "image",
-              assetUuid: uploaded.imageAssetUuid,
-              contentType: prepared.contentType,
+              assetUuid: frcUploaded.imageAssetUuid,
+              contentType: friBlob.type,
               encryption: {
                 algorithm: "aes-gcm",
-                keyBase64Url: encrypted.keyBase64Url,
-                nonceBase64Url: encrypted.nonceBase64Url,
+                keyBase64Url: encryptedFrc.keyBase64Url,
+                nonceBase64Url: encryptedFrc.nonceBase64Url,
               },
             });
           }

@@ -13,6 +13,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFrcImageUri } from "@/lib/frcImage";
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
 
 const MAX_ITEMS = 10;
@@ -124,14 +125,15 @@ function ClippedImage({
   style,
   transitionMs = 0,
 }: ClippedImageProps) {
+  const resolvedUri = useFrcImageUri(uri);
   const image = (
     <View style={[{ width, height }, style]}>
       <Image
-        source={{ uri }}
+        source={{ uri: resolvedUri }}
         style={{ width, height, borderRadius }}
         contentFit={contentFit}
         cachePolicy="disk"
-        recyclingKey={uri}
+        recyclingKey={resolvedUri}
         transition={transitionMs}
         onLoad={(event) => {
           const { width: w, height: h } = event.source;
@@ -169,6 +171,24 @@ function CollageCell({ uri, width, height, borderRadius, onPress }: CollageCellP
       onPress={onPress}
       style={styles.cell}
     />
+  );
+}
+
+/** Lightbox must decode FRI → PNG the same way as thumbnails (raw FRI is not Image-readable). */
+function ModalFrcImage({ uri }: { uri: string }) {
+  const resolvedUri = useFrcImageUri(uri);
+  if (!resolvedUri) return null;
+  return (
+    <View style={[styles.modalClip, { borderRadius: MODAL_IMAGE_RADIUS }]}>
+      <Image
+        source={{ uri: resolvedUri }}
+        style={[styles.modalImage, { borderRadius: MODAL_IMAGE_RADIUS }]}
+        contentFit="contain"
+        cachePolicy="disk"
+        recyclingKey={resolvedUri}
+        transition={0}
+      />
+    </View>
   );
 }
 
@@ -416,18 +436,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
           onPress={closeModal}
         >
           <Pressable style={styles.modalContent} onPress={closeModal}>
-            {activeUri ? (
-              <View style={[styles.modalClip, { borderRadius: MODAL_IMAGE_RADIUS }]}>
-                <Image
-                  source={{ uri: activeUri }}
-                  style={[styles.modalImage, { borderRadius: MODAL_IMAGE_RADIUS }]}
-                  contentFit="contain"
-                  cachePolicy="disk"
-                  recyclingKey={activeUri}
-                  transition={0}
-                />
-              </View>
-            ) : null}
+            {activeUri ? <ModalFrcImage uri={activeUri} /> : null}
           </Pressable>
         </Pressable>
       </Modal>

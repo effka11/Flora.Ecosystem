@@ -9,7 +9,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 frc-i = { path = "../frc-i", default-features = false }

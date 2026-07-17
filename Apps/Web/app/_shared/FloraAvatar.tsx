@@ -6,6 +6,7 @@ import {
   resolveDefaultAvatarColor,
 } from "@flora/client-core/display";
 import { avatarImageUrl } from "@/lib/auth";
+import { FrcImage } from "./FrcImage";
 import styles from "./FloraAvatar.module.css";
 
 /** Внутренний диаметр аватара в profile.module.css (98px ring − 4px border × 2). */
@@ -87,9 +88,8 @@ export function FloraAvatar({
   const rootStyle = avatarRootStyle(size, style);
 
   const content = showImage ? (
-    // eslint-disable-next-line @next/next/no-img-element -- CDN/API avatar URL
-    <img
-      src={`${avatarImageUrl(trimmedUuid)}${cacheVersion > 0 ? `?v=${cacheVersion}` : ""}`}
+    <FrcImage
+      src={`${avatarImageUrl(trimmedUuid)}${cacheVersion > 0 ? `&v=${cacheVersion}` : ""}`}
       alt=""
       className={styles.image}
       onError={() => setImageFailed(true)}

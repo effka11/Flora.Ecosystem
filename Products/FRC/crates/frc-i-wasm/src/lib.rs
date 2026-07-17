@@ -6,16 +6,23 @@
 //! frc_i_alloc(len) -> ptr                      буфер под входной пакет
 //! frc_i_free(ptr, len)                         освобождение буфера frc_i_alloc
 //! frc_i_decode(ptr, len, out, cap) -> n | -1   декодирование .fri в RGB/RGBA
+//! frc_i_encode(ptr, len, w, h, bpp, q, out, cap) -> n | <0
 //! frc_i_info(ptr, len, out) -> 0 | -1          метаданные (ImageInfoWire)
 //! ```
 //! `unsafe` ограничен границей FFI; ядро декодера — безопасный `frc_i`.
 
-use frc_i::{DecodeLimits, PixelFormat, decode_with_limits, read_info};
+use frc_i::{
+    DecodeLimits, EncodeMode, ImageView, PixelFormat, decode_with_limits, encode, read_info,
+};
+
+pub const FRC_I_FFI_INVALID: i32 = -1;
+pub const FRC_I_FFI_CAPACITY: i32 = -2;
+pub const FRC_I_FFI_ENCODE: i32 = -3;
 
 /// Версия битстрима в старшем байте, версия обёртки в младшем.
 #[unsafe(no_mangle)]
 pub extern "C" fn frc_i_version() -> u32 {
-    (u32::from(frc_i::BITSTREAM_VERSION) << 8) | 1
+    (u32::from(frc_i::BITSTREAM_VERSION) << 8) | 2
 }
 
 /// Выделяет `len` байт в линейной памяти. 0 → null.
@@ -140,6 +147,81 @@ pub unsafe extern "C" fn frc_i_decode(
     need as i32
 }
 
+/// Рекомендуемая ёмкость выходного буфера encoder. Это безопасный практический
+/// upper bound; точный размер возвращает [`frc_i_encode`].
+#[unsafe(no_mangle)]
+pub extern "C" fn frc_i_encode_capacity(width: u32, height: u32, bytes_per_pixel: u32) -> usize {
+    let raw = (width as usize)
+        .saturating_mul(height as usize)
+        .saturating_mul(bytes_per_pixel as usize);
+    raw.saturating_mul(2).saturating_add(64 * 1024)
+}
+
+/// Кодирует RGB8/RGBA8 в frozen lossy FRC-I v7.
+///
+/// Возвращает размер результата; `-1` — неверный ввод, `-2` — малый output,
+/// `-3` — ошибка encoder.
+///
+/// # Safety
+/// `data..data+len` и `out..out+cap` — валидная память.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn frc_i_encode(
+    data: *const u8,
+    len: usize,
+    width: u32,
+    height: u32,
+    bytes_per_pixel: u32,
+    quality: u32,
+    out: *mut u8,
+    cap: usize,
+) -> i32 {
+    if data.is_null() || out.is_null() || width == 0 || height == 0 || !(1..=100).contains(&quality)
+    {
+        return FRC_I_FFI_INVALID;
+    }
+    let format = match bytes_per_pixel {
+        3 => PixelFormat::Rgb8,
+        4 => PixelFormat::Rgba8,
+        _ => return FRC_I_FFI_INVALID,
+    };
+    let expected = match (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|n| n.checked_mul(bytes_per_pixel as usize))
+    {
+        Some(n) => n,
+        None => return FRC_I_FFI_INVALID,
+    };
+    if len != expected {
+        return FRC_I_FFI_INVALID;
+    }
+    // SAFETY: caller guarantees `len` readable bytes.
+    let pixels = unsafe { core::slice::from_raw_parts(data, len) };
+    let view = ImageView {
+        width,
+        height,
+        format,
+        data: pixels,
+    };
+    let encoded = match encode(
+        &view,
+        EncodeMode::Lossy {
+            quality: quality as u8,
+        },
+    ) {
+        Ok(bytes) => bytes,
+        Err(_) => return FRC_I_FFI_ENCODE,
+    };
+    if encoded.len() > cap || encoded.len() > i32::MAX as usize {
+        return FRC_I_FFI_CAPACITY;
+    }
+    // SAFETY: output capacity was checked above.
+    unsafe {
+        core::ptr::copy_nonoverlapping(encoded.as_ptr(), out, encoded.len());
+    }
+    encoded.len() as i32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +252,28 @@ mod tests {
             assert_eq!(frc_i_decode(buf, fri.len(), out.as_mut_ptr(), 11), -1);
             frc_i_free(buf, fri.len());
         }
+    }
+
+    #[test]
+    fn ffi_encode_cycle() {
+        let pixels: Vec<u8> = (0..48).collect();
+        let cap = frc_i_encode_capacity(4, 4, 3);
+        let mut encoded = vec![0u8; cap];
+        let n = unsafe {
+            frc_i_encode(
+                pixels.as_ptr(),
+                pixels.len(),
+                4,
+                4,
+                3,
+                75,
+                encoded.as_mut_ptr(),
+                encoded.len(),
+            )
+        };
+        assert!(n > 0);
+        encoded.truncate(n as usize);
+        assert!(read_info(&encoded).unwrap().version <= frc_i::BITSTREAM_VERSION);
+        assert!(decode_with_limits(&encoded, DecodeLimits::default()).is_ok());
     }
 }
