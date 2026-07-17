@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   headerBand: {
     position: "relative",
     height: floraFeedPost.avatarSize,
-    paddingTop: floraFeedPost.headerPaddingTop,
+    paddingTop: floraFeedPost.nicknameGapFromAvatarTop,
   },
   postMeta: {
     flex: 1,
@@ -161,23 +161,23 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     fontSize: 15,
     letterSpacing: 0.45,
-    lineHeight: 15,
+    lineHeight: floraFeedPost.nicknameLineHeight,
     flexShrink: 1,
-    transform: [{ translateY: floraFeedPost.nicknameNudgeY }],
+    includeFontPadding: false,
+    textAlignVertical: "top",
   },
   handle: {
     color: floraColors.gray,
     fontWeight: "300",
     fontSize: 15,
     letterSpacing: 0.45,
-    lineHeight: 15,
+    lineHeight: floraFeedPost.nicknameLineHeight,
     flexShrink: 0,
-    transform: [{ translateY: floraFeedPost.nicknameNudgeY }],
+    includeFontPadding: false,
+    textAlignVertical: "top",
   },
   postBody: {
-    // У Text в ленте line-box даёт воздух сверху; contentNudgeX (-5) его компенсирует.
-    // У TextInput верх = начало глифа, поэтому отрицательный margin поднимает текст выше ленты.
-    marginTop: 0,
+    marginTop: floraFeedPost.bodyMarginTop,
   },
   input: {
     minHeight: 25.5 * 4,

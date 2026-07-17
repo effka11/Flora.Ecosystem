@@ -4,6 +4,8 @@
   grid-auto-flow: dense;
   grid-auto-rows: calc(7 * var(--flora-grid-step));
   gap: var(--flora-grid-step-fine);
+  /* Наполнение-фото: +1 вторичная клетка ниже (относительно шапки / текста). */
+  margin-top: var(--flora-grid-step-fine);
   margin-bottom: 12px;
   border-radius: 12px;
   overflow: hidden;

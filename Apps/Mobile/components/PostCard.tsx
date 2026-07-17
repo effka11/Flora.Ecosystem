@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   headerBand: {
     position: "relative",
     height: floraFeedPost.avatarSize,
-    paddingTop: floraFeedPost.headerPaddingTop,
+    paddingTop: floraFeedPost.nicknameGapFromAvatarTop,
   },
   postMore: {
     position: "absolute",
@@ -234,9 +234,10 @@ const styles = StyleSheet.create({
     paddingRight: floraFeedPost.moreBtnSize + 6,
   },
   postBody: {
-    marginTop: floraFeedPost.contentNudgeX,
+    marginTop: floraFeedPost.bodyMarginTop,
   },
   postText: {
+    marginTop: floraFeedPost.textCapTrim,
     marginBottom: floraFeedPost.textMarginBottom,
   },
   postMetaPressable: {
@@ -258,24 +259,26 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     fontSize: 15,
     letterSpacing: 0.45,
-    lineHeight: 15,
+    lineHeight: floraFeedPost.nicknameLineHeight,
     flexShrink: 1,
-    transform: [{ translateY: floraFeedPost.nicknameNudgeY }],
+    includeFontPadding: false,
+    textAlignVertical: "top",
   },
   handle: {
     color: floraColors.gray,
     fontWeight: "300",
     fontSize: 15,
     letterSpacing: 0.45,
-    lineHeight: 15,
+    lineHeight: floraFeedPost.nicknameLineHeight,
     flexShrink: 0,
-    transform: [{ translateY: floraFeedPost.nicknameNudgeY }],
+    includeFontPadding: false,
+    textAlignVertical: "top",
   },
   text: {
     color: floraColors.grayLight,
-    fontSize: 15,
+    fontSize: floraFeedPost.textFontSize,
     fontWeight: "300",
-    lineHeight: 25.5,
+    lineHeight: floraFeedPost.textLineHeight,
     letterSpacing: 0.45,
     includeFontPadding: false,
   },

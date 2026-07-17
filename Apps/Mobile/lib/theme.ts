@@ -58,12 +58,27 @@ export const floraFeedPost = {
   paddingTop: 2 * floraSpacing.grid,
   paddingBottom: 2 * floraSpacing.grid + 2,
   columnGap: floraSpacing.grid + floraSpacing.gridFine,
-  headerPaddingTop: 2 * floraSpacing.gridFine,
+  /**
+   * Верх аватара → верх ника = 1×fine (web: header padding 2×fine + author top −1×fine).
+   * На мобайле задаём напрямую, без промежуточного nudge.
+   */
+  nicknameGapFromAvatarTop: floraSpacing.gridFine,
   nicknameLineHeight: 15,
-  nicknameNudgeY: -floraSpacing.gridFine,
   rowGap: floraSpacing.gridFine,
   moreMenuTop: -floraSpacing.grid / 2 + 1,
   contentNudgeX: -floraSpacing.gridFine,
+  /**
+   * Низ аватара → верх наполнения (текст/фото) = 1×fine
+   * (web: row-gap + postBody −1×fine + images/text +1×fine → net 1×fine).
+   */
+  bodyMarginTop: floraSpacing.gridFine,
+  textFontSize: 15,
+  textLineHeight: 25.5,
+  /**
+   * Срез half-leading первой строки (паритет с верхом фото / web text-box-trim).
+   * Иначе caps текста визуально ниже края фото на ~(lh − size) / 2.
+   */
+  textCapTrim: -((25.5 - 15) / 2),
   g20: 4 * floraSpacing.gridFine,
   actionGap: 4 * floraSpacing.gridFine,
   actionIconGap: floraSpacing.gridFine,
