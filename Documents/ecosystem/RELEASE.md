@@ -36,8 +36,8 @@ npm run ci
 ## После коммита
 
 ```powershell
-# Web + API
-cd Apps/Web; .\scripts\deploy.ps1
+# Flora Social (API + web) → VPS
+.\Scripts\deploy-flora-social.ps1
 
 # Android APK → Apps/Mobile/dist/flora.social-v<version>-android.apk
 # (+ flora.social-android-update.json with versionCode / sha256 / sizeBytes)
@@ -74,6 +74,6 @@ GitHub Release assets: APK + `flora.social-android-update.json` (sideload auto-u
 - [ ] `npm run ci`
 - [ ] `git commit -S` — `chore(ecosystem): v<version> release`
 - [ ] Теги `ecosystem/v<version>`, `social/v<version>` (push на remote)
-- [ ] `Apps/Web/scripts/deploy.ps1`
+- [ ] `Scripts/deploy-flora-social.ps1` (API + web)
 - [ ] `Scripts/mobile-release-android.ps1 -PublishGitHub`
 - [ ] `send-apk-auto-update.ps1` (рекомендуется: fallback UX)
