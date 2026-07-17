@@ -43,7 +43,7 @@ pub async fn run(pool: PgPool) {
                 IngestOptions {
                     max_dimension: 2048,
                     max_pixels: 50_000_000,
-                    quality: 85,
+                    quality: 90,
                 },
             ) {
                 Ok(encoded) => encoded,

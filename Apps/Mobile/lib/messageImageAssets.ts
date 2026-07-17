@@ -62,7 +62,7 @@ export async function uploadPreparedMessageImage(params: {
     throw new Error("FRC-I недоступен на устройстве — отправка фото невозможна.");
   }
 
-  const friFile = await encodeImageUriToFrc(params.prepared.uri, 75);
+  const friFile = await encodeImageUriToFrc(params.prepared.uri, 85);
   try {
     const friBytes = await readExpoFileBytes(friFile);
     const encryptedFrc = await encryptMediaBytes(friBytes);

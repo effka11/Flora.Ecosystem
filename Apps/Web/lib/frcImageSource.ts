@@ -3,23 +3,29 @@
 import { FRC_I_MIME, acceptsFrcI } from "@flora/client-core/frc-i";
 import { useEffect, useState } from "react";
 
-type WorkerReply =
-  | { id: number; ok: true; png: ArrayBuffer }
-  | { id: number; ok: true; fri: ArrayBuffer }
-  | { id: number; ok: false; error: string };
+type WorkerDecodeOk = { id: number; ok: true; rgba: ArrayBuffer; width: number; height: number };
+type WorkerEncodeOk = { id: number; ok: true; fri: ArrayBuffer };
+type WorkerReply = WorkerDecodeOk | WorkerEncodeOk | { id: number; ok: false; error: string };
+
+export type FrcResolvedSource =
+  | { kind: "url"; url: string }
+  | { kind: "bitmap"; bitmap: ImageBitmap };
 
 const MAX_CACHE_ENTRIES = 128;
-const cache = new Map<string, string>();
-const inflight = new Map<string, Promise<string>>();
+const cache = new Map<string, FrcResolvedSource>();
+const inflight = new Map<string, Promise<FrcResolvedSource>>();
 const pending = new Map<
   number,
-  { resolve: (bytes: ArrayBuffer) => void; reject: (error: Error) => void }
+  {
+    resolve: (value: WorkerDecodeOk | WorkerEncodeOk) => void;
+    reject: (error: Error) => void;
+  }
 >();
 let worker: Worker | null = null;
 let nextRequestId = 1;
 
-function isNativeSource(url: string): boolean {
-  return /^(blob:|data:|file:)/i.test(url);
+function isPassthroughUrl(url: string): boolean {
+  return /^(data:image\/|file:)/i.test(url);
 }
 
 function decoderWorker(): Worker {
@@ -29,7 +35,7 @@ function decoderWorker(): Worker {
     const request = pending.get(event.data.id);
     if (!request) return;
     pending.delete(event.data.id);
-    if (event.data.ok) request.resolve("png" in event.data ? event.data.png : event.data.fri);
+    if (event.data.ok) request.resolve(event.data);
     else request.reject(new Error(event.data.error));
   };
   worker.onerror = (event) => {
@@ -42,22 +48,29 @@ function decoderWorker(): Worker {
   return worker;
 }
 
-function decodeFrc(bytes: ArrayBuffer): Promise<Blob> {
+async function decodeFrcBytesToBitmap(bytes: ArrayBuffer): Promise<ImageBitmap> {
   const id = nextRequestId++;
-  return new Promise((resolve, reject) => {
+  const reply = await new Promise<WorkerDecodeOk>((resolve, reject) => {
     pending.set(id, {
-      resolve: (png) => resolve(new Blob([png], { type: "image/png" })),
+      resolve: (value) => {
+        if ("rgba" in value) resolve(value);
+        else reject(new Error("Unexpected encode reply"));
+      },
       reject,
     });
     decoderWorker().postMessage({ id, kind: "decode", bytes }, [bytes]);
   });
+  const pixels = new Uint8ClampedArray(reply.rgba);
+  const imageData = new ImageData(pixels, reply.width, reply.height);
+  return createImageBitmap(imageData);
 }
 
-export function decodeFrcBlobToPng(blob: Blob): Promise<Blob> {
-  return blob.arrayBuffer().then(decodeFrc);
+/** Decode FRI ciphertext/plaintext blob to ImageBitmap (no PNG re-encode). */
+export async function decodeFrcBlobToBitmap(blob: Blob): Promise<ImageBitmap> {
+  return decodeFrcBytesToBitmap(await blob.arrayBuffer());
 }
 
-export async function encodeImageBlobToFrc(blob: Blob, quality = 75): Promise<Blob> {
+export async function encodeImageBlobToFrc(blob: Blob, quality = 85): Promise<Blob> {
   const bitmap = await createImageBitmap(blob);
   try {
     const canvas = document.createElement("canvas");
@@ -73,7 +86,13 @@ export async function encodeImageBlobToFrc(blob: Blob, quality = 75): Promise<Bl
     ) as ArrayBuffer;
     const id = nextRequestId++;
     const fri = await new Promise<ArrayBuffer>((resolve, reject) => {
-      pending.set(id, { resolve, reject });
+      pending.set(id, {
+        resolve: (value) => {
+          if ("fri" in value) resolve(value.fri);
+          else reject(new Error("Unexpected decode reply"));
+        },
+        reject,
+      });
       decoderWorker().postMessage(
         {
           id,
@@ -92,87 +111,109 @@ export async function encodeImageBlobToFrc(blob: Blob, quality = 75): Promise<Bl
   }
 }
 
-async function fetchFri(url: string, signal?: AbortSignal): Promise<Blob> {
+async function loadResolved(url: string): Promise<FrcResolvedSource> {
   const response = await fetch(url, {
     credentials: "include",
     headers: { Accept: FRC_I_MIME },
     cache: "no-cache",
-    signal,
   });
   if (!response.ok) throw new Error(`Image HTTP ${response.status}`);
   const contentType = response.headers.get("Content-Type");
   if (acceptsFrcI(contentType)) {
-    return decodeFrc(await response.arrayBuffer());
+    const bitmap = await decodeFrcBytesToBitmap(await response.arrayBuffer());
+    return { kind: "bitmap", bitmap };
   }
-  // Stale browser cache may still hold pre-FRI bytes for the same UUID.
   const mime = contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
   if (mime.startsWith("image/") && mime !== "image/svg+xml") {
-    return response.blob();
+    return { kind: "url", url };
+  }
+  // blob: of FRI may omit useful Content-Type through some proxies — sniff magic.
+  const bytes = await response.arrayBuffer();
+  const header = new Uint8Array(bytes, 0, Math.min(4, bytes.byteLength));
+  if (
+    header.length >= 4 &&
+    header[0] === 0x8f &&
+    header[1] === 0x46 &&
+    header[2] === 0x52 &&
+    header[3] === 0x49
+  ) {
+    const bitmap = await decodeFrcBytesToBitmap(bytes);
+    return { kind: "bitmap", bitmap };
   }
   throw new Error("Сервер отдал не-FRI изображение");
 }
 
-async function loadSource(url: string): Promise<string> {
-  const blob = await fetchFri(url);
-  return URL.createObjectURL(blob);
+function releaseCached(entry: FrcResolvedSource): void {
+  if (entry.kind === "bitmap") entry.bitmap.close();
 }
 
-function cacheSource(key: string, objectUrl: string): string {
+function cacheSource(key: string, source: FrcResolvedSource): FrcResolvedSource {
+  const previous = cache.get(key);
+  if (previous) releaseCached(previous);
   cache.delete(key);
-  cache.set(key, objectUrl);
+  cache.set(key, source);
   while (cache.size > MAX_CACHE_ENTRIES) {
-    const oldest = cache.entries().next().value as [string, string] | undefined;
+    const oldest = cache.entries().next().value as [string, FrcResolvedSource] | undefined;
     if (!oldest) break;
     cache.delete(oldest[0]);
-    URL.revokeObjectURL(oldest[1]);
+    releaseCached(oldest[1]);
   }
-  return objectUrl;
+  return source;
 }
 
-export function resolveFrcImageSource(url: string): Promise<string> {
-  if (!url || isNativeSource(url)) return Promise.resolve(url);
+export function resolveFrcImageSource(url: string): Promise<FrcResolvedSource> {
+  if (!url) return Promise.resolve({ kind: "url", url: "" });
+  if (isPassthroughUrl(url)) return Promise.resolve({ kind: "url", url });
   const cached = cache.get(url);
   if (cached) return Promise.resolve(cached);
   const existing = inflight.get(url);
   if (existing) return existing;
-  const request = loadSource(url)
-    .then((objectUrl) => cacheSource(url, objectUrl))
+  const request = loadResolved(url)
+    .then((source) => cacheSource(url, source))
     .finally(() => inflight.delete(url));
   inflight.set(url, request);
   return request;
 }
 
 export function invalidateFrcImageSource(url: string): void {
-  const objectUrl = cache.get(url);
-  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  const entry = cache.get(url);
+  if (entry) releaseCached(entry);
   cache.delete(url);
   inflight.delete(url);
 }
 
 export function useFrcImageSource(url: string): {
-  source: string;
+  source: FrcResolvedSource | null;
   loading: boolean;
   error: boolean;
 } {
-  const [state, setState] = useState(() => ({
-    source: isNativeSource(url) ? url : "",
-    loading: Boolean(url && !isNativeSource(url)),
+  const [state, setState] = useState<{
+    source: FrcResolvedSource | null;
+    loading: boolean;
+    error: boolean;
+  }>(() => ({
+    source: isPassthroughUrl(url) ? { kind: "url", url } : null,
+    loading: Boolean(url && !isPassthroughUrl(url)),
     error: false,
   }));
 
   useEffect(() => {
-    if (!url || isNativeSource(url)) {
-      setState({ source: url, loading: false, error: false });
+    if (!url) {
+      setState({ source: null, loading: false, error: false });
+      return;
+    }
+    if (isPassthroughUrl(url)) {
+      setState({ source: { kind: "url", url }, loading: false, error: false });
       return;
     }
     let cancelled = false;
-    setState({ source: "", loading: true, error: false });
+    setState({ source: null, loading: true, error: false });
     void resolveFrcImageSource(url).then(
       (source) => {
         if (!cancelled) setState({ source, loading: false, error: false });
       },
       () => {
-        if (!cancelled) setState({ source: "", loading: false, error: true });
+        if (!cancelled) setState({ source: null, loading: false, error: true });
       },
     );
     return () => {

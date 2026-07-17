@@ -390,7 +390,7 @@ async fn encode_poster_fri(
         IngestOptions {
             max_dimension: POSTER_MAX_DIMENSION,
             max_pixels: 50_000_000,
-            quality: 75,
+            quality: 85,
         },
     )
     .map_err(|error| VideoTranscodeError::Transcode(format!("постер FRC-I: {error}")))?;

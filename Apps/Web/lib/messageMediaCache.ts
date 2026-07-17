@@ -6,7 +6,6 @@ import {
   apiDownloadMessageVoiceAsset,
 } from "@/lib/socialApi";
 import { acceptsFrcI } from "@flora/client-core/frc-i";
-import { decodeFrcBlobToPng } from "@/lib/frcImageSource";
 
 function assertFriImage(block: FscpImageBlock): void {
   if (!acceptsFrcI(block.contentType)) {
@@ -103,8 +102,8 @@ export function ensureMessageImageObjectUrl(block: FscpImageBlock): Promise<stri
   if (existing) return existing;
   const task = (async () => {
     assertFriImage(block);
-    const fri = await downloadAndDecrypt(block, apiDownloadMessageImageAsset);
-    return decodeFrcBlobToPng(fri);
+    // Store FRI bytes as-is; FrcImage decodes to ImageBitmap without a PNG detour.
+    return downloadAndDecrypt(block, apiDownloadMessageImageAsset);
   })()
     .then((blob) => storeBlob(block.assetUuid, blob))
     .finally(() => inflight.delete(id));

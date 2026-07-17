@@ -1831,7 +1831,7 @@ function MessagesChatInner() {
           for (let index = 0; index < pendingImages.length; index += 1) {
             const prepared = preparedImages[index];
             if (!prepared) continue;
-            const friBlob = await encodeImageBlobToFrc(prepared.blob, 75);
+            const friBlob = await encodeImageBlobToFrc(prepared.blob, 85);
             if (friBlob.size > MAX_MESSAGE_IMAGE_BYTES) {
               throw new Error("FRC-I версия фото превышает лимит 5 МиБ.");
             }

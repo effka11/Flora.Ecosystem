@@ -52,7 +52,7 @@ export async function ensureFrcImageUri(url: string): Promise<string> {
   return request;
 }
 
-export async function encodeImageUriToFrc(uri: string, quality = 75): Promise<File> {
+export async function encodeImageUriToFrc(uri: string, quality = 85): Promise<File> {
   if (!isFloraFrcIAvailable()) throw new Error("FRC-I native encoder недоступен");
   const output = cacheName("flora-frc-upload", "fri");
   await encodeImageFileToFrc(uri, output.uri, quality);

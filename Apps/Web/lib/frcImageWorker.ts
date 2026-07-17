@@ -12,8 +12,9 @@ type CodecRequest =
       height: number;
       quality: number;
     };
+
 type CodecResponse =
-  | { id: number; ok: true; png: ArrayBuffer }
+  | { id: number; ok: true; rgba: ArrayBuffer; width: number; height: number }
   | { id: number; ok: true; fri: ArrayBuffer }
   | { id: number; ok: false; error: string };
 
@@ -56,13 +57,18 @@ self.onmessage = async (event: MessageEvent<CodecRequest>) => {
         rgba[output + 3] = 255;
       }
     }
-    const canvas = new OffscreenCanvas(decoded.width, decoded.height);
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("OffscreenCanvas 2D недоступен");
-    context.putImageData(new ImageData(rgba, decoded.width, decoded.height), 0, 0);
-    const png = await (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer();
-    const response: CodecResponse = { id, ok: true, png };
-    self.postMessage(response, { transfer: [png] });
+    const transfer = rgba.buffer.slice(
+      rgba.byteOffset,
+      rgba.byteOffset + rgba.byteLength,
+    ) as ArrayBuffer;
+    const response: CodecResponse = {
+      id,
+      ok: true,
+      rgba: transfer,
+      width: decoded.width,
+      height: decoded.height,
+    };
+    self.postMessage(response, { transfer: [transfer] });
   } catch (error) {
     const response: CodecResponse = {
       id,
@@ -72,5 +78,3 @@ self.onmessage = async (event: MessageEvent<CodecRequest>) => {
     self.postMessage(response);
   }
 };
-
-export {};

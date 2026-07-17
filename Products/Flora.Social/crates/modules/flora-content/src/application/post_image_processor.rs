@@ -12,11 +12,11 @@ pub enum PostImageProcessError {
 }
 
 pub fn process_post_image(input: &[u8]) -> Result<(Vec<u8>, &'static str), PostImageProcessError> {
-    process(input, 75)
+    process(input, 85)
 }
 
 pub fn process_avatar_image(input: &[u8]) -> Result<(Vec<u8>, &'static str), PostImageProcessError> {
-    process(input, 85)
+    process(input, 90)
 }
 
 fn process(

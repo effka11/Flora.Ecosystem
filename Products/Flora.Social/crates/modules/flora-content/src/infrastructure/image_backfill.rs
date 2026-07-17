@@ -47,7 +47,7 @@ async fn backfill_post_images(pool: &PgPool) -> u64 {
         }
         for (uuid, bytes) in rows {
             cursor = uuid;
-            if let Some(encoded) = encode(&bytes, 2048, 75, "post image", uuid)
+            if let Some(encoded) = encode(&bytes, 2048, 85, "post image", uuid)
                 && update_post_image(pool, uuid, &encoded).await
             {
                 converted += 1;
@@ -86,7 +86,7 @@ async fn backfill_community_avatars(pool: &PgPool) -> u64 {
         }
         for (uuid, bytes) in rows {
             cursor = uuid;
-            if let Some(encoded) = encode(&bytes, 2048, 85, "community avatar", uuid)
+            if let Some(encoded) = encode(&bytes, 2048, 90, "community avatar", uuid)
                 && update_community_avatar(pool, uuid, &encoded).await
             {
                 converted += 1;
@@ -125,7 +125,7 @@ async fn backfill_video_posters(pool: &PgPool) -> u64 {
         }
         for (uuid, bytes) in rows {
             cursor = uuid;
-            if let Some(encoded) = encode(&bytes, 1280, 75, "video poster", uuid)
+            if let Some(encoded) = encode(&bytes, 1280, 85, "video poster", uuid)
                 && update_video_poster(pool, uuid, &encoded).await
             {
                 converted += 1;
