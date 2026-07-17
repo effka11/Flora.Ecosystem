@@ -1,4 +1,4 @@
-# Full deploy: Next.js standalone to VPS (one SSH tarball). API is Rust flora-api (separate unit).
+# Full deploy: Next.js standalone to VPS (one SSH tarball). API: Scripts/deploy-flora-api.ps1 (Rust flora-api).
 # Usage:
 #   .\scripts\deploy.ps1                    # prompts for VPS IP, then SSH key path (user: root)
 #   .\scripts\deploy.ps1 -SkipBuild
@@ -254,7 +254,7 @@ try {
     if ($deployExit -ne 0) { throw "ssh deploy failed (exit $deployExit)." }
 
     Write-Host "Done."
-    Write-Host "  Next: curl -sI http://127.0.0.1:3000/ ; curl -s http://127.0.0.1:5000/health"
+    Write-Host "  Next: curl -sI http://127.0.0.1:3000/ ; curl -s http://127.0.0.1:5290/health"
     Write-Host ('  Open https://' + $PublicSubdomain + '.' + $Domain + '/login?b=' + $webBuildId + ' (or flora-s.net redirect).')
     Write-Host '  Selectel CDN: disable HTML cache or cache only /_next/static/ — then purge is rarely needed.'
     if (-not [string]::IsNullOrWhiteSpace($resolvedPublic)) {

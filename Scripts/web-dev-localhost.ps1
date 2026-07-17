@@ -1,6 +1,5 @@
-# Flora Web — local dev against Rust gateway :5290 (prod strangler parity).
+# Flora — local web against Rust flora-api :5290 (prod parity).
 # Does NOT stop/restart API or Metro (only frees Next.js ports 3000/3001).
-# Upstream .NET stays on :5284; Music native + workers on the gateway.
 
 $ErrorActionPreference = "Stop"
 
@@ -15,8 +14,8 @@ $env:FLORA_API_UPSTREAM = "http://127.0.0.1:5290"
 Write-Host @"
 
 ================================================================
-  Flora Web -> http://localhost:3000
-  API proxy -> $env:FLORA_API_UPSTREAM (Rust gateway; .NET upstream :5284)
+  Flora -> http://localhost:3000
+  API proxy -> $env:FLORA_API_UPSTREAM (Rust flora-api)
 ================================================================
 
 "@

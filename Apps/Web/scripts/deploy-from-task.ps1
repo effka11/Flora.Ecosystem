@@ -1,28 +1,15 @@
-# Вызывается из VS Code/Cursor tasks. Хост/ключ можно задать через FLORA_DEPLOY_HOST / FLORA_SSH_KEY;
-# иначе deploy.ps1 запросит IP и путь к ключу интерактивно (подключение как root).
+# Deprecated entry — forwards to Flora Social full deploy.
 param(
     [string] $SshHost = "",
     [switch] $SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
-$deploy = Join-Path $PSScriptRoot "deploy.ps1"
+$forward = (Resolve-Path (Join-Path $PSScriptRoot "..\..\Scripts\deploy-flora-social-from-task.ps1")).Path
 
 $params = @{}
-if (-not [string]::IsNullOrWhiteSpace($SshHost)) {
-    $params.Server = $SshHost.Trim()
-} elseif (-not [string]::IsNullOrWhiteSpace($env:FLORA_DEPLOY_HOST)) {
-    $params.Server = $env:FLORA_DEPLOY_HOST.Trim()
-}
+if (-not [string]::IsNullOrWhiteSpace($SshHost)) { $params.SshHost = $SshHost.Trim() }
+if ($SkipBuild) { $params.SkipBuild = $true }
 
-$SshKey = $env:FLORA_SSH_KEY
-if ($null -eq $SshKey) { $SshKey = "" }
-if (-not [string]::IsNullOrWhiteSpace($SshKey)) {
-    $params.IdentityFile = $SshKey.Trim()
-}
-if ($SkipBuild) {
-    $params.SkipBuild = $true
-}
-
-Write-Host "Flora deploy (task): root@VPS; prompts if host/key not in env or -SshHost."
-& $deploy @params
+Write-Host "Forwarding to Flora Social full deploy..."
+& $forward @params

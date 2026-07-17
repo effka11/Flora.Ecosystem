@@ -236,7 +236,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Flora Web: dev localhost",
+      "label": "Flora: dev localhost",
       "type": "process",
       "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
@@ -261,7 +261,7 @@
       "label": "Flora: API + Web dev localhost",
       "dependsOn": [
         "Flora API: dev localhost",
-        "Flora Web: dev localhost"
+        "Flora: dev localhost"
       ],
       "dependsOrder": "sequence",
       "presentation": {
@@ -312,7 +312,7 @@
       }
     },
     {
-      "label": "Flora Web: dev offline demo (dev-token, no API)",
+      "label": "Flora: dev offline demo (dev-token, no API)",
       "dependsOn": [
         "Flora DB: start (Docker)"
       ],
@@ -337,7 +337,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Flora Web: publish to VPS (full)",
+      "label": "Flora Social: publish to VPS (full)",
       "type": "process",
       "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
@@ -345,10 +345,10 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        ".\\scripts\\deploy.ps1"
+        "${workspaceFolder}\\Scripts\\deploy-flora-social-from-task.ps1"
       ],
       "options": {
-        "cwd": "${workspaceFolder}\\Apps\\Web"
+        "cwd": "${workspaceFolder}"
       },
       "group": {
         "kind": "build",
@@ -413,7 +413,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Flora: send auto-update (production)",
+      "label": "Flora Social: Send auto-update & notifications to side-APK",
       "type": "process",
       "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
@@ -473,54 +473,6 @@
       ],
       "options": {
         "cwd": "${workspaceFolder}\\Apps\\Mobile"
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "showReuseMessage": false
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "Flora: broadcast app-update (local)",
-      "type": "process",
-      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\Scripts\\broadcast-app-update.ps1"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "FLORA_API_URL": "http://localhost:5290",
-          "FLORA_ADMIN_BROADCAST_TOKEN": "dev-local-broadcast-token-change-me"
-        }
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "showReuseMessage": false
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "Flora: broadcast app-update (production)",
-      "type": "process",
-      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\Scripts\\broadcast-app-update.ps1",
-        "-Production",
-        "-Confirm"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
       },
       "presentation": {
         "reveal": "always",

@@ -36,7 +36,7 @@ Project skills: `.agents/skills/`.
 1. `Flora DB: start (Docker)`
 2. `Flora API: .NET upstream localhost` (`:5284`)
 3. `Flora Gateway: Rust localhost` (`:5290`)
-4. `Flora Web: dev localhost` (proxy → `:5290`)
+4. `Flora: dev localhost` (proxy → `:5290`)
 
 Общий Jwt: `.flora/dev-jwt.secret` (`Scripts/ensure-shared-dev-jwt.ps1`). Music workers и Auth (ServeNative: sessions…2FA) только на gateway (`Music:ServeNative` / `Auth:ServeNative`).
 

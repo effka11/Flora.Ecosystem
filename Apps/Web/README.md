@@ -1,4 +1,4 @@
-# Flora Web (Next.js)
+# Flora (Next.js)
 
 Клиент для [Flora.API](https://github.com/effka11/Flora.Ecosystem/tree/main/Flora.API) — вход по телефону и паролю (`POST /api/auth/login`, `POST /api/auth/register` через прокси).
 
@@ -66,24 +66,21 @@ npm run prepare:standalone
 Задачи вызывают **`powershell.exe`** (встроенный Windows PowerShell). Отдельный **PowerShell 7 (`pwsh`) не нужен**.
 
 1. **Terminal → Run Task…** (или Command Palette: `Tasks: Run Task`).
-2. Сначала запустите **«Flora Web: test (terminal)»** — должен открыться терминал и появиться строки `Flora task OK` и путь workspace. Если этого нет, проблема в окружении Zed, а не в скриптах.
-3. **«Flora Web: build (production standalone)»** — сборка через [`scripts/task-build.cmd`](scripts/task-build.cmd) (надёжнее, чем одна строка в shell).
-4. **«Flora Web: publish to VPS (full)»** — запрос хоста и ключа, затем [`scripts/deploy.ps1`](scripts/deploy.ps1) (сборка + выгрузка). Пустой ключ → дефолт из `deploy.ps1`.
-5. **«Flora Web: publish to VPS (upload only)»** — то же, но `-SkipBuild`.
+2. Сначала запустите **«Flora: test (terminal)»** — должен открыться терминал и появиться строки `Flora task OK` и путь workspace. Если этого нет, проблема в окружении Zed, а не в скриптах.
+3. **«Flora: build (production standalone)»** — сборка через [`scripts/task-build.cmd`](scripts/task-build.cmd) (надёжнее, чем одна строка в shell).
+4. **«Flora Social: publish to VPS (full)»** — API (`flora-api`) + web (Next); хост/ключ один раз, затем [`Scripts/deploy-flora-social.ps1`](../../Scripts/deploy-flora-social.ps1).
+5. Гранулярно при необходимости: `Scripts/deploy-flora-api.ps1` или `Apps/Web/scripts/deploy.ps1`.
 
 Задачи объявлены как **`type: process`** (прямой запуск `cmd.exe` / `powershell.exe`), чтобы интегрированный терминал стабильно открывался в Zed/VS Code на Windows.
 
-## Деплой на сервер (standalone + systemd `flora-web`)
+## Деплой на сервер (Flora Social: API + web)
 
-На хосте: Next на `127.0.0.1:3000`, Caddy отдаёт `flora-s.net` и проксирует `/api/*` на Flora.API.
+На хосте: Rust `flora-api` на `127.0.0.1:5290`, Next на `127.0.0.1:3000`, nginx/прокси.
 
-Из Windows (пути и ключ подставьте свои):
+Из Windows:
 
 ```powershell
-cd Apps/Web
-.\scripts\deploy.ps1 -Server <your-server-ip> -IdentityFile "$env:USERPROFILE\.ssh\id_ed25519_flora"
+.\Scripts\deploy-flora-social.ps1 -Server <your-server-ip> -IdentityFile "$env:USERPROFILE\.ssh\id_ed25519_flora"
 ```
 
-Скрипт делает `next build`, копирует `public` и `.next/static` в `standalone`, останавливает сервис, бэкапит каталог, заливает файлы **включая скрытую папку `.next`** (одного `scp *` недостаточно), запускает `flora-web`.
-
-Проверка на сервере: `curl -sI http://127.0.0.1:3000/` — ожидается `307` с `location: /login`.
+Порядок: сначала API, потом web. Проверка: `curl -s http://127.0.0.1:5290/health`; `curl -sI http://127.0.0.1:3000/`.

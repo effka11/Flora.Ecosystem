@@ -25,7 +25,7 @@ if [[ -z "$REMOTE_PATH" || -z "$DOMAIN" ]]; then
   exit 1
 fi
 
-# Phase 0+: Next → Rust gateway :5290; .NET upstream listens on :5000 (flora-api-dotnet).
+# Phase 5: Next → Rust flora-api :5290 (sole HTTP host).
 [[ -z "$API_UPSTREAM" ]] && API_UPSTREAM='http://127.0.0.1:5290'
 
 if ! command -v node >/dev/null 2>&1; then
@@ -83,7 +83,7 @@ if [ ! -f /etc/systemd/system/flora-web.service ]; then
   mkdir -p /etc/systemd/system
   {
     echo '[Unit]'
-    echo 'Description=Flora Web (Next standalone)'
+    echo 'Description=Flora (Next standalone)'
     echo 'After=network.target'
     echo
     echo '[Service]'
