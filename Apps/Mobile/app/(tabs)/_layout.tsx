@@ -2,6 +2,13 @@ import { FloraTabBarBackground } from "@/components/FloraTabBarBackground";
 import { HamburgerMenuProvider } from "@/components/HamburgerMenuProvider";
 import { SignalsTabBarIcon } from "@/components/SignalsTabBarIcon";
 import { TabBarIconWithBadge } from "@/components/TabBarIconWithBadge";
+import {
+  TabBarFeedIcon,
+  TabBarMessagesIcon,
+  TabBarMusicIcon,
+  TabBarNotificationsIcon,
+  TabBarProfileIcon,
+} from "@/components/tabbar/TabBarNavIcons";
 import { MusicMiniPlayer } from "@/components/MusicMiniPlayer";
 import { useTabRouteTransition } from "@/components/TabRouteTransition";
 import { isTabActive, isTabRoot } from "@/lib/getActiveTabRouteKey";
@@ -65,7 +72,9 @@ export default function TabsLayout() {
               title: "Лента",
               headerShown: false,
               tabBarIcon: ({ color, size }) => (
-                <TabBarIconWithBadge name="newspaper-outline" color={color} size={size} />
+                <TabBarIconWithBadge color={color} size={size}>
+                  <TabBarFeedIcon color={color} size={size} />
+                </TabBarIconWithBadge>
               ),
             }}
           />
@@ -75,7 +84,9 @@ export default function TabsLayout() {
               title: "Музыка",
               headerShown: false,
               tabBarIcon: ({ color, size }) => (
-                <TabBarIconWithBadge name="musical-notes-outline" color={color} size={size} />
+                <TabBarIconWithBadge color={color} size={size}>
+                  <TabBarMusicIcon color={color} size={size} />
+                </TabBarIconWithBadge>
               ),
             }}
           />
@@ -98,12 +109,9 @@ export default function TabsLayout() {
               headerShown: false,
               tabBarStyle: messagesTabBarStyleForRoute(route, tabBarBottomInset),
               tabBarIcon: ({ color, size }) => (
-                <SignalsTabBarIcon
-                  name="chatbubbles-outline"
-                  badgeKey="messagesUnread"
-                  color={color}
-                  size={size}
-                />
+                <SignalsTabBarIcon badgeKey="messagesUnread" color={color} size={size}>
+                  <TabBarMessagesIcon color={color} size={size} />
+                </SignalsTabBarIcon>
               ),
             })}
           />
@@ -113,12 +121,9 @@ export default function TabsLayout() {
               title: "Уведомления",
               headerShown: false,
               tabBarIcon: ({ color, size }) => (
-                <SignalsTabBarIcon
-                  name="notifications-outline"
-                  badgeKey="notificationsUnread"
-                  color={color}
-                  size={size}
-                />
+                <SignalsTabBarIcon badgeKey="notificationsUnread" color={color} size={size}>
+                  <TabBarNotificationsIcon color={color} size={size} />
+                </SignalsTabBarIcon>
               ),
             }}
           />
@@ -161,7 +166,9 @@ export default function TabsLayout() {
               title: "Профиль",
               headerShown: false,
               tabBarIcon: ({ color, size }) => (
-                <TabBarIconWithBadge name="person-outline" color={color} size={size} />
+                <TabBarIconWithBadge color={color} size={size}>
+                  <TabBarProfileIcon color={color} size={size} />
+                </TabBarIconWithBadge>
               ),
             }}
           />
