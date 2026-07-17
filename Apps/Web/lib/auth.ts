@@ -570,7 +570,7 @@ export async function apiCancelRegistration(verificationToken: string): Promise<
 
 export function avatarImageUrl(avatarUuid: string): string {
   const id = avatarUuid.trim();
-  return authEndpoint(`/api/auth/avatar/${encodeURIComponent(id)}`);
+  return authEndpoint(`/api/auth/avatar/${encodeURIComponent(id)}?fmt=fri`);
 }
 
 export async function apiUpdateProfile(payload: UpdateProfilePayload): Promise<void> {

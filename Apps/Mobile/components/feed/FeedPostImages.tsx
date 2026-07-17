@@ -13,6 +13,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFrcImageUri } from "@/lib/frcImage";
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
 
 const MAX_ITEMS = 10;
@@ -124,14 +125,15 @@ function ClippedImage({
   style,
   transitionMs = 0,
 }: ClippedImageProps) {
+  const resolvedUri = useFrcImageUri(uri);
   const image = (
     <View style={[{ width, height }, style]}>
       <Image
-        source={{ uri }}
+        source={{ uri: resolvedUri }}
         style={{ width, height, borderRadius }}
         contentFit={contentFit}
         cachePolicy="disk"
-        recyclingKey={uri}
+        recyclingKey={resolvedUri}
         transition={transitionMs}
         onLoad={(event) => {
           const { width: w, height: h } = event.source;

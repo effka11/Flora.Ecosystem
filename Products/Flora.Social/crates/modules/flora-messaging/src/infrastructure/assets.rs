@@ -56,6 +56,23 @@ pub async fn insert_image_asset(
     Ok(())
 }
 
+pub async fn delete_stale_unbound_image_assets(
+    pool: &PgPool,
+    older_than: chrono::DateTime<Utc>,
+) -> Result<u64, String> {
+    sqlx::query(
+        r#"
+        DELETE FROM flora_core.user_message_image_assets
+        WHERE message_uuid IS NULL AND created_at < $1
+        "#,
+    )
+    .bind(older_than)
+    .execute(pool)
+    .await
+    .map(|result| result.rows_affected())
+    .map_err(|error| error.to_string())
+}
+
 pub async fn insert_voice_asset(
     pool: &PgPool,
     asset_uuid: Uuid,

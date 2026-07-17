@@ -264,3 +264,18 @@ pub trait FeedAuthorProfiles: Send + Sync {
         user_uuids: &[Uuid],
     ) -> BoxFuture<'_, Result<Vec<FeedAuthorProfile>, String>>;
 }
+
+/// Opaque media blob пользователя. Выбор wire-варианта выполняет HTTP-слой
+/// потребителя; Users остаётся единственным читателем своей avatar-таблицы.
+#[derive(Debug, Clone)]
+pub struct UserAvatarMediaBlob {
+    pub data: Vec<u8>,
+    pub content_type: String,
+}
+
+pub trait UserAvatarMedia: Send + Sync {
+    fn by_uuid(
+        &self,
+        avatar_uuid: Uuid,
+    ) -> BoxFuture<'_, Result<Option<UserAvatarMediaBlob>, String>>;
+}

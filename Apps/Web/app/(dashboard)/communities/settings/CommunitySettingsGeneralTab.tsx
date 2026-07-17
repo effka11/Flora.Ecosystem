@@ -62,7 +62,7 @@ export function CommunitySettingsGeneralTab() {
     [community.communityId, reload, resetAvatarFeedback],
   );
 
-  const avatarSrc = avatarUuid ? `${avatarImageUrl(avatarUuid)}?v=${avatarVersion}` : null;
+  const avatarSrc = avatarUuid ? `${avatarImageUrl(avatarUuid)}&v=${avatarVersion}` : null;
   const initials = communityAvatarLabel(draft.name || community.name);
 
   return (

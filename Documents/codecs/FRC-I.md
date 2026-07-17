@@ -1372,16 +1372,36 @@ JPEG 2.20 МБ, **FRC-I 2.76 МБ**. Скорость encode mid-quality:
 - Кодек — **функциональный продукт** без бизнес-логики:
   `Products/FRC/crates/frc-i` (семейство FRC, см. §2.0
   `next-architecture.md`). Никаких зависимостей на модули; модули используют
-  кодек через свой Infrastructure-слой.
+  кодек через technical adapter `Products/FRC/crates/frc-i-integration`
+  и свой Infrastructure-слой.
 - Владелец пайплайна фото постов — `Flora.Content`; аватарки — `Flora.Users`;
   E2E-вложения шифруются **после** кодирования на клиенте (модель доверия
-  [`CODECS.md`](./CODECS.md) не меняется).
-- Ввод FRC-I в прод — отдельная задача с миграционным планом (сервер продолжает
-  отдавать AVIF/JPEG старым клиентам; `Accept`-переговоры). До этого FRC-I живёт
-  как библиотека + CLI (`flora-codec image ...`).
-- Расширение файлов `.fri`, предлагаемый MIME — `image/x-flora-frc-i`.
+  [`CODECS.md`](./CODECS.md) не меняется). См. playbook
+  [`CODECS-IMAGE.md`](./CODECS-IMAGE.md).
+- **Публичный контур (посты / аватары / video posters):**
+  - storage MIME `application/vnd.flora.frc-i-image-set` — versioned envelope
+    с FRI v7 primary + готовым lossless WebP fallback (один UUID, без runtime
+    transcode на GET);
+  - GET выбирает вариант по `Accept` + `Media:FrcI:ServeEnabled`; ответ всегда
+    получает `Vary: Accept`. Без явного `image/x-flora-frc-i` — WebP;
+  - флаги: `Media:FrcI:WriteDual` (писать envelope), `ServeEnabled` (отдавать FRI),
+    `BackfillEnabled` (resumable конверсия legacy rows).
+- **E2E-контур (Messaging):** сервер хранит opaque ciphertext. Клиент кодирует
+  WebP fallback и FRI v7, шифрует каждый вариант отдельно и кладёт optional
+  `frcVariant` в `FscpImageBlock`. Старые readers игнорируют поле.
+- Клиентские адаптеры: `@flora/frc-i` (WASM) + Expo `flora-frc-i` (native FFI).
+- Расширение файлов `.fri`, MIME primary — `image/x-flora-frc-i`.
+
+### Quality profiles (reference)
+
+| Поверхность | FRI quality | WebP fallback |
+| --- | --- | --- |
+| Post images / video posters | 75 | lossless |
+| User / community avatars | 85 | lossless |
+| E2E message photos (client) | 75 | browser-native prepared JPEG/PNG/WebP |
 
 ---
+
 
 *Реестр сигнатур и конвенции семейства FRC — [`CODECS.md`](./CODECS.md).
 Соседние треки: аудио — [`FRC-A.md`](./FRC-A.md) (`Products/FRC/crates/frc-a-*`), видео — FRV1

@@ -1012,6 +1012,7 @@ dependencies = [
  "flora-notifications-contracts",
  "flora-shared",
  "flora-users-contracts",
+ "frc-i-integration",
  "getrandom 0.3.4",
  "image",
  "reqwest",
@@ -1274,6 +1275,7 @@ dependencies = [
  "flora-notifications-contracts",
  "flora-shared",
  "flora-users-contracts",
+ "frc-i-integration",
  "image",
  "reqwest",
  "serde",
@@ -1381,6 +1383,25 @@ version = "0.5.0-alpha"
 [[package]]
 name = "frc-i"
 version = "0.5.0-alpha"
+
+[[package]]
+name = "frc-i-integration"
+version = "0.5.0-alpha"
+dependencies = [
+ "frc-i",
+ "image",
+ "thiserror",
+]
+
+[[package]]
+name = "frc-i-mobile-ffi"
+version = "0.5.0-alpha"
+dependencies = [
+ "frc-i",
+ "frc-i-integration",
+ "image",
+ "jni",
+]
 
 [[package]]
 name = "frc-i-wasm"

@@ -16,7 +16,7 @@ use std::sync::Arc;
 use flora_auth_contracts::AccountDirectory;
 use flora_notifications_contracts::UserNotificationDispatcher;
 use flora_users_contracts::{
-    BidirectionalBlocklist, FeedAuthorProfiles, FollowGraphReader, ProfileAccess,
+    BidirectionalBlocklist, FeedAuthorProfiles, FollowGraphReader, ProfileAccess, UserAvatarMedia,
 };
 use sqlx::PgPool;
 
@@ -49,6 +49,7 @@ pub struct ContentModule {
     pub public_router: axum::Router,
     /// Take once → [`spawn_video_worker`] при `Content:ServeNative`.
     pub video_worker: Option<ContentVideoWorker>,
+    pub image_backfill: Option<WorkerHandle>,
 }
 
 /// Пустой роутер (ServeNative=false / нет пула) — gateway-fallback на .NET.
@@ -71,9 +72,12 @@ pub fn compose(
     blocklist: Arc<dyn BidirectionalBlocklist>,
     profiles: Arc<dyn FeedAuthorProfiles>,
     profile_access: Arc<dyn ProfileAccess>,
+    user_avatars: Arc<dyn UserAvatarMedia>,
     media: MediaOptions,
     notifications: Arc<dyn UserNotificationDispatcher>,
 ) -> ContentModule {
+    let frc_i_backfill_enabled = media.frc_i_backfill_enabled;
+    let backfill_pool = pool.clone();
     let repo = Arc::new(ContentRepo::new(pool));
     let feed = Arc::new(FeedService::new(repo.clone(), follow.clone(), blocklist));
     let recommendations = Arc::new(CommunityRecommendationService::new(
@@ -109,7 +113,7 @@ pub fn compose(
         profiles,
         notifications,
     ));
-    let media_svc = Arc::new(MediaService::new(repo.clone()));
+    let media_svc = Arc::new(MediaService::new(repo.clone(), user_avatars));
     let drafts = Arc::new(DraftsService::new(repo.clone()));
     let post_images = Arc::new(PostImagesService::new(repo.clone()));
 
@@ -152,10 +156,16 @@ pub fn compose(
         protected_router: http::protected_router(state.clone()),
         public_router: http::public_router(state),
         video_worker,
+        image_backfill: frc_i_backfill_enabled
+            .then(|| tokio::spawn(infrastructure::image_backfill::run(backfill_pool))),
     }
 }
 
 /// Запускает воркер транскода post video (если parts ещё не взяты).
 pub fn take_and_spawn_video_worker(module: &mut ContentModule) -> Option<WorkerHandle> {
     module.video_worker.take().map(spawn_video_worker)
+}
+
+pub fn take_image_backfill(module: &mut ContentModule) -> Option<WorkerHandle> {
+    module.image_backfill.take()
 }

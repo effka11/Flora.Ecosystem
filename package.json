@@ -6,7 +6,8 @@
   "workspaces": [
     "Apps/Mobile",
     "Packages/*",
-    "Products/FSCP"
+    "Products/FSCP",
+    "Products/FRC"
   ],
   "scripts": {
     "mobile": "npm run dev --workspace=@flora/mobile",

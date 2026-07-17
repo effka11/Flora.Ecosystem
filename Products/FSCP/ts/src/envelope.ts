@@ -115,7 +115,7 @@ function normalizeReplyRef(raw: unknown): FscpMessageReplyRef | undefined {
   };
 }
 
-function normalizePlaintextPayload(raw: unknown): FscpMessagePlaintext {
+export function normalizeFscpMessagePlaintext(raw: unknown): FscpMessagePlaintext {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
   if (!obj) throw new Error("Неверный plaintext сообщения.");
 
@@ -431,7 +431,7 @@ export async function decryptFscpWireEnvelope(params: {
     fromBase64Url(env.aead.nonceBase64Url),
     messageKey
   );
-  return normalizePlaintextPayload(JSON.parse(new TextDecoder().decode(plain)));
+  return normalizeFscpMessagePlaintext(JSON.parse(new TextDecoder().decode(plain)));
 }
 
 export function isFscpWirePayload(s: string | null | undefined): boolean {

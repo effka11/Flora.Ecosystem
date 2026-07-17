@@ -35,6 +35,11 @@
       "import": "./src/fscp/index.ts",
       "default": "./src/fscp/index.ts"
     },
+    "./frc-i": {
+      "types": "./src/frc-i/index.ts",
+      "import": "./src/frc-i/index.ts",
+      "default": "./src/frc-i/index.ts"
+    },
     "./storage": {
       "types": "./src/storage/index.ts",
       "import": "./src/storage/index.ts",
@@ -69,7 +74,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@flora/fscp": "*",
+    "@flora/frc-i": "file:../../Products/FRC",
+    "@flora/fscp": "file:../../Products/FSCP",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^2.2.0",
     "uuid": "^14.0.0"

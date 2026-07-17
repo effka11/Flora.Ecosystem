@@ -1,37 +1,19 @@
-import {
-  apiDownloadMessageImageAsset,
-} from "@flora/client-core/api";
 import type { FscpImageBlock } from "@flora/client-core/fscp";
+import { FRC_I_MIME, acceptsFrcI } from "@flora/client-core/frc-i";
 import { File, Paths } from "expo-file-system";
-import { decryptMediaBytes, encryptMediaBytes } from "@/lib/crypto/aesGcm";
+import { isFloraFrcIAvailable } from "flora-frc-i";
+import { encryptMediaBytes, decryptMediaBytes } from "@/lib/crypto/aesGcm";
 import { readExpoFileBytes, writeExpoFileBytes } from "@/lib/expoFileBytes";
 import { uploadMultipartFile } from "@/lib/multipartUpload";
 import type { PreparedMessageImage } from "@/lib/messageImages";
+import { decodeFrcBytesToCache, encodeImageUriToFrc } from "@/lib/frcImage";
+import { apiDownloadMessageImageAsset } from "@flora/client-core/api";
 
 const uriCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
 
 function normalizeAssetId(assetUuid: string): string {
   return assetUuid.trim().toLowerCase();
-}
-
-function extForContentType(contentType: string): string {
-  if (contentType === "image/png") return "png";
-  if (contentType === "image/webp") return "webp";
-  return "jpg";
-}
-
-async function writeBytesToCachePath(
-  bytes: Uint8Array,
-  assetUuid: string,
-  contentType: string,
-): Promise<string> {
-  const name = `msg-img-${normalizeAssetId(assetUuid)}.${extForContentType(contentType)}`;
-  const file = new File(Paths.cache, name);
-  if (file.exists) file.delete();
-  file.create();
-  writeExpoFileBytes(file, bytes);
-  return file.uri;
 }
 
 function parseUploadedImage(raw: unknown, fallbackContentType: string): { imageAssetUuid: string; contentType: string } {
@@ -76,26 +58,37 @@ export async function uploadPreparedMessageImage(params: {
   toUserUuid: string;
   prepared: PreparedMessageImage;
 }): Promise<FscpImageBlock> {
-  const source = new File(params.prepared.uri);
-  const imageBytes = await readExpoFileBytes(source);
-  const encrypted = await encryptMediaBytes(imageBytes);
-  const encryptedFile = await writeEncryptedUploadFile(encrypted.cipher);
-  const uploaded = await postEncryptedImageForm({
-    toUserUuid: params.toUserUuid,
-    file: encryptedFile,
-    contentType: params.prepared.contentType,
-  });
+  if (!isFloraFrcIAvailable()) {
+    throw new Error("FRC-I недоступен на устройстве — отправка фото невозможна.");
+  }
 
-  return {
-    kind: "image",
-    assetUuid: uploaded.imageAssetUuid,
-    contentType: uploaded.contentType,
-    encryption: {
-      algorithm: "aes-gcm",
-      keyBase64Url: encrypted.keyBase64Url,
-      nonceBase64Url: encrypted.nonceBase64Url,
-    },
-  };
+  const friFile = await encodeImageUriToFrc(params.prepared.uri, 75);
+  try {
+    const friBytes = await readExpoFileBytes(friFile);
+    const encryptedFrc = await encryptMediaBytes(friBytes);
+    const encryptedFrcFile = await writeEncryptedUploadFile(encryptedFrc.cipher);
+    try {
+      const uploadedFrc = await postEncryptedImageForm({
+        toUserUuid: params.toUserUuid,
+        file: encryptedFrcFile,
+        contentType: FRC_I_MIME,
+      });
+      return {
+        kind: "image",
+        assetUuid: uploadedFrc.imageAssetUuid,
+        contentType: FRC_I_MIME,
+        encryption: {
+          algorithm: "aes-gcm",
+          keyBase64Url: encryptedFrc.keyBase64Url,
+          nonceBase64Url: encryptedFrc.nonceBase64Url,
+        },
+      };
+    } finally {
+      if (encryptedFrcFile.exists) encryptedFrcFile.delete();
+    }
+  } finally {
+    if (friFile.exists) friFile.delete();
+  }
 }
 
 export function peekMessageImageUri(assetUuid: string): string | null {
@@ -103,6 +96,13 @@ export function peekMessageImageUri(assetUuid: string): string | null {
 }
 
 export async function ensureMessageImageUri(block: FscpImageBlock): Promise<string> {
+  if (!acceptsFrcI(block.contentType)) {
+    throw new Error("Сообщение содержит не-FRI изображение (legacy больше не поддерживается).");
+  }
+  if (!isFloraFrcIAvailable()) {
+    throw new Error("FRC-I недоступен на устройстве.");
+  }
+
   const id = normalizeAssetId(block.assetUuid);
   const cached = uriCache.get(id);
   if (cached) return cached;
@@ -111,13 +111,13 @@ export async function ensureMessageImageUri(block: FscpImageBlock): Promise<stri
   if (pending) return pending;
 
   const task = (async () => {
-    const encryptedBuffer = await apiDownloadMessageImageAsset(block.assetUuid);
-    const plainBytes = await decryptMediaBytes({
-      cipher: encryptedBuffer,
+    const encryptedFrc = await apiDownloadMessageImageAsset(block.assetUuid);
+    const friBytes = await decryptMediaBytes({
+      cipher: encryptedFrc,
       keyBase64Url: block.encryption.keyBase64Url,
       nonceBase64Url: block.encryption.nonceBase64Url,
     });
-    const uri = await writeBytesToCachePath(plainBytes, block.assetUuid, block.contentType);
+    const uri = await decodeFrcBytesToCache(friBytes);
     uriCache.set(id, uri);
     return uri;
   })().finally(() => {

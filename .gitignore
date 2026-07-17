@@ -95,6 +95,9 @@ Thumbs.db
 Backend/Target/
 Backend/target/
 **/Cargo.toml.orig
+Apps/Web/public/frc/*.wasm
+Apps/Mobile/modules/flora-frc-i/android/src/main/jniLibs/
+Apps/Mobile/modules/flora-frc-i/ios/lib/
 
 # Python bytecode (compete/audit probes)
 **/__pycache__/

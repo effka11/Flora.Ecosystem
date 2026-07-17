@@ -22,6 +22,7 @@ use crate::infrastructure::store::SqlUsersStore;
 pub struct UsersModule {
     pub protected_router: axum::Router,
     pub public_router: axum::Router,
+    pub image_backfill: Option<tokio::task::JoinHandle<()>>,
 }
 
 pub fn router() -> axum::Router {
@@ -89,12 +90,19 @@ pub fn profile_access_port(pool: PgPool) -> Arc<dyn flora_users_contracts::Profi
     Arc::new(infrastructure::profile_access::SqlProfileAccess::new(pool))
 }
 
+/// Read-only media port для публичного avatar route в Content.
+pub fn avatar_media_port(pool: PgPool) -> Arc<dyn flora_users_contracts::UserAvatarMedia> {
+    Arc::new(infrastructure::avatars::SqlUserAvatarMedia::new(pool))
+}
+
 pub fn compose(
     pool: PgPool,
     accounts: Arc<dyn AccountDirectory>,
     communities: Arc<dyn CommunityFollowStats>,
     notifications: Arc<dyn UserNotificationDispatcher>,
+    frc_i_backfill_enabled: bool,
 ) -> UsersModule {
+    let backfill_pool = pool.clone();
     let store = Arc::new(SqlUsersStore::new(pool.clone()));
     let (follow_graph, _, _) = infrastructure::social_graph::as_ports(pool.clone());
     let messages_access: Arc<dyn flora_users_contracts::MessagesAccess> = Arc::new(
@@ -128,5 +136,7 @@ pub fn compose(
     UsersModule {
         protected_router: http::protected_router(state.clone()),
         public_router: http::public_router(state),
+        image_backfill: frc_i_backfill_enabled
+            .then(|| tokio::spawn(infrastructure::image_backfill::run(backfill_pool))),
     }
 }

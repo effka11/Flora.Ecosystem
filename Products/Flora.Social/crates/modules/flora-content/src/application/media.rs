@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use flora_users_contracts::UserAvatarMedia;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -9,11 +10,12 @@ use crate::infrastructure::repo::{ContentRepo, MediaBlob, VideoLite};
 
 pub struct MediaService {
     repo: Arc<ContentRepo>,
+    user_avatars: Arc<dyn UserAvatarMedia>,
 }
 
 impl MediaService {
-    pub fn new(repo: Arc<ContentRepo>) -> Self {
-        Self { repo }
+    pub fn new(repo: Arc<ContentRepo>, user_avatars: Arc<dyn UserAvatarMedia>) -> Self {
+        Self { repo, user_avatars }
     }
 
     pub async fn post_image(&self, uuid: Uuid) -> Result<Option<MediaBlob>, String> {
@@ -24,13 +26,11 @@ impl MediaService {
     }
 
     pub async fn avatar(&self, uuid: Uuid) -> Result<Option<MediaBlob>, String> {
-        if let Some(blob) = self
-            .repo
-            .user_avatar_by_uuid(uuid)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            return Ok(Some(blob));
+        if let Some(blob) = self.user_avatars.by_uuid(uuid).await? {
+            return Ok(Some(MediaBlob {
+                data: blob.data,
+                content_type: blob.content_type,
+            }));
         }
         self.repo
             .community_avatar_by_uuid(uuid)

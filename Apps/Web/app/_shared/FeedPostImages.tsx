@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { postImageUrl } from "@/lib/socialApi";
+import { FrcImage } from "./FrcImage";
 import styles from "./FeedPostImages.module.css";
 
 export type FeedPostImagePreviewItem = {
@@ -121,8 +122,7 @@ export function FeedPostImages({
             onClick={closeModal}
           >
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <FrcImage
                 className={styles.modalImage}
                 src={resolveSrc(activeItem)}
                 alt=""
@@ -162,8 +162,7 @@ export function FeedPostImages({
                   onClick={() => setActiveId(item.id)}
                   aria-label={`Открыть фото ${index + 1} из ${visibleItems.length}`}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <FrcImage
                     className={styles.image}
                     src={resolveSrc(item)}
                     alt=""
