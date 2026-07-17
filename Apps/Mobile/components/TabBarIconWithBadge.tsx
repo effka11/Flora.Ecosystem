@@ -1,13 +1,13 @@
-import { Ionicons } from "@expo/vector-icons";
+import type { ReactNode } from "react";
 import type { ColorValue } from "react-native";
 import { StyleSheet, Text, View } from "react-native";
 import { floraColors } from "@/lib/theme";
 
 type Props = {
-  name: keyof typeof Ionicons.glyphMap;
   color: ColorValue;
   size: number;
   badge?: number;
+  children: ReactNode;
 };
 
 function formatBadge(count: number): string {
@@ -15,12 +15,12 @@ function formatBadge(count: number): string {
   return String(count);
 }
 
-export function TabBarIconWithBadge({ name, color, size, badge = 0 }: Props) {
+export function TabBarIconWithBadge({ badge = 0, children }: Props) {
   const showBadge = badge > 0;
 
   return (
     <View style={styles.wrap}>
-      <Ionicons name={name} color={color} size={size} />
+      {children}
       {showBadge ? (
         <View style={styles.badge} accessibilityLabel={`Непрочитанных: ${badge > 99 ? 99 : badge}`}>
           <Text style={styles.badgeText}>{formatBadge(badge)}</Text>
