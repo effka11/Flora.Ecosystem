@@ -21,15 +21,17 @@ type HamburgerMenuContextValue = {
 const HamburgerMenuContext = createContext<HamburgerMenuContextValue | null>(null);
 
 /**
- * open-state живёт здесь, а не в Provider: смена open не ререндерит tabs children
- * (иначе весь экран под меню дёргается на старте/конце анимации).
+ * open-state живёт здесь: смена open ререндерит меню, но не tabs —
+ * children в memo-слоте FeedHamburgerMenu со стабильной ссылкой из Provider.
  */
 function HamburgerMenuHost({
   openMenuRef,
   closeMenuRef,
+  children,
 }: {
   openMenuRef: MutableRefObject<() => void>;
   closeMenuRef: MutableRefObject<() => void>;
+  children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const openMenu = useCallback(() => setOpen(true), []);
@@ -40,7 +42,11 @@ function HamburgerMenuHost({
     closeMenuRef.current = closeMenu;
   }, [closeMenu, closeMenuRef, openMenu, openMenuRef]);
 
-  return <FeedHamburgerMenu visible={open} onOpen={openMenu} onClose={closeMenu} />;
+  return (
+    <FeedHamburgerMenu visible={open} onOpen={openMenu} onClose={closeMenu}>
+      {children}
+    </FeedHamburgerMenu>
+  );
 }
 
 export function HamburgerMenuProvider({ children }: { children: ReactNode }) {
@@ -57,8 +63,11 @@ export function HamburgerMenuProvider({ children }: { children: ReactNode }) {
 
   return (
     <GestureHandlerRootView style={styles.host}>
-      <HamburgerMenuContext.Provider value={value}>{children}</HamburgerMenuContext.Provider>
-      <HamburgerMenuHost openMenuRef={openMenuRef} closeMenuRef={closeMenuRef} />
+      <HamburgerMenuContext.Provider value={value}>
+        <HamburgerMenuHost openMenuRef={openMenuRef} closeMenuRef={closeMenuRef}>
+          {children}
+        </HamburgerMenuHost>
+      </HamburgerMenuContext.Provider>
     </GestureHandlerRootView>
   );
 }

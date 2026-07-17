@@ -1,7 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, usePathname, type Href } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Pressable,
   StyleSheet,
@@ -104,13 +112,12 @@ const SWIPE_RATIO = 0.28;
 /** Gesture Handler сообщает velocity в points/sec. */
 const SWIPE_CLOSE_VX = -650;
 const SWIPE_OPEN_VX = 650;
-/** Активная зона свайпа открытия: не только у самого края, а с запасом внутрь экрана. */
-const EDGE_HIT_WIDTH = 3 * floraSpacing.grid;
 /**
- * Ниже chrome шапки (paddingTop grid + row 45): иначе edgeHit поверх гамбургера/«назад»
- * и GestureDetector съедает тапы.
+ * Зона edge-swipe (45px на всю высоту, без вырезов).
+ * Pan на обёртке контента (не absolute overlay): тапы остаются детям,
+ * свайп забирается через manualActivation после горизонтального сдвига.
  */
-const EDGE_HIT_TOP_CHROME = floraSpacing.grid + 45;
+const EDGE_HIT_WIDTH = 3 * floraSpacing.grid;
 /** Минимальная длительность доводки после свайпа (мс). */
 const SETTLE_MIN_MS = floraMotion.baseMs;
 /** Максимальная длительность доводки после свайпа (мс). */
@@ -152,21 +159,27 @@ function settleProgress(
   );
 }
 
+/** Стабильный слот: open-state меню не ререндерит tabs children. */
+const MenuContentSlot = memo(function MenuContentSlot({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+});
+
 type Props = {
   visible: boolean;
   onOpen: () => void;
   onClose: () => void;
+  children: ReactNode;
 };
 
 /**
- * Полноэкранный drawer без RN Modal — системный Modal даёт заметный лаг до первого кадра.
- * Монтируется у корня табов (HamburgerMenuProvider), поэтому absoluteFill кроет весь экран.
- * Закрыт: тонкая hit-зона слева открывает меню свайпом вправо.
+ * Drawer без RN Modal — системный Modal даёт заметный лаг до первого кадра.
+ * Контент табов — children ( Pan edge-swipe через manualActivation по X ).
+ * Оверлей панели/backdrop — sibling поверх, pointerEvents только когда открыт.
  *
  * Анимация только на UI-потоке (Reanimated). React-state `presented` не трогаем во время
  * edge-drag — иначе setState на onStart даёт кадр лага под пальцем.
  */
-export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
+export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props) {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const pathname = usePathname();
@@ -177,6 +190,11 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
   const progress = useSharedValue(visible ? 1 : 0);
   const dragStartProgress = useSharedValue(0);
   const panelWidthSV = useSharedValue(panelWidth);
+  const edgeMaxX = useSharedValue(insets.left + EDGE_HIT_WIDTH);
+  const edgeEnabled = useSharedValue(visible ? 0 : 1);
+  /** Старт касания — translationX до activate() часто 0, считаем delta сами. */
+  const touchStartX = useSharedValue(0);
+  const touchStartY = useSharedValue(0);
   /** visible уже обработан жестом; React-effect не запускает вторую анимацию. */
   const gestureTargetRef = useRef<0 | 1 | null>(null);
   const jsRef = useRef({ onOpen, onClose });
@@ -185,6 +203,14 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
   useEffect(() => {
     panelWidthSV.value = panelWidth;
   }, [panelWidth, panelWidthSV]);
+
+  useEffect(() => {
+    edgeMaxX.value = insets.left + EDGE_HIT_WIDTH;
+  }, [edgeMaxX, insets.left]);
+
+  useEffect(() => {
+    edgeEnabled.value = !visible && !presented ? 1 : 0;
+  }, [edgeEnabled, presented, visible]);
 
   const markPresented = useCallback(() => {
     setPresented(true);
@@ -256,11 +282,44 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
     [commitGestureClose, dragStartProgress, markDismissed, panelWidthSV, progress],
   );
 
+  /**
+   * Pan на обёртке контента (вся высота, полоса EDGE_HIT_WIDTH):
+   * — тап / вертикальный скролл → fail, дети (гамбургер, таббар, список) получают жест;
+   * — горизонтальный сдвиг из левой полосы → activate.
+   */
   const edgeGesture = useMemo(
     () =>
       Gesture.Pan()
-        .activeOffsetX(SWIPE_AXIS_PX)
-        .failOffsetY([-SWIPE_AXIS_PX * 2, SWIPE_AXIS_PX * 2])
+        .manualActivation(true)
+        .cancelsTouchesInView(false)
+        .onTouchesDown((event, state) => {
+          "worklet";
+          if (edgeEnabled.value < 0.5) {
+            state.fail();
+            return;
+          }
+          const touch = event.allTouches[0];
+          if (!touch || touch.absoluteX > edgeMaxX.value) {
+            state.fail();
+            return;
+          }
+          touchStartX.value = touch.absoluteX;
+          touchStartY.value = touch.absoluteY;
+        })
+        .onTouchesMove((event, state) => {
+          "worklet";
+          const touch = event.allTouches[0];
+          if (!touch) return;
+          const dx = touch.absoluteX - touchStartX.value;
+          const dy = touch.absoluteY - touchStartY.value;
+          if (Math.abs(dy) > SWIPE_AXIS_PX * 2 && Math.abs(dy) >= Math.abs(dx)) {
+            state.fail();
+            return;
+          }
+          if (dx > SWIPE_AXIS_PX) {
+            state.activate();
+          }
+        })
         .onStart(() => {
           "worklet";
           cancelAnimation(progress);
@@ -285,7 +344,16 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
           }
           settleProgress(progress, 0, width, event.velocityX);
         }),
-    [commitGestureOpen, dragStartProgress, panelWidthSV, progress],
+    [
+      commitGestureOpen,
+      dragStartProgress,
+      edgeEnabled,
+      edgeMaxX,
+      panelWidthSV,
+      progress,
+      touchStartX,
+      touchStartY,
+    ],
   );
 
   useEffect(() => {
@@ -344,134 +412,121 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
 
   const displayName = me?.displayName?.trim() || me?.username || "Профиль";
   const handle = me?.username ? `@${me.username}` : "";
-  const showEdgeHit = !visible && !presented;
 
   return (
-    <View style={styles.root} pointerEvents="box-none" accessibilityViewIsModal={presented}>
-      {showEdgeHit ? (
-        <GestureDetector gesture={edgeGesture}>
-          <Animated.View
-            collapsable={false}
-            style={[
-              styles.edgeHit,
-              {
-                width: insets.left + EDGE_HIT_WIDTH,
-                top: insets.top + EDGE_HIT_TOP_CHROME,
-              },
-            ]}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          />
-        </GestureDetector>
-      ) : null}
+    <>
+      <GestureDetector gesture={edgeGesture}>
+        <View style={styles.contentSlot} collapsable={false}>
+          <MenuContentSlot>{children}</MenuContentSlot>
+        </View>
+      </GestureDetector>
 
-      <Animated.View
-        animatedProps={overlayAnimatedProps}
-        style={StyleSheet.absoluteFill}
-        accessibilityElementsHidden={!presented}
-        importantForAccessibility={presented ? "yes" : "no-hide-descendants"}
-      >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={finishClose}
-          accessibilityRole="button"
-          accessibilityLabel="Закрыть меню"
-        >
-          <Animated.View style={[styles.backdrop, backdropAnimatedStyle]} />
-        </Pressable>
-      </Animated.View>
-
-      <GestureDetector gesture={closeGesture}>
+      <View style={styles.root} pointerEvents="box-none" accessibilityViewIsModal={presented}>
         <Animated.View
           animatedProps={overlayAnimatedProps}
-          collapsable={false}
-          style={[
-            styles.panel,
-            {
-              width: panelWidth,
-              paddingTop: insets.top + floraSpacing.grid,
-              paddingBottom: insets.bottom + floraSpacing.grid,
-            },
-            panelAnimatedStyle,
-          ]}
+          style={StyleSheet.absoluteFill}
+          accessibilityElementsHidden={!presented}
+          importantForAccessibility={presented ? "yes" : "no-hide-descendants"}
         >
-          <View style={styles.header}>
-            <View style={styles.logoRow}>
-              <View style={styles.logoMark} accessibilityElementsHidden>
-                <Image
-                  source={FLORA_MARK_GLYPH}
-                  style={styles.logoMarkGlyph}
-                  contentFit="contain"
-                  accessibilityIgnoresInvertColors
-                />
-              </View>
-              <Text style={styles.logoText}>FLORA</Text>
-            </View>
-          </View>
-
-          <View style={styles.navList}>
-            {MENU_ITEMS.map((item) => {
-              const active = isMenuItemActive(pathname, item.id);
-              const itemColor = active ? floraColors.greenLight : floraColors.whiteTemplate;
-              return (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="menuitem"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [styles.navItem, pressed && styles.navItemPressed]}
-                  onPress={() => openItem(item.href)}
-                >
-                  <View style={styles.navIconWrap}>
-                    <MenuItemIcon id={item.id} color={itemColor} />
-                  </View>
-                  <Text style={[styles.navLabel, active && styles.navLabelActive]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
           <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={finishClose}
             accessibilityRole="button"
-            accessibilityLabel={me ? `Настройки аккаунта: ${displayName}` : "Настройки аккаунта"}
-            style={({ pressed }) => [styles.userCard, pressed && styles.navItemPressed]}
-            onPress={openAccountSettings}
+            accessibilityLabel="Закрыть меню"
           >
-            <FloraAvatar
-              size={3 * floraSpacing.grid}
-              avatarUuid={me?.avatarUuid}
-              displayName={displayName}
-              username={me?.username ?? ""}
-              seed={me?.userUuid}
-            />
-            <View style={styles.userMeta}>
-              <Text style={styles.userDisplayName} numberOfLines={1}>
-                {displayName}
-              </Text>
-              {handle ? (
-                <Text style={styles.userHandle} numberOfLines={1}>
-                  {handle}
-                </Text>
-              ) : null}
-            </View>
+            <Animated.View style={[styles.backdrop, backdropAnimatedStyle]} />
           </Pressable>
         </Animated.View>
-      </GestureDetector>
-    </View>
+
+        <GestureDetector gesture={closeGesture}>
+          <Animated.View
+            animatedProps={overlayAnimatedProps}
+            collapsable={false}
+            style={[
+              styles.panel,
+              {
+                width: panelWidth,
+                paddingTop: insets.top + floraSpacing.grid,
+                paddingBottom: insets.bottom + floraSpacing.grid,
+              },
+              panelAnimatedStyle,
+            ]}
+          >
+            <View style={styles.header}>
+              <View style={styles.logoRow}>
+                <View style={styles.logoMark} accessibilityElementsHidden>
+                  <Image
+                    source={FLORA_MARK_GLYPH}
+                    style={styles.logoMarkGlyph}
+                    contentFit="contain"
+                    accessibilityIgnoresInvertColors
+                  />
+                </View>
+                <Text style={styles.logoText}>FLORA</Text>
+              </View>
+            </View>
+
+            <View style={styles.navList}>
+              {MENU_ITEMS.map((item) => {
+                const active = isMenuItemActive(pathname, item.id);
+                const itemColor = active ? floraColors.greenLight : floraColors.whiteTemplate;
+                return (
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="menuitem"
+                    accessibilityState={{ selected: active }}
+                    style={({ pressed }) => [styles.navItem, pressed && styles.navItemPressed]}
+                    onPress={() => openItem(item.href)}
+                  >
+                    <View style={styles.navIconWrap}>
+                      <MenuItemIcon id={item.id} color={itemColor} />
+                    </View>
+                    <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={me ? `Настройки аккаунта: ${displayName}` : "Настройки аккаунта"}
+              style={({ pressed }) => [styles.userCard, pressed && styles.navItemPressed]}
+              onPress={openAccountSettings}
+            >
+              <FloraAvatar
+                size={3 * floraSpacing.grid}
+                avatarUuid={me?.avatarUuid}
+                displayName={displayName}
+                username={me?.username ?? ""}
+                seed={me?.userUuid}
+              />
+              <View style={styles.userMeta}>
+                <Text style={styles.userDisplayName} numberOfLines={1}>
+                  {displayName}
+                </Text>
+                {handle ? (
+                  <Text style={styles.userHandle} numberOfLines={1}>
+                    {handle}
+                  </Text>
+                ) : null}
+              </View>
+            </Pressable>
+          </Animated.View>
+        </GestureDetector>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  contentSlot: {
+    flex: 1,
+  },
   root: {
     ...StyleSheet.absoluteFill,
     zIndex: 1000,
-  },
-  edgeHit: {
-    position: "absolute",
-    left: 0,
-    bottom: 0,
-    zIndex: 1001,
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
