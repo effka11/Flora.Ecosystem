@@ -5,10 +5,12 @@
 ## Коммит-релиз
 
 1. Обновить `VERSION` (`ecosystem` и `products.social` — одна semver-строка на релиз).
-2. `npm run version:sync` — обновит `package.json`, `app.json`, `Directory.Build.props`, `Flora.API/flora-versions.json`.
+2. `npm run version:sync` — обновит `Apps/*/package.json`, `Apps/Mobile/app.json`, `Packages/flora-client-core`, `Backend/flora-versions.json`, `Cargo.toml` (`# synced-from-VERSION`).
 3. Вручную:
    - `Apps/Mobile/app.json` — увеличить `expo.android.versionCode` на 1;
-   - fallback-версии в `Apps/Mobile/lib/api.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`, `Apps/Web/lib/fscp/clientCore.ts`, `Apps/Web/next.config.ts`;
+   - fallback-версии в `Apps/Mobile/lib/api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`, `Apps/Web/lib/fscp/clientCore.ts`, `Apps/Web/next.config.ts`;
+   - корневой `flora-versions.json`, `Products/FSCP/package.json`, `Products/FRC/package.json` (sync их не трогает);
+   - `Artifacts/contract-fixtures/api-version.json` — под новый `/version` (ecosystem / products / api);
    - `README.md` — имя APK `flora.social-v<version>-android.apk`.
 4. Коммит (GPG): `chore(ecosystem): v<version> release`.
 
@@ -22,12 +24,14 @@ git tag -s social/v<version> -m "Flora Social v<version>"
 ## Перед релизом
 
 ```powershell
-dotnet build Flora.Ecosystem.slnx
-dotnet test tests/Flora.ContractFixtures
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+pwsh ./Tools/validate-architecture-rust.ps1
 npm run ci
 ```
 
-В коммит не включать: `obj/`, `bin/`, `.env`, `secrets/`, `google-services.json`, `Scripts/broadcast.env`.
+В коммит не включать: `obj/`, `bin/`, `.env`, `secrets/`, `google-services.json`, `Scripts/broadcast.env`, `.next/`, `node_modules/`.
 
 ## После коммита
 
@@ -63,10 +67,10 @@ GitHub Release assets: APK + `flora.social-android-update.json` (sideload auto-u
 - [ ] `VERSION` — `ecosystem` и `products.social`
 - [ ] `npm run version:sync`
 - [ ] `Apps/Mobile/app.json` — `versionCode` +1
-- [ ] Fallback-версии (Mobile: `api.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`; Web: `clientCore.ts`, `next.config.ts`)
+- [ ] Fallback-версии (Mobile: `api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`; Web: `clientCore.ts`, `next.config.ts`)
+- [ ] `flora-versions.json` (корень), FSCP/FRC `package.json`, `api-version.json`
 - [ ] `README.md` — имя APK
-- [ ] `dotnet build Flora.Ecosystem.slnx`
-- [ ] `dotnet test tests/Flora.ContractFixtures`
+- [ ] `cargo` fmt / clippy / test (+ `validate-architecture-rust` при необходимости)
 - [ ] `npm run ci`
 - [ ] `git commit -S` — `chore(ecosystem): v<version> release`
 - [ ] Теги `ecosystem/v<version>`, `social/v<version>` (push на remote)
