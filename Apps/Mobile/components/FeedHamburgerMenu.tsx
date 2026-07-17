@@ -104,8 +104,8 @@ const SWIPE_RATIO = 0.28;
 /** Gesture Handler сообщает velocity в points/sec. */
 const SWIPE_CLOSE_VX = -650;
 const SWIPE_OPEN_VX = 650;
-/** Активная зона свайпа открытия у левого края (поверх safe-area). */
-const EDGE_HIT_WIDTH = floraSpacing.grid + floraSpacing.gridFine;
+/** Активная зона свайпа открытия: не только у самого края, а с запасом внутрь экрана. */
+const EDGE_HIT_WIDTH = 3 * floraSpacing.grid;
 /** Минимальная длительность доводки после свайпа (мс). */
 const SETTLE_MIN_MS = floraMotion.baseMs;
 /** Максимальная длительность доводки после свайпа (мс). */
