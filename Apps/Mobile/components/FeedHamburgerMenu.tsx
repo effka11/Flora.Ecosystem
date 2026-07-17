@@ -14,6 +14,7 @@ import Animated, {
   cancelAnimation,
   Easing,
   runOnJS,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -119,7 +120,7 @@ function settleProgress(
   target: 0 | 1,
   panelWidth: number,
   velocityX: number,
-  onFinished?: (finished: boolean) => void,
+  onFinished?: (finished?: boolean) => void,
 ) {
   "worklet";
   const distance = Math.abs(target - progress.value);
@@ -156,6 +157,9 @@ type Props = {
  * Полноэкранный drawer без RN Modal — системный Modal даёт заметный лаг до первого кадра.
  * Монтируется у корня табов (HamburgerMenuProvider), поэтому absoluteFill кроет весь экран.
  * Закрыт: тонкая hit-зона слева открывает меню свайпом вправо.
+ *
+ * Анимация только на UI-потоке (Reanimated). React-state `presented` не трогаем во время
+ * edge-drag — иначе setState на onStart даёт кадр лага под пальцем.
  */
 export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
   const insets = useSafeAreaInsets();
@@ -165,25 +169,17 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
   const panelWidth = Math.min(PANEL_MAX_WIDTH, Math.round(windowWidth * PANEL_WIDTH_RATIO));
 
   const [presented, setPresented] = useState(visible);
-  /** Крайняя hit-зона не размонтируется пока идёт edge-свайп. */
-  const [edgeDragging, setEdgeDragging] = useState(false);
   const progress = useSharedValue(visible ? 1 : 0);
   const dragStartProgress = useSharedValue(0);
+  const panelWidthSV = useSharedValue(panelWidth);
   /** visible уже обработан жестом; React-effect не запускает вторую анимацию. */
   const gestureTargetRef = useRef<0 | 1 | null>(null);
+  const jsRef = useRef({ onOpen, onClose });
+  jsRef.current = { onOpen, onClose };
 
-  const timingConfig = useCallback(
-    (target: 0 | 1) => {
-      "worklet";
-      const distance = Math.abs(target - progress.value);
-      const fullDuration = target === 1 ? OPEN_MS : CLOSE_MS;
-      return {
-        duration: Math.max(floraMotion.baseMs, Math.round(fullDuration * distance)),
-        easing: target === 1 ? OPEN_EASING : CLOSE_EASING,
-      };
-    },
-    [progress],
-  );
+  useEffect(() => {
+    panelWidthSV.value = panelWidth;
+  }, [panelWidth, panelWidthSV]);
 
   const markPresented = useCallback(() => {
     setPresented(true);
@@ -193,34 +189,32 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
     setPresented(false);
   }, []);
 
-  const beginEdgeDrag = useCallback(() => {
-    setEdgeDragging(true);
-    setPresented(true);
-  }, []);
-
-  const endEdgeDrag = useCallback(() => {
-    setEdgeDragging(false);
-  }, []);
-
   const commitGestureOpen = useCallback(() => {
     gestureTargetRef.current = 1;
-    setEdgeDragging(false);
     setPresented(true);
-    onOpen();
-  }, [onOpen]);
+    jsRef.current.onOpen();
+  }, []);
 
   const commitGestureClose = useCallback(() => {
     gestureTargetRef.current = 0;
-    onClose();
-  }, [onClose]);
+    jsRef.current.onClose();
+  }, []);
 
   const finishClose = useCallback(() => {
     gestureTargetRef.current = 0;
-    progress.value = withTiming(0, timingConfig(0), (finished) => {
-      if (finished) runOnJS(markDismissed)();
-    });
-    onClose();
-  }, [markDismissed, onClose, progress, timingConfig]);
+    const distance = Math.abs(progress.value);
+    progress.value = withTiming(
+      0,
+      {
+        duration: Math.max(floraMotion.baseMs, Math.round(CLOSE_MS * distance)),
+        easing: CLOSE_EASING,
+      },
+      (finished) => {
+        if (finished) runOnJS(markDismissed)();
+      },
+    );
+    jsRef.current.onClose();
+  }, [markDismissed, progress]);
 
   const closeGesture = useMemo(
     () =>
@@ -234,25 +228,27 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
         })
         .onUpdate((event) => {
           "worklet";
+          const width = panelWidthSV.value;
           progress.value = Math.min(
             1,
-            Math.max(0, dragStartProgress.value + event.translationX / panelWidth),
+            Math.max(0, dragStartProgress.value + event.translationX / width),
           );
         })
         .onEnd((event) => {
           "worklet";
+          const width = panelWidthSV.value;
           const shouldClose =
             progress.value < 1 - SWIPE_RATIO || event.velocityX < SWIPE_CLOSE_VX;
           if (shouldClose) {
-            settleProgress(progress, 0, panelWidth, event.velocityX, (finished) => {
+            settleProgress(progress, 0, width, event.velocityX, (finished) => {
               if (finished) runOnJS(markDismissed)();
             });
             runOnJS(commitGestureClose)();
             return;
           }
-          settleProgress(progress, 1, panelWidth, event.velocityX);
+          settleProgress(progress, 1, width, event.velocityX);
         }),
-    [commitGestureClose, dragStartProgress, markDismissed, panelWidth, progress],
+    [commitGestureClose, dragStartProgress, markDismissed, panelWidthSV, progress],
   );
 
   const edgeGesture = useMemo(
@@ -264,37 +260,27 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
           "worklet";
           cancelAnimation(progress);
           dragStartProgress.value = progress.value;
-          runOnJS(beginEdgeDrag)();
         })
         .onUpdate((event) => {
           "worklet";
+          const width = panelWidthSV.value;
           progress.value = Math.min(
             1,
-            Math.max(0, dragStartProgress.value + event.translationX / panelWidth),
+            Math.max(0, dragStartProgress.value + event.translationX / width),
           );
         })
         .onEnd((event) => {
           "worklet";
+          const width = panelWidthSV.value;
           const shouldOpen = progress.value > SWIPE_RATIO || event.velocityX > SWIPE_OPEN_VX;
           if (shouldOpen) {
-            settleProgress(progress, 1, panelWidth, event.velocityX);
+            settleProgress(progress, 1, width, event.velocityX);
             runOnJS(commitGestureOpen)();
             return;
           }
-          settleProgress(progress, 0, panelWidth, event.velocityX, (finished) => {
-            if (finished) runOnJS(markDismissed)();
-          });
-          runOnJS(endEdgeDrag)();
+          settleProgress(progress, 0, width, event.velocityX);
         }),
-    [
-      beginEdgeDrag,
-      commitGestureOpen,
-      dragStartProgress,
-      endEdgeDrag,
-      markDismissed,
-      panelWidth,
-      progress,
-    ],
+    [commitGestureOpen, dragStartProgress, panelWidthSV, progress],
   );
 
   useEffect(() => {
@@ -307,21 +293,38 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
     cancelAnimation(progress);
     if (visible) {
       markPresented();
-      progress.value = withTiming(1, timingConfig(1));
+      const distance = Math.abs(1 - progress.value);
+      progress.value = withTiming(1, {
+        duration: Math.max(floraMotion.baseMs, Math.round(OPEN_MS * distance)),
+        easing: OPEN_EASING,
+      });
       return;
     }
 
-    progress.value = withTiming(0, timingConfig(0), (finished) => {
-      if (finished) runOnJS(markDismissed)();
-    });
-  }, [markDismissed, markPresented, progress, timingConfig, visible]);
+    const distance = Math.abs(progress.value);
+    progress.value = withTiming(
+      0,
+      {
+        duration: Math.max(floraMotion.baseMs, Math.round(CLOSE_MS * distance)),
+        easing: CLOSE_EASING,
+      },
+      (finished) => {
+        if (finished) runOnJS(markDismissed)();
+      },
+    );
+  }, [markDismissed, markPresented, progress, visible]);
 
   const panelAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -panelWidth * (1 - progress.value) }],
+    transform: [{ translateX: -panelWidthSV.value * (1 - progress.value) }],
   }));
 
   const backdropAnimatedStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
+  }));
+
+  /** Hit-test без React re-render: панель/backdrop активны когда progress > 0. */
+  const overlayAnimatedProps = useAnimatedProps(() => ({
+    pointerEvents: progress.value > 0.001 ? ("auto" as const) : ("none" as const),
   }));
 
   const openItem = (href: Href) => {
@@ -336,7 +339,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
 
   const displayName = me?.displayName?.trim() || me?.username || "Профиль";
   const handle = me?.username ? `@${me.username}` : "";
-  const showEdgeHit = edgeDragging || (!visible && !presented);
+  const showEdgeHit = !visible && !presented;
 
   return (
     <View style={styles.root} pointerEvents="box-none" accessibilityViewIsModal={presented}>
@@ -351,19 +354,26 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
         </GestureDetector>
       ) : null}
 
-      <Pressable
-        pointerEvents={presented ? "auto" : "none"}
+      <Animated.View
+        animatedProps={overlayAnimatedProps}
         style={StyleSheet.absoluteFill}
-        onPress={finishClose}
-        accessibilityRole="button"
-        accessibilityLabel="Закрыть меню"
+        accessibilityElementsHidden={!presented}
+        importantForAccessibility={presented ? "yes" : "no-hide-descendants"}
       >
-        <Animated.View style={[styles.backdrop, backdropAnimatedStyle]} />
-      </Pressable>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={finishClose}
+          accessibilityRole="button"
+          accessibilityLabel="Закрыть меню"
+        >
+          <Animated.View style={[styles.backdrop, backdropAnimatedStyle]} />
+        </Pressable>
+      </Animated.View>
 
       <GestureDetector gesture={closeGesture}>
         <Animated.View
-          pointerEvents={presented ? "auto" : "none"}
+          animatedProps={overlayAnimatedProps}
+          collapsable={false}
           style={[
             styles.panel,
             {
@@ -445,7 +455,6 @@ const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFill,
     zIndex: 1000,
-    elevation: 1000,
   },
   edgeHit: {
     position: "absolute",
@@ -453,7 +462,6 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     zIndex: 1001,
-    elevation: 1001,
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
