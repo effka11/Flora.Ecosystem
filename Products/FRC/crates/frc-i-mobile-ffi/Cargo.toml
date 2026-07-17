@@ -15,7 +15,8 @@ frc-i = { workspace = true }
 frc-i-integration = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
-jni = "0.22.4"
+# 0.22 renamed JNIEnv → EnvUnowned; keep 0.21 until the Expo bridge is migrated.
+jni = "=0.21.1"
 
 [dev-dependencies]
 image = { workspace = true }

@@ -186,6 +186,27 @@ function Ensure-FfmpegAndroid([string]$repoRoot, [string]$mobileDir) {
     }
 }
 
+function Test-FrcIAndroidNativePresent([string]$repoRoot) {
+    $so = Join-Path $repoRoot "Apps\Mobile\modules\flora-frc-i\android\src\main\jniLibs\arm64-v8a\libfrc_i_mobile_ffi.so"
+    return (Test-Path $so)
+}
+
+function Ensure-FrcIAndroidNative([string]$repoRoot) {
+    if (Test-FrcIAndroidNativePresent $repoRoot) {
+        Write-Host "FRC-I native (libfrc_i_mobile_ffi.so) present."
+        return
+    }
+
+    Write-Host "Building FRC-I native Android libs (cargo-ndk / frc-i-mobile-ffi) ..."
+    & (Join-Path $repoRoot "Scripts\build-frc-i-mobile-android.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        throw "build-frc-i-mobile-android.ps1 failed (need cargo-ndk + Android NDK)."
+    }
+    if (-not (Test-FrcIAndroidNativePresent $repoRoot)) {
+        throw "FRC-I native build finished but libfrc_i_mobile_ffi.so is still missing."
+    }
+}
+
 function Get-FreeSubstDrive {
     foreach ($letter in @('Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K', 'J', 'I', 'H', 'G', 'F', 'E', 'D')) {
         $drive = "${letter}:"

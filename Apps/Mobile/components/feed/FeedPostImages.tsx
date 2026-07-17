@@ -174,6 +174,24 @@ function CollageCell({ uri, width, height, borderRadius, onPress }: CollageCellP
   );
 }
 
+/** Lightbox must decode FRI → PNG the same way as thumbnails (raw FRI is not Image-readable). */
+function ModalFrcImage({ uri }: { uri: string }) {
+  const resolvedUri = useFrcImageUri(uri);
+  if (!resolvedUri) return null;
+  return (
+    <View style={[styles.modalClip, { borderRadius: MODAL_IMAGE_RADIUS }]}>
+      <Image
+        source={{ uri: resolvedUri }}
+        style={[styles.modalImage, { borderRadius: MODAL_IMAGE_RADIUS }]}
+        contentFit="contain"
+        cachePolicy="disk"
+        recyclingKey={resolvedUri}
+        transition={0}
+      />
+    </View>
+  );
+}
+
 export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props) {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
@@ -418,18 +436,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
           onPress={closeModal}
         >
           <Pressable style={styles.modalContent} onPress={closeModal}>
-            {activeUri ? (
-              <View style={[styles.modalClip, { borderRadius: MODAL_IMAGE_RADIUS }]}>
-                <Image
-                  source={{ uri: activeUri }}
-                  style={[styles.modalImage, { borderRadius: MODAL_IMAGE_RADIUS }]}
-                  contentFit="contain"
-                  cachePolicy="disk"
-                  recyclingKey={activeUri}
-                  transition={0}
-                />
-              </View>
-            ) : null}
+            {activeUri ? <ModalFrcImage uri={activeUri} /> : null}
           </Pressable>
         </Pressable>
       </Modal>

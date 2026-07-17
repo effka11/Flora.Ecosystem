@@ -79,7 +79,7 @@ Flora__AdminBroadcastToken=<длинный случайный секрет>
 
 ## Локальная разработка
 
-Metro dev-client **всегда** ходит на `http://localhost:5290` (локальный Rust gateway; .NET upstream `:5284`). JS-бандл приходит с Metro (`:8081`). USB: `adb reverse tcp:5290 tcp:5290`.
+Metro dev-client **всегда** ходит на `http://localhost:5290` (`flora-api`). JS-бандл приходит с Metro (`:8081`). USB: `adb reverse tcp:5290 tcp:5290`.
 
 ```bash
 npm install   # из корня monorepo

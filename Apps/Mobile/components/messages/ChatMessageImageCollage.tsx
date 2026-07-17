@@ -47,7 +47,10 @@ function MessageImageSource({
       .then((uri) => {
         if (!cancelled) setState({ uri, loading: false, error: null });
       })
-      .catch(() => {
+      .catch((error) => {
+        if (__DEV__) {
+          console.warn("[message-image] decode failed", block.assetUuid, error);
+        }
         if (!cancelled) setState({ uri: "", loading: false, error: "Ошибка" });
       });
     return () => {

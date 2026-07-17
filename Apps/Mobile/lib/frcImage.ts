@@ -15,6 +15,11 @@ function normalizedMime(value: string | null): string {
   return value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 }
 
+/** Remote post/avatar URLs need FRI decode; local file URIs (message cache) are already PNG. */
+function needsRemoteFrcDecode(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
 function cacheName(prefix: string, extension: string): File {
   return new File(
     Paths.cache,
@@ -23,7 +28,8 @@ function cacheName(prefix: string, extension: string): File {
 }
 
 export async function ensureFrcImageUri(url: string): Promise<string> {
-  if (!url || !isFloraFrcIAvailable()) return url;
+  if (!url) return url;
+  if (!needsRemoteFrcDecode(url)) return url;
   const cached = cache.get(url);
   if (cached) return cached;
   const existing = inflight.get(url);
@@ -39,6 +45,12 @@ export async function ensureFrcImageUri(url: string): Promise<string> {
       // Stale cache may still hold pre-FRI bytes for the same UUID.
       if (mime.startsWith("image/") && mime !== "image/svg+xml") return url;
       throw new Error("Сервер отдал не-FRI изображение");
+    }
+    if (!isFloraFrcIAvailable()) {
+      throw new Error(
+        "FRC-I native decoder недоступен (нет libfrc_i_mobile_ffi). " +
+          "npm run frc-i:native:android, затем reinstall Flora Dev (-ReplaceExisting).",
+      );
     }
     const source = cacheName("flora-frc", "fri");
     const output = cacheName("flora-frc", "png");
@@ -78,7 +90,10 @@ export function useFrcImageUri(uri: string): string {
       (next) => {
         if (!cancelled) setResolved(next);
       },
-      () => {
+      (error) => {
+        if (__DEV__) {
+          console.warn("[frc-i] decode failed", uri, error);
+        }
         if (!cancelled) setResolved("");
       },
     );

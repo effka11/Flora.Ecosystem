@@ -9,7 +9,7 @@
     "dev:usb": "expo start --dev-client --port 8081",
     "start": "expo start --dev-client",
     "android": "expo run:android",
-    "android:usb": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:5284 tcp:5284 && expo start --dev-client",
+    "android:usb": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:5290 tcp:5290 && expo start --dev-client",
     "debug:usb": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../Scripts/mobile-debug-android.ps1",
     "install:android:debug": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../Scripts/mobile-install-debug-android.ps1",
     "ios": "expo run:ios",
