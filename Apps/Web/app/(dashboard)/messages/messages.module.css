@@ -2036,6 +2036,7 @@
 
 /* Коллаж нескольких фото в пузыре — та же сетка, что у постов; ширина пузыря 20 кл. */
 .messagesImageCollage {
+  margin-top: 0;
   margin-bottom: 0;
   width: 100%;
   max-width: 100%;

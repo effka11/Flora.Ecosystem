@@ -250,6 +250,8 @@
 
 .postContent {
   margin: 0 0 var(--flora-grid-step) 0;
+  /* Как .images margin-top: 1×fine от низа аватара (body net 0). */
+  padding-top: var(--flora-grid-step-fine);
   line-height: 1.7;
   color: var(--flora-gray-light);
   white-space: pre-wrap;
