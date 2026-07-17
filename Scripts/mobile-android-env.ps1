@@ -353,6 +353,10 @@ function Invoke-ExpoAndroidPrebuildClean {
     Sync-AndroidFromStaging $generatedAndroid $androidDir
     Assert-FloraAndroidDevPackage $androidDir
 
+    # /MIR wipe'ит android/libs; Gradle иначе лезет на GitHub за ffmpeg AAR.
+    $repoRoot = Split-Path (Split-Path $MobileDir -Parent) -Parent
+    Ensure-FfmpegAndroid $repoRoot $MobileDir
+
     try {
         Remove-LockedDirectory $stage
     }

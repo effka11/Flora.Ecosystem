@@ -179,18 +179,31 @@ function withFfmpegKitAndroid(config, { androidUrl }) {
     let buildGradle = cfg.modResults.contents;
 
     const rootDownload = `import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 def ffmpegKitAar = file("\${rootDir}/libs/ffmpeg-kit-full-gpl.aar")
 def ffmpegKitAarUrl = '${androidUrl}'
+def ffmpegKitLocalCandidates = [
+    file("\${rootDir}/../android_gen/libs/ffmpeg-kit-full-gpl.aar"),
+    file("\${rootDir}/../vendor/ffmpeg-kit-full-gpl.aar"),
+]
 if (!ffmpegKitAar.parentFile.exists()) {
     ffmpegKitAar.parentFile.mkdirs()
 }
 if (!ffmpegKitAar.exists()) {
-    println "[ffmpeg-kit] Downloading AAR from \${ffmpegKitAarUrl}..."
-    new URL(ffmpegKitAarUrl).withInputStream { i ->
-        ffmpegKitAar.withOutputStream { it << i }
+    def local = ffmpegKitLocalCandidates.find { it.exists() && it.length() >= 5_000_000L }
+    if (local != null) {
+        println "[ffmpeg-kit] Copying local AAR from \${local}..."
+        Files.copy(local.toPath(), ffmpegKitAar.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        println "[ffmpeg-kit] AAR ready at \${ffmpegKitAar}"
+    } else {
+        println "[ffmpeg-kit] Downloading AAR from \${ffmpegKitAarUrl}..."
+        new URL(ffmpegKitAarUrl).withInputStream { i ->
+            ffmpegKitAar.withOutputStream { it << i }
+        }
+        println "[ffmpeg-kit] AAR ready at \${ffmpegKitAar}"
     }
-    println "[ffmpeg-kit] AAR ready at \${ffmpegKitAar}"
 }
 
 `;

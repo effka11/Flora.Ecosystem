@@ -94,6 +94,10 @@ $env:REACT_NATIVE_PACKAGER_HOSTNAME = "127.0.0.1"
 $env:EXPO_DEV_SERVER_LISTEN_ADDRESS = "127.0.0.1"
 # Avoid hanging manifest requests on expo.dev schema fetch (shows as infinite Connecting...).
 $env:EXPO_OFFLINE = "1"
+# mobile-install-debug-android.ps1 uses CI=1 for a non-interactive Gradle build.
+# Environment variables survive `& script.ps1` in this PowerShell process, but Metro
+# needs watch mode for Fast Refresh / Reload during UI work.
+Remove-Item Env:CI -ErrorAction SilentlyContinue
 
 Start-OpenFloraWhenMetroReady
 
