@@ -15,14 +15,13 @@ pub fn process_post_image(input: &[u8]) -> Result<(Vec<u8>, &'static str), PostI
     process(input, 85)
 }
 
-pub fn process_avatar_image(input: &[u8]) -> Result<(Vec<u8>, &'static str), PostImageProcessError> {
+pub fn process_avatar_image(
+    input: &[u8],
+) -> Result<(Vec<u8>, &'static str), PostImageProcessError> {
     process(input, 90)
 }
 
-fn process(
-    input: &[u8],
-    quality: u8,
-) -> Result<(Vec<u8>, &'static str), PostImageProcessError> {
+fn process(input: &[u8], quality: u8) -> Result<(Vec<u8>, &'static str), PostImageProcessError> {
     let encoded = ingest(
         input,
         IngestOptions {

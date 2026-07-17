@@ -617,10 +617,7 @@ async fn delete_comment(
     }
 }
 
-async fn get_post_image(
-    State(state): State<ContentState>,
-    Path(uuid): Path<Uuid>,
-) -> Response {
+async fn get_post_image(State(state): State<ContentState>, Path(uuid): Path<Uuid>) -> Response {
     match state.media.post_image(uuid).await {
         Ok(Some(blob)) => cached_media_response(blob.data, &blob.content_type),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
@@ -628,10 +625,7 @@ async fn get_post_image(
     }
 }
 
-async fn get_avatar(
-    State(state): State<ContentState>,
-    Path(uuid): Path<Uuid>,
-) -> Response {
+async fn get_avatar(State(state): State<ContentState>, Path(uuid): Path<Uuid>) -> Response {
     match state.media.avatar(uuid).await {
         Ok(Some(blob)) => cached_media_response(blob.data, &blob.content_type),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),

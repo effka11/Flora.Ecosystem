@@ -6,7 +6,7 @@ import type { FscpImageBlock } from "@flora/client-core/fscp";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ensureMessageImageUri, peekMessageImageUri } from "@/lib/messageImageAssets";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { floraColors, floraMessages } from "@/lib/theme";
 
 type SlotState = {
   uri: string;

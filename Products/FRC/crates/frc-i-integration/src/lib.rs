@@ -155,17 +155,15 @@ pub fn decode_frc_i_to_png(
     };
     let mut png = Vec::new();
     PngEncoder::new_with_quality(&mut png, CompressionType::Fast, FilterType::Adaptive)
-        .write_image(
-            &decoded.data,
-            decoded.width,
-            decoded.height,
-            color,
-        )
+        .write_image(&decoded.data, decoded.width, decoded.height, color)
         .map_err(image_error)?;
     Ok(png)
 }
 
-fn load_and_validate(input: &[u8], options: IngestOptions) -> Result<DynamicImage, IntegrationError> {
+fn load_and_validate(
+    input: &[u8],
+    options: IngestOptions,
+) -> Result<DynamicImage, IntegrationError> {
     if !(1..=100).contains(&options.quality) {
         return Err(IntegrationError::InvalidQuality);
     }
@@ -185,9 +183,7 @@ fn load_and_validate(input: &[u8], options: IngestOptions) -> Result<DynamicImag
 }
 
 fn resize_max(image: DynamicImage, max_dimension: u32) -> DynamicImage {
-    if max_dimension == 0
-        || (image.width() <= max_dimension && image.height() <= max_dimension)
-    {
+    if max_dimension == 0 || (image.width() <= max_dimension && image.height() <= max_dimension) {
         image
     } else {
         image.thumbnail(max_dimension, max_dimension)

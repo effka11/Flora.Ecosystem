@@ -5,7 +5,8 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
-    "lib": ["ES2022", "DOM", "WebWorker"],
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM"],
     "types": ["vitest/globals"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]

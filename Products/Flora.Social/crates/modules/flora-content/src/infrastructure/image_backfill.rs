@@ -134,7 +134,13 @@ async fn backfill_video_posters(pool: &PgPool) -> u64 {
     }
 }
 
-fn encode(bytes: &[u8], max_dimension: u32, quality: u8, kind: &str, uuid: Uuid) -> Option<Vec<u8>> {
+fn encode(
+    bytes: &[u8],
+    max_dimension: u32,
+    quality: u8,
+    kind: &str,
+    uuid: Uuid,
+) -> Option<Vec<u8>> {
     let options = IngestOptions {
         max_dimension,
         max_pixels: 50_000_000,
@@ -193,13 +199,7 @@ fn decode_via_ffmpeg_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
         return Err(error.to_string());
     }
     let status = Command::new("ffmpeg")
-        .args([
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-        ])
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
         .arg(&input)
         .args(["-frames:v", "1"])
         .arg(&output)

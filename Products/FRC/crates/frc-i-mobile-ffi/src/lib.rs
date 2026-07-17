@@ -159,10 +159,7 @@ mod tests {
 
     #[test]
     fn native_file_cycle() {
-        let root = std::env::temp_dir().join(format!(
-            "frc-i-mobile-ffi-{}",
-            std::process::id()
-        ));
+        let root = std::env::temp_dir().join(format!("frc-i-mobile-ffi-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let input = root.join("input.png");
         let encoded = root.join("output.fri");

@@ -17,7 +17,7 @@ pub fn process_post_image(input: &[u8]) -> Result<(Vec<u8>, &'static str), PostI
         IngestOptions {
             max_dimension: MAX_DIMENSION,
             max_pixels: MAX_PIXELS,
-                quality: 90,
+            quality: 90,
         },
     )
     .map_err(|error| match error {

@@ -176,11 +176,7 @@ pub unsafe extern "C" fn frc_i_encode(
     out: *mut u8,
     cap: usize,
 ) -> i32 {
-    if data.is_null()
-        || out.is_null()
-        || width == 0
-        || height == 0
-        || !(1..=100).contains(&quality)
+    if data.is_null() || out.is_null() || width == 0 || height == 0 || !(1..=100).contains(&quality)
     {
         return FRC_I_FFI_INVALID;
     }

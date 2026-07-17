@@ -64,12 +64,8 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         Arc::clone(&notification_dispatcher),
     );
     background.extend(users_workers);
-    let (messaging_routes, messaging_workers) = messaging_router(
-        cfg,
-        pool.clone(),
-        account_directory,
-        message_sent_notifier,
-    );
+    let (messaging_routes, messaging_workers) =
+        messaging_router(cfg, pool.clone(), account_directory, message_sent_notifier);
     background.extend(messaging_workers);
 
     let router = axum::Router::new()
@@ -242,10 +238,7 @@ fn messaging_router(
         messages_access,
         sent_notifier,
     );
-    (
-        with_jwt(cfg, module.router),
-        vec![module.asset_cleanup],
-    )
+    (with_jwt(cfg, module.router), vec![module.asset_cleanup])
 }
 
 fn content_router(
