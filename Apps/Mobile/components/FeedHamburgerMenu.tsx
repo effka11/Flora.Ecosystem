@@ -106,6 +106,11 @@ const SWIPE_CLOSE_VX = -650;
 const SWIPE_OPEN_VX = 650;
 /** Активная зона свайпа открытия: не только у самого края, а с запасом внутрь экрана. */
 const EDGE_HIT_WIDTH = 3 * floraSpacing.grid;
+/**
+ * Ниже chrome шапки (paddingTop grid + row 45): иначе edgeHit поверх гамбургера/«назад»
+ * и GestureDetector съедает тапы.
+ */
+const EDGE_HIT_TOP_CHROME = floraSpacing.grid + 45;
 /** Минимальная длительность доводки после свайпа (мс). */
 const SETTLE_MIN_MS = floraMotion.baseMs;
 /** Максимальная длительность доводки после свайпа (мс). */
@@ -347,7 +352,13 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose }: Props) {
         <GestureDetector gesture={edgeGesture}>
           <Animated.View
             collapsable={false}
-            style={[styles.edgeHit, { width: insets.left + EDGE_HIT_WIDTH }]}
+            style={[
+              styles.edgeHit,
+              {
+                width: insets.left + EDGE_HIT_WIDTH,
+                top: insets.top + EDGE_HIT_TOP_CHROME,
+              },
+            ]}
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"
           />
@@ -459,7 +470,6 @@ const styles = StyleSheet.create({
   edgeHit: {
     position: "absolute",
     left: 0,
-    top: 0,
     bottom: 0,
     zIndex: 1001,
   },
