@@ -266,8 +266,12 @@ impl FcmPushSender {
             .await;
     }
 
-    async fn dispatch_to_tokens<F>(&self, recipient_user_uuid: Uuid, device_tokens: &[String], payload_for: F)
-    where
+    async fn dispatch_to_tokens<F>(
+        &self,
+        recipient_user_uuid: Uuid,
+        device_tokens: &[String],
+        payload_for: F,
+    ) where
         F: Fn(&str) -> serde_json::Value,
     {
         let Some(sa) = self.credentials.as_ref() else {
