@@ -3,7 +3,6 @@ import {
   canRequestPackageInstalls,
   getNativeUpdateDir,
   getNativeUpdateState,
-  requestInstallPermission,
 } from "flora-apk-updater";
 import { isApkUpdaterNativeReady } from "@/lib/apkUpdate/capabilities";
 import { checkAndInstall, cancelInteractiveApkUpdate } from "@/lib/apkUpdate/checkAndInstall";
@@ -15,7 +14,7 @@ import {
 import type { ApkUpdateProgressListener } from "@/lib/apkUpdate/progress";
 import {
   parseAppUpdateVersionFromText,
-  resolveAppUpdateReleasePageUrl,
+  resolveAppUpdateApkDownloadUrl,
 } from "@/lib/appLinks";
 import { getPendingApkUri } from "@/lib/apkUpdate/download";
 import { getInfoAsync } from "expo-file-system/legacy";
@@ -24,8 +23,13 @@ export type UserUpdateResult =
   | { ok: true; status: "installed" | "pending_user_action" | "up_to_date" | "cancelled" | "opened_github" }
   | { ok: false; error: string; code?: string };
 
+/**
+ * 2.4 — browser/APK CDN download. Never prompts REQUEST_INSTALL_PACKAGES
+ * (unknown-sources); that permission is only for in-app PackageInstaller.
+ */
 async function openGitHubFallback(notificationText: string): Promise<UserUpdateResult> {
-  await Linking.openURL(resolveAppUpdateReleasePageUrl(notificationText));
+  const url = resolveAppUpdateApkDownloadUrl(notificationText);
+  await Linking.openURL(url);
   return { ok: true, status: "opened_github" };
 }
 
@@ -57,8 +61,8 @@ async function pendingMatchesVersion(versionCode: number | null): Promise<boolea
 }
 
 /**
- * Button «Обновить»: 2.1 install-only / 2.2 download+install / 2.3 interactive /
- * 2.4 GitHub fallback.
+ * Button «Обновить»: 2.1 install-only / 2.2 download+install /
+ * 2.4 GitHub APK download (no REQUEST_INSTALL_PACKAGES prompt).
  */
 export async function runUserUpdateFromNotification(
   notificationText: string,
@@ -67,14 +71,14 @@ export async function runUserUpdateFromNotification(
   const report = onProgress ?? (() => undefined);
 
   if (!isApkUpdaterNativeReady()) {
-    report({ phase: "checking", message: "Открытие страницы релиза…" });
+    report({ phase: "checking", message: "Открытие загрузки APK…" });
     return openGitHubFallback(notificationText);
   }
 
   report({ phase: "checking" });
   const manifest = await resolveManifest(notificationText);
   if (!manifest) {
-    report({ phase: "error", message: "Не удалось разобрать версию в уведомлении" });
+    report({ phase: "checking", message: "Открытие загрузки APK…" });
     const fallback = await openGitHubFallback(notificationText).catch(() => null);
     return (
       fallback ?? {
@@ -87,8 +91,14 @@ export async function runUserUpdateFromNotification(
 
   const hasPerm = canRequestPackageInstalls();
 
+  // Without install permission — browser APK download only (no Settings / unknown-sources).
+  if (!hasPerm) {
+    report({ phase: "checking", message: "Открытие загрузки APK…" });
+    return openGitHubFallback(notificationText);
+  }
+
   // 2.1 — READY matching version → install only (interactive, foreground OK).
-  if (hasPerm && (await pendingMatchesVersion(manifest.versionCode))) {
+  if (await pendingMatchesVersion(manifest.versionCode)) {
     report({ phase: "installing", message: "Установка…" });
     const uri = getPendingApkUri();
     const result = await checkAndInstall({
@@ -97,6 +107,7 @@ export async function runUserUpdateFromNotification(
       manifest,
       onProgress,
       installOnlyUri: uri,
+      skipPermissionModal: true,
     });
     if (!result.ok) {
       if (result.code === "INSTALL" || result.code === "NO_PERMISSION") {
@@ -117,22 +128,7 @@ export async function runUserUpdateFromNotification(
     };
   }
 
-  // 2.2 (with perm) / 2.3 (without): download + interactive install.
-  // 2.3: do not show Flora auto-update permission modal; open Settings only on E_NO_PERMISSION.
-  if (!hasPerm) {
-    report({ phase: "permission" });
-    const granted = await requestInstallPermission();
-    if (!granted && !canRequestPackageInstalls()) {
-      report({
-        phase: "error",
-        message: "Нужно разрешить установку из этого источника",
-        code: "NO_PERMISSION",
-      });
-      // One Settings attempt already done by requestInstallPermission; fallback GitHub.
-      return openGitHubFallback(notificationText);
-    }
-  }
-
+  // 2.2 — permission already granted: download + interactive install.
   const result = await checkAndInstall({
     allowUserAction: true,
     force: true,

@@ -169,13 +169,32 @@ async fn broadcast_notification(
         })
     });
 
+    if notification_type == "app_update" && update.is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Для app_update укажите update{version,versionCode,apkUrl,sha256}."
+            })),
+        )
+            .into_response();
+    }
+
     match state
         .inbox
         .broadcast(notification_type, category, text, platform, update)
         .await
     {
         Ok(recipients) => Json(serde_json::json!({ "recipients": recipients })).into_response(),
-        Err(e) => internal(e),
+        Err(e) => {
+            if e.contains("app_update broadcast requires update") {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": e })),
+                )
+                    .into_response();
+            }
+            internal(e)
+        }
     }
 }
 

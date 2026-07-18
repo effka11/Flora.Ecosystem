@@ -115,50 +115,55 @@ function Get-AppUpdateBroadcastText {
     return $prefix + $Version.Trim()
 }
 
+function Test-AppUpdateManifestObject {
+    param($Raw)
+    if ($null -eq $Raw) { return $false }
+    if (-not $Raw.version -or -not $Raw.versionCode -or -not $Raw.apkUrl -or -not $Raw.sha256) {
+        return $false
+    }
+    $sha = ([string]$Raw.sha256).Trim().ToLowerInvariant()
+    if ($sha.Length -ne 64) { return $false }
+    if ([int64]$Raw.versionCode -lt 1) { return $false }
+    return $true
+}
+
 <#
 .SYNOPSIS
   Load flora.social-android-update.json for broadcast FCM metadata.
-  Tries local dist, then `gh release download` for social/v{version}.
+  Production prefers GitHub release social/v{version}; local dist is fallback when version matches.
 #>
 function Get-AppUpdateManifestForBroadcast {
     param(
         [Parameter(Mandatory = $true)][string] $Root,
-        [Parameter(Mandatory = $true)][string] $Version
+        [Parameter(Mandatory = $true)][string] $Version,
+        [switch] $PreferGitHub
     )
     $v = $Version.Trim()
-    $candidates = @(
-        (Join-Path $Root "Apps\Mobile\dist\flora.social-android-update.json"),
-        (Join-Path $Root "Apps\Mobile\android_gen\dist\flora.social-android-update.json"),
-        (Join-Path $Root "Artifacts\mobile\flora.social-android-update.json")
-    )
-    foreach ($path in $candidates) {
-        if (Test-Path -LiteralPath $path) {
-            try {
-                $raw = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-                if ($raw.version -and $raw.versionCode -and $raw.apkUrl -and $raw.sha256) {
-                    Write-Host "Update manifest: $path" -ForegroundColor DarkGray
-                    return $raw
-                }
-            }
-            catch {
-                Write-Host "Ignoring invalid update manifest at $path : $($_.Exception.Message)" -ForegroundColor DarkYellow
-            }
+
+    function Read-ManifestFile([string] $Path) {
+        if (-not (Test-Path -LiteralPath $Path)) { return $null }
+        try {
+            $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+            if (Test-AppUpdateManifestObject $raw) { return $raw }
         }
+        catch {
+            Write-Host "Ignoring invalid update manifest at $Path : $($_.Exception.Message)" -ForegroundColor DarkYellow
+        }
+        return $null
     }
 
-    if (Get-Command gh -ErrorAction SilentlyContinue) {
+    function Get-ManifestFromGitHub([string] $TagVersion) {
+        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { return $null }
         $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("flora-update-manifest-" + [guid]::NewGuid().ToString("n"))
         New-Item -ItemType Directory -Path $tmp | Out-Null
         try {
-            $tag = "social/v$v"
+            $tag = "social/v$TagVersion"
             & gh release download $tag -p "flora.social-android-update.json" -D $tmp --clobber 2>$null
             $downloaded = Join-Path $tmp "flora.social-android-update.json"
-            if (Test-Path -LiteralPath $downloaded) {
-                $raw = Get-Content -LiteralPath $downloaded -Raw -Encoding UTF8 | ConvertFrom-Json
-                if ($raw.version -and $raw.versionCode -and $raw.apkUrl -and $raw.sha256) {
-                    Write-Host "Update manifest: gh $tag" -ForegroundColor DarkGray
-                    return $raw
-                }
+            $raw = Read-ManifestFile $downloaded
+            if ($null -ne $raw) {
+                Write-Host "Update manifest: gh $tag" -ForegroundColor DarkGray
+                return $raw
             }
         }
         catch {
@@ -167,8 +172,35 @@ function Get-AppUpdateManifestForBroadcast {
         finally {
             Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
         }
+        return $null
     }
 
-    Write-Host "No update.json found — broadcast will omit structured update fields (client falls back to GitHub)." -ForegroundColor DarkYellow
+    if ($PreferGitHub) {
+        $fromGh = Get-ManifestFromGitHub $v
+        if ($null -ne $fromGh) { return $fromGh }
+    }
+
+    $candidates = @(
+        (Join-Path $Root "Apps\Mobile\dist\flora.social-android-update.json"),
+        (Join-Path $Root "Apps\Mobile\android_gen\dist\flora.social-android-update.json"),
+        (Join-Path $Root "Artifacts\mobile\flora.social-android-update.json")
+    )
+    foreach ($path in $candidates) {
+        $raw = Read-ManifestFile $path
+        if ($null -eq $raw) { continue }
+        if (([string]$raw.version).Trim() -ne $v) {
+            Write-Host "Skipping $path (version=$($raw.version), want $v)" -ForegroundColor DarkYellow
+            continue
+        }
+        Write-Host "Update manifest: $path" -ForegroundColor DarkGray
+        return $raw
+    }
+
+    if (-not $PreferGitHub) {
+        $fromGh = Get-ManifestFromGitHub $v
+        if ($null -ne $fromGh) { return $fromGh }
+    }
+
+    Write-Host "No update.json found for version $v." -ForegroundColor DarkYellow
     return $null
 }

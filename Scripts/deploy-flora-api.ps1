@@ -105,11 +105,11 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $RepoRoot
 & node (Join-Path $RepoRoot "Scripts\sync-version.mjs")
 
-$isWindows = $env:OS -eq "Windows_NT"
-$isLinux = -not $isWindows -and ($PSVersionTable.Platform -eq "Unix")
+$onWindowsHost = $env:OS -eq "Windows_NT"
+$onLinuxHost = -not $onWindowsHost -and ($PSVersionTable.Platform -eq "Unix")
 # WSL relay may exist without a distro/bash (Docker Desktop stub) - require bash + cargo.
 $wslOk = $false
-if ($isWindows) {
+if ($onWindowsHost) {
     try {
         $null = & wsl -e bash -lc "command -v cargo >/dev/null" 2>$null
         $wslOk = ($LASTEXITCODE -eq 0)
@@ -121,13 +121,13 @@ if ($isWindows) {
 if ($BuildMode -eq "Auto") {
     if (-not [string]::IsNullOrWhiteSpace($BinaryPath) -or $SkipBuild) {
         $BuildMode = "Binary"
-    } elseif ($isLinux) {
+    } elseif ($onLinuxHost) {
         $BuildMode = "Local"
     } elseif ($wslOk) {
         $BuildMode = "Wsl"
     } else {
         $BuildMode = "Remote"
-        if ($isWindows) {
+        if ($onWindowsHost) {
             Write-Host "WSL bash/cargo unavailable - using remote cargo build on VPS."
         }
     }
@@ -248,15 +248,7 @@ SRC="`$BUILD_ROOT/src"
 OUT=/tmp/flora-api-bin-$ts
 REMOTE_SRC_TGZ=$remoteSrcTgz
 mkdir -p "`$SRC"
-SALVAGED=
-for cand in /tmp/flora-api-src-*/target/release/flora-api /tmp/flora-api-src-*/Target/release/flora-api; do
-  if [ -x "`$cand" ]; then
-    echo "Salvaging `$cand - skip cargo this run"
-    install -m 755 "`$cand" "`$OUT"
-    SALVAGED=1
-    break
-  fi
-done
+# Keep cargo incremental cache; never reuse a previous release binary (would skip new code).
 if [ ! -d "`$SRC/target" ] && [ ! -d "`$SRC/Target" ]; then
   for old in /tmp/flora-api-src-*/Target /tmp/flora-api-src-*/target; do
     if [ -d "`$old" ]; then
@@ -270,12 +262,10 @@ fi
 if [ -d "`$SRC/target" ] && [ ! -e "`$SRC/Target" ]; then
   mv "`$SRC/target" "`$SRC/Target"
 fi
+# Drop stale /tmp release binaries so we cannot accidentally ship an old flora-api.
+rm -f /tmp/flora-api-src-*/target/release/flora-api /tmp/flora-api-src-*/Target/release/flora-api 2>/dev/null || true
 tar -xzf "`$REMOTE_SRC_TGZ" -C "`$SRC"
 rm -f "`$REMOTE_SRC_TGZ"
-if [ -n "`$SALVAGED" ]; then
-  echo "Remote binary ready - salvaged."
-  exit 0
-fi
 if [ -f "`$HOME/.cargo/env" ]; then
   . "`$HOME/.cargo/env"
 fi

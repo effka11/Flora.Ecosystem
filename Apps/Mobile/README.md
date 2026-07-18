@@ -28,8 +28,8 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 #### Путь 1.1 — авто (opt-in)
 
 1. После логина — Flora-модалка «установка из этого источника». `Back` / «Нет, спасибо» глушат повтор модалки; opt-in = факт `canRequestPackageInstalls()`.
-2. `Send auto-update` → inbox + **data-only HIGH FCM** (`type=app_update`, поля `version` / `versionCode` / `apkUrl` / `sha256` / …). Без ключа `notification`, чтобы payload доходил при убитом процессе.
-3. Native: tray (NotificationCompat) + DownloadManager → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) только если процесс **не в foreground ≥ 10 с** (WorkManager delay). Возврат в UI отменяет отложенный install.
+2. Task `Send auto-update & notifications to side-APK` → inbox + **data-only HIGH FCM** (`type=app_update` + `update{version,versionCode,apkUrl,sha256,…}`) всем Android-клиентам. Без ключа `notification` и без системного tray «новая версия».
+3. Native: DownloadManager → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) только если процесс **не в foreground ≥ 10 с** (WorkManager delay). Возврат в UI отменяет отложенный install.
 4. Скачивание в foreground разрешено; установка в foreground — **нет** (кроме кнопки).
 5. Android &lt; 12 или OEM без silent → `READY` + local «готово»; установка через кнопку.
 6. Catch-up при open: unread `app_update` → direct `flora.social-android-update.json` → native download.
@@ -40,8 +40,7 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 |--|---------|-----------|
 | 2.1 | permission + APK `READY` той же версии | только install (в foreground OK) |
 | 2.2 | permission, APK ещё нет | download + interactive install |
-| 2.3 | нет permission | download + system confirm; Settings один раз при необходимости; без Flora auto-modal |
-| 2.4 | сбой / нет native | страница GitHub release |
+| 2.4 | нет permission / сбой / нет native | прямое скачивание APK с GitHub (без запроса «установка из других источников») |
 
 #### Сборки
 
@@ -58,7 +57,9 @@ EAS `production` (Play AAB) / `FLORA_DISABLE_SIDELOAD_UPDATES=1`: без permiss
 
 Скрипт broadcast подхватывает `Apps/Mobile/dist/flora.social-android-update.json` (или `gh release download`) и шлёт поле `update` в API.
 
-Манифест: `flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`). Pending APK: `flora-update/pending.apk` в app external-files.
+Манифест локально: `Apps/Mobile/dist/flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`) — SoT для broadcast/`update{}` в FCM. На GitHub в release кладётся **только APK** (json не обязателен). Pending APK: `flora-update/pending.apk` в app external-files.
+
+Fallback 2.4 открывает прямую ссылку на APK версии из текста уведомления (`…/download/social/v{version}/flora.social-v{version}-android.apk`), не HTML-страницу релиза.
 
 #### Smoke
 

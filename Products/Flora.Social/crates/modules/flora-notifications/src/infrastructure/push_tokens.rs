@@ -93,6 +93,29 @@ impl PushTokenRepo {
         Ok(rows)
     }
 
+    /// Android (or ios) tokens only — sideload `app_update` must not hit iOS tokens.
+    pub async fn tokens_for_user_platform(
+        &self,
+        user_uuid: Uuid,
+        platform: &str,
+    ) -> Result<Vec<String>, String> {
+        let plat = normalize_platform(platform);
+        let rows = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT "Token"
+            FROM flora_core.user_push_tokens
+            WHERE "UserUuid" = $1 AND "Platform" = $2
+            ORDER BY "UpdatedAt" DESC
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(plat)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(rows)
+    }
+
     /// Паритет `PushTokenService.ListUserUuidsByPlatformAsync`.
     pub async fn list_user_uuids_by_platform(&self, platform: &str) -> Result<Vec<Uuid>, String> {
         let plat = normalize_platform(platform);

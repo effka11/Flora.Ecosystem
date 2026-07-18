@@ -145,6 +145,13 @@ impl InboxService {
         let target_platform = resolve_audience_platform(&notification_type, audience_platform);
         let skip_push = notification_type != "app_update";
 
+        // Sideload auto-update needs structured update{} on the wire (FCM/SSE).
+        if notification_type == "app_update" && update.is_none() {
+            return Err(
+                "app_update broadcast requires update{version,versionCode,apkUrl,sha256}".into(),
+            );
+        }
+
         let recipient_uuids = self
             .resolve_broadcast_recipients(target_platform.as_deref())
             .await?;

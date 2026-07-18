@@ -16,7 +16,7 @@ export function buildFloraSocialApkDownloadUrl(version: string): string {
   return `https://github.com/effka11/Flora.Ecosystem/releases/download/social/v${v}/flora.social-v${v}-android.apk`;
 }
 
-/** HTML release page (more reliable for Linking than a direct .apk URL on Android). */
+/** HTML release page (optional UX; fallback 2.4 uses the APK URL instead). */
 export function buildFloraSocialReleasePageUrl(version: string): string {
   const v = version.trim();
   return `https://github.com/effka11/Flora.Ecosystem/releases/tag/social/v${v}`;
@@ -67,13 +67,13 @@ export function isAppUpdateNotificationInstalled(notificationText: string): bool
   return compareFloraSocialVersions(getFloraSocialAppVersion(), fromText) >= 0;
 }
 
-/** APK URL for app_update: version from notification text, else installed app version. */
+/** APK download for app_update: version from notification text, else installed app version. */
 export function resolveAppUpdateApkDownloadUrl(notificationText?: string): string {
   const fromText = notificationText ? parseAppUpdateVersionFromText(notificationText) : null;
   return buildFloraSocialApkDownloadUrl(fromText ?? getFloraSocialAppVersion());
 }
 
-/** Bootstrap fallback when PackageInstaller module is not in the binary. */
+/** @deprecated Prefer resolveAppUpdateApkDownloadUrl for 2.4 fallback. */
 export function resolveAppUpdateReleasePageUrl(notificationText?: string): string {
   const fromText = notificationText ? parseAppUpdateVersionFromText(notificationText) : null;
   return buildFloraSocialReleasePageUrl(fromText ?? getFloraSocialAppVersion());
