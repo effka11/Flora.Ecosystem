@@ -106,6 +106,19 @@ impl UserRealtimePublisher {
             return;
         }
 
+        if signal.notification_type == "app_update" {
+            self.push_dispatcher
+                .send_app_update_push(
+                    recipient_user_uuid,
+                    &tokens,
+                    signal.notification_uuid,
+                    &signal.text,
+                    signal.update.as_ref(),
+                )
+                .await;
+            return;
+        }
+
         let actor_name = match signal.actor_user_uuid {
             Some(actor) if !actor.is_nil() => Some(self.display_names.resolve(actor).await),
             _ => None,

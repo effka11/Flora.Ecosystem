@@ -23,33 +23,52 @@ Push: новые DM (без текста E2E в payload).
 
 ### Sideload auto-update (PackageInstaller)
 
-Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) умеет тихо обновляться с GitHub Releases:
+Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляется с GitHub Releases через FCM + native `UpdateCoordinator`.
 
-1. После логина показывается Flora-модалка разрешения «установка неизвестных приложений», затем открывается Settings. `Back` и «Нет, спасибо» считаются постоянным отказом и навсегда отключают повторный показ.
-2. Если разрешение есть и Android 12+: приложение проверяет `flora.social-android-update.json` на последнем релизе `social/v*`, при необходимости скачивает APK (resumable) и ставит через PackageInstaller без UI.
-3. Если silent невозможен (нет permission / Android < 12 / OEM) — **единственный** UI-вход: кнопка «Обновить» в уведомлении `app_update`.
+#### Путь 1.1 — авто (opt-in)
 
-Sideload updater: native module линкуется в **Dev** (чтобы проверить диалог разрешения) и в production sideload APK. Silent GitHub-update только при `extra.sideloadUpdates` (release APK).
+1. После логина — Flora-модалка «установка из этого источника». `Back` / «Нет, спасибо» глушат повтор модалки; opt-in = факт `canRequestPackageInstalls()`.
+2. `Send auto-update` → inbox + **data-only HIGH FCM** (`type=app_update`, поля `version` / `versionCode` / `apkUrl` / `sha256` / …). Без ключа `notification`, чтобы payload доходил при убитом процессе.
+3. Native: tray (NotificationCompat) + DownloadManager → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) только если процесс **не в foreground ≥ 10 с** (WorkManager delay). Возврат в UI отменяет отложенный install.
+4. Скачивание в foreground разрешено; установка в foreground — **нет** (кроме кнопки).
+5. Android &lt; 12 или OEM без silent → `READY` + local «готово»; установка через кнопку.
+6. Catch-up при open: unread `app_update` → direct `flora.social-android-update.json` → native download.
 
-EAS `production` (Play AAB) задаёт `FLORA_DISABLE_SIDELOAD_UPDATES=1`:
-- plugin и `REQUEST_INSTALL_PACKAGES` не добавляются;
-- `flora-apk-updater` исключается из Android autolinking;
-- в `extra.playStoreBuild` пишется `true` — модалка разрешения установки и PackageInstaller-path **не включаются** даже если модуль когда-то попадёт в бинарь.
+#### Путь 2.x — кнопка «Обновить» в inbox
 
-Локальная AAB-сборка (`FLORA_ANDROID_BUILD_AAB=1`) автоматически включает тот же Play-режим. Один запуск не публикует такую APK в GitHub: `-PublishGitHub` разрешён только для sideload-режима.
+| | Условие | Поведение |
+|--|---------|-----------|
+| 2.1 | permission + APK `READY` той же версии | только install (в foreground OK) |
+| 2.2 | permission, APK ещё нет | download + interactive install |
+| 2.3 | нет permission | download + system confirm; Settings один раз при необходимости; без Flora auto-modal |
+| 2.4 | сбой / нет native | страница GitHub release |
 
-Публикация релиза:
+#### Сборки
+
+Sideload updater линкуется в **Dev** и production sideload APK. Авто-путь только при `extra.sideloadUpdates`.
+
+EAS `production` (Play AAB) / `FLORA_DISABLE_SIDELOAD_UPDATES=1`: без permissions, без модуля, без PackageInstaller (кнопка → GitHub).
+
+#### Публикация
 
 ```powershell
-# тег social/v<version> уже на remote
 .\Scripts\mobile-release-android.ps1 -PublishGitHub
-# рекомендуется сразу уведомить пользователей без silent-path:
 .\Scripts\send-apk-auto-update.ps1 -Production -Confirm
 ```
 
-Манифест рядом с APK: `flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`). Для старых релизов кнопка использует SHA-256 и размер из GitHub asset metadata, но не silent-update. Один pending-файл в `cache/flora-update/pending.apk`.
+Скрипт broadcast подхватывает `Apps/Mobile/dist/flora.social-android-update.json` (или `gh release download`) и шлёт поле `update` в API.
 
-Smoke: установить APK с updater (vN) → опубликовать vN+1 с большим `versionCode` → после логина и разрешения должна пройти тихая установка; без разрешения — только кнопка в уведомлении.
+Манифест: `flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`). Pending APK: `flora-update/pending.apk` в app external-files.
+
+#### Smoke
+
+1. Opt-in + app killed → broadcast → download → install без открытия UI (≥10 s вне foreground).
+2. Opt-in + foreground → download, install нет → свернуть ≥10 s → install.
+3. Свернуть &lt;10 s и вернуться → install не произошёл.
+4. READY → кнопка → 2.1 только install.
+5. Нет файла → кнопка → 2.2.
+6. Decline permission → кнопка → 2.3 / GitHub.
+7. Regression: обычный DM FCM после wrapper FMS всё ещё доставляет.
 
 ### Один раз на сервере
 

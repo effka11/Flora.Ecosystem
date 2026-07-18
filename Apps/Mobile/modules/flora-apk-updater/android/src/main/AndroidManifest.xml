@@ -15,8 +15,31 @@
         android:resource="@xml/flora_apk_file_paths" />
     </provider>
 
+    <provider
+      android:name=".FloraApkUpdaterInitProvider"
+      android:authorities="${applicationId}.flora.apk.updater.init"
+      android:exported="false"
+      android:initOrder="100" />
+
     <receiver
       android:name=".FloraApkInstallReceiver"
       android:exported="false" />
+
+    <receiver
+      android:name=".FloraDownloadCompleteReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+      </intent-filter>
+    </receiver>
+
+    <!-- Replaces Expo FMS via withFloraApkUpdater.js tools:node replace -->
+    <service
+      android:name=".FloraAppUpdateMessagingService"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+      </intent-filter>
+    </service>
   </application>
 </manifest>

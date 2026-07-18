@@ -72,12 +72,29 @@ if ([string]::IsNullOrWhiteSpace($Text)) {
 }
 
 $uri = "$ApiBaseUrl/api/admin/notifications/broadcast"
-$bodyJson = @{
+$body = @{
     text     = $Text
     type     = "app_update"
     category = "developer"
     platform = "android"
-} | ConvertTo-Json -Compress
+}
+
+$manifest = Get-AppUpdateManifestForBroadcast -Root $root -Version $version
+if ($null -ne $manifest) {
+    $update = @{
+        version     = [string]$manifest.version
+        versionCode = [int64]$manifest.versionCode
+        apkUrl      = [string]$manifest.apkUrl
+        sha256      = ([string]$manifest.sha256).ToLowerInvariant()
+    }
+    if ($null -ne $manifest.sizeBytes) {
+        $update.sizeBytes = [int64]$manifest.sizeBytes
+    }
+    $body.update = $update
+    Write-Host "Including update metadata versionCode=$($update.versionCode)" -ForegroundColor DarkGray
+}
+
+$bodyJson = $body | ConvertTo-Json -Compress -Depth 5
 
 Write-Host "POST $uri"
 Write-Host "Text: $Text"

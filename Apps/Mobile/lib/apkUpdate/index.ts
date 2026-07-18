@@ -5,6 +5,11 @@ export {
   isSideloadUpdatesEnabled,
 } from "@/lib/apkUpdate/capabilities";
 export {
+  runAppUpdateCatchUp,
+  runAutoUpdateFromManifest,
+  runAutoUpdateFromRealtime,
+} from "@/lib/apkUpdate/autoUpdate";
+export {
   canInstallSilently,
   cancelInteractiveApkUpdate,
   checkAndInstall,
@@ -14,6 +19,7 @@ export {
 export {
   fetchLatestUpdateManifest,
   fetchUpdateManifestFromNotificationText,
+  fetchDirectUpdateManifestForVersion,
   buildDirectUpdateManifestFromNotificationText,
   getInstalledVersionCode,
 } from "@/lib/apkUpdate/githubRelease";
@@ -23,3 +29,4 @@ export {
   type ApkUpdateProgress,
   type ApkUpdateProgressListener,
 } from "@/lib/apkUpdate/progress";
+export { runUserUpdateFromNotification } from "@/lib/apkUpdate/userUpdate";

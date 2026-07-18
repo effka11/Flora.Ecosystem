@@ -16,6 +16,8 @@ use serde::Deserialize;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
+use flora_notifications_contracts::AppUpdatePayload;
+
 use crate::application::{InboxService, PushTokenService, client_platform_from_header};
 use crate::infrastructure::UserRealtimeHub;
 
@@ -73,12 +75,26 @@ pub fn admin_router(state: AdminBroadcastState) -> Router {
 const ADMIN_TOKEN_HEADER: &str = "X-Flora-Admin-Token";
 
 #[derive(Debug, Deserialize)]
+struct BroadcastUpdateBody {
+    version: String,
+    #[serde(rename = "versionCode")]
+    version_code: i64,
+    #[serde(rename = "apkUrl")]
+    apk_url: String,
+    sha256: String,
+    #[serde(rename = "sizeBytes")]
+    size_bytes: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct BroadcastRequest {
     text: Option<String>,
     #[serde(rename = "type")]
     notification_type: Option<String>,
     category: Option<String>,
     platform: Option<String>,
+    /// Optional sideload manifest (not persisted; forwarded on FCM/SSE for `app_update`).
+    update: Option<BroadcastUpdateBody>,
 }
 
 async fn broadcast_notification(
@@ -134,9 +150,28 @@ async fn broadcast_notification(
         .map(str::trim)
         .filter(|s| !s.is_empty());
 
+    let update = body.update.and_then(|u| {
+        let version = u.version.trim().to_string();
+        let apk_url = u.apk_url.trim().to_string();
+        let sha256 = u.sha256.trim().to_ascii_lowercase();
+        if version.is_empty() || apk_url.is_empty() || u.version_code < 1 {
+            return None;
+        }
+        if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        Some(AppUpdatePayload {
+            version,
+            version_code: u.version_code,
+            apk_url,
+            sha256,
+            size_bytes: u.size_bytes.filter(|s| *s > 0),
+        })
+    });
+
     match state
         .inbox
-        .broadcast(notification_type, category, text, platform)
+        .broadcast(notification_type, category, text, platform, update)
         .await
     {
         Ok(recipients) => Json(serde_json::json!({ "recipients": recipients })).into_response(),

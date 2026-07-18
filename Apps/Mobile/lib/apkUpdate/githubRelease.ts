@@ -153,6 +153,58 @@ export async function fetchLatestUpdateManifest(): Promise<AndroidUpdateManifest
   };
 }
 
+/** Direct CDN URL for update.json (no GitHub list API). */
+export function buildFloraSocialUpdateJsonUrl(version: string): string {
+  const v = version.trim();
+  return `https://github.com/effka11/Flora.Ecosystem/releases/download/social/v${v}/flora.social-android-update.json`;
+}
+
+/**
+ * Fetch flora.social-android-update.json via release CDN (not api.github.com).
+ */
+export async function fetchDirectUpdateManifestForVersion(
+  version: string,
+): Promise<AndroidUpdateManifest | null> {
+  if (Platform.OS !== "android") return null;
+  const v = version.trim();
+  if (!v) return null;
+  const url = buildFloraSocialUpdateJsonUrl(v);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GITHUB_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "*/*", "User-Agent": userAgent() },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const body = await res.text();
+    const parsed = JSON.parse(body.replace(/^\uFEFF/, "")) as Partial<AndroidUpdateManifest>;
+    if (
+      typeof parsed.version !== "string" ||
+      typeof parsed.versionCode !== "number" ||
+      !Number.isInteger(parsed.versionCode) ||
+      parsed.versionCode < 1 ||
+      typeof parsed.apkUrl !== "string" ||
+      typeof parsed.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/i.test(parsed.sha256)
+    ) {
+      return null;
+    }
+    return {
+      version: parsed.version,
+      versionCode: parsed.versionCode,
+      apkFileName: parsed.apkFileName ?? `flora.social-v${parsed.version}-android.apk`,
+      apkUrl: parsed.apkUrl,
+      sha256: parsed.sha256.toLowerCase(),
+      sizeBytes: typeof parsed.sizeBytes === "number" ? parsed.sizeBytes : undefined,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Interactive notification path: build APK URL from notification text with
  * zero network calls (no api.github.com). Avoids infinite "checking" when the

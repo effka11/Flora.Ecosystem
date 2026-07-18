@@ -114,3 +114,61 @@ function Get-AppUpdateBroadcastText {
     $prefix = [System.Text.Encoding]::UTF8.GetString($prefixBytes)
     return $prefix + $Version.Trim()
 }
+
+<#
+.SYNOPSIS
+  Load flora.social-android-update.json for broadcast FCM metadata.
+  Tries local dist, then `gh release download` for social/v{version}.
+#>
+function Get-AppUpdateManifestForBroadcast {
+    param(
+        [Parameter(Mandatory = $true)][string] $Root,
+        [Parameter(Mandatory = $true)][string] $Version
+    )
+    $v = $Version.Trim()
+    $candidates = @(
+        (Join-Path $Root "Apps\Mobile\dist\flora.social-android-update.json"),
+        (Join-Path $Root "Apps\Mobile\android_gen\dist\flora.social-android-update.json"),
+        (Join-Path $Root "Artifacts\mobile\flora.social-android-update.json")
+    )
+    foreach ($path in $candidates) {
+        if (Test-Path -LiteralPath $path) {
+            try {
+                $raw = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($raw.version -and $raw.versionCode -and $raw.apkUrl -and $raw.sha256) {
+                    Write-Host "Update manifest: $path" -ForegroundColor DarkGray
+                    return $raw
+                }
+            }
+            catch {
+                Write-Host "Ignoring invalid update manifest at $path : $($_.Exception.Message)" -ForegroundColor DarkYellow
+            }
+        }
+    }
+
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("flora-update-manifest-" + [guid]::NewGuid().ToString("n"))
+        New-Item -ItemType Directory -Path $tmp | Out-Null
+        try {
+            $tag = "social/v$v"
+            & gh release download $tag -p "flora.social-android-update.json" -D $tmp --clobber 2>$null
+            $downloaded = Join-Path $tmp "flora.social-android-update.json"
+            if (Test-Path -LiteralPath $downloaded) {
+                $raw = Get-Content -LiteralPath $downloaded -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($raw.version -and $raw.versionCode -and $raw.apkUrl -and $raw.sha256) {
+                    Write-Host "Update manifest: gh $tag" -ForegroundColor DarkGray
+                    return $raw
+                }
+            }
+        }
+        catch {
+            Write-Host "gh release download failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+        }
+        finally {
+            Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Write-Host "No update.json found — broadcast will omit structured update fields (client falls back to GitHub)." -ForegroundColor DarkYellow
+    return $null
+}

@@ -155,6 +155,7 @@ mod tests {
             post_uuid: Some(Uuid::now_v7()),
             comment_uuid: None,
             created_at: Utc::now(),
+            update: None,
         };
         hub.publish_notification(user, &signal);
         let frame = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
