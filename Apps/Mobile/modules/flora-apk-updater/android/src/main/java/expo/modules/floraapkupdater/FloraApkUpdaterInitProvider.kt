@@ -5,13 +5,20 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 
-/** Early process init for ProcessLifecycleOwner + WorkManager coordination. */
+/**
+ * Early process hook. Init is posted to the main looper so it runs after
+ * [Application.onCreate] — ProcessLifecycleOwner is unsafe from ContentProvider.onCreate.
+ */
 class FloraApkUpdaterInitProvider : ContentProvider() {
   override fun onCreate(): Boolean {
     val ctx = context ?: return false
     val app = ctx.applicationContext as? Application ?: return false
-    UpdateCoordinator.init(app)
+    Handler(Looper.getMainLooper()).post {
+      UpdateCoordinator.init(app)
+    }
     return true
   }
 
