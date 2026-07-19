@@ -9,7 +9,14 @@
  * | uninitialized     | нет успешно обработанного envelope        | можно отправить первое сообщение           |
  * | ready             | ≥1 сообщение успешно обработано           | обычный обмен                              |
  * | compromised_local | revoke / смена epoch / reset / сбой decrypt| исходящие приостановлены до re-handshake  |
+ *
+ * Сбои decrypt классифицируются (errata-5, FSCP-REVIEW п.3): одиночный сбой не
+ * замораживает исходящие (иначе собеседник/сервер может DoS-ить отправку одним
+ * мусорным конвертом). В compromised_local ведут только повторные
+ * key-mismatch-сбои (порог `FSCP_DECRYPT_COMPROMISE_THRESHOLD`).
  */
+
+import type { FscpDecryptFailureCategory } from "./envelope.js";
 
 export type FscpSessionState = "uninitialized" | "ready" | "compromised_local";
 
@@ -31,6 +38,8 @@ export type FscpV1ConversationSession = {
   lastAcceptedOutboundMessageUuid?: string;
   /** Заполнено только в compromised_local. */
   compromiseReason?: FscpSessionCompromiseReason;
+  /** Подряд идущие key-mismatch-сбои decrypt; сбрасывается успешным decrypt. */
+  consecutiveDecryptFailures?: number;
 };
 
 export function createConversationSession(params: {
@@ -76,8 +85,70 @@ export function noteInboundDecrypted(
       ...session,
       sessionState: session.sessionState === "compromised_local" ? "compromised_local" : "ready",
       lastProcessedInboundMessageUuid: uuid,
+      consecutiveDecryptFailures: 0,
     },
     isNewMessage: true,
+  };
+}
+
+// ── Классификация сбоев decrypt (анти-DoS, errata-5) ─────────────────────────
+
+/** Порог подряд идущих key-mismatch-сбоев до перехода в compromised_local. */
+export const FSCP_DECRYPT_COMPROMISE_THRESHOLD = 3;
+
+export type FscpDecryptFailureImpact =
+  /** Свидетельство рассинхронизации ключей — считается к порогу compromised_local. */
+  | "key_mismatch_suspect"
+  /** Конверт отклонён по форме/подписи — атрибутируемо отправителю, сессию не трогаем. */
+  | "envelope_rejected";
+
+export function classifyDecryptFailure(category: FscpDecryptFailureCategory): FscpDecryptFailureImpact {
+  switch (category) {
+    case "rke_unwrap_failed":
+    case "body_decrypt_failed":
+      return "key_mismatch_suspect";
+    default:
+      return "envelope_rejected";
+  }
+}
+
+export type FscpDecryptFailureOutcome = {
+  session: FscpV1ConversationSession;
+  /** true, если именно этот сбой перевёл сессию в compromised_local. */
+  compromisedNow: boolean;
+};
+
+/**
+ * Сбой decrypt входящего. Вместо мгновенного `markCompromisedLocal` (DoS-вектор,
+ * FSCP-REVIEW п.3): подпись/форма/чужой конверт не влияют на сессию; только
+ * подряд идущие криптосбои с корректным конвертом (`key_mismatch_suspect`)
+ * накапливаются и при достижении порога замораживают исходящие.
+ */
+export function noteInboundDecryptFailure(
+  session: FscpV1ConversationSession,
+  category: FscpDecryptFailureCategory,
+): FscpDecryptFailureOutcome {
+  if (session.sessionState === "compromised_local") {
+    return { session, compromisedNow: false };
+  }
+  if (classifyDecryptFailure(category) === "envelope_rejected") {
+    return { session, compromisedNow: false };
+  }
+  const failures = (session.consecutiveDecryptFailures ?? 0) + 1;
+  if (failures >= FSCP_DECRYPT_COMPROMISE_THRESHOLD) {
+    return {
+      session: {
+        ...session,
+        sessionState: "compromised_local",
+        compromiseReason: "decrypt_failure",
+        consecutiveDecryptFailures: failures,
+      },
+      compromisedNow: true,
+    };
+  }
+  return {
+    session: { ...session, consecutiveDecryptFailures: failures },
+    compromisedNow: false,
   };
 }
 

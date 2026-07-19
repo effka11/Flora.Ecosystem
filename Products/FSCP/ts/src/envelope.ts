@@ -85,7 +85,23 @@ export type FscpVideoBlock = {
   };
 };
 
-export type FscpMessageBlock = FscpTextBlock | FscpVoiceBlock | FscpImageBlock | FscpVideoBlock;
+/**
+ * Блок неизвестного вида из более новой версии схемы plaintext (forward-compat,
+ * FSCP.md errata-5): сохраняется как placeholder вместо молчаливого отбрасывания,
+ * чтобы UX мог показать «сообщение из более новой версии», а не пустоту.
+ */
+export type FscpUnknownBlock = {
+  kind: "unknown";
+  /** Оригинальный `kind` из plaintext (для диагностики и подписи в UI). */
+  originalKind: string;
+};
+
+export type FscpMessageBlock =
+  | FscpTextBlock
+  | FscpVoiceBlock
+  | FscpImageBlock
+  | FscpVideoBlock
+  | FscpUnknownBlock;
 
 /** Ссылка на сообщение, на которое отвечают (денормализованный превью, как в TG). */
 export type FscpMessageReplyRef = {
@@ -207,6 +223,11 @@ export function normalizeFscpMessagePlaintext(raw: unknown): FscpMessagePlaintex
           nonceBase64Url: enc.nonceBase64Url,
         },
       });
+      continue;
+    }
+    // Forward-compat: неизвестный kind не отбрасывается молча (FSCP-REVIEW п.5).
+    if (typeof b.kind === "string" && b.kind.length > 0) {
+      blocks.push({ kind: "unknown", originalKind: b.kind });
     }
   }
 
@@ -228,19 +249,93 @@ function sortRecipients(rec: FscpRecipientWire[]): FscpRecipientWire[] {
   });
 }
 
+/**
+ * Классификация сбоя расшифровки (FSCP.md errata-5, FSCP-REVIEW п.3).
+ * Нужна FSM сессии: только криптографические сбои с корректным конвертом
+ * (`rke_unwrap_failed` / `body_decrypt_failed`) — свидетельство рассинхронизации
+ * ключей; остальные категории атрибутируемы отправителю/транспорту и не должны
+ * замораживать исходящие (анти-DoS).
+ */
+export type FscpDecryptFailureCategory =
+  | "not_fscp_wire"
+  | "malformed_envelope"
+  | "signature_missing"
+  | "signature_invalid"
+  | "no_recipient_entry"
+  | "rke_unwrap_failed"
+  | "body_decrypt_failed"
+  | "malformed_plaintext";
+
+export class FscpDecryptError extends Error {
+  readonly category: FscpDecryptFailureCategory;
+
+  constructor(category: FscpDecryptFailureCategory, message: string) {
+    super(message);
+    this.name = "FscpDecryptError";
+    this.category = category;
+  }
+}
+
+export function fscpDecryptFailureCategory(error: unknown): FscpDecryptFailureCategory {
+  return error instanceof FscpDecryptError ? error.category : "malformed_envelope";
+}
+
+// ── Паддинг plaintext (скрытие длины, FSCP.md errata-5) ──────────────────────
+//
+// Длина шифротекста тела видна серверу и наблюдателю канала с точностью до байта.
+// Перед AEAD plaintext JSON дополняется полем `"pad"` до фиксированных бакетов,
+// поэтому наружу утекает только номер бакета. Поле `pad` игнорируется
+// получателем как неизвестное top-level поле (эволюция схемы plaintext —
+// не wire-breaking). Бакеты: шаг 256 Б до 4 КиБ, дальше шаг 1 КиБ.
+
+const PAD_FIELD_OVERHEAD_BYTES = 9; // `,"pad":""` вокруг содержимого паддинга
+
+export function fscpPlaintextBucketBytes(rawUtf8Length: number): number {
+  const withOverhead = rawUtf8Length + PAD_FIELD_OVERHEAD_BYTES;
+  const step = withOverhead <= 4096 ? 256 : 1024;
+  return Math.ceil(withOverhead / step) * step;
+}
+
+/** Дополняет compact-JSON объекта полем `pad` до бакета. Экспорт — для тестов и Web-форка. */
+export function padPlaintextJsonV1(compactJson: string): string {
+  if (!compactJson.endsWith("}")) return compactJson;
+  const rawLen = utf8Bytes(compactJson).byteLength;
+  const padLen = fscpPlaintextBucketBytes(rawLen) - rawLen - PAD_FIELD_OVERHEAD_BYTES;
+  return `${compactJson.slice(0, -1)},"pad":"${"0".repeat(padLen)}"}`;
+}
+
 function envelopeWireForSigning(env: FscpEnvelopeWire): Omit<FscpEnvelopeWire, "senderSignatureBase64Url"> {
   const { senderSignatureBase64Url: _omit, ...rest } = env;
   return rest;
 }
 
-async function verifyDetachedEnvelopeSignature(sodium: Awaited<ReturnType<typeof getSodium>>, env: FscpEnvelopeWire): Promise<void> {
+async function verifyDetachedEnvelopeSignature(
+  sodium: Awaited<ReturnType<typeof getSodium>>,
+  env: FscpEnvelopeWire,
+  allowUnsignedLegacy: boolean,
+): Promise<void> {
   const pkB64 = env.senderSigningPublicKeyBase64Url;
-  if (!pkB64 || pkB64.trim().length === 0) return;
+  if (!pkB64 || pkB64.trim().length === 0) {
+    // Errata-5: неподписанные конверты отклоняются (downgrade-защита).
+    // Опция allowUnsignedLegacy — только для чтения архивов, созданных до
+    // введения обязательной подписи; для текущего трафика сервер такие wire отклоняет.
+    if (allowUnsignedLegacy) return;
+    throw new FscpDecryptError(
+      "signature_missing",
+      "Конверт без подписи отклонён (downgrade-защита). Для архивных сообщений используйте allowUnsignedLegacy.",
+    );
+  }
   const signPayload = utf8Bytes(`flora.messaging.envelope-signature.v1 | ${canonicalJson(envelopeWireForSigning(env))}`);
-  const sig = fromBase64Url(env.senderSignatureBase64Url);
-  const pk = fromBase64Url(pkB64);
-  if (!sodium.crypto_sign_verify_detached(sig, signPayload, pk)) {
-    throw new Error("Подпись конверта не прошла проверку.");
+  let ok = false;
+  try {
+    const sig = fromBase64Url(env.senderSignatureBase64Url);
+    const pk = fromBase64Url(pkB64);
+    ok = sodium.crypto_sign_verify_detached(sig, signPayload, pk);
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    throw new FscpDecryptError("signature_invalid", "Подпись конверта не прошла проверку.");
   }
 }
 
@@ -274,7 +369,7 @@ export async function buildFscpWireEnvelope(params: {
       blocks: [{ kind: "text", body: params.messageBody ?? "" }],
       clientCreatedAt: createdAt,
     } satisfies FscpMessagePlaintext);
-  const plaintextUtf8 = JSON.stringify(plaintextObj);
+  const plaintextUtf8 = padPlaintextJsonV1(JSON.stringify(plaintextObj));
   const bodyAad = messageBodyAadLine({
     conversationUuid,
     keyEpochId,
@@ -343,12 +438,21 @@ export async function buildFscpWireEnvelope(params: {
   const recB = oneRke(params.senderUserUuid, senderDeviceUuid, senderAgreementPublic, senderAgreementPublicKeyId);
   const recipients = sortRecipients([recA, recB]);
 
+  // Errata-5 (FSCP-REVIEW п.2): никакого fallback на случайную пару — конверт
+  // с невыводимым ключом подписи не должен быть построен вовсе.
   const signSeed = params.senderSigningPrivateKey.subarray(0, 32);
   const signingPublicKey =
     sodium.crypto_sign_seed_keypair?.(signSeed).publicKey ??
     (params.senderSigningPrivateKey.byteLength >= 64
       ? params.senderSigningPrivateKey.subarray(32, 64)
-      : sodium.crypto_sign_keypair().publicKey);
+      : undefined);
+  if (!signingPublicKey) {
+    throw new Error(
+      "FSCP: не удалось вывести публичный ключ подписи из senderSigningPrivateKey " +
+        `(byteLength=${params.senderSigningPrivateKey.byteLength}); ожидается 64-байтовый libsodium-ключ ` +
+        "или crypto_sign_seed_keypair в sodium-модуле.",
+    );
+  }
 
   const envelopeNoSig: Omit<FscpEnvelopeWire, "senderSignatureBase64Url"> = {
     version: 1,
@@ -378,20 +482,33 @@ export async function decryptFscpWireEnvelope(params: {
   wire: string;
   viewerUserUuid: string;
   agreementPrivateKey: Uint8Array;
+  /**
+   * Читать конверты без подписи (архив до обязательной подписи).
+   * По умолчанию false: неподписанные wire отклоняются (downgrade-защита).
+   */
+  allowUnsignedLegacy?: boolean;
 }): Promise<FscpMessagePlaintext> {
   if (!params.wire.startsWith(FSCP_WIRE_PREFIX)) {
-    throw new Error("Не FSCP wire.");
+    throw new FscpDecryptError("not_fscp_wire", "Не FSCP wire.");
   }
   const sodium = await getSodium();
-  const raw = fromBase64Url(params.wire.slice(FSCP_WIRE_PREFIX.length));
-  const json = new TextDecoder().decode(raw);
-  const env = JSON.parse(json) as FscpEnvelopeWire;
+  let env: FscpEnvelopeWire;
+  try {
+    const raw = fromBase64Url(params.wire.slice(FSCP_WIRE_PREFIX.length));
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(raw));
+    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as FscpEnvelopeWire).recipients)) {
+      throw new Error("envelope shape");
+    }
+    env = parsed as FscpEnvelopeWire;
+  } catch {
+    throw new FscpDecryptError("malformed_envelope", "Повреждённый конверт FSCP (base64/JSON/форма).");
+  }
 
-  await verifyDetachedEnvelopeSignature(sodium, env);
+  await verifyDetachedEnvelopeSignature(sodium, env, params.allowUnsignedLegacy ?? false);
 
   const meNorm = params.viewerUserUuid.trim().toLowerCase();
   const row = env.recipients.find((r) => r.userUuid.trim().toLowerCase() === meNorm);
-  if (!row) throw new Error("Нет RKE для этого пользователя.");
+  if (!row) throw new FscpDecryptError("no_recipient_entry", "Нет RKE для этого пользователя.");
 
   const rke = row.recipientKeyEnvelope;
   const aadLine = recipientKeyEnvelopeAadLine({
@@ -405,15 +522,23 @@ export async function decryptFscpWireEnvelope(params: {
     recipientDeviceUuid: row.deviceUuid,
     recipientAgreementPublicKeyId: rke.recipientAgreementPublicKeyId,
   });
-  const messageKey = rkeUnwrapMessageKey({
-    sodium,
-    agreementPrivateKey: params.agreementPrivateKey,
-    ephemeralPublicKey: fromBase64Url(rke.ephemeralPublicKeyBase64Url),
-    salt32: fromBase64Url(rke.saltBase64Url),
-    aadUtf8Line: aadLine,
-    nonce: fromBase64Url(rke.aead.nonceBase64Url),
-    ciphertext: fromBase64Url(rke.ciphertextBase64Url),
-  });
+  let messageKey: Uint8Array;
+  try {
+    messageKey = rkeUnwrapMessageKey({
+      sodium,
+      agreementPrivateKey: params.agreementPrivateKey,
+      ephemeralPublicKey: fromBase64Url(rke.ephemeralPublicKeyBase64Url),
+      salt32: fromBase64Url(rke.saltBase64Url),
+      aadUtf8Line: aadLine,
+      nonce: fromBase64Url(rke.aead.nonceBase64Url),
+      ciphertext: fromBase64Url(rke.ciphertextBase64Url),
+    });
+  } catch {
+    throw new FscpDecryptError(
+      "rke_unwrap_failed",
+      "Не удалось развернуть ключ сообщения (RKE): вероятно, ключ согласования устройства не совпадает.",
+    );
+  }
 
   const bodyAad = messageBodyAadLine({
     conversationUuid: env.conversationUuid,
@@ -424,14 +549,23 @@ export async function decryptFscpWireEnvelope(params: {
     senderDeviceUuid: env.senderDeviceUuid,
     createdAt: env.createdAt,
   });
-  const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-    null,
-    fromBase64Url(env.ciphertextBase64Url),
-    bodyAad,
-    fromBase64Url(env.aead.nonceBase64Url),
-    messageKey
-  );
-  return normalizeFscpMessagePlaintext(JSON.parse(new TextDecoder().decode(plain)));
+  let plain: Uint8Array;
+  try {
+    plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null,
+      fromBase64Url(env.ciphertextBase64Url),
+      bodyAad,
+      fromBase64Url(env.aead.nonceBase64Url),
+      messageKey
+    );
+  } catch {
+    throw new FscpDecryptError("body_decrypt_failed", "AEAD тела сообщения не расшифровался (ключ/AAD не совпали).");
+  }
+  try {
+    return normalizeFscpMessagePlaintext(JSON.parse(new TextDecoder().decode(plain)));
+  } catch {
+    throw new FscpDecryptError("malformed_plaintext", "Расшифрованный plaintext сообщения имеет неверную форму.");
+  }
 }
 
 export function isFscpWirePayload(s: string | null | undefined): boolean {

@@ -236,9 +236,9 @@ def main() -> None:
             },
             {
                 "variantId": "legacy_unsigned",
-                "description": "Legacy-конверт без signing pk и подписи: клиент читает (deprecated skip-путь), сервер новые такие wire отклоняет.",
+                "description": "Конверт без signing pk и подписи: клиент отклоняет по умолчанию (downgrade-защита, errata-5); чтение архива — только явный opt-in allowUnsignedLegacy. Сервер такие wire отклоняет.",
                 "wire": build_wire(legacy),
-                "clientDecrypt": "accept-deprecated",
+                "clientDecrypt": "reject-unsigned",
                 "serverFormValidation": "reject",
                 "serverExpectedError": "FSCP wire: требуется senderSigningPublicKeyBase64Url (Ed25519, 32 байта).",
             },

@@ -1,15 +1,19 @@
 //! E2E epochs, unlock-complete, device keys.
 
+use std::sync::Arc;
+
+use chrono::SecondsFormat;
 use flora_messaging_contracts::{
-    AddPendingDeviceRequestDto, AddPendingDeviceResponseDto, CreateEpochRequestDto,
-    DeviceKeyEntryDto, UnlockChallengeResponseDto, UnlockCompleteRequestDto,
+    AddPendingDeviceRequestDto, AddPendingDeviceResponseDto, ApproveDeviceRequestDto,
+    ApproveDeviceResponseDto, CreateEpochRequestDto, DeviceKeyEntryDto, UnlockChallengeResponseDto,
+    UnlockCompleteRequestDto,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::infrastructure::{
-    E2eEpochRepoError, add_pending_device, create_epoch, fetch_devices, request_unlock_challenge,
-    revoke_device, unlock_complete,
+    E2eEpochRepoError, E2eProofTokens, add_pending_device, approve_device, create_epoch,
+    fetch_devices, request_unlock_challenge, revoke_device, unlock_complete,
 };
 
 #[derive(Debug, Clone)]
@@ -36,6 +40,17 @@ pub enum UnlockCompleteError {
     EpochSetHashUnchanged,
     Conflict(String),
     Forbidden(String),
+    ProofTokenInvalid(String),
+    Internal(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum ApproveDeviceError {
+    AccountNotInRequiredState(String),
+    SignatureInvalid(String),
+    Forbidden(String),
+    NotFound(String),
+    Conflict(String),
     Internal(String),
 }
 
@@ -54,11 +69,12 @@ pub enum RevokeDeviceError {
 
 pub struct E2eEpochService {
     pool: PgPool,
+    tokens: Arc<E2eProofTokens>,
 }
 
 impl E2eEpochService {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, tokens: Arc<E2eProofTokens>) -> Self {
+        Self { pool, tokens }
     }
 
     pub async fn create_epoch(
@@ -91,9 +107,54 @@ impl E2eEpochService {
         user_uuid: Uuid,
         request: UnlockCompleteRequestDto,
     ) -> Result<(), UnlockCompleteError> {
-        unlock_complete(&self.pool, user_uuid, &request)
+        unlock_complete(&self.pool, &self.tokens, user_uuid, &request)
             .await
             .map_err(map_unlock_complete_error)
+    }
+
+    /// Approve pending-устройства подписью active-устройства той же epoch;
+    /// при успехе выдаёт `trustedDeviceApprovalToken` для `unlock-complete`.
+    pub async fn approve_device(
+        &self,
+        user_uuid: Uuid,
+        key_epoch_id: Uuid,
+        device_uuid: Uuid,
+        request: ApproveDeviceRequestDto,
+    ) -> Result<ApproveDeviceResponseDto, ApproveDeviceError> {
+        approve_device(
+            &self.pool,
+            user_uuid,
+            key_epoch_id,
+            device_uuid,
+            request.approving_device_uuid,
+            &request.approval_signature_base64_url,
+        )
+        .await
+        .map_err(|e| match e {
+            E2eEpochRepoError::AccountNotInRequiredState(msg) => {
+                ApproveDeviceError::AccountNotInRequiredState(msg)
+            }
+            E2eEpochRepoError::SignatureInvalid(msg) => ApproveDeviceError::SignatureInvalid(msg),
+            E2eEpochRepoError::Forbidden(msg) => ApproveDeviceError::Forbidden(msg),
+            E2eEpochRepoError::NotFound(msg) => ApproveDeviceError::NotFound(msg),
+            E2eEpochRepoError::Conflict(msg) => ApproveDeviceError::Conflict(msg),
+            E2eEpochRepoError::Internal(msg) => ApproveDeviceError::Internal(msg),
+            other => ApproveDeviceError::Internal(other.to_string()),
+        })?;
+
+        let token = self.tokens.issue_device_approval(
+            user_uuid,
+            key_epoch_id,
+            device_uuid,
+            request.approving_device_uuid,
+        );
+        Ok(ApproveDeviceResponseDto {
+            device_uuid,
+            trusted_device_approval_token: token.as_ref().map(|(t, _)| t.clone()),
+            trusted_device_approval_token_expires_at: token
+                .as_ref()
+                .map(|(_, exp)| exp.to_rfc3339_opts(SecondsFormat::Millis, true)),
+        })
     }
 
     pub async fn add_pending_device(
@@ -167,6 +228,7 @@ fn map_unlock_complete_error(e: E2eEpochRepoError) -> UnlockCompleteError {
         E2eEpochRepoError::EpochSetHashUnchanged => UnlockCompleteError::EpochSetHashUnchanged,
         E2eEpochRepoError::Conflict(msg) => UnlockCompleteError::Conflict(msg),
         E2eEpochRepoError::Forbidden(msg) => UnlockCompleteError::Forbidden(msg),
+        E2eEpochRepoError::ProofTokenInvalid(msg) => UnlockCompleteError::ProofTokenInvalid(msg),
         E2eEpochRepoError::Internal(msg) => UnlockCompleteError::Internal(msg),
         other => UnlockCompleteError::Internal(other.to_string()),
     }

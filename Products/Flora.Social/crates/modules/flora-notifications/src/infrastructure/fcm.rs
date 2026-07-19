@@ -69,12 +69,14 @@ impl FcmPushSender {
         }
     }
 
+    /// Privacy-инвариант (e2e-security.md §Уведомления, FSCP errata-5): тело push
+    /// всегда generic «Новое сообщение», `messagePreview` в data отсутствует —
+    /// содержимое сообщения не передаётся FCM-провайдеру.
     pub async fn send_message_push(
         &self,
         recipient_user_uuid: Uuid,
         device_tokens: &[String],
         sender_display_name: &str,
-        body: &str,
         conversation_uuid: Uuid,
         sender_user_uuid: Uuid,
     ) {
@@ -82,35 +84,24 @@ impl FcmPushSender {
             let t = sender_display_name.trim();
             if t.is_empty() { "Flora" } else { t }
         };
-        let mut notification_body = {
-            let b = body.trim();
-            if b.is_empty() {
-                "Новое сообщение".to_string()
-            } else {
-                b.to_string()
-            }
-        };
-        if notification_body.chars().count() > 120 {
-            notification_body = truncate_chars(&notification_body, 117) + "...";
-        }
+        let notification_body = "Новое сообщение";
 
         let mut data = HashMap::new();
         data.insert("type".into(), "message".into());
         data.insert("conversationUuid".into(), conversation_uuid.to_string());
         data.insert("senderUserUuid".into(), sender_user_uuid.to_string());
-        data.insert("messagePreview".into(), notification_body.clone());
         data.insert("tag".into(), conversation_uuid.to_string());
 
         self.send(
             recipient_user_uuid,
             device_tokens,
             title,
-            &notification_body,
+            notification_body,
             &data,
             "messages",
             true,
             Some(title),
-            Some(notification_body.as_str()),
+            Some(notification_body),
         )
         .await;
     }

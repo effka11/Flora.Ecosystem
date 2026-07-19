@@ -916,6 +916,7 @@ dependencies = [
  "chrono",
  "fira-contracts",
  "flora-shared",
+ "serde_json",
  "uuid",
 ]
 
@@ -1011,6 +1012,7 @@ version = "0.6.0-alpha"
 dependencies = [
  "axum",
  "chrono",
+ "fira-contracts",
  "fira-core",
  "flora-auth",
  "flora-auth-contracts",
@@ -1111,6 +1113,7 @@ dependencies = [
  "flora-users-contracts",
  "fscp-core",
  "hex",
+ "hmac 0.12.1",
  "reqwest",
  "serde",
  "serde_json",
@@ -1136,7 +1139,9 @@ version = "0.6.0-alpha"
 dependencies = [
  "anyhow",
  "clap",
+ "flora-content",
  "flora-shared",
+ "flora-users",
  "sqlx",
  "tokio",
  "tracing",
@@ -1247,6 +1252,7 @@ version = "0.6.0-alpha"
 dependencies = [
  "axum",
  "chrono",
+ "fira-core",
  "flora-auth",
  "flora-auth-contracts",
  "flora-content",
@@ -1274,6 +1280,7 @@ version = "0.6.0-alpha"
 dependencies = [
  "axum",
  "chrono",
+ "fira-contracts",
  "fira-core",
  "flora-auth",
  "flora-auth-contracts",
@@ -1297,6 +1304,7 @@ name = "flora-users-contracts"
 version = "0.6.0-alpha"
 dependencies = [
  "chrono",
+ "fira-contracts",
  "uuid",
 ]
 
@@ -1463,6 +1471,7 @@ name = "fscp-core"
 version = "0.6.0-alpha"
 dependencies = [
  "base64",
+ "ed25519-dalek",
  "flora-shared",
  "fscp-contracts",
  "serde_json",
@@ -3595,6 +3604,7 @@ dependencies = [
  "sqlx-postgres",
  "sqlx-sqlite",
  "syn",
+ "thiserror 2.0.18",
  "tokio",
  "url",
 ]

@@ -149,6 +149,7 @@ Email восстанавливает доступ к аккаунту, но не
 ### Уведомления и внешние каналы (push, email, SMS)
 
 - **Push (APNs/FCM и т.д.):** только то, что не раскрывает содержимое: «новое сообщение», имя отправителя **по политике** (может быть pseudonym до открытия приложения), `badge`, **без** цитаты текста и без `conversationId` в payload, если это повышает риск корреляции на заблокированном устройстве (настраиваемый уровень).
+- **Статус реализации (errata-5, выполнено):** ранее клиенты передавали серверу plaintext-превью (`pushPreview`) для текста push-уведомления — прямая утечка содержимого через сервер и FCM. Поле удалено из контракта отправки (`sendTextMessage` в `@flora/fscp`), notifier-контракт (`flora-notifications`) больше не принимает и не форвардит превью: push всегда содержит только generic-текст.
 - **Email / SMS:** одноразовые коды и security-ссылки — как в разделе **Смена email**; не смешивать с телом E2E-сообщения.
 - **Корреляция:** провайдер push видит токен и частоту; это **вне** криптографической модели FLORA — пользователю раскрывается в privacy policy.
 
@@ -1049,6 +1050,8 @@ flora.messaging.device-to-device-recovery.v1 | recoveryRequestId | userUuid | so
 
 Сервер обязан проверить, что `sourceDeviceUuid` имеет active device binding для каждой epoch из `transferredKeyEpochIds`. Если source device active только в новой epoch, он не может подтверждать передачу старой locked epoch.
 
+**Референс-реализация (errata-5):** `deviceRecovery.ts` в `@flora/fscp` — `buildDeviceRecoveryEnvelope` / `openDeviceRecoveryEnvelope` (X25519 → HKDF-SHA256 → XChaCha20-Poly1305, подпись Ed25519 над canonical JSON без поля подписи, домены `flora.messaging.device-to-device-recovery.v1` для AAD и `...device-to-device-recovery-signature.v1` для подписи). `targetAgreementPublicKeyId = UUIDv5(userUuid, deviceUuid)` — `deviceAgreementPublicKeyId`. Открытие проверяет подпись source-устройства, AAD-binding (`recoveryRequestId`/`userUuid`/`targetDeviceUuid`) и AEAD; негативы (чужая подпись, порча ciphertext, подмена binding, пустые epochs) закрыты unit-тестами `deviceRecovery.test.ts`. Серверный транспорт (`recover-key`) — следующий шаг.
+
 ### Canonical encoding
 
 Для подписей и AAD нельзя использовать «произвольный JSON.stringify».
@@ -1240,6 +1243,18 @@ API слой тонкий: проверяет авторизацию, freeze/ris
   - `recoveryUnlockToken`, выданный сервером при старте recovery-flow до локального decrypt и привязанный к reset request;
   - `trustedDeviceApprovalToken`, выданный после подтверждения на active trusted device.
 
+**Формат и проверка proof tokens (v1, реализовано — errata-5).** Токены — серверные HMAC-SHA256 (модуль `E2eProofTokens` в `flora-messaging/infrastructure`), клиент передаёт их opaque:
+
+```text
+fet1.<base64url(payload_json)>.<base64url(hmac_sha256(mac_key, payload_b64))>
+```
+
+- `payload_json`: `{ "kind", "userUuid", "expiresAt", ... }`; `kind ∈ { recovery-unlock, device-approval }`;
+- MAC-ключ выводится из серверного секрета (`Messaging:E2eTokenSecret`, fallback `Jwt:Secret`) с **domain separation** по виду токена — recovery-токен нельзя предъявить как approval-токен и наоборот;
+- TTL: 30 минут оба вида; истёкший/чужой (`userUuid` mismatch)/порченый токен → **403**, unlock-complete отклоняется **до** каких-либо записей;
+- выдача: `recoveryUnlockToken` — в ответе `GET .../recovery-backup/{recoveryKeyId}` **только** при FSM `recovering` (поля `recoveryUnlockToken`, `recoveryUnlockTokenExpiresAt`); `trustedDeviceApprovalToken` — в ответе `POST .../devices/{deviceUuid}/approve` (см. §Devices);
+- ранняя реализация принимала «любой непустой» токен — это было плацебо (см. [`FSCP-REVIEW.md`](../FSCP-REVIEW.md) §Remediation); теперь проверка криптографическая и обязательная.
+
 #### `recoveredKeyEpochIds` (v1, нормативно)
 
 - **Новый успешный** `unlock-complete` (не строгий idempotent replay уже принятого тела) **обязан** содержать `recoveredKeyEpochIds` с **≥ 1** uuid.
@@ -1310,6 +1325,16 @@ flora.messaging.unlock-complete.v1 | userUuid | resetRequestId | challengeId | b
 | `POST` | `/api/messaging/e2e/epochs/{keyEpochId}/devices/{deviceId}/recover-key` | Передать E2E material выбранных epochs через trusted-device envelope (устройство идентифицируется в path; `transferredKeyEpochIds` в теле должны быть совместимы с authority source device в этих epochs) |
 
 `keyEpochId` в path задаёт **единственный** scope операции: approve/revoke/recover не действуют «на все epochs сразу». Сервер отклоняет запрос, если `UserDeviceKey.keyEpochId` в теле или в stored record не совпадает с `{keyEpochId}` из path.
+
+**Approve (реализовано — errata-5).** Инвариант «новое устройство не становится trusted только по JWT» обеспечивается подписью: тело `POST .../approve` — `{ "approvingDeviceUuid", "approvalSignatureBase64Url" }`, где подпись Ed25519 делает **другое active-устройство той же epoch** своим device signing key над canonical payload:
+
+```text
+flora.messaging.device-approve.v1 | userUuid | keyEpochId | newDeviceUuid | approvingDeviceUuid
+```
+
+Сервер проверяет: FSM аккаунта допускает approve; approving-устройство **active** в этой epoch и не совпадает с target; подпись валидна относительно **сохранённого** signing public key approving-устройства. Успех переводит target в `active` (идемпотентно) и возвращает `trustedDeviceApprovalToken` (+`...ExpiresAt`) для `unlock-complete`. Клиентский билдер canonical-строки — `buildDeviceApproveCanonical` в `@flora/fscp`; typed-обёртки эндпоинтов devices/unlock — `@flora/client-core/api/messaging`.
+
+**Статус остальных операций:** `pending`/`devices`/`revoke` (включая POST-алиас) реализованы; `recover-key` — **не реализован** (материал передаётся через `DeviceToDeviceRecoveryEnvelope`, референс-реализация уже в `@flora/fscp` — см. §DeviceToDeviceRecoveryEnvelope).
 
 ### Messages
 

@@ -27,6 +27,9 @@ pub enum E2eEpochRepoError {
     ChallengeExpiredOrUsed(String),
     EpochSetHashUnchanged,
     Forbidden(String),
+    /// Errata-5: предъявленный recoveryUnlockToken / trustedDeviceApprovalToken
+    /// не прошёл криптопроверку (HMAC/TTL/binding).
+    ProofTokenInvalid(String),
     IdempotencyConflict(String),
     Conflict(String),
     Internal(String),
@@ -253,6 +256,7 @@ pub async fn request_unlock_challenge(
 
 pub async fn unlock_complete(
     pool: &PgPool,
+    tokens: &super::E2eProofTokens,
     user_uuid: Uuid,
     request: &UnlockCompleteRequestDto,
 ) -> Result<(), E2eEpochRepoError> {
@@ -298,20 +302,38 @@ pub async fn unlock_complete(
         IdempotencyCheck::NotSeen => {}
     }
 
-    if request
+    // Errata-5: proof-токены проверяются криптографически (HMAC, TTL, binding к user),
+    // а не только на непустоту. Достаточно одного валидного токена любого вида.
+    let recovery_token = request
         .recovery_unlock_token
         .as_deref()
-        .unwrap_or("")
-        .is_empty()
-        && request
-            .trusted_device_approval_token
-            .as_deref()
-            .unwrap_or("")
-            .is_empty()
-    {
-        return Err(E2eEpochRepoError::Forbidden(
-            "One of recoveryUnlockToken or trustedDeviceApprovalToken is required.".into(),
-        ));
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+    let approval_token = request
+        .trusted_device_approval_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+
+    match (recovery_token, approval_token) {
+        (None, None) => {
+            return Err(E2eEpochRepoError::Forbidden(
+                "One of recoveryUnlockToken or trustedDeviceApprovalToken is required.".into(),
+            ));
+        }
+        (recovery, approval) => {
+            let recovery_ok = recovery.map(|t| tokens.verify_recovery_unlock(t, user_uuid));
+            let approval_ok = approval.map(|t| tokens.verify_device_approval(t, user_uuid));
+            let any_valid =
+                matches!(recovery_ok, Some(Ok(()))) || matches!(approval_ok, Some(Ok(())));
+            if !any_valid {
+                let detail = recovery_ok
+                    .and_then(Result::err)
+                    .or_else(|| approval_ok.and_then(Result::err))
+                    .unwrap_or_else(|| "Proof-токен не прошёл проверку.".into());
+                return Err(E2eEpochRepoError::ProofTokenInvalid(detail));
+            }
+        }
     }
 
     let mut tx = pool
@@ -580,13 +602,16 @@ pub async fn add_pending_device(
     .await
     .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
 
+    // Recovering разрешён (errata-5): в trusted-device flow новое устройство обязано
+    // зарегистрировать pending-ключи для старой epoch до approve старым устройством.
+    // Права pending-устройство не получает; Active — только через подписанный approve.
     let allowed = matches!(
         state.as_ref().map(|s| s.state.as_str()),
-        Some("Active") | Some("ActiveNewEpoch")
+        Some("Active") | Some("ActiveNewEpoch") | Some("Recovering")
     );
     if !allowed {
         return Err(E2eEpochRepoError::AccountNotInRequiredState(
-            "Adding a pending device is only allowed when account state = active or active_new_epoch."
+            "Adding a pending device is only allowed when account state = active, active_new_epoch or recovering."
                 .into(),
         ));
     }
@@ -652,6 +677,145 @@ pub async fn fetch_devices(
     .await
     .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
+}
+
+/// Canonical payload approve-подписи (подписывает active-устройство той же epoch).
+pub fn build_canonical_device_approve_payload(
+    user_uuid: Uuid,
+    key_epoch_id: Uuid,
+    new_device_uuid: Uuid,
+    approving_device_uuid: Uuid,
+) -> String {
+    format!(
+        "flora.messaging.device-approve.v1 | {user_uuid} | {key_epoch_id} | {new_device_uuid} | {approving_device_uuid}"
+    )
+}
+
+/// POST .../epochs/{keyEpochId}/devices/{deviceUuid}/approve (errata-5).
+///
+/// Инвариант e2e-security.md: «новое устройство не становится trusted только по JWT» —
+/// перевод Pending → Active требует Ed25519-подписи **другого active-устройства той же
+/// epoch** над canonical payload. Идемпотентно для уже Active устройства.
+pub async fn approve_device(
+    pool: &PgPool,
+    user_uuid: Uuid,
+    key_epoch_id: Uuid,
+    device_uuid: Uuid,
+    approving_device_uuid: Uuid,
+    approval_signature_base64_url: &str,
+) -> Result<(), E2eEpochRepoError> {
+    let state = sqlx::query_as::<_, E2eAccountStateRow>(
+        r#"
+        SELECT state, freeze, updated_at
+        FROM flora_core.user_e2e_account_states
+        WHERE user_uuid = $1
+        "#,
+    )
+    .bind(user_uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
+
+    let allowed = matches!(
+        state.as_ref().map(|s| s.state.as_str()),
+        Some("Active") | Some("ActiveNewEpoch") | Some("Recovering")
+    );
+    if !allowed {
+        return Err(E2eEpochRepoError::AccountNotInRequiredState(
+            "Device approve is only allowed when account state = active, active_new_epoch or recovering."
+                .into(),
+        ));
+    }
+
+    if approving_device_uuid == device_uuid {
+        return Err(E2eEpochRepoError::Conflict(
+            "Device cannot approve itself.".into(),
+        ));
+    }
+
+    let pending: Option<DeviceStatusRow> = sqlx::query_as(
+        r#"
+        SELECT status
+        FROM flora_core.user_device_keys
+        WHERE device_uuid = $1 AND user_uuid = $2 AND key_epoch_id = $3
+        "#,
+    )
+    .bind(device_uuid)
+    .bind(user_uuid)
+    .bind(key_epoch_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
+
+    let pending = pending.ok_or_else(|| {
+        E2eEpochRepoError::NotFound(format!(
+            "Device {device_uuid} not found for epoch {key_epoch_id}."
+        ))
+    })?;
+    if pending.status == "Revoked" {
+        return Err(E2eEpochRepoError::Conflict(
+            "Revoked device cannot be approved.".into(),
+        ));
+    }
+
+    let approver: Option<DeviceSigningKeyRow> = sqlx::query_as(
+        r#"
+        SELECT status, signing_public_key_base64url
+        FROM flora_core.user_device_keys
+        WHERE device_uuid = $1 AND user_uuid = $2 AND key_epoch_id = $3
+        "#,
+    )
+    .bind(approving_device_uuid)
+    .bind(user_uuid)
+    .bind(key_epoch_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
+
+    let approver = approver.ok_or_else(|| {
+        E2eEpochRepoError::NotFound(format!(
+            "Approving device {approving_device_uuid} not found for epoch {key_epoch_id}."
+        ))
+    })?;
+    if approver.status != "Active" {
+        return Err(E2eEpochRepoError::Forbidden(
+            "Approving device must be active in this key epoch.".into(),
+        ));
+    }
+
+    let payload = build_canonical_device_approve_payload(
+        user_uuid,
+        key_epoch_id,
+        device_uuid,
+        approving_device_uuid,
+    );
+    if !verify_ed25519_signature(
+        &approver.signing_public_key_base64url,
+        &payload,
+        approval_signature_base64_url,
+    ) {
+        return Err(E2eEpochRepoError::SignatureInvalid(
+            "Ed25519 approval signature verification failed.".into(),
+        ));
+    }
+
+    if pending.status != "Active" {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_device_keys
+            SET status = 'Active', last_seen_at = $4
+            WHERE device_uuid = $1 AND user_uuid = $2 AND key_epoch_id = $3
+            "#,
+        )
+        .bind(device_uuid)
+        .bind(user_uuid)
+        .bind(key_epoch_id)
+        .bind(Utc::now())
+        .execute(pool)
+        .await
+        .map_err(|e| E2eEpochRepoError::Internal(e.to_string()))?;
+    }
+    Ok(())
 }
 
 pub async fn revoke_device(
@@ -959,6 +1123,12 @@ struct DeviceKeyDbRow {
 #[derive(sqlx::FromRow)]
 struct DeviceStatusRow {
     status: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct DeviceSigningKeyRow {
+    status: String,
+    signing_public_key_base64url: String,
 }
 
 #[derive(sqlx::FromRow)]

@@ -12,6 +12,7 @@ export * from "./envelope.js";
 export {
   buildUnlockCompleteCanonical,
   buildDeviceKeyCanonical,
+  buildDeviceApproveCanonical,
   ed25519Sign,
   ed25519PublicKeyFromPrivate,
   generateEd25519KeyPair,
@@ -19,6 +20,7 @@ export {
   toBase64Url,
   fromBase64Url as fromBase64UrlUnlock,
 } from "./unlockFlow.js";
+export * from "./deviceRecovery.js";
 export * from "./recoveryPhrase.js";
 export * from "./keyStorage.js";
 export * from "./keys.js";

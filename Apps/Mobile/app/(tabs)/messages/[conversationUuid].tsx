@@ -9,8 +9,6 @@ import {
 import {
   apiGetUserE2ePublicKey,
   buildBlocksMessageWire,
-  messagePlaintextFromBlocks,
-  plaintextToPreview,
   sendTextMessage,
   type FscpMessageBlock,
 } from "@flora/client-core/fscp";
@@ -705,7 +703,6 @@ export default function ThreadScreen() {
         conversationUuid,
         wire,
         attachments: { voiceAssetUuids: [voiceBlock.assetUuid] },
-        pushPreview: plaintextToPreview(messagePlaintextFromBlocks([voiceBlock])),
       });
       appendOutgoingThreadMessage({
         queryClient,
@@ -781,12 +778,10 @@ export default function ThreadScreen() {
         blocks,
         replyTo: activeReply ?? undefined,
       });
-      const previewPlain = messagePlaintextFromBlocks(blocks);
       const sent = await sendTextMessage({
         conversationUuid,
         wire,
         attachments: imageAssetUuids.length > 0 ? { imageAssetUuids } : undefined,
-        pushPreview: plaintextToPreview(previewPlain),
       });
       appendOutgoingThreadMessage({
         queryClient,

@@ -1597,7 +1597,7 @@ function MessagesChatInner() {
 
       const sent = await msgSendMessageToUser(myUuid, peerUuid, wire, {
         voiceAssetUuids: [uploaded.voiceAssetUuid],
-      }, plaintextToPreview(finalPayload));
+      });
 
       const realRow: MessageThreadItemDto = {
         messageUuid: sent.messageUuid,
@@ -1924,7 +1924,7 @@ function MessagesChatInner() {
       const sent = await msgSendMessageToUser(myUuid, selectedOtherUuid, wire, {
         imageAssetUuids,
         videoAssetUuids,
-      }, plaintextToPreview(outgoingPayload));
+      });
       compose.reset();
       setReplyTo(null);
       const viewerNorm = myUuid.trim().toLowerCase();
@@ -2627,13 +2627,24 @@ function MessagesChatInner() {
                                     videoBlock={isDemoPlaintextWire(message.encryptedForMe) ? undefined : block}
                                     localBlob={devGetVideoBlob(block.assetUuid)}
                                   />
-                                ) : (
+                                ) : block.kind === "voice" ? (
                                   <VoiceMessageCard
                                     key={`${message.messageUuid}-${block.assetUuid}`}
                                     durationMs={block.durationMs}
                                     waveform={block.waveform}
                                     voiceBlock={isDemoPlaintextWire(message.encryptedForMe) ? undefined : block}
                                     localBlob={localVoiceBlobForAsset(block.assetUuid)}
+                                  />
+                                ) : (
+                                  // Forward-compat (FSCP errata-5): блок новее клиента —
+                                  // явная индикация вместо пустого сообщения.
+                                  <MessageBubbleText
+                                    key={`${message.messageUuid}-${index}`}
+                                    body="Контент недоступен в этой версии приложения."
+                                    inlineTime={inlineTime && index === content.blocks.length - 1}
+                                    timeLabel={formatChatTime(message.createdAt)}
+                                    timeMeta={timeMeta}
+                                    timeInlineReservePx={timeInlineReservePx}
                                   />
                                 )
                               )}

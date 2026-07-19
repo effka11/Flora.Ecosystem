@@ -251,6 +251,125 @@ pub fn try_validate_wire(
     Ok(())
 }
 
+/// Криптографическая проверка Ed25519-подписи конверта (defense-in-depth, errata-5).
+///
+/// Аддитивная ступень ПОСЛЕ замороженного валидатора формы [`try_validate_wire`]
+/// (тот остаётся байт-в-байт с golden `fscp-wire-validator-v1.json` и не меняется).
+/// Сервер по-прежнему не расшифровывает содержимое (§4.4) — проверяется только
+/// подпись над canonical JSON конверта, что закрывает подмену/порчу конверта
+/// на пути клиент→сервер и хранение мусора под чужим ключом подписи.
+///
+/// Вызывать только после успешного `try_validate_wire` (форма гарантирует
+/// присутствие и длины ключа/подписи).
+pub fn verify_envelope_signature(wire: &str) -> Result<(), String> {
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+    let wire = wire.trim();
+    let Some(inner) = wire.strip_prefix(WIRE_PREFIX) else {
+        return Err("Неверный префикс FSCP wire (ожидается fscp1:).".into());
+    };
+    let json_utf8 = from_base64_url_like_dotnet(inner, MAX_INNER_UTF8_BYTES)?;
+    let root = parse_json_like_dotnet(&json_utf8)?;
+
+    let Some(pk_b64) = string_field(&root, "senderSigningPublicKeyBase64Url") else {
+        return Err(
+            "FSCP wire: требуется senderSigningPublicKeyBase64Url (Ed25519, 32 байта).".into(),
+        );
+    };
+    let Some(sig_b64) = string_field(&root, "senderSignatureBase64Url") else {
+        return Err("FSCP wire: нет подписи отправителя.".into());
+    };
+
+    let pk_bytes: [u8; 32] = from_base64_url_like_dotnet(pk_b64, 64)?
+        .try_into()
+        .map_err(|_| String::from("FSCP wire: неверный senderSigningPublicKeyBase64Url."))?;
+    let sig_bytes: [u8; 64] = from_base64_url_like_dotnet(sig_b64, 96)?
+        .try_into()
+        .map_err(|_| String::from("FSCP wire: неверная подпись отправителя."))?;
+
+    let mut no_sig = root;
+    if let Some(obj) = no_sig.as_object_mut() {
+        obj.remove("senderSignatureBase64Url");
+    }
+    let payload = format!(
+        "flora.messaging.envelope-signature.v1 | {}",
+        canonical_json(&no_sig)
+    );
+
+    let vk = VerifyingKey::from_bytes(&pk_bytes)
+        .map_err(|_| String::from("FSCP wire: неверный senderSigningPublicKeyBase64Url."))?;
+    vk.verify(payload.as_bytes(), &Signature::from_bytes(&sig_bytes))
+        .map_err(|_| String::from("FSCP wire: подпись конверта Ed25519 не прошла проверку."))
+}
+
+/// Canonical JSON конверта (Documents/fscp/FSCP.md §Canonical encoding) — байт-паритет
+/// с TS `canonicalJson.ts` и паритет-харнессом `flora_parity::canonical_json`:
+/// рекурсивная сортировка ключей объектов, массивы в исходном порядке,
+/// экранирование строк как `JSON.stringify`. Ключи v1 — ASCII, поэтому байтовый
+/// порядок `str::cmp` совпадает с UTF-16 code-unit порядком TS.
+pub fn canonical_json(value: &Value) -> String {
+    let mut out = String::new();
+    write_canonical(value, &mut out);
+    out
+}
+
+fn write_canonical(value: &Value, out: &mut String) {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Number(n) => out.push_str(&n.to_string()),
+        Value::String(s) => out.push_str(&escape_like_json_stringify(s)),
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_canonical(item, out);
+            }
+            out.push(']');
+        }
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort_unstable();
+            out.push('{');
+            for (i, k) in keys.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&escape_like_json_stringify(k));
+                out.push(':');
+                write_canonical(&map[k.as_str()], out);
+            }
+            out.push('}');
+        }
+    }
+}
+
+/// `JSON.stringify` для строки: короткие формы `\" \\ \b \t \n \f \r`,
+/// прочие управляющие — `\u00xx`, не-ASCII — как есть (UTF-8).
+fn escape_like_json_stringify(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{08}' => out.push_str("\\b"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\u{0C}' => out.push_str("\\f"),
+            '\r' => out.push_str("\\r"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// Извлекает UUID собеседника (участник ≠ `authenticated_sender`) без полной валидации.
 /// Порт `TryExtractReceiver`; после определения получателя вызывается `try_validate_dual_wire`.
 pub fn try_extract_receiver(wire: &str, authenticated_sender: Uuid) -> Result<Uuid, String> {
@@ -425,6 +544,90 @@ mod tests {
         assert_eq!(
             try_validate_wire(&wire, Uuid::nil(), Uuid::nil()).unwrap_err(),
             "FSCP wire слишком длинный."
+        );
+    }
+
+    // ── verify_envelope_signature (errata-5, аддитивная криптоступень) ──────
+    // Golden-паритет с TS/python — Tests/parity/tests/fscp_transcript_vectors.rs;
+    // здесь — самодостаточные синтетические проверки.
+
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use ed25519_dalek::{Signer, SigningKey};
+
+    fn synthetic_signed_wire(mutate_after_sign: impl FnOnce(&mut serde_json::Value)) -> String {
+        let sk = SigningKey::from_bytes(&[7u8; 32]);
+        let pk_b64 = URL_SAFE_NO_PAD.encode(sk.verifying_key().to_bytes());
+        let mut env = serde_json::json!({
+            "version": 1,
+            "messageUuid": "33333333-3333-4333-8333-333333333333",
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "recipients": [{"userUuid": "AA"}, {"userUuid": "bb"}],
+            "senderSigningPublicKeyBase64Url": pk_b64,
+        });
+        let payload = format!(
+            "flora.messaging.envelope-signature.v1 | {}",
+            canonical_json(&env)
+        );
+        let sig = sk.sign(payload.as_bytes());
+        env.as_object_mut().unwrap().insert(
+            "senderSignatureBase64Url".into(),
+            serde_json::Value::String(URL_SAFE_NO_PAD.encode(sig.to_bytes())),
+        );
+        mutate_after_sign(&mut env);
+        format!(
+            "{WIRE_PREFIX}{}",
+            URL_SAFE_NO_PAD.encode(serde_json::to_string(&env).unwrap())
+        )
+    }
+
+    #[test]
+    fn envelope_signature_verifies_for_honest_wire() {
+        let wire = synthetic_signed_wire(|_| {});
+        assert_eq!(verify_envelope_signature(&wire), Ok(()));
+    }
+
+    #[test]
+    fn tampered_field_after_signing_is_rejected() {
+        let wire = synthetic_signed_wire(|env| {
+            env.as_object_mut().unwrap().insert(
+                "createdAt".into(),
+                serde_json::Value::String("2026-02-02T00:00:00.000Z".into()),
+            );
+        });
+        assert_eq!(
+            verify_envelope_signature(&wire).unwrap_err(),
+            "FSCP wire: подпись конверта Ed25519 не прошла проверку."
+        );
+    }
+
+    #[test]
+    fn tampered_signature_is_rejected() {
+        let wire = synthetic_signed_wire(|env| {
+            let obj = env.as_object_mut().unwrap();
+            let sig = obj["senderSignatureBase64Url"].as_str().unwrap();
+            let mut bytes = URL_SAFE_NO_PAD.decode(sig).unwrap();
+            bytes[0] ^= 0x01;
+            obj.insert(
+                "senderSignatureBase64Url".into(),
+                serde_json::Value::String(URL_SAFE_NO_PAD.encode(bytes)),
+            );
+        });
+        assert_eq!(
+            verify_envelope_signature(&wire).unwrap_err(),
+            "FSCP wire: подпись конверта Ed25519 не прошла проверку."
+        );
+    }
+
+    #[test]
+    fn missing_signing_key_is_rejected() {
+        let wire = synthetic_signed_wire(|env| {
+            env.as_object_mut()
+                .unwrap()
+                .remove("senderSigningPublicKeyBase64Url");
+        });
+        assert_eq!(
+            verify_envelope_signature(&wire).unwrap_err(),
+            "FSCP wire: требуется senderSigningPublicKeyBase64Url (Ed25519, 32 байта)."
         );
     }
 }

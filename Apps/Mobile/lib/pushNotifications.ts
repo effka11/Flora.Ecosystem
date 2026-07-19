@@ -54,14 +54,13 @@ export async function dismissMessagePushNotifications(conversationUuid: string):
   }
 }
 
+/**
+ * Privacy-инвариант (e2e-security.md §Уведомления): содержимое сообщения через
+ * FCM не проходит — сервер шлёт только generic-текст. `data.messagePreview`
+ * больше не читается (defense-in-depth против старых/чужих payload'ов).
+ */
 function resolveMessagePushBody(content: Notifications.NotificationContent): string {
-  const data = content.data as Record<string, unknown> | undefined;
-  const fromData =
-    (typeof data?.messagePreview === "string" ? data.messagePreview.trim() : "") ||
-    (typeof data?.body === "string" ? data.body.trim() : "");
-  const fromContent = content.body?.trim() ?? "";
-  if (fromData && (!fromContent || fromContent === "Новое сообщение")) return fromData;
-  return fromContent || fromData || "Новое сообщение";
+  return content.body?.trim() || "Новое сообщение";
 }
 
 Notifications.setNotificationHandler({

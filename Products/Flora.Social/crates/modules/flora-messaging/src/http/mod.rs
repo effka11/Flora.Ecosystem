@@ -113,6 +113,15 @@ pub fn protected_router(state: MessagingState) -> Router {
             "/api/messaging/e2e/epochs/{key_epoch_id}/devices/{device_uuid}",
             delete(e2e::revoke_device),
         )
+        .route(
+            "/api/messaging/e2e/epochs/{key_epoch_id}/devices/{device_uuid}/approve",
+            post(e2e::approve_device),
+        )
+        // POST-алиас revoke — паритет с таблицей Devices в e2e-security.md.
+        .route(
+            "/api/messaging/e2e/epochs/{key_epoch_id}/devices/{device_uuid}/revoke",
+            post(e2e::revoke_device),
+        )
         // Legacy auth-prefixed public key (ImportedSocialController / FSCP bootstrap).
         .route(
             "/api/auth/me/e2e-public-key",

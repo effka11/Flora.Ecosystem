@@ -31,6 +31,7 @@ FSCP (Flora Secure Communication Protocol) — протокол защищённ
 | v1.0-errata-2 | 2026-07-13 | Byte-neutral: полный golden-транскрипт `fscp_message_transcript_v1` (потребители TS/Rust/C#, покрыты все байт-критичные пути Algorithm A/B, включая canonical JSON и подпись); franking вынесен в полноценный RFC-draft [`franking.md`](./franking.md) (gate FGP §8.3 выполнен). Wire-байты **не изменены**. |
 | v1.0-errata-3 | 2026-07-14 | Byte-neutral: franking стал исполняемым (эталон `franking.ts` + вектор `fscp_franking_v1`, потребители TS/Rust, франкуется сообщение транскрипта); референсная FSM `FscpV1ConversationSession` реализована в client-core; добавлен нормативный §Post-quantum (гибрид X25519+ML-KEM-768, PQXDH-направление, gate v2). Wire-байты **не изменены**. |
 | v1.0-errata-4 | 2026-07-14 | Byte-neutral: §Post-quantum получил конкретную инстанциацию гибридного комбинера (v2-draft) и golden-вектор `fscp_hybrid_kem_v2draft_v1` — три независимые реализации ML-KEM-768 (kyber-py / @noble/post-quantum / RustCrypto), потребители TS + Rust, негативы на implicit rejection FIPS 203. Продакшн-код и wire v1 **не изменены**. |
+| v1.0-errata-5 | 2026-07-19 | Hardening по итогам [`FSCP-REVIEW.md`](../FSCP-REVIEW.md) (формат конверта **не изменён**): (1) клиент отклоняет неподписанные конверты по умолчанию — downgrade-окно закрыто, архивы только через явный `allowUnsignedLegacy`; (2) убран fallback на случайный ключ подписи при сборке — отсутствие ключа теперь ошибка; (3) сбои decrypt классифицируются (`FscpDecryptFailureCategory`), в `compromised_local` ведут только подряд идущие key-mismatch-сбои (порог 3) — DoS от собеседника закрыт; (4) неизвестные `block.kind` сохраняются placeholder'ами (forward-compat); (5) паддинг plaintext до бакетов (§MessageEnvelope) — скрытие длины сообщения; (6) серверная **криптопроверка** Ed25519-подписи конверта (`fscp_core::verify_envelope_signature`) после замороженного структурного валидатора; (7) plaintext-превью для push удалены (см. [`e2e-security.md`](./e2e-security.md) §Уведомления). Wire-совместимость: паддинг живёт внутри AEAD-plaintext (top-level поле `pad`, игнорируется читателем), сами байты конверта — та же схема. |
 
 ---
 
@@ -207,12 +208,13 @@ fscp1:<base64url(UTF-8 JSON MessageEnvelope)>
 }
 ```
 
-- `blocks[]` — упорядоченный список; `kind ∈ { text, voice, image, video }`.
+- `blocks[]` — упорядоченный список; `kind ∈ { text, voice, image, video }`. Неизвестный `kind` получатель **сохраняет** как placeholder-блок (не выбрасывает молча): без этого старый клиент показал бы сообщение нового типа как пустое (v1.0-errata-5, forward-compat).
 - Медиа-блоки (`voice`/`image`/`video`) **не** несут байты в plaintext: они содержат `assetUuid` и `encryption { algorithm: "aes-gcm", keyBase64Url, nonceBase64Url }`; сам ассет шифруется отдельным file key и грузится как encrypted object (см. [`e2e-security.md`](./e2e-security.md) §Размерные лимиты — attachment descriptor). `messageKey` беседы **не** переиспользуется как file key.
 - `replyTo` опционален (денормализованный превью реплая).
 - **Read-compat:** получатель обязан принимать legacy-форму `{ "type": "text", "body": "…", "clientCreatedAt": "…" }` и нормализовать её в единственный `text`-блок. Отправитель v1.0-errata-1 пишет только блочную форму.
+- **Паддинг длины (v1.0-errata-5):** перед AEAD compact-JSON plaintext дополняется top-level полем `"pad": "00…0"` до фиксированных бакетов — шаг 256 Б до 4 КиБ, дальше шаг 1 КиБ (`padPlaintextJsonV1` / `fscpPlaintextBucketBytes` в `@flora/fscp`). Серверу и наблюдателю канала утекает только номер бакета, а не точная длина сообщения. Получатель игнорирует `pad` как неизвестное top-level поле — паддинг read-compatible со старыми читателями и **не** меняет байты конверта.
 
-Plaintext тела — **внутри** AEAD, сервер его не видит; поэтому эволюция схемы блоков не является wire-breaking, пока не меняются поля AAD ниже.
+Plaintext тела — **внутри** AEAD, сервер его не видит; поэтому эволюция схемы блоков (включая `pad`) не является wire-breaking, пока не меняются поля AAD ниже.
 
 **AAD тела сообщения:**
 
@@ -281,7 +283,8 @@ Golden: [`test-vectors/fscp-rke-wrap-key-v1.json`](../test-vectors/fscp-rke-wrap
  2. messageKey    ← 32 случайных байта (CSPRNG)
  3. bodyAad       ← messageBodyAadLine(...)  # UTF-8, UUID в нижнем регистре
     bodyNonce     ← 24 случайных байта
-    bodyCipher    ← XChaCha20Poly1305-IETF.enc(messageKey, nonce=bodyNonce, aad=UTF8(bodyAad), pt=UTF8(JSON(plaintext)))
+    padded        ← padPlaintextJsonV1(JSON(plaintext))   # errata-5: бакеты длины, поле "pad"
+    bodyCipher    ← XChaCha20Poly1305-IETF.enc(messageKey, nonce=bodyNonce, aad=UTF8(bodyAad), pt=UTF8(padded))
  4. Для каждого получателя R ∈ { receiver, sender } (self-copy обязателен для чтения своей истории):
       rkeAad      ← recipientKeyEnvelopeAadLine(..., recipientAgreementPublicKeyId=UUIDv5(R.user, keyEpoch))
       ephSecret   ← 32 случайных байта;  ephPub ← X25519.base(ephSecret)   # НОВЫЙ ephemeral на каждый R
@@ -309,9 +312,11 @@ Golden: [`test-vectors/fscp-rke-wrap-key-v1.json`](../test-vectors/fscp-rke-wrap
 Вход: wire, viewerUserUuid, viewerAgreementPrivKey
 
  1. Проверить префикс "fscp1:"; env ← JSON(b64u_decode(остаток))
- 2. Проверить подпись (§Signature authenticity): при наличии senderSigningPublicKeyBase64Url —
+ 2. Проверить подпись (§Signature authenticity):
     Ed25519.verify(pk, sig, UTF8("flora.messaging.envelope-signature.v1 | " + canonicalJson(env без senderSignatureBase64Url)));
-    при провале — ОТКЛОНИТЬ. (v1.0-errata-1: см. §Signature authenticity — MUST verify; «пропуск при отсутствии pk» помечен deprecated.)
+    при провале — ОТКЛОНИТЬ. Конверт БЕЗ senderSigningPublicKeyBase64Url — ОТКЛОНИТЬ
+    (v1.0-errata-5, downgrade-защита); чтение доархивных сообщений — только через явную
+    опцию allowUnsignedLegacy (текущий трафик такие wire не проходит и на сервере).
  3. row ← recipients.find(userUuid == viewerUserUuid);  нет → ошибка «нет RKE»
  4. rkeAad ← recipientKeyEnvelopeAadLine(env-поля, row.userUuid, row.deviceUuid, row.recipientAgreementPublicKeyId)
     ss   ← X25519(viewerAgreementPrivKey, row.ephPub)
@@ -324,9 +329,9 @@ Golden: [`test-vectors/fscp-rke-wrap-key-v1.json`](../test-vectors/fscp-rke-wrap
 
 Любое несовпадение AAD (подмена `conversationUuid`/`messageUuid`/`messageKeyId`/`senderDeviceUuid`/…) ломает AEAD-tag → decrypt падает. Это и есть защита целостности метаданных.
 
-### C. Сервер — структурная валидация (`FscpWireEnvelopeValidator`, без расшифровки)
+### C. Сервер — структурная валидация (без расшифровки)
 
-Нормативный порядок (реализация — [`Products/Flora.Social/FscpWireEnvelopeValidator.cs`](../../Products/Flora.Social/FscpWireEnvelopeValidator.cs)):
+Нормативный порядок (реализация — [`Products/FSCP/crates/fscp-core/src/lib.rs`](../../Products/FSCP/crates/fscp-core/src/lib.rs), `try_validate_dual_wire`; форма и строки ошибок заморожены — [`next-architecture.md`](../../next-architecture.md) §4.4):
 
 ```text
  1. dual-wire: encryptedForReceiver == encryptedForSender (Ordinal)     # legacy-мост, см. §Known limitations
@@ -343,19 +348,23 @@ Golden: [`test-vectors/fscp-rke-wrap-key-v1.json`](../test-vectors/fscp-rke-wrap
     |ephemeral|==32 B, |salt|==32 B, |rkeNonce|==24 B, |rkeCipher|≥16 B
 10. |bodyCipher|≥16 B и ≤ 64 KiB; body aead.name=="xchacha20-poly1305"; |bodyNonce|==24 B
 11. senderSigningPublicKeyBase64Url присутствует, |pk|==32 B; senderSignatureBase64Url присутствует, |sig|==64 B
-    # v1: сервер проверяет ФОРМУ подписи, но НЕ верифицирует Ed25519 (см. §Signature authenticity)
+    # шаги 1–11: только ФОРМА, строки ошибок заморожены (golden fscp_wire_validator_v1)
+12. verify_envelope_signature(wire)   # v1.0-errata-5, defense-in-depth ПОСЛЕ замороженного валидатора:
+    # Ed25519.verify(pk, sig, "flora.messaging.envelope-signature.v1 | " + canonicalJson(env без подписи))
+    # содержимое НЕ расшифровывается; отклоняется конверт с порченой/подделанной подписью
 ```
 
-Сервер **не** проверяет: порядок сортировки `recipients`, значение `createdAt`, содержимое ciphertext, криптоподпись. Всё это — на клиенте получателя.
+Сервер **не** проверяет: порядок сортировки `recipients`, значение `createdAt`, содержимое ciphertext. Криптопроверка подписи на сервере (шаг 12) — защита хранилища от мусора и подделок, но **не** замена клиентской верификации: аутентичность против активного сервера по-прежнему обеспечивает только клиент (§Signature authenticity).
 
 ### Signature authenticity (v1) — точная модель и ограничение
 
 Подпись Ed25519 в v1 обеспечивает **целостность** конверта, но **не** аутентичность против активного сервера, потому что получатель проверяет её ключом `senderSigningPublicKeyBase64Url`, **встроенным в тот же конверт**, а не доверенным epoch account identity / device signing key. Следствия, нормативно:
 
-- **Получатель ОБЯЗАН** верифицировать подпись, если `senderSigningPublicKeyBase64Url` присутствует; несовпадение → отклонить сообщение. Текущая реализация **молча пропускает** проверку при отсутствии ключа (`verifyDetachedEnvelopeSignature` early-return) — это поведение помечается **deprecated**: после включения device-key binding (§Целевой алгоритм) отсутствие подписи для v1-epoch должно трактоваться как ошибка, а не как «старое сообщение».
+- **Получатель ОБЯЗАН** верифицировать подпись; несовпадение → отклонить сообщение. Конверт **без** `senderSigningPublicKeyBase64Url` отклоняется **по умолчанию** (v1.0-errata-5: ранее `verifyDetachedEnvelopeSignature` молча пропускал проверку — downgrade-окно, FSCP-REVIEW п.1). Чтение доархивных неподписанных сообщений — только через явную opt-in-опцию `allowUnsignedLegacy` при вызове `decryptFscpWireEnvelope`; для текущего трафика такие wire отклоняет и сервер (форма, шаг 11).
+- **Отправитель:** при сборке конверта отсутствие валидного signing-ключа — **ошибка**, а не повод сгенерировать одноразовый случайный ключ (v1.0-errata-5, устранён fallback FSCP-REVIEW п.2: подпись случайным ключом создаёт ложное чувство аутентичности и ломает будущий device-key binding).
 - **Гарантия v1:** «тот, кто собрал конверт, им же и подписал» + защита метаданных через AAD. Это защищает от пассивной утечки БД и модификации в хранилище.
 - **Чего v1 НЕ даёт:** злонамеренный или скомпрометированный сервер может подменить пару (pk, подпись) и RKE. Закрывается только связкой device key ← подписан epoch account identity (см. [`e2e-security.md`](./e2e-security.md) §Подлинность ключей п.1) + safety number OOB-сверкой (§Safety number) + key transparency (phase 2). До этого — E2E полезен, но не полон против активной атаки сервера (честно зафиксировано в [`e2e-security.md`](./e2e-security.md) §Частично защищаемся от).
-- **Defense-in-depth (target):** серверная Ed25519-проверка формы→криптопроверки (§Open Questions).
+- **Defense-in-depth (v1.0-errata-5, выполнено):** сервер криптографически верифицирует Ed25519-подпись конверта (`fscp_core::verify_envelope_signature`, Algorithm C шаг 12) **после** замороженного структурного валидатора. Это отсекает порченые/подделанные конверты до записи в хранилище, но не даёт аутентичности против самого сервера (ключ — из конверта).
 
 ---
 
@@ -367,7 +376,7 @@ Golden: [`test-vectors/fscp-rke-wrap-key-v1.json`](../test-vectors/fscp-rke-wrap
 | --- | --- | --- |
 | `uninitialized` | Нет успешно обработанного envelope для пары | Отправитель может отправить первое сообщение; получатель после decrypt → `ready` |
 | `ready` | Хотя бы одно сообщение успешно обработано | Обычный обмен |
-| `compromised_local` | Revoke устройства, смена epoch identity, reset в UI, невозможность decrypt | Исходящие приостановлены до re-handshake |
+| `compromised_local` | Revoke устройства, смена epoch identity, reset в UI, **подряд идущие** key-mismatch-сбои decrypt (порог 3, v1.0-errata-5) | Исходящие приостановлены до re-handshake |
 
 | Поле | Назначение |
 | --- | --- |
@@ -378,7 +387,12 @@ Golden: [`test-vectors/fscp-rke-wrap-key-v1.json`](../test-vectors/fscp-rke-wrap
 
 **Wire vs состояние:** на каждое сообщение — новый ephemeral и новый `messageKey` per RKE. `ready` означает доверие к каналу, а не долгоживущий shared secret на wire.
 
-Референсная реализация — [`conversationSession.ts`](../../Packages/flora-client-core/src/fscp/conversationSession.ts) (`@flora/client-core/fscp`): чистая FSM без I/O (переносима Web/Mobile/Rust), переходы и триггеры `compromised_local` покрыты unit-тестами; интеграция в UI-поток сообщений — при подключении safety number surface.
+**Классификация сбоев decrypt (v1.0-errata-5, анти-DoS).** Ранее любой сбой decrypt немедленно переводил сессию в `compromised_local` — собеседник (или сервер) мог заморозить исходящие жертвы одним мусорным конвертом (FSCP-REVIEW п.3). Теперь сбои типизированы (`FscpDecryptFailureCategory`) и делятся на два класса воздействия:
+
+- `envelope_rejected` — `not_fscp_wire`, `malformed_envelope`, `signature_missing`, `signature_invalid`, `no_recipient_entry`, `malformed_plaintext`: конверт отклонён по форме/подписи, атрибутируемо отправителю/транспорту — **сессию не трогает**;
+- `key_mismatch_suspect` — `rke_unwrap_failed`, `body_decrypt_failed`: криптосбой при корректном конверте, свидетельство рассинхронизации ключей — накапливается, и только `FSCP_DECRYPT_COMPROMISE_THRESHOLD = 3` **подряд** идущих сбоя переводят в `compromised_local`; любой успешный decrypt сбрасывает счётчик.
+
+Референсная реализация — [`conversationSession.ts`](../../Products/FSCP/ts/src/conversationSession.ts) (`@flora/fscp`, реэкспорт через `@flora/client-core/fscp`): чистая FSM без I/O (переносима Web/Mobile/Rust), переходы, классификация сбоев и триггеры `compromised_local` покрыты unit-тестами; интеграция в UI-поток сообщений — при подключении safety number surface.
 
 ---
 
@@ -421,6 +435,8 @@ Golden: [`test-vectors/fingerprint-v1.json`](../test-vectors/fingerprint-v1.json
 - массив `recipients` сортируется отправителем по `(userUuid, deviceUuid)` в нижнем регистре **до** подписи; сервер проверяет **состав** получателей, но **не** переупорядочивание (порядок закрепляется подписью клиента);
 - неизвестные поля в strict mode → ошибка.
 
+**Canonicalization malleability (известное ограничение v1, FSCP-REVIEW п.4).** Подпись покрывает **canonical-форму** конверта, а не байты wire: получатель пересобирает `canonicalJson` из распарсенного JSON, поэтому два разных wire-представления одного конверта (порядок ключей, эквивалентные записи чисел вроде `1e2` vs `100`) дают одну и ту же подпись. Для v1 это безвредно — все смысловые поля дополнительно связаны AAD, а серверная криптопроверка (Algorithm C шаг 12) отклоняет конверты с несходящейся подписью до записи в хранилище. Новые имплементации (в т.ч. Rust client-core) обязаны: отклонять дубликаты ключей при парсинге, не «нормализовывать» числа и строки при пересборке canonical. Полная фиксация «подпись поверх байтов wire» — кандидат в v2 (несовместимо с v1).
+
 Golden-паритет canonical/AAD между `Apps/Web/lib/fscp` и `Packages/flora-client-core/src/fscp` — обязателен (см. §Test vectors, требование о consumer-тесте).
 
 **Nonce rules:**
@@ -433,7 +449,7 @@ Golden-паритет canonical/AAD между `Apps/Web/lib/fscp` и `Packages/
 
 ## Server-side validation
 
-Сервер **не расшифровывает** E2E payload, но обязан валидировать форму (реализация: `FscpWireEnvelopeValidator`).
+Сервер **не расшифровывает** E2E payload, но обязан валидировать форму (реализация: `fscp_core::try_validate_dual_wire`, [`Products/FSCP/crates/fscp-core`](../../Products/FSCP/crates/fscp-core/src/lib.rs)).
 
 **Обязательные проверки wire v1:**
 
@@ -445,9 +461,10 @@ Golden-паритет canonical/AAD между `Apps/Web/lib/fscp` и `Packages/
 - `keyEpochId` = bootstrap epoch v1;
 - `recipients` — массив из **2** элементов, оба участника присутствуют;
 - у каждого recipient: `deviceUuid`, `recipientKeyEnvelope` с `algorithm = x25519-hkdf-xchacha20poly1305`, `preKeyId = null`;
-- `recipientAgreementPublicKeyId = UUIDv5(recipient.userUuid, keyEpochId)` — сервер **проверяет** соответствие id пользователю и эпохе (реализовано в `FscpWireEnvelopeValidator`);
+- `recipientAgreementPublicKeyId = UUIDv5(recipient.userUuid, keyEpochId)` — сервер **проверяет** соответствие id пользователю и эпохе;
 - размеры ephemeral (32 B), salt (32 B), nonce RKE (24 B), ciphertext RKE (≥16 B), body ciphertext (≥16 B);
-- `senderSigningPublicKeyBase64Url` (32 B), `senderSignatureBase64Url` (64 B) — **форма**; криптопроверка Ed25519 на сервере в v1 **не выполняется** (defense-in-depth — на клиенте).
+- `senderSigningPublicKeyBase64Url` (32 B), `senderSignatureBase64Url` (64 B) — **форма** (строки ошибок заморожены);
+- **криптопроверка Ed25519** (v1.0-errata-5, defense-in-depth): `fscp_core::verify_envelope_signature` — после структурного валидатора, без расшифровки содержимого; не заменяет клиентскую верификацию (§Signature authenticity).
 
 Полная нормативная последовательность — §Algorithms (v1) → C. Сервер.
 
@@ -561,7 +578,7 @@ MLS или sender keys — отдельная спецификация. Не с�
 3. **Добровольная жалоба:** получатель раскрывает жюри `plaintext`, `frankingKey`, `frankTag`, `serverFrankReceipt`. Жюри проверяет HMAC и подпись сервера → доказательство «это сообщение реально отправлено этим отправителем через этот сервер», **без** доступа к остальной переписке.
 4. **Приватность:** подделка жалобы криптографически исключена (HMAC binding + committing-конструкция поверх не-committing AEAD); сервер не может сам инициировать раскрытие; непожалованные сообщения не раскрываются.
 
-Статус: **RFC-draft принят и исполняем** — полная спецификация (байтовые форматы `commitInput`/`receiptPayload`, wire/AAD-дельта v1.1, процедура жюри, свойства безопасности) вынесена в [`franking.md`](./franking.md) (FSCP-FRANK v0.1); эталонная реализация примитивов — [`franking.ts`](../../Packages/flora-client-core/src/fscp/franking.ts) (`@flora/client-core/fscp`), поведение закреплено golden-вектором `fscp_franking_v1` с потребителями TS + Rust (§Test vectors). Gate FGP v2 «franking-RFC в FSCP принят хотя бы как draft» (FGP §8.3) — выполнен. Активация wire-дельты — только с bump `fscpProtocolVersion` после снятия заморозки.
+Статус: **RFC-draft принят и исполняем** — полная спецификация (байтовые форматы `commitInput`/`receiptPayload`, wire/AAD-дельта v1.1, процедура жюри, свойства безопасности) вынесена в [`franking.md`](./franking.md) (FSCP-FRANK v0.2); эталонная реализация примитивов — [`franking.ts`](../../Packages/flora-client-core/src/fscp/franking.ts) (`@flora/client-core/fscp`), поведение закреплено golden-вектором `fscp_franking_v1` с потребителями TS + Rust (§Test vectors). Gate FGP v2 «franking-RFC в FSCP принят хотя бы как draft» (FGP §8.3) — выполнен. Активация wire-дельты — только с bump `fscpProtocolVersion` после снятия заморозки.
 
 ---
 
@@ -583,8 +600,8 @@ MLS или sender keys — отдельная спецификация. Не с�
 | --- | --- | --- |
 | `fscp_rke_wrap_key_v1_success` | [fscp-rke-wrap-key-v1.json](../test-vectors/fscp-rke-wrap-key-v1.json) | X25519 + HKDF + AEAD → 32-байтовый `messageKey` |
 | `fingerprint_v1_success` | [fingerprint-v1.json](../test-vectors/fingerprint-v1.json) | Safety number preimage + SHA-256 |
-| `fscp_wire_validator_v1` | [fscp-wire-validator-v1.json](../test-vectors/fscp-wire-validator-v1.json) | Серверная структурная валидация wire: позитив + 22 негатива, точные строки ошибок (форма заморожена, [`next-architecture.md`](../../next-architecture.md) §4.4 — Rust воспроизводит байт-в-байт) |
-| `fscp_message_transcript_v1` | [fscp-message-transcript-v1.json](../test-vectors/fscp-message-transcript-v1.json) | **Полный транскрипт** Algorithm A/B: plaintext (unicode) → body AEAD → RKE обоих получателей → canonical JSON → Ed25519 → `fscp1:`-wire, со всеми промежуточными значениями; варианты `signature_tampered` (клиент отклоняет, форма проходит) и `legacy_unsigned` (клиент читает deprecated-путь, сервер отклоняет) |
+| `fscp_wire_validator_v1` | [fscp-wire-validator-v1.json](../test-vectors/fscp-wire-validator-v1.json) | Серверная структурная валидация wire: позитив + 26 негативов (27 кейсов), точные строки ошибок (форма заморожена, [`next-architecture.md`](../../next-architecture.md) §4.4 — Rust воспроизводит байт-в-байт) |
+| `fscp_message_transcript_v1` | [fscp-message-transcript-v1.json](../test-vectors/fscp-message-transcript-v1.json) | **Полный транскрипт** Algorithm A/B: plaintext (unicode) → body AEAD → RKE обоих получателей → canonical JSON → Ed25519 → `fscp1:`-wire, со всеми промежуточными значениями; варианты `signature_tampered` (клиент и серверная криптопроверка отклоняют, форма проходит) и `legacy_unsigned` (v1.0-errata-5: клиент отклоняет по умолчанию, читает только через явный `allowUnsignedLegacy`; сервер отклоняет) |
 | `fscp_franking_v1` | [franking-v1.json](../test-vectors/franking-v1.json) | Message franking ([`franking.md`](./franking.md)): commit → HMAC-тег → квитанция сервера → полная верификация жюри + негативы с причинами отказа; франкуется **сообщение транскрипт-вектора** (жалоба доказуема для реального wire) |
 | `fscp_hybrid_kem_v2draft_v1` | [fscp-hybrid-kem-v2draft-v1.json](../test-vectors/fscp-hybrid-kem-v2draft-v1.json) | **v2-draft, вне нормы v1**: гибридный KEM X25519+ML-KEM-768 (§Целевой алгоритм → Post-quantum) — детерминированные keygen/encaps/decaps FIPS 203, transcript-hash, гибридный HKDF, AEAD; негативы: implicit rejection при подмене `ct_mlkem`, расхождение AAD-метаданных |
 
@@ -629,10 +646,11 @@ E2E-переписка **не** используется для рекоменд
 
 | Ограничение | Статус | Деталь |
 | --- | --- | --- |
-| Сервер не верифицирует Ed25519 подпись envelope | by design (v1) | только форма; криптопроверка — на клиенте получателя. Подпись v1 не привязана к доверенному identity key (см. §Signature authenticity) |
+| Сервер не верифицирует Ed25519 подпись envelope | ✅ закрыто (errata-5) | `fscp_core::verify_envelope_signature` — криптопроверка после замороженного валидатора формы (Algorithm C шаг 12); содержимое не расшифровывается |
 | Клиентская подпись проверяется ключом из самого конверта | by design (v1) | целостность, не аутентичность против активного сервера |
+| Длина ciphertext выдаёт длину сообщения | ✅ закрыто (errata-5) | паддинг plaintext до бакетов 256 Б / 1 КиБ (§MessageEnvelope) — утекает только номер бакета |
 | Bootstrap key epoch + sentinel device UUID | by design (v1) | нет per-device ratchet; single epoch |
-| E2E-ключи на вебе в `localStorage` | **известный риск** | `Apps/Web/lib/fscp/storage.ts`; target — non-extractable WebCrypto / IndexedDB |
+| E2E-ключи на вебе в `localStorage` | **известный риск** | `Apps/Web/lib/fscp/storage.ts` (Web-форк) и адаптер `keyStorage.ts` в `@flora/fscp`; target — non-extractable WebCrypto / IndexedDB |
 | Legacy dual-ciphertext API | мост | `encryptedForReceiver`/`encryptedForSender` идентичны; путь к единому `fscp1:` |
 | Safety number / fingerprint в UI | **частично** | расчёт реализован: `safetyNumber.ts` в `@flora/client-core/fscp` (golden-тест зелёный); UI-поверхность после `ready` отсутствует → выполнить до release gate |
 | `FscpV1ConversationSession` / session state | **реализовано (библиотека)** | чистая FSM `conversationSession.ts` в `@flora/client-core/fscp` (переходы + re-handshake, unit-тесты); интеграция в UI-поток — вместе с safety number surface |
@@ -652,7 +670,7 @@ E2E-переписка **не** используется для рекоменд
 
 Изменения, **несовместимые с wire**, — только через bump major (`messageEnvelopeVersion`). Текстовые errata без смены байтов — в этом файле с пометкой `docs(fscp): errata` в commit message.
 
-**Compliance checklist (v1.0)** — статус на errata-1 (обновлено после подключения векторов):
+**Compliance checklist (v1.0)** — статус на errata-5:
 
 1. ✅ Golden `fscp_rke_wrap_key_v1_success` и `fingerprint_v1_success` в CI — consumer-тесты `Packages/flora-client-core/src/fscp/goldenVectors.test.ts` (`npm run test`).
 2. ✅ Server-side validation без отклонений от §Server-side validation (реализовано, включая проверку `recipientAgreementPublicKeyId`); поведение закреплено golden-вектором `fscp_wire_validator_v1` + consumer `Tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs`.
@@ -665,8 +683,8 @@ E2E-переписка **не** используется для рекоменд
 
 ## Open Questions / Future Work
 
-- Серверная криптопроверка Ed25519 подписи envelope (defense-in-depth).
-- Golden transcript `message_session_revoked_device_v1_failure`; выставить HTTP `approve`/`recover-key`.
+- ✅ Серверная криптопроверка Ed25519 подписи envelope (defense-in-depth) — выполнено в errata-5 (`fscp_core::verify_envelope_signature`, Algorithm C шаг 12).
+- Golden transcript `message_session_revoked_device_v1_failure`; HTTP `approve` выставлен (errata-5, [`e2e-security.md`](./e2e-security.md) §Devices), остаётся `recover-key` + сам вектор.
 - Safety number: UI-поверхность 1:1 (расчёт — `computeSafetyNumberV1`, session FSM — `conversationSession.ts`; оба уже в `@flora/client-core/fscp`, осталось подключить в UI сообщений).
 - Консолидация двух клиентских реализаций на `@flora/client-core` ([`next-architecture.md`](../../next-architecture.md) §9); parity-тест уже защищает от дрейфа байт-критичных модулей.
 - Переход с bootstrap epoch на реальные per-device UUID и key epochs.

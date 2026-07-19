@@ -25,8 +25,12 @@ export function messageBlocksToPreview(blocks: FscpMessageBlock[]): string {
     } else if (block.kind === "video") {
       parts.push("Видео");
       i++;
-    } else {
+    } else if (block.kind === "voice") {
       parts.push("Голосовое сообщение");
+      i++;
+    } else {
+      // Блоки неизвестного вида из более новой версии схемы (forward-compat).
+      parts.push("Сообщение");
       i++;
     }
   }

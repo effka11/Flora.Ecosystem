@@ -55,7 +55,7 @@ type TranscriptVector = {
   variants: {
     variantId: string;
     wire: string;
-    clientDecrypt: "reject-signature" | "accept-deprecated";
+    clientDecrypt: "reject-signature" | "reject-unsigned";
   }[];
 };
 
@@ -162,13 +162,25 @@ describe("golden: fscp-message-transcript-v1.json (полный путь Algorit
     ).rejects.toThrow("Подпись конверта не прошла проверку.");
   });
 
-  it("вариант legacy_unsigned: deprecated-путь без подписи читается (фиксация текущего поведения)", async () => {
+  it("вариант legacy_unsigned: по умолчанию отклоняется (downgrade-защита, errata-5)", async () => {
     const variant = v.variants.find((x) => x.variantId === "legacy_unsigned")!;
-    expect(variant.clientDecrypt).toBe("accept-deprecated");
+    expect(variant.clientDecrypt).toBe("reject-unsigned");
+    await expect(
+      decryptFscpWireEnvelope({
+        wire: variant.wire,
+        viewerUserUuid: v.uuids.receiverUserUuid!,
+        agreementPrivateKey: fromBase64Url(v.keys.receiverAgreementPrivateKeyBase64Url!),
+      }),
+    ).rejects.toMatchObject({ name: "FscpDecryptError", category: "signature_missing" });
+  });
+
+  it("вариант legacy_unsigned: архивное чтение только через явный allowUnsignedLegacy", async () => {
+    const variant = v.variants.find((x) => x.variantId === "legacy_unsigned")!;
     const plain = await decryptFscpWireEnvelope({
       wire: variant.wire,
       viewerUserUuid: v.uuids.receiverUserUuid!,
       agreementPrivateKey: fromBase64Url(v.keys.receiverAgreementPrivateKeyBase64Url!),
+      allowUnsignedLegacy: true,
     });
     expect(plain.blocks).toEqual([{ kind: "text", body: v.text }]);
   });

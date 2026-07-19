@@ -192,6 +192,33 @@ fn receiver_unwraps_message_key_and_decrypts_body() {
     );
 }
 
+/// Боевая серверная криптоступень (errata-5): `fscp::verify_envelope_signature`
+/// принимает golden wire и отклоняет tampered/unsigned варианты.
+#[test]
+fn production_signature_check_matches_golden_vector() {
+    let v = vector();
+    fscp::verify_envelope_signature(str_of(&v, "wire"))
+        .expect("честный golden wire обязан проходить серверную криптопроверку");
+
+    for variant in v["variants"].as_array().unwrap() {
+        let id = str_of(variant, "variantId");
+        let wire = str_of(variant, "wire");
+        match id {
+            "signature_tampered" => assert_eq!(
+                fscp::verify_envelope_signature(wire).unwrap_err(),
+                "FSCP wire: подпись конверта Ed25519 не прошла проверку.",
+                "{id}"
+            ),
+            "legacy_unsigned" => assert_eq!(
+                fscp::verify_envelope_signature(wire).unwrap_err(),
+                "FSCP wire: требуется senderSigningPublicKeyBase64Url (Ed25519, 32 байта).",
+                "{id}"
+            ),
+            _ => {}
+        }
+    }
+}
+
 #[test]
 fn variants_match_declared_server_and_client_behavior() {
     let v = vector();

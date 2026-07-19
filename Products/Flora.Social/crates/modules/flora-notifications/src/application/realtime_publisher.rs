@@ -30,12 +30,9 @@ impl UserRealtimePublisher {
         }
     }
 
-    pub async fn publish_message(
-        &self,
-        recipient_user_uuid: Uuid,
-        signal: &RealtimeMessageSignal,
-        push_body: Option<&str>,
-    ) {
+    /// Privacy-инвариант (e2e-security.md §Уведомления): тело push всегда
+    /// generic — содержимое сообщения через FCM не проходит.
+    pub async fn publish_message(&self, recipient_user_uuid: Uuid, signal: &RealtimeMessageSignal) {
         if recipient_user_uuid.is_nil() {
             return;
         }
@@ -58,17 +55,12 @@ impl UserRealtimePublisher {
         }
 
         let display_name = self.display_names.resolve(signal.sender_user_uuid).await;
-        let body = match push_body.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(s) => s.to_string(),
-            None => "Новое сообщение".into(),
-        };
 
         self.push_dispatcher
             .send_message_push(
                 recipient_user_uuid,
                 &tokens,
                 &display_name,
-                &body,
                 signal.conversation_uuid,
                 signal.sender_user_uuid,
             )

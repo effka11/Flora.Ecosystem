@@ -1,18 +1,21 @@
 //! E2E account state + password key backup (opaque store) + legacy public keys.
 
+use std::sync::Arc;
+
 use chrono::{DateTime, SecondsFormat, Utc};
 use flora_messaging_contracts::{
     E2eStateResponseDto, KeyBackupPayloadDto, PutKeyBackupRequestDto, RecoveryBackupMetaDto,
-    RecoveryBackupPayloadDto, SetE2ePublicKeyRequestDto, SetE2ePublicKeyResponseDto,
-    UserE2ePublicKeyDto,
+    RecoveryBackupPayloadDto, RecoveryBackupResponseDto, SetE2ePublicKeyRequestDto,
+    SetE2ePublicKeyResponseDto, UserE2ePublicKeyDto,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::infrastructure::{
-    PutKeyBackupRepoError, fetch_account_state, fetch_key_backup, fetch_recovery_backup,
-    fetch_recovery_backups, fetch_user_e2e_key, fetch_user_e2e_keys_by_uuids, insert_user_e2e_key,
-    lock_account, put_key_backup, put_recovery_backup, update_user_e2e_key,
+    E2eProofTokens, PutKeyBackupRepoError, fetch_account_state, fetch_key_backup,
+    fetch_recovery_backup, fetch_recovery_backups, fetch_user_e2e_key,
+    fetch_user_e2e_keys_by_uuids, insert_user_e2e_key, lock_account, put_key_backup,
+    put_recovery_backup, update_user_e2e_key,
 };
 
 #[derive(Debug, Clone)]
@@ -38,11 +41,12 @@ pub enum GetE2ePublicKeyError {
 
 pub struct E2eKeyBackupService {
     pool: PgPool,
+    tokens: Arc<E2eProofTokens>,
 }
 
 impl E2eKeyBackupService {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, tokens: Arc<E2eProofTokens>) -> Self {
+        Self { pool, tokens }
     }
 
     pub async fn get_state(&self, user_uuid: Uuid) -> Result<E2eStateResponseDto, String> {
@@ -93,12 +97,35 @@ impl E2eKeyBackupService {
         fetch_recovery_backups(&self.pool, user_uuid).await
     }
 
+    /// GET recovery-backup/{recoveryKeyId}: ciphertext + (только в FSM `recovering`)
+    /// короткоживущий `recoveryUnlockToken` для `unlock-complete` (errata-5, proof model).
     pub async fn get_recovery_backup(
         &self,
         user_uuid: Uuid,
         recovery_key_id: Uuid,
-    ) -> Result<Option<RecoveryBackupPayloadDto>, String> {
-        fetch_recovery_backup(&self.pool, user_uuid, recovery_key_id).await
+    ) -> Result<Option<RecoveryBackupResponseDto>, String> {
+        let Some(payload) = fetch_recovery_backup(&self.pool, user_uuid, recovery_key_id).await?
+        else {
+            return Ok(None);
+        };
+
+        let is_recovering = fetch_account_state(&self.pool, user_uuid)
+            .await?
+            .map(|row| row.state == "Recovering")
+            .unwrap_or(false);
+
+        let token = if is_recovering {
+            self.tokens
+                .issue_recovery_unlock(user_uuid, recovery_key_id)
+        } else {
+            None
+        };
+
+        Ok(Some(RecoveryBackupResponseDto {
+            payload,
+            recovery_unlock_token: token.as_ref().map(|(t, _)| t.clone()),
+            recovery_unlock_token_expires_at: token.as_ref().map(|(_, exp)| format_utc(*exp)),
+        }))
     }
 
     pub async fn put_recovery_backup(

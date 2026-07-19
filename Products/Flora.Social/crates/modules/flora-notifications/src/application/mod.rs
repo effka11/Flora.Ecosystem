@@ -4,7 +4,6 @@ mod dispatcher;
 mod inbox;
 mod message_notifier;
 mod platform;
-mod push_preview;
 mod push_tokens;
 mod realtime_publisher;
 mod time;
