@@ -72,7 +72,7 @@ export function FloraAvatar({
       source={{ uri: resolvedImageUri }}
       style={{ width: size, height: size, borderRadius: size / 2 }}
       contentFit="cover"
-      cachePolicy="disk"
+      cachePolicy="memory-disk"
       recyclingKey={resolvedImageUri}
       transition={0}
       onError={() => setImageFailed(true)}

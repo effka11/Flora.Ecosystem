@@ -1,10 +1,10 @@
-import type { FeedPostDto } from "@flora/client-core/contracts";
+import type { FeedPostDto, PostEngagementSnapshot } from "@flora/client-core/contracts";
 import { apiFeedHasNew, apiGetFeed } from "@flora/client-core/api";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -23,8 +23,14 @@ import Reanimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PostCard } from "@/components/PostCard";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { FrcImageDecodingScope } from "@/lib/FrcImageDecodingScope";
+import { feedRowEqual } from "@/lib/feedRowEqual";
 import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
-import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
+import {
+  feedPostToEngagementSource,
+  usePostEngagement,
+  type PostEngagementSource,
+} from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { composeScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
@@ -35,6 +41,8 @@ const FEED_CHROME_BODY_HEIGHT = 45 + 5 + 35 + 1;
 type FeedKind = "recommendations" | "subscriptions";
 
 type TabLayout = { x: number; width: number };
+
+const postKeyExtractor = (post: FeedPostDto) => post.postUuid;
 
 function feedKindIndex(kind: FeedKind) {
   return kind === "recommendations" ? 0 : 1;
@@ -56,30 +64,8 @@ function filterPosts(posts: FeedPostDto[], search: string) {
   });
 }
 
-type FeedPaneProps = {
-  kind: FeedKind;
-  search: string;
-  pageWidth: number;
-  contentPaddingTop: number;
-  contentPaddingBottom: number;
-  renderScrollComponent: ReturnType<typeof useCollapsibleHeader>["renderScrollComponents"][number];
-};
-
-function FeedPane({
-  kind,
-  search,
-  pageWidth,
-  contentPaddingTop,
-  contentPaddingBottom,
-  renderScrollComponent,
-}: FeedPaneProps) {
-  const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
-  const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
-  const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
-  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
-    usePostViewTracking();
-
-  const feedQuery = useInfiniteQuery({
+function useFeedQuery(kind: FeedKind) {
+  return useInfiniteQuery({
     queryKey: ["feed", kind],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
@@ -91,9 +77,92 @@ function FeedPane({
       }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
+}
 
-  const posts = feedQuery.data?.pages.flatMap((p) => p.items) ?? [];
+type FeedQuery = ReturnType<typeof useFeedQuery>;
+
+type FeedRowProps = {
+  post: FeedPostDto;
+  viewCount: number;
+  engagement: PostEngagementSnapshot;
+  commentCount: number;
+  commentsOpen: boolean;
+  likePending: boolean;
+  repostPending: boolean;
+  onToggleLike: (source: PostEngagementSource) => void;
+  onToggleRepost: (source: PostEngagementSource) => void;
+  onToggleComments: (postUuid: string) => void;
+  onCommentAdded: (postUuid: string) => void;
+};
+
+const FeedRow = memo(
+  function FeedRow({
+    post,
+    viewCount,
+    engagement,
+    commentCount,
+    commentsOpen,
+    likePending,
+    repostPending,
+    onToggleLike,
+    onToggleRepost,
+    onToggleComments,
+    onCommentAdded,
+  }: FeedRowProps) {
+    const source = feedPostToEngagementSource(post);
+    return (
+      <PostCard
+        post={post}
+        viewCount={viewCount}
+        engagement={engagement}
+        commentCount={commentCount}
+        commentsOpen={commentsOpen}
+        likePending={likePending}
+        repostPending={repostPending}
+        onToggleLike={() => onToggleLike(source)}
+        onToggleRepost={() => onToggleRepost(source)}
+        onToggleComments={() => onToggleComments(post.postUuid)}
+        onCommentAdded={onCommentAdded}
+      />
+    );
+  },
+  feedRowEqual,
+);
+
+type FeedPaneProps = {
+  kind: FeedKind;
+  feedQuery: FeedQuery;
+  isActivePane: boolean;
+  search: string;
+  pageWidth: number;
+  contentPaddingTop: number;
+  contentPaddingBottom: number;
+  renderScrollComponent: ReturnType<typeof useCollapsibleHeader>["renderScrollComponents"][number];
+};
+
+function FeedPane({
+  kind,
+  feedQuery,
+  isActivePane,
+  search,
+  pageWidth,
+  contentPaddingTop,
+  contentPaddingBottom,
+  renderScrollComponent,
+}: FeedPaneProps) {
+  const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
+  const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
+  const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
+  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
+    usePostViewTracking({ enabled: isActivePane });
+
+  const posts = useMemo(
+    () => feedQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [feedQuery.data?.pages],
+  );
   const visiblePosts = useMemo(() => filterPosts(posts, search), [posts, search]);
+  const postsRef = useRef(posts);
+  postsRef.current = posts;
   const isRefreshing = feedQuery.isRefetching || feedQuery.isFetchingNextPage;
   const emptyHint = feedQuery.isError
     ? "Не удалось загрузить ленту. Потяните вниз, чтобы обновить."
@@ -103,95 +172,138 @@ function FeedPane({
         ? "Ничего не найдено"
         : "Лента пуста";
 
-  const commentCountFor = useCallback(
-    (post: FeedPostDto) => localCommentCounts[post.postUuid] ?? post.commentCount,
-    [localCommentCounts],
-  );
-
   const handleCommentAdded = useCallback((postUuid: string) => {
     setLocalCommentCounts((prev) => ({
       ...prev,
       [postUuid]: Math.max(
         0,
         (prev[postUuid] ??
-          posts.find((p) => p.postUuid === postUuid)?.commentCount ??
+          postsRef.current.find((post) => post.postUuid === postUuid)?.commentCount ??
           0) + 1,
       ),
     }));
-  }, [posts]);
+  }, []);
+
+  const engagementActionsRef = useRef({ toggleLike, toggleRepost });
+  engagementActionsRef.current = { toggleLike, toggleRepost };
+  const handleToggleLike = useCallback((source: PostEngagementSource) => {
+    void engagementActionsRef.current.toggleLike(source);
+  }, []);
+  const handleToggleRepost = useCallback((source: PostEngagementSource) => {
+    void engagementActionsRef.current.toggleRepost(source);
+  }, []);
+  const handleToggleComments = useCallback((postUuid: string) => {
+    setCommentsOpenPostUuid((current) => current === postUuid ? null : postUuid);
+  }, []);
+
+  const rowStateRef = useRef({
+    snapshotFor,
+    viewsCountFor,
+    isLikePending,
+    isRepostPending,
+    commentsOpenPostUuid,
+    localCommentCounts,
+  });
+  rowStateRef.current = {
+    snapshotFor,
+    viewsCountFor,
+    isLikePending,
+    isRepostPending,
+    commentsOpenPostUuid,
+    localCommentCounts,
+  };
+  const rowExtraData = useMemo(
+    () => ({
+      snapshotFor,
+      viewsCountFor,
+      isLikePending,
+      isRepostPending,
+      commentsOpenPostUuid,
+      localCommentCounts,
+    }),
+    [
+      commentsOpenPostUuid,
+      isLikePending,
+      isRepostPending,
+      localCommentCounts,
+      snapshotFor,
+      viewsCountFor,
+    ],
+  );
+  const renderFeedRow = useCallback(({ item }: { item: FeedPostDto }) => {
+    const state = rowStateRef.current;
+    const engagement = state.snapshotFor(feedPostToEngagementSource(item));
+    return (
+      <FeedRow
+        post={item}
+        viewCount={state.viewsCountFor(item)}
+        engagement={engagement}
+        commentCount={state.localCommentCounts[item.postUuid] ?? item.commentCount}
+        commentsOpen={state.commentsOpenPostUuid === item.postUuid}
+        likePending={state.isLikePending(item.postUuid)}
+        repostPending={state.isRepostPending(item.postUuid)}
+        onToggleLike={handleToggleLike}
+        onToggleRepost={handleToggleRepost}
+        onToggleComments={handleToggleComments}
+        onCommentAdded={handleCommentAdded}
+      />
+    );
+  }, [handleCommentAdded, handleToggleComments, handleToggleLike, handleToggleRepost]);
 
   useEffect(() => {
-    if (visiblePosts.length === 0) return;
+    if (!isActivePane || visiblePosts.length === 0) return;
     return refreshViewability();
-  }, [refreshViewability, visiblePosts.length]);
+  }, [isActivePane, refreshViewability, visiblePosts.length]);
 
   return (
     <View style={[styles.feedPage, { width: pageWidth }]}>
-      <FlashList
-        ref={flashListRef}
-        data={visiblePosts}
-        keyExtractor={(item) => item.postUuid}
-        drawDistance={480}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom },
-        ]}
-        nestedScrollEnabled
-        scrollEventThrottle={16}
-        renderScrollComponent={renderScrollComponent}
-        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-        refreshControl={
-          <RefreshControl
-            refreshing={feedQuery.isRefetching}
-            onRefresh={() => {
-              void feedQuery.refetch();
-            }}
-            tintColor={floraColors.greenLight}
-            progressViewOffset={contentPaddingTop}
-          />
-        }
-        onEndReached={() => {
-          if (feedQuery.hasNextPage && !feedQuery.isFetchingNextPage) feedQuery.fetchNextPage();
-        }}
-        renderItem={({ item }) => {
-          const engagementSource = feedPostToEngagementSource(item);
-          const engagement = snapshotFor(engagementSource);
-          const commentsOpen = commentsOpenPostUuid === item.postUuid;
-          return (
-            <PostCard
-              post={item}
-              viewCount={viewsCountFor(item)}
-              engagement={engagement}
-              commentCount={commentCountFor(item)}
-              commentsOpen={commentsOpen}
-              likePending={isLikePending(item.postUuid)}
-              repostPending={isRepostPending(item.postUuid)}
-              onToggleLike={() => void toggleLike(engagementSource)}
-              onToggleRepost={() => void toggleRepost(engagementSource)}
-              onToggleComments={() =>
-                setCommentsOpenPostUuid((id) => (id === item.postUuid ? null : item.postUuid))
-              }
-              onCommentAdded={handleCommentAdded}
+      <FrcImageDecodingScope enabled={isActivePane}>
+        <FlashList
+          ref={flashListRef}
+          data={visiblePosts}
+          extraData={rowExtraData}
+          keyExtractor={postKeyExtractor}
+          drawDistance={480}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom },
+          ]}
+          nestedScrollEnabled
+          scrollEventThrottle={16}
+          renderScrollComponent={renderScrollComponent}
+          viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+          refreshControl={
+            <RefreshControl
+              refreshing={feedQuery.isRefetching}
+              onRefresh={() => {
+                void feedQuery.refetch();
+              }}
+              tintColor={floraColors.greenLight}
+              progressViewOffset={contentPaddingTop}
             />
-          );
-        }}
-        ListFooterComponent={
-          isRefreshing && posts.length > 0 ? (
-            <View style={styles.loadingMore}>
-              <ActivityIndicator color={floraColors.greenLight} />
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          feedQuery.isLoading ? (
-            <View style={styles.loadingMore}>
-              <ActivityIndicator color={floraColors.greenLight} />
-            </View>
-          ) : (
-            <Text style={styles.empty}>{emptyHint}</Text>
-          )
-        }
-      />
+          }
+          onEndReached={() => {
+            if (feedQuery.hasNextPage && !feedQuery.isFetchingNextPage) feedQuery.fetchNextPage();
+          }}
+          renderItem={renderFeedRow}
+          ListFooterComponent={
+            isRefreshing && posts.length > 0 ? (
+              <View style={styles.loadingMore}>
+                <ActivityIndicator color={floraColors.greenLight} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            feedQuery.isLoading ? (
+              <View style={styles.loadingMore}>
+                <ActivityIndicator color={floraColors.greenLight} />
+              </View>
+            ) : (
+              <Text style={styles.empty}>{emptyHint}</Text>
+            )
+          }
+        />
+      </FrcImageDecodingScope>
     </View>
   );
 }
@@ -277,18 +389,8 @@ export default function FeedScreen() {
     [scrollX],
   );
 
-  const recommendationsFeedQuery = useInfiniteQuery({
-    queryKey: ["feed", "recommendations"],
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      apiGetFeed({
-        kind: "recommendations",
-        cursor: pageParam,
-        take: pageParam ? 20 : 30,
-        refresh: !pageParam,
-      }),
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-  });
+  const recommendationsFeedQuery = useFeedQuery("recommendations");
+  const subscriptionsFeedQuery = useFeedQuery("subscriptions");
 
   const recommendationsGeneratedAt = recommendationsFeedQuery.data?.pages[0]?.generatedAt ?? null;
 
@@ -346,6 +448,8 @@ export default function FeedScreen() {
         >
           <FeedPane
             kind="recommendations"
+            feedQuery={recommendationsFeedQuery}
+            isActivePane={kind === "recommendations"}
             search={search}
             pageWidth={pageWidth}
             contentPaddingTop={headerHeightPx}
@@ -354,6 +458,8 @@ export default function FeedScreen() {
           />
           <FeedPane
             kind="subscriptions"
+            feedQuery={subscriptionsFeedQuery}
+            isActivePane={kind === "subscriptions"}
             search={search}
             pageWidth={pageWidth}
             contentPaddingTop={headerHeightPx}

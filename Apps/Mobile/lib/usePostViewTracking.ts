@@ -16,6 +16,7 @@ const VIEWABILITY_CONFIG = {
 type PostViewSource = Pick<FeedPostDto, "postUuid" | "viewCount">;
 
 type UsePostViewTrackingOptions = {
+  enabled?: boolean;
   onViewsCountChange?: (postUuid: string, viewsCount: number) => void;
 };
 
@@ -58,6 +59,9 @@ function writeSessionRecorded(key: string, ids: Set<string>): void {
 }
 
 export function usePostViewTracking(options: UsePostViewTrackingOptions = {}) {
+  const enabled = options.enabled ?? true;
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
   const userUuid = useSessionStore((s) => s.me?.userUuid ?? "");
   const onChangeRef = useRef(options.onViewsCountChange);
   onChangeRef.current = options.onViewsCountChange;
@@ -78,6 +82,7 @@ export function usePostViewTracking(options: UsePostViewTrackingOptions = {}) {
   const recordViewRef = useRef<(postUuid: string) => void>(() => {});
 
   recordViewRef.current = (postUuid: string) => {
+    if (!enabledRef.current) return;
     const storageKey = storageKeyRef.current;
     const recorded = recordedRef.current;
     if (!storageKey || !recorded || recorded.has(postUuid)) return;
@@ -125,6 +130,7 @@ export function usePostViewTracking(options: UsePostViewTrackingOptions = {}) {
   );
 
   const refreshViewability = useCallback((): (() => void) | void => {
+    if (!enabledRef.current) return;
     const task = InteractionManager.runAfterInteractions(() => {
       requestAnimationFrame(() => {
         const list = flashListRef.current;

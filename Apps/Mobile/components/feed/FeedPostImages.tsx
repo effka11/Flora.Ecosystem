@@ -132,7 +132,7 @@ function ClippedImage({
         source={{ uri: resolvedUri }}
         style={{ width, height, borderRadius }}
         contentFit={contentFit}
-        cachePolicy="disk"
+        cachePolicy="memory-disk"
         recyclingKey={resolvedUri}
         transition={transitionMs}
         onLoad={(event) => {
@@ -184,7 +184,7 @@ function ModalFrcImage({ uri }: { uri: string }) {
         source={{ uri: resolvedUri }}
         style={[styles.modalImage, { borderRadius: MODAL_IMAGE_RADIUS }]}
         contentFit="contain"
-        cachePolicy="disk"
+        cachePolicy="memory-disk"
         recyclingKey={resolvedUri}
         transition={0}
       />

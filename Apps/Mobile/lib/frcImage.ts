@@ -7,9 +7,22 @@ import {
   isFloraFrcIAvailable,
 } from "flora-frc-i";
 import { writeExpoFileBytes } from "@/lib/expoFileBytes";
+import { useFrcImageDecodingEnabled } from "@/lib/FrcImageDecodingScope";
+import {
+  SubscriberTaskQueue,
+  type QueuePauseReason,
+  type SubscriberTaskQueueStats,
+} from "@/lib/subscriberTaskQueue";
 
+const CACHE_LIMIT = 256;
 const cache = new Map<string, string>();
-const inflight = new Map<string, Promise<string>>();
+
+const diagnostics = {
+  completed: 0,
+  failed: 0,
+  fetchMs: 0,
+  decodeMs: 0,
+};
 
 function normalizedMime(value: string | null): string {
   return value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
@@ -27,23 +40,42 @@ function cacheName(prefix: string, extension: string): File {
   );
 }
 
-export async function ensureFrcImageUri(url: string): Promise<string> {
-  if (!url) return url;
-  if (!needsRemoteFrcDecode(url)) return url;
-  const cached = cache.get(url);
-  if (cached) return cached;
-  const existing = inflight.get(url);
-  if (existing) return existing;
-  const request = (async () => {
+function cachedImageUri(url: string): string | undefined {
+  const value = cache.get(url);
+  if (!value) return undefined;
+  cache.delete(url);
+  cache.set(url, value);
+  return value;
+}
+
+function rememberImageUri(url: string, uri: string): void {
+  cache.delete(url);
+  cache.set(url, uri);
+  while (cache.size > CACHE_LIMIT) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    // Evict only the JS index. expo-image may still hold the local PNG.
+    cache.delete(oldest);
+  }
+}
+
+async function decodeRemoteFrcImage(url: string): Promise<string> {
+  const fetchStarted = performance.now();
+  try {
     const response = await fetch(url, {
       headers: { Accept: FRC_I_MIME },
       cache: "no-cache",
     });
+    diagnostics.fetchMs += performance.now() - fetchStarted;
     if (!response.ok) throw new Error(`Image HTTP ${response.status}`);
     const mime = normalizedMime(response.headers.get("Content-Type"));
     if (mime !== FRC_I_MIME) {
       // Stale cache may still hold pre-FRI bytes for the same UUID.
-      if (mime.startsWith("image/") && mime !== "image/svg+xml") return url;
+      if (mime.startsWith("image/") && mime !== "image/svg+xml") {
+        rememberImageUri(url, url);
+        diagnostics.completed += 1;
+        return url;
+      }
       throw new Error("Сервер отдал не-FRI изображение");
     }
     if (!isFloraFrcIAvailable()) {
@@ -54,14 +86,48 @@ export async function ensureFrcImageUri(url: string): Promise<string> {
     }
     const source = cacheName("flora-frc", "fri");
     const output = cacheName("flora-frc", "png");
-    writeExpoFileBytes(source, new Uint8Array(await response.arrayBuffer()));
-    await decodeFrcFileToPng(source.uri, output.uri);
-    source.delete();
-    cache.set(url, output.uri);
-    return output.uri;
-  })().finally(() => inflight.delete(url));
-  inflight.set(url, request);
-  return request;
+    try {
+      writeExpoFileBytes(source, new Uint8Array(await response.arrayBuffer()));
+      const decodeStarted = performance.now();
+      await decodeFrcFileToPng(source.uri, output.uri);
+      diagnostics.decodeMs += performance.now() - decodeStarted;
+      rememberImageUri(url, output.uri);
+      diagnostics.completed += 1;
+      return output.uri;
+    } finally {
+      try {
+        source.delete();
+      } catch {
+        // Cache maintenance can remove a temporary source first.
+      }
+    }
+  } catch (error) {
+    diagnostics.failed += 1;
+    throw error;
+  }
+}
+
+const decodeQueue = new SubscriberTaskQueue(decodeRemoteFrcImage, 1);
+
+export function setFrcImageQueuePaused(
+  owner: symbol,
+  reason: QueuePauseReason,
+  paused: boolean,
+): void {
+  decodeQueue.setPaused(owner, reason, paused);
+}
+
+export function clearFrcImageQueuePauseOwner(owner: symbol): void {
+  decodeQueue.clearPauseOwner(owner);
+}
+
+export function getFrcImageDiagnostics(): SubscriberTaskQueueStats & typeof diagnostics {
+  return { ...diagnostics, ...decodeQueue.stats() };
+}
+
+export async function ensureFrcImageUri(url: string): Promise<string> {
+  if (!url || !needsRemoteFrcDecode(url)) return url;
+  return cachedImageUri(url) ?? decodeQueue.request(url);
 }
 
 export async function encodeImageUriToFrc(uri: string, quality = 85): Promise<File> {
@@ -82,24 +148,35 @@ export async function decodeFrcBytesToCache(bytes: Uint8Array): Promise<string> 
 }
 
 export function useFrcImageUri(uri: string): string {
-  const [resolved, setResolved] = useState(uri);
+  const decodeEnabled = useFrcImageDecodingEnabled();
+  const [resolved, setResolved] = useState(() => {
+    if (!uri || !needsRemoteFrcDecode(uri)) return uri;
+    return cachedImageUri(uri) ?? "";
+  });
+
   useEffect(() => {
-    let cancelled = false;
-    setResolved(uri);
-    void ensureFrcImageUri(uri).then(
+    if (!uri || !needsRemoteFrcDecode(uri)) {
+      setResolved(uri);
+      return;
+    }
+
+    const cached = cachedImageUri(uri);
+    setResolved(cached ?? "");
+    if (cached || !decodeEnabled) return;
+
+    return decodeQueue.subscribe(
+      uri,
       (next) => {
-        if (!cancelled) setResolved(next);
+        setResolved(next);
       },
       (error) => {
         if (__DEV__) {
           console.warn("[frc-i] decode failed", uri, error);
         }
-        if (!cancelled) setResolved("");
+        setResolved("");
       },
     );
-    return () => {
-      cancelled = true;
-    };
-  }, [uri]);
+  }, [decodeEnabled, uri]);
+
   return resolved;
 }

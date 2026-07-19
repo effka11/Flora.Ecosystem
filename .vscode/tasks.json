@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Flora: API + Web dev (script)",
+      "label": "Flora Social: Web Dev (script)",
       "type": "process",
       "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
@@ -12,7 +12,9 @@
         "-File",
         "${workspaceFolder}\\Scripts\\zed-dev-api-web.ps1"
       ],
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
@@ -434,7 +436,6 @@
         "showReuseMessage": false,
         "focus": true
       },
-      "detail": "Prod inbox + data-only HIGH FCM app_update (update{}) for all Android sideload clients. Needs GitHub social/v{VERSION} + deployed flora-api.",
       "problemMatcher": []
     },
     {

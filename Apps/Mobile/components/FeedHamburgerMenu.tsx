@@ -18,11 +18,11 @@ import {
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { resumeVerticalFling } from "flora-scroll-fling";
 import Animated, {
   cancelAnimation,
   Easing,
   runOnJS,
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -34,6 +34,22 @@ import {
   SidebarPeopleIcon,
   SidebarSettingsIcon,
 } from "@/components/sidebar/SidebarNavIcons";
+import {
+  clearFrcImageQueuePauseOwner,
+  setFrcImageQueuePaused,
+} from "@/lib/frcImage";
+import {
+  classifyDrawerEdgeIntent,
+  shouldClaimDrawerEdgeTouch,
+  shouldOpenDrawer,
+} from "@/lib/drawerEdgeGesture";
+import {
+  useDrawerMomentumController,
+} from "@/lib/drawerMomentum";
+import {
+  eligibleVerticalFling,
+  shouldIssueVerticalFlingResume,
+} from "@/lib/drawerFlingPolicy";
 import { floraColors, floraMotion, floraSpacing } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -107,17 +123,25 @@ const MENU_EDGE_INSET = floraSpacing.grid + floraSpacing.gridFine;
 const MENU_LEAD_COL = 2 * floraSpacing.grid;
 /** Горизонтальный порог, чтобы не перехватывать тапы по пунктам меню. */
 const SWIPE_AXIS_PX = 10;
-/** Доля ширины панели / скорость (px/ms) для snap open/close. */
-const SWIPE_RATIO = 0.28;
+/** Быстрый vertical fail edge-pan: ScrollView не ждёт PENDING при waitFor. */
+const EDGE_AXIS_PX = 8;
+const EDGE_FAIL_OFFSET_Y = 8;
+/** Порог закрытия от полностью открытой панели. */
+const SWIPE_CLOSE_RATIO = 0.28;
+/** Мягкий порог открытия: медленный осознанный drag тоже коммитится. */
+const SWIPE_OPEN_RATIO = 0.12;
+const SWIPE_OPEN_MIN_PX = 2 * floraSpacing.grid;
 /** Gesture Handler сообщает velocity в points/sec. */
 const SWIPE_CLOSE_VX = -650;
-const SWIPE_OPEN_VX = 650;
+const SWIPE_OPEN_VX = 220;
 /**
- * Зона edge-swipe (45px на всю высоту, без вырезов).
+ * Зона edge-swipe (60px на всю высоту, без вырезов).
  * Pan на обёртке контента (не absolute overlay): тапы остаются детям,
  * свайп забирается через manualActivation после горизонтального сдвига.
  */
-const EDGE_HIT_WIDTH = 3 * floraSpacing.grid;
+const EDGE_HIT_WIDTH = 4 * floraSpacing.grid;
+/** Высота chromeRow / iconButton — floor для исключения гамбургера из edge claim. */
+const EDGE_CHROME_ROW_PX = 45;
 /** Минимальная длительность доводки после свайпа (мс). */
 const SETTLE_MIN_MS = floraMotion.baseMs;
 /** Максимальная длительность доводки после свайпа (мс). */
@@ -183,6 +207,12 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const pathname = usePathname();
+  const momentumController = useDrawerMomentumController();
+  const edgePanRef = momentumController.edgePanRef;
+  const edgeChromeBottomY = momentumController.edgeChromeBottomY;
+  const activeMomentumPane = momentumController.activePane;
+  const pane0Momentum = momentumController.panes[0];
+  const pane1Momentum = momentumController.panes[1];
   const me = useSessionStore((s) => s.me);
   const panelWidth = Math.min(PANEL_MAX_WIDTH, Math.round(windowWidth * PANEL_WIDTH_RATIO));
 
@@ -195,8 +225,10 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   /** Старт касания — translationX до activate() часто 0, считаем delta сами. */
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
+  const edgeResumeIssued = useSharedValue(0);
   /** visible уже обработан жестом; React-effect не запускает вторую анимацию. */
   const gestureTargetRef = useRef<0 | 1 | null>(null);
+  const mediaPauseOwner = useRef(Symbol("drawer")).current;
   const jsRef = useRef({ onOpen, onClose });
   jsRef.current = { onOpen, onClose };
 
@@ -209,8 +241,28 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   }, [edgeMaxX, insets.left]);
 
   useEffect(() => {
+    const floor = insets.top + floraSpacing.grid + EDGE_CHROME_ROW_PX;
+    if (edgeChromeBottomY.value < floor) {
+      edgeChromeBottomY.value = floor;
+    }
+  }, [edgeChromeBottomY, insets.top]);
+
+  useEffect(() => {
     edgeEnabled.value = !visible && !presented ? 1 : 0;
   }, [edgeEnabled, presented, visible]);
+
+  useEffect(() => {
+    setFrcImageQueuePaused(mediaPauseOwner, "drawer", presented);
+    return () => clearFrcImageQueuePauseOwner(mediaPauseOwner);
+  }, [mediaPauseOwner, presented]);
+
+  const beginDrawerMediaPause = useCallback(() => {
+    setFrcImageQueuePaused(mediaPauseOwner, "drawer", true);
+  }, [mediaPauseOwner]);
+
+  const endDrawerMediaPause = useCallback(() => {
+    setFrcImageQueuePaused(mediaPauseOwner, "drawer", false);
+  }, [mediaPauseOwner]);
 
   const markPresented = useCallback(() => {
     setPresented(true);
@@ -256,6 +308,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           "worklet";
           cancelAnimation(progress);
           dragStartProgress.value = progress.value;
+          runOnJS(beginDrawerMediaPause)();
         })
         .onUpdate((event) => {
           "worklet";
@@ -269,7 +322,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           "worklet";
           const width = panelWidthSV.value;
           const shouldClose =
-            progress.value < 1 - SWIPE_RATIO || event.velocityX < SWIPE_CLOSE_VX;
+            progress.value < 1 - SWIPE_CLOSE_RATIO || event.velocityX < SWIPE_CLOSE_VX;
           if (shouldClose) {
             settleProgress(progress, 0, width, event.velocityX, (finished) => {
               if (finished) runOnJS(markDismissed)();
@@ -279,7 +332,14 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           }
           settleProgress(progress, 1, width, event.velocityX);
         }),
-    [commitGestureClose, dragStartProgress, markDismissed, panelWidthSV, progress],
+    [
+      beginDrawerMediaPause,
+      commitGestureClose,
+      dragStartProgress,
+      markDismissed,
+      panelWidthSV,
+      progress,
+    ],
   );
 
   /**
@@ -290,8 +350,10 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   const edgeGesture = useMemo(
     () =>
       Gesture.Pan()
+        .withRef(edgePanRef)
         .manualActivation(true)
         .cancelsTouchesInView(false)
+        .failOffsetY([-EDGE_FAIL_OFFSET_Y, EDGE_FAIL_OFFSET_Y])
         .onTouchesDown((event, state) => {
           "worklet";
           if (edgeEnabled.value < 0.5) {
@@ -299,12 +361,21 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
             return;
           }
           const touch = event.allTouches[0];
-          if (!touch || touch.absoluteX > edgeMaxX.value) {
+          if (
+            !touch ||
+            !shouldClaimDrawerEdgeTouch(
+              touch.absoluteX,
+              touch.absoluteY,
+              edgeMaxX.value,
+              edgeChromeBottomY.value,
+            )
+          ) {
             state.fail();
             return;
           }
           touchStartX.value = touch.absoluteX;
           touchStartY.value = touch.absoluteY;
+          edgeResumeIssued.value = 0;
         })
         .onTouchesMove((event, state) => {
           "worklet";
@@ -312,18 +383,38 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           if (!touch) return;
           const dx = touch.absoluteX - touchStartX.value;
           const dy = touch.absoluteY - touchStartY.value;
-          if (Math.abs(dy) > SWIPE_AXIS_PX * 2 && Math.abs(dy) >= Math.abs(dx)) {
+          const intent = classifyDrawerEdgeIntent(dx, dy, EDGE_AXIS_PX);
+          if (intent === "fail") {
+            edgeResumeIssued.value = 0;
             state.fail();
             return;
           }
-          if (dx > SWIPE_AXIS_PX) {
-            state.activate();
-          }
+          if (intent === "activate") state.activate();
         })
         .onStart(() => {
           "worklet";
           cancelAnimation(progress);
           dragStartProgress.value = progress.value;
+          runOnJS(beginDrawerMediaPause)();
+          const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
+          const eligible = eligibleVerticalFling(
+            pane.viewTag.value,
+            pane.lastCoastVelocityY.value,
+            pane.lastCoastEventTs.value,
+            performance.now(),
+          );
+          if (
+            shouldIssueVerticalFlingResume(
+              edgeResumeIssued.value >= 0.5,
+              eligible,
+            )
+          ) {
+            edgeResumeIssued.value = 1;
+            runOnJS(resumeVerticalFling)(
+              pane.viewTag.value,
+              pane.lastCoastVelocityY.value,
+            );
+          }
         })
         .onUpdate((event) => {
           "worklet";
@@ -336,19 +427,45 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
         .onEnd((event) => {
           "worklet";
           const width = panelWidthSV.value;
-          const shouldOpen = progress.value > SWIPE_RATIO || event.velocityX > SWIPE_OPEN_VX;
+          const shouldOpen = shouldOpenDrawer(
+            progress.value,
+            width,
+            event.velocityX,
+            SWIPE_OPEN_RATIO,
+            SWIPE_OPEN_MIN_PX,
+            SWIPE_OPEN_VX,
+          );
           if (shouldOpen) {
             settleProgress(progress, 1, width, event.velocityX);
             runOnJS(commitGestureOpen)();
             return;
           }
           settleProgress(progress, 0, width, event.velocityX);
+          runOnJS(endDrawerMediaPause)();
+        })
+        .onFinalize((_event, success) => {
+          "worklet";
+          if (!success) {
+            edgeResumeIssued.value = 0;
+            if (progress.value > 0 && progress.value < 1) {
+              settleProgress(progress, 0, panelWidthSV.value, 0);
+            }
+            runOnJS(endDrawerMediaPause)();
+          }
         }),
     [
       commitGestureOpen,
+      activeMomentumPane,
+      beginDrawerMediaPause,
       dragStartProgress,
+      edgeChromeBottomY,
       edgeEnabled,
       edgeMaxX,
+      edgePanRef,
+      edgeResumeIssued,
+      endDrawerMediaPause,
+      pane0Momentum,
+      pane1Momentum,
       panelWidthSV,
       progress,
       touchStartX,
@@ -395,10 +512,11 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
     opacity: progress.value,
   }));
 
-  /** Hit-test без React re-render: панель/backdrop активны когда progress > 0. */
-  const overlayAnimatedProps = useAnimatedProps(() => ({
-    pointerEvents: progress.value > 0.001 ? ("auto" as const) : ("none" as const),
-  }));
+  /**
+   * Не включаем absoluteFill hit-test во время edge-drag: смена pointerEvents
+   * по progress посылает ScrollView ACTION_CANCEL и гасит текущий coast.
+   */
+  const overlayPointerEvents = presented ? ("auto" as const) : ("none" as const);
 
   const openItem = (href: Href) => {
     finishClose();
@@ -423,7 +541,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
 
       <View style={styles.root} pointerEvents="box-none" accessibilityViewIsModal={presented}>
         <Animated.View
-          animatedProps={overlayAnimatedProps}
+          pointerEvents={overlayPointerEvents}
           style={StyleSheet.absoluteFill}
           accessibilityElementsHidden={!presented}
           importantForAccessibility={presented ? "yes" : "no-hide-descendants"}
@@ -440,7 +558,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
 
         <GestureDetector gesture={closeGesture}>
           <Animated.View
-            animatedProps={overlayAnimatedProps}
+            pointerEvents={overlayPointerEvents}
             collapsable={false}
             style={[
               styles.panel,
