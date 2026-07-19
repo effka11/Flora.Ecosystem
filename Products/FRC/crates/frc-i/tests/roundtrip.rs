@@ -340,8 +340,8 @@ fn icc_roundtrip_all_modes() {
 }
 
 #[test]
-fn v8_rect_roundtrip_and_density() {
-    // Публичный encode() пишет v8 и обязан совпадать с явной версией 8.
+fn v8_ycocg_roundtrip_and_density() {
+    // Публичный encode() пишет v8 (YCoCg) и обязан совпадать с явной версией 8.
     let (w, h) = (320, 240);
     let data = synthetic(w, h, PixelFormat::Rgb8);
     let v = view(w, h, PixelFormat::Rgb8, &data);
@@ -354,11 +354,9 @@ fn v8_rect_roundtrip_and_density() {
             encode_with_version(&v, EncodeMode::Lossy { quality }, 8).unwrap()
         );
 
-        // v8 меняет цветовое пространство, шаги квантования и реконструкцию:
-        // ни fidelity, ни размер на конкретном изображении не обязаны
-        // совпадать с v7 (BD-rate меряется на полигоне Kodak). Тест ловит
-        // строгую деградацию по обеим осям сразу: заметно больший файл при
-        // заметно худшем качестве — регрессия.
+        // v8 меняет цветовое пространство и шаги квантования; дерево/энтропия
+        // как у v7. BD-rate — на полигоне Kodak. Тест ловит строгую деградацию
+        // по обеим осям сразу.
         let out7 = decode(&v7).unwrap();
         let out8 = decode(&v8).unwrap();
         let p7 = psnr_rgb(&data, &out7.data);

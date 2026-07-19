@@ -37,9 +37,6 @@ use crate::section::Section;
 use crate::tokens::{detokenize, tokenize, unzigzag, write_raw, zigzag};
 
 mod v72;
-mod v8;
-
-pub use v8::{CTX8_CDEF, ctx_meta_v8, decode_tile_plane_v8, encode_tile_plane_v8};
 
 /// Контексты v1: DC, run (низкие/высокие частоты), level (низкие/высокие).
 pub const N_CTX_V1: usize = 5;

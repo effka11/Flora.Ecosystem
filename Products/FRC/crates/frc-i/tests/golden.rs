@@ -443,7 +443,7 @@ fn golden_v8_lossy_bitstream_current() {
 
 #[test]
 fn golden_v8_lossy_decode_is_deterministic() {
-    const EXPECTED_FNV1A: u64 = 0x9ED4_10DA_A94F_643D;
+    const EXPECTED_FNV1A: u64 = 0x5A62_D97B_BF23_431E;
     if std::env::var_os("FRC_I_UPDATE_GOLDEN").is_some() {
         let (w, h, data) = golden_source();
         let img = ImageView {

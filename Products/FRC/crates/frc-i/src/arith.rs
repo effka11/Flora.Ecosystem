@@ -168,8 +168,6 @@ const ADAPT_LIMIT: u32 = 1 << 13;
 pub enum ModelKind {
     /// SPLIT_WHOLE / SPLIT_QUAD.
     Split,
-    /// Четверичный split узла v8: WHOLE / QUAD / HORZ / VERT.
-    Split4,
     /// Конец AC-блока: 0 = продолжить, 1 = EOB.
     Eob,
     /// Intra/CfL-мода v7 0..14.
@@ -191,7 +189,7 @@ impl ModelKind {
         match self {
             Self::Split | Self::Eob => 2,
             Self::Mode => 15,
-            Self::Split4 | Self::Tx | Self::Cdef => 4,
+            Self::Tx | Self::Cdef => 4,
             // Максимальный run в 32×32 равен 1022: hybrid-uint token = 21.
             Self::Run => 22,
             Self::Dc | Self::Level => 32,
@@ -235,10 +233,6 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
             // Небольшой уклон к WHOLE (0) — гладкие зоны чаще.
             freq[0] = 3;
             freq[1] = 2;
-        }
-        ModelKind::Split4 => {
-            // WHOLE/QUAD доминируют; HORZ/VERT должны окупить сигнал.
-            freq[..n].copy_from_slice(&[4, 4, 1, 1]);
         }
         ModelKind::Eob => {
             // До прогрева не предполагаем плотность AC: continue / EOB поровну.

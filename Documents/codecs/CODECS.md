@@ -150,7 +150,7 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 
 | Кодек | Сигнатура | Расширение | MIME (предложение) | Статус |
 | --- | --- | --- | --- | --- |
-| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v8; Kodak: −30% vs JPEG, −13% vs JXL, +22% vs AVIF ([FRC-I.md](./FRC-I.md)) |
+| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v8 (YCoCg); encode ≥11 Мп/с; ≈−2% vs v7 ([FRC-I.md](./FRC-I.md)) |
 | FRC-V | FourCC `FRV1` в IVF (dev); magic `8F 46 52 56` (`\x8F FRV`) в `.frv` | `.frv`, `.ivf` | `video/x-flora-frc-v` | кадр `BITSTREAM_VERSION=2`; контейнер FRC-V |
 | FRC-A | **as-built:** ASCII `FRAS` (4 B) в файловом контейнере инструментов; **резерв:** magic `8F 46 52 41` (`\x8F FRA`) под нативный `.fra` | `.fras` (dev), `.fra` (резерв) | `audio/x-flora-frc-a` | битстрим v0 |
 

@@ -16,9 +16,7 @@ use crate::format::{
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
 use crate::predict::med;
-use crate::section::{
-    write_dct_section, write_dct_section_v7, write_dct_section_v8, write_predictive_section,
-};
+use crate::section::{write_dct_section, write_dct_section_v7, write_predictive_section};
 use crate::tokens::{tokenize, zigzag};
 use crate::{EncodeMode, ImageView, PixelFormat, lossless, lossy};
 use std::collections::HashMap;
@@ -471,16 +469,12 @@ fn encode_lossy(
     let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
         // v7/v8: банк адаптивных моделей общий для всех плоскостей тайла.
-        let mut bank = match version {
-            v if v >= VERSION_RECT => {
-                let (groups, kinds) = lossy::ctx_meta_v8();
-                Some(crate::arith::ModelBank::new(groups, kinds))
-            }
-            v if v >= VERSION_ADAPTIVE => {
-                let (groups, kinds) = lossy::ctx_meta_v7();
-                Some(crate::arith::ModelBank::new(groups, kinds))
-            }
-            _ => None,
+        // Раскладка контекстов v8 совпадает с v7 (отличие v8 — только цвет/qmat).
+        let mut bank = if version >= VERSION_ADAPTIVE {
+            let (groups, kinds) = lossy::ctx_meta_v7();
+            Some(crate::arith::ModelBank::new(groups, kinds))
+        } else {
+            None
         };
         let buf = p0.extract(t.x0, t.y0, t.w, t.h);
         let luma_recon = dct_payload(
@@ -552,22 +546,10 @@ fn dct_payload(
     out: &mut Vec<u8>,
 ) -> Option<Vec<i16>> {
     let (w, h) = size;
-    if config.version >= VERSION_RECT {
-        let mut syms: Vec<(u16, u8)> = Vec::new();
-        let mut raw = BitWriter::new();
-        let recon = lossy::encode_tile_plane_v8(buf, cfl_luma, w, h, qmat, &mut syms, &mut raw);
-        let strength = if config.cdef {
-            crate::cdef::choose_strength(buf, &recon, w, h, qmat[0], config.deblock)
-        } else {
-            0
-        };
-        syms.insert(0, (lossy::CTX8_CDEF, strength));
-        write_dct_section_v8(out, bank.expect("v8: банк обязателен"), &syms, raw);
-        return Some(recon);
-    }
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     if config.version >= VERSION_ADAPTIVE {
+        // v7 и v8 делят одно дерево/энтропию; v8 отличается цветом и qmat выше.
         let recon = lossy::encode_tile_plane_v7(buf, cfl_luma, w, h, qmat, &mut syms, &mut raw);
         let strength = if config.cdef {
             crate::cdef::choose_strength(buf, &recon, w, h, qmat[0], config.deblock)
@@ -575,7 +557,7 @@ fn dct_payload(
             0
         };
         syms.insert(0, (lossy::CTX7_CDEF, strength));
-        write_dct_section_v7(out, bank.expect("v7: банк обязателен"), &syms, raw);
+        write_dct_section_v7(out, bank.expect("v7/v8: банк обязателен"), &syms, raw);
         return Some(recon);
     }
     match config.version {

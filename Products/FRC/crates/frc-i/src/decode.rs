@@ -228,16 +228,12 @@ fn decode_tile(
         }
     } else {
         // v7/v8: банк адаптивных моделей общий для всех плоскостей тайла.
-        let mut bank = match version {
-            v if v >= VERSION_RECT => {
-                let (groups, kinds) = lossy::ctx_meta_v8();
-                Some(ModelBank::new(groups, kinds))
-            }
-            v if v >= VERSION_ADAPTIVE => {
-                let (groups, kinds) = lossy::ctx_meta_v7();
-                Some(ModelBank::new(groups, kinds))
-            }
-            _ => None,
+        // Раскладка контекстов v8 совпадает с v7 (отличие v8 — только цвет/qmat).
+        let mut bank = if version >= VERSION_ADAPTIVE {
+            let (groups, kinds) = lossy::ctx_meta_v7();
+            Some(ModelBank::new(groups, kinds))
+        } else {
+            None
         };
         let luma_plane = read_dct_plane(
             payload,
@@ -351,26 +347,17 @@ fn read_dct_plane(
 ) -> Result<DctPlane, DecodeError> {
     let (w, h) = size;
     if version >= VERSION_ADAPTIVE {
-        // Контейнер секции v7 и v8 одинаков; различаются дерево и контексты.
+        // Контейнер и дерево v7/v8 одинаковы; v8 отличается цветом/qmat выше.
         let (section, used) = read_dct_section_v7(&payload[*pos..])?;
         *pos += used;
         let bank = bank.expect("v7/v8: банк обязателен");
         let mut dec = RangeDecoder::new(section.tokens)?;
         let mut raw = BitReader::new(section.raw);
-        let cdef_ctx = if version >= VERSION_RECT {
-            usize::from(lossy::CTX8_CDEF)
-        } else {
-            usize::from(lossy::CTX7_CDEF)
-        };
-        let cdef_strength = bank.decode(&mut dec, cdef_ctx)?;
+        let cdef_strength = bank.decode(&mut dec, lossy::CTX7_CDEF)?;
         if cdef_strength >= crate::cdef::N_STRENGTHS {
             return Err(DecodeError::Corrupt("CDEF: неизвестная сила"));
         }
-        let buf = if version >= VERSION_RECT {
-            lossy::decode_tile_plane_v8(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?
-        } else {
-            lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?
-        };
+        let buf = lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?;
         if dec.consumed() != section.tokens.len() {
             return Err(DecodeError::Corrupt("лишние байты в адаптивном потоке"));
         }
