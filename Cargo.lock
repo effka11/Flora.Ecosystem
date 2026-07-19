@@ -1367,9 +1367,20 @@ name = "fpp-contracts"
 version = "0.6.0-alpha"
 
 [[package]]
+name = "fpp-core"
+version = "0.6.0-alpha"
+dependencies = [
+ "base64",
+ "fpp-contracts",
+ "fpp-crypto",
+ "serde_json",
+]
+
+[[package]]
 name = "fpp-crypto"
 version = "0.6.0-alpha"
 dependencies = [
+ "flora-governance-crypto",
  "fpp-contracts",
 ]
 

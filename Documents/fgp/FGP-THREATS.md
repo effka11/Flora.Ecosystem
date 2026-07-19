@@ -1,7 +1,7 @@
 # FGP-THREATS — Модель угроз и программы защиты
 
 **Status:** Draft (RFC)
-**Version:** 0.5 (companion к [`FGP.md`](./FGP.md) v0.6; personhood-механика — [`FPP.md`](../fpp/FPP.md) v0.2)
+**Version:** 0.5 (companion к [`FGP.md`](./FGP.md) v0.6; personhood-механика — [`FPP.md`](../fpp/FPP.md) v0.3; метрики натуральности для детекции V-01 — [`FPP-SIGNALS.md`](../fpp/FPP-SIGNALS.md) v0.1)
 **Date:** 2026-07-13
 
 ---

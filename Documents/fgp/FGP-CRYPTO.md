@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Date:** 2026-07-14
 
-Компаньоны: [`FGP.md`](./FGP.md) (v0.6 — механика, которую этот слой обслуживает), [`FPP.md`](../fpp/FPP.md) (v0.2 — personhood; здесь фиксируются его примитивы), [`FGP-THREATS.md`](./FGP-THREATS.md) (v0.5 — V-11 владеет операционной стороной этого документа). Нормативно: выбор примитивов, протокольные конструкции, форматы детерминированной арифметики, реестр доменных меток, требования к реализации и аудиту. История ревью — Приложение B (B.1: адверсариальный разбор черновика до фиксации 0.1, 10 находок).
+Компаньоны: [`FGP.md`](./FGP.md) (v0.6 — механика, которую этот слой обслуживает), [`FPP.md`](../fpp/FPP.md) (v0.3 — personhood; здесь фиксируются его примитивы), [`FGP-THREATS.md`](./FGP-THREATS.md) (v0.5 — V-11 владеет операционной стороной этого документа). Нормативно: выбор примитивов, протокольные конструкции, форматы детерминированной арифметики, реестр доменных меток, требования к реализации и аудиту. История ревью — Приложение B (B.1: адверсариальный разбор черновика до фиксации 0.1, 10 находок).
 
 ---
 
@@ -56,7 +56,7 @@ FGP обещает свойства («голос непродаваем», «ж
 
 ### 1.1. Реестр доменных меток (domain separation)
 
-Каждая подпись/хеш/PRF — над сообщением с префиксом `flora/<область>/v1/<операция>`. Стартовый реестр: `civic/sign`, `civic/commit`, `nullifier/ctx`, `mask/register`, `mask/dv-sim`, `token/credit`, `ballot/encrypt`, `ballot/overwrite`, `tally/partial-dec`, `vrf/sortition`, `vrf/ceremony-pair`, `vrf/attestor-assign`, `vrf/self-select`, `log/leaf`, `log/sth`, `log/anchor`, `oprf/doc-dedup`, `treasury/ledger`. Полный реестр живёт в `flora-governance-crypto` и в test vectors; коллизия меток = инцидент V-11. Байтовое представление меток фиксируется вектором (правило FSCP «байт-в-байт»).
+Каждая подпись/хеш/PRF — над сообщением с префиксом `flora/<область>/v1/<операция>`. Стартовый реестр: `civic/sign`, `civic/commit`, `nullifier/ctx`, `mask/register`, `mask/dv-sim`, `token/credit`, `ballot/encrypt`, `ballot/overwrite`, `tally/partial-dec`, `vrf/sortition`, `vrf/ceremony-pair`, `vrf/attestor-assign`, `vrf/self-select`, `log/leaf`, `log/sth`, `log/anchor`, `oprf/doc-dedup`, `treasury/ledger`, `device/tag` (эпохальный тег устройства, FPP-SIGNALS NS-D2; деривация — `fpp-crypto`). Полный реестр живёт в `flora-governance-crypto` и в test vectors; коллизия меток = инцидент V-11. Байтовое представление меток фиксируется вектором (правило FSCP «байт-в-байт»).
 
 ---
 

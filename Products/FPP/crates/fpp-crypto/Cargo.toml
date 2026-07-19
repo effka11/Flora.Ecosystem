@@ -12,3 +12,4 @@ workspace = true
 
 [dependencies]
 fpp-contracts = { workspace = true }
+flora-governance-crypto = { workspace = true }

@@ -42,6 +42,7 @@ members = [
     "Products/FGP/crates/flora-governance-contracts",
     # Functional: FPP
     "Products/FPP/crates/fpp-contracts",
+    "Products/FPP/crates/fpp-core",
     "Products/FPP/crates/fpp-crypto",
     # Functional: FRC
     "Products/FRC/crates/frc-i",
@@ -94,6 +95,7 @@ flora-economy-crypto = { path = "Products/FEP/crates/flora-economy-crypto" }
 flora-governance-crypto = { path = "Products/FGP/crates/flora-governance-crypto" }
 flora-governance-contracts = { path = "Products/FGP/crates/flora-governance-contracts" }
 fpp-contracts = { path = "Products/FPP/crates/fpp-contracts" }
+fpp-core = { path = "Products/FPP/crates/fpp-core" }
 fpp-crypto = { path = "Products/FPP/crates/fpp-crypto" }
 frc-i = { path = "Products/FRC/crates/frc-i" }
 frc-i-integration = { path = "Products/FRC/crates/frc-i-integration" }
