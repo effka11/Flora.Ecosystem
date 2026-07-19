@@ -12,6 +12,7 @@ import {
 import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { FeedHamburgerMenu } from "@/components/FeedHamburgerMenu";
+import { DrawerMomentumProvider } from "@/lib/drawerMomentum";
 
 type HamburgerMenuContextValue = {
   openMenu: () => void;
@@ -63,11 +64,13 @@ export function HamburgerMenuProvider({ children }: { children: ReactNode }) {
 
   return (
     <GestureHandlerRootView style={styles.host}>
-      <HamburgerMenuContext.Provider value={value}>
-        <HamburgerMenuHost openMenuRef={openMenuRef} closeMenuRef={closeMenuRef}>
-          {children}
-        </HamburgerMenuHost>
-      </HamburgerMenuContext.Provider>
+      <DrawerMomentumProvider>
+        <HamburgerMenuContext.Provider value={value}>
+          <HamburgerMenuHost openMenuRef={openMenuRef} closeMenuRef={closeMenuRef}>
+            {children}
+          </HamburgerMenuHost>
+        </HamburgerMenuContext.Provider>
+      </DrawerMomentumProvider>
     </GestureHandlerRootView>
   );
 }
