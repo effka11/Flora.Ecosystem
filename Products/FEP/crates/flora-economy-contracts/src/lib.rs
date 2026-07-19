@@ -2,7 +2,7 @@
 //!
 //! Правило §2.3: здесь только DTO, trait-порты и ошибки порта; бизнес-логики нет.
 //! Внутренние типы движка (`flora-economy-crypto`) наружу не экспортируются: чужой модуль
-//! знает про Pollen ровно столько, сколько описано в этих DTO. Суммы в контрактах — **grain**
+//! знает про LIV ровно столько, сколько описано в этих DTO. Суммы в контрактах — **grain**
 //! (целые i64): десятичное представление — забота клиентов.
 
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ pub enum EconomyPortError {
 #[serde(rename_all = "camelCase")]
 pub struct EconomyAccountSummaryDto {
     pub account_uuid: Uuid,
-    /// Баланс Pollen в grain (1 pollen = 10^6 grain).
+    /// Баланс LIV в grain (1 liv = 10^6 grain).
     pub balance_grains: i64,
     /// Последняя UBI-эпоха, за которую начислено (None — ещё ни разу).
     pub last_ubi_epoch: Option<u64>,
@@ -56,7 +56,7 @@ pub struct LedgerHeadDto {
 }
 
 /// Порт «открыть экономический аккаунт» — вызывается модулем Users/Auth при онбординге
-/// (через композицию продукта; сами Users про Pollen не знают).
+/// (через композицию продукта; сами Users про LIV не знают).
 pub trait EconomyAccountProvisioner: Send + Sync {
     /// Идемпотентно открыть аккаунт с ключом владения Ed25519 (32 байта).
     fn open_account(

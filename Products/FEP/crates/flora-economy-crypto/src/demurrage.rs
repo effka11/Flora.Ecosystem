@@ -64,7 +64,7 @@ pub fn apply_demurrage(balance: Grains, periods: u64, params: &Parameters) -> De
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::amount::POLLEN_IN_GRAINS;
+    use crate::amount::LIV_IN_GRAINS;
 
     fn params() -> Parameters {
         Parameters::genesis()
@@ -72,8 +72,8 @@ mod tests {
 
     #[test]
     fn zero_periods_is_noop() {
-        let out = apply_demurrage(Grains(1_000 * POLLEN_IN_GRAINS), 0, &params());
-        assert_eq!(out.new_balance, Grains(1_000 * POLLEN_IN_GRAINS));
+        let out = apply_demurrage(Grains(1_000 * LIV_IN_GRAINS), 0, &params());
+        assert_eq!(out.new_balance, Grains(1_000 * LIV_IN_GRAINS));
         assert_eq!(out.to_commons, Grains::ZERO);
     }
 
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn one_day_at_191ppm() {
         let p = params();
-        let start = Grains(1_000_000 * POLLEN_IN_GRAINS); // 1 млн pollen
+        let start = Grains(1_000_000 * LIV_IN_GRAINS); // 1 млн liv
         let out = apply_demurrage(start, 1, &p);
         // 191 ppm от 10^12 grain = 191_000_000 grain. Разрешённая погрешность — квантование
         // коэффициента Q32.32 (2^-32 ≈ 2.3e-10 относительной ошибки → ≤ ~233 grain на 10^12).
@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn year_decay_matches_pow() {
         let p = params();
-        let start = Grains(10_000 * POLLEN_IN_GRAINS);
+        let start = Grains(10_000 * LIV_IN_GRAINS);
         let out = apply_demurrage(start, 365, &p);
         let ratio = out.new_balance.0 as f64 / start.0 as f64;
         assert!(ratio > 0.92 && ratio < 0.95, "ratio = {ratio}");
@@ -127,7 +127,7 @@ mod tests {
     fn sequential_equals_batch() {
         // Начисление по периодам эквивалентно начислению одним батчем — свойство pow.
         let p = params();
-        let start = Grains(50_000 * POLLEN_IN_GRAINS);
+        let start = Grains(50_000 * LIV_IN_GRAINS);
         let batch = apply_demurrage(start, 7, &p).new_balance;
         // NB: последовательное начисление по 1 периоду с промежуточным округлением может
         // отличаться на единицы grain; движок всегда начисляет батчем полных периодов,

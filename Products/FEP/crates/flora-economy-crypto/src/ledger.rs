@@ -58,7 +58,7 @@ pub enum EntryBody {
         periods: u64,
         amount: Grains,
     },
-    /// Перевод Pollen. Подпись отправителя обязательна.
+    /// Перевод LIV. Подпись отправителя обязательна.
     Transfer {
         from: AccountId,
         to: AccountId,

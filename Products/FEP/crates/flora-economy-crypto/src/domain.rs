@@ -19,7 +19,7 @@ pub const MERKLE_LEAF: &str = "flora/economy/v1/merkle/leaf";
 /// Merkle-внутренний узел (RFC 6962 node prefix).
 pub const MERKLE_NODE: &str = "flora/economy/v1/merkle/node";
 
-/// Сообщение, которое подписывает аккаунт при переводе Pollen.
+/// Сообщение, которое подписывает аккаунт при переводе LIV.
 pub const TRANSFER_AUTH: &str = "flora/economy/v1/transfer/auth";
 
 /// Сообщение авторизации открытия/изменения линии взаимного кредита.

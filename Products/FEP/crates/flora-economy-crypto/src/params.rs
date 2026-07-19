@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::amount::{Grains, POLLEN_IN_GRAINS};
+use crate::amount::{Grains, LIV_IN_GRAINS};
 use crate::fixed::Fixed;
 
 /// Длительность демерредж-периода по умолчанию: сутки (в миллисекундах).
@@ -55,11 +55,11 @@ impl Parameters {
         Parameters {
             demurrage_ppm_per_period: 191,
             demurrage_period_ms: DEFAULT_DEMURRAGE_PERIOD_MS,
-            demurrage_exempt_threshold: Grains(100 * POLLEN_IN_GRAINS),
-            ubi_per_epoch: Grains(1000 * POLLEN_IN_GRAINS),
+            demurrage_exempt_threshold: Grains(100 * LIV_IN_GRAINS),
+            ubi_per_epoch: Grains(1000 * LIV_IN_GRAINS),
             ubi_epoch_ms: DEFAULT_UBI_EPOCH_MS,
             ubi_max_backfill_epochs: 3,
-            trustline_max_limit: Grains(5000 * POLLEN_IN_GRAINS),
+            trustline_max_limit: Grains(5000 * LIV_IN_GRAINS),
             credit_path_max_hops: 4,
         }
     }

@@ -1,8 +1,8 @@
-//! Эмиссия Pollen: Proof-of-Personhood UBI — «деньги существования».
+//! Эмиссия LIV: Proof-of-Personhood UBI — «деньги существования».
 //!
 //! Пост-дефицитный принцип: новые деньги появляются **по числу живых людей**, а не по капиталу
 //! (PoS), не по сожжённой энергии (PoW) и не по решению эмитента. Каждый человек уровня V1+
-//! (FPP §2) получает равный поток Pollen за эпоху. Это единственный источник эмиссии.
+//! (FPP §2) получает равный поток LIV за эпоху. Это единственный источник эмиссии.
 //!
 //! Следствия конструкции:
 //! - богатство не самовоспроизводится: у эмиссии нет прото-капитала, «премайна» и учредительских
@@ -75,7 +75,7 @@ pub fn steady_state_per_person(params: &Parameters) -> Grains {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::amount::POLLEN_IN_GRAINS;
+    use crate::amount::LIV_IN_GRAINS;
 
     #[test]
     fn epoch_index_basics() {
@@ -118,11 +118,11 @@ mod tests {
     fn steady_state_is_finite_and_reasonable() {
         let p = Parameters::genesis();
         let steady = steady_state_per_person(&p);
-        // 1000 pollen/эпоху при ~0.57 % распада за 30-дневную эпоху → предел ~175k pollen.
-        let pollen = steady.0 / POLLEN_IN_GRAINS;
+        // 1000 liv/эпоху при ~0.57 % распада за 30-дневную эпоху → предел ~175k liv.
+        let liv = steady.0 / LIV_IN_GRAINS;
         assert!(
-            pollen > 100_000 && pollen < 300_000,
-            "steady = {pollen} pollen"
+            liv > 100_000 && liv < 300_000,
+            "steady = {liv} liv"
         );
     }
 }
