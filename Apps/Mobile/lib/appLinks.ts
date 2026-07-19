@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 /** GitHub releases for Flora Social Android APK (alpha distribution). */
 export const FLORA_GITHUB_RELEASES_URL = "https://github.com/effka11/Flora.Ecosystem/releases";
 
-const FLORA_SOCIAL_VERSION_FALLBACK = "0.6.0-alpha";
+const FLORA_SOCIAL_VERSION_FALLBACK = "0.7.0-alpha";
 
 /** Installed Flora Social version (from Expo manifest). */
 export function getFloraSocialAppVersion(): string {
@@ -22,7 +22,7 @@ export function buildFloraSocialReleasePageUrl(version: string): string {
   return `https://github.com/effka11/Flora.Ecosystem/releases/tag/social/v${v}`;
 }
 
-/** Parse version from broadcast text: «Новая версия Android - 0.6.0-alpha». */
+/** Parse version from broadcast text: «Новая версия Android - 0.7.0-alpha». */
 
 export function parseAppUpdateVersionFromText(text: string): string | null {
   const match = text.match(/Android\s*-\s*(.+)$/i);
@@ -31,7 +31,7 @@ export function parseAppUpdateVersionFromText(text: string): string | null {
 }
 
 /**
- * Compare Flora Social version strings (e.g. 0.6.0-alpha, 0.6.0-test2).
+ * Compare Flora Social version strings (e.g. 0.7.0-alpha, 0.7.0-test2).
  * Returns negative if a&lt;b, 0 if equal, positive if a&gt;b.
  * Core semver first; then prerelease (no suffix &gt; with suffix; otherwise lexicographic).
  */

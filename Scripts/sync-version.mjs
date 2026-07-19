@@ -21,6 +21,11 @@ function readManifest() {
   if (typeof manifest.products?.social !== "string" || !manifest.products.social.trim()) {
     throw new Error("VERSION.products.social must be a non-empty semver string");
   }
+  for (const key of ["fscp", "frc-i", "fira"]) {
+    if (typeof manifest.products?.[key] !== "string" || !manifest.products[key].trim()) {
+      throw new Error(`VERSION.products.${key} must be a non-empty semver string`);
+    }
+  }
   return manifest;
 }
 
@@ -46,8 +51,8 @@ function patchAppJson(version) {
   return true;
 }
 
-function writeApiManifest(manifest) {
-  const path = join(root, "Backend", "flora-versions.json");
+function writeVersionsMirror(relativePath, manifest) {
+  const path = join(root, relativePath);
   const next = `${JSON.stringify(manifest, null, 2)}\n`;
   const prev = existsSync(path) ? readFileSync(path, "utf8") : "";
   if (prev === next) return false;
@@ -77,6 +82,8 @@ function patchBackendCargoToml(ecosystemVersion) {
 const manifest = readManifest();
 const { ecosystem, products } = manifest;
 const social = products.social;
+const fscp = products.fscp;
+const frcI = products["frc-i"];
 
 const changes = [];
 if (patchPackageJson("Apps/Web/package.json", social)) changes.push(`Apps/Web/package.json → ${social}`);
@@ -84,8 +91,19 @@ if (patchPackageJson("Apps/Mobile/package.json", social)) changes.push(`Apps/Mob
 if (patchPackageJson("Packages/flora-client-core/package.json", ecosystem)) {
   changes.push(`Packages/flora-client-core/package.json → ${ecosystem}`);
 }
+if (patchPackageJson("Products/FSCP/package.json", fscp)) {
+  changes.push(`Products/FSCP/package.json → ${fscp}`);
+}
+if (patchPackageJson("Products/FRC/package.json", frcI)) {
+  changes.push(`Products/FRC/package.json → ${frcI}`);
+}
 if (patchAppJson(social)) changes.push(`Apps/Mobile/app.json → ${social}`);
-if (writeApiManifest(manifest)) changes.push("Backend/flora-versions.json");
+if (writeVersionsMirror("Backend/flora-versions.json", manifest)) {
+  changes.push("Backend/flora-versions.json");
+}
+if (writeVersionsMirror("flora-versions.json", manifest)) {
+  changes.push("flora-versions.json");
+}
 if (patchBackendCargoToml(ecosystem)) {
   changes.push(`Cargo.toml → ${ecosystem}`);
 }

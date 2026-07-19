@@ -4,13 +4,13 @@
 
 ## Коммит-релиз
 
-1. Обновить `VERSION` (`ecosystem` и `products.social` — одна semver-строка на релиз).
-2. `npm run version:sync` — обновит `Apps/*/package.json`, `Apps/Mobile/app.json`, `Packages/flora-client-core`, `Backend/flora-versions.json`, `Cargo.toml` (`# synced-from-VERSION`).
+1. Обновить `VERSION` (`ecosystem`, `products.social`, при необходимости `products.fscp` / `products.frc-i` / `products.fira`).
+2. `npm run version:sync` — обновит `Apps/*/package.json`, `Apps/Mobile/app.json`, `Packages/flora-client-core`, `Products/FSCP` / `Products/FRC`, `flora-versions.json`, `Backend/flora-versions.json`, `Cargo.toml` (`# synced-from-VERSION`).
 3. Вручную:
    - `Apps/Mobile/app.json` — увеличить `expo.android.versionCode` на 1;
    - fallback-версии в `Apps/Mobile/lib/api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`, `Apps/Web/lib/fscp/clientCore.ts`, `Apps/Web/next.config.ts`;
-   - корневой `flora-versions.json`, `Products/FSCP/package.json`, `Products/FRC/package.json` (sync их не трогает);
    - `Artifacts/contract-fixtures/api-version.json` — под новый `/version` (ecosystem / products / api);
+   - lockfiles (`package-lock.json`, `Apps/Web/package-lock.json`) — версии workspace-пакетов FSCP/FRC при их bump;
    - `README.md` — имя APK `flora.social-v<version>-android.apk`.
 4. Коммит (GPG): `chore(ecosystem): v<version> release`.
 
@@ -64,11 +64,11 @@ GitHub Release assets: APK + `flora.social-android-update.json` (sideload auto-u
 
 ## Чеклист
 
-- [ ] `VERSION` — `ecosystem` и `products.social`
+- [ ] `VERSION` — `ecosystem`, `products.social` (+ `fscp` / `frc-i` / `fira` при bump)
 - [ ] `npm run version:sync`
 - [ ] `Apps/Mobile/app.json` — `versionCode` +1
 - [ ] Fallback-версии (Mobile: `api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`; Web: `clientCore.ts`, `next.config.ts`)
-- [ ] `flora-versions.json` (корень), FSCP/FRC `package.json`, `api-version.json`
+- [ ] `api-version.json` (+ lockfiles при bump FSCP/FRC)
 - [ ] `README.md` — имя APK
 - [ ] `cargo` fmt / clippy / test (+ `validate-architecture-rust` при необходимости)
 - [ ] `npm run ci`
