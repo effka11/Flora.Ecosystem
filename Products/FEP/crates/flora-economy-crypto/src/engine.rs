@@ -41,7 +41,7 @@ pub struct Account {
     /// Ключ владения (авторизация переводов).
     #[serde(with = "crate::hexser")]
     pub owner_key: PublicKeyBytes,
-    /// Баланс Pollen в grain (инвариант: ≥ 0).
+    /// Баланс LIV в grain (инвариант: ≥ 0).
     pub balance: Grains,
     /// Метка времени последнего начисления демерреджа.
     pub demurrage_applied_at: Timestamp,
@@ -566,7 +566,7 @@ impl LedgerState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::amount::POLLEN_IN_GRAINS;
+    use crate::amount::LIV_IN_GRAINS;
     use crate::sig::{public_key, sign};
 
     const ALICE_SEED: [u8; 32] = [1u8; 32];
@@ -695,24 +695,24 @@ mod tests {
         b.ubi(12, alice()).unwrap();
         assert_eq!(
             b.state.accounts[&alice()].balance,
-            Grains(1000 * POLLEN_IN_GRAINS)
+            Grains(1000 * LIV_IN_GRAINS)
         );
         b.transfer(
             13,
             alice(),
             bob(),
-            Grains(250 * POLLEN_IN_GRAINS),
+            Grains(250 * LIV_IN_GRAINS),
             &ALICE_SEED,
             [1; 16],
         )
         .unwrap();
         assert_eq!(
             b.state.accounts[&alice()].balance,
-            Grains(750 * POLLEN_IN_GRAINS)
+            Grains(750 * LIV_IN_GRAINS)
         );
         assert_eq!(
             b.state.accounts[&bob()].balance,
-            Grains(250 * POLLEN_IN_GRAINS)
+            Grains(250 * LIV_IN_GRAINS)
         );
         b.state.check_conservation().unwrap();
     }
@@ -758,7 +758,7 @@ mod tests {
         b.open(10, alice(), &ALICE_SEED);
         b.open(11, bob(), &BOB_SEED);
         b.ubi(12, alice()).unwrap();
-        let too_much = Grains(2000 * POLLEN_IN_GRAINS);
+        let too_much = Grains(2000 * LIV_IN_GRAINS);
         let err = b
             .transfer(13, alice(), bob(), too_much, &ALICE_SEED, [3; 16])
             .unwrap_err();
@@ -830,8 +830,8 @@ mod tests {
                 (y_seed, x_seed)
             };
             let limits = (
-                Grains(100 * POLLEN_IN_GRAINS),
-                Grains(100 * POLLEN_IN_GRAINS),
+                Grains(100 * LIV_IN_GRAINS),
+                Grains(100 * LIV_IN_GRAINS),
             );
             let payload = trustline_signing_bytes(&lo, &hi, limits.0, limits.1);
             b.push(
@@ -850,7 +850,7 @@ mod tests {
 
         // Платёж alice → carol через bob.
         let path = vec![alice(), bob(), carol()];
-        let amount = Grains(40 * POLLEN_IN_GRAINS);
+        let amount = Grains(40 * LIV_IN_GRAINS);
         let nonce = [9u8; 16];
         let payload = credit_transfer_signing_bytes(&path, amount, &nonce);
         b.push(
@@ -864,7 +864,7 @@ mod tests {
         )
         .unwrap();
 
-        // Позиции сдвинуты попарно; Pollen-балансы не тронуты; эмиссии не произошло.
+        // Позиции сдвинуты попарно; LIV-балансы не тронуты; эмиссии не произошло.
         assert_eq!(b.state.total_issued, Grains::ZERO);
         let sum: i64 = b.state.trustlines.values().map(|l| l.position.0).sum();
         // Позиции: alice должна bob 40, bob должен carol 40 — в канонических знаках сумма

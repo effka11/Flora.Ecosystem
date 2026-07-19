@@ -424,7 +424,7 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
 
         // Подписанный перевод Алиса → Боб.
-        let amount = 250_000_000i64; // 250 pollen
+        let amount = 250_000_000i64; // 250 liv
         let nonce = [7u8; 16];
         let payload = transfer_signing_bytes(
             &crate::domain::account_id_of(alice),

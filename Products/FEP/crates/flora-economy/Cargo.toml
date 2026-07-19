@@ -1,6 +1,6 @@
 [package]
 name = "flora-economy"
-description = "Модуль Economy: Flora Economic Protocol (FEP) — Pollen, PoP-UBI, демерредж, взаимный кредит, проверяемый журнал. Рождается сразу в Rust (в strangler-миграции не участвует)"
+description = "Модуль Economy: Flora Economic Protocol (FEP) — LIV, PoP-UBI, демерредж, взаимный кредит, проверяемый журнал. Рождается сразу в Rust (в strangler-миграции не участвует)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

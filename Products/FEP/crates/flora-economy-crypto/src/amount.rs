@@ -6,9 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Сколько атомов (`grain`) в одной единице `pollen`. 10^6 — как «6 знаков после запятой»:
+/// Сколько атомов (`grain`) в одной единице `liv`. 10^6 — как «6 знаков после запятой»:
 /// достаточно тонко для демерреджа на малых балансах, помещается в `i64` c огромным запасом.
-pub const POLLEN_IN_GRAINS: i64 = 1_000_000;
+pub const LIV_IN_GRAINS: i64 = 1_000_000;
 
 /// Метка времени — Unix-миллисекунды UTC (совместимо с ISO 8601, next-architecture.md §4.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -29,9 +29,9 @@ pub struct Grains(pub i64);
 impl Grains {
     pub const ZERO: Grains = Grains(0);
 
-    /// Из целого числа единиц `pollen` (насыщается при переполнении).
-    pub fn from_pollen(pollen: i64) -> Grains {
-        Grains(pollen.saturating_mul(POLLEN_IN_GRAINS))
+    /// Из целого числа единиц `liv` (насыщается при переполнении).
+    pub fn from_liv(liv: i64) -> Grains {
+        Grains(liv.saturating_mul(LIV_IN_GRAINS))
     }
 
     pub fn is_zero(self) -> bool {
@@ -113,9 +113,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pollen_conversion() {
-        assert_eq!(Grains::from_pollen(1), Grains(1_000_000));
-        assert_eq!(Grains::from_pollen(0), Grains::ZERO);
+    fn liv_conversion() {
+        assert_eq!(Grains::from_liv(1), Grains(1_000_000));
+        assert_eq!(Grains::from_liv(0), Grains::ZERO);
     }
 
     #[test]
