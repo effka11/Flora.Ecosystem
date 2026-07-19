@@ -115,6 +115,41 @@ impl FcmPushSender {
         .await;
     }
 
+    /// Data-only HIGH FCM for sideload `app_update` — no `notification` key so the
+    /// payload is delivered to the app process even when killed (Android).
+    pub async fn send_app_update_push(
+        &self,
+        recipient_user_uuid: Uuid,
+        device_tokens: &[String],
+        notification_uuid: Uuid,
+        text: &str,
+        update: Option<&flora_notifications_contracts::AppUpdatePayload>,
+    ) {
+        let mut body = text.trim().to_string();
+        if body.chars().count() > 120 {
+            body = truncate_chars(&body, 117) + "...";
+        }
+
+        let mut data = HashMap::new();
+        data.insert("type".into(), "app_update".into());
+        data.insert("notificationUuid".into(), notification_uuid.to_string());
+        data.insert("inboxType".into(), "app_update".into());
+        data.insert("category".into(), "developer".into());
+        data.insert("text".into(), body);
+        if let Some(u) = update {
+            data.insert("version".into(), u.version.clone());
+            data.insert("versionCode".into(), u.version_code.to_string());
+            data.insert("apkUrl".into(), u.apk_url.clone());
+            data.insert("sha256".into(), u.sha256.clone());
+            if let Some(size) = u.size_bytes {
+                data.insert("sizeBytes".into(), size.to_string());
+            }
+        }
+
+        self.send_data_only(recipient_user_uuid, device_tokens, &data, true)
+            .await;
+    }
+
     /// Паритет `FcmPushSender.SendInboxNotificationPushAsync`.
     #[allow(clippy::too_many_arguments)] // wire parity with C# SendInboxNotificationPushAsync
     pub async fn send_inbox_notification_push(
@@ -177,6 +212,68 @@ impl FcmPushSender {
         android_title: Option<&str>,
         android_body: Option<&str>,
     ) {
+        let mut android_notification = json!({
+            "channel_id": android_channel_id,
+            "title": android_title.unwrap_or(title),
+            "body": android_body.unwrap_or(body),
+        });
+        if let Some(tag) = data.get("tag") {
+            android_notification["tag"] = json!(tag);
+        }
+
+        let priority = if high_priority { "HIGH" } else { "NORMAL" };
+        let payload_for = |token: &str| {
+            json!({
+                "message": {
+                    "token": token,
+                    "notification": {
+                        "title": title,
+                        "body": body,
+                    },
+                    "data": data,
+                    "android": {
+                        "priority": priority,
+                        "notification": android_notification.clone(),
+                    },
+                }
+            })
+        };
+
+        self.dispatch_to_tokens(recipient_user_uuid, device_tokens, payload_for)
+            .await;
+    }
+
+    /// Data-only FCM (no `notification` / `android.notification`) for background wake.
+    async fn send_data_only(
+        &self,
+        recipient_user_uuid: Uuid,
+        device_tokens: &[String],
+        data: &HashMap<String, String>,
+        high_priority: bool,
+    ) {
+        let payload_for = |token: &str| {
+            json!({
+                "message": {
+                    "token": token,
+                    "data": data,
+                    "android": {
+                        "priority": if high_priority { "HIGH" } else { "NORMAL" },
+                    },
+                }
+            })
+        };
+        self.dispatch_to_tokens(recipient_user_uuid, device_tokens, payload_for)
+            .await;
+    }
+
+    async fn dispatch_to_tokens<F>(
+        &self,
+        recipient_user_uuid: Uuid,
+        device_tokens: &[String],
+        payload_for: F,
+    ) where
+        F: Fn(&str) -> serde_json::Value,
+    {
         let Some(sa) = self.credentials.as_ref() else {
             return;
         };
@@ -191,30 +288,7 @@ impl FcmPushSender {
                 continue;
             }
 
-            let mut android_notification = json!({
-                "channel_id": android_channel_id,
-                "title": android_title.unwrap_or(title),
-                "body": android_body.unwrap_or(body),
-            });
-            if let Some(tag) = data.get("tag") {
-                android_notification["tag"] = json!(tag);
-            }
-
-            let payload = json!({
-                "message": {
-                    "token": token,
-                    "notification": {
-                        "title": title,
-                        "body": body,
-                    },
-                    "data": data,
-                    "android": {
-                        "priority": if high_priority { "HIGH" } else { "NORMAL" },
-                        "notification": android_notification,
-                    },
-                }
-            });
-
+            let payload = payload_for(token);
             match self.post_fcm(sa, &payload).await {
                 Ok(()) => {}
                 Err(FcmSendError::InvalidToken) => {

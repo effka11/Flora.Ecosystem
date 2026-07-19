@@ -71,6 +71,7 @@ impl InboxNotificationDispatcher {
             post_uuid: command.post_uuid,
             comment_uuid: command.comment_uuid,
             created_at,
+            update: None,
         };
 
         self.realtime

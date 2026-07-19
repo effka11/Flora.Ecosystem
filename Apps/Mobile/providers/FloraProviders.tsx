@@ -21,7 +21,7 @@ import {
   canPromptInstallPermission,
   isPlayStoreBuildRuntime,
   isSideloadUpdatesEnabled,
-  runSilentUpdateCheck,
+  runAppUpdateCatchUp,
 } from "@/lib/apkUpdate";
 import { FloraAppServices, QueryClientRefBridge } from "@/providers/FloraAppServices";
 import { initMobileSodium } from "@/lib/fscp/sodium";
@@ -160,9 +160,9 @@ export function FloraProviders({ children }: { children: ReactNode }) {
         await ensureInstallPackagesPermission().catch(() => undefined);
         if (cancelled) return;
       }
-      // Silent GitHub update only on production sideload APK.
+      // Catch-up download only (never silent-install in foreground).
       if (isSideloadUpdatesEnabled() && canRequestPackageInstalls()) {
-        void runSilentUpdateCheck(true).catch(() => undefined);
+        void runAppUpdateCatchUp().catch(() => undefined);
       }
     };
 
@@ -183,7 +183,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
         void registerPushTokenWithServer().catch(() => undefined);
       }
       if (isSideloadUpdatesEnabled() && canRequestPackageInstalls()) {
-        void runSilentUpdateCheck(false).catch(() => undefined);
+        void runAppUpdateCatchUp().catch(() => undefined);
       }
     });
 

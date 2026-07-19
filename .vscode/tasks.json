@@ -431,8 +431,10 @@
       "presentation": {
         "reveal": "always",
         "panel": "shared",
-        "showReuseMessage": false
+        "showReuseMessage": false,
+        "focus": true
       },
+      "detail": "Prod inbox + data-only HIGH FCM app_update (update{}) for all Android sideload clients. Needs GitHub social/v{VERSION} + deployed flora-api.",
       "problemMatcher": []
     },
     {

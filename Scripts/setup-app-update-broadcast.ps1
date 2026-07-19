@@ -10,10 +10,12 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 
 . (Join-Path $PSScriptRoot "broadcast-env.ps1")
+. (Join-Path $PSScriptRoot "mobile-flora-version.ps1")
 
-$resolved = Resolve-BroadcastConfig -Root $root -ApiBaseUrl $ApiBaseUrl -Production:$false
+$resolved = Resolve-BroadcastConfig -Root $root -ApiBaseUrl $ApiBaseUrl -Production:$true
 $apiUrl = $resolved.ApiBaseUrl
 $token = $resolved.Token
+$version = Get-FloraSocialVersion $root
 
 Write-Host ""
 Write-Host "Flora app-update broadcast (production)" -ForegroundColor Cyan
@@ -28,6 +30,15 @@ if (Test-IsLocalBroadcastApiUrl $apiUrl) {
     $ok = $false
 } else {
     Write-Host "[OK] API URL: $apiUrl" -ForegroundColor Green
+}
+
+Write-Host "[--] VERSION.products.social: $version" -ForegroundColor DarkGray
+$manifest = Get-AppUpdateManifestForBroadcast -Root $root -Version $version -PreferGitHub
+if ($null -eq $manifest) {
+    $ok = $false
+    Write-Host "WARN: No update.json for $version (need GitHub social/v$version or Apps/Mobile/dist)" -ForegroundColor Yellow
+} else {
+    Write-Host "[OK] update.json version=$($manifest.version) versionCode=$($manifest.versionCode)" -ForegroundColor Green
 }
 
 if ([string]::IsNullOrWhiteSpace($token)) {
@@ -95,7 +106,8 @@ Write-Host "Release order (recommended):" -ForegroundColor Cyan
 Write-Host "  1. Bump VERSION, build APK (mobile-release-android.ps1)"
 Write-Host "  2. Publish GitHub release with APK"
 Write-Host "  3. Deploy API if backend changed"
-Write-Host "  4. .\Scripts\broadcast-app-update.ps1 -Production -Confirm"
+Write-Host "  4. Deploy flora-api if app_update FCM changed (Scripts/deploy-flora-api.ps1)"
+Write-Host "  5. .\Scripts\send-apk-auto-update.ps1 -Production -Confirm"
 Write-Host ""
 
 if ($ok) {

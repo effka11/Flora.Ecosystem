@@ -8,33 +8,18 @@ import android.os.Build
 import android.util.Log
 
 /**
- * Receives PackageInstaller session commit results and forwards them to [FloraApkUpdaterModule].
+ * Receives PackageInstaller session commit results.
  */
 class FloraApkInstallReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
     val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
     Log.d(TAG, "install status=$status message=$message")
-
-    when (status) {
-      PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-        val confirm = getConfirmIntent(intent)
-        FloraApkUpdaterModule.completePendingInstall(
-          status = "pending_user_action",
-          message = message,
-          confirmIntent = confirm,
-        )
-      }
-      PackageInstaller.STATUS_SUCCESS -> {
-        FloraApkUpdaterModule.completePendingInstall(status = "success", message = message)
-      }
-      else -> {
-        FloraApkUpdaterModule.completePendingInstall(
-          status = "failure",
-          message = message ?: "PackageInstaller status $status",
-        )
-      }
+    val confirm = when (status) {
+      PackageInstaller.STATUS_PENDING_USER_ACTION -> getConfirmIntent(intent)
+      else -> null
     }
+    UpdateCoordinator.onInstallResult(context, status, message, confirm)
   }
 
   private fun getConfirmIntent(intent: Intent): Intent? {

@@ -214,7 +214,8 @@
       "-Confirm"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
-    "reveal": "always"
+    "reveal": "always",
+    "description": "Prod: inbox + data-only HIGH FCM app_update with update{} for all Android sideload clients (same wire as one-user smoke). Requires GitHub social/v{VERSION} + flora-api with send_app_update_push."
   },
   {
     "label": "Flora: send auto-update (local)",

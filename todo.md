@@ -1,13 +1,11 @@
 # Flora — TODO
 
-## Настоящий фоновый APK-апдейт (sideload)
+## Sideload APK auto-update
 
-Цель: обновление без обязательного открытия UI — пуш будит устройство → скачивание → PackageInstaller.
+Реализовано (см. `Apps/Mobile/README.md` § Sideload auto-update):
 
-- Broadcast `app_update`: не `skip_push` (или отдельный FCM data payload с version / apk URL)
-- Клиент: обработчик background / cold-start FCM → silent check+install
-- Фоновая работа (WorkManager / Expo background): download + SHA-256 + install session (foreground service при необходимости)
-- Новый sideload APK + GitHub release с `flora.social-android-update.json`
-- Проверка: приложение убито → push → APK ставится (или системный confirm на OEM)
+- Broadcast `app_update` шлёт data-only HIGH FCM + inbox/SSE
+- Native `UpdateCoordinator`: DownloadManager → SHA-256 → WorkManager 10s foreground gate → silent PackageInstaller
+- Кнопка «Обновить»: 2.1 install-only / 2.2 download+install / 2.3 interactive / 2.4 GitHub
 
-Ограничения: нужен install-permission; Play/AAB не в скоупе; полный «тихий ночной» апдейт на неrooted Android не гарантируется.
+Ограничения (ожидаемые): OEM battery (Xiaomi и т.п.) может задерживать FCM; API &lt; 31 — только READY + кнопка; Play AAB без sideload-модуля.

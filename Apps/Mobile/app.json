@@ -17,7 +17,7 @@
     "android": {
       "package": "social.flora.mobile",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 6,
+      "versionCode": 900001,
       "googleServicesFile": "./google-services.json",
       "backgroundColor": "#0c0c0c",
       "navigationBar": {

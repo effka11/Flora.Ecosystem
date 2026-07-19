@@ -1,8 +1,11 @@
-# Send in-app "app_update" notification only (no APK build / no GitHub publish).
-# Use after the APK is already on GitHub Releases.
+# Prod/local sideload auto-update push for ALL Android clients.
+# Same wire as one-user smoke: inbox app_update + data-only HIGH FCM with update{}.
+# No APK build / no GitHub publish — release must already exist.
 #
 #   .\Scripts\send-apk-auto-update.ps1
 #   .\Scripts\send-apk-auto-update.ps1 -Production -Confirm
+#
+# Task: "Flora Social: Send auto-update & notifications to side-APK"
 param(
     [string] $ApiBaseUrl = "",
     [string] $Token = "",

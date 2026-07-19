@@ -50,7 +50,7 @@ export function handlePushNotificationData(data: unknown): void {
   }
 
   const type = typeof record.type === "string" ? record.type : "message";
-  if (type === "notification") {
+  if (type === "notification" || type === "app_update") {
     handleNotificationRealtime();
     return;
   }

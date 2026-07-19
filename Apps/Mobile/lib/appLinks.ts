@@ -16,7 +16,7 @@ export function buildFloraSocialApkDownloadUrl(version: string): string {
   return `https://github.com/effka11/Flora.Ecosystem/releases/download/social/v${v}/flora.social-v${v}-android.apk`;
 }
 
-/** HTML release page (more reliable for Linking than a direct .apk URL on Android). */
+/** HTML release page (optional UX; fallback 2.4 uses the APK URL instead). */
 export function buildFloraSocialReleasePageUrl(version: string): string {
   const v = version.trim();
   return `https://github.com/effka11/Flora.Ecosystem/releases/tag/social/v${v}`;
@@ -31,21 +31,33 @@ export function parseAppUpdateVersionFromText(text: string): string | null {
 }
 
 /**
- * Compare Flora Social semver strings (e.g. 0.6.0-alpha).
- * Returns negative if a<b, 0 if equal, positive if a>b. Prerelease suffix is ignored for ordering.
+ * Compare Flora Social version strings (e.g. 0.6.0-alpha, 0.6.0-test2).
+ * Returns negative if a&lt;b, 0 if equal, positive if a&gt;b.
+ * Core semver first; then prerelease (no suffix &gt; with suffix; otherwise lexicographic).
  */
 export function compareFloraSocialVersions(a: string, b: string): number {
-  const parse = (raw: string): number[] => {
-    const core = raw.trim().split("-")[0] ?? "";
-    const parts = core.split(".").map((p) => Number.parseInt(p, 10));
-    return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+  const parse = (raw: string): { core: number[]; pre: string } => {
+    const trimmed = raw.trim();
+    const dash = trimmed.indexOf("-");
+    const corePart = dash >= 0 ? trimmed.slice(0, dash) : trimmed;
+    const pre = dash >= 0 ? trimmed.slice(dash + 1) : "";
+    const parts = corePart.split(".").map((p) => Number.parseInt(p, 10));
+    return {
+      core: [parts[0] || 0, parts[1] || 0, parts[2] || 0],
+      pre,
+    };
   };
   const left = parse(a);
   const right = parse(b);
   for (let i = 0; i < 3; i++) {
-    if (left[i] !== right[i]) return left[i]! - right[i]!;
+    if (left.core[i] !== right.core[i]) return left.core[i]! - right.core[i]!;
   }
-  return 0;
+  // 0.6.0 > 0.6.0-test (release without prerelease is newer)
+  if (!left.pre && right.pre) return 1;
+  if (left.pre && !right.pre) return -1;
+  if (left.pre === right.pre) return 0;
+  // 0.6.0-test < 0.6.0-test2
+  return left.pre < right.pre ? -1 : 1;
 }
 
 /** True when the app already has this notification version or newer. */
@@ -55,13 +67,13 @@ export function isAppUpdateNotificationInstalled(notificationText: string): bool
   return compareFloraSocialVersions(getFloraSocialAppVersion(), fromText) >= 0;
 }
 
-/** APK URL for app_update: version from notification text, else installed app version. */
+/** APK download for app_update: version from notification text, else installed app version. */
 export function resolveAppUpdateApkDownloadUrl(notificationText?: string): string {
   const fromText = notificationText ? parseAppUpdateVersionFromText(notificationText) : null;
   return buildFloraSocialApkDownloadUrl(fromText ?? getFloraSocialAppVersion());
 }
 
-/** Bootstrap fallback when PackageInstaller module is not in the binary. */
+/** @deprecated Prefer resolveAppUpdateApkDownloadUrl for 2.4 fallback. */
 export function resolveAppUpdateReleasePageUrl(notificationText?: string): string {
   const fromText = notificationText ? parseAppUpdateVersionFromText(notificationText) : null;
   return buildFloraSocialReleasePageUrl(fromText ?? getFloraSocialAppVersion());

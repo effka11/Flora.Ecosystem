@@ -3,7 +3,6 @@ import type { NotificationDto } from "@flora/client-core/contracts";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -11,17 +10,9 @@ import {
 } from "react-native";
 import { AppUpdateProgressModal } from "@/components/notifications/AppUpdateProgressModal";
 import { formatNotificationTimeAgoRu } from "@/lib/formatNotificationTimeAgoRu";
-import {
-  checkAndInstall,
-  cancelInteractiveApkUpdate,
-  buildDirectUpdateManifestFromNotificationText,
-  isApkUpdaterNativeReady,
-} from "@/lib/apkUpdate";
+import { cancelInteractiveApkUpdate, runUserUpdateFromNotification } from "@/lib/apkUpdate";
 import type { ApkUpdateProgress } from "@/lib/apkUpdate/progress";
-import {
-  isAppUpdateNotificationInstalled,
-  resolveAppUpdateReleasePageUrl,
-} from "@/lib/appLinks";
+import { isAppUpdateNotificationInstalled } from "@/lib/appLinks";
 import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -120,29 +111,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
 
     void (async () => {
       try {
-        if (!isApkUpdaterNativeReady()) {
-          onProgress({ phase: "checking", message: "Открытие страницы релиза…" });
-          await Linking.openURL(resolveAppUpdateReleasePageUrl(item.text));
-          if (cancelledRef.current) return;
-          onProgress({ phase: "done", message: "Страница релиза открыта" });
-          return;
-        }
-
-        // Direct APK URL from notification text — no GitHub API (avoids hang on api.github.com).
-        const fromNotification = buildDirectUpdateManifestFromNotificationText(item.text);
-        if (!fromNotification) {
-          onProgress({
-            phase: "error",
-            message: "Не удалось разобрать версию в уведомлении",
-          });
-          return;
-        }
-        const result = await checkAndInstall({
-          allowUserAction: true,
-          force: true,
-          manifest: fromNotification,
-          onProgress,
-        });
+        const result = await runUserUpdateFromNotification(item.text, onProgress);
         if (cancelledRef.current || (result.ok && result.status === "cancelled")) {
           closeModal();
           return;
@@ -157,13 +126,18 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           return;
         }
 
-        if (result.status === "up_to_date" || result.status === "installed") {
+        if (
+          result.status === "up_to_date" ||
+          result.status === "installed" ||
+          result.status === "opened_github"
+        ) {
           closeModal();
-          if (mountedRef.current) setAlreadyInstalled(true);
+          if (result.status !== "opened_github" && mountedRef.current) {
+            setAlreadyInstalled(true);
+          }
           return;
         }
 
-        // System installer UI still open (legacy native). Keep sheet until final.
         if (result.status === "pending_user_action") {
           onProgress({
             phase: "installing",

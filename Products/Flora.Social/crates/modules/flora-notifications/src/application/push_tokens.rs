@@ -41,6 +41,16 @@ impl PushTokenService {
         self.repo.tokens_for_user(user_uuid).await
     }
 
+    pub async fn tokens_for_user_platform(
+        &self,
+        user_uuid: Uuid,
+        platform: &str,
+    ) -> Result<Vec<String>, String> {
+        self.repo
+            .tokens_for_user_platform(user_uuid, platform)
+            .await
+    }
+
     pub async fn list_user_uuids_by_platform(&self, platform: &str) -> Result<Vec<Uuid>, String> {
         self.repo.list_user_uuids_by_platform(platform).await
     }

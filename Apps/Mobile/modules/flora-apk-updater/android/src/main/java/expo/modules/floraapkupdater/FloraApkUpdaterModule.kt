@@ -1,16 +1,13 @@
 package expo.modules.floraapkupdater
 
 import android.app.DownloadManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import androidx.core.content.FileProvider
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
@@ -83,6 +80,31 @@ class FloraApkUpdaterModule : Module() {
 
     Function("getUpdateDir") {
       updateDir().absolutePath
+    }
+
+    Function("getUpdateState") {
+      UpdateCoordinator.getState(context)
+    }
+
+    AsyncFunction("startAutoUpdate") { manifest: Map<String, Any?>, promise: Promise ->
+      try {
+        val parsed = UpdateCoordinator.parseManifestFromJs(manifest)
+        if (parsed == null) {
+          promise.reject("E_MANIFEST", "Invalid update manifest", null)
+          return@AsyncFunction
+        }
+        UpdateCoordinator.startAuto(context, parsed, showTray = false)
+        promise.resolve(UpdateCoordinator.getState(context))
+      } catch (e: Exception) {
+        promise.reject("E_START", e.message, e)
+      }
+    }
+
+    Function("cancelUpdate") {
+      UpdateCoordinator.cancel(context)
+      downloadCancel.set(true)
+      cancelActiveSystemDownload()
+      true
     }
 
     Function("cancelDownload") {
@@ -293,9 +315,6 @@ class FloraApkUpdaterModule : Module() {
           return@AsyncFunction
         }
 
-        val authority = "${context.packageName}.flora.apk.provider"
-        FileProvider.getUriForFile(context, authority, apk)
-
         if (pendingPromise.get() != null) {
           promise.reject("E_IN_FLIGHT", "Another install is already in progress", null)
           return@AsyncFunction
@@ -303,55 +322,19 @@ class FloraApkUpdaterModule : Module() {
 
         pendingAllowUserAction.set(allowUserAction)
         pendingPromise.set(promise)
+        UpdateCoordinator.setInteractiveInstall(allowUserAction)
 
-        val installer = context.packageManager.packageInstaller
-        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-          params.setRequireUserAction(
-            if (allowUserAction) {
-              PackageInstaller.SessionParams.USER_ACTION_REQUIRED
-            } else {
-              PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED
-            },
-          )
-        }
-        // Interactive installs may downgrade (test releases / older APKs).
-        if (allowUserAction) {
-          // API 34+: SessionParams.setRequestDowngrade (via reflection — compileSdk may be lower).
-          try {
-            val method = PackageInstaller.SessionParams::class.java.getMethod(
-              "setRequestDowngrade",
-              Boolean::class.javaPrimitiveType,
-            )
-            method.invoke(params, true)
-          } catch (_: Exception) {
-          }
-          // Best-effort: PackageManager.INSTALL_ALLOW_DOWNGRADE (0x80).
-          try {
-            val field = PackageInstaller.SessionParams::class.java.getDeclaredField("installFlags")
-            field.isAccessible = true
-            field.setInt(params, field.getInt(params) or 0x00000080)
-          } catch (_: Exception) {
-          }
-        }
-
-        val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-          session.openWrite("package", 0, apk.length()).use { out ->
-            apk.inputStream().use { input -> input.copyTo(out) }
-            session.fsync(out)
-          }
-
-          val callbackIntent = Intent(context, FloraApkInstallReceiver::class.java).apply {
-            action = FloraApkInstallReceiver.ACTION
-          }
-          val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-          val pendingIntent = PendingIntent.getBroadcast(context, sessionId, callbackIntent, flags)
-          session.commit(pendingIntent.intentSender)
+        val ok = UpdateCoordinator.commitInstallForJs(context, apk, allowUserAction)
+        if (!ok) {
+          pendingPromise.compareAndSet(promise, null)
+          UpdateCoordinator.setInteractiveInstall(false)
+          val err = UpdateStateStore(context).getLastError() ?: "Install failed"
+          val code = if (err.contains("REQUEST_INSTALL")) "E_NO_PERMISSION" else "E_INSTALL"
+          promise.reject(code, err, null)
         }
       } catch (e: Exception) {
         pendingPromise.set(null)
+        UpdateCoordinator.setInteractiveInstall(false)
         promise.reject("E_INSTALL", e.message, e)
       }
     }
@@ -413,18 +396,10 @@ class FloraApkUpdaterModule : Module() {
             )
             return
           }
-          val ctx = module?.appContext?.reactContext
-          if (ctx != null && confirmIntent != null) {
-            confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            try {
-              ctx.startActivity(confirmIntent)
-            } catch (e: Exception) {
-              pendingPromise.compareAndSet(promise, null)
-              promise.reject("E_CONFIRM", e.message, e)
-            }
-          } else {
+          // Confirm UI is started by UpdateCoordinator; keep promise for final status.
+          if (confirmIntent == null) {
             pendingPromise.compareAndSet(promise, null)
-            promise.reject("E_CONFIRM", "Missing confirm intent or context", null)
+            promise.reject("E_CONFIRM", "Missing confirm intent", null)
           }
         }
         else -> {

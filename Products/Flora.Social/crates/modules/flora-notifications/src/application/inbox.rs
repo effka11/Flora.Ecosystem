@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use flora_auth_contracts::AccountDirectory;
-use flora_notifications_contracts::RealtimeNotificationSignal;
+use flora_notifications_contracts::{AppUpdatePayload, RealtimeNotificationSignal};
 use flora_shared::flora_uuid::new_uuid;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -120,12 +120,15 @@ impl InboxService {
     }
 
     /// Паритет `NotificationInboxService.BroadcastAsync`.
+    ///
+    /// For `app_update`, FCM is sent (`skip_push=false`) with optional sideload metadata.
     pub async fn broadcast(
         &self,
         notification_type: &str,
         category: &str,
         text: &str,
         audience_platform: Option<&str>,
+        update: Option<AppUpdatePayload>,
     ) -> Result<i32, String> {
         let text = text.trim();
         if text.is_empty() {
@@ -140,6 +143,14 @@ impl InboxService {
             text.chars().take(500).collect()
         };
         let target_platform = resolve_audience_platform(&notification_type, audience_platform);
+        let skip_push = notification_type != "app_update";
+
+        // Sideload auto-update needs structured update{} on the wire (FCM/SSE).
+        if notification_type == "app_update" && update.is_none() {
+            return Err(
+                "app_update broadcast requires update{version,versionCode,apkUrl,sha256}".into(),
+            );
+        }
 
         let recipient_uuids = self
             .resolve_broadcast_recipients(target_platform.as_deref())
@@ -179,9 +190,10 @@ impl InboxService {
                 post_uuid: None,
                 comment_uuid: None,
                 created_at: *created_at,
+                update: update.clone(),
             };
             self.realtime
-                .publish_notification(*recipient, &signal, true)
+                .publish_notification(*recipient, &signal, skip_push)
                 .await;
         }
 

@@ -43,6 +43,10 @@ export type CheckAndInstallOptions = {
   manifest?: AndroidUpdateManifest | null;
   /** Interactive UI progress (ignored on silent path). */
   onProgress?: ApkUpdateProgressListener;
+  /** 2.1: install existing pending APK only (skip download). */
+  installOnlyUri?: string;
+  /** 2.3: do not open Flora InstallPermissionModal; caller opens Settings if needed. */
+  skipPermissionModal?: boolean;
 };
 
 export type CheckAndInstallResult =
@@ -156,7 +160,7 @@ async function runCheckAndInstall(
     return { ok: true, status: "skipped" };
   }
 
-  if (options.allowUserAction && !canRequestPackageInstalls()) {
+  if (options.allowUserAction && !canRequestPackageInstalls() && !options.skipPermissionModal) {
     report({ phase: "permission" });
     const granted = await ensureInstallPackagesPermission({ force: true });
     if (isApkUpdateCancelled()) return cancelledResult();
@@ -174,7 +178,7 @@ async function runCheckAndInstall(
   if (isApkUpdateCancelled()) return cancelledResult();
 
   let manifest = options.manifest ?? null;
-  if (!manifest) {
+  if (!manifest && !options.installOnlyUri) {
     try {
       manifest = await fetchLatestUpdateManifest();
     } catch {
@@ -189,11 +193,25 @@ async function runCheckAndInstall(
 
   if (isApkUpdateCancelled()) return cancelledResult();
 
-  if (!manifest) {
+  if (!manifest && !options.installOnlyUri) {
     if (options.allowUserAction) {
       return { ok: false, error: "Манифест обновления не найден", code: "NO_MANIFEST" };
     }
     return { ok: true, status: "skipped" };
+  }
+
+  // Synthetic manifest for install-only when caller already resolved version.
+  if (!manifest && options.installOnlyUri) {
+    manifest = {
+      version: "pending",
+      versionCode: null,
+      apkFileName: "pending.apk",
+      apkUrl: options.installOnlyUri,
+      sha256: "",
+    };
+  }
+  if (!manifest) {
+    return { ok: false, error: "Манифест обновления не найден", code: "NO_MANIFEST" };
   }
 
   if (!/^[a-f0-9]{64}$/i.test(manifest.sha256)) {
@@ -235,65 +253,70 @@ async function runCheckAndInstall(
     }
   }
 
-  if (!options.allowUserAction) {
-    if (manifest.sizeBytes == null) {
-      return { ok: true, status: "skipped" };
-    }
-    try {
-      await assertEnoughDiskSpace(manifest.sizeBytes);
-    } catch {
-      return { ok: true, status: "skipped" };
-    }
-  } else {
-    try {
-      if (manifest.sizeBytes != null) {
-        await assertEnoughDiskSpace(manifest.sizeBytes);
-      }
-      // No HEAD probe: GitHub release URLs often hang on HEAD from the device.
-    } catch (e) {
-      if (isApkUpdateCancelled()) return cancelledResult();
-      const msg = e instanceof Error ? e.message : "";
-      if (msg === "NO_DISK_SPACE" || msg === "MISSING_SIZE") {
-        report({ phase: "error", message: "Недостаточно места на устройстве" });
-        return { ok: false, error: "Недостаточно места на устройстве", code: "NO_DISK_SPACE" };
-      }
-      report({ phase: "error", message: "Не удалось проверить свободное место" });
-      return { ok: false, error: "Не удалось проверить свободное место", code: "DISK" };
-    }
-  }
-
-  if (isApkUpdateCancelled()) return cancelledResult();
-
   let fileUri: string;
-  try {
-    report({ phase: "downloading" });
-    let lastPct = -1;
-    fileUri = await downloadApkResumable(manifest, (fraction) => {
-      if (isApkUpdateCancelled()) return;
-      if (fraction == null) {
-        report({ phase: "downloading" });
-        return;
+
+  if (options.installOnlyUri) {
+    fileUri = options.installOnlyUri;
+  } else {
+    if (!options.allowUserAction) {
+      if (manifest.sizeBytes == null) {
+        return { ok: true, status: "skipped" };
       }
-      const pct = Math.floor(fraction * 100);
-      if (pct === lastPct) return;
-      lastPct = pct;
-      report({ phase: "downloading", fraction });
-    });
-  } catch (e) {
-    if (isCancelError(e)) return cancelledResult();
-    await clearPendingApk();
-    if (options.allowUserAction) {
-      const detail = e instanceof Error ? e.message : "";
-      const message =
-        detail === "DOWNLOAD_STALLED"
-          ? "Загрузка зависла. Проверьте сеть и попробуйте снова"
-          : detail && detail !== "DOWNLOAD_FAILED"
-            ? `Ошибка загрузки: ${detail}`
-            : "Ошибка загрузки APK";
-      report({ phase: "error", message });
-      return { ok: false, error: message, code: "DOWNLOAD" };
+      try {
+        await assertEnoughDiskSpace(manifest.sizeBytes);
+      } catch {
+        return { ok: true, status: "skipped" };
+      }
+    } else {
+      try {
+        if (manifest.sizeBytes != null) {
+          await assertEnoughDiskSpace(manifest.sizeBytes);
+        }
+        // No HEAD probe: GitHub release URLs often hang on HEAD from the device.
+      } catch (e) {
+        if (isApkUpdateCancelled()) return cancelledResult();
+        const msg = e instanceof Error ? e.message : "";
+        if (msg === "NO_DISK_SPACE" || msg === "MISSING_SIZE") {
+          report({ phase: "error", message: "Недостаточно места на устройстве" });
+          return { ok: false, error: "Недостаточно места на устройстве", code: "NO_DISK_SPACE" };
+        }
+        report({ phase: "error", message: "Не удалось проверить свободное место" });
+        return { ok: false, error: "Не удалось проверить свободное место", code: "DISK" };
+      }
     }
-    return { ok: true, status: "skipped" };
+
+    if (isApkUpdateCancelled()) return cancelledResult();
+
+    try {
+      report({ phase: "downloading" });
+      let lastPct = -1;
+      fileUri = await downloadApkResumable(manifest, (fraction) => {
+        if (isApkUpdateCancelled()) return;
+        if (fraction == null) {
+          report({ phase: "downloading" });
+          return;
+        }
+        const pct = Math.floor(fraction * 100);
+        if (pct === lastPct) return;
+        lastPct = pct;
+        report({ phase: "downloading", fraction });
+      });
+    } catch (e) {
+      if (isCancelError(e)) return cancelledResult();
+      await clearPendingApk();
+      if (options.allowUserAction) {
+        const detail = e instanceof Error ? e.message : "";
+        const message =
+          detail === "DOWNLOAD_STALLED"
+            ? "Загрузка зависла. Проверьте сеть и попробуйте снова"
+            : detail && detail !== "DOWNLOAD_FAILED"
+              ? `Ошибка загрузки: ${detail}`
+              : "Ошибка загрузки APK";
+        report({ phase: "error", message });
+        return { ok: false, error: message, code: "DOWNLOAD" };
+      }
+      return { ok: true, status: "skipped" };
+    }
   }
 
   if (isApkUpdateCancelled()) return cancelledResult();
@@ -382,8 +405,11 @@ async function runCheckAndInstall(
   }
 }
 
-/** Silent path used after login / on resume when permission is already granted. */
-export async function runSilentUpdateCheck(force = false): Promise<void> {
-  if (!canInstallSilently()) return;
-  await checkAndInstall({ allowUserAction: false, force });
+/**
+ * @deprecated Foreground silent install removed — use runAppUpdateCatchUp / native FCM.
+ * Kept as no-op download catch-up entry for older call sites.
+ */
+export async function runSilentUpdateCheck(_force = false): Promise<void> {
+  const { runAppUpdateCatchUp } = await import("@/lib/apkUpdate/autoUpdate");
+  await runAppUpdateCatchUp();
 }

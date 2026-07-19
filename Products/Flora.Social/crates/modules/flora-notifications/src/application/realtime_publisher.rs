@@ -91,6 +91,38 @@ impl UserRealtimePublisher {
             return;
         }
 
+        if signal.notification_type == "app_update" {
+            // Sideload wake: Android tokens only + data-only HIGH (see FcmPushSender).
+            let tokens = match self
+                .push_tokens
+                .tokens_for_user_platform(recipient_user_uuid, "android")
+                .await
+            {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        recipient = %recipient_user_uuid,
+                        "app_update publish: failed to load Android push tokens"
+                    );
+                    return;
+                }
+            };
+            if tokens.is_empty() {
+                return;
+            }
+            self.push_dispatcher
+                .send_app_update_push(
+                    recipient_user_uuid,
+                    &tokens,
+                    signal.notification_uuid,
+                    &signal.text,
+                    signal.update.as_ref(),
+                )
+                .await;
+            return;
+        }
+
         let tokens = match self.push_tokens.tokens_for_user(recipient_user_uuid).await {
             Ok(t) => t,
             Err(e) => {

@@ -16,11 +16,35 @@ export type DownloadProgressEvent = {
   total: number;
 };
 
+export type NativeUpdateState = {
+  phase: string;
+  version?: string | null;
+  versionCode?: number | null;
+  apkUrl?: string | null;
+  sha256?: string | null;
+  sizeBytes?: number | null;
+  lastError?: string | null;
+  downloadId?: number | null;
+};
+
+export type NativeUpdateManifest = {
+  version: string;
+  versionCode: number;
+  apkUrl: string;
+  sha256: string;
+  sizeBytes?: number | null;
+  notificationUuid?: string | null;
+  text?: string | null;
+};
+
 type FloraApkUpdaterNativeModule = {
   isAvailable(): boolean;
   canRequestPackageInstalls(): boolean;
   sdkInt(): number;
   getUpdateDir(): string;
+  getUpdateState(): NativeUpdateState;
+  startAutoUpdate(manifest: NativeUpdateManifest): Promise<NativeUpdateState>;
+  cancelUpdate(): boolean;
   requestInstallPermission(): Promise<boolean>;
   sha256File(filePath: string): Promise<string>;
   installApk(filePath: string, allowUserAction: boolean): Promise<InstallApkResult>;
@@ -59,6 +83,30 @@ export function getNativeUpdateDir(): string | null {
   } catch {
     return null;
   }
+}
+
+export function getNativeUpdateState(): NativeUpdateState | null {
+  if (!native || typeof native.getUpdateState !== "function") return null;
+  try {
+    return native.getUpdateState();
+  } catch {
+    return null;
+  }
+}
+
+export async function startNativeAutoUpdate(
+  manifest: NativeUpdateManifest,
+): Promise<NativeUpdateState | null> {
+  if (!native || typeof native.startAutoUpdate !== "function") return null;
+  return native.startAutoUpdate(manifest);
+}
+
+export function cancelNativeUpdate(): void {
+  if (native && typeof native.cancelUpdate === "function") {
+    native.cancelUpdate();
+    return;
+  }
+  native?.cancelDownload();
 }
 
 export async function requestInstallPermission(): Promise<boolean> {
@@ -109,6 +157,9 @@ export default {
   canRequestPackageInstalls,
   getAndroidSdkInt,
   getNativeUpdateDir,
+  getNativeUpdateState,
+  startNativeAutoUpdate,
+  cancelNativeUpdate,
   requestInstallPermission,
   sha256File,
   installApk,

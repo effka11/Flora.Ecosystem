@@ -22,6 +22,8 @@ function logPush(message: string, err?: unknown): void {
 
 function shouldPresentPush(data: Record<string, unknown> | undefined): boolean {
   const type = typeof data?.type === "string" ? data.type : "message";
+  // app_update is data-only (native download); no system tray — inbox only.
+  if (type === "app_update") return false;
   if (type !== "message" && type !== "notification") return false;
   if (type === "message" && data) {
     const conv =

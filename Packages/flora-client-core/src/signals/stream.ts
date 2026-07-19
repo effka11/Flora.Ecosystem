@@ -7,6 +7,14 @@ export type MessageRealtimeSignal = {
   sentAt: string;
 };
 
+export type AppUpdateRealtimePayload = {
+  version: string;
+  versionCode: number;
+  apkUrl: string;
+  sha256: string;
+  sizeBytes?: number;
+};
+
 export type NotificationRealtimeSignal = {
   notificationUuid: string;
   type: string;
@@ -16,6 +24,8 @@ export type NotificationRealtimeSignal = {
   postUuid: string | null;
   commentUuid: string | null;
   createdAt: string;
+  /** Sideload metadata when type is app_update (not stored in inbox DB). */
+  update?: AppUpdateRealtimePayload | null;
 };
 
 export type ConnectSignalsStreamOptions = {
@@ -44,11 +54,42 @@ function parseMessageSignal(raw: unknown): MessageRealtimeSignal | null {
   return { conversationUuid, senderUserUuid, sentAt };
 }
 
+function parseAppUpdatePayload(raw: unknown): AppUpdateRealtimePayload | null {
+  const o = asRecord(raw);
+  if (!o) return null;
+  const version = readStr(o, ["version", "Version"]);
+  const apkUrl = readStr(o, ["apkUrl", "ApkUrl"]);
+  const sha256 = readStr(o, ["sha256", "Sha256"]).toLowerCase();
+  const versionCodeRaw = o.versionCode ?? o.VersionCode;
+  const versionCode =
+    typeof versionCodeRaw === "number"
+      ? versionCodeRaw
+      : typeof versionCodeRaw === "string"
+        ? Number.parseInt(versionCodeRaw, 10)
+        : NaN;
+  if (!version || !apkUrl || versionCode < 1 || !/^[a-f0-9]{64}$/.test(sha256)) return null;
+  const sizeRaw = o.sizeBytes ?? o.SizeBytes;
+  const sizeBytes =
+    typeof sizeRaw === "number" && sizeRaw > 0
+      ? sizeRaw
+      : typeof sizeRaw === "string"
+        ? Number.parseInt(sizeRaw, 10)
+        : undefined;
+  return {
+    version,
+    versionCode,
+    apkUrl,
+    sha256,
+    sizeBytes: sizeBytes && sizeBytes > 0 ? sizeBytes : undefined,
+  };
+}
+
 function parseNotificationSignal(raw: unknown): NotificationRealtimeSignal | null {
   const o = asRecord(raw);
   if (!o) return null;
   const notificationUuid = readStr(o, ["notificationUuid", "NotificationUuid"]);
   if (!notificationUuid) return null;
+  const updateRaw = o.update ?? o.Update;
   return {
     notificationUuid,
     type: readStr(o, ["type", "Type"]) || "default",
@@ -58,6 +99,7 @@ function parseNotificationSignal(raw: unknown): NotificationRealtimeSignal | nul
     postUuid: readStr(o, ["postUuid", "PostUuid"]) || null,
     commentUuid: readStr(o, ["commentUuid", "CommentUuid"]) || null,
     createdAt: readStr(o, ["createdAt", "CreatedAt"]),
+    update: updateRaw ? parseAppUpdatePayload(updateRaw) : null,
   };
 }
 

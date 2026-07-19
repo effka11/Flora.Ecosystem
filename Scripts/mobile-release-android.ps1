@@ -390,9 +390,7 @@ if ($PublishGitHub) {
     if (-not $distApk -or -not (Test-Path -LiteralPath $distApk)) {
         throw "-PublishGitHub requires a built APK at dist/"
     }
-    if (-not $updateManifestPath -or -not (Test-Path -LiteralPath $updateManifestPath)) {
-        throw "-PublishGitHub requires flora.social-android-update.json"
-    }
+    # update.json stays local (broadcast / FCM update{}). Do not upload to GitHub assets.
 
     $gh = Get-Command gh -ErrorAction SilentlyContinue
     if (-not $gh) {
@@ -401,26 +399,28 @@ if ($PublishGitHub) {
 
     $tag = "social/v$socialVersion"
     Write-Host ""
-    Write-Host "Publishing GitHub release $tag ..."
+    Write-Host "Publishing GitHub release $tag (APK only; update.json stays in dist/) ..."
 
     $viewOut = & gh release view $tag --repo effka11/Flora.Ecosystem 2>&1
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "Release $tag exists; uploading assets (clobber) ..."
-        & gh release upload $tag --repo effka11/Flora.Ecosystem --clobber $distApk $updateManifestPath
+        Write-Host "Release $tag exists; uploading APK (clobber) ..."
+        & gh release upload $tag --repo effka11/Flora.Ecosystem --clobber $distApk
         if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
+        # Drop legacy update.json from the release if present (clients no longer require it).
+        & gh release delete-asset $tag "flora.social-android-update.json" --repo effka11/Flora.Ecosystem --yes 2>$null
     }
     else {
         Write-Host "Creating release $tag ..."
         $notes = @"
 Flora Social Android $socialVersion
 
-Sideload APK + update manifest for in-app PackageInstaller updates.
+Sideload APK for PackageInstaller / FCM auto-update.
 Keep the same release signing keystore across updates.
 "@
-        & gh release create $tag --repo effka11/Flora.Ecosystem --title "Flora Social v$socialVersion" --notes $notes $distApk $updateManifestPath
+        & gh release create $tag --repo effka11/Flora.Ecosystem --title "Flora Social v$socialVersion" --notes $notes $distApk
         if ($LASTEXITCODE -ne 0) { throw "gh release create failed (ensure tag $tag exists on remote, or pass --generate-notes after pushing the tag)" }
     }
-    Write-Host "GitHub release assets published."
+    Write-Host "GitHub release APK published."
 }
 
 if ($BroadcastUpdate) {

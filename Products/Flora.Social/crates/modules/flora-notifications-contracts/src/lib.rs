@@ -21,6 +21,18 @@ pub struct RealtimeMessageSignal {
     pub sent_at: DateTime<Utc>,
 }
 
+/// Sideload APK update metadata carried on FCM/SSE for `app_update` (not stored in DB).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdatePayload {
+    pub version: String,
+    pub version_code: i64,
+    pub apk_url: String,
+    pub sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<i64>,
+}
+
 /// SSE `event: notification` payload (C# `RealtimeNotificationSignal`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +46,9 @@ pub struct RealtimeNotificationSignal {
     pub post_uuid: Option<Uuid>,
     pub comment_uuid: Option<Uuid>,
     pub created_at: DateTime<Utc>,
+    /// Present for `app_update` broadcasts when the admin supplied a manifest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update: Option<AppUpdatePayload>,
 }
 
 /// Паритет `CreateUserNotificationCommand` (C# NotificationContracts).
