@@ -13,7 +13,7 @@ import {
 import { loadOrCreateFscpLocalMaterial, type FscpLocalMaterial } from "./keys.js";
 import type { FscpKeyStorageAdapter } from "./keyStorage.js";
 import { fromBase64Url } from "./base64url.js";
-import { messagePlaintextFromBlocks, messagePlaintextFromText, plaintextToPreview } from "./preview.js";
+import { messagePlaintextFromBlocks, plaintextToPreview } from "./preview.js";
 
 export type UserE2eKeyBundle = {
   publicKeyBase64: string;
@@ -137,21 +137,20 @@ export type MessageSendAttachments = {
   videoAssetUuids?: string[];
 };
 
+/**
+ * Отправка сообщения. Privacy-инвариант (e2e-security.md §Уведомления, errata-5):
+ * plaintext-превью НЕ отправляется на сервер — push-уведомления получают только
+ * generic-текст. Ранее существовавшие поля `pushPreview`/`previewBlocks` удалены
+ * как утечка содержимого через FCM.
+ */
 export async function sendTextMessage(params: {
   conversationUuid: string;
   wire: string;
   attachments?: MessageSendAttachments;
-  pushPreview?: string;
-  previewBlocks?: FscpMessageBlock[];
 }): Promise<MsgSentMessageDto> {
   const voiceAssetUuids = params.attachments?.voiceAssetUuids ?? [];
   const imageAssetUuids = params.attachments?.imageAssetUuids ?? [];
   const videoAssetUuids = params.attachments?.videoAssetUuids ?? [];
-  const pushPreview =
-    params.pushPreview?.trim() ||
-    (params.previewBlocks?.length
-      ? plaintextToPreview(messagePlaintextFromBlocks(params.previewBlocks))
-      : undefined);
   const body: Record<string, unknown> = {
     encryptedForReceiver: params.wire,
     encryptedForSender: params.wire,
@@ -159,7 +158,6 @@ export async function sendTextMessage(params: {
     imageAssetUuids,
     videoAssetUuids,
   };
-  if (pushPreview) body.pushPreview = pushPreview;
   const raw = await authPostJson(`/api/messaging/conversations/${params.conversationUuid}/messages`, body);
   const o = asRecord(raw) ?? {};
   const fb = getApiClientConfig().onPascalFallback;

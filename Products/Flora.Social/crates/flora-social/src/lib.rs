@@ -229,6 +229,12 @@ fn messaging_router(
         return (flora_messaging::router(), Vec::new());
     };
     let (presence, profiles, online, messages_access) = flora_users::messaging_ports(pool.clone());
+    // Секрет E2E proof-токенов: выделенный ключ или fallback на Jwt:Secret
+    // (внутри модуля MAC-ключ доменно-разделяется HMAC'ом, cross-use с JWT исключён).
+    let e2e_token_secret = cfg
+        .get_non_empty("Messaging:E2eTokenSecret")
+        .or_else(|| cfg.get_non_empty("Jwt:Secret"))
+        .map(|s| s.as_bytes().to_vec());
     let module = flora_messaging::compose(
         pool,
         accounts,
@@ -237,6 +243,7 @@ fn messaging_router(
         online,
         messages_access,
         sent_notifier,
+        e2e_token_secret,
     );
     (with_jwt(cfg, module.router), vec![module.asset_cleanup])
 }

@@ -17,7 +17,7 @@ use sqlx::PgPool;
 
 use crate::application::{AssetService, ConversationService, E2eEpochService, E2eKeyBackupService};
 use crate::http::MessagingState;
-use crate::infrastructure::MessagingRepo;
+use crate::infrastructure::{E2eProofTokens, MessagingRepo};
 
 /// Re-export FSCP validator for callers that historically used `flora_messaging::fscp`.
 pub use fscp_core as fscp;
@@ -33,6 +33,7 @@ pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn compose(
     pool: PgPool,
     accounts: Arc<dyn AccountDirectory>,
@@ -41,6 +42,7 @@ pub fn compose(
     online_access: Arc<dyn OnlineStatusAccess>,
     messages_access: Arc<dyn MessagesAccess>,
     sent_notifier: Arc<dyn MessageSentNotifier>,
+    e2e_token_secret: Option<Vec<u8>>,
 ) -> MessagingModule {
     let cleanup_pool = pool.clone();
     let repo = Arc::new(MessagingRepo::new(pool.clone()));
@@ -53,9 +55,17 @@ pub fn compose(
         messages_access,
         sent_notifier,
     ));
+    // Errata-5: HMAC-подписанные proof-токены recovery/approve. None → fail-closed
+    // (выдача отключена, unlock-complete отклоняет любые токены).
+    let proof_tokens = Arc::new(E2eProofTokens::new(e2e_token_secret));
+    if !proof_tokens.is_enabled() {
+        tracing::warn!(
+            "flora-messaging: E2E proof-токены отключены (нет Messaging:E2eTokenSecret и Jwt:Secret) — unlock-complete будет отклонять запросы"
+        );
+    }
     let assets = Arc::new(AssetService::new(pool.clone(), accounts));
-    let e2e = Arc::new(E2eKeyBackupService::new(pool.clone()));
-    let epochs = Arc::new(E2eEpochService::new(pool));
+    let e2e = Arc::new(E2eKeyBackupService::new(pool.clone(), proof_tokens.clone()));
+    let epochs = Arc::new(E2eEpochService::new(pool, proof_tokens));
     MessagingModule {
         router: http::protected_router(MessagingState {
             conversations,

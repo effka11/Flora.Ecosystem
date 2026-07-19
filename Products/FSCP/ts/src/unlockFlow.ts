@@ -99,6 +99,30 @@ export function buildDeviceKeyCanonical(params: {
   ].join(SEP);
 }
 
+/**
+ * Canonical payload for the trusted-device approve signature (errata-5).
+ *
+ * Format (server: flora-messaging `build_canonical_device_approve_payload`):
+ *   flora.messaging.device-approve.v1 | userUuid | keyEpochId | newDeviceUuid | approvingDeviceUuid
+ *
+ * Signed by the **approving** (already active) device's signing key — JWT alone
+ * must never make a device trusted.
+ */
+export function buildDeviceApproveCanonical(params: {
+  userUuid: string;
+  keyEpochId: string;
+  newDeviceUuid: string;
+  approvingDeviceUuid: string;
+}): string {
+  return [
+    "flora.messaging.device-approve.v1",
+    params.userUuid,
+    params.keyEpochId,
+    params.newDeviceUuid,
+    params.approvingDeviceUuid,
+  ].join(SEP);
+}
+
 // ── Ed25519 signing via libsodium ─────────────────────────────────────────────
 
 /**

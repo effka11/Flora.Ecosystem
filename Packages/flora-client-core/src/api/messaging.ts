@@ -120,6 +120,183 @@ export async function apiGetRecoveryBackup(): Promise<unknown> {
   return authGetJson("/api/messaging/e2e/recovery-backup");
 }
 
+// ── E2E recovery / unlock / devices (e2e-security.md §API, errata-5) ─────────
+
+/** GET recovery-backups — метаданные всех recovery-записей (без ciphertext). */
+export async function apiGetRecoveryBackups(): Promise<unknown> {
+  return authGetJson("/api/messaging/e2e/recovery-backups");
+}
+
+export type MsgRecoveryBackupWithToken = {
+  /** Полный payload recovery backup (ciphertext + KDF/AEAD параметры). */
+  raw: Record<string, unknown>;
+  /**
+   * Короткоживущий proof-токен для unlock-complete; сервер выдаёт его только
+   * в FSM `recovering` (errata-5). null — вне recovery-flow.
+   */
+  recoveryUnlockToken: string | null;
+  recoveryUnlockTokenExpiresAt: string | null;
+};
+
+/** GET recovery-backup/{recoveryKeyId} — ciphertext + recoveryUnlockToken в recovering. */
+export async function apiGetRecoveryBackupById(
+  recoveryKeyId: string,
+): Promise<MsgRecoveryBackupWithToken> {
+  const raw = await authGetJson(
+    `/api/messaging/e2e/recovery-backup/${encodeURIComponent(recoveryKeyId.trim())}`,
+  );
+  const o = asRecord(raw) ?? {};
+  const fb = getApiClientConfig().onPascalFallback;
+  const token = readStr(o, ["recoveryUnlockToken", "RecoveryUnlockToken"], fb);
+  const expires = readStr(
+    o,
+    ["recoveryUnlockTokenExpiresAt", "RecoveryUnlockTokenExpiresAt"],
+    fb,
+  );
+  return {
+    raw: o,
+    recoveryUnlockToken: token.length > 0 ? token : null,
+    recoveryUnlockTokenExpiresAt: expires.length > 0 ? expires : null,
+  };
+}
+
+export type MsgUnlockChallenge = {
+  challengeId: string;
+  resetRequestId: string;
+  expiresAt: string;
+  canonicalPayloadPreview: string;
+};
+
+/** POST unlock-complete/challenge — выдаёт challengeId/resetRequestId (FSM recovering). */
+export async function apiRequestUnlockChallenge(): Promise<MsgUnlockChallenge> {
+  const raw = await authPostJson("/api/messaging/e2e/unlock-complete/challenge", {});
+  const o = asRecord(raw) ?? {};
+  const fb = getApiClientConfig().onPascalFallback;
+  return {
+    challengeId: readStr(o, ["challengeId", "ChallengeId"], fb),
+    resetRequestId: readStr(o, ["resetRequestId", "ResetRequestId"], fb),
+    expiresAt: readStr(o, ["expiresAt", "ExpiresAt"], fb),
+    canonicalPayloadPreview: readStr(o, ["canonicalPayloadPreview", "CanonicalPayloadPreview"], fb),
+  };
+}
+
+export type MsgUnlockCompleteRequest = {
+  resetRequestId: string;
+  idempotencyKey: string;
+  challengeId: string;
+  recoveredKeyEpochIds: string[];
+  epochIdentityPublicKeys: { keyEpochId: string; valueBase64Url: string }[];
+  epochUnlockSignatures: { keyEpochId: string; valueBase64Url: string }[];
+  keyBackup: Record<string, unknown>;
+  newDeviceSigningPublicKeyBase64Url: string;
+  newDeviceAgreementPublicKeyBase64Url: string;
+  recoveryUnlockToken?: string;
+  trustedDeviceApprovalToken?: string;
+};
+
+/** POST unlock-complete — восстановление доступа (нужен один валидный proof-токен). */
+export async function apiUnlockComplete(body: MsgUnlockCompleteRequest): Promise<void> {
+  await authPostJson(
+    "/api/messaging/e2e/unlock-complete",
+    body as unknown as Record<string, unknown>,
+  );
+}
+
+export type MsgDeviceKeyEntry = {
+  deviceUuid: string;
+  keyEpochId: string;
+  displayName: string;
+  signingPublicKeyBase64Url: string;
+  agreementPublicKeyBase64Url: string;
+  status: string;
+  createdAt: string;
+};
+
+/** GET epochs/{keyEpochId}/devices — server-attested список устройств epoch. */
+export async function apiGetEpochDevices(keyEpochId: string): Promise<MsgDeviceKeyEntry[]> {
+  const raw = await authGetJson(
+    `/api/messaging/e2e/epochs/${encodeURIComponent(keyEpochId.trim())}/devices`,
+  );
+  if (!Array.isArray(raw)) return [];
+  const fb = getApiClientConfig().onPascalFallback;
+  return raw.map((item) => {
+    const o = asRecord(item) ?? {};
+    return {
+      deviceUuid: readStr(o, ["deviceUuid", "DeviceUuid"], fb),
+      keyEpochId: readStr(o, ["keyEpochId", "KeyEpochId"], fb),
+      displayName: readStr(o, ["displayName", "DisplayName"], fb),
+      signingPublicKeyBase64Url: readStr(o, ["signingPublicKeyBase64Url", "SigningPublicKeyBase64Url"], fb),
+      agreementPublicKeyBase64Url: readStr(o, ["agreementPublicKeyBase64Url", "AgreementPublicKeyBase64Url"], fb),
+      status: readStr(o, ["status", "Status"], fb),
+      createdAt: readStr(o, ["createdAt", "CreatedAt"], fb),
+    };
+  });
+}
+
+/** POST epochs/{keyEpochId}/devices/pending — регистрация ключей нового устройства. */
+export async function apiAddPendingDevice(
+  keyEpochId: string,
+  body: {
+    signingPublicKeyBase64Url: string;
+    agreementPublicKeyBase64Url: string;
+    displayName?: string;
+  },
+): Promise<{ deviceUuid: string }> {
+  const raw = await authPostJson(
+    `/api/messaging/e2e/epochs/${encodeURIComponent(keyEpochId.trim())}/devices/pending`,
+    body as unknown as Record<string, unknown>,
+  );
+  const o = asRecord(raw) ?? {};
+  const fb = getApiClientConfig().onPascalFallback;
+  const deviceUuid = readStr(o, ["deviceUuid", "DeviceUuid"], fb);
+  if (!deviceUuid) throw new Error("Некорректный ответ сервера при регистрации устройства.");
+  return { deviceUuid };
+}
+
+export type MsgApproveDeviceResult = {
+  deviceUuid: string;
+  /** Proof-токен для unlock-complete в trusted-device flow (errata-5). */
+  trustedDeviceApprovalToken: string | null;
+  trustedDeviceApprovalTokenExpiresAt: string | null;
+};
+
+/**
+ * POST epochs/{keyEpochId}/devices/{deviceUuid}/approve — старое active-устройство
+ * подтверждает pending-устройство подписью Ed25519 над canonical payload
+ * `flora.messaging.device-approve.v1 | userUuid | keyEpochId | newDeviceUuid | approvingDeviceUuid`.
+ */
+export async function apiApproveDevice(
+  keyEpochId: string,
+  deviceUuid: string,
+  body: { approvingDeviceUuid: string; approvalSignatureBase64Url: string },
+): Promise<MsgApproveDeviceResult> {
+  const raw = await authPostJson(
+    `/api/messaging/e2e/epochs/${encodeURIComponent(keyEpochId.trim())}/devices/${encodeURIComponent(deviceUuid.trim())}/approve`,
+    body as unknown as Record<string, unknown>,
+  );
+  const o = asRecord(raw) ?? {};
+  const fb = getApiClientConfig().onPascalFallback;
+  const token = readStr(o, ["trustedDeviceApprovalToken", "TrustedDeviceApprovalToken"], fb);
+  const expires = readStr(
+    o,
+    ["trustedDeviceApprovalTokenExpiresAt", "TrustedDeviceApprovalTokenExpiresAt"],
+    fb,
+  );
+  return {
+    deviceUuid: readStr(o, ["deviceUuid", "DeviceUuid"], fb) || deviceUuid,
+    trustedDeviceApprovalToken: token.length > 0 ? token : null,
+    trustedDeviceApprovalTokenExpiresAt: expires.length > 0 ? expires : null,
+  };
+}
+
+/** POST epochs/{keyEpochId}/devices/{deviceUuid}/revoke (POST-алиас — CDN-safe). */
+export async function apiRevokeDevice(keyEpochId: string, deviceUuid: string): Promise<void> {
+  await authPostJson(
+    `/api/messaging/e2e/epochs/${encodeURIComponent(keyEpochId.trim())}/devices/${encodeURIComponent(deviceUuid.trim())}/revoke`,
+    {},
+  );
+}
+
 export async function apiArchiveConversation(conversationUuid: string): Promise<void> {
   await authPostJson(`/api/messaging/conversations/${conversationUuid}/archive`, {});
 }

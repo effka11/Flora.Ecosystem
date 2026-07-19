@@ -350,12 +350,15 @@ export type MsgSendAttachments = {
   videoAssetUuids?: string[];
 };
 
+/**
+ * Privacy-инвариант (e2e-security.md §Уведомления, FSCP errata-5): plaintext-превью
+ * сообщений на сервер не отправляется — push всегда получает generic-текст.
+ */
 export async function msgSendMessage(
   conversationUuid: string,
   encryptedForReceiver: string,
   encryptedForSender: string,
-  attachments: MsgSendAttachments = {},
-  pushPreview?: string
+  attachments: MsgSendAttachments = {}
 ): Promise<MsgSentMessageDto> {
   const voiceAssetUuids = attachments.voiceAssetUuids ?? [];
   const imageAssetUuids = attachments.imageAssetUuids ?? [];
@@ -367,8 +370,6 @@ export async function msgSendMessage(
     imageAssetUuids,
     videoAssetUuids,
   };
-  const preview = pushPreview?.trim();
-  if (preview) body.pushPreview = preview;
   const raw = (await authPostJson(
     apiUrl(
       `/api/messaging/conversations/${encodeURIComponent(conversationUuid)}/messages`
@@ -408,11 +409,10 @@ export async function msgSendMessageToUser(
   myUuid: string,
   otherUserUuid: string,
   wire: string,
-  attachments: MsgSendAttachments = {},
-  pushPreview?: string
+  attachments: MsgSendAttachments = {}
 ): Promise<MsgSentMessageDto> {
   const conversationUuid = dmConversationUuid(myUuid, otherUserUuid);
-  return msgSendMessage(conversationUuid, wire, wire, attachments, pushPreview);
+  return msgSendMessage(conversationUuid, wire, wire, attachments);
 }
 
 /**

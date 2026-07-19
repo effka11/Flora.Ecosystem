@@ -7,8 +7,8 @@ use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
     ConversationListItemDto, ConversationsPageDto, DeleteConversationOutcome, DeleteMessageOutcome,
     LegacyConversationListItemDto, LegacyMessageThreadItemDto, LegacySendMessageRequest,
-    LegacySendMessageResultDto, MessageItemDto, MessageSentNotifier, MessageSentPushContext,
-    MessagesPageDto, PostConversationMessageRequest, SendMessageResultDto,
+    LegacySendMessageResultDto, MessageItemDto, MessageSentNotifier, MessagesPageDto,
+    PostConversationMessageRequest, SendMessageResultDto,
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
@@ -250,6 +250,12 @@ impl ConversationService {
         )
         .map_err(SendMessageError::BadRequest)?;
 
+        // Errata-5 (defense-in-depth): после замороженного валидатора формы —
+        // криптопроверка Ed25519-подписи конверта. Содержимое по-прежнему
+        // не расшифровывается (§4.4), отклоняется только порченый/подделанный конверт.
+        fscp_core::verify_envelope_signature(&request.encrypted_for_receiver)
+            .map_err(SendMessageError::BadRequest)?;
+
         let receiver_exists = self
             .accounts
             .get_public(receiver_uuid)
@@ -293,15 +299,9 @@ impl ConversationService {
             .await
             .map_err(SendMessageError::BadRequest)?;
 
-        let push_ctx = MessageSentPushContext::from_request(
-            request.push_preview.as_deref(),
-            !voice_uuids.is_empty(),
-            !image_uuids.is_empty(),
-            !video_uuids.is_empty(),
-        );
-        self.sent_notifier
-            .notify(receiver_uuid, sender_uuid, push_ctx)
-            .await;
+        // Errata-5: клиентский pushPreview игнорируется — содержимое сообщения
+        // (включая тип вложений) не покидает E2E-границу через push/SSE.
+        self.sent_notifier.notify(receiver_uuid, sender_uuid).await;
 
         Ok(SendMessageResultDto {
             message_uuid: result.message_uuid,

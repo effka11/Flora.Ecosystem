@@ -5,14 +5,15 @@ use axum::extract::{Extension, Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use flora_messaging_contracts::{
-    AddPendingDeviceRequestDto, CreateEpochRequestDto, PutKeyBackupRequestDto,
-    RecoveryBackupPayloadDto, SetE2ePublicKeyRequestDto, UnlockCompleteRequestDto,
+    AddPendingDeviceRequestDto, ApproveDeviceRequestDto, CreateEpochRequestDto,
+    PutKeyBackupRequestDto, RecoveryBackupPayloadDto, SetE2ePublicKeyRequestDto,
+    UnlockCompleteRequestDto,
 };
 
 use crate::application::{
-    AddPendingDeviceError, CreateEpochError, GetE2ePublicKeyError, PutKeyBackupError,
-    PutRecoveryBackupError, RevokeDeviceError, SetE2ePublicKeyError, UnlockChallengeError,
-    UnlockCompleteError,
+    AddPendingDeviceError, ApproveDeviceError, CreateEpochError, GetE2ePublicKeyError,
+    PutKeyBackupError, PutRecoveryBackupError, RevokeDeviceError, SetE2ePublicKeyError,
+    UnlockChallengeError, UnlockCompleteError,
 };
 use crate::http::{CurrentUser, MessagingState};
 
@@ -231,6 +232,14 @@ pub async fn unlock_complete(
             Json(serde_json::json!({ "error": msg })),
         )
             .into_response(),
+        Err(UnlockCompleteError::ProofTokenInvalid(msg)) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "code": "messaging.e2e.unlock_complete.proof_token_invalid",
+                "error": msg
+            })),
+        )
+            .into_response(),
         Err(UnlockCompleteError::Internal(e)) => crate::http::internal(e),
     }
 }
@@ -258,6 +267,54 @@ pub async fn add_pending_device(
         )
             .into_response(),
         Err(AddPendingDeviceError::Internal(e)) => crate::http::internal(e),
+    }
+}
+
+/// POST .../epochs/{keyEpochId}/devices/{deviceUuid}/approve (errata-5).
+pub async fn approve_device(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path((key_epoch_id, device_uuid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    Json(body): Json<ApproveDeviceRequestDto>,
+) -> Response {
+    match state
+        .epochs
+        .approve_device(user.0, key_epoch_id, device_uuid, body)
+        .await
+    {
+        Ok(dto) => Json(dto).into_response(),
+        Err(ApproveDeviceError::AccountNotInRequiredState(msg)) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "code": "messaging.e2e.devices.not_allowed_in_current_account_state",
+                "error": msg
+            })),
+        )
+            .into_response(),
+        Err(ApproveDeviceError::SignatureInvalid(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "code": "messaging.e2e.devices.approval_signature_invalid",
+                "error": msg
+            })),
+        )
+            .into_response(),
+        Err(ApproveDeviceError::Forbidden(msg)) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(ApproveDeviceError::NotFound(msg)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(ApproveDeviceError::Conflict(msg)) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(ApproveDeviceError::Internal(e)) => crate::http::internal(e),
     }
 }
 

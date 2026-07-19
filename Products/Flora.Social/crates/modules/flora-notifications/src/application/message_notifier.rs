@@ -1,15 +1,18 @@
-//! `IMessageSentNotifier` adapter — SSE hub + FCM push (паритет `MessagePushNotifier.cs`).
+//! `MessageSentNotifier` adapter — SSE hub + FCM push.
+//!
+//! Privacy-инвариант (e2e-security.md §Уведомления, FSCP errata-5): содержимое
+//! сообщения через push/SSE не проходит — тело push всегда generic
+//! («Новое сообщение»), plaintext-превью удалено из цепочки.
 
 use std::sync::Arc;
 
 use chrono::Utc;
-use flora_messaging_contracts::{BoxFuture, MessageSentNotifier, MessageSentPushContext};
+use flora_messaging_contracts::{BoxFuture, MessageSentNotifier};
 use flora_notifications_contracts::RealtimeMessageSignal;
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use uuid::Uuid;
 
 use crate::application::UserRealtimePublisher;
-use crate::application::push_preview::build_push_preview;
 
 pub struct MessagePushNotifier {
     realtime: Arc<UserRealtimePublisher>,
@@ -22,12 +25,7 @@ impl MessagePushNotifier {
 }
 
 impl MessageSentNotifier for MessagePushNotifier {
-    fn notify(
-        &self,
-        recipient_user_uuid: Uuid,
-        sender_user_uuid: Uuid,
-        push_context: Option<MessageSentPushContext>,
-    ) -> BoxFuture<'_, ()> {
+    fn notify(&self, recipient_user_uuid: Uuid, sender_user_uuid: Uuid) -> BoxFuture<'_, ()> {
         let realtime = Arc::clone(&self.realtime);
         Box::pin(async move {
             if recipient_user_uuid.is_nil() || sender_user_uuid.is_nil() {
@@ -42,10 +40,7 @@ impl MessageSentNotifier for MessagePushNotifier {
                 sender_user_uuid,
                 sent_at: Utc::now(),
             };
-            let push_body = build_push_preview(push_context.as_ref());
-            realtime
-                .publish_message(recipient_user_uuid, &signal, Some(&push_body))
-                .await;
+            realtime.publish_message(recipient_user_uuid, &signal).await;
         })
     }
 }

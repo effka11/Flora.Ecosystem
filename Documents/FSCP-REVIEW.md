@@ -3,7 +3,7 @@
 **Дата:** 2026-07-14  
 **Объект:** [`Documents/fscp/FSCP.md`](./fscp/FSCP.md) (v1.0 + errata-1…4), [`franking.md`](./fscp/franking.md), эталонная реализация `@flora/client-core/fscp`, серверный валидатор, golden-векторы  
 **Контекст:** заморозка wire v1 ([`next-architecture.md`](../next-architecture.md) §1.2, §4.4), конституционные рамки FGP ([`fgp/FGP.md`](./fgp/FGP.md) §1.2 п. 7, §6.5)  
-**Статус ревью:** зафиксировано; пункты remediation — ниже (§Рекомендуемый порядок)
+**Статус ревью:** зафиксировано; remediation **выполнен 2026-07-19** (errata-5) — см. §Remediation внизу
 
 ---
 
@@ -149,6 +149,32 @@ const signingPublicKey =
 
 ---
 
+## Remediation (2026-07-19, errata-5)
+
+Статус находок после hardening-пакета (норма — [`FSCP.md`](./fscp/FSCP.md) ревизия v1.0-errata-5; SoT клиентского кода переехал в `Products/FSCP/ts` / `@flora/fscp`, client-core реэкспортирует):
+
+| # | Находка | Статус | Как закрыто |
+| --- | --- | --- | --- |
+| 1 | Клиент принимает неподписанные конверты | ✅ исправлено | `verifyDetachedEnvelopeSignature` отклоняет отсутствие ключа (`FscpDecryptError("signature_missing")`); архивы — только явный opt-in `allowUnsignedLegacy`; транскрипт-вектор `legacy_unsigned` ожидает отказ по умолчанию |
+| 2 | Fallback на случайный signing key при сборке | ✅ исправлено | ветвь заменена на `throw`; подпись без валидного ключа невозможна |
+| 3 | `decrypt_failure` → мгновенный `compromised_local` (DoS) | ✅ исправлено | классификация `FscpDecryptFailureCategory`: форма/подпись/чужой конверт не трогают FSM; только 3 подряд key-mismatch-сбоя (`rke_unwrap_failed`/`body_decrypt_failed`) замораживают исходящие; успех сбрасывает счётчик |
+| 4 | Canonicalization malleability подписи | 📝 задокументировано | ограничение v1 зафиксировано в §Canonical encoding; смягчено серверной криптопроверкой (ниже); полная фиксация байтов — v2 |
+| 5 | Неизвестные `block.kind` выбрасываются | ✅ исправлено | `normalizePlaintextPayload` сохраняет placeholder-блоки; UI может показать «контент недоступен» |
+
+Дополнительно закрыто сверх ревью (тот же пакет):
+
+- **серверная криптопроверка подписи** — `fscp_core::verify_envelope_signature` (Ed25519 над canonical JSON) вызывается в `ConversationService::send_message` **после** замороженного валидатора формы; parity-тест на golden-транскрипте (честный wire проходит, `signature_tampered`/`legacy_unsigned` отклоняются);
+- **proof tokens перестали быть плацебо** — `unlock-complete` проверял «любой непустой» токен; теперь HMAC-SHA256 (`E2eProofTokens`, формат `fet1.`, domain separation recovery/approval, TTL 30 мин, 403 при провале); выдача: `GET recovery-backup/{id}` в `recovering` и `POST .../devices/{id}/approve`;
+- **endpoint approve устройства** — реализован c Ed25519-подписью active-устройства той же epoch над canonical `flora.messaging.device-approve.v1 | …` (инвариант «JWT сам по себе не делает устройство trusted»);
+- **паддинг длины сообщения** — plaintext дополняется полем `pad` до бакетов 256 Б/1 КиБ до AEAD; наблюдателю утекает только номер бакета;
+- **push privacy** — plaintext-превью (`pushPreview`) удалены из контракта отправки и notifier: FCM получает только generic-текст;
+- **`DeviceToDeviceRecoveryEnvelope`** — референс-реализация build/open в `@flora/fscp` (`deviceRecovery.ts`) с негативами; серверный `recover-key` — следующий шаг;
+- **typed-обёртки клиента** — devices/unlock/recovery API в `@flora/client-core/api/messaging` (`apiGetEpochDevices`, `apiAddPendingDevice`, `apiApproveDevice`, `apiRevokeDevice`, `apiRequestUnlockChallenge`, `apiUnlockComplete`, `apiGetRecoveryBackupById` с извлечением proof-токена).
+
+Документационный пакет (п. 4 рекомендаций) применён целиком: все четыре пункта таблицы «Расхождения» исправлены в `FSCP.md` (26 негативов wire-validator, FRANK v0.2, заголовок checklist → errata-5, путь `keyStorage.ts`).
+
+---
+
 ## Связанные артефакты
 
 - Норма: [`Documents/fscp/FSCP.md`](./fscp/FSCP.md), [`Documents/fscp/franking.md`](./fscp/franking.md), [`Documents/fscp/e2e-security.md`](./fscp/e2e-security.md)
@@ -160,4 +186,4 @@ const signingPublicKey =
 
 ---
 
-*Ревью проведено 2026-07-14. Документ — снимок находок; remediation не выполнен автоматически при фиксации.*
+*Ревью проведено 2026-07-14; находки — снимок на эту дату. Remediation выполнен 2026-07-19 (§Remediation).*

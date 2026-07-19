@@ -12,79 +12,22 @@ use uuid::Uuid;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Client-supplied preview for push / SSE side-effects (C# `MessageSentPushContext`).
-/// Not persisted; plaintext must not be placed in FCM data.
-#[derive(Debug, Clone)]
-pub struct MessageSentPushContext {
-    pub push_preview: Option<String>,
-    pub has_voice_attachment: bool,
-    pub has_image_attachment: bool,
-    pub has_video_attachment: bool,
-}
-
-impl MessageSentPushContext {
-    /// Паритет `MessageSentPushContext.FromRequest`.
-    pub fn from_request(
-        push_preview: Option<&str>,
-        has_voice: bool,
-        has_image: bool,
-        has_video: bool,
-    ) -> Option<Self> {
-        let sanitized = sanitize_push_preview(push_preview);
-        if sanitized.is_none() && !has_voice && !has_image && !has_video {
-            return None;
-        }
-        Some(Self {
-            push_preview: sanitized,
-            has_voice_attachment: has_voice,
-            has_image_attachment: has_image,
-            has_video_attachment: has_video,
-        })
-    }
-}
-
-fn sanitize_push_preview(raw: Option<&str>) -> Option<String> {
-    let raw = raw?;
-    if raw.trim().is_empty() {
-        return None;
-    }
-    let mut out = String::with_capacity(raw.len());
-    for ch in raw.chars() {
-        if matches!(ch, '\n' | '\r' | '\t') || !ch.is_control() {
-            out.push(ch);
-        }
-    }
-    let mut t = out.trim().to_string();
-    if t.is_empty() {
-        return None;
-    }
-    if t.len() > 200 {
-        t.truncate(200);
-    }
-    Some(t)
-}
-
 /// Cross-module port: notify recipient after a DM is persisted (SSE hub + FCM).
 /// Implemented by Notifications; Messaging must not reference Notifications internals.
+///
+/// Privacy-инвариант (e2e-security.md §Уведомления, FSCP errata-5): содержимое
+/// сообщения (plaintext-превью и тип вложений) в порт не передаётся — push и SSE
+/// оперируют только фактом «новое сообщение». Прежний `MessageSentPushContext`
+/// с клиентским `pushPreview` удалён как утечка plaintext через FCM.
 pub trait MessageSentNotifier: Send + Sync {
-    fn notify(
-        &self,
-        recipient_user_uuid: Uuid,
-        sender_user_uuid: Uuid,
-        push_context: Option<MessageSentPushContext>,
-    ) -> BoxFuture<'_, ()>;
+    fn notify(&self, recipient_user_uuid: Uuid, sender_user_uuid: Uuid) -> BoxFuture<'_, ()>;
 }
 
-/// No-op when Notifications ServeNative is off (SSE remains on .NET / absent).
+/// No-op when Notifications ServeNative is off (SSE remains absent).
 pub struct NoopMessageSentNotifier;
 
 impl MessageSentNotifier for NoopMessageSentNotifier {
-    fn notify(
-        &self,
-        _recipient_user_uuid: Uuid,
-        _sender_user_uuid: Uuid,
-        _push_context: Option<MessageSentPushContext>,
-    ) -> BoxFuture<'_, ()> {
+    fn notify(&self, _recipient_user_uuid: Uuid, _sender_user_uuid: Uuid) -> BoxFuture<'_, ()> {
         Box::pin(async {})
     }
 }
@@ -165,6 +108,9 @@ pub struct PostConversationMessageRequest {
     pub image_asset_uuids: Vec<Uuid>,
     #[serde(default)]
     pub video_asset_uuids: Vec<Uuid>,
+    /// Deprecated (errata-5): игнорируется сервером. Поле сохранено только для
+    /// десериализации запросов старых клиентов; plaintext-превью в push не попадает.
+    #[serde(default)]
     pub push_preview: Option<String>,
 }
 
@@ -280,6 +226,19 @@ pub struct RecoveryBackupPayloadDto {
     pub ciphertext_base64_url: String,
 }
 
+/// GET recovery-backup/{recoveryKeyId} response: полный payload + (в FSM `recovering`)
+/// короткоживущий `recoveryUnlockToken` для последующего `unlock-complete` (errata-5).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryBackupResponseDto {
+    #[serde(flatten)]
+    pub payload: RecoveryBackupPayloadDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_unlock_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_unlock_token_expires_at: Option<String>,
+}
+
 /// Recovery backup metadata only (GET list — no ciphertext).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -377,6 +336,30 @@ pub struct DeviceKeyEntryDto {
 #[serde(rename_all = "camelCase")]
 pub struct AddPendingDeviceResponseDto {
     pub device_uuid: Uuid,
+}
+
+/// Request body for POST .../epochs/{keyEpochId}/devices/{deviceUuid}/approve.
+///
+/// Старое **active** устройство той же epoch подписывает canonical payload
+/// `flora.messaging.device-approve.v1 | userUuid | keyEpochId | newDeviceUuid | approvingDeviceUuid`
+/// своим device signing key (Ed25519). JWT сам по себе не делает устройство trusted.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApproveDeviceRequestDto {
+    pub approving_device_uuid: Uuid,
+    pub approval_signature_base64_url: String,
+}
+
+/// Result for POST .../devices/{deviceUuid}/approve: устройство переведено в active,
+/// выдан короткоживущий `trustedDeviceApprovalToken` для `unlock-complete`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApproveDeviceResponseDto {
+    pub device_uuid: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trusted_device_approval_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trusted_device_approval_token_expires_at: Option<String>,
 }
 
 // ── Legacy E2E public key (`/api/auth/.../e2e-public-key`) ─────────────────
