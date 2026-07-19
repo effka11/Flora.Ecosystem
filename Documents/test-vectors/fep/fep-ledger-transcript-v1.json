@@ -1,0 +1,558 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "fep_ledger_transcript_v1",
+  "description": "Полный транскрипт журнала FEP: genesis → аккаунты → UBI → подписанный перевод → линия доверия → путевой кредит → демерредж (сутки) → расход казны. Каждый шаг: запись (canonical JSON формата JSONL-журнала), её хеш, head после применения. Плюс inclusion/consistency-доказательства и витнесс-косайны (LIV.md §4–5). Реплей любым клиентом обязан дать headAfter и finalState бит-в-бит.",
+  "encoding": "hex",
+  "seeds": {
+    "aliceHex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "bobHex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "witnessHex": "7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "witnessPublicKeyHex": "c853ad0f0cd2b619aea92ceec4fd56a24d6499d584ce79257e45cfd8139b60a7",
+  "steps": [
+    {
+      "entry": {
+        "seq": 0,
+        "at": 1700000000000,
+        "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "body": {
+          "kind": "genesis",
+          "protocolVersion": 1,
+          "params": {
+            "demurrage_ppm_per_period": 191,
+            "demurrage_period_ms": 86400000,
+            "demurrage_exempt_threshold": 100000000,
+            "ubi_per_epoch": 1000000000,
+            "ubi_epoch_ms": 2592000000,
+            "ubi_max_backfill_epochs": 3,
+            "trustline_max_limit": 5000000000,
+            "credit_path_max_hops": 4
+          }
+        }
+      },
+      "entryHashHex": "cf340f514e395817d835adfe56b805beb5bced9409c1f98ad6220e11678b15f6",
+      "headAfter": {
+        "size": 1,
+        "lastEntryHash": "cf340f514e395817d835adfe56b805beb5bced9409c1f98ad6220e11678b15f6",
+        "merkleRoot": "71e07a6c9ccbb29d097e05e6287098752a45589f3563258e879805a1aa0e1385",
+        "at": 1700000000000
+      },
+      "aux": null
+    },
+    {
+      "entry": {
+        "seq": 1,
+        "at": 1700000001000,
+        "prevHash": "cf340f514e395817d835adfe56b805beb5bced9409c1f98ad6220e11678b15f6",
+        "body": {
+          "kind": "accountOpened",
+          "account": [
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161
+          ],
+          "ownerKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+        }
+      },
+      "entryHashHex": "5d7553d37332c43804ac588b61d62a98cdee61c67bc5fffeb6d49c48d1338087",
+      "headAfter": {
+        "size": 2,
+        "lastEntryHash": "5d7553d37332c43804ac588b61d62a98cdee61c67bc5fffeb6d49c48d1338087",
+        "merkleRoot": "da20efd0c07abc6a1b8ee1d5e95fe880e3a5fb9e4e620c0864dda3d270ff59cb",
+        "at": 1700000001000
+      },
+      "aux": {
+        "ownerSeedHex": "1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    },
+    {
+      "entry": {
+        "seq": 2,
+        "at": 1700000002000,
+        "prevHash": "5d7553d37332c43804ac588b61d62a98cdee61c67bc5fffeb6d49c48d1338087",
+        "body": {
+          "kind": "accountOpened",
+          "account": [
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178
+          ],
+          "ownerKey": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+        }
+      },
+      "entryHashHex": "ffd30391c01141f2fd788f07f783b9f8b8b8e84ffb38c8b779f58e112dee63bc",
+      "headAfter": {
+        "size": 3,
+        "lastEntryHash": "ffd30391c01141f2fd788f07f783b9f8b8b8e84ffb38c8b779f58e112dee63bc",
+        "merkleRoot": "f2dc4b4798027fe563859067da558746dc28d1098a3c73f779ff3c68249c7d26",
+        "at": 1700000002000
+      },
+      "aux": {
+        "ownerSeedHex": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    {
+      "entry": {
+        "seq": 3,
+        "at": 1700000003000,
+        "prevHash": "ffd30391c01141f2fd788f07f783b9f8b8b8e84ffb38c8b779f58e112dee63bc",
+        "body": {
+          "kind": "ubiIssued",
+          "account": [
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161
+          ],
+          "fromEpoch": 0,
+          "toEpoch": 0,
+          "amount": 1000000000
+        }
+      },
+      "entryHashHex": "377c3b5fb8fcb7e219c52665551485861cdae3f41d9e3226b8067014aa15cb95",
+      "headAfter": {
+        "size": 4,
+        "lastEntryHash": "377c3b5fb8fcb7e219c52665551485861cdae3f41d9e3226b8067014aa15cb95",
+        "merkleRoot": "b641bb9b14d4d07d47ff41645925c027154550ac726c7bcea75333d6b0fa4d52",
+        "at": 1700000003000
+      },
+      "aux": null
+    },
+    {
+      "entry": {
+        "seq": 4,
+        "at": 1700000004000,
+        "prevHash": "377c3b5fb8fcb7e219c52665551485861cdae3f41d9e3226b8067014aa15cb95",
+        "body": {
+          "kind": "transfer",
+          "from": [
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161
+          ],
+          "to": [
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178
+          ],
+          "amount": 250000000,
+          "nonce": "07070707070707070707070707070707",
+          "signature": "642126be7a67836f9b5c4fdb14a48a1ed61ea2071914e6429b354ca3620e4a12048c432471db1b5e04f25323d426a0dfe0174c44a8df98938f28c4392f2ddb0a"
+        }
+      },
+      "entryHashHex": "e8d0b6ad5e70b9ef9c9c80f1424a49ef33b055bca59ec2190618dfced57fbbeb",
+      "headAfter": {
+        "size": 5,
+        "lastEntryHash": "e8d0b6ad5e70b9ef9c9c80f1424a49ef33b055bca59ec2190618dfced57fbbeb",
+        "merkleRoot": "867a6b11881ea43ff07e05759d4b54185bbda51cc5d144691241050ea8c1e46d",
+        "at": 1700000004000
+      },
+      "aux": {
+        "signingPayloadHex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2000000000ee6b2800000001007070707070707070707070707070707",
+        "domainTag": "flora/economy/v1/transfer/auth"
+      }
+    },
+    {
+      "entry": {
+        "seq": 5,
+        "at": 1700000005000,
+        "prevHash": "e8d0b6ad5e70b9ef9c9c80f1424a49ef33b055bca59ec2190618dfced57fbbeb",
+        "body": {
+          "kind": "trustlineSet",
+          "lo": [
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161
+          ],
+          "hi": [
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178
+          ],
+          "limitLoToHi": 100000000,
+          "limitHiToLo": 100000000,
+          "signatureLo": "a78820610b60281e2ec2f10ec63223e563e870c09fdc821300004597b56708fdabfe69f5dcb125a46e3772a56be8a8362b745d6b134358dfbadede502441830b",
+          "signatureHi": "d4df410bee6136c844598a9064212380ed06d7755030df19d02b7ed12d41b203c2b4596328888f3588703aa5a4ffcf1e2c57cc810d43059791640f159904a601"
+        }
+      },
+      "entryHashHex": "c35a7e95d32e8eb9b3891094cd0316e4aa998bd7468b9c9bf2d9b71dff7ca8dc",
+      "headAfter": {
+        "size": 6,
+        "lastEntryHash": "c35a7e95d32e8eb9b3891094cd0316e4aa998bd7468b9c9bf2d9b71dff7ca8dc",
+        "merkleRoot": "1704766cd8ea9f40614358fc21832e061a42da2f9851d1b2bd51cef4450392db",
+        "at": 1700000005000
+      },
+      "aux": {
+        "signingPayloadHex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b20000000005f5e1000000000005f5e100",
+        "domainTag": "flora/economy/v1/trustline/auth"
+      }
+    },
+    {
+      "entry": {
+        "seq": 6,
+        "at": 1700000006000,
+        "prevHash": "c35a7e95d32e8eb9b3891094cd0316e4aa998bd7468b9c9bf2d9b71dff7ca8dc",
+        "body": {
+          "kind": "creditTransfer",
+          "path": [
+            [
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161
+            ],
+            [
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178
+            ]
+          ],
+          "amount": 40000000,
+          "nonce": "08080808080808080808080808080808",
+          "signature": "d569398ff6c4a6912f8251f3d751b2669cf652b491df8df8f93b325571da02ba0984f259066e0fd3aefffbdb6d92ff77c99d92f108672a0f06eaa80608676e08"
+        }
+      },
+      "entryHashHex": "e6a0b9df9556d828257beee507551af475c0496649977ae7d576644c8635dd46",
+      "headAfter": {
+        "size": 7,
+        "lastEntryHash": "e6a0b9df9556d828257beee507551af475c0496649977ae7d576644c8635dd46",
+        "merkleRoot": "4d95d86279cdb2f42ab1004f69a46727732061b1cf2a86fbbb880b3647625962",
+        "at": 1700000006000
+      },
+      "aux": {
+        "signingPayloadHex": "00000002a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b20000000002625a000000001008080808080808080808080808080808",
+        "domainTag": "flora/economy/v1/credit-transfer/auth"
+      }
+    },
+    {
+      "entry": {
+        "seq": 7,
+        "at": 1700086410000,
+        "prevHash": "e6a0b9df9556d828257beee507551af475c0496649977ae7d576644c8635dd46",
+        "body": {
+          "kind": "demurrageCharged",
+          "account": [
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161
+          ],
+          "periods": 1,
+          "amount": 143250
+        }
+      },
+      "entryHashHex": "a689d91337b1f976457c07913ed95a7dae765c1063c710e468bf9dad9982e6ba",
+      "headAfter": {
+        "size": 8,
+        "lastEntryHash": "a689d91337b1f976457c07913ed95a7dae765c1063c710e468bf9dad9982e6ba",
+        "merkleRoot": "16c78c87ced8097d8c9e888ab8cd1f15eb2b498309ac666864db400c9a0bc927",
+        "at": 1700086410000
+      },
+      "aux": null
+    },
+    {
+      "entry": {
+        "seq": 8,
+        "at": 1700086410000,
+        "prevHash": "a689d91337b1f976457c07913ed95a7dae765c1063c710e468bf9dad9982e6ba",
+        "body": {
+          "kind": "demurrageCharged",
+          "account": [
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178,
+            178
+          ],
+          "periods": 1,
+          "amount": 47750
+        }
+      },
+      "entryHashHex": "5920dbd6e173232fabd78fbbbed898e9b6fd205eb3d1c387f292d7b68207bcb5",
+      "headAfter": {
+        "size": 9,
+        "lastEntryHash": "5920dbd6e173232fabd78fbbbed898e9b6fd205eb3d1c387f292d7b68207bcb5",
+        "merkleRoot": "a29e0382af6ddbeef9743f089656b376cd735a9db39486f0733496516e150159",
+        "at": 1700086410000
+      },
+      "aux": null
+    },
+    {
+      "entry": {
+        "seq": 9,
+        "at": 1700086420000,
+        "prevHash": "5920dbd6e173232fabd78fbbbed898e9b6fd205eb3d1c387f292d7b68207bcb5",
+        "body": {
+          "kind": "commonsSpend",
+          "to": [
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161,
+            161
+          ],
+          "amount": 100,
+          "policyRef": "budget-v1/infrastructure"
+        }
+      },
+      "entryHashHex": "bfc03bb473edbf7a2f2a9232791aba4412a90e3e2bd5135d1a7615131871d5da",
+      "headAfter": {
+        "size": 10,
+        "lastEntryHash": "bfc03bb473edbf7a2f2a9232791aba4412a90e3e2bd5135d1a7615131871d5da",
+        "merkleRoot": "2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d",
+        "at": 1700086420000
+      },
+      "aux": null
+    }
+  ],
+  "inclusionProofs": [
+    {
+      "seq": 0,
+      "treeSize": 10,
+      "leafHashHex": "71e07a6c9ccbb29d097e05e6287098752a45589f3563258e879805a1aa0e1385",
+      "proofHex": [
+        "51dba2c27a2f5f65720d761040150d77b1c28c59a6403a0fef7e1ed53a8cad01",
+        "2d7ab9cb4cb3e557aaa08d9e9681de95aeed04317d8325e7d2d8c552a10cd596",
+        "642b59111897d5d0d0d854bd7e88692a99b36d6cfd7a6bad5015f5eb1295cdbd",
+        "a9ed88819d8f4b7cdb8710ab661c0016ee3d43982e785042ce3f07aa9c13978f"
+      ]
+    },
+    {
+      "seq": 3,
+      "treeSize": 10,
+      "leafHashHex": "c3973ed5e8b1d7704ec86c48421eaf332519b79c71e8f77ecdb90e63547624be",
+      "proofHex": [
+        "6233f20a8008b31e6370189f7534585f06132dab60ae70f59d27dc6a21e947ad",
+        "da20efd0c07abc6a1b8ee1d5e95fe880e3a5fb9e4e620c0864dda3d270ff59cb",
+        "642b59111897d5d0d0d854bd7e88692a99b36d6cfd7a6bad5015f5eb1295cdbd",
+        "a9ed88819d8f4b7cdb8710ab661c0016ee3d43982e785042ce3f07aa9c13978f"
+      ]
+    },
+    {
+      "seq": 9,
+      "treeSize": 10,
+      "leafHashHex": "98f826a74ed9259dc1ede405e44ac646d29663fafa923c5fd515d3018203ba1c",
+      "proofHex": [
+        "0a2f4532f456f7170eb405c13dd170b94363d6b0ae21a1c55aad55acd1def6d8",
+        "16c78c87ced8097d8c9e888ab8cd1f15eb2b498309ac666864db400c9a0bc927"
+      ]
+    }
+  ],
+  "consistencyProofs": [
+    {
+      "oldSize": 1,
+      "newSize": 10,
+      "oldRootHex": "71e07a6c9ccbb29d097e05e6287098752a45589f3563258e879805a1aa0e1385",
+      "newRootHex": "2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d",
+      "proofHex": [
+        "51dba2c27a2f5f65720d761040150d77b1c28c59a6403a0fef7e1ed53a8cad01",
+        "2d7ab9cb4cb3e557aaa08d9e9681de95aeed04317d8325e7d2d8c552a10cd596",
+        "642b59111897d5d0d0d854bd7e88692a99b36d6cfd7a6bad5015f5eb1295cdbd",
+        "a9ed88819d8f4b7cdb8710ab661c0016ee3d43982e785042ce3f07aa9c13978f"
+      ]
+    },
+    {
+      "oldSize": 4,
+      "newSize": 10,
+      "oldRootHex": "b641bb9b14d4d07d47ff41645925c027154550ac726c7bcea75333d6b0fa4d52",
+      "newRootHex": "2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d",
+      "proofHex": [
+        "642b59111897d5d0d0d854bd7e88692a99b36d6cfd7a6bad5015f5eb1295cdbd",
+        "a9ed88819d8f4b7cdb8710ab661c0016ee3d43982e785042ce3f07aa9c13978f"
+      ]
+    },
+    {
+      "oldSize": 10,
+      "newSize": 10,
+      "oldRootHex": "2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d",
+      "newRootHex": "2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d",
+      "proofHex": []
+    }
+  ],
+  "cosigns": [
+    {
+      "cosign": {
+        "head": {
+          "size": 4,
+          "lastEntryHash": "377c3b5fb8fcb7e219c52665551485861cdae3f41d9e3226b8067014aa15cb95",
+          "merkleRoot": "b641bb9b14d4d07d47ff41645925c027154550ac726c7bcea75333d6b0fa4d52",
+          "at": 1700000003000
+        },
+        "witness": "c853ad0f0cd2b619aea92ceec4fd56a24d6499d584ce79257e45cfd8139b60a7",
+        "signature": "3f76c96e98d64609b8141681f68c44cac0cbbbf5034267e82874ea8fd7023c5d8c638ae0fb4b90808a1559bcecee9a4d8d0e6749a6a86cb12b81f3d251909501"
+      },
+      "sthCanonicalBytesHex": "0000000000000004377c3b5fb8fcb7e219c52665551485861cdae3f41d9e3226b8067014aa15cb95b641bb9b14d4d07d47ff41645925c027154550ac726c7bcea75333d6b0fa4d520000018bcfe573b8",
+      "domainTag": "flora/economy/v1/ledger/sth"
+    },
+    {
+      "cosign": {
+        "head": {
+          "size": 10,
+          "lastEntryHash": "bfc03bb473edbf7a2f2a9232791aba4412a90e3e2bd5135d1a7615131871d5da",
+          "merkleRoot": "2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d",
+          "at": 1700086420000
+        },
+        "witness": "c853ad0f0cd2b619aea92ceec4fd56a24d6499d584ce79257e45cfd8139b60a7",
+        "signature": "df7e4304ea86e413846d2070c9c61907f04d69a4bc91575a452f8ac694d0f3a89c48f31b9314a6400b2e8194598cc04173f57bb0e15ca548c9e6768b86fea00d"
+      },
+      "sthCanonicalBytesHex": "000000000000000abfc03bb473edbf7a2f2a9232791aba4412a90e3e2bd5135d1a7615131871d5da2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d0000018bd50c1220",
+      "domainTag": "flora/economy/v1/ledger/sth"
+    }
+  ],
+  "finalState": {
+    "aliceBalanceGrains": 749856850,
+    "bobBalanceGrains": 249952250,
+    "commonsBalanceGrains": 190900,
+    "totalIssuedGrains": 1000000000,
+    "trustlinePositionGrains": -40000000
+  }
+}

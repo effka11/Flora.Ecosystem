@@ -31,8 +31,11 @@ pub fn router(service: Svc) -> Router {
         .route("/api/economy/parameters", get(get_parameters))
         .route("/api/economy/commons", get(get_commons))
         .route("/api/economy/ledger/head", get(get_head))
+        .route("/api/economy/ledger/sth", get(get_sth))
+        .route("/api/economy/ledger/cosigns", post(post_cosign))
         .route("/api/economy/ledger/entries", get(get_entries))
         .route("/api/economy/ledger/proof/{seq}", get(get_proof))
+        .route("/api/economy/ledger/consistency", get(get_consistency))
         .route("/api/economy/accounts", post(post_account))
         .route("/api/economy/accounts/{id}", get(get_account))
         .route("/api/economy/ubi/claims", post(post_ubi_claim))
@@ -98,6 +101,8 @@ impl From<ServiceError> for ApiError {
                 _ => (StatusCode::BAD_REQUEST, "rejected"),
             },
             ServiceError::Store(_) => (StatusCode::SERVICE_UNAVAILABLE, "storage_unavailable"),
+            ServiceError::UnknownWitness => (StatusCode::FORBIDDEN, "unknown_witness"),
+            ServiceError::CosignMismatch(_) => (StatusCode::CONFLICT, "cosign_mismatch"),
         };
         ApiError(status, code, e.to_string())
     }
@@ -224,6 +229,78 @@ async fn get_head(State(svc): State<Svc>) -> impl IntoResponse {
     Json(svc.head())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SthDto {
+    /// Текущий head журнала.
+    head: flora_economy_crypto::ledger::LedgerHead,
+    /// Реестр витнессов (hex-ключи Ed25519).
+    witnesses: Vec<String>,
+    /// Самый свежий валидный косайн каждого витнесса. Косайн может относиться к более
+    /// раннему head — связь с текущим проверяется consistency-доказательством.
+    cosigns: Vec<flora_economy_crypto::witness::HeadCosign>,
+}
+
+async fn get_sth(State(svc): State<Svc>) -> impl IntoResponse {
+    let (head, cosigns, witnesses) = svc.sth();
+    Json(SthDto {
+        head,
+        witnesses: witnesses.iter().map(to_hex).collect(),
+        cosigns,
+    })
+}
+
+async fn post_cosign(
+    State(svc): State<Svc>,
+    Json(cosign): Json<flora_economy_crypto::witness::HeadCosign>,
+) -> Result<impl IntoResponse, ApiError> {
+    let size = cosign.head.size;
+    svc.submit_cosign(cosign)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "accepted": true, "size": size })),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConsistencyQuery {
+    old_size: u64,
+    new_size: Option<u64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConsistencyDto {
+    old_size: u64,
+    new_size: u64,
+    old_root: String,
+    new_root: String,
+    proof: Vec<String>,
+    head: flora_economy_crypto::ledger::LedgerHead,
+}
+
+async fn get_consistency(
+    State(svc): State<Svc>,
+    Query(q): Query<ConsistencyQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let slice = svc.consistency(q.old_size, q.new_size).ok_or_else(|| {
+        ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid_range",
+            "требуется 1 <= oldSize <= newSize <= размер журнала".into(),
+        )
+    })?;
+    Ok(Json(ConsistencyDto {
+        old_size: slice.old_size,
+        new_size: slice.new_size,
+        old_root: to_hex(&slice.old_root),
+        new_root: to_hex(&slice.new_root),
+        proof: slice.proof.iter().map(to_hex).collect(),
+        head: slice.head,
+    }))
+}
+
 async fn get_entries(
     State(svc): State<Svc>,
     Query(q): Query<EntriesQuery>,
@@ -336,7 +413,7 @@ async fn post_credit_transfer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::{FixedLevelAttestor, InMemoryLedgerStore};
+    use crate::infrastructure::{FixedLevelAttestor, InMemoryCosignStore, InMemoryLedgerStore};
     use flora_economy_crypto::domain as tags;
     use flora_economy_crypto::ledger::transfer_signing_bytes;
     use flora_economy_crypto::sig::{public_key, sign};
@@ -346,6 +423,7 @@ mod tests {
 
     const ALICE_SEED: [u8; 32] = [11u8; 32];
     const BOB_SEED: [u8; 32] = [22u8; 32];
+    const WITNESS_SEED: [u8; 32] = [77u8; 32];
 
     fn hex(bytes: &[u8]) -> String {
         bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -354,6 +432,8 @@ mod tests {
     fn app(level: PersonhoodLevel) -> Router {
         let module = crate::compose(
             Arc::new(InMemoryLedgerStore::new()),
+            Arc::new(InMemoryCosignStore::new()),
+            vec![public_key(&WITNESS_SEED)],
             Arc::new(FixedLevelAttestor(level)),
         )
         .unwrap();
@@ -472,6 +552,124 @@ mod tests {
         let (status, proof) = send_json(&router, "GET", "/api/economy/ledger/proof/2", None).await;
         assert_eq!(status, StatusCode::OK);
         assert!(!proof["proof"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn witness_protocol_over_http() {
+        let router = app(PersonhoodLevel::V1);
+        let alice = Uuid::from_u128(1);
+
+        // Появляется хоть какая-то история: аккаунт + UBI.
+        send_json(
+            &router,
+            "POST",
+            "/api/economy/accounts",
+            Some(serde_json::json!({
+                "accountUuid": alice,
+                "ownerKeyHex": hex(&public_key(&ALICE_SEED)),
+            })),
+        )
+        .await;
+        send_json(
+            &router,
+            "POST",
+            "/api/economy/ubi/claims",
+            Some(serde_json::json!({ "accountUuid": alice })),
+        )
+        .await;
+
+        // STH: head + реестр витнессов, косайнов пока нет.
+        let (status, sth) = send_json(&router, "GET", "/api/economy/ledger/sth", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(sth["witnesses"].as_array().unwrap().len(), 1);
+        assert!(sth["cosigns"].as_array().unwrap().is_empty());
+
+        // Витнесс подписывает увиденный head и отправляет косайн.
+        let head: flora_economy_crypto::ledger::LedgerHead =
+            serde_json::from_value(sth["head"].clone()).unwrap();
+        let cosign = flora_economy_crypto::witness::cosign_head(&head, &WITNESS_SEED);
+        let (status, body) = send_json(
+            &router,
+            "POST",
+            "/api/economy/ledger/cosigns",
+            Some(serde_json::to_value(&cosign).unwrap()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(body["accepted"], true);
+
+        // Косайн виден в STH.
+        let (_, sth) = send_json(&router, "GET", "/api/economy/ledger/sth", None).await;
+        assert_eq!(sth["cosigns"].as_array().unwrap().len(), 1);
+
+        // Косайн чужого журнала отклоняется с 409.
+        let mut forged = head.clone();
+        forged.merkle_root = [0xAB; 32];
+        let bad = flora_economy_crypto::witness::cosign_head(&forged, &WITNESS_SEED);
+        let (status, body) = send_json(
+            &router,
+            "POST",
+            "/api/economy/ledger/cosigns",
+            Some(serde_json::to_value(&bad).unwrap()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body["error"]["code"], "cosign_mismatch");
+
+        // Неизвестный витнесс — 403.
+        let stranger = flora_economy_crypto::witness::cosign_head(&head, &[99u8; 32]);
+        let (status, body) = send_json(
+            &router,
+            "POST",
+            "/api/economy/ledger/cosigns",
+            Some(serde_json::to_value(&stranger).unwrap()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "unknown_witness");
+
+        // Consistency-доказательство от размера 1 до текущего проверяется ядром.
+        let old_size = 1u64;
+        let new_size = head.size;
+        let (status, dto) = send_json(
+            &router,
+            "GET",
+            &format!("/api/economy/ledger/consistency?oldSize={old_size}&newSize={new_size}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let parse_root = |v: &serde_json::Value| -> [u8; 32] {
+            let s = v.as_str().unwrap();
+            let mut out = [0u8; 32];
+            for (i, chunk) in s.as_bytes().chunks(2).enumerate() {
+                out[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16).unwrap();
+            }
+            out
+        };
+        let proof: Vec<[u8; 32]> = dto["proof"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(parse_root)
+            .collect();
+        assert!(flora_economy_crypto::merkle::verify_consistency(
+            old_size,
+            new_size,
+            &parse_root(&dto["oldRoot"]),
+            &parse_root(&dto["newRoot"]),
+            &proof,
+        ));
+
+        // Некорректный диапазон — 400.
+        let (status, _) = send_json(
+            &router,
+            "GET",
+            "/api/economy/ledger/consistency?oldSize=0",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

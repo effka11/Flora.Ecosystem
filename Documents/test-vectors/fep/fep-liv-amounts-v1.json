@@ -1,0 +1,130 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "fep_liv_amounts_v1",
+  "description": "Канонический формат сумм LIV (Documents/fep/LIV.md §2.2): 1 liv = 10^6 grain, ровно 6 знаков дроби, точка-разделитель, без локалей/экспонент/разделителей групп.",
+  "ticker": "LIV",
+  "decimals": 6,
+  "livInGrains": 1000000,
+  "format": [
+    {
+      "grains": 0,
+      "liv": "0.000000"
+    },
+    {
+      "grains": 1,
+      "liv": "0.000001"
+    },
+    {
+      "grains": -1,
+      "liv": "-0.000001"
+    },
+    {
+      "grains": 999999,
+      "liv": "0.999999"
+    },
+    {
+      "grains": 1000000,
+      "liv": "1.000000"
+    },
+    {
+      "grains": 1500000,
+      "liv": "1.500000"
+    },
+    {
+      "grains": 123456789,
+      "liv": "123.456789"
+    },
+    {
+      "grains": -42000000,
+      "liv": "-42.000000"
+    },
+    {
+      "grains": 9223372036854775807,
+      "liv": "9223372036854.775807"
+    },
+    {
+      "grains": -9223372036854775808,
+      "liv": "-9223372036854.775808"
+    }
+  ],
+  "parse": [
+    {
+      "input": "5",
+      "grains": 5000000
+    },
+    {
+      "input": "5.1",
+      "grains": 5100000
+    },
+    {
+      "input": ".5",
+      "grains": 500000
+    },
+    {
+      "input": "-0.000001",
+      "grains": -1
+    },
+    {
+      "input": "0.000000",
+      "grains": 0
+    },
+    {
+      "input": "9223372036854.775807",
+      "grains": 9223372036854775807
+    }
+  ],
+  "parseRejects": [
+    {
+      "input": "",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "-",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": ".",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "-.",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "1,5",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "1.2345678",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "1e6",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": " 1",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "1 ",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "+1",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "--1",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "0x10",
+      "expectedError": "parse_rejected"
+    },
+    {
+      "input": "9223372036855",
+      "expectedError": "parse_rejected"
+    }
+  ]
+}

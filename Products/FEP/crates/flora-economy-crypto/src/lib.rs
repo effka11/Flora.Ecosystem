@@ -34,6 +34,7 @@
 //! - [`issuance`] — начисление UBI (пост-дефицитная эмиссия по personhood).
 //! - [`mutual_credit`] — линии доверия, ёмкость, путевой клиринг (нулевая сумма).
 //! - [`ledger`] — записи журнала и их канонические байты/хеши.
+//! - [`witness`] — витнесс-косайнинг head (внешняя проверяемость журнала).
 //! - [`params`] — экономические параметры (устанавливает governance, R2).
 //! - [`engine`] — чистый движок состояния: применение операций, инварианты, реплей-верификация.
 //! - [`error`] — ошибки ядра.
@@ -53,13 +54,15 @@ pub mod merkle;
 pub mod mutual_credit;
 pub mod params;
 pub mod sig;
+pub mod witness;
 
-pub use amount::{AccountId, Grains, LIV_IN_GRAINS, Timestamp};
+pub use amount::{AccountId, Grains, LIV_DECIMALS, LIV_IN_GRAINS, LIV_TICKER, Timestamp};
 pub use engine::{Account, LedgerState, Trustline};
 pub use error::EconomyError;
 pub use fixed::Fixed;
 pub use ledger::{EntryBody, LedgerEntry, LedgerHead};
 pub use params::Parameters;
+pub use witness::HeadCosign;
 
 /// Версия протокола FEP; входит в доменные метки и в genesis-запись журнала.
 pub const FEP_PROTOCOL_VERSION: u16 = 1;

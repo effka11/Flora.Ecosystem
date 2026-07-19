@@ -18,7 +18,7 @@
 
 Стек: **Rust**, PostgreSQL (`flora_core`), Next.js 16 / TypeScript, Expo / React Native.
 
-Спеки: `Documents/` (FSCP, FIRA, FGP, FPP, FEP, codecs). Economy (FEP) — Rust-native в `Products/FEP`.
+Спеки: `Documents/` (FSCP, FIRA, FGP, FPP, FEP, codecs). Economy (FEP) — Rust-native в `Products/FEP`; валюта **LIV** — `Documents/fep/LIV.md` (канонический формат сумм, витнесс-косайнинг, верификация клиентом).
 
 C# / .NET хост удалён (Фаза 5, `next-architecture.md`). Protos для межсервисных контрактов — [`Infrastructure/Flora.gRPC/Protos/`](Infrastructure/Flora.gRPC/Protos/).
 

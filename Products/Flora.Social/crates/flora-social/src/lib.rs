@@ -68,6 +68,9 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         messaging_router(cfg, pool.clone(), account_directory, message_sent_notifier);
     background.extend(messaging_workers);
 
+    let (economy_routes, economy_workers) = economy_composition(cfg);
+    background.extend(economy_workers);
+
     let router = axum::Router::new()
         .merge(users_routes)
         .merge(flora_verification::router())
@@ -76,7 +79,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         .merge(content_routes)
         .merge(messaging_routes)
         .merge(music_router(cfg, pool))
-        .merge(economy_router(cfg));
+        .merge(economy_routes);
 
     ProductComposition { router, background }
 }
@@ -329,9 +332,14 @@ impl JwtAuthLayerState {
     }
 }
 
-fn economy_router(cfg: &FloraConfig) -> axum::Router {
+/// Economy (FEP/LIV): роутер + фоновый демерредж-воркер.
+///
+/// Конфиг: `Economy:Enabled`, `Economy:LedgerPath`, `Economy:Witnesses` (массив hex-ключей
+/// Ed25519), `Economy:DemurrageSweepMinutes` (0 = воркер выключен). Косайны витнессов
+/// живут в sidecar-файле `<LedgerPath>.cosigns.jsonl` рядом с журналом.
+fn economy_composition(cfg: &FloraConfig) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Economy:Enabled") != Some(true) {
-        return flora_economy::router();
+        return (flora_economy::router(), Vec::new());
     }
     let path = cfg
         .get_non_empty("Economy:LedgerPath")
@@ -339,14 +347,49 @@ fn economy_router(cfg: &FloraConfig) -> axum::Router {
     let store = std::sync::Arc::new(flora_economy::infrastructure::JsonlLedgerStore::new(
         std::path::PathBuf::from(path),
     ));
-    let attestor = std::sync::Arc::new(flora_economy::infrastructure::ConservativeAttestor);
-    match flora_economy::compose(store, attestor) {
-        Ok(module) => module.router,
-        Err(e) => {
-            eprintln!("flora-economy: композиция отклонена, модуль офлайн: {e}");
-            flora_economy::router()
+    let cosign_store = std::sync::Arc::new(flora_economy::infrastructure::JsonlCosignStore::new(
+        std::path::PathBuf::from(format!("{path}.cosigns.jsonl")),
+    ));
+    let mut witnesses = Vec::new();
+    for hex in cfg.get_string_array("Economy:Witnesses") {
+        match parse_witness_key(&hex) {
+            Some(key) => witnesses.push(key),
+            None => eprintln!(
+                "flora-economy: Economy:Witnesses содержит не hex-ключ Ed25519 (64 символа), пропущен: {hex}"
+            ),
         }
     }
+    let attestor = std::sync::Arc::new(flora_economy::infrastructure::ConservativeAttestor);
+    match flora_economy::compose(store, cosign_store, witnesses, attestor) {
+        Ok(module) => {
+            let mut workers = Vec::new();
+            let minutes = cfg.get_i64("Economy:DemurrageSweepMinutes").unwrap_or(60);
+            if minutes > 0 {
+                workers.push(flora_economy::spawn_demurrage_worker(
+                    module.service.clone(),
+                    std::time::Duration::from_secs(minutes as u64 * 60),
+                ));
+            }
+            (module.router, workers)
+        }
+        Err(e) => {
+            eprintln!("flora-economy: композиция отклонена, модуль офлайн: {e}");
+            (flora_economy::router(), Vec::new())
+        }
+    }
+}
+
+/// Hex → 32-байтовый ключ витнесса; `None` при неверной длине или не-hex символах.
+fn parse_witness_key(hex: &str) -> Option<[u8; 32]> {
+    let hex = hex.trim();
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+        out[i] = u8::from_str_radix(std::str::from_utf8(chunk).ok()?, 16).ok()?;
+    }
+    Some(out)
 }
 
 /// Подключение PgPool из `ConnectionStrings:FloraDatabase` (формат Npgsql).
