@@ -120,9 +120,6 @@ mod tests {
         let steady = steady_state_per_person(&p);
         // 1000 liv/эпоху при ~0.57 % распада за 30-дневную эпоху → предел ~175k liv.
         let liv = steady.0 / LIV_IN_GRAINS;
-        assert!(
-            liv > 100_000 && liv < 300_000,
-            "steady = {liv} liv"
-        );
+        assert!(liv > 100_000 && liv < 300_000, "steady = {liv} liv");
     }
 }
