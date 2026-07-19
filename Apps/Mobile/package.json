@@ -1,7 +1,7 @@
 {
   "name": "@flora/mobile",
   "main": "./index.ts",
-  "version": "0.6.0-alpha",
+  "version": "0.7.0-alpha",
   "private": true,
   "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
   "scripts": {
