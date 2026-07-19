@@ -2,19 +2,21 @@
 
 use core::f32::consts::FRAC_1_SQRT_2;
 
-use crate::alloc::{BETA_E8_MAX, LOG2W_X4, Q_SILENCE_X4, compute_alloc, rice_k_for_beta};
+use crate::alloc::{BETA_E8_MAX, LOG2W_X4, Q_SILENCE_X4, compute_alloc};
 use crate::bands::{NUM_BANDS, band_range, band_width};
 use crate::bitio::{unzigzag, zigzag};
 use crate::energy::{FINE_BITS, analyze_plane, dequant_gain, dequant_gain_fine};
 use crate::error::Error;
+use crate::pvq;
 use crate::qmath::{pow2_e8, pow2_e64};
 use crate::rangecoder::{AdaptiveProb, BinDecoder, BinEncoder, Prob0, bit_cost_x64};
 use crate::transform::{FRAME_N, FrameTransform, SHORT_BLOCKS};
 
-const HEADER_BITS: u64 = 32;
-/// Накладные расходы range coder'а: ведущий байт + 5 байтов финализации.
-const RC_OVERHEAD_BITS: u64 = 48;
-const LAMBDA_MAX: u32 = 127;
+/// Заголовок кадра: flags (1 байт) + бюджет u16le.
+const HEADER_BITS: u64 = 24;
+/// Накладные расходы range coder'а: 5 байтов финализации (ведущий байт
+/// классической схемы не передаётся).
+const RC_OVERHEAD_BITS: u64 = 40;
 const ENERGY_RAW_K: u32 = 4;
 const ENERGY_Q_CLAMP: i32 = 1024;
 const FLAG_TRANSIENT: u32 = 1 << 0;
@@ -31,19 +33,14 @@ const Q_HIST_PLC_DECAY: i32 = 4;
 /// `2^(8·qmin/64) / √8` → показатель `8·qmin − 96` в 1/64 log2.
 const AC_BLOCK_SHIFT_X64: i32 = 96;
 
-/// Эскейп бинаризации: после 24 «продолжающих» битов значение пишется как
-/// 32 сырых бита (та же семантика, что у эскейпа Райса в v0.2).
+/// Эскейп бинаризации энергий: после 24 «продолжающих» битов значение
+/// пишется как 32 сырых бита.
 const UNARY_CAP: u32 = 24;
 const ESCAPE_RAW_BITS: u32 = 32;
 
-/// Нормативные стартовые вероятности «бит = 0» (масштаб 4096) адаптивных
-/// контекстов унарных префиксов; контексты сбрасываются на границе кадра.
-/// Форма: P(continue) = 1761/4096 ≈ 0.43 — оптимум геометрического частного
-/// со средним ~0.75; стоимость нуля < 1 бита сохраняет гарантию «форма
-/// помещается в бюджет» (β ≥ 8 ⇒ бюджет нуля ≥ 1 бит на коэффициент), а
-/// адаптация к потоку нулей только удешевляет их дальше.
-const P0_SHAPE: Prob0 = 2335;
-/// Энергии: дельты малы, частное при k=4 редко ≥ 1 → P(continue) = 1229/4096 ≈ 0.30.
+/// Нормативная стартовая вероятность «бит = 0» (масштаб 4096) адаптивного
+/// контекста унарных префиксов энергий; контекст сбрасывается на границе
+/// кадра. Дельты малы, частное при k=4 редко ≥ 1 → P(continue) ≈ 0.30.
 const P0_ENERGY: Prob0 = 2867;
 const COST_RAW_X64: u64 = 64;
 
@@ -234,47 +231,6 @@ impl Encoder {
         };
 
         let energy_cost = energy_cost_x64(&q, planes);
-        // Стоимость формы при данной аллокации и λ — детерминированная
-        // симуляция адаптивных контекстов (без записи).
-        let shape_cost = |beta: &[u8], lambda: u32| -> u64 {
-            let mut ctx = fresh_shape_ctx();
-            let mut total = 0u64;
-            for_each_coded_band(beta, planes, lambda, |p, b, k, step| {
-                total += u64::from(FINE_BITS) * COST_RAW_X64;
-                let g = gains[p * NUM_BANDS + b];
-                for &x in &coeffs[p * FRAME_N..][..FRAME_N][band_range(b)] {
-                    total += val_cost_x64(zigzag(quantize(x, g, step)), k, &mut ctx[k as usize]);
-                }
-            });
-            total
-        };
-        // Аллокация и минимальный λ (самый тонкий шаг), при котором форма
-        // помещается в бюджет. Аллокация получает бюджет за вычетом резерва
-        // fine-битов — вместе с правилом «β ≥ 8» это гарантирует, что
-        // подходящий λ существует всегда: при λ = 127 все y = 0 и стоимость
-        // нуля < 1 бита < β/8 на коэффициент.
-        let plan = |budget: u16| -> (Vec<u8>, u32) {
-            let shape_budget_x64 = (u64::from(budget) * 64)
-                .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS) * 64 + energy_cost);
-            let alloc_budget = (shape_budget_x64 / 64).saturating_sub(fine_reserve_bits(planes));
-            let beta = compute_alloc(&q, planes, alloc_budget);
-            let lambda = if shape_cost(&beta, LAMBDA_MAX) > shape_budget_x64 {
-                LAMBDA_MAX
-            } else {
-                let (mut lo, mut hi) = (0u32, LAMBDA_MAX);
-                while lo < hi {
-                    let mid = (lo + hi) / 2;
-                    if shape_cost(&beta, mid) <= shape_budget_x64 {
-                        hi = mid;
-                    } else {
-                        lo = mid + 1;
-                    }
-                }
-                hi
-            };
-            (beta, lambda)
-        };
-
         let mut budget = budget0;
         if self.vbr {
             let demand = vbr_demand_bits(&q, planes, energy_cost);
@@ -292,36 +248,53 @@ impl Encoder {
                 budget = demand.max(u64::from(base / 2)).min(u64::from(budget0)) as u16;
             }
         }
-        let (beta, lambda) = plan(budget);
+        // Аллокация формы: бюджет за вычетом заголовка, накладных RC, стоимости
+        // энергий и резерва fine-битов. Rate-контроль PVQ точный и открытый:
+        // стоимость книги известна до записи, неизрасходованный остаток полосы
+        // переносится в следующую кодируемую полосу (carry) — итерации по шагу
+        // квантования не нужны.
+        let shape_budget_x64 = (u64::from(budget) * 64)
+            .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS) * 64 + energy_cost);
+        let alloc_budget = (shape_budget_x64 / 64).saturating_sub(fine_reserve_bits(planes));
+        let beta = compute_alloc(&q, planes, alloc_budget);
 
         let mut enc = BinEncoder::new();
         write_energies(&mut enc, &q, planes);
-        let mut ctx = fresh_shape_ctx();
         // Попутно с записью выясняем, есть ли «слышимо схлопнувшиеся» блоки:
         // кодируемые полосы, где какой-то короткий блок ушёл в ноль при живой
         // энергии полосы — сейчас и в недавней истории.
         let (h1, h2) = (&self.q_hist1, &self.q_hist2);
         let mut collapse_audible = false;
-        for_each_coded_band(&beta, planes, lambda, |p, b, k, step| {
-            enc.encode_bits(u32::from(fine[p * NUM_BANDS + b]), FINE_BITS);
-            let g = gains[p * NUM_BANDS + b];
-            let mut block_nonzero = [false; SHORT_BLOCKS];
-            for (i, &x) in coeffs[p * FRAME_N..][..FRAME_N][band_range(b)]
-                .iter()
-                .enumerate()
-            {
-                let y = quantize(x, g, step);
-                if y != 0 {
-                    block_nonzero[i % SHORT_BLOCKS] = true;
+        let mut carry = 0u32;
+        let mut recon = vec![0f32; FRAME_N];
+        for p in 0..planes {
+            for b in 0..NUM_BANDS {
+                let idx = p * NUM_BANDS + b;
+                let be = beta[idx];
+                if be == 0 {
+                    continue;
                 }
-                encode_val(&mut enc, zigzag(y), k, &mut ctx[k as usize]);
+                enc.encode_bits(u32::from(fine[idx]), FINE_BITS);
+                let range = band_range(b);
+                let avail = u32::from(be) * range.len() as u32 + carry;
+                let x = &coeffs[p * FRAME_N..][..FRAME_N][range.clone()];
+                let dst = &mut recon[..range.len()];
+                let spent = pvq::encode_shape(&mut enc, x, dst, avail);
+                debug_assert!(spent <= avail);
+                carry = avail - spent;
+
+                let mut block_nonzero = [false; SHORT_BLOCKS];
+                for (i, &v) in dst.iter().enumerate() {
+                    if v != 0.0 {
+                        block_nonzero[i % SHORT_BLOCKS] = true;
+                    }
+                }
+                let qmin = q[idx].min(h1[idx]).min(h2[idx]);
+                if transient && qmin > Q_SILENCE_X4 && block_nonzero.iter().any(|&z| !z) {
+                    collapse_audible = true;
+                }
             }
-            let idx = p * NUM_BANDS + b;
-            let qmin = q[idx].min(h1[idx]).min(h2[idx]);
-            if transient && qmin > Q_SILENCE_X4 && block_nonzero.iter().any(|&z| !z) {
-                collapse_audible = true;
-            }
-        });
+        }
         // Некодируемые полосы транзиентного кадра зануляются целиком — они тоже
         // кандидаты на anti-collapse, если энергия жива сейчас и в истории.
         if transient && !collapse_audible {
@@ -341,7 +314,6 @@ impl Encoder {
         }
         let mut out = Vec::with_capacity(usize::from(budget / 8) + 8);
         out.push(flags as u8);
-        out.push(lambda as u8);
         out.extend_from_slice(&budget.to_le_bytes());
         out.extend_from_slice(&enc.finish());
         // Пул VBR: сколько кадр реально недобрал до цели (или перебрал —
@@ -388,7 +360,7 @@ impl Decoder {
     pub fn decode_frame(&mut self, packet: &[u8]) -> Result<Vec<f32>, Error> {
         let ch = usize::from(self.channels);
         let planes = ch;
-        if packet.len() < 4 {
+        if packet.len() < 3 {
             return Err(Error::Truncated);
         }
 
@@ -404,13 +376,9 @@ impl Decoder {
         if anti_collapse && !transient {
             return Err(Error::InvalidPacket("anti-collapse flag on long frame"));
         }
-        let lambda = u32::from(packet[1]);
-        if lambda > LAMBDA_MAX {
-            return Err(Error::InvalidPacket("lambda out of range"));
-        }
-        let budget = u16::from_le_bytes([packet[2], packet[3]]);
+        let budget = u16::from_le_bytes([packet[1], packet[2]]);
 
-        let mut r = BinDecoder::new(&packet[4..]);
+        let mut r = BinDecoder::new(&packet[3..]);
         // Стоимость энергий считается по фактически прочитанным символам — на
         // враждебном битстриме (с клампом q) она всё равно согласована с записью.
         let (q, energy_cost) = read_energies(&mut r, planes);
@@ -423,8 +391,7 @@ impl Decoder {
         // Декодированные fine-гейны кодируемых полос — цель перенормировки
         // после инъекции anti-collapse.
         let mut band_gain = vec![0f32; planes * NUM_BANDS];
-        let mut ctx = fresh_shape_ctx();
-        let mut shape_cost = 0u64;
+        let mut carry = 0u32;
         for p in 0..planes {
             for b in 0..NUM_BANDS {
                 let idx = p * NUM_BANDS + b;
@@ -435,12 +402,9 @@ impl Decoder {
                     let fine = r.decode_bits(FINE_BITS) as u8;
                     let gain = dequant_gain_fine(q[idx], fine);
                     band_gain[idx] = gain;
-                    let k = rice_k_for_beta(be);
-                    let step = pow2_e8(lambda as i32 - 32 - i32::from(be));
-                    for v in dst.iter_mut() {
-                        let u = decode_val(&mut r, k, &mut ctx[k as usize], &mut shape_cost);
-                        *v = unzigzag(u) as f32 * step;
-                    }
+                    let avail = u32::from(be) * range.len() as u32 + carry;
+                    let spent = pvq::decode_shape(&mut r, dst, avail);
+                    carry = avail - spent;
                     // Перенормировка формы к декодированному gain'у: энергия полосы
                     // восстанавливается точно в пределах шага квантования энергии.
                     let norm = shape_norm(dst);
@@ -472,7 +436,7 @@ impl Decoder {
         }
 
         if anti_collapse {
-            self.apply_anti_collapse(&mut coeffs, &q, &beta, &band_gain, lambda as i32, planes);
+            self.apply_anti_collapse(&mut coeffs, &q, &beta, &band_gain, planes);
         }
         for v in coeffs.iter_mut() {
             if !v.is_finite() {
@@ -501,7 +465,6 @@ impl Decoder {
         q: &[i32],
         beta: &[u8],
         band_gain: &[f32],
-        lambda: i32,
         planes: usize,
     ) {
         for p in 0..planes {
@@ -514,13 +477,12 @@ impl Decoder {
                 let range = band_range(b);
                 let dst = &mut coeffs[p * FRAME_N + range.start..p * FRAME_N + range.end];
                 let r_hist = pow2_e64(8 * qmin - AC_BLOCK_SHIFT_X64);
-                // Кодируемая полоса: схлопнувшийся блок лежал ниже шага
-                // квантования, поэтому шум ограничен полом квантования —
-                // step/2 на коэффициент, √(W/8) коэффициентов в блоке.
+                // Кодируемая полоса: схлопнувшийся блок лежал ниже шумового
+                // пола квантования PVQ (β/8 бит/коэфф ≈ 6·β/8 дБ SNR), поэтому
+                // шум ограничен `ĝ_fine · 2^(−(β+12)/8)` — доля гейна полосы
+                // на блок (√8 = 2^(12/8)) при данной плотности бит.
                 let r = if beta[idx] > 0 {
-                    let step = pow2_e8(lambda - 32 - i32::from(beta[idx]));
-                    let per_block = (range.len() / SHORT_BLOCKS) as f32;
-                    r_hist.min(0.5 * step * per_block.sqrt())
+                    r_hist.min(band_gain[idx] * pow2_e8(-(i32::from(beta[idx]) + 12)))
                 } else {
                     r_hist
                 };
@@ -588,17 +550,9 @@ impl Decoder {
     }
 }
 
-/// Адаптивные контексты формы кадра: унарный префикс — свой контекст на каждое
-/// значение k (статистики частного зависят от плотности аллокации).
-type ShapeCtx = [AdaptiveProb; 8];
-
-fn fresh_shape_ctx() -> ShapeCtx {
-    [AdaptiveProb::new(P0_SHAPE); 8]
-}
-
-/// Бинаризация значения: унарный префикс частного `u >> k` с адаптивным
-/// контекстом, стоп-бит, затем `k` сырых битов остатка. После `UNARY_CAP`
-/// продолжений — эскейп: значение целиком как 32 сырых бита.
+/// Бинаризация значения (дельты энергий): унарный префикс частного `u >> k`
+/// с адаптивным контекстом, стоп-бит, затем `k` сырых битов остатка. После
+/// `UNARY_CAP` продолжений — эскейп: значение целиком как 32 сырых бита.
 fn encode_val(enc: &mut BinEncoder, u: u32, k: u32, ctx: &mut AdaptiveProb) {
     let qt = u >> k;
     if qt >= UNARY_CAP {
@@ -696,31 +650,6 @@ fn read_energies(dec: &mut BinDecoder, planes: usize) -> (Vec<i32>, u64) {
         }
     }
     (q, cost)
-}
-
-/// Обходит кодируемые полосы (β > 0) в нормативном порядке с их параметрами
-/// бинаризации (k сырых битов) и шагом; общий код подсчёта стоимости и записи.
-fn for_each_coded_band(
-    beta: &[u8],
-    planes: usize,
-    lambda: u32,
-    mut f: impl FnMut(usize, usize, u32, f32),
-) {
-    for p in 0..planes {
-        for b in 0..NUM_BANDS {
-            let be = beta[p * NUM_BANDS + b];
-            if be == 0 {
-                continue;
-            }
-            let k = rice_k_for_beta(be);
-            let step = pow2_e8(lambda as i32 - 32 - i32::from(be));
-            f(p, b, k, step);
-        }
-    }
-}
-
-fn quantize(x: f32, gain: f32, step: f32) -> i32 {
-    (x / gain / step).round() as i32
 }
 
 /// Детектор транзиентов (только энкодер; нормативен лишь флаг в битстриме).
@@ -855,50 +784,30 @@ fn noise_next(x: &mut u32) -> f32 {
 mod tests {
     use super::*;
 
-    /// Гарантия «подходящий λ существует»: при λ = 127 форма — сплошные нули,
-    /// контекст видит только стоп-биты, и цена нуля никогда не превышает
-    /// стартовую, которая меньше 1 бита (< 64/64 при β ≥ 8 на коэффициент).
-    #[test]
-    fn zero_symbol_never_exceeds_one_bit() {
-        let start = bit_cost_x64(P0_SHAPE, false);
-        assert!(
-            start < 64,
-            "стартовая цена нуля {start}/64 должна быть < 1 бита"
-        );
-        let mut ctx = AdaptiveProb::new(P0_SHAPE);
-        for i in 0..1000 {
-            let cost = bit_cost_x64(ctx.prob0(), false);
-            assert!(
-                cost <= start,
-                "шаг {i}: цена нуля выросла: {cost} > {start}"
-            );
-            ctx.update(false);
-        }
-    }
-
     /// Roundtrip бинаризации + сверка учёта: стоимость, накопленная декодером,
-    /// обязана бит-в-бит совпасть с оценкой энкодера (симметрия rate-контроля).
+    /// обязана бит-в-бит совпасть с оценкой энкодера (симметрия rate-контроля
+    /// энергий — единственного адаптивно кодируемого слоя).
     #[test]
     fn val_binarization_roundtrip_and_cost_symmetry() {
         let values = [0u32, 1, 2, 7, 8, 100, 1000, 65_535, u32::MAX];
         for k in 0..=7u32 {
             let mut enc = BinEncoder::new();
-            let mut enc_ctx = AdaptiveProb::new(P0_SHAPE);
-            let mut cost_ctx = AdaptiveProb::new(P0_SHAPE);
+            let mut enc_ctx = AdaptiveProb::new(P0_ENERGY);
+            let mut cost_ctx = AdaptiveProb::new(P0_ENERGY);
             let mut enc_cost = 0u64;
             for &v in &values {
                 encode_val(&mut enc, v, k, &mut enc_ctx);
                 enc_cost += val_cost_x64(v, k, &mut cost_ctx);
             }
             let bytes = enc.finish();
-            // Фактический размер не превышает оценку + финализация (6 байт).
+            // Фактический размер не превышает оценку + финализация (5 байт).
             assert!(
-                bytes.len() as u64 * 8 * 64 <= enc_cost + 48 * 64,
+                bytes.len() as u64 * 8 * 64 <= enc_cost + 40 * 64,
                 "k={k}: {} байт при оценке {enc_cost}/64 бита",
                 bytes.len()
             );
             let mut dec = BinDecoder::new(&bytes);
-            let mut dec_ctx = AdaptiveProb::new(P0_SHAPE);
+            let mut dec_ctx = AdaptiveProb::new(P0_ENERGY);
             let mut dec_cost = 0u64;
             for &v in &values {
                 assert_eq!(decode_val(&mut dec, k, &mut dec_ctx, &mut dec_cost), v);

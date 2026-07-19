@@ -30,10 +30,11 @@ pub(crate) const Q_SILENCE_X4: i32 = -132;
 pub(crate) fn compute_alloc(q: &[i32], planes: usize, shape_budget_bits: u64) -> Vec<u8> {
     debug_assert_eq!(q.len(), planes * NUM_BANDS);
     let s_e8 = shape_budget_bits as i64 * 8;
-    // Полосы дешевле 1 бит/коэфф (β < 8) не кодируются: код Райса всё равно не
-    // умеет дешевле 1 бита на символ. Вместе с λ ≤ 127 это гарантирует, что
-    // форма всегда помещается в бюджет (при λ=127 все y=0 и стоят ровно
-    // Σ width ≤ Σ β·width/8 ≤ shape_budget).
+    // Полосы дешевле 1 бит/коэфф (β < 8) не кодируются. PVQ выбирает книгу
+    // максимальной мощности, укладывающуюся в аллокацию полосы, поэтому
+    // фактическая стоимость формы никогда не превышает Σ β·width/8 ≤ бюджета;
+    // правило β ≥ 8 дополнительно гарантирует K ≥ 1 (полоса с β > 0 не пуста):
+    // 8·W ≥ ⌈8·log2(2W)⌉ для всех ширин W ≥ 2.
     let beta_at = |c: i32, i: usize| {
         if q[i] <= Q_SILENCE_X4 {
             return 0;
@@ -58,15 +59,6 @@ pub(crate) fn compute_alloc(q: &[i32], planes: usize, shape_budget_bits: u64) ->
         }
     }
     (0..q.len()).map(|i| beta_at(lo, i) as u8).collect()
-}
-
-/// Параметр Райса для формы: `max(0, β − 1)` в целых битах.
-pub(crate) fn rice_k_for_beta(beta_e8: u8) -> u32 {
-    if beta_e8 >= 16 {
-        u32::from(beta_e8 / 8 - 1)
-    } else {
-        0
-    }
 }
 
 #[cfg(test)]
@@ -111,13 +103,5 @@ mod tests {
         // Огромный бюджет — все полосы у капа.
         let beta = compute_alloc(&q, 2, 1_000_000);
         assert!(beta.iter().all(|&b| i32::from(b) == BETA_E8_MAX));
-    }
-
-    #[test]
-    fn rice_k_mapping() {
-        assert_eq!(rice_k_for_beta(0), 0);
-        assert_eq!(rice_k_for_beta(15), 0);
-        assert_eq!(rice_k_for_beta(16), 1);
-        assert_eq!(rice_k_for_beta(64), 7);
     }
 }
