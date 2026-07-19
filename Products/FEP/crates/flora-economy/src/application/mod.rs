@@ -172,7 +172,7 @@ impl EconomyService {
         })
     }
 
-    /// Перевод Pollen (подпись отправителя обязательна, проверяется ядром).
+    /// Перевод LIV (подпись отправителя обязательна, проверяется ядром).
     pub fn transfer(
         &self,
         from: Uuid,
@@ -381,7 +381,7 @@ impl EconomyReadPort for EconomyService {
 mod tests {
     use super::*;
     use crate::infrastructure::{FixedLevelAttestor, InMemoryLedgerStore};
-    use flora_economy_crypto::amount::POLLEN_IN_GRAINS;
+    use flora_economy_crypto::amount::LIV_IN_GRAINS;
     use flora_economy_crypto::domain as tags;
     use flora_economy_crypto::ledger::transfer_signing_bytes;
     use flora_economy_crypto::sig::{public_key, sign};
@@ -431,7 +431,7 @@ mod tests {
         svc.open_account(bob(), public_key(&BOB_SEED)).unwrap();
         svc.claim_ubi(alice()).unwrap();
 
-        let amount = Grains(100 * POLLEN_IN_GRAINS);
+        let amount = Grains(100 * LIV_IN_GRAINS);
         let nonce = [1u8; 16];
         let payload = transfer_signing_bytes(
             &crate::domain::account_id_of(alice()),
