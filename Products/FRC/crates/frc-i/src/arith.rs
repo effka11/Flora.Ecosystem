@@ -162,7 +162,8 @@ impl<'a> RangeDecoder<'a> {
 const ADAPT_LIMIT: u32 = 1 << 13;
 
 /// Вид prior'а / алфавита модели. Разные контексты имеют разный носитель:
-/// SPLIT/EOB — 2 символа, MODE — 15, RUN — 22, прочие hybrid-uint — 32.
+/// SPLIT/EOB — 2 символа, SPLIT4/TX/CDEF — 4, MODE — 15, RUN — 22,
+/// прочие hybrid-uint — 32.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelKind {
     /// SPLIT_WHOLE / SPLIT_QUAD.
@@ -415,16 +416,22 @@ impl ModelBank {
         (slot, g)
     }
 
-    pub fn encode(&mut self, enc: &mut RangeEncoder, ctx: u8, sym: u8) {
-        let ctx = usize::from(ctx);
+    /// Контекст принимает u8 (раскладка v7) и u16 (раскладка v8: 295
+    /// tx-обусловленных контекстов не помещаются в u8).
+    pub fn encode(&mut self, enc: &mut RangeEncoder, ctx: impl Into<usize>, sym: u8) {
+        let ctx = ctx.into();
         let (slot, g) = self.warm(ctx);
         self.models[slot].encode(enc, sym);
         self.parents[g].adapt(usize::from(sym));
         self.prev[ctx] = sym;
     }
 
-    pub fn decode(&mut self, dec: &mut RangeDecoder<'_>, ctx: u8) -> Result<u8, DecodeError> {
-        let ctx = usize::from(ctx);
+    pub fn decode(
+        &mut self,
+        dec: &mut RangeDecoder<'_>,
+        ctx: impl Into<usize>,
+    ) -> Result<u8, DecodeError> {
+        let ctx = ctx.into();
         let (slot, g) = self.warm(ctx);
         let sym = self.models[slot].decode(dec)?;
         self.parents[g].adapt(usize::from(sym));

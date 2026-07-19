@@ -752,6 +752,13 @@ pub const BASE_CHROMA: [u16; 64] = [
 pub const BASE_LUMA_V7: [u16; 64] = [48; 64];
 pub const BASE_CHROMA_V7: [u16; 64] = [48; 64];
 
+/// v8: пошаговое скалярное квантование плоскостей целочисленного YCoCg.
+/// Pareto-набор Y/Co/Cg = 51/45/38 измерен на Kodak 24 (§11.3 v7.9b:
+/// −2.08% PSNR BD-rate, −0.73% SSIM против общего шага 48 в BT.601).
+pub const BASE_Y_V8: [u16; 64] = [51; 64];
+pub const BASE_CO_V8: [u16; 64] = [45; 64];
+pub const BASE_CG_V8: [u16; 64] = [38; 64];
+
 /// Масштабирование базовой таблицы параметром качества 1..=100
 /// (классическое отображение IJG: 50 — базовая таблица, 100 — почти lossless).
 pub fn quant_matrix(base: &[u16; 64], quality: u8) -> [u16; 64] {
@@ -775,6 +782,16 @@ pub fn quant_matrices(version: u8, quality: u8) -> ([u16; 64], [u16; 64]) {
         (&BASE_LUMA, &BASE_CHROMA)
     };
     (quant_matrix(luma, quality), quant_matrix(chroma, quality))
+}
+
+/// Нормативные матрицы квантования v8: по одной на плоскость Y/Co/Cg
+/// целочисленного YCoCg (пошаговые скалярные базы 51/45/38).
+pub fn quant_matrices_v8(quality: u8) -> ([u16; 64], [u16; 64], [u16; 64]) {
+    (
+        quant_matrix(&BASE_Y_V8, quality),
+        quant_matrix(&BASE_CO_V8, quality),
+        quant_matrix(&BASE_CG_V8, quality),
+    )
 }
 
 #[cfg(test)]
@@ -1069,6 +1086,14 @@ mod tests {
         assert_grouped_tx_is_bit_exact(&BASIS, adst_basis8(), forward_tx8, inverse_tx8);
         assert_grouped_tx_is_bit_exact(basis16(), adst_basis16(), forward_tx16, inverse_tx16);
         assert_grouped_tx_is_bit_exact(basis32(), adst_basis32(), forward_tx32, inverse_tx32);
+    }
+
+    #[test]
+    fn v8_quant_matrices_are_per_plane_scalar() {
+        let (qy, qco, qcg) = quant_matrices_v8(50);
+        assert_eq!(qy, [51; 64]);
+        assert_eq!(qco, [45; 64]);
+        assert_eq!(qcg, [38; 64]);
     }
 
     #[test]

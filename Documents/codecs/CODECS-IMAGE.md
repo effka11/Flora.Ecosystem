@@ -1,11 +1,13 @@
 # CODECS-IMAGE — Flora photo pipeline (FRC-I)
 
 **Status:** Released  
-**Version:** 1.0  
-**Date:** 2026-07-16
+**Version:** 1.1  
+**Date:** 2026-07-19
 
-Нормативный playbook для фото в Flora.Social поверх замороженного FRC-I v7
-([`FRC-I.md`](./FRC-I.md) §12). Политика семейства — [`CODECS.md`](./CODECS.md).
+Нормативный playbook для фото в Flora.Social поверх замороженного FRC-I
+(текущий битстрим v8; [`FRC-I.md`](./FRC-I.md) §10, §12). Политика
+семейства — [`CODECS.md`](./CODECS.md). Playbook не зависит от версии
+битстрима: контейнер `.fri` один, декодер читает v1..v8.
 
 ---
 
@@ -58,7 +60,7 @@ optional `BackfillEnabled` для legacy rows. Messaging history не backfill-�
 
 ## E2E contour
 
-1. Client готовит browser-native fallback и FRI v7.
+1. Client готовит browser-native fallback и FRI (текущая версия кодера).
 2. Каждый вариант AES-GCM с отдельным key/nonce.
 3. Оба UUID уходят в `imageAssetUuids`; FSCP block держит fallback в legacy
    полях и optional `frcVariant` для FRI.

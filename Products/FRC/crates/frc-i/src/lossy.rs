@@ -608,10 +608,18 @@ fn tx_rate_extra_bits(tx: u8) -> u32 {
     }
 }
 
+/// Функция ошибки квантования: параметр общего RD-ядра. v7 передаёт
+/// `squared_quant_error` (реконструкция `level·step`), v8 — вариант с
+/// нормативным AC-смещением реконструкции (`lossy::v8`). Указатель на
+/// функцию сохраняет побайтовую идентичность замороженного v7: те же
+/// f32-операции в том же порядке.
+type QuantErrFn = fn(f32, f32, usize, i32) -> f32;
+
 fn quantize_freq_tx<const LEN: usize>(
     freq: &[f32; LEN],
     qmat: &[u16; LEN],
     ac_bias: f32,
+    quant_err: QuantErrFn,
 ) -> ([i32; LEN], f32) {
     let mut quantized = [0i32; LEN];
     let mut distortion = 0f32;
@@ -621,14 +629,14 @@ fn quantize_freq_tx<const LEN: usize>(
         let bias = if i == 0 { 0.5 } else { ac_bias };
         let magnitude = (scaled.abs() + bias).floor() as i32;
         *q = if scaled < 0.0 { -magnitude } else { magnitude };
-        let err = freq[i] - *q as f32 * step;
-        distortion += err * err;
+        distortion += quant_err(freq[i], step, i, *q);
     }
     (quantized, distortion)
 }
 
+/// Ошибка реконструкции v1–v7: `value − level·step` (позиция не участвует).
 #[inline]
-fn squared_quant_error(value: f32, step: f32, level: i32) -> f32 {
+fn squared_quant_error(value: f32, step: f32, _index: usize, level: i32) -> f32 {
     let error = value - level as f32 * step;
     error * error
 }
@@ -657,6 +665,7 @@ fn trellis_rdoq<const LEN: usize>(
     mut quantized: [i32; LEN],
     lambda: f32,
     scan: &[usize; LEN],
+    quant_err: QuantErrFn,
 ) -> ([i32; LEN], f32) {
     let rd_lambda = lambda * TRELLIS_LAMBDA_SCALE;
 
@@ -676,7 +685,7 @@ fn trellis_rdoq<const LEN: usize>(
             nearest.saturating_add(1),
         ];
         let mut best_level = current;
-        let mut best_cost = squared_quant_error(freq[index], step, current)
+        let mut best_cost = quant_err(freq[index], step, index, current)
             + rd_lambda
                 * if index == 0 {
                     dc_rate_estimate(current) as f32
@@ -696,7 +705,7 @@ fn trellis_rdoq<const LEN: usize>(
             } else {
                 ac_level_rate_estimate(magnitude as u32)
             };
-            let cost = squared_quant_error(freq[index], step, candidate) + rd_lambda * rate as f32;
+            let cost = quant_err(freq[index], step, index, candidate) + rd_lambda * rate as f32;
             if cost < best_cost {
                 best_cost = cost;
                 best_level = candidate;
@@ -767,7 +776,7 @@ fn trellis_rdoq<const LEN: usize>(
         };
         let step = f32::from(qmat[index]);
         let distortion_increase =
-            freq[index] * freq[index] - squared_quant_error(freq[index], step, quantized[index]);
+            freq[index] * freq[index] - quant_err(freq[index], step, index, quantized[index]);
         if saved_rate > 0 && distortion_increase < rd_lambda * saved_rate as f32 {
             quantized[index] = 0;
             if prev_node != NO_NODE {
@@ -782,7 +791,7 @@ fn trellis_rdoq<const LEN: usize>(
     let distortion = quantized
         .iter()
         .enumerate()
-        .map(|(index, &level)| squared_quant_error(freq[index], f32::from(qmat[index]), level))
+        .map(|(index, &level)| quant_err(freq[index], f32::from(qmat[index]), index, level))
         .sum();
     (quantized, distortion)
 }
@@ -798,6 +807,7 @@ fn choose_transform<const LEN: usize>(
     baseline_cost: f32,
     forward: fn(&[f32; LEN], &mut [f32; LEN], u8),
     scan_for_tx: fn(u8) -> &'static [usize; LEN],
+    quant_err: QuantErrFn,
 ) -> (u8, [i32; LEN], f32) {
     let mut residual = [0f32; LEN];
     for i in 0..LEN {
@@ -815,7 +825,7 @@ fn choose_transform<const LEN: usize>(
     let mut best_freq = [0f32; LEN];
     for &tx in ENCODE_TXS_V7 {
         forward(&residual, &mut freq, tx);
-        let (quantized, distortion) = quantize_freq_tx(&freq, qmat, ac_bias);
+        let (quantized, distortion) = quantize_freq_tx(&freq, qmat, ac_bias, quant_err);
         let rate = legacy_coeff_cost(&quantized, scan_for_tx(tx)) + tx_rate_extra_bits(tx);
         let search_cost = distortion + lambda * TX_SEARCH_LAMBDA_SCALE * rate as f32;
         if search_cost < best.3 {
@@ -830,7 +840,7 @@ fn choose_transform<const LEN: usize>(
         freq = best_freq;
     }
     let scan = scan_for_tx(best.0);
-    let (quantized, distortion) = trellis_rdoq(&freq, qmat, best.1, lambda, scan);
+    let (quantized, distortion) = trellis_rdoq(&freq, qmat, best.1, lambda, scan, quant_err);
     let rate = legacy_coeff_cost(&quantized, scan) + tx_rate_extra_bits(best.0);
     (best.0, quantized, distortion + lambda * rate as f32)
 }
@@ -2554,7 +2564,14 @@ mod tests {
         quantized[ZIGZAG[1]] = 1;
         quantized[ZIGZAG[2]] = 1;
 
-        let (optimized, _) = trellis_rdoq(&freq, &qmat, quantized, lambda, &ZIGZAG);
+        let (optimized, _) = trellis_rdoq(
+            &freq,
+            &qmat,
+            quantized,
+            lambda,
+            &ZIGZAG,
+            squared_quant_error,
+        );
         assert_eq!(optimized[ZIGZAG[1]], 1);
         assert_eq!(optimized[ZIGZAG[2]], 0);
     }

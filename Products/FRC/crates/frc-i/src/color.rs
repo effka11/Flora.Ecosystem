@@ -1,8 +1,11 @@
 //! Цветовые преобразования (FRC-I.md §6).
 //!
 //! - Lossless: YCoCg-R — обратимое целочисленное lifting-преобразование.
-//! - Lossy: YCbCr BT.601 full-range в фиксированной точке (детерминизм
+//! - Lossy v1–v7: YCbCr BT.601 full-range в фиксированной точке (детерминизм
 //!   на всех платформах важнее последней доли dB).
+//! - Lossy v8: целочисленный масштабированный YCoCg (§6.3) — максимальная
+//!   ошибка восстановления 1, лучшая декорреляция под пошаговое квантование
+//!   плоскостей (Kodak 24: −2.08% PSNR BD-rate против BT.601, §11.3 v7.9b).
 
 /// RGB → YCoCg-R. Возвращает `(y, co, cg)`: y в 0..=255, co/cg в -255..=255.
 #[inline]
@@ -63,6 +66,32 @@ pub fn ycbcr_to_rgb(y: i32, cb: i32, cr: i32) -> (i32, i32, i32) {
     let r = y + ((R_CR * cr + HALF) >> FIX);
     let g = y + ((G_CB * cb + G_CR * cr + HALF) >> FIX);
     let b = y + ((B_CB * cb + HALF) >> FIX);
+    (clamp_u8(r), clamp_u8(g), clamp_u8(b))
+}
+
+// --- целочисленный масштабированный YCoCg (lossy v8, FRC-I.md §6.4) ------------
+
+/// RGB → целочисленный YCoCg v8. Все компоненты в 0..=255 по построению:
+/// `Y=(R+2G+B+2)>>2`, `Co=((R−B)>>1)+128`, `Cg=((2G−R−B)>>2)+128`
+/// (сдвиги арифметические, floor). Максимальная ошибка обратного хода — 1.
+#[inline]
+pub fn rgb_to_ycocg_lossy(r: i32, g: i32, b: i32) -> (i32, i32, i32) {
+    let y = (r + 2 * g + b + 2) >> 2;
+    let co = ((r - b) >> 1) + 128;
+    let cg = ((2 * g - r - b) >> 2) + 128;
+    (y, co, cg)
+}
+
+/// Обратное YCoCg v8 → RGB с клампом в 0..=255 (ошибки квантования могут
+/// выводить компоненты за диапазон): `R=Y+Co−Cg`, `G=Y+Cg`, `B=Y−Co−Cg`
+/// после вычитания 128 из хромы.
+#[inline]
+pub fn ycocg_lossy_to_rgb(y: i32, co: i32, cg: i32) -> (i32, i32, i32) {
+    let co = co - 128;
+    let cg = cg - 128;
+    let r = y + co - cg;
+    let g = y + cg;
+    let b = y - co - cg;
     (clamp_u8(r), clamp_u8(g), clamp_u8(b))
 }
 
@@ -165,6 +194,27 @@ mod tests {
             for &u in &[0, 1, 254, 255] {
                 for &w in &[0, 1, 254, 255] {
                     check(v, u, w);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ycocg_lossy_range_and_max_error_one() {
+        // Полный перебор куба RGB: выход прямого хода строго 0..=255,
+        // ошибка обратного хода не превышает 1 на канал (контракт §6.3).
+        for r in 0..=255 {
+            for g in 0..=255 {
+                for b in 0..=255 {
+                    let (y, co, cg) = rgb_to_ycocg_lossy(r, g, b);
+                    assert!((0..=255).contains(&y), "y={y} для rgb=({r},{g},{b})");
+                    assert!((0..=255).contains(&co), "co={co} для rgb=({r},{g},{b})");
+                    assert!((0..=255).contains(&cg), "cg={cg} для rgb=({r},{g},{b})");
+                    let (r2, g2, b2) = ycocg_lossy_to_rgb(y, co, cg);
+                    assert!(
+                        (r - r2).abs() <= 1 && (g - g2).abs() <= 1 && (b - b2).abs() <= 1,
+                        "rgb=({r},{g},{b}) → ({r2},{g2},{b2})"
+                    );
                 }
             }
         }

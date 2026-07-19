@@ -2,18 +2,19 @@
 //!
 //! Нативный фото-кодек экосистемы Flora (семейство FRC, `Documents/codecs/CODECS.md`).
 //! Нормативная спецификация битстрима — `Documents/codecs/FRC-I.md`. Кодер пишет
-//! v3 для lossless и замороженный v7 для lossy; совместимость фиксируют
-//! golden-вектора в `tests/data/`.
+//! v3 для lossless и v8 для lossy (v1..v7 заморожены и декодируются всегда);
+//! совместимость фиксируют golden-вектора в `tests/data/`.
 //!
 //! Два режима в одном контейнере:
 //! - **lossless** — обратимый YCoCg-R (либо identity-RGB, либо палитра до
 //!   256 цветов — кодер выбирает лучшее), MED-предиктор, контексты по
 //!   градиентам, raw-fallback как потолок худшего случая;
-//! - **lossy** — YCbCr, опциональный 4:2:0, дерево блоков 32→16→8→4,
-//!   направленная intra-предикция, DCT/ADST, перцептивное квантование,
-//!   adaptive range coding и tile-local CDEF.
+//! - **lossy v8** — целочисленный YCoCg с пошаговым квантованием плоскостей
+//!   (Y/Co/Cg = 51/45/38), опциональный 4:2:0; дерево блоков, intra, DCT/ADST
+//!   и энтропия идентичны v7. Прямоугольные партиции в wire v8 не входят
+//!   (бюджет encode ≥ 11 Мп/с).
 //!
-//! Lossless использует rANS, lossy v7 — адаптивный range coder; оба слоя
+//! Lossless использует rANS, lossy v7/v8 — адаптивный range coder; оба слоя
 //! используют hybrid-uint токены. Изображение делится на независимые тайлы
 //! 256x256; тайлы кодируются и декодируются параллельно (feature `threads`,
 //! включена по умолчанию; для wasm собирать с `--no-default-features`).
@@ -167,6 +168,16 @@ pub fn encode_with_version(
     version: u8,
 ) -> Result<Vec<u8>, EncodeError> {
     encode::encode_with_version(img, mode, version)
+}
+
+#[doc(hidden)]
+pub fn encode_with_icc_version(
+    img: &ImageView<'_>,
+    mode: EncodeMode,
+    icc: &[u8],
+    version: u8,
+) -> Result<Vec<u8>, EncodeError> {
+    encode::encode_with_icc_version(img, mode, icc, version)
 }
 
 /// Декодирует FRC-I-поток с лимитами по умолчанию (~67 Мп).
