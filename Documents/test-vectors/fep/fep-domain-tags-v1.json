@@ -1,0 +1,51 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "fep_domain_tags_v1",
+  "description": "Реестр доменных меток FEP (байт-в-байт, FEP.md §9.2) и SHA-256 tagged-хеши над материалом 0x00..0x1f. Изменение метки — изменение класса R3.",
+  "encoding": "hex",
+  "taggedMaterialHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "tags": [
+    {
+      "name": "LEDGER_LEAF",
+      "tag": "flora/economy/v1/ledger/leaf",
+      "tagBytesHex": "666c6f72612f65636f6e6f6d792f76312f6c65646765722f6c656166",
+      "sha256TaggedHex": "b763ce225150608fab60127b10cb6224788f2ad10aeccffaa0f0b497fec12d8e"
+    },
+    {
+      "name": "LEDGER_STH",
+      "tag": "flora/economy/v1/ledger/sth",
+      "tagBytesHex": "666c6f72612f65636f6e6f6d792f76312f6c65646765722f737468",
+      "sha256TaggedHex": "63fc3522b88412ad4421b6946a19dd11b88388977c65cf2a89c4f18d8925ccd7"
+    },
+    {
+      "name": "MERKLE_LEAF",
+      "tag": "flora/economy/v1/merkle/leaf",
+      "tagBytesHex": "666c6f72612f65636f6e6f6d792f76312f6d65726b6c652f6c656166",
+      "sha256TaggedHex": "7c839ca39c745ff61bedd3b00a4432d1d28fcadfe870a95f4427e860703d672e"
+    },
+    {
+      "name": "MERKLE_NODE",
+      "tag": "flora/economy/v1/merkle/node",
+      "tagBytesHex": "666c6f72612f65636f6e6f6d792f76312f6d65726b6c652f6e6f6465",
+      "sha256TaggedHex": "a3155dabe90486142a916ecb12f4978ac9f3bf090852fbb07563cbacf6336407"
+    },
+    {
+      "name": "TRANSFER_AUTH",
+      "tag": "flora/economy/v1/transfer/auth",
+      "tagBytesHex": "666c6f72612f65636f6e6f6d792f76312f7472616e736665722f61757468",
+      "sha256TaggedHex": "eb5455727b73cb961093df117c5d26bce4f9ae19d3ce9521b05e4997bef1a6b9"
+    },
+    {
+      "name": "TRUSTLINE_AUTH",
+      "tag": "flora/economy/v1/trustline/auth",
+      "tagBytesHex": "666c6f72612f65636f6e6f6d792f76312f74727573746c696e652f61757468",
+      "sha256TaggedHex": "2b1565f4835a93cd6bbb63f2109b7258dd7612a4af374adbee3ec6e90c56a26b"
+    },
+    {
+      "name": "CREDIT_TRANSFER_AUTH",
+      "tag": "flora/economy/v1/credit-transfer/auth",
+      "tagBytesHex": "666c6f72612f65636f6e6f6d792f76312f6372656469742d7472616e736665722f61757468",
+      "sha256TaggedHex": "8e1f7b3aec7366b2b33130a720eb3f3fcbe56693972d0e6503dd02ae1e986d50"
+    }
+  ]
+}

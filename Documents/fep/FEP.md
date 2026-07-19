@@ -2,13 +2,13 @@
 
 **Статус:** нормативный документ, v1 (draft). Битстрим/журнал: FEP v1.
 **Реализация:** `Products/FEP/crates/flora-economy-crypto` (детерминированное ядро, native + wasm32), `Products/FEP/crates/flora-economy` (модуль), `Products/FEP/crates/flora-economy-contracts` (порты).
-**Связанные документы:** [FEP-GUIDE.md](FEP-GUIDE.md) (введение простым языком), [FEP-THREATS.md](FEP-THREATS.md) (модель угроз), [FEP-TRANSITION.md](FEP-TRANSITION.md) (план перехода к пост-дефицитной экономике: фазы TR0–TR4, микро/макро/мировой уровни, проблема смысла), [FGP.md](../fgp/FGP.md) (governance), [FPP.md](../fpp/FPP.md) (personhood), [FGP-CRYPTO.md](../fgp/FGP-CRYPTO.md) (криптослой FGP/FPP — FEP наследует его правила).
+**Связанные документы:** [LIV.md](LIV.md) (валютный слой: канонический формат сумм, кошелёк, витнесс-протокол, клиентская верификация), [FEP-GUIDE.md](FEP-GUIDE.md) (введение простым языком), [FEP-THREATS.md](FEP-THREATS.md) (модель угроз), [FEP-TRANSITION.md](FEP-TRANSITION.md) (план перехода к пост-дефицитной экономике: фазы TR0–TR4, микро/макро/мировой уровни, проблема смысла), [FGP.md](../fgp/FGP.md) (governance), [FPP.md](../fpp/FPP.md) (personhood), [FGP-CRYPTO.md](../fgp/FGP-CRYPTO.md) (криптослой FGP/FPP — FEP наследует его правила).
 
 ---
 
 ## Overview
 
-FEP — экономический протокол Flora: **пост-дефицитная** денежная система, спроектированная так, чтобы деньги оставались средством обмена и координации и **не могли** стать инструментом власти. Валюта — **LIV** (Leaves): официальная крипта экосистемы (протокол ещё не в проде); она полезна только в движении; лежащая без движения, она медленно возвращается в общую казну.
+FEP — экономический протокол Flora: **пост-дефицитная** денежная система, спроектированная так, чтобы деньги оставались средством обмена и координации и **не могли** стать инструментом власти. Валюта — **LIV** (Leaves): официальная криптовалюта экосистемы (протокол ещё не в проде); она полезна только в движении; лежащая без движения, она медленно возвращается в общую казну. Валютный слой (единицы, кошелёк, витнессы, верификация клиентом) нормирован отдельно — [LIV.md](LIV.md).
 
 Три источника ликвидности:
 
@@ -241,16 +241,16 @@ Reference-хранилище — JSONL (одна запись = одна стр�
 
 ### 9.2. Доменные метки
 
-Префикс `flora/economy/v1/`; полный реестр — `flora-economy-crypto::domain`:
+Префикс `flora/economy/v1/`; полный реестр — `flora-economy-crypto::domain`, байт-в-байт зафиксирован golden-вектором `fep-domain-tags-v1.json`:
 
 ```
-flora/economy/v1/ledger/leaf        хеш записи журнала
-flora/economy/v1/merkle/leaf        лист Merkle
-flora/economy/v1/merkle/node        узел Merkle
-flora/economy/v1/ledger/sth         подпись head витнессом
-flora/economy/v1/auth/transfer      подпись перевода
-flora/economy/v1/auth/trustline     подписи линии доверия
-flora/economy/v1/auth/credit        подпись платежа по цепочке
+flora/economy/v1/ledger/leaf          хеш записи журнала
+flora/economy/v1/ledger/sth           подпись head витнессом
+flora/economy/v1/merkle/leaf          лист Merkle
+flora/economy/v1/merkle/node          узел Merkle
+flora/economy/v1/transfer/auth        подпись перевода
+flora/economy/v1/trustline/auth       подписи линии доверия
+flora/economy/v1/credit-transfer/auth подпись платежа по цепочке
 ```
 
 ### 9.3. Каноническая сериализация
@@ -280,8 +280,11 @@ wasm32-сборка `flora-economy-crypto` (без изменений кода) 
 | GET | `/parameters` | текущие параметры |
 | GET | `/commons` | казна: баланс, всего эмитировано |
 | GET | `/ledger/head` | head журнала |
+| GET | `/ledger/sth` | head + реестр витнессов + косайны (LIV.md §6) |
+| POST | `/ledger/cosigns` | приём косайна витнесса (JSON `HeadCosign`) |
 | GET | `/ledger/entries?from=&limit=` | страница журнала (реплей у клиента) |
 | GET | `/ledger/proof/{seq}` | inclusion-доказательство |
+| GET | `/ledger/consistency?oldSize=&newSize=` | consistency-доказательство (append-only) |
 | GET | `/accounts/{uuid}` | сводка аккаунта |
 | POST | `/accounts` | открыть аккаунт `{accountUuid, ownerKeyHex}` |
 | POST | `/ubi/claims` | начислить UBI `{accountUuid}` |
@@ -291,14 +294,14 @@ wasm32-сборка `flora-economy-crypto` (без изменений кода) 
 
 Транспортная аутентификация (JWT) — забота хоста; **авторизация денег — криптографическая** (подписи в теле), HTTP-слой решений не принимает.
 
-Коды ошибок: `account_not_found`, `account_exists`, `insufficient_funds`, `trustline_not_found`, `trustline_capacity_exceeded`, `ubi_already_claimed`, `personhood_required`, `invalid_signature`, `sequencing_conflict`, `invalid_hex`, `rejected`, `storage_unavailable`.
+Коды ошибок: `account_not_found`, `account_exists`, `insufficient_funds`, `trustline_not_found`, `trustline_capacity_exceeded`, `ubi_already_claimed`, `personhood_required`, `invalid_signature`, `sequencing_conflict`, `unknown_witness`, `cosign_mismatch`, `invalid_range`, `entry_not_found`, `invalid_hex`, `rejected`, `storage_unavailable`.
 
 ## 12. Развёртывание и статус реализации
 
-- Флаг `Economy:Enabled` (по умолчанию **false**), путь журнала `Economy:LedgerPath`. Композиция — `flora-social::economy_router`.
+- Конфиг: `Economy:Enabled` (по умолчанию **false**), путь журнала `Economy:LedgerPath`, реестр витнессов `Economy:Witnesses` (массив hex-ключей Ed25519), период демерредж-обхода `Economy:DemurrageSweepMinutes` (по умолчанию 60; 0 = воркер выключен). Композиция — `flora-social::economy_composition` (роутер + фоновые хэндлы). Косайны живут в sidecar `<LedgerPath>.cosigns.jsonl`.
 - Аттестор по умолчанию — консервативный (все V0): до реализации уровней FPP модулем Verification UBI не начисляется никому; переводы/взаимный кредит работают. Fail-safe направление: не раздавать права при недоступности аттестора.
-- Реализовано в v1: ядро (движок, все инварианты, Merkle, подписи), модуль (секвенсор, JSONL-журнал, HTTP, порты), композиция, wasm32-сборка ядра, 90+ тестов.
-- Не реализовано (дорожная карта): Postgres-журнал + `flora-migrate`; косайнинг витнессов и внешнее якорение head; фоновый демерредж-воркер в композиции (`sweep_demurrage` готов, нужен spawn); модуль Governance (онлайн-проверка `policy_ref`); golden-векторы `Documents/test-vectors/fep/` и TS-паритет; конфиденциальность сумм (Pedersen-агрегаты — исследовательский трек, FEP-THREATS §7).
+- Реализовано в v1: ядро (движок, все инварианты, Merkle inclusion **и consistency** — RFC 6962/9162, подписи, косайнинг head, канонический формат сумм LIV), модуль (секвенсор, JSONL-журнал, cosign-store, реестр витнессов, HTTP включая STH/cosigns/consistency, порты), композиция с фоновым демерредж-воркером, wasm32-сборка ядра, golden-векторы `Documents/test-vectors/fep/` + consumer-тест, 110+ тестов.
+- Не реализовано (дорожная карта): Postgres-журнал + `flora-migrate`; внешнее якорение head (в чужие журналы прозрачности) и reference-демон витнесса; модуль Governance (онлайн-проверка `policy_ref`); TS-паритет векторов через wasm-поверхность `@flora/client-core`; протокольная ротация ключа владения (LIV.md §3.4); конфиденциальность сумм (Pedersen-агрегаты — исследовательский трек, FEP-THREATS §7).
 
 ---
 
@@ -331,7 +334,10 @@ wasm32-сборка `flora-economy-crypto` (без изменений кода) 
 | §9.1 | `sig`, `hash`, `fixed` |
 | §9.2 | `domain` |
 | §9.3 | `canonical`, `hexser` |
-| §6.1 (Merkle) | `merkle` |
+| §6.1 (Merkle) | `merkle` (inclusion + consistency) |
+| §6.3 (витнессы) | `witness`, `flora-economy::application` (реестр, cosign-store) |
 | §11 | `flora-economy::http` |
 | §6.3 (секвенсор) | `flora-economy::application` |
 | §6.4 | `flora-economy::infrastructure` |
+| LIV.md §2.2 (формат сумм) | `amount::{format_liv, parse_liv}` |
+| Golden-векторы | `examples/gen_vectors.rs`, `tests/fep_vectors.rs` |

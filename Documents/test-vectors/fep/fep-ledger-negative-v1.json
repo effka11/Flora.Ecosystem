@@ -1,0 +1,380 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "fep_ledger_negative_v1",
+  "description": "Негативы журнала FEP: каждая цепочка обязана быть отвергнута реплеем с указанной ошибкой; consistency-форк и порченный косайн обязаны не пройти верификацию (правило README: негативы — отдельным файлом).",
+  "encoding": "hex",
+  "replayCases": [
+    {
+      "name": "transfer_bad_signature",
+      "entries": [
+        {
+          "seq": 0,
+          "at": 1700000000000,
+          "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "body": {
+            "kind": "genesis",
+            "protocolVersion": 1,
+            "params": {
+              "demurrage_ppm_per_period": 191,
+              "demurrage_period_ms": 86400000,
+              "demurrage_exempt_threshold": 100000000,
+              "ubi_per_epoch": 1000000000,
+              "ubi_epoch_ms": 2592000000,
+              "ubi_max_backfill_epochs": 3,
+              "trustline_max_limit": 5000000000,
+              "credit_path_max_hops": 4
+            }
+          }
+        },
+        {
+          "seq": 1,
+          "at": 1700000001000,
+          "prevHash": "cf340f514e395817d835adfe56b805beb5bced9409c1f98ad6220e11678b15f6",
+          "body": {
+            "kind": "accountOpened",
+            "account": [
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161
+            ],
+            "ownerKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "seq": 2,
+          "at": 1700000002000,
+          "prevHash": "5d7553d37332c43804ac588b61d62a98cdee61c67bc5fffeb6d49c48d1338087",
+          "body": {
+            "kind": "accountOpened",
+            "account": [
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178
+            ],
+            "ownerKey": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        },
+        {
+          "seq": 3,
+          "at": 1700000003000,
+          "prevHash": "ffd30391c01141f2fd788f07f783b9f8b8b8e84ffb38c8b779f58e112dee63bc",
+          "body": {
+            "kind": "transfer",
+            "from": [
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161
+            ],
+            "to": [
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178
+            ],
+            "amount": 1,
+            "nonce": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+            "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      ],
+      "expectedError": "invalid_signature"
+    },
+    {
+      "name": "broken_hash_chain",
+      "entries": [
+        {
+          "seq": 0,
+          "at": 1700000000000,
+          "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "body": {
+            "kind": "genesis",
+            "protocolVersion": 1,
+            "params": {
+              "demurrage_ppm_per_period": 191,
+              "demurrage_period_ms": 86400000,
+              "demurrage_exempt_threshold": 100000000,
+              "ubi_per_epoch": 1000000000,
+              "ubi_epoch_ms": 2592000000,
+              "ubi_max_backfill_epochs": 3,
+              "trustline_max_limit": 5000000000,
+              "credit_path_max_hops": 4
+            }
+          }
+        },
+        {
+          "seq": 1,
+          "at": 1700000001000,
+          "prevHash": "cf340f514e395817d835adfe56b805beb5bced9409c1f98ad6220e11678b15f6",
+          "body": {
+            "kind": "accountOpened",
+            "account": [
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161
+            ],
+            "ownerKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "seq": 2,
+          "at": 1700000002000,
+          "prevHash": "5d7553d37332c43804ac588b61d62a98cdee61c67bc5fffeb6d49c48d1338087",
+          "body": {
+            "kind": "accountOpened",
+            "account": [
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178
+            ],
+            "ownerKey": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        },
+        {
+          "seq": 3,
+          "at": 1700000003000,
+          "prevHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "body": {
+            "kind": "ubiIssued",
+            "account": [
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161
+            ],
+            "fromEpoch": 0,
+            "toEpoch": 0,
+            "amount": 1000000000
+          }
+        }
+      ],
+      "expectedError": "replay_diverged"
+    },
+    {
+      "name": "inflated_ubi_amount",
+      "entries": [
+        {
+          "seq": 0,
+          "at": 1700000000000,
+          "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "body": {
+            "kind": "genesis",
+            "protocolVersion": 1,
+            "params": {
+              "demurrage_ppm_per_period": 191,
+              "demurrage_period_ms": 86400000,
+              "demurrage_exempt_threshold": 100000000,
+              "ubi_per_epoch": 1000000000,
+              "ubi_epoch_ms": 2592000000,
+              "ubi_max_backfill_epochs": 3,
+              "trustline_max_limit": 5000000000,
+              "credit_path_max_hops": 4
+            }
+          }
+        },
+        {
+          "seq": 1,
+          "at": 1700000001000,
+          "prevHash": "cf340f514e395817d835adfe56b805beb5bced9409c1f98ad6220e11678b15f6",
+          "body": {
+            "kind": "accountOpened",
+            "account": [
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161
+            ],
+            "ownerKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "seq": 2,
+          "at": 1700000002000,
+          "prevHash": "5d7553d37332c43804ac588b61d62a98cdee61c67bc5fffeb6d49c48d1338087",
+          "body": {
+            "kind": "accountOpened",
+            "account": [
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178,
+              178
+            ],
+            "ownerKey": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        },
+        {
+          "seq": 3,
+          "at": 1700000003000,
+          "prevHash": "ffd30391c01141f2fd788f07f783b9f8b8b8e84ffb38c8b779f58e112dee63bc",
+          "body": {
+            "kind": "ubiIssued",
+            "account": [
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161,
+              161
+            ],
+            "fromEpoch": 0,
+            "toEpoch": 0,
+            "amount": 1000000001
+          }
+        }
+      ],
+      "expectedError": "replay_diverged"
+    }
+  ],
+  "consistencyCases": [
+    {
+      "name": "forked_prefix",
+      "oldSize": 4,
+      "newSize": 10,
+      "oldRootHex": "74f4d5fa2d1817601397c62c03da143fc905e95039e27b016dbaad9af7bcbde3",
+      "newRootHex": "2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d",
+      "proofHex": [
+        "642b59111897d5d0d0d854bd7e88692a99b36d6cfd7a6bad5015f5eb1295cdbd",
+        "a9ed88819d8f4b7cdb8710ab661c0016ee3d43982e785042ce3f07aa9c13978f"
+      ],
+      "expectedError": "consistency_verify_failed"
+    }
+  ],
+  "cosignCases": [
+    {
+      "name": "tampered_signature",
+      "cosign": {
+        "head": {
+          "size": 10,
+          "lastEntryHash": "bfc03bb473edbf7a2f2a9232791aba4412a90e3e2bd5135d1a7615131871d5da",
+          "merkleRoot": "2a8b45e34d9ad84de8ed492c52c0c1d038a574091b90587cd4c1f4edf829c92d",
+          "at": 1700086420000
+        },
+        "witness": "c853ad0f0cd2b619aea92ceec4fd56a24d6499d584ce79257e45cfd8139b60a7",
+        "signature": "de7e4304ea86e413846d2070c9c61907f04d69a4bc91575a452f8ac694d0f3a89c48f31b9314a6400b2e8194598cc04173f57bb0e15ca548c9e6768b86fea00d"
+      },
+      "expectedError": "invalid_signature"
+    }
+  ]
+}
