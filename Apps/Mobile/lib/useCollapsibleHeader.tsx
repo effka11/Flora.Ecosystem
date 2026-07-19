@@ -27,6 +27,10 @@ import {
   setFrcImageQueuePaused,
 } from "@/lib/frcImage";
 import {
+  clearScrollActivityOwner,
+  setScrollActivity,
+} from "@/lib/scrollActivity";
+import {
   SCROLL_PHASE_COAST,
   SCROLL_PHASE_DRAG,
   SCROLL_PHASE_IDLE,
@@ -246,6 +250,7 @@ function createFlashListScrollComponent(
       () => () => {
         if (momentumFallbackTimer.current) clearTimeout(momentumFallbackTimer.current);
         clearFrcImageQueuePauseOwner(mediaPauseOwner);
+        clearScrollActivityOwner(mediaPauseOwner);
       },
       [mediaPauseOwner],
     );
@@ -258,6 +263,8 @@ function createFlashListScrollComponent(
         }
         setFrcImageQueuePaused(mediaPauseOwner, "momentum", false);
         setFrcImageQueuePaused(mediaPauseOwner, "drag", true);
+        setScrollActivity(mediaPauseOwner, "momentum", false);
+        setScrollActivity(mediaPauseOwner, "drag", true);
         onScrollBeginDragProp?.(event);
       },
       [mediaPauseOwner, onScrollBeginDragProp],
@@ -266,14 +273,17 @@ function createFlashListScrollComponent(
     const onScrollEndDrag = useCallback(
       (event: NativeSyntheticEvent<NativeScrollEvent>) => {
         setFrcImageQueuePaused(mediaPauseOwner, "drag", false);
+        setScrollActivity(mediaPauseOwner, "drag", false);
         const velocityY = Math.abs(event.nativeEvent.velocity?.y ?? 0);
         if (velocityY > 0.01) {
           pane.lastCoastVelocityY.value = event.nativeEvent.velocity?.y ?? 0;
           pane.lastCoastEventTs.value = performance.now();
           setFrcImageQueuePaused(mediaPauseOwner, "momentum", true);
+          setScrollActivity(mediaPauseOwner, "momentum", true);
           momentumFallbackTimer.current = setTimeout(() => {
             momentumFallbackTimer.current = null;
             setFrcImageQueuePaused(mediaPauseOwner, "momentum", false);
+            setScrollActivity(mediaPauseOwner, "momentum", false);
           }, COAST_GAP_MS * 2);
         }
         onScrollEndDragProp?.(event);
@@ -293,6 +303,7 @@ function createFlashListScrollComponent(
           pane.lastCoastEventTs.value = performance.now();
         }
         setFrcImageQueuePaused(mediaPauseOwner, "momentum", true);
+        setScrollActivity(mediaPauseOwner, "momentum", true);
         onMomentumScrollBeginProp?.(event);
       },
       [mediaPauseOwner, onMomentumScrollBeginProp],
@@ -305,6 +316,7 @@ function createFlashListScrollComponent(
           momentumFallbackTimer.current = null;
         }
         setFrcImageQueuePaused(mediaPauseOwner, "momentum", false);
+        setScrollActivity(mediaPauseOwner, "momentum", false);
         onMomentumScrollEndProp?.(event);
       },
       [mediaPauseOwner, onMomentumScrollEndProp],

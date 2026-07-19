@@ -7,7 +7,6 @@ import { router } from "expo-router";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -17,15 +16,31 @@ import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type ScrollView,
 } from "react-native";
-import Reanimated from "react-native-reanimated";
+import Reanimated, {
+  Extrapolation,
+  interpolate,
+  interpolateColor,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PostCard } from "@/components/PostCard";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
-import { FrcImageDecodingScope } from "@/lib/FrcImageDecodingScope";
+import { FrcMediaModeScope } from "@/lib/FrcImageDecodingScope";
 import { feedRowEqual } from "@/lib/feedRowEqual";
+import { PREFETCH_END_THRESHOLD_VIEWPORTS } from "@/lib/feedPrefetchPolicy";
+import {
+  backgroundLookaheadForNetwork,
+  computeRowMediaModes,
+  type FrcRowMediaMode,
+  type NetworkClass,
+} from "@/lib/frcMediaMode";
+import { useNetworkClass } from "@/lib/useNetworkClass";
 import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
+import { useStagedFeedPagination } from "@/lib/useStagedFeedPagination";
 import {
   feedPostToEngagementSource,
   usePostEngagement,
@@ -43,6 +58,15 @@ type FeedKind = "recommendations" | "subscriptions";
 type TabLayout = { x: number; width: number };
 
 const postKeyExtractor = (post: FeedPostDto) => post.postUuid;
+
+/**
+ * Coarse recycle pools: text-only and media rows have very different subtrees
+ * and heights, so keeping them in separate pools avoids re-layout thrash when a
+ * text row would otherwise recycle into a media row. Finer pools are only worth
+ * adding if a trace shows a win.
+ */
+const postItemType = (post: FeedPostDto): "text" | "media" =>
+  post.imageUuids.length > 0 || post.videoUuid ? "media" : "text";
 
 function feedKindIndex(kind: FeedKind) {
   return kind === "recommendations" ? 0 : 1;
@@ -137,6 +161,7 @@ type FeedPaneProps = {
   pageWidth: number;
   contentPaddingTop: number;
   contentPaddingBottom: number;
+  network: NetworkClass;
   renderScrollComponent: ReturnType<typeof useCollapsibleHeader>["renderScrollComponents"][number];
 };
 
@@ -148,12 +173,13 @@ function FeedPane({
   pageWidth,
   contentPaddingTop,
   contentPaddingBottom,
+  network,
   renderScrollComponent,
 }: FeedPaneProps) {
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
-  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
+  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking({ enabled: isActivePane });
 
   const posts = useMemo(
@@ -161,6 +187,30 @@ function FeedPane({
     [feedQuery.data?.pages],
   );
   const visiblePosts = useMemo(() => filterPosts(posts, search), [posts, search]);
+
+  // Map the viewability band → per-post decode modes so only visible/near/
+  // lookahead rows enqueue FRC-I work (mount/drawDistance no longer decode all).
+  const mediaModes = useMemo(() => {
+    const lookahead = backgroundLookaheadForNetwork(network);
+    const indexModes = computeRowMediaModes({
+      count: visiblePosts.length,
+      minVisible: visibleRange.min,
+      maxVisible: visibleRange.max,
+      lookahead,
+    });
+    const byUuid = new Map<string, FrcRowMediaMode>();
+    for (const [index, mode] of indexModes) {
+      const post = visiblePosts[index];
+      if (post) byUuid.set(post.postUuid, mode);
+    }
+    return byUuid;
+  }, [network, visiblePosts, visibleRange.min, visibleRange.max]);
+  const { onApproachingEnd } = useStagedFeedPagination({
+    kind,
+    feedQuery,
+    isActivePane,
+    isSearching: search.trim().length > 0,
+  });
   const postsRef = useRef(posts);
   postsRef.current = posts;
   const isRefreshing = feedQuery.isRefetching || feedQuery.isFetchingNextPage;
@@ -257,12 +307,13 @@ function FeedPane({
 
   return (
     <View style={[styles.feedPage, { width: pageWidth }]}>
-      <FrcImageDecodingScope enabled={isActivePane}>
+      <FrcMediaModeScope enabled={isActivePane} modes={mediaModes}>
         <FlashList
           ref={flashListRef}
           data={visiblePosts}
           extraData={rowExtraData}
           keyExtractor={postKeyExtractor}
+          getItemType={postItemType}
           drawDistance={480}
           contentContainerStyle={[
             styles.listContent,
@@ -282,9 +333,8 @@ function FeedPane({
               progressViewOffset={contentPaddingTop}
             />
           }
-          onEndReached={() => {
-            if (feedQuery.hasNextPage && !feedQuery.isFetchingNextPage) feedQuery.fetchNextPage();
-          }}
+          onEndReachedThreshold={PREFETCH_END_THRESHOLD_VIEWPORTS}
+          onEndReached={onApproachingEnd}
           renderItem={renderFeedRow}
           ListFooterComponent={
             isRefreshing && posts.length > 0 ? (
@@ -303,7 +353,7 @@ function FeedPane({
             )
           }
         />
-      </FrcImageDecodingScope>
+      </FrcMediaModeScope>
     </View>
   );
 }
@@ -311,9 +361,10 @@ function FeedPane({
 export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const { width: pageWidth } = useWindowDimensions();
+  const network = useNetworkClass();
   const queryClient = useQueryClient();
-  const pagerRef = useRef<ScrollView>(null);
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const pagerRef = useAnimatedRef<Reanimated.ScrollView>();
+  const scrollX = useSharedValue(0);
   const [kind, setKind] = useState<FeedKind>("recommendations");
   const [tabLayouts, setTabLayouts] = useState<Record<FeedKind, TabLayout | null>>({
     recommendations: null,
@@ -341,53 +392,61 @@ export default function FeedScreen() {
     });
   }, []);
 
-  const tabIndicatorStyle = useMemo(() => {
+  const hasTabLayouts = Boolean(
+    tabLayouts.recommendations && tabLayouts.subscriptions && pageWidth > 0,
+  );
+
+  // Tab indicator + label colors run entirely on the UI thread off the pager's
+  // scroll offset, so a horizontal switch never round-trips through JS.
+  const tabIndicatorStyle = useAnimatedStyle(() => {
     const recommendations = tabLayouts.recommendations;
     const subscriptions = tabLayouts.subscriptions;
-    if (!recommendations || !subscriptions || pageWidth <= 0) return null;
-
+    if (!recommendations || !subscriptions || pageWidth <= 0) return {};
     return {
-      width: scrollX.interpolate({
-        inputRange: [0, pageWidth],
-        outputRange: [recommendations.width, subscriptions.width],
-        extrapolate: "clamp",
-      }),
+      width: interpolate(
+        scrollX.value,
+        [0, pageWidth],
+        [recommendations.width, subscriptions.width],
+        Extrapolation.CLAMP,
+      ),
       transform: [
         {
-          translateX: scrollX.interpolate({
-            inputRange: [0, pageWidth],
-            outputRange: [recommendations.x, subscriptions.x],
-            extrapolate: "clamp",
-          }),
+          translateX: interpolate(
+            scrollX.value,
+            [0, pageWidth],
+            [recommendations.x, subscriptions.x],
+            Extrapolation.CLAMP,
+          ),
         },
       ],
     };
-  }, [pageWidth, scrollX, tabLayouts.recommendations, tabLayouts.subscriptions]);
+  });
 
-  const tabLabelColors = useMemo(() => {
-    if (pageWidth <= 0) return null;
-
+  const recommendationsLabelStyle = useAnimatedStyle(() => {
+    if (pageWidth <= 0) return {};
     return {
-      recommendations: scrollX.interpolate({
-        inputRange: [0, pageWidth],
-        outputRange: [floraColors.greenLight, floraColors.gray],
-        extrapolate: "clamp",
-      }),
-      subscriptions: scrollX.interpolate({
-        inputRange: [0, pageWidth],
-        outputRange: [floraColors.gray, floraColors.greenLight],
-        extrapolate: "clamp",
-      }),
+      color: interpolateColor(
+        scrollX.value,
+        [0, pageWidth],
+        [floraColors.greenLight, floraColors.gray],
+      ),
     };
-  }, [pageWidth, scrollX]);
+  });
 
-  const onPagerScroll = useMemo(
-    () =>
-      Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-        useNativeDriver: false,
-      }),
-    [scrollX],
-  );
+  const subscriptionsLabelStyle = useAnimatedStyle(() => {
+    if (pageWidth <= 0) return {};
+    return {
+      color: interpolateColor(
+        scrollX.value,
+        [0, pageWidth],
+        [floraColors.gray, floraColors.greenLight],
+      ),
+    };
+  });
+
+  const onPagerScroll = useAnimatedScrollHandler((event) => {
+    scrollX.value = event.contentOffset.x;
+  });
 
   const recommendationsFeedQuery = useFeedQuery("recommendations");
   const subscriptionsFeedQuery = useFeedQuery("subscriptions");
@@ -411,7 +470,7 @@ export default function FeedScreen() {
         animated: true,
       });
     },
-    [kind, pageWidth, setActivePane],
+    [kind, pageWidth, pagerRef, setActivePane],
   );
 
   const onPagerScrollEnd = useCallback(
@@ -434,7 +493,7 @@ export default function FeedScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.feedBody}>
-        <Animated.ScrollView
+        <Reanimated.ScrollView
           ref={pagerRef}
           horizontal
           pagingEnabled
@@ -454,6 +513,7 @@ export default function FeedScreen() {
             pageWidth={pageWidth}
             contentPaddingTop={headerHeightPx}
             contentPaddingBottom={listPaddingBottom}
+            network={network}
             renderScrollComponent={renderScrollComponents[0]}
           />
           <FeedPane
@@ -464,9 +524,10 @@ export default function FeedScreen() {
             pageWidth={pageWidth}
             contentPaddingTop={headerHeightPx}
             contentPaddingBottom={listPaddingBottom}
+            network={network}
             renderScrollComponent={renderScrollComponents[1]}
           />
-        </Animated.ScrollView>
+        </Reanimated.ScrollView>
       </View>
 
       <Reanimated.View style={[styles.topChrome, headerAnimatedStyle]}>
@@ -487,8 +548,8 @@ export default function FeedScreen() {
 
           <View style={styles.navigationRow}>
             <View style={styles.tabs}>
-              {tabIndicatorStyle ? (
-                <Animated.View
+              {hasTabLayouts ? (
+                <Reanimated.View
                   pointerEvents="none"
                   style={[styles.tabIndicator, tabIndicatorStyle]}
                 />
@@ -498,28 +559,25 @@ export default function FeedScreen() {
                 onLayout={(event) => recordTabLayout("recommendations", event)}
                 onPress={() => switchKind("recommendations")}
               >
-                <Animated.Text
+                <Reanimated.Text
                   style={[
                     styles.tabLabel,
-                    tabLabelColors ? { color: tabLabelColors.recommendations } : styles.tabLabelActive,
+                    hasTabLayouts ? recommendationsLabelStyle : styles.tabLabelActive,
                   ]}
                 >
                   Рекомендации
-                </Animated.Text>
+                </Reanimated.Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
                 onLayout={(event) => recordTabLayout("subscriptions", event)}
                 onPress={() => switchKind("subscriptions")}
               >
-                <Animated.Text
-                  style={[
-                    styles.tabLabel,
-                    tabLabelColors ? { color: tabLabelColors.subscriptions } : null,
-                  ]}
+                <Reanimated.Text
+                  style={[styles.tabLabel, hasTabLayouts ? subscriptionsLabelStyle : null]}
                 >
                   Подписки
-                </Animated.Text>
+                </Reanimated.Text>
               </Pressable>
             </View>
           </View>

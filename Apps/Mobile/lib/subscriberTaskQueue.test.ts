@@ -103,4 +103,141 @@ describe("SubscriberTaskQueue", () => {
     await expect(result).resolves.toBe("image");
     expect(queue.stats().paused).toBe(false);
   });
+
+  it("runs strictly by priority, FIFO within a priority", async () => {
+    const calls: string[] = [];
+    const queue = new SubscriberTaskQueue(async (key: string) => {
+      calls.push(key);
+      return key;
+    });
+    const owner = Symbol("scroll");
+    queue.setPaused(owner, "drag", true);
+
+    queue.request("bg", "background");
+    queue.request("v1", "visible");
+    queue.request("n1", "near");
+    queue.request("v2", "visible");
+
+    queue.setPaused(owner, "drag", false);
+    await flushPromises();
+
+    expect(calls).toEqual(["v1", "v2", "n1", "bg"]);
+  });
+
+  it("promotes an existing queued task to a higher priority", async () => {
+    const calls: string[] = [];
+    const queue = new SubscriberTaskQueue(async (key: string) => {
+      calls.push(key);
+      return key;
+    });
+    const owner = Symbol("scroll");
+    queue.setPaused(owner, "drag", true);
+
+    queue.request("early", "background");
+    queue.request("late", "background");
+    // Re-subscribe "late" as visible: it should now win despite its later seq.
+    queue.subscribe("late", () => {}, () => {}, "visible");
+
+    queue.setPaused(owner, "drag", false);
+    await flushPromises();
+
+    expect(calls[0]).toBe("late");
+  });
+
+  it("preempts a running cancellable task with a higher-priority one and requeues it", async () => {
+    const starts: string[] = [];
+    const queue = new SubscriberTaskQueue<string>((key, ctx) => {
+      starts.push(key);
+      if (key === "bg") {
+        return new Promise<string>((_resolve, reject) => {
+          ctx.signal.addEventListener("abort", () => reject(new Error("preempted")));
+        });
+      }
+      return Promise.resolve(key);
+    });
+
+    queue.request("bg", "background").catch(() => {});
+    await flushPromises();
+    expect(starts).toEqual(["bg"]);
+
+    const visible = queue.request("v", "visible");
+    await expect(visible).resolves.toBe("v");
+    await flushPromises();
+    // bg was aborted, visible ran, bg was requeued and restarted.
+    expect(starts).toEqual(["bg", "v", "bg"]);
+  });
+
+  it("never preempts a task that marked itself uncancellable", async () => {
+    const starts: string[] = [];
+    const decode = deferred<string>();
+    const queue = new SubscriberTaskQueue<string>((key, ctx) => {
+      starts.push(key);
+      if (key === "decode") {
+        ctx.markUncancellable();
+        return decode.promise;
+      }
+      return Promise.resolve(key);
+    });
+
+    queue.request("decode", "background").catch(() => {});
+    await flushPromises();
+    expect(starts).toEqual(["decode"]);
+
+    const visible = queue.request("v", "visible");
+    await flushPromises();
+    // Visible waits behind the in-flight uncancellable decode.
+    expect(starts).toEqual(["decode"]);
+
+    decode.resolve("done");
+    await expect(visible).resolves.toBe("v");
+    expect(starts).toEqual(["decode", "v"]);
+  });
+
+  it("aborts and requeues cancellable running work on pause", async () => {
+    const starts: string[] = [];
+    const queue = new SubscriberTaskQueue<string>((key, ctx) => {
+      starts.push(key);
+      return new Promise<string>((resolve, reject) => {
+        ctx.signal.addEventListener("abort", () => reject(new Error("paused")));
+        if (starts.length > 1) resolve(key); // second run settles
+      });
+    });
+    const owner = Symbol("scroll");
+
+    queue.request("dl", "background").catch(() => {});
+    await flushPromises();
+    expect(starts).toEqual(["dl"]);
+
+    queue.setPaused(owner, "momentum", true);
+    await flushPromises();
+    // Aborted and requeued, but nothing new starts while paused.
+    expect(starts).toEqual(["dl"]);
+
+    queue.setPaused(owner, "momentum", false);
+    await flushPromises();
+    expect(starts).toEqual(["dl", "dl"]);
+  });
+
+  it("lets an in-flight uncancellable task finish across a pause", async () => {
+    const decode = deferred<string>();
+    let aborted = false;
+    const queue = new SubscriberTaskQueue<string>((_key, ctx) => {
+      ctx.markUncancellable();
+      ctx.signal.addEventListener("abort", () => {
+        aborted = true;
+      });
+      return decode.promise;
+    });
+    const owner = Symbol("scroll");
+
+    const result = queue.request("decode", "visible");
+    await flushPromises();
+
+    queue.setPaused(owner, "drag", true);
+    await flushPromises();
+    expect(aborted).toBe(false);
+
+    decode.resolve("png");
+    await expect(result).resolves.toBe("png");
+  });
 });

@@ -1,6 +1,7 @@
 import { postImageUrl } from "@flora/client-core/display";
+import { useRecyclingState } from "@shopify/flash-list";
 import { Image } from "expo-image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Modal,
   PixelRatio,
@@ -13,10 +14,14 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFrcImageUri } from "@/lib/frcImage";
+import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
+import { LruCache } from "@/lib/lruCache";
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
 
 const MAX_ITEMS = 10;
+/** Bounded, recycling-safe aspect-ratio memory keyed by the first image id. */
+const IMAGE_RATIO_CACHE_CAPACITY = 500;
+const imageRatioCache = new LruCache<string, number>(IMAGE_RATIO_CACHE_CAPACITY);
 const GRID = floraSpacing.grid;
 const GAP = floraSpacing.gridFine;
 
@@ -107,6 +112,7 @@ type ClippedImageProps = {
   width: number;
   height: number;
   borderRadius: number;
+  imageIndex: number;
   contentFit?: "cover" | "contain";
   onPress?: () => void;
   onLoadRatio?: (ratio: number) => void;
@@ -119,27 +125,30 @@ function ClippedImage({
   width,
   height,
   borderRadius,
+  imageIndex,
   contentFit = "cover",
   onPress,
   onLoadRatio,
   style,
   transitionMs = 0,
 }: ClippedImageProps) {
-  const resolvedUri = useFrcImageUri(uri);
+  const resolvedUri = useFrcImageUri(uri, { imageIndex });
   const image = (
     <View style={[{ width, height }, style]}>
-      <Image
-        source={{ uri: resolvedUri }}
-        style={{ width, height, borderRadius }}
-        contentFit={contentFit}
-        cachePolicy="memory-disk"
-        recyclingKey={resolvedUri}
-        transition={transitionMs}
-        onLoad={(event) => {
-          const { width: w, height: h } = event.source;
-          if (w > 0 && h > 0) onLoadRatio?.(w / h);
-        }}
-      />
+      {resolvedUri ? (
+        <Image
+          source={{ uri: resolvedUri }}
+          style={{ width, height, borderRadius }}
+          contentFit={contentFit}
+          cachePolicy={isLocalDecodedUri(resolvedUri) ? "memory" : "memory-disk"}
+          recyclingKey={resolvedUri}
+          transition={transitionMs}
+          onLoad={(event) => {
+            const { width: w, height: h } = event.source;
+            if (w > 0 && h > 0) onLoadRatio?.(w / h);
+          }}
+        />
+      ) : null}
     </View>
   );
 
@@ -157,16 +166,18 @@ type CollageCellProps = {
   width: number;
   height: number;
   borderRadius: number;
+  imageIndex: number;
   onPress: () => void;
 };
 
-function CollageCell({ uri, width, height, borderRadius, onPress }: CollageCellProps) {
+function CollageCell({ uri, width, height, borderRadius, imageIndex, onPress }: CollageCellProps) {
   return (
     <ClippedImage
       uri={uri}
       width={width}
       height={height}
       borderRadius={borderRadius}
+      imageIndex={imageIndex}
       contentFit="cover"
       onPress={onPress}
       style={styles.cell}
@@ -176,7 +187,7 @@ function CollageCell({ uri, width, height, borderRadius, onPress }: CollageCellP
 
 /** Lightbox must decode FRI → PNG the same way as thumbnails (raw FRI is not Image-readable). */
 function ModalFrcImage({ uri }: { uri: string }) {
-  const resolvedUri = useFrcImageUri(uri);
+  const resolvedUri = useFrcImageUri(uri, { force: true });
   if (!resolvedUri) return null;
   return (
     <View style={[styles.modalClip, { borderRadius: MODAL_IMAGE_RADIUS }]}>
@@ -184,7 +195,7 @@ function ModalFrcImage({ uri }: { uri: string }) {
         source={{ uri: resolvedUri }}
         style={[styles.modalImage, { borderRadius: MODAL_IMAGE_RADIUS }]}
         contentFit="contain"
-        cachePolicy="memory-disk"
+        cachePolicy={isLocalDecodedUri(resolvedUri) ? "memory" : "memory-disk"}
         recyclingKey={resolvedUri}
         transition={0}
       />
@@ -197,9 +208,26 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
   const { width: screenWidth } = useWindowDimensions();
   const [containerWidth, setContainerWidth] = useState(0);
   const [activeUri, setActiveUri] = useState<string | null>(null);
-  const [singleShape, setSingleShape] = useState<ImageShape>("square");
-  const [singleRatio, setSingleRatio] = useState<number | null>(null);
   const singleRatioLockedRef = useRef(false);
+
+  const items = useMemo(() => {
+    if (previewItems && previewItems.length > 0) {
+      return previewItems.slice(0, MAX_ITEMS);
+    }
+    return imageUuids.slice(0, MAX_ITEMS).map((id) => ({ id, uri: postImageUrl(id) }));
+  }, [imageUuids, previewItems]);
+
+  const firstItemId = items[0]?.id ?? "";
+  // Seed sizing from the cache so a recycled row shows the correct dimensions
+  // on first paint instead of collapsing to "square" and re-measuring.
+  const [singleRatio, setSingleRatio] = useRecyclingState<number | null>(
+    () => (firstItemId ? imageRatioCache.get(firstItemId) ?? null : null),
+    [firstItemId, items.length],
+    () => {
+      singleRatioLockedRef.current = false;
+    },
+  );
+  const singleShape: ImageShape = singleRatio != null ? shapeFromRatio(singleRatio) : "square";
 
   const rowHeight = layout?.rowHeight ?? DEFAULT_ROW_HEIGHT;
   const marginBottom = layout?.marginBottom ?? floraFeedPost.textMarginBottom;
@@ -215,27 +243,14 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
     (nextRatio: number) => {
       if (messageMode && singleRatioLockedRef.current) return;
       if (messageMode) singleRatioLockedRef.current = true;
+      if (firstItemId) imageRatioCache.set(firstItemId, nextRatio);
       setSingleRatio((prev) => {
         if (prev !== null && Math.abs(prev - nextRatio) < 0.001) return prev;
         return nextRatio;
       });
-      setSingleShape(shapeFromRatio(nextRatio));
     },
-    [messageMode],
+    [firstItemId, messageMode, setSingleRatio],
   );
-
-  const items = useMemo(() => {
-    if (previewItems && previewItems.length > 0) {
-      return previewItems.slice(0, MAX_ITEMS);
-    }
-    return imageUuids.slice(0, MAX_ITEMS).map((id) => ({ id, uri: postImageUrl(id) }));
-  }, [imageUuids, previewItems]);
-
-  useEffect(() => {
-    singleRatioLockedRef.current = false;
-    setSingleRatio(null);
-    setSingleShape("square");
-  }, [items[0]?.id, items.length]);
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const w = event.nativeEvent.layout.width;
@@ -271,6 +286,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
             width={imageWidth}
             height={imageHeight}
             borderRadius={singleImageBorderRadius}
+            imageIndex={0}
             contentFit="cover"
             onPress={() => setActiveUri(items[0]!.uri)}
             onLoadRatio={lockSingleRatio}
@@ -288,6 +304,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
           width={imageWidth}
           height={imageHeight}
           borderRadius={singleImageBorderRadius}
+          imageIndex={0}
           contentFit="cover"
           onPress={() => setActiveUri(items[0]!.uri)}
           onLoadRatio={lockSingleRatio}
@@ -301,13 +318,14 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
         const cellHeight = rowHeight * 2;
         return (
           <View style={[styles.row, { gap: GAP, width }]}>
-            {items.map((item) => (
+            {items.map((item, index) => (
               <CollageCell
                 key={item.id}
                 uri={item.uri}
                 width={cellWidth}
                 height={cellHeight}
                 borderRadius={cellBorderRadius}
+                imageIndex={index}
                 onPress={() => setActiveUri(item.uri)}
               />
             ))}
@@ -327,6 +345,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
               width={leftWidth}
               height={totalHeight}
               borderRadius={cellBorderRadius}
+              imageIndex={0}
               onPress={() => setActiveUri(items[0]!.uri)}
             />
             <View style={{ gap: GAP }}>
@@ -335,6 +354,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
                 width={rightWidth}
                 height={rightCellHeight}
                 borderRadius={cellBorderRadius}
+                imageIndex={1}
                 onPress={() => setActiveUri(items[1]!.uri)}
               />
               <CollageCell
@@ -342,6 +362,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
                 width={rightWidth}
                 height={rightCellHeight}
                 borderRadius={cellBorderRadius}
+                imageIndex={2}
                 onPress={() => setActiveUri(items[2]!.uri)}
               />
             </View>
@@ -354,13 +375,14 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
         const cellHeight = rowHeight;
         return (
           <View style={[styles.wrap, { gap: GAP, width }]}>
-            {items.map((item) => (
+            {items.map((item, index) => (
               <CollageCell
                 key={item.id}
                 uri={item.uri}
                 width={cellWidth}
                 height={cellHeight}
                 borderRadius={cellBorderRadius}
+                imageIndex={index}
                 onPress={() => setActiveUri(item.uri)}
               />
             ))}
@@ -377,25 +399,27 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
       return (
         <View style={{ gap: GAP, width }}>
           <View style={[styles.row, { gap: GAP, width }]}>
-            {items.slice(0, 2).map((item) => (
+            {items.slice(0, 2).map((item, index) => (
               <CollageCell
                 key={item.id}
                 uri={item.uri}
                 width={topCellWidth}
                 height={topRowHeight}
                 borderRadius={cellBorderRadius}
+                imageIndex={index}
                 onPress={() => setActiveUri(item.uri)}
               />
             ))}
           </View>
           <View style={[styles.wrap, { gap: GAP, width }]}>
-            {rest.map((item) => (
+            {rest.map((item, index) => (
               <CollageCell
                 key={item.id}
                 uri={item.uri}
                 width={restCellWidth}
                 height={restCellHeight}
                 borderRadius={cellBorderRadius}
+                imageIndex={index + 2}
                 onPress={() => setActiveUri(item.uri)}
               />
             ))}
@@ -430,16 +454,18 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
         {renderCollage()}
       </View>
 
-      <Modal visible={activeUri != null} transparent animationType="fade" onRequestClose={closeModal}>
-        <Pressable
-          style={[styles.modalBackdrop, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}
-          onPress={closeModal}
-        >
-          <Pressable style={styles.modalContent} onPress={closeModal}>
-            {activeUri ? <ModalFrcImage uri={activeUri} /> : null}
+      {activeUri != null ? (
+        <Modal visible transparent animationType="fade" onRequestClose={closeModal}>
+          <Pressable
+            style={[styles.modalBackdrop, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}
+            onPress={closeModal}
+          >
+            <Pressable style={styles.modalContent} onPress={closeModal}>
+              <ModalFrcImage uri={activeUri} />
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      ) : null}
     </>
   );
 }

@@ -15,6 +15,7 @@ import {
 } from "@/components/feed/FeedPostIcons";
 import { PostMoreMenuTrigger } from "@/components/feed/PostMoreMenu";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { FrcRowMediaScope } from "@/lib/FrcImageDecodingScope";
 import { feedPostAuthor } from "@/lib/feedPostAuthor";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -76,8 +77,9 @@ export const PostCard = memo(function PostCard({
   const hasMedia = post.imageUuids.length > 0 || Boolean(post.videoUuid);
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardRow}>
+    <FrcRowMediaScope postUuid={post.postUuid}>
+      <View style={styles.card}>
+        <View style={styles.cardRow}>
         <View style={styles.avatarCell}>
           <FloraAvatar
             size={floraFeedPost.avatarSize}
@@ -123,7 +125,6 @@ export const PostCard = memo(function PostCard({
           <View style={styles.postBody}>
             {post.text.trim() ? (
               <ExpandablePostText
-                key={post.postUuid}
                 postUuid={post.postUuid}
                 text={post.text}
                 hasMedia={hasMedia}
@@ -191,7 +192,8 @@ export const PostCard = memo(function PostCard({
           </View>
         </View>
       </View>
-    </View>
+      </View>
+    </FrcRowMediaScope>
   );
 });
 

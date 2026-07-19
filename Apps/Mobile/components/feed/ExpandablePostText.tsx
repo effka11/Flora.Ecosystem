@@ -1,18 +1,22 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRecyclingState } from "@shopify/flash-list";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import {
-  AccessibilityInfo,
   Animated,
   Easing,
+  PixelRatio,
   Pressable,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type NativeSyntheticEvent,
   type StyleProp,
   type TextLayoutEventData,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { LruCache } from "@/lib/lruCache";
+import { useReducedMotion } from "@/lib/useReducedMotion";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 type ExpandablePostTextProps = {
@@ -41,8 +45,15 @@ const EXPAND_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 const TOGGLE_MARGIN_TOP = 5 * floraSpacing.gridFine;
 const ESTIMATED_LINE_HEIGHT_PX = 25.5;
 
-const postTextLayoutCache = new Map<string, readonly TextLineLayout[]>();
-const postVisibleLinesCache = new Map<string, number>();
+/** Bump when the text style or truncation math changes so cached layouts invalidate. */
+const LAYOUT_SCHEMA = "v2";
+const TEXT_LAYOUT_CACHE_CAPACITY = 300;
+const VISIBLE_LINES_CACHE_CAPACITY = 400;
+
+const postTextLayoutCache = new LruCache<string, readonly TextLineLayout[]>(
+  TEXT_LAYOUT_CACHE_CAPACITY,
+);
+const postVisibleLinesCache = new LruCache<string, number>(VISIBLE_LINES_CACHE_CAPACITY);
 
 function trimTrailingEmptyLines(value: string): string {
   return value.replace(/(?:\r?\n[ \t]*)+$/, "");
@@ -205,15 +216,15 @@ export const ExpandablePostText = memo(function ExpandablePostText({
   const layoutText = useMemo(() => trimTrailingEmptyLines(text), [text]);
   const collapsedLines = hasMedia ? COLLAPSED_WITH_MEDIA_LINES : COLLAPSED_TEXT_LINES;
   const expandChunkLines = hasMedia ? EXPAND_CHUNK_WITH_MEDIA_LINES : EXPAND_CHUNK_TEXT_LINES;
-  const textKey = `${collapsedLines}:${layoutText}`;
-  const initialVisibleLines = readCachedVisibleLines(postUuid, collapsedLines);
+  const { width: windowWidth } = useWindowDimensions();
+  // Line layout depends on available width and the OS font scale; folding both
+  // (bucketed) into the cache key prevents stale truncation after rotation /
+  // accessibility changes without re-measuring on every render.
+  const widthBucket = Math.max(1, Math.round(windowWidth / 4));
+  const fontScaleBucket = Math.round(PixelRatio.getFontScale() * 100);
+  const textKey = `${LAYOUT_SCHEMA}:${widthBucket}:${fontScaleBucket}:${collapsedLines}:${layoutText}`;
 
-  const [visibleLines, setVisibleLines] = useState(initialVisibleLines);
-  const [fullMeasurement, setFullMeasurement] = useState<TextMeasurement | null>(() =>
-    readCachedMeasurement(textKey),
-  );
-  const [displayMeasurement, setDisplayMeasurement] = useState<TextMeasurement | null>(null);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   const animFromHeightRef = useRef<number | null>(null);
   const pendingAnimRef = useRef(false);
@@ -225,50 +236,45 @@ export const ExpandablePostText = memo(function ExpandablePostText({
         readCachedMeasurement(textKey)?.lines ?? null,
         true,
         false,
-        initialVisibleLines,
+        readCachedVisibleLines(postUuid, collapsedLines),
       ) ?? estimateCollapsedHeight(collapsedLines),
     ),
   ).current;
 
-  useEffect(() => {
-    const restoredVisibleLines = readCachedVisibleLines(postUuid, collapsedLines);
-    setVisibleLines(restoredVisibleLines);
-    setFullMeasurement(readCachedMeasurement(textKey));
-    pendingAnimRef.current = false;
-    animFromHeightRef.current = null;
-    activeAnimRef.current?.stop();
-    activeAnimRef.current = null;
+  // Row-local state reset synchronously on recycle (post/text/layout change),
+  // avoiding the one-frame stale flash of a post-render effect. The onReset
+  // callback re-seeds the clip height imperatively from the cache.
+  const [visibleLines, setVisibleLines] = useRecyclingState<number>(
+    () => readCachedVisibleLines(postUuid, collapsedLines),
+    [postUuid, textKey],
+    () => {
+      pendingAnimRef.current = false;
+      animFromHeightRef.current = null;
+      activeAnimRef.current?.stop();
+      activeAnimRef.current = null;
 
-    const cachedLines = readCachedMeasurement(textKey)?.lines ?? null;
-    const total = cachedLines?.length ?? collapsedLines;
-    const fullyExpanded = restoredVisibleLines >= total;
-    const canExpand = total > collapsedLines;
-    const cachedTarget = resolveTargetHeight(
-      cachedLines,
-      canExpand,
-      fullyExpanded,
-      restoredVisibleLines,
-    );
-    const nextHeight = cachedTarget ?? estimateCollapsedHeight(collapsedLines);
-    animatedHeight.setValue(nextHeight);
-    currentClipHeightRef.current = nextHeight;
-  }, [animatedHeight, collapsedLines, postUuid, textKey]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      if (mounted) {
-        setReduceMotion(enabled);
-      }
-    });
-
-    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
+      const restored = readCachedVisibleLines(postUuid, collapsedLines);
+      const cachedLines = readCachedMeasurement(textKey)?.lines ?? null;
+      const total = cachedLines?.length ?? collapsedLines;
+      const cachedTarget = resolveTargetHeight(
+        cachedLines,
+        total > collapsedLines,
+        restored >= total,
+        restored,
+      );
+      const nextHeight = cachedTarget ?? estimateCollapsedHeight(collapsedLines);
+      animatedHeight.setValue(nextHeight);
+      currentClipHeightRef.current = nextHeight;
+    },
+  );
+  const [fullMeasurement, setFullMeasurement] = useRecyclingState<TextMeasurement | null>(
+    () => readCachedMeasurement(textKey),
+    [postUuid, textKey],
+  );
+  const [displayMeasurement, setDisplayMeasurement] = useRecyclingState<TextMeasurement | null>(
+    null,
+    [postUuid, textKey],
+  );
 
   useEffect(() => {
     return () => {
@@ -287,7 +293,7 @@ export const ExpandablePostText = memo(function ExpandablePostText({
       postTextLayoutCache.set(textKey, lines);
       setFullMeasurement({ textKey, lines });
     },
-    [textKey],
+    [setFullMeasurement, textKey],
   );
 
   const fullLines = fullMeasurement?.textKey === textKey ? fullMeasurement.lines : null;
@@ -310,7 +316,7 @@ export const ExpandablePostText = memo(function ExpandablePostText({
       persistVisibleLines(postUuid, clamped);
       return clamped;
     });
-  }, [fullLines, postUuid]);
+  }, [fullLines, postUuid, setVisibleLines]);
 
   const truncatedDisplay = useMemo(() => {
     if (fullyExpanded || !fullLines || !canExpand) {
@@ -342,7 +348,7 @@ export const ExpandablePostText = memo(function ExpandablePostText({
           : { textKey: nextKey, lines },
       );
     },
-    [displayBody, showEllipsis, textKey, visibleLines],
+    [displayBody, setDisplayMeasurement, showEllipsis, textKey, visibleLines],
   );
 
   const displayLines =
@@ -366,7 +372,7 @@ export const ExpandablePostText = memo(function ExpandablePostText({
 
   useEffect(() => {
     setDisplayMeasurement(null);
-  }, [displayBody, showEllipsis, textKey, visibleLines]);
+  }, [displayBody, setDisplayMeasurement, showEllipsis, textKey, visibleLines]);
 
   const queueClipAnimationFromCurrent = useCallback(() => {
     if (currentClipHeightRef.current > 0) {
@@ -389,7 +395,15 @@ export const ExpandablePostText = memo(function ExpandablePostText({
       persistVisibleLines(postUuid, next);
       return next;
     });
-  }, [collapsedLines, expandChunkLines, fullyExpanded, postUuid, queueClipAnimationFromCurrent, totalLines]);
+  }, [
+    collapsedLines,
+    expandChunkLines,
+    fullyExpanded,
+    postUuid,
+    queueClipAnimationFromCurrent,
+    setVisibleLines,
+    totalLines,
+  ]);
 
   useEffect(() => {
     if (targetHeight === undefined) {
