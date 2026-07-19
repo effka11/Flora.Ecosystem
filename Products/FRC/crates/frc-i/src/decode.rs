@@ -9,12 +9,13 @@
 use crate::arith::{ModelBank, RangeDecoder};
 use crate::bits::BitReader;
 use crate::color::{
-    downsample_420, upsample_420, upsample_420_centered, ycbcr_to_rgb, ycocg_r_to_rgb,
+    downsample_420, upsample_420, upsample_420_centered, ycbcr_to_rgb, ycocg_lossy_to_rgb,
+    ycocg_r_to_rgb,
 };
-use crate::dct::quant_matrices;
+use crate::dct::{quant_matrices, quant_matrices_v8};
 use crate::error::DecodeError;
-use crate::format::VERSION_ADAPTIVE;
 use crate::format::{HEADER_LEN, Header, Metadata, TileRect, parse_metadata_block, tile_grid};
+use crate::format::{VERSION_ADAPTIVE, VERSION_RECT};
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
 use crate::rans::RansDecoder;
@@ -101,7 +102,14 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
         return Err(DecodeError::Corrupt("лишние байты после последнего тайла"));
     }
 
-    let (q_luma, q_chroma) = quant_matrices(header.version, header.quality.max(1));
+    // Матрицы плоскостей: v8 — пошаговые Y/Co/Cg, до v8 — luma/chroma/chroma.
+    let q_planes: [[u16; 64]; 3] = if header.version >= VERSION_RECT {
+        let (qy, qco, qcg) = quant_matrices_v8(header.quality.max(1));
+        [qy, qco, qcg]
+    } else {
+        let (q_luma, q_chroma) = quant_matrices(header.version, header.quality.max(1));
+        [q_luma, q_chroma, q_chroma]
+    };
     let chroma_range = if header.identity {
         RANGE_LUMA
     } else {
@@ -111,15 +119,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
 
     // Независимое декодирование тайлов.
     let decoded: Vec<Result<TileBufs, DecodeError>> = par_map(&jobs, |&(t, payload)| {
-        decode_tile(
-            payload,
-            t,
-            &header,
-            palette_len,
-            chroma_range,
-            &q_luma,
-            &q_chroma,
-        )
+        decode_tile(payload, t, &header, palette_len, chroma_range, &q_planes)
     });
 
     // Сборка плоскостей в порядке тайлов.
@@ -166,6 +166,8 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
             } else if header.lossless {
                 let (r, g, b) = ycocg_r_to_rgb(c0, c1, c2);
                 (r.clamp(0, 255), g.clamp(0, 255), b.clamp(0, 255))
+            } else if header.version >= VERSION_RECT {
+                ycocg_lossy_to_rgb(c0, c1, c2)
             } else {
                 ycbcr_to_rgb(c0, c1, c2)
             };
@@ -204,8 +206,7 @@ fn decode_tile(
     header: &Header,
     palette_len: Option<usize>,
     chroma_range: crate::plane::SampleRange,
-    q_luma: &[u16; 64],
-    q_chroma: &[u16; 64],
+    q_planes: &[[u16; 64]; 3],
 ) -> Result<TileBufs, DecodeError> {
     let version = header.version;
     let mut pos = 0usize;
@@ -226,17 +227,24 @@ fn decode_tile(
             )?);
         }
     } else {
-        // v7: банк адаптивных моделей общий для всех плоскостей тайла.
-        let mut bank = (version >= VERSION_ADAPTIVE).then(|| {
-            let (groups, kinds) = lossy::ctx_meta_v7();
-            ModelBank::new(groups, kinds)
-        });
+        // v7/v8: банк адаптивных моделей общий для всех плоскостей тайла.
+        let mut bank = match version {
+            v if v >= VERSION_RECT => {
+                let (groups, kinds) = lossy::ctx_meta_v8();
+                Some(ModelBank::new(groups, kinds))
+            }
+            v if v >= VERSION_ADAPTIVE => {
+                let (groups, kinds) = lossy::ctx_meta_v7();
+                Some(ModelBank::new(groups, kinds))
+            }
+            _ => None,
+        };
         let luma_plane = read_dct_plane(
             payload,
             &mut pos,
             (t.w, t.h),
             None,
-            q_luma,
+            &q_planes[0],
             version,
             bank.as_mut(),
         )?;
@@ -249,11 +257,11 @@ fn decode_tile(
             }
         });
         if header.deblock {
-            crate::deblock::deblock_plane(&mut luma, t.w, t.h, q_luma[0]);
+            crate::deblock::deblock_plane(&mut luma, t.w, t.h, q_planes[0][0]);
         }
         crate::cdef::filter_plane(&mut luma, t.w, t.h, luma_plane.cdef_strength);
         color.push(luma);
-        for _ in 0..2 {
+        for qmat in [&q_planes[1], &q_planes[2]] {
             let (cw, ch) = if header.chroma420 {
                 (t.w.div_ceil(2), t.h.div_ceil(2))
             } else {
@@ -264,14 +272,14 @@ fn decode_tile(
                 &mut pos,
                 (cw, ch),
                 cfl_luma.as_deref(),
-                q_chroma,
+                qmat,
                 version,
                 bank.as_mut(),
             )?;
             let mut cbuf = chroma_plane.buf;
             if header.deblock {
                 // Хрома фильтруется в собственном разрешении, до апсэмплинга.
-                crate::deblock::deblock_plane(&mut cbuf, cw, ch, q_chroma[0]);
+                crate::deblock::deblock_plane(&mut cbuf, cw, ch, qmat[0]);
             }
             crate::cdef::filter_plane(&mut cbuf, cw, ch, chroma_plane.cdef_strength);
             let full = if header.chroma420 {
@@ -343,16 +351,26 @@ fn read_dct_plane(
 ) -> Result<DctPlane, DecodeError> {
     let (w, h) = size;
     if version >= VERSION_ADAPTIVE {
+        // Контейнер секции v7 и v8 одинаков; различаются дерево и контексты.
         let (section, used) = read_dct_section_v7(&payload[*pos..])?;
         *pos += used;
-        let bank = bank.expect("v7: банк обязателен");
+        let bank = bank.expect("v7/v8: банк обязателен");
         let mut dec = RangeDecoder::new(section.tokens)?;
         let mut raw = BitReader::new(section.raw);
-        let cdef_strength = bank.decode(&mut dec, lossy::CTX7_CDEF)?;
+        let cdef_ctx = if version >= VERSION_RECT {
+            usize::from(lossy::CTX8_CDEF)
+        } else {
+            usize::from(lossy::CTX7_CDEF)
+        };
+        let cdef_strength = bank.decode(&mut dec, cdef_ctx)?;
         if cdef_strength >= crate::cdef::N_STRENGTHS {
             return Err(DecodeError::Corrupt("CDEF: неизвестная сила"));
         }
-        let buf = lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?;
+        let buf = if version >= VERSION_RECT {
+            lossy::decode_tile_plane_v8(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?
+        } else {
+            lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?
+        };
         if dec.consumed() != section.tokens.len() {
             return Err(DecodeError::Corrupt("лишние байты в адаптивном потоке"));
         }

@@ -55,12 +55,13 @@ fn sample_streams() -> Vec<Vec<u8>> {
         data: &flat,
     };
     vec![
-        encode(&g, EncodeMode::Lossy { quality: 60 }).unwrap(),
-        encode(&g, EncodeMode::Lossy { quality: 30 }).unwrap(), // v4 (деблокинг)
+        encode(&g, EncodeMode::Lossy { quality: 60 }).unwrap(), // v8 (текущий)
+        encode(&g, EncodeMode::Lossy { quality: 30 }).unwrap(), // v8 + деблокинг
         encode(&g, EncodeMode::Lossless).unwrap(),
         encode(&f, EncodeMode::Lossless).unwrap(), // палитра (2 цвета)
-        encode_with_icc(&g, EncodeMode::Lossy { quality: 60 }, &[1, 2, 3, 4]).unwrap(), // v6
+        encode_with_icc(&g, EncodeMode::Lossy { quality: 60 }, &[1, 2, 3, 4]).unwrap(), // v8+meta
         encode_with_version(&g, EncodeMode::Lossy { quality: 60 }, 7).unwrap(), // v7 (адаптивный)
+        encode_with_version(&g, EncodeMode::Lossy { quality: 60 }, 5).unwrap(), // v5 (rANS)
     ]
 }
 
@@ -80,7 +81,7 @@ fn random_garbage_never_panics() {
 #[test]
 fn garbage_with_valid_magic_never_panics() {
     let mut seed = 0xBADF00Du64;
-    for version in [1u8, 2, 3, 4, 5, 6, 7] {
+    for version in [1u8, 2, 3, 4, 5, 6, 7, 8] {
         for _ in 0..500 {
             let len = 20 + (xorshift(&mut seed) % 400) as usize;
             let mut bytes: Vec<u8> = (0..len)

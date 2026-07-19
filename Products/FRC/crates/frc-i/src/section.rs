@@ -87,6 +87,27 @@ pub fn write_dct_section_v7(
     out.extend_from_slice(&raw_bytes);
 }
 
+/// Дописывает DCT-секцию v8: контейнер тот же, что у v7 (`read_dct_section_v7`
+/// читает обе версии); отличаются только раскладка контекстов (79 штук,
+/// u16-индексация из-за Split4-моделей) и модели банка (`ctx_meta_v8`).
+pub fn write_dct_section_v8(
+    out: &mut Vec<u8>,
+    bank: &mut ModelBank,
+    syms: &[(u16, u8)],
+    raw: BitWriter,
+) {
+    let mut enc = RangeEncoder::new();
+    for &(ctx, sym) in syms {
+        bank.encode(&mut enc, ctx, sym);
+    }
+    let tokens = enc.finish();
+    let raw_bytes = raw.finish();
+    out.extend_from_slice(&(tokens.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(raw_bytes.len() as u32).to_le_bytes());
+    out.extend_from_slice(&tokens);
+    out.extend_from_slice(&raw_bytes);
+}
+
 /// Распарсенная DCT-секция v7: срезы потоков (таблиц нет).
 pub struct SectionV7<'a> {
     pub tokens: &'a [u8],

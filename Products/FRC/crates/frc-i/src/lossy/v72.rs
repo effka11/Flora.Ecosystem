@@ -47,14 +47,25 @@ struct SubBlock4 {
     quantized: [i32; 16],
 }
 
-fn child_nodes16(rx: usize, ry: usize, w: usize, h: usize) -> impl Iterator<Item = (usize, usize)> {
+pub(super) fn child_nodes16(
+    rx: usize,
+    ry: usize,
+    w: usize,
+    h: usize,
+) -> impl Iterator<Item = (usize, usize)> {
     (0..4).filter_map(move |i| {
         let (sbx, sby) = (rx * 2 + i % 2, ry * 2 + i / 2);
         (sbx * 16 < w && sby * 16 < h).then_some((sbx, sby))
     })
 }
 
-fn gather_block32_i32(buf: &[i16], w: usize, h: usize, rx: usize, ry: usize) -> [i32; 1024] {
+pub(super) fn gather_block32_i32(
+    buf: &[i16],
+    w: usize,
+    h: usize,
+    rx: usize,
+    ry: usize,
+) -> [i32; 1024] {
     let mut block = [0i32; 1024];
     for y in 0..32 {
         let sy = (ry * 32 + y).min(h - 1);
@@ -91,7 +102,7 @@ fn quadrant_activity32(block: &[i32; 1024], q: usize) -> f32 {
 }
 
 /// Безопасные быстрые решения. Пограничные случаи проходят полный RD.
-fn split_hint32(orig: &[i32; 1024]) -> Option<u8> {
+pub(super) fn split_hint32(orig: &[i32; 1024]) -> Option<u8> {
     let mut min_a = f32::INFINITY;
     let mut max_a = 0f32;
     for q in 0..4 {
@@ -108,14 +119,25 @@ fn split_hint32(orig: &[i32; 1024]) -> Option<u8> {
     None
 }
 
-fn child_blocks4(bx: usize, by: usize, w: usize, h: usize) -> impl Iterator<Item = (usize, usize)> {
+pub(super) fn child_blocks4(
+    bx: usize,
+    by: usize,
+    w: usize,
+    h: usize,
+) -> impl Iterator<Item = (usize, usize)> {
     (0..4).filter_map(move |i| {
         let (qx, qy) = (bx * 2 + i % 2, by * 2 + i / 2);
         (qx * 4 < w && qy * 4 < h).then_some((qx, qy))
     })
 }
 
-fn gather_block4_i32(buf: &[i16], w: usize, h: usize, qx: usize, qy: usize) -> [i32; 16] {
+pub(super) fn gather_block4_i32(
+    buf: &[i16],
+    w: usize,
+    h: usize,
+    qx: usize,
+    qy: usize,
+) -> [i32; 16] {
     let mut block = [0i32; 16];
     for y in 0..4 {
         let sy = (qy * 4 + y).min(h - 1);
@@ -145,7 +167,7 @@ fn quadrant_activity8(block: &[i32; 64], q: usize) -> f32 {
     mad as f32 / 16.0
 }
 
-fn split_hint8(orig: &[i32; 64]) -> Option<u8> {
+pub(super) fn split_hint8(orig: &[i32; 64]) -> Option<u8> {
     let mut min_a = f32::INFINITY;
     let mut max_a = 0f32;
     for q in 0..4 {
@@ -162,13 +184,13 @@ fn split_hint8(orig: &[i32; 64]) -> Option<u8> {
     None
 }
 
-struct Border4 {
+pub(super) struct Border4 {
     above: [i32; 8],
     left: [i32; 4],
     corner: i32,
 }
 
-fn border4(recon: &[i16], w: usize, h: usize, qx: usize, qy: usize) -> Border4 {
+pub(super) fn border4(recon: &[i16], w: usize, h: usize, qx: usize, qy: usize) -> Border4 {
     let (px, py) = (qx * 4, qy * 4);
     let mut above = [128i32; 8];
     let mut left = [128i32; 4];
@@ -195,7 +217,7 @@ fn border4(recon: &[i16], w: usize, h: usize, qx: usize, qy: usize) -> Border4 {
     }
 }
 
-fn predict_block4(b: &Border4, mode: u8) -> [i32; 16] {
+pub(super) fn predict_block4(b: &Border4, mode: u8) -> [i32; 16] {
     let mut out = [0i32; 16];
     match mode {
         MODE_V => {
@@ -269,7 +291,7 @@ fn quantize_freq4(freq: &[f32; 16], qmat4: &[u16; 16], ac_bias: f32) -> ([i32; 1
     (quantized, distortion)
 }
 
-fn choose_mode4(
+pub(super) fn choose_mode4(
     orig: &[i32; 16],
     b: &Border4,
     cfl_luma: Option<&[i32; 16]>,
@@ -354,7 +376,7 @@ fn choose_mode4(
     best.expect("моды всегда есть")
 }
 
-fn store_block4(
+pub(super) fn store_block4(
     recon: &mut [i16],
     w: usize,
     h: usize,
@@ -409,6 +431,7 @@ fn eval_block4(
         cost,
         forward_tx4,
         tx_scan4,
+        squared_quant_error,
     );
     let mut freq = [0f32; 16];
     let mut spatial = [0f32; 16];
@@ -427,7 +450,7 @@ fn eval_block4(
     )
 }
 
-fn save_region8(recon: &[i16], w: usize, h: usize, bx: usize, by: usize) -> [i16; 64] {
+pub(super) fn save_region8(recon: &[i16], w: usize, h: usize, bx: usize, by: usize) -> [i16; 64] {
     let mut out = [0i16; 64];
     for y in 0..8 {
         let sy = by * 8 + y;
@@ -445,7 +468,14 @@ fn save_region8(recon: &[i16], w: usize, h: usize, bx: usize, by: usize) -> [i16
     out
 }
 
-fn restore_region8(recon: &mut [i16], w: usize, h: usize, bx: usize, by: usize, saved: &[i16; 64]) {
+pub(super) fn restore_region8(
+    recon: &mut [i16],
+    w: usize,
+    h: usize,
+    bx: usize,
+    by: usize,
+    saved: &[i16; 64],
+) {
     for y in 0..8 {
         let sy = by * 8 + y;
         if sy >= h {
@@ -535,6 +565,7 @@ fn eval_node8(
         whole_base,
         forward_tx8,
         tx_scan8,
+        squared_quant_error,
     );
     let whole_cost = whole_base + lambda * (MODE_COST_BITS + TX_COST_BITS) as f32;
 
@@ -582,13 +613,13 @@ fn eval_node8(
     }
 }
 
-struct Border32 {
+pub(super) struct Border32 {
     above: [i32; 64],
     left: [i32; 32],
     corner: i32,
 }
 
-fn border32(recon: &[i16], w: usize, h: usize, rx: usize, ry: usize) -> Border32 {
+pub(super) fn border32(recon: &[i16], w: usize, h: usize, rx: usize, ry: usize) -> Border32 {
     let (px, py) = (rx * 32, ry * 32);
     let mut above = [128i32; 64];
     let mut left = [128i32; 32];
@@ -615,7 +646,7 @@ fn border32(recon: &[i16], w: usize, h: usize, rx: usize, ry: usize) -> Border32
     }
 }
 
-fn predict_block32(b: &Border32, mode: u8) -> [i32; 1024] {
+pub(super) fn predict_block32(b: &Border32, mode: u8) -> [i32; 1024] {
     let mut out = [0i32; 1024];
     match mode {
         MODE_V => {
@@ -689,9 +720,9 @@ fn quantize_freq32(freq: &[f32; 1024], qmat32: &[u16; 1024], ac_bias: f32) -> ([
     (quantized, distortion)
 }
 
-type Mode32Result = (u8, Box<[i32; 1024]>, Box<[i32; 1024]>, f32);
+pub(super) type Mode32Result = (u8, Box<[i32; 1024]>, Box<[i32; 1024]>, f32);
 
-fn choose_mode32(
+pub(super) fn choose_mode32(
     orig: &[i32; 1024],
     b: &Border32,
     cfl_luma: Option<&[i32; 1024]>,
@@ -778,7 +809,7 @@ fn choose_mode32(
     best.expect("моды всегда есть")
 }
 
-fn store_block32(
+pub(super) fn store_block32(
     recon: &mut [i16],
     w: usize,
     h: usize,
@@ -826,7 +857,13 @@ fn reconstruct32(
     store_block32(recon, w, h, rx, ry, &spatial, pred);
 }
 
-fn save_region32(recon: &[i16], w: usize, h: usize, rx: usize, ry: usize) -> [i16; 1024] {
+pub(super) fn save_region32(
+    recon: &[i16],
+    w: usize,
+    h: usize,
+    rx: usize,
+    ry: usize,
+) -> [i16; 1024] {
     let mut out = [0i16; 1024];
     for y in 0..32 {
         let sy = ry * 32 + y;
@@ -844,7 +881,7 @@ fn save_region32(recon: &[i16], w: usize, h: usize, rx: usize, ry: usize) -> [i1
     out
 }
 
-fn restore_region32(
+pub(super) fn restore_region32(
     recon: &mut [i16],
     w: usize,
     h: usize,
@@ -928,6 +965,7 @@ fn eval_node16(
             cost,
             forward_tx16,
             tx_scan16,
+            squared_quant_error,
         );
         (mode, tx, pred, quantized, cost)
     };
@@ -1202,6 +1240,7 @@ pub(super) fn encode_tile_plane(
                 cost32,
                 forward_tx32,
                 tx_scan32,
+                squared_quant_error,
             );
 
             if hint == Some(SPLIT_WHOLE) {

@@ -162,11 +162,14 @@ impl<'a> RangeDecoder<'a> {
 const ADAPT_LIMIT: u32 = 1 << 13;
 
 /// Вид prior'а / алфавита модели. Разные контексты имеют разный носитель:
-/// SPLIT/EOB — 2 символа, MODE — 15, RUN — 22, прочие hybrid-uint — 32.
+/// SPLIT/EOB — 2 символа, SPLIT4/TX/CDEF — 4, MODE — 15, RUN — 22,
+/// прочие hybrid-uint — 32.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelKind {
     /// SPLIT_WHOLE / SPLIT_QUAD.
     Split,
+    /// Четверичный split узла v8: WHOLE / QUAD / HORZ / VERT.
+    Split4,
     /// Конец AC-блока: 0 = продолжить, 1 = EOB.
     Eob,
     /// Intra/CfL-мода v7 0..14.
@@ -188,7 +191,7 @@ impl ModelKind {
         match self {
             Self::Split | Self::Eob => 2,
             Self::Mode => 15,
-            Self::Tx | Self::Cdef => 4,
+            Self::Split4 | Self::Tx | Self::Cdef => 4,
             // Максимальный run в 32×32 равен 1022: hybrid-uint token = 21.
             Self::Run => 22,
             Self::Dc | Self::Level => 32,
@@ -232,6 +235,10 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
             // Небольшой уклон к WHOLE (0) — гладкие зоны чаще.
             freq[0] = 3;
             freq[1] = 2;
+        }
+        ModelKind::Split4 => {
+            // WHOLE/QUAD доминируют; HORZ/VERT должны окупить сигнал.
+            freq[..n].copy_from_slice(&[4, 4, 1, 1]);
         }
         ModelKind::Eob => {
             // До прогрева не предполагаем плотность AC: continue / EOB поровну.
@@ -415,16 +422,22 @@ impl ModelBank {
         (slot, g)
     }
 
-    pub fn encode(&mut self, enc: &mut RangeEncoder, ctx: u8, sym: u8) {
-        let ctx = usize::from(ctx);
+    /// Контекст принимает u8 (раскладка v7) и u16 (раскладка v8: 295
+    /// tx-обусловленных контекстов не помещаются в u8).
+    pub fn encode(&mut self, enc: &mut RangeEncoder, ctx: impl Into<usize>, sym: u8) {
+        let ctx = ctx.into();
         let (slot, g) = self.warm(ctx);
         self.models[slot].encode(enc, sym);
         self.parents[g].adapt(usize::from(sym));
         self.prev[ctx] = sym;
     }
 
-    pub fn decode(&mut self, dec: &mut RangeDecoder<'_>, ctx: u8) -> Result<u8, DecodeError> {
-        let ctx = usize::from(ctx);
+    pub fn decode(
+        &mut self,
+        dec: &mut RangeDecoder<'_>,
+        ctx: impl Into<usize>,
+    ) -> Result<u8, DecodeError> {
+        let ctx = ctx.into();
         let (slot, g) = self.warm(ctx);
         let sym = self.models[slot].decode(dec)?;
         self.parents[g].adapt(usize::from(sym));

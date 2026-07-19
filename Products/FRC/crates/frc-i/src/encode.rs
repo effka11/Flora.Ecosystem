@@ -5,18 +5,20 @@
 //! поэтому эвристики можно улучшать без изменения формата.
 
 use crate::bits::BitWriter;
-use crate::color::{downsample_420, rgb_to_ycbcr, rgb_to_ycocg_r};
-use crate::dct::quant_matrices;
+use crate::color::{downsample_420, rgb_to_ycbcr, rgb_to_ycocg_lossy, rgb_to_ycocg_r};
+use crate::dct::{quant_matrices, quant_matrices_v8};
 use crate::error::EncodeError;
 use crate::format::{
     CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
     VERSION_ADAPTIVE, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA, VERSION_MIN,
-    build_metadata_block, tile_grid,
+    VERSION_RECT, build_metadata_block, tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
 use crate::predict::med;
-use crate::section::{write_dct_section, write_dct_section_v7, write_predictive_section};
+use crate::section::{
+    write_dct_section, write_dct_section_v7, write_dct_section_v8, write_predictive_section,
+};
 use crate::tokens::{tokenize, zigzag};
 use crate::{EncodeMode, ImageView, PixelFormat, lossless, lossy};
 use std::collections::HashMap;
@@ -33,38 +35,27 @@ pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeEr
     encode_impl(img, mode, base_version(mode), None)
 }
 
-/// Кодирует с вложением ICC-профиля. Lossy использует текущий v7, lossless —
+/// Кодирует с вложением ICC-профиля. Lossy использует текущий v8, lossless —
 /// минимальный v6, в котором появился блок метаданных.
 pub fn encode_with_icc(
     img: &ImageView<'_>,
     mode: EncodeMode,
     icc: &[u8],
 ) -> Result<Vec<u8>, EncodeError> {
-    if icc.is_empty() {
-        return Err(EncodeError::InvalidIcc("пустой ICC-профиль"));
-    }
-    if icc.len() + 5 > MAX_METADATA {
-        return Err(EncodeError::InvalidIcc("ICC-профиль больше 8 МиБ"));
-    }
-    encode_impl(
-        img,
-        mode,
-        base_version(mode).max(VERSION_METADATA),
-        Some(icc),
-    )
+    encode_with_icc_version(img, mode, icc, base_version(mode).max(VERSION_METADATA))
 }
 
-/// Версию диктует набор инструментов: lossy пишет замороженный v7, lossless —
+/// Версию диктует набор инструментов: lossy пишет текущий v8, lossless —
 /// v3 (слой блоков не используется, файл не должен требовать более нового
 /// декодера).
 fn base_version(mode: EncodeMode) -> u8 {
     match mode {
-        EncodeMode::Lossy { .. } => VERSION_ADAPTIVE,
+        EncodeMode::Lossy { .. } => VERSION_RECT,
         EncodeMode::Lossless => VERSION_CURRENT,
     }
 }
 
-/// Кодирует с явной версией битстрима (1..=7). Публичный кодер выбирает
+/// Кодирует с явной версией битстрима (1..=8). Публичный кодер выбирает
 /// версию сам (см. `encode`); явные версии — только для генерации
 /// golden-векторов и тестов.
 #[doc(hidden)]
@@ -74,6 +65,24 @@ pub fn encode_with_version(
     version: u8,
 ) -> Result<Vec<u8>, EncodeError> {
     encode_impl(img, mode, version, None)
+}
+
+/// Кодирует с ICC-профилем и явной версией битстрима: заморозка v7 golden
+/// (`encode_with_icc` пишет текущий v8).
+#[doc(hidden)]
+pub fn encode_with_icc_version(
+    img: &ImageView<'_>,
+    mode: EncodeMode,
+    icc: &[u8],
+    version: u8,
+) -> Result<Vec<u8>, EncodeError> {
+    if icc.is_empty() {
+        return Err(EncodeError::InvalidIcc("пустой ICC-профиль"));
+    }
+    if icc.len() + 5 > MAX_METADATA {
+        return Err(EncodeError::InvalidIcc("ICC-профиль больше 8 МиБ"));
+    }
+    encode_impl(img, mode, version.max(VERSION_METADATA), Some(icc))
 }
 
 fn encode_impl(
@@ -428,37 +437,57 @@ fn encode_lossy(
         quality,
     };
 
+    // v8: целочисленный lossy-YCoCg (§7.9b), иначе BT.601 YCbCr (§6.2).
     let mut p0 = Plane::new(w, h);
     let mut p1 = Plane::new(w, h);
     let mut p2 = Plane::new(w, h);
     let mut pa = alpha.then(|| Plane::new(w, h));
     for i in 0..w * h {
         let px = &img.data[i * bpp..i * bpp + bpp];
-        let (y, cb, cr) = rgb_to_ycbcr(i32::from(px[0]), i32::from(px[1]), i32::from(px[2]));
-        p0.data[i] = y as i16;
-        p1.data[i] = cb as i16;
-        p2.data[i] = cr as i16;
+        let rgb = (i32::from(px[0]), i32::from(px[1]), i32::from(px[2]));
+        let (c0, c1, c2) = if version >= VERSION_RECT {
+            rgb_to_ycocg_lossy(rgb.0, rgb.1, rgb.2)
+        } else {
+            rgb_to_ycbcr(rgb.0, rgb.1, rgb.2)
+        };
+        p0.data[i] = c0 as i16;
+        p1.data[i] = c1 as i16;
+        p2.data[i] = c2 as i16;
         if let Some(pa) = pa.as_mut() {
             pa.data[i] = i16::from(px[3]);
         }
     }
 
-    let (q_luma, q_chroma) = quant_matrices(version, quality);
+    // Матрицы плоскостей: v8 — пошаговые Y/Co/Cg, до v8 — luma/chroma/chroma.
+    let q_planes: [[u16; 64]; 3] = if version >= VERSION_RECT {
+        let (qy, qco, qcg) = quant_matrices_v8(quality);
+        [qy, qco, qcg]
+    } else {
+        let (q_luma, q_chroma) = quant_matrices(version, quality);
+        [q_luma, q_chroma, q_chroma]
+    };
 
     let tiles = tile_grid(img.width, img.height);
     let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
-        // v7: банк адаптивных моделей общий для всех плоскостей тайла.
-        let mut bank = (version >= VERSION_ADAPTIVE).then(|| {
-            let (groups, kinds) = lossy::ctx_meta_v7();
-            crate::arith::ModelBank::new(groups, kinds)
-        });
+        // v7/v8: банк адаптивных моделей общий для всех плоскостей тайла.
+        let mut bank = match version {
+            v if v >= VERSION_RECT => {
+                let (groups, kinds) = lossy::ctx_meta_v8();
+                Some(crate::arith::ModelBank::new(groups, kinds))
+            }
+            v if v >= VERSION_ADAPTIVE => {
+                let (groups, kinds) = lossy::ctx_meta_v7();
+                Some(crate::arith::ModelBank::new(groups, kinds))
+            }
+            _ => None,
+        };
         let buf = p0.extract(t.x0, t.y0, t.w, t.h);
         let luma_recon = dct_payload(
             &buf,
             None,
             (t.w, t.h),
-            &q_luma,
+            &q_planes[0],
             DctConfig {
                 version,
                 deblock: header.deblock,
@@ -472,7 +501,7 @@ fn encode_lossy(
         let cfl_luma = luma_recon
             .filter(|_| header.chroma420)
             .map(|recon| downsample_420(&recon, t.w, t.h));
-        for plane in [&p1, &p2] {
+        for (plane, qmat) in [(&p1, &q_planes[1]), (&p2, &q_planes[2])] {
             let full = plane.extract(t.x0, t.y0, t.w, t.h);
             let (cbuf, cw, ch) = if header.chroma420 {
                 (
@@ -487,7 +516,7 @@ fn encode_lossy(
                 &cbuf,
                 cfl_luma.as_deref(),
                 (cw, ch),
-                &q_chroma,
+                qmat,
                 DctConfig {
                     version,
                     deblock: header.deblock,
@@ -523,6 +552,19 @@ fn dct_payload(
     out: &mut Vec<u8>,
 ) -> Option<Vec<i16>> {
     let (w, h) = size;
+    if config.version >= VERSION_RECT {
+        let mut syms: Vec<(u16, u8)> = Vec::new();
+        let mut raw = BitWriter::new();
+        let recon = lossy::encode_tile_plane_v8(buf, cfl_luma, w, h, qmat, &mut syms, &mut raw);
+        let strength = if config.cdef {
+            crate::cdef::choose_strength(buf, &recon, w, h, qmat[0], config.deblock)
+        } else {
+            0
+        };
+        syms.insert(0, (lossy::CTX8_CDEF, strength));
+        write_dct_section_v8(out, bank.expect("v8: банк обязателен"), &syms, raw);
+        return Some(recon);
+    }
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     if config.version >= VERSION_ADAPTIVE {
