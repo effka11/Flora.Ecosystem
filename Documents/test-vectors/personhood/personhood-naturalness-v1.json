@@ -1,0 +1,1379 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "personhood_naturalness_v1",
+  "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, эпохальный тег устройства, реестр enum-флагов церемоний. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
+  "burstiness": [
+    {
+      "name": "regular_hourly",
+      "intervalsS": [
+        3600,
+        3600,
+        3600,
+        3600,
+        3600,
+        3600,
+        3600,
+        3600,
+        3600,
+        3600,
+        3600,
+        3600
+      ],
+      "permille": -1000
+    },
+    {
+      "name": "all_zero_degenerate",
+      "intervalsS": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "permille": -1000
+    },
+    {
+      "name": "too_few_samples",
+      "intervalsS": [
+        60,
+        60,
+        60
+      ],
+      "permille": null
+    },
+    {
+      "name": "human_bursty",
+      "intervalsS": [
+        5,
+        3,
+        8,
+        4,
+        90000,
+        6,
+        2,
+        7,
+        86000,
+        5,
+        4,
+        120000
+      ],
+      "permille": 275
+    },
+    {
+      "name": "alternating_script",
+      "intervalsS": [
+        60,
+        7200,
+        60,
+        7200,
+        60,
+        7200,
+        60,
+        7200
+      ],
+      "permille": -8
+    },
+    {
+      "name": "clamped_interval",
+      "intervalsS": [
+        18446744073709551615,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ],
+      "permille": 451
+    },
+    {
+      "name": "poisson_like",
+      "intervalsS": [
+        120,
+        47,
+        310,
+        95,
+        12,
+        700,
+        260,
+        33,
+        540,
+        180,
+        76,
+        410
+      ],
+      "permille": -47
+    }
+  ],
+  "circadian": {
+    "profiles": {
+      "human": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        3,
+        5,
+        6,
+        5,
+        4,
+        5,
+        6,
+        5,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        6,
+        4,
+        3
+      ],
+      "humanShifted": [
+        3,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        3,
+        5,
+        6,
+        5,
+        4,
+        5,
+        6,
+        5,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        6,
+        4
+      ],
+      "uniform": [
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10
+      ],
+      "spike": [
+        0,
+        0,
+        0,
+        240,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "sparse": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "metrics": [
+      {
+        "profile": "human",
+        "restSharePermille": 10,
+        "peakSharePermille": 95
+      },
+      {
+        "profile": "humanShifted",
+        "restSharePermille": 10,
+        "peakSharePermille": 95
+      },
+      {
+        "profile": "uniform",
+        "restSharePermille": 250,
+        "peakSharePermille": 41
+      },
+      {
+        "profile": "spike",
+        "restSharePermille": 0,
+        "peakSharePermille": 1000
+      },
+      {
+        "profile": "sparse",
+        "restSharePermille": null,
+        "peakSharePermille": null
+      }
+    ],
+    "similarity": [
+      {
+        "a": "human",
+        "b": "human",
+        "permille": 1000
+      },
+      {
+        "a": "human",
+        "b": "humanShifted",
+        "permille": 861
+      },
+      {
+        "a": "human",
+        "b": "uniform",
+        "permille": 391
+      },
+      {
+        "a": "human",
+        "b": "spike",
+        "permille": 0
+      },
+      {
+        "a": "human",
+        "b": "sparse",
+        "permille": null
+      }
+    ]
+  },
+  "cusum": {
+    "referenceMilli": 5000,
+    "thresholdMilli": 20000,
+    "counts": [
+      3,
+      4,
+      5,
+      4,
+      6,
+      30,
+      25,
+      4,
+      3,
+      50,
+      2
+    ],
+    "alarmIndices": [
+      5,
+      6,
+      9
+    ],
+    "finalStateMilli": 0
+  },
+  "piecewise": {
+    "note": "Стартовые калибровочные кривые (R2). Интерполяция — i128, усечение к нулю; вне диапазона — насыщение.",
+    "curves": {
+      "burstiness": {
+        "points": [
+          [
+            -1000,
+            0
+          ],
+          [
+            -500,
+            100
+          ],
+          [
+            -200,
+            450
+          ],
+          [
+            0,
+            700
+          ],
+          [
+            250,
+            1000
+          ],
+          [
+            700,
+            1000
+          ],
+          [
+            1000,
+            800
+          ]
+        ],
+        "cases": [
+          {
+            "x": -1200,
+            "permille": 0
+          },
+          {
+            "x": -1000,
+            "permille": 0
+          },
+          {
+            "x": -750,
+            "permille": 50
+          },
+          {
+            "x": -500,
+            "permille": 100
+          },
+          {
+            "x": -350,
+            "permille": 275
+          },
+          {
+            "x": -200,
+            "permille": 450
+          },
+          {
+            "x": -100,
+            "permille": 575
+          },
+          {
+            "x": 0,
+            "permille": 700
+          },
+          {
+            "x": 41,
+            "permille": 749
+          },
+          {
+            "x": 70,
+            "permille": 784
+          },
+          {
+            "x": 100,
+            "permille": 820
+          },
+          {
+            "x": 120,
+            "permille": 844
+          },
+          {
+            "x": 200,
+            "permille": 940
+          },
+          {
+            "x": 250,
+            "permille": 1000
+          },
+          {
+            "x": 350,
+            "permille": 1000
+          },
+          {
+            "x": 450,
+            "permille": 1000
+          },
+          {
+            "x": 500,
+            "permille": 1000
+          },
+          {
+            "x": 600,
+            "permille": 1000
+          },
+          {
+            "x": 700,
+            "permille": 1000
+          },
+          {
+            "x": 800,
+            "permille": 934
+          },
+          {
+            "x": 900,
+            "permille": 867
+          },
+          {
+            "x": 930,
+            "permille": 847
+          },
+          {
+            "x": 1000,
+            "permille": 800
+          },
+          {
+            "x": 1100,
+            "permille": 800
+          }
+        ]
+      },
+      "restShare": {
+        "points": [
+          [
+            0,
+            1000
+          ],
+          [
+            50,
+            950
+          ],
+          [
+            100,
+            750
+          ],
+          [
+            150,
+            450
+          ],
+          [
+            200,
+            200
+          ],
+          [
+            250,
+            80
+          ]
+        ],
+        "cases": [
+          {
+            "x": -1200,
+            "permille": 1000
+          },
+          {
+            "x": -1000,
+            "permille": 1000
+          },
+          {
+            "x": -750,
+            "permille": 1000
+          },
+          {
+            "x": -500,
+            "permille": 1000
+          },
+          {
+            "x": -350,
+            "permille": 1000
+          },
+          {
+            "x": -200,
+            "permille": 1000
+          },
+          {
+            "x": -100,
+            "permille": 1000
+          },
+          {
+            "x": 0,
+            "permille": 1000
+          },
+          {
+            "x": 41,
+            "permille": 959
+          },
+          {
+            "x": 70,
+            "permille": 870
+          },
+          {
+            "x": 100,
+            "permille": 750
+          },
+          {
+            "x": 120,
+            "permille": 630
+          },
+          {
+            "x": 200,
+            "permille": 200
+          },
+          {
+            "x": 250,
+            "permille": 80
+          },
+          {
+            "x": 350,
+            "permille": 80
+          },
+          {
+            "x": 450,
+            "permille": 80
+          },
+          {
+            "x": 500,
+            "permille": 80
+          },
+          {
+            "x": 600,
+            "permille": 80
+          },
+          {
+            "x": 700,
+            "permille": 80
+          },
+          {
+            "x": 800,
+            "permille": 80
+          },
+          {
+            "x": 900,
+            "permille": 80
+          },
+          {
+            "x": 930,
+            "permille": 80
+          },
+          {
+            "x": 1000,
+            "permille": 80
+          },
+          {
+            "x": 1100,
+            "permille": 80
+          }
+        ]
+      },
+      "peakShare": {
+        "points": [
+          [
+            0,
+            150
+          ],
+          [
+            41,
+            250
+          ],
+          [
+            70,
+            700
+          ],
+          [
+            120,
+            1000
+          ],
+          [
+            250,
+            900
+          ],
+          [
+            450,
+            450
+          ],
+          [
+            700,
+            120
+          ],
+          [
+            1000,
+            0
+          ]
+        ],
+        "cases": [
+          {
+            "x": -1200,
+            "permille": 150
+          },
+          {
+            "x": -1000,
+            "permille": 150
+          },
+          {
+            "x": -750,
+            "permille": 150
+          },
+          {
+            "x": -500,
+            "permille": 150
+          },
+          {
+            "x": -350,
+            "permille": 150
+          },
+          {
+            "x": -200,
+            "permille": 150
+          },
+          {
+            "x": -100,
+            "permille": 150
+          },
+          {
+            "x": 0,
+            "permille": 150
+          },
+          {
+            "x": 41,
+            "permille": 250
+          },
+          {
+            "x": 70,
+            "permille": 700
+          },
+          {
+            "x": 100,
+            "permille": 880
+          },
+          {
+            "x": 120,
+            "permille": 1000
+          },
+          {
+            "x": 200,
+            "permille": 939
+          },
+          {
+            "x": 250,
+            "permille": 900
+          },
+          {
+            "x": 350,
+            "permille": 675
+          },
+          {
+            "x": 450,
+            "permille": 450
+          },
+          {
+            "x": 500,
+            "permille": 384
+          },
+          {
+            "x": 600,
+            "permille": 252
+          },
+          {
+            "x": 700,
+            "permille": 120
+          },
+          {
+            "x": 800,
+            "permille": 80
+          },
+          {
+            "x": 900,
+            "permille": 40
+          },
+          {
+            "x": 930,
+            "permille": 28
+          },
+          {
+            "x": 1000,
+            "permille": 0
+          },
+          {
+            "x": 1100,
+            "permille": 0
+          }
+        ]
+      },
+      "selfSimilarity": {
+        "points": [
+          [
+            0,
+            150
+          ],
+          [
+            250,
+            550
+          ],
+          [
+            500,
+            950
+          ],
+          [
+            800,
+            1000
+          ],
+          [
+            930,
+            600
+          ],
+          [
+            1000,
+            250
+          ]
+        ],
+        "cases": [
+          {
+            "x": -1200,
+            "permille": 150
+          },
+          {
+            "x": -1000,
+            "permille": 150
+          },
+          {
+            "x": -750,
+            "permille": 150
+          },
+          {
+            "x": -500,
+            "permille": 150
+          },
+          {
+            "x": -350,
+            "permille": 150
+          },
+          {
+            "x": -200,
+            "permille": 150
+          },
+          {
+            "x": -100,
+            "permille": 150
+          },
+          {
+            "x": 0,
+            "permille": 150
+          },
+          {
+            "x": 41,
+            "permille": 215
+          },
+          {
+            "x": 70,
+            "permille": 262
+          },
+          {
+            "x": 100,
+            "permille": 310
+          },
+          {
+            "x": 120,
+            "permille": 342
+          },
+          {
+            "x": 200,
+            "permille": 470
+          },
+          {
+            "x": 250,
+            "permille": 550
+          },
+          {
+            "x": 350,
+            "permille": 710
+          },
+          {
+            "x": 450,
+            "permille": 870
+          },
+          {
+            "x": 500,
+            "permille": 950
+          },
+          {
+            "x": 600,
+            "permille": 966
+          },
+          {
+            "x": 700,
+            "permille": 983
+          },
+          {
+            "x": 800,
+            "permille": 1000
+          },
+          {
+            "x": 900,
+            "permille": 693
+          },
+          {
+            "x": 930,
+            "permille": 600
+          },
+          {
+            "x": 1000,
+            "permille": 250
+          },
+          {
+            "x": 1100,
+            "permille": 250
+          }
+        ]
+      }
+    }
+  },
+  "device": {
+    "defaults": {
+      "sharedMin": 2,
+      "farmSuspectMin": 4,
+      "mobileMin": 3,
+      "churningMin": 5
+    },
+    "linkCases": [
+      {
+        "concurrentCivic": 0,
+        "class": "Exclusive"
+      },
+      {
+        "concurrentCivic": 1,
+        "class": "Exclusive"
+      },
+      {
+        "concurrentCivic": 2,
+        "class": "Shared"
+      },
+      {
+        "concurrentCivic": 3,
+        "class": "Shared"
+      },
+      {
+        "concurrentCivic": 4,
+        "class": "FarmSuspect"
+      },
+      {
+        "concurrentCivic": 10,
+        "class": "FarmSuspect"
+      }
+    ],
+    "churnCases": [
+      {
+        "distinctDevicesEpoch": 0,
+        "class": "Stable"
+      },
+      {
+        "distinctDevicesEpoch": 1,
+        "class": "Stable"
+      },
+      {
+        "distinctDevicesEpoch": 2,
+        "class": "Stable"
+      },
+      {
+        "distinctDevicesEpoch": 3,
+        "class": "Mobile"
+      },
+      {
+        "distinctDevicesEpoch": 4,
+        "class": "Mobile"
+      },
+      {
+        "distinctDevicesEpoch": 5,
+        "class": "Churning"
+      },
+      {
+        "distinctDevicesEpoch": 9,
+        "class": "Churning"
+      }
+    ]
+  },
+  "score": {
+    "evidenceWeights": {
+      "serverObserved": 3,
+      "deviceAttested": 2,
+      "selfReported": 1
+    },
+    "thresholds": {
+      "watchBelow": 600,
+      "investigateBelow": 350,
+      "hysteresis": 50
+    },
+    "combineCases": [
+      {
+        "name": "typical_mix",
+        "readings": [
+          {
+            "permille": 950,
+            "weight": 3
+          },
+          {
+            "permille": 700,
+            "weight": 2
+          },
+          {
+            "permille": 400,
+            "weight": 1
+          }
+        ],
+        "permille": 775
+      },
+      {
+        "name": "single_server_signal",
+        "readings": [
+          {
+            "permille": 120,
+            "weight": 3
+          }
+        ],
+        "permille": 120
+      },
+      {
+        "name": "clamped_overrange",
+        "readings": [
+          {
+            "permille": 5000,
+            "weight": 1
+          }
+        ],
+        "permille": 1000
+      },
+      {
+        "name": "weightless",
+        "readings": [
+          {
+            "permille": 500,
+            "weight": 0
+          }
+        ],
+        "permille": null
+      },
+      {
+        "name": "empty",
+        "readings": [],
+        "permille": null
+      }
+    ],
+    "classifyCases": [
+      {
+        "score": 0,
+        "previous": null,
+        "class": "investigate"
+      },
+      {
+        "score": 200,
+        "previous": null,
+        "class": "investigate"
+      },
+      {
+        "score": 299,
+        "previous": null,
+        "class": "investigate"
+      },
+      {
+        "score": 300,
+        "previous": null,
+        "class": "investigate"
+      },
+      {
+        "score": 330,
+        "previous": null,
+        "class": "investigate"
+      },
+      {
+        "score": 349,
+        "previous": null,
+        "class": "investigate"
+      },
+      {
+        "score": 350,
+        "previous": null,
+        "class": "watch"
+      },
+      {
+        "score": 399,
+        "previous": null,
+        "class": "watch"
+      },
+      {
+        "score": 400,
+        "previous": null,
+        "class": "watch"
+      },
+      {
+        "score": 549,
+        "previous": null,
+        "class": "watch"
+      },
+      {
+        "score": 550,
+        "previous": null,
+        "class": "watch"
+      },
+      {
+        "score": 560,
+        "previous": null,
+        "class": "watch"
+      },
+      {
+        "score": 599,
+        "previous": null,
+        "class": "watch"
+      },
+      {
+        "score": 600,
+        "previous": null,
+        "class": "natural"
+      },
+      {
+        "score": 640,
+        "previous": null,
+        "class": "natural"
+      },
+      {
+        "score": 650,
+        "previous": null,
+        "class": "natural"
+      },
+      {
+        "score": 700,
+        "previous": null,
+        "class": "natural"
+      },
+      {
+        "score": 1000,
+        "previous": null,
+        "class": "natural"
+      },
+      {
+        "score": 0,
+        "previous": "natural",
+        "class": "investigate"
+      },
+      {
+        "score": 200,
+        "previous": "natural",
+        "class": "investigate"
+      },
+      {
+        "score": 299,
+        "previous": "natural",
+        "class": "investigate"
+      },
+      {
+        "score": 300,
+        "previous": "natural",
+        "class": "watch"
+      },
+      {
+        "score": 330,
+        "previous": "natural",
+        "class": "watch"
+      },
+      {
+        "score": 349,
+        "previous": "natural",
+        "class": "watch"
+      },
+      {
+        "score": 350,
+        "previous": "natural",
+        "class": "watch"
+      },
+      {
+        "score": 399,
+        "previous": "natural",
+        "class": "watch"
+      },
+      {
+        "score": 400,
+        "previous": "natural",
+        "class": "watch"
+      },
+      {
+        "score": 549,
+        "previous": "natural",
+        "class": "watch"
+      },
+      {
+        "score": 550,
+        "previous": "natural",
+        "class": "natural"
+      },
+      {
+        "score": 560,
+        "previous": "natural",
+        "class": "natural"
+      },
+      {
+        "score": 599,
+        "previous": "natural",
+        "class": "natural"
+      },
+      {
+        "score": 600,
+        "previous": "natural",
+        "class": "natural"
+      },
+      {
+        "score": 640,
+        "previous": "natural",
+        "class": "natural"
+      },
+      {
+        "score": 650,
+        "previous": "natural",
+        "class": "natural"
+      },
+      {
+        "score": 700,
+        "previous": "natural",
+        "class": "natural"
+      },
+      {
+        "score": 1000,
+        "previous": "natural",
+        "class": "natural"
+      },
+      {
+        "score": 0,
+        "previous": "watch",
+        "class": "investigate"
+      },
+      {
+        "score": 200,
+        "previous": "watch",
+        "class": "investigate"
+      },
+      {
+        "score": 299,
+        "previous": "watch",
+        "class": "investigate"
+      },
+      {
+        "score": 300,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 330,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 349,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 350,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 399,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 400,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 549,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 550,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 560,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 599,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 600,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 640,
+        "previous": "watch",
+        "class": "watch"
+      },
+      {
+        "score": 650,
+        "previous": "watch",
+        "class": "natural"
+      },
+      {
+        "score": 700,
+        "previous": "watch",
+        "class": "natural"
+      },
+      {
+        "score": 1000,
+        "previous": "watch",
+        "class": "natural"
+      },
+      {
+        "score": 0,
+        "previous": "investigate",
+        "class": "investigate"
+      },
+      {
+        "score": 200,
+        "previous": "investigate",
+        "class": "investigate"
+      },
+      {
+        "score": 299,
+        "previous": "investigate",
+        "class": "investigate"
+      },
+      {
+        "score": 300,
+        "previous": "investigate",
+        "class": "investigate"
+      },
+      {
+        "score": 330,
+        "previous": "investigate",
+        "class": "investigate"
+      },
+      {
+        "score": 349,
+        "previous": "investigate",
+        "class": "investigate"
+      },
+      {
+        "score": 350,
+        "previous": "investigate",
+        "class": "investigate"
+      },
+      {
+        "score": 399,
+        "previous": "investigate",
+        "class": "investigate"
+      },
+      {
+        "score": 400,
+        "previous": "investigate",
+        "class": "watch"
+      },
+      {
+        "score": 549,
+        "previous": "investigate",
+        "class": "watch"
+      },
+      {
+        "score": 550,
+        "previous": "investigate",
+        "class": "watch"
+      },
+      {
+        "score": 560,
+        "previous": "investigate",
+        "class": "watch"
+      },
+      {
+        "score": 599,
+        "previous": "investigate",
+        "class": "watch"
+      },
+      {
+        "score": 600,
+        "previous": "investigate",
+        "class": "watch"
+      },
+      {
+        "score": 640,
+        "previous": "investigate",
+        "class": "watch"
+      },
+      {
+        "score": 650,
+        "previous": "investigate",
+        "class": "natural"
+      },
+      {
+        "score": 700,
+        "previous": "investigate",
+        "class": "natural"
+      },
+      {
+        "score": 1000,
+        "previous": "investigate",
+        "class": "natural"
+      }
+    ]
+  },
+  "deviceTag": {
+    "note": "BLAKE3 derive_key(flora/device/v1/tag, pkDevice || epochId) — fpp-crypto::device_tag_epoch.",
+    "pkDevice": "0NHS09TV1tfY2drb3N3e3-Dh4uPk5ebn6Onq6-zt7u8",
+    "epochId": "4OHi4-Tl5ufo6err7O3u7w",
+    "tag": "NfEyoU6CMwGl-B80fFuO6cNU-GmDv9OV-wuyv6K3yy0",
+    "epochIdNext": "8PHy8_T19vf4-fr7_P3-_w",
+    "tagNext": "0ZdXJgFAWTxC65J0QdARCPdAS8-tuwersY75tHhVDjk"
+  },
+  "ceremonyAnomalyFlags": [
+    {
+      "name": "latency_suspect",
+      "code": 1
+    },
+    {
+      "name": "synthetic_media_suspect",
+      "code": 2
+    },
+    {
+      "name": "audio_video_desync",
+      "code": 3
+    },
+    {
+      "name": "challenge_mismatch",
+      "code": 4
+    },
+    {
+      "name": "input_cadence_anomaly",
+      "code": 5
+    },
+    {
+      "name": "participant_aborted",
+      "code": 6
+    },
+    {
+      "name": "abuse_reported",
+      "code": 7
+    },
+    {
+      "name": "partner_no_show",
+      "code": 8
+    }
+  ]
+}

@@ -51,6 +51,8 @@ pub const LOG_ANCHOR: &str = "flora/log/v1/anchor";
 pub const OPRF_DOC_DEDUP: &str = "flora/oprf/v1/doc-dedup";
 /// Записи леджера Commons-казны (FGP §10).
 pub const TREASURY_LEDGER: &str = "flora/treasury/v1/ledger";
+/// Эпохальный тег устройства (FPP-SIGNALS NS-D2; деривация — `fpp-crypto`).
+pub const DEVICE_TAG: &str = "flora/device/v1/tag";
 
 /// Полный реестр `(короткое имя, метка)` — источник для test vectors и аудита коллизий.
 pub const REGISTRY: &[(&str, &str)] = &[
@@ -75,6 +77,7 @@ pub const REGISTRY: &[(&str, &str)] = &[
     ("log/anchor", LOG_ANCHOR),
     ("oprf/doc-dedup", OPRF_DOC_DEDUP),
     ("treasury/ledger", TREASURY_LEDGER),
+    ("device/tag", DEVICE_TAG),
 ];
 
 /// Доменно-разделённая деривация: BLAKE3 `derive_key(метка, материал)` → 32 байта.

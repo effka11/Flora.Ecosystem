@@ -129,6 +129,12 @@
       "tag": "flora/treasury/v1/ledger",
       "tagBytes": "ZmxvcmEvdHJlYXN1cnkvdjEvbGVkZ2Vy",
       "output": "MlgPE5ppbpTNOQE97p7D3I-8s6L73FFsiYh7OLlI3go"
+    },
+    {
+      "name": "device/tag",
+      "tag": "flora/device/v1/tag",
+      "tagBytes": "ZmxvcmEvZGV2aWNlL3YxL3RhZw",
+      "output": "f_pMpseNSHKKTOo-zffJZ3pyGuEc2OdPEphZio0ECzE"
     }
   ],
   "civicPipeline": {

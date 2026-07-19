@@ -1,0 +1,20 @@
+[package]
+name = "fpp-core"
+description = "FPP deterministic kernel: naturalness metrics (NS) per Documents/fpp/FPP-SIGNALS.md. Integer-only (permille), native + wasm32; golden vectors in Documents/test-vectors/personhood/."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+fpp-contracts = { workspace = true }
+
+# Только для генератора golden-векторов (examples/gen_vectors.rs) и consumer-теста.
+[dev-dependencies]
+fpp-crypto = { workspace = true }
+serde_json = { workspace = true }
+base64 = { workspace = true }
