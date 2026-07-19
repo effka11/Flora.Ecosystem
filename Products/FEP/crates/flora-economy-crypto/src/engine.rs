@@ -829,10 +829,7 @@ mod tests {
             } else {
                 (y_seed, x_seed)
             };
-            let limits = (
-                Grains(100 * LIV_IN_GRAINS),
-                Grains(100 * LIV_IN_GRAINS),
-            );
+            let limits = (Grains(100 * LIV_IN_GRAINS), Grains(100 * LIV_IN_GRAINS));
             let payload = trustline_signing_bytes(&lo, &hi, limits.0, limits.1);
             b.push(
                 20,
