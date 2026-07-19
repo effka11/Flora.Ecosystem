@@ -2,14 +2,14 @@
 //!
 //! Классическая схема LZMA-типа: 32-битный `range`, байтовая ренормализация,
 //! перенос через `low: u64`, вероятности с точностью 12 бит (масштаб 4096).
-//! Статические вероятности задаются нормативными константами кодека — энкодер
-//! и декодер не адаптируются, поэтому стоимость каждого символа известна
-//! заранее (точные таблицы в 1/64 бита для rate-контроля).
 //!
-//! Формат потока: 1 ведущий байт (всегда 0, артефакт инициализации кэша),
-//! далее байты кода; финализация выталкивает 5 байтов. Декодер читает ведущий
-//! байт + 4 байта инициализации; чтение за концом буфера фиксируется флагом
-//! `overrun` (усечённый пакет), данные при этом читаются как нули.
+//! Формат потока: байты кода без ведущего байта — первый байт классической
+//! LZMA-схемы всегда 0 (пока не был вытолкнут ни один байт, инвариант
+//! `low + range ≤ 2³²` сохраняется и перенос в начальный кэш невозможен),
+//! поэтому энкодер его не передаёт, а декодер не пропускает. Финализация
+//! выталкивает 5 байтов (40 бит накладных). Декодер читает 4 байта
+//! инициализации `code`; чтение за концом буфера фиксируется флагом `overrun`
+//! (усечённый пакет), данные при этом читаются как нули.
 
 const TOP: u32 = 1 << 24;
 const PROB_BITS: u32 = 12;
@@ -125,6 +125,25 @@ impl BinEncoder {
         }
     }
 
+    /// Равномерный символ `x ∈ [0, m)`: цепочка двоичных делений интервала
+    /// пополам с вероятностью, пропорциональной мощностям половин
+    /// (`uniform_split`). Телескопирование делает стоимость ≈ `log2 m` бит
+    /// для любого `m`, не только степеней двойки.
+    pub fn encode_uniform(&mut self, x: u64, m: u64) {
+        debug_assert!(x < m);
+        let (mut lo, mut hi) = (0u64, m);
+        while hi - lo > 1 {
+            let (mid, p0) = uniform_split(lo, hi);
+            let bit = x >= mid;
+            self.encode_bit(p0, bit);
+            if bit {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+    }
+
     fn shift_low(&mut self) {
         if self.low < 0xFF00_0000 || self.low > 0xFFFF_FFFF {
             let carry = (self.low >> 32) as u8;
@@ -141,13 +160,27 @@ impl BinEncoder {
         self.low = (self.low << 8) & 0xFFFF_FFFF;
     }
 
-    /// Завершает поток (5 байтов) и возвращает байты.
+    /// Завершает поток (выталкивает 5 байтов) и возвращает байты без ведущего
+    /// нулевого байта (см. заголовок модуля).
     pub fn finish(mut self) -> Vec<u8> {
         for _ in 0..5 {
             self.shift_low();
         }
+        debug_assert_eq!(self.out[0], 0, "первый байт LZMA-схемы обязан быть 0");
+        self.out.remove(0);
         self.out
     }
+}
+
+/// Нормативное деление интервала `[lo, hi)` равномерного символа: середина и
+/// вероятность нижней половины `p0 = round(4096·(mid−lo)/(hi−lo))`, кламп в
+/// `[1, 4095]`. Общая функция энкодера и декодера.
+fn uniform_split(lo: u64, hi: u64) -> (u64, Prob0) {
+    let mid = lo + (hi - lo) / 2;
+    let n = u128::from(hi - lo);
+    let n0 = u128::from(mid - lo);
+    let p0 = ((n0 * 4096 + n / 2) / n) as u16;
+    (mid, p0.clamp(1, 4095))
 }
 
 pub struct BinDecoder<'a> {
@@ -167,7 +200,6 @@ impl<'a> BinDecoder<'a> {
             range: u32::MAX,
             overrun: false,
         };
-        d.next_byte(); // ведущий байт (игнорируется)
         for _ in 0..4 {
             let b = d.next_byte();
             d.code = (d.code << 8) | u32::from(b);
@@ -210,6 +242,21 @@ impl<'a> BinDecoder<'a> {
             v = (v << 1) | u32::from(self.decode_bit(P0_HALF));
         }
         v
+    }
+
+    /// Равномерный символ `∈ [0, m)` — зеркало `encode_uniform` (те же деления
+    /// и вероятности `uniform_split`). Результат всегда `< m`.
+    pub fn decode_uniform(&mut self, m: u64) -> u64 {
+        let (mut lo, mut hi) = (0u64, m);
+        while hi - lo > 1 {
+            let (mid, p0) = uniform_split(lo, hi);
+            if self.decode_bit(p0) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
     }
 
     /// Был ли выход за конец буфера (усечённый/повреждённый пакет).
@@ -314,8 +361,72 @@ mod tests {
     #[test]
     fn empty_payload_roundtrip() {
         let stream = BinEncoder::new().finish();
-        assert!(stream.len() <= 6);
+        assert!(stream.len() <= 5);
         let dec = BinDecoder::new(&stream);
+        assert!(!dec.overrun());
+    }
+
+    #[test]
+    fn uniform_roundtrip_various_alphabets() {
+        let mut state = 0xC0DE_2026u32;
+        let alphabets = [
+            2u64,
+            3,
+            5,
+            17,
+            100,
+            4096,
+            4097,
+            (1 << 32) - 5,
+            (1 << 62) - 3,
+            1 << 62,
+        ];
+        let mut values = Vec::new();
+        let mut enc = BinEncoder::new();
+        for round in 0..200 {
+            let m = alphabets[round % alphabets.len()];
+            let x = (u64::from(xorshift(&mut state)) << 32 | u64::from(xorshift(&mut state))) % m;
+            enc.encode_uniform(x, m);
+            values.push((x, m));
+        }
+        let stream = enc.finish();
+        let mut dec = BinDecoder::new(&stream);
+        for (i, &(x, m)) in values.iter().enumerate() {
+            assert_eq!(dec.decode_uniform(m), x, "symbol {i}");
+        }
+        assert!(!dec.overrun());
+    }
+
+    /// Стоимость равномерного символа телескопируется к log2 m: 500 символов
+    /// алфавита 1000 должны занять ≈ 500·log2(1000) бит с точностью до
+    /// финализации и 12-битного округления вероятностей.
+    #[test]
+    fn uniform_cost_is_log2_m() {
+        let n = 500u32;
+        let m = 1000u64;
+        let mut state = 0xFACE_0FF1u32;
+        let mut enc = BinEncoder::new();
+        for _ in 0..n {
+            enc.encode_uniform(u64::from(xorshift(&mut state)) % m, m);
+        }
+        let bits = enc.finish().len() as f64 * 8.0;
+        let entropy = f64::from(n) * (m as f64).log2();
+        assert!(
+            bits < entropy + 64.0,
+            "uniform coding too fat: {bits} vs {entropy:.0}"
+        );
+    }
+
+    /// Единственный значащий символ (m=1) не пишет ни бита.
+    #[test]
+    fn uniform_degenerate_alphabet_is_free() {
+        let mut enc = BinEncoder::new();
+        enc.encode_uniform(0, 1);
+        enc.encode_bits(0b1011, 4);
+        let stream = enc.finish();
+        let mut dec = BinDecoder::new(&stream);
+        assert_eq!(dec.decode_uniform(1), 0);
+        assert_eq!(dec.decode_bits(4), 0b1011);
         assert!(!dec.overrun());
     }
 }

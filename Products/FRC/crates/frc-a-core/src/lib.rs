@@ -29,6 +29,7 @@ mod codec;
 mod energy;
 mod error;
 mod fft;
+mod pvq;
 mod qmath;
 mod transform;
 

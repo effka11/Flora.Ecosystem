@@ -658,7 +658,7 @@ fn vbr_moves_bits_from_easy_to_hard_frames() {
     let packets = encode_packets(true);
     let budgets: Vec<f64> = packets
         .iter()
-        .map(|p| f64::from(u16::from_le_bytes([p[2], p[3]])))
+        .map(|p| f64::from(u16::from_le_bytes([p[1], p[2]])))
         .collect();
     let mean = |s: &[f64]| s.iter().sum::<f64>() / s.len() as f64;
 
@@ -684,7 +684,7 @@ fn vbr_moves_bits_from_easy_to_hard_frames() {
 
     // Перераспределение улучшает тяжёлую половину против CBR при среднем
     // битрейте не выше CBR; лёгкая половина остаётся перцептивно прозрачной
-    // (λ_easy = 24 тоньше номинального шага на 6 дБ).
+    // (ужатый бюджет всё ещё покрывает водопад до −60 дБ от пика кадра).
     let (dec_vbr, avg_vbr) = roundtrip_with(cfg, &pcm, true, true);
     let (dec_cbr, avg_cbr) = roundtrip_with(cfg, &pcm, true, false);
     let hard = half_frames * FRAME_N..2 * half_frames * FRAME_N;
