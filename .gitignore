@@ -66,6 +66,9 @@ Scripts/broadcast.env.local
 Flora.API/secrets/*
 !Flora.API/secrets/*.example
 !Flora.API/secrets/*.example.*
+Backend/secrets/*
+!Backend/secrets/*.example
+!Backend/secrets/*.example.*
 
 # Build / test artifacts (keep contract-fixtures for CI clones)
 Artifacts/*

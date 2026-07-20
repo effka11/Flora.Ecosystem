@@ -12,6 +12,7 @@ pub struct FeedPostLite {
     pub author_user_uuid: Uuid,
     pub created_at: DateTime<Utc>,
     pub content: String,
+    pub community_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -128,6 +129,12 @@ pub struct MediaBlob {
     pub content_type: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct PostMediaBlob {
+    pub post_uuid: Uuid,
+    pub blob: MediaBlob,
+}
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 struct MediaRow {
     data: Vec<u8>,
@@ -135,13 +142,22 @@ struct MediaRow {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+struct PostImageRow {
+    post_uuid: Uuid,
+    data: Vec<u8>,
+    content_type: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
 struct PosterRow {
+    post_uuid: Uuid,
     poster_data: Vec<u8>,
     poster_content_type: String,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 struct VideoRow {
+    post_uuid: Uuid,
     data: Vec<u8>,
     content_type: String,
     status: i32,
@@ -180,7 +196,7 @@ impl ContentRepo {
         }
         sqlx::query_as(
             r#"
-            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content
+            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content, p.community_id
             FROM flora_core.user_posts p
             WHERE p.is_deleted = false
               AND p.created_at >= $1
@@ -218,7 +234,7 @@ impl ContentRepo {
         }
         sqlx::query_as(
             r#"
-            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content
+            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content, p.community_id
             FROM flora_core.user_posts p
             WHERE p.is_deleted = false
               AND p.post_uuid = ANY($1)
@@ -271,6 +287,7 @@ impl ContentRepo {
     pub async fn has_newer_posts(
         &self,
         followed_user_ids: &[Uuid],
+        visible_personal_author_ids: &[Uuid],
         since: DateTime<Utc>,
         viewer_user_uuid: Uuid,
     ) -> Result<bool, sqlx::Error> {
@@ -286,14 +303,22 @@ impl ContentRepo {
                   AND p.created_at > $1
                   AND p.author_user_uuid = ANY($2)
                   AND (
-                      p.community_id IS NULL
-                      OR NOT EXISTS (
-                          SELECT 1 FROM flora_core.communities c
-                          WHERE c.community_id = p.community_id AND c.is_private = true
+                      (
+                          p.community_id IS NULL
+                          AND p.author_user_uuid = ANY($4)
                       )
-                      OR EXISTS (
-                          SELECT 1 FROM flora_core.user_communities uc
-                          WHERE uc.community_id = p.community_id AND uc.user_uuid = $3
+                      OR (
+                          p.community_id IS NOT NULL
+                          AND (
+                              EXISTS (
+                                  SELECT 1 FROM flora_core.communities c
+                                  WHERE c.community_id = p.community_id AND c.is_private = false
+                              )
+                              OR EXISTS (
+                                  SELECT 1 FROM flora_core.user_communities uc
+                                  WHERE uc.community_id = p.community_id AND uc.user_uuid = $3
+                              )
+                          )
                       )
                   )
             )
@@ -302,6 +327,7 @@ impl ContentRepo {
         .bind(since)
         .bind(followed_user_ids)
         .bind(viewer_user_uuid)
+        .bind(visible_personal_author_ids)
         .fetch_one(&self.pool)
         .await
     }
@@ -330,7 +356,7 @@ impl ContentRepo {
     ) -> Result<Vec<FeedPostLite>, sqlx::Error> {
         sqlx::query_as(
             r#"
-            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content
+            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content, p.community_id
             FROM flora_core.user_posts p
             WHERE p.is_deleted = false
               AND (
@@ -364,7 +390,7 @@ impl ContentRepo {
         let epoch = DateTime::<Utc>::UNIX_EPOCH;
         sqlx::query_as(
             r#"
-            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content
+            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content, p.community_id
             FROM flora_core.user_posts p
             WHERE p.is_deleted = false
               AND ($1 = $2 OR p.created_at >= $1)
@@ -401,7 +427,7 @@ impl ContentRepo {
     ) -> Result<Vec<FeedPostLite>, sqlx::Error> {
         sqlx::query_as(
             r#"
-            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content
+            SELECT p.post_uuid, p.author_user_uuid, p.created_at, p.content, p.community_id
             FROM flora_core.user_posts p
             WHERE p.is_deleted = false
               AND p.community_id IS NOT NULL
@@ -816,6 +842,39 @@ impl ContentRepo {
         .await
     }
 
+    pub async fn accessible_community_ids(
+        &self,
+        community_ids: &[Uuid],
+        viewer_user_uuid: Option<Uuid>,
+    ) -> Result<Vec<Uuid>, sqlx::Error> {
+        if community_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        sqlx::query_scalar(
+            r#"
+            SELECT community_id
+            FROM flora_core.communities communities
+            WHERE community_id = ANY($1)
+              AND (
+                    communities.is_private = false
+                    OR (
+                      $2::uuid IS NOT NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM flora_core.user_communities memberships
+                        WHERE memberships.community_id = communities.community_id
+                          AND memberships.user_uuid = $2
+                      )
+                    )
+                  )
+            "#,
+        )
+        .bind(community_ids)
+        .bind(viewer_user_uuid)
+        .fetch_all(&self.pool)
+        .await
+    }
+
     pub async fn count_by_post(
         &self,
         table: &str,
@@ -1133,7 +1192,8 @@ impl ContentRepo {
         .bind(community_id)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(is_private.unwrap_or(false))
+        // Missing community metadata must not turn an orphaned post public.
+        Ok(is_private.unwrap_or(true))
     }
 
     pub async fn is_community_member(
@@ -1498,10 +1558,13 @@ impl ContentRepo {
         Ok(())
     }
 
-    pub async fn post_image_by_uuid(&self, uuid: Uuid) -> Result<Option<MediaBlob>, sqlx::Error> {
-        let row: Option<MediaRow> = sqlx::query_as(
+    pub async fn post_image_by_uuid(
+        &self,
+        uuid: Uuid,
+    ) -> Result<Option<PostMediaBlob>, sqlx::Error> {
+        let row: Option<PostImageRow> = sqlx::query_as(
             r#"
-            SELECT data, content_type
+            SELECT post_uuid, data, content_type
             FROM flora_core.post_images
             WHERE uuid = $1
             "#,
@@ -1509,9 +1572,12 @@ impl ContentRepo {
         .bind(uuid)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.filter(|r| !r.data.is_empty()).map(|r| MediaBlob {
-            data: r.data,
-            content_type: r.content_type,
+        Ok(row.filter(|r| !r.data.is_empty()).map(|r| PostMediaBlob {
+            post_uuid: r.post_uuid,
+            blob: MediaBlob {
+                data: r.data,
+                content_type: r.content_type,
+            },
         }))
     }
 
@@ -1878,10 +1944,13 @@ impl ContentRepo {
         }))
     }
 
-    pub async fn post_video_by_uuid(&self, uuid: Uuid) -> Result<Option<MediaBlob>, sqlx::Error> {
+    pub async fn post_video_by_uuid(
+        &self,
+        uuid: Uuid,
+    ) -> Result<Option<PostMediaBlob>, sqlx::Error> {
         let row: Option<VideoRow> = sqlx::query_as(
             r#"
-            SELECT data, content_type, status
+            SELECT post_uuid, data, content_type, status
             FROM flora_core.post_videos
             WHERE uuid = $1
             "#,
@@ -1891,19 +1960,22 @@ impl ContentRepo {
         .await?;
         Ok(row
             .filter(|r| r.status == 1 && !r.data.is_empty())
-            .map(|r| MediaBlob {
-                data: r.data,
-                content_type: r.content_type,
+            .map(|r| PostMediaBlob {
+                post_uuid: r.post_uuid,
+                blob: MediaBlob {
+                    data: r.data,
+                    content_type: r.content_type,
+                },
             }))
     }
 
     pub async fn post_video_poster_by_uuid(
         &self,
         uuid: Uuid,
-    ) -> Result<Option<MediaBlob>, sqlx::Error> {
+    ) -> Result<Option<PostMediaBlob>, sqlx::Error> {
         let row: Option<PosterRow> = sqlx::query_as(
             r#"
-            SELECT poster_data, poster_content_type
+            SELECT post_uuid, poster_data, poster_content_type
             FROM flora_core.post_videos
             WHERE uuid = $1
             "#,
@@ -1913,9 +1985,12 @@ impl ContentRepo {
         .await?;
         Ok(row
             .filter(|r| !r.poster_data.is_empty())
-            .map(|r| MediaBlob {
-                data: r.poster_data,
-                content_type: r.poster_content_type,
+            .map(|r| PostMediaBlob {
+                post_uuid: r.post_uuid,
+                blob: MediaBlob {
+                    data: r.poster_data,
+                    content_type: r.poster_content_type,
+                },
             }))
     }
 

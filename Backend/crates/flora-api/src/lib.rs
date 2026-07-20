@@ -2,6 +2,7 @@
 //! Бизнес-логика запрещена (AGENTS.md) — только маршрутизация, middleware и композиция.
 
 pub mod access_log;
+pub mod client_ip;
 pub mod client_version;
 pub mod host_config;
 pub mod proxy;
@@ -52,8 +53,14 @@ pub async fn build_host(cfg: &FloraConfig, versions: versions::FloraVersionRespo
         Some(upstream) => native.fallback_service(proxy::proxy_service(upstream)),
         None => native,
     };
+    let client_ip_resolver = client_ip::ClientIpResolver::from_config(cfg);
     BuiltHost {
-        router: routed.layer(axum::middleware::from_fn(access_log::access_log)),
+        router: routed
+            .layer(axum::middleware::from_fn_with_state(
+                client_ip_resolver,
+                client_ip::normalize_client_ip,
+            ))
+            .layer(axum::middleware::from_fn(access_log::access_log)),
         worker_handles,
     }
 }

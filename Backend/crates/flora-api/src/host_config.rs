@@ -6,12 +6,13 @@ use flora_shared::config::{FloraConfig, environment_name};
 
 /// Плейсхолдеры, при которых секрет считается «не заданным» —
 /// порт `FloraJwtExtensions.IsWeakOrPlaceholderSecret`.
-const FORBIDDEN_SECRET_FRAGMENTS: [&str; 8] = [
+const FORBIDDEN_SECRET_FRAGMENTS: [&str; 9] = [
     "DevelopmentSecretKey",
     "ChangeInProduction",
     "__JWT_SECRET",
     "changeme",
     "change-me",
+    "change_me",
     "your-secret",
     "placeholder",
     "example",
@@ -28,8 +29,15 @@ pub fn is_weak_or_placeholder_secret(secret: &str) -> bool {
 pub fn should_mint_ephemeral_development_secret(secret: Option<&str>) -> bool {
     match secret {
         None => true,
-        Some(s) if s.trim().is_empty() || s.len() < 32 => true,
-        Some(s) => is_weak_or_placeholder_secret(s),
+        Some(s) if s.trim().len() < 32 => true,
+        Some(s) => {
+            is_weak_or_placeholder_secret(s)
+                || s.trim()
+                    .chars()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+                    < 8
+        }
     }
 }
 
@@ -63,7 +71,60 @@ pub fn load_host_config() -> anyhow::Result<FloraConfig> {
         cfg = with_ephemeral_jwt_secret(cfg);
         tracing::info!("Development: выпущен эфемерный Jwt:Secret (сбрасывается при рестарте)");
     }
+    validate_security_config(&cfg)?;
     Ok(cfg)
+}
+
+/// Инварианты, с которыми Production разрешено запускать.
+///
+/// Проверка живёт на границе host/config: продукт и модули получают уже безопасную
+/// конфигурацию и не должны каждый по-своему угадывать, допустим ли секрет.
+fn validate_security_config(cfg: &FloraConfig) -> anyhow::Result<()> {
+    if !cfg.is_development() && should_mint_ephemeral_development_secret(cfg.get("Jwt:Secret")) {
+        anyhow::bail!(
+            "небезопасная Production-конфигурация: Jwt:Secret должен содержать \
+             не менее 32 символов и не быть плейсхолдером"
+        );
+    }
+
+    if !cfg.is_development() {
+        let access_minutes = cfg.get_i64("Jwt:AccessTokenMinutes").unwrap_or(15);
+        if !(1..=60).contains(&access_minutes) {
+            anyhow::bail!(
+                "небезопасная Production-конфигурация: Jwt:AccessTokenMinutes должен быть 1..=60"
+            );
+        }
+        let refresh_days = cfg.get_i64("Jwt:RefreshTokenDays").unwrap_or(7);
+        if !(1..=30).contains(&refresh_days) {
+            anyhow::bail!(
+                "небезопасная Production-конфигурация: Jwt:RefreshTokenDays должен быть 1..=30"
+            );
+        }
+        if let Some(pepper) = cfg.get_non_empty("Verification:CodePepper")
+            && should_mint_ephemeral_development_secret(Some(pepper))
+        {
+            anyhow::bail!(
+                "небезопасная Production-конфигурация: Verification:CodePepper должен быть сильным секретом либо отсутствовать для fallback на Jwt:Secret"
+            );
+        }
+    }
+
+    if !cfg.is_development() && cfg.get_bool("Verification:ServeNative") == Some(true) {
+        let raw = cfg
+            .get_non_empty("Verification:GrpcListen")
+            .unwrap_or("127.0.0.1:50051");
+        let addr: std::net::SocketAddr = raw.parse().map_err(|e| {
+            anyhow::anyhow!("Verification:GrpcListen '{raw}' не является адресом host:port: {e}")
+        })?;
+        if !addr.ip().is_loopback() {
+            anyhow::bail!(
+                "небезопасная Production-конфигурация: неаутентифицированный Verification gRPC \
+                 разрешено слушать только на loopback, получено {addr}"
+            );
+        }
+    }
+
+    Ok(())
 }
 
 fn with_ephemeral_jwt_secret(mut cfg: FloraConfig) -> FloraConfig {
@@ -79,6 +140,18 @@ fn with_ephemeral_jwt_secret(mut cfg: FloraConfig) -> FloraConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn production(secret: Option<&str>, grpc_listen: Option<&str>) -> FloraConfig {
+        let mut root = json!({
+            "Jwt": { "Secret": secret.unwrap_or_default() },
+            "Verification": { "ServeNative": grpc_listen.is_some() }
+        });
+        if let Some(listen) = grpc_listen {
+            root["Verification"]["GrpcListen"] = json!(listen);
+        }
+        FloraConfig::from_layers("Production", &[root], &[])
+    }
 
     #[test]
     fn placeholder_secrets_are_rejected() {
@@ -103,5 +176,59 @@ mod tests {
         assert!(!should_mint_ephemeral_development_secret(Some(
             "fd9f2cfa81c2f89ae1a106e28e89da6f1496db8f1cbaf2e5"
         )));
+    }
+
+    #[test]
+    fn production_rejects_missing_short_and_placeholder_secrets() {
+        for secret in [
+            None,
+            Some("short"),
+            Some("__JWT_SECRET_MIN_32_CHARS__"),
+            Some("please-change-me-before-production-123456"),
+            Some("CHANGE_ME_TO_AT_LEAST_32_RANDOM_CHARACTERS"),
+            Some("abcdabcdabcdabcdabcdabcdabcdabcd"),
+        ] {
+            let err = validate_security_config(&production(secret, None)).unwrap_err();
+            assert!(err.to_string().contains("Jwt:Secret"), "{err}");
+        }
+    }
+
+    #[test]
+    fn production_accepts_strong_secret_and_loopback_verification() {
+        let cfg = production(
+            Some("fd9f2cfa81c2f89ae1a106e28e89da6f1496db8f1cbaf2e5"),
+            Some("127.0.0.1:50051"),
+        );
+        validate_security_config(&cfg).unwrap();
+    }
+
+    #[test]
+    fn production_rejects_network_exposed_verification_grpc() {
+        let cfg = production(
+            Some("fd9f2cfa81c2f89ae1a106e28e89da6f1496db8f1cbaf2e5"),
+            Some("0.0.0.0:50051"),
+        );
+        let err = validate_security_config(&cfg).unwrap_err();
+        assert!(err.to_string().contains("loopback"), "{err}");
+    }
+
+    #[test]
+    fn production_rejects_excessive_token_lifetimes_and_weak_optional_pepper() {
+        let strong = "fd9f2cfa81c2f89ae1a106e28e89da6f1496db8f1cbaf2e5";
+        for root in [
+            json!({
+                "Jwt": { "Secret": strong, "AccessTokenMinutes": 1440 }
+            }),
+            json!({
+                "Jwt": { "Secret": strong, "RefreshTokenDays": 365 }
+            }),
+            json!({
+                "Jwt": { "Secret": strong },
+                "Verification": { "CodePepper": "change-me-change-me-change-me-change-me" }
+            }),
+        ] {
+            let cfg = FloraConfig::from_layers("Production", &[root], &[]);
+            assert!(validate_security_config(&cfg).is_err());
+        }
     }
 }

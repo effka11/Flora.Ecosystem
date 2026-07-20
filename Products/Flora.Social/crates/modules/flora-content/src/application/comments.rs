@@ -57,6 +57,9 @@ impl CommentsService {
         content: &str,
         parent_comment_uuid: Option<Uuid>,
     ) -> Result<Result<Value, CreateCommentError>, String> {
+        if !self.access.can_view(post_uuid, Some(author)).await? {
+            return Ok(Err(CreateCommentError::PostNotFound));
+        }
         let Some(post_author) = self
             .repo
             .post_author_uuid(post_uuid)

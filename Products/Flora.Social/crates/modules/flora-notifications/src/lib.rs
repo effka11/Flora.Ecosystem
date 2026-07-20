@@ -24,7 +24,10 @@ use crate::application::{
     InboxNotificationDispatcher, InboxService, MessagePushNotifier, PushTokenService,
     UserRealtimePublisher,
 };
-use crate::http::{AdminBroadcastState, NotificationsState, admin_router, protected_router};
+use crate::http::{
+    AdminBroadcastRateLimiter, AdminBroadcastState, NotificationsState, admin_router,
+    protected_router,
+};
 use crate::infrastructure::{
     ClientPlatformRepo, FcmPushSender, InboxRepo, PushTokenRepo, UserDisplayNameResolver,
     UserRealtimeHub,
@@ -80,9 +83,28 @@ pub fn compose(
     let user_notification_dispatcher: Arc<dyn UserNotificationDispatcher> =
         Arc::new(InboxNotificationDispatcher::new(inbox_repo, realtime));
 
-    let admin_token = cfg
+    let configured_admin_token = cfg
         .get_non_empty("Flora:AdminBroadcastToken")
         .map(|s| Arc::<str>::from(s.to_string()));
+    let admin_token = configured_admin_token.filter(|token| {
+        let lowered = token.to_ascii_lowercase();
+        let placeholder = ["change_me", "change-me", "changeme", "placeholder"]
+            .iter()
+            .any(|fragment| lowered.contains(fragment));
+        let enough_diversity = token
+            .chars()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            >= 8;
+        if token.len() >= 32 && enough_diversity && !placeholder {
+            true
+        } else {
+            tracing::error!(
+                "Flora:AdminBroadcastToken слабый или является плейсхолдером — admin endpoint отключён"
+            );
+            false
+        }
+    });
 
     NotificationsModule {
         protected_router: protected_router(NotificationsState {
@@ -90,7 +112,11 @@ pub fn compose(
             push_tokens,
             hub,
         }),
-        admin_router: admin_router(AdminBroadcastState { inbox, admin_token }),
+        admin_router: admin_router(AdminBroadcastState {
+            inbox,
+            admin_token,
+            rate_limiter: Arc::new(AdminBroadcastRateLimiter::new()),
+        }),
         message_sent_notifier,
         user_notification_dispatcher,
     }

@@ -20,7 +20,6 @@ export {
   fetchLatestUpdateManifest,
   fetchUpdateManifestFromNotificationText,
   fetchDirectUpdateManifestForVersion,
-  buildDirectUpdateManifestFromNotificationText,
   getInstalledVersionCode,
 } from "@/lib/apkUpdate/githubRelease";
 export {

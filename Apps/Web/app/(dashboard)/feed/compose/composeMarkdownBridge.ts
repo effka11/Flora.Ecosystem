@@ -1,5 +1,6 @@
 import type { ComposeMirrorSpan } from "@/app/_shared/composeFormattedText";
 import { parseComposeMirrorSpans } from "@/app/_shared/composeFormattedText";
+import { sanitizeComposeHref } from "@/lib/sanitizeComposeHref";
 
 function escapeHtml(text: string): string {
   return text
@@ -26,7 +27,8 @@ function wrapVisibleSpanHtml(span: ComposeMirrorSpan): string {
   if (formats.underline) html = `<u>${html}</u>`;
   if (formats.italic) html = `<span data-flora-italic=""${ITALIC_INLINE}>${html}</span>`;
   if (formats.bold) html = `<span data-flora-bold=""${BOLD_INLINE}>${html}</span>`;
-  if (span.href) html = `<a href="${escapeAttr(span.href)}">${html}</a>`;
+  const safeHref = span.href ? sanitizeComposeHref(span.href) : null;
+  if (safeHref) html = `<a href="${escapeAttr(safeHref)}">${html}</a>`;
   if (span.mention) html = `<span data-flora-mention="">${html}</span>`;
 
   return html;
@@ -75,8 +77,8 @@ function nodeToMarkdown(node: Node): string {
     case "code":
       return `\`${inner}\``;
     case "a": {
-      const href = element.getAttribute("href") ?? "";
-      return `[${inner}](${href})`;
+      const href = sanitizeComposeHref(element.getAttribute("href") ?? "");
+      return href ? `[${inner}](${href})` : inner;
     }
     case "span": {
       if (element.dataset.floraSpoiler !== undefined) return `||${inner}||`;

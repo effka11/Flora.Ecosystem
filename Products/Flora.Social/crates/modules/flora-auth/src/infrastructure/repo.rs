@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::infrastructure::tokens::hash_refresh_token;
+
 const STATUS_ACTIVE: i32 = 0;
 /// `UserSessionStatus.RevokedPassword` — паритет с C#.
 const STATUS_REVOKED_PASSWORD: i32 = 2;
@@ -90,6 +92,32 @@ impl AuthRepo {
         .await
     }
 
+    pub async fn is_active_session(
+        &self,
+        user_uuid: Uuid,
+        jwt_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM flora_core.user_sessions
+                WHERE user_uuid = $1
+                  AND jwt_id = $2
+                  AND status = $3
+                  AND expires_at > $4
+            )
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(jwt_id)
+        .bind(STATUS_ACTIVE)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+    }
+
     /// Завершить все активные сессии пользователя, кроме текущей (по `jwt_id`).
     /// Если `current_jti` пуст — отзываются все активные (как в C#).
     pub async fn revoke_other_sessions(
@@ -156,15 +184,20 @@ impl AuthRepo {
         refresh_token: &str,
         now: DateTime<Utc>,
     ) -> Result<Option<RefreshSessionRow>, sqlx::Error> {
+        let refresh_hash = hash_refresh_token(refresh_token);
         sqlx::query_as::<_, RefreshSessionRow>(
             r#"
             SELECT session_id, user_uuid, rotation_id
             FROM flora_core.user_sessions
-            WHERE refresh_token = $1
-              AND status = $2
-              AND expires_at > $3
+            WHERE (
+                    refresh_token = $1
+                    OR (refresh_token = $2 AND refresh_token NOT LIKE 'sha256:%')
+                  )
+              AND status = $3
+              AND expires_at > $4
             "#,
         )
+        .bind(refresh_hash)
         .bind(refresh_token)
         .bind(STATUS_ACTIVE)
         .bind(now)
@@ -188,16 +221,21 @@ impl AuthRepo {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)] // atomic rotation + reuse detection fields
     pub async fn rotate_session(
         &self,
         session_id: Uuid,
+        expected_refresh_token: &str,
+        expected_rotation_id: i64,
         new_jwt_id: &str,
         new_refresh_token: &str,
         expires_at: DateTime<Utc>,
         last_activity: DateTime<Utc>,
         new_rotation_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
+    ) -> Result<bool, sqlx::Error> {
+        let expected_refresh_hash = hash_refresh_token(expected_refresh_token);
+        let new_refresh_hash = hash_refresh_token(new_refresh_token);
+        let result = sqlx::query(
             r#"
             UPDATE flora_core.user_sessions
             SET jwt_id = $1,
@@ -206,17 +244,44 @@ impl AuthRepo {
                 last_activity = $4,
                 rotation_id = $5
             WHERE session_id = $6
+              AND rotation_id = $7
+              AND status = $8
+              AND (
+                    refresh_token = $9
+                    OR (refresh_token = $10 AND refresh_token NOT LIKE 'sha256:%')
+                  )
             "#,
         )
         .bind(new_jwt_id)
-        .bind(new_refresh_token)
+        .bind(new_refresh_hash)
         .bind(expires_at)
         .bind(last_activity)
         .bind(new_rotation_id)
         .bind(session_id)
+        .bind(expected_rotation_id)
+        .bind(STATUS_ACTIVE)
+        .bind(expected_refresh_hash)
+        .bind(expected_refresh_token)
         .execute(&self.pool)
         .await?;
-        Ok(())
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub async fn revoke_session_by_id(&self, session_id: Uuid) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flora_core.user_sessions
+            SET status = $1
+            WHERE session_id = $2
+              AND status = $3
+            "#,
+        )
+        .bind(STATUS_REVOKED_USER)
+        .bind(session_id)
+        .bind(STATUS_ACTIVE)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     pub async fn cleanup_expired_pending(&self, now: DateTime<Utc>) -> Result<u64, sqlx::Error> {
@@ -266,28 +331,40 @@ impl AuthRepo {
         .await
     }
 
-    pub async fn upsert_login_failure(
+    pub async fn record_login_failure(
         &self,
         user_uuid: Uuid,
         now: DateTime<Utc>,
-        new_failures: u8,
-        locked_until: Option<DateTime<Utc>>,
+        max_failures: i16,
+        locked_until: DateTime<Utc>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"
-            INSERT INTO flora_core.user_security_logs (
+            INSERT INTO flora_core.user_security_logs AS security_log (
                 user_uuid, password_updated_at, login_failures, login_locked_until,
                 created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $2, $2)
+            ) VALUES ($1, $2, 1, NULL, $2, $2)
             ON CONFLICT (user_uuid) DO UPDATE SET
-                login_failures = EXCLUDED.login_failures,
-                login_locked_until = EXCLUDED.login_locked_until,
-                updated_at = EXCLUDED.updated_at
+                login_failures = CASE
+                    WHEN security_log.login_locked_until > $2
+                        THEN security_log.login_failures
+                    WHEN security_log.login_failures + 1 >= $3
+                        THEN 0
+                    ELSE security_log.login_failures + 1
+                END,
+                login_locked_until = CASE
+                    WHEN security_log.login_locked_until > $2
+                        THEN security_log.login_locked_until
+                    WHEN security_log.login_failures + 1 >= $3
+                        THEN $4
+                    ELSE NULL
+                END,
+                updated_at = $2
             "#,
         )
         .bind(user_uuid)
         .bind(now)
-        .bind(new_failures as i16)
+        .bind(max_failures)
         .bind(locked_until)
         .execute(&self.pool)
         .await?;
@@ -371,7 +448,7 @@ impl AuthRepo {
         .bind(now)
         .bind(expires_at)
         .bind(jwt_id)
-        .bind(refresh_token)
+        .bind(hash_refresh_token(refresh_token))
         .bind(csrf_token)
         .bind(hmac_key)
         .execute(&self.pool)

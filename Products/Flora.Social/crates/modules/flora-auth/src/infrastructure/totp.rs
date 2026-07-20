@@ -3,6 +3,7 @@
 use data_encoding::BASE32_NOPAD;
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
+use subtle::ConstantTimeEq;
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -15,7 +16,7 @@ pub fn verify_totp(base32_secret: Option<&str>, code: &str) -> bool {
         return false;
     };
     let code = code.trim();
-    if code.is_empty() {
+    if code.len() != DIGITS as usize || !code.bytes().all(|byte| byte.is_ascii_digit()) {
         return false;
     }
 
@@ -29,7 +30,7 @@ pub fn verify_totp(base32_secret: Option<&str>, code: &str) -> bool {
         if c < 0 {
             continue;
         }
-        if totp_code(&key, c as u64) == code {
+        if bool::from(totp_code(&key, c as u64).as_bytes().ct_eq(code.as_bytes())) {
             return true;
         }
     }

@@ -12,24 +12,43 @@ use axum::response::{IntoResponse, Response};
 pub struct FixedWindowLimiter {
     permit_limit: u32,
     window: Duration,
-    buckets: Mutex<HashMap<String, (Instant, u32)>>,
+    state: Mutex<LimiterState>,
+}
+
+struct LimiterState {
+    buckets: HashMap<String, (Instant, u32)>,
+    last_cleanup: Instant,
 }
 
 impl FixedWindowLimiter {
+    const MAX_BUCKETS: usize = 10_000;
+
     pub fn new(permit_limit: u32, window: Duration) -> Self {
         Self {
             permit_limit,
             window,
-            buckets: Mutex::new(HashMap::new()),
+            state: Mutex::new(LimiterState {
+                buckets: HashMap::new(),
+                last_cleanup: Instant::now(),
+            }),
         }
     }
 
     /// `true` если запрос разрешён.
     pub fn check_and_increment(&self, key: &str) -> bool {
         let now = Instant::now();
-        let mut map = self.buckets.lock().expect("rate limiter lock");
-        map.retain(|_, (start, _)| now.duration_since(*start) < self.window);
-        let entry = map.entry(key.to_string()).or_insert((now, 0));
+        let mut state = self.state.lock().expect("rate limiter lock");
+        let cleanup_interval = self.window.min(Duration::from_secs(30));
+        if now.duration_since(state.last_cleanup) >= cleanup_interval {
+            state
+                .buckets
+                .retain(|_, (start, _)| now.duration_since(*start) < self.window);
+            state.last_cleanup = now;
+        }
+        if !state.buckets.contains_key(key) && state.buckets.len() >= Self::MAX_BUCKETS {
+            return false;
+        }
+        let entry = state.buckets.entry(key.to_string()).or_insert((now, 0));
         if now.duration_since(entry.0) >= self.window {
             *entry = (now, 0);
         }

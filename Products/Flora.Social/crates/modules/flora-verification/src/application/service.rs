@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use flora_shared::flora_uuid::new_uuid;
-use sha2::{Digest, Sha256};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -13,6 +14,9 @@ use crate::infrastructure::repo::{ChallengeRow, VerificationRepo};
 
 const EXPIRATION_MINUTES: i64 = 15;
 const MAX_ATTEMPTS: i32 = 5;
+const CODE_HASH_PREFIX: &str = "hmac-sha256:";
+const CODE_HASH_DOMAIN: &[u8] = b"flora-verification-code-v1\0";
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -57,6 +61,7 @@ pub struct ChallengeService {
     repo: Arc<VerificationRepo>,
     sender: Arc<SmtpVerificationCodeSender>,
     development: bool,
+    code_pepper: Arc<[u8]>,
 }
 
 impl ChallengeService {
@@ -64,11 +69,13 @@ impl ChallengeService {
         repo: Arc<VerificationRepo>,
         sender: Arc<SmtpVerificationCodeSender>,
         development: bool,
+        code_pepper: Vec<u8>,
     ) -> Self {
         Self {
             repo,
             sender,
             development,
+            code_pepper: code_pepper.into(),
         }
     }
 
@@ -94,7 +101,7 @@ impl ChallengeService {
             kind,
             target: normalized.clone(),
             subject_user_uuid,
-            code_hash: hash_code(&code),
+            code_hash: hash_code(&code, &self.code_pepper),
             expires_at,
             created_at: now,
             updated_at: now,
@@ -153,21 +160,41 @@ impl ChallengeService {
             });
         }
 
-        if !fixed_time_hash_equals(&challenge.code_hash, &hash_code(code_plain.trim())) {
-            let attempts = challenge.attempts + 1;
-            if attempts >= MAX_ATTEMPTS {
+        if !fixed_time_hash_equals(
+            &challenge.code_hash,
+            &hash_code(code_plain.trim(), &self.code_pepper),
+        ) {
+            let attempts = self
+                .repo
+                .increment_attempts(challenge.token, Utc::now())
+                .await
+                .map_err(ChallengeError::Db)?;
+            if attempts.is_some_and(|attempts| attempts >= MAX_ATTEMPTS) {
                 self.repo
                     .remove(challenge.token)
-                    .await
-                    .map_err(ChallengeError::Db)?;
-            } else {
-                self.repo
-                    .update_attempts(challenge.token, attempts, Utc::now())
                     .await
                     .map_err(ChallengeError::Db)?;
             }
             return Ok(ValidateResult {
                 status: ValidateStatus::CodeMismatch,
+                target: None,
+                subject_user_uuid: None,
+            });
+        }
+
+        let consumed = self
+            .repo
+            .consume_if_matches(
+                challenge.token,
+                &challenge.code_hash,
+                Utc::now(),
+                MAX_ATTEMPTS,
+            )
+            .await
+            .map_err(ChallengeError::Db)?;
+        if !consumed {
+            return Ok(ValidateResult {
+                status: ValidateStatus::NotFound,
                 target: None,
                 subject_user_uuid: None,
             });
@@ -202,10 +229,15 @@ fn generate_code() -> String {
     format!("{n:06}")
 }
 
-/// `Convert.ToHexString(SHA256(...))` — uppercase hex.
-pub fn hash_code(code: &str) -> String {
-    let digest = Sha256::digest(code.as_bytes());
-    hex::encode_upper(digest)
+/// Keyed representation prevents an offline 10^6-code sweep after a DB leak.
+pub fn hash_code(code: &str, pepper: &[u8]) -> String {
+    let mut mac = HmacSha256::new_from_slice(pepper).expect("HMAC accepts any key length");
+    mac.update(CODE_HASH_DOMAIN);
+    mac.update(code.as_bytes());
+    format!(
+        "{CODE_HASH_PREFIX}{}",
+        hex::encode_upper(mac.finalize().into_bytes())
+    )
 }
 
 fn fixed_time_hash_equals(expected: &str, actual: &str) -> bool {
@@ -220,12 +252,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hash_matches_known_sha256_uppercase() {
-        // echo -n 123456 | sha256sum
-        assert_eq!(
-            hash_code("123456"),
-            "8D969EEF6ECAD3C29A3A629280E686CF0C3F5D5A86AFF3CA12020C923ADC6C92"
-        );
+    fn code_hash_is_keyed_and_domain_tagged() {
+        let first = hash_code("123456", b"pepper-a");
+        assert!(first.starts_with(CODE_HASH_PREFIX));
+        assert_eq!(first, hash_code("123456", b"pepper-a"));
+        assert_ne!(first, hash_code("123456", b"pepper-b"));
+        assert_ne!(first, hash_code("654321", b"pepper-a"));
     }
 
     #[test]

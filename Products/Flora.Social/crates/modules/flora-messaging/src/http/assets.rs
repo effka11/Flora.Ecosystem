@@ -266,6 +266,7 @@ fn image_video_blob_response(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/octet-stream"),
     );
+    harden_private_blob_headers(&mut headers);
     (StatusCode::OK, headers, bytes).into_response()
 }
 
@@ -281,7 +282,19 @@ fn voice_blob_response(bytes: Vec<u8>, content_type: &str, duration_ms: i32) -> 
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/octet-stream"),
     );
+    harden_private_blob_headers(&mut headers);
     (StatusCode::OK, headers, bytes).into_response()
+}
+
+fn harden_private_blob_headers(headers: &mut HeaderMap) {
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store, max-age=0"),
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
 }
 
 fn asset_err(err: AssetError) -> Response {

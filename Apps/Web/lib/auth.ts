@@ -220,12 +220,24 @@ function notifySessionCleared(): void {
   window.dispatchEvent(new Event(SESSION_CLEARED_EVENT));
 }
 
+function clearBrowserRefreshCookie(): void {
+  if (typeof window === "undefined" || authApiRoot()) return;
+  void fetch("/api/auth/browser-session", {
+    method: "DELETE",
+    credentials: "same-origin",
+    keepalive: true,
+  }).catch(() => {
+    // Local state is authoritative for the UI; an expired server cookie can be cleared later.
+  });
+}
+
 export function clearSession() {
   if (typeof window === "undefined") return;
   const hadSession =
     Boolean(localStorage.getItem(STORAGE_ACCESS)) ||
     Boolean(localStorage.getItem(STORAGE_REFRESH)) ||
     Boolean(localStorage.getItem(STORAGE_EXPIRES));
+  clearBrowserRefreshCookie();
   localStorage.removeItem(STORAGE_ACCESS);
   localStorage.removeItem(STORAGE_REFRESH);
   localStorage.removeItem(STORAGE_EXPIRES);

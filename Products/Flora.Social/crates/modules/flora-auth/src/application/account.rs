@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::infrastructure::password::{hash_password, verify_password};
+use crate::infrastructure::password::{MAX_PASSWORD_BYTES, hash_password, verify_password};
 use crate::infrastructure::repo::AuthRepo;
 
 #[derive(Debug)]
@@ -43,9 +43,14 @@ impl AccountService {
         if new_password.trim().is_empty() {
             return Err(ChangePasswordError::BadRequest("Укажите новый пароль."));
         }
-        if new_password.len() < 8 {
+        if new_password.chars().count() < 8 {
             return Err(ChangePasswordError::BadRequest(
                 "Новый пароль должен быть не короче 8 символов.",
+            ));
+        }
+        if new_password.len() > MAX_PASSWORD_BYTES {
+            return Err(ChangePasswordError::BadRequest(
+                "Новый пароль слишком длинный.",
             ));
         }
 

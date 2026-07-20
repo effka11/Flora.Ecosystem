@@ -79,7 +79,12 @@ pub fn compose(
     let frc_i_backfill_enabled = media.frc_i_backfill_enabled;
     let backfill_pool = pool.clone();
     let repo = Arc::new(ContentRepo::new(pool));
-    let feed = Arc::new(FeedService::new(repo.clone(), follow.clone(), blocklist));
+    let feed = Arc::new(FeedService::new(
+        repo.clone(),
+        follow.clone(),
+        blocklist,
+        profile_access.clone(),
+    ));
     let recommendations = Arc::new(CommunityRecommendationService::new(
         repo.clone(),
         follow.clone(),
@@ -89,6 +94,7 @@ pub fn compose(
         accounts.clone(),
         profiles.clone(),
         follow,
+        profile_access.clone(),
     ));
     let profile_posts = Arc::new(ProfilePostsService::new(
         repo.clone(),
@@ -96,10 +102,10 @@ pub fn compose(
         profile_access.clone(),
         serialize.clone(),
     ));
-    let access = Arc::new(PostAccessService::new(repo.clone()));
+    let access = Arc::new(PostAccessService::new(repo.clone(), profile_access.clone()));
     let comments = Arc::new(CommentsService::new(
         repo.clone(),
-        access,
+        access.clone(),
         accounts.clone(),
         profiles.clone(),
         profile_access,
@@ -111,9 +117,10 @@ pub fn compose(
         feed.clone(),
         accounts.clone(),
         profiles,
+        access.clone(),
         notifications,
     ));
-    let media_svc = Arc::new(MediaService::new(repo.clone(), user_avatars));
+    let media_svc = Arc::new(MediaService::new(repo.clone(), user_avatars, access));
     let drafts = Arc::new(DraftsService::new(repo.clone()));
     let post_images = Arc::new(PostImagesService::new(repo.clone()));
 

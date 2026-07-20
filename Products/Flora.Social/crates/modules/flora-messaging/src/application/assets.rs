@@ -6,6 +6,7 @@ use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
     UploadImageAssetResultDto, UploadVideoAssetResultDto, UploadVoiceAssetResultDto,
 };
+use flora_users_contracts::MessagesAccess;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -37,11 +38,20 @@ pub struct AssetBlob {
 pub struct AssetService {
     pool: PgPool,
     accounts: Arc<dyn AccountDirectory>,
+    messages_access: Arc<dyn MessagesAccess>,
 }
 
 impl AssetService {
-    pub fn new(pool: PgPool, accounts: Arc<dyn AccountDirectory>) -> Self {
-        Self { pool, accounts }
+    pub fn new(
+        pool: PgPool,
+        accounts: Arc<dyn AccountDirectory>,
+        messages_access: Arc<dyn MessagesAccess>,
+    ) -> Self {
+        Self {
+            pool,
+            accounts,
+            messages_access,
+        }
     }
 
     pub async fn upload_image(
@@ -62,6 +72,7 @@ impl AssetService {
             return Err(AssetError::BadRequest("Файл фото пуст.".into()));
         }
         self.ensure_receiver_exists(to_user_uuid).await?;
+        self.ensure_can_send(sender_uuid, to_user_uuid).await?;
 
         let stored_ct = normalize_content_type(content_type, file_content_type);
         let asset_uuid = Uuid::now_v7();
@@ -107,6 +118,7 @@ impl AssetService {
             ));
         }
         self.ensure_receiver_exists(to_user_uuid).await?;
+        self.ensure_can_send(sender_uuid, to_user_uuid).await?;
 
         let stored_ct = normalize_content_type(None, file_content_type);
         let asset_uuid = Uuid::now_v7();
@@ -148,6 +160,7 @@ impl AssetService {
             return Err(AssetError::BadRequest("Файл видео пуст.".into()));
         }
         self.ensure_receiver_exists(to_user_uuid).await?;
+        self.ensure_can_send(sender_uuid, to_user_uuid).await?;
 
         let stored_ct = normalize_content_type(content_type, file_content_type);
         let asset_uuid = Uuid::now_v7();
@@ -242,6 +255,22 @@ impl AssetService {
             .map_err(AssetError::Internal)?;
         if exists.is_none() {
             return Err(AssetError::NotFound("Пользователь не найден.".into()));
+        }
+        Ok(())
+    }
+
+    async fn ensure_can_send(
+        &self,
+        sender_uuid: Uuid,
+        receiver_uuid: Uuid,
+    ) -> Result<(), AssetError> {
+        let allowed = self
+            .messages_access
+            .can_send_messages(sender_uuid, receiver_uuid)
+            .await
+            .map_err(AssetError::Internal)?;
+        if !allowed {
+            return Err(AssetError::Forbidden);
         }
         Ok(())
     }

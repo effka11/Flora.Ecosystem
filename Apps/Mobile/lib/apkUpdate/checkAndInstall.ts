@@ -16,6 +16,7 @@ import {
   clearPendingApk,
   downloadApkResumable,
   isApkUpdateCancelled,
+  readPendingMeta,
   resetApkUpdateCancelFlag,
 } from "@/lib/apkUpdate/download";
 import {
@@ -23,6 +24,10 @@ import {
   getInstalledVersionCode,
   type AndroidUpdateManifest,
 } from "@/lib/apkUpdate/githubRelease";
+import {
+  normalizeTrustedSha256,
+  trustedFloraSocialApkVersion,
+} from "@/lib/apkUpdate/manifestSecurity";
 import { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
 import {
   wasInstallPermissionDeclined,
@@ -202,32 +207,39 @@ async function runCheckAndInstall(
 
   // Synthetic manifest for install-only when caller already resolved version.
   if (!manifest && options.installOnlyUri) {
+    const pending = readPendingMeta();
+    if (!pending) {
+      return { ok: false, error: "Метаданные ожидающего APK не найдены", code: "INVALID_MANIFEST" };
+    }
     manifest = {
-      version: "pending",
-      versionCode: null,
+      version: pending.version ?? "pending",
+      versionCode: pending.versionCode,
       apkFileName: "pending.apk",
-      apkUrl: options.installOnlyUri,
-      sha256: "",
+      apkUrl: pending.apkUrl,
+      sha256: pending.sha256,
+      sizeBytes: pending.sizeBytes,
     };
   }
   if (!manifest) {
     return { ok: false, error: "Манифест обновления не найден", code: "NO_MANIFEST" };
   }
 
-  if (!/^[a-f0-9]{64}$/i.test(manifest.sha256)) {
-    if (options.allowUserAction && manifest.sha256.trim() === "") {
-      // Interactive direct-URL path: integrity check skipped on purpose.
-    } else if (options.allowUserAction) {
-      report({ phase: "error", message: "У релиза нет контрольной суммы APK" });
-      return {
-        ok: false,
-        error: "У релиза нет контрольной суммы APK",
-        code: "INVALID_MANIFEST",
-      };
-    } else {
-      return { ok: true, status: "skipped" };
-    }
+  const trustedSha256 = normalizeTrustedSha256(manifest.sha256);
+  const trustedUrlVersion = trustedFloraSocialApkVersion(manifest.apkUrl);
+  if (
+    !trustedSha256 ||
+    !trustedUrlVersion ||
+    (manifest.version !== "pending" && trustedUrlVersion !== manifest.version)
+  ) {
+    if (!options.allowUserAction) return { ok: true, status: "skipped" };
+    report({ phase: "error", message: "Манифест APK не прошёл проверку безопасности" });
+    return {
+      ok: false,
+      error: "Манифест APK не прошёл проверку безопасности",
+      code: "INVALID_MANIFEST",
+    };
   }
+  manifest = { ...manifest, sha256: trustedSha256 };
 
   // A legacy GitHub asset has no trustworthy versionCode. It is allowed only
   // after an explicit notification-button tap, never on the silent path.
@@ -237,20 +249,19 @@ async function runCheckAndInstall(
 
   mmkv.set(LAST_CHECK_KEY, String(Date.now()));
 
-  // Silent path only: skip same/older APKs. Interactive (notification tap) may
-  // install any release — including older test builds / downgrades.
-  if (!options.allowUserAction) {
-    if (manifest.versionCode != null && manifest.versionCode <= installed) {
-      report({ phase: "done", message: "Уже установлена актуальная версия" });
-      return { ok: true, status: "up_to_date" };
-    }
-    if (
-      manifest.versionCode == null &&
-      compareFloraSocialVersions(getFloraSocialAppVersion(), manifest.version) >= 0
-    ) {
-      report({ phase: "done", message: "Уже установлена актуальная версия" });
-      return { ok: true, status: "up_to_date" };
-    }
+  // Never offer a same-version or rollback APK, including notification-driven
+  // interactive updates. Older builds may contain already-fixed vulnerabilities.
+  if (manifest.versionCode != null && manifest.versionCode <= installed) {
+    report({ phase: "done", message: "Уже установлена актуальная версия" });
+    return { ok: true, status: "up_to_date" };
+  }
+  if (
+    manifest.versionCode == null &&
+    manifest.version !== "pending" &&
+    compareFloraSocialVersions(getFloraSocialAppVersion(), manifest.version) >= 0
+  ) {
+    report({ phase: "done", message: "Уже установлена актуальная версия" });
+    return { ok: true, status: "up_to_date" };
   }
 
   let fileUri: string;
@@ -323,20 +334,15 @@ async function runCheckAndInstall(
 
   try {
     report({ phase: "verifying" });
-    if (manifest.sha256.trim() === "") {
-      // Interactive direct download — no digest available without GitHub API.
-      report({ phase: "verifying", message: "Проверка пропущена" });
-    } else {
-      const hash = await sha256File(fileUri);
-      if (isApkUpdateCancelled()) return cancelledResult();
-      if (hash.toLowerCase() !== manifest.sha256.toLowerCase()) {
-        await clearPendingApk();
-        if (options.allowUserAction) {
-          report({ phase: "error", message: "Контрольная сумма APK не совпала" });
-          return { ok: false, error: "Контрольная сумма APK не совпала", code: "SHA256" };
-        }
-        return { ok: true, status: "skipped" };
+    const hash = await sha256File(fileUri);
+    if (isApkUpdateCancelled()) return cancelledResult();
+    if (hash.toLowerCase() !== manifest.sha256) {
+      await clearPendingApk();
+      if (options.allowUserAction) {
+        report({ phase: "error", message: "Контрольная сумма APK не совпала" });
+        return { ok: false, error: "Контрольная сумма APK не совпала", code: "SHA256" };
       }
+      return { ok: true, status: "skipped" };
     }
   } catch (e) {
     if (isCancelError(e)) return cancelledResult();

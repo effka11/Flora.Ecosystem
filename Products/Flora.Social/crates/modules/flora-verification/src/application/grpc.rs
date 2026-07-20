@@ -87,11 +87,14 @@ fn parse_optional_uuid(s: &str) -> Result<Option<Uuid>, Status> {
 }
 
 fn map_error(e: ChallengeError) -> Status {
+    tracing::error!(error = %e, "Verification gRPC request failed");
     match e {
         ChallengeError::Smtp(SendError::NotConfiguredProduction) => {
-            Status::failed_precondition(e.to_string())
+            Status::failed_precondition("verification email transport is not configured")
         }
-        ChallengeError::Smtp(SendError::Smtp(_)) => Status::unavailable(e.to_string()),
-        ChallengeError::Db(_) => Status::internal(e.to_string()),
+        ChallengeError::Smtp(SendError::Smtp(_)) => {
+            Status::unavailable("verification email transport is unavailable")
+        }
+        ChallengeError::Db(_) => Status::internal("verification storage is unavailable"),
     }
 }

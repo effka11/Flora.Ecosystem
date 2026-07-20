@@ -366,48 +366,78 @@ impl MessagingRepo {
         .map_err(|e| e.to_string())?;
 
         if !voice_asset_uuids.is_empty() {
-            sqlx::query(
+            let bound = sqlx::query(
                 r#"
                 UPDATE flora_core.user_message_voice_assets
                 SET message_uuid = $1
                 WHERE voice_asset_uuid = ANY($2)
+                  AND sender_user_uuid = $3
+                  AND receiver_user_uuid = $4
+                  AND message_uuid IS NULL
                 "#,
             )
             .bind(message_uuid)
             .bind(voice_asset_uuids)
+            .bind(sender_uuid)
+            .bind(receiver_uuid)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+            if bound.rows_affected() != voice_asset_uuids.len() as u64 {
+                return Err(
+                    "Голосовое вложение не принадлежит этому черновику или уже отправлено.".into(),
+                );
+            }
         }
 
         if !image_asset_uuids.is_empty() {
-            sqlx::query(
+            let bound = sqlx::query(
                 r#"
                 UPDATE flora_core.user_message_image_assets
                 SET message_uuid = $1
                 WHERE image_asset_uuid = ANY($2)
+                  AND sender_user_uuid = $3
+                  AND receiver_user_uuid = $4
+                  AND message_uuid IS NULL
                 "#,
             )
             .bind(message_uuid)
             .bind(image_asset_uuids)
+            .bind(sender_uuid)
+            .bind(receiver_uuid)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+            if bound.rows_affected() != image_asset_uuids.len() as u64 {
+                return Err(
+                    "Фото-вложение не принадлежит этому черновику или уже отправлено.".into(),
+                );
+            }
         }
 
         if !video_asset_uuids.is_empty() {
-            sqlx::query(
+            let bound = sqlx::query(
                 r#"
                 UPDATE flora_core.user_message_video_assets
                 SET message_uuid = $1
                 WHERE video_asset_uuid = ANY($2)
+                  AND sender_user_uuid = $3
+                  AND receiver_user_uuid = $4
+                  AND message_uuid IS NULL
                 "#,
             )
             .bind(message_uuid)
             .bind(video_asset_uuids)
+            .bind(sender_uuid)
+            .bind(receiver_uuid)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+            if bound.rows_affected() != video_asset_uuids.len() as u64 {
+                return Err(
+                    "Видео-вложение не принадлежит этому черновику или уже отправлено.".into(),
+                );
+            }
         }
 
         tx.commit().await.map_err(|e| e.to_string())?;
@@ -417,43 +447,6 @@ impl MessagingRepo {
             created_at,
             encrypted_for_sender: encrypted_for_sender.to_string(),
         })
-    }
-
-    pub async fn validate_voice_assets(
-        &self,
-        sender_uuid: Uuid,
-        receiver_uuid: Uuid,
-        voice_uuids: &[Uuid],
-    ) -> Result<(), String> {
-        if voice_uuids.is_empty() {
-            return Ok(());
-        }
-        let rows: Vec<VoiceAssetRow> = sqlx::query_as(
-            r#"
-            SELECT voice_asset_uuid, sender_user_uuid, receiver_user_uuid, message_uuid
-            FROM flora_core.user_message_voice_assets
-            WHERE voice_asset_uuid = ANY($1)
-            "#,
-        )
-        .bind(voice_uuids)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        if rows.len() != voice_uuids.len() {
-            return Err("Одно или несколько голосовых вложений не найдены.".into());
-        }
-        for a in &rows {
-            if a.sender_user_uuid != sender_uuid
-                || a.receiver_user_uuid != receiver_uuid
-                || a.message_uuid.is_some()
-            {
-                return Err(
-                    "Голосовое вложение не принадлежит этому черновику или уже отправлено.".into(),
-                );
-            }
-        }
-        Ok(())
     }
 
     pub async fn mark_read(&self, viewer_uuid: Uuid, other_user_uuid: Uuid) -> Result<(), String> {
@@ -676,15 +669,6 @@ struct LastPeer {
 struct AssetLinkRow {
     message_uuid: Option<Uuid>,
     asset_uuid: Uuid,
-}
-
-#[derive(sqlx::FromRow)]
-struct VoiceAssetRow {
-    #[allow(dead_code)]
-    voice_asset_uuid: Uuid,
-    sender_user_uuid: Uuid,
-    receiver_user_uuid: Uuid,
-    message_uuid: Option<Uuid>,
 }
 
 #[derive(sqlx::FromRow)]

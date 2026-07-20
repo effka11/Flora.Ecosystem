@@ -7,8 +7,8 @@ import {
 import { isApkUpdaterNativeReady } from "@/lib/apkUpdate/capabilities";
 import { checkAndInstall, cancelInteractiveApkUpdate } from "@/lib/apkUpdate/checkAndInstall";
 import {
-  buildDirectUpdateManifestFromNotificationText,
   fetchDirectUpdateManifestForVersion,
+  fetchUpdateManifestFromNotificationText,
   type AndroidUpdateManifest,
 } from "@/lib/apkUpdate/githubRelease";
 import type { ApkUpdateProgressListener } from "@/lib/apkUpdate/progress";
@@ -40,7 +40,7 @@ async function resolveManifest(notificationText: string): Promise<AndroidUpdateM
   const fromJson = await fetchDirectUpdateManifestForVersion(version).catch(() => null);
   if (fromJson) return fromJson;
 
-  return buildDirectUpdateManifestFromNotificationText(notificationText);
+  return fetchUpdateManifestFromNotificationText(notificationText).catch(() => null);
 }
 
 async function pendingMatchesVersion(versionCode: number | null): Promise<boolean> {

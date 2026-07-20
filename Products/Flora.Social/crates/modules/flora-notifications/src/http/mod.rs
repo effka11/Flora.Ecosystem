@@ -1,8 +1,9 @@
 //! HTTP Notifications — inbox + push-token + SSE + admin broadcast (`Notifications:ServeNative`).
 
+use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::Router;
@@ -37,6 +38,57 @@ pub struct AdminBroadcastState {
     pub inbox: Arc<InboxService>,
     /// `Flora:AdminBroadcastToken` after trim; `None` → endpoint disabled (404).
     pub admin_token: Option<Arc<str>>,
+    pub rate_limiter: Arc<AdminBroadcastRateLimiter>,
+}
+
+pub struct AdminBroadcastRateLimiter {
+    state: Mutex<AdminLimiterState>,
+}
+
+struct AdminLimiterState {
+    buckets: HashMap<String, (Instant, u32)>,
+    last_cleanup: Instant,
+}
+
+impl AdminBroadcastRateLimiter {
+    const PERMIT_LIMIT: u32 = 10;
+    const WINDOW: Duration = Duration::from_secs(15 * 60);
+    const MAX_BUCKETS: usize = 10_000;
+
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn check_and_increment(&self, key: &str) -> bool {
+        let now = Instant::now();
+        let mut state = self.state.lock().expect("admin rate limiter lock");
+        if now.duration_since(state.last_cleanup) >= Duration::from_secs(30) {
+            state
+                .buckets
+                .retain(|_, (start, _)| now.duration_since(*start) < Self::WINDOW);
+            state.last_cleanup = now;
+        }
+        if !state.buckets.contains_key(key) && state.buckets.len() >= Self::MAX_BUCKETS {
+            return false;
+        }
+        let entry = state.buckets.entry(key.to_string()).or_insert((now, 0));
+        if entry.1 >= Self::PERMIT_LIMIT {
+            return false;
+        }
+        entry.1 += 1;
+        true
+    }
+}
+
+impl Default for AdminBroadcastRateLimiter {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(AdminLimiterState {
+                buckets: HashMap::new(),
+                last_cleanup: Instant::now(),
+            }),
+        }
+    }
 }
 
 pub fn protected_router(state: NotificationsState) -> Router {
@@ -109,6 +161,16 @@ async fn broadcast_notification(
         )
             .into_response();
     };
+
+    let client_key = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("anon");
+    if !state.rate_limiter.check_and_increment(client_key) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
 
     let provided = headers
         .get(ADMIN_TOKEN_HEADER)

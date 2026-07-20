@@ -24,6 +24,7 @@ const SAVABLE_KEY = "apkUpdate.downloadSavable";
 const DISK_MARGIN_BYTES = 40 * 1024 * 1024;
 
 export type PendingMeta = {
+  version?: string;
   versionCode: number | null;
   sha256: string;
   apkUrl: string;
@@ -155,6 +156,7 @@ function isCompletePending(
 
 async function finishDownloadMeta(manifest: AndroidUpdateManifest, uri: string): Promise<string> {
   writePendingMeta({
+    version: manifest.version,
     versionCode: manifest.versionCode,
     sha256: manifest.sha256,
     apkUrl: manifest.apkUrl,

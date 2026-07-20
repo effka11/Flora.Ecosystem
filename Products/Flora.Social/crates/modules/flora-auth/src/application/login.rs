@@ -16,6 +16,10 @@ use crate::infrastructure::totp::verify_totp;
 
 const MAX_LOGIN_FAILURES: u8 = 5;
 const LOCKOUT_MINUTES: i64 = 15;
+/// Валидный Argon2id-хеш для выравнивания стоимости входа с неизвестным identifier.
+/// Значение публичное и не соответствует реальному аккаунту.
+const DUMMY_PASSWORD_HASH: &str =
+    "8OHSw7Sllod4aVpLPC0eD0W2OWZGOzFd9mmPwRicJvM8XHz2Y/DIKgTVA6aqL/Hc";
 
 pub struct SessionHints {
     pub ip: String,
@@ -79,6 +83,12 @@ impl LoginService {
             .map_err(|e| LoginError::Internal(e.to_string()))?;
 
         let Some(user) = user else {
+            let password_owned = password.to_string();
+            tokio::task::spawn_blocking(move || {
+                verify_password(&password_owned, DUMMY_PASSWORD_HASH)
+            })
+            .await
+            .map_err(|e| LoginError::Internal(e.to_string()))?;
             return Err(LoginError::Unauthorized(
                 "Неверный email или пароль.".into(),
             ));
@@ -107,12 +117,7 @@ impl LoginService {
                 .map_err(|e| LoginError::Internal(e.to_string()))?;
 
         if !ok {
-            self.register_failure(
-                user.user_uuid,
-                security.as_ref().map(|s| s.login_failures),
-                now,
-            )
-            .await?;
+            self.register_failure(user.user_uuid, now).await?;
             return Err(LoginError::Unauthorized(
                 "Неверный email или пароль.".into(),
             ));
@@ -127,12 +132,7 @@ impl LoginService {
                 }));
             }
             if !verify_totp(user.two_factor_secret.as_deref(), code) {
-                self.register_failure(
-                    user.user_uuid,
-                    security.as_ref().map(|s| s.login_failures),
-                    now,
-                )
-                .await?;
+                self.register_failure(user.user_uuid, now).await?;
                 return Err(LoginError::TwoFactor(TwoFactorChallengeResponse {
                     requires_two_factor: true,
                     error: Some("Неверный код двухфакторной аутентификации.".into()),
@@ -141,10 +141,10 @@ impl LoginService {
         }
 
         let jwt_id = generate_jwt_id();
-        let refresh_token = generate_refresh_token();
+        let session_id = Uuid::now_v7();
+        let refresh_token = generate_refresh_token(session_id, self.jwt.secret.as_bytes());
         let access_expires = now + Duration::minutes(self.jwt.access_token_minutes);
         let refresh_expires = now + Duration::days(self.jwt.refresh_token_days);
-        let session_id = Uuid::now_v7();
         let csrf = generate_csrf_token();
         let hmac_key = generate_hmac_key();
 
@@ -209,17 +209,15 @@ impl LoginService {
     async fn register_failure(
         &self,
         user_uuid: Uuid,
-        current_failures: Option<i16>,
         now: chrono::DateTime<Utc>,
     ) -> Result<(), LoginError> {
-        let failures = (current_failures.unwrap_or(0) as u8).saturating_add(1);
-        let (new_failures, locked_until) = if failures >= MAX_LOGIN_FAILURES {
-            (0u8, Some(now + Duration::minutes(LOCKOUT_MINUTES)))
-        } else {
-            (failures, None)
-        };
         self.repo
-            .upsert_login_failure(user_uuid, now, new_failures, locked_until)
+            .record_login_failure(
+                user_uuid,
+                now,
+                i16::from(MAX_LOGIN_FAILURES),
+                now + Duration::minutes(LOCKOUT_MINUTES),
+            )
             .await
             .map_err(|e| LoginError::Internal(e.to_string()))
     }

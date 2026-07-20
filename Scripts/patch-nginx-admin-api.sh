@@ -6,12 +6,13 @@ if grep -q 'location /api/admin/' "$CONF"; then
   exit 0
 fi
 cp "$CONF" "${CONF}.bak.$(date +%s)"
-python3 - <<'PY'
+CONF="$CONF" python3 - <<'PY'
+import os
 from pathlib import Path
-p = Path("/etc/nginx/sites-available/flora-origin-https.conf")
+p = Path(os.environ["CONF"])
 text = p.read_text()
 block = """    location /api/admin/ {
-        proxy_pass http://127.0.0.1:5000;
+        proxy_pass http://127.0.0.1:5290;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

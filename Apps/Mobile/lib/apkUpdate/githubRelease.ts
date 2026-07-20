@@ -1,7 +1,12 @@
 import { nativeBuildVersion } from "expo-application";
 import { Platform } from "react-native";
 import { mmkv } from "@/lib/mmkv";
-import { parseAppUpdateVersionFromText, buildFloraSocialApkDownloadUrl } from "@/lib/appLinks";
+import { parseAppUpdateVersionFromText } from "@/lib/appLinks";
+import {
+  isSafeReleaseVersion,
+  normalizeTrustedSha256,
+  trustedFloraSocialApkVersion,
+} from "@/lib/apkUpdate/manifestSecurity";
 
 export type AndroidUpdateManifest = {
   version: string;
@@ -9,7 +14,7 @@ export type AndroidUpdateManifest = {
   versionCode: number | null;
   apkFileName: string;
   apkUrl: string;
-  /** Empty string = skip integrity check (interactive notification direct URL). */
+  /** Required SHA-256 of the APK bytes. */
   sha256: string;
   sizeBytes?: number;
 };
@@ -131,21 +136,23 @@ export async function fetchLatestUpdateManifest(): Promise<AndroidUpdateManifest
       const parsed = JSON.parse(
         manifestRes.body.replace(/^\uFEFF/, ""),
       ) as Partial<AndroidUpdateManifest>;
+      const sha256 = normalizeTrustedSha256(parsed.sha256);
       if (
         typeof parsed.version === "string" &&
+        isSafeReleaseVersion(parsed.version) &&
         typeof parsed.versionCode === "number" &&
         Number.isInteger(parsed.versionCode) &&
         parsed.versionCode >= 1 &&
         typeof parsed.apkUrl === "string" &&
-        typeof parsed.sha256 === "string" &&
-        /^[a-f0-9]{64}$/i.test(parsed.sha256)
+        trustedFloraSocialApkVersion(parsed.apkUrl) === parsed.version &&
+        sha256
       ) {
         return {
           version: parsed.version,
           versionCode: parsed.versionCode,
           apkFileName: parsed.apkFileName ?? `flora.social-v${parsed.version}-android.apk`,
           apkUrl: parsed.apkUrl,
-          sha256: parsed.sha256.toLowerCase(),
+          sha256,
           sizeBytes: typeof parsed.sizeBytes === "number" ? parsed.sizeBytes : undefined,
         };
       }
@@ -154,11 +161,17 @@ export async function fetchLatestUpdateManifest(): Promise<AndroidUpdateManifest
 
   // No update.json on the release — APK-only (interactive / legacy).
   const version = release.tag_name.replace(/^social\/v/i, "").trim();
-  if (!version) return null;
+  if (!isSafeReleaseVersion(version)) return null;
   const expectedName = `flora.social-v${version}-android.apk`;
   const apkAsset = (release.assets ?? []).find((a) => a.name === expectedName);
   const sha256 = parseAssetSha256(apkAsset?.digest);
-  if (!apkAsset?.browser_download_url || !sha256) return null;
+  if (
+    !apkAsset?.browser_download_url ||
+    trustedFloraSocialApkVersion(apkAsset.browser_download_url) !== version ||
+    !sha256
+  ) {
+    return null;
+  }
   return {
     version,
     versionCode: null,
@@ -173,6 +186,7 @@ export async function fetchLatestUpdateManifest(): Promise<AndroidUpdateManifest
 /** Direct CDN URL for update.json (no GitHub list API). */
 export function buildFloraSocialUpdateJsonUrl(version: string): string {
   const v = version.trim();
+  if (!isSafeReleaseVersion(v)) throw new Error("Invalid Flora Social release version");
   return `https://github.com/effka11/Flora.Ecosystem/releases/download/social/v${v}/flora.social-android-update.json`;
 }
 
@@ -196,14 +210,16 @@ export async function fetchDirectUpdateManifestForVersion(
     if (!res.ok) return null;
     const body = await res.text();
     const parsed = JSON.parse(body.replace(/^\uFEFF/, "")) as Partial<AndroidUpdateManifest>;
+    const sha256 = normalizeTrustedSha256(parsed.sha256);
     if (
       typeof parsed.version !== "string" ||
+      !isSafeReleaseVersion(parsed.version) ||
       typeof parsed.versionCode !== "number" ||
       !Number.isInteger(parsed.versionCode) ||
       parsed.versionCode < 1 ||
       typeof parsed.apkUrl !== "string" ||
-      typeof parsed.sha256 !== "string" ||
-      !/^[a-f0-9]{64}$/i.test(parsed.sha256)
+      trustedFloraSocialApkVersion(parsed.apkUrl) !== parsed.version ||
+      !sha256
     ) {
       return null;
     }
@@ -212,7 +228,7 @@ export async function fetchDirectUpdateManifestForVersion(
       versionCode: parsed.versionCode,
       apkFileName: parsed.apkFileName ?? `flora.social-v${parsed.version}-android.apk`,
       apkUrl: parsed.apkUrl,
-      sha256: parsed.sha256.toLowerCase(),
+      sha256,
       sizeBytes: typeof parsed.sizeBytes === "number" ? parsed.sizeBytes : undefined,
     };
   } catch {
@@ -220,26 +236,6 @@ export async function fetchDirectUpdateManifestForVersion(
   } finally {
     clearTimeout(timer);
   }
-}
-
-/**
- * Interactive notification path: build APK URL from notification text with
- * zero network calls (no api.github.com). Avoids infinite "checking" when the
- * GitHub API is slow/blocked while release CDN still works.
- */
-export function buildDirectUpdateManifestFromNotificationText(
-  text: string,
-): AndroidUpdateManifest | null {
-  if (Platform.OS !== "android") return null;
-  const version = parseAppUpdateVersionFromText(text);
-  if (!version) return null;
-  return {
-    version,
-    versionCode: null,
-    apkFileName: `flora.social-v${version}-android.apk`,
-    apkUrl: buildFloraSocialApkDownloadUrl(version),
-    sha256: "",
-  };
 }
 
 /**
@@ -253,7 +249,7 @@ export async function fetchUpdateManifestFromNotificationText(
   if (Platform.OS !== "android") return null;
 
   const version = parseAppUpdateVersionFromText(text);
-  if (!version) return null;
+  if (!version || !isSafeReleaseVersion(version)) return null;
 
   const releases = await fetchReleases();
   const release = releases.find((candidate) => candidate.tag_name === `social/v${version}`);
@@ -262,7 +258,13 @@ export async function fetchUpdateManifestFromNotificationText(
   const expectedName = `flora.social-v${version}-android.apk`;
   const asset = (release.assets ?? []).find((candidate) => candidate.name === expectedName);
   const sha256 = parseAssetSha256(asset?.digest);
-  if (!asset?.browser_download_url || !sha256) return null;
+  if (
+    !asset?.browser_download_url ||
+    trustedFloraSocialApkVersion(asset.browser_download_url) !== version ||
+    !sha256
+  ) {
+    return null;
+  }
 
   return {
     version,

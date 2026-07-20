@@ -280,11 +280,6 @@ impl ConversationService {
         let image_uuids = dedupe_uuids(request.image_asset_uuids);
         let video_uuids = dedupe_uuids(request.video_asset_uuids);
 
-        self.repo
-            .validate_voice_assets(sender_uuid, receiver_uuid, &voice_uuids)
-            .await
-            .map_err(SendMessageError::BadRequest)?;
-
         let result = self
             .repo
             .send_message(
