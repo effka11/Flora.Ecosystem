@@ -12,10 +12,10 @@ use crate::color::{
     downsample_420, upsample_420, upsample_420_centered, ycbcr_to_rgb, ycocg_lossy_to_rgb,
     ycocg_r_to_rgb,
 };
-use crate::dct::{quant_matrices, quant_matrices_v8};
+use crate::dct::{quant_matrices, quant_matrices_v8, quant_matrices_v9};
 use crate::error::DecodeError;
 use crate::format::{HEADER_LEN, Header, Metadata, TileRect, parse_metadata_block, tile_grid};
-use crate::format::{VERSION_ADAPTIVE, VERSION_RECT};
+use crate::format::{VERSION_ADAPTIVE, VERSION_PERCEPTUAL, VERSION_RECT};
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
 use crate::rans::RansDecoder;
@@ -102,8 +102,11 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
         return Err(DecodeError::Corrupt("лишние байты после последнего тайла"));
     }
 
-    // Матрицы плоскостей: v8 — пошаговые Y/Co/Cg, до v8 — luma/chroma/chroma.
-    let q_planes: [[u16; 64]; 3] = if header.version >= VERSION_RECT {
+    // Матрицы плоскостей: v8/v9 — пошаговые Y/Co/Cg, до v8 — luma/chroma/chroma.
+    let q_planes: [[u16; 64]; 3] = if header.version >= VERSION_PERCEPTUAL {
+        let (qy, qco, qcg) = quant_matrices_v9(header.quality.max(1));
+        [qy, qco, qcg]
+    } else if header.version >= VERSION_RECT {
         let (qy, qco, qcg) = quant_matrices_v8(header.quality.max(1));
         [qy, qco, qcg]
     } else {
@@ -227,9 +230,12 @@ fn decode_tile(
             )?);
         }
     } else {
-        // v7/v8: банк адаптивных моделей общий для всех плоскостей тайла.
-        // Раскладка контекстов v8 совпадает с v7 (отличие v8 — только цвет/qmat).
-        let mut bank = if version >= VERSION_ADAPTIVE {
+        // v7+: банк адаптивных моделей общий для всех плоскостей тайла.
+        // Раскладка v8 совпадает с v7 (отличие v8 — цвет/qmat); v9 добавляет DQ.
+        let mut bank = if version >= VERSION_PERCEPTUAL {
+            let (groups, kinds) = lossy::ctx_meta_v9();
+            Some(ModelBank::new(groups, kinds))
+        } else if version >= VERSION_ADAPTIVE {
             let (groups, kinds) = lossy::ctx_meta_v7();
             Some(ModelBank::new(groups, kinds))
         } else {
@@ -347,17 +353,22 @@ fn read_dct_plane(
 ) -> Result<DctPlane, DecodeError> {
     let (w, h) = size;
     if version >= VERSION_ADAPTIVE {
-        // Контейнер и дерево v7/v8 одинаковы; v8 отличается цветом/qmat выше.
+        // Контейнер и дерево v7/v8/v9 одинаковы; v8 меняет цвет/qmat,
+        // v9 добавляет per-root delta-Q внутри дерева.
         let (section, used) = read_dct_section_v7(&payload[*pos..])?;
         *pos += used;
-        let bank = bank.expect("v7/v8: банк обязателен");
+        let bank = bank.expect("v7+: банк обязателен");
         let mut dec = RangeDecoder::new(section.tokens)?;
         let mut raw = BitReader::new(section.raw);
         let cdef_strength = bank.decode(&mut dec, lossy::CTX7_CDEF)?;
         if cdef_strength >= crate::cdef::N_STRENGTHS {
             return Err(DecodeError::Corrupt("CDEF: неизвестная сила"));
         }
-        let buf = lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?;
+        let buf = if version >= VERSION_PERCEPTUAL {
+            lossy::decode_tile_plane_v9(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?
+        } else {
+            lossy::decode_tile_plane_v7(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?
+        };
         if dec.consumed() != section.tokens.len() {
             return Err(DecodeError::Corrupt("лишние байты в адаптивном потоке"));
         }

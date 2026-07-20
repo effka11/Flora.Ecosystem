@@ -162,7 +162,7 @@ impl<'a> RangeDecoder<'a> {
 const ADAPT_LIMIT: u32 = 1 << 13;
 
 /// Вид prior'а / алфавита модели. Разные контексты имеют разный носитель:
-/// SPLIT/EOB — 2 символа, SPLIT4/TX/CDEF — 4, MODE — 15, RUN — 22,
+/// SPLIT/EOB — 2 символа, SPLIT4/TX/CDEF — 4, DQ — 8, MODE — 15, RUN — 22,
 /// прочие hybrid-uint — 32.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelKind {
@@ -176,6 +176,8 @@ pub enum ModelKind {
     Tx,
     /// Tile-plane CDEF strength v7.5.
     Cdef,
+    /// Индекс delta-Q корня 32×32 (v9): 4 — нейтраль.
+    Dq,
     /// DC hybrid-uint.
     Dc,
     /// Run + EOB (sym 31).
@@ -190,6 +192,7 @@ impl ModelKind {
             Self::Split | Self::Eob => 2,
             Self::Mode => 15,
             Self::Tx | Self::Cdef => 4,
+            Self::Dq => 8,
             // Максимальный run в 32×32 равен 1022: hybrid-uint token = 21.
             Self::Run => 22,
             Self::Dc | Self::Level => 32,
@@ -251,6 +254,10 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
         ModelKind::Cdef => {
             // OFF доминирует; сильные варианты должны доказать снижение SSE.
             freq[..n].copy_from_slice(&[8, 3, 2, 1]);
+        }
+        ModelKind::Dq => {
+            // Нейтральная ступень доминирует; крайние индексы редки.
+            freq[..n].copy_from_slice(&[1, 2, 3, 6, 16, 6, 3, 2]);
         }
         ModelKind::Dc => {
             // DC: малые значения чаще, без отдельного EOB.
