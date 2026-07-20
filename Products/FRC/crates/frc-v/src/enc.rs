@@ -10,6 +10,11 @@
 //!    только здесь, зеркально декодеру; сетка сериализации строится заново).
 //!
 //! GOP: ключ каждые `keyint` кадров; ключи кодируются с qp − 4 (якорь качества).
+//! Детектор смены сцены (не нормативно): двухфакторное сравнение с предыдущим
+//! исходным кадром — сдвиг гистограммы люмы + MAD средних блоков 8×8 после
+//! компенсации глобальной яркости; жёсткая склейка форсирует ключ и
+//! перезапускает GOP. Поиск движения дополнительно стартует с
+//! temporal-кандидата — MV co-located блока предыдущего кадра.
 
 use crate::block::{
     LeafData, LeafGrid, LeafKind, intra_pred_plane, luma_tile_size, reconstruct_leaf,
@@ -51,8 +56,13 @@ pub struct Encoder {
     cfg: EncoderConfig,
     recon: Frame,
     reference: Option<RefFrame>,
-    frame_index: u64,
+    /// Кадров с последнего ключевого (включая его).
+    frames_since_key: u32,
     rate_ctrl: Option<RateControl>,
+    /// Статистика люмы предыдущего исходного кадра (детектор склеек).
+    prev_stats: Option<SceneStats>,
+    /// Сетка решений предыдущего кадра (temporal MV-кандидаты).
+    prev_grid: Option<LeafGrid>,
 }
 
 impl Encoder {
@@ -60,13 +70,15 @@ impl Encoder {
         cfg.validate()?;
         let rate_ctrl = cfg
             .target_kbps
-            .map(|kbps| RateControl::new(cfg.qp, kbps, cfg.fps_num, cfg.fps_den));
+            .map(|kbps| RateControl::new(kbps, cfg.fps_num, cfg.fps_den, cfg.width, cfg.height));
         Ok(Encoder {
             cfg,
             recon: Frame::new(cfg.width as usize, cfg.height as usize),
             reference: None,
-            frame_index: 0,
+            frames_since_key: 0,
             rate_ctrl,
+            prev_stats: None,
+            prev_grid: None,
         })
     }
 
@@ -87,8 +99,19 @@ impl Encoder {
                 "frame dimensions do not match encoder config",
             ));
         }
-        let keyframe =
-            self.reference.is_none() || self.frame_index.is_multiple_of(u64::from(self.cfg.keyint));
+        // Расписание GOP + детектор смены сцены (форс-ключ перезапускает GOP).
+        let stats = if self.cfg.scene_cut {
+            Some(scene_stats(&src.y))
+        } else {
+            None
+        };
+        let scheduled = self.reference.is_none() || self.frames_since_key >= self.cfg.keyint;
+        let forced = !scheduled
+            && match (&stats, &self.prev_stats) {
+                (Some(cur), Some(prev)) => scene_changed(prev, cur),
+                _ => false,
+            };
+        let keyframe = scheduled || forced;
         let base_qp = self
             .rate_ctrl
             .as_ref()
@@ -115,6 +138,11 @@ impl Encoder {
             lambda_den,
             recon: Frame::new(w, h),
             grid: LeafGrid::new(w, h),
+            prev_grid: if keyframe {
+                None
+            } else {
+                self.prev_grid.as_ref()
+            },
             ssim_tune: self.cfg.ssim_tune,
             speed: self.cfg.speed,
         };
@@ -158,9 +186,89 @@ impl Encoder {
         }
         self.recon = recon;
         self.reference = Some(RefFrame::new(self.recon.clone()));
-        self.frame_index += 1;
+        self.frames_since_key = if keyframe {
+            1
+        } else {
+            self.frames_since_key + 1
+        };
+        self.prev_stats = stats;
+        self.prev_grid = Some(ser_grid);
         Ok(EncodedFrame { data, keyframe })
     }
+}
+
+/// Статистика кадра для детектора склеек: гистограмма люмы (32 корзины)
+/// и средние блоков 8×8 в ¼ уровня.
+struct SceneStats {
+    hist: [u32; 32],
+    means8: Vec<u16>,
+    pixels: u64,
+}
+
+fn scene_stats(p: &Plane) -> SceneStats {
+    let (w8, h8) = (p.width() / 8, p.height() / 8);
+    let mut hist = [0u32; 32];
+    let mut means8 = Vec::with_capacity(w8 * h8);
+    for by in 0..h8 {
+        for bx in 0..w8 {
+            let mut sum = 0u32;
+            for i in 0..8 {
+                let row = p.row(by * 8 + i);
+                for &v in &row[bx * 8..bx * 8 + 8] {
+                    sum += u32::from(v);
+                    hist[usize::from(v >> 3)] += 1;
+                }
+            }
+            means8.push((sum >> 4) as u16);
+        }
+    }
+    SceneStats {
+        hist,
+        means8,
+        pixels: (w8 * h8 * 64) as u64,
+    }
+}
+
+/// Двухфакторный детектор склеек. Ключ форсируется, только когда высоки оба
+/// сигнала:
+/// 1. **Гистограмма** — перемещённая масса распределения люмы. Инвариантна
+///    к движению (панорама/зум/дрожание переставляют пиксели, не меняя
+///    распределение), взлетает при смене содержимого сцены.
+/// 2. **Средние блоков 8×8 после компенсации глобального сдвига яркости** —
+///    пространственная перестановка контента. Отсекает фейды: у фейда
+///    остаток после вычитания среднего Δ мал, у склейки контент не
+///    совпадает и остаток велик.
+///
+/// Кадры одного класса с совпадающими гистограммами (редкая склейка
+/// «пейзаж → другой пейзаж») детектор пропускает — RDO закроет такие
+/// P-кадры интра-листьями без форс-ключа.
+fn scene_changed(prev: &SceneStats, cur: &SceneStats) -> bool {
+    let moved: u64 = prev
+        .hist
+        .iter()
+        .zip(&cur.hist)
+        .map(|(&a, &b)| u64::from(a.abs_diff(b)))
+        .sum();
+    // Σ|Δ| ∈ [0, 2N]; порог — 40% массы (Σ|Δ| ≥ 0.8·N).
+    if moved * 5 < cur.pixels * 4 {
+        return false;
+    }
+    let n = cur.means8.len().max(1) as i64;
+    let delta: i64 = prev
+        .means8
+        .iter()
+        .zip(&cur.means8)
+        .map(|(&a, &b)| i64::from(b) - i64::from(a))
+        .sum::<i64>()
+        / n;
+    let mad: u64 = prev
+        .means8
+        .iter()
+        .zip(&cur.means8)
+        .map(|(&a, &b)| (i64::from(b) - i64::from(a) - delta).unsigned_abs())
+        .sum();
+    // Средние в ¼ уровня: остаток ≥ 12 уровней люмы = 48 единиц на блок.
+    mad >= 48 * n as u64
 }
 
 /// Результат RDO листа.
@@ -182,6 +290,8 @@ struct FrameEnc<'a> {
     /// Контекстная сетка RDO: заполняется по мере принятия решений,
     /// откатывается вместе с пикселями при отказе от поддерева.
     grid: LeafGrid,
+    /// Финальная сетка предыдущего кадра — temporal MV-кандидаты.
+    prev_grid: Option<&'a LeafGrid>,
     ssim_tune: bool,
     /// Пресет скорости (0..=2): управляет объёмом перебора, не битстримом.
     speed: u8,
@@ -339,8 +449,12 @@ impl FrameEnc<'_> {
             });
         }
 
-        // Поиск движения и вариант с остатком.
-        let mv = self.motion_search(reference, b, pred_mv, hint);
+        // Поиск движения и вариант с остатком. Temporal-кандидат — MV
+        // co-located ячейки (центр листа) предыдущего кадра.
+        let tmv = self
+            .prev_grid
+            .and_then(|g| g.mv_at(b.x + b.n / 2, b.y + b.n / 2));
+        let mv = self.motion_search(reference, b, pred_mv, hint, tmv);
         let tx_variants: &[bool] = if self.speed >= 2 {
             &[false]
         } else {
@@ -421,8 +535,16 @@ impl FrameEnc<'_> {
     }
 
     /// Поиск вектора движения: целопиксельный log-поиск + суб-пиксельное уточнение.
+    /// Стартовые кандидаты: (0,0), предиктор, hint родителя, temporal co-located.
     /// Возвращает MV, удовлетворяющий ограничениям синтаксиса (|mvd| ≤ 2047).
-    fn motion_search(&self, reference: &RefFrame, b: Blk, pred_mv: Mv, hint: Option<Mv>) -> Mv {
+    fn motion_search(
+        &self,
+        reference: &RefFrame,
+        b: Blk,
+        pred_mv: Mv,
+        hint: Option<Mv>,
+        temporal: Option<Mv>,
+    ) -> Mv {
         let rp = &reference.y;
         let clamp_mv = |m: Mv| Mv {
             x: (pred_mv.x + (m.x - pred_mv.x).clamp(-(MVD_MAX - 64), MVD_MAX - 64))
@@ -448,6 +570,9 @@ impl FrameEnc<'_> {
         consider(full(pred_mv), &mut best_mv, &mut best_sad, self);
         if let Some(hm) = hint {
             consider(full(hm), &mut best_mv, &mut best_sad, self);
+        }
+        if let Some(tm) = temporal {
+            consider(full(tm), &mut best_mv, &mut best_sad, self);
         }
 
         // Целопиксельный итеративный ромб с убывающим шагом (объём — по пресету).

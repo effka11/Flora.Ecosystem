@@ -153,6 +153,9 @@ pub struct EncoderConfig {
     pub loop_filter: bool,
     /// Интервал ключевых кадров: 1 = все кадры ключевые, N — ключ каждые N кадров.
     pub keyint: u32,
+    /// Детектор смены сцены: жёсткая склейка форсирует ключевой кадр и
+    /// перезапускает GOP (не нормативно — меняет только решения энкодера).
+    pub scene_cut: bool,
     /// Целевой средний битрейт (кбит/с); `None` — фиксированный `qp`.
     pub target_kbps: Option<u32>,
     /// Частота кадров для rate control (числитель).
@@ -175,6 +178,7 @@ impl Default for EncoderConfig {
             qp: 32,
             loop_filter: true,
             keyint: 60,
+            scene_cut: true,
             target_kbps: None,
             fps_num: 30,
             fps_den: 1,

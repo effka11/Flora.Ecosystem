@@ -14,7 +14,8 @@
 //! frc_v_frame_rgba(handle, out, cap) -> n      последний кадр как RGBA8888 (n байт)
 //!
 //! frc_v_encoder_new(w, h, qp, keyint, speed, flags) -> handle | 0
-//!     flags: bit0 — отключить деблокинг, bit1 — ssim-tune
+//!     flags: bit0 — отключить деблокинг, bit1 — ssim-tune,
+//!            bit2 — отключить детектор смены сцены
 //! frc_v_encoder_free(handle)
 //! frc_v_encode_i420(handle, ptr, len) -> n | -1   кадр Y‖Cb‖Cr (len = w·h·3/2)
 //! frc_v_encode_rgba(handle, ptr, len) -> n | -1   кадр RGBA8888 (len = w·h·4)
@@ -186,6 +187,7 @@ pub unsafe extern "C" fn frc_v_frame_rgba(
 
 const ENC_FLAG_NO_LOOP_FILTER: u32 = 1;
 const ENC_FLAG_SSIM_TUNE: u32 = 2;
+const ENC_FLAG_NO_SCENE_CUT: u32 = 4;
 
 struct WasmEncoder {
     inner: Encoder,
@@ -213,6 +215,7 @@ pub extern "C" fn frc_v_encoder_new(
         loop_filter: flags & ENC_FLAG_NO_LOOP_FILTER == 0,
         keyint,
         ssim_tune: flags & ENC_FLAG_SSIM_TUNE != 0,
+        scene_cut: flags & ENC_FLAG_NO_SCENE_CUT == 0,
         speed,
         ..EncoderConfig::default()
     };

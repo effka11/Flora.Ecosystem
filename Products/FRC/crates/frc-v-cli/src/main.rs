@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use frc_v::container::{FRC_V_MAGIC, FrcVHeader, FrcVReader, FrcVWriter};
 use frc_v::ivf::{IvfHeader, IvfReader, IvfWriter};
-use frc_v::metrics::PsnrAccum;
+use frc_v::metrics::{PsnrAccum, SsimAccum};
 use frc_v::y4m::{VideoParams, Y4mReader, Y4mWriter};
 use frc_v::{Decoder, Encoder, EncoderConfig};
 
@@ -20,20 +20,24 @@ const USAGE: &str = "\
 FRC-V — Flora Relativistic Codec (video, битстрим FRV1 v1)
 
 Использование:
-  frc-v encode -i <in.y4m> -o <out.frv|out.ivf> [--qp <0..63>] [--speed <0..2>] [--bitrate <kbps>] [--keyint <N>] [--ssim-tune] [--no-filter] [--frames <N>]
+  frc-v encode -i <in.y4m> -o <out.frv|out.ivf> [--qp <0..63>] [--speed <0..2>] [--bitrate <kbps>] [--keyint <N>] [--ssim-tune] [--no-filter] [--no-scene-cut] [--frames <N>]
   frc-v decode -i <in.frv|in.ivf> -o <out.y4m>
   frc-v info   -i <in.frv|in.ivf>
   frc-v psnr   --ref <ref.y4m> --dist <dist.y4m>
 
 Опции encode:
-  --qp <N>      параметр квантования, 0 (почти без потерь) .. 63 (максимальное сжатие); по умолчанию 32
-  --speed <N>   пресет скорости: 0 — полный RDO (по умолчанию), 1 — сокращённый, 2 — быстрый;
-                битстрим и декодер от пресета не зависят
-  --bitrate <N> целевой средний битрейт (кбит/с); включает однопроходный rate control (смещение qp)
-  --keyint <N>  интервал ключевых кадров (1 = все intra); по умолчанию 60
-  --ssim-tune   психовизуальная настройка RDO (смешивание SSE с SSIM-прокси)
-  --no-filter   отключить деблокинг-фильтр
-  --frames <N>  закодировать не более N кадров
+  --qp <N>       параметр квантования, 0 (почти без потерь) .. 63 (максимальное сжатие); по умолчанию 32
+  --speed <N>    пресет скорости: 0 — полный RDO (по умолчанию), 1 — сокращённый, 2 — быстрый;
+                 битстрим и декодер от пресета не зависят
+  --bitrate <N>  целевой средний битрейт (кбит/с); однопроходный rate control
+                 (стартовый qp из целевого bpp, дальше плавная адаптация)
+  --keyint <N>   интервал ключевых кадров (1 = все intra); по умолчанию 60
+  --ssim-tune    психовизуальная настройка RDO (смешивание SSE с SSIM-прокси)
+  --no-filter    отключить деблокинг-фильтр
+  --no-scene-cut отключить детектор смены сцены (форс-ключ на склейках)
+  --frames <N>   закодировать не более N кадров
+
+psnr выводит и PSNR, и SSIM (обе метрики инструментальные).
 
 Контейнер выхода: .ivf → IVF, иначе нативный FRC-V (magic 8F 46 52 56).
 ";
@@ -247,6 +251,7 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
         .map_err(|_| "неверный --frames")?
         .unwrap_or(u64::MAX);
     let loop_filter = !flag(args, "--no-filter");
+    let scene_cut = !flag(args, "--no-scene-cut");
 
     let mut reader = Y4mReader::new(open_in(input)?).map_err(|e| format!("{input}: {e}"))?;
     let p = reader.params;
@@ -256,6 +261,7 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
         qp,
         loop_filter,
         keyint,
+        scene_cut,
         target_kbps,
         fps_num: p.fps_num,
         fps_den: p.fps_den,
@@ -268,6 +274,7 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
     let mut sink = PacketSink::create(open_out(output)?, use_ivf, p)?;
 
     let mut psnr = PsnrAccum::default();
+    let mut ssim = SsimAccum::default();
     let mut total_bytes = 0u64;
     let mut n = 0u64;
     let mut keyframes = 0u64;
@@ -281,6 +288,7 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
         keyframes += u64::from(packet.keyframe);
         sink.write_frame(n, &packet.data)?;
         psnr.add(&frame, encoder.last_recon());
+        ssim.add(&frame, encoder.last_recon());
         n += 1;
     }
     if n == 0 {
@@ -293,9 +301,10 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
     let bpp = total_bytes as f64 * 8.0 / pixels as f64;
     let kbps =
         total_bytes as f64 * 8.0 / 1000.0 * f64::from(p.fps_num) / f64::from(p.fps_den) / n as f64;
+    let s = ssim.result();
     println!(
         "encoded {n} frames ({keyframes} key) {}x{} qp={qp} speed={speed} keyint={keyint}{}: {total_bytes} bytes \
-         ({bpp:.4} bpp, {kbps:.0} kbps), PSNR Y {:.2} dB / Cb {:.2} / Cr {:.2} / overall {:.2}, {:.2} fps",
+         ({bpp:.4} bpp, {kbps:.0} kbps), PSNR Y {:.2} dB / Cb {:.2} / Cr {:.2} / overall {:.2}, SSIM {:.4}, {:.2} fps",
         p.width,
         p.height,
         if let Some(kbps) = target_kbps {
@@ -307,6 +316,7 @@ fn cmd_encode(args: &[String]) -> Result<(), String> {
         q.cb,
         q.cr,
         q.overall,
+        s.overall,
         n as f64 / elapsed
     );
     Ok(())
@@ -391,6 +401,7 @@ fn cmd_psnr(args: &[String]) -> Result<(), String> {
         return Err("размеры последовательностей не совпадают".into());
     }
     let mut acc = PsnrAccum::default();
+    let mut sacc = SsimAccum::default();
     let mut n = 0u64;
     loop {
         let a = ref_reader
@@ -402,6 +413,7 @@ fn cmd_psnr(args: &[String]) -> Result<(), String> {
         match (a, b) {
             (Some(a), Some(b)) => {
                 acc.add(&a, &b);
+                sacc.add(&a, &b);
                 n += 1;
             }
             (None, None) => break,
@@ -412,9 +424,10 @@ fn cmd_psnr(args: &[String]) -> Result<(), String> {
         return Err("нет кадров".into());
     }
     let q = acc.result();
+    let s = sacc.result();
     println!(
-        "{n} frames: PSNR Y {:.3} dB, Cb {:.3}, Cr {:.3}, overall {:.3}",
-        q.y, q.cb, q.cr, q.overall
+        "{n} frames: PSNR Y {:.3} dB, Cb {:.3}, Cr {:.3}, overall {:.3}; SSIM Y {:.4}, overall {:.4}",
+        q.y, q.cb, q.cr, q.overall, s.y, s.overall
     );
     Ok(())
 }

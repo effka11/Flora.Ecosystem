@@ -258,6 +258,14 @@ impl LeafGrid {
         }
     }
 
+    /// MV ячейки 8×8, если лист был inter (temporal-кандидат энкодера).
+    #[inline]
+    pub fn mv_at(&self, x: usize, y: usize) -> Option<Mv> {
+        let (cx, cy) = (x / 8, y / 8);
+        let idx = cy * self.w8 + cx;
+        (self.modes.get(idx).copied() == Some(MODE_INTER)).then(|| self.mvs[idx])
+    }
+
     /// Восстановление MV из предиктора и разности (нормативный кламп).
     pub fn resolve_mv(&self, x: usize, y: usize, n: usize, mvd: Mv) -> Mv {
         let p = self.mv_predictor(x, y, n);
