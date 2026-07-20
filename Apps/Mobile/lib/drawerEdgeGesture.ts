@@ -1,4 +1,16 @@
+import { floraSpacing } from "@/lib/theme";
+
 export type DrawerEdgeIntent = "pending" | "activate" | "fail";
+
+/** Зона edge-swipe гамбургер-меню (60px на всю высоту, без вырезов). */
+export const DRAWER_EDGE_HIT_WIDTH = 4 * floraSpacing.grid;
+/** Быстрый vertical fail edge-pan: ScrollView не ждёт PENDING при waitFor. */
+export const DRAWER_EDGE_FAIL_OFFSET_Y = 8;
+/**
+ * Вертикальный порог нативного edge-guard (dp): меньше fail-offset, чтобы
+ * handover ленты произошёл до того, как RNGH зафейлит pan и активирует скролл.
+ */
+export const DRAWER_EDGE_GUARD_VERTICAL_SLOP = 6;
 
 /** Edge claim только ниже chrome (гамбургер/табы) и внутри левой полосы. */
 export function shouldClaimDrawerEdgeTouch(
