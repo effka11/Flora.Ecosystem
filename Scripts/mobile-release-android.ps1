@@ -401,8 +401,20 @@ if ($PublishGitHub) {
     Write-Host ""
     Write-Host "Publishing GitHub release $tag (APK only; update.json stays in dist/) ..."
 
-    $viewOut = & gh release view $tag --repo effka11/Flora.Ecosystem 2>&1
-    if ($LASTEXITCODE -eq 0) {
+    # gh writes "release not found" to stderr; with native-command error preference that
+    # must not abort before we create the release.
+    $releaseExists = $false
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & gh release view $tag --repo effka11/Flora.Ecosystem 1>$null 2>$null
+        if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
+    }
+
+    if ($releaseExists) {
         Write-Host "Release $tag exists; uploading APK (clobber) ..."
         & gh release upload $tag --repo effka11/Flora.Ecosystem --clobber $distApk
         if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }

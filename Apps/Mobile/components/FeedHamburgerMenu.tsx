@@ -18,7 +18,7 @@ import {
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { resumeVerticalFling } from "flora-scroll-fling";
+import { cancelTouchAndResumeVerticalFling } from "flora-scroll-fling";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -44,6 +44,8 @@ import {
   shouldOpenDrawer,
 } from "@/lib/drawerEdgeGesture";
 import {
+  SCROLL_PHASE_COAST,
+  SCROLL_PHASE_DRAG,
   useDrawerMomentumController,
 } from "@/lib/drawerMomentum";
 import {
@@ -180,6 +182,20 @@ function settleProgress(
       easing: target === 1 ? OPEN_EASING : CLOSE_EASING,
     },
     onFinished,
+  );
+}
+
+/** TODO(edge-debug): временная диагностика edge-guard, убрать после проверки. */
+function logEdgeGuard(
+  stage: string,
+  phase: number,
+  viewTag: number,
+  velocity: number,
+  gapMs: number,
+  coasting: boolean,
+) {
+  console.log(
+    `[edge-guard] ${stage} phase=${phase} tag=${viewTag} vel=${velocity} gap=${gapMs}ms coasting=${coasting}`,
   );
 }
 
@@ -345,7 +361,12 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   /**
    * Pan на обёртке контента (вся высота, полоса EDGE_HIT_WIDTH):
    * — тап / вертикальный скролл → fail, дети (гамбургер, таббар, список) получают жест;
-   * — горизонтальный сдвиг из левой полосы → activate.
+   * — горизонтальный сдвиг из левой полосы → activate;
+   * — едущая лента (coast) отцепляется от пальца прямо на touch-down
+   *   (native ACTION_CANCEL + re-fling): ACTION_DOWN Android-а «ловит» fling
+   *   и до разметки жеста лента останавливалась/таскалась пальцем. Теперь
+   *   горизонтальный свайп открывает меню поверх нативно едущей ленты, а
+   *   вертикальный ловит её заново через synthesized DOWN активации скролла.
    */
   const edgeGesture = useMemo(
     () =>
@@ -375,7 +396,43 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           }
           touchStartX.value = touch.absoluteX;
           touchStartY.value = touch.absoluteY;
+          if (event.numberOfTouches > 1) return;
           edgeResumeIssued.value = 0;
+          const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
+          const now = performance.now();
+          const phase = pane.phase.value;
+          const eligible = eligibleVerticalFling(
+            pane.viewTag.value,
+            pane.lastCoastVelocityY.value,
+            pane.lastCoastEventTs.value,
+            now,
+          );
+          /**
+           * Нативный ACTION_DOWN «ловит» fling раньше этого worklet-а:
+           * ScrollView уже отправил onScrollBeginDrag и фаза стала DRAG.
+           * Свежее coast-событие (gap ~1 кадр в eligible) отличает пойманный
+           * coast от настоящего drag пальцем (там coast-событие старое).
+           */
+          const coasting =
+            (phase === SCROLL_PHASE_COAST || phase === SCROLL_PHASE_DRAG) && eligible;
+          // TODO(edge-debug): временная диагностика, убрать после проверки.
+          runOnJS(logEdgeGuard)(
+            "down",
+            phase,
+            pane.viewTag.value,
+            Math.round(pane.lastCoastVelocityY.value),
+            Math.round(now - pane.lastCoastEventTs.value),
+            coasting,
+          );
+          if (
+            shouldIssueVerticalFlingResume(edgeResumeIssued.value >= 0.5, coasting)
+          ) {
+            edgeResumeIssued.value = 1;
+            runOnJS(cancelTouchAndResumeVerticalFling)(
+              pane.viewTag.value,
+              pane.lastCoastVelocityY.value,
+            );
+          }
         })
         .onTouchesMove((event, state) => {
           "worklet";
@@ -385,7 +442,6 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           const dy = touch.absoluteY - touchStartY.value;
           const intent = classifyDrawerEdgeIntent(dx, dy, EDGE_AXIS_PX);
           if (intent === "fail") {
-            edgeResumeIssued.value = 0;
             state.fail();
             return;
           }
@@ -396,25 +452,8 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           cancelAnimation(progress);
           dragStartProgress.value = progress.value;
           runOnJS(beginDrawerMediaPause)();
-          const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
-          const eligible = eligibleVerticalFling(
-            pane.viewTag.value,
-            pane.lastCoastVelocityY.value,
-            pane.lastCoastEventTs.value,
-            performance.now(),
-          );
-          if (
-            shouldIssueVerticalFlingResume(
-              edgeResumeIssued.value >= 0.5,
-              eligible,
-            )
-          ) {
-            edgeResumeIssued.value = 1;
-            runOnJS(resumeVerticalFling)(
-              pane.viewTag.value,
-              pane.lastCoastVelocityY.value,
-            );
-          }
+          // TODO(edge-debug): временная диагностика, убрать после проверки.
+          runOnJS(logEdgeGuard)("activate", -1, 0, 0, 0, false);
         })
         .onUpdate((event) => {
           "worklet";
@@ -446,7 +485,6 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
         .onFinalize((_event, success) => {
           "worklet";
           if (!success) {
-            edgeResumeIssued.value = 0;
             if (progress.value > 0 && progress.value < 1) {
               settleProgress(progress, 0, panelWidthSV.value, 0);
             }
