@@ -31,9 +31,8 @@ impl Lcg {
 
 /// Хэш точки решётки (splitmix64-финализация) — база value-noise и «глифов».
 fn lattice_hash(x: u64, y: u64, seed: u64) -> u32 {
-    let mut h = seed
-        ^ x.wrapping_mul(0x9E37_79B9_7F4A_7C15)
-        ^ y.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+    let mut h =
+        seed ^ x.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ y.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
     h ^= h >> 33;
     h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
     h ^= h >> 33;
@@ -270,13 +269,23 @@ impl Painter for ChromaCheck {
 #[derive(Clone, Copy)]
 pub enum Motion {
     Static,
-    Pan { vx_q: i64, vy_q: i64 },
+    Pan {
+        vx_q: i64,
+        vy_q: i64,
+    },
     /// Зум к центру: масштаб s(t) = 1 − t·rate/65536 (rate > 0 — наезд).
-    Zoom { rate_q16: i64 },
+    Zoom {
+        rate_q16: i64,
+    },
     /// Поворот вокруг центра, рад/кадр в Q16.
-    Rotate { rate_q16: i64 },
+    Rotate {
+        rate_q16: i64,
+    },
     /// Дрожание камеры: случайные (детерминированные) сдвиги ±amp_q.
-    Jitter { seed: u64, amp_q: i64 },
+    Jitter {
+        seed: u64,
+        amp_q: i64,
+    },
 }
 
 /// (sin, cos) угла в Q16 (ряд Тейлора; точен при |a| ≲ 0.6 рад).
@@ -289,7 +298,12 @@ fn sincos_q16(a: i64) -> (i64, i64) {
 
 /// Рендер кадра `t`: для каждого пикселя позиция в мастере пропускается через
 /// `map` (аффинное движение) и клампится к границам мастера.
-fn render_frame<P: Painter>(p: &P, w: usize, h: usize, map: impl Fn(i64, i64) -> (i64, i64)) -> Frame {
+fn render_frame<P: Painter>(
+    p: &P,
+    w: usize,
+    h: usize,
+    map: impl Fn(i64, i64) -> (i64, i64),
+) -> Frame {
     let (mw, mh) = ((w * 4) as i64, (h * 4) as i64);
     let mut f = Frame::new(w, h);
     for y in 0..h {
@@ -314,7 +328,13 @@ fn render_frame<P: Painter>(p: &P, w: usize, h: usize, map: impl Fn(i64, i64) ->
 }
 
 /// Клип из painter'а и закона движения.
-pub fn make_clip<P: Painter>(p: &P, w: usize, h: usize, frames: usize, motion: Motion) -> Vec<Frame> {
+pub fn make_clip<P: Painter>(
+    p: &P,
+    w: usize,
+    h: usize,
+    frames: usize,
+    motion: Motion,
+) -> Vec<Frame> {
     let (cx, cy) = ((w * 2) as i64, (h * 2) as i64); // центр мастера
     let jitter: Vec<(i64, i64)> = if let Motion::Jitter { seed, amp_q } = motion {
         let mut rng = Lcg(seed);
@@ -404,12 +424,11 @@ impl<P: Painter> Painter for ObjectScene<'_, P> {
             Some(o) => {
                 let ox = o.x0_q + self.t * o.vx_q;
                 let oy = o.y0_q + self.t * o.vy_q;
-                let edge = (x - ox).min(ox + o.w_q - 1 - x).min(y - oy).min(oy + o.h_q - 1 - y);
-                if edge < 8 {
-                    o.luma / 2
-                } else {
-                    o.luma
-                }
+                let edge = (x - ox)
+                    .min(ox + o.w_q - 1 - x)
+                    .min(y - oy)
+                    .min(oy + o.h_q - 1 - y);
+                if edge < 8 { o.luma / 2 } else { o.luma }
             }
             None => self.bg.luma(x, y),
         }

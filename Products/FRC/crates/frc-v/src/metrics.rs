@@ -98,7 +98,11 @@ fn plane_ssim(a: &Plane, b: &Plane) -> f64 {
         }
         y0 += 4;
     }
-    if windows == 0 { 1.0 } else { sum / windows as f64 }
+    if windows == 0 {
+        1.0
+    } else {
+        sum / windows as f64
+    }
 }
 
 /// SSIM между двумя кадрами одинакового размера (инструментальный, не нормативный).

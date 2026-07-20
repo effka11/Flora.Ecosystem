@@ -489,10 +489,7 @@ fn polygon_scene_cut_detection() {
         psnr_on >= psnr_off - 0.01,
         "cut frame quality with detector ({psnr_on:.2} dB) must not be worse than without ({psnr_off:.2} dB)"
     );
-    assert!(
-        psnr_on > 26.0,
-        "cut frame quality too low: {psnr_on:.2} dB"
-    );
+    assert!(psnr_on > 26.0, "cut frame quality too low: {psnr_on:.2} dB");
 }
 
 /// Детектор не срабатывает на плавных изменениях: панорама, фейд, шум, дрожание.
@@ -522,16 +519,7 @@ fn polygon_scene_cut_no_false_positives() {
         ),
         (
             "jitter",
-            make_clip(
-                &Plasma,
-                w,
-                h,
-                6,
-                Motion::Jitter {
-                    seed: 3,
-                    amp_q: 8,
-                },
-            ),
+            make_clip(&Plasma, w, h, 6, Motion::Jitter { seed: 3, amp_q: 8 }),
         ),
     ];
     let mut fade = make_clip(&Terrain { seed: 4 }, w, h, 8, Motion::Static);
@@ -669,10 +657,26 @@ fn polygon_determinism() {
 /// Санити генераторов: детерминизм, диапазоны, различие классов.
 #[test]
 fn polygon_generators_sanity() {
-    let a = make_clip(&Terrain { seed: 7 }, 64, 64, 3, Motion::Pan { vx_q: 5, vy_q: 3 });
-    let b = make_clip(&Terrain { seed: 7 }, 64, 64, 3, Motion::Pan { vx_q: 5, vy_q: 3 });
+    let a = make_clip(
+        &Terrain { seed: 7 },
+        64,
+        64,
+        3,
+        Motion::Pan { vx_q: 5, vy_q: 3 },
+    );
+    let b = make_clip(
+        &Terrain { seed: 7 },
+        64,
+        64,
+        3,
+        Motion::Pan { vx_q: 5, vy_q: 3 },
+    );
     for (x, y) in a.iter().zip(&b) {
-        assert_eq!(frame_fnv64(x), frame_fnv64(y), "generators must be deterministic");
+        assert_eq!(
+            frame_fnv64(x),
+            frame_fnv64(y),
+            "generators must be deterministic"
+        );
     }
     // Кадры движутся (соседние различаются), классы различаются между собой.
     assert_ne!(frame_fnv64(&a[0]), frame_fnv64(&a[1]));
@@ -685,7 +689,13 @@ fn polygon_generators_sanity() {
     }
     // Субпиксельная панорама: сдвиг на 3 q за кадр — кадры не равны и не
     // являются целопиксельным сдвигом друг друга.
-    let g = make_clip(&Gradient { mw: 256, mh: 256 }, 64, 64, 2, Motion::Pan { vx_q: 3, vy_q: 0 });
+    let g = make_clip(
+        &Gradient { mw: 256, mh: 256 },
+        64,
+        64,
+        2,
+        Motion::Pan { vx_q: 3, vy_q: 0 },
+    );
     let mut int_shift = Frame::new(64, 64);
     for y in 0..64 {
         for x in 0..64 {

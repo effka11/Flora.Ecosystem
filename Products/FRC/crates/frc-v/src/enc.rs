@@ -138,7 +138,11 @@ impl Encoder {
             lambda_den,
             recon: Frame::new(w, h),
             grid: LeafGrid::new(w, h),
-            prev_grid: if keyframe { None } else { self.prev_grid.as_ref() },
+            prev_grid: if keyframe {
+                None
+            } else {
+                self.prev_grid.as_ref()
+            },
             ssim_tune: self.cfg.ssim_tune,
             speed: self.cfg.speed,
         };
@@ -182,7 +186,11 @@ impl Encoder {
         }
         self.recon = recon;
         self.reference = Some(RefFrame::new(self.recon.clone()));
-        self.frames_since_key = if keyframe { 1 } else { self.frames_since_key + 1 };
+        self.frames_since_key = if keyframe {
+            1
+        } else {
+            self.frames_since_key + 1
+        };
         self.prev_stats = stats;
         self.prev_grid = Some(ser_grid);
         Ok(EncodedFrame { data, keyframe })

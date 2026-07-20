@@ -18,8 +18,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use common::frame_fnv64;
-use frc_v::container::FrcVReader;
 use frc_v::Decoder;
+use frc_v::container::FrcVReader;
 
 fn archive_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/archive")
@@ -46,8 +46,8 @@ fn archive_decode_pins() {
 
     for (name, sums) in &expected {
         let path = dir.join(format!("{name}.frv"));
-        let bytes = std::fs::read(&path)
-            .unwrap_or_else(|e| panic!("{} missing: {e}", path.display()));
+        let bytes =
+            std::fs::read(&path).unwrap_or_else(|e| panic!("{} missing: {e}", path.display()));
         let mut reader = FrcVReader::new(&bytes[..]).expect("archive container");
         let mut dec = Decoder::new();
         let mut i = 0usize;
