@@ -18,8 +18,8 @@ CODECS — политика сжатия и хранения медиа в эк�
 
 Нативные кодеки Flora (семейство **FRC**, Flora Relativistic Codec, разработка):
 
-- [`FRC-I.md`](./FRC-I.md) — фото (FRC-I), замороженный битстрим v8
-  (ранее FMC/FIC; decoder compatibility v1..v8).
+- [`FRC-I.md`](./FRC-I.md) — фото (FRC-I), замороженный битстрим v9
+  (ранее FMC/FIC; decoder compatibility v1..v9).
 - [`FRC-A.md`](./FRC-A.md) — аудио (FRC-A), битстрим v0 (draft).
 - [`FRC-V.md`](./FRC-V.md) — видео (FRC-V), битстрим кадра **v2**; контейнерный FourCC/magic — `FRV1` / `\x8F FRV`.
 
@@ -150,7 +150,7 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 
 | Кодек | Сигнатура | Расширение | MIME (предложение) | Статус |
 | --- | --- | --- | --- | --- |
-| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v8 (YCoCg); encode ≥11 Мп/с; ≈−2% vs v7 ([FRC-I.md](./FRC-I.md)) |
+| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v9 (per-root delta-Q); encode ≥11 Мп/с; S2 −5%/BA −4% vs v8 ([FRC-I.md](./FRC-I.md)) |
 | FRC-V | FourCC `FRV1` в IVF (dev); magic `8F 46 52 56` (`\x8F FRV`) в `.frv` | `.frv`, `.ivf` | `video/x-flora-frc-v` | кадр `BITSTREAM_VERSION=2`; контейнер FRC-V |
 | FRC-A | **as-built:** ASCII `FRAS` (4 B) в файловом контейнере инструментов; **резерв:** magic `8F 46 52 41` (`\x8F FRA`) под нативный `.fra` | `.fras` (dev), `.fra` (резерв) | `audio/x-flora-frc-a` | битстрим v0 |
 

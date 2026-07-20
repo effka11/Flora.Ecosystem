@@ -1843,6 +1843,10 @@ const CTX7_TX: u8 = 80;
 pub const CTX7_CDEF: u8 = 81;
 /// Общее число контекстов v7.
 pub const N_CTX_V7: usize = 82;
+/// Индекс delta-Q корня 32×32 (v9, перед split-решением корня).
+const CTX9_DQ: u8 = 82;
+/// Общее число контекстов v9 (раскладка v7 + DQ).
+pub const N_CTX_V9: usize = 83;
 const N_POS_BUCKETS: u8 = 6;
 
 /// Родительские группы и виды моделей контекстов v7 для иерархического
@@ -1882,6 +1886,17 @@ pub fn ctx_meta_v7() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
             kinds[eob] = ModelKind::Eob;
         }
     }
+    (groups, kinds)
+}
+
+/// Раскладка контекстов v9: раскладка v7 плюс DQ-контекст корня 32×32
+/// (собственная родительская группа — прогрев DQ не смешивается с CDEF).
+pub fn ctx_meta_v9() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
+    let (mut groups, mut kinds) = ctx_meta_v7();
+    debug_assert_eq!(groups.len(), usize::from(CTX9_DQ));
+    groups.push(23);
+    kinds.push(crate::arith::ModelKind::Dq);
+    debug_assert_eq!(groups.len(), N_CTX_V9);
     (groups, kinds)
 }
 
@@ -2070,6 +2085,47 @@ pub fn encode_tile_plane_v7(
     raw: &mut BitWriter,
 ) -> Vec<i16> {
     v72::encode_tile_plane(buf, cfl_luma, w, h, qmat, syms, raw)
+}
+
+/// Параметры кодерной эвристики адаптивной квантизации v9 (свобода кодера:
+/// декодер читает любые сигналённые ступени; калибровка — полигон §11.5).
+#[derive(Clone, Copy)]
+pub struct DqTuning {
+    /// Ступеней delta-Q на октаву активности; 0 — AQ выключена.
+    pub strength: f32,
+    /// Активность корня — минимум по квадрантам 16×16 (вместо MAD всего
+    /// корня): не огрубляет корни, где текстура граничит с гладкой зоной.
+    pub quadrant_min: bool,
+    /// Максимум ступеней вверх (огрубление текстур).
+    pub max_up: i32,
+    /// Максимум ступеней вниз (уточнение гладких зон).
+    pub max_down: i32,
+    /// Мёртвая зона (в ступенях до округления): |δ| ≤ deadzone → нейтраль.
+    pub deadzone: f32,
+    /// Дисконт структурной энергии: активность = MAD − k·MAD(2×2-даунскейл).
+    /// Шум усредняется даунскейлом (маскирует — активность сохраняется),
+    /// градиенты/края выживают (бандинг виден — активность падает).
+    pub structure_discount: f32,
+    /// Абсолютный порог активности для огрубления (MAD 8-бит после
+    /// дисконта): относительное правило «выше среднего по тайлу» огрубляет
+    /// самое резкое содержимое малоактивных кадров (bokeh-фото); ниже
+    /// порога маскирования нет — up-ступени запрещены.
+    pub up_floor: f32,
+}
+
+/// Кодирует дерево тайл-плоскости v9: per-root delta-Q поверх дерева v7.
+#[allow(clippy::too_many_arguments)]
+pub fn encode_tile_plane_v9(
+    buf: &[i16],
+    cfl_luma: Option<&[i16]>,
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+    tuning: DqTuning,
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) -> Vec<i16> {
+    v72::encode_tile_plane_v9(buf, cfl_luma, w, h, qmat, tuning, syms, raw)
 }
 
 /// Сохранённая реализация v7.1 для локального A/B во время разработки v7.2.
@@ -2288,6 +2344,19 @@ pub fn decode_tile_plane_v7(
     qmat: &[u16; 64],
 ) -> Result<Vec<i16>, DecodeError> {
     v72::decode_tile_plane(bank, dec, raw, w, h, cfl_luma, qmat)
+}
+
+/// Декодирует дерево тайл-плоскости v9 (per-root delta-Q).
+pub fn decode_tile_plane_v9(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    w: usize,
+    h: usize,
+    cfl_luma: Option<&[i16]>,
+    qmat: &[u16; 64],
+) -> Result<Vec<i16>, DecodeError> {
+    v72::decode_tile_plane_v9(bank, dec, raw, w, h, cfl_luma, qmat)
 }
 
 /// Сохранённый декодер v7.1 для локального A/B.
