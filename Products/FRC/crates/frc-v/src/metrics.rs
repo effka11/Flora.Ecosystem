@@ -46,6 +46,108 @@ pub fn psnr(a: &Frame, b: &Frame) -> Psnr {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Ssim {
+    pub y: f64,
+    pub cb: f64,
+    pub cr: f64,
+    /// Взвешенный итог (4·Y + Cb + Cr) / 6 — та же схема, что у PSNR.
+    pub overall: f64,
+}
+
+/// SSIM одной плоскости: окна 8×8 с шагом 4 (схема tiny_ssim/x264), C1/C2 —
+/// стандартные константы для 8-битного диапазона.
+fn plane_ssim(a: &Plane, b: &Plane) -> f64 {
+    const C1: f64 = 6.5025; // (0.01·255)²
+    const C2: f64 = 58.5225; // (0.03·255)²
+    let (w, h) = (a.width(), a.height());
+    let win = 8.min(w).min(h);
+    if win == 0 {
+        return 1.0;
+    }
+    let n = (win * win) as f64;
+    let mut sum = 0.0f64;
+    let mut windows = 0u64;
+    let mut y0 = 0;
+    while y0 + win <= h {
+        let mut x0 = 0;
+        while x0 + win <= w {
+            let (mut sx, mut sy, mut sxx, mut syy, mut sxy) = (0u32, 0u32, 0u32, 0u32, 0u32);
+            for dy in 0..win {
+                for dx in 0..win {
+                    let px = u32::from(a.get(x0 + dx, y0 + dy));
+                    let py = u32::from(b.get(x0 + dx, y0 + dy));
+                    sx += px;
+                    sy += py;
+                    sxx += px * px;
+                    syy += py * py;
+                    sxy += px * py;
+                }
+            }
+            let (sx, sy) = (f64::from(sx), f64::from(sy));
+            let (sxx, syy, sxy) = (f64::from(sxx), f64::from(syy), f64::from(sxy));
+            let mx = sx / n;
+            let my = sy / n;
+            let var_x = (sxx - sx * mx).max(0.0) / n;
+            let var_y = (syy - sy * my).max(0.0) / n;
+            let cov = (sxy - sx * my) / n;
+            sum += ((2.0 * mx * my + C1) * (2.0 * cov + C2))
+                / ((mx * mx + my * my + C1) * (var_x + var_y + C2));
+            windows += 1;
+            x0 += 4;
+        }
+        y0 += 4;
+    }
+    if windows == 0 {
+        1.0
+    } else {
+        sum / windows as f64
+    }
+}
+
+/// SSIM между двумя кадрами одинакового размера (инструментальный, не нормативный).
+pub fn ssim(a: &Frame, b: &Frame) -> Ssim {
+    let y = plane_ssim(&a.y, &b.y);
+    let cb = plane_ssim(&a.cb, &b.cb);
+    let cr = plane_ssim(&a.cr, &b.cr);
+    Ssim {
+        y,
+        cb,
+        cr,
+        overall: (4.0 * y + cb + cr) / 6.0,
+    }
+}
+
+/// Аккумулятор SSIM по последовательности (среднее по кадрам).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SsimAccum {
+    sum_y: f64,
+    sum_cb: f64,
+    sum_cr: f64,
+    n: u64,
+}
+
+impl SsimAccum {
+    pub fn add(&mut self, a: &Frame, b: &Frame) {
+        let s = ssim(a, b);
+        self.sum_y += s.y;
+        self.sum_cb += s.cb;
+        self.sum_cr += s.cr;
+        self.n += 1;
+    }
+
+    pub fn result(&self) -> Ssim {
+        let n = self.n.max(1) as f64;
+        let (y, cb, cr) = (self.sum_y / n, self.sum_cb / n, self.sum_cr / n);
+        Ssim {
+            y,
+            cb,
+            cr,
+            overall: (4.0 * y + cb + cr) / 6.0,
+        }
+    }
+}
+
 /// Аккумулятор PSNR по последовательности (среднее по SSE, не по dB).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PsnrAccum {
@@ -105,4 +207,60 @@ pub(crate) fn block_ssim_dist(src: &Plane, b: Blk, pred: &[i32]) -> u64 {
     let mean_d = (sum_x - sum_y).unsigned_abs();
     let log_n = n.trailing_zeros();
     (struct_d >> (log_n + 6)) + (mean_d.saturating_mul(4) >> u64::from(log_n))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pattern_frame(w: usize, h: usize) -> Frame {
+        let mut f = Frame::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                f.y.set(x, y, ((x * 5 + y * 3) % 256) as u8);
+            }
+        }
+        for y in 0..h / 2 {
+            for x in 0..w / 2 {
+                f.cb.set(x, y, (100 + x) as u8);
+                f.cr.set(x, y, (150 + y) as u8);
+            }
+        }
+        f
+    }
+
+    #[test]
+    fn ssim_identity_is_one() {
+        let f = pattern_frame(64, 48);
+        let s = ssim(&f, &f);
+        assert!((s.y - 1.0).abs() < 1e-9);
+        assert!((s.overall - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ssim_decreases_with_degradation() {
+        let f = pattern_frame(64, 48);
+        let mut light = f.clone();
+        let mut heavy = f.clone();
+        for (i, v) in light.y.data_mut().iter_mut().enumerate() {
+            *v = v.wrapping_add(((i * 7) % 5) as u8);
+        }
+        for (i, v) in heavy.y.data_mut().iter_mut().enumerate() {
+            *v = v.wrapping_add(((i * 31) % 61) as u8);
+        }
+        let s_light = ssim(&f, &light);
+        let s_heavy = ssim(&f, &heavy);
+        assert!(s_light.y < 1.0);
+        assert!(s_heavy.y < s_light.y, "{} vs {}", s_heavy.y, s_light.y);
+        assert!(s_heavy.y > 0.0);
+    }
+
+    #[test]
+    fn ssim_accum_averages() {
+        let f = pattern_frame(32, 32);
+        let mut acc = SsimAccum::default();
+        acc.add(&f, &f);
+        acc.add(&f, &f);
+        assert!((acc.result().overall - 1.0).abs() < 1e-9);
+    }
 }

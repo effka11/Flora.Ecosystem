@@ -1,0 +1,11 @@
+era1_intra_q32_64x64 0 fafac6f9a475d2e4
+era1_intra_q32_64x64 1 1af24bdba06b43a2
+era1_gop2_q28_96x64 0 81055e3fe3a4b568
+era1_gop2_q28_96x64 1 5950d30af20501aa
+era1_gop2_q28_96x64 2 62c0c5416b05da89
+era1_gop2_q28_96x64 3 cb947ef299dc0cc3
+era1_gop9_q40_nofilter_72x48 0 ce97fb8570b16c1a
+era1_gop9_q40_nofilter_72x48 1 b7df415619b136ff
+era1_gop9_q40_nofilter_72x48 2 129af871552a212b
+era1_gop9_q40_nofilter_72x48 3 0e0d0cc9050b26b6
+era1_gop9_q40_nofilter_72x48 4 4947f71a850fc9d4
