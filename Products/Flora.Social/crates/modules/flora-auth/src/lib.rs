@@ -85,3 +85,11 @@ pub fn account_directory(pool: PgPool) -> Arc<dyn flora_auth_contracts::AccountD
     let repo = Arc::new(AuthRepo::new(pool));
     infrastructure::account_directory::as_directory(repo)
 }
+
+/// Проверка активной сессии без полного Auth compose.
+pub fn access_session_validator(
+    pool: PgPool,
+) -> Arc<dyn flora_auth_contracts::AccessSessionValidator> {
+    let repo = Arc::new(AuthRepo::new(pool));
+    infrastructure::session_validator::as_validator(repo)
+}

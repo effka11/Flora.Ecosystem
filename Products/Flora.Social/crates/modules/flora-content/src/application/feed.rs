@@ -9,7 +9,9 @@ use fira_core::feed::{
     FeedCandidate, FiraFeedConfig, apply_author_diversity, author_affinity, interleave_exploration,
     rank,
 };
-use flora_users_contracts::{BidirectionalBlocklist, FollowGraphReader};
+use flora_users_contracts::{
+    BidirectionalBlocklist, FollowGraphReader, ProfileAccess, ProfileAccessField,
+};
 use uuid::Uuid;
 
 use crate::infrastructure::repo::{ContentRepo, FeedPostLite};
@@ -38,6 +40,7 @@ pub struct FeedService {
     repo: Arc<ContentRepo>,
     follow: Arc<dyn FollowGraphReader>,
     blocklist: Arc<dyn BidirectionalBlocklist>,
+    profile_access: Arc<dyn ProfileAccess>,
     fira: FiraFeedConfig,
     sub_following_days: i32,
     sub_max_candidates: i32,
@@ -49,11 +52,13 @@ impl FeedService {
         repo: Arc<ContentRepo>,
         follow: Arc<dyn FollowGraphReader>,
         blocklist: Arc<dyn BidirectionalBlocklist>,
+        profile_access: Arc<dyn ProfileAccess>,
     ) -> Self {
         Self {
             repo,
             follow,
             blocklist,
+            profile_access,
             fira: FiraFeedConfig::default(),
             sub_following_days: 30,
             sub_max_candidates: 2000,
@@ -101,11 +106,12 @@ impl FeedService {
             .into_iter()
             .filter(|id| !blocked.contains(id))
             .collect();
-        if following.is_empty() {
-            return Ok(false);
-        }
+        let visible_personal_authors = self
+            .profile_access
+            .accessible_owners(Some(user_uuid), &following, ProfileAccessField::Posts)
+            .await?;
         self.repo
-            .has_newer_posts(&following, since, user_uuid)
+            .has_newer_posts(&following, &visible_personal_authors, since, user_uuid)
             .await
             .map_err(|e| e.to_string())
     }

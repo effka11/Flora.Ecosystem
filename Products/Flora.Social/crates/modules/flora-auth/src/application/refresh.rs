@@ -6,7 +6,9 @@ use flora_users_contracts::UserProfileReadQueries;
 use crate::http::{LoginResponse, format_utc};
 use crate::infrastructure::jwt::{AccessTokenClaims, JwtOptions, issue_access_token};
 use crate::infrastructure::repo::AuthRepo;
-use crate::infrastructure::tokens::{generate_jwt_id, generate_refresh_token};
+use crate::infrastructure::tokens::{
+    generate_jwt_id, generate_refresh_token, refresh_token_session_id,
+};
 
 #[derive(Debug)]
 pub enum RefreshError {
@@ -45,10 +47,18 @@ impl RefreshService {
             .repo
             .find_active_session_by_refresh(token, now)
             .await
-            .map_err(|e| RefreshError::Internal(e.to_string()))?
-            .ok_or(RefreshError::Unauthorized(
+            .map_err(|e| RefreshError::Internal(e.to_string()))?;
+        let Some(session) = session else {
+            if let Some(session_id) = refresh_token_session_id(token, self.jwt.secret.as_bytes()) {
+                self.repo
+                    .revoke_session_by_id(session_id)
+                    .await
+                    .map_err(|e| RefreshError::Internal(e.to_string()))?;
+            }
+            return Err(RefreshError::Unauthorized(
                 "Invalid or expired refresh token.",
-            ))?;
+            ));
+        };
 
         let identity = self
             .repo
@@ -65,14 +75,17 @@ impl RefreshService {
             .unwrap_or_default();
 
         let new_jwt_id = generate_jwt_id();
-        let new_refresh = generate_refresh_token();
+        let new_refresh = generate_refresh_token(session.session_id, self.jwt.secret.as_bytes());
         let refresh_expires = now + Duration::days(self.jwt.refresh_token_days);
         let access_expires = now + Duration::minutes(self.jwt.access_token_minutes);
         let new_rotation = session.rotation_id.saturating_add(1);
 
-        self.repo
+        let rotated = self
+            .repo
             .rotate_session(
                 session.session_id,
+                token,
+                session.rotation_id,
                 &new_jwt_id,
                 &new_refresh,
                 refresh_expires,
@@ -81,6 +94,15 @@ impl RefreshService {
             )
             .await
             .map_err(|e| RefreshError::Internal(e.to_string()))?;
+        if !rotated {
+            self.repo
+                .revoke_session_by_id(session.session_id)
+                .await
+                .map_err(|e| RefreshError::Internal(e.to_string()))?;
+            return Err(RefreshError::Unauthorized(
+                "Invalid or expired refresh token.",
+            ));
+        }
 
         let access_token = issue_access_token(
             &self.jwt,

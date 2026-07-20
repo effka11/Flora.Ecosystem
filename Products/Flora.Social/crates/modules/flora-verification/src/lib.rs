@@ -45,7 +45,12 @@ pub fn compose(cfg: &FloraConfig, pool: PgPool) -> Option<VerificationBundle> {
     let development = cfg.is_development();
     let repo = Arc::new(VerificationRepo::new(pool));
     let sender = Arc::new(SmtpVerificationCodeSender::new(smtp, development));
-    let service = Arc::new(ChallengeService::new(repo, sender, development));
+    let service = Arc::new(ChallengeService::new(
+        repo,
+        sender,
+        development,
+        verification_code_pepper(cfg),
+    ));
     let port = as_port(service.clone());
 
     let grpc_handle = if cfg.get_bool("Verification:ServeNative") == Some(true) {
@@ -53,6 +58,13 @@ pub fn compose(cfg: &FloraConfig, pool: PgPool) -> Option<VerificationBundle> {
             .get_non_empty("Verification:GrpcListen")
             .unwrap_or("127.0.0.1:50051");
         match listen.parse::<SocketAddr>() {
+            Ok(addr) if !development && !addr.ip().is_loopback() => {
+                tracing::error!(
+                    %addr,
+                    "Verification gRPC без transport-аутентификации разрешён только на loopback"
+                );
+                None
+            }
             Ok(addr) => Some(tokio::spawn(async move {
                 if let Err(e) = serve(addr, (*service).clone()).await {
                     tracing::error!(error = %e, "Verification gRPC server stopped");
@@ -68,6 +80,21 @@ pub fn compose(cfg: &FloraConfig, pool: PgPool) -> Option<VerificationBundle> {
     };
 
     Some(VerificationBundle { port, grpc_handle })
+}
+
+fn verification_code_pepper(cfg: &FloraConfig) -> Vec<u8> {
+    if let Some(pepper) = cfg
+        .get_non_empty("Verification:CodePepper")
+        .or_else(|| cfg.get_non_empty("Jwt:Secret"))
+    {
+        return pepper.as_bytes().to_vec();
+    }
+
+    // Host validation guarantees a configured secret in Production. Keep
+    // direct/dev composition safe as well, at the cost of restart invalidation.
+    let mut ephemeral = vec![0_u8; 48];
+    getrandom::fill(&mut ephemeral).expect("OS CSPRNG");
+    ephemeral
 }
 
 /// Обратная совместимость: только gRPC (старый API spawn_background).

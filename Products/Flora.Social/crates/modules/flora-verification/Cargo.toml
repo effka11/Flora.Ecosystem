@@ -17,6 +17,7 @@ flora-shared = { workspace = true }
 flora-verification-contracts = { workspace = true }
 getrandom = { workspace = true }
 hex = { workspace = true }
+hmac = { workspace = true }
 lettre = { workspace = true }
 prost = { workspace = true }
 sha2 = { workspace = true }

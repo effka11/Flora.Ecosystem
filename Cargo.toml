@@ -149,6 +149,7 @@ tonic-build = "0.13.1"
 prost = "0.13.5"
 subtle = "2.6.1"
 hex = "0.4.3"
+ipnet = "2.12.0"
 
 [profile.release]
 lto = "thin"

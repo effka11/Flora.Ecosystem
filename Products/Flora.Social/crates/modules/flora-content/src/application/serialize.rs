@@ -4,19 +4,22 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
-use flora_users_contracts::{FeedAuthorProfiles, FollowGraphReader};
+use flora_users_contracts::{
+    FeedAuthorProfiles, FollowGraphReader, ProfileAccess, ProfileAccessField,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::application::feed::FeedPage;
 use crate::application::time::format_utc;
-use crate::infrastructure::repo::{ContentRepo, ProfilePostRow};
+use crate::infrastructure::repo::{ContentRepo, PostRow, ProfilePostRow};
 
 pub struct FeedSerializer {
     repo: Arc<ContentRepo>,
     accounts: Arc<dyn AccountDirectory>,
     profiles: Arc<dyn FeedAuthorProfiles>,
     follow: Arc<dyn FollowGraphReader>,
+    profile_access: Arc<dyn ProfileAccess>,
 }
 
 impl FeedSerializer {
@@ -25,13 +28,56 @@ impl FeedSerializer {
         accounts: Arc<dyn AccountDirectory>,
         profiles: Arc<dyn FeedAuthorProfiles>,
         follow: Arc<dyn FollowGraphReader>,
+        profile_access: Arc<dyn ProfileAccess>,
     ) -> Self {
         Self {
             repo,
             accounts,
             profiles,
             follow,
+            profile_access,
         }
+    }
+
+    async fn visible_post_ids(
+        &self,
+        viewer: Option<Uuid>,
+        posts: &[PostRow],
+    ) -> Result<HashSet<Uuid>, String> {
+        let personal_authors: Vec<Uuid> = posts
+            .iter()
+            .filter(|post| post.community_id.is_none())
+            .map(|post| post.author_user_uuid)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let community_ids: Vec<Uuid> = posts
+            .iter()
+            .filter_map(|post| post.community_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let visible_personal_authors: HashSet<Uuid> = self
+            .profile_access
+            .accessible_owners(viewer, &personal_authors, ProfileAccessField::Posts)
+            .await?
+            .into_iter()
+            .collect();
+        let visible_communities: HashSet<Uuid> = self
+            .repo
+            .accessible_community_ids(&community_ids, viewer)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+        Ok(posts
+            .iter()
+            .filter(|post| match post.community_id {
+                Some(community_id) => visible_communities.contains(&community_id),
+                None => visible_personal_authors.contains(&post.author_user_uuid),
+            })
+            .map(|post| post.post_uuid)
+            .collect())
     }
 
     pub async fn serialize_page(&self, viewer: Uuid, page: FeedPage) -> Result<Value, String> {
@@ -45,12 +91,15 @@ impl FeedSerializer {
             }));
         }
 
-        let post_uuids = page.post_uuids.clone();
-        let posts = self
+        let requested_post_uuids = page.post_uuids.clone();
+        let mut posts = self
             .repo
-            .load_posts_ordered(&post_uuids)
+            .load_posts_ordered(&requested_post_uuids)
             .await
             .map_err(|e| e.to_string())?;
+        let visible_post_ids = self.visible_post_ids(Some(viewer), &posts).await?;
+        posts.retain(|post| visible_post_ids.contains(&post.post_uuid));
+        let post_uuids: Vec<Uuid> = posts.iter().map(|post| post.post_uuid).collect();
 
         let author_uuids: Vec<Uuid> = posts
             .iter()
@@ -286,9 +335,21 @@ impl FeedSerializer {
     /// Паритет `BuildProfilePostsPayloadAsync` (секции posts/likes/reposts профиля).
     pub async fn serialize_profile_posts(
         &self,
-        posts: Vec<ProfilePostRow>,
+        mut posts: Vec<ProfilePostRow>,
         viewer: Option<Uuid>,
     ) -> Result<Value, String> {
+        if posts.is_empty() {
+            return Ok(Value::Array(vec![]));
+        }
+
+        let requested_post_uuids: Vec<Uuid> = posts.iter().map(|post| post.post_uuid).collect();
+        let metadata = self
+            .repo
+            .load_posts_ordered(&requested_post_uuids)
+            .await
+            .map_err(|e| e.to_string())?;
+        let visible_post_ids = self.visible_post_ids(viewer, &metadata).await?;
+        posts.retain(|post| visible_post_ids.contains(&post.post_uuid));
         if posts.is_empty() {
             return Ok(Value::Array(vec![]));
         }
@@ -383,6 +444,16 @@ impl FeedSerializer {
         if posts.is_empty() {
             return Ok(Vec::new());
         }
+        let visible_post_ids = self.visible_post_ids(viewer, posts).await?;
+        let visible_posts: Vec<PostRow> = posts
+            .iter()
+            .filter(|post| visible_post_ids.contains(&post.post_uuid))
+            .cloned()
+            .collect();
+        if visible_posts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let posts = visible_posts.as_slice();
 
         let post_uuids: Vec<Uuid> = posts.iter().map(|p| p.post_uuid).collect();
         let author_uuids: Vec<Uuid> = posts

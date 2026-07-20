@@ -27,6 +27,7 @@ fi
 
 # Phase 5: Next → Rust flora-api :5290 (sole HTTP host).
 [[ -z "$API_UPSTREAM" ]] && API_UPSTREAM='http://127.0.0.1:5290'
+WEB_SERVICE_USER='flora-web'
 
 if ! command -v node >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1; then
@@ -54,14 +55,28 @@ if command -v apt-get >/dev/null 2>&1; then
 fi
 
 mkdir -p "$REMOTE_PATH"
-chmod 755 "$REMOTE_PATH"
+if ! getent group "$WEB_SERVICE_USER" >/dev/null; then
+  groupadd --system "$WEB_SERVICE_USER"
+fi
+if ! id -u "$WEB_SERVICE_USER" >/dev/null 2>&1; then
+  useradd --system --gid "$WEB_SERVICE_USER" --home-dir /nonexistent \
+    --shell /usr/sbin/nologin "$WEB_SERVICE_USER"
+fi
+# Runtime code stays root-owned so a compromised Next process cannot persist
+# by replacing server.js or dependencies. Only the documented Next cache is writable.
+chown -R root:"$WEB_SERVICE_USER" "$REMOTE_PATH"
+find "$REMOTE_PATH" -type d -exec chmod 750 {} +
+find "$REMOTE_PATH" -type f -exec chmod 640 {} +
+mkdir -p "$REMOTE_PATH/.next/cache"
+chown -R "$WEB_SERVICE_USER:$WEB_SERVICE_USER" "$REMOTE_PATH/.next/cache"
+chmod 750 "$REMOTE_PATH/.next/cache"
 
 mkdir -p /etc/flora-ecosystem
 if [ ! -f /etc/flora-ecosystem/flora-api.env.example ]; then
   {
     echo '# sudo cp /etc/flora-ecosystem/flora-api.env.example /etc/flora-ecosystem/flora-api.env && sudo chmod 600 /etc/flora-ecosystem/flora-api.env'
-    echo 'ConnectionStrings__FloraDatabase=Host=127.0.0.1;Port=5432;Database=flora_social;Username=flora;Password=CHANGE_ME;Include Error Detail=true;Search Path=flora_core'
-    echo '# Optional debug (remove after fix): ASPNETCORE_DETAILED_ERRORS=1'
+    echo 'ConnectionStrings__FloraDatabase=Host=127.0.0.1;Port=5432;Database=flora_social;Username=flora;Password=CHANGE_ME;Include Error Detail=false;Search Path=flora_core;SSL Mode=Require'
+    echo 'Jwt__Secret=CHANGE_ME_TO_AT_LEAST_32_RANDOM_CHARACTERS'
     echo '# SMTP (Gmail app password): https://myaccount.google.com/apppasswords'
     echo 'Smtp__Host=smtp.gmail.com'
     echo 'Smtp__Port=587'
@@ -102,6 +117,27 @@ fi
 
 mkdir -p /etc/systemd/system/flora-web.service.d
 {
+  printf '%s\n' \
+    '[Service]' \
+    "User=${WEB_SERVICE_USER}" \
+    "Group=${WEB_SERVICE_USER}" \
+    'Environment=HOSTNAME=127.0.0.1' \
+    'UMask=0027' \
+    'NoNewPrivileges=true' \
+    'PrivateTmp=true' \
+    'ProtectSystem=strict' \
+    'ProtectHome=true' \
+    'ProtectKernelTunables=true' \
+    'ProtectKernelModules=true' \
+    'ProtectControlGroups=true' \
+    'RestrictSUIDSGID=true' \
+    'LockPersonality=true' \
+    'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
+    'CapabilityBoundingSet=' \
+    'AmbientCapabilities=' \
+    "ReadWritePaths=${REMOTE_PATH}/.next/cache"
+} >/etc/systemd/system/flora-web.service.d/40-security.conf
+{
   printf '%s\n' '[Service]'
   printf 'Environment=FLORA_API_UPSTREAM=%s\n' "$API_UPSTREAM"
   printf 'Environment=FLORA_AUTH_PROXY_CORS_ORIGINS=https://%s.%s,https://origin.%s\n' "$PUBLIC_SUBDOMAIN" "$DOMAIN" "$DOMAIN"
@@ -119,7 +155,6 @@ fi
 {
   printf 'FloraWeb__CorsOrigins__0=https://%s.%s\n' "$PUBLIC_SUBDOMAIN" "$DOMAIN"
   printf 'FloraWeb__CorsOrigins__1=https://origin.%s\n' "$DOMAIN"
-  echo 'FloraWeb__CorsOrigins__2=http://localhost:3000'
 } >/etc/flora-ecosystem/flora-api-cors.env
 chmod 644 /etc/flora-ecosystem/flora-api-cors.env
 

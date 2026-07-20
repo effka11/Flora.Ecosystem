@@ -10,6 +10,9 @@ const HASH_LEN: usize = 32;
 const ITERATIONS: u32 = 4;
 const MEMORY_KIB: u32 = 65536;
 const PARALLELISM: u32 = 2;
+/// Technical upper bound: prevents oversized attacker input from amplifying
+/// CPU/memory pressure around password hashing.
+pub const MAX_PASSWORD_BYTES: usize = 1024;
 
 /// Hash password → Base64(salt16‖hash32).
 pub fn hash_password(password: &str) -> String {
@@ -29,6 +32,9 @@ pub fn hash_password(password: &str) -> String {
 
 /// Verify Base64(salt16‖hash32). Constant-time compare; malformed → false.
 pub fn verify_password(password: &str, stored_hash: &str) -> bool {
+    if password.len() > MAX_PASSWORD_BYTES {
+        return false;
+    }
     let Ok(combined) = STANDARD.decode(stored_hash) else {
         return false;
     };

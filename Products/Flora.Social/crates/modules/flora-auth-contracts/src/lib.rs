@@ -52,3 +52,11 @@ pub trait AccountDirectory: Send + Sync {
     /// Активные аккаунты (`status = Active`) — паритет `IAccountReadQueries.ListActiveUserUuidsAsync`.
     fn list_active_user_uuids(&self) -> BoxFuture<'_, Result<Vec<Uuid>, String>>;
 }
+
+/// Порт проверки server-side сессии для JWT middleware продукта.
+///
+/// Auth владеет таблицей сессий; flora-social знает только контракт и не читает
+/// чужую БД напрямую.
+pub trait AccessSessionValidator: Send + Sync {
+    fn is_active(&self, user_uuid: Uuid, jwt_id: &str) -> BoxFuture<'_, Result<bool, String>>;
+}

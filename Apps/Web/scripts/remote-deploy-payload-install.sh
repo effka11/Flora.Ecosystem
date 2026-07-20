@@ -27,7 +27,13 @@ if [ -d "$REMOTE_PATH" ]; then
 fi
 mkdir -p "$REMOTE_PATH"
 cp -a web/. "$REMOTE_PATH/"
-chmod 755 "$REMOTE_PATH"
+# Keep deployed code immutable to the runtime identity. Next may only write its cache.
+chown -R root:flora-web "$REMOTE_PATH"
+find "$REMOTE_PATH" -type d -exec chmod 750 {} +
+find "$REMOTE_PATH" -type f -exec chmod 640 {} +
+mkdir -p "$REMOTE_PATH/.next/cache"
+chown -R flora-web:flora-web "$REMOTE_PATH/.next/cache"
+chmod 750 "$REMOTE_PATH/.next/cache"
 
 systemctl start flora-web
 sleep 1

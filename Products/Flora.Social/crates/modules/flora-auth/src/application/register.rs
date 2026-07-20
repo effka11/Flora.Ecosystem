@@ -13,7 +13,7 @@ use crate::application::login::SessionHints;
 use crate::domain::reserved_usernames;
 use crate::http::{LoginResponse, RegisterInitResponse, format_utc};
 use crate::infrastructure::jwt::{AccessTokenClaims, JwtOptions, issue_access_token};
-use crate::infrastructure::password::hash_password;
+use crate::infrastructure::password::{MAX_PASSWORD_BYTES, hash_password};
 use crate::infrastructure::repo::AuthRepo;
 use crate::infrastructure::tokens::{
     generate_csrf_token, generate_hmac_key, generate_jwt_id, generate_refresh_token,
@@ -66,6 +66,14 @@ impl RegisterService {
     ) -> Result<RegisterInitResponse, RegisterBeginError> {
         if password.trim().is_empty() {
             return Err(RegisterBeginError::BadRequest("Пароль обязателен."));
+        }
+        if password.chars().count() < 8 {
+            return Err(RegisterBeginError::BadRequest(
+                "Пароль должен быть не короче 8 символов.",
+            ));
+        }
+        if password.len() > MAX_PASSWORD_BYTES {
+            return Err(RegisterBeginError::BadRequest("Пароль слишком длинный."));
         }
         let email = email_or_empty.trim().to_lowercase();
         if email.is_empty() || !email.contains('@') {
@@ -230,10 +238,10 @@ impl RegisterService {
             .map_err(|e| RegisterVerifyError::Internal(e.to_string()))?;
 
         let jwt_id = generate_jwt_id();
-        let refresh_token = generate_refresh_token();
+        let session_id = new_uuid();
+        let refresh_token = generate_refresh_token(session_id, self.jwt.secret.as_bytes());
         let access_expires = now + Duration::minutes(self.jwt.access_token_minutes);
         let refresh_expires = now + Duration::days(self.jwt.refresh_token_days);
-        let session_id = new_uuid();
 
         self.repo
             .insert_session(

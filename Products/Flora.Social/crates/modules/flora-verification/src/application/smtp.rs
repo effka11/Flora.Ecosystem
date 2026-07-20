@@ -85,9 +85,7 @@ impl SmtpVerificationCodeSender {
                 return Err(SendError::NotConfiguredProduction);
             }
             info!(
-                email,
-                code,
-                "SMTP is not configured — email not sent. Verification code logged for Development."
+                "SMTP is not configured — email not sent; Development caller receives the code directly"
             );
             return Ok(());
         }

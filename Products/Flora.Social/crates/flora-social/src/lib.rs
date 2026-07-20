@@ -13,6 +13,8 @@ use flora_shared::npgsql::NpgsqlConnectionString;
 use flora_verification_contracts::VerificationChallengePort;
 use sqlx::PgPool;
 
+type SessionValidator = Arc<dyn flora_auth_contracts::AccessSessionValidator>;
+
 /// Результат композиции продукта: HTTP + фоновые хэндлы (Music workers, Verification gRPC).
 pub struct ProductComposition {
     pub router: axum::Router,
@@ -30,6 +32,9 @@ pub fn product_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
 /// Композиция роутера и фоновых задач без двойного ChallengeService.
 pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductComposition {
     let mut background = Vec::new();
+    let sessions = pool
+        .as_ref()
+        .map(|pool| flora_auth::access_session_validator(pool.clone()));
 
     let verification_port = if let Some(ref pool) = pool {
         if let Some(bundle) = flora_verification::compose(cfg, pool.clone()) {
@@ -49,23 +54,38 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
     }
 
     let (auth_routes, account_directory) =
-        auth_router_with_directory(cfg, pool.clone(), verification_port);
+        auth_router_with_directory(cfg, pool.clone(), verification_port, sessions.clone());
 
     let (notifications_routes, message_sent_notifier, notification_dispatcher) =
-        notifications_router(cfg, pool.clone(), account_directory.clone());
+        notifications_router(
+            cfg,
+            pool.clone(),
+            account_directory.clone(),
+            sessions.clone(),
+        );
 
-    let (content_routes, content_workers) =
-        content_router(cfg, pool.clone(), Arc::clone(&notification_dispatcher));
+    let (content_routes, content_workers) = content_router(
+        cfg,
+        pool.clone(),
+        Arc::clone(&notification_dispatcher),
+        sessions.clone(),
+    );
     background.extend(content_workers);
     let (users_routes, users_workers) = users_router(
         cfg,
         pool.clone(),
         account_directory.clone(),
         Arc::clone(&notification_dispatcher),
+        sessions.clone(),
     );
     background.extend(users_workers);
-    let (messaging_routes, messaging_workers) =
-        messaging_router(cfg, pool.clone(), account_directory, message_sent_notifier);
+    let (messaging_routes, messaging_workers) = messaging_router(
+        cfg,
+        pool.clone(),
+        account_directory,
+        message_sent_notifier,
+        sessions.clone(),
+    );
     background.extend(messaging_workers);
 
     let (economy_routes, economy_workers) = economy_composition(cfg);
@@ -78,7 +98,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         .merge(notifications_routes)
         .merge(content_routes)
         .merge(messaging_routes)
-        .merge(music_router(cfg, pool))
+        .merge(music_router(cfg, pool, sessions))
         .merge(economy_routes);
 
     ProductComposition { router, background }
@@ -88,6 +108,7 @@ fn auth_router_with_directory(
     cfg: &FloraConfig,
     pool: Option<PgPool>,
     verification: Option<Arc<dyn VerificationChallengePort>>,
+    sessions: Option<SessionValidator>,
 ) -> (
     axum::Router,
     Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
@@ -116,7 +137,7 @@ fn auth_router_with_directory(
     let module = flora_auth::compose(pool, jwt, profiles, provisioner, verification);
     let directory = module.account_directory.clone();
     let router = axum::Router::new()
-        .merge(with_jwt(cfg, module.protected_router))
+        .merge(with_jwt(cfg, sessions, module.protected_router))
         .merge(module.public_router);
     (router, Some(directory))
 }
@@ -126,6 +147,7 @@ fn users_router(
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     notifications: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
+    sessions: Option<SessionValidator>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Users:ServeNative") != Some(true) {
         return (flora_users::router(), Vec::new());
@@ -148,12 +170,16 @@ fn users_router(
     );
     let workers = module.image_backfill.take().into_iter().collect();
     let router = axum::Router::new()
-        .merge(with_jwt(cfg, module.protected_router))
-        .merge(with_optional_jwt(cfg, module.public_router));
+        .merge(with_jwt(cfg, sessions.clone(), module.protected_router))
+        .merge(with_optional_jwt(cfg, sessions, module.public_router));
     (router, workers)
 }
 
-fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
+fn music_router(
+    cfg: &FloraConfig,
+    pool: Option<PgPool>,
+    sessions: Option<SessionValidator>,
+) -> axum::Router {
     if cfg.get_bool("Music:ServeNative") != Some(true) {
         return flora_music::router();
     }
@@ -169,13 +195,14 @@ fn music_router(cfg: &FloraConfig, pool: Option<PgPool>) -> axum::Router {
         ffprobe_path: cfg.get("Media:FfprobePath").unwrap_or("").to_string(),
     };
     let module = flora_music::compose(pool, media);
-    with_jwt(cfg, module.router)
+    with_jwt(cfg, sessions, module.router)
 }
 
 fn notifications_router(
     cfg: &FloraConfig,
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
+    sessions: Option<SessionValidator>,
 ) -> (
     axum::Router,
     Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
@@ -203,7 +230,7 @@ fn notifications_router(
     let profiles = flora_users::profile_queries(pool.clone());
     let module = flora_notifications::compose(pool, cfg, profiles, accounts);
     let router = axum::Router::new()
-        .merge(with_jwt(cfg, module.protected_router))
+        .merge(with_jwt(cfg, sessions, module.protected_router))
         .merge(module.admin_router);
     (
         router,
@@ -217,6 +244,7 @@ fn messaging_router(
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     sent_notifier: Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
+    sessions: Option<SessionValidator>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Messaging:ServeNative") != Some(true) {
         return (flora_messaging::router(), Vec::new());
@@ -248,13 +276,17 @@ fn messaging_router(
         sent_notifier,
         e2e_token_secret,
     );
-    (with_jwt(cfg, module.router), vec![module.asset_cleanup])
+    (
+        with_jwt(cfg, sessions, module.router),
+        vec![module.asset_cleanup],
+    )
 }
 
 fn content_router(
     cfg: &FloraConfig,
     pool: Option<PgPool>,
     notifications: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
+    sessions: Option<SessionValidator>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Content:ServeNative") != Some(true) {
         return (flora_content::router(), Vec::new());
@@ -295,26 +327,36 @@ fn content_router(
         workers.push(h);
     }
     let router = axum::Router::new()
-        .merge(with_jwt(cfg, module.protected_router))
-        .merge(with_optional_jwt(cfg, module.public_router));
+        .merge(with_jwt(cfg, sessions.clone(), module.protected_router))
+        .merge(with_optional_jwt(cfg, sessions, module.public_router));
     (router, workers)
 }
 
-fn with_optional_jwt(cfg: &FloraConfig, router: axum::Router) -> axum::Router {
+fn with_optional_jwt(
+    cfg: &FloraConfig,
+    sessions: Option<SessionValidator>,
+    router: axum::Router,
+) -> axum::Router {
     let jwt = JwtAuthLayerState::from_config(cfg);
     router.layer(axum::middleware::from_fn_with_state(
         jwt_layer::JwtAuthState {
             options: jwt.options,
+            sessions,
         },
         jwt_layer::optional_bearer_jwt,
     ))
 }
 
-fn with_jwt(cfg: &FloraConfig, router: axum::Router) -> axum::Router {
+fn with_jwt(
+    cfg: &FloraConfig,
+    sessions: Option<SessionValidator>,
+    router: axum::Router,
+) -> axum::Router {
     let jwt = JwtAuthLayerState::from_config(cfg);
     router.layer(axum::middleware::from_fn_with_state(
         jwt_layer::JwtAuthState {
             options: jwt.options,
+            sessions,
         },
         jwt_layer::require_bearer_jwt,
     ))

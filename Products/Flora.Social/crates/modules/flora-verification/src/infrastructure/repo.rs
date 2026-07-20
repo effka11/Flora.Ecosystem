@@ -63,25 +63,23 @@ impl VerificationRepo {
         Ok(())
     }
 
-    pub async fn update_attempts(
+    pub async fn increment_attempts(
         &self,
         token: Uuid,
-        attempts: i32,
         updated_at: DateTime<Utc>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
+    ) -> Result<Option<i32>, sqlx::Error> {
+        sqlx::query_scalar(
             r#"
             UPDATE flora_core.verification_challenges
-            SET attempts = $2, updated_at = $3
+            SET attempts = attempts + 1, updated_at = $2
             WHERE token = $1
+            RETURNING attempts
             "#,
         )
         .bind(token)
-        .bind(attempts)
         .bind(updated_at)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
+        .fetch_optional(&self.pool)
+        .await
     }
 
     pub async fn remove(&self, token: Uuid) -> Result<(), sqlx::Error> {
@@ -90,6 +88,33 @@ impl VerificationRepo {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    /// Одноразово потребляет ещё действующий challenge. Условие по хешу
+    /// делает параллельную двойную валидацию безопасной: победит один запрос.
+    pub async fn consume_if_matches(
+        &self,
+        token: Uuid,
+        code_hash: &str,
+        utc_now: DateTime<Utc>,
+        max_attempts: i32,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM flora_core.verification_challenges
+            WHERE token = $1
+              AND code_hash = $2
+              AND expires_at > $3
+              AND attempts < $4
+            "#,
+        )
+        .bind(token)
+        .bind(code_hash)
+        .bind(utc_now)
+        .bind(max_attempts)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn remove_expired(&self, utc_now: DateTime<Utc>) -> Result<u64, sqlx::Error> {

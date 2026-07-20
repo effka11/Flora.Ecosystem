@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::application::feed::FeedService;
+use crate::application::post_access::PostAccessService;
 use crate::application::time::format_utc;
 use crate::infrastructure::repo::ContentRepo;
 
@@ -21,6 +22,7 @@ pub struct PostService {
     feed: Arc<FeedService>,
     accounts: Arc<dyn AccountDirectory>,
     profiles: Arc<dyn FeedAuthorProfiles>,
+    access: Arc<PostAccessService>,
     notifications: Arc<dyn UserNotificationDispatcher>,
 }
 
@@ -30,6 +32,7 @@ impl PostService {
         feed: Arc<FeedService>,
         accounts: Arc<dyn AccountDirectory>,
         profiles: Arc<dyn FeedAuthorProfiles>,
+        access: Arc<PostAccessService>,
         notifications: Arc<dyn UserNotificationDispatcher>,
     ) -> Self {
         Self {
@@ -37,6 +40,7 @@ impl PostService {
             feed,
             accounts,
             profiles,
+            access,
             notifications,
         }
     }
@@ -80,12 +84,7 @@ impl PostService {
         user_uuid: Uuid,
         post_uuid: Uuid,
     ) -> Result<Result<Value, PostActionError>, String> {
-        if !self
-            .repo
-            .post_exists(post_uuid)
-            .await
-            .map_err(|e| e.to_string())?
-        {
+        if !self.access.can_view(post_uuid, Some(user_uuid)).await? {
             return Ok(Err(PostActionError::NotFound));
         }
         let already = self
@@ -113,6 +112,9 @@ impl PostService {
     }
 
     pub async fn unlike(&self, user_uuid: Uuid, post_uuid: Uuid) -> Result<Value, String> {
+        if !self.access.can_view(post_uuid, Some(user_uuid)).await? {
+            return Ok(json!({ "liked": false, "likesCount": 0 }));
+        }
         let like = self
             .repo
             .has_liked(post_uuid, user_uuid)
@@ -141,12 +143,7 @@ impl PostService {
         user_uuid: Uuid,
         post_uuid: Uuid,
     ) -> Result<Result<Value, PostActionError>, String> {
-        if !self
-            .repo
-            .post_exists(post_uuid)
-            .await
-            .map_err(|e| e.to_string())?
-        {
+        if !self.access.can_view(post_uuid, Some(user_uuid)).await? {
             return Ok(Err(PostActionError::NotFound));
         }
         let already = self
@@ -173,6 +170,9 @@ impl PostService {
     }
 
     pub async fn unrepost(&self, user_uuid: Uuid, post_uuid: Uuid) -> Result<Value, String> {
+        if !self.access.can_view(post_uuid, Some(user_uuid)).await? {
+            return Ok(json!({ "reposted": false, "repostsCount": 0 }));
+        }
         let exists = self
             .repo
             .has_reposted(post_uuid, user_uuid)
@@ -201,12 +201,7 @@ impl PostService {
         user_uuid: Uuid,
         post_uuid: Uuid,
     ) -> Result<Result<Value, PostActionError>, String> {
-        if !self
-            .repo
-            .post_exists(post_uuid)
-            .await
-            .map_err(|e| e.to_string())?
-        {
+        if !self.access.can_view(post_uuid, Some(user_uuid)).await? {
             return Ok(Err(PostActionError::NotFound));
         }
         let already = self

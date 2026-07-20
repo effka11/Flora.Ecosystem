@@ -3,7 +3,6 @@
 #   .\scripts\deploy.ps1                    # prompts for VPS IP, then SSH key path (user: root)
 #   .\scripts\deploy.ps1 -SkipBuild
 #   .\scripts\deploy.ps1 -ApiUpstreamUrl "http://127.0.0.1:5290"
-#   .\scripts\deploy.ps1 -PublicApiBaseUrl "https://origin.flora-s.net"
 #   .\scripts\deploy.ps1 -CertbotEmail "you@mail.com"   # optional: LE on VPS (origin.* + apex redirect TLS)
 #   .\scripts\deploy.ps1 -AllowedClientIps "1.2.3.4"   # optional: lock apex/www redirect only (CDN stays public)
 #
@@ -74,13 +73,11 @@ $RepoRoot = (Resolve-Path (Join-Path $WebRoot "..\..")).Path
 Set-Location $WebRoot
 
 $resolvedPublic = $PublicApiBaseUrl.Trim().TrimEnd("/")
-if ([string]::IsNullOrWhiteSpace($resolvedPublic)) {
-    Remove-Item Env:NEXT_PUBLIC_API_BASE_URL -ErrorAction SilentlyContinue
-    Write-Host ('NEXT_PUBLIC_API_BASE_URL=(same-origin); browser calls /api/* on https://' + $PublicSubdomain + '.' + $Domain)
-} else {
-    $env:NEXT_PUBLIC_API_BASE_URL = $resolvedPublic
-    Write-Host "NEXT_PUBLIC_API_BASE_URL=$resolvedPublic (embedded at build)."
+if (-not [string]::IsNullOrWhiteSpace($resolvedPublic)) {
+    throw "-PublicApiBaseUrl is incompatible with host-only HttpOnly auth/media cookies. Keep Web API same-origin; use NEXT_PUBLIC_REALTIME_API_BASE_URL only for SSE."
 }
+Remove-Item Env:NEXT_PUBLIC_API_BASE_URL -ErrorAction SilentlyContinue
+Write-Host ('NEXT_PUBLIC_API_BASE_URL=(same-origin); browser calls /api/* on https://' + $PublicSubdomain + '.' + $Domain)
 
 $env:NEXT_PUBLIC_REALTIME_API_BASE_URL = "https://origin.$Domain"
 Write-Host "NEXT_PUBLIC_REALTIME_API_BASE_URL=$($env:NEXT_PUBLIC_REALTIME_API_BASE_URL) (SSE bypass CDN)"

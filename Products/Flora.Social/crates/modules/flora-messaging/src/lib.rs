@@ -52,7 +52,7 @@ pub fn compose(
         profiles,
         presence,
         online_access,
-        messages_access,
+        messages_access.clone(),
         sent_notifier,
     ));
     // Errata-5: HMAC-подписанные proof-токены recovery/approve. None → fail-closed
@@ -63,7 +63,7 @@ pub fn compose(
             "flora-messaging: E2E proof-токены отключены (нет Messaging:E2eTokenSecret и Jwt:Secret) — unlock-complete будет отклонять запросы"
         );
     }
-    let assets = Arc::new(AssetService::new(pool.clone(), accounts));
+    let assets = Arc::new(AssetService::new(pool.clone(), accounts, messages_access));
     let e2e = Arc::new(E2eKeyBackupService::new(pool.clone(), proof_tokens.clone()));
     let epochs = Arc::new(E2eEpochService::new(pool, proof_tokens));
     MessagingModule {

@@ -7,6 +7,7 @@ set -euo pipefail
 PAYLOAD="${1:?payload directory}"
 GATEWAY_DIR=/opt/flora-ecosystem/runtime/gateway
 ENV_DIR=/etc/flora-ecosystem
+SERVICE_USER=flora-api
 
 if [[ ! -f "$PAYLOAD/flora-api" ]]; then
   echo "missing $PAYLOAD/flora-api" >&2
@@ -14,6 +15,13 @@ if [[ ! -f "$PAYLOAD/flora-api" ]]; then
 fi
 
 mkdir -p "$GATEWAY_DIR" "$ENV_DIR"
+if ! getent group "$SERVICE_USER" >/dev/null; then
+  groupadd --system "$SERVICE_USER"
+fi
+if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
+  useradd --system --gid "$SERVICE_USER" --home-dir "$GATEWAY_DIR" \
+    --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
+fi
 
 install -m 755 "$PAYLOAD/flora-api" "$GATEWAY_DIR/flora-api.new"
 mv -f "$GATEWAY_DIR/flora-api.new" "$GATEWAY_DIR/flora-api"
@@ -26,31 +34,40 @@ fi
 # Baseline Gateway listen only when missing — never overwrite prod appsettings with secrets.
 if [[ ! -f "$GATEWAY_DIR/appsettings.json" ]]; then
   if [[ -f "$PAYLOAD/appsettings.json" ]]; then
-    install -m 644 "$PAYLOAD/appsettings.json" "$GATEWAY_DIR/appsettings.json"
+    install -o root -g "$SERVICE_USER" -m 640 \
+      "$PAYLOAD/appsettings.json" "$GATEWAY_DIR/appsettings.json"
   else
     cat >"$GATEWAY_DIR/appsettings.json" <<'EOF'
 {
   "Gateway": {
     "Listen": "127.0.0.1:5290",
-    "DotnetUpstream": ""
+    "DotnetUpstream": "",
+    "TrustedProxies": [ "127.0.0.0/8", "::1/128" ]
   }
 }
 EOF
-    chmod 644 "$GATEWAY_DIR/appsettings.json"
   fi
 fi
+chown root:"$SERVICE_USER" "$GATEWAY_DIR/appsettings.json"
+chmod 640 "$GATEWAY_DIR/appsettings.json"
 
 # Phase 5 gateway env (no DotnetUpstream).
 {
   echo 'FLORA_ENVIRONMENT=Production'
   echo 'Gateway__Listen=127.0.0.1:5290'
   echo 'Gateway__DotnetUpstream='
+  echo 'Gateway__TrustedProxies__0=127.0.0.0/8'
+  echo 'Gateway__TrustedProxies__1=::1/128'
   echo 'RUST_LOG=info'
 } >"$ENV_DIR/flora-gateway.env"
 chmod 600 "$ENV_DIR/flora-gateway.env"
 
 if [[ ! -f "$ENV_DIR/flora-api.env" ]]; then
   echo "WARNING: missing $ENV_DIR/flora-api.env — create from flora-api.env.example before traffic." >&2
+fi
+if [[ -f "$ENV_DIR/firebase-service-account.json" ]]; then
+  chown root:"$SERVICE_USER" "$ENV_DIR/firebase-service-account.json"
+  chmod 640 "$ENV_DIR/firebase-service-account.json"
 fi
 
 cat >/etc/systemd/system/flora-api.service <<'EOF'
@@ -61,6 +78,9 @@ After=network.target
 
 [Service]
 Type=simple
+User=flora-api
+Group=flora-api
+UMask=0077
 WorkingDirectory=/opt/flora-ecosystem/runtime/gateway
 Environment=FLORA_ENVIRONMENT=Production
 Environment=FLORA_CONFIG_DIR=/opt/flora-ecosystem/runtime/gateway
@@ -71,6 +91,18 @@ EnvironmentFile=-/etc/flora-ecosystem/flora-gateway.env
 ExecStart=/opt/flora-ecosystem/runtime/gateway/flora-api
 Restart=always
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
 
 [Install]
 WantedBy=multi-user.target

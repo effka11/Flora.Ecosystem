@@ -35,7 +35,7 @@ use crate::application::posts::{
 use crate::application::profile_posts::{ProfilePostsOutcome, ProfilePostsService};
 use crate::application::serialize::FeedSerializer;
 use crate::application::time::format_utc;
-use crate::http::media::{cached_media_response, cached_ranged_media_response};
+use crate::http::media::{MediaCache, cached_media_response, cached_ranged_media_response};
 use crate::http::rate_limit::{FixedWindowLimiter, client_ip_key};
 
 pub use crate::http::rate_limit::default_upload_limiter;
@@ -617,9 +617,21 @@ async fn delete_comment(
     }
 }
 
-async fn get_post_image(State(state): State<ContentState>, Path(uuid): Path<Uuid>) -> Response {
-    match state.media.post_image(uuid).await {
-        Ok(Some(blob)) => cached_media_response(blob.data, &blob.content_type),
+async fn get_post_image(
+    State(state): State<ContentState>,
+    Path(uuid): Path<Uuid>,
+    viewer: Option<Extension<CurrentUser>>,
+) -> Response {
+    match state
+        .media
+        .post_image(uuid, viewer.map(|Extension(user)| user.0))
+        .await
+    {
+        Ok(Some(media)) => cached_media_response(
+            media.blob.data,
+            &media.blob.content_type,
+            media_cache(media.publicly_cacheable),
+        ),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => internal(e),
     }
@@ -627,7 +639,9 @@ async fn get_post_image(State(state): State<ContentState>, Path(uuid): Path<Uuid
 
 async fn get_avatar(State(state): State<ContentState>, Path(uuid): Path<Uuid>) -> Response {
     match state.media.avatar(uuid).await {
-        Ok(Some(blob)) => cached_media_response(blob.data, &blob.content_type),
+        Ok(Some(blob)) => {
+            cached_media_response(blob.data, &blob.content_type, MediaCache::PublicImmutable)
+        }
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => internal(e),
     }
@@ -637,9 +651,19 @@ async fn get_post_video(
     State(state): State<ContentState>,
     Path(uuid): Path<Uuid>,
     headers: HeaderMap,
+    viewer: Option<Extension<CurrentUser>>,
 ) -> Response {
-    match state.media.post_video(uuid).await {
-        Ok(Some(blob)) => cached_ranged_media_response(blob.data, &blob.content_type, &headers),
+    match state
+        .media
+        .post_video(uuid, viewer.map(|Extension(user)| user.0))
+        .await
+    {
+        Ok(Some(media)) => cached_ranged_media_response(
+            media.blob.data,
+            &media.blob.content_type,
+            &headers,
+            media_cache(media.publicly_cacheable),
+        ),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => internal(e),
     }
@@ -648,9 +672,18 @@ async fn get_post_video(
 async fn get_post_video_poster(
     State(state): State<ContentState>,
     Path(uuid): Path<Uuid>,
+    viewer: Option<Extension<CurrentUser>>,
 ) -> Response {
-    match state.media.post_video_poster(uuid).await {
-        Ok(Some(blob)) => cached_media_response(blob.data, &blob.content_type),
+    match state
+        .media
+        .post_video_poster(uuid, viewer.map(|Extension(user)| user.0))
+        .await
+    {
+        Ok(Some(media)) => cached_media_response(
+            media.blob.data,
+            &media.blob.content_type,
+            media_cache(media.publicly_cacheable),
+        ),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => internal(e),
     }
@@ -659,11 +692,26 @@ async fn get_post_video_poster(
 async fn get_post_video_status(
     State(state): State<ContentState>,
     Path(post_uuid): Path<Uuid>,
+    viewer: Option<Extension<CurrentUser>>,
 ) -> Response {
-    match state.media.post_video_status(post_uuid).await {
+    match state
+        .media
+        .post_video_status(post_uuid, viewer.map(|Extension(user)| user.0))
+        .await
+    {
         Ok(Some(body)) => Json(body).into_response(),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => internal(e),
+    }
+}
+
+fn media_cache(publicly_cacheable: bool) -> MediaCache {
+    if publicly_cacheable {
+        // Community privacy is mutable; a previously public blob must be
+        // re-authorized after the community becomes private.
+        MediaCache::PublicRevalidate
+    } else {
+        MediaCache::PrivateNoStore
     }
 }
 

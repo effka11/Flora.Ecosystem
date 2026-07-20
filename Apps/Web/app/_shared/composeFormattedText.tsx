@@ -1,4 +1,5 @@
 import { forwardRef, type CSSProperties, type ReactNode } from "react";
+import { sanitizeComposeHref } from "@/lib/sanitizeComposeHref";
 import styles from "./composeFormattedText.module.css";
 
 export type ComposeFormatFlags = {
@@ -206,14 +207,15 @@ export function parseComposeMirrorSpans(source: string, inherited: ComposeFormat
     }
 
     if (match.kind === "link") {
-      const href = source.slice(match.urlStart, match.urlEnd);
+      const rawHref = source.slice(match.urlStart, match.urlEnd);
+      const href = sanitizeComposeHref(rawHref);
       spans.push({ text: "[", hidden: true });
       for (const inner of parseComposeMirrorSpans(source.slice(match.labelStart, match.labelEnd), inherited)) {
-        spans.push(inner.hidden ? inner : { ...inner, href });
+        spans.push(inner.hidden || !href ? inner : { ...inner, href });
       }
       spans.push({ text: "]", hidden: true });
       spans.push({ text: "(", hidden: true });
-      spans.push({ text: href, hidden: true });
+      spans.push({ text: rawHref, hidden: true });
       spans.push({ text: ")", hidden: true });
       index = match.end;
       continue;

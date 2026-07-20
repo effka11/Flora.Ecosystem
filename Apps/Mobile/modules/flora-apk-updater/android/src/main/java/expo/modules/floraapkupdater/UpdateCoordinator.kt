@@ -622,6 +622,12 @@ object UpdateCoordinator {
         return false
       }
 
+      val validationError = validateUpdateApk(context, apk)
+      if (validationError != null) {
+        fail(context, validationError)
+        return false
+      }
+
       val authority = "${context.packageName}.flora.apk.provider"
       FileProvider.getUriForFile(context, authority, apk)
 
@@ -636,22 +642,6 @@ object UpdateCoordinator {
             PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED
           },
         )
-      }
-      if (allowUserAction) {
-        try {
-          val method = PackageInstaller.SessionParams::class.java.getMethod(
-            "setRequestDowngrade",
-            Boolean::class.javaPrimitiveType,
-          )
-          method.invoke(params, true)
-        } catch (_: Exception) {
-        }
-        try {
-          val field = PackageInstaller.SessionParams::class.java.getDeclaredField("installFlags")
-          field.isAccessible = true
-          field.setInt(params, field.getInt(params) or 0x00000080)
-        } catch (_: Exception) {
-        }
       }
 
       val sessionId = installer.createSession(params)
@@ -684,6 +674,38 @@ object UpdateCoordinator {
       fail(context, e.message ?: "Install failed")
       return false
     }
+  }
+
+  private fun validateUpdateApk(context: Context, apk: File): String? {
+    val archive = try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context.packageManager.getPackageArchiveInfo(
+          apk.absolutePath,
+          PackageManager.PackageInfoFlags.of(0),
+        )
+      } else {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+      }
+    } catch (_: Exception) {
+      null
+    } ?: return "APK package metadata is invalid"
+
+    if (archive.packageName != context.packageName) {
+      return "APK package name does not match Flora Social"
+    }
+
+    val archiveVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      archive.longVersionCode
+    } else {
+      @Suppress("DEPRECATION")
+      archive.versionCode.toLong()
+    }
+    val installedVersion = installedVersionCode(context).toLong()
+    if (installedVersion > 0 && archiveVersion <= installedVersion) {
+      return "APK versionCode must be greater than the installed version"
+    }
+    return null
   }
 
   fun onInstallResult(context: Context, status: Int, message: String?, confirmIntent: Intent?) {

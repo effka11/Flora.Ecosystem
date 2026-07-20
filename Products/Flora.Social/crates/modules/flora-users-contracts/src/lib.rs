@@ -204,6 +204,14 @@ pub trait ProfileAccess: Send + Sync {
         owner_user_uuid: Uuid,
         field: ProfileAccessField,
     ) -> BoxFuture<'_, Result<bool, String>>;
+
+    /// Пакетный эквивалент `can_access` для лент без N+1 запросов.
+    fn accessible_owners(
+        &self,
+        viewer_user_uuid: Option<Uuid>,
+        owner_user_uuids: &[Uuid],
+        field: ProfileAccessField,
+    ) -> BoxFuture<'_, Result<Vec<Uuid>, String>>;
 }
 
 /// Порт `IProfileAccessPolicy` для поля OnlineStatus (Messaging list enrichment).

@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use flora_auth::infrastructure::jwt::{AccessTokenClaims, JwtOptions, issue_access_token};
+use flora_auth::infrastructure::tokens::hash_refresh_token;
 use flora_auth::infrastructure::totp::current_totp_code;
 use flora_shared::config::FloraConfig;
 use flora_shared::npgsql::NpgsqlConnectionString;
@@ -612,7 +613,7 @@ async fn refresh_rotates_active_session() {
     .fetch_one(&pool)
     .await
     .expect("rotated row");
-    assert_eq!(db_refresh, new_refresh);
+    assert_eq!(db_refresh, hash_refresh_token(new_refresh));
     assert_eq!(db_rotation, old_rotation + 1);
 }
 
