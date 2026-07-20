@@ -1399,6 +1399,17 @@ name = "frc-a-core"
 version = "0.7.0-alpha"
 
 [[package]]
+name = "frc-a-polygon"
+version = "0.7.0-alpha"
+dependencies = [
+ "clap",
+ "frc-a-core",
+ "hound",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "frc-i"
 version = "0.7.0-alpha"
 

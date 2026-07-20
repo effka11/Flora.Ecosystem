@@ -2,7 +2,9 @@
 
 use core::f32::consts::FRAC_1_SQRT_2;
 
-use crate::alloc::{BETA_E8_MAX, LOG2W_X4, Q_SILENCE_X4, compute_alloc};
+use crate::alloc::{
+    BETA_E8_MAX, LOG2W_X4, Q_SILENCE_X4, TRIM_NEUTRAL, TRIM_RAW_BITS, compute_alloc,
+};
 use crate::bands::{NUM_BANDS, band_range, band_width};
 use crate::bitio::{unzigzag, zigzag};
 use crate::energy::{FINE_BITS, analyze_plane, dequant_gain, dequant_gain_fine};
@@ -17,6 +19,8 @@ const HEADER_BITS: u64 = 24;
 /// Накладные расходы range coder'а: 5 байтов финализации (ведущий байт
 /// классической схемы не передаётся).
 const RC_OVERHEAD_BITS: u64 = 40;
+/// Фиксированные биты кадра в RC-потоке до энергий: трим аллокации.
+const TRIM_BITS: u64 = TRIM_RAW_BITS as u64;
 const ENERGY_RAW_K: u32 = 4;
 const ENERGY_Q_CLAMP: i32 = 1024;
 const FLAG_TRANSIENT: u32 = 1 << 0;
@@ -54,10 +58,13 @@ const TRANSIENT_MIN_BUDGET: u16 = 512;
 
 /// VBR по сложности (ненормативно — поведение референсного энкодера).
 /// Полезная потребность кадра: биты на полосы в пределах этого окна от
-/// пиковой плотности энергии кадра (80 единиц по 0.75 дБ = 60 дБ — порядок
+/// пиковой плотности энергии кадра (88 единиц по 0.75 дБ = 66 дБ — порядок
 /// перцептивного динамического диапазона музыкального кадра); всё тише —
-/// утечка окна и цифровой фон, их закрывает noise-fill.
-const VBR_DYN_RANGE_X4: i32 = 80;
+/// утечка окна и цифровой фон, их закрывает noise-fill. Окно расширено с
+/// 60 дБ при переходе на α-аллокацию (v0.7): α кормит тихие полосы щедрее
+/// MMSE, и прежнее окно недооценивало транзиентно-плотный контент
+/// (worst-NMR edm @96k), ужимая его сильнее необходимого.
+const VBR_DYN_RANGE_X4: i32 = 88;
 /// Кап буста тяжёлого кадра: +50% базового бюджета.
 const VBR_BOOST_DIV: u16 = 2;
 /// Кап пула сбережений VBR в базовых бюджетах кадра: ограничивает всплеск
@@ -230,6 +237,7 @@ impl Encoder {
             base - repay as u16
         };
 
+        let trim = choose_trim(&q, planes);
         let energy_cost = energy_cost_x64(&q, planes);
         let mut budget = budget0;
         if self.vbr {
@@ -248,17 +256,18 @@ impl Encoder {
                 budget = demand.max(u64::from(base / 2)).min(u64::from(budget0)) as u16;
             }
         }
-        // Аллокация формы: бюджет за вычетом заголовка, накладных RC, стоимости
-        // энергий и резерва fine-битов. Rate-контроль PVQ точный и открытый:
-        // стоимость книги известна до записи, неизрасходованный остаток полосы
-        // переносится в следующую кодируемую полосу (carry) — итерации по шагу
-        // квантования не нужны.
+        // Аллокация формы: бюджет за вычетом заголовка, накладных RC, трима,
+        // стоимости энергий и резерва fine-битов. Rate-контроль PVQ точный и
+        // открытый: стоимость книги известна до записи, неизрасходованный
+        // остаток полосы переносится в следующую кодируемую полосу (carry) —
+        // итерации по шагу квантования не нужны.
         let shape_budget_x64 = (u64::from(budget) * 64)
-            .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS) * 64 + energy_cost);
+            .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS + TRIM_BITS) * 64 + energy_cost);
         let alloc_budget = (shape_budget_x64 / 64).saturating_sub(fine_reserve_bits(planes));
-        let beta = compute_alloc(&q, planes, alloc_budget);
+        let beta = compute_alloc(&q, planes, alloc_budget, trim);
 
         let mut enc = BinEncoder::new();
+        enc.encode_bits(u32::from(trim), TRIM_RAW_BITS);
         write_energies(&mut enc, &q, planes);
         // Попутно с записью выясняем, есть ли «слышимо схлопнувшиеся» блоки:
         // кодируемые полосы, где какой-то короткий блок ушёл в ноль при живой
@@ -379,13 +388,14 @@ impl Decoder {
         let budget = u16::from_le_bytes([packet[1], packet[2]]);
 
         let mut r = BinDecoder::new(&packet[3..]);
+        let trim = r.decode_bits(TRIM_RAW_BITS) as u8;
         // Стоимость энергий считается по фактически прочитанным символам — на
         // враждебном битстриме (с клампом q) она всё равно согласована с записью.
         let (q, energy_cost) = read_energies(&mut r, planes);
         let shape_budget_x64 = (u64::from(budget) * 64)
-            .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS) * 64 + energy_cost);
+            .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS + TRIM_BITS) * 64 + energy_cost);
         let alloc_budget = (shape_budget_x64 / 64).saturating_sub(fine_reserve_bits(planes));
-        let beta = compute_alloc(&q, planes, alloc_budget);
+        let beta = compute_alloc(&q, planes, alloc_budget, trim);
 
         let mut coeffs = vec![0f32; planes * FRAME_N];
         // Декодированные fine-гейны кодируемых полос — цель перенормировки
@@ -688,14 +698,19 @@ fn fine_reserve_bits(planes: usize) -> u64 {
 /// Потребность кадра в битах (сигнал сложности VBR): water-filling до окна
 /// `VBR_DYN_RANGE_X4` от пиковой плотности энергии кадра — сколько бит нужно,
 /// чтобы прокодировать всё, что громче пика минус окно, — плюс фактическая
-/// стоимость энергий и накладные расходы. Единицы согласованы с аллокацией:
-/// 1 единица q (0.25 log2 энергии) = 1/8 бита на коэффициент. Идеализация
-/// (энтропийный кодер может уложиться дешевле), поэтому значение служит
-/// только сигналом сложности, а не точным размером пакета.
+/// стоимость энергий и накладные расходы. Плотность здесь **не** взвешивается
+/// экспонентой α аллокации: MMSE-водопад — верхняя оценка расхода (α сжимает
+/// разброс β, но кап 8 бит/коэфф остаётся тем же), и замеры полигона
+/// показали, что α-масштабирование окна ужимает лёгкие кадры сильнее
+/// необходимого. Идеализация служит только сигналом сложности, а не точным
+/// размером пакета.
 fn vbr_demand_bits(q: &[i32], planes: usize, energy_cost_x64: u64) -> u64 {
     let density = |i: usize| q[i] - LOG2W_X4[i % NUM_BANDS];
-    let overhead =
-        energy_cost_x64.div_ceil(64) + HEADER_BITS + RC_OVERHEAD_BITS + fine_reserve_bits(planes);
+    let overhead = energy_cost_x64.div_ceil(64)
+        + HEADER_BITS
+        + RC_OVERHEAD_BITS
+        + TRIM_BITS
+        + fine_reserve_bits(planes);
     let peak = (0..q.len())
         .filter(|&i| q[i] > Q_SILENCE_X4)
         .map(density)
@@ -716,6 +731,18 @@ fn vbr_demand_bits(q: &[i32], planes: usize, energy_cost_x64: u64) -> u64 {
         }
     }
     shape_e8 / 8 + overhead
+}
+
+/// Выбор трима аллокации (ненормативно — решение энкодера, нормативен только
+/// символ в битстриме). Референсный энкодер v0.7 всегда сигналит нейтраль:
+/// замеры полигона показали, что эвристика по спектральному балансу (тёмный
+/// кадр → НЧ, яркий → ВЧ) без оценки тональности ломает многотоновый контент —
+/// тёмный спектр толкает биты к НЧ, а редкий ВЧ-тон, которому нужна точность,
+/// уходит в noise-fill (−3.8 дБ SNR на multitone @24k даже при шаге ±1 с
+/// мёртвой зоной 36 дБ). Адаптация трима с детектором тональности — v0.8;
+/// поле в битстриме нормативно и готово.
+fn choose_trim(_q: &[i32], _planes: usize) -> u8 {
+    TRIM_NEUTRAL as u8
 }
 
 fn shape_norm(v: &[f32]) -> f32 {
