@@ -14,15 +14,15 @@ import {
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
+  cancelAnimation,
   Extrapolation,
   interpolate,
   interpolateColor,
-  useAnimatedRef,
-  useAnimatedScrollHandler,
+  runOnJS,
+  runOnUI,
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
@@ -30,6 +30,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PostCard } from "@/components/PostCard";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { FrcMediaModeScope } from "@/lib/FrcImageDecodingScope";
+import {
+  ENERGETIC_OPEN_EASING,
+  ENERGETIC_OPEN_MS,
+  settleEnergetic,
+  snapPagerOffset,
+} from "@/lib/energeticSettle";
 import { feedRowEqual } from "@/lib/feedRowEqual";
 import { PREFETCH_END_THRESHOLD_VIEWPORTS } from "@/lib/feedPrefetchPolicy";
 import {
@@ -49,6 +55,9 @@ import {
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { composeScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+
+/** Как SWIPE_AXIS_PX у drawer — не перехватывать вертикальный скролл ленты. */
+const PAGER_AXIS_PX = 10;
 
 /** chromeRow 45 + gap 5 + tabs 35 + border 1 */
 const FEED_CHROME_BODY_HEIGHT = 45 + 5 + 35 + 1;
@@ -363,8 +372,9 @@ export default function FeedScreen() {
   const { width: pageWidth } = useWindowDimensions();
   const network = useNetworkClass();
   const queryClient = useQueryClient();
-  const pagerRef = useAnimatedRef<Reanimated.ScrollView>();
   const scrollX = useSharedValue(0);
+  const dragStartX = useSharedValue(0);
+  const pageWidthSV = useSharedValue(pageWidth);
   const [kind, setKind] = useState<FeedKind>("recommendations");
   const [tabLayouts, setTabLayouts] = useState<Record<FeedKind, TabLayout | null>>({
     recommendations: null,
@@ -383,6 +393,13 @@ export default function FeedScreen() {
     estimatedHeight: estimatedHeaderHeight,
   });
 
+  useEffect(() => {
+    pageWidthSV.value = pageWidth;
+    // Только при смене ширины (rotate): kind-переходы анимирует settle/switchKind.
+    scrollX.value = feedKindIndex(kind) * pageWidth;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- kind drives animated settles, not this jump
+  }, [pageWidth, pageWidthSV, scrollX]);
+
   const recordTabLayout = useCallback((tab: FeedKind, event: LayoutChangeEvent) => {
     const { x, width } = event.nativeEvent.layout;
     setTabLayouts((prev) => {
@@ -394,6 +411,15 @@ export default function FeedScreen() {
 
   const hasTabLayouts = Boolean(
     tabLayouts.recommendations && tabLayouts.subscriptions && pageWidth > 0,
+  );
+
+  const commitPagerIndex = useCallback(
+    (index: number) => {
+      const next: FeedKind = index === 0 ? "recommendations" : "subscriptions";
+      setActivePane(index);
+      setKind((current) => (current === next ? current : next));
+    },
+    [setActivePane],
   );
 
   // Tab indicator + label colors run entirely on the UI thread off the pager's
@@ -444,9 +470,9 @@ export default function FeedScreen() {
     };
   });
 
-  const onPagerScroll = useAnimatedScrollHandler((event) => {
-    scrollX.value = event.contentOffset.x;
-  });
+  const pagerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -scrollX.value }],
+  }));
 
   const recommendationsFeedQuery = useFeedQuery("recommendations");
   const subscriptionsFeedQuery = useFeedQuery("subscriptions");
@@ -460,27 +486,65 @@ export default function FeedScreen() {
     refetchInterval: 30_000,
   });
 
+  const pagerPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-PAGER_AXIS_PX, PAGER_AXIS_PX])
+        .failOffsetY([-PAGER_AXIS_PX * 2, PAGER_AXIS_PX * 2])
+        .onStart(() => {
+          "worklet";
+          cancelAnimation(scrollX);
+          dragStartX.value = scrollX.value;
+        })
+        .onUpdate((event) => {
+          "worklet";
+          const width = pageWidthSV.value;
+          if (width <= 0) return;
+          scrollX.value = Math.max(0, Math.min(width, dragStartX.value - event.translationX));
+        })
+        .onEnd((event) => {
+          "worklet";
+          const width = pageWidthSV.value;
+          if (width <= 0) return;
+          const target = snapPagerOffset(scrollX.value, width, 2, event.velocityX);
+          settleEnergetic(
+            scrollX,
+            target,
+            width,
+            1,
+            event.velocityX,
+            ENERGETIC_OPEN_MS,
+            ENERGETIC_OPEN_EASING,
+            (finished) => {
+              if (finished) runOnJS(commitPagerIndex)(Math.round(target / width));
+            },
+          );
+        }),
+    [commitPagerIndex, dragStartX, pageWidthSV, scrollX],
+  );
+
   const switchKind = useCallback(
     (next: FeedKind) => {
       if (next === kind) return;
       setKind(next);
       setActivePane(feedKindIndex(next));
-      pagerRef.current?.scrollTo({
-        x: feedKindIndex(next) * pageWidth,
-        animated: true,
-      });
+      const target = feedKindIndex(next) * pageWidth;
+      runOnUI(() => {
+        "worklet";
+        cancelAnimation(scrollX);
+        const width = pageWidthSV.value;
+        settleEnergetic(
+          scrollX,
+          target,
+          width > 0 ? width : 1,
+          1,
+          0,
+          ENERGETIC_OPEN_MS,
+          ENERGETIC_OPEN_EASING,
+        );
+      })();
     },
-    [kind, pageWidth, pagerRef, setActivePane],
-  );
-
-  const onPagerScrollEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const index = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
-      const next: FeedKind = index === 0 ? "recommendations" : "subscriptions";
-      setActivePane(index);
-      setKind((current) => (current === next ? current : next));
-    },
-    [pageWidth, setActivePane],
+    [kind, pageWidth, pageWidthSV, scrollX, setActivePane],
   );
 
   const refreshFeeds = useCallback(() => {
@@ -493,41 +557,34 @@ export default function FeedScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.feedBody}>
-        <Reanimated.ScrollView
-          ref={pagerRef}
-          horizontal
-          pagingEnabled
-          decelerationRate="fast"
-          showsHorizontalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={onPagerScroll}
-          onMomentumScrollEnd={onPagerScrollEnd}
-          style={styles.pager}
-          contentContainerStyle={styles.pagerContent}
-        >
-          <FeedPane
-            kind="recommendations"
-            feedQuery={recommendationsFeedQuery}
-            isActivePane={kind === "recommendations"}
-            search={search}
-            pageWidth={pageWidth}
-            contentPaddingTop={headerHeightPx}
-            contentPaddingBottom={listPaddingBottom}
-            network={network}
-            renderScrollComponent={renderScrollComponents[0]}
-          />
-          <FeedPane
-            kind="subscriptions"
-            feedQuery={subscriptionsFeedQuery}
-            isActivePane={kind === "subscriptions"}
-            search={search}
-            pageWidth={pageWidth}
-            contentPaddingTop={headerHeightPx}
-            contentPaddingBottom={listPaddingBottom}
-            network={network}
-            renderScrollComponent={renderScrollComponents[1]}
-          />
-        </Reanimated.ScrollView>
+        <GestureDetector gesture={pagerPan}>
+          <Reanimated.View
+            style={[styles.pagerRow, { width: pageWidth * 2 }, pagerStyle]}
+          >
+            <FeedPane
+              kind="recommendations"
+              feedQuery={recommendationsFeedQuery}
+              isActivePane={kind === "recommendations"}
+              search={search}
+              pageWidth={pageWidth}
+              contentPaddingTop={headerHeightPx}
+              contentPaddingBottom={listPaddingBottom}
+              network={network}
+              renderScrollComponent={renderScrollComponents[0]}
+            />
+            <FeedPane
+              kind="subscriptions"
+              feedQuery={subscriptionsFeedQuery}
+              isActivePane={kind === "subscriptions"}
+              search={search}
+              pageWidth={pageWidth}
+              contentPaddingTop={headerHeightPx}
+              contentPaddingBottom={listPaddingBottom}
+              network={network}
+              renderScrollComponent={renderScrollComponents[1]}
+            />
+          </Reanimated.View>
+        </GestureDetector>
       </View>
 
       <Reanimated.View style={[styles.topChrome, headerAnimatedStyle]}>
@@ -630,12 +687,11 @@ const styles = StyleSheet.create({
   },
   feedBody: {
     flex: 1,
+    overflow: "hidden",
   },
-  pager: {
+  pagerRow: {
     flex: 1,
-  },
-  pagerContent: {
-    flexGrow: 1,
+    flexDirection: "row",
     alignItems: "stretch",
   },
   feedPage: {
