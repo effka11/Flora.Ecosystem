@@ -8,10 +8,14 @@ import {
   apiUpdatePrivacySettings,
   apiUpdateProfile,
 } from "@/lib/auth";
+import { apiGetFeedSettings, apiUpdateFeedSettings } from "@/lib/socialApi";
 import { privacySettingsCache } from "@/lib/dashboardPreload";
 import {
   accountDraftHasChanges,
+  defaultFeedDraft,
   defaultPrivacyDraft,
+  feedDraftEqual,
+  feedDraftFromApi,
   loadUserSettingsLocalPrefs,
   privacyDraftEqual,
   saveUserSettingsLocalPrefs,
@@ -23,6 +27,7 @@ import {
   type UserSettingsAccountDraft,
   type UserSettingsCustomizationDraft,
   type UserSettingsDraft,
+  type UserSettingsFeedDraft,
   type UserSettingsLocalPrefs,
   type UserSettingsNotificationsDraft,
   type UserSettingsPrivacyDraft,
@@ -33,6 +38,7 @@ export type SettingsContextValue = {
   draft: UserSettingsDraft;
   updateAccount: (patch: Partial<UserSettingsAccountDraft>) => void;
   updatePrivacy: (patch: Partial<UserSettingsPrivacyDraft>) => void;
+  updateFeed: (patch: Partial<UserSettingsFeedDraft>) => void;
   updateNotifications: (patch: Partial<UserSettingsNotificationsDraft>) => void;
   updateCustomization: (patch: Partial<UserSettingsCustomizationDraft>) => void;
   hasUnsavedChanges: boolean;
@@ -57,6 +63,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const userIdRef = useRef<string | null>(null);
   const [savedLocalPrefs, setSavedLocalPrefs] = useState<UserSettingsLocalPrefs>(() => loadUserSettingsLocalPrefs());
   const [savedPrivacy, setSavedPrivacy] = useState<UserSettingsPrivacyDraft>(() => defaultPrivacyDraft());
+  const [savedFeed, setSavedFeed] = useState<UserSettingsFeedDraft>(() => defaultFeedDraft());
   const [draft, setDraft] = useState<UserSettingsDraft>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -81,10 +88,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setSavedPrivacy(cachedPrivacy);
         setDraft(userSettingsDraftFromSources(me, prefs, cachedPrivacy));
       }
-      const privacy = await privacySettingsCache.get();
+      const [privacy, feed] = await Promise.all([
+        privacySettingsCache.get(),
+        apiGetFeedSettings()
+          .then(feedDraftFromApi)
+          .catch(() => defaultFeedDraft()),
+      ]);
       privacySettingsCache.set(privacy);
       setSavedPrivacy(privacy);
-      setDraft(userSettingsDraftFromSources(me, prefs, privacy));
+      setSavedFeed(feed);
+      setDraft(userSettingsDraftFromSources(me, prefs, privacy, feed));
     })();
   }, [me]);
 
@@ -109,6 +122,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     [clearSaveFeedback],
   );
 
+  const updateFeed = useCallback(
+    (patch: Partial<UserSettingsFeedDraft>) => {
+      clearSaveFeedback();
+      setDraft((prev) => ({ ...prev, feed: { ...prev.feed, ...patch } }));
+    },
+    [clearSaveFeedback],
+  );
+
   const updateNotifications = useCallback(
     (patch: Partial<UserSettingsNotificationsDraft>) => {
       clearSaveFeedback();
@@ -129,13 +150,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (!me) return;
     const prefs = loadUserSettingsLocalPrefs();
     setSavedLocalPrefs(prefs);
-    setDraft(userSettingsDraftFromSources(me, prefs, savedPrivacy));
+    setDraft(userSettingsDraftFromSources(me, prefs, savedPrivacy, savedFeed));
     setSaveError(null);
     setSaveSuccess(null);
-  }, [me, savedPrivacy]);
+  }, [me, savedPrivacy, savedFeed]);
 
   const hasUnsavedChanges =
-    Boolean(me) && userSettingsDraftHasChanges(draft, me!, savedLocalPrefs, savedPrivacy);
+    Boolean(me) && userSettingsDraftHasChanges(draft, me!, savedLocalPrefs, savedPrivacy, savedFeed);
 
   const saveAll = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
     if (!me || saving) return { ok: false };
@@ -147,7 +168,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, error: validationError };
     }
 
-    if (!userSettingsDraftHasChanges(draft, me, savedLocalPrefs, savedPrivacy)) {
+    if (!userSettingsDraftHasChanges(draft, me, savedLocalPrefs, savedPrivacy, savedFeed)) {
       setSaveError(null);
       setSaveSuccess("Изменений нет.");
       return { ok: true };
@@ -162,6 +183,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       const accountPayload = userSettingsAccountToApiPayload(draft.account);
       const accountChanged = accountDraftHasChanges(draft.account, me);
       const privacyChanged = !privacyDraftEqual(draft.privacy, savedPrivacy);
+      const feedChanged = !feedDraftEqual(draft.feed, savedFeed);
       const prefsChanged = JSON.stringify(localPrefs) !== JSON.stringify(savedLocalPrefs);
 
       if (accountChanged) {
@@ -174,6 +196,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         nextPrivacy = await apiUpdatePrivacySettings(draft.privacy);
         privacySettingsCache.set(nextPrivacy);
         setSavedPrivacy(nextPrivacy);
+      }
+
+      let nextFeed = savedFeed;
+      if (feedChanged) {
+        nextFeed = feedDraftFromApi(await apiUpdateFeedSettings({ ...draft.feed }));
+        setSavedFeed(nextFeed);
       }
 
       if (prefsChanged) {
@@ -193,6 +221,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setDraft({
         account: nextAccount,
         privacy: nextPrivacy,
+        feed: nextFeed,
         ...localPrefs,
       });
 
@@ -206,7 +235,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setSaving(false);
     }
-  }, [draft, me, refresh, savedLocalPrefs, savedPrivacy, saving]);
+  }, [draft, me, refresh, savedLocalPrefs, savedPrivacy, savedFeed, saving]);
 
   const ready = Boolean(me && !loading);
 
@@ -217,6 +246,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         draft,
         updateAccount,
         updatePrivacy,
+        updateFeed,
         updateNotifications,
         updateCustomization,
         hasUnsavedChanges,

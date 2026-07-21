@@ -38,10 +38,11 @@ $functionalKernels = [System.Collections.Generic.HashSet[string]]::new([StringCo
     "fscp-core", "fscp-crypto", "fscp-contracts",
     "fira-core", "fira-contracts",
     "flora-economy-crypto", "flora-economy-contracts",
+    "flora-economy-wasm", "flora-economy-witness",
     "flora-governance-crypto", "flora-governance-contracts",
     "fpp-crypto", "fpp-contracts", "fpp-core",
     "frc-i", "frc-i-integration", "frc-i-wasm", "frc-i-mobile-ffi",
-    "frc-a-core", "frc-a-cli", "frc-a-polygon", "frc-v", "frc-v-cli", "frc-v-wasm", "flora-codec-tools"
+    "frc-a-core", "frc-a-cli", "frc-a-polygon", "frc-v", "frc-v-cli", "frc-v-polygon", "frc-v-wasm", "flora-codec-tools"
 ) | ForEach-Object { [void]$functionalKernels.Add($_) }
 
 function Get-CrateCategory {

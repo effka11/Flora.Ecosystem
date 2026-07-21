@@ -2644,4 +2644,313 @@ impl ContentRepo {
         .await?;
         Ok(())
     }
+
+    // ------------------------------------------------------------------
+    // §User Controls (FIRA-F v1.1): настройки ленты и негативный фидбек.
+    // Таблицы принадлежат Content-модулю (миграции flora-content).
+    // ------------------------------------------------------------------
+
+    pub async fn feed_settings(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<Option<FeedSettingsRow>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT freshness, exploration, show_reposts, community_posts,
+                   seen_posts, author_diversity, updated_at
+            FROM flora_core.user_feed_settings
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn upsert_feed_settings(
+        &self,
+        user_uuid: Uuid,
+        row: &FeedSettingsRow,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.user_feed_settings
+                (user_uuid, freshness, exploration, show_reposts, community_posts,
+                 seen_posts, author_diversity, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (user_uuid) DO UPDATE SET
+                freshness = EXCLUDED.freshness,
+                exploration = EXCLUDED.exploration,
+                show_reposts = EXCLUDED.show_reposts,
+                community_posts = EXCLUDED.community_posts,
+                seen_posts = EXCLUDED.seen_posts,
+                author_diversity = EXCLUDED.author_diversity,
+                updated_at = EXCLUDED.updated_at
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(&row.freshness)
+        .bind(&row.exploration)
+        .bind(row.show_reposts)
+        .bind(row.community_posts)
+        .bind(&row.seen_posts)
+        .bind(&row.author_diversity)
+        .bind(row.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn insert_post_not_interested(
+        &self,
+        user_uuid: Uuid,
+        post_uuid: Uuid,
+        author_user_uuid: Uuid,
+        created_at: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO flora_core.user_feed_post_feedback
+                (user_uuid, post_uuid, author_user_uuid, created_at)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_uuid, post_uuid) DO NOTHING
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(post_uuid)
+        .bind(author_user_uuid)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_post_not_interested(
+        &self,
+        user_uuid: Uuid,
+        post_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM flora_core.user_feed_post_feedback
+            WHERE user_uuid = $1 AND post_uuid = $2
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(post_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn clear_post_not_interested(&self, user_uuid: Uuid) -> Result<u64, sqlx::Error> {
+        let result =
+            sqlx::query(r#"DELETE FROM flora_core.user_feed_post_feedback WHERE user_uuid = $1"#)
+                .bind(user_uuid)
+                .execute(&self.pool)
+                .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Все посты с отметкой «не интересно» (жёсткое исключение из рекомендаций).
+    pub async fn not_interested_post_ids(&self, user_uuid: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+        let rows: Vec<(Uuid,)> = sqlx::query_as(
+            r#"
+            SELECT post_uuid
+            FROM flora_core.user_feed_post_feedback
+            WHERE user_uuid = $1
+            ORDER BY created_at DESC
+            LIMIT 10000
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
+    }
+
+    /// Счётчик «не интересно» по авторам в окне истории (для мягкого штрафа скоринга).
+    pub async fn not_interested_author_counts(
+        &self,
+        user_uuid: Uuid,
+        since: DateTime<Utc>,
+    ) -> Result<HashMap<Uuid, i32>, sqlx::Error> {
+        let rows: Vec<(Uuid, i64)> = sqlx::query_as(
+            r#"
+            SELECT author_user_uuid, COUNT(*)::bigint
+            FROM flora_core.user_feed_post_feedback
+            WHERE user_uuid = $1
+              AND created_at >= $2
+            GROUP BY author_user_uuid
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(since)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(id, c)| (id, c as i32)).collect())
+    }
+
+    pub async fn insert_hidden_author(
+        &self,
+        user_uuid: Uuid,
+        author_user_uuid: Uuid,
+        created_at: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO flora_core.user_feed_hidden_authors
+                (user_uuid, author_user_uuid, created_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_uuid, author_user_uuid) DO NOTHING
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(author_user_uuid)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_hidden_author(
+        &self,
+        user_uuid: Uuid,
+        author_user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM flora_core.user_feed_hidden_authors
+            WHERE user_uuid = $1 AND author_user_uuid = $2
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(author_user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn hidden_author_ids(&self, user_uuid: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+        let rows: Vec<(Uuid,)> = sqlx::query_as(
+            r#"
+            SELECT author_user_uuid
+            FROM flora_core.user_feed_hidden_authors
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
+    }
+
+    /// Список скрытых авторов с датой скрытия (для страницы настроек).
+    pub async fn hidden_authors_with_dates(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<Vec<(Uuid, DateTime<Utc>)>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT author_user_uuid, created_at
+            FROM flora_core.user_feed_hidden_authors
+            WHERE user_uuid = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn insert_community_dismissal(
+        &self,
+        user_uuid: Uuid,
+        community_id: Uuid,
+        created_at: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO flora_core.user_feed_community_dismissals
+                (user_uuid, community_id, created_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_uuid, community_id) DO NOTHING
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(community_id)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_community_dismissal(
+        &self,
+        user_uuid: Uuid,
+        community_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM flora_core.user_feed_community_dismissals
+            WHERE user_uuid = $1 AND community_id = $2
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(community_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn dismissed_community_ids(&self, user_uuid: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+        let rows: Vec<(Uuid,)> = sqlx::query_as(
+            r#"
+            SELECT community_id
+            FROM flora_core.user_feed_community_dismissals
+            WHERE user_uuid = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
+    }
+
+    /// Просмотренные пользователем посты среди кандидатов (для Demote/Hide режимов).
+    pub async fn seen_post_ids_among(
+        &self,
+        user_uuid: Uuid,
+        post_ids: &[Uuid],
+    ) -> Result<HashSet<Uuid>, sqlx::Error> {
+        if post_ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let rows: Vec<(Uuid,)> = sqlx::query_as(
+            r#"
+            SELECT post_uuid
+            FROM flora_core.post_views
+            WHERE user_uuid = $1
+              AND post_uuid = ANY($2)
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(post_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
+    }
+}
+
+/// Строка `user_feed_settings` (enum'ы храним текстом — контракт fira-contracts).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct FeedSettingsRow {
+    pub freshness: String,
+    pub exploration: String,
+    pub show_reposts: bool,
+    pub community_posts: bool,
+    pub seen_posts: String,
+    pub author_diversity: String,
+    pub updated_at: DateTime<Utc>,
 }

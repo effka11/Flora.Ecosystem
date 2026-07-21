@@ -97,3 +97,138 @@ export function parseHasNewFeed(raw: unknown, ctx?: ParseContext): boolean {
   const fb = ctx?.onPascalFallback;
   return readBool(o, ["hasNew", "HasNew"], fb);
 }
+
+// ---------------------------------------------------------------------------
+// §User Controls (FIRA-F v1.1): настройки ленты + негативный фидбек
+// ---------------------------------------------------------------------------
+
+export type FeedFreshness = "fresh" | "balanced" | "popular";
+export type FeedExploration = "off" | "low" | "standard" | "high";
+export type FeedSeenPostsMode = "show" | "demote" | "hide";
+export type FeedAuthorDiversity = "strict" | "standard" | "off";
+
+export type FeedSettingsDto = {
+  freshness: FeedFreshness;
+  exploration: FeedExploration;
+  showReposts: boolean;
+  communityPosts: boolean;
+  seenPosts: FeedSeenPostsMode;
+  authorDiversity: FeedAuthorDiversity;
+  updatedAt: string | null;
+};
+
+export const DEFAULT_FEED_SETTINGS: FeedSettingsDto = {
+  freshness: "balanced",
+  exploration: "standard",
+  showReposts: true,
+  communityPosts: true,
+  seenPosts: "demote",
+  authorDiversity: "standard",
+  updatedAt: null,
+};
+
+function readEnum<T extends string>(raw: string, allowed: readonly T[], fallback: T): T {
+  const v = raw.trim().toLowerCase();
+  return (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+}
+
+export function parseFeedSettings(raw: unknown, ctx?: ParseContext): FeedSettingsDto {
+  const o = asRecord(raw);
+  if (!o) return { ...DEFAULT_FEED_SETTINGS };
+  const fb = ctx?.onPascalFallback;
+  const d = DEFAULT_FEED_SETTINGS;
+  return {
+    freshness: readEnum(
+      readStr(o, ["freshness", "Freshness"], fb),
+      ["fresh", "balanced", "popular"],
+      d.freshness,
+    ),
+    exploration: readEnum(
+      readStr(o, ["exploration", "Exploration"], fb),
+      ["off", "low", "standard", "high"],
+      d.exploration,
+    ),
+    showReposts:
+      typeof (o.showReposts ?? o.ShowReposts) === "boolean"
+        ? readBool(o, ["showReposts", "ShowReposts"], fb)
+        : d.showReposts,
+    communityPosts:
+      typeof (o.communityPosts ?? o.CommunityPosts) === "boolean"
+        ? readBool(o, ["communityPosts", "CommunityPosts"], fb)
+        : d.communityPosts,
+    seenPosts: readEnum(
+      readStr(o, ["seenPosts", "SeenPosts"], fb),
+      ["show", "demote", "hide"],
+      d.seenPosts,
+    ),
+    authorDiversity: readEnum(
+      readStr(o, ["authorDiversity", "AuthorDiversity"], fb),
+      ["strict", "standard", "off"],
+      d.authorDiversity,
+    ),
+    updatedAt: readStr(o, ["updatedAt", "UpdatedAt"], fb) || null,
+  };
+}
+
+export type HiddenFeedAuthorDto = {
+  userUuid: string;
+  username: string;
+  displayName: string;
+  avatarUuid: string | null;
+  hiddenAt: string | null;
+};
+
+export function parseHiddenFeedAuthors(raw: unknown, ctx?: ParseContext): HiddenFeedAuthorDto[] {
+  const o = asRecord(raw);
+  if (!o) return [];
+  const fb = ctx?.onPascalFallback;
+  const itemsRaw = o.items ?? o.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  const out: HiddenFeedAuthorDto[] = [];
+  for (const item of itemsRaw) {
+    const r = asRecord(item);
+    if (!r) continue;
+    const userUuid = readStr(r, ["userUuid", "UserUuid"], fb);
+    if (!userUuid) continue;
+    out.push({
+      userUuid,
+      username: readStr(r, ["username", "Username"], fb),
+      displayName: readStr(r, ["displayName", "DisplayName"], fb),
+      avatarUuid: readStr(r, ["avatarUuid", "AvatarUuid"], fb) || null,
+      hiddenAt: readStr(r, ["hiddenAt", "HiddenAt"], fb) || null,
+    });
+  }
+  return out;
+}
+
+export type DismissedCommunityDto = {
+  communityId: string;
+  name: string;
+  slug: string;
+  avatarUuid: string | null;
+};
+
+export function parseDismissedCommunities(
+  raw: unknown,
+  ctx?: ParseContext,
+): DismissedCommunityDto[] {
+  const o = asRecord(raw);
+  if (!o) return [];
+  const fb = ctx?.onPascalFallback;
+  const itemsRaw = o.items ?? o.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  const out: DismissedCommunityDto[] = [];
+  for (const item of itemsRaw) {
+    const r = asRecord(item);
+    if (!r) continue;
+    const communityId = readStr(r, ["communityId", "CommunityId"], fb);
+    if (!communityId) continue;
+    out.push({
+      communityId,
+      name: readStr(r, ["name", "Name"], fb),
+      slug: readStr(r, ["slug", "Slug"], fb),
+      avatarUuid: readStr(r, ["avatarUuid", "AvatarUuid"], fb) || null,
+    });
+  }
+  return out;
+}

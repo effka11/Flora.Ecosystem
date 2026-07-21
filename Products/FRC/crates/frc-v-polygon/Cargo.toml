@@ -1,0 +1,21 @@
+[package]
+name = "frc-v-polygon"
+description = "Кросс-кодек полигон FRC-V: детерминированный синтетический корпус + эталонные клипы, прогон FRC-V против x264/x265/VP9/SVT-AV1/libaom в равных условиях (1 поток, общий keyint, elementary stream), единые метрики (PSNR/SSIM/VMAF), BD-rate (PCHIP), RD-графики и регрессионные снимки."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "frc-v-polygon"
+path = "src/main.rs"
+
+[dependencies]
+frc-v.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

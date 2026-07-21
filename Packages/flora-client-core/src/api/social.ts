@@ -1,8 +1,24 @@
-import { authDelete, authFetch, authGetJson, authPostForm, authPostJson } from "./client.js";
+import {
+  authDelete,
+  authFetch,
+  authGetJson,
+  authPatchJson,
+  authPostForm,
+  authPostJson,
+} from "./client.js";
 import { getApiClientConfig } from "./client.js";
 import { asRecord, readStr } from "../contracts/parse.js";
 import { parseLikeMutation, parseViewMutation } from "../contracts/engagement.js";
-import { parseFeedPage, parseHasNewFeed } from "../contracts/feed.js";
+import {
+  parseDismissedCommunities,
+  parseFeedPage,
+  parseFeedSettings,
+  parseHasNewFeed,
+  parseHiddenFeedAuthors,
+  type DismissedCommunityDto,
+  type FeedSettingsDto,
+  type HiddenFeedAuthorDto,
+} from "../contracts/feed.js";
 import { ApiRequestError } from "./errors.js";
 
 declare const __DEV__: boolean | undefined;
@@ -44,6 +60,83 @@ export async function apiFeedHasNew(since?: string): Promise<boolean> {
   const q = since ? `?since=${encodeURIComponent(since)}` : "";
   const raw = await authGetJson(`/api/auth/feed/has-new${q}`);
   return parseHasNewFeed(raw, ctx());
+}
+
+// ---------------------------------------------------------------------------
+// §User Controls (FIRA-F v1.1): настройки ленты + негативный фидбек
+// ---------------------------------------------------------------------------
+
+export async function apiGetFeedSettings(): Promise<FeedSettingsDto> {
+  const raw = await authGetJson("/api/auth/me/feed-settings");
+  return parseFeedSettings(raw, ctx());
+}
+
+/** PATCH-семантика: передавайте только изменённые поля. */
+export async function apiUpdateFeedSettings(
+  patch: Partial<Omit<FeedSettingsDto, "updatedAt">>,
+): Promise<FeedSettingsDto> {
+  const raw = await authPatchJson("/api/auth/me/feed-settings", patch);
+  return parseFeedSettings(raw, ctx());
+}
+
+/** «Не интересно»: пост навсегда исключается из рекомендаций, автор получает мягкий штраф. */
+export async function apiMarkPostNotInterested(postUuid: string): Promise<void> {
+  const id = encodeURIComponent(postUuid.trim());
+  await authPostJson(`/api/auth/posts/${id}/not-interested`, {});
+}
+
+/** Отмена «не интересно» (undo в UI). */
+export async function apiUnmarkPostNotInterested(postUuid: string): Promise<void> {
+  const id = encodeURIComponent(postUuid.trim());
+  await authDelete(`/api/auth/posts/${id}/not-interested`);
+}
+
+/** Сброс всех отметок «не интересно» (страница настроек). */
+export async function apiClearNotInterested(): Promise<void> {
+  await authDelete("/api/auth/me/feed/not-interested");
+}
+
+/** «Скрыть автора»: его посты пропадают из рекомендаций (подписки не затрагиваются). */
+export async function apiHideFeedAuthor(authorUuid: string): Promise<void> {
+  const id = encodeURIComponent(authorUuid.trim());
+  await authPostJson(`/api/auth/feed/authors/${id}/hide`, {});
+}
+
+export async function apiUnhideFeedAuthor(authorUuid: string): Promise<void> {
+  const id = encodeURIComponent(authorUuid.trim());
+  await authDelete(`/api/auth/feed/authors/${id}/hide`);
+}
+
+export async function apiGetHiddenFeedAuthors(): Promise<HiddenFeedAuthorDto[]> {
+  const raw = await authGetJson("/api/auth/me/feed/hidden-authors");
+  return parseHiddenFeedAuthors(raw, ctx());
+}
+
+/** «Не интересно» для сообщества: исключение из рекомендаций FIRA-C. */
+export async function apiDismissCommunity(communityId: string): Promise<void> {
+  const id = encodeURIComponent(communityId.trim());
+  await authPostJson(`/api/auth/communities/${id}/dismiss`, {});
+}
+
+export async function apiUndismissCommunity(communityId: string): Promise<void> {
+  const id = encodeURIComponent(communityId.trim());
+  await authDelete(`/api/auth/communities/${id}/dismiss`);
+}
+
+export async function apiGetDismissedCommunities(): Promise<DismissedCommunityDto[]> {
+  const raw = await authGetJson("/api/auth/me/feed/dismissed-communities");
+  return parseDismissedCommunities(raw, ctx());
+}
+
+/** «Не интересно» для рекомендованного пользователя (FIRA-P). */
+export async function apiDismissRecommendedUser(userUuid: string): Promise<void> {
+  const id = encodeURIComponent(userUuid.trim());
+  await authPostJson(`/api/auth/users/${id}/dismiss`, {});
+}
+
+export async function apiUndismissRecommendedUser(userUuid: string): Promise<void> {
+  const id = encodeURIComponent(userUuid.trim());
+  await authDelete(`/api/auth/users/${id}/dismiss`);
 }
 
 export async function apiCreatePost(input: {

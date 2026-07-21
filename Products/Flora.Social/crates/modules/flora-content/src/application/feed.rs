@@ -6,15 +6,28 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use fira_core::feed::{
-    FeedCandidate, FiraFeedConfig, apply_author_diversity, author_affinity, interleave_exploration,
-    rank,
+    FeedCandidate, FiraFeedConfig, apply_author_diversity, apply_preferences, author_affinity,
+    interleave_exploration, rank,
 };
+use fira_core::{FeedPreferences, SeenPostsMode};
 use flora_users_contracts::{
     BidirectionalBlocklist, FollowGraphReader, ProfileAccess, ProfileAccessField,
 };
 use uuid::Uuid;
 
+use crate::application::feed_controls::preferences_from_row;
 use crate::infrastructure::repo::{ContentRepo, FeedPostLite};
+
+/// Персональный контекст рекомендаций (§User Controls, FIRA-F v1.1).
+struct Personalization {
+    prefs: FeedPreferences,
+    /// Посты «не интересно» — жёсткое исключение из рекомендательных пулов.
+    not_interested: HashSet<Uuid>,
+    /// «не интересно» по авторам в окне interaction_history_days (мягкий штраф Score).
+    not_interested_authors: HashMap<Uuid, i32>,
+    /// Скрытые авторы — исключаются из рекомендаций (подписки не трогаем).
+    hidden_authors: HashSet<Uuid>,
+}
 
 #[derive(Debug, Clone)]
 pub struct FeedPage {
@@ -116,6 +129,50 @@ impl FeedService {
             .map_err(|e| e.to_string())
     }
 
+    /// Настройки ленты пользователя (дефолты при отсутствии строки/незнакомых значениях).
+    async fn load_preferences(&self, user_uuid: Uuid) -> Result<FeedPreferences, String> {
+        Ok(self
+            .repo
+            .feed_settings(user_uuid)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|row| preferences_from_row(&row))
+            .unwrap_or_default())
+    }
+
+    async fn load_personalization(
+        &self,
+        user_uuid: Uuid,
+        since_interaction: DateTime<Utc>,
+    ) -> Result<Personalization, String> {
+        let prefs = self.load_preferences(user_uuid).await?;
+        let not_interested: HashSet<Uuid> = self
+            .repo
+            .not_interested_post_ids(user_uuid)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+        let not_interested_authors = self
+            .repo
+            .not_interested_author_counts(user_uuid, since_interaction)
+            .await
+            .map_err(|e| e.to_string())?;
+        let hidden_authors: HashSet<Uuid> = self
+            .repo
+            .hidden_author_ids(user_uuid)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+        Ok(Personalization {
+            prefs,
+            not_interested,
+            not_interested_authors,
+            hidden_authors,
+        })
+    }
+
     async fn subscriptions_feed(
         &self,
         user_uuid: Uuid,
@@ -140,6 +197,7 @@ impl FeedService {
             return Ok(empty_page(now));
         }
 
+        let show_reposts = self.load_preferences(user_uuid).await?.show_reposts;
         let since = now - chrono::Duration::days(i64::from(self.subscription_window_days()));
         let max_candidates = i64::from(self.subscription_posts_take_limit());
 
@@ -150,11 +208,14 @@ impl FeedService {
             .map_err(|e| e.to_string())?;
         let author_post_ids: HashSet<Uuid> = author_posts.iter().map(|p| p.post_uuid).collect();
 
-        let first_reposts = self
-            .repo
-            .first_reposts_from_users(&following, since, max_candidates)
-            .await
-            .map_err(|e| e.to_string())?;
+        let first_reposts = if show_reposts {
+            self.repo
+                .first_reposts_from_users(&following, since, max_candidates)
+                .await
+                .map_err(|e| e.to_string())?
+        } else {
+            Vec::new()
+        };
         let repost_only: Vec<Uuid> = first_reposts
             .iter()
             .map(|(id, _)| *id)
@@ -364,12 +425,21 @@ impl FeedService {
         let since_interaction =
             now - chrono::Duration::days(i64::from(self.fira.interaction_history_days));
 
-        let blocked: HashSet<Uuid> = self
+        let personal = self
+            .load_personalization(user_uuid, since_interaction)
+            .await?;
+        let mut effective = self.fira.clone();
+        apply_preferences(&mut effective, &personal.prefs);
+        let not_interested = &personal.not_interested;
+
+        let mut blocked: HashSet<Uuid> = self
             .blocklist
             .blocked_user_ids_bidirectional(user_uuid)
             .await?
             .into_iter()
             .collect();
+        // Скрытые авторы — та же семантика видимости для рекомендаций, что и блок.
+        blocked.extend(personal.hidden_authors.iter().copied());
         let following: Vec<Uuid> = self
             .follow
             .following_user_ids(user_uuid)
@@ -414,6 +484,7 @@ impl FeedService {
                 .cloned(),
             1.0,
             &blocked,
+            not_interested,
         );
 
         if !second_degree.is_empty() {
@@ -422,7 +493,7 @@ impl FeedService {
                 .posts_by_authors_since(&second_degree, since_sub, self.pool_limit(0.15), user_uuid)
                 .await
                 .map_err(|e| e.to_string())?;
-            merge_pool(&mut pool, from2, 0.4, &blocked);
+            merge_pool(&mut pool, from2, 0.4, &blocked, not_interested);
         }
 
         let mut trending_ids = self
@@ -465,21 +536,26 @@ impl FeedService {
                 .posts_by_ids(&trending_ids, user_uuid)
                 .await
                 .map_err(|e| e.to_string())?;
-            merge_pool(&mut pool, trending, 0.25, &blocked);
+            merge_pool(&mut pool, trending, 0.25, &blocked, not_interested);
         }
 
-        let community_posts = self
-            .repo
-            .community_posts_for_user(user_uuid, since_sub, self.pool_limit(0.20))
-            .await
-            .map_err(|e| e.to_string())?;
-        merge_pool(&mut pool, community_posts, 0.6, &blocked);
+        if personal.prefs.community_posts {
+            let community_posts = self
+                .repo
+                .community_posts_for_user(user_uuid, since_sub, self.pool_limit(0.20))
+                .await
+                .map_err(|e| e.to_string())?;
+            merge_pool(&mut pool, community_posts, 0.6, &blocked, not_interested);
+        }
 
-        let followed_reposts = self
-            .repo
-            .reposts_from_users(&following, since_sub, self.pool_limit(0.10))
-            .await
-            .map_err(|e| e.to_string())?;
+        let followed_reposts = if personal.prefs.show_reposts {
+            self.repo
+                .reposts_from_users(&following, since_sub, self.pool_limit(0.10))
+                .await
+                .map_err(|e| e.to_string())?
+        } else {
+            Vec::new()
+        };
         let repost_post_ids: Vec<Uuid> = followed_reposts
             .iter()
             .map(|(id, _)| *id)
@@ -493,15 +569,41 @@ impl FeedService {
                 .posts_by_ids(&repost_post_ids, user_uuid)
                 .await
                 .map_err(|e| e.to_string())?;
-            merge_pool(&mut pool, rp, 0.6, &blocked);
+            merge_pool(&mut pool, rp, 0.6, &blocked, not_interested);
         }
         let mut reposted_by_followed: HashMap<Uuid, i32> = HashMap::new();
         for (post_id, _) in &followed_reposts {
             *reposted_by_followed.entry(*post_id).or_insert(0) += 1;
         }
 
+        // Режим Hide: просмотренные исключаются из пула до добора и скоринга.
+        let seen_posts: HashSet<Uuid> = if personal.prefs.seen_posts == SeenPostsMode::Show {
+            HashSet::new()
+        } else {
+            let pool_ids: Vec<Uuid> = pool.keys().copied().collect();
+            self.repo
+                .seen_post_ids_among(user_uuid, &pool_ids)
+                .await
+                .map_err(|e| e.to_string())?
+        };
+        if personal.prefs.seen_posts == SeenPostsMode::Hide {
+            pool.retain(|id, _| !seen_posts.contains(id));
+        }
+
         if pool.len() < self.min_feed_size() {
-            merge_pool(&mut pool, subscription_posts.iter().cloned(), 1.0, &blocked);
+            merge_pool(
+                &mut pool,
+                subscription_posts
+                    .iter()
+                    .filter(|p| {
+                        personal.prefs.seen_posts != SeenPostsMode::Hide
+                            || !seen_posts.contains(&p.post_uuid)
+                    })
+                    .cloned(),
+                1.0,
+                &blocked,
+                not_interested,
+            );
         }
         if pool.len() < self.min_feed_size() {
             let exclude: Vec<Uuid> = pool.keys().copied().collect();
@@ -511,6 +613,7 @@ impl FeedService {
                     since_sub,
                     &exclude,
                     &blocked,
+                    not_interested,
                     self.min_feed_size() - pool.len(),
                 )
                 .await?;
@@ -520,12 +623,14 @@ impl FeedService {
                     .posts_by_ids(&exploration, user_uuid)
                     .await
                     .map_err(|e| e.to_string())?;
-                merge_pool(&mut pool, posts, 0.15, &blocked);
+                merge_pool(&mut pool, posts, 0.15, &blocked, not_interested);
             }
         }
 
         if pool.is_empty() {
-            return self.build_cold_start(user_uuid, since_sub, &blocked).await;
+            return self
+                .build_cold_start(user_uuid, since_sub, &blocked, not_interested)
+                .await;
         }
 
         let post_ids: Vec<Uuid> = pool.keys().copied().collect();
@@ -579,15 +684,21 @@ impl FeedService {
                     followed_likers_count: *followed_likers.get(id).unwrap_or(&0),
                     followed_reposters_count: *reposted_by_followed.get(id).unwrap_or(&0),
                     pool_weight: *pool_weight,
+                    seen: personal.prefs.seen_posts == SeenPostsMode::Demote
+                        && seen_posts.contains(id),
+                    author_not_interested_count: *personal
+                        .not_interested_authors
+                        .get(&post.author_user_uuid)
+                        .unwrap_or(&0),
                 }
             })
             .collect();
 
-        let scored = rank(&candidates, &self.fira, now);
-        let diversified = apply_author_diversity(&scored, self.fira.max_consecutive_same_author);
+        let scored = rank(&candidates, &effective, now);
+        let diversified = apply_author_diversity(&scored, effective.max_consecutive_same_author);
 
         let total_slots = self.fira.max_candidates as usize;
-        let exploration_slots = (total_slots as f64 * self.fira.exploration_quota) as usize;
+        let exploration_slots = (total_slots as f64 * effective.exploration_quota) as usize;
         let main_slots = total_slots.saturating_sub(exploration_slots);
         let main_ids: Vec<Uuid> = diversified
             .iter()
@@ -602,6 +713,7 @@ impl FeedService {
                 since_sub,
                 &exclude_vec,
                 &blocked,
+                not_interested,
                 exploration_slots * 2,
             )
             .await?;
@@ -610,7 +722,7 @@ impl FeedService {
             .take(exploration_slots)
             .collect();
         let merged =
-            interleave_exploration(main_ids, &exploration_ids, self.fira.exploration_quota);
+            interleave_exploration(main_ids, &exploration_ids, effective.exploration_quota);
 
         let own = self
             .repo
@@ -624,7 +736,14 @@ impl FeedService {
             .collect();
 
         result = self
-            .ensure_min_feed_size(user_uuid, result, &subscription_posts, since_sub, &blocked)
+            .ensure_min_feed_size(
+                user_uuid,
+                result,
+                &subscription_posts,
+                since_sub,
+                &blocked,
+                not_interested,
+            )
             .await?;
         Ok(result)
     }
@@ -634,6 +753,7 @@ impl FeedService {
         user_uuid: Uuid,
         since_sub: DateTime<Utc>,
         blocked: &HashSet<Uuid>,
+        not_interested: &HashSet<Uuid>,
     ) -> Result<Vec<Uuid>, String> {
         let own = self
             .repo
@@ -642,13 +762,21 @@ impl FeedService {
             .map_err(|e| e.to_string())?;
         let exploration_take = self.pool_limit(0.15).clamp(20, 100) as usize;
         let exploration = self
-            .get_exploration_ids(user_uuid, since_sub, &own, blocked, exploration_take)
+            .get_exploration_ids(
+                user_uuid,
+                since_sub,
+                &own,
+                blocked,
+                not_interested,
+                exploration_take,
+            )
             .await?;
         if own.is_empty() && exploration.is_empty() {
             return self
                 .latest_visible_ids(
                     user_uuid,
                     blocked,
+                    not_interested,
                     self.fira.max_candidates.min(50) as usize,
                 )
                 .await;
@@ -658,7 +786,7 @@ impl FeedService {
             .into_iter()
             .chain(exploration.into_iter().filter(|id| !own_set.contains(id)))
             .collect();
-        self.ensure_min_feed_size(user_uuid, merged, &[], since_sub, blocked)
+        self.ensure_min_feed_size(user_uuid, merged, &[], since_sub, blocked, not_interested)
             .await
     }
 
@@ -669,6 +797,7 @@ impl FeedService {
         subscription_posts: &[FeedPostLite],
         since_sub: DateTime<Utc>,
         blocked: &HashSet<Uuid>,
+        not_interested: &HashSet<Uuid>,
     ) -> Result<Vec<Uuid>, String> {
         if feed.len() >= self.min_feed_size() {
             return Ok(feed);
@@ -679,7 +808,8 @@ impl FeedService {
         let mut subs: Vec<&FeedPostLite> = subscription_posts.iter().collect();
         subs.sort_by_key(|b| std::cmp::Reverse(b.created_at));
         for post in subs {
-            if blocked.contains(&post.author_user_uuid) {
+            if blocked.contains(&post.author_user_uuid) || not_interested.contains(&post.post_uuid)
+            {
                 continue;
             }
             if seen.insert(post.post_uuid) {
@@ -697,6 +827,7 @@ impl FeedService {
                 since_sub,
                 &exclude,
                 blocked,
+                not_interested,
                 self.min_feed_size() - result.len(),
             )
             .await?;
@@ -714,6 +845,7 @@ impl FeedService {
                 .latest_visible_ids(
                     user_uuid,
                     blocked,
+                    not_interested,
                     self.fira.max_candidates.min(50) as usize,
                 )
                 .await;
@@ -724,6 +856,7 @@ impl FeedService {
                 .latest_visible_ids(
                     user_uuid,
                     blocked,
+                    not_interested,
                     self.fira.max_candidates.min(50) as usize,
                 )
                 .await?;
@@ -743,6 +876,7 @@ impl FeedService {
         &self,
         user_uuid: Uuid,
         blocked: &HashSet<Uuid>,
+        not_interested: &HashSet<Uuid>,
         take: usize,
     ) -> Result<Vec<Uuid>, String> {
         let latest = self
@@ -752,7 +886,9 @@ impl FeedService {
             .map_err(|e| e.to_string())?;
         Ok(latest
             .into_iter()
-            .filter(|p| !blocked.contains(&p.author_user_uuid))
+            .filter(|p| {
+                !blocked.contains(&p.author_user_uuid) && !not_interested.contains(&p.post_uuid)
+            })
             .map(|p| p.post_uuid)
             .collect())
     }
@@ -763,6 +899,7 @@ impl FeedService {
         primary_since: DateTime<Utc>,
         exclude: &[Uuid],
         blocked: &HashSet<Uuid>,
+        not_interested: &HashSet<Uuid>,
         limit: usize,
     ) -> Result<Vec<Uuid>, String> {
         if limit == 0 {
@@ -783,7 +920,9 @@ impl FeedService {
                 .map_err(|e| e.to_string())?;
             let visible: Vec<Uuid> = posts
                 .into_iter()
-                .filter(|p| !blocked.contains(&p.author_user_uuid))
+                .filter(|p| {
+                    !blocked.contains(&p.author_user_uuid) && !not_interested.contains(&p.post_uuid)
+                })
                 .map(|p| p.post_uuid)
                 .collect();
             if !visible.is_empty() {
@@ -799,9 +938,10 @@ fn merge_pool(
     posts: impl IntoIterator<Item = FeedPostLite>,
     weight: f64,
     blocked: &HashSet<Uuid>,
+    not_interested: &HashSet<Uuid>,
 ) {
     for post in posts {
-        if blocked.contains(&post.author_user_uuid) {
+        if blocked.contains(&post.author_user_uuid) || not_interested.contains(&post.post_uuid) {
             continue;
         }
         match pool.get(&post.post_uuid) {

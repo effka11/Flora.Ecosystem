@@ -37,6 +37,8 @@ members = [
     "Products/FEP/crates/flora-economy",
     "Products/FEP/crates/flora-economy-contracts",
     "Products/FEP/crates/flora-economy-crypto",
+    "Products/FEP/crates/flora-economy-wasm",
+    "Products/FEP/crates/flora-economy-witness",
     # Functional: FGP
     "Products/FGP/crates/flora-governance-crypto",
     "Products/FGP/crates/flora-governance-contracts",
@@ -54,6 +56,7 @@ members = [
     "Products/FRC/crates/frc-a-polygon",
     "Products/FRC/crates/frc-v",
     "Products/FRC/crates/frc-v-cli",
+    "Products/FRC/crates/frc-v-polygon",
     "Products/FRC/crates/frc-v-wasm",
     "Products/FRC/crates/frc-i-wasm",
 ]

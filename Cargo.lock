@@ -907,6 +907,7 @@ name = "fira-contracts"
 version = "0.7.0-alpha"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1078,6 +1079,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "flora-economy-wasm"
+version = "0.7.0-alpha"
+dependencies = [
+ "flora-economy-crypto",
+ "serde_json",
+]
+
+[[package]]
+name = "flora-economy-witness"
+version = "0.7.0-alpha"
+dependencies = [
+ "clap",
+ "flora-economy-crypto",
+ "getrandom 0.3.4",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "flora-governance-contracts"
 version = "0.7.0-alpha"
 dependencies = [
@@ -1138,7 +1160,10 @@ version = "0.7.0-alpha"
 dependencies = [
  "anyhow",
  "clap",
+ "flora-content",
+ "flora-music",
  "flora-shared",
+ "flora-users",
  "sqlx",
  "tokio",
  "tracing",
@@ -1451,6 +1476,16 @@ name = "frc-v-cli"
 version = "0.7.0-alpha"
 dependencies = [
  "frc-v",
+]
+
+[[package]]
+name = "frc-v-polygon"
+version = "0.7.0-alpha"
+dependencies = [
+ "clap",
+ "frc-v",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3611,6 +3646,7 @@ dependencies = [
  "sqlx-postgres",
  "sqlx-sqlite",
  "syn",
+ "thiserror 2.0.18",
  "tokio",
  "url",
 ]

@@ -491,6 +491,161 @@ export async function apiCheckFeedHasNew(since: string): Promise<boolean> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// §User Controls (FIRA-F v1.1): настройки ленты + негативный фидбек
+// ---------------------------------------------------------------------------
+
+/** Сырые настройки ленты; парсинг — `feedDraftFromApi` в settingsDraft. */
+export async function apiGetFeedSettings(): Promise<unknown> {
+  if (isDevLocalOfflineSession()) return {};
+  return authGetJson(apiUrl("/api/auth/me/feed-settings"));
+}
+
+/** PATCH-семантика: передавайте только изменённые поля. */
+export async function apiUpdateFeedSettings(patch: Record<string, unknown>): Promise<unknown> {
+  if (isDevLocalOfflineSession()) return patch;
+  return authPatchJson(apiUrl("/api/auth/me/feed-settings"), patch);
+}
+
+/** «Не интересно»: пост исключается из рекомендаций, автор получает мягкий штраф скоринга. */
+export async function apiMarkPostNotInterested(postUuid: string): Promise<void> {
+  const id = postUuid.trim();
+  if (!id || isDevLocalOfflineSession()) return;
+  await authPostJson(
+    apiUrl(`/api/auth/posts/${encodeURIComponent(id)}/not-interested`),
+    {},
+    "Не удалось отметить пост",
+  );
+}
+
+/** Отмена «не интересно» (undo). */
+export async function apiUnmarkPostNotInterested(postUuid: string): Promise<void> {
+  const id = postUuid.trim();
+  if (!id || isDevLocalOfflineSession()) return;
+  await authDelete(apiUrl(`/api/auth/posts/${encodeURIComponent(id)}/not-interested`));
+}
+
+/** Сброс всех отметок «не интересно» (страница настроек). */
+export async function apiClearFeedNotInterested(): Promise<void> {
+  if (isDevLocalOfflineSession()) return;
+  await authDelete(apiUrl("/api/auth/me/feed/not-interested"));
+}
+
+/** «Скрыть автора»: посты автора исчезают из рекомендаций (подписки не затрагиваются). */
+export async function apiHideFeedAuthor(authorUuid: string): Promise<void> {
+  const id = authorUuid.trim();
+  if (!id || isDevLocalOfflineSession()) return;
+  await authPostJson(
+    apiUrl(`/api/auth/feed/authors/${encodeURIComponent(id)}/hide`),
+    {},
+    "Не удалось скрыть автора",
+  );
+}
+
+export async function apiUnhideFeedAuthor(authorUuid: string): Promise<void> {
+  const id = authorUuid.trim();
+  if (!id || isDevLocalOfflineSession()) return;
+  await authDelete(apiUrl(`/api/auth/feed/authors/${encodeURIComponent(id)}/hide`));
+}
+
+export type HiddenFeedAuthorDto = {
+  userUuid: string;
+  username: string;
+  displayName: string;
+  avatarUuid: string | null;
+  hiddenAt: string | null;
+};
+
+export async function apiGetHiddenFeedAuthors(): Promise<HiddenFeedAuthorDto[]> {
+  if (isDevLocalOfflineSession()) return [];
+  const raw = (await authGetJson(apiUrl("/api/auth/me/feed/hidden-authors"))) as Record<
+    string,
+    unknown
+  >;
+  const itemsRaw = raw.items ?? raw.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  const out: HiddenFeedAuthorDto[] = [];
+  for (const item of itemsRaw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const userUuid = readStr(o, ["userUuid", "UserUuid"]);
+    if (!userUuid) continue;
+    out.push({
+      userUuid,
+      username: readStr(o, ["username", "Username"]),
+      displayName: readStr(o, ["displayName", "DisplayName"]),
+      avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
+      hiddenAt: readStr(o, ["hiddenAt", "HiddenAt"]) || null,
+    });
+  }
+  return out;
+}
+
+/** «Не интересно» для сообщества: исключение из рекомендаций FIRA-C. */
+export async function apiDismissCommunity(communityId: string): Promise<void> {
+  const id = communityId.trim();
+  if (!id || isDevLocalOfflineSession()) return;
+  await authPostJson(
+    apiUrl(`/api/auth/communities/${encodeURIComponent(id)}/dismiss`),
+    {},
+    "Не удалось скрыть сообщество",
+  );
+}
+
+export async function apiUndismissCommunity(communityId: string): Promise<void> {
+  const id = communityId.trim();
+  if (!id || isDevLocalOfflineSession()) return;
+  await authDelete(apiUrl(`/api/auth/communities/${encodeURIComponent(id)}/dismiss`));
+}
+
+export type DismissedCommunityDto = {
+  communityId: string;
+  name: string;
+  slug: string;
+  avatarUuid: string | null;
+};
+
+export async function apiGetDismissedCommunities(): Promise<DismissedCommunityDto[]> {
+  if (isDevLocalOfflineSession()) return [];
+  const raw = (await authGetJson(apiUrl("/api/auth/me/feed/dismissed-communities"))) as Record<
+    string,
+    unknown
+  >;
+  const itemsRaw = raw.items ?? raw.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  const out: DismissedCommunityDto[] = [];
+  for (const item of itemsRaw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const communityId = readStr(o, ["communityId", "CommunityId"]);
+    if (!communityId) continue;
+    out.push({
+      communityId,
+      name: readStr(o, ["name", "Name"]),
+      slug: readStr(o, ["slug", "Slug"]),
+      avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
+    });
+  }
+  return out;
+}
+
+/** «Не интересно» для рекомендованного пользователя (FIRA-P). */
+export async function apiDismissRecommendedUser(userUuid: string): Promise<void> {
+  const id = userUuid.trim();
+  if (!id || isDevLocalOfflineSession()) return;
+  await authPostJson(
+    apiUrl(`/api/auth/users/${encodeURIComponent(id)}/dismiss`),
+    {},
+    "Не удалось скрыть рекомендацию",
+  );
+}
+
+export async function apiUndismissRecommendedUser(userUuid: string): Promise<void> {
+  const id = userUuid.trim();
+  if (!id || isDevLocalOfflineSession()) return;
+  await authDelete(apiUrl(`/api/auth/users/${encodeURIComponent(id)}/dismiss`));
+}
+
 const devDeletedPostUuids = new Set<string>();
 const devPostEngagement = new Map<string, PostEngagementSnapshot>();
 const devPostViewCounts = new Map<string, number>();
@@ -1858,6 +2013,8 @@ export type PeopleSearchUserDto = {
 
 export type RecommendedUserDto = PeopleSearchUserDto & {
   followerCount: number;
+  /** §User Controls (FIRA-P): для POST /users/{uuid}/dismiss («не интересно»). */
+  userUuid?: string | null;
 };
 
 function parseRecommendedUser(raw: unknown): RecommendedUserDto | null {
@@ -1871,6 +2028,7 @@ function parseRecommendedUser(raw: unknown): RecommendedUserDto | null {
     followerCount: readNum(o, ["followerCount", "FollowerCount", "followersCount", "FollowersCount"]),
     isFollowing: readBool(o, ["isFollowing", "IsFollowing"]),
     avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
+    userUuid: readStr(o, ["userUuid", "UserUuid"]) || null,
   };
 }
 

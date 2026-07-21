@@ -83,6 +83,10 @@ pub fn protected_router(state: UsersState) -> Router {
         .route("/api/auth/users/search", get(search_users))
         .route("/api/auth/users/recommended", get(get_recommended_users))
         .route(
+            "/api/auth/users/{user_uuid}/dismiss",
+            post(dismiss_recommended_user).delete(undismiss_recommended_user),
+        )
+        .route(
             "/api/auth/users/by-username/{username}",
             get(get_user_by_username),
         )
@@ -952,6 +956,47 @@ fn multipart_bad(e: axum::extract::multipart::MultipartError) -> Response {
     bad_request(e.to_string())
 }
 
+/// §User Controls (FIRA-P): «не интересно» для рекомендованного пользователя.
+async fn dismiss_recommended_user(
+    State(state): State<UsersState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(target_uuid): Path<Uuid>,
+) -> Response {
+    if target_uuid == user.user_uuid {
+        return bad_request("Нельзя отклонить рекомендацию самого себя.".into());
+    }
+    let known = match state.accounts.usernames_by_uuids(&[target_uuid]).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+    if known.is_empty() {
+        return not_found("Пользователь не найден.");
+    }
+    match state
+        .recommendations
+        .dismiss(user.user_uuid, target_uuid)
+        .await
+    {
+        Ok(()) => Json(serde_json::json!({ "dismissed": true })).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn undismiss_recommended_user(
+    State(state): State<UsersState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(target_uuid): Path<Uuid>,
+) -> Response {
+    match state
+        .recommendations
+        .undismiss(user.user_uuid, target_uuid)
+        .await
+    {
+        Ok(_) => Json(serde_json::json!({ "dismissed": false })).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct RecommendedUsersQuery {
     #[serde(default = "default_recommended_take")]
@@ -1013,6 +1058,7 @@ async fn get_recommended_users(
                 x.display_name
             };
             Some(RecommendedUserItem {
+                user_uuid: x.user_uuid,
                 username,
                 display_name,
                 avatar_uuid: x.avatar_uuid.map(|u| u.to_string()),
@@ -1204,6 +1250,8 @@ struct UserSearchItem {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RecommendedUserItem {
+    /// §User Controls (FIRA-P): нужен клиенту для POST /users/{uuid}/dismiss.
+    user_uuid: Uuid,
     username: String,
     display_name: String,
     avatar_uuid: Option<String>,

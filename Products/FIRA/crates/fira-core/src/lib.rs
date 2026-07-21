@@ -6,4 +6,7 @@ pub mod feed;
 pub mod music;
 pub mod people;
 
-pub use fira_contracts::{InterestProfile, InterestTopicWeight};
+pub use fira_contracts::{
+    AuthorDiversity, ExplorationLevel, FeedFreshness, FeedPreferences, InterestProfile,
+    InterestTopicWeight, SeenPostsMode,
+};

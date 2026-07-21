@@ -728,6 +728,73 @@ impl MusicRepo {
         Ok(row.is_some())
     }
 
+    pub async fn track_exists(&self, track: Uuid) -> Result<bool, sqlx::Error> {
+        let row: Option<(i32,)> = sqlx::query_as(
+            r#"
+            SELECT 1 FROM flora_core.music_tracks
+            WHERE track_uuid = $1
+            "#,
+        )
+        .bind(track)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
+    }
+
+    // §User Controls (FIRA-M v1.1): «не интересно» для треков Потока.
+
+    pub async fn dismissed_track_ids(&self, user: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT track_uuid
+            FROM flora_core.music_track_dismissals
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn insert_track_dismissal(
+        &self,
+        user: Uuid,
+        track: Uuid,
+        created_at: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO flora_core.music_track_dismissals (user_uuid, track_uuid, created_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_uuid, track_uuid) DO NOTHING
+            "#,
+        )
+        .bind(user)
+        .bind(track)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_track_dismissal(
+        &self,
+        user: Uuid,
+        track: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM flora_core.music_track_dismissals
+            WHERE user_uuid = $1 AND track_uuid = $2
+            "#,
+        )
+        .bind(user)
+        .bind(track)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn is_favorite(&self, user: Uuid, track: Uuid) -> Result<bool, sqlx::Error> {
         let row: Option<(i32,)> = sqlx::query_as(
             r#"

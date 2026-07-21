@@ -20,7 +20,16 @@ import { formatAtHandle, handlesEqual, profileDisplayName } from "@/app/_dashboa
 import { ApiRequestError } from "@/lib/auth";
 import { formatRelativeTimeRu } from "@/lib/formatRelativeTimeRu";
 import { feedCacheForKind } from "@/lib/dashboardPreload";
-import { apiCheckFeedHasNew, apiDeletePost, apiGetFeed, type FeedKind, type FeedPostDto } from "@/lib/socialApi";
+import {
+  apiCheckFeedHasNew,
+  apiDeletePost,
+  apiDismissCommunity,
+  apiGetFeed,
+  apiHideFeedAuthor,
+  apiMarkPostNotInterested,
+  type FeedKind,
+  type FeedPostDto,
+} from "@/lib/socialApi";
 import { usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import styles from "./feed.module.css";
@@ -175,6 +184,52 @@ function FeedPageContent() {
       }
     },
     [removePostFromFeeds],
+  );
+
+  /** §User Controls (FIRA-F): «Не интересно» — оптимистичное скрытие + негативный сигнал. */
+  const handleNotInterested = useCallback(
+    async (postUuid: string) => {
+      removePostFromFeeds(postUuid);
+      feedCacheForKind("recommendations").invalidate();
+      try {
+        await apiMarkPostNotInterested(postUuid);
+      } catch (e) {
+        const message =
+          e instanceof ApiRequestError ? e.message : e instanceof Error ? e.message : "Не удалось отметить пост";
+        window.alert(message);
+      }
+    },
+    [removePostFromFeeds],
+  );
+
+  /** «Скрыть автора» (пользователь) / «Скрыть сообщество»: убирает из рекомендаций. */
+  const handleHideFeedSource = useCallback(
+    async (post: FeedPostDto) => {
+      const isCommunity = Boolean(post.communityId);
+      const keep = (p: FeedPostDto) =>
+        isCommunity ? p.communityId !== post.communityId : p.authorUsername !== post.authorUsername;
+      // Подписки не фильтруются скрытием автора (пользователь подписан явно).
+      setFeeds((prev) => ({
+        ...prev,
+        recommendations: {
+          ...prev.recommendations,
+          items: prev.recommendations.items.filter(keep),
+        },
+      }));
+      feedCacheForKind("recommendations").invalidate();
+      try {
+        if (isCommunity && post.communityId) {
+          await apiDismissCommunity(post.communityId);
+        } else if (post.authorUserUuid) {
+          await apiHideFeedAuthor(post.authorUserUuid);
+        }
+      } catch (e) {
+        const message =
+          e instanceof ApiRequestError ? e.message : e instanceof Error ? e.message : "Не удалось скрыть источник";
+        window.alert(message);
+      }
+    },
+    [],
   );
 
   const bumpPostCommentsCount = useCallback((postUuid: string, delta: number) => {
@@ -906,6 +961,9 @@ function FeedPageContent() {
                           sharePath={authorMeta.href}
                           canDeletePost={handlesEqual(me?.username ?? "", post.authorUsername)}
                           onDeletePost={() => void handleDeletePost(post.postUuid)}
+                          onNotInterested={() => void handleNotInterested(post.postUuid)}
+                          onHideAuthor={() => void handleHideFeedSource(post)}
+                          hideAuthorLabel={post.communityId ? "Скрыть сообщество" : "Скрыть автора"}
                         />
                       </div>
                       <div className={styles.profilePostBody}>

@@ -8,6 +8,9 @@
 //! `migrator` пуст (None) и flora-migrate модуль пропускает. Каждый модуль при переносе
 //! объявляет `migrations/`-каталог у себя и экспортирует `sqlx::migrate!()`-Migrator,
 //! который регистрируется здесь.
+//!
+//! Фаза 5 выполнена (C# удалён): users/content/music объявили первые Rust-миграции
+//! (§User Controls FIRA v1.1) и помечены владельцем "Rust".
 
 use sqlx::migrate::Migrator;
 
@@ -31,8 +34,8 @@ pub fn registry() -> Vec<ModuleMigrations> {
     vec![
         ModuleMigrations {
             module: "users",
-            current_owner: "C#",
-            migrator: None,
+            current_owner: "Rust",
+            migrator: Some(&flora_users::MIGRATOR),
         },
         ModuleMigrations {
             module: "verification",
@@ -51,8 +54,8 @@ pub fn registry() -> Vec<ModuleMigrations> {
         },
         ModuleMigrations {
             module: "content",
-            current_owner: "C#",
-            migrator: None,
+            current_owner: "Rust",
+            migrator: Some(&flora_content::MIGRATOR),
         },
         ModuleMigrations {
             module: "messaging",
@@ -61,8 +64,8 @@ pub fn registry() -> Vec<ModuleMigrations> {
         },
         ModuleMigrations {
             module: "music",
-            current_owner: "C#",
-            migrator: None,
+            current_owner: "Rust",
+            migrator: Some(&flora_music::MIGRATOR),
         },
     ]
 }
@@ -88,8 +91,33 @@ mod tests {
     }
 
     #[test]
-    fn phase0_has_no_rust_migrations_registered() {
-        // Схема заморожена (§5.3): пока все модули на C#, Rust-миграций быть не должно.
-        assert!(registry().iter().all(|m| m.migrator.is_none()));
+    fn rust_migrations_registered_only_for_cutover_modules() {
+        // §5.3: Rust-миграции есть только у модулей, переведённых на Rust (Фаза 5 выполнена).
+        for m in registry() {
+            match m.module {
+                "users" | "content" | "music" => {
+                    assert_eq!(m.current_owner, "Rust", "{}", m.module);
+                    assert!(m.migrator.is_some(), "{}: ожидался MIGRATOR", m.module);
+                }
+                _ => assert!(
+                    m.migrator.is_none(),
+                    "{}: Rust-миграции без cutover запрещены",
+                    m.module
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn registered_migrators_are_non_empty() {
+        for m in registry() {
+            if let Some(migrator) = m.migrator {
+                assert!(
+                    migrator.iter().next().is_some(),
+                    "{}: пустой каталог migrations/",
+                    m.module
+                );
+            }
+        }
     }
 }

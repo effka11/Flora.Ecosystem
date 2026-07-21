@@ -61,6 +61,11 @@
       "import": "./src/crypto/aesGcm.ts",
       "default": "./src/crypto/aesGcm.ts"
     },
+    "./economy": {
+      "types": "./src/economy/index.ts",
+      "import": "./src/economy/index.ts",
+      "default": "./src/economy/index.ts"
+    },
     "./display": {
       "types": "./src/display/index.ts",
       "import": "./src/display/index.ts",

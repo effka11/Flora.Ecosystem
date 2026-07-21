@@ -11,6 +11,12 @@ export type PrivacyVisibility = "all" | "friends" | "none";
 export type OnlineVisibility = "visible" | "hidden";
 export type MessagesFrom = "all" | "friends";
 
+// §User Controls (FIRA-F): значения синхронизированы с fira-contracts (lowercase wire-format).
+export type FeedFreshness = "fresh" | "balanced" | "popular";
+export type FeedExploration = "off" | "low" | "standard" | "high";
+export type FeedSeenPostsMode = "show" | "demote" | "hide";
+export type FeedAuthorDiversity = "strict" | "standard" | "off";
+
 export type UserSettingsAccountDraft = {
   displayName: string;
   username: string;
@@ -28,6 +34,15 @@ export type UserSettingsPrivacyDraft = {
   commentsFrom: PrivacyVisibility;
   onlineFriends: OnlineVisibility;
   onlineStrangers: OnlineVisibility;
+};
+
+export type UserSettingsFeedDraft = {
+  freshness: FeedFreshness;
+  exploration: FeedExploration;
+  showReposts: boolean;
+  communityPosts: boolean;
+  seenPosts: FeedSeenPostsMode;
+  authorDiversity: FeedAuthorDiversity;
 };
 
 export type UserSettingsNotificationsDraft = {
@@ -54,6 +69,7 @@ export type UserSettingsLocalPrefs = {
 export type UserSettingsDraft = UserSettingsLocalPrefs & {
   account: UserSettingsAccountDraft;
   privacy: UserSettingsPrivacyDraft;
+  feed: UserSettingsFeedDraft;
 };
 
 const DEFAULT_PRIVACY: UserSettingsPrivacyDraft = {
@@ -66,6 +82,16 @@ const DEFAULT_PRIVACY: UserSettingsPrivacyDraft = {
   commentsFrom: "all",
   onlineFriends: "visible",
   onlineStrangers: "hidden",
+};
+
+// Дефолты продакшена (FIRA-F §User Controls): Balanced/Standard + демоция просмотренных.
+const DEFAULT_FEED: UserSettingsFeedDraft = {
+  freshness: "balanced",
+  exploration: "standard",
+  showReposts: true,
+  communityPosts: true,
+  seenPosts: "demote",
+  authorDiversity: "standard",
 };
 
 const DEFAULT_NOTIFICATIONS: UserSettingsNotificationsDraft = {
@@ -86,6 +112,10 @@ const DEFAULT_CUSTOMIZATION: UserSettingsCustomizationDraft = {
 
 export function defaultPrivacyDraft(): UserSettingsPrivacyDraft {
   return { ...DEFAULT_PRIVACY };
+}
+
+export function defaultFeedDraft(): UserSettingsFeedDraft {
+  return { ...DEFAULT_FEED };
 }
 
 export function defaultUserSettingsLocalPrefs(): UserSettingsLocalPrefs {
@@ -130,6 +160,34 @@ export function privacyDraftToApiPayload(draft: UserSettingsPrivacyDraft): UserS
 }
 
 export function privacyDraftEqual(a: UserSettingsPrivacyDraft, b: UserSettingsPrivacyDraft): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function parseFeedEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
+    return value as T;
+  }
+  return fallback;
+}
+
+export function feedDraftFromApi(raw: unknown): UserSettingsFeedDraft {
+  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return {
+    freshness: parseFeedEnum(source.freshness, ["fresh", "balanced", "popular"], DEFAULT_FEED.freshness),
+    exploration: parseFeedEnum(source.exploration, ["off", "low", "standard", "high"], DEFAULT_FEED.exploration),
+    showReposts: typeof source.showReposts === "boolean" ? source.showReposts : DEFAULT_FEED.showReposts,
+    communityPosts:
+      typeof source.communityPosts === "boolean" ? source.communityPosts : DEFAULT_FEED.communityPosts,
+    seenPosts: parseFeedEnum(source.seenPosts, ["show", "demote", "hide"], DEFAULT_FEED.seenPosts),
+    authorDiversity: parseFeedEnum(
+      source.authorDiversity,
+      ["strict", "standard", "off"],
+      DEFAULT_FEED.authorDiversity,
+    ),
+  };
+}
+
+export function feedDraftEqual(a: UserSettingsFeedDraft, b: UserSettingsFeedDraft): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
@@ -179,10 +237,12 @@ export function userSettingsDraftFromSources(
   },
   localPrefs: UserSettingsLocalPrefs,
   privacy: UserSettingsPrivacyDraft = defaultPrivacyDraft(),
+  feed: UserSettingsFeedDraft = defaultFeedDraft(),
 ): UserSettingsDraft {
   return {
     account: accountDraftFromMe(me),
     privacy,
+    feed,
     ...localPrefs,
   };
 }
@@ -219,10 +279,12 @@ export function userSettingsDraftHasChanges(
   },
   savedLocalPrefs: UserSettingsLocalPrefs,
   savedPrivacy: UserSettingsPrivacyDraft,
+  savedFeed: UserSettingsFeedDraft,
 ): boolean {
   return (
     accountDraftHasChanges(draft.account, me) ||
     !privacyDraftEqual(draft.privacy, savedPrivacy) ||
+    !feedDraftEqual(draft.feed, savedFeed) ||
     !localPrefsEqual(
       { notifications: draft.notifications, customization: draft.customization },
       savedLocalPrefs,

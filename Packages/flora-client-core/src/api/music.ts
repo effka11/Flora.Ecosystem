@@ -449,3 +449,12 @@ export async function apiAddMusicTrackFavorite(trackUuid: string): Promise<void>
 export async function apiRemoveMusicTrackFavorite(trackUuid: string): Promise<void> {
   await authDelete(`/api/music/tracks/${encodeURIComponent(trackUuid)}/favorite`);
 }
+
+/** §User Controls (FIRA-M): «не интересно» — трек больше не попадает в Поток. */
+export async function apiDismissMusicTrack(trackUuid: string): Promise<void> {
+  await authPostJson(`/api/music/tracks/${encodeURIComponent(trackUuid)}/not-interested`, {});
+}
+
+export async function apiUndismissMusicTrack(trackUuid: string): Promise<void> {
+  await authDelete(`/api/music/tracks/${encodeURIComponent(trackUuid)}/not-interested`);
+}

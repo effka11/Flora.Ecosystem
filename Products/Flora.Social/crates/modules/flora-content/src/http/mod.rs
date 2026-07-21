@@ -26,6 +26,9 @@ use crate::application::drafts::{
     CreateDraftError, DeleteDraftError, DraftsService, MAX_POST_DRAFTS_PER_USER, UpdateDraftError,
 };
 use crate::application::feed::FeedService;
+use crate::application::feed_controls::{
+    FeedControlsError, FeedControlsService, FeedSettingsPatch,
+};
 use crate::application::media::MediaService;
 use crate::application::post_images::PostImagesService;
 use crate::application::post_videos::{MAX_POST_VIDEO_BYTES, PostVideosService};
@@ -48,6 +51,7 @@ const POST_VIDEO_BODY_LIMIT: usize = (MAX_POST_VIDEO_BYTES as usize) + 1024 * 10
 #[derive(Clone)]
 pub struct ContentState {
     pub feed: Arc<FeedService>,
+    pub feed_controls: Arc<FeedControlsService>,
     pub serialize: Arc<FeedSerializer>,
     pub posts: Arc<PostService>,
     pub comments: Arc<CommentsService>,
@@ -69,6 +73,44 @@ pub fn protected_router(state: ContentState) -> Router {
     Router::new()
         .route("/api/auth/feed", get(get_feed))
         .route("/api/auth/feed/has-new", get(feed_has_new))
+        .route("/api/auth/me/feed-settings", get(get_feed_settings))
+        .route("/api/auth/me/feed-settings", patch(update_feed_settings))
+        .route(
+            "/api/auth/posts/{post_uuid}/not-interested",
+            post(mark_post_not_interested),
+        )
+        .route(
+            "/api/auth/posts/{post_uuid}/not-interested",
+            delete(unmark_post_not_interested),
+        )
+        .route(
+            "/api/auth/me/feed/not-interested",
+            delete(clear_not_interested),
+        )
+        .route(
+            "/api/auth/feed/authors/{author_uuid}/hide",
+            post(hide_feed_author),
+        )
+        .route(
+            "/api/auth/feed/authors/{author_uuid}/hide",
+            delete(unhide_feed_author),
+        )
+        .route(
+            "/api/auth/me/feed/hidden-authors",
+            get(list_hidden_feed_authors),
+        )
+        .route(
+            "/api/auth/communities/{community_id}/dismiss",
+            post(dismiss_community),
+        )
+        .route(
+            "/api/auth/communities/{community_id}/dismiss",
+            delete(undismiss_community),
+        )
+        .route(
+            "/api/auth/me/feed/dismissed-communities",
+            get(list_dismissed_communities),
+        )
         .route("/api/auth/posts", post(create_post))
         .route(
             "/api/auth/posts/{post_uuid}/images",
@@ -256,6 +298,162 @@ async fn feed_has_new(
             "checkedAt": format_utc(Utc::now()),
         }))
         .into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// §User Controls: настройки ленты + «не интересно» (FIRA-F v1.1)
+// ---------------------------------------------------------------------------
+
+fn feed_controls_error(err: FeedControlsError) -> Response {
+    match err {
+        FeedControlsError::NotFound => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Не найдено." })),
+        )
+            .into_response(),
+        FeedControlsError::Validation(message) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": message })),
+        )
+            .into_response(),
+    }
+}
+
+async fn get_feed_settings(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    match state.feed_controls.get_settings(user.0).await {
+        Ok(body) => Json(body).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn update_feed_settings(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Json(patch): Json<FeedSettingsPatch>,
+) -> Response {
+    match state.feed_controls.update_settings(user.0, patch).await {
+        Ok(Ok(body)) => Json(body).into_response(),
+        Ok(Err(err)) => feed_controls_error(err),
+        Err(e) => internal(e),
+    }
+}
+
+async fn mark_post_not_interested(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(post_uuid): Path<Uuid>,
+) -> Response {
+    match state
+        .feed_controls
+        .mark_post_not_interested(user.0, post_uuid)
+        .await
+    {
+        Ok(Ok(())) => Json(serde_json::json!({ "notInterested": true })).into_response(),
+        Ok(Err(err)) => feed_controls_error(err),
+        Err(e) => internal(e),
+    }
+}
+
+async fn unmark_post_not_interested(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(post_uuid): Path<Uuid>,
+) -> Response {
+    match state
+        .feed_controls
+        .unmark_post_not_interested(user.0, post_uuid)
+        .await
+    {
+        Ok(_) => Json(serde_json::json!({ "notInterested": false })).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn clear_not_interested(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    match state.feed_controls.clear_not_interested(user.0).await {
+        Ok(cleared) => Json(serde_json::json!({ "cleared": cleared })).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn hide_feed_author(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(author_uuid): Path<Uuid>,
+) -> Response {
+    match state.feed_controls.hide_author(user.0, author_uuid).await {
+        Ok(Ok(())) => Json(serde_json::json!({ "hidden": true })).into_response(),
+        Ok(Err(err)) => feed_controls_error(err),
+        Err(e) => internal(e),
+    }
+}
+
+async fn unhide_feed_author(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(author_uuid): Path<Uuid>,
+) -> Response {
+    match state.feed_controls.unhide_author(user.0, author_uuid).await {
+        Ok(_) => Json(serde_json::json!({ "hidden": false })).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn list_hidden_feed_authors(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    match state.feed_controls.hidden_authors(user.0).await {
+        Ok(body) => Json(body).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn dismiss_community(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(community_id): Path<Uuid>,
+) -> Response {
+    match state
+        .feed_controls
+        .dismiss_community(user.0, community_id)
+        .await
+    {
+        Ok(Ok(())) => Json(serde_json::json!({ "dismissed": true })).into_response(),
+        Ok(Err(err)) => feed_controls_error(err),
+        Err(e) => internal(e),
+    }
+}
+
+async fn undismiss_community(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(community_id): Path<Uuid>,
+) -> Response {
+    match state
+        .feed_controls
+        .undismiss_community(user.0, community_id)
+        .await
+    {
+        Ok(_) => Json(serde_json::json!({ "dismissed": false })).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn list_dismissed_communities(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    match state.feed_controls.dismissed_communities(user.0).await {
+        Ok(body) => Json(body).into_response(),
         Err(e) => internal(e),
     }
 }

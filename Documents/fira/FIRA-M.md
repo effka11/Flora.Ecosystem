@@ -1,9 +1,11 @@
 # FIRA-M — Music Recommendations
 
 **Status:** Active — целевая спека; в production Phase 0 «Music Flow» (§Implementation Status)  
-**Version:** 0.3  
-**Date:** 2026-07-13  
+**Version:** 0.4  
+**Date:** 2026-07-21  
 **Depends on:** [`FIRA.md`](./FIRA.md)
+
+> Изменения 0.3 → 0.4: **дисмисс трека реализован (v1.1)** — «не интересно»: `POST/DELETE /api/music/tracks/{trackUuid}/not-interested`, таблица `flora_core.music_track_dismissals` (владелец — Music). Трек персистентно исключается из волны (все скоупы) до undo; кэш снапшотов пользователя инвалидируется. Серверный аналог `dislike` из §Feedback Loop в части исключения; негативный сигнал в UIP — по-прежнему v2. Скоринг не изменён.
 
 > Изменения 0.2 → 0.3: снята пометка Forward Spec — модуль `Flora.Music` создан (треки, артисты, жанры, плейлисты, избранное) и **Phase 0 FIRA-M работает в production** как «Music Flow» (`GET /api/music/flow`). Listening-инфраструктура (`ListeningEvent`, onboarding, skip-сигналы) остаётся целевой (v2). Добавлен раздел **Implementation Status (as-built v1)**. **Критично для миграции:** `Flora.Music` — **Фаза 1** Rust-миграции, первый FIRA-компонент, уходящий в Rust; формулы as-built замораживаются и переносятся 1:1, целевые расширения (v2) реализуются уже на Rust-стороне (`next-architecture.md` §5.1, §6).
 
@@ -353,9 +355,9 @@ FIRA-M — единственный компонент, где cold start **не
 ```
 
 **Немедленные действия:**
-- `dislike` → трек исключается из пула навсегда; артист получает негативный сигнал.
-- `skip_early` × 3 подряд для одного жанра → жанр временно понижается на 12 ч.
-- `artist_follow` → артист мгновенно переходит в источник «Новые релизы подписанных артистов».
+- `dislike` («не интересно») — **исключение реализовано в v1.1**: `POST /api/music/tracks/{trackUuid}/not-interested` (undo — `DELETE`); трек персистентно исключается из волны (`flora_core.music_track_dismissals`), кэш инвалидируется. Негативный сигнал артисту в UIP — *target v2*.
+- `skip_early` × 3 подряд для одного жанра → жанр временно понижается на 12 ч (*target v2*).
+- `artist_follow` → артист мгновенно переходит в источник «Новые релизы подписанных артистов» (*target v2*).
 
 ---
 
@@ -377,7 +379,7 @@ FIRA-M — единственный компонент, где cold start **не
 |----------|---------|
 | Cache scope | Per-user |
 | TTL | 180 с |
-| Инвалидация | Новый `ListeningEvent` (завершение/пропуск трека) |
+| Инвалидация | Новый `ListeningEvent` (завершение/пропуск трека); dismiss / undo dismiss трека (v1.1) |
 | Метаданные ответа | `generatedAt` (UTC), `expiresAt` (UTC) |
 | Индикатор новых (has-new) | Не поддерживается; обновление по TTL |
 | Размер пула кандидатов | Configurable (`candidatePoolSize`, дефолт: 300) |
@@ -407,7 +409,7 @@ Score = WeightAlpha × 0.0              // 0.0  — α-слот зарезерв
 
 Tie-break: `Score desc → PublishedAt desc → Title asc (case-insensitive)`.
 
-**Выдача («волна»):** snapshot ранжированного списка в кэше `flora:fira-m:v1:{userUuid}:{genre}:{subgenre}` (**per-user + per-scope**), TTL `CacheTtlSeconds = 180`; из snapshot исключаются `ExcludeTrackUuids` клиента (уже проигранные в сессии — серверного skip-трекинга нет); батч = топ `take·(1−ε)` + случайные `take·ε` из хвоста (`ExplorationQuota = 0.15`, clamp ≤ 0.5). Инвалидации нет — обновление по TTL; `generatedAt`/`expiresAt` в `MusicFlowWaveDto`.
+**Выдача («волна»):** snapshot ранжированного списка в кэше `flora:fira-m:v1:{userUuid}:{genre}:{subgenre}` (**per-user + per-scope**), TTL `CacheTtlSeconds = 180`; из snapshot исключаются `ExcludeTrackUuids` клиента (уже проигранные в сессии — серверного skip-трекинга нет); батч = топ `take·(1−ε)` + случайные `take·ε` из хвоста (`ExplorationQuota = 0.15`, clamp ≤ 0.5). Обновление по TTL; v1.1 — дисмисс/undo трека инвалидирует все скоупы пользователя; `generatedAt`/`expiresAt` в `MusicFlowWaveDto`.
 
 **Конфигурация** — секция `FiraMusic`. **В `appsettings.json` секция отсутствует — действуют дефолты кода** (для Rust-порта их обязательно продублировать бит-в-бит; см. [`FIRA.md §15`](./FIRA.md)): `WeightAlpha = 0.0`, `WeightBeta = 0.75`, `WeightGamma = 0.25`, `ExplorationQuota = 0.15`, `CacheTtlSeconds = 180`, `RecencyBoostDays = 14`, `MaxCandidates = 500`.
 
@@ -417,7 +419,7 @@ Tie-break: `Score desc → PublishedAt desc → Title asc (case-insensitive)`.
 |---|-----------|------|---------|
 | 1 | **γ-слот занят жанровой аффинити** | `WeightGamma` умножается на `genreAffinity`, семантически это α·IA-сигнал (личный вкус), а не SocialProximity | техдолг конфига: при введении listening-based IA (v2) жанровая аффинити переезжает в α-слагаемое, γ освобождается под социальные сигналы (`likedByFollowed`, `followedArtistBoost`). До Фазы 1 ключи не переименовывать (freeze) — исправление на Rust-стороне вместе с v2 |
 | 2 | Exploration недетерминирован и не в snapshot | случайная выборка хвоста `Random.Shared` на каждый запрос волны | допустимо; исключается из differential-диффа ([`FIRA.md §15`](./FIRA.md)) |
-| 3 | Dislike / skip-исключения | нет listening-событий — исключение только клиентским `ExcludeTrackUuids` | v2 |
+| 3 | Dislike / skip-исключения | v1.1: персистентный дисмисс трека на сервере (`music_track_dismissals`, фильтр перед ранжированием) + клиентский `ExcludeTrackUuids` для сессии; listening-события | listening-события и skip-сигналы — v2 |
 | 4 | Onboarding жанров | не реализован; Phase 0 работает без mandatory onboarding (прокси — собственные/избранные треки) | v2; требование «onboarding блокирует выдачу» смягчено — Flow работает и без выбора жанров |
 | 5 | Неалгоритмический fallback | нет отдельного топ-чарта/новых релизов без персонализации | v1.1 — требование суверенитета [`FIRA.md §16`](./FIRA.md) |
 
