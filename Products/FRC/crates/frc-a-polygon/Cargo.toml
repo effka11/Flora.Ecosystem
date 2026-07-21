@@ -1,6 +1,6 @@
 [package]
 name = "frc-a-polygon"
-description = "Полигон качества FRC-A: детерминированный синтетический корпус (речь, транзиенты, музыка, стерео, шумы), объективные метрики (seg-SNR, band-LSD, NMR, pre-echo, стерео-образ), раннер по сетке битрейтов и регрессионные отчёты."
+description = "Полигон качества FRC-A: детерминированный синтетический корпус (речь, транзиенты, музыка, стерео, шумы), объективные метрики (seg-SNR, band-LSD, NMR, pre-echo, стерео-образ), раннер по сетке битрейтов, регрессионные отчёты и арена сравнения с внешними кодеками (Opus/AAC/MP3/Vorbis через ffmpeg)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
