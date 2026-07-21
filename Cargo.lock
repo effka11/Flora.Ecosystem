@@ -907,6 +907,7 @@ name = "fira-contracts"
 version = "0.7.0-alpha"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1159,7 +1160,10 @@ version = "0.7.0-alpha"
 dependencies = [
  "anyhow",
  "clap",
+ "flora-content",
+ "flora-music",
  "flora-shared",
+ "flora-users",
  "sqlx",
  "tokio",
  "tracing",
@@ -3632,6 +3636,7 @@ dependencies = [
  "sqlx-postgres",
  "sqlx-sqlite",
  "syn",
+ "thiserror 2.0.18",
  "tokio",
  "url",
 ]

@@ -80,8 +80,18 @@ impl CommunityRecommendationService {
             .await
             .map_err(|e| e.to_string())?;
 
+        // §User Controls: «не интересно» для сообществ — жёсткое исключение из FIRA-C.
+        let dismissed: std::collections::HashSet<Uuid> = self
+            .repo
+            .dismissed_community_ids(user_uuid)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+
         let mut scored: Vec<(f64, RecommendationCandidateRow)> = rows
             .into_iter()
+            .filter(|row| !dismissed.contains(&row.community_id))
             .map(|row| {
                 let candidate = CommunityCandidate {
                     community_id: row.community_id,

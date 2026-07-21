@@ -58,6 +58,28 @@ impl PeopleRecommendationService {
         }
     }
 
+    /// «Не интересно» для рекомендации человека (жёсткое исключение из FIRA-P).
+    pub async fn dismiss(&self, user_uuid: Uuid, target_uuid: Uuid) -> Result<(), String> {
+        self.queries
+            .insert_dismissal(user_uuid, target_uuid, Utc::now())
+            .await
+            .map_err(|e| e.to_string())?;
+        self.invalidate(user_uuid);
+        Ok(())
+    }
+
+    pub async fn undismiss(&self, user_uuid: Uuid, target_uuid: Uuid) -> Result<bool, String> {
+        let removed = self
+            .queries
+            .delete_dismissal(user_uuid, target_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
+        if removed {
+            self.invalidate(user_uuid);
+        }
+        Ok(removed)
+    }
+
     pub async fn get_recommended(
         &self,
         user_uuid: Uuid,
@@ -91,6 +113,19 @@ impl PeopleRecommendationService {
             .get_candidates(user_uuid, &following)
             .await
             .map_err(|e| e.to_string())?;
+
+        // §User Controls: отклонённые рекомендации исключаются до ранжирования.
+        let dismissed: std::collections::HashSet<Uuid> = self
+            .queries
+            .dismissed_user_ids(user_uuid)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+        let rows: Vec<RecommendationCandidateRow> = rows
+            .into_iter()
+            .filter(|r| !dismissed.contains(&r.user_uuid))
+            .collect();
 
         let candidates: Vec<PeopleCandidate> = rows.iter().map(row_to_candidate).collect();
         let avatar_by: HashMap<Uuid, Option<Uuid>> =

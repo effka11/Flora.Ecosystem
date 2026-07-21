@@ -42,6 +42,34 @@ impl FlowService {
         }
     }
 
+    /// Сбрасывает все кэшированные волны пользователя (любой жанровый scope).
+    fn invalidate_user(&self, user: Uuid) {
+        let prefix = format!("flora:fira-m:v1:{}:", user.as_simple());
+        if let Ok(mut guard) = self.cache.lock() {
+            guard.retain(|key, _| !key.starts_with(&prefix));
+        }
+    }
+
+    /// «Не интересно» для трека: жёсткое исключение из будущих волн Потока.
+    pub async fn dismiss_track(&self, user: Uuid, track: Uuid) -> Result<bool, sqlx::Error> {
+        if !self.repo.track_exists(track).await? {
+            return Ok(false);
+        }
+        self.repo
+            .insert_track_dismissal(user, track, Utc::now())
+            .await?;
+        self.invalidate_user(user);
+        Ok(true)
+    }
+
+    pub async fn undismiss_track(&self, user: Uuid, track: Uuid) -> Result<bool, sqlx::Error> {
+        let removed = self.repo.delete_track_dismissal(user, track).await?;
+        if removed {
+            self.invalidate_user(user);
+        }
+        Ok(removed)
+    }
+
     pub async fn get_wave(
         &self,
         user: Uuid,
@@ -96,6 +124,17 @@ impl FlowService {
             .repo
             .list_published_platform_candidates_by_scope(genre_id, subgenre_id, limit)
             .await?;
+        // §User Controls: треки «не интересно» исключаются из волны до ранжирования.
+        let dismissed: HashSet<Uuid> = self
+            .repo
+            .dismissed_track_ids(user)
+            .await?
+            .into_iter()
+            .collect();
+        let rows: Vec<TrackListRow> = rows
+            .into_iter()
+            .filter(|r| !dismissed.contains(&r.track_uuid))
+            .collect();
         let weight_pairs = self.repo.get_user_genre_weights(user).await?;
         let weights = GenreWeights::from_pairs(weight_pairs);
         let now = Utc::now();

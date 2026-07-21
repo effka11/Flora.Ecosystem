@@ -16,6 +16,10 @@ path = "src/main.rs"
 
 [dependencies]
 flora-shared = { workspace = true }
+# Модули с Rust-миграциями (post-cutover, §11.1): экспортируют sqlx MIGRATOR.
+flora-content = { workspace = true }
+flora-music = { workspace = true }
+flora-users = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 sqlx = { workspace = true }

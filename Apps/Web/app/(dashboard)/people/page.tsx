@@ -19,6 +19,7 @@ import {
   peopleRecommendedCache,
 } from "@/lib/dashboardPreload";
 import {
+  apiDismissRecommendedUser,
   apiFollowUser,
   apiGetProfileFollowers,
   apiGetProfileFollowing,
@@ -35,6 +36,8 @@ type Person = {
   username: string;
   followers: number;
   avatarUuid?: string | null;
+  /** §User Controls (FIRA-P): для «не интересно» (есть только у рекомендаций). */
+  userUuid?: string | null;
 };
 
 type PeopleTab = 0 | 1 | 2;
@@ -66,6 +69,7 @@ function toPerson(row: {
   displayName: string;
   followerCount?: number;
   avatarUuid?: string | null;
+  userUuid?: string | null;
 }): Person {
   const username = row.username.startsWith("@") ? row.username : `@${row.username}`;
   const id = row.username.replace(/^@+/, "");
@@ -75,6 +79,7 @@ function toPerson(row: {
     username,
     followers: row.followerCount ?? 0,
     avatarUuid: row.avatarUuid ?? null,
+    userUuid: row.userUuid ?? null,
   };
 }
 
@@ -268,6 +273,21 @@ export default function PeoplePage() {
     },
     [loadTabFromApi, myUsername],
   );
+
+  /** §User Controls (FIRA-P): «не интересно» — убрать из рекомендаций (оптимистично). */
+  const handleDismissRecommended = useCallback(async (person: Person) => {
+    if (!person.userUuid) return;
+    setTabCache((prev) => ({
+      ...prev,
+      0: prev[0] ? removePerson(prev[0], person.id) : prev[0],
+    }));
+    peopleRecommendedCache.invalidate();
+    try {
+      await apiDismissRecommendedUser(person.userUuid);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Не удалось скрыть рекомендацию");
+    }
+  }, []);
 
   const flushPendingFollows = useCallback(async () => {
     const ops = new Map(pendingFollowOpsRef.current);
@@ -622,6 +642,11 @@ export default function PeoplePage() {
                       isSubscribed={subscribedIds.has(user.id)}
                       actionAnimEpoch={actionAnimEpochByUser[user.id] ?? 0}
                       onToggleSubscribe={() => toggleSubscribe(user.id)}
+                      onDismiss={
+                        activeTab === 0 && user.userUuid
+                          ? () => void handleDismissRecommended(user)
+                          : undefined
+                      }
                     />
                   ))
                 )}

@@ -1,10 +1,12 @@
 # FIRA-P — People Recommendations
 
 **Status:** Active — целевая спека; в production упрощённая эвристика v1 (§Implementation Status)  
-**Version:** 0.3  
-**Date:** 2026-07-13  
+**Version:** 0.4  
+**Date:** 2026-07-21  
 **Depends on:** [`FIRA.md`](./FIRA.md)
 
+> Изменения 0.3 → 0.4: **dismissal реализован (v1.1)** — «не интересно» для рекомендованного пользователя: `POST/DELETE /api/auth/users/{userUuid}/dismiss`, таблица `flora_core.user_people_dismissals` (владелец — Users), кандидат исключается из пула до undo (персистентно, без 30-дневного окна v1), инвалидация per-user кэша. В ответ `GET /users/recommended` добавлено поле `userUuid` (аддитивно). Скоринг не изменён.
+>
 > Изменения 0.2 → 0.3: добавлен нормативный раздел **Implementation Status (as-built v1)** с картой отклонений — включая **критичное**: pre-filter приватности v1 не исключает блокировки. Формулы §Скоринг — целевые (v2); референс паритета Rust-миграции — формулы as-built. **Внимание миграции:** FIRA-P живёт в `Flora.Users` и уезжает в Rust в Фазе 2b — раньше остальных компонентов FIRA.
 
 ---
@@ -204,7 +206,7 @@ Score(c)                    = 0.35 · IndividualAffinity(c)
 ## Feedback Loop
 
 - **Подписка** на рекомендованного пользователя → позитивный сигнал для похожих кандидатов; кандидат исключается из пула.
-- **Dismissal** (кнопка «Не интересно» / скрыть) → кандидат не показывается повторно в течение 30 дней; его темы получают лёгкий негативный сигнал в UIP.
+- **Dismissal** (кнопка «Не интересно» / скрыть) — **реализовано в v1.1**: `POST /api/auth/users/{userUuid}/dismiss` (undo — `DELETE`); кандидат персистентно исключается из выдачи (`flora_core.user_people_dismissals`) до отмены; кэш инвалидируется немедленно. Целевая семантика v2 — окно 30 дней + лёгкий негативный сигнал в UIP.
 - **Блокировка** рекомендованного пользователя → немедленное исключение из всех будущих выдач.
 
 ---
@@ -226,7 +228,7 @@ Score(c)                    = 0.35 · IndividualAffinity(c)
 |----------|---------|
 | Cache scope | Per-user |
 | TTL | 300 с |
-| Инвалидация | Follow / unfollow пользователя |
+| Инвалидация | Follow / unfollow пользователя; dismiss / undo dismiss (v1.1) |
 | Метаданные ответа | `generatedAt` (UTC), `expiresAt` (UTC) |
 | Индикатор новых (has-new) | Не поддерживается; обновление по TTL |
 | Размер пула кандидатов | Configurable (`candidatePoolSize`, дефолт: 200) |
@@ -276,7 +278,9 @@ Tie-break: `Score desc → DisplayName asc (case-insensitive)`.
 | 3 | Закрытые аккаунты | понятия приватного аккаунта в Users v1 нет (есть field-level visibility) | правило «private без mutual — исключён» активируется вместе с приватными аккаунтами | v2 |
 | 4 | `sharedFollowers`, `graphDepth` | не вычисляются (в SP только `followedByFollowing`) | §Шаг 2–3 | v2 |
 | 5 | Recency по `UpdatedAt` | буст получают недавно **обновлённые** профили | целевой new-account boost: возраст аккаунта + порог активности (≥ 5 постов) | v2 |
-| 6 | Diversity по источникам, dismissal | нет (источник один) | §Шаг 4, §Feedback Loop | v2 / v1.1 |
+| 6 | Diversity по источникам | нет (источник один) | §Шаг 4 | v2 |
+
+Dismissal (бывшая часть №6) закрыт в v1.1: фильтр `dismissed_user_ids` перед ранжированием (`PeopleRecommendationService`), таблица `user_people_dismissals`, эндпоинты dismiss/undo, инвалидация кэша.
 
 ### Rust-порт (Фаза 2b, перенесён заранее)
 

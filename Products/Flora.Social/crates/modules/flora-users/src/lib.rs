@@ -25,6 +25,9 @@ pub struct UsersModule {
     pub image_backfill: Option<tokio::task::JoinHandle<()>>,
 }
 
+/// Rust-миграции модуля Users (регистрируются в flora-migrate, §11.1).
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
 pub fn router() -> axum::Router {
     axum::Router::new()
 }

@@ -19,7 +19,8 @@ flora-shared = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 getrandom = { workspace = true }
-sqlx = { workspace = true }
+# macros — для sqlx::migrate! (MIGRATOR модуля, §11.1)
+sqlx = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["process", "io-util", "fs", "time", "rt"] }
 tracing = { workspace = true }
 uuid = { workspace = true }

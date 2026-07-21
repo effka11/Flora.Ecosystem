@@ -23,6 +23,7 @@ import { useAnimatedModal } from "./useAnimatedModal";
 import { apiGetMe, isDevLocalOfflineSession } from "@/lib/auth";
 import { communitiesBundleCache, type CommunitiesPreloadBundle } from "@/lib/dashboardPreload";
 import {
+  apiDismissCommunity,
   apiGetRecommendedCommunities,
   apiJoinCommunity,
   apiLeaveCommunity,
@@ -442,6 +443,21 @@ export default function CommunitiesPage() {
     [activeTab, memberCommunityIds],
   );
 
+  /** §User Controls (FIRA-C): «не интересно» — убрать сообщество из рекомендаций (оптимистично). */
+  const onDismissCommunity = useCallback(async (community: CommunityRecord) => {
+    if (!isCommunityUuid(community.id)) return;
+    setJoinError(null);
+    setRecommendationsFromApi((prev) => removeCommunity(prev, community.id));
+    communitiesBundleCache.invalidate();
+    try {
+      await apiDismissCommunity(community.id);
+    } catch (e) {
+      setJoinError(
+        e instanceof ApiRequestError || e instanceof Error ? e.message : "Не удалось скрыть сообщество.",
+      );
+    }
+  }, []);
+
   const renderCommunityJoinButton = (community: CommunityRecord) => {
     if (community.tab === "owned" || !isCommunityUuid(community.id)) return null;
     if (memberCommunityIds.has(community.id)) {
@@ -481,8 +497,34 @@ export default function CommunitiesPage() {
     );
   };
 
+  /** Дисмисс доступен только в рекомендациях для не-участников (FIRA-C). */
+  const renderCommunityDismissButton = (community: CommunityRecord) => {
+    if (hasSearch || activeTab !== "recommendations") return null;
+    if (community.tab === "owned" || !isCommunityUuid(community.id)) return null;
+    if (memberCommunityIds.has(community.id)) return null;
+    return (
+      <button
+        className={styles.btnDismiss}
+        type="button"
+        title="Не интересно"
+        aria-label={`Не интересно: ${community.name}`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void onDismissCommunity(community);
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+          <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+        </svg>
+      </button>
+    );
+  };
+
   const renderCommunityRow = (community: CommunityRecord) => {
     const display = communityForDisplay(community, memberDeltas);
+    const joinButton = renderCommunityJoinButton(community);
+    const dismissButton = renderCommunityDismissButton(community);
     return (
       <li key={community.id} className={styles.item}>
         <Link className={styles.rowMainLink} href={communityHref(community)}>
@@ -501,7 +543,12 @@ export default function CommunitiesPage() {
             </div>
           </div>
         </Link>
-        {renderCommunityJoinButton(community)}
+        {joinButton || dismissButton ? (
+          <div className={styles.rowActions}>
+            {dismissButton}
+            {joinButton}
+          </div>
+        ) : null}
       </li>
     );
   };

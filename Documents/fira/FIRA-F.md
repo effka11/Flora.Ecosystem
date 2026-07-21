@@ -1,10 +1,12 @@
 # FIRA-F — Feed Recommendations
 
 **Status:** Active — реализован в Phase 0-профиле (§Implementation Status)  
-**Version:** 0.3  
-**Date:** 2026-07-13  
+**Version:** 0.4  
+**Date:** 2026-07-21  
 **Depends on:** [`FIRA.md`](./FIRA.md)
 
+> Изменения 0.3 → 0.4: добавлен нормативный раздел **User Controls (v1.1)** — пользовательские настройки ленты (`freshness`, `exploration`, `showReposts`, `communityPosts`, `seenPosts`, `authorDiversity`) и негативный фидбек («не интересно» по посту, скрытие автора); закрыто отклонение №5 (hide-эндпоинт и toggle репостов); формулы паритета v1 не изменены — при дефолтных настройках Score бит-в-бит совпадает с golden-векторами.
+>
 > Изменения 0.2 → 0.3: добавлен нормативный раздел **Implementation Status (as-built v1)** — фактический pipeline, конфиг, tie-break'и и карта отклонений; целевые (UIP-зависимые) части формул помечены по тексту как *target v2*; закрыт open question по real-time trending. Формулы as-built v1 — референс числового паритета Rust-миграции ([`FIRA.md §15`](./FIRA.md)).
 
 ---
@@ -178,7 +180,7 @@ SocialProximity(post) = ln(followedLikers + 1) · 3.0 + repostBoost
 
 - Per-user кэш, TTL = 120 с.
 - **Триггеры инвалидации** (полная матрица — [`FIRA.md §13.2`](./FIRA.md)):
-  лайк/анлайк, репост/анрепост, комментарий, новый пост, подписка/отписка, вступление/выход из сообщества, `hide` (*target v1.1* — эндпоинт hide ещё не реализован).
+  лайк/анлайк, репост/анрепост, комментарий, новый пост, подписка/отписка, вступление/выход из сообщества, `hide`/«не интересно», изменение настроек ленты (v1.1, §User Controls).
 - **Метаданные ответа:** каждый `FeedPage` содержит `generatedAt` и `expiresAt` — клиент использует их для управления обновлением (§13.3 FIRA.md).
 - **Индикатор новых постов:** `GET /api/auth/feed/has-new?since=<generatedAt>` → `{ hasNew: bool }`.
   Клиент поллит раз в 30 с; при `hasNew = true` показывает баннер «Новые посты».
@@ -227,7 +229,64 @@ repostBoost = repostWeight
 
 ### Пользовательская настройка
 
-*Target v1.1.* В **Settings → Feed** доступен переключатель «Показывать репосты в рекомендациях». При отключении: `repostBoost = 0` принудительно для всех кандидатов. Репосты при этом всё равно отображаются во вкладке «Подписки». Настройка пользователя сильнее глобальных дефолтов и governance-решений (FGP §1.2 п. 2; [`FIRA.md §16`](./FIRA.md)).
+*Реализовано в v1.1 (§User Controls).* В **Settings → Feed** доступен переключатель «Показывать репосты» (`showReposts`). При отключении: `repostWeight = 0` (⇒ `repostBoost = 0` для всех кандидатов) и репостный пул исключается из кандидатов; во вкладке «Подписки» репосты также скрываются. Настройка пользователя сильнее глобальных дефолтов и governance-решений (FGP §1.2 п. 2; [`FIRA.md §16`](./FIRA.md)).
+
+---
+
+## User Controls (v1.1)
+
+Нормативный раздел: реальные рычаги пользователя над рекомендательной лентой. Владелец данных и логики — модуль Content (`flora-content`); отображение настроек на параметры ядра — чистая функция `apply_preferences` в [`fira-core/src/feed.rs`](../../Products/FIRA/crates/fira-core/src/feed.rs).
+
+**Инвариант паритета:** дефолтные настройки (`balanced / standard / true / true / demote→show*, standard`) и пустой негативный фидбек дают Score бит-в-бит равный as-built v1 — golden-векторы не перегенерируются. (*дефолт `seenPosts = demote` влияет только на кандидатов с `seen = true`; в golden-векторах таких нет.)
+
+### Настройки (`user_feed_settings`)
+
+`GET /api/auth/me/feed-settings` → текущие значения (дефолты при отсутствии строки); `PATCH /api/auth/me/feed-settings` — частичное обновление (передаются только изменяемые поля). Wire-format enum'ов — lowercase; DTO — camelCase ([`fira-contracts`](../../Products/FIRA/crates/fira-contracts/src/lib.rs), `FeedPreferences`).
+
+| Поле | Значения (дефолт **жирным**) | Эффект в pipeline |
+|------|------------------------------|-------------------|
+| `freshness` | `fresh` / **`balanced`** / `popular` | `DecayLambda`: 0.10 / **0.05** / 0.025 — скорость затухания `GlobalRelevance` |
+| `exploration` | `off` / `low` / **`standard`** / `high` | `ExplorationQuota`: 0.0 / 0.08 / **0.15** / 0.25 — интерливинг exploration-постов |
+| `showReposts` | **`true`** / `false` | `false`: `RepostWeight = 0` + репостный пул не собирается; в «Подписках» репосты скрыты |
+| `communityPosts` | **`true`** / `false` | `false`: источник «сообщества пользователя» исключается из пула |
+| `seenPosts` | `show` / **`demote`** / `hide` | `demote`: `Score × SeenDemotionFactor` для просмотренных; `hide`: просмотренные исключаются из пула |
+| `authorDiversity` | `strict` / **`standard`** / `off` | `MaxConsecutiveSameAuthor`: 1 / **2** / без ограничения |
+
+Отображение детерминировано и закреплено юнит-тестами (`apply_preferences`); `Balanced`/`Standard` обязаны совпадать с дефолтами `FiraFeedConfig`.
+
+### Негативный фидбек
+
+| Действие | Эндпоинты | Эффект |
+|----------|-----------|--------|
+| «Не интересно» (пост) | `POST /api/auth/posts/{postUuid}/not-interested`, `DELETE` — undo, `DELETE /api/auth/me/feed/not-interested` — сброс всех | Пост исключается из кандидатного пула рекомендаций (все источники, включая exploration/backfill); по автору копится счётчик отметок |
+| Штраф автора | — (агрегат `user_feed_post_feedback` за `InteractionHistoryDays`) | `Score × NotInterestedAuthorPenalty^min(n, NotInterestedAuthorCap)` = `0.5^min(n, 3)` — мягкая демоция вместо бана |
+| «Скрыть автора» | `POST /api/auth/feed/authors/{authorUuid}/hide`, `DELETE` — undo, `GET /api/auth/me/feed/hidden-authors` — список | Автор добавляется в blocked-набор пула рекомендаций (эквивалент блокировки **только** для рекомендаций); вкладка «Подписки» не фильтруется — явная подписка сильнее скрытия |
+| Просмотренные | `seen`-флаг кандидата из журнала просмотров (`seen_post_ids_among`) | См. `seenPosts` выше; `SeenDemotionFactor = 0.3` |
+
+Смежные негативные сигналы других компонентов: FIRA-P (дисмисс рекомендованных людей), FIRA-C (дисмисс сообществ), FIRA-M (дисмисс треков) — см. соответствующие спеки; каждый живёт в своём модуле-владельце.
+
+### Хранение (схема `flora_core`, миграции `flora-migrate`)
+
+| Таблица | Владелец | Содержимое |
+|---------|----------|------------|
+| `user_feed_settings` | Content | Строка настроек на пользователя (text-enum'ы с `CHECK`) |
+| `user_feed_post_feedback` | Content | Отметки «не интересно» (user, post, author, created_at) |
+| `user_feed_hidden_authors` | Content | Скрытые авторы (user, author, created_at) |
+| `user_feed_community_dismissals` | Content | Скрытые сообщества (FIRA-C) |
+| `user_people_dismissals` | Users | Дисмиссы рекомендаций людей (FIRA-P) |
+| `music_track_dismissals` | Music | Дисмиссы треков (FIRA-M) |
+
+### Инвалидация
+
+Любое изменение настроек или негативного фидбека инвалидирует per-user кэш ленты (и кэш рекомендаций соответствующего компонента) немедленно — пользовательское действие обязано быть видно при следующем запросе, TTL не дожидаемся.
+
+### Конфиг ядра (дефолты кода, не в appsettings)
+
+| Ключ | Значение |
+|------|----------|
+| `SeenDemotionFactor` | 0.3 |
+| `NotInterestedAuthorPenalty` | 0.5 |
+| `NotInterestedAuthorCap` | 3 |
 
 ---
 
@@ -305,11 +364,11 @@ Explicit onboarding (выбор тем) переводит систему из P
 
 ## Feedback Loop
 
-*Target v2* — кроме первого пункта в части like/comment/repost: эти события уже учитываются ретроспективно через `authorAffinity` (запрос истории взаимодействий за `InteractionHistoryDays`), без событийного pipeline.
+*Target v2* — кроме первого пункта в части like/comment/repost: эти события уже учитываются ретроспективно через `authorAffinity` (запрос истории взаимодействий за `InteractionHistoryDays`), без событийного pipeline. Персистентная часть негативного фидбека (`hide` автора, «не интересно» по посту) реализована в v1.1 — §User Controls.
 
 - Каждое engagement-событие с постом (like, comment, repost, **view_full, view_partial,** hide, skip) асинхронно отправляется в UIP update pipeline с весами, определёнными в [`FIRA.md §2.2`](./FIRA.md).
-- `hide`/`skip` на конкретный пост: автор и его темы немедленно понижаются в кэше сессии.
-- Повторный показ скрытого поста в той же сессии запрещён.
+- `hide`/`skip` на конкретный пост: автор и его темы немедленно понижаются в кэше сессии; v1.1 — «не интересно» персистентно исключает пост и штрафует автора (§User Controls).
+- Повторный показ скрытого поста в той же сессии запрещён; v1.1 — «не интересно»-пост исключён из пула персистентно.
 - `view_full` и `view_partial` трекаются клиентом на основе времени видимости поста во viewport; порог «полного просмотра» — configurable (`fullViewThresholdSeconds`, дефолт: 5 с).
 
 ---
@@ -330,7 +389,7 @@ Explicit onboarding (выбор тем) переводит систему из P
 |----------|---------|
 | Cache scope | Per-user |
 | TTL | 120 с |
-| Инвалидация | Лайк, анлайк, репост, анрепост, комментарий, новый пост, follow/unfollow, join/leave сообщества, `hide` |
+| Инвалидация | Лайк, анлайк, репост, анрепост, комментарий, новый пост, follow/unfollow, join/leave сообщества, `hide`/`not-interested`, изменение feed-settings (§User Controls) |
 | Метаданные ответа | `generatedAt` (UTC), `expiresAt` (UTC) |
 | Индикатор новых постов | `GET /feed/has-new?since=<generatedAt>` |
 | Интервал поллинга has-new | 30 с (рекомендуется) |
@@ -398,13 +457,13 @@ Trending определяется как топ по упрощённому enga
 | 3 | Exploration-доля ≈ 12.5 % вместо ε = 15 % | `period = max(1, round(1/ε − 1)) = 6` → 1/7 ≈ 14.3 % (`FiraFeedPostProcessing.ExplorationPeriod`) |
 | 4 | Trending-недетерминизм (`Take` без `ORDER BY`) | детерминированный префикс: `ORDER BY CreatedAt desc, PostUuid asc` до `Take`, стабильное ранжирование |
 | 6 | Author diversity: серии в хвосте | строгий второй проход с повторной проверкой streak (`FiraFeedPostProcessing.ApplyAuthorDiversity`) |
+| 5 | `hide`-эндпоинт и toggle репостов | §User Controls (v1.1, Rust): настройки ленты, «не интересно», скрытие авторов; при дефолтах поведение паритетно as-built v1 |
 
 **Открыто:**
 
 | # | Отклонение | Факт | Требование |
 |---|-----------|------|------------|
-| 5 | `hide`-эндпоинт и toggle репостов | нет эндпоинта, нет настройки | v1.1 (§Repost Signal, §Feedback Loop) |
-| 7 | `has-new` | учитывает только посты подписок | допустимо: дешёвый индикатор; полная семантика — v2 |
+| 7 | `has-new` | учитывает только посты подписок (v1.1: с фильтром скрытых авторов) | допустимо: дешёвый индикатор; полная семантика — v2 |
 
 ### Стохастические точки (исключаются из differential-диффа C# ↔ Rust)
 
@@ -438,7 +497,7 @@ Trending определяется как топ по упрощённому enga
 - **Теги постов:** авто-извлечение тегов из текста (NLP) vs. явные теги от автора vs. комбинация. Решение v2: старт с явных тегов автора (см. [`FIRA.md §17`](./FIRA.md)); NLP — v3.
 - **Author affinity decay:** должен ли распад по времени для author affinity быть быстрее/медленнее, чем для тем? В v1 затухания по событиям нет вовсе — используется жёсткое окно `InteractionHistoryDays = 90`; при введении UIP-затухания (v2) окно заменяется на `w_decayed`.
 - **Repost chain:** если A репостнул B, а B репостнул оригинал — суммируются ли социальные сигналы?
-- **Feed freshness:** механизм «не показывать один и тот же пост дольше 24 ч» без расширения кэша (seen-post demotion — кандидат в v1.1, [`FIRA.md §17`](./FIRA.md)).
+- ~~**Feed freshness:** механизм «не показывать один и тот же пост дольше 24 ч»~~ — закрыто в 0.4: seen-post demotion/hide по журналу просмотров (§User Controls, `seenPosts`). Остаётся открытым тюнинг окна «просмотренности».
 - **ContentLifecycle auto-classification:** NLP-классификация `Ephemeral/Standard/Evergreen` по тексту поста без ручного указания автором; порог точности для production.
 - **CF-источник и freshness:** CF-кандидаты могут быть стареющими постами (пользователи-соседи лайкали их давно) — нужен ли дополнительный фильтр по `ageHours` для CF-пула?
 - **Position bias bootstrapping:** как корректно инициализировать `expectedCtr(pos)` при нулевой истории данных — equal-weight или prior из академических datasets?

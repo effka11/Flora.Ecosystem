@@ -18,6 +18,8 @@ type PeopleRowActionsProps = {
   isSubscribed: boolean;
   actionAnimEpoch: number;
   onToggleSubscribe: () => void;
+  /** §User Controls (FIRA-P): «не интересно» — только в списке рекомендаций. */
+  onDismiss?: () => void;
 };
 
 function IconUnsubscribe() {
@@ -30,7 +32,21 @@ function IconUnsubscribe() {
   );
 }
 
-export function PeopleRowActions({ user, isSubscribed, actionAnimEpoch, onToggleSubscribe }: PeopleRowActionsProps) {
+function IconDismiss() {
+  return (
+    <svg className={styles.btnIconSvg} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+      <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function PeopleRowActions({
+  user,
+  isSubscribed,
+  actionAnimEpoch,
+  onToggleSubscribe,
+  onDismiss,
+}: PeopleRowActionsProps) {
   const messagesHref = messagesOpenChatQuery({
     userUuid: user.id,
     username: user.username,
@@ -75,6 +91,21 @@ export function PeopleRowActions({ user, isSubscribed, actionAnimEpoch, onToggle
     </Link>
   );
 
+  const dismissControl = onDismiss ? (
+    <button
+      type="button"
+      className={`${styles.btnIcon} ${styles.btnIconUnsubscribe}`}
+      onClick={(e) => {
+        stopRowNav(e);
+        onDismiss();
+      }}
+      title="Не интересно"
+      aria-label={`Не интересно: ${user.displayName}`}
+    >
+      <IconDismiss />
+    </button>
+  ) : null;
+
   return (
     <div
       key={`${isSubscribed ? "sub" : "unsub"}-${actionAnimEpoch}`}
@@ -86,7 +117,10 @@ export function PeopleRowActions({ user, isSubscribed, actionAnimEpoch, onToggle
           {writeControl}
         </>
       ) : (
-        subscribeControl
+        <>
+          {dismissControl}
+          {subscribeControl}
+        </>
       )}
     </div>
   );
