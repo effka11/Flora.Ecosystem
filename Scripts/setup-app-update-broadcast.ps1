@@ -26,7 +26,7 @@ $ok = $true
 
 if (Test-IsLocalBroadcastApiUrl $apiUrl) {
     Write-Host 'WARN: API URL is local' -ForegroundColor Yellow
-    Write-Host "       $apiUrl — for prod use Scripts/broadcast.env or -ApiBaseUrl." -ForegroundColor Yellow
+    Write-Host "       $apiUrl - for prod use Scripts/broadcast.env or -ApiBaseUrl." -ForegroundColor Yellow
     $ok = $false
 } else {
     Write-Host "[OK] API URL: $apiUrl" -ForegroundColor Green
