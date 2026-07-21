@@ -6,11 +6,10 @@
 //!   декодируются одинаково всегда; старые v1/v2/v6 не регенерируются.
 //! - **Reference encoder.** Legacy v3/v4/v5 фиксируются через явную
 //!   `encode_with_version` и могут служебно регенерироваться с
-//!   `FRC_I_UPDATE_GOLDEN=1`. Замороженные lossy v7/v8 фиксируются через
+//!   `FRC_I_UPDATE_GOLDEN=1`. Замороженные lossy v7/v8/v9/v10 фиксируются через
 //!   явные `encode_with_version`/`encode_with_icc_version` и неизменяемы:
-//!   расхождение — ошибка реализации. Текущий v9 пишется публичными
-//!   `encode`/`encode_with_icc`; до заморозки v9 его вектора
-//!   регенерируются с `FRC_I_UPDATE_GOLDEN=1`.
+//!   расхождение — ошибка реализации. Текущий frozen v10 также пишется
+//!   публичными `encode`/`encode_with_icc`.
 
 use frc_i::{
     EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc, encode_with_icc_version,
@@ -37,6 +36,32 @@ fn golden_source() -> (u32, u32, Vec<u8>) {
             data.push(((y * 3) as i32 + n / 2).clamp(0, 255) as u8);
             data.push((((x + y) * 2) as i32 - n + edge / 2).clamp(0, 255) as u8);
             data.push(if (x / 8 + y / 8) % 2 == 0 { 255 } else { 200 });
+        }
+    }
+    (w, h, data)
+}
+
+/// Источник v10 с root-local высокочастотной активностью разной силы.
+/// Он обязан разводить симметричный AQ v9 и асимметричный AQ v10 не только
+/// байтом версии, иначе encode-golden не защищал бы новые решения кодера.
+fn golden_v10_source() -> (u32, u32, Vec<u8>) {
+    let (w, h) = (193u32, 129u32);
+    let root_cols = w.div_ceil(32);
+    let mut data = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let root = x / 32 + (y / 32) * root_cols;
+            let amplitude = 1 + (root * 7 % 24) as i32;
+            let texture = if (x + y) & 1 == 0 {
+                amplitude
+            } else {
+                -amplitude
+            };
+            let ramp = 36 + (x * 116 / w + y * 48 / h) as i32;
+            data.push((ramp + texture).clamp(0, 255) as u8);
+            data.push((ramp + 12 + texture).clamp(0, 255) as u8);
+            data.push((ramp - 8 + texture).clamp(0, 255) as u8);
+            data.push(if (x / 11 + y / 7) % 2 == 0 { 255 } else { 208 });
         }
     }
     (w, h, data)
@@ -465,10 +490,10 @@ fn golden_v8_lossy_icc_bitstream_frozen() {
     assert_eq!(decoded.icc.as_deref(), Some(icc.as_slice()));
 }
 
-// --- v9: encode-вектора текущего кодера (регенерируемы до заморозки v9) ---------
+// --- v9: encode-заморозка (per-root delta-Q) -------------------------------------
 
 #[test]
-fn golden_v9_lossy_bitstream_current() {
+fn golden_v9_lossy_bitstream_frozen() {
     let (w, h, data) = golden_source();
     let img = ImageView {
         width: w,
@@ -476,35 +501,13 @@ fn golden_v9_lossy_bitstream_current() {
         format: PixelFormat::Rgba8,
         data: &data,
     };
-    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 9).unwrap();
     let info = read_info(&fri).unwrap();
-    assert_eq!(info.version, 9, "публичный lossy-кодер должен писать v9");
+    assert_eq!(info.version, 9);
     assert!(!info.metadata);
-    check_or_update("golden-v9-lossy-q75.fri", &fri);
-    assert_eq!(
-        fri,
-        encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 9).unwrap(),
-        "публичный encode() обязан совпадать с явным v9"
-    );
-}
+    check_frozen("golden-v9-lossy-q75.fri", &fri);
 
-#[test]
-fn golden_v9_lossy_decode_is_deterministic() {
     const EXPECTED_FNV1A: u64 = 0x13BA_2A93_673C_50A4;
-    if std::env::var_os("FRC_I_UPDATE_GOLDEN").is_some() {
-        let (w, h, data) = golden_source();
-        let img = ImageView {
-            width: w,
-            height: h,
-            format: PixelFormat::Rgba8,
-            data: &data,
-        };
-        let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
-        let out = decode(&fri).unwrap();
-        println!("golden v9 decode fnv1a = {:#018X}", fnv1a(&out.data));
-        return;
-    }
-    let fri = std::fs::read(data_path("golden-v9-lossy-q75.fri")).expect("нет golden-файла v9");
     let out = decode(&fri).unwrap();
     assert_eq!((out.width, out.height), (97, 61));
     assert_eq!(
@@ -515,8 +518,70 @@ fn golden_v9_lossy_decode_is_deterministic() {
 }
 
 #[test]
-fn golden_v9_lossy_icc_bitstream_current() {
+fn golden_v9_lossy_icc_bitstream_frozen() {
     let (w, h, data) = golden_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let icc = golden_icc();
+    let fri = encode_with_icc_version(&img, EncodeMode::Lossy { quality: 75 }, &icc, 9).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 9);
+    assert!(info.metadata);
+    check_frozen("golden-v9-lossy-icc-q75.fri", &fri);
+    assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
+    let decoded = decode(&fri).unwrap();
+    assert_eq!(decoded.icc.as_deref(), Some(icc.as_slice()));
+}
+
+// --- v10: encode-заморозка (асимметричный AQ поверх wire v9) --------------------
+
+#[test]
+fn golden_v10_lossy_bitstream_frozen() {
+    let (w, h, data) = golden_v10_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 10, "публичный lossy-кодер должен писать v10");
+    assert!(!info.metadata);
+    check_frozen("golden-v10-lossy-q75.fri", &fri);
+    let mut relabeled_v9 = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 9).unwrap();
+    relabeled_v9[4] = 10;
+    assert_ne!(
+        fri, relabeled_v9,
+        "v10 golden обязан фиксировать новые AQ-решения, а не только version byte"
+    );
+    assert_eq!(
+        fri,
+        encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 10).unwrap(),
+        "публичный encode() обязан совпадать с явным v10"
+    );
+}
+
+#[test]
+fn golden_v10_lossy_decode_is_deterministic() {
+    const EXPECTED_FNV1A: u64 = 0x571A_3448_1467_32A5;
+    let fri = std::fs::read(data_path("golden-v10-lossy-q75.fri")).expect("нет golden-файла v10");
+    let out = decode(&fri).unwrap();
+    assert_eq!((out.width, out.height), (193, 129));
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "выход декодера v10 недетерминирован"
+    );
+}
+
+#[test]
+fn golden_v10_lossy_icc_bitstream_frozen() {
+    let (w, h, data) = golden_v10_source();
     let img = ImageView {
         width: w,
         height: h,
@@ -526,9 +591,9 @@ fn golden_v9_lossy_icc_bitstream_current() {
     let icc = golden_icc();
     let fri = encode_with_icc(&img, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
     let info = read_info(&fri).unwrap();
-    assert_eq!(info.version, 9);
+    assert_eq!(info.version, 10);
     assert!(info.metadata);
-    check_or_update("golden-v9-lossy-icc-q75.fri", &fri);
+    check_frozen("golden-v10-lossy-icc-q75.fri", &fri);
     assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
     let decoded = decode(&fri).unwrap();
     assert_eq!(decoded.icc.as_deref(), Some(icc.as_slice()));

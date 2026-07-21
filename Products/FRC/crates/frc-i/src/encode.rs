@@ -10,8 +10,9 @@ use crate::dct::{quant_matrices, quant_matrices_v8, quant_matrices_v9};
 use crate::error::EncodeError;
 use crate::format::{
     CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
-    VERSION_ADAPTIVE, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX, VERSION_METADATA, VERSION_MIN,
-    VERSION_PERCEPTUAL, VERSION_RECT, build_metadata_block, tile_grid,
+    VERSION_ADAPTIVE, VERSION_ASYMMETRIC_AQ, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX,
+    VERSION_METADATA, VERSION_MIN, VERSION_PERCEPTUAL, VERSION_RECT, build_metadata_block,
+    tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
@@ -56,14 +57,26 @@ const DQ_STRUCTURE_DISCOUNT: f32 = 0.9;
 /// ещё не значит «маскирует»; выше порога Kodak/picsum без per-image
 /// BA-регрессий (кроме pic29, см. отчёт), средние почти не страдают.
 const DQ_UP_FLOOR: f32 = 4.0;
+/// Сила AQ v10 для down-ступеней (уточнение гладких/структурных корней).
+/// Полный Kodak/picsum-полигон §11.6: 2.75 даёт положительный BD-rate
+/// одновременно по SSIMULACRA2 и butteraugli.
+const DQ_STRENGTH_LUMA_V10: f32 = 2.75;
+/// Асимметрия силы v10: множитель силы для up-ступеней (огрубление).
+/// Эффективная сила вверх = 2.75 · 9/11 = 2.25, вниз = 2.75.
+const DQ_UP_SCALE_V10: f32 = 9.0 / 11.0;
 
 /// Настройки AQ per-plane с env-переопределением для A/B-прогонов
 /// (`FRC_I_DQ_LUMA`, `FRC_I_DQ_CHROMA`, `FRC_I_DQ_QMIN`, `FRC_I_DQ_UP`,
-/// `FRC_I_DQ_DOWN`, `FRC_I_DQ_DZ`, `FRC_I_DQ_SD`); без переменных — константы.
-fn dq_tunings() -> (lossy::DqTuning, lossy::DqTuning) {
-    static TUNINGS: std::sync::OnceLock<(lossy::DqTuning, lossy::DqTuning)> =
+/// `FRC_I_DQ_DOWN`, `FRC_I_DQ_DZ`, `FRC_I_DQ_SD`, v10:
+/// `FRC_I_DQ_UPSCALE`); без переменных — константы.
+///
+/// Версионность: v9 заморожен — сила 2.0 симметрично (байт-в-байт
+/// совпадение с golden v9); v10 использует отдельные down/up-силы.
+/// Хрома остаётся нейтральной в обеих версиях.
+fn dq_tunings(version: u8) -> (lossy::DqTuning, lossy::DqTuning) {
+    static TUNINGS: std::sync::OnceLock<[(lossy::DqTuning, lossy::DqTuning); 2]> =
         std::sync::OnceLock::new();
-    *TUNINGS.get_or_init(|| {
+    let per_version = TUNINGS.get_or_init(|| {
         fn read<T: std::str::FromStr>(name: &str, default: T) -> T {
             std::env::var(name)
                 .ok()
@@ -72,6 +85,7 @@ fn dq_tunings() -> (lossy::DqTuning, lossy::DqTuning) {
         }
         let base = lossy::DqTuning {
             strength: 0.0,
+            up_scale: 1.0,
             quadrant_min: read("FRC_I_DQ_QMIN", u8::from(DQ_QUADRANT_MIN)) != 0,
             max_up: read("FRC_I_DQ_UP", DQ_MAX_UP),
             max_down: read("FRC_I_DQ_DOWN", DQ_MAX_DOWN),
@@ -79,24 +93,29 @@ fn dq_tunings() -> (lossy::DqTuning, lossy::DqTuning) {
             structure_discount: read("FRC_I_DQ_SD", DQ_STRUCTURE_DISCOUNT),
             up_floor: read("FRC_I_DQ_UPFLOOR", DQ_UP_FLOOR),
         };
-        (
-            lossy::DqTuning {
-                strength: read("FRC_I_DQ_LUMA", DQ_STRENGTH_LUMA),
-                ..base
-            },
-            lossy::DqTuning {
-                strength: read("FRC_I_DQ_CHROMA", DQ_STRENGTH_CHROMA),
-                ..base
-            },
-        )
-    })
+        let luma_v9 = lossy::DqTuning {
+            strength: read("FRC_I_DQ_LUMA", DQ_STRENGTH_LUMA),
+            ..base
+        };
+        let chroma = lossy::DqTuning {
+            strength: read("FRC_I_DQ_CHROMA", DQ_STRENGTH_CHROMA),
+            ..base
+        };
+        let luma_v10 = lossy::DqTuning {
+            strength: read("FRC_I_DQ_LUMA", DQ_STRENGTH_LUMA_V10),
+            up_scale: read("FRC_I_DQ_UPSCALE", DQ_UP_SCALE_V10),
+            ..luma_v9
+        };
+        [(luma_v9, chroma), (luma_v10, chroma)]
+    });
+    per_version[usize::from(version >= VERSION_ASYMMETRIC_AQ)]
 }
 
 pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeError> {
     encode_impl(img, mode, base_version(mode), None)
 }
 
-/// Кодирует с вложением ICC-профиля. Lossy использует текущий v9, lossless —
+/// Кодирует с вложением ICC-профиля. Lossy использует текущий v10, lossless —
 /// минимальный v6, в котором появился блок метаданных.
 pub fn encode_with_icc(
     img: &ImageView<'_>,
@@ -106,17 +125,17 @@ pub fn encode_with_icc(
     encode_with_icc_version(img, mode, icc, base_version(mode).max(VERSION_METADATA))
 }
 
-/// Версию диктует набор инструментов: lossy пишет текущий v9, lossless —
+/// Версию диктует набор инструментов: lossy пишет текущий v10, lossless —
 /// v3 (слой блоков не используется, файл не должен требовать более нового
 /// декодера).
 fn base_version(mode: EncodeMode) -> u8 {
     match mode {
-        EncodeMode::Lossy { .. } => VERSION_PERCEPTUAL,
+        EncodeMode::Lossy { .. } => VERSION_ASYMMETRIC_AQ,
         EncodeMode::Lossless => VERSION_CURRENT,
     }
 }
 
-/// Кодирует с явной версией битстрима (1..=9). Публичный кодер выбирает
+/// Кодирует с явной версией битстрима (1..=10). Публичный кодер выбирает
 /// версию сам (см. `encode`); явные версии — только для генерации
 /// golden-векторов и тестов.
 #[doc(hidden)]
@@ -128,8 +147,8 @@ pub fn encode_with_version(
     encode_impl(img, mode, version, None)
 }
 
-/// Кодирует с ICC-профилем и явной версией битстрима: заморозка v7/v8 golden
-/// (`encode_with_icc` пишет текущий v9).
+/// Кодирует с ICC-профилем и явной версией битстрима: заморозка v7..v10 golden
+/// (`encode_with_icc` пишет текущий v10).
 #[doc(hidden)]
 pub fn encode_with_icc_version(
     img: &ImageView<'_>,
@@ -519,7 +538,7 @@ fn encode_lossy(
         }
     }
 
-    // Матрицы плоскостей: v8/v9 — пошаговые Y/Co/Cg, до v8 — luma/chroma/chroma.
+    // Матрицы плоскостей: v8+ — пошаговые Y/Co/Cg, до v8 — luma/chroma/chroma.
     let q_planes: [[u16; 64]; 3] = if version >= VERSION_PERCEPTUAL {
         let (qy, qco, qcg) = quant_matrices_v9(quality);
         [qy, qco, qcg]
@@ -530,13 +549,13 @@ fn encode_lossy(
         let (q_luma, q_chroma) = quant_matrices(version, quality);
         [q_luma, q_chroma, q_chroma]
     };
-    let (dq_luma, dq_chroma) = dq_tunings();
+    let (dq_luma, dq_chroma) = dq_tunings(version);
 
     let tiles = tile_grid(img.width, img.height);
     let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
         // v7+: банк адаптивных моделей общий для всех плоскостей тайла.
-        // Раскладка v8 совпадает с v7 (отличие v8 — цвет/qmat); v9 добавляет DQ.
+        // Раскладка v8 совпадает с v7 (отличие v8 — цвет/qmat); v9+ добавляет DQ.
         let mut bank = if version >= VERSION_PERCEPTUAL {
             let (groups, kinds) = lossy::ctx_meta_v9();
             Some(crate::arith::ModelBank::new(groups, kinds))
@@ -606,7 +625,7 @@ struct DctConfig {
     version: u8,
     deblock: bool,
     cdef: bool,
-    /// Настройки адаптивной квантизации v9 (игнорируются до v9).
+    /// Настройки адаптивной квантизации v9/v10 (игнорируются до v9).
     dq: lossy::DqTuning,
 }
 
@@ -623,8 +642,8 @@ fn dct_payload(
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     if config.version >= VERSION_ADAPTIVE {
-        // v7/v8/v9 делят дерево и энтропию; v8 меняет цвет/qmat,
-        // v9 добавляет per-root delta-Q.
+        // v7..v10 делят дерево и энтропию; v8 меняет цвет/qmat,
+        // v9+ добавляет per-root delta-Q.
         let recon = if config.version >= VERSION_PERCEPTUAL {
             lossy::encode_tile_plane_v9(buf, cfl_luma, w, h, qmat, config.dq, &mut syms, &mut raw)
         } else {

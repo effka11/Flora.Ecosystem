@@ -1393,7 +1393,8 @@ fn dq_activity32(block: &[i32; 1024], tuning: DqTuning) -> f32 {
 /// Кодерная эвристика адаптивной квантизации (свобода кодера): индекс
 /// delta-Q корня по лог-активности относительно средней по плоскости тайла.
 /// Текстуры маскируют шум квантования — шаг растёт; гладкие зоны требуют
-/// точности — шаг падает.
+/// точности — шаг падает. v10 применяет отдельные силы для уточнения и
+/// огрубления: это меняет только решения референсного кодера.
 fn choose_dq_indices(buf: &[i16], w: usize, h: usize, tuning: DqTuning) -> Vec<u8> {
     let root_cols = w.div_ceil(32);
     let root_rows = h.div_ceil(32);
@@ -1416,11 +1417,20 @@ fn choose_dq_indices(buf: &[i16], w: usize, h: usize, tuning: DqTuning) -> Vec<u
     let up_floor_log = (1.0 + tuning.up_floor).log2();
     logs.into_iter()
         .map(|l| {
-            let raw_delta = tuning.strength * (l - mean);
+            // Асимметрия v10: уточнение гладких зон сильнее огрубления
+            // текстур (S2 растёт с силой вниз, butteraugli штрафует
+            // сильный up); при up_scale = 1.0 — референсное поведение v9.
+            let centered = l - mean;
+            let strength = if centered > 0.0 {
+                tuning.strength * tuning.up_scale
+            } else {
+                tuning.strength
+            };
+            let raw_delta = strength * centered;
             // Мёртвая зона: середина распределения остаётся нейтральной,
             // сигнал и PSNR-цена тратятся только на выраженные отклонения.
             let magnitude = (raw_delta.abs() - tuning.deadzone).max(0.0);
-            let mut delta = (magnitude.copysign(raw_delta)).round() as i32;
+            let mut delta = magnitude.copysign(raw_delta).round() as i32;
             if delta > 0 && l < up_floor_log {
                 delta = 0;
             }
@@ -1941,6 +1951,7 @@ mod tests {
         let qmat = quant_matrix(&crate::dct::BASE_Y_V8, 60);
         let tuning = DqTuning {
             strength: 1.0,
+            up_scale: 1.0,
             quadrant_min: false,
             max_up: 3,
             max_down: 4,

@@ -795,7 +795,7 @@ pub fn quant_matrices_v8(quality: u8) -> ([u16; 64], [u16; 64], [u16; 64]) {
 }
 
 /// Нормативные матрицы квантования v9: скалярные базы v8 (Y/Co/Cg 51/45/38);
-/// перераспределение шага по контенту делает per-root delta-Q (§7.18).
+/// перераспределение шага по контенту делает per-root delta-Q (§7.17–§7.18).
 pub fn quant_matrices_v9(quality: u8) -> ([u16; 64], [u16; 64], [u16; 64]) {
     quant_matrices_v8(quality)
 }
