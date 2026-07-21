@@ -8,6 +8,7 @@ type FloraScrollFlingNativeModule = {
   ensureVerticalFlingAlive?(viewTag: number, velocityY: number): void;
   installEdgeFlingGuard?(viewTag: number, edgeWidthDp: number, verticalSlopDp: number): void;
   uninstallEdgeFlingGuard?(viewTag: number): void;
+  setDrawerOverlayPresented?(presented: boolean): void;
 };
 
 const native =
@@ -31,12 +32,9 @@ export function cancelTouchAndResumeVerticalFling(
 ): void {
   if (!native || viewTag <= 0 || !Number.isFinite(velocityY)) return;
   if (typeof native.cancelTouchAndResumeVerticalFling === "function") {
-    // TODO(edge-debug): временная диагностика, убрать после проверки.
-    console.log(`[edge-guard] native cancel+fling tag=${viewTag} vel=${Math.round(velocityY)}`);
     native.cancelTouchAndResumeVerticalFling(viewTag, velocityY);
     return;
   }
-  console.log("[edge-guard] fallback resumeVerticalFling (native fn missing)");
   native.resumeVerticalFling(viewTag, velocityY);
 }
 
@@ -48,10 +46,16 @@ export function cancelTouchAndResumeVerticalFling(
 export function ensureVerticalFlingAlive(viewTag: number, velocityY: number): void {
   if (!native || viewTag <= 0 || !Number.isFinite(velocityY)) return;
   if (typeof native.ensureVerticalFlingAlive === "function") {
-    // TODO(edge-debug): временная диагностика, убрать после проверки.
-    console.log(`[edge-guard] ensure fling alive tag=${viewTag} vel=${Math.round(velocityY)}`);
     native.ensureVerticalFlingAlive(viewTag, velocityY);
   }
+}
+
+/**
+ * Пока drawer перекрывает ленту, касания принадлежат его panel/backdrop,
+ * поэтому ScrollView не должен трактовать их как намеренный tap-to-stop.
+ */
+export function setDrawerOverlayPresented(presented: boolean): void {
+  native?.setDrawerOverlayPresented?.(presented);
 }
 
 /**

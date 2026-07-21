@@ -18,7 +18,10 @@ import {
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { ensureVerticalFlingAlive } from "flora-scroll-fling";
+import {
+  ensureVerticalFlingAlive,
+  setDrawerOverlayPresented,
+} from "flora-scroll-fling";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -185,20 +188,6 @@ function settleProgress(
   );
 }
 
-/** TODO(edge-debug): временная диагностика edge-guard, убрать после проверки. */
-function logEdgeGuard(
-  stage: string,
-  phase: number,
-  viewTag: number,
-  velocity: number,
-  gapMs: number,
-  coasting: boolean,
-) {
-  console.log(
-    `[edge-guard] ${stage} phase=${phase} tag=${viewTag} vel=${velocity} gap=${gapMs}ms coasting=${coasting}`,
-  );
-}
-
 /** Стабильный слот: open-state меню не ререндерит tabs children. */
 const MenuContentSlot = memo(function MenuContentSlot({ children }: { children: ReactNode }) {
   return <>{children}</>;
@@ -269,6 +258,17 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   useEffect(() => {
     edgeEnabled.value = !visible && !presented ? 1 : 0;
   }, [edgeEnabled, presented, visible]);
+
+  useEffect(() => {
+    setDrawerOverlayPresented(presented);
+  }, [presented]);
+
+  useEffect(
+    () => () => {
+      setDrawerOverlayPresented(false);
+    },
+    [],
+  );
 
   useEffect(() => {
     setFrcImageQueuePaused(mediaPauseOwner, "drawer", presented);
@@ -434,18 +434,6 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           touchStartY.value = touch.absoluteY;
           edgeClaimed.value = 1;
           edgeVerticalHandover.value = 0;
-          {
-            const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
-            // TODO(edge-debug): временная диагностика, убрать после проверки.
-            runOnJS(logEdgeGuard)(
-              "down",
-              pane.phase.value,
-              pane.viewTag.value,
-              Math.round(pane.lastCoastVelocityY.value),
-              Math.round(performance.now() - pane.lastCoastEventTs.value),
-              pane.phase.value === SCROLL_PHASE_COAST,
-            );
-          }
         })
         .onTouchesMove((event, state) => {
           "worklet";
@@ -466,8 +454,6 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           cancelAnimation(progress);
           dragStartProgress.value = progress.value;
           runOnJS(beginDrawerMediaPause)();
-          // TODO(edge-debug): временная диагностика, убрать после проверки.
-          runOnJS(logEdgeGuard)("activate", -1, 0, 0, 0, false);
         })
         .onUpdate((event) => {
           "worklet";

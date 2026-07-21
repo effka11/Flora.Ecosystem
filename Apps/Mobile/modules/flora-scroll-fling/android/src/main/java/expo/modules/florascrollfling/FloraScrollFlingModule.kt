@@ -21,14 +21,31 @@ import kotlin.math.sign
 
 private const val TAG = "FloraScrollFling"
 
-/** Длительность покадрового монитора coast после флипа меню (кадров, ~650 мс). */
-private const val MONITOR_FRAMES = 40
+/** Потолок жизни покадрового сторожа coast (кадров, ~30 с — санити-предел). */
+private const val MONITOR_MAX_FRAMES = 1800
 
 /** Сколько кадров подряд позиция должна замереть, чтобы счесть coast убитым. */
 private const val MONITOR_STILL_FRAMES = 2
 
 /** Максимум перезапусков fling за одно окно монитора (защита от патологий). */
 private const val ENSURE_MAX_REFLINGS = 3
+
+/**
+ * Сколько кадров после обнаруженного kill монитор пытается перезапустить
+ * fling. Проверка края в момент коммита видит схлопнутую высоту контента
+ * FlashList — повтор через кадр-два попадает в уже восстановленную разметку.
+ */
+private const val RECOVER_TRY_FRAMES = 8
+
+/**
+ * Живость сторожа для дедупликации (мс). Во время React-коммита кадры не
+ * приходят по 150–200 мс (двойной стол — до ~400): пока heartbeat моложе
+ * окна, сторож считается живым и повторные запуски — no-op. Иначе JS-страховка,
+ * прилетевшая сразу после стола, инвалидирует рабочий сторож новым serial —
+ * до того, как тот увидит смерть скроллера (и новый стартует уже слепым:
+ * скроллер мёртв, направление неизвестно, контент схлопнут коммитом).
+ */
+private const val MONITOR_HEARTBEAT_FRESH_MS = 600L
 
 /** Ниже этой скорости (px/s) coast не реанимируем — лента почти стоит. */
 private const val MIN_RESUME_VELOCITY_PX = 60f
@@ -44,11 +61,23 @@ class FloraScrollFlingModule : Module() {
   private var guardSession: GuardSession? = null
   private var windowCallbackInstalled = false
 
-  /** Инкремент на каждый ACTION_DOWN — инвалидирует отложенные ensure-проверки. */
+  /**
+   * Drawer перекрывает ленту: его panel/backdrop получают касания, а не feed.
+   * Volatile нужен, потому что значение приходит с JS, а читается UI callback.
+   */
+  @Volatile
+  private var drawerOverlayPresented = false
+
+  /** Инвалидирует сторожа при намеренном catch/handover или edge-takeover. */
   private var ensureGeneration = 0
 
   /** Инкремент на каждый запуск монитора — активен только последний. */
   private var monitorSerial = 0
+
+  /** View, uptime и generation последнего кадра живого сторожа (дедуп запусков). */
+  private var monitorHeartbeatView: WeakReference<ReactScrollView>? = null
+  private var monitorHeartbeatMs = 0L
+  private var monitorHeartbeatGeneration = -1
 
   /** Скроллер, летевший на момент DOWN текущего жеста (для детекта catch). */
   private var flingingBeforeDispatch: OverScroller? = null
@@ -83,16 +112,19 @@ class FloraScrollFlingModule : Module() {
     }
 
     /**
-     * Страховка вокруг флипа меню (открытие/закрытие): покадровый монитор
-     * ~650 мс следит за scrollY; если позиция замерла на 2 кадра при живой
-     * скорости — мгновенный re-fling со скоростью OverScroller на момент
-     * смерти. Пока лента едет, монитор ничего не трогает. Любое новое
-     * касание отменяет монитор (остановку пальцем не переигрываем).
+     * Страховка вокруг флипа меню (открытие/закрытие): монитор живёт вместе
+     * с coast и перезапускает убитый fling со скоростью OverScroller на
+     * момент смерти. Пока лента едет, монитор ничего не трогает. Намеренный
+     * catch ленты или vertical handover отменяет монитор.
      */
     Function("ensureVerticalFlingAlive") { viewTag: Int, velocityY: Double ->
       withVerticalScrollView(viewTag) { scrollView ->
         startCoastMonitor(scrollView, velocityY)
       }
+    }
+
+    Function("setDrawerOverlayPresented") { presented: Boolean ->
+      drawerOverlayPresented = presented
     }
 
     /**
@@ -218,24 +250,41 @@ class FloraScrollFlingModule : Module() {
     }
     window.callback = GuardWindowCallback(original, ::onWindowTouchBefore, ::onWindowTouchAfter)
     windowCallbackInstalled = true
-    Log.d(TAG, "edge-guard window callback installed")
   }
 
   private fun onWindowTouchAfter(event: MotionEvent) {
-    if (event.actionMasked != MotionEvent.ACTION_DOWN) return
-    val scroller = flingingBeforeDispatch
-    flingingBeforeDispatch = null
-    // Летел до диспатча и остановился внутри него — палец поймал ленту.
-    fingerCaughtFling = scroller != null && scroller.isFinished
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        val scroller = flingingBeforeDispatch
+        flingingBeforeDispatch = null
+        // Летел до диспатча и остановился внутри него — палец поймал ленту
+        // (катч/тап-стоп). Исключение — представленный drawer: его panel и
+        // backdrop перекрывают feed, поэтому остановка ScrollView во время
+        // такого DOWN побочна и сторож должен восстановить coast.
+        val stoppedDuringDispatch = scroller != null && scroller.isFinished
+        fingerCaughtFling = stoppedDuringDispatch && !drawerOverlayPresented
+        if (fingerCaughtFling) {
+          ensureGeneration++
+        }
+      }
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+        // Любой жест, после которого лента летит (flick пальцем или handback
+        // guard-сессии), взводит сторож на весь coast: kill от React-коммита
+        // меню может прилететь в любой момент — открытие, закрытие, поздние
+        // коррекции. Пока инерция жива, сторож перезапускает её в тот же кадр.
+        val flinging = firstFlingingGuardedView() ?: return
+        startCoastMonitor(flinging, 0.0)
+      }
+    }
   }
 
   /** Первый зарегистрированный видимый ScrollView с летящим скроллером. */
-  private fun firstFlingingGuardedScroller(): OverScroller? {
+  private fun firstFlingingGuardedView(): ReactScrollView? {
     for (entry in guards.values) {
       val view = entry.viewRef.get() ?: continue
       if (!view.isAttachedToWindow || !view.isShown) continue
       val scroller = resolveScroller(view) ?: continue
-      if (!scroller.isFinished) return scroller
+      if (!scroller.isFinished) return view
     }
     return null
   }
@@ -243,12 +292,15 @@ class FloraScrollFlingModule : Module() {
   private fun onWindowTouchBefore(event: MotionEvent) {
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
-        ensureGeneration++
         fingerCaughtFling = false
         maybeStartGuardSession(event)
         // Takeover сам останавливает скроллер — это не catch пальцем.
         flingingBeforeDispatch =
-          if (guardSession == null) firstFlingingGuardedScroller() else null
+          if (guardSession == null) {
+            firstFlingingGuardedView()?.let { resolveScroller(it) }
+          } else {
+            null
+          }
       }
       MotionEvent.ACTION_MOVE -> {
         val session = guardSession ?: return
@@ -261,9 +313,10 @@ class FloraScrollFlingModule : Module() {
         if (dy > session.verticalSlopPx && dy > dx) {
           // Вертикальный жест: драйвер останавливается, лента замирает на
           // месте — дальше её нативно «ловит» палец (intercept-MOVE + drag).
+          // Палец взял ленту — сторожа гасим, как при катче.
           session.driver.stop()
           guardSession = null
-          Log.d(TAG, "guard: vertical handover dx=$dx dy=$dy")
+          ensureGeneration++
         } else if (dx > session.verticalSlopPx && dx > dy) {
           session.lockedHorizontal = true
         }
@@ -276,14 +329,8 @@ class FloraScrollFlingModule : Module() {
         if (abs(velocity) >= 1f) {
           // Палец ушёл — возвращаем инерцию реальному скроллеру: дальше
           // всё нативно (tap-to-stop, momentum-события, конец ленты).
+          // Сторож взводится в after-хуке этого же UP (лента снова летит).
           session.scrollView.fling(velocity.roundToInt())
-          Log.d(TAG, "guard: handback fling v=$velocity")
-          // React-коммит открытия меню может тут же убить этот fling —
-          // армируем сторож сразу, без ожидания JS-вызова.
-          val density = session.scrollView.resources.displayMetrics.density
-          session.scrollView.postOnAnimation {
-            startCoastMonitor(session.scrollView, (velocity / density).toDouble())
-          }
         }
       }
     }
@@ -310,38 +357,89 @@ class FloraScrollFlingModule : Module() {
       // скроллер останавливается (isFinished=true → катчить нечего),
       // движение бесшовно продолжает драйвер с той же скоростью.
       scroller.abortAnimation()
+      // Иначе живой монитор примет этот abort за kill и перезапустит реальный
+      // скроллер параллельно драйверу: два скроллера дерутся за scrollY, а
+      // flywheel OverScroller на handback суммирует их скорости (2×).
+      ensureGeneration++
       val driver = EdgeFlingDriver(scrollView)
       driver.start(velocity)
       guardSession = GuardSession(scrollView, entry.verticalSlopPx, x, y, driver)
-      Log.d(TAG, "guard: takeover v=$velocity")
       return
     }
   }
 
   /**
-   * Покадровый сторож coast: ловит abort реального OverScroller (переход
-   * isFinished false→true при живой currVelocity — естественная остановка
-   * приходит с угасшей скоростью) и перезапускает fling в тот же кадр.
-   * Fallback — детект по замершему scrollY, если скроллер недоступен.
+   * Покадровый сторож coast: живёт, пока жива инерция ленты, и ловит abort
+   * реального OverScroller (переход isFinished false→true при живой
+   * currVelocity — естественная остановка приходит с угасшей скоростью),
+   * перезапуская fling в тот же кадр. Kill от React-коммита меню может
+   * прилететь в любой момент coast — открытие, закрытие, поздние коррекции —
+   * поэтому окно не фиксировано. Направление рестарта — знак последнего
+   * наблюдённого сдвига scrollY (истинное движение, переживает abort);
+   * fallbackVelocityDp — резерв, когда сдвига ещё не видели (kill до первого
+   * кадра). Любое новое касание отменяет сторож: остановку пальцем и жесты
+   * не переигрываем.
    */
   private fun startCoastMonitor(scrollView: ReactScrollView, fallbackVelocityDp: Double) {
+    // Активная guard-сессия сама ведёт ленту драйвером (реальный скроллер
+    // намеренно остановлен) — сторож тут запустил бы паразитный fling.
+    if (guardSession?.scrollView === scrollView) {
+      return
+    }
+    // Живой сторож той же generation уже висит на этой ленте — не сбрасываем
+    // (он хранит направление и wasRunning; новый после коммит-стола стартовал
+    // бы слепым). Смена generation (новое касание) даёт новому дорогу сразу.
+    if (
+      monitorHeartbeatView?.get() === scrollView &&
+      monitorHeartbeatGeneration == ensureGeneration &&
+      SystemClock.uptimeMillis() - monitorHeartbeatMs < MONITOR_HEARTBEAT_FRESH_MS
+    ) {
+      return
+    }
     val serial = ++monitorSerial
     val generation = ensureGeneration
     val scroller = resolveScroller(scrollView)
+    monitorHeartbeatView = WeakReference(scrollView)
+    monitorHeartbeatMs = SystemClock.uptimeMillis()
+    monitorHeartbeatGeneration = generation
     val monitor = object : Runnable {
-      private var framesLeft = MONITOR_FRAMES
+      private var framesLeft = MONITOR_MAX_FRAMES
       private var lastY = scrollView.scrollY
       private var stillFrames = 0
       private var reflings = 0
       private var firstFrame = true
       private var wasRunning = scroller != null && !scroller.isFinished
 
+      /** Осталось кадров на попытки восстановления после обнаруженного kill. */
+      private var recoverFramesLeft = 0
+
+      /**
+       * Направление coast засеивается сразу: kill может прилететь до первого
+       * кадра монитора, когда сдвиг ещё не наблюдался.
+       */
+      private var lastDir = when {
+        scroller != null && !scroller.isFinished ->
+          sign((scroller.finalY - scroller.currY).toFloat()).toInt()
+        else -> 0
+      }
+
       override fun run() {
-        // Новое касание (тап-стоп, catch пальцем) или более свежий монитор
-        // отменяют этот: остановку пальцем не переигрываем.
+        // Более свежий сторож или новое касание ленты (тап-стоп, catch,
+        // vertical handover — generation растёт) отменяют этот: остановку
+        // пальцем не переигрываем.
         if (serial != monitorSerial || generation != ensureGeneration) return
+        if (!scrollView.isAttachedToWindow) return
+        monitorHeartbeatMs = SystemClock.uptimeMillis()
         val finished = scroller?.isFinished
         val y = scrollView.scrollY
+        if (finished == false) {
+          // Направление — намерение живого скроллера. Сдвиги scrollY для этого
+          // непригодны: коррекции FlashList двигают позицию против coast.
+          val towardFinal = sign((scroller.finalY - scroller.currY).toFloat())
+          if (towardFinal != 0f) lastDir = towardFinal.toInt()
+        } else if (finished == null && y != lastY) {
+          lastDir = if (y > lastY) 1 else -1
+        }
         var died = false
         if (finished != null) {
           if (finished && wasRunning) died = true
@@ -363,16 +461,74 @@ class FloraScrollFlingModule : Module() {
         }
         lastY = y
         firstFrame = false
-        if (died && reflings < ENSURE_MAX_REFLINGS) {
-          val velocityPx = resolveResumeVelocityPx(scrollView, fallbackVelocityDp)
-          // Скорость угасла ниже порога — лента доехала сама, всё честно.
-          if (abs(velocityPx) < MIN_RESUME_VELOCITY_PX) return
-          Log.d(TAG, "monitor: fling aborted by menu flip, instant re-fling vy=$velocityPx")
-          scrollView.fling(velocityPx.roundToInt())
-          reflings++
-          wasRunning = true
+        if (died) {
+          recoverFramesLeft = RECOVER_TRY_FRAMES
+        }
+        if (recoverFramesLeft > 0 && finished != false) {
+          recoverFramesLeft--
+          tryRecover()
+        } else if (finished == true && recoverFramesLeft == 0) {
+          // Естественный конец инерции — сторож больше не нужен.
+          return
         }
         if (--framesLeft > 0) scrollView.postOnAnimation(this)
+      }
+
+      /**
+       * Перезапуск убитого fling. Может не удаться в кадре kill-а (FlashList
+       * в момент коммита схлопывает контент — «край» ложный); тогда повтор
+       * на следующих кадрах окна RECOVER_TRY_FRAMES, пока разметка не
+       * восстановится.
+       */
+      private fun tryRecover() {
+        if (reflings >= ENSURE_MAX_REFLINGS) {
+          recoverFramesLeft = 0
+          return
+        }
+        val velocityPx = monitorResumeVelocityPx()
+        // Скорость угасла ниже порога — лента доехала сама, всё честно.
+        if (velocityPx == null) {
+          recoverFramesLeft = 0
+          return
+        }
+        // Край контента по ходу движения: в кадре коммита он может быть
+        // ложным (контент схлопнут) — не сдаёмся, пробуем в следующем кадре.
+        if (atContentEdge(velocityPx)) {
+          return
+        }
+        scrollView.fling(velocityPx.roundToInt())
+        reflings++
+        wasRunning = true
+        recoverFramesLeft = 0
+      }
+
+      /** Лента у края контента по ходу движения (ехать дальше некуда). */
+      private fun atContentEdge(velocityPx: Float): Boolean {
+        val child = scrollView.getChildAt(0) ?: return true
+        val maxY = (child.height - scrollView.height).coerceAtLeast(0)
+        val y = scrollView.scrollY
+        return (velocityPx < 0 && y <= 1) || (velocityPx > 0 && y >= maxY - 1)
+      }
+
+      /**
+       * |v| из OverScroller.getCurrVelocity() (истинная физика последнего
+       * кадра, переживает abort); знак — из наблюдённого движения, резерв —
+       * JS-оценка. null — реанимировать нечего.
+       */
+      private fun monitorResumeVelocityPx(): Float? {
+        val fallbackPx = dpToPx(scrollView, fallbackVelocityDp)
+        val magnitude = runCatching { scroller?.currVelocity }.getOrNull()
+        if (
+          magnitude == null ||
+          !magnitude.isFinite() ||
+          magnitude > MAX_PLAUSIBLE_VELOCITY_PX
+        ) {
+          return if (abs(fallbackPx) >= MIN_RESUME_VELOCITY_PX) fallbackPx else null
+        }
+        if (magnitude < MIN_RESUME_VELOCITY_PX) return null
+        val direction = if (lastDir != 0) lastDir.toFloat() else sign(fallbackPx)
+        if (direction == 0f) return null
+        return direction * magnitude
       }
     }
     scrollView.postOnAnimation(monitor)
@@ -395,11 +551,9 @@ class FloraScrollFlingModule : Module() {
       magnitude < 1f ||
       magnitude > MAX_PLAUSIBLE_VELOCITY_PX
     ) {
-      Log.d(TAG, "velocity: js fallback=$fallbackPx (scroller=$magnitude)")
       return fallbackPx
     }
     val direction = if (fallbackPx != 0f) sign(fallbackPx) else 1f
-    Log.d(TAG, "velocity: scroller=$magnitude js=$fallbackPx")
     return direction * magnitude
   }
 
