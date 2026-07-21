@@ -2,7 +2,6 @@
 
 import { connectSignalsStream } from "@flora/client-core/signals";
 import { useEffect } from "react";
-import { runAutoUpdateFromRealtime } from "@/lib/apkUpdate/autoUpdate";
 import { handleMessageRealtime, handleNotificationRealtime } from "@/lib/realtimeSync";
 
 export function useMobileRealtime(enabled: boolean): void {
@@ -14,19 +13,9 @@ export function useMobileRealtime(enabled: boolean): void {
       onMessage: (signal) => {
         handleMessageRealtime(signal.conversationUuid);
       },
-      onNotification: (signal) => {
+      onNotification: () => {
+        // app_update: inbox + «Обновить» only — no background download.
         handleNotificationRealtime();
-        if (signal.type === "app_update" && signal.update) {
-          void runAutoUpdateFromRealtime({
-            version: signal.update.version,
-            versionCode: signal.update.versionCode,
-            apkUrl: signal.update.apkUrl,
-            sha256: signal.update.sha256,
-            sizeBytes: signal.update.sizeBytes,
-            notificationUuid: signal.notificationUuid,
-            text: signal.text,
-          }).catch(() => undefined);
-        }
       },
     });
 

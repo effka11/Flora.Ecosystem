@@ -5,7 +5,6 @@ import {
   sha256File,
 } from "flora-apk-updater";
 import {
-  canPromptInstallPermission,
   isApkUpdaterNativeReady,
   isSideloadUpdatesEnabled,
 } from "@/lib/apkUpdate/capabilities";
@@ -28,11 +27,6 @@ import {
   normalizeTrustedSha256,
   trustedFloraSocialApkVersion,
 } from "@/lib/apkUpdate/manifestSecurity";
-import { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
-import {
-  wasInstallPermissionDeclined,
-  wasInstallPermissionPrompted,
-} from "@/lib/apkUpdate/permissionState";
 import type { ApkUpdateProgressListener } from "@/lib/apkUpdate/progress";
 import { compareFloraSocialVersions, getFloraSocialAppVersion } from "@/lib/appLinks";
 import { mmkv } from "@/lib/mmkv";
@@ -42,7 +36,7 @@ const THROTTLE_MS = 12 * 60 * 60 * 1000;
 
 export type CheckAndInstallOptions = {
   allowUserAction: boolean;
-  /** Skip throttle (notification tap / resume after permission). */
+  /** Skip throttle (notification tap). */
   force?: boolean;
   /** Optional manifest override (e.g. from notification when GitHub has no JSON). */
   manifest?: AndroidUpdateManifest | null;
@@ -50,7 +44,7 @@ export type CheckAndInstallOptions = {
   onProgress?: ApkUpdateProgressListener;
   /** 2.1: install existing pending APK only (skip download). */
   installOnlyUri?: string;
-  /** 2.3: do not open Flora InstallPermissionModal; caller opens Settings if needed. */
+  /** Do not prompt for install permission; return NO_PERMISSION instead. */
   skipPermissionModal?: boolean;
 };
 
@@ -68,22 +62,6 @@ export function canInstallSilently(): boolean {
   if (!isSideloadUpdatesEnabled()) return false;
   if (getAndroidSdkInt() < 31) return false;
   return canRequestPackageInstalls();
-}
-
-/**
- * Post-login / interactive: Flora-styled modal → Settings if needed.
- * Does not download APK.
- */
-export async function ensureInstallPackagesPermission(
-  options?: { force?: boolean },
-): Promise<boolean> {
-  if (!canPromptInstallPermission()) return false;
-  if (canRequestPackageInstalls()) return true;
-  // «Нет, спасибо» — never ask again (including interactive force).
-  if (wasInstallPermissionDeclined()) return false;
-  if (!options?.force && wasInstallPermissionPrompted()) return false;
-
-  return openInstallPermissionPrompt();
 }
 
 export async function checkAndInstall(
@@ -166,18 +144,12 @@ async function runCheckAndInstall(
   }
 
   if (options.allowUserAction && !canRequestPackageInstalls() && !options.skipPermissionModal) {
-    report({ phase: "permission" });
-    const granted = await ensureInstallPackagesPermission({ force: true });
-    if (isApkUpdateCancelled()) return cancelledResult();
-    if (!granted || !canRequestPackageInstalls()) {
-      report({
-        phase: "error",
-        message: "Нужно разрешить установку из этого источника",
-        code: "NO_PERMISSION",
-      });
-      return { ok: false, error: "Нужно разрешить установку из этого источника", code: "NO_PERMISSION" };
-    }
-    report({ phase: "checking" });
+    report({
+      phase: "error",
+      message: "Нужно разрешить установку из этого источника",
+      code: "NO_PERMISSION",
+    });
+    return { ok: false, error: "Нужно разрешить установку из этого источника", code: "NO_PERMISSION" };
   }
 
   if (isApkUpdateCancelled()) return cancelledResult();
@@ -365,12 +337,15 @@ async function runCheckAndInstall(
       report({ phase: "done", message: "Обновление установлено" });
       return { ok: true, status: "installed" };
     }
-    // Legacy native: resolved early on system confirm UI. Keep the APK until a
-    // final success/failure callback exists in the current native module.
+    // System installer UI opened (API < 31 Intent path, or PackageInstaller confirm).
+    report({
+      phase: "installing",
+      message: "Подтвердите установку в системном окне",
+    });
     return { ok: true, status: "pending_user_action" };
   } catch (e) {
     if (isCancelError(e)) return cancelledResult();
-    await clearPendingApk();
+    // Keep pending.apk — user can retry from the notification button.
     const code =
       e && typeof e === "object" && "code" in e ? String((e as { code?: string }).code) : "";
     const detail =
@@ -390,7 +365,7 @@ async function runCheckAndInstall(
         code: "NO_PERMISSION",
       };
     }
-    if (code === "E_USER_ACTION_REQUIRED") {
+    if (code === "E_USER_ACTION_REQUIRED" || code === "E_CONFIRM") {
       report({ phase: "error", message: "Не удалось открыть системную установку" });
       return {
         ok: false,
@@ -412,10 +387,8 @@ async function runCheckAndInstall(
 }
 
 /**
- * @deprecated Foreground silent install removed — use runAppUpdateCatchUp / native FCM.
- * Kept as no-op download catch-up entry for older call sites.
+ * @deprecated Background silent update removed — use inbox «Обновить».
  */
 export async function runSilentUpdateCheck(_force = false): Promise<void> {
-  const { runAppUpdateCatchUp } = await import("@/lib/apkUpdate/autoUpdate");
-  await runAppUpdateCatchUp();
+  return;
 }

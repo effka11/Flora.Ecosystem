@@ -13,14 +13,9 @@ class FloraAppUpdateMessagingService : FirebaseMessagingService() {
   override fun onMessageReceived(message: RemoteMessage) {
     val data = message.data
     if (data["type"] == "app_update") {
-      // Data-only wake: download/install silently. No system tray — inbox covers UX.
-      Log.i(TAG, "app_update FCM received")
-      val manifest = UpdateCoordinator.parseManifestFromData(data)
-      if (manifest != null) {
-        UpdateCoordinator.startAuto(applicationContext, manifest, showTray = false)
-      } else {
-        Log.w(TAG, "app_update missing/invalid update fields — ignored")
-      }
+      // Data-only wake acknowledged; no background download.
+      // User updates only via inbox «Обновить».
+      Log.i(TAG, "app_update FCM received — ignored (button-only update)")
       return
     }
     delegateToExpo(applicationContext) { it.onMessageReceived(message) }
