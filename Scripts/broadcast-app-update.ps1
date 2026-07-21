@@ -51,7 +51,7 @@ if ([string]::IsNullOrWhiteSpace($Text)) {
     $Text = Get-AppUpdateBroadcastText $version
 }
 
-# Production (and any non-local API): require GitHub/dist manifest — same wire as one-user FCM.
+# Production (and any non-local API): require GitHub/dist manifest - same wire as one-user FCM.
 $requireUpdate = $Production -or (-not $isLocal)
 $manifest = Get-AppUpdateManifestForBroadcast -Root $root -Version $version -PreferGitHub:$requireUpdate
 if ($null -eq $manifest) {
@@ -100,7 +100,7 @@ if (-not $Force -and ($Confirm -or -not $isLocal)) {
             Write-Host "  sizeBytes:   $($update.sizeBytes)"
         }
     } else {
-        Write-Host "  update:      (none — local only)" -ForegroundColor DarkYellow
+        Write-Host "  update:      (none - local only)" -ForegroundColor DarkYellow
     }
     Write-Host ""
     $answer = (Read-Host "Send to all Android sideload clients? [y/N]").Trim().ToLowerInvariant()
