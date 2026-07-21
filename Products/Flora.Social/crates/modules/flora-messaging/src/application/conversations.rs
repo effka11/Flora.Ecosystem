@@ -256,6 +256,23 @@ impl ConversationService {
         fscp_core::verify_envelope_signature(&request.encrypted_for_receiver)
             .map_err(SendMessageError::BadRequest)?;
 
+        // Device revocation policy (FSCP.md §Device revocation, golden
+        // fscp-revoked-device-v1.json): wire от отозванного senderDeviceUuid
+        // отклоняется. Bootstrap sentinel v1 не имеет bindings — без запроса к БД.
+        let sender_device = fscp_core::extract_sender_device_uuid(&request.encrypted_for_receiver)
+            .map_err(SendMessageError::BadRequest)?;
+        if sender_device != fscp_core::BOOTSTRAP_DEVICE_UUID
+            && self
+                .repo
+                .is_sender_device_revoked(sender_uuid, sender_device)
+                .await
+                .map_err(SendMessageError::BadRequest)?
+        {
+            return Err(SendMessageError::Forbidden(
+                fscp_core::REVOKED_SENDER_DEVICE_ERROR.into(),
+            ));
+        }
+
         let receiver_exists = self
             .accounts
             .get_public(receiver_uuid)

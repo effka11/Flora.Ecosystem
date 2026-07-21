@@ -588,7 +588,13 @@ MLS или sender keys — отдельная спецификация. Не с�
 
 - новые envelope **не** содержат entry для отозванного устройства;
 - сессии с отозванным устройством требуют re-handshake;
-- негативный сценарий: test vector `message_session_revoked_device_v1_failure` (TODO: golden transcript).
+- негативный сценарий закреплён golden-транскриптом `message_session_revoked_device_v1_failure` ([fscp-revoked-device-v1.json](../test-vectors/fscp-revoked-device-v1.json)).
+
+Криптографически wire отозванного устройства остаётся валидным (подпись и AEAD не знают о статусе) — отказ обязан приходить из **policy-слоя**, и вектор фиксирует обе стороны:
+
+- **сервер**: send-путь извлекает `senderDeviceUuid` (`fscp_core::extract_sender_device_uuid`) и отклоняет wire устройства, у которого есть bindings в `user_device_keys`, но нет ни одного `Active` (403, golden-строка `fscp_core::REVOKED_SENDER_DEVICE_ERROR`); bootstrap sentinel v1 bindings не имеет и проходит без запроса к БД;
+- **клиент (peer)**: перед обработкой входящего сопоставляет `senderDeviceUuid` со server-attested статусом (`evaluateInboundSenderDevice` в `@flora/fscp`): `Revoked` → конверт отклоняется, сессия → `compromised_local` (`device_revoked`);
+- **клиент (отправитель)**: session FSM блокирует исходящие (`canSendOutbound === false`; `noteOutboundAccepted` бросает golden-строку); выход — только re-handshake.
 
 ---
 
@@ -604,8 +610,10 @@ MLS или sender keys — отдельная спецификация. Не с�
 | `fscp_message_transcript_v1` | [fscp-message-transcript-v1.json](../test-vectors/fscp-message-transcript-v1.json) | **Полный транскрипт** Algorithm A/B: plaintext (unicode) → body AEAD → RKE обоих получателей → canonical JSON → Ed25519 → `fscp1:`-wire, со всеми промежуточными значениями; варианты `signature_tampered` (клиент и серверная криптопроверка отклоняют, форма проходит) и `legacy_unsigned` (v1.0-errata-5: клиент отклоняет по умолчанию, читает только через явный `allowUnsignedLegacy`; сервер отклоняет) |
 | `fscp_franking_v1` | [franking-v1.json](../test-vectors/franking-v1.json) | Message franking ([`franking.md`](./franking.md)): commit → HMAC-тег → квитанция сервера → полная верификация жюри + негативы с причинами отказа; франкуется **сообщение транскрипт-вектора** (жалоба доказуема для реального wire) |
 | `fscp_hybrid_kem_v2draft_v1` | [fscp-hybrid-kem-v2draft-v1.json](../test-vectors/fscp-hybrid-kem-v2draft-v1.json) | **v2-draft, вне нормы v1**: гибридный KEM X25519+ML-KEM-768 (§Целевой алгоритм → Post-quantum) — детерминированные keygen/encaps/decaps FIPS 203, transcript-hash, гибридный HKDF, AEAD; негативы: implicit rejection при подмене `ct_mlkem`, расхождение AAD-метаданных |
+| `message_session_revoked_device_v1_failure` | [fscp-revoked-device-v1.json](../test-vectors/fscp-revoked-device-v1.json) | **Golden transcript revoke-сценария** (§Device revocation): M1 до revoke (decrypt ok, сессия ready) → revoke sender-устройства → M2 и повтор M1 отклоняются policy-слоем сервера (`REVOKED_SENDER_DEVICE_ERROR`) и клиента (`evaluateInboundSenderDevice` → `compromised_local`), исходящие блокирует session FSM; кейс `cryptoBypassDecrypt: ok` фиксирует, что криптография wire остаётся валидной — отказ политика, не крипто |
+| `device_to_device_recovery_envelope_v1` | [fscp-d2d-recovery-v1.json](../test-vectors/fscp-d2d-recovery-v1.json) | `DeviceToDeviceRecoveryEnvelope` ([`e2e-security.md`](./e2e-security.md) §DeviceToDeviceRecoveryEnvelope): payload → X25519+HKDF+XChaCha20 → canonical JSON → Ed25519; server-side strict-валидация + подпись, client-side open; негативы: `_wrong_challenge`, `_tampered_ciphertext`, `_foreign_signature`, `_empty_epochs` |
 
-Регенерация: RKE — `python Documents/test-vectors/_gen_fscp_rke_v1.py`, транскрипт — `python Documents/test-vectors/_gen_fscp_message_transcript_v1.py`, franking — `python Documents/test-vectors/_gen_fscp_franking_v1.py` (после транскрипта; нужны `cryptography`, `PyNaCl`), гибридный KEM — `python Documents/test-vectors/_gen_fscp_hybrid_kem_v2draft_v1.py` (дополнительно нужен `kyber-py`); wire-validator — `Scripts/generate-golden-vectors.ps1` (из C#-эталона). Файлы `Documents/test-vectors/**` — **regenerate-only**, руками не редактировать ([`AGENTS.md`](../../AGENTS.md)).
+Регенерация: RKE — `python Documents/test-vectors/_gen_fscp_rke_v1.py`, транскрипт — `python Documents/test-vectors/_gen_fscp_message_transcript_v1.py`, franking — `python Documents/test-vectors/_gen_fscp_franking_v1.py` (после транскрипта; нужны `cryptography`, `PyNaCl`), гибридный KEM — `python Documents/test-vectors/_gen_fscp_hybrid_kem_v2draft_v1.py` (дополнительно нужен `kyber-py`), revoke-транскрипт — `python Documents/test-vectors/_gen_fscp_revoked_device_v1.py`, D2D recovery — `python Documents/test-vectors/_gen_fscp_d2d_recovery_v1.py`; wire-validator — `Scripts/generate-golden-vectors.ps1` (из C#-эталона). Файлы `Documents/test-vectors/**` — **regenerate-only**, руками не редактировать ([`AGENTS.md`](../../AGENTS.md)).
 
 Правила новых векторов: `protocolVersion` / `fscpProtocolVersion` в JSON, base64url без padding, AAD **байт-в-байт** как в этом документе; негативы — отдельные файлы или блок `cases` с `expectedError`.
 
@@ -618,7 +626,9 @@ MLS или sender keys — отдельная спецификация. Не с�
 - клиентская криптография на RustCrypto: [`fscp_client_crypto_vectors.rs`](../../Backend/Tests/parity/tests/fscp_client_crypto_vectors.rs) воспроизводит RKE-вектор (X25519, HKDF, XChaCha20-Poly1305) и fingerprint-вектор — тройная верификация (python-генератор ↔ TS ↔ Rust) и задел Rust client-core;
 - **полный транскрипт** `fscp_message_transcript_v1` потребляют все три стека: TS [`transcriptVector.test.ts`](../../Packages/flora-client-core/src/fscp/transcriptVector.test.ts) расшифровывает wire через публичное API `decryptFscpWireEnvelope` (получатель + self-копия отправителя) и воспроизводит canonical signing payload; Rust [`fscp_transcript_vectors.rs`](../../Backend/Tests/parity/tests/fscp_transcript_vectors.rs) проходит весь путь на RustCrypto + ed25519-dalek + порт canonical JSON [`canonical_json.rs`](../../Backend/Tests/parity/src/canonical_json.rs); C# `Message_transcript_vector_agrees_with_reference_validator` прогоняет тот же wire через боевой валидатор. Это замыкает треугольник «клиентская криптография ⇄ серверная форма ⇄ Rust-порт» на **одном** сообщении;
 - **franking** `fscp_franking_v1`: TS [`frankingVector.test.ts`](../../Packages/flora-client-core/src/fscp/frankingVector.test.ts) — эталонная реализация `franking.ts` (commit, тег, квитанция, полный verify жюри); Rust [`fscp_franking_vectors.rs`](../../Backend/Tests/parity/tests/fscp_franking_vectors.rs) дополнительно доказывает, что Rust как будущий серверный подписант детерминированно воспроизводит квитанцию из seed. C#-consumer появится вместе с серверной реализацией при активации v1.1;
-- **гибридный PQ-KEM (v2-draft)** `fscp_hybrid_kem_v2draft_v1`: TS [`hybridKemVector.test.ts`](../../Packages/flora-client-core/src/fscp/hybridKemVector.test.ts) (@noble/post-quantum, devDependency — продакшн-поверхности нет) и Rust [`fscp_hybrid_kem_vectors.rs`](../../Backend/Tests/parity/tests/fscp_hybrid_kem_vectors.rs) (RustCrypto `ml-kem`, dev-dependency) воспроизводят все шаги комбинера из §Post-quantum, включая FIPS 203 implicit rejection; вместе с генератором на kyber-py это **три независимые реализации ML-KEM-768**, согласные байт-в-байт.
+- **гибридный PQ-KEM (v2-draft)** `fscp_hybrid_kem_v2draft_v1`: TS [`hybridKemVector.test.ts`](../../Packages/flora-client-core/src/fscp/hybridKemVector.test.ts) (@noble/post-quantum, devDependency — продакшн-поверхности нет) и Rust [`fscp_hybrid_kem_vectors.rs`](../../Backend/Tests/parity/tests/fscp_hybrid_kem_vectors.rs) (RustCrypto `ml-kem`, dev-dependency) воспроизводят все шаги комбинера из §Post-quantum, включая FIPS 203 implicit rejection; вместе с генератором на kyber-py это **три независимые реализации ML-KEM-768**, согласные байт-в-байт;
+- **revoke-транскрипт** `message_session_revoked_device_v1_failure`: TS `revokedDeviceVector.test.ts` (`@flora/fscp`) проигрывает всю цепочку через session FSM + `decryptFscpWireEnvelope` + `evaluateInboundSenderDevice` (включая честность вектора: crypto-bypass decrypt M2 успешен); Rust [`fscp_revoked_device_vectors.rs`](../../Backend/Tests/parity/tests/fscp_revoked_device_vectors.rs) — форма+подпись обоих wire, извлечение `senderDeviceUuid`, golden-строка policy-ошибки;
+- **D2D recovery** `device_to_device_recovery_envelope_v1`: TS `d2dRecoveryVector.test.ts` (`@flora/fscp`) — деривация `targetAgreementPublicKeyId`, AAD и canonical signing payload байт-в-байт, open success + 4 негатива по категориям; Rust [`fscp_d2d_recovery_vectors.rs`](../../Backend/Tests/parity/tests/fscp_d2d_recovery_vectors.rs) — серверная strict-валидация + проверка подписи, точные строки ошибок.
 
 Полный каталог платформенных векторов (backup, unlock, device): [`e2e-security.md`](./e2e-security.md) §Test vectors.
 
@@ -642,7 +652,7 @@ E2E-переписка **не** используется для рекоменд
 
 ## Known MVP limitations (implementation)
 
-Зафиксировано для текущего релиза; не ошибки спецификации, а отложенная реализация. Столбец «статус» отражает **фактическое** состояние кода на дату errata-1 (честный conformance):
+Зафиксировано для текущего релиза; не ошибки спецификации, а отложенная реализация. Столбец «статус» отражает **фактическое** состояние кода на дату errata-6 (честный conformance):
 
 | Ограничение | Статус | Деталь |
 | --- | --- | --- |
@@ -652,11 +662,12 @@ E2E-переписка **не** используется для рекоменд
 | Bootstrap key epoch + sentinel device UUID | by design (v1) | нет per-device ratchet; single epoch |
 | E2E-ключи на вебе в `localStorage` | **известный риск** | `Apps/Web/lib/fscp/storage.ts` (Web-форк) и адаптер `keyStorage.ts` в `@flora/fscp`; target — non-extractable WebCrypto / IndexedDB |
 | Legacy dual-ciphertext API | мост | `encryptedForReceiver`/`encryptedForSender` идентичны; путь к единому `fscp1:` |
-| Safety number / fingerprint в UI | **частично** | расчёт реализован: `safetyNumber.ts` в `@flora/client-core/fscp` (golden-тест зелёный); UI-поверхность после `ready` отсутствует → выполнить до release gate |
+| Safety number / fingerprint в UI | ✅ UI закрыт (errata-6) | `computeSafetyNumberV1` из `@flora/client-core/fscp` + «Проверка шифрования» в меню 1:1; peer identity берётся только из успешно расшифрованного и проверенного входящего wire, поэтому до первого входящего модал честно показывает not-ready. Локальный `verified contact` остаётся future work |
 | `FscpV1ConversationSession` / session state | **реализовано (библиотека)** | чистая FSM `conversationSession.ts` в `@flora/client-core/fscp` (переходы + re-handshake, unit-тесты); интеграция в UI-поток — вместе с safety number surface |
 | Golden-векторы в CI | ✅ подключены | consumer-тесты: `goldenVectors.test.ts` + `transcriptVector.test.ts` (клиент), `FscpWireValidatorVectors.cs` (сервер C#), `fscp_*_vectors.rs` (Rust); полный транскрипт покрывает все байт-критичные пути — см. §Test vectors |
 | Две параллельные клиентские реализации FSCP | **дрейф-риск, огорожен** | `Apps/Web/lib/fscp` vs `Packages/flora-client-core/src/fscp`; байт-критичные модули покрыты parity-тестом `webParity.test.ts`; консолидация остаётся — [`next-architecture.md`](../../next-architecture.md) §9 |
-| Golden transcript после device revoke | **не реализовано** | `message_session_revoked_device_v1_failure` — TODO; approve/recover-key HTTP-эндпоинты не выставлены |
+| Golden transcript после device revoke | ✅ закрыто (errata-6) | `message_session_revoked_device_v1_failure` — [fscp-revoked-device-v1.json](../test-vectors/fscp-revoked-device-v1.json) + потребители TS/Rust; серверный device-policy на send-пути (`REVOKED_SENDER_DEVICE_ERROR`), клиентский inbound-policy `evaluateInboundSenderDevice`; HTTP `approve` (errata-5) и `recover-key` (errata-6) выставлены |
+| Enforcement device-policy на send-пути ограничен | by design (v1) | v1-wire несёт bootstrap sentinel device (bindings нет — проверка не срабатывает); policy активируется автоматически с переходом на реальные per-device UUID в wire (v1.1+); отзыв материала при revoke уже действует через FSM/devices API |
 
 ---
 
@@ -670,22 +681,22 @@ E2E-переписка **не** используется для рекоменд
 
 Изменения, **несовместимые с wire**, — только через bump major (`messageEnvelopeVersion`). Текстовые errata без смены байтов — в этом файле с пометкой `docs(fscp): errata` в commit message.
 
-**Compliance checklist (v1.0)** — статус на errata-5:
+**Compliance checklist (v1.0)** — статус на errata-6:
 
 1. ✅ Golden `fscp_rke_wrap_key_v1_success` и `fingerprint_v1_success` в CI — consumer-тесты `Packages/flora-client-core/src/fscp/goldenVectors.test.ts` (`npm run test`).
 2. ✅ Server-side validation без отклонений от §Server-side validation (реализовано, включая проверку `recipientAgreementPublicKeyId`); поведение закреплено golden-вектором `fscp_wire_validator_v1` + consumer `Tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs`.
 3. ✅ Клиент: AAD и HKDF-info **байт-в-байт** как в §MessageEnvelope / §Key agreement (подтверждено consumer-тестами RKE-вектора).
 4. ✅ Cross-impl parity-тест `Apps/Web/lib/fscp` ↔ `Packages/flora-client-core` — `webParity.test.ts` (constants, AAD, canonical JSON, deriveIds).
 5. ✅ Полный транскрипт `fscp_message_transcript_v1`: каждая байт-критичная операция v1 (canonical JSON → подпись → RKE → тело) закреплена golden-вектором и потребляется TS + Rust + C# (§Test vectors). Полное покрытие путей Algorithm A/B достигнуто.
-6. ⛔ Safety number в UI 1:1 после `ready` — **не выполнено**: расчёт реализован (`safetyNumber.ts`, golden-тест зелёный), UI-поверхность отсутствует (см. §Known limitations).
+6. ✅ Safety number в UI 1:1 после `ready` — пункт «Проверка шифрования» показывает 64-символьный fingerprint группами и поддерживает копирование; расчёт идёт через `computeSafetyNumberV1` (golden `fingerprint-v1.json`). В текущем bootstrap/TOFU-потоке `ready` подтверждается первым успешно расшифрованным входящим wire; до него UI не выдаёт непроверенный код.
 
 ---
 
 ## Open Questions / Future Work
 
 - ✅ Серверная криптопроверка Ed25519 подписи envelope (defense-in-depth) — выполнено в errata-5 (`fscp_core::verify_envelope_signature`, Algorithm C шаг 12).
-- Golden transcript `message_session_revoked_device_v1_failure`; HTTP `approve` выставлен (errata-5, [`e2e-security.md`](./e2e-security.md) §Devices), остаётся `recover-key` + сам вектор.
-- Safety number: UI-поверхность 1:1 (расчёт — `computeSafetyNumberV1`, session FSM — `conversationSession.ts`; оба уже в `@flora/client-core/fscp`, осталось подключить в UI сообщений).
+- ✅ Golden transcript `message_session_revoked_device_v1_failure` + HTTP `recover-key` (POST/GET, серверная валидация + хранилище с TTL) — выполнено в errata-6; `approve` выставлен ранее (errata-5, [`e2e-security.md`](./e2e-security.md) §Devices).
+- Safety number: добавить локальный `verified contact` и сбрасывать его при смене epoch identity; сам OOB fingerprint UI 1:1 выполнен в errata-6.
 - Консолидация двух клиентских реализаций на `@flora/client-core` ([`next-architecture.md`](../../next-architecture.md) §9); parity-тест уже защищает от дрейфа байт-критичных модулей.
 - Переход с bootstrap epoch на реальные per-device UUID и key epochs.
 - Message franking: RFC + эталонная реализация + вектор готовы; осталась wire-дельта и серверный подписант при активации v1.1 ([`franking.md`](./franking.md)).

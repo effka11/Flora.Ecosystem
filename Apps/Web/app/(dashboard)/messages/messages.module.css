@@ -3742,6 +3742,33 @@
   padding: 0 calc(2 * var(--flora-grid-step)) calc(2 * var(--flora-grid-step));
 }
 
+/* Safety number (FSCP §Safety number): 8 групп по 8 hex, 2 колонки — сверка OOB. */
+.messagesSafetyNumberGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(1 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  padding: calc(2 * var(--flora-grid-step-fine));
+  border-radius: 8px;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
+  background: rgba(var(--flora-white-template-rgb), 0.04);
+}
+
+.messagesSafetyNumberGroup {
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-align: center;
+  color: var(--flora-white-template);
+  user-select: text;
+}
+
+.messagesSafetyNumberHint {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--flora-gray);
+}
+
 .messagesDeleteModalBtnDanger,
 .messagesDeleteModalBtnCancel {
   min-height: calc(8 * var(--flora-grid-step-fine));

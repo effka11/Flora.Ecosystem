@@ -144,6 +144,8 @@ export type PostMoreMenuRectProps = {
   onChatSearch?: () => void;
   onChatMedia?: () => void;
   onChatPin?: () => void;
+  /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования». */
+  onChatSafetyNumber?: () => void;
   /** Удалить весь диалог (список чатов и шапка открытого чата). */
   onDeleteConversation?: () => void;
 };
@@ -170,6 +172,7 @@ export function PostMoreMenuRect({
   onChatSearch,
   onChatMedia,
   onChatPin,
+  onChatSafetyNumber,
   onDeleteConversation,
 }: PostMoreMenuRectProps) {
   const deleteConversation = onDeleteConversation;
@@ -318,6 +321,7 @@ export function PostMoreMenuRect({
             onSearch={onChatSearch}
             onMedia={onChatMedia}
             onPin={onChatPin}
+            onSafetyNumber={onChatSafetyNumber}
             onDelete={deleteConversation}
             muteSubmenuOpen={muteSubmenu.muteSubmenuOpen}
             isSubmenuClosing={muteSubmenu.isSubmenuClosing}

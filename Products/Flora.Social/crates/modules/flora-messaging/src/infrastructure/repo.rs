@@ -41,6 +41,29 @@ impl MessagingRepo {
         Self { pool }
     }
 
+    /// Device-policy для отправки (FSCP.md §Device revocation): устройство с bindings
+    /// в `user_device_keys`, среди которых нет Active, считается отозванным для
+    /// операций «как active». Устройство без bindings (bootstrap sentinel v1) — allow.
+    pub async fn is_sender_device_revoked(
+        &self,
+        user_uuid: Uuid,
+        device_uuid: Uuid,
+    ) -> Result<bool, String> {
+        let row: Option<(i64, bool)> = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)::bigint, COALESCE(bool_or(status = 'Active'), false)
+            FROM flora_core.user_device_keys
+            WHERE user_uuid = $1 AND device_uuid = $2
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(device_uuid)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(matches!(row, Some((n, any_active)) if n > 0 && !any_active))
+    }
+
     /// Число чатов с непрочитанным (distinct sender), не число сообщений.
     pub async fn total_unread_count(&self, user_uuid: Uuid) -> Result<i64, String> {
         sqlx::query_scalar(

@@ -2,6 +2,7 @@
 // требование Cryptography gate из Documents/fscp/e2e-security.md.
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  FSCP_MAX_TRANSFERRED_KEY_EPOCHS,
   buildDeviceRecoveryEnvelope,
   deviceAgreementPublicKeyId,
   deviceRecoveryAadLine,
@@ -187,6 +188,28 @@ describe("DeviceToDeviceRecoveryEnvelope", () => {
         payload: { keyEpochs: [] },
       }),
     ).rejects.toThrow(/keyEpochs/);
+  });
+
+  it("negative: число передаваемых epochs ограничено server/client parity", async () => {
+    const f = await fixture();
+    const epoch = f.payload.keyEpochs[0];
+    if (!epoch) throw new Error("fixture epoch отсутствует");
+    await expect(
+      buildDeviceRecoveryEnvelope({
+        recoveryRequestId: RECOVERY_REQUEST,
+        userUuid: USER,
+        sourceDeviceUuid: SOURCE_DEVICE,
+        targetDeviceUuid: TARGET_DEVICE,
+        targetDeviceAgreementPublicKey: fromBase64Url(f.targetAgreement.agreementPublicKeyBase64Url),
+        sourceDeviceSigningPrivateKey: fromBase64Url(f.sourceSigning.signingPrivateKeyBase64Url),
+        payload: {
+          keyEpochs: Array.from(
+            { length: FSCP_MAX_TRANSFERRED_KEY_EPOCHS + 1 },
+            (_, index) => ({ ...epoch, keyEpochId: String(index) }),
+          ),
+        },
+      }),
+    ).rejects.toThrow(/не должен превышать 64/);
   });
 });
 

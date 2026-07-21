@@ -1,0 +1,96 @@
+{
+  "vectorId": "message_session_revoked_device_v1_failure",
+  "fscpProtocolVersion": 1,
+  "description": "Транскрипт revoke-сценария: M1 до revoke обрабатывается (сессия ready), затем POST .../devices/{senderDeviceUuid}/revoke; M2 (и повтор M1) от того же устройства криптографически валидны, но обязаны отклоняться policy-слоем сервера и клиента; исходящие блокируются session FSM до re-handshake.",
+  "uuids": {
+    "senderUserUuid": "55555555-5555-4555-8555-555555555555",
+    "receiverUserUuid": "77777777-7777-4777-8777-777777777777",
+    "conversationUuid": "b338d82e-ee40-53a4-a6c4-bd587cd2f7c1",
+    "keyEpochId": "00000000-0000-4000-8000-000000000001",
+    "senderDeviceUuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+    "receiverDeviceUuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+    "senderAgreementPublicKeyId": "0587b9fa-60c4-5415-b57c-32f777f8300c",
+    "receiverAgreementPublicKeyId": "0940e271-1c3d-50e4-9e99-eb4e147b8c1e"
+  },
+  "keys": {
+    "senderAgreementPrivateKeyBase64Url": "9FZyaapEtLgfDbzk5vkgkZ-qEsxSnMjWPCYIHzrWkKA",
+    "senderAgreementPublicKeyBase64Url": "iO3RGLxPTj_EHMQ6qYXGgDhSDuMF6jtz14yGIZ1P924",
+    "receiverAgreementPrivateKeyBase64Url": "jjuTxKiAkv2wINKTr2SO6qN_zIEPCREQOdXA61fKpKc",
+    "receiverAgreementPublicKeyBase64Url": "8ozEYyX8oK8R-w7s0zSaBv0s8XPjd7OGxQCXNO-861Y",
+    "senderSigningSeedBase64Url": "vnSuS_QohVaImbYvI4xsJIISkHLDcsu7kmfM5FRffkU",
+    "senderSigningSecretKeyBase64Url": "vnSuS_QohVaImbYvI4xsJIISkHLDcsu7kmfM5FRffkX60r_DW0GXJ1uuww-W_IQN_bmTWJh0AkntCkRpNMoBCA",
+    "senderSigningPublicKeyBase64Url": "-tK_w1tBlydbrsMPlvyEDf25k1iYdAJJ7QpEaTTKAQg"
+  },
+  "messageBeforeRevoke": {
+    "messageUuid": "33333333-3333-4333-8333-333333333331",
+    "messageKeyId": "44444444-4444-4444-8444-444444444441",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "text": "До revoke: сессия ready 🌸",
+    "plaintextUtf8": "{\"type\":\"blocks\",\"version\":1,\"blocks\":[{\"kind\":\"text\",\"body\":\"До revoke: сессия ready 🌸\"}],\"clientCreatedAt\":\"2026-01-01T00:00:00.000Z\"}",
+    "messageKeyBase64Url": "n-CBwQ5uGuW57RXulFz1csiyVmjQpJMOaGpiPjGEJj8",
+    "bodyAadUtf8": "flora.messaging.message.v1 | b338d82e-ee40-53a4-a6c4-bd587cd2f7c1 | 00000000-0000-4000-8000-000000000001 | 33333333-3333-4333-8333-333333333331 | 44444444-4444-4444-8444-444444444441 | 55555555-5555-4555-8555-555555555555 | aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1 | 2026-01-01T00:00:00.000Z",
+    "canonicalSigningPayloadUtf8": "flora.messaging.envelope-signature.v1 | {\"aead\":{\"name\":\"xchacha20-poly1305\",\"nonceBase64Url\":\"-5bmijIQJYQkRrjxGr-sS0-5aGWCalaG\"},\"ciphertextBase64Url\":\"LtcMgcmiDpUGmQ9vD1OsNrpbA4v-Y8wnJ7ko9HeJjEK4TW9O_uxtthfp8dgu8IwYIp3hefC9QHsvkQemA6M3yKE1R3n446dFJMIw4_uKUpHEXeI52JbdyawufroeWLM4mFOjLHd9SlbK8a2QKG3b70gUadQUyQT2ck9Fajy6DKUIfxuVShL0j-Bt8jAZ36wwCSdZTCfKIwEiMnh7xFbNKFK3NA\",\"conversationUuid\":\"b338d82e-ee40-53a4-a6c4-bd587cd2f7c1\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"keyEpochId\":\"00000000-0000-4000-8000-000000000001\",\"messageKeyId\":\"44444444-4444-4444-8444-444444444441\",\"messageUuid\":\"33333333-3333-4333-8333-333333333331\",\"recipients\":[{\"deviceUuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"recipientKeyEnvelope\":{\"aead\":{\"name\":\"xchacha20-poly1305\",\"nonceBase64Url\":\"2NSHktmI3GZln2BQMO9Sa3ujJx6GSG5y\"},\"algorithm\":\"x25519-hkdf-xchacha20poly1305\",\"ciphertextBase64Url\":\"Loy7ABd-wQNlASENNU2AKuCpsrgUFivLeCZdFPgV6_tg2lNJedelqCpv_L7rU_eg\",\"ephemeralPublicKeyBase64Url\":\"y_dTmbFeS9OTc-hl7a5hcgNGUXam-jfKnCSMySoWczI\",\"preKeyId\":null,\"recipientAgreementPublicKeyId\":\"0587b9fa-60c4-5415-b57c-32f777f8300c\",\"saltBase64Url\":\"nrsw8ENcnEtTfnIVEnEQP4Jn6zjxNr7WsC80PgDIi68\",\"version\":1},\"userUuid\":\"55555555-5555-4555-8555-555555555555\"},{\"deviceUuid\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2\",\"recipientKeyEnvelope\":{\"aead\":{\"name\":\"xchacha20-poly1305\",\"nonceBase64Url\":\"sizOcuMaeCA9A0wSSVNJa14BAOn-ehCf\"},\"algorithm\":\"x25519-hkdf-xchacha20poly1305\",\"ciphertextBase64Url\":\"SnT0MkIadmWFSc05_q-9Kj2H6BXe6CRrnqVyjn4IErBz6nQvAPHY1jyAeRX5o0aO\",\"ephemeralPublicKeyBase64Url\":\"wXjdsIpKBnhMe9Z7UncdJrvcX3nDD-DEyUVYVM87kzc\",\"preKeyId\":null,\"recipientAgreementPublicKeyId\":\"0940e271-1c3d-50e4-9e99-eb4e147b8c1e\",\"saltBase64Url\":\"SvYvBaXdH_kfGuDLy0ttCwidQ_kDa6QwrsrLlOiru1s\",\"version\":1},\"userUuid\":\"77777777-7777-4777-8777-777777777777\"}],\"senderDeviceUuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"senderSigningPublicKeyBase64Url\":\"-tK_w1tBlydbrsMPlvyEDf25k1iYdAJJ7QpEaTTKAQg\",\"senderUserUuid\":\"55555555-5555-4555-8555-555555555555\",\"version\":1}",
+    "wire": "fscp1:eyJ2ZXJzaW9uIjoxLCJtZXNzYWdlVXVpZCI6IjMzMzMzMzMzLTMzMzMtNDMzMy04MzMzLTMzMzMzMzMzMzMzMSIsImNvbnZlcnNhdGlvblV1aWQiOiJiMzM4ZDgyZS1lZTQwLTUzYTQtYTZjNC1iZDU4N2NkMmY3YzEiLCJrZXlFcG9jaElkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwic2VuZGVyVXNlclV1aWQiOiI1NTU1NTU1NS01NTU1LTQ1NTUtODU1NS01NTU1NTU1NTU1NTUiLCJzZW5kZXJEZXZpY2VVdWlkIjoiYWFhYWFhYWEtYWFhYS00YWFhLThhYWEtYWFhYWFhYWFhYWExIiwibWVzc2FnZUtleUlkIjoiNDQ0NDQ0NDQtNDQ0NC00NDQ0LTg0NDQtNDQ0NDQ0NDQ0NDQxIiwiY3JlYXRlZEF0IjoiMjAyNi0wMS0wMVQwMDowMDowMC4wMDBaIiwiY2lwaGVydGV4dEJhc2U2NFVybCI6Ikx0Y01nY21pRHBVR21ROXZEMU9zTnJwYkE0di1ZOHduSjdrbzlIZUpqRUs0VFc5T191eHR0aGZwOGRndThJd1lJcDNoZWZDOVFIc3ZrUWVtQTZNM3lLRTFSM240NDZkRkpNSXc0X3VLVXBIRVhlSTUySmJkeWF3dWZyb2VXTE00bUZPakxIZDlTbGJLOGEyUUtHM2I3MGdVYWRRVXlRVDJjazlGYWp5NkRLVUlmeHVWU2hMMGotQnQ4akFaMzZ3d0NTZFpUQ2ZLSXdFaU1uaDd4RmJOS0ZLM05BIiwiYWVhZCI6eyJuYW1lIjoieGNoYWNoYTIwLXBvbHkxMzA1Iiwibm9uY2VCYXNlNjRVcmwiOiItNWJtaWpJUUpZUWtScmp4R3Itc1MwLTVhR1dDYWxhRyJ9LCJyZWNpcGllbnRzIjpbeyJ1c2VyVXVpZCI6IjU1NTU1NTU1LTU1NTUtNDU1NS04NTU1LTU1NTU1NTU1NTU1NSIsImRldmljZVV1aWQiOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYTEiLCJyZWNpcGllbnRLZXlFbnZlbG9wZSI6eyJ2ZXJzaW9uIjoxLCJhbGdvcml0aG0iOiJ4MjU1MTktaGtkZi14Y2hhY2hhMjBwb2x5MTMwNSIsImVwaGVtZXJhbFB1YmxpY0tleUJhc2U2NFVybCI6InlfZFRtYkZlUzlPVGMtaGw3YTVoY2dOR1VYYW0tamZLbkNTTXlTb1djekkiLCJyZWNpcGllbnRBZ3JlZW1lbnRQdWJsaWNLZXlJZCI6IjA1ODdiOWZhLTYwYzQtNTQxNS1iNTdjLTMyZjc3N2Y4MzAwYyIsInByZUtleUlkIjpudWxsLCJzYWx0QmFzZTY0VXJsIjoibnJzdzhFTmNuRXRUZm5JVkVuRVFQNEpuNnpqeE5yN1dzQzgwUGdESWk2OCIsImFlYWQiOnsibmFtZSI6InhjaGFjaGEyMC1wb2x5MTMwNSIsIm5vbmNlQmFzZTY0VXJsIjoiMk5TSGt0bUkzR1psbjJCUU1POVNhM3VqSng2R1NHNXkifSwiY2lwaGVydGV4dEJhc2U2NFVybCI6IkxveTdBQmQtd1FObEFTRU5OVTJBS3VDcHNyZ1VGaXZMZUNaZEZQZ1Y2X3RnMmxOSmVkZWxxQ3B2X0w3clVfZWcifX0seyJ1c2VyVXVpZCI6Ijc3Nzc3Nzc3LTc3NzctNDc3Ny04Nzc3LTc3Nzc3Nzc3Nzc3NyIsImRldmljZVV1aWQiOiJiYmJiYmJiYi1iYmJiLTRiYmItOGJiYi1iYmJiYmJiYmJiYjIiLCJyZWNpcGllbnRLZXlFbnZlbG9wZSI6eyJ2ZXJzaW9uIjoxLCJhbGdvcml0aG0iOiJ4MjU1MTktaGtkZi14Y2hhY2hhMjBwb2x5MTMwNSIsImVwaGVtZXJhbFB1YmxpY0tleUJhc2U2NFVybCI6IndYamRzSXBLQm5oTWU5WjdVbmNkSnJ2Y1gzbkRELURFeVVWWVZNODdremMiLCJyZWNpcGllbnRBZ3JlZW1lbnRQdWJsaWNLZXlJZCI6IjA5NDBlMjcxLTFjM2QtNTBlNC05ZTk5LWViNGUxNDdiOGMxZSIsInByZUtleUlkIjpudWxsLCJzYWx0QmFzZTY0VXJsIjoiU3ZZdkJhWGRIX2tmR3VETHkwdHRDd2lkUV9rRGE2UXdyc3JMbE9pcnUxcyIsImFlYWQiOnsibmFtZSI6InhjaGFjaGEyMC1wb2x5MTMwNSIsIm5vbmNlQmFzZTY0VXJsIjoic2l6T2N1TWFlQ0E5QTB3U1NWTkphMTRCQU9uLWVoQ2YifSwiY2lwaGVydGV4dEJhc2U2NFVybCI6IlNuVDBNa0lhZG1XRlNjMDVfcS05S2oySDZCWGU2Q1JybnFWeWpuNElFckJ6Nm5RdkFQSFkxanlBZVJYNW8wYU8ifX1dLCJzZW5kZXJTaWduaW5nUHVibGljS2V5QmFzZTY0VXJsIjoiLXRLX3cxdEJseWRicnNNUGx2eUVEZjI1azFpWWRBSko3UXBFYVRUS0FRZyIsInNlbmRlclNpZ25hdHVyZUJhc2U2NFVybCI6IlV0N3RaeWpPcUxvX25ScTFXeUZ6eEJNQmJfTm1Rc3JYV1dOWWsxLUhxNnlVbXd2eDd1Mkl6ajN6em84OUc3S1FPMW1ZWE53bnZ0TGxyVGVoYVczYkNRIn0"
+  },
+  "revokeEvent": {
+    "httpMethod": "POST",
+    "pathTemplate": "/api/messaging/e2e/epochs/{keyEpochId}/devices/{senderDeviceUuid}/revoke"
+  },
+  "messageAfterRevoke": {
+    "messageUuid": "33333333-3333-4333-8333-333333333332",
+    "messageKeyId": "44444444-4444-4444-8444-444444444442",
+    "createdAt": "2026-01-01T00:10:00.000Z",
+    "text": "После revoke: этот wire обязан быть отклонён policy-слоем",
+    "plaintextUtf8": "{\"type\":\"blocks\",\"version\":1,\"blocks\":[{\"kind\":\"text\",\"body\":\"После revoke: этот wire обязан быть отклонён policy-слоем\"}],\"clientCreatedAt\":\"2026-01-01T00:10:00.000Z\"}",
+    "messageKeyBase64Url": "T3kPuFEY_WfE29NlripkUQtBYisuw9dgIKCX57gNuys",
+    "bodyAadUtf8": "flora.messaging.message.v1 | b338d82e-ee40-53a4-a6c4-bd587cd2f7c1 | 00000000-0000-4000-8000-000000000001 | 33333333-3333-4333-8333-333333333332 | 44444444-4444-4444-8444-444444444442 | 55555555-5555-4555-8555-555555555555 | aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1 | 2026-01-01T00:10:00.000Z",
+    "canonicalSigningPayloadUtf8": "flora.messaging.envelope-signature.v1 | {\"aead\":{\"name\":\"xchacha20-poly1305\",\"nonceBase64Url\":\"gE-okDWXqXIwvd8H2g18T-ks2Zx8Vt_8\"},\"ciphertextBase64Url\":\"zHakX4iwhee-fa-cEJay4uNdQ4UAj1I5Nv7MsoV37gmgJZav0qgkxoibA92fuwkWYYq_ShEfnhzACYquA1q_Zn0FqdNNvaiTiz2l4GjFoD0EUNNlAu49flwAaY2iTX0Kbx4kxOBuTmYn-BBkAq80jDy61VLPuidpDLdf7nc2w61blk-v_o6ySwXUL4O4MEcuVi8aQx0Mcp6Dcif_3PMOKAWJwHvaTs3XJEQ8NxJ6hjSTqB08jTsn4F_WByBu6bNeGPaDVxIjZb_c2o7XvGzdbD9ziiWKkASB\",\"conversationUuid\":\"b338d82e-ee40-53a4-a6c4-bd587cd2f7c1\",\"createdAt\":\"2026-01-01T00:10:00.000Z\",\"keyEpochId\":\"00000000-0000-4000-8000-000000000001\",\"messageKeyId\":\"44444444-4444-4444-8444-444444444442\",\"messageUuid\":\"33333333-3333-4333-8333-333333333332\",\"recipients\":[{\"deviceUuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"recipientKeyEnvelope\":{\"aead\":{\"name\":\"xchacha20-poly1305\",\"nonceBase64Url\":\"I-JSz7cVguMAHPCc1t4U7b3sb_X5RAhR\"},\"algorithm\":\"x25519-hkdf-xchacha20poly1305\",\"ciphertextBase64Url\":\"ikqG0hnF7ECwrLftcdWWXRT2ePGHYZvbU4WZre8XE1Jxh1rsqQp-wLQIsCSdo0aw\",\"ephemeralPublicKeyBase64Url\":\"-2weFwBychgeFngXk_D9NSZY_kj3Z6IyDeqfV4oV5kI\",\"preKeyId\":null,\"recipientAgreementPublicKeyId\":\"0587b9fa-60c4-5415-b57c-32f777f8300c\",\"saltBase64Url\":\"bftrrpbPZaNrAIvJLExSAgU3KzskfSzwv1-a1Ib9na0\",\"version\":1},\"userUuid\":\"55555555-5555-4555-8555-555555555555\"},{\"deviceUuid\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2\",\"recipientKeyEnvelope\":{\"aead\":{\"name\":\"xchacha20-poly1305\",\"nonceBase64Url\":\"yY2vorLn6UMSYpGWKh00wqvFrSxbICo7\"},\"algorithm\":\"x25519-hkdf-xchacha20poly1305\",\"ciphertextBase64Url\":\"_ULHio9BlmDUGxx_ZP6XC6TfD2CboJd1DQWLAweVgmTbTthnAsqPNeIdJoSJ6YiU\",\"ephemeralPublicKeyBase64Url\":\"TH1zgrjSUPq5ohEzt_u3LKwn46qYsdP-h1xKc2pTI1c\",\"preKeyId\":null,\"recipientAgreementPublicKeyId\":\"0940e271-1c3d-50e4-9e99-eb4e147b8c1e\",\"saltBase64Url\":\"nfBsTrBLd2d44rfMNTMBMIfKHAmRfmYpGAJMLAYp4Mo\",\"version\":1},\"userUuid\":\"77777777-7777-4777-8777-777777777777\"}],\"senderDeviceUuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"senderSigningPublicKeyBase64Url\":\"-tK_w1tBlydbrsMPlvyEDf25k1iYdAJJ7QpEaTTKAQg\",\"senderUserUuid\":\"55555555-5555-4555-8555-555555555555\",\"version\":1}",
+    "wire": "fscp1:eyJ2ZXJzaW9uIjoxLCJtZXNzYWdlVXVpZCI6IjMzMzMzMzMzLTMzMzMtNDMzMy04MzMzLTMzMzMzMzMzMzMzMiIsImNvbnZlcnNhdGlvblV1aWQiOiJiMzM4ZDgyZS1lZTQwLTUzYTQtYTZjNC1iZDU4N2NkMmY3YzEiLCJrZXlFcG9jaElkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwic2VuZGVyVXNlclV1aWQiOiI1NTU1NTU1NS01NTU1LTQ1NTUtODU1NS01NTU1NTU1NTU1NTUiLCJzZW5kZXJEZXZpY2VVdWlkIjoiYWFhYWFhYWEtYWFhYS00YWFhLThhYWEtYWFhYWFhYWFhYWExIiwibWVzc2FnZUtleUlkIjoiNDQ0NDQ0NDQtNDQ0NC00NDQ0LTg0NDQtNDQ0NDQ0NDQ0NDQyIiwiY3JlYXRlZEF0IjoiMjAyNi0wMS0wMVQwMDoxMDowMC4wMDBaIiwiY2lwaGVydGV4dEJhc2U2NFVybCI6InpIYWtYNGl3aGVlLWZhLWNFSmF5NHVOZFE0VUFqMUk1TnY3TXNvVjM3Z21nSlphdjBxZ2t4b2liQTkyZnV3a1dZWXFfU2hFZm5oekFDWXF1QTFxX1puMEZxZE5OdmFpVGl6Mmw0R2pGb0QwRVVOTmxBdTQ5Zmx3QWFZMmlUWDBLYng0a3hPQnVUbVluLUJCa0FxODBqRHk2MVZMUHVpZHBETGRmN25jMnc2MWJsay12X282eVN3WFVMNE80TUVjdVZpOGFReDBNY3A2RGNpZl8zUE1PS0FXSndIdmFUczNYSkVROE54SjZoalNUcUIwOGpUc240Rl9XQnlCdTZiTmVHUGFEVnhJalpiX2MybzdYdkd6ZGJEOXppaVdLa0FTQiIsImFlYWQiOnsibmFtZSI6InhjaGFjaGEyMC1wb2x5MTMwNSIsIm5vbmNlQmFzZTY0VXJsIjoiZ0Utb2tEV1hxWEl3dmQ4SDJnMThULWtzMlp4OFZ0XzgifSwicmVjaXBpZW50cyI6W3sidXNlclV1aWQiOiI1NTU1NTU1NS01NTU1LTQ1NTUtODU1NS01NTU1NTU1NTU1NTUiLCJkZXZpY2VVdWlkIjoiYWFhYWFhYWEtYWFhYS00YWFhLThhYWEtYWFhYWFhYWFhYWExIiwicmVjaXBpZW50S2V5RW52ZWxvcGUiOnsidmVyc2lvbiI6MSwiYWxnb3JpdGhtIjoieDI1NTE5LWhrZGYteGNoYWNoYTIwcG9seTEzMDUiLCJlcGhlbWVyYWxQdWJsaWNLZXlCYXNlNjRVcmwiOiItMndlRndCeWNoZ2VGbmdYa19EOU5TWllfa2ozWjZJeURlcWZWNG9WNWtJIiwicmVjaXBpZW50QWdyZWVtZW50UHVibGljS2V5SWQiOiIwNTg3YjlmYS02MGM0LTU0MTUtYjU3Yy0zMmY3NzdmODMwMGMiLCJwcmVLZXlJZCI6bnVsbCwic2FsdEJhc2U2NFVybCI6ImJmdHJycGJQWmFOckFJdkpMRXhTQWdVM0t6c2tmU3p3djEtYTFJYjluYTAiLCJhZWFkIjp7Im5hbWUiOiJ4Y2hhY2hhMjAtcG9seTEzMDUiLCJub25jZUJhc2U2NFVybCI6IkktSlN6N2NWZ3VNQUhQQ2MxdDRVN2Izc2JfWDVSQWhSIn0sImNpcGhlcnRleHRCYXNlNjRVcmwiOiJpa3FHMGhuRjdFQ3dyTGZ0Y2RXV1hSVDJlUEdIWVp2YlU0V1pyZThYRTFKeGgxcnNxUXAtd0xRSXNDU2RvMGF3In19LHsidXNlclV1aWQiOiI3Nzc3Nzc3Ny03Nzc3LTQ3NzctODc3Ny03Nzc3Nzc3Nzc3NzciLCJkZXZpY2VVdWlkIjoiYmJiYmJiYmItYmJiYi00YmJiLThiYmItYmJiYmJiYmJiYmIyIiwicmVjaXBpZW50S2V5RW52ZWxvcGUiOnsidmVyc2lvbiI6MSwiYWxnb3JpdGhtIjoieDI1NTE5LWhrZGYteGNoYWNoYTIwcG9seTEzMDUiLCJlcGhlbWVyYWxQdWJsaWNLZXlCYXNlNjRVcmwiOiJUSDF6Z3JqU1VQcTVvaEV6dF91M0xLd240NnFZc2RQLWgxeEtjMnBUSTFjIiwicmVjaXBpZW50QWdyZWVtZW50UHVibGljS2V5SWQiOiIwOTQwZTI3MS0xYzNkLTUwZTQtOWU5OS1lYjRlMTQ3YjhjMWUiLCJwcmVLZXlJZCI6bnVsbCwic2FsdEJhc2U2NFVybCI6Im5mQnNUckJMZDJkNDRyZk1OVE1CTUlmS0hBbVJmbVlwR0FKTUxBWXA0TW8iLCJhZWFkIjp7Im5hbWUiOiJ4Y2hhY2hhMjAtcG9seTEzMDUiLCJub25jZUJhc2U2NFVybCI6InlZMnZvckxuNlVNU1lwR1dLaDAwd3F2RnJTeGJJQ283In0sImNpcGhlcnRleHRCYXNlNjRVcmwiOiJfVUxIaW85QmxtRFVHeHhfWlA2WEM2VGZEMkNib0pkMURRV0xBd2VWZ21UYlR0aG5Bc3FQTmVJZEpvU0o2WWlVIn19XSwic2VuZGVyU2lnbmluZ1B1YmxpY0tleUJhc2U2NFVybCI6Ii10S193MXRCbHlkYnJzTVBsdnlFRGYyNWsxaVlkQUpKN1FwRWFUVEtBUWciLCJzZW5kZXJTaWduYXR1cmVCYXNlNjRVcmwiOiJJaTZ4SVB0REVYcnFsMWE1SjlqTEpGNTZWNWdYZzJ6SURzQ2w2OWdDMkowNng5ZUhsX3RlU3RyaTZNVmt5TldtdmhGLU1jMGdjWGFPam0zTkN0NkNDZyJ9"
+  },
+  "deviceSetBeforeRevoke": [
+    {
+      "deviceUuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "userUuid": "55555555-5555-4555-8555-555555555555",
+      "status": "Active"
+    },
+    {
+      "deviceUuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+      "userUuid": "77777777-7777-4777-8777-777777777777",
+      "status": "Active"
+    }
+  ],
+  "deviceSetAfterRevoke": [
+    {
+      "deviceUuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "userUuid": "55555555-5555-4555-8555-555555555555",
+      "status": "Revoked"
+    },
+    {
+      "deviceUuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+      "userUuid": "77777777-7777-4777-8777-777777777777",
+      "status": "Active"
+    }
+  ],
+  "expected": {
+    "beforeRevoke": {
+      "serverFormValidation": "accept",
+      "serverEnvelopeSignature": "ok",
+      "serverDevicePolicy": "allow",
+      "clientPeerDecrypt": "ok",
+      "clientSessionStateAfterInbound": "ready"
+    },
+    "afterRevoke": {
+      "serverFormValidation": "accept",
+      "serverEnvelopeSignature": "ok",
+      "serverDevicePolicy": "reject",
+      "serverDevicePolicyError": "FSCP wire: senderDeviceUuid отозван — требуется re-handshake с активным устройством.",
+      "clientInboundPolicy": "reject",
+      "clientSessionState": "compromised_local",
+      "clientCompromiseReason": "device_revoked",
+      "clientOutboundBlocked": true,
+      "clientOutboundError": "FSCP session: исходящие приостановлены до re-handshake (compromised_local).",
+      "cryptoBypassDecrypt": "ok",
+      "cryptoBypassNote": "Подпись и AEAD не знают о статусе устройства: отказ обязан приходить из policy-слоя (server device policy / client inbound policy), не из криптографии."
+    }
+  }
+}

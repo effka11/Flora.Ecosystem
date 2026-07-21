@@ -60,12 +60,23 @@ function IconDelete() {
   );
 }
 
+function IconShield() {
+  return (
+    <svg {...menuIconProps}>
+      <path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
 type ChatMoreMenuPanelProps = {
   firstActionRef: RefObject<HTMLButtonElement | null>;
   onAction: () => void;
   onSearch?: () => void;
   onMedia?: () => void;
   onPin?: () => void;
+  /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования». */
+  onSafetyNumber?: () => void;
   onDelete?: () => void;
   muteSubmenuOpen: boolean;
   isSubmenuClosing: boolean;
@@ -115,6 +126,7 @@ export function ChatMoreMenuPanel({
   onSearch,
   onMedia,
   onPin,
+  onSafetyNumber,
   onDelete,
   muteSubmenuOpen,
   isSubmenuClosing,
@@ -160,6 +172,14 @@ export function ChatMoreMenuPanel({
           onClick={onToggleMuteSubmenu}
         />
       </div>
+      <MenuRow
+        icon={<IconShield />}
+        label="Проверка шифрования"
+        onClick={() => {
+          onSafetyNumber?.();
+          onAction();
+        }}
+      />
       <MenuRow
         icon={<IconDelete />}
         label="Удалить чат"

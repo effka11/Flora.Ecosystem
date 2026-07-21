@@ -362,6 +362,36 @@ pub struct ApproveDeviceResponseDto {
     pub trusted_device_approval_token_expires_at: Option<String>,
 }
 
+/// Request body for POST .../epochs/{keyEpochId}/devices/{deviceUuid}/recover-key.
+///
+/// `envelope` — opaque `DeviceToDeviceRecoveryEnvelope` (e2e-security.md
+/// §DeviceToDeviceRecoveryEnvelope): сервер валидирует форму, binding и подпись
+/// source-устройства (fscp-core), но не расшифровывает ciphertext.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostDeviceRecoveryEnvelopeRequestDto {
+    pub envelope: serde_json::Value,
+}
+
+/// Response for POST .../recover-key.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostDeviceRecoveryEnvelopeResponseDto {
+    pub recovery_request_id: Uuid,
+    pub expires_at: String,
+}
+
+/// Response for GET .../recover-key: сохранённый конверт для target-устройства.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceRecoveryEnvelopeResponseDto {
+    pub envelope: serde_json::Value,
+    pub source_device_uuid: Uuid,
+    pub recovery_request_id: Uuid,
+    pub created_at: String,
+    pub expires_at: String,
+}
+
 // ── Legacy E2E public key (`/api/auth/.../e2e-public-key`) ─────────────────
 
 /// PUT/POST `/api/auth/me/e2e-public-key` body (C# `SetE2EPublicKeyRequest`).

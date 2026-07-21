@@ -1,0 +1,180 @@
+{
+  "vectorId": "device_to_device_recovery_envelope_v1",
+  "fscpProtocolVersion": 1,
+  "aadDomain": "flora.messaging.device-to-device-recovery.v1",
+  "signatureDomain": "flora.messaging.device-to-device-recovery-signature.v1",
+  "uuids": {
+    "userUuid": "55555555-5555-4555-8555-555555555555",
+    "sourceDeviceUuid": "66666666-6666-4666-8666-666666666666",
+    "targetDeviceUuid": "77777777-7777-4777-8777-777777777777",
+    "recoveryRequestId": "88888888-8888-4888-8888-888888888888",
+    "transferredKeyEpochIds": [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222"
+    ],
+    "targetAgreementPublicKeyId": "5e912358-390a-5ce7-bb03-4c0bc76b2c13"
+  },
+  "keys": {
+    "sourceSigningSeedBase64Url": "O7YIOmPJr9q0RqitObniidW-nGQSnaAwMSaY1ukHthE",
+    "sourceSigningPublicKeyBase64Url": "b-5vGRIBwDVJa2q6zTiarh83hO8LPS086Lh56zpw9IU",
+    "foreignSigningPublicKeyBase64Url": "GlvTnZw8hyHYFgCZiaIsA2-owjd1m4dF876J2jH1Dxg",
+    "targetAgreementPrivateKeyBase64Url": "mymh-IAbUjFqfx7PaDx6yzywC9FGFP6KawDLNHKaF2M",
+    "targetAgreementPublicKeyBase64Url": "fBea6SYXxQy6AwrLvYRr2dCzD1V_PgINWwpAmb-9_Xg",
+    "ephemeralPrivateKeyBase64Url": "ki9zfME1XMabgO8-kCvZ7gZiaqM6lUlic9mvRKGLPoI",
+    "ephemeralPublicKeyBase64Url": "gVMqfsdgNrxG-mCf12bVDwsvg8Rjrjgv8YWsu35QkQU"
+  },
+  "aadUtf8": "flora.messaging.device-to-device-recovery.v1 | 88888888-8888-4888-8888-888888888888 | 55555555-5555-4555-8555-555555555555 | 66666666-6666-4666-8666-666666666666 | 77777777-7777-4777-8777-777777777777 | 5e912358-390a-5ce7-bb03-4c0bc76b2c13 | 11111111-1111-4111-8111-111111111111,22222222-2222-4222-8222-222222222222",
+  "payloadPlaintextUtf8": "{\"keyEpochs\":[{\"keyEpochId\":\"11111111-1111-4111-8111-111111111111\",\"rootKeyBase64Url\":\"3c7ZnntpfBNycHwhL50KGaCWPPyR9nrmK1-qT92sFhw\",\"epochAccountIdentityPrivateKeyBase64Url\":\"fSCpNujMOi92iF3r224z8moEC78rZCjjMkTpYaupa1M\",\"epochAccountIdentityPublicKeyBase64Url\":\"GH3AsMe6pPktQJ_LR20sbGWf7PyIW8U9N7IXV_Y2RCE\",\"conversationKeyBackups\":[]},{\"keyEpochId\":\"22222222-2222-4222-8222-222222222222\",\"rootKeyBase64Url\":\"Ya6Zu2C4GE48yJfO6Jn2Etry_XewbLLMxfVmaNAHYTU\",\"epochAccountIdentityPrivateKeyBase64Url\":\"V1ZBo8NbIrY4vRuo1GoACSTN-DTpvd7DO9anzYi7Dd0\",\"epochAccountIdentityPublicKeyBase64Url\":\"INMuzF8w6pzFY4ay6j2NFFH7TuumndaPR5xrwRQI45M\",\"conversationKeyBackups\":[]}]}",
+  "x25519SharedSecretBase64Url": "moLsmEcVWBNcMWJ5HBKRF32CwYSrfz8bF9TmkF3VyR0",
+  "hkdfSaltBase64Url": "BqhwKjv8ASilJzspd7qBcJ__C6-xasakJHqyW9bkhyY",
+  "wrapKeyBase64Url": "miUz4gmhR4Wa_1Sr0OYhMuXa8XoBC6DZE6vJ0lA2UeY",
+  "canonicalSigningPayloadUtf8": "flora.messaging.device-to-device-recovery-signature.v1 | {\"aead\":{\"name\":\"xchacha20-poly1305\",\"nonceBase64Url\":\"k9g8W3uliSmjHbx6JZkojIKCrH8jUJE6\"},\"ciphertextBase64Url\":\"Aab8v1dy7Okb0PsKFOC7e-LASp1RjsnMpJzgL_MLHzF_I3XckI6BfsIVaQcuHi8vEYs_k3loEFHl4V11etLA3-xaHxrYjanZ2Z4us0fIngDT-db8Ydjdx2dTCRaNjHfQuwlGjc7DcIHyucVY-7icD4q3ctboTlacPkewWOaeEQquV6VAk8NWTk4CbGQ9ZNoYR3WLAXgZqG_5FbEFRImzX-55vYSBrM-AWp4_uYLBom-pgnnjafbeb-OMSTvLAYHpRLRd9BxI0jo1AW-fDtQBVi7xeE-8v7YDpgQ-hSBjwMZh63ItoqEzEQjAHOvlgt65f2r-ZSfh18vouHjYU5KhQGa45XEvjcSp8neFTRupPT5dPPgJsb9JzPF34PfzWClKRJDvTzT92PGaSUWOLjVu8Xj6ayTbKS5nga_hEx72UoujhEJRP-HymO5LVlD4huF_988DifZy6Rokl7kXOpNyXUQst4DlPZhE-eXf2NjbFlHhyndu18fLTZ-rrL3l4nm3E7XpruVKSBsVGPR423kMXorX_Qypu1ldAdWIC9yY4SZBztriCT7s9_5b-LEYYSL3hdGsnC3ezeGrQPzgezb3v7c3noFZBssHe0E2YvbFOmx1L45oLrhAbkOXS8BXppQgadAsSyUIrAXoTuPXQy_VFjmbMx4UwmscYqirU_DzmfZQ28-3piUDdOTFolo777U6iXgMp3gTH1lpaT6ravmAnEdL15qMGJnhnpEpjPs8rz6ETaEM93sphWS3zwbyiVsY3W9Z7GhZDh5efZhE2cWCXfKickyOxt6yEcYKbjvKu5BerFiSMITTGHtd1ZxtJUcnW53tTSGUoUY5A49U8triz7GHzWodPz7Kq4E5VxJ9tIBD0sF_JFq2obpGcqQtmnOEx6Aw\",\"ephemeralPublicKeyBase64Url\":\"gVMqfsdgNrxG-mCf12bVDwsvg8Rjrjgv8YWsu35QkQU\",\"recoveryRequestId\":\"88888888-8888-4888-8888-888888888888\",\"saltBase64Url\":\"BqhwKjv8ASilJzspd7qBcJ__C6-xasakJHqyW9bkhyY\",\"sourceDeviceUuid\":\"66666666-6666-4666-8666-666666666666\",\"targetAgreementPublicKeyId\":\"5e912358-390a-5ce7-bb03-4c0bc76b2c13\",\"targetDeviceUuid\":\"77777777-7777-4777-8777-777777777777\",\"transferredKeyEpochIds\":[\"11111111-1111-4111-8111-111111111111\",\"22222222-2222-4222-8222-222222222222\"],\"userUuid\":\"55555555-5555-4555-8555-555555555555\",\"version\":1}",
+  "envelope": {
+    "version": 1,
+    "recoveryRequestId": "88888888-8888-4888-8888-888888888888",
+    "userUuid": "55555555-5555-4555-8555-555555555555",
+    "sourceDeviceUuid": "66666666-6666-4666-8666-666666666666",
+    "targetDeviceUuid": "77777777-7777-4777-8777-777777777777",
+    "transferredKeyEpochIds": [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222"
+    ],
+    "targetAgreementPublicKeyId": "5e912358-390a-5ce7-bb03-4c0bc76b2c13",
+    "ephemeralPublicKeyBase64Url": "gVMqfsdgNrxG-mCf12bVDwsvg8Rjrjgv8YWsu35QkQU",
+    "saltBase64Url": "BqhwKjv8ASilJzspd7qBcJ__C6-xasakJHqyW9bkhyY",
+    "aead": {
+      "name": "xchacha20-poly1305",
+      "nonceBase64Url": "k9g8W3uliSmjHbx6JZkojIKCrH8jUJE6"
+    },
+    "ciphertextBase64Url": "Aab8v1dy7Okb0PsKFOC7e-LASp1RjsnMpJzgL_MLHzF_I3XckI6BfsIVaQcuHi8vEYs_k3loEFHl4V11etLA3-xaHxrYjanZ2Z4us0fIngDT-db8Ydjdx2dTCRaNjHfQuwlGjc7DcIHyucVY-7icD4q3ctboTlacPkewWOaeEQquV6VAk8NWTk4CbGQ9ZNoYR3WLAXgZqG_5FbEFRImzX-55vYSBrM-AWp4_uYLBom-pgnnjafbeb-OMSTvLAYHpRLRd9BxI0jo1AW-fDtQBVi7xeE-8v7YDpgQ-hSBjwMZh63ItoqEzEQjAHOvlgt65f2r-ZSfh18vouHjYU5KhQGa45XEvjcSp8neFTRupPT5dPPgJsb9JzPF34PfzWClKRJDvTzT92PGaSUWOLjVu8Xj6ayTbKS5nga_hEx72UoujhEJRP-HymO5LVlD4huF_988DifZy6Rokl7kXOpNyXUQst4DlPZhE-eXf2NjbFlHhyndu18fLTZ-rrL3l4nm3E7XpruVKSBsVGPR423kMXorX_Qypu1ldAdWIC9yY4SZBztriCT7s9_5b-LEYYSL3hdGsnC3ezeGrQPzgezb3v7c3noFZBssHe0E2YvbFOmx1L45oLrhAbkOXS8BXppQgadAsSyUIrAXoTuPXQy_VFjmbMx4UwmscYqirU_DzmfZQ28-3piUDdOTFolo777U6iXgMp3gTH1lpaT6ravmAnEdL15qMGJnhnpEpjPs8rz6ETaEM93sphWS3zwbyiVsY3W9Z7GhZDh5efZhE2cWCXfKickyOxt6yEcYKbjvKu5BerFiSMITTGHtd1ZxtJUcnW53tTSGUoUY5A49U8triz7GHzWodPz7Kq4E5VxJ9tIBD0sF_JFq2obpGcqQtmnOEx6Aw",
+    "sourceDeviceSignatureBase64Url": "4gSGoadLQc1jVlhpEKnjoDm9IAB302CrbxnzzQ0Yt-re1abknet7c9pGtmtIHxqbG_Iu-DokPStQ-txJlQ9zAw"
+  },
+  "cases": [
+    {
+      "caseId": "device_to_device_recovery_envelope_v1_success",
+      "envelope": {
+        "version": 1,
+        "recoveryRequestId": "88888888-8888-4888-8888-888888888888",
+        "userUuid": "55555555-5555-4555-8555-555555555555",
+        "sourceDeviceUuid": "66666666-6666-4666-8666-666666666666",
+        "targetDeviceUuid": "77777777-7777-4777-8777-777777777777",
+        "transferredKeyEpochIds": [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222"
+        ],
+        "targetAgreementPublicKeyId": "5e912358-390a-5ce7-bb03-4c0bc76b2c13",
+        "ephemeralPublicKeyBase64Url": "gVMqfsdgNrxG-mCf12bVDwsvg8Rjrjgv8YWsu35QkQU",
+        "saltBase64Url": "BqhwKjv8ASilJzspd7qBcJ__C6-xasakJHqyW9bkhyY",
+        "aead": {
+          "name": "xchacha20-poly1305",
+          "nonceBase64Url": "k9g8W3uliSmjHbx6JZkojIKCrH8jUJE6"
+        },
+        "ciphertextBase64Url": "Aab8v1dy7Okb0PsKFOC7e-LASp1RjsnMpJzgL_MLHzF_I3XckI6BfsIVaQcuHi8vEYs_k3loEFHl4V11etLA3-xaHxrYjanZ2Z4us0fIngDT-db8Ydjdx2dTCRaNjHfQuwlGjc7DcIHyucVY-7icD4q3ctboTlacPkewWOaeEQquV6VAk8NWTk4CbGQ9ZNoYR3WLAXgZqG_5FbEFRImzX-55vYSBrM-AWp4_uYLBom-pgnnjafbeb-OMSTvLAYHpRLRd9BxI0jo1AW-fDtQBVi7xeE-8v7YDpgQ-hSBjwMZh63ItoqEzEQjAHOvlgt65f2r-ZSfh18vouHjYU5KhQGa45XEvjcSp8neFTRupPT5dPPgJsb9JzPF34PfzWClKRJDvTzT92PGaSUWOLjVu8Xj6ayTbKS5nga_hEx72UoujhEJRP-HymO5LVlD4huF_988DifZy6Rokl7kXOpNyXUQst4DlPZhE-eXf2NjbFlHhyndu18fLTZ-rrL3l4nm3E7XpruVKSBsVGPR423kMXorX_Qypu1ldAdWIC9yY4SZBztriCT7s9_5b-LEYYSL3hdGsnC3ezeGrQPzgezb3v7c3noFZBssHe0E2YvbFOmx1L45oLrhAbkOXS8BXppQgadAsSyUIrAXoTuPXQy_VFjmbMx4UwmscYqirU_DzmfZQ28-3piUDdOTFolo777U6iXgMp3gTH1lpaT6ravmAnEdL15qMGJnhnpEpjPs8rz6ETaEM93sphWS3zwbyiVsY3W9Z7GhZDh5efZhE2cWCXfKickyOxt6yEcYKbjvKu5BerFiSMITTGHtd1ZxtJUcnW53tTSGUoUY5A49U8triz7GHzWodPz7Kq4E5VxJ9tIBD0sF_JFq2obpGcqQtmnOEx6Aw",
+        "sourceDeviceSignatureBase64Url": "4gSGoadLQc1jVlhpEKnjoDm9IAB302CrbxnzzQ0Yt-re1abknet7c9pGtmtIHxqbG_Iu-DokPStQ-txJlQ9zAw"
+      },
+      "expectedServer": "ok",
+      "expectedClient": "ok"
+    },
+    {
+      "caseId": "device_to_device_recovery_envelope_v1_wrong_challenge",
+      "envelope": {
+        "version": 1,
+        "recoveryRequestId": "99999999-9999-4999-8999-999999999999",
+        "userUuid": "55555555-5555-4555-8555-555555555555",
+        "sourceDeviceUuid": "66666666-6666-4666-8666-666666666666",
+        "targetDeviceUuid": "77777777-7777-4777-8777-777777777777",
+        "transferredKeyEpochIds": [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222"
+        ],
+        "targetAgreementPublicKeyId": "5e912358-390a-5ce7-bb03-4c0bc76b2c13",
+        "ephemeralPublicKeyBase64Url": "gVMqfsdgNrxG-mCf12bVDwsvg8Rjrjgv8YWsu35QkQU",
+        "saltBase64Url": "BqhwKjv8ASilJzspd7qBcJ__C6-xasakJHqyW9bkhyY",
+        "aead": {
+          "name": "xchacha20-poly1305",
+          "nonceBase64Url": "k9g8W3uliSmjHbx6JZkojIKCrH8jUJE6"
+        },
+        "ciphertextBase64Url": "Aab8v1dy7Okb0PsKFOC7e-LASp1RjsnMpJzgL_MLHzF_I3XckI6BfsIVaQcuHi8vEYs_k3loEFHl4V11etLA3-xaHxrYjanZ2Z4us0fIngDT-db8Ydjdx2dTCRaNjHfQuwlGjc7DcIHyucVY-7icD4q3ctboTlacPkewWOaeEQquV6VAk8NWTk4CbGQ9ZNoYR3WLAXgZqG_5FbEFRImzX-55vYSBrM-AWp4_uYLBom-pgnnjafbeb-OMSTvLAYHpRLRd9BxI0jo1AW-fDtQBVi7xeE-8v7YDpgQ-hSBjwMZh63ItoqEzEQjAHOvlgt65f2r-ZSfh18vouHjYU5KhQGa45XEvjcSp8neFTRupPT5dPPgJsb9JzPF34PfzWClKRJDvTzT92PGaSUWOLjVu8Xj6ayTbKS5nga_hEx72UoujhEJRP-HymO5LVlD4huF_988DifZy6Rokl7kXOpNyXUQst4DlPZhE-eXf2NjbFlHhyndu18fLTZ-rrL3l4nm3E7XpruVKSBsVGPR423kMXorX_Qypu1ldAdWIC9yY4SZBztriCT7s9_5b-LEYYSL3hdGsnC3ezeGrQPzgezb3v7c3noFZBssHe0E2YvbFOmx1L45oLrhAbkOXS8BXppQgadAsSyUIrAXoTuPXQy_VFjmbMx4UwmscYqirU_DzmfZQ28-3piUDdOTFolo777U6iXgMp3gTH1lpaT6ravmAnEdL15qMGJnhnpEpjPs8rz6ETaEM93sphWS3zwbyiVsY3W9Z7GhZDh5efZhE2cWCXfKickyOxt6yEcYKbjvKu5BerFiSMITTGHtd1ZxtJUcnW53tTSGUoUY5A49U8triz7GHzWodPz7Kq4E5VxJ9tIBD0sF_JFq2obpGcqQtmnOEx6Aw",
+        "sourceDeviceSignatureBase64Url": "4gSGoadLQc1jVlhpEKnjoDm9IAB302CrbxnzzQ0Yt-re1abknet7c9pGtmtIHxqbG_Iu-DokPStQ-txJlQ9zAw"
+      },
+      "expectedServer": "error",
+      "expectedServerError": "D2D recovery: подпись source-устройства не прошла проверку.",
+      "expectedClientErrorCategory": "binding_mismatch"
+    },
+    {
+      "caseId": "device_to_device_recovery_envelope_v1_tampered_ciphertext",
+      "envelope": {
+        "version": 1,
+        "recoveryRequestId": "88888888-8888-4888-8888-888888888888",
+        "userUuid": "55555555-5555-4555-8555-555555555555",
+        "sourceDeviceUuid": "66666666-6666-4666-8666-666666666666",
+        "targetDeviceUuid": "77777777-7777-4777-8777-777777777777",
+        "transferredKeyEpochIds": [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222"
+        ],
+        "targetAgreementPublicKeyId": "5e912358-390a-5ce7-bb03-4c0bc76b2c13",
+        "ephemeralPublicKeyBase64Url": "gVMqfsdgNrxG-mCf12bVDwsvg8Rjrjgv8YWsu35QkQU",
+        "saltBase64Url": "BqhwKjv8ASilJzspd7qBcJ__C6-xasakJHqyW9bkhyY",
+        "aead": {
+          "name": "xchacha20-poly1305",
+          "nonceBase64Url": "k9g8W3uliSmjHbx6JZkojIKCrH8jUJE6"
+        },
+        "ciphertextBase64Url": "AKb8v1dy7Okb0PsKFOC7e-LASp1RjsnMpJzgL_MLHzF_I3XckI6BfsIVaQcuHi8vEYs_k3loEFHl4V11etLA3-xaHxrYjanZ2Z4us0fIngDT-db8Ydjdx2dTCRaNjHfQuwlGjc7DcIHyucVY-7icD4q3ctboTlacPkewWOaeEQquV6VAk8NWTk4CbGQ9ZNoYR3WLAXgZqG_5FbEFRImzX-55vYSBrM-AWp4_uYLBom-pgnnjafbeb-OMSTvLAYHpRLRd9BxI0jo1AW-fDtQBVi7xeE-8v7YDpgQ-hSBjwMZh63ItoqEzEQjAHOvlgt65f2r-ZSfh18vouHjYU5KhQGa45XEvjcSp8neFTRupPT5dPPgJsb9JzPF34PfzWClKRJDvTzT92PGaSUWOLjVu8Xj6ayTbKS5nga_hEx72UoujhEJRP-HymO5LVlD4huF_988DifZy6Rokl7kXOpNyXUQst4DlPZhE-eXf2NjbFlHhyndu18fLTZ-rrL3l4nm3E7XpruVKSBsVGPR423kMXorX_Qypu1ldAdWIC9yY4SZBztriCT7s9_5b-LEYYSL3hdGsnC3ezeGrQPzgezb3v7c3noFZBssHe0E2YvbFOmx1L45oLrhAbkOXS8BXppQgadAsSyUIrAXoTuPXQy_VFjmbMx4UwmscYqirU_DzmfZQ28-3piUDdOTFolo777U6iXgMp3gTH1lpaT6ravmAnEdL15qMGJnhnpEpjPs8rz6ETaEM93sphWS3zwbyiVsY3W9Z7GhZDh5efZhE2cWCXfKickyOxt6yEcYKbjvKu5BerFiSMITTGHtd1ZxtJUcnW53tTSGUoUY5A49U8triz7GHzWodPz7Kq4E5VxJ9tIBD0sF_JFq2obpGcqQtmnOEx6Aw",
+        "sourceDeviceSignatureBase64Url": "4gSGoadLQc1jVlhpEKnjoDm9IAB302CrbxnzzQ0Yt-re1abknet7c9pGtmtIHxqbG_Iu-DokPStQ-txJlQ9zAw"
+      },
+      "expectedServer": "error",
+      "expectedServerError": "D2D recovery: подпись source-устройства не прошла проверку.",
+      "expectedClientErrorCategory": "signature_invalid"
+    },
+    {
+      "caseId": "device_to_device_recovery_envelope_v1_foreign_signature",
+      "envelope": {
+        "version": 1,
+        "recoveryRequestId": "88888888-8888-4888-8888-888888888888",
+        "userUuid": "55555555-5555-4555-8555-555555555555",
+        "sourceDeviceUuid": "66666666-6666-4666-8666-666666666666",
+        "targetDeviceUuid": "77777777-7777-4777-8777-777777777777",
+        "transferredKeyEpochIds": [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222"
+        ],
+        "targetAgreementPublicKeyId": "5e912358-390a-5ce7-bb03-4c0bc76b2c13",
+        "ephemeralPublicKeyBase64Url": "gVMqfsdgNrxG-mCf12bVDwsvg8Rjrjgv8YWsu35QkQU",
+        "saltBase64Url": "BqhwKjv8ASilJzspd7qBcJ__C6-xasakJHqyW9bkhyY",
+        "aead": {
+          "name": "xchacha20-poly1305",
+          "nonceBase64Url": "k9g8W3uliSmjHbx6JZkojIKCrH8jUJE6"
+        },
+        "ciphertextBase64Url": "Aab8v1dy7Okb0PsKFOC7e-LASp1RjsnMpJzgL_MLHzF_I3XckI6BfsIVaQcuHi8vEYs_k3loEFHl4V11etLA3-xaHxrYjanZ2Z4us0fIngDT-db8Ydjdx2dTCRaNjHfQuwlGjc7DcIHyucVY-7icD4q3ctboTlacPkewWOaeEQquV6VAk8NWTk4CbGQ9ZNoYR3WLAXgZqG_5FbEFRImzX-55vYSBrM-AWp4_uYLBom-pgnnjafbeb-OMSTvLAYHpRLRd9BxI0jo1AW-fDtQBVi7xeE-8v7YDpgQ-hSBjwMZh63ItoqEzEQjAHOvlgt65f2r-ZSfh18vouHjYU5KhQGa45XEvjcSp8neFTRupPT5dPPgJsb9JzPF34PfzWClKRJDvTzT92PGaSUWOLjVu8Xj6ayTbKS5nga_hEx72UoujhEJRP-HymO5LVlD4huF_988DifZy6Rokl7kXOpNyXUQst4DlPZhE-eXf2NjbFlHhyndu18fLTZ-rrL3l4nm3E7XpruVKSBsVGPR423kMXorX_Qypu1ldAdWIC9yY4SZBztriCT7s9_5b-LEYYSL3hdGsnC3ezeGrQPzgezb3v7c3noFZBssHe0E2YvbFOmx1L45oLrhAbkOXS8BXppQgadAsSyUIrAXoTuPXQy_VFjmbMx4UwmscYqirU_DzmfZQ28-3piUDdOTFolo777U6iXgMp3gTH1lpaT6ravmAnEdL15qMGJnhnpEpjPs8rz6ETaEM93sphWS3zwbyiVsY3W9Z7GhZDh5efZhE2cWCXfKickyOxt6yEcYKbjvKu5BerFiSMITTGHtd1ZxtJUcnW53tTSGUoUY5A49U8triz7GHzWodPz7Kq4E5VxJ9tIBD0sF_JFq2obpGcqQtmnOEx6Aw",
+        "sourceDeviceSignatureBase64Url": "zgQHB6pQXTvKE0a7-Rrp14t2PwA5LECK3O9WWj304aecmnlDuu4flUGzn745Up-W8c1-Eia7LtFVP8EbPqT8AQ"
+      },
+      "expectedServer": "error",
+      "expectedServerError": "D2D recovery: подпись source-устройства не прошла проверку.",
+      "expectedClientErrorCategory": "signature_invalid"
+    },
+    {
+      "caseId": "device_to_device_recovery_envelope_v1_empty_epochs",
+      "envelope": {
+        "version": 1,
+        "recoveryRequestId": "88888888-8888-4888-8888-888888888888",
+        "userUuid": "55555555-5555-4555-8555-555555555555",
+        "sourceDeviceUuid": "66666666-6666-4666-8666-666666666666",
+        "targetDeviceUuid": "77777777-7777-4777-8777-777777777777",
+        "transferredKeyEpochIds": [],
+        "targetAgreementPublicKeyId": "5e912358-390a-5ce7-bb03-4c0bc76b2c13",
+        "ephemeralPublicKeyBase64Url": "gVMqfsdgNrxG-mCf12bVDwsvg8Rjrjgv8YWsu35QkQU",
+        "saltBase64Url": "BqhwKjv8ASilJzspd7qBcJ__C6-xasakJHqyW9bkhyY",
+        "aead": {
+          "name": "xchacha20-poly1305",
+          "nonceBase64Url": "k9g8W3uliSmjHbx6JZkojIKCrH8jUJE6"
+        },
+        "ciphertextBase64Url": "Aab8v1dy7Okb0PsKFOC7e-LASp1RjsnMpJzgL_MLHzF_I3XckI6BfsIVaQcuHi8vEYs_k3loEFHl4V11etLA3-xaHxrYjanZ2Z4us0fIngDT-db8Ydjdx2dTCRaNjHfQuwlGjc7DcIHyucVY-7icD4q3ctboTlacPkewWOaeEQquV6VAk8NWTk4CbGQ9ZNoYR3WLAXgZqG_5FbEFRImzX-55vYSBrM-AWp4_uYLBom-pgnnjafbeb-OMSTvLAYHpRLRd9BxI0jo1AW-fDtQBVi7xeE-8v7YDpgQ-hSBjwMZh63ItoqEzEQjAHOvlgt65f2r-ZSfh18vouHjYU5KhQGa45XEvjcSp8neFTRupPT5dPPgJsb9JzPF34PfzWClKRJDvTzT92PGaSUWOLjVu8Xj6ayTbKS5nga_hEx72UoujhEJRP-HymO5LVlD4huF_988DifZy6Rokl7kXOpNyXUQst4DlPZhE-eXf2NjbFlHhyndu18fLTZ-rrL3l4nm3E7XpruVKSBsVGPR423kMXorX_Qypu1ldAdWIC9yY4SZBztriCT7s9_5b-LEYYSL3hdGsnC3ezeGrQPzgezb3v7c3noFZBssHe0E2YvbFOmx1L45oLrhAbkOXS8BXppQgadAsSyUIrAXoTuPXQy_VFjmbMx4UwmscYqirU_DzmfZQ28-3piUDdOTFolo777U6iXgMp3gTH1lpaT6ravmAnEdL15qMGJnhnpEpjPs8rz6ETaEM93sphWS3zwbyiVsY3W9Z7GhZDh5efZhE2cWCXfKickyOxt6yEcYKbjvKu5BerFiSMITTGHtd1ZxtJUcnW53tTSGUoUY5A49U8triz7GHzWodPz7Kq4E5VxJ9tIBD0sF_JFq2obpGcqQtmnOEx6Aw",
+        "sourceDeviceSignatureBase64Url": "ghV8za1x0zUuPdILsaGtBeYBuwvAWbCoo41BU7Akdtl5vZUaP_6BgML-SugFc7GaF8CCIlfsc33L_f5xDZu4Bw"
+      },
+      "expectedServer": "error",
+      "expectedServerError": "D2D recovery: transferredKeyEpochIds должен быть непустым массивом.",
+      "expectedClientErrorCategory": "malformed_envelope"
+    }
+  ]
+}

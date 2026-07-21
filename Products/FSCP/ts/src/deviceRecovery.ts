@@ -23,6 +23,8 @@ import { getSodium, scalarmult, scalarmultBase } from "./sodium.js";
 
 const D2D_AAD_DOMAIN = "flora.messaging.device-to-device-recovery.v1";
 const D2D_SIGNATURE_DOMAIN = "flora.messaging.device-to-device-recovery-signature.v1";
+/** Server/client parity: ограничивает authority checks и размер recovery payload. */
+export const FSCP_MAX_TRANSFERRED_KEY_EPOCHS = 64;
 
 /** Материал одной epoch внутри plaintext конверта (схема §DeviceToDeviceRecoveryEnvelope). */
 export type FscpDeviceRecoveryEpoch = {
@@ -115,6 +117,11 @@ export async function buildDeviceRecoveryEnvelope(params: {
 }): Promise<FscpDeviceRecoveryEnvelope> {
   if (params.payload.keyEpochs.length === 0) {
     throw new Error("D2D recovery: payload.keyEpochs не может быть пустым.");
+  }
+  if (params.payload.keyEpochs.length > FSCP_MAX_TRANSFERRED_KEY_EPOCHS) {
+    throw new Error(
+      `D2D recovery: payload.keyEpochs не должен превышать ${FSCP_MAX_TRANSFERRED_KEY_EPOCHS} элементов.`,
+    );
   }
   const sodium = await getSodium();
 
@@ -230,7 +237,8 @@ export async function openDeviceRecoveryEnvelope(params: {
     typeof env.ciphertextBase64Url !== "string" ||
     env.aead?.name !== "xchacha20-poly1305" ||
     !Array.isArray(env.transferredKeyEpochIds) ||
-    env.transferredKeyEpochIds.length === 0
+    env.transferredKeyEpochIds.length === 0 ||
+    env.transferredKeyEpochIds.length > FSCP_MAX_TRANSFERRED_KEY_EPOCHS
   ) {
     throw new FscpDeviceRecoveryOpenError(
       "malformed_envelope",

@@ -3,6 +3,8 @@
 //! Functional product: `Products/FSCP`. Инвариант next-architecture.md §4.4: сервер **не расшифровывает**.
 //! Golden: `Documents/test-vectors/fscp-wire-validator-v1.json`.
 
+mod d2d_recovery;
+
 use base64::Engine as _;
 use base64::alphabet;
 use base64::engine::DecodePaddingMode;
@@ -10,7 +12,18 @@ use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
 use serde_json::Value;
 use uuid::Uuid;
 
-pub use fscp_contracts::{BOOTSTRAP_KEY_EPOCH_ID, WIRE_PREFIX};
+pub use d2d_recovery::{
+    D2D_AAD_DOMAIN, D2D_SIGNATURE_DOMAIN, D2dRecoveryEnvelopeSummary,
+    device_agreement_public_key_id, try_validate_d2d_recovery_envelope,
+    verify_d2d_recovery_signature,
+};
+pub use fscp_contracts::{BOOTSTRAP_DEVICE_UUID, BOOTSTRAP_KEY_EPOCH_ID, WIRE_PREFIX};
+
+/// Policy-ошибка device revocation (FSCP.md §Device revocation): отправка wire
+/// с отозванным `senderDeviceUuid` отклоняется. Golden: fscp-revoked-device-v1.json
+/// (`message_session_revoked_device_v1_failure`).
+pub const REVOKED_SENDER_DEVICE_ERROR: &str =
+    "FSCP wire: senderDeviceUuid отозван — требуется re-handshake с активным устройством.";
 const MAX_WIRE_CHARS: usize = 200_000;
 const MAX_INNER_UTF8_BYTES: usize = 120_000;
 const MAX_RECIPIENT_ENVELOPE_CIPHER_BYTES: usize = 8 * 1024;
@@ -18,6 +31,24 @@ const MAX_MESSAGE_BODY_CIPHER_BYTES: usize = 64 * 1024;
 
 const RKE_ALGORITHM: &str = "x25519-hkdf-xchacha20poly1305";
 const AEAD_NAME: &str = "xchacha20-poly1305";
+const FLORA_NAMESPACE_DNS_SCOPE: Uuid = uuid::uuid!("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+
+fn uuid_v5_name(name: &str) -> Uuid {
+    Uuid::new_v5(&FLORA_NAMESPACE_DNS_SCOPE, name.as_bytes())
+}
+
+/// Идентификатор DM 1:1 — паритет `dmConversationUuid` в `@flora/fscp`.
+pub fn dm_conversation_uuid(user_a: &Uuid, user_b: &Uuid) -> Uuid {
+    let a = user_a.to_string();
+    let b = user_b.to_string();
+    let (low, high) = if a <= b { (a, b) } else { (b, a) };
+    uuid_v5_name(&format!("{low}|{high}|fscp-dm-v1"))
+}
+
+/// Идентификатор agreement public key — паритет `agreementPublicKeyId` в `@flora/fscp`.
+pub fn agreement_public_key_id(user_uuid: &Uuid, key_epoch_id: &Uuid) -> Uuid {
+    uuid_v5_name(&format!("{user_uuid}|{key_epoch_id}|agreement-v1"))
+}
 
 /// Legacy dual-ciphertext путь: оба поля обязаны быть одним и тем же wire.
 /// Порт `TryValidateDualWire`.
@@ -74,8 +105,7 @@ pub fn try_validate_wire(
         _ => return Err("FSCP wire: senderUserUuid не совпадает с текущим пользователем.".into()),
     }
 
-    let expected_conversation =
-        flora_shared::uuid_v5::dm_conversation_uuid(&authenticated_sender, &message_recipient);
+    let expected_conversation = dm_conversation_uuid(&authenticated_sender, &message_recipient);
     match guid_field(&root, "conversationUuid") {
         Some(conversation) if conversation == expected_conversation => {}
         _ => {
@@ -156,7 +186,7 @@ pub fn try_validate_wire(
             return Err("FSCP wire: неверный recipientAgreementPublicKeyId.".into());
         };
 
-        let expected_pk_id = flora_shared::uuid_v5::agreement_public_key_id(&ru, &key_epoch);
+        let expected_pk_id = agreement_public_key_id(&ru, &key_epoch);
         if pk_id != expected_pk_id {
             return Err(
                 "FSCP wire: recipientAgreementPublicKeyId не соответствует пользователю и эпохе."
@@ -370,6 +400,20 @@ fn escape_like_json_stringify(s: &str) -> String {
     out
 }
 
+/// Извлекает `senderDeviceUuid` конверта для policy-проверок device revocation
+/// (FSCP.md §Device revocation). Вызывать после `try_validate_wire` (форма
+/// гарантирует присутствие/валидность поля); сообщения об ошибках — от структурного слоя.
+pub fn extract_sender_device_uuid(wire: &str) -> Result<Uuid, String> {
+    let wire = wire.trim();
+    let Some(inner) = wire.strip_prefix(WIRE_PREFIX) else {
+        return Err("Неверный префикс FSCP wire (ожидается fscp1:).".into());
+    };
+    let json_utf8 = from_base64_url_like_dotnet(inner, MAX_INNER_UTF8_BYTES)?;
+    let root = parse_json_like_dotnet(&json_utf8)?;
+    guid_field(&root, "senderDeviceUuid")
+        .ok_or_else(|| String::from("FSCP wire: неверный senderDeviceUuid."))
+}
+
 /// Извлекает UUID собеседника (участник ≠ `authenticated_sender`) без полной валидации.
 /// Порт `TryExtractReceiver`; после определения получателя вызывается `try_validate_dual_wire`.
 pub fn try_extract_receiver(wire: &str, authenticated_sender: Uuid) -> Result<Uuid, String> {
@@ -490,6 +534,24 @@ mod tests {
 
     // Полный паритет с C#-эталоном — golden-вектор fscp-wire-validator-v1.json,
     // consumer в Tests/parity/tests/fscp_wire_vectors.rs. Здесь — инварианты хелперов.
+
+    #[test]
+    fn fscp_uuid_derivations_match_golden_values() {
+        let user_a = uuid::uuid!("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        let user_b = uuid::uuid!("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+        assert_eq!(
+            dm_conversation_uuid(&user_a, &user_b),
+            uuid::uuid!("17caed55-ccf4-5fd2-8dc6-286a38ddea14")
+        );
+        assert_eq!(
+            dm_conversation_uuid(&user_b, &user_a),
+            uuid::uuid!("17caed55-ccf4-5fd2-8dc6-286a38ddea14")
+        );
+        assert_eq!(
+            agreement_public_key_id(&user_a, &BOOTSTRAP_KEY_EPOCH_ID),
+            uuid::uuid!("23971987-91da-5b01-a5d7-4b857b80031c")
+        );
+    }
 
     #[test]
     fn base64_helper_matches_dotnet_quirks() {

@@ -182,6 +182,40 @@ export function markCompromisedLocal(
   return { ...session, sessionState: "compromised_local", compromiseReason: reason };
 }
 
+/** Статус device binding из server-attested списка (GET epochs/{id}/devices). */
+export type FscpDeviceBindingStatus = "Active" | "Pending" | "Revoked";
+
+export type FscpInboundSenderDevicePolicyOutcome = {
+  session: FscpV1ConversationSession;
+  /** false — конверт не обрабатывать (не расшифровывать/не показывать). */
+  acceptInbound: boolean;
+};
+
+/**
+ * Инбаунд-политика device revocation (FSCP.md §Device revocation,
+ * e2e-security.md Acceptance: «отклоняют дальнейшие операции с отозванным device
+ * как с active»). Криптографически wire от отозванного устройства остаётся
+ * валидным (подпись/AEAD не знают о статусе) — отказ обязан приходить из
+ * policy-слоя: перед обработкой входящего вызывающий сопоставляет
+ * `senderDeviceUuid` конверта с server-attested статусом устройства.
+ *
+ * Revoked → конверт отклоняется, сессия переводится в compromised_local
+ * (`device_revoked`), выход — только re-handshake с active-устройством.
+ * Golden: fscp-revoked-device-v1.json (`message_session_revoked_device_v1_failure`).
+ */
+export function evaluateInboundSenderDevice(
+  session: FscpV1ConversationSession,
+  senderDeviceStatus: FscpDeviceBindingStatus | undefined,
+): FscpInboundSenderDevicePolicyOutcome {
+  if (senderDeviceStatus === "Revoked") {
+    return {
+      session: markCompromisedLocal(session, "device_revoked"),
+      acceptInbound: false,
+    };
+  }
+  return { session, acceptInbound: true };
+}
+
 /**
  * Re-handshake: свежая uninitialized-сессия для (возможно, новой) эпохи.
  * Счётчики сообщений сбрасываются — прежние uuid принадлежат старой паре

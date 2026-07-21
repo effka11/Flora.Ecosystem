@@ -122,6 +122,12 @@ pub fn protected_router(state: MessagingState) -> Router {
             "/api/messaging/e2e/epochs/{key_epoch_id}/devices/{device_uuid}/revoke",
             post(e2e::revoke_device),
         )
+        // D2D recovery transport: POST — source-устройство кладёт конверт,
+        // GET — target-устройство забирает (e2e-security.md §Devices recover-key).
+        .route(
+            "/api/messaging/e2e/epochs/{key_epoch_id}/devices/{device_uuid}/recover-key",
+            post(e2e::post_device_recovery_envelope).get(e2e::get_device_recovery_envelope),
+        )
         // Legacy auth-prefixed public key (ImportedSocialController / FSCP bootstrap).
         .route(
             "/api/auth/me/e2e-public-key",

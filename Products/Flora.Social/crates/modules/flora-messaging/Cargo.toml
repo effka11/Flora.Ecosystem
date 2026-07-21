@@ -25,7 +25,8 @@ flora-users-contracts = { workspace = true }
 fscp-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { workspace = true }
+# macros — для sqlx::migrate! (Rust-миграции модуля, next-architecture.md §11.1).
+sqlx = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["rt", "time"] }
 tracing = { workspace = true }
 uuid = { workspace = true }
