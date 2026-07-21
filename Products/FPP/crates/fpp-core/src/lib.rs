@@ -16,7 +16,9 @@
 //! - [`streams`] — NS-T3 односторонний CUSUM по агрегатным потокам;
 //! - [`device`] — NS-D2/NS-D3 классификация девайс-связности и текучки;
 //! - [`piecewise`] — калибровочные кривые «метрика → натуральность» (R2-параметры);
-//! - [`score`] — свод сигналов, классы Natural/Watch/Investigate с гистерезисом.
+//! - [`score`] — свод сигналов, классы Natural/Watch/Investigate с гистерезисом;
+//! - [`profile`] — 5-уровневый bucket-профиль (квантование «сырая метрика → bucket»)
+//!   и сборка отчёта следственной панели (FPP-SIGNALS §4.1).
 //!
 //! Ядро advisory-only: ни одна функция не выносит вердикт — только приоритизацию
 //! следствия V-01 (FPP §8.3). Зависимостей на модули workspace нет: компилируется
@@ -24,6 +26,7 @@
 
 pub mod device;
 pub mod piecewise;
+pub mod profile;
 pub mod score;
 pub mod streams;
 pub mod temporal;
