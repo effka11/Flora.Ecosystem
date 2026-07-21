@@ -41,7 +41,7 @@
     "expo": "~56.0.11",
     "expo-application": "~56.0.0",
     "expo-audio": "~56.0.12",
-    "expo-clipboard": "~56.0.4",
+    "expo-clipboard": "~57.0.1",
     "expo-constants": "~56.0.18",
     "expo-dev-client": "~56.0.10",
     "expo-device": "^56.0.4",
