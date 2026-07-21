@@ -69,7 +69,7 @@ pub async fn create_epoch(
 
     let state: Option<E2eAccountStateRow> = sqlx::query_as(
         r#"
-        SELECT state, freeze, updated_at
+        SELECT state, "freeze", updated_at
         FROM flora_core.user_e2e_account_states
         WHERE user_uuid = $1
         FOR UPDATE
@@ -204,7 +204,7 @@ pub async fn request_unlock_challenge(
 ) -> Result<UnlockChallengeResponseDto, E2eEpochRepoError> {
     let state = sqlx::query_as::<_, E2eAccountStateRow>(
         r#"
-        SELECT state, freeze, updated_at
+        SELECT state, "freeze", updated_at
         FROM flora_core.user_e2e_account_states
         WHERE user_uuid = $1
         "#,
@@ -343,7 +343,7 @@ pub async fn unlock_complete(
 
     let state: Option<E2eAccountStateRow> = sqlx::query_as(
         r#"
-        SELECT state, freeze, updated_at
+        SELECT state, "freeze", updated_at
         FROM flora_core.user_e2e_account_states
         WHERE user_uuid = $1
         FOR UPDATE
@@ -592,7 +592,7 @@ pub async fn add_pending_device(
 ) -> Result<Uuid, E2eEpochRepoError> {
     let state = sqlx::query_as::<_, E2eAccountStateRow>(
         r#"
-        SELECT state, freeze, updated_at
+        SELECT state, "freeze", updated_at
         FROM flora_core.user_e2e_account_states
         WHERE user_uuid = $1
         "#,
@@ -706,7 +706,7 @@ pub async fn approve_device(
 ) -> Result<(), E2eEpochRepoError> {
     let state = sqlx::query_as::<_, E2eAccountStateRow>(
         r#"
-        SELECT state, freeze, updated_at
+        SELECT state, "freeze", updated_at
         FROM flora_core.user_e2e_account_states
         WHERE user_uuid = $1
         "#,

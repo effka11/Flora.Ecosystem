@@ -33,8 +33,19 @@ describe("sniffImageHeader", () => {
     });
   });
 
+  it("accepts current wire versions including v10", () => {
+    expect(sniffImageHeader(friHeader(8, 100, 100)).kind).toBe("frc-i");
+    expect(sniffImageHeader(friHeader(9, 1080, 1430)).kind).toBe("frc-i");
+    expect(sniffImageHeader(friHeader(10, 1080, 1430))).toEqual({
+      kind: "frc-i",
+      version: 10,
+      width: 1080,
+      height: 1430,
+    });
+  });
+
   it("rejects out-of-range version", () => {
-    expect(sniffImageHeader(friHeader(8, 100, 100)).kind).toBe("unknown");
+    expect(sniffImageHeader(friHeader(11, 100, 100)).kind).toBe("unknown");
     expect(sniffImageHeader(friHeader(0, 100, 100)).kind).toBe("unknown");
   });
 
