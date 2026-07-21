@@ -26,6 +26,9 @@ pub use crate::infrastructure::ffmpeg::MusicMediaOptions;
 /// Хэндл фонового воркера Music (abort при shutdown хоста).
 pub type WorkerHandle = tokio::task::JoinHandle<()>;
 
+/// Rust-миграции модуля Music (регистрируются в flora-migrate, §11.1).
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
 /// Фоновые воркеры (backfill + orphan cleanup) при ServeNative.
 pub fn spawn_workers(pool: PgPool) -> Vec<WorkerHandle> {
     application::workers::spawn_workers(pool)

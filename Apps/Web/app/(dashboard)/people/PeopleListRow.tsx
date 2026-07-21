@@ -11,9 +11,17 @@ type PeopleListRowProps = {
   isSubscribed: boolean;
   actionAnimEpoch: number;
   onToggleSubscribe: () => void;
+  /** §User Controls (FIRA-P): «не интересно» — только в рекомендациях. */
+  onDismiss?: () => void;
 };
 
-export function PeopleListRow({ user, isSubscribed, actionAnimEpoch, onToggleSubscribe }: PeopleListRowProps) {
+export function PeopleListRow({
+  user,
+  isSubscribed,
+  actionAnimEpoch,
+  onToggleSubscribe,
+  onDismiss,
+}: PeopleListRowProps) {
   return (
     <li className={styles.item}>
       <Link href={profilePathFromUsername(user.username)} className={styles.userMain}>
@@ -42,6 +50,7 @@ export function PeopleListRow({ user, isSubscribed, actionAnimEpoch, onToggleSub
         isSubscribed={isSubscribed}
         actionAnimEpoch={actionAnimEpoch}
         onToggleSubscribe={onToggleSubscribe}
+        onDismiss={onDismiss}
       />
     </li>
   );

@@ -5,6 +5,7 @@ pub mod communities;
 pub mod community_recommendation;
 pub mod drafts;
 pub mod feed;
+pub mod feed_controls;
 pub mod media;
 pub mod post_access;
 pub mod post_image_processor;

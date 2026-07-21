@@ -484,6 +484,53 @@ button.btnJoined:hover {
   background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
 }
 
+/* §User Controls (FIRA-C): контейнер действий строки — тот же якорь, что .btn
+   (правый край на вертикали после колонки 87: left (1 + (88 - 38)) * step + translateX(-100%)). */
+.rowActions {
+  position: absolute;
+  left: calc((1 + (88 - 38)) * var(--flora-grid-step));
+  top: calc(var(--flora-list-row-pad-y) - 1px);
+  transform: translateX(-100%);
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  z-index: 2;
+}
+
+/* Внутри контейнера кнопки идут потоком — абсолютный якорь остаётся на контейнере. */
+.rowActions .btn {
+  position: static;
+  transform: none;
+}
+
+/* «Не интересно»: иконка 3x3 клетки без рамки (как btnIconUnsubscribe в people). */
+.btnDismiss {
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  border-radius: calc(2 * var(--flora-grid-step-fine));
+  width: calc(3 * var(--flora-grid-step));
+  height: calc(3 * var(--flora-grid-step));
+  padding: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.btnDismiss:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.08);
+  color: rgba(var(--flora-white-template-rgb), 0.72);
+}
+
+.btnDismiss:focus-visible {
+  outline: 2px solid rgba(var(--flora-white-template-rgb), 0.28);
+  outline-offset: 2px;
+}
+
 @keyframes createCommunityModalBackdropIn {
   from {
     opacity: 0;

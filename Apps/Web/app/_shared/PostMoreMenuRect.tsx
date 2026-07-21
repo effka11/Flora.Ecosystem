@@ -135,6 +135,12 @@ export type PostMoreMenuRectProps = {
   /** Свой пост — показать «Удалить пост». */
   canDeletePost?: boolean;
   onDeletePost?: () => void;
+  /** §User Controls (FIRA): «Не интересно» — реальный обработчик (пост/трек). */
+  onNotInterested?: () => void;
+  /** §User Controls (FIRA): «Скрыть автора» (или сообщество — см. hideAuthorLabel). */
+  onHideAuthor?: () => void;
+  /** Подпись пункта скрытия (по умолчанию «Скрыть автора»). */
+  hideAuthorLabel?: string;
   onChatSearch?: () => void;
   onChatMedia?: () => void;
   onChatPin?: () => void;
@@ -158,6 +164,9 @@ export function PostMoreMenuRect({
   onConversationUnarchive,
   canDeletePost = false,
   onDeletePost,
+  onNotInterested,
+  onHideAuthor,
+  hideAuthorLabel,
   onChatSearch,
   onChatMedia,
   onChatPin,
@@ -368,7 +377,14 @@ export function PostMoreMenuRect({
             ) : null}
 
             {variant === "track" || (variant === "post" && !canDeletePost) ? (
-              <button type="button" className={rectStyles.menuItem} onClick={() => requestClose()}>
+              <button
+                type="button"
+                className={rectStyles.menuItem}
+                onClick={() => {
+                  onNotInterested?.();
+                  requestClose();
+                }}
+              >
                 <span className={rectStyles.menuItemIcon}>
                   <IconNotInterested />
                 </span>
@@ -377,11 +393,18 @@ export function PostMoreMenuRect({
             ) : null}
 
             {variant === "post" && !canDeletePost ? (
-              <button type="button" className={rectStyles.menuItem} onClick={() => requestClose()}>
+              <button
+                type="button"
+                className={rectStyles.menuItem}
+                onClick={() => {
+                  onHideAuthor?.();
+                  requestClose();
+                }}
+              >
                 <span className={rectStyles.menuItemIcon}>
                   <IconHideAuthor />
                 </span>
-                <span className={rectStyles.menuItemLabel}>Скрыть автора</span>
+                <span className={rectStyles.menuItemLabel}>{hideAuthorLabel ?? "Скрыть автора"}</span>
               </button>
             ) : null}
 

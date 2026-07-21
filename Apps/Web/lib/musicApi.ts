@@ -641,6 +641,20 @@ export async function apiDeleteMusicTrack(trackUuid: string): Promise<void> {
   await authDelete(apiUrl(`/api/music/tracks/${encodeURIComponent(trackUuid)}`));
 }
 
+/** §User Controls (FIRA-M): «Не интересно» — трек исключается из потока рекомендаций. */
+export async function apiDismissMusicTrack(trackUuid: string): Promise<void> {
+  const id = trackUuid.trim();
+  if (!id) return;
+  await authPostJson(apiUrl(`/api/music/tracks/${encodeURIComponent(id)}/not-interested`), {});
+}
+
+/** Отмена «не интересно» для трека (undo). */
+export async function apiUndismissMusicTrack(trackUuid: string): Promise<void> {
+  const id = trackUuid.trim();
+  if (!id) return;
+  await authDelete(apiUrl(`/api/music/tracks/${encodeURIComponent(id)}/not-interested`));
+}
+
 async function authGetBlob(url: string): Promise<Blob> {
   await ensureFreshAccessToken();
   let token = getAccessToken();

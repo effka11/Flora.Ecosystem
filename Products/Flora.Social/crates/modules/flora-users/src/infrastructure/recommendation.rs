@@ -113,4 +113,59 @@ impl SqlUserRecommendationQueries {
             )
             .collect())
     }
+
+    // §User Controls (FIRA-P v1.1): «не интересно» для рекомендаций людей.
+
+    pub async fn dismissed_user_ids(&self, user_uuid: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT dismissed_user_uuid
+            FROM flora_core.user_people_dismissals
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn insert_dismissal(
+        &self,
+        user_uuid: Uuid,
+        dismissed_user_uuid: Uuid,
+        created_at: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO flora_core.user_people_dismissals
+                (user_uuid, dismissed_user_uuid, created_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_uuid, dismissed_user_uuid) DO NOTHING
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(dismissed_user_uuid)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_dismissal(
+        &self,
+        user_uuid: Uuid,
+        dismissed_user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM flora_core.user_people_dismissals
+            WHERE user_uuid = $1 AND dismissed_user_uuid = $2
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(dismissed_user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
 }

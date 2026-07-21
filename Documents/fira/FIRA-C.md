@@ -1,10 +1,12 @@
 # FIRA-C — Communities Recommendations
 
 **Status:** Active — целевая спека; в production упрощённая эвристика v1 (§Implementation Status)  
-**Version:** 0.3  
-**Date:** 2026-07-13  
+**Version:** 0.4  
+**Date:** 2026-07-21  
 **Depends on:** [`FIRA.md`](./FIRA.md)
 
+> Изменения 0.3 → 0.4: **dismissal реализован (v1.1)** — «не интересно» для сообщества: `POST/DELETE /api/auth/communities/{communityId}/dismiss`, список — `GET /api/auth/me/feed/dismissed-communities`, таблица `flora_core.user_feed_community_dismissals` (владелец — Content). Скрытое сообщество исключается из рекомендаций FIRA-C и (при выключенном членстве) из пула FIRA-F; исключение персистентно до undo. Скоринг не изменён.
+>
 > Изменения 0.2 → 0.3: добавлен нормативный раздел **Implementation Status (as-built v1)**. Важно: реализация v1 сознательно **не** следует формулам §Скоринг — используется компактная эвристика без α/β/γ-структуры (см. объяснение в разделе). Формулы §Скоринг — целевые (v2). Референс паритета Rust-миграции — формулы as-built.
 
 ---
@@ -224,8 +226,8 @@ Growth bonus применяется во всех фазах — он не за�
 ## Feedback Loop
 
 - **Вступление** в рекомендованное сообщество → позитивный сигнал; все темы сообщества получают буст в UIP; сообщество исключается из пула рекомендаций.
-- **Dismissal** («Не интересно») → сообщество не показывается 60 дней; темы получают лёгкий негативный сигнал.
-- **Покидание** сообщества через «Не интересно» (не просто leave) → сообщество исключается навсегда.
+- **Dismissal** («Не интересно») — **реализовано в v1.1**: `POST /api/auth/communities/{communityId}/dismiss` (undo — `DELETE`; список — `GET /api/auth/me/feed/dismissed-communities`); сообщество персистентно исключается из рекомендаций до отмены (`flora_core.user_feed_community_dismissals`), кэш снапшота инвалидируется. Целевая семантика v2 — окно 60 дней + лёгкий негативный сигнал в UIP.
+- **Покидание** сообщества через «Не интересно» (не просто leave) → сообщество исключается навсегда (*target v2*; в v1.1 эквивалент достигается комбинацией leave + dismiss).
 
 ---
 
@@ -246,7 +248,7 @@ Growth bonus применяется во всех фазах — он не за�
 |----------|---------|
 | Cache scope | Per-user |
 | TTL | 600 с |
-| Инвалидация | Join / leave сообщества |
+| Инвалидация | Join / leave сообщества; dismiss / undo dismiss (v1.1) |
 | Метаданные ответа | `generatedAt` (UTC), `expiresAt` (UTC) |
 | Индикатор новых (has-new) | Не поддерживается; обновление по TTL |
 | Размер пула кандидатов | Configurable (`candidatePoolSize`, дефолт: 150) |
@@ -279,7 +281,9 @@ Score = memberScore + activityScore + socialScore + recencyScore
 
 **Конфигурация** — секция `CommunityRecommendation` (в `appsettings.json` присутствует полностью, значения = дефолтам кода): `ActivityDays = 14`, `NewCommunityBoostDays = 14`, `WeightMembers = 2.0`, `WeightActivity = 3.0`, `WeightSocial = 4.0`, `WeightRecency = 1.5`, `CacheTtlSeconds = 600`.
 
-**Не реализовано (target):** UIP-матчинг и теги сообществ (v2); growth bonus по `weeklyGrowthRate` (v2); exploration-квота и тематическое разнообразие (v2); dismissal «Не интересно» (v1.1); неалгоритмическая fallback-сортировка по размеру/новизне — требование суверенитета [`FIRA.md §16`](./FIRA.md) (v1.1); CF (v3). Исключение «покинул с "Не интересно"» не отслеживается — покинутые сообщества сразу возвращаются в пул кандидатов.
+**Не реализовано (target):** UIP-матчинг и теги сообществ (v2); growth bonus по `weeklyGrowthRate` (v2); exploration-квота и тематическое разнообразие (v2); неалгоритмическая fallback-сортировка по размеру/новизне — требование суверенитета [`FIRA.md §16`](./FIRA.md) (v1.1); CF (v3).
+
+**Реализовано в v1.1 (Rust):** dismissal «Не интересно» — фильтр `dismissed_community_ids` перед ранжированием (`CommunityRecommendationService`, Rust `flora-content`); покинутое сообщество можно исключить навсегда явным dismiss.
 
 ### Rust-порт (Фаза 3, перенесён заранее)
 

@@ -25,6 +25,7 @@ use crate::application::communities::CommunitiesService;
 use crate::application::community_recommendation::CommunityRecommendationService;
 use crate::application::drafts::DraftsService;
 use crate::application::feed::FeedService;
+use crate::application::feed_controls::FeedControlsService;
 use crate::application::media::MediaService;
 use crate::application::post_access::PostAccessService;
 use crate::application::post_images::PostImagesService;
@@ -39,6 +40,9 @@ use crate::infrastructure::ffmpeg_video::{FfmpegVideoTranscoder, MediaOptions};
 use crate::infrastructure::repo::ContentRepo;
 
 pub use crate::infrastructure::ffmpeg_video::MediaOptions as ContentMediaOptions;
+
+/// Rust-миграции модуля Content (регистрируются в flora-migrate, §11.1).
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 /// Хэндл фонового воркера Content (abort при shutdown хоста).
 pub type WorkerHandle = tokio::task::JoinHandle<()>;
@@ -88,6 +92,13 @@ pub fn compose(
     let recommendations = Arc::new(CommunityRecommendationService::new(
         repo.clone(),
         follow.clone(),
+    ));
+    let feed_controls = Arc::new(FeedControlsService::new(
+        repo.clone(),
+        accounts.clone(),
+        profiles.clone(),
+        feed.clone(),
+        recommendations.clone(),
     ));
     let serialize = Arc::new(FeedSerializer::new(
         repo.clone(),
@@ -147,6 +158,7 @@ pub fn compose(
     ));
     let state = ContentState {
         feed,
+        feed_controls,
         serialize,
         posts,
         comments,

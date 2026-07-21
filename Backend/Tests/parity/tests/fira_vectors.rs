@@ -94,6 +94,9 @@ fn feed_candidate(v: &Value) -> fira_f::FeedCandidate {
         followed_likers_count: i32_of(&v["followedLikersCount"]),
         followed_reposters_count: i32_of(&v["followedRepostersCount"]),
         pool_weight: 1.0,
+        // §User Controls v1.1: нейтральные входы — паритет v1 с C#-эталоном.
+        seen: false,
+        author_not_interested_count: 0,
     }
 }
 
@@ -196,6 +199,8 @@ fn fira_f_author_diversity_matches_csharp() {
                 followed_likers_count: 0,
                 followed_reposters_count: 0,
                 pool_weight: 1.0,
+                seen: false,
+                author_not_interested_count: 0,
             })
             .collect();
 

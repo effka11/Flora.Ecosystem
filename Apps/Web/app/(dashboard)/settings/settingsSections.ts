@@ -1,6 +1,7 @@
 export type SettingsSectionId =
   | "account"
   | "privacy"
+  | "feed"
   | "security"
   | "notifications"
   | "customization";
@@ -21,6 +22,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     id: "privacy",
     label: "Приватность",
     description: "Кто видит профиль, статус и переписки.",
+  },
+  {
+    id: "feed",
+    label: "Лента",
+    description: "Рекомендации, свежесть и скрытые авторы.",
   },
   {
     id: "security",

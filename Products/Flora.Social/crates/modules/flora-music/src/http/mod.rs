@@ -80,8 +80,40 @@ pub fn router(state: MusicState) -> Router {
             "/api/music/tracks/{track_uuid}/favorite",
             post(add_favorite).delete(remove_favorite),
         )
+        .route(
+            "/api/music/tracks/{track_uuid}/not-interested",
+            post(dismiss_track).delete(undismiss_track),
+        )
         .layer(DefaultBodyLimit::max(MUSIC_BODY_LIMIT))
         .with_state(state)
+}
+
+/// §User Controls (FIRA-M): «не интересно» — трек больше не попадает в Поток.
+async fn dismiss_track(
+    State(state): State<MusicState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(track_uuid): Path<Uuid>,
+) -> Response {
+    match state.flow.dismiss_track(user.0, track_uuid).await {
+        Ok(true) => Json(serde_json::json!({ "notInterested": true })).into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Трек не найден." })),
+        )
+            .into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn undismiss_track(
+    State(state): State<MusicState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(track_uuid): Path<Uuid>,
+) -> Response {
+    match state.flow.undismiss_track(user.0, track_uuid).await {
+        Ok(_) => Json(serde_json::json!({ "notInterested": false })).into_response(),
+        Err(e) => internal(e),
+    }
 }
 
 async fn get_library(

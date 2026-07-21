@@ -8,6 +8,7 @@ import { SettingsLeaveGuard } from "./SettingsLeaveGuard";
 import { SettingsSidebar } from "./SettingsSidebar";
 import { SettingsAccountTab } from "./SettingsAccountTab";
 import { SettingsPrivacyTab } from "./SettingsPrivacyTab";
+import { SettingsFeedTab } from "./SettingsFeedTab";
 import { SettingsSecurityTab } from "./SettingsSecurityTab";
 import { SettingsNotificationsTab } from "./SettingsNotificationsTab";
 import { SettingsCustomizationTab } from "./SettingsCustomizationTab";
@@ -25,6 +26,8 @@ function SettingsSectionContent({ section }: { section: SettingsSectionId }) {
       return <SettingsAccountTab />;
     case "privacy":
       return <SettingsPrivacyTab />;
+    case "feed":
+      return <SettingsFeedTab />;
     case "security":
       return <SettingsSecurityTab />;
     case "notifications":

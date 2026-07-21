@@ -11,7 +11,7 @@ import { TrackCoverButton } from "@/app/(dashboard)/music/TrackCoverButton";
 import { mapMusicTrackItemsToPlayerTracks } from "@/app/(dashboard)/music/player/mapPlayerTrack";
 import { useMusicPlayer } from "@/app/(dashboard)/music/player/MusicPlayerProvider";
 import { invalidateMusicCaches } from "@/lib/dashboardPreload";
-import { apiDeleteMusicTrack, apiFetchMusicTrackCoverBlob } from "@/lib/musicApi";
+import { apiDeleteMusicTrack, apiDismissMusicTrack, apiFetchMusicTrackCoverBlob } from "@/lib/musicApi";
 import { floraDurationMs } from "@/lib/floraMotion";
 import styles from "./music.module.css";
 
@@ -106,6 +106,15 @@ export function MyMusicTracksList({
     setPendingDelete(track);
   }, []);
 
+  /** §User Controls (FIRA-M): негативный сигнал — трек не попадёт в «Мою волну». */
+  const handleTrackNotInterested = useCallback(async (track: MusicTrackItem) => {
+    try {
+      await apiDismissMusicTrack(track.id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Не удалось отметить трек.");
+    }
+  }, []);
+
   const confirmDelete = useCallback(async () => {
     if (!pendingDelete) return;
     const track = pendingDelete;
@@ -181,6 +190,7 @@ export function MyMusicTracksList({
                     triggerOpen: `Действия с «${track.title}»`,
                     triggerClose: `Закрыть меню «${track.title}»`,
                   }}
+                  onNotInterested={() => void handleTrackNotInterested(track)}
                 />
               </li>
             );
