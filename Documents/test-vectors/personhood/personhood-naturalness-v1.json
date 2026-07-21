@@ -1,7 +1,7 @@
 {
   "protocolVersion": 1,
   "vectorId": "personhood_naturalness_v1",
-  "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, эпохальный тег устройства, реестр enum-флагов церемоний. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
+  "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, bucket-профиль и отчёт следственной панели (квантование, веса девайс-наблюдений, согласованность A↔C, assemble), эпохальный тег устройства, реестр enum-флагов церемоний. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
   "burstiness": [
     {
       "name": "regular_hourly",
@@ -851,57 +851,57 @@
     "linkCases": [
       {
         "concurrentCivic": 0,
-        "class": "Exclusive"
+        "class": "exclusive"
       },
       {
         "concurrentCivic": 1,
-        "class": "Exclusive"
+        "class": "exclusive"
       },
       {
         "concurrentCivic": 2,
-        "class": "Shared"
+        "class": "shared"
       },
       {
         "concurrentCivic": 3,
-        "class": "Shared"
+        "class": "shared"
       },
       {
         "concurrentCivic": 4,
-        "class": "FarmSuspect"
+        "class": "farm_suspect"
       },
       {
         "concurrentCivic": 10,
-        "class": "FarmSuspect"
+        "class": "farm_suspect"
       }
     ],
     "churnCases": [
       {
         "distinctDevicesEpoch": 0,
-        "class": "Stable"
+        "class": "stable"
       },
       {
         "distinctDevicesEpoch": 1,
-        "class": "Stable"
+        "class": "stable"
       },
       {
         "distinctDevicesEpoch": 2,
-        "class": "Stable"
+        "class": "stable"
       },
       {
         "distinctDevicesEpoch": 3,
-        "class": "Mobile"
+        "class": "mobile"
       },
       {
         "distinctDevicesEpoch": 4,
-        "class": "Mobile"
+        "class": "mobile"
       },
       {
         "distinctDevicesEpoch": 5,
-        "class": "Churning"
+        "class": "churning"
       },
       {
         "distinctDevicesEpoch": 9,
-        "class": "Churning"
+        "class": "churning"
       }
     ]
   },
@@ -1331,6 +1331,1192 @@
         "score": 1000,
         "previous": "investigate",
         "class": "natural"
+      }
+    ]
+  },
+  "panel": {
+    "note": "Bucket-профиль (FPP-SIGNALS §3) и отчёт панели (§4.1): квантование — первый i с raw < edges[i], иначе 4; натуральность bucket'а — кривая в репрезентативной точке; девайс-веса асимметричны (инкриминирующее — A, экскульпирующее — по NS-D1).",
+    "buckets": [
+      {
+        "metric": "ns_t1_burstiness",
+        "edges": [
+          -600,
+          -200,
+          200,
+          600
+        ],
+        "buckets": [
+          {
+            "bucket": "very_low",
+            "representative": -800,
+            "naturalnessPermille": 40
+          },
+          {
+            "bucket": "low",
+            "representative": -400,
+            "naturalnessPermille": 216
+          },
+          {
+            "bucket": "medium",
+            "representative": 0,
+            "naturalnessPermille": 700
+          },
+          {
+            "bucket": "high",
+            "representative": 400,
+            "naturalnessPermille": 1000
+          },
+          {
+            "bucket": "very_high",
+            "representative": 800,
+            "naturalnessPermille": 934
+          }
+        ],
+        "quantizeCases": [
+          {
+            "raw": -1000,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -601,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -600,
+            "bucket": "low"
+          },
+          {
+            "raw": -400,
+            "bucket": "low"
+          },
+          {
+            "raw": -201,
+            "bucket": "low"
+          },
+          {
+            "raw": -200,
+            "bucket": "medium"
+          },
+          {
+            "raw": 0,
+            "bucket": "medium"
+          },
+          {
+            "raw": 25,
+            "bucket": "medium"
+          },
+          {
+            "raw": 41,
+            "bucket": "medium"
+          },
+          {
+            "raw": 60,
+            "bucket": "medium"
+          },
+          {
+            "raw": 74,
+            "bucket": "medium"
+          },
+          {
+            "raw": 75,
+            "bucket": "medium"
+          },
+          {
+            "raw": 90,
+            "bucket": "medium"
+          },
+          {
+            "raw": 120,
+            "bucket": "medium"
+          },
+          {
+            "raw": 149,
+            "bucket": "medium"
+          },
+          {
+            "raw": 150,
+            "bucket": "medium"
+          },
+          {
+            "raw": 199,
+            "bucket": "medium"
+          },
+          {
+            "raw": 200,
+            "bucket": "high"
+          },
+          {
+            "raw": 219,
+            "bucket": "high"
+          },
+          {
+            "raw": 220,
+            "bucket": "high"
+          },
+          {
+            "raw": 250,
+            "bucket": "high"
+          },
+          {
+            "raw": 259,
+            "bucket": "high"
+          },
+          {
+            "raw": 260,
+            "bucket": "high"
+          },
+          {
+            "raw": 399,
+            "bucket": "high"
+          },
+          {
+            "raw": 400,
+            "bucket": "high"
+          },
+          {
+            "raw": 549,
+            "bucket": "high"
+          },
+          {
+            "raw": 550,
+            "bucket": "high"
+          },
+          {
+            "raw": 599,
+            "bucket": "high"
+          },
+          {
+            "raw": 600,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 849,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 850,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 900,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 949,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 950,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 1000,
+            "bucket": "very_high"
+          }
+        ]
+      },
+      {
+        "metric": "ns_t2a_rest_share",
+        "edges": [
+          25,
+          75,
+          150,
+          220
+        ],
+        "buckets": [
+          {
+            "bucket": "very_low",
+            "representative": 10,
+            "naturalnessPermille": 990
+          },
+          {
+            "bucket": "low",
+            "representative": 50,
+            "naturalnessPermille": 950
+          },
+          {
+            "bucket": "medium",
+            "representative": 110,
+            "naturalnessPermille": 690
+          },
+          {
+            "bucket": "high",
+            "representative": 185,
+            "naturalnessPermille": 275
+          },
+          {
+            "bucket": "very_high",
+            "representative": 240,
+            "naturalnessPermille": 104
+          }
+        ],
+        "quantizeCases": [
+          {
+            "raw": -1000,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -601,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -600,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -400,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -201,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -200,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 0,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 25,
+            "bucket": "low"
+          },
+          {
+            "raw": 41,
+            "bucket": "low"
+          },
+          {
+            "raw": 60,
+            "bucket": "low"
+          },
+          {
+            "raw": 74,
+            "bucket": "low"
+          },
+          {
+            "raw": 75,
+            "bucket": "medium"
+          },
+          {
+            "raw": 90,
+            "bucket": "medium"
+          },
+          {
+            "raw": 120,
+            "bucket": "medium"
+          },
+          {
+            "raw": 149,
+            "bucket": "medium"
+          },
+          {
+            "raw": 150,
+            "bucket": "high"
+          },
+          {
+            "raw": 199,
+            "bucket": "high"
+          },
+          {
+            "raw": 200,
+            "bucket": "high"
+          },
+          {
+            "raw": 219,
+            "bucket": "high"
+          },
+          {
+            "raw": 220,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 250,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 259,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 260,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 399,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 400,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 549,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 550,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 599,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 600,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 849,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 850,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 900,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 949,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 950,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 1000,
+            "bucket": "very_high"
+          }
+        ]
+      },
+      {
+        "metric": "ns_t2b_peak_share",
+        "edges": [
+          60,
+          90,
+          260,
+          550
+        ],
+        "buckets": [
+          {
+            "bucket": "very_low",
+            "representative": 40,
+            "naturalnessPermille": 247
+          },
+          {
+            "bucket": "low",
+            "representative": 75,
+            "naturalnessPermille": 730
+          },
+          {
+            "bucket": "medium",
+            "representative": 170,
+            "naturalnessPermille": 962
+          },
+          {
+            "bucket": "high",
+            "representative": 400,
+            "naturalnessPermille": 563
+          },
+          {
+            "bucket": "very_high",
+            "representative": 750,
+            "naturalnessPermille": 100
+          }
+        ],
+        "quantizeCases": [
+          {
+            "raw": -1000,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -601,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -600,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -400,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -201,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -200,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 0,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 25,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 41,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 60,
+            "bucket": "low"
+          },
+          {
+            "raw": 74,
+            "bucket": "low"
+          },
+          {
+            "raw": 75,
+            "bucket": "low"
+          },
+          {
+            "raw": 90,
+            "bucket": "medium"
+          },
+          {
+            "raw": 120,
+            "bucket": "medium"
+          },
+          {
+            "raw": 149,
+            "bucket": "medium"
+          },
+          {
+            "raw": 150,
+            "bucket": "medium"
+          },
+          {
+            "raw": 199,
+            "bucket": "medium"
+          },
+          {
+            "raw": 200,
+            "bucket": "medium"
+          },
+          {
+            "raw": 219,
+            "bucket": "medium"
+          },
+          {
+            "raw": 220,
+            "bucket": "medium"
+          },
+          {
+            "raw": 250,
+            "bucket": "medium"
+          },
+          {
+            "raw": 259,
+            "bucket": "medium"
+          },
+          {
+            "raw": 260,
+            "bucket": "high"
+          },
+          {
+            "raw": 399,
+            "bucket": "high"
+          },
+          {
+            "raw": 400,
+            "bucket": "high"
+          },
+          {
+            "raw": 549,
+            "bucket": "high"
+          },
+          {
+            "raw": 550,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 599,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 600,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 849,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 850,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 900,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 949,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 950,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 1000,
+            "bucket": "very_high"
+          }
+        ]
+      },
+      {
+        "metric": "ns_t2c_self_similarity",
+        "edges": [
+          200,
+          400,
+          850,
+          950
+        ],
+        "buckets": [
+          {
+            "bucket": "very_low",
+            "representative": 100,
+            "naturalnessPermille": 310
+          },
+          {
+            "bucket": "low",
+            "representative": 300,
+            "naturalnessPermille": 630
+          },
+          {
+            "bucket": "medium",
+            "representative": 600,
+            "naturalnessPermille": 966
+          },
+          {
+            "bucket": "high",
+            "representative": 900,
+            "naturalnessPermille": 693
+          },
+          {
+            "bucket": "very_high",
+            "representative": 980,
+            "naturalnessPermille": 350
+          }
+        ],
+        "quantizeCases": [
+          {
+            "raw": -1000,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -601,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -600,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -400,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -201,
+            "bucket": "very_low"
+          },
+          {
+            "raw": -200,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 0,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 25,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 41,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 60,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 74,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 75,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 90,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 120,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 149,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 150,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 199,
+            "bucket": "very_low"
+          },
+          {
+            "raw": 200,
+            "bucket": "low"
+          },
+          {
+            "raw": 219,
+            "bucket": "low"
+          },
+          {
+            "raw": 220,
+            "bucket": "low"
+          },
+          {
+            "raw": 250,
+            "bucket": "low"
+          },
+          {
+            "raw": 259,
+            "bucket": "low"
+          },
+          {
+            "raw": 260,
+            "bucket": "low"
+          },
+          {
+            "raw": 399,
+            "bucket": "low"
+          },
+          {
+            "raw": 400,
+            "bucket": "medium"
+          },
+          {
+            "raw": 549,
+            "bucket": "medium"
+          },
+          {
+            "raw": 550,
+            "bucket": "medium"
+          },
+          {
+            "raw": 599,
+            "bucket": "medium"
+          },
+          {
+            "raw": 600,
+            "bucket": "medium"
+          },
+          {
+            "raw": 849,
+            "bucket": "medium"
+          },
+          {
+            "raw": 850,
+            "bucket": "high"
+          },
+          {
+            "raw": 900,
+            "bucket": "high"
+          },
+          {
+            "raw": 949,
+            "bucket": "high"
+          },
+          {
+            "raw": 950,
+            "bucket": "very_high"
+          },
+          {
+            "raw": 1000,
+            "bucket": "very_high"
+          }
+        ]
+      }
+    ],
+    "deviceNaturalness": {
+      "link": [
+        {
+          "class": "exclusive",
+          "naturalnessPermille": 1000
+        },
+        {
+          "class": "shared",
+          "naturalnessPermille": 800
+        },
+        {
+          "class": "farm_suspect",
+          "naturalnessPermille": 100
+        }
+      ],
+      "churn": [
+        {
+          "class": "stable",
+          "naturalnessPermille": 1000
+        },
+        {
+          "class": "mobile",
+          "naturalnessPermille": 650
+        },
+        {
+          "class": "churning",
+          "naturalnessPermille": 150
+        }
+      ]
+    },
+    "evidenceRules": {
+      "selfReport": [
+        {
+          "attestation": "unattested",
+          "evidence": "self_reported"
+        },
+        {
+          "attestation": "software_key",
+          "evidence": "self_reported"
+        },
+        {
+          "attestation": "hardware_backed",
+          "evidence": "device_attested"
+        }
+      ],
+      "deviceObservation": [
+        {
+          "attestation": "unattested",
+          "exculpatory": false,
+          "evidence": "server_observed"
+        },
+        {
+          "attestation": "unattested",
+          "exculpatory": true,
+          "evidence": "self_reported"
+        },
+        {
+          "attestation": "software_key",
+          "exculpatory": false,
+          "evidence": "server_observed"
+        },
+        {
+          "attestation": "software_key",
+          "exculpatory": true,
+          "evidence": "device_attested"
+        },
+        {
+          "attestation": "hardware_backed",
+          "exculpatory": false,
+          "evidence": "server_observed"
+        },
+        {
+          "attestation": "hardware_backed",
+          "exculpatory": true,
+          "evidence": "server_observed"
+        }
+      ]
+    },
+    "consistency": {
+      "driftingMin": 2,
+      "contradictoryMin": 3,
+      "cases": [
+        {
+          "server": "very_low",
+          "selfReported": "very_low",
+          "class": "consistent"
+        },
+        {
+          "server": "very_low",
+          "selfReported": "low",
+          "class": "consistent"
+        },
+        {
+          "server": "very_low",
+          "selfReported": "medium",
+          "class": "drifting"
+        },
+        {
+          "server": "very_low",
+          "selfReported": "high",
+          "class": "contradictory"
+        },
+        {
+          "server": "very_low",
+          "selfReported": "very_high",
+          "class": "contradictory"
+        },
+        {
+          "server": "low",
+          "selfReported": "very_low",
+          "class": "consistent"
+        },
+        {
+          "server": "low",
+          "selfReported": "low",
+          "class": "consistent"
+        },
+        {
+          "server": "low",
+          "selfReported": "medium",
+          "class": "consistent"
+        },
+        {
+          "server": "low",
+          "selfReported": "high",
+          "class": "drifting"
+        },
+        {
+          "server": "low",
+          "selfReported": "very_high",
+          "class": "contradictory"
+        },
+        {
+          "server": "medium",
+          "selfReported": "very_low",
+          "class": "drifting"
+        },
+        {
+          "server": "medium",
+          "selfReported": "low",
+          "class": "consistent"
+        },
+        {
+          "server": "medium",
+          "selfReported": "medium",
+          "class": "consistent"
+        },
+        {
+          "server": "medium",
+          "selfReported": "high",
+          "class": "consistent"
+        },
+        {
+          "server": "medium",
+          "selfReported": "very_high",
+          "class": "drifting"
+        },
+        {
+          "server": "high",
+          "selfReported": "very_low",
+          "class": "contradictory"
+        },
+        {
+          "server": "high",
+          "selfReported": "low",
+          "class": "drifting"
+        },
+        {
+          "server": "high",
+          "selfReported": "medium",
+          "class": "consistent"
+        },
+        {
+          "server": "high",
+          "selfReported": "high",
+          "class": "consistent"
+        },
+        {
+          "server": "high",
+          "selfReported": "very_high",
+          "class": "consistent"
+        },
+        {
+          "server": "very_high",
+          "selfReported": "very_low",
+          "class": "contradictory"
+        },
+        {
+          "server": "very_high",
+          "selfReported": "low",
+          "class": "contradictory"
+        },
+        {
+          "server": "very_high",
+          "selfReported": "medium",
+          "class": "drifting"
+        },
+        {
+          "server": "very_high",
+          "selfReported": "high",
+          "class": "consistent"
+        },
+        {
+          "server": "very_high",
+          "selfReported": "very_high",
+          "class": "consistent"
+        }
+      ]
+    },
+    "assembleCases": [
+      {
+        "name": "organic_mobile",
+        "inputs": {
+          "serverTemporal": {
+            "nsT1Burstiness": "high",
+            "nsT2aRestShare": null,
+            "nsT2bPeakShare": null,
+            "nsT2cSelfSimilarity": null
+          },
+          "selfTemporal": {
+            "nsT1Burstiness": "high",
+            "nsT2aRestShare": "very_low",
+            "nsT2bPeakShare": "medium",
+            "nsT2cSelfSimilarity": "medium"
+          },
+          "deviceAttestation": "hardware_backed",
+          "concurrentCivicOnDevice": 1,
+          "distinctDevicesEpoch": 2,
+          "previousClass": "natural",
+          "counters": {
+            "ceremoniesCompleted24m": 4,
+            "ownFails24m": 0,
+            "ownNoShows24m": 0,
+            "verdictReliabilityPermille": 950,
+            "recoveries12m": 0,
+            "anomalyFlags24m": []
+          }
+        },
+        "report": {
+          "scorePermille": 990,
+          "class": "natural",
+          "evidenceShares": {
+            "serverObservedPermille": 529,
+            "deviceAttestedPermille": 470,
+            "selfReportedPermille": 0
+          },
+          "signals": [
+            {
+              "metric": "ns_t1_burstiness",
+              "evidence": "server_observed",
+              "bucket": "high",
+              "naturalnessPermille": 1000
+            },
+            {
+              "metric": "ns_t1_burstiness",
+              "evidence": "device_attested",
+              "bucket": "high",
+              "naturalnessPermille": 1000
+            },
+            {
+              "metric": "ns_t2a_rest_share",
+              "evidence": "device_attested",
+              "bucket": "very_low",
+              "naturalnessPermille": 990
+            },
+            {
+              "metric": "ns_t2b_peak_share",
+              "evidence": "device_attested",
+              "bucket": "medium",
+              "naturalnessPermille": 962
+            },
+            {
+              "metric": "ns_t2c_self_similarity",
+              "evidence": "device_attested",
+              "bucket": "medium",
+              "naturalnessPermille": 966
+            },
+            {
+              "metric": "ns_d2_device_link",
+              "evidence": "server_observed",
+              "bucket": null,
+              "naturalnessPermille": 1000
+            },
+            {
+              "metric": "ns_d3_device_churn",
+              "evidence": "server_observed",
+              "bucket": null,
+              "naturalnessPermille": 1000
+            }
+          ],
+          "reportConsistency": "consistent",
+          "deviceAttestation": "hardware_backed",
+          "concurrentCivicOnDevice": 1,
+          "deviceLink": "exclusive",
+          "distinctDevicesEpoch": 2,
+          "deviceChurn": "stable",
+          "counters": {
+            "ceremoniesCompleted24m": 4,
+            "ownFails24m": 0,
+            "ownNoShows24m": 0,
+            "verdictReliabilityPermille": 950,
+            "recoveries12m": 0,
+            "anomalyFlags24m": []
+          }
+        }
+      },
+      {
+        "name": "web_newcomer",
+        "inputs": {
+          "serverTemporal": {
+            "nsT1Burstiness": null,
+            "nsT2aRestShare": null,
+            "nsT2bPeakShare": null,
+            "nsT2cSelfSimilarity": null
+          },
+          "selfTemporal": {
+            "nsT1Burstiness": "medium",
+            "nsT2aRestShare": null,
+            "nsT2bPeakShare": null,
+            "nsT2cSelfSimilarity": null
+          },
+          "deviceAttestation": "unattested",
+          "concurrentCivicOnDevice": null,
+          "distinctDevicesEpoch": null,
+          "previousClass": null,
+          "counters": {
+            "ceremoniesCompleted24m": 0,
+            "ownFails24m": 0,
+            "ownNoShows24m": 0,
+            "verdictReliabilityPermille": null,
+            "recoveries12m": 0,
+            "anomalyFlags24m": []
+          }
+        },
+        "report": {
+          "scorePermille": 700,
+          "class": "natural",
+          "evidenceShares": {
+            "serverObservedPermille": 0,
+            "deviceAttestedPermille": 0,
+            "selfReportedPermille": 1000
+          },
+          "signals": [
+            {
+              "metric": "ns_t1_burstiness",
+              "evidence": "self_reported",
+              "bucket": "medium",
+              "naturalnessPermille": 700
+            }
+          ],
+          "reportConsistency": null,
+          "deviceAttestation": "unattested",
+          "concurrentCivicOnDevice": null,
+          "deviceLink": null,
+          "distinctDevicesEpoch": null,
+          "deviceChurn": null,
+          "counters": {
+            "ceremoniesCompleted24m": 0,
+            "ownFails24m": 0,
+            "ownNoShows24m": 0,
+            "verdictReliabilityPermille": null,
+            "recoveries12m": 0,
+            "anomalyFlags24m": []
+          }
+        }
+      },
+      {
+        "name": "rental_farm_suspect",
+        "inputs": {
+          "serverTemporal": {
+            "nsT1Burstiness": "very_low",
+            "nsT2aRestShare": null,
+            "nsT2bPeakShare": null,
+            "nsT2cSelfSimilarity": null
+          },
+          "selfTemporal": {
+            "nsT1Burstiness": "high",
+            "nsT2aRestShare": null,
+            "nsT2bPeakShare": null,
+            "nsT2cSelfSimilarity": "very_high"
+          },
+          "deviceAttestation": "unattested",
+          "concurrentCivicOnDevice": 6,
+          "distinctDevicesEpoch": 7,
+          "previousClass": "watch",
+          "counters": {
+            "ceremoniesCompleted24m": 3,
+            "ownFails24m": 3,
+            "ownNoShows24m": 2,
+            "verdictReliabilityPermille": 300,
+            "recoveries12m": 2,
+            "anomalyFlags24m": [
+              {
+                "flag": "latency_suspect",
+                "count": 2
+              },
+              {
+                "flag": "audio_video_desync",
+                "count": 1
+              }
+            ]
+          }
+        },
+        "report": {
+          "scorePermille": 201,
+          "class": "investigate",
+          "evidenceShares": {
+            "serverObservedPermille": 818,
+            "deviceAttestedPermille": 0,
+            "selfReportedPermille": 181
+          },
+          "signals": [
+            {
+              "metric": "ns_t1_burstiness",
+              "evidence": "server_observed",
+              "bucket": "very_low",
+              "naturalnessPermille": 40
+            },
+            {
+              "metric": "ns_t1_burstiness",
+              "evidence": "self_reported",
+              "bucket": "high",
+              "naturalnessPermille": 1000
+            },
+            {
+              "metric": "ns_t2c_self_similarity",
+              "evidence": "self_reported",
+              "bucket": "very_high",
+              "naturalnessPermille": 350
+            },
+            {
+              "metric": "ns_d2_device_link",
+              "evidence": "server_observed",
+              "bucket": null,
+              "naturalnessPermille": 100
+            },
+            {
+              "metric": "ns_d3_device_churn",
+              "evidence": "server_observed",
+              "bucket": null,
+              "naturalnessPermille": 150
+            }
+          ],
+          "reportConsistency": "contradictory",
+          "deviceAttestation": "unattested",
+          "concurrentCivicOnDevice": 6,
+          "deviceLink": "farm_suspect",
+          "distinctDevicesEpoch": 7,
+          "deviceChurn": "churning",
+          "counters": {
+            "ceremoniesCompleted24m": 3,
+            "ownFails24m": 3,
+            "ownNoShows24m": 2,
+            "verdictReliabilityPermille": 300,
+            "recoveries12m": 2,
+            "anomalyFlags24m": [
+              {
+                "flag": "latency_suspect",
+                "count": 2
+              },
+              {
+                "flag": "audio_video_desync",
+                "count": 1
+              }
+            ]
+          }
+        }
       }
     ]
   },

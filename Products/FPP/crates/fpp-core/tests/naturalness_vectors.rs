@@ -6,8 +6,12 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use fpp_contracts::{CeremonyAnomalyFlag, NaturalnessClass};
-use fpp_core::{device, piecewise, score, streams, temporal};
+use fpp_contracts::{
+    AnomalyFlagCount, CeremonyAnomalyFlag, DeviceAttestationClass, DeviceChurnClass,
+    DeviceLinkClass, NaturalnessClass, PanelCounters, ReportConsistencyClass, SignalBucket,
+    SignalEvidenceClass, SignalMetric,
+};
+use fpp_core::{device, piecewise, profile, score, streams, temporal};
 use serde_json::Value;
 
 fn load_vector() -> Value {
@@ -39,11 +43,86 @@ fn opt_u32(v: &Value) -> Option<u32> {
 }
 
 fn class_from_name(name: &str) -> NaturalnessClass {
-    match name {
-        "natural" => NaturalnessClass::Natural,
-        "watch" => NaturalnessClass::Watch,
-        "investigate" => NaturalnessClass::Investigate,
-        other => panic!("неизвестный класс {other}"),
+    NaturalnessClass::ALL
+        .iter()
+        .copied()
+        .find(|c| c.name() == name)
+        .unwrap_or_else(|| panic!("неизвестный класс {name}"))
+}
+
+fn metric_from_name(name: &str) -> SignalMetric {
+    SignalMetric::ALL
+        .iter()
+        .copied()
+        .find(|m| m.name() == name)
+        .unwrap_or_else(|| panic!("неизвестная метрика {name}"))
+}
+
+fn bucket_from_name(name: &str) -> SignalBucket {
+    SignalBucket::ALL
+        .iter()
+        .copied()
+        .find(|b| b.name() == name)
+        .unwrap_or_else(|| panic!("неизвестный bucket {name}"))
+}
+
+fn evidence_from_name(name: &str) -> SignalEvidenceClass {
+    SignalEvidenceClass::ALL
+        .iter()
+        .copied()
+        .find(|e| e.name() == name)
+        .unwrap_or_else(|| panic!("неизвестный класс доказательности {name}"))
+}
+
+fn attestation_from_name(name: &str) -> DeviceAttestationClass {
+    DeviceAttestationClass::ALL
+        .iter()
+        .copied()
+        .find(|a| a.name() == name)
+        .unwrap_or_else(|| panic!("неизвестный класс аттестации {name}"))
+}
+
+fn consistency_from_name(name: &str) -> ReportConsistencyClass {
+    ReportConsistencyClass::ALL
+        .iter()
+        .copied()
+        .find(|c| c.name() == name)
+        .unwrap_or_else(|| panic!("неизвестный класс согласованности {name}"))
+}
+
+fn opt_bucket(v: &Value) -> Option<SignalBucket> {
+    v.as_str().map(bucket_from_name)
+}
+
+fn temporal_buckets_from_json(v: &Value) -> profile::TemporalBuckets {
+    profile::TemporalBuckets {
+        burstiness: opt_bucket(&v["nsT1Burstiness"]),
+        rest_share: opt_bucket(&v["nsT2aRestShare"]),
+        peak_share: opt_bucket(&v["nsT2bPeakShare"]),
+        self_similarity: opt_bucket(&v["nsT2cSelfSimilarity"]),
+    }
+}
+
+fn counters_from_json(v: &Value) -> PanelCounters {
+    PanelCounters {
+        ceremonies_completed_24m: v["ceremoniesCompleted24m"].as_u64().expect("u32") as u32,
+        own_fails_24m: v["ownFails24m"].as_u64().expect("u32") as u32,
+        own_no_shows_24m: v["ownNoShows24m"].as_u64().expect("u32") as u32,
+        verdict_reliability_permille: opt_u32(&v["verdictReliabilityPermille"]),
+        recoveries_12m: v["recoveries12m"].as_u64().expect("u32") as u32,
+        anomaly_flags_24m: v["anomalyFlags24m"]
+            .as_array()
+            .expect("массив")
+            .iter()
+            .map(|f| AnomalyFlagCount {
+                flag: CeremonyAnomalyFlag::ALL
+                    .iter()
+                    .copied()
+                    .find(|x| x.name() == f["flag"].as_str().expect("имя"))
+                    .expect("известный флаг"),
+                count: f["count"].as_u64().expect("u32") as u32,
+            })
+            .collect(),
     }
 }
 
@@ -174,12 +253,229 @@ fn device_cases_match() {
     for case in d["linkCases"].as_array().expect("кейсы") {
         let n = case["concurrentCivic"].as_u64().expect("n") as u32;
         let class = device::device_link_class(n, shared, farm);
-        assert_eq!(format!("{class:?}"), case["class"].as_str().expect("класс"));
+        assert_eq!(class.name(), case["class"].as_str().expect("класс"));
     }
     for case in d["churnCases"].as_array().expect("кейсы") {
         let n = case["distinctDevicesEpoch"].as_u64().expect("n") as u32;
         let class = device::device_churn_class(n, mobile, churning);
-        assert_eq!(format!("{class:?}"), case["class"].as_str().expect("класс"));
+        assert_eq!(class.name(), case["class"].as_str().expect("класс"));
+    }
+}
+
+#[test]
+fn panel_bucket_cases_match() {
+    let v = load_vector();
+    for section in v["panel"]["buckets"].as_array().expect("метрики") {
+        let metric = metric_from_name(section["metric"].as_str().expect("имя"));
+        let edges: Vec<i64> = section["edges"]
+            .as_array()
+            .expect("границы")
+            .iter()
+            .map(|x| x.as_i64().expect("i64"))
+            .collect();
+        assert_eq!(
+            edges.as_slice(),
+            profile::bucket_edges(metric).expect("границы").as_slice(),
+            "границы {}",
+            metric.name()
+        );
+        for b in section["buckets"].as_array().expect("bucket'ы") {
+            let bucket = bucket_from_name(b["bucket"].as_str().expect("имя"));
+            assert_eq!(
+                profile::representative(metric, bucket),
+                Some(b["representative"].as_i64().expect("i64")),
+            );
+            assert_eq!(
+                profile::naturalness_for_bucket(metric, bucket),
+                opt_u32(&b["naturalnessPermille"]),
+            );
+        }
+        for case in section["quantizeCases"].as_array().expect("кейсы") {
+            let raw = case["raw"].as_i64().expect("i64");
+            let expected = bucket_from_name(case["bucket"].as_str().expect("имя"));
+            assert_eq!(
+                profile::quantize(metric, raw),
+                Some(expected),
+                "{} @ {raw}",
+                metric.name()
+            );
+        }
+    }
+}
+
+#[test]
+fn panel_device_naturalness_and_evidence_rules_match() {
+    let v = load_vector();
+    let p = &v["panel"];
+    for case in p["deviceNaturalness"]["link"].as_array().expect("кейсы") {
+        let class = DeviceLinkClass::ALL
+            .iter()
+            .copied()
+            .find(|c| c.name() == case["class"].as_str().expect("имя"))
+            .expect("известный класс");
+        assert_eq!(
+            profile::device_link_naturalness(class),
+            case["naturalnessPermille"].as_u64().expect("‰") as u32
+        );
+    }
+    for case in p["deviceNaturalness"]["churn"].as_array().expect("кейсы") {
+        let class = DeviceChurnClass::ALL
+            .iter()
+            .copied()
+            .find(|c| c.name() == case["class"].as_str().expect("имя"))
+            .expect("известный класс");
+        assert_eq!(
+            profile::device_churn_naturalness(class),
+            case["naturalnessPermille"].as_u64().expect("‰") as u32
+        );
+    }
+    for case in p["evidenceRules"]["selfReport"].as_array().expect("кейсы") {
+        let att = attestation_from_name(case["attestation"].as_str().expect("имя"));
+        assert_eq!(
+            profile::self_report_evidence(att).name(),
+            case["evidence"].as_str().expect("класс")
+        );
+    }
+    for case in p["evidenceRules"]["deviceObservation"]
+        .as_array()
+        .expect("кейсы")
+    {
+        let att = attestation_from_name(case["attestation"].as_str().expect("имя"));
+        let exculpatory = case["exculpatory"].as_bool().expect("bool");
+        assert_eq!(
+            profile::device_observation_evidence(att, exculpatory).name(),
+            case["evidence"].as_str().expect("класс")
+        );
+    }
+}
+
+#[test]
+fn panel_consistency_cases_match() {
+    let v = load_vector();
+    let c = &v["panel"]["consistency"];
+    assert_eq!(
+        c["driftingMin"].as_u64().expect("порог") as u8,
+        profile::CONSISTENCY_DRIFTING_MIN
+    );
+    assert_eq!(
+        c["contradictoryMin"].as_u64().expect("порог") as u8,
+        profile::CONSISTENCY_CONTRADICTORY_MIN
+    );
+    for case in c["cases"].as_array().expect("кейсы") {
+        let server = profile::TemporalBuckets {
+            burstiness: Some(bucket_from_name(case["server"].as_str().expect("имя"))),
+            ..profile::TemporalBuckets::default()
+        };
+        let self_reported = profile::TemporalBuckets {
+            burstiness: Some(bucket_from_name(
+                case["selfReported"].as_str().expect("имя"),
+            )),
+            ..profile::TemporalBuckets::default()
+        };
+        assert_eq!(
+            profile::report_consistency(&server, &self_reported),
+            Some(consistency_from_name(case["class"].as_str().expect("имя")))
+        );
+    }
+}
+
+#[test]
+fn panel_assemble_cases_match() {
+    let v = load_vector();
+    let th = score::ClassThresholds::default();
+    for case in v["panel"]["assembleCases"].as_array().expect("кейсы") {
+        let name = case["name"].as_str().expect("имя");
+        let i = &case["inputs"];
+        let inputs = profile::ReportInputs {
+            server_temporal: temporal_buckets_from_json(&i["serverTemporal"]),
+            self_temporal: temporal_buckets_from_json(&i["selfTemporal"]),
+            device_attestation: attestation_from_name(
+                i["deviceAttestation"].as_str().expect("имя"),
+            ),
+            concurrent_civic_on_device: opt_u32(&i["concurrentCivicOnDevice"]),
+            distinct_devices_epoch: opt_u32(&i["distinctDevicesEpoch"]),
+            previous_class: i["previousClass"].as_str().map(class_from_name),
+            counters: counters_from_json(&i["counters"]),
+        };
+        let report = profile::assemble(&inputs, &th);
+        let r = &case["report"];
+
+        assert_eq!(
+            report.score_permille,
+            opt_u32(&r["scorePermille"]),
+            "{name}"
+        );
+        assert_eq!(
+            report.class,
+            r["class"].as_str().map(class_from_name),
+            "{name}"
+        );
+        match (&report.evidence_shares, &r["evidenceShares"]) {
+            (None, Value::Null) => {}
+            (Some(shares), s) => {
+                assert_eq!(
+                    shares.server_observed_permille,
+                    s["serverObservedPermille"].as_u64().expect("‰") as u32
+                );
+                assert_eq!(
+                    shares.device_attested_permille,
+                    s["deviceAttestedPermille"].as_u64().expect("‰") as u32
+                );
+                assert_eq!(
+                    shares.self_reported_permille,
+                    s["selfReportedPermille"].as_u64().expect("‰") as u32
+                );
+            }
+            other => panic!("{name}: расхождение evidenceShares {other:?}"),
+        }
+        assert_eq!(
+            report.report_consistency,
+            r["reportConsistency"].as_str().map(consistency_from_name),
+            "{name}"
+        );
+        assert_eq!(
+            report.device_attestation,
+            attestation_from_name(r["deviceAttestation"].as_str().expect("имя"))
+        );
+        assert_eq!(
+            report.concurrent_civic_on_device,
+            opt_u32(&r["concurrentCivicOnDevice"])
+        );
+        assert_eq!(
+            report.device_link.map(DeviceLinkClass::name),
+            r["deviceLink"].as_str()
+        );
+        assert_eq!(
+            report.distinct_devices_epoch,
+            opt_u32(&r["distinctDevicesEpoch"])
+        );
+        assert_eq!(
+            report.device_churn.map(DeviceChurnClass::name),
+            r["deviceChurn"].as_str()
+        );
+        assert_eq!(
+            report.counters,
+            counters_from_json(&r["counters"]),
+            "{name}"
+        );
+
+        let signals = r["signals"].as_array().expect("строки");
+        assert_eq!(report.signals.len(), signals.len(), "{name}");
+        for (got, want) in report.signals.iter().zip(signals) {
+            assert_eq!(
+                got.metric,
+                metric_from_name(want["metric"].as_str().expect("имя"))
+            );
+            assert_eq!(
+                got.evidence,
+                evidence_from_name(want["evidence"].as_str().expect("класс"))
+            );
+            assert_eq!(got.bucket, opt_bucket(&want["bucket"]));
+            assert_eq!(
+                got.naturalness_permille,
+                want["naturalnessPermille"].as_u64().expect("‰") as u32
+            );
+        }
     }
 }
 

@@ -10,8 +10,12 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use fpp_contracts::{CeremonyAnomalyFlag, NaturalnessClass, SignalEvidenceClass};
-use fpp_core::{PROTOCOL_VERSION, device, piecewise, score, streams, temporal};
+use fpp_contracts::{
+    AnomalyFlagCount, CeremonyAnomalyFlag, DeviceAttestationClass, DeviceChurnClass,
+    DeviceLinkClass, NaturalnessClass, NaturalnessPanelReport, PanelCounters, SignalBucket,
+    SignalEvidenceClass,
+};
+use fpp_core::{PROTOCOL_VERSION, device, piecewise, profile, score, streams, temporal};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -30,14 +34,6 @@ fn out_dir() -> PathBuf {
         .join("../../../../Documents/test-vectors/personhood");
     std::fs::create_dir_all(&dir).expect("mkdir personhood");
     dir.canonicalize().expect("канонический путь")
-}
-
-fn class_name(class: NaturalnessClass) -> &'static str {
-    match class {
-        NaturalnessClass::Natural => "natural",
-        NaturalnessClass::Watch => "watch",
-        NaturalnessClass::Investigate => "investigate",
-    }
 }
 
 fn burstiness_cases() -> Value {
@@ -211,7 +207,7 @@ fn device_section() -> Value {
                 device::DEFAULT_SHARED_MIN,
                 device::DEFAULT_FARM_SUSPECT_MIN,
             );
-            json!({"concurrentCivic": n, "class": format!("{class:?}")})
+            json!({"concurrentCivic": n, "class": class.name()})
         })
         .collect();
     let churn: Vec<Value> = [0u32, 1, 2, 3, 4, 5, 9]
@@ -222,7 +218,7 @@ fn device_section() -> Value {
                 device::DEFAULT_MOBILE_MIN,
                 device::DEFAULT_CHURNING_MIN,
             );
-            json!({"distinctDevicesEpoch": n, "class": format!("{class:?}")})
+            json!({"distinctDevicesEpoch": n, "class": class.name()})
         })
         .collect();
     json!({
@@ -278,8 +274,8 @@ fn score_section() -> Value {
         for &s in &scores {
             classify_cases.push(json!({
                 "score": s,
-                "previous": prev.map(class_name),
-                "class": class_name(score::classify(s, prev, &th)),
+                "previous": prev.map(NaturalnessClass::name),
+                "class": score::classify(s, prev, &th).name(),
             }));
         }
     }
@@ -298,6 +294,255 @@ fn score_section() -> Value {
         "combineCases": combine,
         "classifyCases": classify_cases,
     })
+}
+
+fn temporal_buckets_json(buckets: &profile::TemporalBuckets) -> Value {
+    let entry = |b: Option<SignalBucket>| b.map(|x| Value::from(x.name())).unwrap_or(Value::Null);
+    json!({
+        "nsT1Burstiness": entry(buckets.burstiness),
+        "nsT2aRestShare": entry(buckets.rest_share),
+        "nsT2bPeakShare": entry(buckets.peak_share),
+        "nsT2cSelfSimilarity": entry(buckets.self_similarity),
+    })
+}
+
+fn counters_json(counters: &PanelCounters) -> Value {
+    json!({
+        "ceremoniesCompleted24m": counters.ceremonies_completed_24m,
+        "ownFails24m": counters.own_fails_24m,
+        "ownNoShows24m": counters.own_no_shows_24m,
+        "verdictReliabilityPermille": counters.verdict_reliability_permille,
+        "recoveries12m": counters.recoveries_12m,
+        "anomalyFlags24m": counters
+            .anomaly_flags_24m
+            .iter()
+            .map(|c| json!({"flag": c.flag.name(), "count": c.count}))
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn report_json(report: &NaturalnessPanelReport) -> Value {
+    json!({
+        "scorePermille": report.score_permille,
+        "class": report.class.map(NaturalnessClass::name),
+        "evidenceShares": report.evidence_shares.map(|s| json!({
+            "serverObservedPermille": s.server_observed_permille,
+            "deviceAttestedPermille": s.device_attested_permille,
+            "selfReportedPermille": s.self_reported_permille,
+        })),
+        "signals": report.signals.iter().map(|s| json!({
+            "metric": s.metric.name(),
+            "evidence": s.evidence.name(),
+            "bucket": s.bucket.map(SignalBucket::name),
+            "naturalnessPermille": s.naturalness_permille,
+        })).collect::<Vec<_>>(),
+        "reportConsistency": report.report_consistency.map(|c| c.name()),
+        "deviceAttestation": report.device_attestation.name(),
+        "concurrentCivicOnDevice": report.concurrent_civic_on_device,
+        "deviceLink": report.device_link.map(DeviceLinkClass::name),
+        "distinctDevicesEpoch": report.distinct_devices_epoch,
+        "deviceChurn": report.device_churn.map(DeviceChurnClass::name),
+        "counters": counters_json(&report.counters),
+    })
+}
+
+fn panel_section() -> Value {
+    // Квантование: границы, репрезентативные точки, натуральность bucket'ов.
+    let quantize_grid: Vec<i64> = vec![
+        -1000, -601, -600, -400, -201, -200, 0, 25, 41, 60, 74, 75, 90, 120, 149, 150, 199, 200,
+        219, 220, 250, 259, 260, 399, 400, 549, 550, 599, 600, 849, 850, 900, 949, 950, 1000,
+    ];
+    let buckets: Vec<Value> = profile::TEMPORAL_METRICS
+        .iter()
+        .map(|&metric| {
+            let cases: Vec<Value> = quantize_grid
+                .iter()
+                .map(|&raw| {
+                    let bucket = profile::quantize(metric, raw).expect("темпоральная метрика");
+                    json!({"raw": raw, "bucket": bucket.name()})
+                })
+                .collect();
+            let naturalness: Vec<Value> = SignalBucket::ALL
+                .iter()
+                .map(|&b| {
+                    json!({
+                        "bucket": b.name(),
+                        "representative": profile::representative(metric, b),
+                        "naturalnessPermille": profile::naturalness_for_bucket(metric, b),
+                    })
+                })
+                .collect();
+            json!({
+                "metric": metric.name(),
+                "edges": profile::bucket_edges(metric).expect("границы").to_vec(),
+                "buckets": naturalness,
+                "quantizeCases": cases,
+            })
+        })
+        .collect();
+
+    let device_naturalness = json!({
+        "link": DeviceLinkClass::ALL.iter().map(|&c| json!({
+            "class": c.name(),
+            "naturalnessPermille": profile::device_link_naturalness(c),
+        })).collect::<Vec<_>>(),
+        "churn": DeviceChurnClass::ALL.iter().map(|&c| json!({
+            "class": c.name(),
+            "naturalnessPermille": profile::device_churn_naturalness(c),
+        })).collect::<Vec<_>>(),
+    });
+
+    let evidence_rules = json!({
+        "selfReport": DeviceAttestationClass::ALL.iter().map(|&att| json!({
+            "attestation": att.name(),
+            "evidence": profile::self_report_evidence(att).name(),
+        })).collect::<Vec<_>>(),
+        "deviceObservation": DeviceAttestationClass::ALL.iter().flat_map(|&att| {
+            [false, true].map(|exculpatory| json!({
+                "attestation": att.name(),
+                "exculpatory": exculpatory,
+                "evidence": profile::device_observation_evidence(att, exculpatory).name(),
+            }))
+        }).collect::<Vec<_>>(),
+    });
+
+    let consistency_cases: Vec<Value> = SignalBucket::ALL
+        .iter()
+        .flat_map(|&a| {
+            SignalBucket::ALL.iter().map(move |&b| {
+                let server = profile::TemporalBuckets {
+                    burstiness: Some(a),
+                    ..profile::TemporalBuckets::default()
+                };
+                let self_reported = profile::TemporalBuckets {
+                    burstiness: Some(b),
+                    ..profile::TemporalBuckets::default()
+                };
+                let class = profile::report_consistency(&server, &self_reported)
+                    .expect("обе стороны наблюдают");
+                json!({"server": a.name(), "selfReported": b.name(), "class": class.name()})
+            })
+        })
+        .collect();
+
+    let assemble_cases = assemble_cases();
+
+    json!({
+        "note": "Bucket-профиль (FPP-SIGNALS §3) и отчёт панели (§4.1): квантование — первый i с raw < edges[i], иначе 4; натуральность bucket'а — кривая в репрезентативной точке; девайс-веса асимметричны (инкриминирующее — A, экскульпирующее — по NS-D1).",
+        "buckets": buckets,
+        "deviceNaturalness": device_naturalness,
+        "evidenceRules": evidence_rules,
+        "consistency": {
+            "driftingMin": profile::CONSISTENCY_DRIFTING_MIN,
+            "contradictoryMin": profile::CONSISTENCY_CONTRADICTORY_MIN,
+            "cases": consistency_cases,
+        },
+        "assembleCases": assemble_cases,
+    })
+}
+
+fn assemble_inputs_json(inputs: &profile::ReportInputs) -> Value {
+    json!({
+        "serverTemporal": temporal_buckets_json(&inputs.server_temporal),
+        "selfTemporal": temporal_buckets_json(&inputs.self_temporal),
+        "deviceAttestation": inputs.device_attestation.name(),
+        "concurrentCivicOnDevice": inputs.concurrent_civic_on_device,
+        "distinctDevicesEpoch": inputs.distinct_devices_epoch,
+        "previousClass": inputs.previous_class.map(NaturalnessClass::name),
+        "counters": counters_json(&inputs.counters),
+    })
+}
+
+fn assemble_cases() -> Value {
+    let th = score::ClassThresholds::default();
+
+    // Живой пользователь на аттестованном мобильном устройстве.
+    let organic_mobile = profile::ReportInputs {
+        server_temporal: profile::TemporalBuckets {
+            burstiness: Some(SignalBucket::High),
+            ..profile::TemporalBuckets::default()
+        },
+        self_temporal: profile::TemporalBuckets {
+            burstiness: Some(SignalBucket::High),
+            rest_share: Some(SignalBucket::VeryLow),
+            peak_share: Some(SignalBucket::Medium),
+            self_similarity: Some(SignalBucket::Medium),
+        },
+        device_attestation: DeviceAttestationClass::HardwareBacked,
+        concurrent_civic_on_device: Some(1),
+        distinct_devices_epoch: Some(2),
+        previous_class: Some(NaturalnessClass::Natural),
+        counters: PanelCounters {
+            ceremonies_completed_24m: 4,
+            own_fails_24m: 0,
+            own_no_shows_24m: 0,
+            verdict_reliability_permille: Some(950),
+            recoveries_12m: 0,
+            anomaly_flags_24m: vec![],
+        },
+    };
+
+    // Новичок с web-клиента: единственный самоотчётный сигнал, нейтральное отсутствие.
+    let web_newcomer = profile::ReportInputs {
+        self_temporal: profile::TemporalBuckets {
+            burstiness: Some(SignalBucket::Medium),
+            ..profile::TemporalBuckets::default()
+        },
+        ..profile::ReportInputs::default()
+    };
+
+    // Подозрение на ферму/аренду: сервер видит машинную регулярность, самоотчёт
+    // противоречит, 6 личностей на девайсе, 7 девайсов за эпоху, флаги латентности.
+    let rental_farm_suspect = profile::ReportInputs {
+        server_temporal: profile::TemporalBuckets {
+            burstiness: Some(SignalBucket::VeryLow),
+            ..profile::TemporalBuckets::default()
+        },
+        self_temporal: profile::TemporalBuckets {
+            burstiness: Some(SignalBucket::High),
+            self_similarity: Some(SignalBucket::VeryHigh),
+            ..profile::TemporalBuckets::default()
+        },
+        device_attestation: DeviceAttestationClass::Unattested,
+        concurrent_civic_on_device: Some(6),
+        distinct_devices_epoch: Some(7),
+        previous_class: Some(NaturalnessClass::Watch),
+        counters: PanelCounters {
+            ceremonies_completed_24m: 3,
+            own_fails_24m: 3,
+            own_no_shows_24m: 2,
+            verdict_reliability_permille: Some(300),
+            recoveries_12m: 2,
+            anomaly_flags_24m: vec![
+                AnomalyFlagCount {
+                    flag: CeremonyAnomalyFlag::LatencySuspect,
+                    count: 2,
+                },
+                AnomalyFlagCount {
+                    flag: CeremonyAnomalyFlag::AudioVideoDesync,
+                    count: 1,
+                },
+            ],
+        },
+    };
+
+    let cases = [
+        ("organic_mobile", organic_mobile),
+        ("web_newcomer", web_newcomer),
+        ("rental_farm_suspect", rental_farm_suspect),
+    ];
+    Value::Array(
+        cases
+            .iter()
+            .map(|(name, inputs)| {
+                json!({
+                    "name": name,
+                    "inputs": assemble_inputs_json(inputs),
+                    "report": report_json(&profile::assemble(inputs, &th)),
+                })
+            })
+            .collect(),
+    )
 }
 
 fn device_tag_section() -> Value {
@@ -327,13 +572,14 @@ fn main() {
     let vector = json!({
         "protocolVersion": PROTOCOL_VERSION,
         "vectorId": "personhood_naturalness_v1",
-        "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, эпохальный тег устройства, реестр enum-флагов церемоний. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
+        "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, bucket-профиль и отчёт следственной панели (квантование, веса девайс-наблюдений, согласованность A↔C, assemble), эпохальный тег устройства, реестр enum-флагов церемоний. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
         "burstiness": burstiness_cases(),
         "circadian": circadian_cases(),
         "cusum": cusum_case(),
         "piecewise": piecewise_section(),
         "device": device_section(),
         "score": score_section(),
+        "panel": panel_section(),
         "deviceTag": device_tag_section(),
         "ceremonyAnomalyFlags": anomaly_flags_section(),
     });
