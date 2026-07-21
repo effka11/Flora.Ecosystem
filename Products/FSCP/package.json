@@ -32,7 +32,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@noble/curves": "^1.9.7",
+    "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "uuid": "^14.0.0"
   }
