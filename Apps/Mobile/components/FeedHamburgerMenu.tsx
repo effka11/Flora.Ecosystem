@@ -24,7 +24,6 @@ import {
 } from "flora-scroll-fling";
 import Animated, {
   cancelAnimation,
-  Easing,
   runOnJS,
   runOnUI,
   useAnimatedStyle,
@@ -49,6 +48,13 @@ import {
   shouldClaimDrawerEdgeTouch,
   shouldOpenDrawer,
 } from "@/lib/drawerEdgeGesture";
+import {
+  ENERGETIC_CLOSE_EASING,
+  ENERGETIC_CLOSE_MS,
+  ENERGETIC_OPEN_EASING,
+  ENERGETIC_OPEN_MS,
+  settleEnergetic,
+} from "@/lib/energeticSettle";
 import {
   SCROLL_PHASE_COAST,
   SCROLL_PHASE_DRAG,
@@ -116,14 +122,10 @@ function isMenuItemActive(pathname: string, id: MenuItemId): boolean {
 
 const PANEL_MAX_WIDTH = 300;
 const PANEL_WIDTH_RATIO = 0.78;
-/** Как web modal dialogIn: --flora-duration-3 + --flora-ease-out. */
-const OPEN_MS = floraMotion.baseMs * 3;
-/** Как web modal dialogOut: --flora-duration-2 + --flora-ease-in. */
-const CLOSE_MS = floraMotion.baseMs * 2;
-/** --flora-ease-out: cubic-bezier(0.33, 1, 0.2, 1) */
-const OPEN_EASING = Easing.bezier(0.33, 1, 0.2, 1);
-/** --flora-ease-in: cubic-bezier(0.36, 0, 0.64, 1) */
-const CLOSE_EASING = Easing.bezier(0.36, 0, 0.64, 1);
+const OPEN_MS = ENERGETIC_OPEN_MS;
+const CLOSE_MS = ENERGETIC_CLOSE_MS;
+const OPEN_EASING = ENERGETIC_OPEN_EASING;
+const CLOSE_EASING = ENERGETIC_CLOSE_EASING;
 const MENU_EDGE_INSET = floraSpacing.grid + floraSpacing.gridFine;
 const MENU_LEAD_COL = 2 * floraSpacing.grid;
 /** Горизонтальный порог, чтобы не перехватывать тапы по пунктам меню. */
@@ -147,14 +149,8 @@ const SWIPE_OPEN_VX = 220;
 const EDGE_HIT_WIDTH = DRAWER_EDGE_HIT_WIDTH;
 /** Высота chromeRow / iconButton — floor для исключения гамбургера из edge claim. */
 const EDGE_CHROME_ROW_PX = 45;
-/** Минимальная длительность доводки после свайпа (мс). */
-const SETTLE_MIN_MS = floraMotion.baseMs;
-/** Максимальная длительность доводки после свайпа (мс). */
-const SETTLE_MAX_MS = floraMotion.baseMs * 3;
-
 /**
- * Доводка progress к 0|1 через withTiming: длительность от оставшейся дистанции
- * и скорости пальца. Spring + energyThreshold на диапазоне 0…1 давал мгновенный snap.
+ * Доводка progress к 0|1 — та же energetic-политика, что у свайпа подвкладок ленты.
  */
 function settleProgress(
   progress: { value: number },
@@ -164,26 +160,14 @@ function settleProgress(
   onFinished?: (finished?: boolean) => void,
 ) {
   "worklet";
-  const distance = Math.abs(target - progress.value);
-  if (distance < 0.001) {
-    progress.value = target;
-    if (onFinished) onFinished(true);
-    return;
-  }
-  const remainingPx = distance * panelWidth;
-  const speedPx = Math.max(180, Math.abs(velocityX));
-  const fromVelocityMs = Math.round((remainingPx / speedPx) * 1000);
-  const fromDistanceMs = Math.round((target === 1 ? OPEN_MS : CLOSE_MS) * distance);
-  const duration = Math.max(
-    SETTLE_MIN_MS,
-    Math.min(SETTLE_MAX_MS, Math.max(fromVelocityMs, fromDistanceMs)),
-  );
-  progress.value = withTiming(
+  settleEnergetic(
+    progress,
     target,
-    {
-      duration,
-      easing: target === 1 ? OPEN_EASING : CLOSE_EASING,
-    },
+    1,
+    panelWidth,
+    velocityX,
+    target === 1 ? OPEN_MS : CLOSE_MS,
+    target === 1 ? OPEN_EASING : CLOSE_EASING,
     onFinished,
   );
 }
