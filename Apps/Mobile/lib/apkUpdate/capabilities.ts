@@ -27,20 +27,11 @@ export function isApkUpdaterNativeReady(): boolean {
 }
 
 /**
- * Full GitHub silent self-update path (production sideload APK only).
- * Dev client has the native module for permission testing, but not silent updates.
+ * Full GitHub sideload update path (production sideload APK only).
+ * Used by interactive inbox «Обновить»; background auto-update is disabled.
  */
 export function isSideloadUpdatesEnabled(): boolean {
   if (!isApkUpdaterNativeReady()) return false;
   return readSideloadExtra();
 }
 
-/**
- * Post-login / interactive install-unknown-apps prompt.
- * Never on Play Store builds; Dev + sideload release only (native module present).
- */
-export function canPromptInstallPermission(): boolean {
-  if (Platform.OS !== "android") return false;
-  if (isPlayStoreBuildRuntime()) return false;
-  return isApkUpdaterNativeReady();
-}

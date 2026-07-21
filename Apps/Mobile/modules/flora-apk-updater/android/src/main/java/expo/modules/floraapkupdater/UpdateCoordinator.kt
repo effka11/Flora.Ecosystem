@@ -19,18 +19,15 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-import androidx.work.workDataOf
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Native sideload update orchestrator — download anytime (opt-in), silent install only
- * after ≥10s with no UI activities (WorkManager delay survives process death).
+ * Native sideload update helpers for interactive (inbox button) installs.
+ * Background download / silent install paths are disabled.
  */
 object UpdateCoordinator {
   private const val TAG = "FloraApkUpdate"
@@ -136,27 +133,8 @@ object UpdateCoordinator {
   }
 
   private fun maybeScheduleSilentInstall(context: Context) {
-    val app = context.applicationContext
-    // Finish download if COMPLETE broadcast was missed (common on Samsung).
-    tryFinalizeDownload(app)
-    if (isUiVisible() || interactiveInstall) {
-      Log.i(TAG, "maybeSchedule skipped: uiVisible=${isUiVisible()} interactive=$interactiveInstall")
-      return
-    }
-    val store = UpdateStateStore(app)
-    val phase = store.getPhase()
-    if (phase != UpdatePhase.READY) {
-      Log.i(TAG, "maybeSchedule skipped: phase=$phase")
-      return
-    }
-    // API 31+ required for USER_ACTION_NOT_REQUIRED; don't re-query install permission
-    // here — Samsung often returns false while the process is stopping.
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-      Log.i(TAG, "maybeSchedule skipped: API < 31 (silent install unsupported)")
-      UpdateTrayNotifier.showReady(app, store.getManifest()?.version ?: "")
-      return
-    }
-    scheduleSilentInstall(app, store.getManifest()?.versionCode)
+    // Background / silent install disabled — updates only via inbox button.
+    Log.i(TAG, "maybeSchedule skipped: auto-update disabled")
   }
 
   /** If DownloadManager finished but we never got ACTION_DOWNLOAD_COMPLETE, promote to READY. */
@@ -360,60 +338,13 @@ object UpdateCoordinator {
     )
   }
 
-  /** FCM / catch-up / JS auto path. */
+  /**
+   * Former FCM / catch-up / JS auto path — disabled.
+   * Sideload updates are interactive only (inbox «Обновить»).
+   */
+  @Suppress("UNUSED_PARAMETER")
   fun startAuto(context: Context, manifest: UpdateManifest, showTray: Boolean) {
-    val app = context.applicationContext
-    if (!canRequestPackageInstalls(app)) {
-      Log.i(TAG, "startAuto skipped: no install permission")
-      if (showTray) {
-        UpdateTrayNotifier.showUpdateAvailable(
-          app,
-          "Flora",
-          manifest.text ?: "Новая версия Android - ${manifest.version}",
-        )
-      }
-      return
-    }
-    if (!UpdateUrlAllowlist.isAllowed(manifest.apkUrl)) {
-      fail(app, "APK URL not allowlisted")
-      return
-    }
-    if (manifest.sha256.length != 64) {
-      fail(app, "Invalid sha256")
-      return
-    }
-
-    val installed = installedVersionCode(app)
-    if (manifest.versionCode <= installed) {
-      Log.i(TAG, "startAuto skipped: already installed ${manifest.versionCode}")
-      return
-    }
-
-    val store = UpdateStateStore(app)
-    val existing = store.getManifest()
-    val phase = store.getPhase()
-    if (existing?.versionCode == manifest.versionCode &&
-      (phase == UpdatePhase.DOWNLOADING || phase == UpdatePhase.READY ||
-        phase == UpdatePhase.INSTALL_SCHEDULED || phase == UpdatePhase.INSTALLING)
-    ) {
-      Log.i(TAG, "startAuto deduped versionCode=${manifest.versionCode} phase=$phase")
-      if (phase == UpdatePhase.READY && !isUiVisible() && canAutoInstall(app)) {
-        scheduleSilentInstall(app, manifest.versionCode)
-      }
-      return
-    }
-
-    if (showTray) {
-      UpdateTrayNotifier.showUpdateAvailable(
-        app,
-        "Flora",
-        manifest.text ?: "Новая версия Android - ${manifest.version}",
-      )
-    }
-
-    store.saveManifest(manifest)
-    store.clearError()
-    enqueueDownload(app, manifest)
+    Log.i(TAG, "startAuto disabled (button-only updates) version=${manifest.version}")
   }
 
   fun cancel(context: Context) {
@@ -517,33 +448,8 @@ object UpdateCoordinator {
   }
 
   fun scheduleSilentInstall(context: Context, versionCode: Int?) {
-    val code = versionCode ?: return
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-      Log.i(TAG, "scheduleSilentInstall skipped: API < 31")
-      return
-    }
-    if (isUiVisible() || interactiveInstall) {
-      Log.i(TAG, "scheduleSilentInstall skipped: ui/interactive")
-      return
-    }
-
-    val store = UpdateStateStore(context)
-    if (store.getPhase() != UpdatePhase.READY && store.getPhase() != UpdatePhase.INSTALL_SCHEDULED) {
-      Log.i(TAG, "scheduleSilentInstall skipped: phase=${store.getPhase()}")
-      return
-    }
-    store.setPhase(UpdatePhase.INSTALL_SCHEDULED)
-
-    val work = OneTimeWorkRequestBuilder<FloraApkInstallWorker>()
-      .setInitialDelay(INSTALL_DELAY_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
-      .setInputData(workDataOf(FloraApkInstallWorker.KEY_VERSION_CODE to code))
-      .build()
-    WorkManager.getInstance(context).enqueueUniqueWork(
-      INSTALL_WORK_PREFIX + code,
-      ExistingWorkPolicy.REPLACE,
-      work,
-    )
-    Log.i(TAG, "Scheduled silent install in ${INSTALL_DELAY_SECONDS}s versionCode=$code")
+    // Background / silent install disabled — updates only via inbox button.
+    Log.i(TAG, "scheduleSilentInstall disabled (button-only) versionCode=$versionCode")
   }
 
   fun cancelScheduledInstalls(context: Context) {
@@ -558,45 +464,15 @@ object UpdateCoordinator {
   }
 
   /**
-   * Called from WorkManager after delay. Returns true if install was committed.
+   * Called from WorkManager after delay. Background silent install disabled.
    */
   fun trySilentInstall(context: Context, expectedVersionCode: Int): Boolean {
-    val app = context.applicationContext
-    if (isUiVisible() || interactiveInstall) {
-      Log.i(
-        TAG,
-        "Silent install aborted: uiVisible=${isUiVisible()} interactive=$interactiveInstall",
-      )
-      val store = UpdateStateStore(app)
-      if (store.getPhase() == UpdatePhase.INSTALL_SCHEDULED) {
-        store.setPhase(UpdatePhase.READY)
-      }
-      return false
+    Log.i(TAG, "trySilentInstall disabled (button-only) versionCode=$expectedVersionCode")
+    val store = UpdateStateStore(context.applicationContext)
+    if (store.getPhase() == UpdatePhase.INSTALL_SCHEDULED) {
+      store.setPhase(UpdatePhase.READY)
     }
-    if (!canAutoInstall(app)) {
-      Log.i(TAG, "Silent install aborted: canAutoInstall=false")
-      return false
-    }
-
-    val store = UpdateStateStore(app)
-    val manifest = store.getManifest() ?: return false
-    if (manifest.versionCode != expectedVersionCode) {
-      Log.i(TAG, "Silent install aborted: version mismatch")
-      return false
-    }
-    if (store.getPhase() != UpdatePhase.READY && store.getPhase() != UpdatePhase.INSTALL_SCHEDULED) {
-      Log.i(TAG, "Silent install aborted: phase=${store.getPhase()}")
-      return false
-    }
-
-    val apk = pendingApk(app)
-    if (!apk.exists() || apk.length() == 0L) {
-      fail(app, "APK missing at install time")
-      return false
-    }
-
-    Log.i(TAG, "trySilentInstall commit versionCode=$expectedVersionCode")
-    return commitInstall(app, apk, allowUserAction = false, store = store)
+    return false
   }
 
   /** Used by FloraApkUpdaterModule.installApk (JS interactive / legacy). */
@@ -604,7 +480,62 @@ object UpdateCoordinator {
     val app = context.applicationContext
     interactiveInstall = allowUserAction
     cancelScheduledInstalls(app)
+
+    // Android 10–11: PackageInstaller sessions often fail with
+    // INSTALL_FAILED_INTERNAL_ERROR: Permission Denied. Open the system installer UI instead.
+    if (allowUserAction && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      return launchSystemPackageInstaller(app, apk)
+    }
+
     return commitInstall(app, apk, allowUserAction, UpdateStateStore(app))
+  }
+
+  /**
+   * Interactive install via system package installer (FileProvider + ACTION_VIEW).
+   * Reliable on API 29–30 where PackageInstaller self-update is flaky/OEM-blocked.
+   */
+  fun launchSystemPackageInstaller(context: Context, apk: File): Boolean {
+    return try {
+      val validationError = validateUpdateApk(context, apk)
+      if (validationError != null) {
+        fail(context, validationError)
+        return false
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+        !context.packageManager.canRequestPackageInstalls()
+      ) {
+        fail(context, "REQUEST_INSTALL_PACKAGES not granted")
+        return false
+      }
+
+      val authority = "${context.packageName}.flora.apk.provider"
+      val uri = FileProvider.getUriForFile(context, authority, apk)
+      val intent =
+        Intent(Intent.ACTION_VIEW).apply {
+          setDataAndType(uri, "application/vnd.android.package-archive")
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+      val targets =
+        context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+      for (ri in targets) {
+        context.grantUriPermission(
+          ri.activityInfo.packageName,
+          uri,
+          Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        )
+      }
+
+      context.startActivity(intent)
+      UpdateStateStore(context).setPhase(UpdatePhase.READY)
+      Log.i(TAG, "Launched system package installer for ${apk.name}")
+      true
+    } catch (e: Exception) {
+      Log.e(TAG, "launchSystemPackageInstaller failed", e)
+      fail(context, e.message ?: "System installer failed")
+      false
+    }
   }
 
   fun commitInstall(
@@ -628,12 +559,10 @@ object UpdateCoordinator {
         return false
       }
 
-      val authority = "${context.packageName}.flora.apk.provider"
-      FileProvider.getUriForFile(context, authority, apk)
-
       store.setPhase(UpdatePhase.INSTALLING)
       val installer = context.packageManager.packageInstaller
       val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+      params.setAppPackageName(context.packageName)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         params.setRequireUserAction(
           if (allowUserAction) {
@@ -671,6 +600,11 @@ object UpdateCoordinator {
       return true
     } catch (e: Exception) {
       Log.e(TAG, "commitInstall failed", e)
+      // Last resort for interactive path on OEMs that reject sessions.
+      if (allowUserAction) {
+        Log.w(TAG, "PackageInstaller threw — falling back to system installer UI")
+        return launchSystemPackageInstaller(context, apk)
+      }
       fail(context, e.message ?: "Install failed")
       return false
     }
@@ -747,11 +681,30 @@ object UpdateCoordinator {
         interactiveInstall = false
       }
       else -> {
-        fail(app, message ?: "PackageInstaller status $status")
+        val detail = message ?: "PackageInstaller status $status"
+        // Some OEMs (esp. Android 10) return Permission Denied instead of user-action.
+        if (interactiveInstall && isPermissionDeniedInstallError(detail)) {
+          val apk = pendingApk(app)
+          if (apk.exists() && apk.length() > 0L && launchSystemPackageInstaller(app, apk)) {
+            interactiveInstall = false
+            FloraApkUpdaterModule.completePendingInstall(
+              "system_installer",
+              "System installer opened",
+              null,
+            )
+            return
+          }
+        }
+        fail(app, detail)
         interactiveInstall = false
-        FloraApkUpdaterModule.completePendingInstall("failure", message)
+        FloraApkUpdaterModule.completePendingInstall("failure", detail)
       }
     }
+  }
+
+  private fun isPermissionDeniedInstallError(message: String): Boolean {
+    return message.contains("Permission Denied", ignoreCase = true) ||
+      message.contains("INSTALL_FAILED_INTERNAL_ERROR", ignoreCase = true)
   }
 
   private fun fail(context: Context, message: String) {

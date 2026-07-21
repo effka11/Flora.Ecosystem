@@ -303,10 +303,8 @@ class FloraApkUpdaterModule : Module() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
           !context.packageManager.canRequestPackageInstalls()
         ) {
-          if (!allowUserAction) {
-            promise.reject("E_NO_PERMISSION", "REQUEST_INSTALL_PACKAGES not granted", null)
-            return@AsyncFunction
-          }
+          promise.reject("E_NO_PERMISSION", "REQUEST_INSTALL_PACKAGES not granted", null)
+          return@AsyncFunction
         }
 
         val apk = resolveApkFile(filePath)
@@ -317,6 +315,26 @@ class FloraApkUpdaterModule : Module() {
 
         if (pendingPromise.get() != null) {
           promise.reject("E_IN_FLIGHT", "Another install is already in progress", null)
+          return@AsyncFunction
+        }
+
+        // API 29–30: open system installer immediately (no PackageInstaller callback).
+        if (allowUserAction && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+          UpdateCoordinator.setInteractiveInstall(true)
+          val ok = UpdateCoordinator.commitInstallForJs(context, apk, allowUserAction = true)
+          UpdateCoordinator.setInteractiveInstall(false)
+          if (!ok) {
+            val err = UpdateStateStore(context).getLastError() ?: "Install failed"
+            val code = if (err.contains("REQUEST_INSTALL")) "E_NO_PERMISSION" else "E_INSTALL"
+            promise.reject(code, err, null)
+            return@AsyncFunction
+          }
+          promise.resolve(
+            mapOf(
+              "status" to "pending_user_action",
+              "message" to "System installer opened",
+            ),
+          )
           return@AsyncFunction
         }
 
@@ -401,6 +419,16 @@ class FloraApkUpdaterModule : Module() {
             pendingPromise.compareAndSet(promise, null)
             promise.reject("E_CONFIRM", "Missing confirm intent", null)
           }
+        }
+        "system_installer" -> {
+          // Intent-based fallback after PackageInstaller Permission Denied.
+          val promise = pendingPromise.getAndSet(null) ?: return
+          promise.resolve(
+            mapOf(
+              "status" to "pending_user_action",
+              "message" to (message ?: "System installer opened"),
+            ),
+          )
         }
         else -> {
           val promise = pendingPromise.getAndSet(null) ?: return

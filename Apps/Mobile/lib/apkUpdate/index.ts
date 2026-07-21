@@ -1,5 +1,4 @@
 export {
-  canPromptInstallPermission,
   isApkUpdaterNativeReady,
   isPlayStoreBuildRuntime,
   isSideloadUpdatesEnabled,
@@ -13,7 +12,6 @@ export {
   canInstallSilently,
   cancelInteractiveApkUpdate,
   checkAndInstall,
-  ensureInstallPackagesPermission,
   runSilentUpdateCheck,
 } from "@/lib/apkUpdate/checkAndInstall";
 export {
