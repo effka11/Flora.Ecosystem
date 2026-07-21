@@ -102,7 +102,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
         return Err(DecodeError::Corrupt("лишние байты после последнего тайла"));
     }
 
-    // Матрицы плоскостей: v8/v9 — пошаговые Y/Co/Cg, до v8 — luma/chroma/chroma.
+    // Матрицы плоскостей: v8+ — пошаговые Y/Co/Cg, до v8 — luma/chroma/chroma.
     let q_planes: [[u16; 64]; 3] = if header.version >= VERSION_PERCEPTUAL {
         let (qy, qco, qcg) = quant_matrices_v9(header.quality.max(1));
         [qy, qco, qcg]
@@ -231,7 +231,7 @@ fn decode_tile(
         }
     } else {
         // v7+: банк адаптивных моделей общий для всех плоскостей тайла.
-        // Раскладка v8 совпадает с v7 (отличие v8 — цвет/qmat); v9 добавляет DQ.
+        // Раскладка v8 совпадает с v7 (отличие v8 — цвет/qmat); v9+ добавляет DQ.
         let mut bank = if version >= VERSION_PERCEPTUAL {
             let (groups, kinds) = lossy::ctx_meta_v9();
             Some(ModelBank::new(groups, kinds))
@@ -353,8 +353,8 @@ fn read_dct_plane(
 ) -> Result<DctPlane, DecodeError> {
     let (w, h) = size;
     if version >= VERSION_ADAPTIVE {
-        // Контейнер и дерево v7/v8/v9 одинаковы; v8 меняет цвет/qmat,
-        // v9 добавляет per-root delta-Q внутри дерева.
+        // Контейнер и дерево v7..v10 одинаковы; v8 меняет цвет/qmat,
+        // v9+ добавляет per-root delta-Q внутри дерева.
         let (section, used) = read_dct_section_v7(&payload[*pos..])?;
         *pos += used;
         let bank = bank.expect("v7+: банк обязателен");

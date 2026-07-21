@@ -157,7 +157,7 @@ pub extern "C" fn frc_i_encode_capacity(width: u32, height: u32, bytes_per_pixel
     raw.saturating_mul(2).saturating_add(64 * 1024)
 }
 
-/// Кодирует RGB8/RGBA8 в frozen lossy FRC-I v7.
+/// Кодирует RGB8/RGBA8 в текущий frozen lossy FRC-I v10.
 ///
 /// Возвращает размер результата; `-1` — неверный ввод, `-2` — малый output,
 /// `-3` — ошибка encoder.
