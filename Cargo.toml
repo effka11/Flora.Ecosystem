@@ -37,6 +37,8 @@ members = [
     "Products/FEP/crates/flora-economy",
     "Products/FEP/crates/flora-economy-contracts",
     "Products/FEP/crates/flora-economy-crypto",
+    "Products/FEP/crates/flora-economy-wasm",
+    "Products/FEP/crates/flora-economy-witness",
     # Functional: FGP
     "Products/FGP/crates/flora-governance-crypto",
     "Products/FGP/crates/flora-governance-contracts",

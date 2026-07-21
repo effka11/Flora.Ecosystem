@@ -1,7 +1,7 @@
 # LIV (Leaves) — валюта экосистемы Flora
 
 **Статус:** нормативный документ, v1 (draft). Валютный слой поверх журнала FEP v1.
-**Реализация:** ядро и модуль FEP — `Products/FEP/crates/flora-economy-crypto` (native + wasm32), `Products/FEP/crates/flora-economy`; композиция — `Products/Flora.Social/crates/flora-social` (флаг `Economy:Enabled`).
+**Реализация:** ядро и модуль FEP — `Products/FEP/crates/flora-economy-crypto` (native + wasm32), `Products/FEP/crates/flora-economy`; композиция — `Products/Flora.Social/crates/flora-social` (флаг `Economy:Enabled`). Клиент — `Packages/flora-client-core/src/economy` (кошелёк, L0/L1, API) + `Products/FEP/crates/flora-economy-wasm` (L2-реплей, C-ABI wasm32). Reference-витнесс — `Products/FEP/crates/flora-economy-witness`.
 **Связанные документы:** [FEP.md](FEP.md) (экономический протокол: эмиссия, демерредж, взаимный кредит, журнал — нормативная база LIV), [FEP-GUIDE.md](FEP-GUIDE.md), [FEP-THREATS.md](FEP-THREATS.md), [FGP.md](../fgp/FGP.md) (governance), [FGP-CRYPTO.md](../fgp/FGP-CRYPTO.md) (криптослой), [FPP.md](../fpp/FPP.md) (personhood).
 **Golden-векторы:** `Documents/test-vectors/fep/` (регенерация: `cargo run -p flora-economy-crypto --example gen_vectors`).
 
@@ -117,7 +117,7 @@ signature = Ed25519.sign(witness_secret, "flora/economy/v1/ledger/sth" ‖ head.
 
 ### 4.4. Протокол витнесса
 
-Витнесс-демон (вне ядра v1; reference-цикл):
+Витнесс-демон (вне ядра v1; reference-реализация — `Products/FEP/crates/flora-economy-witness`: keygen, state-файл последнего подписанного head, incident-файлы с уликами, exit-код 2 при форке). Reference-цикл:
 
 1. `GET /api/economy/ledger/sth` → head.
 2. Если видел head раньше — проверить consistency-доказательство `GET /ledger/consistency?oldSize=<прежний>&newSize=<текущий>` (append-only не нарушен); полный витнесс дополнительно реплеит новые записи `GET /ledger/entries`.
@@ -135,6 +135,8 @@ signature = Ed25519.sign(witness_secret, "flora/economy/v1/ledger/sth" ‖ head.
 | L2 (полный клиент) | «вся экономика честна» | полный реплей wasm-ядром: все инварианты FEP §7, сверка head бит-в-бит |
 
 Правила L1 (нормативно): клиент **хранит** последний проверенный head; при каждом обновлении запрашивает consistency-доказательство от него к новому и проверяет `merkle::verify_consistency` (RFC 9162); сверяет косайны (`verify_head_cosign` + принадлежность реестру); понижение `size` или неверифицируемый переход — сигнал форка, клиент прекращает доверять серверу и поднимает инцидент (FGP §7.3).
+
+Реализация клиента: L0/L1 — чистый TS (`@flora/client-core/economy`: `verifyEntryInclusion`, `advanceTrustedHead`, `replayHashChain`); L2 — `FepWasmVerifier` поверх `flora-economy-wasm` (тот же детерминированный код ядра, что и на сервере). Кошелёк (ключи, канонические байты, подписи транзакций) — там же, приватный ключ не покидает устройство.
 
 Алгоритмы Merkle — RFC 6962/9162, домены `flora/economy/v1/merkle/{leaf,node}`; эталоны — `fep-ledger-transcript-v1.json` (позитив) и `fep-ledger-negative-v1.json` (обязательные отказы).
 
@@ -181,4 +183,4 @@ signature = Ed25519.sign(witness_secret, "flora/economy/v1/ledger/sth" ‖ head.
 | `fep-ledger-transcript-v1.json` | `fep_ledger_transcript_v1` | полный транскрипт журнала: все виды записей, хеши, head'ы, inclusion/consistency, косайны, финальное состояние |
 | `fep-ledger-negative-v1.json` | `fep_ledger_negative_v1` | обязательные отказы: фальшивая подпись, разрыв цепочки, завышенный UBI, форк-consistency, порченный косайн |
 
-Байтовые поля — **hex lowercase** (родная кодировка контракта FEP: JSONL-журнал и HTTP API), отступление от base64url-правила README зафиксировано в самих векторах полем `encoding`. Consumer-тест (обязателен): `Products/FEP/crates/flora-economy-crypto/tests/fep_vectors.rs`; TS-паритет появится вместе с wasm-поверхностью `@flora/client-core` (дорожная карта FEP §12).
+Байтовые поля — **hex lowercase** (родная кодировка контракта FEP: JSONL-журнал и HTTP API), отступление от base64url-правила README зафиксировано в самих векторах полем `encoding`. Consumer-тесты (обязательны): Rust — `Products/FEP/crates/flora-economy-crypto/tests/fep_vectors.rs`; TS — `Packages/flora-client-core/src/economy/fepVectors.test.ts` (бит-в-бит паритет чистого TS-слоя) и `wasm.test.ts` (паритет wasm-ядра, включая negative-реплей).

@@ -95,6 +95,25 @@ jobs:
         with:
           manifest-path: Cargo.toml
 
+  # FEP wasm32 (Products/FEP): ядро и C-ABI шим клиентской верификации LIV
+  # (FEP.md §10 — обязательная проверка; потребитель — @flora/client-core/economy).
+  fep-wasm:
+    name: fep-wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - name: Check FEP core on wasm32
+        run: cargo check -p flora-economy-crypto --target wasm32-unknown-unknown --locked
+      - name: Check FEP WASM shim on wasm32
+        run: cargo check -p flora-economy-wasm --target wasm32-unknown-unknown --locked
+
   # FRC cores wasm32 (Products/FRC, same workspace).
   codecs-frc:
     name: codecs-frc
