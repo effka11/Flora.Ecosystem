@@ -15,6 +15,8 @@ import type {
   ScrollViewProps,
 } from "react-native";
 import Reanimated, {
+  runOnJS,
+  useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
   useEvent,
@@ -23,9 +25,17 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { ScrollView as GestureHandlerScrollView } from "react-native-gesture-handler";
 import {
+  installEdgeFlingGuard,
+  uninstallEdgeFlingGuard,
+} from "flora-scroll-fling";
+import {
   clearFrcImageQueuePauseOwner,
   setFrcImageQueuePaused,
 } from "@/lib/frcImage";
+import {
+  DRAWER_EDGE_GUARD_VERTICAL_SLOP,
+  DRAWER_EDGE_HIT_WIDTH,
+} from "@/lib/drawerEdgeGesture";
 import {
   clearScrollActivityOwner,
   setScrollActivity,
@@ -239,7 +249,14 @@ function createFlashListScrollComponent(
         const handler = (scrollEvents as unknown as WorkletEventHandlerHolder)
           .workletEventHandler;
         handler.registerForEvents(viewTag);
+        // Нативная защита fling в edge-зоне гамбургера (см. flora-scroll-fling).
+        installEdgeFlingGuard(
+          viewTag,
+          DRAWER_EDGE_HIT_WIDTH,
+          DRAWER_EDGE_GUARD_VERTICAL_SLOP,
+        );
         return () => {
+          uninstallEdgeFlingGuard(viewTag);
           handler.unregisterFromEvents(viewTag);
           if (pane.viewTag.value === viewTag) pane.viewTag.value = 0;
         };
@@ -253,6 +270,28 @@ function createFlashListScrollComponent(
         clearScrollActivityOwner(mediaPauseOwner);
       },
       [mediaPauseOwner],
+    );
+
+    const clearDragPause = useCallback(() => {
+      setFrcImageQueuePaused(mediaPauseOwner, "drag", false);
+      setScrollActivity(mediaPauseOwner, "drag", false);
+    }, [mediaPauseOwner]);
+
+    /**
+     * Edge-guard может проглотить DOWN..UP над летящей лентой: ScrollView
+     * тогда не отправит onScrollEndDrag и «drag»-пауза застряла бы включённой.
+     * Любой выход из фазы DRAG (в т.ч. worklet-флип DRAG → COAST из
+     * FeedHamburgerMenu) снимает её; повторное снятие после обычного
+     * onScrollEndDrag идемпотентно.
+     */
+    useAnimatedReaction(
+      () => pane.phase.value,
+      (phase, prevPhase) => {
+        if (prevPhase === SCROLL_PHASE_DRAG && phase !== SCROLL_PHASE_DRAG) {
+          runOnJS(clearDragPause)();
+        }
+      },
+      [clearDragPause],
     );
 
     const onScrollBeginDrag = useCallback(

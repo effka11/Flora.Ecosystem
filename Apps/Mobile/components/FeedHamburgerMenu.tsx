@@ -18,11 +18,15 @@ import {
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { resumeVerticalFling } from "flora-scroll-fling";
+import {
+  ensureVerticalFlingAlive,
+  setDrawerOverlayPresented,
+} from "flora-scroll-fling";
 import Animated, {
   cancelAnimation,
   Easing,
   runOnJS,
+  runOnUI,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -40,16 +44,17 @@ import {
 } from "@/lib/frcImage";
 import {
   classifyDrawerEdgeIntent,
+  DRAWER_EDGE_FAIL_OFFSET_Y,
+  DRAWER_EDGE_HIT_WIDTH,
   shouldClaimDrawerEdgeTouch,
   shouldOpenDrawer,
 } from "@/lib/drawerEdgeGesture";
 import {
+  SCROLL_PHASE_COAST,
+  SCROLL_PHASE_DRAG,
   useDrawerMomentumController,
 } from "@/lib/drawerMomentum";
-import {
-  eligibleVerticalFling,
-  shouldIssueVerticalFlingResume,
-} from "@/lib/drawerFlingPolicy";
+import { eligibleVerticalFling } from "@/lib/drawerFlingPolicy";
 import { floraColors, floraMotion, floraSpacing } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -124,8 +129,8 @@ const MENU_LEAD_COL = 2 * floraSpacing.grid;
 /** Горизонтальный порог, чтобы не перехватывать тапы по пунктам меню. */
 const SWIPE_AXIS_PX = 10;
 /** Быстрый vertical fail edge-pan: ScrollView не ждёт PENDING при waitFor. */
-const EDGE_AXIS_PX = 8;
-const EDGE_FAIL_OFFSET_Y = 8;
+const EDGE_AXIS_PX = DRAWER_EDGE_FAIL_OFFSET_Y;
+const EDGE_FAIL_OFFSET_Y = DRAWER_EDGE_FAIL_OFFSET_Y;
 /** Порог закрытия от полностью открытой панели. */
 const SWIPE_CLOSE_RATIO = 0.28;
 /** Мягкий порог открытия: медленный осознанный drag тоже коммитится. */
@@ -139,7 +144,7 @@ const SWIPE_OPEN_VX = 220;
  * Pan на обёртке контента (не absolute overlay): тапы остаются детям,
  * свайп забирается через manualActivation после горизонтального сдвига.
  */
-const EDGE_HIT_WIDTH = 4 * floraSpacing.grid;
+const EDGE_HIT_WIDTH = DRAWER_EDGE_HIT_WIDTH;
 /** Высота chromeRow / iconButton — floor для исключения гамбургера из edge claim. */
 const EDGE_CHROME_ROW_PX = 45;
 /** Минимальная длительность доводки после свайпа (мс). */
@@ -225,7 +230,10 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   /** Старт касания — translationX до activate() часто 0, считаем delta сами. */
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
-  const edgeResumeIssued = useSharedValue(0);
+  /** Касание в edge-зоне реально заклеймлено этим жестом (не fail на down). */
+  const edgeClaimed = useSharedValue(0);
+  /** Жест ушёл в вертикаль → лента отдана нативному скроллу (handover). */
+  const edgeVerticalHandover = useSharedValue(0);
   /** visible уже обработан жестом; React-effect не запускает вторую анимацию. */
   const gestureTargetRef = useRef<0 | 1 | null>(null);
   const mediaPauseOwner = useRef(Symbol("drawer")).current;
@@ -252,6 +260,17 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   }, [edgeEnabled, presented, visible]);
 
   useEffect(() => {
+    setDrawerOverlayPresented(presented);
+  }, [presented]);
+
+  useEffect(
+    () => () => {
+      setDrawerOverlayPresented(false);
+    },
+    [],
+  );
+
+  useEffect(() => {
     setFrcImageQueuePaused(mediaPauseOwner, "drawer", presented);
     return () => clearFrcImageQueuePauseOwner(mediaPauseOwner);
   }, [mediaPauseOwner, presented]);
@@ -264,24 +283,55 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
     setFrcImageQueuePaused(mediaPauseOwner, "drawer", false);
   }, [mediaPauseOwner]);
 
+  /**
+   * Флип presented/overlay (и при открытии, и при закрытии меню) может
+   * погасить живой coast ленты, даже когда палец её не касался. Страховка:
+   * если у активной панели свежая инерция — нативная отложенная проверка
+   * перезапустит fling, когда coast умер, и не тронет ленту, когда он жив.
+   */
+  const ensureFeedCoastAfterOpen = useCallback(() => {
+    runOnUI(() => {
+      "worklet";
+      const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
+      if (
+        eligibleVerticalFling(
+          pane.viewTag.value,
+          pane.lastCoastVelocityY.value,
+          pane.lastCoastEventTs.value,
+          performance.now(),
+        )
+      ) {
+        runOnJS(ensureVerticalFlingAlive)(
+          pane.viewTag.value,
+          pane.lastCoastVelocityY.value,
+        );
+      }
+    })();
+  }, [activeMomentumPane, pane0Momentum, pane1Momentum]);
+
   const markPresented = useCallback(() => {
     setPresented(true);
   }, []);
 
   const markDismissed = useCallback(() => {
     setPresented(false);
-  }, []);
+    // Флип overlay на закрытии гасит coast так же, как на открытии.
+    ensureFeedCoastAfterOpen();
+  }, [ensureFeedCoastAfterOpen]);
 
   const commitGestureOpen = useCallback(() => {
     gestureTargetRef.current = 1;
     setPresented(true);
     jsRef.current.onOpen();
-  }, []);
+    ensureFeedCoastAfterOpen();
+  }, [ensureFeedCoastAfterOpen]);
 
   const commitGestureClose = useCallback(() => {
     gestureTargetRef.current = 0;
     jsRef.current.onClose();
-  }, []);
+    // Kill coast-а может прилететь уже от React-коммита начала закрытия.
+    ensureFeedCoastAfterOpen();
+  }, [ensureFeedCoastAfterOpen]);
 
   const finishClose = useCallback(() => {
     gestureTargetRef.current = 0;
@@ -297,7 +347,8 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
       },
     );
     jsRef.current.onClose();
-  }, [markDismissed, progress]);
+    ensureFeedCoastAfterOpen();
+  }, [ensureFeedCoastAfterOpen, markDismissed, progress]);
 
   const closeGesture = useMemo(
     () =>
@@ -345,7 +396,13 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   /**
    * Pan на обёртке контента (вся высота, полоса EDGE_HIT_WIDTH):
    * — тап / вертикальный скролл → fail, дети (гамбургер, таббар, список) получают жест;
-   * — горизонтальный сдвиг из левой полосы → activate.
+   * — горизонтальный сдвиг из левой полосы → activate;
+   * — едущую ленту (fling) защищает нативный edge-guard (flora-scroll-fling):
+   *   касание в полосе проглатывается до onTouchEvent, fling не прерывается
+   *   вовсе; вертикальный сдвиг отдаёт ленту нативной «поимке» пальцем.
+   *   Здесь остаётся только бухгалтерия фазы: проглоченный DOWN..UP не даёт
+   *   ScrollView отправить onScrollEndDrag, поэтому после жеста возвращаем
+   *   фазу DRAG → COAST (fling-то жив и события идут).
    */
   const edgeGesture = useMemo(
     () =>
@@ -375,7 +432,8 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           }
           touchStartX.value = touch.absoluteX;
           touchStartY.value = touch.absoluteY;
-          edgeResumeIssued.value = 0;
+          edgeClaimed.value = 1;
+          edgeVerticalHandover.value = 0;
         })
         .onTouchesMove((event, state) => {
           "worklet";
@@ -385,7 +443,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           const dy = touch.absoluteY - touchStartY.value;
           const intent = classifyDrawerEdgeIntent(dx, dy, EDGE_AXIS_PX);
           if (intent === "fail") {
-            edgeResumeIssued.value = 0;
+            edgeVerticalHandover.value = 1;
             state.fail();
             return;
           }
@@ -396,25 +454,6 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           cancelAnimation(progress);
           dragStartProgress.value = progress.value;
           runOnJS(beginDrawerMediaPause)();
-          const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
-          const eligible = eligibleVerticalFling(
-            pane.viewTag.value,
-            pane.lastCoastVelocityY.value,
-            pane.lastCoastEventTs.value,
-            performance.now(),
-          );
-          if (
-            shouldIssueVerticalFlingResume(
-              edgeResumeIssued.value >= 0.5,
-              eligible,
-            )
-          ) {
-            edgeResumeIssued.value = 1;
-            runOnJS(resumeVerticalFling)(
-              pane.viewTag.value,
-              pane.lastCoastVelocityY.value,
-            );
-          }
         })
         .onUpdate((event) => {
           "worklet";
@@ -445,8 +484,21 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
         })
         .onFinalize((_event, success) => {
           "worklet";
+          /**
+           * Edge-guard проглотил DOWN..UP/CANCEL: ScrollView не отправит
+           * onScrollEndDrag, и фаза застряла бы в DRAG (её выставил
+           * onScrollBeginDrag из onInterceptTouchEvent). Если жест не был
+           * отдан ленте вертикальным handover-ом — палец ленту не трогал,
+           * поток onScroll это живой coast: возвращаем фазу COAST.
+           */
+          if (edgeClaimed.value === 1 && edgeVerticalHandover.value === 0) {
+            const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
+            if (pane.phase.value === SCROLL_PHASE_DRAG) {
+              pane.phase.value = SCROLL_PHASE_COAST;
+            }
+          }
+          edgeClaimed.value = 0;
           if (!success) {
-            edgeResumeIssued.value = 0;
             if (progress.value > 0 && progress.value < 1) {
               settleProgress(progress, 0, panelWidthSV.value, 0);
             }
@@ -459,10 +511,11 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
       beginDrawerMediaPause,
       dragStartProgress,
       edgeChromeBottomY,
+      edgeClaimed,
       edgeEnabled,
       edgeMaxX,
       edgePanRef,
-      edgeResumeIssued,
+      edgeVerticalHandover,
       endDrawerMediaPause,
       pane0Momentum,
       pane1Momentum,
@@ -483,6 +536,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
     cancelAnimation(progress);
     if (visible) {
       markPresented();
+      ensureFeedCoastAfterOpen();
       const distance = Math.abs(1 - progress.value);
       progress.value = withTiming(1, {
         duration: Math.max(floraMotion.baseMs, Math.round(OPEN_MS * distance)),
@@ -491,6 +545,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
       return;
     }
 
+    ensureFeedCoastAfterOpen();
     const distance = Math.abs(progress.value);
     progress.value = withTiming(
       0,
@@ -502,7 +557,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
         if (finished) runOnJS(markDismissed)();
       },
     );
-  }, [markDismissed, markPresented, progress, visible]);
+  }, [ensureFeedCoastAfterOpen, markDismissed, markPresented, progress, visible]);
 
   const panelAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -panelWidthSV.value * (1 - progress.value) }],
