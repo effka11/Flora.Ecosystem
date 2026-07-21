@@ -1,0 +1,23 @@
+# WASM-обёртка детерминированного ядра FEP (LIV): C-ABI без wasm-bindgen (паттерн FRC).
+# Единственный crate FEP с `unsafe` — минимальный FFI-шим, вся логика остаётся в ядре.
+
+[package]
+name = "flora-economy-wasm"
+description = "C-ABI wasm32-поверхность ядра flora-economy-crypto для клиентской верификации LIV (уровень L2, LIV.md §5): полный реплей журнала с экономическими инвариантами, inclusion/consistency-доказательства, косайны витнессов. Потребитель — @flora/client-core/economy (FepWasmVerifier)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+flora-economy-crypto = { workspace = true }
+serde_json = { workspace = true }
+
+# Override workspace unsafe_code = forbid for this FFI shim only.
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"

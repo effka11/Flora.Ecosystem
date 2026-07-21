@@ -1,0 +1,25 @@
+# Reference-демон витнесса LIV (LIV.md §4.4): независимый наблюдатель журнала.
+# Наблюдает head, проверяет append-only (consistency), опционально полный реплей ядром,
+# косайнит и публикует подпись. Расхождение — доказуемый инцидент (exit 2), не «ошибка сети».
+
+[package]
+name = "flora-economy-witness"
+description = "Reference-витнесс FEP/LIV: цикл observe → verify consistency → (опц.) полный реплей → cosign → publish. Держит state-файл с последним подписанным head; форк или отказ сервера доказать append-only фиксируется incident-файлом с уликами. Запускается третьими сторонами — искажение истории обнаруживается, пока жив хотя бы один честный витнесс."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Правило §2.3: функциональный продукт видит только своё ядро и внешние crates.
+[dependencies]
+flora-economy-crypto = { workspace = true }
+clap = { workspace = true }
+getrandom = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

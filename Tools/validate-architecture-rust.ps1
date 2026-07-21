@@ -38,6 +38,7 @@ $functionalKernels = [System.Collections.Generic.HashSet[string]]::new([StringCo
     "fscp-core", "fscp-crypto", "fscp-contracts",
     "fira-core", "fira-contracts",
     "flora-economy-crypto", "flora-economy-contracts",
+    "flora-economy-wasm", "flora-economy-witness",
     "flora-governance-crypto", "flora-governance-contracts",
     "fpp-crypto", "fpp-contracts", "fpp-core",
     "frc-i", "frc-i-integration", "frc-i-wasm", "frc-i-mobile-ffi",
