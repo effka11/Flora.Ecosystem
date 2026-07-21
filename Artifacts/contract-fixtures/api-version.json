@@ -3,7 +3,7 @@
   "products": {
     "social": "0.7.0-alpha",
     "fscp": "0.1.0-alpha",
-    "frc-i": "0.2.0-alpha",
+    "frc-i": "0.3.0-alpha",
     "fira": "0.1.0-alpha"
   },
   "api": "0.7.0-alpha",
