@@ -4,13 +4,13 @@
 //! таблице на модуль `__flora_migrations_<module>` в схеме `flora_core` (продолжение паттерна
 //! `__EFMigrationsHistory_<Module>`; EF-таблицы остаются как исторические, их никто не трогает).
 //!
-//! Новые Rust-миграции модуля разрешены только после его cutover (§5.3): пока владелец C#,
-//! `migrator` пуст (None) и flora-migrate модуль пропускает. Каждый модуль при переносе
-//! объявляет `migrations/`-каталог у себя и экспортирует `sqlx::migrate!()`-Migrator,
-//! который регистрируется здесь.
+//! После завершённого cutover (Фаза 5) владельцы всех модулей — Rust. `migrator: None`
+//! означает только отсутствие новых post-cutover миграций у модуля. Модуль с первой
+//! эволюцией схемы объявляет `migrations/`-каталог у себя и экспортирует
+//! `sqlx::migrate!()`-Migrator, который регистрируется здесь.
 //!
-//! Фаза 5 выполнена (C# удалён): users/content/music объявили первые Rust-миграции
-//! (§User Controls FIRA v1.1) и помечены владельцем "Rust".
+//! Сейчас зарегистрированы: users/content/music (§User Controls FIRA v1.1) и messaging
+//! (D2D recovery transport, e2e-security.md §Devices recover-key).
 
 use sqlx::migrate::Migrator;
 
@@ -19,7 +19,7 @@ pub struct ModuleMigrations {
     pub module: &'static str,
     /// Владелец по таблице статуса §6.0 — для сообщений dry-run.
     pub current_owner: &'static str,
-    /// Мигратор модуля; None — модуль ещё на C#/EF, Rust-миграций нет.
+    /// Мигратор модуля; None — post-cutover Rust-миграций пока нет.
     pub migrator: Option<&'static Migrator>,
 }
 
@@ -39,17 +39,17 @@ pub fn registry() -> Vec<ModuleMigrations> {
         },
         ModuleMigrations {
             module: "verification",
-            current_owner: "C#",
+            current_owner: "Rust",
             migrator: None,
         },
         ModuleMigrations {
             module: "auth",
-            current_owner: "C#",
+            current_owner: "Rust",
             migrator: None,
         },
         ModuleMigrations {
             module: "notifications",
-            current_owner: "C#",
+            current_owner: "Rust",
             migrator: None,
         },
         ModuleMigrations {
@@ -59,8 +59,8 @@ pub fn registry() -> Vec<ModuleMigrations> {
         },
         ModuleMigrations {
             module: "messaging",
-            current_owner: "C#",
-            migrator: None,
+            current_owner: "Rust",
+            migrator: Some(&flora_messaging::MIGRATOR),
         },
         ModuleMigrations {
             module: "music",
@@ -91,17 +91,21 @@ mod tests {
     }
 
     #[test]
-    fn rust_migrations_registered_only_for_cutover_modules() {
-        // §5.3: Rust-миграции есть только у модулей, переведённых на Rust (Фаза 5 выполнена).
+    fn rust_owned_modules_with_registered_migrators() {
+        // Фаза 5: все владельцы Rust; migrator есть у users/content/music/messaging.
         for m in registry() {
+            assert_eq!(
+                m.current_owner, "Rust",
+                "{} должен принадлежать Rust",
+                m.module
+            );
             match m.module {
-                "users" | "content" | "music" => {
-                    assert_eq!(m.current_owner, "Rust", "{}", m.module);
+                "users" | "content" | "music" | "messaging" => {
                     assert!(m.migrator.is_some(), "{}: ожидался MIGRATOR", m.module);
                 }
                 _ => assert!(
                     m.migrator.is_none(),
-                    "{}: Rust-миграции без cutover запрещены",
+                    "{}: post-cutover миграции не зарегистрированы",
                     m.module
                 ),
             }
@@ -119,5 +123,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn messaging_migrations_include_recovery_envelopes() {
+        let modules = registry();
+        let messaging = modules
+            .iter()
+            .find(|m| m.module == "messaging")
+            .expect("messaging в реестре");
+        let migrator = messaging.migrator.expect("мигратор messaging");
+        // sqlx превращает `_` в пробелы в description миграции.
+        assert!(
+            migrator
+                .iter()
+                .any(|m| m.description.contains("user device recovery envelopes")),
+            "ожидается миграция user_device_recovery_envelopes"
+        );
     }
 }

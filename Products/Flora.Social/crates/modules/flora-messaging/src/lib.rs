@@ -22,6 +22,10 @@ use crate::infrastructure::{E2eProofTokens, MessagingRepo};
 /// Re-export FSCP validator for callers that historically used `flora_messaging::fscp`.
 pub use fscp_core as fscp;
 
+/// Rust-миграции модуля Messaging (первые после cutover; применяются flora-migrate
+/// в таблицу истории `__flora_migrations_messaging`, next-architecture.md §11.1).
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
+
 /// Собранный модуль: защищённый роутер (JWT навешивает flora-social).
 pub struct MessagingModule {
     pub router: axum::Router,

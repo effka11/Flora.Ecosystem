@@ -1,4 +1,4 @@
-﻿# Модель E2E и общей безопасности соцсети FLORA
+# Модель E2E и общей безопасности соцсети FLORA
 
 ## Описание
 
@@ -1050,7 +1050,9 @@ flora.messaging.device-to-device-recovery.v1 | recoveryRequestId | userUuid | so
 
 Сервер обязан проверить, что `sourceDeviceUuid` имеет active device binding для каждой epoch из `transferredKeyEpochIds`. Если source device active только в новой epoch, он не может подтверждать передачу старой locked epoch.
 
-**Референс-реализация (errata-5):** `deviceRecovery.ts` в `@flora/fscp` — `buildDeviceRecoveryEnvelope` / `openDeviceRecoveryEnvelope` (X25519 → HKDF-SHA256 → XChaCha20-Poly1305, подпись Ed25519 над canonical JSON без поля подписи, домены `flora.messaging.device-to-device-recovery.v1` для AAD и `...device-to-device-recovery-signature.v1` для подписи). `targetAgreementPublicKeyId = UUIDv5(userUuid, deviceUuid)` — `deviceAgreementPublicKeyId`. Открытие проверяет подпись source-устройства, AAD-binding (`recoveryRequestId`/`userUuid`/`targetDeviceUuid`) и AEAD; негативы (чужая подпись, порча ciphertext, подмена binding, пустые epochs) закрыты unit-тестами `deviceRecovery.test.ts`. Серверный транспорт (`recover-key`) — следующий шаг.
+**Референс-реализация (errata-5):** `deviceRecovery.ts` в `@flora/fscp` — `buildDeviceRecoveryEnvelope` / `openDeviceRecoveryEnvelope` (X25519 → HKDF-SHA256 → XChaCha20-Poly1305, подпись Ed25519 над canonical JSON без поля подписи, домены `flora.messaging.device-to-device-recovery.v1` для AAD и `...device-to-device-recovery-signature.v1` для подписи). `targetAgreementPublicKeyId = UUIDv5(userUuid, deviceUuid)` — `deviceAgreementPublicKeyId`. Открытие проверяет подпись source-устройства, AAD-binding (`recoveryRequestId`/`userUuid`/`targetDeviceUuid`) и AEAD; негативы (чужая подпись, порча ciphertext, подмена binding, пустые epochs) закрыты unit-тестами `deviceRecovery.test.ts`.
+
+**Серверный транспорт (errata-6, реализовано):** структурная валидация и проверка подписи конверта — `fscp_core::{try_validate_d2d_recovery_envelope, verify_d2d_recovery_signature}` (strict-форма: lowercase UUID, отсортированные `transferredKeyEpochIds` без дублей, деривация `targetAgreementPublicKeyId` сверяется на сервере; подпись проверяется против **сохранённого** signing key source-устройства из `user_device_keys`, не из конверта). Приём/выдача — `POST`/`GET .../recover-key` (см. §Devices). Байт-паритет билдера/валидатора закреплён golden-вектором `fscp-d2d-recovery-v1.json` с потребителями TS (`d2dRecoveryVector.test.ts`) и Rust (`fscp_d2d_recovery_vectors.rs`).
 
 ### Canonical encoding
 
@@ -1323,6 +1325,7 @@ flora.messaging.unlock-complete.v1 | userUuid | resetRequestId | challengeId | b
 | `POST` | `/api/messaging/e2e/epochs/{keyEpochId}/devices/{deviceId}/approve` | Подтвердить устройство в scope epoch |
 | `POST` | `/api/messaging/e2e/epochs/{keyEpochId}/devices/{deviceId}/revoke` | Отозвать устройство в scope epoch |
 | `POST` | `/api/messaging/e2e/epochs/{keyEpochId}/devices/{deviceId}/recover-key` | Передать E2E material выбранных epochs через trusted-device envelope (устройство идентифицируется в path; `transferredKeyEpochIds` в теле должны быть совместимы с authority source device в этих epochs) |
+| `GET` | `/api/messaging/e2e/epochs/{keyEpochId}/devices/{deviceId}/recover-key` | Target-устройство забирает сохранённый `DeviceToDeviceRecoveryEnvelope` (404 — конверта нет или истёк TTL) |
 
 `keyEpochId` в path задаёт **единственный** scope операции: approve/revoke/recover не действуют «на все epochs сразу». Сервер отклоняет запрос, если `UserDeviceKey.keyEpochId` в теле или в stored record не совпадает с `{keyEpochId}` из path.
 
@@ -1334,7 +1337,11 @@ flora.messaging.device-approve.v1 | userUuid | keyEpochId | newDeviceUuid | appr
 
 Сервер проверяет: FSM аккаунта допускает approve; approving-устройство **active** в этой epoch и не совпадает с target; подпись валидна относительно **сохранённого** signing public key approving-устройства. Успех переводит target в `active` (идемпотентно) и возвращает `trustedDeviceApprovalToken` (+`...ExpiresAt`) для `unlock-complete`. Клиентский билдер canonical-строки — `buildDeviceApproveCanonical` в `@flora/fscp`; typed-обёртки эндпоинтов devices/unlock — `@flora/client-core/api/messaging`.
 
-**Статус остальных операций:** `pending`/`devices`/`revoke` (включая POST-алиас) реализованы; `recover-key` — **не реализован** (материал передаётся через `DeviceToDeviceRecoveryEnvelope`, референс-реализация уже в `@flora/fscp` — см. §DeviceToDeviceRecoveryEnvelope).
+**Recover-key (реализовано — errata-6).** Серверный транспорт `DeviceToDeviceRecoveryEnvelope`: `POST .../recover-key` принимает `{ "envelope": {...} }` от **source**-устройства, `GET .../recover-key` отдаёт конверт **target**-устройству. Сервер не расшифровывает ciphertext; проверяются: FSM аккаунта (`active`/`active_new_epoch`/`recovering`), строгая форма конверта и деривация `targetAgreementPublicKeyId` (`fscp_core::try_validate_d2d_recovery_envelope`), binding `userUuid` = аутентифицированный пользователь и `targetDeviceUuid` = `{deviceId}` из path, status target-устройства (`Pending`/`Active`, revoked → 409), **active** binding source-устройства в `{keyEpochId}` и в каждой epoch из `transferredKeyEpochIds`, Ed25519-подпись против **сохранённого** signing key source-устройства. Число передаваемых epochs ограничено 64, чтобы вход не порождал неограниченное число authority-запросов к БД.
+
+Хранение — `user_device_recovery_envelopes` (canonical JSON, TTL 15 минут, ленивое удаление истёкших). При `GET` статусы target/source и authority source по всем передаваемым epochs проверяются повторно: окно `POST → revoke → GET` закрыто. Replay: тот же `recoveryRequestId` с тем же телом — идемпотентный повтор, с другим телом — 409, новый `recoveryRequestId` замещает предыдущий конверт; конкурентные первые записи сериализуются transaction-scoped advisory lock. Коды ошибок: `messaging.e2e.devices.recover_key_envelope_invalid` (400), `messaging.e2e.devices.recover_key_signature_invalid` (400), `messaging.e2e.devices.not_allowed_in_current_account_state` (403). Typed-обёртки — `apiPostDeviceRecoveryEnvelope` / `apiGetDeviceRecoveryEnvelope` (`@flora/client-core/api/messaging`; GET возвращает `null` на 404).
+
+**Статус остальных операций:** `pending`/`devices`/`revoke` (включая POST-алиас) реализованы.
 
 ### Messages
 
@@ -1592,9 +1599,9 @@ Auth + Messaging: restore locked or active state
 | `recipient_key_envelope_v1_wrong_aad` | изменение recipient/user/device/keyEpoch ломает decrypt |
 | `fscp_rke_wrap_key_v1_success` | X25519 + HKDF + XChaCha20-Poly1305 IETF → 32-байтовый `messageKey`; данные: [test-vectors/fscp-rke-wrap-key-v1.json](../test-vectors/fscp-rke-wrap-key-v1.json) |
 | `fingerprint_v1_success` | safety number 1:1: SHA-256 от UTF-8 preimage; данные: [test-vectors/fingerprint-v1.json](../test-vectors/fingerprint-v1.json) |
-| `message_session_revoked_device_v1_failure` | цепочка: handshake/сессия 1:1 → encrypt → decrypt на peer → `POST .../devices/{id}/revoke` отправителя → повторный decrypt или отправка с тем же device id падает по ожидаемой ошибке (см. [FSCP.md](FSCP.md)) |
-| `device_to_device_recovery_envelope_v1_success` | trusted device передаёт выбранные epochs новому device |
-| `device_to_device_recovery_envelope_v1_wrong_challenge` | изменение recovery request или target device ломает decrypt/signature |
+| `message_session_revoked_device_v1_failure` | цепочка: handshake/сессия 1:1 → encrypt → decrypt на peer → `POST .../devices/{id}/revoke` отправителя → повторный decrypt или отправка с тем же device id падает по ожидаемой ошибке (см. [FSCP.md](FSCP.md)); данные: [test-vectors/fscp-revoked-device-v1.json](../test-vectors/fscp-revoked-device-v1.json), потребители TS `revokedDeviceVector.test.ts` + Rust `fscp_revoked_device_vectors.rs` |
+| `device_to_device_recovery_envelope_v1_success` | trusted device передаёт выбранные epochs новому device; данные: [test-vectors/fscp-d2d-recovery-v1.json](../test-vectors/fscp-d2d-recovery-v1.json), потребители TS `d2dRecoveryVector.test.ts` + Rust `fscp_d2d_recovery_vectors.rs` |
+| `device_to_device_recovery_envelope_v1_wrong_challenge` | изменение recovery request или target device ломает decrypt/signature (кейсы `_wrong_challenge`, `_tampered_ciphertext`, `_foreign_signature`, `_empty_epochs` в том же файле) |
 | `device_signature_v1_success` | device key signature валидна |
 | `device_signature_v1_tampered_key` | подмена device key обнаруживается |
 | `unlock_complete_epoch_unlock_signatures_success` | для каждого `recoveredKeyEpochIds` валидны подпись canonical `flora.messaging.unlock-complete.v1 | ...` и согласованные `epochIdentityPublicKeys` |

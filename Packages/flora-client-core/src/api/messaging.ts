@@ -1,5 +1,6 @@
 import { authDelete, authGetArrayBuffer, authGetJson, authPostForm, authPostJson } from "./client.js";
 import { getApiClientConfig } from "./client.js";
+import { ApiRequestError } from "./errors.js";
 import { asRecord, readBool, readStr } from "../contracts/parse.js";
 import {
   parseConversationsPage,
@@ -295,6 +296,73 @@ export async function apiRevokeDevice(keyEpochId: string, deviceUuid: string): P
     `/api/messaging/e2e/epochs/${encodeURIComponent(keyEpochId.trim())}/devices/${encodeURIComponent(deviceUuid.trim())}/revoke`,
     {},
   );
+}
+
+export type MsgDeviceRecoveryEnvelopeReceipt = {
+  recoveryRequestId: string;
+  expiresAt: string;
+};
+
+export type MsgDeviceRecoveryEnvelopeStored = {
+  /** Opaque DeviceToDeviceRecoveryEnvelope — открывать через @flora/fscp openDeviceRecoveryEnvelope. */
+  envelope: unknown;
+  sourceDeviceUuid: string;
+  recoveryRequestId: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
+/**
+ * POST epochs/{keyEpochId}/devices/{deviceUuid}/recover-key — source-устройство кладёт
+ * DeviceToDeviceRecoveryEnvelope (собранный buildDeviceRecoveryEnvelope из @flora/fscp)
+ * для target-устройства {deviceUuid}. Сервер проверяет форму/binding/подпись,
+ * не расшифровывает; конверт живёт до expiresAt (e2e-security.md §Devices).
+ */
+export async function apiPostDeviceRecoveryEnvelope(
+  keyEpochId: string,
+  targetDeviceUuid: string,
+  envelope: unknown,
+): Promise<MsgDeviceRecoveryEnvelopeReceipt> {
+  const raw = await authPostJson(
+    `/api/messaging/e2e/epochs/${encodeURIComponent(keyEpochId.trim())}/devices/${encodeURIComponent(targetDeviceUuid.trim())}/recover-key`,
+    { envelope } as unknown as Record<string, unknown>,
+  );
+  const o = asRecord(raw) ?? {};
+  const fb = getApiClientConfig().onPascalFallback;
+  return {
+    recoveryRequestId: readStr(o, ["recoveryRequestId", "RecoveryRequestId"], fb),
+    expiresAt: readStr(o, ["expiresAt", "ExpiresAt"], fb),
+  };
+}
+
+/**
+ * GET epochs/{keyEpochId}/devices/{deviceUuid}/recover-key — target-устройство забирает
+ * сохранённый конверт; `null`, если конверта нет или истёк TTL (404).
+ */
+export async function apiGetDeviceRecoveryEnvelope(
+  keyEpochId: string,
+  targetDeviceUuid: string,
+): Promise<MsgDeviceRecoveryEnvelopeStored | null> {
+  let raw: unknown;
+  try {
+    raw = await authGetJson(
+      `/api/messaging/e2e/epochs/${encodeURIComponent(keyEpochId.trim())}/devices/${encodeURIComponent(targetDeviceUuid.trim())}/recover-key`,
+    );
+  } catch (e: unknown) {
+    if (e instanceof ApiRequestError && e.status === 404) return null;
+    throw e;
+  }
+  const o = asRecord(raw) ?? {};
+  const fb = getApiClientConfig().onPascalFallback;
+  const envelope = o["envelope"] ?? o["Envelope"];
+  if (envelope === undefined || envelope === null) return null;
+  return {
+    envelope,
+    sourceDeviceUuid: readStr(o, ["sourceDeviceUuid", "SourceDeviceUuid"], fb),
+    recoveryRequestId: readStr(o, ["recoveryRequestId", "RecoveryRequestId"], fb),
+    createdAt: readStr(o, ["createdAt", "CreatedAt"], fb),
+    expiresAt: readStr(o, ["expiresAt", "ExpiresAt"], fb),
+  };
 }
 
 export async function apiArchiveConversation(conversationUuid: string): Promise<void> {

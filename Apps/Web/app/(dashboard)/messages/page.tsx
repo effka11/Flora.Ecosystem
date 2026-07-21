@@ -14,6 +14,7 @@ import { TabSearchInput } from "@/app/_shared/TabSearchInput";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { ApiRequestError, isDevLocalOfflineSession } from "@/lib/auth";
 import { fromBase64Flexible } from "@/lib/fscp/base64url";
+import { FSCP_WIRE_PREFIX } from "@/lib/fscp/constants";
 import { dmConversationUuid } from "@/lib/fscp/deriveIds";
 import {
   buildFscpWireEnvelope,
@@ -87,6 +88,7 @@ import { ImageMessageCard } from "./ImageMessageCard";
 import { MessageImageCollage } from "./MessageImageCollage";
 import { MessageBubbleAnchor } from "./MessageBubbleMoreMenu";
 import { MessagesDeleteConversationModal } from "./MessagesDeleteConversationModal";
+import { MessagesSafetyNumberModal } from "./MessagesSafetyNumberModal";
 import { MessageBubbleReplyQuote } from "./MessageBubbleReplyQuote";
 import { MessageBubbleText } from "./MessageBubbleText";
 import { MessageComposeReplyBar } from "./MessageComposeReplyBar";
@@ -1359,6 +1361,76 @@ function MessagesChatInner() {
     void handleDeleteConversation(pendingDeleteConversation.peerUuid);
   }, [handleDeleteConversation, pendingDeleteConversation]);
 
+  // Safety number 1:1 (FSCP §Safety number) — модал «Проверка шифрования».
+  // Паттерн pending* как у delete-модала: peer фиксируется в момент открытия,
+  // поэтому смена/закрытие чата не требует сброса состояния в эффекте.
+  const [pendingSafetyNumber, setPendingSafetyNumber] = useState<{
+    peerUuid: string;
+    displayName: string;
+  } | null>(null);
+  const [safetyNumberClosing, setSafetyNumberClosing] = useState(false);
+  const safetyNumberCloseTimerRef = useRef<number | null>(null);
+
+  const openSafetyNumberModal = useCallback((peerUuid: string, displayName: string) => {
+    if (safetyNumberCloseTimerRef.current) {
+      window.clearTimeout(safetyNumberCloseTimerRef.current);
+      safetyNumberCloseTimerRef.current = null;
+    }
+    setSafetyNumberClosing(false);
+    setPendingSafetyNumber({ peerUuid, displayName });
+  }, []);
+
+  const closeSafetyNumberModal = useCallback(() => {
+    setSafetyNumberClosing(true);
+    if (safetyNumberCloseTimerRef.current) {
+      window.clearTimeout(safetyNumberCloseTimerRef.current);
+    }
+    safetyNumberCloseTimerRef.current = window.setTimeout(() => {
+      setPendingSafetyNumber(null);
+      setSafetyNumberClosing(false);
+      safetyNumberCloseTimerRef.current = null;
+    }, DELETE_CONVERSATION_MODAL_CLOSE_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (safetyNumberCloseTimerRef.current) {
+        window.clearTimeout(safetyNumberCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  /**
+   * TOFU-ключ собеседника для safety number: `senderSigningPublicKeyBase64Url`
+   * из последнего **успешно расшифрованного** входящего wire (подпись конверта
+   * уже проверена в decryptFscpWireEnvelope). До первого входящего — null,
+   * модал показывает заглушку (сессия ещё не ready, FSCP.md §Safety number).
+   * threadMessages принадлежат selectedOtherUuid — ключ валиден только пока
+   * зафиксированный в модале peer совпадает с открытым чатом.
+   */
+  const peerIdentityPublicKeyB64 = useMemo(() => {
+    if (!pendingSafetyNumber || pendingSafetyNumber.peerUuid !== selectedOtherUuid) return null;
+    for (let i = threadMessages.length - 1; i >= 0; i -= 1) {
+      const m = threadMessages[i];
+      if (!m || m.isFromMe) continue;
+      if (!decryptedById[m.messageUuid]) continue;
+      const enc = m.encryptedForMe?.trim();
+      if (!enc || !isFscpWirePayload(enc)) continue;
+      try {
+        const raw = fromBase64Flexible(enc.slice(FSCP_WIRE_PREFIX.length));
+        const env = JSON.parse(new TextDecoder().decode(raw)) as {
+          senderSigningPublicKeyBase64Url?: string;
+        };
+        const pk = env.senderSigningPublicKeyBase64Url?.trim();
+        if (pk) return pk;
+      } catch {
+        /* повреждённый конверт — пробуем более ранний */
+      }
+    }
+    return null;
+  }, [decryptedById, pendingSafetyNumber, selectedOtherUuid, threadMessages]);
+
   useEffect(() => {
     setReplyTo(null);
   }, [selectedOtherUuid]);
@@ -2398,6 +2470,14 @@ function MessagesChatInner() {
                     onConversationMuteForever={() => setPeerMutedForever(selectedOtherUuid)}
                     onConversationMuteTemporary={() => setPeerMutedTemporary(selectedOtherUuid)}
                     onConversationUnmute={() => clearPeerMuted(selectedOtherUuid)}
+                    onChatSafetyNumber={() =>
+                      openSafetyNumberModal(
+                        selectedOtherUuid,
+                        chatHeaderPeer.otherDisplayName ||
+                          chatHeaderPeer.otherUsername ||
+                          "Пользователь",
+                      )
+                    }
                     onDeleteConversation={() =>
                       openDeleteConversationModal(
                         selectedOtherUuid,
@@ -3036,6 +3116,16 @@ function MessagesChatInner() {
         peerDisplayName={pendingDeleteConversation?.displayName ?? ""}
         onClose={closeDeleteConversationModal}
         onConfirm={confirmDeleteConversation}
+      />
+      <MessagesSafetyNumberModal
+        open={pendingSafetyNumber != null}
+        closing={safetyNumberClosing}
+        peerDisplayName={pendingSafetyNumber?.displayName ?? ""}
+        viewerUserUuid={me?.userUuid?.trim() ?? ""}
+        peerUserUuid={pendingSafetyNumber?.peerUuid ?? ""}
+        selfSigningPrivateKey={fscpMaterial?.signingPrivateKey ?? null}
+        peerIdentityPublicKeyBase64Url={peerIdentityPublicKeyB64}
+        onClose={closeSafetyNumberModal}
       />
     </>
   );

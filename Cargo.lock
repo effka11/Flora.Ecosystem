@@ -1151,6 +1151,7 @@ version = "0.7.0-alpha"
 dependencies = [
  "chrono",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -1161,6 +1162,7 @@ dependencies = [
  "anyhow",
  "clap",
  "flora-content",
+ "flora-messaging",
  "flora-music",
  "flora-shared",
  "flora-users",
@@ -1514,7 +1516,6 @@ version = "0.7.0-alpha"
 dependencies = [
  "base64",
  "ed25519-dalek",
- "flora-shared",
  "fscp-contracts",
  "serde_json",
  "uuid",

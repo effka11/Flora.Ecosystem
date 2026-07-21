@@ -14,6 +14,6 @@ pub use e2e::{
     SetE2ePublicKeyError,
 };
 pub use e2e_epochs::{
-    AddPendingDeviceError, ApproveDeviceError, CreateEpochError, E2eEpochService,
+    AddPendingDeviceError, ApproveDeviceError, CreateEpochError, E2eEpochService, RecoverKeyError,
     RevokeDeviceError, UnlockChallengeError, UnlockCompleteError,
 };
