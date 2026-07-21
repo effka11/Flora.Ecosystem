@@ -105,3 +105,10 @@ Apps/Mobile/modules/flora-frc-i/ios/lib/
 # Python bytecode (compete/audit probes)
 **/__pycache__/
 *.pyc
+
+# FRC-V polygon (кросс-кодек арена): клипы, отчёты и рабочие файлы прогонов
+polygon-clips/
+polygon-out*/
+polygon-*.log
+# Кэш бинарей энкодера для A/B-итераций (--reuse): локальный, не в remote
+.polygon-bin/

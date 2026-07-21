@@ -278,6 +278,13 @@ struct LeafOutcome {
     leaf: LeafData,
 }
 
+/// Опции пробы плоскости: тип предсказания (выбор deadzone-смещения) и RDOQ.
+#[derive(Clone, Copy)]
+struct TrialOpts {
+    inter: bool,
+    rdoq: bool,
+}
+
 /// Состояние кодирования одного кадра.
 struct FrameEnc<'a> {
     src: &'a Frame,
@@ -454,7 +461,7 @@ impl FrameEnc<'_> {
         let tmv = self
             .prev_grid
             .and_then(|g| g.mv_at(b.x + b.n / 2, b.y + b.n / 2));
-        let mv = self.motion_search(reference, b, pred_mv, hint, tmv);
+        let mv = self.motion_search(syntax, reference, b, pred_mv, hint, tmv);
         let tx_variants: &[bool] = if self.speed >= 2 {
             &[false]
         } else {
@@ -462,12 +469,21 @@ impl FrameEnc<'_> {
         };
         let mut best: Option<LeafOutcome> = None;
         for &tx_split in tx_variants {
-            let out = self.trial_leaf_inter(syntax, b, reference, pred_mv, mv, tx_split);
+            let out = self.trial_leaf_inter(syntax, b, reference, pred_mv, mv, tx_split, false);
             if best.as_ref().is_none_or(|bo| out.cost < bo.cost) {
                 best = Some(out);
             }
         }
-        let coded = best.expect("at least one tx variant tried");
+        let mut coded = best.expect("at least one tx variant tried");
+        // Финальный проход с RDOQ уровней на выигравшем варианте (зеркало
+        // интра-этапа D): уровни — решение энкодера, битстрим совместим.
+        if self.speed <= 1 && !coded.leaf.luma.is_empty() {
+            let refined =
+                self.trial_leaf_inter(syntax, b, reference, pred_mv, mv, coded.leaf.tx_split, true);
+            if refined.cost < coded.cost {
+                coded = refined;
+            }
+        }
         if skip_cost <= coded.cost {
             Some(LeafOutcome {
                 cost: skip_cost,
@@ -480,6 +496,7 @@ impl FrameEnc<'_> {
     }
 
     /// Кодирование inter-листа с остатком при заданных MV и размере трансформа.
+    #[allow(clippy::too_many_arguments)]
     fn trial_leaf_inter(
         &self,
         syntax: &SyntaxModel,
@@ -488,6 +505,7 @@ impl FrameEnc<'_> {
         pred_mv: Mv,
         mv: Mv,
         tx_split: bool,
+        rdoq: bool,
     ) -> LeafOutcome {
         let bc = b.chroma();
         let mvd = Mv {
@@ -502,22 +520,39 @@ impl FrameEnc<'_> {
         let mut pred = [0i32; 64 * 64];
 
         mc_luma(&reference.y, b, mv, &mut pred);
-        let (d, r, luma) = self.trial_plane(
+        let (d, r, luma) = self.trial_plane_impl(
             syntax,
             &self.src.y,
             &pred,
             b,
             luma_tile_size(b.n, tx_split),
             0,
+            TrialOpts { inter: true, rdoq },
         );
         dist += d;
         rate += r;
         mc_chroma(&reference.cb, bc, mv, &mut pred);
-        let (d, r, cb) = self.trial_plane(syntax, &self.src.cb, &pred, bc, bc.n, 1);
+        let (d, r, cb) = self.trial_plane_impl(
+            syntax,
+            &self.src.cb,
+            &pred,
+            bc,
+            bc.n,
+            1,
+            TrialOpts { inter: true, rdoq },
+        );
         dist += d;
         rate += r;
         mc_chroma(&reference.cr, bc, mv, &mut pred);
-        let (d, r, cr) = self.trial_plane(syntax, &self.src.cr, &pred, bc, bc.n, 1);
+        let (d, r, cr) = self.trial_plane_impl(
+            syntax,
+            &self.src.cr,
+            &pred,
+            bc,
+            bc.n,
+            1,
+            TrialOpts { inter: true, rdoq },
+        );
         dist += d;
         rate += r;
 
@@ -536,9 +571,12 @@ impl FrameEnc<'_> {
 
     /// Поиск вектора движения: целопиксельный log-поиск + суб-пиксельное уточнение.
     /// Стартовые кандидаты: (0,0), предиктор, hint родителя, temporal co-located.
+    /// Метрика rate-aware: SAD + λ_sad·bits(mvd) — длинные вектора должны
+    /// окупать свою цену в потоке (λ_sad ≈ √λ_sse, как у x264/x265).
     /// Возвращает MV, удовлетворяющий ограничениям синтаксиса (|mvd| ≤ 2047).
     fn motion_search(
         &self,
+        syntax: &SyntaxModel,
         reference: &RefFrame,
         b: Blk,
         pred_mv: Mv,
@@ -556,23 +594,33 @@ impl FrameEnc<'_> {
             x: (m.x >> 2) << 2,
             y: (m.y >> 2) << 2,
         };
+        // Цена MVD в SAD-единицах: λ_sad = √(λ_sse) ⇒ на 1/256 бита ≈ step/6650
+        // (λ_sse = step²/142000 на 1/256 бита; SAD-домен — корень из SSE-λ).
+        let step_q = ac_step(self.qp) as u64;
+        let mv_price = |m: Mv| -> u64 {
+            let mvd = Mv {
+                x: m.x - pred_mv.x,
+                y: m.y - pred_mv.y,
+            };
+            syntax.mvd_cost(mvd) * step_q / 6650
+        };
 
         let mut best_mv = Mv::default();
-        let mut best_sad = self.sad_fullpel(rp, b, best_mv);
-        let consider = |m: Mv, best_mv: &mut Mv, best_sad: &mut u64, s: &Self| {
+        let mut best_cost = self.sad_fullpel(rp, b, best_mv) + mv_price(best_mv);
+        let consider = |m: Mv, best_mv: &mut Mv, best_cost: &mut u64, s: &Self| {
             let m = clamp_mv(m);
-            let sad = s.sad_fullpel(rp, b, m);
-            if sad < *best_sad {
-                *best_sad = sad;
+            let cost = s.sad_fullpel(rp, b, m) + mv_price(m);
+            if cost < *best_cost {
+                *best_cost = cost;
                 *best_mv = m;
             }
         };
-        consider(full(pred_mv), &mut best_mv, &mut best_sad, self);
+        consider(full(pred_mv), &mut best_mv, &mut best_cost, self);
         if let Some(hm) = hint {
-            consider(full(hm), &mut best_mv, &mut best_sad, self);
+            consider(full(hm), &mut best_mv, &mut best_cost, self);
         }
         if let Some(tm) = temporal {
-            consider(full(tm), &mut best_mv, &mut best_sad, self);
+            consider(full(tm), &mut best_mv, &mut best_cost, self);
         }
 
         // Целопиксельный итеративный ромб с убывающим шагом (объём — по пресету).
@@ -592,7 +640,7 @@ impl FrameEnc<'_> {
                             y: base.y + dy,
                         },
                         &mut best_mv,
-                        &mut best_sad,
+                        &mut best_cost,
                         self,
                     );
                 }
@@ -609,7 +657,7 @@ impl FrameEnc<'_> {
             1 => &[(2, 2), (1, 2)],
             _ => &[(2, 2)],
         };
-        let mut best_sub = self.sad_subpel(rp, b, best_mv);
+        let mut best_sub = self.sad_subpel(rp, b, best_mv) + mv_price(best_mv);
         for &(step, iters) in sub_rounds {
             for _ in 0..iters {
                 let base = best_mv;
@@ -627,9 +675,9 @@ impl FrameEnc<'_> {
                         x: base.x + dx,
                         y: base.y + dy,
                     });
-                    let sad = self.sad_subpel(rp, b, m);
-                    if sad < best_sub {
-                        best_sub = sad;
+                    let cost = self.sad_subpel(rp, b, m) + mv_price(m);
+                    if cost < best_sub {
+                        best_sub = cost;
                         best_mv = m;
                     }
                 }
@@ -790,7 +838,7 @@ impl FrameEnc<'_> {
                 b,
                 luma_tile_size(b.n, tx_split),
                 0,
-                rdoq,
+                TrialOpts { inter: false, rdoq },
             );
             dist += d;
             rate += r;
@@ -819,21 +867,20 @@ impl FrameEnc<'_> {
     }
 
     /// Проба обеих хрома-плоскостей интра-режимом `cmode`
-    /// (`optimize` — RDOQ уровней, только в финальных пробах).
+    /// (`rdoq` — оптимизация уровней, только в финальных пробах).
     fn trial_chroma(
         &self,
         syntax: &SyntaxModel,
         bc: Blk,
         cmode: u8,
-        optimize: bool,
+        rdoq: bool,
     ) -> (u64, u64, Vec<i32>, Vec<i32>) {
+        let opts = TrialOpts { inter: false, rdoq };
         let mut pred = [0i32; 64 * 64];
         intra_pred_plane(&self.recon.cb, bc, false, cmode, &mut pred);
-        let (d1, r1, cb) =
-            self.trial_plane_impl(syntax, &self.src.cb, &pred, bc, bc.n, 1, optimize);
+        let (d1, r1, cb) = self.trial_plane_impl(syntax, &self.src.cb, &pred, bc, bc.n, 1, opts);
         intra_pred_plane(&self.recon.cr, bc, false, cmode, &mut pred);
-        let (d2, r2, cr) =
-            self.trial_plane_impl(syntax, &self.src.cr, &pred, bc, bc.n, 1, optimize);
+        let (d2, r2, cr) = self.trial_plane_impl(syntax, &self.src.cr, &pred, bc, bc.n, 1, opts);
         (
             d1 + d2,
             r1 + r2,
@@ -843,7 +890,7 @@ impl FrameEnc<'_> {
     }
 
     /// Кодирование блока плоскости с готовым предсказанием: возвращает
-    /// (SSE, rate256, тайлы уровней). Без RDOQ (быстрые пробы).
+    /// (SSE, rate256, тайлы уровней). Intra, без RDOQ (быстрые пробы).
     fn trial_plane(
         &self,
         syntax: &SyntaxModel,
@@ -853,7 +900,18 @@ impl FrameEnc<'_> {
         tsize: usize,
         pt: usize,
     ) -> (u64, u64, Vec<Vec<i32>>) {
-        self.trial_plane_impl(syntax, src, pred, b, tsize, pt, false)
+        self.trial_plane_impl(
+            syntax,
+            src,
+            pred,
+            b,
+            tsize,
+            pt,
+            TrialOpts {
+                inter: false,
+                rdoq: false,
+            },
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -865,7 +923,7 @@ impl FrameEnc<'_> {
         b: Blk,
         tsize: usize,
         pt: usize,
-        optimize: bool,
+        opts: TrialOpts,
     ) -> (u64, u64, Vec<Vec<i32>>) {
         let per_row = b.n / tsize;
         let t2 = tsize * tsize;
@@ -891,8 +949,8 @@ impl FrameEnc<'_> {
                     }
                 }
                 forward(&res[..t2], tsize, &mut coeffs[..t2]);
-                quantize_block(&coeffs[..t2], &mut levels[..t2], self.qp);
-                if optimize {
+                quantize_block(&coeffs[..t2], &mut levels[..t2], self.qp, opts.inter);
+                if opts.rdoq {
                     syntax.coeffs.optimize_levels(
                         pt,
                         tsize,

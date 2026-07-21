@@ -56,6 +56,7 @@ members = [
     "Products/FRC/crates/frc-a-polygon",
     "Products/FRC/crates/frc-v",
     "Products/FRC/crates/frc-v-cli",
+    "Products/FRC/crates/frc-v-polygon",
     "Products/FRC/crates/frc-v-wasm",
     "Products/FRC/crates/frc-i-wasm",
 ]
