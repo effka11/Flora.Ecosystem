@@ -420,6 +420,27 @@ SSE/SAD-циклы для LLVM автовекторизации (без `unsafe`
    паритет на всех пресетах. Ручной отчёт:
    `cargo test -p frc-v --release --test polygon -- --ignored --nocapture polygon_report`.
 
+### 14.1 Кросс-кодек полигон (`frc-v-polygon`)
+
+Арена против внешних кодеков — отдельный крейт `crates/frc-v-polygon`
+(CLI `frc-v-polygon`): x264 / x265 / libvpx-VP9 / SVT-AV1 / libaom-AV1 через
+ffmpeg в равных условиях (1 поток, общий keyint, elementary stream без
+контейнера, FRC-V — процессом `frc-v` CLI). Корпус: детерминированная
+синтетика (natural/organic/screen/objects/chroma/grain/montage/720p) +
+эталонные клипы xiph/derf (`fetch`). Метрики: PSNR/SSIM единым кодом
+`frc_v::metrics`, VMAF через libvmaf; сводка — **BD-rate** (PCHIP, схема
+JVET/AOM) против каждого конкурента; отчёт — markdown + SVG RD-кривые +
+JSON-снимок. Прогресс между версиями энкодера отслеживается
+`frc-v-polygon compare old.json new.json` (self-BD-rate; ненулевой код выхода
+при регрессиях). Типовой цикл:
+
+```sh
+cargo build --release -p frc-v-cli -p frc-v-polygon
+frc-v-polygon fetch                # эталонные клипы (опционально)
+frc-v-polygon run --label baseline # polygon-out/{snapshot.json,report.md,plots/}
+frc-v-polygon run --label next --out polygon-out-next --baseline polygon-out/snapshot.json
+```
+
 Версия битстрима **1** (intra-only draft) устарела; декодер v1 принимает
 только **версию 2**.
 

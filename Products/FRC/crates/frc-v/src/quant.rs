@@ -23,15 +23,21 @@ pub fn dequant_level(level: i32, step: i32) -> i32 {
     (level.saturating_mul(step)).clamp(-COEFF_CLAMP, COEFF_CLAMP)
 }
 
-/// Квантование блока (только энкодер): deadzone 3/8 для AC, округление к ближайшему для DC.
+/// Квантование блока (только энкодер): округление к ближайшему для DC,
+/// deadzone для AC. Смещение AC зависит от типа предсказания (как у x264):
+/// intra 3/8 — остаток структурный, хвосты стоит сохранять; inter 1/4 —
+/// остаток после MC лапласовский с тяжёлым нулём, мелкие хвосты дороже,
+/// чем польза от них.
 /// `coeffs` — raster, `levels` — raster. Возвращает число ненулевых уровней.
-pub fn quantize_block(coeffs: &[i32], levels: &mut [i32], qp: u8) -> usize {
+pub fn quantize_block(coeffs: &[i32], levels: &mut [i32], qp: u8, inter: bool) -> usize {
     let (dc, ac) = (i64::from(dc_step(qp)), i64::from(ac_step(qp)));
+    // num_bias = 2·offset·step: intra 3/4·ac (offset 3/8), inter 1/2·ac (offset 1/4).
+    let ac_bias = if inter { ac / 2 } else { ac * 3 / 4 };
     let mut nnz = 0;
     for (i, (&c, l)) in coeffs.iter().zip(levels.iter_mut()).enumerate() {
-        let (step, num_bias) = if i == 0 { (dc, dc) } else { (ac, ac * 3 / 4) };
+        let (step, num_bias) = if i == 0 { (dc, dc) } else { (ac, ac_bias) };
         let a = i64::from(c.unsigned_abs());
-        // deadzone-квант: floor((|c| + bias/2) / step), bias: DC=step (nearest), AC=3/8·step·2.
+        // deadzone-квант: floor((|c| + offset) / step) = floor((2|c| + num_bias) / 2step).
         let lv = ((a * 2 + num_bias) / (step * 2)).min(i64::from(MAX_LEVEL)) as i32;
         *l = if c < 0 { -lv } else { lv };
         if lv != 0 {
@@ -65,7 +71,7 @@ mod tests {
         let mut deq = vec![0i32; 64];
         let mut recon = vec![0i32; 64];
         forward(&input, n, &mut coeffs);
-        quantize_block(&coeffs, &mut levels, 0);
+        quantize_block(&coeffs, &mut levels, 0, false);
         dequantize_block(&levels, &mut deq, 0);
         inverse(&deq, n, &mut recon);
         for i in 0..64 {

@@ -1479,6 +1479,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "frc-v-polygon"
+version = "0.7.0-alpha"
+dependencies = [
+ "clap",
+ "frc-v",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "frc-v-wasm"
 version = "0.7.0-alpha"
 dependencies = [
