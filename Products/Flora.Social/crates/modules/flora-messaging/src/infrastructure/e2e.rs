@@ -21,7 +21,8 @@ pub async fn fetch_account_state(
 ) -> Result<Option<E2eAccountStateRow>, String> {
     sqlx::query_as::<_, E2eAccountStateRow>(
         r#"
-        SELECT state, freeze, updated_at
+        -- "freeze" quoted: FREEZE is reserved in PostgreSQL 17+
+        SELECT state, "freeze", updated_at
         FROM flora_core.user_e2e_account_states
         WHERE user_uuid = $1
         "#,
@@ -37,7 +38,7 @@ pub async fn ensure_state_initialized(pool: &PgPool, user_uuid: Uuid) -> Result<
     sqlx::query(
         r#"
         INSERT INTO flora_core.user_e2e_account_states
-            (user_uuid, state, freeze, created_at, updated_at)
+            (user_uuid, state, "freeze", created_at, updated_at)
         VALUES ($1, 'NotInitialized', false, $2, $2)
         ON CONFLICT (user_uuid) DO NOTHING
         "#,
@@ -88,7 +89,7 @@ pub async fn put_key_backup(
 
     let state: E2eAccountStateRow = sqlx::query_as(
         r#"
-        SELECT state, freeze, updated_at
+        SELECT state, "freeze", updated_at
         FROM flora_core.user_e2e_account_states
         WHERE user_uuid = $1
         FOR UPDATE

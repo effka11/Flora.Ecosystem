@@ -16,7 +16,8 @@
 
 export const FRC_HEADER_LEN = 20;
 export const FRC_VERSION_MIN = 1;
-export const FRC_VERSION_MAX = 7;
+/** Mirrors `frc_i::format::VERSION_MAX` (v10 asymmetric AQ). */
+export const FRC_VERSION_MAX = 10;
 export const FRC_MAX_DIM = 32_768;
 export const FRC_MAX_PIXELS = 1 << 26; // ~67 Mpx, matches DEFAULT_MAX_PIXELS
 const FRC_MAGIC = [0x8f, 0x46, 0x52, 0x49] as const;
