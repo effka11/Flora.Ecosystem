@@ -855,9 +855,7 @@ async fn get_avatar(
                 .unwrap_or(false);
             if want_png {
                 match avatar_as_png(&blob.data) {
-                    Ok(png) => {
-                        cached_media_response(png, "image/png", MediaCache::PublicImmutable)
-                    }
+                    Ok(png) => cached_media_response(png, "image/png", MediaCache::PublicImmutable),
                     Err(e) => {
                         tracing::warn!(error = %e, %uuid, "avatar png export failed");
                         StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response()
@@ -882,10 +880,7 @@ fn avatar_as_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let image = image::load_from_memory(bytes).map_err(|e| e.to_string())?;
     let mut png = Vec::new();
     image
-        .write_to(
-            &mut std::io::Cursor::new(&mut png),
-            image::ImageFormat::Png,
-        )
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .map_err(|e| e.to_string())?;
     Ok(png)
 }

@@ -203,17 +203,19 @@ fn music_router(
     with_jwt(cfg, sessions, module.router)
 }
 
+type NotificationsRouterParts = (
+    axum::Router,
+    Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
+    Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
+    Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
+);
+
 fn notifications_router(
     cfg: &FloraConfig,
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     sessions: Option<SessionValidator>,
-) -> (
-    axum::Router,
-    Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
-    Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
-    Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
-) {
+) -> NotificationsRouterParts {
     let noop_msg: Arc<dyn flora_messaging_contracts::MessageSentNotifier> =
         Arc::new(flora_messaging_contracts::NoopMessageSentNotifier);
     let noop_inbox: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher> =
