@@ -31,7 +31,7 @@
     "flora-ecosystem-js": "file:../..",
     "libsodium-wrappers": "^0.8.4",
     "libsodium-wrappers-sumo": "^0.8.4",
-    "next": "^16.2.10",
+    "next": "^16.2.11",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "tweetnacl": "^1.0.3",
