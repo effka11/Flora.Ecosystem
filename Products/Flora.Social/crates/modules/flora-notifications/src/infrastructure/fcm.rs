@@ -47,6 +47,7 @@ struct CachedAccessToken {
 pub struct FcmPushSender {
     http: reqwest::Client,
     credentials: Option<ServiceAccount>,
+    public_media_base_url: Option<String>,
     token_cache: Mutex<Option<CachedAccessToken>>,
     push_tokens: std::sync::Arc<PushTokenRepo>,
 }
@@ -64,6 +65,7 @@ impl FcmPushSender {
         Self {
             http: reqwest::Client::new(),
             credentials,
+            public_media_base_url: configured_public_media_base_url(cfg),
             token_cache: Mutex::new(None),
             push_tokens,
         }
@@ -77,6 +79,7 @@ impl FcmPushSender {
         recipient_user_uuid: Uuid,
         device_tokens: &[String],
         sender_display_name: &str,
+        sender_avatar_uuid: Option<Uuid>,
         conversation_uuid: Uuid,
         sender_user_uuid: Uuid,
     ) {
@@ -91,6 +94,9 @@ impl FcmPushSender {
         data.insert("conversationUuid".into(), conversation_uuid.to_string());
         data.insert("senderUserUuid".into(), sender_user_uuid.to_string());
         data.insert("tag".into(), conversation_uuid.to_string());
+        if let Some(url) = self.sender_avatar_url(sender_avatar_uuid) {
+            data.insert("senderAvatarUrl".into(), url);
+        }
 
         self.send(
             recipient_user_uuid,
@@ -112,6 +118,7 @@ impl FcmPushSender {
         recipient_user_uuid: Uuid,
         token: &str,
         sender_display_name: &str,
+        sender_avatar_uuid: Option<Uuid>,
         conversation_uuid: Uuid,
         sender_user_uuid: Uuid,
         persisted_message_uuid: Uuid,
@@ -120,6 +127,7 @@ impl FcmPushSender {
     ) {
         let data = secure_message_data(
             sender_display_name,
+            self.sender_avatar_url(sender_avatar_uuid).as_deref(),
             conversation_uuid,
             sender_user_uuid,
             persisted_message_uuid,
@@ -232,8 +240,16 @@ impl FcmPushSender {
             "title": android_title.unwrap_or(title),
             "body": android_body.unwrap_or(body),
         });
+        let mut notification = json!({
+            "title": title,
+            "body": body,
+        });
         if let Some(tag) = data.get("tag") {
             android_notification["tag"] = json!(tag);
+        }
+        if let Some(image_url) = data.get("senderAvatarUrl") {
+            notification["image"] = json!(image_url);
+            android_notification["image"] = json!(image_url);
         }
 
         let priority = if high_priority { "HIGH" } else { "NORMAL" };
@@ -241,10 +257,7 @@ impl FcmPushSender {
             json!({
                 "message": {
                     "token": token,
-                    "notification": {
-                        "title": title,
-                        "body": body,
-                    },
+                    "notification": notification.clone(),
                     "data": data,
                     "android": {
                         "priority": priority,
@@ -256,6 +269,15 @@ impl FcmPushSender {
 
         self.dispatch_to_tokens(recipient_user_uuid, device_tokens, payload_for)
             .await;
+    }
+
+    fn sender_avatar_url(&self, avatar_uuid: Option<Uuid>) -> Option<String> {
+        let base = self.public_media_base_url.as_deref()?;
+        // PNG: FCM / Android BitmapFactory cannot decode stored FRI.
+        Some(format!(
+            "{base}/api/auth/avatar/{}?fmt=png",
+            avatar_uuid?.hyphenated()
+        ))
     }
 
     /// Data-only FCM (no `notification` / `android.notification`) for background wake.
@@ -431,6 +453,7 @@ fn truncate_chars(s: &str, max: usize) -> String {
 
 fn secure_message_data(
     sender_display_name: &str,
+    sender_avatar_url: Option<&str>,
     conversation_uuid: Uuid,
     sender_user_uuid: Uuid,
     persisted_message_uuid: Uuid,
@@ -453,6 +476,9 @@ fn secure_message_data(
     );
     data.insert("wireMessageUuid".into(), wire_message_uuid.to_string());
     data.insert("tag".into(), conversation_uuid.to_string());
+    if let Some(url) = sender_avatar_url {
+        data.insert("senderAvatarUrl".into(), url.to_string());
+    }
     if let Some(envelope) = encrypted_preview {
         data.insert("encryptedPreview".into(), envelope.to_string());
         if serde_json::to_vec(&data).map_or(true, |bytes| bytes.len() > 3_900) {
@@ -460,6 +486,17 @@ fn secure_message_data(
         }
     }
     data
+}
+
+fn configured_public_media_base_url(cfg: &FloraConfig) -> Option<String> {
+    let value = cfg
+        .get_non_empty("Push:PublicMediaBaseUrl")?
+        .trim_end_matches('/');
+    let parsed = reqwest::Url::parse(value).ok()?;
+    match parsed.scheme() {
+        "https" | "http" if parsed.host_str().is_some() => Some(value.to_string()),
+        _ => None,
+    }
 }
 
 /// Minimal form-urlencoded for OAuth assertion (no extra crate).
@@ -636,6 +673,7 @@ mod tests {
     fn secure_message_payload_contains_only_ciphertext_and_generic_body() {
         let data = secure_message_data(
             "Отправитель",
+            Some("https://origin.flora-s.net/api/auth/avatar/example?fmt=png"),
             Uuid::now_v7(),
             Uuid::now_v7(),
             Uuid::now_v7(),
@@ -654,6 +692,10 @@ mod tests {
             data.get("encryptedPreview").map(String::as_str),
             Some("fscpnp1:opaque")
         );
+        assert_eq!(
+            data.get("senderAvatarUrl").map(String::as_str),
+            Some("https://origin.flora-s.net/api/auth/avatar/example?fmt=png")
+        );
         assert!(!data.contains_key("messagePreview"));
         assert!(!data.contains_key("preview"));
     }
@@ -662,6 +704,7 @@ mod tests {
     fn secure_message_payload_drops_oversize_envelope_but_keeps_generic_fallback() {
         let data = secure_message_data(
             "Flora",
+            None,
             Uuid::now_v7(),
             Uuid::now_v7(),
             Uuid::now_v7(),

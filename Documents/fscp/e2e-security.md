@@ -148,7 +148,7 @@ Email восстанавливает доступ к аккаунту, но не
 
 ### Уведомления и внешние каналы (push, email, SMS)
 
-- **Push (APNs/FCM и т.д.):** plaintext сообщения провайдеру не передаётся. Базовый fallback — «новое сообщение»; capable-устройство может получить отдельный `NotificationPreviewEnvelope` и расшифровать его в native notification handler/NSE. Provider-visible остаются token, время, размер ciphertext, sender title, conversation/deep-link и другие явно переданные routing metadata.
+- **Push (APNs/FCM и т.д.):** plaintext сообщения провайдеру не передаётся. Базовый fallback — «новое сообщение»; capable-устройство может получить отдельный `NotificationPreviewEnvelope` и расшифровать его в native notification handler/NSE. Provider-visible остаются token, время, размер ciphertext, sender title, публичный URL аватара отправителя (если он задан), conversation/deep-link и другие явно переданные routing metadata.
 - **Политика показа:** encrypted preview включён на устройстве по умолчанию и отключается локально настройкой «Показывать текст сообщений». Системные настройки lock-screen ОС имеют приоритет. При opt-out, отсутствии/ротации ключа, ошибке decrypt, timeout или legacy-клиенте показывается только generic fallback.
 - **Errata-5 сохраняется:** deprecated plaintext `pushPreview` не восстанавливается и продолжает игнорироваться. Новый `encryptedPushPreviews` содержит только per-installation ciphertext; server/FCM/APNs не получают цитату сообщения и не логируют полный ciphertext.
 - **Ключи preview:** отдельная X25519 keypair на установку, не E2E root/agreement key аккаунта. Private key хранится только в native secure storage; сервер хранит public key, key id и capability рядом с push-token.

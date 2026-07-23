@@ -1020,6 +1020,7 @@ dependencies = [
  "flora-notifications-contracts",
  "flora-shared",
  "flora-users-contracts",
+ "frc-i",
  "frc-i-integration",
  "getrandom 0.3.4",
  "image",

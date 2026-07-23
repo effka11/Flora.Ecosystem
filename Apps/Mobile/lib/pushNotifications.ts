@@ -15,6 +15,8 @@ import { handlePushNotificationData } from "@/lib/realtimeSync";
 const PUSH_TOKEN_STORAGE_KEY = "flora.push.token";
 const PUSH_SERVER_SYNCED_KEY = "flora.push.serverSynced";
 const PUSH_SERVER_FINGERPRINT_KEY = "flora.push.serverFingerprint";
+/** Bump to force re-POST of push token + secure capability after protocol changes. */
+const PUSH_SYNC_SCHEMA = "secure-push-avatar-v2";
 
 let registeredToken: string | null = null;
 let registerInFlight: Promise<void> | null = null;
@@ -189,7 +191,12 @@ export async function registerPushTokenWithServer(ownerUserUuid?: string | null)
         capability = null;
       }
     }
-    const fingerprint = JSON.stringify({ token, ownerUserUuid: ownerUserUuid ?? null, capability });
+    const fingerprint = JSON.stringify({
+      schema: PUSH_SYNC_SCHEMA,
+      token,
+      ownerUserUuid: ownerUserUuid ?? null,
+      capability,
+    });
 
     if (registeredToken === token && (await isTokenSyncedWithServer(token, fingerprint))) return;
 

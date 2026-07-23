@@ -63,9 +63,11 @@ export function FloraAvatar({
   const imageUri = useMemo(() => {
     if (!showImage) return null;
     const base = avatarImageUrl(trimmedUuid);
-    return cacheVersion > 0 ? `${base}?v=${cacheVersion}` : base;
+    // avatarImageUrl already has `?fmt=fri`; bust with `&v=`.
+    return cacheVersion > 0 ? `${base}&v=${cacheVersion}` : base;
   }, [cacheVersion, showImage, trimmedUuid]);
-  const resolvedImageUri = useFrcImageUri(imageUri ?? "");
+  // Avatars live outside feed viewability scopes; force decode or FRI never resolves.
+  const resolvedImageUri = useFrcImageUri(imageUri ?? "", { force: true });
 
   const content = showImage && imageUri && resolvedImageUri ? (
     <Image

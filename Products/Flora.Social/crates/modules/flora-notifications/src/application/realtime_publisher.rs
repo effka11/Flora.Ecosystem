@@ -65,9 +65,11 @@ impl UserRealtimePublisher {
             return;
         }
 
-        let display_name = self.display_names.resolve(signal.sender_user_uuid).await;
+        let sender = self
+            .display_names
+            .resolve_identity(signal.sender_user_uuid)
+            .await;
 
-        let mut legacy_tokens = Vec::new();
         for record in records {
             let preview = context.encrypted_push_previews.iter().find(|preview| {
                 Some(preview.installation_uuid) == record.installation_uuid
@@ -76,23 +78,17 @@ impl UserRealtimePublisher {
             let capable = record.secure_preview_version == Some(1)
                 && record.installation_uuid.is_some()
                 && record.preview_key_id.is_some();
-            if !capable {
-                legacy_tokens.push(record.token);
-                continue;
-            }
-            match (
-                record
-                    .provider
-                    .as_deref()
-                    .unwrap_or(record.platform.as_str()),
-                record.platform.as_str(),
-            ) {
-                ("apns", "ios") => {
+            let provider = record
+                .provider
+                .as_deref()
+                .unwrap_or(record.platform.as_str());
+            match (provider, record.platform.as_str()) {
+                ("apns", "ios") if capable => {
                     self.apns_dispatcher
                         .send_message_push(
                             recipient_user_uuid,
                             &record.token,
-                            &display_name,
+                            &sender.display_name,
                             signal.conversation_uuid,
                             signal.sender_user_uuid,
                             context.persisted_message_uuid,
@@ -101,12 +97,29 @@ impl UserRealtimePublisher {
                         )
                         .await;
                 }
+                ("apns", "ios") => {
+                    tracing::debug!(
+                        recipient = %recipient_user_uuid,
+                        "Skipping iOS push without secure preview capability"
+                    );
+                }
                 _ => {
+                    // Android/FCM: always data-only so FloraSecurePush owns the tray
+                    // (system `notification` payloads hide MessagingStyle / largeIcon).
+                    tracing::info!(
+                        recipient = %recipient_user_uuid,
+                        capable,
+                        platform = %record.platform,
+                        has_preview = preview.is_some(),
+                        has_avatar = sender.avatar_uuid.is_some(),
+                        "FCM secure_message_v1 route"
+                    );
                     self.push_dispatcher
                         .send_secure_message_push(
                             recipient_user_uuid,
                             &record.token,
-                            &display_name,
+                            &sender.display_name,
+                            sender.avatar_uuid,
                             signal.conversation_uuid,
                             signal.sender_user_uuid,
                             context.persisted_message_uuid,
@@ -116,17 +129,6 @@ impl UserRealtimePublisher {
                         .await;
                 }
             }
-        }
-        if !legacy_tokens.is_empty() {
-            self.push_dispatcher
-                .send_message_push(
-                    recipient_user_uuid,
-                    &legacy_tokens,
-                    &display_name,
-                    signal.conversation_uuid,
-                    signal.sender_user_uuid,
-                )
-                .await;
         }
     }
 
