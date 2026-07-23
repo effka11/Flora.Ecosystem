@@ -519,6 +519,10 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
 
     cancelAnimation(progress);
     if (visible) {
+      // Pause cancellable production media work before the first animated
+      // frame. Waiting for the presented-state effect leaves one React commit
+      // where FRC completion can invalidate the feed under the drawer.
+      beginDrawerMediaPause();
       markPresented();
       ensureFeedCoastAfterOpen();
       const distance = Math.abs(1 - progress.value);
@@ -541,7 +545,14 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
         if (finished) runOnJS(markDismissed)();
       },
     );
-  }, [ensureFeedCoastAfterOpen, markDismissed, markPresented, progress, visible]);
+  }, [
+    beginDrawerMediaPause,
+    ensureFeedCoastAfterOpen,
+    markDismissed,
+    markPresented,
+    progress,
+    visible,
+  ]);
 
   const panelAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -panelWidthSV.value * (1 - progress.value) }],
@@ -599,6 +610,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           <Animated.View
             pointerEvents={overlayPointerEvents}
             collapsable={false}
+            renderToHardwareTextureAndroid
             style={[
               styles.panel,
               {
