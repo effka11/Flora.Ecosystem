@@ -48,6 +48,10 @@ import { useNetworkClass } from "@/lib/useNetworkClass";
 import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
 import { useStagedFeedPagination } from "@/lib/useStagedFeedPagination";
 import {
+  clearFrcImageQueuePauseOwner,
+  setFrcImageQueuePaused,
+} from "@/lib/frcImage";
+import {
   feedPostToEngagementSource,
   usePostEngagement,
   type PostEngagementSource,
@@ -323,7 +327,10 @@ function FeedPane({
           extraData={rowExtraData}
           keyExtractor={postKeyExtractor}
           getItemType={postItemType}
-          drawDistance={480}
+          // The off-screen pane only needs its viewport ready for a swipe.
+          // Keeping its look-ahead rows mounted makes Android traverse and
+          // composite two full feed windows during every pager frame.
+          drawDistance={isActivePane ? 480 : 0}
           contentContainerStyle={[
             styles.listContent,
             { paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom },
@@ -375,7 +382,9 @@ export default function FeedScreen() {
   const scrollX = useSharedValue(0);
   const dragStartX = useSharedValue(0);
   const pageWidthSV = useSharedValue(pageWidth);
+  const pagerMediaPauseOwner = useRef(Symbol("feed-pager")).current;
   const [kind, setKind] = useState<FeedKind>("recommendations");
+  const pagerTargetRef = useRef<FeedKind>(kind);
   const [tabLayouts, setTabLayouts] = useState<Record<FeedKind, TabLayout | null>>({
     recommendations: null,
     subscriptions: null,
@@ -400,6 +409,22 @@ export default function FeedScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- kind drives animated settles, not this jump
   }, [pageWidth, pageWidthSV, scrollX]);
 
+  useEffect(
+    () => () => clearFrcImageQueuePauseOwner(pagerMediaPauseOwner),
+    [pagerMediaPauseOwner],
+  );
+
+  const beginPagerMotion = useCallback(() => {
+    // Production feeds decode real FRC media. A cancellable download/decode
+    // must not invalidate the transformed list tree while Android is
+    // compositing both pages.
+    setFrcImageQueuePaused(pagerMediaPauseOwner, "drag", true);
+  }, [pagerMediaPauseOwner]);
+
+  const endPagerMotion = useCallback(() => {
+    setFrcImageQueuePaused(pagerMediaPauseOwner, "drag", false);
+  }, [pagerMediaPauseOwner]);
+
   const recordTabLayout = useCallback((tab: FeedKind, event: LayoutChangeEvent) => {
     const { x, width } = event.nativeEvent.layout;
     setTabLayouts((prev) => {
@@ -416,6 +441,7 @@ export default function FeedScreen() {
   const commitPagerIndex = useCallback(
     (index: number) => {
       const next: FeedKind = index === 0 ? "recommendations" : "subscriptions";
+      pagerTargetRef.current = next;
       setActivePane(index);
       setKind((current) => (current === next ? current : next));
     },
@@ -495,6 +521,7 @@ export default function FeedScreen() {
           "worklet";
           cancelAnimation(scrollX);
           dragStartX.value = scrollX.value;
+          runOnJS(beginPagerMotion)();
         })
         .onUpdate((event) => {
           "worklet";
@@ -516,18 +543,30 @@ export default function FeedScreen() {
             ENERGETIC_OPEN_MS,
             ENERGETIC_OPEN_EASING,
             (finished) => {
+              runOnJS(endPagerMotion)();
               if (finished) runOnJS(commitPagerIndex)(Math.round(target / width));
             },
           );
+        })
+        .onFinalize((_event, success) => {
+          "worklet";
+          if (!success) runOnJS(endPagerMotion)();
         }),
-    [commitPagerIndex, dragStartX, pageWidthSV, scrollX],
+    [
+      beginPagerMotion,
+      commitPagerIndex,
+      dragStartX,
+      endPagerMotion,
+      pageWidthSV,
+      scrollX,
+    ],
   );
 
   const switchKind = useCallback(
     (next: FeedKind) => {
-      if (next === kind) return;
-      setKind(next);
-      setActivePane(feedKindIndex(next));
+      if (next === pagerTargetRef.current) return;
+      pagerTargetRef.current = next;
+      beginPagerMotion();
       const target = feedKindIndex(next) * pageWidth;
       runOnUI(() => {
         "worklet";
@@ -541,10 +580,21 @@ export default function FeedScreen() {
           0,
           ENERGETIC_OPEN_MS,
           ENERGETIC_OPEN_EASING,
+          (finished) => {
+            runOnJS(endPagerMotion)();
+            if (finished) runOnJS(commitPagerIndex)(Math.round(target / width));
+          },
         );
       })();
     },
-    [kind, pageWidth, pageWidthSV, scrollX, setActivePane],
+    [
+      beginPagerMotion,
+      commitPagerIndex,
+      endPagerMotion,
+      pageWidth,
+      pageWidthSV,
+      scrollX,
+    ],
   );
 
   const refreshFeeds = useCallback(() => {
@@ -559,6 +609,7 @@ export default function FeedScreen() {
       <View style={styles.feedBody}>
         <GestureDetector gesture={pagerPan}>
           <Reanimated.View
+            renderToHardwareTextureAndroid
             style={[styles.pagerRow, { width: pageWidth * 2 }, pagerStyle]}
           >
             <FeedPane
