@@ -7,8 +7,9 @@ use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
     ConversationListItemDto, ConversationsPageDto, DeleteConversationOutcome, DeleteMessageOutcome,
     LegacyConversationListItemDto, LegacyMessageThreadItemDto, LegacySendMessageRequest,
-    LegacySendMessageResultDto, MessageItemDto, MessageSentNotifier, MessagesPageDto,
-    PostConversationMessageRequest, SendMessageResultDto,
+    LegacySendMessageResultDto, MessageItemDto, MessageSentContext, MessageSentNotifier,
+    MessagesPageDto, PostConversationMessageRequest, PushPreviewTarget, PushPreviewTargetProvider,
+    SendMessageResultDto,
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
@@ -35,9 +36,11 @@ pub struct ConversationService {
     online_access: Arc<dyn OnlineStatusAccess>,
     messages_access: Arc<dyn MessagesAccess>,
     sent_notifier: Arc<dyn MessageSentNotifier>,
+    preview_targets: Arc<dyn PushPreviewTargetProvider>,
 }
 
 impl ConversationService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         repo: Arc<MessagingRepo>,
         accounts: Arc<dyn AccountDirectory>,
@@ -46,6 +49,7 @@ impl ConversationService {
         online_access: Arc<dyn OnlineStatusAccess>,
         messages_access: Arc<dyn MessagesAccess>,
         sent_notifier: Arc<dyn MessageSentNotifier>,
+        preview_targets: Arc<dyn PushPreviewTargetProvider>,
     ) -> Self {
         Self {
             repo,
@@ -55,7 +59,32 @@ impl ConversationService {
             online_access,
             messages_access,
             sent_notifier,
+            preview_targets,
         }
+    }
+
+    pub async fn push_preview_targets(
+        &self,
+        sender_uuid: Uuid,
+        recipient_uuid: Uuid,
+    ) -> Result<Vec<PushPreviewTarget>, SendMessageError> {
+        if sender_uuid == recipient_uuid {
+            return Ok(Vec::new());
+        }
+        let can_send = self
+            .messages_access
+            .can_send_messages(sender_uuid, recipient_uuid)
+            .await
+            .map_err(SendMessageError::BadRequest)?;
+        if !can_send {
+            return Err(SendMessageError::Forbidden(
+                "Пользователь ограничил входящие сообщения.".into(),
+            ));
+        }
+        self.preview_targets
+            .targets_for(recipient_uuid)
+            .await
+            .map_err(SendMessageError::BadRequest)
     }
 
     pub async fn total_unread_count(&self, user_uuid: Uuid) -> Result<i64, String> {
@@ -255,6 +284,8 @@ impl ConversationService {
         // не расшифровывается (§4.4), отклоняется только порченый/подделанный конверт.
         fscp_core::verify_envelope_signature(&request.encrypted_for_receiver)
             .map_err(SendMessageError::BadRequest)?;
+        let wire_message_uuid = fscp_core::extract_message_uuid(&request.encrypted_for_receiver)
+            .map_err(SendMessageError::BadRequest)?;
 
         // Device revocation policy (FSCP.md §Device revocation, golden
         // fscp-revoked-device-v1.json): wire от отозванного senderDeviceUuid
@@ -293,6 +324,38 @@ impl ConversationService {
             ));
         }
 
+        // Push preview — advisory. Повреждённый/stale target не блокирует message;
+        // Notifications повторно сверит installation+key с актуальным token.
+        let mut encrypted_push_previews = Vec::new();
+        let mut seen_preview_targets = std::collections::HashSet::new();
+        for candidate in request.encrypted_push_previews.iter().take(8) {
+            match fscp_core::try_validate_notification_preview(
+                &candidate.envelope,
+                &request.encrypted_for_receiver,
+                receiver_uuid,
+            ) {
+                Ok(summary)
+                    if summary.recipient_installation_uuid == candidate.installation_uuid
+                        && summary.preview_key_id == candidate.preview_key_id
+                        && summary.conversation_uuid == conversation_uuid
+                        && summary.wire_message_uuid == wire_message_uuid
+                        && summary.is_fresh_at(Utc::now())
+                        && seen_preview_targets
+                            .insert((candidate.installation_uuid, candidate.preview_key_id)) =>
+                {
+                    encrypted_push_previews.push(candidate.clone());
+                }
+                Ok(_) | Err(_) => {
+                    tracing::warn!(
+                        sender = %sender_uuid,
+                        recipient = %receiver_uuid,
+                        installation = %candidate.installation_uuid,
+                        "dropped invalid encrypted push preview"
+                    );
+                }
+            }
+        }
+
         let voice_uuids = dedupe_uuids(request.voice_asset_uuids);
         let image_uuids = dedupe_uuids(request.image_asset_uuids);
         let video_uuids = dedupe_uuids(request.video_asset_uuids);
@@ -311,9 +374,15 @@ impl ConversationService {
             .await
             .map_err(SendMessageError::BadRequest)?;
 
-        // Errata-5: клиентский pushPreview игнорируется — содержимое сообщения
-        // (включая тип вложений) не покидает E2E-границу через push/SSE.
-        self.sent_notifier.notify(receiver_uuid, sender_uuid).await;
+        self.sent_notifier
+            .notify(MessageSentContext {
+                recipient_user_uuid: receiver_uuid,
+                sender_user_uuid: sender_uuid,
+                persisted_message_uuid: result.message_uuid,
+                wire_message_uuid,
+                encrypted_push_previews,
+            })
+            .await;
 
         Ok(SendMessageResultDto {
             message_uuid: result.message_uuid,
@@ -537,6 +606,7 @@ impl ConversationService {
             voice_asset_uuids: request.voice_asset_uuids,
             image_asset_uuids: request.image_asset_uuids,
             video_asset_uuids: Vec::new(),
+            encrypted_push_previews: Vec::new(),
             push_preview: None,
         };
 

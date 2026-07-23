@@ -106,6 +106,30 @@ impl FcmPushSender {
         .await;
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_secure_message_push(
+        &self,
+        recipient_user_uuid: Uuid,
+        token: &str,
+        sender_display_name: &str,
+        conversation_uuid: Uuid,
+        sender_user_uuid: Uuid,
+        persisted_message_uuid: Uuid,
+        wire_message_uuid: Uuid,
+        encrypted_preview: Option<&str>,
+    ) {
+        let data = secure_message_data(
+            sender_display_name,
+            conversation_uuid,
+            sender_user_uuid,
+            persisted_message_uuid,
+            wire_message_uuid,
+            encrypted_preview,
+        );
+        self.send_data_only(recipient_user_uuid, &[token.to_string()], &data, true)
+            .await;
+    }
+
     /// Data-only HIGH FCM for sideload `app_update` — no `notification` key so the
     /// payload is delivered to the app process even when killed (Android).
     pub async fn send_app_update_push(
@@ -405,6 +429,39 @@ fn truncate_chars(s: &str, max: usize) -> String {
     s.chars().take(max).collect()
 }
 
+fn secure_message_data(
+    sender_display_name: &str,
+    conversation_uuid: Uuid,
+    sender_user_uuid: Uuid,
+    persisted_message_uuid: Uuid,
+    wire_message_uuid: Uuid,
+    encrypted_preview: Option<&str>,
+) -> HashMap<String, String> {
+    let title = {
+        let value = sender_display_name.trim();
+        if value.is_empty() { "Flora" } else { value }
+    };
+    let mut data = HashMap::new();
+    data.insert("type".into(), "secure_message_v1".into());
+    data.insert("title".into(), title.into());
+    data.insert("body".into(), "Новое сообщение".into());
+    data.insert("conversationUuid".into(), conversation_uuid.to_string());
+    data.insert("senderUserUuid".into(), sender_user_uuid.to_string());
+    data.insert(
+        "persistedMessageUuid".into(),
+        persisted_message_uuid.to_string(),
+    );
+    data.insert("wireMessageUuid".into(), wire_message_uuid.to_string());
+    data.insert("tag".into(), conversation_uuid.to_string());
+    if let Some(envelope) = encrypted_preview {
+        data.insert("encryptedPreview".into(), envelope.to_string());
+        if serde_json::to_vec(&data).map_or(true, |bytes| bytes.len() > 3_900) {
+            data.remove("encryptedPreview");
+        }
+    }
+    data
+}
+
 /// Minimal form-urlencoded for OAuth assertion (no extra crate).
 fn urlencoding_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);
@@ -573,5 +630,49 @@ mod tests {
     fn invalid_token_detects_unregistered() {
         let body = r#"{"error":{"details":[{"errorCode":"UNREGISTERED"}]}}"#;
         assert!(is_invalid_token_response(404, body));
+    }
+
+    #[test]
+    fn secure_message_payload_contains_only_ciphertext_and_generic_body() {
+        let data = secure_message_data(
+            "Отправитель",
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Some("fscpnp1:opaque"),
+        );
+        assert_eq!(
+            data.get("type").map(String::as_str),
+            Some("secure_message_v1")
+        );
+        assert_eq!(
+            data.get("body").map(String::as_str),
+            Some("Новое сообщение")
+        );
+        assert_eq!(
+            data.get("encryptedPreview").map(String::as_str),
+            Some("fscpnp1:opaque")
+        );
+        assert!(!data.contains_key("messagePreview"));
+        assert!(!data.contains_key("preview"));
+    }
+
+    #[test]
+    fn secure_message_payload_drops_oversize_envelope_but_keeps_generic_fallback() {
+        let data = secure_message_data(
+            "Flora",
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Some(&"x".repeat(4_096)),
+        );
+        assert!(!data.contains_key("encryptedPreview"));
+        assert_eq!(
+            data.get("body").map(String::as_str),
+            Some("Новое сообщение")
+        );
+        assert!(serde_json::to_vec(&data).unwrap().len() < 4_096);
     }
 }

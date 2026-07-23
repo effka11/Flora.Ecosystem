@@ -12,22 +12,64 @@ use uuid::Uuid;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Cross-module port: notify recipient after a DM is persisted (SSE hub + FCM).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedPushPreview {
+    pub installation_uuid: Uuid,
+    pub preview_key_id: Uuid,
+    pub envelope: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MessageSentContext {
+    pub recipient_user_uuid: Uuid,
+    pub sender_user_uuid: Uuid,
+    pub persisted_message_uuid: Uuid,
+    pub wire_message_uuid: Uuid,
+    pub encrypted_push_previews: Vec<EncryptedPushPreview>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushPreviewTarget {
+    pub installation_uuid: Uuid,
+    pub preview_key_id: Uuid,
+    pub public_key_base64_url: String,
+    pub protocol_version: i32,
+}
+
+pub trait PushPreviewTargetProvider: Send + Sync {
+    fn targets_for(
+        &self,
+        recipient_user_uuid: Uuid,
+    ) -> BoxFuture<'_, Result<Vec<PushPreviewTarget>, String>>;
+}
+
+pub struct NoopPushPreviewTargetProvider;
+
+impl PushPreviewTargetProvider for NoopPushPreviewTargetProvider {
+    fn targets_for(
+        &self,
+        _recipient_user_uuid: Uuid,
+    ) -> BoxFuture<'_, Result<Vec<PushPreviewTarget>, String>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// Cross-module port: notify recipient after a DM is persisted (SSE hub + push).
 /// Implemented by Notifications; Messaging must not reference Notifications internals.
 ///
-/// Privacy-инвариант (e2e-security.md §Уведомления, FSCP errata-5): содержимое
-/// сообщения (plaintext-превью и тип вложений) в порт не передаётся — push и SSE
-/// оперируют только фактом «новое сообщение». Прежний `MessageSentPushContext`
-/// с клиентским `pushPreview` удалён как утечка plaintext через FCM.
+/// Только bounded opaque ciphertext может пересекать границу. Plaintext preview
+/// и полный message wire в порт не передаются.
 pub trait MessageSentNotifier: Send + Sync {
-    fn notify(&self, recipient_user_uuid: Uuid, sender_user_uuid: Uuid) -> BoxFuture<'_, ()>;
+    fn notify(&self, context: MessageSentContext) -> BoxFuture<'_, ()>;
 }
 
 /// No-op when Notifications ServeNative is off (SSE remains absent).
 pub struct NoopMessageSentNotifier;
 
 impl MessageSentNotifier for NoopMessageSentNotifier {
-    fn notify(&self, _recipient_user_uuid: Uuid, _sender_user_uuid: Uuid) -> BoxFuture<'_, ()> {
+    fn notify(&self, _context: MessageSentContext) -> BoxFuture<'_, ()> {
         Box::pin(async {})
     }
 }
@@ -108,6 +150,8 @@ pub struct PostConversationMessageRequest {
     pub image_asset_uuids: Vec<Uuid>,
     #[serde(default)]
     pub video_asset_uuids: Vec<Uuid>,
+    #[serde(default)]
+    pub encrypted_push_previews: Vec<EncryptedPushPreview>,
     /// Deprecated (errata-5): игнорируется сервером. Поле сохранено только для
     /// десериализации запросов старых клиентов; plaintext-превью в push не попадает.
     #[serde(default)]

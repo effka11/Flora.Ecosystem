@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 flora-messaging = { workspace = true }
+flora-notifications = { workspace = true }
 flora-shared = { workspace = true }
 # Модули с Rust-миграциями (post-cutover, §11.1): экспортируют sqlx MIGRATOR.
 flora-content = { workspace = true }

@@ -3,6 +3,10 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import {
+  cancelSecurePushConversationNotification,
+  ensureSecurePushCapability,
+} from "flora-secure-push";
 import { isNativePushEnabled } from "@/lib/pushCapabilities";
 import { getActiveMessageThread } from "@/lib/activeMessageThread";
 import { openMessageFromPush } from "@/lib/openDm";
@@ -10,6 +14,7 @@ import { handlePushNotificationData } from "@/lib/realtimeSync";
 
 const PUSH_TOKEN_STORAGE_KEY = "flora.push.token";
 const PUSH_SERVER_SYNCED_KEY = "flora.push.serverSynced";
+const PUSH_SERVER_FINGERPRINT_KEY = "flora.push.serverFingerprint";
 
 let registeredToken: string | null = null;
 let registerInFlight: Promise<void> | null = null;
@@ -41,6 +46,7 @@ export async function dismissMessagePushNotifications(conversationUuid: string):
 
   await Notifications.dismissNotificationAsync(norm).catch(() => undefined);
   await Notifications.dismissNotificationAsync(conversationUuid).catch(() => undefined);
+  cancelSecurePushConversationNotification(norm);
 
   const presented = await Notifications.getPresentedNotificationsAsync();
   for (const notification of presented) {
@@ -133,29 +139,32 @@ export async function obtainDevicePushToken(): Promise<string | null> {
   }
 }
 
-async function isTokenSyncedWithServer(token: string): Promise<boolean> {
+async function isTokenSyncedWithServer(token: string, fingerprint: string): Promise<boolean> {
   try {
     const synced = await SecureStore.getItemAsync(PUSH_SERVER_SYNCED_KEY);
     const stored = await SecureStore.getItemAsync(PUSH_TOKEN_STORAGE_KEY);
-    return synced === "1" && stored === token;
+    const storedFingerprint = await SecureStore.getItemAsync(PUSH_SERVER_FINGERPRINT_KEY);
+    return synced === "1" && stored === token && storedFingerprint === fingerprint;
   } catch {
     return false;
   }
 }
 
-async function markTokenSyncedWithServer(token: string): Promise<void> {
+async function markTokenSyncedWithServer(token: string, fingerprint: string): Promise<void> {
   registeredToken = token;
   await SecureStore.setItemAsync(PUSH_TOKEN_STORAGE_KEY, token);
+  await SecureStore.setItemAsync(PUSH_SERVER_FINGERPRINT_KEY, fingerprint);
   await SecureStore.setItemAsync(PUSH_SERVER_SYNCED_KEY, "1");
 }
 
 async function clearTokenSyncState(): Promise<void> {
   registeredToken = null;
   await SecureStore.deleteItemAsync(PUSH_TOKEN_STORAGE_KEY).catch(() => undefined);
+  await SecureStore.deleteItemAsync(PUSH_SERVER_FINGERPRINT_KEY).catch(() => undefined);
   await SecureStore.deleteItemAsync(PUSH_SERVER_SYNCED_KEY).catch(() => undefined);
 }
 
-export async function registerPushTokenWithServer(): Promise<void> {
+export async function registerPushTokenWithServer(ownerUserUuid?: string | null): Promise<void> {
   if (!isNativePushEnabled()) return;
   if (registerInFlight) return registerInFlight;
 
@@ -172,11 +181,25 @@ export async function registerPushTokenWithServer(): Promise<void> {
       return;
     }
 
-    if (registeredToken === token && (await isTokenSyncedWithServer(token))) return;
+    let capability: ReturnType<typeof ensureSecurePushCapability> = null;
+    if (ownerUserUuid?.trim()) {
+      try {
+        capability = ensureSecurePushCapability(ownerUserUuid.trim());
+      } catch {
+        capability = null;
+      }
+    }
+    const fingerprint = JSON.stringify({ token, ownerUserUuid: ownerUserUuid ?? null, capability });
+
+    if (registeredToken === token && (await isTokenSyncedWithServer(token, fingerprint))) return;
 
     try {
-      await apiRegisterPushToken(token, Platform.OS === "ios" ? "ios" : "android");
-      await markTokenSyncedWithServer(token);
+      await apiRegisterPushToken(
+        token,
+        Platform.OS === "ios" ? "ios" : "android",
+        capability ?? undefined,
+      );
+      await markTokenSyncedWithServer(token, fingerprint);
       logPush("token зарегистрирован на сервере");
     } catch (err) {
       logPush("apiRegisterPushToken failed", err);

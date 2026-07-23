@@ -56,13 +56,17 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
     let (auth_routes, account_directory) =
         auth_router_with_directory(cfg, pool.clone(), verification_port, sessions.clone());
 
-    let (notifications_routes, message_sent_notifier, notification_dispatcher) =
-        notifications_router(
-            cfg,
-            pool.clone(),
-            account_directory.clone(),
-            sessions.clone(),
-        );
+    let (
+        notifications_routes,
+        message_sent_notifier,
+        push_preview_targets,
+        notification_dispatcher,
+    ) = notifications_router(
+        cfg,
+        pool.clone(),
+        account_directory.clone(),
+        sessions.clone(),
+    );
 
     let (content_routes, content_workers) = content_router(
         cfg,
@@ -84,6 +88,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         pool.clone(),
         account_directory,
         message_sent_notifier,
+        push_preview_targets,
         sessions.clone(),
     );
     background.extend(messaging_workers);
@@ -206,26 +211,44 @@ fn notifications_router(
 ) -> (
     axum::Router,
     Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
+    Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
     Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
 ) {
     let noop_msg: Arc<dyn flora_messaging_contracts::MessageSentNotifier> =
         Arc::new(flora_messaging_contracts::NoopMessageSentNotifier);
     let noop_inbox: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher> =
         Arc::new(flora_notifications_contracts::NoopUserNotificationDispatcher);
+    let noop_targets: Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider> =
+        Arc::new(flora_messaging_contracts::NoopPushPreviewTargetProvider);
     if cfg.get_bool("Notifications:ServeNative") != Some(true) {
-        return (flora_notifications::router(), noop_msg, noop_inbox);
+        return (
+            flora_notifications::router(),
+            noop_msg,
+            noop_targets,
+            noop_inbox,
+        );
     }
     let Some(pool) = pool else {
         eprintln!(
             "flora-notifications: Notifications:ServeNative=true, но PgPool недоступен — модуль офлайн"
         );
-        return (flora_notifications::router(), noop_msg, noop_inbox);
+        return (
+            flora_notifications::router(),
+            noop_msg,
+            noop_targets,
+            noop_inbox,
+        );
     };
     let Some(accounts) = accounts else {
         eprintln!(
             "flora-notifications: нет AccountDirectory — FCM display names недоступны, модуль офлайн"
         );
-        return (flora_notifications::router(), noop_msg, noop_inbox);
+        return (
+            flora_notifications::router(),
+            noop_msg,
+            noop_targets,
+            noop_inbox,
+        );
     };
     let profiles = flora_users::profile_queries(pool.clone());
     let module = flora_notifications::compose(pool, cfg, profiles, accounts);
@@ -235,6 +258,7 @@ fn notifications_router(
     (
         router,
         module.message_sent_notifier,
+        module.push_preview_targets,
         module.user_notification_dispatcher,
     )
 }
@@ -244,6 +268,7 @@ fn messaging_router(
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     sent_notifier: Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
+    preview_targets: Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
     sessions: Option<SessionValidator>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Messaging:ServeNative") != Some(true) {
@@ -274,6 +299,7 @@ fn messaging_router(
         online,
         messages_access,
         sent_notifier,
+        preview_targets,
         e2e_token_secret,
     );
     (

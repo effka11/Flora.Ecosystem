@@ -15,6 +15,7 @@ import {
   unregisterPushTokenFromServer,
 } from "@/lib/pushNotifications";
 import { isNativePushEnabled } from "@/lib/pushCapabilities";
+import { setSecurePushAppForeground } from "flora-secure-push";
 import { FloraAppServices, QueryClientRefBridge } from "@/providers/FloraAppServices";
 import { initMobileSodium } from "@/lib/fscp/sodium";
 import { initStorageMigrations } from "@/lib/mmkv";
@@ -87,6 +88,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!ready || !isAuthenticated) return;
+    setSecurePushAppForeground(AppState.currentState === "active");
 
     const syncSession = () => {
       void syncStoredSessionTokens()
@@ -149,21 +151,23 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       : () => undefined;
 
     if (isNativePushEnabled()) {
-      void registerPushTokenWithServer().catch(() => undefined);
+      void registerPushTokenWithServer(userUuid).catch(() => undefined);
     }
 
     const appSub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      setSecurePushAppForeground(state === "active");
       if (state !== "active") return;
       if (isNativePushEnabled()) {
-        void registerPushTokenWithServer().catch(() => undefined);
+        void registerPushTokenWithServer(userUuid).catch(() => undefined);
       }
     });
 
     return () => {
+      setSecurePushAppForeground(false);
       removePushListeners();
       appSub.remove();
     };
-  }, [ready, isAuthenticated]);
+  }, [ready, isAuthenticated, userUuid]);
 
   useEffect(() => {
     if (ready && !isAuthenticated) {

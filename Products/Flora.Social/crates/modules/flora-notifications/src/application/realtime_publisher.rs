@@ -2,16 +2,20 @@
 
 use std::sync::Arc;
 
+use flora_messaging_contracts::MessageSentContext;
 use flora_notifications_contracts::{RealtimeMessageSignal, RealtimeNotificationSignal};
 use uuid::Uuid;
 
 use crate::application::PushTokenService;
-use crate::infrastructure::{FcmPushSender, UserDisplayNameResolver, UserRealtimeHub};
+use crate::infrastructure::{
+    ApnsPushSender, FcmPushSender, UserDisplayNameResolver, UserRealtimeHub,
+};
 
 pub struct UserRealtimePublisher {
     hub: Arc<UserRealtimeHub>,
     push_tokens: Arc<PushTokenService>,
     push_dispatcher: Arc<FcmPushSender>,
+    apns_dispatcher: Arc<ApnsPushSender>,
     display_names: Arc<UserDisplayNameResolver>,
 }
 
@@ -20,26 +24,33 @@ impl UserRealtimePublisher {
         hub: Arc<UserRealtimeHub>,
         push_tokens: Arc<PushTokenService>,
         push_dispatcher: Arc<FcmPushSender>,
+        apns_dispatcher: Arc<ApnsPushSender>,
         display_names: Arc<UserDisplayNameResolver>,
     ) -> Self {
         Self {
             hub,
             push_tokens,
             push_dispatcher,
+            apns_dispatcher,
             display_names,
         }
     }
 
     /// Privacy-инвариант (e2e-security.md §Уведомления): тело push всегда
     /// generic — содержимое сообщения через FCM не проходит.
-    pub async fn publish_message(&self, recipient_user_uuid: Uuid, signal: &RealtimeMessageSignal) {
+    pub async fn publish_message(
+        &self,
+        recipient_user_uuid: Uuid,
+        signal: &RealtimeMessageSignal,
+        context: &MessageSentContext,
+    ) {
         if recipient_user_uuid.is_nil() {
             return;
         }
 
         self.hub.publish_message(recipient_user_uuid, signal);
 
-        let tokens = match self.push_tokens.tokens_for_user(recipient_user_uuid).await {
+        let records = match self.push_tokens.records_for_user(recipient_user_uuid).await {
             Ok(t) => t,
             Err(e) => {
                 tracing::warn!(
@@ -50,21 +61,73 @@ impl UserRealtimePublisher {
                 return;
             }
         };
-        if tokens.is_empty() {
+        if records.is_empty() {
             return;
         }
 
         let display_name = self.display_names.resolve(signal.sender_user_uuid).await;
 
-        self.push_dispatcher
-            .send_message_push(
-                recipient_user_uuid,
-                &tokens,
-                &display_name,
-                signal.conversation_uuid,
-                signal.sender_user_uuid,
-            )
-            .await;
+        let mut legacy_tokens = Vec::new();
+        for record in records {
+            let preview = context.encrypted_push_previews.iter().find(|preview| {
+                Some(preview.installation_uuid) == record.installation_uuid
+                    && Some(preview.preview_key_id) == record.preview_key_id
+            });
+            let capable = record.secure_preview_version == Some(1)
+                && record.installation_uuid.is_some()
+                && record.preview_key_id.is_some();
+            if !capable {
+                legacy_tokens.push(record.token);
+                continue;
+            }
+            match (
+                record
+                    .provider
+                    .as_deref()
+                    .unwrap_or(record.platform.as_str()),
+                record.platform.as_str(),
+            ) {
+                ("apns", "ios") => {
+                    self.apns_dispatcher
+                        .send_message_push(
+                            recipient_user_uuid,
+                            &record.token,
+                            &display_name,
+                            signal.conversation_uuid,
+                            signal.sender_user_uuid,
+                            context.persisted_message_uuid,
+                            context.wire_message_uuid,
+                            preview.map(|value| value.envelope.as_str()),
+                        )
+                        .await;
+                }
+                _ => {
+                    self.push_dispatcher
+                        .send_secure_message_push(
+                            recipient_user_uuid,
+                            &record.token,
+                            &display_name,
+                            signal.conversation_uuid,
+                            signal.sender_user_uuid,
+                            context.persisted_message_uuid,
+                            context.wire_message_uuid,
+                            preview.map(|value| value.envelope.as_str()),
+                        )
+                        .await;
+                }
+            }
+        }
+        if !legacy_tokens.is_empty() {
+            self.push_dispatcher
+                .send_message_push(
+                    recipient_user_uuid,
+                    &legacy_tokens,
+                    &display_name,
+                    signal.conversation_uuid,
+                    signal.sender_user_uuid,
+                )
+                .await;
+        }
     }
 
     /// Паритет `PublishNotificationAsync` — SSE `event: notification` + inbox FCM.

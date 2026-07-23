@@ -53,11 +53,53 @@ export async function apiSendMessage(
   conversationUuid: string,
   encryptedForReceiver: string,
   encryptedForSender?: string,
+  encryptedPushPreviews?: EncryptedPushPreviewInput[],
 ): Promise<unknown> {
   const wire = encryptedForSender ?? encryptedForReceiver;
   return authPostJson(`/api/messaging/conversations/${conversationUuid}/messages`, {
     encryptedForReceiver,
     encryptedForSender: wire,
+    encryptedPushPreviews: encryptedPushPreviews ?? [],
+  });
+}
+
+export type PushPreviewTarget = {
+  installationUuid: string;
+  previewKeyId: string;
+  publicKeyBase64Url: string;
+  protocolVersion: number;
+};
+
+export type EncryptedPushPreviewInput = {
+  installationUuid: string;
+  previewKeyId: string;
+  envelope: string;
+};
+
+export async function apiGetPushPreviewTargets(
+  recipientUserUuid: string,
+): Promise<PushPreviewTarget[]> {
+  const raw = await authGetJson(
+    `/api/messaging/push-preview-targets/${encodeURIComponent(recipientUserUuid.trim())}`,
+  );
+  if (!Array.isArray(raw)) return [];
+  const fb = getApiClientConfig().onPascalFallback;
+  return raw.flatMap((item) => {
+    const value = asRecord(item);
+    if (!value) return [];
+    const installationUuid = readStr(value, ["installationUuid", "InstallationUuid"], fb);
+    const previewKeyId = readStr(value, ["previewKeyId", "PreviewKeyId"], fb);
+    const publicKeyBase64Url = readStr(
+      value,
+      ["publicKeyBase64Url", "PublicKeyBase64Url"],
+      fb,
+    );
+    const protocolRaw = value.protocolVersion ?? value.ProtocolVersion;
+    const protocolVersion =
+      typeof protocolRaw === "number" && Number.isInteger(protocolRaw) ? protocolRaw : 0;
+    return installationUuid && previewKeyId && publicKeyBase64Url && protocolVersion === 1
+      ? [{ installationUuid, previewKeyId, publicKeyBase64Url, protocolVersion }]
+      : [];
   });
 }
 

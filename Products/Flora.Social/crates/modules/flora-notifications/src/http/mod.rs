@@ -19,7 +19,9 @@ use uuid::Uuid;
 
 use flora_notifications_contracts::AppUpdatePayload;
 
-use crate::application::{InboxService, PushTokenService, client_platform_from_header};
+use crate::application::{
+    InboxService, PushTokenService, SecurePreviewRegistration, client_platform_from_header,
+};
 use crate::infrastructure::UserRealtimeHub;
 
 /// JWT user (тот же тип, что внедряет flora-social).
@@ -390,9 +392,15 @@ async fn delete_notifications(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PushTokenRequest {
     token: Option<String>,
     platform: Option<String>,
+    provider: Option<String>,
+    installation_uuid: Option<Uuid>,
+    secure_preview_version: Option<i32>,
+    preview_key_id: Option<Uuid>,
+    preview_public_key_base64_url: Option<String>,
 }
 
 async fn register_push_token(
@@ -408,13 +416,56 @@ async fn register_push_token(
         )
             .into_response();
     }
+    let secure_fields = [
+        body.installation_uuid.is_some(),
+        body.secure_preview_version.is_some(),
+        body.preview_key_id.is_some(),
+        body.preview_public_key_base64_url.is_some(),
+    ];
+    if secure_fields.iter().any(|present| *present) && !secure_fields.iter().all(|present| *present)
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Secure preview capability задан неполностью." })),
+        )
+            .into_response();
+    }
+    let secure_preview = match (
+        body.installation_uuid,
+        body.secure_preview_version,
+        body.preview_key_id,
+        body.preview_public_key_base64_url.as_deref(),
+    ) {
+        (
+            Some(installation_uuid),
+            Some(protocol_version),
+            Some(preview_key_id),
+            Some(public_key),
+        ) => Some(SecurePreviewRegistration {
+            installation_uuid,
+            protocol_version,
+            preview_key_id,
+            public_key_base64_url: public_key,
+        }),
+        _ => None,
+    };
     match state
         .push_tokens
-        .register(user.0, token, body.platform.as_deref())
+        .register(
+            user.0,
+            token,
+            body.platform.as_deref(),
+            body.provider.as_deref(),
+            secure_preview,
+        )
         .await
     {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => internal(e),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
     }
 }
 

@@ -12,5 +12,5 @@ pub use dispatcher::InboxNotificationDispatcher;
 pub use inbox::InboxService;
 pub use message_notifier::MessagePushNotifier;
 pub use platform::client_platform_from_header;
-pub use push_tokens::PushTokenService;
+pub use push_tokens::{PushTokenService, SecurePreviewRegistration};
 pub use realtime_publisher::UserRealtimePublisher;

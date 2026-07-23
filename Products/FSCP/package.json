@@ -17,7 +17,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p ts/tsconfig.json --noEmit",
-    "test": "vitest run --config ts/vitest.config.ts"
+    "test": "vitest run --config ts/vitest.config.ts",
+    "generate:notification-preview-vector": "tsx ts/scripts/generateNotificationPreviewVector.ts"
   },
   "peerDependencies": {
     "@flora/client-core": "*"
@@ -28,6 +29,7 @@
     "libsodium": "^0.7.15",
     "libsodium-wrappers": "^0.7.15",
     "libsodium-wrappers-sumo": "^0.8.4",
+    "tsx": "^4.23.1",
     "typescript": "^5.8.2",
     "vitest": "^3.2.4"
   },

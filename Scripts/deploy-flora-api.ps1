@@ -15,6 +15,7 @@ param(
     [ValidateSet("Auto", "Wsl", "Remote", "Local", "Binary")]
     [string] $BuildMode = "Auto",
     [string] $BinaryPath = "",
+    [string] $MigratorBinaryPath = "",
     [switch] $SkipBuild
 )
 
@@ -139,8 +140,13 @@ $releaseBinCandidates = @(
     (Join-Path $RepoRoot "Target\release\flora-api"),
     (Join-Path $RepoRoot "Target\x86_64-unknown-linux-gnu\release\flora-api")
 )
+$releaseMigratorCandidates = @(
+    (Join-Path $RepoRoot "Target\release\flora-migrate"),
+    (Join-Path $RepoRoot "Target\x86_64-unknown-linux-gnu\release\flora-migrate")
+)
 
 $builtBinary = $null
+$builtMigrator = $null
 if ($BuildMode -eq "Binary" -or $SkipBuild) {
     if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
         $builtBinary = (Resolve-Path -LiteralPath $BinaryPath).Path
@@ -155,26 +161,46 @@ if ($BuildMode -eq "Binary" -or $SkipBuild) {
     if (-not $builtBinary) {
         throw "No Linux flora-api binary. Build first or pass -BinaryPath / use -BuildMode Wsl|Remote|Local."
     }
-    Write-Host "Using binary: $builtBinary"
+    if (-not [string]::IsNullOrWhiteSpace($MigratorBinaryPath)) {
+        $builtMigrator = (Resolve-Path -LiteralPath $MigratorBinaryPath).Path
+    } elseif (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
+        $siblingMigrator = Join-Path (Split-Path -Parent $builtBinary) "flora-migrate"
+        if (Test-Path -LiteralPath $siblingMigrator) {
+            $builtMigrator = $siblingMigrator
+        }
+    } else {
+        foreach ($c in $releaseMigratorCandidates) {
+            if (Test-Path -LiteralPath $c) {
+                $builtMigrator = $c
+                break
+            }
+        }
+    }
+    if (-not $builtMigrator) {
+        throw "No Linux flora-migrate binary. Build first or pass -MigratorBinaryPath / use -BuildMode Wsl|Remote|Local."
+    }
+    Write-Host "Using binaries: $builtBinary; $builtMigrator"
 } elseif ($BuildMode -eq "Local") {
-    Write-Host "cargo build -p flora-api --release ..."
-    cargo build -p flora-api --release
+    Write-Host "cargo build -p flora-api -p flora-migrate --release ..."
+    cargo build -p flora-api -p flora-migrate --release
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed (exit $LASTEXITCODE)." }
     $builtBinary = Join-Path $RepoRoot "Target\release\flora-api"
-    if (-not (Test-Path -LiteralPath $builtBinary)) {
-        throw "Missing $builtBinary after local build."
+    $builtMigrator = Join-Path $RepoRoot "Target\release\flora-migrate"
+    if (-not (Test-Path -LiteralPath $builtBinary) -or -not (Test-Path -LiteralPath $builtMigrator)) {
+        throw "Missing flora-api or flora-migrate after local build."
     }
 } elseif ($BuildMode -eq "Wsl") {
     if (-not $wslOk) {
         throw "WSL bash/cargo unavailable. Use -BuildMode Remote or install a WSL distro with Rust."
     }
     $wslRoot = ConvertTo-WslPath $RepoRoot
-    Write-Host "WSL cargo build -p flora-api --release (cwd $wslRoot) ..."
-    & wsl -e bash -lc "set -euo pipefail; cd '$wslRoot'; cargo build -p flora-api --release"
+    Write-Host "WSL cargo build -p flora-api -p flora-migrate --release (cwd $wslRoot) ..."
+    & wsl -e bash -lc "set -euo pipefail; cd '$wslRoot'; cargo build -p flora-api -p flora-migrate --release"
     if ($LASTEXITCODE -ne 0) { throw "WSL cargo build failed (exit $LASTEXITCODE)." }
     $builtBinary = Join-Path $RepoRoot "Target\release\flora-api"
-    if (-not (Test-Path -LiteralPath $builtBinary)) {
-        throw "Missing $builtBinary after WSL build."
+    $builtMigrator = Join-Path $RepoRoot "Target\release\flora-migrate"
+    if (-not (Test-Path -LiteralPath $builtBinary) -or -not (Test-Path -LiteralPath $builtMigrator)) {
+        throw "Missing flora-api or flora-migrate after WSL build."
     }
 }
 
@@ -246,6 +272,7 @@ export DEBIAN_FRONTEND=noninteractive
 BUILD_ROOT=/opt/flora-ecosystem/build
 SRC="`$BUILD_ROOT/src"
 OUT=/tmp/flora-api-bin-$ts
+MIGRATE_OUT=/tmp/flora-migrate-bin-$ts
 REMOTE_SRC_TGZ=$remoteSrcTgz
 mkdir -p "`$SRC"
 # Keep cargo incremental cache; never reuse a previous release binary (would skip new code).
@@ -262,8 +289,9 @@ fi
 if [ -d "`$SRC/target" ] && [ ! -e "`$SRC/Target" ]; then
   mv "`$SRC/target" "`$SRC/Target"
 fi
-# Drop stale /tmp release binaries so we cannot accidentally ship an old flora-api.
-rm -f /tmp/flora-api-src-*/target/release/flora-api /tmp/flora-api-src-*/Target/release/flora-api 2>/dev/null || true
+# Drop stale release binaries so we cannot accidentally ship old hosts/tools.
+rm -f /tmp/flora-api-src-*/target/release/flora-api /tmp/flora-api-src-*/Target/release/flora-api \
+  /tmp/flora-api-src-*/target/release/flora-migrate /tmp/flora-api-src-*/Target/release/flora-migrate 2>/dev/null || true
 tar -xzf "`$REMOTE_SRC_TGZ" -C "`$SRC"
 rm -f "`$REMOTE_SRC_TGZ"
 if [ -f "`$HOME/.cargo/env" ]; then
@@ -283,7 +311,7 @@ if ! command -v protoc >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; th
   apt-get install -y -qq protobuf-compiler
 fi
 cd "`$SRC"
-cargo build -p flora-api --release
+cargo build -p flora-api -p flora-migrate --release
 BIN=
 for cand in Target/release/flora-api target/release/flora-api; do
   if [ -x "`$cand" ]; then
@@ -298,6 +326,19 @@ if [ -z "`$BIN" ]; then
 fi
 install -m 755 "`$BIN" "`$OUT"
 echo "Built `$BIN -> `$OUT"
+MIGRATE_BIN=
+for cand in Target/release/flora-migrate target/release/flora-migrate; do
+  if [ -x "`$cand" ]; then
+    MIGRATE_BIN=`$cand
+    break
+  fi
+done
+if [ -z "`$MIGRATE_BIN" ]; then
+  echo "flora-migrate binary not found under Target/ or target/"
+  exit 1
+fi
+install -m 755 "`$MIGRATE_BIN" "`$MIGRATE_OUT"
+echo "Built `$MIGRATE_BIN -> `$MIGRATE_OUT"
 "@
         $remoteBuildBody = $remoteBuildBody -replace "`r`n", "`n" -replace "`r", "`n"
         [System.IO.File]::WriteAllText($remoteBuildShLocal, $remoteBuildBody, [System.Text.UTF8Encoding]::new($false))
@@ -314,18 +355,27 @@ echo "Built `$BIN -> `$OUT"
         if ($buildEc -ne 0) { throw "remote cargo build failed (exit $buildEc)." }
 
         $remoteBin = "/tmp/flora-api-bin-$ts"
+        $remoteMigrator = "/tmp/flora-migrate-bin-$ts"
         $localBin = Join-Path $stageDir "flora-api"
-        Write-Host "Downloading built binary..."
+        $localMigrator = Join-Path $stageDir "flora-migrate"
+        Write-Host "Downloading built binaries..."
         $scpDown = @(New-SshTransportOpts -IdentityKey $IdentityFile) + @("${User}@${Server}:${remoteBin}", $localBin)
         & scp @scpDown
-        if ($LASTEXITCODE -ne 0) { throw "scp binary download failed (exit $LASTEXITCODE)." }
-        & ssh @sshExe "rm -f $remoteBin"
+        if ($LASTEXITCODE -ne 0) { throw "scp flora-api download failed (exit $LASTEXITCODE)." }
+        $scpMigratorDown = @(New-SshTransportOpts -IdentityKey $IdentityFile) + @("${User}@${Server}:${remoteMigrator}", $localMigrator)
+        & scp @scpMigratorDown
+        if ($LASTEXITCODE -ne 0) { throw "scp flora-migrate download failed (exit $LASTEXITCODE)." }
+        & ssh @sshExe "rm -f $remoteBin $remoteMigrator"
     } else {
         Copy-Item -LiteralPath $builtBinary -Destination (Join-Path $stageDir "flora-api") -Force
+        Copy-Item -LiteralPath $builtMigrator -Destination (Join-Path $stageDir "flora-migrate") -Force
     }
 
-    if (-not (Test-Path -LiteralPath (Join-Path $stageDir "flora-api"))) {
-        throw "Staging payload missing flora-api binary."
+    if (
+        -not (Test-Path -LiteralPath (Join-Path $stageDir "flora-api")) -or
+        -not (Test-Path -LiteralPath (Join-Path $stageDir "flora-migrate"))
+    ) {
+        throw "Staging payload missing flora-api or flora-migrate binary."
     }
 
     Remove-Item -LiteralPath $tarballPath -Force -ErrorAction SilentlyContinue

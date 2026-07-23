@@ -30,6 +30,7 @@ members = [
     "Products/FSCP/crates/fscp-contracts",
     "Products/FSCP/crates/fscp-core",
     "Products/FSCP/crates/fscp-crypto",
+    "Products/FSCP/crates/fscp-mobile-ffi",
     # Functional: FIRA
     "Products/FIRA/crates/fira-contracts",
     "Products/FIRA/crates/fira-core",
@@ -91,6 +92,7 @@ flora-verification-contracts = { path = "Products/Flora.Social/crates/modules/fl
 fscp-contracts = { path = "Products/FSCP/crates/fscp-contracts" }
 fscp-core = { path = "Products/FSCP/crates/fscp-core" }
 fscp-crypto = { path = "Products/FSCP/crates/fscp-crypto" }
+fscp-mobile-ffi = { path = "Products/FSCP/crates/fscp-mobile-ffi" }
 fira-contracts = { path = "Products/FIRA/crates/fira-contracts" }
 fira-core = { path = "Products/FIRA/crates/fira-core" }
 flora-economy = { path = "Products/FEP/crates/flora-economy" }
