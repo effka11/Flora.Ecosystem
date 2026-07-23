@@ -2,7 +2,7 @@
 
 Клиент Flora Social для Android (dev-client) и iOS.
 
-## Push / FCM (только release APK)
+## Push / secure message preview
 
 OS push (FCM) **не используется** в **Flora Dev** (`social.flora.mobile.dev`). В dev обновления идут через **SSE** (при открытом приложении) и **polling** бейджей.
 
@@ -15,7 +15,24 @@ OS push (FCM) **не используется** в **Flora Dev** (`social.flora.
 3. Service account на Flora.API → `Flora.API/secrets/` + `appsettings.Local.json` (см. `appsettings.Local.example.json`).
 4. Сборка: `..\..\Scripts\mobile-release-android.ps1`
 
-Push: новые DM (без текста E2E в payload).
+Новые DM используют per-installation `NotificationPreviewEnvelope`: Android получает
+data-only FCM и расшифровывает до показа, iOS получает generic APNs alert с
+`mutable-content` и расшифровывает его в `FloraSecurePushNSE`. FCM/APNs не получают
+plaintext. При ошибке/opt-out показывается «Новое сообщение».
+
+### iOS APNs / NSE
+
+1. На macOS выполнить `Scripts/build-fscp-mobile-ios.sh`; EAS запускает его через
+   `eas-build-post-install` и создаёт device+simulator XCFramework.
+2. Первый production build выполнить интерактивно: `eas build --platform ios
+   --profile production`, подтвердить provisioning для host и
+   `social.flora.mobile.SecurePushNSE`, App Group и Keychain group.
+3. В backend задать `Push__Apns__TeamId`, `Push__Apns__KeyId`,
+   `Push__Apns__Topic=social.flora.mobile` и secret `Push__Apns__PrivateKey`
+   (APNs `.p8`, с переводами строк). Для sandbox также
+   `Push__Apns__Sandbox=true`.
+4. `eas.json`/`app.config.ts` объявляют extension для EAS credentials. Private
+   APNs key и provisioning-файлы в git не добавлять.
 
 ## Уведомление о новой версии (Android release)
 

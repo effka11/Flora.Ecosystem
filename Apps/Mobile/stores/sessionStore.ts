@@ -2,6 +2,7 @@ import { ApiRequestError, isNetworkError, refreshSessionIfPossible } from "@flor
 import { apiGetMe, apiLogout } from "@flora/client-core/auth";
 import type { MeResponse } from "@flora/client-core/contracts";
 import { create } from "zustand";
+import { clearSecurePushMaterial } from "flora-secure-push";
 import { mobileFscpKeyStorage } from "@/lib/fscp/storage";
 import { mobileSessionStore } from "@/lib/session";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -97,6 +98,7 @@ export const useSessionStore = create<SessionState>((set) => ({
     set({ me, isAuthenticated: !!me, pendingProfileSetup: false });
   },
   async logout(clearKeys = false) {
+    clearSecurePushMaterial();
     try {
       await apiLogout();
     } catch {

@@ -207,6 +207,43 @@ function Ensure-FrcIAndroidNative([string]$repoRoot) {
     }
 }
 
+function Test-FscpSecurePushAndroidNativePresent([string]$repoRoot) {
+    $so = Join-Path $repoRoot "Apps\Mobile\modules\flora-secure-push\android\src\main\jniLibs\arm64-v8a\libfscp_mobile_ffi.so"
+    if (-not (Test-Path $so)) { return $false }
+    $soTime = (Get-Item $so).LastWriteTimeUtc
+    $inputs = @(
+        (Join-Path $repoRoot "Cargo.lock"),
+        (Join-Path $repoRoot "Products\FSCP\crates\fscp-core"),
+        (Join-Path $repoRoot "Products\FSCP\crates\fscp-crypto"),
+        (Join-Path $repoRoot "Products\FSCP\crates\fscp-mobile-ffi")
+    )
+    foreach ($input in $inputs) {
+        if ((Test-Path $input -PathType Leaf) -and (Get-Item $input).LastWriteTimeUtc -gt $soTime) {
+            return $false
+        }
+        if (Test-Path $input -PathType Container) {
+            $newer = Get-ChildItem $input -Recurse -File |
+                Where-Object { $_.Extension -eq ".rs" -or $_.Name -eq "Cargo.toml" } |
+                Where-Object { $_.LastWriteTimeUtc -gt $soTime } |
+                Select-Object -First 1
+            if ($newer) { return $false }
+        }
+    }
+    return $true
+}
+
+function Ensure-FscpSecurePushAndroidNative([string]$repoRoot) {
+    if (Test-FscpSecurePushAndroidNativePresent $repoRoot) {
+        Write-Host "FSCP secure-push native (libfscp_mobile_ffi.so) present."
+        return
+    }
+    Write-Host "Building FSCP secure-push Android libs ..."
+    & (Join-Path $repoRoot "Scripts\build-fscp-mobile-android.ps1")
+    if ($LASTEXITCODE -ne 0 -or -not (Test-FscpSecurePushAndroidNativePresent $repoRoot)) {
+        throw "build-fscp-mobile-android.ps1 failed."
+    }
+}
+
 function Get-FreeSubstDrive {
     foreach ($letter in @('Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K', 'J', 'I', 'H', 'G', 'F', 'E', 'D')) {
         $drive = "${letter}:"

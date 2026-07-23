@@ -147,6 +147,11 @@ export async function sendTextMessage(params: {
   conversationUuid: string;
   wire: string;
   attachments?: MessageSendAttachments;
+  encryptedPushPreviews?: Array<{
+    installationUuid: string;
+    previewKeyId: string;
+    envelope: string;
+  }>;
 }): Promise<MsgSentMessageDto> {
   const voiceAssetUuids = params.attachments?.voiceAssetUuids ?? [];
   const imageAssetUuids = params.attachments?.imageAssetUuids ?? [];
@@ -157,6 +162,7 @@ export async function sendTextMessage(params: {
     voiceAssetUuids,
     imageAssetUuids,
     videoAssetUuids,
+    encryptedPushPreviews: params.encryptedPushPreviews ?? [],
   };
   const raw = await authPostJson(`/api/messaging/conversations/${params.conversationUuid}/messages`, body);
   const o = asRecord(raw) ?? {};

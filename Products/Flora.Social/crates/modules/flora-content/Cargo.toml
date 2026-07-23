@@ -17,6 +17,7 @@ fira-core = { workspace = true }
 flora-auth-contracts = { workspace = true }
 flora-content-contracts = { workspace = true }
 frc-i-integration = { workspace = true }
+frc-i = { workspace = true }
 flora-notifications-contracts = { workspace = true }
 flora-shared = { workspace = true }
 flora-users-contracts = { workspace = true }

@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-  xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <!--
     Install permissions are added only by Apps/Mobile/plugins/withFloraApkUpdater.js
     for sideload builds. Keep them out of this module manifest so Play/EAS AAB
@@ -35,20 +34,5 @@
       </intent-filter>
     </receiver>
 
-    <!--
-      Config plugins run at prebuild and cannot see Expo's library service.
-      Remove Expo FMS at Gradle merge time so only our wrapper gets MESSAGING_EVENT.
-    -->
-    <service
-      android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService"
-      tools:node="remove" />
-
-    <service
-      android:name=".FloraAppUpdateMessagingService"
-      android:exported="false">
-      <intent-filter android:priority="1000">
-        <action android:name="com.google.firebase.MESSAGING_EVENT" />
-      </intent-filter>
-    </service>
   </application>
 </manifest>

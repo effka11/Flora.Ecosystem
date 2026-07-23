@@ -50,7 +50,7 @@ pub fn registry() -> Vec<ModuleMigrations> {
         ModuleMigrations {
             module: "notifications",
             current_owner: "Rust",
-            migrator: None,
+            migrator: Some(&flora_notifications::MIGRATOR),
         },
         ModuleMigrations {
             module: "content",
@@ -100,7 +100,7 @@ mod tests {
                 m.module
             );
             match m.module {
-                "users" | "content" | "music" | "messaging" => {
+                "users" | "content" | "music" | "messaging" | "notifications" => {
                     assert!(m.migrator.is_some(), "{}: ожидался MIGRATOR", m.module);
                 }
                 _ => assert!(
@@ -140,5 +140,24 @@ mod tests {
                 .any(|m| m.description.contains("user device recovery envelopes")),
             "ожидается миграция user_device_recovery_envelopes"
         );
+    }
+
+    #[test]
+    fn notifications_migration_alters_quoted_legacy_push_table() {
+        let modules = registry();
+        let notifications = modules
+            .iter()
+            .find(|module| module.module == "notifications")
+            .expect("notifications в реестре");
+        let migration = notifications
+            .migrator
+            .expect("мигратор notifications")
+            .iter()
+            .find(|migration| migration.description.contains("secure push previews"))
+            .expect("secure push migration");
+        let sql = migration.sql.as_ref();
+        assert!(sql.contains("flora_core.user_push_tokens"));
+        assert!(sql.contains("\"InstallationUuid\""));
+        assert!(sql.contains("\"PreviewPublicKey\""));
     }
 }

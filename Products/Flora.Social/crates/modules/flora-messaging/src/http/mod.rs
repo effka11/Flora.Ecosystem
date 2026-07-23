@@ -42,6 +42,10 @@ pub fn protected_router(state: MessagingState) -> Router {
         .route("/api/messaging/unread-count", get(get_unread_count))
         .route("/api/messaging/conversations", get(get_conversations))
         .route(
+            "/api/messaging/push-preview-targets/{recipient_uuid}",
+            get(get_push_preview_targets),
+        )
+        .route(
             "/api/messaging/conversations/{conversation_uuid}/messages",
             get(get_messages).post(post_message),
         )
@@ -249,6 +253,31 @@ async fn get_messages(
         )
             .into_response(),
         Err(e) => internal(e),
+    }
+}
+
+async fn get_push_preview_targets(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(recipient_uuid): Path<Uuid>,
+) -> Response {
+    match state
+        .conversations
+        .push_preview_targets(user.0, recipient_uuid)
+        .await
+    {
+        Ok(targets) => Json(targets).into_response(),
+        Err(SendMessageError::Forbidden(msg)) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(SendMessageError::NotFound(msg)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(SendMessageError::BadRequest(msg)) => internal(msg),
     }
 }
 

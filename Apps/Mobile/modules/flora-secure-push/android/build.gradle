@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'social.flora.mobile'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.florasecurepush"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+  sourceSets {
+    main {
+      jniLibs.srcDirs = ['src/main/jniLibs']
+    }
+  }
+}
+
+dependencies {
+  implementation "androidx.core:core-ktx:1.15.0"
+  implementation "androidx.lifecycle:lifecycle-process:2.8.7"
+  implementation "com.google.firebase:firebase-messaging:24.1.0"
+}

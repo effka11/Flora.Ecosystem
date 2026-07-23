@@ -148,8 +148,10 @@ Email восстанавливает доступ к аккаунту, но не
 
 ### Уведомления и внешние каналы (push, email, SMS)
 
-- **Push (APNs/FCM и т.д.):** только то, что не раскрывает содержимое: «новое сообщение», имя отправителя **по политике** (может быть pseudonym до открытия приложения), `badge`, **без** цитаты текста и без `conversationId` в payload, если это повышает риск корреляции на заблокированном устройстве (настраиваемый уровень).
-- **Статус реализации (errata-5, выполнено):** ранее клиенты передавали серверу plaintext-превью (`pushPreview`) для текста push-уведомления — прямая утечка содержимого через сервер и FCM. Поле удалено из контракта отправки (`sendTextMessage` в `@flora/fscp`), notifier-контракт (`flora-notifications`) больше не принимает и не форвардит превью: push всегда содержит только generic-текст.
+- **Push (APNs/FCM и т.д.):** plaintext сообщения провайдеру не передаётся. Базовый fallback — «новое сообщение»; capable-устройство может получить отдельный `NotificationPreviewEnvelope` и расшифровать его в native notification handler/NSE. Provider-visible остаются token, время, размер ciphertext, sender title, публичный URL аватара отправителя (если он задан), conversation/deep-link и другие явно переданные routing metadata.
+- **Политика показа:** encrypted preview включён на устройстве по умолчанию и отключается локально настройкой «Показывать текст сообщений». Системные настройки lock-screen ОС имеют приоритет. При opt-out, отсутствии/ротации ключа, ошибке decrypt, timeout или legacy-клиенте показывается только generic fallback.
+- **Errata-5 сохраняется:** deprecated plaintext `pushPreview` не восстанавливается и продолжает игнорироваться. Новый `encryptedPushPreviews` содержит только per-installation ciphertext; server/FCM/APNs не получают цитату сообщения и не логируют полный ciphertext.
+- **Ключи preview:** отдельная X25519 keypair на установку, не E2E root/agreement key аккаунта. Private key хранится только в native secure storage; сервер хранит public key, key id и capability рядом с push-token.
 - **Email / SMS:** одноразовые коды и security-ссылки — как в разделе **Смена email**; не смешивать с телом E2E-сообщения.
 - **Корреляция:** провайдер push видит токен и частоту; это **вне** криптографической модели FLORA — пользователю раскрывается в privacy policy.
 
@@ -1810,7 +1812,8 @@ E2E нельзя включать для всех пользователей, п
 4. **Social / product gate**
    - границы E2E для ленты, постов, реакций и профиля согласованы с командой продукта и privacy policy;
    - модерация и жалобы не требуют server-side plaintext E2E-чатов;
-   - уведомления (push и др.) не включают цитаты E2E-сообщений без явного opt-in.
+   - уведомления не передают plaintext провайдеру; default-on preview допускается
+     только как `NotificationPreviewEnvelope` с локальным per-device opt-out и generic fallback.
 
 5. **Operational gate**
    - rate limits включены;

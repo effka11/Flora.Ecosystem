@@ -447,6 +447,38 @@ Golden-паритет canonical/AAD между `Apps/Web/lib/fscp` и `Packages/
 
 ---
 
+## NotificationPreviewEnvelope v1
+
+`NotificationPreviewEnvelope` — отдельный компактный wire для native push-preview, не
+`MessageEnvelope` и не plaintext `pushPreview`.
+
+- Префикс: `fscpnp1:`.
+- Получатель: одна installation-specific X25519 public key, зарегистрированная вместе
+  с push capability; private key никогда не передаётся JS/server/provider.
+- Plaintext: `{ "preview": string, "kind": "text|photo|voice|video|mixed", "pad": string }`,
+  максимум 120 Unicode code points; UTF-8 JSON дополняется пробелами в `pad` до
+  одного из бакетов 128/256/512/768 bytes.
+- KEM/AEAD: ephemeral X25519 → HKDF-SHA256(salt 32 B, info=AAD) →
+  XChaCha20-Poly1305 (nonce 24 B).
+- AAD:
+
+```text
+flora.notifications.message-preview.v1 | previewId | wireMessageUuid |
+wireSha256Base64Url | conversationUuid | senderUserUuid | recipientUserUuid |
+recipientInstallationUuid | previewKeyId | issuedAt | expiresAt
+```
+
+- Подпись: Ed25519 sender signing key основного message wire над
+  `flora.notifications.message-preview-signature.v1 | canonicalJson(envelopeWithoutSignature)`.
+- Native проверяет self-contained подпись, но без основного wire не усиливает
+  аутентичность сверх текущей FSCP v1 active-server threat model; обязательное
+  сравнение sender key с message wire выполняет Messaging до маршрутизации.
+- `wireSha256Base64Url = b64u(SHA-256(exact UTF-8 fscp1 wire))`; сервер сверяет digest,
+  `wireMessageUuid`, conversation, users и sender signing public key с основным wire.
+- Максимальный TTL — 24 часа; максимальный `fscpnp1` wire — 2700 UTF-8 bytes.
+- Envelope advisory: неверный/stale/oversized target отбрасывается, но message send
+  продолжается с generic push. Полный ciphertext не логируется и долгосрочно не хранится.
+
 ## Server-side validation
 
 Сервер **не расшифровывает** E2E payload, но обязан валидировать форму (реализация: `fscp_core::try_validate_dual_wire`, [`Products/FSCP/crates/fscp-core`](../../Products/FSCP/crates/fscp-core/src/lib.rs)).

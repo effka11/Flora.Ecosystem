@@ -13,6 +13,11 @@ import postMoreMenuStyles from "@/app/_shared/PostMoreMenu.module.css";
 import { TabSearchInput } from "@/app/_shared/TabSearchInput";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { ApiRequestError, isDevLocalOfflineSession } from "@/lib/auth";
+import { apiGetPushPreviewTargets } from "@flora/client-core/api";
+import {
+  buildNotificationPreviewBundle,
+  type NotificationPreviewKind,
+} from "@flora/client-core/fscp";
 import { fromBase64Flexible } from "@/lib/fscp/base64url";
 import { FSCP_WIRE_PREFIX } from "@/lib/fscp/constants";
 import { dmConversationUuid } from "@/lib/fscp/deriveIds";
@@ -108,6 +113,33 @@ import { MusicTrackKindIcon } from "@/app/(dashboard)/music/MusicTrackKindIcon";
 import { useMessageComposeDraft } from "./useMessageComposeDraft";
 import { useVoiceRecorder } from "./useVoiceRecorder";
 import { buildInlineComposeWaveform } from "./voiceWaveform";
+
+function pushPreviewKind(blocks: FscpMessageBlock[]): NotificationPreviewKind {
+  const kinds = new Set(blocks.map((block) => (block.kind === "image" ? "photo" : block.kind)));
+  if (kinds.size !== 1) return "mixed";
+  const only = [...kinds][0];
+  return only === "text" || only === "photo" || only === "voice" || only === "video"
+    ? only
+    : "mixed";
+}
+
+async function buildWebEncryptedPushPreviews(params: {
+  wire: string;
+  recipientUserUuid: string;
+  signingPrivateKey: Uint8Array;
+  plaintext: FscpMessagePlaintext;
+}) {
+  const targets = await apiGetPushPreviewTargets(params.recipientUserUuid).catch(() => []);
+  if (targets.length === 0) return [];
+  return buildNotificationPreviewBundle({
+    messageWire: params.wire,
+    recipientUserUuid: params.recipientUserUuid,
+    senderSigningPrivateKey: params.signingPrivateKey,
+    preview: plaintextToPreview(params.plaintext),
+    kind: pushPreviewKind(params.plaintext.blocks),
+    targets,
+  }).catch(() => []);
+}
 import { encryptVoiceBlob } from "./voiceCrypto";
 import { VOICE_MAX_DURATION_MS, VOICE_MAX_UPLOAD_BYTES } from "./voiceCapture";
 import {
@@ -1666,9 +1698,16 @@ function MessagesChatInner() {
         receiverAgreementPublicKey: peerPub,
         messagePayload: finalPayload,
       });
+      const encryptedPushPreviews = await buildWebEncryptedPushPreviews({
+        wire,
+        recipientUserUuid: peerUuid,
+        signingPrivateKey: fscpMaterial.signingPrivateKey,
+        plaintext: finalPayload,
+      });
 
       const sent = await msgSendMessageToUser(myUuid, peerUuid, wire, {
         voiceAssetUuids: [uploaded.voiceAssetUuid],
+        encryptedPushPreviews,
       });
 
       const realRow: MessageThreadItemDto = {
@@ -1978,6 +2017,12 @@ function MessagesChatInner() {
         receiverAgreementPublicKey: peerPub,
         messagePayload: outgoingPayload,
       });
+      const encryptedPushPreviews = await buildWebEncryptedPushPreviews({
+        wire,
+        recipientUserUuid: selectedOtherUuid,
+        signingPrivateKey: fscpMaterial.signingPrivateKey,
+        plaintext: outgoingPayload,
+      });
 
       optimisticMessageUuid = floraNewUuid();
       const optimisticUuid = optimisticMessageUuid;
@@ -1996,6 +2041,7 @@ function MessagesChatInner() {
       const sent = await msgSendMessageToUser(myUuid, selectedOtherUuid, wire, {
         imageAssetUuids,
         videoAssetUuids,
+        encryptedPushPreviews,
       });
       compose.reset();
       setReplyTo(null);

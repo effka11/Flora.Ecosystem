@@ -1,0 +1,9 @@
+{
+  "platforms": ["android", "ios"],
+  "android": {
+    "modules": ["expo.modules.florasecurepush.FloraSecurePushModule"]
+  },
+  "ios": {
+    "modules": ["FloraSecurePushModule"]
+  }
+}

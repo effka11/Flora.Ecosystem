@@ -6,13 +6,11 @@
 
 use std::sync::Arc;
 
+use crate::application::UserRealtimePublisher;
 use chrono::Utc;
-use flora_messaging_contracts::{BoxFuture, MessageSentNotifier};
+use flora_messaging_contracts::{BoxFuture, MessageSentContext, MessageSentNotifier};
 use flora_notifications_contracts::RealtimeMessageSignal;
 use flora_shared::uuid_v5::dm_conversation_uuid;
-use uuid::Uuid;
-
-use crate::application::UserRealtimePublisher;
 
 pub struct MessagePushNotifier {
     realtime: Arc<UserRealtimePublisher>,
@@ -25,9 +23,11 @@ impl MessagePushNotifier {
 }
 
 impl MessageSentNotifier for MessagePushNotifier {
-    fn notify(&self, recipient_user_uuid: Uuid, sender_user_uuid: Uuid) -> BoxFuture<'_, ()> {
+    fn notify(&self, context: MessageSentContext) -> BoxFuture<'_, ()> {
         let realtime = Arc::clone(&self.realtime);
         Box::pin(async move {
+            let recipient_user_uuid = context.recipient_user_uuid;
+            let sender_user_uuid = context.sender_user_uuid;
             if recipient_user_uuid.is_nil() || sender_user_uuid.is_nil() {
                 return;
             }
@@ -40,7 +40,9 @@ impl MessageSentNotifier for MessagePushNotifier {
                 sender_user_uuid,
                 sent_at: Utc::now(),
             };
-            realtime.publish_message(recipient_user_uuid, &signal).await;
+            realtime
+                .publish_message(recipient_user_uuid, &signal, &context)
+                .await;
         })
     }
 }

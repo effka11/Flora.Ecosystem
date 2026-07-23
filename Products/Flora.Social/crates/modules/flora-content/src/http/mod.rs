@@ -835,14 +835,54 @@ async fn get_post_image(
     }
 }
 
-async fn get_avatar(State(state): State<ContentState>, Path(uuid): Path<Uuid>) -> Response {
+#[derive(Debug, Deserialize)]
+struct AvatarQuery {
+    /// `fri` (default / stored) or `png` for interoperable clients (FCM/Android BitmapFactory).
+    fmt: Option<String>,
+}
+
+async fn get_avatar(
+    State(state): State<ContentState>,
+    Path(uuid): Path<Uuid>,
+    Query(q): Query<AvatarQuery>,
+) -> Response {
     match state.media.avatar(uuid).await {
         Ok(Some(blob)) => {
-            cached_media_response(blob.data, &blob.content_type, MediaCache::PublicImmutable)
+            let want_png = q
+                .fmt
+                .as_deref()
+                .map(|v| v.eq_ignore_ascii_case("png"))
+                .unwrap_or(false);
+            if want_png {
+                match avatar_as_png(&blob.data) {
+                    Ok(png) => cached_media_response(png, "image/png", MediaCache::PublicImmutable),
+                    Err(e) => {
+                        tracing::warn!(error = %e, %uuid, "avatar png export failed");
+                        StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response()
+                    }
+                }
+            } else {
+                cached_media_response(blob.data, &blob.content_type, MediaCache::PublicImmutable)
+            }
         }
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => internal(e),
     }
+}
+
+fn avatar_as_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    use frc_i::DecodeLimits;
+    use frc_i_integration::{decode_frc_i_to_png, is_frc_i};
+    if is_frc_i(bytes) {
+        return decode_frc_i_to_png(bytes, DecodeLimits::default()).map_err(|e| e.to_string());
+    }
+    // Legacy JPEG/PNG/WebP still stored for some rows — re-encode to PNG for a stable wire type.
+    let image = image::load_from_memory(bytes).map_err(|e| e.to_string())?;
+    let mut png = Vec::new();
+    image
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(png)
 }
 
 async fn get_post_video(
@@ -1356,4 +1396,45 @@ async fn delete_community(
 
 pub fn default_write_limiter() -> Arc<FixedWindowLimiter> {
     Arc::new(FixedWindowLimiter::new(60, Duration::from_secs(5 * 60)))
+}
+
+#[cfg(test)]
+mod avatar_png_tests {
+    use super::avatar_as_png;
+    use frc_i_integration::{IngestOptions, ingest, is_frc_i};
+    use image::codecs::png::PngEncoder;
+    use image::{ExtendedColorType, ImageEncoder};
+
+    fn tiny_png() -> Vec<u8> {
+        let mut png = Vec::new();
+        PngEncoder::new(&mut png)
+            .write_image(&[20, 40, 60, 255], 1, 1, ExtendedColorType::Rgba8)
+            .unwrap();
+        png
+    }
+
+    #[test]
+    fn avatar_as_png_roundtrips_fri() {
+        let fri = ingest(
+            &tiny_png(),
+            IngestOptions {
+                max_dimension: 256,
+                max_pixels: 50_000_000,
+                quality: 85,
+            },
+        )
+        .unwrap()
+        .bytes;
+        assert!(is_frc_i(&fri));
+        let png = avatar_as_png(&fri).unwrap();
+        let decoded = image::load_from_memory(&png).unwrap();
+        assert!(decoded.width() >= 1 && decoded.height() >= 1);
+    }
+
+    #[test]
+    fn avatar_as_png_accepts_legacy_png() {
+        let png = tiny_png();
+        let out = avatar_as_png(&png).unwrap();
+        assert!(image::load_from_memory(&out).is_ok());
+    }
 }

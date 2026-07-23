@@ -42,8 +42,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   if (!playBuild && !plugins.some((p) => p === "./plugins/withFloraApkUpdater" || (Array.isArray(p) && p[0] === "./plugins/withFloraApkUpdater"))) {
     plugins.push("./plugins/withFloraApkUpdater");
   }
+  if (!plugins.some((p) => p === "./plugins/withFloraSecurePush" || (Array.isArray(p) && p[0] === "./plugins/withFloraSecurePush"))) {
+    plugins.push("./plugins/withFloraSecurePush");
+  }
 
   const androidBase = { ...config.android };
+  const iosBundleIdentifier = isDev
+    ? DEVELOPMENT_PACKAGE
+    : config.ios?.bundleIdentifier ?? PRODUCTION_PACKAGE;
   const adaptiveIcon = {
     ...(androidBase?.adaptiveIcon ?? {}),
     foregroundImage: ADAPTIVE_FOREGROUND,
@@ -65,10 +71,25 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       sideloadUpdates,
       /** EAS Play AAB — never prompt for install-unknown-apps. */
       playStoreBuild: playBuild,
+      eas: {
+        ...((config.extra?.eas as Record<string, unknown> | undefined) ?? {}),
+        build: {
+          experimental: {
+            ios: {
+              appExtensions: [
+                {
+                  targetName: "FloraSecurePushNSE",
+                  bundleIdentifier: `${iosBundleIdentifier}.SecurePushNSE`,
+                },
+              ],
+            },
+          },
+        },
+      },
     },
     ios: {
       ...config.ios,
-      bundleIdentifier: isDev ? DEVELOPMENT_PACKAGE : config.ios?.bundleIdentifier ?? PRODUCTION_PACKAGE,
+      bundleIdentifier: iosBundleIdentifier,
     },
     android: isDev
       ? {

@@ -5,12 +5,16 @@ import {
   apiArchiveConversation,
   apiMuteConversation,
   apiDeleteMessage,
+  apiGetPushPreviewTargets,
 } from "@flora/client-core/api";
 import {
   apiGetUserE2ePublicKey,
   buildBlocksMessageWire,
+  buildNotificationPreviewBundle,
+  messageBlocksToPreview,
   sendTextMessage,
   type FscpMessageBlock,
+  type NotificationPreviewKind,
 } from "@flora/client-core/fscp";
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -85,6 +89,35 @@ type ListRow = ThreadBubbleItem & {
   showPeerAvatar: boolean;
   isPeerIndented: boolean;
 };
+
+function previewKind(blocks: FscpMessageBlock[]): NotificationPreviewKind {
+  const kinds = new Set(
+    blocks.map((block) => (block.kind === "image" ? "photo" : block.kind)),
+  );
+  if (kinds.size !== 1) return "mixed";
+  const only = [...kinds][0];
+  return only === "text" || only === "photo" || only === "voice" || only === "video"
+    ? only
+    : "mixed";
+}
+
+async function buildEncryptedPushPreviews(params: {
+  wire: string;
+  recipientUserUuid: string;
+  senderSigningPrivateKey: Uint8Array;
+  blocks: FscpMessageBlock[];
+}) {
+  const targets = await apiGetPushPreviewTargets(params.recipientUserUuid).catch(() => []);
+  if (targets.length === 0) return [];
+  return buildNotificationPreviewBundle({
+    messageWire: params.wire,
+    recipientUserUuid: params.recipientUserUuid,
+    senderSigningPrivateKey: params.senderSigningPrivateKey,
+    preview: messageBlocksToPreview(params.blocks),
+    kind: previewKind(params.blocks),
+    targets,
+  }).catch(() => []);
+}
 
 const EMPTY_MESSAGES: MsgMessageDto[] = [];
 
@@ -699,10 +732,17 @@ export default function ThreadScreen() {
         blocks: [voiceBlock],
         replyTo: activeReply ?? undefined,
       });
+      const encryptedPushPreviews = await buildEncryptedPushPreviews({
+        wire,
+        recipientUserUuid: otherUserUuid,
+        senderSigningPrivateKey: material.signingPrivateKey,
+        blocks: [voiceBlock],
+      });
       const sent = await sendTextMessage({
         conversationUuid,
         wire,
         attachments: { voiceAssetUuids: [voiceBlock.assetUuid] },
+        encryptedPushPreviews,
       });
       appendOutgoingThreadMessage({
         queryClient,
@@ -778,10 +818,17 @@ export default function ThreadScreen() {
         blocks,
         replyTo: activeReply ?? undefined,
       });
+      const encryptedPushPreviews = await buildEncryptedPushPreviews({
+        wire,
+        recipientUserUuid: otherUserUuid,
+        senderSigningPrivateKey: material.signingPrivateKey,
+        blocks,
+      });
       const sent = await sendTextMessage({
         conversationUuid,
         wire,
         attachments: imageAssetUuids.length > 0 ? { imageAssetUuids } : undefined,
+        encryptedPushPreviews,
       });
       appendOutgoingThreadMessage({
         queryClient,

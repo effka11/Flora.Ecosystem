@@ -47,6 +47,8 @@ Write-Host "Android native mode: $nativeBuildMode"
 
 . (Join-Path $PSScriptRoot "mobile-flora-version.ps1")
 . (Join-Path $PSScriptRoot "patch-release-gradle-props.ps1")
+. (Join-Path $PSScriptRoot "mobile-android-env.ps1")
+Ensure-FscpSecurePushAndroidNative $root
 
 function Stop-AndroidGradleDaemons([string]$androidDir) {
     $gradlew = Join-Path $androidDir "gradlew.bat"
@@ -331,8 +333,9 @@ try {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [System.IO.Compression.ZipFile]::OpenRead($apk.FullName)
         try {
-            $bundled = $zip.Entries | Where-Object { $_.FullName -match 'index\.android\.bundle|\.hbc$|_expo/static/js' }
-            if (-not $bundled) {
+            # Force array: a single ZipArchiveEntry has no .Count under Set-StrictMode.
+            $bundled = @($zip.Entries | Where-Object { $_.FullName -match 'index\.android\.bundle|\.hbc$|_expo/static/js' })
+            if ($bundled.Count -eq 0) {
                 throw "Release APK has no embedded JS bundle; it would require Metro. Rebuild failed validation."
             }
             Write-Host "Embedded JS bundle: OK ($($bundled.Count) file(s))"

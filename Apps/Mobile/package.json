@@ -28,7 +28,8 @@
     "build:ios:production": "eas build --platform ios --profile production --non-interactive",
     "build:android:production": "eas build --platform android --profile production --non-interactive",
     "build:production": "eas build --platform all --profile production --non-interactive",
-    "eas-build-pre-install": "node ../../Scripts/configure-mobile-play-autolinking.mjs ."
+    "eas-build-pre-install": "node ../../Scripts/configure-mobile-play-autolinking.mjs .",
+    "eas-build-post-install": "node ../../Scripts/build-fscp-mobile-native.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -61,6 +62,7 @@
     "ffmpeg-kit-react-native": "^6.0.2",
     "flora-apk-updater": "file:./modules/flora-apk-updater",
     "flora-frc-i": "file:./modules/flora-frc-i",
+    "flora-secure-push": "file:./modules/flora-secure-push",
     "flora-scroll-fling": "file:./modules/flora-scroll-fling",
     "react": "19.2.3",
     "react-dom": "19.2.3",

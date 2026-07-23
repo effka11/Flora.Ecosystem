@@ -29,5 +29,6 @@ export * from "./syncOnLogin.js";
 export * from "./kdf.js";
 export * from "./keyBackup.js";
 export * from "./preview.js";
+export * from "./notificationPreview.js";
 export * from "./messaging.js";
 export { RECOVERY_WORDLIST_ID, RECOVERY_WORDS_COUNT } from "./recoveryWordlistEnV1.js";

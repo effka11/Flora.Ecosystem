@@ -1,6 +1,7 @@
 #!/bin/bash
 # Phase 5: install Rust flora-api on VPS (no .NET upstream).
-# Expects payload dir with: flora-api (ELF), flora-versions.json, optional appsettings.json
+# Expects payload dir with: flora-api, flora-migrate (ELF), flora-versions.json,
+# optional appsettings.json.
 # Usage: bash remote-install-flora-api.sh /tmp/flora-api-payload
 set -euo pipefail
 
@@ -11,6 +12,10 @@ SERVICE_USER=flora-api
 
 if [[ ! -f "$PAYLOAD/flora-api" ]]; then
   echo "missing $PAYLOAD/flora-api" >&2
+  exit 1
+fi
+if [[ ! -f "$PAYLOAD/flora-migrate" ]]; then
+  echo "missing $PAYLOAD/flora-migrate" >&2
   exit 1
 fi
 
@@ -26,6 +31,9 @@ fi
 install -m 755 "$PAYLOAD/flora-api" "$GATEWAY_DIR/flora-api.new"
 mv -f "$GATEWAY_DIR/flora-api.new" "$GATEWAY_DIR/flora-api"
 chmod 755 "$GATEWAY_DIR/flora-api"
+install -m 755 "$PAYLOAD/flora-migrate" "$GATEWAY_DIR/flora-migrate.new"
+mv -f "$GATEWAY_DIR/flora-migrate.new" "$GATEWAY_DIR/flora-migrate"
+chmod 755 "$GATEWAY_DIR/flora-migrate"
 
 if [[ -f "$PAYLOAD/flora-versions.json" ]]; then
   install -m 644 "$PAYLOAD/flora-versions.json" "$GATEWAY_DIR/flora-versions.json"
@@ -108,7 +116,44 @@ AmbientCapabilities=
 WantedBy=multi-user.target
 EOF
 
+cat >/etc/systemd/system/flora-migrate.service <<'EOF'
+[Unit]
+Description=Flora module database migrations
+After=network.target
+
+[Service]
+Type=oneshot
+User=flora-api
+Group=flora-api
+UMask=0077
+WorkingDirectory=/opt/flora-ecosystem/runtime/gateway
+Environment=FLORA_ENVIRONMENT=Production
+Environment=FLORA_CONFIG_DIR=/opt/flora-ecosystem/runtime/gateway
+EnvironmentFile=-/etc/flora-ecosystem/flora-api.env
+EnvironmentFile=-/etc/flora-ecosystem/flora-gateway.env
+ExecStart=/opt/flora-ecosystem/runtime/gateway/flora-migrate
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+EOF
+
 systemctl daemon-reload
+
+# Schema must be ready before the new API process starts. A failed migration
+# aborts deploy while the previous API process remains running.
+echo "Applying Flora module migrations..."
+systemctl reset-failed flora-migrate >/dev/null 2>&1 || true
+systemctl start flora-migrate
+echo "Flora module migrations applied."
 
 # Retire Phase 0 .NET upstream if still present.
 if systemctl list-unit-files flora-api-dotnet.service >/dev/null 2>&1; then

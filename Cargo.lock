@@ -1020,6 +1020,7 @@ dependencies = [
  "flora-notifications-contracts",
  "flora-shared",
  "flora-users-contracts",
+ "frc-i",
  "frc-i-integration",
  "getrandom 0.3.4",
  "image",
@@ -1164,6 +1165,7 @@ dependencies = [
  "flora-content",
  "flora-messaging",
  "flora-music",
+ "flora-notifications",
  "flora-shared",
  "flora-users",
  "sqlx",
@@ -1204,6 +1206,7 @@ name = "flora-notifications"
 version = "0.8.0-alpha"
 dependencies = [
  "axum",
+ "base64",
  "chrono",
  "flora-auth",
  "flora-auth-contracts",
@@ -1515,9 +1518,11 @@ name = "fscp-core"
 version = "0.8.0-alpha"
 dependencies = [
  "base64",
+ "chrono",
  "ed25519-dalek",
  "fscp-contracts",
  "serde_json",
+ "sha2 0.10.9",
  "uuid",
 ]
 
@@ -1525,7 +1530,31 @@ dependencies = [
 name = "fscp-crypto"
 version = "0.8.0-alpha"
 dependencies = [
+ "base64",
+ "chacha20poly1305",
+ "chrono",
+ "ed25519-dalek",
  "fscp-contracts",
+ "fscp-core",
+ "hkdf 0.12.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "uuid",
+ "x25519-dalek",
+]
+
+[[package]]
+name = "fscp-mobile-ffi"
+version = "0.8.0-alpha"
+dependencies = [
+ "base64",
+ "chrono",
+ "fscp-crypto",
+ "getrandom 0.3.4",
+ "jni 0.21.1",
+ "uuid",
+ "x25519-dalek",
 ]
 
 [[package]]

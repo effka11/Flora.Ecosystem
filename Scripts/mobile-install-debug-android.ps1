@@ -32,12 +32,15 @@ Ensure-FfmpegAndroid $root $mobile
 $hadFrcINative = Test-FrcIAndroidNativePresent $root
 Ensure-FrcIAndroidNative $root
 $frcINativeJustBuilt = -not $hadFrcINative
+$hadFscpPushNative = Test-FscpSecurePushAndroidNativePresent $root
+Ensure-FscpSecurePushAndroidNative $root
+$fscpPushNativeJustBuilt = -not $hadFscpPushNative
 
 $env:APP_VARIANT = "development"
 
 $hasDevClient = Test-FloraDevClientInstalled
 
-if ($hasDevClient -and -not $ReplaceExisting -and -not $frcINativeJustBuilt) {
+if ($hasDevClient -and -not $ReplaceExisting -and -not $frcINativeJustBuilt -and -not $fscpPushNativeJustBuilt) {
     Write-Host "Flora Dev already installed on $serial ($devPackage). Skipping Gradle build."
     Write-Host "Reinstall: .\Scripts\mobile-install-debug-android.ps1 -ReplaceExisting"
     Write-Host "If FRI photos are blank, reinstall so libfrc_i_mobile_ffi.so is packaged into the APK."
@@ -48,7 +51,7 @@ if ($frcINativeJustBuilt -and $hasDevClient -and -not $ReplaceExisting) {
     Write-Host "FRC-I native was just built - reinstalling Flora Dev so .so is in the APK ..."
 }
 
-if (($ReplaceExisting -or $frcINativeJustBuilt) -and (Test-FloraPackageInstalled -Variant development)) {
+if (($ReplaceExisting -or $frcINativeJustBuilt -or $fscpPushNativeJustBuilt) -and (Test-FloraPackageInstalled -Variant development)) {
     Write-Host "Removing existing Flora Dev ($devPackage) ..."
     Invoke-Adb uninstall $devPackage | Out-Null
 }

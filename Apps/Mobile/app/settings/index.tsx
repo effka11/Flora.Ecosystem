@@ -7,12 +7,17 @@ import {
 import { apiDeleteAvatar, apiGetMe, apiUpdateProfile } from "@flora/client-core/auth";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
+import {
+  areSecurePushPreviewsEnabled,
+  setSecurePushPreviewsEnabled,
+} from "flora-secure-push";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
+  Switch,
   StyleSheet,
   Text,
   TextInput,
@@ -410,8 +415,31 @@ function SecuritySettingsTab() {
 }
 
 function NotificationsSettingsTab() {
+  const [showMessageText, setShowMessageText] = useState(() =>
+    areSecurePushPreviewsEnabled(),
+  );
+
+  const changeShowMessageText = (enabled: boolean) => {
+    setShowMessageText(enabled);
+    setSecurePushPreviewsEnabled(enabled);
+  };
+
   return (
     <View style={styles.tabBody}>
+      <View style={styles.settingRow}>
+        <View style={styles.settingCopy}>
+          <Text style={styles.bodyText}>Показывать текст сообщений</Text>
+          <Text style={styles.metaText}>
+            Текст расшифровывается только на этом устройстве. APNs и FCM получают шифротекст.
+          </Text>
+        </View>
+        <Switch
+          value={showMessageText}
+          onValueChange={changeShowMessageText}
+          trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
+          thumbColor={floraColors.whiteTemplate}
+        />
+      </View>
       <Text style={styles.bodyText}>
         Push о новых сообщениях работает в release-сборке Flora. В Flora Dev обновления приходят через интернет
         (SSE), пока приложение открыто.
@@ -557,6 +585,16 @@ const styles = StyleSheet.create({
   },
   tabBody: {
     gap: floraSpacing.grid,
+  },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: floraSpacing.grid,
+    paddingVertical: floraSpacing.gridFine,
+  },
+  settingCopy: {
+    flex: 1,
+    gap: floraSpacing.gridFine,
   },
   avatarSection: {
     alignItems: "center",

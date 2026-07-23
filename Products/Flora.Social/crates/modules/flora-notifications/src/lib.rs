@@ -14,7 +14,7 @@ pub mod infrastructure;
 use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
-use flora_messaging_contracts::MessageSentNotifier;
+use flora_messaging_contracts::{MessageSentNotifier, PushPreviewTargetProvider};
 use flora_notifications_contracts::UserNotificationDispatcher;
 use flora_shared::config::FloraConfig;
 use flora_users_contracts::UserProfileQueries;
@@ -29,9 +29,11 @@ use crate::http::{
     protected_router,
 };
 use crate::infrastructure::{
-    ClientPlatformRepo, FcmPushSender, InboxRepo, PushTokenRepo, UserDisplayNameResolver,
-    UserRealtimeHub,
+    ApnsPushSender, ClientPlatformRepo, FcmPushSender, InboxRepo, PushTokenRepo,
+    UserDisplayNameResolver, UserRealtimeHub,
 };
+
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
 /// Собранный модуль: protected (JWT) + admin (token header) + порты Messaging/Content/Users.
 pub struct NotificationsModule {
@@ -40,6 +42,7 @@ pub struct NotificationsModule {
     pub admin_router: axum::Router,
     /// Реализация `IMessageSentNotifier` — SSE + FCM после DM.
     pub message_sent_notifier: Arc<dyn MessageSentNotifier>,
+    pub push_preview_targets: Arc<dyn PushPreviewTargetProvider>,
     /// Реализация `DispatchAsync` — inbox row + SSE `event: notification`.
     pub user_notification_dispatcher: Arc<dyn UserNotificationDispatcher>,
 }
@@ -59,8 +62,13 @@ pub fn compose(
     let inbox_repo = Arc::new(InboxRepo::new(pool.clone()));
     let push_repo = Arc::new(PushTokenRepo::new(pool.clone()));
     let client_platforms = Arc::new(ClientPlatformRepo::new(pool));
-    let push_tokens = Arc::new(PushTokenService::new(Arc::clone(&push_repo)));
+    let push_tokens = Arc::new(PushTokenService::new(
+        Arc::clone(&push_repo),
+        cfg.get_bool("Push:SecurePreview:AndroidEnabled") != Some(false),
+        cfg.get_bool("Push:SecurePreview:IosEnabled") != Some(false),
+    ));
     let fcm = Arc::new(FcmPushSender::from_config(cfg, Arc::clone(&push_repo)));
+    let apns = Arc::new(ApnsPushSender::from_config(cfg, Arc::clone(&push_repo)));
     let display_names = Arc::new(UserDisplayNameResolver::new(
         profiles,
         Arc::clone(&accounts),
@@ -69,6 +77,7 @@ pub fn compose(
         Arc::clone(&hub),
         Arc::clone(&push_tokens),
         fcm,
+        apns,
         display_names,
     ));
     let inbox = Arc::new(InboxService::new(
@@ -80,6 +89,7 @@ pub fn compose(
     ));
     let message_sent_notifier: Arc<dyn MessageSentNotifier> =
         Arc::new(MessagePushNotifier::new(Arc::clone(&realtime)));
+    let push_preview_targets: Arc<dyn PushPreviewTargetProvider> = push_tokens.clone();
     let user_notification_dispatcher: Arc<dyn UserNotificationDispatcher> =
         Arc::new(InboxNotificationDispatcher::new(inbox_repo, realtime));
 
@@ -118,6 +128,7 @@ pub fn compose(
             rate_limiter: Arc::new(AdminBroadcastRateLimiter::new()),
         }),
         message_sent_notifier,
+        push_preview_targets,
         user_notification_dispatcher,
     }
 }

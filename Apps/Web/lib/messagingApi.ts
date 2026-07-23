@@ -348,11 +348,16 @@ export type MsgSendAttachments = {
   voiceAssetUuids?: string[];
   imageAssetUuids?: string[];
   videoAssetUuids?: string[];
+  encryptedPushPreviews?: Array<{
+    installationUuid: string;
+    previewKeyId: string;
+    envelope: string;
+  }>;
 };
 
 /**
- * Privacy-инвариант (e2e-security.md §Уведомления, FSCP errata-5): plaintext-превью
- * сообщений на сервер не отправляется — push всегда получает generic-текст.
+ * Plaintext preview не передаётся. Optional per-installation envelopes opaque
+ * для server/provider; legacy `pushPreview` не восстанавливается.
  */
 export async function msgSendMessage(
   conversationUuid: string,
@@ -369,6 +374,7 @@ export async function msgSendMessage(
     voiceAssetUuids,
     imageAssetUuids,
     videoAssetUuids,
+    encryptedPushPreviews: attachments.encryptedPushPreviews ?? [],
   };
   const raw = (await authPostJson(
     apiUrl(

@@ -4,6 +4,7 @@
 //! Golden: `Documents/test-vectors/fscp-wire-validator-v1.json`.
 
 mod d2d_recovery;
+mod notification_preview;
 
 use base64::Engine as _;
 use base64::alphabet;
@@ -18,6 +19,10 @@ pub use d2d_recovery::{
     verify_d2d_recovery_signature,
 };
 pub use fscp_contracts::{BOOTSTRAP_DEVICE_UUID, BOOTSTRAP_KEY_EPOCH_ID, WIRE_PREFIX};
+pub use notification_preview::{
+    NOTIFICATION_PREVIEW_MAX_WIRE_BYTES, NOTIFICATION_PREVIEW_WIRE_PREFIX,
+    NotificationPreviewSummary, try_validate_notification_preview,
+};
 
 /// Policy-ошибка device revocation (FSCP.md §Device revocation): отправка wire
 /// с отозванным `senderDeviceUuid` отклоняется. Golden: fscp-revoked-device-v1.json
@@ -412,6 +417,18 @@ pub fn extract_sender_device_uuid(wire: &str) -> Result<Uuid, String> {
     let root = parse_json_like_dotnet(&json_utf8)?;
     guid_field(&root, "senderDeviceUuid")
         .ok_or_else(|| String::from("FSCP wire: неверный senderDeviceUuid."))
+}
+
+/// Извлекает клиентский `messageUuid` из подписанного wire. Это отдельный id от
+/// persisted message UUID, который создаёт Messaging repository.
+pub fn extract_message_uuid(wire: &str) -> Result<Uuid, String> {
+    let wire = wire.trim();
+    let Some(inner) = wire.strip_prefix(WIRE_PREFIX) else {
+        return Err("Неверный префикс FSCP wire (ожидается fscp1:).".into());
+    };
+    let json_utf8 = from_base64_url_like_dotnet(inner, MAX_INNER_UTF8_BYTES)?;
+    let root = parse_json_like_dotnet(&json_utf8)?;
+    guid_field(&root, "messageUuid").ok_or_else(|| String::from("FSCP wire: неверный messageUuid."))
 }
 
 /// Извлекает UUID собеседника (участник ≠ `authenticated_sender`) без полной валидации.
