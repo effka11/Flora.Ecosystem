@@ -50,14 +50,17 @@ pub async fn require_bearer_jwt(
     let Some(sessions) = auth.sessions.as_ref() else {
         return unauthorized();
     };
-    match sessions.is_active(user_uuid, &claims.jti).await {
-        Ok(true) => {}
-        Ok(false) => return unauthorized(),
+    let session_id = match sessions
+        .resolve_active_session(user_uuid, &claims.jti)
+        .await
+    {
+        Ok(Some(session_id)) => session_id,
+        Ok(None) => return unauthorized(),
         Err(error) => {
             tracing::warn!(%error, "JWT session validation failed");
             return unauthorized();
         }
-    }
+    };
     // Music / Auth / Users / Content / Messaging / Notifications share the same JWT identity.
     req.extensions_mut().insert(CurrentUser(user_uuid));
     req.extensions_mut()
@@ -71,6 +74,7 @@ pub async fn require_bearer_jwt(
     req.extensions_mut().insert(AuthUser {
         user_uuid,
         jti: claims.jti,
+        session_id,
     });
     next.run(req).await
 }
@@ -89,7 +93,12 @@ pub async fn optional_bearer_jwt(
         if let Ok(claims) = validate_access_token(&auth.options, token, now)
             && let Ok(user_uuid) = Uuid::parse_str(&claims.sub)
             && let Some(sessions) = auth.sessions.as_ref()
-            && matches!(sessions.is_active(user_uuid, &claims.jti).await, Ok(true))
+            && matches!(
+                sessions
+                    .resolve_active_session(user_uuid, &claims.jti)
+                    .await,
+                Ok(Some(_))
+            )
         {
             req.extensions_mut()
                 .insert(flora_content::http::CurrentUser(user_uuid));

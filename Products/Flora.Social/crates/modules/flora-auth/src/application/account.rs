@@ -33,7 +33,7 @@ impl AccountService {
     pub async fn change_password(
         &self,
         user_uuid: Uuid,
-        current_jti: &str,
+        current_session_id: Uuid,
         current_password: &str,
         new_password: &str,
     ) -> Result<(), ChangePasswordError> {
@@ -85,7 +85,7 @@ impl AccountService {
             .map_err(|e| ChangePasswordError::Internal(e.to_string()))?;
 
         self.repo
-            .revoke_other_sessions_for_password(user_uuid, current_jti, now)
+            .revoke_other_sessions_for_password_except_id(user_uuid, Some(current_session_id), now)
             .await
             .map_err(|e| ChangePasswordError::Internal(e.to_string()))?;
 

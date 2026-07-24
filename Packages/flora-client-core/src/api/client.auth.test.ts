@@ -1,18 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionStore, SessionTokens } from "../auth/types.js";
+import type {
+  RefreshCapability,
+  SessionRecord,
+  SessionSnapshot,
+  SessionStore,
+  SessionTokens,
+} from "../auth/types.js";
 import { ApiRequestError, isApiRequestError } from "./errors.js";
 import {
   authFetch,
   configureApiClient,
+  refreshSession,
   refreshSessionIfPossible,
   resetSessionRefreshStateForTests,
+  supersedeSessionRefresh,
   syncStoredSessionTokens,
 } from "./client.js";
+import type { RunRefreshExclusive } from "./sessionCoordinator.js";
 
 type SessionState = {
   accessToken: string | null;
   refreshToken: string | null;
   expiresAt: string | null;
+};
+
+type TestSessionStore = SessionStore & {
+  state: SessionState & {
+    refreshKind: RefreshCapability["kind"] | null;
+    revision: number;
+  };
+  replaceSession(next: SessionRecord | null): void;
 };
 
 function makeJwt(expSec: number): string {
@@ -21,10 +38,46 @@ function makeJwt(expSec: number): string {
   return `${header}.${payload}.signature`;
 }
 
-function createSessionStore(initial: SessionState): SessionStore & { state: SessionState } {
-  const state = { ...initial };
+function createSessionStore(initial: SessionState): TestSessionStore {
+  const state: TestSessionStore["state"] = {
+    ...initial,
+    refreshKind: initial.refreshToken ? "token" : null,
+    revision: 0,
+  };
+
+  const currentRecord = (): SessionRecord | null => {
+    const refresh =
+      state.refreshKind === "cookie"
+        ? ({ kind: "cookie" } as const)
+        : state.refreshKind === "token" && state.refreshToken
+          ? ({ kind: "token", token: state.refreshToken } as const)
+          : null;
+    if (
+      state.accessToken === null &&
+      refresh === null &&
+      state.expiresAt === null
+    ) {
+      return null;
+    }
+    return {
+      accessToken: state.accessToken,
+      refresh,
+      expiresAt: state.expiresAt,
+    };
+  };
+
+  const replaceSession = (next: SessionRecord | null): void => {
+    state.accessToken = next?.accessToken ?? null;
+    state.refreshKind = next?.refresh?.kind ?? null;
+    state.refreshToken =
+      next?.refresh?.kind === "token" ? next.refresh.token : null;
+    state.expiresAt = next?.expiresAt ?? null;
+    state.revision += 1;
+  };
+
   return {
     state,
+    replaceSession,
     async getAccessToken() {
       return state.accessToken;
     },
@@ -37,18 +90,38 @@ function createSessionStore(initial: SessionState): SessionStore & { state: Sess
     async saveSession(tokens: SessionTokens) {
       state.accessToken = tokens.accessToken;
       state.refreshToken = tokens.refreshToken;
+      state.refreshKind = "token";
       state.expiresAt = tokens.expiresAt;
+      state.revision += 1;
     },
     async clearSession() {
       state.accessToken = null;
       state.refreshToken = null;
+      state.refreshKind = null;
       state.expiresAt = null;
+      state.revision += 1;
     },
     async hasPendingProfileSetup() {
       return false;
     },
     async setPendingProfileSetup() {
       /* noop */
+    },
+    async readSession(): Promise<SessionSnapshot> {
+      return {
+        revision: state.revision,
+        session: currentRecord(),
+      };
+    },
+    async compareAndSetSession(expectedRevision, next) {
+      if (state.revision !== expectedRevision) return false;
+      replaceSession(next);
+      return true;
+    },
+    async compareAndClearSession(expectedRevision) {
+      if (state.revision !== expectedRevision) return false;
+      replaceSession(null);
+      return true;
     },
   };
 }
@@ -76,8 +149,7 @@ describe("session refresh client", () => {
       onUnauthorized,
     });
 
-    const ok = await refreshSessionIfPossible();
-    expect(ok).toBe(false);
+    expect(await refreshSession()).toBe("invalid");
     expect(session.state.accessToken).toBeNull();
     expect(session.state.refreshToken).toBeNull();
     expect(onUnauthorized).not.toHaveBeenCalled();
@@ -91,9 +163,11 @@ describe("session refresh client", () => {
     });
     const fetchImpl = vi.fn(async () => {
       // Simulate concurrent rotation: store already has new tokens before 401 response is handled.
-      session.state.accessToken = "new-access";
-      session.state.refreshToken = "new-refresh";
-      session.state.expiresAt = new Date(Date.now() + 900_000).toISOString();
+      session.replaceSession({
+        accessToken: "new-access",
+        refresh: { kind: "token", token: "new-refresh" },
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      });
       return new Response(JSON.stringify({ error: "Invalid" }), { status: 401 });
     });
 
@@ -110,14 +184,23 @@ describe("session refresh client", () => {
     expect(session.state.refreshToken).toBe("new-refresh");
   });
 
-  it("keeps session on transient refresh failure", async () => {
+  it("does not re-send a lost R1 by default or clear a legacy session", async () => {
     const session = createSessionStore({
       accessToken: "old-access",
       refreshToken: "old-refresh",
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
+    let requestCount = 0;
     const fetchImpl = vi.fn(async () => {
-      throw new TypeError("Network request failed");
+      requestCount += 1;
+      if (requestCount === 1) {
+        // The legacy backend may have rotated R1 even though its response was lost.
+        throw new TypeError("Response was lost");
+      }
+      return new Response(
+        JSON.stringify({ error: "Refresh token already used" }),
+        { status: 401 },
+      );
     });
 
     configureApiClient({
@@ -131,7 +214,66 @@ describe("session refresh client", () => {
     expect(ok).toBe(false);
     expect(session.state.accessToken).toBe("old-access");
     expect(session.state.refreshToken).toBe("old-refresh");
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries the same R1 once after a lost response", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const requestBodies: string[] = [];
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      requestBodies.push(String(init?.body));
+      if (requestBodies.length === 1) {
+        throw new TypeError("Response was lost");
+      }
+      return new Response(
+        JSON.stringify({
+          accessToken: "new-access",
+          refreshToken: "new-refresh",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+      retrySafeRefreshBackend: true,
+    });
+
+    expect(await refreshSession()).toBe("ready");
+    expect(requestBodies).toEqual([
+      JSON.stringify({ refreshToken: "old-refresh" }),
+      JSON.stringify({ refreshToken: "old-refresh" }),
+    ]);
+    expect(session.state.refreshToken).toBe("new-refresh");
+  });
+
+  it("does not retry or clear on a transient refresh 5xx", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 503 }));
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    expect(await refreshSession()).toBe("transient");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(session.state.accessToken).toBe("old-access");
+    expect(session.state.refreshToken).toBe("old-refresh");
   });
 
   it("deduplicates concurrent refresh calls", async () => {
@@ -169,6 +311,85 @@ describe("session refresh client", () => {
     expect(b).toBe(true);
     expect(maxInFlight).toBe(1);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("rechecks the revision after entering platform exclusivity", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    let entered!: () => void;
+    let release!: () => void;
+    const lockEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const lockRelease = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runRefreshExclusive: RunRefreshExclusive = async (operation) => {
+      entered();
+      await lockRelease;
+      return operation();
+    };
+    const fetchImpl = vi.fn();
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+      runRefreshExclusive,
+    });
+
+    const attempt = refreshSession();
+    await lockEntered;
+    session.replaceSession({
+      accessToken: "other-access",
+      refresh: { kind: "cookie" },
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+    release();
+
+    expect(await attempt).toBe("superseded");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("preserves cookie refresh as a typed capability", async () => {
+    const session = createSessionStore({
+      accessToken: null,
+      refreshToken: null,
+      expiresAt: null,
+    });
+    session.replaceSession({
+      accessToken: "old-access",
+      refresh: { kind: "cookie" },
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.body).toBe("{}");
+      expect(init?.credentials).toBe("include");
+      return new Response(
+        JSON.stringify({
+          accessToken: "new-access",
+          refreshToken: "http-only",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    expect(await refreshSession()).toBe("ready");
+    expect((await session.readSession!()).session?.refresh).toEqual({
+      kind: "cookie",
+    });
   });
 
   it("authFetch does not logout when refresh token remains after transient refresh failure", async () => {
@@ -256,7 +477,7 @@ describe("session refresh client", () => {
     expect(ok).toBe(false);
     expect(session.state.accessToken).toBe("old-access");
     expect(session.state.refreshToken).toBe("old-refresh");
-    // persist_failed — no retry (server may already have rotated)
+    // protocol_error — no retry (server may already have rotated)
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -279,16 +500,39 @@ describe("session refresh client", () => {
     expect(ok).toBe(false);
     expect(session.state.accessToken).toBe("old-access");
     expect(session.state.refreshToken).toBe("old-refresh");
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps session when saveSession throws after valid refresh payload", async () => {
+  it("does not treat a refresh 403 as terminal Invalid", async () => {
     const session = createSessionStore({
       accessToken: "old-access",
       refreshToken: "old-refresh",
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
-    session.saveSession = async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }),
+    );
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    expect(await refreshSession()).toBe("protocol_error");
+    expect(session.state.accessToken).toBe("old-access");
+    expect(session.state.refreshToken).toBe("old-refresh");
+  });
+
+  it("keeps R2 effective when its atomic storage commit is pending", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    session.compareAndSetSession = async () => {
       throw new Error("QuotaExceeded");
     };
     const fetchImpl = vi.fn(
@@ -310,26 +554,27 @@ describe("session refresh client", () => {
       fetchImpl,
     });
 
-    const ok = await refreshSessionIfPossible();
-    expect(ok).toBe(false);
+    expect(await refreshSession()).toBe("storage_pending");
+    expect(await refreshSessionIfPossible()).toBe(true);
     expect(session.state.accessToken).toBe("old-access");
     expect(session.state.refreshToken).toBe("old-refresh");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("does not wipe session when save fails then retry would have used rotated-away token", async () => {
+  it("retries an R2 storage commit without another network request", async () => {
     const session = createSessionStore({
       accessToken: "old-access",
       refreshToken: "old-refresh",
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
-    let refreshCalls = 0;
-    session.saveSession = async () => {
-      throw new Error("QuotaExceeded");
+    const compareAndSet = session.compareAndSetSession!.bind(session);
+    let commitCalls = 0;
+    session.compareAndSetSession = async (expectedRevision, next) => {
+      commitCalls += 1;
+      if (commitCalls === 1) throw new Error("QuotaExceeded");
+      return compareAndSet(expectedRevision, next);
     };
     const fetchImpl = vi.fn(async () => {
-      refreshCalls += 1;
-      // Server rotated; client cannot persist. A second call with R1 would 401.
       return new Response(
         JSON.stringify({
           accessToken: "new-access",
@@ -347,11 +592,12 @@ describe("session refresh client", () => {
       fetchImpl,
     });
 
-    const ok = await refreshSessionIfPossible();
-    expect(ok).toBe(false);
-    expect(refreshCalls).toBe(1);
-    expect(session.state.accessToken).toBe("old-access");
-    expect(session.state.refreshToken).toBe("old-refresh");
+    expect(await refreshSession()).toBe("storage_pending");
+    expect(await refreshSession()).toBe("ready");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(commitCalls).toBe(2);
+    expect(session.state.accessToken).toBe("new-access");
+    expect(session.state.refreshToken).toBe("new-refresh");
   });
 
   it("authFetch does not logout when API 401 persists but refresh token remains", async () => {
@@ -389,6 +635,103 @@ describe("session refresh client", () => {
     );
     expect(session.state.refreshToken).toBe("still-valid-refresh");
     expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it.each(["logout", "login"] as const)(
+    "does not let a late refresh overwrite a newer %s",
+    async (mutation) => {
+      const session = createSessionStore({
+        accessToken: "old-access",
+        refreshToken: "old-refresh",
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      });
+      let resolveRefresh!: (response: Response) => void;
+      const fetchImpl = vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      );
+
+      configureApiClient({
+        apiBaseUrl: "https://api.test",
+        session,
+        clientIdentity: { platform: "android", appVersion: "1.0.0" },
+        fetchImpl,
+      });
+
+      const lateRefresh = refreshSession();
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+
+      supersedeSessionRefresh();
+      session.replaceSession(
+        mutation === "login"
+          ? {
+              accessToken: "login-access",
+              refresh: { kind: "token", token: "login-refresh" },
+              expiresAt: new Date(Date.now() + 900_000).toISOString(),
+            }
+          : null,
+      );
+      resolveRefresh(
+        new Response(
+          JSON.stringify({
+            accessToken: "late-access",
+            refreshToken: "late-refresh",
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      expect(await lateRefresh).toBe("superseded");
+      expect(session.state.accessToken).toBe(
+        mutation === "login" ? "login-access" : null,
+      );
+      expect(session.state.refreshToken).toBe(
+        mutation === "login" ? "login-refresh" : null,
+      );
+    },
+  );
+
+  it("uses the persisted revision to reject an external late clear race", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    let resolveRefresh!: (response: Response) => void;
+    const fetchImpl = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const lateRefresh = refreshSession();
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    session.replaceSession(null);
+    resolveRefresh(
+      new Response(
+        JSON.stringify({
+          accessToken: "late-access",
+          refreshToken: "late-refresh",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    expect(await lateRefresh).toBe("superseded");
+    expect(session.state.accessToken).toBeNull();
+    expect(session.state.refreshToken).toBeNull();
   });
 
   it("syncStoredSessionTokens notifies when proactive refresh revokes session", async () => {

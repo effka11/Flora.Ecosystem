@@ -1,4 +1,34 @@
 import { clearFscpLegacyFlatKeys } from "@/lib/fscp/keys";
+import {
+  authPublicFetchUrl,
+  clearBrowserSessionCookie,
+  ensureFreshAccessToken as ensureCoordinatedAccessToken,
+  publicApiUrl,
+  refreshSessionIfPossible as refreshCoordinatedSessionIfPossible,
+  resolvePublicApiRoot,
+  runWebAuthExclusive,
+  supersedeWebSessionRefresh,
+  syncStoredSessionTokens as syncCoordinatedSessionTokens,
+  webApiFetch,
+} from "@/lib/apiClient";
+import {
+  SESSION_CLEARED_EVENT,
+  STORAGE_ACCESS,
+  STORAGE_EXPIRES,
+  STORAGE_REFRESH,
+  STORAGE_SESSION,
+  webSessionStore,
+} from "@/lib/sessionStore";
+
+export {
+  authPublicFetchUrl,
+  resolvePublicApiRoot,
+  SESSION_CLEARED_EVENT,
+  STORAGE_ACCESS,
+  STORAGE_EXPIRES,
+  STORAGE_REFRESH,
+  STORAGE_SESSION,
+};
 
 export type LoginResponse = {
   accessToken: string;
@@ -132,62 +162,27 @@ function parseMePayload(raw: unknown): MeResponse {
   };
 }
 
-const PENDING_PROFILE_SETUP_KEY = "flora_pending_profile_setup";
-
 /** Пока флаг выставлен, защищённые страницы отправляют на /login до заполнения имени. */
 export function setPendingProfileSetup(): void {
-  if (typeof window === "undefined") return;
-  sessionStorage.setItem(PENDING_PROFILE_SETUP_KEY, "1");
+  webSessionStore.setPendingProfileSetupSync(true);
 }
 
 export function clearPendingProfileSetup(): void {
-  if (typeof window === "undefined") return;
-  sessionStorage.removeItem(PENDING_PROFILE_SETUP_KEY);
+  webSessionStore.setPendingProfileSetupSync(false);
 }
 
 export function hasPendingProfileSetup(): boolean {
-  if (typeof window === "undefined") return false;
-  return sessionStorage.getItem(PENDING_PROFILE_SETUP_KEY) === "1";
+  return webSessionStore.hasPendingProfileSetupSync();
 }
 
-/**
- * Публичный базовый URL для `/api/auth/*` и соц. эндпоинтов из браузера.
- * 1) `NEXT_PUBLIC_API_BASE_URL` при сборке (если задан явно).
- * 2) Иначе same-origin `/api/*` на текущем хосте (Next proxy → Flora.API). Так CSP `connect-src 'self'`
- *    не ломает auth за CDN, и не нужен cross-origin на `origin.<apex>`.
- */
-export function resolvePublicApiRoot(): string {
-  const env = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
-  if (env) return env;
-  return "";
-}
-
-/** Полный URL для клиентского fetch (например keepalive при закрытии вкладки). */
-export function authPublicFetchUrl(path: string): string {
-  const root = resolvePublicApiRoot();
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return root ? `${root.replace(/\/+$/, "")}${p}` : p;
-}
-
-/** When set (e.g. http://localhost:5158), browsers call Flora.API cross-origin — API must configure FloraWeb:CorsOrigins. */
-function authApiRoot(): string {
-  return resolvePublicApiRoot();
-}
+webSessionStore.subscribeSessionCleared(() => {
+  clearPendingProfileSetup();
+  clearFscpLegacyFlatKeys();
+});
 
 function authEndpoint(path: string): string {
-  const root = authApiRoot();
-  return root ? `${root}${path}` : path;
+  return publicApiUrl(path);
 }
-
-export const STORAGE_ACCESS = "flora_access_token";
-export const STORAGE_REFRESH = "flora_refresh_token";
-export const STORAGE_EXPIRES = "flora_expires_at";
-/** Same-tab signal after local session wipe (storage events only reach other tabs). */
-export const SESSION_CLEARED_EVENT = "flora:session-cleared";
-
-const DEFAULT_ACCESS_SKEW_MS = 120_000;
-const MIN_PROACTIVE_REFRESH_MS = 60_000;
-const REFRESH_LOCK_NAME = "flora-auth-refresh";
 
 // Hard guard: the offline "login without auth" bypass is only ever active in non-production builds,
 // even if a production build is accidentally created with NEXT_PUBLIC_DEV_AUTO_AUTH=1. NODE_ENV is
@@ -195,65 +190,33 @@ const REFRESH_LOCK_NAME = "flora-auth-refresh";
 const DEV_AUTO_AUTH =
   process.env.NEXT_PUBLIC_DEV_AUTO_AUTH === "1" && process.env.NODE_ENV !== "production";
 
-type RefreshAttemptResult = "success" | "auth_failed" | "transient_failed" | "persist_failed";
-
 export function saveSession(raw: unknown): void {
   const res = parseLoginPayload(raw);
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_ACCESS, res.accessToken);
-  localStorage.setItem(STORAGE_REFRESH, res.refreshToken);
-  localStorage.setItem(STORAGE_EXPIRES, res.expiresAt);
+  supersedeWebSessionRefresh();
+  webSessionStore.saveSessionSync(res);
 }
 
 export function getExpiresAt(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(STORAGE_EXPIRES);
+  return webSessionStore.getExpiresAtSync();
 }
 
 export function getRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(STORAGE_REFRESH);
-}
-
-function notifySessionCleared(): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(SESSION_CLEARED_EVENT));
-}
-
-function clearBrowserRefreshCookie(): void {
-  if (typeof window === "undefined" || authApiRoot()) return;
-  void fetch("/api/auth/browser-session", {
-    method: "DELETE",
-    credentials: "same-origin",
-    keepalive: true,
-  }).catch(() => {
-    // Local state is authoritative for the UI; an expired server cookie can be cleared later.
-  });
+  return webSessionStore.getRefreshTokenSync();
 }
 
 export function clearSession() {
-  if (typeof window === "undefined") return;
-  const hadSession =
-    Boolean(localStorage.getItem(STORAGE_ACCESS)) ||
-    Boolean(localStorage.getItem(STORAGE_REFRESH)) ||
-    Boolean(localStorage.getItem(STORAGE_EXPIRES));
-  clearBrowserRefreshCookie();
-  localStorage.removeItem(STORAGE_ACCESS);
-  localStorage.removeItem(STORAGE_REFRESH);
-  localStorage.removeItem(STORAGE_EXPIRES);
-  clearPendingProfileSetup();
-  clearFscpLegacyFlatKeys();
+  supersedeWebSessionRefresh();
+  webSessionStore.clearSessionSync();
+  clearBrowserSessionCookie();
   /**
    * Профили FSCP по пользователю (`flora.fscp.profile.v1.*`) **не** удаляем: после повторного входа
    * тот же браузер восстанавливает ключи и может расшифровать историю (см. Documents/fscp/FSCP.md — device-held material).
    * Полный сброс ключей на этом устройстве — явный вызов {@link clearFscpMaterialForUser} / {@link clearFscpLocalStorage}.
    */
-  if (hadSession) notifySessionCleared();
 }
 
 export function getAccessToken(): string | null {
-  if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem(STORAGE_ACCESS);
+  const stored = webSessionStore.getAccessTokenSync();
   if (stored) return stored;
   if (DEV_AUTO_AUTH) return "dev-token";
   return null;
@@ -266,103 +229,9 @@ export function isDevLocalOfflineSession(): boolean {
   return getAccessToken() === "dev-token";
 }
 
-/** Clear local session only when refresh token is already gone (align with client-core). */
+/** Resource 401 is never logout proof; coordinator-owned tombstones clear the UI. */
 export function clearSessionOnUnauthorizedIfNeeded(): void {
-  if (typeof window === "undefined") return;
-  if (getRefreshToken()) return;
-  clearSession();
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function decodeJwtExpMs(accessToken: string): number | null {
-  const parts = accessToken.split(".");
-  if (parts.length !== 3) return null;
-  const payloadPart = parts[1];
-  if (!payloadPart) return null;
-  try {
-    const payload = JSON.parse(
-      atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/")),
-    ) as { exp?: unknown };
-    if (typeof payload.exp === "number" && Number.isFinite(payload.exp)) {
-      return payload.exp * 1000;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function resolveAccessExpiresAtMs(accessToken: string): number | null {
-  const stored = getExpiresAt();
-  if (stored) {
-    const ms = Date.parse(stored);
-    if (!Number.isNaN(ms)) return ms;
-  }
-  return decodeJwtExpMs(accessToken);
-}
-
-/** Clear only if the refresh we sent is still stored — avoids wiping a concurrent successful rotation. */
-function clearSessionIfRefreshUnchanged(refreshTokenWeSent: string): RefreshAttemptResult {
-  const still = localStorage.getItem(STORAGE_REFRESH);
-  if (still === refreshTokenWeSent) {
-    clearSession();
-    return "auth_failed";
-  }
-  return getAccessToken() && still ? "success" : "auth_failed";
-}
-
-let refreshSessionInFlight: Promise<boolean> | null = null;
-let lastProactiveRefreshAttemptAt = 0;
-
-async function refreshSessionOnce(refreshToken: string): Promise<RefreshAttemptResult> {
-  try {
-    const r = await fetch(authEndpoint("/api/auth/refresh"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (r.status === 401 || r.status === 403) {
-      return clearSessionIfRefreshUnchanged(refreshToken);
-    }
-    if (!r.ok) {
-      return "transient_failed";
-    }
-    const raw = await r.json().catch(() => ({}));
-    try {
-      saveSession(raw);
-      return "success";
-    } catch {
-      // Bad payload / QuotaExceeded — keep prior session; do NOT retry (server may have rotated).
-      const still = localStorage.getItem(STORAGE_REFRESH);
-      if (still && still !== refreshToken && getAccessToken()) return "success";
-      if (still && getAccessToken()) return "persist_failed";
-      return "auth_failed";
-    }
-  } catch {
-    return "transient_failed";
-  }
-}
-
-async function runRefreshAttempt(): Promise<boolean> {
-  // Another tab/caller may have rotated while we waited for the lock.
-  let refreshToken = localStorage.getItem(STORAGE_REFRESH);
-  if (!refreshToken) return false;
-
-  let result = await refreshSessionOnce(refreshToken);
-  if (result === "transient_failed") {
-    await sleep(500);
-    refreshToken = localStorage.getItem(STORAGE_REFRESH) ?? refreshToken;
-    result = await refreshSessionOnce(refreshToken);
-  }
-  if (result === "success") return true;
-  if (result === "auth_failed") {
-    const still = localStorage.getItem(STORAGE_REFRESH);
-    if (still && still !== refreshToken && getAccessToken()) return true;
-  }
-  return false;
+  // Kept for the four legacy wrappers during the bridge release.
 }
 
 /**
@@ -371,50 +240,23 @@ async function runRefreshAttempt(): Promise<boolean> {
  * Transient errors (network / 429 / 5xx) do not clear the session.
  */
 export async function refreshSessionIfPossible(): Promise<boolean> {
-  if (typeof window === "undefined") return false;
   if (isDevLocalOfflineSession()) return false;
-  if (refreshSessionInFlight) return refreshSessionInFlight;
-
-  const attempt = (async (): Promise<boolean> => {
-    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
-    if (locks?.request) {
-      try {
-        return await locks.request(REFRESH_LOCK_NAME, () => runRefreshAttempt());
-      } catch {
-        return runRefreshAttempt();
-      }
-    }
-    return runRefreshAttempt();
-  })();
-
-  refreshSessionInFlight = attempt.finally(() => {
-    refreshSessionInFlight = null;
-  });
-  return refreshSessionInFlight;
+  return refreshCoordinatedSessionIfPossible();
 }
 
 /** Proactive refresh when access token is near expiry (client-core skew semantics). */
 export async function ensureFreshAccessToken(options?: { skewMs?: number }): Promise<void> {
-  if (typeof window === "undefined") return;
   if (isDevLocalOfflineSession()) return;
+  await ensureCoordinatedAccessToken(options);
+}
 
-  const accessToken = getAccessToken();
-  if (!accessToken) return;
-  if (!getRefreshToken()) return;
-
-  const skewMs = options?.skewMs ?? DEFAULT_ACCESS_SKEW_MS;
-  const expiresAtMs = resolveAccessExpiresAtMs(accessToken);
-  const now = Date.now();
-  const shouldRefresh = expiresAtMs === null ? true : now >= expiresAtMs - skewMs;
-  if (!shouldRefresh) return;
-
-  if (now - lastProactiveRefreshAttemptAt < MIN_PROACTIVE_REFRESH_MS) return;
-  lastProactiveRefreshAttemptAt = now;
-  await refreshSessionIfPossible();
+export async function syncStoredSessionTokens(options?: { skewMs?: number }): Promise<void> {
+  if (isDevLocalOfflineSession()) return;
+  await syncCoordinatedSessionTokens(options);
 }
 
 async function postAuthJson<T>(url: string, payload: Record<string, unknown>, defaultError: string): Promise<T> {
-  const r = await fetch(url, {
+  const r = await webApiFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -433,12 +275,12 @@ async function getAuthorizedJson<T>(url: string, defaultError: string): Promise<
   if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
   const authHeader = (t: string) => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, { method: "GET", headers: authHeader(accessToken) });
+  let r = await webApiFetch(url, { method: "GET", headers: authHeader(accessToken) });
   if (r.status === 401) {
     const renewed = await refreshSessionIfPossible();
     if (renewed) {
       accessToken = getAccessToken();
-      if (accessToken) r = await fetch(url, { method: "GET", headers: authHeader(accessToken) });
+      if (accessToken) r = await webApiFetch(url, { method: "GET", headers: authHeader(accessToken) });
     }
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
@@ -461,12 +303,12 @@ async function postAuthorizedForm<T>(url: string, formData: FormData, defaultErr
     body: formData,
   });
 
-  let r = await fetch(url, buildInit(accessToken));
+  let r = await webApiFetch(url, buildInit(accessToken));
   if (r.status === 401) {
     const renewed = await refreshSessionIfPossible();
     if (renewed) {
       accessToken = getAccessToken();
-      if (accessToken) r = await fetch(url, buildInit(accessToken));
+      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
     }
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
@@ -488,12 +330,12 @@ async function deleteAuthorizedJson(url: string, defaultError: string): Promise<
     headers: { Authorization: `Bearer ${t}` },
   });
 
-  let r = await fetch(url, buildInit(accessToken));
+  let r = await webApiFetch(url, buildInit(accessToken));
   if (r.status === 401) {
     const renewed = await refreshSessionIfPossible();
     if (renewed) {
       accessToken = getAccessToken();
-      if (accessToken) r = await fetch(url, buildInit(accessToken));
+      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
     }
   }
   if (!r.ok) {
@@ -518,12 +360,12 @@ async function patchAuthorizedJson<T>(url: string, payload: Record<string, unkno
     body: JSON.stringify(payload),
   });
 
-  let r = await fetch(url, buildInit(accessToken));
+  let r = await webApiFetch(url, buildInit(accessToken));
   if (r.status === 401) {
     const renewed = await refreshSessionIfPossible();
     if (renewed) {
       accessToken = getAccessToken();
-      if (accessToken) r = await fetch(url, buildInit(accessToken));
+      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
     }
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
@@ -540,19 +382,23 @@ export async function apiLogin(
   password: string,
   twoFactorCode?: string
 ): Promise<LoginResult> {
-  const raw = await postAuthJson<unknown>(
-    authEndpoint("/api/auth/login"),
-    { email, phone: email, password, twoFactorCode: twoFactorCode || undefined },
-    "Ошибка входа"
-  );
-  if (raw && typeof raw === "object") {
-    const o = raw as Record<string, unknown>;
-    if (o.requiresTwoFactor === true || o.RequiresTwoFactor === true) {
-      const err = readStr(o, ["error", "Error", "errorMessage", "ErrorMessage"]);
-      return { requiresTwoFactor: true, ...(err ? { error: err } : {}) };
+  return runWebAuthExclusive(async () => {
+    const raw = await postAuthJson<unknown>(
+      authEndpoint("/api/auth/login"),
+      { email, phone: email, password, twoFactorCode: twoFactorCode || undefined },
+      "Ошибка входа"
+    );
+    if (raw && typeof raw === "object") {
+      const o = raw as Record<string, unknown>;
+      if (o.requiresTwoFactor === true || o.RequiresTwoFactor === true) {
+        const err = readStr(o, ["error", "Error", "errorMessage", "ErrorMessage"]);
+        return { requiresTwoFactor: true, ...(err ? { error: err } : {}) };
+      }
     }
-  }
-  return parseLoginPayload(raw);
+    const result = parseLoginPayload(raw);
+    saveSession(result);
+    return result;
+  });
 }
 
 export async function apiRegister(email: string, password: string): Promise<RegisterInitResponse> {
@@ -564,12 +410,16 @@ export async function apiRegister(email: string, password: string): Promise<Regi
 }
 
 export async function apiVerifyRegistration(verificationToken: string, code: string): Promise<LoginResponse> {
-  const raw = await postAuthJson<unknown>(
-    authEndpoint("/api/auth/verify-registration"),
-    { verificationToken, code },
-    "Ошибка верификации"
-  );
-  return parseLoginPayload(raw);
+  return runWebAuthExclusive(async () => {
+    const raw = await postAuthJson<unknown>(
+      authEndpoint("/api/auth/verify-registration"),
+      { verificationToken, code },
+      "Ошибка верификации"
+    );
+    const result = parseLoginPayload(raw);
+    saveSession(result);
+    return result;
+  });
 }
 
 export async function apiCancelRegistration(verificationToken: string): Promise<void> {
@@ -689,12 +539,12 @@ async function postAuthorizedJsonWithBody<T>(
     body: JSON.stringify(payload),
   });
 
-  let r = await fetch(url, buildInit(accessToken));
+  let r = await webApiFetch(url, buildInit(accessToken));
   if (r.status === 401) {
     const renewed = await refreshSessionIfPossible();
     if (renewed) {
       accessToken = getAccessToken();
-      if (accessToken) r = await fetch(url, buildInit(accessToken));
+      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
     }
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
@@ -724,12 +574,12 @@ async function deleteAuthorizedJsonWithBody(
     body: JSON.stringify(payload),
   });
 
-  let r = await fetch(url, buildInit(accessToken));
+  let r = await webApiFetch(url, buildInit(accessToken));
   if (r.status === 401) {
     const renewed = await refreshSessionIfPossible();
     if (renewed) {
       accessToken = getAccessToken();
-      if (accessToken) r = await fetch(url, buildInit(accessToken));
+      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
     }
   }
   if (!r.ok) {
@@ -750,12 +600,12 @@ async function postAuthorizedJson<T>(url: string, defaultError: string): Promise
     headers: { Authorization: `Bearer ${t}` },
   });
 
-  let r = await fetch(url, buildInit(accessToken));
+  let r = await webApiFetch(url, buildInit(accessToken));
   if (r.status === 401) {
     const renewed = await refreshSessionIfPossible();
     if (renewed) {
       accessToken = getAccessToken();
-      if (accessToken) r = await fetch(url, buildInit(accessToken));
+      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
     }
   }
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
@@ -877,12 +727,31 @@ export async function apiRevokeOtherSessions(): Promise<void> {
 }
 
 export async function apiDeleteAccount(password: string): Promise<void> {
-  if (isDevLocalOfflineSession()) return;
-  await postAuthorizedJsonWithBody<Record<string, never>>(
-    authEndpoint("/api/auth/delete-account"),
-    { password },
-    "Не удалось удалить аккаунт",
-  );
+  if (isDevLocalOfflineSession()) {
+    clearSession();
+    return;
+  }
+  await ensureFreshAccessToken();
+  await runWebAuthExclusive(async () => {
+    const token = getAccessToken();
+    if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
+    const response = await webApiFetch(authEndpoint("/api/auth/delete-account"), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password }),
+    });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as ApiError;
+      throw new ApiRequestError(
+        response.status,
+        typeof data.error === "string" ? data.error : "Не удалось удалить аккаунт",
+      );
+    }
+    clearSession();
+  });
 }
 
 export type SecurityStatusDto = {
@@ -996,17 +865,23 @@ export async function apiLogout(): Promise<void> {
     return;
   }
 
-  const token = getAccessToken();
-  if (token) {
-    try {
-      await fetch(authEndpoint("/api/auth/logout"), {
+  try {
+    await ensureFreshAccessToken();
+  } catch {
+    // Revocation remains best-effort; the local tombstone is mandatory.
+  }
+  try {
+    await runWebAuthExclusive(async () => {
+      const token = getAccessToken();
+      if (!token) return;
+      await webApiFetch(authEndpoint("/api/auth/logout"), {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-    } catch {
-      // Сеть недоступна — локальную сессию всё равно сбрасываем.
-    }
+    });
+  } catch {
+    // Network/proxy failure never prevents explicit local logout.
+  } finally {
+    clearSession();
   }
-
-  clearSession();
 }

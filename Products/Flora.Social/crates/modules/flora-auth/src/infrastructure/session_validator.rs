@@ -19,11 +19,15 @@ impl SqlAccessSessionValidator {
 }
 
 impl AccessSessionValidator for SqlAccessSessionValidator {
-    fn is_active(&self, user_uuid: Uuid, jwt_id: &str) -> BoxFuture<'_, Result<bool, String>> {
+    fn resolve_active_session(
+        &self,
+        user_uuid: Uuid,
+        jwt_id: &str,
+    ) -> BoxFuture<'_, Result<Option<Uuid>, String>> {
         let jwt_id = jwt_id.to_string();
         Box::pin(async move {
             self.repo
-                .is_active_session(user_uuid, &jwt_id, Utc::now())
+                .find_active_session_id_by_jwt(user_uuid, &jwt_id, Utc::now())
                 .await
                 .map_err(|error| error.to_string())
         })

@@ -970,6 +970,7 @@ dependencies = [
  "argon2",
  "axum",
  "base64",
+ "chacha20poly1305",
  "chrono",
  "data-encoding",
  "flora-auth-contracts",
@@ -1162,6 +1163,7 @@ version = "0.8.0-alpha"
 dependencies = [
  "anyhow",
  "clap",
+ "flora-auth",
  "flora-content",
  "flora-messaging",
  "flora-music",

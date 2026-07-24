@@ -106,7 +106,8 @@ export function AuthFlow({ initialMode = "login" }: AuthFlowProps) {
 
   const [loading, setLoading] = useState(false);
 
-  const bootstrap = useSessionStore((s) => s.bootstrap);
+  const activateLogin = useSessionStore((s) => s.activateLogin);
+  const beginLogin = useSessionStore((s) => s.beginLogin);
 
 
 
@@ -248,7 +249,7 @@ export function AuthFlow({ initialMode = "login" }: AuthFlowProps) {
 
     }
 
-    await bootstrap();
+    await activateLogin();
 
     const me = useSessionStore.getState().me;
 
@@ -344,6 +345,7 @@ export function AuthFlow({ initialMode = "login" }: AuthFlowProps) {
 
         setTwoFactorCode("");
 
+        beginLogin();
         await saveLoginResponse(mobileSessionStore, result);
 
         await finishAuth(Boolean(result.requiresProfileCompletion), password);
@@ -380,6 +382,7 @@ export function AuthFlow({ initialMode = "login" }: AuthFlowProps) {
 
       });
 
+      beginLogin();
       await saveLoginResponse(mobileSessionStore, res);
 
       await finishAuth(true, password, true);

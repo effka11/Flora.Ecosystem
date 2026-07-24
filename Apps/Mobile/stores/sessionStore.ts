@@ -1,115 +1,126 @@
-import { ApiRequestError, isNetworkError, refreshSessionIfPossible } from "@flora/client-core/api";
-import { apiGetMe, apiLogout } from "@flora/client-core/auth";
+import {
+  notifyIfSessionRevoked,
+  refreshSession,
+  supersedeSessionRefresh,
+} from "@flora/client-core/api";
+import { apiLogout } from "@flora/client-core/auth";
 import type { MeResponse } from "@flora/client-core/contracts";
 import { create } from "zustand";
 import { clearSecurePushMaterial } from "flora-secure-push";
 import { mobileFscpKeyStorage } from "@/lib/fscp/storage";
-import { mobileSessionStore } from "@/lib/session";
+import { getQueryClientRef } from "@/lib/queryClientRef";
+import { mobileSessionStore, resolveApiBaseUrl } from "@/lib/session";
+import {
+  createSessionController,
+  type SessionControllerStatus,
+} from "@/lib/sessionController";
 import { useFscpStore } from "@/stores/fscpStore";
 
 type SessionState = {
+  status: SessionControllerStatus;
   me: MeResponse | null;
   isAuthenticated: boolean;
   pendingProfileSetup: boolean;
   bootstrap: () => Promise<void>;
+  beginLogin: () => void;
+  activateLogin: () => Promise<void>;
+  reconcileSession: () => Promise<void>;
   resumeSession: () => Promise<void>;
   setMe: (me: MeResponse | null) => void;
   logout: (clearKeys?: boolean) => Promise<void>;
 };
 
-async function bootstrapFscpIfNeeded(userUuid: string): Promise<void> {
-  const fscp = useFscpStore.getState();
-  const norm = userUuid.trim().toLowerCase();
-  const alreadyReady =
-    fscp.passwordSyncedForOwner === norm ||
-    (fscp.ownerUserUuid === norm && fscp.status === "ready");
-  if (!alreadyReady) {
-    await useFscpStore.getState().bootstrap(userUuid);
-  }
-}
+const mobileSessionController = createSessionController({
+  sessionStore: mobileSessionStore,
+  async refreshSession() {
+    const outcome = await refreshSession();
+    if (outcome === "invalid") await notifyIfSessionRevoked();
+    return outcome;
+  },
+  supersedeRefresh: supersedeSessionRefresh,
+  fetchImpl: ((input, init) => fetch(input, init)) as typeof fetch,
+  apiBaseUrl: resolveApiBaseUrl(),
+  clientHeader: "android/0.8.0-alpha",
+  clock: { now: () => Date.now() },
+});
 
-function shouldStayAuthenticatedOffline(err: unknown): boolean {
-  if (isNetworkError(err)) return true;
-  if (err instanceof ApiRequestError && err.status === 401) {
-    return true;
-  }
-  return false;
-}
-
-async function loadMeIntoStore(pendingProfileSetup: boolean): Promise<void> {
-  const me = await apiGetMe();
-  useSessionStore.setState({ me, isAuthenticated: true, pendingProfileSetup });
-}
-
-export const useSessionStore = create<SessionState>((set) => ({
+export const useSessionStore = create<SessionState>(() => ({
+  status: "bootstrapping",
   me: null,
   isAuthenticated: false,
   pendingProfileSetup: false,
   async bootstrap() {
-    const token = await mobileSessionStore.getAccessToken();
-    const pending = await mobileSessionStore.hasPendingProfileSetup();
-    if (!token) {
-      set({ me: null, isAuthenticated: false, pendingProfileSetup: pending });
-      return;
-    }
-
-    try {
-      await loadMeIntoStore(pending);
-      return;
-    } catch (err) {
-      if (err instanceof ApiRequestError && err.status === 401) {
-        if (await refreshSessionIfPossible()) {
-          try {
-            await loadMeIntoStore(pending);
-            return;
-          } catch (retryErr) {
-            err = retryErr;
-          }
-        }
-      }
-
-      if (shouldStayAuthenticatedOffline(err) && (await mobileSessionStore.getRefreshToken())) {
-        set({ me: null, isAuthenticated: true, pendingProfileSetup: pending });
-        return;
-      }
-
-      await mobileSessionStore.clearSession(false);
-      set({ me: null, isAuthenticated: false, pendingProfileSetup: false });
-    }
+    await mobileSessionController.bootstrap();
+  },
+  beginLogin() {
+    mobileSessionController.beginLogin();
+  },
+  async activateLogin() {
+    await mobileSessionController.onLogin();
+  },
+  async reconcileSession() {
+    await mobileSessionController.reconcile();
   },
   async resumeSession() {
-    const state = useSessionStore.getState();
-    if (!state.isAuthenticated) return;
-
-    if (state.me?.userUuid) {
-      await bootstrapFscpIfNeeded(state.me.userUuid).catch(() => undefined);
-      return;
-    }
-
-    try {
-      const me = await apiGetMe();
-      set({ me, isAuthenticated: true, pendingProfileSetup: state.pendingProfileSetup });
-      await bootstrapFscpIfNeeded(me.userUuid);
-    } catch {
-      /* stay degraded until next reconnect */
-    }
+    await mobileSessionController.reconcile();
   },
   setMe(me) {
-    set({ me, isAuthenticated: !!me, pendingProfileSetup: false });
+    if (me) {
+      mobileSessionController.acceptAuthenticated(me);
+      return;
+    }
+    mobileSessionController.onUnauthorized();
   },
   async logout(clearKeys = false) {
+    const previous = mobileSessionController.getState();
+    const me = previous.me;
+    mobileSessionController.onLogout();
     clearSecurePushMaterial();
     try {
       await apiLogout();
     } catch {
       /* ignore */
     }
-    const me = useSessionStore.getState().me;
-    if (clearKeys && me?.userUuid) {
-      await mobileFscpKeyStorage.clearProfile(me.userUuid.toLowerCase());
+    try {
+      await mobileSessionStore.clearSession(clearKeys);
+    } catch (error) {
+      mobileSessionController.reportStorageUnavailable(error, {
+        me,
+        pendingProfileSetup: previous.pendingProfileSetup,
+      });
+      throw error;
     }
-    await mobileSessionStore.clearSession(clearKeys);
+    if (clearKeys && me?.userUuid) {
+      await mobileFscpKeyStorage
+        .clearProfile(me.userUuid.toLowerCase())
+        .catch(() => undefined);
+    }
     useFscpStore.getState().clearRuntimeState();
-    set({ me: null, isAuthenticated: false, pendingProfileSetup: false });
   },
 }));
+
+mobileSessionController.subscribe((next) => {
+  const isAuthenticated =
+    next.status === "authenticated" ||
+    next.status === "degraded" ||
+    (next.status === "storageUnavailable" && next.me !== null);
+  useSessionStore.setState({
+    status: next.status,
+    me: next.me,
+    isAuthenticated,
+    pendingProfileSetup: next.pendingProfileSetup,
+  });
+  if (next.status === "anonymous") {
+    clearSecurePushMaterial();
+    useFscpStore.getState().clearRuntimeState();
+    getQueryClientRef()?.clear();
+  }
+});
+
+export function handleSessionUnauthorized(): void {
+  mobileSessionController.onUnauthorized();
+}
+
+export function getMobileSessionController() {
+  return mobileSessionController;
+}

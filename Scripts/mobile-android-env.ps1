@@ -239,8 +239,14 @@ function Ensure-FscpSecurePushAndroidNative([string]$repoRoot) {
     }
     Write-Host "Building FSCP secure-push Android libs ..."
     & (Join-Path $repoRoot "Scripts\build-fscp-mobile-android.ps1")
-    if ($LASTEXITCODE -ne 0 -or -not (Test-FscpSecurePushAndroidNativePresent $repoRoot)) {
+    if ($LASTEXITCODE -ne 0) {
         throw "build-fscp-mobile-android.ps1 failed."
+    }
+    # Post-build: existence only (same as FRC-I). Freshness gated the rebuild;
+    # build-fscp-mobile-android.ps1 stamps jniLibs mtimes after cargo-ndk copy.
+    $so = Join-Path $repoRoot "Apps\Mobile\modules\flora-secure-push\android\src\main\jniLibs\arm64-v8a\libfscp_mobile_ffi.so"
+    if (-not (Test-Path $so)) {
+        throw "FSCP secure-push native build finished but libfscp_mobile_ffi.so is still missing."
     }
 }
 

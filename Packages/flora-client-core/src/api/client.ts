@@ -1,5 +1,10 @@
 import { ApiRequestError } from "../api/errors.js";
-import type { ClientIdentity, SessionStore } from "./types.js";
+import type { ClientIdentity, SessionRecord, SessionStore } from "./types.js";
+import {
+  SessionRefreshCoordinator,
+  type RunRefreshExclusive,
+  type SessionRefreshOutcome,
+} from "./sessionCoordinator.js";
 
 declare const __DEV__: boolean | undefined;
 
@@ -11,10 +16,14 @@ export type ApiClientConfig = {
   onUnauthorized?: () => void;
   onUpgradeRequired?: () => void;
   onPascalFallback?: (key: string) => void;
+  runRefreshExclusive?: RunRefreshExclusive;
+  /** Enables re-sending R1 after an ambiguous response. Defaults to false. */
+  retrySafeRefreshBackend?: boolean;
 };
 
 let _config: ApiClientConfig | null = null;
 let _primedBaseUrl: string | null = null;
+const sessionRefreshCoordinator = new SessionRefreshCoordinator();
 
 /** Ранний URL до полного configureApiClient (display-хелперы при eager import экранов). */
 export function primeApiBaseUrl(apiBaseUrl: string): void {
@@ -26,6 +35,7 @@ function resolvedApiBaseUrl(): string | null {
 }
 
 export function configureApiClient(config: ApiClientConfig): void {
+  sessionRefreshCoordinator.supersede();
   _config = config;
   primeApiBaseUrl(config.apiBaseUrl);
 }
@@ -66,10 +76,7 @@ function buildHeaders(token: string | null, extra?: RequestInit["headers"]): Hea
 const DEFAULT_ACCESS_SKEW_MS = 120_000;
 const MIN_PROACTIVE_REFRESH_MS = 60_000;
 
-let refreshInFlight: Promise<boolean> | null = null;
 let lastProactiveRefreshAttemptAt = 0;
-
-type RefreshAttemptResult = "success" | "auth_failed" | "transient_failed" | "persist_failed";
 
 function decodeJwtExpMs(accessToken: string): number | null {
   const parts = accessToken.split(".");
@@ -89,11 +96,11 @@ function decodeJwtExpMs(accessToken: string): number | null {
   return null;
 }
 
-async function resolveAccessExpiresAtMs(
-  session: SessionStore,
+function resolveAccessExpiresAtMs(
+  session: SessionRecord,
   accessToken: string,
-): Promise<number | null> {
-  const stored = await session.getExpiresAt();
+): number | null {
+  const stored = session.expiresAt;
   if (stored) {
     const ms = Date.parse(stored);
     if (!Number.isNaN(ms)) return ms;
@@ -101,133 +108,85 @@ async function resolveAccessExpiresAtMs(
   return decodeJwtExpMs(accessToken);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function readEffectiveSessionRecord(): Promise<SessionRecord | null> {
+  const { session } = getApiClientConfig();
+  return sessionRefreshCoordinator.readEffectiveSession(session);
+}
+
+export function supersedeSessionRefresh(): void {
+  sessionRefreshCoordinator.supersede();
 }
 
 export function notifyUnauthorized(onUnauthorized?: () => void): void {
   const handler = onUnauthorized ?? getApiClientConfig().onUnauthorized;
+  supersedeSessionRefresh();
   handler?.();
 }
 
-/** True when both tokens are gone — session was revoked server-side. */
-async function isSessionFullyRevoked(session: SessionStore): Promise<boolean> {
-  const [refreshToken, accessToken] = await Promise.all([
-    session.getRefreshToken(),
-    session.getAccessToken(),
-  ]);
-  return !refreshToken && !accessToken;
-}
-
-/** Sync UI/logout handler after proactive refresh cleared SecureStore. */
+/** Sync UI/logout only after the Auth refresh endpoint confirmed Invalid. */
 export async function notifyIfSessionRevoked(onUnauthorized?: () => void): Promise<boolean> {
   const { session } = getApiClientConfig();
-  if (!(await isSessionFullyRevoked(session))) return false;
-  await session.clearSession(false);
+  if (!(await sessionRefreshCoordinator.isConfirmedInvalidReadyToNotify(session))) {
+    return false;
+  }
   notifyUnauthorized(onUnauthorized);
   return true;
 }
 
-/** Clear only if the refresh we sent is still stored — avoids wiping a concurrent successful rotation. */
-async function clearSessionIfRefreshUnchanged(
-  session: SessionStore,
-  refreshTokenWeSent: string,
-): Promise<"auth_failed" | "success"> {
-  const still = await session.getRefreshToken();
-  if (still === refreshTokenWeSent) {
-    await session.clearSession(false);
-    return "auth_failed";
-  }
-  const access = await session.getAccessToken();
-  return access && still ? "success" : "auth_failed";
-}
-
-async function refreshSessionOnce(): Promise<RefreshAttemptResult> {
-  const { session, fetchImpl = fetch } = getApiClientConfig();
-  const refreshToken = await session.getRefreshToken();
-  if (!refreshToken) return "auth_failed";
-
-  try {
-    const r = await fetchImpl(apiUrl("/api/auth/refresh"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (r.status === 401 || r.status === 403) {
-      return clearSessionIfRefreshUnchanged(session, refreshToken);
-    }
-    if (!r.ok) {
-      return "transient_failed";
-    }
-    const raw = await r.json();
-    const { parseLoginPayload } = await import("../contracts/auth.js");
-    try {
-      const parsed = parseLoginPayload(raw);
-      await session.saveSession({
-        accessToken: parsed.accessToken,
-        refreshToken: parsed.refreshToken,
-        expiresAt: parsed.expiresAt,
-      });
-      return "success";
-    } catch {
-      // Bad payload / save failure — keep prior session and do NOT retry: the server may
-      // already have rotated the refresh token; retrying R1 would 401 and wipe via compare-and-clear.
-      const still = await session.getRefreshToken();
-      if (still && still !== refreshToken) {
-        const access = await session.getAccessToken();
-        if (access) return "success";
-      }
-      if (still && (await session.getAccessToken())) return "persist_failed";
-      return "auth_failed";
-    }
-  } catch {
-    return "transient_failed";
-  }
-}
-
 /** @internal Resets in-memory refresh throttle between Vitest cases. */
 export function resetSessionRefreshStateForTests(): void {
-  refreshInFlight = null;
+  sessionRefreshCoordinator.resetForTests();
   lastProactiveRefreshAttemptAt = 0;
 }
 
+export function refreshSession(): Promise<SessionRefreshOutcome> {
+  const {
+    session,
+    fetchImpl = fetch,
+    onPascalFallback,
+    runRefreshExclusive,
+    retrySafeRefreshBackend = false,
+  } = getApiClientConfig();
+  return sessionRefreshCoordinator.refresh({
+    session,
+    fetchImpl,
+    refreshUrl: apiUrl("/api/auth/refresh"),
+    onPascalFallback,
+    runRefreshExclusive,
+    retrySafeRefreshBackend,
+  });
+}
+
 export async function refreshSessionIfPossible(): Promise<boolean> {
-  if (refreshInFlight) return refreshInFlight;
-
-  refreshInFlight = (async () => {
-    try {
-      let result = await refreshSessionOnce();
-      if (result === "transient_failed") {
-        await sleep(500);
-        result = await refreshSessionOnce();
-      }
-      if (result === "success") {
-        return true;
-      }
-      return false;
-    } finally {
-      refreshInFlight = null;
-    }
-  })();
-
-  return refreshInFlight;
+  const outcome = await refreshSession();
+  if (outcome === "ready") return true;
+  if (outcome !== "storage_pending" && outcome !== "superseded") return false;
+  return Boolean((await readEffectiveSessionRecord().catch(() => null))?.accessToken);
 }
 
 export async function ensureFreshAccessToken(options?: { skewMs?: number }): Promise<void> {
   const skewMs = options?.skewMs ?? DEFAULT_ACCESS_SKEW_MS;
   const { session } = getApiClientConfig();
-  const accessToken = await session.getAccessToken();
-  if (!accessToken) return;
+  if (sessionRefreshCoordinator.hasPendingCommit(session)) {
+    await refreshSession();
+    return;
+  }
 
-  const expiresAtMs = await resolveAccessExpiresAtMs(session, accessToken);
+  const stored = await readEffectiveSessionRecord().catch(() => null);
+  if (!stored?.refresh) return;
+
+  const accessToken = stored.accessToken;
+  const expiresAtMs = accessToken
+    ? resolveAccessExpiresAtMs(stored, accessToken)
+    : null;
   const now = Date.now();
   const shouldRefresh =
-    expiresAtMs === null ? true : now >= expiresAtMs - skewMs;
+    !accessToken || expiresAtMs === null || now >= expiresAtMs - skewMs;
   if (!shouldRefresh) return;
 
   if (now - lastProactiveRefreshAttemptAt < MIN_PROACTIVE_REFRESH_MS) return;
   lastProactiveRefreshAttemptAt = now;
-  await refreshSessionIfPossible();
+  await refreshSession();
 }
 
 /** Proactive refresh + immediate logout when refresh token revoked (App resume / NetInfo). */
@@ -238,15 +197,9 @@ export async function syncStoredSessionTokens(options?: { skewMs?: number }): Pr
 
 async function throwUnauthorizedResponse(
   r: Response,
-  onUnauthorized?: () => void,
+  _onUnauthorized?: () => void,
 ): Promise<never> {
-  const { session } = getApiClientConfig();
   const message = await parseErrorMessage(r);
-  const refreshToken = await session.getRefreshToken();
-  if (!refreshToken) {
-    await session.clearSession(false);
-    notifyUnauthorized(onUnauthorized);
-  }
   throw new ApiRequestError(401, message);
 }
 
@@ -254,16 +207,9 @@ async function throwUnauthorizedResponse(
 export async function rejectUploadUnauthorized(
   status: number,
   message: string,
-  onUnauthorized?: () => void,
+  _onUnauthorized?: () => void,
 ): Promise<never> {
   if (status !== 401) throw new ApiRequestError(status, message);
-  const { session } = getApiClientConfig();
-  const refreshToken = await session.getRefreshToken();
-  if (refreshToken) {
-    throw new ApiRequestError(401, message);
-  }
-  await session.clearSession(false);
-  notifyUnauthorized(onUnauthorized);
   throw new ApiRequestError(401, message);
 }
 
@@ -272,15 +218,14 @@ export async function authFetch(
   init: RequestInit = {},
   options?: { baseUrl?: string },
 ): Promise<Response> {
-  const { session, fetchImpl = fetch, onUnauthorized, onUpgradeRequired } = getApiClientConfig();
-  let token = await session.getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
+  const { fetchImpl = fetch, onUnauthorized, onUpgradeRequired } = getApiClientConfig();
 
   await ensureFreshAccessToken();
   if (await notifyIfSessionRevoked(onUnauthorized)) {
     throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   }
-  token = (await session.getAccessToken()) ?? token;
+  let token = (await readEffectiveSessionRecord().catch(() => null))?.accessToken;
+  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
   const resolveUrl = (p: string) => {
     const base = options?.baseUrl?.trim().replace(/\/+$/, "");
@@ -303,9 +248,21 @@ export async function authFetch(
     throw new ApiRequestError(426, await parseErrorMessage(r));
   }
   if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = await session.getAccessToken();
-      if (token) r = await doFetch(token);
+    const outcome = await refreshSession();
+    if (outcome === "invalid") {
+      await notifyIfSessionRevoked(onUnauthorized);
+    }
+    if (
+      outcome === "ready" ||
+      outcome === "storage_pending" ||
+      outcome === "superseded"
+    ) {
+      const refreshedToken = (await readEffectiveSessionRecord().catch(() => null))
+        ?.accessToken;
+      if (refreshedToken && refreshedToken !== token) {
+        token = refreshedToken;
+        r = await doFetch(token);
+      }
     }
   }
   if (r.status === 426) {
@@ -374,16 +331,15 @@ export async function authPatchJson(path: string, body: Record<string, unknown>)
 }
 
 export async function authPostForm(path: string, form: FormData): Promise<unknown> {
-  const { session, fetchImpl = fetch, onUnauthorized, onUpgradeRequired, clientIdentity } =
+  const { fetchImpl = fetch, onUnauthorized, onUpgradeRequired, clientIdentity } =
     getApiClientConfig();
-  let token = await session.getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
   await ensureFreshAccessToken();
   if (await notifyIfSessionRevoked(onUnauthorized)) {
     throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
   }
-  token = (await session.getAccessToken()) ?? token;
+  let token = (await readEffectiveSessionRecord().catch(() => null))?.accessToken;
+  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
 
   const multipartHeaders = (accessToken: string): Record<string, string> => ({
     Authorization: `Bearer ${accessToken}`,
@@ -404,9 +360,21 @@ export async function authPostForm(path: string, form: FormData): Promise<unknow
     throw new ApiRequestError(426, await parseErrorMessage(r));
   }
   if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = await session.getAccessToken();
-      if (token) r = await doFetch(token);
+    const outcome = await refreshSession();
+    if (outcome === "invalid") {
+      await notifyIfSessionRevoked(onUnauthorized);
+    }
+    if (
+      outcome === "ready" ||
+      outcome === "storage_pending" ||
+      outcome === "superseded"
+    ) {
+      const refreshedToken = (await readEffectiveSessionRecord().catch(() => null))
+        ?.accessToken;
+      if (refreshedToken && refreshedToken !== token) {
+        token = refreshedToken;
+        r = await doFetch(token);
+      }
     }
   }
   if (r.status === 426) {

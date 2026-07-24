@@ -1,9 +1,10 @@
 //! sqlx-репозиторий Auth (`user_sessions`, `user_accounts`).
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::domain::refresh_machine::{RefreshDecision, ReplayRecord, SessionState, decide};
 use crate::infrastructure::tokens::hash_refresh_token;
 
 const STATUS_ACTIVE: i32 = 0;
@@ -116,6 +117,81 @@ impl AuthRepo {
         .bind(now)
         .fetch_one(&self.pool)
         .await
+    }
+
+    /// Разрешить стабильный `session_id` активной сессии по `jwt_id` (JTI).
+    ///
+    /// Middleware вызывает это на каждый защищённый запрос: пока access-токен
+    /// валиден, его JTI совпадает с текущим `jwt_id` строки. Полученный
+    /// `session_id` кладётся в `AuthUser`, поэтому logout/revoke оперируют по
+    /// session id и не зависят от параллельной ротации JTI.
+    pub async fn find_active_session_id_by_jwt(
+        &self,
+        user_uuid: Uuid,
+        jwt_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT session_id
+            FROM flora_core.user_sessions
+            WHERE user_uuid = $1
+              AND jwt_id = $2
+              AND status = $3
+              AND expires_at > $4
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(jwt_id)
+        .bind(STATUS_ACTIVE)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// Logout текущей сессии по стабильному `session_id` (без фильтра по status —
+    /// паритет прежнего `revoke_by_jwt_id`). Идемпотентно; повторный logout no-op.
+    pub async fn revoke_by_session_id_logout(&self, session_id: Uuid) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flora_core.user_sessions
+            SET status = $1
+            WHERE session_id = $2
+            "#,
+        )
+        .bind(STATUS_REVOKED_USER)
+        .bind(session_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Завершить все активные сессии пользователя, кроме текущей (по `session_id`).
+    /// Если `current_session_id` = NULL — отзываются все активные.
+    pub async fn revoke_other_sessions_except_id(
+        &self,
+        user_uuid: Uuid,
+        current_session_id: Option<Uuid>,
+        now: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flora_core.user_sessions
+            SET status = $1
+            WHERE user_uuid = $2
+              AND status = $3
+              AND expires_at > $4
+              AND ($5::uuid IS NULL OR session_id <> $5)
+            "#,
+        )
+        .bind(STATUS_REVOKED_USER)
+        .bind(user_uuid)
+        .bind(STATUS_ACTIVE)
+        .bind(now)
+        .bind(current_session_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     /// Завершить все активные сессии пользователя, кроме текущей (по `jwt_id`).
@@ -265,6 +341,274 @@ impl AuthRepo {
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() == 1)
+    }
+
+    /// Prefetch (без row lock) для сборки прогнозного R2 до транзакции:
+    /// `user_uuid` + `rotation_id` по `session_id`, независимо от статуса.
+    pub async fn find_refresh_session_by_id(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Option<RefreshSessionRow>, sqlx::Error> {
+        sqlx::query_as::<_, RefreshSessionRow>(
+            r#"
+            SELECT session_id, user_uuid, rotation_id
+            FROM flora_core.user_sessions
+            WHERE session_id = $1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// Fallback для legacy-токена без крипто-привязки к family: найти `session_id`
+    /// активной сессии по refresh hash/raw. Возвращает только id (не отзыв-oracle).
+    pub async fn find_session_id_by_refresh(
+        &self,
+        refresh_token: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Uuid>, sqlx::Error> {
+        let refresh_hash = hash_refresh_token(refresh_token);
+        sqlx::query_scalar(
+            r#"
+            SELECT session_id
+            FROM flora_core.user_sessions
+            WHERE (
+                    refresh_token = $1
+                    OR (refresh_token = $2 AND refresh_token NOT LIKE 'sha256:%')
+                  )
+              AND status = $3
+              AND expires_at > $4
+            "#,
+        )
+        .bind(refresh_hash)
+        .bind(refresh_token)
+        .bind(STATUS_ACTIVE)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// Транзакционная replay-safe state machine (plan §2).
+    ///
+    /// `READ COMMITTED`; первой блокируется строка `user_sessions` (`FOR UPDATE`),
+    /// затем по `clock_timestamp()` перепроверяются статус/expiry/hash. Решение —
+    /// единый [`decide`] (тот же, что покрыт unit-тестами). Rotate меняет сессию и
+    /// upsert-ит replay-строку одним commit; Replay читает сохранённый grant;
+    /// ReuseOutsideGrace отзывает сессию; Invalid ничего не пишет.
+    #[allow(clippy::too_many_arguments)] // atomic rotation state machine + drain flag
+    pub async fn rotate_or_replay(
+        &self,
+        session_id: Uuid,
+        presented_raw: &str,
+        presented_hash: &str,
+        bound: bool,
+        grant: &PreparedGrant,
+        grace_seconds: i64,
+        draining: bool,
+    ) -> Result<RefreshOutcome, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
+        let locked: Option<LockedSessionRow> = sqlx::query_as(
+            r#"
+            SELECT status, expires_at, refresh_token, rotation_id, user_uuid,
+                   clock_timestamp() AS db_now
+            FROM flora_core.user_sessions
+            WHERE session_id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(locked) = locked else {
+            tx.rollback().await?;
+            return Ok(RefreshOutcome::Invalid);
+        };
+
+        let replay_row: Option<ReplayDbRow> = sqlx::query_as(
+            r#"
+            SELECT spent_hash, replacement_hash, replacement_rotation_id, refresh_expires_at,
+                   valid_until, key_id, nonce, ciphertext, version
+            FROM flora_core.auth_refresh_replays
+            WHERE session_id = $1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        // Legacy-строка хранит сырой refresh (не `sha256:`-hash): текущим считаем
+        // и hash-совпадение, и сырое совпадение для не-hashed строк.
+        let presented_is_current = locked.refresh_token == presented_hash
+            || (locked.refresh_token == presented_raw
+                && !locked.refresh_token.starts_with("sha256:"));
+
+        let session_state = SessionState {
+            active: locked.status == STATUS_ACTIVE,
+            expires_at: locked.expires_at,
+            stored_hash: locked.refresh_token.clone(),
+            rotation_id: locked.rotation_id,
+        };
+        let replay_record = replay_row.as_ref().map(|row| ReplayRecord {
+            spent_hash: row.spent_hash.clone(),
+            replacement_hash: row.replacement_hash.clone(),
+            valid_until: row.valid_until,
+        });
+
+        let decision = decide(
+            Some(&session_state),
+            replay_record.as_ref(),
+            presented_hash,
+            presented_is_current,
+            bound,
+            locked.db_now,
+        );
+
+        // Drain-режим (rollback): любое решение, которое создало бы новую ротацию
+        // или отозвало бы family, блокируется БЕЗ мутации строки → 503. Replay в
+        // grace и Invalid проходят как обычно (Replay обслуживается, Invalid = 401,
+        // ни один не мутирует статус в false-revoke).
+        if crate::domain::refresh_machine::drain_blocks(decision, draining) {
+            tx.rollback().await?;
+            return Ok(RefreshOutcome::Draining);
+        }
+
+        match decision {
+            RefreshDecision::Rotate => {
+                let valid_until = locked.db_now + Duration::seconds(grace_seconds);
+                let updated = sqlx::query(
+                    r#"
+                    UPDATE flora_core.user_sessions
+                    SET jwt_id = $1,
+                        refresh_token = $2,
+                        expires_at = $3,
+                        last_activity = $4,
+                        rotation_id = $5
+                    WHERE session_id = $6
+                      AND rotation_id = $7
+                      AND status = $8
+                    "#,
+                )
+                .bind(&grant.new_jwt_id)
+                .bind(&grant.new_refresh_hash)
+                .bind(grant.refresh_expires_at)
+                .bind(locked.db_now)
+                .bind(grant.new_rotation_id)
+                .bind(session_id)
+                .bind(grant.expected_rotation_id)
+                .bind(STATUS_ACTIVE)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+                if updated != 1 {
+                    // Под row lock не должно случаться; трактуем как concurrency-аномалию
+                    // → transient 5xx (retry R1 восстановит R2).
+                    tx.rollback().await?;
+                    return Err(sqlx::Error::RowNotFound);
+                }
+                sqlx::query(
+                    r#"
+                    INSERT INTO flora_core.auth_refresh_replays (
+                        session_id, spent_hash, replacement_hash, replacement_rotation_id,
+                        refresh_expires_at, valid_until, key_id, nonce, ciphertext, version,
+                        created_at, updated_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+                    ON CONFLICT (session_id) DO UPDATE SET
+                        spent_hash = EXCLUDED.spent_hash,
+                        replacement_hash = EXCLUDED.replacement_hash,
+                        replacement_rotation_id = EXCLUDED.replacement_rotation_id,
+                        refresh_expires_at = EXCLUDED.refresh_expires_at,
+                        valid_until = EXCLUDED.valid_until,
+                        key_id = EXCLUDED.key_id,
+                        nonce = EXCLUDED.nonce,
+                        ciphertext = EXCLUDED.ciphertext,
+                        version = EXCLUDED.version,
+                        updated_at = EXCLUDED.updated_at
+                    "#,
+                )
+                .bind(session_id)
+                .bind(&grant.spent_hash)
+                .bind(&grant.new_refresh_hash)
+                .bind(grant.new_rotation_id)
+                .bind(grant.refresh_expires_at)
+                .bind(valid_until)
+                .bind(&grant.key_id)
+                .bind(&grant.nonce)
+                .bind(&grant.ciphertext)
+                .bind(grant.version)
+                .bind(locked.db_now)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok(RefreshOutcome::Rotated {
+                    user_uuid: locked.user_uuid,
+                })
+            }
+            RefreshDecision::Replay => {
+                let row = replay_row.expect("Replay требует наличия replay-строки");
+                tx.commit().await?;
+                Ok(RefreshOutcome::Replayed(StoredGrant {
+                    session_id,
+                    spent_hash: row.spent_hash,
+                    replacement_hash: row.replacement_hash,
+                    replacement_rotation_id: row.replacement_rotation_id,
+                    refresh_expires_at: row.refresh_expires_at,
+                    key_id: row.key_id,
+                    nonce: row.nonce,
+                    ciphertext: row.ciphertext,
+                    version: row.version,
+                }))
+            }
+            RefreshDecision::ReuseOutsideGrace => {
+                sqlx::query(
+                    r#"
+                    UPDATE flora_core.user_sessions
+                    SET status = $1
+                    WHERE session_id = $2
+                      AND status = $3
+                    "#,
+                )
+                .bind(STATUS_REVOKED_USER)
+                .bind(session_id)
+                .bind(STATUS_ACTIVE)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok(RefreshOutcome::ReusedOutsideGrace)
+            }
+            RefreshDecision::Invalid => {
+                tx.rollback().await?;
+                Ok(RefreshOutcome::Invalid)
+            }
+        }
+    }
+
+    /// Auth-owned bounded cleanup: пакетно удалить истёкшие replay-строки по индексу
+    /// `valid_until`. Возвращает число удалённых строк.
+    pub async fn cleanup_expired_replays(
+        &self,
+        now: DateTime<Utc>,
+        batch_limit: i64,
+    ) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM flora_core.auth_refresh_replays
+            WHERE session_id IN (
+                SELECT session_id
+                FROM flora_core.auth_refresh_replays
+                WHERE valid_until <= $1
+                ORDER BY valid_until
+                LIMIT $2
+            )
+            "#,
+        )
+        .bind(now)
+        .bind(batch_limit)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     pub async fn revoke_session_by_id(&self, session_id: Uuid) -> Result<u64, sqlx::Error> {
@@ -651,6 +995,35 @@ impl AuthRepo {
         Ok(())
     }
 
+    /// Отозвать прочие активные сессии после смены пароля по стабильному
+    /// `session_id` (`RevokedPassword`). Текущая сессия (`keep_session_id`) не
+    /// отзывается независимо от параллельной ротации её JTI.
+    pub async fn revoke_other_sessions_for_password_except_id(
+        &self,
+        user_uuid: Uuid,
+        keep_session_id: Option<Uuid>,
+        now: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flora_core.user_sessions
+            SET status = $1
+            WHERE user_uuid = $2
+              AND status = $3
+              AND expires_at > $4
+              AND ($5::uuid IS NULL OR session_id <> $5)
+            "#,
+        )
+        .bind(STATUS_REVOKED_PASSWORD)
+        .bind(user_uuid)
+        .bind(STATUS_ACTIVE)
+        .bind(now)
+        .bind(keep_session_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Отозвать прочие активные сессии после смены пароля (`RevokedPassword`).
     pub async fn revoke_other_sessions_for_password(
         &self,
@@ -970,6 +1343,77 @@ impl AuthRepo {
         .fetch_all(&self.pool)
         .await
     }
+}
+
+/// Прогнозный R2 (собран приложением ДО транзакции, вне row lock) для записи при
+/// Rotate. `spent_hash` — hash поданного R1; `new_refresh_hash` становится
+/// `replacement_hash` replay-строки.
+#[derive(Debug, Clone)]
+pub struct PreparedGrant {
+    pub expected_rotation_id: i64,
+    pub new_rotation_id: i64,
+    pub new_jwt_id: String,
+    pub new_refresh_hash: String,
+    pub refresh_expires_at: DateTime<Utc>,
+    pub spent_hash: String,
+    pub key_id: String,
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub version: i32,
+}
+
+/// Сохранённый grant, возвращаемый при Replay: приложение восстанавливает AAD и
+/// расшифровывает ciphertext key ring'ом.
+#[derive(Debug, Clone)]
+pub struct StoredGrant {
+    pub session_id: Uuid,
+    pub spent_hash: String,
+    pub replacement_hash: String,
+    pub replacement_rotation_id: i64,
+    pub refresh_expires_at: DateTime<Utc>,
+    pub key_id: String,
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub version: i32,
+}
+
+/// Типизированный итог retry-safe refresh (plan §1: `Rotated | Replayed |
+/// ReusedOutsideGrace | Invalid`).
+#[derive(Debug)]
+pub enum RefreshOutcome {
+    Rotated {
+        user_uuid: Uuid,
+    },
+    Replayed(StoredGrant),
+    ReusedOutsideGrace,
+    Invalid,
+    /// Drain-режим (rollback): решение потребовало бы новую ротацию (или отзыв по
+    /// reuse), но инстанс дренируется. Строка НЕ мутируется — вызывающий отдаёт
+    /// 503 (retryable). Replay внутри grace продолжает обслуживаться.
+    Draining,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct LockedSessionRow {
+    status: i32,
+    expires_at: DateTime<Utc>,
+    refresh_token: String,
+    rotation_id: i64,
+    user_uuid: Uuid,
+    db_now: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct ReplayDbRow {
+    spent_hash: String,
+    replacement_hash: String,
+    replacement_rotation_id: i64,
+    refresh_expires_at: DateTime<Utc>,
+    valid_until: DateTime<Utc>,
+    key_id: String,
+    nonce: Vec<u8>,
+    ciphertext: Vec<u8>,
+    version: i32,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

@@ -45,7 +45,7 @@ pub fn registry() -> Vec<ModuleMigrations> {
         ModuleMigrations {
             module: "auth",
             current_owner: "Rust",
-            migrator: None,
+            migrator: Some(&flora_auth::MIGRATOR),
         },
         ModuleMigrations {
             module: "notifications",
@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn rust_owned_modules_with_registered_migrators() {
-        // Фаза 5: все владельцы Rust; migrator есть у users/content/music/messaging.
+        // Фаза 5: все владельцы Rust; migrator есть у auth/users/content/music/messaging.
         for m in registry() {
             assert_eq!(
                 m.current_owner, "Rust",
@@ -100,7 +100,7 @@ mod tests {
                 m.module
             );
             match m.module {
-                "users" | "content" | "music" | "messaging" | "notifications" => {
+                "auth" | "users" | "content" | "music" | "messaging" | "notifications" => {
                     assert!(m.migrator.is_some(), "{}: ожидался MIGRATOR", m.module);
                 }
                 _ => assert!(
@@ -110,6 +110,25 @@ mod tests {
                 ),
             }
         }
+    }
+
+    #[test]
+    fn auth_migration_creates_replay_grants_table() {
+        let modules = registry();
+        let auth = modules
+            .iter()
+            .find(|module| module.module == "auth")
+            .expect("auth в реестре");
+        let migration = auth
+            .migrator
+            .expect("мигратор auth")
+            .iter()
+            .find(|migration| migration.description.contains("refresh replays"))
+            .expect("миграция refresh_replays");
+        let sql = migration.sql.as_ref();
+        assert!(sql.contains("flora_core.auth_refresh_replays"));
+        assert!(sql.contains("ux_auth_refresh_replays_spent_hash"));
+        assert!(sql.contains("ix_auth_refresh_replays_valid_until"));
     }
 
     #[test]
