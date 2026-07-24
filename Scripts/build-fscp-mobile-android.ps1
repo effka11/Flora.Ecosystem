@@ -34,4 +34,10 @@ $so = Join-Path $output "arm64-v8a\libfscp_mobile_ffi.so"
 if (-not (Test-Path $so)) {
     throw "Expected $so after cargo-ndk build"
 }
+# cargo-ndk copies from target/ and preserves mtimes. Stamp jniLibs so
+# Ensure-FscpSecurePushAndroidNative freshness checks see a current artifact
+# even when cargo was a cache hit (e.g. Cargo.lock touched without rebuild).
+Get-ChildItem $output -Recurse -Filter "libfscp_mobile_ffi.so" -File | ForEach-Object {
+    $_.LastWriteTimeUtc = [DateTime]::UtcNow
+}
 Write-Host "FSCP secure-push native libs ready under $output"
