@@ -11,13 +11,16 @@ import {
   type ReactNode,
 } from "react";
 import {
-  Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import {
+  Gesture,
+  GestureDetector,
+  Pressable,
+} from "react-native-gesture-handler";
 import {
   ensureVerticalFlingAlive,
   setDrawerOverlayPresented,
@@ -610,7 +613,6 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
           <Animated.View
             pointerEvents={overlayPointerEvents}
             collapsable={false}
-            renderToHardwareTextureAndroid
             style={[
               styles.panel,
               {
