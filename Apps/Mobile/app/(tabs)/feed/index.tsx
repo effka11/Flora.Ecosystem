@@ -609,7 +609,6 @@ export default function FeedScreen() {
       <View style={styles.feedBody}>
         <GestureDetector gesture={pagerPan}>
           <Reanimated.View
-            renderToHardwareTextureAndroid
             style={[styles.pagerRow, { width: pageWidth * 2 }, pagerStyle]}
           >
             <FeedPane
