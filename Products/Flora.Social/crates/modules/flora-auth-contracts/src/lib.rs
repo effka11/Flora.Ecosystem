@@ -57,6 +57,16 @@ pub trait AccountDirectory: Send + Sync {
 ///
 /// Auth владеет таблицей сессий; flora-social знает только контракт и не читает
 /// чужую БД напрямую.
+///
+/// Возвращает стабильный `session_id`, найденный по `jwt_id` (JTI) активной
+/// сессии. Middleware кладёт его в `AuthUser`, поэтому logout/revoke-others/
+/// password-change оперируют по session id: параллельная ротация JTI (в grace)
+/// не может обойти logout и не путает текущую сессию с чужой. `None` — активной
+/// сессии с таким JTI нет (401).
 pub trait AccessSessionValidator: Send + Sync {
-    fn is_active(&self, user_uuid: Uuid, jwt_id: &str) -> BoxFuture<'_, Result<bool, String>>;
+    fn resolve_active_session(
+        &self,
+        user_uuid: Uuid,
+        jwt_id: &str,
+    ) -> BoxFuture<'_, Result<Option<Uuid>, String>>;
 }

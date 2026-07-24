@@ -277,7 +277,6 @@ export default function LoginPage() {
         const res = result;
         setAwaitingTwoFactor(false);
         setTwoFactorCode("");
-        saveSession(res);
 
         let me: MeResponse | null = null;
         try {
@@ -333,8 +332,7 @@ export default function LoginPage() {
         return;
       }
 
-      const res = await apiVerifyRegistration(verificationToken, verificationCode.trim());
-      saveSession(res);
+      await apiVerifyRegistration(verificationToken, verificationCode.trim());
       setVerificationToken("");
       setProfileName("");
       setProfileNickname("");

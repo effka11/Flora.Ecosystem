@@ -10,6 +10,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Retry-safe replay refresh protocol (plan §2). Off by default so it can be
+# shipped disabled first (staged rollout). When on, `compose` defaults the
+# runtime switch to enabled; `Auth:RetrySafeRefresh` config still overrides it.
+default = []
+retry-safe-refresh = []
+
 [dependencies]
 flora-shared = { workspace = true }
 flora-users-contracts = { workspace = true }
@@ -18,6 +25,7 @@ flora-auth-contracts = { workspace = true }
 argon2 = { workspace = true }
 axum = { workspace = true }
 base64 = { workspace = true }
+chacha20poly1305 = { workspace = true }
 chrono = { workspace = true }
 data-encoding = { workspace = true }
 getrandom = { workspace = true }
@@ -26,7 +34,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha1 = { workspace = true }
 sha2 = { workspace = true }
-sqlx = { workspace = true }
+# macros — для sqlx::migrate! (MIGRATOR модуля, §11.1)
+sqlx = { workspace = true, features = ["macros"] }
 subtle = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

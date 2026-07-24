@@ -6,6 +6,7 @@ import {
   authPostJson,
   getApiClientConfig,
   publicPostJson,
+  supersedeSessionRefresh,
 } from "../api/client.js";
 import {
   parseLoginPayload,
@@ -70,6 +71,7 @@ export async function apiUpdateProfile(payload: {
 }
 
 export async function apiLogout(): Promise<void> {
+  supersedeSessionRefresh();
   await authPostJson("/api/auth/logout", {});
 }
 
@@ -93,6 +95,7 @@ export async function saveLoginResponse(
   session: { saveSession: (t: SessionTokens) => Promise<void> },
   raw: LoginResponse,
 ): Promise<void> {
+  supersedeSessionRefresh();
   await session.saveSession({
     accessToken: raw.accessToken,
     refreshToken: raw.refreshToken,

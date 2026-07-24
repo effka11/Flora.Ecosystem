@@ -31,6 +31,10 @@ pwsh ./Tools/validate-architecture-rust.ps1
 npm run ci
 ```
 
+Для релиза retry-safe Auth refresh обязателен отдельный
+[`AUTH-SESSION-ROLLOUT.md`](AUTH-SESSION-ROLLOUT.md): migration-first,
+двухфазное включение, canary/soak и drain-rollback.
+
 В коммит не включать: `obj/`, `bin/`, `.env`, `secrets/`, `google-services.json`, `Scripts/broadcast.env`, `.next/`, `node_modules/`.
 
 ## После коммита

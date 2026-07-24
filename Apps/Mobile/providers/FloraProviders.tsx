@@ -1,4 +1,3 @@
-import { syncStoredSessionTokens } from "@flora/client-core/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import NetInfo from "@react-native-community/netinfo";
 import * as SplashScreen from "expo-splash-screen";
@@ -37,7 +36,7 @@ const queryClient = new QueryClient({
 export function FloraProviders({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const bootstrapSession = useSessionStore((s) => s.bootstrap);
-  const resumeSession = useSessionStore((s) => s.resumeSession);
+  const reconcileSession = useSessionStore((s) => s.reconcileSession);
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated);
   const userUuid = useSessionStore((s) => s.me?.userUuid ?? null);
   const prevUserUuidRef = useRef<string | null>(null);
@@ -81,19 +80,21 @@ export function FloraProviders({ children }: { children: ReactNode }) {
     const norm = userUuid.trim().toLowerCase();
     if (prevUserUuidRef.current !== null && prevUserUuidRef.current !== norm) {
       useFscpStore.getState().clearRuntimeState();
-      void useFscpStore.getState().bootstrap(userUuid);
     }
+    const fscp = useFscpStore.getState();
+    const alreadyReady =
+      fscp.passwordSyncedForOwner === norm ||
+      (fscp.ownerUserUuid === norm && fscp.status === "ready");
+    if (!alreadyReady) void fscp.bootstrap(userUuid);
     prevUserUuidRef.current = norm;
   }, [ready, isAuthenticated, userUuid]);
 
   useEffect(() => {
-    if (!ready || !isAuthenticated) return;
+    if (!ready) return;
     setSecurePushAppForeground(AppState.currentState === "active");
 
     const syncSession = () => {
-      void syncStoredSessionTokens()
-        .then(() => resumeSession())
-        .catch(() => undefined);
+      void reconcileSession().catch(() => undefined);
     };
 
     syncSession();
@@ -112,7 +113,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       appSub.remove();
       netSub();
     };
-  }, [ready, isAuthenticated, resumeSession]);
+  }, [ready, reconcileSession]);
 
   useEffect(() => {
     if (!ready) return;

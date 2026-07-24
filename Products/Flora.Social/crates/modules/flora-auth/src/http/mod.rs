@@ -28,11 +28,17 @@ use crate::http::rate_limit::{
     anonymous_auth_rate_limit,
 };
 
-/// Пользователь + jti из access-токена (внедряет flora-social JWT middleware).
+/// Пользователь из access-токена (внедряет flora-social JWT middleware).
+///
+/// `session_id` — стабильный id сессии, разрешённый по JTI на этапе валидации.
+/// logout/revoke-others/password оперируют по нему, поэтому параллельная ротация
+/// JTI (в grace) не может обойти logout и не путает сессию с чужой. `jti`
+/// оставлен для совместимости и диагностики.
 #[derive(Clone, Debug)]
 pub struct AuthUser {
     pub user_uuid: Uuid,
     pub jti: String,
+    pub session_id: Uuid,
 }
 
 #[derive(Clone)]
@@ -95,7 +101,11 @@ async fn list_my_sessions(
     State(state): State<AuthState>,
     Extension(user): Extension<AuthUser>,
 ) -> Response {
-    match state.sessions.list_active(user.user_uuid, &user.jti).await {
+    match state
+        .sessions
+        .list_active(user.user_uuid, user.session_id)
+        .await
+    {
         Ok(items) => Json(items).into_response(),
         Err(e) => {
             tracing::error!(error = %e, "list sessions failed");
@@ -114,7 +124,7 @@ async fn revoke_other_sessions(
 ) -> Response {
     match state
         .sessions
-        .revoke_others(user.user_uuid, &user.jti)
+        .revoke_others(user.user_uuid, user.session_id)
         .await
     {
         Ok(revoked) => Json(RevokeOthersResponse { revoked }).into_response(),
@@ -130,7 +140,7 @@ async fn revoke_other_sessions(
 }
 
 async fn logout(State(state): State<AuthState>, Extension(user): Extension<AuthUser>) -> Response {
-    match state.sessions.logout_current(&user.jti).await {
+    match state.sessions.logout_current(user.session_id).await {
         Ok(()) => StatusCode::OK.into_response(),
         Err(e) => {
             tracing::error!(error = %e, "logout failed");
@@ -185,7 +195,7 @@ async fn change_password(
         .account
         .change_password(
             user.user_uuid,
-            &user.jti,
+            user.session_id,
             body.current_password.as_deref().unwrap_or(""),
             body.new_password.as_deref().unwrap_or(""),
         )
@@ -501,8 +511,21 @@ async fn refresh(
             Json(serde_json::json!({ "error": msg })),
         )
             .into_response(),
+        Err(RefreshError::ServiceUnavailable(msg)) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
         Err(RefreshError::Internal(e)) => {
-            tracing::error!(error = %e, "refresh failed");
+            tracing::error!(
+                target: "flora_auth::refresh_outcome",
+                metric = "refresh_error",
+                outcome = "internal",
+                status = 500_u16,
+                counter_delta = 1_u64,
+                error = %e,
+                "refresh failed"
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),

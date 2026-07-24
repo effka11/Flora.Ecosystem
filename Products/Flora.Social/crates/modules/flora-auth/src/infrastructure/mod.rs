@@ -3,6 +3,7 @@
 pub mod account_directory;
 pub mod jwt;
 pub mod password;
+pub mod replay_keys;
 pub mod repo;
 pub mod session_validator;
 pub mod tokens;

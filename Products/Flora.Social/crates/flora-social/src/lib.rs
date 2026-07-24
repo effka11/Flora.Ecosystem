@@ -53,8 +53,9 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         background.extend(spawn_music_workers(cfg, pool.clone()));
     }
 
-    let (auth_routes, account_directory) =
+    let (auth_routes, account_directory, auth_workers) =
         auth_router_with_directory(cfg, pool.clone(), verification_port, sessions.clone());
+    background.extend(auth_workers);
 
     let (
         notifications_routes,
@@ -117,16 +118,18 @@ fn auth_router_with_directory(
 ) -> (
     axum::Router,
     Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
+    Vec<BackgroundHandle>,
 ) {
     if cfg.get_bool("Auth:ServeNative") != Some(true) {
         return (
             flora_auth::router(),
             pool.map(flora_auth::account_directory),
+            Vec::new(),
         );
     }
     let Some(pool) = pool else {
         eprintln!("flora-auth: Auth:ServeNative=true, но PgPool недоступен — модуль офлайн");
-        return (flora_auth::router(), None);
+        return (flora_auth::router(), None, Vec::new());
     };
     let Some(verification) = verification else {
         eprintln!(
@@ -135,16 +138,31 @@ fn auth_router_with_directory(
         return (
             flora_auth::router(),
             Some(flora_auth::account_directory(pool)),
+            Vec::new(),
         );
     };
     let jwt = JwtOptions::from_config(cfg);
     let (profiles, provisioner) = flora_users::profile_ports(pool.clone());
-    let module = flora_auth::compose(pool, jwt, profiles, provisioner, verification);
+    // Staged rollout выбора протокола (plan §2, runbook):
+    //  - выкл. (feature off и `Auth:RetrySafeRefresh` != true) ⇒ `None` ⇒ legacy;
+    //  - вкл. + валидный `Auth:ReplayKeyRing` ⇒ `Some` ⇒ retry-safe + cleanup-джоба;
+    //  - вкл., но key ring не задан/битый ⇒ startup FAIL-FAST (не запускаемся молча
+    //    в legacy). Это единственная жёсткая остановка композиции Auth.
+    let replay = match flora_auth::application::refresh::ReplayConfig::from_config(cfg) {
+        Ok(replay) => replay,
+        Err(reason) => panic!(
+            "flora-auth: retry-safe refresh запрошен, но конфигурация несогласована — \
+             отказ от старта во избежание тихого отката к legacy: {reason}"
+        ),
+    };
+    let module =
+        flora_auth::compose_with_replay(pool, jwt, profiles, provisioner, verification, replay);
     let directory = module.account_directory.clone();
+    let workers: Vec<BackgroundHandle> = module.replay_cleanup.into_iter().collect();
     let router = axum::Router::new()
         .merge(with_jwt(cfg, sessions, module.protected_router))
         .merge(module.public_router);
-    (router, Some(directory))
+    (router, Some(directory), workers)
 }
 
 fn users_router(

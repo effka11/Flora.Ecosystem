@@ -14,8 +14,6 @@ import {
   apiGetSecurityStatus,
   apiGetSessions,
   apiRevokeOtherSessions,
-  clearPendingProfileSetup,
-  clearSession,
   type SessionDto,
 } from "@/lib/auth";
 import { clearFscpMaterialForUser } from "@/lib/fscp/keys";
@@ -330,8 +328,6 @@ export function SettingsSecurityTab() {
     try {
       await apiDeleteAccount(deletePassword);
       if (ownerUuid) clearFscpMaterialForUser(ownerUuid);
-      clearPendingProfileSetup();
-      clearSession();
       router.replace("/login");
       router.refresh();
     } catch (e) {

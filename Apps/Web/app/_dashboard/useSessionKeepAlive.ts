@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { ensureFreshAccessToken, getAccessToken, getRefreshToken } from "@/lib/auth";
+import { getRefreshToken, syncStoredSessionTokens } from "@/lib/auth";
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 1000;
 
@@ -15,8 +15,8 @@ export function useSessionKeepAlive(): void {
 
     const tick = () => {
       if (cancelled) return;
-      if (!getAccessToken() || !getRefreshToken()) return;
-      void ensureFreshAccessToken();
+      if (!getRefreshToken()) return;
+      void syncStoredSessionTokens();
     };
 
     tick();

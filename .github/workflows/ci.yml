@@ -40,6 +40,10 @@ jobs:
         run: npm ci
       - name: Typecheck + lint + test
         run: npm run ci
+      # Keep the Mobile session suite an explicit required step: root workspace
+      # discovery must not be able to turn these tests into a false green.
+      - name: Test Mobile
+        run: npm run test --workspace=@flora/mobile
 
   web:
     name: web
@@ -63,6 +67,9 @@ jobs:
       - name: Typecheck
         working-directory: Apps/Web
         run: npm run typecheck
+      # Apps/Web is not a root npm workspace, so root `npm run ci` never runs it.
+      - name: Test Web
+        run: npm --prefix Apps/Web test
       # TODO: включить после погашения eslint-долга в Apps/Web (~109 существующих ошибок
       # react-hooks/* — чинить отдельной задачей, не в рамках настройки CI):
       # - name: Lint
@@ -74,13 +81,35 @@ jobs:
   rust:
     name: rust
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: flora_core
+          POSTGRES_USER: flora
+          POSTGRES_PASSWORD: flora_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flora -d flora_core"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: flora_core
+      PGUSER: flora
+      PGPASSWORD: flora_ci
+      FLORA_CI_PG_CONNECTION: >-
+        Host=127.0.0.1;Port=5432;Database=flora_core;Username=flora;Password=flora_ci;Search Path=flora_core,public;SSL Mode=Disable
     steps:
       - uses: actions/checkout@v4
       - name: Install pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       # flora-verification (prost/tonic) — gRPC stubs from Infrastructure/Flora.gRPC/Protos
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Install protoc and PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler postgresql-client
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
@@ -88,6 +117,25 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Prepare disposable cutover schema
+        run: >-
+          psql --set=ON_ERROR_STOP=1
+          --file=Scripts/sql/ci-auth-refresh-legacy-schema.sql
+      - name: Apply real module migrations
+        run: |
+          cargo run -p flora-migrate --locked -- --dry-run
+          cargo run -p flora-migrate --locked -- --connection "$FLORA_CI_PG_CONNECTION"
+      - name: Verify migration and old API compatibility
+        run: >-
+          psql --set=ON_ERROR_STOP=1
+          --file=Scripts/sql/ci-auth-refresh-verify.sql
+      - name: Test Auth replay against PostgreSQL
+        env:
+          FLORA_AUTH_REPLAY_PG: "1"
+          FLORA_AUTH_REPLAY_PG_URL: ${{ env.FLORA_CI_PG_CONNECTION }}
+        run: >-
+          cargo test -p flora-auth --test refresh_replays_pg --locked --
+          --nocapture --test-threads=1
       - name: Test
         run: cargo test --workspace --locked
       - name: Licenses, bans, advisories (cargo deny)

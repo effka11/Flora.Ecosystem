@@ -2,6 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { NextRequest } from "next/server";
 import { proxyFloraApiRequest } from "./floraApiProxy";
+import {
+  createWebAuthExclusive,
+  type WebLockManagerLike,
+} from "./sessionStore";
+
+class SerialWebLockManager implements WebLockManagerLike {
+  private tail: Promise<void> = Promise.resolve();
+
+  request<T>(
+    _name: string,
+    _options: { signal?: AbortSignal },
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const result = this.tail.then(callback);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 test("auth proxy keeps refresh credentials out of browser-readable storage", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -134,6 +163,79 @@ test("auth proxy keeps refresh credentials out of browser-readable storage", asy
       assert.equal(payload.refreshToken, "native-refresh");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(response.headers.get("cache-control"), "no-store");
+    });
+
+    await t.test("Web Lock orders a stale proxy refresh response before a new login cookie", async () => {
+      const refreshResponse = deferred();
+      const refreshStarted = deferred();
+      let loginReachedUpstream = false;
+      let browserRefreshCookie = "session-id.r1";
+
+      globalThis.fetch = (async (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/refresh")) {
+          refreshStarted.resolve();
+          await refreshResponse.promise;
+          return Response.json({
+            accessToken: "access-r2",
+            refreshToken: "session-id.r2",
+            expiresAt: "2030-01-01T00:15:00Z",
+          });
+        }
+        loginReachedUpstream = true;
+        return Response.json({
+          accessToken: "access-r3",
+          refreshToken: "session-id.r3",
+          expiresAt: "2030-01-01T00:30:00Z",
+        });
+      }) as typeof fetch;
+
+      const lockManager = new SerialWebLockManager();
+      const exclusive = createWebAuthExclusive({
+        getLockManager: () => lockManager,
+        waitMs: 1_000,
+      });
+      const applyCookie = async (request: NextRequest) => {
+        const response = await proxyFloraApiRequest(request);
+        const setCookie = response.headers.get("set-cookie") ?? "";
+        const match = setCookie.match(/(?:__Host-)?flora_refresh=([^;,\s]+)/);
+        if (match?.[1]) browserRefreshCookie = match[1];
+      };
+
+      const staleRefresh = exclusive(() =>
+        applyCookie(
+          new NextRequest("https://social.flora.example/api/auth/refresh", {
+            method: "POST",
+            body: "{}",
+            headers: {
+              "content-type": "application/json",
+              cookie: `flora_refresh=${browserRefreshCookie}`,
+              origin: "https://social.flora.example",
+            },
+          }),
+        ),
+      );
+      await refreshStarted.promise;
+
+      const newLogin = exclusive(() =>
+        applyCookie(
+          new NextRequest("https://social.flora.example/api/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ email: "alice@example.test", password: "secret" }),
+            headers: {
+              "content-type": "application/json",
+              origin: "https://social.flora.example",
+            },
+          }),
+        ),
+      );
+      await Promise.resolve();
+      assert.equal(loginReachedUpstream, false);
+
+      refreshResponse.resolve();
+      await Promise.all([staleRefresh, newLogin]);
+      assert.equal(browserRefreshCookie, "session-id.r3");
+      assert.equal(loginReachedUpstream, true);
     });
   } finally {
     globalThis.fetch = originalFetch;

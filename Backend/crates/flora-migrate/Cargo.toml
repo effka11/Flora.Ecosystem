@@ -19,6 +19,7 @@ flora-messaging = { workspace = true }
 flora-notifications = { workspace = true }
 flora-shared = { workspace = true }
 # Модули с Rust-миграциями (post-cutover, §11.1): экспортируют sqlx MIGRATOR.
+flora-auth = { workspace = true }
 flora-content = { workspace = true }
 flora-music = { workspace = true }
 flora-users = { workspace = true }

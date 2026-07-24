@@ -15,10 +15,16 @@ export {
   notifyIfSessionRevoked,
   notifyUnauthorized,
   rejectUploadUnauthorized,
+  refreshSession,
   refreshSessionIfPossible,
+  supersedeSessionRefresh,
   syncStoredSessionTokens,
   type ApiClientConfig,
 } from "./client.js";
+export type {
+  RunRefreshExclusive,
+  SessionRefreshOutcome,
+} from "./sessionCoordinator.js";
 export * from "./social.js";
 export * from "./social-ext.js";
 export * from "./messaging.js";

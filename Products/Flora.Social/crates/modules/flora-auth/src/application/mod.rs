@@ -2,5 +2,7 @@ pub mod account;
 pub mod login;
 pub mod refresh;
 pub mod register;
+pub mod replay_cleanup;
+pub mod replay_grant;
 pub mod security;
 pub mod sessions;

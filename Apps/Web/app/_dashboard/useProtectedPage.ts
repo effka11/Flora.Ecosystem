@@ -8,6 +8,7 @@ import {
   SESSION_CLEARED_EVENT,
   STORAGE_ACCESS,
   STORAGE_REFRESH,
+  STORAGE_SESSION,
 } from "@/lib/auth";
 
 function useIsClient() {
@@ -36,23 +37,31 @@ export function useProtectedPage() {
 
   useEffect(() => {
     if (!isClient) return;
+    let redirected = false;
 
-    const onSessionCleared = () => {
-      if (!getAccessToken()) router.replace("/login");
+    const redirectIfCleared = () => {
+      if (redirected || getAccessToken()) return;
+      redirected = true;
+      router.replace("/login");
     };
 
     const onStorage = (event: StorageEvent) => {
       if (event.storageArea !== localStorage) return;
-      if (event.key !== STORAGE_ACCESS && event.key !== STORAGE_REFRESH && event.key !== null) {
+      if (
+        event.key !== STORAGE_SESSION &&
+        event.key !== STORAGE_ACCESS &&
+        event.key !== STORAGE_REFRESH &&
+        event.key !== null
+      ) {
         return;
       }
-      if (!getAccessToken()) router.replace("/login");
+      redirectIfCleared();
     };
 
-    window.addEventListener(SESSION_CLEARED_EVENT, onSessionCleared);
+    window.addEventListener(SESSION_CLEARED_EVENT, redirectIfCleared);
     window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener(SESSION_CLEARED_EVENT, onSessionCleared);
+      window.removeEventListener(SESSION_CLEARED_EVENT, redirectIfCleared);
       window.removeEventListener("storage", onStorage);
     };
   }, [isClient, router]);

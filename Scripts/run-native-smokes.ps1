@@ -29,10 +29,27 @@ $env:FLORA_CONTENT_SMOKE = "1"
 $env:FLORA_MESSAGING_SMOKE = "1"
 $env:FLORA_NOTIFICATIONS_SMOKE = "1"
 
+function Invoke-NativeSmoke {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Package,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Test
+    )
+
+    Write-Host "Running $Package/$Test ..."
+    & cargo test -p $Package --test $Test -- --nocapture --test-threads=1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "Native smoke $Package/$Test failed (exit $exitCode)."
+    }
+}
+
 Write-Host "Running ServeNative smokes against http://127.0.0.1:5290 ..."
-cargo test -p flora-auth --test sessions_smoke -- --nocapture --test-threads=1
-cargo test -p flora-users --test users_smoke -- --nocapture --test-threads=1
-cargo test -p flora-content --test feed_smoke -- --nocapture --test-threads=1
-cargo test -p flora-messaging --test messaging_smoke -- --nocapture --test-threads=1
-cargo test -p flora-notifications --test notifications_smoke -- --nocapture --test-threads=1
+Invoke-NativeSmoke -Package "flora-auth" -Test "sessions_smoke"
+Invoke-NativeSmoke -Package "flora-users" -Test "users_smoke"
+Invoke-NativeSmoke -Package "flora-content" -Test "feed_smoke"
+Invoke-NativeSmoke -Package "flora-messaging" -Test "messaging_smoke"
+Invoke-NativeSmoke -Package "flora-notifications" -Test "notifications_smoke"
 Write-Host "All smokes finished."
