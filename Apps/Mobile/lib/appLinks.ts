@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 /** GitHub releases for Flora Social Android APK (alpha distribution). */
 export const FLORA_GITHUB_RELEASES_URL = "https://github.com/effka11/Flora.Ecosystem/releases";
 
-const FLORA_SOCIAL_VERSION_FALLBACK = "0.8.0-alpha";
+const FLORA_SOCIAL_VERSION_FALLBACK = "0.9.0-dev";
 
 /** Installed Flora Social version (from Expo manifest). */
 export function getFloraSocialAppVersion(): string {
