@@ -4,6 +4,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { GridOverlay } from "@/app/_shared/GridOverlay";
+import type { FscpTransportFailureClass } from "@flora/client-core/fscp";
+import { getTelemetry } from "@flora/client-core/telemetry";
 import type { MeResponse } from "@/lib/auth";
 import { isReservedUsername, RESERVED_USERNAME_MESSAGE } from "@/lib/reservedUsernames";
 import {
@@ -128,16 +130,52 @@ function IconEyeOff() {
   );
 }
 
+type FscpBackupProvisionOutcome = {
+  ok: boolean;
+  reason?: string;
+  failure?: FscpTransportFailureClass;
+};
+
+/**
+ * Runs the post-auth FSCP login-sync (restore + backup heal) and reports its outcome instead of
+ * only console.warn-ing it, so the three call sites (login / after-verify / after-profile) can
+ * react to the failure class.
+ *
+ * Stashes the just-proven password for exactly one silent dashboard retry (loginHandoff.ts) when,
+ * and only when, restore was genuinely needed (bootstrap did not reach "ready") and the failure
+ * was transient — never on success, never on wrong_password/backup_not_found (retrying those
+ * silently would not help and would only widen the password's in-memory exposure window for
+ * nothing). This runs for all three call sites since they all funnel through this one function.
+ */
 async function provisionFscpBackupAfterAuth(
   userUuid: string,
   accountPassword: string,
-): Promise<{ ok: boolean; reason?: string }> {
-  const { webSyncFscpOnLogin } = await import("@/lib/fscp/syncOnLogin");
+): Promise<FscpBackupProvisionOutcome> {
+  const [{ webSyncFscpOnLogin }, { stashProvenAccountPassword }] = await Promise.all([
+    import("@/lib/fscp/syncOnLogin"),
+    import("@flora/client-core/fscp"),
+  ]);
   const res = await webSyncFscpOnLogin(userUuid, accountPassword, { authoritativeOverwrite: true });
-  if (res.backupUploaded || res.bootstrap.status !== "ready") {
-    return { ok: res.backupUploaded };
+
+  getTelemetry().capture({
+    type: "login_sync_outcome",
+    ok: res.bootstrap.status === "ready",
+    ...(res.failure ? { failure: res.failure } : {}),
+    attempts: res.attempts ?? 0,
+  });
+
+  const restoreWasNeeded = res.bootstrap.status !== "ready";
+  if (restoreWasNeeded && res.failure === "transient") {
+    stashProvenAccountPassword(userUuid, accountPassword);
   }
-  return { ok: false, reason: res.backupSkippedReason ?? "upload_error" };
+
+  if (restoreWasNeeded) {
+    return { ok: false, reason: res.backupSkippedReason ?? res.bootstrap.status, failure: res.failure };
+  }
+  if (res.backupUploaded) {
+    return { ok: true, failure: res.failure };
+  }
+  return { ok: false, reason: res.backupSkippedReason ?? "upload_error", failure: res.failure };
 }
 
 export default function LoginPage() {

@@ -3,6 +3,7 @@ import {
   apiGetE2EState,
   apiGetKeyBackup,
   apiPutKeyBackup,
+  type MsgE2EState,
   type PutKeyBackupRequest,
 } from "@flora/client-core/api/messaging.js";
 import { asRecord, readNum } from "@flora/client-core/contracts/parse.js";
@@ -30,6 +31,13 @@ import {
   type FscpBootstrapResult,
 } from "./bootstrap.js";
 import { apiTryGetUserE2ePublicKey } from "./messaging.js";
+import {
+  classifyTransportFailure,
+  createFscpDeadline,
+  withFscpRetry,
+  type FscpDeadline,
+  type FscpTransportFailureClass,
+} from "./resilience.js";
 
 export type SyncFscpOnLoginResult = {
   bootstrap: FscpBootstrapResult;
@@ -44,8 +52,24 @@ export type SyncFscpOnLoginResult = {
     | "not_authenticated"
     | "pubkey_mismatch"
     | "self_check_failed"
-    | "malformed";
+    | "malformed"
+    | "kdf_failed"
+    | "transient_error";
+  failure?: FscpTransportFailureClass;
+  attempts?: number;
 };
+
+function createDeferredResolveDeadline(): FscpDeadline {
+  let active: FscpDeadline | undefined;
+  const getActive = () => {
+    active ??= createFscpDeadline();
+    return active;
+  };
+  return {
+    remainingMs: () => getActive().remainingMs(),
+    expired: () => getActive().expired(),
+  };
+}
 
 function readBackupRevision(raw: unknown): number {
   const o = asRecord(raw);
@@ -74,6 +98,12 @@ export async function ensureKeyBackupOnServer(opts: {
    * (e.g. another device just changed the account password). See review п.2 / "Модель безопасности".
    */
   authoritativeOverwrite?: boolean;
+  /** Already-read values from resolveFscpMaterialOnDevice; omitted for standalone calls. */
+  knownE2eState?: MsgE2EState;
+  knownBackup?: { raw?: unknown; state?: FscpBackupState };
+  /** Shared login-sync budget; every retry here remains inside the resolve deadline. */
+  deadline?: FscpDeadline;
+  onAttemptStarted?: (info: { attempt: number }) => void;
 }): Promise<{ uploaded: boolean; skippedReason?: SyncFscpOnLoginResult["backupSkippedReason"] }> {
   const telemetry = getTelemetry();
   const ownerNorm = opts.ownerUserUuid.trim().toLowerCase();
@@ -81,7 +111,12 @@ export async function ensureKeyBackupOnServer(opts: {
     return { uploaded: false, skippedReason: "no_password" };
   }
 
-  const e2eState = await apiGetE2EState();
+  const e2eState =
+    opts.knownE2eState ??
+    (await withFscpRetry(() => apiGetE2EState(), {
+      deadline: opts.deadline,
+      onAttemptStarted: opts.onAttemptStarted,
+    }));
   if (e2eState.freeze || e2eState.state === "locked") {
     return { uploaded: false, skippedReason: "locked_or_frozen" };
   }
@@ -96,22 +131,56 @@ export async function ensureKeyBackupOnServer(opts: {
   // Determine the readability of the existing backup (single source of truth).
   let existingRevision = 0;
   let state: FscpBackupState = "missing";
-  try {
-    const existingRaw = await apiGetKeyBackup();
+  let knownBackup = opts.knownBackup;
+  if (
+    knownBackup &&
+    knownBackup.state !== "missing" &&
+    !Object.prototype.hasOwnProperty.call(knownBackup, "raw")
+  ) {
+    knownBackup = undefined;
+  }
+  if (!knownBackup) {
+    try {
+      knownBackup = {
+        raw: await withFscpRetry(() => apiGetKeyBackup(), {
+          deadline: opts.deadline,
+          onAttemptStarted: opts.onAttemptStarted,
+        }),
+      };
+    } catch (e) {
+      if (isApiRequestError(e) && e.status === 404) {
+        knownBackup = { state: "missing" };
+      } else {
+        // Transient network/server error: NOT a password problem. Let syncFscpOnLogin map it.
+        throw e;
+      }
+    }
+  }
+
+  if (knownBackup.state === "missing") {
+    state = "missing";
+  } else if (Object.prototype.hasOwnProperty.call(knownBackup, "raw")) {
+    const existingRaw = knownBackup.raw;
     existingRevision = readBackupRevision(existingRaw);
-    const cls = await classifyKeyBackup(existingRaw, opts.accountPassword);
-    state = cls.state;
-    // A readable backup is never clobbered here — overwrite is reserved for missing/unreadable.
-    if (cls.state === "healthy") {
-      return { uploaded: false, skippedReason: "unchanged" };
-    }
-  } catch (e) {
-    if (isApiRequestError(e) && e.status === 404) {
-      state = "missing";
+    if (knownBackup.state) {
+      state = knownBackup.state;
     } else {
-      // Transient network/server error: NOT a password problem. Let syncFscpOnLogin map it.
-      throw e;
+      const cls = await classifyKeyBackup(existingRaw, opts.accountPassword);
+      state = cls.state;
     }
+  }
+
+  // A backup already decrypted during resolve is known healthy; never run Argon2id again here.
+  if (state === "healthy") {
+    return { uploaded: false, skippedReason: "unchanged" };
+  }
+
+  // Argon2id did not run on this device: the backup may be perfectly healthy and simply
+  // unopenable here. Overwriting it would destroy the only copy of the keys, and letting the
+  // case fall through would report it as "upload_error" / "unreadable". Never overwrite.
+  if (state === "kdf_failed") {
+    telemetry.capture({ type: "backup_overwrite_skipped", reason: "kdf_failed" });
+    return { uploaded: false, skippedReason: "kdf_failed" };
   }
 
   if (state === "unreadable" || state === "malformed") {
@@ -132,14 +201,20 @@ export async function ensureKeyBackupOnServer(opts: {
 
   // Confirm THIS device is the authoritative identity and its keys are self-consistent
   // before letting it overwrite the only recoverable backup (review п.1, п.2).
-  let server = await apiTryGetUserE2ePublicKey(ownerNorm);
+  let server = await withFscpRetry(() => apiTryGetUserE2ePublicKey(ownerNorm), {
+    deadline: opts.deadline,
+    onAttemptStarted: opts.onAttemptStarted,
+  });
   let serverPubStr = server?.publicKeyBase64?.trim();
   // First registration: bootstrap may be "ready" after PUT pubkey while GET still 404, or publish
   // failed earlier and orphan was healed in syncFscpOnLogin — publish once when password is authoritative.
   if (!serverPubStr && opts.authoritativeOverwrite) {
     const published = await publishAgreementPublicKey(opts.material);
     if (published.ok) {
-      server = await apiTryGetUserE2ePublicKey(ownerNorm);
+      server = await withFscpRetry(() => apiTryGetUserE2ePublicKey(ownerNorm), {
+        deadline: opts.deadline,
+        onAttemptStarted: opts.onAttemptStarted,
+      });
       serverPubStr = server?.publicKeyBase64?.trim();
     }
   }
@@ -168,6 +243,7 @@ export async function ensureKeyBackupOnServer(opts: {
   });
 
   try {
+    // Deliberately one write attempt: a timed-out request may already have consumed this revision.
     await apiPutKeyBackup({
       keyBackup,
       epochIdentityPublicKeys,
@@ -208,21 +284,55 @@ export async function syncFscpOnLogin(opts: {
   authoritativeOverwrite?: boolean;
 }): Promise<SyncFscpOnLoginResult> {
   const password = opts.accountPassword?.trim();
-  if (!password) {
-    const bootstrap = await resolveFscpMaterialOnDevice({
+  const deadline = createDeferredResolveDeadline();
+  const readSnapshot: {
+    knownE2eState?: MsgE2EState;
+    knownBackup?: { raw?: unknown; state?: FscpBackupState };
+  } = {};
+  let attempts = 0;
+  const onAttemptStarted = () => {
+    attempts += 1;
+  };
+
+  let bootstrap: FscpBootstrapResult;
+  try {
+    bootstrap = await resolveFscpMaterialOnDevice({
       storage: opts.storage,
       ownerUserUuid: opts.ownerUserUuid,
+      accountPassword: password || undefined,
+      preferBackupOverLocal: opts.preferBackupOverLocal,
+      forceRestoreFromBackupOnLogin: opts.forceRestoreFromBackupOnLogin,
+      deadline,
+      onAttemptStarted,
+      readSnapshot,
     });
-    return { bootstrap, backupUploaded: false, backupSkippedReason: "no_password" };
+  } catch (e) {
+    const failure = classifyTransportFailure(e);
+    bootstrap = {
+      status: "transient_error",
+      material: null,
+      pendingOperation: null,
+      failure,
+    };
+    return {
+      bootstrap,
+      backupUploaded: false,
+      backupSkippedReason: "transient_error",
+      failure,
+      attempts,
+    };
   }
 
-  let bootstrap = await resolveFscpMaterialOnDevice({
-    storage: opts.storage,
-    ownerUserUuid: opts.ownerUserUuid,
-    accountPassword: password,
-    preferBackupOverLocal: opts.preferBackupOverLocal,
-    forceRestoreFromBackupOnLogin: opts.forceRestoreFromBackupOnLogin,
-  });
+  if (!password) {
+    return {
+      bootstrap,
+      backupUploaded: false,
+      backupSkippedReason:
+        bootstrap.status === "transient_error" ? "transient_error" : "no_password",
+      failure: bootstrap.failure,
+      attempts,
+    };
+  }
 
   const autoPublish = opts.autoPublishOnMismatch !== false;
   if (
@@ -265,11 +375,18 @@ export async function syncFscpOnLogin(opts: {
   }
 
   if (bootstrap.status !== "ready" || !bootstrap.material) {
-    return { bootstrap, backupUploaded: false, backupSkippedReason: "not_ready" };
+    return {
+      bootstrap,
+      backupUploaded: false,
+      backupSkippedReason:
+        bootstrap.status === "transient_error" ? "transient_error" : "not_ready",
+      failure: bootstrap.failure,
+      attempts,
+    };
   }
 
   if (opts.skipKeyBackupUpload) {
-    return { bootstrap, backupUploaded: false };
+    return { bootstrap, backupUploaded: false, attempts };
   }
 
   try {
@@ -278,14 +395,26 @@ export async function syncFscpOnLogin(opts: {
       accountPassword: password,
       material: bootstrap.material,
       authoritativeOverwrite: opts.authoritativeOverwrite,
+      knownE2eState: readSnapshot.knownE2eState,
+      knownBackup: readSnapshot.knownBackup,
+      deadline,
+      onAttemptStarted,
     });
 
     return {
       bootstrap,
       backupUploaded: backup.uploaded,
       backupSkippedReason: backup.skippedReason,
+      attempts,
     };
-  } catch {
-    return { bootstrap, backupUploaded: false, backupSkippedReason: "upload_error" };
+  } catch (e) {
+    const failure = classifyTransportFailure(e);
+    return {
+      bootstrap,
+      backupUploaded: false,
+      backupSkippedReason: failure === "transient" ? "transient_error" : "upload_error",
+      failure,
+      attempts,
+    };
   }
 }

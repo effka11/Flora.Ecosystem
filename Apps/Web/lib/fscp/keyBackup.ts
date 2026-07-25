@@ -13,7 +13,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { getSodium } from "./sodium";
 import { FSCP_BOOTSTRAP_KEY_EPOCH_ID } from "./constants";
-import type { KdfWorkerRequest, KdfWorkerResponse } from "./kdfWorker";
+import { deriveKeyArgon2idViaWorker } from "./kdfClient";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -63,37 +63,8 @@ export type KeyBackupPayloadOut = {
 };
 
 // ── Argon2id KDF via Web Worker ───────────────────────────────────────────────
-
-let _workerInstance: Worker | null = null;
-let _workerCounter = 0;
-const _pendingKdf = new Map<
-  string,
-  { resolve: (key: string) => void; reject: (e: Error) => void }
->();
-
-function getKdfWorker(): Worker {
-  if (_workerInstance) return _workerInstance;
-  _workerInstance = new Worker(
-    new URL("./kdfWorker.ts", import.meta.url),
-    { type: "module" }
-  );
-  _workerInstance.addEventListener("message", (e: MessageEvent<KdfWorkerResponse>) => {
-    const { id } = e.data;
-    const pending = _pendingKdf.get(id);
-    if (!pending) return;
-    _pendingKdf.delete(id);
-    if (e.data.ok) pending.resolve(e.data.keyBase64Url);
-    else pending.reject(new Error(`KDF worker: ${e.data.error}`));
-  });
-  _workerInstance.addEventListener("error", (e) => {
-    // Broadcast failure to all pending requests
-    const err = new Error(`KDF worker fatal: ${e.message}`);
-    for (const p of _pendingKdf.values()) p.reject(err);
-    _pendingKdf.clear();
-    _workerInstance = null;
-  });
-  return _workerInstance;
-}
+// RPC + Worker instance itself live in kdfClient.ts, shared with the FSCP SoT's
+// configureFscpKdf() wiring (clientCore.ts) — one Worker, not two.
 
 async function deriveKeyArgon2id(params: {
   passwordBytes: Uint8Array;
@@ -102,31 +73,13 @@ async function deriveKeyArgon2id(params: {
   iterations: number;
   keyLen: number;
 }): Promise<Uint8Array> {
-  const sodium = await getSodium();
-  const b64 = (b: Uint8Array) =>
-    sodium.to_base64(b, sodium.base64_variants.URLSAFE_NO_PADDING);
-
-  const id = `kdf-${++_workerCounter}`;
-  const request: KdfWorkerRequest = {
-    id,
-    passwordBase64Url: b64(params.passwordBytes),
-    saltBase64Url: b64(params.salt),
-    keyLen: params.keyLen,
+  return deriveKeyArgon2idViaWorker({
+    passwordBytes: params.passwordBytes,
+    salt: params.salt,
     memoryKiB: params.memoryKiB,
     iterations: params.iterations,
-  };
-
-  const keyBase64Url = await new Promise<string>((resolve, reject) => {
-    _pendingKdf.set(id, { resolve, reject });
-    try {
-      getKdfWorker().postMessage(request);
-    } catch (e) {
-      _pendingKdf.delete(id);
-      reject(e);
-    }
+    outputLength: params.keyLen,
   });
-
-  return sodium.from_base64(keyBase64Url, sodium.base64_variants.URLSAFE_NO_PADDING);
 }
 
 // ── Epoch set hash (canonical commitment) ────────────────────────────────────

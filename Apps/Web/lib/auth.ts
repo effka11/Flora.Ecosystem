@@ -178,6 +178,13 @@ export function hasPendingProfileSetup(): boolean {
 webSessionStore.subscribeSessionCleared(() => {
   clearPendingProfileSetup();
   clearFscpLegacyFlatKeys();
+  // Dynamic import on purpose: a static import from @flora/client-core/fscp would pull the whole
+  // FSCP barrel (sodium, noble) into this module, which is imported almost everywhere in the app.
+  void import("@flora/client-core/fscp")
+    .then(({ clearProvenAccountPassword }) => clearProvenAccountPassword())
+    .catch(() => {
+      // Best-effort: the handoff stash also self-expires (TTL 90s, single-use).
+    });
 });
 
 function authEndpoint(path: string): string {

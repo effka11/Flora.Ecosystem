@@ -10,12 +10,17 @@
  */
 
 import { isApiRequestError } from "@flora/client-core/api/errors.js";
-import { apiGetE2EState, apiGetKeyBackup } from "@flora/client-core/api/messaging.js";
+import {
+  apiGetE2EState,
+  apiGetKeyBackup,
+  type MsgE2EState,
+} from "@flora/client-core/api/messaging.js";
 import { fromBase64Flexible } from "./base64url.js";
 import {
   decryptKeyBackup,
   parseKeyBackupPayload,
   restoreLocalMaterialFromBackupPlaintext,
+  type FscpBackupState,
   type KeyBackupPayloadOut,
 } from "./keyBackup.js";
 import type { FscpKeyStorageAdapter } from "./keyStorage.js";
@@ -27,7 +32,21 @@ import {
   persistFscpLocalMaterial,
   type FscpLocalMaterial,
 } from "./keys.js";
-import { apiPutMyE2ePublicKey, apiTryGetUserE2ePublicKey } from "./messaging.js";
+import {
+  apiPutMyE2ePublicKey,
+  apiTryGetUserE2ePublicKey,
+  type UserE2eKeyBundle,
+} from "./messaging.js";
+import {
+  FscpBackupError,
+  classifyTransportFailure,
+  createFscpDeadline,
+  isFscpBackupError,
+  withFscpRetry,
+  type FscpDeadline,
+  type FscpRetryOptions,
+  type FscpTransportFailureClass,
+} from "./resilience.js";
 
 export type FscpBootstrapStatus =
   | "ready"
@@ -37,7 +56,8 @@ export type FscpBootstrapStatus =
   | "backup_not_found"
   | "key_mismatch"
   | "orphan_local_profile"
-  | "registration_pending";
+  | "registration_pending"
+  | "transient_error";
 
 export type FscpPendingOperation = "publish" | "sync_device_uuid";
 
@@ -47,7 +67,95 @@ export type FscpBootstrapResult = {
   localPubKey?: string;
   serverPubKey?: string;
   pendingOperation: FscpPendingOperation | null;
+  failure?: FscpTransportFailureClass;
 };
+
+type KnownKeyBackup = {
+  raw?: unknown;
+  state?: FscpBackupState;
+};
+
+type ResolveReadSnapshot = {
+  knownE2eState?: MsgE2EState;
+  knownBackup?: KnownKeyBackup;
+};
+
+type ReadAttemptStarted = NonNullable<FscpRetryOptions["onAttemptStarted"]>;
+
+/*
+ * Owner-scoped promise tails are a mutex, not a result cache: every waiter reruns the resolve
+ * after the previous call and therefore observes the latest storage state. This protects one
+ * JS realm only. Two browser tabs can still race through shared localStorage; the future web
+ * adapter remedy is navigator.locks.request(), without adding a DOM dependency to this kernel.
+ */
+const ownerResolveTails = new Map<string, Promise<void>>();
+
+async function serializeResolveForOwner<T>(ownerNorm: string, fn: () => Promise<T>): Promise<T> {
+  const previous = ownerResolveTails.get(ownerNorm) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(
+    () => gate,
+    () => gate,
+  );
+  ownerResolveTails.set(ownerNorm, tail);
+
+  await previous.catch(() => {});
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (ownerResolveTails.get(ownerNorm) === tail) {
+      ownerResolveTails.delete(ownerNorm);
+    }
+  }
+}
+
+function retryRead<T>(
+  fn: () => Promise<T>,
+  deadline: FscpDeadline,
+  onAttemptStarted?: ReadAttemptStarted,
+): Promise<T> {
+  return withFscpRetry(fn, { deadline, onAttemptStarted });
+}
+
+function restoreFailureResult(opts: {
+  error: unknown;
+  material: FscpLocalMaterial | null;
+  serverPubKey?: string;
+}): FscpBootstrapResult {
+  const failure = classifyTransportFailure(opts.error);
+  if (
+    (isFscpBackupError(opts.error) && opts.error.kind === "aead_auth_failed") ||
+    failure === "wrong_password"
+  ) {
+    return {
+      status: "wrong_password",
+      material: opts.material,
+      pendingOperation: null,
+      serverPubKey: opts.serverPubKey,
+      failure,
+    };
+  }
+  if (failure === "not_found") {
+    return {
+      status: "backup_not_found",
+      material: opts.material,
+      pendingOperation: null,
+      serverPubKey: opts.serverPubKey,
+      failure,
+    };
+  }
+  return {
+    status: "transient_error",
+    material: opts.material,
+    pendingOperation: null,
+    serverPubKey: opts.serverPubKey,
+    failure,
+  };
+}
 
 export function agreementPubkeysEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== 32 || b.length !== 32) return false;
@@ -113,15 +221,20 @@ export async function syncFscpDeviceUuid(
   storage: FscpKeyStorageAdapter,
   ownerUserUuid: string,
   material: FscpLocalMaterial,
+  serverPubKey?: string,
 ): Promise<PublishResult> {
   const ownerNorm = ownerUserUuid.trim().toLowerCase();
-  const server = await apiTryGetUserE2ePublicKey(ownerNorm);
-  if (!server?.publicKeyBase64) {
-    return { ok: false, error: "server pubkey not found" };
+  let serverPubKeyValue = serverPubKey?.trim();
+  if (!serverPubKeyValue) {
+    const server = await apiTryGetUserE2ePublicKey(ownerNorm);
+    serverPubKeyValue = server?.publicKeyBase64?.trim();
+    if (!serverPubKeyValue) {
+      return { ok: false, error: "server pubkey not found" };
+    }
   }
 
   const localBytes = await deriveAgreementPublicKeyBytes(material);
-  const serverBytes = decodeAgreementPublicKeyBytes(server.publicKeyBase64);
+  const serverBytes = decodeAgreementPublicKeyBytes(serverPubKeyValue);
   if (!agreementPubkeysEqual(localBytes, serverBytes)) {
     return { ok: false, error: "pubkey mismatch" };
   }
@@ -139,11 +252,30 @@ export async function syncFscpDeviceUuid(
 
 export async function restoreFromPasswordBackup(
   password: string,
+  knownBackup?: unknown,
 ): Promise<FscpLocalMaterial> {
-  const raw = await apiGetKeyBackup();
-  const payload = parseKeyBackupPayload(raw);
+  const raw = knownBackup === undefined ? await apiGetKeyBackup() : knownBackup;
+  let payload: KeyBackupPayloadOut;
+  try {
+    payload = parseKeyBackupPayload(raw);
+  } catch (e) {
+    if (isFscpBackupError(e)) throw e;
+    throw new FscpBackupError(
+      "malformed",
+      e instanceof Error ? e.message : "Некорректный payload key-backup.",
+    );
+  }
   const plaintext = await decryptKeyBackup(payload, password);
-  const restored = await restoreLocalMaterialFromBackupPlaintext(plaintext);
+  let restored: Awaited<ReturnType<typeof restoreLocalMaterialFromBackupPlaintext>>;
+  try {
+    restored = await restoreLocalMaterialFromBackupPlaintext(plaintext);
+  } catch (e) {
+    if (isFscpBackupError(e)) throw e;
+    throw new FscpBackupError(
+      "malformed",
+      e instanceof Error ? e.message : "Расшифрованные данные резервной копии повреждены.",
+    );
+  }
   return {
     agreementPrivateKey: restored.agreementPrivateKey,
     signingPrivateKey: restored.signingPrivateKey,
@@ -165,35 +297,39 @@ async function buildMismatchResult(
   };
 }
 
-async function finalizeWithServerPubkey(opts: {
+export async function finalizeWithServerPubkey(opts: {
   storage: FscpKeyStorageAdapter;
   ownerUserUuid: string;
   material: FscpLocalMaterial;
-  serverPublicKeyBase64: string;
-  serverDeviceUuid: string | null;
+  server: UserE2eKeyBundle;
 }): Promise<FscpBootstrapResult> {
   const ownerNorm = opts.ownerUserUuid.trim().toLowerCase();
   const localBytes = await deriveAgreementPublicKeyBytes(opts.material);
-  const serverBytes = decodeAgreementPublicKeyBytes(opts.serverPublicKeyBase64);
+  const serverBytes = decodeAgreementPublicKeyBytes(opts.server.publicKeyBase64);
 
   if (!agreementPubkeysEqual(localBytes, serverBytes)) {
-    return buildMismatchResult(opts.material, opts.serverPublicKeyBase64);
+    return buildMismatchResult(opts.material, opts.server.publicKeyBase64);
   }
 
   let material: FscpLocalMaterial = {
     ...opts.material,
-    deviceUuidFromServer: opts.serverDeviceUuid ?? opts.material.deviceUuidFromServer,
+    deviceUuidFromServer: opts.server.deviceUuid ?? opts.material.deviceUuidFromServer,
   };
   await persistFscpLocalMaterial(opts.storage, ownerNorm, material);
 
   if (!material.deviceUuidFromServer) {
-    const sync = await syncFscpDeviceUuid(opts.storage, ownerNorm, material);
+    const sync = await syncFscpDeviceUuid(
+      opts.storage,
+      ownerNorm,
+      material,
+      opts.server.publicKeyBase64,
+    );
     if (!sync.ok) {
       return {
         status: "registration_pending",
         material,
         localPubKey: await agreementPublicKeyBase64Url(material),
-        serverPubKey: opts.serverPublicKeyBase64,
+        serverPubKey: opts.server.publicKeyBase64,
         pendingOperation: "sync_device_uuid",
       };
     }
@@ -204,7 +340,7 @@ async function finalizeWithServerPubkey(opts: {
     status: "ready",
     material,
     localPubKey: await agreementPublicKeyBase64Url(material),
-    serverPubKey: opts.serverPublicKeyBase64,
+    serverPubKey: opts.server.publicKeyBase64,
     pendingOperation: null,
   };
 }
@@ -213,11 +349,22 @@ export async function finalizeRestoredMaterial(opts: {
   storage: FscpKeyStorageAdapter;
   ownerUserUuid: string;
   material: FscpLocalMaterial;
+  server?: UserE2eKeyBundle | null;
+  deadline?: FscpDeadline;
+  onAttemptStarted?: ReadAttemptStarted;
 }): Promise<FscpBootstrapResult> {
   const ownerNorm = opts.ownerUserUuid.trim().toLowerCase();
   await persistFscpLocalMaterial(opts.storage, ownerNorm, opts.material);
 
-  const server = await apiTryGetUserE2ePublicKey(ownerNorm);
+  const deadline = opts.deadline ?? createFscpDeadline();
+  const server =
+    opts.server !== undefined
+      ? opts.server
+      : await retryRead(
+          () => apiTryGetUserE2ePublicKey(ownerNorm),
+          deadline,
+          opts.onAttemptStarted,
+        );
   if (!server?.publicKeyBase64) {
     return {
       status: "orphan_local_profile",
@@ -231,8 +378,7 @@ export async function finalizeRestoredMaterial(opts: {
     storage: opts.storage,
     ownerUserUuid: ownerNorm,
     material: opts.material,
-    serverPublicKeyBase64: server.publicKeyBase64,
-    serverDeviceUuid: server.deviceUuid,
+    server,
   });
 }
 
@@ -266,69 +412,176 @@ export async function resolveFscpMaterialOnDevice(opts: {
   preferBackupOverLocal?: boolean;
   /** Mobile login: всегда восстановить из password backup, игнорируя local SecureStore. */
   forceRestoreFromBackupOnLogin?: boolean;
+  /** Shared wall-clock budget for every retry point in this resolve. */
+  deadline?: FscpDeadline;
+  /** Counts idempotent read attempts; used by login-sync telemetry. */
+  onAttemptStarted?: ReadAttemptStarted;
+  /** Output-only handoff of already-read state to syncFscpOnLogin; never persisted. */
+  readSnapshot?: ResolveReadSnapshot;
 }): Promise<FscpBootstrapResult> {
   const ownerNorm = opts.ownerUserUuid.trim().toLowerCase();
   if (!ownerNorm) {
     return { status: "needs_restore", material: null, pendingOperation: null };
   }
 
+  return serializeResolveForOwner(ownerNorm, async () => {
+    // The default deadline starts only after this call owns the mutex. syncFscpOnLogin passes a
+    // deferred deadline with the same property, so time spent waiting in the queue is not charged.
+    const deadline = opts.deadline ?? createFscpDeadline();
+    return resolveFscpMaterialInCriticalSection(opts, ownerNorm, deadline);
+  });
+}
+
+async function resolveFscpMaterialInCriticalSection(
+  opts: {
+    storage: FscpKeyStorageAdapter;
+    ownerUserUuid: string;
+    accountPassword?: string;
+    preferBackupOverLocal?: boolean;
+    forceRestoreFromBackupOnLogin?: boolean;
+    deadline?: FscpDeadline;
+    onAttemptStarted?: ReadAttemptStarted;
+    readSnapshot?: ResolveReadSnapshot;
+  },
+  ownerNorm: string,
+  deadline: FscpDeadline,
+): Promise<FscpBootstrapResult> {
+  const local = await loadFscpLocalMaterial(opts.storage, ownerNorm);
+
   if (opts.accountPassword && opts.forceRestoreFromBackupOnLogin) {
+    let raw: unknown;
     try {
-      const restored = await restoreFromPasswordBackup(opts.accountPassword);
-      return finalizeRestoredMaterial({
-        storage: opts.storage,
-        ownerUserUuid: ownerNorm,
-        material: restored,
-      });
+      raw = await retryRead(() => apiGetKeyBackup(), deadline, opts.onAttemptStarted);
+      if (opts.readSnapshot) opts.readSnapshot.knownBackup = { raw };
     } catch (e) {
-      if (isApiRequestError(e) && e.status === 404) {
-        /* no backup — fall through */
-      } else if (
-        e instanceof Error &&
-        (e.message.includes("Неверный пароль") || e.message.includes("поврежд"))
-      ) {
-        return { status: "wrong_password", material: null, pendingOperation: null };
-      } else if (isApiRequestError(e)) {
-        throw e;
+      if (classifyTransportFailure(e) === "not_found") {
+        if (opts.readSnapshot) opts.readSnapshot.knownBackup = { state: "missing" };
+        /* no backup — fall through and validate the current local storage */
       } else {
-        throw e;
+        return restoreFailureResult({ error: e, material: local });
+      }
+    }
+
+    if (raw !== undefined) {
+      let restored: FscpLocalMaterial;
+      try {
+        restored = await restoreFromPasswordBackup(opts.accountPassword, raw);
+        if (opts.readSnapshot) {
+          opts.readSnapshot.knownBackup = { raw, state: "healthy" };
+        }
+      } catch (e) {
+        if (opts.readSnapshot && isFscpBackupError(e)) {
+          opts.readSnapshot.knownBackup = {
+            raw,
+            state:
+              e.kind === "aead_auth_failed"
+                ? "unreadable"
+                : e.kind === "kdf_failed"
+                  ? "kdf_failed"
+                  : "malformed",
+          };
+        }
+        return restoreFailureResult({ error: e, material: local });
+      }
+
+      try {
+        return await finalizeRestoredMaterial({
+          storage: opts.storage,
+          ownerUserUuid: ownerNorm,
+          material: restored,
+          deadline,
+          onAttemptStarted: opts.onAttemptStarted,
+        });
+      } catch (e) {
+        return restoreFailureResult({ error: e, material: restored });
       }
     }
   }
 
-  const local = await loadFscpLocalMaterial(opts.storage, ownerNorm);
+  let knownServer: UserE2eKeyBundle | null | undefined;
 
   if (local && opts.accountPassword && opts.preferBackupOverLocal) {
+    let raw: unknown;
     try {
-      const restored = await restoreFromPasswordBackup(opts.accountPassword);
-      const server = await apiTryGetUserE2ePublicKey(ownerNorm);
-      const preferBackup = await shouldPreferBackupOverLocal({
-        local,
-        restored,
-        serverPublicKeyBase64: server?.publicKeyBase64,
-      });
-      if (preferBackup) {
-        return finalizeRestoredMaterial({
-          storage: opts.storage,
-          ownerUserUuid: ownerNorm,
-          material: restored,
-        });
-      }
+      raw = await retryRead(() => apiGetKeyBackup(), deadline, opts.onAttemptStarted);
+      if (opts.readSnapshot) opts.readSnapshot.knownBackup = { raw };
     } catch (e) {
-      if (isApiRequestError(e) && e.status === 404) {
-        /* no server backup — keep local */
-      } else if (
-        !(e instanceof Error) ||
-        (!e.message.includes("Неверный пароль") && !e.message.includes("поврежд"))
-      ) {
-        if (isApiRequestError(e)) throw e;
+      const failure = classifyTransportFailure(e);
+      if (failure === "not_found") {
+        if (opts.readSnapshot) opts.readSnapshot.knownBackup = { state: "missing" };
+        /* no server backup — validate and keep local */
+      } else {
+        return restoreFailureResult({ error: e, material: local });
+      }
+    }
+
+    if (raw !== undefined) {
+      try {
+        const restored = await restoreFromPasswordBackup(opts.accountPassword, raw);
+        if (opts.readSnapshot) {
+          opts.readSnapshot.knownBackup = { raw, state: "healthy" };
+        }
+        knownServer = await retryRead(
+          () => apiTryGetUserE2ePublicKey(ownerNorm),
+          deadline,
+          opts.onAttemptStarted,
+        );
+        const preferBackup = await shouldPreferBackupOverLocal({
+          local,
+          restored,
+          serverPublicKeyBase64: knownServer?.publicKeyBase64,
+        });
+        if (preferBackup) {
+          try {
+            return await finalizeRestoredMaterial({
+              storage: opts.storage,
+              ownerUserUuid: ownerNorm,
+              material: restored,
+              server: knownServer,
+              deadline,
+              onAttemptStarted: opts.onAttemptStarted,
+            });
+          } catch (e) {
+            return restoreFailureResult({
+              error: e,
+              material: restored,
+              serverPubKey: knownServer?.publicKeyBase64,
+            });
+          }
+        }
+      } catch (e) {
+        if (isFscpBackupError(e) && e.kind === "aead_auth_failed") {
+          // A proven-current login password can legitimately fail against an old backup.
+          // Keep validating the local profile; ensureKeyBackupOnServer may heal it later.
+          if (opts.readSnapshot) {
+            opts.readSnapshot.knownBackup = { raw, state: "unreadable" };
+          }
+        } else {
+          if (opts.readSnapshot && isFscpBackupError(e)) {
+            opts.readSnapshot.knownBackup = {
+              raw,
+              state: e.kind === "kdf_failed" ? "kdf_failed" : "malformed",
+            };
+          }
+          return restoreFailureResult({ error: e, material: local });
+        }
       }
     }
   }
 
   if (local) {
-    const server = await apiTryGetUserE2ePublicKey(ownerNorm);
-    if (!server?.publicKeyBase64) {
+    if (knownServer === undefined) {
+      try {
+        knownServer = await retryRead(
+          () => apiTryGetUserE2ePublicKey(ownerNorm),
+          deadline,
+          opts.onAttemptStarted,
+        );
+      } catch (e) {
+        return restoreFailureResult({ error: e, material: local });
+      }
+    }
+    if (!knownServer?.publicKeyBase64) {
       return {
         status: "orphan_local_profile",
         material: local,
@@ -336,30 +589,57 @@ export async function resolveFscpMaterialOnDevice(opts: {
         pendingOperation: null,
       };
     }
-    return finalizeWithServerPubkey({
-      storage: opts.storage,
-      ownerUserUuid: ownerNorm,
-      material: local,
-      serverPublicKeyBase64: server.publicKeyBase64,
-      serverDeviceUuid: server.deviceUuid,
-    });
+    try {
+      return await finalizeWithServerPubkey({
+        storage: opts.storage,
+        ownerUserUuid: ownerNorm,
+        material: local,
+        server: knownServer,
+      });
+    } catch (e) {
+      return restoreFailureResult({
+        error: e,
+        material: local,
+        serverPubKey: knownServer.publicKeyBase64,
+      });
+    }
   }
 
-  const e2eState = await apiGetE2EState();
-  const server = await apiTryGetUserE2ePublicKey(ownerNorm);
-  const hasServerPubKey = !!server?.publicKeyBase64?.trim();
-
-  let hasKeyBackup = false;
+  let decision: {
+    e2eState: MsgE2EState;
+    server: UserE2eKeyBundle | null;
+    knownBackup: KnownKeyBackup;
+  };
   try {
-    await apiGetKeyBackup();
-    hasKeyBackup = true;
+    decision = await retryRead(async () => {
+      const e2eState = await apiGetE2EState();
+      const server = await apiTryGetUserE2ePublicKey(ownerNorm);
+      let knownBackup = opts.readSnapshot?.knownBackup;
+      if (!knownBackup) {
+        try {
+          knownBackup = { raw: await apiGetKeyBackup() };
+        } catch (e) {
+          if (!isApiRequestError(e) || e.status !== 404) throw e;
+          knownBackup = { state: "missing" };
+        }
+      }
+      return { e2eState, server, knownBackup };
+    }, deadline, opts.onAttemptStarted);
   } catch (e) {
-    if (!isApiRequestError(e) || e.status !== 404) throw e;
+    // Server state is unknown: never derive mustRestore=false and never create a new identity.
+    return restoreFailureResult({ error: e, material: null });
   }
 
+  if (opts.readSnapshot) {
+    opts.readSnapshot.knownE2eState = decision.e2eState;
+    opts.readSnapshot.knownBackup = decision.knownBackup;
+  }
+
+  const hasServerPubKey = !!decision.server?.publicKeyBase64?.trim();
+  const hasKeyBackup = decision.knownBackup.state !== "missing";
   const mustRestore = accountRequiresKeyRestore({
     hasServerPubKey,
-    e2eState: e2eState.state,
+    e2eState: decision.e2eState.state,
     hasKeyBackup,
   });
 
@@ -390,35 +670,60 @@ export async function resolveFscpMaterialOnDevice(opts: {
       status: "needs_restore",
       material: null,
       pendingOperation: null,
-      serverPubKey: server?.publicKeyBase64 ?? undefined,
+      serverPubKey: decision.server?.publicKeyBase64 ?? undefined,
     };
   }
 
+  if (decision.knownBackup.state === "missing" || !("raw" in decision.knownBackup)) {
+    return {
+      status: "backup_not_found",
+      material: null,
+      pendingOperation: null,
+      serverPubKey: decision.server?.publicKeyBase64 ?? undefined,
+      failure: "not_found",
+    };
+  }
+
+  let restored: FscpLocalMaterial;
   try {
-    const restored = await restoreFromPasswordBackup(opts.accountPassword);
-    return finalizeRestoredMaterial({
+    restored = await restoreFromPasswordBackup(
+      opts.accountPassword,
+      decision.knownBackup.raw,
+    );
+    decision.knownBackup.state = "healthy";
+    if (opts.readSnapshot) opts.readSnapshot.knownBackup = decision.knownBackup;
+  } catch (e) {
+    if (isFscpBackupError(e)) {
+      decision.knownBackup.state =
+        e.kind === "aead_auth_failed"
+          ? "unreadable"
+          : e.kind === "kdf_failed"
+            ? "kdf_failed"
+            : "malformed";
+      if (opts.readSnapshot) opts.readSnapshot.knownBackup = decision.knownBackup;
+    }
+    return restoreFailureResult({
+      error: e,
+      material: null,
+      serverPubKey: decision.server?.publicKeyBase64,
+    });
+  }
+
+  try {
+    return await finalizeRestoredMaterial({
       storage: opts.storage,
       ownerUserUuid: ownerNorm,
       material: restored,
+      server: decision.server,
+      deadline,
+      onAttemptStarted: opts.onAttemptStarted,
     });
   } catch (e) {
-    if (isApiRequestError(e) && e.status === 404) {
-      return {
-        status: "backup_not_found",
-        material: null,
-        pendingOperation: null,
-        serverPubKey: server?.publicKeyBase64 ?? undefined,
-      };
-    }
-    if (e instanceof Error && e.message.includes("Некорректный payload")) {
-      throw e;
-    }
-    return {
-      status: "wrong_password",
-      material: null,
-      pendingOperation: null,
-      serverPubKey: server?.publicKeyBase64 ?? undefined,
-    };
+    return restoreFailureResult({
+      error: e,
+      material: restored,
+      serverPubKey: decision.server?.publicKeyBase64,
+    });
   }
 }
 

@@ -24,6 +24,8 @@ export * from "./deviceRecovery.js";
 export * from "./recoveryPhrase.js";
 export * from "./keyStorage.js";
 export * from "./keys.js";
+export * from "./resilience.js";
+export * from "./loginHandoff.js";
 export * from "./bootstrap.js";
 export * from "./syncOnLogin.js";
 export * from "./kdf.js";

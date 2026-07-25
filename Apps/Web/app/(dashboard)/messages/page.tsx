@@ -406,7 +406,7 @@ function localVoiceBlobForAsset(assetUuid: string): Blob | undefined {
 
 function MessagesChatInner() {
   const { isClient, hasToken } = useProtectedPage();
-  const { me, fscpMaterial, fscpBootstrapLoading, fscpBootstrapError, fscpStatus, openFscpUnlock } =
+  const { me, fscpMaterial, fscpBootstrapLoading, fscpBootstrapError, fscpStatus, fscpFailure, openFscpUnlock } =
     useCurrentUser();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -2542,7 +2542,15 @@ function MessagesChatInner() {
               </header>
 
               {threadError ? <p className={styles.messagesError}>{threadError}</p> : null}
-              {fscpBootstrapError ? (
+              {fscpStatus === "transient_error" ? (
+                // Транзиент/сбой окружения — баннер, НЕ сырая строка ошибки ядра и НЕ модалка пароля
+                // (см. план fscp_restore_reliability, дефект 5): дашборд уже тихо повторяет резолв.
+                <p className={styles.messagesError}>
+                  {fscpFailure === "transient"
+                    ? "Проверяем ключи шифрования — временные проблемы с сетью, повторяем попытку автоматически."
+                    : "Ключи шифрования временно недоступны из-за ошибки окружения на этом устройстве."}
+                </p>
+              ) : fscpBootstrapError ? (
                 <p className={styles.messagesError}>
                   FSCP: {fscpBootstrapError}
                   {fscpStatusNeedsPassword(fscpStatus) ? (
