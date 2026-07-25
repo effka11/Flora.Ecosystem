@@ -36,9 +36,9 @@ describe("SubscriberTaskQueue", () => {
     const worker = vi.fn((key: string) => key === "active" ? active.promise : Promise.resolve(key));
     const queue = new SubscriberTaskQueue(worker);
     queue.request("active").catch(() => {});
-    const cancel = queue.subscribe("recycled", () => {});
+    const recycled = queue.subscribe("recycled", () => {});
 
-    cancel();
+    recycled.unsubscribe();
     active.resolve("done");
     await flushPromises();
 
@@ -56,8 +56,8 @@ describe("SubscriberTaskQueue", () => {
     });
     const queue = new SubscriberTaskQueue(worker);
     queue.request("active").catch(() => {});
-    const cancel = queue.subscribe("recycled", () => {});
-    cancel();
+    const cancelled = queue.subscribe("recycled", () => {});
+    cancelled.unsubscribe();
     const middle = queue.request("middle");
     const recycled = queue.request("recycled");
 
@@ -239,5 +239,174 @@ describe("SubscriberTaskQueue", () => {
 
     decode.resolve("png");
     await expect(result).resolves.toBe("png");
+  });
+
+  it("requeues an aborted task when a subscriber arrives before the abort lands", async () => {
+    const runs: ((value: string) => void)[] = [];
+    const queue = new SubscriberTaskQueue<string>((_key, ctx) => {
+      return new Promise<string>((resolve, reject) => {
+        runs.push(resolve);
+        ctx.signal.addEventListener("abort", () => reject(new Error("aborted")));
+      });
+    });
+
+    const seen: string[] = [];
+    const failures: unknown[] = [];
+    const first = queue.subscribe("image", () => {}, () => {});
+    await flushPromises();
+    expect(runs).toHaveLength(1);
+
+    // React runs the cleanup of the old effect before the body of the new one,
+    // so the second subscriber lands on a task that is already being aborted.
+    first.unsubscribe();
+    queue.subscribe(
+      "image",
+      (value) => seen.push(value),
+      (error) => failures.push(error),
+    );
+
+    await flushPromises();
+    expect(runs).toHaveLength(2);
+
+    runs[1]("png");
+    await flushPromises();
+    expect(seen).toEqual(["png"]);
+    expect(failures).toEqual([]);
+    expect(queue.stats()).toMatchObject({ queued: 0, running: 0, subscribers: 0 });
+  });
+
+  it("ignores a late settle from a preempted run", async () => {
+    const runs: { key: string; resolve: (value: string) => void }[] = [];
+    // A worker that ignores its abort signal: its run outlives the preemption.
+    const queue = new SubscriberTaskQueue<string>((key) => {
+      return new Promise<string>((resolve) => {
+        runs.push({ key, resolve });
+      });
+    });
+
+    const background: string[] = [];
+    const backgroundErrors: unknown[] = [];
+    queue.subscribe(
+      "bg",
+      (value) => background.push(value),
+      (error) => backgroundErrors.push(error),
+      "background",
+    );
+    expect(runs.map((run) => run.key)).toEqual(["bg"]);
+
+    // Preemption abandons the bg run and takes its slot immediately.
+    const visible = queue.request("v", "visible");
+    expect(runs.map((run) => run.key)).toEqual(["bg", "v"]);
+
+    runs[0].resolve("stale");
+    await flushPromises();
+    expect(background).toEqual([]);
+    expect(backgroundErrors).toEqual([]);
+
+    runs[1].resolve("v-done");
+    await expect(visible).resolves.toBe("v-done");
+    await flushPromises();
+
+    // bg kept its subscriber and was restarted rather than settled by the stale run.
+    expect(runs.map((run) => run.key)).toEqual(["bg", "v", "bg"]);
+    runs[2].resolve("bg-done");
+    await flushPromises();
+    expect(background).toEqual(["bg-done"]);
+  });
+
+  it("raises priority through setPriority without dropping the subscription", async () => {
+    const calls: string[] = [];
+    const queue = new SubscriberTaskQueue(async (key: string) => {
+      calls.push(key);
+      return key;
+    });
+    const owner = Symbol("scroll");
+    queue.setPaused(owner, "drag", true);
+
+    const early = queue.request("early", "background");
+    const seen: string[] = [];
+    const late = queue.subscribe("late", (value) => seen.push(value), () => {}, "background");
+    late.setPriority("visible");
+
+    queue.setPaused(owner, "drag", false);
+    await flushPromises();
+
+    expect(calls).toEqual(["late", "early"]);
+    expect(seen).toEqual(["late"]);
+    await expect(early).resolves.toBe("early");
+  });
+
+  it("lowers priority through setPriority without dropping the subscription", async () => {
+    const calls: string[] = [];
+    const queue = new SubscriberTaskQueue(async (key: string) => {
+      calls.push(key);
+      return key;
+    });
+    const owner = Symbol("scroll");
+    queue.setPaused(owner, "drag", true);
+
+    const seen: string[] = [];
+    const hot = queue.subscribe("hot", (value) => seen.push(value), () => {}, "visible");
+    const mid = queue.request("mid", "near");
+    hot.setPriority("background");
+
+    queue.setPaused(owner, "drag", false);
+    await flushPromises();
+
+    // "hot" was first in and visible, but it no longer outranks "mid".
+    expect(calls).toEqual(["mid", "hot"]);
+    expect(seen).toEqual(["hot"]);
+    await expect(mid).resolves.toBe("mid");
+  });
+
+  it("falls back to the highest remaining subscriber when one leaves", async () => {
+    const calls: string[] = [];
+    const queue = new SubscriberTaskQueue(async (key: string) => {
+      calls.push(key);
+      return key;
+    });
+    const owner = Symbol("scroll");
+    queue.setPaused(owner, "drag", true);
+
+    const shared = queue.request("shared", "background");
+    const visible = queue.subscribe("shared", () => {}, () => {}, "visible");
+    const other = queue.request("other", "near");
+    visible.unsubscribe();
+
+    queue.setPaused(owner, "drag", false);
+    await flushPromises();
+
+    // Without the visible subscriber "shared" is background again.
+    expect(calls).toEqual(["other", "shared"]);
+    await expect(shared).resolves.toBe("shared");
+    await expect(other).resolves.toBe("other");
+  });
+
+  it("runs per-attempt cleanup after an abandoned worker finally settles", async () => {
+    const work = deferred<string>();
+    const cleanups: string[] = [];
+    const queue = new SubscriberTaskQueue<string>((key, context) => {
+      context.onSettled(() => cleanups.push(key));
+      return work.promise; // deliberately ignores abort
+    });
+
+    const subscription = queue.subscribe("image", () => {});
+    subscription.unsubscribe();
+    expect(cleanups).toEqual([]);
+
+    work.resolve("late");
+    await flushPromises();
+
+    expect(cleanups).toEqual(["image"]);
+    expect(queue.stats()).toMatchObject({ queued: 0, running: 0, subscribers: 0 });
+  });
+
+  it("rejects subscribers when the worker fails on its own", async () => {
+    const queue = new SubscriberTaskQueue<string>(async () => {
+      throw new Error("decode failed");
+    });
+
+    await expect(queue.request("image")).rejects.toThrow("decode failed");
+    expect(queue.stats()).toMatchObject({ queued: 0, running: 0, subscribers: 0 });
   });
 });

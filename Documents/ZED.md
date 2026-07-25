@@ -56,7 +56,7 @@ Smoke-test: breakpoint в startup Flora.API, `F4` → `Flora.API: debug`.
 
 ## MCP
 
-Глобальные (user settings): context7, memory, sequential-thinking, github. Postgres/redis/docker — Luna.Quant.
+Глобальные (user settings): context7, chunkhound, git, playwright, github. Postgres/redis/docker — Luna.Quant.
 
 ## ACP (Claude Agent)
 

@@ -1,18 +1,29 @@
 import { FRC_I_MIME } from "@flora/client-core/frc-i";
 import { Directory, File, FileMode, Paths } from "expo-file-system";
 import QuickCrypto from "react-native-quick-crypto";
-import { decodeFrcFileToPng, isFloraFrcIAvailable } from "flora-frc-i";
-import type { FrcCacheBackend, FrcCacheEntryRecord } from "@/lib/frcImageCache";
+import { decodeFrcFileScaled, isFloraFrcIAvailable } from "flora-frc-i";
+import type {
+  FrcCacheBackend,
+  FrcCacheEntryRecord,
+  FrcCacheIndexStore,
+  FrcDecodedFormat,
+} from "@/lib/frcImageCache";
+import { mmkv } from "@/lib/mmkv";
 
 /**
- * expo-file-system / native backend for {@link FrcImageCache}. Kept separate
+ * Device bindings for {@link FrcImageCache}: expo-file-system for the files,
+ * the native FRC-I decoder, and MMKV for the persisted index. Kept separate
  * from the pure cache core so the core's protocol and budget logic can be
  * unit-tested without pulling in React Native.
  */
 
-const CACHE_NAMESPACE = "frc-i-v1";
-const FINAL_SUFFIX = ".png";
+const CACHE_NAMESPACE = "frc-i-v2";
+/** Pre-bucket full-size PNGs. Wiped once by the core; see `deleteLegacyNamespace`. */
+const LEGACY_CACHE_NAMESPACE = "frc-i-v1";
 const PART_SUFFIX = ".part";
+const EXTENSIONS: Record<FrcDecodedFormat, string> = { jpeg: ".jpg", png: ".png" };
+/** `<sha256>@<bucket>.<ext>` — anything else in the directory is not ours. */
+const FINAL_NAME = /^([0-9a-f]{64}@\d+)\.(?:jpg|png)$/;
 
 function nonce(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -31,32 +42,29 @@ export function createExpoFrcCacheBackend(): FrcCacheBackend {
       if (!dir.exists) return out;
       for (const entry of dir.list()) {
         if (!(entry instanceof File)) continue;
-        const name = entry.name;
-        if (name.endsWith(PART_SUFFIX)) continue;
-        if (!name.endsWith(FINAL_SUFFIX)) continue;
-        const hash = name.slice(0, -FINAL_SUFFIX.length);
-        if (!/^[a-f0-9]{64}$/.test(hash)) continue;
-        out.push({ hash, uri: entry.uri, size: entry.size ?? 0 });
+        const match = FINAL_NAME.exec(entry.name);
+        if (!match) continue;
+        out.push({ key: match[1], uri: entry.uri, size: entry.size ?? 0 });
       }
       return out;
     },
-    deleteStaleParts() {
-      if (!dir.exists) return;
+    listPartUris() {
+      const out: string[] = [];
+      if (!dir.exists) return out;
       for (const entry of dir.list()) {
-        if (entry instanceof File && entry.name.endsWith(PART_SUFFIX)) {
-          try {
-            entry.delete();
-          } catch {
-            /* best-effort sweep */
-          }
-        }
+        if (entry instanceof File && entry.name.endsWith(PART_SUFFIX)) out.push(entry.uri);
       }
+      return out;
     },
-    finalUri(hash) {
-      return fileFor(`${hash}${FINAL_SUFFIX}`).uri;
+    deleteLegacyNamespace() {
+      const legacy = new Directory(Paths.cache, LEGACY_CACHE_NAMESPACE);
+      if (legacy.exists) legacy.delete();
     },
-    tempPartUri(hash, suffix) {
-      return fileFor(`${hash}.${nonce()}.${suffix}${PART_SUFFIX}`).uri;
+    finalUri(key, format) {
+      return fileFor(`${key}${EXTENSIONS[format]}`).uri;
+    },
+    tempPartUri(key, suffix) {
+      return fileFor(`${key}.${nonce()}.${suffix}${PART_SUFFIX}`).uri;
     },
     fileExists(uri) {
       return new File(uri).exists;
@@ -83,20 +91,33 @@ export function createExpoFrcCacheBackend(): FrcCacheBackend {
         handle.close();
       }
     },
-    async decode(friUri, pngDestUri) {
+    async decode(friUri, destUri, maxDimension, quality) {
       if (!isFloraFrcIAvailable()) {
         throw new Error(
           "FRC-I native decoder недоступен (нет libfrc_i_mobile_ffi). " +
             "npm run frc-i:native:android, затем reinstall Flora Dev (-ReplaceExisting).",
         );
       }
-      await decodeFrcFileToPng(friUri, pngDestUri);
+      return decodeFrcFileScaled(friUri, destUri, maxDimension, quality);
     },
     moveFile(fromUri, toUri) {
       new File(fromUri).moveSync(new File(toUri));
     },
     hashUrl(url) {
       return QuickCrypto.createHash("sha256").update(url).digest("hex");
+    },
+  };
+}
+
+/** The persisted index lives in the app's MMKV instance, not in the cache directory. */
+export function createMmkvFrcCacheIndex(): FrcCacheIndexStore {
+  return {
+    getString: (key) => mmkv.getString(key),
+    set: (key, value) => {
+      mmkv.set(key, value);
+    },
+    delete: (key) => {
+      mmkv.delete(key);
     },
   };
 }

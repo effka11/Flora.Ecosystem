@@ -14,6 +14,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { collageCellWidth, threeImageLeftCellWidth } from "@/lib/feedImageGeometry";
 import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
 import { LruCache } from "@/lib/lruCache";
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
@@ -24,10 +25,6 @@ const IMAGE_RATIO_CACHE_CAPACITY = 500;
 const imageRatioCache = new LruCache<string, number>(IMAGE_RATIO_CACHE_CAPACITY);
 const GRID = floraSpacing.grid;
 const GAP = floraSpacing.gridFine;
-
-function collageCellWidth(totalWidth: number, columns: number): number {
-  return Math.floor((totalWidth - GAP * (columns - 1)) / columns);
-}
 const DEFAULT_ROW_HEIGHT = 7 * GRID;
 const CELL_RADIUS = 10;
 const COLLAGE_RADIUS = 12;
@@ -132,7 +129,10 @@ function ClippedImage({
   style,
   transitionMs = 0,
 }: ClippedImageProps) {
-  const resolvedUri = useFrcImageUri(uri, { imageIndex });
+  // `width` is already the actual render width of this cell (single photo or
+  // one collage tile, never the whole collage) — decode at that size instead
+  // of the full-resolution FRI.
+  const resolvedUri = useFrcImageUri(uri, { imageIndex, displayWidth: width });
   const image = (
     <View style={[{ width, height }, style]}>
       {resolvedUri ? (
@@ -185,7 +185,15 @@ function CollageCell({ uri, width, height, borderRadius, imageIndex, onPress }: 
   );
 }
 
-/** Lightbox must decode FRI → PNG the same way as thumbnails (raw FRI is not Image-readable). */
+/**
+ * Lightbox must decode FRI → PNG the same way as thumbnails (raw FRI is not
+ * Image-readable). No `displayWidth`: the modal shows the image at up to full
+ * screen size in either dimension (`contentFit="contain"`), which is exactly
+ * what the top rung of the cache's bucket ladder is for. The thumbnail bucket
+ * already acquired for this post fills the frame instantly (stretched by
+ * expo-image) while the full-size variant decodes in the background — no
+ * extra "show small, then large" logic needed here.
+ */
 function ModalFrcImage({ uri }: { uri: string }) {
   const resolvedUri = useFrcImageUri(uri, { force: true });
   if (!resolvedUri) return null;
@@ -334,7 +342,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
       }
 
       if (count === 3) {
-        const leftWidth = Math.floor(((width - GAP) * 2) / 3);
+        const leftWidth = threeImageLeftCellWidth(width);
         const rightWidth = Math.floor((width - GAP) / 3);
         const totalHeight = rowHeight * 2;
         const rightCellHeight = Math.floor((totalHeight - GAP) / 2);
