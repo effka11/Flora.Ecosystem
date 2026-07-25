@@ -3,6 +3,7 @@ import { asRecord, readNum, readStr } from "@flora/client-core/contracts/parse.j
 import { deriveKeyArgon2id, getSodium, scalarmultBase } from "./sodium.js";
 import { FSCP_BOOTSTRAP_KEY_EPOCH_ID } from "./constants.js";
 import { fromBase64Url } from "./base64url.js";
+import { FscpBackupError, isFscpBackupError } from "./resilience.js";
 
 export type KeyEpochBackupEntry = {
   keyEpochId: string;
@@ -52,12 +53,17 @@ export type KeyBackupPayloadOut = {
  * - unreadable: AEAD authentication failed — wrong password OR corrupted ciphertext.
  *               These two are cryptographically indistinguishable (Poly1305 tag mismatch).
  * - malformed:  structural/parse/version problem; must NEVER be silently overwritten.
+ * - kdf_failed: Argon2id itself did not run on this device (no crypto_pwhash, OOM, dead worker).
+ *               Says NOTHING about the password or the backup: the backup may be perfectly
+ *               healthy and simply unopenable here, so overwrite is NEVER allowed and the user
+ *               must not be asked for a password again.
  */
-export type FscpBackupState = "healthy" | "missing" | "unreadable" | "malformed";
+export type FscpBackupState = "healthy" | "missing" | "unreadable" | "malformed" | "kdf_failed";
 
 export type KeyBackupClassification =
   | { state: "healthy"; payload: KeyBackupPayloadOut; plaintext: KeyBackupPlaintext }
   | { state: "malformed"; reason: string }
+  | { state: "kdf_failed" }
   | { state: "unreadable" };
 
 export type RecoveryBackupPayloadOut = {
@@ -245,19 +251,34 @@ export async function createKeyBackup(params: {
   };
 }
 
+/**
+ * Wraps a KDF failure into a typed error. Environment failure (crypto_pwhash unavailable, OOM,
+ * every KDF path dead) is NOT evidence about the password — the caller must not treat it as
+ * "wrong password" and must not overwrite the backup because of it.
+ */
+function kdfFailure(e: unknown): FscpBackupError {
+  const detail = e instanceof Error ? e.message : "неизвестная ошибка";
+  return new FscpBackupError("kdf_failed", `KDF резервной копии не выполнен: ${detail}`);
+}
+
 export async function decryptKeyBackup(
   payload: KeyBackupPayloadOut,
   password: string,
 ): Promise<KeyBackupPlaintext> {
   const sodium = await getSodium();
   const fromB64 = (s: string) => sodium.from_base64(s, sodium.base64_variants.URLSAFE_NO_PADDING);
-  const wrapKey = await deriveKeyArgon2id({
-    passwordBytes: new TextEncoder().encode(password),
-    salt: fromB64(payload.kdf.saltBase64Url),
-    memoryKiB: payload.kdf.memoryKiB,
-    iterations: payload.kdf.iterations,
-    keyLen: 32,
-  });
+  let wrapKey: Uint8Array;
+  try {
+    wrapKey = await deriveKeyArgon2id({
+      passwordBytes: new TextEncoder().encode(password),
+      salt: fromB64(payload.kdf.saltBase64Url),
+      memoryKiB: payload.kdf.memoryKiB,
+      iterations: payload.kdf.iterations,
+      keyLen: 32,
+    });
+  } catch (e) {
+    throw kdfFailure(e);
+  }
   const aad = buildKeyBackupAad({
     userUuid: payload.userUuid,
     backupRevision: payload.backupRevision,
@@ -267,20 +288,34 @@ export async function decryptKeyBackup(
     epochSetHashBase64Url: payload.epochSetHashBase64Url,
     kdfSaltBase64Url: payload.kdf.saltBase64Url,
   });
+  // Message texts are load-bearing: mobile bootstrap and the divergent Apps/Web copy still
+  // classify by `message.includes(...)`. `kind` is added on top, never instead.
+  let plain: Uint8Array;
   try {
-    const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+    plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
       null,
       fromB64(payload.ciphertextBase64Url),
       aad,
       fromB64(payload.aead.nonceBase64Url),
       wrapKey,
     );
-    return JSON.parse(new TextDecoder().decode(plain)) as KeyBackupPlaintext;
   } catch (e) {
     if (e instanceof Error && e.message.includes("Некорректный payload")) {
-      throw e;
+      throw new FscpBackupError("malformed", e.message);
     }
-    throw new Error("Неверный пароль или повреждённые данные резервной копии.");
+    throw new FscpBackupError(
+      "aead_auth_failed",
+      "Неверный пароль или повреждённые данные резервной копии.",
+    );
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(plain)) as KeyBackupPlaintext;
+  } catch {
+    // AEAD authenticated, so the password was right — the plaintext itself is broken.
+    throw new FscpBackupError(
+      "malformed",
+      "Расшифрованные данные резервной копии повреждены: не JSON key-backup.",
+    );
   }
 }
 
@@ -303,6 +338,12 @@ export async function classifyKeyBackup(
     const plaintext = await decryptKeyBackup(payload, password);
     return { state: "healthy", payload, plaintext };
   } catch (e) {
+    if (isFscpBackupError(e)) {
+      if (e.kind === "kdf_failed") return { state: "kdf_failed" };
+      if (e.kind === "malformed") return { state: "malformed", reason: e.message };
+      return { state: "unreadable" };
+    }
+    // Foreign/legacy error (e.g. the divergent Apps/Web copy): keep the string-based fallback.
     if (e instanceof Error && e.message.includes("Некорректный payload")) {
       return { state: "malformed", reason: e.message };
     }
@@ -316,13 +357,18 @@ export async function decryptRecoveryBackup(
 ): Promise<KeyBackupPlaintext> {
   const sodium = await getSodium();
   const fromB64 = (s: string) => sodium.from_base64(s, sodium.base64_variants.URLSAFE_NO_PADDING);
-  const wrapKey = await deriveKeyArgon2id({
-    passwordBytes: new TextEncoder().encode(recoveryPhrase.trim()),
-    salt: fromB64(payload.kdf.saltBase64Url),
-    memoryKiB: payload.kdf.memoryKiB,
-    iterations: payload.kdf.iterations,
-    keyLen: 32,
-  });
+  let wrapKey: Uint8Array;
+  try {
+    wrapKey = await deriveKeyArgon2id({
+      passwordBytes: new TextEncoder().encode(recoveryPhrase.trim()),
+      salt: fromB64(payload.kdf.saltBase64Url),
+      memoryKiB: payload.kdf.memoryKiB,
+      iterations: payload.kdf.iterations,
+      keyLen: 32,
+    });
+  } catch (e) {
+    throw kdfFailure(e);
+  }
   const aad = buildRecoveryAad({
     userUuid: payload.userUuid,
     recoveryRevision: payload.recoveryRevision,
@@ -332,17 +378,28 @@ export async function decryptRecoveryBackup(
     epochSetHashBase64Url: payload.epochSetHashBase64Url,
     kdfSaltBase64Url: payload.kdf.saltBase64Url,
   });
+  let plain: Uint8Array;
   try {
-    const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+    plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
       null,
       fromB64(payload.ciphertextBase64Url),
       aad,
       fromB64(payload.aead.nonceBase64Url),
       wrapKey,
     );
+  } catch {
+    throw new FscpBackupError(
+      "aead_auth_failed",
+      "Неверная фраза восстановления или повреждённые данные.",
+    );
+  }
+  try {
     return JSON.parse(new TextDecoder().decode(plain)) as KeyBackupPlaintext;
   } catch {
-    throw new Error("Неверная фраза восстановления или повреждённые данные.");
+    throw new FscpBackupError(
+      "malformed",
+      "Расшифрованные данные резервной копии повреждены: не JSON key-backup.",
+    );
   }
 }
 

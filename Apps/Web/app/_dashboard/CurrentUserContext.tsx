@@ -11,10 +11,22 @@ import {
   type ReactNode,
 } from "react";
 import { apiGetMe, ensureFreshAccessToken, getAccessToken, type MeResponse } from "@/lib/auth";
-import type { FscpBootstrapStatus, FscpLocalMaterial } from "@flora/client-core/fscp";
+import type {
+  FscpBootstrapResult,
+  FscpBootstrapStatus,
+  FscpLocalMaterial,
+  FscpTransportFailureClass,
+} from "@flora/client-core/fscp";
+import { takeProvenAccountPassword } from "@flora/client-core/fscp";
 import { getTelemetry } from "@flora/client-core/telemetry";
 import { webResolveFscpMaterial } from "@/lib/fscp/bootstrap";
 import { webSyncFscpOnLogin } from "@/lib/fscp/syncOnLogin";
+
+/** Reasons that justify auto-opening the unlock modal without an explicit user click. */
+type SilentUnlockReason = "needs_restore" | "wrong_password" | "backup_not_found";
+
+/** How many passwordless retries the dashboard schedules after a `transient_error` (failure="transient"). */
+const FSCP_WEB_RETRY_DELAYS_MS = [2000, 5000];
 
 type CurrentUserValue = {
   me: MeResponse | null;
@@ -26,6 +38,8 @@ type CurrentUserValue = {
   fscpBootstrapError: string | null;
   /** Последний статус резолва FSCP. Источник истины для триггера парольной модалки (не error-строка). */
   fscpStatus: FscpBootstrapStatus | null;
+  /** Класс сбоя транспорта, когда fscpStatus === "transient_error" (иначе null). Для баннера. */
+  fscpFailure: FscpTransportFailureClass | null;
   /**
    * Restore-only ввод пароля: восстановить ключи из серверного backup один раз.
    * НЕ перезаписывает backup (authoritativeOverwrite=false) — живая сессия не доказывает,
@@ -64,11 +78,14 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [fscpBootstrapLoading, setFscpBootstrapLoading] = useState(false);
   const [fscpBootstrapError, setFscpBootstrapError] = useState<string | null>(null);
   const [fscpStatus, setFscpStatus] = useState<FscpBootstrapStatus | null>(null);
+  const [fscpFailure, setFscpFailure] = useState<FscpTransportFailureClass | null>(null);
   const [fscpUnlockOpen, setFscpUnlockOpen] = useState(false);
   /** Пользователь закрыл модалку — не открывать её автоматически снова до явного запроса. */
   const fscpUnlockDismissedRef = useRef(false);
   /** Чтобы при смене JWT/me не оставался материал предыдущего пользователя до конца loadOrCreate (иначе E2E расшифровка с чужим ключом и вечный кэш ошибки). */
   const fscpMaterialOwnerRef = useRef<string | null>(null);
+  /** Bounded auto-retry timer for transient_error (failure="transient"); cleared on owner change/unmount. */
+  const fscpRetryTimerRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     if (!getAccessToken()) {
@@ -78,7 +95,6 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       setFscpBootstrapError(null);
       setFscpStatus(null);
       setFscpBootstrapLoading(false);
-      setLoading(false);
       return;
     }
     setLoading(true);
@@ -119,21 +135,55 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  const clearFscpRetryTimer = useCallback(() => {
+    if (fscpRetryTimerRef.current !== null) {
+      window.clearTimeout(fscpRetryTimerRef.current);
+      fscpRetryTimerRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Applies an FscpBootstrapResult to state. Defect 5 (plan `fscp_restore_reliability`): the
+   * kernel deliberately returns `transient_error` WITH `material` when local keys already exist
+   * and only a metadata call (pubkey lookup) failed transiently — never blank a working chat
+   * because of that. `transient_error` gets no raw hint string; the dedicated banner (consumer
+   * side, keyed on fscpStatus + fscpFailure) owns that copy instead of `fscpStatusHint`.
+   */
+  const applyFscpBootstrapResult = useCallback(
+    (result: FscpBootstrapResult, cancelledRef: { current: boolean }) => {
+      if (cancelledRef.current || !getAccessToken()) return;
+      setFscpMaterial(result.material);
+      setFscpStatus(result.status);
+      setFscpFailure(result.status === "transient_error" ? (result.failure ?? null) : null);
+      if (result.status === "ready" || result.material || result.status === "transient_error") {
+        setFscpBootstrapError(null);
+      } else {
+        setFscpBootstrapError(fscpStatusHint(result.status));
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (!me || !getAccessToken()) {
+    const ownerUserUuid = me?.userUuid;
+    if (!ownerUserUuid || !getAccessToken()) {
       fscpMaterialOwnerRef.current = null;
+      clearFscpRetryTimer();
       setFscpMaterial(null);
       setFscpBootstrapError(null);
       setFscpStatus(null);
+      setFscpFailure(null);
       setFscpBootstrapLoading(false);
       return;
     }
-    const ownerNorm = me.userUuid.trim().toLowerCase();
-    if (ownerNorm.length === 0) {
+    const ownerNorm = ownerUserUuid.trim().toLowerCase();
+    if (!ownerNorm) {
       fscpMaterialOwnerRef.current = null;
+      clearFscpRetryTimer();
       setFscpMaterial(null);
       setFscpBootstrapError(null);
       setFscpStatus(null);
+      setFscpFailure(null);
       setFscpBootstrapLoading(false);
       return;
     }
@@ -144,47 +194,113 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       fscpUnlockDismissedRef.current = false;
     }
 
-    let cancelled = false;
+    const cancelledRef = { current: false };
+    clearFscpRetryTimer();
     setFscpBootstrapLoading(true);
     setFscpBootstrapError(null);
-    void (async () => {
+
+    const openUnlockModalForReason = (reason: SilentUnlockReason) => {
+      if (cancelledRef.current || fscpUnlockDismissedRef.current) return;
+      getTelemetry().capture({ type: "unlock_prompt_shown", reason });
+      setFscpUnlockOpen(true);
+    };
+
+    const scheduleTransientRetry = (attempt: number) => {
+      if (cancelledRef.current) return;
+      const delay = FSCP_WEB_RETRY_DELAYS_MS[attempt - 1];
+      if (delay === undefined) return; // человеческий предел ретраев исчерпан — оставить статичный баннер
+      fscpRetryTimerRef.current = window.setTimeout(() => {
+        fscpRetryTimerRef.current = null;
+        if (!cancelledRef.current) void runResolve(attempt);
+      }, delay);
+    };
+
+    // needs_restore: сначала одна молчаливая попытка доигранным паролем из логин-handoff
+    // (single-use, TTL 90s — см. loginHandoff.ts), и только если её нет/она не помогла —
+    // модалка. authoritativeOverwrite: true обосновано в шапке loginHandoff.ts.
+    async function handleNeedsRestore() {
+      const password = takeProvenAccountPassword(ownerNorm);
+      if (cancelledRef.current) return;
+      if (!password) {
+        openUnlockModalForReason("needs_restore");
+        return;
+      }
+
+      let syncResult: Awaited<ReturnType<typeof webSyncFscpOnLogin>>;
       try {
-        const result = await webResolveFscpMaterial(me.userUuid);
-        if (!cancelled && getAccessToken()) {
-          setFscpMaterial(result.material);
-          setFscpStatus(result.status);
-          setFscpBootstrapError(
-            result.status === "ready" || result.material ? null : fscpStatusHint(result.status),
-          );
+        syncResult = await webSyncFscpOnLogin(ownerNorm, password, { authoritativeOverwrite: true });
+      } catch (e) {
+        if (!cancelledRef.current) {
+          getTelemetry().capture({ type: "login_handoff_used", ok: false });
+          setFscpBootstrapError(e instanceof Error ? e.message : "Не удалось инициализировать FSCP");
+          openUnlockModalForReason("needs_restore");
+        }
+        return;
+      }
+      if (cancelledRef.current) return;
+
+      getTelemetry().capture({
+        type: "login_sync_outcome",
+        ok: syncResult.bootstrap.status === "ready",
+        ...(syncResult.failure ? { failure: syncResult.failure } : {}),
+        attempts: syncResult.attempts ?? 0,
+      });
+
+      const ok = syncResult.bootstrap.status === "ready";
+      getTelemetry().capture({ type: "login_handoff_used", ok });
+      applyFscpBootstrapResult(syncResult.bootstrap, cancelledRef);
+
+      if (ok) return;
+      if (syncResult.bootstrap.status === "wrong_password" || syncResult.bootstrap.status === "backup_not_found") {
+        openUnlockModalForReason(syncResult.bootstrap.status);
+        return;
+      }
+      // transient_error с failure="transient" → тихий баннер + ретрай, без модалки (пароль уже
+      // потрачен — handoff single-use). failure="permanent" (kdf_failed/malformed) → ни ретрая,
+      // ни модалки: спрашивать пароль ещё раз бессмысленно.
+      if (syncResult.bootstrap.status === "transient_error" && syncResult.bootstrap.failure === "transient") {
+        scheduleTransientRetry(1);
+      }
+    }
+
+    async function runResolve(retryAttempt: number) {
+      if (retryAttempt === 0) setFscpBootstrapLoading(true);
+      try {
+        const result = await webResolveFscpMaterial(ownerNorm);
+        if (cancelledRef.current || !getAccessToken()) return;
+        applyFscpBootstrapResult(result, cancelledRef);
+
+        if (result.status === "needs_restore") {
+          await handleNeedsRestore();
+        } else if (
+          result.status === "transient_error" &&
+          result.failure === "transient" &&
+          retryAttempt < FSCP_WEB_RETRY_DELAYS_MS.length
+        ) {
+          scheduleTransientRetry(retryAttempt + 1);
         }
       } catch (e) {
-        if (!cancelled) {
-          // Сетевая/серверная ошибка резолва — НЕ статус ключей: не триггерим парольную модалку.
-          setFscpMaterial(null);
-          setFscpStatus(null);
-          setFscpBootstrapError(e instanceof Error ? e.message : "Не удалось инициализировать FSCP");
-        }
+        if (cancelledRef.current) return;
+        // Неожиданный throw (не по контракту transient_error — сам резолв ловит транзиенты и
+        // возвращает статус). НЕ обнуляем fscpMaterial/fscpStatus здесь: предыдущее рабочее
+        // состояние ключей безопаснее слепого сброса чата на постороннюю ошибку (дефект 5).
+        setFscpBootstrapError(e instanceof Error ? e.message : "Не удалось инициализировать FSCP");
       } finally {
-        if (!cancelled) {
-          setFscpBootstrapLoading(false);
-        }
+        if (!cancelledRef.current) setFscpBootstrapLoading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [me]);
-
-  // Авто-показ только для устойчивого "нет ключей на этом устройстве" (needs_restore),
-  // и только если пользователь не закрыл модалку вручную. Транзиентные ошибки не триггерят.
-  useEffect(() => {
-    if (fscpStatus === "needs_restore" && !fscpUnlockDismissedRef.current) {
-      setFscpUnlockOpen(true);
     }
-  }, [fscpStatus]);
+
+    void runResolve(0);
+
+    return () => {
+      cancelledRef.current = true;
+      clearFscpRetryTimer();
+    };
+  }, [me?.userUuid, applyFscpBootstrapResult, clearFscpRetryTimer]);
 
   const openFscpUnlock = useCallback(() => {
     fscpUnlockDismissedRef.current = false;
+    getTelemetry().capture({ type: "unlock_prompt_shown", reason: "manual" });
     setFscpUnlockOpen(true);
   }, []);
 
@@ -203,8 +319,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       if (getAccessToken()) {
         setFscpMaterial(res.bootstrap.material);
         setFscpStatus(status);
+        setFscpFailure(status === "transient_error" ? (res.bootstrap.failure ?? null) : null);
         setFscpBootstrapError(
-          status === "ready" || res.bootstrap.material ? null : fscpStatusHint(status),
+          status === "ready" || res.bootstrap.material || status === "transient_error"
+            ? null
+            : fscpStatusHint(status),
         );
       }
       const telemetry = getTelemetry();
@@ -216,6 +335,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         telemetry.capture({ type: "restore_failure", reason: "wrong_password" });
       } else if (status === "backup_not_found") {
         telemetry.capture({ type: "restore_failure", reason: "backup_not_found" });
+      } else if (status === "transient_error" && res.bootstrap.failure === "transient") {
+        // Manual unlock-modal path only — the silent handoff restore (CurrentUserContext's main
+        // resolve effect) is already covered by login_sync_outcome/login_handoff_used and must
+        // NOT also emit restore_failure, or transient counts would be double-booked.
+        telemetry.capture({ type: "restore_failure", reason: "transient" });
       }
       return status;
     },
@@ -231,6 +355,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       fscpBootstrapLoading,
       fscpBootstrapError,
       fscpStatus,
+      fscpFailure,
       restoreFscpWithPassword,
       fscpUnlockOpen,
       openFscpUnlock,
@@ -244,6 +369,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       fscpBootstrapLoading,
       fscpBootstrapError,
       fscpStatus,
+      fscpFailure,
       restoreFscpWithPassword,
       fscpUnlockOpen,
       openFscpUnlock,

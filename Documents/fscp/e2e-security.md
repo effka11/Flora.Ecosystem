@@ -504,6 +504,84 @@ UX:
 
 Так пользователь видит обычный мессенджер, а большие истории не блокируют UI.
 
+## Надёжность restore/unlock
+
+Этот раздел описывает client-side restore/unlock password backup. Это домен `e2e-security`, а не wire-формат: wire v1, публичный HTTP-контракт и схема БД не менялись; bump `messageEnvelopeVersion` не требовался.
+
+### Статусы и классы отказа
+
+`FscpBootstrapStatus` возвращается из [`bootstrap.ts`](../../Products/FSCP/ts/src/bootstrap.ts). Для ошибок восстановления используется `FscpTransportFailureClass` из [`resilience.ts`](../../Products/FSCP/ts/src/resilience.ts).
+
+| Статус | Когда возвращается | `failure` / действие потребителя |
+| --- | --- | --- |
+| `ready` | local material согласован с сервером или успешно восстановлен | нет |
+| `needs_restore` | у аккаунта есть E2E-состояние, а local material и пароль отсутствуют | сначала попробовать login handoff; при его отсутствии показать unlock |
+| `wrong_password` | только AEAD-аутентификация backup завершилась ошибкой (`FscpBackupError.kind === "aead_auth_failed"`) | запросить пароль |
+| `backup_not_found` | `GET key-backup` вернул 404 | отдельный сценарий восстановления, не сетевой retry |
+| `transient_error` | сетевой/серверный сбой, истёкший общий дедлайн или постоянная ошибка окружения restore | обязательно проверить `failure` до retry, handoff или UX |
+
+`FscpTransportFailureClass` имеет значения `"transient"`, `"wrong_password"`, `"not_found"` и `"permanent"`. Важный нюанс контракта: `transient_error` также используется с `failure: "permanent"` для `kdf_failed` и malformed backup. Отдельного bootstrap-статуса для них нет. Поэтому автоматически повторять restore или использовать handoff разрешено только при `failure === "transient"`.
+
+`transient_error` обязан содержать `material`, если до сбоя local material уже был. Это позволяет Web сохранить работающие ключи при временно недоступном server public key и не переводить чат в состояние «Ключ шифрования недоступен».
+
+### Ретраи, дедлайн и сериализация
+
+`withFscpRetry` применяется только к идемпотентным read-фазам: до трёх попыток с базовыми задержками `[300, 900, 2500]` мс и джиттером. Повторяется только ошибка класса `"transient"`.
+
+Запись не ретраится. Если ответ `apiPutKeyBackup` потерян после применённой записи, повтор с вычисленным ранее `backupRevision + 1` использует устаревшую ревизию и получает 409. Кроме того, гонка по дедлайну не отменяет уже отправленный HTTP-запрос. Для необходимого в будущем повтора записи сначала нужно перечитать ревизию.
+
+На весь resolve действует один wall-clock дедлайн `FSCP_RESOLVE_DEADLINE_MS = 12_000`, общий для всех read-фаз, а не отдельный на каждую попытку. Он запускается после входа в критическую секцию: ожидание в очереди мьютекса не расходует бюджет. Пока resolve не завершён, Web держит чат в состоянии загрузки ключа и блокирует отправку, поэтому неограниченное ожидание недопустимо.
+
+Resolve сериализован цепочкой промисов по нормализованному `ownerNorm` в [`bootstrap.ts`](../../Products/FSCP/ts/src/bootstrap.ts). Это именно мьютекс, а не дедупликация результата: беспарольный и парольный resolve имели бы разные ключи дедупликации, могли бы параллельно вызвать `createInitialFscpIdentity` и получить `key_mismatch`. Завершённый результат не кэшируется: например, `needs_restore` нельзя переиспользовать после ввода пароля.
+
+**Известное ограничение.** Мьютекс действует только в одном JS-realm. Две вкладки всё ещё могут соревноваться через общий `localStorage`. `navigator.locks` сознательно не внедрён: это web-only API, которое потребовало бы отдельной поверхности проводки в `Apps/Web` ради редкой гонки на свежем аккаунте. Возможное будущее исправление — `navigator.locks.request()` в web-адаптере.
+
+### Дедупликация логин-синка
+
+Логин-синк передаёт уже прочитанные `raw` backup, server bundle и `knownE2eState` необязательными параметрами по цепочке `resolve → restore → finalize → ensure`. Поэтому чистый браузер делает примерно четыре HTTP-запроса вместо десяти: `apiGetE2EState`, `apiTryGetUserE2ePublicKey`, `apiGetKeyBackup`, `apiPutMyE2ePublicKey` для `deviceUuid`. Последний не нужен, если `deviceUuid` уже вернул сервер. Один и тот же password backup расшифровывается одним запуском Argon2id, а не двумя.
+
+### KDF и сохранность backup
+
+`configureFscpKdf` инъецирует реализацию на существующем типе `KdfDeriveFn` ([`kdf.ts`](../../Products/FSCP/ts/src/kdf.ts)). Web подключает общий worker через [`lib/fscp/kdfClient.ts`](../../Apps/Web/lib/fscp/kdfClient.ts) из [`lib/fscp/clientCore.ts`](../../Apps/Web/lib/fscp/clientCore.ts); SoT FSCP и legacy-копия Web используют один Worker.
+
+При сбое уже инъецированного KDF — worker завис, бросил ошибку или вернул ключ неверной длины — [`sodium.ts`](../../Products/FSCP/ts/src/sodium.ts) обязательно выполняет fallback на main thread через `crypto_pwhash` и пишет `kdf_fallback_used`. При SSR или если CSP/браузер не дают создать Worker, Web вообще не инъецирует KDF и ядро сразу использует тот же main-thread путь. Повторный запрос пароля не исправляет недоступный KDF, поэтому медленный работающий путь нельзя превращать в жёсткий отказ. Инвариант совместимости: Argon2id всегда работает с одной lane (`parallelism: 1`); иначе fallback вывел бы другой ключ и валидный backup выглядел бы нечитаемым.
+
+`FscpBackupState` включает `kdf_failed`. `ensureKeyBackupOnServer` никогда не перезаписывает backup в этом состоянии и возвращает `backupSkippedReason: "kdf_failed"`. Сбой KDF не доказывает ни неверный пароль, ни повреждение backup; перезапись могла бы уничтожить единственную восстановимую копию. `wrong_password` ставится только при фактическом провале AEAD-аутентификации, а не как catch-all для ошибок KDF, парсинга или транспорта.
+
+### Login handoff
+
+[`loginHandoff.ts`](../../Products/FSCP/ts/src/loginHandoff.ts) предоставляет `stashProvenAccountPassword`, `takeProvenAccountPassword` и `clearProvenAccountPassword` для одной молчаливой post-login попытки restore.
+
+- значение живёт только в module-scope памяти: не в `localStorage`, `sessionStorage`, cookie или IndexedDB; перезагрузка страницы его теряет;
+- handoff single-use и проверяет TTL 90 секунд по wall-clock при чтении; фоновые таймеры — только best-effort очистка;
+- промах по `ownerNorm` тоже очищает слот, чтобы пароль другого аккаунта не оставался для следующего caller;
+- stash происходит лишь когда restore действительно требовался и закончился `transient_error` с `failure === "transient"`.
+
+Модель угроз не сильнее момента ввода пароля: код с доступом в том же origin/realm (включая XSS) мог бы прочитать поле логина и без handoff. Механизм не персистирует пароль и минимизирует окно экспозиции. При сбросе сессии [`lib/auth.ts`](../../Apps/Web/lib/auth.ts) динамически импортирует и вызывает `clearProvenAccountPassword`.
+
+Restore через handoff передаёт `authoritativeOverwrite: true`: handoff создаётся только после успешного `apiLogin` и действует максимум 90 секунд, то есть это тот же свежий момент доказанного пароля, при котором разрешена перезапись backup. Иначе сломанный backup остался бы сломанным до следующего входа. Живые сессии и inline unlock-модалка передают `authoritativeOverwrite: false`, поскольку у них нет такого свежего доказательства.
+
+### Когда запрашивается пароль
+
+В [`CurrentUserContext.tsx`](../../Apps/Web/app/_dashboard/CurrentUserContext.tsx) молчаливая попытка через handoff всегда предшествует модалке. Пароль запрашивается при `needs_restore`, если handoff пуст, а также при `wrong_password` и `backup_not_found`. При `transient_error` пароль не спрашивается: для `failure === "transient"` Web показывает баннер и делает ограниченные автоматические retry; для `failure === "permanent"` retry и модалка не запускаются.
+
+**Известный дефект, вне этой задачи.** При `backup_not_found` у аккаунта может быть server public key, но не быть backup. `fscpStatusNeedsPassword` в [`CurrentUserContext.tsx`](../../Apps/Web/app/_dashboard/CurrentUserContext.tsx) относит этот статус к требующим пароль и открывает модалку, хотя пароль не может помочь: нужны recovery-фраза или доверенное устройство. Также на `/feed` остаётся авто-открытие модалки при E2E, не нужном этому экрану. Политика запроса пароля здесь сознательно не менялась.
+
+### Телеметрия без утечки секретов
+
+События определены в [`telemetry/index.ts`](../../Packages/flora-client-core/src/telemetry/index.ts):
+
+| Событие | Поля |
+| --- | --- |
+| `unlock_prompt_shown` | `{ reason }` |
+| `login_sync_outcome` | `{ ok, failure?, attempts }` |
+| `login_handoff_used` | `{ ok }` |
+| `kdf_fallback_used` | `{ reason }` |
+| `restore_failure` | `reason` включает `"transient"` |
+| `backup_overwrite_skipped` | `reason` включает `"kdf_failed"` |
+
+Для этих событий допустимы только перечислимые значения и булевы исходы. Ключи, пароли, ciphertext и UUID в них не передаются.
+
 ## Смена email
 
 Email участвует в восстановлении аккаунта, поэтому смена email — критичная операция.
