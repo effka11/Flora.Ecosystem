@@ -67,7 +67,14 @@ export function FloraAvatar({
     return cacheVersion > 0 ? `${base}&v=${cacheVersion}` : base;
   }, [cacheVersion, showImage, trimmedUuid]);
   // Avatars live outside feed viewability scopes; force decode or FRI never resolves.
-  const resolvedImageUri = useFrcImageUri(imageUri ?? "", { force: true });
+  // Decode at the actual rendered size (a 45px circle never needs a 2048px PNG)
+  // and on the dedicated avatar lane so a burst of avatars can't queue ahead
+  // of post images.
+  const resolvedImageUri = useFrcImageUri(imageUri ?? "", {
+    force: true,
+    displayWidth: size,
+    lane: "avatar",
+  });
 
   const content = showImage && imageUri && resolvedImageUri ? (
     <Image

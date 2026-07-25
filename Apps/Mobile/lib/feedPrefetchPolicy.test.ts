@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   canAttachToTail,
   shouldAttachStaged,
+  shouldPrewarmStagedPage,
   shouldStartPrefetch,
   type PrefetchGateInput,
+  type PrewarmGateInput,
 } from "./feedPrefetchPolicy";
 
 const allow: PrefetchGateInput = {
@@ -55,5 +57,27 @@ describe("canAttachToTail", () => {
     expect(canAttachToTail("c2", "c1")).toBe(false);
     expect(canAttachToTail(undefined, "c1")).toBe(false);
     expect(canAttachToTail("c1", undefined)).toBe(false);
+  });
+});
+
+const prewarmAllow: PrewarmGateInput = {
+  isActivePane: true,
+  isSearching: false,
+  networkAllowsPrefetch: true,
+};
+
+describe("shouldPrewarmStagedPage", () => {
+  it("allows when all gates are open", () => {
+    expect(shouldPrewarmStagedPage(prewarmAllow)).toBe(true);
+  });
+
+  it.each([
+    ["inactive pane", { isActivePane: false }],
+    ["searching", { isSearching: true }],
+    ["network disallows", { networkAllowsPrefetch: false }],
+  ])("blocks when %s", (_label, override) => {
+    expect(
+      shouldPrewarmStagedPage({ ...prewarmAllow, ...(override as Partial<PrewarmGateInput>) }),
+    ).toBe(false);
   });
 });

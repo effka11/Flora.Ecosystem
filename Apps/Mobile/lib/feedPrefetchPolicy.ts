@@ -59,3 +59,24 @@ export function canAttachToTail(
   if (!stagedRequestCursor) return false;
   return currentTailNextCursor === stagedRequestCursor;
 }
+
+export type PrewarmGateInput = {
+  isActivePane: boolean;
+  /** Local text search filters the visible set; warming its own page is irrelevant. */
+  isSearching: boolean;
+  /** Offline (or otherwise disallowed) → do not warm. Unknown counts as online/metered. */
+  networkAllowsPrefetch: boolean;
+};
+
+/**
+ * Whether a staged page's own first images may be warmed ahead of it joining
+ * the list. The same three conditions {@link shouldStartPrefetch} already
+ * applies before requesting the page at all: a paused pane, active search,
+ * or an offline device must not start background downloads either.
+ */
+export function shouldPrewarmStagedPage(i: PrewarmGateInput): boolean {
+  if (!i.isActivePane) return false;
+  if (i.isSearching) return false;
+  if (!i.networkAllowsPrefetch) return false;
+  return true;
+}

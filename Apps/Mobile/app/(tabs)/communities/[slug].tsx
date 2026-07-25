@@ -23,11 +23,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CommunityCardHeader } from "@/components/communities/CommunityCardHeader";
 import { PostCard } from "@/components/PostCard";
+import { FrcMediaModeScope } from "@/lib/FrcImageDecodingScope";
 import {
   communitySettingsScreenHref,
   composeScreenHref,
   decodeRouteParam,
 } from "@/lib/socialRoutes";
+import { useFrcMediaBand } from "@/lib/useFrcMediaBand";
+import { useNetworkClass } from "@/lib/useNetworkClass";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { floraColors, floraSpacing } from "@/lib/theme";
@@ -37,6 +40,7 @@ export default function CommunityScreen() {
   const slug = decodeRouteParam(Array.isArray(rawSlug) ? rawSlug[0] ?? "" : rawSlug ?? "");
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const network = useNetworkClass();
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const [localMembersCount, setLocalMembersCount] = useState<number | null>(null);
@@ -44,7 +48,7 @@ export default function CommunityScreen() {
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [deletedPostUuids, setDeletedPostUuids] = useState<Set<string>>(() => new Set());
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
-  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
+  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking();
 
   const communityQuery = useQuery({
@@ -94,6 +98,8 @@ export default function CommunityScreen() {
       .filter((post) => !deletedPostUuids.has(post.postUuid))
       .map((post) => communityPostToFeedPost(post, community));
   }, [community, deletedPostUuids, postsQuery.data]);
+
+  const mediaBand = useFrcMediaBand(posts, visibleRange, { online: network === "online" });
 
   useEffect(() => {
     if (posts.length === 0) return;
@@ -240,67 +246,69 @@ export default function CommunityScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <FlashList
-        ref={flashListRef}
-        key={slug}
-        data={posts}
-        keyExtractor={(item) => item.postUuid}
-        ListHeaderComponent={header}
-        contentContainerStyle={styles.listContent}
-        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-        refreshControl={
-          <RefreshControl
-            refreshing={communityQuery.isRefetching || postsQuery.isRefetching}
-            onRefresh={handleRefresh}
-            tintColor={floraColors.greenLight}
-          />
-        }
-        renderItem={({ item }) => {
-          const engagementSource = feedPostToEngagementSource(item);
-          const engagement = snapshotFor(engagementSource);
-          const commentsOpen = commentsOpenPostUuid === item.postUuid;
-          return (
-            <PostCard
-              post={item}
-              viewCount={viewsCountFor(item)}
-              engagement={engagement}
-              commentCount={commentCountFor(item)}
-              commentsOpen={commentsOpen}
-              likePending={isLikePending(item.postUuid)}
-              repostPending={isRepostPending(item.postUuid)}
-              onToggleLike={() => void toggleLike(engagementSource)}
-              onToggleRepost={() => void toggleRepost(engagementSource)}
-              onToggleComments={() =>
-                setCommentsOpenPostUuid((id) => (id === item.postUuid ? null : item.postUuid))
-              }
-              onCommentAdded={handleCommentAdded}
-              canDeletePost={isOwner}
-              onDeletePost={isOwner ? () => handleDeletePost(item.postUuid) : undefined}
+      <FrcMediaModeScope {...mediaBand}>
+        <FlashList
+          ref={flashListRef}
+          key={slug}
+          data={posts}
+          keyExtractor={(item) => item.postUuid}
+          ListHeaderComponent={header}
+          contentContainerStyle={styles.listContent}
+          viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+          refreshControl={
+            <RefreshControl
+              refreshing={communityQuery.isRefetching || postsQuery.isRefetching}
+              onRefresh={handleRefresh}
+              tintColor={floraColors.greenLight}
             />
-          );
-        }}
-        ListEmptyComponent={
-          communityQuery.isLoading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={floraColors.greenLight} />
-            </View>
-          ) : communityQuery.isError ? (
-            <Text style={styles.empty}>Сообщество не найдено.</Text>
-          ) : postsQuery.isLoading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={floraColors.greenLight} />
-            </View>
-          ) : postsForbidden ? (
-            <Text style={styles.empty}>Посты недоступны.</Text>
-          ) : postsQuery.isError ? (
-            <Text style={styles.empty}>Не удалось загрузить посты.</Text>
-          ) : (
-            <Text style={styles.empty}>
-              {isOwner ? "Пока нет постов. Сделайте первый пост." : "Пока нет постов."}
-            </Text>
-          )
-        }
-      />
+          }
+          renderItem={({ item }) => {
+            const engagementSource = feedPostToEngagementSource(item);
+            const engagement = snapshotFor(engagementSource);
+            const commentsOpen = commentsOpenPostUuid === item.postUuid;
+            return (
+              <PostCard
+                post={item}
+                viewCount={viewsCountFor(item)}
+                engagement={engagement}
+                commentCount={commentCountFor(item)}
+                commentsOpen={commentsOpen}
+                likePending={isLikePending(item.postUuid)}
+                repostPending={isRepostPending(item.postUuid)}
+                onToggleLike={() => void toggleLike(engagementSource)}
+                onToggleRepost={() => void toggleRepost(engagementSource)}
+                onToggleComments={() =>
+                  setCommentsOpenPostUuid((id) => (id === item.postUuid ? null : item.postUuid))
+                }
+                onCommentAdded={handleCommentAdded}
+                canDeletePost={isOwner}
+                onDeletePost={isOwner ? () => handleDeletePost(item.postUuid) : undefined}
+              />
+            );
+          }}
+          ListEmptyComponent={
+            communityQuery.isLoading ? (
+              <View style={styles.loading}>
+                <ActivityIndicator color={floraColors.greenLight} />
+              </View>
+            ) : communityQuery.isError ? (
+              <Text style={styles.empty}>Сообщество не найдено.</Text>
+            ) : postsQuery.isLoading ? (
+              <View style={styles.loading}>
+                <ActivityIndicator color={floraColors.greenLight} />
+              </View>
+            ) : postsForbidden ? (
+              <Text style={styles.empty}>Посты недоступны.</Text>
+            ) : postsQuery.isError ? (
+              <Text style={styles.empty}>Не удалось загрузить посты.</Text>
+            ) : (
+              <Text style={styles.empty}>
+                {isOwner ? "Пока нет постов. Сделайте первый пост." : "Пока нет постов."}
+              </Text>
+            )
+          }
+        />
+      </FrcMediaModeScope>
     </View>
   );
 }

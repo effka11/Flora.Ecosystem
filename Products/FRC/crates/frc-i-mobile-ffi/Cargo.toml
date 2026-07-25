@@ -13,13 +13,11 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [dependencies]
 frc-i = { workspace = true }
 frc-i-integration = { workspace = true }
+image = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 # 0.22 renamed JNIEnv → EnvUnowned; keep 0.21 until the Expo bridge is migrated.
 jni = "=0.21.1"
-
-[dev-dependencies]
-image = { workspace = true }
 
 [lints.rust]
 unsafe_code = "allow"

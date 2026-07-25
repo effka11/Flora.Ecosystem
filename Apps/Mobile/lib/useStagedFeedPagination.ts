@@ -1,14 +1,22 @@
 import { apiGetFeed } from "@flora/client-core/api";
 import type { FeedPage } from "@flora/client-core/contracts";
+import { postImageUrl } from "@flora/client-core/display";
 import NetInfo from "@react-native-community/netinfo";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
+import { useWindowDimensions } from "react-native";
+import { feedRowContentWidth, firstImageDisplayWidth } from "@/lib/feedImageGeometry";
 import {
   canAttachToTail,
   shouldAttachStaged,
+  shouldPrewarmStagedPage,
   shouldStartPrefetch,
 } from "@/lib/feedPrefetchPolicy";
+import { prefetchFrcImage } from "@/lib/frcImage";
+import { FrcPrefetchBand } from "@/lib/frcMediaMode";
+import { getRowsAhead } from "@/lib/mediaBandwidth";
 import { isScrollSettled, subscribeScrollSettled } from "@/lib/scrollActivity";
+import { selectStagedPagePrewarmTargets } from "@/lib/stagedPagePrewarm";
 
 type FeedKind = "recommendations" | "subscriptions";
 type FeedInfiniteData = InfiniteData<FeedPage, unknown>;
@@ -53,6 +61,19 @@ export function useStagedFeedPagination({
   const queryClient = useQueryClient();
   const stagingRef = useRef<Staging>(EMPTY_STAGING);
   const onlineRef = useRef(true);
+  const { width: windowWidth } = useWindowDimensions();
+
+  // Warms the staged page's own first images before it ever joins the list,
+  // so the row that eventually mounts finds its file already in cache. Read
+  // at warm-up time (not captured) for the same reason as `useFrcMediaBand`:
+  // a resize must not restart downloads already in flight.
+  const prewarmWidthsRef = useRef<Map<string, number>>(new Map());
+  const prewarmBandRef = useRef<FrcPrefetchBand | null>(null);
+  if (prewarmBandRef.current === null) {
+    prewarmBandRef.current = new FrcPrefetchBand((url) =>
+      prefetchFrcImage(url, { displayWidth: prewarmWidthsRef.current.get(url) }),
+    );
+  }
 
   const dataRef = useRef(feedQuery.data);
   dataRef.current = feedQuery.data;
@@ -110,6 +131,34 @@ export function useStagedFeedPagination({
     [attachStaged],
   );
 
+  // Queues downloads for the staged page's own leading images — the same
+  // gates that guard requesting the page at all (point E of the brief) also
+  // guard warming it, and a page with the gate closed simply cancels
+  // whatever the previous staged page had warming.
+  const warmStagedPage = useCallback(
+    (page: FeedPage) => {
+      const gateOpen = shouldPrewarmStagedPage({
+        isActivePane: isActiveRef.current,
+        isSearching: isSearchingRef.current,
+        networkAllowsPrefetch: onlineRef.current,
+      });
+      const targets = gateOpen
+        ? selectStagedPagePrewarmTargets({
+            posts: page.items,
+            rowsAhead: getRowsAhead(),
+            urlForImage: postImageUrl,
+          })
+        : [];
+
+      const contentWidth = feedRowContentWidth(windowWidth);
+      prewarmWidthsRef.current = new Map(
+        targets.map((target) => [target.url, firstImageDisplayWidth(contentWidth, target.imageCount)]),
+      );
+      prewarmBandRef.current?.sync(targets.map((target) => target.url));
+    },
+    [windowWidth],
+  );
+
   const startPrefetch = useCallback(() => {
     const staged = stagingRef.current;
     const tail = tailNextCursor();
@@ -131,6 +180,7 @@ export function useStagedFeedPagination({
         if (stagingRef.current.cursor !== requestCursor) return;
         stagingRef.current = { cursor: requestCursor, inFlight: false, page };
         attachIfReady(false);
+        warmStagedPage(page);
       })
       .catch(() => {
         // Leave already-displayed pages untouched; allow a later approach to retry.
@@ -138,7 +188,7 @@ export function useStagedFeedPagination({
           stagingRef.current = EMPTY_STAGING;
         }
       });
-  }, [attachIfReady, kind, tailNextCursor, take]);
+  }, [attachIfReady, kind, tailNextCursor, take, warmStagedPage]);
 
   const onApproachingEnd = useCallback(() => {
     // Safety-net: at the very end, attach any ready page immediately.
@@ -152,11 +202,20 @@ export function useStagedFeedPagination({
     });
   }, [attachIfReady]);
 
-  // A refresh replaces the tail; drop any staged page tied to the old tail.
+  // A refresh replaces the tail; drop any staged page tied to the old tail,
+  // and cancel whatever of its images were mid-download — none of them will
+  // ever mount now. Attaching a staged page to the list is deliberately not
+  // one of these triggers: its rows may not be mounted yet, and cancelling
+  // here would drop a file that is already most of the way in.
   const generatedAt = feedQuery.data?.pages[0]?.generatedAt ?? null;
   useEffect(() => {
     stagingRef.current = EMPTY_STAGING;
+    prewarmBandRef.current?.stop();
   }, [generatedAt, kind]);
+
+  useEffect(() => {
+    return () => prewarmBandRef.current?.stop();
+  }, []);
 
   return { onApproachingEnd };
 }

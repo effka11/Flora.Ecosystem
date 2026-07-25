@@ -6,18 +6,28 @@ import { AppState, type ViewToken, type ViewabilityConfigCallbackPair } from "re
 import { mmkv } from "@/lib/mmkv";
 import { createPostViewBatcher, type PostViewBatcher } from "@/lib/postViewBatcher";
 import { isScrollSettled, subscribeScrollSettled } from "@/lib/scrollActivity";
+import {
+  createVisibleRangePublisher,
+  type VisibleIndexRange,
+  type VisibleRangePublisher,
+} from "@/lib/visibleRangePublisher";
 import { useSessionStore } from "@/stores/sessionStore";
 
 const LEGACY_SESSION_STORAGE_KEY = "flora.postViews.session";
 
-const VIEWABILITY_CONFIG = {
+const ANALYTICS_VIEWABILITY_CONFIG = {
   itemVisiblePercentThreshold: 25,
   minimumViewTime: 300,
 } as const;
 
+const DECODE_VIEWABILITY_CONFIG = {
+  itemVisiblePercentThreshold: 25,
+  minimumViewTime: 0,
+} as const;
+
 type PostViewSource = Pick<FeedPostDto, "postUuid" | "viewCount">;
 
-export type VisibleIndexRange = { min: number | null; max: number | null };
+export type { VisibleIndexRange } from "@/lib/visibleRangePublisher";
 
 type UsePostViewTrackingOptions = {
   enabled?: boolean;
@@ -75,17 +85,27 @@ export function usePostViewTracking(options: UsePostViewTrackingOptions = {}) {
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
   const batcherRef = useRef<PostViewBatcher | null>(null);
 
-  // Visible index band — tracked cheaply on every viewability change, but only
-  // published to React state when the list settles (never during active scroll,
-  // where the FRC-I queue is paused anyway).
+  // Visible index band — tracked cheaply on every viewability change. During
+  // active scroll, publication to React state is coalesced to ~100ms (each
+  // publish rebuilds the media-mode map and re-renders rows, so the rate is
+  // the cost); on settle it is immediate, never waiting behind that window.
   const visibleRangeRef = useRef<VisibleIndexRange>({ min: null, max: null });
   const [visibleRange, setVisibleRange] = useState<VisibleIndexRange>({ min: null, max: null });
-  const publishRange = useCallback(() => {
-    const next = visibleRangeRef.current;
+  const commitRange = useCallback((next: VisibleIndexRange) => {
     setVisibleRange((prev) => (prev.min === next.min && prev.max === next.max ? prev : { ...next }));
   }, []);
-  const publishRangeRef = useRef(publishRange);
-  publishRangeRef.current = publishRange;
+  const commitRangeRef = useRef(commitRange);
+  commitRangeRef.current = commitRange;
+
+  const rangePublisherRef = useRef<VisibleRangePublisher | null>(null);
+  if (rangePublisherRef.current === null) {
+    rangePublisherRef.current = createVisibleRangePublisher({
+      publish: (range) => commitRangeRef.current(range),
+    });
+  }
+  useEffect(() => {
+    return () => rangePublisherRef.current?.dispose();
+  }, []);
 
   if (batcherRef.current === null) {
     batcherRef.current = createPostViewBatcher({
@@ -122,7 +142,7 @@ export function usePostViewTracking(options: UsePostViewTrackingOptions = {}) {
     return subscribeScrollSettled((settled) => {
       if (!settled) return;
       batcherRef.current?.flush();
-      publishRangeRef.current();
+      rangePublisherRef.current?.flush(visibleRangeRef.current);
     });
   }, []);
 
@@ -147,26 +167,39 @@ export function usePostViewTracking(options: UsePostViewTrackingOptions = {}) {
 
   const viewabilityConfigCallbackPairs = useRef<ViewabilityConfigCallbackPair[]>([
     {
-      viewabilityConfig: VIEWABILITY_CONFIG,
+      // Keep the delayed threshold exclusively for recorded post views.
+      viewabilityConfig: ANALYTICS_VIEWABILITY_CONFIG,
       onViewableItemsChanged: ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-        let min: number | null = null;
-        let max: number | null = null;
         for (const token of viewableItems) {
           if (!token.isViewable) continue;
-          if (typeof token.index === "number") {
-            min = min === null ? token.index : Math.min(min, token.index);
-            max = max === null ? token.index : Math.max(max, token.index);
-          }
           if (typeof token.item !== "object" || token.item === null) continue;
           const post = token.item as PostViewSource;
           const id = post.postUuid?.trim();
           if (!id) continue;
           recordViewRef.current(id);
         }
+      },
+    },
+    {
+      // The decode band must update as soon as rows satisfy visibility.
+      viewabilityConfig: DECODE_VIEWABILITY_CONFIG,
+      onViewableItemsChanged: ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+        let min: number | null = null;
+        let max: number | null = null;
+        for (const token of viewableItems) {
+          if (!token.isViewable || typeof token.index !== "number") continue;
+          min = min === null ? token.index : Math.min(min, token.index);
+          max = max === null ? token.index : Math.max(max, token.index);
+        }
         visibleRangeRef.current = { min, max };
-        // Publishing during active scroll is unnecessary (queue paused) and
-        // would re-render rows on the critical path.
-        if (isScrollSettled()) publishRangeRef.current();
+        // Settled: publish immediately (no window to wait behind). Moving:
+        // let the coalescing publisher bound the rate of the resulting
+        // re-renders instead of firing on every viewability pass.
+        if (isScrollSettled()) {
+          rangePublisherRef.current?.flush(visibleRangeRef.current);
+        } else {
+          rangePublisherRef.current?.update(visibleRangeRef.current);
+        }
       },
     },
   ]);

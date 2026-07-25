@@ -1,24 +1,27 @@
 import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import { useEffect, useState } from "react";
-import type { NetworkClass } from "@/lib/frcMediaMode";
 
 /**
- * Classify a NetInfo state for background-prefetch budgeting. Offline and truly
- * unknown states are conservative (`unknown` → no background prewarm); metered
- * (cellular / expensive) gets the minimal budget; Wi‑Fi/ethernet the full one.
+ * Reachability, not connection quality: the prefetch window is sized from the
+ * measured throughput of real `.fri` downloads (`lib/mediaBandwidth.ts`), so a
+ * slow link narrows the window by itself and needs no class of its own. The
+ * only thing NetInfo still decides is whether to warm a channel at all.
  */
-export function classifyNetwork(state: NetInfoState): NetworkClass {
-  if (state.isConnected === false || state.type === "none") return "unknown";
-  if (state.type === "wifi" || state.type === "ethernet") return "wifi";
-  if (state.type === "cellular") return "metered";
-  if (state.details && "isConnectionExpensive" in state.details) {
-    return state.details.isConnectionExpensive ? "metered" : "wifi";
-  }
-  return "unknown";
+export type NetworkStatus = "online" | "offline";
+
+/** Offline only when NetInfo is sure; an unknown `isConnected` stays online. */
+export function classifyNetwork(state: NetInfoState): NetworkStatus {
+  return state.isConnected === false || state.type === "none" ? "offline" : "online";
 }
 
-export function useNetworkClass(): NetworkClass {
-  const [network, setNetwork] = useState<NetworkClass>("unknown");
+/**
+ * Optimistic until proven otherwise: the first listener callback lands within
+ * a frame or two, and starting offline would cost every cold open its
+ * lookahead window, while starting online costs a dead device a few downloads
+ * that fail immediately.
+ */
+export function useNetworkClass(): NetworkStatus {
+  const [network, setNetwork] = useState<NetworkStatus>("online");
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
       setNetwork(classifyNetwork(state));

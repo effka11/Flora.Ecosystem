@@ -27,6 +27,7 @@ import Reanimated, {
   useSharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { FrcImageDiagnosticsOverlay } from "@/components/dev/FrcImageDiagnosticsOverlay";
 import { PostCard } from "@/components/PostCard";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { FrcMediaModeScope } from "@/lib/FrcImageDecodingScope";
@@ -38,14 +39,9 @@ import {
 } from "@/lib/energeticSettle";
 import { feedRowEqual } from "@/lib/feedRowEqual";
 import { PREFETCH_END_THRESHOLD_VIEWPORTS } from "@/lib/feedPrefetchPolicy";
-import {
-  backgroundLookaheadForNetwork,
-  computeRowMediaModes,
-  type FrcRowMediaMode,
-  type NetworkClass,
-} from "@/lib/frcMediaMode";
 import { useNetworkClass } from "@/lib/useNetworkClass";
 import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
+import { useFrcMediaBand } from "@/lib/useFrcMediaBand";
 import { useStagedFeedPagination } from "@/lib/useStagedFeedPagination";
 import {
   clearFrcImageQueuePauseOwner,
@@ -174,7 +170,7 @@ type FeedPaneProps = {
   pageWidth: number;
   contentPaddingTop: number;
   contentPaddingBottom: number;
-  network: NetworkClass;
+  online: boolean;
   renderScrollComponent: ReturnType<typeof useCollapsibleHeader>["renderScrollComponents"][number];
 };
 
@@ -186,7 +182,7 @@ function FeedPane({
   pageWidth,
   contentPaddingTop,
   contentPaddingBottom,
-  network,
+  online,
   renderScrollComponent,
 }: FeedPaneProps) {
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
@@ -202,22 +198,9 @@ function FeedPane({
   const visiblePosts = useMemo(() => filterPosts(posts, search), [posts, search]);
 
   // Map the viewability band → per-post decode modes so only visible/near/
-  // lookahead rows enqueue FRC-I work (mount/drawDistance no longer decode all).
-  const mediaModes = useMemo(() => {
-    const lookahead = backgroundLookaheadForNetwork(network);
-    const indexModes = computeRowMediaModes({
-      count: visiblePosts.length,
-      minVisible: visibleRange.min,
-      maxVisible: visibleRange.max,
-      lookahead,
-    });
-    const byUuid = new Map<string, FrcRowMediaMode>();
-    for (const [index, mode] of indexModes) {
-      const post = visiblePosts[index];
-      if (post) byUuid.set(post.postUuid, mode);
-    }
-    return byUuid;
-  }, [network, visiblePosts, visibleRange.min, visibleRange.max]);
+  // lookahead rows enqueue FRC-I work (mount/drawDistance no longer decode all),
+  // and warm the deep end of the band, which the list never mounts.
+  const mediaBand = useFrcMediaBand(visiblePosts, visibleRange, { enabled: isActivePane, online });
   const { onApproachingEnd } = useStagedFeedPagination({
     kind,
     feedQuery,
@@ -320,7 +303,7 @@ function FeedPane({
 
   return (
     <View style={[styles.feedPage, { width: pageWidth }]}>
-      <FrcMediaModeScope enabled={isActivePane} modes={mediaModes}>
+      <FrcMediaModeScope {...mediaBand}>
         <FlashList
           ref={flashListRef}
           data={visiblePosts}
@@ -619,7 +602,7 @@ export default function FeedScreen() {
               pageWidth={pageWidth}
               contentPaddingTop={headerHeightPx}
               contentPaddingBottom={listPaddingBottom}
-              network={network}
+              online={network === "online"}
               renderScrollComponent={renderScrollComponents[0]}
             />
             <FeedPane
@@ -630,7 +613,7 @@ export default function FeedScreen() {
               pageWidth={pageWidth}
               contentPaddingTop={headerHeightPx}
               contentPaddingBottom={listPaddingBottom}
-              network={network}
+              online={network === "online"}
               renderScrollComponent={renderScrollComponents[1]}
             />
           </Reanimated.View>
@@ -706,6 +689,8 @@ export default function FeedScreen() {
         pointerEvents="none"
         style={[styles.statusBarFill, { height: insets.top }]}
       />
+
+      <FrcImageDiagnosticsOverlay />
     </View>
   );
 }

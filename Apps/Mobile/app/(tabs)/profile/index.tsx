@@ -9,6 +9,9 @@ import { ActivityIndicator, RefreshControl, StyleSheet, Text, View } from "react
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfileCardHeader } from "@/components/profile/ProfileCardHeader";
 import { PostCard } from "@/components/PostCard";
+import { FrcMediaModeScope } from "@/lib/FrcImageDecodingScope";
+import { useFrcMediaBand } from "@/lib/useFrcMediaBand";
+import { useNetworkClass } from "@/lib/useNetworkClass";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -18,10 +21,11 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const me = useSessionStore((s) => s.me);
+  const network = useNetworkClass();
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
-  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability } =
+  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking();
 
   const username = me?.username ?? "";
@@ -42,6 +46,8 @@ export default function ProfileScreen() {
       }),
     );
   }, [me, postsQuery.data]);
+
+  const mediaBand = useFrcMediaBand(posts, visibleRange, { online: network === "online" });
 
   useEffect(() => {
     if (posts.length === 0) return;
@@ -92,54 +98,56 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <FlashList
-        ref={flashListRef}
-        data={posts}
-        keyExtractor={(item) => item.postUuid}
-        ListHeaderComponent={header}
-        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
-        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-        refreshControl={
-          <RefreshControl
-            refreshing={postsQuery.isRefetching}
-            onRefresh={() => postsQuery.refetch()}
-            tintColor={floraColors.greenLight}
-          />
-        }
-        renderItem={({ item }) => {
-          const engagementSource = feedPostToEngagementSource(item);
-          const engagement = snapshotFor(engagementSource);
-          const commentsOpen = commentsOpenPostUuid === item.postUuid;
-          return (
-            <PostCard
-              post={item}
-              viewCount={viewsCountFor(item)}
-              engagement={engagement}
-              commentCount={commentCountFor(item)}
-              commentsOpen={commentsOpen}
-              likePending={isLikePending(item.postUuid)}
-              repostPending={isRepostPending(item.postUuid)}
-              onToggleLike={() => void toggleLike(engagementSource)}
-              onToggleRepost={() => void toggleRepost(engagementSource)}
-              onToggleComments={() =>
-                setCommentsOpenPostUuid((id) => (id === item.postUuid ? null : item.postUuid))
-              }
-              onCommentAdded={handleCommentAdded}
+      <FrcMediaModeScope {...mediaBand}>
+        <FlashList
+          ref={flashListRef}
+          data={posts}
+          keyExtractor={(item) => item.postUuid}
+          ListHeaderComponent={header}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+          refreshControl={
+            <RefreshControl
+              refreshing={postsQuery.isRefetching}
+              onRefresh={() => postsQuery.refetch()}
+              tintColor={floraColors.greenLight}
             />
-          );
-        }}
-        ListEmptyComponent={
-          postsQuery.isLoading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={floraColors.greenLight} />
-            </View>
-          ) : postsQuery.isError ? (
-            <Text style={styles.empty}>Не удалось загрузить посты.</Text>
-          ) : (
-            <Text style={styles.empty}>Пока нет постов.</Text>
-          )
-        }
-      />
+          }
+          renderItem={({ item }) => {
+            const engagementSource = feedPostToEngagementSource(item);
+            const engagement = snapshotFor(engagementSource);
+            const commentsOpen = commentsOpenPostUuid === item.postUuid;
+            return (
+              <PostCard
+                post={item}
+                viewCount={viewsCountFor(item)}
+                engagement={engagement}
+                commentCount={commentCountFor(item)}
+                commentsOpen={commentsOpen}
+                likePending={isLikePending(item.postUuid)}
+                repostPending={isRepostPending(item.postUuid)}
+                onToggleLike={() => void toggleLike(engagementSource)}
+                onToggleRepost={() => void toggleRepost(engagementSource)}
+                onToggleComments={() =>
+                  setCommentsOpenPostUuid((id) => (id === item.postUuid ? null : item.postUuid))
+                }
+                onCommentAdded={handleCommentAdded}
+              />
+            );
+          }}
+          ListEmptyComponent={
+            postsQuery.isLoading ? (
+              <View style={styles.loading}>
+                <ActivityIndicator color={floraColors.greenLight} />
+              </View>
+            ) : postsQuery.isError ? (
+              <Text style={styles.empty}>Не удалось загрузить посты.</Text>
+            ) : (
+              <Text style={styles.empty}>Пока нет постов.</Text>
+            )
+          }
+        />
+      </FrcMediaModeScope>
     </View>
   );
 }
