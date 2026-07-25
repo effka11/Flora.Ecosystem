@@ -15,6 +15,7 @@ import {
   type SessionControllerStatus,
 } from "@/lib/sessionController";
 import { useFscpStore } from "@/stores/fscpStore";
+import { messagePreviewCache } from "@/stores/messagePreviewCache";
 
 type SessionState = {
   status: SessionControllerStatus;
@@ -114,6 +115,7 @@ mobileSessionController.subscribe((next) => {
     clearSecurePushMaterial();
     useFscpStore.getState().clearRuntimeState();
     getQueryClientRef()?.clear();
+    messagePreviewCache.clear();
   }
 });
 

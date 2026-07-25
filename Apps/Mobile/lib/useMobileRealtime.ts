@@ -10,6 +10,9 @@ export function useMobileRealtime(enabled: boolean): void {
 
     const stream = connectSignalsStream({
       enabled: () => enabled,
+      onOpen: () => {
+        handleMessageRealtime(null);
+      },
       onMessage: (signal) => {
         handleMessageRealtime(signal.conversationUuid);
       },

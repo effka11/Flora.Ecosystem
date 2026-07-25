@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConversationListItemDto } from "@/lib/socialApi";
 import { isFscpWirePayload, type FscpLocalMaterial, type FscpMessagePlaintext } from "@/lib/fscp";
 import { scheduleMessagesListPreviewBatch } from "@/lib/messagesListPreviewQueue";
 
 function msgKeyFor(c: ConversationListItemDto): string {
-  return `${c.lastMessageUuid.trim()}|${c.lastMessageAt.trim()}|${(c.lastMessageEncryptedForMe ?? "").slice(0, 48)}`;
+  return (c.lastMessageEncryptedForMe ?? "").trim();
 }
 
 export function useMessagesListPreviewDecrypt(
@@ -34,6 +34,20 @@ export function useMessagesListPreviewDecrypt(
       setListPreviewDecryptFailByPeer({});
     }
   }, [viewerNorm]);
+
+  const seedListPreview = useCallback(
+    (peerUuid: string, encryptedForMe: string, plaintext: FscpMessagePlaintext) => {
+      listPreviewDecryptedForMsgRef.current[peerUuid] = encryptedForMe.trim();
+      setListPreviewDecryptedByPeer((prev) => ({ ...prev, [peerUuid]: plaintext }));
+      setListPreviewDecryptFailByPeer((prev) => {
+        if (!(peerUuid in prev)) return prev;
+        const next = { ...prev };
+        delete next[peerUuid];
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     cancelRef.current?.();
@@ -119,5 +133,5 @@ export function useMessagesListPreviewDecrypt(
     };
   }, [conversations, viewerNorm, fscpMaterial]);
 
-  return { listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer };
+  return { listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer, seedListPreview };
 }

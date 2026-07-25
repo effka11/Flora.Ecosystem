@@ -2,7 +2,10 @@
 
 import { connectSignalsStream } from "@flora/client-core/signals";
 import { useEffect } from "react";
-import { invalidateNotificationsCache } from "@/lib/dashboardPreload";
+import {
+  conversationsCache,
+  invalidateNotificationsCache,
+} from "@/lib/dashboardPreload";
 import { initWebClientCore } from "@/lib/fscp/clientCore";
 import { notifyMessagesUnreadChanged } from "@/lib/messagingApi";
 import { notifyNotificationsChanged } from "@/lib/realtimeEvents";
@@ -23,10 +26,15 @@ export function useDashboardRealtime(enabled: boolean): void {
         enabled: () => enabled && !cancelled,
         streamBaseUrl: resolveRealtimeStreamApiRoot() || undefined,
         onMessage: (signal) => {
+          conversationsCache.invalidate();
           notifyMessagesUnreadChanged({
             conversationUuid: signal.conversationUuid,
             senderUserUuid: signal.senderUserUuid,
           });
+        },
+        onOpen: () => {
+          conversationsCache.invalidate();
+          notifyMessagesUnreadChanged();
         },
         onNotification: (signal) => {
           invalidateNotificationsCache();

@@ -194,6 +194,55 @@ function toConversationDto(c: MsgConversationDto): ConversationListItemDto {
   };
 }
 
+type OutgoingListPatch = {
+  peerUuid: string;
+  /** Тот же шифротекст, который уйдёт в seedListPreview. */
+  encryptedForMe: string;
+  createdAt: string;
+};
+
+/**
+ * Оптимистичный патч строки списка после своей отправки: свежий шифротекст наверх.
+ * Собеседника нет в списке (новый диалог) — вход возвращается как есть, его подхватит фоновый refresh.
+ */
+function patchConversationListForOutgoing(
+  list: ConversationListItemDto[],
+  patch: OutgoingListPatch,
+): ConversationListItemDto[] {
+  const existing = list.find((c) => c.otherUserUuid === patch.peerUuid);
+  if (!existing) return list;
+  const updated: ConversationListItemDto = {
+    ...existing,
+    lastMessageUuid: "",
+    lastMessageContent: null,
+    lastMessageEncryptedForMe: patch.encryptedForMe,
+    lastMessageIsFromMe: true,
+    hasEncryptedPreview: true,
+    lastMessageAt: patch.createdAt,
+  };
+  return [updated, ...list.filter((c) => c.otherUserUuid !== patch.peerUuid)];
+}
+
+/** Тот же патч для кэшированной страницы `/api/messaging` (порядок = last_message_at DESC). */
+function patchConversationsPageForOutgoing(
+  page: MsgConversationsPage,
+  patch: OutgoingListPatch,
+): MsgConversationsPage {
+  const existing = page.items.find((c) => c.otherUserUuid === patch.peerUuid);
+  if (!existing) return page;
+  const updated: MsgConversationDto = {
+    ...existing,
+    lastMessageContent: null,
+    lastMessageEncryptedForMe: patch.encryptedForMe,
+    lastMessageIsFromMe: true,
+    lastMessageAt: patch.createdAt,
+  };
+  return {
+    ...page,
+    items: [updated, ...page.items.filter((c) => c.otherUserUuid !== patch.peerUuid)],
+  };
+}
+
 /** Converts MsgMessageDto (new /api/messaging) to the legacy MessageThreadItemDto shape. */
 function toMessageDto(m: MsgMessageDto): MessageThreadItemDto {
   return {
@@ -222,6 +271,9 @@ const STICKER_PANEL_CLOSE_MS = floraDurationMs(2) + 50;
 /** Синхронно с переключением вкладок / layout панели (`--flora-duration-2`). */
 const STICKER_TAB_TRANSITION_MS = floraDurationMs(2);
 const DELETE_CONVERSATION_MODAL_CLOSE_MS = floraDurationMs(2);
+
+/** Дребезг обновления списка диалогов при серии `MESSAGES_UNREAD_CHANGED_EVENT` подряд. */
+const CONVERSATION_LIST_REFRESH_DEBOUNCE_MS = 250;
 
 type MessagesPanelTransition = null | "fromLeft" | "fromRight" | "fromTop" | "fromBottom";
 
@@ -770,10 +822,31 @@ function MessagesChatInner() {
     applyConversationPage(page);
   }, [applyConversationPage]);
 
+  /** Таймер debounce вне стейта: иначе он попал бы в deps эффекта и пересоздавался на каждом рендере. */
+  const conversationListRefreshTimeoutRef = useRef<number | null>(null);
+
+  const scheduleConversationListRefresh = useCallback(() => {
+    if (conversationListRefreshTimeoutRef.current !== null) {
+      window.clearTimeout(conversationListRefreshTimeoutRef.current);
+    }
+    conversationListRefreshTimeoutRef.current = window.setTimeout(() => {
+      conversationListRefreshTimeoutRef.current = null;
+      void refreshConversationList();
+    }, CONVERSATION_LIST_REFRESH_DEBOUNCE_MS);
+  }, [refreshConversationList]);
+
+  useEffect(() => {
+    return () => {
+      if (conversationListRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(conversationListRefreshTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!isClient) return;
     const onMessagesChanged = (event: Event) => {
-      void refreshConversationList();
+      scheduleConversationListRefresh();
       const detail = (event as CustomEvent<MessagesChangedDetail | undefined>).detail;
       const incomingConversationUuid = detail?.conversationUuid?.trim().toLowerCase();
       const viewerUuid = me?.userUuid?.trim() ?? "";
@@ -801,20 +874,45 @@ function MessagesChatInner() {
     };
     window.addEventListener(MESSAGES_UNREAD_CHANGED_EVENT, onMessagesChanged);
     return () => window.removeEventListener(MESSAGES_UNREAD_CHANGED_EVENT, onMessagesChanged);
-  }, [isClient, me?.userUuid, refreshConversationList, selectedOtherUuid]);
+  }, [isClient, me?.userUuid, scheduleConversationListRefresh, selectedOtherUuid]);
+
+  /** Возврат во вкладку после долгого отсутствия — список должен догнать пропущенное, а не показать кэш. */
+  useEffect(() => {
+    if (!isClient || !hasToken) return;
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      conversationsCache.invalidate();
+      void conversationsCache.refresh().then(applyConversationPage).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [isClient, hasToken, applyConversationPage]);
 
   const viewerUuid = me?.userUuid?.trim() ?? "";
   const viewerNorm = viewerUuid.toLowerCase();
-  const { listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer } = useMessagesListPreviewDecrypt(
-    conversations,
-    fscpMaterial,
-    viewerUuid,
-  );
+  const { listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer, seedListPreview } =
+    useMessagesListPreviewDecrypt(conversations, fscpMaterial, viewerUuid);
   const { prefetchPeerThread } = usePreloadConversationThreads(viewerNorm, conversations, {
     viewerUuid,
     fscpMaterial,
   });
   usePreloadThreadMessageMedia(decryptedById);
+
+  /**
+   * Своя отправка удалась — строка списка и кэш обновляются локально, до ответа сервера.
+   * `seedListPreview` обязан идти в том же синхронном блоке, что `setConversations`:
+   * иначе эффект расшифровки увидит новый шифротекст без ключа засева, сочтёт превью
+   * устаревшим и мигнёт «Расшифровка…».
+   */
+  const applyOutgoingToList = useCallback(
+    (peerUuid: string, encryptedForMe: string, createdAt: string, plaintext: FscpMessagePlaintext) => {
+      const patch: OutgoingListPatch = { peerUuid, encryptedForMe, createdAt };
+      seedListPreview(peerUuid, encryptedForMe, plaintext);
+      setConversations((prev) => patchConversationListForOutgoing(prev, patch));
+      conversationsCache.patch((page) => patchConversationsPageForOutgoing(page, patch));
+    },
+    [seedListPreview],
+  );
 
   useEffect(() => {
     if (!isClient || !hasToken) return;
@@ -1593,10 +1691,11 @@ function MessagesChatInner() {
         ]);
         const finalPayload = activeReply ? attachReplyToPayload(devVoicePayload, activeReply) : devVoicePayload;
         const sent = devDemoAppendOutgoingMessage(peerUuid, finalPayload);
+        const devWire = devPlaintextWire(finalPayload);
         const realRow: MessageThreadItemDto = {
           messageUuid: sent.messageUuid,
           content: null,
-          encryptedForMe: devPlaintextWire(finalPayload),
+          encryptedForMe: devWire,
           createdAt: sent.createdAt,
           isFromMe: true,
           isRead: false,
@@ -1611,6 +1710,7 @@ function MessagesChatInner() {
           setThreadMessages((prev) => replaceOptimisticOutgoing(prev, optimisticMessageUuid, realRow));
           setThreadFetchedForViewerNorm(viewerNorm);
         }
+        applyOutgoingToList(peerUuid, devWire, sent.createdAt, finalPayload);
         await refreshConversationList();
         return;
       }
@@ -1719,6 +1819,8 @@ function MessagesChatInner() {
         isRead: false,
       };
 
+      applyOutgoingToList(peerUuid, sent.encryptedForMe || wire, sent.createdAt, finalPayload);
+
       if (selectedOtherUuid === peerUuid) {
         pendingOutgoingRef.current = realRow;
         setDecryptedById((prev) => {
@@ -1748,7 +1850,10 @@ function MessagesChatInner() {
         clearPendingVoiceBlob(uploaded.voiceAssetUuid);
       }
 
-      await refreshConversationList();
+      void conversationsCache
+        .refresh()
+        .then(applyConversationPage)
+        .catch(() => {});
     } catch (e) {
       removeOptimistic();
       setThreadError(
@@ -1763,6 +1868,8 @@ function MessagesChatInner() {
       clearPendingVoiceBlob(tempAssetUuid);
     }
   }, [
+    applyConversationPage,
+    applyOutgoingToList,
     compose,
     fscpBootstrapError,
     fscpBootstrapLoading,
@@ -1877,6 +1984,12 @@ function MessagesChatInner() {
         pendingScrollSmoothAfterSendRef.current = true;
         setThreadMessages(devDemoGetThread(selectedOtherUuid));
         setThreadFetchedForViewerNorm(viewerNorm);
+        applyOutgoingToList(
+          selectedOtherUuid,
+          devPlaintextWire(outgoingPayload),
+          sent.createdAt,
+          outgoingPayload,
+        );
         await refreshConversationList();
         return;
       }
@@ -2061,6 +2174,12 @@ function MessagesChatInner() {
         if (optimisticMessageUuid) delete next[optimisticMessageUuid];
         return next;
       });
+      applyOutgoingToList(
+        selectedOtherUuid,
+        sent.encryptedForMe || wire,
+        sent.createdAt,
+        outgoingPayload,
+      );
 
       try {
         invalidateConversationThread(viewerNorm, selectedOtherUuid);
@@ -2085,7 +2204,10 @@ function MessagesChatInner() {
       } finally {
         pendingOutgoingRef.current = null;
       }
-      await refreshConversationList();
+      void conversationsCache
+        .refresh()
+        .then(applyConversationPage)
+        .catch(() => {});
     } catch (e) {
       const failedOptimisticUuid = optimisticMessageUuid;
       if (failedOptimisticUuid) {
@@ -2103,6 +2225,8 @@ function MessagesChatInner() {
       setSending(false);
     }
   }, [
+    applyConversationPage,
+    applyOutgoingToList,
     compose,
     fscpBootstrapError,
     fscpBootstrapLoading,
