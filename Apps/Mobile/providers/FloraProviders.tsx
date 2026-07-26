@@ -100,7 +100,10 @@ export function FloraProviders({ children }: { children: ReactNode }) {
     syncSession();
 
     const appSub = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (state === "active") syncSession();
+      if (state === "active") {
+        syncSession();
+        void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      }
     });
 
     const netSub = NetInfo.addEventListener((state) => {

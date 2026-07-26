@@ -25,6 +25,7 @@ import { apiGetKeyBackup, apiGetRecoveryBackup } from "@flora/client-core/api";
 import { clearFscpMaterialForUser } from "@flora/client-core/fscp";
 import { getTelemetry } from "@flora/client-core/telemetry";
 import { mobileFscpKeyStorage } from "@/lib/fscp/storage";
+import { messagePreviewCache } from "@/stores/messagePreviewCache";
 import { messageThreadCache } from "@/stores/messageThreadCache";
 
 function applyBootstrapResult(result: FscpBootstrapResult): Partial<FscpState> {
@@ -122,6 +123,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     });
     if (result.status === "ready" && prevStatus !== "ready") {
       messageThreadCache.clearDecryptCaches();
+      messagePreviewCache.clear();
     }
     return result;
   },
@@ -142,6 +144,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     });
     if (sync.bootstrap.status === "ready") {
       messageThreadCache.clearDecryptCaches();
+      messagePreviewCache.clear();
     }
     return sync.bootstrap;
   },
@@ -184,6 +187,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     });
     if (sync.bootstrap.status === "ready") {
       messageThreadCache.clearDecryptCaches();
+      messagePreviewCache.clear();
     }
     return sync.bootstrap;
   },
@@ -199,6 +203,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
       passwordSyncedForOwner: null,
     });
     messageThreadCache.clearDecryptCaches();
+    messagePreviewCache.clear();
     return get().syncOnLogin(ownerUserUuid, accountPassword);
   },
   async publishLocalKeyConfirmed() {
@@ -213,6 +218,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     set(applyBootstrapResult(result));
     if (result.status === "ready") {
       messageThreadCache.clearDecryptCaches();
+      messagePreviewCache.clear();
     }
   },
   async retryPendingOperation() {
@@ -229,6 +235,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     set(applyBootstrapResult(result));
     if (result.status === "ready") {
       messageThreadCache.clearDecryptCaches();
+      messagePreviewCache.clear();
     }
   },
   async unlock(input) {
@@ -270,6 +277,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     });
     if (result.status === "ready") {
       messageThreadCache.clearDecryptCaches();
+      messagePreviewCache.clear();
     }
   },
   async deleteLocalMaterial() {

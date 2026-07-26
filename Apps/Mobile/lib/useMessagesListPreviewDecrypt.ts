@@ -2,11 +2,7 @@ import type { MsgConversationDto } from "@flora/client-core/contracts";
 import { isFscpWirePayload } from "@flora/client-core/fscp";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFscpStore } from "@/stores/fscpStore";
-
-function msgKeyFor(c: MsgConversationDto): string {
-  const enc = c.lastMessageEncryptedForMe ?? "";
-  return `${c.conversationUuid}|${c.lastMessageAt.trim()}|${enc.slice(0, 48)}`;
-}
+import { messagePreviewCache, messagePreviewKey } from "@/stores/messagePreviewCache";
 
 export function useMessagesListPreviewDecrypt(
   conversations: MsgConversationDto[],
@@ -17,16 +13,13 @@ export function useMessagesListPreviewDecrypt(
   const decryptPreview = useFscpStore((s) => s.decryptPreview);
 
   const [previews, setPreviews] = useState<Record<string, string>>({});
-  const cacheRef = useRef<Record<string, string>>({});
-  const previewTextRef = useRef<Record<string, string>>({});
   const prevViewerRef = useRef(viewerUserUuid);
   const prevFscpReadyRef = useRef(fscpReady);
 
   useEffect(() => {
     if (prevViewerRef.current !== viewerUserUuid) {
       prevViewerRef.current = viewerUserUuid;
-      cacheRef.current = {};
-      previewTextRef.current = {};
+      messagePreviewCache.clear();
       setPreviews({});
     }
   }, [viewerUserUuid]);
@@ -35,8 +28,7 @@ export function useMessagesListPreviewDecrypt(
     if (prevFscpReadyRef.current !== fscpReady) {
       prevFscpReadyRef.current = fscpReady;
       if (fscpReady) {
-        cacheRef.current = {};
-        previewTextRef.current = {};
+        messagePreviewCache.clear();
       }
     }
   }, [fscpReady]);
@@ -65,17 +57,15 @@ export function useMessagesListPreviewDecrypt(
     (async () => {
       const next: Record<string, string> = {};
       for (const item of conversations) {
-        const mk = msgKeyFor(item);
-        const cachedKey = cacheRef.current[item.conversationUuid];
-        const cachedPreview = previewTextRef.current[item.conversationUuid];
-        if (cachedKey === mk && cachedPreview !== undefined) {
-          next[item.conversationUuid] = cachedPreview;
+        const mk = messagePreviewKey(item.lastMessageEncryptedForMe, item.lastMessageAt);
+        const cached = messagePreviewCache.get(item.conversationUuid);
+        if (cached && cached.msgKey === mk) {
+          next[item.conversationUuid] = cached.text;
           continue;
         }
         const text = await decryptOne(item);
         next[item.conversationUuid] = text;
-        cacheRef.current[item.conversationUuid] = mk;
-        previewTextRef.current[item.conversationUuid] = text;
+        messagePreviewCache.set(item.conversationUuid, mk, text);
       }
       if (!cancelled) {
         setPreviews((prev) => {

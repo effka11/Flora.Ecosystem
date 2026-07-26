@@ -83,6 +83,8 @@ function fscpBannerMessage(status: FscpBootstrapStatus): { text: string; action?
 type ConversationRow = MsgConversationDto & { preview: string };
 
 const EMPTY_CONVERSATIONS: MsgConversationDto[] = [];
+// Matches the global staleTime in providers/FloraProviders.tsx.
+const CONVERSATIONS_STALE_REFETCH_MS = 15_000;
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
@@ -125,6 +127,11 @@ export default function MessagesScreen() {
     queryKey: ["conversations"],
     queryFn: () => apiGetConversations(),
   });
+  const conversationQueryRef = useRef(query);
+
+  useEffect(() => {
+    conversationQueryRef.current = query;
+  }, [query]);
 
   const items = query.data?.items ?? EMPTY_CONVERSATIONS;
   const previews = useMessagesListPreviewDecrypt(items, me?.userUuid);
@@ -132,6 +139,13 @@ export default function MessagesScreen() {
   useFocusEffect(
     useCallback(() => {
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+      const conversationQuery = conversationQueryRef.current;
+      if (
+        Date.now() - conversationQuery.dataUpdatedAt >
+        CONVERSATIONS_STALE_REFETCH_MS
+      ) {
+        void conversationQuery.refetch();
+      }
       if (fscpStatus === "registration_pending") {
         void retryPendingOperation();
       }

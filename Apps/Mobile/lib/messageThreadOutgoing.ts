@@ -1,4 +1,9 @@
-import type { MsgMessageDto, MsgSentMessageDto } from "@flora/client-core/contracts";
+import type {
+  MsgConversationDto,
+  MsgConversationsPage,
+  MsgMessageDto,
+  MsgSentMessageDto,
+} from "@flora/client-core/contracts";
 import type { FscpMessageBlock, FscpMessageReplyRef } from "@flora/client-core/fscp";
 import {
   extractTextFromPlaintext,
@@ -10,14 +15,38 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
 import { messageDecryptCacheKey } from "@/lib/useThreadMessageDecrypt";
+import { messagePreviewCache, messagePreviewKey } from "@/stores/messagePreviewCache";
 import { messageThreadCache, messageThreadDecryptCache } from "@/stores/messageThreadCache";
 
-function rowFromBlocks(
+export type OutgoingConversationPatch = {
+  conversationUuid: string;
+  /** Тот же шифротекст, что уходит в messagePreviewKey при засеве. */
+  encryptedForMe: string;
+  createdAt: string;
+};
+
+export function applyOutgoingToConversations(
+  items: MsgConversationDto[],
+  patch: OutgoingConversationPatch,
+): MsgConversationDto[] {
+  const index = items.findIndex((item) => item.conversationUuid === patch.conversationUuid);
+  if (index === -1) return items;
+
+  const updated = {
+    ...items[index],
+    lastMessageEncryptedForMe: patch.encryptedForMe,
+    lastMessageContent: null,
+    lastMessageAt: patch.createdAt,
+    lastMessageIsFromMe: true,
+  };
+  return [updated, ...items.slice(0, index), ...items.slice(index + 1)];
+}
+
+function rowFromPlaintext(
   message: MsgMessageDto,
-  blocks: FscpMessageBlock[],
+  plain: ReturnType<typeof messagePlaintextFromBlocks>,
   replyTo?: FscpMessageReplyRef,
 ): ThreadBubbleItem {
-  const plain = messagePlaintextFromBlocks(blocks, message.createdAt);
   return {
     messageUuid: message.messageUuid,
     text: extractTextFromPlaintext(plain),
@@ -52,11 +81,26 @@ export function appendOutgoingThreadMessage(params: {
     isFromMe: true,
     isRead: false,
   };
+  const plain = messagePlaintextFromBlocks(params.blocks, dto.createdAt);
 
   const cacheKey = messageDecryptCacheKey(dto);
   messageThreadDecryptCache.setMessage(
     cacheKey,
-    rowFromBlocks(dto, params.blocks, params.replyTo),
+    rowFromPlaintext(dto, plain, params.replyTo),
+  );
+
+  const patch: OutgoingConversationPatch = {
+    conversationUuid: params.conversationUuid,
+    encryptedForMe: dto.encryptedPayload,
+    createdAt: dto.createdAt,
+  };
+  params.queryClient.setQueryData<MsgConversationsPage>(["conversations"], (old) =>
+    old ? { ...old, items: applyOutgoingToConversations(old.items, patch) } : old,
+  );
+  messagePreviewCache.set(
+    params.conversationUuid,
+    messagePreviewKey(dto.encryptedPayload, dto.createdAt),
+    plaintextToPreview(plain),
   );
 
   const queryKey = ["messages", params.conversationUuid, params.otherUserUuid?.trim() || ""] as const;

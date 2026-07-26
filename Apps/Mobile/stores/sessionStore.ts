@@ -15,6 +15,7 @@ import {
   type SessionControllerStatus,
 } from "@/lib/sessionController";
 import { useFscpStore } from "@/stores/fscpStore";
+import { messagePreviewCache } from "@/stores/messagePreviewCache";
 
 type SessionState = {
   status: SessionControllerStatus;
@@ -40,7 +41,7 @@ const mobileSessionController = createSessionController({
   supersedeRefresh: supersedeSessionRefresh,
   fetchImpl: ((input, init) => fetch(input, init)) as typeof fetch,
   apiBaseUrl: resolveApiBaseUrl(),
-  clientHeader: "android/0.8.0-alpha",
+  clientHeader: "android/0.9.0-dev",
   clock: { now: () => Date.now() },
 });
 
@@ -114,6 +115,7 @@ mobileSessionController.subscribe((next) => {
     clearSecurePushMaterial();
     useFscpStore.getState().clearRuntimeState();
     getQueryClientRef()?.clear();
+    messagePreviewCache.clear();
   }
 });
 

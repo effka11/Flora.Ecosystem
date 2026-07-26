@@ -1,4 +1,5 @@
 import { apiGetMe, apiGetPrivacySettings, avatarImageUrl, isDevLocalOfflineSession } from "@/lib/auth";
+import { createCachedResource, createKeyedCachedResource, type CachedResource } from "@/lib/cachedResource";
 import { preloadConversationThreads } from "@/lib/conversationThreadsCache";
 import { msgGetConversations, type MsgConversationsPage } from "@/lib/messagingApi";
 import {
@@ -29,7 +30,8 @@ import {
   type RecommendedUserDto,
 } from "@/lib/socialApi";
 
-const DEFAULT_TTL_MS = 60_000;
+export type { CachedResource } from "@/lib/cachedResource";
+
 /** Пауза между задачами внутри фоновой волны (некритичные вкладки). */
 const PREFETCH_WAVE_DELAY_MS = 250;
 /** Старт фоновых волн после критического prefetch (feed/messages/notifications уже без задержки). */
@@ -37,130 +39,6 @@ const PREFETCH_BACKGROUND_START_MS = 400;
 const IMAGE_WARMUP_LIMIT = 12;
 /** Сколько верхних диалогов прогревать до открытия Messages. */
 export const TOP_THREAD_PRELOAD_COUNT = 4;
-
-type CacheEntry<T> = {
-  value: T;
-  fetchedAt: number;
-};
-
-export type CachedResource<T> = {
-  prefetch: () => void;
-  peek: () => T | null;
-  get: () => Promise<T>;
-  set: (value: T) => void;
-  invalidate: () => void;
-};
-
-function createCachedResource<T>(fetcher: () => Promise<T>, ttlMs = DEFAULT_TTL_MS): CachedResource<T> {
-  let entry: CacheEntry<T> | null = null;
-  let inFlight: Promise<T> | null = null;
-
-  const fetchFresh = (): Promise<T> => {
-    if (inFlight) return inFlight;
-    inFlight = fetcher()
-      .then((value) => {
-        entry = { value, fetchedAt: Date.now() };
-        inFlight = null;
-        return value;
-      })
-      .catch((error) => {
-        inFlight = null;
-        throw error;
-      });
-    return inFlight;
-  };
-
-  const isFresh = (): boolean => Boolean(entry && Date.now() - entry.fetchedAt < ttlMs);
-
-  return {
-    prefetch() {
-      if (isFresh()) return;
-      void fetchFresh().catch(() => {});
-    },
-    peek() {
-      return entry?.value ?? null;
-    },
-    get() {
-      if (isFresh() && entry) {
-        return Promise.resolve(entry.value);
-      }
-      return fetchFresh();
-    },
-    set(value) {
-      entry = { value, fetchedAt: Date.now() };
-    },
-    invalidate() {
-      entry = null;
-      inFlight = null;
-    },
-  };
-}
-
-function createKeyedCachedResource<K, T>(
-  fetcher: (key: K) => Promise<T>,
-  ttlMs = DEFAULT_TTL_MS,
-): {
-  prefetch: (key: K) => void;
-  peek: (key: K) => T | null;
-  get: (key: K) => Promise<T>;
-  set: (key: K, value: T) => void;
-  invalidate: (key?: K) => void;
-} {
-  const entries = new Map<K, CacheEntry<T>>();
-  const inFlights = new Map<K, Promise<T>>();
-
-  const fetchFresh = (key: K): Promise<T> => {
-    const existing = inFlights.get(key);
-    if (existing) return existing;
-
-    const promise = fetcher(key)
-      .then((value) => {
-        entries.set(key, { value, fetchedAt: Date.now() });
-        inFlights.delete(key);
-        return value;
-      })
-      .catch((error) => {
-        inFlights.delete(key);
-        throw error;
-      });
-    inFlights.set(key, promise);
-    return promise;
-  };
-
-  const isFresh = (key: K): boolean => {
-    const entry = entries.get(key);
-    return Boolean(entry && Date.now() - entry.fetchedAt < ttlMs);
-  };
-
-  return {
-    prefetch(key) {
-      if (isFresh(key)) return;
-      void fetchFresh(key).catch(() => {});
-    },
-    peek(key) {
-      return entries.get(key)?.value ?? null;
-    },
-    get(key) {
-      const entry = entries.get(key);
-      if (entry && isFresh(key)) {
-        return Promise.resolve(entry.value);
-      }
-      return fetchFresh(key);
-    },
-    set(key, value) {
-      entries.set(key, { value, fetchedAt: Date.now() });
-    },
-    invalidate(key) {
-      if (key === undefined) {
-        entries.clear();
-        inFlights.clear();
-        return;
-      }
-      entries.delete(key);
-      inFlights.delete(key);
-    },
-  };
-}
 
 export type CommunitiesPreloadBundle = {
   ownedList: OwnedCommunityDto[];

@@ -760,6 +760,7 @@ export default function ThreadScreen() {
       setDeleteBarHeightPx(0);
       atBottomRef.current = true;
       void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Не удалось отправить голосовое";
       Alert.alert("Отправка", message);
@@ -846,6 +847,7 @@ export default function ThreadScreen() {
       setDeleteBarHeightPx(0);
       atBottomRef.current = true;
       void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
       Alert.alert("Отправка", message);
