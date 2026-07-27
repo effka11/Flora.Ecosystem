@@ -49,7 +49,7 @@
     "expo-document-picker": "^56.0.4",
     "expo-file-system": "~56.0.8",
     "expo-font": "~56.0.6",
-    "expo-image": "~56.0.11",
+    "expo-image": "~57.0.1",
     "expo-image-picker": "~56.0.17",
     "expo-linear-gradient": "~56.0.4",
     "expo-linking": "~56.0.14",
