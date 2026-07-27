@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ChatMessageImageCollage } from "@/components/messages/ChatMessageImageCollage";
 import { ChatVoiceMessageCard } from "@/components/messages/ChatVoiceMessageCard";
@@ -23,7 +23,6 @@ import {
   View,
   Pressable,
   useWindowDimensions,
-  type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -107,14 +106,12 @@ function MessageBubbleColumn({
   tapLaneStyle,
   anchorStyle,
   bubbleRef,
-  onLayout,
   onPress,
   children,
 }: {
   tapLaneStyle: StyleProp<ViewStyle>;
   anchorStyle: StyleProp<ViewStyle>;
   bubbleRef: RefObject<View | null>;
-  onLayout?: (event: LayoutChangeEvent) => void;
   onPress?: (anchor: BubbleAnchorRect) => void;
   children: ReactNode;
 }) {
@@ -128,7 +125,7 @@ function MessageBubbleColumn({
       disabled={!onPress}
       onPress={handlePress}
     >
-      <View style={anchorStyle} onLayout={onLayout}>
+      <View style={anchorStyle}>
         {children}
       </View>
     </Pressable>
@@ -160,7 +157,6 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const textInnerWidth = useMemo(() => maxTextBubbleInnerWidth(layoutCtx), [layoutCtx]);
   const voiceCaptionInner = useMemo(() => voiceCaptionInnerWidth(layoutCtx), [layoutCtx]);
   const photoCaptionInner = useMemo(() => photoCaptionInnerWidth(layoutCtx), [layoutCtx]);
-  const [anchorWidth, setAnchorWidth] = useState(0);
   const bubbleMeasureRef = useRef<View>(null);
 
   useLayoutEffect(() => {
@@ -169,13 +165,6 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
     const frame = requestAnimationFrame(() => measureBubbleAnchor(bubbleMeasureRef, onAnchorSync));
     return () => cancelAnimationFrame(frame);
   }, [isMenuTarget, onAnchorSync]);
-
-  const onAnchorLayout = useCallback((event: LayoutChangeEvent) => {
-    const next = Math.floor(event.nativeEvent.layout.width);
-    if (next > 0) {
-      setAnchorWidth((prev) => (prev === next ? prev : next));
-    }
-  }, []);
 
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
   const body =
@@ -207,11 +196,6 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
       <ChatMessageReplyQuote reply={message.replyTo} isFromMe={message.isFromMe} />
     ) : null;
 
-  const mediaWidth =
-    fixedPhotoWidth && anchorWidth > 0
-      ? Math.min(anchorWidth, maxPhotoWidth)
-      : maxPhotoWidth;
-
   const wrapStyle = [
     styles.wrap,
     message.isFromMe ? styles.wrapMe : styles.wrapThem,
@@ -228,8 +212,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
     styles.bubbleAnchor,
     !message.isFromMe ? styles.bubbleAnchorThem : null,
     { maxWidth: maxPhotoWidth },
-    fixedPhotoWidth && message.isFromMe ? { width: maxPhotoWidth } : null,
-    fixedPhotoWidth && !message.isFromMe ? styles.bubbleAnchorThemFlex : null,
+    fixedPhotoWidth ? { width: maxPhotoWidth } : null,
   ];
 
   if (!hasImages && !hasVoice) {
@@ -384,7 +367,6 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
       ) : null}
       <MessageBubbleColumn
         anchorStyle={anchorStyle}
-        onLayout={fixedPhotoWidth ? onAnchorLayout : undefined}
         {...bubbleColumnProps}
       >
         <View ref={bubbleMeasureRef} collapsable={false} style={bubbleStyles}>
@@ -411,7 +393,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               photoOnly={photoOnly}
               hasCaption={hasText}
               isFromMe={message.isFromMe}
-              containerWidth={mediaWidth}
+              containerWidth={maxPhotoWidth}
             />
             {photoOnly ? (
               <PhotoTimePill
@@ -485,10 +467,6 @@ const styles = StyleSheet.create({
   },
   bubbleAnchorThem: {
     alignItems: "flex-start",
-  },
-  bubbleAnchorThemFlex: {
-    flex: 1,
-    minWidth: 0,
   },
   bubble: {
     padding: floraMessages.bubblePadding,

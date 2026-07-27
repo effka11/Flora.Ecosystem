@@ -1,45 +1,45 @@
-# Профили семейств моделей
+# Model family profiles
 
-Справочник для назначения частей плана. Версии и слаги **не хардкодить** — брать последние доступные в среде (шаг 0 SKILL.md). Здесь — устойчивые характеристики семейств: сильные стороны, типовые задачи, относительная стоимость.
+Reference for assigning plan parts. Do **not hardcode** versions and slugs — take the latest available in the environment (step 0 of SKILL.md). Here — stable family traits: strengths, typical tasks, relative cost.
 
-Условная шкала стоимости: $ (дёшево) → $$$$ (флагман). Уровни мышления — типовой диапазон; фактическую доступность проверять по слагам среды.
+Relative cost scale: $ (cheap) → $$$$ (flagship). Thinking levels — typical range; check actual availability against environment slugs.
 
 ## Anthropic (Claude)
 
-| Семейство | Стоимость | Мышление | Сильные стороны | Назначать на |
+| Family | Cost | Thinking | Strengths | Assign to |
 |---|---|---|---|---|
-| **fable** | $$$$ | до max | Абсолютный frontier: самый длинный горизонт автономной работы, дисциплина инструментов, сверка чужих результатов при минимальном надзоре | Только самые амбициозные оркестрации и длинные unsupervised-агенты; когда near-frontier Opus недостаточно и цена ошибки оправдывает ×2 к Opus |
-| **opus** | $$$ | до max | Near-frontier к Fable (~та же планка на coding/агентных бенчмарках) при ~½ цены; сильнее верифицирует свою работу, RCA/отладка, аккуратные большие диффы, длинные многошаговые задачи; thinking по умолчанию | **Дефолтный топ** для сложных частей: безопасность/auth/крипто; публичные контракты; сложные рефакторинги; конкурентность; оркестрация средних/крупных планов; код с дорогой ценой ошибки |
-| **sonnet** | $$ | до high | Лучший баланс качество/цена среди mid-tier, надёжная универсальная реализация | Дефолт для стандартной реализации фич по готовому контракту; средние рефакторинги; ревью |
-| **haiku** | $ | low–medium | Быстрый и дешёвый, хорошо следует образцу | Механика: rename, конфиги, документация, простые тесты по шаблону, рутинные правки |
+| **fable** | $$$$ | up to max | Absolute frontier: longest autonomous horizon, tool discipline, reconciling foreign results with minimal oversight | Only the most ambitious orchestrations and long unsupervised agents; when near-frontier Opus is not enough and the cost of error justifies ×2 vs Opus |
+| **opus** | $$$ | up to max | Near-frontier to Fable (~same bar on coding/agentic benchmarks) at ~½ price; stronger at verifying its own work, RCA/debugging, careful large diffs, long multi-step tasks; thinking on by default | **Default top** for hard parts: security/auth/crypto; public contracts; hard refactors; concurrency; orchestration of medium/large plans; code with expensive failure modes |
+| **sonnet** | $$ | up to high | Best quality/price balance among mid-tier; reliable general implementation | Default for standard feature work against a frozen contract; medium refactors; review |
+| **haiku** | $ | low–medium | Fast and cheap; follows examples well | Mechanics: rename, configs, docs, simple template tests, routine edits |
 
-### Opus vs Fable (после Opus 5)
+### Opus vs Fable (after Opus 5)
 
-- **Opus** — рабочий топ по умолчанию: coding, agentic implementation, сложные рефакторинги, большинство оркестраций. Брать последнюю доступную версию семейства (сейчас — Opus 5-класс).
-- **Fable** — эскалация с Opus, не параллельный дефолт: план с очень длинным unsupervised-горизонтом, много волн с тяжёлой сверкой чужих результатов, или явный запрос «максимальный frontier».
-- Не ставь Fable «на всякий случай»: при близком качестве Opus обычно выигрывает по бюджету плана.
+- **Opus** — working top by default: coding, agentic implementation, hard refactors, most orchestrations. Take the latest available family version (currently — Opus 5-class).
+- **Fable** — escalation from Opus, not a parallel default: a plan with a very long unsupervised horizon, many waves with heavy foreign-result reconciliation, or an explicit “maximum frontier” request.
+- Do not pick Fable “just in case”: at similar quality Opus usually wins on plan budget.
 
 ## OpenAI (GPT)
 
-| Семейство | Стоимость | Мышление | Сильные стороны | Назначать на |
+| Family | Cost | Thinking | Strengths | Assign to |
 |---|---|---|---|---|
-| **gpt sol** | $$$$ | до max | Флагманское рассуждение, сильнейшая отладка, алгоритмы, формальная точность | Плавающие баги; нетривиальные алгоритмы; миграции данных; задачи с математикой/крайними случаями; альтернатива Opus/Fable для разнообразия в параллельных волнах |
-| **terra** | $$ | до high | Ровная реализация среднего уровня, хорошее следование спецификации | Альтернатива sonnet для реализации и тестов; полезно для разнообразия в параллельных волнах |
-| **luna** | $ | low–medium | Лёгкая и быстрая | Мелочь: boilerplate, глоссарии, комментарии, однофайловые правки по образцу |
-| **codex** | $$–$$$ | medium–high | Специализация на коде: плотная генерация, тесты, работа с API по спецификации | Сфокусированное написание кода в узком контексте; генерация тестов; SDK/клиенты по контракту |
+| **gpt sol** | $$$$ | up to max | Flagship reasoning, strongest debugging, algorithms, formal precision | Flaky bugs; non-trivial algorithms; data migrations; math/edge-case tasks; Opus/Fable alternative for diversity in parallel waves |
+| **terra** | $$ | up to high | Steady mid-level implementation; good spec following | Sonnet alternative for implementation and tests; useful for diversity in parallel waves |
+| **luna** | $ | low–medium | Light and fast | Small stuff: boilerplate, glossaries, comments, single-file edits by example |
+| **codex** | $$–$$$ | medium–high | Code specialization: dense generation, tests, API work from a spec | Focused code writing in a narrow context; test generation; SDK/clients from a contract |
 
-## Прочие
+## Other
 
-| Семейство | Стоимость | Мышление | Сильные стороны | Назначать на |
+| Family | Cost | Thinking | Strengths | Assign to |
 |---|---|---|---|---|
-| **grok** | $$ | low–high | Скорость итераций, быстрая разведка по большому репозиторию | Исследование кодовой базы перед волнами; быстрые циклы «правка-прогон»; черновые прототипы |
-| **gemini** | $$–$$$ | до high | Самое большое контекстное окно, анализ длинных документов, мультимодальность | Анализ больших планов/спек/логов целиком; сводки по множеству файлов; задачи с изображениями/скриншотами |
+| **grok** | $$ | low–high | Iteration speed; fast exploration of a large repo | Codebase exploration before waves; fast edit-run loops; rough prototypes |
+| **gemini** | $$–$$$ | up to high | Largest context window; long-document analysis; multimodality | Analyzing large plans/specs/logs whole; multi-file summaries; tasks with images/screenshots |
 
-## Быстрые эвристики
+## Quick heuristics
 
-- Критерии эскалации к топу закрывай **Opus**, не Fable — Fable только если Opus явно не хватает по горизонту/надзору.
-- Не назначай два флагмана подряд по цепочке зависимостей, если промежуточный результат проверяется тестами — среднюю часть отдай sonnet/terra.
-- Разведку («понять, как устроено X») делай grok/gemini **до** волны реализации — это удешевляет части реализации, потому что им достаётся готовый контекст.
-- Если часть — «написать код строго по готовой спеке», codex/sonnet почти всегда достаточно, каким бы важным ни был модуль: важность закрыта на этапе спеки.
-- Если сомневаешься между уровнями — бери модель ниже, мышление выше: это обычно дешевле и не хуже по качеству на кодовых задачах среднего размера.
-- Между Opus (high) и Fable (high) при сопоставимой сложности части — выбирай Opus.
+- Close top-tier escalation criteria with **Opus**, not Fable — Fable only when Opus clearly falls short on horizon/oversight.
+- Do not assign two flagships in a dependency chain if the intermediate result is verified by tests — give the middle part to sonnet/terra.
+- Do exploration (“understand how X is built”) with grok/gemini **before** the implementation wave — that cheapens implementation parts because they get ready context.
+- If the part is “write code strictly from a frozen spec”, codex/sonnet is almost always enough no matter how important the module is: importance was already covered at the spec stage.
+- If unsure between levels — take the lower model, higher thinking: usually cheaper and no worse on mid-size coding tasks.
+- Between Opus (high) and Fable (high) at comparable part complexity — choose Opus.

@@ -16,13 +16,15 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { collageCellWidth, threeImageLeftCellWidth } from "@/lib/feedImageGeometry";
 import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
-import { LruCache } from "@/lib/lruCache";
+import { getStoredImageRatio, rememberImageRatio } from "@/lib/imageRatioStore";
+import {
+  COLLAGE_MAX_ITEMS,
+  DEFAULT_MESSAGE_IMAGE_RATIO,
+  messageSingleImageSize,
+} from "@/lib/messageMediaGeometry";
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
 
-const MAX_ITEMS = 10;
-/** Bounded, recycling-safe aspect-ratio memory keyed by the first image id. */
-const IMAGE_RATIO_CACHE_CAPACITY = 500;
-const imageRatioCache = new LruCache<string, number>(IMAGE_RATIO_CACHE_CAPACITY);
+const MAX_ITEMS = COLLAGE_MAX_ITEMS;
 const GRID = floraSpacing.grid;
 const GAP = floraSpacing.gridFine;
 const DEFAULT_ROW_HEIGHT = 7 * GRID;
@@ -64,20 +66,6 @@ function computeSingleImageSize(containerWidth: number, ratio: number, shape: Im
   if (h > max.h) {
     h = max.h;
     w = h * ratio;
-  }
-  return { width: roundLayoutPx(w), height: roundLayoutPx(h) };
-}
-
-function computeMessageSingleImageSize(containerWidth: number, ratio: number, maxHeight: number) {
-  let w = containerWidth;
-  let h = w / ratio;
-  if (h > maxHeight) {
-    h = maxHeight;
-    w = h * ratio;
-  }
-  if (w > containerWidth) {
-    w = containerWidth;
-    h = w / ratio;
   }
   return { width: roundLayoutPx(w), height: roundLayoutPx(h) };
 }
@@ -229,7 +217,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
   // Seed sizing from the cache so a recycled row shows the correct dimensions
   // on first paint instead of collapsing to "square" and re-measuring.
   const [singleRatio, setSingleRatio] = useRecyclingState<number | null>(
-    () => (firstItemId ? imageRatioCache.get(firstItemId) ?? null : null),
+    () => (firstItemId ? getStoredImageRatio(firstItemId) : null),
     [firstItemId, items.length],
     () => {
       singleRatioLockedRef.current = false;
@@ -251,7 +239,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
     (nextRatio: number) => {
       if (messageMode && singleRatioLockedRef.current) return;
       if (messageMode) singleRatioLockedRef.current = true;
-      if (firstItemId) imageRatioCache.set(firstItemId, nextRatio);
+      if (firstItemId) rememberImageRatio(firstItemId, nextRatio);
       setSingleRatio((prev) => {
         if (prev !== null && Math.abs(prev - nextRatio) < 0.001) return prev;
         return nextRatio;
@@ -282,11 +270,12 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
 
     if (count === 1) {
       if (messageSingleFill && singleMaxHeight) {
-        const ratio = singleRatio ?? 4 / 3;
-        const { width: imageWidth, height: imageHeight } = computeMessageSingleImageSize(
+        const ratio = singleRatio ?? DEFAULT_MESSAGE_IMAGE_RATIO;
+        const { width: imageWidth, height: imageHeight } = messageSingleImageSize(
           width,
           ratio,
           singleMaxHeight,
+          roundLayoutPx,
         );
         return (
           <ClippedImage

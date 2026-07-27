@@ -11,13 +11,14 @@ import {
   cancelAnimation,
   Easing as ReanimatedEasing,
   runOnJS,
+  runOnUI,
   scrollTo,
   useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
   useDerivedValue,
-  useScrollOffset,
   useSharedValue,
+  withDelay,
   withTiming,
   type AnimatedRef,
   type AnimatedStyle,
@@ -30,7 +31,6 @@ import {
   migrateLegacyImeHeight,
 } from "@/lib/imeHeightStore";
 import {
-  CHAT_AT_BOTTOM_THRESHOLD_PX,
   COMPOSE_BASELINE_FALLBACK_PX,
   emojiPanelDockHeightPx,
   keyboardStickyOffsets,
@@ -53,12 +53,17 @@ import { floraSpacing } from "@/lib/theme";
  * пиксель, клавиатура уезжает и открывает панель за собой (Telegram-паттерн).
  *
  * Лента. Клавиатурная механика KeyboardChatScrollView всегда заморожена
- * (freeze=true): её внутренний padding не растёт и она не скроллит. Весь
- * bottom-inset идёт одним shared value (extraContentPadding = navInset +
- * column + insetLift), где insetLift — «потолок» подъёма: расширяется до цели
- * в начале движения (чтобы worklet-scrollTo не клампился о старый диапазон)
- * и оседает к фактическому lift на осадке. Скролл докручивает единственный
- * worklet этого хука (whenAtEnd-семантика). Один писатель — нет гонок scrollTo.
+ * (freeze=true): её внутренний padding не растёт и она не скроллит.
+ * dockExtraPaddingSv (navInset + baseline + deleteBar) несёт только статичную
+ * геометрию дока и меняется редкими ступенями (замер дока, полоса ответа).
+ * Всё движение ленты — transform (listLiftStyle): подъём (-totalLift) и рост
+ * поля (-composeGrowth) на тех же shared values и в тех же кадрах, что у
+ * dockStickyStyle, emojiPanelLayerStyle и самой pill. В инсет движение не
+ * уходит принципиально: его смена — нативный коммит, который декоратор KCSV
+ * гасит встречным scrollBy, а на якорь ленту возвращает отложенный на кадр
+ * scrollTo — то есть заведомо не тот кадр, в котором едет док. Скролл
+ * докручивает единственный worklet этого хука на изменениях самого инсета
+ * (whenAtEnd-семантика). Один писатель — нет гонок scrollTo.
  *
  * Плавность холодного открытия: React-коммиты не попадают в кадры анимации.
  * Порядок: коммит пустого слоя -> transform-полёт (UI-поток) -> осадка ->
@@ -78,6 +83,31 @@ const PANEL_OPEN_MS = Platform.OS === "ios" ? 250 : 220;
 const PANEL_CLOSE_MS = 200;
 const PANEL_RELEASE_MS = 160;
 const PANEL_EASING = ReanimatedEasing.out(ReanimatedEasing.cubic);
+/** Проявление ленты после того, как тред расшифрован. */
+const LIST_REVEAL_MS = 140;
+/**
+ * Пауза перед показом заглушки после перехода: короткое ожидание не должно
+ * успевать мигнуть спиннером.
+ */
+const LIST_PLACEHOLDER_DELAY_MS = 120;
+
+/**
+ * Офсет последнего сообщения. Лента перевёрнута (`scaleY: -1` + обратный порядок
+ * данных), поэтому последнее сообщение живёт в *начале* скролла, а не в конце, и
+ * это главное свойство: ни высота контента, ни высота вьюпорта, ни предел
+ * скролла сюда не входят — три величины, о которых JS узнаёт с опозданием,
+ * больше не участвуют в определении низа.
+ *
+ * Платформы расходятся только в том, где лежит начало. На Android декоратор KCSV
+ * эмулирует верхний inset сдвигом контента (`translationY`) и расширяет диапазон
+ * через `paddingBottom`, поэтому начало — ноль. На iOS это настоящий
+ * `contentInset.top`, и покой лежит на `-inset`; кламп тут не поможет, потому что
+ * `setContentOffset` выход за диапазон не обрезает, а отрабатывает с отскоком.
+ */
+export function chatListAnchorOffset(dockPadPx: number): number {
+  "worklet";
+  return Platform.OS === "ios" ? -dockPadPx : 0;
+}
 /**
  * Окно, в котором показ IME после openEmoji считается устаревшим (запрошен
  * ДО нажатия эмодзи) и повторно гасится вместо перехвата режима.
@@ -109,15 +139,38 @@ export type ChatComposeDock = {
    * top:100% контейнера чата, верхом всегда примыкает к нижней грани дока.
    */
   emojiPanelLayerStyle: AnimatedStyle<ViewStyle>;
+  /** Подъём ленты: тот же totalLift, что у дока, только лента едет вверх. */
+  listLiftStyle: AnimatedStyle<ViewStyle>;
   jumpBtnBottomStyle: AnimatedStyle<ViewStyle>;
-  /** Полный bottom-inset ленты: navInset + column + insetLift. */
+  /**
+   * Зазор ленты под доком в покое: navInset + baseline + deleteBar. У
+   * перевёрнутой ленты KCSV кладёт его в `contentInset.top` — визуально это
+   * всё равно низ. Ни подъём, ни рост поля сюда не входят: они transform-ом
+   * (`listLiftStyle`), потому что каждая смена инсета — нативный коммит с
+   * возвратом на якорь кадром позже.
+   */
   dockExtraPaddingSv: SharedValue<number>;
   /** Библиотечную механику клавиатуры держим замороженной всегда. */
   freezeListSv: SharedValue<boolean>;
   /** Animated-ref внутреннего скролла ленты (для worklet-скролла). */
   listAnimatedRef: AnimatedRef<Reanimated.ScrollView>;
-  onListLayout: (height: number) => void;
-  onListContentSizeChange: (height: number) => void;
+  /**
+   * Вернуть ленту к последнему сообщению (началу скролла у перевёрнутой ленты)
+   * и держать её там, пока пользователь не отмотает вверх.
+   */
+  pinListToBottom: (animated?: boolean) => void;
+  /** Включить/снять прижатие без скролла — по жестам пользователя. */
+  setListPinned: (pinned: boolean) => void;
+  /** Прозрачность ленты: скрыта, пока тред не расшифрован. */
+  listRevealStyle: AnimatedStyle<ViewStyle>;
+  /** Обратная прозрачность — слой заглушки под лентой. */
+  listPlaceholderStyle: AnimatedStyle<ViewStyle>;
+  /** Спрятать ленту до следующего показа — на смене треда. */
+  hideListUntilReady: () => void;
+  /** Разрешить показ: тред расшифрован, высоты больше не поедут. */
+  allowListReveal: () => void;
+  /** Переход в чат доигран — заглушке можно появляться, лента может ехать. */
+  finishEnterTransition: () => void;
   composeBaselinePx: number;
   /** Фиксированная высота контента панели (слой top:100% под доком). */
   emojiPanelHeightPx: number;
@@ -126,7 +179,13 @@ export type ChatComposeDock = {
    * React-коммит грида не должен попадать в кадры transform-анимации.
    */
   emojiPanelReady: boolean;
+  /** Высота оболочки поля: измерение покоя либо цель роста на новую строку. */
   onComposeShellLayout: (height: number) => void;
+  /**
+   * Остаток хода до ступени зазора. Пишет поле (ChatComposeField) — у роста
+   * pill и у догона ленты обязана быть одна кривая и один кадр.
+   */
+  composeGrowthHoldSv: SharedValue<number>;
   onDockColumnIdleLayout: (height: number) => void;
   setDeleteBarHeightPx: (height: number) => void;
   recalibrateComposeBaseline: () => void;
@@ -172,9 +231,15 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     useReanimatedKeyboardAnimation();
 
   const emojiLiftSv = useSharedValue(0);
-  /** Потолок подъёма для inset ленты (расширяем заранее, оседаем на onEnd). */
-  const insetLiftSv = useSharedValue(0);
+  /** Рост оболочки поля над однострочником: строки, полоса картинок. Ступень. */
   const composeGrowthSv = useSharedValue(0);
+  /**
+   * Сколько полю осталось добрать до ступени: ступень применяется сразу, а
+   * видимый рост доезжает кривой. Величину ведёт ChatComposeField — это ровно
+   * недобранная высота pill, поэтому верхняя грань поля и низ ленты не могут
+   * разъехаться ни на кадр, ни на пиксель.
+   */
+  const composeGrowthHoldSv = useSharedValue(0);
   const deleteBarHeightSv = useSharedValue(0);
   const dockExtraPaddingSv = useSharedValue(
     dockIdleGapPx + COMPOSE_BASELINE_FALLBACK_PX,
@@ -203,23 +268,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   // --- Лента: состояние для единственного писателя скролла ---
 
   const listAnimatedRef = useAnimatedRef<Reanimated.ScrollView>();
-  const listScrollOffsetSv = useScrollOffset(listAnimatedRef);
-  const listLayoutHeightSv = useSharedValue(0);
-  const listContentHeightSv = useSharedValue(0);
-
-  const onListLayout = useCallback(
-    (height: number) => {
-      if (height > 0) listLayoutHeightSv.value = height;
-    },
-    [listLayoutHeightSv],
-  );
-
-  const onListContentSizeChange = useCallback(
-    (height: number) => {
-      if (height >= 0) listContentHeightSv.value = height;
-    },
-    [listContentHeightSv],
-  );
 
   useEffect(() => {
     migrateLegacyImeHeight();
@@ -267,27 +315,46 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     [ksvClosedPx],
   );
 
+  /**
+   * Рост поля, каким его видно прямо сейчас: ступень минус то, что полю ещё
+   * осталось добрать. В кадре ступени это ровно прежняя высота, дальше —
+   * кривая самого поля.
+   */
+  const liveComposeGrowthSv = useDerivedValue(
+    () => composeGrowthSv.value - composeGrowthHoldSv.value,
+  );
+
+  /**
+   * Движение ленты — подъём дока и рост поля, оба transform-ом и оба на тех же
+   * shared values, что и сам док. Рост принципиально не уходит в инсет: смена
+   * инсета — это нативный коммит с встречным scrollBy декоратора и возвратом
+   * на якорь кадром позже, то есть заведомо не тот кадр, в котором едет pill.
+   * Лента дёргалась именно на этом расхождении.
+   */
+  const listLiftStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -(totalLiftSv.value + liveComposeGrowthSv.value) },
+    ],
+  }));
+
   useAnimatedReaction(
     () => ({
-      insetLift: Math.max(insetLiftSv.value, totalLiftSv.value),
-      growth: composeGrowthSv.value,
       deleteBar: deleteBarHeightSv.value,
       baseline: composeBaselineSv.value,
     }),
     (cur) => {
-      dockExtraPaddingSv.value =
-        dockIdleGapPx + cur.baseline + cur.growth + cur.deleteBar + cur.insetLift;
+      dockExtraPaddingSv.value = dockIdleGapPx + cur.baseline + cur.deleteBar;
     },
     [dockIdleGapPx],
   );
 
-  /** Кнопка «новые сообщения» ездит за фактическим (не потолочным) подъёмом. */
+  /** Кнопка «новые сообщения» ездит за подъёмом дока. */
   const jumpBtnBottomStyle = useAnimatedStyle(
     () => ({
       bottom:
         dockIdleGapPx +
         composeBaselineSv.value +
-        composeGrowthSv.value +
+        liveComposeGrowthSv.value +
         deleteBarHeightSv.value +
         totalLiftSv.value +
         floraSpacing.grid,
@@ -297,108 +364,161 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
 
   // --- Единственный писатель скролла ленты ---
 
-  const followArmedSv = useSharedValue(false);
-  const followSuppressedSv = useSharedValue(false);
-  const followBaseScrollSv = useSharedValue(-1);
-  const followBaseLiftSv = useSharedValue(0);
+  const pinToBottomSv = useSharedValue(true);
 
   /**
-   * Подъём/спуск дока: на первом кадре движения фиксируем якорь (offset и
-   * «был ли пользователь у низа» — против inset, соответствующего ПРЕЖНЕМУ
-   * подъёму, а не уже расширенному потолку), дальше ведём абсолютной целью
-   * base + delta — без накопления дрейфа. Без якоря вниз не скроллим,
-   * только клампим офсет к сжимающемуся диапазону.
+   * Зазор под доком уезжает в `contentInset` KCSV, и при его изменении нативный
+   * декоратор доскролливает на дельту, чтобы контент визуально стоял на месте.
+   * Посреди истории это верно, а у последнего сообщения — нет: там лента должна
+   * ехать вместе с доком, иначе свежая строка уходит под поле ввода. Поэтому у
+   * якоря мы перекрываем нативную компенсацию возвратом в начало.
+   *
+   * Скролл отложен на кадр — как в `useExtraContentPadding` библиотеки: на этом
+   * кадре нативный диапазон ещё старый, и цель склампилась бы в ту самую
+   * недостачу, которую возврат и лечит.
+   *
+   * Рост поля сюда не приходит вовсе (он transform-ом, см. listLiftStyle) —
+   * остаются редкие ступени: замер дока и полоса ответа.
    */
   useAnimatedReaction(
-    () => totalLiftSv.value,
+    () => dockExtraPaddingSv.value,
     (cur, prev) => {
       if (prev === null || cur === prev) return;
+      if (!pinToBottomSv.value) return;
+      requestAnimationFrame(() => {
+        if (!pinToBottomSv.value) return;
+        scrollTo(listAnimatedRef, 0, chatListAnchorOffset(cur), false);
+      });
+    },
+    [],
+  );
 
-      const columnPad =
-        dockIdleGapPx +
-        composeBaselineSv.value +
-        composeGrowthSv.value +
-        deleteBarHeightSv.value;
+  /**
+   * Лента невидима, пока тред не готов. Позиция теперь верна с первого кадра,
+   * но высоты строк до расшифровки чужие: текст приходит волнами, и каждая
+   * перекладывает пузыри. Прозрачность прячет эту осадку, а не низ.
+   */
+  const listRevealSv = useSharedValue(0);
+  const listRevealStartedSv = useSharedValue(false);
 
-      if (!followArmedSv.value) {
-        followArmedSv.value = true;
-        followBaseLiftSv.value = prev;
-        const contentH = listContentHeightSv.value;
-        const atEnd =
-          contentH > 0 &&
-          listScrollOffsetSv.value + listLayoutHeightSv.value >=
-            contentH + columnPad + prev - CHAT_AT_BOTTOM_THRESHOLD_PX;
-        followBaseScrollSv.value =
-          atEnd && !followSuppressedSv.value ? listScrollOffsetSv.value : -1;
-      }
+  /**
+   * Пока идёт переход в чат, внутри экрана не должно меняться ничего: он и так
+   * проявляется целиком (`animation: "fade"`), и любое движение внутри читается
+   * как мигание. Заглушка поэтому ждёт конца перехода, а не показывается сразу.
+   */
+  const enterRunningSv = useSharedValue(true);
+  const listPlaceholderSv = useSharedValue(0);
 
-      if (followBaseScrollSv.value >= 0) {
+  const listRevealStyle = useAnimatedStyle(() => ({
+    opacity: listRevealSv.value,
+  }));
+
+  const listPlaceholderStyle = useAnimatedStyle(() => ({
+    opacity: listPlaceholderSv.value,
+  }));
+
+  const pinListToBottom = useCallback(
+    (animated = false) => {
+      pinToBottomSv.value = true;
+      runOnUI(() => {
         scrollTo(
           listAnimatedRef,
           0,
-          Math.max(0, followBaseScrollSv.value + (cur - followBaseLiftSv.value)),
-          false,
+          chatListAnchorOffset(dockExtraPaddingSv.value),
+          animated,
         );
-      } else if (cur < prev) {
-        // Кламп к дну: офсет не должен превышать сжимающийся диапазон.
-        const maxScroll = Math.max(
-          0,
-          listContentHeightSv.value - listLayoutHeightSv.value + columnPad + cur,
-        );
-        if (listScrollOffsetSv.value > maxScroll) {
-          scrollTo(listAnimatedRef, 0, maxScroll, false);
-        }
-      }
-
-      if (cur <= KB_HEIGHT_EPSILON_PX) {
-        followArmedSv.value = false;
-        followSuppressedSv.value = false;
-      }
+      })();
     },
-    [dockIdleGapPx],
+    [dockExtraPaddingSv, listAnimatedRef, pinToBottomSv],
+  );
+
+  const setListPinned = useCallback(
+    (pinned: boolean) => {
+      // Невидимую ленту распинать нечему: жест по нулевой прозрачности снял бы
+      // прижатие, и она осталась бы скрытой навсегда.
+      if (!pinned && !listRevealStartedSv.value) return;
+      pinToBottomSv.value = pinned;
+    },
+    [listRevealStartedSv, pinToBottomSv],
   );
 
   /**
-   * Дискретные изменения (рост поля, delete-bar): одиночный сдвиг/кламп.
-   * Отложен на кадр (rAF на UI-потоке), чтобы native-inset успел расшириться —
-   * тот же приём, что в useExtraContentPadding библиотеки.
+   * Спрятать ленту до готовности нового треда: ячейки пересоздаются, а
+   * прозрачность живёт в доке и осталась бы от прежнего треда.
    */
-  useAnimatedReaction(
-    () => composeGrowthSv.value + deleteBarHeightSv.value,
-    (cur, prev) => {
-      if (prev === null) return;
-      const delta = cur - prev;
-      if (delta === 0) return;
-      const contentH = listContentHeightSv.value;
-      if (contentH <= 0) return;
+  const hideListUntilReady = useCallback(() => {
+    cancelAnimation(listRevealSv);
+    cancelAnimation(listPlaceholderSv);
+    listRevealStartedSv.value = false;
+    listRevealSv.value = 0;
+    listPlaceholderSv.value = 0;
+    enterRunningSv.value = true;
+  }, [enterRunningSv, listPlaceholderSv, listRevealSv, listRevealStartedSv]);
 
-      const basePad =
-        dockIdleGapPx +
-        composeBaselineSv.value +
-        Math.max(insetLiftSv.value, totalLiftSv.value);
-      const atEnd =
-        listScrollOffsetSv.value + listLayoutHeightSv.value >=
-        contentH + basePad + prev - CHAT_AT_BOTTOM_THRESHOLD_PX;
+  /**
+   * Переход в чат закончился. Если лента ещё не готова — только теперь имеет
+   * смысл заглушка, и то с паузой: ожидание в сотню миллисекунд не должно
+   * успевать мигнуть спиннером.
+   */
+  const finishEnterTransition = useCallback(() => {
+    enterRunningSv.value = false;
+    if (listRevealStartedSv.value) return;
+    cancelAnimation(listPlaceholderSv);
+    listPlaceholderSv.value = withDelay(
+      LIST_PLACEHOLDER_DELAY_MS,
+      withTiming(1, { duration: LIST_REVEAL_MS, easing: PANEL_EASING }),
+    );
+  }, [enterRunningSv, listPlaceholderSv, listRevealStartedSv]);
 
-      if (atEnd) {
-        const target = Math.max(0, listScrollOffsetSv.value + delta);
-        requestAnimationFrame(() => {
-          scrollTo(listAnimatedRef, 0, target, false);
-        });
-        return;
-      }
-      if (delta < 0) {
-        const maxScroll = Math.max(
-          0,
-          contentH - listLayoutHeightSv.value + basePad + cur,
-        );
-        if (listScrollOffsetSv.value > maxScroll) {
-          scrollTo(listAnimatedRef, 0, maxScroll, false);
+  /**
+   * Тред готов — показываем. Ждать события о размере контента больше не нужно:
+   * у перевёрнутой ленты последнее сообщение стоит в начале скролла с первого
+   * кадра, поэтому проявлять можно сразу, не зная ни высоты контента, ни того,
+   * домерила ли FlashList строки.
+   */
+  const allowListReveal = useCallback(() => {
+    if (listRevealStartedSv.value) return;
+    listRevealStartedSv.value = true;
+    runOnUI(() => {
+      // Кадр отсрочки: разрешение приходит из коммита реакта, а зазор дока в
+      // этот момент ещё применяется нативно — и его смена тянет за собой
+      // компенсирующий `scrollBy` декоратора KCSV. Показать сейчас значит
+      // показать ровно перед этим сдвигом.
+      requestAnimationFrame(() => {
+        // Скролл и прозрачность — в одном кадре: первый видимый кадр обязан
+        // быть на якоре. На Android якорь ноль, то есть мы уже там, а на iOS
+        // покой лежит на `-contentInset.top`, и сам инсет офсет не двигает
+        // (`contentInsetAdjustmentBehavior="never"`) — занимаем явно.
+        if (pinToBottomSv.value) {
+          scrollTo(
+            listAnimatedRef,
+            0,
+            chatListAnchorOffset(dockExtraPaddingSv.value),
+            false,
+          );
         }
-      }
-    },
-    [dockIdleGapPx],
-  );
+        cancelAnimation(listRevealSv);
+        cancelAnimation(listPlaceholderSv);
+        // Внутри перехода экран проявляется целиком (`animation: "fade"`) —
+        // своя анимация читалась бы вторым, лишним движением.
+        listRevealSv.value = enterRunningSv.value
+          ? 1
+          : withTiming(1, { duration: LIST_REVEAL_MS, easing: PANEL_EASING });
+        listPlaceholderSv.value =
+          listPlaceholderSv.value > 0
+            ? withTiming(0, { duration: LIST_REVEAL_MS, easing: PANEL_EASING })
+            : 0;
+      });
+    })();
+  }, [
+    dockExtraPaddingSv,
+    enterRunningSv,
+    listAnimatedRef,
+    listPlaceholderSv,
+    listRevealSv,
+    listRevealStartedSv,
+    pinToBottomSv,
+  ]);
 
   // --- Высота IME ---
 
@@ -478,7 +598,11 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX;
     setComposeBaselinePx(0);
     composeGrowthSv.value = 0;
-  }, [composeBaselineSv, composeGrowthSv]);
+    // Догонять нечего: геометрия пересобирается заново, лента должна стоять
+    // ровно на новом зазоре, а не доезжать до старой цели.
+    cancelAnimation(composeGrowthHoldSv);
+    composeGrowthHoldSv.value = 0;
+  }, [composeBaselineSv, composeGrowthHoldSv, composeGrowthSv]);
 
   const setDeleteBarHeightPx = useCallback(
     (height: number) => {
@@ -536,11 +660,9 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     panelReadyTimerRef.current = setTimeout(markEmojiPanelReady, PANEL_OPEN_MS + 120);
   }, [clearPanelReadyTimer, markEmojiPanelReady]);
 
-  /** Холодный подъём панели: transform-анимация + осадка потолка inset. */
+  /** Холодный подъём панели: transform-анимация до целевого lift. */
   const startColdOpenAnimation = useCallback(
     (target: number) => {
-      followArmedSv.value = false;
-      followSuppressedSv.value = false;
       cancelAnimation(emojiLiftSv);
       armPanelReadyFallback();
       emojiLiftSv.value = withTiming(
@@ -549,21 +671,12 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         (finished) => {
           "worklet";
           if (finished) {
-            insetLiftSv.value = totalLiftSv.value;
             runOnJS(markEmojiPanelReady)();
           }
         },
       );
     },
-    [
-      armPanelReadyFallback,
-      emojiLiftSv,
-      followArmedSv,
-      followSuppressedSv,
-      insetLiftSv,
-      markEmojiPanelReady,
-      totalLiftSv,
-    ],
+    [armPanelReadyFallback, emojiLiftSv, markEmojiPanelReady],
   );
 
   const openEmoji = useCallback(() => {
@@ -591,7 +704,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     mountEmojiPanel(target);
 
     cancelAnimation(emojiLiftSv);
-    insetLiftSv.value = Math.max(insetLiftSv.value, target);
 
     // Гасим и уже открытую, и ещё поднимающуюся IME (быстрый тап после
     // запроса клавиатуры): панель — последнее намерение пользователя.
@@ -643,7 +755,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     currentKbLiftPx,
     emojiActiveSv,
     emojiLiftSv,
-    insetLiftSv,
     kbProgressSv,
     kbShowRequestAtSv,
     markEmojiPanelReady,
@@ -680,8 +791,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     emojiActiveSv.value = false;
     setEmojiAccessoryActive(false);
 
-    followArmedSv.value = false;
-    followSuppressedSv.value = false;
     cancelAnimation(emojiLiftSv);
     emojiLiftSv.value = withTiming(
       0,
@@ -689,21 +798,11 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       (finished) => {
         "worklet";
         if (finished) {
-          insetLiftSv.value = totalLiftSv.value;
           runOnJS(unmountEmojiPanel)("close");
         }
       },
     );
-  }, [
-    emojiActiveSv,
-    emojiLiftSv,
-    followArmedSv,
-    followSuppressedSv,
-    insetLiftSv,
-    kbShowRequestAtSv,
-    totalLiftSv,
-    unmountEmojiPanel,
-  ]);
+  }, [emojiActiveSv, emojiLiftSv, kbShowRequestAtSv, unmountEmojiPanel]);
 
   const showKeyboard = useCallback(
     (showInput: () => void) => {
@@ -807,30 +906,13 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
 
   useKeyboardHandler(
     {
-      onStart: (e) => {
-        "worklet";
-        // Каждое движение клавиатуры — свежий якорь скролла.
-        followArmedSv.value = false;
-        followSuppressedSv.value = false;
-        if (e.height > KB_HEIGHT_EPSILON_PX) {
-          // Открытие: заранее расширяем диапазон под целевой подъём.
-          const targetLift = Math.max(0, e.height - liftLossPx);
-          insetLiftSv.value = Math.max(insetLiftSv.value, targetLift);
-        }
-      },
       onInteractive: () => {
         "worklet";
-        // Свайп-дисмисс: палец владеет лентой, follower не тянет — только кламп.
-        if (!followSuppressedSv.value) {
-          followSuppressedSv.value = true;
-          followArmedSv.value = false;
-          followBaseScrollSv.value = -1;
-        }
+        // Свайп-дисмисс: лентой владеет палец, возврат к якорю тут не наш.
+        pinToBottomSv.value = false;
       },
       onEnd: (e) => {
         "worklet";
-        followArmedSv.value = false;
-        followSuppressedSv.value = false;
 
         const releasePanelRemainder = (reason: string) => {
           emojiLiftSv.value = withTiming(
@@ -839,7 +921,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
             (finished) => {
               "worklet";
               if (finished) {
-                insetLiftSv.value = totalLiftSv.value;
                 runOnJS(unmountEmojiPanel)(reason);
               }
             },
@@ -862,8 +943,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
             // Панель не целевой режим (back в середине перехода) — плавно
             // опускаем остаток, не даём «залипнуть».
             releasePanelRemainder("kb-hidden-release");
-          } else {
-            insetLiftSv.value = totalLiftSv.value;
           }
           return;
         }
@@ -871,7 +950,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         kbShowRequestAtSv.value = 0;
         runOnJS(commitCanonicalImeHeight)(e.height);
         if (emojiActiveSv.value || emojiLiftSv.value <= 0) {
-          insetLiftSv.value = totalLiftSv.value;
           return;
         }
         // Клавиатура осела поверх панели: плавно отпустить остаток слота
@@ -879,7 +957,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         releasePanelRemainder("kb-covered");
       },
     },
-    [commitCanonicalImeHeight, liftLossPx, retryShowKeyboard, unmountEmojiPanel],
+    [commitCanonicalImeHeight, retryShowKeyboard, unmountEmojiPanel],
   );
 
   const resetDockInner = useCallback(() => {
@@ -894,14 +972,13 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     }
     cancelAnimation(emojiLiftSv);
     emojiLiftSv.value = 0;
-    insetLiftSv.value = 0;
-    followArmedSv.value = false;
-    followSuppressedSv.value = false;
-    followBaseScrollSv.value = -1;
+    pinToBottomSv.value = true;
     unmountEmojiPanel("reset");
     setEmojiAccessoryActive(false);
     setKeyboardOpen(false);
     composeGrowthSv.value = 0;
+    cancelAnimation(composeGrowthHoldSv);
+    composeGrowthHoldSv.value = 0;
     deleteBarHeightSv.value = 0;
     composeBaselineRef.current = 0;
     composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX;
@@ -909,15 +986,13 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     Keyboard.dismiss();
   }, [
     composeBaselineSv,
+    composeGrowthHoldSv,
     composeGrowthSv,
     deleteBarHeightSv,
     emojiActiveSv,
     emojiLiftSv,
-    followArmedSv,
-    followBaseScrollSv,
-    followSuppressedSv,
-    insetLiftSv,
     kbShowRequestAtSv,
+    pinToBottomSv,
     unmountEmojiPanel,
   ]);
 
@@ -931,7 +1006,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     return () => {
       cancelAnimation(emojiLiftSv);
       emojiLiftSv.value = 0;
-      insetLiftSv.value = 0;
       emojiActiveSv.value = false;
       emojiActiveRef.current = false;
       emojiPanelMountedRef.current = false;
@@ -944,21 +1018,28 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         kbShowWatchdogRef.current = null;
       }
     };
-  }, [emojiActiveSv, emojiLiftSv, insetLiftSv]);
+  }, [emojiActiveSv, emojiLiftSv]);
 
   return {
     dockStickyStyle,
     emojiPanelLayerStyle,
+    listLiftStyle,
     jumpBtnBottomStyle,
     dockExtraPaddingSv,
     freezeListSv,
     listAnimatedRef,
-    onListLayout,
-    onListContentSizeChange,
+    pinListToBottom,
+    setListPinned,
+    listRevealStyle,
+    listPlaceholderStyle,
+    hideListUntilReady,
+    allowListReveal,
+    finishEnterTransition,
     composeBaselinePx,
     emojiPanelHeightPx,
     emojiPanelReady,
     onComposeShellLayout,
+    composeGrowthHoldSv,
     onDockColumnIdleLayout,
     setDeleteBarHeightPx,
     recalibrateComposeBaseline,

@@ -1,10 +1,5 @@
-import {
-  MESSAGE_RECEIPT_INLINE_RESERVE_PX,
-  TIME_INLINE_GAP_PX,
-  resolveBubbleTimePlacementFromLineWidths,
-  type BubbleTimePlacement,
-} from "@flora/client-core/display";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { TIME_INLINE_GAP_PX, type BubbleTimePlacement } from "@flora/client-core/display";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   NativeSyntheticEvent,
   StyleSheet,
@@ -18,7 +13,14 @@ import {
 
 import { ChatMessageBubbleTime } from "@/components/messages/ChatMessageBubbleTime";
 import { ChatMessageReadReceipt } from "@/components/messages/ChatMessageReadReceipt";
+import { resolveBubbleMetaLayout } from "@/lib/messageBubbleLayout";
 import type { MessageDeliveryState } from "@/lib/messageDeliveryState";
+import {
+  getCachedBodyMeasure,
+  getCachedTimeLabelWidth,
+  setCachedBodyMeasure,
+  setCachedTimeLabelWidth,
+} from "@/lib/messageTextMeasureCache";
 
 type Props = {
   body: string;
@@ -28,6 +30,19 @@ type Props = {
   bodyStyle: StyleProp<TextStyle>;
   timeStyle: StyleProp<TextStyle>;
   receiptColor?: string;
+};
+
+/** Замер помечен текстом и шириной, для которых сделан: устаревший к новому тексту не применяется. */
+type BodyMeasure = {
+  body: string;
+  maxInnerWidthPx: number;
+  lineWidths: number[];
+  lines: string[];
+};
+
+type TimeMeasure = {
+  timeLabel: string;
+  widthPx: number;
 };
 
 type InlineMetaRowProps = {
@@ -66,6 +81,18 @@ function resolveLayoutLines(body: string, lines: TextLayoutEventData["lines"]): 
   return texts;
 }
 
+function sameBodyMeasure(prev: BodyMeasure | null, next: BodyMeasure): boolean {
+  return (
+    prev != null &&
+    prev.body === next.body &&
+    prev.maxInnerWidthPx === next.maxInnerWidthPx &&
+    prev.lineWidths.length === next.lineWidths.length &&
+    prev.lineWidths.every((width, index) => width === next.lineWidths[index]) &&
+    prev.lines.length === next.lines.length &&
+    prev.lines.every((line, index) => line === next.lines[index])
+  );
+}
+
 /** Telegram-style: короткий текст + время в одной строке; длинный — время отдельной строкой справа. */
 function ChatMessageBubbleTextBodyInner({
   body,
@@ -76,61 +103,74 @@ function ChatMessageBubbleTextBodyInner({
   timeStyle,
   receiptColor,
 }: Props) {
-  const [placement, setPlacement] = useState<BubbleTimePlacement>("inline");
-  const [layoutLines, setLayoutLines] = useState<string[]>([]);
-  const [inlineBlockWidthPx, setInlineBlockWidthPx] = useState(0);
-  const measureRef = useRef<{ lineWidths?: number[]; timeLabelWidth?: number }>({});
-
-  const receiptReserve = deliveryState ? MESSAGE_RECEIPT_INLINE_RESERVE_PX : 0;
-
-  const tryResolvePlacement = useCallback(() => {
-    const { lineWidths, timeLabelWidth } = measureRef.current;
-    if (!lineWidths || timeLabelWidth == null || maxBubbleInnerWidthPx <= 0) return;
-
-    const lastLineWidth = lineWidths.at(-1) ?? 0;
-    const maxOtherWidth = lineWidths.length > 1 ? Math.max(...lineWidths.slice(0, -1)) : 0;
-    const metaWidth = timeLabelWidth + TIME_INLINE_GAP_PX + receiptReserve;
-    const nextInlineBlockWidthPx = Math.max(maxOtherWidth, lastLineWidth + metaWidth);
-
-    setPlacement(
-      resolveBubbleTimePlacementFromLineWidths(lineWidths, metaWidth, maxBubbleInnerWidthPx),
-    );
-    setInlineBlockWidthPx(nextInlineBlockWidthPx);
-  }, [maxBubbleInnerWidthPx, receiptReserve]);
-
-  useEffect(() => {
-    measureRef.current = {};
-    setLayoutLines([]);
-    setPlacement("inline");
-    setInlineBlockWidthPx(0);
-  }, [body, timeLabel, maxBubbleInnerWidthPx, deliveryState]);
+  const [bodyMeasure, setBodyMeasure] = useState<BodyMeasure | null>(null);
+  const [timeMeasure, setTimeMeasure] = useState<TimeMeasure | null>(null);
 
   const onBodyTextLayout = useCallback(
     (event: NativeSyntheticEvent<TextLayoutEventData>) => {
       const lines = event.nativeEvent.lines;
-      measureRef.current.lineWidths = lines.map((line) => line.width);
-      setLayoutLines(resolveLayoutLines(body, lines));
-      tryResolvePlacement();
+      const next: BodyMeasure = {
+        body,
+        maxInnerWidthPx: maxBubbleInnerWidthPx,
+        lineWidths: lines.map((line) => line.width),
+        lines: resolveLayoutLines(body, lines),
+      };
+      setCachedBodyMeasure(body, maxBubbleInnerWidthPx, {
+        lineWidths: next.lineWidths,
+        lines: next.lines,
+      });
+      setBodyMeasure((prev) => (sameBodyMeasure(prev, next) ? prev : next));
     },
-    [body, tryResolvePlacement],
+    [body, maxBubbleInnerWidthPx],
   );
 
   const onTimeTextLayout = useCallback(
     (event: NativeSyntheticEvent<TextLayoutEventData>) => {
-      const firstLine = event.nativeEvent.lines[0];
-      measureRef.current.timeLabelWidth = firstLine?.width ?? 0;
-      tryResolvePlacement();
+      const widthPx = event.nativeEvent.lines[0]?.width ?? 0;
+      setCachedTimeLabelWidth(timeLabel, widthPx);
+      setTimeMeasure((prev) =>
+        prev?.timeLabel === timeLabel && prev.widthPx === widthPx ? prev : { timeLabel, widthPx },
+      );
     },
-    [tryResolvePlacement],
+    [timeLabel],
   );
 
-  const measureSlotStyle = [styles.measureSlot, { width: maxBubbleInnerWidthPx }] as StyleProp<ViewStyle>;
+  /**
+   * The `useState` initializer only runs on mount, so it cannot see a cache
+   * entry written after a FlashList cell was created but before it was
+   * recycled onto this text: recycling reuses the instance rather than
+   * remounting it. Falling back to the cache here, on every render, is what
+   * makes a recycled or re-entered cell correct on its first frame.
+   */
+  const measuredBody =
+    bodyMeasure != null && bodyMeasure.body === body && bodyMeasure.maxInnerWidthPx === maxBubbleInnerWidthPx
+      ? bodyMeasure
+      : getCachedBodyMeasure(body, maxBubbleInnerWidthPx);
+  const measuredTimeWidthPx =
+    timeMeasure?.timeLabel === timeLabel ? timeMeasure.widthPx : getCachedTimeLabelWidth(timeLabel);
+  const hasReceipt = deliveryState != null;
+
+  /** Считаем от замеров, а не от накопленного стейта: смена статуса доставки их не обнуляет. */
+  const metaLayout = useMemo(() => {
+    if (measuredBody == null || measuredTimeWidthPx == null || maxBubbleInnerWidthPx <= 0) {
+      return null;
+    }
+    return resolveBubbleMetaLayout({
+      lineWidths: measuredBody.lineWidths,
+      timeLabelWidthPx: measuredTimeWidthPx,
+      hasReceipt,
+      maxInnerWidthPx: maxBubbleInnerWidthPx,
+    });
+  }, [measuredBody, measuredTimeWidthPx, hasReceipt, maxBubbleInnerWidthPx]);
+
+  const placement: BubbleTimePlacement = metaLayout?.placement ?? "inline";
+  const layoutLines = measuredBody?.lines ?? [];
 
   const renderInlineContent = () => {
     if (layoutLines.length <= 1) {
       return (
         <View style={styles.inlineSingleRow}>
-          <Text style={bodyStyle}>{body}</Text>
+          <Text style={[bodyStyle, styles.inlineShrinkText]}>{body}</Text>
           <InlineMetaRow
             timeLabel={timeLabel}
             timeStyle={timeStyle}
@@ -154,10 +194,10 @@ function ChatMessageBubbleTextBodyInner({
         <View
           style={[
             styles.inlineLastRow,
-            inlineBlockWidthPx > 0 ? { width: inlineBlockWidthPx } : null,
+            metaLayout != null ? { width: metaLayout.inlineBlockWidthPx } : null,
           ]}
         >
-          <Text style={[bodyStyle, styles.inlineLastLineText]}>{lastLine}</Text>
+          <Text style={[bodyStyle, styles.inlineShrinkText]}>{lastLine}</Text>
           <InlineMetaRow
             timeLabel={timeLabel}
             timeStyle={timeStyle}
@@ -171,13 +211,18 @@ function ChatMessageBubbleTextBodyInner({
   };
 
   return (
-    <View style={styles.inlineWrap}>
-      <View style={measureSlotStyle} pointerEvents="none">
-        <Text style={bodyStyle} onTextLayout={onBodyTextLayout}>
+    <View
+      style={[
+        styles.inlineWrap,
+        maxBubbleInnerWidthPx > 0 ? { maxWidth: maxBubbleInnerWidthPx } : null,
+      ]}
+    >
+      <View style={[styles.measureSlot, { width: maxBubbleInnerWidthPx }]} pointerEvents="none">
+        <Text key={maxBubbleInnerWidthPx} style={bodyStyle} onTextLayout={onBodyTextLayout}>
           {body}
         </Text>
       </View>
-      <View style={styles.measureSlotTime} pointerEvents="none">
+      <View style={styles.measureSlot} pointerEvents="none">
         <Text style={timeStyle} onTextLayout={onTimeTextLayout}>
           {timeLabel}
         </Text>
@@ -207,16 +252,8 @@ const styles = StyleSheet.create({
   inlineWrap: {
     position: "relative",
     alignSelf: "flex-start",
-    maxWidth: "100%",
   },
   measureSlot: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    opacity: 0,
-    zIndex: -1,
-  },
-  measureSlotTime: {
     position: "absolute",
     left: 0,
     top: 0,
@@ -226,15 +263,13 @@ const styles = StyleSheet.create({
   inlineSingleRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    flexShrink: 1,
-    maxWidth: "100%",
   },
   inlineLastRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    maxWidth: "100%",
   },
-  inlineLastLineText: {
+  /** Текст уступает мете: пока замер не сошёлся, строка переносится, а не вылезает из пузыря. */
+  inlineShrinkText: {
     flexShrink: 1,
   },
   inlineMetaRow: {
@@ -251,11 +286,9 @@ const styles = StyleSheet.create({
     transform: [{ translateY: 1 }],
   },
   belowBlock: {
-    maxWidth: "100%",
     gap: 2,
   },
   meta: {
     alignSelf: "flex-end",
   },
 });
-

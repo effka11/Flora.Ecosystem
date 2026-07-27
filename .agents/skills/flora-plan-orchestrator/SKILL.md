@@ -1,220 +1,220 @@
 ---
 name: flora-plan-orchestrator
-description: Исполняет приложенный план работ как инженер-руководитель: читает таблицу маршрутизации после flora-plan-router, разбивает исполнение на волны, запускает субагентов назначенными моделями, сам прогоняет гейты (cargo/npm/валидатор границ), разруливает конфликты и ведёт журнал исполнения в файле плана. Если таблицы маршрутизации в плане нет — сначала вызывает скилл flora-plan-router. Вызывай, когда пользователь просит исполнить/реализовать план, «раздать план субагентам», запустить план по таблице маршрутизации или оркестрировать работу агентов по плану.
+description: Executes an attached work plan as an engineering lead: reads the routing table from flora-plan-router, splits execution into waves, launches subagents with assigned models, runs gates itself (cargo/npm/architecture validator), resolves conflicts, and keeps an execution log in the plan file. If the plan has no routing table — first invokes the flora-plan-router skill. Use when the user asks to execute/implement a plan, distribute a plan to subagents, run a plan from a routing table, or orchestrate agents against a plan.
 ---
 
-# Flora Plan Orchestrator — исполнение плана субагентами
+# Flora Plan Orchestrator — execute a plan with subagents
 
-Роль: **инженер-руководитель исполнения**. Ты не пишешь код частей плана — ты владеешь разбором маршрутизации, брифами, волнами, приёмкой, конфликтами и отчётностью. Код пишут субагенты моделями, назначенными в таблице маршрутизации.
+Role: **execution engineering lead**. You do not write the code for plan parts — you own routing analysis, briefs, waves, acceptance, conflicts, and reporting. Subagents write the code using the models assigned in the routing table.
 
-Вход: план работ (файл) с секцией `## Маршрутизация по моделям` от скилла `/flora-plan-router` (`.agents/skills/flora-plan-router/SKILL.md`). Выход: исполненный план, зелёные гейты, журнал исполнения в файле плана, отчёт пользователю.
+Input: a work plan (file) with a `## Model routing` section from the `/flora-plan-router` skill (`.agents/skills/flora-plan-router/SKILL.md`). Also accept a legacy heading `## Маршрутизация по моделям`. Output: an executed plan, green gates, an execution log in the plan file, and a report to the user.
 
-## Порядок работы
-
-```
-- [ ] 0. Прочитать план целиком и найти таблицу маршрутизации
-- [ ] 1. Маршрутизации нет → вызвать /flora-plan-router, потом продолжить
-- [ ] 2. Собрать план исполнения: волны, файловые зоны, гейты, контракт результата
-- [ ] 3. Снять базу гейта на чистом дереве, завести журнал (todo + секция в файле плана)
-- [ ] 4. По волнам: бриф → запуск субагентов → приёмка → гейт → журнал
-- [ ] 5. Провалы: resume → эскалация модели → стоп и вопрос пользователю
-- [ ] 6. Финальная верификация, список «требует человека», отчёт
-```
-
-## 0) Разбор таблицы маршрутизации
-
-Источник — секция `## Маршрутизация по моделям` в файле плана. Из каждой строки бери: № части, объём, «зависит от», волну, слаг модели, уровень мышления, обоснование.
-
-- **Строка 0 — оркестратор.** Если твоя модель не совпадает с назначенной: скажи об этом один раз и продолжай; если таблица требует существенно более сильного оркестратора (например, назначен fable или opus, а ты на лёгкой модели) — предложи перезапустить сессию нужной моделью, прежде чем начинать волны.
-- **Слаг недоступен в среде.** Слаг устарел, но семейство есть → возьми последнюю доступную версию того же семейства и запиши подмену в журнал. Семейства нет вовсе → спроси пользователя (`AskQuestion`), не подменяй молча.
-- **План изменился после маршрутизации** (пункты добавились или переписаны, дата маршрутизации явно устарела) → доразметь дельту через `/flora-plan-router`, не назначай модели на глаз.
-- Таблицу маршрутизации не правь. Все фактические расхождения идут в журнал исполнения.
-
-## 1) Если маршрутизации нет
-
-Прочитай и выполни скилл `/flora-plan-router` (`.agents/skills/flora-plan-router/SKILL.md`): получи таблицу, впиши её в файл плана — и только потом переходи к шагу 2. Исполнение «по интуиции», без назначенных моделей, запрещено: тогда пропадает и бюджетный контроль, и обоснование выбора модели. Пользователю сообщи одной строкой, что сначала делаешь маршрутизацию.
-
-## 2) План исполнения
-
-До первой волны для каждой части определи пять вещей:
-
-1. **Файловая зона** — конкретные файлы/каталоги, которые часть имеет право менять. Это самое важное: локальные субагенты работают в одном рабочем каталоге, поэтому пересечение зон в одной волне = потерянные правки. Если зона неясна — отправь дешёвый разведывательный субагент (`subagent_type: explore`, модель уровня grok/gemini по router) **до** волн: это удешевляет и части реализации, потому что им достаётся готовый контекст.
-2. **Гейт приёмки** — конкретные команды из «Команды» в `AGENTS.md`, суженные до затронутых crate/workspace.
-3. **Контракт результата** — что субагент обязан вернуть в финальном сообщении (см. §4).
-4. **Обязательный контекст** — какие спеки и скиллы субагент должен прочитать: правки `Apps/Web` → `/apps-web-grid-placement` (и `/apps-web-messages-chat` для чата), messaging/E2E → `/flora-fscp-e2e`, перенос C# → Rust и правки `Backend/` → `/rust-migration`, `Apps/Mobile` → `Apps/Mobile/AGENTS.md`.
-5. **Проверяемость DoD.** Что именно докажет, что часть сделана: команда гейта — или человек с устройством. Пункты второго рода (замеры производительности, «нет мигания», «нет джанка», подбор порогов, приёмка глазами) гейтом не закрываются: их нельзя ставить условием `done` у части. Собери их в один список «требует человека», скажи о нём пользователю **до** первой волны и повтори в финальном отчёте.
-
-Затем пересобери волны — по файловым зонам **и** по зависимостям кода:
-
-- Пересекаются зоны двух частей одной волны → перенеси одну в следующую волну либо слей части и отдай одному субагенту.
-- **Зоны не пересекаются, но часть B вызывает символ, который создаёт часть A → они не параллельны**, сколько бы таблица ни ставила их в одну волну. Пройди по парам частей волны и спроси: чей код кого импортирует. Пропущенная зависимость даёт красный typecheck у того, кто финиширует первым, и волна разваливается на ходу.
-- Разрешить зависимость, не ломая параллель, можно **предвписанным контрактом**: тип, поле опций, сигнатура (до ~10 строк) вписываются тобой до волны, обе части компилируются независимо. Заглушек с телом это не касается — только объявления.
-- **Сквозную часть режь заранее** на «контракт → реализация → проводка потребителей». Перф-логика, полосы загрузки, кэш, миграция данных выглядят в плане одним пунктом, а на деле тянут за собой чужие файлы: без предварительного разреза это превращается в цепочку resume, где каждая приёмка открывает следующий пласт работы.
-- Ширина волны — 3–4 субагента. Больше — сверка результатов и конфликты съедают выигрыш от параллельности; дели на подволны по зонам. Подволны (5a, 5b) — нормальный ход, если внутри волны таблицы обнаружилась зависимость; расхождение с таблицей идёт в журнал.
-- Изолированные worktree (`subagent_type: best-of-n-runner`) — escape hatch, когда параллель критична, а зоны не разводятся. Тогда merge на тебе: применяй только если выигрыш явно перекрывает эту цену.
-
-## 3) База гейта и журнал исполнения
-
-**До первой волны прогони гейт на текущем дереве и запиши базу в журнал:** коммит, число тестов по workspace, число и происхождение предсуществующих warning'ов, зелёные/красные команды. Без базы приёмка слепа — нельзя отличить новый warning от старого, а тихо удалённый тест выглядит как «все тесты проходят». Если база красная, сообщи пользователю до начала волн: чинить чужую красноту в рамках плана ты не обязан, но каждая последующая приёмка должна знать о ней.
-
-Веди **два** трекера, они не заменяют друг друга:
-
-- **`TodoWrite`** — одна todo на часть плюс todo на финальную верификацию. Части параллельной волны помечай `in_progress` все вместе (осознанное исключение из правила «одна in_progress»).
-- **Секция `## Журнал исполнения` в файле плана** — append-only, обновляется **после каждой волны**, не в конце. Если сессия оборвётся, следующий оркестратор продолжит с журнала.
-
-Формат строки журнала: `волна | № части | слаг модели | id субагента | статус (done/retry/failed/blocked) | гейт (команда → pass/fail) | 1 строка что сделано`. Плюс отдельной строкой — подмены моделей и расхождения с планом.
-
-Сам план не переписывай (формулировки, порядок и содержание пунктов — как есть) и секцию маршрутизации не трогай.
-
-## 4) Бриф субагента
-
-Субагент не видит ни запрос пользователя, ни твою историю, ни результаты других субагентов. Бриф самодостаточен, иначе часть будет сделана не про то. Шаблон:
+## Workflow
 
 ```
-Репозиторий: <абсолютный путь к корню репо> (ОС и шелл пользователя)
-Часть N плана «<название части дословно из плана>»
-Задача: <формулировка пункта плана дословно + 1–3 уточняющих предложения>
-
-Файлы в твоей зоне (менять только их): <пути>
-Не трогать: <чужие зоны этой волны, замороженные поверхности>
-
-Прочитай перед началом: AGENTS.md; <скиллы и спеки — см. §2, пункт 4>
-Контекст от предыдущих волн: <что уже сделано и на что опираться: контракты, DTO, миграции>
-
-Definition of done: <проверяемый результат>
-Гейт (прогони сам перед возвратом): <команды>
-
-Границы: модуль видит чужие модули только через их *-contracts crate; бизнес-логика
-только в модулях (не в flora-shared / flora-api / Products-композиции); своя БД — только своя.
-Запрещено: git commit/push; ручная правка Documents/test-vectors/** и Artifacts/contract-fixtures/**;
-изменения публичного HTTP-контракта и схемы БД; выход за файловую зону; quick hacks без объяснения;
-заглушки (unimplemented!/TODO/закомментированные тесты) вместо реализации;
-новые зависимости (package.json / Cargo.toml) без явного разрешения в этом брифе.
-
-База гейта (не ухудшать): <число тестов, число предсуществующих warning'ов>
-
-Верни в финальном сообщении:
-1) изменённые файлы (пути), 2) вывод гейта (pass/fail + текст ошибок),
-3) отклонения от брифа и почему, 4) что осталось незакрытым, 5) архитектурные вопросы — вопросом, не решением.
+- [ ] 0. Read the plan end-to-end and find the routing table
+- [ ] 1. No routing → invoke /flora-plan-router, then continue
+- [ ] 2. Build the execution plan: waves, file zones, gates, result contract
+- [ ] 3. Capture a gate baseline on a clean tree; start the log (todo + section in the plan file)
+- [ ] 4. Per wave: brief → launch subagents → acceptance → gate → log
+- [ ] 5. Failures: resume → model escalation → stop and ask the user
+- [ ] 6. Final verification, “needs a human” list, report
 ```
 
-Правила брифов:
+## 0) Parse the routing table
 
-- **Формулировку части бери из плана дословно.** Пересказ своими словами = дрейф требований на каждой волне.
-- **`subagent_type` под задачу:** реализация и правки → `generalPurpose`; разведка кодовой базы → `explore`; git/команды/прогоны → `shell`; разбор красного CI → `ci-investigator`; ревью диффа рискованной части → `bugbot`, а auth/крипто/платежей — `security-review` (оба только если пользователь просил ревью или часть попадает под ступень A router по риску).
-- **`model`** — точный слаг из таблицы; `description` — 3–5 слов, различимые между субагентами волны.
-- **Архитектурные решения субагентам не делегируются.** Решает оркестратор или пользователь; субагент исполняет. Вернулся с архитектурным вопросом — отвечай сам или спроси пользователя, не «пусть выберет сам».
-- **Механическую работу деэскалируй.** Если все решения ты уже заморозил и остался перенос выражений, разрез импортов, проводка потребителей — понижай модель на ступень против таблицы (её обоснование относилось к принятию решений, а не к их исполнению) и пиши подмену в журнал. Топовая модель на переносе — это и сожжённый бюджет, и длинный прогон, который дороже потерять.
-- **Бриф — на один шаг работы.** Три и больше независимых изменений в одном брифе, «и попутно поправь» — режь на части. Чем длиннее прогон, тем больше теряется при обрыве и тем позже ты видишь, что часть ушла не туда.
-- **Замороженные инварианты перечисляй буквально.** Не «учти решения предыдущей волны», а списком: что нельзя вытеснять, когда нельзя коммитить в React, кто владеет формулой, какая сигнатура заморожена. Субагент не видит ни журнала, ни чужих отчётов.
+Source — section `## Model routing` (or legacy `## Маршрутизация по моделям`) in the plan file. From each row take: part #, scope, “depends on”, wave, model slug, thinking level, rationale.
 
-Пример заполненного брифа (часть 3 из примера таблицы router — реализация в модуле по готовому контракту, `subagent_type: generalPurpose`, слаг `claude-sonnet-…`, мышление medium):
+- **Row 0 — orchestrator.** If your model does not match the assigned one: say so once and continue; if the table requires a substantially stronger orchestrator (e.g. fable or opus assigned, and you are on a light model) — propose restarting the session on the required model before starting waves.
+- **Slug unavailable in the environment.** Slug is stale but the family exists → take the latest available version of the same family and record the substitution in the log. Family missing entirely → ask the user (`AskQuestion`); do not silently substitute.
+- **Plan changed after routing** (items added or rewritten, routing date clearly stale) → re-route the delta via `/flora-plan-router`; do not assign models by eye.
+- Do not edit the routing table. All factual divergences go into the execution log.
+
+## 1) If there is no routing
+
+Read and execute the `/flora-plan-router` skill (`.agents/skills/flora-plan-router/SKILL.md`): get the table, write it into the plan file — and only then proceed to step 2. Execution “by intuition” without assigned models is forbidden: that kills both budget control and the rationale for model choice. Tell the user in one line that you are routing first.
+
+## 2) Execution plan
+
+Before the first wave, for each part determine five things:
+
+1. **File zone** — concrete files/directories the part is allowed to change. This is the most important item: local subagents share one working directory, so overlapping zones in one wave = lost edits. If the zone is unclear — send a cheap reconnaissance subagent (`subagent_type: explore`, grok/gemini-class model per router) **before** the waves: that also cheapens implementation parts because they get ready context.
+2. **Acceptance gate** — concrete commands from “Commands” in `AGENTS.md`, narrowed to the affected crate/workspace.
+3. **Result contract** — what the subagent must return in its final message (see §4).
+4. **Required context** — which specs and skills the subagent must read: `Apps/Web` edits → `/apps-web-grid-placement` (and `/apps-web-messages-chat` for chat), messaging/E2E → `/flora-fscp-e2e`, C# → Rust migration and `Backend/` edits → `/rust-migration`, `Apps/Mobile` → `Apps/Mobile/AGENTS.md`.
+5. **DoD verifiability.** What exactly proves the part is done: a gate command — or a human with a device. Second-kind items (perf measurements, “no flicker”, “no junk”, threshold tuning, visual acceptance) are not closed by a gate: they must not be a `done` condition for a part. Collect them into one “needs a human” list, tell the user about it **before** the first wave, and repeat it in the final report.
+
+Then rebuild waves — by file zones **and** by code dependencies:
+
+- Two parts in one wave have overlapping zones → move one to the next wave, or merge the parts and give them to one subagent.
+- **Zones do not overlap, but part B calls a symbol that part A creates → they are not parallel**, no matter what the table says. Walk pairs in the wave and ask: whose code imports whom. A missed dependency gives a red typecheck to whoever finishes first, and the wave collapses mid-flight.
+- You can resolve a dependency without breaking parallelism with a **pre-written contract**: a type, options field, or signature (up to ~10 lines) written by you before the wave so both parts compile independently. This does not cover stubs with bodies — declarations only.
+- **Cut a cross-cutting part in advance** into “contract → implementation → consumer wiring”. Perf logic, loading bars, cache, data migration look like one plan item but actually pull in foreign files: without a pre-cut this becomes a resume chain where every acceptance opens the next layer of work.
+- Wave width — 3–4 subagents. More — reconciling results and conflicts eat the parallelism gain; split into sub-waves by zone. Sub-waves (5a, 5b) are normal when a dependency is discovered inside a table wave; divergence from the table goes into the log.
+- Isolated worktrees (`subagent_type: best-of-n-runner`) — escape hatch when parallelism is critical and zones cannot be separated. Then merge is on you: use only if the gain clearly outweighs that cost.
+
+## 3) Gate baseline and execution log
+
+**Before the first wave, run the gate on the current tree and record the baseline in the log:** commit, test count per workspace, count and provenance of pre-existing warnings, green/red commands. Without a baseline, acceptance is blind — you cannot tell a new warning from an old one, and a quietly deleted test looks like “all tests pass”. If the baseline is red, tell the user before starting waves: you are not obliged to fix unrelated redness within the plan, but every later acceptance must know about it.
+
+Keep **two** trackers; they do not replace each other:
+
+- **`TodoWrite`** — one todo per part plus a todo for final verification. Mark all parts of a parallel wave `in_progress` together (a deliberate exception to the “one in_progress” rule).
+- **Section `## Execution log` in the plan file** — append-only, updated **after each wave**, not at the end. Also accept a legacy heading `## Журнал исполнения`. If the session breaks, the next orchestrator continues from the log.
+
+Log line format: `wave | part # | model slug | subagent id | status (done/retry/failed/blocked) | gate (command → pass/fail) | 1 line what was done`. Plus a separate line for model substitutions and divergences from the plan.
+
+Do not rewrite the plan itself (wording, order, and content of items stay as-is) and do not touch the routing section.
+
+## 4) Subagent brief
+
+A subagent sees neither the user request, nor your history, nor other subagents’ results. The brief must be self-contained, or the part will be done wrong. Template:
 
 ```
-Репозиторий: <корень репо> (Windows, PowerShell)
-Часть 3 плана «Реализация в модуле flora-auth»
-Задача: реализовать порты из flora-auth-contracts в модуле flora-auth: хендлеры, репозиторий,
-маппинг ошибок. Контракт уже зафиксирован в части 1 — менять его нельзя.
+Repository: <absolute path to repo root> (user OS and shell)
+Plan part N «<part title verbatim from the plan>»
+Task: <plan item wording verbatim + 1–3 clarifying sentences>
 
-Файлы в твоей зоне (менять только их): Products/Flora.Social/crates/modules/flora-auth/**
-Не трогать: flora-auth-contracts (часть 1, заморожен), Packages/flora-client-core (часть 4, идёт параллельно),
-миграции (часть 2), flora-api и flora-social.
+Files in your zone (change only these): <paths>
+Do not touch: <other zones in this wave, frozen surfaces>
 
-Прочитай перед началом: AGENTS.md; .agents/skills/rust-migration/SKILL.md
-Контекст от предыдущих волн: DTO и трейты портов в flora-auth-contracts; миграция части 2 уже
-применена — таблицы существуют, схему не менять.
+Read before starting: AGENTS.md; <skills and specs — see §2 item 4>
+Context from prior waves: <what is already done and what to build on: contracts, DTOs, migrations>
 
-Definition of done: порты contracts реализованы, ошибки маппятся в статус-коды по контракту,
-тесты модуля покрывают happy path и 401/409.
-Гейт (прогони сам перед возвратом):
+Definition of done: <verifiable outcome>
+Gate (run yourself before returning): <commands>
+
+Boundaries: a module sees other modules only through their *-contracts crate; business logic
+only in modules (not in flora-shared / flora-api / Products composition); own DB — own only.
+Forbidden: git commit/push; hand-editing Documents/test-vectors/** and Artifacts/contract-fixtures/**;
+changing the public HTTP contract or DB schema; leaving the file zone; quick hacks without explanation;
+stubs (unimplemented!/TODO/commented-out tests) instead of implementation;
+new dependencies (package.json / Cargo.toml) without explicit permission in this brief.
+
+Gate baseline (do not regress): <test count, pre-existing warning count>
+
+Return in the final message:
+1) changed files (paths), 2) gate output (pass/fail + error text),
+3) deviations from the brief and why, 4) what remains open, 5) architecture questions — as questions, not decisions.
+```
+
+Briefing rules:
+
+- **Take the part wording from the plan verbatim.** Paraphrasing in your own words = requirement drift every wave.
+- **`subagent_type` for the task:** implementation and edits → `generalPurpose`; codebase exploration → `explore`; git/commands/runs → `shell`; red CI triage → `ci-investigator`; risky-part diff review → `bugbot`, and auth/crypto/payments → `security-review` (both only if the user asked for review or the part hits router Tier A on risk).
+- **`model`** — exact slug from the table; `description` — 3–5 words, distinct across subagents in the wave.
+- **Architecture decisions are not delegated to subagents.** The orchestrator or the user decides; the subagent executes. If it returns with an architecture question — answer yourself or ask the user; do not “let it choose”.
+- **De-escalate mechanical work.** If you have already frozen all decisions and only expression moves, import cuts, or consumer wiring remain — drop the model one tier against the table (its rationale was about deciding, not executing) and record the substitution in the log. A top model on a move is both burned budget and a long run that is expensive to lose.
+- **One brief = one work step.** Three or more independent changes in one brief, “and while you’re at it fix…” — cut into parts. The longer the run, the more is lost on interruption and the later you see the part went off-course.
+- **List frozen invariants literally.** Not “respect prior-wave decisions”, but a list: what must not be displaced, when React must not commit, who owns the formula, which signature is frozen. The subagent sees neither the log nor foreign reports.
+
+Example filled brief (part 3 from the router table example — module implementation against a frozen contract, `subagent_type: generalPurpose`, slug `claude-sonnet-…`, thinking medium):
+
+```
+Repository: <repo root> (Windows, PowerShell)
+Plan part 3 «Implementation in module flora-auth»
+Task: implement ports from flora-auth-contracts in module flora-auth: handlers, repository,
+error mapping. The contract is already fixed in part 1 — do not change it.
+
+Files in your zone (change only these): Products/Flora.Social/crates/modules/flora-auth/**
+Do not touch: flora-auth-contracts (part 1, frozen), Packages/flora-client-core (part 4, running in parallel),
+migrations (part 2), flora-api and flora-social.
+
+Read before starting: AGENTS.md; .agents/skills/rust-migration/SKILL.md
+Context from prior waves: DTOs and port traits in flora-auth-contracts; part 2 migration already
+applied — tables exist, do not change the schema.
+
+Definition of done: contracts ports implemented, errors map to status codes per contract,
+module tests cover happy path and 401/409.
+Gate (run yourself before returning):
   cargo fmt --all --check
   cargo clippy -p flora-auth --all-targets -- -D warnings
   cargo test -p flora-auth
 ```
 
-## 5) Запуск волны
+## 5) Launching a wave
 
-- Все части волны — **одним сообщением, несколько Task-блоков** (так волна стартует параллельно и результаты сходятся в одной точке). `run_in_background: false`, кроме Multitask Mode или явной просьбы пользователя.
-- Следующая волна не стартует, пока гейт предыдущей не зелёный.
-- Субагентов не поллить (`AwaitShell` для них не использовать) — результат приходит из самого вызова.
-- Мелкую проводку между волнами (импорт, регистрация модуля в композиции, версия в конфиге — до ~10 строк) делай сам. Всё крупнее — отдельная часть/субагент.
-- **Прогон должен быть обозримым.** Часть, которая идёт очень долго (условно четверть часа и больше), почти всегда не «сложная», а слишком широкая: в брифе несколько независимых изменений или незамороженное решение, которое субагент дожимает сам. В следующий раз режь такую часть, а не терпи.
-- **После обрыва сессии или прерывания субагента** сначала `git status --short` и сверка дерева с журналом: прерванный прогон мог не записать ничего, записать половину или записать всё. Только потом решай. Слепой `resume` прерванного прогона нежелателен — он способен заново пройти весь длинный путь; если в дереве пусто, дешевле свежий узкий бриф на остаток (модель — по правилу деэскалации выше).
+- All wave parts — **one message, multiple Task blocks** (so the wave starts in parallel and results converge at one point). `run_in_background: false`, except Multitask Mode or an explicit user request.
+- The next wave does not start until the previous gate is green.
+- Do not poll subagents (do not use `AwaitShell` for them) — the result comes from the call itself.
+- Small inter-wave wiring (import, module registration in composition, version in config — up to ~10 lines) do yourself. Anything larger — a separate part/subagent.
+- **A run must be bounded.** A part that runs very long (roughly a quarter hour or more) is almost never “hard” — it is too wide: several independent changes in the brief, or an unfrozen decision the subagent is pushing alone. Next time cut that part; do not endure it.
+- **After a session break or subagent interrupt** first `git status --short` and reconcile the tree with the log: an interrupted run may have written nothing, half, or everything. Only then decide. Blind `resume` of an interrupted run is undesirable — it can redo the whole long path; if the tree is empty, a fresh narrow brief on the remainder is cheaper (model — per the de-escalation rule above).
 
-## 6) Приёмка результата
+## 6) Accepting a result
 
-Отчёту субагента не верить. После каждой волны, по порядку:
+Do not trust the subagent report. After each wave, in order:
 
-1. `git status --short` и `git diff --stat` — что изменилось на самом деле; сверь с файловыми зонами частей. Выход за зону → сузить дифф; прежде чем откатывать чужие правки, спроси пользователя. Дифф выглядит непропорционально огромным → повтори с `-w`: переотступы от новой обёртки (JSX, блок) раздувают счётчик строк, но не меняют логику; сравнивать надо именно `-w`-версию.
-2. **Прогони гейт сам.** Rust: `cargo fmt --all --check`, `cargo clippy -p <crate> --all-targets -- -D warnings`, `cargo test -p <crate>`. TS: `npm run typecheck`, плюс `lint`/`test` нужного workspace. Результат сравнивай с базой из §3: число тестов выросло, набор warning'ов тот же.
-3. **Дифф тестов — только аддитивный.** Удалённые кейсы, ослабленные ассерты, ожидания, подогнанные под то, что получилось у реализации, — провал части, даже когда прогон зелёный. Проверяется чтением диффа тестовых файлов, не их количеством.
-4. `ReadLints` по изменённым файлам; ключевые диффы (контракты, миграции, auth, публичные поверхности) прочитай глазами.
-5. **Механизм должен исполняться, а не только компилироваться.** У новой поверхности найди живого потребителя и убедись, что условие её входа достижимо в рантайме: полоса предзагрузки глубже, чем список вообще монтирует строки; ветка, куда не попадает ни один вызов; параметр, который никто не передаёт, — «реализовано и покрыто тестами, но никогда не вызывается» это не сделано. Проверяется поиском вызовов и чтением пути от потребителя, не отчётом субагента.
-6. Границы: `pwsh ./Tools/validate-architecture-rust.ps1`; отсутствие импортов внутренних типов чужих модулей; бизнес-логика не уехала в `flora-shared`/`flora-api`/Products-композицию. Заодно проверь циклы импортов: цикл, который «работает, потому что ссылки читаются из тел функций», — скрытый долг, а не решение.
-7. Заглушки, `unimplemented!()`, `TODO` вместо кода, отключённые или подогнанные под реализацию тесты, ручная правка `Documents/test-vectors/**` — это **провал** части, а не «сделано».
-8. **Новые инварианты запиши в журнал как замороженный контракт** до старта зависимой волны: что нельзя вытеснять, когда нельзя коммитить, кто владеет формулой, какая сигнатура заморожена. Инвариант, оставшийся только у тебя в голове, следующая часть нарушит — и это будет твоя ошибка, не её.
+1. `git status --short` and `git diff --stat` — what actually changed; reconcile with the parts’ file zones. Left the zone → narrow the diff; before reverting foreign edits, ask the user. Diff looks disproportionately huge → repeat with `-w`: reindentation from a new wrapper (JSX, block) inflates the line count without changing logic; compare the `-w` version.
+2. **Run the gate yourself.** Rust: `cargo fmt --all --check`, `cargo clippy -p <crate> --all-targets -- -D warnings`, `cargo test -p <crate>`. TS: `npm run typecheck`, plus `lint`/`test` for the relevant workspace. Compare the result to the §3 baseline: test count grew, warning set is the same.
+3. **Test diffs must be additive only.** Deleted cases, weakened asserts, expectations fitted to whatever the implementation produced — part failure, even when the run is green. Checked by reading the test-file diff, not by test count.
+4. `ReadLints` on changed files; read key diffs (contracts, migrations, auth, public surfaces) with your own eyes.
+5. **The mechanism must execute, not only compile.** For a new surface find a live consumer and confirm its entry condition is reachable at runtime: a prefetch bar deeper than the list ever mounts rows; a branch no call ever hits; a parameter nobody passes — “implemented and covered by tests but never called” is not done. Checked by searching call sites and reading the path from the consumer, not by the subagent report.
+6. Boundaries: `pwsh ./Tools/validate-architecture-rust.ps1`; no imports of other modules’ internal types; business logic did not migrate into `flora-shared`/`flora-api`/Products composition. Also check import cycles: a cycle that “works because references are read from function bodies” is hidden debt, not a solution.
+7. Stubs, `unimplemented!()`, `TODO` instead of code, disabled or implementation-fitted tests, hand-editing `Documents/test-vectors/**` — that is part **failure**, not “done”.
+8. **Record new invariants in the log as a frozen contract** before starting a dependent wave: what must not be displaced, when commits are forbidden, who owns the formula, which signature is frozen. An invariant that lives only in your head will be broken by the next part — and that is your error, not theirs.
 
-Финальная верификация всего плана: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo deny check`, `pwsh ./Tools/validate-architecture-rust.ps1`, `npm run ci` — из тех, что релевантны затронутым стекам. Плюс: сборочный шаг, который гейт не выполняет (нативные библиотеки, кодогенерация, миграции), в отчёт отдельной строкой как обязательное действие пользователя — иначе новый код физически не попадёт в приложение.
+Final verification of the whole plan: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo deny check`, `pwsh ./Tools/validate-architecture-rust.ps1`, `npm run ci` — whichever are relevant to the touched stacks. Plus: any build step the gate does not run (native libs, codegen, migrations) goes in the report as a separate line of required user action — otherwise the new code physically never reaches the app.
 
-## 7) Провалы, ретраи, эскалация
+## 7) Failures, retries, escalation
 
-Сначала различи два случая — лечатся они по-разному:
+First distinguish two cases — they are treated differently:
 
-- **Провал** — красный гейт, невыполненный DoD, нарушенный инвариант. Лечится `resume`.
-- **Найденная при приёмке работа** — дыра в инварианте, мёртвый путь, недостающий перенос, всплывшая зависимость. Это **новая часть с собственным брифом**, а не ещё один resume той же. Иначе одна часть тянется через несколько прогонов, держит волну и растёт контекстом, пока модель не начнёт терять исходные требования.
+- **Failure** — red gate, unmet DoD, broken invariant. Treated with `resume`.
+- **Work found at acceptance** — invariant hole, dead path, missing move, newly surfaced dependency. That is a **new part with its own brief**, not another resume of the same one. Otherwise one part stretches across several runs, holds the wave, and grows context until the model starts losing the original requirements.
 
-Дальше по провалам:
+Then for failures:
 
-- **Первый провал** → `resume` того же субагента по его id с конкретным списком расхождений. Дешевле нового брифа и без потери контекста.
-- **Второй провал** → переназначь часть на модель ступенью выше по критериям router (sonnet/terra → opus или gpt sol → fable), в брифе явно перечисли грабли предыдущих попыток. Подмену запиши в журнал.
-- **Третий провал** → стоп по этой части. Доложи пользователю через `AskQuestion`: что пробовал, где именно ломается, 2–3 варианта дальше. Молча доделывать самому по кругу нельзя — так сгорает бюджет плана.
-- **Симптомы плохой нарезки, а не слабой модели:** больше двух resume на одну часть; каждый resume рождается не из красного гейта, а из твоей же приёмки; субагент раз за разом выходит за зону; DoD непроверяем; для завершения нужен доступ в чужой модуль. Тогда останови часть и разрежь остаток на самостоятельные части с проверяемым DoD каждая, отметь расхождение в журнале — план не правь.
-- **Конфликт правок в одном файле:** не мержить оба слепо. Владельца выбирай по границам модуля, второму субагенту дай бриф на адаптацию под принятый вариант.
+- **First failure** → `resume` the same subagent by its id with a concrete list of divergences. Cheaper than a new brief and keeps context.
+- **Second failure** → reassign the part one tier up by router criteria (sonnet/terra → opus or gpt sol → fable); in the brief explicitly list the traps from prior attempts. Record the substitution in the log.
+- **Third failure** → stop on this part. Report to the user via `AskQuestion`: what you tried, where it breaks, 2–3 options next. Silently finishing it yourself in a loop is forbidden — that burns the plan budget.
+- **Symptoms of bad slicing, not a weak model:** more than two resumes on one part; each resume comes from your acceptance, not a red gate; the subagent repeatedly leaves the zone; DoD is unverifiable; finishing needs access to a foreign module. Then stop the part and cut the remainder into independent parts each with a verifiable DoD; note the divergence in the log — do not edit the plan.
+- **Conflicting edits in one file:** do not merge both blindly. Choose the owner by module boundaries; give the second subagent a brief to adapt to the accepted variant.
 
-## 8) Когда останавливаться и спрашивать пользователя
+## 8) When to stop and ask the user
 
-- Часть требует нарушить границы `AGENTS.md`: доступ к чужой БД, бизнес-логика в Shared/API/Products, прямая зависимость между App-продуктами, functional → Social. Не исполнять — отклонить и предложить альтернативу.
-- Нужно менять замороженное: публичный HTTP-контракт, схема БД, формулы FIRA, `Documents/test-vectors/**`, `Artifacts/contract-fixtures/**`.
-- Нужен `git commit`/`push` или подготовка коммитов — только по явной просьбе пользователя.
-- Семейства модели из таблицы нет в среде.
-- План внутренне противоречив или в нём не принято ключевое решение — перечисли, чего не хватает, и не запускай волну по догадкам.
+- The part would require violating `AGENTS.md` boundaries: access to another module’s DB, business logic in Shared/API/Products, a direct dependency between App products, functional → Social. Do not execute — reject and propose an alternative.
+- Need to change something frozen: public HTTP contract, DB schema, FIRA formulas, `Documents/test-vectors/**`, `Artifacts/contract-fixtures/**`.
+- Need `git commit`/`push` or preparing commits — only on an explicit user request.
+- The model family from the table is not in the environment.
+- The plan is internally contradictory or a key decision is missing — list what is missing and do not start a wave on guesses.
 
-## 9) Отчётность
+## 9) Reporting
 
-После каждой волны — 2–4 строки: какая волна закрыта, какие части, что прогнал и с каким результатом, что дальше.
+After each wave — 2–4 lines: which wave closed, which parts, what you ran and with what result, what is next.
 
-Финальный отчёт:
+Final report:
 
 ```
-Итог: <что теперь работает — одно предложение>
-Части: N закрыто / M провалено / K заблокировано
-Изменения: файлы по модулям (git diff --stat)
-Верификация: команды → результат
-Отклонения от плана и подмены моделей: ...
-Не закрыто / требует решения пользователя: ...
-Требует человека и устройства: <список из §2 пункт 5 — что и как проверить>
-Обязательные шаги сборки перед проверкой: <нативные либы, кодогенерация, миграции>
-Бюджет: сколько частей ушло на топ-модели, где были ретраи и почему
-Коммитов не делал; журнал исполнения записан в <файл плана>
+Result: <what works now — one sentence>
+Parts: N closed / M failed / K blocked
+Changes: files by module (git diff --stat)
+Verification: commands → result
+Plan divergences and model substitutions: ...
+Open / needs user decision: ...
+Needs a human and a device: <list from §2 item 5 — what and how to check>
+Required build steps before checking: <native libs, codegen, migrations>
+Budget: how many parts used top models, where retries happened and why
+No commits made; execution log written to <plan file>
 ```
 
-Чужие правки в дереве, не относящиеся к плану (кто-то менял файлы до тебя), в отчёте назови отдельной строкой — иначе пользователь припишет их тебе.
+Call out foreign tree edits unrelated to the plan (someone changed files before you) on a separate line in the report — otherwise the user will attribute them to you.
 
-Плюс, как требует `AGENTS.md`: коротко — почему структура такая, как соблюдены границы, почему это безопасно для масштабирования (модуль можно вынести в сервис без большого рефакторинга).
+Plus, as `AGENTS.md` requires: briefly — why this structure, how boundaries were kept, why it is safe to scale (the module can be extracted to a service without a large refactor).
 
-## Анти-паттерны
+## Anti-patterns
 
-- Оркестратор пишет код частей сам («быстрее, чем объяснять») — обнуляет смысл маршрутизации и бюджет.
-- Один мега-бриф «сделай весь план» одному субагенту.
-- Параллельная волна с пересекающимися файловыми зонами.
-- Параллельная волна «как в таблице», где одна часть импортирует то, что создаёт другая.
-- Приёмка по отчёту субагента без собственного прогона гейта.
-- Приёмка без проверки, что новый код вообще исполняется в приложении.
-- Волны без снятой базы гейта: «все тесты проходят» ничего не значит без точки отсчёта.
-- Третий resume вместо того, чтобы завести новую часть на работу, которую ты сам нашёл при приёмке.
-- Топовая модель на механическом переносе, когда все решения уже заморожены.
-- Часть помечена `done` по зелёному гейту, хотя её DoD проверяется только на устройстве.
-- Смена модели против таблицы без записи в журнал.
-- Правка таблицы маршрутизации или самого плана «чтобы совпало с фактом» — расхождения идут в журнал.
-- Делегирование субагенту архитектурного решения.
-- `git commit` по своей инициативе.
+- The orchestrator writes part code itself (“faster than explaining”) — nullifies the point of routing and the budget.
+- One mega-brief “do the whole plan” to one subagent.
+- A parallel wave with overlapping file zones.
+- A parallel wave “as in the table” where one part imports what another creates.
+- Acceptance from the subagent report without running the gate yourself.
+- Acceptance without checking that the new code actually executes in the app.
+- Waves without a captured gate baseline: “all tests pass” means nothing without a reference point.
+- A third resume instead of opening a new part for work you found at acceptance.
+- A top model on a mechanical move when all decisions are already frozen.
+- A part marked `done` on a green gate when its DoD is only checkable on a device.
+- Changing the model against the table without recording it in the log.
+- Editing the routing table or the plan itself “to match reality” — divergences go into the log.
+- Delegating an architecture decision to a subagent.
+- `git commit` on your own initiative.

@@ -177,6 +177,29 @@ export const floraMotion = {
   tabTransitionDelayMs: 20,
 };
 
+const COMPOSE_FIELD_MIN_HEIGHT = 45;
+const COMPOSE_FIELD_BORDER_WIDTH = 1;
+const COMPOSE_INPUT_LINE_HEIGHT = 22;
+const COMPOSE_CHROME_BTN = 28;
+/**
+ * Кнопки прижаты к низу pill (паритет `.messagesComposeRow { align-items:
+ * flex-end }`), иначе на многострочном поле они всплывают к его середине — и
+ * едут туда прямо во время анимации роста. Отступ равен тому, что давало
+ * центрирование однострочника, поэтому на одной строке вид не меняется.
+ */
+const COMPOSE_CHROME_BTN_BOTTOM_INSET =
+  (COMPOSE_FIELD_MIN_HEIGHT - 2 * COMPOSE_FIELD_BORDER_WIDTH - COMPOSE_CHROME_BTN) / 2;
+/**
+ * Зазор «текст ↔ край pill» — остаток однострочника пополам:
+ * 45 = 1 + 10.5 + 22 + 10.5 + 1. Живёт на самом TextInput, а не на pill:
+ * padding на строке поля добавился бы и к кнопкам 28px и поднял бы минимум
+ * pill с 45 до 51.
+ */
+const COMPOSE_INPUT_PADDING_VERTICAL =
+  (COMPOSE_FIELD_MIN_HEIGHT - 2 * COMPOSE_FIELD_BORDER_WIDTH - COMPOSE_INPUT_LINE_HEIGHT) / 2;
+/** Потолок роста — целое число строк, иначе сверху вечно висит половина строки. */
+const COMPOSE_INPUT_MAX_LINES = 6;
+
 /** Чат — messages.module.css / messagesChatView */
 export const floraMessages = {
   headerHeight: 8 * floraSpacing.grid,
@@ -210,9 +233,10 @@ export const floraMessages = {
   composeRadius: 12,
   composeBorderColor: floraColors.greenDark,
   /** Как TabScreenSearchHeader.searchBox — minHeight 45. */
-  composeFieldMinHeight: 45,
+  composeFieldMinHeight: COMPOSE_FIELD_MIN_HEIGHT,
   composeFieldGap: 10,
-  composeChromeBtn: 28,
+  composeChromeBtn: COMPOSE_CHROME_BTN,
+  composeChromeBtnBottomInset: COMPOSE_CHROME_BTN_BOTTOM_INSET,
   /** Внешние отступы оболочки поля ввода (над полем и под safe area). */
   composeShellPaddingTop: floraSpacing.grid,
   /** Зазор над pill при закрытой клавиатуре (поверх safe area). */
@@ -221,6 +245,14 @@ export const floraMessages = {
   composeShellPaddingKeyboard: floraSpacing.grid,
   composeFieldPaddingHorizontal: 14,
   composeFieldPaddingVertical: 0,
+  /** Шаг строки в поле ввода: на столько растёт pill с каждой новой строкой. */
+  composeInputLineHeight: COMPOSE_INPUT_LINE_HEIGHT,
+  /** Зазор текста до краёв pill — одинаков на любом числе строк. */
+  composeInputPaddingVertical: COMPOSE_INPUT_PADDING_VERTICAL,
+  /** Потолок: дальше поле не растёт, строки уходят вверх скроллом внутри инпута. */
+  composeInputMaxLines: COMPOSE_INPUT_MAX_LINES,
+  /** Рост/сжатие поля — паритет web `transition: height 0.18s`. */
+  composeGrowDurationMs: 180,
   /** Панель эмодзи в доке — как messagesStickerPanel на вебе. */
   emojiPanelRadius: 12,
   emojiPanelOuterGap: floraSpacing.grid,
