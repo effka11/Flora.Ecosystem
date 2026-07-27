@@ -175,6 +175,7 @@ export default function ThreadScreen() {
     pinListToBottom,
     setListPinned,
     listRevealStyle,
+    listLiftStyle,
     listPlaceholderStyle,
     hideListUntilReady,
     allowListReveal,
@@ -1034,7 +1035,7 @@ export default function ThreadScreen() {
           )}
         </Reanimated.View>
 
-        <Reanimated.View style={[styles.listFill, listRevealStyle]}>
+        <Reanimated.View style={[styles.listFill, listRevealStyle, listLiftStyle]}>
           <FlashList
             key={conversationUuid}
             data={listData}
@@ -1245,6 +1246,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     position: "relative",
+    // Лента поднимается transform-ом: без клипа поднятый вьюпорт рисуется поверх шапки.
+    overflow: "hidden",
   },
   listFill: {
     ...StyleSheet.absoluteFill,

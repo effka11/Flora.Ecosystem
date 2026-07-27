@@ -53,12 +53,15 @@ import { floraSpacing } from "@/lib/theme";
  * пиксель, клавиатура уезжает и открывает панель за собой (Telegram-паттерн).
  *
  * Лента. Клавиатурная механика KeyboardChatScrollView всегда заморожена
- * (freeze=true): её внутренний padding не растёт и она не скроллит. Весь
- * bottom-inset идёт одним shared value (extraContentPadding = navInset +
- * column + insetLift), где insetLift — «потолок» подъёма: расширяется до цели
- * в начале движения (чтобы worklet-scrollTo не клампился о старый диапазон)
- * и оседает к фактическому lift на осадке. Скролл докручивает единственный
- * worklet этого хука (whenAtEnd-семантика). Один писатель — нет гонок scrollTo.
+ * (freeze=true): её внутренний padding не растёт и она не скроллит.
+ * dockExtraPaddingSv (navInset + baseline + growth + deleteBar) несёт только
+ * геометрию простоя дока и меняется исключительно на реальных layout-событиях
+ * — открытие/закрытие клавиатуры и панели его не трогают. Подъём ленты —
+ * отдельный transform (listLiftStyle, translateY = -totalLift), тот же shared
+ * value и тот же кадр, что у dockStickyStyle и emojiPanelLayerStyle: лента едет
+ * синхронно с доком и панелью, а не ступенькой инсета. Скролл докручивает
+ * единственный worklet этого хука на изменениях самого инсета (whenAtEnd-
+ * семантика). Один писатель — нет гонок scrollTo.
  *
  * Плавность холодного открытия: React-коммиты не попадают в кадры анимации.
  * Порядок: коммит пустого слоя -> transform-полёт (UI-поток) -> осадка ->
@@ -134,10 +137,14 @@ export type ChatComposeDock = {
    * top:100% контейнера чата, верхом всегда примыкает к нижней грани дока.
    */
   emojiPanelLayerStyle: AnimatedStyle<ViewStyle>;
+  /** Подъём ленты: тот же totalLift, что у дока, только лента едет вверх. */
+  listLiftStyle: AnimatedStyle<ViewStyle>;
   jumpBtnBottomStyle: AnimatedStyle<ViewStyle>;
   /**
-   * Зазор ленты под доком: navInset + column + insetLift. У перевёрнутой ленты
-   * KCSV кладёт его в `contentInset.top` — визуально это всё равно низ.
+   * Зазор ленты под доком в покое: navInset + baseline + growth + deleteBar. У
+   * перевёрнутой ленты KCSV кладёт его в `contentInset.top` — визуально это
+   * всё равно низ. Подъём в этот зазор не входит — он отдельный transform
+   * (`listLiftStyle`).
    */
   dockExtraPaddingSv: SharedValue<number>;
   /** Библиотечную механику клавиатуры держим замороженной всегда. */
@@ -215,8 +222,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     useReanimatedKeyboardAnimation();
 
   const emojiLiftSv = useSharedValue(0);
-  /** Потолок подъёма для inset ленты (расширяем заранее, оседаем на onEnd). */
-  const insetLiftSv = useSharedValue(0);
   const composeGrowthSv = useSharedValue(0);
   const deleteBarHeightSv = useSharedValue(0);
   const dockExtraPaddingSv = useSharedValue(
@@ -293,21 +298,25 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     [ksvClosedPx],
   );
 
+  /** Подъём ленты: тот же totalLift, что у дока, только лента едет вверх. */
+  const listLiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -totalLiftSv.value }],
+  }));
+
   useAnimatedReaction(
     () => ({
-      insetLift: Math.max(insetLiftSv.value, totalLiftSv.value),
       growth: composeGrowthSv.value,
       deleteBar: deleteBarHeightSv.value,
       baseline: composeBaselineSv.value,
     }),
     (cur) => {
       dockExtraPaddingSv.value =
-        dockIdleGapPx + cur.baseline + cur.growth + cur.deleteBar + cur.insetLift;
+        dockIdleGapPx + cur.baseline + cur.growth + cur.deleteBar;
     },
     [dockIdleGapPx],
   );
 
-  /** Кнопка «новые сообщения» ездит за фактическим (не потолочным) подъёмом. */
+  /** Кнопка «новые сообщения» ездит за подъёмом дока. */
   const jumpBtnBottomStyle = useAnimatedStyle(
     () => ({
       bottom:
@@ -612,7 +621,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     panelReadyTimerRef.current = setTimeout(markEmojiPanelReady, PANEL_OPEN_MS + 120);
   }, [clearPanelReadyTimer, markEmojiPanelReady]);
 
-  /** Холодный подъём панели: transform-анимация + осадка потолка inset. */
+  /** Холодный подъём панели: transform-анимация до целевого lift. */
   const startColdOpenAnimation = useCallback(
     (target: number) => {
       cancelAnimation(emojiLiftSv);
@@ -623,19 +632,12 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         (finished) => {
           "worklet";
           if (finished) {
-            insetLiftSv.value = totalLiftSv.value;
             runOnJS(markEmojiPanelReady)();
           }
         },
       );
     },
-    [
-      armPanelReadyFallback,
-      emojiLiftSv,
-      insetLiftSv,
-      markEmojiPanelReady,
-      totalLiftSv,
-    ],
+    [armPanelReadyFallback, emojiLiftSv, markEmojiPanelReady],
   );
 
   const openEmoji = useCallback(() => {
@@ -663,7 +665,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     mountEmojiPanel(target);
 
     cancelAnimation(emojiLiftSv);
-    insetLiftSv.value = Math.max(insetLiftSv.value, target);
 
     // Гасим и уже открытую, и ещё поднимающуюся IME (быстрый тап после
     // запроса клавиатуры): панель — последнее намерение пользователя.
@@ -715,7 +716,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     currentKbLiftPx,
     emojiActiveSv,
     emojiLiftSv,
-    insetLiftSv,
     kbProgressSv,
     kbShowRequestAtSv,
     markEmojiPanelReady,
@@ -759,19 +759,11 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       (finished) => {
         "worklet";
         if (finished) {
-          insetLiftSv.value = totalLiftSv.value;
           runOnJS(unmountEmojiPanel)("close");
         }
       },
     );
-  }, [
-    emojiActiveSv,
-    emojiLiftSv,
-    insetLiftSv,
-    kbShowRequestAtSv,
-    totalLiftSv,
-    unmountEmojiPanel,
-  ]);
+  }, [emojiActiveSv, emojiLiftSv, kbShowRequestAtSv, unmountEmojiPanel]);
 
   const showKeyboard = useCallback(
     (showInput: () => void) => {
@@ -875,14 +867,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
 
   useKeyboardHandler(
     {
-      onStart: (e) => {
-        "worklet";
-        if (e.height > KB_HEIGHT_EPSILON_PX) {
-          // Открытие: заранее расширяем диапазон под целевой подъём.
-          const targetLift = Math.max(0, e.height - liftLossPx);
-          insetLiftSv.value = Math.max(insetLiftSv.value, targetLift);
-        }
-      },
       onInteractive: () => {
         "worklet";
         // Свайп-дисмисс: лентой владеет палец, возврат к якорю тут не наш.
@@ -898,7 +882,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
             (finished) => {
               "worklet";
               if (finished) {
-                insetLiftSv.value = totalLiftSv.value;
                 runOnJS(unmountEmojiPanel)(reason);
               }
             },
@@ -921,8 +904,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
             // Панель не целевой режим (back в середине перехода) — плавно
             // опускаем остаток, не даём «залипнуть».
             releasePanelRemainder("kb-hidden-release");
-          } else {
-            insetLiftSv.value = totalLiftSv.value;
           }
           return;
         }
@@ -930,7 +911,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         kbShowRequestAtSv.value = 0;
         runOnJS(commitCanonicalImeHeight)(e.height);
         if (emojiActiveSv.value || emojiLiftSv.value <= 0) {
-          insetLiftSv.value = totalLiftSv.value;
           return;
         }
         // Клавиатура осела поверх панели: плавно отпустить остаток слота
@@ -938,7 +918,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         releasePanelRemainder("kb-covered");
       },
     },
-    [commitCanonicalImeHeight, liftLossPx, retryShowKeyboard, unmountEmojiPanel],
+    [commitCanonicalImeHeight, retryShowKeyboard, unmountEmojiPanel],
   );
 
   const resetDockInner = useCallback(() => {
@@ -953,7 +933,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     }
     cancelAnimation(emojiLiftSv);
     emojiLiftSv.value = 0;
-    insetLiftSv.value = 0;
     pinToBottomSv.value = true;
     unmountEmojiPanel("reset");
     setEmojiAccessoryActive(false);
@@ -970,7 +949,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     deleteBarHeightSv,
     emojiActiveSv,
     emojiLiftSv,
-    insetLiftSv,
     kbShowRequestAtSv,
     pinToBottomSv,
     unmountEmojiPanel,
@@ -986,7 +964,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     return () => {
       cancelAnimation(emojiLiftSv);
       emojiLiftSv.value = 0;
-      insetLiftSv.value = 0;
       emojiActiveSv.value = false;
       emojiActiveRef.current = false;
       emojiPanelMountedRef.current = false;
@@ -999,11 +976,12 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         kbShowWatchdogRef.current = null;
       }
     };
-  }, [emojiActiveSv, emojiLiftSv, insetLiftSv]);
+  }, [emojiActiveSv, emojiLiftSv]);
 
   return {
     dockStickyStyle,
     emojiPanelLayerStyle,
+    listLiftStyle,
     jumpBtnBottomStyle,
     dockExtraPaddingSv,
     freezeListSv,
