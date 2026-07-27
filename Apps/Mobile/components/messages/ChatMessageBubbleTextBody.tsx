@@ -15,6 +15,12 @@ import { ChatMessageBubbleTime } from "@/components/messages/ChatMessageBubbleTi
 import { ChatMessageReadReceipt } from "@/components/messages/ChatMessageReadReceipt";
 import { resolveBubbleMetaLayout } from "@/lib/messageBubbleLayout";
 import type { MessageDeliveryState } from "@/lib/messageDeliveryState";
+import {
+  getCachedBodyMeasure,
+  getCachedTimeLabelWidth,
+  setCachedBodyMeasure,
+  setCachedTimeLabelWidth,
+} from "@/lib/messageTextMeasureCache";
 
 type Props = {
   body: string;
@@ -109,6 +115,10 @@ function ChatMessageBubbleTextBodyInner({
         lineWidths: lines.map((line) => line.width),
         lines: resolveLayoutLines(body, lines),
       };
+      setCachedBodyMeasure(body, maxBubbleInnerWidthPx, {
+        lineWidths: next.lineWidths,
+        lines: next.lines,
+      });
       setBodyMeasure((prev) => (sameBodyMeasure(prev, next) ? prev : next));
     },
     [body, maxBubbleInnerWidthPx],
@@ -117,6 +127,7 @@ function ChatMessageBubbleTextBodyInner({
   const onTimeTextLayout = useCallback(
     (event: NativeSyntheticEvent<TextLayoutEventData>) => {
       const widthPx = event.nativeEvent.lines[0]?.width ?? 0;
+      setCachedTimeLabelWidth(timeLabel, widthPx);
       setTimeMeasure((prev) =>
         prev?.timeLabel === timeLabel && prev.widthPx === widthPx ? prev : { timeLabel, widthPx },
       );
@@ -124,13 +135,19 @@ function ChatMessageBubbleTextBodyInner({
     [timeLabel],
   );
 
+  /**
+   * The `useState` initializer only runs on mount, so it cannot see a cache
+   * entry written after a FlashList cell was created but before it was
+   * recycled onto this text: recycling reuses the instance rather than
+   * remounting it. Falling back to the cache here, on every render, is what
+   * makes a recycled or re-entered cell correct on its first frame.
+   */
   const measuredBody =
-    bodyMeasure != null &&
-    bodyMeasure.body === body &&
-    bodyMeasure.maxInnerWidthPx === maxBubbleInnerWidthPx
+    bodyMeasure != null && bodyMeasure.body === body && bodyMeasure.maxInnerWidthPx === maxBubbleInnerWidthPx
       ? bodyMeasure
-      : null;
-  const measuredTimeWidthPx = timeMeasure?.timeLabel === timeLabel ? timeMeasure.widthPx : null;
+      : getCachedBodyMeasure(body, maxBubbleInnerWidthPx);
+  const measuredTimeWidthPx =
+    timeMeasure?.timeLabel === timeLabel ? timeMeasure.widthPx : getCachedTimeLabelWidth(timeLabel);
   const hasReceipt = deliveryState != null;
 
   /** Считаем от замеров, а не от накопленного стейта: смена статуса доставки их не обнуляет. */

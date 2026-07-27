@@ -40,6 +40,11 @@ export class LruCache<K, V> {
     this.map.delete(key);
   }
 
+  /** Snapshot in recency order, oldest first. Does not refresh recency. */
+  entries(): [K, V][] {
+    return Array.from(this.map.entries());
+  }
+
   get size(): number {
     return this.map.size;
   }

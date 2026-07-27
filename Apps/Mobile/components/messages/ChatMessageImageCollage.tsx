@@ -5,7 +5,13 @@ import {
 import type { FscpImageBlock } from "@flora/client-core/fscp";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { getStoredImageRatio } from "@/lib/imageRatioStore";
 import { ensureMessageImageUri, peekMessageImageUri } from "@/lib/messageImageAssets";
+import {
+  DEFAULT_MESSAGE_IMAGE_RATIO,
+  messageCollageHeight,
+  messageSingleImageSize,
+} from "@/lib/messageMediaGeometry";
 import { floraColors, floraMessages } from "@/lib/theme";
 
 type SlotState = {
@@ -110,6 +116,17 @@ export function ChatMessageImageCollage({
 
   const isCollage = blocks.length >= 2;
 
+  // Reserve the exact height the real collage/single photo will end up at,
+  // so the placeholder doesn't cause a layout jump once decoding finishes.
+  const loadingPlaceholderHeight = isCollage
+    ? messageCollageHeight(blocks.length, floraMessages.messageCollageRowHeight)
+    : messageSingleImageSize(
+        containerWidth,
+        (blocks[0] ? getStoredImageRatio(blocks[0].assetUuid) : null) ?? DEFAULT_MESSAGE_IMAGE_RATIO,
+        floraMessages.messageSingleImageMaxHeight,
+        Math.round,
+      ).height;
+
   const layout = useMemo(
     () => ({
       fixedWidth: containerWidth,
@@ -134,11 +151,11 @@ export function ChatMessageImageCollage({
       {previewItems.length > 0 ? (
         <FeedPostImages previewItems={previewItems} layout={layout} />
       ) : anyLoading ? (
-        <View style={[styles.placeholder, { width: containerWidth }]}>
+        <View style={[styles.placeholder, { width: containerWidth, height: loadingPlaceholderHeight }]}>
           <Text style={styles.placeholderText}>Загрузка…</Text>
         </View>
       ) : allFailed ? (
-        <View style={[styles.placeholder, { width: containerWidth }]}>
+        <View style={[styles.placeholder, styles.placeholderError, { width: containerWidth }]}>
           <Text style={styles.placeholderText}>Не удалось загрузить фото</Text>
         </View>
       ) : null}
@@ -148,11 +165,16 @@ export function ChatMessageImageCollage({
 
 const styles = StyleSheet.create({
   placeholder: {
-    height: floraMessages.messageCollageRowHeight * 2,
     borderRadius: floraMessages.composeRadius,
     backgroundColor: "rgba(250, 250, 250, 0.06)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  // The error state doesn't know (and no longer needs) the real collage
+  // height — it keeps the old compact reservation instead of the up-to-470px
+  // placeholder the loading state now reserves.
+  placeholderError: {
+    height: floraMessages.messageCollageRowHeight * 2,
   },
   placeholderText: {
     color: floraColors.gray,

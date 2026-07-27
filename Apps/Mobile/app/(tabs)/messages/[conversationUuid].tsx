@@ -17,13 +17,13 @@ import {
   type NotificationPreviewKind,
 } from "@flora/client-core/fscp";
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
+import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
-  FlatList,
   InteractionManager,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -52,16 +52,20 @@ import {
   type BubbleAnchorRect,
 } from "@/components/messages/MessageBubbleMoreMenu";
 import { ChatThreadHeader, type ChatPeerInfo } from "@/components/messages/ChatThreadHeader";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import {
+  floraColors,
+  floraMessages,
+  floraNativeStackOptions,
+  floraSpacing,
+} from "@/lib/theme";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
 import { subscribeMessageRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
-import { useChatComposeDock } from "@/lib/useChatComposeDock";
+import { chatListAnchorOffset, useChatComposeDock } from "@/lib/useChatComposeDock";
 import {
   ChatScrollView,
-  type ChatScrollViewRef,
 } from "@/lib/ChatScrollView";
 import {
   CHAT_AT_BOTTOM_THRESHOLD_PX,
@@ -121,6 +125,9 @@ async function buildEncryptedPushPreviews(params: {
 
 const EMPTY_MESSAGES: MsgMessageDto[] = [];
 
+/** Сколько ждать расшифровки, прежде чем показать ленту как есть. */
+const LIST_REVEAL_DEADLINE_MS = 1200;
+
 function routeParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
@@ -130,6 +137,15 @@ function parseBoolParam(value: string | string[] | undefined): boolean {
   const raw = routeParam(value);
   return raw === "1" || raw === "true";
 }
+
+/**
+ * Coarse recycle pools: voice, photo and text bubbles have very different
+ * subtrees and heights, so a text row recycling into a media row would force a
+ * full re-layout of the cell. Finer pools are only worth adding if a trace
+ * shows a win.
+ */
+const messageItemType = (item: ListRow): "voice" | "photo" | "text" =>
+  item.voiceBlock ? "voice" : item.imageBlocks.length > 0 ? "photo" : "text";
 
 function buildListRows(items: ThreadBubbleItem[]): ListRow[] {
   return items.map((message, index) => {
@@ -156,8 +172,13 @@ export default function ThreadScreen() {
     dockExtraPaddingSv,
     freezeListSv,
     listAnimatedRef,
-    onListLayout,
-    onListContentSizeChange,
+    pinListToBottom,
+    setListPinned,
+    listRevealStyle,
+    listPlaceholderStyle,
+    hideListUntilReady,
+    allowListReveal,
+    finishEnterTransition,
     composeBaselinePx,
     emojiPanelHeightPx,
     emojiPanelReady,
@@ -177,8 +198,16 @@ export default function ThreadScreen() {
 
   /** Зона интерактивного свайпа над клавиатурой = высота закрытого дока. */
   const kgaOffsetPx = composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
+  /**
+   * FlashList строит тип анимированного компонента из `renderScrollComponent`
+   * и мемоизирует его по идентичности колбэка, поэтому новая идентичность
+   * перемонтирует весь скролл: теряется позиция и все смонтированные ячейки.
+   * `kgaOffsetPx` меняется, как только док измерит baseline, — читаем его
+   * через ref, чтобы не захватывать в замыкание.
+   */
+  const kgaOffsetRef = useRef(kgaOffsetPx);
+  kgaOffsetRef.current = kgaOffsetPx;
 
-  const chatScrollViewRef = useRef<ChatScrollViewRef>(null);
   const composeRef = useRef<ChatComposeFieldHandle>(null);
   const moreBtnRef = useRef<View>(null);
   const dockFooterRef = useRef<View>(null);
@@ -236,6 +265,7 @@ export default function ThreadScreen() {
 
   useEffect(() => {
     resetDock();
+    hideListUntilReady();
     setMenuTarget(null);
     setReplyTo(null);
     // resetDock is stable (ref-backed); only re-run on thread change.
@@ -251,6 +281,19 @@ export default function ThreadScreen() {
       };
     }, [navigation, tabBarBottomInset, resetDock]),
   );
+
+  /**
+   * Пока переход доигрывается, внутри экрана ничего не должно шевелиться — он и
+   * так проявляется целиком. Длительность берём из тех же опций стека, которыми
+   * настроен `Stack.Screen` треда, чтобы значения не разъехались.
+   */
+  useEffect(() => {
+    const timer = setTimeout(
+      finishEnterTransition,
+      floraNativeStackOptions.animationDuration,
+    );
+    return () => clearTimeout(timer);
+  }, [conversationUuid, finishEnterTransition]);
 
   const paramOtherDisplayName = routeParam(params.otherDisplayName);
   const paramOtherUsername = routeParam(params.otherUsername);
@@ -469,18 +512,72 @@ export default function ThreadScreen() {
     decryptWirePlaintext,
   });
 
-  const listData = useMemo(() => buildListRows(decrypted), [decrypted]);
+  /**
+   * Лента перевёрнута, поэтому данные идут от новых к старым: индекс 0 — это
+   * последнее сообщение, и оно стоит в начале скролла. Группировка считается до
+   * разворота, на прямом порядке, — она смотрит на *следующее* сообщение.
+   */
+  const listData = useMemo(
+    () => buildListRows(decrypted).reverse(),
+    [decrypted],
+  );
   const hasDecryptFailures = useMemo(
     () => fscpReady && decrypted.some((row) => row.decryptState === "failed"),
     [decrypted, fscpReady],
   );
 
-  const scrollToEnd = useCallback((animated = true) => {
-    if (listData.length === 0) return;
-    chatScrollViewRef.current?.scrollToEnd({ animated });
-    atBottomRef.current = true;
-    setShowJumpToLatest(false);
-  }, [listData.length]);
+  /**
+   * Тред можно показывать, когда расшифрованы все строки: пока идут волны
+   * `DECRYPT_BATCH`, текст приходит порциями и высоты пузырей меняются. Позиция
+   * от этого уже не страдает (последнее сообщение стоит в начале скролла), но
+   * сама перекладка видна. Ожидание упирается в размер страницы, а не в длину
+   * треда: расшифровка идёт с самых новых сообщений.
+   */
+  const threadReady = useMemo(
+    () =>
+      listData.length > 0 &&
+      !listData.some((row) => row.decryptState === "decrypting"),
+    [listData],
+  );
+  const listPending = messagesQuery.isLoading || (listData.length > 0 && !threadReady);
+
+  /**
+   * Показ ждёт ещё и замера дока. У перевёрнутой ленты зазор под последним
+   * сообщением — это `contentInset`, то есть inset задаёт видимую позицию
+   * напрямую. До замера он считается по оценке `COMPOSE_BASELINE_FALLBACK_PX`,
+   * и пока она не сошлась с реальной высотой поля, лента стоит не на месте.
+   * На холодном открытии это незаметно (расшифровка дольше замера), на тёплом
+   * тред готов на первом кадре — и без этого условия показ попадает в окно
+   * оценки.
+   */
+  useEffect(() => {
+    if (threadReady && composeBaselinePx > 0) allowListReveal();
+    // Тред мог смениться на такой же готовый — сброс делает эффект по треду выше.
+  }, [allowListReveal, composeBaselinePx, conversationUuid, threadReady]);
+
+  /**
+   * Ограничение сверху на ожидание. Расшифровка может не состояться вовсе —
+   * при `blocked` (`!fscpReady`) строки остаются в `decrypting` навсегда, и без
+   * этого лента не показалась бы никогда.
+   */
+  useEffect(() => {
+    const timer = setTimeout(allowListReveal, LIST_REVEAL_DEADLINE_MS);
+    return () => clearTimeout(timer);
+  }, [allowListReveal, conversationUuid]);
+
+  /**
+   * Скроллит док: он единственный писатель офсета. Своей ручки скролла у ленты
+   * нет намеренно — два писателя `contentOffset` дают борьбу за позицию.
+   */
+  const scrollToEnd = useCallback(
+    (animated = true) => {
+      if (listData.length === 0) return;
+      pinListToBottom(animated);
+      atBottomRef.current = true;
+      setShowJumpToLatest(false);
+    },
+    [listData.length, pinListToBottom],
+  );
 
   const onEndVisible = useCallback((visible: boolean) => {
     atBottomRef.current = visible;
@@ -491,23 +588,15 @@ export default function ThreadScreen() {
     (props: ScrollViewProps) => (
       <ChatScrollView
         {...props}
-        offset={kgaOffsetPx}
+        offset={kgaOffsetRef.current}
         extraContentPadding={dockExtraPaddingSv}
         freeze={freezeListSv}
-        chatScrollViewRef={chatScrollViewRef}
         animatedRef={listAnimatedRef}
-        onListLayoutHeight={onListLayout}
-        onListContentHeight={onListContentSizeChange}
+        // Зазор под доком уезжает в contentInset.top, «конец» — офсет у нуля.
+        inverted
       />
     ),
-    [
-      dockExtraPaddingSv,
-      freezeListSv,
-      kgaOffsetPx,
-      listAnimatedRef,
-      onListContentSizeChange,
-      onListLayout,
-    ],
+    [dockExtraPaddingSv, freezeListSv, listAnimatedRef],
   );
 
   const onComposeTextChange = useCallback((next: string) => {
@@ -519,13 +608,11 @@ export default function ThreadScreen() {
     const nextLen = listData.length;
     prevListLengthRef.current = nextLen;
     if (nextLen === 0 || nextLen === prevLen) return;
+    // Низ держит прижатие в доке — на UI-потоке, по изменению высоты контента.
+    // Здесь остаётся только случай, когда пользователь отмотан вверх.
+    if (!atBottomRef.current) setShowJumpToLatest(true);
+  }, [listData.length]);
 
-    if (atBottomRef.current) {
-      requestAnimationFrame(() => scrollToEnd(false));
-      return;
-    }
-    setShowJumpToLatest(true);
-  }, [listData.length, scrollToEnd]);
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -562,15 +649,26 @@ export default function ThreadScreen() {
 
   const onScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-      const atBottom = distanceFromBottom < CHAT_AT_BOTTOM_THRESHOLD_PX;
+      const { contentOffset } = event.nativeEvent;
+      // Лента перевёрнута: последнее сообщение стоит на якоре, а не в конце
+      // контента. Порог отсчитывается от якоря — на iOS он отрицательный.
+      const distanceFromAnchor =
+        contentOffset.y - chatListAnchorOffset(dockExtraPaddingSv.value);
+      const atBottom = distanceFromAnchor <= CHAT_AT_BOTTOM_THRESHOLD_PX;
       atBottomRef.current = atBottom;
+      // Здесь прижатие только включаем. Снять его может лишь жест — иначе
+      // промежуточный кадр собственной коррекции низа отменил бы коррекцию.
+      if (atBottom) setListPinned(true);
       onEndVisible(atBottom);
       closeMessageMenu();
     },
-    [closeMessageMenu, onEndVisible],
+    [closeMessageMenu, dockExtraPaddingSv, onEndVisible, setListPinned],
   );
+
+  /** Программные скроллы дока drag-событий не порождают — снимает только палец. */
+  const onScrollBeginDrag = useCallback(() => {
+    setListPinned(false);
+  }, [setListPinned]);
 
   const copyMessageContent = useCallback(async (previewText: string) => {
     const ok = await copyTextToClipboard(previewText);
@@ -655,17 +753,21 @@ export default function ThreadScreen() {
     ({ item }: { item: ListRow }) => {
       const isMenuTarget = menuTarget?.message.messageUuid === item.messageUuid;
       return (
-        <ChatMessageBubble
-          message={item}
-          peer={peer}
-          showPeerAvatar={item.showPeerAvatar}
-          isPeerIndented={item.isPeerIndented}
-          isMenuTarget={isMenuTarget}
-          onPress={(anchor) => onMessagePress(item, anchor)}
-          onAnchorSync={
-            isMenuTarget ? (anchor) => syncMenuAnchor(item.messageUuid, anchor) : undefined
-          }
-        />
+        // Обратный переворот строки: лента перевёрнута целиком (см. listInverted),
+        // иначе пузырь встал бы вверх ногами. Так же устроен `inverted` у FlatList.
+        <View style={styles.rowInverted}>
+          <ChatMessageBubble
+            message={item}
+            peer={peer}
+            showPeerAvatar={item.showPeerAvatar}
+            isPeerIndented={item.isPeerIndented}
+            isMenuTarget={isMenuTarget}
+            onPress={(anchor) => onMessagePress(item, anchor)}
+            onAnchorSync={
+              isMenuTarget ? (anchor) => syncMenuAnchor(item.messageUuid, anchor) : undefined
+            }
+          />
+        </View>
       );
     },
     [menuTarget?.message.messageUuid, onMessagePress, peer, syncMenuAnchor],
@@ -759,6 +861,7 @@ export default function ThreadScreen() {
       setReplyTo(null);
       setDeleteBarHeightPx(0);
       atBottomRef.current = true;
+      pinListToBottom();
       void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {
@@ -774,6 +877,7 @@ export default function ThreadScreen() {
     conversationUuid,
     me?.userUuid,
     otherUserUuid,
+    pinListToBottom,
     queryClient,
     replyTo,
     setDeleteBarHeightPx,
@@ -846,6 +950,7 @@ export default function ThreadScreen() {
       setReplyTo(null);
       setDeleteBarHeightPx(0);
       atBottomRef.current = true;
+      pinListToBottom();
       void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {
@@ -908,34 +1013,56 @@ export default function ThreadScreen() {
         offset={kgaOffsetPx}
       >
       <View style={styles.messagesArea}>
-        <FlatList
-          key={conversationUuid}
-          data={listData}
-          keyExtractor={(item) => item.messageUuid}
-          style={styles.listFill}
-          contentContainerStyle={styles.listContent}
-          renderScrollComponent={renderScrollComponent}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          keyboardShouldPersistTaps="handled"
-          initialNumToRender={6}
-          maxToRenderPerBatch={4}
-          windowSize={7}
-          removeClippedSubviews={false}
-          renderItem={renderMessage}
-          ListEmptyComponent={
-            messagesQuery.isLoading ? (
-              <View style={styles.empty}>
-                <ActivityIndicator color={floraColors.greenLight} />
-                <Text style={styles.emptyText}>Загрузка сообщений…</Text>
-              </View>
-            ) : (
-              <Text style={styles.emptyText}>
-                {blocked ? "Расшифровка недоступна" : "Напишите первое сообщение"}
-              </Text>
-            )
-          }
-        />
+        {/*
+          Заглушка — отдельный слой под лентой, а не `ListEmptyComponent`: иначе
+          она гаснет вместе с лентой и между ней и контентом зияет пустой
+          промежуток на всю раскладку FlashList. Здесь два слоя одного перехода.
+        */}
+        <Reanimated.View
+          pointerEvents="none"
+          style={[styles.listFill, styles.listPlaceholder, listPlaceholderStyle]}
+        >
+          {listPending ? (
+            <>
+              <ActivityIndicator color={floraColors.greenLight} />
+              <Text style={styles.emptyText}>Загрузка сообщений…</Text>
+            </>
+          ) : (
+            <Text style={styles.emptyText}>
+              {blocked ? "Расшифровка недоступна" : "Напишите первое сообщение"}
+            </Text>
+          )}
+        </Reanimated.View>
+
+        <Reanimated.View style={[styles.listFill, listRevealStyle]}>
+          <FlashList
+            key={conversationUuid}
+            data={listData}
+            keyExtractor={(item) => item.messageUuid}
+            getItemType={messageItemType}
+            style={styles.listInverted}
+            contentContainerStyle={styles.listContent}
+            renderScrollComponent={renderScrollComponent}
+            onScroll={onScroll}
+            onScrollBeginDrag={onScrollBeginDrag}
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+            // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
+            // соседние ячейки размонтируются прямо у края вьюпорта.
+            drawDistance={480}
+            /*
+              `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
+              короткий тред к низу отступом `windowSize - childContainerSize`,
+              который уменьшался ступенями по мере домера строк — лента ехала
+              вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
+              стоит у низа по построению. Автоподстройка позиции тоже не нужна:
+              новое сообщение приходит в начало данных, то есть ровно туда, где
+              стоит скролл, и попадает в кадр само.
+            */
+            maintainVisibleContentPosition={{ disabled: true }}
+            renderItem={renderMessage}
+          />
+        </Reanimated.View>
 
         {showJumpToLatest ? (
           <Reanimated.View style={[styles.jumpBtn, jumpBtnBottomStyle]}>
@@ -1122,9 +1249,23 @@ const styles = StyleSheet.create({
   listFill: {
     ...StyleSheet.absoluteFill,
   },
-  /** Сверху — как marginBottom пузыря до линии compose (bubbleRowGap). */
+  /**
+   * Переворот ленты целиком: последнее сообщение оказывается в начале скролла,
+   * то есть «внизу» — это константный офсет, а не считаемый из высот предел.
+   */
+  listInverted: {
+    ...StyleSheet.absoluteFill,
+    transform: [{ scaleY: -1 }],
+  },
+  rowInverted: {
+    transform: [{ scaleY: -1 }],
+  },
+  /**
+   * В координатах скролла это низ, а на экране — верх ленты (над самым старым
+   * сообщением): столько же, сколько marginBottom пузыря до линии compose.
+   */
   listContent: {
-    paddingTop: floraMessages.bubbleRowGap,
+    paddingBottom: floraMessages.bubbleRowGap,
   },
   /**
    * Док — absolute-оверлей у низа: рост слота не влияет на layout ленты
@@ -1185,10 +1326,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: floraColors.surfaceElevated,
   },
-  empty: {
+  listPlaceholder: {
     alignItems: "center",
     gap: floraSpacing.grid,
-    paddingTop: floraSpacing.grid * 4,
+    paddingTop: floraMessages.bubbleRowGap + floraSpacing.grid * 4,
   },
   emptyText: {
     color: floraColors.gray,

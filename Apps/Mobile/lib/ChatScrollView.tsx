@@ -1,5 +1,5 @@
-import { forwardRef, useCallback, type RefObject } from "react";
-import { Platform, type LayoutChangeEvent, type ScrollViewProps } from "react-native";
+import { forwardRef, useCallback } from "react";
+import { Platform, type ScrollViewProps } from "react-native";
 import { KeyboardChatScrollView } from "react-native-keyboard-controller";
 import type Reanimated from "react-native-reanimated";
 import type { AnimatedRef, SharedValue } from "react-native-reanimated";
@@ -11,30 +11,25 @@ export type ChatScrollViewKcsvProps = {
   offset: number;
   extraContentPadding: SharedValue<number>;
   freeze: SharedValue<boolean>;
+  /**
+   * Лента перевёрнута. Переворот визуальный (`scaleY: -1`), а этот флаг —
+   * математика KCSV: зазор дока уходит в `contentInset.top`, а «конец» контента
+   * определяется офсетом у нуля, а не суммой высот.
+   */
+  inverted?: boolean;
 };
 
 type Props = ScrollViewProps &
   ChatScrollViewKcsvProps & {
-    chatScrollViewRef?: RefObject<ChatScrollViewRef | null>;
-    /** Animated-ref дока (worklet-scrollTo) — регистрируется на том же инстансе. */
+    /**
+     * Animated-ref дока (worklet-scrollTo) — регистрируется на том же инстансе.
+     * Второй ручки скролла тут намеренно нет: офсет пишет только док.
+     */
     animatedRef?: AnimatedRef<Reanimated.ScrollView>;
-    onListLayoutHeight?: (height: number) => void;
-    onListContentHeight?: (height: number) => void;
   };
 
 export const ChatScrollView = forwardRef<ChatScrollViewRef, Props>(function ChatScrollView(
-  {
-    chatScrollViewRef,
-    animatedRef,
-    onListLayoutHeight,
-    onListContentHeight,
-    offset,
-    extraContentPadding,
-    freeze,
-    onLayout,
-    onContentSizeChange,
-    ...scrollProps
-  },
+  { animatedRef, offset, extraContentPadding, freeze, inverted, ...scrollProps },
   ref,
 ) {
   const combinedRef = useCallback(
@@ -44,30 +39,11 @@ export const ChatScrollView = forwardRef<ChatScrollViewRef, Props>(function Chat
       } else if (ref) {
         ref.current = instance;
       }
-      if (chatScrollViewRef) {
-        chatScrollViewRef.current = instance;
-      }
       if (animatedRef && instance) {
         animatedRef(instance);
       }
     },
-    [animatedRef, chatScrollViewRef, ref],
-  );
-
-  const handleLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      onListLayoutHeight?.(e.nativeEvent.layout.height);
-      onLayout?.(e);
-    },
-    [onLayout, onListLayoutHeight],
-  );
-
-  const handleContentSizeChange = useCallback(
-    (w: number, h: number) => {
-      onListContentHeight?.(h);
-      onContentSizeChange?.(w, h);
-    },
-    [onContentSizeChange, onListContentHeight],
+    [animatedRef, ref],
   );
 
   return (
@@ -79,10 +55,9 @@ export const ChatScrollView = forwardRef<ChatScrollViewRef, Props>(function Chat
       offset={offset}
       extraContentPadding={extraContentPadding}
       freeze={freeze}
+      inverted={inverted}
       keyboardLiftBehavior="whenAtEnd"
       keyboardDismissMode="interactive"
-      onLayout={handleLayout}
-      onContentSizeChange={handleContentSizeChange}
       {...scrollProps}
     />
   );
