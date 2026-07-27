@@ -54,14 +54,16 @@ import { floraSpacing } from "@/lib/theme";
  *
  * Лента. Клавиатурная механика KeyboardChatScrollView всегда заморожена
  * (freeze=true): её внутренний padding не растёт и она не скроллит.
- * dockExtraPaddingSv (navInset + baseline + growth + deleteBar) несёт только
- * геометрию простоя дока и меняется исключительно на реальных layout-событиях
- * — открытие/закрытие клавиатуры и панели его не трогают. Подъём ленты —
- * отдельный transform (listLiftStyle, translateY = -totalLift), тот же shared
- * value и тот же кадр, что у dockStickyStyle и emojiPanelLayerStyle: лента едет
- * синхронно с доком и панелью, а не ступенькой инсета. Скролл докручивает
- * единственный worklet этого хука на изменениях самого инсета (whenAtEnd-
- * семантика). Один писатель — нет гонок scrollTo.
+ * dockExtraPaddingSv (navInset + baseline + deleteBar) несёт только статичную
+ * геометрию дока и меняется редкими ступенями (замер дока, полоса ответа).
+ * Всё движение ленты — transform (listLiftStyle): подъём (-totalLift) и рост
+ * поля (-composeGrowth) на тех же shared values и в тех же кадрах, что у
+ * dockStickyStyle, emojiPanelLayerStyle и самой pill. В инсет движение не
+ * уходит принципиально: его смена — нативный коммит, который декоратор KCSV
+ * гасит встречным scrollBy, а на якорь ленту возвращает отложенный на кадр
+ * scrollTo — то есть заведомо не тот кадр, в котором едет док. Скролл
+ * докручивает единственный worklet этого хука на изменениях самого инсета
+ * (whenAtEnd-семантика). Один писатель — нет гонок scrollTo.
  *
  * Плавность холодного открытия: React-коммиты не попадают в кадры анимации.
  * Порядок: коммит пустого слоя -> transform-полёт (UI-поток) -> осадка ->
@@ -141,10 +143,11 @@ export type ChatComposeDock = {
   listLiftStyle: AnimatedStyle<ViewStyle>;
   jumpBtnBottomStyle: AnimatedStyle<ViewStyle>;
   /**
-   * Зазор ленты под доком в покое: navInset + baseline + growth + deleteBar. У
+   * Зазор ленты под доком в покое: navInset + baseline + deleteBar. У
    * перевёрнутой ленты KCSV кладёт его в `contentInset.top` — визуально это
-   * всё равно низ. Подъём в этот зазор не входит — он отдельный transform
-   * (`listLiftStyle`).
+   * всё равно низ. Ни подъём, ни рост поля сюда не входят: они transform-ом
+   * (`listLiftStyle`), потому что каждая смена инсета — нативный коммит с
+   * возвратом на якорь кадром позже.
    */
   dockExtraPaddingSv: SharedValue<number>;
   /** Библиотечную механику клавиатуры держим замороженной всегда. */
@@ -176,7 +179,13 @@ export type ChatComposeDock = {
    * React-коммит грида не должен попадать в кадры transform-анимации.
    */
   emojiPanelReady: boolean;
+  /** Высота оболочки поля: измерение покоя либо цель роста на новую строку. */
   onComposeShellLayout: (height: number) => void;
+  /**
+   * Остаток хода до ступени зазора. Пишет поле (ChatComposeField) — у роста
+   * pill и у догона ленты обязана быть одна кривая и один кадр.
+   */
+  composeGrowthHoldSv: SharedValue<number>;
   onDockColumnIdleLayout: (height: number) => void;
   setDeleteBarHeightPx: (height: number) => void;
   recalibrateComposeBaseline: () => void;
@@ -222,7 +231,15 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     useReanimatedKeyboardAnimation();
 
   const emojiLiftSv = useSharedValue(0);
+  /** Рост оболочки поля над однострочником: строки, полоса картинок. Ступень. */
   const composeGrowthSv = useSharedValue(0);
+  /**
+   * Сколько полю осталось добрать до ступени: ступень применяется сразу, а
+   * видимый рост доезжает кривой. Величину ведёт ChatComposeField — это ровно
+   * недобранная высота pill, поэтому верхняя грань поля и низ ленты не могут
+   * разъехаться ни на кадр, ни на пиксель.
+   */
+  const composeGrowthHoldSv = useSharedValue(0);
   const deleteBarHeightSv = useSharedValue(0);
   const dockExtraPaddingSv = useSharedValue(
     dockIdleGapPx + COMPOSE_BASELINE_FALLBACK_PX,
@@ -298,20 +315,35 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     [ksvClosedPx],
   );
 
-  /** Подъём ленты: тот же totalLift, что у дока, только лента едет вверх. */
+  /**
+   * Рост поля, каким его видно прямо сейчас: ступень минус то, что полю ещё
+   * осталось добрать. В кадре ступени это ровно прежняя высота, дальше —
+   * кривая самого поля.
+   */
+  const liveComposeGrowthSv = useDerivedValue(
+    () => composeGrowthSv.value - composeGrowthHoldSv.value,
+  );
+
+  /**
+   * Движение ленты — подъём дока и рост поля, оба transform-ом и оба на тех же
+   * shared values, что и сам док. Рост принципиально не уходит в инсет: смена
+   * инсета — это нативный коммит с встречным scrollBy декоратора и возвратом
+   * на якорь кадром позже, то есть заведомо не тот кадр, в котором едет pill.
+   * Лента дёргалась именно на этом расхождении.
+   */
   const listLiftStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -totalLiftSv.value }],
+    transform: [
+      { translateY: -(totalLiftSv.value + liveComposeGrowthSv.value) },
+    ],
   }));
 
   useAnimatedReaction(
     () => ({
-      growth: composeGrowthSv.value,
       deleteBar: deleteBarHeightSv.value,
       baseline: composeBaselineSv.value,
     }),
     (cur) => {
-      dockExtraPaddingSv.value =
-        dockIdleGapPx + cur.baseline + cur.growth + cur.deleteBar;
+      dockExtraPaddingSv.value = dockIdleGapPx + cur.baseline + cur.deleteBar;
     },
     [dockIdleGapPx],
   );
@@ -322,7 +354,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       bottom:
         dockIdleGapPx +
         composeBaselineSv.value +
-        composeGrowthSv.value +
+        liveComposeGrowthSv.value +
         deleteBarHeightSv.value +
         totalLiftSv.value +
         floraSpacing.grid,
@@ -344,6 +376,9 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    * Скролл отложен на кадр — как в `useExtraContentPadding` библиотеки: на этом
    * кадре нативный диапазон ещё старый, и цель склампилась бы в ту самую
    * недостачу, которую возврат и лечит.
+   *
+   * Рост поля сюда не приходит вовсе (он transform-ом, см. listLiftStyle) —
+   * остаются редкие ступени: замер дока и полоса ответа.
    */
   useAnimatedReaction(
     () => dockExtraPaddingSv.value,
@@ -563,7 +598,11 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX;
     setComposeBaselinePx(0);
     composeGrowthSv.value = 0;
-  }, [composeBaselineSv, composeGrowthSv]);
+    // Догонять нечего: геометрия пересобирается заново, лента должна стоять
+    // ровно на новом зазоре, а не доезжать до старой цели.
+    cancelAnimation(composeGrowthHoldSv);
+    composeGrowthHoldSv.value = 0;
+  }, [composeBaselineSv, composeGrowthHoldSv, composeGrowthSv]);
 
   const setDeleteBarHeightPx = useCallback(
     (height: number) => {
@@ -938,6 +977,8 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     setEmojiAccessoryActive(false);
     setKeyboardOpen(false);
     composeGrowthSv.value = 0;
+    cancelAnimation(composeGrowthHoldSv);
+    composeGrowthHoldSv.value = 0;
     deleteBarHeightSv.value = 0;
     composeBaselineRef.current = 0;
     composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX;
@@ -945,6 +986,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     Keyboard.dismiss();
   }, [
     composeBaselineSv,
+    composeGrowthHoldSv,
     composeGrowthSv,
     deleteBarHeightSv,
     emojiActiveSv,
@@ -997,6 +1039,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     emojiPanelHeightPx,
     emojiPanelReady,
     onComposeShellLayout,
+    composeGrowthHoldSv,
     onDockColumnIdleLayout,
     setDeleteBarHeightPx,
     recalibrateComposeBaseline,

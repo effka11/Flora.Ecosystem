@@ -184,6 +184,7 @@ export default function ThreadScreen() {
     emojiPanelHeightPx,
     emojiPanelReady,
     onComposeShellLayout,
+    composeGrowthHoldSv,
     onDockColumnIdleLayout,
     setDeleteBarHeightPx,
     recalibrateComposeBaseline,
@@ -269,6 +270,12 @@ export default function ThreadScreen() {
     hideListUntilReady();
     setMenuTarget(null);
     setReplyTo(null);
+    // Позиция ленты — величина потреда: перенесённая из прошлого треда, она
+    // оставила бы новый тред «отмотанным вверх» (без возврата к якорю на
+    // входящие) и могла бы показать в нём чужую плашку «Новые сообщения».
+    atBottomRef.current = true;
+    prevListLengthRef.current = 0;
+    setShowJumpToLatest(false);
     // resetDock is stable (ref-backed); only re-run on thread change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationUuid]);
@@ -301,7 +308,6 @@ export default function ThreadScreen() {
   const paramOtherAvatarUuid = routeParam(params.otherAvatarUuid);
   const paramOtherUserIsOnline = params.otherUserIsOnline;
   const paramOtherUserLastSeenAt = routeParam(params.otherUserLastSeenAt);
-  const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
@@ -600,19 +606,21 @@ export default function ThreadScreen() {
     [dockExtraPaddingSv, freezeListSv, listAnimatedRef],
   );
 
-  const onComposeTextChange = useCallback((next: string) => {
-    setText(next);
-  }, []);
-
   useEffect(() => {
     const prevLen = prevListLengthRef.current;
     const nextLen = listData.length;
     prevListLengthRef.current = nextLen;
     if (nextLen === 0 || nextLen === prevLen) return;
-    // Низ держит прижатие в доке — на UI-потоке, по изменению высоты контента.
-    // Здесь остаётся только случай, когда пользователь отмотан вверх.
-    if (!atBottomRef.current) setShowJumpToLatest(true);
-  }, [listData.length]);
+    // Прижатие в доке доскролливает только на смену зазора под доком, приход
+    // строк его не трогает. У якоря есть допуск в CHAT_AT_BOTTOM_THRESHOLD_PX,
+    // и входящее сообщение, пришедшее внутри этого допуска, осталось бы
+    // частично под полем ввода — поэтому возврат к якорю здесь свой.
+    if (atBottomRef.current) {
+      scrollToEnd(false);
+      return;
+    }
+    setShowJumpToLatest(true);
+  }, [listData.length, scrollToEnd]);
 
 
   useEffect(() => {
@@ -886,8 +894,8 @@ export default function ThreadScreen() {
     voiceRecorder,
   ]);
 
-  const onSend = async () => {
-    const trimmed = text.trim();
+  const onSend = async (draft: string) => {
+    const trimmed = draft.trim();
     if (!conversationUuid || !me?.userUuid || !otherUserUuid) return;
     if (!trimmed && composeImages.length === 0) return;
     if (!canSend() || hasPendingPrepare) return;
@@ -946,7 +954,7 @@ export default function ThreadScreen() {
         blocks,
         replyTo: activeReply ?? undefined,
       });
-      setText("");
+      composeRef.current?.clearText();
       clearImages();
       setReplyTo(null);
       setDeleteBarHeightPx(0);
@@ -1123,14 +1131,13 @@ export default function ThreadScreen() {
 
           <ChatComposeField
             ref={composeRef}
-            value={text}
-            onChangeText={onComposeTextChange}
-            onSend={onSend}
+            onSend={(draft) => void onSend(draft)}
             sending={sending}
             disabled={!canSend() || !otherUserUuid}
             placeholder={blocked ? "Отправка недоступна" : "Сообщение"}
             bottomInset={composeBottomInset}
             onShellLayout={onComposeShellLayout}
+            growthHoldSv={composeGrowthHoldSv}
             emojiAccessoryActive={emojiAccessoryActive}
             onToggleEmoji={() =>
               toggleEmoji(() => composeRef.current?.showInputKeyboard())
