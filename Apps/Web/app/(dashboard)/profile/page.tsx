@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { FeedPostList, type FeedPostListItem } from "@/app/_shared/FeedPostList";
 import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
@@ -138,6 +139,36 @@ function ProfilePageContent() {
 
   const pageScrollRef = useRef<HTMLElement>(null);
 
+  const [presenceTick, setPresenceTick] = useState(0);
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+  useEffect(() => {
+    return sharedPresenceStore.subscribe(() => {
+      setPresenceTick((n) => n + 1);
+      setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+    });
+  }, []);
+
+  useEffect(() => {
+    const uuid = me?.userUuid;
+    if (!uuid || !sharedPresenceStore.surfacesAccepted) {
+      sharedPresenceStore.unregisterSurface("public-profile");
+      return undefined;
+    }
+    sharedPresenceStore.registerSurface("public-profile", [uuid]);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("public-profile");
+  }, [me?.userUuid, presenceEpoch]);
+
+  const profilePresence = useMemo(() => {
+    void presenceTick;
+    const uuid = me?.userUuid;
+    if (!uuid) {
+      return { isOnline: false, lastSeenAt: null as string | null };
+    }
+    // Own profile: store/SSE only (no DTO baseline — same as Mobile).
+    return sharedPresenceStore.overlayOnline(uuid, false, null);
+  }, [me?.userUuid, presenceTick]);
+
   const handleDeletePost = useCallback(async (postUuid: string) => {
     try {
       await apiDeletePost(postUuid);
@@ -160,13 +191,19 @@ function ProfilePageContent() {
         <div className={styles.profileCover} />
         <div className={styles.profileInfo}>
           <div className={styles.profileInfoTop}>
-            <div className={styles.profileAvatar}>
-              <FloraAvatar
-                size={PROFILE_AVATAR_INNER_PX}
-                avatarUuid={me?.avatarUuid ?? publicProfile?.avatarUuid}
-                displayName={me?.displayName ?? name}
-                username={me?.username ?? ""}
-                seed={me?.userUuid}
+            <div className={styles.profileAvatarWrap}>
+              <div className={styles.profileAvatar}>
+                <FloraAvatar
+                  size={PROFILE_AVATAR_INNER_PX}
+                  avatarUuid={me?.avatarUuid ?? publicProfile?.avatarUuid}
+                  displayName={me?.displayName ?? name}
+                  username={me?.username ?? ""}
+                  seed={me?.userUuid}
+                />
+              </div>
+              <span
+                className={`${styles.profileOnlineBadge}${profilePresence.isOnline ? ` ${styles.profileOnlineBadgeVisible}` : ""}`}
+                aria-hidden
               />
             </div>
             <ProfileCardStatus status={profileStatus} loading={loading && !profileStatus?.trim()} />

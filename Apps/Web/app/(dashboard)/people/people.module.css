@@ -338,9 +338,9 @@
   position: absolute;
   right: -1px;
   bottom: -1px;
-  width: 12px;
-  height: 12px;
-  border-radius: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
   background: var(--flora-green-light);
   border: 2px solid var(--flora-bg);
   opacity: 0;

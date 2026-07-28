@@ -2,6 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import {
+  OnlineStatusDot,
+  ONLINE_STATUS_PROFILE_DOT_SIZE,
+  ONLINE_STATUS_PROFILE_EDGE_NUDGE,
+} from "@/components/messages/OnlineStatusDot";
 import { ProfileAvatarEditorModal } from "@/components/profile/ProfileAvatarEditorModal";
 import { ProfileCardActions } from "@/components/profile/ProfileCardActions";
 import { ProfileCardStatus } from "@/components/profile/ProfileCardStatus";
@@ -13,6 +18,10 @@ const SHOW_PROFILE_STATUS = false;
 const AVATAR_NUDGE_X = (39 - 38) * floraSpacing.grid - 8 + floraSpacing.gridFine * 2;
 const TEXT_NUDGE_X = floraSpacing.gridFine * 2;
 const STATUS_TOP = 4 * floraSpacing.grid + 4;
+/** Outer ring box: avatar + 4px border each side. */
+const PROFILE_AVATAR_SHELL = floraProfile.avatarSize + 8;
+/** Badge scale diameter = Web `--profile-avatar-size` (border-box 98), not shell 106. */
+const PROFILE_AVATAR_DIAMETER = floraProfile.avatarSize;
 /** profile.module.css — .profileDetailsTrigger */
 const DETAILS_BTN_SIZE = 8 * floraSpacing.gridFine;
 const DETAILS_ICON_SIZE = 4 * floraSpacing.gridFine;
@@ -26,6 +35,7 @@ type ProfileCardHeaderProps = {
   followersCount?: number;
   followingCount?: number;
   statusLoading?: boolean;
+  isOnline?: boolean;
   onSettingsPress?: () => void;
   showDetailsTrigger?: boolean;
   avatarEditable?: boolean;
@@ -45,6 +55,7 @@ export function ProfileCardHeader({
   followersCount = 0,
   followingCount = 0,
   statusLoading = false,
+  isOnline = false,
   onSettingsPress,
   showDetailsTrigger = true,
   avatarEditable = false,
@@ -65,22 +76,31 @@ export function ProfileCardHeader({
       <View style={styles.cover} />
       <View style={styles.info}>
         <View style={styles.infoTop}>
-          <Pressable
-            disabled={!canEditAvatar}
-            onPress={() => canEditAvatar && setAvatarOpen(true)}
-            accessibilityRole={canEditAvatar ? "button" : undefined}
-            accessibilityLabel={canEditAvatar ? "Открыть аватар" : undefined}
-            style={styles.avatarWrap}
-          >
-            <FloraAvatar
-              size={floraProfile.avatarSize}
-              avatarUuid={avatarUuid}
-              displayName={displayName}
-              username={username}
-              seed={userUuid ?? username}
-              cacheVersion={avatarCacheVersion}
+          <View style={styles.avatarShell}>
+            <Pressable
+              disabled={!canEditAvatar}
+              onPress={() => canEditAvatar && setAvatarOpen(true)}
+              accessibilityRole={canEditAvatar ? "button" : undefined}
+              accessibilityLabel={canEditAvatar ? "Открыть аватар" : undefined}
+              style={styles.avatarWrap}
+            >
+              <FloraAvatar
+                size={floraProfile.avatarSize}
+                avatarUuid={avatarUuid}
+                displayName={displayName}
+                username={username}
+                seed={userUuid ?? username}
+                cacheVersion={avatarCacheVersion}
+              />
+            </Pressable>
+            <OnlineStatusDot
+              online={isOnline}
+              identityKey={userUuid ?? username}
+              avatarDiameter={PROFILE_AVATAR_DIAMETER}
+              sizeAtRef={ONLINE_STATUS_PROFILE_DOT_SIZE}
+              edgeNudge={ONLINE_STATUS_PROFILE_EDGE_NUDGE}
             />
-          </Pressable>
+          </View>
           {SHOW_PROFILE_STATUS ? (
             <ProfileCardStatus status={status} loading={statusLoading} style={styles.status} />
           ) : null}
@@ -219,10 +239,16 @@ const styles = StyleSheet.create({
     minHeight: floraProfile.avatarSize,
     marginBottom: floraSpacing.gridFine,
   },
-  avatarWrap: {
+  avatarShell: {
     position: "absolute",
     left: AVATAR_NUDGE_X,
     top: -4,
+    width: PROFILE_AVATAR_SHELL,
+    height: PROFILE_AVATAR_SHELL,
+  },
+  avatarWrap: {
+    width: "100%",
+    height: "100%",
     borderWidth: 4,
     borderColor: floraColors.bg,
     borderRadius: floraProfile.avatarSize / 2 + 4,

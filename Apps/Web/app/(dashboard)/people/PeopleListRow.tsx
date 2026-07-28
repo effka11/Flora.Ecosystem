@@ -47,7 +47,6 @@ export function PeopleListRow({
           />
           <span
             className={`${styles.onlineBadge}${overlay.isOnline ? ` ${styles.onlineBadgeVisible}` : ""}`}
-            title={overlay.isOnline ? "В сети" : undefined}
             aria-hidden
           />
         </span>

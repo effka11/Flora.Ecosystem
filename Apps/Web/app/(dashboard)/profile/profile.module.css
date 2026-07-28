@@ -10,6 +10,17 @@
   --profile-avatar-size: calc(
     var(--profile-avatar-d) - var(--profile-avatar-trim-right) + var(--flora-grid-step)
   );
+  /* Меньше Messages (15), центр на SE-крае аватара: inset = R(1−√2/2) − d/2 */
+  --profile-online-badge-base: 10px;
+  --profile-online-badge-d: calc(
+    var(--profile-online-badge-base) * var(--profile-avatar-size) / var(--g45)
+  );
+  --profile-online-badge-border: calc(
+    3.5px * var(--profile-online-badge-base) / 15px * var(--profile-avatar-size) / var(--g45)
+  );
+  --profile-online-badge-inset: calc(
+    var(--profile-avatar-size) * 0.1464466094 - var(--profile-online-badge-d) / 2 + 1px
+  );
   /* .profileCard padding-top 10 − .profileInfo margin-top 3 → верх .profileInfo на строке 7 */
   --profile-info-anchor-row: 7;
   --profile-name-row-line: 14;
@@ -115,7 +126,8 @@
   min-height: var(--profile-avatar-size);
 }
 
-.profileAvatar {
+.profileAvatarWrap {
+  position: relative;
   flex-shrink: 0;
   width: var(--profile-avatar-size);
   height: var(--profile-avatar-size);
@@ -123,12 +135,52 @@
   min-height: var(--profile-avatar-size);
   margin-left: calc((39 - 38) * var(--flora-grid-step) - 8px);
   margin-top: -4px;
+}
+
+.profileAvatar {
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
   border-radius: 50%;
   border: 4px solid var(--flora-bg);
   box-sizing: border-box;
   overflow: hidden;
   display: grid;
   place-items: center;
+}
+
+/* Центр бейджа на SE-крае аватара (45°); размер — base/45 от диаметра. */
+.profileOnlineBadge {
+  position: absolute;
+  right: var(--profile-online-badge-inset);
+  bottom: var(--profile-online-badge-inset);
+  width: var(--profile-online-badge-d);
+  height: var(--profile-online-badge-d);
+  min-width: var(--profile-online-badge-d);
+  min-height: var(--profile-online-badge-d);
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: var(--flora-green-light);
+  border: var(--profile-online-badge-border) solid var(--flora-bg);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.55);
+  transition:
+    opacity var(--flora-duration-2) var(--flora-ease-out),
+    transform var(--flora-duration-2) var(--flora-ease-out);
+}
+
+.profileOnlineBadgeVisible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profileOnlineBadge {
+    transition: none;
+  }
 }
 
 /* Статус: как в 2142-1 app.css — top:60px, padding-left:280px чтобы текст уходил вправо */

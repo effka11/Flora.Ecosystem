@@ -33,6 +33,8 @@ export type PublicProfileDto = {
   followingCount: number;
   isFollowingByMe: boolean;
   canMessageByMe: boolean;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 };
 
 export function parsePublicProfile(raw: unknown, ctx?: ParseContext): PublicProfileDto | null {
@@ -42,6 +44,7 @@ export function parsePublicProfile(raw: unknown, ctx?: ParseContext): PublicProf
   const userUuid = readStr(o, ["userUuid", "UserUuid"], fb);
   const username = readStr(o, ["username", "Username"], fb).replace(/^@+/, "");
   if (!userUuid || !username) return null;
+  const lastSeenAt = readStr(o, ["lastSeenAt", "LastSeenAt"], fb) || null;
   return {
     userUuid,
     username,
@@ -52,6 +55,8 @@ export function parsePublicProfile(raw: unknown, ctx?: ParseContext): PublicProf
     followingCount: readNum(o, ["followingCount", "FollowingCount"], fb) ?? 0,
     isFollowingByMe: readBool(o, ["isFollowingByMe", "IsFollowingByMe"], fb),
     canMessageByMe: readBool(o, ["canMessageByMe", "CanMessageByMe"], fb),
+    isOnline: readBool(o, ["isOnline", "IsOnline"], fb),
+    lastSeenAt,
   };
 }
 

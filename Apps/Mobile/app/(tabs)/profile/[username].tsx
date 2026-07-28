@@ -1,6 +1,7 @@
 import { apiFollowUser, apiGetProfile, apiGetProfilePosts, apiUnfollowUser } from "@flora/client-core/api";
 import type { FeedPostDto } from "@flora/client-core/contracts";
 import { profilePostToFeedPost } from "@flora/client-core/contracts";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, Redirect } from "expo-router";
@@ -103,6 +104,37 @@ export default function UserProfileScreen() {
     void postsQuery.refetch();
   }, [postsQuery, profileQuery]);
 
+  const [presenceTick, setPresenceTick] = useState(0);
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+  useEffect(() => {
+    return sharedPresenceStore.subscribe(() => {
+      setPresenceTick((n) => n + 1);
+      setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+    });
+  }, []);
+
+  useEffect(() => {
+    const uuid = profile?.userUuid;
+    if (!uuid || !sharedPresenceStore.surfacesAccepted) {
+      sharedPresenceStore.unregisterSurface("public-profile");
+      return undefined;
+    }
+    sharedPresenceStore.registerSurface("public-profile", [uuid]);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("public-profile");
+  }, [profile?.userUuid, presenceEpoch]);
+
+  const isOnline = useMemo(() => {
+    void presenceTick;
+    const uuid = profile?.userUuid;
+    if (!uuid) return false;
+    return sharedPresenceStore.overlayOnline(
+      uuid,
+      profile?.isOnline ?? false,
+      profile?.lastSeenAt,
+    ).isOnline;
+  }, [profile, presenceTick]);
+
   const header = useMemo(
     () => (
       <ProfileCardHeader
@@ -114,6 +146,7 @@ export default function UserProfileScreen() {
         followersCount={profile?.followersCount ?? 0}
         followingCount={profile?.followingCount ?? 0}
         statusLoading={profileQuery.isLoading}
+        isOnline={isOnline}
         actionVariant={canShowOtherActions ? "other" : undefined}
         onWritePress={
           canShowOtherActions && profile?.canMessageByMe
@@ -135,6 +168,7 @@ export default function UserProfileScreen() {
       canShowOtherActions,
       followBusy,
       handleToggleFollow,
+      isOnline,
       me,
       profile,
       profileQuery.isLoading,

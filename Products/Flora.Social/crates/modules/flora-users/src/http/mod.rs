@@ -170,9 +170,7 @@ async fn get_profile_by_username(
 
     let mut is_online = false;
     let mut last_seen_at: Option<String> = None;
-    if let Some(Extension(viewer)) = viewer.as_ref()
-        && viewer.user_uuid != account.user_uuid
-    {
+    if let Some(Extension(viewer)) = viewer.as_ref() {
         match presence_fields_for(&state, Some(viewer.user_uuid), &[account.user_uuid]).await {
             Ok(map) => {
                 if let Some((online, seen)) = map.get(&account.user_uuid) {

@@ -283,13 +283,19 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
         <div className={styles.profileCover} />
         <div className={styles.profileInfo}>
           <div className={styles.profileInfoTop}>
-            <div className={styles.profileAvatar}>
-              <FloraAvatar
-                size={FLORA_PROFILE_AVATAR_INNER_PX}
-                avatarUuid={publicProfile?.avatarUuid}
-                displayName={publicProfile?.displayName ?? name}
-                username={publicProfile?.username ?? ""}
-                seed={publicProfile?.userUuid}
+            <div className={styles.profileAvatarWrap}>
+              <div className={styles.profileAvatar}>
+                <FloraAvatar
+                  size={FLORA_PROFILE_AVATAR_INNER_PX}
+                  avatarUuid={publicProfile?.avatarUuid}
+                  displayName={publicProfile?.displayName ?? name}
+                  username={publicProfile?.username ?? ""}
+                  seed={publicProfile?.userUuid}
+                />
+              </div>
+              <span
+                className={`${styles.profileOnlineBadge}${profilePresence.isOnline ? ` ${styles.profileOnlineBadgeVisible}` : ""}`}
+                aria-hidden
               />
             </div>
             <ProfileCardStatus status={publicProfile?.status} loading={loading} />
@@ -297,15 +303,6 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
           <div className={styles.profileNameRow}>
             <h2 className={styles.profileName}>{name}</h2>
             <p className={styles.profileHandle}>{handle}</p>
-            {publicProfile && !loading ? (
-              <p className={styles.profileHandle} aria-live="polite">
-                {profilePresence.isOnline
-                  ? "В сети"
-                  : profilePresence.lastSeenAt
-                    ? "Не в сети"
-                    : null}
-              </p>
-            ) : null}
           </div>
           <div className={styles.profileStats}>
             <button

@@ -8,6 +8,7 @@ import {
   apiUnfollowUser,
 } from "@flora/client-core/api";
 import type { PeopleUserDto } from "@flora/client-core/contracts";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -26,6 +27,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -43,6 +45,8 @@ const FRIENDS_FILTER_OPTIONS: readonly { id: FriendsFilter; label: string }[] = 
 ];
 
 const AVATAR_SIZE = floraSpacing.grid * 3;
+/** Match Web People `.onlineBadge` (10px on 45px avatar). */
+const PEOPLE_ONLINE_DOT_AT_REF = 10;
 
 function emptyMessage(mainTab: PeopleMainTab, friendsFilter: FriendsFilter, hasSearch: boolean): string {
   if (hasSearch) return "Ничего не найдено. Измените запрос в поиске.";
@@ -68,6 +72,13 @@ type PeopleRowProps = {
 
 function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: PeopleRowProps) {
   const profileHref = profileScreenHref(user.username, meUsername);
+  const [presenceTick, setPresenceTick] = useState(0);
+  useEffect(() => sharedPresenceStore.subscribe(() => setPresenceTick((n) => n + 1)), []);
+  void presenceTick;
+  const overlay = user.userUuid
+    ? sharedPresenceStore.overlayOnline(user.userUuid, user.isOnline ?? false, user.lastSeenAt)
+    : { isOnline: user.isOnline ?? false, lastSeenAt: user.lastSeenAt ?? null };
+
   return (
     <View style={styles.shell}>
       <Pressable
@@ -76,13 +87,25 @@ function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: 
         style={({ pressed }) => [styles.rowMain, pressed && styles.rowMainPressed]}
         onPress={() => router.push(profileHref)}
       >
-        <FloraAvatar
-          size={AVATAR_SIZE}
-          avatarUuid={user.avatarUuid}
-          displayName={user.displayName}
-          username={user.username}
-          seed={user.userUuid ?? user.username}
-        />
+        <View style={styles.avatarWrap}>
+          <FloraAvatar
+            size={AVATAR_SIZE}
+            avatarUuid={user.avatarUuid}
+            displayName={user.displayName}
+            username={user.username}
+            seed={user.userUuid ?? user.username}
+          />
+          {user.userUuid ? (
+            <OnlineStatusDot
+              key={user.userUuid}
+              identityKey={user.userUuid}
+              online={overlay.isOnline}
+              avatarDiameter={AVATAR_SIZE}
+              sizeAtRef={PEOPLE_ONLINE_DOT_AT_REF}
+              style={styles.peopleOnlineInset}
+            />
+          ) : null}
+        </View>
         <View style={styles.rowBody}>
           <View style={styles.nameLine}>
             <Text style={styles.displayName} numberOfLines={1}>
@@ -234,6 +257,24 @@ export default function PeopleScreen() {
   }, [followersQuery.data, followingQuery.data, friendsFilter, mutualFriends]);
 
   const visibleUsers = hasSearch ? searchQuery.data ?? [] : mainTab === "friends" ? friendsUsers : recommendedQuery.data ?? [];
+
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+  useEffect(() => {
+    return sharedPresenceStore.subscribe(() => {
+      setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+    });
+  }, []);
+
+  useEffect(() => {
+    const uuids = visibleUsers.map((u) => u.userUuid).filter((u): u is string => !!u);
+    if (!sharedPresenceStore.surfacesAccepted) {
+      sharedPresenceStore.unregisterSurface("people");
+      return undefined;
+    }
+    sharedPresenceStore.registerSurface("people", uuids);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("people");
+  }, [visibleUsers, presenceEpoch]);
 
   const friendsListLoading =
     friendsFilter === "followers"
@@ -561,6 +602,17 @@ const styles = StyleSheet.create({
   },
   rowMainPressed: {
     backgroundColor: "rgba(250, 250, 250, 0.04)",
+  },
+  avatarWrap: {
+    position: "relative",
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    flexShrink: 0,
+  },
+  /** Match Web People `.onlineBadge` inset (−1), not SE-edge formula. */
+  peopleOnlineInset: {
+    right: -1,
+    bottom: -1,
   },
   rowBody: {
     flex: 1,

@@ -13,6 +13,7 @@ import {
   resolvePublicApiRoot,
 } from "@/lib/auth";
 import { dmConversationUuid } from "@/lib/fscp/deriveIds";
+import { apiPresenceHeartbeat } from "@flora/client-core/presence";
 
 // ── HTTP helpers (mirrors socialApi.ts pattern) ───────────────────────────────
 
@@ -405,6 +406,7 @@ export async function msgMarkRead(
       `/api/messaging/conversations/${encodeURIComponent(conversationUuid)}/read${q}`
     )
   );
+  void apiPresenceHeartbeat().catch(() => {});
 }
 
 /**

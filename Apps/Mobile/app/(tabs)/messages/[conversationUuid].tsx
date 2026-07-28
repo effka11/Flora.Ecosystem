@@ -17,7 +17,7 @@ import {
   type NotificationPreviewKind,
 } from "@flora/client-core/fscp";
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
-import { apiPostTyping, PRESENCE_TYPING_DEBOUNCE_MS } from "@flora/client-core/presence";
+import { apiPostTyping, apiPresenceHeartbeat, PRESENCE_TYPING_DEBOUNCE_MS } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
@@ -917,6 +917,7 @@ export default function ThreadScreen() {
       typingTimerRef.current = setTimeout(() => {
         typingTimerRef.current = null;
         void apiPostTyping(conversationUuid, true, otherUserUuid).catch(() => {});
+        void apiPresenceHeartbeat().catch(() => {});
       }, PRESENCE_TYPING_DEBOUNCE_MS);
     },
     [conversationUuid, otherUserUuid],

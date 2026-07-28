@@ -185,7 +185,7 @@ impl PresenceService {
     ) -> Result<(), String> {
         let mut set = HashSet::new();
         for u in user_uuids {
-            if *u != watcher && !u.is_nil() {
+            if !u.is_nil() {
                 set.insert(*u);
             }
         }
@@ -204,7 +204,7 @@ impl PresenceService {
         let mut subjects: Vec<Uuid> = subject_uuids
             .iter()
             .copied()
-            .filter(|u| *u != viewer && !u.is_nil())
+            .filter(|u| !u.is_nil())
             .collect();
         subjects.sort_unstable();
         subjects.dedup();
