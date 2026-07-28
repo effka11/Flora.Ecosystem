@@ -10,6 +10,11 @@ import { floraColors } from "@/lib/theme";
 
 const FADE_MS = 220;
 
+/** Parity with Web `.messagesChatHeaderOnlineBadge` (15×15, inset −1, border 3.5). */
+export const ONLINE_STATUS_DOT_SIZE = 15;
+export const ONLINE_STATUS_DOT_BORDER = 3.5;
+export const ONLINE_STATUS_DOT_INSET = -1;
+
 type Props = {
   online: boolean;
   /**
@@ -17,7 +22,7 @@ type Props = {
    * animated values snap to the new `online` without cross-fading the previous peer.
    */
   identityKey?: string;
-  /** Override size/position; defaults match chat list (10×10). */
+  /** Optional extra style; size/position defaults match Web messages badge. */
   style?: StyleProp<ViewStyle>;
 };
 
@@ -48,11 +53,15 @@ export function OnlineStatusDot({ online, identityKey, style }: Props) {
     identityRef.current = identityKey;
 
     if (identityChanged || reduceMotionRef.current) {
+      opacity.stopAnimation();
+      scale.stopAnimation();
       opacity.setValue(online ? 1 : 0);
       scale.setValue(online ? 1 : 0.55);
       return;
     }
 
+    opacity.stopAnimation();
+    scale.stopAnimation();
     Animated.parallel([
       Animated.timing(opacity, {
         toValue: online ? 1 : 0,
@@ -80,13 +89,13 @@ export function OnlineStatusDot({ online, identityKey, style }: Props) {
 const styles = StyleSheet.create({
   dot: {
     position: "absolute",
-    right: 0,
-    bottom: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    right: ONLINE_STATUS_DOT_INSET,
+    bottom: ONLINE_STATUS_DOT_INSET,
+    width: ONLINE_STATUS_DOT_SIZE,
+    height: ONLINE_STATUS_DOT_SIZE,
+    borderRadius: ONLINE_STATUS_DOT_SIZE / 2,
     backgroundColor: floraColors.greenLight,
-    borderWidth: 2,
+    borderWidth: ONLINE_STATUS_DOT_BORDER,
     borderColor: floraColors.bg,
   },
 });

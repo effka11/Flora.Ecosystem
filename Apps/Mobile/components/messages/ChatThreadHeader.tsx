@@ -122,7 +122,6 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
           key={peer.otherUserUuid}
           identityKey={peer.otherUserUuid}
           online={overlay.isOnline}
-          style={styles.onlineBadge}
         />
       </View>
 
@@ -184,17 +183,6 @@ const styles = StyleSheet.create({
     width: floraMessages.headerAvatarSize,
     height: floraMessages.headerAvatarSize,
     flexShrink: 0,
-  },
-  onlineBadge: {
-    position: "absolute",
-    right: -1,
-    bottom: -1,
-    width: 15,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: floraColors.greenLight,
-    borderWidth: 3,
-    borderColor: floraColors.bg,
   },
   info: {
     flex: 1,
