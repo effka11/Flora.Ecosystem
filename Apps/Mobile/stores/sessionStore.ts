@@ -5,6 +5,7 @@ import {
 } from "@flora/client-core/api";
 import { apiLogout } from "@flora/client-core/auth";
 import type { MeResponse } from "@flora/client-core/contracts";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import { create } from "zustand";
 import { clearSecurePushMaterial } from "flora-secure-push";
 import { mobileFscpKeyStorage } from "@/lib/fscp/storage";
@@ -116,6 +117,7 @@ mobileSessionController.subscribe((next) => {
     useFscpStore.getState().clearRuntimeState();
     getQueryClientRef()?.clear();
     messagePreviewCache.clear();
+    sharedPresenceStore.clear();
   }
 });
 

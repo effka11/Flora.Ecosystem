@@ -1727,6 +1727,8 @@ export type PublicProfileDto = {
   followersCount: number;
   followingCount: number;
   isFollowingByMe: boolean;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 };
 
 export async function apiGetPublicProfile(username: string): Promise<PublicProfileDto> {
@@ -1753,6 +1755,8 @@ export async function apiGetPublicProfile(username: string): Promise<PublicProfi
     followersCount: readNum(o, ["followersCount", "FollowersCount"]),
     followingCount: readNum(o, ["followingCount", "FollowingCount"]),
     isFollowingByMe: getAccessToken() ? readBool(o, ["isFollowingByMe", "IsFollowingByMe"]) : false,
+    isOnline: readBool(o, ["isOnline", "IsOnline"]),
+    lastSeenAt: readStr(o, ["lastSeenAt", "LastSeenAt"]) || null,
   };
 }
 
@@ -2009,6 +2013,9 @@ export type PeopleSearchUserDto = {
   isFollowing: boolean;
   followerCount?: number;
   avatarUuid?: string | null;
+  userUuid?: string | null;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 };
 
 export type RecommendedUserDto = PeopleSearchUserDto & {
@@ -2029,6 +2036,8 @@ function parseRecommendedUser(raw: unknown): RecommendedUserDto | null {
     isFollowing: readBool(o, ["isFollowing", "IsFollowing"]),
     avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
     userUuid: readStr(o, ["userUuid", "UserUuid"]) || null,
+    isOnline: readBool(o, ["isOnline", "IsOnline"]),
+    lastSeenAt: readStr(o, ["lastSeenAt", "LastSeenAt"]) || null,
   };
 }
 
@@ -2037,6 +2046,9 @@ export type PeopleListEntryDto = {
   displayName: string;
   followerCount?: number;
   avatarUuid?: string | null;
+  userUuid?: string | null;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 };
 
 function parsePeopleListEntry(raw: unknown): PeopleListEntryDto | null {
@@ -2051,6 +2063,9 @@ function parsePeopleListEntry(raw: unknown): PeopleListEntryDto | null {
     displayName,
     followerCount,
     avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
+    userUuid: readStr(o, ["userUuid", "UserUuid"]) || null,
+    isOnline: readBool(o, ["isOnline", "IsOnline"]),
+    lastSeenAt: readStr(o, ["lastSeenAt", "LastSeenAt"]) || null,
   };
 }
 
@@ -2084,6 +2099,9 @@ export async function apiSearchUsers(q: string, skip = 0, take = 20): Promise<Pe
       followerCount: readNum(o, ["followerCount", "FollowerCount", "followersCount", "FollowersCount"]),
       isFollowing: readBool(o, ["isFollowing", "IsFollowing"]),
       avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
+      userUuid: readStr(o, ["userUuid", "UserUuid"]) || null,
+      isOnline: readBool(o, ["isOnline", "IsOnline"]),
+      lastSeenAt: readStr(o, ["lastSeenAt", "LastSeenAt"]) || null,
     });
   }
   return out;

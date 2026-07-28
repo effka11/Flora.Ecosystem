@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { FeedPostList, type FeedPostListItem } from "@/app/_shared/FeedPostList";
 import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
@@ -110,6 +111,41 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
     () => isSameProfileSlug(me?.username, usernameSlug),
     [me?.username, usernameSlug],
   );
+
+  const [presenceTick, setPresenceTick] = useState(0);
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+  useEffect(() => {
+    return sharedPresenceStore.subscribe(() => {
+      setPresenceTick((n) => n + 1);
+      setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+    });
+  }, []);
+
+  useEffect(() => {
+    const uuid = publicProfile?.userUuid;
+    if (!uuid || !sharedPresenceStore.surfacesAccepted) {
+      sharedPresenceStore.unregisterSurface("public-profile");
+      return undefined;
+    }
+    sharedPresenceStore.registerSurface("public-profile", [uuid]);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("public-profile");
+  }, [publicProfile?.userUuid, presenceEpoch]);
+
+  const profilePresence = useMemo(() => {
+    void presenceTick;
+    if (!publicProfile?.userUuid) {
+      return {
+        isOnline: publicProfile?.isOnline ?? false,
+        lastSeenAt: publicProfile?.lastSeenAt ?? null,
+      };
+    }
+    return sharedPresenceStore.overlayOnline(
+      publicProfile.userUuid,
+      publicProfile.isOnline ?? false,
+      publicProfile.lastSeenAt,
+    );
+  }, [publicProfile, presenceTick]);
 
   useEffect(() => {
     if (isOwnSlug) {
@@ -261,6 +297,15 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
           <div className={styles.profileNameRow}>
             <h2 className={styles.profileName}>{name}</h2>
             <p className={styles.profileHandle}>{handle}</p>
+            {publicProfile && !loading ? (
+              <p className={styles.profileHandle} aria-live="polite">
+                {profilePresence.isOnline
+                  ? "В сети"
+                  : profilePresence.lastSeenAt
+                    ? "Не в сети"
+                    : null}
+              </p>
+            ) : null}
           </div>
           <div className={styles.profileStats}>
             <button

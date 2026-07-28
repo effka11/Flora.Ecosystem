@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import { profilePathFromUsername } from "@/app/_dashboard/userDisplay";
 import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { PeopleRowActions, type PeopleRowUser } from "./PeopleRowActions";
@@ -22,18 +24,29 @@ export function PeopleListRow({
   onToggleSubscribe,
   onDismiss,
 }: PeopleListRowProps) {
+  const [presenceTick, setPresenceTick] = useState(0);
+  useEffect(() => sharedPresenceStore.subscribe(() => setPresenceTick((n) => n + 1)), []);
+
+  const overlay = user.userUuid
+    ? sharedPresenceStore.overlayOnline(user.userUuid, user.isOnline ?? false, user.lastSeenAt)
+    : { isOnline: user.isOnline ?? false, lastSeenAt: user.lastSeenAt ?? null };
+  void presenceTick;
+
   return (
     <li className={styles.item}>
       <Link href={profilePathFromUsername(user.username)} className={styles.userMain}>
-        <FloraAvatar
-          plain
-          size={45}
-          avatarUuid={user.avatarUuid}
-          displayName={user.displayName}
-          username={user.username}
-          seed={user.id}
-          className={styles.avatar}
-        />
+        <span className={styles.avatarWrap}>
+          <FloraAvatar
+            plain
+            size={45}
+            avatarUuid={user.avatarUuid}
+            displayName={user.displayName}
+            username={user.username}
+            seed={user.id}
+            className={styles.avatar}
+          />
+          {overlay.isOnline ? <span className={styles.onlineBadge} title="В сети" aria-hidden /> : null}
+        </span>
         <div className={styles.userBody}>
           <span className={styles.userPrimaryLine}>
             <span className={styles.displayName}>{user.displayName}</span>

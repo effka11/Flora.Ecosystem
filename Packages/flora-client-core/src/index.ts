@@ -6,3 +6,4 @@ export * from "./frc-i/index.js";
 export * from "./storage/index.js";
 export * from "./telemetry/index.js";
 export * from "./signals/index.js";
+export * from "./presence/index.js";

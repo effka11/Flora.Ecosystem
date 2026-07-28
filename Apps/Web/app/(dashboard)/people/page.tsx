@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import {
   applyCountDelta,
@@ -38,6 +39,8 @@ type Person = {
   avatarUuid?: string | null;
   /** §User Controls (FIRA-P): для «не интересно» (есть только у рекомендаций). */
   userUuid?: string | null;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 };
 
 type PeopleTab = 0 | 1 | 2;
@@ -70,6 +73,8 @@ function toPerson(row: {
   followerCount?: number;
   avatarUuid?: string | null;
   userUuid?: string | null;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 }): Person {
   const username = row.username.startsWith("@") ? row.username : `@${row.username}`;
   const id = row.username.replace(/^@+/, "");
@@ -80,6 +85,8 @@ function toPerson(row: {
     followers: row.followerCount ?? 0,
     avatarUuid: row.avatarUuid ?? null,
     userUuid: row.userUuid ?? null,
+    isOnline: row.isOnline ?? false,
+    lastSeenAt: row.lastSeenAt ?? null,
   };
 }
 
@@ -131,6 +138,13 @@ export default function PeoplePage() {
   const [panelAnimEpoch, setPanelAnimEpoch] = useState(0);
   const panelTransitionClearRef = useRef<number | null>(null);
   const [actionAnimEpochByUser, setActionAnimEpochByUser] = useState<Record<string, number>>({});
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+
+  useEffect(() => {
+    return sharedPresenceStore.subscribe(() => {
+      setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+    });
+  }, []);
 
   const hasSearch = searchValue.trim().length >= 1;
 
@@ -481,6 +495,16 @@ export default function PeoplePage() {
     const base = hasSearch ? searchPeople : tabCache[activeTab] ?? [];
     return base.map((user) => personForDisplay(user, followerDeltas));
   }, [activeTab, followerDeltas, hasSearch, searchPeople, tabCache]);
+
+  useEffect(() => {
+    const uuids = visibleUsers.map((u) => u.userUuid).filter((u): u is string => !!u);
+    if (!sharedPresenceStore.surfacesAccepted) {
+      return () => sharedPresenceStore.unregisterSurface("people");
+    }
+    sharedPresenceStore.registerSurface("people", uuids);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("people");
+  }, [visibleUsers, presenceEpoch]);
 
   useEffect(() => {
     if (hasSearch) {

@@ -89,6 +89,13 @@ import {
   devDemoDeleteConversation,
 } from "@/lib/devLocalDemoData";
 import { formatWasOnlineRu } from "@/lib/lastSeenRu";
+import { TYPING_CHANGED_EVENT, type TypingChangedDetail } from "@/lib/realtimeEvents";
+import {
+  apiPostTyping,
+  apiPresenceHeartbeat,
+  PRESENCE_TYPING_DEBOUNCE_MS,
+  sharedPresenceStore,
+} from "@flora/client-core/presence";
 import { ImageMessageCard } from "./ImageMessageCard";
 import { MessageImageCollage } from "./MessageImageCollage";
 import { MessageBubbleAnchor } from "./MessageBubbleMoreMenu";
@@ -1190,9 +1197,35 @@ function MessagesChatInner() {
     }
   }, [threadMessages, me?.userUuid, fscpMaterial, threadFetchedForViewerNorm]);
 
+  const [presenceTick, setPresenceTick] = useState(0);
+  const [peerTyping, setPeerTyping] = useState(false);
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+
+  useEffect(() => {
+    return sharedPresenceStore.subscribe(() => {
+      setPresenceTick((n) => n + 1);
+      setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+    });
+  }, []);
+
+  const conversationsWithPresence = useMemo(() => {
+    return conversations.map((c) => {
+      const overlay = sharedPresenceStore.overlayOnline(
+        c.otherUserUuid,
+        c.otherUserIsOnline,
+        c.otherUserLastSeenAt,
+      );
+      return {
+        ...c,
+        otherUserIsOnline: overlay.isOnline,
+        otherUserLastSeenAt: overlay.lastSeenAt,
+      };
+    });
+  }, [conversations, presenceTick]);
+
   const filteredConversations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    let list = [...conversations];
+    let list = [...conversationsWithPresence];
 
     if (chatListScope === "all") {
       list = list.filter((item) => !isPeerArchived(item.otherUserUuid));
@@ -1222,7 +1255,7 @@ function MessagesChatInner() {
     });
   }, [
     chatListScope,
-    conversations,
+    conversationsWithPresence,
     filterFrom,
     isPeerArchived,
     listPreviewDecryptFailByPeer,
@@ -1241,26 +1274,100 @@ function MessagesChatInner() {
     [conversations, isPeerArchived],
   );
 
+  const selectedConversationUuid = useMemo(() => {
+    const viewer = me?.userUuid?.trim();
+    const peer = selectedOtherUuid?.trim();
+    if (!viewer || !peer) return null;
+    return dmConversationUuid(viewer, peer);
+  }, [me?.userUuid, selectedOtherUuid]);
+
   const chatHeaderPeer = useMemo((): ConversationListItemDto | null => {
     if (!selectedOtherUuid) return null;
-    const fromList = conversations.find((c) => c.otherUserUuid === selectedOtherUuid);
-    if (fromList) return fromList;
-    if (selectedPeer?.otherUserUuid === selectedOtherUuid) return selectedPeer;
+    const fromList = conversationsWithPresence.find((c) => c.otherUserUuid === selectedOtherUuid);
+    const base =
+      fromList ??
+      (selectedPeer?.otherUserUuid === selectedOtherUuid
+        ? selectedPeer
+        : {
+            otherUserUuid: selectedOtherUuid,
+            otherUsername: "",
+            otherDisplayName: "Пользователь",
+            lastMessageUuid: "",
+            lastMessageContent: null,
+            lastMessageEncryptedForMe: null,
+            lastMessageIsFromMe: false,
+            hasEncryptedPreview: false,
+            lastMessageAt: "",
+            unreadCount: 0,
+            otherUserIsOnline: false,
+            otherUserLastSeenAt: null,
+          });
+    const overlay = sharedPresenceStore.overlayOnline(
+      base.otherUserUuid,
+      base.otherUserIsOnline,
+      base.otherUserLastSeenAt,
+    );
     return {
-      otherUserUuid: selectedOtherUuid,
-      otherUsername: "",
-      otherDisplayName: "Пользователь",
-      lastMessageUuid: "",
-      lastMessageContent: null,
-      lastMessageEncryptedForMe: null,
-      lastMessageIsFromMe: false,
-      hasEncryptedPreview: false,
-      lastMessageAt: "",
-      unreadCount: 0,
-      otherUserIsOnline: false,
-      otherUserLastSeenAt: null,
+      ...base,
+      otherUserIsOnline: overlay.isOnline,
+      otherUserLastSeenAt: overlay.lastSeenAt,
     };
-  }, [conversations, selectedOtherUuid, selectedPeer]);
+  }, [conversationsWithPresence, selectedOtherUuid, selectedPeer, presenceTick]);
+
+  useEffect(() => {
+    const uuids = conversations.map((c) => c.otherUserUuid);
+    if (selectedOtherUuid) uuids.push(selectedOtherUuid);
+    if (!sharedPresenceStore.surfacesAccepted) {
+      return () => sharedPresenceStore.unregisterSurface("messages");
+    }
+    sharedPresenceStore.registerSurface("messages", uuids);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("messages");
+  }, [conversations, selectedOtherUuid, presenceEpoch]);
+
+  useEffect(() => {
+    if (!selectedConversationUuid || !selectedOtherUuid) {
+      setPeerTyping(false);
+      return undefined;
+    }
+    let clearTimer: number | null = null;
+    const onTyping = (ev: Event) => {
+      const detail = (ev as CustomEvent<TypingChangedDetail>).detail;
+      if (!detail || detail.conversationUuid !== selectedConversationUuid) return;
+      if (detail.userUuid !== selectedOtherUuid) return;
+      if (clearTimer != null) window.clearTimeout(clearTimer);
+      clearTimer = null;
+      setPeerTyping(detail.isTyping);
+      if (detail.isTyping) {
+        clearTimer = window.setTimeout(() => {
+          clearTimer = null;
+          setPeerTyping(false);
+        }, 3000);
+      }
+    };
+    window.addEventListener(TYPING_CHANGED_EVENT, onTyping);
+    return () => {
+      window.removeEventListener(TYPING_CHANGED_EVENT, onTyping);
+      if (clearTimer != null) window.clearTimeout(clearTimer);
+      setPeerTyping(false);
+      void apiPostTyping(selectedConversationUuid, false, selectedOtherUuid).catch(() => {});
+    };
+  }, [selectedConversationUuid, selectedOtherUuid]);
+
+  useEffect(() => {
+    if (!selectedConversationUuid || !selectedOtherUuid) return undefined;
+    if (compose.mode !== "text") return undefined;
+    const text = compose.text;
+    if (!text.trim()) {
+      void apiPostTyping(selectedConversationUuid, false, selectedOtherUuid).catch(() => {});
+      return undefined;
+    }
+    const t = window.setTimeout(() => {
+      void apiPostTyping(selectedConversationUuid, true, selectedOtherUuid).catch(() => {});
+      void apiPresenceHeartbeat().catch(() => {});
+    }, PRESENCE_TYPING_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [compose.text, compose.mode, selectedConversationUuid, selectedOtherUuid]);
 
   const messagesPageTitle = useMemo(() => {
     if (!chatHeaderPeer) return null;
@@ -1280,13 +1387,16 @@ function MessagesChatInner() {
 
   const chatHeaderPresenceLine = useMemo(() => {
     if (!chatHeaderPeer) return null;
+    if (peerTyping) {
+      return { text: "печатает…", aria: "Собеседник печатает" as const };
+    }
     if (chatHeaderPeer.otherUserIsOnline) {
       return { text: "В сети", aria: "В сети" as const };
     }
     const was = formatWasOnlineRu(chatHeaderPeer.otherUserLastSeenAt, new Date());
     if (was) return { text: was, aria: was };
     return { text: "Не в сети", aria: "Не в сети" as const };
-  }, [chatHeaderPeer, presenceClock]);
+  }, [chatHeaderPeer, presenceClock, peerTyping]);
 
   // const railChatsSource = useMemo(
   //   (): ConversationListItemDto[] => conversations.slice(0, 16),

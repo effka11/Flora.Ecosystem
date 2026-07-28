@@ -17,6 +17,7 @@ import {
   type NotificationPreviewKind,
 } from "@flora/client-core/fscp";
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
+import { apiPostTyping, PRESENCE_TYPING_DEBOUNCE_MS } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
@@ -894,6 +895,33 @@ export default function ThreadScreen() {
     voiceRecorder,
   ]);
 
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!conversationUuid || !otherUserUuid) return undefined;
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      void apiPostTyping(conversationUuid, false, otherUserUuid).catch(() => {});
+    };
+  }, [conversationUuid, otherUserUuid]);
+
+  const onComposeTextChange = useCallback(
+    (text: string) => {
+      if (!conversationUuid || !otherUserUuid) return;
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+      if (!text.trim()) {
+        void apiPostTyping(conversationUuid, false, otherUserUuid).catch(() => {});
+        return;
+      }
+      typingTimerRef.current = setTimeout(() => {
+        typingTimerRef.current = null;
+        void apiPostTyping(conversationUuid, true, otherUserUuid).catch(() => {});
+      }, PRESENCE_TYPING_DEBOUNCE_MS);
+    },
+    [conversationUuid, otherUserUuid],
+  );
+
   const onSend = async (draft: string) => {
     const trimmed = draft.trim();
     if (!conversationUuid || !me?.userUuid || !otherUserUuid) return;
@@ -902,6 +930,7 @@ export default function ThreadScreen() {
     const material = useFscpStore.getState().material;
     if (!material) return;
     const activeReply = replyTo;
+    void apiPostTyping(conversationUuid, false, otherUserUuid).catch(() => {});
     setSending(true);
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
@@ -1142,6 +1171,7 @@ export default function ThreadScreen() {
             onToggleEmoji={() =>
               toggleEmoji(() => composeRef.current?.showInputKeyboard())
             }
+            onTextChange={onComposeTextChange}
             images={composeImages}
             onRemoveImageAt={removeImageAt}
             onPickImages={() => void onPickImages()}

@@ -178,7 +178,7 @@ Rust-реализация обязана воспроизводить следу
 
 ### 4.6. Realtime (SSE)
 
-`GET /api/auth/signals/stream`: `text/event-stream`, кадр `event: {name}\ndata: {json}\n\n`, heartbeat `: ping\n\n` каждые **25 с**, события `message` и `notification` с payload'ами из `RealtimeContracts.cs` (см. [`UserRealtimeHub.cs`](Modules/Flora.Notifications/Flora.Notifications.Infrastructure/UserRealtimeHub.cs)). Хаб in-memory (per-user каналы) — переносится как есть, без брокера.
+`GET /api/auth/signals/stream`: `text/event-stream`, кадр `event: {name}\ndata: {json}\n\n`, heartbeat `: ping\n\n` каждые **25 с**, события `connected` (connectionId), `message`, `notification`, `presence`, `typing`. Хаб in-memory (per-user / per-connection каналы) — без брокера; presence watch scoped to SSE connection.
 
 ### 4.7. Заголовки и middleware
 

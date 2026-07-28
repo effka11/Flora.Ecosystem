@@ -1,6 +1,8 @@
 import type { MsgConversationDto } from "@flora/client-core/contracts";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useNavigation } from "expo-router";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
@@ -39,6 +41,14 @@ export function ConversationListRow({ item }: Props) {
   const displayName = item.otherDisplayName || item.otherUsername;
   const username = item.otherUsername.replace(/^@+/, "") || "…";
   const preview = formatConversationPreview(item, item.preview);
+  const [presenceTick, setPresenceTick] = useState(0);
+  useEffect(() => sharedPresenceStore.subscribe(() => setPresenceTick((n) => n + 1)), []);
+  void presenceTick;
+  const overlay = sharedPresenceStore.overlayOnline(
+    item.otherUserUuid,
+    item.otherUserIsOnline,
+    item.otherUserLastSeenAt,
+  );
 
   const openChat = () => {
     applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
@@ -50,8 +60,8 @@ export function ConversationListRow({ item }: Props) {
         otherDisplayName: item.otherDisplayName,
         otherUsername: item.otherUsername,
         otherAvatarUuid: item.otherAvatarUuid ?? "",
-        otherUserIsOnline: item.otherUserIsOnline ? "1" : "0",
-        otherUserLastSeenAt: item.otherUserLastSeenAt ?? "",
+        otherUserIsOnline: overlay.isOnline ? "1" : "0",
+        otherUserLastSeenAt: overlay.lastSeenAt ?? "",
       },
     });
   };
@@ -72,7 +82,7 @@ export function ConversationListRow({ item }: Props) {
             username={item.otherUsername}
             seed={item.otherUserUuid ?? item.otherUsername}
           />
-          {item.otherUserIsOnline ? <View style={styles.onlineBadge} /> : null}
+          {overlay.isOnline ? <View style={styles.onlineBadge} /> : null}
         </View>
 
         <View style={styles.body}>

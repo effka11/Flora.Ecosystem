@@ -14,15 +14,15 @@ pub mod infrastructure;
 use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
-use flora_messaging_contracts::{MessageSentNotifier, PushPreviewTargetProvider};
-use flora_notifications_contracts::UserNotificationDispatcher;
+use flora_messaging_contracts::{MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider};
+use flora_notifications_contracts::{PresenceRealtimePublisher, UserNotificationDispatcher};
 use flora_shared::config::FloraConfig;
 use flora_users_contracts::UserProfileQueries;
 use sqlx::PgPool;
 
 use crate::application::{
-    InboxNotificationDispatcher, InboxService, MessagePushNotifier, PushTokenService,
-    UserRealtimePublisher,
+    HubPresencePublisher, HubTypingNotifier, InboxNotificationDispatcher, InboxService,
+    MessagePushNotifier, PushTokenService, UserRealtimePublisher,
 };
 use crate::http::{
     AdminBroadcastRateLimiter, AdminBroadcastState, NotificationsState, admin_router,
@@ -42,9 +42,12 @@ pub struct NotificationsModule {
     pub admin_router: axum::Router,
     /// Реализация `IMessageSentNotifier` — SSE + FCM после DM.
     pub message_sent_notifier: Arc<dyn MessageSentNotifier>,
+    pub message_typing_notifier: Arc<dyn MessageTypingNotifier>,
     pub push_preview_targets: Arc<dyn PushPreviewTargetProvider>,
     /// Реализация `DispatchAsync` — inbox row + SSE `event: notification`.
     pub user_notification_dispatcher: Arc<dyn UserNotificationDispatcher>,
+    pub presence_publisher: Arc<dyn PresenceRealtimePublisher>,
+    pub hub: Arc<UserRealtimeHub>,
 }
 
 /// Пустой роутер (ServeNative=false / нет пула) — gateway-fallback на .NET.
@@ -89,6 +92,10 @@ pub fn compose(
     ));
     let message_sent_notifier: Arc<dyn MessageSentNotifier> =
         Arc::new(MessagePushNotifier::new(Arc::clone(&realtime)));
+    let message_typing_notifier: Arc<dyn MessageTypingNotifier> =
+        Arc::new(HubTypingNotifier::new(Arc::clone(&hub)));
+    let presence_publisher: Arc<dyn PresenceRealtimePublisher> =
+        Arc::new(HubPresencePublisher::new(Arc::clone(&hub)));
     let push_preview_targets: Arc<dyn PushPreviewTargetProvider> = push_tokens.clone();
     let user_notification_dispatcher: Arc<dyn UserNotificationDispatcher> =
         Arc::new(InboxNotificationDispatcher::new(inbox_repo, realtime));
@@ -120,7 +127,7 @@ pub fn compose(
         protected_router: protected_router(NotificationsState {
             inbox: Arc::clone(&inbox),
             push_tokens,
-            hub,
+            hub: Arc::clone(&hub),
         }),
         admin_router: admin_router(AdminBroadcastState {
             inbox,
@@ -128,7 +135,10 @@ pub fn compose(
             rate_limiter: Arc::new(AdminBroadcastRateLimiter::new()),
         }),
         message_sent_notifier,
+        message_typing_notifier,
         push_preview_targets,
         user_notification_dispatcher,
+        presence_publisher,
+        hub,
     }
 }

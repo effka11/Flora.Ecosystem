@@ -60,14 +60,24 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
     let (
         notifications_routes,
         message_sent_notifier,
+        message_typing_notifier,
         push_preview_targets,
         notification_dispatcher,
+        presence_publisher,
+        realtime_hub,
     ) = notifications_router(
         cfg,
         pool.clone(),
         account_directory.clone(),
         sessions.clone(),
     );
+
+    let presence_service = pool.as_ref().map(|p| {
+        flora_users::build_presence_service(p.clone(), Arc::clone(&presence_publisher))
+    });
+    if let (Some(hub), Some(presence)) = (realtime_hub.as_ref(), presence_service.as_ref()) {
+        hub.set_connection_hooks(presence.as_sse_hooks());
+    }
 
     let (content_routes, content_workers) = content_router(
         cfg,
@@ -81,6 +91,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         pool.clone(),
         account_directory.clone(),
         Arc::clone(&notification_dispatcher),
+        presence_service.clone(),
         sessions.clone(),
     );
     background.extend(users_workers);
@@ -89,7 +100,9 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         pool.clone(),
         account_directory,
         message_sent_notifier,
+        message_typing_notifier,
         push_preview_targets,
+        presence_service,
         sessions.clone(),
     );
     background.extend(messaging_workers);
@@ -170,6 +183,7 @@ fn users_router(
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     notifications: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
+    presence: Option<Arc<flora_users::PresenceService>>,
     sessions: Option<SessionValidator>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Users:ServeNative") != Some(true) {
@@ -184,11 +198,18 @@ fn users_router(
         return (flora_users::router(), Vec::new());
     };
     let communities = flora_content::community_follow_stats(pool.clone());
+    let presence = presence.unwrap_or_else(|| {
+        flora_users::build_presence_service(
+            pool.clone(),
+            Arc::new(flora_notifications_contracts::NoopPresenceRealtimePublisher),
+        )
+    });
     let mut module = flora_users::compose(
         pool,
         accounts,
         communities,
         notifications,
+        presence,
         cfg.get_bool("Media:FrcI:BackfillEnabled") == Some(true),
     );
     let workers = module.image_backfill.take().into_iter().collect();
@@ -224,8 +245,11 @@ fn music_router(
 type NotificationsRouterParts = (
     axum::Router,
     Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
+    Arc<dyn flora_messaging_contracts::MessageTypingNotifier>,
     Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
     Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
+    Arc<dyn flora_notifications_contracts::PresenceRealtimePublisher>,
+    Option<Arc<flora_notifications::infrastructure::UserRealtimeHub>>,
 );
 
 fn notifications_router(
@@ -236,16 +260,23 @@ fn notifications_router(
 ) -> NotificationsRouterParts {
     let noop_msg: Arc<dyn flora_messaging_contracts::MessageSentNotifier> =
         Arc::new(flora_messaging_contracts::NoopMessageSentNotifier);
+    let noop_typing: Arc<dyn flora_messaging_contracts::MessageTypingNotifier> =
+        Arc::new(flora_messaging_contracts::NoopMessageTypingNotifier);
     let noop_inbox: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher> =
         Arc::new(flora_notifications_contracts::NoopUserNotificationDispatcher);
     let noop_targets: Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider> =
         Arc::new(flora_messaging_contracts::NoopPushPreviewTargetProvider);
+    let noop_presence: Arc<dyn flora_notifications_contracts::PresenceRealtimePublisher> =
+        Arc::new(flora_notifications_contracts::NoopPresenceRealtimePublisher);
     if cfg.get_bool("Notifications:ServeNative") != Some(true) {
         return (
             flora_notifications::router(),
             noop_msg,
+            noop_typing,
             noop_targets,
             noop_inbox,
+            noop_presence,
+            None,
         );
     }
     let Some(pool) = pool else {
@@ -255,8 +286,11 @@ fn notifications_router(
         return (
             flora_notifications::router(),
             noop_msg,
+            noop_typing,
             noop_targets,
             noop_inbox,
+            noop_presence,
+            None,
         );
     };
     let Some(accounts) = accounts else {
@@ -266,8 +300,11 @@ fn notifications_router(
         return (
             flora_notifications::router(),
             noop_msg,
+            noop_typing,
             noop_targets,
             noop_inbox,
+            noop_presence,
+            None,
         );
     };
     let profiles = flora_users::profile_queries(pool.clone());
@@ -278,8 +315,11 @@ fn notifications_router(
     (
         router,
         module.message_sent_notifier,
+        module.message_typing_notifier,
         module.push_preview_targets,
         module.user_notification_dispatcher,
+        module.presence_publisher,
+        Some(module.hub),
     )
 }
 
@@ -288,7 +328,9 @@ fn messaging_router(
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     sent_notifier: Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
+    typing_notifier: Arc<dyn flora_messaging_contracts::MessageTypingNotifier>,
     preview_targets: Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
+    presence: Option<Arc<flora_users::PresenceService>>,
     sessions: Option<SessionValidator>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Messaging:ServeNative") != Some(true) {
@@ -304,7 +346,14 @@ fn messaging_router(
         eprintln!("flora-messaging: нет AccountDirectory — модуль офлайн");
         return (flora_messaging::router(), Vec::new());
     };
-    let (presence, profiles, online, messages_access) = flora_users::messaging_ports(pool.clone());
+    let presence = presence.unwrap_or_else(|| {
+        flora_users::build_presence_service(
+            pool.clone(),
+            Arc::new(flora_notifications_contracts::NoopPresenceRealtimePublisher),
+        )
+    });
+    let (presence_port, profiles, online, messages_access) =
+        flora_users::messaging_ports(pool.clone(), presence);
     // Секрет E2E proof-токенов: выделенный ключ или fallback на Jwt:Secret
     // (внутри модуля MAC-ключ доменно-разделяется HMAC'ом, cross-use с JWT исключён).
     let e2e_token_secret = cfg
@@ -315,10 +364,11 @@ fn messaging_router(
         pool,
         accounts,
         profiles,
-        presence,
+        presence_port,
         online,
         messages_access,
         sent_notifier,
+        typing_notifier,
         preview_targets,
         e2e_token_secret,
     );
