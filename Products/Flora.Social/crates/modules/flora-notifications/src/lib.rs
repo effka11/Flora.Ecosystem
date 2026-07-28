@@ -14,7 +14,9 @@ pub mod infrastructure;
 use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
-use flora_messaging_contracts::{MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider};
+use flora_messaging_contracts::{
+    MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider,
+};
 use flora_notifications_contracts::{PresenceRealtimePublisher, UserNotificationDispatcher};
 use flora_shared::config::FloraConfig;
 use flora_users_contracts::UserProfileQueries;

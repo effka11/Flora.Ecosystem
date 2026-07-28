@@ -46,10 +46,10 @@ impl MessageTypingNotifier for HubTypingNotifier {
                 let mut map = self.last_true.lock().expect("typing coalesce lock");
                 let now = Instant::now();
                 Self::prune_stale(&mut map, now);
-                if let Some(prev) = map.get(&key) {
-                    if now.duration_since(*prev) < TYPING_TRUE_COALESCE {
-                        return;
-                    }
+                if let Some(prev) = map.get(&key)
+                    && now.duration_since(*prev) < TYPING_TRUE_COALESCE
+                {
+                    return;
                 }
                 map.insert(key, now);
             } else {

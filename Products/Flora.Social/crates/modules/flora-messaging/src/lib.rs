@@ -11,7 +11,9 @@ pub mod infrastructure;
 use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
-use flora_messaging_contracts::{MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider};
+use flora_messaging_contracts::{
+    MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider,
+};
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
 use sqlx::PgPool;
 

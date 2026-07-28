@@ -92,10 +92,7 @@ pub fn protected_router(state: UsersState) -> Router {
             "/api/auth/users/by-username/{username}",
             get(get_user_by_username),
         )
-        .route(
-            "/api/auth/presence/heartbeat",
-            post(presence_heartbeat),
-        )
+        .route("/api/auth/presence/heartbeat", post(presence_heartbeat))
         .route("/api/auth/presence/watch", put(presence_watch))
         .route("/api/auth/presence", get(presence_batch))
         .with_state(state)
@@ -360,10 +357,7 @@ async fn get_follow_list(
         .map(|uid| {
             let username = user_by.get(&uid).cloned().unwrap_or_default();
             let (display_name, avatar_uuid) = profile_by.get(&uid).cloned().unwrap_or_default();
-            let (is_online, last_seen_at) = presence_by
-                .get(&uid)
-                .cloned()
-                .unwrap_or((false, None));
+            let (is_online, last_seen_at) = presence_by.get(&uid).cloned().unwrap_or((false, None));
             FollowListItem {
                 user_uuid: uid,
                 username,
@@ -475,10 +469,7 @@ async fn presence_fields_for(
     subjects: &[Uuid],
 ) -> Result<std::collections::HashMap<Uuid, (bool, Option<String>)>, String> {
     let Some(viewer) = viewer else {
-        return Ok(subjects
-            .iter()
-            .map(|id| (*id, (false, None)))
-            .collect());
+        return Ok(subjects.iter().map(|id| (*id, (false, None))).collect());
     };
     let snaps = state
         .presence_service
@@ -1040,10 +1031,7 @@ async fn search_users(
         .into_iter()
         .map(|(id, username)| {
             let (display_name, avatar_uuid) = profile_by.get(&id).cloned().unwrap_or((None, None));
-            let (is_online, last_seen_at) = presence_by
-                .get(&id)
-                .cloned()
-                .unwrap_or((false, None));
+            let (is_online, last_seen_at) = presence_by.get(&id).cloned().unwrap_or((false, None));
             UserSearchItem {
                 username: username.clone(),
                 display_name: display_name.filter(|s| !s.is_empty()).unwrap_or(username),

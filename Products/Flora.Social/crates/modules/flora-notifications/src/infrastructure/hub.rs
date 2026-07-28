@@ -54,7 +54,9 @@ impl UserRealtimeHub {
     pub fn new() -> Self {
         Self {
             connections: Mutex::new(HashMap::new()),
-            hooks: Mutex::new(Arc::new(flora_notifications_contracts::NoopSseConnectionHooks)),
+            hooks: Mutex::new(Arc::new(
+                flora_notifications_contracts::NoopSseConnectionHooks,
+            )),
         }
     }
 
@@ -67,7 +69,9 @@ impl UserRealtimeHub {
         let (tx, rx) = mpsc::unbounded_channel();
         {
             let mut map = self.connections.lock().expect("hub lock");
-            map.entry(user_uuid).or_default().insert(connection_id, tx.clone());
+            map.entry(user_uuid)
+                .or_default()
+                .insert(connection_id, tx.clone());
         }
         {
             let hooks = self.hooks.lock().expect("hub hooks lock").clone();

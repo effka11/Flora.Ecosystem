@@ -302,7 +302,12 @@ impl PresenceService {
         });
     }
 
-    async fn fan_out_transition(&self, subject: Uuid, is_online: bool, last_seen_at: DateTime<Utc>) {
+    async fn fan_out_transition(
+        &self,
+        subject: Uuid,
+        is_online: bool,
+        last_seen_at: DateTime<Utc>,
+    ) {
         let watchers = {
             let watch = self.watch.lock().expect("presence watch lock");
             watch.watchers_of(subject)
@@ -560,11 +565,10 @@ mod tests {
             connection_id: Uuid,
             signal: &RealtimePresenceSignal,
         ) {
-            self.calls.lock().unwrap().push((
-                recipient_user_uuid,
-                connection_id,
-                signal.is_online,
-            ));
+            self.calls
+                .lock()
+                .unwrap()
+                .push((recipient_user_uuid, connection_id, signal.is_online));
         }
     }
 

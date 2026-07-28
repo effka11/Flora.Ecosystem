@@ -72,9 +72,9 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         sessions.clone(),
     );
 
-    let presence_service = pool.as_ref().map(|p| {
-        flora_users::build_presence_service(p.clone(), Arc::clone(&presence_publisher))
-    });
+    let presence_service = pool
+        .as_ref()
+        .map(|p| flora_users::build_presence_service(p.clone(), Arc::clone(&presence_publisher)));
     if let (Some(hub), Some(presence)) = (realtime_hub.as_ref(), presence_service.as_ref()) {
         hub.set_connection_hooks(presence.as_sse_hooks());
     }
@@ -323,6 +323,7 @@ fn notifications_router(
     )
 }
 
+#[allow(clippy::too_many_arguments)] // composition glue: notifiers + presence + sessions
 fn messaging_router(
     cfg: &FloraConfig,
     pool: Option<PgPool>,

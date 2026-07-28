@@ -6,4 +6,4 @@ pub mod post_image_processor;
 pub mod presence;
 
 pub use fira_core::people;
-pub use presence::{PresenceService, PresenceSnapshot, MAX_WATCH_UUIDS};
+pub use presence::{MAX_WATCH_UUIDS, PresenceService, PresenceSnapshot};
