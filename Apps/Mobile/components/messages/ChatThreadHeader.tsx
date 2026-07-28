@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { formatWasOnlineRu } from "@/lib/lastSeenRu";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
@@ -117,7 +118,12 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
           seed={peer.otherUserUuid}
           href={username !== "…" ? profileScreenHref(username, me?.username) : undefined}
         />
-        {overlay.isOnline ? <View style={styles.onlineBadge} /> : null}
+        <OnlineStatusDot
+          key={peer.otherUserUuid}
+          identityKey={peer.otherUserUuid}
+          online={overlay.isOnline}
+          style={styles.onlineBadge}
+        />
       </View>
 
       <View style={styles.info}>

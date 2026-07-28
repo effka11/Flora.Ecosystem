@@ -45,7 +45,11 @@ export function PeopleListRow({
             seed={user.id}
             className={styles.avatar}
           />
-          {overlay.isOnline ? <span className={styles.onlineBadge} title="В сети" aria-hidden /> : null}
+          <span
+            className={`${styles.onlineBadge}${overlay.isOnline ? ` ${styles.onlineBadgeVisible}` : ""}`}
+            title={overlay.isOnline ? "В сети" : undefined}
+            aria-hidden
+          />
         </span>
         <div className={styles.userBody}>
           <span className={styles.userPrimaryLine}>

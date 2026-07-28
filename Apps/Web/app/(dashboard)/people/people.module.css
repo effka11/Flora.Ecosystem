@@ -343,6 +343,23 @@
   border-radius: 6px;
   background: var(--flora-green-light);
   border: 2px solid var(--flora-bg);
+  opacity: 0;
+  transform: scale(0.55);
+  pointer-events: none;
+  transition:
+    opacity var(--flora-duration-2) var(--flora-ease-out),
+    transform var(--flora-duration-2) var(--flora-ease-out);
+}
+
+.onlineBadgeVisible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onlineBadge {
+    transition: none;
+  }
 }
 
 .userBody {

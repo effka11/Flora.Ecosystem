@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 
@@ -82,7 +83,11 @@ export function ConversationListRow({ item }: Props) {
             username={item.otherUsername}
             seed={item.otherUserUuid ?? item.otherUsername}
           />
-          {overlay.isOnline ? <View style={styles.onlineBadge} /> : null}
+          <OnlineStatusDot
+            key={item.otherUserUuid}
+            identityKey={item.otherUserUuid}
+            online={overlay.isOnline}
+          />
         </View>
 
         <View style={styles.body}>
@@ -150,17 +155,6 @@ const styles = StyleSheet.create({
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     flexShrink: 0,
-  },
-  onlineBadge: {
-    position: "absolute",
-    right: 0,
-    bottom: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: floraColors.greenLight,
-    borderWidth: 2,
-    borderColor: floraColors.bg,
   },
   body: {
     flex: 1,

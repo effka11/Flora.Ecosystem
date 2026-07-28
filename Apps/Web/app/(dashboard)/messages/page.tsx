@@ -2613,9 +2613,11 @@ function MessagesChatInner() {
                         <div className={styles.messagesConversationAvatar}>
                           {avatarLetters(chatDisplayName)}
                         </div>
-                        {chat.otherUserIsOnline ? (
-                          <span className={styles.messagesChatHeaderOnlineBadge} title="В сети" aria-hidden />
-                        ) : null}
+                        <span
+                          className={`${styles.messagesChatHeaderOnlineBadge}${chat.otherUserIsOnline ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}` : ""}`}
+                          title={chat.otherUserIsOnline ? "В сети" : undefined}
+                          aria-hidden
+                        />
                       </div>
                       <div className={styles.messagesConversationBody}>
                         <div className={styles.messagesConversationTitleRow}>
@@ -2713,9 +2715,11 @@ function MessagesChatInner() {
                   <div className={styles.messagesChatHeaderAvatar}>
                     {avatarLetters(chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername)}
                   </div>
-                  {chatHeaderPeer.otherUserIsOnline ? (
-                    <span className={styles.messagesChatHeaderOnlineBadge} title="В сети" aria-hidden />
-                  ) : null}
+                  <span
+                    className={`${styles.messagesChatHeaderOnlineBadge}${chatHeaderPeer.otherUserIsOnline ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}` : ""}`}
+                    title={chatHeaderPeer.otherUserIsOnline ? "В сети" : undefined}
+                    aria-hidden
+                  />
                 </div>
                 <div className={styles.messagesChatHeaderInfo}>
                   <Link
@@ -3361,9 +3365,11 @@ function MessagesChatInner() {
                           <div className={styles.messagesChatRailAvatar} aria-hidden>
                             {avatarLetters(mini.otherDisplayName || mini.otherUsername)}
                           </div>
-                          {mini.otherUserIsOnline ? (
-                            <span className={styles.messagesChatRailOnlineBadge} title="В сети" aria-hidden />
-                          ) : null}
+                          <span
+                            className={`${styles.messagesChatRailOnlineBadge}${mini.otherUserIsOnline ? ` ${styles.messagesChatRailOnlineBadgeVisible}` : ""}`}
+                            title={mini.otherUserIsOnline ? "В сети" : undefined}
+                            aria-hidden
+                          />
                         </div>
                         <div className={styles.messagesChatRailBody}>
                           <span className={styles.messagesChatRailName}>
