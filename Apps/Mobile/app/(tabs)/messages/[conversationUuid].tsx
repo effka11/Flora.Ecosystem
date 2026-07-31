@@ -51,6 +51,7 @@ import {
 } from "@/lib/chatListInsertLift";
 import {
   buildThreadListItems,
+  shouldHoldTrailingPeerAvatar,
   forEachThreadListMessage,
   type ThreadListItem,
 } from "@/lib/threadMessageGroups";
@@ -719,6 +720,7 @@ export default function ThreadScreen() {
 
     const seen = seenMessageIdsRef.current;
     let incomingLiftPx = 0;
+    const newlyPeerUuids = new Set<string>();
     forEachThreadListMessage(listData, (row) => {
       if (seen.has(row.messageUuid)) return;
       seen.add(row.messageUuid);
@@ -728,13 +730,23 @@ export default function ThreadScreen() {
       );
       // Исходящие уже крутят insertLift в onSend; здесь — только peer delta.
       if (!row.isFromMe) {
+        newlyPeerUuids.add(row.messageUuid);
         markBirthPending(row.clientMessageKey ?? row.messageUuid);
         incomingLiftPx += estimateRowInsertLiftPx(row);
       }
     });
     if (incomingLiftPx > 0 && atBottomRef.current) {
-      // hold avatar: лента едет, аватар хвоста peer-группы остаётся в кадре.
-      playChatListInsertLift(insertLiftSv, incomingLiftPx, peerAvatarHoldSv);
+      // Hold только при append в уже видимую группу; новая группа — аватар
+      // едет вместе с сообщением (без контр-transform).
+      const trailing = listData[0];
+      const holdAvatar =
+        trailing?.kind === "peerGroup" &&
+        shouldHoldTrailingPeerAvatar(trailing.messages, newlyPeerUuids);
+      playChatListInsertLift(
+        insertLiftSv,
+        incomingLiftPx,
+        holdAvatar ? peerAvatarHoldSv : undefined,
+      );
     }
   }, [insertLiftSv, listData, listMessageCount, peerAvatarHoldSv, threadReady]);
 

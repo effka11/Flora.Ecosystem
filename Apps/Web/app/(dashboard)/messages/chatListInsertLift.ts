@@ -48,7 +48,9 @@ export function measureTrailingBubblesInsertLiftPx(
 export type ChatListInsertLiftOptions = {
   /**
    * Элементы внутри `innerEl`, которые должны остаться на месте в viewport
-   * (контр-transform −H→0), пока лента едет с +H→0. Для peer-аватара хвоста.
+   * (контр-transform −H→0), пока лента едет с +H→0.
+   * Для peer-аватара хвоста — только при append в уже видимую группу;
+   * при появлении аватара hold не передаём (едет вместе с сообщением).
    */
   holdViewportEls?: readonly HTMLElement[];
 };

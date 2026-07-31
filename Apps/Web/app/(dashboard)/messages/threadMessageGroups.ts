@@ -37,3 +37,16 @@ export function buildThreadRenderItems(
   }
   return items;
 }
+
+/**
+ * Hold аватара хвоста только если группа уже была на экране (есть visible,
+ * не из текущего insert-batch). Если все пузыри группы новые — аватар
+ * появляется вместе с сообщением и едет в insertLift без контр-transform.
+ */
+export function shouldHoldTrailingPeerAvatar(
+  trailingPeerMessages: readonly { messageUuid: string }[],
+  newlyVisibleUuids: ReadonlySet<string>,
+): boolean {
+  if (trailingPeerMessages.length === 0) return false;
+  return trailingPeerMessages.some((m) => !newlyVisibleUuids.has(m.messageUuid));
+}

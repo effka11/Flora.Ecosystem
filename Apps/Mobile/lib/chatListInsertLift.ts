@@ -37,7 +37,9 @@ export function estimateRowInsertLiftPx(row: {
  * После insert у якоря: на кадр компенсируем скачок layout (+height), затем
  * анимируем в 0 — лента и новый пузырь едут одним transform-ом.
  *
- * `holdAvatarSv`: параллельно −H→0 для аватара хвоста peer-группы (лента едет, аватар в кадре).
+ * `holdAvatarSv`: параллельно −H→0 для аватара хвоста (лента едет, аватар в кадре).
+ * Передавать только при append в уже видимую peer-группу; при появлении аватара —
+ * не передавать, чтобы он ехал вместе с сообщением.
  */
 export function playChatListInsertLift(
   insertLiftSv: SharedValue<number>,

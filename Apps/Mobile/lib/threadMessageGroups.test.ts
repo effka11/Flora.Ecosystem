@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
-import { buildThreadListItems } from "./threadMessageGroups";
+import {
+  buildThreadListItems,
+  shouldHoldTrailingPeerAvatar,
+} from "./threadMessageGroups";
 
 function msg(
   partial: Partial<ThreadBubbleItem> & { messageUuid: string; isFromMe: boolean },
@@ -51,5 +54,22 @@ describe("buildThreadListItems", () => {
   it("omits peer run when all hidden", () => {
     const a = msg({ messageUuid: "a", isFromMe: false });
     expect(buildThreadListItems([a], () => false)).toEqual([]);
+  });
+});
+
+describe("shouldHoldTrailingPeerAvatar", () => {
+  it("lets new group avatar ride with message", () => {
+    expect(shouldHoldTrailingPeerAvatar([{ messageUuid: "b" }], new Set(["b"]))).toBe(
+      false,
+    );
+  });
+
+  it("holds avatar when appending to existing group", () => {
+    expect(
+      shouldHoldTrailingPeerAvatar(
+        [{ messageUuid: "a" }, { messageUuid: "b" }],
+        new Set(["b"]),
+      ),
+    ).toBe(true);
   });
 });

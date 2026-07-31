@@ -136,7 +136,10 @@ import {
   noteOptimisticUuidReplace,
   pinMessagesScrollToBottom,
 } from "./messagesThreadScroll";
-import { buildThreadRenderItems } from "./threadMessageGroups";
+import {
+  buildThreadRenderItems,
+  shouldHoldTrailingPeerAvatar,
+} from "./threadMessageGroups";
 
 function pushPreviewKind(blocks: FscpMessageBlock[]): NotificationPreviewKind {
   const kinds = new Set(blocks.map((block) => (block.kind === "image" ? "photo" : block.kind)));
@@ -1541,8 +1544,14 @@ function MessagesChatInner() {
     if (peerNew.length > 0) {
       if (nearBottom) {
         setPeerBelowScrollCount(0);
-        // Аватар хвоста держим в viewport — едет только лента (−H на аватаре).
-        runInsertLift(peerNew, { holdTrailingPeerAvatar: true });
+        // Hold только если аватар уже был на экране (append в группу).
+        // Новая peer-группа — аватар едет вместе с сообщением в insertLift.
+        const trailing = threadRenderItems[threadRenderItems.length - 1];
+        const newlyPeerUuids = new Set(peerNew.map((m) => m.messageUuid));
+        const holdAvatar =
+          trailing?.kind === "peerGroup" &&
+          shouldHoldTrailingPeerAvatar(trailing.messages, newlyPeerUuids);
+        runInsertLift(peerNew, { holdTrailingPeerAvatar: holdAvatar });
       } else {
         setPeerBelowScrollCount((c) => Math.min(99, c + peerNew.length));
       }
@@ -1556,6 +1565,7 @@ function MessagesChatInner() {
   }, [
     threadMessages,
     visibleThreadMessages,
+    threadRenderItems,
     threadLoading,
     selectedOtherUuid,
     openRevealDeadlineElapsed,

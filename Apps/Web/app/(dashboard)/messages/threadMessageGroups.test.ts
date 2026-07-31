@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { MessageThreadItemDto } from "@/lib/socialApi";
-import { buildThreadRenderItems } from "./threadMessageGroups";
+import {
+  buildThreadRenderItems,
+  shouldHoldTrailingPeerAvatar,
+} from "./threadMessageGroups";
 
 function msg(partial: Partial<MessageThreadItemDto> & { messageUuid: string; isFromMe: boolean }): MessageThreadItemDto {
   return {
@@ -73,4 +76,29 @@ test("revealing first raw message does not change groupKey", () => {
   if (before[0]!.kind !== "peerGroup" || after[0]!.kind !== "peerGroup") return;
   assert.equal(before[0].groupKey, after[0].groupKey);
   assert.equal(after[0].groupKey, "a");
+});
+
+test("shouldHoldTrailingPeerAvatar: new group rides with message", () => {
+  assert.equal(
+    shouldHoldTrailingPeerAvatar([{ messageUuid: "b" }], new Set(["b"])),
+    false,
+  );
+});
+
+test("shouldHoldTrailingPeerAvatar: append to existing group holds avatar", () => {
+  assert.equal(
+    shouldHoldTrailingPeerAvatar(
+      [{ messageUuid: "a" }, { messageUuid: "b" }],
+      new Set(["b"]),
+    ),
+    true,
+  );
+});
+
+test("shouldHoldTrailingPeerAvatar: first visible in holey group rides", () => {
+  // Первое raw скрыто; в DOM только новый b — аватар появляется впервые.
+  assert.equal(
+    shouldHoldTrailingPeerAvatar([{ messageUuid: "b" }], new Set(["b"])),
+    false,
+  );
 });
