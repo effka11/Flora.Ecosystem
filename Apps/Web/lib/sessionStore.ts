@@ -286,7 +286,6 @@ export function createWebAuthExclusive(options?: {
     const locks = getLockManager();
     if (!locks) return operation();
 
-    let callbackStarted = false;
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), waitMs);
     try {
@@ -294,15 +293,16 @@ export function createWebAuthExclusive(options?: {
         WEB_AUTH_LOCK_NAME,
         { signal: abort.signal },
         async () => {
-          callbackStarted = true;
           clearTimeout(timer);
           return operation();
         },
       );
     } catch (error) {
       clearTimeout(timer);
-      if (callbackStarted) throw error;
-      return operation();
+      // Never run refresh unlocked: parallel tabs would dual-rotate and revoke.
+      throw error instanceof Error
+        ? error
+        : new Error("Failed to acquire the Flora auth Web Lock.");
     }
   };
 }

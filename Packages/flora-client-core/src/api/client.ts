@@ -56,13 +56,18 @@ export function apiUrl(path: string): string {
 
 type ApiErrorBody = { error?: string; detail?: string; Detail?: string };
 
-async function parseErrorMessage(r: Response): Promise<string> {
+/** Shared API error text (`error` + optional `detail`/`Detail`). */
+export async function parseApiErrorMessage(r: Response): Promise<string> {
   const data = (await r.json().catch(() => ({}))) as ApiErrorBody;
   const base = typeof data.error === "string" ? data.error : `Ошибка ${r.status}`;
   const detailRaw = data.detail ?? data.Detail;
   const detail = typeof detailRaw === "string" && detailRaw.trim().length > 0 ? detailRaw.trim() : "";
   if (!detail || base.includes(detail)) return base;
   return `${base} (${detail})`;
+}
+
+async function parseErrorMessage(r: Response): Promise<string> {
+  return parseApiErrorMessage(r);
 }
 
 function buildHeaders(token: string | null, extra?: RequestInit["headers"]): Headers {
@@ -157,11 +162,27 @@ export function refreshSession(): Promise<SessionRefreshOutcome> {
   });
 }
 
-export async function refreshSessionIfPossible(): Promise<boolean> {
+/**
+ * True when the caller should re-read effective access and retry.
+ * - `ready`: new tokens committed (or about to be read from store)
+ * - `storage_pending`: volatile R2 is authoritative via readEffective
+ * - `superseded`: only if effective access differs from the pre-refresh snapshot
+ */
+export async function refreshSessionIfPossible(
+  previousAccess?: string | null,
+): Promise<boolean> {
+  const before =
+    previousAccess === undefined
+      ? (await readEffectiveSessionRecord().catch(() => null))?.accessToken ?? null
+      : previousAccess;
   const outcome = await refreshSession();
   if (outcome === "ready") return true;
-  if (outcome !== "storage_pending" && outcome !== "superseded") return false;
-  return Boolean((await readEffectiveSessionRecord().catch(() => null))?.accessToken);
+  if (outcome === "storage_pending") {
+    return Boolean((await readEffectiveSessionRecord().catch(() => null))?.accessToken);
+  }
+  if (outcome !== "superseded") return false;
+  const after = (await readEffectiveSessionRecord().catch(() => null))?.accessToken;
+  return Boolean(after && after !== before);
 }
 
 export async function ensureFreshAccessToken(options?: { skewMs?: number }): Promise<void> {
@@ -213,6 +234,59 @@ export async function rejectUploadUnauthorized(
   throw new ApiRequestError(401, message);
 }
 
+/**
+ * Recover from resource 401 without needless refresh when store already has a
+ * newer access (JTI rotate race). Returns the Response to use (may still be 401).
+ *
+ * Plan steps: stale-first → refresh → on ready|storage_pending|superseded retry with
+ * effective access; on transient retry only if access changed vs the Bearer that just failed.
+ */
+async function recoverFromResourceUnauthorized(
+  usedToken: string,
+  originalUnauthorized: Response,
+  doFetch: (token: string) => Promise<Response>,
+  onUnauthorized?: () => void,
+): Promise<{ token: string; response: Response }> {
+  let token = usedToken;
+  let response = originalUnauthorized;
+
+  const latestBeforeRefresh = (await readEffectiveSessionRecord().catch(() => null))
+    ?.accessToken;
+  if (latestBeforeRefresh && latestBeforeRefresh !== token) {
+    token = latestBeforeRefresh;
+    response = await doFetch(token);
+    if (response.status !== 401) {
+      return { token, response };
+    }
+  }
+
+  const outcome = await refreshSession();
+  if (outcome === "invalid") {
+    await notifyIfSessionRevoked(onUnauthorized);
+    return { token, response };
+  }
+
+  const latest = (await readEffectiveSessionRecord().catch(() => null))?.accessToken;
+  if (!latest) {
+    return { token, response };
+  }
+
+  if (
+    outcome === "ready" ||
+    outcome === "storage_pending" ||
+    outcome === "superseded"
+  ) {
+    return { token: latest, response: await doFetch(latest) };
+  }
+
+  // Compare to the Bearer that just failed (after stale-first), not the original request token.
+  if (outcome === "transient" && latest !== token) {
+    return { token: latest, response: await doFetch(latest) };
+  }
+
+  return { token, response };
+}
+
 export async function authFetch(
   path: string,
   init: RequestInit = {},
@@ -248,22 +322,14 @@ export async function authFetch(
     throw new ApiRequestError(426, await parseErrorMessage(r));
   }
   if (r.status === 401) {
-    const outcome = await refreshSession();
-    if (outcome === "invalid") {
-      await notifyIfSessionRevoked(onUnauthorized);
-    }
-    if (
-      outcome === "ready" ||
-      outcome === "storage_pending" ||
-      outcome === "superseded"
-    ) {
-      const refreshedToken = (await readEffectiveSessionRecord().catch(() => null))
-        ?.accessToken;
-      if (refreshedToken && refreshedToken !== token) {
-        token = refreshedToken;
-        r = await doFetch(token);
-      }
-    }
+    const recovered = await recoverFromResourceUnauthorized(
+      token,
+      r,
+      doFetch,
+      onUnauthorized,
+    );
+    token = recovered.token;
+    r = recovered.response;
   }
   if (r.status === 426) {
     onUpgradeRequired?.();
@@ -360,22 +426,14 @@ export async function authPostForm(path: string, form: FormData): Promise<unknow
     throw new ApiRequestError(426, await parseErrorMessage(r));
   }
   if (r.status === 401) {
-    const outcome = await refreshSession();
-    if (outcome === "invalid") {
-      await notifyIfSessionRevoked(onUnauthorized);
-    }
-    if (
-      outcome === "ready" ||
-      outcome === "storage_pending" ||
-      outcome === "superseded"
-    ) {
-      const refreshedToken = (await readEffectiveSessionRecord().catch(() => null))
-        ?.accessToken;
-      if (refreshedToken && refreshedToken !== token) {
-        token = refreshedToken;
-        r = await doFetch(token);
-      }
-    }
+    const recovered = await recoverFromResourceUnauthorized(
+      token,
+      r,
+      doFetch,
+      onUnauthorized,
+    );
+    token = recovered.token;
+    r = recovered.response;
   }
   if (r.status === 426) {
     onUpgradeRequired?.();

@@ -5,127 +5,18 @@
  */
 
 import {
-  ApiRequestError,
-  clearSessionOnUnauthorizedIfNeeded,
-  ensureFreshAccessToken,
-  getAccessToken,
-  refreshSessionIfPossible,
-  resolvePublicApiRoot,
-} from "@/lib/auth";
+  authDelete,
+  authGetJson,
+  authPost204,
+  authPostJson,
+  authPutJson,
+} from "@/lib/authorizedFetch";
 import { dmConversationUuid } from "@/lib/fscp/deriveIds";
 import { apiPresenceHeartbeat } from "@flora/client-core/presence";
 
-// ── HTTP helpers (mirrors socialApi.ts pattern) ───────────────────────────────
-
+/** Relative path for authFetch / client-core. */
 function apiUrl(path: string): string {
-  const root = resolvePublicApiRoot();
-  return root ? `${root}${path}` : path;
-}
-
-type ApiError = { error?: string; detail?: string; Detail?: string };
-
-async function parseErr(r: Response): Promise<string> {
-  const data = (await r.json().catch(() => ({}))) as ApiError;
-  const base =
-    typeof data.error === "string" ? data.error : `Ошибка ${r.status}`;
-  const detailRaw = data.detail ?? data.Detail;
-  const detail =
-    typeof detailRaw === "string" && detailRaw.trim().length > 0
-      ? detailRaw.trim()
-      : "";
-  if (detail.length === 0) return base;
-  if (base.includes(detail)) return base;
-  return `${base} (${detail})`;
-}
-
-async function authGetJson(url: string): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, { headers: headers(token) });
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, { headers: headers(token) });
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authPostJson(
-  url: string,
-  body: Record<string, unknown>
-): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${t}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authPost204(url: string): Promise<void> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-}
-
-async function authDelete(url: string): Promise<void> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
+  return path.startsWith("/") ? path : `/${path}`;
 }
 
 function readStr(o: Record<string, unknown>, keys: string[]): string {
@@ -503,35 +394,6 @@ export type MsgE2EState = {
   freeze: boolean;
   updatedAt: string;
 };
-
-async function authPutJson(
-  url: string,
-  body: Record<string, unknown>
-): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${t}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
 
 /** GET /api/messaging/e2e/state */
 export async function msgGetE2EState(): Promise<MsgE2EState> {

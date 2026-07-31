@@ -1,13 +1,13 @@
+import { parseApiErrorMessage } from "@flora/client-core/api";
+import { ApiRequestError, resolvePublicApiRoot } from "@/lib/auth";
 import {
-  ApiRequestError,
-  clearSessionOnUnauthorizedIfNeeded,
-  ensureFreshAccessToken,
-  getAccessToken,
-  refreshSessionIfPossible,
-  resolvePublicApiRoot,
-} from "@/lib/auth";
-
-type ApiError = { error?: string; detail?: string; Detail?: string };
+  authDelete,
+  authGetJson,
+  authPost204,
+  authPostForm,
+  authPostJson,
+  authorizedFetch,
+} from "@/lib/authorizedFetch";
 
 export type MusicTrackScope = "personal" | "platform";
 
@@ -101,82 +101,15 @@ function apiRoot(): string {
   return resolvePublicApiRoot();
 }
 
+/** Relative path for authFetch / client-core. */
 function apiUrl(path: string): string {
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function absoluteApiUrl(path: string): string {
   const root = apiRoot();
-  return root ? `${root}${path}` : path;
-}
-
-async function parseErr(r: Response): Promise<string> {
-  const data = (await r.json().catch(() => ({}))) as ApiError;
-  const base = typeof data.error === "string" ? data.error : `Ошибка ${r.status}`;
-  const detailRaw = data.detail ?? data.Detail;
-  const detail = typeof detailRaw === "string" && detailRaw.trim().length > 0 ? detailRaw.trim() : "";
-  if (detail.length === 0) return base;
-  if (base.includes(detail)) return base;
-  return `${base} (${detail})`;
-}
-
-async function authPostForm(url: string, body: FormData): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${t}` },
-    body,
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authGetJson(url: string): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, { headers: headers(token) });
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, { headers: headers(token) });
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authDelete(url: string): Promise<void> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
+  const p = apiUrl(path);
+  return root ? `${root}${p}` : p;
 }
 
 function readStr(o: Record<string, unknown>, keys: string[]): string {
@@ -427,15 +360,15 @@ function parsePagedMusicTracks(raw: unknown, fallbackPage: number, fallbackPageS
 }
 
 export function musicTrackAudioUrl(trackUuid: string): string {
-  return apiUrl(`/api/music/tracks/${encodeURIComponent(trackUuid)}/audio`);
+  return absoluteApiUrl(`/api/music/tracks/${encodeURIComponent(trackUuid)}/audio`);
 }
 
 export function musicTrackCoverUrl(trackUuid: string): string {
-  return apiUrl(`/api/music/tracks/${encodeURIComponent(trackUuid)}/cover`);
+  return absoluteApiUrl(`/api/music/tracks/${encodeURIComponent(trackUuid)}/cover`);
 }
 
 export function musicArtistCoverUrl(artistUuid: string): string {
-  return apiUrl(`/api/music/artists/${encodeURIComponent(artistUuid)}/cover`);
+  return absoluteApiUrl(`/api/music/artists/${encodeURIComponent(artistUuid)}/cover`);
 }
 
 export async function apiGetMusicLibrary(): Promise<MusicTrackDto[]> {
@@ -655,22 +588,9 @@ export async function apiUndismissMusicTrack(trackUuid: string): Promise<void> {
   await authDelete(apiUrl(`/api/music/tracks/${encodeURIComponent(id)}/not-interested`));
 }
 
-async function authGetBlob(url: string): Promise<Blob> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, { headers: headers(token) });
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, { headers: headers(token) });
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
+async function fetchMusicBlob(path: string): Promise<Blob> {
+  const r = await authorizedFetch(path, { method: "GET" });
+  if (!r.ok) throw new ApiRequestError(r.status, await parseApiErrorMessage(r));
   const contentType = r.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
   const blob = await r.blob();
   if (blob.size === 0) {
@@ -683,15 +603,15 @@ async function authGetBlob(url: string): Promise<Blob> {
 }
 
 export async function apiFetchMusicTrackAudioBlob(trackUuid: string): Promise<Blob> {
-  return authGetBlob(musicTrackAudioUrl(trackUuid));
+  return fetchMusicBlob(`/api/music/tracks/${encodeURIComponent(trackUuid)}/audio`);
 }
 
 export async function apiFetchMusicTrackCoverBlob(trackUuid: string): Promise<Blob> {
-  return authGetBlob(musicTrackCoverUrl(trackUuid));
+  return fetchMusicBlob(`/api/music/tracks/${encodeURIComponent(trackUuid)}/cover`);
 }
 
 export async function apiFetchMusicArtistCoverBlob(artistUuid: string): Promise<Blob> {
-  return authGetBlob(musicArtistCoverUrl(artistUuid));
+  return fetchMusicBlob(`/api/music/artists/${encodeURIComponent(artistUuid)}/cover`);
 }
 
 export type MusicPlaylistKind = "system" | "user";
@@ -742,29 +662,6 @@ function parsePlaylistDetail(raw: unknown): MusicPlaylistDetailDto | null {
   return { ...summary, tracks };
 }
 
-async function authPostJson(url: string, body: unknown): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
 export async function apiGetMusicPlaylists(): Promise<MusicPlaylistSummaryDto[]> {
   const raw = await authGetJson(apiUrl("/api/music/playlists"));
   if (!Array.isArray(raw)) return [];
@@ -793,25 +690,7 @@ export async function apiDeleteMusicPlaylist(playlistId: string): Promise<void> 
 }
 
 export async function apiAddMusicTrackFavorite(trackUuid: string): Promise<void> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const url = apiUrl(`/api/music/tracks/${encodeURIComponent(trackUuid)}/favorite`);
-  const init = (t: string): RequestInit => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
+  await authPost204(apiUrl(`/api/music/tracks/${encodeURIComponent(trackUuid)}/favorite`));
 }
 
 export async function apiRemoveMusicTrackFavorite(trackUuid: string): Promise<void> {

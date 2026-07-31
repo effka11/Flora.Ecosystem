@@ -32,7 +32,7 @@ export function useDashboardDataPrefetch(): void {
     }
     if (criticalStartedRef.current) return;
     criticalStartedRef.current = true;
-    startCriticalDashboardPrefetch();
+    void startCriticalDashboardPrefetch();
   }, [me?.userUuid, loading]);
 
   useEffect(() => {

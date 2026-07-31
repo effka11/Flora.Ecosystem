@@ -1,17 +1,16 @@
+import { isDevLocalOfflineSession } from "@/lib/auth";
 import {
-  ApiRequestError,
-  clearSessionOnUnauthorizedIfNeeded,
-  ensureFreshAccessToken,
-  getAccessToken,
-  isDevLocalOfflineSession,
-  refreshSessionIfPossible,
-  resolvePublicApiRoot,
-} from "@/lib/auth";
+  authDeleteJson,
+  authDeleteWithBody,
+  authGetJson,
+  authPatch,
+  authPostJson,
+} from "@/lib/authorizedFetch";
 import { floraNewUuid } from "@/lib/floraUuid";
 
+/** Relative path for authFetch / client-core. */
 function apiUrl(path: string): string {
-  const root = resolvePublicApiRoot();
-  return root ? `${root}${path}` : path;
+  return path.startsWith("/") ? path : `/${path}`;
 }
 
 export type NotificationDto = {
@@ -53,29 +52,6 @@ function readStr(o: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
-async function authJson(
-  url: string,
-  init: (token: string) => RequestInit,
-): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    const detail = await r.text().catch(() => "");
-    throw new ApiRequestError(r.status, detail || r.statusText);
-  }
-  if (r.status === 204) return null;
-  return r.json().catch(() => ({}));
-}
-
 export async function apiListNotifications(input?: {
   category?: "all" | "social" | "developer";
   search?: string;
@@ -97,10 +73,7 @@ export async function apiListNotifications(input?: {
   if (input?.skip) params.set("skip", String(input.skip));
   if (input?.take) params.set("take", String(input.take));
   const q = params.toString();
-  const raw = await authJson(apiUrl(`/api/auth/notifications${q ? `?${q}` : ""}`), (token) => ({
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-  }));
+  const raw = await authGetJson(apiUrl(`/api/auth/notifications${q ? `?${q}` : ""}`));
   if (!Array.isArray(raw)) return [];
   const out: NotificationDto[] = [];
   for (const item of raw) {
@@ -114,10 +87,10 @@ export async function apiGetNotificationsUnreadCount(): Promise<number> {
   if (isDevLocalOfflineSession()) {
     return devNotifications.filter((n) => !n.isRead).length;
   }
-  const raw = (await authJson(apiUrl("/api/auth/notifications/unread-count"), (token) => ({
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-  }))) as Record<string, unknown>;
+  const raw = (await authGetJson(apiUrl("/api/auth/notifications/unread-count"))) as Record<
+    string,
+    unknown
+  >;
   const count = raw.unreadCount ?? raw.UnreadCount;
   return typeof count === "number" ? count : Number(count) || 0;
 }
@@ -128,10 +101,7 @@ export async function apiMarkNotificationRead(notificationUuid: string): Promise
     if (row) row.isRead = true;
     return;
   }
-  await authJson(apiUrl(`/api/auth/notifications/${encodeURIComponent(notificationUuid)}/read`), (token) => ({
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${token}` },
-  }));
+  await authPatch(apiUrl(`/api/auth/notifications/${encodeURIComponent(notificationUuid)}/read`));
 }
 
 /** Пометить все уведомления прочитанными (открытие вкладки «Уведомления»). */
@@ -146,11 +116,10 @@ export async function apiMarkAllNotificationsRead(): Promise<number> {
     }
     return marked;
   }
-  const raw = (await authJson(apiUrl("/api/auth/notifications/read"), (token) => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: "{}",
-  }))) as Record<string, unknown>;
+  const raw = (await authPostJson(apiUrl("/api/auth/notifications/read"), {})) as Record<
+    string,
+    unknown
+  >;
   const marked = raw.marked ?? raw.Marked;
   return typeof marked === "number" ? marked : Number(marked) || 0;
 }
@@ -161,10 +130,10 @@ export async function apiDeleteAllNotifications(): Promise<number> {
     devNotifications.length = 0;
     return deleted;
   }
-  const raw = (await authJson(apiUrl("/api/auth/notifications/all"), (token) => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  }))) as Record<string, unknown>;
+  const raw = (await authDeleteJson(apiUrl("/api/auth/notifications/all"))) as Record<
+    string,
+    unknown
+  >;
   const deleted = raw.deleted ?? raw.Deleted;
   return typeof deleted === "number" ? deleted : Number(deleted) || 0;
 }
@@ -179,11 +148,11 @@ export async function apiDeleteNotifications(notificationUuids: string[]): Promi
     }
     return before - devNotifications.length;
   }
-  const raw = (await authJson(apiUrl("/api/auth/notifications"), (token) => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ notificationUuids }),
-  }))) as Record<string, unknown>;
+  const r = await authDeleteWithBody(apiUrl("/api/auth/notifications"), {
+    notificationUuids,
+  });
+  if (r.status === 204) return 0;
+  const raw = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   const deleted = raw.deleted ?? raw.Deleted;
   return typeof deleted === "number" ? deleted : Number(deleted) || 0;
 }
