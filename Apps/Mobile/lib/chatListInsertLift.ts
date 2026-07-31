@@ -36,25 +36,37 @@ export function estimateRowInsertLiftPx(row: {
 /**
  * После insert у якоря: на кадр компенсируем скачок layout (+height), затем
  * анимируем в 0 — лента и новый пузырь едут одним transform-ом.
+ *
+ * `holdAvatarSv`: параллельно −H→0 для аватара хвоста peer-группы (лента едет, аватар в кадре).
  */
 export function playChatListInsertLift(
   insertLiftSv: SharedValue<number>,
   heightPx: number,
+  holdAvatarSv?: SharedValue<number>,
 ): void {
   const h = Math.max(0, Math.round(heightPx));
   if (h <= 0) return;
 
   cancelAnimation(insertLiftSv);
   insertLiftSv.value = h;
+  if (holdAvatarSv) {
+    cancelAnimation(holdAvatarSv);
+    holdAvatarSv.value = -h;
+  }
 
   void AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
     if (reduced) {
       insertLiftSv.value = 0;
+      if (holdAvatarSv) holdAvatarSv.value = 0;
       return;
     }
-    insertLiftSv.value = withTiming(0, {
+    const timing = {
       duration: CHAT_INSERT_LIFT_MS,
       easing: LIFT_EASING,
-    });
+    };
+    insertLiftSv.value = withTiming(0, timing);
+    if (holdAvatarSv) {
+      holdAvatarSv.value = withTiming(0, timing);
+    }
   });
 }

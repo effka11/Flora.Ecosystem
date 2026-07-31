@@ -50,11 +50,17 @@ import {
   playChatListInsertLift,
 } from "@/lib/chatListInsertLift";
 import {
+  buildThreadListItems,
+  forEachThreadListMessage,
+  type ThreadListItem,
+} from "@/lib/threadMessageGroups";
+import {
   ChatComposeField,
   type ChatComposeFieldHandle,
 } from "@/components/messages/ChatComposeField";
 import { ChatComposeReplyBar } from "@/components/messages/ChatComposeReplyBar";
 import { ChatMessageBubble, type ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
+import { ChatPeerMessageGroup } from "@/components/messages/ChatPeerMessageGroup";
 import { ChatMessageEmojiPanel } from "@/components/messages/ChatMessageEmojiPanel";
 import { ChatMoreMenu } from "@/components/messages/ChatMoreMenu";
 import {
@@ -119,11 +125,6 @@ import { useFscpStore } from "@/stores/fscpStore";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { useSessionStore } from "@/stores/sessionStore";
 import { FRC_I_MIME } from "@flora/client-core/frc-i";
-
-type ListRow = ThreadBubbleItem & {
-  showPeerAvatar: boolean;
-  isPeerIndented: boolean;
-};
 
 function previewKind(blocks: FscpMessageBlock[]): NotificationPreviewKind {
   const kinds = new Set(
@@ -201,24 +202,17 @@ function parseBoolParam(value: string | string[] | undefined): boolean {
 }
 
 /**
- * Coarse recycle pools: voice, photo and text bubbles have very different
- * subtrees and heights, so a text row recycling into a media row would force a
- * full re-layout of the cell. Finer pools are only worth adding if a trace
- * shows a win.
+ * Coarse recycle pools: voice, photo, text и peer-group имеют разный subtree.
  */
-const messageItemType = (item: ListRow): "voice" | "photo" | "text" =>
-  item.voiceBlock ? "voice" : item.imageBlocks.length > 0 ? "photo" : "text";
+const messageItemType = (item: ThreadListItem): string => {
+  if (item.kind === "peerGroup") return "peerGroup";
+  const message = item.message;
+  return message.voiceBlock ? "voice" : message.imageBlocks.length > 0 ? "photo" : "text";
+};
 
-function buildListRows(items: ThreadBubbleItem[]): ListRow[] {
-  return items.map((message, index) => {
-    if (message.isFromMe) {
-      return { ...message, showPeerAvatar: false, isPeerIndented: false };
-    }
-    const next = items[index + 1];
-    const showPeerAvatar = !next || next.isFromMe;
-    const isPeerIndented = !showPeerAvatar;
-    return { ...message, showPeerAvatar, isPeerIndented };
-  });
+function listItemKey(item: ThreadListItem): string {
+  if (item.kind === "peerGroup") return `peer-${item.groupKey}`;
+  return item.message.clientMessageKey ?? item.message.messageUuid;
 }
 
 export default function ThreadScreen() {
@@ -331,8 +325,13 @@ export default function ThreadScreen() {
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   /** Компенсация скачка layout → анимация подъёма ленты+пузыря одним transform. */
   const insertLiftSv = useSharedValue(0);
+  /** Контр к insertLift для аватара хвоста peer-группы (паритет Web holdViewport). */
+  const peerAvatarHoldSv = useSharedValue(0);
   const listInsertLiftStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: insertLiftSv.value }],
+  }));
+  const peerAvatarHoldStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: peerAvatarHoldSv.value }],
   }));
 
   useEffect(() => {
@@ -350,6 +349,7 @@ export default function ThreadScreen() {
     scrollTrackingReadyRef.current = false;
     seenMessageIdsRef.current = new Set();
     insertLiftSv.value = 0;
+    peerAvatarHoldSv.value = 0;
     // resetDock is stable (ref-backed); only re-run on thread change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationUuid]);
@@ -605,42 +605,44 @@ export default function ThreadScreen() {
   });
 
   /**
-   * Чужие `decrypting` не показываем: иначе при live-приходе мелькает
-   * «Расшифровка…». В ленту попадают после ok/failed; свои — сразу.
+   * Лента перевёрнута: данные от новых к старым (индекс 0 у якоря).
+   * Группы по raw `decrypted` (стабильный groupKey); чужие decrypting не в item —
+   * иначе мелькает «Расшифровка…».
    */
-  const visibleDecrypted = useMemo(
-    () => decrypted.filter((row) => row.isFromMe || row.decryptState !== "decrypting"),
-    [decrypted],
-  );
+  const listData = useMemo(() => {
+    const chronological = buildThreadListItems(
+      decrypted,
+      (m) => m.isFromMe || m.decryptState !== "decrypting",
+    );
+    return chronological.reverse();
+  }, [decrypted]);
 
-  /**
-   * Лента перевёрнута, поэтому данные идут от новых к старым: индекс 0 — это
-   * последнее сообщение, и оно стоит в начале скролла. Группировка считается до
-   * разворота, на прямом порядке, — она смотрит на *следующее* сообщение.
-   */
-  const listData = useMemo(
-    () => buildListRows(visibleDecrypted).reverse(),
-    [visibleDecrypted],
-  );
+  const listMessageCount = useMemo(() => {
+    let n = 0;
+    forEachThreadListMessage(listData, () => {
+      n += 1;
+    });
+    return n;
+  }, [listData]);
+
   const hasDecryptFailures = useMemo(
     () => fscpReady && decrypted.some((row) => row.decryptState === "failed"),
     [decrypted, fscpReady],
   );
 
   /**
-   * Тред можно показывать, когда расшифрованы все строки: пока идут волны
-   * `DECRYPT_BATCH`, текст приходит порциями и высоты пузырей меняются. Позиция
-   * от этого уже не страдает (последнее сообщение стоит в начале скролла), но
-   * сама перекладка видна. Ожидание упирается в размер страницы, а не в длину
-   * треда: расшифровка идёт с самых новых сообщений.
+   * Тред можно показывать, когда в visible нет decrypting: пока идут волны
+   * `DECRYPT_BATCH`, высоты пузырей меняются. Peer decrypting скрыты из ленты.
    */
-  const threadReady = useMemo(
-    () =>
-      listData.length > 0 &&
-      !listData.some((row) => row.decryptState === "decrypting"),
-    [listData],
-  );
-  const listPending = messagesQuery.isLoading || (listData.length > 0 && !threadReady);
+  const threadReady = useMemo(() => {
+    if (listMessageCount === 0) return false;
+    let hasDecrypting = false;
+    forEachThreadListMessage(listData, (row) => {
+      if (row.decryptState === "decrypting") hasDecrypting = true;
+    });
+    return !hasDecrypting;
+  }, [listData, listMessageCount]);
+  const listPending = messagesQuery.isLoading || (listMessageCount > 0 && !threadReady);
 
   /**
    * Показ ждёт ещё и замера дока. У перевёрнутой ленты зазор под последним
@@ -672,12 +674,12 @@ export default function ThreadScreen() {
    */
   const scrollToEnd = useCallback(
     (animated = true) => {
-      if (listData.length === 0) return;
+      if (listMessageCount === 0) return;
       pinListToBottom(animated);
       atBottomRef.current = true;
       setShowJumpToLatest(false);
     },
-    [listData.length, pinListToBottom],
+    [listMessageCount, pinListToBottom],
   );
 
   const onEndVisible = useCallback((visible: boolean) => {
@@ -701,20 +703,24 @@ export default function ThreadScreen() {
   );
 
   useEffect(() => {
-    if (!threadReady || listData.length === 0) return;
+    if (!threadReady || listMessageCount === 0) return;
     if (!scrollTrackingReadyRef.current) {
-      seedHydratedKeys(
-        listData.map((row) => row.clientMessageKey ?? row.messageUuid),
-      );
-      seenMessageIdsRef.current = new Set(listData.map((row) => row.messageUuid));
+      const keys: string[] = [];
+      const ids = new Set<string>();
+      forEachThreadListMessage(listData, (row) => {
+        keys.push(row.clientMessageKey ?? row.messageUuid);
+        ids.add(row.messageUuid);
+      });
+      seedHydratedKeys(keys);
+      seenMessageIdsRef.current = ids;
       scrollTrackingReadyRef.current = true;
       return;
     }
 
     const seen = seenMessageIdsRef.current;
     let incomingLiftPx = 0;
-    for (const row of listData) {
-      if (seen.has(row.messageUuid)) continue;
+    forEachThreadListMessage(listData, (row) => {
+      if (seen.has(row.messageUuid)) return;
       seen.add(row.messageUuid);
       rememberClientMessageKey(
         row.messageUuid,
@@ -725,15 +731,16 @@ export default function ThreadScreen() {
         markBirthPending(row.clientMessageKey ?? row.messageUuid);
         incomingLiftPx += estimateRowInsertLiftPx(row);
       }
-    }
+    });
     if (incomingLiftPx > 0 && atBottomRef.current) {
-      playChatListInsertLift(insertLiftSv, incomingLiftPx);
+      // hold avatar: лента едет, аватар хвоста peer-группы остаётся в кадре.
+      playChatListInsertLift(insertLiftSv, incomingLiftPx, peerAvatarHoldSv);
     }
-  }, [insertLiftSv, listData, threadReady]);
+  }, [insertLiftSv, listData, listMessageCount, peerAvatarHoldSv, threadReady]);
 
   useEffect(() => {
     const prevLen = prevListLengthRef.current;
-    const nextLen = listData.length;
+    const nextLen = listMessageCount;
     prevListLengthRef.current = nextLen;
     if (nextLen === 0 || nextLen === prevLen) return;
     // Прижатие в доке доскролливает только на смену зазора под доком, приход
@@ -741,13 +748,14 @@ export default function ThreadScreen() {
     // и входящее сообщение, пришедшее внутри этого допуска, осталось бы
     // частично под полем ввода — поэтому возврат к якорю здесь свой.
     // Non-animated pin: подъём ленты — insertLiftSv (общий с пузырём).
+    // Считаем по числу сообщений, не items: append в peer-группу не меняет length items.
     if (atBottomRef.current) {
       pinListToBottom(false);
       setShowJumpToLatest(false);
       return;
     }
     setShowJumpToLatest(true);
-  }, [listData.length, pinListToBottom]);
+  }, [listMessageCount, pinListToBottom]);
 
 
   useEffect(() => {
@@ -886,30 +894,56 @@ export default function ThreadScreen() {
   }, []);
 
   const renderMessage = useCallback(
-    ({ item }: { item: ListRow }) => {
-      const isMenuTarget = menuTarget?.message.messageUuid === item.messageUuid;
-      const clientKey = item.clientMessageKey ?? item.messageUuid;
+    ({ item }: { item: ThreadListItem }) => {
+      // Обратный переворот строки: лента перевёрнута целиком (см. listInverted).
+      if (item.kind === "peerGroup") {
+        // Индекс 0 после reverse — trailing peer-группа у якоря; hold avatar на insertLift.
+        const head = listData[0];
+        const isTrailing =
+          head?.kind === "peerGroup" && head.groupKey === item.groupKey;
+        return (
+          <View style={styles.rowInverted}>
+            <ChatPeerMessageGroup
+              messages={item.messages}
+              peer={peer}
+              menuTargetUuid={menuTarget?.message.messageUuid ?? null}
+              onPress={onMessagePress}
+              onAnchorSync={syncMenuAnchor}
+              holdAvatarStyle={isTrailing ? peerAvatarHoldStyle : undefined}
+            />
+          </View>
+        );
+      }
+
+      const message = item.message;
+      const isMenuTarget = menuTarget?.message.messageUuid === message.messageUuid;
+      const clientKey = message.clientMessageKey ?? message.messageUuid;
       return (
-        // Обратный переворот строки: лента перевёрнута целиком (см. listInverted),
-        // иначе пузырь встал бы вверх ногами. Так же устроен `inverted` у FlatList.
         <View style={styles.rowInverted}>
           <ChatMessageBirthHost clientMessageKey={clientKey}>
             <ChatMessageBubble
-              message={item}
+              message={message}
               peer={peer}
-              showPeerAvatar={item.showPeerAvatar}
-              isPeerIndented={item.isPeerIndented}
+              showPeerAvatar={false}
+              isPeerIndented={false}
               isMenuTarget={isMenuTarget}
-              onPress={(anchor) => onMessagePress(item, anchor)}
+              onPress={(anchor) => onMessagePress(message, anchor)}
               onAnchorSync={
-                isMenuTarget ? (anchor) => syncMenuAnchor(item.messageUuid, anchor) : undefined
+                isMenuTarget ? (anchor) => syncMenuAnchor(message.messageUuid, anchor) : undefined
               }
             />
           </ChatMessageBirthHost>
         </View>
       );
     },
-    [menuTarget?.message.messageUuid, onMessagePress, peer, syncMenuAnchor],
+    [
+      listData,
+      menuTarget?.message.messageUuid,
+      onMessagePress,
+      peer,
+      peerAvatarHoldStyle,
+      syncMenuAnchor,
+    ],
   );
 
   const onPickImages = useCallback(async () => {
@@ -1315,7 +1349,7 @@ export default function ThreadScreen() {
             <FlashList
               key={conversationUuid}
               data={listData}
-              keyExtractor={(item) => item.clientMessageKey ?? item.messageUuid}
+              keyExtractor={listItemKey}
               getItemType={messageItemType}
               style={styles.listInverted}
               contentContainerStyle={styles.listContent}
