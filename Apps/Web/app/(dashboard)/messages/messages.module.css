@@ -1073,16 +1073,31 @@
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: calc(2 * var(--flora-grid-step));
-  /* stretch — колонка на всю ширину полосы чата; выравнивание пузырей — align-self на .messagesBubbleWrap. */
-  align-items: stretch;
-  align-content: flex-start;
+  /* Programmatic pin + insertLift: не давать Chrome overflow-anchor отвоевать scrollTop. */
+  overflow-anchor: none;
   /* Сверху и снизу по 2 первичные клетки — как у низа ленты. */
   padding: calc(2 * var(--flora-grid-step)) 0 calc(2 * var(--flora-grid-step));
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+/* Inner: spacer (короткий тред у compose) + gap между пузырями; transform insertLift — только сюда. */
+.messagesChatMessagesInner {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step));
+  align-items: stretch;
+  align-content: flex-start;
+}
+
+.messagesChatMessagesSpacer {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  pointer-events: none;
 }
 
 @supports (overflow-x: clip) {

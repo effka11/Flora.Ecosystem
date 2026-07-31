@@ -117,13 +117,20 @@ export function MessageBubbleMoreMenuPanel({
 
   return (
     <>
+      {onReply ? (
+        <MenuRow
+          buttonRef={firstActionRef}
+          icon={<IconReply />}
+          label="Ответить"
+          onClick={pick(onReply)}
+        />
+      ) : null}
       <MenuRow
-        buttonRef={firstActionRef}
-        icon={<IconReply />}
-        label="Ответить"
-        onClick={pick(onReply)}
+        buttonRef={onReply ? undefined : firstActionRef}
+        icon={<IconCopy />}
+        label="Копировать"
+        onClick={pick(onCopy)}
       />
-      <MenuRow icon={<IconCopy />} label="Копировать" onClick={pick(onCopy)} />
       <MenuRow icon={<IconForward />} label="Переслать" onClick={pick(onForward)} />
       <MenuRow icon={<IconPin />} label="Закрепить" onClick={pick(onPin)} />
       {isFromMe ? <MenuRow icon={<IconEdit />} label="Редактировать" onClick={pick(onEdit)} /> : null}
