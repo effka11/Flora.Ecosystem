@@ -125,6 +125,7 @@ import {
   estimateMessageInsertLiftPx,
   measureTrailingBubblesInsertLiftPx,
   playChatListInsertLift,
+  queryTrailingPeerAvatar,
   resetChatListInsertLift,
 } from "./chatListInsertLift";
 import {
@@ -135,6 +136,7 @@ import {
   noteOptimisticUuidReplace,
   pinMessagesScrollToBottom,
 } from "./messagesThreadScroll";
+import { buildThreadRenderItems } from "./threadMessageGroups";
 
 function pushPreviewKind(blocks: FscpMessageBlock[]): NotificationPreviewKind {
   const kinds = new Set(blocks.map((block) => (block.kind === "image" ? "photo" : block.kind)));
@@ -1446,6 +1448,23 @@ function MessagesChatInner() {
     [threadMessages, displayMessageContent],
   );
 
+  const threadRenderItems = useMemo(
+    () =>
+      buildThreadRenderItems(
+        threadMessages,
+        (m) => m.isFromMe || displayMessageContent(m) !== "decrypting",
+      ),
+    [threadMessages, displayMessageContent],
+  );
+
+  const peerThreadAvatarLabel = useMemo(
+    () =>
+      avatarLetters(
+        chatHeaderPeer?.otherDisplayName || chatHeaderPeer?.otherUsername || "?",
+      ),
+    [chatHeaderPeer?.otherDisplayName, chatHeaderPeer?.otherUsername],
+  );
+
   /**
    * Open pin + insertLift до paint (useLayoutEffect).
    * useEffect+rAF давал кадр «прыжка» до counter-lift — визуальное дергание.
@@ -1491,7 +1510,10 @@ function MessagesChatInner() {
     const nearBottom =
       atBottomRef.current || isMessagesNearBottom(el, MESSAGES_NEAR_BOTTOM_PX);
 
-    const runInsertLift = (rows: MessageThreadItemDto[]) => {
+    const runInsertLift = (
+      rows: MessageThreadItemDto[],
+      opts?: { holdTrailingPeerAvatar?: boolean },
+    ) => {
       const inner = messagesInnerRef.current;
       const estimated = rows.reduce(
         (sum, m) => sum + estimateMessageInsertLiftPx(displayMessageContent(m)),
@@ -1506,13 +1528,21 @@ function MessagesChatInner() {
       openRepinUntilRef.current = now + MESSAGES_REPIN_WINDOW_MS;
       // Синхронно до paint: pin + translateY(H). Иначе виден скачок layout.
       pinMessagesToBottom("auto");
-      if (inner) playChatListInsertLift(inner, heightPx);
+      if (!inner) return;
+      const holdAvatar =
+        opts?.holdTrailingPeerAvatar === true ? queryTrailingPeerAvatar(inner) : null;
+      playChatListInsertLift(
+        inner,
+        heightPx,
+        holdAvatar ? { holdViewportEls: [holdAvatar] } : undefined,
+      );
     };
 
     if (peerNew.length > 0) {
       if (nearBottom) {
         setPeerBelowScrollCount(0);
-        runInsertLift(peerNew);
+        // Аватар хвоста держим в viewport — едет только лента (−H на аватаре).
+        runInsertLift(peerNew, { holdTrailingPeerAvatar: true });
       } else {
         setPeerBelowScrollCount((c) => Math.min(99, c + peerNew.length));
       }
@@ -2952,68 +2982,54 @@ function MessagesChatInner() {
                 >
                   <div ref={messagesInnerRef} className={styles.messagesChatMessagesInner}>
                     <div className={styles.messagesChatMessagesSpacer} aria-hidden />
-                  {visibleThreadMessages.map((message, messageIndex) => {
-                    const content = displayMessageContent(message);
-                    const voiceOnly =
-                      content !== "decrypting" && content !== "failed" && isVoiceOnlyPayload(content);
-                    const voiceBlock = voiceOnly ? getVoiceBlockFromPayload(content) : null;
-                    const payloadBlocks =
-                      content !== "decrypting" && content !== "failed" ? content.blocks : null;
-                    /* Пузырь с фото/видео (стиль TG): медиа сверху от края до края, подпись и время — под ним. */
-                    const mediaBlocks =
-                      !voiceOnly && payloadBlocks
-                        ? payloadBlocks.filter(
-                            (block): block is FscpImageBlock | FscpVideoBlock =>
-                              block.kind === "image" || block.kind === "video"
-                          )
-                        : [];
-                    const captionBlocks =
-                      payloadBlocks?.filter((block) => block.kind !== "image" && block.kind !== "video") ?? [];
-                    const photoBubble = mediaBlocks.length > 0;
-                    const imageMediaBlocks = mediaBlocks.filter(
-                      (block): block is FscpImageBlock => block.kind === "image",
-                    );
-                    const photoCollage = imageMediaBlocks.length >= 2;
-                    const videoMediaBlocks = mediaBlocks.filter(
-                      (block): block is FscpVideoBlock => block.kind === "video",
-                    );
-                    const photoOnly = photoBubble && captionBlocks.length === 0;
-                    const lastPayloadBlock = payloadBlocks ? payloadBlocks[payloadBlocks.length - 1] : undefined;
-                    const lastCaptionBlock = captionBlocks[captionBlocks.length - 1];
-                    /* Время в строке текста (как в TG): только если последний блок пузыря — текст. */
-                    const inlineTime =
-                      content === "decrypting" || content === "failed"
-                        ? true
-                        : voiceOnly
-                          ? false
-                          : photoBubble
-                            ? !photoOnly && lastCaptionBlock?.kind === "text"
-                            : lastPayloadBlock?.kind === "text";
-                    const nextMessage = visibleThreadMessages[messageIndex + 1];
-                    const isPeerTail =
-                      !message.isFromMe && (!nextMessage || nextMessage.isFromMe);
-                    const peerAvatarLabel = avatarLetters(
-                      chatHeaderPeer?.otherDisplayName || chatHeaderPeer?.otherUsername || "?"
-                    );
-                    const replyQuote =
-                      content !== "decrypting" && content !== "failed" && content.replyTo ? (
-                        <MessageBubbleReplyQuote reply={content.replyTo} isFromMe={message.isFromMe} />
-                      ) : null;
-                    const deliveryState = messageDeliveryState(message);
-                    const timeMeta = deliveryState ? <MessageReadReceipt state={deliveryState} /> : null;
-                    const timeInlineReservePx = deliveryState ? MESSAGE_RECEIPT_INLINE_RESERVE_PX : 0;
-                    const canReply = message.sendStatus !== "sending";
-                    return (
-                      <div
-                        key={message.messageUuid}
-                        data-messages-bubble-wrap
-                        className={`${styles.messagesBubbleWrap} ${message.isFromMe ? styles.messagesBubbleWrapMe : ""} ${!message.isFromMe && !isPeerTail ? styles.messagesBubbleWrapPeerIndented : ""}`}
-                      >
-                        {!message.isFromMe && isPeerTail ? (
-                          <div className={styles.messagesBubblePeerAvatar} aria-hidden>
-                            {peerAvatarLabel}
-                          </div>
-                        ) : null}
+                  {threadRenderItems.map((item) => {
+                    const renderMessageBubble = (message: MessageThreadItemDto) => {
+                      const content = displayMessageContent(message);
+                      const voiceOnly =
+                        content !== "decrypting" && content !== "failed" && isVoiceOnlyPayload(content);
+                      const voiceBlock = voiceOnly ? getVoiceBlockFromPayload(content) : null;
+                      const payloadBlocks =
+                        content !== "decrypting" && content !== "failed" ? content.blocks : null;
+                      const mediaBlocks =
+                        !voiceOnly && payloadBlocks
+                          ? payloadBlocks.filter(
+                              (block): block is FscpImageBlock | FscpVideoBlock =>
+                                block.kind === "image" || block.kind === "video",
+                            )
+                          : [];
+                      const captionBlocks =
+                        payloadBlocks?.filter((block) => block.kind !== "image" && block.kind !== "video") ??
+                        [];
+                      const photoBubble = mediaBlocks.length > 0;
+                      const imageMediaBlocks = mediaBlocks.filter(
+                        (block): block is FscpImageBlock => block.kind === "image",
+                      );
+                      const photoCollage = imageMediaBlocks.length >= 2;
+                      const videoMediaBlocks = mediaBlocks.filter(
+                        (block): block is FscpVideoBlock => block.kind === "video",
+                      );
+                      const photoOnly = photoBubble && captionBlocks.length === 0;
+                      const lastPayloadBlock = payloadBlocks
+                        ? payloadBlocks[payloadBlocks.length - 1]
+                        : undefined;
+                      const lastCaptionBlock = captionBlocks[captionBlocks.length - 1];
+                      const inlineTime =
+                        content === "decrypting" || content === "failed"
+                          ? true
+                          : voiceOnly
+                            ? false
+                            : photoBubble
+                              ? !photoOnly && lastCaptionBlock?.kind === "text"
+                              : lastPayloadBlock?.kind === "text";
+                      const replyQuote =
+                        content !== "decrypting" && content !== "failed" && content.replyTo ? (
+                          <MessageBubbleReplyQuote reply={content.replyTo} isFromMe={message.isFromMe} />
+                        ) : null;
+                      const deliveryState = messageDeliveryState(message);
+                      const timeMeta = deliveryState ? <MessageReadReceipt state={deliveryState} /> : null;
+                      const timeInlineReservePx = deliveryState ? MESSAGE_RECEIPT_INLINE_RESERVE_PX : 0;
+                      const canReply = message.sendStatus !== "sending";
+                      return (
                         <MessageBubbleAnchor
                           anchorClassName={styles.messagesBubbleAnchor}
                           isFromMe={message.isFromMe}
@@ -3028,135 +3044,193 @@ function MessagesChatInner() {
                           <div
                             className={`${styles.messagesBubble} ${message.isFromMe ? styles.messagesBubbleMe : styles.messagesBubbleThem} ${voiceOnly ? styles.messagesBubbleVoiceOnly : ""} ${photoBubble ? styles.messagesBubblePhoto : ""} ${photoCollage ? styles.messagesBubblePhotoCollage : ""} ${inlineTime ? styles.messagesBubbleInlineTime : ""}`}
                           >
-                          {content === "failed" ? (
-                            <>
-                          {replyQuote}
-                            <p className={styles.messagesBubbleText}>
-                              {FSCP_DECRYPT_FAIL_LABEL}
-                              <MessageBubbleTime message={message} className={styles.messagesBubbleTimeFloat} />
-                            </p>
-                            </>
-                          ) : content === "decrypting" ? null : voiceOnly && voiceBlock ? (
-                            <>
-                          {replyQuote}
-                            <VoiceMessageCard
-                              durationMs={voiceBlock.durationMs}
-                              waveform={voiceBlock.waveform}
-                              voiceBlock={isDemoPlaintextWire(message.encryptedForMe) ? undefined : voiceBlock}
-                              localBlob={localVoiceBlobForAsset(voiceBlock.assetUuid)}
-                            />
-                            </>
-                          ) : photoBubble ? (
-                            <>
-                              {replyQuote}
-                              <div className={styles.messagesBubblePhotoMedia}>
-                                {imageMediaBlocks.length >= 2 ? (
-                                  <MessageImageCollage
-                                    blocks={imageMediaBlocks}
-                                    getLocalBlob={devGetImageBlob}
-                                    skipDecrypt={isDemoPlaintextWire(message.encryptedForMe)}
+                            {content === "failed" ? (
+                              <>
+                                {replyQuote}
+                                <p className={styles.messagesBubbleText}>
+                                  {FSCP_DECRYPT_FAIL_LABEL}
+                                  <MessageBubbleTime
+                                    message={message}
+                                    className={styles.messagesBubbleTimeFloat}
                                   />
-                                ) : imageMediaBlocks.length === 1 ? (
-                                  <ImageMessageCard
-                                    key={`${message.messageUuid}-${imageMediaBlocks[0]!.assetUuid}`}
-                                    imageBlock={
-                                      isDemoPlaintextWire(message.encryptedForMe) ? undefined : imageMediaBlocks[0]
-                                    }
-                                    localBlob={devGetImageBlob(imageMediaBlocks[0]!.assetUuid)}
-                                  />
-                                ) : null}
-                                {videoMediaBlocks.map((block) => (
-                                  <VideoMessageCard
-                                    key={`${message.messageUuid}-${block.assetUuid}`}
-                                    videoBlock={isDemoPlaintextWire(message.encryptedForMe) ? undefined : block}
-                                    localBlob={devGetVideoBlob(block.assetUuid)}
-                                  />
-                                ))}
-                                {photoOnly ? (
-                                  <MessageBubbleTime message={message} className={styles.messagesBubblePhotoTime} />
-                                ) : null}
-                              </div>
-                              {!photoOnly ? (
-                                <div className={styles.messagesBubblePhotoCaption}>
-                                  {captionBlocks.map((block, index) =>
-                                    block.kind === "text" ? (
-                                      <MessageBubbleText
-                                        key={`${message.messageUuid}-${index}`}
-                                        body={block.body}
-                                        inlineTime={inlineTime && index === captionBlocks.length - 1}
-                                        timeLabel={formatChatTime(message.createdAt)}
-                                        timeMeta={timeMeta}
-                                        timeInlineReservePx={timeInlineReservePx}
-                                      />
-                                    ) : block.kind === "voice" ? (
-                                      <VoiceMessageCard
-                                        key={`${message.messageUuid}-${block.assetUuid}`}
-                                        durationMs={block.durationMs}
-                                        waveform={block.waveform}
-                                        voiceBlock={isDemoPlaintextWire(message.encryptedForMe) ? undefined : block}
-                                        localBlob={localVoiceBlobForAsset(block.assetUuid)}
-                                      />
-                                    ) : null
-                                  )}
-                                  {!inlineTime ? (
-                                    <MessageBubbleTime message={message} />
+                                </p>
+                              </>
+                            ) : content === "decrypting" ? null : voiceOnly && voiceBlock ? (
+                              <>
+                                {replyQuote}
+                                <VoiceMessageCard
+                                  durationMs={voiceBlock.durationMs}
+                                  waveform={voiceBlock.waveform}
+                                  voiceBlock={
+                                    isDemoPlaintextWire(message.encryptedForMe) ? undefined : voiceBlock
+                                  }
+                                  localBlob={localVoiceBlobForAsset(voiceBlock.assetUuid)}
+                                />
+                              </>
+                            ) : photoBubble ? (
+                              <>
+                                {replyQuote}
+                                <div className={styles.messagesBubblePhotoMedia}>
+                                  {imageMediaBlocks.length >= 2 ? (
+                                    <MessageImageCollage
+                                      blocks={imageMediaBlocks}
+                                      getLocalBlob={devGetImageBlob}
+                                      skipDecrypt={isDemoPlaintextWire(message.encryptedForMe)}
+                                    />
+                                  ) : imageMediaBlocks.length === 1 ? (
+                                    <ImageMessageCard
+                                      key={`${message.messageUuid}-${imageMediaBlocks[0]!.assetUuid}`}
+                                      imageBlock={
+                                        isDemoPlaintextWire(message.encryptedForMe)
+                                          ? undefined
+                                          : imageMediaBlocks[0]
+                                      }
+                                      localBlob={devGetImageBlob(imageMediaBlocks[0]!.assetUuid)}
+                                    />
+                                  ) : null}
+                                  {videoMediaBlocks.map((block) => (
+                                    <VideoMessageCard
+                                      key={`${message.messageUuid}-${block.assetUuid}`}
+                                      videoBlock={
+                                        isDemoPlaintextWire(message.encryptedForMe) ? undefined : block
+                                      }
+                                      localBlob={devGetVideoBlob(block.assetUuid)}
+                                    />
+                                  ))}
+                                  {photoOnly ? (
+                                    <MessageBubbleTime
+                                      message={message}
+                                      className={styles.messagesBubblePhotoTime}
+                                    />
                                   ) : null}
                                 </div>
-                              ) : null}
-                            </>
-                          ) : (
-                            <div className={styles.messagesBubbleBlocks}>
-                              {replyQuote}
-                              {content.blocks.map((block, index) =>
-                                block.kind === "text" ? (
-                                  <MessageBubbleText
-                                    key={`${message.messageUuid}-${index}`}
-                                    body={block.body}
-                                    inlineTime={inlineTime && index === content.blocks.length - 1}
-                                    timeLabel={formatChatTime(message.createdAt)}
-                                    timeMeta={timeMeta}
-                                    timeInlineReservePx={timeInlineReservePx}
-                                  />
-                                ) : block.kind === "image" ? (
-                                  <ImageMessageCard
-                                    key={`${message.messageUuid}-${block.assetUuid}`}
-                                    imageBlock={isDemoPlaintextWire(message.encryptedForMe) ? undefined : block}
-                                    localBlob={devGetImageBlob(block.assetUuid)}
-                                  />
-                                ) : block.kind === "video" ? (
-                                  <VideoMessageCard
-                                    key={`${message.messageUuid}-${block.assetUuid}`}
-                                    videoBlock={isDemoPlaintextWire(message.encryptedForMe) ? undefined : block}
-                                    localBlob={devGetVideoBlob(block.assetUuid)}
-                                  />
-                                ) : block.kind === "voice" ? (
-                                  <VoiceMessageCard
-                                    key={`${message.messageUuid}-${block.assetUuid}`}
-                                    durationMs={block.durationMs}
-                                    waveform={block.waveform}
-                                    voiceBlock={isDemoPlaintextWire(message.encryptedForMe) ? undefined : block}
-                                    localBlob={localVoiceBlobForAsset(block.assetUuid)}
-                                  />
-                                ) : (
-                                  // Forward-compat (FSCP errata-5): блок новее клиента —
-                                  // явная индикация вместо пустого сообщения.
-                                  <MessageBubbleText
-                                    key={`${message.messageUuid}-${index}`}
-                                    body="Контент недоступен в этой версии приложения."
-                                    inlineTime={inlineTime && index === content.blocks.length - 1}
-                                    timeLabel={formatChatTime(message.createdAt)}
-                                    timeMeta={timeMeta}
-                                    timeInlineReservePx={timeInlineReservePx}
-                                  />
-                                )
-                              )}
-                            </div>
-                          )}
-                          {!photoBubble && !inlineTime ? (
-                            <MessageBubbleTime message={message} />
-                          ) : null}
+                                {!photoOnly ? (
+                                  <div className={styles.messagesBubblePhotoCaption}>
+                                    {captionBlocks.map((block, index) =>
+                                      block.kind === "text" ? (
+                                        <MessageBubbleText
+                                          key={`${message.messageUuid}-${index}`}
+                                          body={block.body}
+                                          inlineTime={inlineTime && index === captionBlocks.length - 1}
+                                          timeLabel={formatChatTime(message.createdAt)}
+                                          timeMeta={timeMeta}
+                                          timeInlineReservePx={timeInlineReservePx}
+                                        />
+                                      ) : block.kind === "voice" ? (
+                                        <VoiceMessageCard
+                                          key={`${message.messageUuid}-${block.assetUuid}`}
+                                          durationMs={block.durationMs}
+                                          waveform={block.waveform}
+                                          voiceBlock={
+                                            isDemoPlaintextWire(message.encryptedForMe)
+                                              ? undefined
+                                              : block
+                                          }
+                                          localBlob={localVoiceBlobForAsset(block.assetUuid)}
+                                        />
+                                      ) : null,
+                                    )}
+                                    {!inlineTime ? <MessageBubbleTime message={message} /> : null}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : (
+                              <div className={styles.messagesBubbleBlocks}>
+                                {replyQuote}
+                                {content.blocks.map((block, index) =>
+                                  block.kind === "text" ? (
+                                    <MessageBubbleText
+                                      key={`${message.messageUuid}-${index}`}
+                                      body={block.body}
+                                      inlineTime={inlineTime && index === content.blocks.length - 1}
+                                      timeLabel={formatChatTime(message.createdAt)}
+                                      timeMeta={timeMeta}
+                                      timeInlineReservePx={timeInlineReservePx}
+                                    />
+                                  ) : block.kind === "image" ? (
+                                    <ImageMessageCard
+                                      key={`${message.messageUuid}-${block.assetUuid}`}
+                                      imageBlock={
+                                        isDemoPlaintextWire(message.encryptedForMe) ? undefined : block
+                                      }
+                                      localBlob={devGetImageBlob(block.assetUuid)}
+                                    />
+                                  ) : block.kind === "video" ? (
+                                    <VideoMessageCard
+                                      key={`${message.messageUuid}-${block.assetUuid}`}
+                                      videoBlock={
+                                        isDemoPlaintextWire(message.encryptedForMe) ? undefined : block
+                                      }
+                                      localBlob={devGetVideoBlob(block.assetUuid)}
+                                    />
+                                  ) : block.kind === "voice" ? (
+                                    <VoiceMessageCard
+                                      key={`${message.messageUuid}-${block.assetUuid}`}
+                                      durationMs={block.durationMs}
+                                      waveform={block.waveform}
+                                      voiceBlock={
+                                        isDemoPlaintextWire(message.encryptedForMe) ? undefined : block
+                                      }
+                                      localBlob={localVoiceBlobForAsset(block.assetUuid)}
+                                    />
+                                  ) : (
+                                    <MessageBubbleText
+                                      key={`${message.messageUuid}-${index}`}
+                                      body="Контент недоступен в этой версии приложения."
+                                      inlineTime={inlineTime && index === content.blocks.length - 1}
+                                      timeLabel={formatChatTime(message.createdAt)}
+                                      timeMeta={timeMeta}
+                                      timeInlineReservePx={timeInlineReservePx}
+                                    />
+                                  ),
+                                )}
+                              </div>
+                            )}
+                            {!photoBubble && !inlineTime ? (
+                              <MessageBubbleTime message={message} />
+                            ) : null}
                           </div>
                         </MessageBubbleAnchor>
+                      );
+                    };
+
+                    if (item.kind === "own") {
+                      return (
+                        <div
+                          key={item.message.messageUuid}
+                          data-messages-bubble-wrap
+                          className={`${styles.messagesBubbleWrap} ${styles.messagesBubbleWrapMe}`}
+                        >
+                          {renderMessageBubble(item.message)}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={`peer-${item.groupKey}`}
+                        data-messages-peer-group=""
+                        className={styles.messagesPeerGroup}
+                      >
+                        <div className={styles.messagesPeerGroupBubbles}>
+                          {item.messages.map((message) => (
+                            <div
+                              key={message.messageUuid}
+                              data-messages-bubble-wrap
+                              className={styles.messagesBubbleWrapInPeerGroup}
+                            >
+                              {renderMessageBubble(message)}
+                            </div>
+                          ))}
+                        </div>
+                        <div
+                          key={`peer-avatar-${item.groupKey}`}
+                          data-messages-peer-avatar=""
+                          className={styles.messagesBubblePeerAvatar}
+                          aria-hidden
+                        >
+                          {peerThreadAvatarLabel}
+                        </div>
                       </div>
                     );
                   })}

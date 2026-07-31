@@ -68,6 +68,8 @@ export function bubbleInnerMaxWidthPx(bubbleEl: HTMLElement): number {
   const wrap = bubbleEl.closest("[data-messages-bubble-wrap]");
   if (!(wrap instanceof HTMLElement)) return 0;
 
-  const maxRatio = 0.78;
+  /* В peer-группе колонка уже ≤78% полосы чата — не сжимать ещё раз. */
+  const inPeerGroup = wrap.closest("[data-messages-peer-group]") != null;
+  const maxRatio = inPeerGroup ? 1 : 0.78;
   return Math.max(0, wrap.clientWidth * maxRatio - paddingX);
 }

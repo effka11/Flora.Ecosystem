@@ -45,18 +45,41 @@ export function measureTrailingBubblesInsertLiftPx(
   return Math.max(0, Math.round(h));
 }
 
+export type ChatListInsertLiftOptions = {
+  /**
+   * Элементы внутри `innerEl`, которые должны остаться на месте в viewport
+   * (контр-transform −H→0), пока лента едет с +H→0. Для peer-аватара хвоста.
+   */
+  holdViewportEls?: readonly HTMLElement[];
+};
+
+function bumpGeneration(el: HTMLElement): number {
+  const generation = (liftGenerationByEl.get(el) ?? 0) + 1;
+  liftGenerationByEl.set(el, generation);
+  return generation;
+}
+
+function clearLiftStyles(el: HTMLElement): void {
+  el.style.transition = "";
+  el.style.transform = "";
+  el.style.willChange = "";
+}
+
 /**
  * После insert у якоря: до paint компенсируем скачок layout (+height), затем
- * анимируем в 0 — лента и новый пузырь едут одним transform-ом на inner (не scrollport).
- *
- * Вызывать из useLayoutEffect / синхронно после pin — иначе кадр с «прыжком» до translateY.
+ * анимируем в 0 — лента едет на inner; holdViewportEls остаются в кадре.
  */
-export function playChatListInsertLift(innerEl: HTMLElement, heightPx: number): void {
+export function playChatListInsertLift(
+  innerEl: HTMLElement,
+  heightPx: number,
+  options?: ChatListInsertLiftOptions,
+): void {
   const h = Math.max(0, Math.round(heightPx));
   if (h <= 0) return;
 
-  const generation = (liftGenerationByEl.get(innerEl) ?? 0) + 1;
-  liftGenerationByEl.set(innerEl, generation);
+  const hold = (options?.holdViewportEls ?? []).filter((el) => innerEl.contains(el));
+  const generation = bumpGeneration(innerEl);
+  for (const el of hold) bumpGeneration(el);
 
   const reduced =
     typeof window !== "undefined" &&
@@ -65,38 +88,56 @@ export function playChatListInsertLift(innerEl: HTMLElement, heightPx: number): 
   innerEl.style.willChange = "transform";
   innerEl.style.transition = "none";
   innerEl.style.transform = `translateY(${h}px)`;
+  for (const el of hold) {
+    el.style.willChange = "transform";
+    el.style.transition = "none";
+    el.style.transform = `translateY(${-h}px)`;
+  }
 
   if (reduced) {
-    innerEl.style.willChange = "";
-    innerEl.style.transform = "";
+    clearLiftStyles(innerEl);
+    for (const el of hold) clearLiftStyles(el);
     return;
   }
 
-  // Force style flush so the browser commits translateY(h) before transition to 0.
   void innerEl.offsetHeight;
 
-  // Double rAF: гарантирует, что кадр с counter-lift уже закоммичен до включения transition.
   requestAnimationFrame(() => {
     if (liftGenerationByEl.get(innerEl) !== generation) return;
     requestAnimationFrame(() => {
       if (liftGenerationByEl.get(innerEl) !== generation) return;
-      innerEl.style.transition = `transform ${CHAT_INSERT_LIFT_MS}ms ${LIFT_EASING}`;
+      const transition = `transform ${CHAT_INSERT_LIFT_MS}ms ${LIFT_EASING}`;
+      innerEl.style.transition = transition;
       innerEl.style.transform = "translateY(0)";
+      for (const el of hold) {
+        if (liftGenerationByEl.get(el) == null) continue;
+        el.style.transition = transition;
+        el.style.transform = "translateY(0)";
+      }
     });
   });
 
   window.setTimeout(() => {
     if (liftGenerationByEl.get(innerEl) !== generation) return;
-    innerEl.style.transition = "";
-    innerEl.style.transform = "";
-    innerEl.style.willChange = "";
+    clearLiftStyles(innerEl);
+    for (const el of hold) clearLiftStyles(el);
   }, CHAT_INSERT_LIFT_MS + 48);
 }
 
 export function resetChatListInsertLift(innerEl: HTMLElement | null): void {
   if (!innerEl) return;
-  liftGenerationByEl.set(innerEl, (liftGenerationByEl.get(innerEl) ?? 0) + 1);
-  innerEl.style.transition = "";
-  innerEl.style.transform = "";
-  innerEl.style.willChange = "";
+  bumpGeneration(innerEl);
+  clearLiftStyles(innerEl);
+  for (const el of innerEl.querySelectorAll<HTMLElement>("[data-messages-peer-avatar]")) {
+    bumpGeneration(el);
+    clearLiftStyles(el);
+  }
+}
+
+/** Аватар последней peer-группы в ленте — якорь хвоста для hold при peer-insert. */
+export function queryTrailingPeerAvatar(innerEl: HTMLElement): HTMLElement | null {
+  const groups = innerEl.querySelectorAll<HTMLElement>("[data-messages-peer-group]");
+  const last = groups[groups.length - 1];
+  if (!last) return null;
+  return last.querySelector<HTMLElement>("[data-messages-peer-avatar]");
 }

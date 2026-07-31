@@ -1088,9 +1088,57 @@
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: calc(2 * var(--flora-grid-step));
+  gap: var(--g30);
   align-items: stretch;
   align-content: flex-start;
+}
+
+/* Peer-группа: аватар — один sibling колонки пузырей (flex-end), без remount при append.
+ * DOM: bubbles → avatar (a11y); визуально аватар слева через order (не row-reverse —
+ * иначе justify flex-start пакует всю группу вправо). */
+.messagesPeerGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: var(--flora-grid-step);
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-left: calc((38 - 37) * var(--flora-grid-step));
+  padding-right: calc((90 - 89) * var(--flora-grid-step));
+}
+
+.messagesPeerGroup > .messagesBubblePeerAvatar {
+  order: -1;
+}
+
+.messagesPeerGroupBubbles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g30);
+  /* По контенту до 78% — не растягивать колонку на всю полосу. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 78%;
+}
+
+.messagesPeerGroup .messagesBubbleAnchor {
+  max-width: 100%;
+}
+
+/* Wrap внутри peer-группы: без бокового padding (оно на .messagesPeerGroup). */
+.messagesBubbleWrapInPeerGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  align-self: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  min-width: 0;
 }
 
 .messagesChatMessagesSpacer {
