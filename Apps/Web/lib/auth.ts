@@ -12,6 +12,15 @@ import {
   webApiFetch,
 } from "@/lib/apiClient";
 import {
+  ApiRequestError,
+  authDelete,
+  authDeleteWithBody,
+  authGetJson,
+  authPatchJson,
+  authPostForm,
+  authPostJson,
+} from "@/lib/authorizedFetch";
+import {
   SESSION_CLEARED_EVENT,
   STORAGE_ACCESS,
   STORAGE_EXPIRES,
@@ -22,6 +31,7 @@ import {
 import { sharedPresenceStore } from "@flora/client-core/presence";
 
 export {
+  ApiRequestError,
   authPublicFetchUrl,
   resolvePublicApiRoot,
   SESSION_CLEARED_EVENT,
@@ -84,15 +94,6 @@ export type MeResponse = {
 };
 
 type ApiError = { error?: string };
-
-export class ApiRequestError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
 
 function readStr(obj: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -238,11 +239,6 @@ export function isDevLocalOfflineSession(): boolean {
   return getAccessToken() === "dev-token";
 }
 
-/** Resource 401 is never logout proof; coordinator-owned tombstones clear the UI. */
-export function clearSessionOnUnauthorizedIfNeeded(): void {
-  // Kept for the four legacy wrappers during the bridge release.
-}
-
 /**
  * Выдаёт новую пару токенов по refresh (POST /api/auth/refresh).
  * После смены Jwt:Secret на сервере старый access невалиден, но сессия в БД жива — без этого пользователю приходилось бы входить заново.
@@ -272,114 +268,6 @@ async function postAuthJson<T>(url: string, payload: Record<string, unknown>, de
   });
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
   if (!r.ok) {
-    const msg = typeof data.error === "string" ? data.error : defaultError;
-    throw new ApiRequestError(r.status, msg);
-  }
-  return data;
-}
-
-async function getAuthorizedJson<T>(url: string, defaultError: string): Promise<T> {
-  await ensureFreshAccessToken();
-  let accessToken = getAccessToken();
-  if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-
-  const authHeader = (t: string) => ({ Authorization: `Bearer ${t}` });
-  let r = await webApiFetch(url, { method: "GET", headers: authHeader(accessToken) });
-  if (r.status === 401) {
-    const renewed = await refreshSessionIfPossible();
-    if (renewed) {
-      accessToken = getAccessToken();
-      if (accessToken) r = await webApiFetch(url, { method: "GET", headers: authHeader(accessToken) });
-    }
-  }
-  const data = (await r.json().catch(() => ({}))) as T & ApiError;
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    const msg = typeof data.error === "string" ? data.error : defaultError;
-    throw new ApiRequestError(r.status, msg);
-  }
-  return data;
-}
-
-async function postAuthorizedForm<T>(url: string, formData: FormData, defaultError: string): Promise<T> {
-  await ensureFreshAccessToken();
-  let accessToken = getAccessToken();
-  if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-
-  const buildInit = (t: string): RequestInit => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${t}` },
-    body: formData,
-  });
-
-  let r = await webApiFetch(url, buildInit(accessToken));
-  if (r.status === 401) {
-    const renewed = await refreshSessionIfPossible();
-    if (renewed) {
-      accessToken = getAccessToken();
-      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
-    }
-  }
-  const data = (await r.json().catch(() => ({}))) as T & ApiError;
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    const msg = typeof data.error === "string" ? data.error : defaultError;
-    throw new ApiRequestError(r.status, msg);
-  }
-  return data;
-}
-
-async function deleteAuthorizedJson(url: string, defaultError: string): Promise<void> {
-  await ensureFreshAccessToken();
-  let accessToken = getAccessToken();
-  if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-
-  const buildInit = (t: string): RequestInit => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-
-  let r = await webApiFetch(url, buildInit(accessToken));
-  if (r.status === 401) {
-    const renewed = await refreshSessionIfPossible();
-    if (renewed) {
-      accessToken = getAccessToken();
-      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
-    }
-  }
-  if (!r.ok) {
-    const data = (await r.json().catch(() => ({}))) as ApiError;
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    const msg = typeof data.error === "string" ? data.error : defaultError;
-    throw new ApiRequestError(r.status, msg);
-  }
-}
-
-async function patchAuthorizedJson<T>(url: string, payload: Record<string, unknown>, defaultError: string): Promise<T> {
-  await ensureFreshAccessToken();
-  let accessToken = getAccessToken();
-  if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-
-  const buildInit = (t: string): RequestInit => ({
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${t}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  let r = await webApiFetch(url, buildInit(accessToken));
-  if (r.status === 401) {
-    const renewed = await refreshSessionIfPossible();
-    if (renewed) {
-      accessToken = getAccessToken();
-      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
-    }
-  }
-  const data = (await r.json().catch(() => ({}))) as T & ApiError;
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
     const msg = typeof data.error === "string" ? data.error : defaultError;
     throw new ApiRequestError(r.status, msg);
   }
@@ -451,21 +339,21 @@ export async function apiUpdateProfile(payload: UpdateProfilePayload): Promise<v
   };
   if (payload.status !== undefined) body.status = payload.status;
   if (payload.birthDate !== undefined) body.birthDate = payload.birthDate;
-  await patchAuthorizedJson<Record<string, never>>(authEndpoint("/api/auth/profile"), body, "Ошибка сохранения профиля");
+  await authPatchJson("/api/auth/profile", body);
 }
 
 export async function apiUploadAvatar(file: File): Promise<string> {
   const form = new FormData();
   form.append("file", file);
-  return postAuthorizedForm<{ avatarUuid: string }>(
-    authEndpoint("/api/auth/profile/avatar"),
-    form,
-    "Ошибка загрузки аватара",
-  ).then((r) => r.avatarUuid);
+  const raw = (await authPostForm("/api/auth/profile/avatar", form)) as Record<
+    string,
+    unknown
+  >;
+  return readStr(raw, ["avatarUuid", "AvatarUuid"]);
 }
 
 export async function apiDeleteAvatar(): Promise<void> {
-  await deleteAuthorizedJson(authEndpoint("/api/auth/profile/avatar"), "Ошибка удаления аватара");
+  await authDelete("/api/auth/profile/avatar");
 }
 
 export async function apiGetMe(): Promise<MeResponse> {
@@ -473,7 +361,7 @@ export async function apiGetMe(): Promise<MeResponse> {
     const { DEV_LOCAL_ME } = await import("@/lib/devLocalDemoData");
     return DEV_LOCAL_ME;
   }
-  const raw = await getAuthorizedJson<unknown>(authEndpoint("/api/auth/me"), "Не удалось загрузить профиль");
+  const raw = await authGetJson("/api/auth/me");
   return parseMePayload(raw);
 }
 
@@ -486,10 +374,7 @@ export async function apiGetPrivacySettings(): Promise<import("@/app/(dashboard)
     return defaultPrivacyDraft();
   }
   try {
-    const raw = await getAuthorizedJson<unknown>(
-      authEndpoint("/api/auth/me/privacy"),
-      "Не удалось загрузить настройки приватности",
-    );
+    const raw = await authGetJson("/api/auth/me/privacy");
     return privacyDraftFromApi(raw);
   } catch {
     return defaultPrivacyDraft();
@@ -502,10 +387,8 @@ export async function apiUpdatePrivacySettings(
   const { privacyDraftFromApi, privacyDraftToApiPayload } = await import(
     "@/app/(dashboard)/settings/settingsDraft"
   );
-  const raw = await patchAuthorizedJson<unknown>(
-    authEndpoint("/api/auth/me/privacy"),
+  const raw = await authPatchJson("/api/auth/me/privacy",
     privacyDraftToApiPayload(draft) as Record<string, unknown>,
-    "Не удалось сохранить настройки приватности",
   );
   return privacyDraftFromApi(raw);
 }
@@ -530,108 +413,16 @@ function parseBlocklistEntry(raw: unknown): BlocklistEntryDto | null {
   };
 }
 
-async function postAuthorizedJsonWithBody<T>(
-  url: string,
-  payload: Record<string, unknown>,
-  defaultError: string,
-): Promise<T> {
-  await ensureFreshAccessToken();
-  let accessToken = getAccessToken();
-  if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-
-  const buildInit = (t: string): RequestInit => ({
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${t}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  let r = await webApiFetch(url, buildInit(accessToken));
-  if (r.status === 401) {
-    const renewed = await refreshSessionIfPossible();
-    if (renewed) {
-      accessToken = getAccessToken();
-      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
-    }
-  }
-  const data = (await r.json().catch(() => ({}))) as T & ApiError;
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    const msg = typeof data.error === "string" ? data.error : defaultError;
-    throw new ApiRequestError(r.status, msg);
-  }
-  return data;
-}
-
 async function deleteAuthorizedJsonWithBody(
-  url: string,
+  path: string,
   payload: Record<string, unknown>,
-  defaultError: string,
 ): Promise<void> {
-  await ensureFreshAccessToken();
-  let accessToken = getAccessToken();
-  if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-
-  const buildInit = (t: string): RequestInit => ({
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${t}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  let r = await webApiFetch(url, buildInit(accessToken));
-  if (r.status === 401) {
-    const renewed = await refreshSessionIfPossible();
-    if (renewed) {
-      accessToken = getAccessToken();
-      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
-    }
-  }
-  if (!r.ok) {
-    const data = (await r.json().catch(() => ({}))) as ApiError;
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    const msg = typeof data.error === "string" ? data.error : defaultError;
-    throw new ApiRequestError(r.status, msg);
-  }
-}
-
-async function postAuthorizedJson<T>(url: string, defaultError: string): Promise<T> {
-  await ensureFreshAccessToken();
-  let accessToken = getAccessToken();
-  if (!accessToken) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-
-  const buildInit = (t: string): RequestInit => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-
-  let r = await webApiFetch(url, buildInit(accessToken));
-  if (r.status === 401) {
-    const renewed = await refreshSessionIfPossible();
-    if (renewed) {
-      accessToken = getAccessToken();
-      if (accessToken) r = await webApiFetch(url, buildInit(accessToken));
-    }
-  }
-  const data = (await r.json().catch(() => ({}))) as T & ApiError;
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    const msg = typeof data.error === "string" ? data.error : defaultError;
-    throw new ApiRequestError(r.status, msg);
-  }
-  return data;
+  await authDeleteWithBody(path, payload);
 }
 
 export async function apiGetBlocklist(): Promise<BlocklistEntryDto[]> {
   if (isDevLocalOfflineSession()) return [];
-  const raw = await getAuthorizedJson<unknown>(
-    authEndpoint("/api/auth/me/blocks"),
-    "Не удалось загрузить чёрный список",
-  );
+  const raw = await authGetJson("/api/auth/me/blocks");
   if (!Array.isArray(raw)) return [];
   const out: BlocklistEntryDto[] = [];
   for (const item of raw) {
@@ -645,20 +436,14 @@ export async function apiBlockUser(username: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
   const enc = encodeURIComponent(username.replace(/^@+/, "").trim());
   if (!enc) throw new ApiRequestError(400, "Укажите юзернейм.");
-  await postAuthorizedJson<unknown>(
-    authEndpoint(`/api/auth/me/blocks/${enc}`),
-    "Не удалось заблокировать пользователя",
-  );
+  await authPostJson(`/api/auth/me/blocks/${enc}`, {});
 }
 
 export async function apiUnblockUser(username: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
   const enc = encodeURIComponent(username.replace(/^@+/, "").trim());
   if (!enc) throw new ApiRequestError(400, "Укажите юзернейм.");
-  await deleteAuthorizedJson(
-    authEndpoint(`/api/auth/me/blocks/${enc}`),
-    "Не удалось разблокировать пользователя",
-  );
+  await authDelete(`/api/auth/me/blocks/${enc}`);
 }
 
 export type SessionDto = {
@@ -694,11 +479,7 @@ function parseSessionDto(raw: unknown): SessionDto | null {
 
 export async function apiChangePassword(currentPassword: string, newPassword: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
-  await patchAuthorizedJson<Record<string, never>>(
-    authEndpoint("/api/auth/me/password"),
-    { currentPassword, newPassword },
-    "Не удалось сменить пароль",
-  );
+  await authPatchJson("/api/auth/me/password", { currentPassword, newPassword });
 }
 
 export async function apiGetSessions(): Promise<SessionDto[]> {
@@ -714,10 +495,7 @@ export async function apiGetSessions(): Promise<SessionDto[]> {
       },
     ];
   }
-  const raw = await getAuthorizedJson<unknown>(
-    authEndpoint("/api/auth/me/sessions"),
-    "Не удалось загрузить сессии",
-  );
+  const raw = await authGetJson("/api/auth/me/sessions");
   if (!Array.isArray(raw)) return [];
   const out: SessionDto[] = [];
   for (const item of raw) {
@@ -729,10 +507,7 @@ export async function apiGetSessions(): Promise<SessionDto[]> {
 
 export async function apiRevokeOtherSessions(): Promise<void> {
   if (isDevLocalOfflineSession()) return;
-  await deleteAuthorizedJson(
-    authEndpoint("/api/auth/me/sessions/others"),
-    "Не удалось завершить другие сессии",
-  );
+  await authDelete("/api/auth/me/sessions/others");
 }
 
 export async function apiDeleteAccount(password: string): Promise<void> {
@@ -740,27 +515,8 @@ export async function apiDeleteAccount(password: string): Promise<void> {
     clearSession();
     return;
   }
-  await ensureFreshAccessToken();
-  await runWebAuthExclusive(async () => {
-    const token = getAccessToken();
-    if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-    const response = await webApiFetch(authEndpoint("/api/auth/delete-account"), {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ password }),
-    });
-    if (!response.ok) {
-      const data = (await response.json().catch(() => ({}))) as ApiError;
-      throw new ApiRequestError(
-        response.status,
-        typeof data.error === "string" ? data.error : "Не удалось удалить аккаунт",
-      );
-    }
-    clearSession();
-  });
+  await authPostJson("/api/auth/delete-account", { password });
+  clearSession();
 }
 
 export type SecurityStatusDto = {
@@ -782,10 +538,7 @@ export async function apiGetSecurityStatus(): Promise<SecurityStatusDto> {
   if (isDevLocalOfflineSession()) {
     return { twoFactorEnabled: false, emailVerified: true, phoneVerified: false };
   }
-  const raw = await getAuthorizedJson<unknown>(
-    authEndpoint("/api/auth/me/security"),
-    "Не удалось загрузить настройки безопасности",
-  );
+  const raw = await authGetJson("/api/auth/me/security");
   return parseSecurityStatus(raw);
 }
 
@@ -799,11 +552,10 @@ export async function apiBeginEmailChange(password: string, newEmail: string): P
   if (isDevLocalOfflineSession()) {
     return { changeToken: "dev-change", expiresAt: new Date().toISOString(), devVerificationCode: "000000" };
   }
-  const raw = await postAuthorizedJsonWithBody<Record<string, unknown>>(
-    authEndpoint("/api/auth/me/email/change"),
-    { password, newEmail },
-    "Не удалось начать смену email",
-  );
+  const raw = (await authPostJson("/api/auth/me/email/change", {
+    password,
+    newEmail,
+  })) as Record<string, unknown>;
   return {
     changeToken: readStr(raw, ["changeToken", "ChangeToken"]),
     expiresAt: readStr(raw, ["expiresAt", "ExpiresAt", "expiresAtUtc", "ExpiresAtUtc"]),
@@ -813,21 +565,16 @@ export async function apiBeginEmailChange(password: string, newEmail: string): P
 
 export async function apiConfirmEmailChange(changeToken: string, code: string): Promise<string> {
   if (isDevLocalOfflineSession()) return "dev@example.com";
-  const raw = await postAuthorizedJsonWithBody<Record<string, unknown>>(
-    authEndpoint("/api/auth/me/email/confirm"),
-    { changeToken, code },
-    "Не удалось подтвердить смену email",
-  );
+  const raw = (await authPostJson("/api/auth/me/email/confirm", {
+    changeToken,
+    code,
+  })) as Record<string, unknown>;
   return readStr(raw, ["email", "Email"]);
 }
 
 export async function apiChangePhone(password: string, phone: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
-  await patchAuthorizedJson<Record<string, never>>(
-    authEndpoint("/api/auth/me/phone"),
-    { password, phone },
-    "Не удалось сменить номер телефона",
-  );
+  await authPatchJson("/api/auth/me/phone", { password, phone });
 }
 
 export type TwoFactorSetupResult = {
@@ -839,11 +586,9 @@ export async function apiBeginTwoFactorSetup(password: string): Promise<TwoFacto
   if (isDevLocalOfflineSession()) {
     return { secret: "DEVSECRETDEVSECRET", otpAuthUri: "otpauth://totp/FLORA:dev?secret=DEVSECRETDEVSECRET&issuer=FLORA" };
   }
-  const raw = await postAuthorizedJsonWithBody<Record<string, unknown>>(
-    authEndpoint("/api/auth/me/2fa/setup"),
-    { password },
-    "Не удалось начать настройку 2FA",
-  );
+  const raw = (await authPostJson("/api/auth/me/2fa/setup", {
+    password,
+  })) as Record<string, unknown>;
   return {
     secret: readStr(raw, ["secret", "Secret"]),
     otpAuthUri: readStr(raw, ["otpAuthUri", "OtpAuthUri"]),
@@ -852,20 +597,12 @@ export async function apiBeginTwoFactorSetup(password: string): Promise<TwoFacto
 
 export async function apiEnableTwoFactor(code: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
-  await postAuthorizedJsonWithBody<Record<string, never>>(
-    authEndpoint("/api/auth/me/2fa/enable"),
-    { code },
-    "Не удалось включить 2FA",
-  );
+  await authPostJson("/api/auth/me/2fa/enable", { code });
 }
 
 export async function apiDisableTwoFactor(password: string, code: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
-  await deleteAuthorizedJsonWithBody(
-    authEndpoint("/api/auth/me/2fa"),
-    { password, code },
-    "Не удалось отключить 2FA",
-  );
+  await deleteAuthorizedJsonWithBody("/api/auth/me/2fa", { password, code });
 }
 
 export async function apiLogout(): Promise<void> {

@@ -1,4 +1,10 @@
-import { apiGetMe, apiGetPrivacySettings, avatarImageUrl, isDevLocalOfflineSession } from "@/lib/auth";
+import {
+  apiGetMe,
+  apiGetPrivacySettings,
+  avatarImageUrl,
+  isDevLocalOfflineSession,
+  syncStoredSessionTokens,
+} from "@/lib/auth";
 import { createCachedResource, createKeyedCachedResource, type CachedResource } from "@/lib/cachedResource";
 import { preloadConversationThreads } from "@/lib/conversationThreadsCache";
 import { msgGetConversations, type MsgConversationsPage } from "@/lib/messagingApi";
@@ -324,8 +330,9 @@ export function startTabPrefetch(href: string, options?: { username?: string | n
  */
 
 /** Критический prefetch без ожидания профиля — можно вызывать сразу при наличии токена. */
-export function startCriticalDashboardPrefetch(): void {
+export async function startCriticalDashboardPrefetch(): Promise<void> {
   if (typeof window === "undefined") return;
+  await syncStoredSessionTokens();
   feedRecommendationsCache.prefetch();
   feedSubscriptionsCache.prefetch();
   conversationsCache.prefetch();
@@ -341,7 +348,7 @@ export function startDashboardDataPrefetch(username?: string | null, viewerUuid?
   const normalizedUsername = username ? normalizeUsernameKey(username) : "";
   const viewerNorm = viewerUuid?.trim().toLowerCase() ?? "";
 
-  startCriticalDashboardPrefetch();
+  void startCriticalDashboardPrefetch();
   if (viewerNorm) {
     attachPendingThreadPrefetchViewer(viewerNorm);
   }

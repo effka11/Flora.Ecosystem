@@ -3,15 +3,18 @@ import {
   RESERVED_COMMUNITY_SLUG_MESSAGE,
 } from "@/lib/communityReservedSlugs";
 import { floraNewUuid } from "@/lib/floraUuid";
+import { ApiRequestError, getAccessToken, isDevLocalOfflineSession, resolvePublicApiRoot } from "@/lib/auth";
 import {
-  ApiRequestError,
-  clearSessionOnUnauthorizedIfNeeded,
-  ensureFreshAccessToken,
-  getAccessToken,
-  isDevLocalOfflineSession,
-  refreshSessionIfPossible,
-  resolvePublicApiRoot,
-} from "@/lib/auth";
+  authDelete,
+  authDeleteJson,
+  authGetBlob,
+  authGetJson,
+  authPatch,
+  authPatchJson,
+  authPostForm,
+  authPostJson,
+  authPutJson,
+} from "@/lib/authorizedFetch";
 import { clampPostContent } from "@/lib/postContentLimits";
 import {
   devDemoFeedPosts,
@@ -23,153 +26,20 @@ import {
   devDemoMarkRead,
 } from "@/lib/devLocalDemoData";
 
-type ApiError = { error?: string; detail?: string; Detail?: string };
-
 function apiRoot(): string {
   return resolvePublicApiRoot();
 }
 
+/** Relative path for authFetch / client-core (configured base applied inside). */
 function apiUrl(path: string): string {
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+/** Absolute or same-origin URL for media src and anonymous fetch. */
+function absoluteApiUrl(path: string): string {
   const root = apiRoot();
-  return root ? `${root}${path}` : path;
-}
-
-async function parseErr(r: Response): Promise<string> {
-  const data = (await r.json().catch(() => ({}))) as ApiError;
-  const base = typeof data.error === "string" ? data.error : `Ошибка ${r.status}`;
-  const detailRaw = data.detail ?? data.Detail;
-  const detail = typeof detailRaw === "string" && detailRaw.trim().length > 0 ? detailRaw.trim() : "";
-  if (detail.length === 0) return base;
-  if (base.includes(detail)) return base;
-  return `${base} (${detail})`;
-}
-
-async function authGetJson(url: string): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, { headers: headers(token) });
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, { headers: headers(token) });
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authPatch(url: string): Promise<void> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-}
-
-async function authPutJson(url: string, body: Record<string, unknown>): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "PUT",
-    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authPostJson(url: string, body: Record<string, unknown>, err: string): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authPostForm(url: string, body: FormData): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "POST",
-    headers: { Authorization: `Bearer ${t}` },
-    body,
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authGetBlob(url: string): Promise<Blob> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, { headers: headers(token) });
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, { headers: headers(token) });
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.blob();
+  const p = apiUrl(path);
+  return root ? `${root}${p}` : p;
 }
 
 function readStr(o: Record<string, unknown>, keys: string[]): string {
@@ -514,7 +384,6 @@ export async function apiMarkPostNotInterested(postUuid: string): Promise<void> 
   await authPostJson(
     apiUrl(`/api/auth/posts/${encodeURIComponent(id)}/not-interested`),
     {},
-    "Не удалось отметить пост",
   );
 }
 
@@ -538,7 +407,6 @@ export async function apiHideFeedAuthor(authorUuid: string): Promise<void> {
   await authPostJson(
     apiUrl(`/api/auth/feed/authors/${encodeURIComponent(id)}/hide`),
     {},
-    "Не удалось скрыть автора",
   );
 }
 
@@ -588,7 +456,6 @@ export async function apiDismissCommunity(communityId: string): Promise<void> {
   await authPostJson(
     apiUrl(`/api/auth/communities/${encodeURIComponent(id)}/dismiss`),
     {},
-    "Не удалось скрыть сообщество",
   );
 }
 
@@ -636,7 +503,6 @@ export async function apiDismissRecommendedUser(userUuid: string): Promise<void>
   await authPostJson(
     apiUrl(`/api/auth/users/${encodeURIComponent(id)}/dismiss`),
     {},
-    "Не удалось скрыть рекомендацию",
   );
 }
 
@@ -694,28 +560,6 @@ function parseViewMutation(raw: unknown): { viewsCount: number } {
   };
 }
 
-async function authDeleteJson(url: string): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
 export async function apiLikePost(postUuid: string): Promise<{ liked: boolean; likesCount: number }> {
   const id = postUuid.trim();
   if (!id) throw new ApiRequestError(400, "Не указан пост.");
@@ -729,7 +573,7 @@ export async function apiLikePost(postUuid: string): Promise<{ liked: boolean; l
     devPostEngagement.set(id, next);
     return { liked: true, likesCount: next.likesCount };
   }
-  const raw = await authPostJson(apiUrl(`/api/auth/posts/${encodeURIComponent(id)}/like`), {}, "Не удалось поставить лайк");
+  const raw = await authPostJson(apiUrl(`/api/auth/posts/${encodeURIComponent(id)}/like`), {});
   return parseLikeMutation(raw);
 }
 
@@ -759,7 +603,7 @@ export async function apiRepostPost(postUuid: string): Promise<{ reposted: boole
     devPostEngagement.set(id, next);
     return { reposted: true, repostsCount: next.repostsCount };
   }
-  const raw = await authPostJson(apiUrl(`/api/auth/posts/${encodeURIComponent(id)}/repost`), {}, "Не удалось сделать репост");
+  const raw = await authPostJson(apiUrl(`/api/auth/posts/${encodeURIComponent(id)}/repost`), {});
   return parseRepostMutation(raw);
 }
 
@@ -782,7 +626,6 @@ export async function apiRecordPostView(
   const raw = await authPostJson(
     apiUrl(`/api/auth/posts/${encodeURIComponent(id)}/view`),
     {},
-    "Не удалось записать просмотр",
   );
   return parseViewMutation(raw);
 }
@@ -939,8 +782,7 @@ export async function apiCreatePostComment(
   if (parentId) body.parentCommentUuid = parentId;
   const raw = (await authPostJson(
     apiUrl(`/api/auth/posts/${encodeURIComponent(postUuid)}/comments`),
-    body,
-    "Не удалось отправить комментарий"
+    body
   )) as Record<string, unknown>;
   const parsed = parsePostComment(raw);
   if (!parsed) {
@@ -960,7 +802,7 @@ export async function apiCreatePost(
   const body: Record<string, unknown> = { content: trimmed };
   const communityId = options?.communityId?.trim();
   if (communityId) body.communityId = communityId;
-  const raw = (await authPostJson(apiUrl("/api/auth/posts"), body, "Не удалось опубликовать пост")) as Record<
+  const raw = (await authPostJson(apiUrl("/api/auth/posts"), body)) as Record<
     string,
     unknown
   >;
@@ -971,19 +813,19 @@ export async function apiCreatePost(
 export function postImageUrl(imageUuid: string): string {
   const id = imageUuid.trim();
   // `fmt=fri` сбрасывает immutable browser/CDN cache от эпохи WebP/AVIF/ImageSet.
-  return apiUrl(`/api/auth/posts/images/${encodeURIComponent(id)}?fmt=fri`);
+  return absoluteApiUrl(`/api/auth/posts/images/${encodeURIComponent(id)}?fmt=fri`);
 }
 
 /** Публичный URL видеофайла поста (AV1 MP4, сервер поддерживает Range). */
 export function postVideoUrl(videoUuid: string): string {
   const id = videoUuid.trim();
-  return apiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}`);
+  return absoluteApiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}`);
 }
 
 /** Публичный URL постера видео поста. */
 export function postVideoPosterUrl(videoUuid: string): string {
   const id = videoUuid.trim();
-  return apiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}/poster?fmt=fri`);
+  return absoluteApiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}/poster?fmt=fri`);
 }
 
 /** Загрузить видео к посту (MP4/MOV/WebM/MKV, до 200 МБ, ≤ 10 мин). Транскодируется на сервере. */
@@ -1080,51 +922,7 @@ function parsePostDraft(raw: unknown): PostDraftDto | null {
 
 function postDraftsListUrl(communityId?: string): string {
   const q = communityId?.trim() ? `?communityId=${encodeURIComponent(communityId.trim())}` : "";
-  return apiUrl(`/api/auth/post-drafts${q}`);
-}
-
-async function authPatchJson(url: string, body: Record<string, unknown>): Promise<unknown> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  return r.json().catch(() => ({}));
-}
-
-async function authDelete(url: string): Promise<void> {
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(url, init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
+  return absoluteApiUrl(`/api/auth/post-drafts${q}`);
 }
 
 export async function apiListPostDrafts(input?: { communityId?: string }): Promise<PostDraftDto[]> {
@@ -1171,7 +969,7 @@ export async function apiCreatePostDraft(input: {
     content,
   };
   if (communityId) body.communityId = communityId;
-  const raw = (await authPostJson(apiUrl("/api/auth/post-drafts"), body, "Не удалось сохранить черновик")) as Record<
+  const raw = (await authPostJson(apiUrl("/api/auth/post-drafts"), body)) as Record<
     string,
     unknown
   >;
@@ -1371,7 +1169,6 @@ export async function apiJoinCommunity(communityId: string): Promise<CommunityPr
   const raw = (await authPostJson(
     apiUrl(`/api/auth/communities/${encodeURIComponent(id)}/join`),
     {},
-    "Не удалось подписаться на сообщество",
   )) as Record<string, unknown>;
   const parsed = parseCommunityProfile(raw);
   if (!parsed) throw new ApiRequestError(500, "Некорректный ответ сервера.");
@@ -1384,24 +1181,7 @@ export async function apiLeaveCommunity(communityId: string): Promise<void> {
   if (isDevLocalOfflineSession()) {
     throw new ApiRequestError(501, "Отписка от сообщества недоступна в офлайн-режиме.");
   }
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(apiUrl(`/api/auth/communities/${encodeURIComponent(id)}/join`), init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(apiUrl(`/api/auth/communities/${encodeURIComponent(id)}/join`), init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
+  await authDelete(apiUrl(`/api/auth/communities/${encodeURIComponent(id)}/join`));
 }
 
 export type ProfileCommunityDto = {
@@ -1588,7 +1368,6 @@ export async function apiCreateCommunity(input: {
   const raw = (await authPostJson(
     apiUrl("/api/auth/communities"),
     body,
-    "Не удалось создать сообщество",
   )) as Record<string, unknown>;
   const parsed = parseOwnedCommunity(raw);
   if (!parsed) throw new ApiRequestError(500, "Некорректный ответ сервера.");
@@ -1635,22 +1414,13 @@ export async function apiGetProfilePosts(username: string, skip = 0, take = 20):
   }
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
   const q = new URLSearchParams({ skip: String(skip), take: String(take) });
-  const url = apiUrl(`/api/auth/profile/${enc}/posts?${q}`);
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  const authHeaders = (t: string): HeadersInit => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, token ? { headers: authHeaders(token) } : {});
-  if (r.status === 401 && token) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, { headers: authHeaders(token) });
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401 && token) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  const raw = await r.json().catch(() => []);
+  const path = apiUrl(`/api/auth/profile/${enc}/posts?${q}`);
+  const raw = getAccessToken()
+    ? await authGetJson(path)
+    : await fetch(absoluteApiUrl(path)).then(async (r) => {
+        if (!r.ok) throw new ApiRequestError(r.status, `Ошибка ${r.status}`);
+        return r.json().catch(() => []);
+      });
   if (!Array.isArray(raw)) return [];
   const out: ProfilePostDto[] = [];
   for (const x of raw) {
@@ -1664,22 +1434,13 @@ export async function apiGetProfileLikes(username: string, skip = 0, take = 20):
   if (isDevLocalOfflineSession()) return [];
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
   const q = new URLSearchParams({ skip: String(skip), take: String(take) });
-  const url = apiUrl(`/api/auth/profile/${enc}/likes?${q}`);
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  const authHeaders = (t: string): HeadersInit => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, token ? { headers: authHeaders(token) } : {});
-  if (r.status === 401 && token) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, { headers: authHeaders(token) });
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401 && token) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  const raw = await r.json().catch(() => []);
+  const path = apiUrl(`/api/auth/profile/${enc}/likes?${q}`);
+  const raw = getAccessToken()
+    ? await authGetJson(path)
+    : await fetch(absoluteApiUrl(path)).then(async (r) => {
+        if (!r.ok) throw new ApiRequestError(r.status, `Ошибка ${r.status}`);
+        return r.json().catch(() => []);
+      });
   if (!Array.isArray(raw)) return [];
   const out: ProfilePostDto[] = [];
   for (const x of raw) {
@@ -1693,22 +1454,13 @@ export async function apiGetProfileReposts(username: string, skip = 0, take = 20
   if (isDevLocalOfflineSession()) return [];
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
   const q = new URLSearchParams({ skip: String(skip), take: String(take) });
-  const url = apiUrl(`/api/auth/profile/${enc}/reposts?${q}`);
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  const authHeaders = (t: string): HeadersInit => ({ Authorization: `Bearer ${t}` });
-  let r = await fetch(url, token ? { headers: authHeaders(token) } : {});
-  if (r.status === 401 && token) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(url, { headers: authHeaders(token) });
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401 && token) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
-  const raw = await r.json().catch(() => []);
+  const path = apiUrl(`/api/auth/profile/${enc}/reposts?${q}`);
+  const raw = getAccessToken()
+    ? await authGetJson(path)
+    : await fetch(absoluteApiUrl(path)).then(async (r) => {
+        if (!r.ok) throw new ApiRequestError(r.status, `Ошибка ${r.status}`);
+        return r.json().catch(() => []);
+      });
   if (!Array.isArray(raw)) return [];
   const out: ProfilePostDto[] = [];
   for (const x of raw) {
@@ -1738,12 +1490,18 @@ export async function apiGetPublicProfile(username: string): Promise<PublicProfi
     return { ...profile, isFollowingByMe: false };
   }
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
-  const url = apiUrl(`/api/auth/profile/${enc}`);
+  const path = apiUrl(`/api/auth/profile/${enc}`);
   const o = getAccessToken()
-    ? ((await authGetJson(url)) as Record<string, unknown>)
+    ? ((await authGetJson(path)) as Record<string, unknown>)
     : ((await (async () => {
-        const r = await fetch(url);
-        if (!r.ok) throw new ApiRequestError(r.status, await parseErr(r));
+        const r = await fetch(absoluteApiUrl(path));
+        if (!r.ok) {
+          const data = (await r.json().catch(() => ({}))) as { error?: string };
+          throw new ApiRequestError(
+            r.status,
+            typeof data.error === "string" ? data.error : `Ошибка ${r.status}`,
+          );
+        }
         return r.json().catch(() => ({}));
       })()) as Record<string, unknown>);
   return {
@@ -1865,8 +1623,7 @@ export async function apiGetMessagesWithUser(otherUserUuid: string, skip = 0, ta
 export async function apiSendMessagePlaintext(toUserUuid: string, content: string): Promise<{ messageUuid: string; createdAt: string }> {
   const raw = (await authPostJson(
     apiUrl("/api/auth/messages"),
-    { toUserUuid, content: content.trim() },
-    "Не удалось отправить сообщение"
+    { toUserUuid, content: content.trim() }
   )) as Record<string, unknown>;
   return {
     messageUuid: readStr(raw, ["messageUuid", "MessageUuid"]),
@@ -1917,7 +1674,6 @@ export async function apiPutMyE2ePublicKey(publicKeyBase64: string, deviceUuid?:
   const raw = (await authPostJson(
     apiUrl("/api/auth/me/e2e-public-key"),
     body,
-    "Ошибка сохранения E2E ключа.",
   )) as Record<string, unknown>;
   return { deviceUuid: readStr(raw, ["deviceUuid", "DeviceUuid"]) };
 }
@@ -2166,30 +1922,13 @@ export async function apiGetProfileFollowing(username: string, skip = 0, take = 
 export async function apiFollowUser(username: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
-  await authPostJson(apiUrl(`/api/auth/profile/${enc}/follow`), {}, "Не удалось подписаться");
+  await authPostJson(apiUrl(`/api/auth/profile/${enc}/follow`), {});
 }
 
 export async function apiUnfollowUser(username: string): Promise<void> {
   if (isDevLocalOfflineSession()) return;
   const enc = encodeURIComponent(username.replace(/^@+/, "").toLowerCase());
-  await ensureFreshAccessToken();
-  let token = getAccessToken();
-  if (!token) throw new ApiRequestError(401, "Сессия истекла. Войдите снова.");
-  const init = (t: string): RequestInit => ({
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${t}` },
-  });
-  let r = await fetch(apiUrl(`/api/auth/profile/${enc}/follow`), init(token));
-  if (r.status === 401) {
-    if (await refreshSessionIfPossible()) {
-      token = getAccessToken();
-      if (token) r = await fetch(apiUrl(`/api/auth/profile/${enc}/follow`), init(token));
-    }
-  }
-  if (!r.ok) {
-    if (r.status === 401) clearSessionOnUnauthorizedIfNeeded();
-    throw new ApiRequestError(r.status, await parseErr(r));
-  }
+  await authDelete(apiUrl(`/api/auth/profile/${enc}/follow`));
 }
 
 export async function apiSendMessageFscpWire(
@@ -2200,7 +1939,6 @@ export async function apiSendMessageFscpWire(
   const raw = (await authPostJson(
     apiUrl("/api/auth/messages"),
     { toUserUuid, encryptedForReceiver: wire, encryptedForSender: wire, voiceAssetUuids },
-    ""
   )) as Record<string, unknown>;
   return {
     messageUuid: readStr(raw, ["messageUuid", "MessageUuid"]),

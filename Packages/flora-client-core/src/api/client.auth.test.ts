@@ -760,4 +760,354 @@ describe("session refresh client", () => {
     expect(session.state.refreshToken).toBeNull();
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
+
+  it("authFetch retries with store access before calling refresh (JTI race)", async () => {
+    const oldExp = Math.floor(Date.now() / 1000) + 3600;
+    const newExp = oldExp + 60;
+    const oldAccess = makeJwt(oldExp);
+    const newAccess = makeJwt(newExp);
+    const session = createSessionStore({
+      accessToken: oldAccess,
+      refreshToken: "refresh",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/auth/refresh")) {
+        throw new Error("refresh must not be called");
+      }
+      const auth = new Headers(init?.headers).get("Authorization");
+      if (auth === `Bearer ${oldAccess}`) {
+        // Peer rotated while this request was in flight.
+        session.replaceSession({
+          accessToken: newAccess,
+          refresh: { kind: "token", token: "refresh" },
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        });
+        return new Response(JSON.stringify({ error: "Не удалось определить пользователя." }), {
+          status: 401,
+        });
+      }
+      if (auth === `Bearer ${newAccess}`) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(null, { status: 500 });
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const r = await authFetch("/api/auth/feed");
+    expect(r.status).toBe(200);
+    expect(fetchImpl.mock.calls.some((c) => String(c[0]).endsWith("/api/auth/refresh"))).toBe(
+      false,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("authFetch refreshes once when store still has the rejected access", async () => {
+    const oldAccess = makeJwt(Math.floor(Date.now() / 1000) - 60);
+    const newAccess = makeJwt(Math.floor(Date.now() / 1000) + 3600);
+    const session = createSessionStore({
+      accessToken: oldAccess,
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/auth/refresh")) {
+        return new Response(
+          JSON.stringify({
+            accessToken: newAccess,
+            refreshToken: "new-refresh",
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const auth = new Headers(init?.headers).get("Authorization");
+      if (auth === `Bearer ${newAccess}`) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const r = await authFetch("/api/auth/me");
+    expect(r.status).toBe(200);
+    expect(
+      fetchImpl.mock.calls.filter((c) => String(c[0]).endsWith("/api/auth/refresh")),
+    ).toHaveLength(1);
+    expect(session.state.accessToken).toBe(newAccess);
+  });
+
+  it("authFetch retries on transient refresh when peer already wrote new access", async () => {
+    const oldExp = Math.floor(Date.now() / 1000) + 3600;
+    const newExp = oldExp + 120;
+    const oldAccess = makeJwt(oldExp);
+    const newAccess = makeJwt(newExp);
+    const session = createSessionStore({
+      accessToken: oldAccess,
+      refreshToken: "refresh",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+    const onUnauthorized = vi.fn();
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/auth/refresh")) {
+        session.replaceSession({
+          accessToken: newAccess,
+          refresh: { kind: "token", token: "refresh" },
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        });
+        return new Response(null, { status: 503 });
+      }
+      const auth = new Headers(init?.headers).get("Authorization");
+      if (auth === `Bearer ${newAccess}`) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+      onUnauthorized,
+    });
+
+    const r = await authFetch("/api/auth/me");
+    expect(r.status).toBe(200);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(session.state.accessToken).toBe(newAccess);
+  });
+
+  it("authFetch does not re-hit peer token on transient after stale-first already failed it", async () => {
+    const oldExp = Math.floor(Date.now() / 1000) + 3600;
+    const newExp = oldExp + 120;
+    const oldAccess = makeJwt(oldExp);
+    const peerAccess = makeJwt(newExp);
+    const session = createSessionStore({
+      accessToken: oldAccess,
+      refreshToken: "refresh",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+    // Peer already rotated before our first response is handled.
+    session.replaceSession({
+      accessToken: peerAccess,
+      refresh: { kind: "token", token: "refresh" },
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+    // But first doFetch still uses the token authFetch read at start — simulate by
+    // resetting store to old for the initial read, then writing peer before recovery.
+    session.replaceSession({
+      accessToken: oldAccess,
+      refresh: { kind: "token", token: "refresh" },
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+
+    let resourceHits = 0;
+    const onUnauthorized = vi.fn();
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/auth/refresh")) {
+        return new Response(null, { status: 503 });
+      }
+      resourceHits += 1;
+      const auth = new Headers(init?.headers).get("Authorization");
+      if (auth === `Bearer ${oldAccess}`) {
+        session.replaceSession({
+          accessToken: peerAccess,
+          refresh: { kind: "token", token: "refresh" },
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        });
+        return new Response(JSON.stringify({ error: "stale A" }), { status: 401 });
+      }
+      if (auth === `Bearer ${peerAccess}`) {
+        return new Response(JSON.stringify({ error: "stale B" }), { status: 401 });
+      }
+      return new Response(null, { status: 500 });
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+      onUnauthorized,
+    });
+
+    await expect(authFetch("/api/auth/me")).rejects.toMatchObject({ status: 401 });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    // A (initial) + B (stale-first) — no third retry of B after transient.
+    expect(resourceHits).toBe(2);
+    expect(
+      fetchImpl.mock.calls.filter((c) => String(c[0]).endsWith("/api/auth/refresh")),
+    ).toHaveLength(1);
+  });
+
+  it("authFetch retries effective access after ready even if stale-pass already tried it", async () => {
+    const oldExp = Math.floor(Date.now() / 1000) + 3600;
+    const newExp = oldExp + 120;
+    const oldAccess = makeJwt(oldExp);
+    const newAccess = makeJwt(newExp);
+    const session = createSessionStore({
+      accessToken: oldAccess,
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+    let resourceHits = 0;
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/auth/refresh")) {
+        return new Response(
+          JSON.stringify({
+            accessToken: newAccess,
+            refreshToken: "new-refresh",
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      resourceHits += 1;
+      const auth = new Headers(init?.headers).get("Authorization");
+      if (auth === `Bearer ${oldAccess}`) {
+        session.replaceSession({
+          accessToken: newAccess,
+          refresh: { kind: "token", token: "old-refresh" },
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        });
+        return new Response(JSON.stringify({ error: "stale" }), { status: 401 });
+      }
+      // First try with newAccess (stale-pass) still 401; post-refresh try succeeds.
+      if (auth === `Bearer ${newAccess}` && resourceHits <= 2) {
+        return new Response(JSON.stringify({ error: "still" }), { status: 401 });
+      }
+      if (auth === `Bearer ${newAccess}`) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(null, { status: 500 });
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    const r = await authFetch("/api/auth/feed");
+    expect(r.status).toBe(200);
+    expect(resourceHits).toBe(3);
+    expect(
+      fetchImpl.mock.calls.filter((c) => String(c[0]).endsWith("/api/auth/refresh")),
+    ).toHaveLength(1);
+  });
+
+  it("refreshSessionIfPossible is false on superseded when access did not change", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    let entered!: () => void;
+    let release!: () => void;
+    const lockEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const lockRelease = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runRefreshExclusive: RunRefreshExclusive = async (operation) => {
+      entered();
+      await lockRelease;
+      return operation();
+    };
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl: vi.fn(),
+      runRefreshExclusive,
+    });
+
+    const attempt = refreshSessionIfPossible("old-access");
+    await lockEntered;
+    session.replaceSession({
+      accessToken: "old-access",
+      refresh: { kind: "token", token: "old-refresh" },
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+    release();
+
+    expect(await attempt).toBe(false);
+  });
+
+  it("held refresh exclusive does not let a peer start a second refresh POST", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    let entered!: () => void;
+    let release!: () => void;
+    const lockEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const lockRelease = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runRefreshExclusive: RunRefreshExclusive = async (operation) => {
+      entered();
+      await lockRelease;
+      return operation();
+    };
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            accessToken: "new-access",
+            refreshToken: "new-refresh",
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+      runRefreshExclusive,
+    });
+
+    const first = refreshSession();
+    await lockEntered;
+    const second = refreshSession();
+    expect(fetchImpl).toHaveBeenCalledTimes(0);
+    release();
+    expect(await first).toBe("ready");
+    expect(await second).toBe("ready");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });

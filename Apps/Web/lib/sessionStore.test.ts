@@ -165,3 +165,35 @@ test("Web Lock never repeats a callback that already started and failed", async 
   );
   assert.equal(calls, 1);
 });
+
+test("Web Lock acquire timeout does not run the operation unlocked", async () => {
+  const locks: WebLockManagerLike = {
+    request: async <T>(_name: string, options: { signal?: AbortSignal }): Promise<T> => {
+      await new Promise<never>((_, reject) => {
+        options.signal?.addEventListener(
+          "abort",
+          () => {
+            const err =
+              typeof DOMException !== "undefined"
+                ? new DOMException("The operation was aborted.", "AbortError")
+                : Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+            reject(err);
+          },
+          { once: true },
+        );
+      });
+      throw new Error("unreachable");
+    },
+  };
+  const exclusive = createWebAuthExclusive({
+    getLockManager: () => locks,
+    waitMs: 20,
+  });
+  let calls = 0;
+
+  await assert.rejects(exclusive(async () => {
+    calls += 1;
+    return "ran";
+  }));
+  assert.equal(calls, 0);
+});
