@@ -24,11 +24,16 @@ export function handleMessageRealtime(conversationUuid?: string | null): void {
   const qc = getQueryClientRef();
   if (qc) {
     void qc.invalidateQueries({ queryKey: ["conversations"] });
-    if (conversationUuid) {
-      void qc.invalidateQueries({ queryKey: ["messages", conversationUuid] });
-    }
   }
   if (conversationUuid) {
+    // Открытый тред сам делает refetch через subscribeMessageRealtime —
+    // лишний invalidate даёт двойную работу. Без слушателей — пометить stale.
+    if (messageListeners.size === 0) {
+      const client = getQueryClientRef();
+      if (client) {
+        void client.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+      }
+    }
     messageListeners.forEach((listener) => listener(conversationUuid));
   }
 }

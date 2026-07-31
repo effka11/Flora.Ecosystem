@@ -95,6 +95,13 @@ export function peekMessageImageUri(assetUuid: string): string | null {
   return uriCache.get(normalizeAssetId(assetUuid)) ?? null;
 }
 
+/** Локальный URI для optimistic photo-пузыря до upload. */
+export function seedMessageImageUri(assetUuid: string, uri: string): void {
+  const trimmed = uri.trim();
+  if (!trimmed) return;
+  uriCache.set(normalizeAssetId(assetUuid), trimmed);
+}
+
 export async function ensureMessageImageUri(block: FscpImageBlock): Promise<string> {
   if (!acceptsFrcI(block.contentType)) {
     throw new Error("Сообщение содержит не-FRI изображение (legacy больше не поддерживается).");

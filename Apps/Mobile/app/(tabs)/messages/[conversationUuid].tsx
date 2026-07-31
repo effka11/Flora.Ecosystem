@@ -13,7 +13,9 @@ import {
   buildNotificationPreviewBundle,
   messageBlocksToPreview,
   sendTextMessage,
+  type FscpImageBlock,
   type FscpMessageBlock,
+  type FscpVoiceBlock,
   type NotificationPreviewKind,
 } from "@flora/client-core/fscp";
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
@@ -38,7 +40,15 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardGestureArea } from "react-native-keyboard-controller";
-import Reanimated from "react-native-reanimated";
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
+import {
+  estimateBlocksInsertLiftPx,
+  estimateRowInsertLiftPx,
+  playChatListInsertLift,
+} from "@/lib/chatListInsertLift";
 import {
   ChatComposeField,
   type ChatComposeFieldHandle,
@@ -75,12 +85,31 @@ import {
   keyboardStickyOffsets,
   resolveMessagesDockBottomInset,
 } from "@/lib/messagesDockInsets";
-import { uploadPreparedMessageImage } from "@/lib/messageImageAssets";
+import { ChatMessageBirthHost } from "@/components/messages/ChatMessageBirthHost";
+import { floraNewUuid } from "@/lib/floraUuid";
+import {
+  markBirthPending,
+  rememberClientMessageKey,
+  resetBirthTracking,
+  seedHydratedKeys,
+} from "@/lib/messageBirthRegistry";
+import {
+  seedMessageImageUri,
+  uploadPreparedMessageImage,
+} from "@/lib/messageImageAssets";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
-import { appendOutgoingThreadMessage } from "@/lib/messageThreadOutgoing";
+import {
+  applyMessagesPageToCaches,
+  insertOptimisticOutgoingThreadMessage,
+  removeOptimisticOutgoingThreadMessage,
+  replaceOptimisticOutgoingThreadMessage,
+} from "@/lib/messageThreadOutgoing";
 import { replyDraftFromMessage, type MessageReplyDraft } from "@/lib/messageReply";
 import { uploadPreparedMessageVoice } from "@/lib/messageVoiceAssets";
-import { registerPendingVoiceUri } from "@/lib/pendingVoiceOutgoing";
+import {
+  clearPendingVoiceUri,
+  registerPendingVoiceUri,
+} from "@/lib/pendingVoiceOutgoing";
 import { useMessageComposeImages } from "@/lib/useMessageComposeImages";
 import { useMessageComposeVoice } from "@/lib/useMessageComposeVoice";
 import { useVoiceRecorder } from "@/lib/useVoiceRecorder";
@@ -89,6 +118,7 @@ import { messageThreadCache } from "@/stores/messageThreadCache";
 import { useFscpStore } from "@/stores/fscpStore";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { useSessionStore } from "@/stores/sessionStore";
+import { FRC_I_MIME } from "@flora/client-core/frc-i";
 
 type ListRow = ThreadBubbleItem & {
   showPeerAvatar: boolean;
@@ -128,6 +158,37 @@ const EMPTY_MESSAGES: MsgMessageDto[] = [];
 
 /** Сколько ждать расшифровки, прежде чем показать ленту как есть. */
 const LIST_REVEAL_DEADLINE_MS = 1200;
+
+const PLACEHOLDER_AES = {
+  algorithm: "aes-gcm" as const,
+  keyBase64Url: "AAAAAAAAAAAAAAAAAAAAAA",
+  nonceBase64Url: "AAAAAAAAAAAA",
+};
+
+function provisionalImageBlock(assetUuid: string, contentType: string): FscpImageBlock {
+  return {
+    kind: "image",
+    assetUuid,
+    contentType: contentType || FRC_I_MIME,
+    encryption: PLACEHOLDER_AES,
+  };
+}
+
+function provisionalVoiceBlock(params: {
+  assetUuid: string;
+  durationMs: number;
+  waveform: number[];
+  contentType: string;
+}): FscpVoiceBlock {
+  return {
+    kind: "voice",
+    assetUuid: params.assetUuid,
+    durationMs: params.durationMs,
+    waveform: params.waveform,
+    contentType: params.contentType,
+    encryption: PLACEHOLDER_AES,
+  };
+}
 
 function routeParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -266,6 +327,14 @@ export default function ThreadScreen() {
   const conversationUuid = routeParam(params.conversationUuid);
   const paramOtherUserUuid = routeParam(params.otherUserUuid);
 
+  const scrollTrackingReadyRef = useRef(false);
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  /** Компенсация скачка layout → анимация подъёма ленты+пузыря одним transform. */
+  const insertLiftSv = useSharedValue(0);
+  const listInsertLiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: insertLiftSv.value }],
+  }));
+
   useEffect(() => {
     resetDock();
     hideListUntilReady();
@@ -277,6 +346,10 @@ export default function ThreadScreen() {
     atBottomRef.current = true;
     prevListLengthRef.current = 0;
     setShowJumpToLatest(false);
+    resetBirthTracking();
+    scrollTrackingReadyRef.current = false;
+    seenMessageIdsRef.current = new Set();
+    insertLiftSv.value = 0;
     // resetDock is stable (ref-backed); only re-run on thread change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationUuid]);
@@ -432,12 +505,21 @@ export default function ThreadScreen() {
     initialData: () => {
       if (!otherUserUuid) return undefined;
       const cached = messageThreadCache.get(conversationUuid);
-      return cached ? { items: cached, nextCursor: null } : undefined;
+      return cached
+        ? applyMessagesPageToCaches({
+            conversationUuid,
+            otherUserUuid,
+            page: { items: cached, nextCursor: null },
+          })
+        : undefined;
     },
     queryFn: async () => {
       const page = await apiGetMessages(conversationUuid, undefined, otherUserUuid || undefined);
-      messageThreadCache.set(conversationUuid, page.items);
-      return page;
+      return applyMessagesPageToCaches({
+        conversationUuid,
+        otherUserUuid,
+        page,
+      });
     },
   });
 
@@ -452,7 +534,6 @@ export default function ThreadScreen() {
     const norm = conversationUuid.toLowerCase();
     return subscribeMessageRealtime((incomingUuid) => {
       if (incomingUuid.toLowerCase() !== norm) return;
-      void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
       void messagesQuery.refetch();
       void apiMarkConversationRead(conversationUuid)
         .then(() => {
@@ -476,14 +557,17 @@ export default function ThreadScreen() {
   }, [conversationUuid, queryClient]);
 
   useEffect(() => {
-    if (!conversationUuid) return;
+    if (!conversationUuid || !otherUserUuid) return;
     const task = InteractionManager.runAfterInteractions(() => {
       void queryClient.fetchQuery({
         queryKey: ["messages", conversationUuid, otherUserUuid || ""],
         queryFn: async () => {
           const page = await apiGetMessages(conversationUuid, undefined, otherUserUuid || undefined);
-          messageThreadCache.set(conversationUuid, page.items);
-          return page;
+          return applyMessagesPageToCaches({
+            conversationUuid,
+            otherUserUuid,
+            page,
+          });
         },
         staleTime: 60_000,
       });
@@ -521,13 +605,22 @@ export default function ThreadScreen() {
   });
 
   /**
+   * Чужие `decrypting` не показываем: иначе при live-приходе мелькает
+   * «Расшифровка…». В ленту попадают после ok/failed; свои — сразу.
+   */
+  const visibleDecrypted = useMemo(
+    () => decrypted.filter((row) => row.isFromMe || row.decryptState !== "decrypting"),
+    [decrypted],
+  );
+
+  /**
    * Лента перевёрнута, поэтому данные идут от новых к старым: индекс 0 — это
    * последнее сообщение, и оно стоит в начале скролла. Группировка считается до
    * разворота, на прямом порядке, — она смотрит на *следующее* сообщение.
    */
   const listData = useMemo(
-    () => buildListRows(decrypted).reverse(),
-    [decrypted],
+    () => buildListRows(visibleDecrypted).reverse(),
+    [visibleDecrypted],
   );
   const hasDecryptFailures = useMemo(
     () => fscpReady && decrypted.some((row) => row.decryptState === "failed"),
@@ -608,6 +701,37 @@ export default function ThreadScreen() {
   );
 
   useEffect(() => {
+    if (!threadReady || listData.length === 0) return;
+    if (!scrollTrackingReadyRef.current) {
+      seedHydratedKeys(
+        listData.map((row) => row.clientMessageKey ?? row.messageUuid),
+      );
+      seenMessageIdsRef.current = new Set(listData.map((row) => row.messageUuid));
+      scrollTrackingReadyRef.current = true;
+      return;
+    }
+
+    const seen = seenMessageIdsRef.current;
+    let incomingLiftPx = 0;
+    for (const row of listData) {
+      if (seen.has(row.messageUuid)) continue;
+      seen.add(row.messageUuid);
+      rememberClientMessageKey(
+        row.messageUuid,
+        row.clientMessageKey ?? row.messageUuid,
+      );
+      // Исходящие уже крутят insertLift в onSend; здесь — только peer delta.
+      if (!row.isFromMe) {
+        markBirthPending(row.clientMessageKey ?? row.messageUuid);
+        incomingLiftPx += estimateRowInsertLiftPx(row);
+      }
+    }
+    if (incomingLiftPx > 0 && atBottomRef.current) {
+      playChatListInsertLift(insertLiftSv, incomingLiftPx);
+    }
+  }, [insertLiftSv, listData, threadReady]);
+
+  useEffect(() => {
     const prevLen = prevListLengthRef.current;
     const nextLen = listData.length;
     prevListLengthRef.current = nextLen;
@@ -616,12 +740,14 @@ export default function ThreadScreen() {
     // строк его не трогает. У якоря есть допуск в CHAT_AT_BOTTOM_THRESHOLD_PX,
     // и входящее сообщение, пришедшее внутри этого допуска, осталось бы
     // частично под полем ввода — поэтому возврат к якорю здесь свой.
+    // Non-animated pin: подъём ленты — insertLiftSv (общий с пузырём).
     if (atBottomRef.current) {
-      scrollToEnd(false);
+      pinListToBottom(false);
+      setShowJumpToLatest(false);
       return;
     }
     setShowJumpToLatest(true);
-  }, [listData.length, scrollToEnd]);
+  }, [listData.length, pinListToBottom]);
 
 
   useEffect(() => {
@@ -762,21 +888,24 @@ export default function ThreadScreen() {
   const renderMessage = useCallback(
     ({ item }: { item: ListRow }) => {
       const isMenuTarget = menuTarget?.message.messageUuid === item.messageUuid;
+      const clientKey = item.clientMessageKey ?? item.messageUuid;
       return (
         // Обратный переворот строки: лента перевёрнута целиком (см. listInverted),
         // иначе пузырь встал бы вверх ногами. Так же устроен `inverted` у FlatList.
         <View style={styles.rowInverted}>
-          <ChatMessageBubble
-            message={item}
-            peer={peer}
-            showPeerAvatar={item.showPeerAvatar}
-            isPeerIndented={item.isPeerIndented}
-            isMenuTarget={isMenuTarget}
-            onPress={(anchor) => onMessagePress(item, anchor)}
-            onAnchorSync={
-              isMenuTarget ? (anchor) => syncMenuAnchor(item.messageUuid, anchor) : undefined
-            }
-          />
+          <ChatMessageBirthHost clientMessageKey={clientKey}>
+            <ChatMessageBubble
+              message={item}
+              peer={peer}
+              showPeerAvatar={item.showPeerAvatar}
+              isPeerIndented={item.isPeerIndented}
+              isMenuTarget={isMenuTarget}
+              onPress={(anchor) => onMessagePress(item, anchor)}
+              onAnchorSync={
+                isMenuTarget ? (anchor) => syncMenuAnchor(item.messageUuid, anchor) : undefined
+              }
+            />
+          </ChatMessageBirthHost>
         </View>
       );
     },
@@ -819,9 +948,42 @@ export default function ThreadScreen() {
 
     const sourceUri = voiceDraft.uri;
     const contentType = voiceDraft.contentType;
+    const durationMs = voiceDraft.durationMs;
+    const waveform = voiceDraft.waveform;
     const activeReply = replyTo;
+    const clientMessageKey = floraNewUuid();
+    const provisionalAssetUuid = floraNewUuid();
+
+    registerPendingVoiceUri(provisionalAssetUuid, sourceUri);
+    const optimisticBlocks: FscpMessageBlock[] = [
+      provisionalVoiceBlock({
+        assetUuid: provisionalAssetUuid,
+        durationMs,
+        waveform,
+        contentType,
+      }),
+    ];
 
     setSending(true);
+    await voiceRecorder.discard();
+    clearVoiceDraft();
+    setReplyTo(null);
+    setDeleteBarHeightPx(0);
+    atBottomRef.current = true;
+
+    insertOptimisticOutgoingThreadMessage({
+      queryClient,
+      conversationUuid,
+      otherUserUuid,
+      senderUserUuid: me.userUuid,
+      clientMessageKey,
+      blocks: optimisticBlocks,
+      replyTo: activeReply ?? undefined,
+    });
+    seenMessageIdsRef.current.add(clientMessageKey);
+    pinListToBottom(false);
+    playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks));
+
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
       if (!peerKey.publicKeyBase64) throw new Error("У собеседника нет E2E-ключа");
@@ -830,11 +992,12 @@ export default function ThreadScreen() {
         toUserUuid: otherUserUuid,
         sourceUri,
         contentType,
-        durationMs: voiceDraft.durationMs,
-        waveform: voiceDraft.waveform,
+        durationMs,
+        waveform,
       });
 
       registerPendingVoiceUri(voiceBlock.assetUuid, sourceUri);
+      clearPendingVoiceUri(provisionalAssetUuid);
 
       const wire = await buildBlocksMessageWire({
         senderUserUuid: me.userUuid,
@@ -856,25 +1019,39 @@ export default function ThreadScreen() {
         attachments: { voiceAssetUuids: [voiceBlock.assetUuid] },
         encryptedPushPreviews,
       });
-      appendOutgoingThreadMessage({
+      replaceOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
         otherUserUuid,
         senderUserUuid: me.userUuid,
+        clientMessageKey,
         sent,
         wire,
         blocks: [voiceBlock],
         replyTo: activeReply ?? undefined,
       });
-      await voiceRecorder.discard();
-      clearVoiceDraft();
-      setReplyTo(null);
-      setDeleteBarHeightPx(0);
-      atBottomRef.current = true;
-      pinListToBottom();
-      void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+      seenMessageIdsRef.current.add(sent.messageUuid);
+      setMenuTarget((prev) => {
+        if (!prev || prev.message.messageUuid !== clientMessageKey) return prev;
+        return {
+          ...prev,
+          message: {
+            ...prev.message,
+            messageUuid: sent.messageUuid,
+            clientMessageKey,
+            sendStatus: undefined,
+          },
+        };
+      });
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {
+      removeOptimisticOutgoingThreadMessage({
+        queryClient,
+        conversationUuid,
+        otherUserUuid,
+        clientMessageKey,
+      });
+      clearPendingVoiceUri(provisionalAssetUuid);
       const message = err instanceof Error ? err.message : "Не удалось отправить голосовое";
       Alert.alert("Отправка", message);
     } finally {
@@ -891,6 +1068,7 @@ export default function ThreadScreen() {
     queryClient,
     replyTo,
     setDeleteBarHeightPx,
+    insertLiftSv,
     voiceDraft,
     voiceRecorder,
   ]);
@@ -930,9 +1108,44 @@ export default function ThreadScreen() {
     if (!canSend() || hasPendingPrepare) return;
     const material = useFscpStore.getState().material;
     if (!material) return;
+
+    const imageSnapshot = composeImages.map((image) => ({
+      uri: image.uri,
+      contentType: image.contentType,
+    }));
     const activeReply = replyTo;
+    const clientMessageKey = floraNewUuid();
+
+    const optimisticBlocks: FscpMessageBlock[] = [];
+    if (trimmed) optimisticBlocks.push({ kind: "text", body: trimmed });
+    for (const image of imageSnapshot) {
+      const provisionalId = floraNewUuid();
+      seedMessageImageUri(provisionalId, image.uri);
+      optimisticBlocks.push(provisionalImageBlock(provisionalId, image.contentType));
+    }
+    if (optimisticBlocks.length === 0) return;
+
     void apiPostTyping(conversationUuid, false, otherUserUuid).catch(() => {});
     setSending(true);
+    composeRef.current?.clearText();
+    clearImages();
+    setReplyTo(null);
+    setDeleteBarHeightPx(0);
+    atBottomRef.current = true;
+
+    insertOptimisticOutgoingThreadMessage({
+      queryClient,
+      conversationUuid,
+      otherUserUuid,
+      senderUserUuid: me.userUuid,
+      clientMessageKey,
+      blocks: optimisticBlocks,
+      replyTo: activeReply ?? undefined,
+    });
+    seenMessageIdsRef.current.add(clientMessageKey);
+    pinListToBottom(false);
+    playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks));
+
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
       if (!peerKey.publicKeyBase64) throw new Error("У собеседника нет E2E-ключа");
@@ -940,7 +1153,8 @@ export default function ThreadScreen() {
       const blocks: FscpMessageBlock[] = [];
       const imageAssetUuids: string[] = [];
       if (trimmed) blocks.push({ kind: "text", body: trimmed });
-      for (const image of composeImages) {
+      for (let i = 0; i < imageSnapshot.length; i++) {
+        const image = imageSnapshot[i]!;
         const uploaded = await uploadPreparedMessageImage({
           toUserUuid: otherUserUuid,
           prepared: {
@@ -949,10 +1163,19 @@ export default function ThreadScreen() {
             fileName: "photo.jpg",
           },
         });
+        seedMessageImageUri(uploaded.assetUuid, image.uri);
         blocks.push(uploaded);
         imageAssetUuids.push(uploaded.assetUuid);
       }
-      if (blocks.length === 0) return;
+      if (blocks.length === 0) {
+        removeOptimisticOutgoingThreadMessage({
+          queryClient,
+          conversationUuid,
+          otherUserUuid,
+          clientMessageKey,
+        });
+        return;
+      }
 
       const wire = await buildBlocksMessageWire({
         senderUserUuid: me.userUuid,
@@ -974,25 +1197,38 @@ export default function ThreadScreen() {
         attachments: imageAssetUuids.length > 0 ? { imageAssetUuids } : undefined,
         encryptedPushPreviews,
       });
-      appendOutgoingThreadMessage({
+      replaceOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
         otherUserUuid,
         senderUserUuid: me.userUuid,
+        clientMessageKey,
         sent,
         wire,
         blocks,
         replyTo: activeReply ?? undefined,
       });
-      composeRef.current?.clearText();
-      clearImages();
-      setReplyTo(null);
-      setDeleteBarHeightPx(0);
-      atBottomRef.current = true;
-      pinListToBottom();
-      void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+      seenMessageIdsRef.current.add(sent.messageUuid);
+      setMenuTarget((prev) => {
+        if (!prev || prev.message.messageUuid !== clientMessageKey) return prev;
+        return {
+          ...prev,
+          message: {
+            ...prev.message,
+            messageUuid: sent.messageUuid,
+            clientMessageKey,
+            sendStatus: undefined,
+          },
+        };
+      });
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {
+      removeOptimisticOutgoingThreadMessage({
+        queryClient,
+        conversationUuid,
+        otherUserUuid,
+        clientMessageKey,
+      });
       const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
       Alert.alert("Отправка", message);
     } finally {
@@ -1074,33 +1310,36 @@ export default function ThreadScreen() {
         </Reanimated.View>
 
         <Reanimated.View style={[styles.listFill, listRevealStyle, listLiftStyle]}>
-          <FlashList
-            key={conversationUuid}
-            data={listData}
-            keyExtractor={(item) => item.messageUuid}
-            getItemType={messageItemType}
-            style={styles.listInverted}
-            contentContainerStyle={styles.listContent}
-            renderScrollComponent={renderScrollComponent}
-            onScroll={onScroll}
-            onScrollBeginDrag={onScrollBeginDrag}
-            scrollEventThrottle={16}
-            keyboardShouldPersistTaps="handled"
-            // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
-            // соседние ячейки размонтируются прямо у края вьюпорта.
-            drawDistance={480}
-            /*
-              `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
-              короткий тред к низу отступом `windowSize - childContainerSize`,
-              который уменьшался ступенями по мере домера строк — лента ехала
-              вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
-              стоит у низа по построению. Автоподстройка позиции тоже не нужна:
-              новое сообщение приходит в начало данных, то есть ровно туда, где
-              стоит скролл, и попадает в кадр само.
-            */
-            maintainVisibleContentPosition={{ disabled: true }}
-            renderItem={renderMessage}
-          />
+          {/* insertLift: тот же transform для ленты и нового пузыря (без отдельного bubble translate). */}
+          <Reanimated.View style={[styles.listFill, listInsertLiftStyle]}>
+            <FlashList
+              key={conversationUuid}
+              data={listData}
+              keyExtractor={(item) => item.clientMessageKey ?? item.messageUuid}
+              getItemType={messageItemType}
+              style={styles.listInverted}
+              contentContainerStyle={styles.listContent}
+              renderScrollComponent={renderScrollComponent}
+              onScroll={onScroll}
+              onScrollBeginDrag={onScrollBeginDrag}
+              scrollEventThrottle={16}
+              keyboardShouldPersistTaps="handled"
+              // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
+              // соседние ячейки размонтируются прямо у края вьюпорта.
+              drawDistance={480}
+              /*
+                `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
+                короткий тред к низу отступом `windowSize - childContainerSize`,
+                который уменьшался ступенями по мере домера строк — лента ехала
+                вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
+                стоит у низа по построению. Автоподстройка позиции тоже не нужна:
+                новое сообщение приходит в начало данных, то есть ровно туда, где
+                стоит скролл, и попадает в кадр само.
+              */
+              maintainVisibleContentPosition={{ disabled: true }}
+              renderItem={renderMessage}
+            />
+          </Reanimated.View>
         </Reanimated.View>
 
         {showJumpToLatest ? (
@@ -1121,6 +1360,12 @@ export default function ThreadScreen() {
             menuTarget != null &&
             menuTarget.message.decryptState === "ok" &&
             menuTarget.message.previewText.length > 0
+          }
+          canReply={
+            menuTarget != null &&
+            menuTarget.message.decryptState === "ok" &&
+            menuTarget.message.previewText.length > 0 &&
+            menuTarget.message.sendStatus !== "sending"
           }
           canDelete={
             menuTarget != null &&

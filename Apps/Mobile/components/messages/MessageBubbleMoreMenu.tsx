@@ -31,7 +31,10 @@ type Props = {
   /** Y линии разделения compose (верх dock, окно). */
   feedBottomY: number | null;
   isFromMe: boolean;
+  /** Copy / reply share preview readiness; reply may be narrower (e.g. while sending). */
   canReplyCopy: boolean;
+  /** Defaults to canReplyCopy when omitted. */
+  canReply?: boolean;
   canDelete: boolean;
   onClose: () => void;
   onReply?: () => void;
@@ -143,12 +146,14 @@ export function MessageBubbleMoreMenu({
   feedBottomY,
   isFromMe,
   canReplyCopy,
+  canReply,
   canDelete,
   onClose,
   onReply,
   onCopy,
   onDelete,
 }: Props) {
+  const replyEnabled = canReply ?? canReplyCopy;
   const hostRef = useRef<View>(null);
   const [hostFrame, setHostFrame] = useState<LayoutRectangle | null>(null);
   const [panelHeight, setPanelHeight] = useState(0);
@@ -204,8 +209,8 @@ export function MessageBubbleMoreMenu({
       <MenuRow
         icon="arrow-undo-outline"
         label="Ответить"
-        disabled={!canReplyCopy}
-        onPress={pick(canReplyCopy ? onReply : undefined)}
+        disabled={!replyEnabled}
+        onPress={pick(replyEnabled ? onReply : undefined)}
       />
       <MenuRow
         icon="copy-outline"

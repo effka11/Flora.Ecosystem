@@ -30,6 +30,11 @@ import type { ChatPeerInfo } from "./ChatThreadHeader";
 
 export type ThreadBubbleItem = {
   messageUuid: string;
+  /**
+   * Стабильный ключ строки для FlashList / birth: у optimistic = temp uuid,
+   * после ACK остаётся тем же, пока `messageUuid` становится серверным.
+   */
+  clientMessageKey?: string;
   text: string;
   previewText: string;
   imageBlocks: FscpImageBlock[];
@@ -167,6 +172,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   }, [isMenuTarget, onAnchorSync]);
 
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
+  // Чужие decrypting режет лента; свои могут показать статус. Не рисуем peer-заглушку.
+  if (!message.isFromMe && message.decryptState === "decrypting") {
+    return null;
+  }
   const body =
     message.decryptState === "decrypting"
       ? "Расшифровка…"
