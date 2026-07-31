@@ -30,6 +30,11 @@ import type { ChatPeerInfo } from "./ChatThreadHeader";
 
 export type ThreadBubbleItem = {
   messageUuid: string;
+  /**
+   * Стабильный ключ строки для FlashList / birth: у optimistic = temp uuid,
+   * после ACK остаётся тем же, пока `messageUuid` становится серверным.
+   */
+  clientMessageKey?: string;
   text: string;
   previewText: string;
   imageBlocks: FscpImageBlock[];
@@ -46,6 +51,8 @@ type Props = {
   peer: ChatPeerInfo;
   showPeerAvatar: boolean;
   isPeerIndented: boolean;
+  /** Пузырь внутри peer-группы: без аватара/indent, ширина как с reserved peer column. */
+  inPeerGroup?: boolean;
   isMenuTarget?: boolean;
   onPress?: (anchor: BubbleAnchorRect) => void;
   onAnchorSync?: (anchor: BubbleAnchorRect) => void;
@@ -137,6 +144,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   peer,
   showPeerAvatar,
   isPeerIndented,
+  inPeerGroup = false,
   isMenuTarget = false,
   onPress,
   onAnchorSync,
@@ -146,10 +154,11 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
     () => ({
       screenWidth,
       isFromMe: message.isFromMe,
-      showPeerAvatar,
-      isPeerIndented,
+      // В группе аватар снаружи — для ширины резервируем колонку как при indent/avatar.
+      showPeerAvatar: inPeerGroup ? false : showPeerAvatar,
+      isPeerIndented: inPeerGroup ? true : isPeerIndented,
     }),
-    [screenWidth, message.isFromMe, showPeerAvatar, isPeerIndented],
+    [screenWidth, message.isFromMe, showPeerAvatar, isPeerIndented, inPeerGroup],
   );
   const maxPhotoWidth = useMemo(() => maxPhotoBubbleWidth(layoutCtx), [layoutCtx]);
   const maxVoiceWidth = useMemo(() => maxVoiceBubbleWidth(layoutCtx), [layoutCtx]);
@@ -167,6 +176,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   }, [isMenuTarget, onAnchorSync]);
 
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
+  // Чужие decrypting режет лента; свои могут показать статус. Не рисуем peer-заглушку.
+  if (!message.isFromMe && message.decryptState === "decrypting") {
+    return null;
+  }
   const body =
     message.decryptState === "decrypting"
       ? "Расшифровка…"
@@ -199,8 +212,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const wrapStyle = [
     styles.wrap,
     message.isFromMe ? styles.wrapMe : styles.wrapThem,
-    !message.isFromMe && isPeerIndented ? styles.wrapIndented : null,
+    !message.isFromMe && isPeerIndented && !inPeerGroup ? styles.wrapIndented : null,
+    inPeerGroup ? styles.wrapInPeerGroup : null,
   ];
+  const showAvatar = !message.isFromMe && showPeerAvatar && !inPeerGroup;
 
   const bubbleColumnProps = {
     bubbleRef: bubbleMeasureRef,
@@ -224,7 +239,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
 
     return (
       <View style={wrapStyle}>
-        {!message.isFromMe && showPeerAvatar ? (
+        {showAvatar ? (
           <View style={styles.peerAvatarSlot}>
             <FloraAvatar
               size={floraMessages.peerBubbleAvatarSize}
@@ -264,7 +279,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   if (hasVoice && !hasImages) {
     return (
       <View style={wrapStyle}>
-        {!message.isFromMe && showPeerAvatar ? (
+        {showAvatar ? (
           <View style={styles.peerAvatarSlot}>
             <FloraAvatar
               size={floraMessages.peerBubbleAvatarSize}
@@ -354,7 +369,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
 
   return (
     <View style={wrapStyle}>
-      {!message.isFromMe && showPeerAvatar ? (
+      {showAvatar ? (
         <View style={styles.peerAvatarSlot}>
           <FloraAvatar
             size={floraMessages.peerBubbleAvatarSize}
@@ -435,6 +450,12 @@ const styles = StyleSheet.create({
     width: "100%",
     paddingHorizontal: floraSpacing.grid,
     marginBottom: floraMessages.bubbleRowGap,
+  },
+  /** Внутри peer-группы: padding/margin на оболочке группы. */
+  wrapInPeerGroup: {
+    paddingHorizontal: 0,
+    marginBottom: 0,
+    width: "100%",
   },
   wrapMe: {
     justifyContent: "flex-end",

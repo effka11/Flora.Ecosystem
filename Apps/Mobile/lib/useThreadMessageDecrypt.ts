@@ -9,6 +9,10 @@ import {
 } from "@flora/client-core/fscp";
 import { useEffect, useRef, useState } from "react";
 import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
+import {
+  isOptimisticPayloadSentinel,
+  takeClientMessageKey,
+} from "@/lib/messageBirthRegistry";
 import { messageThreadDecryptCache } from "@/stores/messageThreadCache";
 
 const DECRYPT_BATCH = 4;
@@ -23,12 +27,15 @@ function normalizeRow(row: ThreadBubbleItem): ThreadBubbleItem {
     previewText: row.previewText ?? row.text ?? "",
     imageBlocks: row.imageBlocks ?? [],
     voiceBlock: row.voiceBlock,
+    clientMessageKey:
+      row.clientMessageKey ?? takeClientMessageKey(row.messageUuid) ?? row.messageUuid,
   };
 }
 
 function buildDecryptingRow(m: MsgMessageDto): ThreadBubbleItem {
   return {
     messageUuid: m.messageUuid,
+    clientMessageKey: takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
     text: "",
     previewText: "",
     imageBlocks: [],
@@ -43,6 +50,7 @@ function buildDecryptingRow(m: MsgMessageDto): ThreadBubbleItem {
 function rowFromPlaintext(m: MsgMessageDto, plain: FscpMessagePlaintext): ThreadBubbleItem {
   return {
     messageUuid: m.messageUuid,
+    clientMessageKey: takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
     text: extractTextFromPlaintext(plain),
     previewText: plaintextToPreview(plain),
     imageBlocks: getImageBlocksFromPlaintext(plain),
@@ -58,6 +66,7 @@ function rowFromPlaintext(m: MsgMessageDto, plain: FscpMessagePlaintext): Thread
 function rowFromPreviewText(m: MsgMessageDto, preview: string): ThreadBubbleItem {
   return {
     messageUuid: m.messageUuid,
+    clientMessageKey: takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
     text: preview,
     previewText: preview,
     imageBlocks: [],
@@ -97,6 +106,40 @@ function isConversationFullyResolved(
   });
 }
 
+function withMessageMeta(row: ThreadBubbleItem, m: MsgMessageDto): ThreadBubbleItem {
+  const optimistic = isOptimisticPayloadSentinel(m.encryptedPayload);
+  return normalizeRow({
+    ...row,
+    messageUuid: m.messageUuid,
+    isFromMe: m.isFromMe,
+    createdAt: m.createdAt,
+    isRead: m.isRead,
+    clientMessageKey:
+      row.clientMessageKey ?? takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
+    sendStatus: optimistic ? "sending" : undefined,
+  });
+}
+
+function resolveRowForMessage(
+  m: MsgMessageDto,
+  currentByUuid: Map<string, ThreadBubbleItem>,
+): ThreadBubbleItem {
+  const cacheKey = messageDecryptCacheKey(m);
+  const wireCached = messageThreadDecryptCache.getMessage(cacheKey);
+  if (wireCached && isRowTerminal(wireCached)) {
+    return withMessageMeta(wireCached, m);
+  }
+  const prev = currentByUuid.get(m.messageUuid);
+  if (prev && isRowTerminal(prev)) {
+    return withMessageMeta(prev, m);
+  }
+  if (isOptimisticPayloadSentinel(m.encryptedPayload)) {
+    // Seed должен быть до setQueryData; без него не рисуем sentinel как текст.
+    return buildDecryptingRow(m);
+  }
+  return buildDecryptingRow(m);
+}
+
 function rowsFromWireCache(
   conversationUuid: string,
   messages: MsgMessageDto[],
@@ -107,41 +150,12 @@ function rowsFromWireCache(
   return sameOrder ? messages.map((m, i) => withMessageMeta(cached[i]!, m)) : null;
 }
 
-function rowsFromMessageCache(messages: MsgMessageDto[]): ThreadBubbleItem[] {
-  return messages.map((m) => {
-    const wireCached = messageThreadDecryptCache.getMessage(messageDecryptCacheKey(m));
-    if (wireCached && isRowTerminal(wireCached)) {
-      return withMessageMeta(wireCached, m);
-    }
-    return buildDecryptingRow(m);
-  });
-}
-
-function withMessageMeta(row: ThreadBubbleItem, m: MsgMessageDto): ThreadBubbleItem {
-  return normalizeRow({
-    ...row,
-    isFromMe: m.isFromMe,
-    createdAt: m.createdAt,
-    isRead: m.isRead,
-  });
-}
-
-function mergeRowsWithCurrent(
+function rowsMergingCurrent(
   messages: MsgMessageDto[],
   current: ThreadBubbleItem[],
 ): ThreadBubbleItem[] {
-  return messages.map((m, index) => {
-    const cacheKey = messageDecryptCacheKey(m);
-    const wireCached = messageThreadDecryptCache.getMessage(cacheKey);
-    if (wireCached && isRowTerminal(wireCached)) {
-      return withMessageMeta(wireCached, m);
-    }
-    const row = current[index];
-    if (row?.messageUuid === m.messageUuid && isRowTerminal(row)) {
-      return withMessageMeta(row, m);
-    }
-    return buildDecryptingRow(m);
-  });
+  const byUuid = new Map(current.map((row) => [row.messageUuid, row]));
+  return messages.map((m) => resolveRowForMessage(m, byUuid));
 }
 
 type Args = {
@@ -175,7 +189,7 @@ export function useThreadMessageDecrypt({
 
   const [rows, setRows] = useState<ThreadBubbleItem[]>(() => {
     if (!conversationUuid || messages.length === 0) return [];
-    return rowsFromWireCache(conversationUuid, messages) ?? rowsFromMessageCache(messages);
+    return rowsFromWireCache(conversationUuid, messages) ?? rowsMergingCurrent(messages, []);
   });
 
   const rowsRef = useRef(rows);
@@ -201,11 +215,12 @@ export function useThreadMessageDecrypt({
     prevFscpDecryptKeyRef.current = fscpDecryptKey;
 
     if (messagesKeyChanged || fscpKeyChanged) {
-      const seeded = rowsFromMessageCache(currentMessages);
+      // Merge terminal rows by messageUuid — не слепой reseed (optimistic / isRead).
+      const seeded = rowsMergingCurrent(currentMessages, rowsRef.current);
       setRows(seeded);
       rowsRef.current = seeded;
     } else {
-      const merged = mergeRowsWithCurrent(currentMessages, rowsRef.current);
+      const merged = rowsMergingCurrent(currentMessages, rowsRef.current);
       const changed = merged.some((row, i) => row !== rowsRef.current[i]);
       if (changed) {
         setRows(merged);
@@ -219,6 +234,7 @@ export function useThreadMessageDecrypt({
     const pending = currentMessages
       .map((m, index) => ({ m, index }))
       .filter(({ m, index }) => {
+        if (isOptimisticPayloadSentinel(m.encryptedPayload)) return false;
         const cacheKey = messageDecryptCacheKey(m);
         const cached = messageThreadDecryptCache.getMessage(cacheKey);
         if (cached && isRowTerminal(cached)) return false;
@@ -253,6 +269,7 @@ export function useThreadMessageDecrypt({
               } catch {
                 row = {
                   messageUuid: m.messageUuid,
+                  clientMessageKey: takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
                   text: "",
                   previewText: "",
                   imageBlocks: [],
@@ -263,6 +280,9 @@ export function useThreadMessageDecrypt({
                   isRead: m.isRead,
                 };
               }
+            } else if (isOptimisticPayloadSentinel(enc)) {
+              const cached = messageThreadDecryptCache.getMessage(cacheKey);
+              row = cached && isRowTerminal(cached) ? withMessageMeta(cached, m) : buildDecryptingRow(m);
             } else {
               row = rowFromPreviewText(m, plaintextToPreview({
                 type: "blocks",

@@ -25,6 +25,7 @@ import { apiGetKeyBackup, apiGetRecoveryBackup } from "@flora/client-core/api";
 import { clearFscpMaterialForUser } from "@flora/client-core/fscp";
 import { getTelemetry } from "@flora/client-core/telemetry";
 import { mobileFscpKeyStorage } from "@/lib/fscp/storage";
+import "@/lib/messageThreadOutgoing"; // registers optimistic decrypt reseed after clearDecryptCaches
 import { messagePreviewCache } from "@/stores/messagePreviewCache";
 import { messageThreadCache } from "@/stores/messageThreadCache";
 

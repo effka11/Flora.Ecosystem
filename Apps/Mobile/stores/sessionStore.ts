@@ -16,7 +16,10 @@ import {
   type SessionControllerStatus,
 } from "@/lib/sessionController";
 import { useFscpStore } from "@/stores/fscpStore";
+import { resetBirthTracking } from "@/lib/messageBirthRegistry";
+import { clearAllPendingOutgoing } from "@/lib/messageThreadOutgoing";
 import { messagePreviewCache } from "@/stores/messagePreviewCache";
+import { messageThreadCache } from "@/stores/messageThreadCache";
 
 type SessionState = {
   status: SessionControllerStatus;
@@ -117,6 +120,9 @@ mobileSessionController.subscribe((next) => {
     useFscpStore.getState().clearRuntimeState();
     getQueryClientRef()?.clear();
     messagePreviewCache.clear();
+    messageThreadCache.clear();
+    clearAllPendingOutgoing();
+    resetBirthTracking();
     sharedPresenceStore.clear();
   }
 });

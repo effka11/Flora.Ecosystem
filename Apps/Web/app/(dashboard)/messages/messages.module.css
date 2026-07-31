@@ -1073,16 +1073,79 @@
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: calc(2 * var(--flora-grid-step));
-  /* stretch — колонка на всю ширину полосы чата; выравнивание пузырей — align-self на .messagesBubbleWrap. */
-  align-items: stretch;
-  align-content: flex-start;
+  /* Programmatic pin + insertLift: не давать Chrome overflow-anchor отвоевать scrollTop. */
+  overflow-anchor: none;
   /* Сверху и снизу по 2 первичные клетки — как у низа ленты. */
   padding: calc(2 * var(--flora-grid-step)) 0 calc(2 * var(--flora-grid-step));
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+/* Inner: spacer (короткий тред у compose) + gap между пузырями; transform insertLift — только сюда. */
+.messagesChatMessagesInner {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--g30);
+  align-items: stretch;
+  align-content: flex-start;
+}
+
+/* Peer-группа: аватар — один sibling колонки пузырей (flex-end), без remount при append.
+ * DOM: bubbles → avatar (a11y); визуально аватар слева через order (не row-reverse —
+ * иначе justify flex-start пакует всю группу вправо). */
+.messagesPeerGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: var(--flora-grid-step);
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-left: calc((38 - 37) * var(--flora-grid-step));
+  padding-right: calc((90 - 89) * var(--flora-grid-step));
+}
+
+.messagesPeerGroup > .messagesBubblePeerAvatar {
+  order: -1;
+}
+
+.messagesPeerGroupBubbles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g30);
+  /* По контенту до 78% — не растягивать колонку на всю полосу. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 78%;
+}
+
+.messagesPeerGroup .messagesBubbleAnchor {
+  max-width: 100%;
+}
+
+/* Wrap внутри peer-группы: без бокового padding (оно на .messagesPeerGroup). */
+.messagesBubbleWrapInPeerGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  align-self: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  min-width: 0;
+}
+
+.messagesChatMessagesSpacer {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  pointer-events: none;
 }
 
 @supports (overflow-x: clip) {

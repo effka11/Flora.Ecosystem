@@ -78,11 +78,26 @@ export function MessageBubbleAnchor({
   );
 }
 
+/** Аватар peer-группы для хвоста (last wrap в колонке) — hit-test ⋮ без remount-аватара. */
+function peerTailAvatarEl(bubbleWrap: Element | null): Element | null {
+  if (!(bubbleWrap instanceof HTMLElement)) return null;
+  const group = bubbleWrap.closest("[data-messages-peer-group]");
+  if (!(group instanceof HTMLElement)) return null;
+  const col = bubbleWrap.parentElement;
+  if (!col || col.lastElementChild !== bubbleWrap) return null;
+  for (const child of Array.from(group.children)) {
+    if (child !== col) return child;
+  }
+  return null;
+}
+
 function isNodeInBubbleRow(node: EventTarget | null, bubbleWrap: Element | null, moreWrap: HTMLElement | null): boolean {
   if (!(node instanceof Node)) return false;
   if (bubbleWrap?.contains(node)) return true;
   if (moreWrap?.contains(node)) return true;
   if (node instanceof Element && node.closest(`[${FLORA_MESSAGE_BUBBLE_MORE_ATTR}]`) === moreWrap) return true;
+  const avatar = peerTailAvatarEl(bubbleWrap);
+  if (avatar?.contains(node)) return true;
   return false;
 }
 
@@ -134,8 +149,10 @@ export function MessageBubbleMoreMenu({
   const syncRevealedToPointer = useCallback(() => {
     const bubbleWrap = anchorRef.current?.closest("[data-messages-bubble-wrap]");
     const wrap = wrapRef.current;
+    const avatar = peerTailAvatarEl(bubbleWrap instanceof Element ? bubbleWrap : null);
     const hovered =
       (bubbleWrap instanceof HTMLElement && bubbleWrap.matches(":hover")) ||
+      (avatar instanceof HTMLElement && avatar.matches(":hover")) ||
       (wrap instanceof HTMLElement && wrap.matches(":hover"));
     setRevealed(hovered);
     if (!hovered) triggerRef.current?.blur();
@@ -198,11 +215,17 @@ export function MessageBubbleMoreMenu({
       setRevealed(false);
     };
 
+    const avatar = peerTailAvatarEl(bubbleWrap);
+    const avatarEl = avatar instanceof HTMLElement ? avatar : null;
     bubbleWrap.addEventListener("mouseenter", onRowEnter);
     bubbleWrap.addEventListener("mouseleave", onRowLeave);
+    avatarEl?.addEventListener("mouseenter", onRowEnter);
+    avatarEl?.addEventListener("mouseleave", onRowLeave);
     return () => {
       bubbleWrap.removeEventListener("mouseenter", onRowEnter);
       bubbleWrap.removeEventListener("mouseleave", onRowLeave);
+      avatarEl?.removeEventListener("mouseenter", onRowEnter);
+      avatarEl?.removeEventListener("mouseleave", onRowLeave);
     };
   }, [anchorRef]);
 

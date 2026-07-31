@@ -5,6 +5,13 @@ const cache = new Map<string, MsgMessageDto[]>();
 const wireDecryptCache = new Map<string, ThreadBubbleItem>();
 const conversationDecryptCache = new Map<string, ThreadBubbleItem[]>();
 
+/** Late-bound: outgoing module restores optimistic decrypt seeds after wipe. */
+let afterClearDecryptCaches: (() => void) | null = null;
+
+export function onAfterClearDecryptCaches(fn: () => void): void {
+  afterClearDecryptCaches = fn;
+}
+
 export const messageThreadCache = {
   get(conversationUuid: string): MsgMessageDto[] | undefined {
     return cache.get(conversationUuid);
@@ -28,6 +35,7 @@ export const messageThreadCache = {
   clearDecryptCaches(): void {
     wireDecryptCache.clear();
     conversationDecryptCache.clear();
+    afterClearDecryptCaches?.();
   },
 };
 
@@ -38,10 +46,16 @@ export const messageThreadDecryptCache = {
   set(conversationUuid: string, rows: ThreadBubbleItem[]): void {
     conversationDecryptCache.set(conversationUuid, rows);
   },
+  clearConversation(conversationUuid: string): void {
+    conversationDecryptCache.delete(conversationUuid);
+  },
   getMessage(cacheKey: string): ThreadBubbleItem | undefined {
     return wireDecryptCache.get(cacheKey);
   },
   setMessage(cacheKey: string, row: ThreadBubbleItem): void {
     wireDecryptCache.set(cacheKey, row);
+  },
+  deleteMessage(cacheKey: string): void {
+    wireDecryptCache.delete(cacheKey);
   },
 };

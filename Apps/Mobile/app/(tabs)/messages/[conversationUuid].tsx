@@ -13,7 +13,9 @@ import {
   buildNotificationPreviewBundle,
   messageBlocksToPreview,
   sendTextMessage,
+  type FscpImageBlock,
   type FscpMessageBlock,
+  type FscpVoiceBlock,
   type NotificationPreviewKind,
 } from "@flora/client-core/fscp";
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
@@ -38,13 +40,28 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardGestureArea } from "react-native-keyboard-controller";
-import Reanimated from "react-native-reanimated";
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
+import {
+  estimateBlocksInsertLiftPx,
+  estimateRowInsertLiftPx,
+  playChatListInsertLift,
+} from "@/lib/chatListInsertLift";
+import {
+  buildThreadListItems,
+  shouldHoldTrailingPeerAvatar,
+  forEachThreadListMessage,
+  type ThreadListItem,
+} from "@/lib/threadMessageGroups";
 import {
   ChatComposeField,
   type ChatComposeFieldHandle,
 } from "@/components/messages/ChatComposeField";
 import { ChatComposeReplyBar } from "@/components/messages/ChatComposeReplyBar";
 import { ChatMessageBubble, type ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
+import { ChatPeerMessageGroup } from "@/components/messages/ChatPeerMessageGroup";
 import { ChatMessageEmojiPanel } from "@/components/messages/ChatMessageEmojiPanel";
 import { ChatMoreMenu } from "@/components/messages/ChatMoreMenu";
 import {
@@ -75,12 +92,31 @@ import {
   keyboardStickyOffsets,
   resolveMessagesDockBottomInset,
 } from "@/lib/messagesDockInsets";
-import { uploadPreparedMessageImage } from "@/lib/messageImageAssets";
+import { ChatMessageBirthHost } from "@/components/messages/ChatMessageBirthHost";
+import { floraNewUuid } from "@/lib/floraUuid";
+import {
+  markBirthPending,
+  rememberClientMessageKey,
+  resetBirthTracking,
+  seedHydratedKeys,
+} from "@/lib/messageBirthRegistry";
+import {
+  seedMessageImageUri,
+  uploadPreparedMessageImage,
+} from "@/lib/messageImageAssets";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
-import { appendOutgoingThreadMessage } from "@/lib/messageThreadOutgoing";
+import {
+  applyMessagesPageToCaches,
+  insertOptimisticOutgoingThreadMessage,
+  removeOptimisticOutgoingThreadMessage,
+  replaceOptimisticOutgoingThreadMessage,
+} from "@/lib/messageThreadOutgoing";
 import { replyDraftFromMessage, type MessageReplyDraft } from "@/lib/messageReply";
 import { uploadPreparedMessageVoice } from "@/lib/messageVoiceAssets";
-import { registerPendingVoiceUri } from "@/lib/pendingVoiceOutgoing";
+import {
+  clearPendingVoiceUri,
+  registerPendingVoiceUri,
+} from "@/lib/pendingVoiceOutgoing";
 import { useMessageComposeImages } from "@/lib/useMessageComposeImages";
 import { useMessageComposeVoice } from "@/lib/useMessageComposeVoice";
 import { useVoiceRecorder } from "@/lib/useVoiceRecorder";
@@ -89,11 +125,7 @@ import { messageThreadCache } from "@/stores/messageThreadCache";
 import { useFscpStore } from "@/stores/fscpStore";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { useSessionStore } from "@/stores/sessionStore";
-
-type ListRow = ThreadBubbleItem & {
-  showPeerAvatar: boolean;
-  isPeerIndented: boolean;
-};
+import { FRC_I_MIME } from "@flora/client-core/frc-i";
 
 function previewKind(blocks: FscpMessageBlock[]): NotificationPreviewKind {
   const kinds = new Set(
@@ -129,6 +161,37 @@ const EMPTY_MESSAGES: MsgMessageDto[] = [];
 /** Сколько ждать расшифровки, прежде чем показать ленту как есть. */
 const LIST_REVEAL_DEADLINE_MS = 1200;
 
+const PLACEHOLDER_AES = {
+  algorithm: "aes-gcm" as const,
+  keyBase64Url: "AAAAAAAAAAAAAAAAAAAAAA",
+  nonceBase64Url: "AAAAAAAAAAAA",
+};
+
+function provisionalImageBlock(assetUuid: string, contentType: string): FscpImageBlock {
+  return {
+    kind: "image",
+    assetUuid,
+    contentType: contentType || FRC_I_MIME,
+    encryption: PLACEHOLDER_AES,
+  };
+}
+
+function provisionalVoiceBlock(params: {
+  assetUuid: string;
+  durationMs: number;
+  waveform: number[];
+  contentType: string;
+}): FscpVoiceBlock {
+  return {
+    kind: "voice",
+    assetUuid: params.assetUuid,
+    durationMs: params.durationMs,
+    waveform: params.waveform,
+    contentType: params.contentType,
+    encryption: PLACEHOLDER_AES,
+  };
+}
+
 function routeParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
@@ -140,24 +203,17 @@ function parseBoolParam(value: string | string[] | undefined): boolean {
 }
 
 /**
- * Coarse recycle pools: voice, photo and text bubbles have very different
- * subtrees and heights, so a text row recycling into a media row would force a
- * full re-layout of the cell. Finer pools are only worth adding if a trace
- * shows a win.
+ * Coarse recycle pools: voice, photo, text и peer-group имеют разный subtree.
  */
-const messageItemType = (item: ListRow): "voice" | "photo" | "text" =>
-  item.voiceBlock ? "voice" : item.imageBlocks.length > 0 ? "photo" : "text";
+const messageItemType = (item: ThreadListItem): string => {
+  if (item.kind === "peerGroup") return "peerGroup";
+  const message = item.message;
+  return message.voiceBlock ? "voice" : message.imageBlocks.length > 0 ? "photo" : "text";
+};
 
-function buildListRows(items: ThreadBubbleItem[]): ListRow[] {
-  return items.map((message, index) => {
-    if (message.isFromMe) {
-      return { ...message, showPeerAvatar: false, isPeerIndented: false };
-    }
-    const next = items[index + 1];
-    const showPeerAvatar = !next || next.isFromMe;
-    const isPeerIndented = !showPeerAvatar;
-    return { ...message, showPeerAvatar, isPeerIndented };
-  });
+function listItemKey(item: ThreadListItem): string {
+  if (item.kind === "peerGroup") return `peer-${item.groupKey}`;
+  return item.message.clientMessageKey ?? item.message.messageUuid;
 }
 
 export default function ThreadScreen() {
@@ -266,6 +322,19 @@ export default function ThreadScreen() {
   const conversationUuid = routeParam(params.conversationUuid);
   const paramOtherUserUuid = routeParam(params.otherUserUuid);
 
+  const scrollTrackingReadyRef = useRef(false);
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  /** Компенсация скачка layout → анимация подъёма ленты+пузыря одним transform. */
+  const insertLiftSv = useSharedValue(0);
+  /** Контр к insertLift для аватара хвоста peer-группы (паритет Web holdViewport). */
+  const peerAvatarHoldSv = useSharedValue(0);
+  const listInsertLiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: insertLiftSv.value }],
+  }));
+  const peerAvatarHoldStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: peerAvatarHoldSv.value }],
+  }));
+
   useEffect(() => {
     resetDock();
     hideListUntilReady();
@@ -277,6 +346,11 @@ export default function ThreadScreen() {
     atBottomRef.current = true;
     prevListLengthRef.current = 0;
     setShowJumpToLatest(false);
+    resetBirthTracking();
+    scrollTrackingReadyRef.current = false;
+    seenMessageIdsRef.current = new Set();
+    insertLiftSv.value = 0;
+    peerAvatarHoldSv.value = 0;
     // resetDock is stable (ref-backed); only re-run on thread change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationUuid]);
@@ -432,12 +506,21 @@ export default function ThreadScreen() {
     initialData: () => {
       if (!otherUserUuid) return undefined;
       const cached = messageThreadCache.get(conversationUuid);
-      return cached ? { items: cached, nextCursor: null } : undefined;
+      return cached
+        ? applyMessagesPageToCaches({
+            conversationUuid,
+            otherUserUuid,
+            page: { items: cached, nextCursor: null },
+          })
+        : undefined;
     },
     queryFn: async () => {
       const page = await apiGetMessages(conversationUuid, undefined, otherUserUuid || undefined);
-      messageThreadCache.set(conversationUuid, page.items);
-      return page;
+      return applyMessagesPageToCaches({
+        conversationUuid,
+        otherUserUuid,
+        page,
+      });
     },
   });
 
@@ -452,7 +535,6 @@ export default function ThreadScreen() {
     const norm = conversationUuid.toLowerCase();
     return subscribeMessageRealtime((incomingUuid) => {
       if (incomingUuid.toLowerCase() !== norm) return;
-      void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
       void messagesQuery.refetch();
       void apiMarkConversationRead(conversationUuid)
         .then(() => {
@@ -476,14 +558,17 @@ export default function ThreadScreen() {
   }, [conversationUuid, queryClient]);
 
   useEffect(() => {
-    if (!conversationUuid) return;
+    if (!conversationUuid || !otherUserUuid) return;
     const task = InteractionManager.runAfterInteractions(() => {
       void queryClient.fetchQuery({
         queryKey: ["messages", conversationUuid, otherUserUuid || ""],
         queryFn: async () => {
           const page = await apiGetMessages(conversationUuid, undefined, otherUserUuid || undefined);
-          messageThreadCache.set(conversationUuid, page.items);
-          return page;
+          return applyMessagesPageToCaches({
+            conversationUuid,
+            otherUserUuid,
+            page,
+          });
         },
         staleTime: 60_000,
       });
@@ -521,33 +606,44 @@ export default function ThreadScreen() {
   });
 
   /**
-   * Лента перевёрнута, поэтому данные идут от новых к старым: индекс 0 — это
-   * последнее сообщение, и оно стоит в начале скролла. Группировка считается до
-   * разворота, на прямом порядке, — она смотрит на *следующее* сообщение.
+   * Лента перевёрнута: данные от новых к старым (индекс 0 у якоря).
+   * Группы по raw `decrypted` (стабильный groupKey); чужие decrypting не в item —
+   * иначе мелькает «Расшифровка…».
    */
-  const listData = useMemo(
-    () => buildListRows(decrypted).reverse(),
-    [decrypted],
-  );
+  const listData = useMemo(() => {
+    const chronological = buildThreadListItems(
+      decrypted,
+      (m) => m.isFromMe || m.decryptState !== "decrypting",
+    );
+    return chronological.reverse();
+  }, [decrypted]);
+
+  const listMessageCount = useMemo(() => {
+    let n = 0;
+    forEachThreadListMessage(listData, () => {
+      n += 1;
+    });
+    return n;
+  }, [listData]);
+
   const hasDecryptFailures = useMemo(
     () => fscpReady && decrypted.some((row) => row.decryptState === "failed"),
     [decrypted, fscpReady],
   );
 
   /**
-   * Тред можно показывать, когда расшифрованы все строки: пока идут волны
-   * `DECRYPT_BATCH`, текст приходит порциями и высоты пузырей меняются. Позиция
-   * от этого уже не страдает (последнее сообщение стоит в начале скролла), но
-   * сама перекладка видна. Ожидание упирается в размер страницы, а не в длину
-   * треда: расшифровка идёт с самых новых сообщений.
+   * Тред можно показывать, когда в visible нет decrypting: пока идут волны
+   * `DECRYPT_BATCH`, высоты пузырей меняются. Peer decrypting скрыты из ленты.
    */
-  const threadReady = useMemo(
-    () =>
-      listData.length > 0 &&
-      !listData.some((row) => row.decryptState === "decrypting"),
-    [listData],
-  );
-  const listPending = messagesQuery.isLoading || (listData.length > 0 && !threadReady);
+  const threadReady = useMemo(() => {
+    if (listMessageCount === 0) return false;
+    let hasDecrypting = false;
+    forEachThreadListMessage(listData, (row) => {
+      if (row.decryptState === "decrypting") hasDecrypting = true;
+    });
+    return !hasDecrypting;
+  }, [listData, listMessageCount]);
+  const listPending = messagesQuery.isLoading || (listMessageCount > 0 && !threadReady);
 
   /**
    * Показ ждёт ещё и замера дока. У перевёрнутой ленты зазор под последним
@@ -579,12 +675,12 @@ export default function ThreadScreen() {
    */
   const scrollToEnd = useCallback(
     (animated = true) => {
-      if (listData.length === 0) return;
+      if (listMessageCount === 0) return;
       pinListToBottom(animated);
       atBottomRef.current = true;
       setShowJumpToLatest(false);
     },
-    [listData.length, pinListToBottom],
+    [listMessageCount, pinListToBottom],
   );
 
   const onEndVisible = useCallback((visible: boolean) => {
@@ -608,20 +704,70 @@ export default function ThreadScreen() {
   );
 
   useEffect(() => {
+    if (!threadReady || listMessageCount === 0) return;
+    if (!scrollTrackingReadyRef.current) {
+      const keys: string[] = [];
+      const ids = new Set<string>();
+      forEachThreadListMessage(listData, (row) => {
+        keys.push(row.clientMessageKey ?? row.messageUuid);
+        ids.add(row.messageUuid);
+      });
+      seedHydratedKeys(keys);
+      seenMessageIdsRef.current = ids;
+      scrollTrackingReadyRef.current = true;
+      return;
+    }
+
+    const seen = seenMessageIdsRef.current;
+    let incomingLiftPx = 0;
+    const newlyPeerUuids = new Set<string>();
+    forEachThreadListMessage(listData, (row) => {
+      if (seen.has(row.messageUuid)) return;
+      seen.add(row.messageUuid);
+      rememberClientMessageKey(
+        row.messageUuid,
+        row.clientMessageKey ?? row.messageUuid,
+      );
+      // Исходящие уже крутят insertLift в onSend; здесь — только peer delta.
+      if (!row.isFromMe) {
+        newlyPeerUuids.add(row.messageUuid);
+        markBirthPending(row.clientMessageKey ?? row.messageUuid);
+        incomingLiftPx += estimateRowInsertLiftPx(row);
+      }
+    });
+    if (incomingLiftPx > 0 && atBottomRef.current) {
+      // Hold только при append в уже видимую группу; новая группа — аватар
+      // едет вместе с сообщением (без контр-transform).
+      const trailing = listData[0];
+      const holdAvatar =
+        trailing?.kind === "peerGroup" &&
+        shouldHoldTrailingPeerAvatar(trailing.messages, newlyPeerUuids);
+      playChatListInsertLift(
+        insertLiftSv,
+        incomingLiftPx,
+        holdAvatar ? peerAvatarHoldSv : undefined,
+      );
+    }
+  }, [insertLiftSv, listData, listMessageCount, peerAvatarHoldSv, threadReady]);
+
+  useEffect(() => {
     const prevLen = prevListLengthRef.current;
-    const nextLen = listData.length;
+    const nextLen = listMessageCount;
     prevListLengthRef.current = nextLen;
     if (nextLen === 0 || nextLen === prevLen) return;
     // Прижатие в доке доскролливает только на смену зазора под доком, приход
     // строк его не трогает. У якоря есть допуск в CHAT_AT_BOTTOM_THRESHOLD_PX,
     // и входящее сообщение, пришедшее внутри этого допуска, осталось бы
     // частично под полем ввода — поэтому возврат к якорю здесь свой.
+    // Non-animated pin: подъём ленты — insertLiftSv (общий с пузырём).
+    // Считаем по числу сообщений, не items: append в peer-группу не меняет length items.
     if (atBottomRef.current) {
-      scrollToEnd(false);
+      pinListToBottom(false);
+      setShowJumpToLatest(false);
       return;
     }
     setShowJumpToLatest(true);
-  }, [listData.length, scrollToEnd]);
+  }, [listMessageCount, pinListToBottom]);
 
 
   useEffect(() => {
@@ -760,27 +906,56 @@ export default function ThreadScreen() {
   }, []);
 
   const renderMessage = useCallback(
-    ({ item }: { item: ListRow }) => {
-      const isMenuTarget = menuTarget?.message.messageUuid === item.messageUuid;
+    ({ item }: { item: ThreadListItem }) => {
+      // Обратный переворот строки: лента перевёрнута целиком (см. listInverted).
+      if (item.kind === "peerGroup") {
+        // Индекс 0 после reverse — trailing peer-группа у якоря; hold avatar на insertLift.
+        const head = listData[0];
+        const isTrailing =
+          head?.kind === "peerGroup" && head.groupKey === item.groupKey;
+        return (
+          <View style={styles.rowInverted}>
+            <ChatPeerMessageGroup
+              messages={item.messages}
+              peer={peer}
+              menuTargetUuid={menuTarget?.message.messageUuid ?? null}
+              onPress={onMessagePress}
+              onAnchorSync={syncMenuAnchor}
+              holdAvatarStyle={isTrailing ? peerAvatarHoldStyle : undefined}
+            />
+          </View>
+        );
+      }
+
+      const message = item.message;
+      const isMenuTarget = menuTarget?.message.messageUuid === message.messageUuid;
+      const clientKey = message.clientMessageKey ?? message.messageUuid;
       return (
-        // Обратный переворот строки: лента перевёрнута целиком (см. listInverted),
-        // иначе пузырь встал бы вверх ногами. Так же устроен `inverted` у FlatList.
         <View style={styles.rowInverted}>
-          <ChatMessageBubble
-            message={item}
-            peer={peer}
-            showPeerAvatar={item.showPeerAvatar}
-            isPeerIndented={item.isPeerIndented}
-            isMenuTarget={isMenuTarget}
-            onPress={(anchor) => onMessagePress(item, anchor)}
-            onAnchorSync={
-              isMenuTarget ? (anchor) => syncMenuAnchor(item.messageUuid, anchor) : undefined
-            }
-          />
+          <ChatMessageBirthHost clientMessageKey={clientKey}>
+            <ChatMessageBubble
+              message={message}
+              peer={peer}
+              showPeerAvatar={false}
+              isPeerIndented={false}
+              isMenuTarget={isMenuTarget}
+              onPress={(anchor) => onMessagePress(message, anchor)}
+              onAnchorSync={
+                isMenuTarget ? (anchor) => syncMenuAnchor(message.messageUuid, anchor) : undefined
+              }
+            />
+          </ChatMessageBirthHost>
         </View>
       );
     },
-    [menuTarget?.message.messageUuid, onMessagePress, peer, syncMenuAnchor],
+    [
+      listData,
+      menuTarget?.message.messageUuid,
+      onMessagePress,
+      peer,
+      peerAvatarHoldStyle,
+      syncMenuAnchor,
+    ],
   );
 
   const onPickImages = useCallback(async () => {
@@ -819,9 +994,42 @@ export default function ThreadScreen() {
 
     const sourceUri = voiceDraft.uri;
     const contentType = voiceDraft.contentType;
+    const durationMs = voiceDraft.durationMs;
+    const waveform = voiceDraft.waveform;
     const activeReply = replyTo;
+    const clientMessageKey = floraNewUuid();
+    const provisionalAssetUuid = floraNewUuid();
+
+    registerPendingVoiceUri(provisionalAssetUuid, sourceUri);
+    const optimisticBlocks: FscpMessageBlock[] = [
+      provisionalVoiceBlock({
+        assetUuid: provisionalAssetUuid,
+        durationMs,
+        waveform,
+        contentType,
+      }),
+    ];
 
     setSending(true);
+    await voiceRecorder.discard();
+    clearVoiceDraft();
+    setReplyTo(null);
+    setDeleteBarHeightPx(0);
+    atBottomRef.current = true;
+
+    insertOptimisticOutgoingThreadMessage({
+      queryClient,
+      conversationUuid,
+      otherUserUuid,
+      senderUserUuid: me.userUuid,
+      clientMessageKey,
+      blocks: optimisticBlocks,
+      replyTo: activeReply ?? undefined,
+    });
+    seenMessageIdsRef.current.add(clientMessageKey);
+    pinListToBottom(false);
+    playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks));
+
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
       if (!peerKey.publicKeyBase64) throw new Error("У собеседника нет E2E-ключа");
@@ -830,11 +1038,12 @@ export default function ThreadScreen() {
         toUserUuid: otherUserUuid,
         sourceUri,
         contentType,
-        durationMs: voiceDraft.durationMs,
-        waveform: voiceDraft.waveform,
+        durationMs,
+        waveform,
       });
 
       registerPendingVoiceUri(voiceBlock.assetUuid, sourceUri);
+      clearPendingVoiceUri(provisionalAssetUuid);
 
       const wire = await buildBlocksMessageWire({
         senderUserUuid: me.userUuid,
@@ -856,25 +1065,39 @@ export default function ThreadScreen() {
         attachments: { voiceAssetUuids: [voiceBlock.assetUuid] },
         encryptedPushPreviews,
       });
-      appendOutgoingThreadMessage({
+      replaceOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
         otherUserUuid,
         senderUserUuid: me.userUuid,
+        clientMessageKey,
         sent,
         wire,
         blocks: [voiceBlock],
         replyTo: activeReply ?? undefined,
       });
-      await voiceRecorder.discard();
-      clearVoiceDraft();
-      setReplyTo(null);
-      setDeleteBarHeightPx(0);
-      atBottomRef.current = true;
-      pinListToBottom();
-      void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+      seenMessageIdsRef.current.add(sent.messageUuid);
+      setMenuTarget((prev) => {
+        if (!prev || prev.message.messageUuid !== clientMessageKey) return prev;
+        return {
+          ...prev,
+          message: {
+            ...prev.message,
+            messageUuid: sent.messageUuid,
+            clientMessageKey,
+            sendStatus: undefined,
+          },
+        };
+      });
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {
+      removeOptimisticOutgoingThreadMessage({
+        queryClient,
+        conversationUuid,
+        otherUserUuid,
+        clientMessageKey,
+      });
+      clearPendingVoiceUri(provisionalAssetUuid);
       const message = err instanceof Error ? err.message : "Не удалось отправить голосовое";
       Alert.alert("Отправка", message);
     } finally {
@@ -891,6 +1114,7 @@ export default function ThreadScreen() {
     queryClient,
     replyTo,
     setDeleteBarHeightPx,
+    insertLiftSv,
     voiceDraft,
     voiceRecorder,
   ]);
@@ -930,9 +1154,44 @@ export default function ThreadScreen() {
     if (!canSend() || hasPendingPrepare) return;
     const material = useFscpStore.getState().material;
     if (!material) return;
+
+    const imageSnapshot = composeImages.map((image) => ({
+      uri: image.uri,
+      contentType: image.contentType,
+    }));
     const activeReply = replyTo;
+    const clientMessageKey = floraNewUuid();
+
+    const optimisticBlocks: FscpMessageBlock[] = [];
+    if (trimmed) optimisticBlocks.push({ kind: "text", body: trimmed });
+    for (const image of imageSnapshot) {
+      const provisionalId = floraNewUuid();
+      seedMessageImageUri(provisionalId, image.uri);
+      optimisticBlocks.push(provisionalImageBlock(provisionalId, image.contentType));
+    }
+    if (optimisticBlocks.length === 0) return;
+
     void apiPostTyping(conversationUuid, false, otherUserUuid).catch(() => {});
     setSending(true);
+    composeRef.current?.clearText();
+    clearImages();
+    setReplyTo(null);
+    setDeleteBarHeightPx(0);
+    atBottomRef.current = true;
+
+    insertOptimisticOutgoingThreadMessage({
+      queryClient,
+      conversationUuid,
+      otherUserUuid,
+      senderUserUuid: me.userUuid,
+      clientMessageKey,
+      blocks: optimisticBlocks,
+      replyTo: activeReply ?? undefined,
+    });
+    seenMessageIdsRef.current.add(clientMessageKey);
+    pinListToBottom(false);
+    playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks));
+
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
       if (!peerKey.publicKeyBase64) throw new Error("У собеседника нет E2E-ключа");
@@ -940,7 +1199,8 @@ export default function ThreadScreen() {
       const blocks: FscpMessageBlock[] = [];
       const imageAssetUuids: string[] = [];
       if (trimmed) blocks.push({ kind: "text", body: trimmed });
-      for (const image of composeImages) {
+      for (let i = 0; i < imageSnapshot.length; i++) {
+        const image = imageSnapshot[i]!;
         const uploaded = await uploadPreparedMessageImage({
           toUserUuid: otherUserUuid,
           prepared: {
@@ -949,10 +1209,19 @@ export default function ThreadScreen() {
             fileName: "photo.jpg",
           },
         });
+        seedMessageImageUri(uploaded.assetUuid, image.uri);
         blocks.push(uploaded);
         imageAssetUuids.push(uploaded.assetUuid);
       }
-      if (blocks.length === 0) return;
+      if (blocks.length === 0) {
+        removeOptimisticOutgoingThreadMessage({
+          queryClient,
+          conversationUuid,
+          otherUserUuid,
+          clientMessageKey,
+        });
+        return;
+      }
 
       const wire = await buildBlocksMessageWire({
         senderUserUuid: me.userUuid,
@@ -974,25 +1243,38 @@ export default function ThreadScreen() {
         attachments: imageAssetUuids.length > 0 ? { imageAssetUuids } : undefined,
         encryptedPushPreviews,
       });
-      appendOutgoingThreadMessage({
+      replaceOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
         otherUserUuid,
         senderUserUuid: me.userUuid,
+        clientMessageKey,
         sent,
         wire,
         blocks,
         replyTo: activeReply ?? undefined,
       });
-      composeRef.current?.clearText();
-      clearImages();
-      setReplyTo(null);
-      setDeleteBarHeightPx(0);
-      atBottomRef.current = true;
-      pinListToBottom();
-      void queryClient.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+      seenMessageIdsRef.current.add(sent.messageUuid);
+      setMenuTarget((prev) => {
+        if (!prev || prev.message.messageUuid !== clientMessageKey) return prev;
+        return {
+          ...prev,
+          message: {
+            ...prev.message,
+            messageUuid: sent.messageUuid,
+            clientMessageKey,
+            sendStatus: undefined,
+          },
+        };
+      });
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {
+      removeOptimisticOutgoingThreadMessage({
+        queryClient,
+        conversationUuid,
+        otherUserUuid,
+        clientMessageKey,
+      });
       const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
       Alert.alert("Отправка", message);
     } finally {
@@ -1074,33 +1356,36 @@ export default function ThreadScreen() {
         </Reanimated.View>
 
         <Reanimated.View style={[styles.listFill, listRevealStyle, listLiftStyle]}>
-          <FlashList
-            key={conversationUuid}
-            data={listData}
-            keyExtractor={(item) => item.messageUuid}
-            getItemType={messageItemType}
-            style={styles.listInverted}
-            contentContainerStyle={styles.listContent}
-            renderScrollComponent={renderScrollComponent}
-            onScroll={onScroll}
-            onScrollBeginDrag={onScrollBeginDrag}
-            scrollEventThrottle={16}
-            keyboardShouldPersistTaps="handled"
-            // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
-            // соседние ячейки размонтируются прямо у края вьюпорта.
-            drawDistance={480}
-            /*
-              `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
-              короткий тред к низу отступом `windowSize - childContainerSize`,
-              который уменьшался ступенями по мере домера строк — лента ехала
-              вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
-              стоит у низа по построению. Автоподстройка позиции тоже не нужна:
-              новое сообщение приходит в начало данных, то есть ровно туда, где
-              стоит скролл, и попадает в кадр само.
-            */
-            maintainVisibleContentPosition={{ disabled: true }}
-            renderItem={renderMessage}
-          />
+          {/* insertLift: тот же transform для ленты и нового пузыря (без отдельного bubble translate). */}
+          <Reanimated.View style={[styles.listFill, listInsertLiftStyle]}>
+            <FlashList
+              key={conversationUuid}
+              data={listData}
+              keyExtractor={listItemKey}
+              getItemType={messageItemType}
+              style={styles.listInverted}
+              contentContainerStyle={styles.listContent}
+              renderScrollComponent={renderScrollComponent}
+              onScroll={onScroll}
+              onScrollBeginDrag={onScrollBeginDrag}
+              scrollEventThrottle={16}
+              keyboardShouldPersistTaps="handled"
+              // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
+              // соседние ячейки размонтируются прямо у края вьюпорта.
+              drawDistance={480}
+              /*
+                `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
+                короткий тред к низу отступом `windowSize - childContainerSize`,
+                который уменьшался ступенями по мере домера строк — лента ехала
+                вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
+                стоит у низа по построению. Автоподстройка позиции тоже не нужна:
+                новое сообщение приходит в начало данных, то есть ровно туда, где
+                стоит скролл, и попадает в кадр само.
+              */
+              maintainVisibleContentPosition={{ disabled: true }}
+              renderItem={renderMessage}
+            />
+          </Reanimated.View>
         </Reanimated.View>
 
         {showJumpToLatest ? (
@@ -1121,6 +1406,12 @@ export default function ThreadScreen() {
             menuTarget != null &&
             menuTarget.message.decryptState === "ok" &&
             menuTarget.message.previewText.length > 0
+          }
+          canReply={
+            menuTarget != null &&
+            menuTarget.message.decryptState === "ok" &&
+            menuTarget.message.previewText.length > 0 &&
+            menuTarget.message.sendStatus !== "sending"
           }
           canDelete={
             menuTarget != null &&

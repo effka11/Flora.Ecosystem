@@ -8,7 +8,6 @@ import {
   useState,
 } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -181,8 +180,10 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
   const shellTargetHeightRef = useRef(0);
   const selectionRef = useRef({ start: 0, end: 0 });
   const isEmpty = value.length === 0;
-  const canSendText =
-    (value.trim().length > 0 || images.length > 0) && !sending && !disabled && !hasPendingImages;
+  const hasDraft = value.trim().length > 0 || images.length > 0;
+  const canSendText = hasDraft && !sending && !disabled && !hasPendingImages;
+  /** Пока inflight после clear draft — не свапать Send→Mic (Telegram-like). */
+  const showSendChrome = hasDraft || sending;
   const canStartVoice =
     !voiceMode &&
     value.trim().length === 0 &&
@@ -465,7 +466,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
             />
           </Pressable>
 
-          {canSendText ? (
+          {showSendChrome ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Отправить"
@@ -473,11 +474,11 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
               onPress={() => onSend(value)}
               disabled={!canSendText}
             >
-              {sending ? (
-                <ActivityIndicator color={floraColors.greenLight} size="small" />
-              ) : (
-                <Ionicons name="send" size={18} color={floraColors.greenLight} />
-              )}
+              <Ionicons
+                name="send"
+                size={18}
+                color={canSendText ? floraColors.greenLight : floraColors.gray}
+              />
             </Pressable>
           ) : (
             <Pressable

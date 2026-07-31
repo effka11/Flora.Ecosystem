@@ -2,6 +2,7 @@ import { apiGetConversations } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import { dmConversationUuid } from "@flora/client-core/fscp";
 import { router } from "expo-router";
+import { rehydratePendingOutgoing } from "@/lib/messageThreadOutgoing";
 import { getQueryClientRef } from "@/lib/queryClientRef";
 import { messageThreadCache, messageThreadDecryptCache } from "@/stores/messageThreadCache";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -73,7 +74,7 @@ export async function openMessageFromPush(data: unknown): Promise<void> {
   }
 
   messageThreadCache.clearConversation(conversationUuid);
-  messageThreadDecryptCache.set(conversationUuid, []);
+  messageThreadDecryptCache.clearConversation(conversationUuid);
 
   const meUuid = useSessionStore.getState().me?.userUuid?.trim() ?? "";
   const otherUserUuid =
@@ -82,6 +83,13 @@ export async function openMessageFromPush(data: unknown): Promise<void> {
       : "";
 
   const qc = getQueryClientRef();
+  // In-flight optimistic переживает clear — вернуть seeds + merge в RQ.
+  rehydratePendingOutgoing({
+    conversationUuid,
+    otherUserUuid: otherUserUuid || undefined,
+    queryClient: qc ?? undefined,
+  });
+
   if (qc) {
     try {
       const page = await qc.fetchQuery({
@@ -93,6 +101,11 @@ export async function openMessageFromPush(data: unknown): Promise<void> {
         (c) => c.conversationUuid.toLowerCase() === conversationUuid.toLowerCase(),
       );
       if (row) {
+        rehydratePendingOutgoing({
+          conversationUuid,
+          otherUserUuid: row.otherUserUuid,
+          queryClient: qc,
+        });
         router.push({
           pathname: "/(tabs)/messages/[conversationUuid]",
           params: threadParamsFromConversation(row),
