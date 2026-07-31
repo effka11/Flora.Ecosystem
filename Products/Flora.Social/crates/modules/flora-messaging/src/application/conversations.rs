@@ -8,8 +8,8 @@ use flora_messaging_contracts::{
     ConversationListItemDto, ConversationsPageDto, DeleteConversationOutcome, DeleteMessageOutcome,
     LegacyConversationListItemDto, LegacyMessageThreadItemDto, LegacySendMessageRequest,
     LegacySendMessageResultDto, MessageItemDto, MessageSentContext, MessageSentNotifier,
-    MessagesPageDto, PostConversationMessageRequest, PushPreviewTarget, PushPreviewTargetProvider,
-    SendMessageResultDto,
+    MessageTypingNotifier, MessagesPageDto, PostConversationMessageRequest, PushPreviewTarget,
+    PushPreviewTargetProvider, SendMessageResultDto,
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
@@ -17,8 +17,6 @@ use uuid::Uuid;
 
 use crate::application::cursor::{decode_cursor, encode_cursor};
 use crate::infrastructure::MessagingRepo;
-
-const ONLINE_THRESHOLD_SECS: i64 = 5 * 60;
 
 /// Ошибки POST message (маппятся в HTTP в `http/mod.rs`).
 #[derive(Debug, Clone)]
@@ -36,6 +34,7 @@ pub struct ConversationService {
     online_access: Arc<dyn OnlineStatusAccess>,
     messages_access: Arc<dyn MessagesAccess>,
     sent_notifier: Arc<dyn MessageSentNotifier>,
+    typing_notifier: Arc<dyn MessageTypingNotifier>,
     preview_targets: Arc<dyn PushPreviewTargetProvider>,
 }
 
@@ -49,6 +48,7 @@ impl ConversationService {
         online_access: Arc<dyn OnlineStatusAccess>,
         messages_access: Arc<dyn MessagesAccess>,
         sent_notifier: Arc<dyn MessageSentNotifier>,
+        typing_notifier: Arc<dyn MessageTypingNotifier>,
         preview_targets: Arc<dyn PushPreviewTargetProvider>,
     ) -> Self {
         Self {
@@ -59,6 +59,7 @@ impl ConversationService {
             online_access,
             messages_access,
             sent_notifier,
+            typing_notifier,
             preview_targets,
         }
     }
@@ -128,13 +129,14 @@ impl ConversationService {
         let usernames = self.accounts.usernames_by_uuids(&other_uuids).await?;
         let profiles = self.profiles.by_uuids(&other_uuids).await?;
         let last_seen = self.presence.last_seen_by_uuids(&other_uuids).await?;
+        let online_flags = self.presence.is_online_by_uuids(&other_uuids).await?;
 
         let user_by: std::collections::HashMap<_, _> = usernames.into_iter().collect();
         let prof_by: std::collections::HashMap<_, _> =
             profiles.into_iter().map(|p| (p.user_uuid, p)).collect();
         let seen_by: std::collections::HashMap<_, _> = last_seen.into_iter().collect();
+        let online_by: std::collections::HashMap<_, _> = online_flags.into_iter().collect();
 
-        let utc_now = Utc::now();
         let mut items = Vec::with_capacity(page.len());
         for peer in &page {
             let username = user_by
@@ -154,8 +156,8 @@ impl ConversationService {
                 .await?;
             let (other_user_is_online, other_user_last_seen_at) = resolve_online_for_viewer(
                 can_see,
+                *online_by.get(&peer.other_user_uuid).unwrap_or(&false),
                 seen_by.get(&peer.other_user_uuid).copied(),
-                utc_now,
             );
 
             items.push(ConversationListItemDto {
@@ -374,6 +376,10 @@ impl ConversationService {
             .await
             .map_err(SendMessageError::BadRequest)?;
 
+        if let Err(e) = self.presence.touch(sender_uuid).await {
+            tracing::warn!(error = %e, "messaging presence touch failed");
+        }
+
         self.sent_notifier
             .notify(MessageSentContext {
                 recipient_user_uuid: receiver_uuid,
@@ -407,7 +413,36 @@ impl ConversationService {
         let Some(other_uuid) = other else {
             return Ok(false);
         };
+        if let Err(e) = self.presence.touch(user_uuid).await {
+            tracing::warn!(error = %e, "messaging presence touch failed");
+        }
         self.repo.mark_read(user_uuid, other_uuid).await?;
+        Ok(true)
+    }
+
+    pub async fn set_typing(
+        &self,
+        user_uuid: Uuid,
+        conversation_uuid: Uuid,
+        other_user_uuid: Option<Uuid>,
+        is_typing: bool,
+    ) -> Result<bool, String> {
+        let peers = self.repo.peer_rows(user_uuid).await?;
+        let other = resolve_other_user(
+            user_uuid,
+            peers.iter().map(|p| p.other_user_uuid),
+            conversation_uuid,
+            other_user_uuid,
+        );
+        let Some(other_uuid) = other else {
+            return Ok(false);
+        };
+        if let Err(e) = self.presence.touch(user_uuid).await {
+            tracing::warn!(error = %e, "messaging presence touch failed");
+        }
+        self.typing_notifier
+            .notify_typing(other_uuid, conversation_uuid, user_uuid, is_typing)
+            .await;
         Ok(true)
     }
 
@@ -459,13 +494,14 @@ impl ConversationService {
         let usernames = self.accounts.usernames_by_uuids(&other_uuids).await?;
         let profiles = self.profiles.by_uuids(&other_uuids).await?;
         let last_seen = self.presence.last_seen_by_uuids(&other_uuids).await?;
+        let online_flags = self.presence.is_online_by_uuids(&other_uuids).await?;
 
         let user_by: std::collections::HashMap<_, _> = usernames.into_iter().collect();
         let prof_by: std::collections::HashMap<_, _> =
             profiles.into_iter().map(|p| (p.user_uuid, p)).collect();
         let seen_by: std::collections::HashMap<_, _> = last_seen.into_iter().collect();
+        let online_by: std::collections::HashMap<_, _> = online_flags.into_iter().collect();
 
-        let utc_now = Utc::now();
         let mut items = Vec::with_capacity(peers.len());
         for peer in &peers {
             let username = user_by
@@ -485,8 +521,8 @@ impl ConversationService {
                 .await?;
             let (other_user_is_online, other_user_last_seen_at) = resolve_online_for_viewer(
                 can_see,
+                *online_by.get(&peer.other_user_uuid).unwrap_or(&false),
                 seen_by.get(&peer.other_user_uuid).copied(),
-                utc_now,
             );
 
             items.push(LegacyConversationListItemDto {
@@ -633,6 +669,9 @@ impl ConversationService {
         user_uuid: Uuid,
         other_user_uuid: Uuid,
     ) -> Result<(), String> {
+        if let Err(e) = self.presence.touch(user_uuid).await {
+            tracing::warn!(error = %e, "messaging presence touch failed");
+        }
         self.repo.mark_read(user_uuid, other_user_uuid).await
     }
 
@@ -712,18 +751,15 @@ fn format_utc(dt: DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-/// Паритет `UserOnlineStatusHelper.ResolveForViewer` (Products/Flora.Social).
+/// Resolve online for viewer using Users hot-path flag + last_seen for text.
 fn resolve_online_for_viewer(
     can_see: bool,
+    is_online: bool,
     last_seen: Option<DateTime<Utc>>,
-    utc_now: DateTime<Utc>,
 ) -> (bool, Option<String>) {
     if !can_see {
         return (false, None);
     }
-    let Some(last_seen) = last_seen else {
-        return (false, None);
-    };
-    let is_online = (utc_now - last_seen).num_seconds() <= ONLINE_THRESHOLD_SECS;
-    (is_online, Some(format_utc(last_seen)))
+    let last_seen_at = last_seen.map(format_utc);
+    (is_online, last_seen_at)
 }

@@ -63,11 +63,72 @@ pub struct CreateUserNotificationCommand {
     pub comment_uuid: Option<Uuid>,
 }
 
+/// SSE `event: presence` — online/offline transition for a watched user.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealtimePresenceSignal {
+    pub user_uuid: Uuid,
+    pub is_online: bool,
+    pub last_seen_at: Option<DateTime<Utc>>,
+}
+
+/// SSE `event: typing` — DM compose activity (no FCM).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealtimeTypingSignal {
+    pub conversation_uuid: Uuid,
+    pub user_uuid: Uuid,
+    pub is_typing: bool,
+}
+
+/// SSE `event: connected` — first frame after subscribe.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealtimeConnectedSignal {
+    pub connection_id: Uuid,
+}
+
 /// Cross-module port: insert inbox row + SSE `event: notification` (+ FCM).
 /// Implemented by Notifications; Content/Users must not touch `user_notifications`.
 pub trait UserNotificationDispatcher: Send + Sync {
     fn dispatch(&self, command: CreateUserNotificationCommand)
     -> BoxFuture<'_, Result<(), String>>;
+}
+
+/// Publish presence SSE to a specific watcher SSE connection.
+pub trait PresenceRealtimePublisher: Send + Sync {
+    fn publish_to_connection(
+        &self,
+        recipient_user_uuid: Uuid,
+        connection_id: Uuid,
+        signal: &RealtimePresenceSignal,
+    );
+}
+
+/// No-op when Notifications ServeNative is off.
+pub struct NoopPresenceRealtimePublisher;
+
+impl PresenceRealtimePublisher for NoopPresenceRealtimePublisher {
+    fn publish_to_connection(
+        &self,
+        _recipient_user_uuid: Uuid,
+        _connection_id: Uuid,
+        _signal: &RealtimePresenceSignal,
+    ) {
+    }
+}
+
+/// Hooks for SSE connection lifecycle (wired in flora-social → PresenceService).
+pub trait SseConnectionHooks: Send + Sync {
+    fn on_subscribe(&self, user_uuid: Uuid, connection_id: Uuid);
+    fn on_unsubscribe(&self, user_uuid: Uuid, connection_id: Uuid);
+}
+
+pub struct NoopSseConnectionHooks;
+
+impl SseConnectionHooks for NoopSseConnectionHooks {
+    fn on_subscribe(&self, _user_uuid: Uuid, _connection_id: Uuid) {}
+    fn on_unsubscribe(&self, _user_uuid: Uuid, _connection_id: Uuid) {}
 }
 
 /// No-op when Notifications ServeNative is off.

@@ -381,6 +381,17 @@ impl UserPresence for SqlUsersStore {
             .map_err(|e| e.to_string())
         })
     }
+
+    fn is_online_by_uuids(
+        &self,
+        user_uuids: &[Uuid],
+    ) -> BoxFuture<'_, Result<Vec<(Uuid, bool)>, String>> {
+        let ids = user_uuids.to_vec();
+        Box::pin(async move {
+            // Cold-only fallback (no PresenceService): treat as offline.
+            Ok(ids.into_iter().map(|id| (id, false)).collect())
+        })
+    }
 }
 
 impl UserProfileQueries for SqlUsersStore {

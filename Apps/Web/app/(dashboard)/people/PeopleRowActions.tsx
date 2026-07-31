@@ -11,6 +11,9 @@ export type PeopleRowUser = {
   username: string;
   followers: number;
   avatarUuid?: string | null;
+  userUuid?: string | null;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 };
 
 type PeopleRowActionsProps = {

@@ -56,6 +56,11 @@
       "import": "./src/signals/index.ts",
       "default": "./src/signals/index.ts"
     },
+    "./presence": {
+      "types": "./src/presence/index.ts",
+      "import": "./src/presence/index.ts",
+      "default": "./src/presence/index.ts"
+    },
     "./crypto": {
       "types": "./src/crypto/aesGcm.ts",
       "import": "./src/crypto/aesGcm.ts",

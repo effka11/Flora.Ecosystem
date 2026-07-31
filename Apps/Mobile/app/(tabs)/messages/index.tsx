@@ -1,6 +1,7 @@
 import { apiGetConversations } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "@tanstack/react-query";
 import { useFocusEffect, useNavigation } from "expo-router";
@@ -105,6 +106,15 @@ export default function MessagesScreen() {
   const [unlockOpen, setUnlockOpen] = useState(false);
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+
+  useEffect(
+    () =>
+      sharedPresenceStore.subscribe(() => {
+        setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+      }),
+    [],
+  );
 
   const hasSearch = search.trim().length > 0;
 
@@ -189,6 +199,16 @@ export default function MessagesScreen() {
       }),
     [filteredItems, previews],
   );
+
+  useEffect(() => {
+    const uuids = items.map((c) => c.otherUserUuid).filter(Boolean);
+    if (!sharedPresenceStore.surfacesAccepted) {
+      return () => sharedPresenceStore.unregisterSurface("messages-list");
+    }
+    sharedPresenceStore.registerSurface("messages-list", uuids);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("messages-list");
+  }, [items, presenceEpoch]);
 
   const closeDropdowns = useCallback(() => {
     setSortOpen(false);

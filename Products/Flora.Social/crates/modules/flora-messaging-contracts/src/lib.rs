@@ -74,6 +74,31 @@ impl MessageSentNotifier for NoopMessageSentNotifier {
     }
 }
 
+/// Cross-module port: typing indicator SSE to DM peer (no FCM).
+pub trait MessageTypingNotifier: Send + Sync {
+    fn notify_typing(
+        &self,
+        recipient_user_uuid: Uuid,
+        conversation_uuid: Uuid,
+        sender_user_uuid: Uuid,
+        is_typing: bool,
+    ) -> BoxFuture<'_, ()>;
+}
+
+pub struct NoopMessageTypingNotifier;
+
+impl MessageTypingNotifier for NoopMessageTypingNotifier {
+    fn notify_typing(
+        &self,
+        _recipient_user_uuid: Uuid,
+        _conversation_uuid: Uuid,
+        _sender_user_uuid: Uuid,
+        _is_typing: bool,
+    ) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+}
+
 /// Строка peer-сводки до обогащения профилем (C# `ConversationPeerRow`).
 #[derive(Debug, Clone)]
 pub struct ConversationPeerRow {

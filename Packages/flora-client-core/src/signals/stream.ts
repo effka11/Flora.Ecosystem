@@ -28,9 +28,28 @@ export type NotificationRealtimeSignal = {
   update?: AppUpdateRealtimePayload | null;
 };
 
+export type ConnectedRealtimeSignal = {
+  connectionId: string;
+};
+
+export type PresenceRealtimeSignal = {
+  userUuid: string;
+  isOnline: boolean;
+  lastSeenAt: string | null;
+};
+
+export type TypingRealtimeSignal = {
+  conversationUuid: string;
+  userUuid: string;
+  isTyping: boolean;
+};
+
 export type ConnectSignalsStreamOptions = {
   onMessage?: (signal: MessageRealtimeSignal) => void;
   onNotification?: (signal: NotificationRealtimeSignal) => void;
+  onConnected?: (signal: ConnectedRealtimeSignal) => void;
+  onPresence?: (signal: PresenceRealtimeSignal) => void;
+  onTyping?: (signal: TypingRealtimeSignal) => void;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (error: unknown) => void;
@@ -103,6 +122,41 @@ function parseNotificationSignal(raw: unknown): NotificationRealtimeSignal | nul
   };
 }
 
+function parseConnectedSignal(raw: unknown): ConnectedRealtimeSignal | null {
+  const o = asRecord(raw);
+  if (!o) return null;
+  const connectionId = readStr(o, ["connectionId", "ConnectionId"]);
+  if (!connectionId) return null;
+  return { connectionId };
+}
+
+function parsePresenceSignal(raw: unknown): PresenceRealtimeSignal | null {
+  const o = asRecord(raw);
+  if (!o) return null;
+  const userUuid = readStr(o, ["userUuid", "UserUuid"]);
+  if (!userUuid) return null;
+  const onlineRaw = o.isOnline ?? o.IsOnline;
+  return {
+    userUuid,
+    isOnline: onlineRaw === true || onlineRaw === "true",
+    lastSeenAt: readStr(o, ["lastSeenAt", "LastSeenAt"]) || null,
+  };
+}
+
+function parseTypingSignal(raw: unknown): TypingRealtimeSignal | null {
+  const o = asRecord(raw);
+  if (!o) return null;
+  const conversationUuid = readStr(o, ["conversationUuid", "ConversationUuid"]);
+  const userUuid = readStr(o, ["userUuid", "UserUuid"]);
+  if (!conversationUuid || !userUuid) return null;
+  const typingRaw = o.isTyping ?? o.IsTyping;
+  return {
+    conversationUuid,
+    userUuid,
+    isTyping: typingRaw === true || typingRaw === "true",
+  };
+}
+
 function dispatchSseEvent(
   eventName: string,
   data: string,
@@ -115,6 +169,11 @@ function dispatchSseEvent(
   } catch {
     return;
   }
+  if (eventName === "connected") {
+    const signal = parseConnectedSignal(parsed);
+    if (signal) options.onConnected?.(signal);
+    return;
+  }
   if (eventName === "message") {
     const signal = parseMessageSignal(parsed);
     if (signal) options.onMessage?.(signal);
@@ -123,6 +182,16 @@ function dispatchSseEvent(
   if (eventName === "notification") {
     const signal = parseNotificationSignal(parsed);
     if (signal) options.onNotification?.(signal);
+    return;
+  }
+  if (eventName === "presence") {
+    const signal = parsePresenceSignal(parsed);
+    if (signal) options.onPresence?.(signal);
+    return;
+  }
+  if (eventName === "typing") {
+    const signal = parseTypingSignal(parsed);
+    if (signal) options.onTyping?.(signal);
   }
 }
 

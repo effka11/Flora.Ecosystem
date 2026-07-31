@@ -10,6 +10,9 @@ export {
   type ConnectSignalsStreamOptions,
   type MessageRealtimeSignal,
   type NotificationRealtimeSignal,
+  type ConnectedRealtimeSignal,
+  type PresenceRealtimeSignal,
+  type TypingRealtimeSignal,
   type SignalsStreamHandle,
 } from "./stream.js";
 

@@ -1,6 +1,10 @@
 "use client";
 
 import { connectSignalsStream } from "@flora/client-core/signals";
+import {
+  sharedPresenceStore,
+  startPresenceHeartbeat,
+} from "@flora/client-core/presence";
 import { useEffect } from "react";
 import {
   conversationsCache,
@@ -8,7 +12,7 @@ import {
 } from "@/lib/dashboardPreload";
 import { initWebClientCore } from "@/lib/fscp/clientCore";
 import { notifyMessagesUnreadChanged } from "@/lib/messagingApi";
-import { notifyNotificationsChanged } from "@/lib/realtimeEvents";
+import { notifyNotificationsChanged, notifyTypingChanged } from "@/lib/realtimeEvents";
 import { resolveRealtimeStreamApiRoot } from "@/lib/realtimeApi";
 
 export function useDashboardRealtime(enabled: boolean): void {
@@ -17,6 +21,14 @@ export function useDashboardRealtime(enabled: boolean): void {
 
     let stream: ReturnType<typeof connectSignalsStream> | null = null;
     let cancelled = false;
+    const heartbeat = startPresenceHeartbeat({
+      enabled: () => enabled && !cancelled,
+      isVisible: () =>
+        typeof document === "undefined" ? true : document.visibilityState === "visible",
+    });
+
+    const onVis = () => heartbeat.onVisibilityChange();
+    document.addEventListener("visibilitychange", onVis);
 
     (async () => {
       await initWebClientCore();
@@ -25,6 +37,20 @@ export function useDashboardRealtime(enabled: boolean): void {
       stream = connectSignalsStream({
         enabled: () => enabled && !cancelled,
         streamBaseUrl: resolveRealtimeStreamApiRoot() || undefined,
+        onConnected: (signal) => {
+          sharedPresenceStore.setConnectionId(signal.connectionId);
+          void sharedPresenceStore.resyncSnapshots().catch(() => {});
+        },
+        onPresence: (signal) => {
+          sharedPresenceStore.applySnapshot({
+            userUuid: signal.userUuid,
+            isOnline: signal.isOnline,
+            lastSeenAt: signal.lastSeenAt,
+          });
+        },
+        onTyping: (signal) => {
+          notifyTypingChanged(signal);
+        },
         onMessage: (signal) => {
           conversationsCache.invalidate();
           notifyMessagesUnreadChanged({
@@ -35,6 +61,7 @@ export function useDashboardRealtime(enabled: boolean): void {
         onOpen: () => {
           conversationsCache.invalidate();
           notifyMessagesUnreadChanged();
+          void sharedPresenceStore.resyncSnapshots().catch(() => {});
         },
         onNotification: (signal) => {
           invalidateNotificationsCache();
@@ -49,6 +76,9 @@ export function useDashboardRealtime(enabled: boolean): void {
 
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      heartbeat.stop();
+      sharedPresenceStore.setConnectionId(null);
       stream?.close();
     };
   }, [enabled]);

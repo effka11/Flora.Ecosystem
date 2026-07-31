@@ -183,6 +183,12 @@ pub trait UserPresence: Send + Sync {
         &self,
         user_uuids: &[Uuid],
     ) -> BoxFuture<'_, Result<Vec<LastSeenRow>, String>>;
+
+    /// Hot-path online flag (threshold owned by Users PresenceService).
+    fn is_online_by_uuids(
+        &self,
+        user_uuids: &[Uuid],
+    ) -> BoxFuture<'_, Result<Vec<(Uuid, bool)>, String>>;
 }
 
 /// Поле политики доступа к профилю (C# `ProfileAccessField`).

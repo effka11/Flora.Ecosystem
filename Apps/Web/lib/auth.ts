@@ -19,6 +19,7 @@ import {
   STORAGE_SESSION,
   webSessionStore,
 } from "@/lib/sessionStore";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 
 export {
   authPublicFetchUrl,
@@ -215,6 +216,7 @@ export function clearSession() {
   supersedeWebSessionRefresh();
   webSessionStore.clearSessionSync();
   clearBrowserSessionCookie();
+  sharedPresenceStore.clear();
   /**
    * Профили FSCP по пользователю (`flora.fscp.profile.v1.*`) **не** удаляем: после повторного входа
    * тот же браузер восстанавливает ключи и может расшифровать историю (см. Documents/fscp/FSCP.md — device-held material).

@@ -883,6 +883,22 @@
   border: 3.5px solid var(--flora-bg-base);
   z-index: 2;
   pointer-events: none;
+  opacity: 0;
+  transform: scale(0.55);
+  transition:
+    opacity var(--flora-duration-2) var(--flora-ease-out),
+    transform var(--flora-duration-2) var(--flora-ease-out);
+}
+
+.messagesChatHeaderOnlineBadgeVisible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messagesChatHeaderOnlineBadge {
+    transition: none;
+  }
 }
 
 .messagesChatHeaderInfo {
@@ -3557,6 +3573,22 @@
   border: calc(3.5px * var(--rail-avatar-d) / var(--rail-header-avatar-d)) solid var(--flora-bg-base);
   z-index: 2;
   pointer-events: none;
+  opacity: 0;
+  transform: scale(0.55);
+  transition:
+    opacity var(--flora-duration-2) var(--flora-ease-out),
+    transform var(--flora-duration-2) var(--flora-ease-out);
+}
+
+.messagesChatRailOnlineBadgeVisible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messagesChatRailOnlineBadge {
+    transition: none;
+  }
 }
 
 .messagesChatRailBody {

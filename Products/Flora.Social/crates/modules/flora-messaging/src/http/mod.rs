@@ -58,6 +58,10 @@ pub fn protected_router(state: MessagingState) -> Router {
             post(mark_read),
         )
         .route(
+            "/api/messaging/conversations/{conversation_uuid}/typing",
+            post(post_typing),
+        )
+        .route(
             "/api/messaging/conversations/{conversation_uuid}",
             delete(delete_conversation),
         )
@@ -320,6 +324,34 @@ async fn mark_read(
     match state
         .conversations
         .mark_read(user.0, conversation_uuid, q.other_user_uuid)
+        .await
+    {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Разговор не найден." })),
+        )
+            .into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TypingBody {
+    is_typing: bool,
+}
+
+async fn post_typing(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Query(q): Query<ConversationPeerQuery>,
+    Json(body): Json<TypingBody>,
+) -> Response {
+    match state
+        .conversations
+        .set_typing(user.0, conversation_uuid, q.other_user_uuid, body.is_typing)
         .await
     {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),

@@ -100,6 +100,8 @@ type Props = {
    */
   growthHoldSv: SharedValue<number>;
   onInputFocus?: () => void;
+  /** Draft text changes (keeps draft local; parent uses for typing pings). */
+  onTextChange?: (text: string) => void;
   voiceMode?: boolean;
   voiceRecording?: boolean;
   voiceShowStopControl?: boolean;
@@ -129,6 +131,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     onShellLayout,
     growthHoldSv,
     onInputFocus,
+    onTextChange,
     voiceMode = false,
     voiceRecording = false,
     voiceShowStopControl = false,
@@ -147,6 +150,13 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
   const [value, setValue] = useState("");
   const valueRef = useRef(value);
   valueRef.current = value;
+  const onTextChangeRef = useRef(onTextChange);
+  onTextChangeRef.current = onTextChange;
+
+  const handleChangeText = (next: string) => {
+    setValue(next);
+    onTextChangeRef.current?.(next);
+  };
   /**
    * Высота зоны текста, какой её видит React-дерево. Без неё каждый символ
    * черновика коммитил бы зону однострочной: useAnimatedStyle отдаёт в коммит
@@ -308,6 +318,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     const next = current.slice(0, start) + token + current.slice(end);
     const caret = start + token.length;
     setValue(next);
+    onTextChangeRef.current?.(next);
     selectionRef.current = { start: caret, end: caret };
     requestAnimationFrame(() => {
       inputRef.current?.setNativeProps({ selection: { start: caret, end: caret } });
@@ -316,6 +327,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
 
   const clearText = useCallback(() => {
     setValue("");
+    onTextChangeRef.current?.("");
     selectionRef.current = { start: 0, end: 0 };
   }, []);
 
@@ -420,7 +432,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
               placeholder={placeholder}
               placeholderTextColor="transparent"
               value={value}
-              onChangeText={setValue}
+              onChangeText={handleChangeText}
               onSelectionChange={onSelectionChange}
               editable={!disabled}
               multiline

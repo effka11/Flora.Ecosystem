@@ -8,7 +8,10 @@ use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
 use flora_content_contracts::CommunityFollowStats;
-use flora_notifications_contracts::UserNotificationDispatcher;
+use flora_notifications_contracts::{
+    NoopPresenceRealtimePublisher, PresenceRealtimePublisher, UserNotificationDispatcher,
+};
+use flora_users_contracts::OnlineStatusAccess;
 use sqlx::PgPool;
 
 use crate::application::avatar::avatar_service;
@@ -19,10 +22,13 @@ use crate::infrastructure::profile_reads::SqlUserProfileQueries;
 use crate::infrastructure::recommendation::SqlUserRecommendationQueries;
 use crate::infrastructure::store::SqlUsersStore;
 
+pub use application::PresenceService;
+
 pub struct UsersModule {
     pub protected_router: axum::Router,
     pub public_router: axum::Router,
     pub image_backfill: Option<tokio::task::JoinHandle<()>>,
+    pub presence: Arc<PresenceService>,
 }
 
 /// Rust-миграции модуля Users (регистрируются в flora-migrate, §11.1).
@@ -68,9 +74,7 @@ type MessagingPorts = (
 );
 
 /// Порты presence / профилей / online-access / messages для Messaging ServeNative.
-pub fn messaging_ports(pool: PgPool) -> MessagingPorts {
-    let presence: Arc<dyn flora_users_contracts::UserPresence> =
-        Arc::new(SqlUsersStore::new(pool.clone()));
+pub fn messaging_ports(pool: PgPool, presence: Arc<PresenceService>) -> MessagingPorts {
     let profiles: Arc<dyn flora_users_contracts::FeedAuthorProfiles> = Arc::new(
         infrastructure::social_graph::SqlSocialGraph::new(pool.clone()),
     );
@@ -80,7 +84,18 @@ pub fn messaging_ports(pool: PgPool) -> MessagingPorts {
     let messages: Arc<dyn flora_users_contracts::MessagesAccess> = Arc::new(
         infrastructure::messages_access::SqlMessagesAccess::new(pool),
     );
-    (presence, profiles, online, messages)
+    (presence.as_presence(), profiles, online, messages)
+}
+
+/// Build shared PresenceService (flora-social wires publisher + SSE hooks).
+pub fn build_presence_service(
+    pool: PgPool,
+    publisher: Arc<dyn PresenceRealtimePublisher>,
+) -> Arc<PresenceService> {
+    let online: Arc<dyn OnlineStatusAccess> = Arc::new(
+        infrastructure::online_access::SqlOnlineStatusAccess::new(pool.clone()),
+    );
+    PresenceService::new(pool, publisher, online)
 }
 
 /// Профили для Notifications (display name в FCM title).
@@ -103,6 +118,7 @@ pub fn compose(
     accounts: Arc<dyn AccountDirectory>,
     communities: Arc<dyn CommunityFollowStats>,
     notifications: Arc<dyn UserNotificationDispatcher>,
+    presence: Arc<PresenceService>,
     frc_i_backfill_enabled: bool,
 ) -> UsersModule {
     let backfill_pool = pool.clone();
@@ -124,7 +140,8 @@ pub fn compose(
         profiles: store.clone(),
         privacy: store.clone(),
         blocklist: store.clone(),
-        presence: store.clone(),
+        presence: presence.as_presence(),
+        presence_service: presence.clone(),
         accounts,
         communities,
         follows: store,
@@ -141,5 +158,25 @@ pub fn compose(
         public_router: http::public_router(state),
         image_backfill: frc_i_backfill_enabled
             .then(|| tokio::spawn(infrastructure::image_backfill::run(backfill_pool))),
+        presence,
     }
+}
+
+/// Fallback presence when Notifications ServeNative is off (no SSE fan-out).
+pub fn compose_with_local_presence(
+    pool: PgPool,
+    accounts: Arc<dyn AccountDirectory>,
+    communities: Arc<dyn CommunityFollowStats>,
+    notifications: Arc<dyn UserNotificationDispatcher>,
+    frc_i_backfill_enabled: bool,
+) -> UsersModule {
+    let presence = build_presence_service(pool.clone(), Arc::new(NoopPresenceRealtimePublisher));
+    compose(
+        pool,
+        accounts,
+        communities,
+        notifications,
+        presence,
+        frc_i_backfill_enabled,
+    )
 }

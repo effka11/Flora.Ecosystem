@@ -9,7 +9,7 @@ use axum::Router;
 use axum::extract::{DefaultBodyLimit, Extension, Multipart, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use chrono::{DateTime, SecondsFormat, Utc};
 use flora_auth_contracts::AccountDirectory;
 use flora_content_contracts::CommunityFollowStats;
@@ -29,6 +29,7 @@ use crate::application::avatar::{
     AvatarService, AvatarUploadError, AvatarUploadInput, MAX_AVATAR_SIZE_BYTES,
 };
 use crate::application::people_recommendation::PeopleRecommendationService;
+use crate::application::presence::{MAX_WATCH_UUIDS, PresenceService};
 use crate::http::rate_limit::{FixedWindowLimiter, client_ip_key};
 
 /// JWT user (внедряет flora-social).
@@ -43,6 +44,7 @@ pub struct UsersState {
     pub privacy: Arc<dyn UserPrivacySettings>,
     pub blocklist: Arc<dyn UserBlocklist>,
     pub presence: Arc<dyn UserPresence>,
+    pub presence_service: Arc<PresenceService>,
     pub accounts: Arc<dyn AccountDirectory>,
     pub communities: Arc<dyn CommunityFollowStats>,
     pub follows: Arc<dyn UserFollowMutations>,
@@ -90,6 +92,9 @@ pub fn protected_router(state: UsersState) -> Router {
             "/api/auth/users/by-username/{username}",
             get(get_user_by_username),
         )
+        .route("/api/auth/presence/heartbeat", post(presence_heartbeat))
+        .route("/api/auth/presence/watch", put(presence_watch))
+        .route("/api/auth/presence", get(presence_batch))
         .with_state(state)
 }
 
@@ -163,6 +168,20 @@ async fn get_profile_by_username(
         Err(e) => return internal(e),
     };
 
+    let mut is_online = false;
+    let mut last_seen_at: Option<String> = None;
+    if let Some(Extension(viewer)) = viewer.as_ref() {
+        match presence_fields_for(&state, Some(viewer.user_uuid), &[account.user_uuid]).await {
+            Ok(map) => {
+                if let Some((online, seen)) = map.get(&account.user_uuid) {
+                    is_online = *online;
+                    last_seen_at = seen.clone();
+                }
+            }
+            Err(e) => return internal(e),
+        }
+    }
+
     let mut is_following_by_me = false;
     let mut can_message_by_me = false;
     if let Some(Extension(viewer)) = viewer
@@ -203,6 +222,8 @@ async fn get_profile_by_username(
         following_count: following_people_count + following_communities_count,
         is_following_by_me,
         can_message_by_me,
+        is_online,
+        last_seen_at,
     })
     .into_response()
 }
@@ -324,21 +345,138 @@ async fn get_follow_list(
     };
     let count_by: std::collections::HashMap<_, _> = follower_counts.into_iter().collect();
 
+    let presence_by = match presence_fields_for(&state, viewer_uuid, &ids).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+
     let list: Vec<FollowListItem> = ids
         .into_iter()
         .map(|uid| {
             let username = user_by.get(&uid).cloned().unwrap_or_default();
             let (display_name, avatar_uuid) = profile_by.get(&uid).cloned().unwrap_or_default();
+            let (is_online, last_seen_at) = presence_by.get(&uid).cloned().unwrap_or((false, None));
             FollowListItem {
+                user_uuid: uid,
                 username,
                 display_name,
                 avatar_uuid: avatar_uuid.map(|u| u.to_string()),
                 follower_count: i64::from(*count_by.get(&uid).unwrap_or(&0)),
+                is_online,
+                last_seen_at,
             }
         })
         .collect();
 
     Json(list).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PresenceWatchBody {
+    connection_id: Uuid,
+    #[serde(default)]
+    user_uuids: Vec<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PresenceBatchQuery {
+    /// Comma-separated UUIDs.
+    uuids: Option<String>,
+}
+
+async fn presence_heartbeat(
+    State(state): State<UsersState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    match state.presence_service.touch(user.user_uuid).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn presence_watch(
+    State(state): State<UsersState>,
+    Extension(user): Extension<CurrentUser>,
+    Json(body): Json<PresenceWatchBody>,
+) -> Response {
+    if body.user_uuids.len() > MAX_WATCH_UUIDS {
+        return bad_request("too many uuids".into());
+    }
+    match state
+        .presence_service
+        .set_watch(user.user_uuid, body.connection_id, &body.user_uuids)
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) if e.contains("unknown connectionId") => bad_request(e),
+        Err(e) => bad_request(e),
+    }
+}
+
+async fn presence_batch(
+    State(state): State<UsersState>,
+    Extension(user): Extension<CurrentUser>,
+    Query(q): Query<PresenceBatchQuery>,
+) -> Response {
+    let raw = q.uuids.unwrap_or_default();
+    let mut ids = Vec::new();
+    for part in raw.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        match Uuid::parse_str(part) {
+            Ok(u) => ids.push(u),
+            Err(_) => return bad_request("invalid uuid".into()),
+        }
+    }
+    if ids.len() > MAX_WATCH_UUIDS {
+        return bad_request("too many uuids".into());
+    }
+    match state
+        .presence_service
+        .snapshot_for_viewer(user.user_uuid, &ids)
+        .await
+    {
+        Ok(rows) => {
+            let items: Vec<_> = rows
+                .into_iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "userUuid": r.user_uuid,
+                        "isOnline": r.is_online,
+                        "lastSeenAt": r.last_seen_iso(),
+                    })
+                })
+                .collect();
+            Json(serde_json::json!({ "items": items })).into_response()
+        }
+        Err(e) => {
+            if e.contains("too many") {
+                bad_request(e)
+            } else {
+                internal(e)
+            }
+        }
+    }
+}
+
+async fn presence_fields_for(
+    state: &UsersState,
+    viewer: Option<Uuid>,
+    subjects: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, (bool, Option<String>)>, String> {
+    let Some(viewer) = viewer else {
+        return Ok(subjects.iter().map(|id| (*id, (false, None))).collect());
+    };
+    let snaps = state
+        .presence_service
+        .snapshot_for_viewer(viewer, subjects)
+        .await?;
+    Ok(snaps
+        .into_iter()
+        .map(|s| (s.user_uuid, (s.is_online, s.last_seen_iso())))
+        .collect())
 }
 
 async fn get_me(
@@ -419,6 +557,8 @@ async fn update_privacy(
     Extension(user): Extension<CurrentUser>,
     Json(body): Json<UpdatePrivacyRequest>,
 ) -> Response {
+    let online_visibility_changed =
+        body.online_friends.is_some() || body.online_strangers.is_some();
     let patch = PrivacySettingsPatch {
         friends_visibility: body.friends_visibility,
         subscriptions_visibility: body.subscriptions_visibility,
@@ -431,7 +571,15 @@ async fn update_privacy(
         online_strangers: body.online_strangers,
     };
     match state.privacy.update(user.user_uuid, patch).await {
-        Ok(dto) => Json(privacy_json(&dto)).into_response(),
+        Ok(dto) => {
+            if online_visibility_changed {
+                state
+                    .presence_service
+                    .republish_for_subject(user.user_uuid)
+                    .await;
+            }
+            Json(privacy_json(&dto)).into_response()
+        }
         Err(e) if e.starts_with("Недопустимое") => bad_request(e),
         Err(e) => internal(e),
     }
@@ -500,6 +648,11 @@ async fn block_user(
     };
     match state.blocklist.block(user.user_uuid, target).await {
         Ok(()) => {
+            // Blocker is subject: blocked viewer must drop online badge immediately.
+            state
+                .presence_service
+                .republish_for_subject(user.user_uuid)
+                .await;
             Json(serde_json::json!({ "message": "Пользователь заблокирован." })).into_response()
         }
         Err(e) if e.contains("Нельзя заблокировать") => bad_request(e),
@@ -523,7 +676,13 @@ async fn unblock_user(
         return not_found("Пользователь не найден.");
     };
     match state.blocklist.unblock(user.user_uuid, target).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            state
+                .presence_service
+                .republish_for_subject(user.user_uuid)
+                .await;
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => internal(e),
     }
 }
@@ -861,16 +1020,25 @@ async fn search_users(
             Err(e) => return internal(e),
         };
 
+    let presence_by = match presence_fields_for(&state, Some(user.user_uuid), &ids).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+
     let list: Vec<UserSearchItem> = page
         .into_iter()
         .map(|(id, username)| {
             let (display_name, avatar_uuid) = profile_by.get(&id).cloned().unwrap_or((None, None));
+            let (is_online, last_seen_at) = presence_by.get(&id).cloned().unwrap_or((false, None));
             UserSearchItem {
                 username: username.clone(),
                 display_name: display_name.filter(|s| !s.is_empty()).unwrap_or(username),
                 avatar_uuid: avatar_uuid.map(|u| u.to_string()),
                 follower_count: i64::from(*count_by.get(&id).unwrap_or(&0)),
                 is_following: following_set.contains(&id),
+                user_uuid: id,
+                is_online,
+                last_seen_at,
             }
         })
         .collect();
@@ -1045,6 +1213,11 @@ async fn get_recommended_users(
         Err(e) => return internal(e),
     };
 
+    let presence_by = match presence_fields_for(&state, Some(user.user_uuid), &user_ids).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+
     let items: Vec<RecommendedUserItem> = list
         .into_iter()
         .filter_map(|x| {
@@ -1057,6 +1230,10 @@ async fn get_recommended_users(
             } else {
                 x.display_name
             };
+            let (is_online, last_seen_at) = presence_by
+                .get(&x.user_uuid)
+                .cloned()
+                .unwrap_or((false, None));
             Some(RecommendedUserItem {
                 user_uuid: x.user_uuid,
                 username,
@@ -1064,6 +1241,8 @@ async fn get_recommended_users(
                 avatar_uuid: x.avatar_uuid.map(|u| u.to_string()),
                 follower_count: i64::from(x.follower_count),
                 is_following: following_set.contains(&x.user_uuid),
+                is_online,
+                last_seen_at,
             })
         })
         .collect();
@@ -1187,6 +1366,8 @@ struct PublicProfileResponse {
     following_count: i64,
     is_following_by_me: bool,
     can_message_by_me: bool,
+    is_online: bool,
+    last_seen_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1231,20 +1412,26 @@ struct UpdatePrivacyRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct FollowListItem {
+    user_uuid: Uuid,
     username: String,
     display_name: String,
     avatar_uuid: Option<String>,
     follower_count: i64,
+    is_online: bool,
+    last_seen_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UserSearchItem {
+    user_uuid: Uuid,
     username: String,
     display_name: String,
     avatar_uuid: Option<String>,
     follower_count: i64,
     is_following: bool,
+    is_online: bool,
+    last_seen_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1257,6 +1444,8 @@ struct RecommendedUserItem {
     avatar_uuid: Option<String>,
     follower_count: i64,
     is_following: bool,
+    is_online: bool,
+    last_seen_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

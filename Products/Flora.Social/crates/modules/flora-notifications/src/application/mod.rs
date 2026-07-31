@@ -4,13 +4,17 @@ mod dispatcher;
 mod inbox;
 mod message_notifier;
 mod platform;
+mod presence_publisher;
 mod push_tokens;
 mod realtime_publisher;
 mod time;
+mod typing_notifier;
 
 pub use dispatcher::InboxNotificationDispatcher;
 pub use inbox::InboxService;
 pub use message_notifier::MessagePushNotifier;
 pub use platform::client_platform_from_header;
+pub use presence_publisher::HubPresencePublisher;
 pub use push_tokens::{PushTokenService, SecurePreviewRegistration};
 pub use realtime_publisher::UserRealtimePublisher;
+pub use typing_notifier::HubTypingNotifier;

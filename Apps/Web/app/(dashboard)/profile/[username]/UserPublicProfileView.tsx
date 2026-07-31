@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { FeedPostList, type FeedPostListItem } from "@/app/_shared/FeedPostList";
 import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
@@ -110,6 +111,41 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
     () => isSameProfileSlug(me?.username, usernameSlug),
     [me?.username, usernameSlug],
   );
+
+  const [presenceTick, setPresenceTick] = useState(0);
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+  useEffect(() => {
+    return sharedPresenceStore.subscribe(() => {
+      setPresenceTick((n) => n + 1);
+      setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+    });
+  }, []);
+
+  useEffect(() => {
+    const uuid = publicProfile?.userUuid;
+    if (!uuid || !sharedPresenceStore.surfacesAccepted) {
+      sharedPresenceStore.unregisterSurface("public-profile");
+      return undefined;
+    }
+    sharedPresenceStore.registerSurface("public-profile", [uuid]);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("public-profile");
+  }, [publicProfile?.userUuid, presenceEpoch]);
+
+  const profilePresence = useMemo(() => {
+    void presenceTick;
+    if (!publicProfile?.userUuid) {
+      return {
+        isOnline: publicProfile?.isOnline ?? false,
+        lastSeenAt: publicProfile?.lastSeenAt ?? null,
+      };
+    }
+    return sharedPresenceStore.overlayOnline(
+      publicProfile.userUuid,
+      publicProfile.isOnline ?? false,
+      publicProfile.lastSeenAt,
+    );
+  }, [publicProfile, presenceTick]);
 
   useEffect(() => {
     if (isOwnSlug) {
@@ -247,13 +283,19 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
         <div className={styles.profileCover} />
         <div className={styles.profileInfo}>
           <div className={styles.profileInfoTop}>
-            <div className={styles.profileAvatar}>
-              <FloraAvatar
-                size={FLORA_PROFILE_AVATAR_INNER_PX}
-                avatarUuid={publicProfile?.avatarUuid}
-                displayName={publicProfile?.displayName ?? name}
-                username={publicProfile?.username ?? ""}
-                seed={publicProfile?.userUuid}
+            <div className={styles.profileAvatarWrap}>
+              <div className={styles.profileAvatar}>
+                <FloraAvatar
+                  size={FLORA_PROFILE_AVATAR_INNER_PX}
+                  avatarUuid={publicProfile?.avatarUuid}
+                  displayName={publicProfile?.displayName ?? name}
+                  username={publicProfile?.username ?? ""}
+                  seed={publicProfile?.userUuid}
+                />
+              </div>
+              <span
+                className={`${styles.profileOnlineBadge}${profilePresence.isOnline ? ` ${styles.profileOnlineBadgeVisible}` : ""}`}
+                aria-hidden
               />
             </div>
             <ProfileCardStatus status={publicProfile?.status} loading={loading} />

@@ -1,12 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
+import { sharedPresenceStore } from "@flora/client-core/presence";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { formatWasOnlineRu } from "@/lib/lastSeenRu";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { subscribeTyping } from "@/lib/typingEvents";
 import { useSessionStore } from "@/stores/sessionStore";
 
 export type ChatPeerInfo = {
@@ -16,6 +19,7 @@ export type ChatPeerInfo = {
   otherAvatarUuid: string | null;
   otherUserIsOnline: boolean;
   otherUserLastSeenAt: string | null;
+  conversationUuid?: string | null;
 };
 
 type Props = {
@@ -30,17 +34,69 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
   const username = peer.otherUsername.replace(/^@+/, "") || "…";
   const [presenceClock, setPresenceClock] = useState(0);
+  const [presenceTick, setPresenceTick] = useState(0);
+  const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+  const [peerTyping, setPeerTyping] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setPresenceClock((c) => c + 1), 30000);
     return () => clearInterval(id);
   }, []);
 
+  useEffect(
+    () =>
+      sharedPresenceStore.subscribe(() => {
+        setPresenceTick((n) => n + 1);
+        setPresenceEpoch(sharedPresenceStore.getSessionEpoch());
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    if (!sharedPresenceStore.surfacesAccepted) {
+      return () => sharedPresenceStore.unregisterSurface("chat-header");
+    }
+    sharedPresenceStore.registerSurface("chat-header", [peer.otherUserUuid]);
+    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    return () => sharedPresenceStore.unregisterSurface("chat-header");
+  }, [peer.otherUserUuid, presenceEpoch]);
+
+  useEffect(() => {
+    if (!peer.conversationUuid) return undefined;
+    let clearTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = subscribeTyping((detail) => {
+      if (detail.conversationUuid !== peer.conversationUuid) return;
+      if (detail.userUuid !== peer.otherUserUuid) return;
+      if (clearTimer) clearTimeout(clearTimer);
+      clearTimer = null;
+      setPeerTyping(detail.isTyping);
+      if (detail.isTyping) {
+        clearTimer = setTimeout(() => {
+          clearTimer = null;
+          setPeerTyping(false);
+        }, 3000);
+      }
+    });
+    return () => {
+      unsub();
+      if (clearTimer) clearTimeout(clearTimer);
+      setPeerTyping(false);
+    };
+  }, [peer.conversationUuid, peer.otherUserUuid]);
+
+  const overlay = sharedPresenceStore.overlayOnline(
+    peer.otherUserUuid,
+    peer.otherUserIsOnline,
+    peer.otherUserLastSeenAt,
+  );
+
   const presenceLine = useMemo(() => {
-    if (peer.otherUserIsOnline) return "В сети";
-    const was = formatWasOnlineRu(peer.otherUserLastSeenAt, new Date());
+    void presenceTick;
+    if (peerTyping) return "печатает…";
+    if (overlay.isOnline) return "В сети";
+    const was = formatWasOnlineRu(overlay.lastSeenAt, new Date());
     return was ?? "Не в сети";
-  }, [peer.otherUserIsOnline, peer.otherUserLastSeenAt, presenceClock]);
+  }, [overlay.isOnline, overlay.lastSeenAt, presenceClock, presenceTick, peerTyping]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + floraSpacing.gridFine }]}>
@@ -62,7 +118,11 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
           seed={peer.otherUserUuid}
           href={username !== "…" ? profileScreenHref(username, me?.username) : undefined}
         />
-        {peer.otherUserIsOnline ? <View style={styles.onlineBadge} /> : null}
+        <OnlineStatusDot
+          key={peer.otherUserUuid}
+          identityKey={peer.otherUserUuid}
+          online={overlay.isOnline}
+        />
       </View>
 
       <View style={styles.info}>
@@ -123,17 +183,6 @@ const styles = StyleSheet.create({
     width: floraMessages.headerAvatarSize,
     height: floraMessages.headerAvatarSize,
     flexShrink: 0,
-  },
-  onlineBadge: {
-    position: "absolute",
-    right: -1,
-    bottom: -1,
-    width: 15,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: floraColors.greenLight,
-    borderWidth: 3,
-    borderColor: floraColors.bg,
   },
   info: {
     flex: 1,

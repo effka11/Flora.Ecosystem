@@ -7,6 +7,8 @@ export type PeopleUserDto = {
   followerCount: number;
   isFollowing: boolean;
   userUuid?: string;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 };
 
 function parsePeopleUser(raw: unknown, ctx?: ParseContext, fallbackFollowing = false): PeopleUserDto | null {
@@ -19,12 +21,15 @@ function parsePeopleUser(raw: unknown, ctx?: ParseContext, fallbackFollowing = f
   const avatarUuid = readStr(o, ["avatarUuid", "AvatarUuid"], fb) || null;
   const followerCount = readNum(o, ["followerCount", "FollowerCount", "followersCount", "FollowersCount"], fb) ?? 0;
   const userUuid = readStr(o, ["userUuid", "UserUuid"], fb);
+  const lastSeenAt = readStr(o, ["lastSeenAt", "LastSeenAt"], fb) || null;
   return {
     username,
     displayName,
     avatarUuid,
     followerCount,
     isFollowing: readBool(o, ["isFollowing", "IsFollowing"], fb) || fallbackFollowing,
+    isOnline: readBool(o, ["isOnline", "IsOnline"], fb),
+    lastSeenAt,
     ...(userUuid ? { userUuid } : {}),
   };
 }
