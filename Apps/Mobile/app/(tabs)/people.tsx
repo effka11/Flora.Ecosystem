@@ -77,7 +77,7 @@ function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: 
   void presenceTick;
   const overlay = user.userUuid
     ? sharedPresenceStore.overlayOnline(user.userUuid, user.isOnline ?? false, user.lastSeenAt)
-    : { isOnline: user.isOnline ?? false, lastSeenAt: user.lastSeenAt ?? null };
+    : { isOnline: false, lastSeenAt: user.lastSeenAt ?? null };
 
   return (
     <View style={styles.shell}>

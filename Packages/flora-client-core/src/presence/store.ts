@@ -4,6 +4,8 @@ import { asRecord, readStr } from "../contracts/parse.js";
 export const PRESENCE_MAX_WATCH = 100;
 export const PRESENCE_HEARTBEAT_MS = 2000;
 export const PRESENCE_BACKGROUND_STOP_DEBOUNCE_MS = 800;
+/** Ignore transient active blips (e.g. Android push wake) before heartbeating. */
+export const PRESENCE_FOREGROUND_CONFIRM_MS = 800;
 /** Re-PUT watch well under server WATCH_TTL (5 min). */
 export const PRESENCE_WATCH_REFRESH_MS = 2 * 60 * 1000;
 
@@ -130,29 +132,27 @@ export class PresenceStore {
   }
 
   /**
-   * Overlay DTO with store. Store wins unless DTO has a strictly newer lastSeenAt.
-   * Equal timestamps prefer store. Privacy-hidden store snap (offline, no lastSeen) wins.
+   * Online flag comes only from PresenceStore (SSE / GET presence).
+   * DTO `isOnline` is ignored. Newer DTO `lastSeenAt` may update the "was online" text
+   * while the online badge still follows the store snap.
    */
   overlayOnline(
     userUuid: string,
-    dtoOnline: boolean,
+    _dtoOnline: boolean,
     dtoLastSeen: string | null | undefined,
   ): { isOnline: boolean; lastSeenAt: string | null } {
     const snap = this.byUser.get(userUuid);
     if (!snap) {
-      return { isOnline: dtoOnline, lastSeenAt: dtoLastSeen ?? null };
+      return { isOnline: false, lastSeenAt: dtoLastSeen ?? null };
     }
     if (!snap.isOnline && !snap.lastSeenAt) {
       return { isOnline: false, lastSeenAt: null };
     }
-    if (
-      dtoLastSeen &&
-      snap.lastSeenAt &&
-      dtoLastSeen > snap.lastSeenAt
-    ) {
-      return { isOnline: dtoOnline, lastSeenAt: dtoLastSeen };
-    }
-    return { isOnline: snap.isOnline, lastSeenAt: snap.lastSeenAt };
+    const lastSeenAt =
+      dtoLastSeen && (!snap.lastSeenAt || dtoLastSeen > snap.lastSeenAt)
+        ? dtoLastSeen
+        : snap.lastSeenAt;
+    return { isOnline: snap.isOnline, lastSeenAt };
   }
 
   registerSurface(key: SurfaceKey, userUuids: string[]): void {
@@ -310,6 +310,7 @@ export function startPresenceHeartbeat(options?: {
   let stopped = false;
   let interval: ReturnType<typeof setInterval> | null = null;
   let backgroundTimer: ReturnType<typeof setTimeout> | null = null;
+  let foregroundTimer: ReturnType<typeof setTimeout> | null = null;
 
   const tick = () => {
     if (stopped) return;
@@ -331,6 +332,13 @@ export function startPresenceHeartbeat(options?: {
     }
   };
 
+  const clearForegroundTimer = () => {
+    if (foregroundTimer) {
+      clearTimeout(foregroundTimer);
+      foregroundTimer = null;
+    }
+  };
+
   const onVisibilityChange = () => {
     const visible = options?.isVisible ? options.isVisible() : true;
     if (visible) {
@@ -338,9 +346,18 @@ export function startPresenceHeartbeat(options?: {
         clearTimeout(backgroundTimer);
         backgroundTimer = null;
       }
-      void apiPresenceHeartbeat().catch(() => {});
-      startInterval();
+      // Still heartbeating through a short background flicker — keep going.
+      if (interval) return;
+      // Confirm foreground — push/headless wakes and remounts must not mark online.
+      clearForegroundTimer();
+      foregroundTimer = setTimeout(() => {
+        foregroundTimer = null;
+        if (stopped) return;
+        if (options?.isVisible && !options.isVisible()) return;
+        startInterval();
+      }, PRESENCE_FOREGROUND_CONFIRM_MS);
     } else {
+      clearForegroundTimer();
       if (backgroundTimer) clearTimeout(backgroundTimer);
       backgroundTimer = setTimeout(() => {
         backgroundTimer = null;
@@ -349,12 +366,19 @@ export function startPresenceHeartbeat(options?: {
     }
   };
 
-  startInterval();
+  if (!options?.isVisible) {
+    // No visibility probe — assume always-foreground host.
+    startInterval();
+  } else if (options.isVisible()) {
+    // Cold start / remount: same confirm path as resume (no instant tick).
+    onVisibilityChange();
+  }
 
   return {
     stop() {
       stopped = true;
       stopInterval();
+      clearForegroundTimer();
       if (backgroundTimer) clearTimeout(backgroundTimer);
     },
     onVisibilityChange,

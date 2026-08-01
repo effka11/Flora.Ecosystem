@@ -1356,7 +1356,10 @@ function MessagesChatInner() {
     const other = selectedOtherUuid;
     const emitter = createTypingEmitter({
       postTyping: (isTyping) => apiPostTyping(conv, isTyping, other),
-      onTrueHeartbeat: () => apiPresenceHeartbeat(),
+      onTrueHeartbeat: () => {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+        return apiPresenceHeartbeat();
+      },
     });
     typingEmitterRef.current?.dispose();
     typingEmitterRef.current = emitter;

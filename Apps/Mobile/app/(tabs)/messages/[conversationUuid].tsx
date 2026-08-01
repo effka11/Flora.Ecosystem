@@ -31,6 +31,7 @@ import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
   InteractionManager,
   NativeScrollEvent,
@@ -554,6 +555,8 @@ export default function ThreadScreen() {
     const norm = conversationUuid.toLowerCase();
     return subscribeMessageRealtime((incomingUuid) => {
       if (incomingUuid.toLowerCase() !== norm) return;
+      // Background/push must not mark-read (or imply the user is looking at chat).
+      if (AppState.currentState !== "active") return;
       void messagesQuery.refetch();
       void apiMarkConversationRead(conversationUuid)
         .then(() => {
@@ -1163,7 +1166,10 @@ export default function ThreadScreen() {
     const other = otherUserUuid;
     const emitter = createTypingEmitter({
       postTyping: (isTyping) => apiPostTyping(conv, isTyping, other),
-      onTrueHeartbeat: () => apiPresenceHeartbeat(),
+      onTrueHeartbeat: () => {
+        if (AppState.currentState !== "active") return;
+        return apiPresenceHeartbeat();
+      },
     });
     typingEmitterRef.current?.dispose();
     typingEmitterRef.current = emitter;

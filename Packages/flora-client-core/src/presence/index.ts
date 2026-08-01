@@ -9,6 +9,7 @@ export {
   PRESENCE_MAX_WATCH,
   PRESENCE_HEARTBEAT_MS,
   PRESENCE_BACKGROUND_STOP_DEBOUNCE_MS,
+  PRESENCE_FOREGROUND_CONFIRM_MS,
   PRESENCE_WATCH_REFRESH_MS,
 } from "./store.js";
 export type { PresenceSnapshot } from "./store.js";

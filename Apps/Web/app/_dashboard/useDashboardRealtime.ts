@@ -30,7 +30,7 @@ export function useDashboardRealtime(enabled: boolean): void {
     const onVis = () => heartbeat.onVisibilityChange();
     document.addEventListener("visibilitychange", onVis);
 
-    (async () => {
+    void (async () => {
       await initWebClientCore();
       if (cancelled) return;
 
@@ -72,7 +72,9 @@ export function useDashboardRealtime(enabled: boolean): void {
           });
         },
       });
-    })();
+    })().catch(() => {
+      // init/connect failures are retried by the stream reconnect loop once mounted
+    });
 
     return () => {
       cancelled = true;
