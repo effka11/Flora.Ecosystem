@@ -913,6 +913,20 @@ function MessagesChatInner() {
           /* keep current thread */
         }
       })();
+
+      // Parity Mobile: while the chat is open and the tab is visible, mark incoming as read
+      // so the peer gets live ✓✓ without requiring re-enter.
+      if (document.visibilityState !== "visible") return;
+      void msgMarkReadForUser(viewerNorm, peer)
+        .then(() => {
+          setConversations((prev) =>
+            prev.map((c) => (c.otherUserUuid === peer ? { ...c, unreadCount: 0 } : c)),
+          );
+          notifyMessagesUnreadChanged();
+        })
+        .catch(() => {
+          /* не блокируем чат */
+        });
     };
     window.addEventListener(MESSAGES_UNREAD_CHANGED_EVENT, onMessagesChanged);
     return () => window.removeEventListener(MESSAGES_UNREAD_CHANGED_EVENT, onMessagesChanged);
@@ -945,10 +959,23 @@ function MessagesChatInner() {
       if (document.visibilityState !== "visible") return;
       conversationsCache.invalidate();
       void conversationsCache.refresh().then(applyConversationPage).catch(() => {});
+      const viewer = me?.userUuid?.trim() ?? "";
+      const peer = selectedOtherUuid?.trim() ?? "";
+      if (!viewer || !peer) return;
+      void msgMarkReadForUser(viewer.toLowerCase(), peer)
+        .then(() => {
+          setConversations((prev) =>
+            prev.map((c) => (c.otherUserUuid === peer ? { ...c, unreadCount: 0 } : c)),
+          );
+          notifyMessagesUnreadChanged();
+        })
+        .catch(() => {
+          /* не блокируем чат */
+        });
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [isClient, hasToken, applyConversationPage]);
+  }, [isClient, hasToken, applyConversationPage, me?.userUuid, selectedOtherUuid]);
 
   const viewerUuid = me?.userUuid?.trim() ?? "";
   const viewerNorm = viewerUuid.toLowerCase();
