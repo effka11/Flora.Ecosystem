@@ -8,8 +8,6 @@ import {
   type MsgConversationsPage,
   type MsgMessagesPage,
 } from "../contracts/messaging.js";
-import { apiPresenceHeartbeat } from "../presence/store.js";
-
 export type MsgE2EState = {
   state:
     | "not_initialized"
@@ -106,8 +104,6 @@ export async function apiGetPushPreviewTargets(
 
 export async function apiMarkConversationRead(conversationUuid: string): Promise<void> {
   await authPostJson(`/api/messaging/conversations/${conversationUuid}/read`, {});
-  // Wake presence (plan: immediate heartbeat after mark-read).
-  void apiPresenceHeartbeat().catch(() => {});
 }
 
 export async function apiDeleteMessage(conversationUuid: string, messageUuid: string): Promise<void> {

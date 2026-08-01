@@ -959,6 +959,74 @@
   white-space: nowrap;
 }
 
+/** Цикл «.» → «..» → «...» для статуса «Печатает». */
+.messagesChatHeaderTypingDots {
+  display: inline-block;
+  min-width: 1.15em;
+}
+
+.messagesChatHeaderTypingDots > span {
+  opacity: 0;
+  animation: messagesTypingDotCycle 1.2s linear infinite;
+}
+
+.messagesChatHeaderTypingDots > span:nth-child(1) {
+  animation-name: messagesTypingDot1;
+}
+
+.messagesChatHeaderTypingDots > span:nth-child(2) {
+  animation-name: messagesTypingDot2;
+}
+
+.messagesChatHeaderTypingDots > span:nth-child(3) {
+  animation-name: messagesTypingDot3;
+}
+
+@keyframes messagesTypingDot1 {
+  0%,
+  99% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes messagesTypingDot2 {
+  0%,
+  32% {
+    opacity: 0;
+  }
+  33%,
+  99% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes messagesTypingDot3 {
+  0%,
+  65% {
+    opacity: 0;
+  }
+  66%,
+  99% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messagesChatHeaderTypingDots > span {
+    opacity: 1;
+    animation: none;
+  }
+}
+
 /* ← в шапке чата: anchorRow=0, ячейка 85.3 (центр между 85–86 и 3–4; origin кол. 37). */
 .messagesChatHeaderBackBtn {
   position: absolute;

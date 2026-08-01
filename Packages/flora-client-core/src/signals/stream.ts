@@ -218,6 +218,17 @@ function parseSseChunk(
   return rest;
 }
 
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  return (error as { name?: string }).name === "AbortError";
+}
+
+function kick(run: () => Promise<void>): void {
+  void run().catch(() => {
+    // run() must never reject; belt-and-suspenders for callers/devtools.
+  });
+}
+
 export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}): SignalsStreamHandle {
   let closed = false;
   let connected = false;
@@ -232,7 +243,7 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
     reconnectAttempt += 1;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      void run();
+      kick(run);
     }, delayMs);
   };
 
@@ -260,7 +271,11 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
 
       connected = true;
       reconnectAttempt = 0;
-      options.onOpen?.();
+      try {
+        options.onOpen?.();
+      } catch (error) {
+        options.onError?.(error);
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -273,17 +288,28 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
         buffer = parseSseChunk(buffer, options);
       }
     } catch (error) {
-      if (closed || (error instanceof DOMException && error.name === "AbortError")) return;
-      options.onError?.(error);
+      if (!closed && !isAbortError(error)) {
+        try {
+          options.onError?.(error);
+        } catch {
+          // Caller onError must not break reconnect.
+        }
+      }
     } finally {
       const wasConnected = connected;
       connected = false;
-      if (wasConnected) options.onClose?.();
+      if (wasConnected) {
+        try {
+          options.onClose?.();
+        } catch {
+          // ignore
+        }
+      }
       if (!closed) scheduleReconnect();
     }
   };
 
-  void run();
+  kick(run);
 
   return {
     close() {

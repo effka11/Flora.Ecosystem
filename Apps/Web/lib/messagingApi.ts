@@ -12,7 +12,6 @@ import {
   authPutJson,
 } from "@/lib/authorizedFetch";
 import { dmConversationUuid } from "@/lib/fscp/deriveIds";
-import { apiPresenceHeartbeat } from "@flora/client-core/presence";
 
 /** Relative path for authFetch / client-core. */
 function apiUrl(path: string): string {
@@ -297,7 +296,6 @@ export async function msgMarkRead(
       `/api/messaging/conversations/${encodeURIComponent(conversationUuid)}/read${q}`
     )
   );
-  void apiPresenceHeartbeat().catch(() => {});
 }
 
 /**

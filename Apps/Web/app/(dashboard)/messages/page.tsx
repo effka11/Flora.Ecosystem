@@ -93,8 +93,10 @@ import { TYPING_CHANGED_EVENT, type TypingChangedDetail } from "@/lib/realtimeEv
 import {
   apiPostTyping,
   apiPresenceHeartbeat,
-  PRESENCE_TYPING_DEBOUNCE_MS,
+  createTypingEmitter,
+  PRESENCE_TYPING_PEER_TTL_MS,
   sharedPresenceStore,
+  type TypingEmitter,
 } from "@flora/client-core/presence";
 import { ImageMessageCard } from "./ImageMessageCard";
 import { MessageImageCollage } from "./MessageImageCollage";
@@ -1182,6 +1184,12 @@ function MessagesChatInner() {
   const [presenceTick, setPresenceTick] = useState(0);
   const [peerTyping, setPeerTyping] = useState(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+  const typingEmitterRef = useRef<TypingEmitter | null>(null);
+  const typingComposeSyncRef = useRef<{
+    conv: string;
+    text: string;
+    mode: string;
+  } | null>(null);
 
   useEffect(() => {
     return sharedPresenceStore.subscribe(() => {
@@ -1315,8 +1323,11 @@ function MessagesChatInner() {
     let clearTimer: number | null = null;
     const onTyping = (ev: Event) => {
       const detail = (ev as CustomEvent<TypingChangedDetail>).detail;
-      if (!detail || detail.conversationUuid !== selectedConversationUuid) return;
-      if (detail.userUuid !== selectedOtherUuid) return;
+      if (!detail) return;
+      if (detail.conversationUuid.trim().toLowerCase() !== selectedConversationUuid.trim().toLowerCase()) {
+        return;
+      }
+      if (detail.userUuid.trim().toLowerCase() !== selectedOtherUuid.trim().toLowerCase()) return;
       if (clearTimer != null) window.clearTimeout(clearTimer);
       clearTimer = null;
       setPeerTyping(detail.isTyping);
@@ -1324,7 +1335,7 @@ function MessagesChatInner() {
         clearTimer = window.setTimeout(() => {
           clearTimer = null;
           setPeerTyping(false);
-        }, 3000);
+        }, PRESENCE_TYPING_PEER_TTL_MS);
       }
     };
     window.addEventListener(TYPING_CHANGED_EVENT, onTyping);
@@ -1332,23 +1343,52 @@ function MessagesChatInner() {
       window.removeEventListener(TYPING_CHANGED_EVENT, onTyping);
       if (clearTimer != null) window.clearTimeout(clearTimer);
       setPeerTyping(false);
-      void apiPostTyping(selectedConversationUuid, false, selectedOtherUuid).catch(() => {});
     };
   }, [selectedConversationUuid, selectedOtherUuid]);
 
   useEffect(() => {
-    if (!selectedConversationUuid || !selectedOtherUuid) return undefined;
-    if (compose.mode !== "text") return undefined;
-    const text = compose.text;
-    if (!text.trim()) {
-      void apiPostTyping(selectedConversationUuid, false, selectedOtherUuid).catch(() => {});
+    if (!selectedConversationUuid || !selectedOtherUuid) {
+      typingEmitterRef.current?.dispose();
+      typingEmitterRef.current = null;
       return undefined;
     }
-    const t = window.setTimeout(() => {
-      void apiPostTyping(selectedConversationUuid, true, selectedOtherUuid).catch(() => {});
-      void apiPresenceHeartbeat().catch(() => {});
-    }, PRESENCE_TYPING_DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
+    const conv = selectedConversationUuid;
+    const other = selectedOtherUuid;
+    const emitter = createTypingEmitter({
+      postTyping: (isTyping) => apiPostTyping(conv, isTyping, other),
+      onTrueHeartbeat: () => {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+        return apiPresenceHeartbeat();
+      },
+    });
+    typingEmitterRef.current?.dispose();
+    typingEmitterRef.current = emitter;
+    return () => {
+      emitter.dispose();
+      if (typingEmitterRef.current === emitter) typingEmitterRef.current = null;
+    };
+  }, [selectedConversationUuid, selectedOtherUuid]);
+
+  useEffect(() => {
+    const emitter = typingEmitterRef.current;
+    if (!emitter || !selectedConversationUuid) return;
+
+    const prev = typingComposeSyncRef.current;
+    const convChanged = !prev || prev.conv !== selectedConversationUuid;
+    const textChanged = !!prev && prev.text !== compose.text;
+    typingComposeSyncRef.current = {
+      conv: selectedConversationUuid,
+      text: compose.text,
+      mode: compose.mode,
+    };
+
+    if (compose.mode !== "text") {
+      emitter.stop();
+      return;
+    }
+    // Leftover draft after chat switch / initial open must not claim typing.
+    if (convChanged && !textChanged) return;
+    emitter.onText(compose.text);
   }, [compose.text, compose.mode, selectedConversationUuid, selectedOtherUuid]);
 
   const messagesPageTitle = useMemo(() => {
@@ -1370,14 +1410,14 @@ function MessagesChatInner() {
   const chatHeaderPresenceLine = useMemo(() => {
     if (!chatHeaderPeer) return null;
     if (peerTyping) {
-      return { text: "печатает…", aria: "Собеседник печатает" as const };
+      return { kind: "typing" as const, aria: "Собеседник печатает" as const };
     }
     if (chatHeaderPeer.otherUserIsOnline) {
-      return { text: "В сети", aria: "В сети" as const };
+      return { kind: "text" as const, text: "В сети", aria: "В сети" as const };
     }
     const was = formatWasOnlineRu(chatHeaderPeer.otherUserLastSeenAt, new Date());
-    if (was) return { text: was, aria: was };
-    return { text: "Не в сети", aria: "Не в сети" as const };
+    if (was) return { kind: "text" as const, text: was, aria: was };
+    return { kind: "text" as const, text: "Не в сети", aria: "Не в сети" as const };
   }, [chatHeaderPeer, presenceClock, peerTyping]);
 
   // const railChatsSource = useMemo(
@@ -2146,6 +2186,7 @@ function MessagesChatInner() {
 
   const handleSend = useCallback(async () => {
     if (!selectedOtherUuid || !compose.canSend) return;
+    typingEmitterRef.current?.stop();
     if (compose.mode === "voice") {
       void sendVoiceMessageOptimistic();
       return;
@@ -2908,7 +2949,18 @@ function MessagesChatInner() {
                       role="status"
                       aria-label={chatHeaderPresenceLine.aria}
                     >
-                      {chatHeaderPresenceLine.text}
+                      {chatHeaderPresenceLine.kind === "typing" ? (
+                        <>
+                          Печатает
+                          <span className={styles.messagesChatHeaderTypingDots} aria-hidden="true">
+                            <span>.</span>
+                            <span>.</span>
+                            <span>.</span>
+                          </span>
+                        </>
+                      ) : (
+                        chatHeaderPresenceLine.text
+                      )}
                     </div>
                   ) : null}
                 </div>

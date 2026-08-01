@@ -17,6 +17,8 @@ const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 // Two coordinator attempts plus its 500 ms ambiguity delay finish before the
 // 16 s Web-Lock acquisition bound, so login/logout never bypass a live retry.
 const REFRESH_FETCH_TIMEOUT_MS = 7_000;
+/** SSE open only needs headers; keep generous vs API cold-start, not body lifetime. */
+const EVENT_STREAM_FETCH_TIMEOUT_MS = 60_000;
 
 let apiClientInitialized = false;
 let unauthorizedRedirectScheduled = false;
@@ -92,13 +94,21 @@ export function isAuthRefreshRequest(input: RequestInfo | URL): boolean {
   }
 }
 
+function isEventStreamRequest(init?: RequestInit): boolean {
+  if (!init?.headers) return false;
+  const accept = new Headers(init.headers).get("accept") ?? "";
+  return accept.includes("text/event-stream");
+}
+
 const webClientCoreFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
   webApiFetch(
     input,
     init,
     isAuthRefreshRequest(input)
       ? REFRESH_FETCH_TIMEOUT_MS
-      : DEFAULT_FETCH_TIMEOUT_MS,
+      : isEventStreamRequest(init)
+        ? EVENT_STREAM_FETCH_TIMEOUT_MS
+        : DEFAULT_FETCH_TIMEOUT_MS,
   )) as typeof fetch;
 
 /** Safe for eager imports and HMR; configuring API never controls sodium setup. */

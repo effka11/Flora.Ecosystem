@@ -490,10 +490,6 @@ async fn get_me(
         return not_found("Аккаунт не найден.");
     };
 
-    if let Err(e) = state.presence.touch(user.user_uuid).await {
-        tracing::warn!(error = %e, "presence touch failed");
-    }
-
     let profile = match state.profiles.get_profile(user.user_uuid).await {
         Ok(p) => p,
         Err(e) => return internal(e),

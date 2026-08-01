@@ -101,10 +101,6 @@ impl ConversationService {
         let take = take.clamp(1, 100) as usize;
         let cursor_at = decode_cursor(cursor);
 
-        if let Err(e) = self.presence.touch(user_uuid).await {
-            tracing::warn!(error = %e, "messaging presence touch failed");
-        }
-
         let peers = self.repo.peer_rows(user_uuid).await?;
         let filtered: Vec<_> = match cursor_at {
             Some(at) => peers
@@ -376,10 +372,6 @@ impl ConversationService {
             .await
             .map_err(SendMessageError::BadRequest)?;
 
-        if let Err(e) = self.presence.touch(sender_uuid).await {
-            tracing::warn!(error = %e, "messaging presence touch failed");
-        }
-
         self.sent_notifier
             .notify(MessageSentContext {
                 recipient_user_uuid: receiver_uuid,
@@ -413,9 +405,6 @@ impl ConversationService {
         let Some(other_uuid) = other else {
             return Ok(false);
         };
-        if let Err(e) = self.presence.touch(user_uuid).await {
-            tracing::warn!(error = %e, "messaging presence touch failed");
-        }
         self.repo.mark_read(user_uuid, other_uuid).await?;
         Ok(true)
     }
@@ -437,9 +426,6 @@ impl ConversationService {
         let Some(other_uuid) = other else {
             return Ok(false);
         };
-        if let Err(e) = self.presence.touch(user_uuid).await {
-            tracing::warn!(error = %e, "messaging presence touch failed");
-        }
         self.typing_notifier
             .notify_typing(other_uuid, conversation_uuid, user_uuid, is_typing)
             .await;
@@ -481,10 +467,6 @@ impl ConversationService {
         &self,
         user_uuid: Uuid,
     ) -> Result<Vec<LegacyConversationListItemDto>, String> {
-        if let Err(e) = self.presence.touch(user_uuid).await {
-            tracing::warn!(error = %e, "messaging presence touch failed");
-        }
-
         let peers = self.repo.peer_rows(user_uuid).await?;
         if peers.is_empty() {
             return Ok(Vec::new());
@@ -669,9 +651,6 @@ impl ConversationService {
         user_uuid: Uuid,
         other_user_uuid: Uuid,
     ) -> Result<(), String> {
-        if let Err(e) = self.presence.touch(user_uuid).await {
-            tracing::warn!(error = %e, "messaging presence touch failed");
-        }
         self.repo.mark_read(user_uuid, other_user_uuid).await
     }
 
