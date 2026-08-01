@@ -19,7 +19,12 @@ import {
   type NotificationPreviewKind,
 } from "@flora/client-core/fscp";
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
-import { apiPostTyping, apiPresenceHeartbeat, PRESENCE_TYPING_DEBOUNCE_MS } from "@flora/client-core/presence";
+import {
+  apiPostTyping,
+  apiPresenceHeartbeat,
+  createTypingEmitter,
+  type TypingEmitter,
+} from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
@@ -426,6 +431,7 @@ export default function ThreadScreen() {
     onRecorded: setVoiceFromRecording,
   });
 
+  const typingEmitterRef = useRef<TypingEmitter | null>(null);
   const prevVoiceModeRef = useRef(voiceMode);
   const prevComposeImageCountRef = useRef(composeImages.length);
   useEffect(() => {
@@ -467,6 +473,7 @@ export default function ThreadScreen() {
       ?.find((c) => c.conversationUuid === conversationUuid);
     if (fromList) {
       return {
+        conversationUuid,
         otherUserUuid: fromList.otherUserUuid,
         otherUsername: fromList.otherUsername,
         otherDisplayName: fromList.otherDisplayName,
@@ -476,6 +483,7 @@ export default function ThreadScreen() {
       };
     }
     return {
+      conversationUuid,
       otherUserUuid: paramOtherUserUuid,
       otherUsername: paramOtherUsername,
       otherDisplayName: paramOtherDisplayName || paramOtherUsername || "Пользователь",
@@ -992,6 +1000,7 @@ export default function ThreadScreen() {
   // Инпут остаётся смонтированным и сфокусированным (ChatComposeField прячет его).
   const onStartVoice = useCallback(async () => {
     if (!canSend() || !otherUserUuid) return;
+    typingEmitterRef.current?.stop();
     closeEmoji();
     enterVoiceMode();
     await voiceRecorder.start();
@@ -1034,6 +1043,7 @@ export default function ThreadScreen() {
       }),
     ];
 
+    typingEmitterRef.current?.stop();
     setSending(true);
     await voiceRecorder.discard();
     clearVoiceDraft();
@@ -1143,33 +1153,35 @@ export default function ThreadScreen() {
     voiceRecorder,
   ]);
 
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   useEffect(() => {
-    if (!conversationUuid || !otherUserUuid) return undefined;
+    if (!conversationUuid || !otherUserUuid) {
+      typingEmitterRef.current?.dispose();
+      typingEmitterRef.current = null;
+      return undefined;
+    }
+    const conv = conversationUuid;
+    const other = otherUserUuid;
+    const emitter = createTypingEmitter({
+      postTyping: (isTyping) => apiPostTyping(conv, isTyping, other),
+      onTrueHeartbeat: () => apiPresenceHeartbeat(),
+    });
+    typingEmitterRef.current?.dispose();
+    typingEmitterRef.current = emitter;
     return () => {
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      void apiPostTyping(conversationUuid, false, otherUserUuid).catch(() => {});
+      emitter.dispose();
+      if (typingEmitterRef.current === emitter) typingEmitterRef.current = null;
     };
   }, [conversationUuid, otherUserUuid]);
 
-  const onComposeTextChange = useCallback(
-    (text: string) => {
-      if (!conversationUuid || !otherUserUuid) return;
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      typingTimerRef.current = null;
-      if (!text.trim()) {
-        void apiPostTyping(conversationUuid, false, otherUserUuid).catch(() => {});
-        return;
-      }
-      typingTimerRef.current = setTimeout(() => {
-        typingTimerRef.current = null;
-        void apiPostTyping(conversationUuid, true, otherUserUuid).catch(() => {});
-        void apiPresenceHeartbeat().catch(() => {});
-      }, PRESENCE_TYPING_DEBOUNCE_MS);
-    },
-    [conversationUuid, otherUserUuid],
-  );
+  useEffect(() => {
+    if (voiceMode === "voice") {
+      typingEmitterRef.current?.stop();
+    }
+  }, [voiceMode]);
+
+  const onComposeTextChange = useCallback((text: string) => {
+    typingEmitterRef.current?.onText(text);
+  }, []);
 
   const onSend = async (draft: string) => {
     const trimmed = draft.trim();
@@ -1195,7 +1207,7 @@ export default function ThreadScreen() {
     }
     if (optimisticBlocks.length === 0) return;
 
-    void apiPostTyping(conversationUuid, false, otherUserUuid).catch(() => {});
+    typingEmitterRef.current?.stop();
     setSending(true);
     composeRef.current?.clearText();
     clearImages();

@@ -6,7 +6,6 @@ export const PRESENCE_HEARTBEAT_MS = 2000;
 export const PRESENCE_BACKGROUND_STOP_DEBOUNCE_MS = 800;
 /** Re-PUT watch well under server WATCH_TTL (5 min). */
 export const PRESENCE_WATCH_REFRESH_MS = 2 * 60 * 1000;
-export const PRESENCE_TYPING_DEBOUNCE_MS = 1200;
 
 /** Surface keys checked first when merging watch sets (cap 100). */
 const SURFACE_PRIORITY = [

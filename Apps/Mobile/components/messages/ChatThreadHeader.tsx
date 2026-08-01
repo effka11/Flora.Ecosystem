@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { sharedPresenceStore } from "@flora/client-core/presence";
+import { PRESENCE_TYPING_PEER_TTL_MS, sharedPresenceStore } from "@flora/client-core/presence";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -74,7 +74,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
         clearTimer = setTimeout(() => {
           clearTimer = null;
           setPeerTyping(false);
-        }, 3000);
+        }, PRESENCE_TYPING_PEER_TTL_MS);
       }
     });
     return () => {
@@ -92,7 +92,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
 
   const presenceLine = useMemo(() => {
     void presenceTick;
-    if (peerTyping) return "печатает…";
+    if (peerTyping) return "Печатает…";
     if (overlay.isOnline) return "В сети";
     const was = formatWasOnlineRu(overlay.lastSeenAt, new Date());
     return was ?? "Не в сети";
