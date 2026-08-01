@@ -23,7 +23,7 @@ import { apiPostTyping, apiPresenceHeartbeat, PRESENCE_TYPING_DEBOUNCE_MS } from
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
@@ -42,6 +42,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardGestureArea } from "react-native-keyboard-controller";
 import Reanimated, {
   useAnimatedStyle,
+  useFrameCallback,
   useSharedValue,
 } from "react-native-reanimated";
 import {
@@ -335,6 +336,14 @@ export default function ThreadScreen() {
     transform: [{ translateY: peerAvatarHoldSv.value }],
   }));
 
+  /**
+   * Держим UI-runtime/DisplayLink тёплым, пока чат в фокусе: после простоя
+   * без жестов кадры «засыпают», и insertLift стартует рывком только на тап.
+   */
+  const chatUiFrameKeepAlive = useFrameCallback(() => {
+    "worklet";
+  }, false);
+
   useEffect(() => {
     resetDock();
     hideListUntilReady();
@@ -358,11 +367,13 @@ export default function ThreadScreen() {
   useFocusEffect(
     useCallback(() => {
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+      chatUiFrameKeepAlive.setActive(true);
       return () => {
+        chatUiFrameKeepAlive.setActive(false);
         applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
         resetDock();
       };
-    }, [navigation, tabBarBottomInset, resetDock]),
+    }, [chatUiFrameKeepAlive, navigation, tabBarBottomInset, resetDock]),
   );
 
   /**
@@ -703,7 +714,9 @@ export default function ThreadScreen() {
     [dockExtraPaddingSv, freezeListSv, listAnimatedRef],
   );
 
-  useEffect(() => {
+  // До paint (паритет Web useLayoutEffect): иначе после idle первый кадр без
+  // counter-lift, а withTiming часто «оживает» только на жест.
+  useLayoutEffect(() => {
     if (!threadReady || listMessageCount === 0) return;
     if (!scrollTrackingReadyRef.current) {
       const keys: string[] = [];
@@ -742,13 +755,23 @@ export default function ThreadScreen() {
       const holdAvatar =
         trailing?.kind === "peerGroup" &&
         shouldHoldTrailingPeerAvatar(trailing.messages, newlyPeerUuids);
+      // pin + lift в одном layout-кадре (как Web runInsertLift).
+      pinListToBottom(false);
+      setShowJumpToLatest(false);
       playChatListInsertLift(
         insertLiftSv,
         incomingLiftPx,
         holdAvatar ? peerAvatarHoldSv : undefined,
       );
     }
-  }, [insertLiftSv, listData, listMessageCount, peerAvatarHoldSv, threadReady]);
+  }, [
+    insertLiftSv,
+    listData,
+    listMessageCount,
+    peerAvatarHoldSv,
+    pinListToBottom,
+    threadReady,
+  ]);
 
   useEffect(() => {
     const prevLen = prevListLengthRef.current;
@@ -761,6 +784,7 @@ export default function ThreadScreen() {
     // частично под полем ввода — поэтому возврат к якорю здесь свой.
     // Non-animated pin: подъём ленты — insertLiftSv (общий с пузырём).
     // Считаем по числу сообщений, не items: append в peer-группу не меняет length items.
+    // Peer-insert уже pin'ит в useLayoutEffect выше — здесь догон для own/прочих.
     if (atBottomRef.current) {
       pinListToBottom(false);
       setShowJumpToLatest(false);
