@@ -178,7 +178,7 @@ Rust-реализация обязана воспроизводить следу
 
 ### 4.6. Realtime (SSE)
 
-`GET /api/auth/signals/stream`: `text/event-stream`, кадр `event: {name}\ndata: {json}\n\n`, heartbeat `: ping\n\n` каждые **25 с**, события `connected` (connectionId), `message`, `notification`, `presence`, `typing`. Хаб in-memory (per-user / per-connection каналы) — без брокера; presence watch scoped to SSE connection.
+`GET /api/auth/signals/stream`: `text/event-stream`, кадр `event: {name}\ndata: {json}\n\n`, heartbeat `: ping\n\n` каждые **25 с**, события `connected` (connectionId), `message`, `notification`, `presence`, `typing`, `read` (conversation marked read by peer — metadata only, no FCM). Хаб in-memory (per-user / per-connection каналы) — без брокера; presence watch scoped to SSE connection.
 
 ### 4.7. Заголовки и middleware
 

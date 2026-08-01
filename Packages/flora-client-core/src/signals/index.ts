@@ -13,6 +13,7 @@ export {
   type ConnectedRealtimeSignal,
   type PresenceRealtimeSignal,
   type TypingRealtimeSignal,
+  type ReadRealtimeSignal,
   type SignalsStreamHandle,
 } from "./stream.js";
 

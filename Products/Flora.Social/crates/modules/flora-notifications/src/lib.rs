@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
-    MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider,
+    MessageReadNotifier, MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider,
 };
 use flora_notifications_contracts::{PresenceRealtimePublisher, UserNotificationDispatcher};
 use flora_shared::config::FloraConfig;
@@ -23,8 +23,8 @@ use flora_users_contracts::UserProfileQueries;
 use sqlx::PgPool;
 
 use crate::application::{
-    HubPresencePublisher, HubTypingNotifier, InboxNotificationDispatcher, InboxService,
-    MessagePushNotifier, PushTokenService, UserRealtimePublisher,
+    HubPresencePublisher, HubReadNotifier, HubTypingNotifier, InboxNotificationDispatcher,
+    InboxService, MessagePushNotifier, PushTokenService, UserRealtimePublisher,
 };
 use crate::http::{
     AdminBroadcastRateLimiter, AdminBroadcastState, NotificationsState, admin_router,
@@ -45,6 +45,7 @@ pub struct NotificationsModule {
     /// Реализация `IMessageSentNotifier` — SSE + FCM после DM.
     pub message_sent_notifier: Arc<dyn MessageSentNotifier>,
     pub message_typing_notifier: Arc<dyn MessageTypingNotifier>,
+    pub message_read_notifier: Arc<dyn MessageReadNotifier>,
     pub push_preview_targets: Arc<dyn PushPreviewTargetProvider>,
     /// Реализация `DispatchAsync` — inbox row + SSE `event: notification`.
     pub user_notification_dispatcher: Arc<dyn UserNotificationDispatcher>,
@@ -96,6 +97,8 @@ pub fn compose(
         Arc::new(MessagePushNotifier::new(Arc::clone(&realtime)));
     let message_typing_notifier: Arc<dyn MessageTypingNotifier> =
         Arc::new(HubTypingNotifier::new(Arc::clone(&hub)));
+    let message_read_notifier: Arc<dyn MessageReadNotifier> =
+        Arc::new(HubReadNotifier::new(Arc::clone(&hub)));
     let presence_publisher: Arc<dyn PresenceRealtimePublisher> =
         Arc::new(HubPresencePublisher::new(Arc::clone(&hub)));
     let push_preview_targets: Arc<dyn PushPreviewTargetProvider> = push_tokens.clone();
@@ -138,6 +141,7 @@ pub fn compose(
         }),
         message_sent_notifier,
         message_typing_notifier,
+        message_read_notifier,
         push_preview_targets,
         user_notification_dispatcher,
         presence_publisher,

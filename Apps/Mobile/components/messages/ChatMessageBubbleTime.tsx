@@ -51,6 +51,7 @@ const styles = StyleSheet.create({
     transform: [{ translateY: 1 }],
   },
   receiptSlot: {
+    width: 18,
     height: 18,
     justifyContent: "center",
     alignItems: "center",

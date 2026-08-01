@@ -7,6 +7,7 @@ import {
 } from "@flora/client-core/presence";
 import { useEffect } from "react";
 import { AppState } from "react-native";
+import { notifyReadChanged } from "@/lib/readEvents";
 import { handleMessageRealtime, handleNotificationRealtime } from "@/lib/realtimeSync";
 import { notifyTypingChanged } from "@/lib/typingEvents";
 
@@ -39,6 +40,9 @@ export function useMobileRealtime(enabled: boolean): void {
       },
       onTyping: (signal) => {
         notifyTypingChanged(signal);
+      },
+      onRead: (signal) => {
+        notifyReadChanged(signal);
       },
       onOpen: () => {
         handleMessageRealtime(null);

@@ -115,9 +115,11 @@ import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import {
   applyMessagesPageToCaches,
   insertOptimisticOutgoingThreadMessage,
+  markOutgoingMessagesReadInCache,
   removeOptimisticOutgoingThreadMessage,
   replaceOptimisticOutgoingThreadMessage,
 } from "@/lib/messageThreadOutgoing";
+import { subscribeRead } from "@/lib/readEvents";
 import { replyDraftFromMessage, type MessageReplyDraft } from "@/lib/messageReply";
 import { uploadPreparedMessageVoice } from "@/lib/messageVoiceAssets";
 import {
@@ -567,6 +569,19 @@ export default function ThreadScreen() {
       void dismissMessagePushNotifications(conversationUuid);
     });
   }, [conversationUuid, messagesQuery, queryClient]);
+
+  useEffect(() => {
+    if (!conversationUuid) return;
+    const norm = conversationUuid.toLowerCase();
+    return subscribeRead((detail) => {
+      if (detail.conversationUuid.trim().toLowerCase() !== norm) return;
+      markOutgoingMessagesReadInCache({
+        queryClient,
+        conversationUuid,
+        otherUserUuid: otherUserUuid || undefined,
+      });
+    });
+  }, [conversationUuid, otherUserUuid, queryClient]);
 
   useEffect(() => {
     if (!conversationUuid) return;

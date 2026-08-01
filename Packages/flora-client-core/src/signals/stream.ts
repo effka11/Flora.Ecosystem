@@ -44,12 +44,18 @@ export type TypingRealtimeSignal = {
   isTyping: boolean;
 };
 
+export type ReadRealtimeSignal = {
+  conversationUuid: string;
+  readerUserUuid: string;
+};
+
 export type ConnectSignalsStreamOptions = {
   onMessage?: (signal: MessageRealtimeSignal) => void;
   onNotification?: (signal: NotificationRealtimeSignal) => void;
   onConnected?: (signal: ConnectedRealtimeSignal) => void;
   onPresence?: (signal: PresenceRealtimeSignal) => void;
   onTyping?: (signal: TypingRealtimeSignal) => void;
+  onRead?: (signal: ReadRealtimeSignal) => void;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (error: unknown) => void;
@@ -157,6 +163,20 @@ function parseTypingSignal(raw: unknown): TypingRealtimeSignal | null {
   };
 }
 
+function parseReadSignal(raw: unknown): ReadRealtimeSignal | null {
+  const o = asRecord(raw);
+  if (!o) return null;
+  const conversationUuid = readStr(o, ["conversationUuid", "ConversationUuid"]);
+  const readerUserUuid = readStr(o, ["readerUserUuid", "ReaderUserUuid"]);
+  if (!conversationUuid || !readerUserUuid) return null;
+  return { conversationUuid, readerUserUuid };
+}
+
+/** @internal exported for unit tests */
+export function parseReadSignalForTest(raw: unknown): ReadRealtimeSignal | null {
+  return parseReadSignal(raw);
+}
+
 function dispatchSseEvent(
   eventName: string,
   data: string,
@@ -192,6 +212,11 @@ function dispatchSseEvent(
   if (eventName === "typing") {
     const signal = parseTypingSignal(parsed);
     if (signal) options.onTyping?.(signal);
+    return;
+  }
+  if (eventName === "read") {
+    const signal = parseReadSignal(parsed);
+    if (signal) options.onRead?.(signal);
   }
 }
 

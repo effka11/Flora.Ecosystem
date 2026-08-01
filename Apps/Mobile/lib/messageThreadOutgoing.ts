@@ -15,6 +15,7 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
 import {
+  isOptimisticPayloadSentinel,
   markBirthPending,
   optimisticPayloadSentinel,
   rebindClientMessageKey,
@@ -239,6 +240,40 @@ function setMessagesItems(
     messageThreadCache.set(conversationUuid, items);
     return { items, nextCursor: old?.nextCursor ?? null };
   });
+}
+
+/** True while the outgoing row is still in-flight (parity Web `sendStatus === "sending"`). */
+function isOutgoingSending(m: MsgMessageDto): boolean {
+  if (isOptimisticPayloadSentinel(m.encryptedPayload)) return true;
+  const row = messageThreadDecryptCache.getMessage(messageDecryptCacheKey(m));
+  return row?.sendStatus === "sending";
+}
+
+/** Live read receipt: mark outgoing (non-sending) rows as read. */
+export function markOutgoingMessagesReadInCache(params: {
+  queryClient: QueryClient;
+  conversationUuid: string;
+  otherUserUuid?: string;
+}): void {
+  setMessagesItems(
+    params.queryClient,
+    params.conversationUuid,
+    params.otherUserUuid,
+    (prev) =>
+      prev.map((m) =>
+        m.isFromMe && !isOutgoingSending(m) ? { ...m, isRead: true } : m,
+      ),
+  );
+
+  const decryptRows = messageThreadDecryptCache.get(params.conversationUuid);
+  if (decryptRows) {
+    messageThreadDecryptCache.set(
+      params.conversationUuid,
+      decryptRows.map((row) =>
+        row.isFromMe && row.sendStatus !== "sending" ? { ...row, isRead: true } : row,
+      ),
+    );
+  }
 }
 
 export function insertOptimisticOutgoingThreadMessage(params: {

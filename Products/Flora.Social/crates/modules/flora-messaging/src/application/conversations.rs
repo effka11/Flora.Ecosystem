@@ -7,9 +7,9 @@ use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
     ConversationListItemDto, ConversationsPageDto, DeleteConversationOutcome, DeleteMessageOutcome,
     LegacyConversationListItemDto, LegacyMessageThreadItemDto, LegacySendMessageRequest,
-    LegacySendMessageResultDto, MessageItemDto, MessageSentContext, MessageSentNotifier,
-    MessageTypingNotifier, MessagesPageDto, PostConversationMessageRequest, PushPreviewTarget,
-    PushPreviewTargetProvider, SendMessageResultDto,
+    LegacySendMessageResultDto, MessageItemDto, MessageReadNotifier, MessageSentContext,
+    MessageSentNotifier, MessageTypingNotifier, MessagesPageDto, PostConversationMessageRequest,
+    PushPreviewTarget, PushPreviewTargetProvider, SendMessageResultDto,
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
@@ -35,6 +35,7 @@ pub struct ConversationService {
     messages_access: Arc<dyn MessagesAccess>,
     sent_notifier: Arc<dyn MessageSentNotifier>,
     typing_notifier: Arc<dyn MessageTypingNotifier>,
+    read_notifier: Arc<dyn MessageReadNotifier>,
     preview_targets: Arc<dyn PushPreviewTargetProvider>,
 }
 
@@ -49,6 +50,7 @@ impl ConversationService {
         messages_access: Arc<dyn MessagesAccess>,
         sent_notifier: Arc<dyn MessageSentNotifier>,
         typing_notifier: Arc<dyn MessageTypingNotifier>,
+        read_notifier: Arc<dyn MessageReadNotifier>,
         preview_targets: Arc<dyn PushPreviewTargetProvider>,
     ) -> Self {
         Self {
@@ -60,6 +62,7 @@ impl ConversationService {
             messages_access,
             sent_notifier,
             typing_notifier,
+            read_notifier,
             preview_targets,
         }
     }
@@ -405,7 +408,12 @@ impl ConversationService {
         let Some(other_uuid) = other else {
             return Ok(false);
         };
-        self.repo.mark_read(user_uuid, other_uuid).await?;
+        let rows = self.repo.mark_read(user_uuid, other_uuid).await?;
+        if rows > 0 {
+            self.read_notifier
+                .notify_read(other_uuid, conversation_uuid, user_uuid)
+                .await;
+        }
         Ok(true)
     }
 
@@ -651,7 +659,14 @@ impl ConversationService {
         user_uuid: Uuid,
         other_user_uuid: Uuid,
     ) -> Result<(), String> {
-        self.repo.mark_read(user_uuid, other_user_uuid).await
+        let rows = self.repo.mark_read(user_uuid, other_user_uuid).await?;
+        if rows > 0 {
+            let conversation_uuid = dm_conversation_uuid(&user_uuid, &other_user_uuid);
+            self.read_notifier
+                .notify_read(other_user_uuid, conversation_uuid, user_uuid)
+                .await;
+        }
+        Ok(())
     }
 
     /// `DELETE /api/auth/conversations/with/{other}`.

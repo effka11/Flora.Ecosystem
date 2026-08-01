@@ -12,7 +12,11 @@ import {
 } from "@/lib/dashboardPreload";
 import { initWebClientCore } from "@/lib/fscp/clientCore";
 import { notifyMessagesUnreadChanged } from "@/lib/messagingApi";
-import { notifyNotificationsChanged, notifyTypingChanged } from "@/lib/realtimeEvents";
+import {
+  notifyNotificationsChanged,
+  notifyReadChanged,
+  notifyTypingChanged,
+} from "@/lib/realtimeEvents";
 import { resolveRealtimeStreamApiRoot } from "@/lib/realtimeApi";
 
 export function useDashboardRealtime(enabled: boolean): void {
@@ -50,6 +54,9 @@ export function useDashboardRealtime(enabled: boolean): void {
         },
         onTyping: (signal) => {
           notifyTypingChanged(signal);
+        },
+        onRead: (signal) => {
+          notifyReadChanged(signal);
         },
         onMessage: (signal) => {
           conversationsCache.invalidate();

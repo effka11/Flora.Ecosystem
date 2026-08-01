@@ -99,6 +99,29 @@ impl MessageTypingNotifier for NoopMessageTypingNotifier {
     }
 }
 
+/// Cross-module port: read-receipt SSE to DM peer (no FCM).
+pub trait MessageReadNotifier: Send + Sync {
+    fn notify_read(
+        &self,
+        recipient_user_uuid: Uuid,
+        conversation_uuid: Uuid,
+        reader_user_uuid: Uuid,
+    ) -> BoxFuture<'_, ()>;
+}
+
+pub struct NoopMessageReadNotifier;
+
+impl MessageReadNotifier for NoopMessageReadNotifier {
+    fn notify_read(
+        &self,
+        _recipient_user_uuid: Uuid,
+        _conversation_uuid: Uuid,
+        _reader_user_uuid: Uuid,
+    ) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+}
+
 /// Строка peer-сводки до обогащения профилем (C# `ConversationPeerRow`).
 #[derive(Debug, Clone)]
 pub struct ConversationPeerRow {
