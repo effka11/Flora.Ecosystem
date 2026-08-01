@@ -104,20 +104,27 @@ export function playChatListInsertLift(
 
   void innerEl.offsetHeight;
 
-  requestAnimationFrame(() => {
+  // После долгого idle браузер может парковать rAF до input-события — double-rAF
+  // тогда откладывает старт transition. Параллельный setTimeout будит timeline.
+  let started = false;
+  const startLift = () => {
+    if (started) return;
     if (liftGenerationByEl.get(innerEl) !== generation) return;
-    requestAnimationFrame(() => {
-      if (liftGenerationByEl.get(innerEl) !== generation) return;
-      const transition = `transform ${CHAT_INSERT_LIFT_MS}ms ${LIFT_EASING}`;
-      innerEl.style.transition = transition;
-      innerEl.style.transform = "translateY(0)";
-      for (const el of hold) {
-        if (liftGenerationByEl.get(el) == null) continue;
-        el.style.transition = transition;
-        el.style.transform = "translateY(0)";
-      }
-    });
+    started = true;
+    const transition = `transform ${CHAT_INSERT_LIFT_MS}ms ${LIFT_EASING}`;
+    innerEl.style.transition = transition;
+    innerEl.style.transform = "translateY(0)";
+    for (const el of hold) {
+      if (liftGenerationByEl.get(el) == null) continue;
+      el.style.transition = transition;
+      el.style.transform = "translateY(0)";
+    }
+  };
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(startLift);
   });
+  window.setTimeout(startLift, 32);
 
   window.setTimeout(() => {
     if (liftGenerationByEl.get(innerEl) !== generation) return;

@@ -1,8 +1,9 @@
 import type { FscpMessageBlock } from "@flora/client-core/fscp";
-import { AccessibilityInfo } from "react-native";
+import { getReducedMotion } from "@/lib/useReducedMotion";
 import {
   cancelAnimation,
   Easing,
+  runOnUI,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
@@ -40,6 +41,9 @@ export function estimateRowInsertLiftPx(row: {
  * `holdAvatarSv`: параллельно −H→0 для аватара хвоста (лента едет, аватар в кадре).
  * Передавать только при append в уже видимую peer-группу; при появлении аватара —
  * не передавать, чтобы он ехал вместе с сообщением.
+ *
+ * Старт через `runOnUI`: после idle DisplayLink/UI-runtime может не проснуться
+ * от записи SharedValue с JS, пока не будет жеста — тогда withTiming «висит».
  */
 export function playChatListInsertLift(
   insertLiftSv: SharedValue<number>,
@@ -50,25 +54,26 @@ export function playChatListInsertLift(
   if (h <= 0) return;
 
   cancelAnimation(insertLiftSv);
-  insertLiftSv.value = h;
-  if (holdAvatarSv) {
-    cancelAnimation(holdAvatarSv);
-    holdAvatarSv.value = -h;
+  if (holdAvatarSv) cancelAnimation(holdAvatarSv);
+
+  if (getReducedMotion()) {
+    insertLiftSv.value = 0;
+    if (holdAvatarSv) holdAvatarSv.value = 0;
+    return;
   }
 
-  void AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
-    if (reduced) {
-      insertLiftSv.value = 0;
-      if (holdAvatarSv) holdAvatarSv.value = 0;
-      return;
-    }
+  const hold = holdAvatarSv;
+  runOnUI(() => {
+    "worklet";
     const timing = {
       duration: CHAT_INSERT_LIFT_MS,
       easing: LIFT_EASING,
     };
+    insertLiftSv.value = h;
     insertLiftSv.value = withTiming(0, timing);
-    if (holdAvatarSv) {
-      holdAvatarSv.value = withTiming(0, timing);
+    if (hold) {
+      hold.value = -h;
+      hold.value = withTiming(0, timing);
     }
-  });
+  })();
 }

@@ -45,6 +45,12 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+/** Sync snapshot for imperative paths (insertLift) — без bridge round-trip на каждый кадр. */
+export function getReducedMotion(): boolean {
+  ensureStarted();
+  return current;
+}
+
 export function useReducedMotion(): boolean {
   return useSyncExternalStore(
     subscribe,
