@@ -1323,8 +1323,11 @@ function MessagesChatInner() {
     let clearTimer: number | null = null;
     const onTyping = (ev: Event) => {
       const detail = (ev as CustomEvent<TypingChangedDetail>).detail;
-      if (!detail || detail.conversationUuid !== selectedConversationUuid) return;
-      if (detail.userUuid !== selectedOtherUuid) return;
+      if (!detail) return;
+      if (detail.conversationUuid.trim().toLowerCase() !== selectedConversationUuid.trim().toLowerCase()) {
+        return;
+      }
+      if (detail.userUuid.trim().toLowerCase() !== selectedOtherUuid.trim().toLowerCase()) return;
       if (clearTimer != null) window.clearTimeout(clearTimer);
       clearTimer = null;
       setPeerTyping(detail.isTyping);
@@ -1404,14 +1407,14 @@ function MessagesChatInner() {
   const chatHeaderPresenceLine = useMemo(() => {
     if (!chatHeaderPeer) return null;
     if (peerTyping) {
-      return { text: "Печатает…", aria: "Собеседник печатает" as const };
+      return { kind: "typing" as const, aria: "Собеседник печатает" as const };
     }
     if (chatHeaderPeer.otherUserIsOnline) {
-      return { text: "В сети", aria: "В сети" as const };
+      return { kind: "text" as const, text: "В сети", aria: "В сети" as const };
     }
     const was = formatWasOnlineRu(chatHeaderPeer.otherUserLastSeenAt, new Date());
-    if (was) return { text: was, aria: was };
-    return { text: "Не в сети", aria: "Не в сети" as const };
+    if (was) return { kind: "text" as const, text: was, aria: was };
+    return { kind: "text" as const, text: "Не в сети", aria: "Не в сети" as const };
   }, [chatHeaderPeer, presenceClock, peerTyping]);
 
   // const railChatsSource = useMemo(
@@ -2943,7 +2946,18 @@ function MessagesChatInner() {
                       role="status"
                       aria-label={chatHeaderPresenceLine.aria}
                     >
-                      {chatHeaderPresenceLine.text}
+                      {chatHeaderPresenceLine.kind === "typing" ? (
+                        <>
+                          Печатает
+                          <span className={styles.messagesChatHeaderTypingDots} aria-hidden="true">
+                            <span>.</span>
+                            <span>.</span>
+                            <span>.</span>
+                          </span>
+                        </>
+                      ) : (
+                        chatHeaderPresenceLine.text
+                      )}
                     </div>
                   ) : null}
                 </div>

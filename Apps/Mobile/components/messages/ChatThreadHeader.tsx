@@ -10,7 +10,10 @@ import { formatWasOnlineRu } from "@/lib/lastSeenRu";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 import { subscribeTyping } from "@/lib/typingEvents";
+import { useReducedMotion } from "@/lib/useReducedMotion";
 import { useSessionStore } from "@/stores/sessionStore";
+
+const TYPING_DOTS_STEP_MS = 400;
 
 export type ChatPeerInfo = {
   otherUserUuid: string;
@@ -37,11 +40,25 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
   const [presenceTick, setPresenceTick] = useState(0);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
   const [peerTyping, setPeerTyping] = useState(false);
+  const [typingDots, setTypingDots] = useState(1);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const id = setInterval(() => setPresenceClock((c) => c + 1), 30000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!peerTyping || reduceMotion) {
+      setTypingDots(3);
+      return undefined;
+    }
+    setTypingDots(1);
+    const id = setInterval(() => {
+      setTypingDots((n) => (n >= 3 ? 1 : n + 1));
+    }, TYPING_DOTS_STEP_MS);
+    return () => clearInterval(id);
+  }, [peerTyping, reduceMotion]);
 
   useEffect(
     () =>
@@ -62,11 +79,13 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
   }, [peer.otherUserUuid, presenceEpoch]);
 
   useEffect(() => {
-    if (!peer.conversationUuid) return undefined;
+    const conv = peer.conversationUuid?.trim().toLowerCase();
+    const other = peer.otherUserUuid?.trim().toLowerCase();
+    if (!conv || !other) return undefined;
     let clearTimer: ReturnType<typeof setTimeout> | null = null;
     const unsub = subscribeTyping((detail) => {
-      if (detail.conversationUuid !== peer.conversationUuid) return;
-      if (detail.userUuid !== peer.otherUserUuid) return;
+      if (detail.conversationUuid.trim().toLowerCase() !== conv) return;
+      if (detail.userUuid.trim().toLowerCase() !== other) return;
       if (clearTimer) clearTimeout(clearTimer);
       clearTimer = null;
       setPeerTyping(detail.isTyping);
@@ -92,11 +111,11 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
 
   const presenceLine = useMemo(() => {
     void presenceTick;
-    if (peerTyping) return "Печатает…";
+    if (peerTyping) return `Печатает${".".repeat(typingDots)}`;
     if (overlay.isOnline) return "В сети";
     const was = formatWasOnlineRu(overlay.lastSeenAt, new Date());
     return was ?? "Не в сети";
-  }, [overlay.isOnline, overlay.lastSeenAt, presenceClock, presenceTick, peerTyping]);
+  }, [overlay.isOnline, overlay.lastSeenAt, presenceClock, presenceTick, peerTyping, typingDots]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + floraSpacing.gridFine }]}>
@@ -134,7 +153,11 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
             @{username}
           </Text>
         </View>
-        <Text style={styles.status} numberOfLines={1}>
+        <Text
+          style={styles.status}
+          numberOfLines={1}
+          accessibilityLabel={peerTyping ? "Собеседник печатает" : presenceLine}
+        >
           {presenceLine}
         </Text>
       </View>
