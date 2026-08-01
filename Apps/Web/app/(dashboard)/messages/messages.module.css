@@ -1674,12 +1674,13 @@
   opacity: 0.85;
 }
 
+/* Fixed 18×10 slot so sending/sent/read never resize the bubble. */
 .messagesBubbleReceipt {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 13px;
-  height: 9px;
+  width: 18px;
+  height: 10px;
   margin-left: calc(2 * var(--flora-grid-step-fine));
   color: currentColor;
   opacity: 0.82;
@@ -1688,24 +1689,21 @@
 
 .messagesBubbleReceipt svg {
   display: block;
-  width: 100%;
-  height: 100%;
+  flex: 0 0 auto;
   overflow: visible;
 }
 
-.messagesBubbleReceiptSending {
+.messagesBubbleReceiptSending svg {
   width: 10px;
   height: 10px;
 }
 
-.messagesBubbleReceiptSent {
+.messagesBubbleReceiptSent svg {
   width: 13px;
   height: 9px;
 }
 
 .messagesBubbleReceiptRead {
-  width: 18px;
-  height: 9px;
   justify-content: flex-start;
   color: var(--flora-green-light);
   opacity: 1;
@@ -1714,7 +1712,6 @@
 .messagesBubbleReceiptRead svg {
   width: 13px;
   height: 9px;
-  flex: 0 0 auto;
 }
 
 .messagesBubbleReceiptRead svg + svg {

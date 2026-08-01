@@ -22,7 +22,7 @@ function ChatMessageReadReceiptInner({
 
   if (state === "sending") {
     return (
-      <View style={[receiptStyle, styles.receiptSending]} accessibilityLabel="Отправляется">
+      <View style={receiptStyle} accessibilityLabel="Отправляется">
         <Ionicons name="time-outline" size={10} color={sentColor} />
       </View>
     );
@@ -43,7 +43,7 @@ function ChatMessageReadReceiptInner({
   }
 
   return (
-    <View style={[receiptStyle, styles.receiptSent]} accessibilityLabel="Отправлено">
+    <View style={receiptStyle} accessibilityLabel="Отправлено">
       <Ionicons name="checkmark" size={11} color={sentColor} />
     </View>
   );
@@ -52,27 +52,20 @@ function ChatMessageReadReceiptInner({
 export const ChatMessageReadReceipt = memo(ChatMessageReadReceiptInner);
 
 const styles = StyleSheet.create({
+  /** Fixed 18×10 slot so sending/sent/read never resize the bubble (parity web). */
   receipt: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    width: 18,
+    height: 10,
     marginLeft: floraSpacing.gridFine * 2,
     opacity: 0.82,
   },
   receiptCompactMargin: {
     marginLeft: 2,
   },
-  receiptSending: {
-    width: 10,
-    height: 10,
-  },
-  receiptSent: {
-    width: 13,
-    height: 9,
-  },
   receiptRead: {
-    width: 18,
-    height: 9,
     justifyContent: "flex-start",
     opacity: 1,
   },
