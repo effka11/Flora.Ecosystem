@@ -61,6 +61,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         notifications_routes,
         message_sent_notifier,
         message_typing_notifier,
+        message_read_notifier,
         push_preview_targets,
         notification_dispatcher,
         presence_publisher,
@@ -101,6 +102,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         account_directory,
         message_sent_notifier,
         message_typing_notifier,
+        message_read_notifier,
         push_preview_targets,
         presence_service,
         sessions.clone(),
@@ -246,6 +248,7 @@ type NotificationsRouterParts = (
     axum::Router,
     Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
     Arc<dyn flora_messaging_contracts::MessageTypingNotifier>,
+    Arc<dyn flora_messaging_contracts::MessageReadNotifier>,
     Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
     Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
     Arc<dyn flora_notifications_contracts::PresenceRealtimePublisher>,
@@ -262,6 +265,8 @@ fn notifications_router(
         Arc::new(flora_messaging_contracts::NoopMessageSentNotifier);
     let noop_typing: Arc<dyn flora_messaging_contracts::MessageTypingNotifier> =
         Arc::new(flora_messaging_contracts::NoopMessageTypingNotifier);
+    let noop_read: Arc<dyn flora_messaging_contracts::MessageReadNotifier> =
+        Arc::new(flora_messaging_contracts::NoopMessageReadNotifier);
     let noop_inbox: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher> =
         Arc::new(flora_notifications_contracts::NoopUserNotificationDispatcher);
     let noop_targets: Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider> =
@@ -273,6 +278,7 @@ fn notifications_router(
             flora_notifications::router(),
             noop_msg,
             noop_typing,
+            noop_read,
             noop_targets,
             noop_inbox,
             noop_presence,
@@ -287,6 +293,7 @@ fn notifications_router(
             flora_notifications::router(),
             noop_msg,
             noop_typing,
+            noop_read,
             noop_targets,
             noop_inbox,
             noop_presence,
@@ -301,6 +308,7 @@ fn notifications_router(
             flora_notifications::router(),
             noop_msg,
             noop_typing,
+            noop_read,
             noop_targets,
             noop_inbox,
             noop_presence,
@@ -316,6 +324,7 @@ fn notifications_router(
         router,
         module.message_sent_notifier,
         module.message_typing_notifier,
+        module.message_read_notifier,
         module.push_preview_targets,
         module.user_notification_dispatcher,
         module.presence_publisher,
@@ -330,6 +339,7 @@ fn messaging_router(
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     sent_notifier: Arc<dyn flora_messaging_contracts::MessageSentNotifier>,
     typing_notifier: Arc<dyn flora_messaging_contracts::MessageTypingNotifier>,
+    read_notifier: Arc<dyn flora_messaging_contracts::MessageReadNotifier>,
     preview_targets: Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
     presence: Option<Arc<flora_users::PresenceService>>,
     sessions: Option<SessionValidator>,
@@ -370,6 +380,7 @@ fn messaging_router(
         messages_access,
         sent_notifier,
         typing_notifier,
+        read_notifier,
         preview_targets,
         e2e_token_secret,
     );

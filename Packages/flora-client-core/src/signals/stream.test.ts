@@ -9,7 +9,7 @@ import {
   configureApiClient,
   resetSessionRefreshStateForTests,
 } from "../api/client.js";
-import { connectSignalsStream } from "./stream.js";
+import { connectSignalsStream, parseReadSignalForTest } from "./stream.js";
 
 function createSessionStore(): SessionStore {
   const expiresAt = "2099-01-01T00:00:00.000Z";
@@ -103,5 +103,30 @@ describe("connectSignalsStream", () => {
 
     handle.close();
     process.off("unhandledRejection", onUnhandled);
+  });
+});
+
+describe("parseReadSignal", () => {
+  it("parses camelCase read receipt payload", () => {
+    expect(
+      parseReadSignalForTest({
+        conversationUuid: "conv-1",
+        readerUserUuid: "reader-1",
+      }),
+    ).toEqual({ conversationUuid: "conv-1", readerUserUuid: "reader-1" });
+  });
+
+  it("parses PascalCase read receipt payload", () => {
+    expect(
+      parseReadSignalForTest({
+        ConversationUuid: "conv-2",
+        ReaderUserUuid: "reader-2",
+      }),
+    ).toEqual({ conversationUuid: "conv-2", readerUserUuid: "reader-2" });
+  });
+
+  it("rejects incomplete payload", () => {
+    expect(parseReadSignalForTest({ conversationUuid: "conv-3" })).toBeNull();
+    expect(parseReadSignalForTest(null)).toBeNull();
   });
 });

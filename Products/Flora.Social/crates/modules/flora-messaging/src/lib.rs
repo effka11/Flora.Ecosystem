@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
-    MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider,
+    MessageReadNotifier, MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider,
 };
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
 use sqlx::PgPool;
@@ -49,6 +49,7 @@ pub fn compose(
     messages_access: Arc<dyn MessagesAccess>,
     sent_notifier: Arc<dyn MessageSentNotifier>,
     typing_notifier: Arc<dyn MessageTypingNotifier>,
+    read_notifier: Arc<dyn MessageReadNotifier>,
     preview_targets: Arc<dyn PushPreviewTargetProvider>,
     e2e_token_secret: Option<Vec<u8>>,
 ) -> MessagingModule {
@@ -63,6 +64,7 @@ pub fn compose(
         messages_access.clone(),
         sent_notifier,
         typing_notifier,
+        read_notifier,
         preview_targets,
     ));
     // Errata-5: HMAC-подписанные proof-токены recovery/approve. None → fail-closed

@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 
 use flora_notifications_contracts::{
     RealtimeConnectedSignal, RealtimeMessageSignal, RealtimeNotificationSignal,
-    RealtimePresenceSignal, RealtimeTypingSignal, SseConnectionHooks,
+    RealtimePresenceSignal, RealtimeReadSignal, RealtimeTypingSignal, SseConnectionHooks,
 };
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -130,6 +130,10 @@ impl UserRealtimeHub {
 
     pub fn publish_typing(&self, user_uuid: Uuid, signal: &RealtimeTypingSignal) {
         self.broadcast(user_uuid, "typing", signal);
+    }
+
+    pub fn publish_read(&self, user_uuid: Uuid, signal: &RealtimeReadSignal) {
+        self.broadcast(user_uuid, "read", signal);
     }
 
     fn broadcast<T: serde::Serialize>(&self, user_uuid: Uuid, event_name: &str, payload: &T) {

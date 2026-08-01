@@ -81,6 +81,14 @@ pub struct RealtimeTypingSignal {
     pub is_typing: bool,
 }
 
+/// SSE `event: read` — conversation marked read by peer (no FCM).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealtimeReadSignal {
+    pub conversation_uuid: Uuid,
+    pub reader_user_uuid: Uuid,
+}
+
 /// SSE `event: connected` — first frame after subscribe.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

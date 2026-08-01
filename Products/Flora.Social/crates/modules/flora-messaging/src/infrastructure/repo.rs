@@ -472,8 +472,8 @@ impl MessagingRepo {
         })
     }
 
-    pub async fn mark_read(&self, viewer_uuid: Uuid, other_user_uuid: Uuid) -> Result<(), String> {
-        sqlx::query(
+    pub async fn mark_read(&self, viewer_uuid: Uuid, other_user_uuid: Uuid) -> Result<u64, String> {
+        let result = sqlx::query(
             r#"
             UPDATE flora_core.user_messages
             SET is_read = true
@@ -487,7 +487,7 @@ impl MessagingRepo {
         .execute(&self.pool)
         .await
         .map_err(|e| e.to_string())?;
-        Ok(())
+        Ok(result.rows_affected())
     }
 
     pub async fn delete_message(
