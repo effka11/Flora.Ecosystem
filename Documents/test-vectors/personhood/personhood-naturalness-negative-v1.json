@@ -1,0 +1,196 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "personhood_naturalness_negative_v1",
+  "description": "Обязательные отказы NS-слоя (FPP-SIGNALS §7): форма самоотчёта эпохи (temporal_from_report), неизвестные wire-коды реестров (from_code → отказ), невалидные калибровочные кривые (piecewise::validate). Совместимая реализация обязана отклонить каждый кейс с указанной ошибкой.",
+  "epochReportRejects": [
+    {
+      "name": "device_link_self_report",
+      "temporalBuckets": [
+        {
+          "metric": "ns_d2_device_link",
+          "metricCode": 5,
+          "bucket": "very_low",
+          "bucketCode": 0
+        }
+      ],
+      "expectedError": "non_temporal_metric"
+    },
+    {
+      "name": "device_churn_after_valid_row",
+      "temporalBuckets": [
+        {
+          "metric": "ns_t1_burstiness",
+          "metricCode": 1,
+          "bucket": "high",
+          "bucketCode": 3
+        },
+        {
+          "metric": "ns_d3_device_churn",
+          "metricCode": 6,
+          "bucket": "medium",
+          "bucketCode": 2
+        }
+      ],
+      "expectedError": "non_temporal_metric"
+    },
+    {
+      "name": "duplicate_metric",
+      "temporalBuckets": [
+        {
+          "metric": "ns_t1_burstiness",
+          "metricCode": 1,
+          "bucket": "high",
+          "bucketCode": 3
+        },
+        {
+          "metric": "ns_t1_burstiness",
+          "metricCode": 1,
+          "bucket": "high",
+          "bucketCode": 3
+        }
+      ],
+      "expectedError": "duplicate_metric"
+    },
+    {
+      "name": "duplicate_after_valid_rows",
+      "temporalBuckets": [
+        {
+          "metric": "ns_t1_burstiness",
+          "metricCode": 1,
+          "bucket": "high",
+          "bucketCode": 3
+        },
+        {
+          "metric": "ns_t2a_rest_share",
+          "metricCode": 2,
+          "bucket": "low",
+          "bucketCode": 1
+        },
+        {
+          "metric": "ns_t2a_rest_share",
+          "metricCode": 2,
+          "bucket": "low",
+          "bucketCode": 1
+        }
+      ],
+      "expectedError": "duplicate_metric"
+    },
+    {
+      "name": "out_of_order",
+      "temporalBuckets": [
+        {
+          "metric": "ns_t2b_peak_share",
+          "metricCode": 3,
+          "bucket": "medium",
+          "bucketCode": 2
+        },
+        {
+          "metric": "ns_t1_burstiness",
+          "metricCode": 1,
+          "bucket": "high",
+          "bucketCode": 3
+        }
+      ],
+      "expectedError": "out_of_order"
+    }
+  ],
+  "unknownWireCodes": {
+    "personhoodLevel": [
+      4,
+      255
+    ],
+    "signalEvidenceClass": [
+      0,
+      4,
+      255
+    ],
+    "naturalnessClass": [
+      0,
+      4,
+      255
+    ],
+    "deviceAttestationClass": [
+      0,
+      4,
+      255
+    ],
+    "deviceLinkClass": [
+      0,
+      4,
+      255
+    ],
+    "deviceChurnClass": [
+      0,
+      4,
+      255
+    ],
+    "reportConsistencyClass": [
+      0,
+      4,
+      255
+    ],
+    "signalMetric": [
+      0,
+      7,
+      255
+    ],
+    "signalBucket": [
+      5,
+      255
+    ],
+    "ceremonyAnomalyFlag": [
+      0,
+      9,
+      255
+    ]
+  },
+  "curveRejects": [
+    {
+      "name": "empty_curve",
+      "points": [],
+      "expectedError": "empty"
+    },
+    {
+      "name": "y_above_permille",
+      "points": [
+        [
+          0,
+          1001
+        ],
+        [
+          10,
+          0
+        ]
+      ],
+      "expectedError": "y_above_permille"
+    },
+    {
+      "name": "duplicate_x",
+      "points": [
+        [
+          0,
+          100
+        ],
+        [
+          0,
+          200
+        ]
+      ],
+      "expectedError": "non_increasing_x"
+    },
+    {
+      "name": "decreasing_x",
+      "points": [
+        [
+          10,
+          100
+        ],
+        [
+          0,
+          200
+        ]
+      ],
+      "expectedError": "non_increasing_x"
+    }
+  ]
+}

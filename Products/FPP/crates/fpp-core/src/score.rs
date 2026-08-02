@@ -300,6 +300,18 @@ mod tests {
     }
 
     #[test]
+    fn default_curves_are_valid_configs() {
+        for curve in [
+            BURSTINESS_CURVE,
+            REST_SHARE_CURVE,
+            PEAK_SHARE_CURVE,
+            SELF_SIMILARITY_CURVE,
+        ] {
+            assert_eq!(piecewise::validate(curve), Ok(()));
+        }
+    }
+
+    #[test]
     fn default_curves_direction() {
         // Регулярный бот — низкая натуральность; bursty человек — высокая.
         assert!(calibrate(BURSTINESS_CURVE, -1000) < 100);

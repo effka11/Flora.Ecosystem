@@ -36,6 +36,49 @@ pub fn eval(points: &[(i64, u32)], x: i64) -> u32 {
     last_y.min(1000)
 }
 
+/// Ошибка конфигурации калибровочной кривой. Имена стабильны для журналов
+/// и негативных векторов.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CurveError {
+    /// Пустой список точек.
+    Empty,
+    /// `y` выше шкалы промилле (1000).
+    YAbovePermille,
+    /// `x` не строго возрастает (дубль или беспорядок).
+    NonIncreasingX,
+}
+
+impl CurveError {
+    /// Стабильное имя для журналов и негативных векторов.
+    pub const fn name(self) -> &'static str {
+        match self {
+            CurveError::Empty => "empty",
+            CurveError::YAbovePermille => "y_above_permille",
+            CurveError::NonIncreasingX => "non_increasing_x",
+        }
+    }
+}
+
+/// Валидация точек кривой на границе системы (загрузка R2-конфига):
+/// непустой список, `y ∈ [0, 1000]`, строго возрастающие `x`.
+///
+/// [`eval`] тотален (насыщение, зажим `y`) и молча «чинит» некорректный конфиг —
+/// поэтому принимать такой конфиг нельзя: контракт `eval` гарантирован только
+/// для кривых, прошедших эту проверку. Порядок проверок фиксирован:
+/// пустота → шкала `y` → порядок `x`.
+pub fn validate(points: &[(i64, u32)]) -> Result<(), CurveError> {
+    if points.is_empty() {
+        return Err(CurveError::Empty);
+    }
+    if points.iter().any(|&(_, y)| y > 1000) {
+        return Err(CurveError::YAbovePermille);
+    }
+    if points.windows(2).any(|pair| pair[1].0 <= pair[0].0) {
+        return Err(CurveError::NonIncreasingX);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,5 +115,29 @@ mod tests {
     fn clamps_y_above_permille() {
         assert_eq!(eval(&[(0, 5000), (10, 0)], 0), 1000);
         assert_eq!(eval(&[(0, 5000), (10, 0)], 5), 500);
+    }
+
+    #[test]
+    fn validate_accepts_wellformed_and_names_violations() {
+        assert_eq!(validate(CURVE), Ok(()));
+        assert_eq!(validate(&[(10, 400)]), Ok(()));
+        assert_eq!(validate(&[]), Err(CurveError::Empty));
+        assert_eq!(
+            validate(&[(0, 1001), (10, 0)]),
+            Err(CurveError::YAbovePermille)
+        );
+        assert_eq!(
+            validate(&[(0, 100), (0, 200)]),
+            Err(CurveError::NonIncreasingX)
+        );
+        assert_eq!(
+            validate(&[(10, 100), (0, 200)]),
+            Err(CurveError::NonIncreasingX)
+        );
+        // Порядок проверок: шкала y раньше порядка x.
+        assert_eq!(
+            validate(&[(10, 5000), (0, 0)]),
+            Err(CurveError::YAbovePermille)
+        );
     }
 }

@@ -19,8 +19,8 @@
 
 use fpp_contracts::{
     DeviceAttestationClass, DeviceChurnClass, DeviceLinkClass, EvidenceShares,
-    NaturalnessPanelReport, PanelCounters, PanelSignal, ReportConsistencyClass, SignalBucket,
-    SignalEvidenceClass, SignalMetric,
+    NaturalnessPanelReport, PanelCounters, PanelSignal, ReportConsistencyClass, ReportedBucket,
+    SignalBucket, SignalEvidenceClass, SignalMetric,
 };
 
 use crate::score::{self, ClassThresholds, SignalReading};
@@ -193,6 +193,32 @@ impl TemporalBuckets {
         }
     }
 
+    /// Установить bucket темпоральной метрики; `false` (без изменений)
+    /// для девайс-метрик — у них в профиле места нет.
+    pub const fn set(&mut self, metric: SignalMetric, bucket: SignalBucket) -> bool {
+        match metric {
+            SignalMetric::BurstinessT1 => self.burstiness = Some(bucket),
+            SignalMetric::RestShareT2a => self.rest_share = Some(bucket),
+            SignalMetric::PeakShareT2b => self.peak_share = Some(bucket),
+            SignalMetric::SelfSimilarityT2c => self.self_similarity = Some(bucket),
+            SignalMetric::DeviceLinkD2 | SignalMetric::DeviceChurnD3 => return false,
+        }
+        true
+    }
+
+    /// Строки самоотчёта эпохи из профиля — канонический порядок
+    /// (по возрастанию кода метрики, [`TEMPORAL_METRICS`]); отсутствующие
+    /// метрики не включаются. Обратная операция — [`temporal_from_report`].
+    pub fn to_report_buckets(&self) -> Vec<ReportedBucket> {
+        TEMPORAL_METRICS
+            .iter()
+            .filter_map(|&metric| {
+                self.get(metric)
+                    .map(|bucket| ReportedBucket { metric, bucket })
+            })
+            .collect()
+    }
+
     /// Квантовать сырые значения метрик (выходы [`crate::temporal`]) в профиль —
     /// клиентский путь «метрика → bucket» перед отчётом эпохи.
     pub fn quantize_raw(
@@ -221,6 +247,62 @@ impl TemporalBuckets {
             ),
         }
     }
+}
+
+/// Ошибка формы самоотчёта эпохи (валидация на границе приёма отчётов).
+/// Имена стабильны для журналов и негативных векторов.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EpochReportError {
+    /// Метрика не темпоральная: девайс-наблюдения (NS-D2/NS-D3) сервер делает
+    /// сам — самоотчёт по ним не принимается ни с каким весом.
+    NonTemporalMetric,
+    /// Метрика встречается более одного раза.
+    DuplicateMetric,
+    /// Нарушен канонический порядок (строго по возрастанию кода метрики).
+    OutOfOrder,
+}
+
+impl EpochReportError {
+    /// Стабильное имя для журналов и негативных векторов.
+    pub const fn name(self) -> &'static str {
+        match self {
+            EpochReportError::NonTemporalMetric => "non_temporal_metric",
+            EpochReportError::DuplicateMetric => "duplicate_metric",
+            EpochReportError::OutOfOrder => "out_of_order",
+        }
+    }
+}
+
+/// Валидация и распаковка самоотчёта эпохи (`NaturalnessEpochReport::temporal_buckets`)
+/// в bucket-профиль.
+///
+/// Требования формы (FPP-SIGNALS §7): только темпоральные метрики; коды метрик
+/// строго возрастают (дубли и беспорядок отклоняются — канонический порядок
+/// исключает скрытые каналы в перестановках); пустой список валиден —
+/// нейтральное отсутствие (§6). Возвращается первое нарушение в порядке скана;
+/// внутри строки метрика проверяется раньше порядка.
+pub fn temporal_from_report(
+    buckets: &[ReportedBucket],
+) -> Result<TemporalBuckets, EpochReportError> {
+    let mut out = TemporalBuckets::default();
+    let mut prev_code: Option<u8> = None;
+    for reported in buckets {
+        if bucket_edges(reported.metric).is_none() {
+            return Err(EpochReportError::NonTemporalMetric);
+        }
+        let code = reported.metric.code();
+        if let Some(prev) = prev_code {
+            if code == prev {
+                return Err(EpochReportError::DuplicateMetric);
+            }
+            if code < prev {
+                return Err(EpochReportError::OutOfOrder);
+            }
+        }
+        out.set(reported.metric, reported.bucket);
+        prev_code = Some(code);
+    }
+    Ok(out)
 }
 
 /// Согласованность самоотчёта с серверными наблюдениями: максимальная дистанция
@@ -520,6 +602,60 @@ mod tests {
         assert_eq!(buckets.rest_share, Some(SignalBucket::VeryLow));
         assert_eq!(buckets.peak_share, Some(SignalBucket::Medium));
         assert_eq!(buckets.self_similarity, None);
+    }
+
+    #[test]
+    fn epoch_report_roundtrip_canonical_order() {
+        let profile = TemporalBuckets {
+            burstiness: Some(SignalBucket::High),
+            rest_share: None,
+            peak_share: Some(SignalBucket::Medium),
+            self_similarity: Some(SignalBucket::VeryHigh),
+        };
+        let report = profile.to_report_buckets();
+        let codes: Vec<u8> = report.iter().map(|r| r.metric.code()).collect();
+        assert_eq!(codes, vec![1, 3, 4]);
+        assert_eq!(temporal_from_report(&report), Ok(profile));
+        // Пустой профиль → пустой отчёт → пустой профиль (нейтральное отсутствие).
+        assert_eq!(TemporalBuckets::default().to_report_buckets(), vec![]);
+        assert_eq!(temporal_from_report(&[]), Ok(TemporalBuckets::default()));
+    }
+
+    #[test]
+    fn epoch_report_shape_violations() {
+        let rb = |metric: SignalMetric, code: u8| ReportedBucket {
+            metric,
+            bucket: SignalBucket::from_code(code).unwrap(),
+        };
+        // Девайс-метрика в самоотчёте.
+        assert_eq!(
+            temporal_from_report(&[rb(SignalMetric::DeviceLinkD2, 0)]),
+            Err(EpochReportError::NonTemporalMetric)
+        );
+        // Дубль метрики.
+        assert_eq!(
+            temporal_from_report(&[
+                rb(SignalMetric::BurstinessT1, 3),
+                rb(SignalMetric::BurstinessT1, 3),
+            ]),
+            Err(EpochReportError::DuplicateMetric)
+        );
+        // Беспорядок кодов.
+        assert_eq!(
+            temporal_from_report(&[
+                rb(SignalMetric::PeakShareT2b, 2),
+                rb(SignalMetric::BurstinessT1, 3),
+            ]),
+            Err(EpochReportError::OutOfOrder)
+        );
+        // Внутри строки метрика проверяется раньше порядка.
+        assert_eq!(
+            temporal_from_report(&[
+                rb(SignalMetric::SelfSimilarityT2c, 2),
+                rb(SignalMetric::DeviceLinkD2, 0),
+            ]),
+            Err(EpochReportError::NonTemporalMetric)
+        );
     }
 
     #[test]

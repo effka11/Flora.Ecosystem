@@ -1,22 +1,24 @@
-//! Consumer-тест golden-вектора `personhood-naturalness-v1.json`
-//! (обязателен по правилам Documents/test-vectors/README.md).
+//! Consumer-тесты golden-векторов `personhood-naturalness-v1.json` (позитив)
+//! и `personhood-naturalness-negative-v1.json` (обязательные отказы) —
+//! обязательны по правилам Documents/test-vectors/README.md.
 //!
 //! Каждый кейс вектора пересчитывается ядром `fpp-core` / `fpp-crypto`;
-//! регенерация файла: `cargo run -p fpp-core --example gen_personhood_vectors`.
+//! регенерация файлов: `cargo run -p fpp-core --example gen_personhood_vectors`.
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use fpp_contracts::{
     AnomalyFlagCount, CeremonyAnomalyFlag, DeviceAttestationClass, DeviceChurnClass,
-    DeviceLinkClass, NaturalnessClass, PanelCounters, ReportConsistencyClass, SignalBucket,
-    SignalEvidenceClass, SignalMetric,
+    DeviceLinkClass, NaturalnessClass, PanelCounters, PersonhoodLevel, ReportConsistencyClass,
+    ReportedBucket, SignalBucket, SignalEvidenceClass, SignalMetric,
 };
-use fpp_core::{device, piecewise, profile, score, streams, temporal};
+use fpp_core::{device, epoch, piecewise, profile, score, streams, temporal};
 use serde_json::Value;
 
-fn load_vector() -> Value {
+fn load_json(file: &str) -> Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../Documents/test-vectors/personhood/personhood-naturalness-v1.json");
+        .join("../../../../Documents/test-vectors/personhood")
+        .join(file);
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
         panic!(
             "нет вектора {} ({e}); регенерация: cargo run -p fpp-core --example gen_personhood_vectors",
@@ -24,6 +26,20 @@ fn load_vector() -> Value {
         )
     });
     serde_json::from_str(&text).expect("валидный JSON")
+}
+
+fn load_vector() -> Value {
+    load_json("personhood-naturalness-v1.json")
+}
+
+fn load_negative() -> Value {
+    load_json("personhood-naturalness-negative-v1.json")
+}
+
+fn b64d(v: &Value) -> Vec<u8> {
+    URL_SAFE_NO_PAD
+        .decode(v.as_str().expect("b64"))
+        .expect("валидный base64url")
 }
 
 fn as_u64_vec(v: &Value) -> Vec<u64> {
@@ -522,35 +538,264 @@ fn score_cases_match() {
 fn device_tag_matches() {
     let v = load_vector();
     let d = &v["deviceTag"];
-    let decode = |key: &str| -> Vec<u8> {
-        URL_SAFE_NO_PAD
-            .decode(d[key].as_str().expect("b64"))
-            .expect("валидный base64url")
-    };
-    let pk: [u8; 32] = decode("pkDevice").try_into().expect("32 байта");
-    let epoch: [u8; 16] = decode("epochId").try_into().expect("16 байт");
-    let epoch_next: [u8; 16] = decode("epochIdNext").try_into().expect("16 байт");
+    let pk: [u8; 32] = b64d(&d["pkDevice"]).try_into().expect("32 байта");
+    let epoch_id: [u8; 16] = b64d(&d["epochId"]).try_into().expect("16 байт");
+    let epoch_next: [u8; 16] = b64d(&d["epochIdNext"]).try_into().expect("16 байт");
     assert_eq!(
-        fpp_crypto::device_tag_epoch(&pk, &epoch).to_vec(),
-        decode("tag")
+        fpp_crypto::device_tag_epoch(&pk, &epoch_id).to_vec(),
+        b64d(&d["tag"])
     );
     assert_eq!(
         fpp_crypto::device_tag_epoch(&pk, &epoch_next).to_vec(),
-        decode("tagNext")
+        b64d(&d["tagNext"])
     );
 }
 
 #[test]
-fn anomaly_flag_registry_matches() {
+fn registries_match() {
     let v = load_vector();
-    let flags = v["ceremonyAnomalyFlags"].as_array().expect("реестр");
-    assert_eq!(flags.len(), CeremonyAnomalyFlag::ALL.len());
-    for (entry, flag) in flags.iter().zip(CeremonyAnomalyFlag::ALL) {
-        assert_eq!(entry["name"].as_str(), Some(flag.name()));
-        assert_eq!(entry["code"].as_u64(), Some(flag.code() as u64));
+    let r = &v["registries"];
+    macro_rules! check {
+        ($key:literal, $ty:ty) => {{
+            let entries = r[$key].as_array().expect($key);
+            assert_eq!(entries.len(), <$ty>::ALL.len(), $key);
+            for (entry, item) in entries.iter().zip(<$ty>::ALL) {
+                assert_eq!(entry["name"].as_str(), Some(item.name()), $key);
+                assert_eq!(entry["code"].as_u64(), Some(item.code() as u64), $key);
+                assert_eq!(<$ty>::from_code(item.code()), Some(*item), $key);
+            }
+        }};
+    }
+    check!("personhoodLevel", PersonhoodLevel);
+    check!("signalEvidenceClass", SignalEvidenceClass);
+    check!("naturalnessClass", NaturalnessClass);
+    check!("deviceAttestationClass", DeviceAttestationClass);
+    check!("deviceLinkClass", DeviceLinkClass);
+    check!("deviceChurnClass", DeviceChurnClass);
+    check!("reportConsistencyClass", ReportConsistencyClass);
+    check!("signalMetric", SignalMetric);
+    check!("signalBucket", SignalBucket);
+    check!("ceremonyAnomalyFlag", CeremonyAnomalyFlag);
+
+    let names = |key: &str| -> Vec<String> {
+        r[key]
+            .as_array()
+            .expect("имена")
+            .iter()
+            .map(|x| x.as_str().expect("имя").to_string())
+            .collect()
+    };
+    assert_eq!(
+        names("epochReportError"),
+        [
+            profile::EpochReportError::NonTemporalMetric,
+            profile::EpochReportError::DuplicateMetric,
+            profile::EpochReportError::OutOfOrder,
+        ]
+        .map(|e| e.name().to_string())
+    );
+    assert_eq!(
+        names("curveError"),
+        [
+            piecewise::CurveError::Empty,
+            piecewise::CurveError::YAbovePermille,
+            piecewise::CurveError::NonIncreasingX,
+        ]
+        .map(|e| e.name().to_string())
+    );
+}
+
+#[test]
+fn epoch_cases_match() {
+    let v = load_vector();
+    let e = &v["epoch"];
+    let len = e["epochLenS"].as_u64().expect("len");
+    assert_eq!(len, epoch::EPOCH_LEN_S);
+    for case in e["indexCases"].as_array().expect("кейсы") {
         assert_eq!(
-            CeremonyAnomalyFlag::from_code(entry["code"].as_u64().unwrap() as u8),
-            Some(*flag)
+            epoch::epoch_index_at(
+                case["unixS"].as_u64().expect("unix"),
+                case["genesisUnixS"].as_u64().expect("genesis"),
+                case["epochLenS"].as_u64().expect("len"),
+            ),
+            case["epochIndex"].as_u64(),
+            "кейс {}",
+            case["name"]
+        );
+    }
+    for case in e["startCases"].as_array().expect("кейсы") {
+        assert_eq!(
+            epoch::epoch_start_s(
+                case["genesisUnixS"].as_u64().expect("genesis"),
+                case["epochIndex"].as_u64().expect("index"),
+                len,
+            ),
+            case["startUnixS"].as_u64()
+        );
+    }
+    for case in e["idCases"].as_array().expect("кейсы") {
+        assert_eq!(
+            epoch::epoch_id_bytes(
+                case["genesisUnixS"].as_u64().expect("genesis"),
+                case["epochIndex"].as_u64().expect("index"),
+            )
+            .to_vec(),
+            b64d(&case["epochId"])
+        );
+    }
+    for case in e["deviceTagForEpoch"].as_array().expect("кейсы") {
+        let id = epoch::epoch_id_bytes(
+            case["genesisUnixS"].as_u64().expect("genesis"),
+            case["epochIndex"].as_u64().expect("index"),
+        );
+        assert_eq!(id.to_vec(), b64d(&case["epochId"]));
+        let pk: [u8; 32] = b64d(&case["pkDevice"]).try_into().expect("32 байта");
+        assert_eq!(
+            fpp_crypto::device_tag_epoch(&pk, &id).to_vec(),
+            b64d(&case["tag"])
+        );
+    }
+}
+
+fn reported_rows_from_json(v: &Value) -> Vec<ReportedBucket> {
+    v.as_array()
+        .expect("строки")
+        .iter()
+        .map(|r| {
+            let metric = SignalMetric::from_code(r["metricCode"].as_u64().expect("код") as u8)
+                .expect("известная метрика");
+            let bucket = SignalBucket::from_code(r["bucketCode"].as_u64().expect("код") as u8)
+                .expect("известный bucket");
+            assert_eq!(r["metric"].as_str(), Some(metric.name()));
+            assert_eq!(r["bucket"].as_str(), Some(bucket.name()));
+            ReportedBucket { metric, bucket }
+        })
+        .collect()
+}
+
+#[test]
+fn epoch_report_cases_match() {
+    let v = load_vector();
+    for case in v["epochReport"]["cases"].as_array().expect("кейсы") {
+        let name = case["name"].as_str().expect("имя");
+        let raw = &case["raw"];
+        let buckets = profile::TemporalBuckets::quantize_raw(
+            raw["burstinessPermille"].as_i64().map(|x| x as i32),
+            opt_u32(&raw["restSharePermille"]),
+            opt_u32(&raw["peakSharePermille"]),
+            opt_u32(&raw["selfSimilarityPermille"]),
+        );
+        let rows = buckets.to_report_buckets();
+        assert_eq!(
+            rows,
+            reported_rows_from_json(&case["report"]["temporalBuckets"]),
+            "{name}: строки отчёта"
+        );
+        assert_eq!(
+            profile::temporal_from_report(&rows),
+            Ok(buckets),
+            "{name}: сервер принимает канонический отчёт"
+        );
+        assert_eq!(
+            temporal_buckets_from_json(&case["unpackedProfile"]),
+            buckets,
+            "{name}: распакованный профиль"
+        );
+
+        let pk: [u8; 32] = b64d(&case["pkDevice"]).try_into().expect("32 байта");
+        let id = epoch::epoch_id_bytes(
+            case["genesisUnixS"].as_u64().expect("genesis"),
+            case["report"]["epochIndex"].as_u64().expect("index"),
+        );
+        assert_eq!(
+            fpp_crypto::device_tag_epoch(&pk, &id).to_vec(),
+            b64d(&case["report"]["deviceTag"]),
+            "{name}: девайс-тег"
+        );
+    }
+}
+
+#[test]
+fn negative_vector_header_matches() {
+    let v = load_negative();
+    assert_eq!(
+        v["protocolVersion"].as_u64(),
+        Some(fpp_core::PROTOCOL_VERSION as u64)
+    );
+    assert_eq!(
+        v["vectorId"].as_str(),
+        Some("personhood_naturalness_negative_v1")
+    );
+}
+
+#[test]
+fn negative_epoch_report_rejects() {
+    let v = load_negative();
+    for case in v["epochReportRejects"].as_array().expect("кейсы") {
+        let rows = reported_rows_from_json(&case["temporalBuckets"]);
+        let err =
+            profile::temporal_from_report(&rows).expect_err(case["name"].as_str().expect("имя"));
+        assert_eq!(
+            Some(err.name()),
+            case["expectedError"].as_str(),
+            "кейс {}",
+            case["name"]
+        );
+    }
+}
+
+#[test]
+fn negative_unknown_wire_codes_are_rejected() {
+    let v = load_negative();
+    let codes = |key: &str| -> Vec<u8> {
+        v["unknownWireCodes"][key]
+            .as_array()
+            .expect("коды")
+            .iter()
+            .map(|x| x.as_u64().expect("код") as u8)
+            .collect()
+    };
+    macro_rules! check {
+        ($key:literal, $ty:ty) => {
+            for code in codes($key) {
+                assert_eq!(<$ty>::from_code(code), None, "{} код {code}", $key);
+            }
+        };
+    }
+    check!("personhoodLevel", PersonhoodLevel);
+    check!("signalEvidenceClass", SignalEvidenceClass);
+    check!("naturalnessClass", NaturalnessClass);
+    check!("deviceAttestationClass", DeviceAttestationClass);
+    check!("deviceLinkClass", DeviceLinkClass);
+    check!("deviceChurnClass", DeviceChurnClass);
+    check!("reportConsistencyClass", ReportConsistencyClass);
+    check!("signalMetric", SignalMetric);
+    check!("signalBucket", SignalBucket);
+    check!("ceremonyAnomalyFlag", CeremonyAnomalyFlag);
+}
+
+#[test]
+fn negative_curve_rejects() {
+    let v = load_negative();
+    for case in v["curveRejects"].as_array().expect("кейсы") {
+        let points: Vec<(i64, u32)> = case["points"]
+            .as_array()
+            .expect("точки")
+            .iter()
+            .map(|p| {
+                let pair = p.as_array().expect("пара");
+                (
+                    pair[0].as_i64().expect("x"),
+                    pair[1].as_u64().expect("y") as u32,
+                )
+            })
+            .collect();
+        let err = piecewise::validate(&points).expect_err(case["name"].as_str().expect("имя"));
+        assert_eq!(
+            Some(err.name()),
+            case["expectedError"].as_str(),
+            "кейс {}",
+            case["name"]
         );
     }
 }

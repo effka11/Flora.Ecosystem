@@ -1,9 +1,18 @@
 //! FPP contracts — personhood ports for Governance/Economy consumers.
 //! Spec: `Documents/fpp/FPP.md`; naturalness layer (NS) — `Documents/fpp/FPP-SIGNALS.md`.
 //! Persistence (`personhood_*`) is owned by Social Verification.
+//!
+//! Правило wire-кодов (зафиксировано вектором `personhood-naturalness-v1.json`):
+//! во всех **реестрах классов** код `0` зарезервирован («не задано») и не
+//! сериализуется — незаполненное поле не совпадает ни с одним классом.
+//! Порядковые величины — [`PersonhoodLevel`] (уровень V0–V3) и [`SignalBucket`]
+//! (квантованная величина 0..=4) — сохраняют смысловые коды, включая 0.
 
 /// Personhood attestation level V0–V3 (normative names; full API lands with Verification cutover).
+///
+/// Код уровня = номер уровня (порядковая величина, `0` = V0 — не «не задано»).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
 pub enum PersonhoodLevel {
     V0 = 0,
     V1 = 1,
@@ -11,19 +20,56 @@ pub enum PersonhoodLevel {
     V3 = 3,
 }
 
+impl PersonhoodLevel {
+    /// Полный реестр уровней (по возрастанию).
+    pub const ALL: &[PersonhoodLevel] = &[
+        PersonhoodLevel::V0,
+        PersonhoodLevel::V1,
+        PersonhoodLevel::V2,
+        PersonhoodLevel::V3,
+    ];
+
+    /// Wire-код уровня (= номер уровня).
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+
+    /// Обратная конверсия из wire-кода; `None` для кодов вне 0..=3.
+    pub const fn from_code(code: u8) -> Option<PersonhoodLevel> {
+        match code {
+            0 => Some(PersonhoodLevel::V0),
+            1 => Some(PersonhoodLevel::V1),
+            2 => Some(PersonhoodLevel::V2),
+            3 => Some(PersonhoodLevel::V3),
+            _ => None,
+        }
+    }
+
+    /// Стабильное имя для векторов, журналов и панелей.
+    pub const fn name(self) -> &'static str {
+        match self {
+            PersonhoodLevel::V0 => "v0",
+            PersonhoodLevel::V1 => "v1",
+            PersonhoodLevel::V2 => "v2",
+            PersonhoodLevel::V3 => "v3",
+        }
+    }
+}
+
 /// Класс доказательности NS-сигнала (FPP-SIGNALS §1): вес сигнала определяется тем,
 /// **кто его наблюдал**, а не тем, что он утверждает. Клиент подконтролен атакующему,
 /// поэтому самоотчёты никогда не перевешивают серверные наблюдения.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum SignalEvidenceClass {
     /// A — наблюдаемо сервером: конкурентность девайсов, потоки событий,
     /// исходы церемоний, частота восстановлений.
-    ServerObserved,
+    ServerObserved = 1,
     /// B — аттестовано устройством (hardware-backed ключ / платформенная аттестация).
-    DeviceAttested,
+    DeviceAttested = 2,
     /// C — самоотчёт клиента (bucket-профили с устройства). Advisory:
     /// расхождение класса C с классом A — самостоятельный сигнал.
-    SelfReported,
+    SelfReported = 3,
 }
 
 impl SignalEvidenceClass {
@@ -33,6 +79,21 @@ impl SignalEvidenceClass {
         SignalEvidenceClass::DeviceAttested,
         SignalEvidenceClass::SelfReported,
     ];
+
+    /// Wire-код класса (0 зарезервирован).
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+
+    /// Обратная конверсия из wire-кода; `None` для неизвестных кодов и нуля.
+    pub const fn from_code(code: u8) -> Option<SignalEvidenceClass> {
+        match code {
+            1 => Some(SignalEvidenceClass::ServerObserved),
+            2 => Some(SignalEvidenceClass::DeviceAttested),
+            3 => Some(SignalEvidenceClass::SelfReported),
+            _ => None,
+        }
+    }
 
     /// Стабильное имя для векторов, журналов и панелей.
     pub const fn name(self) -> &'static str {
@@ -48,10 +109,11 @@ impl SignalEvidenceClass {
 /// приоритизирует следственную очередь V-01 и вероятность канареечных пар —
 /// никогда не деградирует уровень и не блокирует права автоматически.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum NaturalnessClass {
-    Natural,
-    Watch,
-    Investigate,
+    Natural = 1,
+    Watch = 2,
+    Investigate = 3,
 }
 
 impl NaturalnessClass {
@@ -61,6 +123,21 @@ impl NaturalnessClass {
         NaturalnessClass::Watch,
         NaturalnessClass::Investigate,
     ];
+
+    /// Wire-код класса (0 зарезервирован).
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+
+    /// Обратная конверсия из wire-кода; `None` для неизвестных кодов и нуля.
+    pub const fn from_code(code: u8) -> Option<NaturalnessClass> {
+        match code {
+            1 => Some(NaturalnessClass::Natural),
+            2 => Some(NaturalnessClass::Watch),
+            3 => Some(NaturalnessClass::Investigate),
+            _ => None,
+        }
+    }
 
     /// Стабильное имя для векторов, журналов и панелей.
     pub const fn name(self) -> &'static str {
@@ -77,10 +154,11 @@ impl NaturalnessClass {
 /// Класс определяет вес девайс-сигналов платформы — нормативные правила
 /// `fpp-core::profile::{self_report_evidence, device_observation_evidence}`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum DeviceAttestationClass {
-    Unattested,
-    SoftwareKey,
-    HardwareBacked,
+    Unattested = 1,
+    SoftwareKey = 2,
+    HardwareBacked = 3,
 }
 
 impl DeviceAttestationClass {
@@ -90,6 +168,21 @@ impl DeviceAttestationClass {
         DeviceAttestationClass::SoftwareKey,
         DeviceAttestationClass::HardwareBacked,
     ];
+
+    /// Wire-код класса (0 зарезервирован).
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+
+    /// Обратная конверсия из wire-кода; `None` для неизвестных кодов и нуля.
+    pub const fn from_code(code: u8) -> Option<DeviceAttestationClass> {
+        match code {
+            1 => Some(DeviceAttestationClass::Unattested),
+            2 => Some(DeviceAttestationClass::SoftwareKey),
+            3 => Some(DeviceAttestationClass::HardwareBacked),
+            _ => None,
+        }
+    }
 
     /// Стабильное имя для векторов, журналов и панелей.
     pub const fn name(self) -> &'static str {
@@ -104,10 +197,11 @@ impl DeviceAttestationClass {
 /// Конкурентность устройства: сколько активных civic-личностей делят один девайс
 /// в текущей эпохе (NS-D2). `Shared` легитимен (домохозяйство) — сигнал, не приговор.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum DeviceLinkClass {
-    Exclusive,
-    Shared,
-    FarmSuspect,
+    Exclusive = 1,
+    Shared = 2,
+    FarmSuspect = 3,
 }
 
 impl DeviceLinkClass {
@@ -117,6 +211,21 @@ impl DeviceLinkClass {
         DeviceLinkClass::Shared,
         DeviceLinkClass::FarmSuspect,
     ];
+
+    /// Wire-код класса (0 зарезервирован).
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+
+    /// Обратная конверсия из wire-кода; `None` для неизвестных кодов и нуля.
+    pub const fn from_code(code: u8) -> Option<DeviceLinkClass> {
+        match code {
+            1 => Some(DeviceLinkClass::Exclusive),
+            2 => Some(DeviceLinkClass::Shared),
+            3 => Some(DeviceLinkClass::FarmSuspect),
+            _ => None,
+        }
+    }
 
     /// Стабильное имя для векторов, журналов и панелей.
     pub const fn name(self) -> &'static str {
@@ -131,10 +240,11 @@ impl DeviceLinkClass {
 /// Текучка устройств одной личности за эпоху (NS-D3): высокая ротация девайсов —
 /// маркер аренды/кражи личности (вместе с частотой восстановлений, FPP §6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum DeviceChurnClass {
-    Stable,
-    Mobile,
-    Churning,
+    Stable = 1,
+    Mobile = 2,
+    Churning = 3,
 }
 
 impl DeviceChurnClass {
@@ -144,6 +254,21 @@ impl DeviceChurnClass {
         DeviceChurnClass::Mobile,
         DeviceChurnClass::Churning,
     ];
+
+    /// Wire-код класса (0 зарезервирован).
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+
+    /// Обратная конверсия из wire-кода; `None` для неизвестных кодов и нуля.
+    pub const fn from_code(code: u8) -> Option<DeviceChurnClass> {
+        match code {
+            1 => Some(DeviceChurnClass::Stable),
+            2 => Some(DeviceChurnClass::Mobile),
+            3 => Some(DeviceChurnClass::Churning),
+            _ => None,
+        }
+    }
 
     /// Стабильное имя для векторов, журналов и панелей.
     pub const fn name(self) -> &'static str {
@@ -282,11 +407,11 @@ impl SignalBucket {
 #[repr(u8)]
 pub enum ReportConsistencyClass {
     /// Расхождения в пределах шума квантования.
-    Consistent = 0,
+    Consistent = 1,
     /// Заметное расхождение — вход выборки ретестов.
-    Drifting = 1,
+    Drifting = 2,
     /// Самоотчёт противоречит наблюдениям — самостоятельный сигнал следствию.
-    Contradictory = 2,
+    Contradictory = 3,
 }
 
 impl ReportConsistencyClass {
@@ -296,6 +421,21 @@ impl ReportConsistencyClass {
         ReportConsistencyClass::Drifting,
         ReportConsistencyClass::Contradictory,
     ];
+
+    /// Wire-код класса (0 зарезервирован).
+    pub const fn code(self) -> u8 {
+        self as u8
+    }
+
+    /// Обратная конверсия из wire-кода; `None` для неизвестных кодов и нуля.
+    pub const fn from_code(code: u8) -> Option<ReportConsistencyClass> {
+        match code {
+            1 => Some(ReportConsistencyClass::Consistent),
+            2 => Some(ReportConsistencyClass::Drifting),
+            3 => Some(ReportConsistencyClass::Contradictory),
+            _ => None,
+        }
+    }
 
     /// Стабильное имя для векторов, журналов и панелей.
     pub const fn name(self) -> &'static str {
@@ -408,6 +548,45 @@ pub struct NaturalnessPanelReport {
     pub counters: PanelCounters,
 }
 
+/// Одна строка самоотчёта эпохи: темпоральная метрика + её квантованный bucket.
+///
+/// Wire-пара кодов `(SignalMetric, SignalBucket)`. Девайс-метрики (NS-D2/NS-D3)
+/// в самоотчёт не входят — их Verification наблюдает сам (класс A); попытка
+/// прислать их в отчёте отклоняется валидацией (`fpp-core::profile`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ReportedBucket {
+    pub metric: SignalMetric,
+    pub bucket: SignalBucket,
+}
+
+/// Отчёт эпохи устройства (FPP-SIGNALS §3, §7) — единственное, что клиент
+/// отправляет серверу по NS-слою, раз в эпоху:
+///
+/// - **эпохальный девайс-тег** (NS-D2, `fpp-crypto::device_tag_epoch`) — сервер
+///   считает конкурентность личностей на теге и текучку тегов личности;
+/// - **самоотчётные темпоральные bucket'ы** (NS-T1/NS-T2) — квантованные классы;
+///   сырые значения и гистограммы не покидают устройство (FPP-SIGNALS §3).
+///
+/// Инварианты:
+/// - канонический порядок строк — по возрастанию кода метрики, без дублей;
+///   отсутствующая метрика просто не включается (нейтральное отсутствие §6);
+///   валидация формы — `fpp-core::profile::temporal_from_report`;
+/// - **класса аттестации NS-D1 в отчёте нет намеренно**: самодекларация
+///   «hardware_backed» ничего не стоила бы (клиент подконтролен атакующему,
+///   FPP-SIGNALS §1) — класс аттестации Verification присваивает сам по
+///   верифицированной регистрации девайс-ключа и хранит рядом с отчётом;
+/// - актуальность `epoch_index` (не прошлая/не будущая эпоха) проверяет
+///   Verification по своим часам — ядро проверяет только форму.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NaturalnessEpochReport {
+    /// Индекс эпохи по канонической деривации `fpp-core::epoch`.
+    pub epoch_index: u64,
+    /// Эпохальный тег устройства (32 байта, `fpp-crypto::device_tag_epoch`).
+    pub device_tag: [u8; 32],
+    /// Самоотчётные темпоральные bucket'ы в каноническом порядке.
+    pub temporal_buckets: Vec<ReportedBucket>,
+}
+
 /// Нормативные enum-коды аномалий liveness-церемоний (FPP §3.1, §9.1: на сервер уходят
 /// «только подписанные вердикты и enum-флаги аномалий»; свободный текст запрещён —
 /// канал утечки PII). Коды wire-stable, зафиксированы вектором
@@ -491,6 +670,64 @@ mod tests {
         assert!(PersonhoodLevel::V0 < PersonhoodLevel::V1);
         assert!(PersonhoodLevel::V1 < PersonhoodLevel::V2);
         assert!(PersonhoodLevel::V2 < PersonhoodLevel::V3);
+    }
+
+    #[test]
+    fn level_codes_are_level_numbers() {
+        for (i, level) in PersonhoodLevel::ALL.iter().enumerate() {
+            assert_eq!(level.code() as usize, i);
+            assert_eq!(PersonhoodLevel::from_code(level.code()), Some(*level));
+        }
+        assert_eq!(PersonhoodLevel::from_code(4), None);
+    }
+
+    #[test]
+    fn class_registry_codes_roundtrip_unique_and_reserve_zero() {
+        fn check<T: Copy + PartialEq + core::fmt::Debug>(
+            all: &[T],
+            code: impl Fn(T) -> u8,
+            from_code: impl Fn(u8) -> Option<T>,
+        ) {
+            for (i, item) in all.iter().enumerate() {
+                assert_ne!(code(*item), 0, "код 0 зарезервирован");
+                assert_eq!(from_code(code(*item)), Some(*item));
+                for other in &all[i + 1..] {
+                    assert_ne!(code(*item), code(*other));
+                }
+            }
+            assert_eq!(from_code(0), None);
+            assert_eq!(from_code(255), None);
+        }
+        check(
+            NaturalnessClass::ALL,
+            NaturalnessClass::code,
+            NaturalnessClass::from_code,
+        );
+        check(
+            SignalEvidenceClass::ALL,
+            SignalEvidenceClass::code,
+            SignalEvidenceClass::from_code,
+        );
+        check(
+            DeviceAttestationClass::ALL,
+            DeviceAttestationClass::code,
+            DeviceAttestationClass::from_code,
+        );
+        check(
+            DeviceLinkClass::ALL,
+            DeviceLinkClass::code,
+            DeviceLinkClass::from_code,
+        );
+        check(
+            DeviceChurnClass::ALL,
+            DeviceChurnClass::code,
+            DeviceChurnClass::from_code,
+        );
+        check(
+            ReportConsistencyClass::ALL,
+            ReportConsistencyClass::code,
+            ReportConsistencyClass::from_code,
+        );
     }
 
     #[test]
@@ -580,6 +817,12 @@ mod tests {
             &SignalBucket::ALL
                 .iter()
                 .map(|b| b.name())
+                .collect::<Vec<_>>(),
+        );
+        assert_unique(
+            &PersonhoodLevel::ALL
+                .iter()
+                .map(|l| l.name())
                 .collect::<Vec<_>>(),
         );
     }

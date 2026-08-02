@@ -77,6 +77,11 @@
       "import": "./src/economy/index.ts",
       "default": "./src/economy/index.ts"
     },
+    "./personhood": {
+      "types": "./src/personhood/index.ts",
+      "import": "./src/personhood/index.ts",
+      "default": "./src/personhood/index.ts"
+    },
     "./display": {
       "types": "./src/display/index.ts",
       "import": "./src/display/index.ts",
