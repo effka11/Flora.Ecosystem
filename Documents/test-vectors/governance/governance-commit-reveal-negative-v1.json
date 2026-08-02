@@ -1,0 +1,20 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_commit_reveal_negative_v1",
+  "description": "Негативы commit-reveal: подмена payload или nonce обязана давать отказ verify_reveal.",
+  "commitment": "8JLsL9ouVC9byDcVfzljYEqGpvl9ZY7vkXCQeHa0tQo",
+  "cases": [
+    {
+      "name": "wrong_payload",
+      "nonce": "cHFyc3R1dnd4eXp7fH1-f4CBgoOEhYaHiImKi4yNjo8",
+      "payload": "dm90ZTphZ2FpbnN0",
+      "expectedError": "commit_reveal_mismatch"
+    },
+    {
+      "name": "wrong_nonce",
+      "nonce": "cXJzdHV2d3h5ent8fX5_gIGCg4SFhoeIiYqLjI2Oj5A",
+      "payload": "dm90ZTpmb3I",
+      "expectedError": "commit_reveal_mismatch"
+    }
+  ]
+}

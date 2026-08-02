@@ -10,9 +10,11 @@
 //! - `vote_weight ∈ [1, w_max]`, монотонен по репутации;
 //! - `effective_weight ∈ [w, w + c_d]`, монотонен по входящему потоку
 //!   (верхняя граница достигается при underflow экспоненты в фикс-пойнте);
-//! - затухания ∈ (0, 1] и убывают по `dt`.
+//! - затухания ∈ (0, 1] и убывают по `dt`;
+//! - `pair_discount ∈ [max(δ_min, 1/2), 1]` — конституционный пол §4.7;
+//! - `sample_size(n₀, N) ≤ min(n₀, N)`, монотонен по `N`.
 
-use crate::fx::{Fx, int_sqrt_q32};
+use crate::fx::{Fx, div_rhe_i128, int_sqrt_q32, isqrt_u128};
 
 /// Фактор экспоненциального затухания `2^(−dt/half_life)`.
 ///
@@ -87,6 +89,125 @@ pub fn theta_eff(theta_base: Fx, eta: Fx, q_hat: Fx) -> Fx {
 /// Квадратичная стоимость голоса силой `v`: `v²` кредитов (FGP §4.4).
 pub fn qv_cost(votes: u32) -> u64 {
     (votes as u64) * (votes as u64)
+}
+
+/// Максимальная сила голоса при бюджете `B`: `⌊√B⌋` (FGP §4.4: `√B = 10` при `B = 100`).
+pub fn max_vote_strength(budget: u64) -> u32 {
+    // isqrt(u64) < 2³² — в u32 помещается всегда.
+    isqrt_u128(budget as u128) as u32
+}
+
+/// Размер сэмплированной выборки с конечной поправкой популяции (FGP §5.6):
+/// `n(N) = ⌈n₀ / (1 + (n₀−1)/N)⌉ = ⌈n₀·N / (N + n₀ − 1)⌉`.
+///
+/// `n0` — базовый размер (R2: 385, R3: 1068); `population` — размер реестра.
+/// Свойства: `n ≤ min(n₀, N)`, монотонен по `N`, `n → n₀` при `N → ∞`.
+pub fn sample_size(n0: u32, population: u64) -> u32 {
+    if n0 == 0 || population == 0 {
+        return 0;
+    }
+    let num = (n0 as u128) * (population as u128);
+    let den = population as u128 + n0 as u128 - 1;
+    (num.div_ceil(den)) as u32
+}
+
+/// Оценка панели `q_i = clamp(trimmed_mean_20%(оценки), 0, q_max)` (FGP §4.2).
+///
+/// Оценки сортируются, по `⌊len/5⌋` отбрасывается с каждого края (при панели
+/// K = 5 — ровно по одной), среднее остатка — round-half-even. Пустой список → 0.
+/// Порядок входа не влияет — функция сортирует сама (детерминизм §10).
+pub fn panel_score(scores: &[Fx], q_max: Fx) -> Fx {
+    if scores.is_empty() {
+        return Fx::ZERO;
+    }
+    let mut sorted = scores.to_vec();
+    sorted.sort_unstable();
+    let trim = sorted.len() / 5;
+    let kept = &sorted[trim..sorted.len() - trim];
+    // Сумма битов точна в i128; деление — round-half-even.
+    let sum: i128 = kept.iter().map(|s| s.to_bits() as i128).sum();
+    let mean = Fx::from_bits(div_rhe_i128(sum, kept.len() as i128) as i64);
+    mean.max(Fx::ZERO).min(q_max)
+}
+
+/// Вклад одной делегации в поток `I`: `w · α^(h−1)`; `h` вне `[1, max_depth]` → 0
+/// (FGP §4.5: `α = 0.8`, глубина ≤ 2 — непрозрачные пирамиды исключены конструктивно).
+pub fn delegation_contribution(weight: Fx, depth: u32, alpha: Fx, max_depth: u32) -> Fx {
+    if depth == 0 || depth > max_depth {
+        return Fx::ZERO;
+    }
+    let mut contribution = weight.max(Fx::ZERO);
+    for _ in 1..depth {
+        contribution = contribution * alpha;
+    }
+    contribution
+}
+
+/// Входящий делегированный поток `I(v, d) = Σ w(u, d) · α^(h−1)` (FGP §4.5).
+///
+/// `edges` — пары (вес делегирующего, глубина звена); суммирование в порядке
+/// слайса (нормативно: по возрастанию id делегирующего — §10).
+pub fn delegation_inflow(edges: &[(Fx, u32)], alpha: Fx, max_depth: u32) -> Fx {
+    let mut inflow = Fx::ZERO;
+    for &(weight, depth) in edges {
+        inflow = inflow + delegation_contribution(weight, depth, alpha, max_depth);
+    }
+    inflow
+}
+
+/// Историческая ко-направленность пары: `joint/total ∈ [0, 1]` (FGP §4.7).
+///
+/// `joint` — окна, где пара голосовала со-направленно, `total` — общие окна;
+/// `total = 0` → 0 (нет истории — нет дисконта).
+pub fn co_direction(joint: u64, total: u64) -> Fx {
+    if total == 0 {
+        return Fx::ZERO;
+    }
+    Fx::from_ratio(joint.min(total) as i64, total as i64)
+}
+
+/// Конституционный пол дисконта: `δ ≥ 0.5` (FGP §4.7, Приложение A; сам пол — R2,
+/// но не ниже 1/2 — органические сообщества единомышленников почти не задеваются).
+pub fn discount_floor(configured: Fx) -> Fx {
+    configured.max(Fx::from_ratio(1, 2)).min(Fx::ONE)
+}
+
+/// Корреляционный дисконт пары (FGP §4.7, по мотивам pairwise-bounded QF):
+/// `δ(c) = clamp(1 − slope · max(0, c − threshold), max(δ_min, 1/2), 1)`.
+///
+/// Ниже `threshold` дисконта нет (`δ = 1`); выше — линейное сжатие до пола.
+/// Методология оценки `c` и параметры — R2; сама кривая зафиксирована вектором.
+pub fn pair_discount(correlation: Fx, threshold: Fx, slope: Fx, floor: Fx) -> Fx {
+    let c = correlation.max(Fx::ZERO).min(Fx::ONE);
+    let excess = (c - threshold).max(Fx::ZERO);
+    (Fx::ONE - slope * excess)
+        .max(discount_floor(floor))
+        .min(Fx::ONE)
+}
+
+/// Суммарный вес окна с попарным дисконтом (FGP §4.7):
+/// `Σ w_i − Σ_{(i,j)} (1 − δ_ij) · min(w_i, w_j)`, не ниже нуля.
+///
+/// `pairs` — тройки `(i, j, δ)` в порядке возрастания `(i, j)` (нормативный
+/// порядок §10); `δ` дополнительно зажимается полом. Пары с `i == j` или
+/// индексами вне `weights` пропускаются (валидация — на границе модуля).
+/// Механически скоординированный блок сжимается суперлинейно с размером
+/// (пар — k(k−1)/2); индекс коллузии = срезанная доля — tripwire FGP §7.2.
+pub fn discounted_total(weights: &[Fx], pairs: &[(u32, u32, Fx)]) -> Fx {
+    let mut total = Fx::ZERO;
+    for &w in weights {
+        total = total + w.max(Fx::ZERO);
+    }
+    for &(i, j, delta) in pairs {
+        let (i, j) = (i as usize, j as usize);
+        if i == j || i >= weights.len() || j >= weights.len() {
+            continue;
+        }
+        let delta = discount_floor(delta.max(Fx::ZERO));
+        let overlap = weights[i].max(Fx::ZERO).min(weights[j].max(Fx::ZERO));
+        total = total - (Fx::ONE - delta) * overlap;
+    }
+    total.max(Fx::ZERO)
 }
 
 #[cfg(test)]
@@ -212,5 +333,143 @@ mod tests {
         assert_eq!(qv_cost(1), 1);
         assert_eq!(qv_cost(5), 25);
         assert_eq!(qv_cost(10), 100);
+    }
+
+    #[test]
+    fn max_vote_strength_is_floor_sqrt() {
+        assert_eq!(max_vote_strength(0), 0);
+        assert_eq!(max_vote_strength(1), 1);
+        assert_eq!(max_vote_strength(99), 9);
+        assert_eq!(max_vote_strength(100), 10);
+        assert_eq!(max_vote_strength(101), 10);
+        assert_eq!(max_vote_strength(u64::MAX), u32::MAX);
+    }
+
+    #[test]
+    fn sample_size_finite_population_correction() {
+        // N → ∞: полный n₀; N мал — почти вся популяция; границы FGP §5.6.
+        assert_eq!(sample_size(385, 1_000_000_000), 385);
+        assert_eq!(sample_size(385, 385), 193);
+        assert_eq!(sample_size(385, 100), 80);
+        assert_eq!(sample_size(385, 1), 1);
+        assert_eq!(sample_size(385, 0), 0);
+        assert_eq!(sample_size(0, 1000), 0);
+        // ⌈1068·10000 / (10000 + 1068 − 1)⌉ = ⌈965.03⌉ = 966.
+        assert_eq!(sample_size(1068, 10_000), 966);
+        // Монотонность по N и границы n ≤ min(n₀, N).
+        let mut prev = 0;
+        for n in [1u64, 10, 100, 385, 1000, 10_000, 1_000_000] {
+            let s = sample_size(385, n);
+            assert!(s >= prev && s as u64 <= n && s <= 385);
+            prev = s;
+        }
+    }
+
+    #[test]
+    fn panel_score_trims_outliers_and_clamps() {
+        let q_max = fx(10);
+        // K=5: усечение по одному с каждого края (FGP §4.2, панель K=5).
+        let scores = [fx(3), fx(100), fx(4), fx(5), fx(0)];
+        // Остаются 3, 4, 5 → среднее 4: выброс 100 не тянет оценку.
+        assert_eq!(panel_score(&scores, q_max), fx(4));
+        // Порядок входа не важен.
+        let shuffled = [fx(100), fx(0), fx(5), fx(3), fx(4)];
+        assert_eq!(panel_score(&shuffled, q_max), fx(4));
+        // Кламп сверху и снизу.
+        assert_eq!(panel_score(&[fx(50); 5], q_max), q_max);
+        assert_eq!(panel_score(&[fx(-3); 5], q_max), Fx::ZERO);
+        // Малые панели: без усечения; пустая — ноль.
+        assert_eq!(panel_score(&[fx(2), fx(4)], q_max), fx(3));
+        assert_eq!(panel_score(&[], q_max), Fx::ZERO);
+    }
+
+    #[test]
+    fn delegation_inflow_decays_by_depth() {
+        let alpha = Fx::from_ratio(4, 5); // 0.8 (1 ulp вверх в Q32.32)
+        assert_eq!(delegation_contribution(fx(5), 1, alpha, 2), fx(5));
+        assert!(approx_eq(
+            delegation_contribution(fx(5), 2, alpha, 2),
+            fx(4),
+            2
+        ));
+        // Глубже max_depth и нулевая глубина — не учитываются.
+        assert_eq!(delegation_contribution(fx(5), 3, alpha, 2), Fx::ZERO);
+        assert_eq!(delegation_contribution(fx(5), 0, alpha, 2), Fx::ZERO);
+        // Отрицательный вес зажимается.
+        assert_eq!(delegation_contribution(fx(-5), 1, alpha, 2), Fx::ZERO);
+
+        let inflow = delegation_inflow(&[(fx(5), 1), (fx(5), 2), (fx(5), 3)], alpha, 2);
+        assert!(approx_eq(inflow, fx(9), 2));
+        assert_eq!(delegation_inflow(&[], alpha, 2), Fx::ZERO);
+    }
+
+    #[test]
+    fn co_direction_ratio() {
+        assert_eq!(co_direction(0, 0), Fx::ZERO);
+        assert_eq!(co_direction(0, 10), Fx::ZERO);
+        assert_eq!(co_direction(5, 10), Fx::from_ratio(1, 2));
+        assert_eq!(co_direction(10, 10), Fx::ONE);
+        // joint > total зажимается (мусор на входе не делает δ > 1).
+        assert_eq!(co_direction(20, 10), Fx::ONE);
+    }
+
+    #[test]
+    fn pair_discount_curve_and_constitutional_floor() {
+        let threshold = Fx::from_ratio(7, 10); // c₀ = 0.7
+        let slope = fx(2);
+        let floor = Fx::from_ratio(1, 2);
+        // Ниже порога дисконта нет.
+        assert_eq!(
+            pair_discount(Fx::from_ratio(1, 2), threshold, slope, floor),
+            Fx::ONE
+        );
+        assert_eq!(pair_discount(threshold, threshold, slope, floor), Fx::ONE);
+        // Выше — линейное сжатие: c = 0.8 → 1 − 2·0.1 = 0.8.
+        assert!(approx_eq(
+            pair_discount(Fx::from_ratio(4, 5), threshold, slope, floor),
+            Fx::from_ratio(4, 5),
+            TOL
+        ));
+        // Полная корреляция упирается в пол.
+        assert_eq!(pair_discount(Fx::ONE, threshold, slope, floor), floor);
+        // Пол ниже 1/2 не опускается даже при таком параметре (конституция §4.7).
+        assert_eq!(
+            pair_discount(Fx::ONE, threshold, slope, Fx::from_ratio(1, 10)),
+            Fx::from_ratio(1, 2)
+        );
+        // Кламп мусорного входа.
+        assert_eq!(pair_discount(fx(5), threshold, slope, floor), floor);
+        assert_eq!(pair_discount(fx(-5), threshold, slope, floor), Fx::ONE);
+    }
+
+    #[test]
+    fn discounted_total_squeezes_blocs_not_organics() {
+        let weights = [fx(4), fx(6), fx(2)];
+        // Без пар — простая сумма.
+        assert_eq!(discounted_total(&weights, &[]), fx(12));
+        // Органическая пара (δ близка к 1) почти не задета.
+        let organic = [(0u32, 1u32, Fx::from_ratio(19, 20))];
+        assert_eq!(
+            discounted_total(&weights, &organic),
+            fx(12) - Fx::from_ratio(1, 20) * fx(4)
+        );
+        // Механический блок на полу δ = 1/2: срез min по каждой паре.
+        let bloc = [
+            (0u32, 1u32, Fx::from_ratio(1, 2)),
+            (0u32, 2u32, Fx::from_ratio(1, 2)),
+            (1u32, 2u32, Fx::from_ratio(1, 2)),
+        ];
+        // 12 − (2 + 1 + 1) = 8.
+        assert_eq!(discounted_total(&weights, &bloc), fx(8));
+        // δ ниже пола зажимается: тот же результат при δ = 0.
+        let bloc_zero: Vec<(u32, u32, Fx)> =
+            bloc.iter().map(|&(i, j, _)| (i, j, Fx::ZERO)).collect();
+        assert_eq!(discounted_total(&weights, &bloc_zero), fx(8));
+        // Невалидные пары пропускаются; итог не уходит ниже нуля.
+        let junk = [(0u32, 0u32, Fx::ZERO), (0u32, 9u32, Fx::ZERO)];
+        assert_eq!(discounted_total(&weights, &junk), fx(12));
+        let tiny = [fx(1), fx(1)];
+        let crush = [(0u32, 1u32, Fx::ZERO); 4];
+        assert_eq!(discounted_total(&tiny, &crush), Fx::ZERO);
     }
 }

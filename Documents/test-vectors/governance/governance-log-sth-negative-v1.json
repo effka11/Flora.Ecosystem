@@ -1,0 +1,79 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_log_sth_negative_v1",
+  "description": "Негативы STH-косайнинга: каждый кейс обязан дать validCosignCount ниже минимума 3 и отказ приёма журнала (правило README: негативы — отдельным файлом). Реестр витнессов — из governance-log-sth-v1.json.",
+  "head": {
+    "treeSize": 13,
+    "root": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+    "timestampMs": 1780000000000
+  },
+  "cases": [
+    {
+      "name": "tampered_signature",
+      "cosigns": [
+        {
+          "witness": "F0VTtFbd38aQjsqxwQH-arIeK6oGF3lbfUOmNIKZP9U",
+          "signature": "yODiZ2O4E6gqHHJkhCO1vJVfSjOR4g0gh9wqb5SD-HJ3AXNB6w8eN9EW-xAnIJhGLaJ_zpOxrRoGy_EfuL7aDw"
+        }
+      ],
+      "expectedValidCount": 0,
+      "expectedError": "sth_accept_failed"
+    },
+    {
+      "name": "cosign_of_forked_head",
+      "cosigns": [
+        {
+          "witness": "iC0Oo7KGTnpYfz5pjOpEWZmDEuZV4F-l6LURnYuqyM0",
+          "signature": "_G42XmoyT2Uo63xd2DZ2SsL50AwVGOx0Y0fLkyFKkfHU4JDCLLsLZxYgJhmwG2cGhIJnCj4ltpRruJxkNcJiCQ"
+        }
+      ],
+      "expectedValidCount": 0,
+      "expectedError": "sth_accept_failed"
+    },
+    {
+      "name": "witness_outside_registry",
+      "cosigns": [
+        {
+          "witness": "LNUgTeR2QrNBN3hfe3Y0pWwgHNgdMXwwPBM02zcTGjY",
+          "signature": "PCZftVQ3Qm-9i0R-IRQRgBFGL497z53Us3mavwtDU2oz2UkNiMkQlNZgc22GR6hS3UlbOhMsESJYxJyXLAuDCQ"
+        }
+      ],
+      "expectedValidCount": 0,
+      "expectedError": "sth_accept_failed"
+    },
+    {
+      "name": "duplicate_witness_counts_once",
+      "cosigns": [
+        {
+          "witness": "F0VTtFbd38aQjsqxwQH-arIeK6oGF3lbfUOmNIKZP9U",
+          "signature": "yeDiZ2O4E6gqHHJkhCO1vJVfSjOR4g0gh9wqb5SD-HJ3AXNB6w8eN9EW-xAnIJhGLaJ_zpOxrRoGy_EfuL7aDw"
+        },
+        {
+          "witness": "F0VTtFbd38aQjsqxwQH-arIeK6oGF3lbfUOmNIKZP9U",
+          "signature": "yeDiZ2O4E6gqHHJkhCO1vJVfSjOR4g0gh9wqb5SD-HJ3AXNB6w8eN9EW-xAnIJhGLaJ_zpOxrRoGy_EfuL7aDw"
+        },
+        {
+          "witness": "iC0Oo7KGTnpYfz5pjOpEWZmDEuZV4F-l6LURnYuqyM0",
+          "signature": "CPLpVqLq2ddmTs7AVHTbH__H0ncr44Pt0r6m0VxY6xdeT9ukz8n8aSJ5zEoCyDXz_I4KG8rPqVEEoqD8LVulAg"
+        }
+      ],
+      "expectedValidCount": 2,
+      "expectedError": "sth_accept_failed"
+    },
+    {
+      "name": "two_valid_below_minimum",
+      "cosigns": [
+        {
+          "witness": "NVi6HvD4DxA2HpFtF2m0Mzkq2Oi_fePLwYtIl68Z2fY",
+          "signature": "8GFVxbFNk-TYb8giruNxDboxViS70o5erPwm6fxWCS_bWyuqdG9wTfBfkELdv0jy3rcQdPP-bWE9EQlTx2L7Aw"
+        },
+        {
+          "witness": "UdntzETMfSU3W5ymyng1VH6rKW-dGFtwT3ZLKE6vDiU",
+          "signature": "hdsZnBRxgTMng59e6bqOKnyrJBFG5W326fedk4A78Z2iI11sSzAznvJlrSUY97CSp_6uUy5WHwV9q__1yaPBCA"
+        }
+      ],
+      "expectedValidCount": 2,
+      "expectedError": "sth_accept_failed"
+    }
+  ]
+}

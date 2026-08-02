@@ -1,0 +1,165 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_sortition_v1",
+  "description": "Публичные жеребьёвки P0 (FGP-CRYPTO §6): сид окна из (STH, внешний якорь) с длино-префиксом, суб-сиды контекстов, ранги flora/sortition/v1/rank, выборка k наименьших (rank, index) — пересчитываема любым. STH — из governance-log-sth-v1.json.",
+  "sthSigningBytes": "DQAAAAAAAACu6cb-60VSJFI_YAxJ6zntNWKxUTF1IiMKWc7Uk2GxxgCIRHCeAQAA",
+  "externalAnchor": "4OHi4-Tl5ufo6err7O3u7_Dx8vP09fb3-Pn6-_z9_v8",
+  "windowSeed": "PQaJIO-XM9Jq4dw6NsU4m77DgwaZRpRz1hbPqwW_pz8",
+  "members": [
+    {
+      "index": 0,
+      "member": "Rh3tSUF0qvqAsVJuFHse647V98W1vvchttSM7-z4yrg",
+      "rank": "ck2wnyO1I50bEoNTumXBGHWVhxNX_Br4i5j4J5EOM20"
+    },
+    {
+      "index": 1,
+      "member": "aPyVN85nhj1jlP-np9qwQYSwXaG5xlE_kw0vKVrGY7k",
+      "rank": "4w2NN-awuqI58NLArlVb_wW9MAIOe_oY2vJIjJnJE10"
+    },
+    {
+      "index": 2,
+      "member": "imgRdRaWBz-MbUJ8--z7XStejIkohyYX068TKoCxr-c",
+      "rank": "SBzw4ALSyMA2ZTmNYg3ZMtOVDO3skRg0O1UEVrDtw60"
+    },
+    {
+      "index": 3,
+      "member": "sFZptnWZNRVaCghSRcCXRsWV9SDExORlseSCgCAzCZU",
+      "rank": "neElRjjCzNffVlHpjPwV8v2Eig82ZO-jg3_VYWkM-UU"
+    },
+    {
+      "index": 4,
+      "member": "2_vs4JVmS4meAAiyfkYBX2kcXsW0o5BhVZduH1v54Tg",
+      "rank": "oA1dUjj5Zaddv45FnYROsdZXjgtH3QxWDFmQcmgrrIc"
+    },
+    {
+      "index": 5,
+      "member": "bPZtzdOLGbaqAV8zcilKViQlj9D_Fv7-Vap4XpT7TN0",
+      "rank": "LfhImE87goz9ik57G11gA090aoCIwFxov9nrqZzNpw0"
+    },
+    {
+      "index": 6,
+      "member": "nbLjFpg3_MPmmwtKSdRAJVuPdJNGnJ8r-G_psQJNI6Q",
+      "rank": "94v7FNSe-hDc-KSK6mWPtpURCbVZQOGYlTyrf06wuak"
+    },
+    {
+      "index": 7,
+      "member": "lUQp2-JzvuL6-zq86lq-fS4kpTeBFf9k-nFSzCXJ_J8",
+      "rank": "SeFZWO1_yIgYC8QSD5BuM0IlK1munhaNQ5D9uZfrOg0"
+    },
+    {
+      "index": 8,
+      "member": "LS-5HzwmHmfngymj0-oncMZoAlRer8ef1NJhaKR02WE",
+      "rank": "WbzBEiyB6XgS6gJFhDiGenl6YmmF4t1IG9e7WkFkg30"
+    },
+    {
+      "index": 9,
+      "member": "Ng2RniEjbY1wncQdpGSxE7zfwfYQbui4zRz8nPTSEg8",
+      "rank": "uQoDsJJQTeE0Cocg2pVjLsyqVPLOMORbEpXsgCKxDy4"
+    },
+    {
+      "index": 10,
+      "member": "Zfu8fVFuArmdkuxyYBUJ1dT6Wt9TEqOZkgGcLiio_q8",
+      "rank": "PtqYPlO9_st-dD61JOGQGkezG8IHk6FFOcW6iY1y420"
+    },
+    {
+      "index": 11,
+      "member": "FQfLLqneDgKFU6WOuenSeZP1GMAXUWyEXMqnAuVEhZM",
+      "rank": "_4wSzaj56vzn6RWtL066Q6PYaWt79xPXbWD_4sAc3Dw"
+    },
+    {
+      "index": 12,
+      "member": "TnNfAz7jSCY1LJvHqovkYyMXSmA-ux3nsZykgysnJtI",
+      "rank": "5EfrXaH9tkYO_xqncZeL92UWmRT_1hfMDgfrBOmy12g"
+    },
+    {
+      "index": 13,
+      "member": "0vUpexeirkE7dKntgMRhvweflg_KlnQ1C4Rpc_-31t4",
+      "rank": "O7J-T8zlP1FeBepTN5gefgY_qT9AzN6iwJeQe9krAD0"
+    },
+    {
+      "index": 14,
+      "member": "S6hbYxqEDWaowqizwP6pwGZrHmqhPQ7zR-p70i0L_PU",
+      "rank": "qBW-JBQchgeSVwyqM_AB4MsRHtlQqnOSHAtV4NJ6csM"
+    },
+    {
+      "index": 15,
+      "member": "yvnBirJhQXdPPGvMK7ZPFtx0Q_Fhn6p4TWKHBFxMAXk",
+      "rank": "kNW8yx-yKb7JvEaMXWWeppss-vUcCC7riY4hGQyD8IY"
+    },
+    {
+      "index": 16,
+      "member": "1YRb8RnO9ipNZe9CwKfuW5QXGO9Blyl1RypZvofOGNs",
+      "rank": "GFYOAhV0eKf1X_xtormskfLTnE2Nejq2VJcuhjBUMGY"
+    },
+    {
+      "index": 17,
+      "member": "cDDCsrHAxOx8HZv1jFORi8xCVg9rYBaHxWNTgcUnKEU",
+      "rank": "s24RS87C8tDJtj7qqmyNJp9D5WWphvtFEJkoxfdlOjI"
+    },
+    {
+      "index": 18,
+      "member": "gfpFc-zXaR9szv4DTCg4M5eY79-bFiyL8aNTDf-T-DU",
+      "rank": "MrJtP6_0W1FSgjD4tRyMqE1bFe_iarSKN8O6jvYvyY8"
+    },
+    {
+      "index": 19,
+      "member": "ZqwIWeIn0uDIw4Zb7pR0BuTokhG7Zgix0ZL8uiidw4k",
+      "rank": "RY3K7Lnp15TRn7gCgoKto1MdKWX_eorvX5snq3auCXA"
+    }
+  ],
+  "draw": {
+    "k5": [
+      16,
+      5,
+      18,
+      13,
+      10
+    ],
+    "fullPermutation": [
+      16,
+      5,
+      18,
+      13,
+      10,
+      19,
+      2,
+      7,
+      8,
+      0,
+      15,
+      3,
+      4,
+      14,
+      17,
+      9,
+      1,
+      12,
+      6,
+      11
+    ]
+  },
+  "contexts": [
+    {
+      "label": "panel",
+      "seed": "J8sNXxXH_U_p2hc98GSUCNfEDr87pPIE3j-rXoXHKZI",
+      "draw5": [
+        6,
+        19,
+        12,
+        13,
+        7
+      ]
+    },
+    {
+      "label": "attestors",
+      "seed": "nJD9VTfly86-5PwdhfACQFqiLL6sA8KZ-5oT1H1Qa5w",
+      "draw5": [
+        5,
+        6,
+        7,
+        4,
+        13
+      ]
+    }
+  ]
+}

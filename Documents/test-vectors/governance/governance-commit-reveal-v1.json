@@ -1,0 +1,27 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_commit_reveal_v1",
+  "description": "Commit-reveal скрытых агрегатов (FGP §3.4, профиль P0): commitment = derive(flora/commit-reveal/v1/commit, nonce ‖ payload); раскрытие проверяется пересчётом.",
+  "cases": [
+    {
+      "nonce": "cHFyc3R1dnd4eXp7fH1-f4CBgoOEhYaHiImKi4yNjo8",
+      "payload": "dm90ZTpmb3I",
+      "commitment": "8JLsL9ouVC9byDcVfzljYEqGpvl9ZY7vkXCQeHa0tQo"
+    },
+    {
+      "nonce": "cXJzdHV2d3h5ent8fX5_gIGCg4SFhoeIiYqLjI2Oj5A",
+      "payload": "dm90ZTphZ2FpbnN0",
+      "commitment": "nCBBiinUXvRv1xEnyub3kBbtPYzFEocN3ylEf9ge47s"
+    },
+    {
+      "nonce": "cHFyc3R1dnd4eXp7fH1-f4CBgoOEhYaHiImKi4yNjo8",
+      "payload": "",
+      "commitment": "ObRAnSY2tKgI0ygMUz0ACXp8YgmaLcrFPVqSNVE3dpo"
+    },
+    {
+      "nonce": "cnN0dXZ3eHl6e3x9fn-AgYKDhIWGh4iJiouMjY6PkJE",
+      "payload": "EBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4_QEFCQ0RFRkdISUpLTE1OTw",
+      "commitment": "CDJ0Tk5K5JTGnhpKFES91FhV_dtkUkijUdbbWh0_jyE"
+    }
+  ]
+}

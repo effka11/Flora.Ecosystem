@@ -1,0 +1,840 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_bridging_v1",
+  "description": "Bridging-скоринг L3 (FGP §6.2, FGP-CRYPTO §10): детерминированная матричная факторизация r̂ = μ + b_u + b_n + f_u·f_n на Q32.32 — фиксированные итерации, порядок обхода (note, rater), инициализация факторов из сида (flora/bridging/v1/init). Параметры нормативны; показ ⇔ b_n ≥ τ ∧ оценщиков ≥ 30 ∧ кластеров ≥ 2.",
+  "params": {
+    "iterations": 256,
+    "learningRateBits": 268435456,
+    "lambdaInterceptBits": 644245094,
+    "lambdaFactorBits": 128849019,
+    "tauBits": 1717986918,
+    "minRaters": 30,
+    "minClusters": 2
+  },
+  "windowSeed": "ye3cyiLk_Xc8zLpG2Z-nTuXGB4If-42k0rUZ-Cs1eTI",
+  "nRaters": 40,
+  "nNotes": 4,
+  "ratings": [
+    {
+      "rater": 0,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 0,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 0,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 0,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 1,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 1,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 1,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 1,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 2,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 2,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 2,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 2,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 3,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 3,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 3,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 3,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 4,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 4,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 4,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 4,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 5,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 5,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 5,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 5,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 6,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 6,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 6,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 6,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 7,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 7,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 7,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 7,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 8,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 8,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 8,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 8,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 9,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 9,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 9,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 9,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 10,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 10,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 10,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 11,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 11,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 11,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 12,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 12,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 12,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 13,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 13,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 13,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 14,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 14,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 14,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 15,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 15,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 15,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 16,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 16,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 16,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 17,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 17,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 17,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 18,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 18,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 18,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 19,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 19,
+      "note": 1,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 19,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 20,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 20,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 20,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 20,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 21,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 21,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 21,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 21,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 22,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 22,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 22,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 22,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 23,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 23,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 23,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 23,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 24,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 24,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 24,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 24,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 25,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 25,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 25,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 25,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 26,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 26,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 26,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 26,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 27,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 27,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 27,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 27,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 28,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 28,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 28,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 28,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 29,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 29,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 29,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 29,
+      "note": 3,
+      "valueBits": 2147483648
+    },
+    {
+      "rater": 30,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 30,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 30,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 31,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 31,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 31,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 32,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 32,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 32,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 33,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 33,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 33,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 34,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 34,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 34,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 35,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 35,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 35,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 36,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 36,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 36,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 37,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 37,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 37,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 38,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 38,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 38,
+      "note": 2,
+      "valueBits": 0
+    },
+    {
+      "rater": 39,
+      "note": 0,
+      "valueBits": 4294967296
+    },
+    {
+      "rater": 39,
+      "note": 1,
+      "valueBits": 0
+    },
+    {
+      "rater": 39,
+      "note": 2,
+      "valueBits": 0
+    }
+  ],
+  "model": {
+    "muBits": 681650225,
+    "raterBiasBits": [
+      1144255243,
+      1144318047,
+      1145101570,
+      1143206633,
+      1143390015,
+      1144591516,
+      1143106924,
+      1143448194,
+      1143617216,
+      1143166604,
+      1282354302,
+      1281271646,
+      1283985736,
+      1278460173,
+      1286492303,
+      1280767818,
+      1279260947,
+      1277875823,
+      1281366817,
+      1282009651,
+      220377521,
+      219563318,
+      219281970,
+      219954790,
+      219808476,
+      219607838,
+      218535755,
+      219213689,
+      219971816,
+      219222952,
+      84224144,
+      77976660,
+      86824804,
+      80732036,
+      85332910,
+      79059565,
+      80615903,
+      82583049,
+      82803311,
+      78026140
+    ],
+    "raterFactorBits": [
+      668553254,
+      660554926,
+      560775079,
+      802091786,
+      778738134,
+      625729448,
+      814789451,
+      771329239,
+      749804530,
+      807189401,
+      764367365,
+      795384105,
+      717628728,
+      875929372,
+      645818638,
+      809818172,
+      852988174,
+      892670311,
+      792657535,
+      774241157,
+      -806876157,
+      -703188860,
+      -667359726,
+      -753042000,
+      -734409146,
+      -708858559,
+      -572330735,
+      -658664069,
+      -755210356,
+      -659843946,
+      -833089358,
+      -654106574,
+      -907595158,
+      -733044700,
+      -864854174,
+      -685130458,
+      -729717638,
+      -786073973,
+      -792384218,
+      -655524082
+    ]
+  },
+  "notes": [
+    {
+      "note": 0,
+      "biasBits": 2550019224,
+      "factorBits": -380683406,
+      "raterCount": 40,
+      "clusterCount": 2,
+      "show": true
+    },
+    {
+      "note": 1,
+      "biasBits": 679275801,
+      "factorBits": 1261163182,
+      "raterCount": 40,
+      "clusterCount": 2,
+      "show": false
+    },
+    {
+      "note": 2,
+      "biasBits": -1184843477,
+      "factorBits": -337502731,
+      "raterCount": 40,
+      "clusterCount": 2,
+      "show": false
+    },
+    {
+      "note": 3,
+      "biasBits": 682648489,
+      "factorBits": -388645332,
+      "raterCount": 20,
+      "clusterCount": 2,
+      "show": false
+    }
+  ]
+}

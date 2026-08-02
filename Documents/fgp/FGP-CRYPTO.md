@@ -56,7 +56,7 @@ FGP обещает свойства («голос непродаваем», «ж
 
 ### 1.1. Реестр доменных меток (domain separation)
 
-Каждая подпись/хеш/PRF — над сообщением с префиксом `flora/<область>/v1/<операция>`. Стартовый реестр: `civic/sign`, `civic/commit`, `nullifier/ctx`, `mask/register`, `mask/dv-sim`, `token/credit`, `ballot/encrypt`, `ballot/overwrite`, `tally/partial-dec`, `vrf/sortition`, `vrf/ceremony-pair`, `vrf/attestor-assign`, `vrf/self-select`, `log/leaf`, `log/sth`, `log/anchor`, `oprf/doc-dedup`, `treasury/ledger`, `device/tag` (эпохальный тег устройства, FPP-SIGNALS NS-D2; деривация — `fpp-crypto`). Полный реестр живёт в `flora-governance-crypto` и в test vectors; коллизия меток = инцидент V-11. Байтовое представление меток фиксируется вектором (правило FSCP «байт-в-байт»).
+Каждая подпись/хеш/PRF — над сообщением с префиксом `flora/<область>/v1/<операция>`. Стартовый реестр: `civic/sign`, `civic/commit`, `civic/id`, `nullifier/nk`, `nullifier/ctx`, `mask/register`, `mask/dv-sim`, `token/credit`, `ballot/encrypt`, `ballot/overwrite`, `tally/partial-dec`, `vrf/sortition`, `vrf/ceremony-pair`, `vrf/attestor-assign`, `vrf/self-select`, `log/leaf`, `log/node`, `log/sth`, `log/anchor`, `oprf/doc-dedup`, `treasury/ledger`, `device/tag` (эпохальный тег устройства, FPP-SIGNALS NS-D2; деривация — `fpp-crypto`), `sortition/seed`, `sortition/rank` (публичные жеребьёвки §6), `commit-reveal/commit` (скрытые агрегаты FGP §3.4), `bridging/init` (инициализация факторизации §10). Полный реестр живёт в `flora-governance-crypto` (`src/ds.rs`) и в test vectors; коллизия меток = инцидент V-11. Байтовое представление меток фиксируется вектором (правило FSCP «байт-в-байт»).
 
 ---
 
@@ -186,6 +186,7 @@ P1 сознательно принимает выпускающего как д�
 - Ядро: `flora-governance-crypto`; только константное время для секретных путей (dalek-инварианты), `unsafe_code = "forbid"`, без C-зависимостей; version-pin всех криптокрейтов; `cargo deny`/`audit`/`vet`.
 - **Гейты аудита:** P1 — внешнее ревью токенов/VRF/журнала + фаззинг форматов; P2 — полный внешний криптоаудит (DKG, тэлли, циркуиты, OPRF) до включения binding R2/R3 (FGP §8.3); каждое изменение циркуита/таблиц — повторный аудит затронутого + новые вектора.
 - **Test vectors:** `Documents/test-vectors/governance/` по правилам FSCP-набора (base64url без padding, `protocolVersion`, негативы отдельными файлами, consumer-тесты обязательны): деривации (`nk`, `civic_id`, nullifier'ы), DS-метки байт-в-байт, VRF-выходы и самовыборка, токены (issue/spend/double-spend-negative), транскрипт тэлли (DKG → бюллетени → перезапись → агрегат → частичные расшифровки → пруфы), inclusion/consistency журнала, фикс-пойнт таблицы и краевые случаи (saturate, округление), OPRF-теги. Личностные вектора (церемонии, поручительства) — `Documents/test-vectors/personhood/` (FPP §10.4).
+- **Состав P0 (зафиксирован):** 11 файлов — ds-tags, fx-q32, log-merkle, log-sth (STH + витнесс-косайны, правило «≥ 3»), sortition, commit-reveal, fgp-weights, bridging и негативы (merkle / sth / commit-reveal). Consumer-тест — `tests/governance_vectors.rs` крейта; wasm32-сборка ядра — CI-гейт `fgp-wasm`.
 
 ---
 

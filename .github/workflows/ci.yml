@@ -162,6 +162,23 @@ jobs:
       - name: Check FEP WASM shim on wasm32
         run: cargo check -p flora-economy-wasm --target wasm32-unknown-unknown --locked
 
+  # FGP wasm32 (Products/FGP): крипто-ядро governance обязано собираться под
+  # wasm32 — клиентская верификация журнала/жеребьёвок (FGP-CRYPTO.md §2, §10).
+  fgp-wasm:
+    name: fgp-wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - name: Check FGP crypto core on wasm32
+        run: cargo check -p flora-governance-crypto --target wasm32-unknown-unknown --locked
+
   # FRC cores wasm32 (Products/FRC, same workspace).
   codecs-frc:
     name: codecs-frc
