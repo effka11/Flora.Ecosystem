@@ -1,0 +1,14 @@
+[package]
+name = "fsa-core"
+description = "FSA kernel: analysis, inverted index, BM25F ranking, query expansion, personalization blending. Functional product FSA."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+fsa-contracts = { workspace = true }
