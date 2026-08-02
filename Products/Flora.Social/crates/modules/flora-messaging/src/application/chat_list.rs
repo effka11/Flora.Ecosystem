@@ -148,12 +148,12 @@ impl ChatListService {
             .icon
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-        if let Some(ref name) = icon {
-            if !is_allowed_folder_icon(name) {
-                return Err(ChatListError::BadRequest(
-                    "Недопустимая иконка папки.".into(),
-                ));
-            }
+        if let Some(ref name) = icon
+            && !is_allowed_folder_icon(name)
+        {
+            return Err(ChatListError::BadRequest(
+                "Недопустимая иконка папки.".into(),
+            ));
         }
         let avatar_uri = req
             .avatar_uri

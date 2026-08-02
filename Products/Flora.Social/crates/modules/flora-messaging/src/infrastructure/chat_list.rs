@@ -71,6 +71,7 @@ impl ChatListRepo {
     }
 
     /// Create folder under per-owner xact lock; enforces max custom folders in the same TX.
+    #[allow(clippy::too_many_arguments)] // mirrors folder INSERT + members + limit
     pub async fn create_folder(
         &self,
         owner: Uuid,
