@@ -28,10 +28,11 @@ export type ChatPeerInfo = {
 type Props = {
   peer: ChatPeerInfo;
   onMorePress: () => void;
+  moreMenuOpen?: boolean;
   moreButtonRef?: React.RefObject<View | null>;
 };
 
-export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
+export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, moreButtonRef }: Props) {
   const insets = useSafeAreaInsets();
   const me = useSessionStore((s) => s.me);
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
@@ -165,12 +166,17 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
       <View ref={moreButtonRef} collapsable={false}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Меню чата"
+          accessibilityLabel={moreMenuOpen ? "Закрыть меню чата" : "Меню чата"}
+          accessibilityState={{ expanded: moreMenuOpen }}
           style={({ pressed }) => [styles.moreBtn, pressed && styles.moreBtnPressed]}
           onPress={onMorePress}
           hitSlop={8}
         >
-          <Ionicons name="ellipsis-vertical" size={18} color={floraColors.gray} />
+          <Ionicons
+            name={moreMenuOpen ? "close" : "ellipsis-vertical"}
+            size={18}
+            color={floraColors.gray}
+          />
         </Pressable>
       </View>
 

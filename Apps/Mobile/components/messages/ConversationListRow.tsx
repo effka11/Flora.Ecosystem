@@ -1,11 +1,14 @@
+import { apiDeleteConversation } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import { sharedPresenceStore } from "@flora/client-core/presence";
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { router, useNavigation } from "expo-router";
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { ConversationMoreMenu } from "@/components/messages/ConversationMoreMenu";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
@@ -33,15 +36,28 @@ export function formatConversationPreview(
 
 type Props = {
   item: MsgConversationDto & { preview: string };
+  isMuted?: boolean;
+  isArchived?: boolean;
+  onMutedChange?: (muted: boolean) => void;
+  onArchivedChange?: (archived: boolean) => void;
 };
 
-export function ConversationListRow({ item }: Props) {
+export function ConversationListRow({
+  item,
+  isMuted = false,
+  isArchived = false,
+  onMutedChange,
+  onArchivedChange,
+}: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const displayName = item.otherDisplayName || item.otherUsername;
   const username = item.otherUsername.replace(/^@+/, "") || "…";
   const preview = formatConversationPreview(item, item.preview);
+  const moreBtnRef = useRef<View>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [presenceTick, setPresenceTick] = useState(0);
   useEffect(() => sharedPresenceStore.subscribe(() => setPresenceTick((n) => n + 1)), []);
   void presenceTick;
@@ -111,16 +127,55 @@ export function ConversationListRow({ item }: Props) {
             <Text style={styles.badgeText}>{item.unreadCount > 99 ? "99+" : item.unreadCount}</Text>
           </View>
         ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Действия — ${displayName}`}
-          style={({ pressed }) => [styles.moreBtn, pressed && styles.moreBtnPressed]}
-          hitSlop={8}
-          onPress={() => undefined}
-        >
-          <Ionicons name="ellipsis-vertical" size={18} color={floraColors.gray} />
-        </Pressable>
+        <View ref={moreBtnRef} collapsable={false}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={menuOpen ? `Закрыть меню чата` : `Действия — ${displayName}`}
+            accessibilityState={{ expanded: menuOpen }}
+            style={({ pressed }) => [styles.moreBtn, pressed && styles.moreBtnPressed]}
+            hitSlop={8}
+            onPress={() => setMenuOpen((open) => !open)}
+          >
+            <Ionicons
+              name={menuOpen ? "close" : "ellipsis-vertical"}
+              size={18}
+              color={floraColors.gray}
+            />
+          </Pressable>
+        </View>
       </View>
+
+      <ConversationMoreMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        anchorRef={moreBtnRef}
+        isMuted={isMuted}
+        isArchived={isArchived}
+        onMuteForever={() => onMutedChange?.(true)}
+        onMuteTemporary={() => onMutedChange?.(true)}
+        onUnmute={() => onMutedChange?.(false)}
+        onArchive={() => onArchivedChange?.(true)}
+        onUnarchive={() => onArchivedChange?.(false)}
+        onDelete={() => {
+          Alert.alert("Удалить чат?", `Чат с ${displayName} будет удалён.`, [
+            { text: "Отмена", style: "cancel" },
+            {
+              text: "Удалить",
+              style: "destructive",
+              onPress: () => {
+                void (async () => {
+                  try {
+                    await apiDeleteConversation(item.conversationUuid, item.otherUserUuid);
+                    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+                  } catch {
+                    Alert.alert("Не удалось удалить чат", "Попробуйте ещё раз.");
+                  }
+                })();
+              },
+            },
+          ]);
+        }}
+      />
     </View>
   );
 }

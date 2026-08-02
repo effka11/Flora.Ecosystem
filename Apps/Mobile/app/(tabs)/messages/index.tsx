@@ -1,6 +1,15 @@
 import { apiGetConversations } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
+import {
+  countArchivedPeers,
+  filterConversationsByFolder,
+  listVisibleChatFolders,
+  normalizeChatListFolder,
+  pruneArchivedPeers,
+  setPeerArchivedFlag,
+  type ChatListFolderId,
+} from "@flora/client-core/messaging";
 import { sharedPresenceStore } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "@tanstack/react-query";
@@ -16,6 +25,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
+import { MessagesChatFolders } from "@/components/messages/MessagesChatFolders";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropdownPicker";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
@@ -33,8 +43,15 @@ const SORT_OPTIONS: TabDropdownOption[] = [
   { id: "unread", label: "Непрочитанные" },
 ];
 
-function emptyListMessage(hasSearch: boolean, totalCount: number): string {
+function emptyListMessage(
+  hasSearch: boolean,
+  totalCount: number,
+  folder: ChatListFolderId,
+): string {
   if (hasSearch) return "Ничего не найдено. Измените запрос в поиске.";
+  if (folder === "archived") {
+    return "Пока нет переписок в архиве. Перенесите чат в архив из меню ⋮.";
+  }
   if (totalCount === 0) return "Пока нет переписок. Найдите человека во вкладке «Люди».";
   return "Ничего не найдено. Измените запрос в поиске.";
 }
@@ -93,7 +110,11 @@ export default function MessagesScreen() {
   const [sortOpen, setSortOpen] = useState(false);
   const { closeMenu } = useHamburgerMenu();
   const [sortBy, setSortBy] = useState<SortBy>("recent");
+  const [listFolder, setListFolder] = useState<ChatListFolderId>("all");
   const [unlockOpen, setUnlockOpen] = useState(false);
+  /** Локальный оверлей mute/archive — как на web (список чатов). */
+  const [mutedByPeer, setMutedByPeer] = useState<Record<string, true>>({});
+  const [archivedByPeer, setArchivedByPeer] = useState<Record<string, true>>({});
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
@@ -136,6 +157,26 @@ export default function MessagesScreen() {
   const items = query.data?.items ?? EMPTY_CONVERSATIONS;
   const previews = useMessagesListPreviewDecrypt(items, me?.userUuid);
 
+  const knownPeerUuids = useMemo(
+    () => new Set(items.map((item) => item.otherUserUuid).filter(Boolean)),
+    [items],
+  );
+
+  useEffect(() => {
+    setArchivedByPeer((prev) => pruneArchivedPeers(prev, knownPeerUuids));
+  }, [knownPeerUuids]);
+
+  const archivedCount = useMemo(
+    () => countArchivedPeers(archivedByPeer, knownPeerUuids),
+    [archivedByPeer, knownPeerUuids],
+  );
+  const visibleFolders = useMemo(() => listVisibleChatFolders(archivedCount), [archivedCount]);
+  const activeFolder = normalizeChatListFolder(listFolder, archivedCount);
+
+  useEffect(() => {
+    if (listFolder !== activeFolder) setListFolder(activeFolder);
+  }, [activeFolder, listFolder]);
+
   useFocusEffect(
     useCallback(() => {
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
@@ -156,7 +197,7 @@ export default function MessagesScreen() {
 
   const filteredItems = useMemo(() => {
     const queryText = search.trim().toLowerCase();
-    let list = [...items];
+    let list = filterConversationsByFolder(items, activeFolder, archivedByPeer);
 
     if (sortBy === "unread") {
       list = list.filter((item) => item.unreadCount > 0);
@@ -172,7 +213,7 @@ export default function MessagesScreen() {
         preview.includes(queryText)
       );
     });
-  }, [items, previews, search, sortBy]);
+  }, [activeFolder, archivedByPeer, items, previews, search, sortBy]);
 
   const listData = useMemo<ConversationRow[]>(
     () =>
@@ -257,6 +298,14 @@ export default function MessagesScreen() {
               onOpenChange={handleSortOpenChange}
               onSelect={(id) => setSortBy(id as SortBy)}
             />
+            <MessagesChatFolders
+              folders={visibleFolders}
+              activeFolder={activeFolder}
+              onSelect={setListFolder}
+              onCreateFolder={() => {
+                /* заглушка: создание пользовательской папки */
+              }}
+            />
           </View>
         ) : null}
       </View>
@@ -273,7 +322,25 @@ export default function MessagesScreen() {
             tintColor={floraColors.greenLight}
           />
         }
-        renderItem={({ item }) => <ConversationListRow item={item} />}
+        renderItem={({ item }) => (
+          <ConversationListRow
+            item={item}
+            isMuted={item.otherUserUuid in mutedByPeer}
+            isArchived={item.otherUserUuid in archivedByPeer}
+            onMutedChange={(muted) => {
+              setMutedByPeer((prev) => {
+                if (muted) return { ...prev, [item.otherUserUuid]: true };
+                if (!(item.otherUserUuid in prev)) return prev;
+                const next = { ...prev };
+                delete next[item.otherUserUuid];
+                return next;
+              });
+            }}
+            onArchivedChange={(archived) => {
+              setArchivedByPeer((prev) => setPeerArchivedFlag(prev, item.otherUserUuid, archived));
+            }}
+          />
+        )}
         ListEmptyComponent={
           query.isLoading ? (
             <View style={styles.loading}>
@@ -284,7 +351,7 @@ export default function MessagesScreen() {
             <Text style={styles.emptyHint}>Не удалось загрузить чаты.</Text>
           ) : (
             <Text style={styles.emptyHint}>
-              {emptyListMessage(hasSearch, items.length)}
+              {emptyListMessage(hasSearch, items.length, activeFolder)}
             </Text>
           )
         }
@@ -332,9 +399,9 @@ const styles = StyleSheet.create({
   navigationRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
     width: "100%",
-    gap: 0,
+    gap: floraSpacing.grid,
     overflow: "visible",
   },
   list: {

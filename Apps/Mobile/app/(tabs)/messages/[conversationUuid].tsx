@@ -2,8 +2,7 @@ import {
   apiGetConversations,
   apiGetMessages,
   apiMarkConversationRead,
-  apiArchiveConversation,
-  apiMuteConversation,
+  apiDeleteConversation,
   apiDeleteMessage,
   apiGetPushPreviewTargets,
 } from "@flora/client-core/api";
@@ -27,7 +26,7 @@ import {
 } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -404,6 +403,7 @@ export default function ThreadScreen() {
   const paramOtherUserLastSeenAt = routeParam(params.otherUserLastSeenAt);
   const [sending, setSending] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [conversationMuted, setConversationMuted] = useState(false);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
 
@@ -1368,7 +1368,8 @@ export default function ThreadScreen() {
         <ChatThreadHeader
           peer={peer}
           moreButtonRef={moreBtnRef}
-          onMorePress={() => setMoreMenuOpen(true)}
+          moreMenuOpen={moreMenuOpen}
+          onMorePress={() => setMoreMenuOpen((open) => !open)}
         />
       </View>
 
@@ -1589,11 +1590,31 @@ export default function ThreadScreen() {
         open={moreMenuOpen}
         onClose={() => setMoreMenuOpen(false)}
         anchorRef={moreBtnRef}
-        onMute={() => {
-          if (conversationUuid) void apiMuteConversation(conversationUuid);
-        }}
-        onArchive={() => {
-          if (conversationUuid) void apiArchiveConversation(conversationUuid);
+        isMuted={conversationMuted}
+        onMuteForever={() => setConversationMuted(true)}
+        onMuteTemporary={() => setConversationMuted(true)}
+        onUnmute={() => setConversationMuted(false)}
+        onDelete={() => {
+          if (!conversationUuid) return;
+          const peerName = peer.otherDisplayName || peer.otherUsername || "пользователем";
+          Alert.alert("Удалить чат?", `Чат с ${peerName} будет удалён.`, [
+            { text: "Отмена", style: "cancel" },
+            {
+              text: "Удалить",
+              style: "destructive",
+              onPress: () => {
+                void (async () => {
+                  try {
+                    await apiDeleteConversation(conversationUuid, peer.otherUserUuid);
+                    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+                    router.back();
+                  } catch {
+                    Alert.alert("Не удалось удалить чат", "Попробуйте ещё раз.");
+                  }
+                })();
+              },
+            },
+          ]);
         }}
       />
 
