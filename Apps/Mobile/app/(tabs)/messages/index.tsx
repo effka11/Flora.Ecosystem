@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -155,6 +156,7 @@ export default function MessagesScreen() {
   const [unlockOpen, setUnlockOpen] = useState(false);
   const overlayState = useChatListOverlayStore((s) => s.state);
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
+  const refreshOverlay = useChatListOverlayStore((s) => s.refreshFromServer);
   const createFolder = useChatListOverlayStore((s) => s.createFolder);
   const addPeerToEntity = useChatListOverlayStore((s) => s.addPeerToEntity);
   const removeEntity = useChatListOverlayStore((s) => s.removeEntity);
@@ -168,6 +170,14 @@ export default function MessagesScreen() {
   useEffect(() => {
     hydrateOverlay(me?.userUuid ?? null);
   }, [hydrateOverlay, me?.userUuid]);
+
+  useEffect(() => {
+    if (!me?.userUuid) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshOverlay();
+    });
+    return () => sub.remove();
+  }, [me?.userUuid, refreshOverlay]);
 
   useEffect(
     () =>
@@ -295,6 +305,8 @@ export default function MessagesScreen() {
   useFocusEffect(
     useCallback(() => {
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+      // Папки/архив с сервера (Web мог создать, пока Mobile был в фоне).
+      void refreshOverlay();
       const conversationQuery = conversationQueryRef.current;
       if (
         Date.now() - conversationQuery.dataUpdatedAt >
@@ -305,7 +317,7 @@ export default function MessagesScreen() {
       if (fscpStatus === "registration_pending") {
         void retryPendingOperation();
       }
-    }, [fscpStatus, navigation, retryPendingOperation, tabBarBottomInset]),
+    }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
   );
 
   const banner = fscpBannerMessage(fscpStatus);

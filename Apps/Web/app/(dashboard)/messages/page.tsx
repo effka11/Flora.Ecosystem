@@ -203,11 +203,33 @@ import {
   type ConversationMuteEntry,
 } from "./conversationMute";
 import { MessagesConversationMuteIndicator } from "./MessagesConversationMuteIndicator";
-import { MessagesListScopeNav, type MessagesChatListScope } from "./MessagesListScopeNav";
+import { CreateChatFolderDialog } from "./CreateChatFolderDialog";
+import { MessagesChatFolders } from "./MessagesChatFolders";
 import { useMessagesListPreviewDecrypt } from "./useMessagesListPreviewDecrypt";
 import { usePreloadConversationThreads } from "./usePreloadConversationThreads";
 import { usePreloadThreadMessageMedia } from "./usePreloadThreadMessageMedia";
 import { floraDurationMs } from "@/lib/floraMotion";
+import {
+  addPeerToChatListFolder,
+  createChatListFolder,
+  pruneChatListUnknownPeers,
+  refreshChatListOverlay,
+  removeChatListFolder,
+  setChatListArchived,
+  useChatListOverlayHydrate,
+  useChatListOverlayState,
+} from "@/lib/chatListOverlayStore";
+import {
+  canArchiveChatListPeer,
+  canCreateChatListFolder,
+  countArchivedPeers,
+  entitiesToFolderDefs,
+  filterConversationsByFolder,
+  listVisibleChatFolders,
+  membershipByEntityId,
+  normalizeChatListFolder,
+  type ChatListFolderId,
+} from "@flora/client-core/messaging";
 
 /** Converts MsgConversationDto (new /api/messaging) to the legacy ConversationListItemDto shape. */
 function toConversationDto(c: MsgConversationDto): ConversationListItemDto {
@@ -523,14 +545,18 @@ function MessagesChatInner() {
   const [deleteConversationModalClosing, setDeleteConversationModalClosing] = useState(false);
   const [deleteConversationBusy, setDeleteConversationBusy] = useState(false);
   const [deleteConversationError, setDeleteConversationError] = useState<string | null>(null);
-  const [chatListScope, setChatListScope] = useState<MessagesChatListScope>("all");
-  /** Архив по UUID собеседника (пока только UI, без API). */
-  const [archivedByPeer, setArchivedByPeer] = useState<Record<string, true>>({});
+  const [listFolder, setListFolder] = useState<ChatListFolderId>("all");
   const [filterFrom, setFilterFrom] = useState<"all" | "people" | "communities" | "dev">("all");
   const [dropdownSortOpen, setDropdownSortOpen] = useState(false);
   const [dropdownFilterOpen, setDropdownFilterOpen] = useState(false);
-  /** Мут по UUID собеседника (пока только UI, без API). */
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [createGroupSoonOpen, setCreateGroupSoonOpen] = useState(false);
+  /** Локальный until-мут (UI); серверный mute — overlay.mutedByPeer. */
   const [mutedPeers, setMutedPeers] = useState<Record<string, ConversationMuteEntry>>({});
+  const overlayState = useChatListOverlayState();
+  const hydrateOverlay = useChatListOverlayHydrate();
+  const archivedByPeer = overlayState.archivedByPeer;
   const compose = useMessageComposeDraft();
   const [decryptedById, setDecryptedById] = useState<Record<string, FscpMessagePlaintext>>({});
   const [decryptFailById, setDecryptFailById] = useState<Record<string, string>>({});
@@ -782,18 +808,86 @@ function MessagesChatInner() {
 
   const isPeerArchived = useCallback((peerUuid: string) => peerUuid in archivedByPeer, [archivedByPeer]);
 
-  const archivePeer = useCallback((peerUuid: string) => {
-    setArchivedByPeer((prev) => ({ ...prev, [peerUuid]: true }));
-  }, []);
+  useEffect(() => {
+    hydrateOverlay(me?.userUuid ?? null);
+  }, [hydrateOverlay, me?.userUuid]);
 
-  const unarchivePeer = useCallback((peerUuid: string) => {
-    setArchivedByPeer((prev) => {
-      if (!(peerUuid in prev)) return prev;
-      const next = { ...prev };
-      delete next[peerUuid];
-      return next;
-    });
-  }, []);
+  // Повторный GET после готовности сессии и при возврате на вкладку —
+  // иначе stale localStorage выглядит как «локальные» папки без сервера.
+  useEffect(() => {
+    if (!isClient || !hasToken || !me?.userUuid) return;
+    refreshChatListOverlay();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshChatListOverlay();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [hasToken, isClient, me?.userUuid]);
+
+  const knownPeerUuids = useMemo(
+    () => new Set(conversations.map((c) => c.otherUserUuid).filter(Boolean)),
+    [conversations],
+  );
+
+  useEffect(() => {
+    pruneChatListUnknownPeers(knownPeerUuids);
+  }, [knownPeerUuids]);
+
+  const customEntities = overlayState.entities;
+  const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);
+  const membership = useMemo(() => membershipByEntityId(customEntities), [customEntities]);
+  const knownCustomIds = useMemo(() => new Set(customEntities.map((e) => e.id)), [customEntities]);
+  const archivedCount = useMemo(
+    () => countArchivedPeers(archivedByPeer, knownPeerUuids),
+    [archivedByPeer, knownPeerUuids],
+  );
+  const visibleFolders = useMemo(
+    () => listVisibleChatFolders(archivedCount, customFolderDefs),
+    [archivedCount, customFolderDefs],
+  );
+  const canCreateFolder = useMemo(
+    () => canCreateChatListFolder(archivedCount, customFolderDefs.length),
+    [archivedCount, customFolderDefs.length],
+  );
+  const canArchivePeer = useMemo(
+    () => canArchiveChatListPeer(archivedCount, customFolderDefs.length),
+    [archivedCount, customFolderDefs.length],
+  );
+  const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
+  const folderPickOptions = useMemo(
+    () => customEntities.map((e) => ({ id: e.id, label: e.label })),
+    [customEntities],
+  );
+
+  useEffect(() => {
+    if (listFolder !== activeFolder) setListFolder(activeFolder);
+  }, [activeFolder, listFolder]);
+
+  const archivePeer = useCallback(
+    (peerUuid: string, conversationUuid?: string) => {
+      const viewer = me?.userUuid?.trim();
+      if (!viewer) return;
+      if (!canArchivePeer) {
+        window.alert(
+          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+        );
+        return;
+      }
+      const uuid = conversationUuid?.trim() || dmConversationUuid(viewer, peerUuid);
+      void setChatListArchived(peerUuid, uuid, true);
+    },
+    [canArchivePeer, me?.userUuid],
+  );
+
+  const unarchivePeer = useCallback(
+    (peerUuid: string, conversationUuid?: string) => {
+      const viewer = me?.userUuid?.trim();
+      if (!viewer) return;
+      const uuid = conversationUuid?.trim() || dmConversationUuid(viewer, peerUuid);
+      void setChatListArchived(peerUuid, uuid, false);
+    },
+    [me?.userUuid],
+  );
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -1267,13 +1361,12 @@ function MessagesChatInner() {
 
   const filteredConversations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    let list = [...conversationsWithPresence];
-
-    if (chatListScope === "all") {
-      list = list.filter((item) => !isPeerArchived(item.otherUserUuid));
-    } else {
-      list = list.filter((item) => isPeerArchived(item.otherUserUuid));
-    }
+    let list = filterConversationsByFolder(
+      conversationsWithPresence,
+      activeFolder,
+      archivedByPeer,
+      membership,
+    );
 
     if (sortBy === "unread") {
       list = list.filter((item) => item.unreadCount > 0);
@@ -1296,12 +1389,13 @@ function MessagesChatInner() {
       );
     });
   }, [
-    chatListScope,
+    activeFolder,
+    archivedByPeer,
     conversationsWithPresence,
     filterFrom,
-    isPeerArchived,
     listPreviewDecryptFailByPeer,
     listPreviewDecryptedByPeer,
+    membership,
     searchQuery,
     sortBy,
   ]);
@@ -2689,7 +2783,6 @@ function MessagesChatInner() {
             }`}
           >
             <header className={styles.messagesListHeader}>
-              <MessagesListScopeNav scope={chatListScope} onScopeChange={setChatListScope} />
               <div className={styles.messagesSearchHeader}>
                 <TabSearchInput
                   placeholder="Поиск чатов и сообщений"
@@ -2715,6 +2808,7 @@ function MessagesChatInner() {
                     onClick={() => {
                       setDropdownSortOpen((value) => !value);
                       setDropdownFilterOpen(false);
+                      setCreateMenuOpen(false);
                     }}
                   >
                     <span className={styles.messagesDropdownBtnLeft} aria-hidden={true} />
@@ -2758,6 +2852,7 @@ function MessagesChatInner() {
                     onClick={() => {
                       setDropdownFilterOpen((value) => !value);
                       setDropdownSortOpen(false);
+                      setCreateMenuOpen(false);
                     }}
                   >
                     <span className={styles.messagesDropdownBtnLeft} aria-hidden={true} />
@@ -2822,6 +2917,78 @@ function MessagesChatInner() {
                   ) : null}
                 </div>
               </div>
+
+              {/* Горизонталь 7: папки ← Архив ← «+»@88 */}
+              <MessagesChatFolders
+                folders={visibleFolders}
+                activeFolder={activeFolder}
+                onSelect={setListFolder}
+                onDeleteFolder={(folderId) => {
+                  void removeChatListFolder(folderId);
+                  if (listFolder === folderId) setListFolder("all");
+                }}
+              />
+              <div className={styles.messagesCreateWrap}>
+                <button
+                  type="button"
+                  className={styles.messagesCreateBtn}
+                  aria-label="Создать папку или группу"
+                  aria-expanded={createMenuOpen}
+                  onClick={() => {
+                    setDropdownSortOpen(false);
+                    setDropdownFilterOpen(false);
+                    setCreateMenuOpen((open) => !open);
+                  }}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                  </svg>
+                </button>
+                {createMenuOpen ? (
+                  <div className={styles.messagesCreateMenu} role="menu">
+                    <button
+                      type="button"
+                      className={styles.messagesCreateMenuItem}
+                      role="menuitem"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        if (!canCreateFolder) {
+                          window.alert(
+                            "Можно показать не больше четырёх иконок, включая Архив. Удалите папку или уберите чаты из архива.",
+                          );
+                          return;
+                        }
+                        setCreateFolderOpen(true);
+                      }}
+                    >
+                      <span className={styles.messagesCreateMenuItemIcon}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                          <path d="M3 7a2 2 0 012-2h5l2 2h9a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                        </svg>
+                      </span>
+                      Папка
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.messagesCreateMenuItem}
+                      role="menuitem"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        setCreateGroupSoonOpen(true);
+                      }}
+                    >
+                      <span className={styles.messagesCreateMenuItemIcon}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                        </svg>
+                      </span>
+                      Группа
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </header>
 
             {listError ? <p className={styles.messagesError}>{listError}</p> : null}
@@ -2841,15 +3008,17 @@ function MessagesChatInner() {
 
             {!listLoading && filteredConversations.length === 0 ? (
               <p className={emptyHintStyles.hint}>
-                {chatListScope === "archived"
+                {activeFolder === "archived"
                   ? archivedConversationsCount === 0
                     ? "Пока нет переписок в архиве. Перенесите чат в архив из меню ⋮."
                     : "Ничего не найдено. Измените запрос в поиске."
-                  : conversations.length === 0
-                    ? "Пока нет переписок. Найдите человека во вкладке «Люди»."
-                    : activeConversationsCount === 0
-                      ? "Все чаты в архиве. Откройте архив в шапке списка."
-                      : "Ничего не найдено. Измените запрос в поиске."}
+                  : activeFolder !== "all"
+                    ? "В этой папке пока нет чатов."
+                    : conversations.length === 0
+                      ? "Пока нет переписок. Найдите человека во вкладке «Люди»."
+                      : activeConversationsCount === 0
+                        ? "Все чаты в архиве. Откройте Архив справа от фильтров."
+                        : "Ничего не найдено. Измените запрос в поиске."}
               </p>
             ) : null}
 
@@ -2918,6 +3087,10 @@ function MessagesChatInner() {
                       onConversationUnmute={() => clearPeerMuted(chat.otherUserUuid)}
                       onConversationArchive={() => archivePeer(chat.otherUserUuid)}
                       onConversationUnarchive={() => unarchivePeer(chat.otherUserUuid)}
+                      folderOptions={folderPickOptions}
+                      onAddToFolder={(folderId) => {
+                        void addPeerToChatListFolder(folderId, chat.otherUserUuid);
+                      }}
                       onDeleteConversation={() =>
                         openDeleteConversationModal(
                           chat.otherUserUuid,
@@ -3740,6 +3913,50 @@ function MessagesChatInner() {
         peerIdentityPublicKeyBase64Url={peerIdentityPublicKeyB64}
         onClose={closeSafetyNumberModal}
       />
+
+      <CreateChatFolderDialog
+        open={createFolderOpen}
+        conversations={conversations}
+        onClose={() => setCreateFolderOpen(false)}
+        onCreate={(result) => {
+          void (async () => {
+            const created = await createChatListFolder({
+              label: result.name,
+              icon: result.icon,
+              memberPeerUuids: result.memberUserUuids,
+            });
+            if (created) setListFolder(created.id);
+          })();
+        }}
+      />
+
+      {createGroupSoonOpen ? (
+        <div
+          className={styles.messagesFolderDialogBackdrop}
+          role="presentation"
+          onClick={() => setCreateGroupSoonOpen(false)}
+        >
+          <div
+            className={styles.messagesFolderDialog}
+            role="dialog"
+            aria-modal
+            aria-label="Группы скоро"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className={styles.messagesFolderDialogTitle}>Группы скоро</h2>
+            <p className={styles.messagesFolderDialogEmpty}>
+              Создание групп появится в следующих версиях Flora.
+            </p>
+            <button
+              type="button"
+              className={styles.messagesFolderDialogAction}
+              onClick={() => setCreateGroupSoonOpen(false)}
+            >
+              Понятно
+            </button>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

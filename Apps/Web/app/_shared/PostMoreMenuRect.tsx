@@ -132,6 +132,8 @@ export type PostMoreMenuRectProps = {
   conversationIsArchived?: boolean;
   onConversationArchive?: () => void;
   onConversationUnarchive?: () => void;
+  folderOptions?: readonly { id: string; label: string }[];
+  onAddToFolder?: (folderId: string) => void;
   /** Свой пост — показать «Удалить пост». */
   canDeletePost?: boolean;
   onDeletePost?: () => void;
@@ -164,6 +166,8 @@ export function PostMoreMenuRect({
   conversationIsArchived = false,
   onConversationArchive,
   onConversationUnarchive,
+  folderOptions = [],
+  onAddToFolder,
   canDeletePost = false,
   onDeletePost,
   onNotInterested,
@@ -312,6 +316,8 @@ export function PostMoreMenuRect({
             conversationIsArchived={conversationIsArchived}
             onConversationArchive={onConversationArchive}
             onConversationUnarchive={onConversationUnarchive}
+            folderOptions={folderOptions}
+            onAddToFolder={onAddToFolder}
             onDelete={deleteConversation}
           />
         ) : variant === "chat" ? (

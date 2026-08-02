@@ -1,5 +1,6 @@
 /**
  * Оверлей списка чатов: кэш MMKV + sync с Messaging API (без FSCP).
+ * SoT — сервер; MMKV только офлайн-кэш. Reconcile — latest-wins.
  * Доменная логика — `@flora/client-core/messaging`.
  */
 import {
@@ -30,7 +31,8 @@ import {
 import { create } from "zustand";
 import { mmkv } from "@/lib/mmkv";
 
-const KEY_PREFIX = "chatListOverlay:v1:";
+/** v2: сброс кэша эпохи «папки только в MMKV». */
+const KEY_PREFIX = "chatListOverlay:v2:";
 
 function storageKey(userUuid: string): string {
   return `${KEY_PREFIX}${userUuid.trim().toLowerCase()}`;
@@ -56,8 +58,8 @@ type ChatListOverlayStore = {
   ownerUserUuid: string | null;
   state: ChatListOverlayState;
   syncing: boolean;
-  /** Инкремент при локальных мутациях — чтобы stale GET не затирал optimistic. */
-  mutationEpoch: number;
+  /** Монотонный номер GET; применяется только последний. */
+  refreshSeq: number;
   hydrate: (userUuid: string | null) => void;
   refreshFromServer: () => Promise<void>;
   createFolder: (params: {
@@ -81,15 +83,11 @@ type ChatListOverlayStore = {
   pruneUnknownPeers: (knownPeerUuids: ReadonlySet<string>) => void;
 };
 
-function bumpMutation(get: () => ChatListOverlayStore, set: (p: Partial<ChatListOverlayStore>) => void) {
-  set({ mutationEpoch: get().mutationEpoch + 1 });
-}
-
 export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) => ({
   ownerUserUuid: null,
   state: emptyChatListOverlayState(),
   syncing: false,
-  mutationEpoch: 0,
+  refreshSeq: 0,
 
   hydrate(userUuid) {
     const owner = userUuid?.trim() || null;
@@ -100,7 +98,6 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
     set({
       ownerUserUuid: owner,
       state: readState(owner),
-      mutationEpoch: 0,
     });
     if (owner) void get().refreshFromServer();
   },
@@ -108,27 +105,30 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
   async refreshFromServer() {
     const owner = get().ownerUserUuid;
     if (!owner) return;
-    const epochAtStart = get().mutationEpoch;
-    set({ syncing: true });
+    const seq = get().refreshSeq + 1;
+    set({ refreshSeq: seq, syncing: true });
     try {
       const raw = await apiGetChatListOverlay();
       const next = chatListOverlayFromApi(raw);
-      if (!next) return;
-      // Пока ходили в сеть — пользователь уже менял оверлей; не затираем.
-      if (get().ownerUserUuid !== owner || get().mutationEpoch !== epochAtStart) return;
+      if (!next) {
+        if (__DEV__) console.warn("[chatListOverlay] GET ok but parse failed", raw);
+        return;
+      }
+      if (get().ownerUserUuid !== owner || get().refreshSeq !== seq) return;
       writeState(owner, next);
       set({ state: next });
-    } catch {
-      // offline / 5xx — оставляем кэш MMKV
+    } catch (error) {
+      if (__DEV__) console.warn("[chatListOverlay] refresh failed", error);
     } finally {
-      if (get().ownerUserUuid === owner) set({ syncing: false });
+      if (get().ownerUserUuid === owner && get().refreshSeq === seq) {
+        set({ syncing: false });
+      }
     }
   },
 
   async createFolder(params) {
     const owner = get().ownerUserUuid;
     if (!owner) return null;
-    bumpMutation(get, set);
     try {
       const raw = await apiCreateChatFolder({
         kind: "folder",
@@ -147,8 +147,10 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
       };
       writeState(owner, state);
       set({ state });
-      return entity;
-    } catch {
+      await get().refreshFromServer();
+      return get().state.entities.find((e) => e.id === entity.id) ?? entity;
+    } catch (error) {
+      if (__DEV__) console.warn("[chatListOverlay] create failed", error);
       return null;
     }
   },
@@ -158,7 +160,6 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
     if (!owner) return null;
     const name = params.name.trim();
     if (!name || params.memberPeerUuids.length === 0) return null;
-    bumpMutation(get, set);
     try {
       const raw = await apiCreateChatFolder({
         kind: "group",
@@ -177,8 +178,10 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
       };
       writeState(owner, state);
       set({ state });
-      return entity;
-    } catch {
+      await get().refreshFromServer();
+      return get().state.entities.find((e) => e.id === entity.id) ?? entity;
+    } catch (error) {
+      if (__DEV__) console.warn("[chatListOverlay] createGroup failed", error);
       return null;
     }
   },
@@ -189,12 +192,12 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
     const prev = get().state;
     const entities = addPeerToChatListEntity(prev.entities, entityId, peerUuid);
     if (entities === prev.entities) return;
-    bumpMutation(get, set);
     const state = { ...prev, entities };
     writeState(owner, state);
     set({ state });
     try {
       await apiAddChatFolderMember(entityId, peerUuid);
+      await get().refreshFromServer();
     } catch {
       writeState(owner, prev);
       set({ state: prev });
@@ -207,12 +210,12 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
     const prev = get().state;
     const entities = removeChatListEntity(prev.entities, entityId);
     if (entities === prev.entities) return;
-    bumpMutation(get, set);
     const state = { ...prev, entities };
     writeState(owner, state);
     set({ state });
     try {
       await apiDeleteChatFolder(entityId);
+      await get().refreshFromServer();
     } catch {
       writeState(owner, prev);
       set({ state: prev });
@@ -229,13 +232,13 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
     }
     const archivedByPeer = setPeerArchivedFlag(prev.archivedByPeer, peerUuid, archived);
     if (archivedByPeer === prev.archivedByPeer) return;
-    bumpMutation(get, set);
     const state = { ...prev, archivedByPeer };
     writeState(owner, state);
     set({ state });
     try {
       if (archived) await apiArchiveConversation(conversationUuid, peerUuid);
       else await apiUnarchiveConversation(conversationUuid, peerUuid);
+      await get().refreshFromServer();
     } catch {
       writeState(owner, prev);
       set({ state: prev });
@@ -248,13 +251,13 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
     const prev = get().state;
     const mutedByPeer = setPeerMutedFlag(prev.mutedByPeer, peerUuid, muted);
     if (mutedByPeer === prev.mutedByPeer) return;
-    bumpMutation(get, set);
     const state = { ...prev, mutedByPeer };
     writeState(owner, state);
     set({ state });
     try {
       if (muted) await apiMuteConversation(conversationUuid, peerUuid);
       else await apiUnmuteConversation(conversationUuid, peerUuid);
+      await get().refreshFromServer();
     } catch {
       writeState(owner, prev);
       set({ state: prev });

@@ -249,9 +249,15 @@ function isAbortError(error: unknown): boolean {
 }
 
 function kick(run: () => Promise<void>): void {
-  void run().catch(() => {
-    // run() must never reject; belt-and-suspenders for callers/devtools.
-  });
+  try {
+    const pending = run();
+    void pending.then(
+      () => undefined,
+      () => undefined,
+    );
+  } catch {
+    // async run() should not throw sync; keep kick total.
+  }
 }
 
 export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}): SignalsStreamHandle {
@@ -259,6 +265,7 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
   let connected = false;
   let reconnectAttempt = 0;
   let abortController: AbortController | null = null;
+  let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   const scheduleReconnect = () => {
@@ -277,7 +284,10 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
     if (options.enabled && !options.enabled()) return;
 
     abortController?.abort();
+    void activeReader?.cancel().catch(() => undefined);
+    activeReader = null;
     abortController = new AbortController();
+    const signal = abortController.signal;
 
     try {
       const response = await authFetch(
@@ -285,10 +295,12 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
         {
           method: "GET",
           headers: { Accept: "text/event-stream" },
-          signal: abortController.signal,
+          signal,
         },
         options.streamBaseUrl ? { baseUrl: options.streamBaseUrl } : undefined,
       );
+
+      if (closed || signal.aborted) return;
 
       if (!response.ok || !response.body) {
         throw new Error(`signals stream HTTP ${response.status}`);
@@ -303,17 +315,18 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
       }
 
       const reader = response.body.getReader();
+      activeReader = reader;
       const decoder = new TextDecoder();
       let buffer = "";
 
-      while (!closed) {
+      while (!closed && !signal.aborted) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         buffer = parseSseChunk(buffer, options);
       }
     } catch (error) {
-      if (!closed && !isAbortError(error)) {
+      if (!closed && !signal.aborted && !isAbortError(error)) {
         try {
           options.onError?.(error);
         } catch {
@@ -321,6 +334,10 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
         }
       }
     } finally {
+      if (activeReader) {
+        void activeReader.cancel().catch(() => undefined);
+        activeReader = null;
+      }
       const wasConnected = connected;
       connected = false;
       if (wasConnected) {
@@ -341,6 +358,9 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
       closed = true;
       connected = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      void activeReader?.cancel().catch(() => undefined);
+      activeReader = null;
       abortController?.abort();
     },
     get connected() {
