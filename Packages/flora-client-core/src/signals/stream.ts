@@ -248,16 +248,15 @@ function isAbortError(error: unknown): boolean {
   return (error as { name?: string }).name === "AbortError";
 }
 
+/** Never let run() surface as unhandledRejection (devtools / Next overlay). */
 function kick(run: () => Promise<void>): void {
+  let pending: Promise<void>;
   try {
-    const pending = run();
-    void pending.then(
-      () => undefined,
-      () => undefined,
-    );
+    pending = run();
   } catch {
-    // async run() should not throw sync; keep kick total.
+    return;
   }
+  void pending.catch(() => undefined);
 }
 
 export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}): SignalsStreamHandle {
@@ -280,74 +279,87 @@ export function connectSignalsStream(options: ConnectSignalsStreamOptions = {}):
   };
 
   const run = async () => {
-    if (closed) return;
-    if (options.enabled && !options.enabled()) return;
-
-    abortController?.abort();
-    void activeReader?.cancel().catch(() => undefined);
-    activeReader = null;
-    abortController = new AbortController();
-    const signal = abortController.signal;
-
+    // Entire body sealed — kick() .catch is belt-and-suspenders only.
     try {
-      const response = await authFetch(
-        "/api/auth/signals/stream",
-        {
-          method: "GET",
-          headers: { Accept: "text/event-stream" },
-          signal,
-        },
-        options.streamBaseUrl ? { baseUrl: options.streamBaseUrl } : undefined,
-      );
+      if (closed) return;
+      if (options.enabled && !options.enabled()) return;
 
-      if (closed || signal.aborted) return;
+      const prevAbort = abortController;
+      const prevReader = activeReader;
+      activeReader = null;
+      abortController = new AbortController();
+      const signal = abortController.signal;
 
-      if (!response.ok || !response.body) {
-        throw new Error(`signals stream HTTP ${response.status}`);
-      }
+      // Abort previous after new controller exists so close()/Strict Mode races
+      // always have a current signal; swallow prev fetch via its own run() catch.
+      void prevReader?.cancel().catch(() => undefined);
+      prevAbort?.abort();
 
-      connected = true;
-      reconnectAttempt = 0;
       try {
-        options.onOpen?.();
-      } catch (error) {
-        options.onError?.(error);
-      }
+        const response = await authFetch(
+          "/api/auth/signals/stream",
+          {
+            method: "GET",
+            headers: { Accept: "text/event-stream" },
+            signal,
+          },
+          options.streamBaseUrl ? { baseUrl: options.streamBaseUrl } : undefined,
+        );
 
-      const reader = response.body.getReader();
-      activeReader = reader;
-      const decoder = new TextDecoder();
-      let buffer = "";
+        if (closed || signal.aborted) {
+          void response.body?.cancel().catch(() => undefined);
+          return;
+        }
 
-      while (!closed && !signal.aborted) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        buffer = parseSseChunk(buffer, options);
-      }
-    } catch (error) {
-      if (!closed && !signal.aborted && !isAbortError(error)) {
+        if (!response.ok || !response.body) {
+          throw new Error(`signals stream HTTP ${response.status}`);
+        }
+
+        connected = true;
+        reconnectAttempt = 0;
         try {
+          options.onOpen?.();
+        } catch (error) {
           options.onError?.(error);
-        } catch {
-          // Caller onError must not break reconnect.
         }
-      }
-    } finally {
-      if (activeReader) {
-        void activeReader.cancel().catch(() => undefined);
-        activeReader = null;
-      }
-      const wasConnected = connected;
-      connected = false;
-      if (wasConnected) {
-        try {
-          options.onClose?.();
-        } catch {
-          // ignore
+
+        const reader = response.body.getReader();
+        activeReader = reader;
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (!closed && !signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          buffer = parseSseChunk(buffer, options);
         }
+      } catch (error) {
+        if (!closed && !signal.aborted && !isAbortError(error)) {
+          try {
+            options.onError?.(error);
+          } catch {
+            // Caller onError must not break reconnect.
+          }
+        }
+      } finally {
+        if (activeReader) {
+          void activeReader.cancel().catch(() => undefined);
+          activeReader = null;
+        }
+        const wasConnected = connected;
+        connected = false;
+        if (wasConnected) {
+          try {
+            options.onClose?.();
+          } catch {
+            // ignore
+          }
+        }
+        if (!closed) scheduleReconnect();
       }
-      if (!closed) scheduleReconnect();
+    } catch {
+      // Outer seal: authFetch/proxy/network must never reject the kick() promise.
     }
   };
 

@@ -108,16 +108,18 @@ export async function setChatListMuted(
   await session.setMuted(peerUuid, conversationUuid, muted);
 }
 
-function getServerSnapshot() {
-  return {
-    ownerUserUuid: null as string | null,
-    state: emptyChatListOverlayState(),
-    syncing: false,
-  };
+const SERVER_STATE = emptyChatListOverlayState();
+
+function getClientState(): ChatListOverlayState {
+  return session.getSnapshot().state;
+}
+
+function getServerState(): ChatListOverlayState {
+  return SERVER_STATE;
 }
 
 export function useChatListOverlayState(): ChatListOverlayState {
-  return useSyncExternalStore(session.subscribe, session.getSnapshot, getServerSnapshot).state;
+  return useSyncExternalStore(session.subscribe, getClientState, getServerState);
 }
 
 export function useChatListOverlayHydrate(): (userUuid: string | null) => void {

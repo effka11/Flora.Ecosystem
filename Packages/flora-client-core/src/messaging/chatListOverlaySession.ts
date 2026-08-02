@@ -6,10 +6,13 @@
 import {
   addPeerToChatListEntity,
   canArchiveChatListPeer,
+  canCreateChatListFolder,
   chatListEntityFromApi,
   chatListOverlayFromApi,
+  CHAT_LIST_FOLDER_LABEL_MAX,
   countArchivedPeers,
   emptyChatListOverlayState,
+  isChatListFolderIconName,
   removeChatListEntity,
   setPeerArchivedFlag,
   setPeerMutedFlag,
@@ -74,9 +77,12 @@ export function createChatListOverlaySession(options: {
 }): ChatListOverlaySession {
   const { http, persistence, ensureHttp, warn } = options;
 
-  let ownerUserUuid: string | null = null;
-  let state: ChatListOverlayState = emptyChatListOverlayState();
-  let syncing = false;
+  /** Cached for `useSyncExternalStore` — getSnapshot must be referentially stable. */
+  let snapshot: ChatListOverlaySnapshot = {
+    ownerUserUuid: null,
+    state: emptyChatListOverlayState(),
+    syncing: false,
+  };
   let refreshSeq = 0;
   const listeners = new Set<() => void>();
 
@@ -85,7 +91,7 @@ export function createChatListOverlaySession(options: {
   }
 
   function getSnapshot(): ChatListOverlaySnapshot {
-    return { ownerUserUuid, state, syncing };
+    return snapshot;
   }
 
   function setLocal(partial: {
@@ -93,9 +99,18 @@ export function createChatListOverlaySession(options: {
     state?: ChatListOverlayState;
     syncing?: boolean;
   }) {
-    if (partial.ownerUserUuid !== undefined) ownerUserUuid = partial.ownerUserUuid;
-    if (partial.state !== undefined) state = partial.state;
-    if (partial.syncing !== undefined) syncing = partial.syncing;
+    const ownerUserUuid =
+      partial.ownerUserUuid !== undefined ? partial.ownerUserUuid : snapshot.ownerUserUuid;
+    const state = partial.state !== undefined ? partial.state : snapshot.state;
+    const syncing = partial.syncing !== undefined ? partial.syncing : snapshot.syncing;
+    if (
+      ownerUserUuid === snapshot.ownerUserUuid &&
+      state === snapshot.state &&
+      syncing === snapshot.syncing
+    ) {
+      return;
+    }
+    snapshot = { ownerUserUuid, state, syncing };
     emit();
   }
 
@@ -105,7 +120,7 @@ export function createChatListOverlaySession(options: {
   }
 
   async function refresh(): Promise<void> {
-    const owner = ownerUserUuid;
+    const owner = snapshot.ownerUserUuid;
     if (!owner) return;
     const seq = ++refreshSeq;
     setLocal({ syncing: true });
@@ -117,12 +132,12 @@ export function createChatListOverlaySession(options: {
         warn?.("[chatListOverlay] GET ok but parse failed", raw);
         return;
       }
-      if (ownerUserUuid !== owner || seq !== refreshSeq) return;
+      if (snapshot.ownerUserUuid !== owner || seq !== refreshSeq) return;
       persist(owner, next);
     } catch (error) {
       warn?.("[chatListOverlay] refresh failed", error);
     } finally {
-      if (ownerUserUuid === owner && seq === refreshSeq) {
+      if (snapshot.ownerUserUuid === owner && seq === refreshSeq) {
         setLocal({ syncing: false });
       }
     }
@@ -130,7 +145,7 @@ export function createChatListOverlaySession(options: {
 
   function hydrate(userUuid: string | null) {
     const owner = userUuid?.trim() || null;
-    if (ownerUserUuid === owner && owner) {
+    if (snapshot.ownerUserUuid === owner && owner) {
       void refresh();
       return;
     }
@@ -146,13 +161,22 @@ export function createChatListOverlaySession(options: {
     memberPeerUuids: readonly string[];
     label?: string;
   }): Promise<ChatListCustomEntity | null> {
-    const owner = ownerUserUuid;
+    const owner = snapshot.ownerUserUuid;
     if (!owner) return null;
+    const archivedCount = countArchivedPeers(snapshot.state.archivedByPeer);
+    if (!canCreateChatListFolder(archivedCount, snapshot.state.entities.length)) {
+      warn?.("[chatListOverlay] create blocked: folder icon limit");
+      return null;
+    }
+    if (!isChatListFolderIconName(params.icon)) {
+      warn?.("[chatListOverlay] create blocked: bad icon", params.icon);
+      return null;
+    }
     try {
       ensureHttp?.();
       const raw = await http.createFolder({
         kind: "folder",
-        label: (params.label?.trim() || "Папка").slice(0, 40),
+        label: (params.label?.trim() || "Папка").slice(0, CHAT_LIST_FOLDER_LABEL_MAX),
         icon: params.icon,
         memberPeerUuids: params.memberPeerUuids,
       });
@@ -161,12 +185,13 @@ export function createChatListOverlaySession(options: {
         await refresh();
         return null;
       }
+      const prev = snapshot.state;
       persist(owner, {
-        ...state,
-        entities: [...state.entities.filter((e) => e.id !== entity.id), entity],
+        ...prev,
+        entities: [...prev.entities.filter((e) => e.id !== entity.id), entity],
       });
       await refresh();
-      return state.entities.find((e) => e.id === entity.id) ?? entity;
+      return snapshot.state.entities.find((e) => e.id === entity.id) ?? entity;
     } catch (error) {
       warn?.("[chatListOverlay] create failed", error);
       return null;
@@ -174,9 +199,9 @@ export function createChatListOverlaySession(options: {
   }
 
   async function addPeerToFolder(entityId: string, peerUuid: string): Promise<void> {
-    const owner = ownerUserUuid;
+    const owner = snapshot.ownerUserUuid;
     if (!owner) return;
-    const prev = state;
+    const prev = snapshot.state;
     const entities = addPeerToChatListEntity(prev.entities, entityId, peerUuid);
     if (entities === prev.entities) return;
     persist(owner, { ...prev, entities });
@@ -190,9 +215,9 @@ export function createChatListOverlaySession(options: {
   }
 
   async function removeFolder(entityId: string): Promise<void> {
-    const owner = ownerUserUuid;
+    const owner = snapshot.ownerUserUuid;
     if (!owner) return;
-    const prev = state;
+    const prev = snapshot.state;
     const entities = removeChatListEntity(prev.entities, entityId);
     if (entities === prev.entities) return;
     persist(owner, { ...prev, entities });
@@ -210,9 +235,9 @@ export function createChatListOverlaySession(options: {
     conversationUuid: string,
     archived: boolean,
   ): Promise<boolean> {
-    const owner = ownerUserUuid;
+    const owner = snapshot.ownerUserUuid;
     if (!owner || !peerUuid.trim() || !conversationUuid.trim()) return false;
-    const prev = state;
+    const prev = snapshot.state;
     if (archived) {
       const archivedCount = countArchivedPeers(prev.archivedByPeer);
       if (!canArchiveChatListPeer(archivedCount, prev.entities.length)) return false;
@@ -237,9 +262,9 @@ export function createChatListOverlaySession(options: {
     conversationUuid: string,
     muted: boolean,
   ): Promise<void> {
-    const owner = ownerUserUuid;
+    const owner = snapshot.ownerUserUuid;
     if (!owner || !peerUuid.trim() || !conversationUuid.trim()) return;
-    const prev = state;
+    const prev = snapshot.state;
     const mutedByPeer = setPeerMutedFlag(prev.mutedByPeer, peerUuid, muted);
     if (mutedByPeer === prev.mutedByPeer) return;
     persist(owner, { ...prev, mutedByPeer });

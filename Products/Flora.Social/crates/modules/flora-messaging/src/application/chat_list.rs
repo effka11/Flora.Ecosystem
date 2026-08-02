@@ -16,6 +16,22 @@ use crate::infrastructure::ChatListRepo;
 /// Совпадает с `CHAT_LIST_MAX_FOLDER_ICONS` в `@flora/client-core/messaging`.
 const CHAT_LIST_MAX_FOLDER_ICONS: i64 = 4;
 
+/// Wire-имена из `CHAT_LIST_FOLDER_ICON_NAMES` (client-core).
+const CHAT_LIST_FOLDER_ICONS: &[&str] = &[
+    "folder-outline",
+    "briefcase-outline",
+    "heart-outline",
+    "star-outline",
+    "flash-outline",
+    "home-outline",
+    "game-controller-outline",
+    "musical-notes-outline",
+    "airplane-outline",
+    "cafe-outline",
+    "book-outline",
+    "construct-outline",
+];
+
 #[derive(Debug, Clone)]
 pub enum ChatListError {
     BadRequest(String),
@@ -23,20 +39,18 @@ pub enum ChatListError {
     Internal(String),
 }
 
-fn max_custom_folders(archived_count: i64) -> i64 {
-    let reserve_archive = if archived_count > 0 { 1 } else { 0 };
-    (CHAT_LIST_MAX_FOLDER_ICONS - reserve_archive).max(0)
-}
-
-fn can_create_folder(archived_count: i64, custom_folder_count: i64) -> bool {
-    custom_folder_count < max_custom_folders(archived_count)
-}
-
-fn can_archive_peer(archived_count: i64, custom_folder_count: i64) -> bool {
-    if archived_count > 0 {
-        return true;
+fn map_repo_err(e: String) -> ChatListError {
+    if let Some(msg) = e.strip_prefix("LIMIT:") {
+        ChatListError::BadRequest(msg.to_string())
+    } else if e.contains("Некорректный") {
+        ChatListError::BadRequest(e)
+    } else {
+        ChatListError::Internal(e)
     }
-    custom_folder_count < CHAT_LIST_MAX_FOLDER_ICONS
+}
+
+fn is_allowed_folder_icon(icon: &str) -> bool {
+    CHAT_LIST_FOLDER_ICONS.contains(&icon)
 }
 
 pub struct ChatListService {
@@ -121,7 +135,11 @@ impl ChatListService {
         let kind_dto = req.kind;
         let kind = match &kind_dto {
             ChatListEntityKindDto::Folder => "folder",
-            ChatListEntityKindDto::Group => "group",
+            ChatListEntityKindDto::Group => {
+                return Err(ChatListError::BadRequest(
+                    "Группы пока недоступны.".into(),
+                ));
+            }
         };
         let folder_id = Uuid::now_v7();
         let now = Utc::now();
@@ -134,27 +152,17 @@ impl ChatListService {
             .icon
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
+        if let Some(ref name) = icon {
+            if !is_allowed_folder_icon(name) {
+                return Err(ChatListError::BadRequest(
+                    "Недопустимая иконка папки.".into(),
+                ));
+            }
+        }
         let avatar_uri = req
             .avatar_uri
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-
-        let custom_count = self
-            .repo
-            .count_folders(owner)
-            .await
-            .map_err(ChatListError::Internal)?;
-        let archived_count = self
-            .repo
-            .count_archived(owner)
-            .await
-            .map_err(ChatListError::Internal)?;
-        if !can_create_folder(archived_count, custom_count) {
-            return Err(ChatListError::BadRequest(
-                "Лимит иконок папок: не больше четырёх (с учётом Архива). Удалите папку или очистите архив."
-                    .into(),
-            ));
-        }
 
         self.repo
             .create_folder(
@@ -166,9 +174,10 @@ impl ChatListService {
                 avatar_uri.as_deref(),
                 &members,
                 now,
+                CHAT_LIST_MAX_FOLDER_ICONS,
             )
             .await
-            .map_err(ChatListError::Internal)?;
+            .map_err(map_repo_err)?;
 
         Ok(ChatListEntityDto {
             id: folder_id,
@@ -233,41 +242,10 @@ impl ChatListService {
         archived: bool,
     ) -> Result<(), ChatListError> {
         let other = require_peer(owner, conversation_uuid, other_user_uuid)?;
-        if archived {
-            let already = self
-                .repo
-                .is_peer_archived(owner, other)
-                .await
-                .map_err(ChatListError::Internal)?;
-            if !already {
-                let custom_count = self
-                    .repo
-                    .count_folders(owner)
-                    .await
-                    .map_err(ChatListError::Internal)?;
-                let archived_count = self
-                    .repo
-                    .count_archived(owner)
-                    .await
-                    .map_err(ChatListError::Internal)?;
-                if !can_archive_peer(archived_count, custom_count) {
-                    return Err(ChatListError::BadRequest(
-                        "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива."
-                            .into(),
-                    ));
-                }
-            }
-        }
         self.repo
-            .set_archived(owner, other, archived, Utc::now())
+            .set_archived_checked(owner, other, archived, Utc::now(), CHAT_LIST_MAX_FOLDER_ICONS)
             .await
-            .map_err(|e| {
-                if e.contains("Некорректный") {
-                    ChatListError::BadRequest(e)
-                } else {
-                    ChatListError::Internal(e)
-                }
-            })
+            .map_err(map_repo_err)
     }
 
     pub async fn set_muted(

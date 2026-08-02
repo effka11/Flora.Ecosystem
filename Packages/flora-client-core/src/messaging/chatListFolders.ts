@@ -13,6 +13,9 @@ export const CHAT_LIST_ARCHIVE_FOLDER_ID = "archived" as const;
 /** Макс. иконок папок в ряду (пользовательские + Архив). Кнопка «+» не входит. */
 export const CHAT_LIST_MAX_FOLDER_ICONS = 4;
 
+/** Совпадает с server / SQL `label` VARCHAR(80). */
+export const CHAT_LIST_FOLDER_LABEL_MAX = 80;
+
 /**
  * Wire/API имена иконок папок — эталон Ionicons glyph names (Mobile picker).
  * Web рендерит те же имена своими SVG.
@@ -112,7 +115,7 @@ export function createChatListFolderEntity(params: {
   return {
     id: newChatListEntityId("folder"),
     kind: "folder",
-    label: (params.label?.trim() || "Папка").slice(0, 40),
+    label: (params.label?.trim() || "Папка").slice(0, CHAT_LIST_FOLDER_LABEL_MAX),
     icon: params.icon,
     memberPeerUuids: members,
     createdAtMs: params.nowMs ?? Date.now(),
@@ -133,7 +136,7 @@ export function createChatListGroupEntity(params: {
   return {
     id: newChatListEntityId("group"),
     kind: "group",
-    label: name.slice(0, 80),
+    label: name.slice(0, CHAT_LIST_FOLDER_LABEL_MAX),
     avatarUri: params.avatarUri ?? null,
     memberPeerUuids: members,
     createdAtMs: params.nowMs ?? Date.now(),
@@ -436,7 +439,7 @@ function parseCustomEntity(raw: unknown): ChatListCustomEntity | null {
   return {
     id: o.id,
     kind: o.kind,
-    label: o.label.trim().slice(0, 80),
+    label: o.label.trim().slice(0, CHAT_LIST_FOLDER_LABEL_MAX),
     icon: typeof o.icon === "string" ? o.icon : undefined,
     avatarUri: typeof o.avatarUri === "string" ? o.avatarUri : o.avatarUri === null ? null : undefined,
     memberPeerUuids: members,
@@ -475,7 +478,7 @@ function parseApiEntity(raw: unknown): ChatListCustomEntity | null {
   return {
     id,
     kind,
-    label: o.label.trim().slice(0, 80),
+    label: o.label.trim().slice(0, CHAT_LIST_FOLDER_LABEL_MAX),
     icon: typeof o.icon === "string" ? o.icon : undefined,
     avatarUri:
       typeof o.avatarUri === "string"

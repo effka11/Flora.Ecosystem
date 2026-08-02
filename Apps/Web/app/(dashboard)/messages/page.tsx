@@ -222,6 +222,7 @@ import {
 import {
   canArchiveChatListPeer,
   canCreateChatListFolder,
+  CHAT_LIST_ARCHIVE_FOLDER_ID,
   countArchivedPeers,
   entitiesToFolderDefs,
   filterConversationsByFolder,
@@ -875,8 +876,11 @@ function MessagesChatInner() {
   );
   const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
   const folderPickOptions = useMemo(
-    () => customEntities.map((e) => ({ id: e.id, label: e.label })),
-    [customEntities],
+    () =>
+      visibleFolders
+        .filter((f) => f.id !== CHAT_LIST_ARCHIVE_FOLDER_ID)
+        .map((f) => ({ id: f.id, label: f.label })),
+    [visibleFolders],
   );
 
   useEffect(() => {
@@ -894,7 +898,14 @@ function MessagesChatInner() {
         return;
       }
       const uuid = conversationUuid?.trim() || dmConversationUuid(viewer, peerUuid);
-      void setChatListArchived(peerUuid, uuid, true);
+      void (async () => {
+        const ok = await setChatListArchived(peerUuid, uuid, true);
+        if (!ok) {
+          window.alert(
+            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+          );
+        }
+      })();
     },
     [canArchivePeer, me?.userUuid],
   );
@@ -3945,7 +3956,13 @@ function MessagesChatInner() {
               icon: result.icon,
               memberPeerUuids: result.memberUserUuids,
             });
-            if (created) setListFolder(created.id);
+            if (created) {
+              setListFolder(created.id);
+              return;
+            }
+            window.alert(
+              "Не удалось создать папку. Возможно, заняты все слоты иконок — удалите папку или очистите архив.",
+            );
           })();
         }}
       />

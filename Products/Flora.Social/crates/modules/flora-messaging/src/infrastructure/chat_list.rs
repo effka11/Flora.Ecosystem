@@ -73,6 +73,7 @@ impl ChatListRepo {
             .collect())
     }
 
+    /// Create folder under per-owner xact lock; enforces max custom folders in the same TX.
     pub async fn create_folder(
         &self,
         owner: Uuid,
@@ -83,8 +84,47 @@ impl ChatListRepo {
         avatar_uri: Option<&str>,
         member_peer_uuids: &[Uuid],
         now: DateTime<Utc>,
+        max_folder_icons: i64,
     ) -> Result<(), String> {
         let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+        // Serialize create/archive slot checks for this owner (TOCTOU).
+        sqlx::query("SELECT pg_advisory_xact_lock(88442201, hashtext($1::text))")
+            .bind(owner)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let custom_count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM flora_core.user_chat_folders
+            WHERE owner_user_uuid = $1
+            "#,
+        )
+        .bind(owner)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        let archived_count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM flora_core.user_conversation_flags
+            WHERE owner_user_uuid = $1 AND is_archived = true
+            "#,
+        )
+        .bind(owner)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        let reserve_archive = if archived_count > 0 { 1 } else { 0 };
+        let max_custom = (max_folder_icons - reserve_archive).max(0);
+        if custom_count >= max_custom {
+            return Err(
+                "LIMIT:Лимит иконок папок: не больше четырёх (с учётом Архива). Удалите папку или очистите архив."
+                    .into(),
+            );
+        }
+
         let sort: i32 = sqlx::query_scalar(
             r#"
             SELECT COALESCE(MAX(sort_order), -1) + 1
@@ -265,6 +305,125 @@ impl ChatListRepo {
     ) -> Result<(), String> {
         self.upsert_flag(owner, other, Some(archived), None, now)
             .await
+    }
+
+    /// Archive under per-owner xact lock when introducing Archive icon slot.
+    pub async fn set_archived_checked(
+        &self,
+        owner: Uuid,
+        other: Uuid,
+        archived: bool,
+        now: DateTime<Utc>,
+        max_folder_icons: i64,
+    ) -> Result<(), String> {
+        if !archived {
+            return self.set_archived(owner, other, false, now).await;
+        }
+        let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+        sqlx::query("SELECT pg_advisory_xact_lock(88442201, hashtext($1::text))")
+            .bind(owner)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let already: bool = sqlx::query_scalar(
+            r#"
+            SELECT COALESCE(
+                (SELECT is_archived
+                 FROM flora_core.user_conversation_flags
+                 WHERE owner_user_uuid = $1 AND other_user_uuid = $2),
+                false
+            )
+            "#,
+        )
+        .bind(owner)
+        .bind(other)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if !already {
+            let custom_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*)::bigint
+                FROM flora_core.user_chat_folders
+                WHERE owner_user_uuid = $1
+                "#,
+            )
+            .bind(owner)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+            let archived_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*)::bigint
+                FROM flora_core.user_conversation_flags
+                WHERE owner_user_uuid = $1 AND is_archived = true
+                "#,
+            )
+            .bind(owner)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+            if archived_count == 0 && custom_count >= max_folder_icons {
+                return Err(
+                    "LIMIT:Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива."
+                        .into(),
+                );
+            }
+        }
+
+        // Commit lock scope then upsert (upsert_flag uses pool; lock held until tx end —
+        // perform upsert inside same tx).
+        let row = sqlx::query_as::<_, ConversationFlagsRow>(
+            r#"
+            SELECT other_user_uuid, is_archived, is_muted
+            FROM flora_core.user_conversation_flags
+            WHERE owner_user_uuid = $1 AND other_user_uuid = $2
+            "#,
+        )
+        .bind(owner)
+        .bind(other)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let is_muted = row.as_ref().map(|r| r.is_muted).unwrap_or(false);
+        if !archived && !is_muted {
+            sqlx::query(
+                r#"
+                DELETE FROM flora_core.user_conversation_flags
+                WHERE owner_user_uuid = $1 AND other_user_uuid = $2
+                "#,
+            )
+            .bind(owner)
+            .bind(other)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        } else {
+            sqlx::query(
+                r#"
+                INSERT INTO flora_core.user_conversation_flags
+                    (owner_user_uuid, other_user_uuid, is_archived, is_muted, updated_at)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (owner_user_uuid, other_user_uuid) DO UPDATE SET
+                    is_archived = EXCLUDED.is_archived,
+                    is_muted = EXCLUDED.is_muted,
+                    updated_at = EXCLUDED.updated_at
+                "#,
+            )
+            .bind(owner)
+            .bind(other)
+            .bind(true)
+            .bind(is_muted)
+            .bind(now)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        tx.commit().await.map_err(|e| e.to_string())
     }
 
     pub async fn set_muted(

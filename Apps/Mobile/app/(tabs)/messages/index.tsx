@@ -4,6 +4,7 @@ import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
 import {
   canArchiveChatListPeer,
   canCreateChatListFolder,
+  CHAT_LIST_ARCHIVE_FOLDER_ID,
   chatListFolderPageIds,
   countArchivedPeers,
   entitiesToFolderDefs,
@@ -335,8 +336,11 @@ export default function MessagesScreen() {
   );
   const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
   const folderPickOptions = useMemo(
-    () => customEntities.map((e) => ({ id: e.id, label: e.label })),
-    [customEntities],
+    () =>
+      visibleFolders
+        .filter((f) => f.id !== CHAT_LIST_ARCHIVE_FOLDER_ID)
+        .map((f) => ({ id: f.id, label: f.label })),
+    [visibleFolders],
   );
 
   useEffect(() => {
@@ -635,7 +639,14 @@ export default function MessagesScreen() {
               icon: result.icon,
               memberPeerUuids: result.memberUserUuids,
             });
-            if (created) folderPagerRef.current?.selectFolder(created.id);
+            if (created) {
+              folderPagerRef.current?.selectFolder(created.id);
+              return;
+            }
+            Alert.alert(
+              "Не удалось создать папку",
+              "Возможно, заняты все слоты иконок — удалите папку или очистите архив.",
+            );
           })();
         }}
       />
