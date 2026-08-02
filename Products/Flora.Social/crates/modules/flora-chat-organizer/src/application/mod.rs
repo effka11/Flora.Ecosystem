@@ -32,7 +32,9 @@ impl OrganizerService {
         Ok(Some(ChatOrganizerBlobDto {
             revision: stored.revision,
             wire: stored.wire,
-            updated_at: stored.updated_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            updated_at: stored
+                .updated_at
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         }))
     }
 
