@@ -315,16 +315,30 @@
   opacity: 1;
 }
 
-/* anchorRow=0 в .messagesListHeader; кнопки в ячейках 85.7 и 88.7 (кол. 37…89). */
+/* legacy scope nav — заменён MessagesChatFolders */
 .messagesListScopeNav {
   display: none;
 }
 
-.messagesListScopeBtn {
+/*
+ * Папки + «+»: anchorRow=0 в .messagesListHeader; origin X = кол. 37.
+ * Горизонталь 7: top = 7 * step.
+ * «+» и папки — центром между вертикалями (pitch 4 = слот 2 + зазор 2).
+ */
+.messagesChatFolders {
   position: absolute;
+  left: 0;
+  right: 0;
   top: calc(7 * var(--flora-grid-step));
-  width: var(--flora-grid-step);
-  height: var(--flora-grid-step);
+  height: calc(2 * var(--flora-grid-step));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.messagesChatFolderBtn {
+  position: absolute;
+  top: 0;
+  height: 100%;
   margin: 0;
   padding: 0;
   border: none;
@@ -335,44 +349,265 @@
   color: var(--flora-gray);
   cursor: pointer;
   pointer-events: auto;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
+  transition: color 0.15s ease;
 }
 
-.messagesListScopeBtn svg {
-  width: calc(var(--flora-grid-step) - 2px);
-  height: calc(var(--flora-grid-step) - 2px);
+.messagesChatFolderBtn svg {
+  width: 18px;
+  height: 18px;
 }
 
-.messagesListScopeBtnArchive {
-  left: calc((85 - 37) * var(--flora-grid-step));
-}
-
-.messagesListScopeBtnAll {
-  left: calc((88 - 37) * var(--flora-grid-step));
-}
-
-.messagesListScopeBtn:hover {
+.messagesChatFolderBtn:hover {
   color: rgba(var(--flora-white-template-rgb), 0.78);
-  background: rgba(var(--flora-white-template-rgb), 0.08);
 }
 
-.messagesListScopeBtnActive {
-  color: var(--flora-accent);
-  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+.messagesChatFolderBtnActive {
+  color: var(--flora-green-light);
 }
 
-.messagesListScopeBtnLabel {
+.messagesChatFolderUnderline {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  left: 50%;
+  bottom: 0;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--flora-green-light);
+  transform: translateX(-50%);
+}
+
+/* «+»: горизонталь 7; центр между 88 и 89; width 2 → left 87.5 (origin 37). */
+.messagesCreateWrap {
+  position: absolute;
+  left: calc((87.5 - 37) * var(--flora-grid-step));
+  top: calc(7 * var(--flora-grid-step));
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  z-index: 2;
+}
+
+.messagesCreateBtn {
+  width: 100%;
+  height: 100%;
+  margin: 0;
   padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  border: none;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--flora-green-light);
+  cursor: pointer;
+}
+
+.messagesCreateBtn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.messagesCreateMenu {
+  position: absolute;
+  top: calc(100% + var(--flora-grid-step-fine));
+  right: 0;
+  min-width: 200px;
+  max-width: 280px;
+  border-radius: 12px;
+  background: var(--flora-bg);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
+  padding: calc(1.5 * var(--flora-grid-step-fine));
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  z-index: 40;
+}
+
+.messagesCreateMenuItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(250, 250, 250, 0.9);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.42px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.messagesCreateMenuItem:hover {
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
+.messagesCreateMenuItemIcon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--flora-gray);
+}
+
+.messagesCreateMenuItemIcon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.messagesFolderDialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: calc(2 * var(--flora-grid-step));
+}
+
+.messagesFolderDialog {
+  width: min(420px, 100%);
+  max-height: min(80vh, 640px);
+  overflow: auto;
+  border-radius: 16px;
+  background: var(--flora-bg);
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
+  padding: calc(2 * var(--flora-grid-step));
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step);
+}
+
+.messagesFolderDialogHeader {
+  display: grid;
+  grid-template-columns: 72px 1fr 72px;
+  align-items: center;
+}
+
+.messagesFolderDialogTitle {
+  margin: 0;
+  text-align: center;
+  color: var(--flora-white-template);
+  font-size: 16px;
+  font-weight: 300;
+  letter-spacing: 0.48px;
+}
+
+.messagesFolderDialogGhost,
+.messagesFolderDialogAction {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: 0.45px;
+}
+
+.messagesFolderDialogGhost {
+  color: var(--flora-gray);
+  text-align: left;
+}
+
+.messagesFolderDialogAction {
+  color: var(--flora-green-light);
+  text-align: right;
+}
+
+.messagesFolderDialogField {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step-fine));
+  color: var(--flora-gray);
+  font-size: 13px;
+  font-weight: 300;
+}
+
+.messagesFolderDialogField input {
+  min-height: 45px;
+  border: 1px solid var(--flora-green-dark, #3a5a34);
+  border-radius: 12px;
+  padding: 0 14px;
+  background: transparent;
+  color: var(--flora-white-template);
+  font-size: 15px;
+  font-weight: 300;
+}
+
+.messagesFolderDialogIcons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--flora-grid-step-fine);
+}
+
+.messagesFolderDialogIconBtn {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
+  background: rgba(var(--flora-white-template-rgb), 0.03);
+  color: var(--flora-gray);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.messagesFolderDialogIconBtnActive {
+  border-color: color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+  background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
+  color: var(--flora-green-light);
+}
+
+.messagesFolderDialogUsers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+  max-height: 240px;
+  overflow: auto;
+}
+
+.messagesFolderDialogUser {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.messagesFolderDialogUserActive {
+  border-color: color-mix(in srgb, var(--flora-green-light) 28%, transparent);
+  background: color-mix(in srgb, var(--flora-green-light) 8%, transparent);
+}
+
+.messagesFolderDialogUserName {
+  color: var(--flora-white-template);
+  font-size: 15px;
+  font-weight: 300;
+}
+
+.messagesFolderDialogUserHandle {
+  color: var(--flora-gray);
+  font-size: 13px;
+  font-weight: 300;
+}
+
+.messagesFolderDialogEmpty {
+  color: var(--flora-gray);
+  font-size: 14px;
+  padding: var(--flora-grid-step) 0;
+}
+
+.messagesFolderDialogError {
+  margin: 0;
+  color: var(--flora-error, #f6a8a8);
+  font-size: 14px;
 }
 
 .messagesDropdowns {

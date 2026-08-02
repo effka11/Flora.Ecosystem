@@ -594,3 +594,53 @@ pub struct UploadVideoAssetResultDto {
     pub video_asset_uuid: Uuid,
     pub content_type: String,
 }
+
+// ── Chat list overlay (folders + archive/mute; no FSCP) ─────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ChatListEntityKindDto {
+    Folder,
+    Group,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatListEntityDto {
+    pub id: Uuid,
+    pub kind: ChatListEntityKindDto,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_uri: Option<String>,
+    pub member_peer_uuids: Vec<Uuid>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatListOverlayDto {
+    pub entities: Vec<ChatListEntityDto>,
+    pub archived_peer_uuids: Vec<Uuid>,
+    pub muted_peer_uuids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateChatFolderRequest {
+    pub kind: ChatListEntityKindDto,
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub avatar_uri: Option<String>,
+    #[serde(default)]
+    pub member_peer_uuids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddChatFolderMemberRequest {
+    pub other_user_uuid: Uuid,
+}

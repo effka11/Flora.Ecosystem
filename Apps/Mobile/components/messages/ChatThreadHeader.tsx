@@ -28,10 +28,11 @@ export type ChatPeerInfo = {
 type Props = {
   peer: ChatPeerInfo;
   onMorePress: () => void;
+  moreMenuOpen?: boolean;
   moreButtonRef?: React.RefObject<View | null>;
 };
 
-export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
+export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, moreButtonRef }: Props) {
   const insets = useSafeAreaInsets();
   const me = useSessionStore((s) => s.me);
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
@@ -118,7 +119,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
   }, [overlay.isOnline, overlay.lastSeenAt, presenceClock, presenceTick, peerTyping, typingDots]);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + floraSpacing.gridFine }]}>
+    <View style={[styles.root, { paddingTop: insets.top + floraSpacing.grid }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Назад к списку чатов"
@@ -165,12 +166,17 @@ export function ChatThreadHeader({ peer, onMorePress, moreButtonRef }: Props) {
       <View ref={moreButtonRef} collapsable={false}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Меню чата"
+          accessibilityLabel={moreMenuOpen ? "Закрыть меню чата" : "Меню чата"}
+          accessibilityState={{ expanded: moreMenuOpen }}
           style={({ pressed }) => [styles.moreBtn, pressed && styles.moreBtnPressed]}
           onPress={onMorePress}
           hitSlop={8}
         >
-          <Ionicons name="ellipsis-vertical" size={18} color={floraColors.gray} />
+          <Ionicons
+            name={moreMenuOpen ? "close" : "ellipsis-vertical"}
+            size={18}
+            color={floraColors.gray}
+          />
         </Pressable>
       </View>
 
@@ -185,9 +191,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.grid,
-    /** 7×15px: без нижней «мёртвой» 8-й клетки (на web она прозрачная под заход ленты). */
-    minHeight: floraMessages.headerHeight - floraSpacing.grid,
-    paddingBottom: floraSpacing.grid,
+    /** Нижний зазор чуть меньше полной 8-й клетки (−10px), контент не смещается. */
+    minHeight: floraMessages.headerHeight - 10,
+    paddingBottom: floraSpacing.grid * 2 - 10,
     paddingHorizontal: floraSpacing.grid,
     backgroundColor: floraColors.bg,
   },

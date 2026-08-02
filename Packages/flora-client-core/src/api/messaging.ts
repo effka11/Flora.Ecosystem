@@ -406,20 +406,88 @@ export async function apiGetDeviceRecoveryEnvelope(
   };
 }
 
-export async function apiArchiveConversation(conversationUuid: string): Promise<void> {
-  await authPostJson(`/api/messaging/conversations/${conversationUuid}/archive`, {});
+function conversationPeerQs(otherUserUuid: string): string {
+  return `?otherUserUuid=${encodeURIComponent(otherUserUuid.trim())}`;
 }
 
-export async function apiUnarchiveConversation(conversationUuid: string): Promise<void> {
-  await authPostJson(`/api/messaging/conversations/${conversationUuid}/unarchive`, {});
+/** GET /api/messaging/chat-list-overlay — папки + archive/mute (без FSCP). */
+export async function apiGetChatListOverlay(): Promise<unknown> {
+  return authGetJson("/api/messaging/chat-list-overlay");
 }
 
-export async function apiMuteConversation(conversationUuid: string): Promise<void> {
-  await authPostJson(`/api/messaging/conversations/${conversationUuid}/mute`, {});
+export async function apiCreateChatFolder(body: {
+  kind: "folder" | "group";
+  label: string;
+  icon?: string;
+  avatarUri?: string | null;
+  memberPeerUuids?: readonly string[];
+}): Promise<unknown> {
+  return authPostJson("/api/messaging/chat-folders", {
+    kind: body.kind,
+    label: body.label,
+    icon: body.icon,
+    avatarUri: body.avatarUri ?? undefined,
+    memberPeerUuids: [...(body.memberPeerUuids ?? [])],
+  });
 }
 
-export async function apiUnmuteConversation(conversationUuid: string): Promise<void> {
-  await authPostJson(`/api/messaging/conversations/${conversationUuid}/unmute`, {});
+export async function apiDeleteChatFolder(folderId: string): Promise<void> {
+  await authDelete(`/api/messaging/chat-folders/${encodeURIComponent(folderId.trim())}`);
+}
+
+export async function apiAddChatFolderMember(
+  folderId: string,
+  otherUserUuid: string,
+): Promise<void> {
+  await authPostJson(
+    `/api/messaging/chat-folders/${encodeURIComponent(folderId.trim())}/members`,
+    { otherUserUuid: otherUserUuid.trim() },
+  );
+}
+
+/**
+ * Archive/mute — overlay flags keyed by peer.
+ * На main серверных route не было (только клиентские stubs без query);
+ * `otherUserUuid` обязателен для записи `user_conversation_flags`.
+ */
+export async function apiArchiveConversation(
+  conversationUuid: string,
+  otherUserUuid: string,
+): Promise<void> {
+  await authPostJson(
+    `/api/messaging/conversations/${encodeURIComponent(conversationUuid.trim())}/archive${conversationPeerQs(otherUserUuid)}`,
+    {},
+  );
+}
+
+export async function apiUnarchiveConversation(
+  conversationUuid: string,
+  otherUserUuid: string,
+): Promise<void> {
+  await authPostJson(
+    `/api/messaging/conversations/${encodeURIComponent(conversationUuid.trim())}/unarchive${conversationPeerQs(otherUserUuid)}`,
+    {},
+  );
+}
+
+export async function apiMuteConversation(
+  conversationUuid: string,
+  otherUserUuid: string,
+): Promise<void> {
+  await authPostJson(
+    `/api/messaging/conversations/${encodeURIComponent(conversationUuid.trim())}/mute${conversationPeerQs(otherUserUuid)}`,
+    {},
+  );
+}
+
+export async function apiUnmuteConversation(
+  conversationUuid: string,
+  otherUserUuid: string,
+): Promise<void> {
+  await authPostJson(
+    `/api/messaging/conversations/${encodeURIComponent(conversationUuid.trim())}/unmute${conversationPeerQs(otherUserUuid)}`,
+    {},
+  );
 }
 
 export type UploadedMessageImageAsset = {

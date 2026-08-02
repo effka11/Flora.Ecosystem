@@ -58,6 +58,8 @@ function IconDelete() {
   );
 }
 
+type FolderPickOption = { id: string; label: string };
+
 type ConversationMoreMenuPanelProps = {
   firstActionRef: RefObject<HTMLButtonElement | null>;
   onAction: () => void;
@@ -67,6 +69,8 @@ type ConversationMoreMenuPanelProps = {
   conversationIsArchived?: boolean;
   onConversationArchive?: () => void;
   onConversationUnarchive?: () => void;
+  folderOptions?: readonly FolderPickOption[];
+  onAddToFolder?: (folderId: string) => void;
   onDelete?: () => void;
 };
 
@@ -116,9 +120,12 @@ export function ConversationMoreMenuPanel({
   conversationIsArchived = false,
   onConversationArchive,
   onConversationUnarchive,
+  folderOptions = [],
+  onAddToFolder,
   onDelete,
 }: ConversationMoreMenuPanelProps) {
   const submenuExpanded = muteSubmenuOpen && !isSubmenuClosing;
+  const customFolders = folderOptions.filter((f) => f.id !== "archived");
 
   return (
     <>
@@ -136,7 +143,28 @@ export function ConversationMoreMenuPanel({
       </div>
 
       <MenuRow icon={<IconPin />} label="Закрепить" onClick={onAction} />
-      <MenuRow icon={<IconFolder />} label="Добавить в папку" onClick={onAction} />
+      {customFolders.length === 0 ? (
+        <MenuRow
+          icon={<IconFolder />}
+          label="Добавить в папку"
+          onClick={() => {
+            window.alert("Сначала создайте папку через «+» в шапке сообщений.");
+            onAction();
+          }}
+        />
+      ) : (
+        customFolders.map((folder) => (
+          <MenuRow
+            key={folder.id}
+            icon={<IconFolder />}
+            label={`В «${folder.label}»`}
+            onClick={() => {
+              onAddToFolder?.(folder.id);
+              onAction();
+            }}
+          />
+        ))
+      )}
       <MenuRow
         icon={<IconArchive />}
         label={conversationIsArchived ? "Разархивировать" : "Архивировать"}

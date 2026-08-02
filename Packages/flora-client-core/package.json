@@ -61,6 +61,12 @@
       "import": "./src/presence/index.ts",
       "default": "./src/presence/index.ts"
     },
+    "./messaging": {
+      "types": "./src/messaging/index.ts",
+      "import": "./src/messaging/index.ts",
+      "default": "./src/messaging/index.ts"
+    },
+
     "./crypto": {
       "types": "./src/crypto/aesGcm.ts",
       "import": "./src/crypto/aesGcm.ts",

@@ -645,7 +645,7 @@ export default function FeedScreen() {
                 />
               ) : null}
               <Pressable
-                style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
+                style={styles.tabButton}
                 onLayout={(event) => recordTabLayout("recommendations", event)}
                 onPress={() => switchKind("recommendations")}
               >
@@ -659,7 +659,7 @@ export default function FeedScreen() {
                 </Reanimated.Text>
               </Pressable>
               <Pressable
-                style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
+                style={styles.tabButton}
                 onLayout={(event) => recordTabLayout("subscriptions", event)}
                 onPress={() => switchKind("subscriptions")}
               >
@@ -751,9 +751,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
-  },
-  tabPressed: {
-    opacity: 0.72,
   },
   tabLabel: {
     color: floraColors.gray,

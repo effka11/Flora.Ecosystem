@@ -2,8 +2,7 @@ import {
   apiGetConversations,
   apiGetMessages,
   apiMarkConversationRead,
-  apiArchiveConversation,
-  apiMuteConversation,
+  apiDeleteConversation,
   apiDeleteMessage,
   apiGetPushPreviewTargets,
 } from "@flora/client-core/api";
@@ -27,7 +26,7 @@ import {
 } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -83,6 +82,12 @@ import {
   floraNativeStackOptions,
   floraSpacing,
 } from "@/lib/theme";
+import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import {
+  clearTemporaryMute,
+  setTemporaryMute,
+  useTemporaryMuteUntilByPeer,
+} from "@/lib/conversationTemporaryMute";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
@@ -408,6 +413,14 @@ export default function ThreadScreen() {
   const [unlockOpen, setUnlockOpen] = useState(false);
 
   const me = useSessionStore((s) => s.me);
+  const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
+  const setMuted = useChatListOverlayStore((s) => s.setMuted);
+  const mutedByPeer = useChatListOverlayStore((s) => s.state.mutedByPeer);
+  const temporaryUntilByPeer = useTemporaryMuteUntilByPeer();
+
+  useEffect(() => {
+    hydrateOverlay(me?.userUuid ?? null);
+  }, [hydrateOverlay, me?.userUuid]);
   const fscpStatus = useFscpStore((s) => s.status);
   const fscpReady = useFscpStore((s) => s.status === "ready");
   const fscpDecryptKey = useFscpStore((s) => s.localPubKey);
@@ -507,6 +520,12 @@ export default function ThreadScreen() {
 
   const otherUserUuid = peer.otherUserUuid || paramOtherUserUuid;
   const peerDisplayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
+  const temporaryMuteActive =
+    !!otherUserUuid &&
+    temporaryUntilByPeer[otherUserUuid] != null &&
+    temporaryUntilByPeer[otherUserUuid]! > Date.now();
+  const conversationMuted =
+    !!otherUserUuid && (otherUserUuid in mutedByPeer || temporaryMuteActive);
 
   useEffect(() => {
     if (!conversationUuid || otherUserUuid) return;
@@ -1368,7 +1387,8 @@ export default function ThreadScreen() {
         <ChatThreadHeader
           peer={peer}
           moreButtonRef={moreBtnRef}
-          onMorePress={() => setMoreMenuOpen(true)}
+          moreMenuOpen={moreMenuOpen}
+          onMorePress={() => setMoreMenuOpen((open) => !open)}
         />
       </View>
 
@@ -1589,11 +1609,46 @@ export default function ThreadScreen() {
         open={moreMenuOpen}
         onClose={() => setMoreMenuOpen(false)}
         anchorRef={moreBtnRef}
-        onMute={() => {
-          if (conversationUuid) void apiMuteConversation(conversationUuid);
+        isMuted={conversationMuted}
+        onMuteForever={() => {
+          if (otherUserUuid && conversationUuid) {
+            clearTemporaryMute(otherUserUuid);
+            void setMuted(otherUserUuid, conversationUuid, true);
+          }
         }}
-        onArchive={() => {
-          if (conversationUuid) void apiArchiveConversation(conversationUuid);
+        onMuteTemporary={() => {
+          if (otherUserUuid && conversationUuid) {
+            setTemporaryMute(otherUserUuid);
+            void setMuted(otherUserUuid, conversationUuid, true);
+          }
+        }}
+        onUnmute={() => {
+          if (otherUserUuid && conversationUuid) {
+            clearTemporaryMute(otherUserUuid);
+            void setMuted(otherUserUuid, conversationUuid, false);
+          }
+        }}
+        onDelete={() => {
+          if (!conversationUuid) return;
+          const peerName = peer.otherDisplayName || peer.otherUsername || "пользователем";
+          Alert.alert("Удалить чат?", `Чат с ${peerName} будет удалён.`, [
+            { text: "Отмена", style: "cancel" },
+            {
+              text: "Удалить",
+              style: "destructive",
+              onPress: () => {
+                void (async () => {
+                  try {
+                    await apiDeleteConversation(conversationUuid, peer.otherUserUuid);
+                    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+                    router.back();
+                  } catch {
+                    Alert.alert("Не удалось удалить чат", "Попробуйте ещё раз.");
+                  }
+                })();
+              },
+            },
+          ]);
         }}
       />
 

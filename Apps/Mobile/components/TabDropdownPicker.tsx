@@ -53,14 +53,14 @@ export function TabDropdownPicker({
           accessibilityRole="button"
           accessibilityLabel={`${accessibilityLabel}: ${activeLabel}`}
           accessibilityState={{ expanded: open }}
-          style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
+          style={styles.trigger}
           onPress={toggle}
         >
           <Text style={[styles.triggerLabel, open && styles.triggerLabelOpen]}>{activeLabel}</Text>
           <Ionicons
             name="chevron-down"
             size={16}
-            color={open ? floraColors.greenLight : floraColors.gray}
+            color={floraColors.greenLight}
             style={open ? styles.chevronOpen : undefined}
           />
         </Pressable>
@@ -68,17 +68,15 @@ export function TabDropdownPicker({
       </View>
 
       <DropdownMenuOverlay open={open} onClose={close} anchorRef={anchorRef} menuStyle={styles.menu}>
-        {options.map((option, index) => (
+        {options.map((option) => (
           <Pressable
             key={option.id}
             accessibilityRole="menuitem"
             accessibilityState={{ selected: activeId === option.id }}
             style={({ pressed }) => [
               styles.menuItem,
-              index === 0 && styles.menuItemFirst,
-              index === options.length - 1 && styles.menuItemLast,
               activeId === option.id && styles.menuItemActive,
-              pressed && styles.pressed,
+              pressed && styles.menuItemPressed,
             ]}
             onPress={() => selectOption(option.id)}
           >
@@ -143,44 +141,39 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "180deg" }],
   },
   menu: {
-    minWidth: 220,
+    minWidth: 200,
+    maxWidth: 280,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.12)",
-    backgroundColor: floraColors.surface,
+    borderColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.bg,
+    padding: floraSpacing.gridFine * 1.5,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 16,
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 12,
   },
   menuItem: {
-    paddingHorizontal: floraSpacing.grid,
-    paddingVertical: floraSpacing.gridFine * 2,
-  },
-  menuItemFirst: {
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-  },
-  menuItemLast: {
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
+    width: "100%",
+    paddingHorizontal: floraSpacing.gridFine * 2,
+    paddingVertical: floraSpacing.gridFine * 1.5,
+    borderRadius: 8,
   },
   menuItemActive: {
-    backgroundColor: "rgba(164, 209, 138, 0.08)",
+    backgroundColor: "rgba(250, 250, 250, 0.06)",
+  },
+  menuItemPressed: {
+    backgroundColor: "rgba(250, 250, 250, 0.06)",
   },
   menuItemLabel: {
     color: floraColors.gray,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    fontSize: 14,
+    fontWeight: "400",
+    letterSpacing: 0.42,
   },
   menuItemLabelActive: {
     color: floraColors.greenLight,
-  },
-  pressed: {
-    opacity: 0.72,
   },
 });

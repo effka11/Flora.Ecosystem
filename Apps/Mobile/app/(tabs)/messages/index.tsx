@@ -1,25 +1,59 @@
 import { apiGetConversations } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
+import {
+  canArchiveChatListPeer,
+  canCreateChatListFolder,
+  CHAT_LIST_ARCHIVE_FOLDER_ID,
+  chatListFolderPageIds,
+  countArchivedPeers,
+  entitiesToFolderDefs,
+  filterConversationsByFolder,
+  listVisibleChatFolders,
+  membershipByEntityId,
+  normalizeChatListFolder,
+  type ChatListFolderId,
+} from "@flora/client-core/messaging";
 import { sharedPresenceStore } from "@flora/client-core/presence";
+import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "@tanstack/react-query";
 import { useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  AppState,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
+import { CreateChatFolderSheet } from "@/components/messages/CreateChatFolderSheet";
+import { CreateChatGroupComingSoonModal } from "@/components/messages/CreateChatGroupComingSoonModal";
+import { MessagesChatFolders } from "@/components/messages/MessagesChatFolders";
+import {
+  MessagesFolderPager,
+  type MessagesFolderConversationRow,
+  type MessagesFolderPagerHandle,
+} from "@/components/messages/MessagesFolderPager";
+import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropdownPicker";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import {
+  clearTemporaryMute,
+  pruneExpiredTemporaryMutes,
+  setTemporaryMute,
+  useTemporaryMuteUntilByPeer,
+} from "@/lib/conversationTemporaryMute";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
@@ -27,24 +61,39 @@ import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
 
 type SortBy = "recent" | "unread";
-type FilterFrom = "all" | "people" | "communities" | "dev";
 
 const SORT_OPTIONS: TabDropdownOption[] = [
   { id: "recent", label: "Последние" },
   { id: "unread", label: "Непрочитанные" },
 ];
 
-const FILTER_OPTIONS: TabDropdownOption[] = [
-  { id: "all", label: "От всех" },
-  { id: "people", label: "От людей" },
-  { id: "communities", label: "От сообществ" },
-  { id: "dev", label: "От разработчика" },
-];
-
-function emptyListMessage(hasSearch: boolean, totalCount: number): string {
+function emptyListMessage(
+  hasSearch: boolean,
+  totalCount: number,
+  folder: ChatListFolderId,
+): string {
   if (hasSearch) return "Ничего не найдено. Измените запрос в поиске.";
+  if (folder === "archived") {
+    return "Пока нет переписок в архиве. Перенесите чат в архив из меню ⋮.";
+  }
+  if (folder !== "all") {
+    return "В этой папке пока нет чатов. Добавьте их из меню ⋮ или при создании.";
+  }
   if (totalCount === 0) return "Пока нет переписок. Найдите человека во вкладке «Люди».";
   return "Ничего не найдено. Измените запрос в поиске.";
+}
+
+function toConversationRows(
+  list: readonly MsgConversationDto[],
+  previews: Readonly<Record<string, string>>,
+): MessagesFolderConversationRow[] {
+  return list.map((item) => {
+    const preview =
+      previews[item.conversationUuid] ??
+      item.lastMessageContent ??
+      (item.lastMessageEncryptedForMe ? "Расшифровка…" : "Нет сообщений");
+    return { ...item, preview };
+  });
 }
 
 function fscpBannerMessage(status: FscpBootstrapStatus): { text: string; action?: string } | null {
@@ -81,8 +130,6 @@ function fscpBannerMessage(status: FscpBootstrapStatus): { text: string; action?
   }
 }
 
-type ConversationRow = MsgConversationDto & { preview: string };
-
 const EMPTY_CONVERSATIONS: MsgConversationDto[] = [];
 // Matches the global staleTime in providers/FloraProviders.tsx.
 const CONVERSATIONS_STALE_REFETCH_MS = 15_000;
@@ -99,14 +146,44 @@ export default function MessagesScreen() {
 
   const [search, setSearch] = useState("");
   const [sortOpen, setSortOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
   const { closeMenu } = useHamburgerMenu();
   const [sortBy, setSortBy] = useState<SortBy>("recent");
-  const [filterFrom, setFilterFrom] = useState<FilterFrom>("all");
+  const [listFolder, setListFolder] = useState<ChatListFolderId>("all");
+  const folderPagerRef = useRef<MessagesFolderPagerHandle>(null);
+  const createAnchorRef = useRef<View>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const folderScrollX = useSharedValue(0);
+  const folderPageWidthSV = useSharedValue(windowWidth);
+  /** Тап с иконки N обратно в «все» — fade chrome на N, без проезда по промежуточным. */
+  const folderReturnFromPageSV = useSharedValue(0);
+  const folderReturnProgressSV = useSharedValue(0);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [createGroupSoonOpen, setCreateGroupSoonOpen] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const overlayState = useChatListOverlayStore((s) => s.state);
+  const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
+  const refreshOverlay = useChatListOverlayStore((s) => s.refreshFromServer);
+  const createFolder = useChatListOverlayStore((s) => s.createFolder);
+  const addPeerToEntity = useChatListOverlayStore((s) => s.addPeerToEntity);
+  const removeEntity = useChatListOverlayStore((s) => s.removeEntity);
+  const setArchived = useChatListOverlayStore((s) => s.setArchived);
+  const setMuted = useChatListOverlayStore((s) => s.setMuted);
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+
+  useEffect(() => {
+    hydrateOverlay(me?.userUuid ?? null);
+  }, [hydrateOverlay, me?.userUuid]);
+
+  useEffect(() => {
+    if (!me?.userUuid) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshOverlay();
+    });
+    return () => sub.remove();
+  }, [me?.userUuid, refreshOverlay]);
 
   useEffect(
     () =>
@@ -146,9 +223,135 @@ export default function MessagesScreen() {
   const items = query.data?.items ?? EMPTY_CONVERSATIONS;
   const previews = useMessagesListPreviewDecrypt(items, me?.userUuid);
 
+  const archivedByPeer = overlayState.archivedByPeer;
+  const mutedByPeer = overlayState.mutedByPeer;
+  const customEntities = overlayState.entities;
+  const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);
+  const membership = useMemo(() => membershipByEntityId(customEntities), [customEntities]);
+  const knownCustomIds = useMemo(
+    () => new Set(customEntities.map((e) => e.id)),
+    [customEntities],
+  );
+
+  // Иконка Архива / лимит слотов — по серверному overlay, не по загруженному списку чатов.
+  const archivedCount = useMemo(() => countArchivedPeers(archivedByPeer), [archivedByPeer]);
+  const visibleFolders = useMemo(
+    () => listVisibleChatFolders(archivedCount, customFolderDefs),
+    [archivedCount, customFolderDefs],
+  );
+  /** Pager: «все» слева (0), затем иконки папок слева→направо. */
+  const folderPages = useMemo(
+    () => chatListFolderPageIds(visibleFolders),
+    [visibleFolders],
+  );
+
+  useEffect(() => {
+    folderPageWidthSV.value = windowWidth;
+  }, [folderPageWidthSV, windowWidth]);
+
+  const folderPagerScroll = useMemo(
+    () => ({
+      scrollX: folderScrollX,
+      pageWidthSV: folderPageWidthSV,
+      pages: folderPages,
+      returnFromPageSV: folderReturnFromPageSV,
+      returnProgressSV: folderReturnProgressSV,
+    }),
+    [
+      folderPageWidthSV,
+      folderPages,
+      folderReturnFromPageSV,
+      folderReturnProgressSV,
+      folderScrollX,
+    ],
+  );
+  const canCreateFolder = useMemo(
+    () => canCreateChatListFolder(archivedCount, customFolderDefs.length),
+    [archivedCount, customFolderDefs.length],
+  );
+  const canArchivePeer = useMemo(
+    () => canArchiveChatListPeer(archivedCount, customFolderDefs.length),
+    [archivedCount, customFolderDefs.length],
+  );
+
+  const temporaryUntilByPeer = useTemporaryMuteUntilByPeer();
+  const mutedDisplayByPeer = useMemo(() => {
+    const now = Date.now();
+    const next: Record<string, true> = { ...mutedByPeer };
+    for (const [peerUuid, untilMs] of Object.entries(temporaryUntilByPeer)) {
+      if (untilMs > now) next[peerUuid] = true;
+    }
+    return next;
+  }, [mutedByPeer, temporaryUntilByPeer]);
+
+  useEffect(() => {
+    const id = setInterval(() => pruneExpiredTemporaryMutes(), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const handleMuteForever = useCallback(
+    (peerUuid: string, conversationUuid: string) => {
+      clearTemporaryMute(peerUuid);
+      void setMuted(peerUuid, conversationUuid, true);
+    },
+    [setMuted],
+  );
+
+  const handleMuteTemporary = useCallback(
+    (peerUuid: string, conversationUuid: string) => {
+      setTemporaryMute(peerUuid);
+      void setMuted(peerUuid, conversationUuid, true);
+    },
+    [setMuted],
+  );
+
+  const handleUnmute = useCallback(
+    (peerUuid: string, conversationUuid: string) => {
+      clearTemporaryMute(peerUuid);
+      void setMuted(peerUuid, conversationUuid, false);
+    },
+    [setMuted],
+  );
+
+  const handleArchivedChange = useCallback(
+    (peerUuid: string, conversationUuid: string, archived: boolean) => {
+      if (archived && !canArchivePeer) {
+        Alert.alert(
+          "Лимит папок",
+          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+        );
+        return;
+      }
+      void (async () => {
+        const ok = await setArchived(peerUuid, conversationUuid, archived);
+        if (archived && !ok) {
+          Alert.alert(
+            "Лимит папок",
+            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+          );
+        }
+      })();
+    },
+    [canArchivePeer, setArchived],
+  );
+  const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
+  const folderPickOptions = useMemo(
+    () =>
+      visibleFolders
+        .filter((f) => f.id !== CHAT_LIST_ARCHIVE_FOLDER_ID)
+        .map((f) => ({ id: f.id, label: f.label })),
+    [visibleFolders],
+  );
+
+  useEffect(() => {
+    if (listFolder !== activeFolder) setListFolder(activeFolder);
+  }, [activeFolder, listFolder]);
+
   useFocusEffect(
     useCallback(() => {
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+      // Папки/архив с сервера (Web мог создать, пока Mobile был в фоне).
+      void refreshOverlay();
       const conversationQuery = conversationQueryRef.current;
       if (
         Date.now() - conversationQuery.dataUpdatedAt >
@@ -159,46 +362,49 @@ export default function MessagesScreen() {
       if (fscpStatus === "registration_pending") {
         void retryPendingOperation();
       }
-    }, [fscpStatus, navigation, retryPendingOperation, tabBarBottomInset]),
+    }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
   );
 
   const banner = fscpBannerMessage(fscpStatus);
 
-  const filteredItems = useMemo(() => {
+  const filterFolderList = useCallback(
+    (folder: ChatListFolderId) => {
+      let list = filterConversationsByFolder(items, folder, archivedByPeer, membership);
+      if (sortBy === "unread") {
+        list = list.filter((item) => item.unreadCount > 0);
+      }
+      return list;
+    },
+    [archivedByPeer, items, membership, sortBy],
+  );
+
+  const dataByPage = useMemo(() => {
+    const map = new Map<ChatListFolderId, MessagesFolderConversationRow[]>();
+    for (const folder of folderPages) {
+      map.set(folder, toConversationRows(filterFolderList(folder), previews));
+    }
+    return map;
+  }, [filterFolderList, folderPages, previews]);
+
+  /** Поиск — один список без pager (папки скрыты). */
+  const searchListData = useMemo(() => {
     const queryText = search.trim().toLowerCase();
-    let list = [...items];
-
-    if (sortBy === "unread") {
-      list = list.filter((item) => item.unreadCount > 0);
-    }
-
-    if (filterFrom === "communities" || filterFrom === "dev") {
-      list = list.filter(() => false);
-    }
-
-    if (!queryText) return list;
-
-    return list.filter((item) => {
-      const preview = (previews[item.conversationUuid] ?? item.lastMessageContent ?? "…").toLowerCase();
+    if (!queryText) return [] as MessagesFolderConversationRow[];
+    let list = filterFolderList(activeFolder);
+    list = list.filter((item) => {
+      const preview = (
+        previews[item.conversationUuid] ??
+        item.lastMessageContent ??
+        "…"
+      ).toLowerCase();
       return (
         item.otherDisplayName.toLowerCase().includes(queryText) ||
         item.otherUsername.toLowerCase().includes(queryText) ||
         preview.includes(queryText)
       );
     });
-  }, [filterFrom, items, previews, search, sortBy]);
-
-  const listData = useMemo<ConversationRow[]>(
-    () =>
-      filteredItems.map((item) => {
-        const preview =
-          previews[item.conversationUuid] ??
-          item.lastMessageContent ??
-          (item.lastMessageEncryptedForMe ? "Расшифровка…" : "Нет сообщений");
-        return { ...item, preview };
-      }),
-    [filteredItems, previews],
-  );
+    return toConversationRows(list, previews);
+  }, [activeFolder, filterFolderList, previews, search]);
 
   useEffect(() => {
     const uuids = items.map((c) => c.otherUserUuid).filter(Boolean);
@@ -212,21 +418,13 @@ export default function MessagesScreen() {
 
   const closeDropdowns = useCallback(() => {
     setSortOpen(false);
-    setFilterOpen(false);
+    setCreateMenuOpen(false);
   }, []);
 
   const handleSortOpenChange = useCallback((open: boolean) => {
     setSortOpen(open);
     if (open) {
-      setFilterOpen(false);
-      closeMenu();
-    }
-  }, [closeMenu]);
-
-  const handleFilterOpenChange = useCallback((open: boolean) => {
-    setFilterOpen(open);
-    if (open) {
-      setSortOpen(false);
+      setCreateMenuOpen(false);
       closeMenu();
     }
   }, [closeMenu]);
@@ -258,6 +456,15 @@ export default function MessagesScreen() {
             closeDropdowns();
           }}
           onBeforeMenuOpen={closeDropdowns}
+          createAction={{
+            accessibilityLabel: "Создать папку или группу",
+            anchorRef: createAnchorRef,
+            onPress: () => {
+              setSortOpen(false);
+              closeMenu();
+              setCreateMenuOpen(true);
+            },
+          }}
         />
 
         {banner ? (
@@ -281,45 +488,172 @@ export default function MessagesScreen() {
               onOpenChange={handleSortOpenChange}
               onSelect={(id) => setSortBy(id as SortBy)}
             />
-            <TabDropdownPicker
-              accessibilityLabel="Фильтр"
-              options={FILTER_OPTIONS}
-              activeId={filterFrom}
-              open={filterOpen}
-              onOpenChange={handleFilterOpenChange}
-              onSelect={(id) => setFilterFrom(id as FilterFrom)}
+            <MessagesChatFolders
+              folders={visibleFolders}
+              activeFolder={activeFolder}
+              pagerScroll={folderPagerScroll}
+              onSelect={(folder) => {
+                // Как switchKind на ленте: цель + cancel предыдущего settle.
+                folderPagerRef.current?.selectFolder(folder);
+              }}
+              onDeleteFolder={(folderId) => {
+                void removeEntity(folderId);
+                if (listFolder === folderId) {
+                  folderPagerRef.current?.selectFolder("all");
+                }
+              }}
             />
           </View>
         ) : null}
       </View>
 
-      <FlashList
-        style={styles.list}
-        data={listData}
-        keyExtractor={(item) => item.conversationUuid}
-        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={query.isRefetching}
-            onRefresh={() => query.refetch()}
-            tintColor={floraColors.greenLight}
-          />
-        }
-        renderItem={({ item }) => <ConversationListRow item={item} />}
-        ListEmptyComponent={
-          query.isLoading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={floraColors.greenLight} />
-              <Text style={styles.emptyHint}>Загрузка чатов…</Text>
-            </View>
-          ) : query.isError ? (
-            <Text style={styles.emptyHint}>Не удалось загрузить чаты.</Text>
-          ) : (
-            <Text style={styles.emptyHint}>
-              {emptyListMessage(hasSearch, items.length)}
-            </Text>
-          )
-        }
+      <DropdownMenuOverlay
+        open={createMenuOpen}
+        onClose={() => setCreateMenuOpen(false)}
+        anchorRef={createAnchorRef}
+        menuStyle={styles.createMenu}
+        alignEnd
+      >
+        <Pressable
+          accessibilityRole="menuitem"
+          style={({ pressed }) => [styles.createMenuItem, pressed && styles.createMenuItemPressed]}
+          onPress={() => {
+            setCreateMenuOpen(false);
+            if (!canCreateFolder) {
+              Alert.alert(
+                "Лимит папок",
+                "Можно показать не больше четырёх иконок, включая Архив. Удалите папку или уберите чаты из архива.",
+              );
+              return;
+            }
+            setCreateFolderOpen(true);
+          }}
+        >
+          <View style={styles.createMenuItemIcon}>
+            <Ionicons name="folder-outline" size={18} color={floraColors.gray} />
+          </View>
+          <Text style={styles.createMenuLabel}>Папка</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="menuitem"
+          style={({ pressed }) => [styles.createMenuItem, pressed && styles.createMenuItemPressed]}
+          onPress={() => {
+            setCreateMenuOpen(false);
+            setCreateGroupSoonOpen(true);
+          }}
+        >
+          <View style={styles.createMenuItemIcon}>
+            <Ionicons name="people-outline" size={18} color={floraColors.gray} />
+          </View>
+          <Text style={styles.createMenuLabel}>Группа</Text>
+        </Pressable>
+      </DropdownMenuOverlay>
+
+      {hasSearch ? (
+        <FlashList
+          style={styles.list}
+          data={searchListData}
+          keyExtractor={(item) => item.conversationUuid}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={query.isRefetching}
+              onRefresh={() => query.refetch()}
+              tintColor={floraColors.greenLight}
+            />
+          }
+          renderItem={({ item }) => (
+            <ConversationListRow
+              item={item}
+              isMuted={item.otherUserUuid in mutedDisplayByPeer}
+              isArchived={item.otherUserUuid in archivedByPeer}
+              folderOptions={folderPickOptions}
+              onMuteForever={() =>
+                handleMuteForever(item.otherUserUuid, item.conversationUuid)
+              }
+              onMuteTemporary={() =>
+                handleMuteTemporary(item.otherUserUuid, item.conversationUuid)
+              }
+              onUnmute={() => handleUnmute(item.otherUserUuid, item.conversationUuid)}
+              onArchivedChange={(archived) =>
+                handleArchivedChange(item.otherUserUuid, item.conversationUuid, archived)
+              }
+              onAddToFolder={(folderId) => void addPeerToEntity(folderId, item.otherUserUuid)}
+            />
+          )}
+          ListEmptyComponent={
+            query.isLoading ? (
+              <View style={styles.loading}>
+                <ActivityIndicator color={floraColors.greenLight} />
+                <Text style={styles.emptyHint}>Загрузка чатов…</Text>
+              </View>
+            ) : query.isError ? (
+              <Text style={styles.emptyHint}>Не удалось загрузить чаты.</Text>
+            ) : (
+              <Text style={styles.emptyHint}>
+                {emptyListMessage(true, items.length, activeFolder)}
+              </Text>
+            )
+          }
+        />
+      ) : (
+        <MessagesFolderPager
+          ref={folderPagerRef}
+          pages={folderPages}
+          activeFolder={activeFolder}
+          onActiveFolderChange={setListFolder}
+          scrollX={folderScrollX}
+          pageWidthSV={folderPageWidthSV}
+          returnFromPageSV={folderReturnFromPageSV}
+          returnProgressSV={folderReturnProgressSV}
+          dataByPage={dataByPage}
+          listPaddingBottom={listPaddingBottom}
+          refreshing={query.isRefetching}
+          onRefresh={() => {
+            void query.refetch();
+          }}
+          loading={query.isLoading}
+          error={query.isError}
+          emptyMessage={(folder) => emptyListMessage(false, items.length, folder)}
+          mutedByPeer={mutedDisplayByPeer}
+          archivedByPeer={archivedByPeer}
+          folderOptions={folderPickOptions}
+          onMuteForever={handleMuteForever}
+          onMuteTemporary={handleMuteTemporary}
+          onUnmute={handleUnmute}
+          onArchivedChange={handleArchivedChange}
+          onAddToFolder={(folderId, peerUuid) => {
+            void addPeerToEntity(folderId, peerUuid);
+          }}
+        />
+      )}
+
+      <CreateChatFolderSheet
+        visible={createFolderOpen}
+        onClose={() => setCreateFolderOpen(false)}
+        conversations={items}
+        onCreate={(result) => {
+          void (async () => {
+            const created = await createFolder({
+              label: result.name,
+              icon: result.icon,
+              memberPeerUuids: result.memberUserUuids,
+            });
+            if (created) {
+              folderPagerRef.current?.selectFolder(created.id);
+              return;
+            }
+            Alert.alert(
+              "Не удалось создать папку",
+              "Возможно, заняты все слоты иконок — удалите папку или очистите архив.",
+            );
+          })();
+        }}
+      />
+
+      <CreateChatGroupComingSoonModal
+        visible={createGroupSoonOpen}
+        onClose={() => setCreateGroupSoonOpen(false)}
       />
 
       <FscpUnlockSheet
@@ -364,10 +698,51 @@ const styles = StyleSheet.create({
   navigationRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
     width: "100%",
-    gap: 0,
+    gap: floraSpacing.grid,
     overflow: "visible",
+  },
+  /** Как PostMoreMenu / TabDropdown — не popoverInset из compose. */
+  createMenu: {
+    minWidth: 200,
+    maxWidth: 280,
+    borderRadius: 12,
+    backgroundColor: floraColors.bg,
+    borderWidth: 1,
+    borderColor: "rgba(250, 250, 250, 0.06)",
+    padding: floraSpacing.gridFine * 1.5,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  createMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: floraSpacing.grid,
+    width: "100%",
+    paddingVertical: floraSpacing.gridFine * 1.5,
+    paddingHorizontal: floraSpacing.gridFine * 2,
+    borderRadius: 8,
+  },
+  createMenuItemPressed: {
+    backgroundColor: "rgba(250, 250, 250, 0.06)",
+  },
+  createMenuItemIcon: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  createMenuLabel: {
+    flex: 1,
+    color: "rgba(250, 250, 250, 0.9)",
+    fontSize: 14,
+    fontWeight: "400",
+    letterSpacing: 0.42,
   },
   list: {
     flex: 1,

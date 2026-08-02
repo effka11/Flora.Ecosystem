@@ -16,13 +16,14 @@ type Props = {
   onClose: () => void;
   anchorRef: React.RefObject<View | null>;
   isMuted?: boolean;
+  isArchived?: boolean;
   onMuteForever: () => void;
   onMuteTemporary: () => void;
   onUnmute: () => void;
-  onSearch?: () => void;
-  onMedia?: () => void;
-  onPinned?: () => void;
-  onSafetyNumber?: () => void;
+  onPin?: () => void;
+  onAddToFolder?: () => void;
+  onArchive: () => void;
+  onUnarchive: () => void;
   onDelete: () => void;
 };
 
@@ -31,18 +32,19 @@ type Anchor = {
   right: number;
 };
 
-export function ChatMoreMenu({
+export function ConversationMoreMenu({
   open,
   onClose,
   anchorRef,
   isMuted = false,
+  isArchived = false,
   onMuteForever,
   onMuteTemporary,
   onUnmute,
-  onSearch,
-  onMedia,
-  onPinned,
-  onSafetyNumber,
+  onPin,
+  onAddToFolder,
+  onArchive,
+  onUnarchive,
   onDelete,
 }: Props) {
   const { width: windowWidth } = useWindowDimensions();
@@ -90,22 +92,6 @@ export function ChatMoreMenu({
                 accessibilityViewIsModal
               >
                 <MenuRow
-                  icon="search-outline"
-                  label="Поиск"
-                  onPress={() => runAndClose(onSearch)}
-                />
-                <MenuRow
-                  icon="images-outline"
-                  label="Медиа"
-                  onPress={() => runAndClose(onMedia)}
-                />
-                <MenuRow
-                  icon="bookmark-outline"
-                  label="Закреплённое"
-                  onPress={() => runAndClose(onPinned)}
-                />
-
-                <MenuRow
                   icon="volume-mute-outline"
                   label="Заглушить"
                   chevron
@@ -114,14 +100,8 @@ export function ChatMoreMenu({
                 />
                 {muteSubmenuOpen ? (
                   <View style={styles.submenu}>
-                    <SubmenuRow
-                      label="Насовсем"
-                      onPress={() => runAndClose(onMuteForever)}
-                    />
-                    <SubmenuRow
-                      label="На время"
-                      onPress={() => runAndClose(onMuteTemporary)}
-                    />
+                    <SubmenuRow label="Насовсем" onPress={() => runAndClose(onMuteForever)} />
+                    <SubmenuRow label="На время" onPress={() => runAndClose(onMuteTemporary)} />
                     <SubmenuRow
                       label="Размутить"
                       disabled={!isMuted}
@@ -135,9 +115,19 @@ export function ChatMoreMenu({
                 ) : null}
 
                 <MenuRow
-                  icon="shield-checkmark-outline"
-                  label="Проверка шифрования"
-                  onPress={() => runAndClose(onSafetyNumber)}
+                  icon="pin-outline"
+                  label="Закрепить"
+                  onPress={() => runAndClose(onPin)}
+                />
+                <MenuRow
+                  icon="folder-outline"
+                  label="Добавить в папку"
+                  onPress={() => runAndClose(onAddToFolder)}
+                />
+                <MenuRow
+                  icon="archive-outline"
+                  label={isArchived ? "Разархивировать" : "Архивировать"}
+                  onPress={() => runAndClose(isArchived ? onUnarchive : onArchive)}
                 />
                 <MenuRow
                   icon="trash-outline"

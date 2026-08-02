@@ -17,9 +17,6 @@ const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 // Two coordinator attempts plus its 500 ms ambiguity delay finish before the
 // 16 s Web-Lock acquisition bound, so login/logout never bypass a live retry.
 const REFRESH_FETCH_TIMEOUT_MS = 7_000;
-/** SSE open only needs headers; keep generous vs API cold-start, not body lifetime. */
-const EVENT_STREAM_FETCH_TIMEOUT_MS = 60_000;
-
 let apiClientInitialized = false;
 let unauthorizedRedirectScheduled = false;
 
@@ -61,17 +58,47 @@ function combineAbortSignals(
   return () => external.removeEventListener("abort", abort);
 }
 
-/** All Web auth requests are bounded so a held Web Lock cannot stall indefinitely. */
+/**
+ * All Web auth requests are bounded so a held Web Lock cannot stall indefinitely.
+ * `timeoutMs <= 0` — без таймера (SSE: сигнал вызывающего живёт на всё тело потока).
+ */
 export async function webApiFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
   timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
+  if (init.signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
+  // SSE: без timeout-AbortController (иначе detach после headers рвёт поток).
+  // Не `return fetch()` / голый `await fetch()`: при abort Chrome даёт TypeError
+  // "Failed to fetch", и Next dev overlay иногда логирует это как unhandledRejection,
+  // даже когда async-caller ловит ошибку. Явный .then() помечает rejection handled.
+  if (timeoutMs <= 0) {
+    return new Promise<Response>((resolve, reject) => {
+      fetch(input, init).then(
+        resolve,
+        (error: unknown) => {
+          if (init.signal?.aborted) {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+            return;
+          }
+          reject(error);
+        },
+      );
+    });
+  }
   const controller = new AbortController();
   const detach = combineAbortSignals(controller, init.signal);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    // Chrome often surfaces abort as TypeError "Failed to fetch", not AbortError.
+    if (controller.signal.aborted || init.signal?.aborted) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
     detach();
@@ -100,14 +127,15 @@ function isEventStreamRequest(init?: RequestInit): boolean {
   return accept.includes("text/event-stream");
 }
 
-const webClientCoreFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+const webClientCoreFetch = (async (input: RequestInfo | URL, init?: RequestInit) =>
   webApiFetch(
     input,
     init,
-    isAuthRefreshRequest(input)
-      ? REFRESH_FETCH_TIMEOUT_MS
-      : isEventStreamRequest(init)
-        ? EVENT_STREAM_FETCH_TIMEOUT_MS
+    // SSE: timeoutMs=0 — без второго AbortController (иначе detach рвёт поток после headers).
+    isEventStreamRequest(init)
+      ? 0
+      : isAuthRefreshRequest(input)
+        ? REFRESH_FETCH_TIMEOUT_MS
         : DEFAULT_FETCH_TIMEOUT_MS,
   )) as typeof fetch;
 
