@@ -51,10 +51,7 @@ impl ChatListRepo {
         .map_err(|e| e.to_string())
     }
 
-    pub async fn list_all_folder_members(
-        &self,
-        owner: Uuid,
-    ) -> Result<Vec<(Uuid, Uuid)>, String> {
+    pub async fn list_all_folder_members(&self, owner: Uuid) -> Result<Vec<(Uuid, Uuid)>, String> {
         let rows = sqlx::query_as::<_, FolderMemberRow>(
             r#"
             SELECT folder_id, other_user_uuid

@@ -92,9 +92,7 @@ impl ChatListService {
                 icon: row.icon,
                 avatar_uri: row.avatar_uri,
                 member_peer_uuids: members_by_folder.remove(&row.folder_id).unwrap_or_default(),
-                created_at: row
-                    .created_at
-                    .to_rfc3339_opts(SecondsFormat::Millis, true),
+                created_at: row.created_at.to_rfc3339_opts(SecondsFormat::Millis, true),
             });
         }
 
@@ -136,9 +134,7 @@ impl ChatListService {
         let kind = match &kind_dto {
             ChatListEntityKindDto::Folder => "folder",
             ChatListEntityKindDto::Group => {
-                return Err(ChatListError::BadRequest(
-                    "Группы пока недоступны.".into(),
-                ));
+                return Err(ChatListError::BadRequest("Группы пока недоступны.".into()));
             }
         };
         let folder_id = Uuid::now_v7();
@@ -190,11 +186,7 @@ impl ChatListService {
         })
     }
 
-    pub async fn delete_folder(
-        &self,
-        owner: Uuid,
-        folder_id: Uuid,
-    ) -> Result<(), ChatListError> {
+    pub async fn delete_folder(&self, owner: Uuid, folder_id: Uuid) -> Result<(), ChatListError> {
         let ok = self
             .repo
             .delete_folder(owner, folder_id)
@@ -213,9 +205,7 @@ impl ChatListService {
         req: AddChatFolderMemberRequest,
     ) -> Result<(), ChatListError> {
         if req.other_user_uuid.is_nil() || req.other_user_uuid == owner {
-            return Err(ChatListError::BadRequest(
-                "Некорректный собеседник.".into(),
-            ));
+            return Err(ChatListError::BadRequest("Некорректный собеседник.".into()));
         }
         let ok = self
             .repo
@@ -243,7 +233,13 @@ impl ChatListService {
     ) -> Result<(), ChatListError> {
         let other = require_peer(owner, conversation_uuid, other_user_uuid)?;
         self.repo
-            .set_archived_checked(owner, other, archived, Utc::now(), CHAT_LIST_MAX_FOLDER_ICONS)
+            .set_archived_checked(
+                owner,
+                other,
+                archived,
+                Utc::now(),
+                CHAT_LIST_MAX_FOLDER_ICONS,
+            )
             .await
             .map_err(map_repo_err)
     }
