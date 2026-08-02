@@ -9,6 +9,8 @@ export * from "./franking.js";
 export * from "./conversationSession.js";
 export * from "./rke.js";
 export * from "./envelope.js";
+export * from "./group.js";
+export * from "./chatOrganizer.js";
 export {
   buildUnlockCompleteCanonical,
   buildDeviceKeyCanonical,
