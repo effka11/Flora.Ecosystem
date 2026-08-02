@@ -27,18 +27,10 @@ import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
 
 type SortBy = "recent" | "unread";
-type FilterFrom = "all" | "people" | "communities" | "dev";
 
 const SORT_OPTIONS: TabDropdownOption[] = [
   { id: "recent", label: "Последние" },
   { id: "unread", label: "Непрочитанные" },
-];
-
-const FILTER_OPTIONS: TabDropdownOption[] = [
-  { id: "all", label: "От всех" },
-  { id: "people", label: "От людей" },
-  { id: "communities", label: "От сообществ" },
-  { id: "dev", label: "От разработчика" },
 ];
 
 function emptyListMessage(hasSearch: boolean, totalCount: number): string {
@@ -99,10 +91,8 @@ export default function MessagesScreen() {
 
   const [search, setSearch] = useState("");
   const [sortOpen, setSortOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
   const { closeMenu } = useHamburgerMenu();
   const [sortBy, setSortBy] = useState<SortBy>("recent");
-  const [filterFrom, setFilterFrom] = useState<FilterFrom>("all");
   const [unlockOpen, setUnlockOpen] = useState(false);
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
@@ -172,10 +162,6 @@ export default function MessagesScreen() {
       list = list.filter((item) => item.unreadCount > 0);
     }
 
-    if (filterFrom === "communities" || filterFrom === "dev") {
-      list = list.filter(() => false);
-    }
-
     if (!queryText) return list;
 
     return list.filter((item) => {
@@ -186,7 +172,7 @@ export default function MessagesScreen() {
         preview.includes(queryText)
       );
     });
-  }, [filterFrom, items, previews, search, sortBy]);
+  }, [items, previews, search, sortBy]);
 
   const listData = useMemo<ConversationRow[]>(
     () =>
@@ -212,21 +198,11 @@ export default function MessagesScreen() {
 
   const closeDropdowns = useCallback(() => {
     setSortOpen(false);
-    setFilterOpen(false);
   }, []);
 
   const handleSortOpenChange = useCallback((open: boolean) => {
     setSortOpen(open);
     if (open) {
-      setFilterOpen(false);
-      closeMenu();
-    }
-  }, [closeMenu]);
-
-  const handleFilterOpenChange = useCallback((open: boolean) => {
-    setFilterOpen(open);
-    if (open) {
-      setSortOpen(false);
       closeMenu();
     }
   }, [closeMenu]);
@@ -280,14 +256,6 @@ export default function MessagesScreen() {
               open={sortOpen}
               onOpenChange={handleSortOpenChange}
               onSelect={(id) => setSortBy(id as SortBy)}
-            />
-            <TabDropdownPicker
-              accessibilityLabel="Фильтр"
-              options={FILTER_OPTIONS}
-              activeId={filterFrom}
-              open={filterOpen}
-              onOpenChange={handleFilterOpenChange}
-              onSelect={(id) => setFilterFrom(id as FilterFrom)}
             />
           </View>
         ) : null}
