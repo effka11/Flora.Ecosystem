@@ -4,7 +4,9 @@
 //! Golden: `Documents/test-vectors/fscp-wire-validator-v1.json`.
 
 mod d2d_recovery;
+mod group;
 mod notification_preview;
+mod organizer;
 
 use base64::Engine as _;
 use base64::alphabet;
@@ -18,10 +20,17 @@ pub use d2d_recovery::{
     device_agreement_public_key_id, try_validate_d2d_recovery_envelope,
     verify_d2d_recovery_signature,
 };
-pub use fscp_contracts::{BOOTSTRAP_DEVICE_UUID, BOOTSTRAP_KEY_EPOCH_ID, WIRE_PREFIX};
+pub use fscp_contracts::{
+    BOOTSTRAP_DEVICE_UUID, BOOTSTRAP_KEY_EPOCH_ID, GROUP_MAX_MEMBERS, GROUP_WIRE_PREFIX,
+    ORGANIZER_WIRE_PREFIX, WIRE_PREFIX,
+};
+pub use group::{GroupWireSummary, try_validate_group_wire, verify_group_envelope_signature};
 pub use notification_preview::{
     NOTIFICATION_PREVIEW_MAX_WIRE_BYTES, NOTIFICATION_PREVIEW_WIRE_PREFIX,
     NotificationPreviewSummary, try_validate_notification_preview,
+};
+pub use organizer::{
+    OrganizerWireSummary, try_validate_organizer_wire, verify_organizer_signature,
 };
 
 /// Policy-ошибка device revocation (FSCP.md §Device revocation): отправка wire
