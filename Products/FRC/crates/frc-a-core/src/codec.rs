@@ -13,6 +13,7 @@ use crate::pvq;
 use crate::qmath::{pow2_e8, pow2_e64};
 use crate::rangecoder::{AdaptiveProb, BinDecoder, BinEncoder, Prob0, bit_cost_x64};
 use crate::transform::{FRAME_N, FrameTransform, SHORT_BLOCKS};
+use crate::trim;
 
 /// Заголовок кадра: flags (1 байт) + бюджет u16le.
 const HEADER_BITS: u64 = 24;
@@ -122,6 +123,11 @@ pub struct Encoder {
     /// пополняют его, голодающие тратят; отрицателен только на величину
     /// транзиентного займа.
     pool: i64,
+    /// Адаптация трима включена (по умолчанию да; выключение — A/B).
+    trim_adaptation: bool,
+    /// Межкадровое состояние выбора трима (`trim::choose_trim`): принятое
+    /// решение, подтверждение серии, гистерезис.
+    trim: trim::TrimState,
 }
 
 impl Encoder {
@@ -138,6 +144,8 @@ impl Encoder {
             debt: 0,
             vbr: true,
             pool: 0,
+            trim_adaptation: true,
+            trim: trim::TrimState::new(),
         })
     }
 
@@ -152,6 +160,16 @@ impl Encoder {
     /// валидным: фактический бюджет всегда записан в заголовке кадра.
     pub fn set_vbr(&mut self, enabled: bool) {
         self.vbr = enabled;
+    }
+
+    /// Отключение адаптации трима (всегда нейтраль, как v0.7) — для
+    /// A/B-замеров и отладки; битстрим остаётся валидным: декодер читает
+    /// фактический символ трима из кадра.
+    pub fn set_trim_adaptation(&mut self, enabled: bool) {
+        self.trim_adaptation = enabled;
+        if !enabled {
+            self.trim = trim::TrimState::new();
+        }
     }
 
     /// Кодирует один hop из `FRAME_N * channels` interleaved-сэмплов.
@@ -237,7 +255,6 @@ impl Encoder {
             base - repay as u16
         };
 
-        let trim = choose_trim(&q, planes);
         let energy_cost = energy_cost_x64(&q, planes);
         let mut budget = budget0;
         if self.vbr {
@@ -264,6 +281,19 @@ impl Encoder {
         let shape_budget_x64 = (u64::from(budget) * 64)
             .saturating_sub((HEADER_BITS + RC_OVERHEAD_BITS + TRIM_BITS) * 64 + energy_cost);
         let alloc_budget = (shape_budget_x64 / 64).saturating_sub(fine_reserve_bits(planes));
+        // Трим аллокации — перцептивная модель с тональностью (`trim.rs`,
+        // ненормативно). Транзиентный кадр всегда сигналит нейтраль (тональность
+        // в интерливинг-домене смазана короткими блоками) и прерывает серию
+        // подтверждения: изолированные длинные кадры между транзиентами не
+        // должны наследовать чужие решения.
+        let trim = if !self.trim_adaptation {
+            TRIM_NEUTRAL as u8
+        } else if transient {
+            self.trim.interrupt();
+            TRIM_NEUTRAL as u8
+        } else {
+            trim::choose_trim(&coeffs, &q, planes, alloc_budget, &mut self.trim)
+        };
         let beta = compute_alloc(&q, planes, alloc_budget, trim);
 
         let mut enc = BinEncoder::new();
@@ -731,18 +761,6 @@ fn vbr_demand_bits(q: &[i32], planes: usize, energy_cost_x64: u64) -> u64 {
         }
     }
     shape_e8 / 8 + overhead
-}
-
-/// Выбор трима аллокации (ненормативно — решение энкодера, нормативен только
-/// символ в битстриме). Референсный энкодер v0.7 всегда сигналит нейтраль:
-/// замеры полигона показали, что эвристика по спектральному балансу (тёмный
-/// кадр → НЧ, яркий → ВЧ) без оценки тональности ломает многотоновый контент —
-/// тёмный спектр толкает биты к НЧ, а редкий ВЧ-тон, которому нужна точность,
-/// уходит в noise-fill (−3.8 дБ SNR на multitone @24k даже при шаге ±1 с
-/// мёртвой зоной 36 дБ). Адаптация трима с детектором тональности — v0.8;
-/// поле в битстриме нормативно и готово.
-fn choose_trim(_q: &[i32], _planes: usize) -> u8 {
-    TRIM_NEUTRAL as u8
 }
 
 fn shape_norm(v: &[f32]) -> f32 {

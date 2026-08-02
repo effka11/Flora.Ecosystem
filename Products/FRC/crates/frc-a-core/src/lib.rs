@@ -32,6 +32,7 @@ mod fft;
 mod pvq;
 mod qmath;
 mod transform;
+mod trim;
 
 pub use codec::{Config, Decoder, Encoder};
 pub use error::Error;
