@@ -19,7 +19,7 @@ Flora.Ecosystem — модульная некоммерческая цифров
 | Класс | Примеры | Суть |
 | --- | --- | --- |
 | **App** (`PRODUCT_CLASS: app`) | Flora.Social; зарезервированы: Flora.Browser, Flora.Email, Flora.OS | Конечное приложение: composition, HTTP, свои доменные модули; опционально `client/` для shells |
-| **Functional** (`PRODUCT_CLASS: functional`) | FIRA, FSCP, FRC, FGP, FEP, FPP | Headless / **embeddable**: без своего Apps-shell; встраиваемая функция (алгоритм, крипто, кодек, экономика, governance, personhood) |
+| **Functional** (`PRODUCT_CLASS: functional`) | FIRA, FSA, FSCP, FRC, FGP, FEP, FPP | Headless / **embeddable**: без своего Apps-shell; встраиваемая функция (алгоритм, поиск, крипто, кодек, экономика, governance, personhood) |
 
 Functional **не зависят** от Social; Social (и другие App) зависят от их kernel/contracts (и опционально `*-runtime`). «Вставить в чужой проект» = зависимость на **kernel** (+ contracts). `*-runtime` — Flora-host adapter (sqlx/axum + `flora-shared`); владеет только своими таблицами.
 
@@ -34,6 +34,7 @@ flowchart TB
   end
   subgraph functionalProducts [Functional products]
     FIRA["FIRA"]
+    FSA["FSA"]
     FSCP["FSCP"]
     FRC["FRC"]
     FGP["FGP"]
@@ -41,11 +42,13 @@ flowchart TB
     FPP["FPP"]
   end
   Social --> FIRA
+  Social --> FSA
   Social --> FSCP
   Social --> FRC
   Social --> FGP
   Social --> FEP
   Social --> FPP
+  FSA -. "AffinitySnapshot (данные, не код)" .-> FIRA
 ```
 
 Детали workspace, UIP (`fira-contracts`), FPP (таблицы у Verification), scope FSCP — [`next-architecture.md`](next-architecture.md) §2.
@@ -348,4 +351,5 @@ sequenceDiagram
 | Границы и правила                      | [`AGENTS.md`](AGENTS.md), [`.agents/skills/`](.agents/skills/)                                                                                                                               |
 | E2E-протокол                           | [`Documents/fscp/FSCP.md`](Documents/fscp/FSCP.md), [`Packages/flora-client-core/src/fscp/`](Packages/flora-client-core/src/fscp)                                                                      |
 | Рекомендации                           | [`Documents/fira/FIRA.md`](Documents/fira/FIRA.md)                                                                                                                                                     |
+| Поиск (ядро + модули)                  | [`Documents/fsa/FSA.md`](Documents/fsa/FSA.md), [`Products/FSA`](Products/FSA)                                                                                                                          |
 | Схему БД и порядок миграций            | [`Flora.Migrations`](Flora.Migrations)                                                                                                                                                       |

@@ -11,14 +11,14 @@
 - **Rust `flora-api`** (`Backend/crates/flora-api`) — точка входа (маршрутизация, middleware). Бизнес-логика запрещена.
 - **`flora-shared`** — низкоуровневые утилиты. Бизнес-логика запрещена.
 - **Products/Flora.Social** (App) — Rust-композиция (`crates/flora-social` + `crates/modules/*`); доменные модули (Auth, Users, Content, Messaging, Music, Notifications, Verification) — **внутренности Social**.
-- **Products/{FIRA,FSCP,FRC,FGP,FEP,FPP}** (Functional) — headless/embeddable; не зависят от Social.
+- **Products/{FIRA,FSA,FSCP,FRC,FGP,FEP,FPP}** (Functional) — headless/embeddable; не зависят от Social. **FSA** — поиск (ядро + модули FSA-F/A/M/P/C/N/D); мост FIRA→FSA только данными (`AffinitySnapshot`).
 - **Apps** — shells: `Apps/Web`, `Apps/Mobile` (не внутри Products).
 - **Packages** — `@flora/client-core` (транспорт + реэкспорт functional TS; SoT FSCP — `@flora/fscp` / `Products/FSCP`).
 - **Backend/** — host crates (`flora-api`, …); **workspace root** — repo [`Cargo.toml`](Cargo.toml) (members включают `Products/*`).
 
 Стек: **Rust**, PostgreSQL (`flora_core`), Next.js 16 / TypeScript, Expo / React Native.
 
-Спеки: `Documents/` (FSCP, FIRA, FGP, FPP, FEP, codecs). Economy (FEP) — Rust-native в `Products/FEP`; валюта **LIV** — `Documents/fep/LIV.md` (канонический формат сумм, витнесс-косайнинг, верификация клиентом).
+Спеки: `Documents/` (FSCP, FIRA, FSA, FGP, FPP, FEP, codecs). Поиск (FSA) — `Documents/fsa/FSA.md` + 7 модульных (FSA-F/A/M/P/C/N/D). Economy (FEP) — Rust-native в `Products/FEP`; валюта **LIV** — `Documents/fep/LIV.md` (канонический формат сумм, витнесс-косайнинг, верификация клиентом).
 
 C# / .NET хост удалён (Фаза 5, `next-architecture.md`). Protos для межсервисных контрактов — [`Infrastructure/Flora.gRPC/Protos/`](Infrastructure/Flora.gRPC/Protos/).
 

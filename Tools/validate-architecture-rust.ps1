@@ -37,6 +37,7 @@ $functionalKernels = [System.Collections.Generic.HashSet[string]]::new([StringCo
 @(
     "fscp-core", "fscp-crypto", "fscp-contracts",
     "fira-core", "fira-contracts",
+    "fsa-core", "fsa-contracts",
     "flora-economy-crypto", "flora-economy-contracts",
     "flora-economy-wasm", "flora-economy-witness",
     "flora-governance-crypto", "flora-governance-contracts",
@@ -66,6 +67,7 @@ function Get-CrateCategory {
 
     if ($relative.StartsWith("Products/FSCP/") -or
         $relative.StartsWith("Products/FIRA/") -or
+        $relative.StartsWith("Products/FSA/") -or
         $relative.StartsWith("Products/FEP/") -or
         $relative.StartsWith("Products/FGP/") -or
         $relative.StartsWith("Products/FPP/") -or
@@ -73,6 +75,7 @@ function Get-CrateCategory {
         if ($name -eq "flora-economy") { return "functional-runtime" }
         if ($name.EndsWith("-contracts")) { return "functional-contracts" }
         if ($name.EndsWith("-crypto") -or $name -eq "fscp-core" -or $name -eq "fira-core" -or
+            $name -eq "fsa-core" -or
             $name.StartsWith("frc-") -or $name -eq "flora-codec-tools") {
             return "functional-kernel"
         }

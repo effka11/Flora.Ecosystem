@@ -44,8 +44,9 @@
 Пиры под [`Products/`](Products/). Классы и правила — [`ARCHITECTURE.md`](ARCHITECTURE.md) §1.1. Кратко:
 
 - **App:** Flora.Social (доменные модули Auth/Users/… — внутренности Social, не пиры). Зарезервированы без пустых папок: Browser, Email, OS.
-- **Functional (headless/embeddable):** FIRA, FSCP, FRC, FGP, FEP, FPP — kernel/contracts (+ опц. runtime); не зависят от Social.
+- **Functional (headless/embeddable):** FIRA, FSA, FSCP, FRC, FGP, FEP, FPP — kernel/contracts (+ опц. runtime); не зависят от Social.
 - **UIP** — DTO в `fira-contracts`; Users владеет персистенцией и маппит в `InterestProfile`.
+- **FSA** — kernel+contracts в `Products/FSA` (поиск: анализ/индекс/BM25F/персонализация); мост FIRA→FSA — данные (`AffinitySnapshot`), не код. Спека — [`Documents/fsa/FSA.md`](Documents/fsa/FSA.md).
 - **FPP** — kernel+contracts в `Products/FPP`; таблицы `personhood_*` пишет только Verification (Social).
 - **FSCP product scope:** wire + crypto + server validator + client session FSM. Epochs/backup/devices — Messaging / [`Documents/fscp/e2e-security.md`](Documents/fscp/e2e-security.md).
 - **TS SoT** functional-клиента — в `Products/<Name>/` (напр. `@flora/fscp`); `Packages/flora-client-core` реэкспортирует.
@@ -60,7 +61,7 @@
 Cargo.toml                      # workspace members → Backend/crates + Products/*/crates
 Products/
   Flora.Social/                 # PRODUCT_CLASS: app (C# as-is + Rust crates/)
-  FIRA/ FSCP/ FRC/ FEP/ FGP/ FPP/
+  FIRA/ FSA/ FSCP/ FRC/ FEP/ FGP/ FPP/
 Backend/
   crates/ flora-api, flora-shared, flora-migrate, infrastructure/
   Tests/parity/
@@ -84,7 +85,7 @@ C#-каталоги (`Flora.API`, `Modules/`, …) удаляются на **Ф�
 | `flora-social` | корни модулей Social, functional `*-runtime`/`*-core` по необходимости, `flora-shared` |
 | `flora-<module>` (Social) | свой/чужие `*-contracts`, functional contracts/core, свой crypto, `flora-shared` |
 | `*-contracts` | `flora-shared` (Social) или только внешние (functional, предпочтительно) |
-| functional `*-crypto` / FRC cores / `fscp-core` / `fira-core` | только внешние crates (+ другие crates того же functional-продукта) |
+| functional `*-crypto` / FRC cores / `fscp-core` / `fira-core` / `fsa-core` | только внешние crates (+ другие crates того же functional-продукта) |
 | functional `*-runtime` | свой crypto/contracts, `flora-shared`, другие **functional**-contracts |
 | `flora-shared` | только внешние crates |
 | Любой Functional | **не** `flora-social` и не `modules/flora-*` Social |
@@ -388,5 +389,6 @@ FIRA-P: формулы as-built ([`FIRA-P.md`](Documents/fira/FIRA-P.md) §Imple
 | Правила границ и процессов | [`AGENTS.md`](AGENTS.md) |
 | E2E-протокол | [`Documents/fscp/FSCP.md`](Documents/fscp/FSCP.md), [`Documents/fscp/e2e-security.md`](Documents/fscp/e2e-security.md) |
 | Рекомендации | [`Documents/fira/FIRA.md`](Documents/fira/FIRA.md) |
+| Поиск | [`Documents/fsa/FSA.md`](Documents/fsa/FSA.md) |
 | Golden-вектора | [`Documents/test-vectors/README.md`](Documents/test-vectors/README.md) |
 | Кросс-языковые фикстуры | [`Tests/Flora.ContractFixtures`](Tests/Flora.ContractFixtures) |

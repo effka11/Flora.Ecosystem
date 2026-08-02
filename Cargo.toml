@@ -34,6 +34,9 @@ members = [
     # Functional: FIRA
     "Products/FIRA/crates/fira-contracts",
     "Products/FIRA/crates/fira-core",
+    # Functional: FSA
+    "Products/FSA/crates/fsa-contracts",
+    "Products/FSA/crates/fsa-core",
     # Functional: FEP
     "Products/FEP/crates/flora-economy",
     "Products/FEP/crates/flora-economy-contracts",
@@ -95,6 +98,8 @@ fscp-crypto = { path = "Products/FSCP/crates/fscp-crypto" }
 fscp-mobile-ffi = { path = "Products/FSCP/crates/fscp-mobile-ffi" }
 fira-contracts = { path = "Products/FIRA/crates/fira-contracts" }
 fira-core = { path = "Products/FIRA/crates/fira-core" }
+fsa-contracts = { path = "Products/FSA/crates/fsa-contracts" }
+fsa-core = { path = "Products/FSA/crates/fsa-core" }
 flora-economy = { path = "Products/FEP/crates/flora-economy" }
 flora-economy-contracts = { path = "Products/FEP/crates/flora-economy-contracts" }
 flora-economy-crypto = { path = "Products/FEP/crates/flora-economy-crypto" }
