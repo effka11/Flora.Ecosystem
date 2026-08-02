@@ -221,7 +221,7 @@ fn div_q32(num: i128, den: i128) -> Fx {
 }
 
 /// Деление i128 с округлением round-half-even (к ближайшему, ничья — к чётному).
-fn div_rhe_i128(n: i128, d: i128) -> i128 {
+pub(crate) fn div_rhe_i128(n: i128, d: i128) -> i128 {
     let q = n.div_euclid(d);
     let r = n.rem_euclid(d); // 0 ≤ r < |d|
     let d_abs = d.unsigned_abs();
@@ -263,7 +263,7 @@ const fn shr_rhe_u128(x: u128, s: u32) -> u128 {
 }
 
 /// Целочисленный floor-корень u128 (поразрядный, детерминированный).
-const fn isqrt_u128(n: u128) -> u128 {
+pub(crate) const fn isqrt_u128(n: u128) -> u128 {
     if n == 0 {
         return 0;
     }
@@ -288,7 +288,7 @@ const fn isqrt_u128(n: u128) -> u128 {
 /// `√n` для целого `n` (например, `N_d` активных участников домена) в Q32.32.
 ///
 /// Используется для капа насыщения делегаций `C_d = max(20, 2·√N_d)` (FGP §4.5).
-/// Floor до ulp; `n ≥ 2⁶²` насыщает (población такого размера не существует).
+/// Floor до ulp; `n ≥ 2⁶²` насыщает (популяции такого размера не существует).
 pub fn int_sqrt_q32(n: u64) -> Fx {
     if n >= 1 << 62 {
         return Fx::MAX;

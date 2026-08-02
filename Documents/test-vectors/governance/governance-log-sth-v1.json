@@ -1,0 +1,48 @@
+{
+  "protocolVersion": 1,
+  "vectorId": "governance_log_sth_v1",
+  "description": "Signed tree head журнала и витнесс-косайны (FGP-CRYPTO §8): канонические байты tree_size LE64 ‖ root ‖ timestamp_ms LE64, Ed25519 над flora/log/v1/sth ‖ байты, клиентский минимум ≥ 3 валидных косайнов от различных витнессов реестра. P0-формат — множество Ed25519 (FROST — P1).",
+  "head": {
+    "treeSize": 13,
+    "root": "runG_utFUiRSP2AMSes57TVisVExdSIjClnO1JNhscY",
+    "timestampMs": 1780000000000
+  },
+  "signingBytes": "DQAAAAAAAACu6cb-60VSJFI_YAxJ6zntNWKxUTF1IiMKWc7Uk2GxxgCIRHCeAQAA",
+  "minWitnessCosigns": 3,
+  "witnessRegistry": [
+    "F0VTtFbd38aQjsqxwQH-arIeK6oGF3lbfUOmNIKZP9U",
+    "iC0Oo7KGTnpYfz5pjOpEWZmDEuZV4F-l6LURnYuqyM0",
+    "NVi6HvD4DxA2HpFtF2m0Mzkq2Oi_fePLwYtIl68Z2fY",
+    "UdntzETMfSU3W5ymyng1VH6rKW-dGFtwT3ZLKE6vDiU",
+    "C7w0aldmfDgBIL2cf9flHSxf3-o3zS9b9AWyxr9vLXg"
+  ],
+  "cosigns": [
+    {
+      "witnessSeed": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+      "witness": "F0VTtFbd38aQjsqxwQH-arIeK6oGF3lbfUOmNIKZP9U",
+      "signature": "yeDiZ2O4E6gqHHJkhCO1vJVfSjOR4g0gh9wqb5SD-HJ3AXNB6w8eN9EW-xAnIJhGLaJ_zpOxrRoGy_EfuL7aDw"
+    },
+    {
+      "witnessSeed": "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4A",
+      "witness": "iC0Oo7KGTnpYfz5pjOpEWZmDEuZV4F-l6LURnYuqyM0",
+      "signature": "CPLpVqLq2ddmTs7AVHTbH__H0ncr44Pt0r6m0VxY6xdeT9ukz8n8aSJ5zEoCyDXz_I4KG8rPqVEEoqD8LVulAg"
+    },
+    {
+      "witnessSeed": "YmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5_gIE",
+      "witness": "NVi6HvD4DxA2HpFtF2m0Mzkq2Oi_fePLwYtIl68Z2fY",
+      "signature": "8GFVxbFNk-TYb8giruNxDboxViS70o5erPwm6fxWCS_bWyuqdG9wTfBfkELdv0jy3rcQdPP-bWE9EQlTx2L7Aw"
+    },
+    {
+      "witnessSeed": "Y2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn-AgYI",
+      "witness": "UdntzETMfSU3W5ymyng1VH6rKW-dGFtwT3ZLKE6vDiU",
+      "signature": "hdsZnBRxgTMng59e6bqOKnyrJBFG5W326fedk4A78Z2iI11sSzAznvJlrSUY97CSp_6uUy5WHwV9q__1yaPBCA"
+    },
+    {
+      "witnessSeed": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "witness": "C7w0aldmfDgBIL2cf9flHSxf3-o3zS9b9AWyxr9vLXg",
+      "signature": "_rAYCCiKsDk_Tdgzc6P5R_B8ydbvxvsetwEoEnax8D8yYTtqoLnyG74zgRFKjE5ogWNYnCPAfjeMkgbGvHVuCA"
+    }
+  ],
+  "validCosignCount": 5,
+  "accepted": true
+}

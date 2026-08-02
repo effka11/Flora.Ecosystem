@@ -10,7 +10,9 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use flora_governance_crypto::fx::{EXP2_TABLE_Q32, Fx, int_sqrt_q32};
-use flora_governance_crypto::{PROTOCOL_VERSION, ds, merkle, weights};
+use flora_governance_crypto::{
+    PROTOCOL_VERSION, bridging, commit_reveal, ds, merkle, sig, sortition, sth, weights,
+};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -23,8 +25,12 @@ fn material(start: u8, len: usize) -> Vec<u8> {
     (0..len).map(|i| start.wrapping_add(i as u8)).collect()
 }
 
+fn material32(start: u8) -> [u8; 32] {
+    material(start, 32).try_into().expect("32 байта")
+}
+
 fn out_dir() -> PathBuf {
-    // crate: Backend/crates/modules/flora-governance-crypto → корень репо на 4 уровня выше.
+    // crate: Products/FGP/crates/flora-governance-crypto → корень репо на 4 уровня выше.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../../Documents/test-vectors/governance")
         .canonicalize()
@@ -356,6 +362,318 @@ fn merkle_negative_vector() -> Value {
     })
 }
 
+/// Head журнала для STH/sortition-векторов: корень 13 листьев merkle-вектора
+/// (кросс-согласованность файлов) + фиксированный момент времени.
+fn vector_head() -> sth::TreeHead {
+    sth::TreeHead {
+        tree_size: 13,
+        root: merkle::root(&merkle_leaves(13)),
+        timestamp_ms: 1_780_000_000_000,
+    }
+}
+
+fn witness_seed(i: u8) -> [u8; 32] {
+    material32(0x60 + i)
+}
+
+fn sth_vector() -> Value {
+    let head = vector_head();
+    let registry: Vec<Value> = (0..5)
+        .map(|i| json!(b64(&sig::public_key(&witness_seed(i)))))
+        .collect();
+    let cosigns: Vec<Value> = (0..5)
+        .map(|i| {
+            let cosign = sth::sign_tree_head(&head, &witness_seed(i));
+            json!({
+                "witnessSeed": b64(&witness_seed(i)),
+                "witness": b64(&cosign.signer),
+                "signature": b64(&cosign.signature),
+            })
+        })
+        .collect();
+
+    json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "vectorId": "governance_log_sth_v1",
+        "description": "Signed tree head журнала и витнесс-косайны (FGP-CRYPTO §8): канонические байты tree_size LE64 ‖ root ‖ timestamp_ms LE64, Ed25519 над flora/log/v1/sth ‖ байты, клиентский минимум ≥ 3 валидных косайнов от различных витнессов реестра. P0-формат — множество Ed25519 (FROST — P1).",
+        "head": {
+            "treeSize": head.tree_size,
+            "root": b64(&head.root),
+            "timestampMs": head.timestamp_ms,
+        },
+        "signingBytes": b64(&head.signing_bytes()),
+        "minWitnessCosigns": sth::MIN_WITNESS_COSIGNS,
+        "witnessRegistry": registry,
+        "cosigns": cosigns,
+        "validCosignCount": 5,
+        "accepted": true,
+    })
+}
+
+fn sth_negative_vector() -> Value {
+    let head = vector_head();
+    let enc_cosign = |c: &sth::Cosign| {
+        json!({
+            "witness": b64(&c.signer),
+            "signature": b64(&c.signature),
+        })
+    };
+
+    // Подпись с испорченным байтом.
+    let mut tampered = sth::sign_tree_head(&head, &witness_seed(0));
+    tampered.signature[0] ^= 1;
+
+    // Косайн другого head (форк: другой корень).
+    let mut forked_head = head;
+    forked_head.root = merkle::leaf_hash(b"rewritten history");
+    let forked = sth::sign_tree_head(&forked_head, &witness_seed(1));
+
+    // Витнесс вне реестра (реестр в позитивном векторе — сиды 0x60..0x64).
+    let unknown = sth::sign_tree_head(&head, &witness_seed(9));
+
+    // Дубль витнесса: три косайна, но подписавших — два.
+    let dup = [
+        sth::sign_tree_head(&head, &witness_seed(0)),
+        sth::sign_tree_head(&head, &witness_seed(0)),
+        sth::sign_tree_head(&head, &witness_seed(1)),
+    ];
+
+    // Два валидных — ниже клиентского минимума.
+    let two = [
+        sth::sign_tree_head(&head, &witness_seed(2)),
+        sth::sign_tree_head(&head, &witness_seed(3)),
+    ];
+
+    json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "vectorId": "governance_log_sth_negative_v1",
+        "description": "Негативы STH-косайнинга: каждый кейс обязан дать validCosignCount ниже минимума 3 и отказ приёма журнала (правило README: негативы — отдельным файлом). Реестр витнессов — из governance-log-sth-v1.json.",
+        "head": {
+            "treeSize": head.tree_size,
+            "root": b64(&head.root),
+            "timestampMs": head.timestamp_ms,
+        },
+        "cases": [
+            {
+                "name": "tampered_signature",
+                "cosigns": [enc_cosign(&tampered)],
+                "expectedValidCount": 0,
+                "expectedError": "sth_accept_failed"
+            },
+            {
+                "name": "cosign_of_forked_head",
+                "cosigns": [enc_cosign(&forked)],
+                "expectedValidCount": 0,
+                "expectedError": "sth_accept_failed"
+            },
+            {
+                "name": "witness_outside_registry",
+                "cosigns": [enc_cosign(&unknown)],
+                "expectedValidCount": 0,
+                "expectedError": "sth_accept_failed"
+            },
+            {
+                "name": "duplicate_witness_counts_once",
+                "cosigns": dup.iter().map(enc_cosign).collect::<Vec<_>>(),
+                "expectedValidCount": 2,
+                "expectedError": "sth_accept_failed"
+            },
+            {
+                "name": "two_valid_below_minimum",
+                "cosigns": two.iter().map(enc_cosign).collect::<Vec<_>>(),
+                "expectedValidCount": 2,
+                "expectedError": "sth_accept_failed"
+            }
+        ]
+    })
+}
+
+fn sortition_vector() -> Value {
+    let head = vector_head();
+    let anchor = material(0xE0, 32);
+    let seed = sortition::window_seed(&head.signing_bytes(), &anchor);
+    let members: Vec<[u8; 32]> = (0..20)
+        .map(|i| ds::derive(ds::CIVIC_COMMIT, format!("sortition-member-{i}").as_bytes()))
+        .collect();
+
+    let ranks: Vec<Value> = members
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            json!({
+                "index": i,
+                "member": b64(m),
+                "rank": b64(&sortition::member_rank(&seed, m)),
+            })
+        })
+        .collect();
+
+    let contexts: Vec<Value> = [&b"panel"[..], &b"attestors"[..]]
+        .iter()
+        .map(|label| {
+            let ctx = sortition::context_seed(&seed, label);
+            json!({
+                "label": String::from_utf8_lossy(label),
+                "seed": b64(&ctx),
+                "draw5": sortition::draw(&ctx, &members, 5),
+            })
+        })
+        .collect();
+
+    json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "vectorId": "governance_sortition_v1",
+        "description": "Публичные жеребьёвки P0 (FGP-CRYPTO §6): сид окна из (STH, внешний якорь) с длино-префиксом, суб-сиды контекстов, ранги flora/sortition/v1/rank, выборка k наименьших (rank, index) — пересчитываема любым. STH — из governance-log-sth-v1.json.",
+        "sthSigningBytes": b64(&head.signing_bytes()),
+        "externalAnchor": b64(&anchor),
+        "windowSeed": b64(&seed),
+        "members": ranks,
+        "draw": {
+            "k5": sortition::draw(&seed, &members, 5),
+            "fullPermutation": sortition::draw(&seed, &members, 20),
+        },
+        "contexts": contexts,
+    })
+}
+
+fn commit_reveal_vector() -> Value {
+    let cases: Vec<Value> = [
+        (material32(0x70), b"vote:for".to_vec()),
+        (material32(0x71), b"vote:against".to_vec()),
+        (material32(0x70), Vec::new()),
+        (material32(0x72), material(0x10, 64)),
+    ]
+    .iter()
+    .map(|(nonce, payload)| {
+        json!({
+            "nonce": b64(nonce),
+            "payload": b64(payload),
+            "commitment": b64(&commit_reveal::commit(nonce, payload)),
+        })
+    })
+    .collect();
+
+    json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "vectorId": "governance_commit_reveal_v1",
+        "description": "Commit-reveal скрытых агрегатов (FGP §3.4, профиль P0): commitment = derive(flora/commit-reveal/v1/commit, nonce ‖ payload); раскрытие проверяется пересчётом.",
+        "cases": cases,
+    })
+}
+
+fn commit_reveal_negative_vector() -> Value {
+    let nonce = material32(0x70);
+    let commitment = commit_reveal::commit(&nonce, b"vote:for");
+    json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "vectorId": "governance_commit_reveal_negative_v1",
+        "description": "Негативы commit-reveal: подмена payload или nonce обязана давать отказ verify_reveal.",
+        "commitment": b64(&commitment),
+        "cases": [
+            {
+                "name": "wrong_payload",
+                "nonce": b64(&nonce),
+                "payload": b64(b"vote:against"),
+                "expectedError": "commit_reveal_mismatch"
+            },
+            {
+                "name": "wrong_nonce",
+                "nonce": b64(&material32(0x71)),
+                "payload": b64(b"vote:for"),
+                "expectedError": "commit_reveal_mismatch"
+            }
+        ]
+    })
+}
+
+/// Синтетическая популяция bridging-вектора: 40 оценщиков (кластеры A = 0..20,
+/// B = 20..40), ноты: 0 — консенсусно-полезная, 1 — поляризованная,
+/// 2 — консенсусно-бесполезная, 3 — «отчасти полезная» с недобором оценщиков.
+fn bridging_scenario() -> Vec<bridging::Rating> {
+    let mut ratings = Vec::new();
+    for u in 0..40u32 {
+        let in_a = u < 20;
+        ratings.push(bridging::Rating {
+            rater: u,
+            note: 0,
+            value: Fx::ONE,
+        });
+        ratings.push(bridging::Rating {
+            rater: u,
+            note: 1,
+            value: if in_a { Fx::ONE } else { Fx::ZERO },
+        });
+        ratings.push(bridging::Rating {
+            rater: u,
+            note: 2,
+            value: Fx::ZERO,
+        });
+        // Нота 3: по 10 оценщиков из каждого кластера, «отчасти полезна».
+        if u % 20 < 10 {
+            ratings.push(bridging::Rating {
+                rater: u,
+                note: 3,
+                value: Fx::from_ratio(1, 2),
+            });
+        }
+    }
+    ratings
+}
+
+fn bridging_vector() -> Value {
+    let params = bridging::BridgingParams::default();
+    let seed = sortition::window_seed(b"bridging-vector-sth", b"bridging-vector-anchor");
+    let ratings = bridging_scenario();
+    let model = bridging::fit(40, 4, &ratings, &seed, &params);
+
+    let ratings_json: Vec<Value> = ratings
+        .iter()
+        .map(|r| json!({"rater": r.rater, "note": r.note, "valueBits": r.value.to_bits()}))
+        .collect();
+
+    // (оценщики, кластеры) по нотам — входы правила показа (владелец кластеризации —
+    // Governance-модуль; здесь — синтетика сценария).
+    let note_stats = [(40u32, 2u32), (40, 2), (40, 2), (20, 2)];
+    let notes: Vec<Value> = (0..4usize)
+        .map(|n| {
+            let (raters, clusters) = note_stats[n];
+            json!({
+                "note": n,
+                "biasBits": model.note_bias[n].to_bits(),
+                "factorBits": model.note_factor[n].to_bits(),
+                "raterCount": raters,
+                "clusterCount": clusters,
+                "show": bridging::show_note(model.note_bias[n], raters, clusters, &params),
+            })
+        })
+        .collect();
+
+    json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "vectorId": "governance_bridging_v1",
+        "description": "Bridging-скоринг L3 (FGP §6.2, FGP-CRYPTO §10): детерминированная матричная факторизация r̂ = μ + b_u + b_n + f_u·f_n на Q32.32 — фиксированные итерации, порядок обхода (note, rater), инициализация факторов из сида (flora/bridging/v1/init). Параметры нормативны; показ ⇔ b_n ≥ τ ∧ оценщиков ≥ 30 ∧ кластеров ≥ 2.",
+        "params": {
+            "iterations": params.iterations,
+            "learningRateBits": params.learning_rate.to_bits(),
+            "lambdaInterceptBits": params.lambda_intercept.to_bits(),
+            "lambdaFactorBits": params.lambda_factor.to_bits(),
+            "tauBits": params.tau.to_bits(),
+            "minRaters": params.min_raters,
+            "minClusters": params.min_clusters,
+        },
+        "windowSeed": b64(&seed),
+        "nRaters": 40,
+        "nNotes": 4,
+        "ratings": ratings_json,
+        "model": {
+            "muBits": model.mu.to_bits(),
+            "raterBiasBits": model.rater_bias.iter().map(|b| b.to_bits()).collect::<Vec<_>>(),
+            "raterFactorBits": model.rater_factor.iter().map(|f| f.to_bits()).collect::<Vec<_>>(),
+        },
+        "notes": notes,
+    })
+}
+
 fn weights_vector() -> Value {
     let decay: Vec<Value> = [
         (Fx::ZERO, Fx::from_int(12)),
@@ -446,14 +764,144 @@ fn weights_vector() -> Value {
         .map(|&v| json!({"votes": v, "cost": weights::qv_cost(v)}))
         .collect();
 
+    let strength: Vec<Value> = [0u64, 1, 99, 100, 101, u64::MAX]
+        .iter()
+        .map(|&b| json!({"budget": b, "maxStrength": weights::max_vote_strength(b)}))
+        .collect();
+
+    let samples: Vec<Value> = [
+        (385u32, 1_000_000_000u64),
+        (385, 385),
+        (385, 100),
+        (385, 1),
+        (385, 0),
+        (1068, 10_000),
+        (1068, 1_000_000),
+    ]
+    .iter()
+    .map(|&(n0, population)| {
+        json!({"n0": n0, "population": population, "size": weights::sample_size(n0, population)})
+    })
+    .collect();
+
+    let q_max = Fx::from_int(10);
+    let panel: Vec<Value> = [
+        vec![
+            Fx::from_int(3),
+            Fx::from_int(100),
+            Fx::from_int(4),
+            Fx::from_int(5),
+            Fx::ZERO,
+        ],
+        vec![Fx::from_int(50); 5],
+        vec![Fx::from_int(-3); 5],
+        vec![Fx::from_int(2), Fx::from_int(4)],
+        vec![],
+    ]
+    .iter()
+    .map(|scores| {
+        json!({
+            "scoresBits": scores.iter().map(|s| s.to_bits()).collect::<Vec<_>>(),
+            "qMaxBits": q_max.to_bits(),
+            "bits": weights::panel_score(scores, q_max).to_bits(),
+        })
+    })
+    .collect();
+
+    let alpha = Fx::from_ratio(4, 5);
+    let inflow_cases: Vec<Value> = [
+        vec![(Fx::from_int(5), 1u32)],
+        vec![(Fx::from_int(5), 2)],
+        vec![
+            (Fx::from_int(5), 1),
+            (Fx::from_int(5), 2),
+            (Fx::from_int(5), 3),
+        ],
+        vec![(Fx::from_int(-5), 1), (Fx::from_int(3), 0)],
+    ]
+    .iter()
+    .map(|edges| {
+        json!({
+            "edges": edges
+                .iter()
+                .map(|(w, h)| json!({"weightBits": w.to_bits(), "depth": h}))
+                .collect::<Vec<_>>(),
+            "alphaBits": alpha.to_bits(),
+            "maxDepth": 2,
+            "bits": weights::delegation_inflow(edges, alpha, 2).to_bits(),
+        })
+    })
+    .collect();
+
+    let threshold = Fx::from_ratio(7, 10);
+    let slope = Fx::from_int(2);
+    let floor = Fx::from_ratio(1, 2);
+    let discount: Vec<Value> = [
+        Fx::ZERO,
+        Fx::from_ratio(1, 2),
+        threshold,
+        Fx::from_ratio(4, 5),
+        Fx::ONE,
+        Fx::from_int(5),
+        Fx::from_int(-5),
+    ]
+    .iter()
+    .map(|&c| {
+        json!({
+            "correlationBits": c.to_bits(),
+            "thresholdBits": threshold.to_bits(),
+            "slopeBits": slope.to_bits(),
+            "floorBits": floor.to_bits(),
+            "bits": weights::pair_discount(c, threshold, slope, floor).to_bits(),
+        })
+    })
+    .collect();
+
+    let bloc_weights = [Fx::from_int(4), Fx::from_int(6), Fx::from_int(2)];
+    let bloc_pairs = [
+        (0u32, 1u32, Fx::from_ratio(1, 2)),
+        (0, 2, Fx::from_ratio(1, 2)),
+        (1, 2, Fx::from_ratio(1, 2)),
+    ];
+    let organic_pairs = [(0u32, 1u32, Fx::from_ratio(19, 20))];
+    let discounted: Vec<Value> = [
+        (&bloc_weights[..], &[][..]),
+        (&bloc_weights[..], &organic_pairs[..]),
+        (&bloc_weights[..], &bloc_pairs[..]),
+    ]
+    .iter()
+    .map(|&(w, pairs)| {
+        json!({
+            "weightsBits": w.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+            "pairs": pairs
+                .iter()
+                .map(|(i, j, d)| json!({"i": i, "j": j, "deltaBits": d.to_bits()}))
+                .collect::<Vec<_>>(),
+            "bits": weights::discounted_total(w, pairs).to_bits(),
+        })
+    })
+    .collect();
+
+    let co_dir: Vec<Value> = [(0u64, 0u64), (0, 10), (5, 10), (10, 10), (20, 10)]
+        .iter()
+        .map(|&(joint, total)| {
+            json!({
+                "joint": joint,
+                "total": total,
+                "bits": weights::co_direction(joint, total).to_bits(),
+            })
+        })
+        .collect();
+
     json!({
         "protocolVersion": PROTOCOL_VERSION,
         "vectorId": "governance_fgp_weights_v1",
-        "description": "Consensus-critical формулы FGP §4 на Q32.32 (FGP-CRYPTO §10): затухания, вес голоса, кап и насыщение делегаций, conviction, θ_eff, QV. Эти значения нормативны; вещественные формулы FGP — пояснение.",
+        "description": "Consensus-critical формулы FGP §4/§5.6 на Q32.32 (FGP-CRYPTO §10): затухания, вес голоса, кап и насыщение делегаций, вклады потока I, conviction, θ_eff, QV и √B, размер выборки (FPC), панельное q_i (trimmed mean 20%), корреляционный дисконт §4.7. Эти значения нормативны; вещественные формулы FGP — пояснение.",
         "decayFactor": decay,
         "voteWeight": vote,
         "delegationCap": cap,
         "effectiveWeight": eff,
+        "delegationInflow": inflow_cases,
         "conviction": {
             "gammaBits": gamma.to_bits(),
             "supportBits": support.to_bits(),
@@ -462,6 +910,12 @@ fn weights_vector() -> Value {
         },
         "thetaEff": theta,
         "qvCost": qv,
+        "maxVoteStrength": strength,
+        "sampleSize": samples,
+        "panelScore": panel,
+        "coDirection": co_dir,
+        "pairDiscount": discount,
+        "discountedTotal": discounted,
     })
 }
 
@@ -479,4 +933,16 @@ fn main() {
         &merkle_negative_vector(),
     );
     write("governance-fgp-weights-v1.json", &weights_vector());
+    write("governance-log-sth-v1.json", &sth_vector());
+    write(
+        "governance-log-sth-negative-v1.json",
+        &sth_negative_vector(),
+    );
+    write("governance-sortition-v1.json", &sortition_vector());
+    write("governance-commit-reveal-v1.json", &commit_reveal_vector());
+    write(
+        "governance-commit-reveal-negative-v1.json",
+        &commit_reveal_negative_vector(),
+    );
+    write("governance-bridging-v1.json", &bridging_vector());
 }

@@ -135,6 +135,30 @@
       "tag": "flora/device/v1/tag",
       "tagBytes": "ZmxvcmEvZGV2aWNlL3YxL3RhZw",
       "output": "f_pMpseNSHKKTOo-zffJZ3pyGuEc2OdPEphZio0ECzE"
+    },
+    {
+      "name": "sortition/seed",
+      "tag": "flora/sortition/v1/seed",
+      "tagBytes": "ZmxvcmEvc29ydGl0aW9uL3YxL3NlZWQ",
+      "output": "mDFHnl7LlgliSdIXn0dndZD1ZWPiMxzrVnZNXc2d8Nc"
+    },
+    {
+      "name": "sortition/rank",
+      "tag": "flora/sortition/v1/rank",
+      "tagBytes": "ZmxvcmEvc29ydGl0aW9uL3YxL3Jhbms",
+      "output": "vpHXolwaoG7-ey6OoEoG3qMgvPGigdvKEA9R0UiRbEM"
+    },
+    {
+      "name": "commit-reveal/commit",
+      "tag": "flora/commit-reveal/v1/commit",
+      "tagBytes": "ZmxvcmEvY29tbWl0LXJldmVhbC92MS9jb21taXQ",
+      "output": "7xvABFW1hhpqIrVA1krzv4egqILlC_tcE6cxawEpqP8"
+    },
+    {
+      "name": "bridging/init",
+      "tag": "flora/bridging/v1/init",
+      "tagBytes": "ZmxvcmEvYnJpZGdpbmcvdjEvaW5pdA",
+      "output": "S14VALop-8x2kLusuDvrF_Q4Fa0gxYCrHN7IN5Mepe8"
     }
   ],
   "civicPipeline": {

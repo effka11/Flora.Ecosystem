@@ -53,6 +53,14 @@ pub const OPRF_DOC_DEDUP: &str = "flora/oprf/v1/doc-dedup";
 pub const TREASURY_LEDGER: &str = "flora/treasury/v1/ledger";
 /// Эпохальный тег устройства (FPP-SIGNALS NS-D2; деривация — `fpp-crypto`).
 pub const DEVICE_TAG: &str = "flora/device/v1/tag";
+/// Сид публичной жеребьёвки окна из `(STH, внешний якорь)` (FGP-CRYPTO §6).
+pub const SORTITION_SEED: &str = "flora/sortition/v1/seed";
+/// Ранг участника публичной жеребьёвки (детерминированная выборка по сиду).
+pub const SORTITION_RANK: &str = "flora/sortition/v1/rank";
+/// Commitment фазы commit-reveal скрытых агрегатов (FGP §3.4; P0 — FGP-CRYPTO §14).
+pub const COMMIT_REVEAL: &str = "flora/commit-reveal/v1/commit";
+/// Детерминированная инициализация bridging-факторизации L3 (FGP §6.2, FGP-CRYPTO §10).
+pub const BRIDGING_INIT: &str = "flora/bridging/v1/init";
 
 /// Полный реестр `(короткое имя, метка)` — источник для test vectors и аудита коллизий.
 pub const REGISTRY: &[(&str, &str)] = &[
@@ -78,6 +86,10 @@ pub const REGISTRY: &[(&str, &str)] = &[
     ("oprf/doc-dedup", OPRF_DOC_DEDUP),
     ("treasury/ledger", TREASURY_LEDGER),
     ("device/tag", DEVICE_TAG),
+    ("sortition/seed", SORTITION_SEED),
+    ("sortition/rank", SORTITION_RANK),
+    ("commit-reveal/commit", COMMIT_REVEAL),
+    ("bridging/init", BRIDGING_INIT),
 ];
 
 /// Доменно-разделённая деривация: BLAKE3 `derive_key(метка, материал)` → 32 байта.

@@ -14,8 +14,13 @@ workspace = true
 # в wasm32 и переносимым в независимые верификаторы (THREATS V-11).
 [dependencies]
 blake3 = { workspace = true }
+# Ed25519 над DS-таггированным сообщением (FGP-CRYPTO §1: RFC 8032, dalek, без C-зависимостей).
+# Keygen (OsRng) в ядре не вызывается — только детерминированная подпись/верификация,
+# поэтому getrandom в граф не попадает и wasm32 собирается чисто (как в flora-economy-crypto).
+ed25519-dalek = { workspace = true }
 
-# Только для генератора golden-векторов (examples/gen_vectors.rs) и consumer-теста.
+# Только для генератора golden-векторов (examples/gen_vectors.rs) и consumer-теста
+# tests/governance_vectors.rs (обязателен по Documents/test-vectors/README.md).
 [dev-dependencies]
 serde_json = { workspace = true }
 base64 = { workspace = true }
