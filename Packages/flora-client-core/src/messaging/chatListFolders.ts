@@ -11,7 +11,7 @@
 export const CHAT_LIST_ARCHIVE_FOLDER_ID = "archived" as const;
 
 /** Макс. иконок папок в ряду (пользовательские + Архив). Кнопка «+» не входит. */
-export const CHAT_LIST_MAX_FOLDER_ICONS = 3;
+export const CHAT_LIST_MAX_FOLDER_ICONS = 4;
 
 export type ChatListSystemFolderId = typeof CHAT_LIST_ARCHIVE_FOLDER_ID;
 
@@ -201,6 +201,20 @@ export function canCreateChatListFolder(
   maxIcons: number = CHAT_LIST_MAX_FOLDER_ICONS,
 ): boolean {
   return customFolderCount < maxCustomChatListFolders(archivedCount, maxIcons);
+}
+
+/**
+ * Можно ли заархивировать чат с появлением иконки Архива в ряду.
+ * Если Архив уже показан (`archivedCount > 0`) — всегда да (слот уже занят).
+ * Если Архива ещё нет и кастомных иконок уже {@link CHAT_LIST_MAX_FOLDER_ICONS} — нет.
+ */
+export function canArchiveChatListPeer(
+  archivedCount: number,
+  customFolderCount: number,
+  maxIcons: number = CHAT_LIST_MAX_FOLDER_ICONS,
+): boolean {
+  if (archivedCount > 0) return true;
+  return customFolderCount < maxIcons;
 }
 
 /**

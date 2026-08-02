@@ -2,6 +2,7 @@ import { apiGetConversations } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
 import {
+  canArchiveChatListPeer,
   canCreateChatListFolder,
   chatListFolderPageIds,
   countArchivedPeers,
@@ -13,12 +14,14 @@ import {
   type ChatListFolderId,
 } from "@flora/client-core/messaging";
 import { sharedPresenceStore } from "@flora/client-core/presence";
+import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "@tanstack/react-query";
 import { useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -29,13 +32,15 @@ import {
 import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
-import { CreateChatFolderOrGroupSheet } from "@/components/messages/CreateChatFolderOrGroupSheet";
+import { CreateChatFolderSheet } from "@/components/messages/CreateChatFolderSheet";
+import { CreateChatGroupComingSoonModal } from "@/components/messages/CreateChatGroupComingSoonModal";
 import { MessagesChatFolders } from "@/components/messages/MessagesChatFolders";
 import {
   MessagesFolderPager,
   type MessagesFolderConversationRow,
   type MessagesFolderPagerHandle,
 } from "@/components/messages/MessagesFolderPager";
+import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropdownPicker";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
@@ -137,13 +142,16 @@ export default function MessagesScreen() {
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   const [listFolder, setListFolder] = useState<ChatListFolderId>("all");
   const folderPagerRef = useRef<MessagesFolderPagerHandle>(null);
+  const createAnchorRef = useRef<View>(null);
   const { width: windowWidth } = useWindowDimensions();
   const folderScrollX = useSharedValue(0);
   const folderPageWidthSV = useSharedValue(windowWidth);
   /** Тап с иконки N обратно в «все» — fade chrome на N, без проезда по промежуточным. */
   const folderReturnFromPageSV = useSharedValue(0);
   const folderReturnProgressSV = useSharedValue(0);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [createGroupSoonOpen, setCreateGroupSoonOpen] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
   const overlayState = useChatListOverlayStore((s) => s.state);
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
@@ -256,6 +264,24 @@ export default function MessagesScreen() {
     () => canCreateChatListFolder(archivedCount, customFolderDefs.length),
     [archivedCount, customFolderDefs.length],
   );
+  const canArchivePeer = useMemo(
+    () => canArchiveChatListPeer(archivedCount, customFolderDefs.length),
+    [archivedCount, customFolderDefs.length],
+  );
+
+  const handleArchivedChange = useCallback(
+    (peerUuid: string, conversationUuid: string, archived: boolean) => {
+      if (archived && !canArchivePeer) {
+        Alert.alert(
+          "Лимит папок",
+          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+        );
+        return;
+      }
+      void setArchived(peerUuid, conversationUuid, archived);
+    },
+    [canArchivePeer, setArchived],
+  );
   const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
   const folderPickOptions = useMemo(
     () => customEntities.map((e) => ({ id: e.id, label: e.label })),
@@ -335,11 +361,13 @@ export default function MessagesScreen() {
 
   const closeDropdowns = useCallback(() => {
     setSortOpen(false);
+    setCreateMenuOpen(false);
   }, []);
 
   const handleSortOpenChange = useCallback((open: boolean) => {
     setSortOpen(open);
     if (open) {
+      setCreateMenuOpen(false);
       closeMenu();
     }
   }, [closeMenu]);
@@ -371,6 +399,15 @@ export default function MessagesScreen() {
             closeDropdowns();
           }}
           onBeforeMenuOpen={closeDropdowns}
+          createAction={{
+            accessibilityLabel: "Создать папку или группу",
+            anchorRef: createAnchorRef,
+            onPress: () => {
+              setSortOpen(false);
+              closeMenu();
+              setCreateMenuOpen(true);
+            },
+          }}
         />
 
         {banner ? (
@@ -402,12 +439,6 @@ export default function MessagesScreen() {
                 // Как switchKind на ленте: цель + cancel предыдущего settle.
                 folderPagerRef.current?.selectFolder(folder);
               }}
-              canCreateFolder={canCreateFolder}
-              onCreateFolder={() => {
-                if (!canCreateFolder) return;
-                closeDropdowns();
-                setCreateFolderOpen(true);
-              }}
               onDeleteFolder={(folderId) => {
                 void removeEntity(folderId);
                 if (listFolder === folderId) {
@@ -418,6 +449,48 @@ export default function MessagesScreen() {
           </View>
         ) : null}
       </View>
+
+      <DropdownMenuOverlay
+        open={createMenuOpen}
+        onClose={() => setCreateMenuOpen(false)}
+        anchorRef={createAnchorRef}
+        menuStyle={styles.createMenu}
+        alignEnd
+      >
+        <Pressable
+          accessibilityRole="menuitem"
+          style={({ pressed }) => [styles.createMenuItem, pressed && styles.createMenuItemPressed]}
+          onPress={() => {
+            setCreateMenuOpen(false);
+            if (!canCreateFolder) {
+              Alert.alert(
+                "Лимит папок",
+                "Можно показать не больше четырёх иконок, включая Архив. Удалите папку или уберите чаты из архива.",
+              );
+              return;
+            }
+            setCreateFolderOpen(true);
+          }}
+        >
+          <View style={styles.createMenuItemIcon}>
+            <Ionicons name="folder-outline" size={18} color={floraColors.gray} />
+          </View>
+          <Text style={styles.createMenuLabel}>Папка</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="menuitem"
+          style={({ pressed }) => [styles.createMenuItem, pressed && styles.createMenuItemPressed]}
+          onPress={() => {
+            setCreateMenuOpen(false);
+            setCreateGroupSoonOpen(true);
+          }}
+        >
+          <View style={styles.createMenuItemIcon}>
+            <Ionicons name="people-outline" size={18} color={floraColors.gray} />
+          </View>
+          <Text style={styles.createMenuLabel}>Группа</Text>
+        </Pressable>
+      </DropdownMenuOverlay>
 
       {hasSearch ? (
         <FlashList
@@ -442,7 +515,7 @@ export default function MessagesScreen() {
                 void setMuted(item.otherUserUuid, item.conversationUuid, muted)
               }
               onArchivedChange={(archived) =>
-                void setArchived(item.otherUserUuid, item.conversationUuid, archived)
+                handleArchivedChange(item.otherUserUuid, item.conversationUuid, archived)
               }
               onAddToFolder={(folderId) => void addPeerToEntity(folderId, item.otherUserUuid)}
             />
@@ -487,16 +560,14 @@ export default function MessagesScreen() {
           onMutedChange={(peerUuid, conversationUuid, muted) => {
             void setMuted(peerUuid, conversationUuid, muted);
           }}
-          onArchivedChange={(peerUuid, conversationUuid, archived) => {
-            void setArchived(peerUuid, conversationUuid, archived);
-          }}
+          onArchivedChange={handleArchivedChange}
           onAddToFolder={(folderId, peerUuid) => {
             void addPeerToEntity(folderId, peerUuid);
           }}
         />
       )}
 
-      <CreateChatFolderOrGroupSheet
+      <CreateChatFolderSheet
         visible={createFolderOpen}
         onClose={() => setCreateFolderOpen(false)}
         conversations={items}
@@ -510,6 +581,11 @@ export default function MessagesScreen() {
             if (created) folderPagerRef.current?.selectFolder(created.id);
           })();
         }}
+      />
+
+      <CreateChatGroupComingSoonModal
+        visible={createGroupSoonOpen}
+        onClose={() => setCreateGroupSoonOpen(false)}
       />
 
       <FscpUnlockSheet
@@ -558,6 +634,47 @@ const styles = StyleSheet.create({
     width: "100%",
     gap: floraSpacing.grid,
     overflow: "visible",
+  },
+  /** Как PostMoreMenu / TabDropdown — не popoverInset из compose. */
+  createMenu: {
+    minWidth: 200,
+    maxWidth: 280,
+    borderRadius: 12,
+    backgroundColor: floraColors.bg,
+    borderWidth: 1,
+    borderColor: "rgba(250, 250, 250, 0.06)",
+    padding: floraSpacing.gridFine * 1.5,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  createMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: floraSpacing.grid,
+    width: "100%",
+    paddingVertical: floraSpacing.gridFine * 1.5,
+    paddingHorizontal: floraSpacing.gridFine * 2,
+    borderRadius: 8,
+  },
+  createMenuItemPressed: {
+    backgroundColor: "rgba(250, 250, 250, 0.06)",
+  },
+  createMenuItemIcon: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  createMenuLabel: {
+    flex: 1,
+    color: "rgba(250, 250, 250, 0.9)",
+    fontSize: 14,
+    fontWeight: "400",
+    letterSpacing: 0.42,
   },
   list: {
     flex: 1,

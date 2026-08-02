@@ -28,8 +28,6 @@ type Props = {
   folders: readonly ChatListFolderDef[];
   activeFolder: ChatListFolderId;
   onSelect: (folder: ChatListFolderId) => void;
-  onCreateFolder?: () => void;
-  canCreateFolder?: boolean;
   onDeleteFolder?: (folderId: string) => void;
   /** scrollX pager’а — иконки/подчёркивание как подвкладки ленты при свайпе. */
   pagerScroll?: MessagesFolderPagerScroll | null;
@@ -37,9 +35,13 @@ type Props = {
 
 type TabLayout = { x: number; width: number };
 
-const SEARCH_ICON_SLOT = 45;
-/** all + до 3 иконок папок. */
-const MAX_PAGER_PAGES = 4;
+/** all + до 4 иконок папок. */
+const MAX_PAGER_PAGES = 5;
+/** Как `iconButton` в TabScreenSearchHeader — правая папка центрируется под «+». */
+const HEADER_TRAILING_ICON_SLOT = 45;
+/** Тап-зона папки: плотнее 45; padding ряда выравнивает центр последней под «+». */
+const FOLDER_ICON_SLOT = 36;
+const FOLDER_ICON_GAP = 8;
 
 function resolveFolderIcon(folder: ChatListFolderDef): keyof typeof Ionicons.glyphMap {
   if (folder.id === CHAT_LIST_ARCHIVE_FOLDER_ID) return "archive-outline";
@@ -113,8 +115,6 @@ export function MessagesChatFolders({
   folders,
   activeFolder,
   onSelect,
-  onCreateFolder,
-  canCreateFolder = true,
   onDeleteFolder,
   pagerScroll = null,
 }: Props) {
@@ -256,17 +256,6 @@ export function MessagesChatFolders({
     );
   };
 
-  const onPressCreate = () => {
-    if (!canCreateFolder) {
-      Alert.alert(
-        "Лимит папок",
-        "Можно показать не больше трёх иконок, включая Архив. Удалите папку или уберите чаты из архива.",
-      );
-      return;
-    }
-    onCreateFolder?.();
-  };
-
   return (
     <View style={styles.row} accessibilityLabel="Папки чатов">
       <View style={styles.foldersTrack}>
@@ -284,7 +273,7 @@ export function MessagesChatFolders({
               accessibilityLabel={folder.label}
               accessibilityState={{ selected: active }}
               accessibilityHint={canDelete ? "Удерживайте, чтобы удалить папку" : undefined}
-              style={({ pressed }) => [styles.folderBtn, pressed && styles.btnPressed]}
+              style={styles.folderBtn}
               onLayout={(event) => recordLayout(folder.id, event)}
               onPress={() => onSelect(active ? "all" : folder.id)}
               onLongPress={canDelete ? () => requestDelete(folder) : undefined}
@@ -317,17 +306,6 @@ export function MessagesChatFolders({
           );
         })}
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Создать папку или группу"
-        accessibilityState={{ disabled: !canCreateFolder }}
-        style={({ pressed }) => [styles.addBtn, pressed && styles.btnPressed]}
-        onPress={onPressCreate}
-        hitSlop={6}
-      >
-        <Ionicons name="add" size={22} color={floraColors.greenLight} />
-      </Pressable>
     </View>
   );
 }
@@ -338,19 +316,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     marginLeft: "auto",
-    gap: floraSpacing.gridFine,
+    // Сдвиг: центр последней иконки совпадает с центром «+» (slot 45).
+    paddingRight: (HEADER_TRAILING_ICON_SLOT - FOLDER_ICON_SLOT) / 2,
     height: floraTabFilter.triggerHeight,
   },
   foldersTrack: {
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
-    gap: floraSpacing.gridFine,
+    gap: FOLDER_ICON_GAP,
     height: floraTabFilter.triggerHeight,
     overflow: "visible",
   },
   folderBtn: {
-    width: floraSpacing.grid * 2,
+    width: FOLDER_ICON_SLOT,
     height: floraTabFilter.triggerHeight,
     alignItems: "center",
     justifyContent: "center",
@@ -380,14 +359,5 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: floraColors.greenLight,
     zIndex: 2,
-  },
-  addBtn: {
-    width: SEARCH_ICON_SLOT,
-    height: floraTabFilter.triggerHeight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  btnPressed: {
-    opacity: 0.72,
   },
 });

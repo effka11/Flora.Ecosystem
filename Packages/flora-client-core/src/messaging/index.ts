@@ -3,6 +3,7 @@ export {
   CHAT_LIST_FOLDER_ARCHIVE,
   CHAT_LIST_MAX_FOLDER_ICONS,
   addPeerToChatListEntity,
+  canArchiveChatListPeer,
   canCreateChatListFolder,
   chatListEntityFromApi,
   chatListFolderPageIds,

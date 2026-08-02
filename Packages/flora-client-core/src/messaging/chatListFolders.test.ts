@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addPeerToChatListEntity,
+  canArchiveChatListPeer,
   canCreateChatListFolder,
   chatListFolderPageIds,
   chatListFolderPageIndex,
@@ -58,24 +59,29 @@ describe("chatListFolders", () => {
     expect(chatListFolderPageIndex(pages, "missing")).toBe(0);
   });
 
-  it("caps folder icons at 3 including archive", () => {
+  it("caps folder icons at 4 including archive", () => {
     const custom = [
       { id: "a", label: "A" },
       { id: "b", label: "B" },
       { id: "c", label: "C" },
       { id: "d", label: "D" },
+      { id: "e", label: "E" },
     ];
-    expect(listVisibleChatFolders(0, custom).map((f) => f.id)).toEqual(["a", "b", "c"]);
+    expect(listVisibleChatFolders(0, custom).map((f) => f.id)).toEqual(["a", "b", "c", "d"]);
     expect(listVisibleChatFolders(1, custom).map((f) => f.id)).toEqual([
       "a",
       "b",
+      "c",
       "archived",
     ]);
-    expect(maxCustomChatListFolders(0)).toBe(3);
-    expect(maxCustomChatListFolders(2)).toBe(2);
-    expect(canCreateChatListFolder(0, 2)).toBe(true);
-    expect(canCreateChatListFolder(0, 3)).toBe(false);
-    expect(canCreateChatListFolder(1, 2)).toBe(false);
+    expect(maxCustomChatListFolders(0)).toBe(4);
+    expect(maxCustomChatListFolders(2)).toBe(3);
+    expect(canCreateChatListFolder(0, 3)).toBe(true);
+    expect(canCreateChatListFolder(0, 4)).toBe(false);
+    expect(canCreateChatListFolder(1, 3)).toBe(false);
+    expect(canArchiveChatListPeer(0, 3)).toBe(true);
+    expect(canArchiveChatListPeer(0, 4)).toBe(false);
+    expect(canArchiveChatListPeer(1, 4)).toBe(true);
   });
 
   it("falls back to all when archive folder becomes empty", () => {

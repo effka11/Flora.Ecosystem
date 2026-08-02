@@ -14,8 +14,10 @@ import {
 } from "@flora/client-core/api";
 import {
   addPeerToChatListEntity,
+  canArchiveChatListPeer,
   chatListEntityFromApi,
   chatListOverlayFromApi,
+  countArchivedPeers,
   emptyChatListOverlayState,
   parseChatListOverlayState,
   pruneArchivedPeers,
@@ -221,6 +223,10 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set, get) =
     const owner = get().ownerUserUuid;
     if (!owner || !peerUuid.trim() || !conversationUuid.trim()) return;
     const prev = get().state;
+    if (archived) {
+      const archivedCount = countArchivedPeers(prev.archivedByPeer);
+      if (!canArchiveChatListPeer(archivedCount, prev.entities.length)) return;
+    }
     const archivedByPeer = setPeerArchivedFlag(prev.archivedByPeer, peerUuid, archived);
     if (archivedByPeer === prev.archivedByPeer) return;
     bumpMutation(get, set);

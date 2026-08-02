@@ -53,14 +53,14 @@ export function TabDropdownPicker({
           accessibilityRole="button"
           accessibilityLabel={`${accessibilityLabel}: ${activeLabel}`}
           accessibilityState={{ expanded: open }}
-          style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
+          style={styles.trigger}
           onPress={toggle}
         >
           <Text style={[styles.triggerLabel, open && styles.triggerLabelOpen]}>{activeLabel}</Text>
           <Ionicons
             name="chevron-down"
             size={16}
-            color={open ? floraColors.greenLight : floraColors.gray}
+            color={floraColors.greenLight}
             style={open ? styles.chevronOpen : undefined}
           />
         </Pressable>
@@ -175,8 +175,5 @@ const styles = StyleSheet.create({
   },
   menuItemLabelActive: {
     color: floraColors.greenLight,
-  },
-  pressed: {
-    opacity: 0.72,
   },
 });

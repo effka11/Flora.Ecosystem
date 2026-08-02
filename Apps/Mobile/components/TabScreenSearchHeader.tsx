@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { floraColors, floraSpacing } from "@/lib/theme";
@@ -17,6 +17,8 @@ type TabScreenSearchHeaderProps = {
   createAction?: {
     accessibilityLabel: string;
     onPress: () => void;
+    /** Якорь для DropdownMenuOverlay (как меню «⋯» в compose). */
+    anchorRef?: RefObject<View | null>;
   };
 };
 
@@ -121,14 +123,16 @@ export function TabScreenSearchHeader({
           </Pressable>
         ) : null}
         {createAction ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={createAction.accessibilityLabel}
-            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-            onPress={createAction.onPress}
-          >
-            <Ionicons name="add" size={24} color={floraColors.greenLight} />
-          </Pressable>
+          <View ref={createAction.anchorRef} collapsable={false}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={createAction.accessibilityLabel}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+              onPress={createAction.onPress}
+            >
+              <Ionicons name="add" size={24} color={floraColors.greenLight} />
+            </Pressable>
+          </View>
         ) : null}
       </View>
     </View>
@@ -178,7 +182,8 @@ const styles = StyleSheet.create({
   trailingActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    // Чуть плотнее: поиск и «+» читаются одной группой.
+    gap: 4,
     marginLeft: floraSpacing.gridFine,
   },
   iconButton: {
