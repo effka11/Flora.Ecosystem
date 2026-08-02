@@ -2,12 +2,14 @@ import { apiGetConversations } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
 import {
+  canCreateChatListFolder,
+  chatListFolderPageIds,
   countArchivedPeers,
+  entitiesToFolderDefs,
   filterConversationsByFolder,
   listVisibleChatFolders,
+  membershipByEntityId,
   normalizeChatListFolder,
-  pruneArchivedPeers,
-  setPeerArchivedFlag,
   type ChatListFolderId,
 } from "@flora/client-core/messaging";
 import { sharedPresenceStore } from "@flora/client-core/presence";
@@ -21,15 +23,24 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
+import { CreateChatFolderOrGroupSheet } from "@/components/messages/CreateChatFolderOrGroupSheet";
 import { MessagesChatFolders } from "@/components/messages/MessagesChatFolders";
+import {
+  MessagesFolderPager,
+  type MessagesFolderConversationRow,
+  type MessagesFolderPagerHandle,
+} from "@/components/messages/MessagesFolderPager";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropdownPicker";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
@@ -52,8 +63,24 @@ function emptyListMessage(
   if (folder === "archived") {
     return "Пока нет переписок в архиве. Перенесите чат в архив из меню ⋮.";
   }
+  if (folder !== "all") {
+    return "В этой папке пока нет чатов. Добавьте их из меню ⋮ или при создании.";
+  }
   if (totalCount === 0) return "Пока нет переписок. Найдите человека во вкладке «Люди».";
   return "Ничего не найдено. Измените запрос в поиске.";
+}
+
+function toConversationRows(
+  list: readonly MsgConversationDto[],
+  previews: Readonly<Record<string, string>>,
+): MessagesFolderConversationRow[] {
+  return list.map((item) => {
+    const preview =
+      previews[item.conversationUuid] ??
+      item.lastMessageContent ??
+      (item.lastMessageEncryptedForMe ? "Расшифровка…" : "Нет сообщений");
+    return { ...item, preview };
+  });
 }
 
 function fscpBannerMessage(status: FscpBootstrapStatus): { text: string; action?: string } | null {
@@ -90,8 +117,6 @@ function fscpBannerMessage(status: FscpBootstrapStatus): { text: string; action?
   }
 }
 
-type ConversationRow = MsgConversationDto & { preview: string };
-
 const EMPTY_CONVERSATIONS: MsgConversationDto[] = [];
 // Matches the global staleTime in providers/FloraProviders.tsx.
 const CONVERSATIONS_STALE_REFETCH_MS = 15_000;
@@ -111,13 +136,30 @@ export default function MessagesScreen() {
   const { closeMenu } = useHamburgerMenu();
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   const [listFolder, setListFolder] = useState<ChatListFolderId>("all");
+  const folderPagerRef = useRef<MessagesFolderPagerHandle>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const folderScrollX = useSharedValue(0);
+  const folderPageWidthSV = useSharedValue(windowWidth);
+  /** Тап с иконки N обратно в «все» — fade chrome на N, без проезда по промежуточным. */
+  const folderReturnFromPageSV = useSharedValue(0);
+  const folderReturnProgressSV = useSharedValue(0);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
-  /** Локальный оверлей mute/archive — как на web (список чатов). */
-  const [mutedByPeer, setMutedByPeer] = useState<Record<string, true>>({});
-  const [archivedByPeer, setArchivedByPeer] = useState<Record<string, true>>({});
+  const overlayState = useChatListOverlayStore((s) => s.state);
+  const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
+  const createFolder = useChatListOverlayStore((s) => s.createFolder);
+  const addPeerToEntity = useChatListOverlayStore((s) => s.addPeerToEntity);
+  const removeEntity = useChatListOverlayStore((s) => s.removeEntity);
+  const setArchived = useChatListOverlayStore((s) => s.setArchived);
+  const setMuted = useChatListOverlayStore((s) => s.setMuted);
+  const pruneUnknownPeers = useChatListOverlayStore((s) => s.pruneUnknownPeers);
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
+
+  useEffect(() => {
+    hydrateOverlay(me?.userUuid ?? null);
+  }, [hydrateOverlay, me?.userUuid]);
 
   useEffect(
     () =>
@@ -163,15 +205,62 @@ export default function MessagesScreen() {
   );
 
   useEffect(() => {
-    setArchivedByPeer((prev) => pruneArchivedPeers(prev, knownPeerUuids));
-  }, [knownPeerUuids]);
+    pruneUnknownPeers(knownPeerUuids);
+  }, [knownPeerUuids, pruneUnknownPeers]);
+
+  const archivedByPeer = overlayState.archivedByPeer;
+  const mutedByPeer = overlayState.mutedByPeer;
+  const customEntities = overlayState.entities;
+  const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);
+  const membership = useMemo(() => membershipByEntityId(customEntities), [customEntities]);
+  const knownCustomIds = useMemo(
+    () => new Set(customEntities.map((e) => e.id)),
+    [customEntities],
+  );
 
   const archivedCount = useMemo(
     () => countArchivedPeers(archivedByPeer, knownPeerUuids),
     [archivedByPeer, knownPeerUuids],
   );
-  const visibleFolders = useMemo(() => listVisibleChatFolders(archivedCount), [archivedCount]);
-  const activeFolder = normalizeChatListFolder(listFolder, archivedCount);
+  const visibleFolders = useMemo(
+    () => listVisibleChatFolders(archivedCount, customFolderDefs),
+    [archivedCount, customFolderDefs],
+  );
+  /** Pager: «все» слева (0), затем иконки папок слева→направо. */
+  const folderPages = useMemo(
+    () => chatListFolderPageIds(visibleFolders),
+    [visibleFolders],
+  );
+
+  useEffect(() => {
+    folderPageWidthSV.value = windowWidth;
+  }, [folderPageWidthSV, windowWidth]);
+
+  const folderPagerScroll = useMemo(
+    () => ({
+      scrollX: folderScrollX,
+      pageWidthSV: folderPageWidthSV,
+      pages: folderPages,
+      returnFromPageSV: folderReturnFromPageSV,
+      returnProgressSV: folderReturnProgressSV,
+    }),
+    [
+      folderPageWidthSV,
+      folderPages,
+      folderReturnFromPageSV,
+      folderReturnProgressSV,
+      folderScrollX,
+    ],
+  );
+  const canCreateFolder = useMemo(
+    () => canCreateChatListFolder(archivedCount, customFolderDefs.length),
+    [archivedCount, customFolderDefs.length],
+  );
+  const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
+  const folderPickOptions = useMemo(
+    () => customEntities.map((e) => ({ id: e.id, label: e.label })),
+    [customEntities],
+  );
 
   useEffect(() => {
     if (listFolder !== activeFolder) setListFolder(activeFolder);
@@ -195,37 +284,44 @@ export default function MessagesScreen() {
 
   const banner = fscpBannerMessage(fscpStatus);
 
-  const filteredItems = useMemo(() => {
-    const queryText = search.trim().toLowerCase();
-    let list = filterConversationsByFolder(items, activeFolder, archivedByPeer);
+  const filterFolderList = useCallback(
+    (folder: ChatListFolderId) => {
+      let list = filterConversationsByFolder(items, folder, archivedByPeer, membership);
+      if (sortBy === "unread") {
+        list = list.filter((item) => item.unreadCount > 0);
+      }
+      return list;
+    },
+    [archivedByPeer, items, membership, sortBy],
+  );
 
-    if (sortBy === "unread") {
-      list = list.filter((item) => item.unreadCount > 0);
+  const dataByPage = useMemo(() => {
+    const map = new Map<ChatListFolderId, MessagesFolderConversationRow[]>();
+    for (const folder of folderPages) {
+      map.set(folder, toConversationRows(filterFolderList(folder), previews));
     }
+    return map;
+  }, [filterFolderList, folderPages, previews]);
 
-    if (!queryText) return list;
-
-    return list.filter((item) => {
-      const preview = (previews[item.conversationUuid] ?? item.lastMessageContent ?? "…").toLowerCase();
+  /** Поиск — один список без pager (папки скрыты). */
+  const searchListData = useMemo(() => {
+    const queryText = search.trim().toLowerCase();
+    if (!queryText) return [] as MessagesFolderConversationRow[];
+    let list = filterFolderList(activeFolder);
+    list = list.filter((item) => {
+      const preview = (
+        previews[item.conversationUuid] ??
+        item.lastMessageContent ??
+        "…"
+      ).toLowerCase();
       return (
         item.otherDisplayName.toLowerCase().includes(queryText) ||
         item.otherUsername.toLowerCase().includes(queryText) ||
         preview.includes(queryText)
       );
     });
-  }, [activeFolder, archivedByPeer, items, previews, search, sortBy]);
-
-  const listData = useMemo<ConversationRow[]>(
-    () =>
-      filteredItems.map((item) => {
-        const preview =
-          previews[item.conversationUuid] ??
-          item.lastMessageContent ??
-          (item.lastMessageEncryptedForMe ? "Расшифровка…" : "Нет сообщений");
-        return { ...item, preview };
-      }),
-    [filteredItems, previews],
-  );
+    return toConversationRows(list, previews);
+  }, [activeFolder, filterFolderList, previews, search]);
 
   useEffect(() => {
     const uuids = items.map((c) => c.otherUserUuid).filter(Boolean);
@@ -301,60 +397,119 @@ export default function MessagesScreen() {
             <MessagesChatFolders
               folders={visibleFolders}
               activeFolder={activeFolder}
-              onSelect={setListFolder}
+              pagerScroll={folderPagerScroll}
+              onSelect={(folder) => {
+                // Как switchKind на ленте: цель + cancel предыдущего settle.
+                folderPagerRef.current?.selectFolder(folder);
+              }}
+              canCreateFolder={canCreateFolder}
               onCreateFolder={() => {
-                /* заглушка: создание пользовательской папки */
+                if (!canCreateFolder) return;
+                closeDropdowns();
+                setCreateFolderOpen(true);
+              }}
+              onDeleteFolder={(folderId) => {
+                void removeEntity(folderId);
+                if (listFolder === folderId) {
+                  folderPagerRef.current?.selectFolder("all");
+                }
               }}
             />
           </View>
         ) : null}
       </View>
 
-      <FlashList
-        style={styles.list}
-        data={listData}
-        keyExtractor={(item) => item.conversationUuid}
-        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={query.isRefetching}
-            onRefresh={() => query.refetch()}
-            tintColor={floraColors.greenLight}
-          />
-        }
-        renderItem={({ item }) => (
-          <ConversationListRow
-            item={item}
-            isMuted={item.otherUserUuid in mutedByPeer}
-            isArchived={item.otherUserUuid in archivedByPeer}
-            onMutedChange={(muted) => {
-              setMutedByPeer((prev) => {
-                if (muted) return { ...prev, [item.otherUserUuid]: true };
-                if (!(item.otherUserUuid in prev)) return prev;
-                const next = { ...prev };
-                delete next[item.otherUserUuid];
-                return next;
-              });
-            }}
-            onArchivedChange={(archived) => {
-              setArchivedByPeer((prev) => setPeerArchivedFlag(prev, item.otherUserUuid, archived));
-            }}
-          />
-        )}
-        ListEmptyComponent={
-          query.isLoading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={floraColors.greenLight} />
-              <Text style={styles.emptyHint}>Загрузка чатов…</Text>
-            </View>
-          ) : query.isError ? (
-            <Text style={styles.emptyHint}>Не удалось загрузить чаты.</Text>
-          ) : (
-            <Text style={styles.emptyHint}>
-              {emptyListMessage(hasSearch, items.length, activeFolder)}
-            </Text>
-          )
-        }
+      {hasSearch ? (
+        <FlashList
+          style={styles.list}
+          data={searchListData}
+          keyExtractor={(item) => item.conversationUuid}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={query.isRefetching}
+              onRefresh={() => query.refetch()}
+              tintColor={floraColors.greenLight}
+            />
+          }
+          renderItem={({ item }) => (
+            <ConversationListRow
+              item={item}
+              isMuted={item.otherUserUuid in mutedByPeer}
+              isArchived={item.otherUserUuid in archivedByPeer}
+              folderOptions={folderPickOptions}
+              onMutedChange={(muted) =>
+                void setMuted(item.otherUserUuid, item.conversationUuid, muted)
+              }
+              onArchivedChange={(archived) =>
+                void setArchived(item.otherUserUuid, item.conversationUuid, archived)
+              }
+              onAddToFolder={(folderId) => void addPeerToEntity(folderId, item.otherUserUuid)}
+            />
+          )}
+          ListEmptyComponent={
+            query.isLoading ? (
+              <View style={styles.loading}>
+                <ActivityIndicator color={floraColors.greenLight} />
+                <Text style={styles.emptyHint}>Загрузка чатов…</Text>
+              </View>
+            ) : query.isError ? (
+              <Text style={styles.emptyHint}>Не удалось загрузить чаты.</Text>
+            ) : (
+              <Text style={styles.emptyHint}>
+                {emptyListMessage(true, items.length, activeFolder)}
+              </Text>
+            )
+          }
+        />
+      ) : (
+        <MessagesFolderPager
+          ref={folderPagerRef}
+          pages={folderPages}
+          activeFolder={activeFolder}
+          onActiveFolderChange={setListFolder}
+          scrollX={folderScrollX}
+          pageWidthSV={folderPageWidthSV}
+          returnFromPageSV={folderReturnFromPageSV}
+          returnProgressSV={folderReturnProgressSV}
+          dataByPage={dataByPage}
+          listPaddingBottom={listPaddingBottom}
+          refreshing={query.isRefetching}
+          onRefresh={() => {
+            void query.refetch();
+          }}
+          loading={query.isLoading}
+          error={query.isError}
+          emptyMessage={(folder) => emptyListMessage(false, items.length, folder)}
+          mutedByPeer={mutedByPeer}
+          archivedByPeer={archivedByPeer}
+          folderOptions={folderPickOptions}
+          onMutedChange={(peerUuid, conversationUuid, muted) => {
+            void setMuted(peerUuid, conversationUuid, muted);
+          }}
+          onArchivedChange={(peerUuid, conversationUuid, archived) => {
+            void setArchived(peerUuid, conversationUuid, archived);
+          }}
+          onAddToFolder={(folderId, peerUuid) => {
+            void addPeerToEntity(folderId, peerUuid);
+          }}
+        />
+      )}
+
+      <CreateChatFolderOrGroupSheet
+        visible={createFolderOpen}
+        onClose={() => setCreateFolderOpen(false)}
+        conversations={items}
+        onCreate={(result) => {
+          void (async () => {
+            const created = await createFolder({
+              label: result.name,
+              icon: result.icon,
+              memberPeerUuids: result.memberUserUuids,
+            });
+            if (created) folderPagerRef.current?.selectFolder(created.id);
+          })();
+        }}
       />
 
       <FscpUnlockSheet

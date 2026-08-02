@@ -13,13 +13,15 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use flora_messaging_contracts::{
-    DeleteConversationOutcome, DeleteMessageOutcome, PostConversationMessageRequest,
+    AddChatFolderMemberRequest, CreateChatFolderRequest, DeleteConversationOutcome,
+    DeleteMessageOutcome, PostConversationMessageRequest,
 };
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::application::{
-    AssetService, ConversationService, E2eEpochService, E2eKeyBackupService, SendMessageError,
+    AssetService, ChatListError, ChatListService, ConversationService, E2eEpochService,
+    E2eKeyBackupService, SendMessageError,
 };
 
 /// JWT user (тот же тип, что внедряет flora-social).
@@ -32,6 +34,7 @@ const MESSAGING_BODY_LIMIT: usize = 37 * 1024 * 1024;
 #[derive(Clone)]
 pub struct MessagingState {
     pub conversations: Arc<ConversationService>,
+    pub chat_list: Arc<ChatListService>,
     pub assets: Arc<AssetService>,
     pub e2e: Arc<E2eKeyBackupService>,
     pub epochs: Arc<E2eEpochService>,
@@ -64,6 +67,35 @@ pub fn protected_router(state: MessagingState) -> Router {
         .route(
             "/api/messaging/conversations/{conversation_uuid}",
             delete(delete_conversation),
+        )
+        .route(
+            "/api/messaging/chat-list-overlay",
+            get(get_chat_list_overlay),
+        )
+        .route("/api/messaging/chat-folders", post(create_chat_folder))
+        .route(
+            "/api/messaging/chat-folders/{folder_id}",
+            delete(delete_chat_folder),
+        )
+        .route(
+            "/api/messaging/chat-folders/{folder_id}/members",
+            post(add_chat_folder_member),
+        )
+        .route(
+            "/api/messaging/conversations/{conversation_uuid}/archive",
+            post(archive_conversation),
+        )
+        .route(
+            "/api/messaging/conversations/{conversation_uuid}/unarchive",
+            post(unarchive_conversation),
+        )
+        .route(
+            "/api/messaging/conversations/{conversation_uuid}/mute",
+            post(mute_conversation),
+        )
+        .route(
+            "/api/messaging/conversations/{conversation_uuid}/unmute",
+            post(unmute_conversation),
         )
         .route("/api/messaging/image-assets", post(assets::upload_image))
         .route(
@@ -188,15 +220,19 @@ struct ConversationsQuery {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct MessagesQuery {
     cursor: Option<String>,
     #[serde(default = "default_messages_take")]
     take: i32,
+    #[serde(alias = "other_user_uuid")]
     other_user_uuid: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ConversationPeerQuery {
+    #[serde(alias = "other_user_uuid")]
     other_user_uuid: Option<Uuid>,
 }
 
@@ -409,6 +445,180 @@ async fn delete_message(
         )
             .into_response(),
         Err(e) => internal(e),
+    }
+}
+
+async fn get_chat_list_overlay(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    match state.chat_list.overlay(user.0).await {
+        Ok(dto) => Json(dto).into_response(),
+        Err(e) => chat_list_err(e),
+    }
+}
+
+async fn create_chat_folder(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Json(body): Json<CreateChatFolderRequest>,
+) -> Response {
+    match state.chat_list.create_folder(user.0, body).await {
+        Ok(dto) => (StatusCode::CREATED, Json(dto)).into_response(),
+        Err(e) => chat_list_err(e),
+    }
+}
+
+async fn delete_chat_folder(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(folder_id): Path<Uuid>,
+) -> Response {
+    match state.chat_list.delete_folder(user.0, folder_id).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => chat_list_err(e),
+    }
+}
+
+async fn add_chat_folder_member(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(folder_id): Path<Uuid>,
+    Json(body): Json<AddChatFolderMemberRequest>,
+) -> Response {
+    match state
+        .chat_list
+        .add_folder_member(user.0, folder_id, body)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => chat_list_err(e),
+    }
+}
+
+async fn archive_conversation(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Query(q): Query<ConversationPeerQuery>,
+) -> Response {
+    set_conversation_flag(
+        &state,
+        user.0,
+        conversation_uuid,
+        q.other_user_uuid,
+        Some(true),
+        None,
+    )
+    .await
+}
+
+async fn unarchive_conversation(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Query(q): Query<ConversationPeerQuery>,
+) -> Response {
+    set_conversation_flag(
+        &state,
+        user.0,
+        conversation_uuid,
+        q.other_user_uuid,
+        Some(false),
+        None,
+    )
+    .await
+}
+
+async fn mute_conversation(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Query(q): Query<ConversationPeerQuery>,
+) -> Response {
+    set_conversation_flag(
+        &state,
+        user.0,
+        conversation_uuid,
+        q.other_user_uuid,
+        None,
+        Some(true),
+    )
+    .await
+}
+
+async fn unmute_conversation(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Query(q): Query<ConversationPeerQuery>,
+) -> Response {
+    set_conversation_flag(
+        &state,
+        user.0,
+        conversation_uuid,
+        q.other_user_uuid,
+        None,
+        Some(false),
+    )
+    .await
+}
+
+async fn set_conversation_flag(
+    state: &MessagingState,
+    owner: Uuid,
+    conversation_uuid: Uuid,
+    other_user_uuid: Option<Uuid>,
+    archived: Option<bool>,
+    muted: Option<bool>,
+) -> Response {
+    let Some(other) = other_user_uuid.filter(|u| !u.is_nil()) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Укажите otherUserUuid." })),
+        )
+            .into_response();
+    };
+    let result = match (archived, muted) {
+        (Some(a), None) => {
+            state
+                .chat_list
+                .set_archived(owner, conversation_uuid, other, a)
+                .await
+        }
+        (None, Some(m)) => {
+            state
+                .chat_list
+                .set_muted(owner, conversation_uuid, other, m)
+                .await
+        }
+        _ => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response();
+        }
+    };
+    match result {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => chat_list_err(e),
+    }
+}
+
+fn chat_list_err(e: ChatListError) -> Response {
+    match e {
+        ChatListError::BadRequest(msg) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        ChatListError::NotFound(msg) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        ChatListError::Internal(msg) => internal(msg),
     }
 }
 

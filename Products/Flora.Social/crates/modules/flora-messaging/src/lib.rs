@@ -17,9 +17,11 @@ use flora_messaging_contracts::{
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
 use sqlx::PgPool;
 
-use crate::application::{AssetService, ConversationService, E2eEpochService, E2eKeyBackupService};
+use crate::application::{
+    AssetService, ChatListService, ConversationService, E2eEpochService, E2eKeyBackupService,
+};
 use crate::http::MessagingState;
-use crate::infrastructure::{E2eProofTokens, MessagingRepo};
+use crate::infrastructure::{ChatListRepo, E2eProofTokens, MessagingRepo};
 
 /// Re-export FSCP validator for callers that historically used `flora_messaging::fscp`.
 pub use fscp_core as fscp;
@@ -55,6 +57,9 @@ pub fn compose(
 ) -> MessagingModule {
     let cleanup_pool = pool.clone();
     let repo = Arc::new(MessagingRepo::new(pool.clone()));
+    let chat_list = Arc::new(ChatListService::new(Arc::new(ChatListRepo::new(
+        pool.clone(),
+    ))));
     let conversations = Arc::new(ConversationService::new(
         repo,
         accounts.clone(),
@@ -81,6 +86,7 @@ pub fn compose(
     MessagingModule {
         router: http::protected_router(MessagingState {
             conversations,
+            chat_list,
             assets,
             e2e,
             epochs,

@@ -82,6 +82,7 @@ import {
   floraNativeStackOptions,
   floraSpacing,
 } from "@/lib/theme";
+import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
@@ -403,11 +404,17 @@ export default function ThreadScreen() {
   const paramOtherUserLastSeenAt = routeParam(params.otherUserLastSeenAt);
   const [sending, setSending] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [conversationMuted, setConversationMuted] = useState(false);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
 
   const me = useSessionStore((s) => s.me);
+  const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
+  const setMuted = useChatListOverlayStore((s) => s.setMuted);
+  const mutedByPeer = useChatListOverlayStore((s) => s.state.mutedByPeer);
+
+  useEffect(() => {
+    hydrateOverlay(me?.userUuid ?? null);
+  }, [hydrateOverlay, me?.userUuid]);
   const fscpStatus = useFscpStore((s) => s.status);
   const fscpReady = useFscpStore((s) => s.status === "ready");
   const fscpDecryptKey = useFscpStore((s) => s.localPubKey);
@@ -507,6 +514,7 @@ export default function ThreadScreen() {
 
   const otherUserUuid = peer.otherUserUuid || paramOtherUserUuid;
   const peerDisplayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
+  const conversationMuted = !!otherUserUuid && otherUserUuid in mutedByPeer;
 
   useEffect(() => {
     if (!conversationUuid || otherUserUuid) return;
@@ -1591,9 +1599,21 @@ export default function ThreadScreen() {
         onClose={() => setMoreMenuOpen(false)}
         anchorRef={moreBtnRef}
         isMuted={conversationMuted}
-        onMuteForever={() => setConversationMuted(true)}
-        onMuteTemporary={() => setConversationMuted(true)}
-        onUnmute={() => setConversationMuted(false)}
+        onMuteForever={() => {
+          if (otherUserUuid && conversationUuid) {
+            void setMuted(otherUserUuid, conversationUuid, true);
+          }
+        }}
+        onMuteTemporary={() => {
+          if (otherUserUuid && conversationUuid) {
+            void setMuted(otherUserUuid, conversationUuid, true);
+          }
+        }}
+        onUnmute={() => {
+          if (otherUserUuid && conversationUuid) {
+            void setMuted(otherUserUuid, conversationUuid, false);
+          }
+        }}
         onDelete={() => {
           if (!conversationUuid) return;
           const peerName = peer.otherDisplayName || peer.otherUsername || "пользователем";

@@ -1,12 +1,14 @@
 //! Application: диалоги, unread, assets, E2E state (срез ServeNative).
 
 mod assets;
+mod chat_list;
 mod conversations;
 mod cursor;
 mod e2e;
 mod e2e_epochs;
 
 pub use assets::{AssetBlob, AssetError, AssetService};
+pub use chat_list::{ChatListError, ChatListService};
 pub use conversations::{ConversationService, SendMessageError};
 pub use cursor::{decode_cursor, encode_cursor};
 pub use e2e::{

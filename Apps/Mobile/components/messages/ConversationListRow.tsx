@@ -34,20 +34,29 @@ export function formatConversationPreview(
   return format(preview);
 }
 
+type FolderPickOption = {
+  id: string;
+  label: string;
+};
+
 type Props = {
   item: MsgConversationDto & { preview: string };
   isMuted?: boolean;
   isArchived?: boolean;
+  folderOptions?: readonly FolderPickOption[];
   onMutedChange?: (muted: boolean) => void;
   onArchivedChange?: (archived: boolean) => void;
+  onAddToFolder?: (folderId: string) => void;
 };
 
 export function ConversationListRow({
   item,
   isMuted = false,
   isArchived = false,
+  folderOptions = [],
   onMutedChange,
   onArchivedChange,
+  onAddToFolder,
 }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -154,6 +163,23 @@ export function ConversationListRow({
         onMuteForever={() => onMutedChange?.(true)}
         onMuteTemporary={() => onMutedChange?.(true)}
         onUnmute={() => onMutedChange?.(false)}
+        onAddToFolder={() => {
+          if (folderOptions.length === 0) {
+            Alert.alert("Нет папок", "Сначала создайте папку или группу через «+».");
+            return;
+          }
+          Alert.alert(
+            "Добавить в…",
+            displayName,
+            [
+              ...folderOptions.map((folder) => ({
+                text: folder.label,
+                onPress: () => onAddToFolder?.(folder.id),
+              })),
+              { text: "Отмена", style: "cancel" as const },
+            ],
+          );
+        }}
         onArchive={() => onArchivedChange?.(true)}
         onUnarchive={() => onArchivedChange?.(false)}
         onDelete={() => {
