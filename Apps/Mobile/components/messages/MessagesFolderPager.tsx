@@ -69,7 +69,9 @@ type Props = {
   mutedByPeer: Readonly<Record<string, true>>;
   archivedByPeer: Readonly<Record<string, true>>;
   folderOptions: readonly FolderOption[];
-  onMutedChange: (peerUuid: string, conversationUuid: string, muted: boolean) => void;
+  onMuteForever: (peerUuid: string, conversationUuid: string) => void;
+  onMuteTemporary: (peerUuid: string, conversationUuid: string) => void;
+  onUnmute: (peerUuid: string, conversationUuid: string) => void;
   onArchivedChange: (peerUuid: string, conversationUuid: string, archived: boolean) => void;
   onAddToFolder: (folderId: string, peerUuid: string) => void;
 };
@@ -87,7 +89,9 @@ type PageListProps = {
   mutedByPeer: Readonly<Record<string, true>>;
   archivedByPeer: Readonly<Record<string, true>>;
   folderOptions: readonly FolderOption[];
-  onMutedChange: (peerUuid: string, conversationUuid: string, muted: boolean) => void;
+  onMuteForever: (peerUuid: string, conversationUuid: string) => void;
+  onMuteTemporary: (peerUuid: string, conversationUuid: string) => void;
+  onUnmute: (peerUuid: string, conversationUuid: string) => void;
   onArchivedChange: (peerUuid: string, conversationUuid: string, archived: boolean) => void;
   onAddToFolder: (folderId: string, peerUuid: string) => void;
 };
@@ -105,20 +109,26 @@ const FolderPageList = memo(function FolderPageList({
   mutedByPeer,
   archivedByPeer,
   folderOptions,
-  onMutedChange,
+  onMuteForever,
+  onMuteTemporary,
+  onUnmute,
   onArchivedChange,
   onAddToFolder,
 }: PageListProps) {
   const mutedRef = useRef(mutedByPeer);
   const archivedRef = useRef(archivedByPeer);
   const foldersRef = useRef(folderOptions);
-  const onMutedRef = useRef(onMutedChange);
+  const onMuteForeverRef = useRef(onMuteForever);
+  const onMuteTemporaryRef = useRef(onMuteTemporary);
+  const onUnmuteRef = useRef(onUnmute);
   const onArchivedRef = useRef(onArchivedChange);
   const onAddRef = useRef(onAddToFolder);
   mutedRef.current = mutedByPeer;
   archivedRef.current = archivedByPeer;
   foldersRef.current = folderOptions;
-  onMutedRef.current = onMutedChange;
+  onMuteForeverRef.current = onMuteForever;
+  onMuteTemporaryRef.current = onMuteTemporary;
+  onUnmuteRef.current = onUnmute;
   onArchivedRef.current = onArchivedChange;
   onAddRef.current = onAddToFolder;
 
@@ -129,9 +139,13 @@ const FolderPageList = memo(function FolderPageList({
         isMuted={item.otherUserUuid in mutedRef.current}
         isArchived={item.otherUserUuid in archivedRef.current}
         folderOptions={foldersRef.current as FolderOption[]}
-        onMutedChange={(muted) =>
-          onMutedRef.current(item.otherUserUuid, item.conversationUuid, muted)
+        onMuteForever={() =>
+          onMuteForeverRef.current(item.otherUserUuid, item.conversationUuid)
         }
+        onMuteTemporary={() =>
+          onMuteTemporaryRef.current(item.otherUserUuid, item.conversationUuid)
+        }
+        onUnmute={() => onUnmuteRef.current(item.otherUserUuid, item.conversationUuid)}
         onArchivedChange={(archived) =>
           onArchivedRef.current(item.otherUserUuid, item.conversationUuid, archived)
         }
@@ -202,7 +216,9 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       mutedByPeer,
       archivedByPeer,
       folderOptions,
-      onMutedChange,
+      onMuteForever,
+      onMuteTemporary,
+      onUnmute,
       onArchivedChange,
       onAddToFolder,
     },
@@ -471,7 +487,9 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
                 mutedByPeer={mutedByPeer}
                 archivedByPeer={archivedByPeer}
                 folderOptions={folderOptions}
-                onMutedChange={onMutedChange}
+                onMuteForever={onMuteForever}
+                onMuteTemporary={onMuteTemporary}
+                onUnmute={onUnmute}
                 onArchivedChange={onArchivedChange}
                 onAddToFolder={onAddToFolder}
               />

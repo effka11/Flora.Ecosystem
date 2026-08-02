@@ -212,10 +212,10 @@ import { floraDurationMs } from "@/lib/floraMotion";
 import {
   addPeerToChatListFolder,
   createChatListFolder,
-  pruneChatListUnknownPeers,
   refreshChatListOverlay,
   removeChatListFolder,
   setChatListArchived,
+  setChatListMuted,
   useChatListOverlayHydrate,
   useChatListOverlayState,
 } from "@/lib/chatListOverlayStore";
@@ -552,11 +552,12 @@ function MessagesChatInner() {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [createGroupSoonOpen, setCreateGroupSoonOpen] = useState(false);
-  /** Локальный until-мут (UI); серверный mute — overlay.mutedByPeer. */
+  /** Локальный until-мут (UI countdown); forever/sync — overlay.mutedByPeer. */
   const [mutedPeers, setMutedPeers] = useState<Record<string, ConversationMuteEntry>>({});
   const overlayState = useChatListOverlayState();
   const hydrateOverlay = useChatListOverlayHydrate();
   const archivedByPeer = overlayState.archivedByPeer;
+  const mutedByPeer = overlayState.mutedByPeer;
   const compose = useMessageComposeDraft();
   const [decryptedById, setDecryptedById] = useState<Record<string, FscpMessagePlaintext>>({});
   const [decryptFailById, setDecryptFailById] = useState<Record<string, string>>({});
@@ -777,7 +778,18 @@ function MessagesChatInner() {
     }
   }, []);
 
-  const clearPeerMuted = useCallback((peerUuid: string) => {
+  const mutePeerViaApi = useCallback(
+    (peerUuid: string, muted: boolean) => {
+      const viewer = me?.userUuid?.trim();
+      if (!viewer || !peerUuid.trim()) return;
+      const uuid = dmConversationUuid(viewer, peerUuid);
+      void setChatListMuted(peerUuid, uuid, muted);
+    },
+    [me?.userUuid],
+  );
+
+  /** Сброс только локального until-индикатора; серверный mute не трогаем. */
+  const clearLocalTemporaryMute = useCallback((peerUuid: string) => {
     setMutedPeers((prev) => {
       if (!(peerUuid in prev)) return prev;
       const next = { ...prev };
@@ -786,24 +798,43 @@ function MessagesChatInner() {
     });
   }, []);
 
-  const setPeerMutedForever = useCallback((peerUuid: string) => {
-    setMutedPeers((prev) => ({ ...prev, [peerUuid]: { kind: "forever" } }));
-  }, []);
+  const clearPeerMuted = useCallback(
+    (peerUuid: string) => {
+      clearLocalTemporaryMute(peerUuid);
+      mutePeerViaApi(peerUuid, false);
+    },
+    [clearLocalTemporaryMute, mutePeerViaApi],
+  );
 
-  const setPeerMutedTemporary = useCallback((peerUuid: string) => {
-    setMutedPeers((prev) => ({
-      ...prev,
-      [peerUuid]: { kind: "until", untilMs: Date.now() + CONVERSATION_MUTE_DEFAULT_DURATION_MS },
-    }));
-  }, []);
+  const setPeerMutedForever = useCallback(
+    (peerUuid: string) => {
+      clearLocalTemporaryMute(peerUuid);
+      mutePeerViaApi(peerUuid, true);
+    },
+    [clearLocalTemporaryMute, mutePeerViaApi],
+  );
+
+  const setPeerMutedTemporary = useCallback(
+    (peerUuid: string) => {
+      // Overlay SoT — boolean mute (как Mobile). Countdown — только Web UI;
+      // по истечении mute на сервере остаётся, пока пользователь не снимет явно.
+      setMutedPeers((prev) => ({
+        ...prev,
+        [peerUuid]: { kind: "until", untilMs: Date.now() + CONVERSATION_MUTE_DEFAULT_DURATION_MS },
+      }));
+      mutePeerViaApi(peerUuid, true);
+    },
+    [mutePeerViaApi],
+  );
 
   const getPeerMute = useCallback(
     (peerUuid: string): ConversationMuteEntry | null => {
-      const entry = mutedPeers[peerUuid];
-      if (!entry || !isConversationMuteActive(entry)) return null;
-      return entry;
+      const local = mutedPeers[peerUuid];
+      if (local && isConversationMuteActive(local)) return local;
+      if (peerUuid in mutedByPeer) return { kind: "forever" };
+      return null;
     },
-    [mutedPeers],
+    [mutedByPeer, mutedPeers],
   );
 
   const isPeerArchived = useCallback((peerUuid: string) => peerUuid in archivedByPeer, [archivedByPeer]);
@@ -824,23 +855,12 @@ function MessagesChatInner() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [hasToken, isClient, me?.userUuid]);
 
-  const knownPeerUuids = useMemo(
-    () => new Set(conversations.map((c) => c.otherUserUuid).filter(Boolean)),
-    [conversations],
-  );
-
-  useEffect(() => {
-    pruneChatListUnknownPeers(knownPeerUuids);
-  }, [knownPeerUuids]);
-
   const customEntities = overlayState.entities;
   const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);
   const membership = useMemo(() => membershipByEntityId(customEntities), [customEntities]);
   const knownCustomIds = useMemo(() => new Set(customEntities.map((e) => e.id)), [customEntities]);
-  const archivedCount = useMemo(
-    () => countArchivedPeers(archivedByPeer, knownPeerUuids),
-    [archivedByPeer, knownPeerUuids],
-  );
+  // Иконка Архива / лимит слотов — по серверному overlay, не по загруженному списку чатов.
+  const archivedCount = useMemo(() => countArchivedPeers(archivedByPeer), [archivedByPeer]);
   const visibleFolders = useMemo(
     () => listVisibleChatFolders(archivedCount, customFolderDefs),
     [archivedCount, customFolderDefs],
@@ -3059,7 +3079,7 @@ function MessagesChatInner() {
                             {peerMute ? (
                               <MessagesConversationMuteIndicator
                                 mute={peerMute}
-                                onExpired={() => clearPeerMuted(chat.otherUserUuid)}
+                                onExpired={() => clearLocalTemporaryMute(chat.otherUserUuid)}
                               />
                             ) : null}
                           </span>

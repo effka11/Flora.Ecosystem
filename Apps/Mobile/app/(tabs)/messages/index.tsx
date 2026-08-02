@@ -47,6 +47,12 @@ import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropd
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import {
+  clearTemporaryMute,
+  pruneExpiredTemporaryMutes,
+  setTemporaryMute,
+  useTemporaryMuteUntilByPeer,
+} from "@/lib/conversationTemporaryMute";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
@@ -162,7 +168,6 @@ export default function MessagesScreen() {
   const removeEntity = useChatListOverlayStore((s) => s.removeEntity);
   const setArchived = useChatListOverlayStore((s) => s.setArchived);
   const setMuted = useChatListOverlayStore((s) => s.setMuted);
-  const pruneUnknownPeers = useChatListOverlayStore((s) => s.pruneUnknownPeers);
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
@@ -217,15 +222,6 @@ export default function MessagesScreen() {
   const items = query.data?.items ?? EMPTY_CONVERSATIONS;
   const previews = useMessagesListPreviewDecrypt(items, me?.userUuid);
 
-  const knownPeerUuids = useMemo(
-    () => new Set(items.map((item) => item.otherUserUuid).filter(Boolean)),
-    [items],
-  );
-
-  useEffect(() => {
-    pruneUnknownPeers(knownPeerUuids);
-  }, [knownPeerUuids, pruneUnknownPeers]);
-
   const archivedByPeer = overlayState.archivedByPeer;
   const mutedByPeer = overlayState.mutedByPeer;
   const customEntities = overlayState.entities;
@@ -236,10 +232,8 @@ export default function MessagesScreen() {
     [customEntities],
   );
 
-  const archivedCount = useMemo(
-    () => countArchivedPeers(archivedByPeer, knownPeerUuids),
-    [archivedByPeer, knownPeerUuids],
-  );
+  // Иконка Архива / лимит слотов — по серверному overlay, не по загруженному списку чатов.
+  const archivedCount = useMemo(() => countArchivedPeers(archivedByPeer), [archivedByPeer]);
   const visibleFolders = useMemo(
     () => listVisibleChatFolders(archivedCount, customFolderDefs),
     [archivedCount, customFolderDefs],
@@ -279,6 +273,45 @@ export default function MessagesScreen() {
     [archivedCount, customFolderDefs.length],
   );
 
+  const temporaryUntilByPeer = useTemporaryMuteUntilByPeer();
+  const mutedDisplayByPeer = useMemo(() => {
+    const now = Date.now();
+    const next: Record<string, true> = { ...mutedByPeer };
+    for (const [peerUuid, untilMs] of Object.entries(temporaryUntilByPeer)) {
+      if (untilMs > now) next[peerUuid] = true;
+    }
+    return next;
+  }, [mutedByPeer, temporaryUntilByPeer]);
+
+  useEffect(() => {
+    const id = setInterval(() => pruneExpiredTemporaryMutes(), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const handleMuteForever = useCallback(
+    (peerUuid: string, conversationUuid: string) => {
+      clearTemporaryMute(peerUuid);
+      void setMuted(peerUuid, conversationUuid, true);
+    },
+    [setMuted],
+  );
+
+  const handleMuteTemporary = useCallback(
+    (peerUuid: string, conversationUuid: string) => {
+      setTemporaryMute(peerUuid);
+      void setMuted(peerUuid, conversationUuid, true);
+    },
+    [setMuted],
+  );
+
+  const handleUnmute = useCallback(
+    (peerUuid: string, conversationUuid: string) => {
+      clearTemporaryMute(peerUuid);
+      void setMuted(peerUuid, conversationUuid, false);
+    },
+    [setMuted],
+  );
+
   const handleArchivedChange = useCallback(
     (peerUuid: string, conversationUuid: string, archived: boolean) => {
       if (archived && !canArchivePeer) {
@@ -288,7 +321,15 @@ export default function MessagesScreen() {
         );
         return;
       }
-      void setArchived(peerUuid, conversationUuid, archived);
+      void (async () => {
+        const ok = await setArchived(peerUuid, conversationUuid, archived);
+        if (archived && !ok) {
+          Alert.alert(
+            "Лимит папок",
+            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+          );
+        }
+      })();
     },
     [canArchivePeer, setArchived],
   );
@@ -520,12 +561,16 @@ export default function MessagesScreen() {
           renderItem={({ item }) => (
             <ConversationListRow
               item={item}
-              isMuted={item.otherUserUuid in mutedByPeer}
+              isMuted={item.otherUserUuid in mutedDisplayByPeer}
               isArchived={item.otherUserUuid in archivedByPeer}
               folderOptions={folderPickOptions}
-              onMutedChange={(muted) =>
-                void setMuted(item.otherUserUuid, item.conversationUuid, muted)
+              onMuteForever={() =>
+                handleMuteForever(item.otherUserUuid, item.conversationUuid)
               }
+              onMuteTemporary={() =>
+                handleMuteTemporary(item.otherUserUuid, item.conversationUuid)
+              }
+              onUnmute={() => handleUnmute(item.otherUserUuid, item.conversationUuid)}
               onArchivedChange={(archived) =>
                 handleArchivedChange(item.otherUserUuid, item.conversationUuid, archived)
               }
@@ -566,12 +611,12 @@ export default function MessagesScreen() {
           loading={query.isLoading}
           error={query.isError}
           emptyMessage={(folder) => emptyListMessage(false, items.length, folder)}
-          mutedByPeer={mutedByPeer}
+          mutedByPeer={mutedDisplayByPeer}
           archivedByPeer={archivedByPeer}
           folderOptions={folderPickOptions}
-          onMutedChange={(peerUuid, conversationUuid, muted) => {
-            void setMuted(peerUuid, conversationUuid, muted);
-          }}
+          onMuteForever={handleMuteForever}
+          onMuteTemporary={handleMuteTemporary}
+          onUnmute={handleUnmute}
           onArchivedChange={handleArchivedChange}
           onAddToFolder={(folderId, peerUuid) => {
             void addPeerToEntity(folderId, peerUuid);

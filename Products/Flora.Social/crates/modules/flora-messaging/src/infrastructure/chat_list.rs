@@ -212,6 +212,50 @@ impl ChatListRepo {
         .map_err(|e| e.to_string())
     }
 
+    pub async fn count_folders(&self, owner: Uuid) -> Result<i64, String> {
+        sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM flora_core.user_chat_folders
+            WHERE owner_user_uuid = $1
+            "#,
+        )
+        .bind(owner)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| e.to_string())
+    }
+
+    pub async fn count_archived(&self, owner: Uuid) -> Result<i64, String> {
+        sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM flora_core.user_conversation_flags
+            WHERE owner_user_uuid = $1 AND is_archived = true
+            "#,
+        )
+        .bind(owner)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| e.to_string())
+    }
+
+    pub async fn is_peer_archived(&self, owner: Uuid, other: Uuid) -> Result<bool, String> {
+        let row: Option<bool> = sqlx::query_scalar(
+            r#"
+            SELECT is_archived
+            FROM flora_core.user_conversation_flags
+            WHERE owner_user_uuid = $1 AND other_user_uuid = $2
+            "#,
+        )
+        .bind(owner)
+        .bind(other)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(row.unwrap_or(false))
+    }
+
     pub async fn set_archived(
         &self,
         owner: Uuid,

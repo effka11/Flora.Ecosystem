@@ -1,7 +1,11 @@
 /**
- * Иконки папок чатов — паритет с Mobile Ionicons (эталон CreateChatFolderSheet).
- * Имена на wire/API = ionicon glyph names (`folder-outline`, …).
+ * Иконки папок чатов — SVG под wire-имена из `@flora/client-core/messaging`.
  */
+import {
+  CHAT_LIST_FOLDER_ICON_NAMES,
+  isChatListFolderIconName,
+  type ChatListFolderIconName,
+} from "@flora/client-core/messaging";
 import type { ReactNode } from "react";
 
 const iconProps = {
@@ -16,29 +20,10 @@ const iconProps = {
   "aria-hidden": true as const,
 };
 
-/** Тот же порядок/набор, что `FOLDER_ICONS` на Mobile. */
-export const CHAT_FOLDER_ICON_NAMES = [
-  "folder-outline",
-  "briefcase-outline",
-  "heart-outline",
-  "star-outline",
-  "flash-outline",
-  "home-outline",
-  "game-controller-outline",
-  "musical-notes-outline",
-  "airplane-outline",
-  "cafe-outline",
-  "book-outline",
-  "construct-outline",
-] as const;
-
-export type ChatFolderIconName = (typeof CHAT_FOLDER_ICON_NAMES)[number];
-
-const KNOWN = new Set<string>(CHAT_FOLDER_ICON_NAMES);
-
-export function isChatFolderIconName(value: string): value is ChatFolderIconName {
-  return KNOWN.has(value);
-}
+/** Alias SoT-списка (порядок/имена — client-core). */
+export const CHAT_FOLDER_ICON_NAMES = CHAT_LIST_FOLDER_ICON_NAMES;
+export type ChatFolderIconName = ChatListFolderIconName;
+export const isChatFolderIconName = isChatListFolderIconName;
 
 function Svg({ children }: { children: ReactNode }) {
   return <svg {...iconProps}>{children}</svg>;
@@ -128,6 +113,8 @@ const ICONS: Record<string, () => ReactNode> = {
 };
 
 export function renderChatFolderIcon(name: string | null | undefined): ReactNode {
-  const key = name && ICONS[name] ? name : "folder-outline";
-  return ICONS[key]!();
+  // Picker wire-names — `CHAT_FOLDER_ICON_NAMES`; системные archive/people тоже в ICONS.
+  // Неизвестный wire → folder-outline (как Mobile glyphMap miss).
+  if (name && ICONS[name]) return ICONS[name]!();
+  return ICONS["folder-outline"]!();
 }

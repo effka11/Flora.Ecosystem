@@ -445,6 +445,11 @@ export async function apiAddChatFolderMember(
   );
 }
 
+/**
+ * Archive/mute — overlay flags keyed by peer.
+ * На main серверных route не было (только клиентские stubs без query);
+ * `otherUserUuid` обязателен для записи `user_conversation_flags`.
+ */
 export async function apiArchiveConversation(
   conversationUuid: string,
   otherUserUuid: string,

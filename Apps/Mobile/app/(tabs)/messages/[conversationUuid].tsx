@@ -83,6 +83,11 @@ import {
   floraSpacing,
 } from "@/lib/theme";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import {
+  clearTemporaryMute,
+  setTemporaryMute,
+  useTemporaryMuteUntilByPeer,
+} from "@/lib/conversationTemporaryMute";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
@@ -411,6 +416,7 @@ export default function ThreadScreen() {
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
   const setMuted = useChatListOverlayStore((s) => s.setMuted);
   const mutedByPeer = useChatListOverlayStore((s) => s.state.mutedByPeer);
+  const temporaryUntilByPeer = useTemporaryMuteUntilByPeer();
 
   useEffect(() => {
     hydrateOverlay(me?.userUuid ?? null);
@@ -514,7 +520,12 @@ export default function ThreadScreen() {
 
   const otherUserUuid = peer.otherUserUuid || paramOtherUserUuid;
   const peerDisplayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
-  const conversationMuted = !!otherUserUuid && otherUserUuid in mutedByPeer;
+  const temporaryMuteActive =
+    !!otherUserUuid &&
+    temporaryUntilByPeer[otherUserUuid] != null &&
+    temporaryUntilByPeer[otherUserUuid]! > Date.now();
+  const conversationMuted =
+    !!otherUserUuid && (otherUserUuid in mutedByPeer || temporaryMuteActive);
 
   useEffect(() => {
     if (!conversationUuid || otherUserUuid) return;
@@ -1601,16 +1612,19 @@ export default function ThreadScreen() {
         isMuted={conversationMuted}
         onMuteForever={() => {
           if (otherUserUuid && conversationUuid) {
+            clearTemporaryMute(otherUserUuid);
             void setMuted(otherUserUuid, conversationUuid, true);
           }
         }}
         onMuteTemporary={() => {
           if (otherUserUuid && conversationUuid) {
+            setTemporaryMute(otherUserUuid);
             void setMuted(otherUserUuid, conversationUuid, true);
           }
         }}
         onUnmute={() => {
           if (otherUserUuid && conversationUuid) {
+            clearTemporaryMute(otherUserUuid);
             void setMuted(otherUserUuid, conversationUuid, false);
           }
         }}

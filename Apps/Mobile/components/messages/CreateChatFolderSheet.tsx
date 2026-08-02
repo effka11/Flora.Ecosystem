@@ -1,4 +1,8 @@
 import type { MsgConversationDto } from "@flora/client-core/contracts";
+import {
+  CHAT_LIST_FOLDER_ICON_NAMES,
+  type ChatListFolderIconName,
+} from "@flora/client-core/messaging";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -16,7 +20,7 @@ import { floraColors, floraSpacing } from "@/lib/theme";
 
 export type CreateChatFolderResult = {
   name: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: ChatListFolderIconName;
   memberUserUuids: string[];
 };
 
@@ -28,25 +32,12 @@ type Props = {
   onCreate?: (result: CreateChatFolderResult) => void;
 };
 
-const FOLDER_ICONS: readonly (keyof typeof Ionicons.glyphMap)[] = [
-  "folder-outline",
-  "briefcase-outline",
-  "heart-outline",
-  "star-outline",
-  "flash-outline",
-  "home-outline",
-  "game-controller-outline",
-  "musical-notes-outline",
-  "airplane-outline",
-  "cafe-outline",
-  "book-outline",
-  "construct-outline",
-];
+const FOLDER_ICONS = CHAT_LIST_FOLDER_ICON_NAMES;
 
 /** Sheet создания папки списка чатов (после развилки «+»). */
 export function CreateChatFolderSheet({ visible, onClose, conversations, onCreate }: Props) {
   const insets = useSafeAreaInsets();
-  const [folderIcon, setFolderIcon] = useState<(typeof FOLDER_ICONS)[number]>("folder-outline");
+  const [folderIcon, setFolderIcon] = useState<ChatListFolderIconName>("folder-outline");
   const [folderName, setFolderName] = useState("");
   const [selectedUserUuids, setSelectedUserUuids] = useState<Set<string>>(() => new Set());
   const [userSearch, setUserSearch] = useState("");
@@ -161,7 +152,7 @@ export function CreateChatFolderSheet({ visible, onClose, conversations, onCreat
                     onPress={() => setFolderIcon(icon)}
                   >
                     <Ionicons
-                      name={icon}
+                      name={icon as keyof typeof Ionicons.glyphMap}
                       size={22}
                       color={active ? floraColors.greenLight : floraColors.gray}
                     />

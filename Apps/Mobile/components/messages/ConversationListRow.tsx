@@ -44,7 +44,9 @@ type Props = {
   isMuted?: boolean;
   isArchived?: boolean;
   folderOptions?: readonly FolderPickOption[];
-  onMutedChange?: (muted: boolean) => void;
+  onMuteForever?: () => void;
+  onMuteTemporary?: () => void;
+  onUnmute?: () => void;
   onArchivedChange?: (archived: boolean) => void;
   onAddToFolder?: (folderId: string) => void;
 };
@@ -54,7 +56,9 @@ export function ConversationListRow({
   isMuted = false,
   isArchived = false,
   folderOptions = [],
-  onMutedChange,
+  onMuteForever,
+  onMuteTemporary,
+  onUnmute,
   onArchivedChange,
   onAddToFolder,
 }: Props) {
@@ -160,9 +164,9 @@ export function ConversationListRow({
         anchorRef={moreBtnRef}
         isMuted={isMuted}
         isArchived={isArchived}
-        onMuteForever={() => onMutedChange?.(true)}
-        onMuteTemporary={() => onMutedChange?.(true)}
-        onUnmute={() => onMutedChange?.(false)}
+        onMuteForever={() => onMuteForever?.()}
+        onMuteTemporary={() => onMuteTemporary?.()}
+        onUnmute={() => onUnmute?.()}
         onAddToFolder={() => {
           if (folderOptions.length === 0) {
             Alert.alert("Нет папок", "Сначала создайте папку или группу через «+».");

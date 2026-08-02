@@ -13,6 +13,33 @@ export const CHAT_LIST_ARCHIVE_FOLDER_ID = "archived" as const;
 /** Макс. иконок папок в ряду (пользовательские + Архив). Кнопка «+» не входит. */
 export const CHAT_LIST_MAX_FOLDER_ICONS = 4;
 
+/**
+ * Wire/API имена иконок папок — эталон Ionicons glyph names (Mobile picker).
+ * Web рендерит те же имена своими SVG.
+ */
+export const CHAT_LIST_FOLDER_ICON_NAMES = [
+  "folder-outline",
+  "briefcase-outline",
+  "heart-outline",
+  "star-outline",
+  "flash-outline",
+  "home-outline",
+  "game-controller-outline",
+  "musical-notes-outline",
+  "airplane-outline",
+  "cafe-outline",
+  "book-outline",
+  "construct-outline",
+] as const;
+
+export type ChatListFolderIconName = (typeof CHAT_LIST_FOLDER_ICON_NAMES)[number];
+
+const CHAT_LIST_FOLDER_ICON_NAME_SET = new Set<string>(CHAT_LIST_FOLDER_ICON_NAMES);
+
+export function isChatListFolderIconName(value: string): value is ChatListFolderIconName {
+  return CHAT_LIST_FOLDER_ICON_NAME_SET.has(value);
+}
+
 export type ChatListSystemFolderId = typeof CHAT_LIST_ARCHIVE_FOLDER_ID;
 
 /** `"all"` — основной список; `"archived"` — системная папка; иначе id пользовательской. */
@@ -61,6 +88,10 @@ export function emptyChatListOverlayState(): ChatListOverlayState {
   };
 }
 
+/**
+ * Локальный id только для unit-тестов / офлайн-scaffolding.
+ * Production folder id назначает сервер (`Uuid::now_v7` в Messaging).
+ */
 export function newChatListEntityId(kind: "folder" | "group"): string {
   const prefix = kind === "folder" ? "fld" : "grp";
   const rand =
@@ -70,6 +101,7 @@ export function newChatListEntityId(kind: "folder" | "group"): string {
   return `${prefix}_${rand}`;
 }
 
+/** Test helper: сущность с локальным id (не для createFolder API). */
 export function createChatListFolderEntity(params: {
   label?: string;
   icon: string;
@@ -87,6 +119,7 @@ export function createChatListFolderEntity(params: {
   };
 }
 
+/** Test helper: сущность с локальным id (не для createFolder API). */
 export function createChatListGroupEntity(params: {
   name: string;
   avatarUri?: string | null;
@@ -222,6 +255,8 @@ export function canArchiveChatListPeer(
  * @param archivedCount — если > 0, в конец добавляется Архив (слева от «+»).
  * @param customFolders — пользовательские папки/группы; всегда левее архива.
  * Не больше {@link CHAT_LIST_MAX_FOLDER_ICONS} иконок; Архив всегда сохраняется в лимите.
+ * Create/archive должны блокироваться заранее (`canCreate*` / сервер); `slice` — только
+ * clamp отображения при устаревшем кэше или гонке, а не способ «тихо» удалить папки.
  */
 export function listVisibleChatFolders(
   archivedCount: number,
@@ -301,7 +336,11 @@ export function filterConversationsByFolder<T extends { otherUserUuid: string }>
   );
 }
 
-/** Убрать из карты архива пиров, которых больше нет в списке (удалённый чат). */
+/**
+ * Убрать флаги пиров, которых больше нет (явная зачистка после delete conversation).
+ * Не вызывать по «текущему загруженному списку» — overlay SoT на сервере; иначе
+ * пропадает иконка Архива, пока чат не попал в listing.
+ */
 export function pruneArchivedPeers(
   archivedByPeer: Readonly<Record<string, true>>,
   knownPeerUuids: ReadonlySet<string>,

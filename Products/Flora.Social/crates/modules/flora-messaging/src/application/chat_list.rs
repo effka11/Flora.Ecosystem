@@ -13,11 +13,30 @@ use uuid::Uuid;
 
 use crate::infrastructure::ChatListRepo;
 
+/// Совпадает с `CHAT_LIST_MAX_FOLDER_ICONS` в `@flora/client-core/messaging`.
+const CHAT_LIST_MAX_FOLDER_ICONS: i64 = 4;
+
 #[derive(Debug, Clone)]
 pub enum ChatListError {
     BadRequest(String),
     NotFound(String),
     Internal(String),
+}
+
+fn max_custom_folders(archived_count: i64) -> i64 {
+    let reserve_archive = if archived_count > 0 { 1 } else { 0 };
+    (CHAT_LIST_MAX_FOLDER_ICONS - reserve_archive).max(0)
+}
+
+fn can_create_folder(archived_count: i64, custom_folder_count: i64) -> bool {
+    custom_folder_count < max_custom_folders(archived_count)
+}
+
+fn can_archive_peer(archived_count: i64, custom_folder_count: i64) -> bool {
+    if archived_count > 0 {
+        return true;
+    }
+    custom_folder_count < CHAT_LIST_MAX_FOLDER_ICONS
 }
 
 pub struct ChatListService {
@@ -120,6 +139,23 @@ impl ChatListService {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
 
+        let custom_count = self
+            .repo
+            .count_folders(owner)
+            .await
+            .map_err(ChatListError::Internal)?;
+        let archived_count = self
+            .repo
+            .count_archived(owner)
+            .await
+            .map_err(ChatListError::Internal)?;
+        if !can_create_folder(archived_count, custom_count) {
+            return Err(ChatListError::BadRequest(
+                "Лимит иконок папок: не больше четырёх (с учётом Архива). Удалите папку или очистите архив."
+                    .into(),
+            ));
+        }
+
         self.repo
             .create_folder(
                 owner,
@@ -197,6 +233,31 @@ impl ChatListService {
         archived: bool,
     ) -> Result<(), ChatListError> {
         let other = require_peer(owner, conversation_uuid, other_user_uuid)?;
+        if archived {
+            let already = self
+                .repo
+                .is_peer_archived(owner, other)
+                .await
+                .map_err(ChatListError::Internal)?;
+            if !already {
+                let custom_count = self
+                    .repo
+                    .count_folders(owner)
+                    .await
+                    .map_err(ChatListError::Internal)?;
+                let archived_count = self
+                    .repo
+                    .count_archived(owner)
+                    .await
+                    .map_err(ChatListError::Internal)?;
+                if !can_archive_peer(archived_count, custom_count) {
+                    return Err(ChatListError::BadRequest(
+                        "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива."
+                            .into(),
+                    ));
+                }
+            }
+        }
         self.repo
             .set_archived(owner, other, archived, Utc::now())
             .await
