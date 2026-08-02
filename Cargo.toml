@@ -20,6 +20,8 @@ members = [
     "Products/Flora.Social/crates/modules/flora-content-contracts",
     "Products/Flora.Social/crates/modules/flora-messaging",
     "Products/Flora.Social/crates/modules/flora-messaging-contracts",
+    "Products/Flora.Social/crates/modules/flora-chat-organizer",
+    "Products/Flora.Social/crates/modules/flora-chat-organizer-contracts",
     "Products/Flora.Social/crates/modules/flora-music",
     "Products/Flora.Social/crates/modules/flora-music-contracts",
     "Products/Flora.Social/crates/modules/flora-notifications",
@@ -86,6 +88,8 @@ flora-content = { path = "Products/Flora.Social/crates/modules/flora-content" }
 flora-content-contracts = { path = "Products/Flora.Social/crates/modules/flora-content-contracts" }
 flora-messaging = { path = "Products/Flora.Social/crates/modules/flora-messaging" }
 flora-messaging-contracts = { path = "Products/Flora.Social/crates/modules/flora-messaging-contracts" }
+flora-chat-organizer = { path = "Products/Flora.Social/crates/modules/flora-chat-organizer" }
+flora-chat-organizer-contracts = { path = "Products/Flora.Social/crates/modules/flora-chat-organizer-contracts" }
 flora-music = { path = "Products/Flora.Social/crates/modules/flora-music" }
 flora-music-contracts = { path = "Products/Flora.Social/crates/modules/flora-music-contracts" }
 flora-notifications = { path = "Products/Flora.Social/crates/modules/flora-notifications" }

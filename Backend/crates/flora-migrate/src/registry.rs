@@ -63,6 +63,11 @@ pub fn registry() -> Vec<ModuleMigrations> {
             migrator: Some(&flora_messaging::MIGRATOR),
         },
         ModuleMigrations {
+            module: "chat_organizer",
+            current_owner: "Rust",
+            migrator: Some(&flora_chat_organizer::MIGRATOR),
+        },
+        ModuleMigrations {
             module: "music",
             current_owner: "Rust",
             migrator: Some(&flora_music::MIGRATOR),
@@ -80,8 +85,9 @@ mod tests {
             .iter()
             .map(ModuleMigrations::history_table)
             .collect();
-        assert_eq!(names.len(), 7);
+        assert_eq!(names.len(), 8);
         assert!(names.contains(&"__flora_migrations_music".to_string()));
+        assert!(names.contains(&"__flora_migrations_chat_organizer".to_string()));
         let unique: std::collections::HashSet<&String> = names.iter().collect();
         assert_eq!(
             unique.len(),
@@ -100,7 +106,8 @@ mod tests {
                 m.module
             );
             match m.module {
-                "auth" | "users" | "content" | "music" | "messaging" | "notifications" => {
+                "auth" | "users" | "content" | "music" | "messaging" | "notifications"
+                | "chat_organizer" => {
                     assert!(m.migrator.is_some(), "{}: ожидался MIGRATOR", m.module);
                 }
                 _ => assert!(

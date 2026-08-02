@@ -119,6 +119,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         .merge(notifications_routes)
         .merge(content_routes)
         .merge(messaging_routes)
+        .merge(chat_organizer_router(cfg, pool.clone(), sessions.clone()))
         .merge(music_router(cfg, pool, sessions))
         .merge(economy_routes);
 
@@ -219,6 +220,24 @@ fn users_router(
         .merge(with_jwt(cfg, sessions.clone(), module.protected_router))
         .merge(with_optional_jwt(cfg, sessions, module.public_router));
     (router, workers)
+}
+
+fn chat_organizer_router(
+    cfg: &FloraConfig,
+    pool: Option<PgPool>,
+    sessions: Option<SessionValidator>,
+) -> axum::Router {
+    if cfg.get_bool("ChatOrganizer:ServeNative") != Some(true) {
+        return flora_chat_organizer::router();
+    }
+    let Some(pool) = pool else {
+        eprintln!(
+            "flora-chat-organizer: ChatOrganizer:ServeNative=true, но PgPool недоступен — модуль офлайн"
+        );
+        return flora_chat_organizer::router();
+    };
+    let module = flora_chat_organizer::compose(pool);
+    with_jwt(cfg, sessions, module.router)
 }
 
 fn music_router(
@@ -598,6 +617,10 @@ pub fn messaging_needs_pool(cfg: &FloraConfig) -> bool {
     cfg.get_bool("Messaging:ServeNative") == Some(true)
 }
 
+pub fn chat_organizer_needs_pool(cfg: &FloraConfig) -> bool {
+    cfg.get_bool("ChatOrganizer:ServeNative") == Some(true)
+}
+
 pub fn notifications_needs_pool(cfg: &FloraConfig) -> bool {
     cfg.get_bool("Notifications:ServeNative") == Some(true)
 }
@@ -606,13 +629,14 @@ pub fn verification_needs_pool(cfg: &FloraConfig) -> bool {
     flora_verification::needs_pool(cfg)
 }
 
-/// Нужен ли PgPool хосту (Music/Auth/Users/Content/Messaging/Notifications ServeNative и/или Verification gRPC).
+/// Нужен ли PgPool хосту (Music/Auth/Users/Content/Messaging/ChatOrganizer/Notifications ServeNative и/или Verification gRPC).
 pub fn host_needs_pool(cfg: &FloraConfig) -> bool {
     music_needs_pool(cfg)
         || auth_needs_pool(cfg)
         || users_needs_pool(cfg)
         || content_needs_pool(cfg)
         || messaging_needs_pool(cfg)
+        || chat_organizer_needs_pool(cfg)
         || notifications_needs_pool(cfg)
         || verification_needs_pool(cfg)
 }
@@ -794,6 +818,26 @@ mod tests {
             .oneshot(
                 http::Request::builder()
                     .uri("/api/auth/notifications/unread-count")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn chat_organizer_serve_native_without_pool_stays_empty() {
+        let cfg = FloraConfig::from_layers(
+            "Development",
+            &[serde_json::json!({ "ChatOrganizer": { "ServeNative": true } })],
+            &[],
+        );
+        let router = product_router(&cfg, None);
+        let response = router
+            .oneshot(
+                http::Request::builder()
+                    .uri("/api/chat-organizer")
                     .body(axum::body::Body::empty())
                     .unwrap(),
             )

@@ -163,12 +163,15 @@ export default function MessagesScreen() {
   const [unlockOpen, setUnlockOpen] = useState(false);
   const overlayState = useChatListOverlayStore((s) => s.state);
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
+  const setOverlayFscpKeys = useChatListOverlayStore((s) => s.setFscpKeys);
   const refreshOverlay = useChatListOverlayStore((s) => s.refreshFromServer);
   const createFolder = useChatListOverlayStore((s) => s.createFolder);
   const addPeerToEntity = useChatListOverlayStore((s) => s.addPeerToEntity);
   const removeEntity = useChatListOverlayStore((s) => s.removeEntity);
   const setArchived = useChatListOverlayStore((s) => s.setArchived);
   const setMuted = useChatListOverlayStore((s) => s.setMuted);
+  const fscpMaterial = useFscpStore((s) => s.material);
+  const fscpCanDecrypt = useFscpStore((s) => s.canDecrypt);
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
@@ -178,12 +181,23 @@ export default function MessagesScreen() {
   }, [hydrateOverlay, me?.userUuid]);
 
   useEffect(() => {
-    if (!me?.userUuid) return;
+    if (fscpMaterial && fscpCanDecrypt()) {
+      setOverlayFscpKeys({
+        agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+        signingPrivateKey: fscpMaterial.signingPrivateKey,
+      });
+    } else {
+      setOverlayFscpKeys(null);
+    }
+  }, [fscpMaterial, fscpCanDecrypt, fscpStatus, setOverlayFscpKeys]);
+
+  useEffect(() => {
+    if (!me?.userUuid || !fscpMaterial || !fscpCanDecrypt()) return;
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") void refreshOverlay();
     });
     return () => sub.remove();
-  }, [me?.userUuid, refreshOverlay]);
+  }, [me?.userUuid, refreshOverlay, fscpMaterial, fscpCanDecrypt]);
 
   useEffect(
     () =>

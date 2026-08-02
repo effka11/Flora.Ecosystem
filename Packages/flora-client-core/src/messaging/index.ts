@@ -32,6 +32,13 @@ export {
   setPeerMutedFlag,
 } from "./chatListFolders.js";
 export { createChatListOverlaySession } from "./chatListOverlaySession.js";
+export { createChatOrganizerSession } from "./chatOrganizerSession.js";
+export {
+  emptyOrganizerPlaintext,
+  mergeOverlayForMigrate,
+  organizerPlaintextToOverlayState,
+  overlayStateToOrganizerPlaintext,
+} from "./chatOrganizerMap.js";
 export {
   CONVERSATION_MUTE_DEFAULT_DURATION_MS,
   formatConversationMuteTooltip,
@@ -51,4 +58,14 @@ export type {
   ChatListOverlaySession,
   ChatListOverlaySnapshot,
 } from "./chatListOverlaySession.js";
+export type {
+  ChatOrganizerCrypto,
+  ChatOrganizerFscpKeys,
+  ChatOrganizerHttp,
+  ChatOrganizerPersistence,
+  ChatOrganizerSession,
+  ChatOrganizerSnapshot,
+} from "./chatOrganizerSession.js";
+export type { ChatOrganizerPlaintext } from "./chatOrganizerMap.js";
 export type { ConversationMuteEntry } from "./conversationMute.js";
+export { newChatListUuidV7 } from "./chatListFolders.js";

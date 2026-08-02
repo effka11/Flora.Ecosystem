@@ -18,6 +18,7 @@ flora-users = { workspace = true }
 flora-content = { workspace = true }
 flora-messaging = { workspace = true }
 flora-messaging-contracts = { workspace = true }
+flora-chat-organizer = { workspace = true }
 flora-music = { workspace = true }
 flora-notifications = { workspace = true }
 flora-notifications-contracts = { workspace = true }

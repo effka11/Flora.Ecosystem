@@ -3,9 +3,11 @@
  * Portable: Apps/Mobile и Apps/Web используют одни правила видимости/фильтрации.
  *
  * Порядок в UI (слева направо у правого края): пользовательские → Архив → «+».
- * SoT — Messaging HTTP (`/api/messaging/chat-list-overlay`, folders, archive/mute);
- * Apps кэшируют оверлей локально (MMKV и т.п.). Без FSCP.
+ * SoT — FSCP-ORG blob (`/api/chat-organizer`); plaintext Messaging overlay —
+ * только one-shot migrate. Apps кэшируют расшифрованный state локально.
  */
+
+import { v7 as uuidv7 } from "uuid";
 
 /** Системный id архива — всегда непосредственно слева от «+». */
 export const CHAT_LIST_ARCHIVE_FOLDER_ID = "archived" as const;
@@ -65,6 +67,8 @@ export type ChatListCustomEntity = {
   icon?: string;
   avatarUri?: string | null;
   memberPeerUuids: string[];
+  /** Групповые conversationUuid в папке (FSCP-G later). */
+  memberConversationUuids?: string[];
   createdAtMs: number;
 };
 
@@ -73,6 +77,12 @@ export type ChatListOverlayState = {
   entities: ChatListCustomEntity[];
   archivedByPeer: Record<string, true>;
   mutedByPeer: Record<string, true>;
+  archivedByConversation?: Record<string, true>;
+  mutedByConversation?: Record<string, true>;
+  /** Last known server revision (0 = none). */
+  revision?: number;
+  /** Local flag: plaintext overlay already seeded into ORG (or skipped). */
+  migratedToOrg?: boolean;
 };
 
 /** Папки, которые показываются в UI (не включая основной список «все»). */
@@ -88,12 +98,21 @@ export function emptyChatListOverlayState(): ChatListOverlayState {
     entities: [],
     archivedByPeer: {},
     mutedByPeer: {},
+    archivedByConversation: {},
+    mutedByConversation: {},
+    revision: 0,
+    migratedToOrg: false,
   };
+}
+
+/** Production folder/group id — UUID v7 (паритет с бывшим серверным `Uuid::now_v7`). */
+export function newChatListUuidV7(): string {
+  return uuidv7();
 }
 
 /**
  * Локальный id только для unit-тестов / офлайн-scaffolding.
- * Production folder id назначает сервер (`Uuid::now_v7` в Messaging).
+ * Production — `newChatListUuidV7()`.
  */
 export function newChatListEntityId(kind: "folder" | "group"): string {
   const prefix = kind === "folder" ? "fld" : "grp";
@@ -398,6 +417,10 @@ export function parseChatListOverlayState(raw: unknown): ChatListOverlayState | 
     entities,
     archivedByPeer: parsePeerFlagMap(o.archivedByPeer),
     mutedByPeer: parsePeerFlagMap(o.mutedByPeer),
+    archivedByConversation: parsePeerFlagMap(o.archivedByConversation),
+    mutedByConversation: parsePeerFlagMap(o.mutedByConversation),
+    revision: typeof o.revision === "number" && Number.isInteger(o.revision) ? o.revision : 0,
+    migratedToOrg: o.migratedToOrg === true,
   };
 }
 
@@ -436,6 +459,11 @@ function parseCustomEntity(raw: unknown): ChatListCustomEntity | null {
   const createdAtMs = typeof o.createdAtMs === "number" && Number.isFinite(o.createdAtMs)
     ? o.createdAtMs
     : Date.now();
+  const memberConversationUuids = Array.isArray(o.memberConversationUuids)
+    ? uniquePeerUuids(
+        o.memberConversationUuids.filter((x): x is string => typeof x === "string"),
+      )
+    : [];
   return {
     id: o.id,
     kind: o.kind,
@@ -443,6 +471,7 @@ function parseCustomEntity(raw: unknown): ChatListCustomEntity | null {
     icon: typeof o.icon === "string" ? o.icon : undefined,
     avatarUri: typeof o.avatarUri === "string" ? o.avatarUri : o.avatarUri === null ? null : undefined,
     memberPeerUuids: members,
+    memberConversationUuids,
     createdAtMs,
   };
 }
