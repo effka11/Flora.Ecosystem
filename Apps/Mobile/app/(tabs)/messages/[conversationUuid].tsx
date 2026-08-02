@@ -414,6 +414,7 @@ export default function ThreadScreen() {
 
   const me = useSessionStore((s) => s.me);
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
+  const setOverlayFscpKeys = useChatListOverlayStore((s) => s.setFscpKeys);
   const setMuted = useChatListOverlayStore((s) => s.setMuted);
   const mutedByPeer = useChatListOverlayStore((s) => s.state.mutedByPeer);
   const temporaryUntilByPeer = useTemporaryMuteUntilByPeer();
@@ -423,9 +424,22 @@ export default function ThreadScreen() {
   }, [hydrateOverlay, me?.userUuid]);
   const fscpStatus = useFscpStore((s) => s.status);
   const fscpReady = useFscpStore((s) => s.status === "ready");
+  const fscpMaterial = useFscpStore((s) => s.material);
+  const fscpCanDecrypt = useFscpStore((s) => s.canDecrypt);
   const fscpDecryptKey = useFscpStore((s) => s.localPubKey);
   const canSend = useFscpStore((s) => s.canSend);
   const decryptWirePlaintext = useFscpStore((s) => s.decryptWirePlaintext);
+
+  useEffect(() => {
+    if (fscpMaterial && fscpCanDecrypt()) {
+      setOverlayFscpKeys({
+        agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+        signingPrivateKey: fscpMaterial.signingPrivateKey,
+      });
+    } else {
+      setOverlayFscpKeys(null);
+    }
+  }, [fscpMaterial, fscpCanDecrypt, fscpStatus, setOverlayFscpKeys]);
   const {
     images: composeImages,
     hasPendingPrepare,

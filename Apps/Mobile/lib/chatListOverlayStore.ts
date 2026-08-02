@@ -1,28 +1,30 @@
 /**
- * Оверлей списка чатов (Mobile): MMKV-кэш + shared session из client-core.
+ * Chat list organizer (Mobile): MMKV cache + FSCP-ORG session (client-core).
  */
 import {
-  apiAddChatFolderMember,
-  apiArchiveConversation,
-  apiCreateChatFolder,
-  apiDeleteChatFolder,
   apiGetChatListOverlay,
-  apiMuteConversation,
-  apiUnarchiveConversation,
-  apiUnmuteConversation,
+  apiGetChatOrganizer,
+  apiPutChatOrganizer,
 } from "@flora/client-core/api";
 import {
-  createChatListOverlaySession,
+  buildFscpOrganizerWireEnvelope,
+  decryptFscpOrganizerWireEnvelope,
+  type FscpOrganizerStatePlaintext,
+} from "@flora/client-core/fscp";
+import {
+  createChatOrganizerSession,
   emptyChatListOverlayState,
   parseChatListOverlayState,
   type ChatListCustomEntity,
   type ChatListOverlayState,
+  type ChatOrganizerFscpKeys,
+  type ChatOrganizerPlaintext,
 } from "@flora/client-core/messaging";
 import { create } from "zustand";
 import { mmkv } from "@/lib/mmkv";
 
-/** v2: сброс кэша эпохи «папки только в MMKV». */
-const KEY_PREFIX = "chatListOverlay:v2:";
+/** v1 FSCP-ORG decrypted cache (bumped from plaintext overlay v2). */
+const KEY_PREFIX = "chatOrganizer:v1:";
 
 function storageKey(userUuid: string): string {
   return `${KEY_PREFIX}${userUuid.trim().toLowerCase()}`;
@@ -42,17 +44,38 @@ function writeState(userUuid: string, state: ChatListOverlayState): void {
   mmkv.set(storageKey(userUuid), JSON.stringify(state));
 }
 
-const session = createChatListOverlaySession({
+function asFscpPlaintext(state: ChatOrganizerPlaintext): FscpOrganizerStatePlaintext {
+  return state as FscpOrganizerStatePlaintext;
+}
+
+const session = createChatOrganizerSession({
   warn: __DEV__ ? (message, detail) => console.warn(message, detail) : undefined,
   http: {
-    getOverlay: apiGetChatListOverlay,
-    createFolder: apiCreateChatFolder,
-    deleteFolder: apiDeleteChatFolder,
-    addMember: apiAddChatFolderMember,
-    archive: apiArchiveConversation,
-    unarchive: apiUnarchiveConversation,
-    mute: apiMuteConversation,
-    unmute: apiUnmuteConversation,
+    getBlob: apiGetChatOrganizer,
+    putBlob: apiPutChatOrganizer,
+    getPlaintextOverlay: apiGetChatListOverlay,
+  },
+  crypto: {
+    async buildWire({ ownerUserUuid, revision, state, keys }) {
+      return buildFscpOrganizerWireEnvelope({
+        ownerUserUuid,
+        revision,
+        state: asFscpPlaintext(state),
+        ownerAgreementPrivateKey: keys.agreementPrivateKey,
+        ownerSigningPrivateKey: keys.signingPrivateKey,
+      });
+    },
+    async decryptWire({ ownerUserUuid, wire, keys }) {
+      const decrypted = await decryptFscpOrganizerWireEnvelope({
+        wire,
+        ownerUserUuid,
+        agreementPrivateKey: keys.agreementPrivateKey,
+      });
+      return {
+        state: decrypted.state as ChatOrganizerPlaintext,
+        revision: decrypted.revision,
+      };
+    },
   },
   persistence: {
     read: readState,
@@ -65,6 +88,7 @@ type ChatListOverlayStore = {
   state: ChatListOverlayState;
   syncing: boolean;
   hydrate: (userUuid: string | null) => void;
+  setFscpKeys: (keys: ChatOrganizerFscpKeys | null) => void;
   refreshFromServer: () => Promise<void>;
   createFolder: (params: {
     icon: string;
@@ -96,6 +120,7 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set) => {
   return {
     ...mirrorSnapshot(),
     hydrate: (userUuid) => session.hydrate(userUuid),
+    setFscpKeys: (keys) => session.setKeys(keys),
     refreshFromServer: () => session.refresh(),
     createFolder: (params) => session.createFolder(params),
     addPeerToEntity: (entityId, peerUuid) => session.addPeerToFolder(entityId, peerUuid),

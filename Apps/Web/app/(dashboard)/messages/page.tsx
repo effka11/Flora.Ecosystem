@@ -216,6 +216,7 @@ import {
   removeChatListFolder,
   setChatListArchived,
   setChatListMuted,
+  setChatListOverlayFscpKeys,
   useChatListOverlayHydrate,
   useChatListOverlayState,
 } from "@/lib/chatListOverlayStore";
@@ -844,17 +845,37 @@ function MessagesChatInner() {
     hydrateOverlay(me?.userUuid ?? null);
   }, [hydrateOverlay, me?.userUuid]);
 
+  // FSCP-ORG sync only when bootstrap finished and identity keys are ready.
+  useEffect(() => {
+    if (!fscpBootstrapLoading && fscpMaterial) {
+      setChatListOverlayFscpKeys({
+        agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+        signingPrivateKey: fscpMaterial.signingPrivateKey,
+      });
+    } else {
+      setChatListOverlayFscpKeys(null);
+    }
+  }, [fscpMaterial, fscpBootstrapLoading]);
+
   // Повторный GET после готовности сессии и при возврате на вкладку —
   // иначе stale localStorage выглядит как «локальные» папки без сервера.
   useEffect(() => {
-    if (!isClient || !hasToken || !me?.userUuid) return;
+    if (
+      !isClient ||
+      !hasToken ||
+      !me?.userUuid ||
+      fscpBootstrapLoading ||
+      !fscpMaterial
+    ) {
+      return;
+    }
     refreshChatListOverlay();
     const onVisible = () => {
       if (document.visibilityState === "visible") refreshChatListOverlay();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [hasToken, isClient, me?.userUuid]);
+  }, [hasToken, isClient, me?.userUuid, fscpMaterial, fscpBootstrapLoading]);
 
   const customEntities = overlayState.entities;
   const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);

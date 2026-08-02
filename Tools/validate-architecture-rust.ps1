@@ -30,7 +30,7 @@ foreach ($package in $packages) { [void]$internalNames.Add($package.name) }
 $socialModuleRoots = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 @(
     "flora-auth", "flora-users", "flora-content", "flora-messaging",
-    "flora-music", "flora-notifications", "flora-verification"
+    "flora-chat-organizer", "flora-music", "flora-notifications", "flora-verification"
 ) | ForEach-Object { [void]$socialModuleRoots.Add($_) }
 
 $functionalKernels = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)

@@ -61,7 +61,7 @@ pub async fn require_bearer_jwt(
             return unauthorized();
         }
     };
-    // Music / Auth / Users / Content / Messaging / Notifications share the same JWT identity.
+    // Music / Auth / Users / Content / Messaging / ChatOrganizer / Notifications share JWT identity.
     req.extensions_mut().insert(CurrentUser(user_uuid));
     req.extensions_mut()
         .insert(flora_users::http::CurrentUser { user_uuid });
@@ -69,6 +69,8 @@ pub async fn require_bearer_jwt(
         .insert(flora_content::http::CurrentUser(user_uuid));
     req.extensions_mut()
         .insert(flora_messaging::http::CurrentUser(user_uuid));
+    req.extensions_mut()
+        .insert(flora_chat_organizer::http::CurrentUser(user_uuid));
     req.extensions_mut()
         .insert(flora_notifications::http::CurrentUser(user_uuid));
     req.extensions_mut().insert(AuthUser {

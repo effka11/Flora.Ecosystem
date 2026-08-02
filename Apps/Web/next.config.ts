@@ -25,7 +25,7 @@ function loadFloraVersions(): FloraVersionManifest {
 const floraVersions = loadFloraVersions();
 
 // Do not rewrite /api/* to Flora.API here — it can run before App Router Route Handlers
-// and break POST (405). Proxy in app/api/auth and app/api/messaging route handlers via FLORA_API_UPSTREAM.
+// and break POST (405). Proxy in app/api/{auth,messaging,music,chat-organizer} via FLORA_API_UPSTREAM.
 
 const isProd = process.env.NODE_ENV === "production";
 

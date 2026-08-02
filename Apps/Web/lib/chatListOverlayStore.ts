@@ -1,30 +1,32 @@
 /**
- * Оверлей списка чатов (Web): localStorage-кэш + shared session из client-core.
+ * Chat list organizer (Web): localStorage cache + FSCP-ORG session (client-core).
  */
 "use client";
 
 import {
-  apiAddChatFolderMember,
-  apiArchiveConversation,
-  apiCreateChatFolder,
-  apiDeleteChatFolder,
   apiGetChatListOverlay,
-  apiMuteConversation,
-  apiUnarchiveConversation,
-  apiUnmuteConversation,
+  apiGetChatOrganizer,
+  apiPutChatOrganizer,
 } from "@flora/client-core/api";
 import {
-  createChatListOverlaySession,
+  buildFscpOrganizerWireEnvelope,
+  decryptFscpOrganizerWireEnvelope,
+  type FscpOrganizerStatePlaintext,
+} from "@flora/client-core/fscp";
+import {
+  createChatOrganizerSession,
   emptyChatListOverlayState,
   parseChatListOverlayState,
   type ChatListCustomEntity,
   type ChatListOverlayState,
+  type ChatOrganizerFscpKeys,
+  type ChatOrganizerPlaintext,
 } from "@flora/client-core/messaging";
 import { initWebApiClient } from "@/lib/apiClient";
 import { useCallback, useSyncExternalStore } from "react";
 
-/** v2: сброс локального кэша эпохи «папки только в localStorage». */
-const KEY_PREFIX = "flora_chatListOverlay:v2:";
+/** v1 FSCP-ORG decrypted cache (bumped from plaintext overlay v2). */
+const KEY_PREFIX = "flora_chatOrganizer:v1:";
 
 function storageKey(userUuid: string): string {
   return `${KEY_PREFIX}${userUuid.trim().toLowerCase()}`;
@@ -46,21 +48,42 @@ function writeState(userUuid: string, state: ChatListOverlayState): void {
   window.localStorage.setItem(storageKey(userUuid), JSON.stringify(state));
 }
 
-const session = createChatListOverlaySession({
+function asFscpPlaintext(state: ChatOrganizerPlaintext): FscpOrganizerStatePlaintext {
+  return state as FscpOrganizerStatePlaintext;
+}
+
+const session = createChatOrganizerSession({
   ensureHttp: () => initWebApiClient(),
   warn:
     process.env.NODE_ENV !== "production"
       ? (message, detail) => console.warn(message, detail)
       : undefined,
   http: {
-    getOverlay: apiGetChatListOverlay,
-    createFolder: apiCreateChatFolder,
-    deleteFolder: apiDeleteChatFolder,
-    addMember: apiAddChatFolderMember,
-    archive: apiArchiveConversation,
-    unarchive: apiUnarchiveConversation,
-    mute: apiMuteConversation,
-    unmute: apiUnmuteConversation,
+    getBlob: apiGetChatOrganizer,
+    putBlob: apiPutChatOrganizer,
+    getPlaintextOverlay: apiGetChatListOverlay,
+  },
+  crypto: {
+    async buildWire({ ownerUserUuid, revision, state, keys }) {
+      return buildFscpOrganizerWireEnvelope({
+        ownerUserUuid,
+        revision,
+        state: asFscpPlaintext(state),
+        ownerAgreementPrivateKey: keys.agreementPrivateKey,
+        ownerSigningPrivateKey: keys.signingPrivateKey,
+      });
+    },
+    async decryptWire({ ownerUserUuid, wire, keys }) {
+      const decrypted = await decryptFscpOrganizerWireEnvelope({
+        wire,
+        ownerUserUuid,
+        agreementPrivateKey: keys.agreementPrivateKey,
+      });
+      return {
+        state: decrypted.state as ChatOrganizerPlaintext,
+        revision: decrypted.revision,
+      };
+    },
   },
   persistence: {
     read: readState,
@@ -70,6 +93,10 @@ const session = createChatListOverlaySession({
 
 export function hydrateChatListOverlay(userUuid: string | null) {
   session.hydrate(userUuid);
+}
+
+export function setChatListOverlayFscpKeys(keys: ChatOrganizerFscpKeys | null) {
+  session.setKeys(keys);
 }
 
 export function refreshChatListOverlay(): void {
