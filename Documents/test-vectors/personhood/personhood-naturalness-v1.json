@@ -1,7 +1,204 @@
 {
   "protocolVersion": 1,
   "vectorId": "personhood_naturalness_v1",
-  "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, bucket-профиль и отчёт следственной панели (квантование, веса девайс-наблюдений, согласованность A↔C, assemble), эпохальный тег устройства, реестр enum-флагов церемоний. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
+  "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, bucket-профиль и отчёт следственной панели (квантование, веса девайс-наблюдений, согласованность A↔C, assemble), каноническая эпоха и эпохальный тег устройства, отчёт эпохи клиента, wire-реестры. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
+  "registries": {
+    "note": "Wire-стабильные коды реестров fpp-contracts. В реестрах классов код 0 зарезервирован («не задано») и не выдаётся; PersonhoodLevel и SignalBucket — порядковые шкалы, 0 значим. Имена ошибок — стабильные идентификаторы журналов и негативных векторов (кодов у них нет).",
+    "personhoodLevel": [
+      {
+        "name": "v0",
+        "code": 0
+      },
+      {
+        "name": "v1",
+        "code": 1
+      },
+      {
+        "name": "v2",
+        "code": 2
+      },
+      {
+        "name": "v3",
+        "code": 3
+      }
+    ],
+    "signalEvidenceClass": [
+      {
+        "name": "server_observed",
+        "code": 1
+      },
+      {
+        "name": "device_attested",
+        "code": 2
+      },
+      {
+        "name": "self_reported",
+        "code": 3
+      }
+    ],
+    "naturalnessClass": [
+      {
+        "name": "natural",
+        "code": 1
+      },
+      {
+        "name": "watch",
+        "code": 2
+      },
+      {
+        "name": "investigate",
+        "code": 3
+      }
+    ],
+    "deviceAttestationClass": [
+      {
+        "name": "unattested",
+        "code": 1
+      },
+      {
+        "name": "software_key",
+        "code": 2
+      },
+      {
+        "name": "hardware_backed",
+        "code": 3
+      }
+    ],
+    "deviceLinkClass": [
+      {
+        "name": "exclusive",
+        "code": 1
+      },
+      {
+        "name": "shared",
+        "code": 2
+      },
+      {
+        "name": "farm_suspect",
+        "code": 3
+      }
+    ],
+    "deviceChurnClass": [
+      {
+        "name": "stable",
+        "code": 1
+      },
+      {
+        "name": "mobile",
+        "code": 2
+      },
+      {
+        "name": "churning",
+        "code": 3
+      }
+    ],
+    "reportConsistencyClass": [
+      {
+        "name": "consistent",
+        "code": 1
+      },
+      {
+        "name": "drifting",
+        "code": 2
+      },
+      {
+        "name": "contradictory",
+        "code": 3
+      }
+    ],
+    "signalMetric": [
+      {
+        "name": "ns_t1_burstiness",
+        "code": 1
+      },
+      {
+        "name": "ns_t2a_rest_share",
+        "code": 2
+      },
+      {
+        "name": "ns_t2b_peak_share",
+        "code": 3
+      },
+      {
+        "name": "ns_t2c_self_similarity",
+        "code": 4
+      },
+      {
+        "name": "ns_d2_device_link",
+        "code": 5
+      },
+      {
+        "name": "ns_d3_device_churn",
+        "code": 6
+      }
+    ],
+    "signalBucket": [
+      {
+        "name": "very_low",
+        "code": 0
+      },
+      {
+        "name": "low",
+        "code": 1
+      },
+      {
+        "name": "medium",
+        "code": 2
+      },
+      {
+        "name": "high",
+        "code": 3
+      },
+      {
+        "name": "very_high",
+        "code": 4
+      }
+    ],
+    "ceremonyAnomalyFlag": [
+      {
+        "name": "latency_suspect",
+        "code": 1
+      },
+      {
+        "name": "synthetic_media_suspect",
+        "code": 2
+      },
+      {
+        "name": "audio_video_desync",
+        "code": 3
+      },
+      {
+        "name": "challenge_mismatch",
+        "code": 4
+      },
+      {
+        "name": "input_cadence_anomaly",
+        "code": 5
+      },
+      {
+        "name": "participant_aborted",
+        "code": 6
+      },
+      {
+        "name": "abuse_reported",
+        "code": 7
+      },
+      {
+        "name": "partner_no_show",
+        "code": 8
+      }
+    ],
+    "epochReportError": [
+      "non_temporal_metric",
+      "duplicate_metric",
+      "out_of_order"
+    ],
+    "curveError": [
+      "empty",
+      "y_above_permille",
+      "non_increasing_x"
+    ]
+  },
   "burstiness": [
     {
       "name": "regular_hourly",
@@ -2520,6 +2717,104 @@
       }
     ]
   },
+  "epoch": {
+    "note": "Каноническая эпоха NS: index = floor((unix − genesis) / len), до genesis и при len = 0 — null; epochId (16 байт) = LE64(genesisUnixS) || LE64(epochIndex). Девайс-тег эпохи — device_tag_epoch(pkDevice, epochId).",
+    "epochLenS": 7776000,
+    "indexCases": [
+      {
+        "name": "at_genesis",
+        "unixS": 1735689600,
+        "genesisUnixS": 1735689600,
+        "epochLenS": 7776000,
+        "epochIndex": 0
+      },
+      {
+        "name": "before_genesis",
+        "unixS": 1735689599,
+        "genesisUnixS": 1735689600,
+        "epochLenS": 7776000,
+        "epochIndex": null
+      },
+      {
+        "name": "last_second_of_epoch0",
+        "unixS": 1743465599,
+        "genesisUnixS": 1735689600,
+        "epochLenS": 7776000,
+        "epochIndex": 0
+      },
+      {
+        "name": "first_second_of_epoch1",
+        "unixS": 1743465600,
+        "genesisUnixS": 1735689600,
+        "epochLenS": 7776000,
+        "epochIndex": 1
+      },
+      {
+        "name": "mid_epoch5",
+        "unixS": 1774569607,
+        "genesisUnixS": 1735689600,
+        "epochLenS": 7776000,
+        "epochIndex": 5
+      },
+      {
+        "name": "degenerate_len_rejected",
+        "unixS": 1735689600,
+        "genesisUnixS": 1735689600,
+        "epochLenS": 0,
+        "epochIndex": null
+      }
+    ],
+    "startCases": [
+      {
+        "genesisUnixS": 1735689600,
+        "epochIndex": 0,
+        "startUnixS": 1735689600
+      },
+      {
+        "genesisUnixS": 1735689600,
+        "epochIndex": 1,
+        "startUnixS": 1743465600
+      },
+      {
+        "genesisUnixS": 1735689600,
+        "epochIndex": 7,
+        "startUnixS": 1790121600
+      }
+    ],
+    "idCases": [
+      {
+        "genesisUnixS": 1735689600,
+        "epochIndex": 0,
+        "epochId": "gIV0ZwAAAAAAAAAAAAAAAA"
+      },
+      {
+        "genesisUnixS": 1735689600,
+        "epochIndex": 3,
+        "epochId": "gIV0ZwAAAAADAAAAAAAAAA"
+      },
+      {
+        "genesisUnixS": 1735689601,
+        "epochIndex": 3,
+        "epochId": "gYV0ZwAAAAADAAAAAAAAAA"
+      }
+    ],
+    "deviceTagForEpoch": [
+      {
+        "genesisUnixS": 1735689600,
+        "epochIndex": 3,
+        "epochId": "gIV0ZwAAAAADAAAAAAAAAA",
+        "pkDevice": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+        "tag": "-sO9AFR_3i4BSM-MBES3pi_sjbDVlRQw-_gQY3CrI34"
+      },
+      {
+        "genesisUnixS": 1735689600,
+        "epochIndex": 4,
+        "epochId": "gIV0ZwAAAAAEAAAAAAAAAA",
+        "pkDevice": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+        "tag": "6s8bwGTH6bKNwQ5BmHzoCYG4CMYwgAj5P_Hgv5Kr_70"
+      }
+    ]
+  },
   "deviceTag": {
     "note": "BLAKE3 derive_key(flora/device/v1/tag, pkDevice || epochId) — fpp-crypto::device_tag_epoch.",
     "pkDevice": "0NHS09TV1tfY2drb3N3e3-Dh4uPk5ebn6Onq6-zt7u8",
@@ -2528,38 +2823,113 @@
     "epochIdNext": "8PHy8_T19vf4-fr7_P3-_w",
     "tagNext": "0ZdXJgFAWTxC65J0QdARCPdAS8-tuwersY75tHhVDjk"
   },
-  "ceremonyAnomalyFlags": [
-    {
-      "name": "latency_suspect",
-      "code": 1
-    },
-    {
-      "name": "synthetic_media_suspect",
-      "code": 2
-    },
-    {
-      "name": "audio_video_desync",
-      "code": 3
-    },
-    {
-      "name": "challenge_mismatch",
-      "code": 4
-    },
-    {
-      "name": "input_cadence_anomaly",
-      "code": 5
-    },
-    {
-      "name": "participant_aborted",
-      "code": 6
-    },
-    {
-      "name": "abuse_reported",
-      "code": 7
-    },
-    {
-      "name": "partner_no_show",
-      "code": 8
-    }
-  ]
+  "epochReport": {
+    "note": "Клиентский путь отчёта эпохи (FPP-SIGNALS §3, §7): сырые метрики → quantize_raw → канонические строки (metricCode строго растёт, отсутствие метрики — просто нет строки) + эпохальный девайс-тег. Сервер распаковывает temporal_from_report; сырые значения не покидают устройство.",
+    "cases": [
+      {
+        "name": "full_profile",
+        "raw": {
+          "burstinessPermille": 413,
+          "restSharePermille": 10,
+          "peakSharePermille": 120,
+          "selfSimilarityPermille": 700
+        },
+        "genesisUnixS": 1735689600,
+        "pkDevice": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+        "report": {
+          "epochIndex": 3,
+          "deviceTag": "-sO9AFR_3i4BSM-MBES3pi_sjbDVlRQw-_gQY3CrI34",
+          "temporalBuckets": [
+            {
+              "metric": "ns_t1_burstiness",
+              "metricCode": 1,
+              "bucket": "high",
+              "bucketCode": 3
+            },
+            {
+              "metric": "ns_t2a_rest_share",
+              "metricCode": 2,
+              "bucket": "very_low",
+              "bucketCode": 0
+            },
+            {
+              "metric": "ns_t2b_peak_share",
+              "metricCode": 3,
+              "bucket": "medium",
+              "bucketCode": 2
+            },
+            {
+              "metric": "ns_t2c_self_similarity",
+              "metricCode": 4,
+              "bucket": "medium",
+              "bucketCode": 2
+            }
+          ]
+        },
+        "unpackedProfile": {
+          "nsT1Burstiness": "high",
+          "nsT2aRestShare": "very_low",
+          "nsT2bPeakShare": "medium",
+          "nsT2cSelfSimilarity": "medium"
+        }
+      },
+      {
+        "name": "partial_no_history",
+        "raw": {
+          "burstinessPermille": -650,
+          "restSharePermille": null,
+          "peakSharePermille": 260,
+          "selfSimilarityPermille": null
+        },
+        "genesisUnixS": 1735689600,
+        "pkDevice": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+        "report": {
+          "epochIndex": 4,
+          "deviceTag": "6s8bwGTH6bKNwQ5BmHzoCYG4CMYwgAj5P_Hgv5Kr_70",
+          "temporalBuckets": [
+            {
+              "metric": "ns_t1_burstiness",
+              "metricCode": 1,
+              "bucket": "very_low",
+              "bucketCode": 0
+            },
+            {
+              "metric": "ns_t2b_peak_share",
+              "metricCode": 3,
+              "bucket": "high",
+              "bucketCode": 3
+            }
+          ]
+        },
+        "unpackedProfile": {
+          "nsT1Burstiness": "very_low",
+          "nsT2aRestShare": null,
+          "nsT2bPeakShare": "high",
+          "nsT2cSelfSimilarity": null
+        }
+      },
+      {
+        "name": "empty_fresh_device",
+        "raw": {
+          "burstinessPermille": null,
+          "restSharePermille": null,
+          "peakSharePermille": null,
+          "selfSimilarityPermille": null
+        },
+        "genesisUnixS": 1735689600,
+        "pkDevice": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+        "report": {
+          "epochIndex": 0,
+          "deviceTag": "WHfXQo9RpNWNClmu5AjxNNic31SR5K2BVg_czZqdXzM",
+          "temporalBuckets": []
+        },
+        "unpackedProfile": {
+          "nsT1Burstiness": null,
+          "nsT2aRestShare": null,
+          "nsT2bPeakShare": null,
+          "nsT2cSelfSimilarity": null
+        }
+      }
+    ]
+  }
 }

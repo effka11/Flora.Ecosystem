@@ -1,8 +1,9 @@
 //! Генератор golden-векторов метрик натуральности (FPP-SIGNALS §7).
 //!
-//! Пишет `Documents/test-vectors/personhood/personhood-naturalness-v1.json`.
-//! Детерминирован: повторный запуск перезаписывает файл идентичным содержимым
-//! (правило Documents/test-vectors/README.md).
+//! Пишет `Documents/test-vectors/personhood/personhood-naturalness-v1.json`
+//! (позитив) и `personhood-naturalness-negative-v1.json` (обязательные отказы —
+//! отдельным файлом по правилам Documents/test-vectors/README.md).
+//! Детерминирован: повторный запуск перезаписывает файлы идентичным содержимым.
 //!
 //! ```bash
 //! cargo run -p fpp-core --example gen_personhood_vectors
@@ -12,12 +13,15 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use fpp_contracts::{
     AnomalyFlagCount, CeremonyAnomalyFlag, DeviceAttestationClass, DeviceChurnClass,
-    DeviceLinkClass, NaturalnessClass, NaturalnessPanelReport, PanelCounters, SignalBucket,
-    SignalEvidenceClass,
+    DeviceLinkClass, NaturalnessClass, NaturalnessPanelReport, PanelCounters, PersonhoodLevel,
+    ReportConsistencyClass, ReportedBucket, SignalBucket, SignalEvidenceClass, SignalMetric,
 };
-use fpp_core::{PROTOCOL_VERSION, device, piecewise, profile, score, streams, temporal};
+use fpp_core::{PROTOCOL_VERSION, device, epoch, piecewise, profile, score, streams, temporal};
 use serde_json::{Value, json};
 use std::path::PathBuf;
+
+/// Genesis примерной инсталляции для эпохальных кейсов: 2025-01-01T00:00:00Z.
+const EPOCH_GENESIS_S: u64 = 1_735_689_600;
 
 fn b64(bytes: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(bytes)
@@ -559,20 +563,357 @@ fn device_tag_section() -> Value {
     })
 }
 
-fn anomaly_flags_section() -> Value {
+fn registries_section() -> Value {
+    macro_rules! coded {
+        ($ty:ty) => {
+            Value::Array(
+                <$ty>::ALL
+                    .iter()
+                    .map(|&v| json!({"name": v.name(), "code": v.code()}))
+                    .collect(),
+            )
+        };
+    }
+    let epoch_report_errors: Vec<&str> = [
+        profile::EpochReportError::NonTemporalMetric,
+        profile::EpochReportError::DuplicateMetric,
+        profile::EpochReportError::OutOfOrder,
+    ]
+    .iter()
+    .map(|e| e.name())
+    .collect();
+    let curve_errors: Vec<&str> = [
+        piecewise::CurveError::Empty,
+        piecewise::CurveError::YAbovePermille,
+        piecewise::CurveError::NonIncreasingX,
+    ]
+    .iter()
+    .map(|e| e.name())
+    .collect();
+    json!({
+        "note": "Wire-стабильные коды реестров fpp-contracts. В реестрах классов код 0 зарезервирован («не задано») и не выдаётся; PersonhoodLevel и SignalBucket — порядковые шкалы, 0 значим. Имена ошибок — стабильные идентификаторы журналов и негативных векторов (кодов у них нет).",
+        "personhoodLevel": coded!(PersonhoodLevel),
+        "signalEvidenceClass": coded!(SignalEvidenceClass),
+        "naturalnessClass": coded!(NaturalnessClass),
+        "deviceAttestationClass": coded!(DeviceAttestationClass),
+        "deviceLinkClass": coded!(DeviceLinkClass),
+        "deviceChurnClass": coded!(DeviceChurnClass),
+        "reportConsistencyClass": coded!(ReportConsistencyClass),
+        "signalMetric": coded!(SignalMetric),
+        "signalBucket": coded!(SignalBucket),
+        "ceremonyAnomalyFlag": coded!(CeremonyAnomalyFlag),
+        "epochReportError": epoch_report_errors,
+        "curveError": curve_errors,
+    })
+}
+
+fn epoch_section() -> Value {
+    let len = epoch::EPOCH_LEN_S;
+    let index_inputs: Vec<(&str, u64, u64, u64)> = vec![
+        ("at_genesis", EPOCH_GENESIS_S, EPOCH_GENESIS_S, len),
+        ("before_genesis", EPOCH_GENESIS_S - 1, EPOCH_GENESIS_S, len),
+        (
+            "last_second_of_epoch0",
+            EPOCH_GENESIS_S + len - 1,
+            EPOCH_GENESIS_S,
+            len,
+        ),
+        (
+            "first_second_of_epoch1",
+            EPOCH_GENESIS_S + len,
+            EPOCH_GENESIS_S,
+            len,
+        ),
+        (
+            "mid_epoch5",
+            EPOCH_GENESIS_S + 5 * len + 7,
+            EPOCH_GENESIS_S,
+            len,
+        ),
+        (
+            "degenerate_len_rejected",
+            EPOCH_GENESIS_S,
+            EPOCH_GENESIS_S,
+            0,
+        ),
+    ];
+    let index_cases: Vec<Value> = index_inputs
+        .into_iter()
+        .map(|(name, unix_s, genesis, epoch_len)| {
+            json!({
+                "name": name,
+                "unixS": unix_s,
+                "genesisUnixS": genesis,
+                "epochLenS": epoch_len,
+                "epochIndex": epoch::epoch_index_at(unix_s, genesis, epoch_len),
+            })
+        })
+        .collect();
+
+    let start_cases: Vec<Value> = [0u64, 1, 7]
+        .iter()
+        .map(|&index| {
+            json!({
+                "genesisUnixS": EPOCH_GENESIS_S,
+                "epochIndex": index,
+                "startUnixS": epoch::epoch_start_s(EPOCH_GENESIS_S, index, len),
+            })
+        })
+        .collect();
+
+    let id_cases: Vec<Value> = [
+        (EPOCH_GENESIS_S, 0u64),
+        (EPOCH_GENESIS_S, 3),
+        (EPOCH_GENESIS_S + 1, 3),
+    ]
+    .iter()
+    .map(|&(genesis, index)| {
+        json!({
+            "genesisUnixS": genesis,
+            "epochIndex": index,
+            "epochId": b64(&epoch::epoch_id_bytes(genesis, index)),
+        })
+    })
+    .collect();
+
+    let pk_device: [u8; 32] = material(0xA0, 32).try_into().unwrap();
+    let tag_for_epoch: Vec<Value> = [3u64, 4]
+        .iter()
+        .map(|&index| {
+            let id = epoch::epoch_id_bytes(EPOCH_GENESIS_S, index);
+            json!({
+                "genesisUnixS": EPOCH_GENESIS_S,
+                "epochIndex": index,
+                "epochId": b64(&id),
+                "pkDevice": b64(&pk_device),
+                "tag": b64(&fpp_crypto::device_tag_epoch(&pk_device, &id)),
+            })
+        })
+        .collect();
+
+    json!({
+        "note": "Каноническая эпоха NS: index = floor((unix − genesis) / len), до genesis и при len = 0 — null; epochId (16 байт) = LE64(genesisUnixS) || LE64(epochIndex). Девайс-тег эпохи — device_tag_epoch(pkDevice, epochId).",
+        "epochLenS": len,
+        "indexCases": index_cases,
+        "startCases": start_cases,
+        "idCases": id_cases,
+        "deviceTagForEpoch": tag_for_epoch,
+    })
+}
+
+fn reported_buckets_json(rows: &[ReportedBucket]) -> Value {
     Value::Array(
-        CeremonyAnomalyFlag::ALL
-            .iter()
-            .map(|f| json!({"name": f.name(), "code": f.code()}))
+        rows.iter()
+            .map(|r| {
+                json!({
+                    "metric": r.metric.name(),
+                    "metricCode": r.metric.code(),
+                    "bucket": r.bucket.name(),
+                    "bucketCode": r.bucket.code(),
+                })
+            })
             .collect(),
     )
+}
+
+/// Кейс отчёта эпохи: (имя, индекс эпохи, burstiness, restShare, peakShare, selfSimilarity).
+type RawEpochCase = (
+    &'static str,
+    u64,
+    Option<i32>,
+    Option<u32>,
+    Option<u32>,
+    Option<u32>,
+);
+
+fn epoch_report_section() -> Value {
+    // Сырые значения — выходы fpp-core::temporal на устройстве (промилле).
+    let raw_cases: Vec<RawEpochCase> = vec![
+        ("full_profile", 3, Some(413), Some(10), Some(120), Some(700)),
+        ("partial_no_history", 4, Some(-650), None, Some(260), None),
+        ("empty_fresh_device", 0, None, None, None, None),
+    ];
+    let pk_device: [u8; 32] = material(0xA0, 32).try_into().unwrap();
+
+    let cases: Vec<Value> = raw_cases
+        .into_iter()
+        .map(|(name, epoch_index, burst, rest, peak, sim)| {
+            let buckets = profile::TemporalBuckets::quantize_raw(burst, rest, peak, sim);
+            let report = fpp_contracts::NaturalnessEpochReport {
+                epoch_index,
+                device_tag: fpp_crypto::device_tag_epoch(
+                    &pk_device,
+                    &epoch::epoch_id_bytes(EPOCH_GENESIS_S, epoch_index),
+                ),
+                temporal_buckets: buckets.to_report_buckets(),
+            };
+            let unpacked = profile::temporal_from_report(&report.temporal_buckets)
+                .expect("канонический отчёт валиден");
+            assert_eq!(unpacked, buckets, "roundtrip отчёта эпохи");
+            json!({
+                "name": name,
+                "raw": {
+                    "burstinessPermille": burst,
+                    "restSharePermille": rest,
+                    "peakSharePermille": peak,
+                    "selfSimilarityPermille": sim,
+                },
+                "genesisUnixS": EPOCH_GENESIS_S,
+                "pkDevice": b64(&pk_device),
+                "report": {
+                    "epochIndex": report.epoch_index,
+                    "deviceTag": b64(&report.device_tag),
+                    "temporalBuckets": reported_buckets_json(&report.temporal_buckets),
+                },
+                "unpackedProfile": temporal_buckets_json(&unpacked),
+            })
+        })
+        .collect();
+
+    json!({
+        "note": "Клиентский путь отчёта эпохи (FPP-SIGNALS §3, §7): сырые метрики → quantize_raw → канонические строки (metricCode строго растёт, отсутствие метрики — просто нет строки) + эпохальный девайс-тег. Сервер распаковывает temporal_from_report; сырые значения не покидают устройство.",
+        "cases": cases,
+    })
+}
+
+fn write_vector(path: &std::path::Path, vector: &Value) {
+    let mut text = serde_json::to_string_pretty(vector).expect("json");
+    text.push('\n');
+    std::fs::write(path, text).expect("write");
+    println!("written {}", path.display());
+}
+
+fn negative_vector() -> Value {
+    let row = |metric: SignalMetric, bucket: SignalBucket| {
+        json!({
+            "metric": metric.name(),
+            "metricCode": metric.code(),
+            "bucket": bucket.name(),
+            "bucketCode": bucket.code(),
+        })
+    };
+    let reject_inputs: Vec<(&str, Vec<Value>, profile::EpochReportError)> = vec![
+        (
+            "device_link_self_report",
+            vec![row(SignalMetric::DeviceLinkD2, SignalBucket::VeryLow)],
+            profile::EpochReportError::NonTemporalMetric,
+        ),
+        (
+            "device_churn_after_valid_row",
+            vec![
+                row(SignalMetric::BurstinessT1, SignalBucket::High),
+                row(SignalMetric::DeviceChurnD3, SignalBucket::Medium),
+            ],
+            profile::EpochReportError::NonTemporalMetric,
+        ),
+        (
+            "duplicate_metric",
+            vec![
+                row(SignalMetric::BurstinessT1, SignalBucket::High),
+                row(SignalMetric::BurstinessT1, SignalBucket::High),
+            ],
+            profile::EpochReportError::DuplicateMetric,
+        ),
+        (
+            "duplicate_after_valid_rows",
+            vec![
+                row(SignalMetric::BurstinessT1, SignalBucket::High),
+                row(SignalMetric::RestShareT2a, SignalBucket::Low),
+                row(SignalMetric::RestShareT2a, SignalBucket::Low),
+            ],
+            profile::EpochReportError::DuplicateMetric,
+        ),
+        (
+            "out_of_order",
+            vec![
+                row(SignalMetric::PeakShareT2b, SignalBucket::Medium),
+                row(SignalMetric::BurstinessT1, SignalBucket::High),
+            ],
+            profile::EpochReportError::OutOfOrder,
+        ),
+    ];
+    let epoch_report_rejects: Vec<Value> = reject_inputs
+        .into_iter()
+        .map(|(name, rows, expected)| {
+            json!({
+                "name": name,
+                "temporalBuckets": rows,
+                "expectedError": expected.name(),
+            })
+        })
+        .collect();
+
+    // Коды вне реестров: from_code обязан вернуть отказ, а не «ближайшее» значение.
+    let unknown_wire_codes = json!({
+        "personhoodLevel": [4, 255],
+        "signalEvidenceClass": [0, 4, 255],
+        "naturalnessClass": [0, 4, 255],
+        "deviceAttestationClass": [0, 4, 255],
+        "deviceLinkClass": [0, 4, 255],
+        "deviceChurnClass": [0, 4, 255],
+        "reportConsistencyClass": [0, 4, 255],
+        "signalMetric": [0, 7, 255],
+        "signalBucket": [5, 255],
+        "ceremonyAnomalyFlag": [0, 9, 255],
+    });
+    assert!(PersonhoodLevel::from_code(4).is_none());
+    assert!(SignalEvidenceClass::from_code(0).is_none());
+    assert!(NaturalnessClass::from_code(4).is_none());
+    assert!(DeviceAttestationClass::from_code(255).is_none());
+    assert!(DeviceLinkClass::from_code(4).is_none());
+    assert!(DeviceChurnClass::from_code(4).is_none());
+    assert!(ReportConsistencyClass::from_code(0).is_none());
+    assert!(SignalMetric::from_code(7).is_none());
+    assert!(SignalBucket::from_code(5).is_none());
+    assert!(CeremonyAnomalyFlag::from_code(9).is_none());
+
+    type CurveRejectCase = (&'static str, Vec<(i64, u32)>, piecewise::CurveError);
+    let curve_inputs: Vec<CurveRejectCase> = vec![
+        ("empty_curve", vec![], piecewise::CurveError::Empty),
+        (
+            "y_above_permille",
+            vec![(0, 1001), (10, 0)],
+            piecewise::CurveError::YAbovePermille,
+        ),
+        (
+            "duplicate_x",
+            vec![(0, 100), (0, 200)],
+            piecewise::CurveError::NonIncreasingX,
+        ),
+        (
+            "decreasing_x",
+            vec![(10, 100), (0, 200)],
+            piecewise::CurveError::NonIncreasingX,
+        ),
+    ];
+    let curve_rejects: Vec<Value> = curve_inputs
+        .into_iter()
+        .map(|(name, points, expected)| {
+            assert_eq!(piecewise::validate(&points), Err(expected));
+            json!({
+                "name": name,
+                "points": curve_json(&points),
+                "expectedError": expected.name(),
+            })
+        })
+        .collect();
+
+    json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "vectorId": "personhood_naturalness_negative_v1",
+        "description": "Обязательные отказы NS-слоя (FPP-SIGNALS §7): форма самоотчёта эпохи (temporal_from_report), неизвестные wire-коды реестров (from_code → отказ), невалидные калибровочные кривые (piecewise::validate). Совместимая реализация обязана отклонить каждый кейс с указанной ошибкой.",
+        "epochReportRejects": epoch_report_rejects,
+        "unknownWireCodes": unknown_wire_codes,
+        "curveRejects": curve_rejects,
+    })
 }
 
 fn main() {
     let vector = json!({
         "protocolVersion": PROTOCOL_VERSION,
         "vectorId": "personhood_naturalness_v1",
-        "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, bucket-профиль и отчёт следственной панели (квантование, веса девайс-наблюдений, согласованность A↔C, assemble), эпохальный тег устройства, реестр enum-флагов церемоний. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
+        "description": "Метрики натуральности NS (FPP-SIGNALS): burstiness, суточный профиль, CUSUM, калибровочные кривые, девайс-классы, свод/классификация с гистерезисом, bucket-профиль и отчёт следственной панели (квантование, веса девайс-наблюдений, согласованность A↔C, assemble), каноническая эпоха и эпохальный тег устройства, отчёт эпохи клиента, wire-реестры. Целочисленная арифметика: усечение к нулю, isqrt — floor.",
+        "registries": registries_section(),
         "burstiness": burstiness_cases(),
         "circadian": circadian_cases(),
         "cusum": cusum_case(),
@@ -580,13 +921,15 @@ fn main() {
         "device": device_section(),
         "score": score_section(),
         "panel": panel_section(),
+        "epoch": epoch_section(),
         "deviceTag": device_tag_section(),
-        "ceremonyAnomalyFlags": anomaly_flags_section(),
+        "epochReport": epoch_report_section(),
     });
 
-    let path = out_dir().join("personhood-naturalness-v1.json");
-    let mut text = serde_json::to_string_pretty(&vector).expect("json");
-    text.push('\n');
-    std::fs::write(&path, text).expect("write");
-    println!("written {}", path.display());
+    let dir = out_dir();
+    write_vector(&dir.join("personhood-naturalness-v1.json"), &vector);
+    write_vector(
+        &dir.join("personhood-naturalness-negative-v1.json"),
+        &negative_vector(),
+    );
 }
