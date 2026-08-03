@@ -4,11 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { floraDurationMs } from "@/lib/floraMotion";
-import {
-  ChatMoreMenuPanel,
-  type ChatMoreMenuKind,
-} from "@/app/(dashboard)/messages/ChatMoreMenuPanel";
-import { ConversationMoreMenuPanel, type ConversationMoreMenuKind } from "./ConversationMoreMenuPanel";
+import { ChatMoreMenuPanel } from "@/app/(dashboard)/messages/ChatMoreMenuPanel";
+import { ConversationMoreMenuPanel } from "./ConversationMoreMenuPanel";
+import type { MessagesMoreMenuKind } from "./messagesMoreMenuKind";
 import {
   FLORA_RECT_MENU_PANEL_ATTR,
   isFloraRectMenuOverlayTarget,
@@ -138,7 +136,7 @@ export type PostMoreMenuRectProps = {
   folderOptions?: readonly { id: string; label: string }[];
   onAddToFolder?: (folderId: string) => void;
   /** Набор пунктов ⋮ в списке чатов: dm (по умолчанию) | group. */
-  conversationMenuKind?: ConversationMoreMenuKind;
+  conversationMenuKind?: MessagesMoreMenuKind;
   /** Свой пост — показать «Удалить пост». */
   canDeletePost?: boolean;
   onDeletePost?: () => void;
@@ -154,7 +152,7 @@ export type PostMoreMenuRectProps = {
   /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования». */
   onChatSafetyNumber?: () => void;
   /** Набор пунктов ⋮ в открытом чате: dm (по умолчанию) | group. */
-  chatMenuKind?: ChatMoreMenuKind;
+  chatMenuKind?: MessagesMoreMenuKind;
   /** Удалить весь диалог (список чатов и шапка открытого чата). */
   onDeleteConversation?: () => void;
 };
@@ -225,7 +223,12 @@ export function PostMoreMenuRect({
 
   const isConversation = variant === "conversation";
   const isChat = variant === "chat";
-  const hasMuteSubmenu = isConversation || isChat;
+  const menuKind: MessagesMoreMenuKind = isConversation
+    ? conversationMenuKind
+    : isChat
+      ? chatMenuKind
+      : "dm";
+  const hasMuteSubmenu = (isConversation || isChat) && menuKind === "dm";
   const resetSubmenuRef = useRef<() => void>(() => {});
 
   const requestClose = useCallback(() => {

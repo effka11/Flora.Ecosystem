@@ -7,6 +7,8 @@ export type ThreadRenderItem =
 /**
  * Группировка ленты: peer-run по raw порядку (стабильный groupKey),
  * в DOM — только visible сообщения run'а.
+ * Если у сообщений есть `senderUserUuid`, run режется по смене отправителя
+ * (групповые чаты); без sender — как 1:1 (все подряд peer в одном run).
  */
 export function buildThreadRenderItems(
   threadMessages: readonly MessageThreadItemDto[],
@@ -25,9 +27,12 @@ export function buildThreadRenderItems(
     }
 
     const groupKey = head.messageUuid;
+    const runSender = head.senderUserUuid?.trim() || null;
     const visibleInRun: MessageThreadItemDto[] = [];
     while (i < threadMessages.length && !threadMessages[i]!.isFromMe) {
       const m = threadMessages[i]!;
+      const mSender = m.senderUserUuid?.trim() || null;
+      if (runSender && mSender && mSender !== runSender) break;
       if (isVisible(m)) visibleInRun.push(m);
       i += 1;
     }

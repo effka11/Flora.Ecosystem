@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
+import type { MessagesMoreMenuKind } from "./messagesMoreMenuKind";
 import rectStyles from "./FloraRectMenu.module.css";
 
 const menuIconProps = {
@@ -58,15 +59,16 @@ function IconDelete() {
   );
 }
 
-export type ConversationMoreMenuKind = "dm" | "group";
+/** @deprecated Prefer MessagesMoreMenuKind. */
+export type ConversationMoreMenuKind = MessagesMoreMenuKind;
 
 type FolderPickOption = { id: string; label: string };
 
 type ConversationMoreMenuPanelProps = {
   firstActionRef: RefObject<HTMLButtonElement | null>;
   onAction: () => void;
-  /** DM — полный список; group — без папок/архива, другая подпись удаления. */
-  kind?: ConversationMoreMenuKind;
+  /** DM — полный список; group — только удаление. */
+  kind?: MessagesMoreMenuKind;
   muteSubmenuOpen: boolean;
   isSubmenuClosing: boolean;
   onToggleMuteSubmenu: () => void;
@@ -133,6 +135,21 @@ export function ConversationMoreMenuPanel({
   const isGroup = kind === "group";
   const customFolders = folderOptions.filter((f) => f.id !== "archived");
 
+  if (isGroup) {
+    return (
+      <MenuRow
+        buttonRef={firstActionRef}
+        icon={<IconDelete />}
+        label="Удалить группу"
+        danger
+        onClick={() => {
+          onDelete?.();
+          onAction();
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <div className={rectStyles.menuItemSubmenuWrap}>
@@ -149,44 +166,40 @@ export function ConversationMoreMenuPanel({
       </div>
 
       <MenuRow icon={<IconPin />} label="Закрепить" onClick={onAction} />
-      {!isGroup ? (
-        customFolders.length === 0 ? (
-          <MenuRow
-            icon={<IconFolder />}
-            label="Добавить в папку"
-            onClick={() => {
-              window.alert("Сначала создайте папку через «+» в шапке сообщений.");
-              onAction();
-            }}
-          />
-        ) : (
-          customFolders.map((folder) => (
-            <MenuRow
-              key={folder.id}
-              icon={<IconFolder />}
-              label={`В «${folder.label}»`}
-              onClick={() => {
-                onAddToFolder?.(folder.id);
-                onAction();
-              }}
-            />
-          ))
-        )
-      ) : null}
-      {!isGroup ? (
+      {customFolders.length === 0 ? (
         <MenuRow
-          icon={<IconArchive />}
-          label={conversationIsArchived ? "Разархивировать" : "Архивировать"}
+          icon={<IconFolder />}
+          label="Добавить в папку"
           onClick={() => {
-            if (conversationIsArchived) onConversationUnarchive?.();
-            else onConversationArchive?.();
+            window.alert("Сначала создайте папку через «+» в шапке сообщений.");
             onAction();
           }}
         />
-      ) : null}
+      ) : (
+        customFolders.map((folder) => (
+          <MenuRow
+            key={folder.id}
+            icon={<IconFolder />}
+            label={`В «${folder.label}»`}
+            onClick={() => {
+              onAddToFolder?.(folder.id);
+              onAction();
+            }}
+          />
+        ))
+      )}
+      <MenuRow
+        icon={<IconArchive />}
+        label={conversationIsArchived ? "Разархивировать" : "Архивировать"}
+        onClick={() => {
+          if (conversationIsArchived) onConversationUnarchive?.();
+          else onConversationArchive?.();
+          onAction();
+        }}
+      />
       <MenuRow
         icon={<IconDelete />}
-        label={isGroup ? "Удалить группу" : "Удалить чат"}
+        label="Удалить чат"
         danger
         onClick={() => {
           onDelete?.();

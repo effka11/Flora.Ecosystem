@@ -217,6 +217,7 @@ import {
 import {
   appendMockGroupPlaintext,
   createMockGroupChat,
+  deleteMockGroupChat,
   ensureMockGroupViewer,
   getMockGroupChat,
   getMockGroupThread,
@@ -344,6 +345,7 @@ function groupThreadToMessages(
     encryptedForMe: null,
     createdAt: m.createdAt,
     isFromMe: me.length > 0 && m.senderUserUuid === me,
+    senderUserUuid: m.senderUserUuid,
   }));
 }
 
@@ -578,10 +580,11 @@ function MessagesChatInner() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "unread">("recent");
-  const [pendingDeleteConversation, setPendingDeleteConversation] = useState<{
-    peerUuid: string;
-    displayName: string;
-  } | null>(null);
+  const [pendingDeleteConversation, setPendingDeleteConversation] = useState<
+    | { kind: "dm"; peerUuid: string; displayName: string }
+    | { kind: "group"; conversationUuid: string; displayName: string }
+    | null
+  >(null);
   const [deleteConversationModalClosing, setDeleteConversationModalClosing] = useState(false);
   const [deleteConversationBusy, setDeleteConversationBusy] = useState(false);
   const [deleteConversationError, setDeleteConversationError] = useState<string | null>(null);
@@ -1006,7 +1009,7 @@ function MessagesChatInner() {
   }, [applyPanelTransition, selectedTarget]);
 
   const switchChat = useCallback(
-    (chat: ConversationListItemDto, fromMainList: boolean) => {
+    (chat: ConversationListItemDto) => {
       if (
         selectedTarget?.kind === "dm" &&
         selectedTarget.otherUserUuid === chat.otherUserUuid
@@ -1032,8 +1035,6 @@ function MessagesChatInner() {
         applyPanelTransition("fromRight");
       }
 
-      // alignRailScrollFromMainListRef.current = fromMainList;
-      void fromMainList;
       setSelectedPeer(chat);
       setSelectedTarget({ kind: "dm", otherUserUuid: chat.otherUserUuid });
     },
@@ -1888,16 +1889,9 @@ function MessagesChatInner() {
   const peerThreadAvatarLabel = useMemo(
     () =>
       avatarLetters(
-        selectedGroupChat?.title ||
-          chatHeaderPeer?.otherDisplayName ||
-          chatHeaderPeer?.otherUsername ||
-          "?",
+        chatHeaderPeer?.otherDisplayName || chatHeaderPeer?.otherUsername || "?",
       ),
-    [
-      selectedGroupChat?.title,
-      chatHeaderPeer?.otherDisplayName,
-      chatHeaderPeer?.otherUsername,
-    ],
+    [chatHeaderPeer?.otherDisplayName, chatHeaderPeer?.otherUsername],
   );
 
   /**
@@ -2160,7 +2154,17 @@ function MessagesChatInner() {
     }
     setDeleteConversationError(null);
     setDeleteConversationModalClosing(false);
-    setPendingDeleteConversation({ peerUuid, displayName });
+    setPendingDeleteConversation({ kind: "dm", peerUuid, displayName });
+  }, []);
+
+  const openDeleteGroupModal = useCallback((conversationUuid: string, displayName: string) => {
+    if (deleteConversationCloseTimerRef.current) {
+      window.clearTimeout(deleteConversationCloseTimerRef.current);
+      deleteConversationCloseTimerRef.current = null;
+    }
+    setDeleteConversationError(null);
+    setDeleteConversationModalClosing(false);
+    setPendingDeleteConversation({ kind: "group", conversationUuid, displayName });
   }, []);
 
   const closeDeleteConversationModal = useCallback(() => {
@@ -2168,10 +2172,35 @@ function MessagesChatInner() {
     dismissDeleteConversationModal();
   }, [deleteConversationBusy, dismissDeleteConversationModal]);
 
+  const handleDeleteGroup = useCallback(
+    (conversationUuid: string) => {
+      const uuid = conversationUuid.trim();
+      if (!uuid) return;
+      const deletingOpen = selectedGroupUuid === uuid;
+      setDeleteConversationBusy(true);
+      setDeleteConversationError(null);
+      try {
+        if (!deleteMockGroupChat(uuid)) {
+          setDeleteConversationError("Группа уже удалена.");
+          return;
+        }
+        if (deletingOpen) closeChat();
+        dismissDeleteConversationModal();
+      } finally {
+        setDeleteConversationBusy(false);
+      }
+    },
+    [closeChat, dismissDeleteConversationModal, selectedGroupUuid],
+  );
+
   const confirmDeleteConversation = useCallback(() => {
     if (!pendingDeleteConversation) return;
+    if (pendingDeleteConversation.kind === "group") {
+      handleDeleteGroup(pendingDeleteConversation.conversationUuid);
+      return;
+    }
     void handleDeleteConversation(pendingDeleteConversation.peerUuid);
-  }, [handleDeleteConversation, pendingDeleteConversation]);
+  }, [handleDeleteConversation, handleDeleteGroup, pendingDeleteConversation]);
 
   // Safety number 1:1 (FSCP §Safety number) — модал «Проверка шифрования».
   // Паттерн pending* как у delete-модала: peer фиксируется в момент открытия,
@@ -2245,10 +2274,11 @@ function MessagesChatInner() {
 
   useEffect(() => {
     setReplyTo(null);
-  }, [selectedOtherUuid]);
+  }, [selectedOtherUuid, selectedGroupUuid]);
 
   const handleAttachPick = useCallback(
     (kind: ComposeAttachKind, files: FileList) => {
+      if (selectedTarget?.kind === "groupChat") return;
       if (kind === "photo") {
         const result = compose.mergeImages(files);
         const err = messageImageAttachError(result);
@@ -2270,7 +2300,7 @@ function MessagesChatInner() {
       setThreadError(null);
       compose.addVideoFromFile(file);
     },
-    [compose],
+    [compose, selectedTarget],
   );
 
   const sendVoiceMessageOptimistic = useCallback(async () => {
@@ -3033,6 +3063,11 @@ function MessagesChatInner() {
   const composeBusy = sending || threadLoading;
   const composeMediaDisabled = composeBusy || isGroupChatOpen;
 
+  useEffect(() => {
+    if (!isGroupChatOpen) return;
+    if (stickerPanelRendered) requestCloseStickerPanel();
+  }, [isGroupChatOpen, stickerPanelRendered, requestCloseStickerPanel]);
+
   const voiceComposeActive = compose.mode === "voice" || voiceRecorder.recording || compose.voice !== null;
   const voiceComposeSource = voiceRecorder.recording ? voiceRecorder.liveWaveform : compose.voice?.waveform ?? [];
   const voiceComposeBars = useMemo(
@@ -3323,6 +3358,7 @@ function MessagesChatInner() {
                             },
                           },
                           peerUuid: null as string | null,
+                          groupUuid: item.group.conversationUuid as string | null,
                         }
                       : (() => {
                           const chat = item.conversation;
@@ -3347,7 +3383,7 @@ function MessagesChatInner() {
                               communityName: undefined as string | undefined,
                               seed: chat.otherUserUuid,
                             },
-                            onOpen: () => switchChat(chat, true),
+                            onOpen: () => switchChat(chat),
                             onPrefetch: () => prefetchPeerThread(chat.otherUserUuid),
                             more: {
                               conversationMenuKind: "dm" as const,
@@ -3358,9 +3394,11 @@ function MessagesChatInner() {
                               },
                             },
                             peerUuid: chat.otherUserUuid,
+                            groupUuid: null as string | null,
                           };
                         })();
                   const peerUuid = row.peerUuid;
+                  const groupUuid = row.groupUuid;
 
                   return (
                     <li key={row.key} className={styles.messagesConversationRow}>
@@ -3450,9 +3488,11 @@ function MessagesChatInner() {
                             : undefined
                         }
                         onDeleteConversation={
-                          peerUuid
-                            ? () => openDeleteConversationModal(peerUuid, row.title)
-                            : undefined
+                          groupUuid
+                            ? () => openDeleteGroupModal(groupUuid, row.title)
+                            : peerUuid
+                              ? () => openDeleteConversationModal(peerUuid, row.title)
+                              : undefined
                         }
                         accessibility={row.more.accessibility}
                       />
@@ -3611,13 +3651,15 @@ function MessagesChatInner() {
                       : undefined
                   }
                   onDeleteConversation={
-                    openChatHeader.kind === "dm" && selectedOtherUuid
-                      ? () =>
-                          openDeleteConversationModal(
-                            selectedOtherUuid,
-                            openChatHeader.title,
-                          )
-                      : undefined
+                    openChatHeader.kind === "group" && selectedGroupUuid
+                      ? () => openDeleteGroupModal(selectedGroupUuid, openChatHeader.title)
+                      : openChatHeader.kind === "dm" && selectedOtherUuid
+                        ? () =>
+                            openDeleteConversationModal(
+                              selectedOtherUuid,
+                              openChatHeader.title,
+                            )
+                        : undefined
                   }
                   accessibility={openChatHeader.more.accessibility}
                 />
@@ -3913,10 +3955,35 @@ function MessagesChatInner() {
                         <div
                           key={`peer-avatar-${item.groupKey}`}
                           data-messages-peer-avatar=""
-                          className={styles.messagesBubblePeerAvatar}
+                          className={`${styles.messagesBubblePeerAvatar}${
+                            selectedGroupChat ? ` ${styles.messagesBubblePeerAvatarFlora}` : ""
+                          }`}
                           aria-hidden
                         >
-                          {peerThreadAvatarLabel}
+                          {selectedGroupChat ? (
+                            (() => {
+                              const senderUuid =
+                                item.messages[item.messages.length - 1]?.senderUserUuid?.trim() ||
+                                item.messages[0]?.senderUserUuid?.trim() ||
+                                "";
+                              const member = selectedGroupChat.members.find(
+                                (m) => m.userUuid === senderUuid,
+                              );
+                              const label =
+                                member?.displayName || member?.username || "?";
+                              return (
+                                <FloraAvatar
+                                  plain
+                                  size={45}
+                                  displayName={label}
+                                  username={member?.username}
+                                  seed={senderUuid || label}
+                                />
+                              );
+                            })()
+                          ) : (
+                            peerThreadAvatarLabel
+                          )}
                         </div>
                       </div>
                     );
@@ -4095,6 +4162,7 @@ function MessagesChatInner() {
                       disabled={sending || threadLoading}
                       onChange={(event) => compose.setText(event.target.value)}
                       onPaste={(event) => {
+                        if (isGroupChatOpen) return;
                         const pasted = extractPastedMessageImages(event.clipboardData);
                         if (pasted.length === 0) return;
                         event.preventDefault();
@@ -4121,7 +4189,7 @@ function MessagesChatInner() {
                       aria-label="Стикеры и эмодзи"
                       aria-controls="messages-sticker-panel"
                       aria-expanded={stickerPanelOpen}
-                      disabled={sending || threadLoading}
+                      disabled={composeMediaDisabled}
                       onClick={toggleStickerPanel}
                     >
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -4247,6 +4315,7 @@ function MessagesChatInner() {
         busy={deleteConversationBusy}
         error={deleteConversationError}
         peerDisplayName={pendingDeleteConversation?.displayName ?? ""}
+        targetKind={pendingDeleteConversation?.kind === "group" ? "group" : "dm"}
         onClose={closeDeleteConversationModal}
         onConfirm={confirmDeleteConversation}
       />

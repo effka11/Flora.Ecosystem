@@ -300,6 +300,19 @@ export function markMockGroupRead(conversationUuid: string): void {
   emit();
 }
 
+/** Removes a mock group and its thread. Returns false if missing. */
+export function deleteMockGroupChat(conversationUuid: string): boolean {
+  const uuid = conversationUuid.trim();
+  if (!uuid) return false;
+  const nextGroups = state.groups.filter((g) => g.conversationUuid !== uuid);
+  if (nextGroups.length === state.groups.length) return false;
+  const nextThreads = new Map(state.threads);
+  nextThreads.delete(uuid);
+  state = { ...state, groups: nextGroups, threads: nextThreads };
+  emit();
+  return true;
+}
+
 /** Test helper — resets seed fixtures. */
 export function resetMockGroupStoreForTests(): void {
   state = buildSeedState();

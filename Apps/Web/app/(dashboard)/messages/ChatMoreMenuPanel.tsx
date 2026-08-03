@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
+import type { MessagesMoreMenuKind } from "@/app/_shared/messagesMoreMenuKind";
 import rectStyles from "@/app/_shared/FloraRectMenu.module.css";
 
 const menuIconProps = {
@@ -69,13 +70,14 @@ function IconShield() {
   );
 }
 
-export type ChatMoreMenuKind = "dm" | "group";
+/** @deprecated Prefer MessagesMoreMenuKind from messagesMoreMenuKind. */
+export type ChatMoreMenuKind = MessagesMoreMenuKind;
 
 type ChatMoreMenuPanelProps = {
   firstActionRef: RefObject<HTMLButtonElement | null>;
   onAction: () => void;
-  /** DM — полный набор; group — без safety number, другая подпись удаления. */
-  kind?: ChatMoreMenuKind;
+  /** DM — полный набор; group — только удаление (рабочие пункты). */
+  kind?: MessagesMoreMenuKind;
   onSearch?: () => void;
   onMedia?: () => void;
   onPin?: () => void;
@@ -140,6 +142,21 @@ export function ChatMoreMenuPanel({
   const submenuExpanded = muteSubmenuOpen && !isSubmenuClosing;
   const isGroup = kind === "group";
 
+  if (isGroup) {
+    return (
+      <MenuRow
+        buttonRef={firstActionRef}
+        icon={<IconDelete />}
+        label="Удалить группу"
+        danger
+        onClick={() => {
+          onDelete?.();
+          onAction();
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <MenuRow
@@ -178,19 +195,17 @@ export function ChatMoreMenuPanel({
           onClick={onToggleMuteSubmenu}
         />
       </div>
-      {!isGroup ? (
-        <MenuRow
-          icon={<IconShield />}
-          label="Проверка шифрования"
-          onClick={() => {
-            onSafetyNumber?.();
-            onAction();
-          }}
-        />
-      ) : null}
+      <MenuRow
+        icon={<IconShield />}
+        label="Проверка шифрования"
+        onClick={() => {
+          onSafetyNumber?.();
+          onAction();
+        }}
+      />
       <MenuRow
         icon={<IconDelete />}
-        label={isGroup ? "Удалить группу" : "Удалить чат"}
+        label="Удалить чат"
         danger
         onClick={() => {
           onDelete?.();

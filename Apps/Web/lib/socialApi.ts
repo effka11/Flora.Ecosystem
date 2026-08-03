@@ -1584,6 +1584,8 @@ export type MessageThreadItemDto = {
   isFromMe: boolean;
   isRead?: boolean;
   sendStatus?: "sending";
+  /** Optional sender id (mock group threads); absent for 1:1 API messages. */
+  senderUserUuid?: string | null;
 };
 
 function parseMessageThreadItem(raw: unknown): MessageThreadItemDto | null {
