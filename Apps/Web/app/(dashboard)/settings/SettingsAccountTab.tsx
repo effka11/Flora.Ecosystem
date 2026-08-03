@@ -183,7 +183,7 @@ export function SettingsAccountTab() {
               value={username}
               onChange={(e) => {
                 clearSaveFeedback();
-                updateAccount({ username: e.target.value.replace(/^@+/, "") });
+                updateAccount({ username: e.target.value.replace(/^@+/, "").toLowerCase() });
               }}
               autoComplete="username"
               spellCheck={false}

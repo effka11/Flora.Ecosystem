@@ -1,16 +1,21 @@
 //! Латинские идентификаторы: никнеймы и slug сообществ. Порт `Flora.Shared/LatinIdentifiers.cs`
 //! — та же семантика нормализации и те же тексты сообщений (часть публичного контракта ошибок).
+//!
+//! Никнеймы канонически в нижнем регистре (как slug): заглавные при нормализации
+//! приводятся к lowercase и в хранилище не допускаются.
 
-pub const USERNAME_FORMAT_MESSAGE: &str = "Никнейм: только латиница, цифры и подчёркивание.";
+pub const USERNAME_FORMAT_MESSAGE: &str =
+    "Никнейм: только строчная латиница, цифры и подчёркивание.";
 
 pub const SLUG_FORMAT_MESSAGE: &str = "Ссылка: только латиница, цифры, дефис и подчёркивание.";
 
 pub fn is_allowed_username_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_'
+    c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'
 }
 
 pub fn is_allowed_slug_char(c: char) -> bool {
-    is_allowed_username_char(c) || c == '-'
+    // Slug: на входе ещё допускаем A–Z (normalize_slug приводит к lower); дефис ок.
+    c.is_ascii_alphanumeric() || c == '_' || c == '-'
 }
 
 pub fn normalize_username(raw: Option<&str>, max_len: usize) -> String {
@@ -20,7 +25,12 @@ pub fn normalize_username(raw: Option<&str>, max_len: usize) -> String {
     }
     let s = raw.trim();
     let s = s.strip_prefix('@').unwrap_or(s);
-    let filtered: String = s.chars().filter(|c| is_allowed_username_char(*c)).collect();
+    // Как slug: сначала lower, затем фильтр допустимых символов.
+    let lowered = s.to_lowercase();
+    let filtered: String = lowered
+        .chars()
+        .filter(|c| is_allowed_username_char(*c))
+        .collect();
     truncate_ascii(filtered, max_len)
 }
 
@@ -45,6 +55,7 @@ pub fn has_only_username_chars(raw: Option<&str>) -> bool {
     }
     let s = raw.trim();
     let s = s.strip_prefix('@').unwrap_or(s);
+    // Заглавные запрещены на входе (не только после normalize).
     !s.is_empty() && s.chars().all(is_allowed_username_char)
 }
 
@@ -84,6 +95,18 @@ mod tests {
     }
 
     #[test]
+    fn normalize_username_lowercases() {
+        assert_eq!(
+            normalize_username(Some("Nocebo"), USERNAME_MAX),
+            "nocebo"
+        );
+        assert_eq!(
+            normalize_username(Some("@Flora_User"), USERNAME_MAX),
+            "flora_user"
+        );
+    }
+
+    #[test]
     fn normalize_username_truncates_to_max_len() {
         let long = "a".repeat(60);
         assert_eq!(normalize_username(Some(&long), USERNAME_MAX).len(), 50);
@@ -100,6 +123,7 @@ mod tests {
     fn has_only_username_chars_matches_reference_semantics() {
         assert!(has_only_username_chars(Some("@flora_user")));
         assert!(has_only_username_chars(Some("flora123")));
+        assert!(!has_only_username_chars(Some("Nocebo")));
         assert!(!has_only_username_chars(Some("@")));
         assert!(!has_only_username_chars(Some("фло")));
         assert!(!has_only_username_chars(Some("  ")));

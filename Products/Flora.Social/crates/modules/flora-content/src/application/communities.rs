@@ -644,12 +644,9 @@ impl CommunitiesService {
         {
             return Ok(Err(CommunityError::NotFound));
         }
+        let now = Utc::now();
         self.repo
-            .delete_all_memberships(community_id)
-            .await
-            .map_err(|e| e.to_string())?;
-        self.repo
-            .delete_community(community_id)
+            .purge_community(community_id, now)
             .await
             .map_err(|e| e.to_string())?;
         Ok(Ok(()))

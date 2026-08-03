@@ -4,7 +4,7 @@ import {
   validateProfileStatus,
 } from "@/app/(dashboard)/profile/profileStatusValidation";
 
-const USERNAME_RE = /^[a-zA-Z0-9_]{3,50}$/;
+const USERNAME_RE = /^[a-z0-9_]{3,50}$/;
 const LOCAL_PREFS_STORAGE_KEY = "flora.userSettings.prefs";
 
 export type PrivacyVisibility = "all" | "friends" | "none";
@@ -199,7 +199,7 @@ export function accountDraftFromMe(me: {
 }): UserSettingsAccountDraft {
   return {
     displayName: me.displayName.trim(),
-    username: me.username.trim().replace(/^@+/, ""),
+    username: me.username.trim().replace(/^@+/, "").toLowerCase(),
     status: (me.status ?? "").trim(),
     birthDate: me.birthDate?.trim() ?? "",
   };
@@ -298,7 +298,9 @@ export function validateUserSettingsAccountDraft(draft: UserSettingsAccountDraft
   const statusNorm = normalizeProfileStatusForApi(draft.status);
 
   if (!name) return "Введите имя.";
-  if (!USERNAME_RE.test(nick)) return "Никнейм: 3–50 символов, латиница, цифры и подчёркивание.";
+  if (!USERNAME_RE.test(nick)) {
+    return "Никнейм: 3–50 символов, только строчная латиница, цифры и подчёркивание.";
+  }
   if (isReservedUsername(nick)) return RESERVED_USERNAME_MESSAGE;
 
   return validateProfileStatus(statusNorm);
@@ -307,7 +309,7 @@ export function validateUserSettingsAccountDraft(draft: UserSettingsAccountDraft
 export function userSettingsAccountToApiPayload(draft: UserSettingsAccountDraft) {
   return {
     displayName: draft.displayName.trim(),
-    username: draft.username.trim().replace(/^@+/, ""),
+    username: draft.username.trim().replace(/^@+/, "").toLowerCase(),
     status: normalizeProfileStatusForApi(draft.status),
     birthDate: draft.birthDate.trim() ? draft.birthDate.trim() : "",
   };

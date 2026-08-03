@@ -54,6 +54,9 @@ function seedPostsToFeedItems(community: CommunityRecord): FeedPostListItem[] {
     createdAt: new Date(Date.now() - (index + 1) * 5 * 3600000).toISOString(),
     authorUsername: community.name,
     authorDisplayName: community.name,
+    authorAvatarUuid: community.avatarUuid ?? null,
+    authorUserUuid: community.id,
+    communityName: community.name,
     commentsCount: post.comments,
     likesCount: post.likes,
     repostsCount: post.reposts,
@@ -63,13 +66,19 @@ function seedPostsToFeedItems(community: CommunityRecord): FeedPostListItem[] {
   }));
 }
 
-function apiPostsToFeedItems(communityName: string, posts: CommunityPostDto[]): FeedPostListItem[] {
+function apiPostsToFeedItems(
+  community: Pick<CommunityRecord, "id" | "name" | "avatarUuid">,
+  posts: CommunityPostDto[],
+): FeedPostListItem[] {
   return posts.map((post) => ({
     postUuid: post.postUuid,
     content: post.content,
     createdAt: post.createdAt,
     authorUsername: post.authorUsername,
-    authorDisplayName: communityName,
+    authorDisplayName: community.name,
+    authorAvatarUuid: community.avatarUuid ?? null,
+    authorUserUuid: community.id,
+    communityName: community.name,
     commentsCount: post.commentsCount,
     likesCount: post.likesCount,
     repostsCount: post.repostsCount,
@@ -123,7 +132,7 @@ export function CommunityPageContent({
       try {
         const posts = await apiGetCommunityPosts(community.id, 0, 30);
         if (cancelled) return;
-        setFeedPosts(apiPostsToFeedItems(community.name, posts));
+        setFeedPosts(apiPostsToFeedItems(community, posts));
       } catch (e) {
         if (cancelled) return;
         setPostsError(e instanceof Error ? e.message : "Не удалось загрузить посты сообщества");
@@ -223,14 +232,16 @@ export function CommunityPageContent({
         <div className={styles.profileCover} />
         <div className={styles.profileInfo}>
           <div className={styles.profileInfoTop}>
-            <div className={styles.profileAvatar}>
-              <FloraAvatar
-                size={PROFILE_AVATAR_INNER_PX}
-                avatarUuid={community.avatarUuid}
-                displayName={community.name}
-                communityName={community.name}
-                seed={community.id}
-              />
+            <div className={styles.profileAvatarWrap}>
+              <div className={styles.profileAvatar}>
+                <FloraAvatar
+                  size={PROFILE_AVATAR_INNER_PX}
+                  avatarUuid={community.avatarUuid}
+                  displayName={community.name}
+                  communityName={community.name}
+                  seed={community.id}
+                />
+              </div>
             </div>
             <ProfileCardStatus status={community.description} />
           </div>

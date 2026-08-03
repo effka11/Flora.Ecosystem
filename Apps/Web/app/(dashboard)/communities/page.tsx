@@ -18,6 +18,7 @@ import {
   isCommunityUuid,
   profileCommunityToRecord,
 } from "@/app/(dashboard)/communities/communityProfile";
+import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { CreateCommunityModal, type CreatedCommunity } from "./CreateCommunityModal";
 import { useAnimatedModal } from "./useAnimatedModal";
 import { apiGetMe, isDevLocalOfflineSession } from "@/lib/auth";
@@ -36,6 +37,8 @@ import {
 import { ApiRequestError } from "@/lib/auth";
 import { notifyOwnedCommunitiesChanged, OWNED_COMMUNITIES_CHANGED_EVENT } from "./ownedCommunitiesEvents";
 import styles from "./communities.module.css";
+
+const COMMUNITY_LIST_AVATAR_PX = 45;
 
 function ownedCommunityToRecord(item: CreatedCommunity): CommunityRecord {
   return communityListItemToRecord(item, "owned");
@@ -529,9 +532,15 @@ export default function CommunitiesPage() {
       <li key={community.id} className={styles.item}>
         <Link className={styles.rowMainLink} href={communityHref(community)}>
           <div className={styles.userMain}>
-            <div className={styles.avatar} aria-hidden>
-              {display.name.slice(0, 1)}
-            </div>
+            <FloraAvatar
+              plain
+              size={COMMUNITY_LIST_AVATAR_PX}
+              avatarUuid={display.avatarUuid}
+              displayName={display.name}
+              communityName={display.name}
+              seed={display.id}
+              className={styles.avatar}
+            />
             <div className={styles.userBody}>
               <span className={styles.userPrimaryLine}>
                 <span className={styles.displayName}>{display.name}</span>

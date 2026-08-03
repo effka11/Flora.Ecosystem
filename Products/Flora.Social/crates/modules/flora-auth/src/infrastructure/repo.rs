@@ -1250,11 +1250,12 @@ impl AuthRepo {
     }
 
     pub async fn find_uuid_by_username(&self, username: &str) -> Result<Option<Uuid>, sqlx::Error> {
+        // Case-insensitive: legacy rows may still have mixed case until migrated.
         sqlx::query_scalar(
             r#"
             SELECT user_uuid
             FROM flora_core.user_accounts
-            WHERE username = $1
+            WHERE LOWER(username) = LOWER($1)
             "#,
         )
         .bind(username)
@@ -1312,7 +1313,7 @@ impl AuthRepo {
             r#"
             SELECT EXISTS(
                 SELECT 1 FROM flora_core.user_accounts
-                WHERE username = $1 AND user_uuid <> $2
+                WHERE LOWER(username) = LOWER($1) AND user_uuid <> $2
             )
             "#,
         )

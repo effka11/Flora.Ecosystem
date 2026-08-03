@@ -879,6 +879,16 @@
   background: color-mix(in srgb, #f6a8a8 25%, transparent);
 }
 
+.btnDanger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btnDanger:disabled:hover {
+  background: color-mix(in srgb, #f6a8a8 15%, transparent);
+}
+
 .formRow {
   display: grid;
   grid-template-columns: 1fr 1fr;

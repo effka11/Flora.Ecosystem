@@ -284,7 +284,7 @@ export default function LoginPage() {
     }
     if (mode === "profileSetup") {
       const name = profileName.trim();
-      const nickname = profileNickname.trim().replace(/^@+/, "");
+      const nickname = profileNickname.trim().replace(/^@+/, "").toLowerCase();
       if (!name) {
         setError("Введите имя");
         return;
@@ -293,8 +293,8 @@ export default function LoginPage() {
         setError("Введите никнейм");
         return;
       }
-      if (!/^[a-zA-Z0-9_]{3,50}$/.test(nickname)) {
-        setError("Никнейм: латиница, цифры и _, от 3 до 50 символов");
+      if (!/^[a-z0-9_]{3,50}$/.test(nickname)) {
+        setError("Никнейм: строчная латиница, цифры и _, от 3 до 50 символов");
         return;
       }
     }
@@ -407,13 +407,13 @@ export default function LoginPage() {
     setError(null);
 
     const displayName = profileName.trim();
-    const username = profileNickname.trim().replace(/^@+/, "");
+    const username = profileNickname.trim().replace(/^@+/, "").toLowerCase();
     if (!displayName) {
       setError("Введите имя");
       return;
     }
-    if (!/^[a-zA-Z0-9_]{3,50}$/.test(username)) {
-      setError("Никнейм: латиница, цифры и _, от 3 до 50 символов");
+    if (!/^[a-z0-9_]{3,50}$/.test(username)) {
+      setError("Никнейм: строчная латиница, цифры и _, от 3 до 50 символов");
       return;
     }
     if (isReservedUsername(username)) {
@@ -674,7 +674,7 @@ export default function LoginPage() {
                       return;
                     }
                     if (mode === "profileSetup") {
-                      setProfileNickname(e.target.value.replace(/^@+/, ""));
+                      setProfileNickname(e.target.value.replace(/^@+/, "").toLowerCase());
                       return;
                     }
                     setPassword(e.target.value);

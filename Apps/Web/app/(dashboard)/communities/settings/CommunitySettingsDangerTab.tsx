@@ -10,12 +10,13 @@ import styles from "@/app/(dashboard)/settings/settings.module.css";
 
 export function CommunitySettingsDangerTab() {
   const router = useRouter();
-  const { community } = useCommunitySettings();
+  const { community, draft, discardChanges } = useCommunitySettings();
   const [confirmName, setConfirmName] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canDelete = confirmName.trim() === community.name.trim();
+  const confirmTarget = (draft.name.trim() || community.name).trim();
+  const canDelete = confirmName.trim().length > 0 && confirmName.trim() === confirmTarget;
 
   const onDelete = useCallback(async () => {
     if (!canDelete || deleting) return;
@@ -23,6 +24,7 @@ export function CommunitySettingsDangerTab() {
     setDeleting(true);
     try {
       await apiDeleteCommunity(community.communityId);
+      discardChanges();
       notifyOwnedCommunitiesChanged();
       router.replace("/communities");
       router.refresh();
@@ -30,7 +32,7 @@ export function CommunitySettingsDangerTab() {
       setError(e instanceof ApiRequestError || e instanceof Error ? e.message : "Не удалось удалить сообщество.");
       setDeleting(false);
     }
-  }, [canDelete, community.communityId, deleting, router]);
+  }, [canDelete, community.communityId, deleting, discardChanges, router]);
 
   return (
     <div className={styles.tabContent}>
@@ -48,7 +50,8 @@ export function CommunitySettingsDangerTab() {
             type="text"
             className={styles.input}
             value={confirmName}
-            placeholder={community.name}
+            placeholder={confirmTarget}
+            autoComplete="off"
             onChange={(e) => {
               setError(null);
               setConfirmName(e.target.value);
