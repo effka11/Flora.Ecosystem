@@ -1,14 +1,11 @@
-import { apiDeleteConversation } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import { sharedPresenceStore } from "@flora/client-core/presence";
-import { Ionicons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
 import { router, useNavigation } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
-import { ConversationMoreMenu } from "@/components/messages/ConversationMoreMenu";
+import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
@@ -16,6 +13,9 @@ import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 const LIST_PREVIEW_MAX_LEN = 80;
 const AVATAR_SIZE = floraSpacing.grid * 3;
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
+const LONG_PRESS_MS = 350;
+/** Как `iconButton` / «+» в TabScreenSearchHeader — центр бейджа под «+». */
+const HEADER_TRAILING_ICON_SLOT = 45;
 
 export function formatConversationPreview(
   item: Pick<MsgConversationDto, "lastMessageIsFromMe">,
@@ -34,43 +34,28 @@ export function formatConversationPreview(
   return format(preview);
 }
 
-type FolderPickOption = {
-  id: string;
-  label: string;
-};
-
 type Props = {
   item: MsgConversationDto & { preview: string };
-  isMuted?: boolean;
-  isArchived?: boolean;
-  folderOptions?: readonly FolderPickOption[];
-  onMuteForever?: () => void;
-  onMuteTemporary?: () => void;
-  onUnmute?: () => void;
-  onArchivedChange?: (archived: boolean) => void;
-  onAddToFolder?: (folderId: string) => void;
+  /** Режим мультивыбора (TG-like). */
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  onEnterSelect?: () => void;
 };
 
 export function ConversationListRow({
   item,
-  isMuted = false,
-  isArchived = false,
-  folderOptions = [],
-  onMuteForever,
-  onMuteTemporary,
-  onUnmute,
-  onArchivedChange,
-  onAddToFolder,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
+  onEnterSelect,
 }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const queryClient = useQueryClient();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const displayName = item.otherDisplayName || item.otherUsername;
   const username = item.otherUsername.replace(/^@+/, "") || "…";
   const preview = formatConversationPreview(item, item.preview);
-  const moreBtnRef = useRef<View>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [presenceTick, setPresenceTick] = useState(0);
   useEffect(() => sharedPresenceStore.subscribe(() => setPresenceTick((n) => n + 1)), []);
   void presenceTick;
@@ -96,14 +81,43 @@ export function ConversationListRow({
     });
   };
 
+  const onPress = () => {
+    if (selectionMode) {
+      onToggleSelect?.();
+      return;
+    }
+    openChat();
+  };
+
+  const onLongPress = () => {
+    if (selectionMode) {
+      onToggleSelect?.();
+      return;
+    }
+    onEnterSelect?.();
+  };
+
   return (
-    <View style={styles.shell}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Открыть чат с ${displayName}`}
-        style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
-        onPress={openChat}
-      >
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        selectionMode
+          ? selected
+            ? `Снять выбор — ${displayName}`
+            : `Выбрать чат — ${displayName}`
+          : `Открыть чат с ${displayName}`
+      }
+      accessibilityState={selectionMode ? { selected } : undefined}
+      style={({ pressed }) => [
+        styles.shell,
+        selected && styles.shellSelected,
+        pressed && styles.shellPressed,
+      ]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={LONG_PRESS_MS}
+    >
+      <View style={styles.item}>
         <View style={styles.avatarWrap}>
           <FloraAvatar
             size={AVATAR_SIZE}
@@ -112,11 +126,16 @@ export function ConversationListRow({
             username={item.otherUsername}
             seed={item.otherUserUuid ?? item.otherUsername}
           />
-          <OnlineStatusDot
-            key={item.otherUserUuid}
-            identityKey={item.otherUserUuid}
-            online={overlay.isOnline}
-          />
+          {selectionMode ? (
+            <ConversationListSelectionMark selected={selected} avatarDiameter={AVATAR_SIZE} />
+          ) : (
+            <OnlineStatusDot
+              key={item.otherUserUuid}
+              identityKey={item.otherUserUuid}
+              online={overlay.isOnline}
+              avatarDiameter={AVATAR_SIZE}
+            />
+          )}
         </View>
 
         <View style={styles.body}>
@@ -132,81 +151,16 @@ export function ConversationListRow({
             {preview}
           </Text>
         </View>
-      </Pressable>
+      </View>
 
-      <View style={styles.trailing}>
-        {item.unreadCount > 0 ? (
+      {item.unreadCount > 0 ? (
+        <View style={styles.trailing}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{item.unreadCount > 99 ? "99+" : item.unreadCount}</Text>
           </View>
-        ) : null}
-        <View ref={moreBtnRef} collapsable={false}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={menuOpen ? `Закрыть меню чата` : `Действия — ${displayName}`}
-            accessibilityState={{ expanded: menuOpen }}
-            style={({ pressed }) => [styles.moreBtn, pressed && styles.moreBtnPressed]}
-            hitSlop={8}
-            onPress={() => setMenuOpen((open) => !open)}
-          >
-            <Ionicons
-              name={menuOpen ? "close" : "ellipsis-vertical"}
-              size={18}
-              color={floraColors.gray}
-            />
-          </Pressable>
         </View>
-      </View>
-
-      <ConversationMoreMenu
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        anchorRef={moreBtnRef}
-        isMuted={isMuted}
-        isArchived={isArchived}
-        onMuteForever={() => onMuteForever?.()}
-        onMuteTemporary={() => onMuteTemporary?.()}
-        onUnmute={() => onUnmute?.()}
-        onAddToFolder={() => {
-          if (folderOptions.length === 0) {
-            Alert.alert("Нет папок", "Сначала создайте папку или группу через «+».");
-            return;
-          }
-          Alert.alert(
-            "Добавить в…",
-            displayName,
-            [
-              ...folderOptions.map((folder) => ({
-                text: folder.label,
-                onPress: () => onAddToFolder?.(folder.id),
-              })),
-              { text: "Отмена", style: "cancel" as const },
-            ],
-          );
-        }}
-        onArchive={() => onArchivedChange?.(true)}
-        onUnarchive={() => onArchivedChange?.(false)}
-        onDelete={() => {
-          Alert.alert("Удалить чат?", `Чат с ${displayName} будет удалён.`, [
-            { text: "Отмена", style: "cancel" },
-            {
-              text: "Удалить",
-              style: "destructive",
-              onPress: () => {
-                void (async () => {
-                  try {
-                    await apiDeleteConversation(item.conversationUuid, item.otherUserUuid);
-                    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-                  } catch {
-                    Alert.alert("Не удалось удалить чат", "Попробуйте ещё раз.");
-                  }
-                })();
-              },
-            },
-          ]);
-        }}
-      />
-    </View>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -221,6 +175,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(250, 250, 250, 0.06)",
     borderBottomWidth: 1,
   },
+  shellSelected: {
+    backgroundColor: "rgba(164, 209, 138, 0.12)",
+  },
+  shellPressed: {
+    backgroundColor: "rgba(250, 250, 250, 0.04)",
+  },
   item: {
     flex: 1,
     flexDirection: "row",
@@ -231,9 +191,6 @@ const styles = StyleSheet.create({
     paddingBottom: floraSpacing.grid * 2 - 2,
     paddingLeft: floraSpacing.grid,
     paddingRight: floraSpacing.gridFine,
-  },
-  itemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.04)",
   },
   avatarWrap: {
     position: "relative",
@@ -276,14 +233,12 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   trailing: {
-    flexDirection: "row",
+    width: HEADER_TRAILING_ICON_SLOT,
+    // Как paddingHorizontal topBlock — правый край слота = правый край «+».
+    marginRight: floraSpacing.grid,
     alignItems: "center",
-    gap: floraSpacing.gridFine,
+    justifyContent: "center",
     flexShrink: 0,
-    alignSelf: "stretch",
-    paddingRight: floraSpacing.grid,
-    paddingTop: floraSpacing.grid * 2 - 1,
-    paddingBottom: floraSpacing.grid * 2 - 2,
   },
   badge: {
     minWidth: floraSpacing.gridFine * 4,
@@ -299,14 +254,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "300",
     letterSpacing: 0.39,
-  },
-  moreBtn: {
-    width: floraSpacing.gridFine * 2 + 18,
-    height: floraSpacing.gridFine * 2 + 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  moreBtnPressed: {
-    opacity: 0.72,
   },
 });

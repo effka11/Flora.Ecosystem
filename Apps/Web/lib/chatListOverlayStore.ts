@@ -4,9 +4,14 @@
 "use client";
 
 import {
+  apiArchiveConversation,
+  apiArchiveGroupConversation,
   apiGetChatListOverlay,
   apiGetChatOrganizer,
+  apiListArchivedGroupConversationUuids,
   apiPutChatOrganizer,
+  apiUnarchiveConversation,
+  apiUnarchiveGroupConversation,
 } from "@flora/client-core/api";
 import {
   buildFscpOrganizerWireEnvelope,
@@ -62,6 +67,15 @@ const session = createChatOrganizerSession({
     getBlob: apiGetChatOrganizer,
     putBlob: apiPutChatOrganizer,
     getPlaintextOverlay: apiGetChatListOverlay,
+    setConversationArchived: async (conversationUuid, otherUserUuid, archived) => {
+      if (archived) await apiArchiveConversation(conversationUuid, otherUserUuid);
+      else await apiUnarchiveConversation(conversationUuid, otherUserUuid);
+    },
+    setGroupConversationArchived: async (conversationUuid, archived) => {
+      if (archived) await apiArchiveGroupConversation(conversationUuid);
+      else await apiUnarchiveGroupConversation(conversationUuid);
+    },
+    listArchivedGroupConversations: apiListArchivedGroupConversationUuids,
   },
   crypto: {
     async buildWire({ ownerUserUuid, revision, state, keys }) {
@@ -125,6 +139,17 @@ export async function setChatListArchived(
   archived: boolean,
 ): Promise<boolean> {
   return session.setArchived(peerUuid, conversationUuid, archived);
+}
+
+export async function setChatListGroupArchived(
+  conversationUuid: string,
+  archived: boolean,
+): Promise<boolean> {
+  return session.setGroupArchived(conversationUuid, archived);
+}
+
+export function setChatListKnownGroupUuids(conversationUuids: readonly string[]): void {
+  session.setKnownGroupUuids(conversationUuids);
 }
 
 export async function setChatListMuted(

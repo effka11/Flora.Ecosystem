@@ -75,8 +75,28 @@ UUID-компоненты — lowercase; `createdAt` — как в конвер�
 Сервер **не расшифровывает** payload. Сообщение сохраняется одной
 строкой (общий wire), доставка — по членству в группе.
 
+### 1.4.1 Медиа (voice / image)
+
+Plaintext блоков тот же, что у DM (`voice` / `image` с `assetUuid` +
+AES-GCM descriptor; см. [`FSCP.md`](FSCP.md)). Байты файла — opaque
+object в Messaging:
+
+- таблицы `group_message_voice_assets` / `group_message_image_assets`
+  (`conversation_uuid`, uploader, optional `message_uuid`);
+- upload: `POST /api/messaging/groups/{conversationUuid}/voice|image-assets`
+  (только active member);
+- download: существующие `GET /api/messaging/voice|image-assets/{uuid}`
+  (lookup DM, иначе group; ACL = uploader или active member);
+- bind UUID lists на `POST …/groups/{id}/messages` (как DM draft→bind).
+
+**Видео в группах v1 не поддерживается** (`videoAssetUuids` → 400).
+Клиентский helper: `buildGroupBlocksMessageWire` (`groupMessaging.ts`).
+
 ### 1.5 Смена ростера
 
+- **ACL v1:** добавлять/удалять участников и менять название может только
+  создатель группы (`created_by`). Остальные участники — leave и чтение/
+  отправка. Расширение ролей (admin/mod) — вне v1.
 - Добавление участника: он читает только сообщения, отправленные после
   добавления (нет RKE в старых конвертах — история недоступна, PCS-lite).
 - Удаление: сервер перестаёт принимать конверты, где удалённый есть в
@@ -155,12 +175,40 @@ AAD-домены:
 `keyEnvelope.recipientAgreementPublicKeyId` == derived id владельца;
 подпись Ed25519. Payload серверу недоступен.
 
+### 2.5 Исключение: badge-mirror архива (plaintext flags)
+
+ORG blob остаётся SoT для UI (папки, архив, mute). Сервер **не** читает
+plaintext ORG. Для бейджа непрочитанного и лимита слотов иконок нужен
+серверный сигнал «этот чат в архиве у владельца» — без расшифровки blob.
+
+**Исключение из «сервер не знает об архиве»:** клиент после успешной
+записи ORG зеркалит флаг архива в plaintext Messaging-таблицы
+(только `is_archived`, без названий папок и mute-ORG):
+
+| Канал | SoT (ORG) | Mirror (SQL) | HTTP |
+| --- | --- | --- | --- |
+| DM | `archivedByPeer` (+ side-write conversation) | `user_conversation_flags` | `POST /api/messaging/conversations/{uuid}/archive\|unarchive` |
+| Группа (FSCP-G) | `archivedByConversation` | `user_group_conversation_flags` (FK CASCADE на conversation; clear при leave) | `POST /api/messaging/groups/{uuid}/archive\|unarchive`; список — `GET /api/messaging/group-archive-flags` |
+
+`GET /api/messaging/unread-count` суммирует DM + group unread **без**
+архивированных (DM — exclude по `user_conversation_flags`, группы — по
+`user_group_conversation_flags`). Клиентский intent для групп —
+`setGroupArchived` (только conversation map); DM `setArchived` к группам
+не применяют. Reconcile зеркала — двусторонний ∩ sticky known groups
+после первого успешного `list_groups`. Mute групп и FCM-gate — вне скоупа.
+
+**Папки ORG v1:** кастомные папки наполняются `memberPeerUuids` (DM).
+Поле `memberConversationUuids` в plaintext зарезервировано под FSCP-G в
+папках; UI/intent `addConversationToFolder` — следующий шаг (сейчас
+создаётся пустым).
+
 ## 3. Границы модулей
 
 - **`fscp-core` / `@flora/fscp`** — только протокол (структурная
   валидация + сборка/открытие конвертов). Никакой БД/HTTP.
-- **`flora-messaging`** — группы: ростер, хранение wire, доставка,
-  вызов `try_validate_group_wire` перед записью.
+- **`flora-messaging`** — группы: ростер, хранение wire, opaque media
+  assets + membership ACL, доставка, вызов `try_validate_group_wire`
+  перед записью.
 - **`flora-chat-organizer`** (отдельный модуль) — blob-хранилище
   органайзера: `(owner, revision, wire)`, вызов
   `try_validate_organizer_wire`, optimistic concurrency. Не знает о
@@ -173,6 +221,9 @@ AAD-домены:
 - TS: `Products/FSCP/ts/src/group.test.ts` (roundtrip, посторонний,
   подделка, лимиты, разделение доменов AAD),
   `chatOrganizer.test.ts` (roundtrip, opaque-для-сервера, привязка
-  ревизии, владелец).
+  ревизии, владелец); `@flora/client-core` — folders/organizer
+  (`setGroupArchived`, icon counts, filter order).
 - Rust: unit-тесты в `fscp-core/src/group.rs` и `organizer.rs`
-  (валидный wire, чужая группа/владелец, tampering, ростер, ревизия).
+  (валидный wire, чужая группа/владелец, tampering, ростер, ревизия);
+  smoke `flora-messaging` — `archived_group_excluded_from_unread_count`
+  (`FLORA_MESSAGING_SMOKE=1`).

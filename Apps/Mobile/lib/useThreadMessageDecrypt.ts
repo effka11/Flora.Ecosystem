@@ -3,6 +3,7 @@ import {
   extractTextFromPlaintext,
   getImageBlocksFromPlaintext,
   getPrimaryVoiceBlock,
+  isFscpGroupWirePayload,
   isFscpWirePayload,
   plaintextToPreview,
   type FscpMessagePlaintext,
@@ -17,6 +18,12 @@ import { messageThreadDecryptCache } from "@/stores/messageThreadCache";
 
 const DECRYPT_BATCH = 4;
 
+function isDecryptableFscpWire(enc: string | null | undefined): boolean {
+  const t = enc?.trim();
+  if (!t) return false;
+  return isFscpWirePayload(t) || isFscpGroupWirePayload(t);
+}
+
 export function messageDecryptCacheKey(m: MsgMessageDto): string {
   return `${m.messageUuid}|${(m.encryptedPayload ?? "").slice(0, 96)}`;
 }
@@ -29,6 +36,7 @@ function normalizeRow(row: ThreadBubbleItem): ThreadBubbleItem {
     voiceBlock: row.voiceBlock,
     clientMessageKey:
       row.clientMessageKey ?? takeClientMessageKey(row.messageUuid) ?? row.messageUuid,
+    senderUserUuid: row.senderUserUuid,
   };
 }
 
@@ -44,6 +52,7 @@ function buildDecryptingRow(m: MsgMessageDto): ThreadBubbleItem {
     createdAt: m.createdAt,
     decryptState: "decrypting",
     isRead: m.isRead,
+    senderUserUuid: m.senderUserUuid,
   };
 }
 
@@ -60,6 +69,7 @@ function rowFromPlaintext(m: MsgMessageDto, plain: FscpMessagePlaintext): Thread
     createdAt: m.createdAt,
     decryptState: "ok",
     isRead: m.isRead,
+    senderUserUuid: m.senderUserUuid,
   };
 }
 
@@ -75,6 +85,7 @@ function rowFromPreviewText(m: MsgMessageDto, preview: string): ThreadBubbleItem
     createdAt: m.createdAt,
     decryptState: "ok",
     isRead: m.isRead,
+    senderUserUuid: m.senderUserUuid,
   };
 }
 
@@ -88,7 +99,7 @@ export function isRowDecryptComplete(
 ): boolean {
   if (!row || row.decryptState !== "ok") return false;
   const enc = m.encryptedPayload?.trim();
-  if (enc && isFscpWirePayload(enc)) return true;
+  if (enc && isDecryptableFscpWire(enc)) return true;
   return true;
 }
 
@@ -101,7 +112,7 @@ function isConversationFullyResolved(
     const row = rows[i];
     if (row?.messageUuid !== m.messageUuid) return false;
     const enc = m.encryptedPayload?.trim();
-    if (enc && isFscpWirePayload(enc)) return isRowTerminal(row);
+    if (enc && isDecryptableFscpWire(enc)) return isRowTerminal(row);
     return row.decryptState === "ok";
   });
 }
@@ -114,6 +125,7 @@ function withMessageMeta(row: ThreadBubbleItem, m: MsgMessageDto): ThreadBubbleI
     isFromMe: m.isFromMe,
     createdAt: m.createdAt,
     isRead: m.isRead,
+    senderUserUuid: m.senderUserUuid ?? row.senderUserUuid,
     clientMessageKey:
       row.clientMessageKey ?? takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
     sendStatus: optimistic ? "sending" : undefined,
@@ -132,10 +144,6 @@ function resolveRowForMessage(
   const prev = currentByUuid.get(m.messageUuid);
   if (prev && isRowTerminal(prev)) {
     return withMessageMeta(prev, m);
-  }
-  if (isOptimisticPayloadSentinel(m.encryptedPayload)) {
-    // Seed должен быть до setQueryData; без него не рисуем sentinel как текст.
-    return buildDecryptingRow(m);
   }
   return buildDecryptingRow(m);
 }
@@ -164,7 +172,6 @@ type Args = {
   messagesKey: string;
   viewerUserUuid: string | undefined;
   fscpReady: boolean;
-  /** Меняется при смене ключей — перезапуск расшифровки без нестабильных колбэков. */
   fscpDecryptKey?: string | null;
   decryptWirePlaintext: (wire: string, viewerUserUuid: string) => Promise<FscpMessagePlaintext>;
 };
@@ -215,7 +222,6 @@ export function useThreadMessageDecrypt({
     prevFscpDecryptKeyRef.current = fscpDecryptKey;
 
     if (messagesKeyChanged || fscpKeyChanged) {
-      // Merge terminal rows by messageUuid — не слепой reseed (optimistic / isRead).
       const seeded = rowsMergingCurrent(currentMessages, rowsRef.current);
       setRows(seeded);
       rowsRef.current = seeded;
@@ -262,7 +268,7 @@ export function useThreadMessageDecrypt({
             const cacheKey = messageDecryptCacheKey(m);
             const enc = m.encryptedPayload?.trim();
             let row: ThreadBubbleItem;
-            if (enc && isFscpWirePayload(enc)) {
+            if (enc && isDecryptableFscpWire(enc)) {
               try {
                 const plain = await decryptWirePlaintextRef.current(enc, viewerUserUuid);
                 row = rowFromPlaintext(m, plain);
@@ -278,18 +284,22 @@ export function useThreadMessageDecrypt({
                   createdAt: m.createdAt,
                   decryptState: "failed",
                   isRead: m.isRead,
+                  senderUserUuid: m.senderUserUuid,
                 };
               }
             } else if (isOptimisticPayloadSentinel(enc)) {
               const cached = messageThreadDecryptCache.getMessage(cacheKey);
               row = cached && isRowTerminal(cached) ? withMessageMeta(cached, m) : buildDecryptingRow(m);
             } else {
-              row = rowFromPreviewText(m, plaintextToPreview({
-                type: "blocks",
-                version: 1,
-                blocks: [{ kind: "text", body: m.encryptedPayload ?? "" }],
-                clientCreatedAt: m.createdAt,
-              }));
+              row = rowFromPreviewText(
+                m,
+                plaintextToPreview({
+                  type: "blocks",
+                  version: 1,
+                  blocks: [{ kind: "text", body: m.encryptedPayload ?? "" }],
+                  clientCreatedAt: m.createdAt,
+                }),
+              );
             }
             messageThreadDecryptCache.setMessage(cacheKey, row);
             next[index] = row;

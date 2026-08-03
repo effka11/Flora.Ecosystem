@@ -19,9 +19,10 @@ use sqlx::PgPool;
 
 use crate::application::{
     AssetService, ChatListService, ConversationService, E2eEpochService, E2eKeyBackupService,
+    GroupService,
 };
 use crate::http::MessagingState;
-use crate::infrastructure::{ChatListRepo, E2eProofTokens, MessagingRepo};
+use crate::infrastructure::{ChatListRepo, E2eProofTokens, GroupRepo, MessagingRepo};
 
 /// Re-export FSCP validator for callers that historically used `flora_messaging::fscp`.
 pub use fscp_core as fscp;
@@ -57,17 +58,18 @@ pub fn compose(
 ) -> MessagingModule {
     let cleanup_pool = pool.clone();
     let repo = Arc::new(MessagingRepo::new(pool.clone()));
+    let group_repo = Arc::new(GroupRepo::new(pool.clone()));
     let chat_list = Arc::new(ChatListService::new(Arc::new(ChatListRepo::new(
         pool.clone(),
     ))));
     let conversations = Arc::new(ConversationService::new(
-        repo,
+        repo.clone(),
         accounts.clone(),
-        profiles,
+        profiles.clone(),
         presence,
         online_access,
         messages_access.clone(),
-        sent_notifier,
+        sent_notifier.clone(),
         typing_notifier,
         read_notifier,
         preview_targets,
@@ -80,12 +82,26 @@ pub fn compose(
             "flora-messaging: E2E proof-токены отключены (нет Messaging:E2eTokenSecret и Jwt:Secret) — unlock-complete будет отклонять запросы"
         );
     }
-    let assets = Arc::new(AssetService::new(pool.clone(), accounts, messages_access));
+    let assets = Arc::new(AssetService::new(
+        pool.clone(),
+        accounts.clone(),
+        messages_access.clone(),
+    ));
     let e2e = Arc::new(E2eKeyBackupService::new(pool.clone(), proof_tokens.clone()));
     let epochs = Arc::new(E2eEpochService::new(pool, proof_tokens));
+    let groups = Arc::new(GroupService::new(
+        group_repo,
+        repo,
+        accounts,
+        profiles,
+        messages_access,
+        e2e.clone(),
+        sent_notifier,
+    ));
     MessagingModule {
         router: http::protected_router(MessagingState {
             conversations,
+            groups,
             chat_list,
             assets,
             e2e,

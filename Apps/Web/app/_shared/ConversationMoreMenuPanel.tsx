@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
+import type { MessagesMoreMenuKind } from "./messagesMoreMenuKind";
 import rectStyles from "./FloraRectMenu.module.css";
 
 const menuIconProps = {
@@ -58,11 +59,16 @@ function IconDelete() {
   );
 }
 
+/** @deprecated Prefer MessagesMoreMenuKind. */
+export type ConversationMoreMenuKind = MessagesMoreMenuKind;
+
 type FolderPickOption = { id: string; label: string };
 
 type ConversationMoreMenuPanelProps = {
   firstActionRef: RefObject<HTMLButtonElement | null>;
   onAction: () => void;
+  /** DM — полный список; group — только удаление. */
+  kind?: MessagesMoreMenuKind;
   muteSubmenuOpen: boolean;
   isSubmenuClosing: boolean;
   onToggleMuteSubmenu: () => void;
@@ -114,6 +120,7 @@ function MenuRow({
 export function ConversationMoreMenuPanel({
   firstActionRef,
   onAction,
+  kind = "dm",
   muteSubmenuOpen,
   isSubmenuClosing,
   onToggleMuteSubmenu,
@@ -125,7 +132,34 @@ export function ConversationMoreMenuPanel({
   onDelete,
 }: ConversationMoreMenuPanelProps) {
   const submenuExpanded = muteSubmenuOpen && !isSubmenuClosing;
+  const isGroup = kind === "group";
   const customFolders = folderOptions.filter((f) => f.id !== "archived");
+
+  if (isGroup) {
+    return (
+      <>
+        <MenuRow
+          buttonRef={firstActionRef}
+          icon={<IconArchive />}
+          label={conversationIsArchived ? "Разархивировать" : "Архивировать"}
+          onClick={() => {
+            if (conversationIsArchived) onConversationUnarchive?.();
+            else onConversationArchive?.();
+            onAction();
+          }}
+        />
+        <MenuRow
+          icon={<IconDelete />}
+          label="Выйти из группы"
+          danger
+          onClick={() => {
+            onDelete?.();
+            onAction();
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <>

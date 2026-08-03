@@ -290,3 +290,182 @@ pub fn normalize_content_type(raw: Option<&str>, fallback: Option<&str>) -> Stri
         pick.to_string()
     }
 }
+
+// ── FSCP-G group opaque assets ──────────────────────────────────────────────
+
+pub struct GroupImageAssetRow {
+    pub conversation_uuid: Uuid,
+    pub uploader_user_uuid: Uuid,
+    pub message_uuid: Option<Uuid>,
+    pub content_type: String,
+    pub encrypted_bytes: Vec<u8>,
+}
+
+pub struct GroupVoiceAssetRow {
+    pub conversation_uuid: Uuid,
+    pub uploader_user_uuid: Uuid,
+    pub message_uuid: Option<Uuid>,
+    pub content_type: String,
+    pub duration_ms: i32,
+    pub encrypted_bytes: Vec<u8>,
+}
+
+pub async fn insert_group_image_asset(
+    pool: &PgPool,
+    asset_uuid: Uuid,
+    conversation_uuid: Uuid,
+    uploader_uuid: Uuid,
+    content_type: &str,
+    encrypted_bytes: &[u8],
+) -> Result<(), String> {
+    sqlx::query(
+        r#"
+        INSERT INTO flora_core.group_message_image_assets
+            (image_asset_uuid, conversation_uuid, uploader_user_uuid, content_type,
+             encrypted_bytes, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(asset_uuid)
+    .bind(conversation_uuid)
+    .bind(uploader_uuid)
+    .bind(content_type)
+    .bind(encrypted_bytes)
+    .bind(Utc::now())
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn insert_group_voice_asset(
+    pool: &PgPool,
+    asset_uuid: Uuid,
+    conversation_uuid: Uuid,
+    uploader_uuid: Uuid,
+    content_type: &str,
+    duration_ms: i32,
+    encrypted_bytes: &[u8],
+) -> Result<(), String> {
+    sqlx::query(
+        r#"
+        INSERT INTO flora_core.group_message_voice_assets
+            (voice_asset_uuid, conversation_uuid, uploader_user_uuid, content_type,
+             duration_ms, encrypted_bytes, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+    )
+    .bind(asset_uuid)
+    .bind(conversation_uuid)
+    .bind(uploader_uuid)
+    .bind(content_type)
+    .bind(duration_ms)
+    .bind(encrypted_bytes)
+    .bind(Utc::now())
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn fetch_group_image_asset(
+    pool: &PgPool,
+    asset_uuid: Uuid,
+) -> Result<Option<GroupImageAssetRow>, String> {
+    sqlx::query_as::<_, GroupImageAssetDbRow>(
+        r#"
+        SELECT conversation_uuid, uploader_user_uuid, message_uuid, content_type, encrypted_bytes
+        FROM flora_core.group_message_image_assets
+        WHERE image_asset_uuid = $1
+        "#,
+    )
+    .bind(asset_uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())
+    .map(|row| row.map(Into::into))
+}
+
+pub async fn fetch_group_voice_asset(
+    pool: &PgPool,
+    asset_uuid: Uuid,
+) -> Result<Option<GroupVoiceAssetRow>, String> {
+    sqlx::query_as::<_, GroupVoiceAssetDbRow>(
+        r#"
+        SELECT conversation_uuid, uploader_user_uuid, message_uuid, content_type,
+               duration_ms, encrypted_bytes
+        FROM flora_core.group_message_voice_assets
+        WHERE voice_asset_uuid = $1
+        "#,
+    )
+    .bind(asset_uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())
+    .map(|row| row.map(Into::into))
+}
+
+pub async fn is_active_group_member(
+    pool: &PgPool,
+    conversation_uuid: Uuid,
+    user_uuid: Uuid,
+) -> Result<bool, String> {
+    let found: Option<(i32,)> = sqlx::query_as(
+        r#"
+        SELECT 1
+        FROM flora_core.group_members
+        WHERE conversation_uuid = $1 AND user_uuid = $2 AND left_at IS NULL
+        LIMIT 1
+        "#,
+    )
+    .bind(conversation_uuid)
+    .bind(user_uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(found.is_some())
+}
+
+#[derive(sqlx::FromRow)]
+struct GroupImageAssetDbRow {
+    conversation_uuid: Uuid,
+    uploader_user_uuid: Uuid,
+    message_uuid: Option<Uuid>,
+    content_type: String,
+    encrypted_bytes: Vec<u8>,
+}
+
+#[derive(sqlx::FromRow)]
+struct GroupVoiceAssetDbRow {
+    conversation_uuid: Uuid,
+    uploader_user_uuid: Uuid,
+    message_uuid: Option<Uuid>,
+    content_type: String,
+    duration_ms: i32,
+    encrypted_bytes: Vec<u8>,
+}
+
+impl From<GroupImageAssetDbRow> for GroupImageAssetRow {
+    fn from(r: GroupImageAssetDbRow) -> Self {
+        Self {
+            conversation_uuid: r.conversation_uuid,
+            uploader_user_uuid: r.uploader_user_uuid,
+            message_uuid: r.message_uuid,
+            content_type: r.content_type,
+            encrypted_bytes: r.encrypted_bytes,
+        }
+    }
+}
+
+impl From<GroupVoiceAssetDbRow> for GroupVoiceAssetRow {
+    fn from(r: GroupVoiceAssetDbRow) -> Self {
+        Self {
+            conversation_uuid: r.conversation_uuid,
+            uploader_user_uuid: r.uploader_user_uuid,
+            message_uuid: r.message_uuid,
+            content_type: r.content_type,
+            duration_ms: r.duration_ms,
+            encrypted_bytes: r.encrypted_bytes,
+        }
+    }
+}

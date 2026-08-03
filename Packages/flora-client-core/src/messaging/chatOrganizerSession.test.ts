@@ -181,6 +181,7 @@ describe("createChatOrganizerSession", () => {
     const crypto = fakeCrypto();
     let serverRev = 0;
     const puts: number[] = [];
+    const archiveMirror = vi.fn(async () => undefined);
     const session = createChatOrganizerSession({
       crypto: {
         buildWire: async (p) =>
@@ -207,6 +208,7 @@ describe("createChatOrganizerSession", () => {
           puts.push(rev);
           serverRev = rev;
         },
+        setConversationArchived: archiveMirror,
       },
       persistence,
     });
@@ -225,9 +227,57 @@ describe("createChatOrganizerSession", () => {
       expect(session.getSnapshot().state.mutedByConversation?.c1).toBe(true);
       expect(session.getSnapshot().state.archivedByConversation?.c2).toBe(true);
     });
+    await vi.waitFor(() => {
+      expect(archiveMirror).toHaveBeenCalledWith("c2", "b", true);
+    });
     for (let i = 1; i < puts.length; i++) {
       expect(puts[i]).toBe(puts[i - 1]! + 1);
     }
+  });
+
+  it("setGroupArchived touches only archivedByConversation and mirrors group API", async () => {
+    const persistence = memPersistence();
+    const crypto = fakeCrypto();
+    let serverRev = 0;
+    const groupMirror = vi.fn(async () => undefined);
+    const session = createChatOrganizerSession({
+      crypto: {
+        buildWire: async (p) =>
+          crypto.buildWire({ revision: p.revision, state: p.state }),
+        decryptWire: async (p) => crypto.decryptWire(p),
+      },
+      http: {
+        getBlob: async () =>
+          serverRev === 0
+            ? null
+            : {
+                revision: serverRev,
+                wire: `fscporg1:rev${serverRev}`,
+                updatedAt: new Date().toISOString(),
+              },
+        putBlob: async (wire) => {
+          const rev = Number(/^fscporg1:rev(\d+)$/.exec(wire)![1]);
+          serverRev = rev;
+        },
+        setGroupConversationArchived: groupMirror,
+      },
+      persistence,
+    });
+    const owner = "11111111-1111-4111-8111-111111111111";
+    session.hydrate(owner);
+    session.setKeys(KEYS);
+    await vi.waitFor(() => expect(session.getSnapshot().state.revision).toBe(1));
+
+    const groupId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const ok = await session.setGroupArchived(groupId, true);
+    expect(ok).toBe(true);
+    await vi.waitFor(() => {
+      expect(session.getSnapshot().state.archivedByConversation?.[groupId]).toBe(true);
+    });
+    expect(Object.keys(session.getSnapshot().state.archivedByPeer)).toHaveLength(0);
+    await vi.waitFor(() => {
+      expect(groupMirror).toHaveBeenCalledWith(groupId, true);
+    });
   });
 
   it("failed mutate does not wipe a later optimistic intent", async () => {

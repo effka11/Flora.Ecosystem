@@ -59,6 +59,27 @@ test("own message breaks peer groups", () => {
   if (items[2]!.kind === "peerGroup") assert.equal(items[2].groupKey, "b");
 });
 
+test("senderUserUuid splits consecutive peer runs (group chats)", () => {
+  const a = msg({ messageUuid: "a", isFromMe: false, senderUserUuid: "u1" });
+  const b = msg({ messageUuid: "b", isFromMe: false, senderUserUuid: "u2" });
+  const c = msg({ messageUuid: "c", isFromMe: false, senderUserUuid: "u2" });
+  const items = buildThreadRenderItems([a, b, c], () => true);
+  assert.equal(items.length, 2);
+  assert.equal(items[0]!.kind, "peerGroup");
+  assert.equal(items[1]!.kind, "peerGroup");
+  if (items[0]!.kind !== "peerGroup" || items[1]!.kind !== "peerGroup") return;
+  assert.equal(items[0].groupKey, "a");
+  assert.deepEqual(
+    items[0].messages.map((m) => m.messageUuid),
+    ["a"],
+  );
+  assert.equal(items[1].groupKey, "b");
+  assert.deepEqual(
+    items[1].messages.map((m) => m.messageUuid),
+    ["b", "c"],
+  );
+});
+
 test("peer run with all hidden is omitted", () => {
   const a = msg({ messageUuid: "a", isFromMe: false });
   const b = msg({ messageUuid: "b", isFromMe: false });

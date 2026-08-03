@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
+import { ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { floraFeedPost } from "@/lib/theme";
 
 type IconProps = {
@@ -72,7 +73,7 @@ export function FeedPostViewsIcon({ size = 16, color }: IconProps) {
 export function FeedPostMoreIcon({ size = floraFeedPost.moreGlyphSize, color }: IconProps) {
   return (
     <View style={glyphSlot.slot}>
-      <Ionicons name="ellipsis-vertical" size={size} color={color} style={{ includeFontPadding: false }} />
+      <ChromeMoreIcon size={size} color={color} />
     </View>
   );
 }
@@ -80,7 +81,7 @@ export function FeedPostMoreIcon({ size = floraFeedPost.moreGlyphSize, color }: 
 export function FeedPostCloseIcon({ size = floraFeedPost.moreCloseGlyphSize, color }: IconProps) {
   return (
     <View style={glyphSlot.slot}>
-      <Ionicons name="close" size={size} color={color} style={{ includeFontPadding: false }} />
+      <Ionicons name="close-outline" size={size} color={color} style={{ includeFontPadding: false }} />
     </View>
   );
 }

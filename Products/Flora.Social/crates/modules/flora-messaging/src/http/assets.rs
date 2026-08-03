@@ -82,6 +82,56 @@ pub async fn upload_video(
     }
 }
 
+pub async fn upload_group_image(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    multipart: Multipart,
+) -> Response {
+    match parse_group_image_upload(multipart).await {
+        Ok(input) => match state
+            .assets
+            .upload_group_image(
+                user.0,
+                conversation_uuid,
+                input.content_type.as_deref(),
+                input.file_content_type.as_deref(),
+                &input.bytes,
+            )
+            .await
+        {
+            Ok(dto) => Json(dto).into_response(),
+            Err(e) => asset_err(e),
+        },
+        Err(resp) => resp,
+    }
+}
+
+pub async fn upload_group_voice(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    multipart: Multipart,
+) -> Response {
+    match parse_group_voice_upload(multipart).await {
+        Ok(input) => match state
+            .assets
+            .upload_group_voice(
+                user.0,
+                conversation_uuid,
+                input.duration_ms,
+                input.file_content_type.as_deref(),
+                &input.bytes,
+            )
+            .await
+        {
+            Ok(dto) => Json(dto).into_response(),
+            Err(e) => asset_err(e),
+        },
+        Err(resp) => resp,
+    }
+}
+
 pub async fn get_image(
     State(state): State<MessagingState>,
     Extension(user): Extension<CurrentUser>,
@@ -129,6 +179,74 @@ struct UploadInput {
     file_content_type: Option<String>,
     duration_ms: i32,
     bytes: Vec<u8>,
+}
+
+struct GroupUploadInput {
+    content_type: Option<String>,
+    file_content_type: Option<String>,
+    duration_ms: i32,
+    bytes: Vec<u8>,
+}
+
+async fn parse_group_image_upload(mut multipart: Multipart) -> Result<GroupUploadInput, Response> {
+    let mut content_type = None;
+    let mut file_content_type = None;
+    let mut bytes = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(multipart_bad)? {
+        match field.name().unwrap_or("") {
+            "contentType" => content_type = Some(field_text(field).await?),
+            "file" => {
+                file_content_type = field.content_type().map(|m| m.to_string());
+                bytes = Some(field_bytes(field).await?);
+            }
+            _ => {
+                let _ = field.bytes().await;
+            }
+        }
+    }
+
+    let Some(bytes) = bytes else {
+        return Err(bad_request("Файл фото пуст."));
+    };
+    Ok(GroupUploadInput {
+        content_type,
+        file_content_type,
+        duration_ms: 0,
+        bytes,
+    })
+}
+
+async fn parse_group_voice_upload(mut multipart: Multipart) -> Result<GroupUploadInput, Response> {
+    let mut duration_ms = 0;
+    let mut file_content_type = None;
+    let mut bytes = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(multipart_bad)? {
+        match field.name().unwrap_or("") {
+            "durationMs" => {
+                let t = field_text(field).await?;
+                duration_ms = t.parse().unwrap_or(0);
+            }
+            "file" => {
+                file_content_type = field.content_type().map(|m| m.to_string());
+                bytes = Some(field_bytes(field).await?);
+            }
+            _ => {
+                let _ = field.bytes().await;
+            }
+        }
+    }
+
+    let Some(bytes) = bytes else {
+        return Err(bad_request("Файл голосового сообщения пуст."));
+    };
+    Ok(GroupUploadInput {
+        content_type: None,
+        file_content_type,
+        duration_ms,
+        bytes,
+    })
 }
 
 async fn parse_image_upload(user: Uuid, mut multipart: Multipart) -> Result<UploadInput, Response> {

@@ -5,6 +5,7 @@ export const READ_CHANGED_EVENT = "flora:read-changed";
 export type MessagesChangedDetail = {
   conversationUuid?: string;
   senderUserUuid?: string;
+  kind?: "dm" | "groupChat";
 };
 
 export type NotificationsChangedDetail = {

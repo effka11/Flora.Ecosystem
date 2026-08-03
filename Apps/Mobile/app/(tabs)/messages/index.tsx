@@ -1,14 +1,27 @@
-import { apiGetConversations } from "@flora/client-core/api";
+import {
+  apiDeleteConversation,
+  apiGetConversations,
+  apiLeaveGroup,
+  apiListGroups,
+  ApiRequestError,
+} from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
-import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
+import {
+  decryptGroupMessagePreview,
+  type FscpBootstrapStatus,
+} from "@flora/client-core/fscp";
 import {
   canArchiveChatListPeer,
   canCreateChatListFolder,
   CHAT_LIST_ARCHIVE_FOLDER_ID,
   chatListFolderPageIds,
-  countArchivedPeers,
+  countArchivedForFolderIcon,
+  dmConversationUuidsOfArchivedPeers,
   entitiesToFolderDefs,
   filterConversationsByFolder,
+  filterGroupsByFolder,
+  formatGroupListPreview,
+  isConversationArchived,
   listVisibleChatFolders,
   membershipByEntityId,
   normalizeChatListFolder,
@@ -17,13 +30,14 @@ import {
 import { sharedPresenceStore } from "@flora/client-core/presence";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   AppState,
+  BackHandler,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -34,12 +48,15 @@ import {
 import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
+import { ConversationMoreMenu } from "@/components/messages/ConversationMoreMenu";
 import { CreateChatFolderSheet } from "@/components/messages/CreateChatFolderSheet";
-import { CreateChatGroupComingSoonModal } from "@/components/messages/CreateChatGroupComingSoonModal";
+import { CreateGroupSheet } from "@/components/messages/CreateGroupSheet";
+import { GroupConversationListRow } from "@/components/messages/GroupConversationListRow";
 import { MessagesChatFolders } from "@/components/messages/MessagesChatFolders";
 import {
   MessagesFolderPager,
   type MessagesFolderConversationRow,
+  type MessagesFolderListRow,
   type MessagesFolderPagerHandle,
 } from "@/components/messages/MessagesFolderPager";
 import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
@@ -54,9 +71,13 @@ import {
   setTemporaryMute,
   useTemporaryMuteUntilByPeer,
 } from "@/lib/conversationTemporaryMute";
+import { mapGroupListItem, mergeGroupListRefresh } from "@/lib/groupChatMap";
+import { groupSortAt, type GroupChat } from "@/lib/groupChatTypes";
+import { openGroupChat } from "@/lib/openGroupChat";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -74,13 +95,52 @@ function emptyListMessage(
 ): string {
   if (hasSearch) return "Ничего не найдено. Измените запрос в поиске.";
   if (folder === "archived") {
-    return "Пока нет переписок в архиве. Перенесите чат в архив из меню ⋮.";
+    return "Пока нет переписок в архиве.";
   }
   if (folder !== "all") {
-    return "В этой папке пока нет чатов. Добавьте их из меню ⋮ или при создании.";
+    return "В этой папке пока нет чатов. Добавьте их при создании папки.";
   }
   if (totalCount === 0) return "Пока нет переписок. Найдите человека во вкладке «Люди».";
   return "Ничего не найдено. Измените запрос в поиске.";
+}
+
+function toFolderListRows(
+  list: readonly MsgConversationDto[],
+  previews: Readonly<Record<string, string>>,
+  groups: readonly GroupChat[],
+  groupPreviews: Readonly<Record<string, string>>,
+  folder: ChatListFolderId,
+  sortBy: SortBy,
+  archivedByConversation: Readonly<Record<string, true>> | undefined,
+): MessagesFolderListRow[] {
+  const dmRows: MessagesFolderListRow[] = toConversationRows(list, previews).map((item) => ({
+    kind: "dm",
+    item,
+  }));
+  if (folder !== "all" && folder !== "archived") return dmRows;
+
+  let groupRows: MessagesFolderListRow[] = filterGroupsByFolder(
+    groups,
+    folder,
+    archivedByConversation,
+  ).map((g) => ({
+    kind: "groupChat" as const,
+    group: g,
+    preview: groupPreviews[g.conversationUuid] ?? g.lastMessagePreview ?? "",
+  }));
+  if (sortBy === "unread") {
+    groupRows = groupRows.filter((r) => r.kind === "groupChat" && r.group.unreadCount > 0);
+  }
+
+  const merged = [...dmRows, ...groupRows];
+  merged.sort((a, b) => {
+    const aAt =
+      a.kind === "dm" ? a.item.lastMessageAt || "" : groupSortAt(a.group);
+    const bAt =
+      b.kind === "dm" ? b.item.lastMessageAt || "" : groupSortAt(b.group);
+    return bAt.localeCompare(aAt);
+  });
+  return merged;
 }
 
 function toConversationRows(
@@ -131,6 +191,7 @@ function fscpBannerMessage(status: FscpBootstrapStatus): { text: string; action?
 }
 
 const EMPTY_CONVERSATIONS: MsgConversationDto[] = [];
+const EMPTY_SELECTED = new Set<string>();
 // Matches the global staleTime in providers/FloraProviders.tsx.
 const CONVERSATIONS_STALE_REFETCH_MS = 15_000;
 
@@ -151,6 +212,7 @@ export default function MessagesScreen() {
   const [listFolder, setListFolder] = useState<ChatListFolderId>("all");
   const folderPagerRef = useRef<MessagesFolderPagerHandle>(null);
   const createAnchorRef = useRef<View>(null);
+  const selectionMoreAnchorRef = useRef<View>(null);
   const { width: windowWidth } = useWindowDimensions();
   const folderScrollX = useSharedValue(0);
   const folderPageWidthSV = useSharedValue(windowWidth);
@@ -159,8 +221,17 @@ export default function MessagesScreen() {
   const folderReturnProgressSV = useSharedValue(0);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
-  const [createGroupSoonOpen, setCreateGroupSoonOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [selectionMenuOpen, setSelectionMenuOpen] = useState(false);
+  /** `null` — обычный список; иначе TG-like multi-select по conversationUuid. */
+  const [selectedConversationUuids, setSelectedConversationUuids] = useState<Set<string> | null>(
+    null,
+  );
+  const selectionMode = selectedConversationUuids != null;
+  const queryClient = useQueryClient();
+  const [groupChats, setGroupChats] = useState<GroupChat[]>([]);
+  const [groupPreviews, setGroupPreviews] = useState<Record<string, string>>({});
   const overlayState = useChatListOverlayStore((s) => s.state);
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
   const setOverlayFscpKeys = useChatListOverlayStore((s) => s.setFscpKeys);
@@ -169,9 +240,12 @@ export default function MessagesScreen() {
   const addPeerToEntity = useChatListOverlayStore((s) => s.addPeerToEntity);
   const removeEntity = useChatListOverlayStore((s) => s.removeEntity);
   const setArchived = useChatListOverlayStore((s) => s.setArchived);
+  const setGroupArchived = useChatListOverlayStore((s) => s.setGroupArchived);
+  const setKnownGroupUuids = useChatListOverlayStore((s) => s.setKnownGroupUuids);
   const setMuted = useChatListOverlayStore((s) => s.setMuted);
   const fscpMaterial = useFscpStore((s) => s.material);
   const fscpCanDecrypt = useFscpStore((s) => s.canDecrypt);
+  const organizerKeysReady = Boolean(fscpMaterial && fscpCanDecrypt());
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
@@ -228,6 +302,11 @@ export default function MessagesScreen() {
     queryKey: ["conversations"],
     queryFn: () => apiGetConversations(),
   });
+  // Throw on error — never feed `[]` into sticky knownGroups (error ≠ 0 groups).
+  const groupsQuery = useQuery({
+    queryKey: ["groups"],
+    queryFn: () => apiListGroups(),
+  });
   const conversationQueryRef = useRef(query);
 
   useEffect(() => {
@@ -237,7 +316,40 @@ export default function MessagesScreen() {
   const items = query.data?.items ?? EMPTY_CONVERSATIONS;
   const previews = useMessagesListPreviewDecrypt(items, me?.userUuid);
 
+  useEffect(() => {
+    if (!groupsQuery.isSuccess || !groupsQuery.data) return;
+    const mapped = groupsQuery.data.map((item) => mapGroupListItem(item));
+    setGroupChats((prev) => mergeGroupListRefresh(prev, mapped));
+    setKnownGroupUuids(mapped.map((g) => g.conversationUuid));
+  }, [groupsQuery.data, groupsQuery.isSuccess, setKnownGroupUuids]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!me?.userUuid || !fscpMaterial || groupChats.length === 0) return;
+      const next: Record<string, string> = {};
+      for (const g of groupChats) {
+        const wire = g.lastMessageEncryptedWire?.trim();
+        if (!wire) {
+          next[g.conversationUuid] = g.lastMessagePreview ?? "";
+          continue;
+        }
+        const preview = await decryptGroupMessagePreview({
+          encryptedPayload: wire,
+          viewerUserUuid: me.userUuid,
+          agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+        });
+        next[g.conversationUuid] = preview ?? "🔒";
+      }
+      if (!cancelled) setGroupPreviews(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fscpMaterial, groupChats, me?.userUuid]);
+
   const archivedByPeer = overlayState.archivedByPeer;
+  const archivedByConversation = overlayState.archivedByConversation ?? {};
   const mutedByPeer = overlayState.mutedByPeer;
   const customEntities = overlayState.entities;
   const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);
@@ -247,8 +359,14 @@ export default function MessagesScreen() {
     [customEntities],
   );
 
-  // Иконка Архива / лимит слотов — по серверному overlay, не по загруженному списку чатов.
-  const archivedCount = useMemo(() => countArchivedPeers(archivedByPeer), [archivedByPeer]);
+  // Иконка Архива / лимит слотов — ORG maps + exact DM uuid dedupe.
+  const archivedCount = useMemo(() => {
+    const owner = me?.userUuid?.trim();
+    const dmSet = owner
+      ? dmConversationUuidsOfArchivedPeers(owner, archivedByPeer)
+      : undefined;
+    return countArchivedForFolderIcon(archivedByPeer, archivedByConversation, dmSet);
+  }, [archivedByConversation, archivedByPeer, me?.userUuid]);
   const visibleFolders = useMemo(
     () => listVisibleChatFolders(archivedCount, customFolderDefs),
     [archivedCount, customFolderDefs],
@@ -303,32 +421,166 @@ export default function MessagesScreen() {
     return () => clearInterval(id);
   }, []);
 
-  const handleMuteForever = useCallback(
-    (peerUuid: string, conversationUuid: string) => {
-      clearTemporaryMute(peerUuid);
-      void setMuted(peerUuid, conversationUuid, true);
-    },
-    [setMuted],
+  const folderPickOptions = useMemo(
+    () =>
+      visibleFolders
+        .filter((f) => f.id !== CHAT_LIST_ARCHIVE_FOLDER_ID)
+        .map((f) => ({ id: f.id, label: f.label })),
+    [visibleFolders],
   );
 
-  const handleMuteTemporary = useCallback(
-    (peerUuid: string, conversationUuid: string) => {
-      setTemporaryMute(peerUuid);
-      void setMuted(peerUuid, conversationUuid, true);
+  const enterConversationSelect = useCallback((conversationUuid: string) => {
+    setSearch("");
+    setSortOpen(false);
+    setCreateMenuOpen(false);
+    setSelectionMenuOpen(false);
+    closeMenu();
+    setSelectedConversationUuids(new Set([conversationUuid]));
+  }, [closeMenu]);
+
+  const toggleConversationSelect = useCallback((conversationUuid: string) => {
+    setSelectedConversationUuids((prev) => {
+      if (!prev) return new Set([conversationUuid]);
+      const next = new Set(prev);
+      if (next.has(conversationUuid)) next.delete(conversationUuid);
+      else next.add(conversationUuid);
+      return next.size === 0 ? null : next;
+    });
+  }, []);
+
+  const clearConversationSelect = useCallback(() => {
+    setSelectionMenuOpen(false);
+    setSelectedConversationUuids(null);
+  }, []);
+
+  const selectedDms = useMemo(() => {
+    if (!selectedConversationUuids) return [] as MsgConversationDto[];
+    return items.filter((c) => selectedConversationUuids.has(c.conversationUuid));
+  }, [items, selectedConversationUuids]);
+
+  const selectedGroups = useMemo(() => {
+    if (!selectedConversationUuids) return [] as GroupChat[];
+    return groupChats.filter((g) => selectedConversationUuids.has(g.conversationUuid));
+  }, [groupChats, selectedConversationUuids]);
+
+  const selectionMenuKind =
+    selectedDms.length === 0 && selectedGroups.length > 0 ? "groupChat" : "dm";
+
+  const selectionAnyMuted = selectedDms.some((c) => c.otherUserUuid in mutedDisplayByPeer);
+
+  const selectionAllArchived = useMemo(() => {
+    if (selectedDms.length === 0 && selectedGroups.length === 0) return false;
+    const dmsArchived = selectedDms.every((c) => c.otherUserUuid in archivedByPeer);
+    const groupsArchived = selectedGroups.every((g) =>
+      isConversationArchived(g.conversationUuid, archivedByConversation),
+    );
+    return dmsArchived && groupsArchived;
+  }, [archivedByConversation, archivedByPeer, selectedDms, selectedGroups]);
+
+  const requireOrganizerKeys = useCallback(() => {
+    if (organizerKeysReady) return true;
+    setUnlockOpen(true);
+    return false;
+  }, [organizerKeysReady]);
+
+  const notifyGroupsSkipped = useCallback(
+    (action: "mute" | "unmute" | "folder") => {
+      if (selectedGroups.length === 0) return;
+      const hasDms = selectedDms.length > 0;
+      if (action === "mute") {
+        Alert.alert(
+          hasDms ? "Заглушены личные чаты" : "Недоступно",
+          "Заглушение групп пока не поддерживается.",
+        );
+        return;
+      }
+      if (action === "unmute") {
+        Alert.alert(
+          hasDms ? "Личные чаты снова со звуком" : "Недоступно",
+          "Размут групп пока не поддерживается.",
+        );
+        return;
+      }
+      Alert.alert(
+        hasDms ? "В папку добавлены личные чаты" : "Недоступно",
+        "Группы в кастомные папки пока нельзя добавить.",
+      );
     },
-    [setMuted],
+    [selectedDms.length, selectedGroups.length],
   );
 
-  const handleUnmute = useCallback(
-    (peerUuid: string, conversationUuid: string) => {
-      clearTemporaryMute(peerUuid);
-      void setMuted(peerUuid, conversationUuid, false);
+  const bulkMuteForever = useCallback(() => {
+    if (selectedDms.length === 0) {
+      notifyGroupsSkipped("mute");
+      return;
+    }
+    for (const c of selectedDms) {
+      clearTemporaryMute(c.otherUserUuid);
+      void setMuted(c.otherUserUuid, c.conversationUuid, true);
+    }
+    const skipped = selectedGroups.length > 0;
+    clearConversationSelect();
+    if (skipped) notifyGroupsSkipped("mute");
+  }, [clearConversationSelect, notifyGroupsSkipped, selectedDms, selectedGroups.length, setMuted]);
+
+  const bulkMuteTemporary = useCallback(() => {
+    if (selectedDms.length === 0) {
+      notifyGroupsSkipped("mute");
+      return;
+    }
+    for (const c of selectedDms) {
+      setTemporaryMute(c.otherUserUuid);
+      void setMuted(c.otherUserUuid, c.conversationUuid, true);
+    }
+    const skipped = selectedGroups.length > 0;
+    clearConversationSelect();
+    if (skipped) notifyGroupsSkipped("mute");
+  }, [clearConversationSelect, notifyGroupsSkipped, selectedDms, selectedGroups.length, setMuted]);
+
+  const bulkUnmute = useCallback(() => {
+    if (selectedDms.length === 0) {
+      notifyGroupsSkipped("unmute");
+      return;
+    }
+    for (const c of selectedDms) {
+      clearTemporaryMute(c.otherUserUuid);
+      void setMuted(c.otherUserUuid, c.conversationUuid, false);
+    }
+    const skipped = selectedGroups.length > 0;
+    clearConversationSelect();
+    if (skipped) notifyGroupsSkipped("unmute");
+  }, [clearConversationSelect, notifyGroupsSkipped, selectedDms, selectedGroups.length, setMuted]);
+
+  const bulkAddToFolder = useCallback(
+    (folderId: string) => {
+      if (!folderId || folderPickOptions.length === 0) {
+        Alert.alert("Нет папок", "Сначала создайте папку или группу через «+».");
+        return;
+      }
+      if (selectedDms.length === 0) {
+        notifyGroupsSkipped("folder");
+        return;
+      }
+      for (const c of selectedDms) {
+        void addPeerToEntity(folderId, c.otherUserUuid);
+      }
+      const skipped = selectedGroups.length > 0;
+      clearConversationSelect();
+      if (skipped) notifyGroupsSkipped("folder");
     },
-    [setMuted],
+    [
+      addPeerToEntity,
+      clearConversationSelect,
+      folderPickOptions.length,
+      notifyGroupsSkipped,
+      selectedDms,
+      selectedGroups.length,
+    ],
   );
 
-  const handleArchivedChange = useCallback(
-    (peerUuid: string, conversationUuid: string, archived: boolean) => {
+  const bulkArchive = useCallback(
+    (archived: boolean) => {
+      if (!requireOrganizerKeys()) return;
       if (archived && !canArchivePeer) {
         Alert.alert(
           "Лимит папок",
@@ -337,25 +589,108 @@ export default function MessagesScreen() {
         return;
       }
       void (async () => {
-        const ok = await setArchived(peerUuid, conversationUuid, archived);
-        if (archived && !ok) {
+        let failed = false;
+        for (const c of selectedDms) {
+          const ok = await setArchived(c.otherUserUuid, c.conversationUuid, archived);
+          if (archived && !ok) failed = true;
+        }
+        for (const g of selectedGroups) {
+          const ok = await setGroupArchived(g.conversationUuid, archived);
+          if (archived && !ok) failed = true;
+        }
+        if (failed) {
           Alert.alert(
             "Лимит папок",
             "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
           );
         }
+        requestTabBadgesRefresh();
+        clearConversationSelect();
       })();
     },
-    [canArchivePeer, setArchived],
+    [
+      canArchivePeer,
+      clearConversationSelect,
+      requireOrganizerKeys,
+      selectedDms,
+      selectedGroups,
+      setArchived,
+      setGroupArchived,
+    ],
   );
+
+  const bulkDelete = useCallback(() => {
+    const dmCount = selectedDms.length;
+    const groupCount = selectedGroups.length;
+    const title =
+      groupCount > 0 && dmCount === 0
+        ? groupCount === 1
+          ? "Выйти из группы?"
+          : `Выйти из ${groupCount} групп?`
+        : dmCount + groupCount === 1
+          ? "Удалить чат?"
+          : `Удалить ${dmCount + groupCount} чатов?`;
+    const body =
+      groupCount > 0 && dmCount === 0
+        ? "Вы больше не будете получать сообщения этих групп."
+        : "Выбранные чаты будут удалены.";
+    Alert.alert(title, body, [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: groupCount > 0 && dmCount === 0 ? "Выйти" : "Удалить",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              for (const c of selectedDms) {
+                await apiDeleteConversation(c.conversationUuid, c.otherUserUuid);
+              }
+              for (const g of selectedGroups) {
+                try {
+                  await apiLeaveGroup(g.conversationUuid);
+                } catch (e) {
+                  if (!(e instanceof ApiRequestError && (e.status === 404 || e.status === 403))) {
+                    throw e;
+                  }
+                }
+              }
+              void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+              void queryClient.invalidateQueries({ queryKey: ["groups"] });
+              requestTabBadgesRefresh();
+              clearConversationSelect();
+            } catch {
+              Alert.alert("Не удалось выполнить", "Попробуйте ещё раз.");
+            }
+          })();
+        },
+      },
+    ]);
+  }, [clearConversationSelect, queryClient, selectedDms, selectedGroups]);
+
+  useEffect(() => {
+    if (!selectionMode) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectionMenuOpen) {
+        setSelectionMenuOpen(false);
+        return true;
+      }
+      clearConversationSelect();
+      return true;
+    });
+    return () => sub.remove();
+  }, [clearConversationSelect, selectionMenuOpen, selectionMode]);
+
   const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
-  const folderPickOptions = useMemo(
-    () =>
-      visibleFolders
-        .filter((f) => f.id !== CHAT_LIST_ARCHIVE_FOLDER_ID)
-        .map((f) => ({ id: f.id, label: f.label })),
-    [visibleFolders],
-  );
+
+  useEffect(() => {
+    clearConversationSelect();
+  }, [activeFolder, clearConversationSelect]);
+
+  // Вход в поиск сбрасывает выбор; выход из поиска (в т.ч. при long-press) — нет.
+  useEffect(() => {
+    if (!hasSearch) return;
+    clearConversationSelect();
+  }, [clearConversationSelect, hasSearch]);
 
   useEffect(() => {
     if (listFolder !== activeFolder) setListFolder(activeFolder);
@@ -373,10 +708,11 @@ export default function MessagesScreen() {
       ) {
         void conversationQuery.refetch();
       }
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
       if (fscpStatus === "registration_pending") {
         void retryPendingOperation();
       }
-    }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
+    }, [fscpStatus, navigation, queryClient, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
   );
 
   const banner = fscpBannerMessage(fscpStatus);
@@ -393,32 +729,76 @@ export default function MessagesScreen() {
   );
 
   const dataByPage = useMemo(() => {
-    const map = new Map<ChatListFolderId, MessagesFolderConversationRow[]>();
+    const map = new Map<ChatListFolderId, MessagesFolderListRow[]>();
     for (const folder of folderPages) {
-      map.set(folder, toConversationRows(filterFolderList(folder), previews));
+      map.set(
+        folder,
+        toFolderListRows(
+          filterFolderList(folder),
+          previews,
+          groupChats,
+          groupPreviews,
+          folder,
+          sortBy,
+          archivedByConversation,
+        ),
+      );
     }
     return map;
-  }, [filterFolderList, folderPages, previews]);
+  }, [
+    archivedByConversation,
+    filterFolderList,
+    folderPages,
+    groupChats,
+    groupPreviews,
+    previews,
+    sortBy,
+  ]);
 
   /** Поиск — один список без pager (папки скрыты). */
   const searchListData = useMemo(() => {
     const queryText = search.trim().toLowerCase();
-    if (!queryText) return [] as MessagesFolderConversationRow[];
-    let list = filterFolderList(activeFolder);
-    list = list.filter((item) => {
+    if (!queryText) return [] as MessagesFolderListRow[];
+    let rows = toFolderListRows(
+      filterFolderList(activeFolder),
+      previews,
+      groupChats,
+      groupPreviews,
+      activeFolder,
+      sortBy,
+      archivedByConversation,
+    );
+    rows = rows.filter((row) => {
+      if (row.kind === "groupChat") {
+        const preview = formatGroupListPreview({
+          preview: row.preview || row.group.lastMessagePreview || "",
+          isFromMe: row.group.lastMessageIsFromMe,
+          senderDisplayName: row.group.lastMessageSenderDisplayName,
+        }).toLowerCase();
+        return row.group.title.toLowerCase().includes(queryText) || preview.includes(queryText);
+      }
       const preview = (
-        previews[item.conversationUuid] ??
-        item.lastMessageContent ??
+        previews[row.item.conversationUuid] ??
+        row.item.lastMessageContent ??
         "…"
       ).toLowerCase();
       return (
-        item.otherDisplayName.toLowerCase().includes(queryText) ||
-        item.otherUsername.toLowerCase().includes(queryText) ||
+        row.item.otherDisplayName.toLowerCase().includes(queryText) ||
+        row.item.otherUsername.toLowerCase().includes(queryText) ||
         preview.includes(queryText)
       );
     });
-    return toConversationRows(list, previews);
-  }, [activeFolder, filterFolderList, previews, search]);
+    return rows;
+  }, [
+    activeFolder,
+    archivedByConversation,
+    filterFolderList,
+    groupChats,
+    groupPreviews,
+    previews,
+    search,
+    sortBy,
+  ]);
 
   useEffect(() => {
     const uuids = items.map((c) => c.otherUserUuid).filter(Boolean);
@@ -433,6 +813,7 @@ export default function MessagesScreen() {
   const closeDropdowns = useCallback(() => {
     setSortOpen(false);
     setCreateMenuOpen(false);
+    setSelectionMenuOpen(false);
   }, []);
 
   const handleSortOpenChange = useCallback((open: boolean) => {
@@ -479,6 +860,24 @@ export default function MessagesScreen() {
               setCreateMenuOpen(true);
             },
           }}
+          selectionChrome={
+            selectionMode
+              ? {
+                  selectedCount: selectedConversationUuids?.size ?? 0,
+                  onClose: clearConversationSelect,
+                  moreAction: {
+                    accessibilityLabel: "Действия с выбранными",
+                    anchorRef: selectionMoreAnchorRef,
+                    onPress: () => {
+                      setSortOpen(false);
+                      closeMenu();
+                      setCreateMenuOpen(false);
+                      setSelectionMenuOpen(true);
+                    },
+                  },
+                }
+              : undefined
+          }
         />
 
         {banner ? (
@@ -521,6 +920,23 @@ export default function MessagesScreen() {
         ) : null}
       </View>
 
+      <ConversationMoreMenu
+        open={selectionMenuOpen}
+        onClose={() => setSelectionMenuOpen(false)}
+        anchorRef={selectionMoreAnchorRef}
+        kind={selectionMenuKind}
+        isMuted={selectionAnyMuted}
+        isArchived={selectionAllArchived}
+        onMuteForever={bulkMuteForever}
+        onMuteTemporary={bulkMuteTemporary}
+        onUnmute={bulkUnmute}
+        folderOptions={folderPickOptions}
+        onAddToFolder={bulkAddToFolder}
+        onArchive={() => bulkArchive(true)}
+        onUnarchive={() => bulkArchive(false)}
+        onDelete={bulkDelete}
+      />
+
       <DropdownMenuOverlay
         open={createMenuOpen}
         onClose={() => setCreateMenuOpen(false)}
@@ -553,7 +969,7 @@ export default function MessagesScreen() {
           style={({ pressed }) => [styles.createMenuItem, pressed && styles.createMenuItemPressed]}
           onPress={() => {
             setCreateMenuOpen(false);
-            setCreateGroupSoonOpen(true);
+            setCreateGroupOpen(true);
           }}
         >
           <View style={styles.createMenuItemIcon}>
@@ -567,34 +983,48 @@ export default function MessagesScreen() {
         <FlashList
           style={styles.list}
           data={searchListData}
-          keyExtractor={(item) => item.conversationUuid}
+          keyExtractor={(item) =>
+            item.kind === "groupChat"
+              ? `g:${item.group.conversationUuid}`
+              : item.item.conversationUuid
+          }
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           refreshControl={
             <RefreshControl
-              refreshing={query.isRefetching}
-              onRefresh={() => query.refetch()}
+              refreshing={query.isRefetching || groupsQuery.isRefetching}
+              onRefresh={() => {
+                void query.refetch();
+                void groupsQuery.refetch();
+              }}
               tintColor={floraColors.greenLight}
             />
           }
-          renderItem={({ item }) => (
-            <ConversationListRow
-              item={item}
-              isMuted={item.otherUserUuid in mutedDisplayByPeer}
-              isArchived={item.otherUserUuid in archivedByPeer}
-              folderOptions={folderPickOptions}
-              onMuteForever={() =>
-                handleMuteForever(item.otherUserUuid, item.conversationUuid)
-              }
-              onMuteTemporary={() =>
-                handleMuteTemporary(item.otherUserUuid, item.conversationUuid)
-              }
-              onUnmute={() => handleUnmute(item.otherUserUuid, item.conversationUuid)}
-              onArchivedChange={(archived) =>
-                handleArchivedChange(item.otherUserUuid, item.conversationUuid, archived)
-              }
-              onAddToFolder={(folderId) => void addPeerToEntity(folderId, item.otherUserUuid)}
-            />
-          )}
+          extraData={`${selectionMode ? "1" : "0"}|${[...(selectedConversationUuids ?? EMPTY_SELECTED)].join(",")}`}
+          renderItem={({ item }) => {
+            const uuid =
+              item.kind === "groupChat"
+                ? item.group.conversationUuid
+                : item.item.conversationUuid;
+            const selected = selectedConversationUuids?.has(uuid) ?? false;
+            return item.kind === "groupChat" ? (
+              <GroupConversationListRow
+                group={item.group}
+                preview={item.preview}
+                selectionMode={selectionMode}
+                selected={selected}
+                onEnterSelect={() => enterConversationSelect(uuid)}
+                onToggleSelect={() => toggleConversationSelect(uuid)}
+              />
+            ) : (
+              <ConversationListRow
+                item={item.item}
+                selectionMode={selectionMode}
+                selected={selected}
+                onEnterSelect={() => enterConversationSelect(uuid)}
+                onToggleSelect={() => toggleConversationSelect(uuid)}
+              />
+            );
+          }}
           ListEmptyComponent={
             query.isLoading ? (
               <View style={styles.loading}>
@@ -622,23 +1052,18 @@ export default function MessagesScreen() {
           returnProgressSV={folderReturnProgressSV}
           dataByPage={dataByPage}
           listPaddingBottom={listPaddingBottom}
-          refreshing={query.isRefetching}
+          refreshing={query.isRefetching || groupsQuery.isRefetching}
           onRefresh={() => {
             void query.refetch();
+            void groupsQuery.refetch();
           }}
           loading={query.isLoading}
           error={query.isError}
-          emptyMessage={(folder) => emptyListMessage(false, items.length, folder)}
-          mutedByPeer={mutedDisplayByPeer}
-          archivedByPeer={archivedByPeer}
-          folderOptions={folderPickOptions}
-          onMuteForever={handleMuteForever}
-          onMuteTemporary={handleMuteTemporary}
-          onUnmute={handleUnmute}
-          onArchivedChange={handleArchivedChange}
-          onAddToFolder={(folderId, peerUuid) => {
-            void addPeerToEntity(folderId, peerUuid);
-          }}
+          emptyMessage={(folder) => emptyListMessage(false, items.length + groupChats.length, folder)}
+          selectionMode={selectionMode}
+          selectedConversationUuids={selectedConversationUuids ?? EMPTY_SELECTED}
+          onEnterSelect={enterConversationSelect}
+          onToggleSelect={toggleConversationSelect}
         />
       )}
 
@@ -665,9 +1090,14 @@ export default function MessagesScreen() {
         }}
       />
 
-      <CreateChatGroupComingSoonModal
-        visible={createGroupSoonOpen}
-        onClose={() => setCreateGroupSoonOpen(false)}
+      <CreateGroupSheet
+        visible={createGroupOpen}
+        conversations={items}
+        onClose={() => setCreateGroupOpen(false)}
+        onCreated={(detail) => {
+          void queryClient.invalidateQueries({ queryKey: ["groups"] });
+          openGroupChat(detail.conversationUuid, detail.title);
+        }}
       />
 
       <FscpUnlockSheet

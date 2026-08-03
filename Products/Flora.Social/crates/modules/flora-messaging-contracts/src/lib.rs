@@ -20,13 +20,34 @@ pub struct EncryptedPushPreview {
     pub envelope: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageConversationKind {
+    Dm,
+    GroupChat,
+}
+
+impl MessageConversationKind {
+    pub fn as_realtime_str(self) -> &'static str {
+        match self {
+            Self::Dm => "dm",
+            Self::GroupChat => "groupChat",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MessageSentContext {
+    /// Explicit conversation id (DM: `dm_conversation_uuid`; group: server group uuid).
+    pub conversation_uuid: Uuid,
     pub recipient_user_uuid: Uuid,
     pub sender_user_uuid: Uuid,
     pub persisted_message_uuid: Uuid,
     pub wire_message_uuid: Uuid,
     pub encrypted_push_previews: Vec<EncryptedPushPreview>,
+    /// When true, Notifications publishes SSE only (no FCM/APNs). Used for FSCP-G v1.
+    pub skip_push: bool,
+    /// SSE/client hint — must not be inferred from `skip_push`.
+    pub kind: MessageConversationKind,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -643,4 +664,110 @@ pub struct CreateChatFolderRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AddChatFolderMemberRequest {
     pub other_user_uuid: Uuid,
+}
+
+// ── FSCP-G group conversations (`/api/messaging/groups*`) ───────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateGroupRequest {
+    #[serde(default)]
+    pub title: Option<String>,
+    pub member_user_uuids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchGroupRequest {
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddGroupMemberRequest {
+    pub user_uuid: Uuid,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostGroupMessageRequest {
+    pub encrypted_wire: String,
+    /// Bound to group_message_*_assets (membership-scoped); empty for text-only.
+    #[serde(default)]
+    pub voice_asset_uuids: Vec<Uuid>,
+    #[serde(default)]
+    pub image_asset_uuids: Vec<Uuid>,
+    /// Rejected if non-empty — group media v1 is voice/image only.
+    #[serde(default)]
+    pub video_asset_uuids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupMemberDto {
+    pub user_uuid: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub avatar_uuid: Option<String>,
+    pub joined_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupListItemDto {
+    pub conversation_uuid: Uuid,
+    pub title: String,
+    pub created_by_user_uuid: Uuid,
+    pub created_at: String,
+    pub member_count: i32,
+    pub last_message_encrypted_wire: Option<String>,
+    pub last_message_at: Option<String>,
+    pub last_message_is_from_me: bool,
+    /// Display name of last sender when not from viewer (never username).
+    /// Absent/empty → clients render a local unknown-sender label in list preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message_sender_display_name: Option<String>,
+    pub unread_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupsPageDto {
+    pub items: Vec<GroupListItemDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupDetailDto {
+    pub conversation_uuid: Uuid,
+    pub title: String,
+    pub created_by_user_uuid: Uuid,
+    pub created_at: String,
+    pub members: Vec<GroupMemberDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupMessageItemDto {
+    pub message_uuid: Uuid,
+    pub sender_user_uuid: Uuid,
+    pub encrypted_wire: String,
+    pub created_at: String,
+    pub is_from_me: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupMessagesPageDto {
+    pub items: Vec<GroupMessageItemDto>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendGroupMessageResultDto {
+    pub message_uuid: Uuid,
+    pub created_at: String,
+    pub encrypted_wire: String,
 }

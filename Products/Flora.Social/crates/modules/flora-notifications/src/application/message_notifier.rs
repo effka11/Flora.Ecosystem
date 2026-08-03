@@ -10,7 +10,6 @@ use crate::application::UserRealtimePublisher;
 use chrono::Utc;
 use flora_messaging_contracts::{BoxFuture, MessageSentContext, MessageSentNotifier};
 use flora_notifications_contracts::RealtimeMessageSignal;
-use flora_shared::uuid_v5::dm_conversation_uuid;
 
 pub struct MessagePushNotifier {
     realtime: Arc<UserRealtimePublisher>,
@@ -34,11 +33,15 @@ impl MessageSentNotifier for MessagePushNotifier {
             if recipient_user_uuid == sender_user_uuid {
                 return;
             }
-            let conversation_uuid = dm_conversation_uuid(&sender_user_uuid, &recipient_user_uuid);
+            let conversation_uuid = context.conversation_uuid;
+            if conversation_uuid.is_nil() {
+                return;
+            }
             let signal = RealtimeMessageSignal {
                 conversation_uuid,
                 sender_user_uuid,
                 sent_at: Utc::now(),
+                kind: Some(context.kind.as_realtime_str().into()),
             };
             realtime
                 .publish_message(recipient_user_uuid, &signal, &context)

@@ -9,7 +9,7 @@ import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { PostMoreMenuRect } from "@/app/_shared/PostMoreMenuRect";
 import postMoreMenuStyles from "@/app/_shared/PostMoreMenu.module.css";
-// import { PostMoreMenu } from "@/app/_shared/PostMoreMenu";
+import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { TabSearchInput } from "@/app/_shared/TabSearchInput";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { ApiRequestError, isDevLocalOfflineSession } from "@/lib/auth";
@@ -32,6 +32,8 @@ import {
 } from "@/lib/fscp";
 import {
   apiGetUserE2ePublicKey,
+  apiUploadGroupImageAsset,
+  apiUploadGroupVoiceAsset,
   apiUploadMessageImageAsset,
   apiUploadMessageVideoAsset,
   apiUploadMessageVoiceAsset,
@@ -64,6 +66,7 @@ import {
 import { floraNewUuid } from "@/lib/floraUuid";
 import {
   msgMarkReadForUser,
+  MESSAGES_POP_TO_LIST_EVENT,
   MESSAGES_UNREAD_CHANGED_EVENT,
   notifyMessagesUnreadChanged,
   type MessagesChangedDetail,
@@ -204,6 +207,44 @@ import {
 } from "./conversationMute";
 import { MessagesConversationMuteIndicator } from "./MessagesConversationMuteIndicator";
 import { CreateChatFolderDialog } from "./CreateChatFolderDialog";
+import { CreateGroupDialog } from "./CreateGroupDialog";
+import { GroupMembersPanel } from "./GroupMembersPanel";
+import {
+  formatGroupMembersLabel,
+  type GroupChat,
+  type GroupMember,
+  type MessagesListItem,
+  type SelectedTarget,
+} from "./groupConversationTypes";
+import {
+  findGroupMember,
+  mapGroupListItem,
+  mergeGroupDetail,
+  mergeGroupListRefresh,
+} from "./groupApiMap";
+import {
+  apiCreateGroup,
+  apiGetGroup,
+  apiLeaveGroup,
+  apiListGroups,
+  apiMarkGroupRead,
+  apiAddGroupMember,
+  apiPatchGroupTitle,
+  apiRemoveGroupMember,
+  apiSendGroupMessage,
+} from "@flora/client-core/api";
+import {
+  buildGroupBlocksMessageWire,
+  buildGroupTextMessageWire,
+  decryptGroupMessagePreview,
+  decryptGroupMessageWire,
+  filterMembersWithE2eKeys,
+  isFscpGroupWirePayload,
+} from "@flora/client-core/fscp";
+import {
+  getGroupConversationThread,
+  invalidateGroupConversationThread,
+} from "@/lib/groupThreadsCache";
 import { MessagesChatFolders } from "./MessagesChatFolders";
 import { useMessagesListPreviewDecrypt } from "./useMessagesListPreviewDecrypt";
 import { usePreloadConversationThreads } from "./usePreloadConversationThreads";
@@ -215,6 +256,8 @@ import {
   refreshChatListOverlay,
   removeChatListFolder,
   setChatListArchived,
+  setChatListGroupArchived,
+  setChatListKnownGroupUuids,
   setChatListMuted,
   setChatListOverlayFscpKeys,
   useChatListOverlayHydrate,
@@ -224,9 +267,13 @@ import {
   canArchiveChatListPeer,
   canCreateChatListFolder,
   CHAT_LIST_ARCHIVE_FOLDER_ID,
-  countArchivedPeers,
+  countArchivedForFolderIcon,
+  dmConversationUuidsOfArchivedPeers,
   entitiesToFolderDefs,
   filterConversationsByFolder,
+  filterGroupsByFolder,
+  formatGroupListPreview,
+  isConversationArchived,
   listVisibleChatFolders,
   membershipByEntityId,
   normalizeChatListFolder,
@@ -311,6 +358,25 @@ function toMessageDto(m: MsgMessageDto): MessageThreadItemDto {
     isFromMe: m.isFromMe,
     isRead: m.isRead,
   };
+}
+
+function groupApiMessagesToThread(
+  items: readonly {
+    messageUuid: string;
+    senderUserUuid: string;
+    encryptedWire: string;
+    createdAt: string;
+    isFromMe: boolean;
+  }[],
+): MessageThreadItemDto[] {
+  return items.map((m) => ({
+    messageUuid: m.messageUuid,
+    content: null,
+    encryptedForMe: m.encryptedWire,
+    createdAt: m.createdAt,
+    isFromMe: m.isFromMe,
+    senderUserUuid: m.senderUserUuid,
+  }));
 }
 
 /** Текст пузыря при любой ошибке расшифровки FSCP (в т.ч. сообщения libsodium на англ.). */
@@ -527,9 +593,13 @@ function MessagesChatInner() {
   const [listLoading, setListLoading] = useState(() => conversationsCache.peek() === null);
   const [listError, setListError] = useState<string | null>(null);
 
-  const [selectedOtherUuid, setSelectedOtherUuid] = useState<string | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<SelectedTarget | null>(null);
+  const selectedOtherUuid = selectedTarget?.kind === "dm" ? selectedTarget.otherUserUuid : null;
+  const selectedGroupUuid =
+    selectedTarget?.kind === "groupChat" ? selectedTarget.conversationUuid : null;
   /** Снимок строки списка при открытии чата (заголовок не пропадает, если список ещё перезагружается). */
   const [selectedPeer, setSelectedPeer] = useState<ConversationListItemDto | null>(null);
+  const [groupChats, setGroupChats] = useState<GroupChat[]>([]);
   const [threadMessages, setThreadMessages] = useState<MessageThreadItemDto[]>([]);
   /** Нормализованный me.userUuid на момент последней успешной загрузки ленты; без этого не расшифровываем (иначе кэш чужой ленты + новый JWT). */
   const [threadFetchedForViewerNorm, setThreadFetchedForViewerNorm] = useState<string | null>(null);
@@ -540,10 +610,11 @@ function MessagesChatInner() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "unread">("recent");
-  const [pendingDeleteConversation, setPendingDeleteConversation] = useState<{
-    peerUuid: string;
-    displayName: string;
-  } | null>(null);
+  const [pendingDeleteConversation, setPendingDeleteConversation] = useState<
+    | { kind: "dm"; peerUuid: string; displayName: string }
+    | { kind: "group"; conversationUuid: string; displayName: string }
+    | null
+  >(null);
   const [deleteConversationModalClosing, setDeleteConversationModalClosing] = useState(false);
   const [deleteConversationBusy, setDeleteConversationBusy] = useState(false);
   const [deleteConversationError, setDeleteConversationError] = useState<string | null>(null);
@@ -553,12 +624,16 @@ function MessagesChatInner() {
   const [dropdownFilterOpen, setDropdownFilterOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
-  const [createGroupSoonOpen, setCreateGroupSoonOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [groupMembersOpen, setGroupMembersOpen] = useState(false);
+  const [groupMembersBusy, setGroupMembersBusy] = useState(false);
+  const [groupMembersError, setGroupMembersError] = useState<string | null>(null);
   /** Локальный until-мут (UI countdown); forever/sync — overlay.mutedByPeer. */
   const [mutedPeers, setMutedPeers] = useState<Record<string, ConversationMuteEntry>>({});
   const overlayState = useChatListOverlayState();
   const hydrateOverlay = useChatListOverlayHydrate();
   const archivedByPeer = overlayState.archivedByPeer;
+  const archivedByConversation = overlayState.archivedByConversation ?? {};
   const mutedByPeer = overlayState.mutedByPeer;
   const compose = useMessageComposeDraft();
   const [decryptedById, setDecryptedById] = useState<Record<string, FscpMessagePlaintext>>({});
@@ -881,8 +956,14 @@ function MessagesChatInner() {
   const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);
   const membership = useMemo(() => membershipByEntityId(customEntities), [customEntities]);
   const knownCustomIds = useMemo(() => new Set(customEntities.map((e) => e.id)), [customEntities]);
-  // Иконка Архива / лимит слотов — по серверному overlay, не по загруженному списку чатов.
-  const archivedCount = useMemo(() => countArchivedPeers(archivedByPeer), [archivedByPeer]);
+  // Иконка Архива / лимит слотов — ORG maps (без ∩ пустого list).
+  const archivedCount = useMemo(() => {
+    const owner = me?.userUuid?.trim();
+    const dmSet = owner
+      ? dmConversationUuidsOfArchivedPeers(owner, archivedByPeer)
+      : undefined;
+    return countArchivedForFolderIcon(archivedByPeer, archivedByConversation, dmSet);
+  }, [archivedByConversation, archivedByPeer, me?.userUuid]);
   const visibleFolders = useMemo(
     () => listVisibleChatFolders(archivedCount, customFolderDefs),
     [archivedCount, customFolderDefs],
@@ -908,10 +989,18 @@ function MessagesChatInner() {
     if (listFolder !== activeFolder) setListFolder(activeFolder);
   }, [activeFolder, listFolder]);
 
+  const requireOrganizerKeys = useCallback(() => {
+    if (fscpMaterial) return true;
+    // No silent no-op: unlock sheet (password) or open anyway so user sees FSCP state.
+    openFscpUnlock();
+    return false;
+  }, [fscpMaterial, openFscpUnlock]);
+
   const archivePeer = useCallback(
     (peerUuid: string, conversationUuid?: string) => {
       const viewer = me?.userUuid?.trim();
       if (!viewer) return;
+      if (!requireOrganizerKeys()) return;
       if (!canArchivePeer) {
         window.alert(
           "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
@@ -925,20 +1014,26 @@ function MessagesChatInner() {
           window.alert(
             "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
           );
+          return;
         }
+        notifyMessagesUnreadChanged();
       })();
     },
-    [canArchivePeer, me?.userUuid],
+    [canArchivePeer, me?.userUuid, requireOrganizerKeys],
   );
 
   const unarchivePeer = useCallback(
     (peerUuid: string, conversationUuid?: string) => {
       const viewer = me?.userUuid?.trim();
       if (!viewer) return;
+      if (!requireOrganizerKeys()) return;
       const uuid = conversationUuid?.trim() || dmConversationUuid(viewer, peerUuid);
-      void setChatListArchived(peerUuid, uuid, false);
+      void (async () => {
+        await setChatListArchived(peerUuid, uuid, false);
+        notifyMessagesUnreadChanged();
+      })();
     },
-    [me?.userUuid],
+    [me?.userUuid, requireOrganizerKeys],
   );
 
   useEffect(() => {
@@ -960,21 +1055,71 @@ function MessagesChatInner() {
   }, []);
 
   const closeChat = useCallback(() => {
-    if (!selectedOtherUuid) return;
+    if (!selectedTarget) return;
     applyPanelTransition("fromLeft");
-    setSelectedOtherUuid(null);
+    setSelectedTarget(null);
     setSelectedPeer(null);
-  }, [applyPanelTransition, selectedOtherUuid]);
+  }, [applyPanelTransition, selectedTarget]);
+
+  useEffect(() => {
+    const onPopToList = () => closeChat();
+    window.addEventListener(MESSAGES_POP_TO_LIST_EVENT, onPopToList);
+    return () => window.removeEventListener(MESSAGES_POP_TO_LIST_EVENT, onPopToList);
+  }, [closeChat]);
+
+  const archiveGroup = useCallback(
+    (conversationUuid: string) => {
+      const uuid = conversationUuid.trim();
+      if (!uuid) return;
+      if (!requireOrganizerKeys()) return;
+      if (!canArchivePeer) {
+        window.alert(
+          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+        );
+        return;
+      }
+      void (async () => {
+        const ok = await setChatListGroupArchived(uuid, true);
+        if (!ok) {
+          window.alert(
+            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+          );
+          return;
+        }
+        if (selectedGroupUuid === uuid) closeChat();
+        notifyMessagesUnreadChanged();
+      })();
+    },
+    [canArchivePeer, closeChat, requireOrganizerKeys, selectedGroupUuid],
+  );
+
+  const unarchiveGroup = useCallback(
+    (conversationUuid: string) => {
+      const uuid = conversationUuid.trim();
+      if (!uuid) return;
+      if (!requireOrganizerKeys()) return;
+      void (async () => {
+        await setChatListGroupArchived(uuid, false);
+        notifyMessagesUnreadChanged();
+      })();
+    },
+    [requireOrganizerKeys],
+  );
 
   const switchChat = useCallback(
-    (chat: ConversationListItemDto, fromMainList: boolean) => {
-      if (chat.otherUserUuid === selectedOtherUuid) return;
+    (chat: ConversationListItemDto) => {
+      if (
+        selectedTarget?.kind === "dm" &&
+        selectedTarget.otherUserUuid === chat.otherUserUuid
+      ) {
+        return;
+      }
 
-      if (!selectedOtherUuid) {
+      if (!selectedTarget) {
         applyPanelTransition("fromRight");
-      } else {
+      } else if (selectedTarget.kind === "dm") {
         const prevIdx = conversationsRef.current.findIndex(
-          (c) => c.otherUserUuid === selectedOtherUuid,
+          (c) => c.otherUserUuid === selectedTarget.otherUserUuid,
         );
         const nextIdx = conversationsRef.current.findIndex(
           (c) => c.otherUserUuid === chat.otherUserUuid,
@@ -984,13 +1129,29 @@ function MessagesChatInner() {
         } else {
           applyPanelTransition("fromRight");
         }
+      } else {
+        applyPanelTransition("fromRight");
       }
 
-      // alignRailScrollFromMainListRef.current = fromMainList;
       setSelectedPeer(chat);
-      setSelectedOtherUuid(chat.otherUserUuid);
+      setSelectedTarget({ kind: "dm", otherUserUuid: chat.otherUserUuid });
     },
-    [applyPanelTransition, selectedOtherUuid],
+    [applyPanelTransition, selectedTarget],
+  );
+
+  const openGroupChat = useCallback(
+    (conversationUuid: string) => {
+      if (
+        selectedTarget?.kind === "groupChat" &&
+        selectedTarget.conversationUuid === conversationUuid
+      ) {
+        return;
+      }
+      applyPanelTransition("fromRight");
+      setSelectedPeer(null);
+      setSelectedTarget({ kind: "groupChat", conversationUuid });
+    },
+    [applyPanelTransition, selectedTarget],
   );
 
   const applyConversationPage = useCallback((page: MsgConversationsPage) => {
@@ -1035,11 +1196,55 @@ function MessagesChatInner() {
     if (!isClient) return;
     const onMessagesChanged = (event: Event) => {
       scheduleConversationListRefresh();
+      void refreshGroupsRef.current?.();
       const detail = (event as CustomEvent<MessagesChangedDetail | undefined>).detail;
       const incomingConversationUuid = detail?.conversationUuid?.trim().toLowerCase();
+      const signalKind = detail?.kind;
       const viewerUuid = me?.userUuid?.trim() ?? "";
+      if (!incomingConversationUuid || !viewerUuid) return;
+
+      const openGroupUuid = selectedGroupUuid?.trim().toLowerCase() ?? "";
+      const openIsGroup =
+        selectedTarget?.kind === "groupChat" && openGroupUuid.length > 0;
+      if (
+        openIsGroup &&
+        incomingConversationUuid === openGroupUuid &&
+        signalKind !== "dm"
+      ) {
+        const viewerNorm = viewerUuid.toLowerCase();
+        invalidateGroupConversationThread(viewerNorm, selectedGroupUuid!);
+        void (async () => {
+          try {
+            const page = await getGroupConversationThread(viewerNorm, selectedGroupUuid!);
+            let rows = groupApiMessagesToThread(page.items);
+            const pending = pendingOutgoingRef.current;
+            if (pending && !rows.some((r) => r.messageUuid === pending.messageUuid)) {
+              rows = mergePendingOutgoing(rows, pending);
+            }
+            setThreadMessages(rows);
+            setThreadFetchedForViewerNorm(viewerNorm);
+          } catch {
+            /* keep current thread */
+          }
+        })();
+        if (document.visibilityState !== "visible") return;
+        void apiMarkGroupRead(selectedGroupUuid!)
+          .then(() => {
+            setGroupChats((prev) =>
+              prev.map((g) =>
+                g.conversationUuid === selectedGroupUuid ? { ...g, unreadCount: 0 } : g,
+              ),
+            );
+            notifyMessagesUnreadChanged();
+          })
+          .catch(() => {});
+        return;
+      }
+
+      if (signalKind === "groupChat") return;
+
       const peer = selectedOtherUuid?.trim() ?? "";
-      if (!incomingConversationUuid || !viewerUuid || !peer) return;
+      if (!peer) return;
       const openConversationUuid = dmConversationUuid(viewerUuid, peer).toLowerCase();
       if (incomingConversationUuid !== openConversationUuid) return;
 
@@ -1076,7 +1281,14 @@ function MessagesChatInner() {
     };
     window.addEventListener(MESSAGES_UNREAD_CHANGED_EVENT, onMessagesChanged);
     return () => window.removeEventListener(MESSAGES_UNREAD_CHANGED_EVENT, onMessagesChanged);
-  }, [isClient, me?.userUuid, scheduleConversationListRefresh, selectedOtherUuid]);
+  }, [
+    isClient,
+    me?.userUuid,
+    scheduleConversationListRefresh,
+    selectedOtherUuid,
+    selectedGroupUuid,
+    selectedTarget?.kind,
+  ]);
 
   useEffect(() => {
     if (!isClient) return;
@@ -1208,7 +1420,107 @@ function MessagesChatInner() {
       window.clearTimeout(deadlineTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- сброс черновика только при смене чата/зрителя
-  }, [selectedOtherUuid, me?.userUuid]);
+  }, [selectedOtherUuid, selectedGroupUuid, me?.userUuid]);
+
+  const refreshGroups = useCallback(async () => {
+    if (!hasToken || !me?.userUuid) {
+      setGroupChats([]);
+      return;
+    }
+    try {
+      const items = await apiListGroups();
+      const viewer = me.userUuid.trim();
+      const mapped = await Promise.all(
+        items.map(async (item) => {
+          let preview: string | null = null;
+          const wire = item.lastMessageEncryptedWire?.trim();
+          if (wire && fscpMaterial) {
+            preview = await decryptGroupMessagePreview({
+              encryptedPayload: wire,
+              viewerUserUuid: viewer,
+              agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+            });
+          } else if (wire) {
+            preview = "🔒";
+          }
+          return mapGroupListItem(item, preview);
+        }),
+      );
+      setGroupChats((prev) => mergeGroupListRefresh(prev, mapped));
+      setChatListKnownGroupUuids(mapped.map((g) => g.conversationUuid));
+    } catch {
+      /* keep previous list */
+    }
+  }, [fscpMaterial, hasToken, me?.userUuid]);
+
+  const refreshGroupsRef = useRef(refreshGroups);
+  refreshGroupsRef.current = refreshGroups;
+
+  useEffect(() => {
+    if (!isClient || !hasToken) return;
+    void refreshGroups();
+  }, [isClient, hasToken, refreshGroups]);
+
+  useEffect(() => {
+    if (!selectedGroupUuid) {
+      setGroupMembersOpen(false);
+      setGroupMembersError(null);
+      setGroupMembersBusy(false);
+      return;
+    }
+    const viewerNorm = me?.userUuid?.trim().toLowerCase() ?? "";
+    if (!viewerNorm) return;
+    let cancelled = false;
+    setThreadLoading(true);
+    setThreadError(null);
+    void (async () => {
+      try {
+        invalidateGroupConversationThread(viewerNorm, selectedGroupUuid);
+        const [page, detail] = await Promise.all([
+          getGroupConversationThread(viewerNorm, selectedGroupUuid),
+          apiGetGroup(selectedGroupUuid),
+        ]);
+        if (cancelled) return;
+        setThreadMessages(groupApiMessagesToThread(page.items));
+        setThreadFetchedForViewerNorm(viewerNorm);
+        setGroupChats((prev) => {
+          const existing = prev.find((g) => g.conversationUuid === selectedGroupUuid);
+          const base = existing ?? mapGroupListItem({
+            conversationUuid: detail.conversationUuid,
+            title: detail.title,
+            createdByUserUuid: detail.createdByUserUuid,
+            createdAt: detail.createdAt,
+            memberCount: detail.members.length,
+            lastMessageEncryptedWire: null,
+            lastMessageAt: null,
+            lastMessageIsFromMe: false,
+            lastMessageSenderDisplayName: null,
+            unreadCount: 0,
+          });
+          const merged = mergeGroupDetail(base, detail);
+          if (existing) {
+            return prev.map((g) =>
+              g.conversationUuid === selectedGroupUuid ? { ...merged, unreadCount: 0 } : g,
+            );
+          }
+          return [...prev, { ...merged, unreadCount: 0 }];
+        });
+        await apiMarkGroupRead(selectedGroupUuid);
+        notifyMessagesUnreadChanged();
+      } catch (e) {
+        if (!cancelled) {
+          setThreadError(
+            e instanceof ApiRequestError ? e.message : "Не удалось загрузить группу.",
+          );
+        }
+      } finally {
+        if (!cancelled) setThreadLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGroupUuid, me?.userUuid]);
 
   useEffect(() => {
     if (!isClient || !hasToken) return;
@@ -1232,12 +1544,13 @@ function MessagesChatInner() {
       otherUserIsOnline: false,
       otherUserLastSeenAt: null,
     });
-    setSelectedOtherUuid(withUuid);
+    setSelectedTarget({ kind: "dm", otherUserUuid: withUuid });
     router.replace("/messages", { scroll: false });
   }, [isClient, hasToken, router, searchParams, applyPanelTransition]);
 
   useEffect(() => {
     if (!isClient || !hasToken || !selectedOtherUuid) {
+      if (selectedGroupUuid) return;
       threadFetchContextRef.current = { peer: null, viewerNorm: "" };
       setThreadMessages([]);
       setThreadFetchedForViewerNorm(null);
@@ -1313,7 +1626,7 @@ function MessagesChatInner() {
     return () => {
       cancelled = true;
     };
-  }, [isClient, hasToken, selectedOtherUuid, me?.userUuid]);
+  }, [isClient, hasToken, selectedOtherUuid, selectedGroupUuid, me?.userUuid]);
 
   const pinMessagesToBottom = useCallback((behavior: ScrollBehavior) => {
     const el = scrollMessagesRef.current;
@@ -1353,6 +1666,31 @@ function MessagesChatInner() {
         continue;
       }
       if (m.content?.trim()) continue;
+      if (isFscpGroupWirePayload(enc)) {
+        if (decryptingRef.current.has(m.messageUuid)) continue;
+        decryptingRef.current.add(m.messageUuid);
+        void decryptGroupMessageWire({
+          wire: enc,
+          viewerUserUuid: me.userUuid.trim(),
+          agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+        })
+          .then((plain) => {
+            setDecryptFailById((prev) => {
+              if (!(m.messageUuid in prev)) return prev;
+              const next = { ...prev };
+              delete next[m.messageUuid];
+              return next;
+            });
+            setDecryptedById((prev) => ({ ...prev, [m.messageUuid]: plain.plaintext }));
+          })
+          .catch(() => {
+            setDecryptFailById((prev) => ({ ...prev, [m.messageUuid]: FSCP_DECRYPT_FAIL_LABEL }));
+          })
+          .finally(() => {
+            decryptingRef.current.delete(m.messageUuid);
+          });
+        continue;
+      }
       if (!isFscpWirePayload(enc)) continue;
       if (decryptingRef.current.has(m.messageUuid)) continue;
       decryptingRef.current.add(m.messageUuid);
@@ -1451,6 +1789,75 @@ function MessagesChatInner() {
     searchQuery,
     sortBy,
   ]);
+
+  /** DM + FSCP-G group rows. Groups in «все» and «Архив» (not custom / people). */
+  const mergedListItems = useMemo((): MessagesListItem[] => {
+    const query = searchQuery.trim().toLowerCase();
+    const items: MessagesListItem[] = filteredConversations.map((conversation) => ({
+      kind: "dm",
+      conversation,
+    }));
+
+    const showGroups =
+      (activeFolder === "all" || activeFolder === "archived") && filterFrom === "all";
+    if (showGroups) {
+      let groups = filterGroupsByFolder(groupChats, activeFolder, archivedByConversation);
+      if (sortBy === "unread") {
+        groups = groups.filter((g) => g.unreadCount > 0);
+      }
+      if (query) {
+        groups = groups.filter((g) => {
+          const title = g.title.toLowerCase();
+          const preview = formatGroupListPreview({
+            preview: g.lastMessagePreview ?? "",
+            isFromMe: g.lastMessageIsFromMe,
+            senderDisplayName: g.lastMessageSenderDisplayName,
+          }).toLowerCase();
+          return title.includes(query) || preview.includes(query);
+        });
+      }
+      for (const group of groups) {
+        items.push({ kind: "groupChat", group });
+      }
+    }
+
+    items.sort((a, b) => {
+      const at =
+        a.kind === "dm"
+          ? Date.parse(a.conversation.lastMessageAt || "") || 0
+          : Date.parse(a.group.lastMessageAt || a.group.createdAt || "") || 0;
+      const bt =
+        b.kind === "dm"
+          ? Date.parse(b.conversation.lastMessageAt || "") || 0
+          : Date.parse(b.group.lastMessageAt || b.group.createdAt || "") || 0;
+      return bt - at;
+    });
+    return items;
+  }, [
+    activeFolder,
+    archivedByConversation,
+    filterFrom,
+    filteredConversations,
+    groupChats,
+    searchQuery,
+    sortBy,
+  ]);
+
+  const selectedGroupChat = useMemo(() => {
+    if (!selectedGroupUuid) return null;
+    return groupChats.find((g) => g.conversationUuid === selectedGroupUuid) ?? null;
+  }, [groupChats, selectedGroupUuid]);
+
+  const groupChatMe = useMemo((): GroupMember | null => {
+    const uuid = me?.userUuid?.trim();
+    if (!uuid || !me) return null;
+    const username = (me.username ?? "").replace(/^@+/, "") || "me";
+    const displayName = profileDisplayName(me.displayName ?? "", me.username ?? "") || username;
+    return { userUuid: uuid, username, displayName };
+  }, [me]);
+
+  // const railInteractive = mergedListItems.length > 0;
+  // const railScrollRef = useRef<HTMLDivElement>(null);
 
   const activeConversationsCount = useMemo(
     () => conversations.filter((item) => !isPeerArchived(item.otherUserUuid)).length,
@@ -1590,9 +1997,10 @@ function MessagesChatInner() {
   }, [compose.text, compose.mode, selectedConversationUuid, selectedOtherUuid]);
 
   const messagesPageTitle = useMemo(() => {
+    if (selectedGroupChat) return selectedGroupChat.title;
     if (!chatHeaderPeer) return null;
     return profileDisplayName(chatHeaderPeer.otherDisplayName, chatHeaderPeer.otherUsername);
-  }, [chatHeaderPeer]);
+  }, [chatHeaderPeer, selectedGroupChat]);
 
   useFloraPageTitleOverride(messagesPageTitle);
 
@@ -1618,52 +2026,83 @@ function MessagesChatInner() {
     return { kind: "text" as const, text: "Не в сети", aria: "Не в сети" as const };
   }, [chatHeaderPeer, presenceClock, peerTyping]);
 
-  // const railChatsSource = useMemo(
-  //   (): ConversationListItemDto[] => conversations.slice(0, 16),
-  //   [conversations],
-  // );
+  /** Единая модель шапки открытого чата: один JSX, разные данные / ⋮. */
+  const openChatHeader = useMemo(() => {
+    if (selectedGroupChat) {
+      const membersLabel = formatGroupMembersLabel(
+        selectedGroupChat.memberCount || selectedGroupChat.members.length,
+      );
+      return {
+        kind: "group" as const,
+        title: selectedGroupChat.title,
+        handle: null as string | null,
+        profileHref: null as string | null,
+        status: { kind: "text" as const, text: membersLabel, aria: membersLabel },
+        online: false,
+        avatar: {
+          kind: "group" as const,
+          title: selectedGroupChat.title,
+          seed: selectedGroupChat.conversationUuid,
+        },
+        more: {
+          chatMenuKind: "group" as const,
+          conversationIsMuted: false,
+          accessibility: {
+            dialog: `Меню группы «${selectedGroupChat.title}»`,
+            triggerOpen: `Действия — ${selectedGroupChat.title}`,
+            triggerClose: "Закрыть меню группы",
+          },
+        },
+      };
+    }
+    if (!chatHeaderPeer) return null;
+    const title =
+      chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername || "Пользователь";
+    const handle = chatHeaderPeer.otherUsername.replace(/^@+/, "") || "…";
+    const profileSlug =
+      chatHeaderPeer.otherUsername.replace(/^@+/, "") || chatHeaderPeer.otherUserUuid;
+    return {
+      kind: "dm" as const,
+      title,
+      handle,
+      profileHref: `/profile/${encodeURIComponent(profileSlug)}`,
+      status: chatHeaderPresenceLine,
+      online: chatHeaderPeer.otherUserIsOnline,
+      avatar: {
+        kind: "dm" as const,
+        displayName: chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername || "Пользователь",
+        username: chatHeaderPeer.otherUsername,
+        seed: chatHeaderPeer.otherUserUuid,
+      },
+      more: {
+        chatMenuKind: "dm" as const,
+        conversationIsMuted: selectedOtherUuid
+          ? getPeerMute(selectedOtherUuid) !== null
+          : false,
+        accessibility: {
+          dialog: `Меню чата с ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
+          triggerOpen: `Действия — ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
+          triggerClose: "Закрыть меню чата",
+        },
+      },
+    };
+  }, [
+    selectedGroupChat,
+    chatHeaderPeer,
+    chatHeaderPresenceLine,
+    selectedOtherUuid,
+    getPeerMute,
+  ]);
 
-  // const railInteractive = conversations.length > 0;
-
-  // const railScrollRef = useRef<HTMLDivElement>(null);
+  // Mini-rail (временно скрыт ниже в JSX). Источник: mergedListItems.slice(0, 16)
+  // — DM + groupChat. Active: selectedTarget.kind === "dm" | "groupChat".
+  // const railChatsSource = useMemo(() => mergedListItems.slice(0, 16), [mergedListItems]);
 
   // useLayoutEffect(() => {
   //   const scrollEl = railScrollRef.current;
-  //   if (!scrollEl || !selectedOtherUuid) return;
-
-  //   if (!alignRailScrollFromMainListRef.current) {
-  //     return;
-  //   }
-
-  //   alignRailScrollFromMainListRef.current = false;
-
-  //   const idx = railChatsSource.findIndex((c) => c.otherUserUuid === selectedOtherUuid);
-  //   if (idx < 0) {
-  //     scrollEl.scrollTop = 0;
-  //     return;
-  //   }
-
-  //   const n = railChatsSource.length;
-  //   const ul = scrollEl.querySelector("ul");
-  //   const row = ul?.querySelectorAll<HTMLLIElement>(":scope > li")[idx];
-  //   if (!row) {
-  //     return;
-  //   }
-
-  //   const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
-
-  //   if (idx <= 2) {
-  //     scrollEl.scrollTop = 0;
-  //   } else if (idx >= n - 3) {
-  //     scrollEl.scrollTop = maxScroll;
-  //   } else {
-  //     const rowTopInContent =
-  //       row.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
-  //     const rowH = row.offsetHeight;
-  //     const desired = rowTopInContent - (scrollEl.clientHeight - rowH) / 2;
-  //     scrollEl.scrollTop = Math.max(0, Math.min(desired, maxScroll));
-  //   }
-  // }, [selectedOtherUuid, railChatsSource]);
+  //   if (!scrollEl || !selectedTarget) return;
+  //   ...
+  // }, [selectedTarget, railChatsSource]);
 
   const displayMessageContent = useCallback(
     (m: MessageThreadItemDto): FscpMessagePlaintext | "decrypting" | "failed" => {
@@ -1673,7 +2112,7 @@ function MessagesChatInner() {
         const demoPlain = parseDemoPlaintextWire(enc);
         if (demoPlain) return demoPlain;
         if (decryptFailById[m.messageUuid]) return "failed";
-        if (isFscpWirePayload(enc)) return "decrypting";
+        if (isFscpWirePayload(enc) || isFscpGroupWirePayload(enc)) return "decrypting";
       }
       if (m.content?.trim()) return messagePlaintextFromText(m.content);
       return messagePlaintextFromText("—");
@@ -1711,7 +2150,7 @@ function MessagesChatInner() {
    * useEffect+rAF давал кадр «прыжка» до counter-lift — визуальное дергание.
    */
   useLayoutEffect(() => {
-    if (!selectedOtherUuid) return;
+    if (!selectedOtherUuid && !selectedGroupUuid) return;
     if (threadLoading) {
       scrollTrackingReadyRef.current = false;
       return;
@@ -1806,13 +2245,14 @@ function MessagesChatInner() {
     threadRenderItems,
     threadLoading,
     selectedOtherUuid,
+    selectedGroupUuid,
     openRevealDeadlineElapsed,
     displayMessageContent,
     pinMessagesToBottom,
   ]);
 
   useEffect(() => {
-    if (!selectedOtherUuid) return;
+    if (!selectedOtherUuid && !selectedGroupUuid) return;
     const scrollEl = scrollMessagesRef.current;
     if (!scrollEl) return;
 
@@ -1835,7 +2275,7 @@ function MessagesChatInner() {
     const view = messagesChatViewRef.current;
     if (view) ro.observe(view);
     return () => ro.disconnect();
-  }, [selectedOtherUuid, threadMessages.length, pinMessagesToBottom]);
+  }, [selectedOtherUuid, selectedGroupUuid, threadMessages.length, pinMessagesToBottom]);
 
   const copyMessageContent = useCallback(async (content: FscpMessagePlaintext | "decrypting" | "failed") => {
     if (content === "decrypting" || content === "failed") return;
@@ -1965,7 +2405,17 @@ function MessagesChatInner() {
     }
     setDeleteConversationError(null);
     setDeleteConversationModalClosing(false);
-    setPendingDeleteConversation({ peerUuid, displayName });
+    setPendingDeleteConversation({ kind: "dm", peerUuid, displayName });
+  }, []);
+
+  const openDeleteGroupModal = useCallback((conversationUuid: string, displayName: string) => {
+    if (deleteConversationCloseTimerRef.current) {
+      window.clearTimeout(deleteConversationCloseTimerRef.current);
+      deleteConversationCloseTimerRef.current = null;
+    }
+    setDeleteConversationError(null);
+    setDeleteConversationModalClosing(false);
+    setPendingDeleteConversation({ kind: "group", conversationUuid, displayName });
   }, []);
 
   const closeDeleteConversationModal = useCallback(() => {
@@ -1973,10 +2423,143 @@ function MessagesChatInner() {
     dismissDeleteConversationModal();
   }, [deleteConversationBusy, dismissDeleteConversationModal]);
 
+  const handleDeleteGroup = useCallback(
+    (conversationUuid: string) => {
+      const uuid = conversationUuid.trim();
+      if (!uuid) return;
+      const deletingOpen = selectedGroupUuid === uuid;
+      setDeleteConversationBusy(true);
+      setDeleteConversationError(null);
+      void (async () => {
+        try {
+          await apiLeaveGroup(uuid);
+          setGroupChats((prev) => prev.filter((g) => g.conversationUuid !== uuid));
+          if (deletingOpen) closeChat();
+          dismissDeleteConversationModal();
+          notifyMessagesUnreadChanged();
+        } catch (e) {
+          setDeleteConversationError(
+            e instanceof ApiRequestError ? e.message : "Не удалось выйти из группы.",
+          );
+        } finally {
+          setDeleteConversationBusy(false);
+        }
+      })();
+    },
+    [closeChat, dismissDeleteConversationModal, selectedGroupUuid],
+  );
+
+  const applyGroupDetailLocal = useCallback((detail: Awaited<ReturnType<typeof apiGetGroup>>) => {
+    setGroupChats((prev) => {
+      const existing = prev.find((g) => g.conversationUuid === detail.conversationUuid);
+      const base =
+        existing ??
+        mapGroupListItem({
+          conversationUuid: detail.conversationUuid,
+          title: detail.title,
+          createdByUserUuid: detail.createdByUserUuid,
+          createdAt: detail.createdAt,
+          memberCount: detail.members.length,
+          lastMessageEncryptedWire: null,
+          lastMessageAt: null,
+          lastMessageIsFromMe: false,
+          lastMessageSenderDisplayName: null,
+          unreadCount: 0,
+        });
+      const merged = mergeGroupDetail(base, detail);
+      if (existing) {
+        return prev.map((g) =>
+          g.conversationUuid === detail.conversationUuid ? merged : g,
+        );
+      }
+      return [merged, ...prev];
+    });
+  }, []);
+
+  const handleGroupSaveTitle = useCallback(
+    async (nextTitle: string): Promise<boolean> => {
+      const uuid = selectedGroupUuid?.trim();
+      if (!uuid) return false;
+      setGroupMembersBusy(true);
+      setGroupMembersError(null);
+      try {
+        const detail = await apiPatchGroupTitle(uuid, nextTitle);
+        applyGroupDetailLocal(detail);
+        return true;
+      } catch (e) {
+        setGroupMembersError(
+          e instanceof ApiRequestError ? e.message : "Не удалось сохранить название.",
+        );
+        return false;
+      } finally {
+        setGroupMembersBusy(false);
+      }
+    },
+    [applyGroupDetailLocal, selectedGroupUuid],
+  );
+
+  const handleGroupRemoveMember = useCallback(
+    async (userUuid: string): Promise<boolean> => {
+      const uuid = selectedGroupUuid?.trim();
+      const target = userUuid.trim();
+      if (!uuid || !target) return false;
+      setGroupMembersBusy(true);
+      setGroupMembersError(null);
+      try {
+        await apiRemoveGroupMember(uuid, target);
+        const detail = await apiGetGroup(uuid);
+        applyGroupDetailLocal(detail);
+        return true;
+      } catch (e) {
+        setGroupMembersError(
+          e instanceof ApiRequestError ? e.message : "Не удалось удалить участника.",
+        );
+        return false;
+      } finally {
+        setGroupMembersBusy(false);
+      }
+    },
+    [applyGroupDetailLocal, selectedGroupUuid],
+  );
+
+  const handleGroupAddMember = useCallback(
+    async (userUuid: string): Promise<boolean> => {
+      const uuid = selectedGroupUuid?.trim();
+      const target = userUuid.trim();
+      if (!uuid || !target) return false;
+      setGroupMembersBusy(true);
+      setGroupMembersError(null);
+      try {
+        const { ok, missing } = await filterMembersWithE2eKeys([target]);
+        if (missing.length > 0 || ok.length === 0) {
+          setGroupMembersError(
+            "У участника нет ключа шифрования. Пусть один раз войдёт в аккаунт.",
+          );
+          return false;
+        }
+        const detail = await apiAddGroupMember(uuid, ok[0]!);
+        applyGroupDetailLocal(detail);
+        return true;
+      } catch (e) {
+        setGroupMembersError(
+          e instanceof ApiRequestError ? e.message : "Не удалось добавить участника.",
+        );
+        return false;
+      } finally {
+        setGroupMembersBusy(false);
+      }
+    },
+    [applyGroupDetailLocal, selectedGroupUuid],
+  );
+
   const confirmDeleteConversation = useCallback(() => {
     if (!pendingDeleteConversation) return;
+    if (pendingDeleteConversation.kind === "group") {
+      handleDeleteGroup(pendingDeleteConversation.conversationUuid);
+      return;
+    }
     void handleDeleteConversation(pendingDeleteConversation.peerUuid);
-  }, [handleDeleteConversation, pendingDeleteConversation]);
+  }, [handleDeleteConversation, handleDeleteGroup, pendingDeleteConversation]);
 
   // Safety number 1:1 (FSCP §Safety number) — модал «Проверка шифрования».
   // Паттерн pending* как у delete-модала: peer фиксируется в момент открытия,
@@ -2050,10 +2633,11 @@ function MessagesChatInner() {
 
   useEffect(() => {
     setReplyTo(null);
-  }, [selectedOtherUuid]);
+  }, [selectedOtherUuid, selectedGroupUuid]);
 
   const handleAttachPick = useCallback(
     (kind: ComposeAttachKind, files: FileList) => {
+      const isGroup = selectedTarget?.kind === "groupChat";
       if (kind === "photo") {
         const result = compose.mergeImages(files);
         const err = messageImageAttachError(result);
@@ -2064,7 +2648,7 @@ function MessagesChatInner() {
         setThreadError(null);
         return;
       }
-      if (kind !== "video") return;
+      if (isGroup || kind !== "video") return;
       const file = files[0];
       if (!file) return;
       const attachError = messageVideoAttachError(file);
@@ -2075,7 +2659,7 @@ function MessagesChatInner() {
       setThreadError(null);
       compose.addVideoFromFile(file);
     },
-    [compose],
+    [compose, selectedTarget],
   );
 
   const sendVoiceMessageOptimistic = useCallback(async () => {
@@ -2382,7 +2966,369 @@ function MessagesChatInner() {
     selectedOtherUuid,
   ]);
 
+  const resolveGroupMemberUuids = useCallback(async (): Promise<string[] | null> => {
+    if (!selectedGroupUuid) return null;
+    let memberUuids =
+      selectedGroupChat?.members.map((m) => m.userUuid).filter(Boolean) ?? [];
+    if (memberUuids.length >= 2) return memberUuids;
+    try {
+      const detail = await apiGetGroup(selectedGroupUuid);
+      memberUuids = detail.members.map((m) => m.userUuid);
+      setGroupChats((prev) =>
+        prev.map((g) =>
+          g.conversationUuid === selectedGroupUuid ? mergeGroupDetail(g, detail) : g,
+        ),
+      );
+      return memberUuids;
+    } catch (e) {
+      setThreadError(
+        e instanceof ApiRequestError ? e.message : "Не удалось загрузить участников группы.",
+      );
+      return null;
+    }
+  }, [selectedGroupChat?.members, selectedGroupUuid]);
+
+  const sendGroupVoiceMessageOptimistic = useCallback(async () => {
+    if (
+      selectedTarget?.kind !== "groupChat" ||
+      !selectedGroupUuid ||
+      compose.mode !== "voice" ||
+      !compose.voice
+    ) {
+      return;
+    }
+    const myUuid = me?.userUuid?.trim();
+    if (!myUuid) {
+      setThreadError("Профиль не загружен. Обновите страницу.");
+      return;
+    }
+    const voice = compose.voice;
+    if (voice.durationMs > VOICE_MAX_DURATION_MS) {
+      setThreadError("Голосовое длиннее 30 минут.");
+      return;
+    }
+    if (fscpBootstrapLoading) {
+      setThreadError("Ключи шифрования ещё загружаются…");
+      return;
+    }
+    if (!fscpMaterial) {
+      setThreadError(
+        fscpBootstrapError
+          ? `FSCP: ${fscpBootstrapError}`
+          : "Нужно разблокировать ключи шифрования, чтобы писать в группу.",
+      );
+      if (fscpStatusNeedsPassword(fscpStatus)) openFscpUnlock();
+      return;
+    }
+    const memberUuids = await resolveGroupMemberUuids();
+    if (!memberUuids || memberUuids.length < 2) return;
+
+    const groupUuid = selectedGroupUuid;
+    const optimisticMessageUuid = floraNewUuid();
+    const tempAssetUuid = voice.id;
+    const optimisticVoicePayload = plaintextFromBlocks([
+      {
+        kind: "voice",
+        assetUuid: tempAssetUuid,
+        durationMs: voice.durationMs,
+        waveform: voice.waveform,
+        contentType: voice.contentType,
+        encryption: { algorithm: "aes-gcm", keyBase64Url: "pending", nonceBase64Url: "pending" },
+      },
+    ]);
+    registerPendingVoiceBlob(tempAssetUuid, voice.blob);
+    markVoiceSendStarted(tempAssetUuid);
+    const preparedVoicePromise = awaitPreparedVoiceWithFallback(
+      scheduleVoiceTranscode(tempAssetUuid, voice.blob),
+      { blob: voice.blob, contentType: voice.contentType },
+    );
+
+    const pendingRow: MessageThreadItemDto = {
+      messageUuid: optimisticMessageUuid,
+      content: null,
+      encryptedForMe: null,
+      createdAt: new Date().toISOString(),
+      isFromMe: true,
+      senderUserUuid: myUuid,
+      sendStatus: "sending",
+    };
+    pendingInsertLiftRef.current = true;
+    pendingOutgoingRef.current = pendingRow;
+    setThreadMessages((prev) => [...prev, pendingRow]);
+    setDecryptedById((prev) => ({ ...prev, [optimisticMessageUuid]: optimisticVoicePayload }));
+    compose.reset();
+    setReplyTo(null);
+    setThreadError(null);
+
+    const removeOptimistic = () => {
+      setThreadMessages((prev) => prev.filter((m) => m.messageUuid !== optimisticMessageUuid));
+      setDecryptedById((prev) => {
+        const next = { ...prev };
+        delete next[optimisticMessageUuid];
+        return next;
+      });
+      pendingOutgoingRef.current = null;
+    };
+
+    try {
+      const prepared = await preparedVoicePromise;
+      if (prepared.blob.size > VOICE_MAX_UPLOAD_BYTES) {
+        throw new Error("Голосовое слишком большое для отправки.");
+      }
+      const encrypted = await encryptVoiceBlob(prepared.blob);
+      const uploaded = await apiUploadGroupVoiceAsset({
+        conversationUuid: groupUuid,
+        encryptedBlob: encrypted.encryptedBlob,
+        durationMs: voice.durationMs,
+      });
+      registerPendingVoiceBlob(uploaded.voiceAssetUuid, prepared.blob);
+      const finalPayload = plaintextFromBlocks([
+        {
+          kind: "voice",
+          assetUuid: uploaded.voiceAssetUuid,
+          durationMs: voice.durationMs,
+          waveform: voice.waveform,
+          contentType: prepared.contentType,
+          encryption: {
+            algorithm: "aes-gcm",
+            keyBase64Url: encrypted.keyBase64Url,
+            nonceBase64Url: encrypted.nonceBase64Url,
+          },
+        },
+      ]);
+      const wire = await buildGroupBlocksMessageWire({
+        conversationUuid: groupUuid,
+        senderUserUuid: myUuid,
+        material: fscpMaterial,
+        memberUserUuids: memberUuids,
+        blocks: finalPayload.blocks,
+      });
+      const sent = await apiSendGroupMessage(groupUuid, wire, {
+        voiceAssetUuids: [uploaded.voiceAssetUuid],
+      });
+      const realRow: MessageThreadItemDto = {
+        messageUuid: sent.messageUuid,
+        content: null,
+        encryptedForMe: sent.encryptedWire,
+        createdAt: sent.createdAt,
+        isFromMe: true,
+        senderUserUuid: myUuid,
+      };
+      pendingOutgoingRef.current = realRow;
+      setDecryptedById((prev) => {
+        const next = { ...prev };
+        delete next[optimisticMessageUuid];
+        next[sent.messageUuid] = finalPayload;
+        return next;
+      });
+      invalidateGroupConversationThread(myUuid.toLowerCase(), groupUuid);
+      const page = await getGroupConversationThread(myUuid.toLowerCase(), groupUuid);
+      noteOptimisticUuidReplace(
+        prevSeenMessageIdsRef.current,
+        optimisticMessageUuid,
+        sent.messageUuid,
+      );
+      setThreadMessages(groupApiMessagesToThread(page.items));
+      pendingOutgoingRef.current = null;
+      clearPendingVoiceBlob(uploaded.voiceAssetUuid);
+      void refreshGroups();
+    } catch (e) {
+      removeOptimistic();
+      setThreadError(
+        e instanceof ApiRequestError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Не удалось отправить голосовое сообщение.",
+      );
+    } finally {
+      markVoiceSendFinished(tempAssetUuid);
+      clearPendingVoiceBlob(tempAssetUuid);
+    }
+  }, [
+    compose,
+    fscpBootstrapError,
+    fscpBootstrapLoading,
+    fscpMaterial,
+    fscpStatus,
+    me?.userUuid,
+    openFscpUnlock,
+    refreshGroups,
+    resolveGroupMemberUuids,
+    selectedGroupUuid,
+    selectedTarget?.kind,
+  ]);
+
   const handleSend = useCallback(async () => {
+    if (selectedTarget?.kind === "groupChat" && selectedGroupUuid && groupChatMe) {
+      if (compose.mode === "voice") {
+        void sendGroupVoiceMessageOptimistic();
+        return;
+      }
+      if (!compose.canSend) return;
+      if (sending) return;
+      const textBody = compose.text.trim();
+      const pendingImages = compose.images;
+      if (compose.videos.length > 0) {
+        setThreadError("Видео в групповых чатах пока не поддерживается.");
+        return;
+      }
+      if (!textBody && pendingImages.length === 0) return;
+      const myUuid = me?.userUuid?.trim();
+      if (!myUuid) {
+        setThreadError("Профиль не загружен. Обновите страницу.");
+        return;
+      }
+      if (fscpBootstrapLoading) {
+        setThreadError("Ключи шифрования ещё загружаются…");
+        return;
+      }
+      if (!fscpMaterial) {
+        setThreadError(
+          fscpBootstrapError
+            ? `FSCP: ${fscpBootstrapError}`
+            : "Нужно разблокировать ключи шифрования, чтобы писать в группу.",
+        );
+        if (fscpStatusNeedsPassword(fscpStatus)) openFscpUnlock();
+        return;
+      }
+      const memberUuids = await resolveGroupMemberUuids();
+      if (!memberUuids || memberUuids.length < 2) return;
+
+      pendingInsertLiftRef.current = true;
+      setSending(true);
+      setThreadError(null);
+      const tempUuid = `pending-group-${Date.now()}`;
+      const optimisticBlocks: FscpMessageBlock[] = [];
+      if (textBody) optimisticBlocks.push({ kind: "text", body: textBody });
+      for (const image of pendingImages) {
+        optimisticBlocks.push({
+          kind: "image",
+          assetUuid: image.id,
+          contentType: image.sourceFile.type || "image/jpeg",
+          encryption: { algorithm: "aes-gcm", keyBase64Url: "pending", nonceBase64Url: "pending" },
+        });
+      }
+      const optimisticPayload = plaintextFromBlocks(
+        optimisticBlocks.length > 0 ? optimisticBlocks : [{ kind: "text", body: textBody }],
+      );
+      const pendingRow: MessageThreadItemDto = {
+        messageUuid: tempUuid,
+        content: textBody || null,
+        encryptedForMe: null,
+        createdAt: new Date().toISOString(),
+        isFromMe: true,
+        senderUserUuid: myUuid,
+        sendStatus: "sending",
+      };
+      pendingOutgoingRef.current = pendingRow;
+      setThreadMessages((prev) => [...prev, pendingRow]);
+      setDecryptedById((prev) => ({ ...prev, [tempUuid]: optimisticPayload }));
+      const imageSendIds = pendingImages.map((image) => image.id);
+      compose.reset();
+      setReplyTo(null);
+      try {
+        const blocks: FscpMessageBlock[] = [];
+        const imageAssetUuids: string[] = [];
+        if (textBody) blocks.push({ kind: "text", body: textBody });
+        if (pendingImages.length > 0) {
+          for (const imageId of imageSendIds) markMessageImageSendStarted(imageId);
+          try {
+            const preparedImages = await Promise.all(
+              pendingImages.map((image) =>
+                scheduleMessageImagePrepare(image.id, image.sourceFile),
+              ),
+            );
+            for (let index = 0; index < pendingImages.length; index += 1) {
+              const prepared = preparedImages[index];
+              if (!prepared) continue;
+              const friBlob = await encodeImageBlobToFrc(prepared.blob, 85);
+              if (friBlob.size > MAX_MESSAGE_IMAGE_BYTES) {
+                throw new Error("FRC-I версия фото превышает лимит 5 МиБ.");
+              }
+              const encryptedFrc = await encryptVoiceBlob(friBlob);
+              const frcUploaded = await apiUploadGroupImageAsset({
+                conversationUuid: selectedGroupUuid,
+                encryptedBlob: encryptedFrc.encryptedBlob,
+                contentType: friBlob.type,
+              });
+              imageAssetUuids.push(frcUploaded.imageAssetUuid);
+              blocks.push({
+                kind: "image",
+                assetUuid: frcUploaded.imageAssetUuid,
+                contentType: friBlob.type,
+                encryption: {
+                  algorithm: "aes-gcm",
+                  keyBase64Url: encryptedFrc.keyBase64Url,
+                  nonceBase64Url: encryptedFrc.nonceBase64Url,
+                },
+              });
+            }
+          } finally {
+            for (const imageId of imageSendIds) markMessageImageSendFinished(imageId);
+          }
+        }
+        const wire =
+          blocks.length === 1 && blocks[0]?.kind === "text"
+            ? await buildGroupTextMessageWire({
+                conversationUuid: selectedGroupUuid,
+                senderUserUuid: myUuid,
+                material: fscpMaterial,
+                memberUserUuids: memberUuids,
+                text: textBody,
+              })
+            : await buildGroupBlocksMessageWire({
+                conversationUuid: selectedGroupUuid,
+                senderUserUuid: myUuid,
+                material: fscpMaterial,
+                memberUserUuids: memberUuids,
+                blocks,
+              });
+        const sent = await apiSendGroupMessage(selectedGroupUuid, wire, {
+          imageAssetUuids: imageAssetUuids.length > 0 ? imageAssetUuids : undefined,
+        });
+        const finalPayload = plaintextFromBlocks(blocks);
+        const realRow: MessageThreadItemDto = {
+          messageUuid: sent.messageUuid,
+          content: null,
+          encryptedForMe: sent.encryptedWire,
+          createdAt: sent.createdAt,
+          isFromMe: true,
+          senderUserUuid: myUuid,
+        };
+        pendingOutgoingRef.current = realRow;
+        setDecryptedById((prev) => {
+          const next = { ...prev };
+          delete next[tempUuid];
+          next[sent.messageUuid] = finalPayload;
+          return next;
+        });
+        invalidateGroupConversationThread(myUuid.toLowerCase(), selectedGroupUuid);
+        const page = await getGroupConversationThread(myUuid.toLowerCase(), selectedGroupUuid);
+        setThreadMessages(groupApiMessagesToThread(page.items));
+        pendingOutgoingRef.current = null;
+        void refreshGroups();
+      } catch (e) {
+        setThreadMessages((prev) => prev.filter((m) => m.messageUuid !== tempUuid));
+        setDecryptedById((prev) => {
+          const next = { ...prev };
+          delete next[tempUuid];
+          return next;
+        });
+        pendingOutgoingRef.current = null;
+        setThreadError(
+          e instanceof ApiRequestError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : "Не удалось отправить сообщение в группу.",
+        );
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     if (!selectedOtherUuid || !compose.canSend) return;
     typingEmitterRef.current?.stop();
     if (compose.mode === "voice") {
@@ -2746,10 +3692,19 @@ function MessagesChatInner() {
     fscpBootstrapError,
     fscpBootstrapLoading,
     fscpMaterial,
+    fscpStatus,
+    openFscpUnlock,
     me?.userUuid,
     refreshConversationList,
+    refreshGroups,
     replyTo,
     selectedOtherUuid,
+    selectedGroupUuid,
+    selectedGroupChat,
+    selectedTarget,
+    groupChatMe,
+    resolveGroupMemberUuids,
+    sendGroupVoiceMessageOptimistic,
     sendVoiceMessageOptimistic,
     sending,
   ]);
@@ -2816,6 +3771,16 @@ function MessagesChatInner() {
     fromTop: styles.messagesChatAnimFromTop,
   });
 
+  const isGroupChatOpen = selectedTarget?.kind === "groupChat";
+  const composeBusy = sending || threadLoading;
+  const composeMediaDisabled = composeBusy;
+  const composeStickersDisabled = composeBusy || isGroupChatOpen;
+
+  useEffect(() => {
+    if (!isGroupChatOpen) return;
+    if (stickerPanelRendered) requestCloseStickerPanel();
+  }, [isGroupChatOpen, stickerPanelRendered, requestCloseStickerPanel]);
+
   const voiceComposeActive = compose.mode === "voice" || voiceRecorder.recording || compose.voice !== null;
   const voiceComposeSource = voiceRecorder.recording ? voiceRecorder.liveWaveform : compose.voice?.waveform ?? [];
   const voiceComposeBars = useMemo(
@@ -2827,7 +3792,7 @@ function MessagesChatInner() {
   return (
     <>
     <section className={styles.page}>
-        {selectedOtherUuid == null ? (
+        {selectedTarget == null ? (
           <div
             key={`list-${panelAnimEpoch}`}
             className={`${styles.messagesListView} ${
@@ -3026,7 +3991,7 @@ function MessagesChatInner() {
                       role="menuitem"
                       onClick={() => {
                         setCreateMenuOpen(false);
-                        setCreateGroupSoonOpen(true);
+                        setCreateGroupOpen(true);
                       }}
                     >
                       <span className={styles.messagesCreateMenuItemIcon}>
@@ -3044,7 +4009,7 @@ function MessagesChatInner() {
             </header>
 
             {listError ? <p className={styles.messagesError}>{listError}</p> : null}
-            {listLoading && conversations.length === 0 ? (
+            {listLoading && conversations.length === 0 && mergedListItems.length === 0 ? (
               <ul className={styles.messagesConversationList} aria-hidden>
                 {Array.from({ length: 6 }, (_, i) => (
                   <li key={i} className={styles.messagesConversationSkeletonRow}>
@@ -3058,7 +4023,7 @@ function MessagesChatInner() {
               </ul>
             ) : null}
 
-            {!listLoading && filteredConversations.length === 0 ? (
+            {!listLoading && mergedListItems.length === 0 ? (
               <p className={emptyHintStyles.hint}>
                 {activeFolder === "archived"
                   ? archivedConversationsCount === 0
@@ -3066,105 +4031,209 @@ function MessagesChatInner() {
                     : "Ничего не найдено. Измените запрос в поиске."
                   : activeFolder !== "all"
                     ? "В этой папке пока нет чатов."
-                    : conversations.length === 0
+                    : conversations.length === 0 && groupChats.length === 0
                       ? "Пока нет переписок. Найдите человека во вкладке «Люди»."
-                      : activeConversationsCount === 0
+                      : activeConversationsCount === 0 && groupChats.length === 0
                         ? "Все чаты в архиве. Откройте Архив справа от фильтров."
                         : "Ничего не найдено. Измените запрос в поиске."}
               </p>
             ) : null}
 
-            {!listLoading && filteredConversations.length > 0 ? (
+            {mergedListItems.length > 0 ? (
               <ul className={styles.messagesConversationList}>
-                {filteredConversations.map((chat) => {
-                  const chatDisplayName = chat.otherDisplayName || chat.otherUsername;
-                  const peerMute = getPeerMute(chat.otherUserUuid);
-                  const peerArchived = isPeerArchived(chat.otherUserUuid);
+                {mergedListItems.map((item) => {
+                  const row =
+                    item.kind === "groupChat"
+                      ? {
+                          key: `groupChat:${item.group.conversationUuid}`,
+                          kind: "group" as const,
+                          title: item.group.title,
+                          handle: null as string | null,
+                          preview: formatGroupListPreview({
+                            preview: item.group.lastMessagePreview ?? "",
+                            isFromMe: item.group.lastMessageIsFromMe,
+                            senderDisplayName: item.group.lastMessageSenderDisplayName,
+                          }),
+                          unreadCount: item.group.unreadCount,
+                          online: false,
+                          mute: null as ReturnType<typeof getPeerMute>,
+                          archived: isConversationArchived(
+                            item.group.conversationUuid,
+                            archivedByConversation,
+                          ),
+                          avatar: {
+                            displayName: item.group.title,
+                            username: undefined as string | undefined,
+                            communityName: item.group.title,
+                            seed: item.group.conversationUuid,
+                          },
+                          onOpen: () => openGroupChat(item.group.conversationUuid),
+                          onPrefetch: undefined as (() => void) | undefined,
+                          more: {
+                            conversationMenuKind: "group" as const,
+                            accessibility: {
+                              dialog: `Меню группы «${item.group.title}»`,
+                              triggerOpen: `Действия — ${item.group.title}`,
+                              triggerClose: "Закрыть меню группы",
+                            },
+                          },
+                          peerUuid: null as string | null,
+                          groupUuid: item.group.conversationUuid as string | null,
+                        }
+                      : (() => {
+                          const chat = item.conversation;
+                          const title = chat.otherDisplayName || chat.otherUsername;
+                          return {
+                            key: chat.otherUserUuid,
+                            kind: "dm" as const,
+                            title,
+                            handle: chat.otherUsername.replace(/^@+/, "") || "…",
+                            preview: conversationPreview(
+                              chat,
+                              listPreviewDecryptedByPeer,
+                              listPreviewDecryptFailByPeer,
+                            ),
+                            unreadCount: chat.unreadCount,
+                            online: chat.otherUserIsOnline,
+                            mute: getPeerMute(chat.otherUserUuid),
+                            archived: isPeerArchived(chat.otherUserUuid),
+                            avatar: {
+                              displayName: title,
+                              username: chat.otherUsername,
+                              communityName: undefined as string | undefined,
+                              seed: chat.otherUserUuid,
+                            },
+                            onOpen: () => switchChat(chat),
+                            onPrefetch: () => prefetchPeerThread(chat.otherUserUuid),
+                            more: {
+                              conversationMenuKind: "dm" as const,
+                              accessibility: {
+                                dialog: `Меню чата с ${title}`,
+                                triggerOpen: `Действия — ${title}`,
+                                triggerClose: "Закрыть меню чата",
+                              },
+                            },
+                            peerUuid: chat.otherUserUuid,
+                            groupUuid: null as string | null,
+                          };
+                        })();
+                  const peerUuid = row.peerUuid;
+                  const groupUuid = row.groupUuid;
+
                   return (
-                  <li key={chat.otherUserUuid} className={styles.messagesConversationRow}>
-                    <button
-                      type="button"
-                      className={`${styles.messagesConversationItem} flora-type-15`}
-                      onClick={() => switchChat(chat, true)}
-                      onPointerEnter={() => prefetchPeerThread(chat.otherUserUuid)}
-                      onFocus={() => prefetchPeerThread(chat.otherUserUuid)}
-                    >
-                      <div className={styles.messagesConversationAvatarWrap}>
-                        <div className={styles.messagesConversationAvatar}>
-                          {avatarLetters(chatDisplayName)}
+                    <li key={row.key} className={styles.messagesConversationRow}>
+                      <button
+                        type="button"
+                        className={`${styles.messagesConversationItem} flora-type-15`}
+                        onClick={row.onOpen}
+                        onPointerEnter={row.onPrefetch}
+                        onFocus={row.onPrefetch}
+                      >
+                        <div className={styles.messagesConversationAvatarWrap}>
+                          <FloraAvatar
+                            plain
+                            size={45}
+                            displayName={row.avatar.displayName}
+                            username={row.avatar.username}
+                            communityName={row.avatar.communityName}
+                            seed={row.avatar.seed}
+                          />
+                          {row.kind === "dm" ? (
+                            <span
+                              className={`${styles.messagesChatHeaderOnlineBadge}${
+                                row.online ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}` : ""
+                              }`}
+                              title={row.online ? "В сети" : undefined}
+                              aria-hidden
+                            />
+                          ) : null}
                         </div>
-                        <span
-                          className={`${styles.messagesChatHeaderOnlineBadge}${chat.otherUserIsOnline ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}` : ""}`}
-                          title={chat.otherUserIsOnline ? "В сети" : undefined}
-                          aria-hidden
-                        />
-                      </div>
-                      <div className={styles.messagesConversationBody}>
-                        <div className={styles.messagesConversationTitleRow}>
-                          <span className={styles.messagesConversationName}>
-                            {chatDisplayName}
-                          </span>
-                          <span className={styles.messagesConversationHandleGroup}>
-                            <span className={styles.messagesConversationHandle}>
-                              @{chat.otherUsername.replace(/^@+/, "") || "…"}
-                            </span>
-                            {peerMute ? (
-                              <MessagesConversationMuteIndicator
-                                mute={peerMute}
-                                onExpired={() => clearLocalTemporaryMute(chat.otherUserUuid)}
-                              />
+                        <div className={styles.messagesConversationBody}>
+                          <div className={styles.messagesConversationTitleRow}>
+                            <span className={styles.messagesConversationName}>{row.title}</span>
+                            {row.handle !== null ? (
+                              <span className={styles.messagesConversationHandleGroup}>
+                                <span className={styles.messagesConversationHandle}>
+                                  @{row.handle}
+                                </span>
+                                {row.mute ? (
+                                  <MessagesConversationMuteIndicator
+                                    mute={row.mute}
+                                    onExpired={() => {
+                                      if (peerUuid) clearLocalTemporaryMute(peerUuid);
+                                    }}
+                                  />
+                                ) : null}
+                              </span>
                             ) : null}
-                          </span>
+                          </div>
+                          <span className={styles.messagesConversationPreview}>{row.preview}</span>
                         </div>
-                        <span className={styles.messagesConversationPreview}>
-                          {conversationPreview(chat, listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer)}
-                        </span>
+                      </button>
+                      <div className={styles.messagesConversationActions}>
+                        {row.unreadCount > 0 ? (
+                          <span className={styles.messagesConversationUnread}>
+                            {row.unreadCount > 99 ? "99+" : row.unreadCount}
+                          </span>
+                        ) : null}
                       </div>
-                    </button>
-                    <div className={styles.messagesConversationActions}>
-                      {chat.unreadCount > 0 ? (
-                        <span className={styles.messagesConversationUnread}>
-                          {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
-                        </span>
-                      ) : null}
-                    </div>
-                    <PostMoreMenuRect
-                      variant="conversation"
-                      wrapClassName={`${styles.messagesConversationMoreWrap} ${postMoreMenuStyles.wrapGlyphNudgeLeft1} ${postMoreMenuStyles.wrapBackdropNudgeLeft1}`}
-                      buttonClassName={styles.messagesConversationMoreBtn}
-                      conversationIsMuted={peerMute !== null}
-                      conversationIsArchived={peerArchived}
-                      onConversationMuteForever={() => setPeerMutedForever(chat.otherUserUuid)}
-                      onConversationMuteTemporary={() => setPeerMutedTemporary(chat.otherUserUuid)}
-                      onConversationUnmute={() => clearPeerMuted(chat.otherUserUuid)}
-                      onConversationArchive={() => archivePeer(chat.otherUserUuid)}
-                      onConversationUnarchive={() => unarchivePeer(chat.otherUserUuid)}
-                      folderOptions={folderPickOptions}
-                      onAddToFolder={(folderId) => {
-                        void addPeerToChatListFolder(folderId, chat.otherUserUuid);
-                      }}
-                      onDeleteConversation={() =>
-                        openDeleteConversationModal(
-                          chat.otherUserUuid,
-                          chatDisplayName,
-                        )
-                      }
-                      accessibility={{
-                        dialog: `Меню чата с ${chatDisplayName}`,
-                        triggerOpen: `Действия — ${chatDisplayName}`,
-                        triggerClose: `Закрыть меню чата`,
-                      }}
-                    />
-                  </li>
+                      <PostMoreMenuRect
+                        variant="conversation"
+                        conversationMenuKind={row.more.conversationMenuKind}
+                        wrapClassName={`${styles.messagesConversationMoreWrap} ${postMoreMenuStyles.wrapGlyphNudgeLeft1} ${postMoreMenuStyles.wrapBackdropNudgeLeft1}`}
+                        buttonClassName={styles.messagesConversationMoreBtn}
+                        conversationIsMuted={row.mute !== null}
+                        conversationIsArchived={row.archived}
+                        onConversationMuteForever={
+                          peerUuid ? () => setPeerMutedForever(peerUuid) : undefined
+                        }
+                        onConversationMuteTemporary={
+                          peerUuid ? () => setPeerMutedTemporary(peerUuid) : undefined
+                        }
+                        onConversationUnmute={
+                          peerUuid ? () => clearPeerMuted(peerUuid) : undefined
+                        }
+                        onConversationArchive={
+                          groupUuid
+                            ? () => archiveGroup(groupUuid)
+                            : peerUuid
+                              ? () => archivePeer(peerUuid)
+                              : undefined
+                        }
+                        onConversationUnarchive={
+                          groupUuid
+                            ? () => unarchiveGroup(groupUuid)
+                            : peerUuid
+                              ? () => unarchivePeer(peerUuid)
+                              : undefined
+                        }
+                        folderOptions={row.kind === "dm" ? folderPickOptions : []}
+                        onAddToFolder={
+                          peerUuid
+                            ? (folderId) => {
+                                void addPeerToChatListFolder(folderId, peerUuid);
+                              }
+                            : undefined
+                        }
+                        onDeleteConversation={
+                          groupUuid
+                            ? () => openDeleteGroupModal(groupUuid, row.title)
+                            : peerUuid
+                              ? () => openDeleteConversationModal(peerUuid, row.title)
+                              : undefined
+                        }
+                        accessibility={row.more.accessibility}
+                      />
+                    </li>
                   );
                 })}
               </ul>
             ) : null}
           </div>
-        ) : chatHeaderPeer ? (
+        ) : openChatHeader ? (
           <div className={styles.messagesChatSplit}>
             <div
-              key={`${selectedOtherUuid}-${panelAnimEpoch}`}
+              key={`${selectedOtherUuid ?? selectedGroupUuid}-${panelAnimEpoch}`}
               className={`${styles.messagesChatPanelInner} ${chatOpenAnimClassName}`}
             >
               <div
@@ -3172,6 +4241,7 @@ function MessagesChatInner() {
                 className={styles.messagesChatView}
                 style={messagesChatViewStyle}
                 data-messages-chat-view=""
+                data-group-chat={openChatHeader.kind === "group" ? "" : undefined}
               >
               <div className={styles.messagesChatTop}>
               <header className={styles.messagesChatHeader}>
@@ -3197,36 +4267,76 @@ function MessagesChatInner() {
                   </svg>
                 </button>
                 <div className={styles.messagesChatHeaderAvatarWrap}>
-                  <div className={styles.messagesChatHeaderAvatar}>
-                    {avatarLetters(chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername)}
-                  </div>
-                  <span
-                    className={`${styles.messagesChatHeaderOnlineBadge}${chatHeaderPeer.otherUserIsOnline ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}` : ""}`}
-                    title={chatHeaderPeer.otherUserIsOnline ? "В сети" : undefined}
-                    aria-hidden
-                  />
+                  {openChatHeader.avatar.kind === "group" ? (
+                    <FloraAvatar
+                      plain
+                      size={45}
+                      displayName={openChatHeader.avatar.title}
+                      communityName={openChatHeader.avatar.title}
+                      seed={openChatHeader.avatar.seed}
+                    />
+                  ) : (
+                    <FloraAvatar
+                      plain
+                      size={45}
+                      displayName={openChatHeader.avatar.displayName}
+                      username={openChatHeader.avatar.username}
+                      seed={openChatHeader.avatar.seed}
+                    />
+                  )}
+                  {openChatHeader.kind === "dm" ? (
+                    <span
+                      className={`${styles.messagesChatHeaderOnlineBadge}${
+                        openChatHeader.online
+                          ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}`
+                          : ""
+                      }`}
+                      title={openChatHeader.online ? "В сети" : undefined}
+                      aria-hidden
+                    />
+                  ) : null}
                 </div>
                 <div className={styles.messagesChatHeaderInfo}>
-                  <Link
-                    href={`/profile/${encodeURIComponent(chatHeaderPeer.otherUsername.replace(/^@+/, "") || chatHeaderPeer.otherUserUuid)}`}
-                    className={styles.messagesChatHeaderNameLink}
-                  >
-                    <div className={styles.messagesChatHeaderNameRow}>
-                      <span className={styles.messagesChatHeaderName}>
-                        {chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername || "Пользователь"}
-                      </span>
-                      <span className={styles.messagesChatHeaderHandle}>
-                        @{chatHeaderPeer.otherUsername.replace(/^@+/, "") || "…"}
-                      </span>
-                    </div>
-                  </Link>
-                  {chatHeaderPresenceLine ? (
+                  {openChatHeader.kind === "group" ? (
+                    <button
+                      type="button"
+                      className={styles.messagesChatHeaderNameLink}
+                      onClick={() => {
+                        setGroupMembersError(null);
+                        setGroupMembersOpen(true);
+                      }}
+                      aria-label={`${openChatHeader.title}, ${openChatHeader.status?.text ?? ""}`}
+                    >
+                      <div className={styles.messagesChatHeaderNameRow}>
+                        <span className={styles.messagesChatHeaderName}>
+                          {openChatHeader.title}
+                        </span>
+                      </div>
+                    </button>
+                  ) : openChatHeader.profileHref ? (
+                    <Link
+                      href={openChatHeader.profileHref}
+                      className={styles.messagesChatHeaderNameLink}
+                    >
+                      <div className={styles.messagesChatHeaderNameRow}>
+                        <span className={styles.messagesChatHeaderName}>
+                          {openChatHeader.title}
+                        </span>
+                        {openChatHeader.handle ? (
+                          <span className={styles.messagesChatHeaderHandle}>
+                            @{openChatHeader.handle}
+                          </span>
+                        ) : null}
+                      </div>
+                    </Link>
+                  ) : null}
+                  {openChatHeader.status ? (
                     <div
                       className={styles.messagesChatHeaderStatus}
                       role="status"
-                      aria-label={chatHeaderPresenceLine.aria}
+                      aria-label={openChatHeader.status.aria}
                     >
-                      {chatHeaderPresenceLine.kind === "typing" ? (
+                      {openChatHeader.status.kind === "typing" ? (
                         <>
                           Печатает
                           <span className={styles.messagesChatHeaderTypingDots} aria-hidden="true">
@@ -3236,47 +4346,79 @@ function MessagesChatInner() {
                           </span>
                         </>
                       ) : (
-                        chatHeaderPresenceLine.text
+                        openChatHeader.status.text
                       )}
                     </div>
                   ) : null}
                 </div>
-                {selectedOtherUuid ? (
-                  <PostMoreMenuRect
-                    variant="chat"
-                    wrapClassName={styles.messagesChatHeaderMoreWrap}
-                    buttonClassName={styles.messagesChatHeaderMoreBtn}
-                    conversationIsMuted={getPeerMute(selectedOtherUuid) !== null}
-                    onConversationMuteForever={() => setPeerMutedForever(selectedOtherUuid)}
-                    onConversationMuteTemporary={() => setPeerMutedTemporary(selectedOtherUuid)}
-                    onConversationUnmute={() => clearPeerMuted(selectedOtherUuid)}
-                    onChatSafetyNumber={() =>
-                      openSafetyNumberModal(
-                        selectedOtherUuid,
-                        chatHeaderPeer.otherDisplayName ||
-                          chatHeaderPeer.otherUsername ||
-                          "Пользователь",
-                      )
-                    }
-                    onDeleteConversation={() =>
-                      openDeleteConversationModal(
-                        selectedOtherUuid,
-                        chatHeaderPeer.otherDisplayName ||
-                          chatHeaderPeer.otherUsername ||
-                          "Пользователь",
-                      )
-                    }
-                    accessibility={{
-                      dialog: `Меню чата с ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
-                      triggerOpen: `Действия — ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
-                      triggerClose: "Закрыть меню чата",
-                    }}
-                  />
-                ) : null}
+                <PostMoreMenuRect
+                  variant="chat"
+                  chatMenuKind={openChatHeader.more.chatMenuKind}
+                  wrapClassName={styles.messagesChatHeaderMoreWrap}
+                  buttonClassName={styles.messagesChatHeaderMoreBtn}
+                  conversationIsMuted={openChatHeader.more.conversationIsMuted}
+                  conversationIsArchived={
+                    openChatHeader.kind === "group" && selectedGroupUuid
+                      ? isConversationArchived(selectedGroupUuid, archivedByConversation)
+                      : openChatHeader.kind === "dm" && selectedOtherUuid
+                        ? isPeerArchived(selectedOtherUuid)
+                        : false
+                  }
+                  onConversationMuteForever={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () => setPeerMutedForever(selectedOtherUuid)
+                      : undefined
+                  }
+                  onConversationMuteTemporary={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () => setPeerMutedTemporary(selectedOtherUuid)
+                      : undefined
+                  }
+                  onConversationUnmute={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () => clearPeerMuted(selectedOtherUuid)
+                      : undefined
+                  }
+                  onConversationArchive={
+                    openChatHeader.kind === "group" && selectedGroupUuid
+                      ? () => archiveGroup(selectedGroupUuid)
+                      : openChatHeader.kind === "dm" && selectedOtherUuid
+                        ? () => archivePeer(selectedOtherUuid)
+                        : undefined
+                  }
+                  onConversationUnarchive={
+                    openChatHeader.kind === "group" && selectedGroupUuid
+                      ? () => unarchiveGroup(selectedGroupUuid)
+                      : openChatHeader.kind === "dm" && selectedOtherUuid
+                        ? () => unarchivePeer(selectedOtherUuid)
+                        : undefined
+                  }
+                  onChatSafetyNumber={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () =>
+                          openSafetyNumberModal(
+                            selectedOtherUuid,
+                            openChatHeader.title,
+                          )
+                      : undefined
+                  }
+                  onDeleteConversation={
+                    openChatHeader.kind === "group" && selectedGroupUuid
+                      ? () => openDeleteGroupModal(selectedGroupUuid, openChatHeader.title)
+                      : openChatHeader.kind === "dm" && selectedOtherUuid
+                        ? () =>
+                            openDeleteConversationModal(
+                              selectedOtherUuid,
+                              openChatHeader.title,
+                            )
+                        : undefined
+                  }
+                  accessibility={openChatHeader.more.accessibility}
+                />
               </header>
 
               {threadError ? <p className={styles.messagesError}>{threadError}</p> : null}
-              {fscpStatus === "transient_error" ? (
+              {openChatHeader.kind === "dm" && fscpStatus === "transient_error" ? (
                 // Транзиент/сбой окружения — баннер, НЕ сырая строка ошибки ядра и НЕ модалка пароля
                 // (см. план fscp_restore_reliability, дефект 5): дашборд уже тихо повторяет резолв.
                 <p className={styles.messagesError}>
@@ -3284,7 +4426,8 @@ function MessagesChatInner() {
                     ? "Проверяем ключи шифрования — временные проблемы с сетью, повторяем попытку автоматически."
                     : "Ключи шифрования временно недоступны из-за ошибки окружения на этом устройстве."}
                 </p>
-              ) : fscpBootstrapError ? (
+              ) : (openChatHeader.kind === "dm" || openChatHeader.kind === "group") &&
+                fscpBootstrapError ? (
                 <p className={styles.messagesError}>
                   FSCP: {fscpBootstrapError}
                   {fscpStatusNeedsPassword(fscpStatus) ? (
@@ -3377,7 +4520,9 @@ function MessagesChatInner() {
                           onCopy={() => void copyMessageContent(content)}
                           onReply={canReply ? () => beginReplyToMessage(message) : undefined}
                           onDelete={
-                            message.isFromMe ? () => void handleDeleteMessage(message) : undefined
+                            message.isFromMe && !isGroupChatOpen
+                              ? () => void handleDeleteMessage(message)
+                              : undefined
                           }
                         >
                           <div
@@ -3404,6 +4549,7 @@ function MessagesChatInner() {
                                     isDemoPlaintextWire(message.encryptedForMe) ? undefined : voiceBlock
                                   }
                                   localBlob={localVoiceBlobForAsset(voiceBlock.assetUuid)}
+                                  timeSlot={<MessageBubbleTime message={message} />}
                                 />
                               </>
                             ) : photoBubble ? (
@@ -3525,7 +4671,7 @@ function MessagesChatInner() {
                                 )}
                               </div>
                             )}
-                            {!photoBubble && !inlineTime ? (
+                            {!photoBubble && !inlineTime && !voiceOnly ? (
                               <MessageBubbleTime message={message} />
                             ) : null}
                           </div>
@@ -3565,10 +4711,37 @@ function MessagesChatInner() {
                         <div
                           key={`peer-avatar-${item.groupKey}`}
                           data-messages-peer-avatar=""
-                          className={styles.messagesBubblePeerAvatar}
+                          className={`${styles.messagesBubblePeerAvatar}${
+                            selectedGroupChat ? ` ${styles.messagesBubblePeerAvatarFlora}` : ""
+                          }`}
                           aria-hidden
                         >
-                          {peerThreadAvatarLabel}
+                          {selectedGroupChat ? (
+                            (() => {
+                              const senderUuid =
+                                item.messages[item.messages.length - 1]?.senderUserUuid?.trim() ||
+                                item.messages[0]?.senderUserUuid?.trim() ||
+                                "";
+                              const member = findGroupMember(
+                                selectedGroupChat.members,
+                                senderUuid,
+                              );
+                              const label =
+                                member?.displayName || member?.username || "Участник";
+                              return (
+                                <FloraAvatar
+                                  plain
+                                  size={45}
+                                  displayName={label}
+                                  username={member?.username || ""}
+                                  avatarUuid={member?.avatarUuid}
+                                  seed={senderUuid || label}
+                                />
+                              );
+                            })()
+                          ) : (
+                            peerThreadAvatarLabel
+                          )}
                         </div>
                       </div>
                     );
@@ -3714,7 +4887,7 @@ function MessagesChatInner() {
                     wrapClassName={styles.messagesComposeAttachWrap}
                     buttonClassName={styles.messagesComposePlus}
                     panelPlacement="above"
-                    disabled={sending || threadLoading}
+                    disabled={composeMediaDisabled}
                     closeNonce={composeAttachMenuCloseNonce}
                     onPick={handleAttachPick}
                     onOpenChange={(open) => {
@@ -3773,7 +4946,7 @@ function MessagesChatInner() {
                       aria-label="Стикеры и эмодзи"
                       aria-controls="messages-sticker-panel"
                       aria-expanded={stickerPanelOpen}
-                      disabled={sending || threadLoading}
+                      disabled={composeStickersDisabled}
                       onClick={toggleStickerPanel}
                     >
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -3840,7 +5013,7 @@ function MessagesChatInner() {
                       className={styles.messagesComposeMic}
                       aria-label="Голосовое сообщение"
                       onClick={startVoiceRecording}
-                      disabled={sending || threadLoading}
+                      disabled={composeMediaDisabled}
                     >
                       <MusicTrackKindIcon kind="mic" className={styles.messagesComposeMicIcon} size={22} />
                     </button>
@@ -3879,68 +5052,15 @@ function MessagesChatInner() {
           </div>
         </div>
         {/* Мини-список справа от чата — временно скрыт.
+            При включении: map(mergedListItems.slice(0, 16)):
+            - kind "dm" → switchChat(conversation), online badge, preview decrypt
+            - kind "groupChat" → openGroupChat(conversationUuid), group avatar, lastMessagePreview
+            Active row: selectedTarget match on kind + id.
         <aside
               className={`${styles.messagesChatRail} ${chatOpenAnimClassName}`}
               aria-label="Другие диалоги"
             >
-              <div className={styles.messagesChatRailViewport}>
-                <div ref={railScrollRef} className={styles.messagesChatRailScroll}>
-                  <div className={styles.messagesChatRailScrollInner}>
-                  <ul className={styles.messagesChatRailList}>
-                  {railChatsSource.map((mini) => (
-                    <li key={mini.otherUserUuid} className={styles.messagesChatRailItem}>
-                      <button
-                        type="button"
-                        className={`${styles.messagesChatRailRow} ${mini.otherUserUuid === selectedOtherUuid ? styles.messagesChatRailRowActive : ""}`}
-                        disabled={!railInteractive}
-                        title={
-                          !railInteractive
-                            ? "Войдите в аккаунт с чатами, чтобы переключаться"
-                            : mini.unreadCount > 0
-                              ? `${mini.otherDisplayName || mini.otherUsername} · ${mini.unreadCount} непрочит.`
-                              : undefined
-                        }
-                        onClick={() => {
-                          if (!railInteractive) return;
-                          switchChat(mini, false);
-                        }}
-                      >
-                        <div className={styles.messagesChatRailAvatarWrap}>
-                          <div className={styles.messagesChatRailAvatar} aria-hidden>
-                            {avatarLetters(mini.otherDisplayName || mini.otherUsername)}
-                          </div>
-                          <span
-                            className={`${styles.messagesChatRailOnlineBadge}${mini.otherUserIsOnline ? ` ${styles.messagesChatRailOnlineBadgeVisible}` : ""}`}
-                            title={mini.otherUserIsOnline ? "В сети" : undefined}
-                            aria-hidden
-                          />
-                        </div>
-                        <div className={styles.messagesChatRailBody}>
-                          <span className={styles.messagesChatRailName}>
-                            {mini.otherDisplayName || mini.otherUsername}
-                          </span>
-                          <span className={styles.messagesChatRailPreview}>
-                            {conversationPreview(mini, listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer)}
-                          </span>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                  </ul>
-                  <div className={styles.messagesChatRailUnreadTrack} aria-hidden>
-                    {railChatsSource.map((mini) => (
-                      <div key={mini.otherUserUuid} className={styles.messagesChatRailUnreadRow}>
-                        {mini.unreadCount > 0 ? (
-                          <span className={styles.messagesChatRailUnreadBadge}>
-                            {formatRailUnreadCount(mini.unreadCount)}
-                          </span>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                  </div>
-                </div>
-              </div>
+              ...
             </aside>
         */}
           </div>
@@ -3952,6 +5072,7 @@ function MessagesChatInner() {
         busy={deleteConversationBusy}
         error={deleteConversationError}
         peerDisplayName={pendingDeleteConversation?.displayName ?? ""}
+        targetKind={pendingDeleteConversation?.kind === "group" ? "group" : "dm"}
         onClose={closeDeleteConversationModal}
         onConfirm={confirmDeleteConversation}
       />
@@ -3988,32 +5109,68 @@ function MessagesChatInner() {
         }}
       />
 
-      {createGroupSoonOpen ? (
-        <div
-          className={styles.messagesFolderDialogBackdrop}
-          role="presentation"
-          onClick={() => setCreateGroupSoonOpen(false)}
-        >
-          <div
-            className={styles.messagesFolderDialog}
-            role="dialog"
-            aria-modal
-            aria-label="Группы скоро"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 className={styles.messagesFolderDialogTitle}>Группы скоро</h2>
-            <p className={styles.messagesFolderDialogEmpty}>
-              Создание групп появится в следующих версиях Flora.
-            </p>
-            <button
-              type="button"
-              className={styles.messagesFolderDialogAction}
-              onClick={() => setCreateGroupSoonOpen(false)}
-            >
-              Понятно
-            </button>
-          </div>
-        </div>
+      <CreateGroupDialog
+        open={createGroupOpen}
+        conversations={conversations}
+        onClose={() => setCreateGroupOpen(false)}
+        onCreate={async (result) => {
+          if (!groupChatMe) {
+            window.alert("Войдите в аккаунт, чтобы создать группу.");
+            return false;
+          }
+          try {
+            const { ok, missing } = await filterMembersWithE2eKeys(result.memberUserUuids);
+            if (missing.length > 0) {
+              window.alert(
+                "У некоторых участников нет ключа шифрования. Пусть они один раз войдут в аккаунт.",
+              );
+              return false;
+            }
+            if (ok.length === 0) {
+              window.alert("Выберите хотя бы одного участника с ключом шифрования.");
+              return false;
+            }
+            const created = await apiCreateGroup({
+              title: result.title,
+              memberUserUuids: ok,
+            });
+            await refreshGroups();
+            openGroupChat(created.conversationUuid);
+            return true;
+          } catch (e) {
+            window.alert(
+              e instanceof ApiRequestError
+                ? e.message
+                : "Не удалось создать группу. Проверьте участников и ключи.",
+            );
+            return false;
+          }
+        }}
+      />
+
+      {selectedGroupChat ? (
+        <GroupMembersPanel
+          open={groupMembersOpen}
+          title={selectedGroupChat.title}
+          members={selectedGroupChat.members}
+          meUserUuid={me?.userUuid ?? ""}
+          isCreator={
+            (me?.userUuid?.trim().toLowerCase() ?? "") !== "" &&
+            selectedGroupChat.createdByUserUuid.trim().toLowerCase() ===
+              (me?.userUuid?.trim().toLowerCase() ?? "")
+          }
+          addCandidates={conversations}
+          busy={groupMembersBusy}
+          error={groupMembersError}
+          onClose={() => {
+            if (groupMembersBusy) return;
+            setGroupMembersError(null);
+            setGroupMembersOpen(false);
+          }}
+          onSaveTitle={handleGroupSaveTitle}
+          onRemoveMember={handleGroupRemoveMember}
+          onAddMember={handleGroupAddMember}
+        />
       ) : null}
     </>
   );

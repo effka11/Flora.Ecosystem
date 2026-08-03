@@ -322,14 +322,14 @@
 
 /*
  * Папки + «+»: anchorRow=0 в .messagesListHeader; origin X = кол. 37.
- * Горизонталь 7: top = 7 * step.
+ * Лежат на горизонтали 7: top = 6.5 * step (−0.5 клетки от края ячейки 7).
  * «+» и папки — центром между вертикалями (pitch 4 = слот 2 + зазор 2).
  */
 .messagesChatFolders {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(7 * var(--flora-grid-step));
+  top: calc(6.5 * var(--flora-grid-step));
   height: calc(2 * var(--flora-grid-step));
   pointer-events: none;
   z-index: 2;
@@ -376,11 +376,11 @@
   transform: translateX(-50%);
 }
 
-/* «+»: горизонталь 7; центр между 88 и 89; width 2 → left 87.5 (origin 37). */
+/* «+»: на горизонтали 7 (top 6.5); центр между 88 и 89; width 2 → left 87.5 (origin 37). */
 .messagesCreateWrap {
   position: absolute;
   left: calc((87.5 - 37) * var(--flora-grid-step));
-  top: calc(7 * var(--flora-grid-step));
+  top: calc(6.5 * var(--flora-grid-step));
   width: calc(2 * var(--flora-grid-step));
   height: calc(2 * var(--flora-grid-step));
   z-index: 2;
@@ -885,8 +885,8 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: rgba(164, 209, 138, 0.15);
-  color: var(--flora-accent);
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -894,7 +894,6 @@
   font-weight: 300;
   font-size: 19px;
   letter-spacing: 0.57px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 
@@ -1090,8 +1089,8 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: rgba(164, 209, 138, 0.15);
-  color: var(--flora-accent);
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1099,7 +1098,6 @@
   font-weight: 300;
   font-size: 19px;
   letter-spacing: 0.57px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 
@@ -1149,6 +1147,23 @@
   color: inherit;
   display: block;
   min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.messagesChatHeaderNameLink:hover .messagesChatHeaderName {
+  color: var(--flora-accent-hover);
+}
+
+.messagesChatHeaderNameLink:focus-visible {
+  outline: 1px solid var(--flora-green-light);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Как «Люди» .userPrimaryLine — одна типографическая строка, высота как в списке людей. */
@@ -1498,8 +1513,8 @@
   height: var(--g45);
   align-self: flex-end;
   border-radius: 50%;
-  background: rgba(164, 209, 138, 0.14);
-  color: var(--flora-accent);
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1507,8 +1522,15 @@
   font-weight: 300;
   font-size: 19px;
   letter-spacing: 0.57px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+}
+
+/* Host for FloraAvatar default art (group peer runs) — same forest palette as users. */
+.messagesBubblePeerAvatarFlora {
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-shadow: none;
 }
 
 /* Якорь пузыря: ⋮ снаружи overflow clip у фото-пузыря. */
@@ -1716,7 +1738,8 @@
   width: calc((62 - 38 + 1) * var(--flora-grid-step));
   max-width: 100%;
   box-sizing: border-box;
-  height: calc(6 * var(--flora-grid-step));
+  /* padding + voice card 3×grid (send time sits on duration row, not under the card). */
+  height: calc(5 * var(--flora-grid-step) - 3px);
   padding: calc(var(--flora-grid-step) - 1.5px) var(--flora-grid-step);
   display: flex;
   flex-direction: column;
@@ -1749,16 +1772,25 @@
   height: calc(2 * var(--flora-grid-step));
 }
 
-.messagesBubbleVoiceOnly .voiceDuration {
+.messagesBubbleVoiceOnly .voiceDurationRow {
   flex: 0 0 calc(1 * var(--flora-grid-step));
+  height: calc(1 * var(--flora-grid-step));
+  align-items: center;
+}
+
+.messagesBubbleVoiceOnly .voiceDuration {
+  flex: 0 1 auto;
   line-height: calc(1 * var(--flora-grid-step));
   height: calc(1 * var(--flora-grid-step));
 }
 
-.messagesBubbleVoiceOnly .messagesBubbleTime {
-  flex: 0 0 18px;
-  line-height: 18px;
-  height: 18px;
+/* Same relation as text time ↔ last line: duration left, send time right, 1×grid gap. */
+.messagesBubbleVoiceOnly .voiceSendTimeSlot .messagesBubbleTime {
+  display: inline-flex;
+  align-items: center;
+  line-height: var(--messages-bubble-time-line-height, 18px);
+  height: var(--messages-bubble-time-line-height, 18px);
+  text-align: right;
 }
 
 .messagesBubble .voiceCard {
@@ -3608,11 +3640,27 @@
   opacity: 0.8;
 }
 
+.voiceDurationRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--flora-grid-step);
+  min-width: 0;
+  width: 100%;
+}
+
 .voiceDuration {
   color: var(--flora-gray);
   font-family: var(--flora-font);
   font-size: 12px;
   letter-spacing: 0.03em;
+  min-width: 0;
+}
+
+.voiceSendTimeSlot {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .voiceDraftActions {
@@ -3910,8 +3958,8 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: rgba(164, 209, 138, 0.14);
-  color: var(--flora-accent);
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4209,4 +4257,87 @@
   .messagesDeleteModalDialogClosing {
     animation: none;
   }
+}
+
+/* —— Group chats (FSCP-G; not FSCP-ORG folder kind) —— */
+
+.groupMembersTitleReadonly {
+  margin: 0 0 calc(1 * var(--flora-grid-step));
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-white-template);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.groupMembersList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step-fine));
+  max-height: calc(20 * var(--flora-grid-step));
+  overflow-y: auto;
+}
+
+.groupMembersAddList {
+  list-style: none;
+  margin: 0 0 calc(1 * var(--flora-grid-step));
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step-fine));
+  max-height: calc(12 * var(--flora-grid-step));
+  overflow-y: auto;
+}
+
+.groupMembersRow {
+  display: flex;
+  align-items: center;
+  gap: calc(1 * var(--flora-grid-step));
+  padding: calc(1 * var(--flora-grid-step-fine)) 0;
+}
+
+.groupMembersBody {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groupMembersName {
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-white-template);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.groupMembersHandle {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: rgba(var(--flora-white-template-rgb), 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.groupMembersRemove {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--flora-danger, #e85d5d);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  padding: calc(0.5 * var(--flora-grid-step-fine)) 0;
+}
+
+.groupMembersRemove:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

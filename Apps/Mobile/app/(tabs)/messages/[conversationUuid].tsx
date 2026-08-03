@@ -69,7 +69,9 @@ import { ChatComposeReplyBar } from "@/components/messages/ChatComposeReplyBar";
 import { ChatMessageBubble, type ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
 import { ChatPeerMessageGroup } from "@/components/messages/ChatPeerMessageGroup";
 import { ChatMessageEmojiPanel } from "@/components/messages/ChatMessageEmojiPanel";
+import { ChatGroupThreadHeader } from "@/components/messages/ChatGroupThreadHeader";
 import { ChatMoreMenu } from "@/components/messages/ChatMoreMenu";
+import { GroupMembersSheet } from "@/components/messages/GroupMembersSheet";
 import {
   MessageBubbleMoreMenu,
   bubbleAnchorsEqual,
@@ -83,6 +85,12 @@ import {
   floraSpacing,
 } from "@/lib/theme";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import {
+  canArchiveChatListPeer,
+  countArchivedForFolderIcon,
+  dmConversationUuidsOfArchivedPeers,
+  isConversationArchived,
+} from "@flora/client-core/messaging";
 import {
   clearTemporaryMute,
   setTemporaryMute,
@@ -134,6 +142,7 @@ import {
 import { useMessageComposeImages } from "@/lib/useMessageComposeImages";
 import { useMessageComposeVoice } from "@/lib/useMessageComposeVoice";
 import { useVoiceRecorder } from "@/lib/useVoiceRecorder";
+import { useGroupChatThread } from "@/lib/useGroupChatThread";
 import { useThreadMessageDecrypt } from "@/lib/useThreadMessageDecrypt";
 import { messageThreadCache } from "@/stores/messageThreadCache";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -325,6 +334,8 @@ export default function ThreadScreen() {
 
   const params = useLocalSearchParams<{
     conversationUuid: string;
+    kind?: string;
+    title?: string;
     otherUserUuid?: string;
     otherDisplayName?: string;
     otherUsername?: string;
@@ -334,6 +345,8 @@ export default function ThreadScreen() {
   }>();
 
   const conversationUuid = routeParam(params.conversationUuid);
+  const isGroupChat = routeParam(params.kind) === "groupChat";
+  const groupTitleHint = routeParam(params.title);
   const paramOtherUserUuid = routeParam(params.otherUserUuid);
 
   const scrollTrackingReadyRef = useRef(false);
@@ -373,9 +386,9 @@ export default function ThreadScreen() {
     seenMessageIdsRef.current = new Set();
     insertLiftSv.value = 0;
     peerAvatarHoldSv.value = 0;
-    // resetDock is stable (ref-backed); only re-run on thread change.
+    // resetDock is stable (ref-backed); only re-run on thread / kind change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationUuid]);
+  }, [conversationUuid, isGroupChat]);
 
   useFocusEffect(
     useCallback(() => {
@@ -416,8 +429,26 @@ export default function ThreadScreen() {
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
   const setOverlayFscpKeys = useChatListOverlayStore((s) => s.setFscpKeys);
   const setMuted = useChatListOverlayStore((s) => s.setMuted);
+  const setGroupArchived = useChatListOverlayStore((s) => s.setGroupArchived);
   const mutedByPeer = useChatListOverlayStore((s) => s.state.mutedByPeer);
+  const archivedByPeer = useChatListOverlayStore((s) => s.state.archivedByPeer);
+  const archivedByConversation = useChatListOverlayStore(
+    (s) => s.state.archivedByConversation ?? {},
+  );
+  const customEntityCount = useChatListOverlayStore((s) => s.state.entities.length);
   const temporaryUntilByPeer = useTemporaryMuteUntilByPeer();
+  const archivedCount = useMemo(() => {
+    const owner = me?.userUuid?.trim();
+    const dmSet = owner
+      ? dmConversationUuidsOfArchivedPeers(owner, archivedByPeer)
+      : undefined;
+    return countArchivedForFolderIcon(archivedByPeer, archivedByConversation, dmSet);
+  }, [archivedByConversation, archivedByPeer, me?.userUuid]);
+  const canArchivePeer = useMemo(
+    () => canArchiveChatListPeer(archivedCount, customEntityCount),
+    [archivedCount, customEntityCount],
+  );
+  const groupIsArchived = isConversationArchived(conversationUuid, archivedByConversation);
 
   useEffect(() => {
     hydrateOverlay(me?.userUuid ?? null);
@@ -429,6 +460,7 @@ export default function ThreadScreen() {
   const fscpDecryptKey = useFscpStore((s) => s.localPubKey);
   const canSend = useFscpStore((s) => s.canSend);
   const decryptWirePlaintext = useFscpStore((s) => s.decryptWirePlaintext);
+  const organizerKeysReady = Boolean(fscpMaterial && fscpCanDecrypt());
 
   useEffect(() => {
     if (fscpMaterial && fscpCanDecrypt()) {
@@ -494,7 +526,29 @@ export default function ThreadScreen() {
     }
   }, [voiceDraft?.transcodeError, clearVoiceDraft]);
 
+  // Images / voice / recorder reset when switching thread or DM↔group.
+  useEffect(() => {
+    clearImages();
+    clearVoiceDraft();
+    void voiceRecorder.discard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationUuid, isGroupChat]);
+
   const queryClient = useQueryClient();
+
+  const conversationsForGroup = useQuery({
+    queryKey: ["conversations"],
+    queryFn: () => apiGetConversations(),
+    enabled: isGroupChat,
+    staleTime: 30_000,
+  });
+  const groupThread = useGroupChatThread({
+    enabled: isGroupChat,
+    conversationUuid,
+    titleHint: groupTitleHint,
+    meUserUuid: me?.userUuid,
+    dmConversations: conversationsForGroup.data?.items ?? [],
+  });
 
   const peer = useMemo((): ChatPeerInfo => {
     const fromList = queryClient
@@ -542,7 +596,7 @@ export default function ThreadScreen() {
     !!otherUserUuid && (otherUserUuid in mutedByPeer || temporaryMuteActive);
 
   useEffect(() => {
-    if (!conversationUuid || otherUserUuid) return;
+    if (isGroupChat || !conversationUuid || otherUserUuid) return;
     void queryClient
       .fetchQuery({
         queryKey: ["conversations"],
@@ -550,11 +604,11 @@ export default function ThreadScreen() {
         staleTime: 30_000,
       })
       .catch(() => undefined);
-  }, [conversationUuid, otherUserUuid, queryClient]);
+  }, [conversationUuid, isGroupChat, otherUserUuid, queryClient]);
 
   const messagesQuery = useQuery({
     queryKey: ["messages", conversationUuid, otherUserUuid || ""],
-    enabled: !!conversationUuid && !!otherUserUuid,
+    enabled: !isGroupChat && !!conversationUuid && !!otherUserUuid,
     staleTime: 60_000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
@@ -592,19 +646,31 @@ export default function ThreadScreen() {
       if (incomingUuid.toLowerCase() !== norm) return;
       // Background/push must not mark-read (or imply the user is looking at chat).
       if (AppState.currentState !== "active") return;
-      void messagesQuery.refetch();
-      void apiMarkConversationRead(conversationUuid)
-        .then(() => {
-          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-          requestTabBadgesRefresh();
-        })
-        .catch(() => undefined);
+      if (isGroupChat) {
+        void groupThread.refetchMessages();
+        void groupThread.markRead();
+      } else {
+        void messagesQuery.refetch();
+        void apiMarkConversationRead(conversationUuid)
+          .then(() => {
+            void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            requestTabBadgesRefresh();
+          })
+          .catch(() => undefined);
+      }
       void dismissMessagePushNotifications(conversationUuid);
     });
-  }, [conversationUuid, messagesQuery, queryClient]);
+  }, [
+    conversationUuid,
+    groupThread.markRead,
+    groupThread.refetchMessages,
+    isGroupChat,
+    messagesQuery,
+    queryClient,
+  ]);
 
   useEffect(() => {
-    if (!conversationUuid) return;
+    if (isGroupChat || !conversationUuid) return;
     const norm = conversationUuid.toLowerCase();
     return subscribeRead((detail) => {
       if (detail.conversationUuid.trim().toLowerCase() !== norm) return;
@@ -614,10 +680,15 @@ export default function ThreadScreen() {
         otherUserUuid: otherUserUuid || undefined,
       });
     });
-  }, [conversationUuid, otherUserUuid, queryClient]);
+  }, [conversationUuid, isGroupChat, otherUserUuid, queryClient]);
 
   useEffect(() => {
     if (!conversationUuid) return;
+    if (isGroupChat) {
+      void groupThread.markRead();
+      void dismissMessagePushNotifications(conversationUuid);
+      return;
+    }
     void apiMarkConversationRead(conversationUuid)
       .then(() => {
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -625,10 +696,10 @@ export default function ThreadScreen() {
         return dismissMessagePushNotifications(conversationUuid);
       })
       .catch(() => undefined);
-  }, [conversationUuid, queryClient]);
+  }, [conversationUuid, groupThread.markRead, isGroupChat, queryClient]);
 
   useEffect(() => {
-    if (!conversationUuid || !otherUserUuid) return;
+    if (isGroupChat || !conversationUuid || !otherUserUuid) return;
     const task = InteractionManager.runAfterInteractions(() => {
       void queryClient.fetchQuery({
         queryKey: ["messages", conversationUuid, otherUserUuid || ""],
@@ -644,15 +715,21 @@ export default function ThreadScreen() {
       });
     });
     return () => task.cancel();
-  }, [conversationUuid, otherUserUuid, queryClient]);
+  }, [conversationUuid, isGroupChat, otherUserUuid, queryClient]);
 
-  const messages = useMemo(
-    () =>
+  const messages = useMemo(() => {
+    if (isGroupChat) return groupThread.messages;
+    return (
       messagesQuery.data?.items ??
       messageThreadCache.get(conversationUuid) ??
-      EMPTY_MESSAGES,
-    [conversationUuid, messagesQuery.data?.items],
-  );
+      EMPTY_MESSAGES
+    );
+  }, [
+    conversationUuid,
+    groupThread.messages,
+    isGroupChat,
+    messagesQuery.data?.items,
+  ]);
 
   const messagesKey = useMemo(
     () =>
@@ -713,7 +790,9 @@ export default function ThreadScreen() {
     });
     return !hasDecrypting;
   }, [listData, listMessageCount]);
-  const listPending = messagesQuery.isLoading || (listMessageCount > 0 && !threadReady);
+  const listPending =
+    (isGroupChat ? groupThread.isLoading : messagesQuery.isLoading) ||
+    (listMessageCount > 0 && !threadReady);
 
   /**
    * Показ ждёт ещё и замера дока. У перевёрнутой ленты зазор под последним
@@ -856,6 +935,10 @@ export default function ThreadScreen() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (isGroupChat && groupThread.membersOpen) {
+        groupThread.setMembersOpen(false);
+        return true;
+      }
       if (emojiAccessoryActive) {
         closeEmoji();
         return true;
@@ -879,6 +962,9 @@ export default function ThreadScreen() {
   }, [
     emojiAccessoryActive,
     emojiPanelMounted,
+    groupThread.membersOpen,
+    groupThread.setMembersOpen,
+    isGroupChat,
     keyboardOpen,
     closeEmoji,
     dismissKeyboard,
@@ -921,6 +1007,7 @@ export default function ThreadScreen() {
 
   const beginReplyToMessage = useCallback(
     (message: ThreadBubbleItem) => {
+      if (isGroupChat) return;
       const draft = replyDraftFromMessage(message, message.previewText, peerDisplayName);
       if (!draft) return;
       closeMessageMenu();
@@ -928,7 +1015,7 @@ export default function ThreadScreen() {
       closeEmoji();
       composeRef.current?.focusInput();
     },
-    [closeEmoji, closeMessageMenu, peerDisplayName],
+    [closeEmoji, closeMessageMenu, isGroupChat, peerDisplayName],
   );
 
   const handleDeleteMessage = useCallback(
@@ -1001,6 +1088,7 @@ export default function ThreadScreen() {
             <ChatPeerMessageGroup
               messages={item.messages}
               peer={peer}
+              groupMembers={isGroupChat ? groupThread.members : undefined}
               menuTargetUuid={menuTarget?.message.messageUuid ?? null}
               onPress={onMessagePress}
               onAnchorSync={syncMenuAnchor}
@@ -1032,6 +1120,8 @@ export default function ThreadScreen() {
       );
     },
     [
+      groupThread.members,
+      isGroupChat,
       listData,
       menuTarget?.message.messageUuid,
       onMessagePress,
@@ -1050,12 +1140,13 @@ export default function ThreadScreen() {
   // Голосовой режим закрывает панель эмодзи (closeEmoji); клавиатуру явно не трогаем.
   // Инпут остаётся смонтированным и сфокусированным (ChatComposeField прячет его).
   const onStartVoice = useCallback(async () => {
-    if (!canSend() || !otherUserUuid) return;
+    if (!canSend()) return;
+    if (!isGroupChat && !otherUserUuid) return;
     typingEmitterRef.current?.stop();
     closeEmoji();
     enterVoiceMode();
     await voiceRecorder.start();
-  }, [canSend, closeEmoji, enterVoiceMode, otherUserUuid, voiceRecorder]);
+  }, [canSend, closeEmoji, enterVoiceMode, isGroupChat, otherUserUuid, voiceRecorder]);
 
   const onDiscardVoice = useCallback(async () => {
     await voiceRecorder.discard();
@@ -1070,7 +1161,8 @@ export default function ThreadScreen() {
   }, []);
 
   const onSendVoice = useCallback(async () => {
-    if (!conversationUuid || !me?.userUuid || !otherUserUuid || !voiceDraft) return;
+    if (!conversationUuid || !me?.userUuid || !voiceDraft) return;
+    if (!isGroupChat && !otherUserUuid) return;
     if (!canSendVoice || voiceDraft.transcoding || voiceDraft.transcodeError) return;
     if (!canSend()) return;
     const material = useFscpStore.getState().material;
@@ -1102,10 +1194,40 @@ export default function ThreadScreen() {
     setDeleteBarHeightPx(0);
     atBottomRef.current = true;
 
+    if (isGroupChat) {
+      try {
+        const voiceBlock = await uploadPreparedMessageVoice({
+          uploadTarget: { kind: "group", conversationUuid },
+          sourceUri,
+          contentType,
+          durationMs,
+          waveform,
+        });
+        registerPendingVoiceUri(voiceBlock.assetUuid, sourceUri);
+        clearPendingVoiceUri(provisionalAssetUuid);
+        const result = await groupThread.sendBlocks([voiceBlock], {
+          voiceAssetUuids: [voiceBlock.assetUuid],
+          onPending: (key) => {
+            seenMessageIdsRef.current.add(key);
+            pinListToBottom(false);
+            playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx([voiceBlock]));
+          },
+        });
+        if (result.ok) seenMessageIdsRef.current.add(result.clientMessageKey);
+      } catch (err) {
+        clearPendingVoiceUri(provisionalAssetUuid);
+        const message = err instanceof Error ? err.message : "Не удалось отправить голосовое";
+        Alert.alert("Отправка", message);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     insertOptimisticOutgoingThreadMessage({
       queryClient,
       conversationUuid,
-      otherUserUuid,
+      otherUserUuid: otherUserUuid!,
       senderUserUuid: me.userUuid,
       clientMessageKey,
       blocks: optimisticBlocks,
@@ -1116,11 +1238,11 @@ export default function ThreadScreen() {
     playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks));
 
     try {
-      const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
+      const peerKey = await apiGetUserE2ePublicKey(otherUserUuid!);
       if (!peerKey.publicKeyBase64) throw new Error("У собеседника нет E2E-ключа");
 
       const voiceBlock = await uploadPreparedMessageVoice({
-        toUserUuid: otherUserUuid,
+        toUserUuid: otherUserUuid!,
         sourceUri,
         contentType,
         durationMs,
@@ -1132,7 +1254,7 @@ export default function ThreadScreen() {
 
       const wire = await buildBlocksMessageWire({
         senderUserUuid: me.userUuid,
-        receiverUserUuid: otherUserUuid,
+        receiverUserUuid: otherUserUuid!,
         material,
         receiverAgreementPublicKeyBase64: peerKey.publicKeyBase64,
         blocks: [voiceBlock],
@@ -1140,7 +1262,7 @@ export default function ThreadScreen() {
       });
       const encryptedPushPreviews = await buildEncryptedPushPreviews({
         wire,
-        recipientUserUuid: otherUserUuid,
+        recipientUserUuid: otherUserUuid!,
         senderSigningPrivateKey: material.signingPrivateKey,
         blocks: [voiceBlock],
       });
@@ -1153,7 +1275,7 @@ export default function ThreadScreen() {
       replaceOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
-        otherUserUuid,
+        otherUserUuid: otherUserUuid!,
         senderUserUuid: me.userUuid,
         clientMessageKey,
         sent,
@@ -1179,7 +1301,7 @@ export default function ThreadScreen() {
       removeOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
-        otherUserUuid,
+        otherUserUuid: otherUserUuid!,
         clientMessageKey,
       });
       clearPendingVoiceUri(provisionalAssetUuid);
@@ -1193,6 +1315,8 @@ export default function ThreadScreen() {
     canSendVoice,
     clearVoiceDraft,
     conversationUuid,
+    groupThread,
+    isGroupChat,
     me?.userUuid,
     otherUserUuid,
     pinListToBottom,
@@ -1205,7 +1329,7 @@ export default function ThreadScreen() {
   ]);
 
   useEffect(() => {
-    if (!conversationUuid || !otherUserUuid) {
+    if (isGroupChat || !conversationUuid || !otherUserUuid) {
       typingEmitterRef.current?.dispose();
       typingEmitterRef.current = null;
       return undefined;
@@ -1225,7 +1349,7 @@ export default function ThreadScreen() {
       emitter.dispose();
       if (typingEmitterRef.current === emitter) typingEmitterRef.current = null;
     };
-  }, [conversationUuid, otherUserUuid]);
+  }, [conversationUuid, isGroupChat, otherUserUuid]);
 
   useEffect(() => {
     if (voiceMode === "voice") {
@@ -1239,6 +1363,83 @@ export default function ThreadScreen() {
 
   const onSend = async (draft: string) => {
     const trimmed = draft.trim();
+
+    if (isGroupChat) {
+      if (!conversationUuid || !me?.userUuid) return;
+      if (!trimmed && composeImages.length === 0) return;
+      if (!canSend() || !useFscpStore.getState().material) {
+        setUnlockOpen(true);
+        Alert.alert(
+          "Шифрование",
+          "Нужно разблокировать ключи шифрования, чтобы писать в группу.",
+        );
+        return;
+      }
+      const imageSnapshot = composeImages.map((image) => ({
+        uri: image.uri,
+        contentType: image.contentType,
+      }));
+      setSending(true);
+      setReplyTo(null);
+      setDeleteBarHeightPx(0);
+      atBottomRef.current = true;
+      composeRef.current?.clearText();
+      clearImages();
+      try {
+        if (imageSnapshot.length === 0) {
+          const result = await groupThread.sendText(trimmed, {
+            onPending: (clientMessageKey) => {
+              seenMessageIdsRef.current.add(clientMessageKey);
+              pinListToBottom(false);
+              playChatListInsertLift(
+                insertLiftSv,
+                estimateBlocksInsertLiftPx([{ kind: "text", body: trimmed }]),
+              );
+            },
+          });
+          if (!result.ok && result.restoreDraft) {
+            composeRef.current?.setText(trimmed);
+          }
+          return;
+        }
+        const blocks: FscpMessageBlock[] = [];
+        const imageAssetUuids: string[] = [];
+        if (trimmed) blocks.push({ kind: "text", body: trimmed });
+        for (const image of imageSnapshot) {
+          const uploaded = await uploadPreparedMessageImage({
+            uploadTarget: { kind: "group", conversationUuid },
+            prepared: {
+              uri: image.uri,
+              contentType: image.contentType,
+              fileName: "photo.jpg",
+            },
+          });
+          seedMessageImageUri(uploaded.assetUuid, image.uri);
+          blocks.push(uploaded);
+          imageAssetUuids.push(uploaded.assetUuid);
+        }
+        if (blocks.length === 0) return;
+        const result = await groupThread.sendBlocks(blocks, {
+          imageAssetUuids,
+          onPending: (clientMessageKey) => {
+            seenMessageIdsRef.current.add(clientMessageKey);
+            pinListToBottom(false);
+            playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(blocks));
+          },
+        });
+        if (!result.ok && result.restoreDraft) {
+          composeRef.current?.setText(trimmed);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
+        Alert.alert("Отправка", message);
+        if (trimmed) composeRef.current?.setText(trimmed);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     if (!conversationUuid || !me?.userUuid || !otherUserUuid) return;
     if (!trimmed && composeImages.length === 0) return;
     if (!canSend() || hasPendingPrepare) return;
@@ -1398,12 +1599,27 @@ export default function ThreadScreen() {
   return (
     <View style={styles.root}>
       <View ref={chatHeaderWrapRef} collapsable={false}>
-        <ChatThreadHeader
-          peer={peer}
-          moreButtonRef={moreBtnRef}
-          moreMenuOpen={moreMenuOpen}
-          onMorePress={() => setMoreMenuOpen((open) => !open)}
-        />
+        {isGroupChat ? (
+          <ChatGroupThreadHeader
+            title={groupThread.title}
+            conversationUuid={conversationUuid}
+            memberCount={groupThread.memberCount}
+            onMembersPress={() => {
+              dismissKeyboard();
+              groupThread.setMembersOpen(true);
+            }}
+            onMorePress={() => setMoreMenuOpen((open) => !open)}
+            moreMenuOpen={moreMenuOpen}
+            moreButtonRef={moreBtnRef}
+          />
+        ) : (
+          <ChatThreadHeader
+            peer={peer}
+            moreButtonRef={moreBtnRef}
+            moreMenuOpen={moreMenuOpen}
+            onMorePress={() => setMoreMenuOpen((open) => !open)}
+          />
+        )}
       </View>
 
       {blocked ? (
@@ -1460,7 +1676,8 @@ export default function ThreadScreen() {
               onScroll={onScroll}
               onScrollBeginDrag={onScrollBeginDrag}
               scrollEventThrottle={16}
-              keyboardShouldPersistTaps="handled"
+              // always: иначе первый тап по play только закрывает клавиатуру.
+              keyboardShouldPersistTaps="always"
               // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
               // соседние ячейки размонтируются прямо у края вьюпорта.
               drawDistance={480}
@@ -1499,19 +1716,21 @@ export default function ThreadScreen() {
             menuTarget.message.previewText.length > 0
           }
           canReply={
+            !isGroupChat &&
             menuTarget != null &&
             menuTarget.message.decryptState === "ok" &&
             menuTarget.message.previewText.length > 0 &&
             menuTarget.message.sendStatus !== "sending"
           }
           canDelete={
+            !isGroupChat &&
             menuTarget != null &&
             menuTarget.message.isFromMe &&
             menuTarget.message.sendStatus !== "sending"
           }
           onClose={closeMessageMenu}
           onReply={
-            menuTarget
+            !isGroupChat && menuTarget
               ? () => beginReplyToMessage(menuTarget.message)
               : undefined
           }
@@ -1521,7 +1740,7 @@ export default function ThreadScreen() {
               : undefined
           }
           onDelete={
-            menuTarget?.message.isFromMe
+            !isGroupChat && menuTarget?.message.isFromMe
               ? () => handleDeleteMessage(menuTarget.message.messageUuid)
               : undefined
           }
@@ -1545,7 +1764,7 @@ export default function ThreadScreen() {
             ref={composeRef}
             onSend={(draft) => void onSend(draft)}
             sending={sending}
-            disabled={!canSend() || !otherUserUuid}
+            disabled={!canSend() || (!isGroupChat && !otherUserUuid)}
             placeholder={blocked ? "Отправка недоступна" : "Сообщение"}
             bottomInset={composeBottomInset}
             onShellLayout={onComposeShellLayout}
@@ -1623,7 +1842,9 @@ export default function ThreadScreen() {
         open={moreMenuOpen}
         onClose={() => setMoreMenuOpen(false)}
         anchorRef={moreBtnRef}
+        kind={isGroupChat ? "groupChat" : "dm"}
         isMuted={conversationMuted}
+        isArchived={isGroupChat ? groupIsArchived : false}
         onMuteForever={() => {
           if (otherUserUuid && conversationUuid) {
             clearTemporaryMute(otherUserUuid);
@@ -1642,7 +1863,54 @@ export default function ThreadScreen() {
             void setMuted(otherUserUuid, conversationUuid, false);
           }
         }}
+        onArchive={
+          isGroupChat
+            ? () => {
+                if (!organizerKeysReady) {
+                  setUnlockOpen(true);
+                  return;
+                }
+                if (!canArchivePeer) {
+                  Alert.alert(
+                    "Лимит папок",
+                    "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+                  );
+                  return;
+                }
+                void (async () => {
+                  const ok = await setGroupArchived(conversationUuid, true);
+                  if (!ok) {
+                    Alert.alert(
+                      "Лимит папок",
+                      "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+                    );
+                    return;
+                  }
+                  requestTabBadgesRefresh();
+                  router.back();
+                })();
+              }
+            : undefined
+        }
+        onUnarchive={
+          isGroupChat
+            ? () => {
+                if (!organizerKeysReady) {
+                  setUnlockOpen(true);
+                  return;
+                }
+                void (async () => {
+                  await setGroupArchived(conversationUuid, false);
+                  requestTabBadgesRefresh();
+                })();
+              }
+            : undefined
+        }
         onDelete={() => {
+          if (isGroupChat) {
+            groupThread.leaveGroup();
+            return;
+          }
           if (!conversationUuid) return;
           const peerName = peer.otherDisplayName || peer.otherUsername || "пользователем";
           Alert.alert("Удалить чат?", `Чат с ${peerName} будет удалён.`, [
@@ -1665,6 +1933,23 @@ export default function ThreadScreen() {
           ]);
         }}
       />
+
+      {isGroupChat ? (
+        <GroupMembersSheet
+          open={groupThread.membersOpen}
+          title={groupThread.title}
+          members={groupThread.members}
+          meUserUuid={me?.userUuid ?? ""}
+          isCreator={groupThread.isCreator}
+          addCandidates={groupThread.addCandidates}
+          busy={groupThread.membersBusy}
+          error={groupThread.membersError}
+          onClose={() => groupThread.setMembersOpen(false)}
+          onSaveTitle={groupThread.isCreator ? groupThread.saveTitle : undefined}
+          onRemoveMember={groupThread.isCreator ? groupThread.removeMember : undefined}
+          onAddMember={groupThread.isCreator ? groupThread.addMember : undefined}
+        />
+      ) : null}
 
       <FscpUnlockSheet
         visible={unlockOpen}

@@ -9,6 +9,8 @@ type MessagesDeleteConversationModalProps = {
   busy: boolean;
   error: string | null;
   peerDisplayName: string;
+  /** dm (default) vs group leave. */
+  targetKind?: "dm" | "group";
   onClose: () => void;
   onConfirm: () => void;
 };
@@ -19,12 +21,14 @@ export function MessagesDeleteConversationModal({
   busy,
   error,
   peerDisplayName,
+  targetKind = "dm",
   onClose,
   onConfirm,
 }: MessagesDeleteConversationModalProps) {
   const titleId = useId();
   const descriptionId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const isGroup = targetKind === "group";
 
   useEffect(() => {
     if (!open || closing) return;
@@ -42,7 +46,7 @@ export function MessagesDeleteConversationModal({
 
   if (!open) return null;
 
-  const name = peerDisplayName.trim() || "этим пользователем";
+  const name = peerDisplayName.trim() || (isGroup ? "этой группы" : "этим пользователем");
 
   return (
     <>
@@ -62,7 +66,7 @@ export function MessagesDeleteConversationModal({
         >
           <div className={styles.messagesDeleteModalHeader}>
             <h2 id={titleId} className={styles.messagesDeleteModalTitle}>
-              Удалить чат?
+              {isGroup ? "Выйти из группы?" : "Удалить чат?"}
             </h2>
             <button
               type="button"
@@ -76,7 +80,9 @@ export function MessagesDeleteConversationModal({
           </div>
           <div className={styles.messagesDeleteModalBody}>
             <p id={descriptionId} className={styles.messagesDeleteModalText}>
-              Переписка с {name} и все медиа будут удалены у обоих участников. Это действие нельзя отменить.
+              {isGroup
+                ? `Вы покинете группу «${name}». История у остальных участников сохранится; новые сообщения вам не придут.`
+                : `Переписка с ${name} и все медиа будут удалены у обоих участников. Это действие нельзя отменить.`}
             </p>
             {error ? (
               <p className={styles.messagesDeleteModalError} role="alert">
@@ -91,7 +97,7 @@ export function MessagesDeleteConversationModal({
               disabled={busy}
               onClick={onConfirm}
             >
-              {busy ? "Удаление…" : "Удалить"}
+              {busy ? (isGroup ? "Выход…" : "Удаление…") : isGroup ? "Выйти" : "Удалить"}
             </button>
             <button
               type="button"

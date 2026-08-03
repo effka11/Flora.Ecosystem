@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FscpVoiceBlock } from "@/lib/fscp";
 import {
   ensureMessageVoiceObjectUrl,
@@ -46,6 +46,8 @@ export function VoiceMessageCard({
   voiceBlock,
   variant = "thread",
   onRemove,
+  /** Send time on the duration row (same relation as text bubble time ↔ last line). */
+  timeSlot,
 }: {
   durationMs: number;
   waveform: number[];
@@ -54,6 +56,7 @@ export function VoiceMessageCard({
   voiceBlock?: FscpVoiceBlock;
   variant?: "thread" | "composeForm";
   onRemove?: () => void;
+  timeSlot?: ReactNode;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [sourceUrl, setSourceUrl] = useState(
@@ -151,7 +154,12 @@ export function VoiceMessageCard({
             <span key={i} style={{ height: `${Math.round(6 + v * 22)}px` }} />
           ))}
         </div>
-        <span className={styles.voiceDuration}>{error ?? (loading ? "Загрузка…" : formatDuration(durationMs))}</span>
+        <div className={styles.voiceDurationRow}>
+          <span className={styles.voiceDuration}>
+            {error ?? (loading ? "Загрузка…" : formatDuration(durationMs))}
+          </span>
+          {timeSlot ? <div className={styles.voiceSendTimeSlot}>{timeSlot}</div> : null}
+        </div>
       </div>
       {composeForm && onRemove ? (
         <button type="button" className={styles.voiceCardDelete} onClick={onRemove} aria-label="Удалить голосовое">

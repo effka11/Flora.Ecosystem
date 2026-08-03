@@ -216,6 +216,104 @@ export function countArchivedPeers(
   return keys.reduce((n, uuid) => (knownPeerUuids.has(uuid) ? n + 1 : n), 0);
 }
 
+export function isConversationArchived(
+  conversationUuid: string,
+  archivedByConversation: Readonly<Record<string, true>> | undefined,
+): boolean {
+  if (!archivedByConversation) return false;
+  return conversationUuid in archivedByConversation;
+}
+
+/**
+ * Folder-icon / slot count from ORG maps (no ∩ with in-flight empty lists).
+ * DM `setArchived` writes peer + dmConversationUuid — those are not double-counted:
+ * group-only ≈ max(0, convKeys − peerCount). Optional `dmConversationUuidsOfArchivedPeers`
+ * makes dedupe exact when available.
+ */
+export function countArchivedForFolderIcon(
+  archivedByPeer: Readonly<Record<string, true>>,
+  archivedByConversation: Readonly<Record<string, true>> | undefined = {},
+  dmConversationUuidsOfArchivedPeers?: ReadonlySet<string>,
+): number {
+  const peerCount = countArchivedPeers(archivedByPeer);
+  const convs = archivedByConversation ?? {};
+  const convKeys = Object.keys(convs);
+  if (dmConversationUuidsOfArchivedPeers) {
+    let groupOnly = 0;
+    for (const id of convKeys) {
+      if (
+        dmConversationUuidsOfArchivedPeers.has(id) ||
+        dmConversationUuidsOfArchivedPeers.has(id.toLowerCase())
+      ) {
+        continue;
+      }
+      groupOnly += 1;
+    }
+    return peerCount + groupOnly;
+  }
+  // Without DM uuid set: under-count risk if peer archived without conv side-write.
+  // Prefer exact set from owner+peers at call sites.
+  return peerCount + Math.max(0, convKeys.length - peerCount);
+}
+
+export function countArchivedGroupConversations(
+  archivedByConversation: Readonly<Record<string, true>> | undefined,
+  knownGroupUuids: ReadonlySet<string>,
+): number {
+  if (!archivedByConversation) return 0;
+  let n = 0;
+  for (const id of Object.keys(archivedByConversation)) {
+    if (knownGroupUuids.has(id)) n += 1;
+  }
+  return n;
+}
+
+export function filterGroupsByFolder<T extends { conversationUuid: string }>(
+  items: readonly T[],
+  folder: ChatListFolderId,
+  archivedByConversation: Readonly<Record<string, true>> | undefined,
+): T[] {
+  if (folder === "archived") {
+    return items.filter((item) =>
+      isConversationArchived(item.conversationUuid, archivedByConversation),
+    );
+  }
+  if (folder === "all") {
+    return items.filter(
+      (item) => !isConversationArchived(item.conversationUuid, archivedByConversation),
+    );
+  }
+  // Custom folders: groups are not members today.
+  return [];
+}
+
+/**
+ * Drop archive flags only for conversation uuids listed in `goneGroupUuids`
+ * (previously known groups that disappeared). Does not touch DM side-writes
+ * in `archivedByConversation`.
+ */
+export function pruneArchivedConversations(
+  archivedByConversation: Readonly<Record<string, true>> | undefined,
+  goneGroupUuids: ReadonlySet<string>,
+): Record<string, true> {
+  const src = archivedByConversation ?? {};
+  if (goneGroupUuids.size === 0) return src as Record<string, true>;
+  let changed = false;
+  const next: Record<string, true> = { ...src };
+  for (const uuid of goneGroupUuids) {
+    if (uuid in next) {
+      delete next[uuid];
+      changed = true;
+    }
+    const lower = uuid.toLowerCase();
+    if (lower !== uuid && lower in next) {
+      delete next[lower];
+      changed = true;
+    }
+  }
+  return changed ? next : (src as Record<string, true>);
+}
+
 /**
  * Порядок папок: все не-архивные слева, архив — крайний справа (перед «+»).
  * Дубликаты id отбрасываются; архив из customFolders не учитывается (берётся системный).

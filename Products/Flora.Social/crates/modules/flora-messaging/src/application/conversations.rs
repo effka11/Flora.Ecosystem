@@ -7,9 +7,10 @@ use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
     ConversationListItemDto, ConversationsPageDto, DeleteConversationOutcome, DeleteMessageOutcome,
     LegacyConversationListItemDto, LegacyMessageThreadItemDto, LegacySendMessageRequest,
-    LegacySendMessageResultDto, MessageItemDto, MessageReadNotifier, MessageSentContext,
-    MessageSentNotifier, MessageTypingNotifier, MessagesPageDto, PostConversationMessageRequest,
-    PushPreviewTarget, PushPreviewTargetProvider, SendMessageResultDto,
+    LegacySendMessageResultDto, MessageConversationKind, MessageItemDto, MessageReadNotifier,
+    MessageSentContext, MessageSentNotifier, MessageTypingNotifier, MessagesPageDto,
+    PostConversationMessageRequest, PushPreviewTarget, PushPreviewTargetProvider,
+    SendMessageResultDto,
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
@@ -377,11 +378,14 @@ impl ConversationService {
 
         self.sent_notifier
             .notify(MessageSentContext {
+                conversation_uuid,
                 recipient_user_uuid: receiver_uuid,
                 sender_user_uuid: sender_uuid,
                 persisted_message_uuid: result.message_uuid,
                 wire_message_uuid,
                 encrypted_push_previews,
+                skip_push: false,
+                kind: MessageConversationKind::Dm,
             })
             .await;
 

@@ -32,6 +32,7 @@ export type {
 export * from "./social.js";
 export * from "./social-ext.js";
 export * from "./messaging.js";
+export * from "./groups.js";
 export * from "./chatOrganizer.js";
 export * from "./voiceAssets.js";
 export * from "./notifications.js";

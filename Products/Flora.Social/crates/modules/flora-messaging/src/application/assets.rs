@@ -11,9 +11,11 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::infrastructure::{
-    ImageAssetRow, VideoAssetRow, VoiceAssetRow, fetch_image_asset, fetch_video_asset,
-    fetch_voice_asset, insert_image_asset, insert_video_asset, insert_voice_asset,
-    is_message_participant, normalize_content_type,
+    GroupImageAssetRow, GroupVoiceAssetRow, ImageAssetRow, VideoAssetRow, VoiceAssetRow,
+    fetch_group_image_asset, fetch_group_voice_asset, fetch_image_asset, fetch_video_asset,
+    fetch_voice_asset, insert_group_image_asset, insert_group_voice_asset, insert_image_asset,
+    insert_video_asset, insert_voice_asset, is_active_group_member, is_message_participant,
+    normalize_content_type,
 };
 
 pub const MAX_MESSAGE_IMAGE_BYTES: usize = 5 * 1024 * 1024;
@@ -182,18 +184,116 @@ impl AssetService {
         })
     }
 
+    pub async fn upload_group_image(
+        &self,
+        uploader_uuid: Uuid,
+        conversation_uuid: Uuid,
+        content_type: Option<&str>,
+        file_content_type: Option<&str>,
+        bytes: &[u8],
+    ) -> Result<UploadImageAssetResultDto, AssetError> {
+        validate_size(
+            bytes.len(),
+            MAX_MESSAGE_IMAGE_BYTES,
+            "Фото слишком большое.",
+        )?;
+        if bytes.is_empty() {
+            return Err(AssetError::BadRequest("Файл фото пуст.".into()));
+        }
+        self.ensure_active_group_member(conversation_uuid, uploader_uuid)
+            .await?;
+
+        let stored_ct = normalize_content_type(content_type, file_content_type);
+        let asset_uuid = Uuid::now_v7();
+        insert_group_image_asset(
+            &self.pool,
+            asset_uuid,
+            conversation_uuid,
+            uploader_uuid,
+            &stored_ct,
+            bytes,
+        )
+        .await
+        .map_err(AssetError::Internal)?;
+
+        Ok(UploadImageAssetResultDto {
+            image_asset_uuid: asset_uuid,
+            content_type: stored_ct,
+        })
+    }
+
+    pub async fn upload_group_voice(
+        &self,
+        uploader_uuid: Uuid,
+        conversation_uuid: Uuid,
+        duration_ms: i32,
+        file_content_type: Option<&str>,
+        bytes: &[u8],
+    ) -> Result<UploadVoiceAssetResultDto, AssetError> {
+        validate_size(
+            bytes.len(),
+            MAX_VOICE_ASSET_BYTES,
+            "Голосовое сообщение слишком большое.",
+        )?;
+        if duration_ms <= 0 || duration_ms > MAX_VOICE_ASSET_DURATION_MS {
+            return Err(AssetError::BadRequest(
+                "Недопустимая длительность голосового сообщения.".into(),
+            ));
+        }
+        if bytes.is_empty() {
+            return Err(AssetError::BadRequest(
+                "Файл голосового сообщения пуст.".into(),
+            ));
+        }
+        self.ensure_active_group_member(conversation_uuid, uploader_uuid)
+            .await?;
+
+        let stored_ct = normalize_content_type(None, file_content_type);
+        let asset_uuid = Uuid::now_v7();
+        insert_group_voice_asset(
+            &self.pool,
+            asset_uuid,
+            conversation_uuid,
+            uploader_uuid,
+            &stored_ct,
+            duration_ms,
+            bytes,
+        )
+        .await
+        .map_err(AssetError::Internal)?;
+
+        Ok(UploadVoiceAssetResultDto {
+            voice_asset_uuid: asset_uuid,
+            content_type: stored_ct,
+            duration_ms,
+        })
+    }
+
     pub async fn get_image(
         &self,
         user_uuid: Uuid,
         asset_uuid: Uuid,
     ) -> Result<AssetBlob, AssetError> {
-        let Some(asset) = fetch_image_asset(&self.pool, asset_uuid)
+        if let Some(asset) = fetch_image_asset(&self.pool, asset_uuid)
+            .await
+            .map_err(AssetError::Internal)?
+        {
+            if !peer_can_read(&self.pool, user_uuid, &asset).await? {
+                return Err(AssetError::Forbidden);
+            }
+            return Ok(AssetBlob {
+                bytes: asset.encrypted_bytes,
+                content_type: asset.content_type,
+                duration_ms: None,
+            });
+        }
+        let Some(asset) = fetch_group_image_asset(&self.pool, asset_uuid)
             .await
             .map_err(AssetError::Internal)?
         else {
             return Err(AssetError::NotFound("Фото не найдено.".into()));
         };
-        if !peer_can_read(&self.pool, user_uuid, &asset).await? {
+        if !group_asset_can_read(&self.pool, user_uuid, &asset).await? {
             return Err(AssetError::Forbidden);
         }
         Ok(AssetBlob {
@@ -208,7 +308,20 @@ impl AssetService {
         user_uuid: Uuid,
         asset_uuid: Uuid,
     ) -> Result<AssetBlob, AssetError> {
-        let Some(asset) = fetch_voice_asset(&self.pool, asset_uuid)
+        if let Some(asset) = fetch_voice_asset(&self.pool, asset_uuid)
+            .await
+            .map_err(AssetError::Internal)?
+        {
+            if !peer_can_read(&self.pool, user_uuid, &asset).await? {
+                return Err(AssetError::Forbidden);
+            }
+            return Ok(AssetBlob {
+                bytes: asset.encrypted_bytes,
+                content_type: asset.content_type,
+                duration_ms: Some(asset.duration_ms),
+            });
+        }
+        let Some(asset) = fetch_group_voice_asset(&self.pool, asset_uuid)
             .await
             .map_err(AssetError::Internal)?
         else {
@@ -216,7 +329,7 @@ impl AssetService {
                 "Голосовое сообщение не найдено.".into(),
             ));
         };
-        if !peer_can_read(&self.pool, user_uuid, &asset).await? {
+        if !group_voice_asset_can_read(&self.pool, user_uuid, &asset).await? {
             return Err(AssetError::Forbidden);
         }
         Ok(AssetBlob {
@@ -270,6 +383,20 @@ impl AssetService {
             .await
             .map_err(AssetError::Internal)?;
         if !allowed {
+            return Err(AssetError::Forbidden);
+        }
+        Ok(())
+    }
+
+    async fn ensure_active_group_member(
+        &self,
+        conversation_uuid: Uuid,
+        user_uuid: Uuid,
+    ) -> Result<(), AssetError> {
+        let ok = is_active_group_member(&self.pool, conversation_uuid, user_uuid)
+            .await
+            .map_err(AssetError::Internal)?;
+        if !ok {
             return Err(AssetError::Forbidden);
         }
         Ok(())
@@ -363,15 +490,45 @@ fn validate_peer(
         };
         return Err(AssetError::BadRequest(msg.into()));
     }
+    let msg = if max_bytes == MAX_MESSAGE_IMAGE_BYTES {
+        "Фото слишком большое."
+    } else if max_bytes == MAX_VOICE_ASSET_BYTES {
+        "Голосовое сообщение слишком большое."
+    } else {
+        "Видео слишком большое."
+    };
+    validate_size(len, max_bytes, msg)
+}
+
+fn validate_size(len: usize, max_bytes: usize, msg: &str) -> Result<(), AssetError> {
     if len > max_bytes {
-        let msg = if max_bytes == MAX_MESSAGE_IMAGE_BYTES {
-            "Фото слишком большое."
-        } else if max_bytes == MAX_VOICE_ASSET_BYTES {
-            "Голосовое сообщение слишком большое."
-        } else {
-            "Видео слишком большое."
-        };
         return Err(AssetError::BadRequest(msg.into()));
     }
     Ok(())
+}
+
+async fn group_asset_can_read(
+    pool: &PgPool,
+    user_uuid: Uuid,
+    asset: &GroupImageAssetRow,
+) -> Result<bool, AssetError> {
+    if asset.uploader_user_uuid == user_uuid {
+        return Ok(true);
+    }
+    is_active_group_member(pool, asset.conversation_uuid, user_uuid)
+        .await
+        .map_err(AssetError::Internal)
+}
+
+async fn group_voice_asset_can_read(
+    pool: &PgPool,
+    user_uuid: Uuid,
+    asset: &GroupVoiceAssetRow,
+) -> Result<bool, AssetError> {
+    if asset.uploader_user_uuid == user_uuid {
+        return Ok(true);
+    }
+    is_active_group_member(pool, asset.conversation_uuid, user_uuid)
+        .await
+        .map_err(AssetError::Internal)
 }

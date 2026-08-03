@@ -61,8 +61,10 @@ export type ChatComposeFieldHandle = {
    * и JS focus() — no-op; setFocusTo("current") форсит показ клавиатуры нативно.
    */
   showInputKeyboard: () => void;
-  /** Очистить черновик — после успешной отправки. */
+  /** Очистить черновик — после успешной постановки optimistic / отправки. */
   clearText: () => void;
+  /** Восстановить черновик при ошибке отправки после clear. */
+  setText: (text: string) => void;
 };
 
 type Props = {
@@ -185,6 +187,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
   /** Пока inflight после clear draft — не свапать Send→Mic (Telegram-like). */
   const showSendChrome = hasDraft || sending;
   const canStartVoice =
+    !!onStartVoice &&
     !voiceMode &&
     value.trim().length === 0 &&
     images.length === 0 &&
@@ -332,6 +335,17 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     selectionRef.current = { start: 0, end: 0 };
   }, []);
 
+  const setText = useCallback((text: string) => {
+    const next = text;
+    setValue(next);
+    onTextChangeRef.current?.(next);
+    const caret = next.length;
+    selectionRef.current = { start: caret, end: caret };
+    requestAnimationFrame(() => {
+      inputRef.current?.setNativeProps({ selection: { start: caret, end: caret } });
+    });
+  }, []);
+
   const showInputKeyboard = useCallback(() => {
     if (inputRef.current?.isFocused()) {
       // Фокус сохранён после dismiss({keepFocus}) — JS focus() был бы no-op.
@@ -349,8 +363,9 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
       blurInput: () => inputRef.current?.blur(),
       showInputKeyboard,
       clearText,
+      setText,
     }),
-    [clearText, insertToken, showInputKeyboard],
+    [clearText, insertToken, setText, showInputKeyboard],
   );
 
   const handleEmojiPress = useCallback(() => {

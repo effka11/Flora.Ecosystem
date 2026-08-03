@@ -2,9 +2,14 @@
  * Chat list organizer (Mobile): MMKV cache + FSCP-ORG session (client-core).
  */
 import {
+  apiArchiveConversation,
+  apiArchiveGroupConversation,
   apiGetChatListOverlay,
   apiGetChatOrganizer,
+  apiListArchivedGroupConversationUuids,
   apiPutChatOrganizer,
+  apiUnarchiveConversation,
+  apiUnarchiveGroupConversation,
 } from "@flora/client-core/api";
 import {
   buildFscpOrganizerWireEnvelope,
@@ -54,6 +59,15 @@ const session = createChatOrganizerSession({
     getBlob: apiGetChatOrganizer,
     putBlob: apiPutChatOrganizer,
     getPlaintextOverlay: apiGetChatListOverlay,
+    setConversationArchived: async (conversationUuid, otherUserUuid, archived) => {
+      if (archived) await apiArchiveConversation(conversationUuid, otherUserUuid);
+      else await apiUnarchiveConversation(conversationUuid, otherUserUuid);
+    },
+    setGroupConversationArchived: async (conversationUuid, archived) => {
+      if (archived) await apiArchiveGroupConversation(conversationUuid);
+      else await apiUnarchiveGroupConversation(conversationUuid);
+    },
+    listArchivedGroupConversations: apiListArchivedGroupConversationUuids,
   },
   crypto: {
     async buildWire({ ownerUserUuid, revision, state, keys }) {
@@ -102,6 +116,8 @@ type ChatListOverlayStore = {
     conversationUuid: string,
     archived: boolean,
   ) => Promise<boolean>;
+  setGroupArchived: (conversationUuid: string, archived: boolean) => Promise<boolean>;
+  setKnownGroupUuids: (conversationUuids: readonly string[]) => void;
   setMuted: (peerUuid: string, conversationUuid: string, muted: boolean) => Promise<void>;
 };
 
@@ -127,6 +143,9 @@ export const useChatListOverlayStore = create<ChatListOverlayStore>((set) => {
     removeEntity: (entityId) => session.removeFolder(entityId),
     setArchived: (peerUuid, conversationUuid, archived) =>
       session.setArchived(peerUuid, conversationUuid, archived),
+    setGroupArchived: (conversationUuid, archived) =>
+      session.setGroupArchived(conversationUuid, archived),
+    setKnownGroupUuids: (conversationUuids) => session.setKnownGroupUuids(conversationUuids),
     setMuted: (peerUuid, conversationUuid, muted) =>
       session.setMuted(peerUuid, conversationUuid, muted),
   };

@@ -1,21 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
+import { TouchableOpacity } from "react-native-gesture-handler";
 import type { FscpVoiceBlock } from "@flora/client-core/fscp";
+import { TIME_INLINE_GAP_PX } from "@flora/client-core/display";
 import {
-  releaseVoicePlayback,
-  requestVoicePlayback,
-} from "@/lib/ChatVoicePlaybackCoordinator";
+  getChatVoiceSession,
+  isChatVoicePlaying,
+  subscribeChatVoicePlayer,
+  toggleChatVoicePlayback,
+} from "@/lib/chatVoicePlayer";
 import { ensureMessageVoiceUri, peekMessageVoiceUri } from "@/lib/messageVoiceAssets";
 import { peekPendingVoiceUri } from "@/lib/pendingVoiceOutgoing";
 import { ChatVoiceWaveform } from "@/components/messages/ChatVoiceWaveform";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 import { formatVoiceDuration } from "@/lib/voiceWaveform";
-import {
-  ensureVoicePlaybackAudioMode,
-  replaceVoiceSourceAndPlay,
-} from "@/lib/voicePlaybackAudio";
 
 type Props = {
   voiceBlock?: FscpVoiceBlock;
@@ -23,6 +22,10 @@ type Props = {
   waveform: number[];
   isFromMe: boolean;
   localUri?: string | null;
+  /** Long-press opens bubble menu. */
+  onMenuLongPress?: () => void;
+  /** Send time on the duration row (same relation as text time ↔ last line). */
+  timeSlot?: ReactNode;
 };
 
 export function ChatVoiceMessageCard({
@@ -31,10 +34,10 @@ export function ChatVoiceMessageCard({
   waveform,
   isFromMe,
   localUri,
+  onMenuLongPress,
+  timeSlot,
 }: Props) {
   const playerId = voiceBlock?.assetUuid ?? localUri ?? "local-voice";
-  const player = useAudioPlayer(null);
-  const status = useAudioPlayerStatus(player);
   const [sourceUri, setSourceUri] = useState<string | null>(
     () =>
       localUri ??
@@ -43,7 +46,22 @@ export function ChatVoiceMessageCard({
         : null),
   );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const playing = useSyncExternalStore(
+    subscribeChatVoicePlayer,
+    () => isChatVoicePlaying(playerId),
+    () => false,
+  );
+
+  const sessionError = useSyncExternalStore(
+    subscribeChatVoicePlayer,
+    () => {
+      const s = getChatVoiceSession();
+      return s.activeId === playerId ? s.error : null;
+    },
+    () => null,
+  );
 
   useEffect(() => {
     if (localUri) {
@@ -57,31 +75,22 @@ export function ChatVoiceMessageCard({
     else if (cached) setSourceUri(cached);
   }, [localUri, voiceBlock]);
 
-  useEffect(() => {
-    if (!sourceUri) return;
-    player.replace({ uri: sourceUri });
-  }, [player, sourceUri]);
-
-  useEffect(() => {
-    return () => releaseVoicePlayback(playerId);
-  }, [playerId]);
-
-  useEffect(() => {
-    if (status.didJustFinish) {
-      releaseVoicePlayback(playerId);
-    }
-  }, [playerId, status.didJustFinish]);
-
   const ensureSource = useCallback(async () => {
-    if (sourceUri || localUri || !voiceBlock) return sourceUri;
+    if (localUri) return localUri;
+    if (!voiceBlock) return sourceUri;
     setLoading(true);
-    setError(null);
+    setLocalError(null);
     try {
       const uri = await ensureMessageVoiceUri(voiceBlock);
       setSourceUri(uri);
       return uri;
-    } catch {
-      setError("Не удалось загрузить");
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : "Не удалось загрузить";
+      setLocalError(message);
+      Alert.alert("Голосовое", message);
       return null;
     } finally {
       setLoading(false);
@@ -89,60 +98,63 @@ export function ChatVoiceMessageCard({
   }, [localUri, sourceUri, voiceBlock]);
 
   const toggle = useCallback(async () => {
-    const uri = sourceUri ?? (await ensureSource());
-    if (!uri) return;
-
-    if (status.playing) {
-      player.pause();
-      releaseVoicePlayback(playerId);
-      return;
-    }
-
     try {
-      setError(null);
-      await ensureVoicePlaybackAudioMode();
-      requestVoicePlayback(playerId, () => player.pause());
-      await replaceVoiceSourceAndPlay(player, uri);
-      if (!sourceUri) setSourceUri(uri);
-    } catch {
-      releaseVoicePlayback(playerId);
-      setError("Не удалось воспроизвести");
+      const uri = await ensureSource();
+      if (!uri) return;
+      setLocalError(null);
+      await toggleChatVoicePlayback(playerId, uri);
+      setSourceUri(uri);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : "Не удалось воспроизвести";
+      setLocalError(message);
+      Alert.alert("Голосовое", message);
     }
-  }, [ensureSource, player, playerId, sourceUri, status.playing]);
+  }, [ensureSource, playerId]);
 
+  const error = localError ?? sessionError;
+  // Spinner only while downloading/decrypting — not after playback ends
+  // (shouldPlay && !playing used to look like "starting" forever).
   const label = error ?? (loading ? "Загрузка…" : formatVoiceDuration(durationMs));
-  const playIconColor = isFromMe ? floraColors.greenDark : floraColors.greenDark;
+  const playIconColor = floraColors.greenDark;
 
   return (
-    <View style={styles.card}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={status.playing ? "Пауза" : "Воспроизвести голосовое"}
-        style={({ pressed }) => [
-          styles.playBtn,
-          isFromMe ? styles.playBtnMe : styles.playBtnThem,
-          pressed && styles.playBtnPressed,
-        ]}
-        onPress={() => void toggle()}
-        disabled={loading}
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={playing ? "Пауза" : "Воспроизвести голосовое"}
+      activeOpacity={0.85}
+      style={styles.card}
+      onPress={() => void toggle()}
+      onLongPress={onMenuLongPress}
+      delayLongPress={280}
+      disabled={loading}
+    >
+      <View
+        style={[styles.playBtn, isFromMe ? styles.playBtnMe : styles.playBtnThem]}
+        pointerEvents="none"
       >
         {loading ? (
           <ActivityIndicator size="small" color={playIconColor} />
         ) : (
           <Ionicons
-            name={status.playing ? "pause" : "play"}
+            name={playing ? "pause" : "play"}
             size={18}
             color={playIconColor}
           />
         )}
-      </Pressable>
-      <View style={styles.body}>
-        <ChatVoiceWaveform levels={waveform} isFromMe={isFromMe} />
-        <Text style={[styles.duration, isFromMe ? styles.durationMe : styles.durationThem]}>
-          {label}
-        </Text>
       </View>
-    </View>
+      <View style={styles.body} pointerEvents="none">
+        <ChatVoiceWaveform levels={waveform} isFromMe={isFromMe} />
+        <View style={styles.durationRow}>
+          <Text style={[styles.duration, isFromMe ? styles.durationMe : styles.durationThem]}>
+            {label}
+          </Text>
+          {timeSlot ? <View style={styles.sendTimeSlot}>{timeSlot}</View> : null}
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -164,39 +176,39 @@ const styles = StyleSheet.create({
   },
   playBtnMe: {
     backgroundColor: floraColors.whiteTemplate,
-    shadowColor: "#000",
-    shadowOpacity: 0.22,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
   },
   playBtnThem: {
     backgroundColor: floraColors.greenLight,
-    shadowColor: floraColors.greenLight,
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
-  },
-  playBtnPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.94 }],
   },
   body: {
     flex: 1,
     minWidth: 0,
     gap: 2,
   },
+  durationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: TIME_INLINE_GAP_PX,
+    minWidth: 0,
+    width: "100%",
+    height: floraSpacing.grid,
+  },
   duration: {
     fontSize: floraMessages.bubbleTimeFontSize,
     includeFontPadding: false,
     letterSpacing: 0.36,
-    lineHeight: 14,
+    lineHeight: floraSpacing.grid,
+    flexShrink: 1,
   },
   durationMe: {
     color: "rgba(242, 244, 246, 0.78)",
   },
   durationThem: {
     color: "rgba(143, 143, 143, 0.85)",
+  },
+  sendTimeSlot: {
+    flexShrink: 0,
+    marginLeft: "auto",
   },
 });

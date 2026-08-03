@@ -49,7 +49,7 @@ export function useMobileRealtime(enabled: boolean): void {
         void sharedPresenceStore.resyncSnapshots().catch(() => {});
       },
       onMessage: (signal) => {
-        handleMessageRealtime(signal.conversationUuid);
+        handleMessageRealtime(signal.conversationUuid, signal.kind);
       },
       onNotification: () => {
         handleNotificationRealtime();

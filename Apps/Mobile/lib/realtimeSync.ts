@@ -19,11 +19,15 @@ function asRecord(data: unknown): Record<string, unknown> | null {
   return data as Record<string, unknown>;
 }
 
-export function handleMessageRealtime(conversationUuid?: string | null): void {
+export function handleMessageRealtime(
+  conversationUuid?: string | null,
+  kind?: "dm" | "groupChat" | null,
+): void {
   requestTabBadgesRefresh();
   const qc = getQueryClientRef();
   if (qc) {
     void qc.invalidateQueries({ queryKey: ["conversations"] });
+    void qc.invalidateQueries({ queryKey: ["groups"] });
   }
   if (conversationUuid) {
     // Открытый тред сам делает refetch через subscribeMessageRealtime —
@@ -31,7 +35,14 @@ export function handleMessageRealtime(conversationUuid?: string | null): void {
     if (messageListeners.size === 0) {
       const client = getQueryClientRef();
       if (client) {
-        void client.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+        if (kind === "groupChat") {
+          void client.invalidateQueries({ queryKey: ["group-messages", conversationUuid] });
+        } else if (kind === "dm") {
+          void client.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+        } else {
+          void client.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+          void client.invalidateQueries({ queryKey: ["group-messages", conversationUuid] });
+        }
       }
     }
     messageListeners.forEach((listener) => listener(conversationUuid));

@@ -206,6 +206,7 @@ mod tests {
             conversation_uuid: Uuid::now_v7(),
             sender_user_uuid: Uuid::now_v7(),
             sent_at: Utc::now(),
+            kind: Some("dm".into()),
         };
         hub.publish_message(user, &signal);
         let frame = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())

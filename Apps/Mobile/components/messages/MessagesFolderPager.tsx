@@ -30,6 +30,8 @@ import Reanimated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
+import { GroupConversationListRow } from "@/components/messages/GroupConversationListRow";
+import type { GroupChat } from "@/lib/groupChatTypes";
 import {
   ENERGETIC_OPEN_EASING,
   ENERGETIC_OPEN_MS,
@@ -42,12 +44,14 @@ import { floraColors, floraSpacing } from "@/lib/theme";
 const PAGER_AXIS_PX = 10;
 export type MessagesFolderConversationRow = MsgConversationDto & { preview: string };
 
+export type MessagesFolderListRow =
+  | { kind: "dm"; item: MessagesFolderConversationRow }
+  | { kind: "groupChat"; group: GroupChat; preview: string };
+
 export type MessagesFolderPagerHandle = {
   /** Как `switchKind` на ленте: целевой индекс + cancel предыдущего settle. */
   selectFolder: (folder: ChatListFolderId) => void;
 };
-
-type FolderOption = { id: string; label: string };
 
 type Props = {
   pages: readonly ChatListFolderId[];
@@ -59,41 +63,33 @@ type Props = {
   /** Тап назад в «all»: chrome гаснет на исходной иконке. */
   returnFromPageSV: SharedValue<number>;
   returnProgressSV: SharedValue<number>;
-  dataByPage: ReadonlyMap<ChatListFolderId, readonly MessagesFolderConversationRow[]>;
+  dataByPage: ReadonlyMap<ChatListFolderId, readonly MessagesFolderListRow[]>;
   listPaddingBottom: number;
   refreshing: boolean;
   onRefresh: () => void;
   loading: boolean;
   error: boolean;
   emptyMessage: (folder: ChatListFolderId) => string;
-  mutedByPeer: Readonly<Record<string, true>>;
-  archivedByPeer: Readonly<Record<string, true>>;
-  folderOptions: readonly FolderOption[];
-  onMuteForever: (peerUuid: string, conversationUuid: string) => void;
-  onMuteTemporary: (peerUuid: string, conversationUuid: string) => void;
-  onUnmute: (peerUuid: string, conversationUuid: string) => void;
-  onArchivedChange: (peerUuid: string, conversationUuid: string, archived: boolean) => void;
-  onAddToFolder: (folderId: string, peerUuid: string) => void;
+  selectionMode: boolean;
+  selectedConversationUuids: ReadonlySet<string>;
+  onEnterSelect: (conversationUuid: string) => void;
+  onToggleSelect: (conversationUuid: string) => void;
 };
 
 type PageListProps = {
   folder: ChatListFolderId;
   pageWidth: number;
-  data: readonly MessagesFolderConversationRow[];
+  data: readonly MessagesFolderListRow[];
   listPaddingBottom: number;
   refreshing: boolean;
   onRefresh: () => void;
   loading: boolean;
   error: boolean;
   emptyText: string;
-  mutedByPeer: Readonly<Record<string, true>>;
-  archivedByPeer: Readonly<Record<string, true>>;
-  folderOptions: readonly FolderOption[];
-  onMuteForever: (peerUuid: string, conversationUuid: string) => void;
-  onMuteTemporary: (peerUuid: string, conversationUuid: string) => void;
-  onUnmute: (peerUuid: string, conversationUuid: string) => void;
-  onArchivedChange: (peerUuid: string, conversationUuid: string, archived: boolean) => void;
-  onAddToFolder: (folderId: string, peerUuid: string) => void;
+  selectionMode: boolean;
+  selectedConversationUuids: ReadonlySet<string>;
+  onEnterSelect: (conversationUuid: string) => void;
+  onToggleSelect: (conversationUuid: string) => void;
 };
 
 const FolderPageList = memo(function FolderPageList({
@@ -106,53 +102,44 @@ const FolderPageList = memo(function FolderPageList({
   loading,
   error,
   emptyText,
-  mutedByPeer,
-  archivedByPeer,
-  folderOptions,
-  onMuteForever,
-  onMuteTemporary,
-  onUnmute,
-  onArchivedChange,
-  onAddToFolder,
+  selectionMode,
+  selectedConversationUuids,
+  onEnterSelect,
+  onToggleSelect,
 }: PageListProps) {
-  const mutedRef = useRef(mutedByPeer);
-  const archivedRef = useRef(archivedByPeer);
-  const foldersRef = useRef(folderOptions);
-  const onMuteForeverRef = useRef(onMuteForever);
-  const onMuteTemporaryRef = useRef(onMuteTemporary);
-  const onUnmuteRef = useRef(onUnmute);
-  const onArchivedRef = useRef(onArchivedChange);
-  const onAddRef = useRef(onAddToFolder);
-  mutedRef.current = mutedByPeer;
-  archivedRef.current = archivedByPeer;
-  foldersRef.current = folderOptions;
-  onMuteForeverRef.current = onMuteForever;
-  onMuteTemporaryRef.current = onMuteTemporary;
-  onUnmuteRef.current = onUnmute;
-  onArchivedRef.current = onArchivedChange;
-  onAddRef.current = onAddToFolder;
+  const onEnterRef = useRef(onEnterSelect);
+  const onToggleRef = useRef(onToggleSelect);
+  onEnterRef.current = onEnterSelect;
+  onToggleRef.current = onToggleSelect;
 
   const renderItem = useCallback(
-    ({ item }: { item: MessagesFolderConversationRow }) => (
-      <ConversationListRow
-        item={item}
-        isMuted={item.otherUserUuid in mutedRef.current}
-        isArchived={item.otherUserUuid in archivedRef.current}
-        folderOptions={foldersRef.current as FolderOption[]}
-        onMuteForever={() =>
-          onMuteForeverRef.current(item.otherUserUuid, item.conversationUuid)
-        }
-        onMuteTemporary={() =>
-          onMuteTemporaryRef.current(item.otherUserUuid, item.conversationUuid)
-        }
-        onUnmute={() => onUnmuteRef.current(item.otherUserUuid, item.conversationUuid)}
-        onArchivedChange={(archived) =>
-          onArchivedRef.current(item.otherUserUuid, item.conversationUuid, archived)
-        }
-        onAddToFolder={(folderId) => onAddRef.current(folderId, item.otherUserUuid)}
-      />
-    ),
-    [],
+    ({ item }: { item: MessagesFolderListRow }) => {
+      if (item.kind === "groupChat") {
+        const uuid = item.group.conversationUuid;
+        return (
+          <GroupConversationListRow
+            group={item.group}
+            preview={item.preview}
+            selectionMode={selectionMode}
+            selected={selectedConversationUuids.has(uuid)}
+            onEnterSelect={() => onEnterRef.current(uuid)}
+            onToggleSelect={() => onToggleRef.current(uuid)}
+          />
+        );
+      }
+      const row = item.item;
+      const uuid = row.conversationUuid;
+      return (
+        <ConversationListRow
+          item={row}
+          selectionMode={selectionMode}
+          selected={selectedConversationUuids.has(uuid)}
+          onEnterSelect={() => onEnterRef.current(uuid)}
+          onToggleSelect={() => onToggleRef.current(uuid)}
+        />
+      );
+    },
+    [selectionMode, selectedConversationUuids],
   );
 
   const listEmpty = useMemo(() => {
@@ -178,8 +165,10 @@ const FolderPageList = memo(function FolderPageList({
   return (
     <View style={[styles.page, { width: pageWidth }]} collapsable={false}>
       <FlashList
-        data={data as MessagesFolderConversationRow[]}
-        keyExtractor={(item) => item.conversationUuid}
+        data={data as MessagesFolderListRow[]}
+        keyExtractor={(item) =>
+          item.kind === "groupChat" ? `g:${item.group.conversationUuid}` : item.item.conversationUuid
+        }
         contentContainerStyle={contentStyle}
         refreshControl={
           <RefreshControl
@@ -190,7 +179,7 @@ const FolderPageList = memo(function FolderPageList({
         }
         renderItem={renderItem}
         ListEmptyComponent={listEmpty}
-        extraData={`${Object.keys(mutedByPeer).join(",")}|${Object.keys(archivedByPeer).join(",")}|${folderOptions.length}`}
+        extraData={`${selectionMode ? "1" : "0"}|${[...selectedConversationUuids].join(",")}`}
       />
     </View>
   );
@@ -213,14 +202,10 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       loading,
       error,
       emptyMessage,
-      mutedByPeer,
-      archivedByPeer,
-      folderOptions,
-      onMuteForever,
-      onMuteTemporary,
-      onUnmute,
-      onArchivedChange,
-      onAddToFolder,
+      selectionMode,
+      selectedConversationUuids,
+      onEnterSelect,
+      onToggleSelect,
     },
     ref,
   ) {
@@ -262,9 +247,28 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       ],
     );
 
+    // Topology / rotate: sync count+width. If current page folder still exists —
+    // reposition to its index (width change). If Архив (etc.) vanished under the
+    // finger — soft-clamp offset only; `activeFolder`→selectFolder settles after.
     useEffect(() => {
-      const index = chatListFolderPageIndex(pages, pagerTargetRef.current);
-      jumpToIndex(index);
+      const count = Math.max(1, pages.length);
+      pageCountSV.value = count;
+      pageWidthSV.value = pageWidth;
+      const target = pagerTargetRef.current;
+      if (pages.includes(target)) {
+        jumpToIndex(chatListFolderPageIndex(pages, target));
+        return;
+      }
+      runOnUI(() => {
+        "worklet";
+        const width = pageWidthSV.value;
+        if (width <= 0) return;
+        const maxOffset = Math.max(0, count - 1) * width;
+        if (scrollX.value > maxOffset) {
+          scrollX.value = maxOffset;
+          targetIndexSV.value = Math.max(0, count - 1);
+        }
+      })();
       // eslint-disable-next-line react-hooks/exhaustive-deps -- topology / rotate only
     }, [pageWidth, pagesKey]);
 
@@ -484,14 +488,10 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
                 loading={loading}
                 error={error}
                 emptyText={emptyMessage(folder)}
-                mutedByPeer={mutedByPeer}
-                archivedByPeer={archivedByPeer}
-                folderOptions={folderOptions}
-                onMuteForever={onMuteForever}
-                onMuteTemporary={onMuteTemporary}
-                onUnmute={onUnmute}
-                onArchivedChange={onArchivedChange}
-                onAddToFolder={onAddToFolder}
+                selectionMode={selectionMode}
+                selectedConversationUuids={selectedConversationUuids}
+                onEnterSelect={onEnterSelect}
+                onToggleSelect={onToggleSelect}
               />
             ))}
           </Reanimated.View>

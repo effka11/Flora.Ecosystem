@@ -37,6 +37,7 @@ import { startTabPrefetch } from "@/lib/dashboardPreload";
 import { useDashboardRealtime } from "@/app/_dashboard/useDashboardRealtime";
 import { useMessagesUnreadCount } from "@/app/_dashboard/useMessagesUnreadCount";
 import { useNotificationsUnreadCount } from "@/app/_dashboard/useNotificationsUnreadCount";
+import { notifyMessagesPopToList } from "@/lib/messagingApi";
 import { formatNavBadge } from "@/lib/formatNavBadge";
 import { formatAtHandle, profileDisplayName } from "@/app/_dashboard/userDisplay";
 import { FloraAvatar } from "@/app/_shared/FloraAvatar";
@@ -384,7 +385,11 @@ function DashboardShellInner({ children }: DashboardShellProps) {
   const navigateDashboard = useCallback(
     (href: string) => {
       const path = stripDashboardHref(href);
-      if (isDashboardRouteActive(displayPath, href)) return;
+      if (isDashboardRouteActive(displayPath, href)) {
+        // Re-tap «Сообщения» while a thread is open → always return to chat list root.
+        if (path === "/messages") notifyMessagesPopToList();
+        return;
+      }
 
       tryDashboardNavigation(path, () => performDashboardNavigation(href));
     },

@@ -5,6 +5,7 @@ export type MessageRealtimeSignal = {
   conversationUuid: string;
   senderUserUuid: string;
   sentAt: string;
+  kind?: "dm" | "groupChat";
 };
 
 export type AppUpdateRealtimePayload = {
@@ -76,7 +77,14 @@ function parseMessageSignal(raw: unknown): MessageRealtimeSignal | null {
   const senderUserUuid = readStr(o, ["senderUserUuid", "SenderUserUuid"]);
   const sentAt = readStr(o, ["sentAt", "SentAt"]);
   if (!conversationUuid || !senderUserUuid) return null;
-  return { conversationUuid, senderUserUuid, sentAt };
+  const kindRaw = readStr(o, ["kind", "Kind"]).trim().toLowerCase();
+  const kind =
+    kindRaw === "groupchat" || kindRaw === "group"
+      ? ("groupChat" as const)
+      : kindRaw === "dm"
+        ? ("dm" as const)
+        : undefined;
+  return { conversationUuid, senderUserUuid, sentAt, kind };
 }
 
 function parseAppUpdatePayload(raw: unknown): AppUpdateRealtimePayload | null {

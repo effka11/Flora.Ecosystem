@@ -2,7 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
+import { ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { floraColors, floraSpacing } from "@/lib/theme";
+
+type HeaderIconAction = {
+  accessibilityLabel: string;
+  onPress: () => void;
+  /** Якорь для DropdownMenuOverlay (как меню «⋯» в compose). */
+  anchorRef?: RefObject<View | null>;
+};
 
 type TabScreenSearchHeaderProps = {
   title: string;
@@ -14,11 +22,15 @@ type TabScreenSearchHeaderProps = {
   /** Перед открытием меню (закрыть дропдауны фильтров и т.п.). */
   onBeforeMenuOpen?: () => void;
   /** Кнопка создания справа (правее поиска). */
-  createAction?: {
-    accessibilityLabel: string;
-    onPress: () => void;
-    /** Якорь для DropdownMenuOverlay (как меню «⋯» в compose). */
-    anchorRef?: RefObject<View | null>;
+  createAction?: HeaderIconAction;
+  /**
+   * Режим выделения списка (Messages): крестик / счётчик / ⋯ вместо
+   * гамбургера / заголовка / «+». Поиск скрыт.
+   */
+  selectionChrome?: {
+    selectedCount: number;
+    onClose: () => void;
+    moreAction?: HeaderIconAction;
   };
 };
 
@@ -30,6 +42,7 @@ export function TabScreenSearchHeader({
   onChangeText,
   onBeforeMenuOpen,
   createAction,
+  selectionChrome,
 }: TabScreenSearchHeaderProps) {
   const { openMenu } = useHamburgerMenu();
   const [searchOpen, setSearchOpen] = useState(value.length > 0);
@@ -57,6 +70,44 @@ export function TabScreenSearchHeader({
     onBeforeMenuOpen?.();
     openMenu();
   };
+
+  if (selectionChrome) {
+    const more = selectionChrome.moreAction;
+    return (
+      <View style={styles.chromeRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Отменить выбор"
+          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          onPress={selectionChrome.onClose}
+        >
+          <Ionicons name="close-outline" size={26} color={floraColors.gray} />
+        </Pressable>
+
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={1}>
+            {selectionChrome.selectedCount}
+          </Text>
+        </View>
+        <View style={styles.spacer} />
+
+        <View style={styles.trailingActions}>
+          {more ? (
+            <View ref={more.anchorRef} collapsable={false}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={more.accessibilityLabel}
+                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                onPress={more.onPress}
+              >
+                <ChromeMoreIcon color={floraColors.gray} />
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.chromeRow}>

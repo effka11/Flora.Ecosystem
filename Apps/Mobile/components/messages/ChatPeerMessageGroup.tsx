@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import {
   ChatMessageBubble,
@@ -7,6 +7,8 @@ import {
 import { ChatMessageBirthHost } from "@/components/messages/ChatMessageBirthHost";
 import type { BubbleAnchorRect } from "@/components/messages/MessageBubbleMoreMenu";
 import type { ChatPeerInfo } from "@/components/messages/ChatThreadHeader";
+import { findGroupMember } from "@/lib/groupChatMap";
+import type { GroupMember } from "@/lib/groupChatTypes";
 import { floraMessages, floraSpacing } from "@/lib/theme";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { type AnimatedStyle } from "react-native-reanimated";
@@ -14,32 +16,62 @@ import Animated, { type AnimatedStyle } from "react-native-reanimated";
 type Props = {
   messages: ThreadBubbleItem[];
   peer: ChatPeerInfo;
+  /** Group roster — when set, avatar resolves by message senderUserUuid. */
+  groupMembers?: readonly GroupMember[];
   menuTargetUuid: string | null;
   onPress: (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => void;
   onAnchorSync: (messageUuid: string, anchor: BubbleAnchorRect) => void;
-  /** Контр-transform к list insertLift — аватар хвоста остаётся в кадре. */
   holdAvatarStyle?: StyleProp<AnimatedStyle<ViewStyle>>;
 };
 
 export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
   messages,
   peer,
+  groupMembers,
   menuTargetUuid,
   onPress,
   onAnchorSync,
   holdAvatarStyle,
 }: Props) {
-  const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
+  const avatarPeer = useMemo((): ChatPeerInfo => {
+    if (!groupMembers?.length) return peer;
+    const senderUuid =
+      messages[messages.length - 1]?.senderUserUuid?.trim() ||
+      messages[0]?.senderUserUuid?.trim() ||
+      "";
+    const member = findGroupMember(groupMembers, senderUuid);
+    if (!member) {
+      return {
+        ...peer,
+        otherUserUuid: senderUuid || peer.otherUserUuid,
+        otherDisplayName: "Участник",
+        otherUsername: "",
+        otherAvatarUuid: null,
+      };
+    }
+    return {
+      otherUserUuid: member.userUuid,
+      otherUsername: member.username,
+      otherDisplayName: member.displayName,
+      otherAvatarUuid: member.avatarUuid ?? null,
+      otherUserIsOnline: false,
+      otherUserLastSeenAt: null,
+      conversationUuid: peer.conversationUuid,
+    };
+  }, [groupMembers, messages, peer]);
+
+  const displayName =
+    avatarPeer.otherDisplayName || avatarPeer.otherUsername || "Пользователь";
 
   return (
     <View style={styles.group}>
       <Animated.View style={[styles.avatarSlot, holdAvatarStyle]} pointerEvents="none">
         <FloraAvatar
           size={floraMessages.peerBubbleAvatarSize}
-          avatarUuid={peer.otherAvatarUuid}
+          avatarUuid={avatarPeer.otherAvatarUuid}
           displayName={displayName}
-          username={peer.otherUsername}
-          seed={peer.otherUserUuid}
+          username={avatarPeer.otherUsername}
+          seed={avatarPeer.otherUserUuid || displayName}
         />
       </Animated.View>
       <View style={styles.bubbles}>
@@ -50,7 +82,7 @@ export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
             <ChatMessageBirthHost key={clientKey} clientMessageKey={clientKey}>
               <ChatMessageBubble
                 message={message}
-                peer={peer}
+                peer={avatarPeer}
                 showPeerAvatar={false}
                 isPeerIndented={false}
                 inPeerGroup

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { ChromeBackIcon, ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { formatWasOnlineRu } from "@/lib/lastSeenRu";
 import { profileScreenHref } from "@/lib/socialRoutes";
@@ -126,7 +127,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
         style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
         onPress={() => router.back()}
       >
-        <Ionicons name="chevron-back" size={22} color={floraColors.gray} />
+        <ChromeBackIcon color={floraColors.gray} />
       </Pressable>
 
       <View style={styles.avatarWrap}>
@@ -172,11 +173,11 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
           onPress={onMorePress}
           hitSlop={8}
         >
-          <Ionicons
-            name={moreMenuOpen ? "close" : "ellipsis-vertical"}
-            size={18}
-            color={floraColors.gray}
-          />
+          {moreMenuOpen ? (
+            <Ionicons name="close-outline" size={24} color={floraColors.gray} />
+          ) : (
+            <ChromeMoreIcon color={floraColors.gray} />
+          )}
         </Pressable>
       </View>
 
@@ -191,9 +192,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.grid,
-    /** Нижний зазор чуть меньше полной 8-й клетки (−10px), контент не смещается. */
-    minHeight: floraMessages.headerHeight - 10,
-    paddingBottom: floraSpacing.grid * 2 - 10,
+    /** Нижний зазор чуть меньше полной 8-й клетки (−16px), контент не смещается. */
+    minHeight: floraMessages.headerHeight - 20,
+    paddingBottom: floraSpacing.grid,
     paddingHorizontal: floraSpacing.grid,
     backgroundColor: floraColors.bg,
   },
@@ -247,9 +248,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.45,
     lineHeight: 20,
   },
+  /** Как `iconButton` / ⋮ при выделении в TabScreenSearchHeader — центр под «+». */
   moreBtn: {
-    width: floraSpacing.gridFine * 2 + 18,
-    height: floraSpacing.gridFine * 2 + 18,
+    width: 45,
+    height: 45,
     alignItems: "center",
     justifyContent: "center",
   },

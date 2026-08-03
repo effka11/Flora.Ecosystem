@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
+import type { MessagesMoreMenuKind } from "@/app/_shared/messagesMoreMenuKind";
 import rectStyles from "@/app/_shared/FloraRectMenu.module.css";
 
 const menuIconProps = {
@@ -60,6 +61,15 @@ function IconDelete() {
   );
 }
 
+function IconArchive() {
+  return (
+    <svg {...menuIconProps}>
+      <path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1V8z" />
+      <path d="M3 5h18v3H3zM10 12h4" />
+    </svg>
+  );
+}
+
 function IconShield() {
   return (
     <svg {...menuIconProps}>
@@ -69,15 +79,24 @@ function IconShield() {
   );
 }
 
+/** @deprecated Prefer MessagesMoreMenuKind from messagesMoreMenuKind. */
+export type ChatMoreMenuKind = MessagesMoreMenuKind;
+
 type ChatMoreMenuPanelProps = {
   firstActionRef: RefObject<HTMLButtonElement | null>;
   onAction: () => void;
+  /** DM — полный набор; group — выход из группы. */
+  kind?: MessagesMoreMenuKind;
   onSearch?: () => void;
   onMedia?: () => void;
   onPin?: () => void;
-  /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования». */
+  /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования» (только dm). */
   onSafetyNumber?: () => void;
+  /** DM: удалить чат; group: выйти из группы. */
   onDelete?: () => void;
+  conversationIsArchived?: boolean;
+  onConversationArchive?: () => void;
+  onConversationUnarchive?: () => void;
   muteSubmenuOpen: boolean;
   isSubmenuClosing: boolean;
   onToggleMuteSubmenu: () => void;
@@ -123,16 +142,47 @@ function MenuRow({
 export function ChatMoreMenuPanel({
   firstActionRef,
   onAction,
+  kind = "dm",
   onSearch,
   onMedia,
   onPin,
   onSafetyNumber,
   onDelete,
+  conversationIsArchived = false,
+  onConversationArchive,
+  onConversationUnarchive,
   muteSubmenuOpen,
   isSubmenuClosing,
   onToggleMuteSubmenu,
 }: ChatMoreMenuPanelProps) {
   const submenuExpanded = muteSubmenuOpen && !isSubmenuClosing;
+  const isGroup = kind === "group";
+
+  if (isGroup) {
+    return (
+      <>
+        <MenuRow
+          buttonRef={firstActionRef}
+          icon={<IconArchive />}
+          label={conversationIsArchived ? "Разархивировать" : "Архивировать"}
+          onClick={() => {
+            if (conversationIsArchived) onConversationUnarchive?.();
+            else onConversationArchive?.();
+            onAction();
+          }}
+        />
+        <MenuRow
+          icon={<IconDelete />}
+          label="Выйти из группы"
+          danger
+          onClick={() => {
+            onDelete?.();
+            onAction();
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <>

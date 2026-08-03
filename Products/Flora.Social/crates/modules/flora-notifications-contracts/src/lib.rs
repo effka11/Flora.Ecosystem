@@ -19,6 +19,9 @@ pub struct RealtimeMessageSignal {
     pub conversation_uuid: Uuid,
     pub sender_user_uuid: Uuid,
     pub sent_at: DateTime<Utc>,
+    /// Optional client hint: `"dm"` | `"groupChat"`. Absent on older servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 /// Sideload APK update metadata carried on FCM/SSE for `app_update` (not stored in DB).

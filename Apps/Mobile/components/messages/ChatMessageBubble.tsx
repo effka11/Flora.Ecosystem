@@ -45,6 +45,8 @@ export type ThreadBubbleItem = {
   decryptState: "ok" | "decrypting" | "failed";
   isRead?: boolean;
   sendStatus?: "sending";
+  /** Group chats: sender for peer-run split + avatar roster lookup. */
+  senderUserUuid?: string | null;
 };
 type Props = {
   message: ThreadBubbleItem;
@@ -114,12 +116,16 @@ function MessageBubbleColumn({
   anchorStyle,
   bubbleRef,
   onPress,
+  /** Voice play sits inside the lane — use long-press for the bubble menu so it
+   *  does not steal the play button's short press (nested Pressable + scaleY list). */
+  menuActivation = "press",
   children,
 }: {
   tapLaneStyle: StyleProp<ViewStyle>;
   anchorStyle: StyleProp<ViewStyle>;
   bubbleRef: RefObject<View | null>;
   onPress?: (anchor: BubbleAnchorRect) => void;
+  menuActivation?: "press" | "longPress";
   children: ReactNode;
 }) {
   const handlePress = useCallback(() => {
@@ -130,9 +136,11 @@ function MessageBubbleColumn({
     <Pressable
       style={[styles.tapLane, tapLaneStyle]}
       disabled={!onPress}
-      onPress={handlePress}
+      onPress={menuActivation === "press" ? handlePress : undefined}
+      onLongPress={menuActivation === "longPress" ? handlePress : undefined}
+      delayLongPress={280}
     >
-      <View style={anchorStyle}>
+      <View style={anchorStyle} pointerEvents="box-none">
         {children}
       </View>
     </Pressable>
@@ -277,6 +285,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   }
 
   if (hasVoice && !hasImages) {
+    const openVoiceMenu = () => measureBubbleAnchor(bubbleMeasureRef, onPress);
     return (
       <View style={wrapStyle}>
         {showAvatar ? (
@@ -290,18 +299,25 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             />
           </View>
         ) : null}
-        <MessageBubbleColumn
-          anchorStyle={[
-            styles.bubbleAnchor,
-            !message.isFromMe ? styles.bubbleAnchorThem : null,
-            { maxWidth: maxVoiceWidth },
+        {/*
+          Voice: play button must NOT sit under the bubble-menu Pressable.
+          Nested Pressable + inverted FlashList (scaleY) steals short presses.
+          Menu opens via long-press on the waveform/time lane only.
+        */}
+        <View
+          style={[
+            styles.tapLane,
+            message.isFromMe ? styles.tapLaneMe : styles.tapLaneThem,
           ]}
-          {...bubbleColumnProps}
+          pointerEvents="box-none"
         >
           <View
             ref={bubbleMeasureRef}
             collapsable={false}
             style={[
+              styles.bubbleAnchor,
+              !message.isFromMe ? styles.bubbleAnchorThem : null,
+              { maxWidth: maxVoiceWidth },
               styles.bubble,
               message.isFromMe ? styles.bubbleMe : styles.bubbleThem,
               voiceOnly ? styles.bubbleVoiceOnly : styles.bubbleVoiceWithMedia,
@@ -315,35 +331,40 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                 durationMs={voiceBlock.durationMs}
                 waveform={voiceBlock.waveform}
                 isFromMe={message.isFromMe}
+                onMenuLongPress={onPress ? openVoiceMenu : undefined}
+                timeSlot={
+                  voiceOnly ? (
+                    <ChatMessageBubbleTime
+                      timeLabel={timeLabel}
+                      deliveryState={deliveryState}
+                      timeStyle={[
+                        styles.voiceBubbleTime,
+                        message.isFromMe ? styles.voiceBubbleTimeMe : styles.voiceBubbleTimeThem,
+                      ]}
+                      receiptColor={receiptColor}
+                      containerStyle={styles.voiceSendTimeRow}
+                    />
+                  ) : undefined
+                }
               />
             </View>
             {voiceWithCaption ? (
-              <View style={styles.voiceCaptionBlock}>
-                <ChatMessageBubbleTextBody
-                  body={body}
-                  timeLabel={timeLabel}
-                  deliveryState={deliveryState}
-                  maxBubbleInnerWidthPx={voiceCaptionInner}
-                  bodyStyle={[styles.body, message.isFromMe ? styles.bodyMe : styles.bodyThem]}
-                  timeStyle={inlineTimeStyle}
-                  receiptColor={receiptColor}
-                />
-              </View>
-            ) : null}
-            {voiceOnly ? (
-              <ChatMessageBubbleTime
-                timeLabel={timeLabel}
-                deliveryState={deliveryState}
-                timeStyle={[
-                  styles.voiceBubbleTime,
-                  message.isFromMe ? styles.voiceBubbleTimeMe : styles.voiceBubbleTimeThem,
-                ]}
-                receiptColor={receiptColor}
-                containerStyle={styles.voiceTimeRow}
-              />
+              <Pressable onLongPress={openVoiceMenu} delayLongPress={280}>
+                <View style={styles.voiceCaptionBlock}>
+                  <ChatMessageBubbleTextBody
+                    body={body}
+                    timeLabel={timeLabel}
+                    deliveryState={deliveryState}
+                    maxBubbleInnerWidthPx={voiceCaptionInner}
+                    bodyStyle={[styles.body, message.isFromMe ? styles.bodyMe : styles.bodyThem]}
+                    timeStyle={inlineTimeStyle}
+                    receiptColor={receiptColor}
+                  />
+                </View>
+              </Pressable>
             ) : null}
           </View>
-        </MessageBubbleColumn>
+        </View>
       </View>
     );
   }
@@ -574,16 +595,25 @@ const styles = StyleSheet.create({
     paddingTop: floraSpacing.gridFine * 2,
     paddingBottom: 0,
   },
+  /** Паритет web `.messagesBubbleVoiceOnly .voiceCard` — 3 клетки. */
   voiceCardSlot: {
     height: floraSpacing.grid * 3,
     minHeight: floraSpacing.grid * 3,
     justifyContent: "center",
+    flexShrink: 0,
   },
+  /**
+   * Паритет web `.messagesBubbleVoiceOnly`:
+   * padding (grid−1.5)×2 + card 3×grid = 5×grid − 3.
+   * Send time on the duration row (like text time ↔ last line).
+   */
   bubbleVoiceOnly: {
-    minHeight: 70,
-    paddingTop: 8,
-    paddingBottom: 8,
-    position: "relative",
+    height: 5 * floraSpacing.grid - 3,
+    minHeight: 5 * floraSpacing.grid - 3,
+    paddingTop: floraSpacing.grid - 1.5,
+    paddingBottom: floraSpacing.grid - 1.5,
+    justifyContent: "flex-start",
+    gap: 0,
   },
   bubbleVoiceWithMedia: {
     paddingVertical: floraSpacing.gridFine + 1,
@@ -596,6 +626,7 @@ const styles = StyleSheet.create({
     fontSize: floraMessages.bubbleTimeFontSize,
     textAlign: "right",
     opacity: 0.85,
+    lineHeight: floraSpacing.grid,
   },
   voiceBubbleTimeMe: {
     color: "rgba(242, 244, 246, 0.78)",
@@ -603,10 +634,9 @@ const styles = StyleSheet.create({
   voiceBubbleTimeThem: {
     color: floraMessages.themBubbleTime,
   },
-  voiceTimeRow: {
-    position: "absolute",
-    right: floraSpacing.gridFine * 2,
-    bottom: floraSpacing.gridFine + 1,
+  voiceSendTimeRow: {
+    minHeight: floraSpacing.grid,
+    height: floraSpacing.grid,
   },
   body: {
     fontSize: floraMessages.bubbleFontSize,

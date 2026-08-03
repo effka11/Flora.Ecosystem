@@ -5,6 +5,7 @@ export * from "./profile.js";
 export * from "./engagement.js";
 export * from "./comments.js";
 export * from "./messaging.js";
+export * from "./groups.js";
 export * from "./notifications.js";
 export * from "./music.js";
 export * from "./people.js";

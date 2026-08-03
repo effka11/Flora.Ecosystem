@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { floraDurationMs } from "@/lib/floraMotion";
 import { ChatMoreMenuPanel } from "@/app/(dashboard)/messages/ChatMoreMenuPanel";
 import { ConversationMoreMenuPanel } from "./ConversationMoreMenuPanel";
+import type { MessagesMoreMenuKind } from "./messagesMoreMenuKind";
 import {
   FLORA_RECT_MENU_PANEL_ATTR,
   isFloraRectMenuOverlayTarget,
@@ -134,6 +135,8 @@ export type PostMoreMenuRectProps = {
   onConversationUnarchive?: () => void;
   folderOptions?: readonly { id: string; label: string }[];
   onAddToFolder?: (folderId: string) => void;
+  /** Набор пунктов ⋮ в списке чатов: dm (по умолчанию) | group. */
+  conversationMenuKind?: MessagesMoreMenuKind;
   /** Свой пост — показать «Удалить пост». */
   canDeletePost?: boolean;
   onDeletePost?: () => void;
@@ -148,6 +151,8 @@ export type PostMoreMenuRectProps = {
   onChatPin?: () => void;
   /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования». */
   onChatSafetyNumber?: () => void;
+  /** Набор пунктов ⋮ в открытом чате: dm (по умолчанию) | group. */
+  chatMenuKind?: MessagesMoreMenuKind;
   /** Удалить весь диалог (список чатов и шапка открытого чата). */
   onDeleteConversation?: () => void;
 };
@@ -168,6 +173,7 @@ export function PostMoreMenuRect({
   onConversationUnarchive,
   folderOptions = [],
   onAddToFolder,
+  conversationMenuKind = "dm",
   canDeletePost = false,
   onDeletePost,
   onNotInterested,
@@ -177,6 +183,7 @@ export function PostMoreMenuRect({
   onChatMedia,
   onChatPin,
   onChatSafetyNumber,
+  chatMenuKind = "dm",
   onDeleteConversation,
 }: PostMoreMenuRectProps) {
   const deleteConversation = onDeleteConversation;
@@ -216,7 +223,12 @@ export function PostMoreMenuRect({
 
   const isConversation = variant === "conversation";
   const isChat = variant === "chat";
-  const hasMuteSubmenu = isConversation || isChat;
+  const menuKind: MessagesMoreMenuKind = isConversation
+    ? conversationMenuKind
+    : isChat
+      ? chatMenuKind
+      : "dm";
+  const hasMuteSubmenu = (isConversation || isChat) && menuKind === "dm";
   const resetSubmenuRef = useRef<() => void>(() => {});
 
   const requestClose = useCallback(() => {
@@ -310,6 +322,7 @@ export function PostMoreMenuRect({
           <ConversationMoreMenuPanel
             firstActionRef={firstActionRef}
             onAction={requestClose}
+            kind={conversationMenuKind}
             muteSubmenuOpen={muteSubmenu.muteSubmenuOpen}
             isSubmenuClosing={muteSubmenu.isSubmenuClosing}
             onToggleMuteSubmenu={muteSubmenu.toggleMuteSubmenu}
@@ -324,11 +337,15 @@ export function PostMoreMenuRect({
           <ChatMoreMenuPanel
             firstActionRef={firstActionRef}
             onAction={requestClose}
+            kind={chatMenuKind}
             onSearch={onChatSearch}
             onMedia={onChatMedia}
             onPin={onChatPin}
             onSafetyNumber={onChatSafetyNumber}
             onDelete={deleteConversation}
+            conversationIsArchived={conversationIsArchived}
+            onConversationArchive={onConversationArchive}
+            onConversationUnarchive={onConversationUnarchive}
             muteSubmenuOpen={muteSubmenu.muteSubmenuOpen}
             isSubmenuClosing={muteSubmenu.isSubmenuClosing}
             onToggleMuteSubmenu={muteSubmenu.toggleMuteSubmenu}

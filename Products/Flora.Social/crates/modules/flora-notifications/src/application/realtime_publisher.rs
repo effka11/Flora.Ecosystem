@@ -50,6 +50,10 @@ impl UserRealtimePublisher {
 
         self.hub.publish_message(recipient_user_uuid, signal);
 
+        if context.skip_push {
+            return;
+        }
+
         let records = match self.push_tokens.records_for_user(recipient_user_uuid).await {
             Ok(t) => t,
             Err(e) => {
