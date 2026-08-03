@@ -1,26 +1,6 @@
-type ActiveVoicePlayer = {
-  id: string;
-  pause: () => void;
-};
+import { pauseChatVoicePlayback } from "@/lib/chatVoicePlayer";
 
-let activePlayer: ActiveVoicePlayer | null = null;
-
-export function requestVoicePlayback(playerId: string, pause: () => void): void {
-  if (activePlayer && activePlayer.id !== playerId) {
-    activePlayer.pause();
-  }
-  activePlayer = { id: playerId, pause };
-}
-
-export function releaseVoicePlayback(playerId: string): void {
-  if (activePlayer?.id === playerId) {
-    activePlayer = null;
-  }
-}
-
+/** Stop shared chat-voice playback (navigate away, open another media, etc.). */
 export function stopActiveVoicePlayback(): void {
-  if (activePlayer) {
-    activePlayer.pause();
-    activePlayer = null;
-  }
+  pauseChatVoicePlayback();
 }

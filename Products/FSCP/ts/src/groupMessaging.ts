@@ -1,10 +1,11 @@
 /**
- * FSCP-G client helpers — fetch member keys, build/decrypt group text wire.
+ * FSCP-G client helpers — fetch member keys, build/decrypt group wire (text + media blocks).
  * HTTP send lives in `@flora/client-core/api/groups` (`apiSendGroupMessage`).
- * Shared by Apps/Web and (later) Apps/Mobile; do not fork into Apps/Web/lib/fscp.
+ * Shared by Apps/Web and Apps/Mobile; do not fork into Apps/Web/lib/fscp.
  */
 
 import { fromBase64Url } from "./base64url.js";
+import type { FscpMessageBlock, FscpMessagePlaintext } from "./envelope.js";
 import {
   buildFscpGroupWireEnvelope,
   decryptFscpGroupWireEnvelope,
@@ -54,6 +55,31 @@ export async function filterMembersWithE2eKeys(
   return { ok, missing };
 }
 
+export async function buildGroupBlocksMessageWire(params: {
+  conversationUuid: string;
+  senderUserUuid: string;
+  material: FscpLocalMaterial;
+  /** Active members including sender; sender is filtered out of RKE fan-out inputs. */
+  memberUserUuids: readonly string[];
+  blocks: FscpMessageBlock[];
+  replyTo?: FscpMessagePlaintext["replyTo"];
+}): Promise<string> {
+  const recipients = await fetchGroupRecipientKeys(
+    params.memberUserUuids,
+    params.senderUserUuid,
+  );
+  const payload = messagePlaintextFromBlocks(params.blocks);
+  if (params.replyTo) payload.replyTo = params.replyTo;
+  return buildFscpGroupWireEnvelope({
+    conversationUuid: params.conversationUuid,
+    senderUserUuid: params.senderUserUuid,
+    senderAgreementPrivateKey: params.material.agreementPrivateKey,
+    senderSigningPrivateKey: params.material.signingPrivateKey,
+    recipients,
+    messagePayload: payload,
+  });
+}
+
 export async function buildGroupTextMessageWire(params: {
   conversationUuid: string;
   senderUserUuid: string;
@@ -62,17 +88,12 @@ export async function buildGroupTextMessageWire(params: {
   memberUserUuids: readonly string[];
   text: string;
 }): Promise<string> {
-  const recipients = await fetchGroupRecipientKeys(
-    params.memberUserUuids,
-    params.senderUserUuid,
-  );
-  return buildFscpGroupWireEnvelope({
+  return buildGroupBlocksMessageWire({
     conversationUuid: params.conversationUuid,
     senderUserUuid: params.senderUserUuid,
-    senderAgreementPrivateKey: params.material.agreementPrivateKey,
-    senderSigningPrivateKey: params.material.signingPrivateKey,
-    recipients,
-    messagePayload: messagePlaintextFromBlocks([{ kind: "text", body: params.text }]),
+    material: params.material,
+    memberUserUuids: params.memberUserUuids,
+    blocks: [{ kind: "text", body: params.text }],
   });
 }
 

@@ -32,6 +32,8 @@ import {
 } from "@/lib/fscp";
 import {
   apiGetUserE2ePublicKey,
+  apiUploadGroupImageAsset,
+  apiUploadGroupVoiceAsset,
   apiUploadMessageImageAsset,
   apiUploadMessageVideoAsset,
   apiUploadMessageVoiceAsset,
@@ -231,6 +233,7 @@ import {
   apiSendGroupMessage,
 } from "@flora/client-core/api";
 import {
+  buildGroupBlocksMessageWire,
   buildGroupTextMessageWire,
   decryptGroupMessagePreview,
   decryptGroupMessageWire,
@@ -2553,7 +2556,7 @@ function MessagesChatInner() {
 
   const handleAttachPick = useCallback(
     (kind: ComposeAttachKind, files: FileList) => {
-      if (selectedTarget?.kind === "groupChat") return;
+      const isGroup = selectedTarget?.kind === "groupChat";
       if (kind === "photo") {
         const result = compose.mergeImages(files);
         const err = messageImageAttachError(result);
@@ -2564,7 +2567,7 @@ function MessagesChatInner() {
         setThreadError(null);
         return;
       }
-      if (kind !== "video") return;
+      if (isGroup || kind !== "video") return;
       const file = files[0];
       if (!file) return;
       const attachError = messageVideoAttachError(file);
@@ -2882,12 +2885,214 @@ function MessagesChatInner() {
     selectedOtherUuid,
   ]);
 
+  const resolveGroupMemberUuids = useCallback(async (): Promise<string[] | null> => {
+    if (!selectedGroupUuid) return null;
+    let memberUuids =
+      selectedGroupChat?.members.map((m) => m.userUuid).filter(Boolean) ?? [];
+    if (memberUuids.length >= 2) return memberUuids;
+    try {
+      const detail = await apiGetGroup(selectedGroupUuid);
+      memberUuids = detail.members.map((m) => m.userUuid);
+      setGroupChats((prev) =>
+        prev.map((g) =>
+          g.conversationUuid === selectedGroupUuid ? mergeGroupDetail(g, detail) : g,
+        ),
+      );
+      return memberUuids;
+    } catch (e) {
+      setThreadError(
+        e instanceof ApiRequestError ? e.message : "Не удалось загрузить участников группы.",
+      );
+      return null;
+    }
+  }, [selectedGroupChat?.members, selectedGroupUuid]);
+
+  const sendGroupVoiceMessageOptimistic = useCallback(async () => {
+    if (
+      selectedTarget?.kind !== "groupChat" ||
+      !selectedGroupUuid ||
+      compose.mode !== "voice" ||
+      !compose.voice
+    ) {
+      return;
+    }
+    const myUuid = me?.userUuid?.trim();
+    if (!myUuid) {
+      setThreadError("Профиль не загружен. Обновите страницу.");
+      return;
+    }
+    const voice = compose.voice;
+    if (voice.durationMs > VOICE_MAX_DURATION_MS) {
+      setThreadError("Голосовое длиннее 30 минут.");
+      return;
+    }
+    if (fscpBootstrapLoading) {
+      setThreadError("Ключи шифрования ещё загружаются…");
+      return;
+    }
+    if (!fscpMaterial) {
+      setThreadError(
+        fscpBootstrapError
+          ? `FSCP: ${fscpBootstrapError}`
+          : "Нужно разблокировать ключи шифрования, чтобы писать в группу.",
+      );
+      if (fscpStatusNeedsPassword(fscpStatus)) openFscpUnlock();
+      return;
+    }
+    const memberUuids = await resolveGroupMemberUuids();
+    if (!memberUuids || memberUuids.length < 2) return;
+
+    const groupUuid = selectedGroupUuid;
+    const optimisticMessageUuid = floraNewUuid();
+    const tempAssetUuid = voice.id;
+    const optimisticVoicePayload = plaintextFromBlocks([
+      {
+        kind: "voice",
+        assetUuid: tempAssetUuid,
+        durationMs: voice.durationMs,
+        waveform: voice.waveform,
+        contentType: voice.contentType,
+        encryption: { algorithm: "aes-gcm", keyBase64Url: "pending", nonceBase64Url: "pending" },
+      },
+    ]);
+    registerPendingVoiceBlob(tempAssetUuid, voice.blob);
+    markVoiceSendStarted(tempAssetUuid);
+    const preparedVoicePromise = awaitPreparedVoiceWithFallback(
+      scheduleVoiceTranscode(tempAssetUuid, voice.blob),
+      { blob: voice.blob, contentType: voice.contentType },
+    );
+
+    const pendingRow: MessageThreadItemDto = {
+      messageUuid: optimisticMessageUuid,
+      content: null,
+      encryptedForMe: null,
+      createdAt: new Date().toISOString(),
+      isFromMe: true,
+      senderUserUuid: myUuid,
+      sendStatus: "sending",
+    };
+    pendingInsertLiftRef.current = true;
+    pendingOutgoingRef.current = pendingRow;
+    setThreadMessages((prev) => [...prev, pendingRow]);
+    setDecryptedById((prev) => ({ ...prev, [optimisticMessageUuid]: optimisticVoicePayload }));
+    compose.reset();
+    setReplyTo(null);
+    setThreadError(null);
+
+    const removeOptimistic = () => {
+      setThreadMessages((prev) => prev.filter((m) => m.messageUuid !== optimisticMessageUuid));
+      setDecryptedById((prev) => {
+        const next = { ...prev };
+        delete next[optimisticMessageUuid];
+        return next;
+      });
+      pendingOutgoingRef.current = null;
+    };
+
+    try {
+      const prepared = await preparedVoicePromise;
+      if (prepared.blob.size > VOICE_MAX_UPLOAD_BYTES) {
+        throw new Error("Голосовое слишком большое для отправки.");
+      }
+      const encrypted = await encryptVoiceBlob(prepared.blob);
+      const uploaded = await apiUploadGroupVoiceAsset({
+        conversationUuid: groupUuid,
+        encryptedBlob: encrypted.encryptedBlob,
+        durationMs: voice.durationMs,
+      });
+      registerPendingVoiceBlob(uploaded.voiceAssetUuid, prepared.blob);
+      const finalPayload = plaintextFromBlocks([
+        {
+          kind: "voice",
+          assetUuid: uploaded.voiceAssetUuid,
+          durationMs: voice.durationMs,
+          waveform: voice.waveform,
+          contentType: prepared.contentType,
+          encryption: {
+            algorithm: "aes-gcm",
+            keyBase64Url: encrypted.keyBase64Url,
+            nonceBase64Url: encrypted.nonceBase64Url,
+          },
+        },
+      ]);
+      const wire = await buildGroupBlocksMessageWire({
+        conversationUuid: groupUuid,
+        senderUserUuid: myUuid,
+        material: fscpMaterial,
+        memberUserUuids: memberUuids,
+        blocks: finalPayload.blocks,
+      });
+      const sent = await apiSendGroupMessage(groupUuid, wire, {
+        voiceAssetUuids: [uploaded.voiceAssetUuid],
+      });
+      const realRow: MessageThreadItemDto = {
+        messageUuid: sent.messageUuid,
+        content: null,
+        encryptedForMe: sent.encryptedWire,
+        createdAt: sent.createdAt,
+        isFromMe: true,
+        senderUserUuid: myUuid,
+      };
+      pendingOutgoingRef.current = realRow;
+      setDecryptedById((prev) => {
+        const next = { ...prev };
+        delete next[optimisticMessageUuid];
+        next[sent.messageUuid] = finalPayload;
+        return next;
+      });
+      invalidateGroupConversationThread(myUuid.toLowerCase(), groupUuid);
+      const page = await getGroupConversationThread(myUuid.toLowerCase(), groupUuid);
+      noteOptimisticUuidReplace(
+        prevSeenMessageIdsRef.current,
+        optimisticMessageUuid,
+        sent.messageUuid,
+      );
+      setThreadMessages(groupApiMessagesToThread(page.items));
+      pendingOutgoingRef.current = null;
+      clearPendingVoiceBlob(uploaded.voiceAssetUuid);
+      void refreshGroups();
+    } catch (e) {
+      removeOptimistic();
+      setThreadError(
+        e instanceof ApiRequestError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Не удалось отправить голосовое сообщение.",
+      );
+    } finally {
+      markVoiceSendFinished(tempAssetUuid);
+      clearPendingVoiceBlob(tempAssetUuid);
+    }
+  }, [
+    compose,
+    fscpBootstrapError,
+    fscpBootstrapLoading,
+    fscpMaterial,
+    fscpStatus,
+    me?.userUuid,
+    openFscpUnlock,
+    refreshGroups,
+    resolveGroupMemberUuids,
+    selectedGroupUuid,
+    selectedTarget?.kind,
+  ]);
+
   const handleSend = useCallback(async () => {
     if (selectedTarget?.kind === "groupChat" && selectedGroupUuid && groupChatMe) {
-      if (!compose.canSend || compose.mode === "voice") return;
+      if (compose.mode === "voice") {
+        void sendGroupVoiceMessageOptimistic();
+        return;
+      }
+      if (!compose.canSend) return;
       if (sending) return;
       const textBody = compose.text.trim();
-      if (!textBody) return;
+      const pendingImages = compose.images;
+      if (compose.videos.length > 0) {
+        setThreadError("Видео в групповых чатах пока не поддерживается.");
+        return;
+      }
+      if (!textBody && pendingImages.length === 0) return;
       const myUuid = me?.userUuid?.trim();
       if (!myUuid) {
         setThreadError("Профиль не загружен. Обновите страницу.");
@@ -2906,33 +3111,29 @@ function MessagesChatInner() {
         if (fscpStatusNeedsPassword(fscpStatus)) openFscpUnlock();
         return;
       }
-      let memberUuids =
-        selectedGroupChat?.members.map((m) => m.userUuid).filter(Boolean) ?? [];
-      if (memberUuids.length < 2) {
-        try {
-          const detail = await apiGetGroup(selectedGroupUuid);
-          memberUuids = detail.members.map((m) => m.userUuid);
-          setGroupChats((prev) =>
-            prev.map((g) =>
-              g.conversationUuid === selectedGroupUuid
-                ? mergeGroupDetail(g, detail)
-                : g,
-            ),
-          );
-        } catch (e) {
-          setThreadError(
-            e instanceof ApiRequestError ? e.message : "Не удалось загрузить участников группы.",
-          );
-          return;
-        }
-      }
+      const memberUuids = await resolveGroupMemberUuids();
+      if (!memberUuids || memberUuids.length < 2) return;
+
       pendingInsertLiftRef.current = true;
       setSending(true);
       setThreadError(null);
       const tempUuid = `pending-group-${Date.now()}`;
+      const optimisticBlocks: FscpMessageBlock[] = [];
+      if (textBody) optimisticBlocks.push({ kind: "text", body: textBody });
+      for (const image of pendingImages) {
+        optimisticBlocks.push({
+          kind: "image",
+          assetUuid: image.id,
+          contentType: image.sourceFile.type || "image/jpeg",
+          encryption: { algorithm: "aes-gcm", keyBase64Url: "pending", nonceBase64Url: "pending" },
+        });
+      }
+      const optimisticPayload = plaintextFromBlocks(
+        optimisticBlocks.length > 0 ? optimisticBlocks : [{ kind: "text", body: textBody }],
+      );
       const pendingRow: MessageThreadItemDto = {
         messageUuid: tempUuid,
-        content: textBody,
+        content: textBody || null,
         encryptedForMe: null,
         createdAt: new Date().toISOString(),
         isFromMe: true,
@@ -2941,17 +3142,71 @@ function MessagesChatInner() {
       };
       pendingOutgoingRef.current = pendingRow;
       setThreadMessages((prev) => [...prev, pendingRow]);
+      setDecryptedById((prev) => ({ ...prev, [tempUuid]: optimisticPayload }));
+      const imageSendIds = pendingImages.map((image) => image.id);
       compose.reset();
       setReplyTo(null);
       try {
-        const wire = await buildGroupTextMessageWire({
-          conversationUuid: selectedGroupUuid,
-          senderUserUuid: myUuid,
-          material: fscpMaterial,
-          memberUserUuids: memberUuids,
-          text: textBody,
+        const blocks: FscpMessageBlock[] = [];
+        const imageAssetUuids: string[] = [];
+        if (textBody) blocks.push({ kind: "text", body: textBody });
+        if (pendingImages.length > 0) {
+          for (const imageId of imageSendIds) markMessageImageSendStarted(imageId);
+          try {
+            const preparedImages = await Promise.all(
+              pendingImages.map((image) =>
+                scheduleMessageImagePrepare(image.id, image.sourceFile),
+              ),
+            );
+            for (let index = 0; index < pendingImages.length; index += 1) {
+              const prepared = preparedImages[index];
+              if (!prepared) continue;
+              const friBlob = await encodeImageBlobToFrc(prepared.blob, 85);
+              if (friBlob.size > MAX_MESSAGE_IMAGE_BYTES) {
+                throw new Error("FRC-I версия фото превышает лимит 5 МиБ.");
+              }
+              const encryptedFrc = await encryptVoiceBlob(friBlob);
+              const frcUploaded = await apiUploadGroupImageAsset({
+                conversationUuid: selectedGroupUuid,
+                encryptedBlob: encryptedFrc.encryptedBlob,
+                contentType: friBlob.type,
+              });
+              imageAssetUuids.push(frcUploaded.imageAssetUuid);
+              blocks.push({
+                kind: "image",
+                assetUuid: frcUploaded.imageAssetUuid,
+                contentType: friBlob.type,
+                encryption: {
+                  algorithm: "aes-gcm",
+                  keyBase64Url: encryptedFrc.keyBase64Url,
+                  nonceBase64Url: encryptedFrc.nonceBase64Url,
+                },
+              });
+            }
+          } finally {
+            for (const imageId of imageSendIds) markMessageImageSendFinished(imageId);
+          }
+        }
+        const wire =
+          blocks.length === 1 && blocks[0]?.kind === "text"
+            ? await buildGroupTextMessageWire({
+                conversationUuid: selectedGroupUuid,
+                senderUserUuid: myUuid,
+                material: fscpMaterial,
+                memberUserUuids: memberUuids,
+                text: textBody,
+              })
+            : await buildGroupBlocksMessageWire({
+                conversationUuid: selectedGroupUuid,
+                senderUserUuid: myUuid,
+                material: fscpMaterial,
+                memberUserUuids: memberUuids,
+                blocks,
+              });
+        const sent = await apiSendGroupMessage(selectedGroupUuid, wire, {
+          imageAssetUuids: imageAssetUuids.length > 0 ? imageAssetUuids : undefined,
         });
-        const sent = await apiSendGroupMessage(selectedGroupUuid, wire);
+        const finalPayload = plaintextFromBlocks(blocks);
         const realRow: MessageThreadItemDto = {
           messageUuid: sent.messageUuid,
           content: null,
@@ -2961,15 +3216,12 @@ function MessagesChatInner() {
           senderUserUuid: myUuid,
         };
         pendingOutgoingRef.current = realRow;
-        setDecryptedById((prev) => ({
-          ...prev,
-          [sent.messageUuid]: {
-            type: "blocks",
-            version: 1,
-            blocks: [{ kind: "text", body: textBody }],
-            clientCreatedAt: sent.createdAt,
-          },
-        }));
+        setDecryptedById((prev) => {
+          const next = { ...prev };
+          delete next[tempUuid];
+          next[sent.messageUuid] = finalPayload;
+          return next;
+        });
         invalidateGroupConversationThread(myUuid.toLowerCase(), selectedGroupUuid);
         const page = await getGroupConversationThread(myUuid.toLowerCase(), selectedGroupUuid);
         setThreadMessages(groupApiMessagesToThread(page.items));
@@ -2977,6 +3229,11 @@ function MessagesChatInner() {
         void refreshGroups();
       } catch (e) {
         setThreadMessages((prev) => prev.filter((m) => m.messageUuid !== tempUuid));
+        setDecryptedById((prev) => {
+          const next = { ...prev };
+          delete next[tempUuid];
+          return next;
+        });
         pendingOutgoingRef.current = null;
         setThreadError(
           e instanceof ApiRequestError
@@ -3365,6 +3622,8 @@ function MessagesChatInner() {
     selectedGroupChat,
     selectedTarget,
     groupChatMe,
+    resolveGroupMemberUuids,
+    sendGroupVoiceMessageOptimistic,
     sendVoiceMessageOptimistic,
     sending,
   ]);
@@ -3433,7 +3692,8 @@ function MessagesChatInner() {
 
   const isGroupChatOpen = selectedTarget?.kind === "groupChat";
   const composeBusy = sending || threadLoading;
-  const composeMediaDisabled = composeBusy || isGroupChatOpen;
+  const composeMediaDisabled = composeBusy;
+  const composeStickersDisabled = composeBusy || isGroupChatOpen;
 
   useEffect(() => {
     if (!isGroupChatOpen) return;
@@ -4172,6 +4432,7 @@ function MessagesChatInner() {
                                     isDemoPlaintextWire(message.encryptedForMe) ? undefined : voiceBlock
                                   }
                                   localBlob={localVoiceBlobForAsset(voiceBlock.assetUuid)}
+                                  timeSlot={<MessageBubbleTime message={message} />}
                                 />
                               </>
                             ) : photoBubble ? (
@@ -4293,7 +4554,7 @@ function MessagesChatInner() {
                                 )}
                               </div>
                             )}
-                            {!photoBubble && !inlineTime ? (
+                            {!photoBubble && !inlineTime && !voiceOnly ? (
                               <MessageBubbleTime message={message} />
                             ) : null}
                           </div>
@@ -4542,7 +4803,6 @@ function MessagesChatInner() {
                       disabled={sending || threadLoading}
                       onChange={(event) => compose.setText(event.target.value)}
                       onPaste={(event) => {
-                        if (isGroupChatOpen) return;
                         const pasted = extractPastedMessageImages(event.clipboardData);
                         if (pasted.length === 0) return;
                         event.preventDefault();
@@ -4569,7 +4829,7 @@ function MessagesChatInner() {
                       aria-label="Стикеры и эмодзи"
                       aria-controls="messages-sticker-panel"
                       aria-expanded={stickerPanelOpen}
-                      disabled={composeMediaDisabled}
+                      disabled={composeStickersDisabled}
                       onClick={toggleStickerPanel}
                     >
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>

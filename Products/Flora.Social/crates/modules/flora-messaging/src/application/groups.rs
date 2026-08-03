@@ -449,11 +449,9 @@ impl GroupService {
                 "Поле encryptedWire обязательно.".into(),
             ));
         }
-        reject_group_v1_assets(
-            &request.voice_asset_uuids,
-            &request.image_asset_uuids,
-            &request.video_asset_uuids,
-        )?;
+        reject_group_video_assets(&request.video_asset_uuids)?;
+        let voice_uuids = dedupe_uuids(&request.voice_asset_uuids);
+        let image_uuids = dedupe_uuids(&request.image_asset_uuids);
 
         let mut tx = self
             .groups
@@ -496,11 +494,51 @@ impl GroupService {
         .map_err(GroupSendError::BadRequest)?;
 
         let (created_at, encrypted_wire, notify) = match outcome {
-            InsertMessageOutcome::Inserted { created_at } => (created_at, wire.to_string(), true),
+            InsertMessageOutcome::Inserted { created_at } => {
+                GroupRepo::bind_voice_assets(
+                    &mut tx,
+                    summary.message_uuid,
+                    conversation_uuid,
+                    sender,
+                    &voice_uuids,
+                )
+                .await
+                .map_err(GroupSendError::BadRequest)?;
+                GroupRepo::bind_image_assets(
+                    &mut tx,
+                    summary.message_uuid,
+                    conversation_uuid,
+                    sender,
+                    &image_uuids,
+                )
+                .await
+                .map_err(GroupSendError::BadRequest)?;
+                (created_at, wire.to_string(), true)
+            }
             InsertMessageOutcome::Idempotent {
                 created_at,
                 encrypted_wire,
-            } => (created_at, encrypted_wire, false),
+            } => {
+                // Retry after success: assets must already be bound to this message.
+                if !voice_uuids.is_empty() || !image_uuids.is_empty() {
+                    let ok = GroupRepo::assets_already_bound_to_message(
+                        &mut tx,
+                        summary.message_uuid,
+                        conversation_uuid,
+                        &voice_uuids,
+                        &image_uuids,
+                    )
+                    .await
+                    .map_err(GroupSendError::BadRequest)?;
+                    if !ok {
+                        return Err(GroupSendError::BadRequest(
+                            "Вложения не соответствуют идемпотентному групповому сообщению."
+                                .into(),
+                        ));
+                    }
+                }
+                (created_at, encrypted_wire, false)
+            }
             InsertMessageOutcome::Conflict => {
                 return Err(GroupSendError::Conflict);
             }
@@ -627,18 +665,25 @@ fn normalize_title_for_patch(raw: &str) -> Result<String, SendMessageError> {
     Ok(trimmed.to_string())
 }
 
-/// FSCP-G v1 is text-only on the wire path; non-empty asset UUID lists are rejected.
-fn reject_group_v1_assets(
-    voice: &[Uuid],
-    image: &[Uuid],
-    video: &[Uuid],
-) -> Result<(), GroupSendError> {
-    if voice.is_empty() && image.is_empty() && video.is_empty() {
+/// Group media v1: voice/image opaque assets only; video lists stay rejected.
+fn reject_group_video_assets(video: &[Uuid]) -> Result<(), GroupSendError> {
+    if video.is_empty() {
         return Ok(());
     }
     Err(GroupSendError::BadRequest(
-        "Вложения в групповых сообщениях v1 не поддерживаются.".into(),
+        "Видео в групповых сообщениях не поддерживается.".into(),
     ))
+}
+
+fn dedupe_uuids(raw: &[Uuid]) -> Vec<Uuid> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::with_capacity(raw.len());
+    for id in raw {
+        if seen.insert(*id) {
+            out.push(*id);
+        }
+    }
+    out
 }
 
 /// Creator-only roster/title mutations: actor must match `created_by`.
@@ -697,21 +742,20 @@ mod tests {
     }
 
     #[test]
-    fn group_v1_rejects_any_assets() {
-        assert!(reject_group_v1_assets(&[], &[], &[]).is_ok());
+    fn group_rejects_video_assets_only() {
+        assert!(reject_group_video_assets(&[]).is_ok());
         let id = Uuid::nil();
         assert!(matches!(
-            reject_group_v1_assets(&[id], &[], &[]),
+            reject_group_video_assets(&[id]),
             Err(GroupSendError::BadRequest(_))
         ));
-        assert!(matches!(
-            reject_group_v1_assets(&[], &[id], &[]),
-            Err(GroupSendError::BadRequest(_))
-        ));
-        assert!(matches!(
-            reject_group_v1_assets(&[], &[], &[id]),
-            Err(GroupSendError::BadRequest(_))
-        ));
+    }
+
+    #[test]
+    fn dedupe_preserves_order() {
+        let a = Uuid::from_u128(1);
+        let b = Uuid::from_u128(2);
+        assert_eq!(dedupe_uuids(&[a, b, a]), vec![a, b]);
     }
 
     #[test]

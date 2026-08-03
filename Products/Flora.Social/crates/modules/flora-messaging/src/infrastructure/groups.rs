@@ -293,6 +293,130 @@ impl GroupRepo {
         Ok(InsertMessageOutcome::Inserted { created_at })
     }
 
+    /// Bind unbound group voice assets owned by `uploader` in this conversation.
+    pub async fn bind_voice_assets(
+        tx: &mut Transaction<'_, Postgres>,
+        message_uuid: Uuid,
+        conversation_uuid: Uuid,
+        uploader: Uuid,
+        asset_uuids: &[Uuid],
+    ) -> Result<(), String> {
+        if asset_uuids.is_empty() {
+            return Ok(());
+        }
+        let bound = sqlx::query(
+            r#"
+            UPDATE flora_core.group_message_voice_assets
+            SET message_uuid = $1
+            WHERE voice_asset_uuid = ANY($2)
+              AND conversation_uuid = $3
+              AND uploader_user_uuid = $4
+              AND message_uuid IS NULL
+            "#,
+        )
+        .bind(message_uuid)
+        .bind(asset_uuids)
+        .bind(conversation_uuid)
+        .bind(uploader)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        if bound.rows_affected() != asset_uuids.len() as u64 {
+            return Err(
+                "Голосовое вложение не принадлежит этому черновику группы или уже отправлено."
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+
+    /// Bind unbound group image assets owned by `uploader` in this conversation.
+    pub async fn bind_image_assets(
+        tx: &mut Transaction<'_, Postgres>,
+        message_uuid: Uuid,
+        conversation_uuid: Uuid,
+        uploader: Uuid,
+        asset_uuids: &[Uuid],
+    ) -> Result<(), String> {
+        if asset_uuids.is_empty() {
+            return Ok(());
+        }
+        let bound = sqlx::query(
+            r#"
+            UPDATE flora_core.group_message_image_assets
+            SET message_uuid = $1
+            WHERE image_asset_uuid = ANY($2)
+              AND conversation_uuid = $3
+              AND uploader_user_uuid = $4
+              AND message_uuid IS NULL
+            "#,
+        )
+        .bind(message_uuid)
+        .bind(asset_uuids)
+        .bind(conversation_uuid)
+        .bind(uploader)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        if bound.rows_affected() != asset_uuids.len() as u64 {
+            return Err(
+                "Фото-вложение не принадлежит этому черновику группы или уже отправлено.".into(),
+            );
+        }
+        Ok(())
+    }
+
+    /// True when every listed asset is already bound to `message_uuid` (idempotent resend).
+    pub async fn assets_already_bound_to_message(
+        tx: &mut Transaction<'_, Postgres>,
+        message_uuid: Uuid,
+        conversation_uuid: Uuid,
+        voice_uuids: &[Uuid],
+        image_uuids: &[Uuid],
+    ) -> Result<bool, String> {
+        if !voice_uuids.is_empty() {
+            let n: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*)::bigint
+                FROM flora_core.group_message_voice_assets
+                WHERE voice_asset_uuid = ANY($1)
+                  AND conversation_uuid = $2
+                  AND message_uuid = $3
+                "#,
+            )
+            .bind(voice_uuids)
+            .bind(conversation_uuid)
+            .bind(message_uuid)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(|e| e.to_string())?;
+            if n != voice_uuids.len() as i64 {
+                return Ok(false);
+            }
+        }
+        if !image_uuids.is_empty() {
+            let n: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*)::bigint
+                FROM flora_core.group_message_image_assets
+                WHERE image_asset_uuid = ANY($1)
+                  AND conversation_uuid = $2
+                  AND message_uuid = $3
+                "#,
+            )
+            .bind(image_uuids)
+            .bind(conversation_uuid)
+            .bind(message_uuid)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(|e| e.to_string())?;
+            if n != image_uuids.len() as i64 {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub async fn messages_page(
         &self,
         conversation_uuid: Uuid,

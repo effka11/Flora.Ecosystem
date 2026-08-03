@@ -1107,23 +1107,16 @@ export default function ThreadScreen() {
   );
 
   const onPickImages = useCallback(async () => {
-    if (isGroupChat) {
-      Alert.alert("Группа", "В группах пока можно отправлять только текст.");
-      return;
-    }
     if (!canSend()) return;
     const error = await pickImages();
     if (error) Alert.alert("Фото", error);
-  }, [canSend, isGroupChat, pickImages]);
+  }, [canSend, pickImages]);
 
   // Голосовой режим закрывает панель эмодзи (closeEmoji); клавиатуру явно не трогаем.
   // Инпут остаётся смонтированным и сфокусированным (ChatComposeField прячет его).
   const onStartVoice = useCallback(async () => {
-    if (isGroupChat) {
-      Alert.alert("Группа", "В группах пока можно отправлять только текст.");
-      return;
-    }
-    if (!canSend() || !otherUserUuid) return;
+    if (!canSend()) return;
+    if (!isGroupChat && !otherUserUuid) return;
     typingEmitterRef.current?.stop();
     closeEmoji();
     enterVoiceMode();
@@ -1143,8 +1136,8 @@ export default function ThreadScreen() {
   }, []);
 
   const onSendVoice = useCallback(async () => {
-    if (isGroupChat) return;
-    if (!conversationUuid || !me?.userUuid || !otherUserUuid || !voiceDraft) return;
+    if (!conversationUuid || !me?.userUuid || !voiceDraft) return;
+    if (!isGroupChat && !otherUserUuid) return;
     if (!canSendVoice || voiceDraft.transcoding || voiceDraft.transcodeError) return;
     if (!canSend()) return;
     const material = useFscpStore.getState().material;
@@ -1176,10 +1169,40 @@ export default function ThreadScreen() {
     setDeleteBarHeightPx(0);
     atBottomRef.current = true;
 
+    if (isGroupChat) {
+      try {
+        const voiceBlock = await uploadPreparedMessageVoice({
+          uploadTarget: { kind: "group", conversationUuid },
+          sourceUri,
+          contentType,
+          durationMs,
+          waveform,
+        });
+        registerPendingVoiceUri(voiceBlock.assetUuid, sourceUri);
+        clearPendingVoiceUri(provisionalAssetUuid);
+        const result = await groupThread.sendBlocks([voiceBlock], {
+          voiceAssetUuids: [voiceBlock.assetUuid],
+          onPending: (key) => {
+            seenMessageIdsRef.current.add(key);
+            pinListToBottom(false);
+            playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx([voiceBlock]));
+          },
+        });
+        if (result.ok) seenMessageIdsRef.current.add(result.clientMessageKey);
+      } catch (err) {
+        clearPendingVoiceUri(provisionalAssetUuid);
+        const message = err instanceof Error ? err.message : "Не удалось отправить голосовое";
+        Alert.alert("Отправка", message);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     insertOptimisticOutgoingThreadMessage({
       queryClient,
       conversationUuid,
-      otherUserUuid,
+      otherUserUuid: otherUserUuid!,
       senderUserUuid: me.userUuid,
       clientMessageKey,
       blocks: optimisticBlocks,
@@ -1190,11 +1213,11 @@ export default function ThreadScreen() {
     playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks));
 
     try {
-      const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
+      const peerKey = await apiGetUserE2ePublicKey(otherUserUuid!);
       if (!peerKey.publicKeyBase64) throw new Error("У собеседника нет E2E-ключа");
 
       const voiceBlock = await uploadPreparedMessageVoice({
-        toUserUuid: otherUserUuid,
+        toUserUuid: otherUserUuid!,
         sourceUri,
         contentType,
         durationMs,
@@ -1206,7 +1229,7 @@ export default function ThreadScreen() {
 
       const wire = await buildBlocksMessageWire({
         senderUserUuid: me.userUuid,
-        receiverUserUuid: otherUserUuid,
+        receiverUserUuid: otherUserUuid!,
         material,
         receiverAgreementPublicKeyBase64: peerKey.publicKeyBase64,
         blocks: [voiceBlock],
@@ -1214,7 +1237,7 @@ export default function ThreadScreen() {
       });
       const encryptedPushPreviews = await buildEncryptedPushPreviews({
         wire,
-        recipientUserUuid: otherUserUuid,
+        recipientUserUuid: otherUserUuid!,
         senderSigningPrivateKey: material.signingPrivateKey,
         blocks: [voiceBlock],
       });
@@ -1227,7 +1250,7 @@ export default function ThreadScreen() {
       replaceOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
-        otherUserUuid,
+        otherUserUuid: otherUserUuid!,
         senderUserUuid: me.userUuid,
         clientMessageKey,
         sent,
@@ -1253,7 +1276,7 @@ export default function ThreadScreen() {
       removeOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
-        otherUserUuid,
+        otherUserUuid: otherUserUuid!,
         clientMessageKey,
       });
       clearPendingVoiceUri(provisionalAssetUuid);
@@ -1267,6 +1290,7 @@ export default function ThreadScreen() {
     canSendVoice,
     clearVoiceDraft,
     conversationUuid,
+    groupThread,
     isGroupChat,
     me?.userUuid,
     otherUserUuid,
@@ -1317,7 +1341,7 @@ export default function ThreadScreen() {
 
     if (isGroupChat) {
       if (!conversationUuid || !me?.userUuid) return;
-      if (!trimmed) return;
+      if (!trimmed && composeImages.length === 0) return;
       if (!canSend() || !useFscpStore.getState().material) {
         setUnlockOpen(true);
         Alert.alert(
@@ -1326,26 +1350,65 @@ export default function ThreadScreen() {
         );
         return;
       }
-      // Same chrome as DM: clear + insertLift on pending seed (before encrypt/network).
+      const imageSnapshot = composeImages.map((image) => ({
+        uri: image.uri,
+        contentType: image.contentType,
+      }));
       setSending(true);
       setReplyTo(null);
       setDeleteBarHeightPx(0);
       atBottomRef.current = true;
+      composeRef.current?.clearText();
+      clearImages();
       try {
-        const result = await groupThread.sendText(trimmed, {
+        if (imageSnapshot.length === 0) {
+          const result = await groupThread.sendText(trimmed, {
+            onPending: (clientMessageKey) => {
+              seenMessageIdsRef.current.add(clientMessageKey);
+              pinListToBottom(false);
+              playChatListInsertLift(
+                insertLiftSv,
+                estimateBlocksInsertLiftPx([{ kind: "text", body: trimmed }]),
+              );
+            },
+          });
+          if (!result.ok && result.restoreDraft) {
+            composeRef.current?.setText(trimmed);
+          }
+          return;
+        }
+        const blocks: FscpMessageBlock[] = [];
+        const imageAssetUuids: string[] = [];
+        if (trimmed) blocks.push({ kind: "text", body: trimmed });
+        for (const image of imageSnapshot) {
+          const uploaded = await uploadPreparedMessageImage({
+            uploadTarget: { kind: "group", conversationUuid },
+            prepared: {
+              uri: image.uri,
+              contentType: image.contentType,
+              fileName: "photo.jpg",
+            },
+          });
+          seedMessageImageUri(uploaded.assetUuid, image.uri);
+          blocks.push(uploaded);
+          imageAssetUuids.push(uploaded.assetUuid);
+        }
+        if (blocks.length === 0) return;
+        const result = await groupThread.sendBlocks(blocks, {
+          imageAssetUuids,
           onPending: (clientMessageKey) => {
-            composeRef.current?.clearText();
             seenMessageIdsRef.current.add(clientMessageKey);
             pinListToBottom(false);
-            playChatListInsertLift(
-              insertLiftSv,
-              estimateBlocksInsertLiftPx([{ kind: "text", body: trimmed }]),
-            );
+            playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(blocks));
           },
         });
         if (!result.ok && result.restoreDraft) {
           composeRef.current?.setText(trimmed);
         }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
+        Alert.alert("Отправка", message);
+        if (trimmed) composeRef.current?.setText(trimmed);
       } finally {
         setSending(false);
       }
@@ -1588,7 +1651,8 @@ export default function ThreadScreen() {
               onScroll={onScroll}
               onScrollBeginDrag={onScrollBeginDrag}
               scrollEventThrottle={16}
-              keyboardShouldPersistTaps="handled"
+              // always: иначе первый тап по play только закрывает клавиатуру.
+              keyboardShouldPersistTaps="always"
               // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
               // соседние ячейки размонтируются прямо у края вьюпорта.
               drawDistance={480}

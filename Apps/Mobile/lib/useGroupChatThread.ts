@@ -15,7 +15,17 @@ import {
   apiSendGroupMessage,
 } from "@flora/client-core/api";
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
-import { buildGroupTextMessageWire, filterMembersWithE2eKeys } from "@flora/client-core/fscp";
+import {
+  buildGroupBlocksMessageWire,
+  buildGroupTextMessageWire,
+  extractTextFromPlaintext,
+  filterMembersWithE2eKeys,
+  getImageBlocksFromPlaintext,
+  getPrimaryVoiceBlock,
+  messagePlaintextFromBlocks,
+  plaintextToPreview,
+  type FscpMessageBlock,
+} from "@flora/client-core/fscp";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -45,26 +55,25 @@ import {
   messageThreadDecryptCache,
 } from "@/stores/messageThreadCache";
 import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
-import {
-  extractTextFromPlaintext,
-  messagePlaintextFromBlocks,
-  plaintextToPreview,
-} from "@flora/client-core/fscp";
 
 export const groupMessagesQueryKey = (conversationUuid: string) =>
   ["group-messages", conversationUuid] as const;
 
 type GroupMessagesPage = { items: MsgMessageDto[]; nextCursor: string | null };
 
-function seedPendingDecryptRow(dto: MsgMessageDto, text: string, clientMessageKey: string): void {
-  const plain = messagePlaintextFromBlocks([{ kind: "text", body: text }], dto.createdAt);
+function seedPendingDecryptRow(
+  dto: MsgMessageDto,
+  blocks: FscpMessageBlock[],
+  clientMessageKey: string,
+): void {
+  const plain = messagePlaintextFromBlocks(blocks, dto.createdAt);
   const row: ThreadBubbleItem = {
     messageUuid: dto.messageUuid,
     clientMessageKey,
     text: extractTextFromPlaintext(plain),
     previewText: plaintextToPreview(plain),
-    imageBlocks: [],
-    voiceBlock: undefined,
+    imageBlocks: getImageBlocksFromPlaintext(plain),
+    voiceBlock: getPrimaryVoiceBlock(plain),
     isFromMe: true,
     createdAt: dto.createdAt,
     decryptState: "ok",
@@ -211,16 +220,19 @@ export function useGroupChatThread(params: {
     }
   }, [conversationUuid, exitToList, queryClient]);
 
-  const sendText = useCallback(
+  const sendBlocks = useCallback(
     async (
-      text: string,
-      opts?: { onPending?: (clientMessageKey: string) => void },
+      blocks: FscpMessageBlock[],
+      opts?: {
+        onPending?: (clientMessageKey: string) => void;
+        voiceAssetUuids?: string[];
+        imageAssetUuids?: string[];
+      },
     ): Promise<
       { ok: true; clientMessageKey: string } | { ok: false; restoreDraft?: boolean }
     > => {
-      const trimmed = text.trim();
       const myUuid = meUserUuid?.trim();
-      if (!trimmed || !myUuid || !conversationUuid) return { ok: false };
+      if (!blocks.length || !myUuid || !conversationUuid) return { ok: false };
 
       const material = useFscpStore.getState().material;
       if (!material) return { ok: false };
@@ -248,21 +260,36 @@ export function useGroupChatThread(params: {
         isFromMe: true,
         isRead: false,
       };
-      // Same moment as DM optimistic: bubble + birth registry before network.
-      seedPendingDecryptRow(pendingDto, trimmed, clientMessageKey);
+      seedPendingDecryptRow(pendingDto, blocks, clientMessageKey);
       setGroupPendingOutgoing(conversationUuid, pendingDto);
       setPendingEpoch((n) => n + 1);
       opts?.onPending?.(clientMessageKey);
 
       try {
-        const wire = await buildGroupTextMessageWire({
-          conversationUuid,
-          senderUserUuid: myUuid,
-          material,
-          memberUserUuids: memberUuids,
-          text: trimmed,
+        const textOnly =
+          blocks.length === 1 && blocks[0]?.kind === "text"
+            ? blocks[0].body
+            : null;
+        const wire =
+          textOnly != null
+            ? await buildGroupTextMessageWire({
+                conversationUuid,
+                senderUserUuid: myUuid,
+                material,
+                memberUserUuids: memberUuids,
+                text: textOnly,
+              })
+            : await buildGroupBlocksMessageWire({
+                conversationUuid,
+                senderUserUuid: myUuid,
+                material,
+                memberUserUuids: memberUuids,
+                blocks,
+              });
+        const sent = await apiSendGroupMessage(conversationUuid, wire, {
+          voiceAssetUuids: opts?.voiceAssetUuids,
+          imageAssetUuids: opts?.imageAssetUuids,
         });
-        const sent = await apiSendGroupMessage(conversationUuid, wire);
         const realDto: MsgMessageDto = {
           messageUuid: sent.messageUuid,
           conversationUuid,
@@ -272,14 +299,14 @@ export function useGroupChatThread(params: {
           isFromMe: true,
           isRead: false,
         };
-        const plain = messagePlaintextFromBlocks([{ kind: "text", body: trimmed }], sent.createdAt);
+        const plain = messagePlaintextFromBlocks(blocks, sent.createdAt);
         const ackRow: ThreadBubbleItem = {
           messageUuid: sent.messageUuid,
           clientMessageKey,
           text: extractTextFromPlaintext(plain),
           previewText: plaintextToPreview(plain),
-          imageBlocks: [],
-          voiceBlock: undefined,
+          imageBlocks: getImageBlocksFromPlaintext(plain),
+          voiceBlock: getPrimaryVoiceBlock(plain),
           isFromMe: true,
           createdAt: sent.createdAt,
           decryptState: "ok",
@@ -319,6 +346,20 @@ export function useGroupChatThread(params: {
       }
     },
     [conversationUuid, group, meUserUuid, messagesQuery, queryClient, refreshRoster],
+  );
+
+  const sendText = useCallback(
+    async (
+      text: string,
+      opts?: { onPending?: (clientMessageKey: string) => void },
+    ): Promise<
+      { ok: true; clientMessageKey: string } | { ok: false; restoreDraft?: boolean }
+    > => {
+      const trimmed = text.trim();
+      if (!trimmed) return { ok: false };
+      return sendBlocks([{ kind: "text", body: trimmed }], opts);
+    },
+    [sendBlocks],
   );
 
   /** Drop pending once server list contains the ACK uuid (SSE / refetch). */
@@ -475,6 +516,7 @@ export function useGroupChatThread(params: {
     refetchMessages,
     markRead,
     sendText,
+    sendBlocks,
     leaveGroup,
     membersOpen,
     setMembersOpen,

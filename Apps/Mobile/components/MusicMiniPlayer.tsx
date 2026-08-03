@@ -56,9 +56,14 @@ export function MusicMiniPlayer() {
   }, [current?.id, player, streamUrl]);
 
   useEffect(() => {
+    // Keep hooks mounted on /messages, but do not keep streaming — voice needs the audio focus.
+    if (isMessagesPath(pathname)) {
+      player.pause();
+      return;
+    }
     if (playing) player.play();
     else player.pause();
-  }, [playing, player]);
+  }, [playing, player, pathname]);
 
   useEffect(() => {
     const positionMs = Math.max(0, Math.round((status.currentTime ?? 0) * 1000));

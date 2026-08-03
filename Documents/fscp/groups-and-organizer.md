@@ -75,6 +75,23 @@ UUID-компоненты — lowercase; `createdAt` — как в конвер�
 Сервер **не расшифровывает** payload. Сообщение сохраняется одной
 строкой (общий wire), доставка — по членству в группе.
 
+### 1.4.1 Медиа (voice / image)
+
+Plaintext блоков тот же, что у DM (`voice` / `image` с `assetUuid` +
+AES-GCM descriptor; см. [`FSCP.md`](FSCP.md)). Байты файла — opaque
+object в Messaging:
+
+- таблицы `group_message_voice_assets` / `group_message_image_assets`
+  (`conversation_uuid`, uploader, optional `message_uuid`);
+- upload: `POST /api/messaging/groups/{conversationUuid}/voice|image-assets`
+  (только active member);
+- download: существующие `GET /api/messaging/voice|image-assets/{uuid}`
+  (lookup DM, иначе group; ACL = uploader или active member);
+- bind UUID lists на `POST …/groups/{id}/messages` (как DM draft→bind).
+
+**Видео в группах v1 не поддерживается** (`videoAssetUuids` → 400).
+Клиентский helper: `buildGroupBlocksMessageWire` (`groupMessaging.ts`).
+
 ### 1.5 Смена ростера
 
 - Добавление участника: он читает только сообщения, отправленные после
@@ -159,8 +176,9 @@ AAD-домены:
 
 - **`fscp-core` / `@flora/fscp`** — только протокол (структурная
   валидация + сборка/открытие конвертов). Никакой БД/HTTP.
-- **`flora-messaging`** — группы: ростер, хранение wire, доставка,
-  вызов `try_validate_group_wire` перед записью.
+- **`flora-messaging`** — группы: ростер, хранение wire, opaque media
+  assets + membership ACL, доставка, вызов `try_validate_group_wire`
+  перед записью.
 - **`flora-chat-organizer`** (отдельный модуль) — blob-хранилище
   органайзера: `(owner, revision, wire)`, вызов
   `try_validate_organizer_wire`, optimistic concurrency. Не знает о

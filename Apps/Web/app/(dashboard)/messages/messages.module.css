@@ -1738,7 +1738,8 @@
   width: calc((62 - 38 + 1) * var(--flora-grid-step));
   max-width: 100%;
   box-sizing: border-box;
-  height: calc(6 * var(--flora-grid-step));
+  /* padding + voice card 3×grid (send time sits on duration row, not under the card). */
+  height: calc(5 * var(--flora-grid-step) - 3px);
   padding: calc(var(--flora-grid-step) - 1.5px) var(--flora-grid-step);
   display: flex;
   flex-direction: column;
@@ -1771,16 +1772,25 @@
   height: calc(2 * var(--flora-grid-step));
 }
 
-.messagesBubbleVoiceOnly .voiceDuration {
+.messagesBubbleVoiceOnly .voiceDurationRow {
   flex: 0 0 calc(1 * var(--flora-grid-step));
+  height: calc(1 * var(--flora-grid-step));
+  align-items: center;
+}
+
+.messagesBubbleVoiceOnly .voiceDuration {
+  flex: 0 1 auto;
   line-height: calc(1 * var(--flora-grid-step));
   height: calc(1 * var(--flora-grid-step));
 }
 
-.messagesBubbleVoiceOnly .messagesBubbleTime {
-  flex: 0 0 18px;
-  line-height: 18px;
-  height: 18px;
+/* Same relation as text time ↔ last line: duration left, send time right, 1×grid gap. */
+.messagesBubbleVoiceOnly .voiceSendTimeSlot .messagesBubbleTime {
+  display: inline-flex;
+  align-items: center;
+  line-height: var(--messages-bubble-time-line-height, 18px);
+  height: var(--messages-bubble-time-line-height, 18px);
+  text-align: right;
 }
 
 .messagesBubble .voiceCard {
@@ -3630,11 +3640,27 @@
   opacity: 0.8;
 }
 
+.voiceDurationRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--flora-grid-step);
+  min-width: 0;
+  width: 100%;
+}
+
 .voiceDuration {
   color: var(--flora-gray);
   font-family: var(--flora-font);
   font-size: 12px;
   letter-spacing: 0.03em;
+  min-width: 0;
+}
+
+.voiceSendTimeSlot {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .voiceDraftActions {

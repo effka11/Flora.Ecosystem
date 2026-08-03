@@ -68,6 +68,14 @@ pub fn protected_router(state: MessagingState) -> Router {
             get(get_group_messages).post(post_group_message),
         )
         .route(
+            "/api/messaging/groups/{conversation_uuid}/voice-assets",
+            post(assets::upload_group_voice),
+        )
+        .route(
+            "/api/messaging/groups/{conversation_uuid}/image-assets",
+            post(assets::upload_group_image),
+        )
+        .route(
             "/api/messaging/groups/{conversation_uuid}/read",
             post(mark_group_read),
         )

@@ -1,5 +1,12 @@
-import { authDelete, authGetJson, authPatchJson, authPostJson } from "./client.js";
-import { getApiClientConfig } from "./client.js";
+import { asRecord, readNum, readStr } from "../contracts/parse.js";
+import {
+  authDelete,
+  authGetJson,
+  authPatchJson,
+  authPostForm,
+  authPostJson,
+  getApiClientConfig,
+} from "./client.js";
 import {
   parseGroupDetail,
   parseGroupMessagesPage,
@@ -10,6 +17,8 @@ import {
   type MsgGroupMessagesPage,
   type MsgGroupSendResult,
 } from "../contracts/groups.js";
+import type { UploadedMessageImageAsset } from "./messaging.js";
+import type { UploadedMessageVoiceAsset } from "./voiceAssets.js";
 
 function ctx() {
   return { onPascalFallback: getApiClientConfig().onPascalFallback };
@@ -89,13 +98,65 @@ export async function apiGetGroupMessages(
   return { ...page, items: [...page.items].reverse() };
 }
 
+export async function apiUploadGroupVoiceAsset(params: {
+  conversationUuid: string;
+  encryptedBlob: Blob;
+  durationMs: number;
+}): Promise<UploadedMessageVoiceAsset> {
+  const body = new FormData();
+  body.set("durationMs", String(Math.max(1, Math.round(params.durationMs))));
+  body.set("file", params.encryptedBlob, "voice-message.bin");
+  const conv = encodeURIComponent(params.conversationUuid.trim());
+  const raw = await authPostForm(`/api/messaging/groups/${conv}/voice-assets`, body);
+  const o = asRecord(raw) ?? {};
+  const fb = getApiClientConfig().onPascalFallback;
+  const voiceAssetUuid = readStr(o, ["voiceAssetUuid", "VoiceAssetUuid"], fb);
+  if (!voiceAssetUuid) throw new Error("Некорректный ответ сервера при загрузке голосового.");
+  return {
+    voiceAssetUuid,
+    contentType: readStr(o, ["contentType", "ContentType"], fb) || "application/octet-stream",
+    durationMs: readNum(o, ["durationMs", "DurationMs"], fb) || params.durationMs,
+  };
+}
+
+export async function apiUploadGroupImageAsset(params: {
+  conversationUuid: string;
+  encryptedBlob: Blob;
+  contentType: string;
+}): Promise<UploadedMessageImageAsset> {
+  const body = new FormData();
+  body.set("contentType", params.contentType);
+  body.set("file", params.encryptedBlob, "message-image.bin");
+  const conv = encodeURIComponent(params.conversationUuid.trim());
+  const raw = await authPostForm(`/api/messaging/groups/${conv}/image-assets`, body);
+  const o = asRecord(raw) ?? {};
+  const fb = getApiClientConfig().onPascalFallback;
+  const imageAssetUuid = readStr(o, ["imageAssetUuid", "ImageAssetUuid"], fb);
+  if (!imageAssetUuid) throw new Error("Некорректный ответ сервера при загрузке фото.");
+  return {
+    imageAssetUuid,
+    contentType: readStr(o, ["contentType", "ContentType"], fb) || params.contentType,
+  };
+}
+
 export async function apiSendGroupMessage(
   conversationUuid: string,
   encryptedWire: string,
+  attachments?: {
+    voiceAssetUuids?: string[];
+    imageAssetUuids?: string[];
+  },
 ): Promise<MsgGroupSendResult> {
+  const body: Record<string, unknown> = { encryptedWire };
+  if (attachments?.voiceAssetUuids?.length) {
+    body.voiceAssetUuids = attachments.voiceAssetUuids;
+  }
+  if (attachments?.imageAssetUuids?.length) {
+    body.imageAssetUuids = attachments.imageAssetUuids;
+  }
   const raw = await authPostJson(
     `/api/messaging/groups/${encodeURIComponent(conversationUuid.trim())}/messages`,
-    { encryptedWire },
+    body,
   );
   return parseGroupSendResult(raw, ctx());
 }

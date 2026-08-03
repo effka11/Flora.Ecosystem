@@ -11,7 +11,12 @@ import {
   isFscpGroupWirePayload,
 } from "./group.js";
 import { FscpDecryptError, fscpDecryptFailureCategory, isFscpWirePayload } from "./envelope.js";
-import { extractTextFromPlaintext } from "./preview.js";
+import {
+  extractTextFromPlaintext,
+  getImageBlocksFromPlaintext,
+  getPrimaryVoiceBlock,
+  messagePlaintextFromBlocks,
+} from "./preview.js";
 import { fromBase64Url, utf8Bytes } from "./base64url.js";
 import { toBase64Url } from "./unlockFlow.js";
 
@@ -206,6 +211,56 @@ describe("FSCP-G v1 group envelope", () => {
         agreementPrivateKey: memberB.box.privateKey.subarray(0, 32),
       }),
     ).rejects.toMatchObject({ category: "signature_missing" });
+  });
+
+  it("roundtrips voice and image blocks in group plaintext", async () => {
+    const sender = makeMember("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    const memberB = makeMember("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    const payload = messagePlaintextFromBlocks([
+      {
+        kind: "voice",
+        assetUuid: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        durationMs: 1500,
+        waveform: [0.1, 0.5, 0.2],
+        contentType: "audio/webm",
+        encryption: {
+          algorithm: "aes-gcm",
+          keyBase64Url: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          nonceBase64Url: "AAAAAAAAAAAAAAAA",
+        },
+      },
+      {
+        kind: "image",
+        assetUuid: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        contentType: "image/jpeg",
+        encryption: {
+          algorithm: "aes-gcm",
+          keyBase64Url: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          nonceBase64Url: "BBBBBBBBBBBBBBBB",
+        },
+      },
+    ]);
+
+    const wire = await buildFscpGroupWireEnvelope({
+      conversationUuid: CONV,
+      senderUserUuid: sender.uuid,
+      senderAgreementPrivateKey: sender.box.privateKey.subarray(0, 32),
+      senderSigningPrivateKey: sender.sign.privateKey,
+      recipients: [{ userUuid: memberB.uuid, agreementPublicKey: memberB.box.publicKey }],
+      messagePayload: payload,
+    });
+
+    const opened = await decryptFscpGroupWireEnvelope({
+      wire,
+      viewerUserUuid: memberB.uuid,
+      agreementPrivateKey: memberB.box.privateKey.subarray(0, 32),
+    });
+    const voice = getPrimaryVoiceBlock(opened.plaintext);
+    expect(voice?.assetUuid).toBe("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+    expect(voice?.durationMs).toBe(1500);
+    const images = getImageBlocksFromPlaintext(opened.plaintext);
+    expect(images).toHaveLength(1);
+    expect(images[0]?.assetUuid).toBe("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee");
   });
 
   it("rejects more than FSCP_GROUP_MAX_MEMBERS members", async () => {

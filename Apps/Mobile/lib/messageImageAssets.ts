@@ -38,29 +38,48 @@ async function writeEncryptedUploadFile(bytes: Uint8Array): Promise<File> {
   return file;
 }
 
+export type MessageImageUploadTarget =
+  | { kind: "dm"; toUserUuid: string }
+  | { kind: "group"; conversationUuid: string };
+
 async function postEncryptedImageForm(params: {
-  toUserUuid: string;
+  target: MessageImageUploadTarget;
   file: File;
   contentType: string;
 }): Promise<{ imageAssetUuid: string; contentType: string }> {
-  const raw = await uploadMultipartFile({
-    path: "/api/messaging/image-assets",
-    file: params.file,
-    parameters: {
-      toUserUuid: params.toUserUuid,
-      contentType: params.contentType,
-    },
-  });
+  const raw =
+    params.target.kind === "group"
+      ? await uploadMultipartFile({
+          path: `/api/messaging/groups/${encodeURIComponent(params.target.conversationUuid.trim())}/image-assets`,
+          file: params.file,
+          parameters: { contentType: params.contentType },
+        })
+      : await uploadMultipartFile({
+          path: "/api/messaging/image-assets",
+          file: params.file,
+          parameters: {
+            toUserUuid: params.target.toUserUuid,
+            contentType: params.contentType,
+          },
+        });
   return parseUploadedImage(raw, params.contentType);
 }
 
 export async function uploadPreparedMessageImage(params: {
-  toUserUuid: string;
+  toUserUuid?: string;
+  uploadTarget?: MessageImageUploadTarget;
   prepared: PreparedMessageImage;
 }): Promise<FscpImageBlock> {
   if (!isFloraFrcIAvailable()) {
     throw new Error("FRC-I недоступен на устройстве — отправка фото невозможна.");
   }
+  const target: MessageImageUploadTarget =
+    params.uploadTarget ??
+    (params.toUserUuid
+      ? { kind: "dm", toUserUuid: params.toUserUuid }
+      : (() => {
+          throw new Error("Нужен toUserUuid или uploadTarget для загрузки фото.");
+        })());
 
   const friFile = await encodeImageUriToFrc(params.prepared.uri, 85);
   try {
@@ -69,7 +88,7 @@ export async function uploadPreparedMessageImage(params: {
     const encryptedFrcFile = await writeEncryptedUploadFile(encryptedFrc.cipher);
     try {
       const uploadedFrc = await postEncryptedImageForm({
-        toUserUuid: params.toUserUuid,
+        target,
         file: encryptedFrcFile,
         contentType: FRC_I_MIME,
       });

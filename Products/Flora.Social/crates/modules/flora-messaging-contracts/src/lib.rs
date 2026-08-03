@@ -692,11 +692,12 @@ pub struct AddGroupMemberRequest {
 #[serde(rename_all = "camelCase")]
 pub struct PostGroupMessageRequest {
     pub encrypted_wire: String,
-    /// Rejected if non-empty — group v1 is text-only (no DM-shaped assets).
+    /// Bound to group_message_*_assets (membership-scoped); empty for text-only.
     #[serde(default)]
     pub voice_asset_uuids: Vec<Uuid>,
     #[serde(default)]
     pub image_asset_uuids: Vec<Uuid>,
+    /// Rejected if non-empty — group media v1 is voice/image only.
     #[serde(default)]
     pub video_asset_uuids: Vec<Uuid>,
 }

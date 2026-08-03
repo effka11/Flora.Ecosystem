@@ -1705,6 +1705,28 @@ export async function apiUploadMessageVoiceAsset(params: {
   };
 }
 
+export async function apiUploadGroupVoiceAsset(params: {
+  conversationUuid: string;
+  encryptedBlob: Blob;
+  durationMs: number;
+}): Promise<UploadedVoiceAssetDto> {
+  const body = new FormData();
+  body.set("durationMs", String(Math.max(1, Math.round(params.durationMs))));
+  body.set("file", params.encryptedBlob, "voice-message.bin");
+  const conv = encodeURIComponent(params.conversationUuid.trim());
+  const raw = (await authPostForm(
+    apiUrl(`/api/messaging/groups/${conv}/voice-assets`),
+    body,
+  )) as Record<string, unknown>;
+  const voiceAssetUuid = readStr(raw, ["voiceAssetUuid", "VoiceAssetUuid"]);
+  if (!voiceAssetUuid) throw new ApiRequestError(500, "Некорректный ответ сервера при загрузке голосового.");
+  return {
+    voiceAssetUuid,
+    contentType: readStr(raw, ["contentType", "ContentType"]) || "application/octet-stream",
+    durationMs: readNum(raw, ["durationMs", "DurationMs"]),
+  };
+}
+
 export async function apiDownloadMessageVoiceAsset(voiceAssetUuid: string): Promise<Blob> {
   return authGetBlob(apiUrl(`/api/messaging/voice-assets/${encodeURIComponent(voiceAssetUuid)}`));
 }
@@ -1724,6 +1746,27 @@ export async function apiUploadMessageImageAsset(params: {
   body.set("contentType", params.contentType);
   body.set("file", params.encryptedBlob, "message-image.bin");
   const raw = (await authPostForm(apiUrl("/api/messaging/image-assets"), body)) as Record<string, unknown>;
+  const imageAssetUuid = readStr(raw, ["imageAssetUuid", "ImageAssetUuid"]);
+  if (!imageAssetUuid) throw new ApiRequestError(500, "Некорректный ответ сервера при загрузке фото.");
+  return {
+    imageAssetUuid,
+    contentType: readStr(raw, ["contentType", "ContentType"]) || params.contentType,
+  };
+}
+
+export async function apiUploadGroupImageAsset(params: {
+  conversationUuid: string;
+  encryptedBlob: Blob;
+  contentType: string;
+}): Promise<UploadedImageAssetDto> {
+  const body = new FormData();
+  body.set("contentType", params.contentType);
+  body.set("file", params.encryptedBlob, "message-image.bin");
+  const conv = encodeURIComponent(params.conversationUuid.trim());
+  const raw = (await authPostForm(
+    apiUrl(`/api/messaging/groups/${conv}/image-assets`),
+    body,
+  )) as Record<string, unknown>;
   const imageAssetUuid = readStr(raw, ["imageAssetUuid", "ImageAssetUuid"]);
   if (!imageAssetUuid) throw new ApiRequestError(500, "Некорректный ответ сервера при загрузке фото.");
   return {
