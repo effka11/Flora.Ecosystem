@@ -322,14 +322,14 @@
 
 /*
  * Папки + «+»: anchorRow=0 в .messagesListHeader; origin X = кол. 37.
- * Горизонталь 7: top = 7 * step.
+ * Лежат на горизонтали 7: top = 6.5 * step (−0.5 клетки от края ячейки 7).
  * «+» и папки — центром между вертикалями (pitch 4 = слот 2 + зазор 2).
  */
 .messagesChatFolders {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(7 * var(--flora-grid-step));
+  top: calc(6.5 * var(--flora-grid-step));
   height: calc(2 * var(--flora-grid-step));
   pointer-events: none;
   z-index: 2;
@@ -376,11 +376,11 @@
   transform: translateX(-50%);
 }
 
-/* «+»: горизонталь 7; центр между 88 и 89; width 2 → left 87.5 (origin 37). */
+/* «+»: на горизонтали 7 (top 6.5); центр между 88 и 89; width 2 → left 87.5 (origin 37). */
 .messagesCreateWrap {
   position: absolute;
   left: calc((87.5 - 37) * var(--flora-grid-step));
-  top: calc(7 * var(--flora-grid-step));
+  top: calc(6.5 * var(--flora-grid-step));
   width: calc(2 * var(--flora-grid-step));
   height: calc(2 * var(--flora-grid-step));
   z-index: 2;

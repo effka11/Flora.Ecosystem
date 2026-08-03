@@ -11,11 +11,16 @@ import {
 } from "react-native";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 
+type FolderPickOption = {
+  id: string;
+  label: string;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
   anchorRef: React.RefObject<View | null>;
-  /** dm (default) — полный набор; groupChat — только выход. */
+  /** dm (default) — полный набор; groupChat — архив + выход. */
   kind?: "dm" | "groupChat";
   isMuted?: boolean;
   isArchived?: boolean;
@@ -23,7 +28,9 @@ type Props = {
   onMuteTemporary: () => void;
   onUnmute: () => void;
   onPin?: () => void;
-  onAddToFolder?: () => void;
+  /** Папки для пунктов «В „…“» (как Web ConversationMoreMenuPanel). */
+  folderOptions?: readonly FolderPickOption[];
+  onAddToFolder?: (folderId: string) => void;
   onArchive: () => void;
   onUnarchive: () => void;
   /** DM: удалить чат; group: выйти из группы. */
@@ -46,6 +53,7 @@ export function ConversationMoreMenu({
   onMuteTemporary,
   onUnmute,
   onPin,
+  folderOptions = [],
   onAddToFolder,
   onArchive,
   onUnarchive,
@@ -55,6 +63,7 @@ export function ConversationMoreMenu({
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const [muteSubmenuOpen, setMuteSubmenuOpen] = useState(false);
   const isGroup = kind === "groupChat";
+  const customFolders = folderOptions.filter((f) => f.id !== "archived");
 
   const updateAnchor = useCallback(() => {
     anchorRef.current?.measureInWindow((x, y, w, h) => {
@@ -140,11 +149,22 @@ export function ConversationMoreMenu({
                       label="Закрепить"
                       onPress={() => runAndClose(onPin)}
                     />
-                    <MenuRow
-                      icon="folder-outline"
-                      label="Добавить в папку"
-                      onPress={() => runAndClose(onAddToFolder)}
-                    />
+                    {customFolders.length === 0 ? (
+                      <MenuRow
+                        icon="folder-outline"
+                        label="Добавить в папку"
+                        onPress={() => runAndClose(() => onAddToFolder?.(""))}
+                      />
+                    ) : (
+                      customFolders.map((folder) => (
+                        <MenuRow
+                          key={folder.id}
+                          icon="folder-outline"
+                          label={`В «${folder.label}»`}
+                          onPress={() => runAndClose(() => onAddToFolder?.(folder.id))}
+                        />
+                      ))
+                    )}
                     <MenuRow
                       icon="archive-outline"
                       label={isArchived ? "Разархивировать" : "Архивировать"}

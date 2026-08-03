@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   postMeta: {
     flex: 1,
     minWidth: 0,
-    paddingRight: floraFeedPost.moreBtnSize + 6,
+    paddingRight: floraFeedPost.moreBtnSize,
   },
   postBody: {
     marginTop: floraFeedPost.bodyMarginTop,

@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { ChatHeaderBackIcon, ChatHeaderMoreIcon } from "@/components/messages/ChatHeaderIcons";
 import { formatGroupMembersLabel } from "@/lib/groupChatTypes";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 
@@ -31,14 +32,14 @@ export function ChatGroupThreadHeader({
   const subtitle = formatGroupMembersLabel(memberCount);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + floraSpacing.gridFine * 2 }]}>
+    <View style={[styles.root, { paddingTop: insets.top + floraSpacing.grid }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Назад к списку чатов"
         style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
         onPress={() => router.back()}
       >
-        <Ionicons name="chevron-back" size={22} color={floraColors.gray} />
+        <ChatHeaderBackIcon color={floraColors.gray} />
       </Pressable>
 
       <Pressable
@@ -76,11 +77,11 @@ export function ChatGroupThreadHeader({
           onPress={onMorePress}
           hitSlop={8}
         >
-          <Ionicons
-            name={moreMenuOpen ? "close" : "ellipsis-vertical"}
-            size={18}
-            color={floraColors.gray}
-          />
+          {moreMenuOpen ? (
+            <Ionicons name="close-outline" size={24} color={floraColors.gray} />
+          ) : (
+            <ChatHeaderMoreIcon color={floraColors.gray} />
+          )}
         </Pressable>
       </View>
 
@@ -152,9 +153,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.45,
     lineHeight: 20,
   },
+  /** Как `iconButton` / ⋮ при выделении в TabScreenSearchHeader — центр под «+». */
   moreBtn: {
-    width: floraSpacing.gridFine * 2 + 18,
-    height: floraSpacing.gridFine * 2 + 18,
+    width: 45,
+    height: 45,
     alignItems: "center",
     justifyContent: "center",
   },

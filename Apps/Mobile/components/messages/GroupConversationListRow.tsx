@@ -1,15 +1,8 @@
-import {
-  apiLeaveGroup,
-  ApiRequestError,
-} from "@flora/client-core/api";
-import { Ionicons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "expo-router";
-import { useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
-import { ConversationMoreMenu } from "@/components/messages/ConversationMoreMenu";
+import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
 import type { GroupChat } from "@/lib/groupChatTypes";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { openGroupChat } from "@/lib/openGroupChat";
@@ -19,6 +12,9 @@ import { floraColors, floraSpacing } from "@/lib/theme";
 const LIST_PREVIEW_MAX_LEN = 80;
 const AVATAR_SIZE = floraSpacing.grid * 3;
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
+const LONG_PRESS_MS = 350;
+/** Как `iconButton` / «+» в TabScreenSearchHeader — центр бейджа под «+». */
+const HEADER_TRAILING_ICON_SLOT = 45;
 
 function formatGroupPreview(preview: string, fromMe: boolean): string {
   const body = preview.trim();
@@ -33,72 +29,76 @@ function formatGroupPreview(preview: string, fromMe: boolean): string {
 type Props = {
   group: GroupChat;
   preview: string;
-  isArchived?: boolean;
-  onArchive?: () => void;
-  onUnarchive?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  onEnterSelect?: () => void;
 };
 
 export function GroupConversationListRow({
   group,
   preview,
-  isArchived = false,
-  onArchive,
-  onUnarchive,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
+  onEnterSelect,
 }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const queryClient = useQueryClient();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const title = group.title.trim() || "Группа";
   const previewText =
     preview.trim().length > 0
       ? formatGroupPreview(preview, group.lastMessageIsFromMe)
       : "Нет сообщений";
-  const moreBtnRef = useRef<View>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const open = () => {
     applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
     openGroupChat(group.conversationUuid, title);
   };
 
-  const leave = () => {
-    Alert.alert("Выйти из группы?", "Вы больше не будете получать сообщения этой группы.", [
-      { text: "Отмена", style: "cancel" },
-      {
-        text: "Выйти",
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            try {
-              await apiLeaveGroup(group.conversationUuid);
-              void queryClient.invalidateQueries({ queryKey: ["groups"] });
-            } catch (e) {
-              if (e instanceof ApiRequestError && (e.status === 404 || e.status === 403)) {
-                void queryClient.invalidateQueries({ queryKey: ["groups"] });
-                return;
-              }
-              Alert.alert(
-                "Не удалось выйти",
-                e instanceof Error ? e.message : "Попробуйте ещё раз.",
-              );
-            }
-          })();
-        },
-      },
-    ]);
+  const onPress = () => {
+    if (selectionMode) {
+      onToggleSelect?.();
+      return;
+    }
+    open();
+  };
+
+  const onLongPress = () => {
+    if (selectionMode) {
+      onToggleSelect?.();
+      return;
+    }
+    onEnterSelect?.();
   };
 
   return (
-    <View style={styles.shell}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Открыть группу ${title}`}
-        style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
-        onPress={open}
-      >
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        selectionMode
+          ? selected
+            ? `Снять выбор — ${title}`
+            : `Выбрать группу — ${title}`
+          : `Открыть группу ${title}`
+      }
+      accessibilityState={selectionMode ? { selected } : undefined}
+      style={({ pressed }) => [
+        styles.shell,
+        selected && styles.shellSelected,
+        pressed && styles.shellPressed,
+      ]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={LONG_PRESS_MS}
+    >
+      <View style={styles.item}>
         <View style={styles.avatarWrap}>
           <FloraAvatar size={AVATAR_SIZE} displayName={title} seed={group.conversationUuid} />
+          {selectionMode ? (
+            <ConversationListSelectionMark selected={selected} avatarDiameter={AVATAR_SIZE} />
+          ) : null}
         </View>
 
         <View style={styles.body}>
@@ -109,48 +109,18 @@ export function GroupConversationListRow({
             {previewText}
           </Text>
         </View>
-      </Pressable>
+      </View>
 
-      <View style={styles.trailing}>
-        {group.unreadCount > 0 ? (
+      {group.unreadCount > 0 ? (
+        <View style={styles.trailing}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
               {group.unreadCount > 99 ? "99+" : group.unreadCount}
             </Text>
           </View>
-        ) : null}
-        <View ref={moreBtnRef} collapsable={false}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={menuOpen ? "Закрыть меню группы" : `Действия — ${title}`}
-            accessibilityState={{ expanded: menuOpen }}
-            style={({ pressed }) => [styles.moreBtn, pressed && styles.moreBtnPressed]}
-            hitSlop={8}
-            onPress={() => setMenuOpen((open) => !open)}
-          >
-            <Ionicons
-              name={menuOpen ? "close" : "ellipsis-vertical"}
-              size={18}
-              color={floraColors.gray}
-            />
-          </Pressable>
         </View>
-      </View>
-
-      <ConversationMoreMenu
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        anchorRef={moreBtnRef}
-        kind="groupChat"
-        isArchived={isArchived}
-        onMuteForever={() => undefined}
-        onMuteTemporary={() => undefined}
-        onUnmute={() => undefined}
-        onArchive={onArchive ?? (() => undefined)}
-        onUnarchive={onUnarchive ?? (() => undefined)}
-        onDelete={leave}
-      />
-    </View>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -162,6 +132,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(250, 250, 250, 0.06)",
     borderBottomWidth: 1,
   },
+  shellSelected: {
+    backgroundColor: "rgba(164, 209, 138, 0.12)",
+  },
+  shellPressed: {
+    backgroundColor: "rgba(250, 250, 250, 0.04)",
+  },
   item: {
     flex: 1,
     flexDirection: "row",
@@ -172,9 +148,6 @@ const styles = StyleSheet.create({
     paddingBottom: floraSpacing.grid * 2 - 2,
     paddingLeft: floraSpacing.grid,
     paddingRight: floraSpacing.gridFine,
-  },
-  itemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.04)",
   },
   avatarWrap: {
     position: "relative",
@@ -202,14 +175,12 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   trailing: {
-    flexDirection: "row",
+    width: HEADER_TRAILING_ICON_SLOT,
+    // Как paddingHorizontal topBlock — правый край слота = правый край «+».
+    marginRight: floraSpacing.grid,
     alignItems: "center",
-    gap: floraSpacing.gridFine,
+    justifyContent: "center",
     flexShrink: 0,
-    alignSelf: "stretch",
-    paddingRight: floraSpacing.grid,
-    paddingTop: floraSpacing.grid * 2 - 1,
-    paddingBottom: floraSpacing.grid * 2 - 2,
   },
   badge: {
     minWidth: floraSpacing.gridFine * 4,
@@ -225,14 +196,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "300",
     letterSpacing: 0.39,
-  },
-  moreBtn: {
-    width: floraSpacing.gridFine * 2 + 18,
-    height: floraSpacing.gridFine * 2 + 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  moreBtnPressed: {
-    opacity: 0.72,
   },
 });

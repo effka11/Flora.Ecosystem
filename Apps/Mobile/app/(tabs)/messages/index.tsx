@@ -1,4 +1,10 @@
-import { apiGetConversations, apiListGroups } from "@flora/client-core/api";
+import {
+  apiDeleteConversation,
+  apiGetConversations,
+  apiLeaveGroup,
+  apiListGroups,
+  ApiRequestError,
+} from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import {
   decryptGroupMessagePreview,
@@ -30,6 +36,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  BackHandler,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -40,6 +47,7 @@ import {
 import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
+import { ConversationMoreMenu } from "@/components/messages/ConversationMoreMenu";
 import { CreateChatFolderSheet } from "@/components/messages/CreateChatFolderSheet";
 import { CreateGroupSheet } from "@/components/messages/CreateGroupSheet";
 import { GroupConversationListRow } from "@/components/messages/GroupConversationListRow";
@@ -86,10 +94,10 @@ function emptyListMessage(
 ): string {
   if (hasSearch) return "Ничего не найдено. Измените запрос в поиске.";
   if (folder === "archived") {
-    return "Пока нет переписок в архиве. Перенесите чат в архив из меню ⋮.";
+    return "Пока нет переписок в архиве.";
   }
   if (folder !== "all") {
-    return "В этой папке пока нет чатов. Добавьте их из меню ⋮ или при создании.";
+    return "В этой папке пока нет чатов. Добавьте их при создании папки.";
   }
   if (totalCount === 0) return "Пока нет переписок. Найдите человека во вкладке «Люди».";
   return "Ничего не найдено. Измените запрос в поиске.";
@@ -182,6 +190,7 @@ function fscpBannerMessage(status: FscpBootstrapStatus): { text: string; action?
 }
 
 const EMPTY_CONVERSATIONS: MsgConversationDto[] = [];
+const EMPTY_SELECTED = new Set<string>();
 // Matches the global staleTime in providers/FloraProviders.tsx.
 const CONVERSATIONS_STALE_REFETCH_MS = 15_000;
 
@@ -202,6 +211,7 @@ export default function MessagesScreen() {
   const [listFolder, setListFolder] = useState<ChatListFolderId>("all");
   const folderPagerRef = useRef<MessagesFolderPagerHandle>(null);
   const createAnchorRef = useRef<View>(null);
+  const selectionMoreAnchorRef = useRef<View>(null);
   const { width: windowWidth } = useWindowDimensions();
   const folderScrollX = useSharedValue(0);
   const folderPageWidthSV = useSharedValue(windowWidth);
@@ -212,6 +222,12 @@ export default function MessagesScreen() {
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [selectionMenuOpen, setSelectionMenuOpen] = useState(false);
+  /** `null` — обычный список; иначе TG-like multi-select по conversationUuid. */
+  const [selectedConversationUuids, setSelectedConversationUuids] = useState<Set<string> | null>(
+    null,
+  );
+  const selectionMode = selectedConversationUuids != null;
   const queryClient = useQueryClient();
   const [groupChats, setGroupChats] = useState<GroupChat[]>([]);
   const [groupPreviews, setGroupPreviews] = useState<Record<string, string>>({});
@@ -404,86 +420,6 @@ export default function MessagesScreen() {
     return () => clearInterval(id);
   }, []);
 
-  const handleMuteForever = useCallback(
-    (peerUuid: string, conversationUuid: string) => {
-      clearTemporaryMute(peerUuid);
-      void setMuted(peerUuid, conversationUuid, true);
-    },
-    [setMuted],
-  );
-
-  const handleMuteTemporary = useCallback(
-    (peerUuid: string, conversationUuid: string) => {
-      setTemporaryMute(peerUuid);
-      void setMuted(peerUuid, conversationUuid, true);
-    },
-    [setMuted],
-  );
-
-  const handleUnmute = useCallback(
-    (peerUuid: string, conversationUuid: string) => {
-      clearTemporaryMute(peerUuid);
-      void setMuted(peerUuid, conversationUuid, false);
-    },
-    [setMuted],
-  );
-
-  const handleArchivedChange = useCallback(
-    (peerUuid: string, conversationUuid: string, archived: boolean) => {
-      if (!organizerKeysReady) {
-        setUnlockOpen(true);
-        return;
-      }
-      if (archived && !canArchivePeer) {
-        Alert.alert(
-          "Лимит папок",
-          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
-        );
-        return;
-      }
-      void (async () => {
-        const ok = await setArchived(peerUuid, conversationUuid, archived);
-        if (archived && !ok) {
-          Alert.alert(
-            "Лимит папок",
-            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
-          );
-          return;
-        }
-        requestTabBadgesRefresh();
-      })();
-    },
-    [canArchivePeer, organizerKeysReady, setArchived],
-  );
-
-  const handleGroupArchivedChange = useCallback(
-    (conversationUuid: string, archived: boolean) => {
-      if (!organizerKeysReady) {
-        setUnlockOpen(true);
-        return;
-      }
-      if (archived && !canArchivePeer) {
-        Alert.alert(
-          "Лимит папок",
-          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
-        );
-        return;
-      }
-      void (async () => {
-        const ok = await setGroupArchived(conversationUuid, archived);
-        if (archived && !ok) {
-          Alert.alert(
-            "Лимит папок",
-            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
-          );
-          return;
-        }
-        requestTabBadgesRefresh();
-      })();
-    },
-    [canArchivePeer, organizerKeysReady, setGroupArchived],
-  );
-  const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
   const folderPickOptions = useMemo(
     () =>
       visibleFolders
@@ -491,6 +427,212 @@ export default function MessagesScreen() {
         .map((f) => ({ id: f.id, label: f.label })),
     [visibleFolders],
   );
+
+  const enterConversationSelect = useCallback((conversationUuid: string) => {
+    setSearch("");
+    setSortOpen(false);
+    setCreateMenuOpen(false);
+    setSelectionMenuOpen(false);
+    closeMenu();
+    setSelectedConversationUuids(new Set([conversationUuid]));
+  }, [closeMenu]);
+
+  const toggleConversationSelect = useCallback((conversationUuid: string) => {
+    setSelectedConversationUuids((prev) => {
+      if (!prev) return new Set([conversationUuid]);
+      const next = new Set(prev);
+      if (next.has(conversationUuid)) next.delete(conversationUuid);
+      else next.add(conversationUuid);
+      return next.size === 0 ? null : next;
+    });
+  }, []);
+
+  const clearConversationSelect = useCallback(() => {
+    setSelectionMenuOpen(false);
+    setSelectedConversationUuids(null);
+  }, []);
+
+  const selectedDms = useMemo(() => {
+    if (!selectedConversationUuids) return [] as MsgConversationDto[];
+    return items.filter((c) => selectedConversationUuids.has(c.conversationUuid));
+  }, [items, selectedConversationUuids]);
+
+  const selectedGroups = useMemo(() => {
+    if (!selectedConversationUuids) return [] as GroupChat[];
+    return groupChats.filter((g) => selectedConversationUuids.has(g.conversationUuid));
+  }, [groupChats, selectedConversationUuids]);
+
+  const selectionMenuKind =
+    selectedDms.length === 0 && selectedGroups.length > 0 ? "groupChat" : "dm";
+
+  const selectionAnyMuted = selectedDms.some((c) => c.otherUserUuid in mutedDisplayByPeer);
+
+  const selectionAllArchived = useMemo(() => {
+    if (selectedDms.length === 0 && selectedGroups.length === 0) return false;
+    const dmsArchived = selectedDms.every((c) => c.otherUserUuid in archivedByPeer);
+    const groupsArchived = selectedGroups.every((g) =>
+      isConversationArchived(g.conversationUuid, archivedByConversation),
+    );
+    return dmsArchived && groupsArchived;
+  }, [archivedByConversation, archivedByPeer, selectedDms, selectedGroups]);
+
+  const requireOrganizerKeys = useCallback(() => {
+    if (organizerKeysReady) return true;
+    setUnlockOpen(true);
+    return false;
+  }, [organizerKeysReady]);
+
+  const bulkMuteForever = useCallback(() => {
+    for (const c of selectedDms) {
+      clearTemporaryMute(c.otherUserUuid);
+      void setMuted(c.otherUserUuid, c.conversationUuid, true);
+    }
+    clearConversationSelect();
+  }, [clearConversationSelect, selectedDms, setMuted]);
+
+  const bulkMuteTemporary = useCallback(() => {
+    for (const c of selectedDms) {
+      setTemporaryMute(c.otherUserUuid);
+      void setMuted(c.otherUserUuid, c.conversationUuid, true);
+    }
+    clearConversationSelect();
+  }, [clearConversationSelect, selectedDms, setMuted]);
+
+  const bulkUnmute = useCallback(() => {
+    for (const c of selectedDms) {
+      clearTemporaryMute(c.otherUserUuid);
+      void setMuted(c.otherUserUuid, c.conversationUuid, false);
+    }
+    clearConversationSelect();
+  }, [clearConversationSelect, selectedDms, setMuted]);
+
+  const bulkAddToFolder = useCallback(
+    (folderId: string) => {
+      if (!folderId || folderPickOptions.length === 0) {
+        Alert.alert("Нет папок", "Сначала создайте папку или группу через «+».");
+        return;
+      }
+      for (const c of selectedDms) {
+        void addPeerToEntity(folderId, c.otherUserUuid);
+      }
+      clearConversationSelect();
+    },
+    [addPeerToEntity, clearConversationSelect, folderPickOptions.length, selectedDms],
+  );
+
+  const bulkArchive = useCallback(
+    (archived: boolean) => {
+      if (!requireOrganizerKeys()) return;
+      if (archived && !canArchivePeer) {
+        Alert.alert(
+          "Лимит папок",
+          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+        );
+        return;
+      }
+      void (async () => {
+        let failed = false;
+        for (const c of selectedDms) {
+          const ok = await setArchived(c.otherUserUuid, c.conversationUuid, archived);
+          if (archived && !ok) failed = true;
+        }
+        for (const g of selectedGroups) {
+          const ok = await setGroupArchived(g.conversationUuid, archived);
+          if (archived && !ok) failed = true;
+        }
+        if (failed) {
+          Alert.alert(
+            "Лимит папок",
+            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+          );
+        }
+        requestTabBadgesRefresh();
+        clearConversationSelect();
+      })();
+    },
+    [
+      canArchivePeer,
+      clearConversationSelect,
+      requireOrganizerKeys,
+      selectedDms,
+      selectedGroups,
+      setArchived,
+      setGroupArchived,
+    ],
+  );
+
+  const bulkDelete = useCallback(() => {
+    const dmCount = selectedDms.length;
+    const groupCount = selectedGroups.length;
+    const title =
+      groupCount > 0 && dmCount === 0
+        ? groupCount === 1
+          ? "Выйти из группы?"
+          : `Выйти из ${groupCount} групп?`
+        : dmCount + groupCount === 1
+          ? "Удалить чат?"
+          : `Удалить ${dmCount + groupCount} чатов?`;
+    const body =
+      groupCount > 0 && dmCount === 0
+        ? "Вы больше не будете получать сообщения этих групп."
+        : "Выбранные чаты будут удалены.";
+    Alert.alert(title, body, [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: groupCount > 0 && dmCount === 0 ? "Выйти" : "Удалить",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              for (const c of selectedDms) {
+                await apiDeleteConversation(c.conversationUuid, c.otherUserUuid);
+              }
+              for (const g of selectedGroups) {
+                try {
+                  await apiLeaveGroup(g.conversationUuid);
+                } catch (e) {
+                  if (!(e instanceof ApiRequestError && (e.status === 404 || e.status === 403))) {
+                    throw e;
+                  }
+                }
+              }
+              void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+              void queryClient.invalidateQueries({ queryKey: ["groups"] });
+              requestTabBadgesRefresh();
+              clearConversationSelect();
+            } catch {
+              Alert.alert("Не удалось выполнить", "Попробуйте ещё раз.");
+            }
+          })();
+        },
+      },
+    ]);
+  }, [clearConversationSelect, queryClient, selectedDms, selectedGroups]);
+
+  useEffect(() => {
+    if (!selectionMode) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectionMenuOpen) {
+        setSelectionMenuOpen(false);
+        return true;
+      }
+      clearConversationSelect();
+      return true;
+    });
+    return () => sub.remove();
+  }, [clearConversationSelect, selectionMenuOpen, selectionMode]);
+
+  const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
+
+  useEffect(() => {
+    clearConversationSelect();
+  }, [activeFolder, clearConversationSelect]);
+
+  // Вход в поиск сбрасывает выбор; выход из поиска (в т.ч. при long-press) — нет.
+  useEffect(() => {
+    if (!hasSearch) return;
+    clearConversationSelect();
+  }, [clearConversationSelect, hasSearch]);
 
   useEffect(() => {
     if (listFolder !== activeFolder) setListFolder(activeFolder);
@@ -609,6 +751,7 @@ export default function MessagesScreen() {
   const closeDropdowns = useCallback(() => {
     setSortOpen(false);
     setCreateMenuOpen(false);
+    setSelectionMenuOpen(false);
   }, []);
 
   const handleSortOpenChange = useCallback((open: boolean) => {
@@ -655,6 +798,24 @@ export default function MessagesScreen() {
               setCreateMenuOpen(true);
             },
           }}
+          selectionChrome={
+            selectionMode
+              ? {
+                  selectedCount: selectedConversationUuids?.size ?? 0,
+                  onClose: clearConversationSelect,
+                  moreAction: {
+                    accessibilityLabel: "Действия с выбранными",
+                    anchorRef: selectionMoreAnchorRef,
+                    onPress: () => {
+                      setSortOpen(false);
+                      closeMenu();
+                      setCreateMenuOpen(false);
+                      setSelectionMenuOpen(true);
+                    },
+                  },
+                }
+              : undefined
+          }
         />
 
         {banner ? (
@@ -696,6 +857,23 @@ export default function MessagesScreen() {
           </View>
         ) : null}
       </View>
+
+      <ConversationMoreMenu
+        open={selectionMenuOpen}
+        onClose={() => setSelectionMenuOpen(false)}
+        anchorRef={selectionMoreAnchorRef}
+        kind={selectionMenuKind}
+        isMuted={selectionAnyMuted}
+        isArchived={selectionAllArchived}
+        onMuteForever={bulkMuteForever}
+        onMuteTemporary={bulkMuteTemporary}
+        onUnmute={bulkUnmute}
+        folderOptions={folderPickOptions}
+        onAddToFolder={bulkAddToFolder}
+        onArchive={() => bulkArchive(true)}
+        onUnarchive={() => bulkArchive(false)}
+        onDelete={bulkDelete}
+      />
 
       <DropdownMenuOverlay
         open={createMenuOpen}
@@ -759,46 +937,32 @@ export default function MessagesScreen() {
               tintColor={floraColors.greenLight}
             />
           }
-          renderItem={({ item }) =>
-            item.kind === "groupChat" ? (
+          extraData={`${selectionMode ? "1" : "0"}|${[...(selectedConversationUuids ?? EMPTY_SELECTED)].join(",")}`}
+          renderItem={({ item }) => {
+            const uuid =
+              item.kind === "groupChat"
+                ? item.group.conversationUuid
+                : item.item.conversationUuid;
+            const selected = selectedConversationUuids?.has(uuid) ?? false;
+            return item.kind === "groupChat" ? (
               <GroupConversationListRow
                 group={item.group}
                 preview={item.preview}
-                isArchived={isConversationArchived(
-                  item.group.conversationUuid,
-                  archivedByConversation,
-                )}
-                onArchive={() =>
-                  handleGroupArchivedChange(item.group.conversationUuid, true)
-                }
-                onUnarchive={() =>
-                  handleGroupArchivedChange(item.group.conversationUuid, false)
-                }
+                selectionMode={selectionMode}
+                selected={selected}
+                onEnterSelect={() => enterConversationSelect(uuid)}
+                onToggleSelect={() => toggleConversationSelect(uuid)}
               />
             ) : (
               <ConversationListRow
                 item={item.item}
-                isMuted={item.item.otherUserUuid in mutedDisplayByPeer}
-                isArchived={item.item.otherUserUuid in archivedByPeer}
-                folderOptions={folderPickOptions}
-                onMuteForever={() =>
-                  handleMuteForever(item.item.otherUserUuid, item.item.conversationUuid)
-                }
-                onMuteTemporary={() =>
-                  handleMuteTemporary(item.item.otherUserUuid, item.item.conversationUuid)
-                }
-                onUnmute={() => handleUnmute(item.item.otherUserUuid, item.item.conversationUuid)}
-                onArchivedChange={(archived) =>
-                  handleArchivedChange(
-                    item.item.otherUserUuid,
-                    item.item.conversationUuid,
-                    archived,
-                  )
-                }
-                onAddToFolder={(folderId) => void addPeerToEntity(folderId, item.item.otherUserUuid)}
+                selectionMode={selectionMode}
+                selected={selected}
+                onEnterSelect={() => enterConversationSelect(uuid)}
+                onToggleSelect={() => toggleConversationSelect(uuid)}
               />
-            )
-          }
+            );
+          }}
           ListEmptyComponent={
             query.isLoading ? (
               <View style={styles.loading}>
@@ -834,18 +998,10 @@ export default function MessagesScreen() {
           loading={query.isLoading}
           error={query.isError}
           emptyMessage={(folder) => emptyListMessage(false, items.length + groupChats.length, folder)}
-          mutedByPeer={mutedDisplayByPeer}
-          archivedByPeer={archivedByPeer}
-          archivedByConversation={archivedByConversation}
-          folderOptions={folderPickOptions}
-          onMuteForever={handleMuteForever}
-          onMuteTemporary={handleMuteTemporary}
-          onUnmute={handleUnmute}
-          onArchivedChange={handleArchivedChange}
-          onGroupArchivedChange={handleGroupArchivedChange}
-          onAddToFolder={(folderId, peerUuid) => {
-            void addPeerToEntity(folderId, peerUuid);
-          }}
+          selectionMode={selectionMode}
+          selectedConversationUuids={selectedConversationUuids ?? EMPTY_SELECTED}
+          onEnterSelect={enterConversationSelect}
+          onToggleSelect={toggleConversationSelect}
         />
       )}
 

@@ -65,7 +65,11 @@ export const floraFeedPost = {
   nicknameGapFromAvatarTop: floraSpacing.gridFine,
   nicknameLineHeight: 15,
   rowGap: floraSpacing.gridFine,
-  moreMenuTop: -floraSpacing.grid / 2 + 1,
+  /**
+   * Верх слота ⋮: старый top (−grid/2+1) минус половина прироста слота 28→45,
+   * чтобы центр глифа остался на горизонтали ника.
+   */
+  moreMenuTop: -floraSpacing.grid / 2 + 1 - (45 - (2 * floraSpacing.gridFine + 18)) / 2,
   contentNudgeX: -floraSpacing.gridFine,
   /**
    * Низ аватара → верх наполнения (текст/фото) = 1×fine
@@ -86,14 +90,15 @@ export const floraFeedPost = {
   textMarginBottom: floraSpacing.grid,
   actionFontSize: 14,
   actionLetterSpacing: 0.42,
-  moreBtnSize: 2 * floraSpacing.gridFine + 18,
-  moreBtnPadding: floraSpacing.gridFine,
+  /** Как iconButton / ⋮ в Messages — центр на одной вертикали с «+»/шапкой чата. */
+  moreBtnSize: 45,
+  moreBtnPadding: 0,
+  /** Сдвиг по Y к горизонтали ника (как до выравнивания слота). */
   moreBtnNudgeY: floraSpacing.gridFine + 3,
-  /** Слот глифа ⋮/✕ — PostMoreMenu.triggerGlyphStack (18px). */
-  moreGlyphSlot: 18,
-  moreGlyphSize: 18,
-  /** Тот же слот 18px; крестик = размер ⋮ для визуального паритета. */
-  moreCloseGlyphSize: 18,
+  /** Глиф как ChatHeaderMoreIcon. */
+  moreGlyphSlot: 24,
+  moreGlyphSize: 24,
+  moreCloseGlyphSize: 24,
   /** Отступ панели ниже ⋮: web gap + 1 primary step (визуальный зазор под крестиком). */
   moreMenuGapBelow: floraSpacing.grid * 2 + floraSpacing.gridFine + 3,
 };
