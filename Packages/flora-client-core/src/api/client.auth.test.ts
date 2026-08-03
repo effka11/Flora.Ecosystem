@@ -503,7 +503,7 @@ describe("session refresh client", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("does not treat a refresh 403 as terminal Invalid", async () => {
+  it("does not treat a token refresh 403 as terminal Invalid", async () => {
     const session = createSessionStore({
       accessToken: "old-access",
       refreshToken: "old-refresh",
@@ -517,13 +517,55 @@ describe("session refresh client", () => {
     configureApiClient({
       apiBaseUrl: "https://api.test",
       session,
-      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
       fetchImpl,
     });
 
     expect(await refreshSession()).toBe("protocol_error");
     expect(session.state.accessToken).toBe("old-access");
     expect(session.state.refreshToken).toBe("old-refresh");
+  });
+
+  it("treats a cookie refresh 403 as terminal Invalid", async () => {
+    const exp = Math.floor(Date.now() / 1000) - 60;
+    const session = createSessionStore({
+      accessToken: makeJwt(exp),
+      refreshToken: null,
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    session.replaceSession({
+      accessToken: makeJwt(exp),
+      refresh: { kind: "cookie" },
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const onUnauthorized = vi.fn();
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith("/api/auth/refresh")) {
+        return new Response(
+          JSON.stringify({ error: "Cross-origin refresh is not allowed." }),
+          { status: 403, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({ error: "Не удалось определить пользователя." }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "web", appVersion: "1.0.0" },
+      fetchImpl,
+      onUnauthorized,
+    });
+
+    await expect(authFetch("/api/auth/me")).rejects.toSatisfy(
+      (err) => isApiRequestError(err) && err.status === 401,
+    );
+    expect(session.state.accessToken).toBeNull();
+    expect((await session.readSession!()).session).toBeNull();
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
   it("keeps R2 effective when its atomic storage commit is pending", async () => {

@@ -39,6 +39,8 @@ function scheduleUnauthorizedRedirect(): void {
   if (typeof window === "undefined" || unauthorizedRedirectScheduled) return;
   if (window.location.pathname === "/login") return;
   unauthorizedRedirectScheduled = true;
+  // Best-effort HttpOnly cookie tombstone; localStorage is already cleared by the coordinator.
+  clearBrowserSessionCookie();
   queueMicrotask(() => {
     window.location.replace("/login");
   });

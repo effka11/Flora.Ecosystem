@@ -490,6 +490,11 @@ export class SessionRefreshCoordinator {
     if (response.status === 401) {
       return { kind: "invalid" };
     }
+    // Cookie Web proxy refuses unusable refresh (e.g. cross-origin 403). Token
+    // clients keep protocol_error — mobile does not share that proxy path.
+    if (response.status === 403 && capability.kind === "cookie") {
+      return { kind: "invalid" };
+    }
     if (!response.ok) {
       if (
         response.status === 408 ||
