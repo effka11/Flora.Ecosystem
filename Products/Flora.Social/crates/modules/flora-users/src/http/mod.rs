@@ -9,7 +9,7 @@ use axum::Router;
 use axum::extract::{DefaultBodyLimit, Extension, Multipart, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{get, post};
 use chrono::{DateTime, SecondsFormat, Utc};
 use flora_auth_contracts::AccountDirectory;
 use flora_content_contracts::CommunityFollowStats;
