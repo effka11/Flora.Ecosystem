@@ -13,6 +13,7 @@ export {
 } from "./envelope";
 export {
   clearFscpLegacyFlatKeys,
+  clearFscpDeviceMaterial,
   clearFscpLocalStorage,
   clearFscpMaterialForUser,
   type FscpLocalMaterial,

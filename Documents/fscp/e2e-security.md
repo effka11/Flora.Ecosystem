@@ -704,7 +704,7 @@ E2E в браузере требует строгой защиты клиент�
 - отсутствие plaintext сообщений в logs/analytics;
 - запрет third-party scripts на messaging screen;
 - dependency pinning и audit для crypto/markdown/html packages;
-- не хранить E2E root key в `localStorage`;
+- не хранить E2E root key / device private keys в `localStorage` (web: sealed IndexedDB `flora-fscp-vault` + non-extractable AES-GCM wrap key — SEC-1; см. `Apps/Web/lib/fscp/sealedVault.ts`);
 - ключи держать в памяти сессии или в IndexedDB только в зашифрованном виде;
 - очищать ключи при logout;
 - использовать WebCrypto там, где возможно;
@@ -1639,7 +1639,7 @@ Auth + Messaging: restore locked or active state
 - key-change warning появляется при изменении device/account keys;
 - security events не содержат plaintext, ключи, recovery words или ciphertext bodies;
 - события, связанные с E2E epochs, recovery, unlock, device transfer и backup rotation, в метаданных содержат `keyEpochId` или `affectedKeyEpochIds` и при необходимости `epochSetRevision` / `recoveryKeyId` (без секретов);
-- frontend не хранит root key в `localStorage`;
+- frontend не хранит root key / FSCP device private keys plaintext в `localStorage` (web: sealed IDB vault, SEC-1);
 - CSP запрещает inline scripts;
 - есть test vectors для backup decrypt, recovery decrypt и message decrypt;
 - **FSCP v1.0 (формальный релиз спецификации):** соблюдены проверки из [FSCP.md](FSCP.md); в CI или аналоге прогоняются golden-векторы [test-vectors/fscp-rke-wrap-key-v1.json](../test-vectors/fscp-rke-wrap-key-v1.json) и [test-vectors/fingerprint-v1.json](../test-vectors/fingerprint-v1.json);

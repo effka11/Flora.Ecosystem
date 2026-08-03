@@ -102,14 +102,27 @@ export function SettingsFscpKeysModal({ open, closing, onClose }: SettingsFscpKe
   };
 
   const onClearLocalKeys = () => {
-    if (!me?.userUuid) return;
+    if (!me?.userUuid || busy) return;
     const ok = window.confirm(
       "Удалить ключи FSCP с этого устройства? История сообщений здесь перестанет расшифровываться до повторной настройки.",
     );
     if (!ok) return;
-    clearFscpMaterialForUser(me.userUuid);
-    setSuccess("Локальные ключи удалены. Перезагрузите страницу для повторной инициализации.");
-    void refresh();
+    void (async () => {
+      setBusy(true);
+      setError(null);
+      setSuccess(null);
+      try {
+        await clearFscpMaterialForUser(me.userUuid);
+        setSuccess("Локальные ключи удалены.");
+        await refresh();
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Не удалось удалить локальные ключи FSCP.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    })();
   };
 
   if (!open) return null;
@@ -190,10 +203,10 @@ export function SettingsFscpKeysModal({ open, closing, onClose }: SettingsFscpKe
               <button
                 type="button"
                 className={`${styles.btn} ${styles.btnGhost}`}
-                disabled={!me?.userUuid}
+                disabled={busy || !me?.userUuid}
                 onClick={onClearLocalKeys}
               >
-                Удалить ключи с устройства
+                {busy ? "Удаление…" : "Удалить ключи с устройства"}
               </button>
             </div>
             {error ? (

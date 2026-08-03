@@ -1,5 +1,4 @@
-/** Профиль FSCP в localStorage: по одному на userUuid, чтобы смена аккаунта не затирала ключи другого пользователя в том же браузере. */
-const PROFILE_KEY_PREFIX = "flora.fscp.profile.v1.";
+import { webFscpKeyStorage } from "./storage";
 
 /** Устаревшие общие ключи (до профилей по пользователю). */
 const LS_AG = "flora.fscp.agreementPrivateB64";
@@ -13,10 +12,6 @@ export type FscpLocalMaterial = {
   deviceUuidFromServer: string | null;
 };
 
-function profileStorageKey(ownerNorm: string): string {
-  return `${PROFILE_KEY_PREFIX}${ownerNorm}`;
-}
-
 /** Удаляет только устаревшие общие ключи (миграция). */
 export function clearFscpLegacyFlatKeys(): void {
   if (typeof localStorage === "undefined") return;
@@ -27,24 +22,22 @@ export function clearFscpLegacyFlatKeys(): void {
 }
 
 /** Явный сброс FSCP-профиля пользователя на этом устройстве (не вызывается при обычном `clearSession`). */
-export function clearFscpMaterialForUser(ownerUserUuid: string): void {
-  if (typeof localStorage === "undefined") return;
+export async function clearFscpMaterialForUser(ownerUserUuid: string): Promise<void> {
   const k = ownerUserUuid.trim().toLowerCase();
   if (!k) return;
-  localStorage.removeItem(profileStorageKey(k));
+  await webFscpKeyStorage.clearProfile(k);
 }
 
 /**
- * Полный сброс FSCP в origin (все пользователи + legacy). Для отладки и «забыть это устройство»;
- * при обычном выходе ключи не трогаются — см. `clearSession` в `lib/auth.ts`.
+ * Полный сброс FSCP device material в origin (sealed vault + residual LS + legacy).
+ * При обычном выходе ключи не трогаются — см. `clearSession` в `lib/auth.ts`.
  */
-export function clearFscpLocalStorage(): void {
+export async function clearFscpDeviceMaterial(): Promise<void> {
   clearFscpLegacyFlatKeys();
-  if (typeof localStorage === "undefined") return;
-  const keys: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith(PROFILE_KEY_PREFIX)) keys.push(key);
-  }
-  for (const key of keys) localStorage.removeItem(key);
+  await webFscpKeyStorage.clearAllProfiles();
+}
+
+/** @deprecated Use {@link clearFscpDeviceMaterial}. */
+export async function clearFscpLocalStorage(): Promise<void> {
+  await clearFscpDeviceMaterial();
 }
