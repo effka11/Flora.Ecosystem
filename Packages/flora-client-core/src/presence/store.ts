@@ -255,8 +255,9 @@ export async function apiPresenceHeartbeat(): Promise<void> {
 }
 
 export async function apiPresenceWatch(connectionId: string, userUuids: string[]): Promise<void> {
+  // POST: edge CDN rejects PUT with nginx 405 (same pattern as /api/chat-organizer).
   const res = await authFetch("/api/auth/presence/watch", {
-    method: "PUT",
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       connectionId,

@@ -114,16 +114,30 @@ $env:NEXT_PUBLIC_ECOSYSTEM_VERSION = [string]$floraVersions.ecosystem
 Write-Host "NEXT_PUBLIC_APP_VERSION=$($env:NEXT_PUBLIC_APP_VERSION)"
 Write-Host "NEXT_PUBLIC_ECOSYSTEM_VERSION=$($env:NEXT_PUBLIC_ECOSYSTEM_VERSION)"
 
-$webBuildId = (Get-Date -Format "yyyyMMddHHmmss")
-try {
-    Push-Location $RepoRoot
-    $gitHead = (& git rev-parse --short HEAD 2>$null)
-    if ($LASTEXITCODE -eq 0 -and $gitHead) {
-        $webBuildId = "$($gitHead.Trim())-$((Get-Date -Format 'yyyyMMddHHmmss'))"
+# nginx ?b= and the inline cache-bust script in layout.tsx must share one id.
+# SkipBuild reuses the id baked into the previous next build — a fresh timestamp
+# here causes an infinite login redirect loop (nginx vs HTML disagree).
+$buildIdMarker = Join-Path $WebRoot ".next\flora-web-build-id"
+if ($SkipBuild) {
+    if (-not (Test-Path -LiteralPath $buildIdMarker)) {
+        throw "SkipBuild requires $buildIdMarker from a prior full build. Re-run without -SkipBuild."
     }
-    Pop-Location
-} catch {
-    if ((Get-Location).Path -eq $RepoRoot) { Pop-Location }
+    $webBuildId = (Get-Content -LiteralPath $buildIdMarker -Raw).Trim()
+    if ([string]::IsNullOrWhiteSpace($webBuildId)) {
+        throw "Empty build id in $buildIdMarker. Re-run without -SkipBuild."
+    }
+} else {
+    $webBuildId = (Get-Date -Format "yyyyMMddHHmmss")
+    try {
+        Push-Location $RepoRoot
+        $gitHead = (& git rev-parse --short HEAD 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $gitHead) {
+            $webBuildId = "$($gitHead.Trim())-$((Get-Date -Format 'yyyyMMddHHmmss'))"
+        }
+        Pop-Location
+    } catch {
+        if ((Get-Location).Path -eq $RepoRoot) { Pop-Location }
+    }
 }
 $env:NEXT_PUBLIC_BUILD_ID = $webBuildId
 Write-Host "WEB_BUILD_ID=$webBuildId"
@@ -132,8 +146,10 @@ Write-Host ('CDN without purge: open https://' + $PublicSubdomain + '.' + $Domai
 if (-not $SkipBuild) {
     Write-Host "npm run build..."
     npm run build
+    New-Item -ItemType Directory -Path (Split-Path -Parent $buildIdMarker) -Force | Out-Null
+    [System.IO.File]::WriteAllText($buildIdMarker, $webBuildId)
 } else {
-    Write-Host "Skipping build (-SkipBuild)."
+    Write-Host "Skipping build (-SkipBuild); reusing baked WEB_BUILD_ID."
 }
 
 npm run prepare:standalone
@@ -189,7 +205,7 @@ function Expand-ToUnixLfFile {
 
 $stageDir = Join-Path $env:TEMP "flora-deploy-stage-$ts"
 $tarballPath = Join-Path $env:TEMP "flora-deploy-$ts.tgz"
-$isWindows = ($true -eq $IsWindows) -or (($null -eq $IsWindows) -and ($env:OS -eq "Windows_NT"))
+$deployOnWindows = ($true -eq $IsWindows) -or (($null -eq $IsWindows) -and ($env:OS -eq "Windows_NT"))
 try {
     New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 
@@ -228,7 +244,7 @@ try {
     $tarPath = (Get-Command -Name tar -CommandType Application -ErrorAction Stop).Path
 
     Write-Host "Deploying payload to server..."
-    if ($isWindows) {
+    if ($deployOnWindows) {
         Remove-Item -LiteralPath $tarballPath -Force -ErrorAction SilentlyContinue
         Write-Host "Packing gzip tarball..."
         & $tarPath -czf $tarballPath -C $stageDir .
@@ -260,7 +276,7 @@ try {
     Write-Host '  After nginx bootstrap changes: re-run remote-bootstrap on VPS or redeploy so post-media GET bypasses Next.'
 }
 finally {
-    if ($isWindows -and (Test-Path -LiteralPath $tarballPath)) {
+    if ($deployOnWindows -and (Test-Path -LiteralPath $tarballPath)) {
         Remove-Item -LiteralPath $tarballPath -Force -ErrorAction SilentlyContinue
     }
     if (Test-Path -LiteralPath $stageDir) {

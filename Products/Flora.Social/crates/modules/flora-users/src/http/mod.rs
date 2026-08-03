@@ -93,7 +93,11 @@ pub fn protected_router(state: UsersState) -> Router {
             get(get_user_by_username),
         )
         .route("/api/auth/presence/heartbeat", post(presence_heartbeat))
-        .route("/api/auth/presence/watch", put(presence_watch))
+        // POST primary: edge CDN on flora-s.net rejects PUT with nginx 405 (same as chat-organizer).
+        .route(
+            "/api/auth/presence/watch",
+            post(presence_watch).put(presence_watch),
+        )
         .route("/api/auth/presence", get(presence_batch))
         .with_state(state)
 }
