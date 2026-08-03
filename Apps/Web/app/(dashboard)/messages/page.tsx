@@ -66,6 +66,7 @@ import {
 import { floraNewUuid } from "@/lib/floraUuid";
 import {
   msgMarkReadForUser,
+  MESSAGES_POP_TO_LIST_EVENT,
   MESSAGES_UNREAD_CHANGED_EVENT,
   notifyMessagesUnreadChanged,
   type MessagesChangedDetail,
@@ -1059,6 +1060,12 @@ function MessagesChatInner() {
     setSelectedTarget(null);
     setSelectedPeer(null);
   }, [applyPanelTransition, selectedTarget]);
+
+  useEffect(() => {
+    const onPopToList = () => closeChat();
+    window.addEventListener(MESSAGES_POP_TO_LIST_EVENT, onPopToList);
+    return () => window.removeEventListener(MESSAGES_POP_TO_LIST_EVENT, onPopToList);
+  }, [closeChat]);
 
   const archiveGroup = useCallback(
     (conversationUuid: string) => {

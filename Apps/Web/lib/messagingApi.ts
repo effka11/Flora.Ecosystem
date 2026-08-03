@@ -492,6 +492,9 @@ export async function apiGetMessagingUnreadCount(): Promise<number> {
 
 export const MESSAGES_UNREAD_CHANGED_EVENT = "flora:messages-changed";
 
+/** Sidebar «Сообщения» while already on /messages — pop open thread back to chat list. */
+export const MESSAGES_POP_TO_LIST_EVENT = "flora:messages-pop-to-list";
+
 export type MessagesChangedDetail = {
   conversationUuid?: string;
   senderUserUuid?: string;
@@ -501,4 +504,9 @@ export type MessagesChangedDetail = {
 export function notifyMessagesUnreadChanged(detail?: MessagesChangedDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent<MessagesChangedDetail>(MESSAGES_UNREAD_CHANGED_EVENT, { detail }));
+}
+
+export function notifyMessagesPopToList(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(MESSAGES_POP_TO_LIST_EVENT));
 }
