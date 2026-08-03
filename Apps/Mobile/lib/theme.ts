@@ -95,7 +95,7 @@ export const floraFeedPost = {
   moreBtnPadding: 0,
   /** Сдвиг по Y к горизонтали ника (как до выравнивания слота). */
   moreBtnNudgeY: floraSpacing.gridFine + 3,
-  /** Глиф как ChatHeaderMoreIcon. */
+  /** Глиф как ChromeMoreIcon. */
   moreGlyphSlot: 24,
   moreGlyphSize: 24,
   moreCloseGlyphSize: 24,

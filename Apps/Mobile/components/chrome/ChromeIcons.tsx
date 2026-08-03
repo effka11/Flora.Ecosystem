@@ -12,8 +12,9 @@ const DOT_R = 1.35;
 
 /**
  * Стрелка назад: размер как у лупы/«+», толщина stroke как у search-outline.
+ * Общий chrome (Messages / Feed) — не домен messages.
  */
-export function ChatHeaderBackIcon({ size = 24, color }: Props) {
+export function ChromeBackIcon({ size = 24, color }: Props) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Path
@@ -29,9 +30,9 @@ export function ChatHeaderBackIcon({ size = 24, color }: Props) {
 }
 
 /**
- * Вертикальное ⋮: крупнее шрифтового 16–18, точки тоньше ionicons glyph.
+ * Вертикальное ⋮: тонкие точки, слот 24. Общий chrome (Messages / Feed).
  */
-export function ChatHeaderMoreIcon({ size = 24, color }: Props) {
+export function ChromeMoreIcon({ size = 24, color }: Props) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Circle cx={12} cy={6.5} r={DOT_R} fill={color} />

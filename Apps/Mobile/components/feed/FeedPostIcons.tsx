@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
-import { ChatHeaderMoreIcon } from "@/components/messages/ChatHeaderIcons";
+import { ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { floraFeedPost } from "@/lib/theme";
 
 type IconProps = {
@@ -73,7 +73,7 @@ export function FeedPostViewsIcon({ size = 16, color }: IconProps) {
 export function FeedPostMoreIcon({ size = floraFeedPost.moreGlyphSize, color }: IconProps) {
   return (
     <View style={glyphSlot.slot}>
-      <ChatHeaderMoreIcon size={size} color={color} />
+      <ChromeMoreIcon size={size} color={color} />
     </View>
   );
 }

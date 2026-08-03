@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
-import { ChatHeaderMoreIcon } from "@/components/messages/ChatHeaderIcons";
+import { ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 type HeaderIconAction = {
@@ -100,7 +100,7 @@ export function TabScreenSearchHeader({
                 style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                 onPress={more.onPress}
               >
-                <ChatHeaderMoreIcon color={floraColors.gray} />
+                <ChromeMoreIcon color={floraColors.gray} />
               </Pressable>
             </View>
           ) : null}

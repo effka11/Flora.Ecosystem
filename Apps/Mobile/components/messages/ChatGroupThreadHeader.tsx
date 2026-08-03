@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
-import { ChatHeaderBackIcon, ChatHeaderMoreIcon } from "@/components/messages/ChatHeaderIcons";
+import { ChromeBackIcon, ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { formatGroupMembersLabel } from "@/lib/groupChatTypes";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 
@@ -39,7 +39,7 @@ export function ChatGroupThreadHeader({
         style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
         onPress={() => router.back()}
       >
-        <ChatHeaderBackIcon color={floraColors.gray} />
+        <ChromeBackIcon color={floraColors.gray} />
       </Pressable>
 
       <Pressable
@@ -80,7 +80,7 @@ export function ChatGroupThreadHeader({
           {moreMenuOpen ? (
             <Ionicons name="close-outline" size={24} color={floraColors.gray} />
           ) : (
-            <ChatHeaderMoreIcon color={floraColors.gray} />
+            <ChromeMoreIcon color={floraColors.gray} />
           )}
         </Pressable>
       </View>

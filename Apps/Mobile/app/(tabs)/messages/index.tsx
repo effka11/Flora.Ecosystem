@@ -482,29 +482,65 @@ export default function MessagesScreen() {
     return false;
   }, [organizerKeysReady]);
 
+  const notifyGroupsSkipped = useCallback(
+    (action: "mute" | "folder") => {
+      if (selectedGroups.length === 0) return;
+      if (action === "mute") {
+        Alert.alert(
+          selectedDms.length > 0 ? "Заглушены личные чаты" : "Недоступно",
+          "Заглушение групп пока не поддерживается.",
+        );
+        return;
+      }
+      Alert.alert(
+        selectedDms.length > 0 ? "В папку добавлены личные чаты" : "Недоступно",
+        "Группы в кастомные папки пока нельзя добавить.",
+      );
+    },
+    [selectedDms.length, selectedGroups.length],
+  );
+
   const bulkMuteForever = useCallback(() => {
+    if (selectedDms.length === 0) {
+      notifyGroupsSkipped("mute");
+      return;
+    }
     for (const c of selectedDms) {
       clearTemporaryMute(c.otherUserUuid);
       void setMuted(c.otherUserUuid, c.conversationUuid, true);
     }
+    const skipped = selectedGroups.length > 0;
     clearConversationSelect();
-  }, [clearConversationSelect, selectedDms, setMuted]);
+    if (skipped) notifyGroupsSkipped("mute");
+  }, [clearConversationSelect, notifyGroupsSkipped, selectedDms, selectedGroups.length, setMuted]);
 
   const bulkMuteTemporary = useCallback(() => {
+    if (selectedDms.length === 0) {
+      notifyGroupsSkipped("mute");
+      return;
+    }
     for (const c of selectedDms) {
       setTemporaryMute(c.otherUserUuid);
       void setMuted(c.otherUserUuid, c.conversationUuid, true);
     }
+    const skipped = selectedGroups.length > 0;
     clearConversationSelect();
-  }, [clearConversationSelect, selectedDms, setMuted]);
+    if (skipped) notifyGroupsSkipped("mute");
+  }, [clearConversationSelect, notifyGroupsSkipped, selectedDms, selectedGroups.length, setMuted]);
 
   const bulkUnmute = useCallback(() => {
+    if (selectedDms.length === 0) {
+      notifyGroupsSkipped("mute");
+      return;
+    }
     for (const c of selectedDms) {
       clearTemporaryMute(c.otherUserUuid);
       void setMuted(c.otherUserUuid, c.conversationUuid, false);
     }
+    const skipped = selectedGroups.length > 0;
     clearConversationSelect();
-  }, [clearConversationSelect, selectedDms, setMuted]);
+    if (skipped) notifyGroupsSkipped("mute");
+  }, [clearConversationSelect, notifyGroupsSkipped, selectedDms, selectedGroups.length, setMuted]);
 
   const bulkAddToFolder = useCallback(
     (folderId: string) => {
@@ -512,12 +548,25 @@ export default function MessagesScreen() {
         Alert.alert("Нет папок", "Сначала создайте папку или группу через «+».");
         return;
       }
+      if (selectedDms.length === 0) {
+        notifyGroupsSkipped("folder");
+        return;
+      }
       for (const c of selectedDms) {
         void addPeerToEntity(folderId, c.otherUserUuid);
       }
+      const skipped = selectedGroups.length > 0;
       clearConversationSelect();
+      if (skipped) notifyGroupsSkipped("folder");
     },
-    [addPeerToEntity, clearConversationSelect, folderPickOptions.length, selectedDms],
+    [
+      addPeerToEntity,
+      clearConversationSelect,
+      folderPickOptions.length,
+      notifyGroupsSkipped,
+      selectedDms,
+      selectedGroups.length,
+    ],
   );
 
   const bulkArchive = useCallback(
