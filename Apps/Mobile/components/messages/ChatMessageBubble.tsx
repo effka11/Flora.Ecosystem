@@ -45,6 +45,8 @@ export type ThreadBubbleItem = {
   decryptState: "ok" | "decrypting" | "failed";
   isRead?: boolean;
   sendStatus?: "sending";
+  /** Group chats: sender for peer-run split + avatar roster lookup. */
+  senderUserUuid?: string | null;
 };
 type Props = {
   message: ThreadBubbleItem;

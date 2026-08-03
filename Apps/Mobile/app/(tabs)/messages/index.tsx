@@ -1,6 +1,9 @@
-import { apiGetConversations } from "@flora/client-core/api";
+import { apiGetConversations, apiListGroups } from "@flora/client-core/api";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
-import type { FscpBootstrapStatus } from "@flora/client-core/fscp";
+import {
+  decryptGroupMessagePreview,
+  type FscpBootstrapStatus,
+} from "@flora/client-core/fscp";
 import {
   canArchiveChatListPeer,
   canCreateChatListFolder,
@@ -17,7 +20,7 @@ import {
 import { sharedPresenceStore } from "@flora/client-core/presence";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -35,11 +38,13 @@ import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
 import { CreateChatFolderSheet } from "@/components/messages/CreateChatFolderSheet";
-import { CreateChatGroupComingSoonModal } from "@/components/messages/CreateChatGroupComingSoonModal";
+import { CreateGroupSheet } from "@/components/messages/CreateGroupSheet";
+import { GroupConversationListRow } from "@/components/messages/GroupConversationListRow";
 import { MessagesChatFolders } from "@/components/messages/MessagesChatFolders";
 import {
   MessagesFolderPager,
   type MessagesFolderConversationRow,
+  type MessagesFolderListRow,
   type MessagesFolderPagerHandle,
 } from "@/components/messages/MessagesFolderPager";
 import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
@@ -54,6 +59,9 @@ import {
   setTemporaryMute,
   useTemporaryMuteUntilByPeer,
 } from "@/lib/conversationTemporaryMute";
+import { mapGroupListItem, mergeGroupListRefresh } from "@/lib/groupChatMap";
+import { groupSortAt, type GroupChat } from "@/lib/groupChatTypes";
+import { openGroupChat } from "@/lib/openGroupChat";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
@@ -81,6 +89,41 @@ function emptyListMessage(
   }
   if (totalCount === 0) return "Пока нет переписок. Найдите человека во вкладке «Люди».";
   return "Ничего не найдено. Измените запрос в поиске.";
+}
+
+function toFolderListRows(
+  list: readonly MsgConversationDto[],
+  previews: Readonly<Record<string, string>>,
+  groups: readonly GroupChat[],
+  groupPreviews: Readonly<Record<string, string>>,
+  folder: ChatListFolderId,
+  sortBy: SortBy,
+): MessagesFolderListRow[] {
+  const dmRows: MessagesFolderListRow[] = toConversationRows(list, previews).map((item) => ({
+    kind: "dm",
+    item,
+  }));
+  // Groups only appear in «все» (not ORG folders / archive).
+  if (folder !== "all") return dmRows;
+
+  let groupRows: MessagesFolderListRow[] = groups.map((g) => ({
+    kind: "groupChat",
+    group: g,
+    preview: groupPreviews[g.conversationUuid] ?? g.lastMessagePreview ?? "",
+  }));
+  if (sortBy === "unread") {
+    groupRows = groupRows.filter((r) => r.kind === "groupChat" && r.group.unreadCount > 0);
+  }
+
+  const merged = [...dmRows, ...groupRows];
+  merged.sort((a, b) => {
+    const aAt =
+      a.kind === "dm" ? a.item.lastMessageAt || "" : groupSortAt(a.group);
+    const bAt =
+      b.kind === "dm" ? b.item.lastMessageAt || "" : groupSortAt(b.group);
+    return bAt.localeCompare(aAt);
+  });
+  return merged;
 }
 
 function toConversationRows(
@@ -159,8 +202,11 @@ export default function MessagesScreen() {
   const folderReturnProgressSV = useSharedValue(0);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
-  const [createGroupSoonOpen, setCreateGroupSoonOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const [groupChats, setGroupChats] = useState<GroupChat[]>([]);
+  const [groupPreviews, setGroupPreviews] = useState<Record<string, string>>({});
   const overlayState = useChatListOverlayStore((s) => s.state);
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
   const setOverlayFscpKeys = useChatListOverlayStore((s) => s.setFscpKeys);
@@ -228,6 +274,16 @@ export default function MessagesScreen() {
     queryKey: ["conversations"],
     queryFn: () => apiGetConversations(),
   });
+  const groupsQuery = useQuery({
+    queryKey: ["groups"],
+    queryFn: async () => {
+      try {
+        return await apiListGroups();
+      } catch {
+        return [];
+      }
+    },
+  });
   const conversationQueryRef = useRef(query);
 
   useEffect(() => {
@@ -236,6 +292,42 @@ export default function MessagesScreen() {
 
   const items = query.data?.items ?? EMPTY_CONVERSATIONS;
   const previews = useMessagesListPreviewDecrypt(items, me?.userUuid);
+
+  useEffect(() => {
+    const list = groupsQuery.data;
+    if (!list) return;
+    setGroupChats((prev) =>
+      mergeGroupListRefresh(
+        prev,
+        list.map((item) => mapGroupListItem(item)),
+      ),
+    );
+  }, [groupsQuery.data]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!me?.userUuid || !fscpMaterial || groupChats.length === 0) return;
+      const next: Record<string, string> = {};
+      for (const g of groupChats) {
+        const wire = g.lastMessageEncryptedWire?.trim();
+        if (!wire) {
+          next[g.conversationUuid] = g.lastMessagePreview ?? "";
+          continue;
+        }
+        const preview = await decryptGroupMessagePreview({
+          encryptedPayload: wire,
+          viewerUserUuid: me.userUuid,
+          agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+        });
+        next[g.conversationUuid] = preview ?? "🔒";
+      }
+      if (!cancelled) setGroupPreviews(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fscpMaterial, groupChats, me?.userUuid]);
 
   const archivedByPeer = overlayState.archivedByPeer;
   const mutedByPeer = overlayState.mutedByPeer;
@@ -373,10 +465,11 @@ export default function MessagesScreen() {
       ) {
         void conversationQuery.refetch();
       }
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
       if (fscpStatus === "registration_pending") {
         void retryPendingOperation();
       }
-    }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
+    }, [fscpStatus, navigation, queryClient, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
   );
 
   const banner = fscpBannerMessage(fscpStatus);
@@ -393,32 +486,53 @@ export default function MessagesScreen() {
   );
 
   const dataByPage = useMemo(() => {
-    const map = new Map<ChatListFolderId, MessagesFolderConversationRow[]>();
+    const map = new Map<ChatListFolderId, MessagesFolderListRow[]>();
     for (const folder of folderPages) {
-      map.set(folder, toConversationRows(filterFolderList(folder), previews));
+      map.set(
+        folder,
+        toFolderListRows(
+          filterFolderList(folder),
+          previews,
+          groupChats,
+          groupPreviews,
+          folder,
+          sortBy,
+        ),
+      );
     }
     return map;
-  }, [filterFolderList, folderPages, previews]);
+  }, [filterFolderList, folderPages, groupChats, groupPreviews, previews, sortBy]);
 
   /** Поиск — один список без pager (папки скрыты). */
   const searchListData = useMemo(() => {
     const queryText = search.trim().toLowerCase();
-    if (!queryText) return [] as MessagesFolderConversationRow[];
-    let list = filterFolderList(activeFolder);
-    list = list.filter((item) => {
+    if (!queryText) return [] as MessagesFolderListRow[];
+    let rows = toFolderListRows(
+      filterFolderList(activeFolder),
+      previews,
+      groupChats,
+      groupPreviews,
+      activeFolder,
+      sortBy,
+    );
+    rows = rows.filter((row) => {
+      if (row.kind === "groupChat") {
+        const preview = (row.preview || row.group.lastMessagePreview || "").toLowerCase();
+        return row.group.title.toLowerCase().includes(queryText) || preview.includes(queryText);
+      }
       const preview = (
-        previews[item.conversationUuid] ??
-        item.lastMessageContent ??
+        previews[row.item.conversationUuid] ??
+        row.item.lastMessageContent ??
         "…"
       ).toLowerCase();
       return (
-        item.otherDisplayName.toLowerCase().includes(queryText) ||
-        item.otherUsername.toLowerCase().includes(queryText) ||
+        row.item.otherDisplayName.toLowerCase().includes(queryText) ||
+        row.item.otherUsername.toLowerCase().includes(queryText) ||
         preview.includes(queryText)
       );
     });
-    return toConversationRows(list, previews);
-  }, [activeFolder, filterFolderList, previews, search]);
+    return rows;
+  }, [activeFolder, filterFolderList, groupChats, groupPreviews, previews, search, sortBy]);
 
   useEffect(() => {
     const uuids = items.map((c) => c.otherUserUuid).filter(Boolean);
@@ -553,7 +667,7 @@ export default function MessagesScreen() {
           style={({ pressed }) => [styles.createMenuItem, pressed && styles.createMenuItemPressed]}
           onPress={() => {
             setCreateMenuOpen(false);
-            setCreateGroupSoonOpen(true);
+            setCreateGroupOpen(true);
           }}
         >
           <View style={styles.createMenuItemIcon}>
@@ -567,34 +681,49 @@ export default function MessagesScreen() {
         <FlashList
           style={styles.list}
           data={searchListData}
-          keyExtractor={(item) => item.conversationUuid}
+          keyExtractor={(item) =>
+            item.kind === "groupChat"
+              ? `g:${item.group.conversationUuid}`
+              : item.item.conversationUuid
+          }
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           refreshControl={
             <RefreshControl
-              refreshing={query.isRefetching}
-              onRefresh={() => query.refetch()}
+              refreshing={query.isRefetching || groupsQuery.isRefetching}
+              onRefresh={() => {
+                void query.refetch();
+                void groupsQuery.refetch();
+              }}
               tintColor={floraColors.greenLight}
             />
           }
-          renderItem={({ item }) => (
-            <ConversationListRow
-              item={item}
-              isMuted={item.otherUserUuid in mutedDisplayByPeer}
-              isArchived={item.otherUserUuid in archivedByPeer}
-              folderOptions={folderPickOptions}
-              onMuteForever={() =>
-                handleMuteForever(item.otherUserUuid, item.conversationUuid)
-              }
-              onMuteTemporary={() =>
-                handleMuteTemporary(item.otherUserUuid, item.conversationUuid)
-              }
-              onUnmute={() => handleUnmute(item.otherUserUuid, item.conversationUuid)}
-              onArchivedChange={(archived) =>
-                handleArchivedChange(item.otherUserUuid, item.conversationUuid, archived)
-              }
-              onAddToFolder={(folderId) => void addPeerToEntity(folderId, item.otherUserUuid)}
-            />
-          )}
+          renderItem={({ item }) =>
+            item.kind === "groupChat" ? (
+              <GroupConversationListRow group={item.group} preview={item.preview} />
+            ) : (
+              <ConversationListRow
+                item={item.item}
+                isMuted={item.item.otherUserUuid in mutedDisplayByPeer}
+                isArchived={item.item.otherUserUuid in archivedByPeer}
+                folderOptions={folderPickOptions}
+                onMuteForever={() =>
+                  handleMuteForever(item.item.otherUserUuid, item.item.conversationUuid)
+                }
+                onMuteTemporary={() =>
+                  handleMuteTemporary(item.item.otherUserUuid, item.item.conversationUuid)
+                }
+                onUnmute={() => handleUnmute(item.item.otherUserUuid, item.item.conversationUuid)}
+                onArchivedChange={(archived) =>
+                  handleArchivedChange(
+                    item.item.otherUserUuid,
+                    item.item.conversationUuid,
+                    archived,
+                  )
+                }
+                onAddToFolder={(folderId) => void addPeerToEntity(folderId, item.item.otherUserUuid)}
+              />
+            )
+          }
           ListEmptyComponent={
             query.isLoading ? (
               <View style={styles.loading}>
@@ -622,13 +751,14 @@ export default function MessagesScreen() {
           returnProgressSV={folderReturnProgressSV}
           dataByPage={dataByPage}
           listPaddingBottom={listPaddingBottom}
-          refreshing={query.isRefetching}
+          refreshing={query.isRefetching || groupsQuery.isRefetching}
           onRefresh={() => {
             void query.refetch();
+            void groupsQuery.refetch();
           }}
           loading={query.isLoading}
           error={query.isError}
-          emptyMessage={(folder) => emptyListMessage(false, items.length, folder)}
+          emptyMessage={(folder) => emptyListMessage(false, items.length + groupChats.length, folder)}
           mutedByPeer={mutedDisplayByPeer}
           archivedByPeer={archivedByPeer}
           folderOptions={folderPickOptions}
@@ -665,9 +795,14 @@ export default function MessagesScreen() {
         }}
       />
 
-      <CreateChatGroupComingSoonModal
-        visible={createGroupSoonOpen}
-        onClose={() => setCreateGroupSoonOpen(false)}
+      <CreateGroupSheet
+        visible={createGroupOpen}
+        conversations={items}
+        onClose={() => setCreateGroupOpen(false)}
+        onCreated={(detail) => {
+          void queryClient.invalidateQueries({ queryKey: ["groups"] });
+          openGroupChat(detail.conversationUuid, detail.title);
+        }}
       />
 
       <FscpUnlockSheet

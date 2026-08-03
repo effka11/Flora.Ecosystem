@@ -7,7 +7,14 @@ export type ThreadListItem =
 /**
  * Группировка ленты: peer-run по raw порядку (стабильный groupKey),
  * в item — только visible сообщения run'а. Как Web threadMessageGroups.
+ * Peer-run режется при смене `senderUserUuid` (нормализованный ключ; пустой —
+ * отдельный бакет). DM без uuid остаются одним run; битый group DTO с дыркой
+ * sender не склеивает разных авторов.
  */
+function peerSenderKey(message: ThreadBubbleItem): string {
+  return message.senderUserUuid?.trim().toLowerCase() ?? "";
+}
+
 export function buildThreadListItems(
   threadMessages: readonly ThreadBubbleItem[],
   isVisible: (message: ThreadBubbleItem) => boolean,
@@ -25,9 +32,11 @@ export function buildThreadListItems(
     }
 
     const groupKey = head.messageUuid;
+    const runSender = peerSenderKey(head);
     const visibleInRun: ThreadBubbleItem[] = [];
     while (i < threadMessages.length && !threadMessages[i]!.isFromMe) {
       const m = threadMessages[i]!;
+      if (peerSenderKey(m) !== runSender) break;
       if (isVisible(m)) visibleInRun.push(m);
       i += 1;
     }

@@ -4,11 +4,12 @@ import {
   canDecryptFscp,
   canSendFscp,
   decryptKeyBackup,
-  decryptMessageWire,
-  decryptRecoveryBackup,
   decryptMessagePreview,
+  decryptGroupMessagePreview,
+  decryptRecoveryBackup,
   extractTextFromPlaintext,
   finalizeRestoredMaterial,
+  isFscpGroupWirePayload,
   parseKeyBackupPayload,
   publishLocalKeyConfirmed as publishLocalKeyConfirmedCore,
   resolveFscpMaterialOnDevice,
@@ -25,6 +26,7 @@ import { apiGetKeyBackup, apiGetRecoveryBackup } from "@flora/client-core/api";
 import { clearFscpMaterialForUser } from "@flora/client-core/fscp";
 import { getTelemetry } from "@flora/client-core/telemetry";
 import { mobileFscpKeyStorage } from "@/lib/fscp/storage";
+import { decryptThreadWirePlaintext } from "@/lib/groupThreadCrypto";
 import "@/lib/messageThreadOutgoing"; // registers optimistic decrypt reseed after clearDecryptCaches
 import { messagePreviewCache } from "@/stores/messagePreviewCache";
 import { messageThreadCache } from "@/stores/messageThreadCache";
@@ -302,16 +304,20 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     if (!get().canDecrypt()) throw new Error("FSCP не готов к расшифровке");
     const material = get().material;
     if (!material) throw new Error("FSCP не инициализирован");
-    return decryptMessageWire({
-      wire,
-      viewerUserUuid,
-      agreementPrivateKey: material.agreementPrivateKey,
-    });
+    return decryptThreadWirePlaintext({ wire, viewerUserUuid, material });
   },
   async decryptPreview(encryptedPayload, viewerUserUuid) {
     if (!get().canDecrypt()) return null;
     const material = get().material;
     if (!material) return null;
+    const enc = encryptedPayload?.trim();
+    if (enc && isFscpGroupWirePayload(enc)) {
+      return decryptGroupMessagePreview({
+        encryptedPayload: enc,
+        viewerUserUuid,
+        agreementPrivateKey: material.agreementPrivateKey,
+      });
+    }
     return decryptMessagePreview({
       encryptedPayload,
       viewerUserUuid,

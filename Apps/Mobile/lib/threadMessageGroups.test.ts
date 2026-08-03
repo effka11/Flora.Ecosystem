@@ -51,6 +51,42 @@ describe("buildThreadListItems", () => {
     expect(items[2]).toMatchObject({ kind: "peerGroup", groupKey: "b" });
   });
 
+  it("splits consecutive peer runs by senderUserUuid", () => {
+    const a = msg({ messageUuid: "a", isFromMe: false, senderUserUuid: "u1" });
+    const b = msg({ messageUuid: "b", isFromMe: false, senderUserUuid: "u2" });
+    const c = msg({ messageUuid: "c", isFromMe: false, senderUserUuid: "u2" });
+    const items = buildThreadListItems([a, b, c], () => true);
+    expect(items.map((i) => i.kind)).toEqual(["peerGroup", "peerGroup"]);
+    expect(items[0]).toMatchObject({ kind: "peerGroup", groupKey: "a" });
+    if (items[0]?.kind === "peerGroup") {
+      expect(items[0].messages.map((m) => m.messageUuid)).toEqual(["a"]);
+    }
+    expect(items[1]).toMatchObject({ kind: "peerGroup", groupKey: "b" });
+    if (items[1]?.kind === "peerGroup") {
+      expect(items[1].messages.map((m) => m.messageUuid)).toEqual(["b", "c"]);
+    }
+  });
+
+  it("splits when sender uuid is missing mid-run", () => {
+    const a = msg({ messageUuid: "a", isFromMe: false, senderUserUuid: "u1" });
+    const hole = msg({ messageUuid: "hole", isFromMe: false });
+    const b = msg({ messageUuid: "b", isFromMe: false, senderUserUuid: "u1" });
+    const items = buildThreadListItems([a, hole, b], () => true);
+    expect(items.map((i) => (i.kind === "peerGroup" ? i.groupKey : i.message.messageUuid))).toEqual([
+      "a",
+      "hole",
+      "b",
+    ]);
+  });
+
+  it("keeps dm peers without sender uuid in one run", () => {
+    const a = msg({ messageUuid: "a", isFromMe: false });
+    const b = msg({ messageUuid: "b", isFromMe: false });
+    const items = buildThreadListItems([a, b], () => true);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: "peerGroup", groupKey: "a" });
+  });
+
   it("omits peer run when all hidden", () => {
     const a = msg({ messageUuid: "a", isFromMe: false });
     expect(buildThreadListItems([a], () => false)).toEqual([]);

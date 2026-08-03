@@ -30,6 +30,8 @@ import Reanimated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
+import { GroupConversationListRow } from "@/components/messages/GroupConversationListRow";
+import type { GroupChat } from "@/lib/groupChatTypes";
 import {
   ENERGETIC_OPEN_EASING,
   ENERGETIC_OPEN_MS,
@@ -41,6 +43,10 @@ import { floraColors, floraSpacing } from "@/lib/theme";
 /** Как SWIPE_AXIS_PX у drawer / feed pager — не перехватывать вертикальный скролл. */
 const PAGER_AXIS_PX = 10;
 export type MessagesFolderConversationRow = MsgConversationDto & { preview: string };
+
+export type MessagesFolderListRow =
+  | { kind: "dm"; item: MessagesFolderConversationRow }
+  | { kind: "groupChat"; group: GroupChat; preview: string };
 
 export type MessagesFolderPagerHandle = {
   /** Как `switchKind` на ленте: целевой индекс + cancel предыдущего settle. */
@@ -59,7 +65,7 @@ type Props = {
   /** Тап назад в «all»: chrome гаснет на исходной иконке. */
   returnFromPageSV: SharedValue<number>;
   returnProgressSV: SharedValue<number>;
-  dataByPage: ReadonlyMap<ChatListFolderId, readonly MessagesFolderConversationRow[]>;
+  dataByPage: ReadonlyMap<ChatListFolderId, readonly MessagesFolderListRow[]>;
   listPaddingBottom: number;
   refreshing: boolean;
   onRefresh: () => void;
@@ -79,7 +85,7 @@ type Props = {
 type PageListProps = {
   folder: ChatListFolderId;
   pageWidth: number;
-  data: readonly MessagesFolderConversationRow[];
+  data: readonly MessagesFolderListRow[];
   listPaddingBottom: number;
   refreshing: boolean;
   onRefresh: () => void;
@@ -133,25 +139,31 @@ const FolderPageList = memo(function FolderPageList({
   onAddRef.current = onAddToFolder;
 
   const renderItem = useCallback(
-    ({ item }: { item: MessagesFolderConversationRow }) => (
-      <ConversationListRow
-        item={item}
-        isMuted={item.otherUserUuid in mutedRef.current}
-        isArchived={item.otherUserUuid in archivedRef.current}
-        folderOptions={foldersRef.current as FolderOption[]}
-        onMuteForever={() =>
-          onMuteForeverRef.current(item.otherUserUuid, item.conversationUuid)
-        }
-        onMuteTemporary={() =>
-          onMuteTemporaryRef.current(item.otherUserUuid, item.conversationUuid)
-        }
-        onUnmute={() => onUnmuteRef.current(item.otherUserUuid, item.conversationUuid)}
-        onArchivedChange={(archived) =>
-          onArchivedRef.current(item.otherUserUuid, item.conversationUuid, archived)
-        }
-        onAddToFolder={(folderId) => onAddRef.current(folderId, item.otherUserUuid)}
-      />
-    ),
+    ({ item }: { item: MessagesFolderListRow }) => {
+      if (item.kind === "groupChat") {
+        return <GroupConversationListRow group={item.group} preview={item.preview} />;
+      }
+      const row = item.item;
+      return (
+        <ConversationListRow
+          item={row}
+          isMuted={row.otherUserUuid in mutedRef.current}
+          isArchived={row.otherUserUuid in archivedRef.current}
+          folderOptions={foldersRef.current as FolderOption[]}
+          onMuteForever={() =>
+            onMuteForeverRef.current(row.otherUserUuid, row.conversationUuid)
+          }
+          onMuteTemporary={() =>
+            onMuteTemporaryRef.current(row.otherUserUuid, row.conversationUuid)
+          }
+          onUnmute={() => onUnmuteRef.current(row.otherUserUuid, row.conversationUuid)}
+          onArchivedChange={(archived) =>
+            onArchivedRef.current(row.otherUserUuid, row.conversationUuid, archived)
+          }
+          onAddToFolder={(folderId) => onAddRef.current(folderId, row.otherUserUuid)}
+        />
+      );
+    },
     [],
   );
 
@@ -178,8 +190,10 @@ const FolderPageList = memo(function FolderPageList({
   return (
     <View style={[styles.page, { width: pageWidth }]} collapsable={false}>
       <FlashList
-        data={data as MessagesFolderConversationRow[]}
-        keyExtractor={(item) => item.conversationUuid}
+        data={data as MessagesFolderListRow[]}
+        keyExtractor={(item) =>
+          item.kind === "groupChat" ? `g:${item.group.conversationUuid}` : item.item.conversationUuid
+        }
         contentContainerStyle={contentStyle}
         refreshControl={
           <RefreshControl

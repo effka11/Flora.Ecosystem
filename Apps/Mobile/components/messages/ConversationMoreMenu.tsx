@@ -15,6 +15,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   anchorRef: React.RefObject<View | null>;
+  /** dm (default) — полный набор; groupChat — только выход. */
+  kind?: "dm" | "groupChat";
   isMuted?: boolean;
   isArchived?: boolean;
   onMuteForever: () => void;
@@ -24,6 +26,7 @@ type Props = {
   onAddToFolder?: () => void;
   onArchive: () => void;
   onUnarchive: () => void;
+  /** DM: удалить чат; group: выйти из группы. */
   onDelete: () => void;
 };
 
@@ -36,6 +39,7 @@ export function ConversationMoreMenu({
   open,
   onClose,
   anchorRef,
+  kind = "dm",
   isMuted = false,
   isArchived = false,
   onMuteForever,
@@ -50,6 +54,7 @@ export function ConversationMoreMenu({
   const { width: windowWidth } = useWindowDimensions();
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const [muteSubmenuOpen, setMuteSubmenuOpen] = useState(false);
+  const isGroup = kind === "groupChat";
 
   const updateAnchor = useCallback(() => {
     anchorRef.current?.measureInWindow((x, y, w, h) => {
@@ -91,50 +96,61 @@ export function ConversationMoreMenu({
                 accessibilityRole="menu"
                 accessibilityViewIsModal
               >
-                <MenuRow
-                  icon="volume-mute-outline"
-                  label="Заглушить"
-                  chevron
-                  active={muteSubmenuOpen}
-                  onPress={() => setMuteSubmenuOpen((v) => !v)}
-                />
-                {muteSubmenuOpen ? (
-                  <View style={styles.submenu}>
-                    <SubmenuRow label="Насовсем" onPress={() => runAndClose(onMuteForever)} />
-                    <SubmenuRow label="На время" onPress={() => runAndClose(onMuteTemporary)} />
-                    <SubmenuRow
-                      label="Размутить"
-                      disabled={!isMuted}
-                      onPress={() => {
-                        if (!isMuted) return;
-                        runAndClose(onUnmute);
-                      }}
+                {isGroup ? (
+                  <MenuRow
+                    icon="exit-outline"
+                    label="Выйти из группы"
+                    danger
+                    onPress={() => runAndClose(onDelete)}
+                  />
+                ) : (
+                  <>
+                    <MenuRow
+                      icon="volume-mute-outline"
+                      label="Заглушить"
+                      chevron
+                      active={muteSubmenuOpen}
+                      onPress={() => setMuteSubmenuOpen((v) => !v)}
                     />
-                    <SubmenuRow label="Параметры" onPress={() => runAndClose()} />
-                  </View>
-                ) : null}
+                    {muteSubmenuOpen ? (
+                      <View style={styles.submenu}>
+                        <SubmenuRow label="Насовсем" onPress={() => runAndClose(onMuteForever)} />
+                        <SubmenuRow label="На время" onPress={() => runAndClose(onMuteTemporary)} />
+                        <SubmenuRow
+                          label="Размутить"
+                          disabled={!isMuted}
+                          onPress={() => {
+                            if (!isMuted) return;
+                            runAndClose(onUnmute);
+                          }}
+                        />
+                        <SubmenuRow label="Параметры" onPress={() => runAndClose()} />
+                      </View>
+                    ) : null}
 
-                <MenuRow
-                  icon="pin-outline"
-                  label="Закрепить"
-                  onPress={() => runAndClose(onPin)}
-                />
-                <MenuRow
-                  icon="folder-outline"
-                  label="Добавить в папку"
-                  onPress={() => runAndClose(onAddToFolder)}
-                />
-                <MenuRow
-                  icon="archive-outline"
-                  label={isArchived ? "Разархивировать" : "Архивировать"}
-                  onPress={() => runAndClose(isArchived ? onUnarchive : onArchive)}
-                />
-                <MenuRow
-                  icon="trash-outline"
-                  label="Удалить чат"
-                  danger
-                  onPress={() => runAndClose(onDelete)}
-                />
+                    <MenuRow
+                      icon="pin-outline"
+                      label="Закрепить"
+                      onPress={() => runAndClose(onPin)}
+                    />
+                    <MenuRow
+                      icon="folder-outline"
+                      label="Добавить в папку"
+                      onPress={() => runAndClose(onAddToFolder)}
+                    />
+                    <MenuRow
+                      icon="archive-outline"
+                      label={isArchived ? "Разархивировать" : "Архивировать"}
+                      onPress={() => runAndClose(isArchived ? onUnarchive : onArchive)}
+                    />
+                    <MenuRow
+                      icon="trash-outline"
+                      label="Удалить чат"
+                      danger
+                      onPress={() => runAndClose(onDelete)}
+                    />
+                  </>
+                )}
               </View>
             </TouchableWithoutFeedback>
           ) : null}
