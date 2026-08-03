@@ -22,7 +22,7 @@ import Reanimated, {
   type SharedValue,
 } from "react-native-reanimated";
 import type { MessagesFolderPagerScroll } from "@/components/messages/messagesFolderPagerScroll";
-import { floraColors, floraSpacing, floraTabFilter } from "@/lib/theme";
+import { floraColors, floraTabFilter } from "@/lib/theme";
 
 type Props = {
   folders: readonly ChatListFolderDef[];

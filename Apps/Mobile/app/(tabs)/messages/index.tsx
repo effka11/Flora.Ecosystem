@@ -483,17 +483,25 @@ export default function MessagesScreen() {
   }, [organizerKeysReady]);
 
   const notifyGroupsSkipped = useCallback(
-    (action: "mute" | "folder") => {
+    (action: "mute" | "unmute" | "folder") => {
       if (selectedGroups.length === 0) return;
+      const hasDms = selectedDms.length > 0;
       if (action === "mute") {
         Alert.alert(
-          selectedDms.length > 0 ? "Заглушены личные чаты" : "Недоступно",
+          hasDms ? "Заглушены личные чаты" : "Недоступно",
           "Заглушение групп пока не поддерживается.",
         );
         return;
       }
+      if (action === "unmute") {
+        Alert.alert(
+          hasDms ? "Личные чаты снова со звуком" : "Недоступно",
+          "Размут групп пока не поддерживается.",
+        );
+        return;
+      }
       Alert.alert(
-        selectedDms.length > 0 ? "В папку добавлены личные чаты" : "Недоступно",
+        hasDms ? "В папку добавлены личные чаты" : "Недоступно",
         "Группы в кастомные папки пока нельзя добавить.",
       );
     },
@@ -530,7 +538,7 @@ export default function MessagesScreen() {
 
   const bulkUnmute = useCallback(() => {
     if (selectedDms.length === 0) {
-      notifyGroupsSkipped("mute");
+      notifyGroupsSkipped("unmute");
       return;
     }
     for (const c of selectedDms) {
@@ -539,7 +547,7 @@ export default function MessagesScreen() {
     }
     const skipped = selectedGroups.length > 0;
     clearConversationSelect();
-    if (skipped) notifyGroupsSkipped("mute");
+    if (skipped) notifyGroupsSkipped("unmute");
   }, [clearConversationSelect, notifyGroupsSkipped, selectedDms, selectedGroups.length, setMuted]);
 
   const bulkAddToFolder = useCallback(
