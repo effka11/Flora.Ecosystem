@@ -181,6 +181,7 @@ describe("createChatOrganizerSession", () => {
     const crypto = fakeCrypto();
     let serverRev = 0;
     const puts: number[] = [];
+    const archiveMirror = vi.fn(async () => undefined);
     const session = createChatOrganizerSession({
       crypto: {
         buildWire: async (p) =>
@@ -207,6 +208,7 @@ describe("createChatOrganizerSession", () => {
           puts.push(rev);
           serverRev = rev;
         },
+        setConversationArchived: archiveMirror,
       },
       persistence,
     });
@@ -224,6 +226,9 @@ describe("createChatOrganizerSession", () => {
       expect(session.getSnapshot().state.archivedByPeer.b).toBe(true);
       expect(session.getSnapshot().state.mutedByConversation?.c1).toBe(true);
       expect(session.getSnapshot().state.archivedByConversation?.c2).toBe(true);
+    });
+    await vi.waitFor(() => {
+      expect(archiveMirror).toHaveBeenCalledWith("c2", "b", true);
     });
     for (let i = 1; i < puts.length; i++) {
       expect(puts[i]).toBe(puts[i - 1]! + 1);

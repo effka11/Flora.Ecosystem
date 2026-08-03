@@ -4,9 +4,11 @@
 "use client";
 
 import {
+  apiArchiveConversation,
   apiGetChatListOverlay,
   apiGetChatOrganizer,
   apiPutChatOrganizer,
+  apiUnarchiveConversation,
 } from "@flora/client-core/api";
 import {
   buildFscpOrganizerWireEnvelope,
@@ -62,6 +64,10 @@ const session = createChatOrganizerSession({
     getBlob: apiGetChatOrganizer,
     putBlob: apiPutChatOrganizer,
     getPlaintextOverlay: apiGetChatListOverlay,
+    setConversationArchived: async (conversationUuid, otherUserUuid, archived) => {
+      if (archived) await apiArchiveConversation(conversationUuid, otherUserUuid);
+      else await apiUnarchiveConversation(conversationUuid, otherUserUuid);
+    },
   },
   crypto: {
     async buildWire({ ownerUserUuid, revision, state, keys }) {

@@ -992,7 +992,9 @@ function MessagesChatInner() {
           window.alert(
             "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
           );
+          return;
         }
+        notifyMessagesUnreadChanged();
       })();
     },
     [canArchivePeer, me?.userUuid],
@@ -1003,7 +1005,10 @@ function MessagesChatInner() {
       const viewer = me?.userUuid?.trim();
       if (!viewer) return;
       const uuid = conversationUuid?.trim() || dmConversationUuid(viewer, peerUuid);
-      void setChatListArchived(peerUuid, uuid, false);
+      void (async () => {
+        await setChatListArchived(peerUuid, uuid, false);
+        notifyMessagesUnreadChanged();
+      })();
     },
     [me?.userUuid],
   );

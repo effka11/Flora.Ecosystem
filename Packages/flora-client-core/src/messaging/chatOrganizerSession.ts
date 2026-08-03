@@ -2,7 +2,12 @@
  * FSCP-ORG chat organizer sync (Web + Mobile).
  * Crypto injected (keeps `@flora/client-core/messaging` free of libsodium).
  * Serial write queue — one in-flight PUT per owner (revision monotonicity).
+ *
+ * Archive/mute stay in the E2E blob; a best-effort mirror into
+ * `user_conversation_flags` keeps `/unread-count` (server SoT for the nav badge)
+ * from counting archived DM peers.
  */
+import { dmConversationUuid } from "@flora/fscp";
 import { ApiRequestError } from "../api/errors.js";
 import {
   addPeerToChatListEntity,
@@ -13,6 +18,7 @@ import {
   countArchivedPeers,
   emptyChatListOverlayState,
   isChatListFolderIconName,
+  isPeerArchived,
   newChatListUuidV7,
   removeChatListEntity,
   setPeerArchivedFlag,
@@ -49,8 +55,17 @@ export type ChatOrganizerCrypto = {
 export type ChatOrganizerHttp = {
   getBlob: () => Promise<{ revision: number; wire: string; updatedAt: string } | null>;
   putBlob: (wire: string) => Promise<void>;
-  /** Legacy plaintext overlay — migrate only. */
+  /** Legacy plaintext overlay — migrate only (+ archive-flag reconcile). */
   getPlaintextOverlay?: () => Promise<unknown>;
+  /**
+   * Mirror archive into server `user_conversation_flags` so unread badge excludes
+   * archived peers. Optional — tests / offline can omit.
+   */
+  setConversationArchived?: (
+    conversationUuid: string,
+    otherUserUuid: string,
+    archived: boolean,
+  ) => Promise<void>;
 };
 
 export type ChatOrganizerPersistence = {
@@ -244,6 +259,8 @@ export function createChatOrganizerSession(options: {
   };
   let keys: ChatOrganizerFscpKeys | null = null;
   let refreshSeq = 0;
+  /** One reconcile pass per owner hydrate (avoid hammering archive routes). */
+  let archiveFlagsReconciledForOwner: string | null = null;
   const listeners = new Set<() => void>();
 
   /** Serializes all server writes for this session. */
@@ -288,6 +305,57 @@ export function createChatOrganizerSession(options: {
   function persist(owner: string, next: ChatListOverlayState) {
     persistence.write(owner, next);
     setLocal({ state: next });
+  }
+
+  async function mirrorConversationArchived(
+    conversationUuid: string,
+    peerUuid: string,
+    archived: boolean,
+  ): Promise<void> {
+    if (!http.setConversationArchived) return;
+    try {
+      ensureHttp?.();
+      await http.setConversationArchived(conversationUuid, peerUuid, archived);
+    } catch (e: unknown) {
+      warn?.("[chatOrganizer] archive flag mirror failed", e);
+    }
+  }
+
+  /**
+   * Align server archive flags with E2E organizer state (badge SQL reads flags).
+   * Runs at most once per hydrated owner.
+   */
+  async function reconcileServerArchiveFlags(
+    owner: string,
+    state: ChatListOverlayState,
+  ): Promise<void> {
+    if (!http.setConversationArchived) return;
+    if (archiveFlagsReconciledForOwner === owner) return;
+    archiveFlagsReconciledForOwner = owner;
+
+    let serverArchived = new Set<string>();
+    if (http.getPlaintextOverlay) {
+      try {
+        ensureHttp?.();
+        const raw = await http.getPlaintextOverlay();
+        const fromApi = chatListOverlayFromApi(raw);
+        if (fromApi) {
+          serverArchived = new Set(Object.keys(fromApi.archivedByPeer));
+        }
+      } catch (e: unknown) {
+        warn?.("[chatOrganizer] archive reconcile: overlay read failed", e);
+      }
+    }
+
+    const desired = new Set(Object.keys(state.archivedByPeer));
+    for (const peer of desired) {
+      if (serverArchived.has(peer)) continue;
+      await mirrorConversationArchived(dmConversationUuid(owner, peer), peer, true);
+    }
+    for (const peer of serverArchived) {
+      if (desired.has(peer)) continue;
+      await mirrorConversationArchived(dmConversationUuid(owner, peer), peer, false);
+    }
   }
 
   function enqueueWrite(task: () => Promise<void>): Promise<void> {
@@ -397,13 +465,12 @@ export function createChatOrganizerSession(options: {
             });
             return;
           }
-          persist(
-            owner,
-            organizerPlaintextToOverlayState(decrypted.state, {
-              revision: decrypted.revision,
-              migratedToOrg: true,
-            }),
-          );
+          const nextState = organizerPlaintextToOverlayState(decrypted.state, {
+            revision: decrypted.revision,
+            migratedToOrg: true,
+          });
+          persist(owner, nextState);
+          void reconcileServerArchiveFlags(owner, nextState);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           warn?.("[chatOrganizer] decrypt failed", e);
@@ -483,6 +550,7 @@ export function createChatOrganizerSession(options: {
       if (keys) void syncFromServer();
       return;
     }
+    archiveFlagsReconciledForOwner = null;
     setLocal({
       ownerUserUuid: owner,
       state: owner ? persistence.read(owner) : emptyChatListOverlayState(),
@@ -583,17 +651,25 @@ export function createChatOrganizerSession(options: {
     },
     async setArchived(peerUuid, conversationUuid, archived) {
       if (!peerUuid.trim()) return false;
+      const peer = peerUuid.trim();
+      const conv = conversationUuid.trim();
       const intent: Intent = {
         kind: "setArchived",
-        peerUuid,
-        conversationUuid,
+        peerUuid: peer,
+        conversationUuid: conv,
         archived,
       };
       const next = applyIntent(snapshot.state, intent);
       if (!next) return false;
-      if (next === snapshot.state) return true;
+      if (next === snapshot.state) {
+        // Already in desired E2E state — still mirror flags (badge SQL).
+        if (conv) await mirrorConversationArchived(conv, peer, archived);
+        return true;
+      }
       await mutateWithIntent(intent, next);
-      return true;
+      const ok = isPeerArchived(peer, snapshot.state.archivedByPeer) === archived;
+      if (ok && conv) await mirrorConversationArchived(conv, peer, archived);
+      return ok;
     },
     async setMuted(peerUuid, conversationUuid, muted) {
       if (!peerUuid.trim()) return;

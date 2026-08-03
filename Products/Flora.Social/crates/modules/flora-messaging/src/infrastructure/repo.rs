@@ -65,12 +65,21 @@ impl MessagingRepo {
     }
 
     /// Число чатов с непрочитанным (distinct sender), не число сообщений.
+    /// Архивированные peer-чаты не входят в бейдж (как скрыты из папки «все»).
     pub async fn total_unread_count(&self, user_uuid: Uuid) -> Result<i64, String> {
         sqlx::query_scalar(
             r#"
-            SELECT COUNT(DISTINCT sender_user_uuid)::bigint
-            FROM flora_core.user_messages
-            WHERE receiver_user_uuid = $1 AND is_read = false
+            SELECT COUNT(DISTINCT m.sender_user_uuid)::bigint
+            FROM flora_core.user_messages m
+            WHERE m.receiver_user_uuid = $1
+              AND m.is_read = false
+              AND NOT EXISTS (
+                SELECT 1
+                FROM flora_core.user_conversation_flags f
+                WHERE f.owner_user_uuid = m.receiver_user_uuid
+                  AND f.other_user_uuid = m.sender_user_uuid
+                  AND f.is_archived = true
+              )
             "#,
         )
         .bind(user_uuid)
