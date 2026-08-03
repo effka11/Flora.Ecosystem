@@ -255,6 +255,8 @@ import {
   refreshChatListOverlay,
   removeChatListFolder,
   setChatListArchived,
+  setChatListGroupArchived,
+  setChatListKnownGroupUuids,
   setChatListMuted,
   setChatListOverlayFscpKeys,
   useChatListOverlayHydrate,
@@ -264,9 +266,12 @@ import {
   canArchiveChatListPeer,
   canCreateChatListFolder,
   CHAT_LIST_ARCHIVE_FOLDER_ID,
-  countArchivedPeers,
+  countArchivedForFolderIcon,
+  dmConversationUuidsOfArchivedPeers,
   entitiesToFolderDefs,
   filterConversationsByFolder,
+  filterGroupsByFolder,
+  isConversationArchived,
   listVisibleChatFolders,
   membershipByEntityId,
   normalizeChatListFolder,
@@ -626,6 +631,7 @@ function MessagesChatInner() {
   const overlayState = useChatListOverlayState();
   const hydrateOverlay = useChatListOverlayHydrate();
   const archivedByPeer = overlayState.archivedByPeer;
+  const archivedByConversation = overlayState.archivedByConversation ?? {};
   const mutedByPeer = overlayState.mutedByPeer;
   const compose = useMessageComposeDraft();
   const [decryptedById, setDecryptedById] = useState<Record<string, FscpMessagePlaintext>>({});
@@ -948,8 +954,14 @@ function MessagesChatInner() {
   const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);
   const membership = useMemo(() => membershipByEntityId(customEntities), [customEntities]);
   const knownCustomIds = useMemo(() => new Set(customEntities.map((e) => e.id)), [customEntities]);
-  // Иконка Архива / лимит слотов — по серверному overlay, не по загруженному списку чатов.
-  const archivedCount = useMemo(() => countArchivedPeers(archivedByPeer), [archivedByPeer]);
+  // Иконка Архива / лимит слотов — ORG maps (без ∩ пустого list).
+  const archivedCount = useMemo(() => {
+    const owner = me?.userUuid?.trim();
+    const dmSet = owner
+      ? dmConversationUuidsOfArchivedPeers(owner, archivedByPeer)
+      : undefined;
+    return countArchivedForFolderIcon(archivedByPeer, archivedByConversation, dmSet);
+  }, [archivedByConversation, archivedByPeer, me?.userUuid]);
   const visibleFolders = useMemo(
     () => listVisibleChatFolders(archivedCount, customFolderDefs),
     [archivedCount, customFolderDefs],
@@ -975,10 +987,18 @@ function MessagesChatInner() {
     if (listFolder !== activeFolder) setListFolder(activeFolder);
   }, [activeFolder, listFolder]);
 
+  const requireOrganizerKeys = useCallback(() => {
+    if (fscpMaterial) return true;
+    // No silent no-op: unlock sheet (password) or open anyway so user sees FSCP state.
+    openFscpUnlock();
+    return false;
+  }, [fscpMaterial, openFscpUnlock]);
+
   const archivePeer = useCallback(
     (peerUuid: string, conversationUuid?: string) => {
       const viewer = me?.userUuid?.trim();
       if (!viewer) return;
+      if (!requireOrganizerKeys()) return;
       if (!canArchivePeer) {
         window.alert(
           "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
@@ -997,20 +1017,21 @@ function MessagesChatInner() {
         notifyMessagesUnreadChanged();
       })();
     },
-    [canArchivePeer, me?.userUuid],
+    [canArchivePeer, me?.userUuid, requireOrganizerKeys],
   );
 
   const unarchivePeer = useCallback(
     (peerUuid: string, conversationUuid?: string) => {
       const viewer = me?.userUuid?.trim();
       if (!viewer) return;
+      if (!requireOrganizerKeys()) return;
       const uuid = conversationUuid?.trim() || dmConversationUuid(viewer, peerUuid);
       void (async () => {
         await setChatListArchived(peerUuid, uuid, false);
         notifyMessagesUnreadChanged();
       })();
     },
-    [me?.userUuid],
+    [me?.userUuid, requireOrganizerKeys],
   );
 
   useEffect(() => {
@@ -1037,6 +1058,45 @@ function MessagesChatInner() {
     setSelectedTarget(null);
     setSelectedPeer(null);
   }, [applyPanelTransition, selectedTarget]);
+
+  const archiveGroup = useCallback(
+    (conversationUuid: string) => {
+      const uuid = conversationUuid.trim();
+      if (!uuid) return;
+      if (!requireOrganizerKeys()) return;
+      if (!canArchivePeer) {
+        window.alert(
+          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+        );
+        return;
+      }
+      void (async () => {
+        const ok = await setChatListGroupArchived(uuid, true);
+        if (!ok) {
+          window.alert(
+            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+          );
+          return;
+        }
+        if (selectedGroupUuid === uuid) closeChat();
+        notifyMessagesUnreadChanged();
+      })();
+    },
+    [canArchivePeer, closeChat, requireOrganizerKeys, selectedGroupUuid],
+  );
+
+  const unarchiveGroup = useCallback(
+    (conversationUuid: string) => {
+      const uuid = conversationUuid.trim();
+      if (!uuid) return;
+      if (!requireOrganizerKeys()) return;
+      void (async () => {
+        await setChatListGroupArchived(uuid, false);
+        notifyMessagesUnreadChanged();
+      })();
+    },
+    [requireOrganizerKeys],
+  );
 
   const switchChat = useCallback(
     (chat: ConversationListItemDto) => {
@@ -1379,6 +1439,7 @@ function MessagesChatInner() {
         }),
       );
       setGroupChats((prev) => mergeGroupListRefresh(prev, mapped));
+      setChatListKnownGroupUuids(mapped.map((g) => g.conversationUuid));
     } catch {
       /* keep previous list */
     }
@@ -1720,7 +1781,7 @@ function MessagesChatInner() {
     sortBy,
   ]);
 
-  /** DM + FSCP-G group rows. Groups only in folder «все» (not archive/custom folders). */
+  /** DM + FSCP-G group rows. Groups in «все» and «Архив» (not custom / people). */
   const mergedListItems = useMemo((): MessagesListItem[] => {
     const query = searchQuery.trim().toLowerCase();
     const items: MessagesListItem[] = filteredConversations.map((conversation) => ({
@@ -1729,9 +1790,9 @@ function MessagesChatInner() {
     }));
 
     const showGroups =
-      activeFolder === "all" && (filterFrom === "all" || filterFrom === "people");
+      (activeFolder === "all" || activeFolder === "archived") && filterFrom === "all";
     if (showGroups) {
-      let groups = groupChats;
+      let groups = filterGroupsByFolder(groupChats, activeFolder, archivedByConversation);
       if (sortBy === "unread") {
         groups = groups.filter((g) => g.unreadCount > 0);
       }
@@ -1761,6 +1822,7 @@ function MessagesChatInner() {
     return items;
   }, [
     activeFolder,
+    archivedByConversation,
     filterFrom,
     filteredConversations,
     groupChats,
@@ -3977,7 +4039,10 @@ function MessagesChatInner() {
                           unreadCount: item.group.unreadCount,
                           online: false,
                           mute: null as ReturnType<typeof getPeerMute>,
-                          archived: false,
+                          archived: isConversationArchived(
+                            item.group.conversationUuid,
+                            archivedByConversation,
+                          ),
                           avatar: {
                             displayName: item.group.title,
                             username: undefined as string | undefined,
@@ -4111,10 +4176,18 @@ function MessagesChatInner() {
                           peerUuid ? () => clearPeerMuted(peerUuid) : undefined
                         }
                         onConversationArchive={
-                          peerUuid ? () => archivePeer(peerUuid) : undefined
+                          groupUuid
+                            ? () => archiveGroup(groupUuid)
+                            : peerUuid
+                              ? () => archivePeer(peerUuid)
+                              : undefined
                         }
                         onConversationUnarchive={
-                          peerUuid ? () => unarchivePeer(peerUuid) : undefined
+                          groupUuid
+                            ? () => unarchiveGroup(groupUuid)
+                            : peerUuid
+                              ? () => unarchivePeer(peerUuid)
+                              : undefined
                         }
                         folderOptions={row.kind === "dm" ? folderPickOptions : []}
                         onAddToFolder={
@@ -4266,6 +4339,13 @@ function MessagesChatInner() {
                   wrapClassName={styles.messagesChatHeaderMoreWrap}
                   buttonClassName={styles.messagesChatHeaderMoreBtn}
                   conversationIsMuted={openChatHeader.more.conversationIsMuted}
+                  conversationIsArchived={
+                    openChatHeader.kind === "group" && selectedGroupUuid
+                      ? isConversationArchived(selectedGroupUuid, archivedByConversation)
+                      : openChatHeader.kind === "dm" && selectedOtherUuid
+                        ? isPeerArchived(selectedOtherUuid)
+                        : false
+                  }
                   onConversationMuteForever={
                     openChatHeader.kind === "dm" && selectedOtherUuid
                       ? () => setPeerMutedForever(selectedOtherUuid)
@@ -4280,6 +4360,20 @@ function MessagesChatInner() {
                     openChatHeader.kind === "dm" && selectedOtherUuid
                       ? () => clearPeerMuted(selectedOtherUuid)
                       : undefined
+                  }
+                  onConversationArchive={
+                    openChatHeader.kind === "group" && selectedGroupUuid
+                      ? () => archiveGroup(selectedGroupUuid)
+                      : openChatHeader.kind === "dm" && selectedOtherUuid
+                        ? () => archivePeer(selectedOtherUuid)
+                        : undefined
+                  }
+                  onConversationUnarchive={
+                    openChatHeader.kind === "group" && selectedGroupUuid
+                      ? () => unarchiveGroup(selectedGroupUuid)
+                      : openChatHeader.kind === "dm" && selectedOtherUuid
+                        ? () => unarchivePeer(selectedOtherUuid)
+                        : undefined
                   }
                   onChatSafetyNumber={
                     openChatHeader.kind === "dm" && selectedOtherUuid

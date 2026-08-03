@@ -15,9 +15,10 @@ type Props = {
   open: boolean;
   onClose: () => void;
   anchorRef: React.RefObject<View | null>;
-  /** dm (default) — полный набор; groupChat — только выход. */
+  /** dm (default) — полный набор; groupChat — архив + выход. */
   kind?: "dm" | "groupChat";
   isMuted?: boolean;
+  isArchived?: boolean;
   onMuteForever: () => void;
   onMuteTemporary: () => void;
   onUnmute: () => void;
@@ -25,6 +26,8 @@ type Props = {
   onMedia?: () => void;
   onPinned?: () => void;
   onSafetyNumber?: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
   /** DM: удалить чат; group: выйти из группы. */
   onDelete: () => void;
 };
@@ -40,6 +43,7 @@ export function ChatMoreMenu({
   anchorRef,
   kind = "dm",
   isMuted = false,
+  isArchived = false,
   onMuteForever,
   onMuteTemporary,
   onUnmute,
@@ -47,6 +51,8 @@ export function ChatMoreMenu({
   onMedia,
   onPinned,
   onSafetyNumber,
+  onArchive,
+  onUnarchive,
   onDelete,
 }: Props) {
   const { width: windowWidth } = useWindowDimensions();
@@ -95,12 +101,19 @@ export function ChatMoreMenu({
                 accessibilityViewIsModal
               >
                 {isGroup ? (
-                  <MenuRow
-                    icon="exit-outline"
-                    label="Выйти из группы"
-                    danger
-                    onPress={() => runAndClose(onDelete)}
-                  />
+                  <>
+                    <MenuRow
+                      icon="archive-outline"
+                      label={isArchived ? "Разархивировать" : "Архивировать"}
+                      onPress={() => runAndClose(isArchived ? onUnarchive : onArchive)}
+                    />
+                    <MenuRow
+                      icon="exit-outline"
+                      label="Выйти из группы"
+                      danger
+                      onPress={() => runAndClose(onDelete)}
+                    />
+                  </>
                 ) : (
                   <>
                     <MenuRow

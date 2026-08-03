@@ -171,3 +171,123 @@ async fn unread_count_and_conversations() {
         .expect("POST message bad");
     assert_eq!(bad_post.status(), reqwest::StatusCode::BAD_REQUEST);
 }
+
+/// Archived group conversations must drop out of `GET /unread-count`.
+/// Needs a membership with unread>0; otherwise skips (dev DB may be empty).
+#[tokio::test]
+async fn archived_group_excluded_from_unread_count() {
+    if std::env::var("FLORA_MESSAGING_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skip: set FLORA_MESSAGING_SMOKE=1");
+        return;
+    }
+    let secret = load_dev_jwt_secret().expect("jwt secret");
+    let user = smoke_user_uuid();
+    let token = mint_bearer(secret, user);
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .expect("client");
+    let auth = format!("Bearer {token}");
+
+    let groups = client
+        .get(gateway("/api/messaging/groups"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .expect("GET groups");
+    let groups_status = groups.status();
+    let groups_body: serde_json::Value = groups.json().await.expect("groups json");
+    assert_eq!(groups_status, reqwest::StatusCode::OK, "{groups_body}");
+
+    let Some(target) = groups_body
+        .get("items")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .find(|g| g.get("unreadCount").and_then(|v| v.as_i64()).unwrap_or(0) > 0)
+    else {
+        eprintln!("skip: no group with unreadCount>0 for archive unread exclusion");
+        return;
+    };
+    let conv = target
+        .get("conversationUuid")
+        .and_then(|v| v.as_str())
+        .expect("conversationUuid");
+
+    let unread_before = client
+        .get(gateway("/api/messaging/unread-count"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .expect("unread before")
+        .json::<serde_json::Value>()
+        .await
+        .expect("unread json");
+    let before = unread_before
+        .get("unreadCount")
+        .and_then(|v| v.as_i64())
+        .expect("unreadCount");
+
+    let archive = client
+        .post(gateway(&format!(
+            "/api/messaging/groups/{conv}/archive"
+        )))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .expect("POST archive");
+    assert!(
+        archive.status().is_success() || archive.status() == reqwest::StatusCode::NO_CONTENT,
+        "archive {}",
+        archive.status()
+    );
+
+    let unread_archived = client
+        .get(gateway("/api/messaging/unread-count"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .expect("unread archived")
+        .json::<serde_json::Value>()
+        .await
+        .expect("unread json");
+    let after_archive = unread_archived
+        .get("unreadCount")
+        .and_then(|v| v.as_i64())
+        .expect("unreadCount");
+    assert!(
+        after_archive < before,
+        "archived group must leave unread badge: before={before} after={after_archive}"
+    );
+
+    let unarchive = client
+        .post(gateway(&format!(
+            "/api/messaging/groups/{conv}/unarchive"
+        )))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .expect("POST unarchive");
+    assert!(
+        unarchive.status().is_success() || unarchive.status() == reqwest::StatusCode::NO_CONTENT,
+        "unarchive {}",
+        unarchive.status()
+    );
+
+    let flags = client
+        .get(gateway("/api/messaging/group-archive-flags"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .expect("GET group-archive-flags");
+    let flags_status = flags.status();
+    let flags_body: serde_json::Value = flags.json().await.expect("flags json");
+    assert_eq!(flags_status, reqwest::StatusCode::OK, "{flags_body}");
+    assert!(
+        flags_body
+            .get("archivedConversationUuids")
+            .and_then(|v| v.as_array())
+            .is_some(),
+        "{flags_body}"
+    );
+}

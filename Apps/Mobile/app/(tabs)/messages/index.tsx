@@ -9,9 +9,12 @@ import {
   canCreateChatListFolder,
   CHAT_LIST_ARCHIVE_FOLDER_ID,
   chatListFolderPageIds,
-  countArchivedPeers,
+  countArchivedForFolderIcon,
+  dmConversationUuidsOfArchivedPeers,
   entitiesToFolderDefs,
   filterConversationsByFolder,
+  filterGroupsByFolder,
+  isConversationArchived,
   listVisibleChatFolders,
   membershipByEntityId,
   normalizeChatListFolder,
@@ -99,16 +102,20 @@ function toFolderListRows(
   groupPreviews: Readonly<Record<string, string>>,
   folder: ChatListFolderId,
   sortBy: SortBy,
+  archivedByConversation: Readonly<Record<string, true>> | undefined,
 ): MessagesFolderListRow[] {
   const dmRows: MessagesFolderListRow[] = toConversationRows(list, previews).map((item) => ({
     kind: "dm",
     item,
   }));
-  // Groups only appear in «все» (not ORG folders / archive).
-  if (folder !== "all") return dmRows;
+  if (folder !== "all" && folder !== "archived") return dmRows;
 
-  let groupRows: MessagesFolderListRow[] = groups.map((g) => ({
-    kind: "groupChat",
+  let groupRows: MessagesFolderListRow[] = filterGroupsByFolder(
+    groups,
+    folder,
+    archivedByConversation,
+  ).map((g) => ({
+    kind: "groupChat" as const,
     group: g,
     preview: groupPreviews[g.conversationUuid] ?? g.lastMessagePreview ?? "",
   }));
@@ -216,9 +223,12 @@ export default function MessagesScreen() {
   const addPeerToEntity = useChatListOverlayStore((s) => s.addPeerToEntity);
   const removeEntity = useChatListOverlayStore((s) => s.removeEntity);
   const setArchived = useChatListOverlayStore((s) => s.setArchived);
+  const setGroupArchived = useChatListOverlayStore((s) => s.setGroupArchived);
+  const setKnownGroupUuids = useChatListOverlayStore((s) => s.setKnownGroupUuids);
   const setMuted = useChatListOverlayStore((s) => s.setMuted);
   const fscpMaterial = useFscpStore((s) => s.material);
   const fscpCanDecrypt = useFscpStore((s) => s.canDecrypt);
+  const organizerKeysReady = Boolean(fscpMaterial && fscpCanDecrypt());
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
@@ -275,15 +285,10 @@ export default function MessagesScreen() {
     queryKey: ["conversations"],
     queryFn: () => apiGetConversations(),
   });
+  // Throw on error — never feed `[]` into sticky knownGroups (error ≠ 0 groups).
   const groupsQuery = useQuery({
     queryKey: ["groups"],
-    queryFn: async () => {
-      try {
-        return await apiListGroups();
-      } catch {
-        return [];
-      }
-    },
+    queryFn: () => apiListGroups(),
   });
   const conversationQueryRef = useRef(query);
 
@@ -295,15 +300,11 @@ export default function MessagesScreen() {
   const previews = useMessagesListPreviewDecrypt(items, me?.userUuid);
 
   useEffect(() => {
-    const list = groupsQuery.data;
-    if (!list) return;
-    setGroupChats((prev) =>
-      mergeGroupListRefresh(
-        prev,
-        list.map((item) => mapGroupListItem(item)),
-      ),
-    );
-  }, [groupsQuery.data]);
+    if (!groupsQuery.isSuccess || !groupsQuery.data) return;
+    const mapped = groupsQuery.data.map((item) => mapGroupListItem(item));
+    setGroupChats((prev) => mergeGroupListRefresh(prev, mapped));
+    setKnownGroupUuids(mapped.map((g) => g.conversationUuid));
+  }, [groupsQuery.data, groupsQuery.isSuccess, setKnownGroupUuids]);
 
   useEffect(() => {
     let cancelled = false;
@@ -331,6 +332,7 @@ export default function MessagesScreen() {
   }, [fscpMaterial, groupChats, me?.userUuid]);
 
   const archivedByPeer = overlayState.archivedByPeer;
+  const archivedByConversation = overlayState.archivedByConversation ?? {};
   const mutedByPeer = overlayState.mutedByPeer;
   const customEntities = overlayState.entities;
   const customFolderDefs = useMemo(() => entitiesToFolderDefs(customEntities), [customEntities]);
@@ -340,8 +342,14 @@ export default function MessagesScreen() {
     [customEntities],
   );
 
-  // Иконка Архива / лимит слотов — по серверному overlay, не по загруженному списку чатов.
-  const archivedCount = useMemo(() => countArchivedPeers(archivedByPeer), [archivedByPeer]);
+  // Иконка Архива / лимит слотов — ORG maps + exact DM uuid dedupe.
+  const archivedCount = useMemo(() => {
+    const owner = me?.userUuid?.trim();
+    const dmSet = owner
+      ? dmConversationUuidsOfArchivedPeers(owner, archivedByPeer)
+      : undefined;
+    return countArchivedForFolderIcon(archivedByPeer, archivedByConversation, dmSet);
+  }, [archivedByConversation, archivedByPeer, me?.userUuid]);
   const visibleFolders = useMemo(
     () => listVisibleChatFolders(archivedCount, customFolderDefs),
     [archivedCount, customFolderDefs],
@@ -422,6 +430,10 @@ export default function MessagesScreen() {
 
   const handleArchivedChange = useCallback(
     (peerUuid: string, conversationUuid: string, archived: boolean) => {
+      if (!organizerKeysReady) {
+        setUnlockOpen(true);
+        return;
+      }
       if (archived && !canArchivePeer) {
         Alert.alert(
           "Лимит папок",
@@ -441,7 +453,35 @@ export default function MessagesScreen() {
         requestTabBadgesRefresh();
       })();
     },
-    [canArchivePeer, setArchived],
+    [canArchivePeer, organizerKeysReady, setArchived],
+  );
+
+  const handleGroupArchivedChange = useCallback(
+    (conversationUuid: string, archived: boolean) => {
+      if (!organizerKeysReady) {
+        setUnlockOpen(true);
+        return;
+      }
+      if (archived && !canArchivePeer) {
+        Alert.alert(
+          "Лимит папок",
+          "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+        );
+        return;
+      }
+      void (async () => {
+        const ok = await setGroupArchived(conversationUuid, archived);
+        if (archived && !ok) {
+          Alert.alert(
+            "Лимит папок",
+            "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+          );
+          return;
+        }
+        requestTabBadgesRefresh();
+      })();
+    },
+    [canArchivePeer, organizerKeysReady, setGroupArchived],
   );
   const activeFolder = normalizeChatListFolder(listFolder, archivedCount, knownCustomIds);
   const folderPickOptions = useMemo(
@@ -500,11 +540,20 @@ export default function MessagesScreen() {
           groupPreviews,
           folder,
           sortBy,
+          archivedByConversation,
         ),
       );
     }
     return map;
-  }, [filterFolderList, folderPages, groupChats, groupPreviews, previews, sortBy]);
+  }, [
+    archivedByConversation,
+    filterFolderList,
+    folderPages,
+    groupChats,
+    groupPreviews,
+    previews,
+    sortBy,
+  ]);
 
   /** Поиск — один список без pager (папки скрыты). */
   const searchListData = useMemo(() => {
@@ -517,6 +566,7 @@ export default function MessagesScreen() {
       groupPreviews,
       activeFolder,
       sortBy,
+      archivedByConversation,
     );
     rows = rows.filter((row) => {
       if (row.kind === "groupChat") {
@@ -535,7 +585,16 @@ export default function MessagesScreen() {
       );
     });
     return rows;
-  }, [activeFolder, filterFolderList, groupChats, groupPreviews, previews, search, sortBy]);
+  }, [
+    activeFolder,
+    archivedByConversation,
+    filterFolderList,
+    groupChats,
+    groupPreviews,
+    previews,
+    search,
+    sortBy,
+  ]);
 
   useEffect(() => {
     const uuids = items.map((c) => c.otherUserUuid).filter(Boolean);
@@ -702,7 +761,20 @@ export default function MessagesScreen() {
           }
           renderItem={({ item }) =>
             item.kind === "groupChat" ? (
-              <GroupConversationListRow group={item.group} preview={item.preview} />
+              <GroupConversationListRow
+                group={item.group}
+                preview={item.preview}
+                isArchived={isConversationArchived(
+                  item.group.conversationUuid,
+                  archivedByConversation,
+                )}
+                onArchive={() =>
+                  handleGroupArchivedChange(item.group.conversationUuid, true)
+                }
+                onUnarchive={() =>
+                  handleGroupArchivedChange(item.group.conversationUuid, false)
+                }
+              />
             ) : (
               <ConversationListRow
                 item={item.item}
@@ -764,11 +836,13 @@ export default function MessagesScreen() {
           emptyMessage={(folder) => emptyListMessage(false, items.length + groupChats.length, folder)}
           mutedByPeer={mutedDisplayByPeer}
           archivedByPeer={archivedByPeer}
+          archivedByConversation={archivedByConversation}
           folderOptions={folderPickOptions}
           onMuteForever={handleMuteForever}
           onMuteTemporary={handleMuteTemporary}
           onUnmute={handleUnmute}
           onArchivedChange={handleArchivedChange}
+          onGroupArchivedChange={handleGroupArchivedChange}
           onAddToFolder={(folderId, peerUuid) => {
             void addPeerToEntity(folderId, peerUuid);
           }}

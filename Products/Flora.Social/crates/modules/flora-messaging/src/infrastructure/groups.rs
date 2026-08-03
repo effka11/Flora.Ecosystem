@@ -116,6 +116,7 @@ impl GroupRepo {
         user_uuid: Uuid,
         left_at: DateTime<Utc>,
     ) -> Result<bool, String> {
+        let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
         let res = sqlx::query(
             r#"
             UPDATE flora_core.group_members
@@ -126,10 +127,214 @@ impl GroupRepo {
         .bind(conversation_uuid)
         .bind(user_uuid)
         .bind(left_at)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
-        Ok(res.rows_affected() > 0)
+        if res.rows_affected() == 0 {
+            return Ok(false);
+        }
+        // Drop badge/LIMIT projection so rejoin does not suppress unread forever.
+        sqlx::query(
+            r#"
+            DELETE FROM flora_core.user_group_conversation_flags
+            WHERE owner_user_uuid = $1 AND conversation_uuid = $2
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(conversation_uuid)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        tx.commit().await.map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    pub async fn list_archived_group_conversation_uuids(
+        &self,
+        owner: Uuid,
+    ) -> Result<Vec<Uuid>, String> {
+        sqlx::query_scalar(
+            r#"
+            SELECT conversation_uuid
+            FROM flora_core.user_group_conversation_flags
+            WHERE owner_user_uuid = $1 AND is_archived = true
+            "#,
+        )
+        .bind(owner)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())
+    }
+
+    /// Archive under per-owner xact lock when introducing Archive icon slot.
+    /// `max_folder_icons` matches DM chat-list LIMIT (4).
+    pub async fn set_group_archived_checked(
+        &self,
+        owner: Uuid,
+        conversation_uuid: Uuid,
+        archived: bool,
+        now: DateTime<Utc>,
+        max_folder_icons: i64,
+    ) -> Result<(), String> {
+        let membership = self
+            .active_membership(conversation_uuid, owner)
+            .await?;
+        if membership.is_none() {
+            return Err("NOT_FOUND:Группа не найдена.".into());
+        }
+
+        if !archived {
+            return self.clear_or_unarchive_group_flag(owner, conversation_uuid, now).await;
+        }
+
+        let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+        sqlx::query("SELECT pg_advisory_xact_lock(88442201, hashtext($1::text))")
+            .bind(owner)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let already: bool = sqlx::query_scalar(
+            r#"
+            SELECT COALESCE(
+                (SELECT is_archived
+                 FROM flora_core.user_group_conversation_flags
+                 WHERE owner_user_uuid = $1 AND conversation_uuid = $2),
+                false
+            )
+            "#,
+        )
+        .bind(owner)
+        .bind(conversation_uuid)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if !already {
+            let custom_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*)::bigint
+                FROM flora_core.user_chat_folders
+                WHERE owner_user_uuid = $1
+                "#,
+            )
+            .bind(owner)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+            let any_archive: bool = sqlx::query_scalar(
+                r#"
+                SELECT EXISTS (
+                    SELECT 1 FROM flora_core.user_conversation_flags
+                    WHERE owner_user_uuid = $1 AND is_archived = true
+                ) OR EXISTS (
+                    SELECT 1 FROM flora_core.user_group_conversation_flags
+                    WHERE owner_user_uuid = $1 AND is_archived = true
+                )
+                "#,
+            )
+            .bind(owner)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+            if !any_archive && custom_count >= max_folder_icons {
+                return Err(
+                    "LIMIT:Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива."
+                        .into(),
+                );
+            }
+        }
+
+        let is_muted: bool = sqlx::query_scalar(
+            r#"
+            SELECT COALESCE(
+                (SELECT is_muted
+                 FROM flora_core.user_group_conversation_flags
+                 WHERE owner_user_uuid = $1 AND conversation_uuid = $2),
+                false
+            )
+            "#,
+        )
+        .bind(owner)
+        .bind(conversation_uuid)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.user_group_conversation_flags
+                (owner_user_uuid, conversation_uuid, is_archived, is_muted, updated_at)
+            VALUES ($1, $2, true, $3, $4)
+            ON CONFLICT (owner_user_uuid, conversation_uuid) DO UPDATE SET
+                is_archived = true,
+                is_muted = EXCLUDED.is_muted,
+                updated_at = EXCLUDED.updated_at
+            "#,
+        )
+        .bind(owner)
+        .bind(conversation_uuid)
+        .bind(is_muted)
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        tx.commit().await.map_err(|e| e.to_string())
+    }
+
+    async fn clear_or_unarchive_group_flag(
+        &self,
+        owner: Uuid,
+        conversation_uuid: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<(), String> {
+        let is_muted: Option<bool> = sqlx::query_scalar(
+            r#"
+            SELECT is_muted
+            FROM flora_core.user_group_conversation_flags
+            WHERE owner_user_uuid = $1 AND conversation_uuid = $2
+            "#,
+        )
+        .bind(owner)
+        .bind(conversation_uuid)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        match is_muted {
+            None => Ok(()),
+            Some(true) => {
+                sqlx::query(
+                    r#"
+                    UPDATE flora_core.user_group_conversation_flags
+                    SET is_archived = false, updated_at = $3
+                    WHERE owner_user_uuid = $1 AND conversation_uuid = $2
+                    "#,
+                )
+                .bind(owner)
+                .bind(conversation_uuid)
+                .bind(now)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| e.to_string())?;
+                Ok(())
+            }
+            Some(false) => {
+                sqlx::query(
+                    r#"
+                    DELETE FROM flora_core.user_group_conversation_flags
+                    WHERE owner_user_uuid = $1 AND conversation_uuid = $2
+                    "#,
+                )
+                .bind(owner)
+                .bind(conversation_uuid)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| e.to_string())?;
+                Ok(())
+            }
+        }
     }
 
     pub async fn get_conversation(
@@ -498,6 +703,13 @@ impl GroupRepo {
             SELECT COUNT(*)::bigint
             FROM flora_core.group_members m
             WHERE m.user_uuid = $1 AND m.left_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM flora_core.user_group_conversation_flags f
+                WHERE f.owner_user_uuid = m.user_uuid
+                  AND f.conversation_uuid = m.conversation_uuid
+                  AND f.is_archived = true
+              )
               AND EXISTS (
                 SELECT 1
                 FROM flora_core.group_messages msg

@@ -11,13 +11,17 @@ export {
   chatListFolderPageIds,
   chatListFolderPageIndex,
   chatListOverlayFromApi,
+  countArchivedForFolderIcon,
+  countArchivedGroupConversations,
   countArchivedPeers,
   createChatListFolderEntity,
   createChatListGroupEntity,
   emptyChatListOverlayState,
   entitiesToFolderDefs,
   filterConversationsByFolder,
+  filterGroupsByFolder,
   isChatListFolderIconName,
+  isConversationArchived,
   isPeerArchived,
   listVisibleChatFolders,
   maxCustomChatListFolders,
@@ -26,13 +30,17 @@ export {
   normalizeChatListFolder,
   orderChatListFolders,
   parseChatListOverlayState,
+  pruneArchivedConversations,
   pruneArchivedPeers,
   removeChatListEntity,
   setPeerArchivedFlag,
   setPeerMutedFlag,
 } from "./chatListFolders.js";
 export { createChatListOverlaySession } from "./chatListOverlaySession.js";
-export { createChatOrganizerSession } from "./chatOrganizerSession.js";
+export {
+  createChatOrganizerSession,
+  dmConversationUuidsOfArchivedPeers,
+} from "./chatOrganizerSession.js";
 export {
   emptyOrganizerPlaintext,
   mergeOverlayForMigrate,

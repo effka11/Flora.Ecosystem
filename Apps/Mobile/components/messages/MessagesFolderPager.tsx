@@ -32,6 +32,7 @@ import Reanimated, {
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
 import { GroupConversationListRow } from "@/components/messages/GroupConversationListRow";
 import type { GroupChat } from "@/lib/groupChatTypes";
+import { isConversationArchived } from "@flora/client-core/messaging";
 import {
   ENERGETIC_OPEN_EASING,
   ENERGETIC_OPEN_MS,
@@ -74,11 +75,13 @@ type Props = {
   emptyMessage: (folder: ChatListFolderId) => string;
   mutedByPeer: Readonly<Record<string, true>>;
   archivedByPeer: Readonly<Record<string, true>>;
+  archivedByConversation?: Readonly<Record<string, true>>;
   folderOptions: readonly FolderOption[];
   onMuteForever: (peerUuid: string, conversationUuid: string) => void;
   onMuteTemporary: (peerUuid: string, conversationUuid: string) => void;
   onUnmute: (peerUuid: string, conversationUuid: string) => void;
   onArchivedChange: (peerUuid: string, conversationUuid: string, archived: boolean) => void;
+  onGroupArchivedChange?: (conversationUuid: string, archived: boolean) => void;
   onAddToFolder: (folderId: string, peerUuid: string) => void;
 };
 
@@ -94,11 +97,13 @@ type PageListProps = {
   emptyText: string;
   mutedByPeer: Readonly<Record<string, true>>;
   archivedByPeer: Readonly<Record<string, true>>;
+  archivedByConversation?: Readonly<Record<string, true>>;
   folderOptions: readonly FolderOption[];
   onMuteForever: (peerUuid: string, conversationUuid: string) => void;
   onMuteTemporary: (peerUuid: string, conversationUuid: string) => void;
   onUnmute: (peerUuid: string, conversationUuid: string) => void;
   onArchivedChange: (peerUuid: string, conversationUuid: string, archived: boolean) => void;
+  onGroupArchivedChange?: (conversationUuid: string, archived: boolean) => void;
   onAddToFolder: (folderId: string, peerUuid: string) => void;
 };
 
@@ -114,34 +119,49 @@ const FolderPageList = memo(function FolderPageList({
   emptyText,
   mutedByPeer,
   archivedByPeer,
+  archivedByConversation,
   folderOptions,
   onMuteForever,
   onMuteTemporary,
   onUnmute,
   onArchivedChange,
+  onGroupArchivedChange,
   onAddToFolder,
 }: PageListProps) {
   const mutedRef = useRef(mutedByPeer);
   const archivedRef = useRef(archivedByPeer);
+  const archivedConvRef = useRef(archivedByConversation);
   const foldersRef = useRef(folderOptions);
   const onMuteForeverRef = useRef(onMuteForever);
   const onMuteTemporaryRef = useRef(onMuteTemporary);
   const onUnmuteRef = useRef(onUnmute);
   const onArchivedRef = useRef(onArchivedChange);
+  const onGroupArchivedRef = useRef(onGroupArchivedChange);
   const onAddRef = useRef(onAddToFolder);
   mutedRef.current = mutedByPeer;
   archivedRef.current = archivedByPeer;
+  archivedConvRef.current = archivedByConversation;
   foldersRef.current = folderOptions;
   onMuteForeverRef.current = onMuteForever;
   onMuteTemporaryRef.current = onMuteTemporary;
   onUnmuteRef.current = onUnmute;
   onArchivedRef.current = onArchivedChange;
+  onGroupArchivedRef.current = onGroupArchivedChange;
   onAddRef.current = onAddToFolder;
 
   const renderItem = useCallback(
     ({ item }: { item: MessagesFolderListRow }) => {
       if (item.kind === "groupChat") {
-        return <GroupConversationListRow group={item.group} preview={item.preview} />;
+        const uuid = item.group.conversationUuid;
+        return (
+          <GroupConversationListRow
+            group={item.group}
+            preview={item.preview}
+            isArchived={isConversationArchived(uuid, archivedConvRef.current)}
+            onArchive={() => onGroupArchivedRef.current?.(uuid, true)}
+            onUnarchive={() => onGroupArchivedRef.current?.(uuid, false)}
+          />
+        );
       }
       const row = item.item;
       return (
@@ -204,7 +224,7 @@ const FolderPageList = memo(function FolderPageList({
         }
         renderItem={renderItem}
         ListEmptyComponent={listEmpty}
-        extraData={`${Object.keys(mutedByPeer).join(",")}|${Object.keys(archivedByPeer).join(",")}|${folderOptions.length}`}
+        extraData={`${Object.keys(mutedByPeer).join(",")}|${Object.keys(archivedByPeer).join(",")}|${Object.keys(archivedByConversation ?? {}).join(",")}|${folderOptions.length}`}
       />
     </View>
   );
@@ -229,11 +249,13 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       emptyMessage,
       mutedByPeer,
       archivedByPeer,
+      archivedByConversation,
       folderOptions,
       onMuteForever,
       onMuteTemporary,
       onUnmute,
       onArchivedChange,
+      onGroupArchivedChange,
       onAddToFolder,
     },
     ref,
@@ -276,9 +298,28 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       ],
     );
 
+    // Topology / rotate: sync count+width. If current page folder still exists —
+    // reposition to its index (width change). If Архив (etc.) vanished under the
+    // finger — soft-clamp offset only; `activeFolder`→selectFolder settles after.
     useEffect(() => {
-      const index = chatListFolderPageIndex(pages, pagerTargetRef.current);
-      jumpToIndex(index);
+      const count = Math.max(1, pages.length);
+      pageCountSV.value = count;
+      pageWidthSV.value = pageWidth;
+      const target = pagerTargetRef.current;
+      if (pages.includes(target)) {
+        jumpToIndex(chatListFolderPageIndex(pages, target));
+        return;
+      }
+      runOnUI(() => {
+        "worklet";
+        const width = pageWidthSV.value;
+        if (width <= 0) return;
+        const maxOffset = Math.max(0, count - 1) * width;
+        if (scrollX.value > maxOffset) {
+          scrollX.value = maxOffset;
+          targetIndexSV.value = Math.max(0, count - 1);
+        }
+      })();
       // eslint-disable-next-line react-hooks/exhaustive-deps -- topology / rotate only
     }, [pageWidth, pagesKey]);
 
@@ -500,11 +541,13 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
                 emptyText={emptyMessage(folder)}
                 mutedByPeer={mutedByPeer}
                 archivedByPeer={archivedByPeer}
+                archivedByConversation={archivedByConversation}
                 folderOptions={folderOptions}
                 onMuteForever={onMuteForever}
                 onMuteTemporary={onMuteTemporary}
                 onUnmute={onUnmute}
                 onArchivedChange={onArchivedChange}
+                onGroupArchivedChange={onGroupArchivedChange}
                 onAddToFolder={onAddToFolder}
               />
             ))}

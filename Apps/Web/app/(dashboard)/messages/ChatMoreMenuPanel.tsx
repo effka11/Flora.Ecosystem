@@ -61,6 +61,15 @@ function IconDelete() {
   );
 }
 
+function IconArchive() {
+  return (
+    <svg {...menuIconProps}>
+      <path d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1V8z" />
+      <path d="M3 5h18v3H3zM10 12h4" />
+    </svg>
+  );
+}
+
 function IconShield() {
   return (
     <svg {...menuIconProps}>
@@ -85,6 +94,9 @@ type ChatMoreMenuPanelProps = {
   onSafetyNumber?: () => void;
   /** DM: удалить чат; group: выйти из группы. */
   onDelete?: () => void;
+  conversationIsArchived?: boolean;
+  onConversationArchive?: () => void;
+  onConversationUnarchive?: () => void;
   muteSubmenuOpen: boolean;
   isSubmenuClosing: boolean;
   onToggleMuteSubmenu: () => void;
@@ -136,6 +148,9 @@ export function ChatMoreMenuPanel({
   onPin,
   onSafetyNumber,
   onDelete,
+  conversationIsArchived = false,
+  onConversationArchive,
+  onConversationUnarchive,
   muteSubmenuOpen,
   isSubmenuClosing,
   onToggleMuteSubmenu,
@@ -145,16 +160,27 @@ export function ChatMoreMenuPanel({
 
   if (isGroup) {
     return (
-      <MenuRow
-        buttonRef={firstActionRef}
-        icon={<IconDelete />}
-        label="Выйти из группы"
-        danger
-        onClick={() => {
-          onDelete?.();
-          onAction();
-        }}
-      />
+      <>
+        <MenuRow
+          buttonRef={firstActionRef}
+          icon={<IconArchive />}
+          label={conversationIsArchived ? "Разархивировать" : "Архивировать"}
+          onClick={() => {
+            if (conversationIsArchived) onConversationUnarchive?.();
+            else onConversationArchive?.();
+            onAction();
+          }}
+        />
+        <MenuRow
+          icon={<IconDelete />}
+          label="Выйти из группы"
+          danger
+          onClick={() => {
+            onDelete?.();
+            onAction();
+          }}
+        />
+      </>
     );
   }
 

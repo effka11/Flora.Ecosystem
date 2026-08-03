@@ -33,9 +33,18 @@ function formatGroupPreview(preview: string, fromMe: boolean): string {
 type Props = {
   group: GroupChat;
   preview: string;
+  isArchived?: boolean;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
 };
 
-export function GroupConversationListRow({ group, preview }: Props) {
+export function GroupConversationListRow({
+  group,
+  preview,
+  isArchived = false,
+  onArchive,
+  onUnarchive,
+}: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -133,11 +142,12 @@ export function GroupConversationListRow({ group, preview }: Props) {
         onClose={() => setMenuOpen(false)}
         anchorRef={moreBtnRef}
         kind="groupChat"
+        isArchived={isArchived}
         onMuteForever={() => undefined}
         onMuteTemporary={() => undefined}
         onUnmute={() => undefined}
-        onArchive={() => undefined}
-        onUnarchive={() => undefined}
+        onArchive={onArchive ?? (() => undefined)}
+        onUnarchive={onUnarchive ?? (() => undefined)}
         onDelete={leave}
       />
     </View>

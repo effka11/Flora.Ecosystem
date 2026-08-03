@@ -48,6 +48,10 @@ pub fn protected_router(state: MessagingState) -> Router {
         .route("/api/messaging/conversations", get(get_conversations))
         .route("/api/messaging/groups", get(list_groups).post(create_group))
         .route(
+            "/api/messaging/group-archive-flags",
+            get(list_group_archive_flags),
+        )
+        .route(
             "/api/messaging/groups/{conversation_uuid}",
             get(get_group).patch(patch_group),
         )
@@ -62,6 +66,14 @@ pub fn protected_router(state: MessagingState) -> Router {
         .route(
             "/api/messaging/groups/{conversation_uuid}/leave",
             post(leave_group),
+        )
+        .route(
+            "/api/messaging/groups/{conversation_uuid}/archive",
+            post(archive_group),
+        )
+        .route(
+            "/api/messaging/groups/{conversation_uuid}/unarchive",
+            post(unarchive_group),
         )
         .route(
             "/api/messaging/groups/{conversation_uuid}/messages",
@@ -397,6 +409,49 @@ async fn leave_group(
     match state.groups.leave(user.0, conversation_uuid).await {
         Ok(Some(())) => StatusCode::NO_CONTENT.into_response(),
         Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn list_group_archive_flags(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    match state.groups.list_archived_group_uuids(user.0).await {
+        Ok(uuids) => Json(serde_json::json!({
+            "archivedConversationUuids": uuids,
+        }))
+        .into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+async fn archive_group(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+) -> Response {
+    match state
+        .groups
+        .set_group_archived(user.0, conversation_uuid, true)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn unarchive_group(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+) -> Response {
+    match state
+        .groups
+        .set_group_archived(user.0, conversation_uuid, false)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => map_send_err(e),
     }
 }

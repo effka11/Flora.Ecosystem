@@ -97,12 +97,19 @@ export function ConversationMoreMenu({
                 accessibilityViewIsModal
               >
                 {isGroup ? (
-                  <MenuRow
-                    icon="exit-outline"
-                    label="Выйти из группы"
-                    danger
-                    onPress={() => runAndClose(onDelete)}
-                  />
+                  <>
+                    <MenuRow
+                      icon="archive-outline"
+                      label={isArchived ? "Разархивировать" : "Архивировать"}
+                      onPress={() => runAndClose(isArchived ? onUnarchive : onArchive)}
+                    />
+                    <MenuRow
+                      icon="exit-outline"
+                      label="Выйти из группы"
+                      danger
+                      onPress={() => runAndClose(onDelete)}
+                    />
+                  </>
                 ) : (
                   <>
                     <MenuRow

@@ -470,6 +470,31 @@ export async function apiUnarchiveConversation(
   );
 }
 
+/** Mirror ORG group archive into `user_group_conversation_flags` (badge / LIMIT). */
+export async function apiArchiveGroupConversation(conversationUuid: string): Promise<void> {
+  await authPostJson(
+    `/api/messaging/groups/${encodeURIComponent(conversationUuid.trim())}/archive`,
+    {},
+  );
+}
+
+export async function apiUnarchiveGroupConversation(conversationUuid: string): Promise<void> {
+  await authPostJson(
+    `/api/messaging/groups/${encodeURIComponent(conversationUuid.trim())}/unarchive`,
+    {},
+  );
+}
+
+/** Server projection of archived FSCP-G groups (for ORG reconcile). */
+export async function apiListArchivedGroupConversationUuids(): Promise<string[]> {
+  const raw = await authGetJson("/api/messaging/group-archive-flags");
+  if (!raw || typeof raw !== "object") return [];
+  const o = raw as Record<string, unknown>;
+  const list = o.archivedConversationUuids ?? o.ArchivedConversationUuids;
+  if (!Array.isArray(list)) return [];
+  return list.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+}
+
 export async function apiMuteConversation(
   conversationUuid: string,
   otherUserUuid: string,

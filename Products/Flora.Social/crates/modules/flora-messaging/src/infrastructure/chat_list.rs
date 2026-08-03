@@ -103,18 +103,22 @@ impl ChatListRepo {
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
-        let archived_count: i64 = sqlx::query_scalar(
+        let any_archive: bool = sqlx::query_scalar(
             r#"
-            SELECT COUNT(*)::bigint
-            FROM flora_core.user_conversation_flags
-            WHERE owner_user_uuid = $1 AND is_archived = true
+            SELECT EXISTS (
+                SELECT 1 FROM flora_core.user_conversation_flags
+                WHERE owner_user_uuid = $1 AND is_archived = true
+            ) OR EXISTS (
+                SELECT 1 FROM flora_core.user_group_conversation_flags
+                WHERE owner_user_uuid = $1 AND is_archived = true
+            )
             "#,
         )
         .bind(owner)
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
-        let reserve_archive = if archived_count > 0 { 1 } else { 0 };
+        let reserve_archive = if any_archive { 1 } else { 0 };
         let max_custom = (max_folder_icons - reserve_archive).max(0);
         if custom_count >= max_custom {
             return Err(
@@ -352,18 +356,22 @@ impl ChatListRepo {
             .fetch_one(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
-            let archived_count: i64 = sqlx::query_scalar(
+            let any_archive: bool = sqlx::query_scalar(
                 r#"
-                SELECT COUNT(*)::bigint
-                FROM flora_core.user_conversation_flags
-                WHERE owner_user_uuid = $1 AND is_archived = true
+                SELECT EXISTS (
+                    SELECT 1 FROM flora_core.user_conversation_flags
+                    WHERE owner_user_uuid = $1 AND is_archived = true
+                ) OR EXISTS (
+                    SELECT 1 FROM flora_core.user_group_conversation_flags
+                    WHERE owner_user_uuid = $1 AND is_archived = true
+                )
                 "#,
             )
             .bind(owner)
             .fetch_one(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
-            if archived_count == 0 && custom_count >= max_folder_icons {
+            if !any_archive && custom_count >= max_folder_icons {
                 return Err(
                     "LIMIT:Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива."
                         .into(),

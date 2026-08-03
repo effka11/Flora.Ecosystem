@@ -137,16 +137,27 @@ export function ConversationMoreMenuPanel({
 
   if (isGroup) {
     return (
-      <MenuRow
-        buttonRef={firstActionRef}
-        icon={<IconDelete />}
-        label="Удалить группу"
-        danger
-        onClick={() => {
-          onDelete?.();
-          onAction();
-        }}
-      />
+      <>
+        <MenuRow
+          buttonRef={firstActionRef}
+          icon={<IconArchive />}
+          label={conversationIsArchived ? "Разархивировать" : "Архивировать"}
+          onClick={() => {
+            if (conversationIsArchived) onConversationUnarchive?.();
+            else onConversationArchive?.();
+            onAction();
+          }}
+        />
+        <MenuRow
+          icon={<IconDelete />}
+          label="Выйти из группы"
+          danger
+          onClick={() => {
+            onDelete?.();
+            onAction();
+          }}
+        />
+      </>
     );
   }
 

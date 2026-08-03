@@ -600,6 +600,40 @@ impl GroupService {
         self.groups.group_unread_conversation_count(user_uuid).await
     }
 
+    /// Mirror ORG `archivedByConversation` into SQL for unread badge / icon LIMIT.
+    pub async fn set_group_archived(
+        &self,
+        owner: Uuid,
+        conversation_uuid: Uuid,
+        archived: bool,
+    ) -> Result<(), SendMessageError> {
+        const MAX_FOLDER_ICONS: i64 = 4;
+        self.groups
+            .set_group_archived_checked(
+                owner,
+                conversation_uuid,
+                archived,
+                Utc::now(),
+                MAX_FOLDER_ICONS,
+            )
+            .await
+            .map_err(|e| {
+                if let Some(msg) = e.strip_prefix("LIMIT:") {
+                    SendMessageError::BadRequest(msg.to_string())
+                } else if let Some(msg) = e.strip_prefix("NOT_FOUND:") {
+                    SendMessageError::NotFound(msg.to_string())
+                } else {
+                    SendMessageError::BadRequest(e)
+                }
+            })
+    }
+
+    pub async fn list_archived_group_uuids(&self, owner: Uuid) -> Result<Vec<Uuid>, String> {
+        self.groups
+            .list_archived_group_conversation_uuids(owner)
+            .await
+    }
+
     async fn require_e2e_key(&self, user_uuid: Uuid) -> Result<(), SendMessageError> {
         match self.e2e.get_user_public_key(user_uuid).await {
             Ok(_) => Ok(()),
@@ -699,6 +733,29 @@ fn require_group_creator(actor: Uuid, created_by: Uuid, action: &str) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Always-on guard: badge unread SQL must exclude archived group flags
+    /// (smoke with live API is optional / env-gated).
+    #[test]
+    fn group_unread_sql_excludes_archived_conversation_flags() {
+        let src = include_str!("../infrastructure/groups.rs");
+        assert!(
+            src.contains("group_unread_conversation_count"),
+            "missing group unread helper"
+        );
+        assert!(
+            src.contains("user_group_conversation_flags"),
+            "unread path must join group archive flags"
+        );
+        assert!(
+            src.contains("f.is_archived = true"),
+            "archived groups must be excluded from unread"
+        );
+        assert!(
+            src.contains("AND NOT EXISTS"),
+            "exclusion must be NOT EXISTS (not only list filter)"
+        );
+    }
 
     #[test]
     fn create_title_defaults_when_empty() {

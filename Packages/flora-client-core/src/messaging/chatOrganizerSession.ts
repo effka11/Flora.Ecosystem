@@ -15,11 +15,13 @@ import {
   canCreateChatListFolder,
   chatListOverlayFromApi,
   CHAT_LIST_FOLDER_LABEL_MAX,
-  countArchivedPeers,
+  countArchivedForFolderIcon,
   emptyChatListOverlayState,
   isChatListFolderIconName,
+  isConversationArchived,
   isPeerArchived,
   newChatListUuidV7,
+  pruneArchivedConversations,
   removeChatListEntity,
   setPeerArchivedFlag,
   setPeerMutedFlag,
@@ -66,6 +68,13 @@ export type ChatOrganizerHttp = {
     otherUserUuid: string,
     archived: boolean,
   ) => Promise<void>;
+  /** Mirror FSCP-G archive into `user_group_conversation_flags`. */
+  setGroupConversationArchived?: (
+    conversationUuid: string,
+    archived: boolean,
+  ) => Promise<void>;
+  /** Server archived group uuids for bidirectional reconcile. */
+  listArchivedGroupConversations?: () => Promise<string[]>;
 };
 
 export type ChatOrganizerPersistence = {
@@ -99,6 +108,13 @@ export type ChatOrganizerSession = {
     conversationUuid: string,
     archived: boolean,
   ) => Promise<boolean>;
+  /** Group-only archive (ORG `archivedByConversation`); never touches peer map. */
+  setGroupArchived: (conversationUuid: string, archived: boolean) => Promise<boolean>;
+  /**
+   * Sticky known group uuids after successful list_groups.
+   * Triggers prune + group-flag reconcile (not on loading empty).
+   */
+  setKnownGroupUuids: (conversationUuids: readonly string[]) => void;
   setMuted: (peerUuid: string, conversationUuid: string, muted: boolean) => Promise<void>;
 };
 
@@ -113,6 +129,11 @@ type Intent =
       archived: boolean;
     }
   | {
+      kind: "setGroupArchived";
+      conversationUuid: string;
+      archived: boolean;
+    }
+  | {
       kind: "setMuted";
       peerUuid: string;
       conversationUuid: string;
@@ -121,7 +142,42 @@ type Intent =
 
 const MAX_409_RETRIES = 3;
 
-function applyIntent(state: ChatListOverlayState, intent: Intent): ChatListOverlayState | null {
+/** DM conversation uuids for archived peers — exact icon-slot dedupe. */
+export function dmConversationUuidsOfArchivedPeers(
+  ownerUserUuid: string,
+  archivedByPeer: Readonly<Record<string, true>>,
+): Set<string> {
+  const set = new Set<string>();
+  const owner = ownerUserUuid.trim();
+  if (!owner) return set;
+  for (const peer of Object.keys(archivedByPeer)) {
+    const id = dmConversationUuid(owner, peer);
+    set.add(id);
+    set.add(id.toLowerCase());
+  }
+  return set;
+}
+
+function archivedSlotCount(
+  state: ChatListOverlayState,
+  ownerUserUuid?: string | null,
+): number {
+  const owner = ownerUserUuid?.trim();
+  const dmSet = owner
+    ? dmConversationUuidsOfArchivedPeers(owner, state.archivedByPeer)
+    : undefined;
+  return countArchivedForFolderIcon(
+    state.archivedByPeer,
+    state.archivedByConversation,
+    dmSet,
+  );
+}
+
+function applyIntent(
+  state: ChatListOverlayState,
+  intent: Intent,
+  ownerUserUuid?: string | null,
+): ChatListOverlayState | null {
   switch (intent.kind) {
     case "createFolder": {
       if (state.entities.some((e) => e.id === intent.entity.id)) {
@@ -150,7 +206,7 @@ function applyIntent(state: ChatListOverlayState, intent: Intent): ChatListOverl
     }
     case "setArchived": {
       if (intent.archived) {
-        const archivedCount = countArchivedPeers(state.archivedByPeer);
+        const archivedCount = archivedSlotCount(state, ownerUserUuid);
         if (!canArchiveChatListPeer(archivedCount, state.entities.length)) return null;
       }
       const archivedByPeer = setPeerArchivedFlag(
@@ -173,6 +229,23 @@ function applyIntent(state: ChatListOverlayState, intent: Intent): ChatListOverl
         return state;
       }
       return { ...state, archivedByPeer, archivedByConversation };
+    }
+    case "setGroupArchived": {
+      const conv = intent.conversationUuid.trim();
+      if (!conv) return null;
+      if (intent.archived) {
+        const archivedCount = archivedSlotCount(state, ownerUserUuid);
+        if (!canArchiveChatListPeer(archivedCount, state.entities.length)) return null;
+      }
+      const archivedByConversation = setPeerArchivedFlag(
+        state.archivedByConversation ?? {},
+        conv,
+        intent.archived,
+      );
+      if (archivedByConversation === (state.archivedByConversation ?? {})) {
+        return state;
+      }
+      return { ...state, archivedByConversation };
     }
     case "setMuted": {
       const mutedByPeer = setPeerMutedFlag(
@@ -198,7 +271,11 @@ function applyIntent(state: ChatListOverlayState, intent: Intent): ChatListOverl
 }
 
 /** Best-effort undo of a single intent against live state (does not wipe later intents). */
-function revertIntent(state: ChatListOverlayState, intent: Intent): ChatListOverlayState {
+function revertIntent(
+  state: ChatListOverlayState,
+  intent: Intent,
+  ownerUserUuid?: string | null,
+): ChatListOverlayState {
   switch (intent.kind) {
     case "createFolder":
       return {
@@ -224,17 +301,36 @@ function revertIntent(state: ChatListOverlayState, intent: Intent): ChatListOver
       };
     case "setArchived":
       return (
-        applyIntent(state, {
-          ...intent,
-          archived: !intent.archived,
-        }) ?? state
+        applyIntent(
+          state,
+          {
+            ...intent,
+            archived: !intent.archived,
+          },
+          ownerUserUuid,
+        ) ?? state
+      );
+    case "setGroupArchived":
+      return (
+        applyIntent(
+          state,
+          {
+            ...intent,
+            archived: !intent.archived,
+          },
+          ownerUserUuid,
+        ) ?? state
       );
     case "setMuted":
       return (
-        applyIntent(state, {
-          ...intent,
-          muted: !intent.muted,
-        }) ?? state
+        applyIntent(
+          state,
+          {
+            ...intent,
+            muted: !intent.muted,
+          },
+          ownerUserUuid,
+        ) ?? state
       );
     default:
       return state;
@@ -259,9 +355,19 @@ export function createChatOrganizerSession(options: {
   };
   let keys: ChatOrganizerFscpKeys | null = null;
   let refreshSeq = 0;
-  /** One reconcile pass per owner hydrate (avoid hammering archive routes). */
+  /** One DM reconcile pass per owner hydrate (avoid hammering archive routes). */
   let archiveFlagsReconciledForOwner: string | null = null;
+  /** Sticky after first successful list_groups — never treat in-flight [] as known. */
+  let stickyKnownGroupUuids: Set<string> | null = null;
+  /** Serializes group-archive reconcile (ORG sync + sticky updates). */
+  let groupReconcileChain: Promise<void> = Promise.resolve();
+  /** Skip identical sticky∪desired reconcile (focus refetch spam). */
+  let lastGroupReconcileFingerprint: string | null = null;
   const listeners = new Set<() => void>();
+  const pendingGroupMirrorRetries: Array<{
+    conversationUuid: string;
+    archived: boolean;
+  }> = [];
 
   /** Serializes all server writes for this session. */
   let writeChain: Promise<void> = Promise.resolve();
@@ -321,6 +427,30 @@ export function createChatOrganizerSession(options: {
     }
   }
 
+  async function mirrorGroupConversationArchived(
+    conversationUuid: string,
+    archived: boolean,
+  ): Promise<boolean> {
+    if (!http.setGroupConversationArchived) return true;
+    try {
+      ensureHttp?.();
+      await http.setGroupConversationArchived(conversationUuid, archived);
+      return true;
+    } catch (e: unknown) {
+      warn?.("[chatOrganizer] group archive flag mirror failed", e);
+      pendingGroupMirrorRetries.push({ conversationUuid, archived });
+      return false;
+    }
+  }
+
+  async function flushGroupMirrorRetries(): Promise<void> {
+    if (!http.setGroupConversationArchived || pendingGroupMirrorRetries.length === 0) return;
+    const batch = pendingGroupMirrorRetries.splice(0, pendingGroupMirrorRetries.length);
+    for (const item of batch) {
+      await mirrorGroupConversationArchived(item.conversationUuid, item.archived);
+    }
+  }
+
   /**
    * Align server archive flags with E2E organizer state (badge SQL reads flags).
    * Runs at most once per hydrated owner.
@@ -356,6 +486,91 @@ export function createChatOrganizerSession(options: {
       if (desired.has(peer)) continue;
       await mirrorConversationArchived(dmConversationUuid(owner, peer), peer, false);
     }
+  }
+
+  function groupArchiveReconcileFingerprint(
+    sticky: ReadonlySet<string>,
+    archivedByConversation: Readonly<Record<string, true>> | undefined,
+  ): string {
+    const stickyKeys = [
+      ...new Set([...sticky].map((id) => id.trim().toLowerCase()).filter(Boolean)),
+    ].sort();
+    const stickyLower = new Set(stickyKeys);
+    const desiredKeys = [
+      ...new Set(
+        Object.keys(archivedByConversation ?? {})
+          .map((id) => id.trim().toLowerCase())
+          .filter((id) => id.length > 0 && stickyLower.has(id)),
+      ),
+    ].sort();
+    return `${stickyKeys.join(",")}|${desiredKeys.join(",")}`;
+  }
+
+  async function reconcileGroupArchiveFlags(
+    owner: string,
+    state: ChatListOverlayState,
+  ): Promise<void> {
+    if (!http.setGroupConversationArchived || !stickyKnownGroupUuids) return;
+    const sticky = stickyKnownGroupUuids;
+    const desiredArchived = state.archivedByConversation ?? {};
+    const fingerprint = `${owner}:${groupArchiveReconcileFingerprint(sticky, desiredArchived)}`;
+    if (
+      lastGroupReconcileFingerprint === fingerprint &&
+      pendingGroupMirrorRetries.length === 0
+    ) {
+      return;
+    }
+
+    const run = async () => {
+      if (snapshot.ownerUserUuid !== owner || stickyKnownGroupUuids !== sticky) return;
+
+      let serverArchived = new Set<string>();
+      if (http.listArchivedGroupConversations) {
+        try {
+          ensureHttp?.();
+          const list = await http.listArchivedGroupConversations();
+          serverArchived = new Set(list.map((u) => u.trim().toLowerCase()));
+        } catch (e: unknown) {
+          warn?.("[chatOrganizer] group archive reconcile: list failed", e);
+        }
+      }
+
+      if (snapshot.ownerUserUuid !== owner || stickyKnownGroupUuids !== sticky) return;
+
+      const desired = new Set<string>();
+      for (const id of Object.keys(desiredArchived)) {
+        const key = id.trim().toLowerCase();
+        if (sticky.has(key) || sticky.has(id)) {
+          desired.add(id);
+        }
+      }
+
+      for (const conv of desired) {
+        const key = conv.trim().toLowerCase();
+        if (serverArchived.has(key) || serverArchived.has(conv)) continue;
+        await mirrorGroupConversationArchived(conv, true);
+      }
+      for (const conv of serverArchived) {
+        const stillDesired = [...desired].some(
+          (d) => d === conv || d.trim().toLowerCase() === conv,
+        );
+        if (stillDesired) continue;
+        // Only unarchive server rows that are known groups (avoid touching unknowns).
+        if (!sticky.has(conv) && !sticky.has(conv.toLowerCase())) continue;
+        await mirrorGroupConversationArchived(conv, false);
+      }
+      await flushGroupMirrorRetries();
+      if (snapshot.ownerUserUuid === owner && stickyKnownGroupUuids === sticky) {
+        lastGroupReconcileFingerprint = fingerprint;
+      }
+    };
+
+    const queued = groupReconcileChain.then(run, run);
+    groupReconcileChain = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    await queued;
   }
 
   function enqueueWrite(task: () => Promise<void>): Promise<void> {
@@ -428,7 +643,7 @@ export function createChatOrganizerSession(options: {
         });
         revision = decrypted.revision;
         if (intent) {
-          const reapplied = applyIntent(working, intent);
+          const reapplied = applyIntent(working, intent, owner);
           if (reapplied) working = reapplied;
         }
       }
@@ -471,6 +686,7 @@ export function createChatOrganizerSession(options: {
           });
           persist(owner, nextState);
           void reconcileServerArchiveFlags(owner, nextState);
+          void reconcileGroupArchiveFlags(owner, nextState);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           warn?.("[chatOrganizer] decrypt failed", e);
@@ -551,6 +767,9 @@ export function createChatOrganizerSession(options: {
       return;
     }
     archiveFlagsReconciledForOwner = null;
+    stickyKnownGroupUuids = null;
+    lastGroupReconcileFingerprint = null;
+    pendingGroupMirrorRetries.length = 0;
     setLocal({
       ownerUserUuid: owner,
       state: owner ? persistence.read(owner) : emptyChatListOverlayState(),
@@ -579,7 +798,7 @@ export function createChatOrganizerSession(options: {
         if (snapshot.ownerUserUuid !== owner || !keys) return;
         // Re-apply intent on live state (prior queue items may have advanced revision).
         const live = snapshot.state;
-        const withIntent = applyIntent(live, intent) ?? live;
+        const withIntent = applyIntent(live, intent, owner) ?? live;
         const baseRev = withIntent.revision ?? 0;
         try {
           const saved = await putState(owner, baseRev, withIntent, intent);
@@ -587,7 +806,7 @@ export function createChatOrganizerSession(options: {
         } catch (e: unknown) {
           warn?.("[chatOrganizer] mutate failed", e);
           if (snapshot.ownerUserUuid === owner) {
-            persist(owner, revertIntent(snapshot.state, intent));
+            persist(owner, revertIntent(snapshot.state, intent, owner));
           }
           throw e;
         }
@@ -612,7 +831,10 @@ export function createChatOrganizerSession(options: {
     async createFolder(params) {
       const owner = snapshot.ownerUserUuid;
       if (!owner || !keys) return null;
-      const archivedCount = countArchivedPeers(snapshot.state.archivedByPeer);
+      const archivedCount = archivedSlotCount(
+        snapshot.state,
+        snapshot.ownerUserUuid,
+      );
       if (!canCreateChatListFolder(archivedCount, snapshot.state.entities.length)) {
         warn?.("[chatOrganizer] create blocked: folder icon limit");
         return null;
@@ -631,26 +853,30 @@ export function createChatOrganizerSession(options: {
         createdAtMs: Date.now(),
       };
       const intent: Intent = { kind: "createFolder", entity };
-      const next = applyIntent(snapshot.state, intent);
+      const next = applyIntent(snapshot.state, intent, snapshot.ownerUserUuid);
       if (!next) return null;
       await mutateWithIntent(intent, next);
       return snapshot.state.entities.find((e) => e.id === entity.id) ?? entity;
     },
     async addPeerToFolder(entityId, peerUuid) {
       const intent: Intent = { kind: "addPeer", entityId, peerUuid };
-      const next = applyIntent(snapshot.state, intent);
+      const next = applyIntent(snapshot.state, intent, snapshot.ownerUserUuid);
       if (!next) return;
       await mutateWithIntent(intent, next);
     },
     async removeFolder(entityId) {
       const removed = snapshot.state.entities.find((e) => e.id === entityId);
       const intent: Intent = { kind: "removeFolder", entityId, removed };
-      const next = applyIntent(snapshot.state, intent);
+      const next = applyIntent(snapshot.state, intent, snapshot.ownerUserUuid);
       if (!next) return;
       await mutateWithIntent(intent, next);
     },
     async setArchived(peerUuid, conversationUuid, archived) {
       if (!peerUuid.trim()) return false;
+      if (!keys) {
+        warn?.("[chatOrganizer] setArchived blocked: keys not ready");
+        return false;
+      }
       const peer = peerUuid.trim();
       const conv = conversationUuid.trim();
       const intent: Intent = {
@@ -659,10 +885,9 @@ export function createChatOrganizerSession(options: {
         conversationUuid: conv,
         archived,
       };
-      const next = applyIntent(snapshot.state, intent);
+      const next = applyIntent(snapshot.state, intent, snapshot.ownerUserUuid);
       if (!next) return false;
       if (next === snapshot.state) {
-        // Already in desired E2E state — still mirror flags (badge SQL).
         if (conv) await mirrorConversationArchived(conv, peer, archived);
         return true;
       }
@@ -670,6 +895,70 @@ export function createChatOrganizerSession(options: {
       const ok = isPeerArchived(peer, snapshot.state.archivedByPeer) === archived;
       if (ok && conv) await mirrorConversationArchived(conv, peer, archived);
       return ok;
+    },
+    async setGroupArchived(conversationUuid, archived) {
+      const conv = conversationUuid.trim();
+      if (!conv) return false;
+      if (!keys) {
+        warn?.("[chatOrganizer] setGroupArchived blocked: keys not ready");
+        return false;
+      }
+      const intent: Intent = { kind: "setGroupArchived", conversationUuid: conv, archived };
+      const next = applyIntent(snapshot.state, intent, snapshot.ownerUserUuid);
+      if (!next) return false;
+      if (next === snapshot.state) {
+        await mirrorGroupConversationArchived(conv, archived);
+        await flushGroupMirrorRetries();
+        return true;
+      }
+      await mutateWithIntent(intent, next);
+      const ok =
+        isConversationArchived(conv, snapshot.state.archivedByConversation) === archived;
+      if (ok) {
+        await mirrorGroupConversationArchived(conv, archived);
+        await flushGroupMirrorRetries();
+      }
+      return ok;
+    },
+    setKnownGroupUuids(conversationUuids) {
+      const plain = conversationUuids.map((u) => u.trim()).filter((u) => u.length > 0);
+      const next = new Set(plain);
+      for (const u of plain) next.add(u.toLowerCase());
+      const prev = stickyKnownGroupUuids;
+      stickyKnownGroupUuids = next;
+      const owner = snapshot.ownerUserUuid;
+      if (!owner) return;
+
+      if (prev) {
+        const gone = new Set<string>();
+        for (const id of prev) {
+          if (!next.has(id)) gone.add(id);
+        }
+        const pruned = pruneArchivedConversations(
+          snapshot.state.archivedByConversation,
+          gone,
+        );
+        if (pruned !== (snapshot.state.archivedByConversation ?? {})) {
+          persist(owner, { ...snapshot.state, archivedByConversation: pruned });
+          if (keys) {
+            void enqueueWrite(async () => {
+              if (snapshot.ownerUserUuid !== owner || !keys) return;
+              try {
+                const saved = await putState(
+                  owner,
+                  snapshot.state.revision ?? 0,
+                  snapshot.state,
+                  null,
+                );
+                if (snapshot.ownerUserUuid === owner) persist(owner, saved);
+              } catch (e: unknown) {
+                warn?.("[chatOrganizer] prune group archives put failed", e);
+              }
+            });
+          }
+        }
+      }
+      void reconcileGroupArchiveFlags(owner, snapshot.state);
     },
     async setMuted(peerUuid, conversationUuid, muted) {
       if (!peerUuid.trim()) return;
@@ -679,7 +968,7 @@ export function createChatOrganizerSession(options: {
         conversationUuid,
         muted,
       };
-      const next = applyIntent(snapshot.state, intent);
+      const next = applyIntent(snapshot.state, intent, snapshot.ownerUserUuid);
       if (!next || next === snapshot.state) return;
       await mutateWithIntent(intent, next);
     },

@@ -6,11 +6,13 @@ import {
   chatListFolderPageIds,
   chatListFolderPageIndex,
   chatListOverlayFromApi,
+  countArchivedForFolderIcon,
   countArchivedPeers,
   createChatListFolderEntity,
   createChatListGroupEntity,
   entitiesToFolderDefs,
   filterConversationsByFolder,
+  filterGroupsByFolder,
   listVisibleChatFolders,
   maxCustomChatListFolders,
   membershipByEntityId,
@@ -90,6 +92,30 @@ describe("chatListFolders", () => {
     expect(normalizeChatListFolder("all", 0)).toBe("all");
     expect(normalizeChatListFolder("fld_x", 1, new Set(["fld_y"]))).toBe("all");
     expect(normalizeChatListFolder("fld_x", 1, new Set(["fld_x"]))).toBe("fld_x");
+  });
+
+  it("countArchivedForFolderIcon avoids DM double-count", () => {
+    // Heuristic without DM set: peer + max(0, conv−peer).
+    expect(countArchivedForFolderIcon({ a: true }, { dmA: true })).toBe(1);
+    expect(countArchivedForFolderIcon({ a: true }, { dmA: true, group1: true })).toBe(2);
+    expect(countArchivedForFolderIcon({}, { group1: true, group2: true })).toBe(2);
+
+    // Exact set: peer archived without conv side-write + group still counts 2.
+    const dmSet = new Set(["dmA"]);
+    expect(
+      countArchivedForFolderIcon({ a: true }, { group1: true }, dmSet),
+    ).toBe(2);
+    expect(
+      countArchivedForFolderIcon({ a: true }, { dmA: true, group1: true }, dmSet),
+    ).toBe(2);
+
+    const groups = [{ conversationUuid: "g1" }, { conversationUuid: "g2" }];
+    expect(
+      filterGroupsByFolder(groups, "all", { g1: true }).map((g) => g.conversationUuid),
+    ).toEqual(["g2"]);
+    expect(
+      filterGroupsByFolder(groups, "archived", { g1: true }).map((g) => g.conversationUuid),
+    ).toEqual(["g1"]);
   });
 
   it("filters by folder and custom membership", () => {

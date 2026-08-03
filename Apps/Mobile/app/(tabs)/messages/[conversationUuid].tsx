@@ -86,6 +86,12 @@ import {
 } from "@/lib/theme";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
 import {
+  canArchiveChatListPeer,
+  countArchivedForFolderIcon,
+  dmConversationUuidsOfArchivedPeers,
+  isConversationArchived,
+} from "@flora/client-core/messaging";
+import {
   clearTemporaryMute,
   setTemporaryMute,
   useTemporaryMuteUntilByPeer,
@@ -423,8 +429,26 @@ export default function ThreadScreen() {
   const hydrateOverlay = useChatListOverlayStore((s) => s.hydrate);
   const setOverlayFscpKeys = useChatListOverlayStore((s) => s.setFscpKeys);
   const setMuted = useChatListOverlayStore((s) => s.setMuted);
+  const setGroupArchived = useChatListOverlayStore((s) => s.setGroupArchived);
   const mutedByPeer = useChatListOverlayStore((s) => s.state.mutedByPeer);
+  const archivedByPeer = useChatListOverlayStore((s) => s.state.archivedByPeer);
+  const archivedByConversation = useChatListOverlayStore(
+    (s) => s.state.archivedByConversation ?? {},
+  );
+  const customEntityCount = useChatListOverlayStore((s) => s.state.entities.length);
   const temporaryUntilByPeer = useTemporaryMuteUntilByPeer();
+  const archivedCount = useMemo(() => {
+    const owner = me?.userUuid?.trim();
+    const dmSet = owner
+      ? dmConversationUuidsOfArchivedPeers(owner, archivedByPeer)
+      : undefined;
+    return countArchivedForFolderIcon(archivedByPeer, archivedByConversation, dmSet);
+  }, [archivedByConversation, archivedByPeer, me?.userUuid]);
+  const canArchivePeer = useMemo(
+    () => canArchiveChatListPeer(archivedCount, customEntityCount),
+    [archivedCount, customEntityCount],
+  );
+  const groupIsArchived = isConversationArchived(conversationUuid, archivedByConversation);
 
   useEffect(() => {
     hydrateOverlay(me?.userUuid ?? null);
@@ -436,6 +460,7 @@ export default function ThreadScreen() {
   const fscpDecryptKey = useFscpStore((s) => s.localPubKey);
   const canSend = useFscpStore((s) => s.canSend);
   const decryptWirePlaintext = useFscpStore((s) => s.decryptWirePlaintext);
+  const organizerKeysReady = Boolean(fscpMaterial && fscpCanDecrypt());
 
   useEffect(() => {
     if (fscpMaterial && fscpCanDecrypt()) {
@@ -1819,6 +1844,7 @@ export default function ThreadScreen() {
         anchorRef={moreBtnRef}
         kind={isGroupChat ? "groupChat" : "dm"}
         isMuted={conversationMuted}
+        isArchived={isGroupChat ? groupIsArchived : false}
         onMuteForever={() => {
           if (otherUserUuid && conversationUuid) {
             clearTemporaryMute(otherUserUuid);
@@ -1837,6 +1863,49 @@ export default function ThreadScreen() {
             void setMuted(otherUserUuid, conversationUuid, false);
           }
         }}
+        onArchive={
+          isGroupChat
+            ? () => {
+                if (!organizerKeysReady) {
+                  setUnlockOpen(true);
+                  return;
+                }
+                if (!canArchivePeer) {
+                  Alert.alert(
+                    "Лимит папок",
+                    "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+                  );
+                  return;
+                }
+                void (async () => {
+                  const ok = await setGroupArchived(conversationUuid, true);
+                  if (!ok) {
+                    Alert.alert(
+                      "Лимит папок",
+                      "Нельзя архивировать: уже заняты все четыре слота иконок. Удалите папку, чтобы освободить место для Архива.",
+                    );
+                    return;
+                  }
+                  requestTabBadgesRefresh();
+                  router.back();
+                })();
+              }
+            : undefined
+        }
+        onUnarchive={
+          isGroupChat
+            ? () => {
+                if (!organizerKeysReady) {
+                  setUnlockOpen(true);
+                  return;
+                }
+                void (async () => {
+                  await setGroupArchived(conversationUuid, false);
+                  requestTabBadgesRefresh();
+                })();
+              }
+            : undefined
+        }
         onDelete={() => {
           if (isGroupChat) {
             groupThread.leaveGroup();

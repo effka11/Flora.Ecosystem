@@ -343,6 +343,9 @@ export function PostMoreMenuRect({
             onPin={onChatPin}
             onSafetyNumber={onChatSafetyNumber}
             onDelete={deleteConversation}
+            conversationIsArchived={conversationIsArchived}
+            onConversationArchive={onConversationArchive}
+            onConversationUnarchive={onConversationUnarchive}
             muteSubmenuOpen={muteSubmenu.muteSubmenuOpen}
             isSubmenuClosing={muteSubmenu.isSubmenuClosing}
             onToggleMuteSubmenu={muteSubmenu.toggleMuteSubmenu}

@@ -172,6 +172,28 @@ AAD-домены:
 `keyEnvelope.recipientAgreementPublicKeyId` == derived id владельца;
 подпись Ed25519. Payload серверу недоступен.
 
+### 2.5 Исключение: badge-mirror архива (plaintext flags)
+
+ORG blob остаётся SoT для UI (папки, архив, mute). Сервер **не** читает
+plaintext ORG. Для бейджа непрочитанного и лимита слотов иконок нужен
+серверный сигнал «этот чат в архиве у владельца» — без расшифровки blob.
+
+**Исключение из «сервер не знает об архиве»:** клиент после успешной
+записи ORG зеркалит флаг архива в plaintext Messaging-таблицы
+(только `is_archived`, без названий папок и mute-ORG):
+
+| Канал | SoT (ORG) | Mirror (SQL) | HTTP |
+| --- | --- | --- | --- |
+| DM | `archivedByPeer` (+ side-write conversation) | `user_conversation_flags` | `POST /api/messaging/conversations/{uuid}/archive\|unarchive` |
+| Группа (FSCP-G) | `archivedByConversation` | `user_group_conversation_flags` (FK CASCADE на conversation; clear при leave) | `POST /api/messaging/groups/{uuid}/archive\|unarchive`; список — `GET /api/messaging/group-archive-flags` |
+
+`GET /api/messaging/unread-count` суммирует DM + group unread **без**
+архивированных (DM — exclude по `user_conversation_flags`, группы — по
+`user_group_conversation_flags`). Клиентский intent для групп —
+`setGroupArchived` (только conversation map); DM `setArchived` к группам
+не применяют. Reconcile зеркала — двусторонний ∩ sticky known groups
+после первого успешного `list_groups`. Mute групп и FCM-gate — вне скоупа.
+
 ## 3. Границы модулей
 
 - **`fscp-core` / `@flora/fscp`** — только протокол (структурная
@@ -191,6 +213,9 @@ AAD-домены:
 - TS: `Products/FSCP/ts/src/group.test.ts` (roundtrip, посторонний,
   подделка, лимиты, разделение доменов AAD),
   `chatOrganizer.test.ts` (roundtrip, opaque-для-сервера, привязка
-  ревизии, владелец).
+  ревизии, владелец); `@flora/client-core` — folders/organizer
+  (`setGroupArchived`, icon counts, filter order).
 - Rust: unit-тесты в `fscp-core/src/group.rs` и `organizer.rs`
-  (валидный wire, чужая группа/владелец, tampering, ростер, ревизия).
+  (валидный wire, чужая группа/владелец, tampering, ростер, ревизия);
+  smoke `flora-messaging` — `archived_group_excluded_from_unread_count`
+  (`FLORA_MESSAGING_SMOKE=1`).
