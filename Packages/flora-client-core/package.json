@@ -102,8 +102,8 @@
   },
   "devDependencies": {
     "@noble/post-quantum": "^0.6.1",
-    "libsodium": "^0.7.15",
-    "libsodium-wrappers": "^0.7.15",
+    "libsodium": "^0.8.4",
+    "libsodium-wrappers": "^0.8.4",
     "libsodium-wrappers-sumo": "^0.8.4",
     "typescript": "^5.8.2",
     "vitest": "^3.2.4"
