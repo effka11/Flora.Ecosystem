@@ -8,6 +8,14 @@ ALTER ROLE flora IN DATABASE flora_core
     SET search_path TO flora_core, public;
 SET search_path TO flora_core, public;
 
+-- Stub for Auth data migrations that touch cutover-owned tables
+-- (e.g. 0002_lowercase_usernames). Not a full production shape.
+CREATE TABLE flora_core.user_accounts (
+    user_uuid  uuid        NOT NULL PRIMARY KEY,
+    username   text        NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE flora_core.user_sessions (
     session_id     uuid        NOT NULL PRIMARY KEY,
     user_uuid      uuid        NOT NULL,

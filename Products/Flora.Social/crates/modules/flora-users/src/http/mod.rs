@@ -9,7 +9,7 @@ use axum::Router;
 use axum::extract::{DefaultBodyLimit, Extension, Multipart, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{get, post};
 use chrono::{DateTime, SecondsFormat, Utc};
 use flora_auth_contracts::AccountDirectory;
 use flora_content_contracts::CommunityFollowStats;
@@ -93,7 +93,11 @@ pub fn protected_router(state: UsersState) -> Router {
             get(get_user_by_username),
         )
         .route("/api/auth/presence/heartbeat", post(presence_heartbeat))
-        .route("/api/auth/presence/watch", put(presence_watch))
+        // POST primary: edge CDN on flora-s.net rejects PUT with nginx 405 (same as chat-organizer).
+        .route(
+            "/api/auth/presence/watch",
+            post(presence_watch).put(presence_watch),
+        )
         .route("/api/auth/presence", get(presence_batch))
         .with_state(state)
 }

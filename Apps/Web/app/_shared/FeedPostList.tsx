@@ -24,6 +24,8 @@ export type FeedPostListItem = {
   authorDisplayName: string;
   authorAvatarUuid?: string | null;
   authorUserUuid?: string | null;
+  /** Стена сообщества: инициалы/цвет как у community, не как у user-профиля. */
+  communityName?: string | null;
   commentsCount: number;
   likesCount: number;
   repostsCount: number;
@@ -132,6 +134,7 @@ export function FeedPostList({
                 displayName={post.authorDisplayName}
                 username={post.authorUsername}
                 seed={post.authorUserUuid ?? post.authorUsername}
+                communityName={post.communityName ?? undefined}
                 className={`${styles.postAvatar} ${styles.postAvatarLink}`}
               />
               <div className={styles.postHeader}>

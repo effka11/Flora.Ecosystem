@@ -2312,7 +2312,81 @@ impl ContentRepo {
         Ok(())
     }
 
-    pub async fn delete_all_memberships(&self, community_id: Uuid) -> Result<(), sqlx::Error> {
+    /// Полное удаление сообщества и зависимых строк (аватар, посты, черновики, dismissals, membership).
+    /// Порядок важен: сначала `communities.avatar_uuid`, иначе круговой FK с `community_avatars`.
+    pub async fn purge_community(
+        &self,
+        community_id: Uuid,
+        deleted_at: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query(
+            r#"
+            UPDATE flora_core.communities
+            SET avatar_uuid = NULL
+            WHERE community_id = $1
+            "#,
+        )
+        .bind(community_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM flora_core.community_avatars
+            WHERE community_id = $1
+            "#,
+        )
+        .bind(community_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_posts
+            SET is_deleted = true, deleted_at = $2
+            WHERE community_id = $1
+              AND is_deleted = false
+            "#,
+        )
+        .bind(community_id)
+        .bind(deleted_at)
+        .execute(&mut *tx)
+        .await?;
+
+        // Снимаем FK/ссылку, чтобы DELETE communities не упирался в оставшиеся soft-deleted посты.
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_posts
+            SET community_id = NULL
+            WHERE community_id = $1
+            "#,
+        )
+        .bind(community_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM flora_core.post_drafts
+            WHERE community_id = $1
+            "#,
+        )
+        .bind(community_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM flora_core.user_feed_community_dismissals
+            WHERE community_id = $1
+            "#,
+        )
+        .bind(community_id)
+        .execute(&mut *tx)
+        .await?;
+
         sqlx::query(
             r#"
             DELETE FROM flora_core.user_communities
@@ -2320,12 +2394,9 @@ impl ContentRepo {
             "#,
         )
         .bind(community_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
-        Ok(())
-    }
 
-    pub async fn delete_community(&self, community_id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"
             DELETE FROM flora_core.communities
@@ -2333,8 +2404,10 @@ impl ContentRepo {
             "#,
         )
         .bind(community_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
         Ok(())
     }
 

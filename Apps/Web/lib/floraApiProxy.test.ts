@@ -138,7 +138,133 @@ test("auth proxy keeps refresh credentials out of browser-readable storage", asy
 
       assert.equal(response.status, 403);
       assert.equal(calledUpstream, false);
+      assert.match(response.headers.get("set-cookie") ?? "", /Max-Age=0/);
+      const payload = (await response.json()) as Record<string, unknown>;
+      assert.equal(payload.error, "Cross-origin refresh is not allowed.");
     });
+
+    await t.test(
+      "allows cookie refresh when browser Origin is https but NextURL is http",
+      async () => {
+        let forwardedBody: unknown;
+        globalThis.fetch = (async (_input, init) => {
+          forwardedBody = await new Response(init?.body).json();
+          return Response.json({
+            accessToken: "next-access-token",
+            refreshToken: "session-id.next-secret",
+            expiresAt: "2030-01-01T00:15:00Z",
+          });
+        }) as typeof fetch;
+
+        // Behind nginx Next often sees http://host while the browser Origin is https://host.
+        const response = await proxyFloraApiRequest(
+          new NextRequest("http://social.flora.example/api/auth/refresh", {
+            method: "POST",
+            body: "{}",
+            headers: {
+              "content-type": "application/json",
+              cookie: "flora_refresh=session-id.old-secret",
+              "x-forwarded-proto": "https",
+              origin: "https://social.flora.example",
+            },
+          }),
+        );
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(forwardedBody, { refreshToken: "session-id.old-secret" });
+      },
+    );
+
+    await t.test(
+      "allows cookie refresh when Next listens on loopback and nginx sets Host",
+      async () => {
+        let forwardedBody: unknown;
+        globalThis.fetch = (async (_input, init) => {
+          forwardedBody = await new Response(init?.body).json();
+          return Response.json({
+            accessToken: "next-access-token",
+            refreshToken: "session-id.next-secret",
+            expiresAt: "2030-01-01T00:15:00Z",
+          });
+        }) as typeof fetch;
+
+        const response = await proxyFloraApiRequest(
+          new NextRequest("http://127.0.0.1:3000/api/auth/refresh", {
+            method: "POST",
+            body: "{}",
+            headers: {
+              "content-type": "application/json",
+              cookie: "flora_refresh=session-id.old-secret",
+              host: "social.flora.example",
+              "x-forwarded-proto": "https",
+              origin: "https://social.flora.example",
+              "sec-fetch-site": "same-origin",
+            },
+          }),
+        );
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(forwardedBody, { refreshToken: "session-id.old-secret" });
+      },
+    );
+
+    await t.test(
+      "rejects forged X-Forwarded-Host that does not match nginx Host",
+      async () => {
+        let calledUpstream = false;
+        globalThis.fetch = (async () => {
+          calledUpstream = true;
+          return Response.json({});
+        }) as typeof fetch;
+
+        const response = await proxyFloraApiRequest(
+          new NextRequest("http://127.0.0.1:3000/api/auth/refresh", {
+            method: "POST",
+            body: "{}",
+            headers: {
+              "content-type": "application/json",
+              cookie: "flora_refresh=session-id.secret",
+              host: "social.flora.example",
+              "x-forwarded-proto": "https",
+              "x-forwarded-host": "evil.flora.example",
+              origin: "https://evil.flora.example",
+            },
+          }),
+        );
+
+        assert.equal(response.status, 403);
+        assert.equal(calledUpstream, false);
+        assert.match(response.headers.get("set-cookie") ?? "", /Max-Age=0/);
+      },
+    );
+
+    await t.test(
+      "rejects cross-site sec-fetch-site with foreign Origin",
+      async () => {
+        let calledUpstream = false;
+        globalThis.fetch = (async () => {
+          calledUpstream = true;
+          return Response.json({});
+        }) as typeof fetch;
+
+        const response = await proxyFloraApiRequest(
+          new NextRequest("https://social.flora.example/api/auth/refresh", {
+            method: "POST",
+            body: "{}",
+            headers: {
+              "content-type": "application/json",
+              cookie: "flora_refresh=session-id.secret",
+              origin: "https://evil.flora.example",
+              "sec-fetch-site": "cross-site",
+            },
+          }),
+        );
+
+        assert.equal(response.status, 403);
+        assert.equal(calledUpstream, false);
+        assert.match(response.headers.get("set-cookie") ?? "", /Max-Age=0/);
+      },
+    );
 
     await t.test("preserves token pairs for native clients using SecureStore", async () => {
       globalThis.fetch = (async () =>

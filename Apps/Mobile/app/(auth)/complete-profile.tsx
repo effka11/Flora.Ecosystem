@@ -32,8 +32,8 @@ export default function CompleteProfileScreen() {
       setError("Введите никнейм");
       return;
     }
-    if (!/^[a-zA-Z0-9_]{3,50}$/.test(nickname)) {
-      setError("Никнейм: латиница, цифры и _, от 3 до 50 символов");
+    if (!/^[a-z0-9_]{3,50}$/.test(nickname)) {
+      setError("Никнейм: строчная латиница, цифры и _, от 3 до 50 символов");
       return;
     }
 
@@ -75,7 +75,7 @@ export default function CompleteProfileScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           value={username}
-          onChangeText={(value) => setUsername(value.replace(/^@+/, ""))}
+          onChangeText={(value) => setUsername(value.replace(/^@+/, "").toLowerCase())}
           whiteTheme
         />
 

@@ -87,11 +87,36 @@ function accessTokenFromPayload(payload: Record<string, unknown>): string | null
   return null;
 }
 
+/**
+ * Public origin as seen by the browser behind nginx.
+ * Trust only headers nginx overwrites (`Host`, `X-Forwarded-Proto`).
+ * Do not prefer client-controlled `X-Forwarded-Host`.
+ */
+function requestPublicOrigin(request: NextRequest): string | null {
+  // Prefer nginx-injected Host; fall back to nextUrl.host (tests / direct listen).
+  const host =
+    request.headers.get("host")?.split(",")[0]?.trim() || request.nextUrl.host;
+  if (!host) return null;
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  const proto =
+    forwardedProto === "http" || forwardedProto === "https"
+      ? forwardedProto
+      : request.nextUrl.protocol.replace(/:$/, "") || "https";
+  return `${proto}://${host}`;
+}
+
 function isSameOrigin(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return true;
   try {
-    return new URL(origin).origin === request.nextUrl.origin;
+    const originUrl = new URL(origin).origin;
+    const publicOrigin = requestPublicOrigin(request);
+    if (publicOrigin && originUrl === publicOrigin) return true;
+    return originUrl === request.nextUrl.origin;
   } catch {
     return false;
   }
@@ -217,9 +242,17 @@ export async function proxyFloraApiRequest(request: NextRequest): Promise<Respon
     const cookieToken = request.cookies.get(REFRESH_COOKIE_NAME)?.value;
     if (cookieToken) {
       if (!isSameOrigin(request)) {
+        const denied = new Headers({
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        clearBrowserAuthCookies(denied);
         return withProxyCors(
           request,
-          Response.json({ error: "Cross-origin refresh is not allowed." }, { status: 403 }),
+          new Response(JSON.stringify({ error: "Cross-origin refresh is not allowed." }), {
+            status: 403,
+            headers: denied,
+          }),
         );
       }
       body = new TextEncoder().encode(JSON.stringify({ refreshToken: cookieToken })).buffer;

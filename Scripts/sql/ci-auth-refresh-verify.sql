@@ -26,8 +26,8 @@ BEGIN
         RAISE EXCEPTION 'Auth replay indexes are missing';
     END IF;
 
-    IF (SELECT count(*) FROM flora_core.__flora_migrations_auth) <> 1 THEN
-        RAISE EXCEPTION 'expected exactly one recorded Auth migration';
+    IF (SELECT count(*) FROM flora_core.__flora_migrations_auth) <> 2 THEN
+        RAISE EXCEPTION 'expected exactly two recorded Auth migrations';
     END IF;
 
     IF NOT EXISTS (

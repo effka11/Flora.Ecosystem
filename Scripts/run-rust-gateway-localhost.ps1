@@ -19,6 +19,7 @@ $env:Auth__ServeNative = "true"
 $env:Users__ServeNative = "true"
 $env:Content__ServeNative = "true"
 $env:Messaging__ServeNative = "true"
+$env:ChatOrganizer__ServeNative = "true"
 $env:Notifications__ServeNative = "true"
 $env:Verification__ServeNative = "true"
 $env:Verification__GrpcListen = "127.0.0.1:50051"
@@ -29,7 +30,7 @@ $env:Gateway__DotnetUpstream = ""
 Write-Host @"
 Flora API (Rust) -> http://127.0.0.1:5290
   config: $configDir
-  Music + Auth + Users + Content + Messaging + Notifications + Verification ServeNative (gRPC :50051)
+  Music + Auth + Users + Content + Messaging + ChatOrganizer + Notifications + Verification ServeNative (gRPC :50051)
 "@
 
 Set-Location $root
