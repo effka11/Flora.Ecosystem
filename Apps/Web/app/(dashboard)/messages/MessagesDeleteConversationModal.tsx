@@ -9,7 +9,7 @@ type MessagesDeleteConversationModalProps = {
   busy: boolean;
   error: string | null;
   peerDisplayName: string;
-  /** dm (default) vs mock group copy. */
+  /** dm (default) vs group leave. */
   targetKind?: "dm" | "group";
   onClose: () => void;
   onConfirm: () => void;
@@ -46,7 +46,7 @@ export function MessagesDeleteConversationModal({
 
   if (!open) return null;
 
-  const name = peerDisplayName.trim() || (isGroup ? "этой группой" : "этим пользователем");
+  const name = peerDisplayName.trim() || (isGroup ? "этой группы" : "этим пользователем");
 
   return (
     <>
@@ -66,7 +66,7 @@ export function MessagesDeleteConversationModal({
         >
           <div className={styles.messagesDeleteModalHeader}>
             <h2 id={titleId} className={styles.messagesDeleteModalTitle}>
-              {isGroup ? "Удалить группу?" : "Удалить чат?"}
+              {isGroup ? "Выйти из группы?" : "Удалить чат?"}
             </h2>
             <button
               type="button"
@@ -81,7 +81,7 @@ export function MessagesDeleteConversationModal({
           <div className={styles.messagesDeleteModalBody}>
             <p id={descriptionId} className={styles.messagesDeleteModalText}>
               {isGroup
-                ? `Группа «${name}» и её история будут удалены из списка (mock). Это действие нельзя отменить.`
+                ? `Вы покинете группу «${name}». История у остальных участников сохранится; новые сообщения вам не придут.`
                 : `Переписка с ${name} и все медиа будут удалены у обоих участников. Это действие нельзя отменить.`}
             </p>
             {error ? (
@@ -97,7 +97,7 @@ export function MessagesDeleteConversationModal({
               disabled={busy}
               onClick={onConfirm}
             >
-              {busy ? "Удаление…" : "Удалить"}
+              {busy ? (isGroup ? "Выход…" : "Удаление…") : isGroup ? "Выйти" : "Удалить"}
             </button>
             <button
               type="button"

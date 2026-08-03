@@ -14,8 +14,8 @@ type Props = {
   open: boolean;
   conversations: readonly ConversationListItemDto[];
   onClose: () => void;
-  /** Return true to close the dialog after create. */
-  onCreate: (result: CreateGroupDialogResult) => boolean;
+  /** Resolve true to close the dialog after successful create. */
+  onCreate: (result: CreateGroupDialogResult) => Promise<boolean>;
 };
 
 /** Max peers selectable (creator is added separately → total ≤ GROUP_CHAT_MAX_MEMBERS). */
@@ -30,6 +30,7 @@ function CreateGroupDialogForm({
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const candidates = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -43,6 +44,7 @@ function CreateGroupDialogForm({
   }, [conversations, query]);
 
   const toggle = (uuid: string) => {
+    if (busy) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(uuid)) {
@@ -60,20 +62,33 @@ function CreateGroupDialogForm({
   };
 
   const submit = () => {
+    if (busy) return;
     const members = [...selected];
     if (members.length === 0) {
       setError("Выберите хотя бы одного участника.");
       return;
     }
-    const ok = onCreate({
-      title: title.trim() || "Группа",
-      memberUserUuids: members,
-    });
-    if (ok) onClose();
+    setBusy(true);
+    setError(null);
+    void (async () => {
+      try {
+        const ok = await onCreate({
+          title: title.trim() || "Группа",
+          memberUserUuids: members,
+        });
+        if (ok) onClose();
+      } finally {
+        setBusy(false);
+      }
+    })();
   };
 
   return (
-    <div className={styles.messagesFolderDialogBackdrop} role="presentation" onClick={onClose}>
+    <div
+      className={styles.messagesFolderDialogBackdrop}
+      role="presentation"
+      onClick={busy ? undefined : onClose}
+    >
       <div
         className={styles.messagesFolderDialog}
         role="dialog"
@@ -82,12 +97,22 @@ function CreateGroupDialogForm({
         onClick={(event) => event.stopPropagation()}
       >
         <header className={styles.messagesFolderDialogHeader}>
-          <button type="button" className={styles.messagesFolderDialogGhost} onClick={onClose}>
+          <button
+            type="button"
+            className={styles.messagesFolderDialogGhost}
+            onClick={onClose}
+            disabled={busy}
+          >
             Закрыть
           </button>
           <h2 className={styles.messagesFolderDialogTitle}>Новая группа</h2>
-          <button type="button" className={styles.messagesFolderDialogAction} onClick={submit}>
-            Создать
+          <button
+            type="button"
+            className={styles.messagesFolderDialogAction}
+            onClick={submit}
+            disabled={busy}
+          >
+            {busy ? "Создание…" : "Создать"}
           </button>
         </header>
 
@@ -98,6 +123,7 @@ function CreateGroupDialogForm({
             onChange={(event) => setTitle(event.target.value)}
             maxLength={40}
             placeholder="Например, Команда"
+            disabled={busy}
           />
         </label>
 
@@ -109,7 +135,7 @@ function CreateGroupDialogForm({
             placeholder="Поиск по имени или @username"
             autoCapitalize="off"
             autoCorrect="off"
-            disabled={conversations.length === 0}
+            disabled={busy || conversations.length === 0}
           />
         </label>
 
@@ -133,6 +159,7 @@ function CreateGroupDialogForm({
                     }`}
                     onClick={() => toggle(c.otherUserUuid)}
                     aria-pressed={checked}
+                    disabled={busy}
                   >
                     <span className={styles.messagesFolderDialogUserName}>{label}</span>
                     <span className={styles.messagesFolderDialogUserHandle}>

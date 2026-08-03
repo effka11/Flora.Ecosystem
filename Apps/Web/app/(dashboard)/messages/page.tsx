@@ -210,21 +210,37 @@ import {
   formatGroupMembersLabel,
   type GroupChat,
   type GroupMember,
-  type GroupThreadMessage,
   type MessagesListItem,
   type SelectedTarget,
 } from "./groupConversationTypes";
 import {
-  appendMockGroupPlaintext,
-  createMockGroupChat,
-  deleteMockGroupChat,
-  ensureMockGroupViewer,
-  getMockGroupChat,
-  getMockGroupThread,
-  listMockGroupChats,
-  markMockGroupRead,
-  subscribeMockGroupStore,
-} from "./mockGroupStore";
+  findGroupMember,
+  mapGroupListItem,
+  mergeGroupDetail,
+  mergeGroupListRefresh,
+} from "./groupApiMap";
+import {
+  apiCreateGroup,
+  apiGetGroup,
+  apiLeaveGroup,
+  apiListGroups,
+  apiMarkGroupRead,
+  apiAddGroupMember,
+  apiPatchGroupTitle,
+  apiRemoveGroupMember,
+  apiSendGroupMessage,
+} from "@flora/client-core/api";
+import {
+  buildGroupTextMessageWire,
+  decryptGroupMessagePreview,
+  decryptGroupMessageWire,
+  filterMembersWithE2eKeys,
+  isFscpGroupWirePayload,
+} from "@flora/client-core/fscp";
+import {
+  getGroupConversationThread,
+  invalidateGroupConversationThread,
+} from "@/lib/groupThreadsCache";
 import { MessagesChatFolders } from "./MessagesChatFolders";
 import { useMessagesListPreviewDecrypt } from "./useMessagesListPreviewDecrypt";
 import { usePreloadConversationThreads } from "./usePreloadConversationThreads";
@@ -334,17 +350,21 @@ function toMessageDto(m: MsgMessageDto): MessageThreadItemDto {
   };
 }
 
-function groupThreadToMessages(
-  thread: readonly GroupThreadMessage[],
-  meUserUuid: string | null | undefined,
+function groupApiMessagesToThread(
+  items: readonly {
+    messageUuid: string;
+    senderUserUuid: string;
+    encryptedWire: string;
+    createdAt: string;
+    isFromMe: boolean;
+  }[],
 ): MessageThreadItemDto[] {
-  const me = meUserUuid?.trim() ?? "";
-  return thread.map((m) => ({
+  return items.map((m) => ({
     messageUuid: m.messageUuid,
-    content: m.body,
-    encryptedForMe: null,
+    content: null,
+    encryptedForMe: m.encryptedWire,
     createdAt: m.createdAt,
-    isFromMe: me.length > 0 && m.senderUserUuid === me,
+    isFromMe: m.isFromMe,
     senderUserUuid: m.senderUserUuid,
   }));
 }
@@ -569,7 +589,7 @@ function MessagesChatInner() {
     selectedTarget?.kind === "groupChat" ? selectedTarget.conversationUuid : null;
   /** Снимок строки списка при открытии чата (заголовок не пропадает, если список ещё перезагружается). */
   const [selectedPeer, setSelectedPeer] = useState<ConversationListItemDto | null>(null);
-  const [groupChats, setGroupChats] = useState<GroupChat[]>(() => listMockGroupChats());
+  const [groupChats, setGroupChats] = useState<GroupChat[]>([]);
   const [threadMessages, setThreadMessages] = useState<MessageThreadItemDto[]>([]);
   /** Нормализованный me.userUuid на момент последней успешной загрузки ленты; без этого не расшифровываем (иначе кэш чужой ленты + новый JWT). */
   const [threadFetchedForViewerNorm, setThreadFetchedForViewerNorm] = useState<string | null>(null);
@@ -596,6 +616,8 @@ function MessagesChatInner() {
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [groupMembersOpen, setGroupMembersOpen] = useState(false);
+  const [groupMembersBusy, setGroupMembersBusy] = useState(false);
+  const [groupMembersError, setGroupMembersError] = useState<string | null>(null);
   /** Локальный until-мут (UI countdown); forever/sync — overlay.mutedByPeer. */
   const [mutedPeers, setMutedPeers] = useState<Record<string, ConversationMuteEntry>>({});
   const overlayState = useChatListOverlayState();
@@ -1098,11 +1120,55 @@ function MessagesChatInner() {
     if (!isClient) return;
     const onMessagesChanged = (event: Event) => {
       scheduleConversationListRefresh();
+      void refreshGroupsRef.current?.();
       const detail = (event as CustomEvent<MessagesChangedDetail | undefined>).detail;
       const incomingConversationUuid = detail?.conversationUuid?.trim().toLowerCase();
+      const signalKind = detail?.kind;
       const viewerUuid = me?.userUuid?.trim() ?? "";
+      if (!incomingConversationUuid || !viewerUuid) return;
+
+      const openGroupUuid = selectedGroupUuid?.trim().toLowerCase() ?? "";
+      const openIsGroup =
+        selectedTarget?.kind === "groupChat" && openGroupUuid.length > 0;
+      if (
+        openIsGroup &&
+        incomingConversationUuid === openGroupUuid &&
+        signalKind !== "dm"
+      ) {
+        const viewerNorm = viewerUuid.toLowerCase();
+        invalidateGroupConversationThread(viewerNorm, selectedGroupUuid!);
+        void (async () => {
+          try {
+            const page = await getGroupConversationThread(viewerNorm, selectedGroupUuid!);
+            let rows = groupApiMessagesToThread(page.items);
+            const pending = pendingOutgoingRef.current;
+            if (pending && !rows.some((r) => r.messageUuid === pending.messageUuid)) {
+              rows = mergePendingOutgoing(rows, pending);
+            }
+            setThreadMessages(rows);
+            setThreadFetchedForViewerNorm(viewerNorm);
+          } catch {
+            /* keep current thread */
+          }
+        })();
+        if (document.visibilityState !== "visible") return;
+        void apiMarkGroupRead(selectedGroupUuid!)
+          .then(() => {
+            setGroupChats((prev) =>
+              prev.map((g) =>
+                g.conversationUuid === selectedGroupUuid ? { ...g, unreadCount: 0 } : g,
+              ),
+            );
+            notifyMessagesUnreadChanged();
+          })
+          .catch(() => {});
+        return;
+      }
+
+      if (signalKind === "groupChat") return;
+
       const peer = selectedOtherUuid?.trim() ?? "";
-      if (!incomingConversationUuid || !viewerUuid || !peer) return;
+      if (!peer) return;
       const openConversationUuid = dmConversationUuid(viewerUuid, peer).toLowerCase();
       if (incomingConversationUuid !== openConversationUuid) return;
 
@@ -1139,7 +1205,14 @@ function MessagesChatInner() {
     };
     window.addEventListener(MESSAGES_UNREAD_CHANGED_EVENT, onMessagesChanged);
     return () => window.removeEventListener(MESSAGES_UNREAD_CHANGED_EVENT, onMessagesChanged);
-  }, [isClient, me?.userUuid, scheduleConversationListRefresh, selectedOtherUuid]);
+  }, [
+    isClient,
+    me?.userUuid,
+    scheduleConversationListRefresh,
+    selectedOtherUuid,
+    selectedGroupUuid,
+    selectedTarget?.kind,
+  ]);
 
   useEffect(() => {
     if (!isClient) return;
@@ -1273,11 +1346,103 @@ function MessagesChatInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- сброс черновика только при смене чата/зрителя
   }, [selectedOtherUuid, selectedGroupUuid, me?.userUuid]);
 
+  const refreshGroups = useCallback(async () => {
+    if (!hasToken || !me?.userUuid) {
+      setGroupChats([]);
+      return;
+    }
+    try {
+      const items = await apiListGroups();
+      const viewer = me.userUuid.trim();
+      const mapped = await Promise.all(
+        items.map(async (item) => {
+          let preview: string | null = null;
+          const wire = item.lastMessageEncryptedWire?.trim();
+          if (wire && fscpMaterial) {
+            preview = await decryptGroupMessagePreview({
+              encryptedPayload: wire,
+              viewerUserUuid: viewer,
+              agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+            });
+          } else if (wire) {
+            preview = "🔒";
+          }
+          return mapGroupListItem(item, preview);
+        }),
+      );
+      setGroupChats((prev) => mergeGroupListRefresh(prev, mapped));
+    } catch {
+      /* keep previous list */
+    }
+  }, [fscpMaterial, hasToken, me?.userUuid]);
+
+  const refreshGroupsRef = useRef(refreshGroups);
+  refreshGroupsRef.current = refreshGroups;
+
   useEffect(() => {
-    return subscribeMockGroupStore(() => {
-      setGroupChats(listMockGroupChats());
-    });
-  }, []);
+    if (!isClient || !hasToken) return;
+    void refreshGroups();
+  }, [isClient, hasToken, refreshGroups]);
+
+  useEffect(() => {
+    if (!selectedGroupUuid) {
+      setGroupMembersOpen(false);
+      setGroupMembersError(null);
+      setGroupMembersBusy(false);
+      return;
+    }
+    const viewerNorm = me?.userUuid?.trim().toLowerCase() ?? "";
+    if (!viewerNorm) return;
+    let cancelled = false;
+    setThreadLoading(true);
+    setThreadError(null);
+    void (async () => {
+      try {
+        invalidateGroupConversationThread(viewerNorm, selectedGroupUuid);
+        const [page, detail] = await Promise.all([
+          getGroupConversationThread(viewerNorm, selectedGroupUuid),
+          apiGetGroup(selectedGroupUuid),
+        ]);
+        if (cancelled) return;
+        setThreadMessages(groupApiMessagesToThread(page.items));
+        setThreadFetchedForViewerNorm(viewerNorm);
+        setGroupChats((prev) => {
+          const existing = prev.find((g) => g.conversationUuid === selectedGroupUuid);
+          const base = existing ?? mapGroupListItem({
+            conversationUuid: detail.conversationUuid,
+            title: detail.title,
+            createdByUserUuid: detail.createdByUserUuid,
+            createdAt: detail.createdAt,
+            memberCount: detail.members.length,
+            lastMessageEncryptedWire: null,
+            lastMessageAt: null,
+            lastMessageIsFromMe: false,
+            unreadCount: 0,
+          });
+          const merged = mergeGroupDetail(base, detail);
+          if (existing) {
+            return prev.map((g) =>
+              g.conversationUuid === selectedGroupUuid ? { ...merged, unreadCount: 0 } : g,
+            );
+          }
+          return [...prev, { ...merged, unreadCount: 0 }];
+        });
+        await apiMarkGroupRead(selectedGroupUuid);
+        notifyMessagesUnreadChanged();
+      } catch (e) {
+        if (!cancelled) {
+          setThreadError(
+            e instanceof ApiRequestError ? e.message : "Не удалось загрузить группу.",
+          );
+        }
+      } finally {
+        if (!cancelled) setThreadLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGroupUuid, me?.userUuid]);
 
   useEffect(() => {
     if (!isClient || !hasToken) return;
@@ -1385,22 +1550,6 @@ function MessagesChatInner() {
     };
   }, [isClient, hasToken, selectedOtherUuid, selectedGroupUuid, me?.userUuid]);
 
-  useEffect(() => {
-    if (!selectedGroupUuid) {
-      setGroupMembersOpen(false);
-      return;
-    }
-    const sync = () => {
-      setThreadMessages(groupThreadToMessages(getMockGroupThread(selectedGroupUuid), me?.userUuid));
-      setThreadLoading(false);
-      setThreadError(null);
-      setThreadFetchedForViewerNorm(me?.userUuid?.trim().toLowerCase() ?? null);
-      markMockGroupRead(selectedGroupUuid);
-    };
-    sync();
-    return subscribeMockGroupStore(sync);
-  }, [selectedGroupUuid, me?.userUuid]);
-
   const pinMessagesToBottom = useCallback((behavior: ScrollBehavior) => {
     const el = scrollMessagesRef.current;
     if (!el) return;
@@ -1439,6 +1588,31 @@ function MessagesChatInner() {
         continue;
       }
       if (m.content?.trim()) continue;
+      if (isFscpGroupWirePayload(enc)) {
+        if (decryptingRef.current.has(m.messageUuid)) continue;
+        decryptingRef.current.add(m.messageUuid);
+        void decryptGroupMessageWire({
+          wire: enc,
+          viewerUserUuid: me.userUuid.trim(),
+          agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+        })
+          .then((plain) => {
+            setDecryptFailById((prev) => {
+              if (!(m.messageUuid in prev)) return prev;
+              const next = { ...prev };
+              delete next[m.messageUuid];
+              return next;
+            });
+            setDecryptedById((prev) => ({ ...prev, [m.messageUuid]: plain.plaintext }));
+          })
+          .catch(() => {
+            setDecryptFailById((prev) => ({ ...prev, [m.messageUuid]: FSCP_DECRYPT_FAIL_LABEL }));
+          })
+          .finally(() => {
+            decryptingRef.current.delete(m.messageUuid);
+          });
+        continue;
+      }
       if (!isFscpWirePayload(enc)) continue;
       if (decryptingRef.current.has(m.messageUuid)) continue;
       decryptingRef.current.add(m.messageUuid);
@@ -1538,7 +1712,7 @@ function MessagesChatInner() {
     sortBy,
   ]);
 
-  /** DM + mock groupChat rows. Groups only in folder «все» (not archive/custom folders). */
+  /** DM + FSCP-G group rows. Groups only in folder «все» (not archive/custom folders). */
   const mergedListItems = useMemo((): MessagesListItem[] => {
     const query = searchQuery.trim().toLowerCase();
     const items: MessagesListItem[] = filteredConversations.map((conversation) => ({
@@ -1588,10 +1762,7 @@ function MessagesChatInner() {
 
   const selectedGroupChat = useMemo(() => {
     if (!selectedGroupUuid) return null;
-    return (
-      groupChats.find((g) => g.conversationUuid === selectedGroupUuid) ??
-      getMockGroupChat(selectedGroupUuid)
-    );
+    return groupChats.find((g) => g.conversationUuid === selectedGroupUuid) ?? null;
   }, [groupChats, selectedGroupUuid]);
 
   const groupChatMe = useMemo((): GroupMember | null => {
@@ -1601,11 +1772,6 @@ function MessagesChatInner() {
     const displayName = profileDisplayName(me.displayName ?? "", me.username ?? "") || username;
     return { userUuid: uuid, username, displayName };
   }, [me]);
-
-  useEffect(() => {
-    if (!groupChatMe) return;
-    ensureMockGroupViewer(groupChatMe);
-  }, [groupChatMe]);
 
   // const railInteractive = mergedListItems.length > 0;
   // const railScrollRef = useRef<HTMLDivElement>(null);
@@ -1780,7 +1946,9 @@ function MessagesChatInner() {
   /** Единая модель шапки открытого чата: один JSX, разные данные / ⋮. */
   const openChatHeader = useMemo(() => {
     if (selectedGroupChat) {
-      const membersLabel = formatGroupMembersLabel(selectedGroupChat.members.length);
+      const membersLabel = formatGroupMembersLabel(
+        selectedGroupChat.memberCount || selectedGroupChat.members.length,
+      );
       return {
         kind: "group" as const,
         title: selectedGroupChat.title,
@@ -1861,7 +2029,7 @@ function MessagesChatInner() {
         const demoPlain = parseDemoPlaintextWire(enc);
         if (demoPlain) return demoPlain;
         if (decryptFailById[m.messageUuid]) return "failed";
-        if (isFscpWirePayload(enc)) return "decrypting";
+        if (isFscpWirePayload(enc) || isFscpGroupWirePayload(enc)) return "decrypting";
       }
       if (m.content?.trim()) return messagePlaintextFromText(m.content);
       return messagePlaintextFromText("—");
@@ -2179,18 +2347,125 @@ function MessagesChatInner() {
       const deletingOpen = selectedGroupUuid === uuid;
       setDeleteConversationBusy(true);
       setDeleteConversationError(null);
-      try {
-        if (!deleteMockGroupChat(uuid)) {
-          setDeleteConversationError("Группа уже удалена.");
-          return;
+      void (async () => {
+        try {
+          await apiLeaveGroup(uuid);
+          setGroupChats((prev) => prev.filter((g) => g.conversationUuid !== uuid));
+          if (deletingOpen) closeChat();
+          dismissDeleteConversationModal();
+          notifyMessagesUnreadChanged();
+        } catch (e) {
+          setDeleteConversationError(
+            e instanceof ApiRequestError ? e.message : "Не удалось выйти из группы.",
+          );
+        } finally {
+          setDeleteConversationBusy(false);
         }
-        if (deletingOpen) closeChat();
-        dismissDeleteConversationModal();
-      } finally {
-        setDeleteConversationBusy(false);
-      }
+      })();
     },
     [closeChat, dismissDeleteConversationModal, selectedGroupUuid],
+  );
+
+  const applyGroupDetailLocal = useCallback((detail: Awaited<ReturnType<typeof apiGetGroup>>) => {
+    setGroupChats((prev) => {
+      const existing = prev.find((g) => g.conversationUuid === detail.conversationUuid);
+      const base =
+        existing ??
+        mapGroupListItem({
+          conversationUuid: detail.conversationUuid,
+          title: detail.title,
+          createdByUserUuid: detail.createdByUserUuid,
+          createdAt: detail.createdAt,
+          memberCount: detail.members.length,
+          lastMessageEncryptedWire: null,
+          lastMessageAt: null,
+          lastMessageIsFromMe: false,
+          unreadCount: 0,
+        });
+      const merged = mergeGroupDetail(base, detail);
+      if (existing) {
+        return prev.map((g) =>
+          g.conversationUuid === detail.conversationUuid ? merged : g,
+        );
+      }
+      return [merged, ...prev];
+    });
+  }, []);
+
+  const handleGroupSaveTitle = useCallback(
+    async (nextTitle: string): Promise<boolean> => {
+      const uuid = selectedGroupUuid?.trim();
+      if (!uuid) return false;
+      setGroupMembersBusy(true);
+      setGroupMembersError(null);
+      try {
+        const detail = await apiPatchGroupTitle(uuid, nextTitle);
+        applyGroupDetailLocal(detail);
+        return true;
+      } catch (e) {
+        setGroupMembersError(
+          e instanceof ApiRequestError ? e.message : "Не удалось сохранить название.",
+        );
+        return false;
+      } finally {
+        setGroupMembersBusy(false);
+      }
+    },
+    [applyGroupDetailLocal, selectedGroupUuid],
+  );
+
+  const handleGroupRemoveMember = useCallback(
+    async (userUuid: string): Promise<boolean> => {
+      const uuid = selectedGroupUuid?.trim();
+      const target = userUuid.trim();
+      if (!uuid || !target) return false;
+      setGroupMembersBusy(true);
+      setGroupMembersError(null);
+      try {
+        await apiRemoveGroupMember(uuid, target);
+        const detail = await apiGetGroup(uuid);
+        applyGroupDetailLocal(detail);
+        return true;
+      } catch (e) {
+        setGroupMembersError(
+          e instanceof ApiRequestError ? e.message : "Не удалось удалить участника.",
+        );
+        return false;
+      } finally {
+        setGroupMembersBusy(false);
+      }
+    },
+    [applyGroupDetailLocal, selectedGroupUuid],
+  );
+
+  const handleGroupAddMember = useCallback(
+    async (userUuid: string): Promise<boolean> => {
+      const uuid = selectedGroupUuid?.trim();
+      const target = userUuid.trim();
+      if (!uuid || !target) return false;
+      setGroupMembersBusy(true);
+      setGroupMembersError(null);
+      try {
+        const { ok, missing } = await filterMembersWithE2eKeys([target]);
+        if (missing.length > 0 || ok.length === 0) {
+          setGroupMembersError(
+            "У участника нет ключа шифрования. Пусть один раз войдёт в аккаунт.",
+          );
+          return false;
+        }
+        const detail = await apiAddGroupMember(uuid, ok[0]!);
+        applyGroupDetailLocal(detail);
+        return true;
+      } catch (e) {
+        setGroupMembersError(
+          e instanceof ApiRequestError ? e.message : "Не удалось добавить участника.",
+        );
+        return false;
+      } finally {
+        setGroupMembersBusy(false);
+      }
+    },
+    [applyGroupDetailLocal, selectedGroupUuid],
   );
 
   const confirmDeleteConversation = useCallback(() => {
@@ -2610,16 +2885,109 @@ function MessagesChatInner() {
   const handleSend = useCallback(async () => {
     if (selectedTarget?.kind === "groupChat" && selectedGroupUuid && groupChatMe) {
       if (!compose.canSend || compose.mode === "voice") return;
+      if (sending) return;
       const textBody = compose.text.trim();
       if (!textBody) return;
+      const myUuid = me?.userUuid?.trim();
+      if (!myUuid) {
+        setThreadError("Профиль не загружен. Обновите страницу.");
+        return;
+      }
+      if (fscpBootstrapLoading) {
+        setThreadError("Ключи шифрования ещё загружаются…");
+        return;
+      }
+      if (!fscpMaterial) {
+        setThreadError(
+          fscpBootstrapError
+            ? `FSCP: ${fscpBootstrapError}`
+            : "Нужно разблокировать ключи шифрования, чтобы писать в группу.",
+        );
+        if (fscpStatusNeedsPassword(fscpStatus)) openFscpUnlock();
+        return;
+      }
+      let memberUuids =
+        selectedGroupChat?.members.map((m) => m.userUuid).filter(Boolean) ?? [];
+      if (memberUuids.length < 2) {
+        try {
+          const detail = await apiGetGroup(selectedGroupUuid);
+          memberUuids = detail.members.map((m) => m.userUuid);
+          setGroupChats((prev) =>
+            prev.map((g) =>
+              g.conversationUuid === selectedGroupUuid
+                ? mergeGroupDetail(g, detail)
+                : g,
+            ),
+          );
+        } catch (e) {
+          setThreadError(
+            e instanceof ApiRequestError ? e.message : "Не удалось загрузить участников группы.",
+          );
+          return;
+        }
+      }
       pendingInsertLiftRef.current = true;
-      appendMockGroupPlaintext({
-        conversationUuid: selectedGroupUuid,
-        sender: groupChatMe,
-        body: textBody,
-      });
+      setSending(true);
+      setThreadError(null);
+      const tempUuid = `pending-group-${Date.now()}`;
+      const pendingRow: MessageThreadItemDto = {
+        messageUuid: tempUuid,
+        content: textBody,
+        encryptedForMe: null,
+        createdAt: new Date().toISOString(),
+        isFromMe: true,
+        senderUserUuid: myUuid,
+        sendStatus: "sending",
+      };
+      pendingOutgoingRef.current = pendingRow;
+      setThreadMessages((prev) => [...prev, pendingRow]);
       compose.reset();
       setReplyTo(null);
+      try {
+        const wire = await buildGroupTextMessageWire({
+          conversationUuid: selectedGroupUuid,
+          senderUserUuid: myUuid,
+          material: fscpMaterial,
+          memberUserUuids: memberUuids,
+          text: textBody,
+        });
+        const sent = await apiSendGroupMessage(selectedGroupUuid, wire);
+        const realRow: MessageThreadItemDto = {
+          messageUuid: sent.messageUuid,
+          content: null,
+          encryptedForMe: sent.encryptedWire,
+          createdAt: sent.createdAt,
+          isFromMe: true,
+          senderUserUuid: myUuid,
+        };
+        pendingOutgoingRef.current = realRow;
+        setDecryptedById((prev) => ({
+          ...prev,
+          [sent.messageUuid]: {
+            type: "blocks",
+            version: 1,
+            blocks: [{ kind: "text", body: textBody }],
+            clientCreatedAt: sent.createdAt,
+          },
+        }));
+        invalidateGroupConversationThread(myUuid.toLowerCase(), selectedGroupUuid);
+        const page = await getGroupConversationThread(myUuid.toLowerCase(), selectedGroupUuid);
+        setThreadMessages(groupApiMessagesToThread(page.items));
+        pendingOutgoingRef.current = null;
+        void refreshGroups();
+      } catch (e) {
+        setThreadMessages((prev) => prev.filter((m) => m.messageUuid !== tempUuid));
+        pendingOutgoingRef.current = null;
+        setThreadError(
+          e instanceof ApiRequestError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : "Не удалось отправить сообщение в группу.",
+        );
+      } finally {
+        setSending(false);
+      }
       return;
     }
 
@@ -2986,11 +3354,15 @@ function MessagesChatInner() {
     fscpBootstrapError,
     fscpBootstrapLoading,
     fscpMaterial,
+    fscpStatus,
+    openFscpUnlock,
     me?.userUuid,
     refreshConversationList,
+    refreshGroups,
     replyTo,
     selectedOtherUuid,
     selectedGroupUuid,
+    selectedGroupChat,
     selectedTarget,
     groupChatMe,
     sendVoiceMessageOptimistic,
@@ -3573,7 +3945,10 @@ function MessagesChatInner() {
                     <button
                       type="button"
                       className={styles.messagesChatHeaderNameLink}
-                      onClick={() => setGroupMembersOpen(true)}
+                      onClick={() => {
+                        setGroupMembersError(null);
+                        setGroupMembersOpen(true);
+                      }}
                       aria-label={`${openChatHeader.title}, ${openChatHeader.status?.text ?? ""}`}
                     >
                       <div className={styles.messagesChatHeaderNameRow}>
@@ -3674,7 +4049,8 @@ function MessagesChatInner() {
                     ? "Проверяем ключи шифрования — временные проблемы с сетью, повторяем попытку автоматически."
                     : "Ключи шифрования временно недоступны из-за ошибки окружения на этом устройстве."}
                 </p>
-              ) : openChatHeader.kind === "dm" && fscpBootstrapError ? (
+              ) : (openChatHeader.kind === "dm" || openChatHeader.kind === "group") &&
+                fscpBootstrapError ? (
                 <p className={styles.messagesError}>
                   FSCP: {fscpBootstrapError}
                   {fscpStatusNeedsPassword(fscpStatus) ? (
@@ -3767,7 +4143,9 @@ function MessagesChatInner() {
                           onCopy={() => void copyMessageContent(content)}
                           onReply={canReply ? () => beginReplyToMessage(message) : undefined}
                           onDelete={
-                            message.isFromMe ? () => void handleDeleteMessage(message) : undefined
+                            message.isFromMe && !isGroupChatOpen
+                              ? () => void handleDeleteMessage(message)
+                              : undefined
                           }
                         >
                           <div
@@ -3966,17 +4344,19 @@ function MessagesChatInner() {
                                 item.messages[item.messages.length - 1]?.senderUserUuid?.trim() ||
                                 item.messages[0]?.senderUserUuid?.trim() ||
                                 "";
-                              const member = selectedGroupChat.members.find(
-                                (m) => m.userUuid === senderUuid,
+                              const member = findGroupMember(
+                                selectedGroupChat.members,
+                                senderUuid,
                               );
                               const label =
-                                member?.displayName || member?.username || "?";
+                                member?.displayName || member?.username || "Участник";
                               return (
                                 <FloraAvatar
                                   plain
                                   size={45}
                                   displayName={label}
-                                  username={member?.username}
+                                  username={member?.username || ""}
+                                  avatarUuid={member?.avatarUuid}
                                   seed={senderUuid || label}
                                 />
                               );
@@ -4356,33 +4736,36 @@ function MessagesChatInner() {
         open={createGroupOpen}
         conversations={conversations}
         onClose={() => setCreateGroupOpen(false)}
-        onCreate={(result) => {
+        onCreate={async (result) => {
           if (!groupChatMe) {
             window.alert("Войдите в аккаунт, чтобы создать группу.");
             return false;
           }
-          const members = result.memberUserUuids
-            .map((uuid) => {
-              const peer = conversations.find((c) => c.otherUserUuid === uuid);
-              if (!peer) return null;
-              return {
-                userUuid: peer.otherUserUuid,
-                username: peer.otherUsername.replace(/^@+/, "") || "user",
-                displayName: peer.otherDisplayName || peer.otherUsername || "Участник",
-              } satisfies GroupMember;
-            })
-            .filter((m): m is GroupMember => m != null);
           try {
-            const created = createMockGroupChat({
+            const { ok, missing } = await filterMembersWithE2eKeys(result.memberUserUuids);
+            if (missing.length > 0) {
+              window.alert(
+                "У некоторых участников нет ключа шифрования. Пусть они один раз войдут в аккаунт.",
+              );
+              return false;
+            }
+            if (ok.length === 0) {
+              window.alert("Выберите хотя бы одного участника с ключом шифрования.");
+              return false;
+            }
+            const created = await apiCreateGroup({
               title: result.title,
-              creator: groupChatMe,
-              members,
+              memberUserUuids: ok,
             });
-            setGroupChats(listMockGroupChats());
+            await refreshGroups();
             openGroupChat(created.conversationUuid);
             return true;
-          } catch {
-            window.alert("Не удалось создать группу. Проверьте число участников.");
+          } catch (e) {
+            window.alert(
+              e instanceof ApiRequestError
+                ? e.message
+                : "Не удалось создать группу. Проверьте участников и ключи.",
+            );
             return false;
           }
         }}
@@ -4393,7 +4776,23 @@ function MessagesChatInner() {
           open={groupMembersOpen}
           title={selectedGroupChat.title}
           members={selectedGroupChat.members}
-          onClose={() => setGroupMembersOpen(false)}
+          meUserUuid={me?.userUuid ?? ""}
+          isCreator={
+            (me?.userUuid?.trim().toLowerCase() ?? "") !== "" &&
+            selectedGroupChat.createdByUserUuid.trim().toLowerCase() ===
+              (me?.userUuid?.trim().toLowerCase() ?? "")
+          }
+          addCandidates={conversations}
+          busy={groupMembersBusy}
+          error={groupMembersError}
+          onClose={() => {
+            if (groupMembersBusy) return;
+            setGroupMembersError(null);
+            setGroupMembersOpen(false);
+          }}
+          onSaveTitle={handleGroupSaveTitle}
+          onRemoveMember={handleGroupRemoveMember}
+          onAddMember={handleGroupAddMember}
         />
       ) : null}
     </>

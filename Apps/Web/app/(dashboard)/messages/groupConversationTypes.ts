@@ -1,4 +1,4 @@
-/** Mock group-chat model (Apps/Web only). Not FSCP-ORG folder `kind: "group"`. */
+/** Server-backed FSCP-G group chat model (Apps/Web). Not FSCP-ORG folder `kind: "group"`. */
 
 export const GROUP_CHAT_MAX_MEMBERS = 128;
 
@@ -6,13 +6,17 @@ export type GroupMember = {
   userUuid: string;
   username: string;
   displayName: string;
+  avatarUuid?: string | null;
 };
 
 export type GroupChat = {
   conversationUuid: string;
   title: string;
+  createdByUserUuid: string;
   members: GroupMember[];
+  memberCount: number;
   lastMessagePreview: string | null;
+  lastMessageEncryptedWire: string | null;
   lastMessageAt: string | null;
   unreadCount: number;
   createdAt: string;
@@ -24,6 +28,7 @@ export type GroupThreadMessage = {
   senderUserUuid: string;
   body: string;
   createdAt: string;
+  encryptedWire?: string;
 };
 
 export type MessagesListItem =

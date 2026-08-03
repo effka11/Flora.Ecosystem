@@ -4233,7 +4233,17 @@
   }
 }
 
-/* —— Mock group chats (UI shell; not FSCP-ORG folder kind) —— */
+/* —— Group chats (FSCP-G; not FSCP-ORG folder kind) —— */
+
+.groupMembersTitleReadonly {
+  margin: 0 0 calc(1 * var(--flora-grid-step));
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-white-template);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .groupMembersList {
   list-style: none;
@@ -4242,7 +4252,18 @@
   display: flex;
   flex-direction: column;
   gap: calc(1 * var(--flora-grid-step-fine));
-  max-height: calc(28 * var(--flora-grid-step));
+  max-height: calc(20 * var(--flora-grid-step));
+  overflow-y: auto;
+}
+
+.groupMembersAddList {
+  list-style: none;
+  margin: 0 0 calc(1 * var(--flora-grid-step));
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step-fine));
+  max-height: calc(12 * var(--flora-grid-step));
   overflow-y: auto;
 }
 
@@ -4255,6 +4276,7 @@
 
 .groupMembersBody {
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -4276,4 +4298,20 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.groupMembersRemove {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--flora-danger, #e85d5d);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  padding: calc(0.5 * var(--flora-grid-step-fine)) 0;
+}
+
+.groupMembersRemove:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

@@ -73,6 +73,7 @@ export function useDashboardRealtime(enabled: boolean): void {
             notifyMessagesUnreadChanged({
               conversationUuid: signal.conversationUuid,
               senderUserUuid: signal.senderUserUuid,
+              kind: signal.kind,
             });
           },
           onOpen: () => {

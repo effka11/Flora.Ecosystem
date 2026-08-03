@@ -6,6 +6,7 @@ mod conversations;
 mod cursor;
 mod e2e;
 mod e2e_epochs;
+mod groups;
 
 pub use assets::{AssetBlob, AssetError, AssetService};
 pub use chat_list::{ChatListError, ChatListService};
@@ -19,3 +20,4 @@ pub use e2e_epochs::{
     AddPendingDeviceError, ApproveDeviceError, CreateEpochError, E2eEpochService, RecoverKeyError,
     RevokeDeviceError, UnlockChallengeError, UnlockCompleteError,
 };
+pub use groups::{GroupSendError, GroupService};

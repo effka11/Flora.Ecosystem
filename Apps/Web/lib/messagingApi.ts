@@ -495,6 +495,7 @@ export const MESSAGES_UNREAD_CHANGED_EVENT = "flora:messages-changed";
 export type MessagesChangedDetail = {
   conversationUuid?: string;
   senderUserUuid?: string;
+  kind?: "dm" | "groupChat";
 };
 
 export function notifyMessagesUnreadChanged(detail?: MessagesChangedDetail): void {

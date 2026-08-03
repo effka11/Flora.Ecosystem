@@ -76,13 +76,14 @@ export type ChatMoreMenuKind = MessagesMoreMenuKind;
 type ChatMoreMenuPanelProps = {
   firstActionRef: RefObject<HTMLButtonElement | null>;
   onAction: () => void;
-  /** DM — полный набор; group — только удаление (рабочие пункты). */
+  /** DM — полный набор; group — выход из группы. */
   kind?: MessagesMoreMenuKind;
   onSearch?: () => void;
   onMedia?: () => void;
   onPin?: () => void;
   /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования» (только dm). */
   onSafetyNumber?: () => void;
+  /** DM: удалить чат; group: выйти из группы. */
   onDelete?: () => void;
   muteSubmenuOpen: boolean;
   isSubmenuClosing: boolean;
@@ -147,7 +148,7 @@ export function ChatMoreMenuPanel({
       <MenuRow
         buttonRef={firstActionRef}
         icon={<IconDelete />}
-        label="Удалить группу"
+        label="Выйти из группы"
         danger
         onClick={() => {
           onDelete?.();

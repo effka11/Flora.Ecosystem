@@ -13,15 +13,16 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use flora_messaging_contracts::{
-    AddChatFolderMemberRequest, CreateChatFolderRequest, DeleteConversationOutcome,
-    DeleteMessageOutcome, PostConversationMessageRequest,
+    AddChatFolderMemberRequest, AddGroupMemberRequest, CreateChatFolderRequest, CreateGroupRequest,
+    DeleteConversationOutcome, DeleteMessageOutcome, PatchGroupRequest,
+    PostConversationMessageRequest, PostGroupMessageRequest,
 };
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::application::{
     AssetService, ChatListError, ChatListService, ConversationService, E2eEpochService,
-    E2eKeyBackupService, SendMessageError,
+    E2eKeyBackupService, GroupSendError, GroupService, SendMessageError,
 };
 
 /// JWT user (тот же тип, что внедряет flora-social).
@@ -34,6 +35,7 @@ const MESSAGING_BODY_LIMIT: usize = 37 * 1024 * 1024;
 #[derive(Clone)]
 pub struct MessagingState {
     pub conversations: Arc<ConversationService>,
+    pub groups: Arc<GroupService>,
     pub chat_list: Arc<ChatListService>,
     pub assets: Arc<AssetService>,
     pub e2e: Arc<E2eKeyBackupService>,
@@ -44,6 +46,31 @@ pub fn protected_router(state: MessagingState) -> Router {
     Router::new()
         .route("/api/messaging/unread-count", get(get_unread_count))
         .route("/api/messaging/conversations", get(get_conversations))
+        .route("/api/messaging/groups", get(list_groups).post(create_group))
+        .route(
+            "/api/messaging/groups/{conversation_uuid}",
+            get(get_group).patch(patch_group),
+        )
+        .route(
+            "/api/messaging/groups/{conversation_uuid}/members",
+            get(list_group_members).post(add_group_member),
+        )
+        .route(
+            "/api/messaging/groups/{conversation_uuid}/members/{user_uuid}",
+            delete(remove_group_member),
+        )
+        .route(
+            "/api/messaging/groups/{conversation_uuid}/leave",
+            post(leave_group),
+        )
+        .route(
+            "/api/messaging/groups/{conversation_uuid}/messages",
+            get(get_group_messages).post(post_group_message),
+        )
+        .route(
+            "/api/messaging/groups/{conversation_uuid}/read",
+            post(mark_group_read),
+        )
         .route(
             "/api/messaging/push-preview-targets/{recipient_uuid}",
             get(get_push_preview_targets),
@@ -248,9 +275,211 @@ async fn get_unread_count(
     State(state): State<MessagingState>,
     Extension(user): Extension<CurrentUser>,
 ) -> Response {
-    match state.conversations.total_unread_count(user.0).await {
-        Ok(count) => Json(serde_json::json!({ "unreadCount": count })).into_response(),
+    let dm = match state.conversations.total_unread_count(user.0).await {
+        Ok(count) => count,
+        Err(e) => return internal(e),
+    };
+    let group = match state.groups.group_unread_count(user.0).await {
+        Ok(count) => count,
+        Err(e) => return internal(e),
+    };
+    Json(serde_json::json!({ "unreadCount": dm + group })).into_response()
+}
+
+async fn create_group(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Json(body): Json<CreateGroupRequest>,
+) -> Response {
+    match state.groups.create_group(user.0, body).await {
+        Ok(detail) => (StatusCode::CREATED, Json(detail)).into_response(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn list_groups(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
+    match state.groups.list_groups(user.0).await {
+        Ok(page) => Json(page).into_response(),
         Err(e) => internal(e),
+    }
+}
+
+async fn get_group(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+) -> Response {
+    match state.groups.group_detail(user.0, conversation_uuid).await {
+        Ok(Some(detail)) => Json(detail).into_response(),
+        Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn patch_group(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Json(body): Json<PatchGroupRequest>,
+) -> Response {
+    match state
+        .groups
+        .patch_title(user.0, conversation_uuid, body)
+        .await
+    {
+        Ok(Some(detail)) => Json(detail).into_response(),
+        Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn list_group_members(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+) -> Response {
+    match state.groups.group_detail(user.0, conversation_uuid).await {
+        Ok(Some(detail)) => Json(detail.members).into_response(),
+        Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn add_group_member(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Json(body): Json<AddGroupMemberRequest>,
+) -> Response {
+    match state
+        .groups
+        .add_member(user.0, conversation_uuid, body)
+        .await
+    {
+        Ok(Some(detail)) => Json(detail).into_response(),
+        Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn remove_group_member(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path((conversation_uuid, user_uuid)): Path<(Uuid, Uuid)>,
+) -> Response {
+    match state
+        .groups
+        .remove_member(user.0, conversation_uuid, user_uuid)
+        .await
+    {
+        Ok(Some(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn leave_group(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+) -> Response {
+    match state.groups.leave(user.0, conversation_uuid).await {
+        Ok(Some(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn get_group_messages(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Query(q): Query<MessagesQuery>,
+) -> Response {
+    match state
+        .groups
+        .messages_page(user.0, conversation_uuid, q.cursor.as_deref(), q.take)
+        .await
+    {
+        Ok(Some(page)) => Json(page).into_response(),
+        Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+async fn post_group_message(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+    Json(body): Json<PostGroupMessageRequest>,
+) -> Response {
+    match state
+        .groups
+        .send_message(user.0, conversation_uuid, body)
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(GroupSendError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(GroupSendError::Forbidden(msg)) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        Err(GroupSendError::NotFound) => not_found_conversation(),
+        Err(GroupSendError::Conflict) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "Сообщение с таким messageUuid уже существует с другим содержимым."
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn mark_group_read(
+    State(state): State<MessagingState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(conversation_uuid): Path<Uuid>,
+) -> Response {
+    match state.groups.mark_read(user.0, conversation_uuid).await {
+        Ok(Some(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(None) => not_found_conversation(),
+        Err(e) => map_send_err(e),
+    }
+}
+
+fn not_found_conversation() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "Разговор не найден." })),
+    )
+        .into_response()
+}
+
+fn map_send_err(e: SendMessageError) -> Response {
+    match e {
+        SendMessageError::BadRequest(msg) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        SendMessageError::NotFound(msg) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        SendMessageError::Forbidden(msg) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
     }
 }
 
