@@ -98,7 +98,7 @@
     "@flora/fscp": "file:../../Products/FSCP",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^2.2.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@noble/post-quantum": "^0.6.1",
