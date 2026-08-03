@@ -69,13 +69,17 @@ function IconShield() {
   );
 }
 
+export type ChatMoreMenuKind = "dm" | "group";
+
 type ChatMoreMenuPanelProps = {
   firstActionRef: RefObject<HTMLButtonElement | null>;
   onAction: () => void;
+  /** DM — полный набор; group — без safety number, другая подпись удаления. */
+  kind?: ChatMoreMenuKind;
   onSearch?: () => void;
   onMedia?: () => void;
   onPin?: () => void;
-  /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования». */
+  /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования» (только dm). */
   onSafetyNumber?: () => void;
   onDelete?: () => void;
   muteSubmenuOpen: boolean;
@@ -123,6 +127,7 @@ function MenuRow({
 export function ChatMoreMenuPanel({
   firstActionRef,
   onAction,
+  kind = "dm",
   onSearch,
   onMedia,
   onPin,
@@ -133,6 +138,7 @@ export function ChatMoreMenuPanel({
   onToggleMuteSubmenu,
 }: ChatMoreMenuPanelProps) {
   const submenuExpanded = muteSubmenuOpen && !isSubmenuClosing;
+  const isGroup = kind === "group";
 
   return (
     <>
@@ -172,17 +178,19 @@ export function ChatMoreMenuPanel({
           onClick={onToggleMuteSubmenu}
         />
       </div>
-      <MenuRow
-        icon={<IconShield />}
-        label="Проверка шифрования"
-        onClick={() => {
-          onSafetyNumber?.();
-          onAction();
-        }}
-      />
+      {!isGroup ? (
+        <MenuRow
+          icon={<IconShield />}
+          label="Проверка шифрования"
+          onClick={() => {
+            onSafetyNumber?.();
+            onAction();
+          }}
+        />
+      ) : null}
       <MenuRow
         icon={<IconDelete />}
-        label="Удалить чат"
+        label={isGroup ? "Удалить группу" : "Удалить чат"}
         danger
         onClick={() => {
           onDelete?.();

@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { floraDurationMs } from "@/lib/floraMotion";
-import { ChatMoreMenuPanel } from "@/app/(dashboard)/messages/ChatMoreMenuPanel";
-import { ConversationMoreMenuPanel } from "./ConversationMoreMenuPanel";
+import {
+  ChatMoreMenuPanel,
+  type ChatMoreMenuKind,
+} from "@/app/(dashboard)/messages/ChatMoreMenuPanel";
+import { ConversationMoreMenuPanel, type ConversationMoreMenuKind } from "./ConversationMoreMenuPanel";
 import {
   FLORA_RECT_MENU_PANEL_ATTR,
   isFloraRectMenuOverlayTarget,
@@ -134,6 +137,8 @@ export type PostMoreMenuRectProps = {
   onConversationUnarchive?: () => void;
   folderOptions?: readonly { id: string; label: string }[];
   onAddToFolder?: (folderId: string) => void;
+  /** Набор пунктов ⋮ в списке чатов: dm (по умолчанию) | group. */
+  conversationMenuKind?: ConversationMoreMenuKind;
   /** Свой пост — показать «Удалить пост». */
   canDeletePost?: boolean;
   onDeletePost?: () => void;
@@ -148,6 +153,8 @@ export type PostMoreMenuRectProps = {
   onChatPin?: () => void;
   /** Safety number 1:1 (FSCP §Safety number) — «Проверка шифрования». */
   onChatSafetyNumber?: () => void;
+  /** Набор пунктов ⋮ в открытом чате: dm (по умолчанию) | group. */
+  chatMenuKind?: ChatMoreMenuKind;
   /** Удалить весь диалог (список чатов и шапка открытого чата). */
   onDeleteConversation?: () => void;
 };
@@ -168,6 +175,7 @@ export function PostMoreMenuRect({
   onConversationUnarchive,
   folderOptions = [],
   onAddToFolder,
+  conversationMenuKind = "dm",
   canDeletePost = false,
   onDeletePost,
   onNotInterested,
@@ -177,6 +185,7 @@ export function PostMoreMenuRect({
   onChatMedia,
   onChatPin,
   onChatSafetyNumber,
+  chatMenuKind = "dm",
   onDeleteConversation,
 }: PostMoreMenuRectProps) {
   const deleteConversation = onDeleteConversation;
@@ -310,6 +319,7 @@ export function PostMoreMenuRect({
           <ConversationMoreMenuPanel
             firstActionRef={firstActionRef}
             onAction={requestClose}
+            kind={conversationMenuKind}
             muteSubmenuOpen={muteSubmenu.muteSubmenuOpen}
             isSubmenuClosing={muteSubmenu.isSubmenuClosing}
             onToggleMuteSubmenu={muteSubmenu.toggleMuteSubmenu}
@@ -324,6 +334,7 @@ export function PostMoreMenuRect({
           <ChatMoreMenuPanel
             firstActionRef={firstActionRef}
             onAction={requestClose}
+            kind={chatMenuKind}
             onSearch={onChatSearch}
             onMedia={onChatMedia}
             onPin={onChatPin}

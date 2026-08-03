@@ -9,7 +9,7 @@ import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { PostMoreMenuRect } from "@/app/_shared/PostMoreMenuRect";
 import postMoreMenuStyles from "@/app/_shared/PostMoreMenu.module.css";
-// import { PostMoreMenu } from "@/app/_shared/PostMoreMenu";
+import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { TabSearchInput } from "@/app/_shared/TabSearchInput";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { ApiRequestError, isDevLocalOfflineSession } from "@/lib/auth";
@@ -204,6 +204,26 @@ import {
 } from "./conversationMute";
 import { MessagesConversationMuteIndicator } from "./MessagesConversationMuteIndicator";
 import { CreateChatFolderDialog } from "./CreateChatFolderDialog";
+import { CreateGroupDialog } from "./CreateGroupDialog";
+import { GroupMembersPanel } from "./GroupMembersPanel";
+import {
+  formatGroupMembersLabel,
+  type GroupChat,
+  type GroupMember,
+  type GroupThreadMessage,
+  type MessagesListItem,
+  type SelectedTarget,
+} from "./groupConversationTypes";
+import {
+  appendMockGroupPlaintext,
+  createMockGroupChat,
+  ensureMockGroupViewer,
+  getMockGroupChat,
+  getMockGroupThread,
+  listMockGroupChats,
+  markMockGroupRead,
+  subscribeMockGroupStore,
+} from "./mockGroupStore";
 import { MessagesChatFolders } from "./MessagesChatFolders";
 import { useMessagesListPreviewDecrypt } from "./useMessagesListPreviewDecrypt";
 import { usePreloadConversationThreads } from "./usePreloadConversationThreads";
@@ -311,6 +331,20 @@ function toMessageDto(m: MsgMessageDto): MessageThreadItemDto {
     isFromMe: m.isFromMe,
     isRead: m.isRead,
   };
+}
+
+function groupThreadToMessages(
+  thread: readonly GroupThreadMessage[],
+  meUserUuid: string | null | undefined,
+): MessageThreadItemDto[] {
+  const me = meUserUuid?.trim() ?? "";
+  return thread.map((m) => ({
+    messageUuid: m.messageUuid,
+    content: m.body,
+    encryptedForMe: null,
+    createdAt: m.createdAt,
+    isFromMe: me.length > 0 && m.senderUserUuid === me,
+  }));
 }
 
 /** Текст пузыря при любой ошибке расшифровки FSCP (в т.ч. сообщения libsodium на англ.). */
@@ -527,9 +561,13 @@ function MessagesChatInner() {
   const [listLoading, setListLoading] = useState(() => conversationsCache.peek() === null);
   const [listError, setListError] = useState<string | null>(null);
 
-  const [selectedOtherUuid, setSelectedOtherUuid] = useState<string | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<SelectedTarget | null>(null);
+  const selectedOtherUuid = selectedTarget?.kind === "dm" ? selectedTarget.otherUserUuid : null;
+  const selectedGroupUuid =
+    selectedTarget?.kind === "groupChat" ? selectedTarget.conversationUuid : null;
   /** Снимок строки списка при открытии чата (заголовок не пропадает, если список ещё перезагружается). */
   const [selectedPeer, setSelectedPeer] = useState<ConversationListItemDto | null>(null);
+  const [groupChats, setGroupChats] = useState<GroupChat[]>(() => listMockGroupChats());
   const [threadMessages, setThreadMessages] = useState<MessageThreadItemDto[]>([]);
   /** Нормализованный me.userUuid на момент последней успешной загрузки ленты; без этого не расшифровываем (иначе кэш чужой ленты + новый JWT). */
   const [threadFetchedForViewerNorm, setThreadFetchedForViewerNorm] = useState<string | null>(null);
@@ -553,7 +591,8 @@ function MessagesChatInner() {
   const [dropdownFilterOpen, setDropdownFilterOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
-  const [createGroupSoonOpen, setCreateGroupSoonOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [groupMembersOpen, setGroupMembersOpen] = useState(false);
   /** Локальный until-мут (UI countdown); forever/sync — overlay.mutedByPeer. */
   const [mutedPeers, setMutedPeers] = useState<Record<string, ConversationMuteEntry>>({});
   const overlayState = useChatListOverlayState();
@@ -960,21 +999,26 @@ function MessagesChatInner() {
   }, []);
 
   const closeChat = useCallback(() => {
-    if (!selectedOtherUuid) return;
+    if (!selectedTarget) return;
     applyPanelTransition("fromLeft");
-    setSelectedOtherUuid(null);
+    setSelectedTarget(null);
     setSelectedPeer(null);
-  }, [applyPanelTransition, selectedOtherUuid]);
+  }, [applyPanelTransition, selectedTarget]);
 
   const switchChat = useCallback(
     (chat: ConversationListItemDto, fromMainList: boolean) => {
-      if (chat.otherUserUuid === selectedOtherUuid) return;
+      if (
+        selectedTarget?.kind === "dm" &&
+        selectedTarget.otherUserUuid === chat.otherUserUuid
+      ) {
+        return;
+      }
 
-      if (!selectedOtherUuid) {
+      if (!selectedTarget) {
         applyPanelTransition("fromRight");
-      } else {
+      } else if (selectedTarget.kind === "dm") {
         const prevIdx = conversationsRef.current.findIndex(
-          (c) => c.otherUserUuid === selectedOtherUuid,
+          (c) => c.otherUserUuid === selectedTarget.otherUserUuid,
         );
         const nextIdx = conversationsRef.current.findIndex(
           (c) => c.otherUserUuid === chat.otherUserUuid,
@@ -984,13 +1028,31 @@ function MessagesChatInner() {
         } else {
           applyPanelTransition("fromRight");
         }
+      } else {
+        applyPanelTransition("fromRight");
       }
 
       // alignRailScrollFromMainListRef.current = fromMainList;
+      void fromMainList;
       setSelectedPeer(chat);
-      setSelectedOtherUuid(chat.otherUserUuid);
+      setSelectedTarget({ kind: "dm", otherUserUuid: chat.otherUserUuid });
     },
-    [applyPanelTransition, selectedOtherUuid],
+    [applyPanelTransition, selectedTarget],
+  );
+
+  const openGroupChat = useCallback(
+    (conversationUuid: string) => {
+      if (
+        selectedTarget?.kind === "groupChat" &&
+        selectedTarget.conversationUuid === conversationUuid
+      ) {
+        return;
+      }
+      applyPanelTransition("fromRight");
+      setSelectedPeer(null);
+      setSelectedTarget({ kind: "groupChat", conversationUuid });
+    },
+    [applyPanelTransition, selectedTarget],
   );
 
   const applyConversationPage = useCallback((page: MsgConversationsPage) => {
@@ -1208,7 +1270,13 @@ function MessagesChatInner() {
       window.clearTimeout(deadlineTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- сброс черновика только при смене чата/зрителя
-  }, [selectedOtherUuid, me?.userUuid]);
+  }, [selectedOtherUuid, selectedGroupUuid, me?.userUuid]);
+
+  useEffect(() => {
+    return subscribeMockGroupStore(() => {
+      setGroupChats(listMockGroupChats());
+    });
+  }, []);
 
   useEffect(() => {
     if (!isClient || !hasToken) return;
@@ -1232,12 +1300,13 @@ function MessagesChatInner() {
       otherUserIsOnline: false,
       otherUserLastSeenAt: null,
     });
-    setSelectedOtherUuid(withUuid);
+    setSelectedTarget({ kind: "dm", otherUserUuid: withUuid });
     router.replace("/messages", { scroll: false });
   }, [isClient, hasToken, router, searchParams, applyPanelTransition]);
 
   useEffect(() => {
     if (!isClient || !hasToken || !selectedOtherUuid) {
+      if (selectedGroupUuid) return;
       threadFetchContextRef.current = { peer: null, viewerNorm: "" };
       setThreadMessages([]);
       setThreadFetchedForViewerNorm(null);
@@ -1313,7 +1382,23 @@ function MessagesChatInner() {
     return () => {
       cancelled = true;
     };
-  }, [isClient, hasToken, selectedOtherUuid, me?.userUuid]);
+  }, [isClient, hasToken, selectedOtherUuid, selectedGroupUuid, me?.userUuid]);
+
+  useEffect(() => {
+    if (!selectedGroupUuid) {
+      setGroupMembersOpen(false);
+      return;
+    }
+    const sync = () => {
+      setThreadMessages(groupThreadToMessages(getMockGroupThread(selectedGroupUuid), me?.userUuid));
+      setThreadLoading(false);
+      setThreadError(null);
+      setThreadFetchedForViewerNorm(me?.userUuid?.trim().toLowerCase() ?? null);
+      markMockGroupRead(selectedGroupUuid);
+    };
+    sync();
+    return subscribeMockGroupStore(sync);
+  }, [selectedGroupUuid, me?.userUuid]);
 
   const pinMessagesToBottom = useCallback((behavior: ScrollBehavior) => {
     const el = scrollMessagesRef.current;
@@ -1451,6 +1536,78 @@ function MessagesChatInner() {
     searchQuery,
     sortBy,
   ]);
+
+  /** DM + mock groupChat rows. Groups only in folder «все» (not archive/custom folders). */
+  const mergedListItems = useMemo((): MessagesListItem[] => {
+    const query = searchQuery.trim().toLowerCase();
+    const items: MessagesListItem[] = filteredConversations.map((conversation) => ({
+      kind: "dm",
+      conversation,
+    }));
+
+    const showGroups =
+      activeFolder === "all" && (filterFrom === "all" || filterFrom === "people");
+    if (showGroups) {
+      let groups = groupChats;
+      if (sortBy === "unread") {
+        groups = groups.filter((g) => g.unreadCount > 0);
+      }
+      if (query) {
+        groups = groups.filter((g) => {
+          const title = g.title.toLowerCase();
+          const preview = (g.lastMessagePreview ?? "").toLowerCase();
+          return title.includes(query) || preview.includes(query);
+        });
+      }
+      for (const group of groups) {
+        items.push({ kind: "groupChat", group });
+      }
+    }
+
+    items.sort((a, b) => {
+      const at =
+        a.kind === "dm"
+          ? Date.parse(a.conversation.lastMessageAt || "") || 0
+          : Date.parse(a.group.lastMessageAt || a.group.createdAt || "") || 0;
+      const bt =
+        b.kind === "dm"
+          ? Date.parse(b.conversation.lastMessageAt || "") || 0
+          : Date.parse(b.group.lastMessageAt || b.group.createdAt || "") || 0;
+      return bt - at;
+    });
+    return items;
+  }, [
+    activeFolder,
+    filterFrom,
+    filteredConversations,
+    groupChats,
+    searchQuery,
+    sortBy,
+  ]);
+
+  const selectedGroupChat = useMemo(() => {
+    if (!selectedGroupUuid) return null;
+    return (
+      groupChats.find((g) => g.conversationUuid === selectedGroupUuid) ??
+      getMockGroupChat(selectedGroupUuid)
+    );
+  }, [groupChats, selectedGroupUuid]);
+
+  const groupChatMe = useMemo((): GroupMember | null => {
+    const uuid = me?.userUuid?.trim();
+    if (!uuid || !me) return null;
+    const username = (me.username ?? "").replace(/^@+/, "") || "me";
+    const displayName = profileDisplayName(me.displayName ?? "", me.username ?? "") || username;
+    return { userUuid: uuid, username, displayName };
+  }, [me]);
+
+  useEffect(() => {
+    if (!groupChatMe) return;
+    ensureMockGroupViewer(groupChatMe);
+  }, [groupChatMe]);
+
+  // const railInteractive = mergedListItems.length > 0;
+  // const railScrollRef = useRef<HTMLDivElement>(null);
 
   const activeConversationsCount = useMemo(
     () => conversations.filter((item) => !isPeerArchived(item.otherUserUuid)).length,
@@ -1590,9 +1747,10 @@ function MessagesChatInner() {
   }, [compose.text, compose.mode, selectedConversationUuid, selectedOtherUuid]);
 
   const messagesPageTitle = useMemo(() => {
+    if (selectedGroupChat) return selectedGroupChat.title;
     if (!chatHeaderPeer) return null;
     return profileDisplayName(chatHeaderPeer.otherDisplayName, chatHeaderPeer.otherUsername);
-  }, [chatHeaderPeer]);
+  }, [chatHeaderPeer, selectedGroupChat]);
 
   useFloraPageTitleOverride(messagesPageTitle);
 
@@ -1618,52 +1776,81 @@ function MessagesChatInner() {
     return { kind: "text" as const, text: "Не в сети", aria: "Не в сети" as const };
   }, [chatHeaderPeer, presenceClock, peerTyping]);
 
-  // const railChatsSource = useMemo(
-  //   (): ConversationListItemDto[] => conversations.slice(0, 16),
-  //   [conversations],
-  // );
+  /** Единая модель шапки открытого чата: один JSX, разные данные / ⋮. */
+  const openChatHeader = useMemo(() => {
+    if (selectedGroupChat) {
+      const membersLabel = formatGroupMembersLabel(selectedGroupChat.members.length);
+      return {
+        kind: "group" as const,
+        title: selectedGroupChat.title,
+        handle: null as string | null,
+        profileHref: null as string | null,
+        status: { kind: "text" as const, text: membersLabel, aria: membersLabel },
+        online: false,
+        avatar: {
+          kind: "group" as const,
+          title: selectedGroupChat.title,
+          seed: selectedGroupChat.conversationUuid,
+        },
+        more: {
+          chatMenuKind: "group" as const,
+          conversationIsMuted: false,
+          accessibility: {
+            dialog: `Меню группы «${selectedGroupChat.title}»`,
+            triggerOpen: `Действия — ${selectedGroupChat.title}`,
+            triggerClose: "Закрыть меню группы",
+          },
+        },
+      };
+    }
+    if (!chatHeaderPeer) return null;
+    const title =
+      chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername || "Пользователь";
+    const handle = chatHeaderPeer.otherUsername.replace(/^@+/, "") || "…";
+    const profileSlug =
+      chatHeaderPeer.otherUsername.replace(/^@+/, "") || chatHeaderPeer.otherUserUuid;
+    return {
+      kind: "dm" as const,
+      title,
+      handle,
+      profileHref: `/profile/${encodeURIComponent(profileSlug)}`,
+      status: chatHeaderPresenceLine,
+      online: chatHeaderPeer.otherUserIsOnline,
+      avatar: {
+        kind: "dm" as const,
+        displayName: chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername || "Пользователь",
+        username: chatHeaderPeer.otherUsername,
+        seed: chatHeaderPeer.otherUserUuid,
+      },
+      more: {
+        chatMenuKind: "dm" as const,
+        conversationIsMuted: selectedOtherUuid
+          ? getPeerMute(selectedOtherUuid) !== null
+          : false,
+        accessibility: {
+          dialog: `Меню чата с ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
+          triggerOpen: `Действия — ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
+          triggerClose: "Закрыть меню чата",
+        },
+      },
+    };
+  }, [
+    selectedGroupChat,
+    chatHeaderPeer,
+    chatHeaderPresenceLine,
+    selectedOtherUuid,
+    getPeerMute,
+  ]);
 
-  // const railInteractive = conversations.length > 0;
-
-  // const railScrollRef = useRef<HTMLDivElement>(null);
+  // Mini-rail (временно скрыт ниже в JSX). Источник: mergedListItems.slice(0, 16)
+  // — DM + groupChat. Active: selectedTarget.kind === "dm" | "groupChat".
+  // const railChatsSource = useMemo(() => mergedListItems.slice(0, 16), [mergedListItems]);
 
   // useLayoutEffect(() => {
   //   const scrollEl = railScrollRef.current;
-  //   if (!scrollEl || !selectedOtherUuid) return;
-
-  //   if (!alignRailScrollFromMainListRef.current) {
-  //     return;
-  //   }
-
-  //   alignRailScrollFromMainListRef.current = false;
-
-  //   const idx = railChatsSource.findIndex((c) => c.otherUserUuid === selectedOtherUuid);
-  //   if (idx < 0) {
-  //     scrollEl.scrollTop = 0;
-  //     return;
-  //   }
-
-  //   const n = railChatsSource.length;
-  //   const ul = scrollEl.querySelector("ul");
-  //   const row = ul?.querySelectorAll<HTMLLIElement>(":scope > li")[idx];
-  //   if (!row) {
-  //     return;
-  //   }
-
-  //   const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
-
-  //   if (idx <= 2) {
-  //     scrollEl.scrollTop = 0;
-  //   } else if (idx >= n - 3) {
-  //     scrollEl.scrollTop = maxScroll;
-  //   } else {
-  //     const rowTopInContent =
-  //       row.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
-  //     const rowH = row.offsetHeight;
-  //     const desired = rowTopInContent - (scrollEl.clientHeight - rowH) / 2;
-  //     scrollEl.scrollTop = Math.max(0, Math.min(desired, maxScroll));
-  //   }
-  // }, [selectedOtherUuid, railChatsSource]);
+  //   if (!scrollEl || !selectedTarget) return;
+  //   ...
+  // }, [selectedTarget, railChatsSource]);
 
   const displayMessageContent = useCallback(
     (m: MessageThreadItemDto): FscpMessagePlaintext | "decrypting" | "failed" => {
@@ -1701,9 +1888,16 @@ function MessagesChatInner() {
   const peerThreadAvatarLabel = useMemo(
     () =>
       avatarLetters(
-        chatHeaderPeer?.otherDisplayName || chatHeaderPeer?.otherUsername || "?",
+        selectedGroupChat?.title ||
+          chatHeaderPeer?.otherDisplayName ||
+          chatHeaderPeer?.otherUsername ||
+          "?",
       ),
-    [chatHeaderPeer?.otherDisplayName, chatHeaderPeer?.otherUsername],
+    [
+      selectedGroupChat?.title,
+      chatHeaderPeer?.otherDisplayName,
+      chatHeaderPeer?.otherUsername,
+    ],
   );
 
   /**
@@ -1711,7 +1905,7 @@ function MessagesChatInner() {
    * useEffect+rAF давал кадр «прыжка» до counter-lift — визуальное дергание.
    */
   useLayoutEffect(() => {
-    if (!selectedOtherUuid) return;
+    if (!selectedOtherUuid && !selectedGroupUuid) return;
     if (threadLoading) {
       scrollTrackingReadyRef.current = false;
       return;
@@ -1806,13 +2000,14 @@ function MessagesChatInner() {
     threadRenderItems,
     threadLoading,
     selectedOtherUuid,
+    selectedGroupUuid,
     openRevealDeadlineElapsed,
     displayMessageContent,
     pinMessagesToBottom,
   ]);
 
   useEffect(() => {
-    if (!selectedOtherUuid) return;
+    if (!selectedOtherUuid && !selectedGroupUuid) return;
     const scrollEl = scrollMessagesRef.current;
     if (!scrollEl) return;
 
@@ -1835,7 +2030,7 @@ function MessagesChatInner() {
     const view = messagesChatViewRef.current;
     if (view) ro.observe(view);
     return () => ro.disconnect();
-  }, [selectedOtherUuid, threadMessages.length, pinMessagesToBottom]);
+  }, [selectedOtherUuid, selectedGroupUuid, threadMessages.length, pinMessagesToBottom]);
 
   const copyMessageContent = useCallback(async (content: FscpMessagePlaintext | "decrypting" | "failed") => {
     if (content === "decrypting" || content === "failed") return;
@@ -2383,6 +2578,21 @@ function MessagesChatInner() {
   ]);
 
   const handleSend = useCallback(async () => {
+    if (selectedTarget?.kind === "groupChat" && selectedGroupUuid && groupChatMe) {
+      if (!compose.canSend || compose.mode === "voice") return;
+      const textBody = compose.text.trim();
+      if (!textBody) return;
+      pendingInsertLiftRef.current = true;
+      appendMockGroupPlaintext({
+        conversationUuid: selectedGroupUuid,
+        sender: groupChatMe,
+        body: textBody,
+      });
+      compose.reset();
+      setReplyTo(null);
+      return;
+    }
+
     if (!selectedOtherUuid || !compose.canSend) return;
     typingEmitterRef.current?.stop();
     if (compose.mode === "voice") {
@@ -2750,6 +2960,9 @@ function MessagesChatInner() {
     refreshConversationList,
     replyTo,
     selectedOtherUuid,
+    selectedGroupUuid,
+    selectedTarget,
+    groupChatMe,
     sendVoiceMessageOptimistic,
     sending,
   ]);
@@ -2816,6 +3029,10 @@ function MessagesChatInner() {
     fromTop: styles.messagesChatAnimFromTop,
   });
 
+  const isGroupChatOpen = selectedTarget?.kind === "groupChat";
+  const composeBusy = sending || threadLoading;
+  const composeMediaDisabled = composeBusy || isGroupChatOpen;
+
   const voiceComposeActive = compose.mode === "voice" || voiceRecorder.recording || compose.voice !== null;
   const voiceComposeSource = voiceRecorder.recording ? voiceRecorder.liveWaveform : compose.voice?.waveform ?? [];
   const voiceComposeBars = useMemo(
@@ -2827,7 +3044,7 @@ function MessagesChatInner() {
   return (
     <>
     <section className={styles.page}>
-        {selectedOtherUuid == null ? (
+        {selectedTarget == null ? (
           <div
             key={`list-${panelAnimEpoch}`}
             className={`${styles.messagesListView} ${
@@ -3026,7 +3243,7 @@ function MessagesChatInner() {
                       role="menuitem"
                       onClick={() => {
                         setCreateMenuOpen(false);
-                        setCreateGroupSoonOpen(true);
+                        setCreateGroupOpen(true);
                       }}
                     >
                       <span className={styles.messagesCreateMenuItemIcon}>
@@ -3044,7 +3261,7 @@ function MessagesChatInner() {
             </header>
 
             {listError ? <p className={styles.messagesError}>{listError}</p> : null}
-            {listLoading && conversations.length === 0 ? (
+            {listLoading && conversations.length === 0 && mergedListItems.length === 0 ? (
               <ul className={styles.messagesConversationList} aria-hidden>
                 {Array.from({ length: 6 }, (_, i) => (
                   <li key={i} className={styles.messagesConversationSkeletonRow}>
@@ -3058,7 +3275,7 @@ function MessagesChatInner() {
               </ul>
             ) : null}
 
-            {!listLoading && filteredConversations.length === 0 ? (
+            {!listLoading && mergedListItems.length === 0 ? (
               <p className={emptyHintStyles.hint}>
                 {activeFolder === "archived"
                   ? archivedConversationsCount === 0
@@ -3066,105 +3283,189 @@ function MessagesChatInner() {
                     : "Ничего не найдено. Измените запрос в поиске."
                   : activeFolder !== "all"
                     ? "В этой папке пока нет чатов."
-                    : conversations.length === 0
+                    : conversations.length === 0 && groupChats.length === 0
                       ? "Пока нет переписок. Найдите человека во вкладке «Люди»."
-                      : activeConversationsCount === 0
+                      : activeConversationsCount === 0 && groupChats.length === 0
                         ? "Все чаты в архиве. Откройте Архив справа от фильтров."
                         : "Ничего не найдено. Измените запрос в поиске."}
               </p>
             ) : null}
 
-            {!listLoading && filteredConversations.length > 0 ? (
+            {mergedListItems.length > 0 ? (
               <ul className={styles.messagesConversationList}>
-                {filteredConversations.map((chat) => {
-                  const chatDisplayName = chat.otherDisplayName || chat.otherUsername;
-                  const peerMute = getPeerMute(chat.otherUserUuid);
-                  const peerArchived = isPeerArchived(chat.otherUserUuid);
+                {mergedListItems.map((item) => {
+                  const row =
+                    item.kind === "groupChat"
+                      ? {
+                          key: `groupChat:${item.group.conversationUuid}`,
+                          kind: "group" as const,
+                          title: item.group.title,
+                          handle: null as string | null,
+                          preview: item.group.lastMessagePreview?.trim() || "Нет сообщений",
+                          unreadCount: item.group.unreadCount,
+                          online: false,
+                          mute: null as ReturnType<typeof getPeerMute>,
+                          archived: false,
+                          avatar: {
+                            displayName: item.group.title,
+                            username: undefined as string | undefined,
+                            communityName: item.group.title,
+                            seed: item.group.conversationUuid,
+                          },
+                          onOpen: () => openGroupChat(item.group.conversationUuid),
+                          onPrefetch: undefined as (() => void) | undefined,
+                          more: {
+                            conversationMenuKind: "group" as const,
+                            accessibility: {
+                              dialog: `Меню группы «${item.group.title}»`,
+                              triggerOpen: `Действия — ${item.group.title}`,
+                              triggerClose: "Закрыть меню группы",
+                            },
+                          },
+                          peerUuid: null as string | null,
+                        }
+                      : (() => {
+                          const chat = item.conversation;
+                          const title = chat.otherDisplayName || chat.otherUsername;
+                          return {
+                            key: chat.otherUserUuid,
+                            kind: "dm" as const,
+                            title,
+                            handle: chat.otherUsername.replace(/^@+/, "") || "…",
+                            preview: conversationPreview(
+                              chat,
+                              listPreviewDecryptedByPeer,
+                              listPreviewDecryptFailByPeer,
+                            ),
+                            unreadCount: chat.unreadCount,
+                            online: chat.otherUserIsOnline,
+                            mute: getPeerMute(chat.otherUserUuid),
+                            archived: isPeerArchived(chat.otherUserUuid),
+                            avatar: {
+                              displayName: title,
+                              username: chat.otherUsername,
+                              communityName: undefined as string | undefined,
+                              seed: chat.otherUserUuid,
+                            },
+                            onOpen: () => switchChat(chat, true),
+                            onPrefetch: () => prefetchPeerThread(chat.otherUserUuid),
+                            more: {
+                              conversationMenuKind: "dm" as const,
+                              accessibility: {
+                                dialog: `Меню чата с ${title}`,
+                                triggerOpen: `Действия — ${title}`,
+                                triggerClose: "Закрыть меню чата",
+                              },
+                            },
+                            peerUuid: chat.otherUserUuid,
+                          };
+                        })();
+                  const peerUuid = row.peerUuid;
+
                   return (
-                  <li key={chat.otherUserUuid} className={styles.messagesConversationRow}>
-                    <button
-                      type="button"
-                      className={`${styles.messagesConversationItem} flora-type-15`}
-                      onClick={() => switchChat(chat, true)}
-                      onPointerEnter={() => prefetchPeerThread(chat.otherUserUuid)}
-                      onFocus={() => prefetchPeerThread(chat.otherUserUuid)}
-                    >
-                      <div className={styles.messagesConversationAvatarWrap}>
-                        <div className={styles.messagesConversationAvatar}>
-                          {avatarLetters(chatDisplayName)}
+                    <li key={row.key} className={styles.messagesConversationRow}>
+                      <button
+                        type="button"
+                        className={`${styles.messagesConversationItem} flora-type-15`}
+                        onClick={row.onOpen}
+                        onPointerEnter={row.onPrefetch}
+                        onFocus={row.onPrefetch}
+                      >
+                        <div className={styles.messagesConversationAvatarWrap}>
+                          <FloraAvatar
+                            plain
+                            size={45}
+                            displayName={row.avatar.displayName}
+                            username={row.avatar.username}
+                            communityName={row.avatar.communityName}
+                            seed={row.avatar.seed}
+                          />
+                          {row.kind === "dm" ? (
+                            <span
+                              className={`${styles.messagesChatHeaderOnlineBadge}${
+                                row.online ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}` : ""
+                              }`}
+                              title={row.online ? "В сети" : undefined}
+                              aria-hidden
+                            />
+                          ) : null}
                         </div>
-                        <span
-                          className={`${styles.messagesChatHeaderOnlineBadge}${chat.otherUserIsOnline ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}` : ""}`}
-                          title={chat.otherUserIsOnline ? "В сети" : undefined}
-                          aria-hidden
-                        />
-                      </div>
-                      <div className={styles.messagesConversationBody}>
-                        <div className={styles.messagesConversationTitleRow}>
-                          <span className={styles.messagesConversationName}>
-                            {chatDisplayName}
-                          </span>
-                          <span className={styles.messagesConversationHandleGroup}>
-                            <span className={styles.messagesConversationHandle}>
-                              @{chat.otherUsername.replace(/^@+/, "") || "…"}
-                            </span>
-                            {peerMute ? (
-                              <MessagesConversationMuteIndicator
-                                mute={peerMute}
-                                onExpired={() => clearLocalTemporaryMute(chat.otherUserUuid)}
-                              />
+                        <div className={styles.messagesConversationBody}>
+                          <div className={styles.messagesConversationTitleRow}>
+                            <span className={styles.messagesConversationName}>{row.title}</span>
+                            {row.handle !== null ? (
+                              <span className={styles.messagesConversationHandleGroup}>
+                                <span className={styles.messagesConversationHandle}>
+                                  @{row.handle}
+                                </span>
+                                {row.mute ? (
+                                  <MessagesConversationMuteIndicator
+                                    mute={row.mute}
+                                    onExpired={() => {
+                                      if (peerUuid) clearLocalTemporaryMute(peerUuid);
+                                    }}
+                                  />
+                                ) : null}
+                              </span>
                             ) : null}
-                          </span>
+                          </div>
+                          <span className={styles.messagesConversationPreview}>{row.preview}</span>
                         </div>
-                        <span className={styles.messagesConversationPreview}>
-                          {conversationPreview(chat, listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer)}
-                        </span>
+                      </button>
+                      <div className={styles.messagesConversationActions}>
+                        {row.unreadCount > 0 ? (
+                          <span className={styles.messagesConversationUnread}>
+                            {row.unreadCount > 99 ? "99+" : row.unreadCount}
+                          </span>
+                        ) : null}
                       </div>
-                    </button>
-                    <div className={styles.messagesConversationActions}>
-                      {chat.unreadCount > 0 ? (
-                        <span className={styles.messagesConversationUnread}>
-                          {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
-                        </span>
-                      ) : null}
-                    </div>
-                    <PostMoreMenuRect
-                      variant="conversation"
-                      wrapClassName={`${styles.messagesConversationMoreWrap} ${postMoreMenuStyles.wrapGlyphNudgeLeft1} ${postMoreMenuStyles.wrapBackdropNudgeLeft1}`}
-                      buttonClassName={styles.messagesConversationMoreBtn}
-                      conversationIsMuted={peerMute !== null}
-                      conversationIsArchived={peerArchived}
-                      onConversationMuteForever={() => setPeerMutedForever(chat.otherUserUuid)}
-                      onConversationMuteTemporary={() => setPeerMutedTemporary(chat.otherUserUuid)}
-                      onConversationUnmute={() => clearPeerMuted(chat.otherUserUuid)}
-                      onConversationArchive={() => archivePeer(chat.otherUserUuid)}
-                      onConversationUnarchive={() => unarchivePeer(chat.otherUserUuid)}
-                      folderOptions={folderPickOptions}
-                      onAddToFolder={(folderId) => {
-                        void addPeerToChatListFolder(folderId, chat.otherUserUuid);
-                      }}
-                      onDeleteConversation={() =>
-                        openDeleteConversationModal(
-                          chat.otherUserUuid,
-                          chatDisplayName,
-                        )
-                      }
-                      accessibility={{
-                        dialog: `Меню чата с ${chatDisplayName}`,
-                        triggerOpen: `Действия — ${chatDisplayName}`,
-                        triggerClose: `Закрыть меню чата`,
-                      }}
-                    />
-                  </li>
+                      <PostMoreMenuRect
+                        variant="conversation"
+                        conversationMenuKind={row.more.conversationMenuKind}
+                        wrapClassName={`${styles.messagesConversationMoreWrap} ${postMoreMenuStyles.wrapGlyphNudgeLeft1} ${postMoreMenuStyles.wrapBackdropNudgeLeft1}`}
+                        buttonClassName={styles.messagesConversationMoreBtn}
+                        conversationIsMuted={row.mute !== null}
+                        conversationIsArchived={row.archived}
+                        onConversationMuteForever={
+                          peerUuid ? () => setPeerMutedForever(peerUuid) : undefined
+                        }
+                        onConversationMuteTemporary={
+                          peerUuid ? () => setPeerMutedTemporary(peerUuid) : undefined
+                        }
+                        onConversationUnmute={
+                          peerUuid ? () => clearPeerMuted(peerUuid) : undefined
+                        }
+                        onConversationArchive={
+                          peerUuid ? () => archivePeer(peerUuid) : undefined
+                        }
+                        onConversationUnarchive={
+                          peerUuid ? () => unarchivePeer(peerUuid) : undefined
+                        }
+                        folderOptions={row.kind === "dm" ? folderPickOptions : []}
+                        onAddToFolder={
+                          peerUuid
+                            ? (folderId) => {
+                                void addPeerToChatListFolder(folderId, peerUuid);
+                              }
+                            : undefined
+                        }
+                        onDeleteConversation={
+                          peerUuid
+                            ? () => openDeleteConversationModal(peerUuid, row.title)
+                            : undefined
+                        }
+                        accessibility={row.more.accessibility}
+                      />
+                    </li>
                   );
                 })}
               </ul>
             ) : null}
           </div>
-        ) : chatHeaderPeer ? (
+        ) : openChatHeader ? (
           <div className={styles.messagesChatSplit}>
             <div
-              key={`${selectedOtherUuid}-${panelAnimEpoch}`}
+              key={`${selectedOtherUuid ?? selectedGroupUuid}-${panelAnimEpoch}`}
               className={`${styles.messagesChatPanelInner} ${chatOpenAnimClassName}`}
             >
               <div
@@ -3172,6 +3473,7 @@ function MessagesChatInner() {
                 className={styles.messagesChatView}
                 style={messagesChatViewStyle}
                 data-messages-chat-view=""
+                data-group-chat={openChatHeader.kind === "group" ? "" : undefined}
               >
               <div className={styles.messagesChatTop}>
               <header className={styles.messagesChatHeader}>
@@ -3197,36 +3499,73 @@ function MessagesChatInner() {
                   </svg>
                 </button>
                 <div className={styles.messagesChatHeaderAvatarWrap}>
-                  <div className={styles.messagesChatHeaderAvatar}>
-                    {avatarLetters(chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername)}
-                  </div>
-                  <span
-                    className={`${styles.messagesChatHeaderOnlineBadge}${chatHeaderPeer.otherUserIsOnline ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}` : ""}`}
-                    title={chatHeaderPeer.otherUserIsOnline ? "В сети" : undefined}
-                    aria-hidden
-                  />
+                  {openChatHeader.avatar.kind === "group" ? (
+                    <FloraAvatar
+                      plain
+                      size={45}
+                      displayName={openChatHeader.avatar.title}
+                      communityName={openChatHeader.avatar.title}
+                      seed={openChatHeader.avatar.seed}
+                    />
+                  ) : (
+                    <FloraAvatar
+                      plain
+                      size={45}
+                      displayName={openChatHeader.avatar.displayName}
+                      username={openChatHeader.avatar.username}
+                      seed={openChatHeader.avatar.seed}
+                    />
+                  )}
+                  {openChatHeader.kind === "dm" ? (
+                    <span
+                      className={`${styles.messagesChatHeaderOnlineBadge}${
+                        openChatHeader.online
+                          ? ` ${styles.messagesChatHeaderOnlineBadgeVisible}`
+                          : ""
+                      }`}
+                      title={openChatHeader.online ? "В сети" : undefined}
+                      aria-hidden
+                    />
+                  ) : null}
                 </div>
                 <div className={styles.messagesChatHeaderInfo}>
-                  <Link
-                    href={`/profile/${encodeURIComponent(chatHeaderPeer.otherUsername.replace(/^@+/, "") || chatHeaderPeer.otherUserUuid)}`}
-                    className={styles.messagesChatHeaderNameLink}
-                  >
-                    <div className={styles.messagesChatHeaderNameRow}>
-                      <span className={styles.messagesChatHeaderName}>
-                        {chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername || "Пользователь"}
-                      </span>
-                      <span className={styles.messagesChatHeaderHandle}>
-                        @{chatHeaderPeer.otherUsername.replace(/^@+/, "") || "…"}
-                      </span>
-                    </div>
-                  </Link>
-                  {chatHeaderPresenceLine ? (
+                  {openChatHeader.kind === "group" ? (
+                    <button
+                      type="button"
+                      className={styles.messagesChatHeaderNameLink}
+                      onClick={() => setGroupMembersOpen(true)}
+                      aria-label={`${openChatHeader.title}, ${openChatHeader.status?.text ?? ""}`}
+                    >
+                      <div className={styles.messagesChatHeaderNameRow}>
+                        <span className={styles.messagesChatHeaderName}>
+                          {openChatHeader.title}
+                        </span>
+                      </div>
+                    </button>
+                  ) : openChatHeader.profileHref ? (
+                    <Link
+                      href={openChatHeader.profileHref}
+                      className={styles.messagesChatHeaderNameLink}
+                    >
+                      <div className={styles.messagesChatHeaderNameRow}>
+                        <span className={styles.messagesChatHeaderName}>
+                          {openChatHeader.title}
+                        </span>
+                        {openChatHeader.handle ? (
+                          <span className={styles.messagesChatHeaderHandle}>
+                            @{openChatHeader.handle}
+                          </span>
+                        ) : null}
+                      </div>
+                    </Link>
+                  ) : null}
+                  {openChatHeader.status ? (
                     <div
                       className={styles.messagesChatHeaderStatus}
                       role="status"
-                      aria-label={chatHeaderPresenceLine.aria}
+                      aria-label={openChatHeader.status.aria}
                     >
-                      {chatHeaderPresenceLine.kind === "typing" ? (
+                      {openChatHeader.status.kind === "typing" ? (
                         <>
                           Печатает
                           <span className={styles.messagesChatHeaderTypingDots} aria-hidden="true">
@@ -3236,47 +3575,56 @@ function MessagesChatInner() {
                           </span>
                         </>
                       ) : (
-                        chatHeaderPresenceLine.text
+                        openChatHeader.status.text
                       )}
                     </div>
                   ) : null}
                 </div>
-                {selectedOtherUuid ? (
-                  <PostMoreMenuRect
-                    variant="chat"
-                    wrapClassName={styles.messagesChatHeaderMoreWrap}
-                    buttonClassName={styles.messagesChatHeaderMoreBtn}
-                    conversationIsMuted={getPeerMute(selectedOtherUuid) !== null}
-                    onConversationMuteForever={() => setPeerMutedForever(selectedOtherUuid)}
-                    onConversationMuteTemporary={() => setPeerMutedTemporary(selectedOtherUuid)}
-                    onConversationUnmute={() => clearPeerMuted(selectedOtherUuid)}
-                    onChatSafetyNumber={() =>
-                      openSafetyNumberModal(
-                        selectedOtherUuid,
-                        chatHeaderPeer.otherDisplayName ||
-                          chatHeaderPeer.otherUsername ||
-                          "Пользователь",
-                      )
-                    }
-                    onDeleteConversation={() =>
-                      openDeleteConversationModal(
-                        selectedOtherUuid,
-                        chatHeaderPeer.otherDisplayName ||
-                          chatHeaderPeer.otherUsername ||
-                          "Пользователь",
-                      )
-                    }
-                    accessibility={{
-                      dialog: `Меню чата с ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
-                      triggerOpen: `Действия — ${chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername}`,
-                      triggerClose: "Закрыть меню чата",
-                    }}
-                  />
-                ) : null}
+                <PostMoreMenuRect
+                  variant="chat"
+                  chatMenuKind={openChatHeader.more.chatMenuKind}
+                  wrapClassName={styles.messagesChatHeaderMoreWrap}
+                  buttonClassName={styles.messagesChatHeaderMoreBtn}
+                  conversationIsMuted={openChatHeader.more.conversationIsMuted}
+                  onConversationMuteForever={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () => setPeerMutedForever(selectedOtherUuid)
+                      : undefined
+                  }
+                  onConversationMuteTemporary={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () => setPeerMutedTemporary(selectedOtherUuid)
+                      : undefined
+                  }
+                  onConversationUnmute={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () => clearPeerMuted(selectedOtherUuid)
+                      : undefined
+                  }
+                  onChatSafetyNumber={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () =>
+                          openSafetyNumberModal(
+                            selectedOtherUuid,
+                            openChatHeader.title,
+                          )
+                      : undefined
+                  }
+                  onDeleteConversation={
+                    openChatHeader.kind === "dm" && selectedOtherUuid
+                      ? () =>
+                          openDeleteConversationModal(
+                            selectedOtherUuid,
+                            openChatHeader.title,
+                          )
+                      : undefined
+                  }
+                  accessibility={openChatHeader.more.accessibility}
+                />
               </header>
 
               {threadError ? <p className={styles.messagesError}>{threadError}</p> : null}
-              {fscpStatus === "transient_error" ? (
+              {openChatHeader.kind === "dm" && fscpStatus === "transient_error" ? (
                 // Транзиент/сбой окружения — баннер, НЕ сырая строка ошибки ядра и НЕ модалка пароля
                 // (см. план fscp_restore_reliability, дефект 5): дашборд уже тихо повторяет резолв.
                 <p className={styles.messagesError}>
@@ -3284,7 +3632,7 @@ function MessagesChatInner() {
                     ? "Проверяем ключи шифрования — временные проблемы с сетью, повторяем попытку автоматически."
                     : "Ключи шифрования временно недоступны из-за ошибки окружения на этом устройстве."}
                 </p>
-              ) : fscpBootstrapError ? (
+              ) : openChatHeader.kind === "dm" && fscpBootstrapError ? (
                 <p className={styles.messagesError}>
                   FSCP: {fscpBootstrapError}
                   {fscpStatusNeedsPassword(fscpStatus) ? (
@@ -3714,7 +4062,7 @@ function MessagesChatInner() {
                     wrapClassName={styles.messagesComposeAttachWrap}
                     buttonClassName={styles.messagesComposePlus}
                     panelPlacement="above"
-                    disabled={sending || threadLoading}
+                    disabled={composeMediaDisabled}
                     closeNonce={composeAttachMenuCloseNonce}
                     onPick={handleAttachPick}
                     onOpenChange={(open) => {
@@ -3840,7 +4188,7 @@ function MessagesChatInner() {
                       className={styles.messagesComposeMic}
                       aria-label="Голосовое сообщение"
                       onClick={startVoiceRecording}
-                      disabled={sending || threadLoading}
+                      disabled={composeMediaDisabled}
                     >
                       <MusicTrackKindIcon kind="mic" className={styles.messagesComposeMicIcon} size={22} />
                     </button>
@@ -3879,68 +4227,15 @@ function MessagesChatInner() {
           </div>
         </div>
         {/* Мини-список справа от чата — временно скрыт.
+            При включении: map(mergedListItems.slice(0, 16)):
+            - kind "dm" → switchChat(conversation), online badge, preview decrypt
+            - kind "groupChat" → openGroupChat(conversationUuid), group avatar, lastMessagePreview
+            Active row: selectedTarget match on kind + id.
         <aside
               className={`${styles.messagesChatRail} ${chatOpenAnimClassName}`}
               aria-label="Другие диалоги"
             >
-              <div className={styles.messagesChatRailViewport}>
-                <div ref={railScrollRef} className={styles.messagesChatRailScroll}>
-                  <div className={styles.messagesChatRailScrollInner}>
-                  <ul className={styles.messagesChatRailList}>
-                  {railChatsSource.map((mini) => (
-                    <li key={mini.otherUserUuid} className={styles.messagesChatRailItem}>
-                      <button
-                        type="button"
-                        className={`${styles.messagesChatRailRow} ${mini.otherUserUuid === selectedOtherUuid ? styles.messagesChatRailRowActive : ""}`}
-                        disabled={!railInteractive}
-                        title={
-                          !railInteractive
-                            ? "Войдите в аккаунт с чатами, чтобы переключаться"
-                            : mini.unreadCount > 0
-                              ? `${mini.otherDisplayName || mini.otherUsername} · ${mini.unreadCount} непрочит.`
-                              : undefined
-                        }
-                        onClick={() => {
-                          if (!railInteractive) return;
-                          switchChat(mini, false);
-                        }}
-                      >
-                        <div className={styles.messagesChatRailAvatarWrap}>
-                          <div className={styles.messagesChatRailAvatar} aria-hidden>
-                            {avatarLetters(mini.otherDisplayName || mini.otherUsername)}
-                          </div>
-                          <span
-                            className={`${styles.messagesChatRailOnlineBadge}${mini.otherUserIsOnline ? ` ${styles.messagesChatRailOnlineBadgeVisible}` : ""}`}
-                            title={mini.otherUserIsOnline ? "В сети" : undefined}
-                            aria-hidden
-                          />
-                        </div>
-                        <div className={styles.messagesChatRailBody}>
-                          <span className={styles.messagesChatRailName}>
-                            {mini.otherDisplayName || mini.otherUsername}
-                          </span>
-                          <span className={styles.messagesChatRailPreview}>
-                            {conversationPreview(mini, listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer)}
-                          </span>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                  </ul>
-                  <div className={styles.messagesChatRailUnreadTrack} aria-hidden>
-                    {railChatsSource.map((mini) => (
-                      <div key={mini.otherUserUuid} className={styles.messagesChatRailUnreadRow}>
-                        {mini.unreadCount > 0 ? (
-                          <span className={styles.messagesChatRailUnreadBadge}>
-                            {formatRailUnreadCount(mini.unreadCount)}
-                          </span>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                  </div>
-                </div>
-              </div>
+              ...
             </aside>
         */}
           </div>
@@ -3988,32 +4283,49 @@ function MessagesChatInner() {
         }}
       />
 
-      {createGroupSoonOpen ? (
-        <div
-          className={styles.messagesFolderDialogBackdrop}
-          role="presentation"
-          onClick={() => setCreateGroupSoonOpen(false)}
-        >
-          <div
-            className={styles.messagesFolderDialog}
-            role="dialog"
-            aria-modal
-            aria-label="Группы скоро"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 className={styles.messagesFolderDialogTitle}>Группы скоро</h2>
-            <p className={styles.messagesFolderDialogEmpty}>
-              Создание групп появится в следующих версиях Flora.
-            </p>
-            <button
-              type="button"
-              className={styles.messagesFolderDialogAction}
-              onClick={() => setCreateGroupSoonOpen(false)}
-            >
-              Понятно
-            </button>
-          </div>
-        </div>
+      <CreateGroupDialog
+        open={createGroupOpen}
+        conversations={conversations}
+        onClose={() => setCreateGroupOpen(false)}
+        onCreate={(result) => {
+          if (!groupChatMe) {
+            window.alert("Войдите в аккаунт, чтобы создать группу.");
+            return false;
+          }
+          const members = result.memberUserUuids
+            .map((uuid) => {
+              const peer = conversations.find((c) => c.otherUserUuid === uuid);
+              if (!peer) return null;
+              return {
+                userUuid: peer.otherUserUuid,
+                username: peer.otherUsername.replace(/^@+/, "") || "user",
+                displayName: peer.otherDisplayName || peer.otherUsername || "Участник",
+              } satisfies GroupMember;
+            })
+            .filter((m): m is GroupMember => m != null);
+          try {
+            const created = createMockGroupChat({
+              title: result.title,
+              creator: groupChatMe,
+              members,
+            });
+            setGroupChats(listMockGroupChats());
+            openGroupChat(created.conversationUuid);
+            return true;
+          } catch {
+            window.alert("Не удалось создать группу. Проверьте число участников.");
+            return false;
+          }
+        }}
+      />
+
+      {selectedGroupChat ? (
+        <GroupMembersPanel
+          open={groupMembersOpen}
+          title={selectedGroupChat.title}
+          members={selectedGroupChat.members}
+          onClose={() => setGroupMembersOpen(false)}
+        />
       ) : null}
     </>
   );

@@ -13,7 +13,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node --import tsx --test lib/sanitizeComposeHref.test.ts lib/sessionStore.test.ts lib/floraApiProxy.test.ts lib/apiClient.test.ts lib/cachedResource.test.ts \"app/(dashboard)/messages/threadMessageGroups.test.ts\"",
+    "test": "node --import tsx --test lib/sanitizeComposeHref.test.ts lib/sessionStore.test.ts lib/floraApiProxy.test.ts lib/apiClient.test.ts lib/cachedResource.test.ts \"app/(dashboard)/messages/threadMessageGroups.test.ts\" \"app/(dashboard)/messages/groupConversationTypes.test.ts\"",
     "generate:emoji-categories": "tsx ./scripts/generate-message-emoji-categories.ts",
     "postinstall": "node ./scripts/copy-ffmpeg-core.mjs"
   },

@@ -885,8 +885,8 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: rgba(164, 209, 138, 0.15);
-  color: var(--flora-accent);
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -894,7 +894,6 @@
   font-weight: 300;
   font-size: 19px;
   letter-spacing: 0.57px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 
@@ -1090,8 +1089,8 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: rgba(164, 209, 138, 0.15);
-  color: var(--flora-accent);
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1099,7 +1098,6 @@
   font-weight: 300;
   font-size: 19px;
   letter-spacing: 0.57px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 
@@ -1149,6 +1147,23 @@
   color: inherit;
   display: block;
   min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.messagesChatHeaderNameLink:hover .messagesChatHeaderName {
+  color: var(--flora-accent-hover);
+}
+
+.messagesChatHeaderNameLink:focus-visible {
+  outline: 1px solid var(--flora-green-light);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Как «Люди» .userPrimaryLine — одна типографическая строка, высота как в списке людей. */
@@ -1498,8 +1513,8 @@
   height: var(--g45);
   align-self: flex-end;
   border-radius: 50%;
-  background: rgba(164, 209, 138, 0.14);
-  color: var(--flora-accent);
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1507,8 +1522,15 @@
   font-weight: 300;
   font-size: 19px;
   letter-spacing: 0.57px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+}
+
+/* Host for FloraAvatar default art (group peer runs) — same forest palette as users. */
+.messagesBubblePeerAvatarFlora {
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-shadow: none;
 }
 
 /* Якорь пузыря: ⋮ снаружи overflow clip у фото-пузыря. */
@@ -3910,8 +3932,8 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: rgba(164, 209, 138, 0.14);
-  color: var(--flora-accent);
+  background: var(--flora-green-dark);
+  color: var(--flora-green-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4209,4 +4231,49 @@
   .messagesDeleteModalDialogClosing {
     animation: none;
   }
+}
+
+/* —— Mock group chats (UI shell; not FSCP-ORG folder kind) —— */
+
+.groupMembersList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--flora-grid-step-fine));
+  max-height: calc(28 * var(--flora-grid-step));
+  overflow-y: auto;
+}
+
+.groupMembersRow {
+  display: flex;
+  align-items: center;
+  gap: calc(1 * var(--flora-grid-step));
+  padding: calc(1 * var(--flora-grid-step-fine)) 0;
+}
+
+.groupMembersBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groupMembersName {
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-white-template);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.groupMembersHandle {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: rgba(var(--flora-white-template-rgb), 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
