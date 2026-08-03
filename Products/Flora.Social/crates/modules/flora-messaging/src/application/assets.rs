@@ -192,7 +192,11 @@ impl AssetService {
         file_content_type: Option<&str>,
         bytes: &[u8],
     ) -> Result<UploadImageAssetResultDto, AssetError> {
-        validate_size(bytes.len(), MAX_MESSAGE_IMAGE_BYTES, "Фото слишком большое.")?;
+        validate_size(
+            bytes.len(),
+            MAX_MESSAGE_IMAGE_BYTES,
+            "Фото слишком большое.",
+        )?;
         if bytes.is_empty() {
             return Err(AssetError::BadRequest("Файл фото пуст.".into()));
         }

@@ -13,14 +13,14 @@ use flora_messaging_contracts::{
 };
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess};
 use fscp_core::{
-    BOOTSTRAP_KEY_EPOCH_ID, GROUP_MAX_MEMBERS, REVOKED_SENDER_DEVICE_ERROR, try_validate_group_wire,
-    verify_group_envelope_signature,
+    BOOTSTRAP_KEY_EPOCH_ID, GROUP_MAX_MEMBERS, REVOKED_SENDER_DEVICE_ERROR,
+    try_validate_group_wire, verify_group_envelope_signature,
 };
 use uuid::Uuid;
 
+use crate::application::SendMessageError;
 use crate::application::cursor::{decode_cursor, encode_cursor};
 use crate::application::e2e::E2eKeyBackupService;
-use crate::application::SendMessageError;
 use crate::infrastructure::{GroupRepo, InsertMessageOutcome, MessagingRepo};
 
 pub struct GroupService {
@@ -108,7 +108,11 @@ impl GroupService {
 
         let conversation_uuid = Uuid::now_v7();
         let now = Utc::now();
-        let mut tx = self.groups.begin().await.map_err(SendMessageError::BadRequest)?;
+        let mut tx = self
+            .groups
+            .begin()
+            .await
+            .map_err(SendMessageError::BadRequest)?;
         GroupRepo::insert_conversation(
             &mut tx,
             conversation_uuid,
@@ -315,7 +319,11 @@ impl GroupService {
         self.require_e2e_key(new_user).await?;
 
         let now = Utc::now();
-        let mut tx = self.groups.begin().await.map_err(SendMessageError::BadRequest)?;
+        let mut tx = self
+            .groups
+            .begin()
+            .await
+            .map_err(SendMessageError::BadRequest)?;
         GroupRepo::upsert_member_active(&mut tx, conversation_uuid, new_user, now)
             .await
             .map_err(SendMessageError::BadRequest)?;
@@ -532,8 +540,7 @@ impl GroupService {
                     .map_err(GroupSendError::BadRequest)?;
                     if !ok {
                         return Err(GroupSendError::BadRequest(
-                            "Вложения не соответствуют идемпотентному групповому сообщению."
-                                .into(),
+                            "Вложения не соответствуют идемпотентному групповому сообщению.".into(),
                         ));
                     }
                 }
@@ -637,11 +644,9 @@ impl GroupService {
     async fn require_e2e_key(&self, user_uuid: Uuid) -> Result<(), SendMessageError> {
         match self.e2e.get_user_public_key(user_uuid).await {
             Ok(_) => Ok(()),
-            Err(crate::application::GetE2ePublicKeyError::NotFound) => {
-                Err(SendMessageError::BadRequest(
-                    "У участника нет опубликованного E2E-ключа.".into(),
-                ))
-            }
+            Err(crate::application::GetE2ePublicKeyError::NotFound) => Err(
+                SendMessageError::BadRequest("У участника нет опубликованного E2E-ключа.".into()),
+            ),
             Err(crate::application::GetE2ePublicKeyError::Internal { detail }) => {
                 Err(SendMessageError::BadRequest(detail))
             }
@@ -721,7 +726,11 @@ fn dedupe_uuids(raw: &[Uuid]) -> Vec<Uuid> {
 }
 
 /// Creator-only roster/title mutations: actor must match `created_by`.
-fn require_group_creator(actor: Uuid, created_by: Uuid, action: &str) -> Result<(), SendMessageError> {
+fn require_group_creator(
+    actor: Uuid,
+    created_by: Uuid,
+    action: &str,
+) -> Result<(), SendMessageError> {
     if actor == created_by {
         return Ok(());
     }

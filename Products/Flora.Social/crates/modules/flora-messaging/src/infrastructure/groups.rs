@@ -176,15 +176,15 @@ impl GroupRepo {
         now: DateTime<Utc>,
         max_folder_icons: i64,
     ) -> Result<(), String> {
-        let membership = self
-            .active_membership(conversation_uuid, owner)
-            .await?;
+        let membership = self.active_membership(conversation_uuid, owner).await?;
         if membership.is_none() {
             return Err("NOT_FOUND:Группа не найдена.".into());
         }
 
         if !archived {
-            return self.clear_or_unarchive_group_flag(owner, conversation_uuid, now).await;
+            return self
+                .clear_or_unarchive_group_flag(owner, conversation_uuid, now)
+                .await;
         }
 
         let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
@@ -354,11 +354,7 @@ impl GroupRepo {
         .map_err(|e| e.to_string())
     }
 
-    pub async fn update_title(
-        &self,
-        conversation_uuid: Uuid,
-        title: &str,
-    ) -> Result<bool, String> {
+    pub async fn update_title(&self, conversation_uuid: Uuid, title: &str) -> Result<bool, String> {
         let res = sqlx::query(
             r#"
             UPDATE flora_core.group_conversations
@@ -729,7 +725,10 @@ impl GroupRepo {
         .map_err(|e| e.to_string())
     }
 
-    pub async fn list_groups_for_user(&self, user_uuid: Uuid) -> Result<Vec<GroupListScanRow>, String> {
+    pub async fn list_groups_for_user(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<Vec<GroupListScanRow>, String> {
         let rows: Vec<GroupListSqlRow> = sqlx::query_as(
             r#"
             SELECT
@@ -796,7 +795,9 @@ impl GroupRepo {
 
 #[derive(Debug, Clone)]
 pub enum InsertMessageOutcome {
-    Inserted { created_at: DateTime<Utc> },
+    Inserted {
+        created_at: DateTime<Utc>,
+    },
     Idempotent {
         created_at: DateTime<Utc>,
         encrypted_wire: String,

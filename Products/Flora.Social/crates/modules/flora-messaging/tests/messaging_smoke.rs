@@ -229,9 +229,7 @@ async fn archived_group_excluded_from_unread_count() {
         .expect("unreadCount");
 
     let archive = client
-        .post(gateway(&format!(
-            "/api/messaging/groups/{conv}/archive"
-        )))
+        .post(gateway(&format!("/api/messaging/groups/{conv}/archive")))
         .header("Authorization", &auth)
         .send()
         .await
@@ -261,9 +259,7 @@ async fn archived_group_excluded_from_unread_count() {
     );
 
     let unarchive = client
-        .post(gateway(&format!(
-            "/api/messaging/groups/{conv}/unarchive"
-        )))
+        .post(gateway(&format!("/api/messaging/groups/{conv}/unarchive")))
         .header("Authorization", &auth)
         .send()
         .await
