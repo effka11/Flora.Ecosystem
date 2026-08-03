@@ -1,4 +1,4 @@
-﻿ # Политика безопасности Flora Ecosystem (Security Policy)
+﻿# Политика безопасности Flora Ecosystem (Security Policy)
 
 ## Сообщение об уязвимостях (Reporting)
 
@@ -37,6 +37,15 @@
   (`fscp_core::verify_envelope_signature`) на send-пути после структурного валидатора формы —
   defense-in-depth, без расшифровки содержимого. Норма: [`Documents/fscp/FSCP.md`](Documents/fscp/FSCP.md)
   §Server-side validation (Algorithm C шаг 12). Клиентская верификация при decrypt сохраняется.
+- **FSCP web device keys (SEC-1):** приватные ключи device profile на вебе **не** хранятся plaintext
+  в `localStorage`. At-rest: AES-GCM ciphertext в IndexedDB (`flora-fscp-vault`) под
+  неэкспортируемым WebCrypto wrap-ключом (`extractable: false`); one-shot миграция с LS.
+  Реализация: [`Apps/Web/lib/fscp/sealedVault.ts`](Apps/Web/lib/fscp/sealedVault.ts),
+  [`Apps/Web/lib/fscp/storage.ts`](Apps/Web/lib/fscp/storage.ts).
+  **Остаточный риск:** при живом XSS злоумышленник всё ещё может вызвать decrypt / адаптер, пока
+  вкладка открыта — это hardening at-rest, не XSS-proof. Вытеснение IndexedDB браузером →
+  восстановление через password/recovery backup. Ужесточение CSP (`unsafe-inline`) — отдельный
+  hardening-проход.
 
 ---
 
@@ -46,29 +55,21 @@
 запланированы к исправлению **после релиза**. Эксплуатация Flora Ecosystem в продакшене с
 обработкой чувствительных данных должна учитывать эти риски.
 
-### 1. Хранение E2E-ключей в `localStorage` (web)
-
-- **Где:** `Apps/Web/lib/fscp/storage.ts`.
-- **Суть:** приватные ключи FSCP на вебе хранятся в `localStorage`.
-- **Риск:** при успешной XSS-атаке ключи могут быть извлечены из браузера.
-- **План:** перенос в неэкспортируемые `CryptoKey` (WebCrypto, `extractable: false`) / IndexedDB,
-  усиление CSP до отказа от `unsafe-inline`/`unsafe-eval`.
-
-### 2. Не верифицируется `epochSetHash` после расшифровки бэкапа
+### 1. Не верифицируется `epochSetHash` после расшифровки бэкапа
 
 - **Суть:** после расшифровки резервной копии не проверяется целостность набора эпох ключей
   (`epochSetHash`).
 - **Риск:** теоретическая возможность подмены/усечения набора эпох в недоверенном хранилище бэкапа.
 - **План:** проверка `epochSetHash` после decryption перед применением.
 
-### 3. Refresh-токены и TOTP-секреты в БД в открытом виде
+### 2. Refresh-токены и TOTP-секреты в БД в открытом виде
 
 - **Суть:** refresh-токены и секреты TOTP хранятся в базе данных без дополнительного шифрования/хэша.
 - **Риск:** при компрометации БД злоумышленник получает действующие refresh-токены и TOTP-секреты.
 - **План:** хранить хэш refresh-токенов (как паролей) и шифровать TOTP-секреты ключом из KMS/секрета
   приложения.
 
-### 4. Нет ratchet и фиксированный bootstrap device UUID
+### 3. Нет ratchet и фиксированный bootstrap device UUID
 
 - **Суть:** используется единственная bootstrap key-эпоха; отсутствует механизм ratchet и
   полноценный per-device UUID.

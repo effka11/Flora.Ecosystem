@@ -219,9 +219,10 @@ export function clearSession() {
   clearBrowserSessionCookie();
   sharedPresenceStore.clear();
   /**
-   * Профили FSCP по пользователю (`flora.fscp.profile.v1.*`) **не** удаляем: после повторного входа
-   * тот же браузер восстанавливает ключи и может расшифровать историю (см. Documents/fscp/FSCP.md — device-held material).
-   * Полный сброс ключей на этом устройстве — явный вызов {@link clearFscpMaterialForUser} / {@link clearFscpLocalStorage}.
+   * Device-held FSCP material (sealed IndexedDB vault + residual LS) **не** удаляем: после повторного
+   * входа тот же браузер восстанавливает ключи и может расшифровать историю
+   * (см. Documents/fscp/FSCP.md — device-held material).
+   * Полный сброс — явный вызов `clearFscpMaterialForUser` / `clearFscpDeviceMaterial`.
    */
 }
 

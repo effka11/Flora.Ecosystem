@@ -327,7 +327,11 @@ export function SettingsSecurityTab() {
     setDeleteBusy(true);
     try {
       await apiDeleteAccount(deletePassword);
-      if (ownerUuid) clearFscpMaterialForUser(ownerUuid);
+      if (ownerUuid) {
+        await clearFscpMaterialForUser(ownerUuid).catch(() => {
+          /* best-effort after server delete; do not block navigation */
+        });
+      }
       router.replace("/login");
       router.refresh();
     } catch (e) {
