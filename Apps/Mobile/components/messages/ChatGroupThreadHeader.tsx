@@ -31,7 +31,7 @@ export function ChatGroupThreadHeader({
   const subtitle = formatGroupMembersLabel(memberCount);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + floraSpacing.grid }]}>
+    <View style={[styles.root, { paddingTop: insets.top + floraSpacing.gridFine * 2 }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Назад к списку чатов"
@@ -95,8 +95,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.grid,
-    minHeight: floraMessages.headerHeight - 10,
-    paddingBottom: floraSpacing.grid * 2 - 10,
+    minHeight: floraMessages.headerHeight - 20,
+    paddingBottom: floraSpacing.grid,
     paddingHorizontal: floraSpacing.grid,
     backgroundColor: floraColors.bg,
   },

@@ -119,7 +119,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
   }, [overlay.isOnline, overlay.lastSeenAt, presenceClock, presenceTick, peerTyping, typingDots]);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + floraSpacing.grid }]}>
+    <View style={[styles.root, { paddingTop: insets.top + floraSpacing.gridFine * 2 }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Назад к списку чатов"
@@ -191,9 +191,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.grid,
-    /** Нижний зазор чуть меньше полной 8-й клетки (−10px), контент не смещается. */
-    minHeight: floraMessages.headerHeight - 10,
-    paddingBottom: floraSpacing.grid * 2 - 10,
+    /** Нижний зазор чуть меньше полной 8-й клетки (−16px), контент не смещается. */
+    minHeight: floraMessages.headerHeight - 20,
+    paddingBottom: floraSpacing.grid,
     paddingHorizontal: floraSpacing.grid,
     backgroundColor: floraColors.bg,
   },
