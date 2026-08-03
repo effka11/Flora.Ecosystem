@@ -140,6 +140,7 @@ export function useGroupChatThread(params: {
           lastMessageEncryptedWire: null,
           lastMessageAt: null,
           lastMessageIsFromMe: false,
+          lastMessageSenderDisplayName: null,
           unreadCount: 0,
           createdAt: detail.createdAt,
         } satisfies GroupChat);
@@ -203,6 +204,7 @@ export function useGroupChatThread(params: {
             lastMessageEncryptedWire: null,
             lastMessageAt: null,
             lastMessageIsFromMe: false,
+            lastMessageSenderDisplayName: null,
             unreadCount: 0,
             createdAt: detail.createdAt,
           } satisfies GroupChat);

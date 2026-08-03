@@ -20,6 +20,7 @@ import {
   entitiesToFolderDefs,
   filterConversationsByFolder,
   filterGroupsByFolder,
+  formatGroupListPreview,
   isConversationArchived,
   listVisibleChatFolders,
   membershipByEntityId,
@@ -769,7 +770,11 @@ export default function MessagesScreen() {
     );
     rows = rows.filter((row) => {
       if (row.kind === "groupChat") {
-        const preview = (row.preview || row.group.lastMessagePreview || "").toLowerCase();
+        const preview = formatGroupListPreview({
+          preview: row.preview || row.group.lastMessagePreview || "",
+          isFromMe: row.group.lastMessageIsFromMe,
+          senderDisplayName: row.group.lastMessageSenderDisplayName,
+        }).toLowerCase();
         return row.group.title.toLowerCase().includes(queryText) || preview.includes(queryText);
       }
       const preview = (

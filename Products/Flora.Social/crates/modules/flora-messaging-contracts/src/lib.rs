@@ -723,6 +723,10 @@ pub struct GroupListItemDto {
     pub last_message_encrypted_wire: Option<String>,
     pub last_message_at: Option<String>,
     pub last_message_is_from_me: bool,
+    /// Display name of last sender when not from viewer (never username).
+    /// Absent/empty → clients render a local unknown-sender label in list preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message_sender_display_name: Option<String>,
     pub unread_count: i32,
 }
 

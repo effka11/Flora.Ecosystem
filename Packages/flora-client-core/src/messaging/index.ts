@@ -38,6 +38,11 @@ export {
 } from "./chatListFolders.js";
 export { createChatListOverlaySession } from "./chatListOverlaySession.js";
 export {
+  formatGroupListPreview,
+  GROUP_LIST_UNKNOWN_SENDER_LABEL,
+  type FormatGroupListPreviewArgs,
+} from "./groupListPreview.js";
+export {
   createChatOrganizerSession,
   dmConversationUuidsOfArchivedPeers,
 } from "./chatOrganizerSession.js";

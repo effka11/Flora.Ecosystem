@@ -25,6 +25,7 @@ test("mergeGroupListRefresh keeps roster from previous detail", () => {
         lastMessageEncryptedWire: null,
         lastMessageAt: null,
         lastMessageIsFromMe: false,
+        lastMessageSenderDisplayName: "Алиса",
         unreadCount: 1,
       }),
       members: [member("U1", "alice"), member("U2", "bob")],
@@ -41,6 +42,7 @@ test("mergeGroupListRefresh keeps roster from previous detail", () => {
       lastMessageEncryptedWire: "fscpg1:x",
       lastMessageAt: "t1",
       lastMessageIsFromMe: true,
+      lastMessageSenderDisplayName: null,
       unreadCount: 0,
     }),
   ];
@@ -49,6 +51,8 @@ test("mergeGroupListRefresh keeps roster from previous detail", () => {
   assert.equal(merged[0]!.unreadCount, 0);
   assert.equal(merged[0]!.members.length, 2);
   assert.equal(merged[0]!.members[0]!.username, "alice");
+  assert.equal(merged[0]!.lastMessageIsFromMe, true);
+  assert.equal(merged[0]!.lastMessageSenderDisplayName, null);
 });
 
 test("findGroupMember is case-insensitive", () => {

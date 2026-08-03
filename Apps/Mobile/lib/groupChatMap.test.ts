@@ -28,6 +28,7 @@ describe("mergeGroupListRefresh", () => {
           lastMessageEncryptedWire: null,
           lastMessageAt: null,
           lastMessageIsFromMe: false,
+          lastMessageSenderDisplayName: "Алиса",
           unreadCount: 1,
         }),
         members: [member("U1", "alice"), member("U2", "bob")],
@@ -44,6 +45,7 @@ describe("mergeGroupListRefresh", () => {
         lastMessageEncryptedWire: "fscpg1:x",
         lastMessageAt: "t1",
         lastMessageIsFromMe: true,
+        lastMessageSenderDisplayName: null,
         unreadCount: 0,
       }),
     ];
@@ -52,6 +54,7 @@ describe("mergeGroupListRefresh", () => {
     assert.equal(merged[0]!.members.length, 2);
     assert.equal(merged[0]!.members[0]!.username, "alice");
     assert.equal(merged[0]!.lastMessageIsFromMe, true);
+    assert.equal(merged[0]!.lastMessageSenderDisplayName, null);
   });
 
   it("drops roster when memberCount diverges", () => {
@@ -66,6 +69,7 @@ describe("mergeGroupListRefresh", () => {
           lastMessageEncryptedWire: null,
           lastMessageAt: null,
           lastMessageIsFromMe: false,
+          lastMessageSenderDisplayName: null,
           unreadCount: 0,
         }),
         members: [member("U1", "a"), member("U2", "b"), member("U3", "c")],
@@ -82,6 +86,7 @@ describe("mergeGroupListRefresh", () => {
         lastMessageEncryptedWire: null,
         lastMessageAt: null,
         lastMessageIsFromMe: false,
+        lastMessageSenderDisplayName: null,
         unreadCount: 0,
       }),
     ];
@@ -108,6 +113,7 @@ describe("findGroupMember / rosterNeedsRefresh / adapter", () => {
         lastMessageEncryptedWire: null,
         lastMessageAt: null,
         lastMessageIsFromMe: false,
+        lastMessageSenderDisplayName: null,
         unreadCount: 0,
       }),
       members: [member("a", "a"), member("b", "b")],

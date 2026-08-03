@@ -25,6 +25,8 @@ export type GroupChat = {
   lastMessageEncryptedWire: string | null;
   lastMessageAt: string | null;
   lastMessageIsFromMe: boolean;
+  /** Display name of last sender when not from me. */
+  lastMessageSenderDisplayName: string | null;
   unreadCount: number;
   createdAt: string;
 };

@@ -271,6 +271,7 @@ import {
   entitiesToFolderDefs,
   filterConversationsByFolder,
   filterGroupsByFolder,
+  formatGroupListPreview,
   isConversationArchived,
   listVisibleChatFolders,
   membershipByEntityId,
@@ -1486,6 +1487,7 @@ function MessagesChatInner() {
             lastMessageEncryptedWire: null,
             lastMessageAt: null,
             lastMessageIsFromMe: false,
+            lastMessageSenderDisplayName: null,
             unreadCount: 0,
           });
           const merged = mergeGroupDetail(base, detail);
@@ -1799,7 +1801,11 @@ function MessagesChatInner() {
       if (query) {
         groups = groups.filter((g) => {
           const title = g.title.toLowerCase();
-          const preview = (g.lastMessagePreview ?? "").toLowerCase();
+          const preview = formatGroupListPreview({
+            preview: g.lastMessagePreview ?? "",
+            isFromMe: g.lastMessageIsFromMe,
+            senderDisplayName: g.lastMessageSenderDisplayName,
+          }).toLowerCase();
           return title.includes(query) || preview.includes(query);
         });
       }
@@ -2450,6 +2456,7 @@ function MessagesChatInner() {
           lastMessageEncryptedWire: null,
           lastMessageAt: null,
           lastMessageIsFromMe: false,
+          lastMessageSenderDisplayName: null,
           unreadCount: 0,
         });
       const merged = mergeGroupDetail(base, detail);
@@ -4035,7 +4042,11 @@ function MessagesChatInner() {
                           kind: "group" as const,
                           title: item.group.title,
                           handle: null as string | null,
-                          preview: item.group.lastMessagePreview?.trim() || "Нет сообщений",
+                          preview: formatGroupListPreview({
+                            preview: item.group.lastMessagePreview ?? "",
+                            isFromMe: item.group.lastMessageIsFromMe,
+                            senderDisplayName: item.group.lastMessageSenderDisplayName,
+                          }),
                           unreadCount: item.group.unreadCount,
                           online: false,
                           mute: null as ReturnType<typeof getPeerMute>,

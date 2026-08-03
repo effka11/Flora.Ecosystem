@@ -1,3 +1,4 @@
+import { formatGroupListPreview } from "@flora/client-core/messaging";
 import { useNavigation } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,22 +10,10 @@ import { openGroupChat } from "@/lib/openGroupChat";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 /** Same metrics as ConversationListRow — keep group rows in the same list rhythm. */
-const LIST_PREVIEW_MAX_LEN = 80;
 const AVATAR_SIZE = floraSpacing.grid * 3;
-const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
 const LONG_PRESS_MS = 350;
 /** Как `iconButton` / «+» в TabScreenSearchHeader — центр бейджа под «+». */
 const HEADER_TRAILING_ICON_SLOT = 45;
-
-function formatGroupPreview(preview: string, fromMe: boolean): string {
-  const body = preview.trim();
-  if (body === "Расшифровка…") return body;
-  if (!body || body === "…") return "Нет сообщений";
-  const truncated =
-    body.length > LIST_PREVIEW_MAX_LEN ? `${body.slice(0, LIST_PREVIEW_MAX_LEN)}…` : body;
-  const normalized = truncated === "🔒" ? DECRYPT_FAIL_LABEL : truncated;
-  return fromMe ? `Вы: ${normalized}` : normalized;
-}
 
 type Props = {
   group: GroupChat;
@@ -47,10 +36,11 @@ export function GroupConversationListRow({
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const title = group.title.trim() || "Группа";
-  const previewText =
-    preview.trim().length > 0
-      ? formatGroupPreview(preview, group.lastMessageIsFromMe)
-      : "Нет сообщений";
+  const previewText = formatGroupListPreview({
+    preview: preview.trim().length > 0 ? preview : group.lastMessagePreview ?? "",
+    isFromMe: group.lastMessageIsFromMe,
+    senderDisplayName: group.lastMessageSenderDisplayName,
+  });
 
   const open = () => {
     applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);

@@ -9,6 +9,8 @@ export type MsgGroupListItem = {
   lastMessageEncryptedWire: string | null;
   lastMessageAt: string | null;
   lastMessageIsFromMe: boolean;
+  /** Display name of last sender when not from me (not username). Empty → client shows «Участник». */
+  lastMessageSenderDisplayName: string | null;
   unreadCount: number;
 };
 
@@ -79,6 +81,8 @@ function parseListItem(raw: unknown, ctx?: ParseContext): MsgGroupListItem | nul
       readStr(o, ["lastMessageEncryptedWire", "LastMessageEncryptedWire"], fb) || null,
     lastMessageAt: readStr(o, ["lastMessageAt", "LastMessageAt"], fb) || null,
     lastMessageIsFromMe: readBool(o, ["lastMessageIsFromMe", "LastMessageIsFromMe"], fb),
+    lastMessageSenderDisplayName:
+      readStr(o, ["lastMessageSenderDisplayName", "LastMessageSenderDisplayName"], fb) || null,
     unreadCount: readNum(o, ["unreadCount", "UnreadCount"], fb) ?? 0,
   };
 }

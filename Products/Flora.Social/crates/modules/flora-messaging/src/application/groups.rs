@@ -139,18 +139,49 @@ impl GroupService {
 
     pub async fn list_groups(&self, user_uuid: Uuid) -> Result<GroupsPageDto, String> {
         let rows = self.groups.list_groups_for_user(user_uuid).await?;
+        let mut sender_uuids: Vec<Uuid> = rows
+            .iter()
+            .filter_map(|r| r.last_message_sender)
+            .filter(|uid| *uid != user_uuid)
+            .collect();
+        sender_uuids.sort_unstable();
+        sender_uuids.dedup();
+        let profiles = if sender_uuids.is_empty() {
+            Vec::new()
+        } else {
+            self.profiles.by_uuids(&sender_uuids).await?
+        };
+        let prof_by: std::collections::HashMap<_, _> =
+            profiles.into_iter().map(|p| (p.user_uuid, p)).collect();
+
         let items = rows
             .into_iter()
-            .map(|r| GroupListItemDto {
-                conversation_uuid: r.conversation_uuid,
-                title: r.title,
-                created_by_user_uuid: r.created_by_user_uuid,
-                created_at: format_utc(r.created_at),
-                member_count: r.member_count,
-                last_message_encrypted_wire: r.last_message_encrypted_wire,
-                last_message_at: r.last_message_at.map(format_utc),
-                last_message_is_from_me: r.last_message_sender == Some(user_uuid),
-                unread_count: r.unread_count,
+            .map(|r| {
+                let from_me = r.last_message_sender == Some(user_uuid);
+                // Display name only (never username). Empty → None; clients
+                // render a local "Участник" fallback in the list preview.
+                let sender_display = if from_me {
+                    None
+                } else {
+                    r.last_message_sender.and_then(|uid| {
+                        prof_by
+                            .get(&uid)
+                            .map(|p| p.display_name.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                    })
+                };
+                GroupListItemDto {
+                    conversation_uuid: r.conversation_uuid,
+                    title: r.title,
+                    created_by_user_uuid: r.created_by_user_uuid,
+                    created_at: format_utc(r.created_at),
+                    member_count: r.member_count,
+                    last_message_encrypted_wire: r.last_message_encrypted_wire,
+                    last_message_at: r.last_message_at.map(format_utc),
+                    last_message_is_from_me: from_me,
+                    last_message_sender_display_name: sender_display,
+                    unread_count: r.unread_count,
+                }
             })
             .collect();
         Ok(GroupsPageDto { items })

@@ -17,6 +17,7 @@ export function mapGroupListItem(item: MsgGroupListItem, preview?: string | null
     lastMessageEncryptedWire: item.lastMessageEncryptedWire,
     lastMessageAt: item.lastMessageAt,
     lastMessageIsFromMe: item.lastMessageIsFromMe,
+    lastMessageSenderDisplayName: item.lastMessageSenderDisplayName,
     unreadCount: item.unreadCount,
     createdAt: item.createdAt,
   };
@@ -67,6 +68,7 @@ export function mergeGroupListRefresh(
       memberCount: item.memberCount || old.members.length,
       createdByUserUuid: item.createdByUserUuid || old.createdByUserUuid,
       lastMessageIsFromMe: item.lastMessageIsFromMe,
+      lastMessageSenderDisplayName: item.lastMessageSenderDisplayName,
     };
   });
 }
