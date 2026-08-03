@@ -96,10 +96,7 @@ mod tests {
 
     #[test]
     fn normalize_username_lowercases() {
-        assert_eq!(
-            normalize_username(Some("Nocebo"), USERNAME_MAX),
-            "nocebo"
-        );
+        assert_eq!(normalize_username(Some("Nocebo"), USERNAME_MAX), "nocebo");
         assert_eq!(
             normalize_username(Some("@Flora_User"), USERNAME_MAX),
             "flora_user"
