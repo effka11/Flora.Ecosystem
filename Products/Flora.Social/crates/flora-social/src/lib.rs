@@ -171,8 +171,16 @@ fn auth_router_with_directory(
              отказ от старта во избежание тихого отката к legacy: {reason}"
         ),
     };
-    let module =
-        flora_auth::compose_with_replay(pool, jwt, profiles, provisioner, verification, replay);
+    let password_reset_hook = Some(flora_messaging::password_reset_hook(pool.clone()));
+    let module = flora_auth::compose_with_replay(
+        pool,
+        jwt,
+        profiles,
+        provisioner,
+        verification,
+        replay,
+        password_reset_hook,
+    );
     let directory = module.account_directory.clone();
     let workers: Vec<BackgroundHandle> = module.replay_cleanup.into_iter().collect();
     let router = axum::Router::new()

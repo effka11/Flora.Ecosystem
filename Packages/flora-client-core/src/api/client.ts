@@ -1,4 +1,4 @@
-import { ApiRequestError } from "../api/errors.js";
+import { ApiRequestError, parseApiError, throwApiRequestError } from "../api/errors.js";
 import type { ClientIdentity, SessionRecord, SessionStore } from "./types.js";
 import {
   SessionRefreshCoordinator,
@@ -54,21 +54,8 @@ export function apiUrl(path: string): string {
   return `${base}${p}`;
 }
 
-type ApiErrorBody = { error?: string; detail?: string; Detail?: string };
-
-/** Shared API error text (`error` + optional `detail`/`Detail`). */
-export async function parseApiErrorMessage(r: Response): Promise<string> {
-  const data = (await r.json().catch(() => ({}))) as ApiErrorBody;
-  const base = typeof data.error === "string" ? data.error : `Ошибка ${r.status}`;
-  const detailRaw = data.detail ?? data.Detail;
-  const detail = typeof detailRaw === "string" && detailRaw.trim().length > 0 ? detailRaw.trim() : "";
-  if (!detail || base.includes(detail)) return base;
-  return `${base} (${detail})`;
-}
-
-async function parseErrorMessage(r: Response): Promise<string> {
-  return parseApiErrorMessage(r);
-}
+/** @deprecated Prefer `parseApiErrorMessage` from `./errors.js`; kept for historical imports from client. */
+export { parseApiErrorMessage } from "../api/errors.js";
 
 function buildHeaders(token: string | null, extra?: RequestInit["headers"]): Headers {
   const { clientIdentity } = getApiClientConfig();
@@ -220,8 +207,8 @@ async function throwUnauthorizedResponse(
   r: Response,
   _onUnauthorized?: () => void,
 ): Promise<never> {
-  const message = await parseErrorMessage(r);
-  throw new ApiRequestError(401, message);
+  const { message, code } = await parseApiError(r);
+  throw new ApiRequestError(401, message, code);
 }
 
 /** Upload helpers: same logout rules as authFetch final 401 branch. */
@@ -319,7 +306,7 @@ export async function authFetch(
   let r = await doFetch(token);
   if (r.status === 426) {
     onUpgradeRequired?.();
-    throw new ApiRequestError(426, await parseErrorMessage(r));
+    await throwApiRequestError(r);
   }
   if (r.status === 401) {
     const recovered = await recoverFromResourceUnauthorized(
@@ -333,7 +320,7 @@ export async function authFetch(
   }
   if (r.status === 426) {
     onUpgradeRequired?.();
-    throw new ApiRequestError(426, await parseErrorMessage(r));
+    await throwApiRequestError(r);
   }
   if (r.status === 401) {
     return throwUnauthorizedResponse(r, onUnauthorized);
@@ -343,13 +330,13 @@ export async function authFetch(
 
 export async function authGetJson(path: string): Promise<unknown> {
   const r = await authFetch(path, { method: "GET" });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   return r.json().catch(() => ({}));
 }
 
 export async function authGetArrayBuffer(path: string): Promise<ArrayBuffer> {
   const r = await authFetch(path, { method: "GET" });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   return r.arrayBuffer();
 }
 
@@ -363,7 +350,7 @@ export async function authPostJson(path: string, body: Record<string, unknown>):
     if (typeof __DEV__ !== "undefined" && __DEV__) {
       console.warn("[api] POST failed", r.status, path);
     }
-    throw new ApiRequestError(r.status, await parseErrorMessage(r));
+    await throwApiRequestError(r);
   }
   if (r.status === 204) return null;
   return r.json().catch(() => ({}));
@@ -375,7 +362,7 @@ export async function authPutJson(path: string, body: Record<string, unknown>): 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   if (r.status === 204) return null;
   return r.json().catch(() => ({}));
 }
@@ -390,7 +377,7 @@ export async function authPatchJson(path: string, body: Record<string, unknown>)
     if (typeof __DEV__ !== "undefined" && __DEV__) {
       console.warn("[api] PATCH failed", r.status, path);
     }
-    throw new ApiRequestError(r.status, await parseErrorMessage(r));
+    await throwApiRequestError(r);
   }
   if (r.status === 204) return null;
   return r.json().catch(() => ({}));
@@ -423,7 +410,7 @@ export async function authPostForm(path: string, form: FormData): Promise<unknow
   let r = await doFetch(token);
   if (r.status === 426) {
     onUpgradeRequired?.();
-    throw new ApiRequestError(426, await parseErrorMessage(r));
+    await throwApiRequestError(r);
   }
   if (r.status === 401) {
     const recovered = await recoverFromResourceUnauthorized(
@@ -437,18 +424,18 @@ export async function authPostForm(path: string, form: FormData): Promise<unknow
   }
   if (r.status === 426) {
     onUpgradeRequired?.();
-    throw new ApiRequestError(426, await parseErrorMessage(r));
+    await throwApiRequestError(r);
   }
   if (r.status === 401) {
     return throwUnauthorizedResponse(r, onUnauthorized);
   }
-  if (!r.ok) throw new ApiRequestError(r.status, await parseErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   return r.json().catch(() => ({}));
 }
 
 export async function authDelete(path: string): Promise<void> {
   const r = await authFetch(path, { method: "DELETE" });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
 }
 
 export async function publicPostJson(path: string, body: Record<string, unknown>): Promise<unknown> {
@@ -458,13 +445,13 @@ export async function publicPostJson(path: string, body: Record<string, unknown>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   return r.json().catch(() => ({}));
 }
 
 export async function publicGetJson(path: string): Promise<unknown> {
   const { fetchImpl = fetch } = getApiClientConfig();
   const r = await fetchImpl(apiUrl(path), { method: "GET" });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   return r.json().catch(() => ({}));
 }

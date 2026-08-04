@@ -7,6 +7,7 @@
 pub mod application;
 pub mod http;
 pub mod infrastructure;
+pub mod password_reset_hook;
 
 use std::sync::Arc;
 
@@ -26,6 +27,7 @@ use crate::infrastructure::{ChatListRepo, E2eProofTokens, GroupRepo, MessagingRe
 
 /// Re-export FSCP validator for callers that historically used `flora_messaging::fscp`.
 pub use fscp_core as fscp;
+pub use password_reset_hook::password_reset_hook;
 
 /// Rust-миграции модуля Messaging (первые после cutover; применяются flora-migrate
 /// в таблицу истории `__flora_migrations_messaging`, next-architecture.md §11.1).

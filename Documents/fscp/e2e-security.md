@@ -1436,8 +1436,9 @@ flora.messaging.device-approve.v1 | userUuid | keyEpochId | newDeviceUuid | appr
 
 | Method | Path | Назначение |
 | --- | --- | --- |
-| `POST` | `/api/auth/password-reset/start` | Запустить единый password reset |
-| `POST` | `/api/auth/password-reset/complete` | Подтвердить email и задать новый пароль |
+| `POST` | `/api/auth/password-reset/start` | Запустить password reset: `{ email }` → `{ resetToken, expiresAt, devVerificationCode? }` (anti-enumeration; UI v1 — только account access) |
+| `POST` | `/api/auth/password-reset/verify` | Подтвердить email-код: `{ resetToken, code }` → `{ completionToken, expiresAt }` |
+| `POST` | `/api/auth/password-reset/complete` | Задать новый пароль: `{ completionToken, newPassword }` → `{ ok: true }` после commit пароля (без JWT). Session revoke + E2E lock — best-effort (ошибка → лог, HTTP всё равно 200). Residual: если lock не прошёл, FSM может остаться не-`locked`; если revoke не прошёл — старые сессии могут жить до TTL. Lock через Messaging: только `Active`/`ActiveNewEpoch` → `Locked`; `Frozen`/`Recovering`/`Rotating` не затираются (та же политика у `POST /api/messaging/e2e/lock`) |
 | `POST` | `/api/auth/session/complete-new-device-challenge` | Повысить limited session до full session после challenge |
 | `POST` | `/api/auth/email-change/start` | Запустить смену email |
 | `POST` | `/api/auth/email-change/confirm-old` | Подтвердить старый email |

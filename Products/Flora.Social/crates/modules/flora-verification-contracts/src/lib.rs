@@ -12,6 +12,8 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub const KIND_EMAIL_REGISTRATION: i32 = 0;
 /// `VerificationChallengeKind.EmailChange`.
 pub const KIND_EMAIL_CHANGE: i32 = 1;
+/// `VerificationChallengeKind.EmailPasswordReset`.
+pub const KIND_EMAIL_PASSWORD_RESET: i32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]

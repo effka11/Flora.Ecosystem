@@ -13,6 +13,9 @@ import {
   authPublicFetchUrl,
   apiGetMe,
   apiLogin,
+  apiPasswordResetComplete,
+  apiPasswordResetStart,
+  apiPasswordResetVerify,
   apiRegister,
   apiUpdateProfile,
   apiVerifyRegistration,
@@ -180,7 +183,15 @@ async function provisionFscpBackupAfterAuth(
 
 export default function LoginPage() {
   type BindTarget = "panel" | "logo" | "form";
-  type FormMode = "login" | "register" | "verify" | "profileSetup";
+  type FormMode =
+    | "login"
+    | "register"
+    | "verify"
+    | "profileSetup"
+    | "resetEmail"
+    | "resetCode"
+    | "resetPassword"
+    | "resetSuccess";
   type ModeAnim = "none" | "exitToLeft" | "enterFromRight" | "exitToRight" | "enterFromLeft";
 
   const router = useRouter();
@@ -195,6 +206,8 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [completionToken, setCompletionToken] = useState("");
   const [devVerificationHint, setDevVerificationHint] = useState<string | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profileNickname, setProfileNickname] = useState("");
@@ -266,20 +279,42 @@ export default function LoginPage() {
     router.refresh();
   }
 
+  function clearResetState() {
+    setResetToken("");
+    setCompletionToken("");
+    setVerificationCode("");
+    setDevVerificationHint(null);
+    setPassword("");
+    setConfirmPassword("");
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (mode === "register" && password !== confirmPassword) {
+    if ((mode === "register" || mode === "resetPassword") && password !== confirmPassword) {
       setError("Пароли не совпадают");
       return;
     }
 
-    if (mode === "verify" && !verificationCode.trim()) {
+    if ((mode === "verify" || mode === "resetCode") && !verificationCode.trim()) {
       setError("Введите код из сообщения");
       return;
     }
     if (mode === "verify" && !verificationToken) {
       setError("Сессия верификации истекла. Зарегистрируйтесь снова.");
+      return;
+    }
+    if (mode === "resetCode" && !resetToken) {
+      setError("Сессия сброса истекла. Начните снова.");
+      return;
+    }
+    if (mode === "resetPassword" && !completionToken) {
+      setError("Сессия сброса истекла. Начните снова.");
+      return;
+    }
+    if (mode === "resetSuccess") {
+      clearResetState();
+      switchMode("login");
       return;
     }
     if (mode === "profileSetup") {
@@ -370,31 +405,59 @@ export default function LoginPage() {
         return;
       }
 
-      await apiVerifyRegistration(verificationToken, verificationCode.trim());
-      setVerificationToken("");
-      setProfileName("");
-      setProfileNickname("");
-      setPendingProfileSetup();
-
-      // Create keys + server backup while the registration password is still in form state.
-      if (password.trim()) {
-        try {
-          const me = await apiGetMe();
-          if (me?.userUuid) {
-            const backup = await provisionFscpBackupAfterAuth(me.userUuid, password);
-            if (!backup.ok && typeof console !== "undefined") {
-              console.warn("[fscp] registration backup not uploaded after verify", backup.reason);
-            }
-          }
-        } catch (syncErr) {
-          if (typeof console !== "undefined") {
-            console.warn("[fscp] registration sync after verify failed", syncErr);
-          }
-        }
+      if (mode === "resetEmail") {
+        const started = await apiPasswordResetStart(email.trim());
+        setResetToken(started.resetToken);
+        setVerificationCode(started.devVerificationCode ?? "");
+        setDevVerificationHint(started.devVerificationCode ?? null);
+        setCompletionToken("");
+        switchMode("resetCode");
+        return;
       }
 
-      enterProfileSetupSync();
-      return;
+      if (mode === "resetCode") {
+        const verified = await apiPasswordResetVerify(resetToken, verificationCode.trim());
+        setCompletionToken(verified.completionToken);
+        setPassword("");
+        setConfirmPassword("");
+        setDevVerificationHint(null);
+        switchMode("resetPassword");
+        return;
+      }
+
+      if (mode === "resetPassword") {
+        await apiPasswordResetComplete(completionToken, password);
+        clearResetState();
+        switchMode("resetSuccess");
+        return;
+      }
+
+      if (mode === "verify") {
+        await apiVerifyRegistration(verificationToken, verificationCode.trim());
+        setVerificationToken("");
+        setProfileName("");
+        setProfileNickname("");
+        setPendingProfileSetup();
+
+        if (password.trim()) {
+          try {
+            const me = await apiGetMe();
+            if (me?.userUuid) {
+              const backup = await provisionFscpBackupAfterAuth(me.userUuid, password);
+              if (!backup.ok && typeof console !== "undefined") {
+                console.warn("[fscp] registration backup not uploaded after verify", backup.reason);
+              }
+            }
+          } catch (syncErr) {
+            if (typeof console !== "undefined") {
+              console.warn("[fscp] registration sync after verify failed", syncErr);
+            }
+          }
+        }
+
+        enterProfileSetupSync();
+        return;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Неизвестная ошибка");
     } finally {
@@ -472,6 +535,16 @@ export default function LoginPage() {
       setDevVerificationHint(null);
     }
 
+    if (
+      (mode === "resetEmail" || mode === "resetCode" || mode === "resetPassword" || mode === "resetSuccess") &&
+      nextMode !== "resetEmail" &&
+      nextMode !== "resetCode" &&
+      nextMode !== "resetPassword" &&
+      nextMode !== "resetSuccess"
+    ) {
+      clearResetState();
+    }
+
     if (mode === "login" && nextMode !== "login") {
       setAwaitingTwoFactor(false);
       setTwoFactorCode("");
@@ -487,7 +560,16 @@ export default function LoginPage() {
     }
 
     const token = ++transitionTokenRef.current;
-    const modeOrder: Record<FormMode, number> = { login: 0, register: 1, verify: 2, profileSetup: 3 };
+    const modeOrder: Record<FormMode, number> = {
+      login: 0,
+      register: 1,
+      verify: 2,
+      profileSetup: 3,
+      resetEmail: 4,
+      resetCode: 5,
+      resetPassword: 6,
+      resetSuccess: 7,
+    };
     const goLeft = modeOrder[nextMode] > modeOrder[mode];
     setModeAnim(goLeft ? "exitToLeft" : "exitToRight");
 
@@ -576,7 +658,7 @@ export default function LoginPage() {
 
   return (
     <main
-      className={`${styles.page} ${mode === "register" ? styles.registerMode : ""} ${mode === "verify" ? styles.verifyMode : ""} ${mode === "profileSetup" ? styles.profileSetupMode : ""} ${
+      className={`${styles.page} ${mode === "register" || mode === "resetPassword" ? styles.registerMode : ""} ${mode === "verify" || mode === "resetCode" ? styles.verifyMode : ""} ${mode === "profileSetup" ? styles.profileSetupMode : ""} ${mode === "resetEmail" || mode === "resetSuccess" ? styles.resetCompactMode : ""} ${
         modeAnim === "exitToLeft"
           ? styles.modeExitLeft
           : modeAnim === "enterFromRight"
@@ -626,6 +708,13 @@ export default function LoginPage() {
           autoComplete="off"
           noValidate
         >
+          {(mode === "login" ||
+            mode === "register" ||
+            mode === "verify" ||
+            mode === "profileSetup" ||
+            mode === "resetEmail" ||
+            mode === "resetCode" ||
+            mode === "resetPassword") && (
           <div className={styles.fieldBlock}>
             <div className={styles.fieldRow}>
               <div className={`${styles.iconCell} ${styles.emailIconCell}`}>
@@ -642,6 +731,7 @@ export default function LoginPage() {
                   onChange={(e) => (mode === "profileSetup" ? setProfileName(e.target.value) : setEmail(e.target.value))}
                   onFocus={() => (mode === "profileSetup" ? setFocusProfileName(true) : setFocusEmail(true))}
                   onBlur={() => (mode === "profileSetup" ? setFocusProfileName(false) : setFocusEmail(false))}
+                  readOnly={mode === "resetCode" || mode === "resetPassword"}
                 />
               </div>
             </div>
@@ -649,7 +739,20 @@ export default function LoginPage() {
               <span className={`${styles.underlineActive} ${focusEmail || focusProfileName ? styles.on : ""}`} />
             </div>
           </div>
+          )}
 
+          {mode === "resetSuccess" ? (
+            <p className={styles.resetStatus} role="status">
+              Пароль изменён. Теперь можно войти с новым паролем.
+            </p>
+          ) : null}
+
+          {(mode === "login" ||
+            mode === "register" ||
+            mode === "verify" ||
+            mode === "profileSetup" ||
+            mode === "resetCode" ||
+            mode === "resetPassword") && (
           <div className={styles.fieldBlock}>
             <div className={styles.fieldRow}>
               <div className={`${styles.iconCell} ${styles.passwordIconCell}`}>
@@ -658,18 +761,50 @@ export default function LoginPage() {
               <div className={styles.fieldInputWrap}>
                 <input
                   id={mode === "profileSetup" ? profileNicknameId : passwordId}
-                  type={twoFactorField || mode === "verify" || mode === "profileSetup" ? "text" : showPassword ? "text" : "password"}
-                  inputMode={twoFactorField || mode === "verify" ? "numeric" : undefined}
-                  autoComplete={twoFactorField || mode === "verify" ? "one-time-code" : mode === "profileSetup" ? "off" : "new-password"}
+                  type={
+                    twoFactorField || mode === "verify" || mode === "resetCode" || mode === "profileSetup"
+                      ? "text"
+                      : showPassword
+                        ? "text"
+                        : "password"
+                  }
+                  inputMode={twoFactorField || mode === "verify" || mode === "resetCode" ? "numeric" : undefined}
+                  autoComplete={
+                    twoFactorField || mode === "verify" || mode === "resetCode"
+                      ? "one-time-code"
+                      : mode === "profileSetup"
+                        ? "off"
+                        : mode === "resetPassword" || mode === "register"
+                          ? "new-password"
+                          : "current-password"
+                  }
                   className={styles.fieldInput}
-                  placeholder={twoFactorField ? "Код 2FA из приложения" : mode === "verify" ? "Код из сообщения" : mode === "profileSetup" ? "Никнейм" : "Пароль"}
-                  value={twoFactorField ? twoFactorCode : mode === "verify" ? verificationCode : mode === "profileSetup" ? profileNickname : password}
+                  placeholder={
+                    twoFactorField
+                      ? "Код 2FA из приложения"
+                      : mode === "verify" || mode === "resetCode"
+                        ? "Код из письма"
+                        : mode === "profileSetup"
+                          ? "Никнейм"
+                          : mode === "resetPassword"
+                            ? "Новый пароль"
+                            : "Пароль"
+                  }
+                  value={
+                    twoFactorField
+                      ? twoFactorCode
+                      : mode === "verify" || mode === "resetCode"
+                        ? verificationCode
+                        : mode === "profileSetup"
+                          ? profileNickname
+                          : password
+                  }
                   onChange={(e) => {
                     if (twoFactorField) {
                       setTwoFactorCode(e.target.value);
                       return;
                     }
-                    if (mode === "verify") {
+                    if (mode === "verify" || mode === "resetCode") {
                       setVerificationCode(e.target.value);
                       return;
                     }
@@ -680,21 +815,24 @@ export default function LoginPage() {
                     setPassword(e.target.value);
                   }}
                   onFocus={() =>
-                    mode === "verify"
+                    mode === "verify" || mode === "resetCode"
                       ? setFocusVerificationCode(true)
                       : mode === "profileSetup"
                         ? setFocusProfileNickname(true)
                         : setFocusPassword(true)
                   }
                   onBlur={() =>
-                    mode === "verify"
+                    mode === "verify" || mode === "resetCode"
                       ? setFocusVerificationCode(false)
                       : mode === "profileSetup"
                         ? setFocusProfileNickname(false)
                         : setFocusPassword(false)
                   }
                 />
-                {mode !== "verify" && mode !== "profileSetup" && !twoFactorField ? (
+                {mode !== "verify" &&
+                mode !== "resetCode" &&
+                mode !== "profileSetup" &&
+                !twoFactorField ? (
                   <button
                     type="button"
                     className={`${styles.passwordToggle} ${password ? styles.visible : ""}`}
@@ -710,8 +848,9 @@ export default function LoginPage() {
               <span className={`${styles.underlineActive} ${focusPassword || focusVerificationCode || focusProfileNickname ? styles.on : ""}`} />
             </div>
           </div>
+          )}
 
-          {mode === "register" ? (
+          {mode === "register" || mode === "resetPassword" ? (
             <div className={styles.fieldBlock}>
               <div className={styles.fieldRow}>
                 <div className={`${styles.iconCell} ${styles.confirmPasswordIconCell}`}>
@@ -736,7 +875,7 @@ export default function LoginPage() {
             </div>
           ) : null}
 
-          {devVerificationHint && mode === "verify" ? (
+          {devVerificationHint && (mode === "verify" || mode === "resetCode") ? (
             <p className={styles.devVerificationHint} role="status">
               Локальная разработка: код подтверждения <strong>{devVerificationHint}</strong> (SMTP не настроен).
             </p>
@@ -749,21 +888,35 @@ export default function LoginPage() {
           ) : null}
 
           <button type="submit" className={`${styles.submit} ${styles.submitGrid}`} disabled={loading}>
-            {mode === "login" ? (awaitingTwoFactor ? "Подтвердить" : "Войти") : mode === "register" ? "Создать аккаунт" : mode === "verify" ? "Подтвердить" : "Продолжить"}
+            {mode === "login"
+              ? awaitingTwoFactor
+                ? "Подтвердить"
+                : "Войти"
+              : mode === "register"
+                ? "Создать аккаунт"
+                : mode === "verify" || mode === "resetCode"
+                  ? "Подтвердить"
+                  : mode === "resetEmail"
+                    ? "Отправить"
+                    : mode === "resetPassword"
+                      ? "Сменить пароль"
+                      : mode === "resetSuccess"
+                        ? "Войти"
+                        : "Продолжить"}
           </button>
         </form>
 
         <div className={styles.links}>
           {mode === "login" ? (
             <>
-              <button type="button" className={styles.linkMuted} onClick={() => { switchMode("register"); setError(null); }}>
-                У меня нет аккаунта
+              <button type="button" className={styles.linkAccent} onClick={() => { switchMode("register"); setError(null); }}>
+                Создать аккаунт
               </button>
               <span className={styles.linkMuted} aria-hidden>
-                →
+                ·
               </span>
-              <button type="button" className={styles.linkAccent} onClick={() => { switchMode("register"); setError(null); }}>
-                Создать
+              <button type="button" className={styles.linkMuted} onClick={() => { switchMode("resetEmail"); setError(null); }}>
+                Восстановить пароль
               </button>
             </>
           ) : mode === "register" ? (
@@ -786,6 +939,56 @@ export default function LoginPage() {
               <span className={styles.linkMuted} aria-hidden>
                 →
               </span>
+              <button type="button" className={styles.linkAccent} onClick={() => { switchMode("login"); setError(null); }}>
+                На вход
+              </button>
+            </>
+          ) : mode === "resetEmail" ? (
+            <>
+              <button type="button" className={styles.linkMuted} onClick={() => { switchMode("login"); setError(null); }}>
+                Назад ко входу
+              </button>
+            </>
+          ) : mode === "resetCode" ? (
+            <>
+              <button
+                type="button"
+                className={styles.linkMuted}
+                disabled={loading}
+                onClick={() => {
+                  setError(null);
+                  void (async () => {
+                    setLoading(true);
+                    try {
+                      const started = await apiPasswordResetStart(email.trim());
+                      setResetToken(started.resetToken);
+                      setVerificationCode(started.devVerificationCode ?? "");
+                      setDevVerificationHint(started.devVerificationCode ?? null);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Неизвестная ошибка");
+                    } finally {
+                      setLoading(false);
+                    }
+                  })();
+                }}
+              >
+                Отправить код снова
+              </button>
+              <span className={styles.linkMuted} aria-hidden>
+                ·
+              </span>
+              <button type="button" className={styles.linkAccent} onClick={() => { switchMode("resetEmail"); setError(null); }}>
+                Сменить email
+              </button>
+            </>
+          ) : mode === "resetPassword" ? (
+            <>
+              <button type="button" className={styles.linkMuted} onClick={() => { switchMode("resetEmail"); setError(null); }}>
+                Начать снова
+              </button>
+            </>
+          ) : mode === "resetSuccess" ? (
+            <>
               <button type="button" className={styles.linkAccent} onClick={() => { switchMode("login"); setError(null); }}>
                 На вход
               </button>

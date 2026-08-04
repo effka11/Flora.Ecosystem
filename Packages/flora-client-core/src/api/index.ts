@@ -1,10 +1,10 @@
-export { ApiRequestError, isApiRequestError, isNetworkError, isUpgradeRequired } from "./errors.js";
+export { ApiRequestError, isApiRequestError, isNetworkError, isUpgradeRequired, parseApiError, parseApiErrorBody, parseApiErrorMessage, throwApiRequestError } from "./errors.js";
+export type { ParsedApiError } from "./errors.js";
 export {
   configureApiClient,
   primeApiBaseUrl,
   getApiClientConfig,
   apiUrl,
-  parseApiErrorMessage,
   authFetch,
   authGetJson,
   authGetArrayBuffer,

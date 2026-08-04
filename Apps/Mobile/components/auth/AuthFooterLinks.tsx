@@ -18,6 +18,23 @@ type AuthFooterLinksProps =
   | {
       variant: "profile";
       onBack: () => void;
+    }
+  | {
+      variant: "resetEmail";
+      onLogin: () => void;
+    }
+  | {
+      variant: "resetCode";
+      onResend: () => void;
+      onChangeEmail: () => void;
+    }
+  | {
+      variant: "resetPassword";
+      onRestart: () => void;
+    }
+  | {
+      variant: "resetSuccess";
+      onLogin: () => void;
     };
 
 export function AuthFooterLinks(props: AuthFooterLinksProps) {
@@ -58,6 +75,52 @@ export function AuthFooterLinks(props: AuthFooterLinksProps) {
         </Text>
         <Pressable onPress={props.onLogin} accessibilityRole="button">
           <Text style={authStyles.linkAccent}>Войти</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (props.variant === "resetEmail") {
+    return (
+      <View style={authStyles.links}>
+        <Pressable onPress={props.onLogin} accessibilityRole="button">
+          <Text style={authStyles.linkMuted}>Назад ко входу</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (props.variant === "resetCode") {
+    return (
+      <View style={authStyles.links}>
+        <Pressable onPress={props.onResend} accessibilityRole="button">
+          <Text style={authStyles.linkMuted}>Отправить код снова</Text>
+        </Pressable>
+        <Text style={authStyles.linkMuted} accessibilityElementsHidden>
+          ·
+        </Text>
+        <Pressable onPress={props.onChangeEmail} accessibilityRole="button">
+          <Text style={authStyles.linkAccent}>Сменить email</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (props.variant === "resetPassword") {
+    return (
+      <View style={authStyles.links}>
+        <Pressable onPress={props.onRestart} accessibilityRole="button">
+          <Text style={authStyles.linkMuted}>Начать снова</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (props.variant === "resetSuccess") {
+    return (
+      <View style={authStyles.links}>
+        <Pressable onPress={props.onLogin} accessibilityRole="button">
+          <Text style={authStyles.linkAccent}>На вход</Text>
         </Pressable>
       </View>
     );

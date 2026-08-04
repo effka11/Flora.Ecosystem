@@ -7,12 +7,14 @@ pub mod infrastructure;
 
 use std::sync::Arc;
 
+use flora_auth_contracts::PasswordResetHook;
 use flora_users_contracts::{UserProfileProvisioner, UserProfileReadQueries};
 use flora_verification_contracts::VerificationChallengePort;
 use sqlx::PgPool;
 
 use crate::application::account::AccountService;
 use crate::application::login::LoginService;
+use crate::application::password_reset::PasswordResetService;
 use crate::application::refresh::{RefreshService, ReplayConfig};
 use crate::application::register::RegisterService;
 use crate::application::replay_cleanup::{ReplayCleanupConfig, spawn_replay_cleanup};
@@ -33,7 +35,7 @@ pub type WorkerHandle = tokio::task::JoinHandle<()>;
 pub struct AuthModule {
     /// JWT-защищённые маршруты.
     pub protected_router: axum::Router,
-    /// Анонимные (login/refresh/register/verify/cancel).
+    /// Анонимные (login/refresh/register/verify/cancel/password-reset).
     pub public_router: axum::Router,
     /// Порт каталога аккаунтов для Users.
     pub account_directory: Arc<dyn flora_auth_contracts::AccountDirectory>,
@@ -47,22 +49,27 @@ pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
-/// Композиция с legacy refresh (replay-протокол выключен). Совместимо со старой
-/// сигнатурой; продукт (flora-social) продолжает вызывать её как есть.
+/// Композиция с legacy refresh (replay-протокол выключен).
 pub fn compose(
     pool: PgPool,
     jwt: JwtOptions,
     profiles: Arc<dyn UserProfileReadQueries>,
     provisioner: Arc<dyn UserProfileProvisioner>,
     verification: Arc<dyn VerificationChallengePort>,
+    password_reset_hook: Option<Arc<dyn PasswordResetHook>>,
 ) -> AuthModule {
-    compose_with_replay(pool, jwt, profiles, provisioner, verification, None)
+    compose_with_replay(
+        pool,
+        jwt,
+        profiles,
+        provisioner,
+        verification,
+        None,
+        password_reset_hook,
+    )
 }
 
-/// Композиция с опциональным retry-safe replay-протоколом. `replay = Some(..)`
-/// включает транзакционную ротацию с grace-барьером; `None` — legacy.
-/// Собирается из конфигурации через [`ReplayConfig::from_config`] на стороне
-/// продукта (staged rollout: сначала `None`, затем `Some`).
+/// Композиция с опциональным retry-safe replay-протоколом.
 pub fn compose_with_replay(
     pool: PgPool,
     jwt: JwtOptions,
@@ -70,12 +77,12 @@ pub fn compose_with_replay(
     provisioner: Arc<dyn UserProfileProvisioner>,
     verification: Arc<dyn VerificationChallengePort>,
     replay: Option<ReplayConfig>,
+    password_reset_hook: Option<Arc<dyn PasswordResetHook>>,
 ) -> AuthModule {
     let repo = Arc::new(AuthRepo::new(pool));
     let sessions = Arc::new(SessionService::new(repo.clone()));
     let security = Arc::new(SecurityService::new(repo.clone(), verification.clone()));
     let account = Arc::new(AccountService::new(repo.clone()));
-    // Cleanup-джоба спавнится только при включённом replay-протоколе.
     let replay_cleanup = replay
         .as_ref()
         .map(|_| spawn_replay_cleanup(repo.clone(), ReplayCleanupConfig::default()));
@@ -89,6 +96,11 @@ pub fn compose_with_replay(
         repo.clone(),
         jwt.clone(),
         profiles.clone(),
+    ));
+    let password_reset = Arc::new(PasswordResetService::new(
+        repo.clone(),
+        verification.clone(),
+        password_reset_hook,
     ));
     let register = Arc::new(RegisterService::new(
         repo.clone(),
@@ -108,6 +120,7 @@ pub fn compose_with_replay(
             refresh,
             login,
             register,
+            password_reset,
         }),
         account_directory,
         replay_cleanup,

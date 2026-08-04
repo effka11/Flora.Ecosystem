@@ -1444,3 +1444,179 @@ pub struct PendingRegistrationRow {
     pub password_hash: String,
     pub expires_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PendingPasswordResetRow {
+    pub reset_token: Uuid,
+    pub user_uuid: Uuid,
+    pub email: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+impl AuthRepo {
+    pub async fn find_user_uuid_by_email(&self, email: &str) -> Result<Option<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT user_uuid
+            FROM flora_core.user_accounts
+            WHERE email = $1
+            "#,
+        )
+        .bind(email)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn cleanup_expired_password_resets(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM flora_core.pending_password_resets WHERE expires_at <= $1")
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM flora_core.password_reset_grants WHERE expires_at <= $1")
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_pending_password_resets_by_user(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<Vec<Uuid>, sqlx::Error> {
+        let tokens: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            SELECT reset_token
+            FROM flora_core.pending_password_resets
+            WHERE user_uuid = $1
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_all(&self.pool)
+        .await?;
+        if !tokens.is_empty() {
+            sqlx::query("DELETE FROM flora_core.pending_password_resets WHERE user_uuid = $1")
+                .bind(user_uuid)
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(tokens)
+    }
+
+    pub async fn delete_password_reset_grants_by_user(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM flora_core.password_reset_grants WHERE user_uuid = $1")
+            .bind(user_uuid)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn insert_pending_password_reset(
+        &self,
+        reset_token: Uuid,
+        user_uuid: Uuid,
+        email: &str,
+        expires_at: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.pending_password_resets (
+                reset_token, user_uuid, email, expires_at, created_at
+            ) VALUES ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(reset_token)
+        .bind(user_uuid)
+        .bind(email)
+        .bind(expires_at)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_pending_password_reset(
+        &self,
+        reset_token: Uuid,
+    ) -> Result<Option<PendingPasswordResetRow>, sqlx::Error> {
+        sqlx::query_as::<_, PendingPasswordResetRow>(
+            r#"
+            SELECT reset_token, user_uuid, email, expires_at
+            FROM flora_core.pending_password_resets
+            WHERE reset_token = $1
+            "#,
+        )
+        .bind(reset_token)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn delete_pending_password_reset(
+        &self,
+        reset_token: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM flora_core.pending_password_resets WHERE reset_token = $1")
+            .bind(reset_token)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn insert_password_reset_grant(
+        &self,
+        completion_token: Uuid,
+        user_uuid: Uuid,
+        expires_at: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.password_reset_grants (
+                completion_token, user_uuid, expires_at, created_at
+            ) VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(completion_token)
+        .bind(user_uuid)
+        .bind(expires_at)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Atomically consume a grant. Returns user_uuid if consumed.
+    pub async fn consume_password_reset_grant(
+        &self,
+        completion_token: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            DELETE FROM flora_core.password_reset_grants
+            WHERE completion_token = $1
+              AND expires_at > $2
+            RETURNING user_uuid
+            "#,
+        )
+        .bind(completion_token)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn revoke_all_sessions_for_password(
+        &self,
+        user_uuid: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
+        self.revoke_other_sessions_for_password_except_id(user_uuid, None, now)
+            .await
+    }
+}

@@ -93,7 +93,7 @@ export type MeResponse = {
   followingCount?: number;
 };
 
-type ApiError = { error?: string };
+type ApiError = { error?: string; Error?: string; code?: string; Code?: string };
 
 function readStr(obj: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -269,8 +269,15 @@ async function postAuthJson<T>(url: string, payload: Record<string, unknown>, de
   });
   const data = (await r.json().catch(() => ({}))) as T & ApiError;
   if (!r.ok) {
-    const msg = typeof data.error === "string" ? data.error : defaultError;
-    throw new ApiRequestError(r.status, msg);
+    const msg =
+      (typeof data.error === "string" && data.error) ||
+      (typeof data.Error === "string" && data.Error) ||
+      defaultError;
+    const code =
+      (typeof data.code === "string" && data.code) ||
+      (typeof data.Code === "string" && data.Code) ||
+      undefined;
+    throw new ApiRequestError(r.status, msg, code);
   }
   return data;
 }
@@ -326,6 +333,62 @@ export async function apiCancelRegistration(verificationToken: string): Promise<
     { verificationToken },
     "Ошибка отмены регистрации"
   );
+}
+
+export type PasswordResetStartResponse = {
+  resetToken: string;
+  expiresAt: string;
+  devVerificationCode?: string;
+};
+
+export type PasswordResetVerifyResponse = {
+  completionToken: string;
+  expiresAt: string;
+};
+
+export async function apiPasswordResetStart(email: string): Promise<PasswordResetStartResponse> {
+  const raw = await postAuthJson<Record<string, unknown>>(
+    authEndpoint("/api/auth/password-reset/start"),
+    { email },
+    "Ошибка сброса пароля"
+  );
+  const resetToken = readStr(raw, ["resetToken", "ResetToken"]);
+  const expiresAt = readStr(raw, ["expiresAt", "ExpiresAt"]);
+  if (!resetToken || !expiresAt) throw new Error("Некорректный ответ сброса пароля.");
+  const devVerificationCode = readStr(raw, ["devVerificationCode", "DevVerificationCode"]);
+  return {
+    resetToken,
+    expiresAt,
+    ...(devVerificationCode ? { devVerificationCode } : {}),
+  };
+}
+
+export async function apiPasswordResetVerify(
+  resetToken: string,
+  code: string
+): Promise<PasswordResetVerifyResponse> {
+  const raw = await postAuthJson<Record<string, unknown>>(
+    authEndpoint("/api/auth/password-reset/verify"),
+    { resetToken, code },
+    "Ошибка проверки кода"
+  );
+  const completionToken = readStr(raw, ["completionToken", "CompletionToken"]);
+  const expiresAt = readStr(raw, ["expiresAt", "ExpiresAt"]);
+  if (!completionToken || !expiresAt) throw new Error("Некорректный ответ проверки кода.");
+  return { completionToken, expiresAt };
+}
+
+export async function apiPasswordResetComplete(
+  completionToken: string,
+  newPassword: string
+): Promise<void> {
+  const raw = await postAuthJson<Record<string, unknown>>(
+    authEndpoint("/api/auth/password-reset/complete"),
+    { completionToken, newPassword },
+    "Ошибка смены пароля"
+  );
+  const ok = raw.ok === true || raw.Ok === true;
+  if (!ok) throw new Error("Некорректный ответ смены пароля.");
 }
 
 export function avatarImageUrl(avatarUuid: string): string {

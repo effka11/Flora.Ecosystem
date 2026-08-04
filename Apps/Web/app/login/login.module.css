@@ -1,4 +1,4 @@
-﻿/* Luna.VPN / Flora auth visual (Colors.xaml + AuthStyles.xaml) */
+/* Luna.VPN / Flora auth visual (Colors.xaml + AuthStyles.xaml) */
 .page {
   min-height: 100vh;
   background: var(--flora-bg);
@@ -529,6 +529,46 @@
   top: calc(var(--flora-grid-origin-y) + 44 * var(--flora-grid-step));
 }
 
+/* Password reset: one field (email / success) — плотнее, без дыры под пароль. */
+.page.resetCompactMode .emailIconCell {
+  top: calc(var(--flora-grid-origin-y) + 28 * var(--flora-grid-step));
+}
+
+.page.resetCompactMode .emailIconCell + .fieldInputWrap {
+  top: calc(var(--flora-grid-origin-y) + 28 * var(--flora-grid-step));
+}
+
+.page.resetCompactMode .emailUnderlineTrack {
+  top: calc(var(--flora-grid-origin-y) + 30 * var(--flora-grid-step));
+}
+
+.page.resetCompactMode .submitGrid {
+  top: calc(var(--flora-grid-origin-y) + 33 * var(--flora-grid-step));
+}
+
+.page.resetCompactMode .links {
+  top: calc(var(--flora-grid-origin-y) + 39 * var(--flora-grid-step));
+}
+
+.page.resetCompactMode .resetStatus {
+  top: calc(var(--flora-grid-origin-y) + 28 * var(--flora-grid-step));
+}
+
+.resetStatus {
+  position: fixed;
+  left: calc(var(--flora-grid-origin-x) + 50 * var(--flora-grid-step));
+  top: calc(var(--flora-grid-origin-y) + 29 * var(--flora-grid-step));
+  width: calc((77 - 50 + 1) * var(--flora-grid-step));
+  margin: 0;
+  z-index: 31;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: 1.1px;
+  line-height: 1.45;
+  color: var(--flora-gray-light);
+}
+
 .page.verifyMode .fieldInput,
 .page.profileSetupMode .fieldInput,
 .page.verifyMode .submit,
@@ -595,6 +635,7 @@
 }
 
 .page.modeExitLeft .logoRow,
+.page.modeExitLeft .resetStatus,
 .page.modeExitLeft .emailIconCell,
 .page.modeExitLeft .passwordIconCell,
 .page.modeExitLeft .confirmPasswordIconCell,
@@ -609,6 +650,7 @@
 }
 
 .page.modeEnterLeft .logoRow,
+.page.modeEnterLeft .resetStatus,
 .page.modeEnterLeft .emailIconCell,
 .page.modeEnterLeft .passwordIconCell,
 .page.modeEnterLeft .confirmPasswordIconCell,
@@ -623,6 +665,7 @@
 }
 
 .page.modeExitRight .logoRow,
+.page.modeExitRight .resetStatus,
 .page.modeExitRight .emailIconCell,
 .page.modeExitRight .passwordIconCell,
 .page.modeExitRight .confirmPasswordIconCell,
@@ -637,6 +680,7 @@
 }
 
 .page.modeEnterRight .logoRow,
+.page.modeEnterRight .resetStatus,
 .page.modeEnterRight .emailIconCell,
 .page.modeEnterRight .passwordIconCell,
 .page.modeEnterRight .confirmPasswordIconCell,

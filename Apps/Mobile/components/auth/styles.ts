@@ -99,7 +99,7 @@ export const authStyles = StyleSheet.create({
     justifyContent: "center",
   },
   submit: {
-    marginTop: 15,
+    marginTop: 0,
     height: 52,
     borderRadius: 20,
     borderWidth: 1,
@@ -124,6 +124,26 @@ export const authStyles = StyleSheet.create({
   },
   submitTextWhite: {
     color: floraColors.whiteTemplate,
+  },
+  /** Резерв высоты как у «Забыли пароль?» — одинаковый отступ до кнопки во всех режимах. */
+  preSubmitSlot: {
+    alignSelf: "stretch",
+    height: 34,
+    position: "relative",
+    marginTop: 2,
+  },
+  forgotPasswordPseudo: {
+    position: "absolute",
+    right: 2,
+    top: 0,
+    zIndex: 2,
+  },
+  forgotPasswordLink: {
+    color: floraColors.gray,
+    fontSize: 13,
+    fontWeight: floraAuthTypography.light,
+    letterSpacing: 0.4,
+    lineHeight: 18,
   },
   links: {
     marginTop: 15,
