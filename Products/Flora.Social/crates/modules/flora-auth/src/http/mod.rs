@@ -96,7 +96,10 @@ pub fn public_router(state: PublicAuthState) -> Router {
         .route("/api/auth/verify-registration", post(verify_registration))
         .route("/api/auth/cancel-registration", post(cancel_registration))
         .route("/api/auth/password-reset/start", post(password_reset_start))
-        .route("/api/auth/password-reset/verify", post(password_reset_verify))
+        .route(
+            "/api/auth/password-reset/verify",
+            post(password_reset_verify),
+        )
         .route(
             "/api/auth/password-reset/complete",
             post(password_reset_complete),

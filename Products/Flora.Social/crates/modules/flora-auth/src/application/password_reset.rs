@@ -11,8 +11,11 @@ use flora_verification_contracts::{
 };
 use uuid::Uuid;
 
-use crate::http::{PasswordResetCompleteResponse, PasswordResetStartResponse, PasswordResetVerifyResponse, format_utc};
 use crate::http::rate_limit::FixedWindowLimiter;
+use crate::http::{
+    PasswordResetCompleteResponse, PasswordResetStartResponse, PasswordResetVerifyResponse,
+    format_utc,
+};
 use crate::infrastructure::password::{MAX_PASSWORD_BYTES, hash_password};
 use crate::infrastructure::repo::AuthRepo;
 
@@ -30,14 +33,23 @@ pub enum PasswordResetStartError {
 #[derive(Debug)]
 pub enum PasswordResetVerifyError {
     BadRequest(&'static str),
-    Unauthorized { message: &'static str, code: &'static str },
+    Unauthorized {
+        message: &'static str,
+        code: &'static str,
+    },
     Internal(String),
 }
 
 #[derive(Debug)]
 pub enum PasswordResetCompleteError {
-    BadRequest { message: &'static str, code: &'static str },
-    Unauthorized { message: &'static str, code: &'static str },
+    BadRequest {
+        message: &'static str,
+        code: &'static str,
+    },
+    Unauthorized {
+        message: &'static str,
+        code: &'static str,
+    },
     Internal(String),
 }
 
@@ -63,10 +75,15 @@ impl PasswordResetService {
         }
     }
 
-    pub async fn start(&self, email_raw: &str) -> Result<PasswordResetStartResponse, PasswordResetStartError> {
+    pub async fn start(
+        &self,
+        email_raw: &str,
+    ) -> Result<PasswordResetStartResponse, PasswordResetStartError> {
         let email = email_raw.trim().to_lowercase();
         if email.is_empty() || !email.contains('@') {
-            return Err(PasswordResetStartError::BadRequest("Укажите корректный email."));
+            return Err(PasswordResetStartError::BadRequest(
+                "Укажите корректный email.",
+            ));
         }
 
         if !self.email_start_limiter.check_and_increment(&email) {
@@ -134,7 +151,9 @@ impl PasswordResetService {
         })
     }
 
-    async fn synthetic_start_response(&self) -> Result<PasswordResetStartResponse, PasswordResetStartError> {
+    async fn synthetic_start_response(
+        &self,
+    ) -> Result<PasswordResetStartResponse, PasswordResetStartError> {
         tokio::time::sleep(SYNTHETIC_LATENCY).await;
         let token = new_uuid();
         let expires = Utc::now() + ChronoDuration::minutes(CHALLENGE_TTL_MINUTES);
@@ -151,7 +170,9 @@ impl PasswordResetService {
         code_plain: &str,
     ) -> Result<PasswordResetVerifyResponse, PasswordResetVerifyError> {
         if code_plain.trim().is_empty() {
-            return Err(PasswordResetVerifyError::BadRequest("Введите код из сообщения."));
+            return Err(PasswordResetVerifyError::BadRequest(
+                "Введите код из сообщения.",
+            ));
         }
 
         let now = Utc::now();
@@ -193,10 +214,12 @@ impl PasswordResetService {
                     message: "Код сброса истёк.",
                     code: "auth.password_reset.expired",
                 }),
-                ChallengeValidateStatus::CodeMismatch => Err(PasswordResetVerifyError::Unauthorized {
-                    message: "Неверный код.",
-                    code: "auth.password_reset.invalid_code",
-                }),
+                ChallengeValidateStatus::CodeMismatch => {
+                    Err(PasswordResetVerifyError::Unauthorized {
+                        message: "Неверный код.",
+                        code: "auth.password_reset.invalid_code",
+                    })
+                }
                 ChallengeValidateStatus::NotFound => Err(PasswordResetVerifyError::Unauthorized {
                     message: "Токен сброса недействителен или истёк.",
                     code: "auth.password_reset.invalid_token",
@@ -205,7 +228,10 @@ impl PasswordResetService {
             };
         }
 
-        if validation.subject_user_uuid.is_some_and(|u| u != pending.user_uuid) {
+        if validation
+            .subject_user_uuid
+            .is_some_and(|u| u != pending.user_uuid)
+        {
             let _ = self.repo.delete_pending_password_reset(reset_token).await;
             return Err(PasswordResetVerifyError::Unauthorized {
                 message: "Токен сброса недействителен или истёк.",
@@ -372,7 +398,8 @@ mod tests {
     /// (session revoke / E2E hook failures must not change the success envelope).
     #[test]
     fn complete_success_envelope_is_ok_true() {
-        let v = serde_json::to_value(crate::http::PasswordResetCompleteResponse { ok: true }).unwrap();
+        let v =
+            serde_json::to_value(crate::http::PasswordResetCompleteResponse { ok: true }).unwrap();
         assert_eq!(v, serde_json::json!({ "ok": true }));
     }
 }
