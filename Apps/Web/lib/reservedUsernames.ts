@@ -87,6 +87,7 @@ const RESERVED_USERNAMES = new Set(
     "privacy",
     "policy",
     "legal",
+    "rules",
     "security",
     "trust",
     "safety",

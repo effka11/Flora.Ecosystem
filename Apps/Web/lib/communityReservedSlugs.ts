@@ -15,7 +15,7 @@ const RESERVED_COMMUNITY_SLUGS = new Set([
   "subscriptions", "following", "followers", "archive", "archived", "draft", "drafts",
   "post", "posts", "comment", "comments", "message", "channel", "channels", "group",
   "groups", "event", "events", "notification", "help", "support", "about", "contact",
-  "terms", "privacy", "policy", "legal", "security", "trust", "safety", "report", "abuse",
+  "terms", "privacy", "policy", "legal", "rules", "security", "trust", "safety", "report", "abuse",
   "copyright", "dmca", "status", "health", "ping", "metrics", "debug", "test", "testing",
   "demo", "staging", "production", "prod", "dev", "development", "beta", "alpha",
   "preview", "release", "updates", "blog", "news", "press", "media", "careers", "jobs",

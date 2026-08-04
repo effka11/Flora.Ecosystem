@@ -1,10 +1,16 @@
 export const FLORA_DOCUMENT_TITLE = "Flora";
 
-/** Единый формат вкладки: `Flora — Сообщения`. */
+/**
+ * Разделитель во вкладке. Обычные пробелы браузер схлопывает в `<title>`,
+ * поэтому два неразрывных с каждой стороны (`\u00A0`).
+ */
+export const FLORA_TITLE_SEPARATOR = "\u00A0\u00A0–\u00A0\u00A0";
+
+/** Единый формат вкладки: `Flora  –  Сообщения`. */
 export function formatFloraDocumentTitle(pageTitle: string): string {
   const trimmed = pageTitle.trim();
   if (!trimmed) return FLORA_DOCUMENT_TITLE;
-  return `${FLORA_DOCUMENT_TITLE} — ${trimmed}`;
+  return `${FLORA_DOCUMENT_TITLE}${FLORA_TITLE_SEPARATOR}${trimmed}`;
 }
 
 /** Статический заголовок по pathname (без данных с API). */
@@ -15,6 +21,8 @@ export function resolveFloraDocumentTitle(pathname: string): string {
     case "/":
     case "/login":
       return formatFloraDocumentTitle("Вход");
+    case "/rules":
+      return formatFloraDocumentTitle("Правила сообщества");
     case "/feed":
       return formatFloraDocumentTitle("Главная");
     case "/messages":
