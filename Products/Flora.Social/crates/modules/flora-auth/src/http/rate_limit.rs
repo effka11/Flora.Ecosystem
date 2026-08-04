@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use axum::Json;
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::middleware::Next;
@@ -105,13 +106,33 @@ pub async fn anonymous_auth_rate_limit(
         "/api/auth/register" | "/api/auth/cancel-registration" => {
             limiters.register.check_and_increment(&key)
         }
-        "/api/auth/verify-registration" => limiters.verify.check_and_increment(&key),
+        "/api/auth/verify-registration" | "/api/auth/password-reset/verify" => {
+            limiters.verify.check_and_increment(&key)
+        }
+        "/api/auth/password-reset/start" => limiters.register.check_and_increment(&key),
+        "/api/auth/password-reset/complete" => limiters.login.check_and_increment(&key),
         _ => true,
     };
     if !allowed {
-        return StatusCode::TOO_MANY_REQUESTS.into_response();
+        return password_reset_aware_rate_limited(path);
     }
     next.run(req).await
+}
+
+/// Password-reset IP limits expose the stable `auth.password_reset.rate_limited` code;
+/// other anonymous auth routes keep a bare 429 (historical).
+fn password_reset_aware_rate_limited(path: &str) -> Response {
+    if path.starts_with("/api/auth/password-reset/") {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({
+                "error": "Слишком много запросов. Попробуйте позже.",
+                "code": "auth.password_reset.rate_limited"
+            })),
+        )
+            .into_response();
+    }
+    StatusCode::TOO_MANY_REQUESTS.into_response()
 }
 
 /// `social-account-sensitive`: 10 / 15 мин, ключ = JWT sub (иначе IP).
@@ -162,5 +183,34 @@ mod tests {
         assert!(lim.check_and_increment("a"));
         assert!(!lim.check_and_increment("a"));
         assert!(lim.check_and_increment("b"));
+    }
+
+    #[tokio::test]
+    async fn password_reset_ip_429_includes_stable_code() {
+        for path in [
+            "/api/auth/password-reset/start",
+            "/api/auth/password-reset/verify",
+            "/api/auth/password-reset/complete",
+        ] {
+            let resp = password_reset_aware_rate_limited(path);
+            assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+            let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(v["code"], "auth.password_reset.rate_limited", "{path}");
+            assert!(v["error"].as_str().unwrap().contains("запросов"));
+        }
+    }
+
+    #[test]
+    fn other_anonymous_ip_429_stays_bare() {
+        let resp = password_reset_aware_rate_limited("/api/auth/login");
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(
+            resp.headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .is_none()
+        );
     }
 }

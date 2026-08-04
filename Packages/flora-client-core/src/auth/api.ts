@@ -11,11 +11,17 @@ import {
 import {
   parseLoginPayload,
   parseMePayload,
+  parsePasswordResetCompletePayload,
+  parsePasswordResetStartPayload,
+  parsePasswordResetVerifyPayload,
   parseRegisterInitPayload,
   parseTwoFactorChallenge,
   type LoginResponse,
   type LoginResult,
   type MeResponse,
+  type PasswordResetCompleteResponse,
+  type PasswordResetStartResponse,
+  type PasswordResetVerifyResponse,
   type RegisterInitResponse,
 } from "../contracts/auth.js";
 import type { SessionTokens } from "./types.js";
@@ -54,6 +60,27 @@ export async function apiVerifyRegistration(input: {
 
 export async function apiCancelRegistration(verificationToken: string): Promise<void> {
   await publicPostJson("/api/auth/cancel-registration", { verificationToken });
+}
+
+export async function apiPasswordResetStart(email: string): Promise<PasswordResetStartResponse> {
+  const raw = await publicPostJson("/api/auth/password-reset/start", { email });
+  return parsePasswordResetStartPayload(raw, parseCtx());
+}
+
+export async function apiPasswordResetVerify(input: {
+  resetToken: string;
+  code: string;
+}): Promise<PasswordResetVerifyResponse> {
+  const raw = await publicPostJson("/api/auth/password-reset/verify", input);
+  return parsePasswordResetVerifyPayload(raw, parseCtx());
+}
+
+export async function apiPasswordResetComplete(input: {
+  completionToken: string;
+  newPassword: string;
+}): Promise<PasswordResetCompleteResponse> {
+  const raw = await publicPostJson("/api/auth/password-reset/complete", input);
+  return parsePasswordResetCompletePayload(raw, parseCtx());
 }
 
 export async function apiGetMe(): Promise<MeResponse> {

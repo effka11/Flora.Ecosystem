@@ -37,6 +37,21 @@ export type RegisterInitResponse = {
   devVerificationCode?: string;
 };
 
+export type PasswordResetStartResponse = {
+  resetToken: string;
+  expiresAt: string;
+  devVerificationCode?: string;
+};
+
+export type PasswordResetVerifyResponse = {
+  completionToken: string;
+  expiresAt: string;
+};
+
+export type PasswordResetCompleteResponse = {
+  ok: boolean;
+};
+
 export type MeResponse = {
   userUuid: string;
   username: string;
@@ -86,6 +101,49 @@ export function parseRegisterInitPayload(raw: unknown, ctx?: ParseContext): Regi
     expiresAt,
     ...(devVerificationCode ? { devVerificationCode } : {}),
   };
+}
+
+export function parsePasswordResetStartPayload(
+  raw: unknown,
+  ctx?: ParseContext,
+): PasswordResetStartResponse {
+  const o = asRecord(raw);
+  if (!o) throw new Error("Некорректный ответ сброса пароля.");
+  const fb = ctx?.onPascalFallback;
+  const resetToken = readStr(o, ["resetToken", "ResetToken"], fb);
+  const expiresAt = readStr(o, ["expiresAt", "ExpiresAt"], fb);
+  if (!resetToken || !expiresAt) throw new Error("Некорректный ответ сброса пароля.");
+  const devVerificationCode = readStr(o, ["devVerificationCode", "DevVerificationCode"], fb);
+  return {
+    resetToken,
+    expiresAt,
+    ...(devVerificationCode ? { devVerificationCode } : {}),
+  };
+}
+
+export function parsePasswordResetVerifyPayload(
+  raw: unknown,
+  ctx?: ParseContext,
+): PasswordResetVerifyResponse {
+  const o = asRecord(raw);
+  if (!o) throw new Error("Некорректный ответ проверки кода.");
+  const fb = ctx?.onPascalFallback;
+  const completionToken = readStr(o, ["completionToken", "CompletionToken"], fb);
+  const expiresAt = readStr(o, ["expiresAt", "ExpiresAt"], fb);
+  if (!completionToken || !expiresAt) throw new Error("Некорректный ответ проверки кода.");
+  return { completionToken, expiresAt };
+}
+
+export function parsePasswordResetCompletePayload(
+  raw: unknown,
+  ctx?: ParseContext,
+): PasswordResetCompleteResponse {
+  const o = asRecord(raw);
+  if (!o) throw new Error("Некорректный ответ смены пароля.");
+  const fb = ctx?.onPascalFallback;
+  const ok = readBool(o, ["ok", "Ok"], fb);
+  if (ok !== true) throw new Error("Некорректный ответ смены пароля.");
+  return { ok: true };
 }
 
 export function parseMePayload(raw: unknown, ctx?: ParseContext): MeResponse {

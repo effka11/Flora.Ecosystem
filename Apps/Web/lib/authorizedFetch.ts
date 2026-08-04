@@ -11,7 +11,7 @@ import {
   authPostForm as coreAuthPostForm,
   authPostJson as coreAuthPostJson,
   authPutJson as coreAuthPutJson,
-  parseApiErrorMessage,
+  throwApiRequestError,
 } from "@flora/client-core/api";
 import { initWebApiClient } from "@/lib/apiClient";
 
@@ -90,7 +90,7 @@ export async function authDelete(urlOrPath: string): Promise<void> {
 export async function authDeleteJson(urlOrPath: string): Promise<unknown> {
   ensureClient();
   const r = await authFetch(toApiPath(urlOrPath), { method: "DELETE" });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseApiErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   if (r.status === 204) return null;
   return r.json().catch(() => ({}));
 }
@@ -106,7 +106,7 @@ export async function authDeleteWithBody(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseApiErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   return r;
 }
 
@@ -123,13 +123,13 @@ export async function authPost204(urlOrPath: string, body?: Record<string, unkno
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok && r.status !== 204) {
-    throw new ApiRequestError(r.status, await parseApiErrorMessage(r));
+    await throwApiRequestError(r);
   }
 }
 
 export async function authGetBlob(urlOrPath: string): Promise<Blob> {
   ensureClient();
   const r = await authFetch(toApiPath(urlOrPath), { method: "GET" });
-  if (!r.ok) throw new ApiRequestError(r.status, await parseApiErrorMessage(r));
+  if (!r.ok) await throwApiRequestError(r);
   return r.blob();
 }

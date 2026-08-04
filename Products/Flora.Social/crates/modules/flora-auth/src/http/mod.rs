@@ -1,6 +1,6 @@
 //! Auth HTTP — Фаза 2b: sessions, logout, me/security, refresh, login, register.
 
-mod rate_limit;
+pub(crate) mod rate_limit;
 
 use std::sync::Arc;
 
@@ -18,6 +18,10 @@ use crate::application::account::{AccountService, ChangePasswordError, DeleteAcc
 use crate::application::login::{
     LoginError, LoginService, SessionHints, agent_hash_from_user_agent, clamp_ip,
     resolve_identifier,
+};
+use crate::application::password_reset::{
+    PasswordResetCompleteError, PasswordResetService, PasswordResetStartError,
+    PasswordResetVerifyError,
 };
 use crate::application::refresh::{RefreshError, RefreshService};
 use crate::application::register::{RegisterBeginError, RegisterService, RegisterVerifyError};
@@ -53,6 +57,7 @@ pub struct PublicAuthState {
     pub refresh: Arc<RefreshService>,
     pub login: Arc<LoginService>,
     pub register: Arc<RegisterService>,
+    pub password_reset: Arc<PasswordResetService>,
 }
 
 /// Маршруты с JWT (flora-social вешает Bearer middleware).
@@ -81,7 +86,7 @@ pub fn protected_router(state: AuthState) -> Router {
         ))
 }
 
-/// Анонимные маршруты (без JWT). Rate-limit: login/refresh/register/verify.
+/// Анонимные маршруты (без JWT). Rate-limit: login/refresh/register/verify/password-reset.
 pub fn public_router(state: PublicAuthState) -> Router {
     let limiters = AnonymousAuthLimiters::social_defaults();
     Router::new()
@@ -90,6 +95,12 @@ pub fn public_router(state: PublicAuthState) -> Router {
         .route("/api/auth/register", post(register))
         .route("/api/auth/verify-registration", post(verify_registration))
         .route("/api/auth/cancel-registration", post(cancel_registration))
+        .route("/api/auth/password-reset/start", post(password_reset_start))
+        .route("/api/auth/password-reset/verify", post(password_reset_verify))
+        .route(
+            "/api/auth/password-reset/complete",
+            post(password_reset_complete),
+        )
         .with_state(state)
         .layer(axum::middleware::from_fn_with_state(
             limiters,
@@ -673,6 +684,161 @@ async fn cancel_registration(
     StatusCode::OK.into_response()
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordResetStartRequest {
+    #[serde(alias = "Email")]
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordResetVerifyRequest {
+    #[serde(alias = "ResetToken")]
+    pub reset_token: Option<String>,
+    #[serde(alias = "Code")]
+    pub code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordResetCompleteRequest {
+    #[serde(alias = "CompletionToken")]
+    pub completion_token: Option<String>,
+    #[serde(alias = "NewPassword")]
+    pub new_password: Option<String>,
+}
+
+async fn password_reset_start(
+    State(state): State<PublicAuthState>,
+    Json(body): Json<PasswordResetStartRequest>,
+) -> Response {
+    match state
+        .password_reset
+        .start(body.email.as_deref().unwrap_or(""))
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(PasswordResetStartError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": msg,
+                "code": "auth.password_reset.bad_request"
+            })),
+        )
+            .into_response(),
+        Err(PasswordResetStartError::RateLimited) => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({
+                "error": "Слишком много запросов. Попробуйте позже.",
+                "code": "auth.password_reset.rate_limited"
+            })),
+        )
+            .into_response(),
+        Err(PasswordResetStartError::Internal(e)) => {
+            tracing::error!(error = %e, "password reset start failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn password_reset_verify(
+    State(state): State<PublicAuthState>,
+    Json(body): Json<PasswordResetVerifyRequest>,
+) -> Response {
+    let Some(token) = body
+        .reset_token
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s.trim()).ok())
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Некорректный токен сброса.",
+                "code": "auth.password_reset.invalid_token"
+            })),
+        )
+            .into_response();
+    };
+    match state
+        .password_reset
+        .verify(token, body.code.as_deref().unwrap_or(""))
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(PasswordResetVerifyError::BadRequest(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": msg,
+                "code": "auth.password_reset.bad_request"
+            })),
+        )
+            .into_response(),
+        Err(PasswordResetVerifyError::Unauthorized { message, code }) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": message, "code": code })),
+        )
+            .into_response(),
+        Err(PasswordResetVerifyError::Internal(e)) => {
+            tracing::error!(error = %e, "password reset verify failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn password_reset_complete(
+    State(state): State<PublicAuthState>,
+    Json(body): Json<PasswordResetCompleteRequest>,
+) -> Response {
+    let Some(token) = body
+        .completion_token
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s.trim()).ok())
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Некорректный токен сброса.",
+                "code": "auth.password_reset.invalid_token"
+            })),
+        )
+            .into_response();
+    };
+    match state
+        .password_reset
+        .complete(token, body.new_password.as_deref().unwrap_or(""))
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(PasswordResetCompleteError::BadRequest { message, code }) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": message, "code": code })),
+        )
+            .into_response(),
+        Err(PasswordResetCompleteError::Unauthorized { message, code }) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": message, "code": code })),
+        )
+            .into_response(),
+        Err(PasswordResetCompleteError::Internal(e)) => {
+            tracing::error!(error = %e, "password reset complete failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Внутренняя ошибка сервера." })),
+            )
+                .into_response()
+        }
+    }
+}
+
 fn session_hints_from_headers(headers: &HeaderMap) -> SessionHints {
     let ip = headers
         .get("x-forwarded-for")
@@ -732,6 +898,27 @@ pub struct RegisterInitResponse {
     pub verification_token: String,
     pub expires_at: String,
     pub dev_verification_code: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordResetStartResponse {
+    pub reset_token: String,
+    pub expires_at: String,
+    pub dev_verification_code: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordResetVerifyResponse {
+    pub completion_token: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordResetCompleteResponse {
+    pub ok: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -843,5 +1030,30 @@ mod tests {
         );
         assert_eq!(v["expiresAt"], "2026-07-14T12:15:00.000Z");
         assert_eq!(v["devVerificationCode"], "123456");
+    }
+
+    #[test]
+    fn password_reset_start_response_json_shape() {
+        let v = serde_json::to_value(PasswordResetStartResponse {
+            reset_token: "01900000-0000-7000-8000-0000000000aa".into(),
+            expires_at: "2026-07-14T12:15:00.000Z".into(),
+            dev_verification_code: None,
+        })
+        .unwrap();
+        assert_eq!(v["resetToken"], "01900000-0000-7000-8000-0000000000aa");
+        assert_eq!(v["expiresAt"], "2026-07-14T12:15:00.000Z");
+        assert!(v.get("devVerificationCode").is_none() || v["devVerificationCode"].is_null());
+    }
+
+    #[test]
+    fn password_reset_verify_complete_json_shape() {
+        let v = serde_json::to_value(PasswordResetVerifyResponse {
+            completion_token: "01900000-0000-7000-8000-0000000000bb".into(),
+            expires_at: "2026-07-14T12:10:00.000Z".into(),
+        })
+        .unwrap();
+        assert_eq!(v["completionToken"], "01900000-0000-7000-8000-0000000000bb");
+        let done = serde_json::to_value(PasswordResetCompleteResponse { ok: true }).unwrap();
+        assert_eq!(done["ok"], true);
     }
 }

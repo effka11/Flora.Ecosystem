@@ -53,6 +53,12 @@ pub trait AccountDirectory: Send + Sync {
     fn list_active_user_uuids(&self) -> BoxFuture<'_, Result<Vec<Uuid>, String>>;
 }
 
+/// Side-effect после успешного password reset (E2E lock и т.п.).
+/// Реализация живёт в product compose (flora-social → Messaging), не в Auth.
+pub trait PasswordResetHook: Send + Sync {
+    fn after_password_reset(&self, user_uuid: Uuid) -> BoxFuture<'_, Result<(), String>>;
+}
+
 /// Порт проверки server-side сессии для JWT middleware продукта.
 ///
 /// Auth владеет таблицей сессий; flora-social знает только контракт и не читает

@@ -1,5 +1,6 @@
 pub mod account;
 pub mod login;
+pub mod password_reset;
 pub mod refresh;
 pub mod register;
 pub mod replay_cleanup;

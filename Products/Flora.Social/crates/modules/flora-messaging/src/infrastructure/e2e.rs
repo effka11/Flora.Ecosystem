@@ -490,13 +490,17 @@ pub async fn update_user_e2e_key(
     Ok(())
 }
 
+/// Lock E2E after password reset (and shared by `POST /api/messaging/e2e/lock`).
+///
+/// Policy (password-reset v1): only `Active` / `ActiveNewEpoch` → `Locked`.
+/// `Frozen` / `Recovering` / `Rotating` / `NotInitialized` / missing row / already
+/// `Locked` / unknown → no-op. Callers that previously relied on lock forcing any
+/// non-Locked state into Locked must not; freeze must not be overwritten.
 pub async fn lock_account(pool: &PgPool, user_uuid: Uuid) -> Result<(), String> {
-    let state = fetch_account_state(pool, user_uuid).await?;
-    if state.is_none() {
+    let Some(state) = fetch_account_state(pool, user_uuid).await? else {
         return Ok(());
-    }
-    let state = state.unwrap();
-    if state.state == "Locked" {
+    };
+    if !should_set_locked_after_password_reset(&state.state) {
         return Ok(());
     }
     let now = Utc::now();
@@ -505,6 +509,7 @@ pub async fn lock_account(pool: &PgPool, user_uuid: Uuid) -> Result<(), String> 
         UPDATE flora_core.user_e2e_account_states
         SET state = 'Locked', updated_at = $2
         WHERE user_uuid = $1
+          AND state IN ('Active', 'ActiveNewEpoch')
         "#,
     )
     .bind(user_uuid)
@@ -513,6 +518,36 @@ pub async fn lock_account(pool: &PgPool, user_uuid: Uuid) -> Result<(), String> 
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Pure policy for password-reset / e2e lock transitions (unit-tested).
+pub fn should_set_locked_after_password_reset(state: &str) -> bool {
+    matches!(state, "Active" | "ActiveNewEpoch")
+}
+
+#[cfg(test)]
+mod lock_policy_tests {
+    use super::should_set_locked_after_password_reset;
+
+    #[test]
+    fn locks_only_active_variants() {
+        assert!(should_set_locked_after_password_reset("Active"));
+        assert!(should_set_locked_after_password_reset("ActiveNewEpoch"));
+    }
+
+    #[test]
+    fn skips_frozen_recovering_rotating_locked_and_uninit() {
+        for s in [
+            "Frozen",
+            "Recovering",
+            "Rotating",
+            "Locked",
+            "NotInitialized",
+            "unknown",
+        ] {
+            assert!(!should_set_locked_after_password_reset(s), "{s}");
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
