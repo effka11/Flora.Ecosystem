@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { FontReadyGate } from "@/app/_shared/FontReadyGate";
 import { webBuildId } from "@/lib/buildId";
+import { FLORA_TITLE_SEPARATOR } from "@/lib/floraDocumentTitle";
 import "./globals.css";
 
 /** Локальные woff2 из npm — билд не ходит в Google Fonts (офлайн / блокировки). */
@@ -36,7 +37,7 @@ const manrope = localFont({
 export const metadata: Metadata = {
   title: {
     default: "Flora",
-    template: "Flora — %s",
+    template: `Flora${FLORA_TITLE_SEPARATOR}%s`,
   },
   description: "Flora",
   icons: {
