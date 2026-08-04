@@ -26,8 +26,14 @@ BEGIN
         RAISE EXCEPTION 'Auth replay indexes are missing';
     END IF;
 
-    IF (SELECT count(*) FROM flora_core.__flora_migrations_auth) <> 2 THEN
-        RAISE EXCEPTION 'expected exactly two recorded Auth migrations';
+    IF (SELECT count(*) FROM flora_core.__flora_migrations_auth) <> 3 THEN
+        RAISE EXCEPTION 'expected exactly three recorded Auth migrations';
+    END IF;
+
+    IF to_regclass('flora_core.pending_password_resets') IS NULL
+        OR to_regclass('flora_core.password_reset_grants') IS NULL
+    THEN
+        RAISE EXCEPTION 'Auth password-reset migration was not applied';
     END IF;
 
     IF NOT EXISTS (
