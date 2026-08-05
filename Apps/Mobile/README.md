@@ -40,28 +40,29 @@ plaintext. При ошибке/opt-out показывается «Новое с�
 
 ### Sideload auto-update (PackageInstaller)
 
-Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляется с канала Flora (`/apk/`) через FCM + native `UpdateCoordinator`.
+Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляется **только с канала Flora** (`https://social.flora-s.net/apk/`) через FCM + native `UpdateCoordinator`. GitHub Releases не используется для скачивания APK.
 
-#### Путь 1.1 — авто (opt-in)
+#### Путь 1.1 — авто (opt-in в настройках)
 
-1. После логина — Flora-модалка «установка из этого источника». `Back` / «Нет, спасибо» глушат повтор модалки; opt-in = факт `canRequestPackageInstalls()`.
-2. Task `Send auto-update & notifications to side-APK` → inbox + **data-only HIGH FCM** (`type=app_update` + `update{version,versionCode,apkUrl,sha256,…}`) всем Android-клиентам. Без ключа `notification` и без системного tray «новая версия».
-3. Native: DownloadManager → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) только если процесс **не в foreground ≥ 10 с** (WorkManager delay). Возврат в UI отменяет отложенный install.
+1. **Настройки → Уведомления → «Автообновление приложения»** (default OFF). При включении — Flora-sheet «установка из этого источника», затем system Settings. Без permission авто не стартует; тумблер при revoke permission остаётся ON (meta + «Выдать разрешение»).
+2. Task `Send auto-update & notifications to side-APK` → inbox + **data-only HIGH FCM** (`type=app_update` + flat `version,versionCode,apkUrl,sha256,…` на канал `/apk/`). Без ключа `notification` и без системного tray «новая версия».
+3. Native: DownloadManager с channel URL → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) только если процесс **не в foreground ≥ 10 с** (WorkManager delay). Возврат в UI отменяет отложенный install.
 4. Скачивание в foreground разрешено; установка в foreground — **нет** (кроме кнопки).
 5. Android &lt; 12 или OEM без silent → `READY` + local «готово»; установка через кнопку.
-6. Catch-up при open: unread `app_update` → `https://social.flora-s.net/apk/flora.social-android-update.json` (или запись в `releases.json`) → native download.
+6. Catch-up при open (если тумблер ON + permission): unread `app_update` → `https://social.flora-s.net/apk/flora.social-android-update.json` (или `releases.json`) → native download.
 
 #### Путь 2.x — кнопка «Обновить» в inbox
 
 | | Условие | Поведение |
 |--|---------|-----------|
 | 2.1 | permission + APK `READY` той же версии | только install (в foreground OK) |
-| 2.2 | permission, APK ещё нет | download + interactive install |
+| 2.2 | permission, APK ещё нет | download с канала + interactive install |
+| wait | native `DOWNLOADING` той же VC | ждать READY → 2.1 (без второго DownloadManager) |
 | 2.4 | нет permission / сбой / нет native | прямое скачивание APK с канала Flora (без запроса «установка из других источников») |
 
 #### Сборки
 
-Sideload updater линкуется в **Dev** и production sideload APK. Авто-путь только при `extra.sideloadUpdates`.
+Sideload updater линкуется в **Dev** и production sideload APK. Switch авто и silent-путь только при `extra.sideloadUpdates`.
 
 EAS `production` (Play AAB) / `FLORA_DISABLE_SIDELOAD_UPDATES=1`: без permissions, без модуля, без PackageInstaller (кнопка → `/download`).
 
@@ -73,7 +74,7 @@ EAS `production` (Play AAB) / `FLORA_DISABLE_SIDELOAD_UPDATES=1`: без permiss
 .\Scripts\send-apk-auto-update.ps1 -Production -Confirm
 ```
 
-Скрипт broadcast подхватывает `Apps/Mobile/dist/flora.social-android-update.json` (или latest с `/apk/flora.social-android-update.json`) и шлёт поле `update` в API.
+Скрипт broadcast подхватывает `Apps/Mobile/dist/flora.social-android-update.json` (или latest с `/apk/flora.social-android-update.json`) и шлёт поле `update` в API (`apkUrl` на `social.flora-s.net/apk/…`).
 
 Манифест локально: `Apps/Mobile/dist/flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`) — SoT для broadcast/`update{}` в FCM. На канал кладутся APK + latest update.json + `releases.json`. Pending APK: `flora-update/pending.apk` в app external-files.
 
@@ -81,13 +82,16 @@ Fallback 2.4 открывает прямую ссылку на APK версии 
 
 #### Smoke
 
-1. Opt-in + app killed → broadcast → download → install без открытия UI (≥10 s вне foreground).
-2. Opt-in + foreground → download, install нет → свернуть ≥10 s → install.
-3. Свернуть &lt;10 s и вернуться → install не произошёл.
-4. READY → кнопка → 2.1 только install.
-5. Нет файла → кнопка → 2.2.
-6. Decline permission → кнопка → 2.3 / канал Flora.
-7. Regression: обычный DM FCM после wrapper FMS всё ещё доставляет.
+1. Тумблер OFF → broadcast → только inbox, нет download.
+2. Enable без permission → sheet → отказ → тумблер OFF.
+3. Тумблер ON + permission, app killed → broadcast → download с `/apk/` → silent install ≥10 s вне UI.
+4. ON + foreground → download, install нет → свернуть ≥10 s → install.
+5. Свернуть &lt;10 s и вернуться → install не произошёл.
+6. DOWNLOADING + кнопка той же VC → ждёт READY → 2.1.
+7. READY → кнопка → 2.1; нет файла → 2.2 с channel URL.
+8. Revoke install perm при ON → auto skip; meta; кнопка → 2.4 channel APK.
+9. Regression: обычный DM FCM после wrapper FMS всё ещё доставляет.
+10. Logcat: `startAuto` не пишет `APK URL not allowlisted` для `social.flora-s.net/apk/…`.
 
 ### Один раз на сервере
 

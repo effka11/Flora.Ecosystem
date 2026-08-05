@@ -271,7 +271,7 @@ export async function downloadApkResumable(
   if (cancelRequested) throw new Error("CANCELLED");
   await ensureUpdateDir();
 
-  // Prefer native OkHttp — Expo DownloadResumable stalls on GitHub redirects.
+  // Prefer native OkHttp — Expo DownloadResumable can stall on CDN redirects.
   const uri = canNativeDownload()
     ? await downloadWithNativeOkHttp(manifest, dest, onProgress)
     : await downloadWithExpoResumable(manifest, dest, onProgress);

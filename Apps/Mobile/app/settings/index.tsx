@@ -11,10 +11,12 @@ import {
   areSecurePushPreviewsEnabled,
   setSecurePushPreviewsEnabled,
 } from "flora-secure-push";
+import { canRequestPackageInstalls } from "flora-apk-updater";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Pressable,
   ScrollView,
   Switch,
@@ -23,9 +25,16 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { InstallPermissionHost } from "@/components/apkUpdate/InstallPermissionHost";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ProfileStatusField } from "@/components/profile/ProfileStatusField";
 import { avatarUploadErrorMessage, uploadAvatarFromPickerAsset } from "@/lib/avatarUpload";
+import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
+import {
+  isAutoUpdateEnabled,
+  setAutoUpdateEnabled,
+} from "@/lib/apkUpdate/autoUpdatePreference";
+import { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -415,17 +424,67 @@ function SecuritySettingsTab() {
 }
 
 function NotificationsSettingsTab() {
+  const sideload = isSideloadUpdatesEnabled();
   const [showMessageText, setShowMessageText] = useState(() =>
     areSecurePushPreviewsEnabled(),
   );
+  const [autoUpdate, setAutoUpdate] = useState(() => isAutoUpdateEnabled());
+  const [hasInstallPerm, setHasInstallPerm] = useState(() =>
+    sideload ? canRequestPackageInstalls() : false,
+  );
+  const [permBusy, setPermBusy] = useState(false);
+
+  const refreshInstallPerm = () => {
+    if (!sideload) return;
+    setHasInstallPerm(canRequestPackageInstalls());
+  };
+
+  useEffect(() => {
+    if (!sideload) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshInstallPerm();
+    });
+    return () => sub.remove();
+  }, [sideload]);
 
   const changeShowMessageText = (enabled: boolean) => {
     setShowMessageText(enabled);
     setSecurePushPreviewsEnabled(enabled);
   };
 
+  const requestPermAndMaybeEnable = async (enableAfter: boolean) => {
+    setPermBusy(true);
+    try {
+      const granted = await openInstallPermissionPrompt();
+      setHasInstallPerm(granted);
+      if (enableAfter && granted) {
+        setAutoUpdateEnabled(true);
+        setAutoUpdate(true);
+      }
+    } finally {
+      setPermBusy(false);
+    }
+  };
+
+  const changeAutoUpdate = (enabled: boolean) => {
+    if (!sideload) return;
+    if (!enabled) {
+      setAutoUpdateEnabled(false);
+      setAutoUpdate(false);
+      return;
+    }
+    if (canRequestPackageInstalls()) {
+      setAutoUpdateEnabled(true);
+      setAutoUpdate(true);
+      setHasInstallPerm(true);
+      return;
+    }
+    void requestPermAndMaybeEnable(true);
+  };
+
   return (
     <View style={styles.tabBody}>
+      {sideload ? <InstallPermissionHost /> : null}
       <View style={styles.settingRow}>
         <View style={styles.settingCopy}>
           <Text style={styles.bodyText}>Показывать текст сообщений</Text>
@@ -440,6 +499,40 @@ function NotificationsSettingsTab() {
           thumbColor={floraColors.whiteTemplate}
         />
       </View>
+      {sideload ? (
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.bodyText}>Автообновление приложения</Text>
+            <Text style={styles.metaText}>
+              Скачивание с канала Flora в фоне. Установка без Google Play — когда приложение свёрнуто
+              (Android 12+).
+            </Text>
+            {autoUpdate && !hasInstallPerm ? (
+              <Text style={styles.metaText}>Нужно разрешение на установку.</Text>
+            ) : null}
+            {autoUpdate && !hasInstallPerm ? (
+              <Pressable
+                style={styles.button}
+                onPress={() => void requestPermAndMaybeEnable(false)}
+                disabled={permBusy}
+                accessibilityRole="button"
+                accessibilityLabel="Выдать разрешение"
+              >
+                <Text style={styles.buttonText}>
+                  {permBusy ? "Открываем настройки…" : "Выдать разрешение"}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <Switch
+            value={autoUpdate}
+            onValueChange={changeAutoUpdate}
+            disabled={permBusy}
+            trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
+            thumbColor={floraColors.whiteTemplate}
+          />
+        </View>
+      ) : null}
       <Text style={styles.bodyText}>
         Push о новых сообщениях работает в release-сборке Flora. В Flora Dev обновления приходят через интернет
         (SSE), пока приложение открыто.

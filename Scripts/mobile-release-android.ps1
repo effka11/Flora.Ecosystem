@@ -459,7 +459,7 @@ if ($PublishChannel) {
 
     try {
         Write-Host ""
-        Write-Host "Publishing APK channel → ${FloraApkChannelBase}/ ($remoteTarget:$FloraApkChannelRemoteDir) ..."
+        Write-Host "Publishing APK channel → ${FloraApkChannelBase}/ (${remoteTarget}:${FloraApkChannelRemoteDir}) ..."
 
         & ssh @sshBase $remoteTarget "mkdir -p $FloraApkChannelRemoteDir"
         if ($LASTEXITCODE -ne 0) { throw "ssh mkdir failed (exit $LASTEXITCODE)" }

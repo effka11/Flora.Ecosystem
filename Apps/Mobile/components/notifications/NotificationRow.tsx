@@ -129,10 +129,10 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
         if (
           result.status === "up_to_date" ||
           result.status === "installed" ||
-          result.status === "opened_github"
+          result.status === "opened_channel"
         ) {
           closeModal();
-          if (result.status !== "opened_github" && mountedRef.current) {
+          if (result.status !== "opened_channel" && mountedRef.current) {
             setAlreadyInstalled(true);
           }
           return;

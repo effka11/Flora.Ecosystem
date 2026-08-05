@@ -86,6 +86,15 @@ class FloraApkUpdaterModule : Module() {
       UpdateCoordinator.getState(context)
     }
 
+    Function("isAutoUpdateEnabled") {
+      UpdateStateStore(context).isAutoUpdateEnabled()
+    }
+
+    Function("setAutoUpdateEnabled") { enabled: Boolean ->
+      UpdateStateStore(context).setAutoUpdateEnabled(enabled)
+      true
+    }
+
     AsyncFunction("startAutoUpdate") { manifest: Map<String, Any?>, promise: Promise ->
       try {
         val parsed = UpdateCoordinator.parseManifestFromJs(manifest)

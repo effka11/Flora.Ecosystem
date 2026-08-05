@@ -31,17 +31,12 @@ describe("APK update manifest security", () => {
     }
   });
 
-  it("accepts legacy GitHub release URLs during dual-trust migration", () => {
+  it("rejects GitHub release URLs (channel-only trust)", () => {
     expect(
       isTrustedFloraSocialApkUrl(
         "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
       ),
-    ).toBe(true);
-    expect(
-      trustedFloraSocialApkVersion(
-        "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
-      ),
-    ).toBe("0.7.0");
+    ).toBe(false);
   });
 
   it("requires a complete SHA-256 digest", () => {

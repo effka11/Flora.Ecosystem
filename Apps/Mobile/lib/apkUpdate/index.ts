@@ -4,6 +4,10 @@ export {
   isSideloadUpdatesEnabled,
 } from "@/lib/apkUpdate/capabilities";
 export {
+  isAutoUpdateEnabled,
+  setAutoUpdateEnabled,
+} from "@/lib/apkUpdate/autoUpdatePreference";
+export {
   runAppUpdateCatchUp,
   runAutoUpdateFromManifest,
   runAutoUpdateFromRealtime,
@@ -27,3 +31,4 @@ export {
   type ApkUpdateProgressListener,
 } from "@/lib/apkUpdate/progress";
 export { runUserUpdateFromNotification } from "@/lib/apkUpdate/userUpdate";
+export { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";

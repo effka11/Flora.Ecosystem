@@ -91,6 +91,12 @@ class UpdateStateStore(context: Context) {
       .apply()
   }
 
+  fun isAutoUpdateEnabled(): Boolean = prefs.getBoolean(KEY_AUTO_UPDATE, false)
+
+  fun setAutoUpdateEnabled(enabled: Boolean) {
+    prefs.edit().putBoolean(KEY_AUTO_UPDATE, enabled).apply()
+  }
+
   fun toJsMap(): Map<String, Any?> {
     val m = getManifest()
     return mapOf(
@@ -102,6 +108,7 @@ class UpdateStateStore(context: Context) {
       "sizeBytes" to m?.sizeBytes,
       "lastError" to getLastError(),
       "downloadId" to getDownloadId(),
+      "autoUpdateEnabled" to isAutoUpdateEnabled(),
     )
   }
 
@@ -117,5 +124,6 @@ class UpdateStateStore(context: Context) {
     private const val KEY_TEXT = "text"
     private const val KEY_DOWNLOAD_ID = "downloadId"
     private const val KEY_ERROR = "lastError"
+    private const val KEY_AUTO_UPDATE = "autoUpdateEnabled"
   }
 }

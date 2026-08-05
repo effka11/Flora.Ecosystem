@@ -15,7 +15,11 @@ import {
 } from "@/lib/pushNotifications";
 import { isNativePushEnabled } from "@/lib/pushCapabilities";
 import { setSecurePushAppForeground } from "flora-secure-push";
+import { canRequestPackageInstalls } from "flora-apk-updater";
 import { FloraAppServices, QueryClientRefBridge } from "@/providers/FloraAppServices";
+import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
+import { isAutoUpdateEnabled } from "@/lib/apkUpdate/autoUpdatePreference";
+import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
 import { initMobileSodium } from "@/lib/fscp/sodium";
 import { initStorageMigrations } from "@/lib/mmkv";
 import { initSentry, initTelemetry } from "@/lib/sentry";
@@ -50,6 +54,8 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       initTelemetry();
       initFloraClient();
       await initStorageMigrations();
+      // Write-through auto-update preference (default OFF) before any FCM wake.
+      void isAutoUpdateEnabled();
       await initMobileSodium();
       await bootstrapSession();
       const session = useSessionStore.getState();
@@ -158,12 +164,24 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       void registerPushTokenWithServer(userUuid).catch(() => undefined);
     }
 
+    const maybeCatchUp = () => {
+      if (
+        isSideloadUpdatesEnabled() &&
+        isAutoUpdateEnabled() &&
+        canRequestPackageInstalls()
+      ) {
+        void runAppUpdateCatchUp().catch(() => undefined);
+      }
+    };
+    maybeCatchUp();
+
     const appSub = AppState.addEventListener("change", (state: AppStateStatus) => {
       setSecurePushAppForeground(state === "active");
       if (state !== "active") return;
       if (isNativePushEnabled()) {
         void registerPushTokenWithServer(userUuid).catch(() => undefined);
       }
+      maybeCatchUp();
     });
 
     return () => {

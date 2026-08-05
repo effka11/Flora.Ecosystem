@@ -38,7 +38,7 @@ export type CheckAndInstallOptions = {
   allowUserAction: boolean;
   /** Skip throttle (notification tap). */
   force?: boolean;
-  /** Optional manifest override (e.g. from notification when GitHub has no JSON). */
+  /** Optional manifest override (e.g. from notification when channel latest JSON misses the version). */
   manifest?: AndroidUpdateManifest | null;
   /** Interactive UI progress (ignored on silent path). */
   onProgress?: ApkUpdateProgressListener;
@@ -112,8 +112,8 @@ async function runCheckAndInstall(
     if (options.allowUserAction) options.onProgress?.(progress);
   };
 
-  // Silent GitHub self-update: production sideload only.
   // Interactive (notification «Обновить»): any build with the native module.
+  // Silent/auto path: production sideload only.
   if (options.allowUserAction) {
     if (!isApkUpdaterNativeReady()) {
       return { ok: false, error: "Модуль обновления недоступен в этой сборке", code: "NO_NATIVE" };
@@ -162,7 +162,7 @@ async function runCheckAndInstall(
       if (isApkUpdateCancelled()) return cancelledResult();
       if (options.allowUserAction) {
         // Caller may retry with notification fallback — don't paint error yet.
-        return { ok: false, error: "Не удалось проверить обновление", code: "GITHUB" };
+        return { ok: false, error: "Не удалось проверить обновление", code: "CHANNEL" };
       }
       return { ok: true, status: "skipped" };
     }
@@ -213,8 +213,7 @@ async function runCheckAndInstall(
   }
   manifest = { ...manifest, sha256: trustedSha256 };
 
-  // A legacy GitHub asset has no trustworthy versionCode. It is allowed only
-  // after an explicit notification-button tap, never on the silent path.
+  // Channel assets without versionCode are not trusted on the silent/auto path.
   if (!options.allowUserAction && manifest.versionCode == null) {
     return { ok: true, status: "skipped" };
   }
@@ -255,7 +254,7 @@ async function runCheckAndInstall(
         if (manifest.sizeBytes != null) {
           await assertEnoughDiskSpace(manifest.sizeBytes);
         }
-        // No HEAD probe: GitHub release URLs often hang on HEAD from the device.
+        // No HEAD probe: some CDNs hang on HEAD from the device.
       } catch (e) {
         if (isApkUpdateCancelled()) return cancelledResult();
         const msg = e instanceof Error ? e.message : "";

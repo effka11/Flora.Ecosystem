@@ -179,7 +179,7 @@ function Get-AppUpdateManifestForBroadcast {
         $fromChannel = Get-ManifestFromChannel
         if ($null -ne $fromChannel) {
             if (([string]$fromChannel.version).Trim() -eq $v) { return $fromChannel }
-            Write-Host "Channel latest version=$($fromChannel.version), want $v — trying local dist" -ForegroundColor DarkYellow
+            Write-Host "Channel latest version=$($fromChannel.version), want $v - trying local dist" -ForegroundColor DarkYellow
         }
     }
 

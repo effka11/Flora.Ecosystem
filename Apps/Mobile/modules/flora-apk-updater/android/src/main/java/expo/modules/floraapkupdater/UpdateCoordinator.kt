@@ -19,15 +19,18 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Native sideload update helpers for interactive (inbox button) installs.
- * Background download / silent install paths are disabled.
+ * Native sideload update orchestrator — download from Flora channel anytime (opt-in),
+ * silent install only after ≥10s with no UI (WorkManager delay survives process death).
  */
 object UpdateCoordinator {
   private const val TAG = "FloraApkUpdate"
@@ -133,8 +136,31 @@ object UpdateCoordinator {
   }
 
   private fun maybeScheduleSilentInstall(context: Context) {
-    // Background / silent install disabled — updates only via inbox button.
-    Log.i(TAG, "maybeSchedule skipped: auto-update disabled")
+    val app = context.applicationContext
+    if (!UpdateStateStore(app).isAutoUpdateEnabled()) {
+      Log.i(TAG, "maybeSchedule skipped: auto-update preference off")
+      return
+    }
+    // Finish download if COMPLETE broadcast was missed (common on Samsung).
+    tryFinalizeDownload(app)
+    if (isUiVisible() || interactiveInstall) {
+      Log.i(TAG, "maybeSchedule skipped: uiVisible=${isUiVisible()} interactive=$interactiveInstall")
+      return
+    }
+    val store = UpdateStateStore(app)
+    val phase = store.getPhase()
+    if (phase != UpdatePhase.READY) {
+      Log.i(TAG, "maybeSchedule skipped: phase=$phase")
+      return
+    }
+    // API 31+ required for USER_ACTION_NOT_REQUIRED; don't re-query install permission
+    // here — Samsung often returns false while the process is stopping.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      Log.i(TAG, "maybeSchedule skipped: API < 31 (silent install unsupported)")
+      UpdateTrayNotifier.showReady(app, store.getManifest()?.version ?: "")
+      return
+    }
+    scheduleSilentInstall(app, store.getManifest()?.versionCode)
   }
 
   /** If DownloadManager finished but we never got ACTION_DOWNLOAD_COMPLETE, promote to READY. */
@@ -338,13 +364,64 @@ object UpdateCoordinator {
     )
   }
 
-  /**
-   * Former FCM / catch-up / JS auto path — disabled.
-   * Sideload updates are interactive only (inbox «Обновить»).
-   */
-  @Suppress("UNUSED_PARAMETER")
+  /** FCM / catch-up / JS auto path (Flora channel apkUrl only). */
   fun startAuto(context: Context, manifest: UpdateManifest, showTray: Boolean) {
-    Log.i(TAG, "startAuto disabled (button-only updates) version=${manifest.version}")
+    val app = context.applicationContext
+    val store = UpdateStateStore(app)
+    if (!store.isAutoUpdateEnabled()) {
+      Log.i(TAG, "startAuto skipped: auto-update preference off")
+      return
+    }
+    if (!canRequestPackageInstalls(app)) {
+      Log.i(TAG, "startAuto skipped: no install permission")
+      if (showTray) {
+        UpdateTrayNotifier.showUpdateAvailable(
+          app,
+          "Flora",
+          manifest.text ?: "Новая версия Android - ${manifest.version}",
+        )
+      }
+      return
+    }
+    if (!UpdateUrlAllowlist.isAllowed(manifest.apkUrl)) {
+      fail(app, "APK URL not allowlisted")
+      return
+    }
+    if (manifest.sha256.length != 64) {
+      fail(app, "Invalid sha256")
+      return
+    }
+
+    val installed = installedVersionCode(app)
+    if (manifest.versionCode <= installed) {
+      Log.i(TAG, "startAuto skipped: already installed ${manifest.versionCode}")
+      return
+    }
+
+    val existing = store.getManifest()
+    val phase = store.getPhase()
+    if (existing?.versionCode == manifest.versionCode &&
+      (phase == UpdatePhase.DOWNLOADING || phase == UpdatePhase.READY ||
+        phase == UpdatePhase.INSTALL_SCHEDULED || phase == UpdatePhase.INSTALLING)
+    ) {
+      Log.i(TAG, "startAuto deduped versionCode=${manifest.versionCode} phase=$phase")
+      if (phase == UpdatePhase.READY && !isUiVisible() && canAutoInstall(app)) {
+        scheduleSilentInstall(app, manifest.versionCode)
+      }
+      return
+    }
+
+    if (showTray) {
+      UpdateTrayNotifier.showUpdateAvailable(
+        app,
+        "Flora",
+        manifest.text ?: "Новая версия Android - ${manifest.version}",
+      )
+    }
+
+    store.saveManifest(manifest)
+    store.clearError()
+    enqueueDownload(app, manifest)
   }
 
   fun cancel(context: Context) {
@@ -448,8 +525,38 @@ object UpdateCoordinator {
   }
 
   fun scheduleSilentInstall(context: Context, versionCode: Int?) {
-    // Background / silent install disabled — updates only via inbox button.
-    Log.i(TAG, "scheduleSilentInstall disabled (button-only) versionCode=$versionCode")
+    val app = context.applicationContext
+    if (!UpdateStateStore(app).isAutoUpdateEnabled()) {
+      Log.i(TAG, "scheduleSilentInstall skipped: auto-update preference off")
+      return
+    }
+    val code = versionCode ?: return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      Log.i(TAG, "scheduleSilentInstall skipped: API < 31")
+      return
+    }
+    if (isUiVisible() || interactiveInstall) {
+      Log.i(TAG, "scheduleSilentInstall skipped: ui/interactive")
+      return
+    }
+
+    val store = UpdateStateStore(context)
+    if (store.getPhase() != UpdatePhase.READY && store.getPhase() != UpdatePhase.INSTALL_SCHEDULED) {
+      Log.i(TAG, "scheduleSilentInstall skipped: phase=${store.getPhase()}")
+      return
+    }
+    store.setPhase(UpdatePhase.INSTALL_SCHEDULED)
+
+    val work = OneTimeWorkRequestBuilder<FloraApkInstallWorker>()
+      .setInitialDelay(INSTALL_DELAY_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+      .setInputData(workDataOf(FloraApkInstallWorker.KEY_VERSION_CODE to code))
+      .build()
+    WorkManager.getInstance(context).enqueueUniqueWork(
+      INSTALL_WORK_PREFIX + code,
+      ExistingWorkPolicy.REPLACE,
+      work,
+    )
+    Log.i(TAG, "Scheduled silent install in ${INSTALL_DELAY_SECONDS}s versionCode=$code")
   }
 
   fun cancelScheduledInstalls(context: Context) {
@@ -464,15 +571,53 @@ object UpdateCoordinator {
   }
 
   /**
-   * Called from WorkManager after delay. Background silent install disabled.
+   * Called from WorkManager after delay.
    */
   fun trySilentInstall(context: Context, expectedVersionCode: Int): Boolean {
-    Log.i(TAG, "trySilentInstall disabled (button-only) versionCode=$expectedVersionCode")
-    val store = UpdateStateStore(context.applicationContext)
-    if (store.getPhase() == UpdatePhase.INSTALL_SCHEDULED) {
-      store.setPhase(UpdatePhase.READY)
+    val app = context.applicationContext
+    if (!UpdateStateStore(app).isAutoUpdateEnabled()) {
+      Log.i(TAG, "trySilentInstall skipped: auto-update preference off")
+      val store = UpdateStateStore(app)
+      if (store.getPhase() == UpdatePhase.INSTALL_SCHEDULED) {
+        store.setPhase(UpdatePhase.READY)
+      }
+      return false
     }
-    return false
+    if (isUiVisible() || interactiveInstall) {
+      Log.i(
+        TAG,
+        "Silent install aborted: uiVisible=${isUiVisible()} interactive=$interactiveInstall",
+      )
+      val store = UpdateStateStore(app)
+      if (store.getPhase() == UpdatePhase.INSTALL_SCHEDULED) {
+        store.setPhase(UpdatePhase.READY)
+      }
+      return false
+    }
+    if (!canAutoInstall(app)) {
+      Log.i(TAG, "Silent install aborted: canAutoInstall=false")
+      return false
+    }
+
+    val store = UpdateStateStore(app)
+    val manifest = store.getManifest() ?: return false
+    if (manifest.versionCode != expectedVersionCode) {
+      Log.i(TAG, "Silent install aborted: version mismatch")
+      return false
+    }
+    if (store.getPhase() != UpdatePhase.READY && store.getPhase() != UpdatePhase.INSTALL_SCHEDULED) {
+      Log.i(TAG, "Silent install aborted: phase=${store.getPhase()}")
+      return false
+    }
+
+    val apk = pendingApk(app)
+    if (!apk.exists() || apk.length() == 0L) {
+      fail(app, "APK missing at install time")
+      return false
+    }
+
+    Log.i(TAG, "trySilentInstall commit versionCode=$expectedVersionCode")
+    return commitInstall(app, apk, allowUserAction = false, store = store)
   }
 
   /** Used by FloraApkUpdaterModule.installApk (JS interactive / legacy). */

@@ -43,6 +43,8 @@ type FloraApkUpdaterNativeModule = {
   sdkInt(): number;
   getUpdateDir(): string;
   getUpdateState(): NativeUpdateState;
+  isAutoUpdateEnabled(): boolean;
+  setAutoUpdateEnabled(enabled: boolean): boolean;
   startAutoUpdate(manifest: NativeUpdateManifest): Promise<NativeUpdateState>;
   cancelUpdate(): boolean;
   requestInstallPermission(): Promise<boolean>;
@@ -91,6 +93,24 @@ export function getNativeUpdateState(): NativeUpdateState | null {
     return native.getUpdateState();
   } catch {
     return null;
+  }
+}
+
+export function isNativeAutoUpdateEnabled(): boolean {
+  if (!native || typeof native.isAutoUpdateEnabled !== "function") return false;
+  try {
+    return native.isAutoUpdateEnabled();
+  } catch {
+    return false;
+  }
+}
+
+export function setNativeAutoUpdateEnabled(enabled: boolean): void {
+  if (!native || typeof native.setAutoUpdateEnabled !== "function") return;
+  try {
+    native.setAutoUpdateEnabled(enabled);
+  } catch {
+    // ignore
   }
 }
 
@@ -158,6 +178,8 @@ export default {
   getAndroidSdkInt,
   getNativeUpdateDir,
   getNativeUpdateState,
+  isNativeAutoUpdateEnabled,
+  setNativeAutoUpdateEnabled,
   startNativeAutoUpdate,
   cancelNativeUpdate,
   requestInstallPermission,
