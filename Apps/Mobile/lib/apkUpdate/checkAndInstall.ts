@@ -22,7 +22,7 @@ import {
   fetchLatestUpdateManifest,
   getInstalledVersionCode,
   type AndroidUpdateManifest,
-} from "@/lib/apkUpdate/githubRelease";
+} from "@/lib/apkUpdate/channelRelease";
 import {
   normalizeTrustedSha256,
   trustedFloraSocialApkVersion,

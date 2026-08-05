@@ -130,15 +130,19 @@ function Test-AppUpdateManifestObject {
 <#
 .SYNOPSIS
   Load flora.social-android-update.json for broadcast FCM metadata.
-  Production prefers GitHub release social/v{version}; local dist is fallback when version matches.
+  Prefers Flora APK channel (social.flora-s.net/apk); local dist is fallback when version matches.
 #>
 function Get-AppUpdateManifestForBroadcast {
     param(
         [Parameter(Mandatory = $true)][string] $Root,
         [Parameter(Mandatory = $true)][string] $Version,
-        [switch] $PreferGitHub
+        # Deprecated name: when set, prefer remote channel before local dist.
+        [switch] $PreferGitHub,
+        [switch] $PreferChannel
     )
     $v = $Version.Trim()
+    $preferRemote = $PreferChannel -or $PreferGitHub
+    $channelLatestUrl = "https://social.flora-s.net/apk/flora.social-android-update.json"
 
     function Read-ManifestFile([string] $Path) {
         if (-not (Test-Path -LiteralPath $Path)) { return $null }
@@ -152,32 +156,31 @@ function Get-AppUpdateManifestForBroadcast {
         return $null
     }
 
-    function Get-ManifestFromGitHub([string] $TagVersion) {
-        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { return $null }
-        $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("flora-update-manifest-" + [guid]::NewGuid().ToString("n"))
-        New-Item -ItemType Directory -Path $tmp | Out-Null
+    function Get-ManifestFromChannel {
+        $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("flora-update-manifest-" + [guid]::NewGuid().ToString("n") + ".json")
         try {
-            $tag = "social/v$TagVersion"
-            & gh release download $tag -p "flora.social-android-update.json" -D $tmp --clobber 2>$null
-            $downloaded = Join-Path $tmp "flora.social-android-update.json"
-            $raw = Read-ManifestFile $downloaded
+            Invoke-WebRequest -Uri $channelLatestUrl -OutFile $tmp -UseBasicParsing -TimeoutSec 30
+            $raw = Read-ManifestFile $tmp
             if ($null -ne $raw) {
-                Write-Host "Update manifest: gh $tag" -ForegroundColor DarkGray
+                Write-Host "Update manifest: $channelLatestUrl" -ForegroundColor DarkGray
                 return $raw
             }
         }
         catch {
-            Write-Host "gh release download failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+            Write-Host "APK channel download failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
         }
         finally {
-            Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
         }
         return $null
     }
 
-    if ($PreferGitHub) {
-        $fromGh = Get-ManifestFromGitHub $v
-        if ($null -ne $fromGh) { return $fromGh }
+    if ($preferRemote) {
+        $fromChannel = Get-ManifestFromChannel
+        if ($null -ne $fromChannel) {
+            if (([string]$fromChannel.version).Trim() -eq $v) { return $fromChannel }
+            Write-Host "Channel latest version=$($fromChannel.version), want $v — trying local dist" -ForegroundColor DarkYellow
+        }
     }
 
     $candidates = @(
@@ -196,9 +199,11 @@ function Get-AppUpdateManifestForBroadcast {
         return $raw
     }
 
-    if (-not $PreferGitHub) {
-        $fromGh = Get-ManifestFromGitHub $v
-        if ($null -ne $fromGh) { return $fromGh }
+    if (-not $preferRemote) {
+        $fromChannel = Get-ManifestFromChannel
+        if ($null -ne $fromChannel -and ([string]$fromChannel.version).Trim() -eq $v) {
+            return $fromChannel
+        }
     }
 
     Write-Host "No update.json found for version $v." -ForegroundColor DarkYellow

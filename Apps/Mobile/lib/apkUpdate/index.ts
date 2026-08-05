@@ -19,7 +19,7 @@ export {
   fetchUpdateManifestFromNotificationText,
   fetchDirectUpdateManifestForVersion,
   getInstalledVersionCode,
-} from "@/lib/apkUpdate/githubRelease";
+} from "@/lib/apkUpdate/channelRelease";
 export {
   labelForApkUpdatePhase,
   type ApkUpdatePhase,

@@ -90,7 +90,8 @@ fn futures_stream() -> tokio_stream::wrappers::ReceiverStream<Result<bytes::Byte
         )))
         .await
         .ok();
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        // Пауза заметно больше CI-шума: буферизующий прокси отдал бы оба кадра только после неё.
+        tokio::time::sleep(Duration::from_millis(800)).await;
         tx.send(Ok(bytes::Bytes::from(
             "event: message\ndata: {\"n\":2}\n\n",
         )))
@@ -175,7 +176,6 @@ async fn proxy_streams_sse_without_buffering() {
     let upstream = spawn_upstream().await;
     let gateway = spawn_gateway(upstream).await;
 
-    let started = std::time::Instant::now();
     let mut response = reqwest::Client::new()
         .get(format!("http://{gateway}/api/sse"))
         .send()
@@ -186,16 +186,17 @@ async fn proxy_streams_sse_without_buffering() {
         "text/event-stream",
     );
 
-    // Первый кадр должен прийти до того, как апстрим закончит весь стрим (пауза 300 мс):
-    // если бы прокси буферизовал тело, chunk пришёл бы только целиком.
+    // Считаем после заголовков: cold-start/DNS/планировщик CI не должны выглядеть как буферизация.
+    let after_headers = std::time::Instant::now();
     let first = response.chunk().await.unwrap().expect("первый SSE-кадр");
-    let first_at = started.elapsed();
+    let first_at = after_headers.elapsed();
     assert!(
         std::str::from_utf8(&first).unwrap().contains("\"n\":1"),
         "первый кадр: {first:?}",
     );
+    // Апстрим ждёт 800 мс между кадрами; при буферизации первый chunk пришёл бы ≥ ~800 мс.
     assert!(
-        first_at < Duration::from_millis(250),
+        first_at < Duration::from_millis(400),
         "первый кадр пришёл слишком поздно ({first_at:?}) — похоже на буферизацию",
     );
 

@@ -1,11 +1,24 @@
 # Production Android release (AAB/APK) via Gradle after expo prebuild.
 param(
     [switch] $BroadcastUpdate,
+    [switch] $PublishChannel,
+    # Deprecated alias for -PublishChannel (GitHub Releases no longer used for APK).
     [switch] $PublishGitHub
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
+
+$FloraApkChannelOrigin = "https://social.flora-s.net"
+$FloraApkChannelBase = "$FloraApkChannelOrigin/apk"
+$FloraApkChannelRemoteDir = "/var/www/flora-apk"
+$FloraApkChannelLatestJson = "flora.social-android-update.json"
+$FloraApkChannelReleasesJson = "releases.json"
+
+if ($PublishGitHub -and -not $PublishChannel) {
+    Write-Warning "-PublishGitHub is deprecated; publishing to Flora APK channel (-PublishChannel)."
+    $PublishChannel = $true
+}
 
 function Test-AndroidSdkPath([string]$path) {
     if ([string]::IsNullOrWhiteSpace($path)) { return $false }
@@ -40,8 +53,8 @@ if ($buildPlayAab) {
     $env:FLORA_DISABLE_SIDELOAD_UPDATES = "1"
 }
 $nativeBuildMode = if ($env:FLORA_DISABLE_SIDELOAD_UPDATES -eq "1") { "play" } else { "sideload" }
-if ($PublishGitHub -and $nativeBuildMode -eq "play") {
-    throw "-PublishGitHub requires a sideload APK build. Unset FLORA_ANDROID_BUILD_AAB / FLORA_DISABLE_SIDELOAD_UPDATES."
+if ($PublishChannel -and $nativeBuildMode -eq "play") {
+    throw "-PublishChannel requires a sideload APK build. Unset FLORA_ANDROID_BUILD_AAB / FLORA_DISABLE_SIDELOAD_UPDATES."
 }
 Write-Host "Android native mode: $nativeBuildMode"
 
@@ -355,7 +368,7 @@ try {
             $apkItem = Get-Item -LiteralPath $distApk
             $sha256 = (Get-FileHash -LiteralPath $distApk -Algorithm SHA256).Hash.ToLowerInvariant()
             $apkFileName = $apkItem.Name
-            $apkUrl = "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v$socialVersion/$apkFileName"
+            $apkUrl = "$FloraApkChannelBase/$apkFileName"
             $updateManifest = [ordered]@{
                 version      = $socialVersion
                 versionCode  = $versionCode
@@ -389,53 +402,128 @@ finally {
     Pop-Location
 }
 
-if ($PublishGitHub) {
+if ($PublishChannel) {
     if (-not $distApk -or -not (Test-Path -LiteralPath $distApk)) {
-        throw "-PublishGitHub requires a built APK at dist/"
+        throw "-PublishChannel requires a built APK at dist/"
     }
-    # update.json stays local (broadcast / FCM update{}). Do not upload to GitHub assets.
-
-    $gh = Get-Command gh -ErrorAction SilentlyContinue
-    if (-not $gh) {
-        throw "GitHub CLI (gh) not found. Install from https://cli.github.com/ and run gh auth login."
+    $updateManifestPath = Join-Path (Join-Path $mobile "dist") "flora.social-android-update.json"
+    if (-not (Test-Path -LiteralPath $updateManifestPath)) {
+        throw "-PublishChannel requires $updateManifestPath (sideload build generates it)."
     }
 
-    $tag = "social/v$socialVersion"
-    Write-Host ""
-    Write-Host "Publishing GitHub release $tag (APK only; update.json stays in dist/) ..."
+    function Resolve-FloraSshKeyPath([string]$RawPath) {
+        $path = $RawPath.Trim().Trim('"')
+        if ([string]::IsNullOrWhiteSpace($path)) { return "" }
+        if ($path.StartsWith("~")) {
+            $path = Join-Path $env:USERPROFILE $path.Substring(1).TrimStart("\", "/")
+        }
+        return $path
+    }
 
-    # gh writes "release not found" to stderr; with native-command error preference that
-    # must not abort before we create the release.
-    $releaseExists = $false
-    $prevEap = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
+    function New-FloraSshTransportOpts([string]$IdentityKey) {
+        $parts = @(
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ConnectTimeout=30"
+        )
+        if ($IdentityKey -and (Test-Path -LiteralPath $IdentityKey)) {
+            $parts += @("-i", $IdentityKey)
+        }
+        return $parts
+    }
+
+    $server = $env:FLORA_DEPLOY_HOST
+    if ([string]::IsNullOrWhiteSpace($server)) {
+        $server = (Read-Host "VPS IP or hostname for APK channel").Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($server)) {
+        throw "Server host required: set FLORA_DEPLOY_HOST or enter at prompt."
+    }
+
+    $user = if ($env:FLORA_DEPLOY_USER) { $env:FLORA_DEPLOY_USER.Trim() } else { "root" }
+    $sshKeyEnv = if ($null -ne $env:FLORA_SSH_KEY) { $env:FLORA_SSH_KEY } else { "" }
+    $identityFile = Resolve-FloraSshKeyPath $sshKeyEnv
+    if ([string]::IsNullOrWhiteSpace($identityFile)) {
+        $defaultKey = Join-Path $env:USERPROFILE ".ssh\id_ed25519_flora"
+        if (Test-Path -LiteralPath $defaultKey) { $identityFile = $defaultKey }
+    }
+
+    $sshBase = @(New-FloraSshTransportOpts -IdentityKey $identityFile)
+    $remoteTarget = "${user}@${server}"
+    $apkItem = Get-Item -LiteralPath $distApk
+    $apkFileName = $apkItem.Name
+    $manifestObj = Get-Content -LiteralPath $updateManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $publishedAt = [DateTime]::UtcNow.ToString("o")
+    $tmpLocal = Join-Path $env:TEMP ("flora-apk-channel-" + [guid]::NewGuid().ToString("n"))
+    New-Item -ItemType Directory -Path $tmpLocal | Out-Null
+
     try {
-        & gh release view $tag --repo effka11/Flora.Ecosystem 1>$null 2>$null
-        if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+        Write-Host ""
+        Write-Host "Publishing APK channel → ${FloraApkChannelBase}/ ($remoteTarget:$FloraApkChannelRemoteDir) ..."
+
+        & ssh @sshBase $remoteTarget "mkdir -p $FloraApkChannelRemoteDir"
+        if ($LASTEXITCODE -ne 0) { throw "ssh mkdir failed (exit $LASTEXITCODE)" }
+
+        $remoteApk = "${remoteTarget}:${FloraApkChannelRemoteDir}/$apkFileName"
+        Write-Host "Uploading APK $apkFileName ..."
+        & scp @sshBase $distApk $remoteApk
+        if ($LASTEXITCODE -ne 0) { throw "scp APK failed (exit $LASTEXITCODE)" }
+
+        $remoteLatest = "${remoteTarget}:${FloraApkChannelRemoteDir}/$FloraApkChannelLatestJson"
+        Write-Host "Uploading $FloraApkChannelLatestJson ..."
+        & scp @sshBase $updateManifestPath $remoteLatest
+        if ($LASTEXITCODE -ne 0) { throw "scp update.json failed (exit $LASTEXITCODE)" }
+
+        $localReleases = Join-Path $tmpLocal $FloraApkChannelReleasesJson
+        $remoteReleasesPath = "${FloraApkChannelRemoteDir}/$FloraApkChannelReleasesJson"
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & scp @sshBase "${remoteTarget}:${remoteReleasesPath}" $localReleases 2>$null
+        }
+        finally {
+            $ErrorActionPreference = $prevEap
+        }
+
+        $existing = @()
+        if (Test-Path -LiteralPath $localReleases) {
+            try {
+                $catalog = Get-Content -LiteralPath $localReleases -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($catalog.releases) { $existing = @($catalog.releases) }
+            }
+            catch {
+                Write-Warning "Existing releases.json unreadable; starting fresh. $($_.Exception.Message)"
+                $existing = @()
+            }
+        }
+
+        $newEntry = [ordered]@{
+            version      = [string]$manifestObj.version
+            versionCode  = [int]$manifestObj.versionCode
+            apkFileName  = $apkFileName
+            apkUrl       = "$FloraApkChannelBase/$apkFileName"
+            sha256       = ([string]$manifestObj.sha256).ToLowerInvariant()
+            sizeBytes    = [int64]$manifestObj.sizeBytes
+            publishedAt  = $publishedAt
+        }
+        $merged = @($newEntry) + @($existing | Where-Object { ([string]$_.version).Trim() -ne [string]$manifestObj.version })
+        $outCatalog = [ordered]@{
+            updatedAt = $publishedAt
+            releases  = @($merged)
+        }
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        $json = ($outCatalog | ConvertTo-Json -Depth 6) + "`n"
+        [System.IO.File]::WriteAllText($localReleases, $json, $utf8NoBom)
+
+        Write-Host "Uploading $FloraApkChannelReleasesJson ($($merged.Count) release(s)) ..."
+        & scp @sshBase $localReleases "${remoteTarget}:${remoteReleasesPath}"
+        if ($LASTEXITCODE -ne 0) { throw "scp releases.json failed (exit $LASTEXITCODE)" }
+
+        Write-Host "APK channel published: $FloraApkChannelBase/$apkFileName"
     }
     finally {
-        $ErrorActionPreference = $prevEap
+        Remove-Item -LiteralPath $tmpLocal -Recurse -Force -ErrorAction SilentlyContinue
     }
-
-    if ($releaseExists) {
-        Write-Host "Release $tag exists; uploading APK (clobber) ..."
-        & gh release upload $tag --repo effka11/Flora.Ecosystem --clobber $distApk
-        if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
-        # Drop legacy update.json from the release if present (clients no longer require it).
-        & gh release delete-asset $tag "flora.social-android-update.json" --repo effka11/Flora.Ecosystem --yes 2>$null
-    }
-    else {
-        Write-Host "Creating release $tag ..."
-        $notes = @"
-Flora Social Android $socialVersion
-
-Sideload APK for PackageInstaller / FCM auto-update.
-Keep the same release signing keystore across updates.
-"@
-        & gh release create $tag --repo effka11/Flora.Ecosystem --title "Flora Social v$socialVersion" --notes $notes $distApk
-        if ($LASTEXITCODE -ne 0) { throw "gh release create failed (ensure tag $tag exists on remote, or pass --generate-notes after pushing the tag)" }
-    }
-    Write-Host "GitHub release APK published."
 }
 
 if ($BroadcastUpdate) {
