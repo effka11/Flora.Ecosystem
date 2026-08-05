@@ -7,7 +7,31 @@ import {
 } from "@/lib/apkUpdate/manifestSecurity";
 
 describe("APK update manifest security", () => {
-  it("accepts only the canonical Flora Social release asset", () => {
+  it("accepts the official Flora Social APK channel asset", () => {
+    expect(
+      isTrustedFloraSocialApkUrl(
+        "https://social.flora-s.net/apk/flora.social-v0.10.0-alpha-android.apk",
+      ),
+    ).toBe(true);
+    expect(
+      trustedFloraSocialApkVersion(
+        "https://social.flora-s.net/apk/flora.social-v0.10.0-alpha-android.apk",
+      ),
+    ).toBe("0.10.0-alpha");
+
+    for (const url of [
+      "http://social.flora-s.net/apk/flora.social-v0.10.0-alpha-android.apk",
+      "https://evil.example/apk/flora.social-v0.10.0-alpha-android.apk",
+      "https://social.flora-s.net/other/flora.social-v0.10.0-alpha-android.apk",
+      "https://social.flora-s.net/apk/other.apk",
+      "https://social.flora-s.net/apk/flora.social-v0.10.0-alpha-android.apk?redirect=evil",
+      "https://user@social.flora-s.net/apk/flora.social-v0.10.0-alpha-android.apk",
+    ]) {
+      expect(isTrustedFloraSocialApkUrl(url), url).toBe(false);
+    }
+  });
+
+  it("accepts legacy GitHub release URLs during dual-trust migration", () => {
     expect(
       isTrustedFloraSocialApkUrl(
         "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
@@ -18,17 +42,6 @@ describe("APK update manifest security", () => {
         "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
       ),
     ).toBe("0.7.0");
-
-    for (const url of [
-      "http://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
-      "https://evil.example/flora.social-v0.7.0-android.apk",
-      "https://github.com/other/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
-      "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/other.apk",
-      "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk?redirect=evil",
-      "https://effka11@github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
-    ]) {
-      expect(isTrustedFloraSocialApkUrl(url), url).toBe(false);
-    }
   });
 
   it("requires a complete SHA-256 digest", () => {

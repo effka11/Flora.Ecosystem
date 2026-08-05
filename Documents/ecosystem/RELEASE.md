@@ -47,11 +47,12 @@ npm run ci
 # (+ flora.social-android-update.json with versionCode / sha256 / sizeBytes)
 .\Scripts\mobile-release-android.ps1
 
-# Publish APK + update manifest to GitHub Release (tag social/v<version> must exist on remote)
-.\Scripts\mobile-release-android.ps1 -PublishGitHub
+# Publish APK + update.json + releases.json to Flora channel (VPS /var/www/flora-apk)
+# Requires nginx /apk/ (bootstrap or Apps/Web/scripts/patch-nginx-apk-channel.sh)
+.\Scripts\mobile-release-android.ps1 -PublishChannel
 ```
 
-GitHub Release assets: APK + `flora.social-android-update.json` (sideload auto-update). Prefer `-PublishGitHub` over manual upload.
+Канал: `https://social.flora-s.net/apk/` (`releases.json`, `flora.social-android-update.json`, versioned APK). Страница: `/download`. Prefer `-PublishChannel` over manual upload.
 
 **Signing:** use the same release keystore for every sideload APK; rotating the key breaks PackageInstaller self-updates.
 
@@ -62,7 +63,7 @@ GitHub Release assets: APK + `flora.social-android-update.json` (sideload auto-u
 .\Scripts\send-apk-auto-update.ps1 -Production -Confirm
 ```
 
-Или одной командой после сборки: `.\Scripts\mobile-release-android.ps1 -PublishGitHub -BroadcastUpdate`
+Или одной командой после сборки: `.\Scripts\mobile-release-android.ps1 -PublishChannel -BroadcastUpdate`
 
 Подробности broadcast и silent update — [`Apps/Mobile/README.md`](../../Apps/Mobile/README.md).
 
@@ -73,11 +74,12 @@ GitHub Release assets: APK + `flora.social-android-update.json` (sideload auto-u
 - [ ] `Apps/Mobile/app.json` — `versionCode` +1
 - [ ] Fallback-версии (Mobile: `api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`; Web: `clientCore.ts`, `next.config.ts`)
 - [ ] `api-version.json` (+ lockfiles при bump FSCP/FRC)
-- [ ] `README.md` — имя APK
+- [ ] `README.md` — имя APK / ссылка на `/download`
 - [ ] `cargo` fmt / clippy / test (+ `validate-architecture-rust` при необходимости)
 - [ ] `npm run ci`
 - [ ] `git commit -S` — `chore(ecosystem): v<version> release`
 - [ ] Теги `ecosystem/v<version>`, `social/v<version>` (push на remote)
 - [ ] `Scripts/deploy-flora-social.ps1` (API + web)
-- [ ] `Scripts/mobile-release-android.ps1 -PublishGitHub`
+- [ ] nginx `/apk/` на VPS (если ещё не пропатчен)
+- [ ] `Scripts/mobile-release-android.ps1 -PublishChannel`
 - [ ] `send-apk-auto-update.ps1` (рекомендуется: fallback UX)

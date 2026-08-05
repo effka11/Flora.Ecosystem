@@ -10,7 +10,7 @@ import {
   fetchDirectUpdateManifestForVersion,
   fetchUpdateManifestFromNotificationText,
   type AndroidUpdateManifest,
-} from "@/lib/apkUpdate/githubRelease";
+} from "@/lib/apkUpdate/channelRelease";
 import type { ApkUpdateProgressListener } from "@/lib/apkUpdate/progress";
 import {
   parseAppUpdateVersionFromText,
