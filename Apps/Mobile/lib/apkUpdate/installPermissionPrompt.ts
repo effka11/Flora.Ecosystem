@@ -27,7 +27,12 @@ export function openInstallPermissionPrompt(): Promise<boolean> {
     resolvePrompt = resolve;
   });
   pending = { promise, resolve: resolvePrompt };
-  listener?.(true);
+  if (!listener) {
+    // Host not mounted (Play build / early boot) — do not hang the Update button.
+    queueMicrotask(() => resolveInstallPermissionPrompt(false));
+    return promise;
+  }
+  listener(true);
   return promise;
 }
 

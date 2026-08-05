@@ -44,6 +44,9 @@ async function channelFetch(
   const headers: Record<string, string> = {
     Accept: "application/json, */*",
     "User-Agent": userAgent(),
+    // Avoid sticky HTTP caches serving a previous update.json (wrong sha256 → endless FAIL).
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
   };
   const etag = mmkv.getString(etagKey);
   if (etag) headers["If-None-Match"] = etag;
@@ -75,6 +78,14 @@ async function channelFetch(
   if (newEtag) mmkv.set(etagKey, newEtag);
   mmkv.set(bodyKey, body);
   return { status: res.status, body };
+}
+
+/** Drop cached channel manifests (call after SHA-256 mismatch). */
+export function invalidateChannelManifestCache(): void {
+  mmkv.delete(LATEST_ETAG_KEY);
+  mmkv.delete(LATEST_BODY_KEY);
+  mmkv.delete(RELEASES_ETAG_KEY);
+  mmkv.delete(RELEASES_BODY_KEY);
 }
 
 function parseManifestObject(parsed: Partial<AndroidUpdateManifest>): AndroidUpdateManifest | null {

@@ -6,6 +6,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { InstallPermissionHost } from "@/components/apkUpdate/InstallPermissionHost";
 import { initFloraClient } from "@/lib/api";
 import {
   handleColdStartPushNavigation,
@@ -18,7 +19,10 @@ import { setSecurePushAppForeground } from "flora-secure-push";
 import { canRequestPackageInstalls } from "flora-apk-updater";
 import { FloraAppServices, QueryClientRefBridge } from "@/providers/FloraAppServices";
 import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
-import { isAutoUpdateEnabled } from "@/lib/apkUpdate/autoUpdatePreference";
+import {
+  isAutoUpdateEnabled,
+  isInAppUpdatesEnabled,
+} from "@/lib/apkUpdate/autoUpdatePreference";
 import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
 import { initMobileSodium } from "@/lib/fscp/sodium";
 import { initStorageMigrations } from "@/lib/mmkv";
@@ -167,6 +171,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
     const maybeCatchUp = () => {
       if (
         isSideloadUpdatesEnabled() &&
+        isInAppUpdatesEnabled() &&
         isAutoUpdateEnabled() &&
         canRequestPackageInstalls()
       ) {
@@ -210,6 +215,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
           <QueryClientRefBridge client={queryClient} />
           <FloraAppServices enabled={isAuthenticated} />
           <OfflineBanner />
+          {isSideloadUpdatesEnabled() ? <InstallPermissionHost /> : null}
           {children}
         </QueryClientProvider>
       </KeyboardProvider>

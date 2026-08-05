@@ -2,8 +2,9 @@ const SHA256_HEX = /^[a-f0-9]{64}$/i;
 const RELEASE_VERSION = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,127}$/;
 
 /** Official Flora Social APK channel (social.flora-s.net/apk). */
+/** Optional `-{hex}` after `-android` busts CDN when the same version is re-uploaded. */
 const CHANNEL_APK_PATH =
-  /^\/apk\/flora\.social-v([0-9A-Za-z][0-9A-Za-z._+-]{0,127})-android\.apk$/;
+  /^\/apk\/flora\.social-v([0-9A-Za-z][0-9A-Za-z._+-]{0,127})-android(?:-[a-f0-9]{6,16})?\.apk$/i;
 
 export function normalizeTrustedSha256(value: unknown): string | null {
   if (typeof value !== "string" || !SHA256_HEX.test(value)) return null;

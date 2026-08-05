@@ -367,7 +367,16 @@ try {
 
             $apkItem = Get-Item -LiteralPath $distApk
             $sha256 = (Get-FileHash -LiteralPath $distApk -Algorithm SHA256).Hash.ToLowerInvariant()
-            $apkFileName = $apkItem.Name
+            # Immutable CDN caches poisoned truncated bodies under the plain -android.apk name.
+            # Always publish as -android-{sha8}.apk so re-uploads get a fresh CDN key.
+            $sha8 = $sha256.Substring(0, 8)
+            $apkFileName = "flora.social-v${socialVersion}-android-${sha8}.apk"
+            $publishedApk = Join-Path $distDir $apkFileName
+            if ($apkItem.FullName -ne $publishedApk) {
+                Copy-Item -LiteralPath $apkItem.FullName -Destination $publishedApk -Force
+                $distApk = $publishedApk
+                $apkItem = Get-Item -LiteralPath $distApk
+            }
             $apkUrl = "$FloraApkChannelBase/$apkFileName"
             $updateManifest = [ordered]@{
                 version      = $socialVersion

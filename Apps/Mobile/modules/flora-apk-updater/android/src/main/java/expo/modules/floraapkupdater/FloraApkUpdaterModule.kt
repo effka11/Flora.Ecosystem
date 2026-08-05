@@ -177,7 +177,6 @@ class FloraApkUpdaterModule : Module() {
           if (dest.exists()) dest.delete()
 
           val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-          val relativePath = "flora-update/${dest.name}"
           val request = DownloadManager.Request(Uri.parse(url))
             .setTitle("Flora")
             .setDescription("Загрузка обновления")
@@ -185,13 +184,12 @@ class FloraApkUpdaterModule : Module() {
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(true)
-            .setDestinationInExternalFilesDir(context, null, relativePath)
+            .setDestinationUri(Uri.fromFile(dest))
 
           downloadId = dm.enqueue(request)
           activeDownloadId.set(downloadId)
 
-          // Canonical path used by setDestinationInExternalFilesDir
-          val expectedFile = File(context.getExternalFilesDir(null), relativePath)
+          val expectedFile = dest
 
           var lastEmit = 0L
           while (true) {

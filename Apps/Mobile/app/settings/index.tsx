@@ -25,15 +25,17 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { InstallPermissionHost } from "@/components/apkUpdate/InstallPermissionHost";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ProfileStatusField } from "@/components/profile/ProfileStatusField";
 import { avatarUploadErrorMessage, uploadAvatarFromPickerAsset } from "@/lib/avatarUpload";
-import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
+import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
 import {
   isAutoUpdateEnabled,
+  isInAppUpdatesEnabled,
   setAutoUpdateEnabled,
+  setInAppUpdatesEnabled,
 } from "@/lib/apkUpdate/autoUpdatePreference";
+import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
 import { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -428,21 +430,24 @@ function NotificationsSettingsTab() {
   const [showMessageText, setShowMessageText] = useState(() =>
     areSecurePushPreviewsEnabled(),
   );
+  const [inAppUpdates, setInAppUpdates] = useState(() => isInAppUpdatesEnabled());
   const [autoUpdate, setAutoUpdate] = useState(() => isAutoUpdateEnabled());
   const [hasInstallPerm, setHasInstallPerm] = useState(() =>
     sideload ? canRequestPackageInstalls() : false,
   );
   const [permBusy, setPermBusy] = useState(false);
 
-  const refreshInstallPerm = () => {
+  const refreshUpdatePrefs = () => {
     if (!sideload) return;
     setHasInstallPerm(canRequestPackageInstalls());
+    setInAppUpdates(isInAppUpdatesEnabled());
+    setAutoUpdate(isAutoUpdateEnabled());
   };
 
   useEffect(() => {
     if (!sideload) return;
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") refreshInstallPerm();
+      if (state === "active") refreshUpdatePrefs();
     });
     return () => sub.remove();
   }, [sideload]);
@@ -452,18 +457,41 @@ function NotificationsSettingsTab() {
     setSecurePushPreviewsEnabled(enabled);
   };
 
-  const requestPermAndMaybeEnable = async (enableAfter: boolean) => {
+  const requestInstallPerm = async (): Promise<boolean> => {
     setPermBusy(true);
     try {
       const granted = await openInstallPermissionPrompt();
       setHasInstallPerm(granted);
-      if (enableAfter && granted) {
-        setAutoUpdateEnabled(true);
-        setAutoUpdate(true);
-      }
+      return granted;
     } finally {
       setPermBusy(false);
     }
+  };
+
+  const changeInAppUpdates = (enabled: boolean) => {
+    if (!sideload) return;
+    if (!enabled) {
+      setInAppUpdatesEnabled(false);
+      setInAppUpdates(false);
+      setAutoUpdate(false);
+      return;
+    }
+    if (canRequestPackageInstalls()) {
+      setInAppUpdatesEnabled(true);
+      setInAppUpdates(true);
+      setHasInstallPerm(true);
+      return;
+    }
+    void (async () => {
+      const granted = await requestInstallPerm();
+      if (granted) {
+        setInAppUpdatesEnabled(true);
+        setInAppUpdates(true);
+      } else {
+        // Controlled Switch stays OFF after decline.
+        setInAppUpdates(false);
+      }
+    })();
   };
 
   const changeAutoUpdate = (enabled: boolean) => {
@@ -473,18 +501,24 @@ function NotificationsSettingsTab() {
       setAutoUpdate(false);
       return;
     }
-    if (canRequestPackageInstalls()) {
-      setAutoUpdateEnabled(true);
-      setAutoUpdate(true);
-      setHasInstallPerm(true);
+    if (!isInAppUpdatesEnabled() || !canRequestPackageInstalls()) {
+      setAutoUpdate(false);
       return;
     }
-    void requestPermAndMaybeEnable(true);
+    setAutoUpdateEnabled(true);
+    if (!isAutoUpdateEnabled()) {
+      setAutoUpdate(false);
+      return;
+    }
+    setAutoUpdate(true);
+    setHasInstallPerm(true);
+    void runAppUpdateCatchUp({ force: true }).catch(() => undefined);
   };
+
+  const backgroundDisabled = !inAppUpdates || !hasInstallPerm || permBusy;
 
   return (
     <View style={styles.tabBody}>
-      {sideload ? <InstallPermissionHost /> : null}
       <View style={styles.settingRow}>
         <View style={styles.settingCopy}>
           <Text style={styles.bodyText}>Показывать текст сообщений</Text>
@@ -500,38 +534,74 @@ function NotificationsSettingsTab() {
         />
       </View>
       {sideload ? (
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.bodyText}>Автообновление приложения</Text>
-            <Text style={styles.metaText}>
-              Скачивание с канала Flora в фоне. Установка без Google Play — когда приложение свёрнуто
-              (Android 12+).
-            </Text>
-            {autoUpdate && !hasInstallPerm ? (
-              <Text style={styles.metaText}>Нужно разрешение на установку.</Text>
-            ) : null}
-            {autoUpdate && !hasInstallPerm ? (
-              <Pressable
-                style={styles.button}
-                onPress={() => void requestPermAndMaybeEnable(false)}
-                disabled={permBusy}
-                accessibilityRole="button"
-                accessibilityLabel="Выдать разрешение"
-              >
-                <Text style={styles.buttonText}>
-                  {permBusy ? "Открываем настройки…" : "Выдать разрешение"}
-                </Text>
-              </Pressable>
-            ) : null}
+        <>
+          <View style={styles.settingRow}>
+            <View style={styles.settingCopy}>
+              <Text style={styles.bodyText}>Установка обновлений</Text>
+              <Text style={styles.metaText}>
+                Нужно для установки из приложения и для фонового обновления.
+              </Text>
+              {inAppUpdates && !hasInstallPerm ? (
+                <Text style={styles.metaText}>Нужно разрешение на установку.</Text>
+              ) : null}
+              {inAppUpdates && !hasInstallPerm ? (
+                <Pressable
+                  style={styles.button}
+                  onPress={() =>
+                    void (async () => {
+                      const granted = await requestInstallPerm();
+                      if (granted) {
+                        setInAppUpdatesEnabled(true);
+                        setInAppUpdates(true);
+                      }
+                    })()
+                  }
+                  disabled={permBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Выдать разрешение"
+                >
+                  <Text style={styles.buttonText}>
+                    {permBusy ? "Открываем настройки…" : "Выдать разрешение"}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Switch
+              value={inAppUpdates}
+              onValueChange={changeInAppUpdates}
+              disabled={permBusy}
+              trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
+              thumbColor={floraColors.whiteTemplate}
+            />
           </View>
-          <Switch
-            value={autoUpdate}
-            onValueChange={changeAutoUpdate}
-            disabled={permBusy}
-            trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
-            thumbColor={floraColors.whiteTemplate}
-          />
-        </View>
+          <View style={styles.settingRow}>
+            <View style={styles.settingCopy}>
+              <Text
+                style={[
+                  styles.bodyText,
+                  backgroundDisabled ? styles.settingDisabledText : null,
+                ]}
+              >
+                Фоновое обновление
+              </Text>
+              <Text
+                style={[
+                  styles.metaText,
+                  backgroundDisabled ? styles.settingDisabledText : null,
+                ]}
+              >
+                Скачивание с канала Flora в фоне; установка при свёрнутом приложении (Android 12+).
+              </Text>
+            </View>
+            <Switch
+              value={autoUpdate}
+              onValueChange={changeAutoUpdate}
+              disabled={backgroundDisabled}
+              trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
+              thumbColor={floraColors.whiteTemplate}
+            />
+          </View>
+        </>
       ) : null}
       <Text style={styles.bodyText}>
         Push о новых сообщениях работает в release-сборке Flora. В Flora Dev обновления приходят через интернет
@@ -765,6 +835,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "300",
     lineHeight: 19,
+  },
+  settingDisabledText: {
+    color: floraColors.textMuted,
+    opacity: 0.55,
   },
   diag: {
     color: floraColors.textMuted,

@@ -13,6 +13,7 @@ import {
   cancelNativeDownload,
   downloadFile as nativeDownloadFile,
   getNativeUpdateDir,
+  sha256File,
 } from "flora-apk-updater";
 import { mmkv } from "@/lib/mmkv";
 import type { AndroidUpdateManifest } from "@/lib/apkUpdate/channelRelease";
@@ -266,12 +267,37 @@ export async function downloadApkResumable(
     }
   }
 
+  // Prefer native OkHttp — Expo DownloadResumable can stall on CDN redirects.
+  // Native auto-update may already have pending.apk (no JS pendingMeta) — reuse by hash
+  // instead of clearPendingApk() which would delete a READY sideload download.
+  try {
+    const info = await getInfoAsync(dest);
+    if (info.exists && (info.size ?? 0) > 0) {
+      if (
+        typeof manifest.sizeBytes === "number" &&
+        manifest.sizeBytes > 0 &&
+        info.size !== manifest.sizeBytes
+      ) {
+        // Partial / wrong file — re-download.
+      } else {
+        const hash = (await sha256File(dest)).toLowerCase();
+        if (hash === manifest.sha256.toLowerCase()) {
+          if (cancelRequested) throw new Error("CANCELLED");
+          onProgress?.(1);
+          return finishDownloadMeta(manifest, dest);
+        }
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === "CANCELLED") throw e;
+    // Fall through to fresh download.
+  }
+
   mmkv.delete(SAVABLE_KEY);
   await clearPendingApk();
   if (cancelRequested) throw new Error("CANCELLED");
   await ensureUpdateDir();
 
-  // Prefer native OkHttp — Expo DownloadResumable can stall on CDN redirects.
   const uri = canNativeDownload()
     ? await downloadWithNativeOkHttp(manifest, dest, onProgress)
     : await downloadWithExpoResumable(manifest, dest, onProgress);

@@ -4,6 +4,7 @@ import {
   installApk,
   sha256File,
 } from "flora-apk-updater";
+import { getInfoAsync } from "expo-file-system/legacy";
 import {
   isApkUpdaterNativeReady,
   isSideloadUpdatesEnabled,
@@ -46,6 +47,13 @@ export type CheckAndInstallOptions = {
   installOnlyUri?: string;
   /** Do not prompt for install permission; return NO_PERMISSION instead. */
   skipPermissionModal?: boolean;
+  /** Keep pending.apk when SHA-256 mismatches (caller may retry with fresh manifest). */
+  keepPendingOnShaMismatch?: boolean;
+  /**
+   * Skip JS sha256 of pending file (native UpdateCoordinator already verified
+   * READY pending.apk). Avoids false mismatches / double install attempts.
+   */
+  skipShaVerify?: boolean;
 };
 
 export type CheckAndInstallResult =
@@ -303,26 +311,52 @@ async function runCheckAndInstall(
 
   if (isApkUpdateCancelled()) return cancelledResult();
 
-  try {
-    report({ phase: "verifying" });
-    const hash = await sha256File(fileUri);
-    if (isApkUpdateCancelled()) return cancelledResult();
-    if (hash.toLowerCase() !== manifest.sha256) {
-      await clearPendingApk();
+  if (!options.skipShaVerify) {
+    try {
+      report({ phase: "verifying" });
+      // Detect truncated CDN/proxy bodies before hashing (common Selectel HIT of a partial upload).
+      if (
+        typeof manifest.sizeBytes === "number" &&
+        manifest.sizeBytes > 0 &&
+        !options.installOnlyUri
+      ) {
+        const info = await getInfoAsync(fileUri).catch(() => null);
+        if (info?.exists && typeof info.size === "number" && info.size !== manifest.sizeBytes) {
+          if (!options.keepPendingOnShaMismatch) {
+            await clearPendingApk();
+          }
+          if (options.allowUserAction) {
+            const message =
+              "Файл обновления повреждён при загрузке (размер не совпал). Попробуйте ещё раз";
+            report({ phase: "error", message });
+            return { ok: false, error: message, code: "SHA256" };
+          }
+          return { ok: true, status: "skipped" };
+        }
+      }
+      const hash = await sha256File(fileUri);
+      if (isApkUpdateCancelled()) return cancelledResult();
+      if (hash.toLowerCase() !== manifest.sha256) {
+        if (!options.keepPendingOnShaMismatch) {
+          await clearPendingApk();
+        }
+        if (options.allowUserAction) {
+          report({ phase: "error", message: "Контрольная сумма APK не совпала" });
+          return { ok: false, error: "Контрольная сумма APK не совпала", code: "SHA256" };
+        }
+        return { ok: true, status: "skipped" };
+      }
+    } catch (e) {
+      if (isCancelError(e)) return cancelledResult();
+      if (!options.keepPendingOnShaMismatch) {
+        await clearPendingApk();
+      }
       if (options.allowUserAction) {
-        report({ phase: "error", message: "Контрольная сумма APK не совпала" });
-        return { ok: false, error: "Контрольная сумма APK не совпала", code: "SHA256" };
+        report({ phase: "error", message: "Не удалось проверить APK" });
+        return { ok: false, error: "Не удалось проверить APK", code: "SHA256" };
       }
       return { ok: true, status: "skipped" };
     }
-  } catch (e) {
-    if (isCancelError(e)) return cancelledResult();
-    await clearPendingApk();
-    if (options.allowUserAction) {
-      report({ phase: "error", message: "Не удалось проверить APK" });
-      return { ok: false, error: "Не удалось проверить APK", code: "SHA256" };
-    }
-    return { ok: true, status: "skipped" };
   }
 
   if (isApkUpdateCancelled()) return cancelledResult();

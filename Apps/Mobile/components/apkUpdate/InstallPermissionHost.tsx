@@ -27,8 +27,7 @@ function waitForReturnToForeground(timeoutMs = 120_000): Promise<void> {
 }
 
 /**
- * Settings-local host for the install-permission sheet.
- * Mount only from the auto-update enable / re-grant flow (not FloraProviders).
+ * App-wide host for the install-permission sheet (sideload). Mount once from FloraProviders.
  */
 export function InstallPermissionHost() {
   const [visible, setVisible] = useState(false);

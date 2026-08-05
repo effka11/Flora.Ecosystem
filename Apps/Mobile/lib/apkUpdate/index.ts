@@ -5,7 +5,9 @@ export {
 } from "@/lib/apkUpdate/capabilities";
 export {
   isAutoUpdateEnabled,
+  isInAppUpdatesEnabled,
   setAutoUpdateEnabled,
+  setInAppUpdatesEnabled,
 } from "@/lib/apkUpdate/autoUpdatePreference";
 export {
   runAppUpdateCatchUp,
@@ -23,6 +25,7 @@ export {
   fetchUpdateManifestFromNotificationText,
   fetchDirectUpdateManifestForVersion,
   getInstalledVersionCode,
+  invalidateChannelManifestCache,
 } from "@/lib/apkUpdate/channelRelease";
 export {
   labelForApkUpdatePhase,
