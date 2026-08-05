@@ -4,6 +4,14 @@ export {
   isSideloadUpdatesEnabled,
 } from "@/lib/apkUpdate/capabilities";
 export {
+  isAutoUpdateEnabled,
+  isInAppUpdatesEnabled,
+  reconcileInstallPermissionWithOs,
+  setAutoUpdateEnabled,
+  setInAppUpdatesEnabled,
+  subscribeUpdatePreferences,
+} from "@/lib/apkUpdate/autoUpdatePreference";
+export {
   runAppUpdateCatchUp,
   runAutoUpdateFromManifest,
   runAutoUpdateFromRealtime,
@@ -19,6 +27,7 @@ export {
   fetchUpdateManifestFromNotificationText,
   fetchDirectUpdateManifestForVersion,
   getInstalledVersionCode,
+  invalidateChannelManifestCache,
 } from "@/lib/apkUpdate/channelRelease";
 export {
   labelForApkUpdatePhase,
@@ -27,3 +36,4 @@ export {
   type ApkUpdateProgressListener,
 } from "@/lib/apkUpdate/progress";
 export { runUserUpdateFromNotification } from "@/lib/apkUpdate/userUpdate";
+export { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";

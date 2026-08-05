@@ -19,24 +19,35 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Native sideload update helpers for interactive (inbox button) installs.
- * Background download / silent install paths are disabled.
+ * Native sideload update orchestrator — download from Flora channel anytime (opt-in),
+ * silent install only after ≥3s with no UI (WorkManager delay survives process death).
  */
 object UpdateCoordinator {
   private const val TAG = "FloraApkUpdate"
   const val INSTALL_WORK_PREFIX = "flora-apk-install-"
-  const val INSTALL_DELAY_SECONDS = 10L
+  const val INSTALL_DELAY_SECONDS = 3L
 
   private val initialized = AtomicBoolean(false)
   private val startedActivities = AtomicInteger(0)
   @Volatile private var interactiveInstall = false
+  /**
+   * JS/UI owns `pending.apk` through an interactive install (including confirm UI /
+   * system installer). Held until SUCCESS/FAILURE — not cleared on PENDING_USER_ACTION
+   * or immediately after launching the system installer (API &lt; 31).
+   */
+  @Volatile private var uiOwnsPending = false
+  /** Set when process stops while uiOwnsPending — clear ownership on next start if idle/ready. */
+  @Volatile private var uiOwnsPendingBackgrounded = false
   /** Some OEMs return false from canRequestPackageInstalls while the process is stopping. */
   @Volatile private var installPermissionCached = false
 
@@ -47,11 +58,10 @@ object UpdateCoordinator {
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
 
         override fun onActivityStarted(activity: Activity) {
-          val n = startedActivities.incrementAndGet()
-          if (n == 1) {
-            Log.i(TAG, "UI visible (activity) — cancel deferred silent install")
-            cancelScheduledInstalls(application)
-          }
+          startedActivities.incrementAndGet()
+          // Do NOT cancel scheduled silent install here — the Worker aborts itself if
+          // UI is visible when the delay elapses. Cancelling on every onStart prevented
+          // install whenever the user glanced back within the delay window.
         }
 
         override fun onActivityResumed(activity: Activity) {}
@@ -76,12 +86,29 @@ object UpdateCoordinator {
     ProcessLifecycleOwner.get().lifecycle.addObserver(
       object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
-          Log.i(TAG, "UI visible (process) — cancel deferred silent install")
-          cancelScheduledInstalls(application)
+          Log.i(TAG, "UI visible (process)")
+          if (uiOwnsPending && uiOwnsPendingBackgrounded) {
+            val phase = UpdateStateStore(application).getPhase()
+            when {
+              phase == UpdatePhase.FAILED || phase == UpdatePhase.IDLE -> {
+                Log.i(TAG, "Clearing uiOwnsPending after return (phase=$phase)")
+                setUiOwnsPending(false)
+              }
+              // Abandoned system installer / resolved API<31 path: no Module promise in flight.
+              // Do NOT clear while PackageInstaller confirm still holds pendingPromise.
+              phase == UpdatePhase.READY && !FloraApkUpdaterModule.hasPendingInstallPromise() -> {
+                Log.i(TAG, "Clearing uiOwnsPending after return (abandoned installer UI)")
+                setUiOwnsPending(false)
+              }
+            }
+            uiOwnsPendingBackgrounded = false
+          }
         }
 
         override fun onStop(owner: LifecycleOwner) {
           Log.i(TAG, "UI hidden (process) — maybe schedule silent install")
+          if (uiOwnsPending) uiOwnsPendingBackgrounded = true
+          // While UI owns pending, skip scheduling (scheduleSilentInstall also gates).
           maybeScheduleSilentInstall(application)
         }
       },
@@ -130,11 +157,52 @@ object UpdateCoordinator {
 
   fun setInteractiveInstall(active: Boolean) {
     interactiveInstall = active
+    if (active) uiOwnsPending = true
+  }
+
+  fun setUiOwnsPending(active: Boolean) {
+    uiOwnsPending = active
+    if (active) {
+      interactiveInstall = true
+    } else {
+      interactiveInstall = false
+    }
+  }
+
+  fun isUiOwnsPending(): Boolean = uiOwnsPending
+
+  /** UI/JS session or mid-commit — startAuto must not clobber pending.apk. */
+  private fun pendingOwnedByUi(store: UpdateStateStore): Boolean {
+    return uiOwnsPending || interactiveInstall || store.getPhase() == UpdatePhase.INSTALLING
   }
 
   private fun maybeScheduleSilentInstall(context: Context) {
-    // Background / silent install disabled — updates only via inbox button.
-    Log.i(TAG, "maybeSchedule skipped: auto-update disabled")
+    val app = context.applicationContext
+    if (!UpdateStateStore(app).isAutoUpdateEnabled()) {
+      Log.i(TAG, "maybeSchedule skipped: auto-update preference off")
+      return
+    }
+    // Finish download if COMPLETE broadcast was missed (common on Samsung).
+    tryFinalizeDownload(app)
+    if (uiOwnsPending || interactiveInstall) {
+      Log.i(TAG, "maybeSchedule skipped: UI owns pending")
+      return
+    }
+    val store = UpdateStateStore(app)
+    val phase = store.getPhase()
+    if (phase != UpdatePhase.READY && phase != UpdatePhase.INSTALL_SCHEDULED) {
+      Log.i(TAG, "maybeSchedule skipped: phase=$phase")
+      return
+    }
+    // API 31+ required for USER_ACTION_NOT_REQUIRED; don't re-query install permission
+    // here — Samsung often returns false while the process is stopping.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      Log.i(TAG, "maybeSchedule skipped: API < 31 (silent install unsupported)")
+      UpdateTrayNotifier.showReady(app, store.getManifest()?.version ?: "")
+      return
+    }
+    // Schedule even if UI is briefly visible — Worker no-ops if still foreground at fire time.
+    scheduleSilentInstall(app, store.getManifest()?.versionCode)
   }
 
   /** If DownloadManager finished but we never got ACTION_DOWNLOAD_COMPLETE, promote to READY. */
@@ -150,12 +218,14 @@ object UpdateCoordinator {
         (store.getPhase() == UpdatePhase.IDLE || store.getPhase() == UpdatePhase.FAILED) &&
         manifest.versionCode > installedVersionCode(app)
       ) {
-        val hash = sha256File(apk)
-        if (hash.equals(manifest.sha256, ignoreCase = true)) {
+        if (pendingMatchesChannel(app, apk, manifest)) {
           store.setDownloadId(-1)
           store.setPhase(UpdatePhase.READY)
           store.clearError()
           Log.i(TAG, "tryFinalize: orphan apk → READY")
+        } else if (!isIncompleteDownload(apk, manifest)) {
+          apk.delete()
+          Log.w(TAG, "tryFinalize: orphan apk SHA mismatch — deleted")
         }
       }
       return
@@ -187,14 +257,15 @@ object UpdateCoordinator {
     val manifest = store.getManifest() ?: return
     val apk = pendingApk(app)
     if (apk.exists() && apk.length() > 0L) {
-      val expected = manifest.sizeBytes
-      if (expected != null && apk.length() < expected) return
-      val hash = sha256File(apk)
-      if (hash.equals(manifest.sha256, ignoreCase = true)) {
-        Log.i(TAG, "tryFinalize: pending.apk hash OK without COMPLETE → READY")
+      if (isIncompleteDownload(apk, manifest)) return
+      if (pendingMatchesChannel(app, apk, manifest)) {
+        Log.i(TAG, "tryFinalize: pending.apk → READY")
         store.setDownloadId(-1)
         store.setPhase(UpdatePhase.READY)
         store.clearError()
+      } else {
+        apk.delete()
+        fail(app, "SHA-256 mismatch")
       }
     }
   }
@@ -219,16 +290,19 @@ object UpdateCoordinator {
       apk.length() > 0L &&
       (phase == UpdatePhase.DOWNLOADING || phase == UpdatePhase.IDLE || phase == UpdatePhase.FAILED)
     ) {
-      val hash = sha256File(apk)
-      if (hash.equals(manifest.sha256, ignoreCase = true) &&
-        manifest.versionCode > installedVersionCode(application)
+      if (manifest.versionCode > installedVersionCode(application) &&
+        !isIncompleteDownload(apk, manifest) &&
+        pendingMatchesChannel(application, apk, manifest)
       ) {
         store.setDownloadId(-1)
         store.setPhase(UpdatePhase.READY)
         store.clearError()
         Log.i(TAG, "recover: verified orphan pending.apk → READY")
+      } else if (!isIncompleteDownload(apk, manifest)) {
+        Log.w(TAG, "recover: orphan apk SHA mismatch — deleted")
+        apk.delete()
       } else {
-        Log.w(TAG, "recover: orphan apk not usable (hash/version)")
+        Log.w(TAG, "recover: orphan apk incomplete or not usable")
       }
     }
 
@@ -269,9 +343,17 @@ object UpdateCoordinator {
   fun canRequestPackageInstalls(context: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
     val ok = context.packageManager.canRequestPackageInstalls()
-    if (ok) installPermissionCached = true
+    if (ok) {
+      installPermissionCached = true
+      return true
+    }
+    // Live false while UI visible = real revoke; do not keep sticky OR.
+    if (isUiVisible()) {
+      installPermissionCached = false
+      return false
+    }
     // OEM quirk: live check can flip to false while process is stopping.
-    return ok || installPermissionCached
+    return installPermissionCached
   }
 
   fun canAutoInstall(context: Context): Boolean {
@@ -322,6 +404,7 @@ object UpdateCoordinator {
     val apkUrl = (map["apkUrl"] as? String)?.trim().orEmpty()
     val sha256 = (map["sha256"] as? String)?.trim()?.lowercase().orEmpty()
     if (version.isEmpty() || versionCode < 1 || apkUrl.isEmpty()) return null
+    if (sha256.length != 64) return null
     val sizeBytes = when (val s = map["sizeBytes"]) {
       is Number -> s.toLong().takeIf { it > 0 }
       is String -> s.toLongOrNull()?.takeIf { it > 0 }
@@ -338,13 +421,160 @@ object UpdateCoordinator {
     )
   }
 
-  /**
-   * Former FCM / catch-up / JS auto path — disabled.
-   * Sideload updates are interactive only (inbox «Обновить»).
-   */
-  @Suppress("UNUSED_PARAMETER")
+  /** FCM / catch-up / JS auto path (Flora channel apkUrl only). */
   fun startAuto(context: Context, manifest: UpdateManifest, showTray: Boolean) {
-    Log.i(TAG, "startAuto disabled (button-only updates) version=${manifest.version}")
+    val app = context.applicationContext
+    val store = UpdateStateStore(app)
+    if (!store.isAutoUpdateEnabled()) {
+      Log.i(TAG, "startAuto skipped: auto-update preference off")
+      return
+    }
+    if (pendingOwnedByUi(store)) {
+      Log.i(TAG, "startAuto skipped: UI owns pending")
+      return
+    }
+    if (!canRequestPackageInstalls(app)) {
+      Log.i(TAG, "startAuto skipped: no install permission")
+      if (showTray) {
+        UpdateTrayNotifier.showUpdateAvailable(
+          app,
+          "Flora",
+          manifest.text ?: "Новая версия Android - ${manifest.version}",
+        )
+      }
+      return
+    }
+    if (!UpdateUrlAllowlist.isAllowed(manifest.apkUrl)) {
+      fail(app, "APK URL not allowlisted")
+      return
+    }
+    if (manifest.sha256.length != 64) {
+      fail(app, "Invalid sha256")
+      return
+    }
+
+    val installed = installedVersionCode(app)
+    if (manifest.versionCode <= installed) {
+      Log.i(TAG, "startAuto skipped: already installed ${manifest.versionCode}")
+      return
+    }
+
+    val existing = store.getManifest()
+    val phase = store.getPhase()
+    if (existing?.versionCode == manifest.versionCode &&
+      (phase == UpdatePhase.DOWNLOADING || phase == UpdatePhase.READY ||
+        phase == UpdatePhase.INSTALL_SCHEDULED || phase == UpdatePhase.INSTALLING)
+    ) {
+      val shaChanged =
+        !existing.sha256.equals(manifest.sha256, ignoreCase = true) ||
+          existing.apkUrl != manifest.apkUrl
+      if (shaChanged &&
+        (phase == UpdatePhase.READY ||
+          phase == UpdatePhase.INSTALL_SCHEDULED ||
+          phase == UpdatePhase.DOWNLOADING)
+      ) {
+        val pending = pendingApk(app)
+        if (phase != UpdatePhase.DOWNLOADING &&
+          pending.exists() &&
+          pending.length() > 0L &&
+          pendingMatchesChannel(app, pending, manifest)
+        ) {
+          store.saveManifest(manifest)
+          store.setDownloadId(-1)
+          store.setPhase(UpdatePhase.READY)
+          store.clearError()
+          Log.i(TAG, "startAuto same VC: channel sha/url updated, pending still matches")
+          if (canAutoInstall(app) && !uiOwnsPending && !interactiveInstall) {
+            scheduleSilentInstall(app, manifest.versionCode)
+          }
+          return
+        }
+        Log.i(TAG, "startAuto same VC: channel sha/url changed — re-download (was $phase)")
+        // Cancel in-flight DownloadManager if any.
+        val oldId = store.getDownloadId()
+        if (oldId >= 0L) {
+          try {
+            val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            dm.remove(oldId)
+          } catch (_: Exception) {
+          }
+          store.setDownloadId(-1)
+        }
+        cancelScheduledInstalls(app)
+        pending.delete()
+        store.saveManifest(manifest)
+        store.clearError()
+        if (showTray) {
+          UpdateTrayNotifier.showUpdateAvailable(
+            app,
+            "Flora",
+            manifest.text ?: "Новая версия Android - ${manifest.version}",
+          )
+        }
+        enqueueDownload(app, manifest)
+        return
+      }
+      Log.i(TAG, "startAuto deduped versionCode=${manifest.versionCode} phase=$phase")
+      if ((phase == UpdatePhase.READY) &&
+        canAutoInstall(app) &&
+        !uiOwnsPending &&
+        !interactiveInstall
+      ) {
+        scheduleSilentInstall(app, manifest.versionCode)
+      }
+      return
+    }
+
+    if (showTray) {
+      UpdateTrayNotifier.showUpdateAvailable(
+        app,
+        "Flora",
+        manifest.text ?: "Новая версия Android - ${manifest.version}",
+      )
+    }
+
+    store.saveManifest(manifest)
+    store.clearError()
+
+    // Reuse pending.apk only when SHA matches channel (fail-closed; no hash adoption).
+    val pending = pendingApk(app)
+    if (pending.exists() && pending.length() > 0L) {
+      if (isIncompleteDownload(pending, manifest)) {
+        if (store.getPhase() == UpdatePhase.DOWNLOADING) {
+          Log.i(TAG, "startAuto: incomplete pending while DOWNLOADING — wait")
+          return
+        }
+        pending.delete()
+        Log.w(TAG, "startAuto: incomplete pending.apk — deleted, re-download")
+      } else if (pendingMatchesChannel(app, pending, manifest)) {
+        store.saveManifest(manifest)
+        store.setDownloadId(-1)
+        store.setPhase(UpdatePhase.READY)
+        store.clearError()
+        Log.i(
+          TAG,
+          "startAuto reused pending.apk → READY versionCode=${manifest.versionCode}",
+        )
+        if (!canAutoInstall(app)) {
+          UpdateTrayNotifier.showReady(app, manifest.version)
+          return
+        }
+        if (uiOwnsPending || interactiveInstall) {
+          UpdateTrayNotifier.showReady(app, manifest.version)
+          return
+        }
+        scheduleSilentInstall(app, manifest.versionCode)
+        if (isUiVisible()) {
+          UpdateTrayNotifier.showReady(app, manifest.version)
+        }
+        return
+      } else {
+        pending.delete()
+        Log.w(TAG, "startAuto: pending.apk SHA mismatch — deleted, re-download")
+      }
+    }
+
+    enqueueDownload(app, manifest)
   }
 
   fun cancel(context: Context) {
@@ -360,6 +590,7 @@ object UpdateCoordinator {
     }
     cancelScheduledInstalls(app)
     pendingApk(app).delete()
+    setUiOwnsPending(false)
     store.resetToIdle()
   }
 
@@ -370,7 +601,7 @@ object UpdateCoordinator {
     dest.parentFile?.mkdirs()
     if (dest.exists()) dest.delete()
 
-    val relativePath = "flora-update/${dest.name}"
+    // Exact path — avoid setDestinationInExternalFilesDir(subdir) drift vs pendingApk().
     val request = DownloadManager.Request(Uri.parse(manifest.apkUrl))
       .setTitle("Flora")
       .setDescription("Загрузка обновления")
@@ -378,13 +609,16 @@ object UpdateCoordinator {
       .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
       .setAllowedOverMetered(true)
       .setAllowedOverRoaming(true)
-      .setDestinationInExternalFilesDir(app, null, relativePath)
+      .setDestinationUri(Uri.fromFile(dest))
 
     val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     val id = dm.enqueue(request)
     store.setDownloadId(id)
     store.setPhase(UpdatePhase.DOWNLOADING)
-    Log.i(TAG, "Download enqueued id=$id versionCode=${manifest.versionCode}")
+    Log.i(
+      TAG,
+      "Download enqueued id=$id versionCode=${manifest.versionCode} dest=${dest.absolutePath}",
+    )
   }
 
   fun onDownloadComplete(context: Context, downloadId: Long) {
@@ -398,6 +632,32 @@ object UpdateCoordinator {
       )
       return
     }
+
+    // Spoofed COMPLETE broadcasts: require DownloadManager to confirm SUCCESS.
+    try {
+      val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+      dm.query(DownloadManager.Query().setFilterById(downloadId))?.use { cursor ->
+        if (!cursor.moveToFirst()) {
+          Log.w(TAG, "onDownloadComplete: no DM row for id=$downloadId")
+          return
+        }
+        val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+        if (status != DownloadManager.STATUS_SUCCESSFUL) {
+          Log.w(TAG, "onDownloadComplete ignored: DM status=$status id=$downloadId")
+          if (status == DownloadManager.STATUS_FAILED) {
+            fail(app, "DownloadManager STATUS_FAILED")
+          }
+          return
+        }
+      } ?: run {
+        Log.w(TAG, "onDownloadComplete: DM query null id=$downloadId")
+        return
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "onDownloadComplete: DM query failed", e)
+      return
+    }
+
     val manifest = store.getManifest() ?: run {
       fail(app, "Missing manifest after download")
       return
@@ -420,8 +680,16 @@ object UpdateCoordinator {
       file = dest
     }
 
-    val hash = sha256File(file)
-    if (!hash.equals(manifest.sha256, ignoreCase = true)) {
+    if (isIncompleteDownload(file, manifest)) {
+      Log.w(
+        TAG,
+        "onDownloadComplete: incomplete size ${file.length()} < ${manifest.sizeBytes} — fail",
+      )
+      file.delete()
+      fail(app, "Download incomplete (size)")
+      return
+    }
+    if (!pendingMatchesChannel(app, file, manifest)) {
       file.delete()
       fail(app, "SHA-256 mismatch")
       return
@@ -437,19 +705,58 @@ object UpdateCoordinator {
       return
     }
 
-    if (isUiVisible() || interactiveInstall) {
-      Log.i(
-        TAG,
-        "Defer silent install: uiVisible=${isUiVisible()} interactive=$interactiveInstall",
-      )
+    if (uiOwnsPending || interactiveInstall) {
+      UpdateTrayNotifier.showReady(app, manifest.version)
       return
     }
+
+    // Always enqueue delayed install. Worker skips if UI still visible when delay elapses.
     scheduleSilentInstall(app, manifest.versionCode)
+    if (isUiVisible()) {
+      Log.i(TAG, "Scheduled silent install while UI visible — will run after background")
+      UpdateTrayNotifier.showReady(app, manifest.version)
+    }
   }
 
   fun scheduleSilentInstall(context: Context, versionCode: Int?) {
-    // Background / silent install disabled — updates only via inbox button.
-    Log.i(TAG, "scheduleSilentInstall disabled (button-only) versionCode=$versionCode")
+    val app = context.applicationContext
+    if (!UpdateStateStore(app).isAutoUpdateEnabled()) {
+      Log.i(TAG, "scheduleSilentInstall skipped: auto-update preference off")
+      return
+    }
+    val code = versionCode ?: return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      Log.i(TAG, "scheduleSilentInstall skipped: API < 31")
+      return
+    }
+    if (uiOwnsPending || interactiveInstall) {
+      Log.i(TAG, "scheduleSilentInstall skipped: UI owns pending")
+      return
+    }
+
+    val store = UpdateStateStore(context)
+    val phase = store.getPhase()
+    if (phase != UpdatePhase.READY && phase != UpdatePhase.INSTALL_SCHEDULED) {
+      Log.i(TAG, "scheduleSilentInstall skipped: phase=$phase")
+      return
+    }
+    // KEEP: do not reset the delay when catch-up / lifecycle re-enter while already scheduled.
+    if (phase == UpdatePhase.INSTALL_SCHEDULED) {
+      Log.i(TAG, "scheduleSilentInstall skipped: already scheduled versionCode=$code")
+      return
+    }
+    store.setPhase(UpdatePhase.INSTALL_SCHEDULED)
+
+    val work = OneTimeWorkRequestBuilder<FloraApkInstallWorker>()
+      .setInitialDelay(INSTALL_DELAY_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+      .setInputData(workDataOf(FloraApkInstallWorker.KEY_VERSION_CODE to code))
+      .build()
+    WorkManager.getInstance(context).enqueueUniqueWork(
+      INSTALL_WORK_PREFIX + code,
+      ExistingWorkPolicy.KEEP,
+      work,
+    )
+    Log.i(TAG, "Scheduled silent install in ${INSTALL_DELAY_SECONDS}s versionCode=$code")
   }
 
   fun cancelScheduledInstalls(context: Context) {
@@ -464,21 +771,60 @@ object UpdateCoordinator {
   }
 
   /**
-   * Called from WorkManager after delay. Background silent install disabled.
+   * Called from WorkManager after delay.
    */
   fun trySilentInstall(context: Context, expectedVersionCode: Int): Boolean {
-    Log.i(TAG, "trySilentInstall disabled (button-only) versionCode=$expectedVersionCode")
-    val store = UpdateStateStore(context.applicationContext)
-    if (store.getPhase() == UpdatePhase.INSTALL_SCHEDULED) {
-      store.setPhase(UpdatePhase.READY)
+    val app = context.applicationContext
+    fun softAbort(reason: String): Boolean {
+      Log.i(TAG, "Silent install aborted: $reason")
+      val store = UpdateStateStore(app)
+      if (store.getPhase() == UpdatePhase.INSTALL_SCHEDULED) {
+        store.setPhase(UpdatePhase.READY)
+      }
+      return false
     }
-    return false
+
+    if (!UpdateStateStore(app).isAutoUpdateEnabled()) {
+      return softAbort("auto-update preference off")
+    }
+    if (isUiVisible() || uiOwnsPending || interactiveInstall) {
+      return softAbort(
+        "uiVisible=${isUiVisible()} uiOwns=$uiOwnsPending interactive=$interactiveInstall",
+      )
+    }
+    if (!canAutoInstall(app)) {
+      return softAbort("canAutoInstall=false")
+    }
+
+    val store = UpdateStateStore(app)
+    val manifest = store.getManifest() ?: return softAbort("missing manifest")
+    if (manifest.versionCode != expectedVersionCode) {
+      return softAbort("version mismatch")
+    }
+    if (store.getPhase() != UpdatePhase.READY && store.getPhase() != UpdatePhase.INSTALL_SCHEDULED) {
+      return softAbort("phase=${store.getPhase()}")
+    }
+
+    val apk = pendingApk(app)
+    if (!apk.exists() || apk.length() == 0L) {
+      fail(app, "APK missing at install time")
+      return false
+    }
+    if (!pendingMatchesChannel(app, apk, manifest)) {
+      apk.delete()
+      fail(app, "SHA-256 mismatch at install time")
+      return false
+    }
+
+    Log.i(TAG, "trySilentInstall commit versionCode=$expectedVersionCode")
+    return commitInstall(app, apk, allowUserAction = false, store = store)
   }
 
   /** Used by FloraApkUpdaterModule.installApk (JS interactive / legacy). */
   fun commitInstallForJs(context: Context, apk: File, allowUserAction: Boolean): Boolean {
     val app = context.applicationContext
     interactiveInstall = allowUserAction
+    if (allowUserAction) uiOwnsPending = true
     cancelScheduledInstalls(app)
 
     // Android 10–11: PackageInstaller sessions often fail with
@@ -610,6 +956,28 @@ object UpdateCoordinator {
     }
   }
 
+  private fun archiveVersionCode(context: Context, apk: File): Long? {
+    val archive = try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context.packageManager.getPackageArchiveInfo(
+          apk.absolutePath,
+          PackageManager.PackageInfoFlags.of(0),
+        )
+      } else {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+      }
+    } catch (_: Exception) {
+      null
+    } ?: return null
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      archive.longVersionCode
+    } else {
+      @Suppress("DEPRECATION")
+      archive.versionCode.toLong()
+    }
+  }
+
   private fun validateUpdateApk(context: Context, apk: File): String? {
     val archive = try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -649,11 +1017,14 @@ object UpdateCoordinator {
       PackageInstaller.STATUS_SUCCESS -> {
         pendingApk(app).delete()
         store.resetToIdle()
-        interactiveInstall = false
+        setUiOwnsPending(false)
         FloraApkUpdaterModule.completePendingInstall("success", message)
       }
       PackageInstaller.STATUS_PENDING_USER_ACTION -> {
         Log.w(TAG, "Install needs user action (OEM/silent blocked): $message")
+        // Claim ownership even on silent path — no Module promise, but pending.apk
+        // must not be clobbered by FCM startAuto while confirm UI / tray is outstanding.
+        setUiOwnsPending(true)
         FloraApkUpdaterModule.completePendingInstall(
           "pending_user_action",
           message,
@@ -663,7 +1034,7 @@ object UpdateCoordinator {
         store.setPhase(UpdatePhase.READY)
         val version = store.getManifest()?.version ?: ""
         if (confirmIntent != null) {
-          if (interactiveInstall || isUiVisible()) {
+          if (uiOwnsPending || interactiveInstall || isUiVisible()) {
             try {
               confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
               app.startActivity(confirmIntent)
@@ -678,15 +1049,16 @@ object UpdateCoordinator {
         } else {
           UpdateTrayNotifier.showReady(app, version)
         }
-        interactiveInstall = false
+        // Ownership held until SUCCESS/FAILURE, cancel, or return-to-app without
+        // pendingPromise (ProcessLifecycle onStart).
       }
       else -> {
         val detail = message ?: "PackageInstaller status $status"
         // Some OEMs (esp. Android 10) return Permission Denied instead of user-action.
-        if (interactiveInstall && isPermissionDeniedInstallError(detail)) {
+        if ((uiOwnsPending || interactiveInstall) && isPermissionDeniedInstallError(detail)) {
           val apk = pendingApk(app)
           if (apk.exists() && apk.length() > 0L && launchSystemPackageInstaller(app, apk)) {
-            interactiveInstall = false
+            // Keep ownership while system installer is open (API quirk path).
             FloraApkUpdaterModule.completePendingInstall(
               "system_installer",
               "System installer opened",
@@ -696,7 +1068,7 @@ object UpdateCoordinator {
           }
         }
         fail(app, detail)
-        interactiveInstall = false
+        setUiOwnsPending(false)
         FloraApkUpdaterModule.completePendingInstall("failure", detail)
       }
     }
@@ -707,8 +1079,27 @@ object UpdateCoordinator {
       message.contains("INSTALL_FAILED_INTERNAL_ERROR", ignoreCase = true)
   }
 
+  private fun isIncompleteDownload(apk: File, manifest: UpdateManifest): Boolean {
+    val expected = manifest.sizeBytes ?: return false
+    return expected > 0L && apk.length() < expected
+  }
+
+  /** Channel SHA is binding; size only gates incomplete downloads. */
+  private fun pendingMatchesChannel(
+    context: Context,
+    apk: File,
+    manifest: UpdateManifest,
+  ): Boolean {
+    if (!apk.exists() || apk.length() <= 0L) return false
+    if (isIncompleteDownload(apk, manifest)) return false
+    if (!sha256File(apk).equals(manifest.sha256, ignoreCase = true)) return false
+    return validateUpdateApk(context, apk) == null
+  }
+
   private fun fail(context: Context, message: String) {
-    val store = UpdateStateStore(context)
+    val app = context.applicationContext
+    cancelScheduledInstalls(app)
+    val store = UpdateStateStore(app)
     store.setPhase(UpdatePhase.FAILED)
     store.setLastError(message)
     store.setDownloadId(-1)

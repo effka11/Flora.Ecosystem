@@ -11,8 +11,11 @@ import {
   addDownloadProgressListener,
   canNativeDownload,
   cancelNativeDownload,
+  cancelNativeUpdate,
   downloadFile as nativeDownloadFile,
   getNativeUpdateDir,
+  setNativeUiOwnsPending,
+  sha256File,
 } from "flora-apk-updater";
 import { mmkv } from "@/lib/mmkv";
 import type { AndroidUpdateManifest } from "@/lib/apkUpdate/channelRelease";
@@ -100,10 +103,16 @@ export async function clearPendingApk(): Promise<void> {
 /**
  * Stop in-flight download (if any) and delete pending APK + resume metadata.
  * Safe to call from the update modal close button.
+ * Also clears native update state + uiOwnsPending so silent can resume.
  */
 export async function cancelApkUpdateAndClearCache(): Promise<void> {
   cancelRequested = true;
-  cancelNativeDownload();
+  try {
+    cancelNativeUpdate();
+  } catch {
+    cancelNativeDownload();
+  }
+  setNativeUiOwnsPending(false);
   const dl = activeDownload;
   activeDownload = null;
   if (dl) {
@@ -148,10 +157,10 @@ function isCompletePending(
 ): boolean {
   if (!info.exists || !info.size || info.size <= 0) return false;
   if (meta.sha256 !== manifest.sha256) return false;
-  if (manifest.sizeBytes != null && manifest.sizeBytes > 0) {
-    return info.size === manifest.sizeBytes;
+  if (manifest.sizeBytes != null && manifest.sizeBytes > 0 && info.size < manifest.sizeBytes) {
+    return false;
   }
-  return false;
+  return true;
 }
 
 async function finishDownloadMeta(manifest: AndroidUpdateManifest, uri: string): Promise<string> {
@@ -266,12 +275,37 @@ export async function downloadApkResumable(
     }
   }
 
+  // Prefer native OkHttp — Expo DownloadResumable can stall on CDN redirects.
+  // Native auto-update may already have pending.apk (no JS pendingMeta) — reuse by hash
+  // instead of clearPendingApk() which would delete a READY sideload download.
+  try {
+    const info = await getInfoAsync(dest);
+    if (info.exists && (info.size ?? 0) > 0) {
+      if (
+        typeof manifest.sizeBytes === "number" &&
+        manifest.sizeBytes > 0 &&
+        (info.size ?? 0) < manifest.sizeBytes
+      ) {
+        // Incomplete — re-download.
+      } else {
+        const hash = (await sha256File(dest)).toLowerCase();
+        if (hash === manifest.sha256.toLowerCase()) {
+          if (cancelRequested) throw new Error("CANCELLED");
+          onProgress?.(1);
+          return finishDownloadMeta(manifest, dest);
+        }
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === "CANCELLED") throw e;
+    // Fall through to fresh download.
+  }
+
   mmkv.delete(SAVABLE_KEY);
   await clearPendingApk();
   if (cancelRequested) throw new Error("CANCELLED");
   await ensureUpdateDir();
 
-  // Prefer native OkHttp — Expo DownloadResumable stalls on GitHub redirects.
   const uri = canNativeDownload()
     ? await downloadWithNativeOkHttp(manifest, dest, onProgress)
     : await downloadWithExpoResumable(manifest, dest, onProgress);

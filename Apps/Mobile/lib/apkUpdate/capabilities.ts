@@ -27,8 +27,8 @@ export function isApkUpdaterNativeReady(): boolean {
 }
 
 /**
- * Full GitHub sideload update path (production sideload APK only).
- * Used by interactive inbox «Обновить»; background auto-update is disabled.
+ * Full Flora channel sideload update path (production sideload APK only).
+ * Used by interactive inbox «Обновить» and optional auto-update (settings).
  */
 export function isSideloadUpdatesEnabled(): boolean {
   if (!isApkUpdaterNativeReady()) return false;

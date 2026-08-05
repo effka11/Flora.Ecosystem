@@ -2,15 +2,9 @@ const SHA256_HEX = /^[a-f0-9]{64}$/i;
 const RELEASE_VERSION = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,127}$/;
 
 /** Official Flora Social APK channel (social.flora-s.net/apk). */
+/** Optional `-{hex}` after `-android` busts CDN when the same version is re-uploaded. */
 const CHANNEL_APK_PATH =
-  /^\/apk\/flora\.social-v([0-9A-Za-z][0-9A-Za-z._+-]{0,127})-android\.apk$/;
-
-/**
- * Legacy GitHub Releases path — dual-trust for one migration release.
- * TODO(apk-channel): remove after clients with channel trust are widely installed.
- */
-const GITHUB_APK_PATH =
-  /^\/effka11\/Flora\.Ecosystem\/releases\/download\/social\/v([0-9A-Za-z][0-9A-Za-z._+-]{0,127})\/flora\.social-v\1-android\.apk$/;
+  /^\/apk\/flora\.social-v([0-9A-Za-z][0-9A-Za-z._+-]{0,127})-android(?:-[a-f0-9]{6,16})?\.apk$/i;
 
 export function normalizeTrustedSha256(value: unknown): string | null {
   if (typeof value !== "string" || !SHA256_HEX.test(value)) return null;
@@ -43,16 +37,10 @@ function trustedVersionFromUrl(
   }
 }
 
-/**
- * Only immutable Flora Social APK assets from the official channel
- * (plus legacy GitHub URLs during dual-trust migration).
- */
+/** Only immutable Flora Social APK assets from the official channel. */
 export function trustedFloraSocialApkVersion(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  return (
-    trustedVersionFromUrl(value, "social.flora-s.net", CHANNEL_APK_PATH) ??
-    trustedVersionFromUrl(value, "github.com", GITHUB_APK_PATH)
-  );
+  return trustedVersionFromUrl(value, "social.flora-s.net", CHANNEL_APK_PATH);
 }
 
 export function isTrustedFloraSocialApkUrl(value: unknown): value is string {

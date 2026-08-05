@@ -43,9 +43,14 @@ type FloraApkUpdaterNativeModule = {
   sdkInt(): number;
   getUpdateDir(): string;
   getUpdateState(): NativeUpdateState;
+  isAutoUpdateEnabled(): boolean;
+  setAutoUpdateEnabled(enabled: boolean): boolean;
   startAutoUpdate(manifest: NativeUpdateManifest): Promise<NativeUpdateState>;
   cancelUpdate(): boolean;
+  setUiOwnsPending(active: boolean): boolean;
   requestInstallPermission(): Promise<boolean>;
+  /** true if Settings launched; false on API < 26 / unavailable. */
+  openInstallPermissionSettings(): Promise<boolean>;
   sha256File(filePath: string): Promise<string>;
   installApk(filePath: string, allowUserAction: boolean): Promise<InstallApkResult>;
   downloadFile(url: string, filePath: string): Promise<DownloadFileResult>;
@@ -94,6 +99,24 @@ export function getNativeUpdateState(): NativeUpdateState | null {
   }
 }
 
+export function isNativeAutoUpdateEnabled(): boolean {
+  if (!native || typeof native.isAutoUpdateEnabled !== "function") return false;
+  try {
+    return native.isAutoUpdateEnabled();
+  } catch {
+    return false;
+  }
+}
+
+export function setNativeAutoUpdateEnabled(enabled: boolean): void {
+  if (!native || typeof native.setAutoUpdateEnabled !== "function") return;
+  try {
+    native.setAutoUpdateEnabled(enabled);
+  } catch {
+    // ignore
+  }
+}
+
 export async function startNativeAutoUpdate(
   manifest: NativeUpdateManifest,
 ): Promise<NativeUpdateState | null> {
@@ -109,9 +132,34 @@ export function cancelNativeUpdate(): void {
   native?.cancelDownload();
 }
 
+/** Mark JS/UI as owning pending.apk so FCM startAuto cannot clobber mid-download/install. */
+export function setNativeUiOwnsPending(active: boolean): void {
+  if (!native || typeof native.setUiOwnsPending !== "function") return;
+  try {
+    native.setUiOwnsPending(active);
+  } catch {
+    // ignore — older APK without method
+  }
+}
+
 export async function requestInstallPermission(): Promise<boolean> {
   if (!native) return false;
   return native.requestInstallPermission();
+}
+
+/**
+ * Always opens OS install-permission settings (even when already granted).
+ * @returns true if Settings was launched; false on API &lt; 26 or missing native method.
+ */
+export async function openInstallPermissionSettings(): Promise<boolean> {
+  if (!native || typeof native.openInstallPermissionSettings !== "function") {
+    return false;
+  }
+  try {
+    return (await native.openInstallPermissionSettings()) === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function sha256File(filePath: string): Promise<string> {
@@ -158,9 +206,13 @@ export default {
   getAndroidSdkInt,
   getNativeUpdateDir,
   getNativeUpdateState,
+  isNativeAutoUpdateEnabled,
+  setNativeAutoUpdateEnabled,
   startNativeAutoUpdate,
   cancelNativeUpdate,
+  setNativeUiOwnsPending,
   requestInstallPermission,
+  openInstallPermissionSettings,
   sha256File,
   installApk,
   canNativeDownload,

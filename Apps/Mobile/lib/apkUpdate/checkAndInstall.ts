@@ -2,8 +2,10 @@ import {
   canRequestPackageInstalls,
   getAndroidSdkInt,
   installApk,
+  setNativeUiOwnsPending,
   sha256File,
 } from "flora-apk-updater";
+import { getInfoAsync } from "expo-file-system/legacy";
 import {
   isApkUpdaterNativeReady,
   isSideloadUpdatesEnabled,
@@ -38,7 +40,7 @@ export type CheckAndInstallOptions = {
   allowUserAction: boolean;
   /** Skip throttle (notification tap). */
   force?: boolean;
-  /** Optional manifest override (e.g. from notification when GitHub has no JSON). */
+  /** Optional manifest override (e.g. from notification when channel latest JSON misses the version). */
   manifest?: AndroidUpdateManifest | null;
   /** Interactive UI progress (ignored on silent path). */
   onProgress?: ApkUpdateProgressListener;
@@ -74,7 +76,7 @@ export async function checkAndInstall(
       await silentInFlight.catch(() => undefined);
     }
     resetApkUpdateCancelFlag();
-    interactiveInFlight = runCheckAndInstall(options).finally(() => {
+    interactiveInFlight = runInteractiveOwned(options).finally(() => {
       interactiveInFlight = null;
     });
     return interactiveInFlight;
@@ -105,6 +107,29 @@ export async function cancelInteractiveApkUpdate(): Promise<void> {
   await cancelApkUpdateAndClearCache();
 }
 
+/**
+ * Hold native uiOwnsPending for the whole interactive download/install so FCM
+ * startAuto cannot delete pending.apk. Keep ownership only while system
+ * installer / confirm UI is still open (`pending_user_action`).
+ */
+async function runInteractiveOwned(
+  options: CheckAndInstallOptions,
+): Promise<CheckAndInstallResult> {
+  setNativeUiOwnsPending(true);
+  let keepOwnership = false;
+  try {
+    const result = await runCheckAndInstall(options);
+    if (result.ok && result.status === "pending_user_action") {
+      keepOwnership = true;
+    }
+    return result;
+  } finally {
+    if (!keepOwnership) {
+      setNativeUiOwnsPending(false);
+    }
+  }
+}
+
 async function runCheckAndInstall(
   options: CheckAndInstallOptions,
 ): Promise<CheckAndInstallResult> {
@@ -112,8 +137,8 @@ async function runCheckAndInstall(
     if (options.allowUserAction) options.onProgress?.(progress);
   };
 
-  // Silent GitHub self-update: production sideload only.
   // Interactive (notification «Обновить»): any build with the native module.
+  // Silent/auto path: production sideload only.
   if (options.allowUserAction) {
     if (!isApkUpdaterNativeReady()) {
       return { ok: false, error: "Модуль обновления недоступен в этой сборке", code: "NO_NATIVE" };
@@ -162,7 +187,7 @@ async function runCheckAndInstall(
       if (isApkUpdateCancelled()) return cancelledResult();
       if (options.allowUserAction) {
         // Caller may retry with notification fallback — don't paint error yet.
-        return { ok: false, error: "Не удалось проверить обновление", code: "GITHUB" };
+        return { ok: false, error: "Не удалось проверить обновление", code: "CHANNEL" };
       }
       return { ok: true, status: "skipped" };
     }
@@ -213,8 +238,7 @@ async function runCheckAndInstall(
   }
   manifest = { ...manifest, sha256: trustedSha256 };
 
-  // A legacy GitHub asset has no trustworthy versionCode. It is allowed only
-  // after an explicit notification-button tap, never on the silent path.
+  // Channel assets without versionCode are not trusted on the silent/auto path.
   if (!options.allowUserAction && manifest.versionCode == null) {
     return { ok: true, status: "skipped" };
   }
@@ -255,7 +279,7 @@ async function runCheckAndInstall(
         if (manifest.sizeBytes != null) {
           await assertEnoughDiskSpace(manifest.sizeBytes);
         }
-        // No HEAD probe: GitHub release URLs often hang on HEAD from the device.
+        // No HEAD probe: some CDNs hang on HEAD from the device.
       } catch (e) {
         if (isApkUpdateCancelled()) return cancelledResult();
         const msg = e instanceof Error ? e.message : "";
@@ -306,6 +330,24 @@ async function runCheckAndInstall(
 
   try {
     report({ phase: "verifying" });
+    // Incomplete download only — stale channel sizeBytes must not fail a matching SHA.
+    if (
+      typeof manifest.sizeBytes === "number" &&
+      manifest.sizeBytes > 0 &&
+      !options.installOnlyUri
+    ) {
+      const info = await getInfoAsync(fileUri).catch(() => null);
+      if (info?.exists && typeof info.size === "number" && info.size < manifest.sizeBytes) {
+        await clearPendingApk();
+        if (options.allowUserAction) {
+          const message =
+            "Файл обновления повреждён при загрузке (размер не совпал). Попробуйте ещё раз";
+          report({ phase: "error", message });
+          return { ok: false, error: message, code: "SHA256" };
+        }
+        return { ok: true, status: "skipped" };
+      }
+    }
     const hash = await sha256File(fileUri);
     if (isApkUpdateCancelled()) return cancelledResult();
     if (hash.toLowerCase() !== manifest.sha256) {

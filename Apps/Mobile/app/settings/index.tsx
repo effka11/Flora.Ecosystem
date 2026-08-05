@@ -11,10 +11,15 @@ import {
   areSecurePushPreviewsEnabled,
   setSecurePushPreviewsEnabled,
 } from "flora-secure-push";
+import {
+  canRequestPackageInstalls,
+  openInstallPermissionSettings,
+} from "flora-apk-updater";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Pressable,
   ScrollView,
   Switch,
@@ -26,6 +31,17 @@ import {
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ProfileStatusField } from "@/components/profile/ProfileStatusField";
 import { avatarUploadErrorMessage, uploadAvatarFromPickerAsset } from "@/lib/avatarUpload";
+import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
+import {
+  isAutoUpdateEnabled,
+  isInAppUpdatesEnabled,
+  reconcileInstallPermissionWithOs,
+  setAutoUpdateEnabled,
+  subscribeUpdatePreferences,
+} from "@/lib/apkUpdate/autoUpdatePreference";
+import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
+import { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
+import { waitForInstallPermissionResult } from "@/lib/apkUpdate/waitForInstallPermission";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -415,14 +431,110 @@ function SecuritySettingsTab() {
 }
 
 function NotificationsSettingsTab() {
+  const sideload = isSideloadUpdatesEnabled();
   const [showMessageText, setShowMessageText] = useState(() =>
     areSecurePushPreviewsEnabled(),
   );
+  const [autoUpdate, setAutoUpdate] = useState(() => isAutoUpdateEnabled());
+  const [hasInstallPerm, setHasInstallPerm] = useState(() =>
+    sideload ? canRequestPackageInstalls() : false,
+  );
+  const [permBusy, setPermBusy] = useState(false);
+  const [permDeniedMeta, setPermDeniedMeta] = useState(false);
+
+  const refreshUpdatePrefs = () => {
+    if (!sideload) return;
+    const { hasOs, auto } = reconcileInstallPermissionWithOs();
+    setHasInstallPerm(hasOs);
+    setAutoUpdate(auto);
+    if (hasOs) setPermDeniedMeta(false);
+  };
+
+  useEffect(() => {
+    if (!sideload) return;
+    refreshUpdatePrefs();
+    const appSub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshUpdatePrefs();
+    });
+    const unsub = subscribeUpdatePreferences(() => refreshUpdatePrefs());
+    return () => {
+      appSub.remove();
+      unsub();
+    };
+  }, [sideload]);
 
   const changeShowMessageText = (enabled: boolean) => {
     setShowMessageText(enabled);
     setSecurePushPreviewsEnabled(enabled);
   };
+
+  const changeInAppUpdates = (enabled: boolean) => {
+    if (!sideload || permBusy) return;
+    setPermDeniedMeta(false);
+
+    // OFF while OS granted → open Settings so user can revoke; mirror on return.
+    // API < 26 / no unknown-sources page: no-op (toggle stays ON).
+    if (!enabled && hasInstallPerm) {
+      setPermBusy(true);
+      void (async () => {
+        try {
+          const opened = await openInstallPermissionSettings();
+          if (opened) {
+            await waitForInstallPermissionResult({ mode: "revoke" });
+          }
+        } catch {
+          // Activity missing / native reject — still reconcile.
+        } finally {
+          refreshUpdatePrefs();
+          setPermBusy(false);
+        }
+      })();
+      return;
+    }
+
+    // ON while OS missing → sheet → Settings → sync.
+    if (enabled && !hasInstallPerm) {
+      setPermBusy(true);
+      void (async () => {
+        try {
+          const granted = await openInstallPermissionPrompt();
+          refreshUpdatePrefs();
+          if (!granted || !canRequestPackageInstalls()) {
+            setPermDeniedMeta(true);
+          }
+        } finally {
+          setPermBusy(false);
+        }
+      })();
+      return;
+    }
+
+    // Already matches desired OS state — reconcile only.
+    refreshUpdatePrefs();
+  };
+
+  const changeAutoUpdate = (enabled: boolean) => {
+    if (!sideload) return;
+    if (!enabled) {
+      setAutoUpdateEnabled(false);
+      setAutoUpdate(false);
+      return;
+    }
+    if (!isInAppUpdatesEnabled() || !canRequestPackageInstalls()) {
+      setAutoUpdate(false);
+      return;
+    }
+    setAutoUpdateEnabled(true);
+    if (!isAutoUpdateEnabled()) {
+      setAutoUpdate(false);
+      return;
+    }
+    setAutoUpdate(true);
+    setHasInstallPerm(true);
+    void runAppUpdateCatchUp({ force: true }).catch(() => undefined);
+  };
+
+  const backgroundDisabled = !hasInstallPerm || permBusy;
 
   return (
     <View style={styles.tabBody}>
@@ -440,6 +552,55 @@ function NotificationsSettingsTab() {
           thumbColor={floraColors.whiteTemplate}
         />
       </View>
+      {sideload ? (
+        <>
+          <View style={styles.settingRow}>
+            <View style={styles.settingCopy}>
+              <Text style={styles.bodyText}>Установка обновлений</Text>
+              <Text style={styles.metaText}>
+                Нужно для установки из приложения и для фонового обновления.
+              </Text>
+              {permDeniedMeta ? (
+                <Text style={styles.metaText}>Разрешение не выдано.</Text>
+              ) : null}
+            </View>
+            <Switch
+              value={hasInstallPerm}
+              onValueChange={changeInAppUpdates}
+              disabled={permBusy}
+              trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
+              thumbColor={floraColors.whiteTemplate}
+            />
+          </View>
+          <View style={styles.settingRow}>
+            <View style={styles.settingCopy}>
+              <Text
+                style={[
+                  styles.bodyText,
+                  backgroundDisabled ? styles.settingDisabledText : null,
+                ]}
+              >
+                Фоновое обновление
+              </Text>
+              <Text
+                style={[
+                  styles.metaText,
+                  backgroundDisabled ? styles.settingDisabledText : null,
+                ]}
+              >
+                Скачивание с канала Flora в фоне; установка при свёрнутом приложении (Android 12+).
+              </Text>
+            </View>
+            <Switch
+              value={autoUpdate}
+              onValueChange={changeAutoUpdate}
+              disabled={backgroundDisabled}
+              trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
+              thumbColor={floraColors.whiteTemplate}
+            />
+          </View>
+        </>
+      ) : null}
       <Text style={styles.bodyText}>
         Push о новых сообщениях работает в release-сборке Flora. В Flora Dev обновления приходят через интернет
         (SSE), пока приложение открыто.
@@ -672,6 +833,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "300",
     lineHeight: 19,
+  },
+  settingDisabledText: {
+    color: floraColors.textMuted,
+    opacity: 0.55,
   },
   diag: {
     color: floraColors.textMuted,

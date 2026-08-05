@@ -6,6 +6,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { InstallPermissionHost } from "@/components/apkUpdate/InstallPermissionHost";
 import { initFloraClient } from "@/lib/api";
 import {
   handleColdStartPushNavigation,
@@ -15,7 +16,15 @@ import {
 } from "@/lib/pushNotifications";
 import { isNativePushEnabled } from "@/lib/pushCapabilities";
 import { setSecurePushAppForeground } from "flora-secure-push";
+import { canRequestPackageInstalls } from "flora-apk-updater";
 import { FloraAppServices, QueryClientRefBridge } from "@/providers/FloraAppServices";
+import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
+import {
+  isAutoUpdateEnabled,
+  isInAppUpdatesEnabled,
+  reconcileInstallPermissionWithOs,
+} from "@/lib/apkUpdate/autoUpdatePreference";
+import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
 import { initMobileSodium } from "@/lib/fscp/sodium";
 import { initStorageMigrations } from "@/lib/mmkv";
 import { initSentry, initTelemetry } from "@/lib/sentry";
@@ -50,6 +59,11 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       initTelemetry();
       initFloraClient();
       await initStorageMigrations();
+      // Write-through auto-update preference (default OFF) + OS revoke sync before FCM.
+      void isAutoUpdateEnabled();
+      if (isSideloadUpdatesEnabled()) {
+        reconcileInstallPermissionWithOs();
+      }
       await initMobileSodium();
       await bootstrapSession();
       const session = useSessionStore.getState();
@@ -142,6 +156,20 @@ export function FloraProviders({ children }: { children: ReactNode }) {
     };
   }, [ready]);
 
+  // Sideload: reconcile OS install permission on every foreground (even logged out).
+  useEffect(() => {
+    if (!ready || !isSideloadUpdatesEnabled()) return;
+
+    reconcileInstallPermissionWithOs();
+
+    const appSub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") {
+        reconcileInstallPermissionWithOs();
+      }
+    });
+    return () => appSub.remove();
+  }, [ready]);
+
   useEffect(() => {
     if (!ready || !isAuthenticated) return;
 
@@ -158,12 +186,28 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       void registerPushTokenWithServer(userUuid).catch(() => undefined);
     }
 
+    const maybeCatchUp = () => {
+      if (isSideloadUpdatesEnabled()) {
+        reconcileInstallPermissionWithOs();
+      }
+      if (
+        isSideloadUpdatesEnabled() &&
+        isInAppUpdatesEnabled() &&
+        isAutoUpdateEnabled() &&
+        canRequestPackageInstalls()
+      ) {
+        void runAppUpdateCatchUp().catch(() => undefined);
+      }
+    };
+    maybeCatchUp();
+
     const appSub = AppState.addEventListener("change", (state: AppStateStatus) => {
       setSecurePushAppForeground(state === "active");
       if (state !== "active") return;
       if (isNativePushEnabled()) {
         void registerPushTokenWithServer(userUuid).catch(() => undefined);
       }
+      maybeCatchUp();
     });
 
     return () => {
@@ -192,6 +236,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
           <QueryClientRefBridge client={queryClient} />
           <FloraAppServices enabled={isAuthenticated} />
           <OfflineBanner />
+          {isSideloadUpdatesEnabled() ? <InstallPermissionHost /> : null}
           {children}
         </QueryClientProvider>
       </KeyboardProvider>

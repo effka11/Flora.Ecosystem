@@ -102,7 +102,8 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
     cancelledRef.current = false;
     setUpdating(true);
     setCancelling(false);
-    setProgress({ phase: "checking" });
+    // No progress card until after permission sheet (avoids double modal).
+    setProgress(null);
 
     const onProgress = (next: ApkUpdateProgress) => {
       if (!mountedRef.current || cancelledRef.current) return;
@@ -129,10 +130,10 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
         if (
           result.status === "up_to_date" ||
           result.status === "installed" ||
-          result.status === "opened_github"
+          result.status === "opened_channel"
         ) {
           closeModal();
-          if (result.status !== "opened_github" && mountedRef.current) {
+          if (result.status !== "opened_channel" && mountedRef.current) {
             setAlreadyInstalled(true);
           }
           return;
@@ -199,7 +200,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
       ) : null}
       {showUpdateButton ? (
         <AppUpdateProgressModal
-          visible={updating}
+          visible={updating && progress != null}
           progress={progress}
           onClose={closeModal}
           onCancel={handleCancel}

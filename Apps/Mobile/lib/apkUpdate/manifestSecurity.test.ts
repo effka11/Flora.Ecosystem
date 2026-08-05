@@ -31,17 +31,12 @@ describe("APK update manifest security", () => {
     }
   });
 
-  it("accepts legacy GitHub release URLs during dual-trust migration", () => {
+  it("rejects GitHub release URLs (channel-only trust)", () => {
     expect(
       isTrustedFloraSocialApkUrl(
         "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
       ),
-    ).toBe(true);
-    expect(
-      trustedFloraSocialApkVersion(
-        "https://github.com/effka11/Flora.Ecosystem/releases/download/social/v0.7.0/flora.social-v0.7.0-android.apk",
-      ),
-    ).toBe("0.7.0");
+    ).toBe(false);
   });
 
   it("requires a complete SHA-256 digest", () => {
@@ -51,10 +46,16 @@ describe("APK update manifest security", () => {
     expect(normalizeTrustedSha256("a".repeat(63))).toBeNull();
   });
 
-  it("rejects path-changing release versions", () => {
-    expect(isSafeReleaseVersion("0.7.0-alpha.1")).toBe(true);
-    expect(isSafeReleaseVersion("../latest")).toBe(false);
-    expect(isSafeReleaseVersion("0.7.0/other")).toBe(false);
-    expect(isSafeReleaseVersion("")).toBe(false);
+  it("accepts CDN cache-bust hash suffix on APK filename", () => {
+    expect(
+      trustedFloraSocialApkVersion(
+        "https://social.flora-s.net/apk/flora.social-v0.11.1-test-android-ac39a7bb.apk",
+      ),
+    ).toBe("0.11.1-test");
+    expect(
+      isTrustedFloraSocialApkUrl(
+        "https://social.flora-s.net/apk/flora.social-v0.11.1-test-android-ac39a7bb.apk",
+      ),
+    ).toBe(true);
   });
 });
