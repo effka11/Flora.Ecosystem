@@ -1,23 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
-import { requestInstallPermission } from "flora-apk-updater";
-import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  AppState,
   Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
-  type AppStateStatus,
 } from "react-native";
 import {
   labelForApkUpdatePhase,
   type ApkUpdateProgress,
 } from "@/lib/apkUpdate/progress";
 import { floraColors, floraSpacing } from "@/lib/theme";
-
-const INSTALL_PERMISSION_MESSAGE = "Нужно разрешить установку из этого источника";
 
 type Props = {
   visible: boolean;
@@ -29,31 +23,6 @@ type Props = {
   cancelling?: boolean;
 };
 
-function waitForReturnToForeground(timeoutMs = 120_000): Promise<void> {
-  return new Promise((resolve) => {
-    let left = AppState.currentState !== "active";
-    const done = () => {
-      clearTimeout(timer);
-      sub.remove();
-      resolve();
-    };
-    const timer = setTimeout(done, timeoutMs);
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (next !== "active") {
-        left = true;
-        return;
-      }
-      if (left) done();
-    });
-  });
-}
-
-function isInstallPermissionError(progress: ApkUpdateProgress | null): boolean {
-  if (!progress || progress.phase !== "error") return false;
-  if (progress.code === "NO_PERMISSION") return true;
-  return (progress.message?.trim() ?? "") === INSTALL_PERMISSION_MESSAGE;
-}
-
 export function AppUpdateProgressModal({
   visible,
   progress,
@@ -61,12 +30,10 @@ export function AppUpdateProgressModal({
   onCancel,
   cancelling = false,
 }: Props) {
-  const [permissionBusy, setPermissionBusy] = useState(false);
   const phase = progress?.phase ?? "checking";
   const isError = phase === "error";
   const isDone = phase === "done";
   const canDismiss = isError || isDone;
-  const needsInstallPermission = isInstallPermissionError(progress);
   // PackageInstaller has no cancellation handle after its session is committed.
   const canCancel = !canDismiss && phase !== "installing";
   const title = progress?.message?.trim()
@@ -79,29 +46,10 @@ export function AppUpdateProgressModal({
       ? Math.min(100, Math.max(0, Math.round(fraction * 100)))
       : null;
 
-  useEffect(() => {
-    if (!visible || !needsInstallPermission) setPermissionBusy(false);
-  }, [needsInstallPermission, visible]);
-
   const handleRequestClose = () => {
-    if (cancelling || permissionBusy) return;
+    if (cancelling) return;
     if (canDismiss) onClose();
     else if (canCancel) onCancel();
-  };
-
-  const handleAllowInstall = () => {
-    if (permissionBusy || cancelling) return;
-    setPermissionBusy(true);
-    void (async () => {
-      try {
-        await requestInstallPermission();
-        await waitForReturnToForeground();
-      } catch {
-        /* settings may fail — still dismiss so user can retry update */
-      }
-      setPermissionBusy(false);
-      onClose();
-    })();
   };
 
   return (
@@ -117,7 +65,7 @@ export function AppUpdateProgressModal({
             <Pressable
               style={({ pressed }) => [styles.xBtn, pressed && styles.xBtnPressed]}
               onPress={handleRequestClose}
-              disabled={cancelling || permissionBusy}
+              disabled={cancelling}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel={canDismiss ? "Закрыть" : "Отменить обновление"}
@@ -127,7 +75,7 @@ export function AppUpdateProgressModal({
           ) : null}
 
           <View style={styles.iconWrap}>
-            {cancelling || permissionBusy ? (
+            {cancelling ? (
               <ActivityIndicator color={floraColors.greenLight} size="large" />
             ) : isError ? (
               <Ionicons name="alert-circle-outline" size={28} color={floraColors.error} />
@@ -138,11 +86,9 @@ export function AppUpdateProgressModal({
             )}
           </View>
 
-          <Text style={styles.title}>
-            {cancelling ? "Отмена…" : permissionBusy ? "Открываем настройки…" : title}
-          </Text>
+          <Text style={styles.title}>{cancelling ? "Отмена…" : title}</Text>
 
-          {showBar && !cancelling && !permissionBusy ? (
+          {showBar && !cancelling ? (
             <View style={styles.barTrack}>
               <View
                 style={[
@@ -154,52 +100,17 @@ export function AppUpdateProgressModal({
             </View>
           ) : null}
 
-          {pct != null && !cancelling && !permissionBusy ? (
-            <Text style={styles.pct}>{pct}%</Text>
-          ) : null}
+          {pct != null && !cancelling ? <Text style={styles.pct}>{pct}%</Text> : null}
 
           {canDismiss && !cancelling ? (
-            needsInstallPermission ? (
-              <View style={styles.actions}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.closeBtn,
-                    styles.allowBtn,
-                    (pressed || permissionBusy) && styles.closeBtnPressed,
-                    permissionBusy && styles.btnDisabled,
-                  ]}
-                  onPress={handleAllowInstall}
-                  disabled={permissionBusy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Разрешить"
-                >
-                  <Text style={styles.closeBtnText}>
-                    {permissionBusy ? "Открываем настройки…" : "Разрешить"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.secondaryBtn,
-                    pressed && !permissionBusy && styles.closeBtnPressed,
-                  ]}
-                  onPress={onClose}
-                  disabled={permissionBusy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Закрыть"
-                >
-                  <Text style={styles.secondaryBtnText}>Закрыть</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable
-                style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}
-                onPress={onClose}
-                accessibilityRole="button"
-                accessibilityLabel="Закрыть"
-              >
-                <Text style={styles.closeBtnText}>Закрыть</Text>
-              </Pressable>
-            )
+            <Pressable
+              style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Закрыть"
+            >
+              <Text style={styles.closeBtnText}>Закрыть</Text>
+            </Pressable>
           ) : !cancelling && !canCancel ? (
             <Text style={styles.hint}>Установка передана системе</Text>
           ) : null}
@@ -285,11 +196,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.39,
     textAlign: "center",
   },
-  actions: {
-    width: "100%",
-    alignItems: "center",
-    gap: floraSpacing.gridFine,
-  },
   closeBtn: {
     marginTop: floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.grid * 2,
@@ -299,32 +205,13 @@ const styles = StyleSheet.create({
     minWidth: 120,
     alignItems: "center",
   },
-  allowBtn: {
-    width: "100%",
-    marginTop: floraSpacing.gridFine,
-  },
   closeBtnPressed: {
     opacity: 0.85,
-  },
-  btnDisabled: {
-    opacity: 0.7,
   },
   closeBtnText: {
     color: floraColors.bg,
     fontSize: 14,
     fontWeight: "400",
-    letterSpacing: 0.42,
-  },
-  secondaryBtn: {
-    width: "100%",
-    paddingVertical: floraSpacing.gridFine * 2,
-    borderRadius: 9999,
-    alignItems: "center",
-  },
-  secondaryBtnText: {
-    color: floraColors.gray,
-    fontSize: 14,
-    fontWeight: "300",
     letterSpacing: 0.42,
   },
 });

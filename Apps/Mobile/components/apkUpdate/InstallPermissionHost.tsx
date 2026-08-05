@@ -1,30 +1,15 @@
 import { useEffect, useState } from "react";
-import { AppState, type AppStateStatus } from "react-native";
-import { canRequestPackageInstalls, requestInstallPermission } from "flora-apk-updater";
+import {
+  canRequestPackageInstalls,
+  openInstallPermissionSettings,
+} from "flora-apk-updater";
 import { InstallPermissionModal } from "@/components/apkUpdate/InstallPermissionModal";
+import { reconcileInstallPermissionWithOs } from "@/lib/apkUpdate/autoUpdatePreference";
 import {
   resolveInstallPermissionPrompt,
   subscribeInstallPermissionPrompt,
 } from "@/lib/apkUpdate/installPermissionPrompt";
-
-function waitForReturnToForeground(timeoutMs = 120_000): Promise<void> {
-  return new Promise((resolve) => {
-    let left = AppState.currentState !== "active";
-    const done = () => {
-      clearTimeout(timer);
-      sub.remove();
-      resolve();
-    };
-    const timer = setTimeout(done, timeoutMs);
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (next !== "active") {
-        left = true;
-        return;
-      }
-      if (left) done();
-    });
-  });
-}
+import { waitForInstallPermissionResult } from "@/lib/apkUpdate/waitForInstallPermission";
 
 /**
  * App-wide host for the install-permission sheet (sideload). Mount once from FloraProviders.
@@ -40,14 +25,25 @@ export function InstallPermissionHost() {
     });
   }, []);
 
+  const finishWithLive = () => {
+    const { hasOs } = reconcileInstallPermissionWithOs();
+    resolveInstallPermissionPrompt(hasOs);
+  };
+
+  /** Decline / dismiss without Settings — always resolve false; reconcile may clear inApp if OS off. */
+  const finishDeclined = () => {
+    reconcileInstallPermissionWithOs();
+    resolveInstallPermissionPrompt(false);
+  };
+
   const handleDecline = () => {
     if (busy) return;
-    resolveInstallPermissionPrompt(false);
+    finishDeclined();
   };
 
   const handleDismiss = () => {
     if (busy) return;
-    resolveInstallPermissionPrompt(false);
+    finishDeclined();
   };
 
   const handleAllow = () => {
@@ -55,12 +51,18 @@ export function InstallPermissionHost() {
     setBusy(true);
     void (async () => {
       try {
-        await requestInstallPermission();
-        await waitForReturnToForeground();
+        if (canRequestPackageInstalls()) {
+          finishWithLive();
+          return;
+        }
+        const opened = await openInstallPermissionSettings();
+        if (opened) {
+          await waitForInstallPermissionResult({ mode: "grant" });
+        }
+        finishWithLive();
       } catch {
-        // Settings failed — still resolve with live check.
+        finishWithLive();
       }
-      resolveInstallPermissionPrompt(canRequestPackageInstalls());
     })();
   };
 

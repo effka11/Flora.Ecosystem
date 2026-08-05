@@ -12,7 +12,7 @@ export type ApkUpdateProgress = {
   /** 0..1 when known (download). */
   fraction?: number;
   message?: string;
-  /** Machine code for UI actions (e.g. NO_PERMISSION → «Разрешить»). */
+  /** Machine code for UI (e.g. NO_PERMISSION → error + Закрыть; retry via «Обновить»). */
   code?: string;
 };
 

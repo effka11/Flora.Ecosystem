@@ -11,7 +11,10 @@ import {
   areSecurePushPreviewsEnabled,
   setSecurePushPreviewsEnabled,
 } from "flora-secure-push";
-import { canRequestPackageInstalls } from "flora-apk-updater";
+import {
+  canRequestPackageInstalls,
+  openInstallPermissionSettings,
+} from "flora-apk-updater";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -32,11 +35,13 @@ import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
 import {
   isAutoUpdateEnabled,
   isInAppUpdatesEnabled,
+  reconcileInstallPermissionWithOs,
   setAutoUpdateEnabled,
-  setInAppUpdatesEnabled,
+  subscribeUpdatePreferences,
 } from "@/lib/apkUpdate/autoUpdatePreference";
 import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
 import { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
+import { waitForInstallPermissionResult } from "@/lib/apkUpdate/waitForInstallPermission";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -430,26 +435,32 @@ function NotificationsSettingsTab() {
   const [showMessageText, setShowMessageText] = useState(() =>
     areSecurePushPreviewsEnabled(),
   );
-  const [inAppUpdates, setInAppUpdates] = useState(() => isInAppUpdatesEnabled());
   const [autoUpdate, setAutoUpdate] = useState(() => isAutoUpdateEnabled());
   const [hasInstallPerm, setHasInstallPerm] = useState(() =>
     sideload ? canRequestPackageInstalls() : false,
   );
   const [permBusy, setPermBusy] = useState(false);
+  const [permDeniedMeta, setPermDeniedMeta] = useState(false);
 
   const refreshUpdatePrefs = () => {
     if (!sideload) return;
-    setHasInstallPerm(canRequestPackageInstalls());
-    setInAppUpdates(isInAppUpdatesEnabled());
-    setAutoUpdate(isAutoUpdateEnabled());
+    const { hasOs, auto } = reconcileInstallPermissionWithOs();
+    setHasInstallPerm(hasOs);
+    setAutoUpdate(auto);
+    if (hasOs) setPermDeniedMeta(false);
   };
 
   useEffect(() => {
     if (!sideload) return;
-    const sub = AppState.addEventListener("change", (state) => {
+    refreshUpdatePrefs();
+    const appSub = AppState.addEventListener("change", (state) => {
       if (state === "active") refreshUpdatePrefs();
     });
-    return () => sub.remove();
+    const unsub = subscribeUpdatePreferences(() => refreshUpdatePrefs());
+    return () => {
+      appSub.remove();
+      unsub();
+    };
   }, [sideload]);
 
   const changeShowMessageText = (enabled: boolean) => {
@@ -457,41 +468,49 @@ function NotificationsSettingsTab() {
     setSecurePushPreviewsEnabled(enabled);
   };
 
-  const requestInstallPerm = async (): Promise<boolean> => {
-    setPermBusy(true);
-    try {
-      const granted = await openInstallPermissionPrompt();
-      setHasInstallPerm(granted);
-      return granted;
-    } finally {
-      setPermBusy(false);
-    }
-  };
-
   const changeInAppUpdates = (enabled: boolean) => {
-    if (!sideload) return;
-    if (!enabled) {
-      setInAppUpdatesEnabled(false);
-      setInAppUpdates(false);
-      setAutoUpdate(false);
+    if (!sideload || permBusy) return;
+    setPermDeniedMeta(false);
+
+    // OFF while OS granted → open Settings so user can revoke; mirror on return.
+    // API < 26 / no unknown-sources page: no-op (toggle stays ON).
+    if (!enabled && hasInstallPerm) {
+      setPermBusy(true);
+      void (async () => {
+        try {
+          const opened = await openInstallPermissionSettings();
+          if (opened) {
+            await waitForInstallPermissionResult({ mode: "revoke" });
+          }
+        } catch {
+          // Activity missing / native reject — still reconcile.
+        } finally {
+          refreshUpdatePrefs();
+          setPermBusy(false);
+        }
+      })();
       return;
     }
-    if (canRequestPackageInstalls()) {
-      setInAppUpdatesEnabled(true);
-      setInAppUpdates(true);
-      setHasInstallPerm(true);
+
+    // ON while OS missing → sheet → Settings → sync.
+    if (enabled && !hasInstallPerm) {
+      setPermBusy(true);
+      void (async () => {
+        try {
+          const granted = await openInstallPermissionPrompt();
+          refreshUpdatePrefs();
+          if (!granted || !canRequestPackageInstalls()) {
+            setPermDeniedMeta(true);
+          }
+        } finally {
+          setPermBusy(false);
+        }
+      })();
       return;
     }
-    void (async () => {
-      const granted = await requestInstallPerm();
-      if (granted) {
-        setInAppUpdatesEnabled(true);
-        setInAppUpdates(true);
-      } else {
-        // Controlled Switch stays OFF after decline.
-        setInAppUpdates(false);
-      }
-    })();
+
+    // Already matches desired OS state — reconcile only.
+    refreshUpdatePrefs();
   };
 
   const changeAutoUpdate = (enabled: boolean) => {
@@ -515,7 +534,7 @@ function NotificationsSettingsTab() {
     void runAppUpdateCatchUp({ force: true }).catch(() => undefined);
   };
 
-  const backgroundDisabled = !inAppUpdates || !hasInstallPerm || permBusy;
+  const backgroundDisabled = !hasInstallPerm || permBusy;
 
   return (
     <View style={styles.tabBody}>
@@ -541,33 +560,12 @@ function NotificationsSettingsTab() {
               <Text style={styles.metaText}>
                 Нужно для установки из приложения и для фонового обновления.
               </Text>
-              {inAppUpdates && !hasInstallPerm ? (
-                <Text style={styles.metaText}>Нужно разрешение на установку.</Text>
-              ) : null}
-              {inAppUpdates && !hasInstallPerm ? (
-                <Pressable
-                  style={styles.button}
-                  onPress={() =>
-                    void (async () => {
-                      const granted = await requestInstallPerm();
-                      if (granted) {
-                        setInAppUpdatesEnabled(true);
-                        setInAppUpdates(true);
-                      }
-                    })()
-                  }
-                  disabled={permBusy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Выдать разрешение"
-                >
-                  <Text style={styles.buttonText}>
-                    {permBusy ? "Открываем настройки…" : "Выдать разрешение"}
-                  </Text>
-                </Pressable>
+              {permDeniedMeta ? (
+                <Text style={styles.metaText}>Разрешение не выдано.</Text>
               ) : null}
             </View>
             <Switch
-              value={inAppUpdates}
+              value={hasInstallPerm}
               onValueChange={changeInAppUpdates}
               disabled={permBusy}
               trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}

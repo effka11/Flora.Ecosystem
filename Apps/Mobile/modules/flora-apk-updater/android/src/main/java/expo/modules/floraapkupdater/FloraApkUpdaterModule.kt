@@ -48,6 +48,20 @@ class FloraApkUpdaterModule : Module() {
     }
   }
 
+  private fun openUnknownAppSourcesSettings() {
+    val intent = Intent(
+      Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+      Uri.parse("package:${context.packageName}"),
+    )
+    val activity = appContext.currentActivity
+    if (activity != null) {
+      activity.startActivity(intent)
+    } else {
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      context.startActivity(intent)
+    }
+  }
+
   override fun definition() = ModuleDefinition {
     Name("FloraApkUpdater")
 
@@ -132,18 +146,25 @@ class FloraApkUpdaterModule : Module() {
           promise.resolve(true)
           return@AsyncFunction
         }
-        val intent = Intent(
-          Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-          Uri.parse("package:${context.packageName}"),
-        )
-        val activity = appContext.currentActivity
-        if (activity != null) {
-          activity.startActivity(intent)
-        } else {
-          intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          context.startActivity(intent)
-        }
+        openUnknownAppSourcesSettings()
         promise.resolve(false)
+      } catch (e: Exception) {
+        promise.reject("E_INSTALL_PERMISSION", e.message, e)
+      }
+    }
+
+    /**
+     * Always opens the OS install-permission page (even when already granted) — for toggle OFF.
+     * Resolves true if Settings was launched; false on API &lt; O (no such page).
+     */
+    AsyncFunction("openInstallPermissionSettings") { promise: Promise ->
+      try {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+          promise.resolve(false)
+          return@AsyncFunction
+        }
+        openUnknownAppSourcesSettings()
+        promise.resolve(true)
       } catch (e: Exception) {
         promise.reject("E_INSTALL_PERMISSION", e.message, e)
       }

@@ -48,6 +48,8 @@ type FloraApkUpdaterNativeModule = {
   startAutoUpdate(manifest: NativeUpdateManifest): Promise<NativeUpdateState>;
   cancelUpdate(): boolean;
   requestInstallPermission(): Promise<boolean>;
+  /** true if Settings launched; false on API < 26 / unavailable. */
+  openInstallPermissionSettings(): Promise<boolean>;
   sha256File(filePath: string): Promise<string>;
   installApk(filePath: string, allowUserAction: boolean): Promise<InstallApkResult>;
   downloadFile(url: string, filePath: string): Promise<DownloadFileResult>;
@@ -134,6 +136,21 @@ export async function requestInstallPermission(): Promise<boolean> {
   return native.requestInstallPermission();
 }
 
+/**
+ * Always opens OS install-permission settings (even when already granted).
+ * @returns true if Settings was launched; false on API &lt; 26 or missing native method.
+ */
+export async function openInstallPermissionSettings(): Promise<boolean> {
+  if (!native || typeof native.openInstallPermissionSettings !== "function") {
+    return false;
+  }
+  try {
+    return (await native.openInstallPermissionSettings()) === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function sha256File(filePath: string): Promise<string> {
   if (!native) throw new Error("FloraApkUpdater is Android-only");
   return native.sha256File(filePath);
@@ -183,6 +200,7 @@ export default {
   startNativeAutoUpdate,
   cancelNativeUpdate,
   requestInstallPermission,
+  openInstallPermissionSettings,
   sha256File,
   installApk,
   canNativeDownload,

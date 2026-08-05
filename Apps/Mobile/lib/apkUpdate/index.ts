@@ -6,8 +6,10 @@ export {
 export {
   isAutoUpdateEnabled,
   isInAppUpdatesEnabled,
+  reconcileInstallPermissionWithOs,
   setAutoUpdateEnabled,
   setInAppUpdatesEnabled,
+  subscribeUpdatePreferences,
 } from "@/lib/apkUpdate/autoUpdatePreference";
 export {
   runAppUpdateCatchUp,

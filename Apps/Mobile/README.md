@@ -46,8 +46,10 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 
 #### Настройки → Уведомления (два ползунка)
 
-1. **«Установка обновлений»** (`apkUpdate.inAppUpdatesEnabled`, default OFF) — opt-in на in-app PackageInstaller и prerequisite для фона. Включение → sheet + OS permission. Выключение → принудительно OFF фонового. **Не** блокирует кнопку inbox: тап «Обновить» сам запрашивает OS и может включить этот pref.
-2. **«Фоновое обновление»** (`apkUpdate.autoUpdateEnabled`) — native write-through. Switch disabled/серый без первого ползунка или без OS permission. Включить только при inApp ON + `canRequestPackageInstalls()`.
+1. **«Установка обновлений»** — **зеркало** live OS `REQUEST_INSTALL_PACKAGES` (`Switch.value = canRequestPackageInstalls()` после reconcile; MMKV `apkUpdate.inAppUpdatesEnabled` синхронизируется с OS в обе стороны). **ON** без perm → Flora-sheet → Settings; grant → ON; отказ → OFF + meta «Разрешение не выдано». **OFF** при выданном perm → та же системная страница (`openInstallPermissionSettings` / `ACTION_MANAGE_UNKNOWN_APP_SOURCES`); пользователь снимает разрешение; по возврату sync. Если не снял — тумблер остаётся ON. Снятие OS → фон тоже OFF. API &lt; 26: perm всегда true; OFF — immediate no-op (Settings не открывается, wait не стартует), тумблер остаётся ON. Нужна сборка с актуальным `flora-apk-updater` (`openInstallPermissionSettings` → boolean opened).
+2. **«Фоновое обновление»** (`apkUpdate.autoUpdateEnabled`) — отдельный opt-in поверх OS. Switch disabled/серый без OS permission. Включить только при `canRequestPackageInstalls()`.
+
+**Sync с OS:** при каждом `AppState` active / bootstrap `reconcileInstallPermissionWithOs()` — `hasOs` ⇔ inApp; `!hasOs` → auto OFF. Внешний grant/revoke OS (вне Flora) тоже двигает тумблер установки; после внешнего grant «Фон» становится enableable (не auto-ON).
 
 Подписи: установка — «Нужно для установки из приложения и для фонового обновления.»; фон — «Скачивание с канала Flora в фоне; установка при свёрнутом приложении (Android 12+).»
 
@@ -55,21 +57,21 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 
 1. Оба ползунка ON + OS permission.
 2. Task `Send auto-update & notifications to side-APK` → inbox + **data-only HIGH FCM** (`type=app_update` + flat `version,versionCode,apkUrl,sha256,…` на канал `/apk/`). Без ключа `notification` и без системного tray «новая версия».
-3. Native: DownloadManager с channel URL → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) только если процесс **не в foreground ≥ 10 с** (WorkManager delay). Возврат в UI отменяет отложенный install.
+3. Native: DownloadManager с channel URL → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) планируется с задержкой **≥3 с**; Worker ставит только вне UI (краткий возврат в UI не отменяет уже запланированный work).
 4. Скачивание в foreground разрешено; установка в foreground — **нет** (кроме кнопки).
 5. Android &lt; 12 или OEM без silent → `READY` + local «готово»; установка через кнопку.
-6. **Catch-up** при login / AppState active / включении фона: latest канала через `fetchLatestUpdateManifest` (`flora.social-android-update.json`, иначе первый entry в `releases.json`); stale READY (VC ≤ installed) чистится; иначе unread inbox `app_update`. Throttle **15 мин** (`apkUpdate.catchUpAt`). Пропуск throttle: phase `FAILED`; один retry после cleanup stale READY при latest VC > installed; **`force` при включении ползунка «Фоновое обновление»** (иначе свежий foreground catch-up мог бы проглотить opt-in).
+6. **Catch-up** при login / AppState active / включении фона (после reconcile): latest канала через `fetchLatestUpdateManifest` (`flora.social-android-update.json`, иначе первый entry в `releases.json`); stale READY (VC ≤ installed) чистится; иначе unread inbox `app_update`. Throttle **15 мин** (`apkUpdate.catchUpAt`). Пропуск throttle: phase `FAILED`; один retry после cleanup stale READY при latest VC > installed; **`force` при включении ползунка «Фоновое обновление»**.
 
 #### Путь 2.x — кнопка «Обновить» в inbox
 
 | | Условие | Поведение |
 |--|---------|-----------|
-| perm | нет OS permission | Flora-sheet; grant → `inAppUpdatesEnabled=true` + 2.1/2.2; decline → 2.4 |
-| 2.1 | permission + APK `READY` той же версии | только install (в foreground OK); pref inApp ON |
-| 2.2 | permission, APK ещё нет | download с канала + interactive install; pref inApp ON |
+| perm | нет OS permission | Flora-sheet (без progress-card); grant → reconcile (inApp=OS) + 2.1/2.2; decline / возврат без perm → **ошибка** `NO_PERMISSION` |
+| 2.1 | permission + APK `READY` той же версии | только install (в foreground OK); inApp mirrors OS |
+| 2.2 | permission, APK ещё нет | download с канала + interactive install; inApp mirrors OS |
 | wait | native `DOWNLOADING` той же VC | ждать READY → 2.1 (без второго DownloadManager) |
-| 2.4 | decline / нет OS perm после sheet / нет native / CHANNEL | прямое скачивание APK с канала Flora |
-| err | DOWNLOAD / INSTALL / SHA256 после retry | ошибка в UI (без авто-2.4); SHA → clear pending + повторная 2.2 загрузка |
+| 2.4 | нет native / нет манифеста / CHANNEL | прямое скачивание APK с канала Flora (не для отказа от perm) |
+| err | NO_PERMISSION / DOWNLOAD / INSTALL / SHA256 | ошибка в UI (Закрыть; повтор — снова «Обновить») |
 
 #### Сборки
 
@@ -94,16 +96,19 @@ Fallback 2.4 открывает прямую ссылку на APK версии 
 #### Smoke
 
 1. Оба ползунка OFF → broadcast → только inbox, нет download / catch-up.
-2. «Установка» ON без permission → sheet → отказ → ползунок OFF; «Фон» серый/disabled.
-3. Оба ON + permission, app killed → broadcast → download с `/apk/` → silent install ≥3 s вне UI (Worker откладывает, не отменяет при кратком возврате в UI).
-4. Фон ON + foreground → download, install нет → свернуть ≥10 s → install.
-5. Свернуть &lt;10 s и вернуться → install не произошёл.
+2. «Установка» ON без permission → sheet → отказ → ползунок OFF + «Разрешение не выдано»; «Фон» серый/disabled.
+3. «Установка» OFF при ON → открывается системная страница unknown-sources; не снял → тумблер ON; снял → OFF + фон OFF. Долгий уход (>90s timeout) → sync по return/timeout (обычно остаётся ON если не снял).
+4. Оба ON + permission, app killed → broadcast → download с `/apk/` → silent install ≥3 s вне UI (Worker откладывает, не отменяет при кратком возврате в UI).
+5. Фон ON + foreground → download → свернуть ≥3 s → install.
 6. DOWNLOADING + кнопка той же VC → ждёт READY → 2.1.
 7. READY → кнопка → 2.1; нет файла → 2.2 с channel URL.
-8. Revoke install perm при ON → auto skip; meta + «Выдать разрешение»; кнопка → Flora-sheet → grant → 2.1/2.2, decline → 2.4 channel APK.
-9. APK на канале новее, уведомление не слали, фон ON → catch-up (≤15 мин) скачивает latest.
-10. Regression: обычный DM FCM после wrapper FMS всё ещё доставляет.
-11. Logcat: `startAuto` не пишет `APK URL not allowlisted` для `social.flora-s.net/apk/…`.
+8. Revoke install perm снаружи при ON → вернуться в Flora → тумблер+auto OFF.
+9. Внешний grant OS без Flora → при следующем active тумблер установки ON; «Фон» enableable (остаётся OFF пока не включить).
+10. «Обновить» без perm → только sheet → deny → error NO_PERMISSION (не браузер); grant → progress + install.
+11. APK на канале новее, уведомление не слали, фон ON → catch-up (≤15 мин) скачивает latest.
+12. Regression: обычный DM FCM после wrapper FMS всё ещё доставляет.
+13. Logcat: `startAuto` не пишет `APK URL not allowlisted` для `social.flora-s.net/apk/…`.
+14. Smoke OFF→Settings требует APK со свежим `flora-apk-updater` (`openInstallPermissionSettings`).
 
 ### Один раз на сервере
 

@@ -22,6 +22,7 @@ import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
 import {
   isAutoUpdateEnabled,
   isInAppUpdatesEnabled,
+  reconcileInstallPermissionWithOs,
 } from "@/lib/apkUpdate/autoUpdatePreference";
 import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
 import { initMobileSodium } from "@/lib/fscp/sodium";
@@ -58,8 +59,11 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       initTelemetry();
       initFloraClient();
       await initStorageMigrations();
-      // Write-through auto-update preference (default OFF) before any FCM wake.
+      // Write-through auto-update preference (default OFF) + OS revoke sync before FCM.
       void isAutoUpdateEnabled();
+      if (isSideloadUpdatesEnabled()) {
+        reconcileInstallPermissionWithOs();
+      }
       await initMobileSodium();
       await bootstrapSession();
       const session = useSessionStore.getState();
@@ -152,6 +156,20 @@ export function FloraProviders({ children }: { children: ReactNode }) {
     };
   }, [ready]);
 
+  // Sideload: reconcile OS install permission on every foreground (even logged out).
+  useEffect(() => {
+    if (!ready || !isSideloadUpdatesEnabled()) return;
+
+    reconcileInstallPermissionWithOs();
+
+    const appSub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") {
+        reconcileInstallPermissionWithOs();
+      }
+    });
+    return () => appSub.remove();
+  }, [ready]);
+
   useEffect(() => {
     if (!ready || !isAuthenticated) return;
 
@@ -169,6 +187,9 @@ export function FloraProviders({ children }: { children: ReactNode }) {
     }
 
     const maybeCatchUp = () => {
+      if (isSideloadUpdatesEnabled()) {
+        reconcileInstallPermissionWithOs();
+      }
       if (
         isSideloadUpdatesEnabled() &&
         isInAppUpdatesEnabled() &&

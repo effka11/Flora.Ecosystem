@@ -322,9 +322,17 @@ object UpdateCoordinator {
   fun canRequestPackageInstalls(context: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
     val ok = context.packageManager.canRequestPackageInstalls()
-    if (ok) installPermissionCached = true
+    if (ok) {
+      installPermissionCached = true
+      return true
+    }
+    // Live false while UI visible = real revoke; do not keep sticky OR.
+    if (isUiVisible()) {
+      installPermissionCached = false
+      return false
+    }
     // OEM quirk: live check can flip to false while process is stopping.
-    return ok || installPermissionCached
+    return installPermissionCached
   }
 
   fun canAutoInstall(context: Context): Boolean {

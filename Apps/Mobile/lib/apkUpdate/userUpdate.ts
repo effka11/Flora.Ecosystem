@@ -4,7 +4,7 @@ import {
   cancelNativeUpdate,
   getNativeUpdateState,
 } from "flora-apk-updater";
-import { setInAppUpdatesEnabled } from "@/lib/apkUpdate/autoUpdatePreference";
+import { reconcileInstallPermissionWithOs } from "@/lib/apkUpdate/autoUpdatePreference";
 import { isApkUpdaterNativeReady } from "@/lib/apkUpdate/capabilities";
 import { checkAndInstall, cancelInteractiveApkUpdate } from "@/lib/apkUpdate/checkAndInstall";
 import {
@@ -24,6 +24,8 @@ import {
 import { getPendingApkUri, isApkUpdateCancelled, clearPendingApk } from "@/lib/apkUpdate/download";
 import { getInfoAsync } from "expo-file-system/legacy";
 
+const NO_PERMISSION_ERROR = "Нужно разрешить установку из этого источника";
+
 export type UserUpdateResult =
   | {
       ok: true;
@@ -39,6 +41,10 @@ async function openChannelApkFallback(notificationText: string): Promise<UserUpd
   const url = resolveAppUpdateApkDownloadUrl(notificationText);
   await Linking.openURL(url);
   return { ok: true, status: "opened_channel" };
+}
+
+function noPermissionResult(): UserUpdateResult {
+  return { ok: false, error: NO_PERMISSION_ERROR, code: "NO_PERMISSION" };
 }
 
 async function resolveManifest(notificationText: string): Promise<AndroidUpdateManifest | null> {
@@ -160,7 +166,7 @@ async function waitForNativeDownloadReady(
 
 /**
  * Button «Обновить»: soft OS permission prompt → 2.1 install-only / 2.2 download+install /
- * 2.4 Flora channel APK download on decline or hard failure.
+ * 2.4 Flora channel APK only for NO_NATIVE / missing manifest (not for permission decline).
  */
 export async function runUserUpdateFromNotification(
   notificationText: string,
@@ -173,21 +179,28 @@ export async function runUserUpdateFromNotification(
     return openChannelApkFallback(notificationText);
   }
 
-  report({ phase: "checking" });
-
-  let hasPerm = canRequestPackageInstalls();
-  if (!hasPerm) {
-    report({ phase: "checking", message: "Нужно разрешение на установку…" });
-    const granted = await openInstallPermissionPrompt();
-    hasPerm = granted && canRequestPackageInstalls();
-    if (!hasPerm) {
-      report({ phase: "checking", message: "Открытие загрузки APK…" });
-      return openChannelApkFallback(notificationText);
-    }
-    setInAppUpdatesEnabled(true);
-  } else {
-    setInAppUpdatesEnabled(true);
+  // Permission gate BEFORE any progress report (avoids double modal with InstallPermissionHost).
+  let hasPerm = false;
+  try {
+    hasPerm = canRequestPackageInstalls();
+  } catch {
+    hasPerm = false;
   }
+
+  if (!hasPerm) {
+    const granted = await openInstallPermissionPrompt();
+    try {
+      hasPerm = granted && canRequestPackageInstalls();
+    } catch {
+      hasPerm = false;
+    }
+    if (!hasPerm) {
+      return noPermissionResult();
+    }
+  }
+
+  reconcileInstallPermissionWithOs();
+  report({ phase: "checking" });
 
   // Prefer channel latest when newer than installed — inbox text may lag the live channel.
   const installed = getInstalledVersionCode();
@@ -287,7 +300,7 @@ export async function runUserUpdateFromNotification(
       };
     }
     if (result.code === "NO_PERMISSION") {
-      return openChannelApkFallback(notificationText);
+      return noPermissionResult();
     }
     if (result.code === "SHA256") {
       invalidateChannelManifestCache();
@@ -334,7 +347,10 @@ export async function runUserUpdateFromNotification(
   }
 
   if (!result.ok) {
-    if (result.code === "NO_PERMISSION" || result.code === "NO_NATIVE" || result.code === "CHANNEL") {
+    if (result.code === "NO_PERMISSION") {
+      return noPermissionResult();
+    }
+    if (result.code === "NO_NATIVE" || result.code === "CHANNEL") {
       try {
         return await openChannelApkFallback(notificationText);
       } catch {
