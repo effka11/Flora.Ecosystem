@@ -31,6 +31,8 @@ export function resolveFloraDocumentTitle(pathname: string): string {
       return formatFloraDocumentTitle("Вход");
     case "/rules":
       return formatFloraDocumentTitle("Правила сообщества");
+    case "/download":
+      return formatFloraDocumentTitle("Скачать");
     case "/feed":
       return formatFloraDocumentTitle("Главная");
     case "/messages":

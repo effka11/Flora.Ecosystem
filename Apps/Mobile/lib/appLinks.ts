@@ -1,7 +1,14 @@
 import Constants from "expo-constants";
+import {
+  buildFloraSocialApkChannelUrl,
+  FLORA_DOWNLOAD_PAGE_URL,
+} from "@/lib/apkUpdate/apkChannel";
 
-/** GitHub releases for Flora Social Android APK (alpha distribution). */
-export const FLORA_GITHUB_RELEASES_URL = "https://github.com/effka11/Flora.Ecosystem/releases";
+/** Public download page for Flora Social Android APK. */
+export const FLORA_DOWNLOAD_PAGE = FLORA_DOWNLOAD_PAGE_URL;
+
+/** @deprecated Use FLORA_DOWNLOAD_PAGE — kept for call sites during rename. */
+export const FLORA_GITHUB_RELEASES_URL = FLORA_DOWNLOAD_PAGE_URL;
 
 const FLORA_SOCIAL_VERSION_FALLBACK = "0.10.0-alpha";
 
@@ -10,16 +17,14 @@ export function getFloraSocialAppVersion(): string {
   return Constants.expoConfig?.version ?? FLORA_SOCIAL_VERSION_FALLBACK;
 }
 
-/** Direct APK download URL for a given social release tag. */
+/** Direct APK download URL for a given social release on the Flora channel. */
 export function buildFloraSocialApkDownloadUrl(version: string): string {
-  const v = version.trim();
-  return `https://github.com/effka11/Flora.Ecosystem/releases/download/social/v${v}/flora.social-v${v}-android.apk`;
+  return buildFloraSocialApkChannelUrl(version);
 }
 
-/** HTML release page (optional UX; fallback 2.4 uses the APK URL instead). */
-export function buildFloraSocialReleasePageUrl(version: string): string {
-  const v = version.trim();
-  return `https://github.com/effka11/Flora.Ecosystem/releases/tag/social/v${v}`;
+/** Human-facing download page (optional UX; fallback 2.4 uses the APK URL instead). */
+export function buildFloraSocialReleasePageUrl(_version: string): string {
+  return FLORA_DOWNLOAD_PAGE_URL;
 }
 
 /** Parse version from broadcast text: «Новая версия Android - 0.7.0-alpha». */
@@ -75,6 +80,5 @@ export function resolveAppUpdateApkDownloadUrl(notificationText?: string): strin
 
 /** @deprecated Prefer resolveAppUpdateApkDownloadUrl for 2.4 fallback. */
 export function resolveAppUpdateReleasePageUrl(notificationText?: string): string {
-  const fromText = notificationText ? parseAppUpdateVersionFromText(notificationText) : null;
-  return buildFloraSocialReleasePageUrl(fromText ?? getFloraSocialAppVersion());
+  return FLORA_DOWNLOAD_PAGE_URL;
 }

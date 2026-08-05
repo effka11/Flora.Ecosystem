@@ -11,7 +11,7 @@
 ### Попробовать Alpha-версию
 
 * **Веб:** https://social.flora-s.net
-* **Android:** `flora.social-v0.10.0-alpha-android.apk` (локально `Apps/Mobile/dist/`; публикация — [Releases](https://github.com/effka11/Flora.Ecosystem/releases))
+* **Android:** https://social.flora-s.net/download (`flora.social-v…-android.apk` на канале `/apk/`; локально `Apps/Mobile/dist/`)
 
 Ограничения текущей alpha-версии описаны в [SECURITY.md — Known Limitations](SECURITY.md#известные-ограничения-mvp-known-limitations).
 

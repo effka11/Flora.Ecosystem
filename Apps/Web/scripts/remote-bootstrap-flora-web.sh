@@ -161,6 +161,7 @@ chmod 644 /etc/flora-ecosystem/flora-api-cors.env
 systemctl daemon-reload
 
 mkdir -p /var/www/certbot
+mkdir -p /var/www/flora-apk
 
 emit_nginx_proxy_next_static() {
   echo '    location /_next/static/ {'
@@ -211,6 +212,28 @@ emit_nginx_api_post_media() {
   echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
   echo '        proxy_set_header X-Forwarded-Proto $scheme;'
   echo '        proxy_buffering off;'
+  echo '    }'
+  echo ''
+}
+
+# Sideload APK channel (independent of GitHub). Must be before catch-all location /.
+emit_nginx_apk_channel() {
+  echo '    # Flora Social Android APK channel (static; bypass Next).'
+  echo '    location = /apk/releases.json {'
+  echo '        alias /var/www/flora-apk/releases.json;'
+  echo '        default_type application/json;'
+  echo '        add_header Cache-Control "no-store" always;'
+  echo '    }'
+  echo '    location = /apk/flora.social-android-update.json {'
+  echo '        alias /var/www/flora-apk/flora.social-android-update.json;'
+  echo '        default_type application/json;'
+  echo '        add_header Cache-Control "no-store" always;'
+  echo '    }'
+  echo '    location /apk/ {'
+  echo '        alias /var/www/flora-apk/;'
+  echo '        types { application/vnd.android.package-archive apk; }'
+  echo '        default_type application/octet-stream;'
+  echo '        add_header Cache-Control "public, max-age=31536000, immutable" always;'
   echo '    }'
   echo ''
 }
@@ -325,6 +348,7 @@ fi
   emit_nginx_api_sse_stream
   emit_nginx_api_post_media
   echo
+  emit_nginx_apk_channel
   emit_nginx_proxy_next_app
   echo '}'
 } >/etc/nginx/sites-available/flora-web.conf
@@ -370,6 +394,7 @@ if [[ -f "$ORIGIN_CERT" && -f "$ORIGIN_KEY" ]]; then
     emit_nginx_api_sse_stream
     emit_nginx_api_post_media
     echo
+    emit_nginx_apk_channel
     emit_nginx_proxy_next_app
     echo '}'
   } >/etc/nginx/sites-available/flora-origin-https.conf

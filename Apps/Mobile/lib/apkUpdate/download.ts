@@ -15,7 +15,7 @@ import {
   getNativeUpdateDir,
 } from "flora-apk-updater";
 import { mmkv } from "@/lib/mmkv";
-import type { AndroidUpdateManifest } from "@/lib/apkUpdate/githubRelease";
+import type { AndroidUpdateManifest } from "@/lib/apkUpdate/channelRelease";
 
 const UPDATE_DIR = "flora-update";
 const PENDING_NAME = "pending.apk";

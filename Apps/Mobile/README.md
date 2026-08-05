@@ -36,11 +36,11 @@ plaintext. При ошибке/opt-out показывается «Новое с�
 
 ## Уведомление о новой версии (Android release)
 
-После публикации APK на GitHub Releases можно разослать in-app уведомление «Новая версия Android» всем пользователям release APK.
+После публикации APK на канал Flora (`social.flora-s.net/apk`) можно разослать in-app уведомление «Новая версия Android» всем пользователям release APK.
 
 ### Sideload auto-update (PackageInstaller)
 
-Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляется с GitHub Releases через FCM + native `UpdateCoordinator`.
+Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляется с канала Flora (`/apk/`) через FCM + native `UpdateCoordinator`.
 
 #### Путь 1.1 — авто (opt-in)
 
@@ -49,7 +49,7 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 3. Native: DownloadManager → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) только если процесс **не в foreground ≥ 10 с** (WorkManager delay). Возврат в UI отменяет отложенный install.
 4. Скачивание в foreground разрешено; установка в foreground — **нет** (кроме кнопки).
 5. Android &lt; 12 или OEM без silent → `READY` + local «готово»; установка через кнопку.
-6. Catch-up при open: unread `app_update` → direct `flora.social-android-update.json` → native download.
+6. Catch-up при open: unread `app_update` → `https://social.flora-s.net/apk/flora.social-android-update.json` (или запись в `releases.json`) → native download.
 
 #### Путь 2.x — кнопка «Обновить» в inbox
 
@@ -57,26 +57,27 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 |--|---------|-----------|
 | 2.1 | permission + APK `READY` той же версии | только install (в foreground OK) |
 | 2.2 | permission, APK ещё нет | download + interactive install |
-| 2.4 | нет permission / сбой / нет native | прямое скачивание APK с GitHub (без запроса «установка из других источников») |
+| 2.4 | нет permission / сбой / нет native | прямое скачивание APK с канала Flora (без запроса «установка из других источников») |
 
 #### Сборки
 
 Sideload updater линкуется в **Dev** и production sideload APK. Авто-путь только при `extra.sideloadUpdates`.
 
-EAS `production` (Play AAB) / `FLORA_DISABLE_SIDELOAD_UPDATES=1`: без permissions, без модуля, без PackageInstaller (кнопка → GitHub).
+EAS `production` (Play AAB) / `FLORA_DISABLE_SIDELOAD_UPDATES=1`: без permissions, без модуля, без PackageInstaller (кнопка → `/download`).
 
 #### Публикация
 
 ```powershell
-.\Scripts\mobile-release-android.ps1 -PublishGitHub
+# One-shot on VPS if needed: Apps/Web/scripts/patch-nginx-apk-channel.sh
+.\Scripts\mobile-release-android.ps1 -PublishChannel
 .\Scripts\send-apk-auto-update.ps1 -Production -Confirm
 ```
 
-Скрипт broadcast подхватывает `Apps/Mobile/dist/flora.social-android-update.json` (или `gh release download`) и шлёт поле `update` в API.
+Скрипт broadcast подхватывает `Apps/Mobile/dist/flora.social-android-update.json` (или latest с `/apk/flora.social-android-update.json`) и шлёт поле `update` в API.
 
-Манифест локально: `Apps/Mobile/dist/flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`) — SoT для broadcast/`update{}` в FCM. На GitHub в release кладётся **только APK** (json не обязателен). Pending APK: `flora-update/pending.apk` в app external-files.
+Манифест локально: `Apps/Mobile/dist/flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`) — SoT для broadcast/`update{}` в FCM. На канал кладутся APK + latest update.json + `releases.json`. Pending APK: `flora-update/pending.apk` в app external-files.
 
-Fallback 2.4 открывает прямую ссылку на APK версии из текста уведомления (`…/download/social/v{version}/flora.social-v{version}-android.apk`), не HTML-страницу релиза.
+Fallback 2.4 открывает прямую ссылку на APK версии из текста уведомления (`https://social.flora-s.net/apk/flora.social-v{version}-android.apk`), не HTML-страницу.
 
 #### Smoke
 
@@ -85,7 +86,7 @@ Fallback 2.4 открывает прямую ссылку на APK версии 
 3. Свернуть &lt;10 s и вернуться → install не произошёл.
 4. READY → кнопка → 2.1 только install.
 5. Нет файла → кнопка → 2.2.
-6. Decline permission → кнопка → 2.3 / GitHub.
+6. Decline permission → кнопка → 2.3 / канал Flora.
 7. Regression: обычный DM FCM после wrapper FMS всё ещё доставляет.
 
 ### Один раз на сервере
@@ -108,11 +109,11 @@ Flora__AdminBroadcastToken=<длинный случайный секрет>
 
 ```powershell
 .\Scripts\setup-app-update-broadcast.ps1    # проверка токена и API
-# 1. сборка APK, 2. GitHub release, 3. deploy API при необходимости
+# 1. сборка APK, 2. -PublishChannel, 3. deploy API при необходимости
 .\Scripts\send-apk-auto-update.ps1 -Production -Confirm
 ```
 
-Опционально сразу после сборки: `.\Scripts\mobile-release-android.ps1 -PublishGitHub -BroadcastUpdate` (broadcast — fallback UX, если silent не сработал).
+Опционально сразу после сборки: `.\Scripts\mobile-release-android.ps1 -PublishChannel -BroadcastUpdate` (broadcast — fallback UX, если silent не сработал).
 
 ## Локальная разработка
 
