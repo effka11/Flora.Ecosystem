@@ -57,7 +57,7 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 
 1. Оба ползунка ON + OS permission.
 2. Task `Send auto-update & notifications to side-APK` → inbox + **data-only HIGH FCM** (`type=app_update` + flat `version,versionCode,apkUrl,sha256,…` на канал `/apk/`). Без ключа `notification` и без системного tray «новая версия».
-3. Native: DownloadManager с channel URL → SHA-256 → `READY`. Silent install (`USER_ACTION_NOT_REQUIRED`) планируется с задержкой **≥3 с**; Worker ставит только вне UI (краткий возврат в UI не отменяет уже запланированный work).
+3. Native: DownloadManager с channel URL → **SHA-256 must match channel** (fail-closed; no hash adoption) → `READY`. Incomplete = `length < sizeBytes` when size known. Silent install (`USER_ACTION_NOT_REQUIRED`) планируется с задержкой **≥3 с**; Worker ставит только вне UI (краткий возврат в UI не отменяет уже запланированный work). Native `downloadFile` / install paths: URL allowlist + `flora-update/` sandbox.
 4. Скачивание в foreground разрешено; установка в foreground — **нет** (кроме кнопки).
 5. Android &lt; 12 или OEM без silent → `READY` + local «готово»; установка через кнопку.
 6. **Catch-up** при login / AppState active / включении фона (после reconcile): latest канала через `fetchLatestUpdateManifest` (`flora.social-android-update.json`, иначе первый entry в `releases.json`); stale READY (VC ≤ installed) чистится; иначе unread inbox `app_update`. Throttle **15 мин** (`apkUpdate.catchUpAt`). Пропуск throttle: phase `FAILED`; один retry после cleanup stale READY при latest VC > installed; **`force` при включении ползунка «Фоновое обновление»**.
@@ -67,8 +67,8 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 | | Условие | Поведение |
 |--|---------|-----------|
 | perm | нет OS permission | Flora-sheet (без progress-card); grant → reconcile (inApp=OS) + 2.1/2.2; decline / возврат без perm → **ошибка** `NO_PERMISSION` |
-| 2.1 | permission + APK `READY` той же версии | только install (в foreground OK); inApp mirrors OS |
-| 2.2 | permission, APK ещё нет | download с канала + interactive install; inApp mirrors OS |
+| 2.1 | permission + APK `READY` той же версии | install-only; JS re-hash vs **channel** sha (не native rewrite) |
+| 2.2 | permission, APK ещё нет | download с канала + interactive install; channel sha binding |
 | wait | native `DOWNLOADING` той же VC | ждать READY → 2.1 (без второго DownloadManager) |
 | 2.4 | нет native / нет манифеста / CHANNEL | прямое скачивание APK с канала Flora (не для отказа от perm) |
 | err | NO_PERMISSION / DOWNLOAD / INSTALL / SHA256 | ошибка в UI (Закрыть; повтор — снова «Обновить») |
@@ -109,6 +109,8 @@ Fallback 2.4 открывает прямую ссылку на APK версии 
 12. Regression: обычный DM FCM после wrapper FMS всё ещё доставляет.
 13. Logcat: `startAuto` не пишет `APK URL not allowlisted` для `social.flora-s.net/apk/…`.
 14. Smoke OFF→Settings требует APK со свежим `flora-apk-updater` (`openInstallPermissionSettings`).
+15. Channel sha ≠ file → native FAIL (не READY); кнопка «Обновить» → SHA256 / re-download. Republish того же VC обязан обновить `sha256` (+ SHA8 в имени APK).
+16. Integrity: channel SHA binding; size только incomplete (`length < sizeBytes`); без hash-adoption.
 
 ### Один раз на сервере
 

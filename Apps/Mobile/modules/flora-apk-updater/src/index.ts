@@ -47,6 +47,7 @@ type FloraApkUpdaterNativeModule = {
   setAutoUpdateEnabled(enabled: boolean): boolean;
   startAutoUpdate(manifest: NativeUpdateManifest): Promise<NativeUpdateState>;
   cancelUpdate(): boolean;
+  setUiOwnsPending(active: boolean): boolean;
   requestInstallPermission(): Promise<boolean>;
   /** true if Settings launched; false on API < 26 / unavailable. */
   openInstallPermissionSettings(): Promise<boolean>;
@@ -131,6 +132,16 @@ export function cancelNativeUpdate(): void {
   native?.cancelDownload();
 }
 
+/** Mark JS/UI as owning pending.apk so FCM startAuto cannot clobber mid-download/install. */
+export function setNativeUiOwnsPending(active: boolean): void {
+  if (!native || typeof native.setUiOwnsPending !== "function") return;
+  try {
+    native.setUiOwnsPending(active);
+  } catch {
+    // ignore — older APK without method
+  }
+}
+
 export async function requestInstallPermission(): Promise<boolean> {
   if (!native) return false;
   return native.requestInstallPermission();
@@ -199,6 +210,7 @@ export default {
   setNativeAutoUpdateEnabled,
   startNativeAutoUpdate,
   cancelNativeUpdate,
+  setNativeUiOwnsPending,
   requestInstallPermission,
   openInstallPermissionSettings,
   sha256File,

@@ -11,8 +11,10 @@ import {
   addDownloadProgressListener,
   canNativeDownload,
   cancelNativeDownload,
+  cancelNativeUpdate,
   downloadFile as nativeDownloadFile,
   getNativeUpdateDir,
+  setNativeUiOwnsPending,
   sha256File,
 } from "flora-apk-updater";
 import { mmkv } from "@/lib/mmkv";
@@ -101,10 +103,16 @@ export async function clearPendingApk(): Promise<void> {
 /**
  * Stop in-flight download (if any) and delete pending APK + resume metadata.
  * Safe to call from the update modal close button.
+ * Also clears native update state + uiOwnsPending so silent can resume.
  */
 export async function cancelApkUpdateAndClearCache(): Promise<void> {
   cancelRequested = true;
-  cancelNativeDownload();
+  try {
+    cancelNativeUpdate();
+  } catch {
+    cancelNativeDownload();
+  }
+  setNativeUiOwnsPending(false);
   const dl = activeDownload;
   activeDownload = null;
   if (dl) {
@@ -149,10 +157,10 @@ function isCompletePending(
 ): boolean {
   if (!info.exists || !info.size || info.size <= 0) return false;
   if (meta.sha256 !== manifest.sha256) return false;
-  if (manifest.sizeBytes != null && manifest.sizeBytes > 0) {
-    return info.size === manifest.sizeBytes;
+  if (manifest.sizeBytes != null && manifest.sizeBytes > 0 && info.size < manifest.sizeBytes) {
+    return false;
   }
-  return false;
+  return true;
 }
 
 async function finishDownloadMeta(manifest: AndroidUpdateManifest, uri: string): Promise<string> {
@@ -276,9 +284,9 @@ export async function downloadApkResumable(
       if (
         typeof manifest.sizeBytes === "number" &&
         manifest.sizeBytes > 0 &&
-        info.size !== manifest.sizeBytes
+        (info.size ?? 0) < manifest.sizeBytes
       ) {
-        // Partial / wrong file — re-download.
+        // Incomplete — re-download.
       } else {
         const hash = (await sha256File(dest)).toLowerCase();
         if (hash === manifest.sha256.toLowerCase()) {

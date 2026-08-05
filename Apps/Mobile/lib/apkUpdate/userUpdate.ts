@@ -3,6 +3,7 @@ import {
   canRequestPackageInstalls,
   cancelNativeUpdate,
   getNativeUpdateState,
+  setNativeUiOwnsPending,
 } from "flora-apk-updater";
 import { reconcileInstallPermissionWithOs } from "@/lib/apkUpdate/autoUpdatePreference";
 import { isApkUpdaterNativeReady } from "@/lib/apkUpdate/capabilities";
@@ -75,15 +76,16 @@ async function pendingMatchesVersion(
   if (!info?.exists || (info.size ?? 0) <= 0) return false;
 
   const sizeHint = expectedSizeBytes ?? state.sizeBytes ?? undefined;
-  if (typeof sizeHint === "number" && sizeHint > 0 && info.size !== sizeHint) {
+  // Incomplete only — do not reject solely on size !== when channel size lags.
+  if (typeof sizeHint === "number" && sizeHint > 0 && (info.size ?? 0) < sizeHint) {
     return false;
   }
   return true;
 }
 
 /**
- * When native already verified pending.apk, prefer its sha256 over a possibly stale
- * channel cache (304 / MMKV body with an old hash).
+ * When native already has READY pending for the same versionCode, prefer native apkUrl /
+ * size metadata — but keep channel sha256 as the binding integrity check (no rewrite).
  */
 function manifestFromNativeReady(
   fallback: AndroidUpdateManifest,
@@ -97,8 +99,6 @@ function manifestFromNativeReady(
   ) {
     return fallback;
   }
-  const sha = state.sha256?.trim().toLowerCase() ?? "";
-  if (!/^[a-f0-9]{64}$/.test(sha)) return fallback;
   if (state.versionCode == null || state.versionCode !== fallback.versionCode) {
     return fallback;
   }
@@ -115,7 +115,8 @@ function manifestFromNativeReady(
     version,
     versionCode: state.versionCode,
     apkUrl,
-    sha256: sha,
+    // Channel sha stays binding — never adopt native/store hash.
+    sha256: fallback.sha256,
     sizeBytes:
       typeof state.sizeBytes === "number" && state.sizeBytes > 0
         ? state.sizeBytes
@@ -240,6 +241,8 @@ export async function runUserUpdateFromNotification(
 
   if (joinNative) {
     if (nativeState?.phase === "INSTALLING") {
+      // Native silent/interactive commit in flight — claim so FCM cannot clobber.
+      setNativeUiOwnsPending(true);
       report({ phase: "installing", message: "Установка…" });
       return { ok: true, status: "pending_user_action" };
     }
@@ -251,6 +254,7 @@ export async function runUserUpdateFromNotification(
       } else {
         const after = getNativeUpdateState();
         if (after?.phase === "INSTALLING" && after.versionCode === manifest.versionCode) {
+          setNativeUiOwnsPending(true);
           report({ phase: "installing", message: "Установка…" });
           return { ok: true, status: "pending_user_action" };
         }
@@ -261,7 +265,6 @@ export async function runUserUpdateFromNotification(
   nativeState = getNativeUpdateState();
   const nativeReady =
     nativeState?.phase === "READY" || nativeState?.phase === "INSTALL_SCHEDULED";
-  // Native already hashed pending.apk — use that sha256 (avoids stale channel cache).
   if (nativeReady) {
     manifest = manifestFromNativeReady(manifest);
   }
@@ -272,9 +275,7 @@ export async function runUserUpdateFromNotification(
     if (!(await pendingMatchesVersion(m.versionCode, m.sizeBytes))) return null;
     report({ phase: "installing", message: "Установка…" });
     const uri = getPendingApkUri();
-    const nativeVerified =
-      getNativeUpdateState()?.phase === "READY" ||
-      getNativeUpdateState()?.phase === "INSTALL_SCHEDULED";
+    // Always verify against channel sha (native may have been READY under old adoption).
     const result = await checkAndInstall({
       allowUserAction: true,
       force: true,
@@ -282,9 +283,6 @@ export async function runUserUpdateFromNotification(
       onProgress,
       installOnlyUri: uri,
       skipPermissionModal: true,
-      // Native UpdateCoordinator already SHA-checked this pending.apk.
-      skipShaVerify: nativeVerified,
-      keepPendingOnShaMismatch: true,
     });
     if (result.ok) {
       return {
@@ -326,6 +324,8 @@ export async function runUserUpdateFromNotification(
   } catch {
     // ignore
   }
+  // Re-claim ownership after cancel (cancel clears uiOwnsPending).
+  setNativeUiOwnsPending(true);
 
   // 2.2 — fresh download + interactive install (one attempt; no install-only SHA dance).
   invalidateChannelManifestCache();

@@ -130,6 +130,11 @@ class FloraApkUpdaterModule : Module() {
       true
     }
 
+    Function("setUiOwnsPending") { active: Boolean ->
+      UpdateCoordinator.setUiOwnsPending(active)
+      true
+    }
+
     Function("cancelDownload") {
       downloadCancel.set(true)
       cancelActiveSystemDownload()
@@ -193,6 +198,10 @@ class FloraApkUpdaterModule : Module() {
       downloadExecutor.execute {
         var downloadId = -1L
         try {
+          if (!UpdateUrlAllowlist.isAllowed(url)) {
+            rejectOnMain(promise, "E_URL", "APK URL not allowlisted")
+            return@execute
+          }
           val dest = resolveApkFile(filePath)
           dest.parentFile?.mkdirs()
           if (dest.exists()) dest.delete()
@@ -258,7 +267,8 @@ class FloraApkUpdaterModule : Module() {
                   }
 
                   if (outFile == null && !localUri.isNullOrBlank()) {
-                    val src = resolveApkFile(localUri)
+                    // DM may stage outside flora-update; only the destination is sandboxed.
+                    val src = File(localUri.removePrefix("file://"))
                     if (src.exists() && src.length() > 0L) {
                       if (src.absolutePath != dest.absolutePath) {
                         dest.parentFile?.mkdirs()
@@ -347,11 +357,12 @@ class FloraApkUpdaterModule : Module() {
         }
 
         // API 29–30: open system installer immediately (no PackageInstaller callback).
+        // Keep uiOwnsPending until process returns (UpdateCoordinator ProcessLifecycle).
         if (allowUserAction && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-          UpdateCoordinator.setInteractiveInstall(true)
+          UpdateCoordinator.setUiOwnsPending(true)
           val ok = UpdateCoordinator.commitInstallForJs(context, apk, allowUserAction = true)
-          UpdateCoordinator.setInteractiveInstall(false)
           if (!ok) {
+            UpdateCoordinator.setUiOwnsPending(false)
             val err = UpdateStateStore(context).getLastError() ?: "Install failed"
             val code = if (err.contains("REQUEST_INSTALL")) "E_NO_PERMISSION" else "E_INSTALL"
             promise.reject(code, err, null)
@@ -368,19 +379,19 @@ class FloraApkUpdaterModule : Module() {
 
         pendingAllowUserAction.set(allowUserAction)
         pendingPromise.set(promise)
-        UpdateCoordinator.setInteractiveInstall(allowUserAction)
+        UpdateCoordinator.setUiOwnsPending(allowUserAction)
 
         val ok = UpdateCoordinator.commitInstallForJs(context, apk, allowUserAction)
         if (!ok) {
           pendingPromise.compareAndSet(promise, null)
-          UpdateCoordinator.setInteractiveInstall(false)
+          UpdateCoordinator.setUiOwnsPending(false)
           val err = UpdateStateStore(context).getLastError() ?: "Install failed"
           val code = if (err.contains("REQUEST_INSTALL")) "E_NO_PERMISSION" else "E_INSTALL"
           promise.reject(code, err, null)
         }
       } catch (e: Exception) {
         pendingPromise.set(null)
-        UpdateCoordinator.setInteractiveInstall(false)
+        UpdateCoordinator.setUiOwnsPending(false)
         promise.reject("E_INSTALL", e.message, e)
       }
     }
@@ -405,13 +416,22 @@ class FloraApkUpdaterModule : Module() {
 
   private fun resolveApkFile(filePath: String): File {
     val path = filePath.removePrefix("file://")
-    return File(path)
+    val candidate = File(path).canonicalFile
+    val root = updateDir().canonicalFile
+    val rootPath = root.path
+    val candidatePath = candidate.path
+    if (candidatePath != rootPath && !candidatePath.startsWith(rootPath + File.separator)) {
+      throw IllegalArgumentException("APK path outside flora-update sandbox: $filePath")
+    }
+    return candidate
   }
 
   companion object {
     private val activeModule = AtomicReference<FloraApkUpdaterModule?>(null)
     private val pendingPromise = AtomicReference<Promise?>(null)
     private val pendingAllowUserAction = AtomicReference(false)
+
+    fun hasPendingInstallPromise(): Boolean = pendingPromise.get() != null
 
     fun completePendingInstall(
       status: String,
@@ -435,6 +455,7 @@ class FloraApkUpdaterModule : Module() {
           val promise = pendingPromise.get() ?: return
           if (!allowUserAction) {
             pendingPromise.compareAndSet(promise, null)
+            UpdateCoordinator.setUiOwnsPending(false)
             promise.reject(
               "E_USER_ACTION_REQUIRED",
               message ?: "Install requires user action",
@@ -445,11 +466,13 @@ class FloraApkUpdaterModule : Module() {
           // Confirm UI is started by UpdateCoordinator; keep promise for final status.
           if (confirmIntent == null) {
             pendingPromise.compareAndSet(promise, null)
+            UpdateCoordinator.setUiOwnsPending(false)
             promise.reject("E_CONFIRM", "Missing confirm intent", null)
           }
         }
         "system_installer" -> {
           // Intent-based fallback after PackageInstaller Permission Denied.
+          // Promise resolved; ownership cleared when user returns (no pending promise + READY).
           val promise = pendingPromise.getAndSet(null) ?: return
           promise.resolve(
             mapOf(
@@ -460,6 +483,7 @@ class FloraApkUpdaterModule : Module() {
         }
         else -> {
           val promise = pendingPromise.getAndSet(null) ?: return
+          UpdateCoordinator.setUiOwnsPending(false)
           promise.reject("E_INSTALL_FAILED", message ?: status, null)
         }
       }
