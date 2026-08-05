@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { floraPageMetadata } from "@/lib/floraDocumentTitle";
 import styles from "./rules.module.css";
 
 export const metadata: Metadata = {
-  title: "Правила сообщества",
+  ...floraPageMetadata("Правила сообщества"),
   description: "Правила сообщества Flora Social — обязательные нормы для всех пользователей платформы.",
 };
 
