@@ -102,7 +102,7 @@
 }
 
 .title {
-  margin: 0 0 var(--flora-grid-step);
+  margin: 0 0 calc(3 * var(--flora-grid-step));
   color: var(--flora-gray-light);
   font-size: clamp(28px, 3.2vw, 36px);
   line-height: 1.2;
