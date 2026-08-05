@@ -12,37 +12,42 @@
   top: 0;
   z-index: 10;
   border-bottom: 1px solid var(--flora-gray-divider);
-  background: color-mix(in srgb, var(--flora-bg) 92%, transparent);
-  backdrop-filter: blur(10px);
+  background: var(--flora-bg);
+  box-sizing: border-box;
+  /* 2 сверху + 2 лого + 2 до низа */
+  padding-top: calc(2 * var(--flora-grid-step));
+  padding-bottom: calc(2 * var(--flora-grid-step));
 }
 
 .headerInner,
 .main {
-  width: min(1080px, 100%);
-  margin: 0 auto;
-  padding-left: 32px;
-  padding-right: 32px;
+  /* Было 72 по центру (левый край — 28 клеток); +1 вправо → 73 */
+  width: min(calc(73 * var(--flora-grid-step)), 100%);
+  margin-left: max(0px, calc((100% - 72 * var(--flora-grid-step)) / 2));
+  margin-right: auto;
+  padding-left: calc(2 * var(--flora-grid-step));
+  padding-right: calc(2 * var(--flora-grid-step));
+  box-sizing: border-box;
 }
 
 .headerInner {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
-  min-height: 64px;
-  padding-top: 10px;
-  padding-bottom: 10px;
+  gap: calc(2 * var(--flora-grid-step));
+  min-height: calc(2 * var(--flora-grid-step));
 }
 
 .logo {
   display: inline-flex;
   align-items: center;
-  gap: 15px;
+  gap: var(--flora-grid-step);
   color: var(--flora-green-light);
   text-decoration: none;
-  letter-spacing: 4px;
+  letter-spacing: calc(var(--flora-grid-step-fine) - 1px);
+  font-weight: 300;
   font-size: 17px;
-  min-height: 30px;
+  min-height: calc(2 * var(--flora-grid-step));
 }
 
 .logo:hover {
@@ -50,8 +55,8 @@
 }
 
 .logoMark {
-  width: 30px;
-  height: 30px;
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
   border-radius: 10px;
   display: grid;
   place-items: center;
@@ -60,8 +65,8 @@
 }
 
 .logoMark svg {
-  width: 15px;
-  height: 15px;
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
   transform: rotate(7deg);
   transform-origin: center;
 }
@@ -71,6 +76,10 @@
 }
 
 .loginLink {
+  display: inline-flex;
+  align-items: center;
+  height: calc(2 * var(--flora-grid-step));
+  margin-right: calc(2 * var(--flora-grid-step));
   color: var(--flora-gray);
   font-size: 14px;
   letter-spacing: var(--flora-tracking-15);
@@ -84,16 +93,16 @@
 
 .main {
   flex: 1 1 auto;
-  padding-top: 48px;
-  padding-bottom: 72px;
+  padding-top: calc(3 * var(--flora-grid-step));
+  padding-bottom: calc(5 * var(--flora-grid-step));
 }
 
 .hero {
-  margin-bottom: 48px;
+  margin-bottom: calc(3 * var(--flora-grid-step));
 }
 
 .title {
-  margin: 0 0 18px;
+  margin: 0 0 var(--flora-grid-step);
   color: var(--flora-gray-light);
   font-size: clamp(28px, 3.2vw, 36px);
   line-height: 1.2;
@@ -118,10 +127,10 @@
 
 .item {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: calc(4 * var(--flora-grid-step)) minmax(0, 1fr);
+  gap: var(--flora-grid-step);
   margin: 0;
-  padding: 28px 0;
+  padding: calc(2 * var(--flora-grid-step)) 0;
   border-top: 1px solid var(--flora-gray-divider);
 }
 
@@ -134,7 +143,6 @@
   font-size: 15px;
   letter-spacing: 1px;
   line-height: 1.5;
-  padding-top: 2px;
 }
 
 .itemContent {
@@ -142,7 +150,7 @@
 }
 
 .itemTitle {
-  margin: 0 0 30px;
+  margin: 0 0 calc(2 * var(--flora-grid-step));
   color: var(--flora-gray-light);
   font-size: 18px;
   line-height: 1.35;
@@ -157,11 +165,11 @@
 }
 
 .itemBody + .itemBody {
-  margin-top: 12px;
+  margin-top: var(--flora-grid-step);
 }
 
 .footerNote {
-  margin: 40px 0 0;
+  margin: calc(3 * var(--flora-grid-step)) 0 0;
   color: var(--flora-gray);
   font-size: 13px;
   line-height: 1.65;
@@ -170,14 +178,14 @@
 @media (max-width: 720px) {
   .headerInner,
   .main {
-    padding-left: 20px;
-    padding-right: 20px;
+    padding-left: var(--flora-grid-step);
+    padding-right: var(--flora-grid-step);
   }
 
   .item {
-    grid-template-columns: 40px minmax(0, 1fr);
-    gap: 12px;
-    padding: 22px 0;
+    grid-template-columns: calc(3 * var(--flora-grid-step)) minmax(0, 1fr);
+    gap: var(--flora-grid-step);
+    padding: calc(2 * var(--flora-grid-step)) 0;
   }
 
   .itemTitle {

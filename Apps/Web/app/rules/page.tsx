@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { GridOverlay } from "@/app/_shared/GridOverlay";
 import { floraPageMetadata } from "@/lib/floraDocumentTitle";
 import styles from "./rules.module.css";
 
@@ -159,6 +160,7 @@ function FloraLogoMark() {
 export default function RulesPage() {
   return (
     <div className={styles.page}>
+      <GridOverlay />
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <Link href="/login" className={styles.logo} aria-label="Flora — вход">
