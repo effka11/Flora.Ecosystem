@@ -22,9 +22,16 @@ export function FloraDocumentTitleProvider({ children }: { children: ReactNode }
 
   useEffect(() => {
     const custom = override?.trim();
-    document.title = custom
-      ? formatFloraDocumentTitle(custom)
-      : resolveFloraDocumentTitle(pathname);
+    if (!custom) {
+      // Без override не трогаем title — его задаёт Next metadata (как /rules),
+      // иначе `document.title = …` может схлопнуть NBSP во вкладке.
+      return;
+    }
+
+    document.title = formatFloraDocumentTitle(custom);
+    return () => {
+      document.title = resolveFloraDocumentTitle(pathname);
+    };
   }, [override, pathname]);
 
   return (

@@ -13,6 +13,11 @@ export function formatFloraDocumentTitle(pageTitle: string): string {
   return `${FLORA_DOCUMENT_TITLE}${FLORA_TITLE_SEPARATOR}${trimmed}`;
 }
 
+/** SSR metadata segment — root `title.template` wraps it as `Flora  –  …`. */
+export function floraPageMetadata(pageTitle: string): { title: string } {
+  return { title: pageTitle.trim() };
+}
+
 /** Статический заголовок по pathname (без данных с API). */
 export function resolveFloraDocumentTitle(pathname: string): string {
   const path = pathname.replace(/\/$/, "") || "/";
