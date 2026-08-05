@@ -1,0 +1,38 @@
+---
+description: Flora UI dash separator — en-dash with double NBSP (HTML collapse)
+globs: Apps/Web/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Разделитель «тире» в UI-тексте Apps/Web
+
+В пользовательском копирайте (правила, aria-label, описания, вкладки браузера) **не** использовать длинное тире `—` (U+2014).
+
+## Стандарт
+
+Формат: **два неразрывных пробела + en-dash + два неразрывных пробела**.
+
+- Константа SoT: `FLORA_TITLE_SEPARATOR` в `Apps/Web/lib/floraDocumentTitle.ts`
+- Значение: `"\u00A0\u00A0–\u00A0\u00A0"` → визуально `Flora  –  Сообщения`
+
+## Почему NBSP
+
+Обычные пробелы (` `) HTML/CSS схлопывает в один — двойной отступ **не виден** в DOM-тексте и в `<title>`. Всегда `\u00A0`, не `"  –  "`.
+
+## Как писать
+
+```ts
+import { FLORA_TITLE_SEPARATOR } from "@/lib/floraDocumentTitle";
+
+// ✅
+`Тяжёлые нарушения${FLORA_TITLE_SEPARATOR}в том числе …`
+aria-label={`Flora${FLORA_TITLE_SEPARATOR}вход`}
+
+// ❌ длинное тире
+"Тяжёлые нарушения — в том числе …"
+
+// ❌ обычные пробелы (схлопнутся)
+"Тяжёлые нарушения  –  в том числе …"
+```
+
+Для заголовков вкладок — `formatFloraDocumentTitle` / `floraPageMetadata` (уже через эту константу).

@@ -96,6 +96,7 @@ pwsh ./Tools/validate-architecture-rust.ps1
 - Полный контракт позиционирования по сетке: вызови skill **`/apps-web-grid-placement`** перед любыми правками `top`/`margin`/позиционирования в `Apps/Web`.
 - Чат Messages (compose, стикеры, голосовые, плеер): вызови skill **`/apps-web-messages-chat`** перед правками чата.
 - Диагностика «обрезки» под шапкой: сначала проверить перекрытие слоями (DOM-порядок, `z-index`, непрозрачный фон), а не только `overflow`. Для flex+scroll: `flex: 1 1 0%` + `min-height: 0` на пути к скролл-контейнеру.
+- **Разделитель «тире» в UI-тексте:** не длинное `—`; формат как у вкладок — `FLORA_TITLE_SEPARATOR` (`\u00A0\u00A0–\u00A0\u00A0`) из `Apps/Web/lib/floraDocumentTitle.ts`. Обычные пробелы вокруг тире HTML схлопывает; всегда NBSP. Правило: `.cursor/rules/flora-ui-dash-separator.mdc`.
 
 ## Правила Apps/Mobile
 
