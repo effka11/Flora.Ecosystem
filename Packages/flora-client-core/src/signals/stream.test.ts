@@ -9,7 +9,11 @@ import {
   configureApiClient,
   resetSessionRefreshStateForTests,
 } from "../api/client.js";
-import { connectSignalsStream, parseReadSignalForTest } from "./stream.js";
+import {
+  connectSignalsStream,
+  parseNotificationRemovedSignalForTest,
+  parseReadSignalForTest,
+} from "./stream.js";
 
 function createSessionStore(): SessionStore {
   const expiresAt = "2099-01-01T00:00:00.000Z";
@@ -128,5 +132,35 @@ describe("parseReadSignal", () => {
   it("rejects incomplete payload", () => {
     expect(parseReadSignalForTest({ conversationUuid: "conv-3" })).toBeNull();
     expect(parseReadSignalForTest(null)).toBeNull();
+  });
+});
+
+describe("parseNotificationRemovedSignal", () => {
+  it("parses camelCase notification_removed payload", () => {
+    expect(
+      parseNotificationRemovedSignalForTest({
+        notificationUuid: "notif-1",
+        groupKey: "group-a",
+      }),
+    ).toEqual({ notificationUuid: "notif-1", groupKey: "group-a" });
+  });
+
+  it("parses PascalCase notification_removed payload", () => {
+    expect(
+      parseNotificationRemovedSignalForTest({
+        NotificationUuid: "notif-2",
+        GroupKey: "group-b",
+      }),
+    ).toEqual({ notificationUuid: "notif-2", groupKey: "group-b" });
+  });
+
+  it("nulls missing groupKey and rejects missing uuid", () => {
+    expect(
+      parseNotificationRemovedSignalForTest({
+        notificationUuid: "notif-3",
+      }),
+    ).toEqual({ notificationUuid: "notif-3", groupKey: null });
+    expect(parseNotificationRemovedSignalForTest({ groupKey: "group-c" })).toBeNull();
+    expect(parseNotificationRemovedSignalForTest(null)).toBeNull();
   });
 });

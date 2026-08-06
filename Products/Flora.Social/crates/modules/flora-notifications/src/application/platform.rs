@@ -41,6 +41,14 @@ pub fn normalize_type(notification_type: &str) -> String {
     }
 }
 
+/// Types that must use `apply_social` / `retract_social` (never unkeyed `dispatch`).
+pub fn requires_social_aggregation(notification_type: &str) -> bool {
+    matches!(
+        normalize_type(notification_type).as_str(),
+        "like" | "follow"
+    )
+}
+
 pub fn normalize_category_filter(category: Option<&str>) -> Option<String> {
     let raw = category?.trim();
     if raw.is_empty() || raw.eq_ignore_ascii_case("all") {
@@ -106,5 +114,13 @@ mod tests {
             normalize_category_filter(Some("developer")),
             Some("developer".into())
         );
+    }
+
+    #[test]
+    fn like_and_follow_require_social_aggregation() {
+        assert!(requires_social_aggregation("like"));
+        assert!(requires_social_aggregation("FOLLOW"));
+        assert!(!requires_social_aggregation("reply"));
+        assert!(!requires_social_aggregation("app_update"));
     }
 }

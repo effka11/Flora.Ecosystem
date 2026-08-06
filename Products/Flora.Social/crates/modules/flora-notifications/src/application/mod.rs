@@ -8,6 +8,7 @@ mod presence_publisher;
 mod push_tokens;
 mod read_notifier;
 mod realtime_publisher;
+mod social;
 mod time;
 mod typing_notifier;
 

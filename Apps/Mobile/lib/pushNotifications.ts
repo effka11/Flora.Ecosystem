@@ -1,4 +1,5 @@
 import { apiRegisterPushToken, apiUnregisterPushToken } from "@flora/client-core/api";
+import { isSocialTrayPushData } from "@flora/client-core/signals";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
@@ -10,7 +11,7 @@ import {
 import { isNativePushEnabled } from "@/lib/pushCapabilities";
 import { getActiveMessageThread } from "@/lib/activeMessageThread";
 import { openMessageFromPush } from "@/lib/openDm";
-import { handlePushNotificationData } from "@/lib/realtimeSync";
+import { handleNotificationRealtime, handlePushNotificationData } from "@/lib/realtimeSync";
 
 const PUSH_TOKEN_STORAGE_KEY = "flora.push.token";
 const PUSH_SERVER_SYNCED_KEY = "flora.push.serverSynced";
@@ -31,6 +32,8 @@ function shouldPresentPush(data: Record<string, unknown> | undefined): boolean {
   const type = typeof data?.type === "string" ? data.type : "message";
   // app_update is data-only; no system tray — inbox + «Обновить» only.
   if (type === "app_update") return false;
+  // Server retract: clear tray by tag/uuid, never show a banner.
+  if (type === "notification_dismiss") return false;
   if (type !== "message" && type !== "notification") return false;
   if (type === "message" && data) {
     const conv =
@@ -62,6 +65,42 @@ export async function dismissMessagePushNotifications(conversationUuid: string):
   }
 }
 
+/** Убрать social push из шторки по tag / notificationUuid / request identifier. */
+export async function dismissSocialPushNotifications(tagOrNotificationUuid: string): Promise<void> {
+  if (!isNativePushEnabled()) return;
+  const raw = tagOrNotificationUuid.trim();
+  if (!raw) return;
+  const norm = raw.toLowerCase();
+
+  await Notifications.dismissNotificationAsync(norm).catch(() => undefined);
+  await Notifications.dismissNotificationAsync(raw).catch(() => undefined);
+
+  const presented = await Notifications.getPresentedNotificationsAsync();
+  for (const notification of presented) {
+    const data = notification.request.content.data as Record<string, unknown> | undefined;
+    const tag = typeof data?.tag === "string" ? data.tag.trim().toLowerCase() : "";
+    const uuid =
+      typeof data?.notificationUuid === "string"
+        ? data.notificationUuid.trim().toLowerCase()
+        : "";
+    const identifier = notification.request.identifier.trim().toLowerCase();
+    if (tag === norm || uuid === norm || identifier === norm) {
+      await Notifications.dismissNotificationAsync(notification.request.identifier).catch(() => undefined);
+    }
+  }
+}
+
+/** Убрать presented social like/follow pushes (открыли вкладку уведомлений). */
+export async function dismissPresentedSocialPushNotifications(): Promise<void> {
+  if (!isNativePushEnabled()) return;
+  const presented = await Notifications.getPresentedNotificationsAsync();
+  for (const notification of presented) {
+    const data = notification.request.content.data as Record<string, unknown> | undefined;
+    if (!isSocialTrayPushData(data)) continue;
+    await Notifications.dismissNotificationAsync(notification.request.identifier).catch(() => undefined);
+  }
+}
+
 /**
  * Privacy-инвариант (e2e-security.md §Уведомления): содержимое сообщения через
  * FCM не проходит — сервер шлёт только generic-текст. `data.messagePreview`
@@ -83,6 +122,21 @@ Notifications.setNotificationHandler({
       };
     }
     const data = notification.request.content.data as Record<string, unknown> | undefined;
+    const type = typeof data?.type === "string" ? data.type : "message";
+    if (type === "notification_dismiss") {
+      const tag = typeof data?.tag === "string" ? data.tag.trim() : "";
+      const uuid =
+        typeof data?.notificationUuid === "string" ? data.notificationUuid.trim() : "";
+      const key = tag || uuid;
+      if (key) void dismissSocialPushNotifications(key);
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
+      };
+    }
     const present = shouldPresentPush(data);
     if (!present && typeof data?.conversationUuid === "string") {
       void dismissMessagePushNotifications(data.conversationUuid);
@@ -243,6 +297,16 @@ export function installPushNotificationListeners(): () => void {
   if (!isNativePushEnabled()) return () => undefined;
 
   const received = Notifications.addNotificationReceivedListener((notification) => {
+    const data = notification.request.content.data as Record<string, unknown> | undefined;
+    if (typeof data?.type === "string" && data.type === "notification_dismiss") {
+      const tag = typeof data.tag === "string" ? data.tag.trim() : "";
+      const uuid =
+        typeof data.notificationUuid === "string" ? data.notificationUuid.trim() : "";
+      const key = tag || uuid;
+      if (key) void dismissSocialPushNotifications(key);
+      handleNotificationRealtime();
+      return;
+    }
     handlePushNotificationData(notification.request.content.data);
   });
 

@@ -50,9 +50,15 @@ export type ReadRealtimeSignal = {
   readerUserUuid: string;
 };
 
+export type NotificationRemovedRealtimeSignal = {
+  notificationUuid: string;
+  groupKey: string | null;
+};
+
 export type ConnectSignalsStreamOptions = {
   onMessage?: (signal: MessageRealtimeSignal) => void;
   onNotification?: (signal: NotificationRealtimeSignal) => void;
+  onNotificationRemoved?: (signal: NotificationRemovedRealtimeSignal) => void;
   onConnected?: (signal: ConnectedRealtimeSignal) => void;
   onPresence?: (signal: PresenceRealtimeSignal) => void;
   onTyping?: (signal: TypingRealtimeSignal) => void;
@@ -180,9 +186,29 @@ function parseReadSignal(raw: unknown): ReadRealtimeSignal | null {
   return { conversationUuid, readerUserUuid };
 }
 
+function parseNotificationRemovedSignal(
+  raw: unknown,
+): NotificationRemovedRealtimeSignal | null {
+  const o = asRecord(raw);
+  if (!o) return null;
+  const notificationUuid = readStr(o, ["notificationUuid", "NotificationUuid"]);
+  if (!notificationUuid) return null;
+  return {
+    notificationUuid,
+    groupKey: readStr(o, ["groupKey", "GroupKey"]) || null,
+  };
+}
+
 /** @internal exported for unit tests */
 export function parseReadSignalForTest(raw: unknown): ReadRealtimeSignal | null {
   return parseReadSignal(raw);
+}
+
+/** @internal exported for unit tests */
+export function parseNotificationRemovedSignalForTest(
+  raw: unknown,
+): NotificationRemovedRealtimeSignal | null {
+  return parseNotificationRemovedSignal(raw);
 }
 
 function dispatchSseEvent(
@@ -210,6 +236,11 @@ function dispatchSseEvent(
   if (eventName === "notification") {
     const signal = parseNotificationSignal(parsed);
     if (signal) options.onNotification?.(signal);
+    return;
+  }
+  if (eventName === "notification_removed") {
+    const signal = parseNotificationRemovedSignal(parsed);
+    if (signal) options.onNotificationRemoved?.(signal);
     return;
   }
   if (eventName === "presence") {

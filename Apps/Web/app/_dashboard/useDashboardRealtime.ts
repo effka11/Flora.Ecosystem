@@ -89,6 +89,12 @@ export function useDashboardRealtime(enabled: boolean): void {
               category: signal.category,
             });
           },
+          onNotificationRemoved: (signal) => {
+            invalidateNotificationsCache();
+            notifyNotificationsChanged({
+              notificationUuid: signal.notificationUuid,
+            });
+          },
         });
       })();
     }, SSE_CONNECT_DELAY_MS);

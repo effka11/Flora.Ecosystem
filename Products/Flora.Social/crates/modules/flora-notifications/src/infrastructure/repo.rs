@@ -1,9 +1,7 @@
 //! Репозиторий inbox — паритет `NotificationInboxService` list/unread (C#).
 
 use chrono::{DateTime, Utc};
-
-use sqlx::PgPool;
-
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 pub struct InboxRepo {
@@ -11,7 +9,6 @@ pub struct InboxRepo {
 }
 
 #[derive(Debug, sqlx::FromRow)]
-
 pub struct NotificationRow {
     pub notification_uuid: Uuid,
 
@@ -31,9 +28,228 @@ pub struct NotificationRow {
     pub comment_uuid: Option<Uuid>,
 }
 
+/// Aggregated social inbox row (`group_key` / `actors_json`).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SocialGroupRow {
+    pub notification_uuid: Uuid,
+
+    #[sqlx(rename = "type")]
+    pub notification_type: String,
+
+    pub category: String,
+
+    pub text: String,
+
+    pub actor_user_uuid: Option<Uuid>,
+
+    pub post_uuid: Option<Uuid>,
+
+    pub created_at: DateTime<Utc>,
+
+    pub is_read: bool,
+
+    pub group_key: String,
+
+    pub actor_count: i32,
+
+    pub actors_json: serde_json::Value,
+}
+
 impl InboxRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    pub async fn begin(&self) -> Result<Transaction<'_, Postgres>, String> {
+        self.pool.begin().await.map_err(|e| e.to_string())
+    }
+
+    /// Lock aggregated social row for apply/retract (if present).
+    pub async fn find_by_group_for_update(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        recipient_user_uuid: Uuid,
+        group_key: &str,
+    ) -> Result<Option<SocialGroupRow>, String> {
+        sqlx::query_as::<_, SocialGroupRow>(
+            r#"
+            SELECT notification_uuid, type, category, text, actor_user_uuid, post_uuid,
+                   created_at, is_read, group_key, actor_count, actors_json
+            FROM flora_core.user_notifications
+            WHERE recipient_user_uuid = $1 AND group_key = $2
+            FOR UPDATE
+            "#,
+        )
+        .bind(recipient_user_uuid)
+        .bind(group_key)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())
+    }
+
+    /// Insert or update aggregated social membership/text.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_group(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        notification_uuid: Uuid,
+        recipient_user_uuid: Uuid,
+        actor_user_uuid: Uuid,
+        notification_type: &str,
+        category: &str,
+        text: &str,
+        post_uuid: Option<Uuid>,
+        group_key: &str,
+        actor_count: i32,
+        actors_json: &serde_json::Value,
+        created_at: DateTime<Utc>,
+        existing: bool,
+    ) -> Result<(), String> {
+        if existing {
+            sqlx::query(
+                r#"
+                UPDATE flora_core.user_notifications
+                SET actor_user_uuid = $2,
+                    text = $3,
+                    actor_count = $4,
+                    actors_json = $5,
+                    created_at = $6,
+                    is_read = false
+                WHERE notification_uuid = $1
+                "#,
+            )
+            .bind(notification_uuid)
+            .bind(actor_user_uuid)
+            .bind(text)
+            .bind(actor_count)
+            .bind(actors_json)
+            .bind(created_at)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        } else {
+            sqlx::query(
+                r#"
+                INSERT INTO flora_core.user_notifications
+                    (notification_uuid, recipient_user_uuid, actor_user_uuid, type, category, text,
+                     post_uuid, comment_uuid, target_platform, is_read, created_at,
+                     group_key, actor_count, actors_json)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, false, $8, $9, $10, $11)
+                "#,
+            )
+            .bind(notification_uuid)
+            .bind(recipient_user_uuid)
+            .bind(actor_user_uuid)
+            .bind(notification_type)
+            .bind(category)
+            .bind(text)
+            .bind(post_uuid)
+            .bind(created_at)
+            .bind(group_key)
+            .bind(actor_count)
+            .bind(actors_json)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Partial retract: update membership/text without bumping `created_at`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_group_membership(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        notification_uuid: Uuid,
+        actor_user_uuid: Option<Uuid>,
+        text: &str,
+        actor_count: i32,
+        actors_json: &serde_json::Value,
+    ) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_notifications
+            SET actor_user_uuid = $2,
+                text = $3,
+                actor_count = $4,
+                actors_json = $5
+            WHERE notification_uuid = $1
+            "#,
+        )
+        .bind(notification_uuid)
+        .bind(actor_user_uuid)
+        .bind(text)
+        .bind(actor_count)
+        .bind(actors_json)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub async fn delete_by_uuid(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        notification_uuid: Uuid,
+    ) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            DELETE FROM flora_core.user_notifications
+            WHERE notification_uuid = $1
+            "#,
+        )
+        .bind(notification_uuid)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub async fn get_push_state(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        recipient_user_uuid: Uuid,
+        group_key: &str,
+    ) -> Result<Option<DateTime<Utc>>, String> {
+        sqlx::query_scalar::<_, DateTime<Utc>>(
+            r#"
+            SELECT last_push_at
+            FROM flora_core.social_notification_push_state
+            WHERE recipient_user_uuid = $1 AND group_key = $2
+            "#,
+        )
+        .bind(recipient_user_uuid)
+        .bind(group_key)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())
+    }
+
+    /// Claim audible FCM budget under the same tx as group upsert (before commit).
+    /// Concurrent apply waits on `FOR UPDATE` group row, then sees this claim → SseOnly.
+    pub async fn set_push_state(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        recipient_user_uuid: Uuid,
+        group_key: &str,
+        last_push_at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.social_notification_push_state
+                (recipient_user_uuid, group_key, last_push_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (recipient_user_uuid, group_key)
+            DO UPDATE SET last_push_at = EXCLUDED.last_push_at
+            "#,
+        )
+        .bind(recipient_user_uuid)
+        .bind(group_key)
+        .bind(last_push_at)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Insert social/inbox row — паритет `NotificationInboxService.DispatchAsync` WRITE.

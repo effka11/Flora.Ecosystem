@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use flora_auth_contracts::AccountDirectory;
-use flora_notifications_contracts::{CreateUserNotificationCommand, UserNotificationDispatcher};
+use flora_notifications_contracts::{
+    SocialActivityCommand, SocialActivityKind, UserNotificationDispatcher,
+};
 use flora_shared::flora_uuid::new_uuid;
 use flora_users_contracts::FeedAuthorProfiles;
 use serde_json::{Value, json};
@@ -126,6 +128,7 @@ impl PostService {
                 .await
                 .map_err(|e| e.to_string())?;
             self.feed.invalidate(user_uuid);
+            self.try_retract_like(user_uuid, post_uuid).await;
         }
         let count = self
             .repo
@@ -262,34 +265,60 @@ impl PostService {
     }
 
     async fn notify_like(&self, actor_user_uuid: Uuid, post_uuid: Uuid) -> Result<(), String> {
+        let Some(command) = self.social_like_command(actor_user_uuid, post_uuid).await? else {
+            return Ok(());
+        };
+        self.notifications.apply_social(command).await
+    }
+
+    /// Ошибки retract только в лог (как try_notify_like).
+    async fn try_retract_like(&self, actor_user_uuid: Uuid, post_uuid: Uuid) {
+        if let Err(e) = self.retract_like(actor_user_uuid, post_uuid).await {
+            tracing::warn!(
+                error = %e,
+                post = %post_uuid,
+                "Не удалось отозвать уведомление о лайке поста"
+            );
+        }
+    }
+
+    async fn retract_like(&self, actor_user_uuid: Uuid, post_uuid: Uuid) -> Result<(), String> {
+        let Some(command) = self.social_like_command(actor_user_uuid, post_uuid).await? else {
+            return Ok(());
+        };
+        self.notifications.retract_social(command).await
+    }
+
+    /// Resolve author + actor_label; `None` when post missing or self-like.
+    async fn social_like_command(
+        &self,
+        actor_user_uuid: Uuid,
+        post_uuid: Uuid,
+    ) -> Result<Option<SocialActivityCommand>, String> {
         let Some(author) = self
             .repo
             .post_author_uuid(post_uuid)
             .await
             .map_err(|e| e.to_string())?
         else {
-            return Ok(());
+            return Ok(None);
         };
         if author == actor_user_uuid {
-            return Ok(());
+            return Ok(None);
         }
         let (label, _) =
             resolve_actor_presentation(&*self.accounts, &*self.profiles, actor_user_uuid).await;
-        self.notifications
-            .dispatch(CreateUserNotificationCommand {
-                recipient_user_uuid: author,
-                actor_user_uuid: Some(actor_user_uuid),
-                notification_type: "like".into(),
-                category: "social".into(),
-                text: format!("{label} оценил ваш пост"),
-                post_uuid: Some(post_uuid),
-                comment_uuid: None,
-            })
-            .await
+        Ok(Some(SocialActivityCommand {
+            recipient_user_uuid: author,
+            actor_user_uuid,
+            actor_label: label,
+            kind: SocialActivityKind::Like { post_uuid },
+        }))
     }
 }
 
 /// Паритет `ResolveActorPresentationAsync` (label, username).
+/// Local to Content — Users has its own follow-notification presentation helper.
 pub(crate) async fn resolve_actor_presentation(
     accounts: &dyn AccountDirectory,
     profiles: &dyn FeedAuthorProfiles,

@@ -98,18 +98,19 @@ impl FcmPushSender {
             data.insert("senderAvatarUrl".into(), url);
         }
 
-        self.send(
-            recipient_user_uuid,
-            device_tokens,
-            title,
-            notification_body,
-            &data,
-            "messages",
-            true,
-            Some(title),
-            Some(notification_body),
-        )
-        .await;
+        let _ = self
+            .send(
+                recipient_user_uuid,
+                device_tokens,
+                title,
+                notification_body,
+                &data,
+                "messages",
+                true,
+                Some(title),
+                Some(notification_body),
+            )
+            .await;
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -174,6 +175,8 @@ impl FcmPushSender {
     }
 
     /// Паритет `FcmPushSender.SendInboxNotificationPushAsync`.
+    /// Optional `tag` lands in `data.tag` (Android `notification.tag` reads it).
+    /// Returns `true` if at least one FCM HTTP send succeeded (for audible budget).
     #[allow(clippy::too_many_arguments)] // wire parity with C# SendInboxNotificationPushAsync
     pub async fn send_inbox_notification_push(
         &self,
@@ -186,7 +189,8 @@ impl FcmPushSender {
         actor_display_name: Option<&str>,
         post_uuid: Option<Uuid>,
         comment_uuid: Option<Uuid>,
-    ) {
+        tag: Option<&str>,
+    ) -> bool {
         let title = actor_display_name
             .map(str::trim)
             .filter(|s| !s.is_empty())
@@ -196,17 +200,14 @@ impl FcmPushSender {
             body = truncate_chars(&body, 117) + "...";
         }
 
-        let mut data = HashMap::new();
-        data.insert("type".into(), "notification".into());
-        data.insert("notificationUuid".into(), notification_uuid.to_string());
-        data.insert("inboxType".into(), inbox_type.to_string());
-        data.insert("category".into(), category.to_string());
-        if let Some(post) = post_uuid {
-            data.insert("postUuid".into(), post.to_string());
-        }
-        if let Some(comment) = comment_uuid {
-            data.insert("commentUuid".into(), comment.to_string());
-        }
+        let data = inbox_notification_data(
+            notification_uuid,
+            inbox_type,
+            category,
+            post_uuid,
+            comment_uuid,
+            tag,
+        );
 
         self.send(
             recipient_user_uuid,
@@ -219,7 +220,20 @@ impl FcmPushSender {
             None,
             None,
         )
-        .await;
+        .await
+    }
+
+    /// Data-only dismiss for empty social retract (tray clear by tag).
+    pub async fn send_notification_dismiss(
+        &self,
+        recipient_user_uuid: Uuid,
+        device_tokens: &[String],
+        notification_uuid: Uuid,
+        tag: &str,
+    ) {
+        let data = notification_dismiss_data(notification_uuid, tag);
+        self.send_data_only(recipient_user_uuid, device_tokens, &data, false)
+            .await;
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -234,7 +248,7 @@ impl FcmPushSender {
         high_priority: bool,
         android_title: Option<&str>,
         android_body: Option<&str>,
-    ) {
+    ) -> bool {
         let mut android_notification = json!({
             "channel_id": android_channel_id,
             "title": android_title.unwrap_or(title),
@@ -268,7 +282,7 @@ impl FcmPushSender {
         };
 
         self.dispatch_to_tokens(recipient_user_uuid, device_tokens, payload_for)
-            .await;
+            .await
     }
 
     fn sender_avatar_url(&self, avatar_uuid: Option<Uuid>) -> Option<String> {
@@ -299,25 +313,29 @@ impl FcmPushSender {
                 }
             })
         };
-        self.dispatch_to_tokens(recipient_user_uuid, device_tokens, payload_for)
+        let _ = self
+            .dispatch_to_tokens(recipient_user_uuid, device_tokens, payload_for)
             .await;
     }
 
+    /// Returns `true` if at least one token accepted the message (HTTP 200).
     async fn dispatch_to_tokens<F>(
         &self,
         recipient_user_uuid: Uuid,
         device_tokens: &[String],
         payload_for: F,
-    ) where
+    ) -> bool
+    where
         F: Fn(&str) -> serde_json::Value,
     {
         let Some(sa) = self.credentials.as_ref() else {
-            return;
+            return false;
         };
         if device_tokens.is_empty() {
-            return;
+            return false;
         }
 
+        let mut any_ok = false;
         let mut seen = std::collections::HashSet::new();
         for token in device_tokens {
             let token = token.trim();
@@ -327,7 +345,7 @@ impl FcmPushSender {
 
             let payload = payload_for(token);
             match self.post_fcm(sa, &payload).await {
-                Ok(()) => {}
+                Ok(()) => any_ok = true,
                 Err(FcmSendError::InvalidToken) => {
                     let prefix = if token.len() > 8 { &token[..8] } else { token };
                     tracing::info!("Removing invalid FCM token prefix {prefix}");
@@ -345,6 +363,7 @@ impl FcmPushSender {
                 }
             }
         }
+        any_ok
     }
 
     async fn post_fcm(
@@ -445,6 +464,41 @@ impl FcmPushSender {
 enum FcmSendError {
     InvalidToken,
     Other(String),
+}
+
+/// Inbox / quiet-replace / audible social push `data` map (`tag` → Android notification.tag).
+fn inbox_notification_data(
+    notification_uuid: Uuid,
+    inbox_type: &str,
+    category: &str,
+    post_uuid: Option<Uuid>,
+    comment_uuid: Option<Uuid>,
+    tag: Option<&str>,
+) -> HashMap<String, String> {
+    let mut data = HashMap::new();
+    data.insert("type".into(), "notification".into());
+    data.insert("notificationUuid".into(), notification_uuid.to_string());
+    data.insert("inboxType".into(), inbox_type.to_string());
+    data.insert("category".into(), category.to_string());
+    if let Some(post) = post_uuid {
+        data.insert("postUuid".into(), post.to_string());
+    }
+    if let Some(comment) = comment_uuid {
+        data.insert("commentUuid".into(), comment.to_string());
+    }
+    if let Some(tag) = tag.map(str::trim).filter(|s| !s.is_empty()) {
+        data.insert("tag".into(), tag.to_string());
+    }
+    data
+}
+
+/// Data-only dismiss payload for empty social retract.
+fn notification_dismiss_data(notification_uuid: Uuid, tag: &str) -> HashMap<String, String> {
+    let mut data = HashMap::new();
+    data.insert("type".into(), "notification_dismiss".into());
+    data.insert("tag".into(), tag.to_string());
+    data.insert("notificationUuid".into(), notification_uuid.to_string());
+    data
 }
 
 fn truncate_chars(s: &str, max: usize) -> String {
@@ -661,6 +715,76 @@ mod tests {
     fn truncate_matches_csharp_slice() {
         let s: String = (0..130).map(|_| 'я').collect();
         assert_eq!(truncate_chars(&s, 117).chars().count(), 117);
+    }
+
+    #[test]
+    fn inbox_notification_data_includes_tag_for_audible_and_quiet_replace() {
+        let uuid = Uuid::parse_str("01900000-0000-7000-8000-0000000000aa").unwrap();
+        let post = Uuid::parse_str("01900000-0000-7000-8000-0000000000bb").unwrap();
+        let group = format!("like:{post}");
+        let uuid_s = uuid.to_string();
+        let post_s = post.to_string();
+
+        let tagged =
+            inbox_notification_data(uuid, "like", "social", Some(post), None, Some(&group));
+        assert_eq!(tagged.get("type").map(String::as_str), Some("notification"));
+        assert_eq!(
+            tagged.get("notificationUuid").map(String::as_str),
+            Some(uuid_s.as_str())
+        );
+        assert_eq!(tagged.get("inboxType").map(String::as_str), Some("like"));
+        assert_eq!(tagged.get("tag").map(String::as_str), Some(group.as_str()));
+        assert_eq!(
+            tagged.get("postUuid").map(String::as_str),
+            Some(post_s.as_str())
+        );
+
+        // Quiet replace uses the same data shape + tag (budget policy is caller-side).
+        let quiet = inbox_notification_data(uuid, "like", "social", Some(post), None, Some(&group));
+        assert_eq!(quiet.get("tag"), tagged.get("tag"));
+
+        let untagged = inbox_notification_data(uuid, "reply", "social", None, None, None);
+        assert!(!untagged.contains_key("tag"));
+
+        let blank_tag = inbox_notification_data(uuid, "follow", "social", None, None, Some("  "));
+        assert!(!blank_tag.contains_key("tag"));
+    }
+
+    #[test]
+    fn notification_dismiss_data_shape() {
+        let uuid = Uuid::parse_str("01900000-0000-7000-8000-0000000000cc").unwrap();
+        let uuid_s = uuid.to_string();
+        let data = notification_dismiss_data(uuid, "follow");
+        assert_eq!(
+            data.get("type").map(String::as_str),
+            Some("notification_dismiss")
+        );
+        assert_eq!(data.get("tag").map(String::as_str), Some("follow"));
+        assert_eq!(
+            data.get("notificationUuid").map(String::as_str),
+            Some(uuid_s.as_str())
+        );
+        assert_eq!(data.len(), 3);
+    }
+
+    #[test]
+    fn android_notification_tag_copied_from_data_tag() {
+        let mut android_notification = json!({
+            "channel_id": "notifications",
+            "title": "Flora",
+            "body": "text",
+        });
+        let data: HashMap<String, String> = HashMap::from([(
+            "tag".into(),
+            "like:01900000-0000-7000-8000-0000000000bb".into(),
+        )]);
+        if let Some(tag) = data.get("tag") {
+            android_notification["tag"] = json!(tag);
+        }
+        assert_eq!(
+            android_notification["tag"].as_str(),
+            Some("like:01900000-0000-7000-8000-0000000000bb")
+        );
     }
 
     #[test]
