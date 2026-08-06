@@ -1,0 +1,8 @@
+# This file is intentionally NOT a Cargo.lock.
+# Minimal fake lock for offline provenance tests (git source forbidden).
+version = 3
+
+[[package]]
+name = "evil-git-crate"
+version = "0.1.0"
+source = "git+https://evil.example/repo.git#0123456789abcdef"

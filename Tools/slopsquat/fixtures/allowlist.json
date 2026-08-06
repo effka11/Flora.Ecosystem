@@ -1,0 +1,4 @@
+{
+  "exact": ["trusted-exact-pkg"],
+  "namePrefixes": ["@flora/", "flora-"]
+}

@@ -1,0 +1,12 @@
+# Minimal fake lock: crates.io registry + checksum (pass).
+version = 3
+
+[[package]]
+name = "serde"
+version = "1.0.210"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+[[package]]
+name = "path-only-local"
+version = "0.0.0"

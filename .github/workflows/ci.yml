@@ -1,5 +1,5 @@
 # CI Flora.Ecosystem — обязательные ворота перед merge в main.
-# Имена джобов (architecture, ts, web, rust) используются как required status checks
+# Имена джобов (architecture, ts, web, rust, supply-chain) используются как required status checks
 # в защите ветки — см. Scripts/setup-github-protection.ps1. Не переименовывать без синхронизации.
 name: CI
 
@@ -44,6 +44,17 @@ jobs:
       # discovery must not be able to turn these tests into a false green.
       - name: Test Mobile
         run: npm run test --workspace=@flora/mobile
+
+  supply-chain:
+    name: supply-chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Slopsquat gate
+        run: npm run test:slopsquat
 
   web:
     name: web

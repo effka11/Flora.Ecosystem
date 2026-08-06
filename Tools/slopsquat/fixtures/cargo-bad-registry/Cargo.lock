@@ -1,0 +1,8 @@
+# Minimal fake lock for offline provenance tests (unknown registry+ host).
+version = 3
+
+[[package]]
+name = "evil-registry-crate"
+version = "0.1.0"
+source = "registry+https://evil.example/index"
+checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
