@@ -58,6 +58,8 @@ Smoke-test: breakpoint в startup Flora.API, `F4` → `Flora.API: debug`.
 
 Глобальные (user settings): context7, chunkhound, git, playwright, github. Postgres/redis/docker — Luna.Quant.
 
+**Секреты / lethal triad:** у Zed нет project hooks как у Cursor (`.cursor/hooks`). При работе с JWT/`Local/` секретами — отключить network MCP (github, playwright) и не открывать secret-файлы во вкладках. Cursor-гейты: см. [`SECURITY.md`](../SECURITY.md) § Agent lethal triad.
+
 ## ACP (Claude Agent)
 
 Agent Panel → **+** → Claude Agent (ACP Registry) → `/login`. Отдельный billing от Zed Agent. См. `%APPDATA%\Zed\docs\ZED-GLOBAL.md`.

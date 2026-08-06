@@ -76,6 +76,33 @@
 
 ---
 
+## Agent lethal triad (Cursor)
+
+**Летальная триада** = приватные данные + недоверенный контент + внешние действия в одном agent loop.
+В этом репозитории для **Cursor Agent** нога «приватные данные» ломается controls ниже; недоверенный контент (PR/чат) сознательно остаётся.
+
+### Что сделано
+
+- [`.cursorignore`](.cursorignore) — Read/@ не видят secret-path (узкие паттерны; не весь `Local/`).
+- [`.cursor/hooks.json`](.cursor/hooks.json) + [`gate-shell.mjs`](.cursor/hooks/gate-shell.mjs) / [`gate-mcp.mjs`](.cursor/hooks/gate-mcp.mjs):
+  - **deny** shell, если в argv есть secret-маркер (`Local/.flora`, `SECRETS`, `.env` кроме `*.env*.example`, `broadcast.env`, `*.secret`, path-like `*.pem`, …) — в т.ч. `node -e` / `python -c` / `pwsh -Command`;
+  - **ask** на `curl`/`wget`/IWR/`git push`/не-allowlisted `gh` и сетевой MCP (github/playwright/fetch/…);
+  - **allow** `cargo`/`npm`/обычные Tools без лишних кликов.
+- DoD: `node --test .cursor/hooks/*.test.mjs`
+
+### Остаточный риск
+
+1. Obfuscation **без** secret-маркера в argv (encode / env-indirection).
+2. Секрет **открыт во вкладке** → buffer bypass ignore/hooks.
+3. User Integrated Terminal **вне** agent hooks.
+4. Cloud agents / другие IDE (Zed — см. [`Documents/ZED.md`](Documents/ZED.md)).
+5. Секреты, уже попавшие в чат/логи агента.
+6. Будущий FGP AI-клерк — не давать tools/egress (спека: структурирует, не решает).
+
+Секреты и JWT: только user-run терминал (`Scripts/ensure-shared-dev-jwt.ps1` и т.п.), не через Agent.
+
+---
+
 ## Поддерживаемые версии (Supported Versions)
 
 Проект находится в стадии активной разработки (MVP). Безопасностные исправления выпускаются для
