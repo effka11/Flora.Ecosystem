@@ -8,14 +8,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture, GestureDetector, RefreshControl } from "react-native-gesture-handler";
 import Reanimated, {
   cancelAnimation,
   Extrapolation,
@@ -38,6 +37,7 @@ import {
   snapPagerOffset,
 } from "@/lib/energeticSettle";
 import { feedRowEqual } from "@/lib/feedRowEqual";
+import { trimFeedInfiniteDataToFirstPage } from "@/lib/feedInfiniteRefresh";
 import { PREFETCH_END_THRESHOLD_VIEWPORTS } from "@/lib/feedPrefetchPolicy";
 import { useNetworkClass } from "@/lib/useNetworkClass";
 import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
@@ -55,6 +55,7 @@ import {
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { composeScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { usePullToRefresh } from "@/lib/usePullToRefresh";
 
 /** Как SWIPE_AXIS_PX у drawer — не перехватывать вертикальный скролл ленты. */
 const PAGER_AXIS_PX = 10;
@@ -185,6 +186,7 @@ function FeedPane({
   online,
   renderScrollComponent,
 }: FeedPaneProps) {
+  const queryClient = useQueryClient();
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
@@ -209,7 +211,11 @@ function FeedPane({
   });
   const postsRef = useRef(posts);
   postsRef.current = posts;
-  const isRefreshing = feedQuery.isRefetching || feedQuery.isFetchingNextPage;
+  const pullFeed = useCallback(async () => {
+    queryClient.setQueryData(["feed", kind], trimFeedInfiniteDataToFirstPage);
+    await feedQuery.refetch();
+  }, [feedQuery, kind, queryClient]);
+  const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(pullFeed);
   const emptyHint = feedQuery.isError
     ? "Не удалось загрузить ленту. Потяните вниз, чтобы обновить."
     : kind === "subscriptions"
@@ -318,16 +324,16 @@ function FeedPane({
             styles.listContent,
             { paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom },
           ]}
-          nestedScrollEnabled
+          // RN 0.85 defaults nestedScroll=true when RefreshControl is set; with RNGH
+          // scroll that freezes the PTR spinner until a second touch (RNGH #4231).
+          nestedScrollEnabled={false}
           scrollEventThrottle={16}
           renderScrollComponent={renderScrollComponent}
           viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
           refreshControl={
             <RefreshControl
-              refreshing={feedQuery.isRefetching}
-              onRefresh={() => {
-                void feedQuery.refetch();
-              }}
+              refreshing={pullRefreshing}
+              onRefresh={onPullRefresh}
               tintColor={floraColors.greenLight}
               progressViewOffset={contentPaddingTop}
             />
@@ -336,7 +342,7 @@ function FeedPane({
           onEndReached={onApproachingEnd}
           renderItem={renderFeedRow}
           ListFooterComponent={
-            isRefreshing && posts.length > 0 ? (
+            feedQuery.isFetchingNextPage && posts.length > 0 ? (
               <View style={styles.loadingMore}>
                 <ActivityIndicator color={floraColors.greenLight} />
               </View>

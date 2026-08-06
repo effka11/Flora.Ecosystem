@@ -367,8 +367,13 @@ function createFlashListScrollComponent(
         ref={composedRef}
         waitFor={edgePanRef}
         scrollEventThrottle={16}
-        overScrollMode="never"
+        // `never` + nestedScroll=false kills Android SwipeRefreshLayout pull.
+        // `auto` keeps edge glow mild while PTR can start (RNGH #4231 / RN 0.85).
+        overScrollMode="auto"
         bounces={false}
+        // Force after {...props}: RN 0.85 + RefreshControl otherwise enables
+        // nested scroll and freezes the PTR spinner (RNGH #4231).
+        nestedScrollEnabled={false}
         onScrollBeginDrag={onScrollBeginDrag}
         onScrollEndDrag={onScrollEndDrag}
         onMomentumScrollBegin={onMomentumScrollBegin}
