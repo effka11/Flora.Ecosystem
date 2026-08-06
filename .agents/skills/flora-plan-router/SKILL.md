@@ -112,7 +112,7 @@ Table requirements:
 - “Rationale” — 1 sentence: why this model and level, referencing an escalation/de-escalation criterion (for top models — Tier A/B);
 - “Wave” shows which parts can run in parallel.
 
-After the table — a 2–4 line summary: how many parts on top models (how many Opus vs Fable) and why, where budget was saved, which parts block the critical path. If the plan is too vague to split — first list the missing decisions and do not emit a guessed table.
+After the table — a 2–4 line summary: how many parts on top models (how many Opus vs Fable) and why, where budget was saved, which parts block the critical path. If the plan is too vague to split — first list the missing decisions and do not emit a guessed table; suggest running `/flora-plan-reviewer` (`.agents/skills/flora-plan-reviewer/SKILL.md`) before routing.
 
 ## 6) Writing the table into the plan file (required when the plan is a file)
 
