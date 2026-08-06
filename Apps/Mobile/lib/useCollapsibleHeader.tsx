@@ -495,11 +495,26 @@ export function useCollapsibleHeader(options: UseCollapsibleHeaderOptions = {}) 
     [activePaneSv],
   );
 
+  /** Open chrome after programmatic scroll-to-top (onScroll may not clamp in time). */
+  const expandChrome = useCallback(
+    (paneIndex: number) => {
+      if (paneIndex === 0) {
+        collapse0.value = 0;
+        lastY0.value = 0;
+      } else {
+        collapse1.value = 0;
+        lastY1.value = 0;
+      }
+    },
+    [collapse0, collapse1, lastY0, lastY1],
+  );
+
   return {
     headerHeightPx,
     onHeaderLayout,
     headerAnimatedStyle,
     renderScrollComponents: [renderScrollComponent0, renderScrollComponent1] as const,
     setActivePane,
+    expandChrome,
   };
 }
