@@ -48,6 +48,10 @@ import {
   setFrcImageQueuePaused,
 } from "@/lib/frcImage";
 import {
+  schedulePagerMediaWake,
+  type PagerMediaWakeHandle,
+} from "@/lib/feedPagerMediaWake";
+import {
   feedPostToEngagementSource,
   usePostEngagement,
   type PostEngagementSource,
@@ -167,6 +171,8 @@ type FeedPaneProps = {
   kind: FeedKind;
   feedQuery: FeedQuery;
   isActivePane: boolean;
+  /** FRC-I / drawDistance gate — deferred after pager settle (not chrome active). */
+  mediaEnabled: boolean;
   search: string;
   pageWidth: number;
   contentPaddingTop: number;
@@ -179,6 +185,7 @@ function FeedPane({
   kind,
   feedQuery,
   isActivePane,
+  mediaEnabled,
   search,
   pageWidth,
   contentPaddingTop,
@@ -191,7 +198,7 @@ function FeedPane({
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
   const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
-    usePostViewTracking({ enabled: isActivePane });
+    usePostViewTracking({ enabled: mediaEnabled });
 
   const posts = useMemo(
     () => feedQuery.data?.pages.flatMap((page) => page.items) ?? [],
@@ -202,11 +209,11 @@ function FeedPane({
   // Map the viewability band → per-post decode modes so only visible/near/
   // lookahead rows enqueue FRC-I work (mount/drawDistance no longer decode all),
   // and warm the deep end of the band, which the list never mounts.
-  const mediaBand = useFrcMediaBand(visiblePosts, visibleRange, { enabled: isActivePane, online });
+  const mediaBand = useFrcMediaBand(visiblePosts, visibleRange, { enabled: mediaEnabled, online });
   const { onApproachingEnd } = useStagedFeedPagination({
     kind,
     feedQuery,
-    isActivePane,
+    isActivePane: mediaEnabled,
     isSearching: search.trim().length > 0,
   });
   const postsRef = useRef(posts);
@@ -303,9 +310,9 @@ function FeedPane({
   }, [handleCommentAdded, handleToggleComments, handleToggleLike, handleToggleRepost]);
 
   useEffect(() => {
-    if (!isActivePane || visiblePosts.length === 0) return;
+    if (!mediaEnabled || visiblePosts.length === 0) return;
     return refreshViewability();
-  }, [isActivePane, refreshViewability, visiblePosts.length]);
+  }, [mediaEnabled, refreshViewability, visiblePosts.length]);
 
   return (
     <View style={[styles.feedPage, { width: pageWidth }]}>
@@ -319,7 +326,7 @@ function FeedPane({
           // The off-screen pane only needs its viewport ready for a swipe.
           // Keeping its look-ahead rows mounted makes Android traverse and
           // composite two full feed windows during every pager frame.
-          drawDistance={isActivePane ? 480 : 0}
+          drawDistance={mediaEnabled ? 480 : 0}
           contentContainerStyle={[
             styles.listContent,
             { paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom },
@@ -332,7 +339,7 @@ function FeedPane({
           viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
           refreshControl={
             <RefreshControl
-              refreshing={pullRefreshing}
+              refreshing={isActivePane && pullRefreshing}
               onRefresh={onPullRefresh}
               tintColor={floraColors.greenLight}
               progressViewOffset={contentPaddingTop}
@@ -372,7 +379,10 @@ export default function FeedScreen() {
   const dragStartX = useSharedValue(0);
   const pageWidthSV = useSharedValue(pageWidth);
   const pagerMediaPauseOwner = useRef(Symbol("feed-pager")).current;
+  const mediaWakeRef = useRef<PagerMediaWakeHandle | null>(null);
   const [kind, setKind] = useState<FeedKind>("recommendations");
+  /** Which pane may decode FRC-I — cleared on pager start, restored after interactions. */
+  const [mediaKind, setMediaKind] = useState<FeedKind | null>("recommendations");
   const pagerTargetRef = useRef<FeedKind>(kind);
   const [tabLayouts, setTabLayouts] = useState<Record<FeedKind, TabLayout | null>>({
     recommendations: null,
@@ -399,20 +409,47 @@ export default function FeedScreen() {
   }, [pageWidth, pageWidthSV, scrollX]);
 
   useEffect(
-    () => () => clearFrcImageQueuePauseOwner(pagerMediaPauseOwner),
+    () => () => {
+      mediaWakeRef.current?.cancel();
+      mediaWakeRef.current = null;
+      clearFrcImageQueuePauseOwner(pagerMediaPauseOwner);
+    },
     [pagerMediaPauseOwner],
+  );
+
+  const cancelMediaWake = useCallback(() => {
+    mediaWakeRef.current?.cancel();
+    mediaWakeRef.current = null;
+  }, []);
+
+  const scheduleMediaWake = useCallback(
+    (next: FeedKind) => {
+      cancelMediaWake();
+      mediaWakeRef.current = schedulePagerMediaWake({
+        run: () => {
+          mediaWakeRef.current = null;
+          setMediaKind(next);
+          setFrcImageQueuePaused(pagerMediaPauseOwner, "drag", false);
+        },
+      });
+    },
+    [cancelMediaWake, pagerMediaPauseOwner],
   );
 
   const beginPagerMotion = useCallback(() => {
     // Production feeds decode real FRC media. A cancellable download/decode
     // must not invalidate the transformed list tree while Android is
     // compositing both pages.
+    cancelMediaWake();
+    setMediaKind(null);
     setFrcImageQueuePaused(pagerMediaPauseOwner, "drag", true);
-  }, [pagerMediaPauseOwner]);
+  }, [cancelMediaWake, pagerMediaPauseOwner]);
 
   const endPagerMotion = useCallback(() => {
-    setFrcImageQueuePaused(pagerMediaPauseOwner, "drag", false);
-  }, [pagerMediaPauseOwner]);
+    // Keep queue paused until InteractionManager drains; commit may reschedule
+    // for the new kind (cancelling this wake).
+    scheduleMediaWake(pagerTargetRef.current);
+  }, [scheduleMediaWake]);
 
   const recordTabLayout = useCallback((tab: FeedKind, event: LayoutChangeEvent) => {
     const { x, width } = event.nativeEvent.layout;
@@ -433,8 +470,9 @@ export default function FeedScreen() {
       pagerTargetRef.current = next;
       setActivePane(index);
       setKind((current) => (current === next ? current : next));
+      scheduleMediaWake(next);
     },
-    [setActivePane],
+    [scheduleMediaWake, setActivePane],
   );
 
   // Tab indicator + label colors run entirely on the UI thread off the pager's
@@ -604,6 +642,7 @@ export default function FeedScreen() {
               kind="recommendations"
               feedQuery={recommendationsFeedQuery}
               isActivePane={kind === "recommendations"}
+              mediaEnabled={mediaKind === "recommendations"}
               search={search}
               pageWidth={pageWidth}
               contentPaddingTop={headerHeightPx}
@@ -615,6 +654,7 @@ export default function FeedScreen() {
               kind="subscriptions"
               feedQuery={subscriptionsFeedQuery}
               isActivePane={kind === "subscriptions"}
+              mediaEnabled={mediaKind === "subscriptions"}
               search={search}
               pageWidth={pageWidth}
               contentPaddingTop={headerHeightPx}

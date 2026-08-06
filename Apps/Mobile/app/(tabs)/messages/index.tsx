@@ -1004,6 +1004,8 @@ export default function MessagesScreen() {
               : item.item.conversationUuid
           }
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          nestedScrollEnabled={false}
+          overScrollMode="auto"
           refreshControl={
             <RefreshControl
               refreshing={pullRefreshing}

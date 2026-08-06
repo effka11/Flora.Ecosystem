@@ -115,6 +115,8 @@ type WorkletEventHandlerHolder = {
 function createFlashListScrollComponent(
   pane: PaneScroll,
   edgePanRef: DrawerMomentumController["edgePanRef"],
+  activePaneSv: SharedValue<number>,
+  paneIndex: number,
 ): ComponentType<ScrollViewProps> {
   const FlashListScroll = forwardRef(function FlashListScroll(
     props: ScrollViewProps,
@@ -123,12 +125,27 @@ function createFlashListScrollComponent(
     const animatedRef = useAnimatedRef<Reanimated.ScrollView>();
     const mediaPauseOwner = useRef(Symbol("feed-scroll")).current;
     const momentumFallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Active pane only: SwipeRefresh needs `auto`. Inactive stays `never` so the
+    // off-screen feed does not run Android EdgeEffect during translateX.
+    // Flip only when activePane changes (after pager settle) — never mid-animation.
+    const [overScrollMode, setOverScrollMode] = useState<"auto" | "never">(
+      paneIndex === 0 ? "auto" : "never",
+    );
     const {
       onMomentumScrollBegin: onMomentumScrollBeginProp,
       onMomentumScrollEnd: onMomentumScrollEndProp,
       onScrollBeginDrag: onScrollBeginDragProp,
       onScrollEndDrag: onScrollEndDragProp,
     } = props;
+
+    useAnimatedReaction(
+      () => (activePaneSv.value === paneIndex ? 1 : 0),
+      (allow, prev) => {
+        if (allow === prev) return;
+        runOnJS(setOverScrollMode)(allow === 1 ? "auto" : "never");
+      },
+      [activePaneSv, paneIndex],
+    );
 
     const composedRef = useCallback(
       (instance: Reanimated.ScrollView | null) => {
@@ -367,9 +384,7 @@ function createFlashListScrollComponent(
         ref={composedRef}
         waitFor={edgePanRef}
         scrollEventThrottle={16}
-        // `never` + nestedScroll=false kills Android SwipeRefreshLayout pull.
-        // `auto` keeps edge glow mild while PTR can start (RNGH #4231 / RN 0.85).
-        overScrollMode="auto"
+        overScrollMode={overScrollMode}
         bounces={false}
         // Force after {...props}: RN 0.85 + RefreshControl otherwise enables
         // nested scroll and freezes the PTR spinner (RNGH #4231).
@@ -465,12 +480,12 @@ export function useCollapsibleHeader(options: UseCollapsibleHeaderOptions = {}) 
   });
 
   const renderScrollComponent0 = useMemo(
-    () => createFlashListScrollComponent(pane0, edgePanRef),
-    [edgePanRef, pane0],
+    () => createFlashListScrollComponent(pane0, edgePanRef, activePaneSv, 0),
+    [activePaneSv, edgePanRef, pane0],
   );
   const renderScrollComponent1 = useMemo(
-    () => createFlashListScrollComponent(pane1, edgePanRef),
-    [edgePanRef, pane1],
+    () => createFlashListScrollComponent(pane1, edgePanRef, activePaneSv, 1),
+    [activePaneSv, edgePanRef, pane1],
   );
 
   const setActivePane = useCallback(
