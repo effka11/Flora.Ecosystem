@@ -3,6 +3,7 @@ import { asRecord, readNum, readStr } from "@flora/client-core/contracts/parse.j
 import { deriveKeyArgon2id, getSodium, scalarmultBase } from "./sodium.js";
 import { FSCP_BOOTSTRAP_KEY_EPOCH_ID } from "./constants.js";
 import { fromBase64Url } from "./base64url.js";
+import { constantTimeEqual } from "./franking.js";
 import { FscpBackupError, isFscpBackupError } from "./resilience.js";
 
 export type KeyEpochBackupEntry = {
@@ -153,6 +154,42 @@ export function computeEpochSetHash(epochs: KeyEpochBackupEntry[]): string {
   let s = "";
   for (let i = 0; i < hash.length; i++) s += String.fromCharCode(hash[i]!);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+/**
+ * Post-decrypt commitment check (e2e-security.md UserE2EKeyBackup).
+ * AEAD success only proves the password/phrase matched wrapKey + AAD; outer
+ * `epochSetHashBase64Url` / `primaryKeyEpochId` must still bind the plaintext.
+ * Mismatch is structural tamper → `malformed` (never `aead_auth_failed`), so
+ * callers must not treat it as wrong password or silently overwrite.
+ */
+export function assertEpochSetIntegrity(
+  plaintext: KeyBackupPlaintext,
+  expectedHash: string,
+  expectedPrimaryEpochId: string,
+): void {
+  if (plaintext.primaryKeyEpochId !== expectedPrimaryEpochId) {
+    throw new FscpBackupError(
+      "malformed",
+      "Резервная копия повреждена: primaryKeyEpochId не совпадает с plaintext.",
+    );
+  }
+  // Must not let a bare TypeError escape: classifyKeyBackup maps unknown errors to
+  // `unreadable`, which can authorize overwrite under authoritativeOverwrite.
+  if (!Array.isArray(plaintext.keyEpochs)) {
+    throw new FscpBackupError(
+      "malformed",
+      "Резервная копия повреждена: keyEpochs отсутствует или не массив.",
+    );
+  }
+  const actualHash = computeEpochSetHash(plaintext.keyEpochs);
+  const enc = new TextEncoder();
+  if (!constantTimeEqual(enc.encode(actualHash), enc.encode(expectedHash))) {
+    throw new FscpBackupError(
+      "malformed",
+      "Резервная копия повреждена: epochSetHash не совпадает с plaintext.",
+    );
+  }
 }
 
 function buildKeyBackupAad(params: {
@@ -308,8 +345,9 @@ export async function decryptKeyBackup(
       "Неверный пароль или повреждённые данные резервной копии.",
     );
   }
+  let plaintext: KeyBackupPlaintext;
   try {
-    return JSON.parse(new TextDecoder().decode(plain)) as KeyBackupPlaintext;
+    plaintext = JSON.parse(new TextDecoder().decode(plain)) as KeyBackupPlaintext;
   } catch {
     // AEAD authenticated, so the password was right — the plaintext itself is broken.
     throw new FscpBackupError(
@@ -317,6 +355,8 @@ export async function decryptKeyBackup(
       "Расшифрованные данные резервной копии повреждены: не JSON key-backup.",
     );
   }
+  assertEpochSetIntegrity(plaintext, payload.epochSetHashBase64Url, payload.primaryKeyEpochId);
+  return plaintext;
 }
 
 /**
@@ -393,14 +433,17 @@ export async function decryptRecoveryBackup(
       "Неверная фраза восстановления или повреждённые данные.",
     );
   }
+  let plaintext: KeyBackupPlaintext;
   try {
-    return JSON.parse(new TextDecoder().decode(plain)) as KeyBackupPlaintext;
+    plaintext = JSON.parse(new TextDecoder().decode(plain)) as KeyBackupPlaintext;
   } catch {
     throw new FscpBackupError(
       "malformed",
       "Расшифрованные данные резервной копии повреждены: не JSON key-backup.",
     );
   }
+  assertEpochSetIntegrity(plaintext, payload.epochSetHashBase64Url, payload.primaryKeyEpochId);
+  return plaintext;
 }
 
 export async function bootstrapPlaintextFromLocalMaterial(
