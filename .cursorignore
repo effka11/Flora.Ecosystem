@@ -1,0 +1,22 @@
+# Agent lethal-triad hardening: block Read/@ access to secrets.
+# Shell/MCP bypass is gated by .cursor/hooks (see SECURITY.md).
+# Do NOT ignore all of Local/ - worktrees/diagnostics stay reachable.
+
+Local/**/*.secret
+Local/.flora/**
+Local/**/SECRETS*
+SECRETS-ROTATION.local.md
+
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+!**/.env*.example
+
+Scripts/broadcast.env
+Scripts/broadcast.env.local
+
+Backend/secrets/**
+**/credentials.json
+**/*.pem
+**/*service-account*.json

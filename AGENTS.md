@@ -137,6 +137,7 @@ pwsh ./Tools/validate-architecture-rust.ps1
 
 - **Не делать `git commit`, `git push` и не готовить коммиты** без явного запроса пользователя.
 - Machine-local файлы (секреты, JWT, хуки) — только в **`Local/`** (в `.gitignore`, не в remote).
+- **Agent lethal triad:** не читать и не дампить секреты из `Local/` / `.env` / `Backend/secrets` через Agent. JWT — только user-run скрипты. SoT: [`.cursor/hooks`](.cursor/hooks) + [`.cursorignore`](.cursorignore); проверка: `node --test .cursor/hooks/*.test.mjs`. См. [`SECURITY.md`](SECURITY.md) § Agent lethal triad.
 
 ## Zed (редактор)
 
