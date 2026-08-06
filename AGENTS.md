@@ -78,6 +78,7 @@ npm run typecheck        # все workspaces
 npm run lint
 npm run test
 npm run ci               # typecheck + lint + test
+npm run test:slopsquat   # Tools/slopsquat offline node:test + live check.mjs (CI job supply-chain)
 
 # Rust (из корня репо; toolchain — rust-toolchain.toml)
 cargo fmt --all --check

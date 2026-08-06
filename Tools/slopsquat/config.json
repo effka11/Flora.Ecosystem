@@ -1,0 +1,10 @@
+{
+  "ageDays": 30,
+  "maxDownloadsNpmLastMonth": 1000,
+  "maxDownloadsCratesAllTime": 1000,
+  "retries": 3,
+  "userAgent": "flora-slopsquat/1 (Flora.Ecosystem supply-chain CI)",
+  "npmRegistryUrl": "https://registry.npmjs.org",
+  "npmDownloadsUrlTemplate": "https://api.npmjs.org/downloads/point/last-month/{package}",
+  "cratesApiUrl": "https://crates.io/api/v1/crates"
+}

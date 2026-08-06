@@ -20,6 +20,7 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "ci": "npm run typecheck && npm run lint && npm run test",
+    "test:slopsquat": "node --test Tools/slopsquat/provenance.test.mjs Tools/slopsquat/names.test.mjs Tools/slopsquat/check.test.mjs && node Tools/slopsquat/check.mjs",
     "version:sync": "node Scripts/sync-version.mjs",
     "postinstall": "node Scripts/patch-rn-foojay.mjs && node Scripts/patch-react-native-libsodium.mjs && node Scripts/patch-ffmpeg-kit.mjs"
   },
