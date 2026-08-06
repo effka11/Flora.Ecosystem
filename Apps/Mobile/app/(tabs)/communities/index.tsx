@@ -31,6 +31,7 @@ import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { communityScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { usePullToRefresh } from "@/lib/usePullToRefresh";
 
 type CommunityTab = "recommended" | "subscriptions";
 
@@ -260,11 +261,18 @@ export default function CommunitiesScreen() {
       ? recommendedQuery.isError
       : subscriptionsQuery.isError;
 
-  const listRefreshing = hasSearch
-    ? searchQuery.isRefetching
-    : activeTab === "recommended"
-      ? recommendedQuery.isRefetching
-      : subscriptionsQuery.isRefetching;
+  const pullCommunities = useCallback(async () => {
+    if (hasSearch) {
+      await searchQuery.refetch();
+      return;
+    }
+    if (activeTab === "recommended") {
+      await recommendedQuery.refetch();
+      return;
+    }
+    await subscriptionsQuery.refetch();
+  }, [activeTab, hasSearch, recommendedQuery, searchQuery, subscriptionsQuery]);
+  const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(pullCommunities);
 
   const refreshCommunities = () => {
     void queryClient.invalidateQueries({ queryKey: ["communities"] });
@@ -364,8 +372,8 @@ export default function CommunitiesScreen() {
         contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
         refreshControl={
           <RefreshControl
-            refreshing={listRefreshing}
-            onRefresh={refreshCommunities}
+            refreshing={pullRefreshing}
+            onRefresh={onPullRefresh}
             tintColor={floraColors.greenLight}
           />
         }

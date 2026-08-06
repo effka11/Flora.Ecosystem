@@ -77,6 +77,7 @@ import { openGroupChat } from "@/lib/openGroupChat";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { usePullToRefresh } from "@/lib/usePullToRefresh";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -194,6 +195,7 @@ const EMPTY_CONVERSATIONS: MsgConversationDto[] = [];
 const EMPTY_SELECTED = new Set<string>();
 // Matches the global staleTime in providers/FloraProviders.tsx.
 const CONVERSATIONS_STALE_REFETCH_MS = 15_000;
+const GROUPS_STALE_REFETCH_MS = 15_000;
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
@@ -308,10 +310,20 @@ export default function MessagesScreen() {
     queryFn: () => apiListGroups(),
   });
   const conversationQueryRef = useRef(query);
+  const groupsQueryRef = useRef(groupsQuery);
 
   useEffect(() => {
     conversationQueryRef.current = query;
   }, [query]);
+
+  useEffect(() => {
+    groupsQueryRef.current = groupsQuery;
+  }, [groupsQuery]);
+
+  const pullMessages = useCallback(async () => {
+    await Promise.all([query.refetch(), groupsQuery.refetch()]);
+  }, [groupsQuery, query]);
+  const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(pullMessages);
 
   const items = query.data?.items ?? EMPTY_CONVERSATIONS;
   const previews = useMessagesListPreviewDecrypt(items, me?.userUuid);
@@ -708,11 +720,14 @@ export default function MessagesScreen() {
       ) {
         void conversationQuery.refetch();
       }
-      void queryClient.invalidateQueries({ queryKey: ["groups"] });
+      const groups = groupsQueryRef.current;
+      if (Date.now() - groups.dataUpdatedAt > GROUPS_STALE_REFETCH_MS) {
+        void groups.refetch();
+      }
       if (fscpStatus === "registration_pending") {
         void retryPendingOperation();
       }
-    }, [fscpStatus, navigation, queryClient, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
+    }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
   );
 
   const banner = fscpBannerMessage(fscpStatus);
@@ -989,13 +1004,12 @@ export default function MessagesScreen() {
               : item.item.conversationUuid
           }
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          nestedScrollEnabled={false}
+          overScrollMode="auto"
           refreshControl={
             <RefreshControl
-              refreshing={query.isRefetching || groupsQuery.isRefetching}
-              onRefresh={() => {
-                void query.refetch();
-                void groupsQuery.refetch();
-              }}
+              refreshing={pullRefreshing}
+              onRefresh={onPullRefresh}
               tintColor={floraColors.greenLight}
             />
           }
@@ -1052,11 +1066,8 @@ export default function MessagesScreen() {
           returnProgressSV={folderReturnProgressSV}
           dataByPage={dataByPage}
           listPaddingBottom={listPaddingBottom}
-          refreshing={query.isRefetching || groupsQuery.isRefetching}
-          onRefresh={() => {
-            void query.refetch();
-            void groupsQuery.refetch();
-          }}
+          refreshing={pullRefreshing}
+          onRefresh={onPullRefresh}
           loading={query.isLoading}
           error={query.isError}
           emptyMessage={(folder) => emptyListMessage(false, items.length + groupChats.length, folder)}

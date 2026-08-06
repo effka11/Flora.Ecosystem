@@ -32,6 +32,7 @@ import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { usePullToRefresh } from "@/lib/usePullToRefresh";
 
 type PeopleMainTab = "recommended" | "friends";
 type FriendsFilter = "friends" | "followers" | "following";
@@ -292,11 +293,19 @@ export default function PeopleScreen() {
 
   const listLoading = hasSearch ? searchQuery.isLoading : mainTab === "recommended" ? recommendedQuery.isLoading : friendsListLoading;
   const listError = hasSearch ? searchQuery.isError : mainTab === "recommended" ? recommendedQuery.isError : friendsListError;
-  const listRefreshing = hasSearch
-    ? searchQuery.isRefetching
-    : mainTab === "recommended"
-      ? recommendedQuery.isRefetching
-      : followersQuery.isRefetching || followingQuery.isRefetching;
+
+  const pullPeople = useCallback(async () => {
+    if (hasSearch) {
+      await searchQuery.refetch();
+      return;
+    }
+    if (mainTab === "recommended") {
+      await recommendedQuery.refetch();
+      return;
+    }
+    await Promise.all([followersQuery.refetch(), followingQuery.refetch()]);
+  }, [followersQuery, followingQuery, hasSearch, mainTab, recommendedQuery, searchQuery]);
+  const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(pullPeople);
 
   const selectRecommendations = useCallback(() => {
     setFriendsFilterOpen(false);
@@ -441,8 +450,8 @@ export default function PeopleScreen() {
         contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
         refreshControl={
           <RefreshControl
-            refreshing={listRefreshing}
-            onRefresh={refreshPeople}
+            refreshing={pullRefreshing}
+            onRefresh={onPullRefresh}
             tintColor={floraColors.greenLight}
           />
         }

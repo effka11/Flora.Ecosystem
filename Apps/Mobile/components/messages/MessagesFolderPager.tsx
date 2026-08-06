@@ -90,6 +90,8 @@ type PageListProps = {
   selectedConversationUuids: ReadonlySet<string>;
   onEnterSelect: (conversationUuid: string) => void;
   onToggleSelect: (conversationUuid: string) => void;
+  /** Active folder: overScroll `auto` + refreshing; RC stays mounted on all pages. */
+  ptrEnabled: boolean;
 };
 
 const FolderPageList = memo(function FolderPageList({
@@ -106,6 +108,7 @@ const FolderPageList = memo(function FolderPageList({
   selectedConversationUuids,
   onEnterSelect,
   onToggleSelect,
+  ptrEnabled,
 }: PageListProps) {
   const onEnterRef = useRef(onEnterSelect);
   const onToggleRef = useRef(onToggleSelect);
@@ -170,9 +173,11 @@ const FolderPageList = memo(function FolderPageList({
           item.kind === "groupChat" ? `g:${item.group.conversationUuid}` : item.item.conversationUuid
         }
         contentContainerStyle={contentStyle}
+        nestedScrollEnabled={false}
+        overScrollMode={ptrEnabled ? "auto" : "never"}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
+            refreshing={ptrEnabled && refreshing}
             onRefresh={onRefresh}
             tintColor={floraColors.greenLight}
           />
@@ -492,6 +497,7 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
                 selectedConversationUuids={selectedConversationUuids}
                 onEnterSelect={onEnterSelect}
                 onToggleSelect={onToggleSelect}
+                ptrEnabled={folder === activeFolder}
               />
             ))}
           </Reanimated.View>
