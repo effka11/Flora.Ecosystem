@@ -106,6 +106,33 @@ export function computeEpochSetHash(epochs: KeyEpochBackupEntry[]): string {
     .replace(/=/g, "");
 }
 
+/**
+ * After AEAD decrypt + JSON.parse: outer metadata must match the plaintext epoch set.
+ * Web copy uses `===` for the hash (fixed-length SHA-256 base64url); no franking import.
+ */
+function assertEpochSetIntegrity(
+  plaintext: KeyBackupPlaintext,
+  expectedHash: string,
+  expectedPrimaryEpochId: string
+): void {
+  if (plaintext.primaryKeyEpochId !== expectedPrimaryEpochId) {
+    throw new Error(
+      "Повреждённые или несогласованные данные резервной копии: commitment набора эпох."
+    );
+  }
+  // Keep parity with SoT: missing/non-array keyEpochs must not throw TypeError.
+  if (!Array.isArray(plaintext.keyEpochs)) {
+    throw new Error(
+      "Повреждённые или несогласованные данные резервной копии: commitment набора эпох."
+    );
+  }
+  if (computeEpochSetHash(plaintext.keyEpochs) !== expectedHash) {
+    throw new Error(
+      "Повреждённые или несогласованные данные резервной копии: commitment набора эпох."
+    );
+  }
+}
+
 // ── AAD construction ──────────────────────────────────────────────────────────
 
 /**
@@ -294,7 +321,13 @@ export async function decryptKeyBackup(
     throw new Error("Неверный пароль или повреждённые данные резервной копии.");
   }
 
-  return JSON.parse(new TextDecoder().decode(plaintext)) as KeyBackupPlaintext;
+  const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as KeyBackupPlaintext;
+  assertEpochSetIntegrity(
+    parsed,
+    payload.epochSetHashBase64Url,
+    payload.primaryKeyEpochId
+  );
+  return parsed;
 }
 
 // ── Recovery backup ───────────────────────────────────────────────────────────
@@ -440,7 +473,13 @@ export async function decryptRecoveryBackup(
     throw new Error("Неверная фраза восстановления или повреждённые данные.");
   }
 
-  return JSON.parse(new TextDecoder().decode(plaintext)) as KeyBackupPlaintext;
+  const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as KeyBackupPlaintext;
+  assertEpochSetIntegrity(
+    parsed,
+    payload.epochSetHashBase64Url,
+    payload.primaryKeyEpochId
+  );
+  return parsed;
 }
 
 // ── Bootstrap helper ──────────────────────────────────────────────────────────
