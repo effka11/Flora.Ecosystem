@@ -4,7 +4,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -167,6 +177,10 @@ const FeedRow = memo(
   feedRowEqual,
 );
 
+type FeedPaneHandle = {
+  refreshToTop: () => Promise<void>;
+};
+
 type FeedPaneProps = {
   kind: FeedKind;
   feedQuery: FeedQuery;
@@ -179,20 +193,26 @@ type FeedPaneProps = {
   contentPaddingBottom: number;
   online: boolean;
   renderScrollComponent: ReturnType<typeof useCollapsibleHeader>["renderScrollComponents"][number];
+  /** Expand collapsible chrome for this pane after scroll-to-top. */
+  onScrolledToTop: () => void;
 };
 
-function FeedPane({
-  kind,
-  feedQuery,
-  isActivePane,
-  mediaEnabled,
-  search,
-  pageWidth,
-  contentPaddingTop,
-  contentPaddingBottom,
-  online,
-  renderScrollComponent,
-}: FeedPaneProps) {
+const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
+  {
+    kind,
+    feedQuery,
+    isActivePane,
+    mediaEnabled,
+    search,
+    pageWidth,
+    contentPaddingTop,
+    contentPaddingBottom,
+    online,
+    renderScrollComponent,
+    onScrolledToTop,
+  },
+  ref,
+) {
   const queryClient = useQueryClient();
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
@@ -218,11 +238,27 @@ function FeedPane({
   });
   const postsRef = useRef(posts);
   postsRef.current = posts;
-  const pullFeed = useCallback(async () => {
+  // FlashList v2 MVCP (on by default) re-anchors mid-list when page-0 is replaced —
+  // disabled on the list below. Scroll only after refetch settles + React commit
+  // (pending arm after await, not before trim, so trim's paint cannot clear it).
+  const pendingScrollToTopRef = useRef(false);
+  const onScrolledToTopRef = useRef(onScrolledToTop);
+  onScrolledToTopRef.current = onScrolledToTop;
+  const [scrollToTopNonce, setScrollToTopNonce] = useState(0);
+  const refreshToTop = useCallback(async () => {
     queryClient.setQueryData(["feed", kind], trimFeedInfiniteDataToFirstPage);
     await feedQuery.refetch();
+    pendingScrollToTopRef.current = true;
+    setScrollToTopNonce((n) => n + 1);
   }, [feedQuery, kind, queryClient]);
-  const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(pullFeed);
+  useLayoutEffect(() => {
+    if (scrollToTopNonce === 0 || !pendingScrollToTopRef.current) return;
+    pendingScrollToTopRef.current = false;
+    flashListRef.current?.scrollToTop({ animated: false });
+    onScrolledToTopRef.current();
+  }, [flashListRef, scrollToTopNonce]);
+  useImperativeHandle(ref, () => ({ refreshToTop }), [refreshToTop]);
+  const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(refreshToTop);
   const emptyHint = feedQuery.isError
     ? "Не удалось загрузить ленту. Потяните вниз, чтобы обновить."
     : kind === "subscriptions"
@@ -334,6 +370,8 @@ function FeedPane({
           // RN 0.85 defaults nestedScroll=true when RefreshControl is set; with RNGH
           // scroll that freezes the PTR spinner until a second touch (RNGH #4231).
           nestedScrollEnabled={false}
+          // Feed refresh must land at offset 0; v2 MVCP would keep mid-list anchors.
+          maintainVisibleContentPosition={{ disabled: true }}
           scrollEventThrottle={16}
           renderScrollComponent={renderScrollComponent}
           viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
@@ -368,7 +406,7 @@ function FeedPane({
       </FrcMediaModeScope>
     </View>
   );
-}
+});
 
 export default function FeedScreen() {
   const insets = useSafeAreaInsets();
@@ -380,6 +418,7 @@ export default function FeedScreen() {
   const pageWidthSV = useSharedValue(pageWidth);
   const pagerMediaPauseOwner = useRef(Symbol("feed-pager")).current;
   const mediaWakeRef = useRef<PagerMediaWakeHandle | null>(null);
+  const recommendationsPaneRef = useRef<FeedPaneHandle>(null);
   const [kind, setKind] = useState<FeedKind>("recommendations");
   /** Which pane may decode FRC-I — cleared on pager start, restored after interactions. */
   const [mediaKind, setMediaKind] = useState<FeedKind | null>("recommendations");
@@ -397,9 +436,12 @@ export default function FeedScreen() {
     headerAnimatedStyle,
     renderScrollComponents,
     setActivePane,
+    expandChrome,
   } = useCollapsibleHeader({
     estimatedHeight: estimatedHeaderHeight,
   });
+  const expandRecommendationsChrome = useCallback(() => expandChrome(0), [expandChrome]);
+  const expandSubscriptionsChrome = useCallback(() => expandChrome(1), [expandChrome]);
 
   useEffect(() => {
     pageWidthSV.value = pageWidth;
@@ -625,7 +667,8 @@ export default function FeedScreen() {
   );
 
   const refreshFeeds = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["feed"] });
+    void recommendationsPaneRef.current?.refreshToTop();
+    void queryClient.invalidateQueries({ queryKey: ["feed", "subscriptions"] });
     void hasNewQuery.refetch();
   }, [hasNewQuery, queryClient]);
 
@@ -639,6 +682,7 @@ export default function FeedScreen() {
             style={[styles.pagerRow, { width: pageWidth * 2 }, pagerStyle]}
           >
             <FeedPane
+              ref={recommendationsPaneRef}
               kind="recommendations"
               feedQuery={recommendationsFeedQuery}
               isActivePane={kind === "recommendations"}
@@ -649,6 +693,7 @@ export default function FeedScreen() {
               contentPaddingBottom={listPaddingBottom}
               online={network === "online"}
               renderScrollComponent={renderScrollComponents[0]}
+              onScrolledToTop={expandRecommendationsChrome}
             />
             <FeedPane
               kind="subscriptions"
@@ -661,6 +706,7 @@ export default function FeedScreen() {
               contentPaddingBottom={listPaddingBottom}
               online={network === "online"}
               renderScrollComponent={renderScrollComponents[1]}
+              onScrolledToTop={expandSubscriptionsChrome}
             />
           </Reanimated.View>
         </GestureDetector>
