@@ -1,8 +1,4 @@
-import {
-  apiBlockUser,
-  apiGetBlocklist,
-  apiGetKeyBackup,
-} from "@flora/client-core/api";
+import { apiGetKeyBackup } from "@flora/client-core/api";
 import { useLocalSearchParams } from "expo-router";
 import {
   areSecurePushPreviewsEnabled,
@@ -53,6 +49,7 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AccountSettingsTab } from "@/components/settings/AccountSettingsTab";
+import { PrivacySettingsTab } from "@/components/settings/PrivacySettingsTab";
 import {
   SettingsConfirmModal,
   type SettingsConfirmKind,
@@ -258,7 +255,19 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     id: "privacy",
     label: "Приватность",
     description: "Кто видит профиль, статус и переписки.",
-    keywords: ["блок", "блокировка", "чёрный список", "блоклист", "приватность"],
+    keywords: [
+      "блок",
+      "блокировка",
+      "чёрный список",
+      "черный список",
+      "блоклист",
+      "приватность",
+      "видимость",
+      "онлайн",
+      "друзья",
+      "комментарии",
+      "сообщения",
+    ],
   },
   {
     id: "security",
@@ -316,85 +325,6 @@ function SearchableBlock({
 }) {
   if (!matchesSearch(query, ...terms)) return null;
   return <>{children}</>;
-}
-
-function PrivacySettingsTab({ searchQuery }: { searchQuery: string }) {
-  const [username, setUsername] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<unknown[]>([]);
-
-  const loadBlocklist = async () => {
-    try {
-      const raw = await apiGetBlocklist();
-      setItems(Array.isArray(raw) ? raw : []);
-      setError(null);
-    } catch (e) {
-      setItems([]);
-      setError(e instanceof Error ? e.message : "Не удалось загрузить чёрный список.");
-    }
-  };
-
-  useEffect(() => {
-    void loadBlocklist();
-  }, []);
-
-  const blockUser = async () => {
-    const trimmed = username.trim().replace(/^@+/, "");
-    if (!trimmed) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await apiBlockUser(trimmed);
-      setUsername("");
-      await loadBlocklist();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось заблокировать пользователя.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <View style={styles.tabBody}>
-      <SearchableBlock query={searchQuery} terms={["блок", "блокировка", "ник", "пользователь"]}>
-        <TextInput
-          style={styles.input}
-          placeholder="Ник пользователя для блокировки"
-          placeholderTextColor={floraColors.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={username}
-          onChangeText={setUsername}
-        />
-        <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-          onPress={() => void blockUser()}
-          disabled={busy}
-        >
-          <Text style={styles.buttonText}>Заблокировать</Text>
-        </Pressable>
-      </SearchableBlock>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <SearchableBlock query={searchQuery} terms={["блоклист", "чёрный список", "список", "блок"]}>
-        <View style={styles.listGroup}>
-          {items.length > 0 ? (
-            items.map((item, index) => {
-              const row = item as { userUuid?: string; username?: string; displayName?: string };
-              const label = row.displayName || row.username || "Пользователь";
-              return (
-                <Text key={row.userUuid ?? index} style={styles.listRow}>
-                  {row.username ? `@${row.username.replace(/^@+/, "")} · ${label}` : label}
-                </Text>
-              );
-            })
-          ) : (
-            <Text style={styles.metaText}>Блоклист пуст.</Text>
-          )}
-        </View>
-      </SearchableBlock>
-    </View>
-  );
 }
 
 function SecuritySettingsTab({ searchQuery }: { searchQuery: string }) {
@@ -777,6 +707,7 @@ export default function SettingsScreen() {
   const initialSection = useMemo(() => parseSectionId(params.section), [params.section]);
   const me = useSessionStore((s) => s.me);
   const syncSettingsFromMe = useSettingsDraftStore((s) => s.syncFromMe);
+  const loadPrivacySettings = useSettingsDraftStore((s) => s.loadPrivacy);
   const settingsDirty = useSettingsDraftStore((s) => s.dirty);
   const settingsSaving = useSettingsDraftStore((s) => s.saving);
   const settingsSaveError = useSettingsDraftStore((s) => s.saveError);
@@ -794,6 +725,10 @@ export default function SettingsScreen() {
   useEffect(() => {
     syncSettingsFromMe(me);
   }, [me, syncSettingsFromMe]);
+
+  useEffect(() => {
+    void loadPrivacySettings();
+  }, [loadPrivacySettings]);
 
   const onRequestSaveSettings = useCallback(() => {
     if (!settingsDirty || settingsSaving) return;
