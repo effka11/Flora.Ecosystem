@@ -32,9 +32,9 @@ type TabScreenSearchHeaderProps = {
   createAction?: HeaderIconAction;
   /** Сохранение (зелёная галочка). */
   saveAction?: HeaderSaveAction;
-  /** Сброс изменений (крестик) — вместо лупы, если searchEnabled=false. */
+  /** Сброс изменений (крестик) в trailing; совместим с поиском. */
   discardAction?: HeaderSaveAction;
-  /** По умолчанию true. false — без поиска (слот лупы занимает discardAction). */
+  /** По умолчанию true. false — без поля/кнопки поиска. */
   searchEnabled?: boolean;
   /**
    * Режим выделения списка (Messages): крестик / счётчик / ⋯ вместо
@@ -192,7 +192,7 @@ export function TabScreenSearchHeader({
             <Ionicons name="search-outline" size={22} color={floraColors.gray} />
           </Pressable>
         ) : null}
-        {!searchEnabled && discardAction ? (
+        {discardAction ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={discardAction.accessibilityLabel}

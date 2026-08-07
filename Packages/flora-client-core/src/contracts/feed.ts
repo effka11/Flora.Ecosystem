@@ -170,6 +170,35 @@ export function parseFeedSettings(raw: unknown, ctx?: ParseContext): FeedSetting
   };
 }
 
+/** Settings UI draft — wire DTO without `updatedAt`. */
+export type SettingsFeedDraft = Omit<FeedSettingsDto, "updatedAt">;
+
+export function defaultFeedDraft(): SettingsFeedDraft {
+  const { updatedAt: _updatedAt, ...draft } = DEFAULT_FEED_SETTINGS;
+  return { ...draft };
+}
+
+export function feedDraftFromApi(raw: unknown, ctx?: ParseContext): SettingsFeedDraft {
+  const { updatedAt: _updatedAt, ...draft } = parseFeedSettings(raw, ctx);
+  return draft;
+}
+
+export function feedDraftFromDto(dto: FeedSettingsDto): SettingsFeedDraft {
+  const { updatedAt: _updatedAt, ...draft } = dto;
+  return { ...draft };
+}
+
+export function feedDraftEqual(a: SettingsFeedDraft, b: SettingsFeedDraft): boolean {
+  return (
+    a.freshness === b.freshness &&
+    a.exploration === b.exploration &&
+    a.showReposts === b.showReposts &&
+    a.communityPosts === b.communityPosts &&
+    a.seenPosts === b.seenPosts &&
+    a.authorDiversity === b.authorDiversity
+  );
+}
+
 export type HiddenFeedAuthorDto = {
   userUuid: string;
   username: string;

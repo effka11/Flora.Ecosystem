@@ -158,6 +158,23 @@ export const settingsUi = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.42,
   },
+  dangerOutlineButton: {
+    alignSelf: "stretch",
+    minHeight: floraSpacing.grid * 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(246, 168, 168, 0.55)",
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: floraSpacing.grid * 2,
+  },
+  dangerOutlineButtonText: {
+    color: "#f6a8a8",
+    fontSize: 14,
+    fontWeight: "300",
+    letterSpacing: 0.42,
+  },
   pressed: {
     opacity: 0.72,
   },

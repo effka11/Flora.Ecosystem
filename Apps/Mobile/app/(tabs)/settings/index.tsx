@@ -419,7 +419,7 @@ export default function SettingsScreen() {
   const [mountedSectionIds, setMountedSectionIds] = useState<ReadonlySet<SettingsSectionId>>(
     () => new Set([initialSection]),
   );
-  /** Поиск в шапке заменён на discard; фильтр секций оставляем на пустой строке. */
+  /** Поиск в шапке отключён — слот под discard/save. */
   const search = "";
 
   useEffect(() => {

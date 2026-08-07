@@ -26,6 +26,11 @@ import {
   type RegisterInitResponse,
 } from "../contracts/auth.js";
 import { readBool, readStr } from "../contracts/parse.js";
+import {
+  privacyDraftFromApi,
+  privacyDraftToApiPayload,
+  type SettingsPrivacyDraft,
+} from "./privacySettings.js";
 import type { SessionTokens } from "./types.js";
 
 function parseCtx() {
@@ -108,13 +113,19 @@ export async function apiUpdateProfile(payload: {
   return apiGetMe();
 }
 
-/** Сырой ответ GET/PATCH `/api/auth/me/privacy` — парсинг на стороне Apps. */
-export async function apiGetPrivacySettings(): Promise<unknown> {
-  return authGetJson("/api/auth/me/privacy");
+export async function apiGetPrivacySettings(): Promise<SettingsPrivacyDraft> {
+  const raw = await authGetJson("/api/auth/me/privacy");
+  return privacyDraftFromApi(raw);
 }
 
-export async function apiUpdatePrivacySettings(payload: Record<string, unknown>): Promise<unknown> {
-  return authPatchJson("/api/auth/me/privacy", payload);
+export async function apiUpdatePrivacySettings(
+  payload: SettingsPrivacyDraft,
+): Promise<SettingsPrivacyDraft> {
+  const raw = await authPatchJson(
+    "/api/auth/me/privacy",
+    privacyDraftToApiPayload(payload) as unknown as Record<string, unknown>,
+  );
+  return privacyDraftFromApi(raw);
 }
 
 export async function apiLogout(): Promise<void> {

@@ -22,13 +22,12 @@ import {
 import {
   defaultFeedDraft,
   feedDraftEqual,
-  feedDraftFromApi,
+  feedDraftFromDto,
   type SettingsFeedDraft,
 } from "@/lib/settingsFeedDraft";
 import {
   defaultPrivacyDraft,
   privacyDraftEqual,
-  privacyDraftFromApi,
   type SettingsPrivacyDraft,
 } from "@/lib/settingsPrivacyDraft";
 import {
@@ -40,61 +39,27 @@ import {
   loadNotificationsDraft,
   saveNotificationsDraft,
 } from "@/lib/settingsNotificationsStorage";
+import {
+  accountDraftEqual,
+  accountDraftFromMe,
+  emptyAccountDraft,
+  validateAccountDraft,
+  type SettingsAccountDraft,
+} from "@/stores/settingsAccountDraft";
 import { useSessionStore } from "@/stores/sessionStore";
 
-export type SettingsAccountDraft = {
-  displayName: string;
-  username: string;
-  birthDate: string;
-  status: string;
-};
+export type { SettingsAccountDraft } from "@/stores/settingsAccountDraft";
+export {
+  accountDraftEqual,
+  accountDraftFromMe,
+  emptyAccountDraft,
+  validateAccountDraft,
+} from "@/stores/settingsAccountDraft";
 
 /** Локальный черновик аватара — на сервер уходит только в saveAll. */
 export type SettingsAvatarPending =
   | { kind: "upload"; asset: ImagePickerAsset }
   | { kind: "remove" };
-
-const USERNAME_RE = /^[a-z0-9_]{3,50}$/;
-
-const EMPTY_ACCOUNT: SettingsAccountDraft = {
-  displayName: "",
-  username: "",
-  birthDate: "",
-  status: "",
-};
-
-export function accountDraftFromMe(me: MeResponse | null | undefined): SettingsAccountDraft {
-  if (!me) return { ...EMPTY_ACCOUNT };
-  return {
-    displayName: me.displayName ?? "",
-    username: (me.username ?? "").replace(/^@+/, "").toLowerCase(),
-    birthDate: me.birthDate ?? "",
-    status: me.status ?? "",
-  };
-}
-
-export function accountDraftEqual(a: SettingsAccountDraft, b: SettingsAccountDraft): boolean {
-  return (
-    a.displayName.trim() === b.displayName.trim() &&
-    a.username.trim().replace(/^@+/, "").toLowerCase() ===
-      b.username.trim().replace(/^@+/, "").toLowerCase() &&
-    a.birthDate.trim() === b.birthDate.trim() &&
-    a.status.trim() === b.status.trim()
-  );
-}
-
-export function validateAccountDraft(draft: SettingsAccountDraft): string | null {
-  const name = draft.displayName.trim();
-  const nick = draft.username.trim().replace(/^@+/, "").toLowerCase();
-  const statusNorm = draft.status.trim();
-
-  if (!name) return "Введите имя.";
-  if (!USERNAME_RE.test(nick)) {
-    return "Никнейм: 3–50 символов, только строчная латиница, цифры и подчёркивание.";
-  }
-  if (statusNorm.length > 150) return "Статус не более 150 символов.";
-  return null;
-}
 
 type SettingsDraftState = {
   account: SettingsAccountDraft;
@@ -177,8 +142,8 @@ function snapshot(args: SnapshotArgs): Pick<
 const initialNotifications = loadNotificationsDraft();
 
 export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
-  account: { ...EMPTY_ACCOUNT },
-  baseline: { ...EMPTY_ACCOUNT },
+  account: emptyAccountDraft(),
+  baseline: emptyAccountDraft(),
   privacy: defaultPrivacyDraft(),
   baselinePrivacy: defaultPrivacyDraft(),
   feed: defaultFeedDraft(),
@@ -243,8 +208,7 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
     if (privacyDirty) return;
 
     try {
-      const raw = await apiGetPrivacySettings();
-      const next = privacyDraftFromApi(raw);
+      const next = await apiGetPrivacySettings();
       set({
         ...snapshot({
           account,
@@ -296,8 +260,7 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
     if (feedDirty) return;
 
     try {
-      const raw = await apiGetFeedSettings();
-      const next = feedDraftFromApi(raw);
+      const next = feedDraftFromDto(await apiGetFeedSettings());
       set({
         ...snapshot({
           account,
@@ -550,14 +513,12 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
 
       let nextPrivacy = baselinePrivacy;
       if (privacyChanged) {
-        const raw = await apiUpdatePrivacySettings({ ...privacy });
-        nextPrivacy = privacyDraftFromApi(raw);
+        nextPrivacy = await apiUpdatePrivacySettings({ ...privacy });
       }
 
       let nextFeed = baselineFeed;
       if (feedChanged) {
-        const raw = await apiUpdateFeedSettings({ ...feed });
-        nextFeed = feedDraftFromApi(raw);
+        nextFeed = feedDraftFromDto(await apiUpdateFeedSettings({ ...feed }));
       }
 
       let nextNotifications = baselineNotifications;

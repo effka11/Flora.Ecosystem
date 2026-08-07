@@ -101,7 +101,7 @@ export function SecurityRecoveryPhraseModal({ visible, onClose }: Props) {
         recoveryKeyId: floraNewUuid(),
         wordlistId: RECOVERY_WORDLIST_ID,
       });
-      await apiPutRecoveryBackup(payload as unknown as Record<string, unknown>);
+      await apiPutRecoveryBackup(payload);
       setSuccess("Ключ-фраза сохранена на сервере в зашифрованном виде.");
       await loadMeta();
       setPhrase("");

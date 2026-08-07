@@ -228,13 +228,14 @@ export function AccountSettingsTab({ searchQuery }: AccountSettingsTabProps) {
       {logoutVisible ? (
         <View style={ui.section}>
           <Text style={ui.sectionTitle}>Сессия</Text>
-          <View style={ui.listCard}>
-            <View style={ui.listCardInfo}>
-              <Text style={ui.listCardTitle}>Выйти из аккаунта</Text>
-              <Text style={ui.listCardDesc}>Завершить текущую сессию на этом устройстве</Text>
-            </View>
+          <View style={ui.fieldsStack}>
+            <Text style={ui.sectionHint}>Завершить текущую сессию на этом устройстве</Text>
             <Pressable
-              style={({ pressed }) => [ui.dangerButton, pressed && ui.pressed]}
+              style={({ pressed }) => [
+                ui.dangerOutlineButton,
+                pressed && ui.pressed,
+                logoutBusy && ui.textActionDisabled,
+              ]}
               onPress={confirmLogout}
               disabled={logoutBusy}
               accessibilityRole="button"
@@ -243,7 +244,7 @@ export function AccountSettingsTab({ searchQuery }: AccountSettingsTabProps) {
               {logoutBusy ? (
                 <ActivityIndicator color="#f6a8a8" />
               ) : (
-                <Text style={ui.dangerButtonText}>Выйти</Text>
+                <Text style={ui.dangerOutlineButtonText}>Выйти</Text>
               )}
             </Pressable>
           </View>
