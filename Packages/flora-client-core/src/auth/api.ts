@@ -1,5 +1,6 @@
 import {
   authDelete,
+  authDeleteJson,
   authGetJson,
   authPatchJson,
   authPostForm,
@@ -24,6 +25,7 @@ import {
   type PasswordResetVerifyResponse,
   type RegisterInitResponse,
 } from "../contracts/auth.js";
+import { readBool, readStr } from "../contracts/parse.js";
 import type { SessionTokens } from "./types.js";
 
 function parseCtx() {
@@ -134,6 +136,128 @@ export async function apiUploadAvatar(form: FormData): Promise<string> {
 
 export async function apiDeleteAvatar(): Promise<void> {
   await authDelete("/api/auth/profile/avatar");
+}
+
+export type SessionDto = {
+  sessionId: string;
+  createdAt: string;
+  lastActivity: string;
+  ipAddress: string;
+  city?: string;
+  countryCode?: string;
+  isCurrent: boolean;
+};
+
+export type SecurityStatusDto = {
+  twoFactorEnabled: boolean;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+};
+
+export type EmailChangeBeginResult = {
+  changeToken: string;
+  expiresAt: string;
+  devVerificationCode?: string;
+};
+
+export type TwoFactorSetupResult = {
+  secret: string;
+  otpAuthUri: string;
+};
+
+function parseSessionDto(raw: unknown): SessionDto | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const sessionId = readStr(o, ["sessionId", "SessionId"]);
+  if (!sessionId) return null;
+  const city = readStr(o, ["city", "City"]);
+  const countryCode = readStr(o, ["countryCode", "CountryCode"]);
+  return {
+    sessionId,
+    createdAt: readStr(o, ["createdAt", "CreatedAt"]),
+    lastActivity: readStr(o, ["lastActivity", "LastActivity"]),
+    ipAddress: readStr(o, ["ipAddress", "IpAddress"]),
+    ...(city ? { city } : {}),
+    ...(countryCode ? { countryCode } : {}),
+    isCurrent: readBool(o, ["isCurrent", "IsCurrent"]),
+  };
+}
+
+export async function apiChangePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await authPatchJson("/api/auth/me/password", { currentPassword, newPassword });
+}
+
+export async function apiGetSessions(): Promise<SessionDto[]> {
+  const raw = await authGetJson("/api/auth/me/sessions");
+  if (!Array.isArray(raw)) return [];
+  const out: SessionDto[] = [];
+  for (const item of raw) {
+    const row = parseSessionDto(item);
+    if (row) out.push(row);
+  }
+  return out;
+}
+
+export async function apiRevokeOtherSessions(): Promise<void> {
+  await authDelete("/api/auth/me/sessions/others");
+}
+
+export async function apiDeleteAccount(password: string): Promise<void> {
+  await authPostJson("/api/auth/delete-account", { password });
+}
+
+export async function apiGetSecurityStatus(): Promise<SecurityStatusDto> {
+  const raw = await authGetJson("/api/auth/me/security");
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    twoFactorEnabled: readBool(o, ["twoFactorEnabled", "TwoFactorEnabled"]),
+    emailVerified: readBool(o, ["emailVerified", "EmailVerified"]),
+    phoneVerified: readBool(o, ["phoneVerified", "PhoneVerified"]),
+  };
+}
+
+export async function apiBeginEmailChange(
+  password: string,
+  newEmail: string,
+): Promise<EmailChangeBeginResult> {
+  const raw = (await authPostJson("/api/auth/me/email/change", {
+    password,
+    newEmail,
+  })) as Record<string, unknown>;
+  const devCode = readStr(raw, ["devVerificationCode", "DevVerificationCode"]);
+  return {
+    changeToken: readStr(raw, ["changeToken", "ChangeToken"]),
+    expiresAt: readStr(raw, ["expiresAt", "ExpiresAt", "expiresAtUtc", "ExpiresAtUtc"]),
+    ...(devCode ? { devVerificationCode: devCode } : {}),
+  };
+}
+
+export async function apiConfirmEmailChange(changeToken: string, code: string): Promise<string> {
+  const raw = (await authPostJson("/api/auth/me/email/confirm", {
+    changeToken,
+    code,
+  })) as Record<string, unknown>;
+  return readStr(raw, ["email", "Email"]);
+}
+
+export async function apiChangePhone(password: string, phone: string): Promise<void> {
+  await authPatchJson("/api/auth/me/phone", { password, phone });
+}
+
+export async function apiBeginTwoFactorSetup(password: string): Promise<TwoFactorSetupResult> {
+  const raw = (await authPostJson("/api/auth/me/2fa/setup", { password })) as Record<string, unknown>;
+  return {
+    secret: readStr(raw, ["secret", "Secret"]),
+    otpAuthUri: readStr(raw, ["otpAuthUri", "OtpAuthUri"]),
+  };
+}
+
+export async function apiEnableTwoFactor(code: string): Promise<void> {
+  await authPostJson("/api/auth/me/2fa/enable", { code });
+}
+
+export async function apiDisableTwoFactor(password: string, code: string): Promise<void> {
+  await authDeleteJson("/api/auth/me/2fa", { password, code });
 }
 
 export async function saveLoginResponse(

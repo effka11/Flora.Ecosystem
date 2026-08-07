@@ -234,6 +234,74 @@ function buildRecoveryAad(params: {
   ].join(" | ");
 }
 
+export type CreateRecoveryBackupParams = {
+  userUuid: string;
+  /** 12-word phrase joined with spaces. */
+  recoveryPhrase: string;
+  plaintext: KeyBackupPlaintext;
+  recoveryRevision: number;
+  epochSetRevision: number;
+  recoveryKeyId: string;
+  wordlistId?: string;
+  wordsCount?: number;
+  kdf?: { memoryKiB?: number; iterations?: number };
+};
+
+/** Encrypts E2E key material with recovery phrase (stricter KDF: iterations 4). */
+export async function createRecoveryBackup(
+  params: CreateRecoveryBackupParams,
+): Promise<RecoveryBackupPayloadOut> {
+  const sodium = await getSodium();
+  const b64 = (b: Uint8Array) => sodium.to_base64(b, sodium.base64_variants.URLSAFE_NO_PADDING);
+  const memoryKiB = params.kdf?.memoryKiB ?? 65536;
+  const iterations = params.kdf?.iterations ?? 4;
+  const parallelism = 1;
+  const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES ?? 16);
+  const saltBase64Url = b64(salt);
+  const wrapKey = await deriveKeyArgon2id({
+    passwordBytes: new TextEncoder().encode(params.recoveryPhrase.trim()),
+    salt,
+    memoryKiB,
+    iterations,
+    keyLen: 32,
+  });
+  const epochSetHashBase64Url = computeEpochSetHash(params.plaintext.keyEpochs);
+  const nonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+  const nonceBase64Url = b64(nonce);
+  const aad = buildRecoveryAad({
+    userUuid: params.userUuid,
+    recoveryRevision: params.recoveryRevision,
+    recoveryKeyId: params.recoveryKeyId,
+    primaryKeyEpochId: params.plaintext.primaryKeyEpochId,
+    epochSetRevision: params.epochSetRevision,
+    epochSetHashBase64Url,
+    kdfSaltBase64Url: saltBase64Url,
+  });
+  const ciphertext = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+    new TextEncoder().encode(JSON.stringify(params.plaintext)),
+    aad,
+    null,
+    nonce,
+    wrapKey,
+  );
+  return {
+    version: 1,
+    recoveryRevision: params.recoveryRevision,
+    recoveryKeyId: params.recoveryKeyId,
+    userUuid: params.userUuid,
+    primaryKeyEpochId: params.plaintext.primaryKeyEpochId,
+    epochSetRevision: params.epochSetRevision,
+    epochSetHashBase64Url,
+    wordlist: {
+      id: params.wordlistId ?? "flora-recovery-en-v1",
+      wordsCount: params.wordsCount ?? 12,
+    },
+    kdf: { name: "argon2id", memoryKiB, iterations, parallelism, saltBase64Url },
+    aead: { name: "xchacha20-poly1305", nonceBase64Url },
+    ciphertextBase64Url: b64(ciphertext),
+  };
+}
+
 export async function createKeyBackup(params: {
   userUuid: string;
   password: string;

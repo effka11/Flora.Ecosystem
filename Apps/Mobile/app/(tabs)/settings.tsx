@@ -1,4 +1,3 @@
-import { apiGetKeyBackup } from "@flora/client-core/api";
 import { useLocalSearchParams } from "expo-router";
 import {
   areSecurePushPreviewsEnabled,
@@ -24,7 +23,6 @@ import {
   Switch,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
@@ -50,6 +48,7 @@ import Reanimated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AccountSettingsTab } from "@/components/settings/AccountSettingsTab";
 import { PrivacySettingsTab } from "@/components/settings/PrivacySettingsTab";
+import { SecuritySettingsTab } from "@/components/settings/SecuritySettingsTab";
 import {
   SettingsConfirmModal,
   type SettingsConfirmKind,
@@ -78,7 +77,6 @@ import {
 } from "@/lib/feedPagerMediaWake";
 import { mountedSetsEqual, reconcileMountedIds } from "@/lib/settingsMountedSections";
 import { floraColors, floraSpacing, floraTabBarContentPadding, floraTabFilter } from "@/lib/theme";
-import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useSettingsDraftStore } from "@/stores/settingsDraftStore";
 
@@ -325,124 +323,6 @@ function SearchableBlock({
 }) {
   if (!matchesSearch(query, ...terms)) return null;
   return <>{children}</>;
-}
-
-function SecuritySettingsTab({ searchQuery }: { searchQuery: string }) {
-  const me = useSessionStore((s) => s.me);
-  const fscpStatus = useFscpStore((s) => s.status);
-  const localPubKey = useFscpStore((s) => s.localPubKey);
-  const serverPubKey = useFscpStore((s) => s.serverPubKey);
-  const restoreWithAccountPassword = useFscpStore((s) => s.restoreWithAccountPassword);
-  const publishLocalKeyConfirmed = useFscpStore((s) => s.publishLocalKeyConfirmed);
-  const [accountPassword, setAccountPassword] = useState("");
-  const [hasServerBackup, setHasServerBackup] = useState<boolean | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void apiGetKeyBackup()
-      .then(() => {
-        if (!cancelled) setHasServerBackup(true);
-      })
-      .catch(() => {
-        if (!cancelled) setHasServerBackup(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fscpStatus]);
-
-  const keysMatch =
-    localPubKey && serverPubKey
-      ? localPubKey.trim() === serverPubKey.trim()
-      : null;
-
-  const restoreKeys = async () => {
-    if (!me?.userUuid || !accountPassword.trim()) {
-      setStatus("Введите пароль аккаунта");
-      return;
-    }
-    try {
-      const result = await restoreWithAccountPassword(me.userUuid, accountPassword);
-      setStatus(
-        result.status === "ready"
-          ? "Ключи синхронизированы с аккаунтом. Откройте чат снова."
-          : `Синхронизация: ${result.status}`,
-      );
-      setAccountPassword("");
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : "Ошибка синхронизации");
-    }
-  };
-
-  return (
-    <View style={styles.tabBody}>
-      <SearchableBlock query={searchQuery} terms={["ключ", "e2e", "fscp", "backup", "pubkey", "статус"]}>
-        <Text style={styles.subTitle}>E2E ключи</Text>
-        <Text style={styles.metaText}>Статус: {fscpStatus}</Text>
-        {fscpStatus === "needs_restore" ? (
-          <Text style={styles.metaText}>
-            Локальных ключей нет. Сначала на вебе обновите backup (Настройки → Безопасность), затем синхронизируйте здесь паролем аккаунта.
-          </Text>
-        ) : null}
-        {fscpStatus === "wrong_password" ? (
-          <Text style={styles.metaText}>
-            Не удалось открыть backup. Проверьте пароль аккаунта. Если пароль верный — перезалейте backup на вебе и повторите.
-          </Text>
-        ) : null}
-        {fscpStatus === "backup_not_found" ? (
-          <Text style={styles.metaText}>
-            Backup на сервере не найден. Зайдите на веб и нажмите «Обновить backup сейчас» в Настройках → Безопасность.
-          </Text>
-        ) : null}
-        <Text style={styles.diag}>Локальный pubkey: {localPubKey ? `${localPubKey.slice(0, 16)}…` : "—"}</Text>
-        <Text style={styles.diag}>Серверный pubkey: {serverPubKey ? `${serverPubKey.slice(0, 16)}…` : "—"}</Text>
-        <Text style={styles.diag}>Backup на сервере: {hasServerBackup === null ? "…" : hasServerBackup ? "есть" : "нет"}</Text>
-        <Text style={styles.diag}>Local = server: {keysMatch === null ? "—" : keysMatch ? "да" : "нет"}</Text>
-      </SearchableBlock>
-
-      <SearchableBlock query={searchQuery} terms={["опубликовать", "заменить", "ключ", "сервер"]}>
-        {fscpStatus === "orphan_local_profile" ? (
-          <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-            onPress={() => void publishLocalKeyConfirmed()}
-          >
-            <Text style={styles.buttonText}>Опубликовать локальный ключ</Text>
-          </Pressable>
-        ) : null}
-
-        {fscpStatus === "key_mismatch" ? (
-          <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-            onPress={() => void publishLocalKeyConfirmed()}
-          >
-            <Text style={styles.buttonText}>Заменить ключ на сервере</Text>
-          </Pressable>
-        ) : null}
-      </SearchableBlock>
-
-      <SearchableBlock query={searchQuery} terms={["пароль", "синхронизация", "backup", "ключ", "аккаунт"]}>
-        <Text style={styles.metaText}>
-          Сначала обновите backup на вебе (войдите с паролем), затем синхронизируйте ключи здесь паролем аккаунта.
-        </Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Пароль аккаунта"
-          placeholderTextColor={floraColors.textMuted}
-          secureTextEntry
-          value={accountPassword}
-          onChangeText={setAccountPassword}
-        />
-        <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-          onPress={() => void restoreKeys()}
-        >
-          <Text style={styles.buttonText}>Синхронизировать ключи с аккаунтом</Text>
-        </Pressable>
-        {status ? <Text style={styles.metaText}>{status}</Text> : null}
-      </SearchableBlock>
-    </View>
-  );
 }
 
 function NotificationsSettingsTab({ searchQuery }: { searchQuery: string }) {
