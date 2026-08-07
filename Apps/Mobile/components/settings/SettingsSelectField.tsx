@@ -16,7 +16,7 @@ type SettingsSelectFieldProps<T extends string> = {
   onChange: (value: T) => void;
 };
 
-/** Селект настроек: поле как input + sheet выбора (паритет web `<select>`). */
+/** Селект настроек: поле как input + модалка выбора по центру (паритет web `<select>`). */
 export function SettingsSelectField<T extends string>({
   label,
   value,
@@ -95,10 +95,13 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.55)",
-    justifyContent: "flex-end",
-    padding: floraSpacing.grid,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: floraSpacing.grid * 2,
   },
   sheet: {
+    width: "100%",
+    maxWidth: 320,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
