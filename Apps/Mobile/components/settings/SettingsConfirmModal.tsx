@@ -1,0 +1,220 @@
+import { Ionicons } from "@expo/vector-icons";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { floraColors, floraSpacing } from "@/lib/theme";
+
+export type SettingsConfirmKind = "save" | "discard";
+
+type SettingsConfirmModalProps = {
+  visible: boolean;
+  kind: SettingsConfirmKind | null;
+  busy?: boolean;
+  error?: string | null;
+  onDismiss: () => void;
+  onConfirm: () => void;
+};
+
+const COPY: Record<
+  SettingsConfirmKind,
+  {
+    icon: keyof typeof Ionicons.glyphMap;
+    iconColor: string;
+    iconBg: string;
+    title: string;
+    body: string;
+    confirmLabel: string;
+    busyLabel: string;
+    confirmTone: "primary" | "danger";
+  }
+> = {
+  save: {
+    icon: "checkmark-circle-outline",
+    iconColor: floraColors.greenLight,
+    iconBg: "rgba(164, 209, 138, 0.15)",
+    title: "Сохранить изменения?",
+    body: "Несохранённые настройки будут применены.",
+    confirmLabel: "Сохранить",
+    busyLabel: "Сохранение…",
+    confirmTone: "primary",
+  },
+  discard: {
+    icon: "close-circle-outline",
+    iconColor: "#f6a8a8",
+    iconBg: "rgba(246, 168, 168, 0.15)",
+    title: "Сбросить изменения?",
+    body: "Несохранённые правки будут отменены.",
+    confirmLabel: "Сбросить",
+    busyLabel: "Сброс…",
+    confirmTone: "danger",
+  },
+};
+
+/** Подтверждение save/discard — визуально как InstallPermissionModal. */
+export function SettingsConfirmModal({
+  visible,
+  kind,
+  busy = false,
+  error = null,
+  onDismiss,
+  onConfirm,
+}: SettingsConfirmModalProps) {
+  if (!kind) return null;
+  const copy = COPY[kind];
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={busy ? undefined : onDismiss}
+    >
+      <View style={styles.backdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={busy ? undefined : onDismiss}
+          accessibilityRole="button"
+          accessibilityLabel="Закрыть"
+        />
+        <View style={styles.card} accessibilityViewIsModal>
+          <View style={[styles.iconWrap, { backgroundColor: copy.iconBg }]}>
+            {busy ? (
+              <ActivityIndicator color={copy.iconColor} />
+            ) : (
+              <Ionicons name={copy.icon} size={28} color={copy.iconColor} />
+            )}
+          </View>
+
+          <Text style={styles.title}>{copy.title}</Text>
+          <Text style={styles.body}>{copy.body}</Text>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.confirmBtn,
+              copy.confirmTone === "danger" ? styles.confirmBtnDanger : styles.confirmBtnPrimary,
+              (pressed || busy) && styles.btnPressed,
+              busy && styles.btnDisabled,
+            ]}
+            onPress={onConfirm}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={copy.confirmLabel}
+          >
+            <Text
+              style={[
+                styles.confirmBtnText,
+                copy.confirmTone === "danger" ? styles.confirmBtnTextDanger : styles.confirmBtnTextPrimary,
+              ]}
+            >
+              {busy ? copy.busyLabel : copy.confirmLabel}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.secondaryBtn, pressed && !busy && styles.btnPressed]}
+            onPress={onDismiss}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Отмена"
+          >
+            <Text style={styles.secondaryBtnText}>Отмена</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: floraSpacing.grid * 2,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: floraSpacing.grid,
+    backgroundColor: floraColors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: floraColors.border,
+    paddingHorizontal: floraSpacing.grid * 2,
+    paddingTop: floraSpacing.grid * 2,
+    paddingBottom: floraSpacing.grid * 2 - floraSpacing.gridFine,
+    alignItems: "center",
+    gap: floraSpacing.grid,
+  },
+  iconWrap: {
+    width: floraSpacing.grid * 3,
+    height: floraSpacing.grid * 3,
+    borderRadius: (floraSpacing.grid * 3) / 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: {
+    color: floraColors.whiteTemplate,
+    fontSize: 17,
+    fontWeight: "500",
+    letterSpacing: 0.34,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  body: {
+    color: floraColors.gray,
+    fontSize: 14,
+    fontWeight: "300",
+    letterSpacing: 0.42,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  error: {
+    color: "#f6a8a8",
+    fontSize: 12,
+    fontWeight: "300",
+    textAlign: "center",
+    lineHeight: 17,
+  },
+  confirmBtn: {
+    marginTop: floraSpacing.gridFine,
+    width: "100%",
+    paddingVertical: floraSpacing.gridFine * 2 + 2,
+    borderRadius: 9999,
+    alignItems: "center",
+  },
+  confirmBtnPrimary: {
+    backgroundColor: floraColors.greenLight,
+  },
+  confirmBtnDanger: {
+    backgroundColor: "rgba(246, 168, 168, 0.18)",
+  },
+  confirmBtnText: {
+    fontSize: 14,
+    fontWeight: "400",
+    letterSpacing: 0.42,
+  },
+  confirmBtnTextPrimary: {
+    color: floraColors.bg,
+  },
+  confirmBtnTextDanger: {
+    color: "#f6a8a8",
+  },
+  secondaryBtn: {
+    width: "100%",
+    paddingVertical: floraSpacing.gridFine * 2,
+    borderRadius: 9999,
+    alignItems: "center",
+  },
+  secondaryBtnText: {
+    color: floraColors.gray,
+    fontSize: 14,
+    fontWeight: "300",
+    letterSpacing: 0.42,
+  },
+  btnPressed: {
+    opacity: 0.85,
+  },
+  btnDisabled: {
+    opacity: 0.7,
+  },
+});

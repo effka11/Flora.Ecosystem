@@ -14,6 +14,8 @@ import { floraColors } from "@/lib/theme";
 export type FloraAvatarProps = {
   size?: number;
   avatarUuid?: string | null;
+  /** Локальный превью (черновик до сохранения) — приоритетнее avatarUuid. */
+  previewUri?: string | null;
   displayName: string;
   username?: string;
   seed?: string;
@@ -41,6 +43,7 @@ function DefaultAvatarArt({ size, initials, backgroundColor }: DefaultAvatarArtP
 export function FloraAvatar({
   size = 45,
   avatarUuid,
+  previewUri,
   displayName,
   username = "",
   seed,
@@ -51,38 +54,42 @@ export function FloraAvatar({
   onPress,
 }: FloraAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
+  const trimmedPreview = previewUri?.trim() ?? "";
   const trimmedUuid = avatarUuid?.trim() ?? "";
-  const showImage = trimmedUuid.length > 0 && !imageFailed;
+  const showPreview = trimmedPreview.length > 0 && !imageFailed;
+  const showRemote = !showPreview && trimmedUuid.length > 0 && !imageFailed;
   const colorSeed = seed?.trim() || username.trim() || displayName.trim();
   const initials = communityName ? communityInitials(communityName) : profileInitials(displayName, username);
   const backgroundColor = resolveDefaultAvatarColor(colorSeed);
 
   useEffect(() => {
     setImageFailed(false);
-  }, [trimmedUuid]);
+  }, [trimmedPreview, trimmedUuid]);
   const imageUri = useMemo(() => {
-    if (!showImage) return null;
+    if (showPreview) return trimmedPreview;
+    if (!showRemote) return null;
     const base = avatarImageUrl(trimmedUuid);
     // avatarImageUrl already has `?fmt=fri`; bust with `&v=`.
     return cacheVersion > 0 ? `${base}&v=${cacheVersion}` : base;
-  }, [cacheVersion, showImage, trimmedUuid]);
+  }, [cacheVersion, showPreview, showRemote, trimmedPreview, trimmedUuid]);
   // Avatars live outside feed viewability scopes; force decode or FRI never resolves.
   // Decode at the actual rendered size (a 45px circle never needs a 2048px PNG)
   // and on the dedicated avatar lane so a burst of avatars can't queue ahead
-  // of post images.
-  const resolvedImageUri = useFrcImageUri(imageUri ?? "", {
+  // of post images. Local draft previews skip FRI decode.
+  const resolvedImageUri = useFrcImageUri(showPreview ? "" : (imageUri ?? ""), {
     force: true,
     displayWidth: size,
     lane: "avatar",
   });
+  const displayUri = showPreview ? trimmedPreview : resolvedImageUri;
 
-  const content = showImage && imageUri && resolvedImageUri ? (
+  const content = imageUri && displayUri ? (
     <Image
-      source={{ uri: resolvedImageUri }}
+      source={{ uri: displayUri }}
       style={{ width: size, height: size, borderRadius: size / 2 }}
       contentFit="cover"
-      cachePolicy={isLocalDecodedUri(resolvedImageUri) ? "memory" : "memory-disk"}
-      recyclingKey={resolvedImageUri}
+      cachePolicy={isLocalDecodedUri(displayUri) || showPreview ? "memory" : "memory-disk"}
+      recyclingKey={displayUri}
       transition={0}
       onError={() => setImageFailed(true)}
     />

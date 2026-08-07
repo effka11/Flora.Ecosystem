@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { floraColors, floraSpacing } from "@/lib/theme";
@@ -12,17 +12,30 @@ type HeaderIconAction = {
   anchorRef?: RefObject<View | null>;
 };
 
+type HeaderSaveAction = {
+  accessibilityLabel: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+};
+
 type TabScreenSearchHeaderProps = {
   title: string;
   /** Optional pill next to the title (e.g. build marker). */
   titleBadge?: string;
-  placeholder: string;
-  value: string;
-  onChangeText: (value: string) => void;
+  placeholder?: string;
+  value?: string;
+  onChangeText?: (value: string) => void;
   /** Перед открытием меню (закрыть дропдауны фильтров и т.п.). */
   onBeforeMenuOpen?: () => void;
   /** Кнопка создания справа (правее поиска). */
   createAction?: HeaderIconAction;
+  /** Сохранение (зелёная галочка). */
+  saveAction?: HeaderSaveAction;
+  /** Сброс изменений (крестик) — вместо лупы, если searchEnabled=false. */
+  discardAction?: HeaderSaveAction;
+  /** По умолчанию true. false — без поиска (слот лупы занимает discardAction). */
+  searchEnabled?: boolean;
   /**
    * Режим выделения списка (Messages): крестик / счётчик / ⋯ вместо
    * гамбургера / заголовка / «+». Поиск скрыт.
@@ -37,32 +50,38 @@ type TabScreenSearchHeaderProps = {
 export function TabScreenSearchHeader({
   title,
   titleBadge,
-  placeholder,
-  value,
+  placeholder = "",
+  value = "",
   onChangeText,
   onBeforeMenuOpen,
   createAction,
+  saveAction,
+  discardAction,
+  searchEnabled = true,
   selectionChrome,
 }: TabScreenSearchHeaderProps) {
   const { openMenu } = useHamburgerMenu();
-  const [searchOpen, setSearchOpen] = useState(value.length > 0);
+  const [searchOpen, setSearchOpen] = useState(searchEnabled && value.length > 0);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
+    if (!searchEnabled) {
+      setSearchOpen(false);
+      return;
+    }
     if (value.length > 0) {
       setSearchOpen(true);
     }
-  }, [value]);
+  }, [searchEnabled, value]);
 
   useEffect(() => {
-    if (searchOpen) {
-      const id = requestAnimationFrame(() => inputRef.current?.focus());
-      return () => cancelAnimationFrame(id);
-    }
-  }, [searchOpen]);
+    if (!searchEnabled || !searchOpen) return;
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [searchEnabled, searchOpen]);
 
   const closeSearch = () => {
-    onChangeText("");
+    onChangeText?.("");
     setSearchOpen(false);
   };
 
@@ -120,7 +139,7 @@ export function TabScreenSearchHeader({
         <Ionicons name="menu-outline" size={24} color={floraColors.gray} />
       </Pressable>
 
-      {searchOpen ? (
+      {searchEnabled && searchOpen ? (
         <View style={styles.searchBox}>
           <Ionicons name="search-outline" size={20} color={floraColors.gray} />
           <TextInput
@@ -163,7 +182,7 @@ export function TabScreenSearchHeader({
       )}
 
       <View style={styles.trailingActions}>
-        {!searchOpen ? (
+        {searchEnabled && !searchOpen ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Поиск"
@@ -171,6 +190,40 @@ export function TabScreenSearchHeader({
             onPress={() => setSearchOpen(true)}
           >
             <Ionicons name="search-outline" size={22} color={floraColors.gray} />
+          </Pressable>
+        ) : null}
+        {!searchEnabled && discardAction ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={discardAction.accessibilityLabel}
+            disabled={discardAction.disabled || discardAction.busy}
+            style={({ pressed }) => [
+              styles.iconButton,
+              (discardAction.disabled || discardAction.busy) && styles.iconButtonDisabled,
+              pressed && !discardAction.disabled && !discardAction.busy && styles.pressed,
+            ]}
+            onPress={discardAction.onPress}
+          >
+            <Ionicons name="close-outline" size={28} color={floraColors.gray} />
+          </Pressable>
+        ) : null}
+        {saveAction ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={saveAction.accessibilityLabel}
+            disabled={saveAction.disabled || saveAction.busy}
+            style={({ pressed }) => [
+              styles.iconButton,
+              (saveAction.disabled || saveAction.busy) && styles.iconButtonDisabled,
+              pressed && !saveAction.disabled && !saveAction.busy && styles.pressed,
+            ]}
+            onPress={saveAction.onPress}
+          >
+            {saveAction.busy ? (
+              <ActivityIndicator size="small" color={floraColors.greenLight} />
+            ) : (
+              <Ionicons name="checkmark" size={26} color={floraColors.greenLight} />
+            )}
           </Pressable>
         ) : null}
         {createAction ? (
@@ -244,6 +297,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "transparent",
   },
+  iconButtonDisabled: {
+    opacity: 0.45,
+  },
+
   searchBox: {
     flex: 1,
     minWidth: 0,

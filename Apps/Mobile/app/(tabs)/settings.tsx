@@ -2,11 +2,8 @@ import {
   apiBlockUser,
   apiGetBlocklist,
   apiGetKeyBackup,
-  isApiRequestError,
 } from "@flora/client-core/api";
-import { apiDeleteAvatar, apiGetMe, apiUpdateProfile } from "@flora/client-core/auth";
-import * as ImagePicker from "expo-image-picker";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import {
   areSecurePushPreviewsEnabled,
   setSecurePushPreviewsEnabled,
@@ -25,8 +22,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  ActivityIndicator,
-  Alert,
   AppState,
   Pressable,
   ScrollView,
@@ -57,10 +52,12 @@ import Reanimated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { FloraAvatar } from "@/components/FloraAvatar";
-import { ProfileStatusField } from "@/components/profile/ProfileStatusField";
+import { AccountSettingsTab } from "@/components/settings/AccountSettingsTab";
+import {
+  SettingsConfirmModal,
+  type SettingsConfirmKind,
+} from "@/components/settings/SettingsConfirmModal";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
-import { avatarUploadErrorMessage, uploadAvatarFromPickerAsset } from "@/lib/avatarUpload";
 import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
 import {
   isAutoUpdateEnabled,
@@ -86,6 +83,7 @@ import { mountedSetsEqual, reconcileMountedIds } from "@/lib/settingsMountedSect
 import { floraColors, floraSpacing, floraTabBarContentPadding, floraTabFilter } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
+import { useSettingsDraftStore } from "@/stores/settingsDraftStore";
 
 /** Как feed / messages pager — не перехватывать вертикальный скролл. */
 const PAGER_AXIS_PX = 10;
@@ -240,7 +238,21 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     id: "account",
     label: "Аккаунт",
     description: "Имя, никнейм, почта и параметры профиля.",
-    keywords: ["имя", "ник", "аватар", "фото", "статус", "профиль", "выйти", "сохранить", "почта"],
+    keywords: [
+      "имя",
+      "ник",
+      "никнейм",
+      "аватар",
+      "фото",
+      "статус",
+      "описание",
+      "профиль",
+      "выйти",
+      "сохранить",
+      "дата",
+      "рождение",
+      "сессия",
+    ],
   },
   {
     id: "privacy",
@@ -304,192 +316,6 @@ function SearchableBlock({
 }) {
   if (!matchesSearch(query, ...terms)) return null;
   return <>{children}</>;
-}
-
-function SectionHeader({ section }: { section: SettingsSection }) {
-  return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{section.label}</Text>
-      <Text style={styles.sectionDescription}>{section.description}</Text>
-    </View>
-  );
-}
-
-function AccountSettingsTab({ searchQuery }: { searchQuery: string }) {
-  const me = useSessionStore((s) => s.me);
-  const setMe = useSessionStore((s) => s.setMe);
-  const logout = useSessionStore((s) => s.logout);
-  const [displayName, setDisplayName] = useState(me?.displayName ?? "");
-  const [status, setStatus] = useState(me?.status ?? "");
-  const [avatarVersion, setAvatarVersion] = useState(0);
-  const [avatarBusy, setAvatarBusy] = useState(false);
-  const [logoutBusy, setLogoutBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const pickAvatar = async () => {
-    setError(null);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError("Нужен доступ к галерее для выбора фото.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.9,
-    });
-    if (result.canceled || !result.assets[0]) return;
-
-    setAvatarBusy(true);
-    try {
-      await uploadAvatarFromPickerAsset(result.assets[0]);
-      const updated = await apiGetMe();
-      setMe(updated);
-      setAvatarVersion((v) => v + 1);
-    } catch (e) {
-      setError(avatarUploadErrorMessage(e));
-    } finally {
-      setAvatarBusy(false);
-    }
-  };
-
-  const deleteAvatar = async () => {
-    if (!me?.avatarUuid) return;
-    setError(null);
-    setAvatarBusy(true);
-    try {
-      await apiDeleteAvatar();
-      const updated = await apiGetMe();
-      setMe(updated);
-      setAvatarVersion((v) => v + 1);
-    } catch (e) {
-      setError(isApiRequestError(e) ? e.message : "Не удалось удалить аватар.");
-    } finally {
-      setAvatarBusy(false);
-    }
-  };
-
-  const saveProfile = async () => {
-    setError(null);
-    try {
-      const updated = await apiUpdateProfile({
-        displayName,
-        username: me?.username ?? "",
-        status,
-      });
-      setMe(updated);
-    } catch (e) {
-      setError(isApiRequestError(e) ? e.message : "Не удалось сохранить профиль.");
-    }
-  };
-
-  const handleLogout = async () => {
-    setLogoutBusy(true);
-    try {
-      await logout(false);
-      router.replace("/(auth)/login");
-    } finally {
-      setLogoutBusy(false);
-    }
-  };
-
-  const confirmLogout = () => {
-    Alert.alert("Выйти из аккаунта?", "Сессия на этом устройстве будет завершена.", [
-      { text: "Отмена", style: "cancel" },
-      {
-        text: "Выйти",
-        style: "destructive",
-        onPress: () => void handleLogout(),
-      },
-    ]);
-  };
-
-  const avatarVisible = matchesSearch(searchQuery, "аватар", "фото", "профиль");
-  const profileVisible = matchesSearch(searchQuery, "имя", "ник", "статус", "профиль", "сохранить", "почта");
-  const logoutVisible = matchesSearch(searchQuery, "выйти", "аккаунт", "сессия");
-  if (normalizeSearch(searchQuery) && !avatarVisible && !profileVisible && !logoutVisible) {
-    return null;
-  }
-
-  return (
-    <View style={styles.tabBody}>
-      {avatarVisible ? (
-        <View style={styles.avatarSection}>
-          <FloraAvatar
-            size={96}
-            avatarUuid={me?.avatarUuid}
-            displayName={displayName || me?.displayName || ""}
-            username={me?.username ?? ""}
-            seed={me?.userUuid}
-            cacheVersion={avatarVersion}
-          />
-          <View style={styles.inlineActions}>
-            <Pressable
-              style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-              onPress={() => void pickAvatar()}
-              disabled={avatarBusy}
-            >
-              {avatarBusy ? (
-                <ActivityIndicator color={floraColors.text} />
-              ) : (
-                <Text style={styles.buttonText}>Выбрать фото</Text>
-              )}
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.button, styles.buttonGhost, pressed && styles.pressed]}
-              onPress={() => {
-                Alert.alert("Удалить аватар?", "Вернётся базовый аватар с буквами.", [
-                  { text: "Отмена", style: "cancel" },
-                  { text: "Удалить", style: "destructive", onPress: () => void deleteAvatar() },
-                ]);
-              }}
-              disabled={avatarBusy || !me?.avatarUuid}
-            >
-              <Text style={styles.buttonText}>Удалить</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      {profileVisible ? (
-        <>
-          <TextInput
-            style={styles.input}
-            value={displayName}
-            onChangeText={setDisplayName}
-            placeholder="Имя"
-            placeholderTextColor="rgba(250, 250, 250, 0.3)"
-          />
-          <ProfileStatusField value={status} onChangeText={setStatus} maxLength={150} />
-          <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-            onPress={() => void saveProfile()}
-          >
-            <Text style={styles.buttonText}>Сохранить</Text>
-          </Pressable>
-        </>
-      ) : null}
-
-      {logoutVisible ? (
-        <Pressable
-          style={({ pressed }) => [styles.button, styles.buttonLogout, pressed && styles.pressed]}
-          onPress={confirmLogout}
-          disabled={logoutBusy}
-          accessibilityRole="button"
-          accessibilityLabel="Выйти из аккаунта"
-        >
-          {logoutBusy ? (
-            <ActivityIndicator color={floraColors.whiteTemplate} />
-          ) : (
-            <Text style={styles.buttonLogoutText}>Выйти</Text>
-          )}
-        </Pressable>
-      ) : null}
-    </View>
-  );
 }
 
 function PrivacySettingsTab({ searchQuery }: { searchQuery: string }) {
@@ -934,7 +760,6 @@ const SettingsSectionPage = memo(function SettingsSectionPage({
         scrollEnabled={isActive}
         removeClippedSubviews
       >
-        <SectionHeader section={section} />
         <SettingsTabContent
           activeSection={section.id}
           searchQuery={contentSearchQueryForSection(section, search)}
@@ -950,11 +775,55 @@ export default function SettingsScreen() {
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const params = useLocalSearchParams<{ section?: string }>();
   const initialSection = useMemo(() => parseSectionId(params.section), [params.section]);
+  const me = useSessionStore((s) => s.me);
+  const syncSettingsFromMe = useSettingsDraftStore((s) => s.syncFromMe);
+  const settingsDirty = useSettingsDraftStore((s) => s.dirty);
+  const settingsSaving = useSettingsDraftStore((s) => s.saving);
+  const settingsSaveError = useSettingsDraftStore((s) => s.saveError);
+  const saveAllSettings = useSettingsDraftStore((s) => s.saveAll);
+  const discardSettingsChanges = useSettingsDraftStore((s) => s.discardChanges);
+  const clearSettingsSaveFeedback = useSettingsDraftStore((s) => s.clearSaveFeedback);
+  const [confirmKind, setConfirmKind] = useState<SettingsConfirmKind | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(initialSection);
   const [mountedSectionIds, setMountedSectionIds] = useState<ReadonlySet<SettingsSectionId>>(
     () => new Set([initialSection]),
   );
-  const [search, setSearch] = useState("");
+  /** Поиск в шапке заменён на discard; фильтр секций оставляем на пустой строке. */
+  const search = "";
+
+  useEffect(() => {
+    syncSettingsFromMe(me);
+  }, [me, syncSettingsFromMe]);
+
+  const onRequestSaveSettings = useCallback(() => {
+    if (!settingsDirty || settingsSaving) return;
+    clearSettingsSaveFeedback();
+    setConfirmKind("save");
+  }, [clearSettingsSaveFeedback, settingsDirty, settingsSaving]);
+
+  const onRequestDiscardSettings = useCallback(() => {
+    if (!settingsDirty || settingsSaving) return;
+    clearSettingsSaveFeedback();
+    setConfirmKind("discard");
+  }, [clearSettingsSaveFeedback, settingsDirty, settingsSaving]);
+
+  const onDismissConfirm = useCallback(() => {
+    if (settingsSaving) return;
+    setConfirmKind(null);
+    clearSettingsSaveFeedback();
+  }, [clearSettingsSaveFeedback, settingsSaving]);
+
+  const onConfirmSettingsAction = useCallback(() => {
+    if (confirmKind === "discard") {
+      discardSettingsChanges();
+      setConfirmKind(null);
+      return;
+    }
+    if (confirmKind !== "save") return;
+    void saveAllSettings().then((result) => {
+      if (result.ok) setConfirmKind(null);
+    });
+  }, [confirmKind, discardSettingsChanges, saveAllSettings]);
   const [tabLayouts, setTabLayouts] = useState<Partial<Record<SettingsSectionId, TabLayout>>>({});
   const [tabsViewportW, setTabsViewportW] = useState(0);
   const [tabsContentW, setTabsContentW] = useState(0);
@@ -1457,11 +1326,29 @@ export default function SettingsScreen() {
       <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
         <TabScreenSearchHeader
           title="Настройки"
-          placeholder="Поиск в настройках"
-          value={search}
-          onChangeText={setSearch}
+          searchEnabled={false}
+          discardAction={{
+            accessibilityLabel: "Сбросить изменения",
+            onPress: onRequestDiscardSettings,
+            disabled: !settingsDirty || settingsSaving,
+          }}
+          saveAction={{
+            accessibilityLabel: "Сохранить настройки",
+            onPress: onRequestSaveSettings,
+            disabled: !settingsDirty || settingsSaving,
+            busy: settingsSaving,
+          }}
         />
       </View>
+
+      <SettingsConfirmModal
+        visible={confirmKind !== null}
+        kind={confirmKind}
+        busy={confirmKind === "save" && settingsSaving}
+        error={confirmKind === "save" ? settingsSaveError : null}
+        onDismiss={onDismissConfirm}
+        onConfirm={onConfirmSettingsAction}
+      />
 
       {showEmpty ? (
         <View style={styles.content}>
@@ -1665,25 +1552,6 @@ const styles = StyleSheet.create({
     padding: floraSpacing.grid,
     gap: floraSpacing.grid,
   },
-  sectionHeader: {
-    gap: floraSpacing.gridFine,
-    paddingBottom: floraSpacing.gridFine,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
-    borderBottomWidth: 1,
-  },
-  sectionTitle: {
-    color: floraColors.whiteTemplate,
-    fontSize: 22,
-    fontWeight: "300",
-    letterSpacing: 0.66,
-  },
-  sectionDescription: {
-    color: floraColors.gray,
-    fontSize: 14,
-    fontWeight: "300",
-    letterSpacing: 0.42,
-    lineHeight: 20,
-  },
   tabBody: {
     gap: floraSpacing.grid,
   },
@@ -1698,17 +1566,6 @@ const styles = StyleSheet.create({
   settingCopy: {
     flex: 1,
     gap: floraSpacing.gridFine,
-  },
-  avatarSection: {
-    alignItems: "center",
-    gap: floraSpacing.grid,
-    paddingBottom: floraSpacing.grid,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
-    borderBottomWidth: 1,
-  },
-  inlineActions: {
-    flexDirection: "row",
-    gap: floraSpacing.gridFine * 2,
   },
   input: {
     backgroundColor: "transparent",
@@ -1729,27 +1586,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minWidth: 120,
   },
-  buttonGhost: {
-    backgroundColor: floraColors.surface,
-    borderColor: floraColors.border,
-    borderWidth: 1,
-  },
   buttonText: {
     color: floraColors.text,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-  },
-  buttonLogout: {
-    backgroundColor: "transparent",
-    borderColor: floraColors.error,
-    borderWidth: 1,
-    minWidth: undefined,
-    width: "100%",
-    marginTop: floraSpacing.gridFine,
-  },
-  buttonLogoutText: {
-    color: floraColors.error,
     fontSize: 15,
     fontWeight: "300",
     letterSpacing: 0.45,

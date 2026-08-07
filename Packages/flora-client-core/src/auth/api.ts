@@ -91,9 +91,18 @@ export async function apiGetMe(): Promise<MeResponse> {
 export async function apiUpdateProfile(payload: {
   displayName: string;
   username: string;
+  /** Необязательно; до 150 символов на сервере. */
   status?: string;
+  /** `yyyy-MM-dd` или пустая строка, чтобы сбросить. */
+  birthDate?: string | null;
 }): Promise<MeResponse> {
-  await authPatchJson("/api/auth/profile", payload);
+  const body: Record<string, unknown> = {
+    displayName: payload.displayName,
+    username: payload.username,
+  };
+  if (payload.status !== undefined) body.status = payload.status;
+  if (payload.birthDate !== undefined) body.birthDate = payload.birthDate;
+  await authPatchJson("/api/auth/profile", body);
   return apiGetMe();
 }
 
