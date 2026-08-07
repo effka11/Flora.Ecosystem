@@ -22,13 +22,17 @@ export {
   checkAndInstall,
   runSilentUpdateCheck,
 } from "@/lib/apkUpdate/checkAndInstall";
+export { isOfficialChannelRelease } from "@/lib/apkUpdate/channelOfficiality";
 export {
+  fetchChannelCatalog,
   fetchLatestUpdateManifest,
   fetchUpdateManifestFromNotificationText,
   fetchDirectUpdateManifestForVersion,
   getInstalledVersionCode,
   invalidateChannelManifestCache,
+  resolveInstalledBuildOfficiality,
   type AndroidUpdateManifest,
+  type InstalledBuildOfficiality,
 } from "@/lib/apkUpdate/channelRelease";
 export {
   labelForApkUpdatePhase,

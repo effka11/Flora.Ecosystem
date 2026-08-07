@@ -23,12 +23,14 @@ import {
   isSideloadUpdatesEnabled,
   openInstallPermissionPrompt,
   reconcileInstallPermissionWithOs,
+  resolveInstalledBuildOfficiality,
   runAppUpdateCatchUp,
   runUserUpdateCheck,
   setAutoUpdateEnabled,
   subscribeUpdatePreferences,
   type ApkUpdateProgress,
   type AndroidUpdateManifest,
+  type InstalledBuildOfficiality,
 } from "@/lib/apkUpdate";
 import { waitForInstallPermissionResult } from "@/lib/apkUpdate/waitForInstallPermission";
 import { FLORA_DOWNLOAD_PAGE, getFloraSocialAppVersion } from "@/lib/appLinks";
@@ -90,6 +92,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
 
   const [latest, setLatest] = useState<AndroidUpdateManifest | null>(null);
   const [latestBusy, setLatestBusy] = useState(false);
+  const [officiality, setOfficiality] = useState<InstalledBuildOfficiality | null>(null);
   const [autoUpdate, setAutoUpdate] = useState(() => isAutoUpdateEnabled());
   const [hasInstallPerm, setHasInstallPerm] = useState(() =>
     sideload ? canRequestPackageInstalls() : false,
@@ -132,9 +135,20 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
     }
   }, []);
 
+  const refreshOfficiality = useCallback(async () => {
+    setOfficiality(null);
+    try {
+      const next = await resolveInstalledBuildOfficiality();
+      if (mountedRef.current) setOfficiality(next);
+    } catch {
+      if (mountedRef.current) setOfficiality("unofficial");
+    }
+  }, []);
+
   useEffect(() => {
     void refreshLatest();
-  }, [refreshLatest]);
+    void refreshOfficiality();
+  }, [refreshLatest, refreshOfficiality]);
 
   useEffect(() => {
     if (!sideload) return;
@@ -268,6 +282,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
           closeModal();
           setStatusMessage("Установлена актуальная версия.");
           void refreshLatest();
+          void refreshOfficiality();
           return;
         }
 
@@ -279,6 +294,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
               : "Обновление установлено.",
           );
           void refreshLatest();
+          void refreshOfficiality();
           return;
         }
 
@@ -312,7 +328,15 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
     "канал",
     "обновление",
     "актуальн",
+    "официальн",
   );
+
+  const officialityLabel =
+    officiality == null
+      ? "Проверка…"
+      : officiality === "official"
+        ? "Официальная"
+        : "Не официальная";
   const installVisible =
     sideload &&
     matchesSearch(
@@ -355,11 +379,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
             <View style={ui.listCard}>
               <View style={ui.listCardInfo}>
                 <Text style={ui.listCardTitle}>{installedVersion}</Text>
-                <Text style={ui.listCardDesc}>
-                  {installedCode > 0
-                    ? `Установлено · versionCode ${installedCode}`
-                    : "Установленная сборка Flora Social"}
-                </Text>
+                <Text style={ui.listCardDesc}>{officialityLabel}</Text>
               </View>
               {latestBusy ? (
                 <ActivityIndicator color={floraColors.greenLight} />
