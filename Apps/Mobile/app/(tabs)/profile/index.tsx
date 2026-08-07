@@ -123,7 +123,9 @@ export default function ProfileScreen() {
         followersCount={me?.followersCount}
         followingCount={me?.followingCount}
         isOnline={isOnline}
-        onSettingsPress={() => router.push({ pathname: "/settings", params: { section: "account" } })}
+        onSettingsPress={() =>
+          router.push({ pathname: "/(tabs)/settings", params: { section: "account" } })
+        }
         actionVariant="own"
         avatarEditable
       />

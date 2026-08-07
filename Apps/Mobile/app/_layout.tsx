@@ -27,7 +27,12 @@ export default function RootLayout() {
         <Stack.Screen name="profile/[username]" options={{ headerShown: false }} />
         <Stack.Screen name="communities/index" options={{ headerShown: false }} />
         <Stack.Screen name="communities/[slug]" options={{ headerShown: false }} />
-        <Stack.Screen name="settings/index" options={{ title: "Настройки" }} />
+        <Stack.Screen name="settings/index" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/account" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/privacy" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/security" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/customization" options={{ headerShown: false }} />
         <Stack.Screen name="upgrade-required" options={{ title: "Обновление" }} />
       </Stack>
     </FloraProviders>
