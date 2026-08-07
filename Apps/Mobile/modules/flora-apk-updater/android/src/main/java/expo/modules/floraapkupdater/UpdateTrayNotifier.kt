@@ -16,6 +16,11 @@ object UpdateTrayNotifier {
   private const val NOTIF_ID_READY = 0x710A0002
   private const val NOTIF_ID_CONFIRM = 0x710A0003
 
+  private fun smallIcon(context: Context): Int {
+    val id = context.resources.getIdentifier("notification_icon", "drawable", context.packageName)
+    return if (id != 0) id else context.applicationInfo.icon
+  }
+
   fun ensureChannel(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -45,7 +50,7 @@ object UpdateTrayNotifier {
   fun showUpdateAvailable(context: Context, title: String, body: String) {
     ensureChannel(context)
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(smallIcon(context))
       .setContentTitle(title.ifBlank { "Flora" })
       .setContentText(body.ifBlank { "Доступно обновление" })
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -61,7 +66,7 @@ object UpdateTrayNotifier {
   fun showReady(context: Context, version: String) {
     ensureChannel(context)
     val notification = NotificationCompat.Builder(context, CHANNEL_UPDATE_ID)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(smallIcon(context))
       .setContentTitle("Flora")
       .setContentText("Обновление $version готово к установке")
       .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -89,7 +94,7 @@ object UpdateTrayNotifier {
       }
     val contentPi = PendingIntent.getActivity(context, NOTIF_ID_CONFIRM, confirmIntent, flags)
     val notification = NotificationCompat.Builder(context, CHANNEL_UPDATE_ID)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(smallIcon(context))
       .setContentTitle("Установить обновление Flora")
       .setContentText("Версия $version готова — нажмите, чтобы установить")
       .setPriority(NotificationCompat.PRIORITY_HIGH)

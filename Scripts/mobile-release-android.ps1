@@ -129,13 +129,19 @@ function Assert-FloraNativeSplash([string]$mobileDir, [string]$androidDir) {
 function Test-AndroidGenFresh([string]$mobileDir, [string]$buildMode) {
     $splash = Join-Path $mobileDir "android_gen\app\src\main\res\drawable-xxhdpi\splashscreen_logo.png"
     $source = Join-Path $mobileDir "assets\images\splash-icon.png"
+    $notifNative = Join-Path $mobileDir "android_gen\app\src\main\res\drawable-xxhdpi\notification_icon.png"
+    $notifSource = Join-Path $mobileDir "assets\images\notification-icon.png"
     if (-not ((Test-Path $splash) -and (Test-Path $source))) { return $false }
+    if (-not ((Test-Path $notifNative) -and (Test-Path $notifSource))) { return $false }
     $modeMarker = Join-Path $mobileDir "android_gen\.flora-build-mode"
     if (-not (Test-Path -LiteralPath $modeMarker)) { return $false }
     if ((Get-Content -LiteralPath $modeMarker -Raw).Trim() -ne $buildMode) { return $false }
     $sourceTime = (Get-Item $source).LastWriteTimeUtc
     $nativeTime = (Get-Item $splash).LastWriteTimeUtc
     if ($nativeTime -lt $sourceTime.AddSeconds(-5)) { return $false }
+    $notifSourceTime = (Get-Item $notifSource).LastWriteTimeUtc
+    $notifNativeTime = (Get-Item $notifNative).LastWriteTimeUtc
+    if ($notifNativeTime -lt $notifSourceTime.AddSeconds(-5)) { return $false }
 
     # Invalidate when Expo version / versionCode changed (otherwise stale APK labels).
     $appJsonPath = Join-Path $mobileDir "app.json"
