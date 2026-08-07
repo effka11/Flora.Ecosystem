@@ -28,6 +28,7 @@ export {
   fetchDirectUpdateManifestForVersion,
   getInstalledVersionCode,
   invalidateChannelManifestCache,
+  type AndroidUpdateManifest,
 } from "@/lib/apkUpdate/channelRelease";
 export {
   labelForApkUpdatePhase,
@@ -35,5 +36,8 @@ export {
   type ApkUpdateProgress,
   type ApkUpdateProgressListener,
 } from "@/lib/apkUpdate/progress";
-export { runUserUpdateFromNotification } from "@/lib/apkUpdate/userUpdate";
+export {
+  runUserUpdateCheck,
+  runUserUpdateFromNotification,
+} from "@/lib/apkUpdate/userUpdate";
 export { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";

@@ -1,26 +1,15 @@
 import { useLocalSearchParams } from "expo-router";
 import {
-  areSecurePushPreviewsEnabled,
-  setSecurePushPreviewsEnabled,
-} from "flora-secure-push";
-import {
-  canRequestPackageInstalls,
-  openInstallPermissionSettings,
-} from "flora-apk-updater";
-import {
   memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import {
-  AppState,
   Pressable,
   ScrollView,
-  Switch,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -47,24 +36,16 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AccountSettingsTab } from "@/components/settings/AccountSettingsTab";
+import { CustomizationSettingsTab } from "@/components/settings/CustomizationSettingsTab";
+import { NotificationsSettingsTab } from "@/components/settings/NotificationsSettingsTab";
 import { PrivacySettingsTab } from "@/components/settings/PrivacySettingsTab";
 import { SecuritySettingsTab } from "@/components/settings/SecuritySettingsTab";
 import {
   SettingsConfirmModal,
   type SettingsConfirmKind,
 } from "@/components/settings/SettingsConfirmModal";
+import { UpdatesSettingsTab } from "@/components/settings/UpdatesSettingsTab";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
-import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
-import {
-  isAutoUpdateEnabled,
-  isInAppUpdatesEnabled,
-  reconcileInstallPermissionWithOs,
-  setAutoUpdateEnabled,
-  subscribeUpdatePreferences,
-} from "@/lib/apkUpdate/autoUpdatePreference";
-import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
-import { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
-import { waitForInstallPermissionResult } from "@/lib/apkUpdate/waitForInstallPermission";
 import {
   ENERGETIC_OPEN_EASING,
   ENERGETIC_OPEN_MS,
@@ -214,6 +195,7 @@ type SettingsSectionId =
   | "privacy"
   | "security"
   | "notifications"
+  | "updates"
   | "customization";
 
 type SettingsSection = {
@@ -276,8 +258,23 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: "notifications",
     label: "Уведомления",
-    description: "Push, почта и оповещения в приложении.",
-    keywords: ["push", "сообщения", "обновление", "уведомления", "текст", "фон"],
+    description: "Push и оповещения в приложении.",
+    keywords: ["push", "сообщения", "уведомления", "текст", "превью"],
+  },
+  {
+    id: "updates",
+    label: "Обновления",
+    description: "Версия приложения, установка APK и фоновое обновление.",
+    keywords: [
+      "обновление",
+      "apk",
+      "версия",
+      "установка",
+      "фон",
+      "фоновое",
+      "канал",
+      "проверить",
+    ],
   },
   {
     id: "customization",
@@ -312,218 +309,6 @@ function contentSearchQueryForSection(section: SettingsSection, search: string):
   return search;
 }
 
-function SearchableBlock({
-  query,
-  terms,
-  children,
-}: {
-  query: string;
-  terms: readonly string[];
-  children: ReactNode;
-}) {
-  if (!matchesSearch(query, ...terms)) return null;
-  return <>{children}</>;
-}
-
-function NotificationsSettingsTab({ searchQuery }: { searchQuery: string }) {
-  const sideload = isSideloadUpdatesEnabled();
-  const [showMessageText, setShowMessageText] = useState(() =>
-    areSecurePushPreviewsEnabled(),
-  );
-  const [autoUpdate, setAutoUpdate] = useState(() => isAutoUpdateEnabled());
-  const [hasInstallPerm, setHasInstallPerm] = useState(() =>
-    sideload ? canRequestPackageInstalls() : false,
-  );
-  const [permBusy, setPermBusy] = useState(false);
-  const [permDeniedMeta, setPermDeniedMeta] = useState(false);
-
-  const refreshUpdatePrefs = () => {
-    if (!sideload) return;
-    const { hasOs, auto } = reconcileInstallPermissionWithOs();
-    setHasInstallPerm(hasOs);
-    setAutoUpdate(auto);
-    if (hasOs) setPermDeniedMeta(false);
-  };
-
-  useEffect(() => {
-    if (!sideload) return;
-    refreshUpdatePrefs();
-    const appSub = AppState.addEventListener("change", (state) => {
-      if (state === "active") refreshUpdatePrefs();
-    });
-    const unsub = subscribeUpdatePreferences(() => refreshUpdatePrefs());
-    return () => {
-      appSub.remove();
-      unsub();
-    };
-  }, [sideload]);
-
-  const changeShowMessageText = (enabled: boolean) => {
-    setShowMessageText(enabled);
-    setSecurePushPreviewsEnabled(enabled);
-  };
-
-  const changeInAppUpdates = (enabled: boolean) => {
-    if (!sideload || permBusy) return;
-    setPermDeniedMeta(false);
-
-    if (!enabled && hasInstallPerm) {
-      setPermBusy(true);
-      void (async () => {
-        try {
-          const opened = await openInstallPermissionSettings();
-          if (opened) {
-            await waitForInstallPermissionResult({ mode: "revoke" });
-          }
-        } catch {
-          // Activity missing / native reject — still reconcile.
-        } finally {
-          refreshUpdatePrefs();
-          setPermBusy(false);
-        }
-      })();
-      return;
-    }
-
-    if (enabled && !hasInstallPerm) {
-      setPermBusy(true);
-      void (async () => {
-        try {
-          const granted = await openInstallPermissionPrompt();
-          refreshUpdatePrefs();
-          if (!granted || !canRequestPackageInstalls()) {
-            setPermDeniedMeta(true);
-          }
-        } finally {
-          setPermBusy(false);
-        }
-      })();
-      return;
-    }
-
-    refreshUpdatePrefs();
-  };
-
-  const changeAutoUpdate = (enabled: boolean) => {
-    if (!sideload) return;
-    if (!enabled) {
-      setAutoUpdateEnabled(false);
-      setAutoUpdate(false);
-      return;
-    }
-    if (!isInAppUpdatesEnabled() || !canRequestPackageInstalls()) {
-      setAutoUpdate(false);
-      return;
-    }
-    setAutoUpdateEnabled(true);
-    if (!isAutoUpdateEnabled()) {
-      setAutoUpdate(false);
-      return;
-    }
-    setAutoUpdate(true);
-    setHasInstallPerm(true);
-    void runAppUpdateCatchUp({ force: true }).catch(() => undefined);
-  };
-
-  const backgroundDisabled = !hasInstallPerm || permBusy;
-
-  return (
-    <View style={styles.tabBody}>
-      <SearchableBlock query={searchQuery} terms={["текст", "сообщения", "push", "превью", "уведомления"]}>
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.bodyText}>Показывать текст сообщений</Text>
-            <Text style={styles.metaText}>
-              Текст расшифровывается только на этом устройстве. APNs и FCM получают шифротекст.
-            </Text>
-          </View>
-          <Switch
-            value={showMessageText}
-            onValueChange={changeShowMessageText}
-            trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
-            thumbColor={floraColors.whiteTemplate}
-          />
-        </View>
-      </SearchableBlock>
-      {sideload ? (
-        <>
-          <SearchableBlock query={searchQuery} terms={["установка", "обновление", "разрешение", "apk"]}>
-            <View style={styles.settingRow}>
-              <View style={styles.settingCopy}>
-                <Text style={styles.bodyText}>Установка обновлений</Text>
-                <Text style={styles.metaText}>
-                  Нужно для установки из приложения и для фонового обновления.
-                </Text>
-                {permDeniedMeta ? (
-                  <Text style={styles.metaText}>Разрешение не выдано.</Text>
-                ) : null}
-              </View>
-              <Switch
-                value={hasInstallPerm}
-                onValueChange={changeInAppUpdates}
-                disabled={permBusy}
-                trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
-                thumbColor={floraColors.whiteTemplate}
-              />
-            </View>
-          </SearchableBlock>
-          <SearchableBlock query={searchQuery} terms={["фон", "обновление", "фоновое"]}>
-            <View style={styles.settingRow}>
-              <View style={styles.settingCopy}>
-                <Text
-                  style={[
-                    styles.bodyText,
-                    backgroundDisabled ? styles.settingDisabledText : null,
-                  ]}
-                >
-                  Фоновое обновление
-                </Text>
-                <Text
-                  style={[
-                    styles.metaText,
-                    backgroundDisabled ? styles.settingDisabledText : null,
-                  ]}
-                >
-                  Скачивание с канала Flora в фоне; установка при свёрнутом приложении (Android 12+).
-                </Text>
-              </View>
-              <Switch
-                value={autoUpdate}
-                onValueChange={changeAutoUpdate}
-                disabled={backgroundDisabled}
-                trackColor={{ false: floraColors.surface, true: floraColors.accentDark }}
-                thumbColor={floraColors.whiteTemplate}
-              />
-            </View>
-          </SearchableBlock>
-        </>
-      ) : null}
-      <SearchableBlock query={searchQuery} terms={["push", "release", "sse", "уведомления", "android"]}>
-        <Text style={styles.bodyText}>
-          Push о новых сообщениях работает в release-сборке Flora. В Flora Dev обновления приходят через интернет
-          (SSE), пока приложение открыто.
-        </Text>
-        <Text style={styles.metaText}>
-          Release Android: google-services.json и разрешения уведомлений (см. Apps/Mobile/README.md).
-        </Text>
-      </SearchableBlock>
-    </View>
-  );
-}
-
-function CustomizationSettingsTab({ searchQuery }: { searchQuery: string }) {
-  return (
-    <View style={styles.tabBody}>
-      <SearchableBlock query={searchQuery} terms={["тема", "тёмная", "оформление"]}>
-        <Text style={styles.bodyText}>Тёмная тема Flora активна по умолчанию.</Text>
-      </SearchableBlock>
-      <SearchableBlock query={searchQuery} terms={["акцент", "шрифт", "кастомизация", "язык"]}>
-        <Text style={styles.metaText}>Кастомизация акцентов и шрифтов — в следующих версиях.</Text>
-      </SearchableBlock>
-    </View>
-  );
-}
-
 function SettingsTabContent({
   activeSection,
   searchQuery,
@@ -538,6 +323,8 @@ function SettingsTabContent({
       return <SecuritySettingsTab searchQuery={searchQuery} />;
     case "notifications":
       return <NotificationsSettingsTab searchQuery={searchQuery} />;
+    case "updates":
+      return <UpdatesSettingsTab searchQuery={searchQuery} />;
     case "customization":
       return <CustomizationSettingsTab searchQuery={searchQuery} />;
     case "account":
@@ -1366,90 +1153,6 @@ const styles = StyleSheet.create({
   contentInner: {
     padding: floraSpacing.grid,
     gap: floraSpacing.grid,
-  },
-  tabBody: {
-    gap: floraSpacing.grid,
-  },
-  settingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: floraSpacing.grid,
-    paddingVertical: floraSpacing.gridFine * 2,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
-    borderBottomWidth: 1,
-  },
-  settingCopy: {
-    flex: 1,
-    gap: floraSpacing.gridFine,
-  },
-  input: {
-    backgroundColor: "transparent",
-    borderColor: "rgba(250, 250, 250, 0.15)",
-    borderWidth: 1,
-    borderRadius: 10,
-    color: floraColors.whiteTemplate,
-    paddingHorizontal: floraSpacing.grid,
-    minHeight: floraSpacing.grid * 3,
-    fontSize: 15,
-    fontWeight: "300",
-  },
-  button: {
-    backgroundColor: floraColors.accentDark,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    minWidth: 120,
-  },
-  buttonText: {
-    color: floraColors.text,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-  },
-  listGroup: {
-    borderTopColor: "rgba(250, 250, 250, 0.08)",
-    borderTopWidth: 1,
-  },
-  listRow: {
-    color: floraColors.text,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    paddingVertical: floraSpacing.gridFine * 2,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
-    borderBottomWidth: 1,
-  },
-  subTitle: {
-    color: floraColors.whiteTemplate,
-    fontSize: 18,
-    fontWeight: "300",
-    letterSpacing: 0.54,
-  },
-  bodyText: {
-    color: floraColors.text,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
-  },
-  metaText: {
-    color: floraColors.textMuted,
-    fontSize: 13,
-    fontWeight: "300",
-    lineHeight: 19,
-  },
-  settingDisabledText: {
-    color: floraColors.textMuted,
-    opacity: 0.55,
-  },
-  diag: {
-    color: floraColors.textMuted,
-    fontSize: 12,
-    fontFamily: "monospace",
-  },
-  error: {
-    color: floraColors.error,
   },
   emptyHint: {
     color: floraColors.gray,

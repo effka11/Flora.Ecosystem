@@ -19,6 +19,7 @@ import {
 import type { ApkUpdateProgressListener } from "@/lib/apkUpdate/progress";
 import { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
 import {
+  getFloraSocialAppVersion,
   parseAppUpdateVersionFromText,
   resolveAppUpdateApkDownloadUrl,
 } from "@/lib/appLinks";
@@ -369,6 +370,33 @@ export async function runUserUpdateFromNotification(
           ? "up_to_date"
           : "installed",
   };
+}
+
+/**
+ * «Проверить обновления» из настроек: latest канала Flora (без текста inbox).
+ */
+export async function runUserUpdateCheck(
+  onProgress?: ApkUpdateProgressListener,
+): Promise<UserUpdateResult> {
+  const report = onProgress ?? (() => undefined);
+  report({ phase: "checking", message: "Проверка обновления…" });
+
+  invalidateChannelManifestCache();
+  const latest = await fetchLatestUpdateManifest().catch(() => null);
+  if (!latest?.version) {
+    if (!isApkUpdaterNativeReady()) {
+      report({ phase: "checking", message: "Открытие загрузки APK…" });
+      return openChannelApkFallback(`Новая версия Android - ${getFloraSocialAppVersion()}`);
+    }
+    return { ok: false, error: "Манифест обновления не найден", code: "NO_MANIFEST" };
+  }
+
+  const installed = getInstalledVersionCode();
+  if (latest.versionCode != null && latest.versionCode <= installed) {
+    return { ok: true, status: "up_to_date" };
+  }
+
+  return runUserUpdateFromNotification(`Новая версия Android - ${latest.version}`, onProgress);
 }
 
 export { cancelInteractiveApkUpdate };
