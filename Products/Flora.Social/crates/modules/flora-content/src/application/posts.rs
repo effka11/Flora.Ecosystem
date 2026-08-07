@@ -278,7 +278,7 @@ impl PostService {
     }
 
     async fn retract_like(&self, actor_user_uuid: Uuid, post_uuid: Uuid) -> Result<(), String> {
-        let Some(command) = self
+        let Some(mut command) = self
             .social_activity_command(
                 actor_user_uuid,
                 post_uuid,
@@ -288,15 +288,15 @@ impl PostService {
         else {
             return Ok(());
         };
-        // Call after DELETE like: retract only when actor has no remaining likes on author.
+        // After DELETE like: always sync Notifications; partial when actor still likes author posts.
         let still = self
             .repo
             .actor_likes_any_post_by_author(actor_user_uuid, command.recipient_user_uuid)
             .await
             .map_err(|e| e.to_string())?;
-        if !should_retract_social_after_remove(still) {
-            return Ok(());
-        }
+        let (call_retract, partial) = plan_like_unlike_retract(still);
+        debug_assert!(call_retract);
+        command.partial = partial;
         self.notifications.retract_social(command).await
     }
 
@@ -381,6 +381,7 @@ impl PostService {
             actor_user_uuid,
             actor_label: label,
             kind,
+            partial: false,
         }))
     }
 
@@ -399,7 +400,12 @@ impl PostService {
     }
 }
 
-/// After removing one like/repost: call Notifications retract only when none remain.
+/// Unlike always notifies Notifications. Returns `(call_retract, partial)`.
+pub(crate) fn plan_like_unlike_retract(still_has_likes_on_author: bool) -> (bool, bool) {
+    (true, still_has_likes_on_author)
+}
+
+/// After removing one repost: call Notifications retract only when none remain.
 pub(crate) fn should_retract_social_after_remove(still_has_activity_on_author: bool) -> bool {
     !still_has_activity_on_author
 }
@@ -449,21 +455,30 @@ pub enum DeletePostError {
 
 #[cfg(test)]
 mod tests {
-    use super::should_retract_social_after_remove;
+    use super::{plan_like_unlike_retract, should_retract_social_after_remove};
 
     #[test]
-    fn unlike_not_last_does_not_retract() {
-        assert!(!should_retract_social_after_remove(true));
+    fn unlike_not_last_always_calls_retract_with_partial_true() {
+        let (call, partial) = plan_like_unlike_retract(true);
+        assert!(call);
+        assert!(partial);
+    }
+
+    #[test]
+    fn unlike_last_always_calls_retract_with_partial_false() {
+        let (call, partial) = plan_like_unlike_retract(false);
+        assert!(call);
+        assert!(!partial);
     }
 
     #[test]
     fn unrepost_not_last_does_not_retract() {
-        // Same gate for repost remaining activity.
+        // Repost still gates: only full remove calls Notifications.
         assert!(!should_retract_social_after_remove(true));
     }
 
     #[test]
-    fn last_like_or_repost_retracts() {
+    fn last_repost_retracts() {
         assert!(should_retract_social_after_remove(false));
     }
 }

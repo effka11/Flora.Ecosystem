@@ -225,6 +225,7 @@ impl InboxRepo {
         text: &str,
         actor_count: i32,
         actors_json: &serde_json::Value,
+        post_uuid: Option<Uuid>,
     ) -> Result<(), String> {
         sqlx::query(
             r#"
@@ -232,7 +233,8 @@ impl InboxRepo {
             SET actor_user_uuid = $2,
                 text = $3,
                 actor_count = $4,
-                actors_json = $5
+                actors_json = $5,
+                post_uuid = COALESCE($6, post_uuid)
             WHERE notification_uuid = $1
             "#,
         )
@@ -241,6 +243,7 @@ impl InboxRepo {
         .bind(text)
         .bind(actor_count)
         .bind(actors_json)
+        .bind(post_uuid)
         .execute(&mut **tx)
         .await
         .map_err(|e| e.to_string())?;

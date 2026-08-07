@@ -10,7 +10,9 @@
 //!   `group_key` (`like` / `repost` / `follow`), Model B text, TikTok-style 15m audible budget
 //!   (`social_notification_push_state` claimed under the group lock before FCM), quiet-replace on
 //!   partial retract, empty group → DELETE + SSE `event: notification_removed` + data-only FCM
-//!   `notification_dismiss`. Same actor on another post refreshes `post_uuid` only (no FCM).
+//!   `notification_dismiss`. Like: same actor on a new post merges `post_uuids`, rebuilds Model B
+//!   text (incl. «оценил N ваших постов»), SSE + quiet-replace FCM (no audible / no budget claim);
+//!   same post again → refresh deep-link `post_uuid` only.
 
 pub mod application;
 pub mod http;

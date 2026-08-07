@@ -18,6 +18,9 @@ pub struct SocialActor {
     pub uuid: Uuid,
     pub label: String,
     pub joined_at: DateTime<Utc>,
+    /// Unique posts this actor contributed for Like aggregation. Empty = legacy row.
+    #[serde(default)]
+    pub post_uuids: Vec<Uuid>,
 }
 
 /// Canonical group keys: one slot per recipient per activity kind (`like` / `repost` / `follow`).
@@ -73,6 +76,25 @@ pub fn normalize_actor_label(label: &str) -> String {
     }
 }
 
+/// Russian genitive plural for «N ваших …» (N ≥ 2).
+pub fn russian_posts_word(n: usize) -> &'static str {
+    let n100 = n % 100;
+    let n10 = n % 10;
+    if (11..=14).contains(&n100) {
+        "постов"
+    } else if n10 == 1 {
+        "пост"
+    } else if (2..=4).contains(&n10) {
+        "поста"
+    } else {
+        "постов"
+    }
+}
+
+fn like_post_count(actor: &SocialActor) -> usize {
+    actor.post_uuids.len().max(1)
+}
+
 /// RU inbox text from newest-first membership (top-2 labels only).
 pub fn build_social_text(kind: &SocialActivityKind, actors: &[SocialActor]) -> String {
     let count = actors.len();
@@ -85,7 +107,14 @@ pub fn build_social_text(kind: &SocialActivityKind, actors: &[SocialActor]) -> S
     match kind {
         SocialActivityKind::Like { .. } => match count {
             0 => String::new(),
-            1 => format!("{a} оценил ваш пост"),
+            1 => {
+                let n = like_post_count(&actors[0]);
+                if n == 1 {
+                    format!("{a} оценил ваш пост")
+                } else {
+                    format!("{a} оценил {n} ваших {}", russian_posts_word(n))
+                }
+            }
             2 => format!("{a} и {} оценили ваш пост", b.unwrap_or("Пользователь")),
             n => format!(
                 "{a}, {} и ещё {} оценили ваш пост",
@@ -117,6 +146,7 @@ pub fn build_social_text(kind: &SocialActivityKind, actors: &[SocialActor]) -> S
 }
 
 /// Prepend actor if not already a member. `None` = already member (caller may refresh post_uuid).
+/// Used for Follow / Repost (no post-set tracking).
 pub fn apply_actor_membership(
     actors: &[SocialActor],
     actor_uuid: Uuid,
@@ -131,6 +161,35 @@ pub fn apply_actor_membership(
         uuid: actor_uuid,
         label: normalize_actor_label(label),
         joined_at,
+        post_uuids: Vec::new(),
+    });
+    next.extend(actors.iter().cloned());
+    Some(next)
+}
+
+/// Like membership: seed on join, merge post on repeat. `None` = post already tracked.
+pub fn apply_like_membership(
+    actors: &[SocialActor],
+    actor_uuid: Uuid,
+    label: &str,
+    joined_at: DateTime<Utc>,
+    post: Uuid,
+) -> Option<Vec<SocialActor>> {
+    if let Some(idx) = actors.iter().position(|a| a.uuid == actor_uuid) {
+        if actors[idx].post_uuids.contains(&post) {
+            return None;
+        }
+        let mut next = actors.to_vec();
+        next[idx].post_uuids.push(post);
+        next[idx].label = normalize_actor_label(label);
+        return Some(next);
+    }
+    let mut next = Vec::with_capacity(actors.len() + 1);
+    next.push(SocialActor {
+        uuid: actor_uuid,
+        label: normalize_actor_label(label),
+        joined_at,
+        post_uuids: vec![post],
     });
     next.extend(actors.iter().cloned());
     Some(next)
@@ -143,6 +202,60 @@ pub fn retract_actor_membership(actors: &[SocialActor], actor_uuid: Uuid) -> Vec
         .filter(|a| a.uuid != actor_uuid)
         .cloned()
         .collect()
+}
+
+/// Outcome of Like retract against membership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LikeRetractOutcome {
+    /// `partial` + legacy empty `post_uuids` — keep slot unchanged.
+    NoOp,
+    /// Updated membership (may be empty → dismiss).
+    Updated(Vec<SocialActor>),
+}
+
+/// Like retract using Content's `partial` flag.
+pub fn retract_like_membership(
+    actors: &[SocialActor],
+    actor_uuid: Uuid,
+    post: Uuid,
+    partial: bool,
+) -> LikeRetractOutcome {
+    let Some(idx) = actors.iter().position(|a| a.uuid == actor_uuid) else {
+        return LikeRetractOutcome::NoOp;
+    };
+
+    if partial {
+        if actors[idx].post_uuids.is_empty() {
+            return LikeRetractOutcome::NoOp;
+        }
+        if !actors[idx].post_uuids.contains(&post) {
+            // Keep slot — no QuietReplace when P was never tracked.
+            return LikeRetractOutcome::NoOp;
+        }
+        let mut next = actors.to_vec();
+        next[idx].post_uuids.retain(|p| *p != post);
+        if next[idx].post_uuids.is_empty() {
+            next.remove(idx);
+        }
+        return LikeRetractOutcome::Updated(next);
+    }
+
+    // Full remove path (last like / Content says no remaining).
+    let mut next = actors.to_vec();
+    if next[idx].post_uuids.is_empty() {
+        next.remove(idx);
+    } else {
+        next[idx].post_uuids.retain(|p| *p != post);
+        if next[idx].post_uuids.is_empty() {
+            next.remove(idx);
+        }
+    }
+    LikeRetractOutcome::Updated(next)
+}
+
+/// Deep-link post: newest post on newest actor, if any.
+pub fn newest_tracked_post_uuid(actors: &[SocialActor]) -> Option<Uuid> {
+    actors.first().and_then(|a| a.post_uuids.last().copied())
 }
 
 /// True when `actors_json` or column actor matches the retracting user.
@@ -163,6 +276,8 @@ pub fn audible_push_allowed(last_push_at: Option<DateTime<Utc>>, now: DateTime<U
 pub enum SocialApplyPushDecision {
     Audible,
     SseOnly,
+    /// Same tray tag, silent replace — used when member adds another like post.
+    QuietReplace,
 }
 
 pub fn apply_social_push_decision(allow_audible: bool) -> SocialApplyPushDecision {
@@ -220,6 +335,16 @@ mod tests {
             uuid: Uuid::now_v7(),
             label: label.into(),
             joined_at: Utc::now() - Duration::minutes(minutes_ago),
+            post_uuids: Vec::new(),
+        }
+    }
+
+    fn actor_with_posts(label: &str, posts: &[Uuid]) -> SocialActor {
+        SocialActor {
+            uuid: Uuid::now_v7(),
+            label: label.into(),
+            joined_at: Utc::now(),
+            post_uuids: posts.to_vec(),
         }
     }
 
@@ -253,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn social_text_like_one_two_n() {
+    fn social_text_like_one_two_n_actors() {
         let kind = SocialActivityKind::Like {
             post_uuid: Uuid::now_v7(),
         };
@@ -273,6 +398,46 @@ mod tests {
             build_social_text(&kind, &[a, b, c]),
             "Алиса, Боб и ещё 1 оценили ваш пост"
         );
+    }
+
+    #[test]
+    fn social_text_like_single_actor_post_counts() {
+        let kind = SocialActivityKind::Like {
+            post_uuid: Uuid::now_v7(),
+        };
+        let p1 = Uuid::now_v7();
+        let p2 = Uuid::now_v7();
+        let posts_10: Vec<Uuid> = (0..10).map(|_| Uuid::now_v7()).collect();
+        let posts_21: Vec<Uuid> = (0..21).map(|_| Uuid::now_v7()).collect();
+
+        assert_eq!(
+            build_social_text(&kind, &[actor_with_posts("Алиса", &[p1])]),
+            "Алиса оценил ваш пост"
+        );
+        assert_eq!(
+            build_social_text(&kind, &[actor_with_posts("Алиса", &[p1, p2])]),
+            "Алиса оценил 2 ваших поста"
+        );
+        assert_eq!(
+            build_social_text(&kind, &[actor_with_posts("Алиса", &posts_10)]),
+            "Алиса оценил 10 ваших постов"
+        );
+        assert_eq!(
+            build_social_text(&kind, &[actor_with_posts("Алиса", &posts_21)]),
+            "Алиса оценил 21 ваших пост"
+        );
+    }
+
+    #[test]
+    fn russian_posts_word_declension() {
+        assert_eq!(russian_posts_word(2), "поста");
+        assert_eq!(russian_posts_word(3), "поста");
+        assert_eq!(russian_posts_word(4), "поста");
+        assert_eq!(russian_posts_word(5), "постов");
+        assert_eq!(russian_posts_word(10), "постов");
+        assert_eq!(russian_posts_word(21), "пост");
+        assert_eq!(russian_posts_word(22), "поста");
+        assert_eq!(russian_posts_word(11), "постов");
     }
 
     #[test]
@@ -326,6 +491,76 @@ mod tests {
     }
 
     #[test]
+    fn apply_like_seeds_and_merges_posts() {
+        let uuid = Uuid::now_v7();
+        let p1 = Uuid::now_v7();
+        let p2 = Uuid::now_v7();
+        let now = Utc::now();
+        let once = apply_like_membership(&[], uuid, "Алиса", now, p1).unwrap();
+        assert_eq!(once[0].post_uuids, vec![p1]);
+        let twice = apply_like_membership(&once, uuid, "Алиса", now, p2).unwrap();
+        assert_eq!(twice[0].post_uuids, vec![p1, p2]);
+        assert!(apply_like_membership(&twice, uuid, "Алиса", now, p1).is_none());
+    }
+
+    #[test]
+    fn retract_like_partial_legacy_empty_is_noop() {
+        let uuid = Uuid::now_v7();
+        let post = Uuid::now_v7();
+        let actors = vec![SocialActor {
+            uuid,
+            label: "Алиса".into(),
+            joined_at: Utc::now(),
+            post_uuids: Vec::new(),
+        }];
+        assert_eq!(
+            retract_like_membership(&actors, uuid, post, true),
+            LikeRetractOutcome::NoOp
+        );
+        assert_eq!(
+            retract_like_membership(&actors, uuid, post, false),
+            LikeRetractOutcome::Updated(Vec::new())
+        );
+    }
+
+    #[test]
+    fn retract_like_partial_unknown_post_is_noop() {
+        let uuid = Uuid::now_v7();
+        let p1 = Uuid::now_v7();
+        let p2 = Uuid::now_v7();
+        let unknown = Uuid::now_v7();
+        let actors = vec![SocialActor {
+            uuid,
+            label: "Алиса".into(),
+            joined_at: Utc::now(),
+            post_uuids: vec![p1, p2],
+        }];
+        assert_eq!(
+            retract_like_membership(&actors, uuid, unknown, true),
+            LikeRetractOutcome::NoOp
+        );
+    }
+
+    #[test]
+    fn retract_like_partial_removes_post_keeps_actor() {
+        let uuid = Uuid::now_v7();
+        let p1 = Uuid::now_v7();
+        let p2 = Uuid::now_v7();
+        let actors = vec![SocialActor {
+            uuid,
+            label: "Алиса".into(),
+            joined_at: Utc::now(),
+            post_uuids: vec![p1, p2],
+        }];
+        let LikeRetractOutcome::Updated(next) = retract_like_membership(&actors, uuid, p1, true)
+        else {
+            panic!("expected Updated");
+        };
+        assert_eq!(next.len(), 1);
+        assert_eq!(next[0].post_uuids, vec![p2]);
+    }
+
+    #[test]
     fn retract_actor_membership_removes_actor_and_empties_after_last() {
         let a = Uuid::now_v7();
         let b = Uuid::now_v7();
@@ -358,6 +593,7 @@ mod tests {
         let decision = apply_social_push_decision(allow);
         assert_eq!(decision, SocialApplyPushDecision::SseOnly);
         assert!(!updates_push_state(decision));
+        assert!(!updates_push_state(SocialApplyPushDecision::QuietReplace));
     }
 
     #[test]
@@ -378,16 +614,19 @@ mod tests {
             uuid: Uuid::nil(),
             label: "Алиса".into(),
             joined_at: Utc::now(),
+            post_uuids: Vec::new(),
         };
         let b = SocialActor {
             uuid: Uuid::now_v7(),
             label: "Боб".into(),
             joined_at: Utc::now(),
+            post_uuids: Vec::new(),
         };
         let c = SocialActor {
             uuid: Uuid::now_v7(),
             label: "Кира".into(),
             joined_at: Utc::now(),
+            post_uuids: Vec::new(),
         };
         assert_eq!(
             build_social_text(&like, std::slice::from_ref(&a)),
@@ -437,24 +676,27 @@ mod tests {
     fn quiet_replace_path_does_not_use_audible_push_decision() {
         assert!(!updates_push_state(SocialApplyPushDecision::SseOnly));
         assert!(updates_push_state(SocialApplyPushDecision::Audible));
+        assert!(!updates_push_state(SocialApplyPushDecision::QuietReplace));
     }
 
-    /// A likes P1 then P2 → same group; second apply is refresh-only (membership None).
+    /// A likes P1 then P2 → same group; second apply merges post (membership Some).
     #[test]
     fn scenario_same_actor_two_posts_one_membership() {
         let a_uuid = Uuid::now_v7();
+        let p1 = Uuid::now_v7();
+        let p2 = Uuid::now_v7();
         let t0 = Utc::now();
-        let actors = apply_actor_membership(&[], a_uuid, "Алиса", t0).expect("join");
+        let actors = apply_like_membership(&[], a_uuid, "Алиса", t0, p1).expect("join");
         assert_eq!(actors.len(), 1);
-        assert!(
-            apply_actor_membership(&actors, a_uuid, "Алиса", t0 + Duration::seconds(1)).is_none()
-        );
+        assert_eq!(actors[0].post_uuids, vec![p1]);
+        let merged = apply_like_membership(&actors, a_uuid, "Алиса", t0 + Duration::seconds(1), p2)
+            .expect("merge");
+        assert_eq!(merged[0].post_uuids, vec![p1, p2]);
         assert_eq!(
-            group_key(&SocialActivityKind::Like {
-                post_uuid: Uuid::now_v7()
-            }),
-            "like"
+            build_social_text(&SocialActivityKind::Like { post_uuid: p2 }, &merged),
+            "Алиса оценил 2 ваших поста"
         );
+        assert!(apply_like_membership(&merged, a_uuid, "Алиса", t0, p1).is_none());
         assert_eq!(
             group_key(&SocialActivityKind::Like {
                 post_uuid: Uuid::now_v7()

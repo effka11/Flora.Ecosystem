@@ -5,7 +5,8 @@ use std::sync::Arc;
 use chrono::Utc;
 use flora_notifications_contracts::{
     BoxFuture, CreateUserNotificationCommand, RealtimeNotificationRemovedSignal,
-    RealtimeNotificationSignal, SocialActivityCommand, UserNotificationDispatcher,
+    RealtimeNotificationSignal, SocialActivityCommand, SocialActivityKind,
+    UserNotificationDispatcher,
 };
 use flora_shared::flora_uuid::new_uuid;
 
@@ -15,11 +16,12 @@ use crate::application::platform::{
 };
 use crate::application::realtime_publisher::SocialNotificationPush;
 use crate::application::social::{
-    SocialApplyPushDecision, SocialRetractPushDecision, actors_to_json, apply_actor_membership,
-    apply_social_push_decision, audible_push_allowed, build_social_text, group_key,
-    membership_contains_actor, notification_type, parse_actors_json, post_uuid,
-    retract_actor_membership, retract_lookup_group_keys, retract_social_push_decision,
-    retract_updates_push_state, updates_push_state,
+    LikeRetractOutcome, SocialApplyPushDecision, SocialRetractPushDecision, actors_to_json,
+    apply_actor_membership, apply_like_membership, apply_social_push_decision,
+    audible_push_allowed, build_social_text, group_key, membership_contains_actor,
+    newest_tracked_post_uuid, notification_type, parse_actors_json, post_uuid,
+    retract_actor_membership, retract_like_membership, retract_lookup_group_keys,
+    retract_social_push_decision, retract_updates_push_state, updates_push_state,
 };
 use crate::infrastructure::{InboxRepo, SocialGroupRow};
 
@@ -123,14 +125,26 @@ impl InboxNotificationDispatcher {
             Some(row) => parse_actors_json(&row.actors_json)?,
             None => Vec::new(),
         };
+        let was_member = membership_contains_actor(&current_actors, command.actor_user_uuid);
 
-        let Some(actors) = apply_actor_membership(
-            &current_actors,
-            command.actor_user_uuid,
-            &command.actor_label,
-            now,
-        ) else {
-            // Already a member: refresh deep-link post only — no SSE / FCM / budget.
+        let actors = match (&command.kind, post_uuid) {
+            (SocialActivityKind::Like { .. }, Some(post)) => apply_like_membership(
+                &current_actors,
+                command.actor_user_uuid,
+                &command.actor_label,
+                now,
+                post,
+            ),
+            _ => apply_actor_membership(
+                &current_actors,
+                command.actor_user_uuid,
+                &command.actor_label,
+                now,
+            ),
+        };
+
+        let Some(actors) = actors else {
+            // Unchanged membership: refresh deep-link post only — no SSE / FCM / budget.
             if let Some(row) = existing {
                 self.repo
                     .refresh_group_post_uuid(
@@ -185,18 +199,23 @@ impl InboxNotificationDispatcher {
             )
             .await?;
 
-        // Cool check + claim under group lock (DoD: A+B in window → 1 audible).
-        let previous_push_at = self
-            .repo
-            .get_push_state(&mut tx, command.recipient_user_uuid, &group_key)
-            .await?;
-        let allow_audible = audible_push_allowed(previous_push_at, now);
-        let decision = apply_social_push_decision(allow_audible);
-        if updates_push_state(decision) {
-            self.repo
-                .set_push_state(&mut tx, command.recipient_user_uuid, &group_key, now)
+        // Member adding another like post: QuietReplace, no audible / push_state.
+        let decision = if was_member {
+            SocialApplyPushDecision::QuietReplace
+        } else {
+            let previous_push_at = self
+                .repo
+                .get_push_state(&mut tx, command.recipient_user_uuid, &group_key)
                 .await?;
-        }
+            let allow_audible = audible_push_allowed(previous_push_at, now);
+            let decision = apply_social_push_decision(allow_audible);
+            if updates_push_state(decision) {
+                self.repo
+                    .set_push_state(&mut tx, command.recipient_user_uuid, &group_key, now)
+                    .await?;
+            }
+            decision
+        };
 
         tx.commit().await.map_err(|e| e.to_string())?;
 
@@ -217,6 +236,9 @@ impl InboxNotificationDispatcher {
                 tag: group_key.clone(),
             },
             SocialApplyPushDecision::SseOnly => SocialNotificationPush::SseOnly,
+            SocialApplyPushDecision::QuietReplace => SocialNotificationPush::QuietReplace {
+                tag: group_key.clone(),
+            },
         };
 
         let _ = self
@@ -281,15 +303,35 @@ impl InboxNotificationDispatcher {
         };
 
         let current_actors = parse_actors_json(&existing.actors_json)?;
-        let actors = if membership_contains_actor(&current_actors, command.actor_user_uuid) {
-            retract_actor_membership(&current_actors, command.actor_user_uuid)
-        } else if existing.actor_user_uuid == Some(command.actor_user_uuid)
-            || current_actors.is_empty()
-        {
-            // Legacy single-actor row without actors_json membership.
-            Vec::new()
-        } else {
-            return Ok(());
+        let actors = match (&command.kind, post_uuid(&command.kind)) {
+            (SocialActivityKind::Like { .. }, Some(post))
+                if membership_contains_actor(&current_actors, command.actor_user_uuid) =>
+            {
+                match retract_like_membership(
+                    &current_actors,
+                    command.actor_user_uuid,
+                    post,
+                    command.partial,
+                ) {
+                    LikeRetractOutcome::NoOp => {
+                        return Ok(());
+                    }
+                    LikeRetractOutcome::Updated(next) => next,
+                }
+            }
+            _ if membership_contains_actor(&current_actors, command.actor_user_uuid) => {
+                retract_actor_membership(&current_actors, command.actor_user_uuid)
+            }
+            _ if existing.actor_user_uuid == Some(command.actor_user_uuid)
+                || current_actors.is_empty() =>
+            {
+                // Legacy single-actor row without actors_json membership.
+                if command.partial {
+                    return Ok(());
+                }
+                Vec::new()
+            }
+            _ => return Ok(()),
         };
 
         let retract_decision = retract_social_push_decision(actors.len());
@@ -322,6 +364,7 @@ impl InboxNotificationDispatcher {
         let actors_json = actors_to_json(&actors)?;
         let actor_count = i32::try_from(actors.len()).unwrap_or(i32::MAX);
         let newest_actor = actors.first().map(|a| a.uuid);
+        let deep_link = newest_tracked_post_uuid(&actors).or(existing.post_uuid);
 
         self.repo
             .update_group_membership(
@@ -331,6 +374,7 @@ impl InboxNotificationDispatcher {
                 &text,
                 actor_count,
                 &actors_json,
+                deep_link,
             )
             .await?;
         tx.commit().await.map_err(|e| e.to_string())?;
@@ -341,7 +385,7 @@ impl InboxNotificationDispatcher {
             category: existing.category,
             text,
             actor_user_uuid: newest_actor,
-            post_uuid: existing.post_uuid,
+            post_uuid: deep_link,
             comment_uuid: None,
             created_at: existing.created_at,
             update: None,

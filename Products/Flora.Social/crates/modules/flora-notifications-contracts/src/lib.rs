@@ -81,6 +81,9 @@ pub struct SocialActivityCommand {
     pub actor_user_uuid: Uuid,
     pub actor_label: String,
     pub kind: SocialActivityKind,
+    /// When `true` on Like retract: actor still has other likes on the author (partial undo).
+    /// Apply paths, follow, and repost retract always use `false`.
+    pub partial: bool,
 }
 
 /// SSE `event: notification_removed` payload when a social notification group is deleted.

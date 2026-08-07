@@ -105,6 +105,7 @@ async fn social_follow_command(
         actor_user_uuid: follower_uuid,
         actor_label,
         kind: SocialActivityKind::Follow,
+        partial: false,
     }
 }
 
