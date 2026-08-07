@@ -52,18 +52,20 @@ async function splashPng(outPath, size) {
 
 /**
  * Full-bleed white silhouette for Android status-bar / FCM small icon.
- * Adaptive monochrome keeps safe-zone padding and looks tiny in the tray — do not reuse it here.
+ * Same mark + rotate(7) as flora-mark-monochrome (launcher), cropped tight —
+ * adaptive safe-zone padding must not ship into the tray.
  */
 async function notificationIconPng(outPath, size) {
-  const svg = (await readFile(join(assets, "flora-logo-mark-glyph.svg"), "utf8")).replace(
-    /fill="#[^"]+"/gi,
-    'fill="#ffffff"',
-  );
+  const mono = await sharp(join(assets, "flora-mark-monochrome.svg"), { density: 300 })
+    .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .ensureAlpha()
+    .png()
+    .toBuffer();
+  const trimmed = await sharp(mono).trim().png().toBuffer();
   const margin = Math.max(1, Math.round(size * 0.04));
   const inner = size - 2 * margin;
-  const leafBuf = await sharp(Buffer.from(svg), { density: 300 })
+  const leafBuf = await sharp(trimmed)
     .resize(inner, inner, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .ensureAlpha()
     .png()
     .toBuffer();
   await sharp({
