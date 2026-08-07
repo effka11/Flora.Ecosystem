@@ -70,6 +70,7 @@ pub struct CreateUserNotificationCommand {
 #[derive(Debug, Clone)]
 pub enum SocialActivityKind {
     Like { post_uuid: Uuid },
+    Repost { post_uuid: Uuid },
     Follow,
 }
 

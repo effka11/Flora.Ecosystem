@@ -4,19 +4,29 @@
  */
 
 export const SOCIAL_FOLLOW_PUSH_TAG = "follow";
+export const SOCIAL_LIKE_PUSH_TAG = "like";
+export const SOCIAL_REPOST_PUSH_TAG = "repost";
+/** Legacy per-post keys before notifications 0003. */
 export const SOCIAL_LIKE_PUSH_TAG_PREFIX = "like:";
+export const SOCIAL_REPOST_PUSH_TAG_PREFIX = "repost:";
 
 export function isSocialNotificationPushTag(tag: string | null | undefined): boolean {
   const t = (tag ?? "").trim().toLowerCase();
-  return t === SOCIAL_FOLLOW_PUSH_TAG || t.startsWith(SOCIAL_LIKE_PUSH_TAG_PREFIX);
+  return (
+    t === SOCIAL_FOLLOW_PUSH_TAG ||
+    t === SOCIAL_LIKE_PUSH_TAG ||
+    t === SOCIAL_REPOST_PUSH_TAG ||
+    t.startsWith(SOCIAL_LIKE_PUSH_TAG_PREFIX) ||
+    t.startsWith(SOCIAL_REPOST_PUSH_TAG_PREFIX)
+  );
 }
 
 export function isSocialNotificationInboxType(inboxType: string | null | undefined): boolean {
   const t = (inboxType ?? "").trim().toLowerCase();
-  return t === "like" || t === "follow";
+  return t === "like" || t === "follow" || t === "repost";
 }
 
-/** True when FCM data belongs to a social like/follow tray slot. */
+/** True when FCM data belongs to a social like/follow/repost tray slot. */
 export function isSocialTrayPushData(data: Record<string, unknown> | undefined | null): boolean {
   if (!data) return false;
   const type = typeof data.type === "string" ? data.type.trim().toLowerCase() : "";

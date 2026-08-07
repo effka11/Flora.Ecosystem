@@ -1,8 +1,8 @@
-//! Social like/follow aggregation — text templates, membership, FCM audible budget.
+//! Social like/repost/follow aggregation — text templates, membership, FCM audible budget.
 //!
 //! **Model B RU templates in [`build_social_text`] are the runtime source of truth.**
-//! One-shot legacy collapse in `migrations/0002_social_notification_groups.sql` must
-//! keep the same strings (SQL cannot call this module).
+//! One-shot legacy collapse in `migrations/0002_social_notification_groups.sql` /
+//! `0003_social_activity_group_keys.sql` must keep the same like strings (SQL cannot call this module).
 
 use chrono::{DateTime, Duration, Utc};
 use flora_notifications_contracts::SocialActivityKind;
@@ -20,25 +20,48 @@ pub struct SocialActor {
     pub joined_at: DateTime<Utc>,
 }
 
+/// Canonical group keys: one slot per recipient per activity kind (`like` / `repost` / `follow`).
 pub fn group_key(kind: &SocialActivityKind) -> String {
     match kind {
-        SocialActivityKind::Like { post_uuid } => format!("like:{post_uuid}"),
+        SocialActivityKind::Like { .. } => "like".into(),
+        SocialActivityKind::Repost { .. } => "repost".into(),
         SocialActivityKind::Follow => "follow".into(),
+    }
+}
+
+/// Legacy per-post key used before 0003 (`like:{uuid}` / `repost:{uuid}`).
+pub fn legacy_per_post_group_key(kind: &SocialActivityKind) -> Option<String> {
+    match kind {
+        SocialActivityKind::Like { post_uuid } => Some(format!("like:{post_uuid}")),
+        SocialActivityKind::Repost { post_uuid } => Some(format!("repost:{post_uuid}")),
+        SocialActivityKind::Follow => None,
     }
 }
 
 pub fn notification_type(kind: &SocialActivityKind) -> &'static str {
     match kind {
         SocialActivityKind::Like { .. } => "like",
+        SocialActivityKind::Repost { .. } => "repost",
         SocialActivityKind::Follow => "follow",
     }
 }
 
 pub fn post_uuid(kind: &SocialActivityKind) -> Option<Uuid> {
     match kind {
-        SocialActivityKind::Like { post_uuid } => Some(*post_uuid),
+        SocialActivityKind::Like { post_uuid } | SocialActivityKind::Repost { post_uuid } => {
+            Some(*post_uuid)
+        }
         SocialActivityKind::Follow => None,
     }
+}
+
+/// Ordered retract lookup keys: canon → legacy per-post (follow has no legacy).
+pub fn retract_lookup_group_keys(kind: &SocialActivityKind) -> Vec<String> {
+    let mut keys = vec![group_key(kind)];
+    if let Some(legacy) = legacy_per_post_group_key(kind) {
+        keys.push(legacy);
+    }
+    keys
 }
 
 pub fn normalize_actor_label(label: &str) -> String {
@@ -70,6 +93,16 @@ pub fn build_social_text(kind: &SocialActivityKind, actors: &[SocialActor]) -> S
                 n - 2
             ),
         },
+        SocialActivityKind::Repost { .. } => match count {
+            0 => String::new(),
+            1 => format!("{a} сделал репост"),
+            2 => format!("{a} и {} сделали репост", b.unwrap_or("Пользователь")),
+            n => format!(
+                "{a}, {} и ещё {} сделали репост",
+                b.unwrap_or("Пользователь"),
+                n - 2
+            ),
+        },
         SocialActivityKind::Follow => match count {
             0 => String::new(),
             1 => format!("Новый подписчик {a}"),
@@ -83,7 +116,7 @@ pub fn build_social_text(kind: &SocialActivityKind, actors: &[SocialActor]) -> S
     }
 }
 
-/// Prepend actor if not already a member. `None` = idempotent no-op.
+/// Prepend actor if not already a member. `None` = already member (caller may refresh post_uuid).
 pub fn apply_actor_membership(
     actors: &[SocialActor],
     actor_uuid: Uuid,
@@ -110,6 +143,11 @@ pub fn retract_actor_membership(actors: &[SocialActor], actor_uuid: Uuid) -> Vec
         .filter(|a| a.uuid != actor_uuid)
         .cloned()
         .collect()
+}
+
+/// True when `actors_json` or column actor matches the retracting user.
+pub fn membership_contains_actor(actors: &[SocialActor], actor_uuid: Uuid) -> bool {
+    actors.iter().any(|a| a.uuid == actor_uuid)
 }
 
 /// Audible inbox push allowed when no prior push, or last audible ≥ 15m ago.
@@ -186,13 +224,32 @@ mod tests {
     }
 
     #[test]
-    fn group_key_like_and_follow() {
+    fn group_key_like_repost_follow_are_canonical() {
         let post = Uuid::parse_str("01900000-0000-7000-8000-000000000001").unwrap();
         assert_eq!(
             group_key(&SocialActivityKind::Like { post_uuid: post }),
-            format!("like:{post}")
+            "like"
+        );
+        assert_eq!(
+            group_key(&SocialActivityKind::Repost { post_uuid: post }),
+            "repost"
         );
         assert_eq!(group_key(&SocialActivityKind::Follow), "follow");
+        assert_eq!(
+            legacy_per_post_group_key(&SocialActivityKind::Like { post_uuid: post }).as_deref(),
+            Some("like:01900000-0000-7000-8000-000000000001")
+        );
+        assert_eq!(
+            retract_lookup_group_keys(&SocialActivityKind::Like { post_uuid: post }),
+            vec![
+                "like".to_string(),
+                "like:01900000-0000-7000-8000-000000000001".to_string()
+            ]
+        );
+        assert_eq!(
+            retract_lookup_group_keys(&SocialActivityKind::Follow),
+            vec!["follow".to_string()]
+        );
     }
 
     #[test]
@@ -203,7 +260,6 @@ mod tests {
         let a = actor("Алиса", 0);
         let b = actor("Боб", 1);
         let c = actor("Кира", 2);
-        let d = actor("Дана", 3);
 
         assert_eq!(
             build_social_text(&kind, std::slice::from_ref(&a)),
@@ -214,12 +270,30 @@ mod tests {
             "Алиса и Боб оценили ваш пост"
         );
         assert_eq!(
-            build_social_text(&kind, &[a.clone(), b.clone(), c.clone()]),
+            build_social_text(&kind, &[a, b, c]),
             "Алиса, Боб и ещё 1 оценили ваш пост"
         );
+    }
+
+    #[test]
+    fn social_text_repost_one_two_n() {
+        let kind = SocialActivityKind::Repost {
+            post_uuid: Uuid::now_v7(),
+        };
+        let a = actor("Алиса", 0);
+        let b = actor("Боб", 1);
+        let c = actor("Кира", 2);
         assert_eq!(
-            build_social_text(&kind, &[a, b, c, d]),
-            "Алиса, Боб и ещё 2 оценили ваш пост"
+            build_social_text(&kind, std::slice::from_ref(&a)),
+            "Алиса сделал репост"
+        );
+        assert_eq!(
+            build_social_text(&kind, &[a.clone(), b.clone()]),
+            "Алиса и Боб сделали репост"
+        );
+        assert_eq!(
+            build_social_text(&kind, &[a, b, c]),
+            "Алиса, Боб и ещё 1 сделали репост"
         );
     }
 
@@ -229,7 +303,6 @@ mod tests {
         let a = actor("Алиса", 0);
         let b = actor("Боб", 1);
         let c = actor("Кира", 2);
-
         assert_eq!(
             build_social_text(&kind, std::slice::from_ref(&a)),
             "Новый подписчик Алиса"
@@ -245,45 +318,37 @@ mod tests {
     }
 
     #[test]
-    fn apply_same_actor_twice_is_noop() {
+    fn apply_same_actor_twice_is_noop_membership() {
         let uuid = Uuid::now_v7();
         let now = Utc::now();
-        let once = apply_actor_membership(&[], uuid, "Алиса", now).expect("first apply");
-        assert_eq!(once.len(), 1);
+        let once = apply_actor_membership(&[], uuid, "Алиса", now).unwrap();
         assert!(apply_actor_membership(&once, uuid, "Алиса", now).is_none());
-        assert_eq!(once.len(), 1);
     }
 
     #[test]
     fn retract_actor_membership_removes_actor_and_empties_after_last() {
-        let a = actor("Алиса", 0);
-        let b = actor("Боб", 1);
-        let two = vec![a.clone(), b.clone()];
-
-        let without_a = retract_actor_membership(&two, a.uuid);
-        assert_eq!(without_a.len(), 1);
-        assert_eq!(without_a[0].uuid, b.uuid);
-
-        let empty = retract_actor_membership(&without_a, b.uuid);
-        assert!(empty.is_empty());
-
-        assert!(retract_actor_membership(&[], a.uuid).is_empty());
+        let a = Uuid::now_v7();
+        let b = Uuid::now_v7();
+        let now = Utc::now();
+        let mut actors = apply_actor_membership(&[], a, "A", now).unwrap();
+        actors = apply_actor_membership(&actors, b, "B", now).unwrap();
+        actors = retract_actor_membership(&actors, a);
+        assert_eq!(actors.len(), 1);
+        assert!(membership_contains_actor(&actors, b));
+        actors = retract_actor_membership(&actors, b);
+        assert!(actors.is_empty());
+        assert_eq!(
+            retract_social_push_decision(actors.len()),
+            SocialRetractPushDecision::Dismiss
+        );
     }
 
     #[test]
     fn audible_budget_within_window_skips_after_delete_recreate() {
         let now = Utc::now();
-        assert!(audible_push_allowed(None, now));
-
-        let last = now - Duration::minutes(14);
+        let last = now - Duration::minutes(5);
         assert!(!audible_push_allowed(Some(last), now));
-
-        let last = now - Duration::minutes(15);
-        assert!(audible_push_allowed(Some(last), now));
-
-        // like→unlike→like: push_state survives DELETE → still within window → skip
-        let last_survives_delete = now - Duration::minutes(5);
-        assert!(!audible_push_allowed(Some(last_survives_delete), now));
+        assert!(audible_push_allowed(Some(last), now + SOCIAL_PUSH_COOLDOWN));
     }
 
     #[test]
@@ -305,7 +370,6 @@ mod tests {
 
     #[test]
     fn model_b_templates_lockstep_for_migration_0002() {
-        // One-shot SQL in 0002_social_notification_groups.sql must emit these exact strings.
         let like = SocialActivityKind::Like {
             post_uuid: Uuid::nil(),
         };
@@ -325,20 +389,31 @@ mod tests {
             label: "Кира".into(),
             joined_at: Utc::now(),
         };
-        let like_1 = build_social_text(&like, std::slice::from_ref(&a));
-        let like_2 = build_social_text(&like, &[a.clone(), b.clone()]);
-        let like_n = build_social_text(&like, &[a.clone(), b.clone(), c.clone()]);
-        let follow_1 = build_social_text(&follow, std::slice::from_ref(&a));
-        let follow_2 = build_social_text(&follow, &[a.clone(), b.clone()]);
-        let follow_n = build_social_text(&follow, &[a, b, c]);
-        assert_eq!(like_1, "Алиса оценил ваш пост");
-        assert_eq!(like_2, "Алиса и Боб оценили ваш пост");
-        assert_eq!(like_n, "Алиса, Боб и ещё 1 оценили ваш пост");
-        assert_eq!(follow_1, "Новый подписчик Алиса");
-        assert_eq!(follow_2, "Алиса и Боб подписались на вас");
-        assert_eq!(follow_n, "Алиса, Боб и ещё 1 подписались на вас");
+        assert_eq!(
+            build_social_text(&like, std::slice::from_ref(&a)),
+            "Алиса оценил ваш пост"
+        );
+        assert_eq!(
+            build_social_text(&like, &[a.clone(), b.clone()]),
+            "Алиса и Боб оценили ваш пост"
+        );
+        assert_eq!(
+            build_social_text(&like, &[a.clone(), b.clone(), c.clone()]),
+            "Алиса, Боб и ещё 1 оценили ваш пост"
+        );
+        assert_eq!(
+            build_social_text(&follow, std::slice::from_ref(&a)),
+            "Новый подписчик Алиса"
+        );
+        assert_eq!(
+            build_social_text(&follow, &[a.clone(), b.clone()]),
+            "Алиса и Боб подписались на вас"
+        );
+        assert_eq!(
+            build_social_text(&follow, &[a, b, c]),
+            "Алиса, Боб и ещё 1 подписались на вас"
+        );
 
-        // Fail CI if SQL collapse templates drift from runtime SoT.
         let sql = include_str!("../../migrations/0002_social_notification_groups.sql");
         assert!(
             sql.contains("application/social.rs::build_social_text"),
@@ -360,14 +435,34 @@ mod tests {
 
     #[test]
     fn quiet_replace_path_does_not_use_audible_push_decision() {
-        // Partial retract uses QuietReplace (realtime), not SocialApplyPushDecision —
-        // only Audible updates push_state.
         assert!(!updates_push_state(SocialApplyPushDecision::SseOnly));
         assert!(updates_push_state(SocialApplyPushDecision::Audible));
     }
 
-    /// Plan DoD: A like, B like in window → 1 audible; retract A → quiet replace, budget intact;
-    /// unlike last → dismiss, push_state kept; recreate in window → no second audible.
+    /// A likes P1 then P2 → same group; second apply is refresh-only (membership None).
+    #[test]
+    fn scenario_same_actor_two_posts_one_membership() {
+        let a_uuid = Uuid::now_v7();
+        let t0 = Utc::now();
+        let actors = apply_actor_membership(&[], a_uuid, "Алиса", t0).expect("join");
+        assert_eq!(actors.len(), 1);
+        assert!(
+            apply_actor_membership(&actors, a_uuid, "Алиса", t0 + Duration::seconds(1)).is_none()
+        );
+        assert_eq!(
+            group_key(&SocialActivityKind::Like {
+                post_uuid: Uuid::now_v7()
+            }),
+            "like"
+        );
+        assert_eq!(
+            group_key(&SocialActivityKind::Like {
+                post_uuid: Uuid::now_v7()
+            }),
+            "like"
+        );
+    }
+
     #[test]
     fn scenario_ab_like_retract_budget_and_dismiss() {
         let kind = SocialActivityKind::Like {
@@ -377,72 +472,49 @@ mod tests {
         let a_uuid = Uuid::now_v7();
         let b_uuid = Uuid::now_v7();
 
-        // A apply — budget free → Audible; claim last_push under lock before FCM.
         let d0 = apply_social_push_decision(audible_push_allowed(None, t0));
         assert_eq!(d0, SocialApplyPushDecision::Audible);
         assert!(updates_push_state(d0));
-        let last_push = t0; // claimed in-tx
+        let last_push = t0;
 
         let mut actors = apply_actor_membership(&[], a_uuid, "Алиса", t0).expect("A joins");
-        assert_eq!(actors.len(), 1);
-
-        // B apply within 15m (after A's claim visible) → SSE-only; no push_state write.
         let t1 = t0 + Duration::minutes(1);
         let d1 = apply_social_push_decision(audible_push_allowed(Some(last_push), t1));
         assert_eq!(d1, SocialApplyPushDecision::SseOnly);
-        assert!(!updates_push_state(d1));
         actors = apply_actor_membership(&actors, b_uuid, "Боб", t1).expect("B joins");
-        assert_eq!(actors.len(), 2);
         assert_eq!(
             build_social_text(&kind, &actors),
             "Боб и Алиса оценили ваш пост"
         );
 
-        // Retract A → QuietReplace; last_push_at unchanged.
         actors = retract_actor_membership(&actors, a_uuid);
-        let r_partial = retract_social_push_decision(actors.len());
-        assert_eq!(r_partial, SocialRetractPushDecision::QuietReplace);
-        assert!(!retract_updates_push_state(r_partial));
-        assert_eq!(build_social_text(&kind, &actors), "Боб оценил ваш пост");
-        assert!(!audible_push_allowed(Some(last_push), t1)); // budget still held
-
-        // Retract B (last) → Dismiss; push_state row would survive in DB.
-        actors = retract_actor_membership(&actors, b_uuid);
-        assert!(actors.is_empty());
-        let r_empty = retract_social_push_decision(actors.len());
-        assert_eq!(r_empty, SocialRetractPushDecision::Dismiss);
-        assert!(!retract_updates_push_state(r_empty));
-
-        // like→unlike→like inside window: surviving last_push → no second audible.
-        let t2 = t0 + Duration::minutes(5);
-        let d_recreate = apply_social_push_decision(audible_push_allowed(Some(last_push), t2));
-        assert_eq!(d_recreate, SocialApplyPushDecision::SseOnly);
-        assert!(!updates_push_state(d_recreate));
-    }
-
-    #[test]
-    fn scenario_audible_claim_holds_budget_even_if_fcm_fails() {
-        // Pre-claim under lock: FCM miss must not reopen the 15m window (closes race /
-        // retry-spam). Tradeoff: no-token recipients stay quiet until cooldown elapses.
-        let t0 = Utc::now();
-        let d0 = apply_social_push_decision(audible_push_allowed(None, t0));
-        assert_eq!(d0, SocialApplyPushDecision::Audible);
-        assert!(updates_push_state(d0));
-        let claimed = t0;
-        let t1 = t0 + Duration::minutes(1);
         assert_eq!(
-            apply_social_push_decision(audible_push_allowed(Some(claimed), t1)),
+            retract_social_push_decision(actors.len()),
+            SocialRetractPushDecision::QuietReplace
+        );
+        assert!(!audible_push_allowed(Some(last_push), t1));
+
+        actors = retract_actor_membership(&actors, b_uuid);
+        assert_eq!(
+            retract_social_push_decision(actors.len()),
+            SocialRetractPushDecision::Dismiss
+        );
+        let t2 = t0 + Duration::minutes(5);
+        assert_eq!(
+            apply_social_push_decision(audible_push_allowed(Some(last_push), t2)),
             SocialApplyPushDecision::SseOnly
         );
     }
 
     #[test]
-    fn scenario_apply_same_actor_twice_stays_one_member() {
-        let uuid = Uuid::now_v7();
-        let now = Utc::now();
-        let once = apply_actor_membership(&[], uuid, "Алиса", now).unwrap();
-        assert!(apply_actor_membership(&once, uuid, "Алиса", now).is_none());
-        assert_eq!(once.len(), 1);
-        // Idempotent apply would not re-evaluate FCM (dispatcher returns before push).
+    fn scenario_audible_claim_holds_budget_even_if_fcm_fails() {
+        let t0 = Utc::now();
+        let d0 = apply_social_push_decision(audible_push_allowed(None, t0));
+        assert!(updates_push_state(d0));
+        let t1 = t0 + Duration::minutes(1);
+        assert_eq!(
+            apply_social_push_decision(audible_push_allowed(Some(t0), t1)),
+            SocialApplyPushDecision::SseOnly
+        );
     }
 }

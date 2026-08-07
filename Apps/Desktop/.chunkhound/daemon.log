@@ -1,0 +1,264 @@
+[2026-08-06T22:37:35.111879] [startup] startup: startup tracking began mode=daemon
+[2026-08-06T22:37:35.111879] [startup] startup: phase started: cli_config_validation
+[2026-08-06T22:37:35.235356] [startup] startup: phase completed: cli_config_validation duration=0.125s
+[2026-08-06T22:37:35.236416] [startup] startup: phase started: daemon_command
+[2026-08-06T22:37:35.236416] [startup] startup: phase started: daemon_numpy_import
+[2026-08-06T22:37:35.268110] [startup] startup: phase completed: daemon_numpy_import duration=0.032s
+[2026-08-06T22:37:35.268110] [startup] startup: phase started: daemon_server_import
+[2026-08-06T22:37:39.489324] [startup] startup: phase completed: daemon_server_import duration=4.218s
+[2026-08-06T22:37:39.489324] [startup] startup: phase started: daemon_construct
+[2026-08-06T22:37:39.490323] [startup] startup: phase completed: daemon_construct duration=0.000s
+[2026-08-06T22:37:39.490323] [startup] startup: phase completed: daemon_command
+[2026-08-06T22:37:39.490323] [startup] startup: phase started: daemon_run
+[2026-08-06T22:37:39.490323] [startup] startup: startup tracking began mode=daemon
+[2026-08-06T22:37:39.490323] [startup] startup: phase started: initialize
+22:37:42 | WARNING  | [REGISTRY] No provider registered for embedding, available: ['database']
+22:37:42 | WARNING  | [REGISTRY] No embedding provider configured for IndexingCoordinator: No provider registered for embedding
+22:37:42 | WARNING  | [REGISTRY] No provider registered for embedding, available: ['database']
+22:37:42 | WARNING  | No embedding provider configured for search service
+22:37:42 | WARNING  | [REGISTRY] No provider registered for embedding, available: ['database']
+22:37:42 | WARNING  | No embedding provider configured for embedding service
+22:37:42 | WARNING  | [REGISTRY] No provider registered for embedding, available: ['database']
+22:37:42 | WARNING  | [REGISTRY] No embedding provider configured for IndexingCoordinator: No provider registered for embedding
+22:37:42 | WARNING  | [REGISTRY] No provider registered for embedding, available: ['database']
+22:37:42 | WARNING  | No embedding provider configured for search service
+22:37:42 | WARNING  | [REGISTRY] No provider registered for embedding, available: ['database']
+22:37:42 | WARNING  | No embedding provider configured for embedding service
+[2026-08-06T22:37:42.843069] [startup] startup: phase completed: initialize duration=3.36s
+[2026-08-06T22:37:42.843069] [startup] startup: phase started: daemon_publish
+[2026-08-06T22:37:42.845074] [startup] startup: phase started: db_connect
+[2026-08-06T22:37:42.845074] [startup] startup: phase completed: db_connect duration=0.0s
+[2026-08-06T22:37:42.845074] [startup] startup: phase started: realtime_start
+[2026-08-06T22:37:42.850074] [startup] startup: daemon exposure became ready
+22:37:42 | WARNING  | DuckDB indexed-root sidecar was missing for %s; treated as legacy DB migration and claimed current root %s. Future opens under a different root will fail.
+[2026-08-06T22:37:42.851594] [startup] startup: phase completed: daemon_publish duration=0.015s
+[2026-08-06T22:37:42.851594] [startup] startup: phase started: startup_barrier
+[2026-08-06T22:37:42.852601] [startup] startup: phase started: watchman_sidecar_start
+[2026-08-06T22:37:45.812660] [startup] startup: phase completed: watchman_sidecar_start duration=2.954s
+[2026-08-06T22:37:45.834684] [startup] startup: phase started: watchman_watch_project
+[2026-08-06T22:37:50.903817] [startup] startup: phase failed: watchman_watch_project duration=5.078s error=
+[2026-08-06T22:37:50.931703] [startup] startup: phase failed: realtime_start duration=8.094s error=Watchman session startup failed: 
+[2026-08-06T22:37:50.932760] [startup] startup: startup failed duration=11.454s error=Realtime startup task failed: Watchman session startup failed: 
+[2026-08-06T22:37:50.933262] [startup] startup: phase failed: startup_barrier duration=8.079s error=Realtime startup task failed: Watchman session startup failed: 
+[2026-08-06T22:37:50.933262] [startup] startup: startup failed duration=11.454s error=Realtime startup task failed: Watchman session startup failed: 
+Traceback (most recent call last):
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 568, in readline
+    line = await self.readuntil(sep)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 660, in readuntil
+    await self._wait_for_data('readuntil')
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 545, in _wait_for_data
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\adapters\watchman.py", line 615, in _establish_monitoring
+    await primary_session.startup_watch_project_once(watch_path)
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\watchman\session.py", line 344, in startup_watch_project_once
+    return await self._run_one_shot_command(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\watchman\session.py", line 734, in _run_one_shot_command
+    raw_line = await asyncio.wait_for(
+               ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\adapters\watchman.py", line 143, in start
+    await self._establish_monitoring(watch_path, loop, phase="startup")
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\adapters\watchman.py", line 754, in _establish_monitoring
+    raise RuntimeError(f"Watchman session {phase} failed: {error}") from error
+RuntimeError: Watchman session startup failed: 
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\mcp_server\base.py", line 602, in await_startup_barrier
+    await asyncio.shield(self._realtime_start_task)
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\startup.py", line 544, in start
+    await self._monitor_adapter.start(effective_watch_path, loop)
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\adapters\watchman.py", line 147, in start
+    raise RuntimeError(message) from error
+RuntimeError: Watchman session startup failed: 
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\daemon\server.py", line 180, in run
+    await self.await_startup_barrier()
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\mcp_server\base.py", line 614, in await_startup_barrier
+    raise RuntimeError(message)
+RuntimeError: Realtime startup task failed: Watchman session startup failed: 
+22:37:51 | ERROR    | Command failed: Realtime startup task failed: Watchman session startup failed: 
+22:37:51 | ERROR    | Full error details:
+Traceback (most recent call last):
+
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\tasks.py", line 520, in wait_for
+    return await fut
+                 -> <coroutine object StreamReader.readline at 0x0000020D57C9EC50>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 568, in readline
+    line = await self.readuntil(sep)
+                 |    |         -> b'\n'
+                 |    -> <function StreamReader.readuntil at 0x0000020D24EF40E0>
+                 -> <StreamReader eof transport=<_ProactorReadPipeTransport closed>>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 660, in readuntil
+    await self._wait_for_data('readuntil')
+          |    -> <function StreamReader._wait_for_data at 0x0000020D24EDBF60>
+          -> <StreamReader eof transport=<_ProactorReadPipeTransport closed>>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 545, in _wait_for_data
+    await self._waiter
+          |    -> None
+          -> <StreamReader eof transport=<_ProactorReadPipeTransport closed>>
+
+asyncio.exceptions.CancelledError
+
+
+The above exception was the direct cause of the following exception:
+
+
+Traceback (most recent call last):
+
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\adapters\watchman.py", line 615, in _establish_monitoring
+    await primary_session.startup_watch_project_once(watch_path)
+          |               |                          -> WindowsPath('C:/Users/Egor/Desktop/Flora.Ecosystem/Apps/Desktop')
+          |               -> <function WatchmanCliSession.startup_watch_project_once at 0x0000020D55561080>
+          -> <chunkhound.watchman.session.WatchmanCliSession object at 0x0000020D57CDD190>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\watchman\session.py", line 344, in startup_watch_project_once
+    return await self._run_one_shot_command(
+                 |    -> <function WatchmanCliSession._run_one_shot_command at 0x0000020D555618A0>
+                 -> <chunkhound.watchman.session.WatchmanCliSession object at 0x0000020D57CDD190>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\watchman\session.py", line 734, in _run_one_shot_command
+    raw_line = await asyncio.wait_for(
+                     |       -> <function wait_for at 0x0000020D24ED3060>
+                     -> <module 'asyncio' from 'C:\\Users\\Egor\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\__init__.py'>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               |        |       -> 5.0
+               |        -> <function timeout at 0x0000020D24A07C40>
+               -> <module 'asyncio.timeouts' from 'C:\\Users\\Egor\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\timeouts.py'>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+                            -> CancelledError()
+
+TimeoutError
+
+
+The above exception was the direct cause of the following exception:
+
+
+Traceback (most recent call last):
+
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\adapters\watchman.py", line 143, in start
+    await self._establish_monitoring(watch_path, loop, phase="startup")
+          |    |                     |           -> <ProactorEventLoop running=True closed=False debug=False>
+          |    |                     -> WindowsPath('C:/Users/Egor/Desktop/Flora.Ecosystem/Apps/Desktop')
+          |    -> <function WatchmanRealtimeAdapter._establish_monitoring at 0x0000020D556100E0>
+          -> <chunkhound.services.realtime.adapters.watchman.WatchmanRealtimeAdapter object at 0x0000020D55E100E0>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\adapters\watchman.py", line 754, in _establish_monitoring
+    raise RuntimeError(f"Watchman session {phase} failed: {error}") from error
+                                           -> 'startup'
+
+RuntimeError: Watchman session startup failed: 
+
+
+The above exception was the direct cause of the following exception:
+
+
+Traceback (most recent call last):
+
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\mcp_server\base.py", line 602, in await_startup_barrier
+    await asyncio.shield(self._realtime_start_task)
+          |       |      |    -> <Task finished name='Task-4' coro=<RealtimeStartupMixin.start() done, defined at C:\Users\Egor\AppData\Local\Programs\Python\...
+          |       |      -> <chunkhound.daemon.server.ChunkHoundDaemon object at 0x0000020D4D7844D0>
+          |       -> <function shield at 0x0000020D24ED36A0>
+          -> <module 'asyncio' from 'C:\\Users\\Egor\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\__init__.py'>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\startup.py", line 544, in start
+    await self._monitor_adapter.start(effective_watch_path, loop)
+          |    |                      |                     -> <ProactorEventLoop running=True closed=False debug=False>
+          |    |                      -> WindowsPath('C:/Users/Egor/Desktop/Flora.Ecosystem/Apps/Desktop')
+          |    -> None
+          -> <chunkhound.services.realtime.service.RealtimeIndexingService object at 0x0000020D55D56750>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\services\realtime\adapters\watchman.py", line 147, in start
+    raise RuntimeError(message) from error
+                       -> 'Watchman session startup failed: '
+
+RuntimeError: Watchman session startup failed: 
+
+
+During handling of the above exception, another exception occurred:
+
+
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\api\cli\main.py", line 306, in <module>
+    main()
+    -> <function main at 0x0000020D26228EA0>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\api\cli\main.py", line 265, in main
+    asyncio.run(async_main())
+    |       |   -> <function async_main at 0x0000020D26228E00>
+    |       -> <function run at 0x0000020D229A0680>
+    -> <module 'asyncio' from 'C:\\Users\\Egor\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\__init__.py'>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           |      |   -> <coroutine object async_main at 0x0000020D24F84B30>
+           |      -> <function Runner.run at 0x0000020D24ED8E00>
+           -> <asyncio.runners.Runner object at 0x0000020D22A2BD40>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           |    |     |                  -> <Task pending name='Task-1' coro=<async_main() running at C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-pack...
+           |    |     -> <function BaseEventLoop.run_until_complete at 0x0000020D24ED6A20>
+           |    -> <ProactorEventLoop running=True closed=False debug=False>
+           -> <asyncio.runners.Runner object at 0x0000020D22A2BD40>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    |    -> <function ProactorEventLoop.run_forever at 0x0000020D24F8A5C0>
+    -> <ProactorEventLoop running=True closed=False debug=False>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\windows_events.py", line 322, in run_forever
+    super().run_forever()
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 645, in run_forever
+    self._run_once()
+    |    -> <function BaseEventLoop._run_once at 0x0000020D24ED87C0>
+    -> <ProactorEventLoop running=True closed=False debug=False>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1999, in _run_once
+    handle._run()
+    |      -> <function Handle._run at 0x0000020D249C2980>
+    -> <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    |    |            |    |           |    -> <member '_args' of 'Handle' objects>
+    |    |            |    |           -> <Handle Task.task_wakeup(<Future finished result=None>)>
+    |    |            |    -> <member '_callback' of 'Handle' objects>
+    |    |            -> <Handle Task.task_wakeup(<Future finished result=None>)>
+    |    -> <member '_context' of 'Handle' objects>
+    -> <Handle Task.task_wakeup(<Future finished result=None>)>
+> File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\api\cli\main.py", line 241, in async_main
+    await daemon_command(args, config)
+          |              |     -> Config(database=DatabaseConfig(provider=duckdb, path=C:\Users\Egor\Desktop\Flora.Ecosystem\Apps\Desktop\.chunkhound\db, fragm...
+          |              -> Namespace(command='_daemon', project_dir='C:\\Users\\Egor\\Desktop\\Flora.Ecosystem\\Apps\\Desktop', socket_path='tcp:127.0.0...
+          -> <function daemon_command at 0x0000020D2761E840>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\api\cli\commands\daemon.py", line 87, in daemon_command
+    await daemon.run()
+          |      -> <function ChunkHoundDaemon.run at 0x0000020D55676E80>
+          -> <chunkhound.daemon.server.ChunkHoundDaemon object at 0x0000020D4D7844D0>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\daemon\server.py", line 180, in run
+    await self.await_startup_barrier()
+          |    -> <function MCPServerBase.await_startup_barrier at 0x0000020D5564C860>
+          -> <chunkhound.daemon.server.ChunkHoundDaemon object at 0x0000020D4D7844D0>
+  File "C:\Users\Egor\AppData\Local\Programs\Python\Python312\Lib\site-packages\chunkhound\mcp_server\base.py", line 614, in await_startup_barrier
+    raise RuntimeError(message)
+                       -> 'Realtime startup task failed: Watchman session startup failed: '
+
+RuntimeError: Realtime startup task failed: Watchman session startup failed: 

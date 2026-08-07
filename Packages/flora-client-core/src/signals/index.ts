@@ -20,7 +20,10 @@ export {
 
 export {
   SOCIAL_FOLLOW_PUSH_TAG,
+  SOCIAL_LIKE_PUSH_TAG,
   SOCIAL_LIKE_PUSH_TAG_PREFIX,
+  SOCIAL_REPOST_PUSH_TAG,
+  SOCIAL_REPOST_PUSH_TAG_PREFIX,
   isSocialNotificationInboxType,
   isSocialNotificationPushTag,
   isSocialTrayPushData,

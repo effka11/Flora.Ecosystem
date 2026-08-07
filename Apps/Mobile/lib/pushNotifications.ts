@@ -90,7 +90,7 @@ export async function dismissSocialPushNotifications(tagOrNotificationUuid: stri
   }
 }
 
-/** Убрать presented social like/follow pushes (открыли вкладку уведомлений). */
+/** Убрать presented social like/follow/repost pushes (открыли вкладку уведомлений). */
 export async function dismissPresentedSocialPushNotifications(): Promise<void> {
   if (!isNativePushEnabled()) return;
   const presented = await Notifications.getPresentedNotificationsAsync();

@@ -160,6 +160,7 @@ impl PostService {
                 .await
                 .map_err(|e| e.to_string())?;
             self.feed.invalidate(user_uuid);
+            self.try_notify_repost(user_uuid, post_uuid).await;
         }
         let count = self
             .repo
@@ -187,6 +188,7 @@ impl PostService {
                 .await
                 .map_err(|e| e.to_string())?;
             self.feed.invalidate(user_uuid);
+            self.try_retract_repost(user_uuid, post_uuid).await;
         }
         let count = self
             .repo
@@ -264,13 +266,6 @@ impl PostService {
         }
     }
 
-    async fn notify_like(&self, actor_user_uuid: Uuid, post_uuid: Uuid) -> Result<(), String> {
-        let Some(command) = self.social_like_command(actor_user_uuid, post_uuid).await? else {
-            return Ok(());
-        };
-        self.notifications.apply_social(command).await
-    }
-
     /// Ошибки retract только в лог (как try_notify_like).
     async fn try_retract_like(&self, actor_user_uuid: Uuid, post_uuid: Uuid) {
         if let Err(e) = self.retract_like(actor_user_uuid, post_uuid).await {
@@ -283,17 +278,90 @@ impl PostService {
     }
 
     async fn retract_like(&self, actor_user_uuid: Uuid, post_uuid: Uuid) -> Result<(), String> {
-        let Some(command) = self.social_like_command(actor_user_uuid, post_uuid).await? else {
+        let Some(command) = self
+            .social_activity_command(
+                actor_user_uuid,
+                post_uuid,
+                SocialActivityKind::Like { post_uuid },
+            )
+            .await?
+        else {
             return Ok(());
         };
+        // Call after DELETE like: retract only when actor has no remaining likes on author.
+        let still = self
+            .repo
+            .actor_likes_any_post_by_author(actor_user_uuid, command.recipient_user_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
+        if !should_retract_social_after_remove(still) {
+            return Ok(());
+        }
         self.notifications.retract_social(command).await
     }
 
-    /// Resolve author + actor_label; `None` when post missing or self-like.
-    async fn social_like_command(
+    async fn try_notify_repost(&self, actor_user_uuid: Uuid, post_uuid: Uuid) {
+        if let Err(e) = self.notify_repost(actor_user_uuid, post_uuid).await {
+            tracing::warn!(
+                error = %e,
+                post = %post_uuid,
+                "Не удалось создать уведомление о репосте"
+            );
+        }
+    }
+
+    async fn notify_repost(&self, actor_user_uuid: Uuid, post_uuid: Uuid) -> Result<(), String> {
+        let Some(command) = self
+            .social_activity_command(
+                actor_user_uuid,
+                post_uuid,
+                SocialActivityKind::Repost { post_uuid },
+            )
+            .await?
+        else {
+            return Ok(());
+        };
+        self.notifications.apply_social(command).await
+    }
+
+    async fn try_retract_repost(&self, actor_user_uuid: Uuid, post_uuid: Uuid) {
+        if let Err(e) = self.retract_repost(actor_user_uuid, post_uuid).await {
+            tracing::warn!(
+                error = %e,
+                post = %post_uuid,
+                "Не удалось отозвать уведомление о репосте"
+            );
+        }
+    }
+
+    async fn retract_repost(&self, actor_user_uuid: Uuid, post_uuid: Uuid) -> Result<(), String> {
+        let Some(command) = self
+            .social_activity_command(
+                actor_user_uuid,
+                post_uuid,
+                SocialActivityKind::Repost { post_uuid },
+            )
+            .await?
+        else {
+            return Ok(());
+        };
+        let still = self
+            .repo
+            .actor_reposts_any_post_by_author(actor_user_uuid, command.recipient_user_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
+        if !should_retract_social_after_remove(still) {
+            return Ok(());
+        }
+        self.notifications.retract_social(command).await
+    }
+
+    /// Resolve author + actor_label; `None` when post missing or self-action.
+    async fn social_activity_command(
         &self,
         actor_user_uuid: Uuid,
         post_uuid: Uuid,
+        kind: SocialActivityKind,
     ) -> Result<Option<SocialActivityCommand>, String> {
         let Some(author) = self
             .repo
@@ -312,9 +380,28 @@ impl PostService {
             recipient_user_uuid: author,
             actor_user_uuid,
             actor_label: label,
-            kind: SocialActivityKind::Like { post_uuid },
+            kind,
         }))
     }
+
+    async fn notify_like(&self, actor_user_uuid: Uuid, post_uuid: Uuid) -> Result<(), String> {
+        let Some(command) = self
+            .social_activity_command(
+                actor_user_uuid,
+                post_uuid,
+                SocialActivityKind::Like { post_uuid },
+            )
+            .await?
+        else {
+            return Ok(());
+        };
+        self.notifications.apply_social(command).await
+    }
+}
+
+/// After removing one like/repost: call Notifications retract only when none remain.
+pub(crate) fn should_retract_social_after_remove(still_has_activity_on_author: bool) -> bool {
+    !still_has_activity_on_author
 }
 
 /// Паритет `ResolveActorPresentationAsync` (label, username).
@@ -358,4 +445,25 @@ pub enum PostActionError {
 pub enum DeletePostError {
     NotFound,
     Forbidden,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_retract_social_after_remove;
+
+    #[test]
+    fn unlike_not_last_does_not_retract() {
+        assert!(!should_retract_social_after_remove(true));
+    }
+
+    #[test]
+    fn unrepost_not_last_does_not_retract() {
+        // Same gate for repost remaining activity.
+        assert!(!should_retract_social_after_remove(true));
+    }
+
+    #[test]
+    fn last_like_or_repost_retracts() {
+        assert!(should_retract_social_after_remove(false));
+    }
 }

@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#
 .SYNOPSIS
-  Apply (optional) + assert social notification groups migration (0002).
+  Apply (optional) + assert social notification groups migrations (0002 + 0003).
 
 .DESCRIPTION
   Does not read Local/ secrets. Pass connection yourself.

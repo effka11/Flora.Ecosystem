@@ -17,11 +17,11 @@ use crate::application::realtime_publisher::SocialNotificationPush;
 use crate::application::social::{
     SocialApplyPushDecision, SocialRetractPushDecision, actors_to_json, apply_actor_membership,
     apply_social_push_decision, audible_push_allowed, build_social_text, group_key,
-    notification_type, parse_actors_json, post_uuid, retract_actor_membership,
-    retract_social_push_decision, retract_updates_push_state,
-    updates_push_state,
+    membership_contains_actor, notification_type, parse_actors_json, post_uuid,
+    retract_actor_membership, retract_lookup_group_keys, retract_social_push_decision,
+    retract_updates_push_state, updates_push_state,
 };
-use crate::infrastructure::InboxRepo;
+use crate::infrastructure::{InboxRepo, SocialGroupRow};
 
 pub struct InboxNotificationDispatcher {
     repo: Arc<InboxRepo>,
@@ -54,10 +54,10 @@ impl InboxNotificationDispatcher {
         };
 
         let notification_type = normalize_type(&command.notification_type);
-        // like/follow aggregation owns group_key / actors_json — never unkeyed INSERT via dispatch.
+        // like/follow/repost aggregation owns group_key / actors_json — never unkeyed INSERT.
         if requires_social_aggregation(&notification_type) {
             return Err(
-                "like/follow must use UserNotificationDispatcher::apply_social / retract_social"
+                "like/follow/repost must use UserNotificationDispatcher::apply_social / retract_social"
                     .into(),
             );
         }
@@ -130,7 +130,18 @@ impl InboxNotificationDispatcher {
             &command.actor_label,
             now,
         ) else {
-            // Idempotent: actor already in membership — full no-op.
+            // Already a member: refresh deep-link post only — no SSE / FCM / budget.
+            if let Some(row) = existing {
+                self.repo
+                    .refresh_group_post_uuid(
+                        &mut tx,
+                        row.notification_uuid,
+                        command.actor_user_uuid,
+                        post_uuid,
+                    )
+                    .await?;
+                tx.commit().await.map_err(|e| e.to_string())?;
+            }
             return Ok(());
         };
 
@@ -174,8 +185,7 @@ impl InboxNotificationDispatcher {
             )
             .await?;
 
-        // Cool check + claim under group lock so concurrent apply cannot double-spend
-        // the 15m audible budget (DoD: A+B in window → 1 audible).
+        // Cool check + claim under group lock (DoD: A+B in window → 1 audible).
         let previous_push_at = self
             .repo
             .get_push_state(&mut tx, command.recipient_user_uuid, &group_key)
@@ -216,42 +226,86 @@ impl InboxNotificationDispatcher {
         Ok(())
     }
 
+    /// Resolve live social row: canon group_key → legacy per-post → unkeyed (type, post).
+    /// Follow has no legacy/unkeyed post path.
+    async fn find_social_row_for_retract(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        command: &SocialActivityCommand,
+    ) -> Result<Option<SocialGroupRow>, String> {
+        for key in retract_lookup_group_keys(&command.kind) {
+            if let Some(row) = self
+                .repo
+                .find_by_group_for_update(tx, command.recipient_user_uuid, &key)
+                .await?
+            {
+                let actors = parse_actors_json(&row.actors_json)?;
+                if membership_contains_actor(&actors, command.actor_user_uuid)
+                    || row.actor_user_uuid == Some(command.actor_user_uuid)
+                {
+                    return Ok(Some(row));
+                }
+            }
+        }
+        if let Some(post) = post_uuid(&command.kind)
+            && let Some(row) = self
+                .repo
+                .find_unkeyed_social_for_update(
+                    tx,
+                    command.recipient_user_uuid,
+                    notification_type(&command.kind),
+                    post,
+                )
+                .await?
+        {
+            let actors = parse_actors_json(&row.actors_json)?;
+            if membership_contains_actor(&actors, command.actor_user_uuid)
+                || row.actor_user_uuid == Some(command.actor_user_uuid)
+                || actors.is_empty()
+            {
+                return Ok(Some(row));
+            }
+        }
+        Ok(None)
+    }
+
     async fn retract_social_inner(&self, command: SocialActivityCommand) -> Result<(), String> {
         if command.recipient_user_uuid.is_nil() || command.actor_user_uuid.is_nil() {
             return Ok(());
         }
 
-        let group_key = group_key(&command.kind);
+        let canon_key = group_key(&command.kind);
         let mut tx = self.repo.begin().await?;
-        let Some(existing) = self
-            .repo
-            .find_by_group_for_update(&mut tx, command.recipient_user_uuid, &group_key)
-            .await?
-        else {
+        let Some(existing) = self.find_social_row_for_retract(&mut tx, &command).await? else {
             return Ok(());
         };
 
         let current_actors = parse_actors_json(&existing.actors_json)?;
-        if !current_actors
-            .iter()
-            .any(|a| a.uuid == command.actor_user_uuid)
+        let actors = if membership_contains_actor(&current_actors, command.actor_user_uuid) {
+            retract_actor_membership(&current_actors, command.actor_user_uuid)
+        } else if existing.actor_user_uuid == Some(command.actor_user_uuid)
+            || current_actors.is_empty()
         {
+            // Legacy single-actor row without actors_json membership.
+            Vec::new()
+        } else {
             return Ok(());
-        }
+        };
 
-        let actors = retract_actor_membership(&current_actors, command.actor_user_uuid);
         let retract_decision = retract_social_push_decision(actors.len());
         debug_assert!(!retract_updates_push_state(retract_decision));
+
+        // FCM/SSE tag is always the canonical key (not empty legacy).
+        let tag = canon_key.clone();
 
         if matches!(retract_decision, SocialRetractPushDecision::Dismiss) {
             let notification_uuid = existing.notification_uuid;
             self.repo.delete_by_uuid(&mut tx, notification_uuid).await?;
-            // push_state intentionally kept so like→unlike→like within 15m stays quiet.
             tx.commit().await.map_err(|e| e.to_string())?;
 
             let removed = RealtimeNotificationRemovedSignal {
                 notification_uuid,
-                group_key: Some(group_key),
+                group_key: Some(tag),
             };
             self.realtime
                 .publish_notification_removed(command.recipient_user_uuid, &removed)
@@ -279,7 +333,6 @@ impl InboxNotificationDispatcher {
                 &actors_json,
             )
             .await?;
-        // Do not update push_state on partial retract (QuietReplace).
         tx.commit().await.map_err(|e| e.to_string())?;
 
         let signal = RealtimeNotificationSignal {
@@ -299,7 +352,7 @@ impl InboxNotificationDispatcher {
             .publish_social_notification(
                 command.recipient_user_uuid,
                 &signal,
-                SocialNotificationPush::QuietReplace { tag: group_key },
+                SocialNotificationPush::QuietReplace { tag },
             )
             .await;
         Ok(())
@@ -320,5 +373,36 @@ impl UserNotificationDispatcher for InboxNotificationDispatcher {
 
     fn retract_social(&self, command: SocialActivityCommand) -> BoxFuture<'_, Result<(), String>> {
         Box::pin(async move { self.retract_social_inner(command).await })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use flora_notifications_contracts::SocialActivityKind;
+    use uuid::Uuid;
+
+    use crate::application::social::retract_lookup_group_keys;
+
+    #[test]
+    fn retract_lookup_order_canon_then_legacy_follow_untouched() {
+        let post = Uuid::parse_str("01900000-0000-7000-8000-000000000001").unwrap();
+        assert_eq!(
+            retract_lookup_group_keys(&SocialActivityKind::Like { post_uuid: post }),
+            vec![
+                "like".to_string(),
+                "like:01900000-0000-7000-8000-000000000001".to_string()
+            ]
+        );
+        assert_eq!(
+            retract_lookup_group_keys(&SocialActivityKind::Repost { post_uuid: post }),
+            vec![
+                "repost".to_string(),
+                "repost:01900000-0000-7000-8000-000000000001".to_string()
+            ]
+        );
+        assert_eq!(
+            retract_lookup_group_keys(&SocialActivityKind::Follow),
+            vec!["follow".to_string()]
+        );
     }
 }

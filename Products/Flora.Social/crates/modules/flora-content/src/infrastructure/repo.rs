@@ -1283,6 +1283,54 @@ impl ContentRepo {
         .await
     }
 
+    /// True if actor still likes any non-deleted post by `author_user_uuid`.
+    pub async fn actor_likes_any_post_by_author(
+        &self,
+        actor_user_uuid: Uuid,
+        author_user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM flora_core.post_likes l
+                INNER JOIN flora_core.user_posts p ON p.post_uuid = l.post_uuid
+                WHERE l.user_uuid = $1
+                  AND p.author_user_uuid = $2
+                  AND COALESCE(p.is_deleted, false) = false
+            )
+            "#,
+        )
+        .bind(actor_user_uuid)
+        .bind(author_user_uuid)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    /// True if actor still reposted any non-deleted post by `author_user_uuid`.
+    pub async fn actor_reposts_any_post_by_author(
+        &self,
+        actor_user_uuid: Uuid,
+        author_user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM flora_core.post_reposts r
+                INNER JOIN flora_core.user_posts p ON p.post_uuid = r.post_uuid
+                WHERE r.user_uuid = $1
+                  AND p.author_user_uuid = $2
+                  AND COALESCE(p.is_deleted, false) = false
+            )
+            "#,
+        )
+        .bind(actor_user_uuid)
+        .bind(author_user_uuid)
+        .fetch_one(&self.pool)
+        .await
+    }
+
     pub async fn has_reposted(
         &self,
         post_uuid: Uuid,

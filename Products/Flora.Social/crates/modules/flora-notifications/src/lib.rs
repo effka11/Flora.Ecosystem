@@ -6,10 +6,11 @@
 //!   After Messaging send: SSE `event: message` + FCM push (паритет UserRealtimePublisher).
 //!   Legacy inbox create (`dispatch`): Content/Users → INSERT + SSE `event: notification` + FCM
 //!   (reply / developer / app_update and other non-aggregated types).
-//!   Social like/follow (`apply_social` / `retract_social`): one inbox row per `group_key`,
-//!   Model B text, TikTok-style 15m audible budget (`social_notification_push_state` claimed
-//!   under the group lock before FCM), quiet-replace on partial retract, empty group → DELETE +
-//!   SSE `event: notification_removed` + data-only FCM `notification_dismiss`.
+//!   Social like/repost/follow (`apply_social` / `retract_social`): one inbox row per canonical
+//!   `group_key` (`like` / `repost` / `follow`), Model B text, TikTok-style 15m audible budget
+//!   (`social_notification_push_state` claimed under the group lock before FCM), quiet-replace on
+//!   partial retract, empty group → DELETE + SSE `event: notification_removed` + data-only FCM
+//!   `notification_dismiss`. Same actor on another post refreshes `post_uuid` only (no FCM).
 
 pub mod application;
 pub mod http;

@@ -114,7 +114,8 @@ impl InboxRepo {
                     actor_count = $4,
                     actors_json = $5,
                     created_at = $6,
-                    is_read = false
+                    is_read = false,
+                    post_uuid = $7
                 WHERE notification_uuid = $1
                 "#,
             )
@@ -124,6 +125,7 @@ impl InboxRepo {
             .bind(actor_count)
             .bind(actors_json)
             .bind(created_at)
+            .bind(post_uuid)
             .execute(&mut **tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -153,6 +155,64 @@ impl InboxRepo {
             .map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+
+    /// Already-member apply: refresh deep-link post + newest actor column; no text/SSE/FCM.
+    pub async fn refresh_group_post_uuid(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        notification_uuid: Uuid,
+        actor_user_uuid: Uuid,
+        post_uuid: Option<Uuid>,
+    ) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_notifications
+            SET actor_user_uuid = $2,
+                post_uuid = $3
+            WHERE notification_uuid = $1
+            "#,
+        )
+        .bind(notification_uuid)
+        .bind(actor_user_uuid)
+        .bind(post_uuid)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Unkeyed legacy like/repost row for retract fallback (type + post_uuid).
+    pub async fn find_unkeyed_social_for_update(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        recipient_user_uuid: Uuid,
+        notification_type: &str,
+        post_uuid: Uuid,
+    ) -> Result<Option<SocialGroupRow>, String> {
+        sqlx::query_as::<_, SocialGroupRow>(
+            r#"
+            SELECT notification_uuid, type, category, text, actor_user_uuid, post_uuid,
+                   created_at, is_read,
+                   COALESCE(group_key, '') AS group_key,
+                   COALESCE(actor_count, 1) AS actor_count,
+                   COALESCE(actors_json, '[]'::jsonb) AS actors_json
+            FROM flora_core.user_notifications
+            WHERE recipient_user_uuid = $1
+              AND type = $2
+              AND post_uuid = $3
+              AND group_key IS NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            FOR UPDATE
+            "#,
+        )
+        .bind(recipient_user_uuid)
+        .bind(notification_type)
+        .bind(post_uuid)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())
     }
 
     /// Partial retract: update membership/text without bumping `created_at`.
