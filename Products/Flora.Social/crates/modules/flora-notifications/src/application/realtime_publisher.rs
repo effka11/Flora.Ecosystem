@@ -3,13 +3,26 @@
 use std::sync::Arc;
 
 use flora_messaging_contracts::MessageSentContext;
-use flora_notifications_contracts::{RealtimeMessageSignal, RealtimeNotificationSignal};
+use flora_notifications_contracts::{
+    RealtimeMessageSignal, RealtimeNotificationRemovedSignal, RealtimeNotificationSignal,
+};
 use uuid::Uuid;
 
 use crate::application::PushTokenService;
 use crate::infrastructure::{
     ApnsPushSender, FcmPushSender, UserDisplayNameResolver, UserRealtimeHub,
 };
+
+/// FCM mode for social aggregation (audible budget / quiet replace / SSE-only).
+#[derive(Debug, Clone)]
+pub enum SocialNotificationPush {
+    /// Within 15m cooldown: inbox+SSE only.
+    SseOnly,
+    /// Audible inbox push with `tag=group_key`.
+    Audible { tag: String },
+    /// Partial retract: same tray tag, current text; no audible budget update.
+    QuietReplace { tag: String },
+}
 
 pub struct UserRealtimePublisher {
     hub: Arc<UserRealtimeHub>,
@@ -204,7 +217,8 @@ impl UserRealtimePublisher {
             _ => None,
         };
 
-        self.push_dispatcher
+        let _ = self
+            .push_dispatcher
             .send_inbox_notification_push(
                 recipient_user_uuid,
                 &tokens,
@@ -215,7 +229,110 @@ impl UserRealtimePublisher {
                 actor_name.as_deref(),
                 signal.post_uuid,
                 signal.comment_uuid,
+                None,
             )
+            .await;
+    }
+
+    /// Social apply/retract: SSE `notification` + optional tagged FCM.
+    /// Returns whether an **Audible** push was accepted by FCM for ≥1 token (telemetry).
+    /// Audible budget is claimed in the dispatcher tx before this call — FCM outcome
+    /// must not reopen the 15m window (anti double-spend / stuck-retry spam).
+    pub async fn publish_social_notification(
+        &self,
+        recipient_user_uuid: Uuid,
+        signal: &RealtimeNotificationSignal,
+        push: SocialNotificationPush,
+    ) -> bool {
+        if recipient_user_uuid.is_nil() {
+            return false;
+        }
+
+        self.hub.publish_notification(recipient_user_uuid, signal);
+
+        let (tag, count_toward_budget) = match &push {
+            SocialNotificationPush::SseOnly => return false,
+            SocialNotificationPush::Audible { tag } => (tag.as_str(), true),
+            SocialNotificationPush::QuietReplace { tag } => (tag.as_str(), false),
+        };
+
+        let tokens = match self.push_tokens.tokens_for_user(recipient_user_uuid).await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    recipient = %recipient_user_uuid,
+                    "Social notification publish: failed to load push tokens"
+                );
+                return false;
+            }
+        };
+        if tokens.is_empty() {
+            return false;
+        }
+
+        let actor_name = match signal.actor_user_uuid {
+            Some(actor) if !actor.is_nil() => Some(self.display_names.resolve(actor).await),
+            _ => None,
+        };
+
+        let delivered = self
+            .push_dispatcher
+            .send_inbox_notification_push(
+                recipient_user_uuid,
+                &tokens,
+                signal.notification_uuid,
+                &signal.notification_type,
+                &signal.category,
+                &signal.text,
+                actor_name.as_deref(),
+                signal.post_uuid,
+                signal.comment_uuid,
+                Some(tag),
+            )
+            .await;
+        count_toward_budget && delivered
+    }
+
+    /// Empty social retract: SSE `notification_removed` + data-only dismiss FCM.
+    pub async fn publish_notification_removed(
+        &self,
+        recipient_user_uuid: Uuid,
+        signal: &RealtimeNotificationRemovedSignal,
+    ) {
+        if recipient_user_uuid.is_nil() {
+            return;
+        }
+
+        self.hub
+            .publish_notification_removed(recipient_user_uuid, signal);
+
+        let Some(tag) = signal
+            .group_key
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            return;
+        };
+
+        let tokens = match self.push_tokens.tokens_for_user(recipient_user_uuid).await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    recipient = %recipient_user_uuid,
+                    "notification_removed publish: failed to load push tokens"
+                );
+                return;
+            }
+        };
+        if tokens.is_empty() {
+            return;
+        }
+
+        self.push_dispatcher
+            .send_notification_dismiss(recipient_user_uuid, &tokens, signal.notification_uuid, tag)
             .await;
     }
 }

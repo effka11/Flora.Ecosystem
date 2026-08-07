@@ -6,8 +6,9 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use flora_notifications_contracts::{
-    RealtimeConnectedSignal, RealtimeMessageSignal, RealtimeNotificationSignal,
-    RealtimePresenceSignal, RealtimeReadSignal, RealtimeTypingSignal, SseConnectionHooks,
+    RealtimeConnectedSignal, RealtimeMessageSignal, RealtimeNotificationRemovedSignal,
+    RealtimeNotificationSignal, RealtimePresenceSignal, RealtimeReadSignal, RealtimeTypingSignal,
+    SseConnectionHooks,
 };
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -117,6 +118,14 @@ impl UserRealtimeHub {
 
     pub fn publish_notification(&self, user_uuid: Uuid, signal: &RealtimeNotificationSignal) {
         self.broadcast(user_uuid, "notification", signal);
+    }
+
+    pub fn publish_notification_removed(
+        &self,
+        user_uuid: Uuid,
+        signal: &RealtimeNotificationRemovedSignal,
+    ) {
+        self.broadcast(user_uuid, "notification_removed", signal);
     }
 
     pub fn publish_presence_to_connection(
@@ -242,6 +251,38 @@ mod tests {
         assert_eq!(frame.event, "notification");
         assert!(frame.data.contains("notificationUuid"));
         assert!(frame.data.contains("\"type\":\"like\""));
+    }
+
+    #[tokio::test]
+    async fn publish_notification_removed_event_name() {
+        let hub = Arc::new(UserRealtimeHub::new());
+        let user = Uuid::now_v7();
+        let mut stream = hub.subscribe(user);
+        let _ = stream.next().await; // connected
+        let signal = RealtimeNotificationRemovedSignal {
+            notification_uuid: Uuid::now_v7(),
+            group_key: Some("like:01900000-0000-7000-8000-000000000001".into()),
+        };
+        hub.publish_notification_removed(user, &signal);
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+            .await
+            .expect("timeout")
+            .expect("frame");
+        assert_eq!(frame.event, "notification_removed");
+        assert!(frame.data.contains("notificationUuid"));
+        assert!(frame.data.contains("groupKey"));
+
+        // §4.3: nullable groupKey serializes as explicit null (not omitted).
+        let null_signal = RealtimeNotificationRemovedSignal {
+            notification_uuid: Uuid::now_v7(),
+            group_key: None,
+        };
+        hub.publish_notification_removed(user, &null_signal);
+        let null_frame = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+            .await
+            .expect("timeout")
+            .expect("frame");
+        assert!(null_frame.data.contains("\"groupKey\":null"));
     }
 
     #[tokio::test]

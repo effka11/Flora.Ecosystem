@@ -8,6 +8,7 @@ import {
 import { useEffect } from "react";
 import { AppState } from "react-native";
 import { notifyReadChanged } from "@/lib/readEvents";
+import { dismissSocialPushNotifications } from "@/lib/pushNotifications";
 import { handleMessageRealtime, handleNotificationRealtime } from "@/lib/realtimeSync";
 import { runAutoUpdateFromRealtime } from "@/lib/apkUpdate/autoUpdate";
 import { notifyTypingChanged } from "@/lib/typingEvents";
@@ -65,6 +66,11 @@ export function useMobileRealtime(enabled: boolean): void {
             text: signal.text,
           }).catch(() => undefined);
         }
+      },
+      onNotificationRemoved: (signal) => {
+        handleNotificationRealtime();
+        const key = signal.groupKey ?? signal.notificationUuid;
+        if (key) void dismissSocialPushNotifications(key);
       },
     });
 

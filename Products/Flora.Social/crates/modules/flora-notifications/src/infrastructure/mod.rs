@@ -14,4 +14,4 @@ pub use display_name::UserDisplayNameResolver;
 pub use fcm::FcmPushSender;
 pub use hub::{HubFrame, HubFrameStream, UserRealtimeHub};
 pub use push_tokens::{PushTokenRecord, PushTokenRepo};
-pub use repo::{InboxRepo, NotificationRow};
+pub use repo::{InboxRepo, NotificationRow, SocialGroupRow};

@@ -13,7 +13,7 @@ use axum::routing::{get, post};
 use chrono::{DateTime, SecondsFormat, Utc};
 use flora_auth_contracts::AccountDirectory;
 use flora_content_contracts::CommunityFollowStats;
-use flora_notifications_contracts::{CreateUserNotificationCommand, UserNotificationDispatcher};
+use flora_notifications_contracts::UserNotificationDispatcher;
 use flora_shared::latin_identifiers::{
     USERNAME_FORMAT_MESSAGE, has_only_username_chars, normalize_username,
 };
@@ -28,6 +28,7 @@ use uuid::Uuid;
 use crate::application::avatar::{
     AvatarService, AvatarUploadError, AvatarUploadInput, MAX_AVATAR_SIZE_BYTES,
 };
+use crate::application::follow_notifications::{try_notify_follow, try_retract_follow};
 use crate::application::people_recommendation::PeopleRecommendationService;
 use crate::application::presence::{MAX_WATCH_UUIDS, PresenceService};
 use crate::http::rate_limit::{FixedWindowLimiter, client_ip_key};
@@ -830,76 +831,20 @@ async fn follow_user(
     match state.follows.follow(user.user_uuid, target).await {
         Ok(true) => {
             state.recommendations.invalidate(user.user_uuid);
-            try_notify_follow(&state, user.user_uuid, target, &normalized).await;
+            try_notify_follow(
+                &state.notifications,
+                &state.accounts,
+                &state.profiles,
+                user.user_uuid,
+                target,
+                &normalized,
+            )
+            .await;
             Json(serde_json::json!({ "message": "Подписка оформлена." })).into_response()
         }
         Ok(false) => Json(serde_json::json!({ "message": "Уже подписаны." })).into_response(),
         Err(e) => internal(e),
     }
-}
-
-/// Паритет `TryNotifyFollowAsync` — ошибки только в лог.
-async fn try_notify_follow(
-    state: &UsersState,
-    follower_uuid: Uuid,
-    following_uuid: Uuid,
-    follower_username: &str,
-) {
-    if let Err(e) = notify_follow(state, follower_uuid, following_uuid).await {
-        tracing::warn!(
-            error = %e,
-            follower = %follower_username,
-            following = %following_uuid,
-            "Не удалось создать уведомление о подписке"
-        );
-    }
-}
-
-async fn notify_follow(
-    state: &UsersState,
-    follower_uuid: Uuid,
-    following_uuid: Uuid,
-) -> Result<(), String> {
-    let (label, username) = resolve_actor_presentation(state, follower_uuid).await;
-    let handle = if !username.is_empty() {
-        format!("@{username}")
-    } else {
-        label
-    };
-    state
-        .notifications
-        .dispatch(CreateUserNotificationCommand {
-            recipient_user_uuid: following_uuid,
-            actor_user_uuid: Some(follower_uuid),
-            notification_type: "follow".into(),
-            category: "social".into(),
-            text: format!("Новый подписчик {handle}"),
-            post_uuid: None,
-            comment_uuid: None,
-        })
-        .await
-}
-
-async fn resolve_actor_presentation(state: &UsersState, actor_user_uuid: Uuid) -> (String, String) {
-    let username = match state.accounts.get_public(actor_user_uuid).await {
-        Ok(Some(a)) => a.username,
-        _ => String::new(),
-    };
-    let display_name = match state.profiles.get_profile(actor_user_uuid).await {
-        Ok(Some(p)) => {
-            let d = p.display_name.trim().to_string();
-            if d.is_empty() { None } else { Some(d) }
-        }
-        _ => None,
-    };
-    let label = if let Some(d) = display_name {
-        d
-    } else if !username.is_empty() {
-        format!("@{username}")
-    } else {
-        "Пользователь".into()
-    };
-    (label, username)
 }
 
 async fn unfollow_user(
@@ -920,6 +865,15 @@ async fn unfollow_user(
     match state.follows.unfollow(user.user_uuid, target).await {
         Ok(true) => {
             state.recommendations.invalidate(user.user_uuid);
+            try_retract_follow(
+                &state.notifications,
+                &state.accounts,
+                &state.profiles,
+                user.user_uuid,
+                target,
+                &normalized,
+            )
+            .await;
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => Json(serde_json::json!({ "message": "Подписки не было." })).into_response(),

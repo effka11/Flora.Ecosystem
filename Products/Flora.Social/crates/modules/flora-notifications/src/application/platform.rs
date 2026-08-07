@@ -36,9 +36,17 @@ pub fn normalize_category(category: &str) -> String {
 pub fn normalize_type(notification_type: &str) -> String {
     let t = notification_type.trim().to_ascii_lowercase();
     match t.as_str() {
-        "like" | "reply" | "follow" | "developer" | "app_update" | "default" => t,
+        "like" | "reply" | "follow" | "repost" | "developer" | "app_update" | "default" => t,
         _ => "default".into(),
     }
+}
+
+/// Types that must use `apply_social` / `retract_social` (never unkeyed `dispatch`).
+pub fn requires_social_aggregation(notification_type: &str) -> bool {
+    matches!(
+        normalize_type(notification_type).as_str(),
+        "like" | "follow" | "repost"
+    )
 }
 
 pub fn normalize_category_filter(category: Option<&str>) -> Option<String> {
@@ -106,5 +114,14 @@ mod tests {
             normalize_category_filter(Some("developer")),
             Some("developer".into())
         );
+    }
+
+    #[test]
+    fn like_follow_repost_require_social_aggregation() {
+        assert!(requires_social_aggregation("like"));
+        assert!(requires_social_aggregation("FOLLOW"));
+        assert!(requires_social_aggregation("repost"));
+        assert!(!requires_social_aggregation("reply"));
+        assert!(!requires_social_aggregation("app_update"));
     }
 }

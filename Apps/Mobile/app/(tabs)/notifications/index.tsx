@@ -27,6 +27,7 @@ import {
 import { NotificationRow } from "@/components/notifications/NotificationRow";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { dismissPresentedSocialPushNotifications } from "@/lib/pushNotifications";
 import { subscribeNotificationRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
@@ -105,6 +106,7 @@ export default function NotificationsScreen() {
   useFocusEffect(
     useCallback(() => {
       void markAllVisibleAsRead();
+      void dismissPresentedSocialPushNotifications();
     }, [markAllVisibleAsRead]),
   );
 

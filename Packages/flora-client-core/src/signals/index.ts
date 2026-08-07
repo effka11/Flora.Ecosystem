@@ -10,12 +10,24 @@ export {
   type ConnectSignalsStreamOptions,
   type MessageRealtimeSignal,
   type NotificationRealtimeSignal,
+  type NotificationRemovedRealtimeSignal,
   type ConnectedRealtimeSignal,
   type PresenceRealtimeSignal,
   type TypingRealtimeSignal,
   type ReadRealtimeSignal,
   type SignalsStreamHandle,
 } from "./stream.js";
+
+export {
+  SOCIAL_FOLLOW_PUSH_TAG,
+  SOCIAL_LIKE_PUSH_TAG,
+  SOCIAL_LIKE_PUSH_TAG_PREFIX,
+  SOCIAL_REPOST_PUSH_TAG,
+  SOCIAL_REPOST_PUSH_TAG_PREFIX,
+  isSocialNotificationInboxType,
+  isSocialNotificationPushTag,
+  isSocialTrayPushData,
+} from "./socialPushTags.js";
 
 export type SignalsSnapshot = {
   feedHasNew: boolean;

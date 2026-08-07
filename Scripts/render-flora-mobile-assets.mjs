@@ -50,6 +50,32 @@ async function splashPng(outPath, size) {
     .toFile(outPath);
 }
 
+/**
+ * Full-bleed white silhouette for Android status-bar / FCM small icon.
+ * Same mark + rotate(7) as flora-mark-monochrome (launcher), cropped tight —
+ * adaptive safe-zone padding must not ship into the tray.
+ */
+async function notificationIconPng(outPath, size) {
+  const mono = await sharp(join(assets, "flora-mark-monochrome.svg"), { density: 300 })
+    .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .ensureAlpha()
+    .png()
+    .toBuffer();
+  const trimmed = await sharp(mono).trim().png().toBuffer();
+  const margin = Math.max(1, Math.round(size * 0.04));
+  const inner = size - 2 * margin;
+  const leafBuf = await sharp(trimmed)
+    .resize(inner, inner, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+  await sharp({
+    create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([{ input: leafBuf, gravity: "center" }])
+    .png()
+    .toFile(outPath);
+}
+
 const SPLASH_DRAWABLE_PX = {
   "drawable-mdpi": 288,
   "drawable-hdpi": 432,
@@ -74,6 +100,15 @@ const ADAPTIVE_MIPMAP_PX = {
   "mipmap-xxxhdpi": 432,
 };
 
+/** Status-bar / tray small-icon densities (same as expo-notifications). */
+const NOTIFICATION_DRAWABLE_PX = {
+  "drawable-mdpi": 24,
+  "drawable-hdpi": 36,
+  "drawable-xhdpi": 48,
+  "drawable-xxhdpi": 72,
+  "drawable-xxxhdpi": 96,
+};
+
 async function solidWebp(outPath, size, hex) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -93,6 +128,7 @@ async function syncAndroidGenRes() {
   const iconSource = join(images, "icon.png");
   const fgSource = join(images, "android-icon-foreground.png");
   const monoSource = join(images, "android-icon-monochrome.png");
+  const notifSource = join(images, "notification-icon.png");
 
   for (const [folder, size] of Object.entries(SPLASH_DRAWABLE_PX)) {
     const dir = join(resRoot, folder);
@@ -119,6 +155,16 @@ async function syncAndroidGenRes() {
     await solidWebp(join(dir, "ic_launcher_background.webp"), size, FLORA_GREEN_DARK);
   }
 
+  // Always overwrite tray icons — release may skip expo prebuild when splash/version are fresh.
+  for (const [folder, size] of Object.entries(NOTIFICATION_DRAWABLE_PX)) {
+    const dir = join(resRoot, folder);
+    if (!existsSync(dir)) continue;
+    await sharp(notifSource)
+      .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toFile(join(dir, "notification_icon.png"));
+  }
+
   console.log("Synced Flora splash/icons into Apps/Mobile/android_gen/");
 }
 
@@ -130,6 +176,7 @@ async function main() {
   await pngFromSvg(join(assets, "flora-mark-foreground.svg"), join(images, "android-icon-foreground.png"), 1024);
   await pngFromSvg(join(assets, "flora-mark-monochrome.svg"), join(images, "android-icon-monochrome.png"), 1024);
   await pngFromSvg(join(assets, "flora-logo-mark-glyph.svg"), join(images, "logo-mark-glyph.png"), 128);
+  await notificationIconPng(join(images, "notification-icon.png"), 192);
   await solidPng(join(images, "android-icon-background.png"), 1024, FLORA_GREEN_DARK);
   await solidPng(join(images, "android-icon-background-dev.png"), 1024, FLORA_BG);
   await splashPng(join(images, "splash-icon.png"), 1024);

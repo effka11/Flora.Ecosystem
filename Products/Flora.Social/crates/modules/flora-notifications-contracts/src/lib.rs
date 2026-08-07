@@ -66,6 +66,39 @@ pub struct CreateUserNotificationCommand {
     pub comment_uuid: Option<Uuid>,
 }
 
+/// Kind of social activity that Notifications may apply or retract.
+#[derive(Debug, Clone)]
+pub enum SocialActivityKind {
+    Like { post_uuid: Uuid },
+    Repost { post_uuid: Uuid },
+    Follow,
+}
+
+/// Cross-module command: apply or retract a social activity notification.
+#[derive(Debug, Clone)]
+pub struct SocialActivityCommand {
+    pub recipient_user_uuid: Uuid,
+    pub actor_user_uuid: Uuid,
+    pub actor_label: String,
+    pub kind: SocialActivityKind,
+    /// When `true` on Like retract: actor still has other likes on the author (partial undo).
+    /// Apply paths, follow, and repost retract always use `false`.
+    pub partial: bool,
+}
+
+/// SSE `event: notification_removed` payload when a social notification group is deleted.
+///
+/// Intentional additive realtime surface (plan: social notifications reliability):
+/// inbox REST DTO shape unchanged; clients must ignore unknown SSE events until upgraded.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealtimeNotificationRemovedSignal {
+    pub notification_uuid: Uuid,
+    /// Nullable contract field — always serialize `null` (§4.3); never `skip_serializing_if`.
+    #[serde(default)]
+    pub group_key: Option<String>,
+}
+
 /// SSE `event: presence` — online/offline transition for a watched user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +137,10 @@ pub struct RealtimeConnectedSignal {
 pub trait UserNotificationDispatcher: Send + Sync {
     fn dispatch(&self, command: CreateUserNotificationCommand)
     -> BoxFuture<'_, Result<(), String>>;
+
+    fn apply_social(&self, command: SocialActivityCommand) -> BoxFuture<'_, Result<(), String>>;
+
+    fn retract_social(&self, command: SocialActivityCommand) -> BoxFuture<'_, Result<(), String>>;
 }
 
 /// Publish presence SSE to a specific watcher SSE connection.
@@ -150,6 +187,14 @@ impl UserNotificationDispatcher for NoopUserNotificationDispatcher {
         &self,
         _command: CreateUserNotificationCommand,
     ) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn apply_social(&self, _command: SocialActivityCommand) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn retract_social(&self, _command: SocialActivityCommand) -> BoxFuture<'_, Result<(), String>> {
         Box::pin(async { Ok(()) })
     }
 }
