@@ -8,6 +8,21 @@ import {
   type MsgConversationsPage,
   type MsgMessagesPage,
 } from "../contracts/messaging.js";
+
+/** Structural match for `@flora/fscp` `RecoveryBackupPayloadOut` (avoid rootDir pull of FSCP sources). */
+export type MsgRecoveryBackupPutBody = {
+  version: 1;
+  recoveryRevision: number;
+  recoveryKeyId: string;
+  userUuid: string;
+  primaryKeyEpochId: string;
+  epochSetRevision: number;
+  epochSetHashBase64Url: string;
+  wordlist: { id: string; wordsCount: number };
+  kdf: Record<string, unknown>;
+  aead: { name: "xchacha20-poly1305"; nonceBase64Url: string };
+  ciphertextBase64Url: string;
+};
 export type MsgE2EState = {
   state:
     | "not_initialized"
@@ -154,8 +169,11 @@ export async function apiGetKeyBackup(): Promise<unknown> {
   return authGetJson("/api/messaging/e2e/key-backup");
 }
 
-export async function apiPutRecoveryBackup(body: Record<string, unknown>): Promise<unknown> {
-  return authPostJson("/api/messaging/e2e/recovery-backup", body);
+export async function apiPutRecoveryBackup(body: MsgRecoveryBackupPutBody): Promise<unknown> {
+  return authPostJson(
+    "/api/messaging/e2e/recovery-backup",
+    body as unknown as Record<string, unknown>,
+  );
 }
 
 export async function apiGetRecoveryBackup(): Promise<unknown> {

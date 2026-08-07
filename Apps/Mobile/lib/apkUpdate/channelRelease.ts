@@ -8,11 +8,13 @@ import {
   type FloraApkChannelCatalog,
   type FloraApkChannelRelease,
 } from "@/lib/apkUpdate/apkChannel";
+import { isOfficialChannelRelease } from "@/lib/apkUpdate/channelOfficiality";
 import {
   isSafeReleaseVersion,
   normalizeTrustedSha256,
   trustedFloraSocialApkVersion,
 } from "@/lib/apkUpdate/manifestSecurity";
+import { getFloraSocialAppVersion } from "@/lib/appLinks";
 
 export type AndroidUpdateManifest = {
   version: string;
@@ -174,7 +176,7 @@ function parseCatalog(body: string): FloraApkChannelCatalog | null {
   }
 }
 
-async function fetchChannelCatalog(): Promise<FloraApkChannelCatalog | null> {
+export async function fetchChannelCatalog(): Promise<FloraApkChannelCatalog | null> {
   const res = await channelFetch(
     FLORA_APK_CHANNEL_RELEASES_URL,
     RELEASES_ETAG_KEY,
@@ -182,6 +184,24 @@ async function fetchChannelCatalog(): Promise<FloraApkChannelCatalog | null> {
   );
   if (!res.body) return null;
   return parseCatalog(res.body);
+}
+
+export type InstalledBuildOfficiality = "official" | "unofficial";
+
+/** Full-catalog check; network/parse failure → unofficial. */
+export async function resolveInstalledBuildOfficiality(): Promise<InstalledBuildOfficiality> {
+  try {
+    const catalog = await fetchChannelCatalog();
+    if (!catalog) return "unofficial";
+    const official = isOfficialChannelRelease(
+      getFloraSocialAppVersion(),
+      getInstalledVersionCode(),
+      catalog.releases,
+    );
+    return official ? "official" : "unofficial";
+  } catch {
+    return "unofficial";
+  }
 }
 
 export async function fetchLatestUpdateManifest(): Promise<AndroidUpdateManifest | null> {

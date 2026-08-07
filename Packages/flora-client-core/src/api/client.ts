@@ -438,6 +438,16 @@ export async function authDelete(path: string): Promise<void> {
   if (!r.ok) await throwApiRequestError(r);
 }
 
+/** DELETE with JSON body (e.g. disable 2FA). */
+export async function authDeleteJson(path: string, body: Record<string, unknown>): Promise<void> {
+  const r = await authFetch(path, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) await throwApiRequestError(r);
+}
+
 export async function publicPostJson(path: string, body: Record<string, unknown>): Promise<unknown> {
   const { fetchImpl = fetch } = getApiClientConfig();
   const r = await fetchImpl(apiUrl(path), {

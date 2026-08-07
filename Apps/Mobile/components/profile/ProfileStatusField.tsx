@@ -84,13 +84,19 @@ export function ProfileStatusField({
 
 const styles = StyleSheet.create({
   group: {
-    gap: floraSpacing.gridFine,
+    gap: 0,
   },
   label: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: 0.45,
+    height: floraSpacing.grid * 2,
+    lineHeight: floraSpacing.grid + floraSpacing.gridFine,
+    paddingBottom: floraSpacing.gridFine,
+    paddingLeft: 2,
+    textAlignVertical: "bottom",
+    includeFontPadding: false,
   },
   box: {
     position: "relative",

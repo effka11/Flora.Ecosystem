@@ -22,12 +22,17 @@ export {
   checkAndInstall,
   runSilentUpdateCheck,
 } from "@/lib/apkUpdate/checkAndInstall";
+export { isOfficialChannelRelease } from "@/lib/apkUpdate/channelOfficiality";
 export {
+  fetchChannelCatalog,
   fetchLatestUpdateManifest,
   fetchUpdateManifestFromNotificationText,
   fetchDirectUpdateManifestForVersion,
   getInstalledVersionCode,
   invalidateChannelManifestCache,
+  resolveInstalledBuildOfficiality,
+  type AndroidUpdateManifest,
+  type InstalledBuildOfficiality,
 } from "@/lib/apkUpdate/channelRelease";
 export {
   labelForApkUpdatePhase,
@@ -35,5 +40,16 @@ export {
   type ApkUpdateProgress,
   type ApkUpdateProgressListener,
 } from "@/lib/apkUpdate/progress";
-export { runUserUpdateFromNotification } from "@/lib/apkUpdate/userUpdate";
+export {
+  runUserUpdateCheck,
+  runUserUpdateFromNotification,
+} from "@/lib/apkUpdate/userUpdate";
 export { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
+export {
+  FLORA_APK_UPDATE_CHANNELS,
+  getUpdateChannelId,
+  labelForUpdateChannel,
+  setUpdateChannelId,
+  type FloraApkUpdateChannelId,
+  type FloraApkUpdateChannelOption,
+} from "@/lib/apkUpdate/updateChannel";

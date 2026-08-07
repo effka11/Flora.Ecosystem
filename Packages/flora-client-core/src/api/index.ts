@@ -13,6 +13,7 @@ export {
   authPatchJson,
   authPostForm,
   authDelete,
+  authDeleteJson,
   publicPostJson,
   publicGetJson,
   ensureFreshAccessToken,

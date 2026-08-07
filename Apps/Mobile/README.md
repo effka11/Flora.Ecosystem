@@ -44,10 +44,11 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 
 Один `InstallPermissionHost` в `FloraProviders` (sideload only) — sheet для OS `REQUEST_INSTALL_PACKAGES`.
 
-#### Настройки → Уведомления (два ползунка)
+#### Настройки → Обновления (`UpdatesSettingsTab`)
 
 1. **«Установка обновлений»** — **зеркало** live OS `REQUEST_INSTALL_PACKAGES` (`Switch.value = canRequestPackageInstalls()` после reconcile; MMKV `apkUpdate.inAppUpdatesEnabled` синхронизируется с OS в обе стороны). **ON** без perm → Flora-sheet → Settings; grant → ON; отказ → OFF + meta «Разрешение не выдано». **OFF** при выданном perm → та же системная страница (`openInstallPermissionSettings` / `ACTION_MANAGE_UNKNOWN_APP_SOURCES`); пользователь снимает разрешение; по возврату sync. Если не снял — тумблер остаётся ON. Снятие OS → фон тоже OFF. API &lt; 26: perm всегда true; OFF — immediate no-op (Settings не открывается, wait не стартует), тумблер остаётся ON. Нужна сборка с актуальным `flora-apk-updater` (`openInstallPermissionSettings` → boolean opened).
 2. **«Фоновое обновление»** (`apkUpdate.autoUpdateEnabled`) — отдельный opt-in поверх OS. Switch disabled/серый без OS permission. Включить только при `canRequestPackageInstalls()`.
+3. **«Проверить обновления» / «Обновить»** — ручная проверка канала (`runUserUpdateCheck`); кнопка в inbox `app_update` остаётся основным CTA по событию.
 
 **Sync с OS:** при каждом `AppState` active / bootstrap `reconcileInstallPermissionWithOs()` — `hasOs` ⇔ inApp; `!hasOs` → auto OFF. Внешний grant/revoke OS (вне Flora) тоже двигает тумблер установки; после внешнего grant «Фон» становится enableable (не auto-ON).
 
@@ -75,7 +76,7 @@ Production APK (`social.flora.mobile`, `extra.sideloadUpdates`) обновляе
 
 #### Сборки
 
-Sideload updater линкуется в **Dev** и production sideload APK. Два Switch и silent-путь только при `extra.sideloadUpdates`.
+Sideload updater линкуется в **Dev** и production sideload APK. Switch’и установки/фона и silent-путь только при `extra.sideloadUpdates` (вкладка **Обновления**).
 
 EAS `production` (Play AAB) / `FLORA_DISABLE_SIDELOAD_UPDATES=1`: без permissions, без модуля, без PackageInstaller (кнопка → `/download`).
 

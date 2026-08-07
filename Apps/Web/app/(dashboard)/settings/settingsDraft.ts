@@ -1,49 +1,43 @@
-import { isReservedUsername, RESERVED_USERNAME_MESSAGE } from "@/lib/reservedUsernames";
+import {
+  accountDraftEqual,
+  accountDraftFromMe as accountDraftFromMeCore,
+  defaultPrivacyDraft as defaultPrivacyDraftCore,
+  privacyDraftEqual as privacyDraftEqualCore,
+  privacyDraftFromApi as privacyDraftFromApiCore,
+  privacyDraftToApiPayload as privacyDraftToApiPayloadCore,
+  validateAccountDraft,
+  type MessagesFrom,
+  type OnlineVisibility,
+  type PrivacyVisibility,
+  type SettingsAccountDraft,
+  type SettingsPrivacyDraft,
+} from "@flora/client-core/auth";
+import {
+  defaultFeedDraft as defaultFeedDraftCore,
+  feedDraftEqual as feedDraftEqualCore,
+  feedDraftFromApi as feedDraftFromApiCore,
+  type FeedAuthorDiversity,
+  type FeedExploration,
+  type FeedFreshness,
+  type FeedSeenPostsMode,
+  type SettingsFeedDraft,
+} from "@flora/client-core/contracts";
 import {
   normalizeProfileStatusForApi,
   validateProfileStatus,
 } from "@/app/(dashboard)/profile/profileStatusValidation";
+import { isReservedUsername, RESERVED_USERNAME_MESSAGE } from "@/lib/reservedUsernames";
 
-const USERNAME_RE = /^[a-z0-9_]{3,50}$/;
 const LOCAL_PREFS_STORAGE_KEY = "flora.userSettings.prefs";
 
-export type PrivacyVisibility = "all" | "friends" | "none";
-export type OnlineVisibility = "visible" | "hidden";
-export type MessagesFrom = "all" | "friends";
+export type { FeedAuthorDiversity, FeedExploration, FeedFreshness, FeedSeenPostsMode };
+export type { MessagesFrom, OnlineVisibility, PrivacyVisibility };
 
-// §User Controls (FIRA-F): значения синхронизированы с fira-contracts (lowercase wire-format).
-export type FeedFreshness = "fresh" | "balanced" | "popular";
-export type FeedExploration = "off" | "low" | "standard" | "high";
-export type FeedSeenPostsMode = "show" | "demote" | "hide";
-export type FeedAuthorDiversity = "strict" | "standard" | "off";
+export type UserSettingsAccountDraft = SettingsAccountDraft;
 
-export type UserSettingsAccountDraft = {
-  displayName: string;
-  username: string;
-  birthDate: string;
-  status: string;
-};
+export type UserSettingsPrivacyDraft = SettingsPrivacyDraft;
 
-export type UserSettingsPrivacyDraft = {
-  friendsVisibility: PrivacyVisibility;
-  subscriptionsVisibility: PrivacyVisibility;
-  postsVisibility: PrivacyVisibility;
-  likesVisibility: PrivacyVisibility;
-  repostsVisibility: PrivacyVisibility;
-  messagesFrom: MessagesFrom;
-  commentsFrom: PrivacyVisibility;
-  onlineFriends: OnlineVisibility;
-  onlineStrangers: OnlineVisibility;
-};
-
-export type UserSettingsFeedDraft = {
-  freshness: FeedFreshness;
-  exploration: FeedExploration;
-  showReposts: boolean;
-  communityPosts: boolean;
-  seenPosts: FeedSeenPostsMode;
-  authorDiversity: FeedAuthorDiversity;
-};
+export type UserSettingsFeedDraft = SettingsFeedDraft;
 
 export type UserSettingsNotificationsDraft = {
   pushEnabled: boolean;
@@ -72,28 +66,6 @@ export type UserSettingsDraft = UserSettingsLocalPrefs & {
   feed: UserSettingsFeedDraft;
 };
 
-const DEFAULT_PRIVACY: UserSettingsPrivacyDraft = {
-  friendsVisibility: "all",
-  subscriptionsVisibility: "all",
-  postsVisibility: "all",
-  likesVisibility: "friends",
-  repostsVisibility: "all",
-  messagesFrom: "all",
-  commentsFrom: "all",
-  onlineFriends: "visible",
-  onlineStrangers: "hidden",
-};
-
-// Дефолты продакшена (FIRA-F §User Controls): Balanced/Standard + демоция просмотренных.
-const DEFAULT_FEED: UserSettingsFeedDraft = {
-  freshness: "balanced",
-  exploration: "standard",
-  showReposts: true,
-  communityPosts: true,
-  seenPosts: "demote",
-  authorDiversity: "standard",
-};
-
 const DEFAULT_NOTIFICATIONS: UserSettingsNotificationsDraft = {
   pushEnabled: true,
   emailEnabled: true,
@@ -111,11 +83,11 @@ const DEFAULT_CUSTOMIZATION: UserSettingsCustomizationDraft = {
 };
 
 export function defaultPrivacyDraft(): UserSettingsPrivacyDraft {
-  return { ...DEFAULT_PRIVACY };
+  return defaultPrivacyDraftCore();
 }
 
 export function defaultFeedDraft(): UserSettingsFeedDraft {
-  return { ...DEFAULT_FEED };
+  return defaultFeedDraftCore();
 }
 
 export function defaultUserSettingsLocalPrefs(): UserSettingsLocalPrefs {
@@ -125,70 +97,24 @@ export function defaultUserSettingsLocalPrefs(): UserSettingsLocalPrefs {
   };
 }
 
-function parsePrivacyVisibility(value: unknown, fallback: PrivacyVisibility): PrivacyVisibility {
-  if (value === "all" || value === "friends" || value === "none") return value;
-  return fallback;
-}
-
-function parseMessagesFrom(value: unknown, fallback: MessagesFrom): MessagesFrom {
-  if (value === "all" || value === "friends") return value;
-  return fallback;
-}
-
-function parseOnlineVisibility(value: unknown, fallback: OnlineVisibility): OnlineVisibility {
-  if (value === "visible" || value === "hidden") return value;
-  return fallback;
-}
-
 export function privacyDraftFromApi(raw: unknown): UserSettingsPrivacyDraft {
-  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  return {
-    friendsVisibility: parsePrivacyVisibility(source.friendsVisibility, DEFAULT_PRIVACY.friendsVisibility),
-    subscriptionsVisibility: parsePrivacyVisibility(source.subscriptionsVisibility, DEFAULT_PRIVACY.subscriptionsVisibility),
-    postsVisibility: parsePrivacyVisibility(source.postsVisibility, DEFAULT_PRIVACY.postsVisibility),
-    likesVisibility: parsePrivacyVisibility(source.likesVisibility, DEFAULT_PRIVACY.likesVisibility),
-    repostsVisibility: parsePrivacyVisibility(source.repostsVisibility, DEFAULT_PRIVACY.repostsVisibility),
-    messagesFrom: parseMessagesFrom(source.messagesFrom, DEFAULT_PRIVACY.messagesFrom),
-    commentsFrom: parsePrivacyVisibility(source.commentsFrom, DEFAULT_PRIVACY.commentsFrom),
-    onlineFriends: parseOnlineVisibility(source.onlineFriends, DEFAULT_PRIVACY.onlineFriends),
-    onlineStrangers: parseOnlineVisibility(source.onlineStrangers, DEFAULT_PRIVACY.onlineStrangers),
-  };
+  return privacyDraftFromApiCore(raw);
 }
 
 export function privacyDraftToApiPayload(draft: UserSettingsPrivacyDraft): UserSettingsPrivacyDraft {
-  return { ...draft };
+  return privacyDraftToApiPayloadCore(draft);
 }
 
 export function privacyDraftEqual(a: UserSettingsPrivacyDraft, b: UserSettingsPrivacyDraft): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
-function parseFeedEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
-  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
-    return value as T;
-  }
-  return fallback;
+  return privacyDraftEqualCore(a, b);
 }
 
 export function feedDraftFromApi(raw: unknown): UserSettingsFeedDraft {
-  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  return {
-    freshness: parseFeedEnum(source.freshness, ["fresh", "balanced", "popular"], DEFAULT_FEED.freshness),
-    exploration: parseFeedEnum(source.exploration, ["off", "low", "standard", "high"], DEFAULT_FEED.exploration),
-    showReposts: typeof source.showReposts === "boolean" ? source.showReposts : DEFAULT_FEED.showReposts,
-    communityPosts:
-      typeof source.communityPosts === "boolean" ? source.communityPosts : DEFAULT_FEED.communityPosts,
-    seenPosts: parseFeedEnum(source.seenPosts, ["show", "demote", "hide"], DEFAULT_FEED.seenPosts),
-    authorDiversity: parseFeedEnum(
-      source.authorDiversity,
-      ["strict", "standard", "off"],
-      DEFAULT_FEED.authorDiversity,
-    ),
-  };
+  return feedDraftFromApiCore(raw);
 }
 
 export function feedDraftEqual(a: UserSettingsFeedDraft, b: UserSettingsFeedDraft): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return feedDraftEqualCore(a, b);
 }
 
 export function accountDraftFromMe(me: {
@@ -197,12 +123,7 @@ export function accountDraftFromMe(me: {
   status?: string;
   birthDate?: string;
 }): UserSettingsAccountDraft {
-  return {
-    displayName: me.displayName.trim(),
-    username: me.username.trim().replace(/^@+/, "").toLowerCase(),
-    status: (me.status ?? "").trim(),
-    birthDate: me.birthDate?.trim() ?? "",
-  };
+  return accountDraftFromMeCore(me);
 }
 
 export function loadUserSettingsLocalPrefs(): UserSettingsLocalPrefs {
@@ -257,11 +178,19 @@ export function accountDraftHasChanges(
   },
 ): boolean {
   const saved = accountDraftFromMe(me);
-  return (
-    draft.displayName.trim() !== saved.displayName ||
-    draft.username.trim().replace(/^@+/, "") !== saved.username ||
-    normalizeProfileStatusForApi(draft.status) !== normalizeProfileStatusForApi(saved.status) ||
-    draft.birthDate.trim() !== saved.birthDate.trim()
+  return !accountDraftEqual(
+    {
+      displayName: draft.displayName,
+      username: draft.username,
+      birthDate: draft.birthDate,
+      status: normalizeProfileStatusForApi(draft.status),
+    },
+    {
+      displayName: saved.displayName,
+      username: saved.username,
+      birthDate: saved.birthDate,
+      status: normalizeProfileStatusForApi(saved.status),
+    },
   );
 }
 
@@ -293,17 +222,11 @@ export function userSettingsDraftHasChanges(
 }
 
 export function validateUserSettingsAccountDraft(draft: UserSettingsAccountDraft): string | null {
-  const name = draft.displayName.trim();
-  const nick = draft.username.trim().replace(/^@+/, "");
-  const statusNorm = normalizeProfileStatusForApi(draft.status);
-
-  if (!name) return "Введите имя.";
-  if (!USERNAME_RE.test(nick)) {
-    return "Никнейм: 3–50 символов, только строчная латиница, цифры и подчёркивание.";
-  }
+  const base = validateAccountDraft({ ...draft, status: "" });
+  if (base) return base;
+  const nick = draft.username.trim().replace(/^@+/, "").toLowerCase();
   if (isReservedUsername(nick)) return RESERVED_USERNAME_MESSAGE;
-
-  return validateProfileStatus(statusNorm);
+  return validateProfileStatus(normalizeProfileStatusForApi(draft.status));
 }
 
 export function userSettingsAccountToApiPayload(draft: UserSettingsAccountDraft) {

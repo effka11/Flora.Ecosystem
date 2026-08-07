@@ -80,7 +80,7 @@ type MenuItem = {
 const MENU_ITEMS: MenuItem[] = [
   { id: "people", href: "/(tabs)/people", label: "Люди" },
   { id: "communities", href: "/(tabs)/communities", label: "Сообщества" },
-  { id: "settings", href: "/settings", label: "Настройки" },
+  { id: "settings", href: "/(tabs)/settings", label: "Настройки" },
   { id: "github", href: "/(tabs)/github", label: "GitHub" },
 ];
 
@@ -578,7 +578,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
 
   const openAccountSettings = () => {
     finishClose();
-    router.push({ pathname: "/settings", params: { section: "account" } });
+    router.push({ pathname: "/(tabs)/settings", params: { section: "account" } });
   };
 
   const displayName = me?.displayName?.trim() || me?.username || "Профиль";
