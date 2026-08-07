@@ -1,4 +1,8 @@
-import { isApiRequestError } from "@flora/client-core/api";
+import {
+  apiGetFeedSettings,
+  apiUpdateFeedSettings,
+  isApiRequestError,
+} from "@flora/client-core/api";
 import {
   apiDeleteAvatar,
   apiGetMe,
@@ -15,6 +19,12 @@ import {
   registerPushTokenWithServer,
   unregisterPushTokenFromServer,
 } from "@/lib/pushNotifications";
+import {
+  defaultFeedDraft,
+  feedDraftEqual,
+  feedDraftFromApi,
+  type SettingsFeedDraft,
+} from "@/lib/settingsFeedDraft";
 import {
   defaultPrivacyDraft,
   privacyDraftEqual,
@@ -91,9 +101,12 @@ type SettingsDraftState = {
   baseline: SettingsAccountDraft;
   privacy: SettingsPrivacyDraft;
   baselinePrivacy: SettingsPrivacyDraft;
+  feed: SettingsFeedDraft;
+  baselineFeed: SettingsFeedDraft;
   notifications: SettingsNotificationsDraft;
   baselineNotifications: SettingsNotificationsDraft;
   privacyReady: boolean;
+  feedReady: boolean;
   avatarPending: SettingsAvatarPending | null;
   dirty: boolean;
   saving: boolean;
@@ -101,8 +114,10 @@ type SettingsDraftState = {
   saveSuccess: string | null;
   syncFromMe: (me: MeResponse | null) => void;
   loadPrivacy: () => Promise<void>;
+  loadFeed: () => Promise<void>;
   updateAccount: (patch: Partial<SettingsAccountDraft>) => void;
   updatePrivacy: (patch: Partial<SettingsPrivacyDraft>) => void;
+  updateFeed: (patch: Partial<SettingsFeedDraft>) => void;
   updateNotifications: (patch: Partial<SettingsNotificationsDraft>) => void;
   setAvatarPending: (pending: SettingsAvatarPending | null) => void;
   clearSaveFeedback: () => void;
@@ -115,6 +130,8 @@ type SnapshotArgs = {
   baseline: SettingsAccountDraft;
   privacy: SettingsPrivacyDraft;
   baselinePrivacy: SettingsPrivacyDraft;
+  feed: SettingsFeedDraft;
+  baselineFeed: SettingsFeedDraft;
   notifications: SettingsNotificationsDraft;
   baselineNotifications: SettingsNotificationsDraft;
   avatarPending: SettingsAvatarPending | null;
@@ -124,6 +141,7 @@ function computeDirty(args: SnapshotArgs): boolean {
   return (
     !accountDraftEqual(args.account, args.baseline) ||
     !privacyDraftEqual(args.privacy, args.baselinePrivacy) ||
+    !feedDraftEqual(args.feed, args.baselineFeed) ||
     !notificationsDraftEqual(args.notifications, args.baselineNotifications) ||
     args.avatarPending !== null
   );
@@ -135,6 +153,8 @@ function snapshot(args: SnapshotArgs): Pick<
   | "baseline"
   | "privacy"
   | "baselinePrivacy"
+  | "feed"
+  | "baselineFeed"
   | "notifications"
   | "baselineNotifications"
   | "avatarPending"
@@ -145,6 +165,8 @@ function snapshot(args: SnapshotArgs): Pick<
     baseline: args.baseline,
     privacy: args.privacy,
     baselinePrivacy: args.baselinePrivacy,
+    feed: args.feed,
+    baselineFeed: args.baselineFeed,
     notifications: args.notifications,
     baselineNotifications: args.baselineNotifications,
     avatarPending: args.avatarPending,
@@ -159,9 +181,12 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
   baseline: { ...EMPTY_ACCOUNT },
   privacy: defaultPrivacyDraft(),
   baselinePrivacy: defaultPrivacyDraft(),
+  feed: defaultFeedDraft(),
+  baselineFeed: defaultFeedDraft(),
   notifications: initialNotifications,
   baselineNotifications: initialNotifications,
   privacyReady: false,
+  feedReady: false,
   avatarPending: null,
   dirty: false,
   saving: false,
@@ -175,6 +200,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
       saving,
       privacy,
       baselinePrivacy,
+      feed,
+      baselineFeed,
       notifications,
       baselineNotifications,
       avatarPending,
@@ -187,6 +214,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
         baseline: next,
         privacy,
         baselinePrivacy,
+        feed,
+        baselineFeed,
         notifications,
         baselineNotifications,
         avatarPending,
@@ -201,6 +230,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
       saving,
       privacy,
       baselinePrivacy,
+      feed,
+      baselineFeed,
       account,
       baseline,
       notifications,
@@ -220,6 +251,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
           baseline,
           privacy: next,
           baselinePrivacy: next,
+          feed,
+          baselineFeed,
           notifications,
           baselineNotifications,
           avatarPending,
@@ -234,6 +267,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
           baseline,
           privacy: fallback,
           baselinePrivacy: fallback,
+          feed,
+          baselineFeed,
           notifications,
           baselineNotifications,
           avatarPending,
@@ -243,11 +278,66 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
     }
   },
 
+  async loadFeed() {
+    const {
+      saving,
+      feed,
+      baselineFeed,
+      account,
+      baseline,
+      privacy,
+      baselinePrivacy,
+      notifications,
+      baselineNotifications,
+      avatarPending,
+    } = get();
+    if (saving) return;
+    const feedDirty = !feedDraftEqual(feed, baselineFeed);
+    if (feedDirty) return;
+
+    try {
+      const raw = await apiGetFeedSettings();
+      const next = feedDraftFromApi(raw);
+      set({
+        ...snapshot({
+          account,
+          baseline,
+          privacy,
+          baselinePrivacy,
+          feed: next,
+          baselineFeed: next,
+          notifications,
+          baselineNotifications,
+          avatarPending,
+        }),
+        feedReady: true,
+      });
+    } catch {
+      const fallback = defaultFeedDraft();
+      set({
+        ...snapshot({
+          account,
+          baseline,
+          privacy,
+          baselinePrivacy,
+          feed: fallback,
+          baselineFeed: fallback,
+          notifications,
+          baselineNotifications,
+          avatarPending,
+        }),
+        feedReady: true,
+      });
+    }
+  },
+
   updateAccount(patch) {
     const {
       baseline,
       privacy,
       baselinePrivacy,
+      feed,
+      baselineFeed,
       notifications,
       baselineNotifications,
       avatarPending,
@@ -259,6 +349,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
         baseline,
         privacy,
         baselinePrivacy,
+        feed,
+        baselineFeed,
         notifications,
         baselineNotifications,
         avatarPending,
@@ -273,6 +365,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
       account,
       baseline,
       baselinePrivacy,
+      feed,
+      baselineFeed,
       notifications,
       baselineNotifications,
       avatarPending,
@@ -284,6 +378,37 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
         baseline,
         privacy,
         baselinePrivacy,
+        feed,
+        baselineFeed,
+        notifications,
+        baselineNotifications,
+        avatarPending,
+      }),
+      saveError: null,
+      saveSuccess: null,
+    });
+  },
+
+  updateFeed(patch) {
+    const {
+      account,
+      baseline,
+      privacy,
+      baselinePrivacy,
+      baselineFeed,
+      notifications,
+      baselineNotifications,
+      avatarPending,
+    } = get();
+    const feed = { ...get().feed, ...patch };
+    set({
+      ...snapshot({
+        account,
+        baseline,
+        privacy,
+        baselinePrivacy,
+        feed,
+        baselineFeed,
         notifications,
         baselineNotifications,
         avatarPending,
@@ -299,6 +424,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
       baseline,
       privacy,
       baselinePrivacy,
+      feed,
+      baselineFeed,
       baselineNotifications,
       avatarPending,
     } = get();
@@ -309,6 +436,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
         baseline,
         privacy,
         baselinePrivacy,
+        feed,
+        baselineFeed,
         notifications,
         baselineNotifications,
         avatarPending,
@@ -324,6 +453,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
       baseline,
       privacy,
       baselinePrivacy,
+      feed,
+      baselineFeed,
       notifications,
       baselineNotifications,
     } = get();
@@ -333,6 +464,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
         baseline,
         privacy,
         baselinePrivacy,
+        feed,
+        baselineFeed,
         notifications,
         baselineNotifications,
         avatarPending: pending,
@@ -347,7 +480,7 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
   },
 
   discardChanges() {
-    const { baseline, baselinePrivacy, baselineNotifications, saving } = get();
+    const { baseline, baselinePrivacy, baselineFeed, baselineNotifications, saving } = get();
     if (saving) return;
     set({
       ...snapshot({
@@ -355,6 +488,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
         baseline,
         privacy: { ...baselinePrivacy },
         baselinePrivacy,
+        feed: { ...baselineFeed },
+        baselineFeed,
         notifications: normalizeNotificationsDraft(baselineNotifications),
         baselineNotifications,
         avatarPending: null,
@@ -370,6 +505,8 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
       baseline,
       privacy,
       baselinePrivacy,
+      feed,
+      baselineFeed,
       notifications,
       baselineNotifications,
       dirty,
@@ -382,6 +519,7 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
 
     const accountChanged = !accountDraftEqual(account, baseline);
     const privacyChanged = !privacyDraftEqual(privacy, baselinePrivacy);
+    const feedChanged = !feedDraftEqual(feed, baselineFeed);
     const notificationsChanged = !notificationsDraftEqual(notifications, baselineNotifications);
 
     if (accountChanged) {
@@ -416,6 +554,12 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
         nextPrivacy = privacyDraftFromApi(raw);
       }
 
+      let nextFeed = baselineFeed;
+      if (feedChanged) {
+        const raw = await apiUpdateFeedSettings({ ...feed });
+        nextFeed = feedDraftFromApi(raw);
+      }
+
       let nextNotifications = baselineNotifications;
       if (notificationsChanged) {
         nextNotifications = normalizeNotificationsDraft(notifications);
@@ -438,11 +582,14 @@ export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => ({
           baseline: nextAccount,
           privacy: nextPrivacy,
           baselinePrivacy: nextPrivacy,
+          feed: nextFeed,
+          baselineFeed: nextFeed,
           notifications: nextNotifications,
           baselineNotifications: nextNotifications,
           avatarPending: null,
         }),
         privacyReady: true,
+        feedReady: true,
         saving: false,
         saveSuccess: "Настройки сохранены.",
         saveError: null,

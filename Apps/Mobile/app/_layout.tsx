@@ -32,6 +32,8 @@ export default function RootLayout() {
         <Stack.Screen name="settings/privacy" options={{ headerShown: false }} />
         <Stack.Screen name="settings/security" options={{ headerShown: false }} />
         <Stack.Screen name="settings/notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/updates" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/feed" options={{ headerShown: false }} />
         <Stack.Screen name="settings/customization" options={{ headerShown: false }} />
         <Stack.Screen name="upgrade-required" options={{ title: "Обновление" }} />
       </Stack>

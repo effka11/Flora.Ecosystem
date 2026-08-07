@@ -37,6 +37,7 @@ import Reanimated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AccountSettingsTab } from "@/components/settings/AccountSettingsTab";
 import { CustomizationSettingsTab } from "@/components/settings/CustomizationSettingsTab";
+import { FeedSettingsTab } from "@/components/settings/FeedSettingsTab";
 import { NotificationsSettingsTab } from "@/components/settings/NotificationsSettingsTab";
 import { PrivacySettingsTab } from "@/components/settings/PrivacySettingsTab";
 import { SecuritySettingsTab } from "@/components/settings/SecuritySettingsTab";
@@ -196,6 +197,7 @@ type SettingsSectionId =
   | "security"
   | "notifications"
   | "updates"
+  | "feed"
   | "customization";
 
 type SettingsSection = {
@@ -289,6 +291,22 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     ],
   },
   {
+    id: "feed",
+    label: "Лента",
+    description: "Рекомендации, свежесть и скрытые авторы.",
+    keywords: [
+      "лента",
+      "рекомендации",
+      "свежесть",
+      "репосты",
+      "сообщества",
+      "скрытые",
+      "интересно",
+      "авторы",
+      "просмотренные",
+    ],
+  },
+  {
     id: "customization",
     label: "Кастомизация",
     description: "Тема, язык и оформление интерфейса.",
@@ -337,6 +355,8 @@ function SettingsTabContent({
       return <NotificationsSettingsTab searchQuery={searchQuery} />;
     case "updates":
       return <UpdatesSettingsTab searchQuery={searchQuery} />;
+    case "feed":
+      return <FeedSettingsTab searchQuery={searchQuery} />;
     case "customization":
       return <CustomizationSettingsTab searchQuery={searchQuery} />;
     case "account":
@@ -387,6 +407,7 @@ export default function SettingsScreen() {
   const me = useSessionStore((s) => s.me);
   const syncSettingsFromMe = useSettingsDraftStore((s) => s.syncFromMe);
   const loadPrivacySettings = useSettingsDraftStore((s) => s.loadPrivacy);
+  const loadFeedSettings = useSettingsDraftStore((s) => s.loadFeed);
   const settingsDirty = useSettingsDraftStore((s) => s.dirty);
   const settingsSaving = useSettingsDraftStore((s) => s.saving);
   const settingsSaveError = useSettingsDraftStore((s) => s.saveError);
@@ -408,6 +429,10 @@ export default function SettingsScreen() {
   useEffect(() => {
     void loadPrivacySettings();
   }, [loadPrivacySettings]);
+
+  useEffect(() => {
+    void loadFeedSettings();
+  }, [loadFeedSettings]);
 
   const onRequestSaveSettings = useCallback(() => {
     if (!settingsDirty || settingsSaving) return;
