@@ -11,7 +11,7 @@ import {
   apiRevokeOtherSessions,
   type SessionDto,
 } from "@flora/client-core/auth";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
@@ -20,10 +20,21 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { PhoneNumberField } from "@/components/settings/PhoneNumberField";
 import { Security2FAModal } from "@/components/settings/Security2FAModal";
 import { SecurityFscpKeysModal } from "@/components/settings/SecurityFscpKeysModal";
 import { SecurityRecoveryPhraseModal } from "@/components/settings/SecurityRecoveryPhraseModal";
+import {
+  SettingsHintModal,
+  type SettingsHintAnchor,
+} from "@/components/settings/SettingsHintModal";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
+import {
+  phoneDisplayFromStored,
+  phoneDraftEqualsStored,
+  phoneValueForApi,
+  type PhoneDraft,
+} from "@/lib/phoneNumber";
 import { floraColors, floraSpacing } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -56,36 +67,74 @@ function formatSessionLocation(session: SessionDto): string {
   return session.ipAddress || "Неизвестно";
 }
 
-function FieldLabel({ label, verified }: { label: string; verified?: boolean }) {
+function FieldLabel({
+  label,
+  verified,
+  statusHint,
+}: {
+  label: string;
+  verified?: boolean;
+  statusHint?: string;
+}) {
+  const [tipOpen, setTipOpen] = useState(false);
+  const [tipAnchor, setTipAnchor] = useState<SettingsHintAnchor | null>(null);
+  const statusAnchorRef = useRef<View>(null);
   const showStatus = verified !== undefined;
+
+  const openTip = () => {
+    if (!statusHint) return;
+    statusAnchorRef.current?.measureInWindow((x, y, width, height) => {
+      setTipAnchor({ x, y, width, height });
+      setTipOpen(true);
+    });
+  };
+
   return (
     <View style={ui.labelWithMeta}>
       <Text style={[ui.fieldLabel, { height: undefined, paddingBottom: 0, paddingLeft: 0 }]}>
         {label}
       </Text>
       {showStatus ? (
-        verified ? (
-          <Ionicons
-            name="checkmark"
-            size={16}
-            color={floraColors.greenLight}
-            style={{ transform: [{ translateY: -3 }] }}
-            accessibilityLabel="Подтверждён"
-          />
-        ) : (
-          <Text
-            style={{
-              color: "#f6a8a8",
-              fontSize: 19,
-              fontWeight: "300",
-              lineHeight: 19,
-              transform: [{ translateY: -2 }],
-            }}
-            accessibilityLabel="Не подтверждён"
+        <View ref={statusAnchorRef} collapsable={false}>
+          <Pressable
+            onPress={openTip}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={statusHint ?? (verified ? "Подтверждён" : "Не подтверждён")}
           >
-            ×
-          </Text>
-        )
+            {verified ? (
+              <Ionicons
+                name="checkmark"
+                size={16}
+                color={floraColors.greenLight}
+                style={{ transform: [{ translateY: -3 }] }}
+              />
+            ) : (
+              <Text
+                style={{
+                  color: "#f6a8a8",
+                  fontSize: 19,
+                  fontWeight: "300",
+                  lineHeight: 19,
+                  transform: [{ translateY: -2 }],
+                }}
+              >
+                ×
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+      {statusHint ? (
+        <SettingsHintModal
+          visible={tipOpen}
+          message={statusHint}
+          anchor={tipAnchor}
+          onDismiss={() => {
+            setTipOpen(false);
+            setTipAnchor(null);
+          }}
+        />
       ) : null}
     </View>
   );
@@ -155,7 +204,9 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
 
-  const [phoneDraft, setPhoneDraft] = useState(savedPhone);
+  const [phoneDraft, setPhoneDraft] = useState<PhoneDraft>(() =>
+    phoneDisplayFromStored(savedPhone),
+  );
   const [phonePassword, setPhonePassword] = useState("");
   const [phoneBusy, setPhoneBusy] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -220,7 +271,7 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
   }, [savedEmail]);
 
   useEffect(() => {
-    setPhoneDraft(savedPhone);
+    setPhoneDraft(phoneDisplayFromStored(savedPhone));
     setPhonePassword("");
     setPhoneError(null);
   }, [savedPhone]);
@@ -229,7 +280,7 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
   const emailPending = emailDirty || emailStep === "confirm";
   const emailIconVerified = emailVerified && !emailPending;
 
-  const phoneDirty = phoneDraft.trim() !== savedPhone;
+  const phoneDirty = !phoneDraftEqualsStored(phoneDraft, savedPhone);
   const phoneIconVerified = phoneVerified && !phoneDirty;
 
   const passwordPending = newPassword.length > 0;
@@ -354,14 +405,14 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
   };
 
   const resetPhoneExtras = () => {
-    setPhoneDraft(savedPhone);
+    setPhoneDraft(phoneDisplayFromStored(savedPhone));
     setPhonePassword("");
     setPhoneError(null);
     setPhoneSuccess(null);
   };
 
-  const onPhoneDraftChange = (value: string) => {
-    setPhoneDraft(value);
+  const onPhoneDraftChange = (next: PhoneDraft) => {
+    setPhoneDraft(next);
     setPhoneError(null);
     setPhoneSuccess(null);
   };
@@ -369,7 +420,8 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
   const onSubmitPhone = async () => {
     setPhoneError(null);
     setPhoneSuccess(null);
-    if (!phoneDraft.trim()) {
+    const phoneForApi = phoneValueForApi(phoneDraft);
+    if (!phoneForApi) {
       setPhoneError("Укажите номер телефона.");
       return;
     }
@@ -379,7 +431,7 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
     }
     setPhoneBusy(true);
     try {
-      await apiChangePhone(phonePassword, phoneDraft.trim());
+      await apiChangePhone(phonePassword, phoneForApi);
       setPhoneSuccess("Номер обновлён. SMS-подтверждение будет добавлено позже.");
       setPhonePassword("");
       await refreshMe();
@@ -507,7 +559,13 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
           <Text style={ui.sectionTitle}>Данные для входа</Text>
           <View style={ui.fieldsStack}>
             <View style={ui.fieldGroup}>
-              <FieldLabel label="Email" verified={emailIconVerified} />
+              <FieldLabel
+                label="Email"
+                verified={emailIconVerified}
+                statusHint={
+                  emailIconVerified ? "Email подтвержден" : "Email не подтвержден"
+                }
+              />
               <TextInput
                 style={ui.input}
                 value={emailDraft}
@@ -597,15 +655,16 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
             </View>
 
             <View style={ui.fieldGroup}>
-              <FieldLabel label="Номер телефона" verified={phoneIconVerified} />
-              <TextInput
-                style={ui.input}
-                value={phoneDraft}
-                onChangeText={onPhoneDraftChange}
-                placeholder="Не указан"
-                keyboardType="phone-pad"
-                autoComplete="tel"
+              <FieldLabel
+                label="Номер телефона"
+                verified={phoneIconVerified}
+                statusHint="Подтверждение телефона пока недоступно"
+              />
+              <PhoneNumberField
+                value={phoneDraft.display}
+                onChange={onPhoneDraftChange}
                 editable={!phoneBusy}
+                placeholder="Не указан"
                 placeholderTextColor={ph}
               />
               {phoneDirty ? (
