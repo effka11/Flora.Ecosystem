@@ -101,5 +101,23 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'old API push-token write failed after additive migration';
     END IF;
+
+    IF to_regclass('flora_core.user_notifications') IS NULL THEN
+        RAISE EXCEPTION 'cutover user_notifications stub missing after migrate';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'flora_core'
+          AND table_name = 'user_notifications'
+          AND column_name = 'group_key'
+    ) THEN
+        RAISE EXCEPTION 'notifications migration 0002 did not add group_key';
+    END IF;
+
+    IF to_regclass('flora_core.social_notification_push_state') IS NULL THEN
+        RAISE EXCEPTION 'notifications migration 0002 did not create social_notification_push_state';
+    END IF;
 END
 $$;

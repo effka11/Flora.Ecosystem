@@ -42,6 +42,23 @@ CREATE TABLE flora_core.user_push_tokens (
     "UpdatedAt"     timestamptz NOT NULL
 );
 
+-- Stub for notifications migrations 0002/0003 (ALTER + legacy collapse).
+-- Shape matches cutover inbox columns used by flora-notifications repo (snake_case);
+-- group_key / actor_count / actors_json are added by module migration 0002.
+CREATE TABLE flora_core.user_notifications (
+    notification_uuid   uuid        NOT NULL PRIMARY KEY,
+    recipient_user_uuid uuid        NOT NULL,
+    actor_user_uuid     uuid        NULL,
+    type                text        NOT NULL,
+    category            text        NOT NULL,
+    text                text        NOT NULL,
+    post_uuid           uuid        NULL,
+    comment_uuid        uuid        NULL,
+    target_platform     varchar(16) NULL,
+    is_read             boolean     NOT NULL DEFAULT false,
+    created_at          timestamptz NOT NULL DEFAULT now()
+);
+
 -- A row written by the old API before migration must remain usable afterward.
 INSERT INTO flora_core.user_sessions (
     session_id, user_uuid, agent_hash, ip_address,
