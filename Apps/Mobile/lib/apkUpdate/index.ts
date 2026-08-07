@@ -45,3 +45,11 @@ export {
   runUserUpdateFromNotification,
 } from "@/lib/apkUpdate/userUpdate";
 export { openInstallPermissionPrompt } from "@/lib/apkUpdate/installPermissionPrompt";
+export {
+  FLORA_APK_UPDATE_CHANNELS,
+  getUpdateChannelId,
+  labelForUpdateChannel,
+  setUpdateChannelId,
+  type FloraApkUpdateChannelId,
+  type FloraApkUpdateChannelOption,
+} from "@/lib/apkUpdate/updateChannel";

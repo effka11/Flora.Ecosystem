@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import {
   canRequestPackageInstalls,
   openInstallPermissionSettings,
@@ -7,7 +8,9 @@ import {
   ActivityIndicator,
   AppState,
   Linking,
+  Modal,
   Pressable,
+  StyleSheet,
   Switch,
   Text,
   View,
@@ -17,24 +20,29 @@ import { settingsUi as ui } from "@/components/settings/settingsUi";
 import {
   cancelInteractiveApkUpdate,
   fetchLatestUpdateManifest,
+  FLORA_APK_UPDATE_CHANNELS,
   getInstalledVersionCode,
+  getUpdateChannelId,
   isAutoUpdateEnabled,
   isInAppUpdatesEnabled,
   isSideloadUpdatesEnabled,
+  labelForUpdateChannel,
   openInstallPermissionPrompt,
   reconcileInstallPermissionWithOs,
   resolveInstalledBuildOfficiality,
   runAppUpdateCatchUp,
   runUserUpdateCheck,
   setAutoUpdateEnabled,
+  setUpdateChannelId,
   subscribeUpdatePreferences,
   type ApkUpdateProgress,
   type AndroidUpdateManifest,
+  type FloraApkUpdateChannelId,
   type InstalledBuildOfficiality,
 } from "@/lib/apkUpdate";
 import { waitForInstallPermissionResult } from "@/lib/apkUpdate/waitForInstallPermission";
 import { FLORA_DOWNLOAD_PAGE, getFloraSocialAppVersion } from "@/lib/appLinks";
-import { floraColors } from "@/lib/theme";
+import { floraColors, floraSpacing } from "@/lib/theme";
 
 function normalizeSearch(value: string): string {
   return value.trim().toLowerCase();
@@ -99,8 +107,10 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
   );
   const [permBusy, setPermBusy] = useState(false);
   const [permDeniedMeta, setPermDeniedMeta] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
+  const [updateChannel, setUpdateChannel] = useState<FloraApkUpdateChannelId>(() =>
+    getUpdateChannelId(),
+  );
+  const [channelPickerOpen, setChannelPickerOpen] = useState(false);
 
   const [updating, setUpdating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -249,11 +259,9 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
   const handleCheckUpdate = () => {
     if (updating) return;
     cancelledRef.current = false;
-    setStatusError(null);
-    setStatusMessage(null);
     setUpdating(true);
     setCancelling(false);
-    setProgress(null);
+    setProgress({ phase: "checking" });
 
     const onProgress = (next: ApkUpdateProgress) => {
       if (!mountedRef.current || cancelledRef.current) return;
@@ -274,25 +282,24 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
             message: result.error || "Не удалось обновить приложение",
             code: result.code,
           });
-          setStatusError(result.error);
           return;
         }
 
         if (result.status === "up_to_date") {
-          closeModal();
-          setStatusMessage("Установлена актуальная версия.");
+          onProgress({ phase: "done", message: "Установлена актуальная версия." });
           void refreshLatest();
           void refreshOfficiality();
           return;
         }
 
         if (result.status === "installed" || result.status === "opened_channel") {
-          closeModal();
-          setStatusMessage(
-            result.status === "opened_channel"
-              ? "Открыта загрузка APK с канала Flora."
-              : "Обновление установлено.",
-          );
+          onProgress({
+            phase: "done",
+            message:
+              result.status === "opened_channel"
+                ? "Открыта загрузка APK с канала Flora."
+                : "Обновление установлено.",
+          });
           void refreshLatest();
           void refreshOfficiality();
           return;
@@ -312,13 +319,23 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
         const detail =
           err instanceof Error && err.message ? err.message : "Не удалось проверить обновление";
         onProgress({ phase: "error", message: detail });
-        setStatusError(detail);
       }
     })();
   };
 
   const updateAvailable =
     latest?.versionCode != null && latest.versionCode > installedCode;
+  const latestApkUrl =
+    typeof latest?.apkUrl === "string" && latest.apkUrl.trim().length > 0
+      ? latest.apkUrl.trim()
+      : null;
+  const primaryMode: "download" | "check" =
+    !hasInstallPerm && updateAvailable && latestApkUrl != null ? "download" : "check";
+  const primaryLabel = hasInstallPerm
+    ? "Обновить приложение"
+    : primaryMode === "download"
+      ? "Скачать обновление"
+      : "Проверить обновления";
 
   const versionVisible = matchesSearch(
     searchQuery,
@@ -329,6 +346,10 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
     "обновление",
     "актуальн",
     "официальн",
+    "проверить",
+    "обновить",
+    "скачать",
+    "загрузка",
   );
 
   const officialityLabel =
@@ -349,22 +370,8 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
       "apk",
       "install",
     );
-  const actionsVisible = matchesSearch(
-    searchQuery,
-    "проверить",
-    "обновить",
-    "скачать",
-    "канал",
-    "загрузка",
-    "обновление",
-  );
 
-  if (
-    normalizeSearch(searchQuery) &&
-    !versionVisible &&
-    !installVisible &&
-    !actionsVisible
-  ) {
+  if (normalizeSearch(searchQuery) && !versionVisible && !installVisible) {
     return null;
   }
 
@@ -393,6 +400,61 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
                 </View>
               ) : null}
             </View>
+
+            <View style={styles.actionsCard}>
+              <Pressable
+                style={({ pressed }) => [styles.channelRow, pressed && ui.pressed]}
+                onPress={() => setChannelPickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Выбрать канал обновлений"
+              >
+                <View style={styles.channelRowText}>
+                  <Text style={styles.channelRowLabel}>Канал</Text>
+                  <Text style={styles.channelRowValue} numberOfLines={1}>
+                    {labelForUpdateChannel(updateChannel)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={floraColors.gray} />
+              </Pressable>
+
+              <View style={styles.actionsDivider} />
+
+              <View style={styles.actionsFooter}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.checkButton,
+                    (pressed || (primaryMode === "check" && updating)) && ui.pressed,
+                    primaryMode === "check" && updating && ui.textActionDisabled,
+                  ]}
+                  onPress={() => {
+                    if (primaryMode === "download" && latestApkUrl) {
+                      void Linking.openURL(latestApkUrl);
+                      return;
+                    }
+                    handleCheckUpdate();
+                  }}
+                  disabled={primaryMode === "check" && updating}
+                  accessibilityRole="button"
+                  accessibilityLabel={primaryLabel}
+                >
+                  {primaryMode === "check" && updating ? (
+                    <ActivityIndicator color={floraColors.bg} />
+                  ) : (
+                    <Text style={styles.checkButtonText}>{primaryLabel}</Text>
+                  )}
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.downloadLink, pressed && ui.pressed]}
+                  onPress={() => void Linking.openURL(FLORA_DOWNLOAD_PAGE)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Открыть страницу загрузки"
+                >
+                  <Text style={styles.downloadLinkText}>Канал загрузки</Text>
+                  <Ionicons name="open-outline" size={15} color={floraColors.gray} />
+                </Pressable>
+              </View>
+            </View>
+
             {updateAvailable && latest?.version ? (
               <Text style={ui.sectionHint}>
                 На канале Flora доступна версия {latest.version}
@@ -432,48 +494,53 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
         </View>
       ) : null}
 
-      {actionsVisible ? (
-        <View style={ui.section}>
-          <Text style={ui.sectionTitle}>Проверка и загрузка</Text>
-          <View style={ui.fieldsStack}>
-            <Text style={ui.sectionHint}>
-              Кнопка «Обновить» также есть в уведомлении о новой версии. Здесь можно проверить канал
-              вручную.
-            </Text>
-            <View style={ui.formActionsRow}>
-              <Pressable
-                style={({ pressed }) => [
-                  ui.softPrimaryButton,
-                  (pressed || updating) && ui.pressed,
-                  updating && ui.textActionDisabled,
-                ]}
-                onPress={handleCheckUpdate}
-                disabled={updating}
-                accessibilityRole="button"
-                accessibilityLabel="Проверить обновления"
-              >
-                {updating ? (
-                  <ActivityIndicator color={floraColors.greenLight} />
-                ) : (
-                  <Text style={ui.softPrimaryButtonText}>
-                    {updateAvailable ? "Обновить" : "Проверить обновления"}
+      <Modal
+        visible={channelPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setChannelPickerOpen(false)}
+      >
+        <View style={styles.channelBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setChannelPickerOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть"
+          />
+          <View style={styles.channelSheet} accessibilityViewIsModal>
+            <Text style={styles.channelSheetTitle}>Канал обновлений</Text>
+            {FLORA_APK_UPDATE_CHANNELS.map((option) => {
+              const selected = option.id === updateChannel;
+              return (
+                <Pressable
+                  key={option.id}
+                  style={({ pressed }) => [styles.channelOptionRow, pressed && ui.pressed]}
+                  onPress={() => {
+                    setUpdateChannelId(option.id);
+                    setUpdateChannel(option.id);
+                    setChannelPickerOpen(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={option.label}
+                >
+                  <Text
+                    style={[
+                      styles.channelOptionLabel,
+                      selected && styles.channelOptionLabelSelected,
+                    ]}
+                  >
+                    {option.label}
                   </Text>
-                )}
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [ui.softMutedButton, pressed && ui.pressed]}
-                onPress={() => void Linking.openURL(FLORA_DOWNLOAD_PAGE)}
-                accessibilityRole="button"
-                accessibilityLabel="Открыть страницу загрузки"
-              >
-                <Text style={ui.softMutedButtonText}>Канал загрузки</Text>
-              </Pressable>
-            </View>
-            {statusError ? <Text style={ui.feedbackError}>{statusError}</Text> : null}
-            {statusMessage ? <Text style={ui.feedbackSuccess}>{statusMessage}</Text> : null}
+                  {selected ? (
+                    <Ionicons name="checkmark" size={20} color={floraColors.greenLight} />
+                  ) : null}
+                </Pressable>
+              );
+            })}
           </View>
         </View>
-      ) : null}
+      </Modal>
 
       <AppUpdateProgressModal
         visible={updating && progress != null}
@@ -485,3 +552,120 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  actionsCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(250, 250, 250, 0.08)",
+    backgroundColor: "rgba(250, 250, 250, 0.03)",
+    overflow: "hidden",
+  },
+  channelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: floraSpacing.grid,
+    paddingHorizontal: floraSpacing.grid,
+    paddingVertical: floraSpacing.grid,
+    minHeight: floraSpacing.grid * 4,
+  },
+  channelRowText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  channelRowLabel: {
+    color: floraColors.gray,
+    fontSize: 12,
+    fontWeight: "300",
+    letterSpacing: 0.36,
+  },
+  channelRowValue: {
+    color: floraColors.whiteTemplate,
+    fontSize: 15,
+    fontWeight: "300",
+    letterSpacing: 0.45,
+  },
+  actionsDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(250, 250, 250, 0.08)",
+    marginHorizontal: floraSpacing.grid,
+  },
+  actionsFooter: {
+    paddingHorizontal: floraSpacing.grid,
+    paddingTop: floraSpacing.grid,
+    paddingBottom: floraSpacing.grid,
+    gap: floraSpacing.gridFine * 2,
+  },
+  checkButton: {
+    height: floraSpacing.grid * 3,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: floraColors.greenLight,
+  },
+  checkButtonText: {
+    color: floraColors.bg,
+    fontSize: 14,
+    fontWeight: "400",
+    letterSpacing: 0.42,
+  },
+  downloadLink: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: floraSpacing.gridFine,
+    minHeight: floraSpacing.grid * 2,
+    paddingVertical: floraSpacing.gridFine,
+  },
+  downloadLinkText: {
+    color: floraColors.gray,
+    fontSize: 13,
+    fontWeight: "300",
+    letterSpacing: 0.39,
+  },
+  channelBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: floraSpacing.grid * 2,
+  },
+  channelSheet: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(250, 250, 250, 0.08)",
+    backgroundColor: floraColors.surfaceElevated,
+    paddingVertical: floraSpacing.gridFine,
+    paddingHorizontal: floraSpacing.grid,
+    gap: floraSpacing.gridFine,
+  },
+  channelSheetTitle: {
+    color: floraColors.gray,
+    fontSize: 13,
+    fontWeight: "300",
+    letterSpacing: 0.45,
+    paddingHorizontal: floraSpacing.gridFine,
+    paddingVertical: floraSpacing.gridFine * 2,
+  },
+  channelOptionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: floraSpacing.grid,
+    minHeight: floraSpacing.grid * 3,
+    paddingHorizontal: floraSpacing.gridFine,
+    paddingVertical: floraSpacing.gridFine,
+  },
+  channelOptionLabel: {
+    flex: 1,
+    color: floraColors.whiteTemplate,
+    fontSize: 15,
+    fontWeight: "300",
+    letterSpacing: 0.45,
+  },
+  channelOptionLabelSelected: {
+    color: floraColors.greenLight,
+  },
+});
