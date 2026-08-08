@@ -121,7 +121,7 @@
 >
 > What I think might interest this sub: [2–3 инженерных пункта со ссылками на код/спеки]
 >
-> It's alpha, and here's an honest list of current limitations: [ссылка на SECURITY.md]. Happy to answer anything.
+> It's alpha, and here's an honest list of current limitations: [ссылка на Documents/known/security.md]. Happy to answer anything.
 
 Критерий «сделано»: пост жив (не удалён модераторами), есть ответы на все комментарии. Мерить: переходы (Plausible, реферер), звёзды GitHub в окно 48 ч.
 
