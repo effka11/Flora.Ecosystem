@@ -3,6 +3,7 @@ import {
   clampStripOffset,
   expandMountedAround,
   mountedSetsEqual,
+  nextMountCandidate,
   reconcileMountedIds,
 } from "./settingsMountedSections";
 
@@ -114,5 +115,41 @@ describe("mountedSetsEqual", () => {
     const b = new Set(["b", "a"] as const);
     expect(mountedSetsEqual(a, b)).toBe(true);
     expect(mountedSetsEqual(a, new Set(["a"] as const))).toBe(false);
+  });
+});
+
+describe("nextMountCandidate", () => {
+  it("returns null for empty visible list", () => {
+    expect(nextMountCandidate([], new Set(), 0)).toBeNull();
+  });
+
+  it("returns null when everything is mounted", () => {
+    expect(nextMountCandidate(ALL, new Set(ALL), 2)).toBeNull();
+  });
+
+  it("prefers forward on equal distance", () => {
+    const mounted = new Set(["security"] as const);
+    expect(nextMountCandidate(ALL, mounted, 2)).toBe("notifications");
+  });
+
+  it("falls back to nearest backward when forward side is mounted", () => {
+    const mounted = new Set(["security", "notifications", "customization"] as const);
+    expect(nextMountCandidate(ALL, mounted, 2)).toBe("privacy");
+  });
+
+  it("walks outward by distance", () => {
+    const mounted = new Set(["account", "privacy", "security"] as const);
+    expect(nextMountCandidate(ALL, mounted, 1)).toBe("notifications");
+  });
+
+  it("clamps out-of-range active index", () => {
+    expect(nextMountCandidate(ALL, new Set(["customization"] as const), 99)).toBe(
+      "notifications",
+    );
+  });
+
+  it("returns the active id itself when unmounted", () => {
+    const mounted = new Set(ALL.filter((id) => id !== "security"));
+    expect(nextMountCandidate(ALL, mounted, 2)).toBe("security");
   });
 });

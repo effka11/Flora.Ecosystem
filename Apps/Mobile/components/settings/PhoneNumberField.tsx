@@ -1,5 +1,8 @@
 import { useMemo } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+// RNGH TextInput: при активации pager-pan получает ACTION_CANCEL — иначе
+// EditText ведёт курсор и рисует лупу выделения весь горизонтальный свайп.
+import { TextInput } from "react-native-gesture-handler";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
 import {
   countryFlagEmoji,

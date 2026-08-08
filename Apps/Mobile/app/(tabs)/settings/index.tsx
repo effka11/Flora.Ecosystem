@@ -8,8 +8,6 @@ import {
   useState,
 } from "react";
 import {
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -20,13 +18,13 @@ import {
   Gesture,
   GestureDetector,
   Pressable as GesturePressable,
+  ScrollView as GestureScrollView,
 } from "react-native-gesture-handler";
 import { LinearGradient } from "expo-linear-gradient";
 import Reanimated, {
   cancelAnimation,
   Extrapolation,
   interpolate,
-  interpolateColor,
   runOnJS,
   runOnUI,
   useAnimatedStyle,
@@ -57,7 +55,11 @@ import {
   schedulePagerMediaWake,
   type PagerMediaWakeHandle,
 } from "@/lib/feedPagerMediaWake";
-import { mountedSetsEqual, reconcileMountedIds } from "@/lib/settingsMountedSections";
+import {
+  mountedSetsEqual,
+  nextMountCandidate,
+  reconcileMountedIds,
+} from "@/lib/settingsMountedSections";
 import { floraColors, floraSpacing, floraTabBarContentPadding, floraTabFilter } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useSettingsDraftStore } from "@/stores/settingsDraftStore";
@@ -72,6 +74,16 @@ const CHIP_DECAY_MIN_VX = 320;
 const STRIP_MODE_FOLLOW = 0;
 const STRIP_MODE_FREE = 1;
 const TABS_PAD_X = floraSpacing.grid;
+/**
+ * База ширины индикатора: реальная ширина — через scaleX (transform), а не
+ * width. Анимация width — layout-свойство: commit shadow-дерева + Yoga на
+ * каждом кадре свайпа. При высоте 2px деформация скруглений не различима.
+ */
+const TAB_INDICATOR_BASE_W = 120;
+/** Прогрев дальней секции — только после такой паузы во взаимодействии. */
+const WARMUP_QUIET_MS = 400;
+/** Зазор между шагами прогрева: маунт и его async-догрузки успевают осесть. */
+const WARMUP_STEP_GAP_MS = 120;
 
 type TabLayout = { x: number; width: number };
 
@@ -153,42 +165,32 @@ const SettingsSectionTabLabel = memo(function SettingsSectionTabLabel({
   pageWidth: number;
   pageCount: number;
 }) {
-  // Как лента: цвет только через interpolateColor(scrollX), без чтения SharedValue-массивов.
-  const labelStyle = useAnimatedStyle(() => {
-    if (pageWidth <= 0 || pageCount <= 0) {
-      return { color: floraColors.gray };
-    }
-    if (pageCount === 1) {
-      return { color: floraColors.greenLight };
-    }
-    if (index <= 0) {
-      return {
-        color: interpolateColor(
-          scrollX.value,
-          [0, pageWidth],
-          [floraColors.greenLight, floraColors.gray],
-        ),
-      };
-    }
-    if (index >= pageCount - 1) {
-      return {
-        color: interpolateColor(
-          scrollX.value,
-          [(pageCount - 2) * pageWidth, (pageCount - 1) * pageWidth],
-          [floraColors.gray, floraColors.greenLight],
-        ),
-      };
-    }
-    return {
-      color: interpolateColor(
-        scrollX.value,
-        [(index - 1) * pageWidth, index * pageWidth, (index + 1) * pageWidth],
-        [floraColors.gray, floraColors.greenLight, floraColors.gray],
-      ),
-    };
+  /**
+   * Кроссфейд серый↔зелёный — двумя слоями текста через opacity. Анимация
+   * color текста на Fabric — это UPDATE_STATE-коммит Paragraph (клон
+   * shadow-узла + перемер текста) на каждое touch-событие свайпа: в трейсе
+   * это ~8–10 мс UI-потока на MOVE при бюджете кадра 8.3 мс (120 Гц).
+   * Opacity применяется в view напрямую без коммита; green-over-gray с
+   * альфой a = a·green + (1−a)·gray — та же линейная интерполяция цвета.
+   */
+  const overlayStyle = useAnimatedStyle(() => {
+    if (pageWidth <= 0 || pageCount <= 0) return { opacity: 0 };
+    if (pageCount === 1) return { opacity: 1 };
+    const distance = Math.abs(scrollX.value / pageWidth - index);
+    return { opacity: distance >= 1 ? 0 : 1 - distance };
   });
 
-  return <Reanimated.Text style={[styles.tabLabel, labelStyle]}>{label}</Reanimated.Text>;
+  return (
+    <View>
+      <Text style={styles.tabLabel}>{label}</Text>
+      <Reanimated.Text
+        pointerEvents="none"
+        style={[styles.tabLabel, styles.tabLabelActive, overlayStyle]}
+      >
+        {label}
+      </Reanimated.Text>
+    </View>
+  );
 });
 
 type SettingsSectionId =
@@ -339,7 +341,8 @@ function contentSearchQueryForSection(section: SettingsSection, search: string):
   return search;
 }
 
-function SettingsTabContent({
+/** memo: flip isActive у страницы не должен пере-рендерить всю форму (тяжёлые вкладки). */
+const SettingsTabContent = memo(function SettingsTabContent({
   activeSection,
   searchQuery,
 }: {
@@ -363,7 +366,7 @@ function SettingsTabContent({
     default:
       return <AccountSettingsTab searchQuery={searchQuery} />;
   }
-}
+});
 
 /** Контент sticky-mount; mid-pan setState запрещён — окно расширяет wake после settle. */
 const SettingsSectionPage = memo(function SettingsSectionPage({
@@ -381,19 +384,24 @@ const SettingsSectionPage = memo(function SettingsSectionPage({
 }) {
   return (
     <View style={[styles.page, { width: pageWidth }]} collapsable={false}>
-      <ScrollView
+      {/* RNGH ScrollView, как скролл ленты: при активации pager-pan RNGH
+          отменяет скролл детерминированно на UI-потоке — обычный RN ScrollView
+          конкурирует за touch через Android-перехват и дёргает горизонтальный
+          свайп. overScroll «never» на неактивных: EdgeEffect не должен жить
+          на страницах, которые едут в translateX (как в ленте). */}
+      <GestureScrollView
         style={styles.content}
         contentContainerStyle={[styles.contentInner, { paddingBottom: listPaddingBottom }]}
         keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled
         scrollEnabled={isActive}
+        overScrollMode={isActive ? "auto" : "never"}
         removeClippedSubviews
       >
         <SettingsTabContent
           activeSection={section.id}
           searchQuery={contentSearchQueryForSection(section, search)}
         />
-      </ScrollView>
+      </GestureScrollView>
     </View>
   );
 });
@@ -472,6 +480,27 @@ export default function SettingsScreen() {
     SETTINGS_SECTIONS.map((section) => section.id),
   );
   const mountWakeRef = useRef<PagerMediaWakeHandle | null>(null);
+  const mountedIdsRef = useRef(mountedSectionIds);
+  /**
+   * Fabric-mount тяжёлой вкладки идёт на Android main thread и роняет кадры
+   * pan/decay/settle. Пока экраном владеет касание или анимация — расширение
+   * окна откладывается в pending и монтируется на первом idle. Владельцы
+   * раздельные: одновременные «палец на полосе + settle pager'а» не должны
+   * снимать busy друг у друга.
+   */
+  const touchCountRef = useRef(0);
+  const pagerMotionRef = useRef(false);
+  const stripMotionRef = useRef(false);
+  const pendingExpandIndexRef = useRef<number | null>(null);
+  /**
+   * Прогрев дальних секций — только после паузы во взаимодействии: маунт,
+   * начавшийся за миг до касания, дёргает первые кадры свайпа (busy-guard
+   * ловит wake во время жеста, но не маунт, стартовавший до него).
+   */
+  const lastInteractionAtRef = useRef(Date.now());
+  const warmupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  mountedIdsRef.current = mountedSectionIds;
 
   const scrollX = useSharedValue(0);
   const dragStartX = useSharedValue(0);
@@ -517,27 +546,137 @@ export default function SettingsScreen() {
   const cancelMountWake = useCallback(() => {
     mountWakeRef.current?.cancel();
     mountWakeRef.current = null;
+    if (warmupTimerRef.current != null) {
+      clearTimeout(warmupTimerRef.current);
+      warmupTimerRef.current = null;
+    }
   }, []);
 
-  const scheduleExpandNeighbors = useCallback(
+  const isInteractionBusy = useCallback(
+    () => touchCountRef.current > 0 || pagerMotionRef.current || stripMotionRef.current,
+    [],
+  );
+
+  /** Рекурсия цепочки прогрева — через ref (self-reference в useCallback). */
+  const scheduleMountAdvanceRef = useRef<(activeIndex: number) => void>(() => {});
+
+  /**
+   * Один idle-шаг окна маунта: сперва active±1 (как раньше), затем прогрев
+   * остальных секций по одной за шаг. После прогрева свайп не вызывает
+   * mount/commit вообще — как в ленте, где обе панели всегда смонтированы.
+   */
+  const scheduleMountAdvance = useCallback(
     (activeIndex: number) => {
       cancelMountWake();
+      pendingExpandIndexRef.current = null;
       mountWakeRef.current = schedulePagerMediaWake({
         run: () => {
           mountWakeRef.current = null;
-          setMountedSectionIds((prev) => {
-            const next = reconcileMountedIds({
-              prev,
-              visibleIds: visibleIdsRef.current,
-              activeIndex,
-              expandNeighbors: true,
-            });
-            return mountedSetsEqual(prev, next) ? prev : next;
+          if (isInteractionBusy()) {
+            // InteractionManager не видит RNGH/Reanimated — сами ждём конца жеста.
+            pendingExpandIndexRef.current = activeIndex;
+            return;
+          }
+          const withNeighbors = reconcileMountedIds({
+            prev: mountedIdsRef.current,
+            visibleIds: visibleIdsRef.current,
+            activeIndex,
+            expandNeighbors: true,
           });
+          if (!mountedSetsEqual(mountedIdsRef.current, withNeighbors)) {
+            // Ref обновляем сразу: следующий шаг цепочки не должен читать устаревший set.
+            mountedIdsRef.current = withNeighbors;
+            setMountedSectionIds((prev) => {
+              const next = reconcileMountedIds({
+                prev,
+                visibleIds: visibleIdsRef.current,
+                activeIndex,
+                expandNeighbors: true,
+              });
+              return mountedSetsEqual(prev, next) ? prev : next;
+            });
+            scheduleMountAdvanceRef.current(activeIndex);
+            return;
+          }
+          const candidate = nextMountCandidate(
+            visibleIdsRef.current,
+            mountedIdsRef.current,
+            activeIndex,
+          );
+          if (candidate == null) return;
+          // Дальняя секция не нужна следующему свайпу — греем только в тишину,
+          // иначе маунт ляжет между быстрыми жестами и дёрнет старт свайпа.
+          const quietFor = Date.now() - lastInteractionAtRef.current;
+          if (quietFor < WARMUP_QUIET_MS) {
+            warmupTimerRef.current = setTimeout(() => {
+              warmupTimerRef.current = null;
+              scheduleMountAdvanceRef.current(activeIndex);
+            }, WARMUP_QUIET_MS - quietFor);
+            return;
+          }
+          const grown = new Set(mountedIdsRef.current);
+          grown.add(candidate);
+          mountedIdsRef.current = grown;
+          setMountedSectionIds((prev) => {
+            if (prev.has(candidate)) return prev;
+            const next = new Set(prev);
+            next.add(candidate);
+            return next;
+          });
+          warmupTimerRef.current = setTimeout(() => {
+            warmupTimerRef.current = null;
+            scheduleMountAdvanceRef.current(activeIndex);
+          }, WARMUP_STEP_GAP_MS);
         },
       });
     },
-    [cancelMountWake],
+    [cancelMountWake, isInteractionBusy],
+  );
+
+  scheduleMountAdvanceRef.current = scheduleMountAdvance;
+
+  /** Владелец отпустил экран — перепланировать отложенный mount на idle. */
+  const flushExpandIfIdle = useCallback(() => {
+    if (isInteractionBusy()) return;
+    const pending = pendingExpandIndexRef.current;
+    if (pending == null) return;
+    scheduleMountAdvance(pending);
+  }, [isInteractionBusy, scheduleMountAdvance]);
+
+  const onTouchBegin = useCallback(() => {
+    lastInteractionAtRef.current = Date.now();
+    touchCountRef.current += 1;
+  }, []);
+
+  /** Тач полосы дополнительно снимает владение с отменённого decay. */
+  const onStripTouchBegin = useCallback(() => {
+    lastInteractionAtRef.current = Date.now();
+    touchCountRef.current += 1;
+    stripMotionRef.current = false;
+  }, []);
+
+  const onTouchFinalize = useCallback(() => {
+    lastInteractionAtRef.current = Date.now();
+    touchCountRef.current = Math.max(0, touchCountRef.current - 1);
+    flushExpandIfIdle();
+  }, [flushExpandIfIdle]);
+
+  const setPagerMotion = useCallback(
+    (active: boolean) => {
+      lastInteractionAtRef.current = Date.now();
+      pagerMotionRef.current = active;
+      if (!active) flushExpandIfIdle();
+    },
+    [flushExpandIfIdle],
+  );
+
+  const setStripMotion = useCallback(
+    (active: boolean) => {
+      lastInteractionAtRef.current = Date.now();
+      stripMotionRef.current = active;
+      if (!active) flushExpandIfIdle();
+    },
+    [flushExpandIfIdle],
   );
 
   const commitPagerIndex = useCallback(
@@ -545,10 +684,14 @@ export default function SettingsScreen() {
       const next = visibleSectionsRef.current[index];
       if (!next) return;
       pagerTargetRef.current = next.id;
+      // Settle доехал; свежая экспансия ниже заменяет pending (палец мог
+      // уже владеть экраном — wake сам отложится через isInteractionBusy).
+      lastInteractionAtRef.current = Date.now();
+      pagerMotionRef.current = false;
       setActiveSection((current) => (current === next.id ? current : next.id));
-      scheduleExpandNeighbors(index);
+      scheduleMountAdvance(index);
     },
-    [scheduleExpandNeighbors],
+    [scheduleMountAdvance],
   );
 
   const switchSection = useCallback(
@@ -560,14 +703,19 @@ export default function SettingsScreen() {
       }
       // Tap не pan: целевую секцию монтируем сразу; active/соседи — после settle+wake.
       pagerTargetRef.current = next;
-      setMountedSectionIds((prev) => {
-        if (prev.has(next)) return prev;
-        const nextSet = new Set(prev);
-        nextSet.add(next);
-        return nextSet;
-      });
+      // Оба settle (полоса + pager) под одним владельцем; commit снимет.
+      pagerMotionRef.current = true;
+      const needsMount = !mountedIdsRef.current.has(next);
+      if (needsMount) {
+        setMountedSectionIds((prev) => {
+          if (prev.has(next)) return prev;
+          const nextSet = new Set(prev);
+          nextSet.add(next);
+          return nextSet;
+        });
+      }
       const target = index * pageWidth;
-      runOnUI(() => {
+      const settleWorklet = () => {
         "worklet";
         stripModeSV.value = STRIP_MODE_FREE;
         stripHandoffSV.value = 0;
@@ -622,7 +770,18 @@ export default function SettingsScreen() {
             runOnJS(commitPagerIndex)(index);
           },
         );
-      })();
+      };
+      // Свежий mount: settle со следующего кадра, чтобы Fabric-mount формы
+      // не съедал первые кадры анимации на Android main thread.
+      if (needsMount) {
+        requestAnimationFrame(() => {
+          // Перебит более новым тапом — цель уже другая.
+          if (pagerTargetRef.current !== next) return;
+          runOnUI(settleWorklet)();
+        });
+      } else {
+        runOnUI(settleWorklet)();
+      }
     },
     [
       commitPagerIndex,
@@ -645,8 +804,8 @@ export default function SettingsScreen() {
       0,
       visibleIdsRef.current.findIndex((id) => id === initialSection),
     );
-    scheduleExpandNeighbors(index);
-  }, [initialSection, scheduleExpandNeighbors]);
+    scheduleMountAdvance(index);
+  }, [initialSection, scheduleMountAdvance]);
 
   useEffect(() => {
     if (visibleSections.length === 0) return;
@@ -666,7 +825,6 @@ export default function SettingsScreen() {
     );
     cancelAnimation(scrollX);
     scrollX.value = index * pageWidth;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- jump on width/filter; animated settles own transitions
   }, [pageCountSV, pageWidth, pageWidthSV, scrollX, visibleSections]);
 
   // Поиск/фильтр: sync без соседей, затем wake ±1 (не mid-pan).
@@ -689,8 +847,8 @@ export default function SettingsScreen() {
       });
       return mountedSetsEqual(prev, next) ? prev : next;
     });
-    scheduleExpandNeighbors(index);
-  }, [cancelMountWake, scheduleExpandNeighbors, visibleIds]);
+    scheduleMountAdvance(index);
+  }, [cancelMountWake, scheduleMountAdvance, visibleIds]);
 
   useEffect(() => () => cancelMountWake(), [cancelMountWake]);
 
@@ -752,27 +910,29 @@ export default function SettingsScreen() {
     };
   });
 
+  // Только transform/opacity — ни одного layout-свойства на кадр свайпа.
+  // scaleX вокруг центра: левый край = translateX + (BASE - w) / 2.
   const tabIndicatorStyle = useAnimatedStyle(() => {
     if (!tabsChrome.ready) {
-      return { opacity: 0, width: 0, transform: [{ translateX: 0 }] };
+      return { opacity: 0, transform: [{ translateX: 0 }, { scaleX: 0 }] };
     }
+    const width = interpolate(
+      scrollX.value,
+      tabsChrome.inputRange,
+      tabsChrome.indicatorW,
+      Extrapolation.CLAMP,
+    );
+    const left = interpolate(
+      scrollX.value,
+      tabsChrome.inputRange,
+      tabsChrome.indicatorX,
+      Extrapolation.CLAMP,
+    );
     return {
       opacity: 1,
-      width: interpolate(
-        scrollX.value,
-        tabsChrome.inputRange,
-        tabsChrome.indicatorW,
-        Extrapolation.CLAMP,
-      ),
       transform: [
-        {
-          translateX: interpolate(
-            scrollX.value,
-            tabsChrome.inputRange,
-            tabsChrome.indicatorX,
-            Extrapolation.CLAMP,
-          ),
-        },
+        { translateX: left - (TAB_INDICATOR_BASE_W - width) / 2 },
+        { scaleX: width / TAB_INDICATOR_BASE_W },
       ],
     };
   });
@@ -786,6 +946,7 @@ export default function SettingsScreen() {
           "worklet";
           // Снять инерцию в момент касания — иначе блокирует тап по чипу.
           cancelAnimation(stripOffsetSV);
+          runOnJS(onStripTouchBegin)();
         })
         .onStart(() => {
           "worklet";
@@ -820,15 +981,29 @@ export default function SettingsScreen() {
           if (Math.abs(event.velocityX) < CHIP_DECAY_MIN_VX) {
             return;
           }
-          stripOffsetSV.value = withDecay({
-            velocity: -event.velocityX,
-            clamp: [0, Math.max(0, maxStripOffsetSV.value)],
-          });
+          runOnJS(setStripMotion)(true);
+          stripOffsetSV.value = withDecay(
+            {
+              velocity: -event.velocityX,
+              clamp: [0, Math.max(0, maxStripOffsetSV.value)],
+            },
+            (finished) => {
+              // Отмену (finished=false) ведёт новый владелец (тач/пейджер).
+              if (finished) runOnJS(setStripMotion)(false);
+            },
+          );
+        })
+        .onFinalize(() => {
+          "worklet";
+          runOnJS(onTouchFinalize)();
         }),
     [
       inputRangeSV,
       maxStripOffsetSV,
+      onStripTouchBegin,
+      onTouchFinalize,
       scrollX,
+      setStripMotion,
       stripDragStartSV,
       stripModeSV,
       stripOffsetSV,
@@ -841,6 +1016,11 @@ export default function SettingsScreen() {
       Gesture.Pan()
         .activeOffsetX([-PAGER_AXIS_PX, PAGER_AXIS_PX])
         .failOffsetY([-PAGER_AXIS_PX * 2, PAGER_AXIS_PX * 2])
+        .onBegin(() => {
+          "worklet";
+          // С первого касания (до активации): pending-mount не должен упасть под палец.
+          runOnJS(onTouchBegin)();
+        })
         .onStart(() => {
           "worklet";
           cancelAnimation(scrollX);
@@ -849,6 +1029,8 @@ export default function SettingsScreen() {
             // Только стоп decay. Один settle полосы — на onEnd к typical[target],
             // иначе анимация к «старой» цели + прыжок в follow.
             cancelAnimation(stripOffsetSV);
+            // Владение отменённым decay переходит этому жесту.
+            runOnJS(setStripMotion)(false);
           } else {
             stripModeSV.value = STRIP_MODE_FOLLOW;
           }
@@ -865,7 +1047,12 @@ export default function SettingsScreen() {
           "worklet";
           const width = pageWidthSV.value;
           const count = pageCountSV.value;
-          if (width <= 0 || count <= 0) return;
+          if (width <= 0 || count <= 0) {
+            runOnJS(setPagerMotion)(false);
+            return;
+          }
+          // Settle стартует ниже; снимет commitPagerIndex.
+          runOnJS(setPagerMotion)(true);
           const target = snapPagerOffset(scrollX.value, width, count, event.velocityX);
           const targetIndex = Math.round(target / width);
           const fromFree = stripModeSV.value === STRIP_MODE_FREE;
@@ -941,14 +1128,22 @@ export default function SettingsScreen() {
               if (finished) runOnJS(commitPagerIndex)(targetIndex);
             },
           );
+        })
+        .onFinalize(() => {
+          "worklet";
+          runOnJS(onTouchFinalize)();
         }),
     [
       commitPagerIndex,
       dragStartX,
       maxStripOffsetSV,
+      onTouchBegin,
+      onTouchFinalize,
       pageCountSV,
       pageWidthSV,
       scrollX,
+      setPagerMotion,
+      setStripMotion,
       stripHandoffSV,
       stripModeSV,
       stripOffsetSV,
@@ -1061,8 +1256,10 @@ export default function SettingsScreen() {
 
           <GestureDetector gesture={pagerPan}>
             <Reanimated.View style={styles.pagerBody}>
+              {/* Без removeClippedSubviews: клиппинг Android не понимает translateX
+                  и на каждом layout-кадре (width индикатора) детачит/аттачит целые
+                  страницы mid-pan. pagerBody уже режет отрисовку overflow hidden. */}
               <Reanimated.View
-                removeClippedSubviews
                 style={[
                   styles.pagerRow,
                   { width: Math.max(pageWidth, pageWidth * Math.max(visibleSections.length, 1)) },
@@ -1163,10 +1360,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.45,
     lineHeight: floraTabFilter.triggerLabelLineHeight,
   },
+  /** Зелёный слой кроссфейда поверх серого: одинаковая типографика, только цвет. */
+  tabLabelActive: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    color: floraColors.greenLight,
+  },
   tabIndicator: {
     position: "absolute",
     left: 0,
     bottom: 0,
+    width: TAB_INDICATOR_BASE_W,
     height: floraTabFilter.indicatorHeight,
     borderRadius: 999,
     backgroundColor: floraColors.greenLight,
