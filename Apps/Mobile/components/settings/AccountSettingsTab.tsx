@@ -6,9 +6,11 @@ import {
   Alert,
   Pressable,
   Text,
-  TextInput,
   View,
 } from "react-native";
+// RNGH TextInput: при активации pager-pan получает ACTION_CANCEL — иначе
+// EditText ведёт курсор и рисует лупу выделения весь горизонтальный свайп.
+import { TextInput } from "react-native-gesture-handler";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ProfileStatusField } from "@/components/profile/ProfileStatusField";
 import { BirthDateField } from "@/components/settings/BirthDateField";

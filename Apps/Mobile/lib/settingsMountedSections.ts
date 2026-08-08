@@ -64,3 +64,29 @@ export function mountedSetsEqual<T extends string>(
   }
   return true;
 }
+
+/**
+ * Следующая секция для idle-прогрева: ближайшая немонтированная к активной,
+ * при равном расстоянии — вперёд (направление листания). После прогрева всех
+ * видимых секций свайп не вызывает mount вообще.
+ */
+export function nextMountCandidate<T extends string>(
+  visibleIds: readonly T[],
+  mounted: ReadonlySet<T>,
+  activeIndex: number,
+): T | null {
+  if (visibleIds.length === 0) return null;
+  const clamped = Math.max(0, Math.min(activeIndex, visibleIds.length - 1));
+  if (!mounted.has(visibleIds[clamped]!)) return visibleIds[clamped]!;
+  for (let distance = 1; distance < visibleIds.length; distance++) {
+    const forward = clamped + distance;
+    if (forward < visibleIds.length && !mounted.has(visibleIds[forward]!)) {
+      return visibleIds[forward]!;
+    }
+    const backward = clamped - distance;
+    if (backward >= 0 && !mounted.has(visibleIds[backward]!)) {
+      return visibleIds[backward]!;
+    }
+  }
+  return null;
+}
