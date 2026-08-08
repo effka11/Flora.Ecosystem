@@ -4,7 +4,7 @@
 **Version:** 0.4
 **Date:** 2026-08-02
 
-Компаньоны: [`README.md`](../../README.md) (манифест ценностей — нормативная рамка для любых growth-решений), [`SECURITY.md`](../../SECURITY.md) (известные ограничения — влияют на порядок запусков), [`Documents/fgp/FGP.md`](../fgp/FGP.md) и [`Documents/fpp/FPP.md`](../fpp/FPP.md) (governance/personhood — механики доверия, с которыми рифмуется рост), [`Documents/fep/FEP.md`](../fep/FEP.md) (экономика LIV — новый класс историй и аудиторий), [`Documents/codecs/FRC-I.md`](../codecs/FRC-I.md) (замороженный фото-кодек — флагманский инженерный актив), [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (границы модулей — обязательны для growth-фич). Операционный слой (пошаговые схемы, готовые тексты, чек-листы, **реестр точек outreach**) — [`GROWTH-PLAYBOOK.md`](./GROWTH-PLAYBOOK.md). Исследовательская база внешних фактов (июль 2026) — Приложение D. История ревью — Приложение C.
+Компаньоны: [`README.md`](../../README.md) (манифест ценностей — нормативная рамка для любых growth-решений), [`SECURITY.md`](../../SECURITY.md) / [`Documents/known/security.md`](../known/security.md) (открытые security-проблемы и допущения — влияют на порядок запусков), [`Documents/fgp/FGP.md`](../fgp/FGP.md) и [`Documents/fpp/FPP.md`](../fpp/FPP.md) (governance/personhood — механики доверия, с которыми рифмуется рост), [`Documents/fep/FEP.md`](../fep/FEP.md) (экономика LIV — новый класс историй и аудиторий), [`Documents/codecs/FRC-I.md`](../codecs/FRC-I.md) (замороженный фото-кодек — флагманский инженерный актив), [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (границы модулей — обязательны для growth-фич). Операционный слой (пошаговые схемы, готовые тексты, чек-листы, **реестр точек outreach**) — [`GROWTH-PLAYBOOK.md`](./GROWTH-PLAYBOOK.md). Исследовательская база внешних фактов (июль 2026) — Приложение D. История ревью — Приложение C.
 
 > Изменения 0.3 → 0.4: добавлен §4.6 — критерии «точек outreach» (конкретные организации/сообщества, через которые приходят люди); живой реестр — в playbook. Полная история — Приложение C.
 >
@@ -25,7 +25,7 @@ Flora позиционируется как некоммерческая эко�
 - **Никакого пер-пользовательского поведенческого трекинга.** Аналитика — только агрегаты и когорты (§6.6).
 - **Никаких dark patterns**: fake scarcity, guilt-trip-тексты («ваши друзья скучают»), оптимизация time-on-feed, бесконечные пуши.
 - **Публичность контента — только opt-in.** Дефолт — приватно; SEO-слой строится исключительно на явно опубликованном.
-- **Честность как маркетинг.** Открытые спеки (FSCP, FIRA, FGP, FPP, FEP, семейство FRC), честный `SECURITY.md` с известными ограничениями и публичный roadmap — это доказательная база доверия, а доверие — главный конверсионный актив privacy-продукта. Нормативный реестр «тезис → доказательство» — §2.5.
+- **Честность как маркетинг.** Открытые спеки (FSCP, FIRA, FGP, FPP, FEP, семейство FRC), честный `SECURITY.md` + реестр [`Documents/known/security.md`](../known/security.md) и публичный roadmap — это доказательная база доверия, а доверие — главный конверсионный актив privacy-продукта. Нормативный реестр «тезис → доказательство» — §2.5.
 
 ### 1.2. Две воронки
 
@@ -107,7 +107,7 @@ Flora позиционируется как некоммерческая эко�
 | «Личность подтверждается без биометрии и KYC» | [`FPP.md`](../fpp/FPP.md) §9.1 — исчерпывающая таблица хранимого («чего нет — то нельзя изъять») |
 | «Деньги не покупают власть» | [`FEP.md`](../fep/FEP.md) §0 (аксиомы, файервол деньги ↛ власть), ядро `flora-economy-crypto` (native + wasm32 — клиент реплеит журнал сам) |
 | «Некоммерческость — архитектурное решение» | README §Философия, [`LEGAL.md`](../../LEGAL.md), FEP (демерредж → Commons-казна, а не прибыль) |
-| «Мы честны про ограничения» | [`SECURITY.md`](../../SECURITY.md) Known Limitations; приложения «История адверсариальных ревью» в FGP/FPP/FEP |
+| «Мы честны про ограничения» | [`Documents/known/security.md`](../known/security.md); [`SECURITY.md`](../../SECURITY.md); приложения «История адверсариальных ревью» в FGP/FPP/FEP |
 
 Побочный эффект реестра: это готовый каркас факт-страницы `/about` (§5.6) и пресс-кита.
 
@@ -535,7 +535,7 @@ T6-аудитория (§3) приносит бесплатный аудит и 
 
 ### 9.1. Риск-зависимость порядка запусков
 
-**SEC-1** (E2E device private keys вне plaintext `localStorage` на web: sealed IndexedDB + non-extractable WebCrypto wrap key) **закрыт** — см. SECURITY.md posture. **SEC-2** (серверная криптопроверка Ed25519-подписи конверта, `fscp_core::verify_envelope_signature` на send-пути) **закрыт** (errata-5; см. SECURITY.md posture / FSCP.md Algorithm C шаг 12). Show HN больше не блокируется SEC-1; в посте всё ещё честно называть residual XSS-in-memory и отсутствие ratchet (Known Limitations).
+**SEC-1** (E2E device private keys вне plaintext `localStorage` на web: sealed IndexedDB + non-extractable WebCrypto wrap key) **закрыт** — см. SECURITY.md posture. **SEC-2** (серверная криптопроверка Ed25519-подписи конверта, `fscp_core::verify_envelope_signature` на send-пути) **закрыт** (errata-5; см. SECURITY.md posture / FSCP.md Algorithm C шаг 12). Show HN больше не блокируется SEC-1; в посте всё ещё честно называть residual XSS-in-memory и отсутствие ratchet ([`Documents/known/security.md`](../known/security.md)).
 
 **Второе окно риска — календарное.** Сентябрьский раунд Chat Control 2.0 — крупнейший предсказуемый инфоповод полугодия для privacy-продукта. Войти в него без опубликованной franking-статьи и готовой заготовки — потерять волну, которую конкуренты (Signal и fediverse-инстансы) отработают гарантированно. Подготовка — август (фаза 2), не сентябрь.
 

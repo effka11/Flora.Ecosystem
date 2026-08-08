@@ -137,7 +137,7 @@ FSCP v1: сервер **не расшифровывает** сообщения; 
 
 - Уязвимости — **не** в публичные issue; см. `SECURITY.md` (flora.dev.hub@gmail.com).
 - FIRA и рекомендации **не** читают plaintext E2E-чатов.
-- Известные MVP-ограничения (localStorage ключей на вебе, ratchet, серверная проверка подписи envelope) — в `SECURITY.md`; не маскировать как «готово», если не закрыто.
+- Открытые известные security-проблемы/допущения — `Documents/known/security.md` (не техдолг); disclosure/posture — `SECURITY.md`. Не маскировать открытое как «готово».
 
 ---
 
