@@ -29,9 +29,18 @@ const forwardableRequestHeaders = new Set([
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const REFRESH_COOKIE_NAME = IS_PRODUCTION ? "__Host-flora_refresh" : "flora_refresh";
+/** Cookie name used when *setting* media access (env-specific `__Host-` in production). */
 const MEDIA_ACCESS_COOKIE_NAME = IS_PRODUCTION
   ? "__Host-flora_media_access"
   : "flora_media_access";
+/**
+ * Cookie names accepted when *lifting* to Bearer — same order as flora-api
+ * `optional_bearer_jwt` (`__Host-…` then bare name).
+ */
+const MEDIA_ACCESS_COOKIE_READ_NAMES = [
+  "__Host-flora_media_access",
+  "flora_media_access",
+] as const;
 const REFRESH_COOKIE_MARKER = "http-only";
 const REFRESH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const BROWSER_SESSION_PATH = "/api/auth/browser-session";
@@ -162,7 +171,25 @@ function forwardableHeaders(request: NextRequest): Headers {
   const clientIp = realIp || forwardedIp;
   if (clientIp && !clientIp.includes(",")) out.set("x-forwarded-for", clientIp);
 
+  // Credentialed browser calls often omit Authorization (FRI decode, media GETs).
+  // Lift media-access JWT → Bearer on any proxied request; never forward Cookie (refresh).
+  applyMediaAccessAuthorization(request, out);
+
   return out;
+}
+
+/**
+ * When `Authorization` is absent, map the HttpOnly media-access cookie to
+ * `Authorization: Bearer` so flora-api optional JWT sees the viewer.
+ */
+function applyMediaAccessAuthorization(request: NextRequest, headers: Headers): void {
+  if (headers.has("authorization")) return;
+  for (const name of MEDIA_ACCESS_COOKIE_READ_NAMES) {
+    const token = request.cookies.get(name)?.value?.trim();
+    if (!token) continue;
+    headers.set("authorization", `Bearer ${token}`);
+    return;
+  }
 }
 
 /** Browser origins allowed to call proxy routes cross-origin (comma-separated HTTPS origins). */
