@@ -159,7 +159,7 @@ export function initWebApiClient(): void {
     session: webSessionStore,
     clientIdentity: {
       platform: "web",
-      appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.10.0-alpha",
+      appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.11.0-alpha",
     },
     fetchImpl: webClientCoreFetch,
     runRefreshExclusive: runWebAuthExclusive,
