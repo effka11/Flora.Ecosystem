@@ -809,20 +809,29 @@ export async function apiCreatePost(
   return { postUuid: readStr(raw, ["postUuid", "PostUuid"]) };
 }
 
-/** Публичный URL изображения поста (GET без авторизации). */
+/**
+ * Same-origin URL изображения поста (FRI).
+ * Для приватных сообществ нужен viewer JWT: media-access cookie → Bearer в прокси.
+ */
 export function postImageUrl(imageUuid: string): string {
   const id = imageUuid.trim();
   // `fmt=fri` сбрасывает immutable browser/CDN cache от эпохи WebP/AVIF/ImageSet.
   return absoluteApiUrl(`/api/auth/posts/images/${encodeURIComponent(id)}?fmt=fri`);
 }
 
-/** Публичный URL видеофайла поста (AV1 MP4, сервер поддерживает Range). */
+/**
+ * Same-origin URL видео поста (AV1 MP4, Range).
+ * Для приватных сообществ — как у `postImageUrl` (media-access через прокси).
+ */
 export function postVideoUrl(videoUuid: string): string {
   const id = videoUuid.trim();
   return absoluteApiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}`);
 }
 
-/** Публичный URL постера видео поста. */
+/**
+ * Same-origin URL постера видео поста (FRI).
+ * Для приватных сообществ — как у `postImageUrl` (media-access через прокси).
+ */
 export function postVideoPosterUrl(videoUuid: string): string {
   const id = videoUuid.trim();
   return absoluteApiUrl(`/api/auth/posts/videos/${encodeURIComponent(id)}/poster?fmt=fri`);

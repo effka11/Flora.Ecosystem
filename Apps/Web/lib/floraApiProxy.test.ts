@@ -291,6 +291,99 @@ test("auth proxy keeps refresh credentials out of browser-readable storage", asy
       assert.equal(response.headers.get("cache-control"), "no-store");
     });
 
+    await t.test("lifts flora_media_access cookie into Authorization when absent", async () => {
+      let upstreamAuthorization: string | null = null;
+      let upstreamCookie: string | null = null;
+      globalThis.fetch = (async (_input, init) => {
+        const headers = new Headers(init?.headers);
+        upstreamAuthorization = headers.get("authorization");
+        upstreamCookie = headers.get("cookie");
+        return new Response(new Uint8Array([0x8f, 0x46, 0x52, 0x49]), {
+          status: 200,
+          headers: { "content-type": "image/fri" },
+        });
+      }) as typeof fetch;
+
+      const response = await proxyFloraApiRequest(
+        new NextRequest(
+          "https://social.flora.example/api/auth/posts/images/019fe0b6-01b8-7943-a62a-2414910e0027?fmt=fri",
+          {
+            method: "GET",
+            headers: {
+              accept: "image/fri",
+              cookie: "flora_refresh=session-id.secret; flora_media_access=media-jwt-token",
+            },
+          },
+        ),
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(upstreamAuthorization, "Bearer media-jwt-token");
+      assert.equal(upstreamCookie, null);
+    });
+
+    await t.test("lifts __Host-flora_media_access cookie into Authorization when absent", async () => {
+      let upstreamAuthorization: string | null = null;
+      globalThis.fetch = (async (_input, init) => {
+        upstreamAuthorization = new Headers(init?.headers).get("authorization");
+        return new Response(null, { status: 204 });
+      }) as typeof fetch;
+
+      const response = await proxyFloraApiRequest(
+        new NextRequest("https://social.flora.example/api/auth/posts/videos/vid/poster?fmt=fri", {
+          method: "GET",
+          headers: {
+            cookie: "__Host-flora_media_access=host-media-jwt",
+          },
+        }),
+      );
+
+      assert.equal(response.status, 204);
+      assert.equal(upstreamAuthorization, "Bearer host-media-jwt");
+    });
+
+    await t.test("prefers __Host-flora_media_access over bare flora_media_access", async () => {
+      let upstreamAuthorization: string | null = null;
+      globalThis.fetch = (async (_input, init) => {
+        upstreamAuthorization = new Headers(init?.headers).get("authorization");
+        return new Response(null, { status: 204 });
+      }) as typeof fetch;
+
+      const response = await proxyFloraApiRequest(
+        new NextRequest("https://social.flora.example/api/auth/me", {
+          method: "GET",
+          headers: {
+            cookie:
+              "flora_media_access=bare-media-jwt; __Host-flora_media_access=host-media-jwt",
+          },
+        }),
+      );
+
+      assert.equal(response.status, 204);
+      assert.equal(upstreamAuthorization, "Bearer host-media-jwt");
+    });
+
+    await t.test("does not override an explicit Authorization header with media cookie", async () => {
+      let upstreamAuthorization: string | null = null;
+      globalThis.fetch = (async (_input, init) => {
+        upstreamAuthorization = new Headers(init?.headers).get("authorization");
+        return new Response(null, { status: 204 });
+      }) as typeof fetch;
+
+      const response = await proxyFloraApiRequest(
+        new NextRequest("https://social.flora.example/api/auth/me", {
+          method: "GET",
+          headers: {
+            authorization: "Bearer explicit-access",
+            cookie: "flora_media_access=media-jwt-token",
+          },
+        }),
+      );
+
+      assert.equal(response.status, 204);
+      assert.equal(upstreamAuthorization, "Bearer explicit-access");
+    });
+
     await t.test("Web Lock orders a stale proxy refresh response before a new login cookie", async () => {
       const refreshResponse = deferred();
       const refreshStarted = deferred();
