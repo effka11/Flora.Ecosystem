@@ -278,9 +278,14 @@ function FeedPageContent() {
   const {
     isCompact: feedCompact,
     compactAnimate: feedCompactAnimate,
-    noTransition: feedNoTransition,
     isLeavingCompact: feedLeavingCompact,
-  } = useFeedCompactHeader(feedScrollRef, feedTopBlockRef);
+  } = useFeedCompactHeader(feedScrollRef, feedTopBlockRef, {
+    base: styles.feedTopBlock,
+    compact: styles.feedTopBlockCompact,
+    compactAnimate: styles.feedTopBlockCompactAnimate,
+    noTransition: styles.feedTopBlockNoTransition,
+    leaving: styles.feedTopBlockLeavingCompact,
+  });
 
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement({
     onEngagementChange: syncPostEngagement,
@@ -491,8 +496,11 @@ function FeedPageContent() {
     const restartAnimClass = (el: HTMLElement | null, className: string) => {
       if (!el) return;
       el.classList.remove(className);
-      void el.offsetHeight;
-      el.classList.add(className);
+      el.style.animation = "none";
+      requestAnimationFrame(() => {
+        el.style.animation = "";
+        el.classList.add(className);
+      });
     };
 
     restartAnimClass(row, styles.peopleTabsExpanding);
@@ -557,30 +565,34 @@ function FeedPageContent() {
       clearInline();
       ind.style.transition = "none";
       ind.style.opacity = "0";
-      void ind.offsetHeight;
-      ind.style.transform = `translate3d(${fromLeft}px, 0, 0)`;
-      ind.style.opacity = "1";
-      void ind.offsetHeight;
+      /* rAF instead of void offsetHeight — avoid forced reflow in leave-compact path. */
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        ind.style.transform = `translate3d(${fromLeft}px, 0, 0)`;
+        ind.style.opacity = "1";
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          if (typeof ind.animate !== "function") {
+            finish();
+            return;
+          }
 
-      if (typeof ind.animate !== "function") {
-        finish();
-        return;
-      }
-
-      const anim = ind.animate(
-        [
-          { transform: `translate3d(${fromLeft}px, 0, 0)` },
-          { transform: `translate3d(${toLeft}px, 0, 0)` },
-        ],
-        {
-          duration: FEED_EXPANDED_INDICATOR_DURATION_MS,
-          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-          fill: "forwards",
-        }
-      );
-      indicatorExpandedAnimRef.current = anim;
-      anim.onfinish = finish;
-      anim.oncancel = finish;
+          const anim = ind.animate(
+            [
+              { transform: `translate3d(${fromLeft}px, 0, 0)` },
+              { transform: `translate3d(${toLeft}px, 0, 0)` },
+            ],
+            {
+              duration: FEED_EXPANDED_INDICATOR_DURATION_MS,
+              easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+              fill: "forwards",
+            }
+          );
+          indicatorExpandedAnimRef.current = anim;
+          anim.onfinish = finish;
+          anim.oncancel = finish;
+        });
+      });
     };
 
     const delayId = window.setTimeout(startAnim, FEED_EXPANDED_INDICATOR_DELAY_MS);
@@ -764,23 +776,14 @@ function FeedPageContent() {
       ? "Пока нет постов в подписках. Подпишитесь на людей во вкладке «Люди» или загляните в «Рекомендации»."
       : "Пока нет постов. Создайте первый во вкладке «Создать пост».";
 
-  const feedTopBlockClass = [
-    styles.feedTopBlock,
-    feedCompact ? styles.feedTopBlockCompact : "",
-    feedCompactAnimate ? styles.feedTopBlockCompactAnimate : "",
-    feedNoTransition ? styles.feedTopBlockNoTransition : "",
-    feedLeavingCompact ? styles.feedTopBlockLeavingCompact : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   const peopleTabsClass = [styles.peopleTabs, feedCompact ? styles.peopleTabsCompact : ""]
     .filter(Boolean)
     .join(" ");
 
   return (
     <section ref={feedScrollRef} className={styles.feedPage} id="central-scroll-feed">
-      <div ref={feedTopBlockRef} className={feedTopBlockClass}>
+      {/* Классы top-block — только classList в useFeedCompactHeader (React className затирал бы compact). */}
+      <div ref={feedTopBlockRef}>
         <div className={styles.feedTopBlockInner}>
           <div className={styles.searchHeader}>
             <TabSearchInput

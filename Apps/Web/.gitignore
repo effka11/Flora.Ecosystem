@@ -4,6 +4,9 @@ out
 *.tsbuildinfo
 next-env.d.ts
 
+# Ephemeral esbuild/Playwright output from feed:compact-scroll-repro (may contain .js)
+.tmp-feed-compact-scroll/
+
 # local env files — never commit secrets; .env.example is ok
 .env
 .env.local

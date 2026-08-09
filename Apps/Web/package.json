@@ -13,7 +13,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node --import tsx --test lib/sanitizeComposeHref.test.ts lib/sessionStore.test.ts lib/floraApiProxy.test.ts lib/apiClient.test.ts lib/cachedResource.test.ts lib/fscp/sealedVault.test.ts lib/fscp/storage.test.ts \"app/(dashboard)/messages/threadMessageGroups.test.ts\" \"app/(dashboard)/messages/groupConversationTypes.test.ts\"",
+    "test": "node --import tsx --test lib/sanitizeComposeHref.test.ts lib/sessionStore.test.ts lib/floraApiProxy.test.ts lib/apiClient.test.ts lib/cachedResource.test.ts lib/fscp/sealedVault.test.ts lib/fscp/storage.test.ts \"app/(dashboard)/messages/threadMessageGroups.test.ts\" \"app/(dashboard)/messages/groupConversationTypes.test.ts\" \"app/(dashboard)/feed/useFeedCompactHeader.test.ts\"",
+    "feed:compact-scroll-repro": "tsx ./scripts/feed-compact-scroll-repro.ts",
     "generate:emoji-categories": "tsx ./scripts/generate-message-emoji-categories.ts",
     "postinstall": "node ./scripts/copy-ffmpeg-core.mjs"
   },
@@ -42,9 +43,12 @@
     "@types/node": "^22.13.10",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "esbuild": "^0.28.2",
+    "esbuild-css-modules-plugin": "^3.1.5",
     "eslint": "^9",
     "eslint-config-next": "^16.2.4",
     "jiti": "^2.6.1",
+    "playwright": "^1.62.1",
     "tsx": "^4.21.0",
     "typescript": "^5.8.2"
   },

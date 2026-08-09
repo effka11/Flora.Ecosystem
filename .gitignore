@@ -76,6 +76,7 @@ Artifacts/*
 !Artifacts/contract-fixtures/**
 .tmp-build-check/
 .tmp-apk-inspect/
+Apps/Web/.tmp-feed-compact-scroll/
 .expo-export-test/
 **/.expo-export-test/
 **/android_gen/
