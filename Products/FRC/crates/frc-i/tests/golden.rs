@@ -6,9 +6,9 @@
 //!   декодируются одинаково всегда; старые v1/v2/v6 не регенерируются.
 //! - **Reference encoder.** Legacy v3/v4/v5 фиксируются через явную
 //!   `encode_with_version` и могут служебно регенерироваться с
-//!   `FRC_I_UPDATE_GOLDEN=1`. Замороженные lossy v7/v8/v9/v10 фиксируются через
+//!   `FRC_I_UPDATE_GOLDEN=1`. Замороженные lossy v7..v11 фиксируются через
 //!   явные `encode_with_version`/`encode_with_icc_version` и неизменяемы:
-//!   расхождение — ошибка реализации. Текущий frozen v10 также пишется
+//!   расхождение — ошибка реализации. Текущий frozen v11 также пишется
 //!   публичными `encode`/`encode_with_icc`.
 
 use frc_i::{
@@ -548,9 +548,9 @@ fn golden_v10_lossy_bitstream_frozen() {
         format: PixelFormat::Rgba8,
         data: &data,
     };
-    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 10).unwrap();
     let info = read_info(&fri).unwrap();
-    assert_eq!(info.version, 10, "публичный lossy-кодер должен писать v10");
+    assert_eq!(info.version, 10);
     assert!(!info.metadata);
     check_frozen("golden-v10-lossy-q75.fri", &fri);
     let mut relabeled_v9 = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 9).unwrap();
@@ -558,11 +558,6 @@ fn golden_v10_lossy_bitstream_frozen() {
     assert_ne!(
         fri, relabeled_v9,
         "v10 golden обязан фиксировать новые AQ-решения, а не только version byte"
-    );
-    assert_eq!(
-        fri,
-        encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 10).unwrap(),
-        "публичный encode() обязан совпадать с явным v10"
     );
 }
 
@@ -589,11 +584,132 @@ fn golden_v10_lossy_icc_bitstream_frozen() {
         data: &data,
     };
     let icc = golden_icc();
-    let fri = encode_with_icc(&img, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
+    let fri = encode_with_icc_version(&img, EncodeMode::Lossy { quality: 75 }, &icc, 10).unwrap();
     let info = read_info(&fri).unwrap();
     assert_eq!(info.version, 10);
     assert!(info.metadata);
     check_frozen("golden-v10-lossy-icc-q75.fri", &fri);
+    assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
+    let decoded = decode(&fri).unwrap();
+    assert_eq!(decoded.icc.as_deref(), Some(icc.as_slice()));
+}
+
+// --- v11: encode-заморозка (иерархический delta-Q поверх wire v9/v10) -----------
+
+/// Источник v11 с экстремальной внутрикорневой гетерогенностью. Фон —
+/// умеренная гомогенная текстура (шахматная амплитуда 12) держит центр
+/// лог-активности плоскости у своей ступени. Каждый пятый корень — три
+/// тихих квадранта плюс один нагруженный (амплитуда 14..20): корень
+/// тонет ниже нейтрали (полная down-сила), идеал ребёнка поднимается
+/// выше неё без клампа лестницы, |δ| ≥ 3 проходит deadzone — up-δ
+/// обязан сработать. Обе ступени у верхнего клампа (как в источнике
+/// v10) давали бы δ = 0. Источник обязан разводить v10 и v11 не только
+/// байтом версии — иначе golden не защищал бы refinement-решения кодера.
+fn golden_v11_source() -> (u32, u32, Vec<u8>) {
+    let (w, h) = (193u32, 129u32);
+    let root_cols = w.div_ceil(32);
+    let mut data = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let root = x / 32 + (y / 32) * root_cols;
+            let child = (x / 16) % 2 + ((y / 16) % 2) * 2;
+            let amplitude: i32 = if root % 5 == 0 {
+                if child == (root / 5) % 4 {
+                    14 + ((root / 5) % 4) as i32 * 2 // нагруженный квадрант → up-δ
+                } else {
+                    0 // тихие соседи топят ступень корня
+                }
+            } else {
+                12 // гомогенный фон → нейтраль
+            };
+            let texture = if amplitude == 0 {
+                0
+            } else if (x + y) % 2 == 0 {
+                amplitude
+            } else {
+                -amplitude
+            };
+            let ramp = 36 + (x * 116 / w + y * 48 / h) as i32;
+            data.push((ramp + texture).clamp(0, 255) as u8);
+            data.push((ramp + 12 + texture).clamp(0, 255) as u8);
+            data.push((ramp - 8 + texture).clamp(0, 255) as u8);
+            data.push(if (x / 11 + y / 7) % 2 == 0 { 255 } else { 208 });
+        }
+    }
+    (w, h, data)
+}
+
+#[test]
+fn golden_v11_lossy_bitstream_frozen() {
+    let (w, h, data) = golden_v11_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 11, "публичный lossy-кодер должен писать v11");
+    assert!(!info.metadata);
+    check_frozen("golden-v11-lossy-q75.fri", &fri);
+    assert_eq!(
+        fri,
+        encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 11).unwrap(),
+        "публичный encode() обязан совпадать с явным v11"
+    );
+    // Дерево и корневой AQ v11 совпадают с v10 (refinement нейтрален к
+    // дереву), поэтому расхождение пиксельных выходов доказывает активные
+    // DQR-δ в golden-потоке, а не только version byte и нейтральные символы.
+    let v10 = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 10).unwrap();
+    assert_ne!(
+        decode(&fri).unwrap().data,
+        decode(&v10).unwrap().data,
+        "v11 golden обязан фиксировать активные refinement-решения"
+    );
+}
+
+#[test]
+fn golden_v11_lossy_decode_is_deterministic() {
+    const EXPECTED_FNV1A: u64 = 0x34F7_5A48_F447_E1AE;
+    if std::env::var_os("FRC_I_UPDATE_GOLDEN").is_some() {
+        let (w, h, data) = golden_v11_source();
+        let img = ImageView {
+            width: w,
+            height: h,
+            format: PixelFormat::Rgba8,
+            data: &data,
+        };
+        let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+        let out = decode(&fri).unwrap();
+        println!("golden v11 decode fnv1a = {:#018X}", fnv1a(&out.data));
+        return;
+    }
+    let fri = std::fs::read(data_path("golden-v11-lossy-q75.fri")).expect("нет golden-файла v11");
+    let out = decode(&fri).unwrap();
+    assert_eq!((out.width, out.height), (193, 129));
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "выход декодера v11 недетерминирован"
+    );
+}
+
+#[test]
+fn golden_v11_lossy_icc_bitstream_frozen() {
+    let (w, h, data) = golden_v11_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let icc = golden_icc();
+    let fri = encode_with_icc(&img, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 11);
+    assert!(info.metadata);
+    check_frozen("golden-v11-lossy-icc-q75.fri", &fri);
     assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
     let decoded = decode(&fri).unwrap();
     assert_eq!(decoded.icc.as_deref(), Some(icc.as_slice()));
