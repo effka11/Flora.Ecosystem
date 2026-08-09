@@ -1847,6 +1847,11 @@ pub const N_CTX_V7: usize = 82;
 const CTX9_DQ: u8 = 82;
 /// Общее число контекстов v9 (раскладка v7 + DQ).
 pub const N_CTX_V9: usize = 83;
+/// Refinement delta-Q дочернего узла 16×16 (v11, перед каждым ребёнком
+/// расщеплённого корня): символ = δ + 2, δ ∈ −2..+2 от ступени корня.
+const CTX11_DQR: u8 = 83;
+/// Общее число контекстов v11 (раскладка v9 + DQR).
+pub const N_CTX_V11: usize = 84;
 const N_POS_BUCKETS: u8 = 6;
 
 /// Родительские группы и виды моделей контекстов v7 для иерархического
@@ -1897,6 +1902,17 @@ pub fn ctx_meta_v9() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
     groups.push(23);
     kinds.push(crate::arith::ModelKind::Dq);
     debug_assert_eq!(groups.len(), N_CTX_V9);
+    (groups, kinds)
+}
+
+/// Раскладка контекстов v11: раскладка v9 плюс DQR-контекст refinement
+/// дочерних узлов 16×16 (собственная родительская группа прогрева).
+pub fn ctx_meta_v11() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
+    let (mut groups, mut kinds) = ctx_meta_v9();
+    debug_assert_eq!(groups.len(), usize::from(CTX11_DQR));
+    groups.push(24);
+    kinds.push(crate::arith::ModelKind::DqRefine);
+    debug_assert_eq!(groups.len(), N_CTX_V11);
     (groups, kinds)
 }
 
@@ -2115,6 +2131,30 @@ pub struct DqTuning {
     /// самое резкое содержимое малоактивных кадров (bokeh-фото); ниже
     /// порога маскирования нет — up-ступени запрещены.
     pub up_floor: f32,
+    /// Масштаб силы refinement-уровня 16×16 (v11): эффективная сила уровня
+    /// = `strength · refine_scale` (та же up/down-асимметрия). ≤ 0 —
+    /// refinement выключен (все δ нейтральны). Уровни обязаны быть
+    /// согласованы (1.0): меньший масштаб систематически откатывает
+    /// корневой AQ у детей (S2 +2.2% при 0.5). v9/v10 поле игнорируют.
+    pub refine_scale: f32,
+    /// Максимум ступеней refinement вверх (огрубление ребёнка относительно
+    /// корня), 0..=2: перцептивные метрики штрафуют локальное огрубление
+    /// 16×16 сильнее, чем награждают экономию бит.
+    pub refine_max_up: i32,
+    /// Максимум ступеней refinement вниз (уточнение ребёнка), 0..=2:
+    /// down-δ тратит биты на локальное качество; на плотной текстуре
+    /// (шумовые карманы) это чистый проигрыш по рейту без выигрыша BA.
+    pub refine_max_down: i32,
+    /// Абсолютный порог активности up-δ уровня 16 (эффективный порог —
+    /// максимум с `up_floor`): маскирование 16×16 слабее корневого, дети
+    /// с пограничной активностью (чуть выше корневого порога) при
+    /// огрублении дают локальные BA-хотспоты.
+    pub refine_up_floor: f32,
+    /// Мёртвая зона refinement (в ступенях): |ideal16 − root| < deadzone →
+    /// нейтраль. 3 оставляет только экстремальную внутрикорневую
+    /// гетерогенность: меньшие зоны ловят шумовые ±1-коррекции дисперсии
+    /// MAD16 и контраст «текстура против текстуры» плотных кадров.
+    pub refine_deadzone: i32,
 }
 
 /// Кодирует дерево тайл-плоскости v9: per-root delta-Q поверх дерева v7.
@@ -2130,6 +2170,23 @@ pub fn encode_tile_plane_v9(
     raw: &mut BitWriter,
 ) -> Vec<i16> {
     v72::encode_tile_plane_v9(buf, cfl_luma, w, h, qmat, tuning, syms, raw)
+}
+
+/// Кодирует дерево тайл-плоскости v11: иерархический delta-Q — wire v9
+/// плюс refinement-символ перед каждым дочерним узлом 16×16 расщеплённого
+/// корня 32×32.
+#[allow(clippy::too_many_arguments)]
+pub fn encode_tile_plane_v11(
+    buf: &[i16],
+    cfl_luma: Option<&[i16]>,
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+    tuning: DqTuning,
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) -> Vec<i16> {
+    v72::encode_tile_plane_v11(buf, cfl_luma, w, h, qmat, tuning, syms, raw)
 }
 
 /// Сохранённая реализация v7.1 для локального A/B во время разработки v7.2.
@@ -2361,6 +2418,19 @@ pub fn decode_tile_plane_v9(
     qmat: &[u16; 64],
 ) -> Result<Vec<i16>, DecodeError> {
     v72::decode_tile_plane_v9(bank, dec, raw, w, h, cfl_luma, qmat)
+}
+
+/// Декодирует дерево тайл-плоскости v11 (иерархический delta-Q).
+pub fn decode_tile_plane_v11(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    w: usize,
+    h: usize,
+    cfl_luma: Option<&[i16]>,
+    qmat: &[u16; 64],
+) -> Result<Vec<i16>, DecodeError> {
+    v72::decode_tile_plane_v11(bank, dec, raw, w, h, cfl_luma, qmat)
 }
 
 /// Сохранённый декодер v7.1 для локального A/B.

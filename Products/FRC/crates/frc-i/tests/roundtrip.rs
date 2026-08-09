@@ -115,17 +115,17 @@ fn lossless_flat_image_is_tiny() {
 }
 
 #[test]
-fn lossy_writes_v10_with_deblock_at_low_quality() {
+fn lossy_writes_v11_with_deblock_at_low_quality() {
     let (w, h) = (320, 240);
     let data = synthetic(w, h, PixelFormat::Rgb8);
     let v = view(w, h, PixelFormat::Rgb8, &data);
 
     let info = read_info(&encode(&v, EncodeMode::Lossy { quality: 30 }).unwrap()).unwrap();
-    assert_eq!(info.version, 10);
+    assert_eq!(info.version, 11);
     assert!(info.deblock, "q<45 должен включать деблокинг");
 
     let info = read_info(&encode(&v, EncodeMode::Lossy { quality: 45 }).unwrap()).unwrap();
-    assert_eq!(info.version, 10);
+    assert_eq!(info.version, 11);
     assert!(!info.deblock, "q>=45 — без деблокинга");
 
     // Lossless не использует слой блоков и не требует нового декодера.
@@ -299,12 +299,12 @@ fn icc_roundtrip_all_modes() {
     let (w, h) = (64, 48);
     let icc: Vec<u8> = (0..1000u32).map(|i| (i * 7 % 251) as u8).collect();
 
-    // Lossy: текущий v10, пиксели декодируются, профиль возвращается байт-в-байт.
+    // Lossy: текущий v11, пиксели декодируются, профиль возвращается байт-в-байт.
     let data = synthetic(w, h, PixelFormat::Rgb8);
     let v = view(w, h, PixelFormat::Rgb8, &data);
     let fri = encode_with_icc(&v, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
     let info = read_info(&fri).unwrap();
-    assert_eq!(info.version, 10);
+    assert_eq!(info.version, 11);
     assert!(info.metadata);
     assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
     let out = decode(&fri).unwrap();
@@ -333,7 +333,7 @@ fn icc_roundtrip_all_modes() {
     assert_eq!(out.data, flat);
     assert_eq!(out.icc.as_deref(), Some(icc.as_slice()));
 
-    // Без ICC ничего не меняется: v10/v3, icc = None.
+    // Без ICC ничего не меняется: v11/v3, icc = None.
     let fri = encode(&v, EncodeMode::Lossy { quality: 75 }).unwrap();
     assert_eq!(read_icc(&fri).unwrap(), None);
     assert_eq!(decode(&fri).unwrap().icc, None);
@@ -401,20 +401,16 @@ fn v9_delta_q_roundtrip_and_density() {
 
 #[test]
 fn v10_asymmetric_aq_roundtrip_and_density() {
-    // Публичный encode() пишет v10 (асимметричный AQ поверх wire v9)
-    // и обязан совпадать с явной версией 10. Уточнение слабомаскирующих
-    // корней сильнее огрубления текстур; PSNR-цена и рост размера ограничены.
+    // Замороженный v10 (асимметричный AQ поверх wire v9): уточнение
+    // слабомаскирующих корней сильнее огрубления текстур; PSNR-цена и
+    // рост размера ограничены.
     let (w, h) = (320, 240);
     let data = synthetic(w, h, PixelFormat::Rgb8);
     let v = view(w, h, PixelFormat::Rgb8, &data);
     for quality in [30u8, 50, 75, 90] {
         let v9 = encode_with_version(&v, EncodeMode::Lossy { quality }, 9).unwrap();
-        let v10 = encode(&v, EncodeMode::Lossy { quality }).unwrap();
+        let v10 = encode_with_version(&v, EncodeMode::Lossy { quality }, 10).unwrap();
         assert_eq!(read_info(&v10).unwrap().version, 10);
-        assert_eq!(
-            v10,
-            encode_with_version(&v, EncodeMode::Lossy { quality }, 10).unwrap()
-        );
 
         let out9 = decode(&v9).unwrap();
         let out10 = decode(&v10).unwrap();
@@ -430,6 +426,52 @@ fn v10_asymmetric_aq_roundtrip_and_density() {
             v9.len(),
             v10.len()
         );
+    }
+}
+
+#[test]
+fn v11_hier_aq_roundtrip_and_density() {
+    // Публичный encode() пишет v11 (иерархический delta-Q: refinement
+    // детей 16×16 поверх wire v9) и обязан совпадать с явной версией 11.
+    // Перераспределение битов перцептивное (полигон §11.7); PSNR-цена и
+    // рост размера ограничены.
+    let (w, h) = (320, 240);
+    let data = synthetic(w, h, PixelFormat::Rgb8);
+    let v = view(w, h, PixelFormat::Rgb8, &data);
+    for quality in [30u8, 50, 75, 90] {
+        let v10 = encode_with_version(&v, EncodeMode::Lossy { quality }, 10).unwrap();
+        let v11 = encode(&v, EncodeMode::Lossy { quality }).unwrap();
+        assert_eq!(read_info(&v11).unwrap().version, 11);
+        assert_eq!(
+            v11,
+            encode_with_version(&v, EncodeMode::Lossy { quality }, 11).unwrap()
+        );
+
+        let out10 = decode(&v10).unwrap();
+        let out11 = decode(&v11).unwrap();
+        let p10 = psnr_rgb(&data, &out10.data);
+        let p11 = psnr_rgb(&data, &out11.data);
+        assert!(
+            p11 + 1.0 >= p10,
+            "q={quality}: v11 потерял слишком много fidelity: {p10:.2} → {p11:.2} dB"
+        );
+        assert!(
+            v11.len() <= v10.len() + v10.len() / 10,
+            "q={quality}: v11 неограниченно раздул поток: {}→{} байт",
+            v10.len(),
+            v11.len()
+        );
+    }
+}
+
+#[test]
+fn v11_non_multiple_of_16_dimensions() {
+    for &(w, h) in &[(1u32, 1u32), (7, 5), (17, 33), (100, 60), (257, 255)] {
+        let data = synthetic(w, h, PixelFormat::Rgb8);
+        let v = view(w, h, PixelFormat::Rgb8, &data);
+        let fri = encode_with_version(&v, EncodeMode::Lossy { quality: 75 }, 11).unwrap();
+        let out = decode(&fri).unwrap();
+        assert_eq!((out.width, out.height), (w, h), "размеры {w}x{h}");
     }
 }
 

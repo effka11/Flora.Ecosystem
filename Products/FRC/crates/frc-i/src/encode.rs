@@ -10,9 +10,9 @@ use crate::dct::{quant_matrices, quant_matrices_v8, quant_matrices_v9};
 use crate::error::EncodeError;
 use crate::format::{
     CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
-    VERSION_ADAPTIVE, VERSION_ASYMMETRIC_AQ, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_MAX,
-    VERSION_METADATA, VERSION_MIN, VERSION_PERCEPTUAL, VERSION_RECT, build_metadata_block,
-    tile_grid,
+    VERSION_ADAPTIVE, VERSION_ASYMMETRIC_AQ, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_HIER_AQ,
+    VERSION_MAX, VERSION_METADATA, VERSION_MIN, VERSION_PERCEPTUAL, VERSION_RECT,
+    build_metadata_block, tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
@@ -64,17 +64,46 @@ const DQ_STRENGTH_LUMA_V10: f32 = 2.75;
 /// Асимметрия силы v10: множитель силы для up-ступеней (огрубление).
 /// Эффективная сила вверх = 2.75 · 9/11 = 2.25, вниз = 2.75.
 const DQ_UP_SCALE_V10: f32 = 9.0 / 11.0;
+/// Масштаб силы refinement-уровня 16×16 (v11): 1.0 — та же сила, что у
+/// корней (уровни согласованы: 0.5 систематически откатывал корневой AQ,
+/// S2 +2.2%). Калибровка — полигон §11.7.
+const DQ_REFINE_SCALE_V11: f32 = 1.0;
+/// Потолок refinement-δ вверх (огрубление ребёнка относительно корня).
+/// Калибровка — полигон §11.7: up-δ несут весь S2-выигрыш уровня 16
+/// (up-запрет: S2 +0.44% против −0.25% при 2) — освобождают биты, как
+/// и up-ступени корней v9.
+const DQ_REFINE_MAX_UP_V11: i32 = 2;
+/// Мёртвая зона refinement-δ (целые ступени): уточняются только дети с
+/// экстремальным внутрикорневым контрастом (|ideal16 − root| ≥ 3).
+/// Меньшие зоны ловят контраст «текстура против текстуры» плотных кадров
+/// и дают per-image BA-регрессии до +2.4% (kodim03/05/07/19); 3 снимает
+/// все выбросы (worst BA +0.65%). Калибровка — полигон §11.7.
+const DQ_REFINE_DEADZONE_V11: i32 = 3;
+/// Потолок refinement-δ вниз (уточнение ребёнка относительно корня): 0 —
+/// выключено. Down-δ тратит биты на локальное качество там, где BA уже
+/// маскирует ошибки: на плотной текстуре это чистый проигрыш по рейту
+/// (kodim05 BA +2.65% при down 2, −0.09% при 0). Калибровка — §11.7.
+const DQ_REFINE_MAX_DOWN_V11: i32 = 0;
+/// Абсолютный порог активности up-δ уровня 16 (MAD после дисконта):
+/// маскирование 16×16 слабее корневого, пограничные дети (активность
+/// чуть выше корневого порога 4) при огрублении дают локальные
+/// BA-хотспоты (pic65 +1.73% при 4, −0.26% при 5); 6+ уже режет
+/// S2-выигрыш Kodak вдвое. Калибровка — полигон §11.7.
+const DQ_REFINE_UP_FLOOR_V11: f32 = 5.0;
 
 /// Настройки AQ per-plane с env-переопределением для A/B-прогонов
 /// (`FRC_I_DQ_LUMA`, `FRC_I_DQ_CHROMA`, `FRC_I_DQ_QMIN`, `FRC_I_DQ_UP`,
 /// `FRC_I_DQ_DOWN`, `FRC_I_DQ_DZ`, `FRC_I_DQ_SD`, v10:
-/// `FRC_I_DQ_UPSCALE`); без переменных — константы.
+/// `FRC_I_DQ_UPSCALE`, v11: `FRC_I_DQ_R16`, `FRC_I_DQ_R16UP`,
+/// `FRC_I_DQ_R16DN`, `FRC_I_DQ_R16DZ`, `FRC_I_DQ_R16FLOOR`); без
+/// переменных — константы.
 ///
 /// Версионность: v9 заморожен — сила 2.0 симметрично (байт-в-байт
-/// совпадение с golden v9); v10 использует отдельные down/up-силы.
-/// Хрома остаётся нейтральной в обеих версиях.
+/// совпадение с golden v9); v10 заморожен — асимметричные down/up-силы;
+/// v11 добавляет refinement-уровень 16×16 (`refine_scale`, поле
+/// игнорируется кодерами v9/v10). Хрома остаётся нейтральной везде.
 fn dq_tunings(version: u8) -> (lossy::DqTuning, lossy::DqTuning) {
-    static TUNINGS: std::sync::OnceLock<[(lossy::DqTuning, lossy::DqTuning); 2]> =
+    static TUNINGS: std::sync::OnceLock<[(lossy::DqTuning, lossy::DqTuning); 3]> =
         std::sync::OnceLock::new();
     let per_version = TUNINGS.get_or_init(|| {
         fn read<T: std::str::FromStr>(name: &str, default: T) -> T {
@@ -92,6 +121,11 @@ fn dq_tunings(version: u8) -> (lossy::DqTuning, lossy::DqTuning) {
             deadzone: read("FRC_I_DQ_DZ", DQ_DEADZONE),
             structure_discount: read("FRC_I_DQ_SD", DQ_STRUCTURE_DISCOUNT),
             up_floor: read("FRC_I_DQ_UPFLOOR", DQ_UP_FLOOR),
+            refine_scale: 0.0,
+            refine_max_up: read("FRC_I_DQ_R16UP", DQ_REFINE_MAX_UP_V11),
+            refine_max_down: read("FRC_I_DQ_R16DN", DQ_REFINE_MAX_DOWN_V11),
+            refine_deadzone: read("FRC_I_DQ_R16DZ", DQ_REFINE_DEADZONE_V11),
+            refine_up_floor: read("FRC_I_DQ_R16FLOOR", DQ_REFINE_UP_FLOOR_V11),
         };
         let luma_v9 = lossy::DqTuning {
             strength: read("FRC_I_DQ_LUMA", DQ_STRENGTH_LUMA),
@@ -106,16 +140,25 @@ fn dq_tunings(version: u8) -> (lossy::DqTuning, lossy::DqTuning) {
             up_scale: read("FRC_I_DQ_UPSCALE", DQ_UP_SCALE_V10),
             ..luma_v9
         };
-        [(luma_v9, chroma), (luma_v10, chroma)]
+        let luma_v11 = lossy::DqTuning {
+            refine_scale: read("FRC_I_DQ_R16", DQ_REFINE_SCALE_V11),
+            ..luma_v10
+        };
+        [(luma_v9, chroma), (luma_v10, chroma), (luma_v11, chroma)]
     });
-    per_version[usize::from(version >= VERSION_ASYMMETRIC_AQ)]
+    let idx = if version >= VERSION_HIER_AQ {
+        2
+    } else {
+        usize::from(version >= VERSION_ASYMMETRIC_AQ)
+    };
+    per_version[idx]
 }
 
 pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeError> {
     encode_impl(img, mode, base_version(mode), None)
 }
 
-/// Кодирует с вложением ICC-профиля. Lossy использует текущий v10, lossless —
+/// Кодирует с вложением ICC-профиля. Lossy использует текущий v11, lossless —
 /// минимальный v6, в котором появился блок метаданных.
 pub fn encode_with_icc(
     img: &ImageView<'_>,
@@ -125,17 +168,17 @@ pub fn encode_with_icc(
     encode_with_icc_version(img, mode, icc, base_version(mode).max(VERSION_METADATA))
 }
 
-/// Версию диктует набор инструментов: lossy пишет текущий v10, lossless —
+/// Версию диктует набор инструментов: lossy пишет текущий v11, lossless —
 /// v3 (слой блоков не используется, файл не должен требовать более нового
 /// декодера).
 fn base_version(mode: EncodeMode) -> u8 {
     match mode {
-        EncodeMode::Lossy { .. } => VERSION_ASYMMETRIC_AQ,
+        EncodeMode::Lossy { .. } => VERSION_HIER_AQ,
         EncodeMode::Lossless => VERSION_CURRENT,
     }
 }
 
-/// Кодирует с явной версией битстрима (1..=10). Публичный кодер выбирает
+/// Кодирует с явной версией битстрима (1..=11). Публичный кодер выбирает
 /// версию сам (см. `encode`); явные версии — только для генерации
 /// golden-векторов и тестов.
 #[doc(hidden)]
@@ -147,8 +190,8 @@ pub fn encode_with_version(
     encode_impl(img, mode, version, None)
 }
 
-/// Кодирует с ICC-профилем и явной версией битстрима: заморозка v7..v10 golden
-/// (`encode_with_icc` пишет текущий v10).
+/// Кодирует с ICC-профилем и явной версией битстрима: заморозка v7..v11 golden
+/// (`encode_with_icc` пишет текущий v11).
 #[doc(hidden)]
 pub fn encode_with_icc_version(
     img: &ImageView<'_>,
@@ -555,8 +598,12 @@ fn encode_lossy(
     let payloads = par_map(&tiles, |t| {
         let mut payload = Vec::new();
         // v7+: банк адаптивных моделей общий для всех плоскостей тайла.
-        // Раскладка v8 совпадает с v7 (отличие v8 — цвет/qmat); v9+ добавляет DQ.
-        let mut bank = if version >= VERSION_PERCEPTUAL {
+        // Раскладка v8 совпадает с v7 (отличие v8 — цвет/qmat); v9+ добавляет
+        // DQ, v11 — DQR (refinement детей 16×16).
+        let mut bank = if version >= VERSION_HIER_AQ {
+            let (groups, kinds) = lossy::ctx_meta_v11();
+            Some(crate::arith::ModelBank::new(groups, kinds))
+        } else if version >= VERSION_PERCEPTUAL {
             let (groups, kinds) = lossy::ctx_meta_v9();
             Some(crate::arith::ModelBank::new(groups, kinds))
         } else if version >= VERSION_ADAPTIVE {
@@ -642,9 +689,11 @@ fn dct_payload(
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     if config.version >= VERSION_ADAPTIVE {
-        // v7..v10 делят дерево и энтропию; v8 меняет цвет/qmat,
-        // v9+ добавляет per-root delta-Q.
-        let recon = if config.version >= VERSION_PERCEPTUAL {
+        // v7..v11 делят дерево и энтропию; v8 меняет цвет/qmat, v9+
+        // добавляет per-root delta-Q, v11 — refinement детей 16×16.
+        let recon = if config.version >= VERSION_HIER_AQ {
+            lossy::encode_tile_plane_v11(buf, cfl_luma, w, h, qmat, config.dq, &mut syms, &mut raw)
+        } else if config.version >= VERSION_PERCEPTUAL {
             lossy::encode_tile_plane_v9(buf, cfl_luma, w, h, qmat, config.dq, &mut syms, &mut raw)
         } else {
             lossy::encode_tile_plane_v7(buf, cfl_luma, w, h, qmat, &mut syms, &mut raw)

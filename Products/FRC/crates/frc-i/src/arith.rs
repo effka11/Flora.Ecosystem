@@ -162,8 +162,8 @@ impl<'a> RangeDecoder<'a> {
 const ADAPT_LIMIT: u32 = 1 << 13;
 
 /// Вид prior'а / алфавита модели. Разные контексты имеют разный носитель:
-/// SPLIT/EOB — 2 символа, SPLIT4/TX/CDEF — 4, DQ — 8, MODE — 15, RUN — 22,
-/// прочие hybrid-uint — 32.
+/// SPLIT/EOB — 2 символа, SPLIT4/TX/CDEF — 4, DQR — 5, DQ — 8, MODE — 15,
+/// RUN — 22, прочие hybrid-uint — 32.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelKind {
     /// SPLIT_WHOLE / SPLIT_QUAD.
@@ -178,6 +178,9 @@ pub enum ModelKind {
     Cdef,
     /// Индекс delta-Q корня 32×32 (v9): 4 — нейтраль.
     Dq,
+    /// Refinement delta-Q дочернего узла 16×16 (v11): символ = δ + 2,
+    /// δ ∈ −2..+2 относительно ступени корня; 2 — нейтраль.
+    DqRefine,
     /// DC hybrid-uint.
     Dc,
     /// Run + EOB (sym 31).
@@ -193,6 +196,7 @@ impl ModelKind {
             Self::Mode => 15,
             Self::Tx | Self::Cdef => 4,
             Self::Dq => 8,
+            Self::DqRefine => 5,
             // Максимальный run в 32×32 равен 1022: hybrid-uint token = 21.
             Self::Run => 22,
             Self::Dc | Self::Level => 32,
@@ -258,6 +262,11 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
         ModelKind::Dq => {
             // Нейтральная ступень доминирует; крайние индексы редки.
             freq[..n].copy_from_slice(&[1, 2, 3, 6, 16, 6, 3, 2]);
+        }
+        ModelKind::DqRefine => {
+            // δ = 0 доминирует: большинство детей наследуют ступень корня,
+            // refinement включается только на гетерогенных корнях.
+            freq[..n].copy_from_slice(&[1, 3, 16, 3, 1]);
         }
         ModelKind::Dc => {
             // DC: малые значения чаще, без отдельного EOB.
@@ -627,6 +636,7 @@ mod tests {
         assert_eq!(ModelKind::Mode.alphabet(), 15);
         assert_eq!(ModelKind::Tx.alphabet(), 4);
         assert_eq!(ModelKind::Cdef.alphabet(), 4);
+        assert_eq!(ModelKind::DqRefine.alphabet(), 5);
         assert_eq!(ModelKind::Run.alphabet(), 22);
 
         let mut eob = AdaptiveModel::new(ModelKind::Eob);

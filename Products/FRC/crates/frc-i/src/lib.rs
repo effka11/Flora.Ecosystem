@@ -127,7 +127,7 @@ impl Default for DecodeLimits {
 /// Метаданные потока без декодирования тела.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageInfo {
-    /// Версия битстрима (1..=10).
+    /// Версия битстрима (1..=11).
     pub version: u8,
     pub width: u32,
     pub height: u32,
