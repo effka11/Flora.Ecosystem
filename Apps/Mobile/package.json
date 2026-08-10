@@ -68,7 +68,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.85.3",
-    "react-native-compressor": "^1.13.0",
+    "react-native-compressor": "^2.0.3",
     "react-native-gesture-handler": "2.32.0",
     "react-native-keyboard-controller": "1.21.6",
     "react-native-libsodium": "^1.4.0",
