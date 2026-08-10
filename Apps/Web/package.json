@@ -45,7 +45,7 @@
     "@types/react-dom": "^19.2.2",
     "esbuild": "^0.28.2",
     "esbuild-css-modules-plugin": "^3.1.5",
-    "eslint": "^9",
+    "eslint": "^10",
     "eslint-config-next": "^16.2.4",
     "jiti": "^2.6.1",
     "playwright": "^1.62.1",
