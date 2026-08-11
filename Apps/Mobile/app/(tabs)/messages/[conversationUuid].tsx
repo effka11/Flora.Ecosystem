@@ -39,6 +39,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   Alert,
   type ScrollViewProps,
@@ -55,6 +56,7 @@ import {
   estimateRowInsertLiftPx,
   playChatListInsertLift,
 } from "@/lib/chatListInsertLift";
+import { maxTextBubbleInnerWidth } from "@/lib/messageBubbleLayout";
 import {
   buildThreadListItems,
   shouldHoldTrailingPeerAvatar,
@@ -241,6 +243,34 @@ function listItemKey(item: ThreadListItem): string {
 
 export default function ThreadScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  /** Исходящий текст — без peer inset (как ChatMessageBubble isFromMe). */
+  const outgoingLiftCtx = useMemo(
+    () => ({
+      maxInnerWidthPx: maxTextBubbleInnerWidth({
+        screenWidth,
+        isFromMe: true,
+        showPeerAvatar: false,
+        isPeerIndented: false,
+      }),
+    }),
+    [screenWidth],
+  );
+  /**
+   * Peer inset: `showPeerAvatar || isPeerIndented` дают одну ширину
+   * (`messageBubbleLayout.peerInset`) — и хвост с аватаром, и inPeerGroup.
+   */
+  const peerLiftCtx = useMemo(
+    () => ({
+      maxInnerWidthPx: maxTextBubbleInnerWidth({
+        screenWidth,
+        isFromMe: false,
+        showPeerAvatar: false,
+        isPeerIndented: true,
+      }),
+    }),
+    [screenWidth],
+  );
   const navigation = useNavigation();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const systemNavBottomInset = resolveMessagesDockBottomInset(insets);
@@ -883,7 +913,7 @@ export default function ThreadScreen() {
       if (!row.isFromMe) {
         newlyPeerUuids.add(row.messageUuid);
         markBirthPending(row.clientMessageKey ?? row.messageUuid);
-        incomingLiftPx += estimateRowInsertLiftPx(row);
+        incomingLiftPx += estimateRowInsertLiftPx(row, peerLiftCtx);
       }
     });
     if (incomingLiftPx > 0 && atBottomRef.current) {
@@ -907,6 +937,7 @@ export default function ThreadScreen() {
     listData,
     listMessageCount,
     peerAvatarHoldSv,
+    peerLiftCtx,
     pinListToBottom,
     threadReady,
   ]);
@@ -1210,7 +1241,7 @@ export default function ThreadScreen() {
           onPending: (key) => {
             seenMessageIdsRef.current.add(key);
             pinListToBottom(false);
-            playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx([voiceBlock]));
+            playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx([voiceBlock], outgoingLiftCtx));
           },
         });
         if (result.ok) seenMessageIdsRef.current.add(result.clientMessageKey);
@@ -1235,7 +1266,7 @@ export default function ThreadScreen() {
     });
     seenMessageIdsRef.current.add(clientMessageKey);
     pinListToBottom(false);
-    playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks));
+    playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks, outgoingLiftCtx));
 
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid!);
@@ -1319,6 +1350,7 @@ export default function ThreadScreen() {
     isGroupChat,
     me?.userUuid,
     otherUserUuid,
+    outgoingLiftCtx,
     pinListToBottom,
     queryClient,
     replyTo,
@@ -1393,7 +1425,7 @@ export default function ThreadScreen() {
               pinListToBottom(false);
               playChatListInsertLift(
                 insertLiftSv,
-                estimateBlocksInsertLiftPx([{ kind: "text", body: trimmed }]),
+                estimateBlocksInsertLiftPx([{ kind: "text", body: trimmed }], outgoingLiftCtx),
               );
             },
           });
@@ -1424,7 +1456,7 @@ export default function ThreadScreen() {
           onPending: (clientMessageKey) => {
             seenMessageIdsRef.current.add(clientMessageKey);
             pinListToBottom(false);
-            playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(blocks));
+            playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(blocks, outgoingLiftCtx));
           },
         });
         if (!result.ok && result.restoreDraft) {
@@ -1481,7 +1513,7 @@ export default function ThreadScreen() {
     });
     seenMessageIdsRef.current.add(clientMessageKey);
     pinListToBottom(false);
-    playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks));
+    playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks, outgoingLiftCtx));
 
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
