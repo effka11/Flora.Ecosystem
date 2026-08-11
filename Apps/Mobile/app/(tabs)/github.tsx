@@ -33,7 +33,7 @@ export default function GitHubScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.description}>{DESCRIPTION}</Text>
 
         <Pressable

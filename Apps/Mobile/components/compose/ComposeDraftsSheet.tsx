@@ -203,6 +203,7 @@ export function ComposeDraftsSheet({
             data={filtered}
             keyExtractor={(item) => item.draftUuid}
             contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <Text style={styles.empty}>
                 {search.trim()

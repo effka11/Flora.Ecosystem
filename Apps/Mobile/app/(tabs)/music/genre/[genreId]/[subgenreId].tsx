@@ -33,7 +33,7 @@ export default function MusicSubgenreScreen() {
       ) : genreQuery.isError || !page ? (
         <Text style={styles.emptyHint}>Не удалось загрузить поджанр.</Text>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <MusicFlowCard
             genreId={genreId}
             subgenreId={subgenreId}

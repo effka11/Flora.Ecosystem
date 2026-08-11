@@ -389,6 +389,7 @@ function createFlashListScrollComponent(
         // Force after {...props}: RN 0.85 + RefreshControl otherwise enables
         // nested scroll and freezes the PTR spinner (RNGH #4231).
         nestedScrollEnabled={false}
+        showsVerticalScrollIndicator={false}
         onScrollBeginDrag={onScrollBeginDrag}
         onScrollEndDrag={onScrollEndDrag}
         onMomentumScrollBegin={onMomentumScrollBegin}

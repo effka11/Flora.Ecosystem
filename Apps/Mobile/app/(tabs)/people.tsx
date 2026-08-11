@@ -448,6 +448,7 @@ export default function PeopleScreen() {
         extraData={`${mainTab}:${friendsFilter}:${queryText}`}
         keyExtractor={(item) => item.username}
         contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={pullRefreshing}

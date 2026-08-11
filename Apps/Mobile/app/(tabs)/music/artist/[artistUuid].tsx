@@ -42,7 +42,7 @@ export default function MusicArtistScreen() {
       ) : artistQuery.isError || !artist ? (
         <Text style={styles.emptyHint}>Не удалось загрузить исполнителя.</Text>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.hero}>
             <View style={styles.artistCover}>
               <Ionicons name="person" size={34} color={floraColors.greenDark} />

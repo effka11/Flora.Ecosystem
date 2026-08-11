@@ -122,6 +122,7 @@ export function CreateChatFolderSheet({ visible, onClose, conversations, onCreat
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <View style={styles.section}>
             <Text style={styles.label}>Название</Text>

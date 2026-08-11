@@ -142,6 +142,7 @@ export default function ProfileScreen() {
           keyExtractor={(item) => item.postUuid}
           ListHeaderComponent={header}
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          showsVerticalScrollIndicator={false}
           viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
           refreshControl={
             <RefreshControl

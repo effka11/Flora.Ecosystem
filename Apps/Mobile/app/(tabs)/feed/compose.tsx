@@ -380,6 +380,7 @@ export default function FeedComposeScreen() {
           style={styles.flex}
           contentContainerStyle={styles.editorScroll}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <ComposePostCard
             displayName={activeCommunity?.name ?? me?.displayName ?? "Вы"}

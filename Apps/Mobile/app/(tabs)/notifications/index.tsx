@@ -215,6 +215,7 @@ export default function NotificationsScreen() {
           data={items}
           keyExtractor={(item) => item.notificationUuid}
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={isPullRefreshing}

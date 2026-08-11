@@ -62,6 +62,7 @@ export function AuthScreenLayout({
           { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 28) },
         ]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={authStyles.inner}>{children}</View>
       </ScrollView>

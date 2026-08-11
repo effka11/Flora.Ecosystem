@@ -298,7 +298,7 @@ export function MusicSearchResults({ query, tracks }: { query: string; tracks: M
   if (!q) return null;
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {foundGenres.length > 0 ? (
         <View style={styles.section}>
           <SectionHeader title="Жанры" />
@@ -344,7 +344,7 @@ export function MyMusicSection({
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {refreshing ? <ActivityIndicator color={floraColors.greenLight} style={styles.loader} /> : null}
       <MusicPlaylistsCarousel playlists={playlists} onCreated={onRefresh} />
       <MusicTracksList title="Моя музыка" tracks={tracks} sourceId="library" onDelete={deleteTrack} />
@@ -354,7 +354,7 @@ export function MyMusicSection({
 
 export function RecommendationsSection() {
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <MusicFlowCard />
       <MusicGenresCarousel />
     </ScrollView>
@@ -585,7 +585,7 @@ export function AddTrackSection({
   onUploaded: () => void;
 }) {
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {uploadMode === "forSelf" ? (
         <MusicUploadForSelfForm onUploaded={onUploaded} />
       ) : (
