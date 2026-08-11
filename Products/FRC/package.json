@@ -4,7 +4,7 @@
   "private": true,
   "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
   "type": "module",
-  "description": "FRC-I v10 browser/native integration contracts and WASM client",
+  "description": "FRC-I v11 browser/native integration contracts and WASM client",
   "main": "./ts/src/index.ts",
   "types": "./ts/src/index.ts",
   "exports": {
