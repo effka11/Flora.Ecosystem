@@ -79,3 +79,6 @@ optional `BackfillEnabled` для legacy rows. Messaging history не backfill-�
 
 WASM artifact: `Apps/Web/public/frc/frc_i_wasm.wasm` (build via
 `Apps/Web/scripts/build-frc-i-wasm.ts`).
+
+При bump wire-версии FRC-I — чеклист согласования TS/`FRC_I_BITSTREAM_VERSION`
+с wasm: [`FRC-I-VERSION-BUMP.md`](./FRC-I-VERSION-BUMP.md).
