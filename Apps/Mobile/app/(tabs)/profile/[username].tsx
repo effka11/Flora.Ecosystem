@@ -189,6 +189,7 @@ export default function UserProfileScreen() {
           keyExtractor={(item) => item.postUuid}
           ListHeaderComponent={header}
           contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
           viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
           refreshControl={
             <RefreshControl

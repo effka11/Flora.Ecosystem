@@ -395,6 +395,7 @@ const SettingsSectionPage = memo(function SettingsSectionPage({
         keyboardShouldPersistTaps="handled"
         scrollEnabled={isActive}
         overScrollMode={isActive ? "auto" : "never"}
+        showsVerticalScrollIndicator={false}
         removeClippedSubviews
       >
         <SettingsTabContent

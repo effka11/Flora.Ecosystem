@@ -141,7 +141,7 @@ export function SecurityRecoveryPhraseModal({ visible, onClose }: Props) {
               style={({ pressed }) => [ui.monoBlock, styles.phraseBox, pressed && ui.pressed]}
               onPress={() => void copyTextToClipboard(phrase)}
             >
-              <ScrollView style={styles.phraseScroll} nestedScrollEnabled>
+              <ScrollView style={styles.phraseScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                 <Text style={ui.monoText}>{phrase}</Text>
               </ScrollView>
               <Text style={ui.monoHint}>Нажмите, чтобы скопировать</Text>

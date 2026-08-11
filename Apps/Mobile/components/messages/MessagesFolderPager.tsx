@@ -173,6 +173,7 @@ const FolderPageList = memo(function FolderPageList({
           item.kind === "groupChat" ? `g:${item.group.conversationUuid}` : item.item.conversationUuid
         }
         contentContainerStyle={contentStyle}
+        showsVerticalScrollIndicator={false}
         nestedScrollEnabled={false}
         overScrollMode={ptrEnabled ? "auto" : "never"}
         refreshControl={

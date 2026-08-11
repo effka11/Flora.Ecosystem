@@ -102,7 +102,7 @@ export function SettingsFeedHiddenModal({ visible, onClose }: Props) {
 
           {error ? <Text style={ui.feedbackError}>{error}</Text> : null}
 
-          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {loading ? (
               <ActivityIndicator color={floraColors.greenLight} style={styles.loader} />
             ) : (

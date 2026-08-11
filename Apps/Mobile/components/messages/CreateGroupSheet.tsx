@@ -187,7 +187,7 @@ export function CreateGroupSheet({ visible, conversations, onClose, onCreated }:
           style={styles.input}
         />
 
-        <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {conversations.length === 0 ? (
             <Text style={styles.empty}>
               Нет диалогов для выбора. Найдите человека во вкладке «Люди».

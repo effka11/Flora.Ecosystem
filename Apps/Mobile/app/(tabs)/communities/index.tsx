@@ -370,6 +370,7 @@ export default function CommunitiesScreen() {
         extraData={`${activeTab}:${queryText}:${JSON.stringify(localJoined)}`}
         keyExtractor={(item) => item.communityId}
         contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={pullRefreshing}

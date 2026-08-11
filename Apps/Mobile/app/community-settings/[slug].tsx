@@ -181,6 +181,7 @@ export default function CommunitySettingsScreen() {
       style={styles.root}
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + floraSpacing.grid * 2 }]}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
       <Section title="Основное">
         <Pressable

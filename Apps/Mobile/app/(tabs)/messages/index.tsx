@@ -1004,6 +1004,7 @@ export default function MessagesScreen() {
               : item.item.conversationUuid
           }
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+          showsVerticalScrollIndicator={false}
           nestedScrollEnabled={false}
           overScrollMode="auto"
           refreshControl={

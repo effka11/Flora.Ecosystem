@@ -63,7 +63,7 @@ export default function MusicPlaylistScreen() {
       ) : playlistQuery.isError || !playlist ? (
         <Text style={styles.emptyHint}>Не удалось загрузить плейлист.</Text>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.hero}>
             <View style={[styles.heroCover, { backgroundColor: playlist.coverColor }]} />
             <View style={styles.heroMeta}>

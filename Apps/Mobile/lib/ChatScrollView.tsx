@@ -59,6 +59,7 @@ export const ChatScrollView = forwardRef<ChatScrollViewRef, Props>(function Chat
       keyboardLiftBehavior="whenAtEnd"
       keyboardDismissMode="interactive"
       {...scrollProps}
+      showsVerticalScrollIndicator={false}
     />
   );
 });
