@@ -3,24 +3,104 @@ import type { FscpMessageBlock, FscpMessagePlaintext } from "@/lib/fscp";
 /** Общий тайминг подъёма ленты при появлении сообщения у якоря (паритет Mobile). */
 export const CHAT_INSERT_LIFT_MS = 220;
 
-const LIFT_EASING = "var(--flora-ease-out)";
+/**
+ * Схлопывание compose-extra на ленте (паритет Mobile `composeGrowDurationMs` /
+ * CSS `transition: … 0.18s var(--flora-ease-out)`).
+ */
+export const COMPOSE_LIST_GROWTH_MS = 180;
+
+/** SoT: `--flora-ease-out` в `Apps/Web/app/flora-motion.css` (WAAPI не резолвит CSS vars). */
+export const CHAT_INSERT_LIFT_EASING = "cubic-bezier(0.33, 1, 0.2, 1)";
+
+/** Базовый lift однострочного текста (паритет Mobile). */
+export const TEXT_BASE_INSERT_LIFT_PX = 52;
+
+/** Запас на meta-ряд below (время + gap), когда lines ≥ 2. */
+export const BELOW_TIME_RESERVE_PX = 16;
+
+/** Паритет Web `--messages-bubble-line-step` / Mobile `bubbleLineHeight`. */
+const BUBBLE_LINE_HEIGHT_PX = 25;
+const BUBBLE_FONT_SIZE_PX = 15;
+const AVG_CHAR_WIDTH_FACTOR = 0.55;
+const BUBBLE_MAX_WIDTH_RATIO = 0.78;
+const BUBBLE_PADDING_X_PX = 15;
 
 const liftGenerationByEl = new WeakMap<HTMLElement, number>();
+const liftAnimationsByEl = new WeakMap<HTMLElement, Animation[]>();
 
-/** Оценка высоты новой строки — fallback, если DOM ещё не измерить. */
-export function estimateBlocksInsertLiftPx(blocks: FscpMessageBlock[]): number {
+export type InsertLiftEstimateCtx = {
+  maxInnerWidthPx?: number;
+};
+
+/** Число визуальных строк: hard-breaks + soft-wrap; floor = split("\\n").length. */
+export function estimateTextVisualLineCount(
+  body: string,
+  maxInnerWidthPx?: number,
+): number {
+  const paragraphs = body.split("\n");
+  const hardFloor = Math.max(1, paragraphs.length);
+
+  if (maxInnerWidthPx == null || maxInnerWidthPx <= 0) {
+    return hardFloor;
+  }
+
+  const avgCharWidth = BUBBLE_FONT_SIZE_PX * AVG_CHAR_WIDTH_FACTOR;
+  const maxChars = Math.max(1, Math.floor(maxInnerWidthPx / avgCharWidth));
+
+  let lines = 0;
+  for (const paragraph of paragraphs) {
+    if (paragraph.length === 0) {
+      lines += 1;
+    } else {
+      lines += Math.max(1, Math.ceil(paragraph.length / maxChars));
+    }
+  }
+  return Math.max(hardFloor, lines);
+}
+
+export function estimateTextInsertLiftPx(
+  body: string | undefined,
+  ctx?: InsertLiftEstimateCtx,
+): number {
+  const text = body ?? "";
+  if (text.length === 0) return TEXT_BASE_INSERT_LIFT_PX;
+
+  const lines = estimateTextVisualLineCount(text, ctx?.maxInnerWidthPx);
+  let heightPx = TEXT_BASE_INSERT_LIFT_PX + (lines - 1) * BUBBLE_LINE_HEIGHT_PX;
+  if (lines >= 2) heightPx += BELOW_TIME_RESERVE_PX;
+  return heightPx;
+}
+
+function textBodyFromBlocks(blocks: FscpMessageBlock[]): string | undefined {
+  const text = blocks.find((b) => b.kind === "text");
+  return text?.kind === "text" ? text.body : undefined;
+}
+
+/** Оценка высоты новой строки — fallback / нижняя граница к measure. */
+export function estimateBlocksInsertLiftPx(
+  blocks: FscpMessageBlock[],
+  ctx?: InsertLiftEstimateCtx,
+): number {
   if (blocks.some((b) => b.kind === "voice")) return 72;
   const images = blocks.filter((b) => b.kind === "image").length;
   if (images === 1) return 220;
   if (images > 1) return 280;
-  return 52;
+  return estimateTextInsertLiftPx(textBodyFromBlocks(blocks), ctx);
 }
 
 export function estimateMessageInsertLiftPx(
   content: FscpMessagePlaintext | "decrypting" | "failed",
+  ctx?: InsertLiftEstimateCtx,
 ): number {
-  if (content === "decrypting" || content === "failed") return 52;
-  return estimateBlocksInsertLiftPx(content.blocks);
+  if (content === "decrypting" || content === "failed") return TEXT_BASE_INSERT_LIFT_PX;
+  return estimateBlocksInsertLiftPx(content.blocks, ctx);
+}
+
+/** Inner text width: chat strip × 78% − горизонтальный padding пузыря. */
+export function maxTextBubbleInnerWidthFromChatInner(innerEl: HTMLElement): number {
+  const w = innerEl.clientWidth;
+  if (w <= 0) return 0;
+  return Math.max(0, Math.floor(w * BUBBLE_MAX_WIDTH_RATIO) - 2 * BUBBLE_PADDING_X_PX);
 }
 
 /**
@@ -47,12 +127,13 @@ export function measureTrailingBubblesInsertLiftPx(
 
 export type ChatListInsertLiftOptions = {
   /**
-   * Элементы внутри `innerEl`, которые должны остаться на месте в viewport
-   * (контр-transform −H→0), пока лента едет с +H→0.
-   * Для peer-аватара хвоста — только при append в уже видимую группу;
-   * при появлении аватара hold не передаём (едет вместе с сообщением).
+   * Элементы внутри `innerEl` с контр-transform −H→0, пока лента едет +H→0.
+   * Только peer-аватар хвоста при append в уже видимую группу (паритет Mobile).
+   * Новый пузырь hold не получает — едет с лентой одним transform.
    */
   holdViewportEls?: readonly HTMLElement[];
+  /** Вызовается сразу после старта WAAPI-анимаций. */
+  onLiftStarted?: () => void;
 };
 
 function bumpGeneration(el: HTMLElement): number {
@@ -61,15 +142,76 @@ function bumpGeneration(el: HTMLElement): number {
   return generation;
 }
 
+function cancelLiftAnimations(el: HTMLElement): void {
+  const anims = liftAnimationsByEl.get(el);
+  if (!anims) return;
+  for (const a of anims) {
+    try {
+      a.cancel();
+    } catch {
+      /* ignore */
+    }
+  }
+  liftAnimationsByEl.delete(el);
+}
+
 function clearLiftStyles(el: HTMLElement): void {
   el.style.transition = "";
   el.style.transform = "";
   el.style.willChange = "";
 }
 
+function clearLiftParticipant(el: HTMLElement): void {
+  cancelLiftAnimations(el);
+  bumpGeneration(el);
+  clearLiftStyles(el);
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof globalThis.matchMedia === "function" &&
+    globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /**
- * После insert у якоря: до paint компенсируем скачок layout (+height), затем
- * анимируем в 0 — лента едет на inner; holdViewportEls остаются в кадре.
+ * Общий WAAPI translateY(fromY→0). `generationScope` — чья generation инвалидирует cleanup
+ * (для hold-avatar scope = inner ленты).
+ */
+function playTranslateYRelease(
+  el: HTMLElement,
+  fromY: number,
+  durationMs: number,
+  generationScope: HTMLElement,
+  generation: number,
+): void {
+  const anim = el.animate(
+    [{ transform: `translateY(${fromY}px)` }, { transform: "translateY(0px)" }],
+    {
+      duration: durationMs,
+      easing: CHAT_INSERT_LIFT_EASING,
+      fill: "forwards",
+    },
+  );
+  liftAnimationsByEl.set(el, [anim]);
+  void anim.finished.then(
+    () => {
+      if (liftGenerationByEl.get(generationScope) !== generation) return;
+      clearLiftStyles(el);
+      if (liftAnimationsByEl.get(el)?.[0] === anim) {
+        liftAnimationsByEl.delete(el);
+      }
+    },
+    () => {
+      /* cancelled */
+    },
+  );
+}
+
+/**
+ * После insert у якоря: WAAPI +H→0 на inner (лента + новый пузырь вместе),
+ * опционально −H→0 на hold (только avatar). Без sync painted from-state.
+ * При h≤0 всё равно зовёт onLiftStarted — чтобы caller снял LiftLock.
  */
 export function playChatListInsertLift(
   innerEl: HTMLElement,
@@ -77,69 +219,66 @@ export function playChatListInsertLift(
   options?: ChatListInsertLiftOptions,
 ): void {
   const h = Math.max(0, Math.round(heightPx));
-  if (h <= 0) return;
-
-  const hold = (options?.holdViewportEls ?? []).filter((el) => innerEl.contains(el));
-  const generation = bumpGeneration(innerEl);
-  for (const el of hold) bumpGeneration(el);
-
-  const reduced =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  innerEl.style.willChange = "transform";
-  innerEl.style.transition = "none";
-  innerEl.style.transform = `translateY(${h}px)`;
-  for (const el of hold) {
-    el.style.willChange = "transform";
-    el.style.transition = "none";
-    el.style.transform = `translateY(${-h}px)`;
-  }
-
-  if (reduced) {
-    clearLiftStyles(innerEl);
-    for (const el of hold) clearLiftStyles(el);
+  if (h <= 0) {
+    options?.onLiftStarted?.();
     return;
   }
 
-  void innerEl.offsetHeight;
+  const hold = (options?.holdViewportEls ?? []).filter((el) => innerEl.contains(el));
 
-  // После долгого idle браузер может парковать rAF до input-события — double-rAF
-  // тогда откладывает старт transition. Параллельный setTimeout будит timeline.
-  let started = false;
-  const startLift = () => {
-    if (started) return;
-    if (liftGenerationByEl.get(innerEl) !== generation) return;
-    started = true;
-    const transition = `transform ${CHAT_INSERT_LIFT_MS}ms ${LIFT_EASING}`;
-    innerEl.style.transition = transition;
-    innerEl.style.transform = "translateY(0)";
-    for (const el of hold) {
-      if (liftGenerationByEl.get(el) == null) continue;
-      el.style.transition = transition;
-      el.style.transform = "translateY(0)";
-    }
-  };
+  cancelLiftAnimations(innerEl);
+  for (const el of hold) cancelLiftAnimations(el);
 
-  requestAnimationFrame(() => {
-    requestAnimationFrame(startLift);
-  });
-  window.setTimeout(startLift, 32);
+  const generation = bumpGeneration(innerEl);
+  for (const el of hold) bumpGeneration(el);
 
-  window.setTimeout(() => {
-    if (liftGenerationByEl.get(innerEl) !== generation) return;
+  if (prefersReducedMotion()) {
     clearLiftStyles(innerEl);
     for (const el of hold) clearLiftStyles(el);
-  }, CHAT_INSERT_LIFT_MS + 48);
+    options?.onLiftStarted?.();
+    return;
+  }
+
+  playTranslateYRelease(innerEl, h, CHAT_INSERT_LIFT_MS, innerEl, generation);
+  for (const el of hold) {
+    playTranslateYRelease(el, -h, CHAT_INSERT_LIFT_MS, innerEl, generation);
+  }
+
+  options?.onLiftStarted?.();
 }
 
-export function resetChatListInsertLift(innerEl: HTMLElement | null): void {
+/**
+ * После прыжка padding base+E→base: sync translateY(-E), затем WAAPI -E→0 (180ms).
+ * Паритет Mobile `translateY: -liveComposeGrowth` (лента вниз с pill).
+ * Sync from-state обязателен (исключение vs insertLift) — иначе щелчок в кадре pad jump.
+ * Inner insertLift аддитивен на messagesInner.
+ */
+export function playComposeListGrowthRelease(hostEl: HTMLElement, collapsePx: number): void {
+  const h = Math.max(0, Math.round(collapsePx));
+  if (h <= 0) return;
+  const fromY = -h;
+
+  cancelLiftAnimations(hostEl);
+  const generation = bumpGeneration(hostEl);
+
+  if (prefersReducedMotion()) {
+    clearLiftStyles(hostEl);
+    return;
+  }
+
+  hostEl.style.transform = `translateY(${fromY}px)`;
+  playTranslateYRelease(hostEl, fromY, COMPOSE_LIST_GROWTH_MS, hostEl, generation);
+}
+
+export function resetChatListInsertLift(
+  innerEl: HTMLElement | null,
+  growthHostEl?: HTMLElement | null,
+): void {
+  if (growthHostEl) clearLiftParticipant(growthHostEl);
   if (!innerEl) return;
-  bumpGeneration(innerEl);
-  clearLiftStyles(innerEl);
+  clearLiftParticipant(innerEl);
   for (const el of innerEl.querySelectorAll<HTMLElement>("[data-messages-peer-avatar]")) {
-    bumpGeneration(el);
-    clearLiftStyles(el);
+    clearLiftParticipant(el);
   }
 }
 
