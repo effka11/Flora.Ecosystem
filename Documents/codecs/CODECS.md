@@ -1,8 +1,8 @@
 # CODECS — Flora Media Codec Policy
 
 **Status:** Released  
-**Version:** 1.3
-**Date:** 2026-07-21
+**Version:** 1.4  
+**Date:** 2026-08-11
 
 ---
 
@@ -20,6 +20,8 @@ CODECS — политика сжатия и хранения медиа в эк�
 
 - [`FRC-I.md`](./FRC-I.md) — фото (FRC-I), замороженный битстрим v11
   (ранее FMC/FIC; decoder compatibility v1..v11).
+- [`FRC-I-VERSION-BUMP.md`](./FRC-I-VERSION-BUMP.md) — playbook: поднять wire-версию
+  и согласовать Rust / TS gate / wasm / goldens (без «пустых фото» на Web).
 - [`FRC-A.md`](./FRC-A.md) — аудио (FRC-A), битстрим v0 (draft).
 - [`FRC-V.md`](./FRC-V.md) — видео (FRC-V), битстрим кадра **v2**; контейнерный FourCC/magic — `FRV1` / `\x8F FRV`.
 

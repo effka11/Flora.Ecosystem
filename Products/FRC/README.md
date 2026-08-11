@@ -8,3 +8,4 @@
 #
 # TS package: @flora/frc-i (./ts) — WASM encode/decode for Apps/Web
 # Image product playbook: Documents/codecs/CODECS-IMAGE.md
+# Bitstream bump checklist: Documents/codecs/FRC-I-VERSION-BUMP.md
