@@ -129,7 +129,6 @@ pwsh ./Tools/validate-architecture-rust.ps1
 
 - FRC-A: `Products/FRC/crates/frc-a-core` — `Documents/codecs/FRC-A.md`; wasm32 обязателен для ядра.
 - FRC-I: `Products/FRC/crates/frc-i` — `Documents/codecs/FRC-I.md`; wasm: `--no-default-features`.
-  Bump wire-версии: `Documents/codecs/FRC-I-VERSION-BUMP.md` (согласовать TS gate с wasm).
 - FRC-V: `Products/FRC/crates/frc-v` — `Documents/codecs/FRC-V.md`.
 - CLI: `flora-codec-tools`, `frc-a-cli`, `frc-v-cli`.
 

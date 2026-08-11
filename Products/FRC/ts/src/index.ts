@@ -1,6 +1,6 @@
 export const FRC_I_MIME = "image/x-flora-frc-i";
 export const FRC_I_EXTENSION = "fri";
-export const FRC_I_BITSTREAM_VERSION = 11;
+export const FRC_I_BITSTREAM_VERSION = 10;
 export const FRC_I_WASM_ABI_VERSION = 2;
 
 export type FrcIInfo = {
