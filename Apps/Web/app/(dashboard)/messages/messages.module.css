@@ -75,6 +75,12 @@
   --messages-chat-scroll-extend: 0;
 }
 
+/* На время insertLift / compose-growth — не анимировать padding-bottom (иначе дерётся с translateY).
+ * ::after (линия) намеренно НЕ лочим: top едет 0.18s вместе с compose min-height/shell height. */
+.messagesChatViewLiftLock {
+  transition: none !important;
+}
+
 /* Вход чата и мини-рейла — только opacity, без translate (как musicTabPanelInnerFade). */
 .messagesChatAnimFromRight,
 .messagesChatAnimFromTop,
@@ -1397,6 +1403,13 @@
   padding: calc(2 * var(--flora-grid-step)) 0 calc(2 * var(--flora-grid-step));
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+/* Outer: compose-growth release (−collapse→0). Inner: insertLift (+H→0). */
+.messagesChatMessagesGrowthHost {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
 }
 
 /* Inner: spacer (короткий тред у compose) + gap между пузырями; transform insertLift — только сюда. */

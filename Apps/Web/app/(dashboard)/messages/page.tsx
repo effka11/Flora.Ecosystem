@@ -132,12 +132,16 @@ import { useVoiceRecorder } from "./useVoiceRecorder";
 import { buildInlineComposeWaveform } from "./voiceWaveform";
 import {
   CHAT_INSERT_LIFT_MS,
+  COMPOSE_LIST_GROWTH_MS,
   estimateMessageInsertLiftPx,
+  maxTextBubbleInnerWidthFromChatInner,
   measureTrailingBubblesInsertLiftPx,
   playChatListInsertLift,
+  playComposeListGrowthRelease,
   queryTrailingPeerAvatar,
   resetChatListInsertLift,
 } from "./chatListInsertLift";
+import { dropDecryptedIds } from "./optimisticDecrypt";
 import {
   MESSAGES_NEAR_BOTTOM_PX,
   MESSAGES_OPEN_REVEAL_DEADLINE_MS,
@@ -644,6 +648,8 @@ function MessagesChatInner() {
   const pendingOutgoingRef = useRef<MessageThreadItemDto | null>(null);
   const threadFetchContextRef = useRef<{ peer: string | null; viewerNorm: string }>({ peer: null, viewerNorm: "" });
   const scrollMessagesRef = useRef<HTMLDivElement | null>(null);
+  /** Outer: compose-growth release. Inner: insertLift. */
+  const messagesGrowthHostRef = useRef<HTMLDivElement | null>(null);
   const messagesInnerRef = useRef<HTMLDivElement | null>(null);
   const messagesChatViewRef = useRef<HTMLDivElement | null>(null);
   /** После успешной загрузки ленты — отслеживаем дифф для новых сообщений собеседника. */
@@ -651,10 +657,18 @@ function MessagesChatInner() {
   const prevSeenMessageIdsRef = useRef<Set<string>>(new Set());
   /** Первый optimistic append — insertLift; ACK replace не ставит флаг. */
   const pendingInsertLiftRef = useRef(false);
+  /**
+   * Multi-line/images send: px схлопывания chrome — play growth в layout-effect
+   * после commit CSS vars (pad jump под LiftLock). Peer path не читает.
+   */
+  const pendingGrowthCollapsePxRef = useRef(0);
   const atBottomRef = useRef(true);
   const openRepinUntilRef = useRef(0);
   /** Пока идёт insertLift — не трогать scrollTop из ResizeObserver (иначе дергание). */
   const liftActiveUntilRef = useRef(0);
+  /** Абсолютный deadline снятия `.messagesChatViewLiftLock` (performance.now). */
+  const liftLockUntilRef = useRef(0);
+  const liftLockUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [openRevealDeadlineElapsed, setOpenRevealDeadlineElapsed] = useState(false);
   const selectedOtherUuidRef = useRef<string | null>(null);
   selectedOtherUuidRef.current = selectedOtherUuid;
@@ -831,6 +845,49 @@ function MessagesChatInner() {
       }) as CSSProperties,
     [composeExtraHeight, composeImagesExtraHeight]
   );
+
+  const scheduleLiftLockUnlock = useCallback((holdMs: number) => {
+    const until = performance.now() + holdMs;
+    liftLockUntilRef.current = Math.max(liftLockUntilRef.current, until);
+    if (liftLockUnlockTimerRef.current != null) {
+      clearTimeout(liftLockUnlockTimerRef.current);
+      liftLockUnlockTimerRef.current = null;
+    }
+    const delay = Math.max(0, liftLockUntilRef.current - performance.now());
+    liftLockUnlockTimerRef.current = setTimeout(() => {
+      liftLockUnlockTimerRef.current = null;
+      liftLockUntilRef.current = 0;
+      messagesChatViewRef.current?.classList.remove(styles.messagesChatViewLiftLock);
+    }, delay);
+  }, []);
+
+  /**
+   * Текст и chrome схлопываем сразу. При collapsePx>0 — snapshot в ref;
+   * LiftLock + growth WAAPI (−E→0) стартуют в layout-effect после commit CSS vars.
+   */
+  const resetComposeUiAfterSend = useCallback(() => {
+    const collapsePx = composeExtraHeight + composeImagesExtraHeight;
+    if (collapsePx > 0) {
+      pendingGrowthCollapsePxRef.current = Math.round(collapsePx);
+    }
+    setComposeExtraRows(0);
+    compose.reset();
+    setReplyTo(null);
+  }, [compose, composeExtraHeight, composeImagesExtraHeight]);
+
+  // Pad jump base+E→base под LiftLock + sync translateY(-E)→WAAPI 0 (Mobile −liveComposeGrowth).
+  useLayoutEffect(() => {
+    const px = pendingGrowthCollapsePxRef.current;
+    if (px <= 0) return;
+    if (composeExtraRows !== 0 || composeImagesExtraHeight !== 0) return;
+    const host = messagesGrowthHostRef.current;
+    // Host ещё нет — pending оставляем; повторим на следующем layout.
+    if (!host) return;
+    pendingGrowthCollapsePxRef.current = 0;
+    messagesChatViewRef.current?.classList.add(styles.messagesChatViewLiftLock);
+    playComposeListGrowthRelease(host, px);
+    scheduleLiftLockUnlock(COMPOSE_LIST_GROWTH_MS + 64);
+  }, [composeExtraRows, composeImagesExtraHeight, scheduleLiftLockUnlock]);
 
   conversationsRef.current = conversations;
 
@@ -1405,11 +1462,18 @@ function MessagesChatInner() {
     scrollTrackingReadyRef.current = false;
     prevSeenMessageIdsRef.current = new Set();
     pendingInsertLiftRef.current = false;
+    pendingGrowthCollapsePxRef.current = 0;
     atBottomRef.current = true;
     openRepinUntilRef.current = 0;
     liftActiveUntilRef.current = 0;
+    liftLockUntilRef.current = 0;
+    if (liftLockUnlockTimerRef.current != null) {
+      clearTimeout(liftLockUnlockTimerRef.current);
+      liftLockUnlockTimerRef.current = null;
+    }
+    messagesChatViewRef.current?.classList.remove(styles.messagesChatViewLiftLock);
     setOpenRevealDeadlineElapsed(false);
-    resetChatListInsertLift(messagesInnerRef.current);
+    resetChatListInsertLift(messagesInnerRef.current, messagesGrowthHostRef.current);
     setPeerBelowScrollCount(0);
     composeResetRef.current();
     voiceRecorder.cancel();
@@ -1418,6 +1482,7 @@ function MessagesChatInner() {
     }, MESSAGES_OPEN_REVEAL_DEADLINE_MS);
     return () => {
       window.clearTimeout(deadlineTimer);
+      pendingGrowthCollapsePxRef.current = 0;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- сброс черновика только при смене чата/зрителя
   }, [selectedOtherUuid, selectedGroupUuid, me?.userUuid]);
@@ -2195,27 +2260,40 @@ function MessagesChatInner() {
       opts?: { holdTrailingPeerAvatar?: boolean },
     ) => {
       const inner = messagesInnerRef.current;
+      const liftCtx = inner
+        ? { maxInnerWidthPx: maxTextBubbleInnerWidthFromChatInner(inner) }
+        : undefined;
       const estimated = rows.reduce(
-        (sum, m) => sum + estimateMessageInsertLiftPx(displayMessageContent(m)),
+        (sum, m) => sum + estimateMessageInsertLiftPx(displayMessageContent(m), liftCtx),
         0,
       );
       const measured = inner
         ? measureTrailingBubblesInsertLiftPx(inner, rows.length)
         : 0;
-      const heightPx = measured > 0 ? measured : estimated;
+      const heightPx = Math.max(measured, estimated);
       const now = performance.now();
-      liftActiveUntilRef.current = now + CHAT_INSERT_LIFT_MS + 64;
+      // До startLift: закрыть RO на hold+anim; onLiftStarted перезапишет от реального старта.
+      liftActiveUntilRef.current = now + CHAT_INSERT_LIFT_MS + 64 + 48;
       openRepinUntilRef.current = now + MESSAGES_REPIN_WINDOW_MS;
-      // Синхронно до paint: pin + translateY(H). Иначе виден скачок layout.
+      messagesChatViewRef.current?.classList.add(styles.messagesChatViewLiftLock);
+      // Pin + WAAPI lift: лента и новый пузырь одним +H→0 (паритет Mobile).
+      // Hold только trailing peer-avatar при append в группу — не new wraps.
+      // Growth (−E→0) на outer host аддитивен; unlock = max(growth, lift) deadline.
       pinMessagesToBottom("auto");
-      if (!inner) return;
+      const onLiftStarted = () => {
+        liftActiveUntilRef.current = performance.now() + CHAT_INSERT_LIFT_MS + 64;
+        scheduleLiftLockUnlock(CHAT_INSERT_LIFT_MS + 64);
+      };
+      if (!inner) {
+        onLiftStarted();
+        return;
+      }
       const holdAvatar =
         opts?.holdTrailingPeerAvatar === true ? queryTrailingPeerAvatar(inner) : null;
-      playChatListInsertLift(
-        inner,
-        heightPx,
-        holdAvatar ? { holdViewportEls: [holdAvatar] } : undefined,
-      );
+      playChatListInsertLift(inner, heightPx, {
+        holdViewportEls: holdAvatar ? [holdAvatar] : undefined,
+        onLiftStarted,
+      });
     };
 
     if (peerNew.length > 0) {
@@ -2249,6 +2327,7 @@ function MessagesChatInner() {
     openRevealDeadlineElapsed,
     displayMessageContent,
     pinMessagesToBottom,
+    scheduleLiftLockUnlock,
   ]);
 
   useEffect(() => {
@@ -2714,8 +2793,7 @@ function MessagesChatInner() {
       sendStatus: "sending",
     };
 
-    compose.reset();
-    setReplyTo(null);
+    resetComposeUiAfterSend();
     setThreadError(null);
     setDecryptedById((prev) => ({ ...prev, [optimisticMessageUuid]: optimisticPayload }));
     pendingInsertLiftRef.current = true;
@@ -2772,18 +2850,14 @@ function MessagesChatInner() {
           isRead: false,
         };
         if (selectedOtherUuidRef.current === peerUuid) {
-          setDecryptedById((prev) => {
-            const next = { ...prev };
-            delete next[optimisticMessageUuid];
-            next[sent.messageUuid] = finalPayload;
-            return next;
-          });
+          setDecryptedById((prev) => ({ ...prev, [sent.messageUuid]: finalPayload }));
           noteOptimisticUuidReplace(
             prevSeenMessageIdsRef.current,
             optimisticMessageUuid,
             sent.messageUuid,
           );
           setThreadMessages((prev) => replaceOptimisticOutgoing(prev, optimisticMessageUuid, realRow));
+          setDecryptedById((prev) => dropDecryptedIds(prev, [optimisticMessageUuid]));
           setThreadFetchedForViewerNorm(viewerNorm);
         }
         applyOutgoingToList(peerUuid, devWire, sent.createdAt, finalPayload);
@@ -2899,12 +2973,7 @@ function MessagesChatInner() {
 
       if (selectedOtherUuid === peerUuid) {
         pendingOutgoingRef.current = realRow;
-        setDecryptedById((prev) => {
-          const next = { ...prev };
-          delete next[optimisticMessageUuid];
-          next[sent.messageUuid] = finalPayload;
-          return next;
-        });
+        setDecryptedById((prev) => ({ ...prev, [sent.messageUuid]: finalPayload }));
         try {
           invalidateConversationThread(viewerNorm, peerUuid);
           let rows = (await getConversationThread(viewerNorm, peerUuid)).items.map(toMessageDto);
@@ -2919,6 +2988,7 @@ function MessagesChatInner() {
             realRow.messageUuid,
           );
           setThreadMessages(replaceOptimisticOutgoing(rows, optimisticMessageUuid, realRow));
+          setDecryptedById((prev) => dropDecryptedIds(prev, [optimisticMessageUuid]));
           setThreadFetchedForViewerNorm(viewerNorm);
         } catch {
           noteOptimisticUuidReplace(
@@ -2927,6 +2997,7 @@ function MessagesChatInner() {
             realRow.messageUuid,
           );
           setThreadMessages((prev) => replaceOptimisticOutgoing(prev, optimisticMessageUuid, realRow));
+          setDecryptedById((prev) => dropDecryptedIds(prev, [optimisticMessageUuid]));
           setThreadFetchedForViewerNorm(viewerNorm);
         } finally {
           pendingOutgoingRef.current = null;
@@ -2963,6 +3034,7 @@ function MessagesChatInner() {
     me?.userUuid,
     refreshConversationList,
     replyTo,
+    resetComposeUiAfterSend,
     selectedOtherUuid,
   ]);
 
@@ -3056,8 +3128,7 @@ function MessagesChatInner() {
     pendingOutgoingRef.current = pendingRow;
     setThreadMessages((prev) => [...prev, pendingRow]);
     setDecryptedById((prev) => ({ ...prev, [optimisticMessageUuid]: optimisticVoicePayload }));
-    compose.reset();
-    setReplyTo(null);
+    resetComposeUiAfterSend();
     setThreadError(null);
 
     const removeOptimistic = () => {
@@ -3115,12 +3186,7 @@ function MessagesChatInner() {
         senderUserUuid: myUuid,
       };
       pendingOutgoingRef.current = realRow;
-      setDecryptedById((prev) => {
-        const next = { ...prev };
-        delete next[optimisticMessageUuid];
-        next[sent.messageUuid] = finalPayload;
-        return next;
-      });
+      setDecryptedById((prev) => ({ ...prev, [sent.messageUuid]: finalPayload }));
       invalidateGroupConversationThread(myUuid.toLowerCase(), groupUuid);
       const page = await getGroupConversationThread(myUuid.toLowerCase(), groupUuid);
       noteOptimisticUuidReplace(
@@ -3129,6 +3195,7 @@ function MessagesChatInner() {
         sent.messageUuid,
       );
       setThreadMessages(groupApiMessagesToThread(page.items));
+      setDecryptedById((prev) => dropDecryptedIds(prev, [optimisticMessageUuid]));
       pendingOutgoingRef.current = null;
       clearPendingVoiceBlob(uploaded.voiceAssetUuid);
       void refreshGroups();
@@ -3154,6 +3221,7 @@ function MessagesChatInner() {
     me?.userUuid,
     openFscpUnlock,
     refreshGroups,
+    resetComposeUiAfterSend,
     resolveGroupMemberUuids,
     selectedGroupUuid,
     selectedTarget?.kind,
@@ -3225,8 +3293,7 @@ function MessagesChatInner() {
       setThreadMessages((prev) => [...prev, pendingRow]);
       setDecryptedById((prev) => ({ ...prev, [tempUuid]: optimisticPayload }));
       const imageSendIds = pendingImages.map((image) => image.id);
-      compose.reset();
-      setReplyTo(null);
+      resetComposeUiAfterSend();
       try {
         const blocks: FscpMessageBlock[] = [];
         const imageAssetUuids: string[] = [];
@@ -3297,24 +3364,16 @@ function MessagesChatInner() {
           senderUserUuid: myUuid,
         };
         pendingOutgoingRef.current = realRow;
-        setDecryptedById((prev) => {
-          const next = { ...prev };
-          delete next[tempUuid];
-          next[sent.messageUuid] = finalPayload;
-          return next;
-        });
+        setDecryptedById((prev) => ({ ...prev, [sent.messageUuid]: finalPayload }));
         invalidateGroupConversationThread(myUuid.toLowerCase(), selectedGroupUuid);
         const page = await getGroupConversationThread(myUuid.toLowerCase(), selectedGroupUuid);
         setThreadMessages(groupApiMessagesToThread(page.items));
+        setDecryptedById((prev) => dropDecryptedIds(prev, [tempUuid]));
         pendingOutgoingRef.current = null;
         void refreshGroups();
       } catch (e) {
         setThreadMessages((prev) => prev.filter((m) => m.messageUuid !== tempUuid));
-        setDecryptedById((prev) => {
-          const next = { ...prev };
-          delete next[tempUuid];
-          return next;
-        });
+        setDecryptedById((prev) => dropDecryptedIds(prev, [tempUuid]));
         pendingOutgoingRef.current = null;
         setThreadError(
           e instanceof ApiRequestError
@@ -3426,8 +3485,7 @@ function MessagesChatInner() {
       if (isDevLocalOfflineSession()) {
         const outgoingPayload = withReply(messagePayload);
         const sent = devDemoAppendOutgoingMessage(selectedOtherUuid, outgoingPayload);
-        compose.reset();
-        setReplyTo(null);
+        resetComposeUiAfterSend();
         const viewerNorm = myUuid.trim().toLowerCase();
         setDecryptedById((prev) => ({ ...prev, [sent.messageUuid]: outgoingPayload }));
         pendingInsertLiftRef.current = true;
@@ -3599,14 +3657,14 @@ function MessagesChatInner() {
       setDecryptedById((prev) => ({ ...prev, [optimisticUuid]: outgoingPayload }));
       pendingInsertLiftRef.current = true;
       setThreadMessages((prev) => mergePendingOutgoing(prev, optimisticRow));
+      // До await: иначе padding-bottom анимируется после lift и дерётся с translateY.
+      resetComposeUiAfterSend();
 
       const sent = await msgSendMessageToUser(myUuid, selectedOtherUuid, wire, {
         imageAssetUuids,
         videoAssetUuids,
         encryptedPushPreviews,
       });
-      compose.reset();
-      setReplyTo(null);
       const viewerNorm = myUuid.trim().toLowerCase();
 
       const pendingRow: MessageThreadItemDto = {
@@ -3618,11 +3676,7 @@ function MessagesChatInner() {
         isRead: false,
       };
       pendingOutgoingRef.current = pendingRow;
-      setDecryptedById((prev) => {
-        const next = { ...prev, [sent.messageUuid]: outgoingPayload };
-        if (optimisticMessageUuid) delete next[optimisticMessageUuid];
-        return next;
-      });
+      setDecryptedById((prev) => ({ ...prev, [sent.messageUuid]: outgoingPayload }));
       applyOutgoingToList(
         selectedOtherUuid,
         sent.encryptedForMe || wire,
@@ -3647,6 +3701,7 @@ function MessagesChatInner() {
         }
         const next = mergePendingOutgoing(rows, pendingRow);
         setThreadMessages(next);
+        setDecryptedById((prev) => dropDecryptedIds(prev, [optimisticMessageUuid]));
         setThreadFetchedForViewerNorm(viewerNorm);
       } catch {
         if (optimisticMessageUuid) {
@@ -3661,6 +3716,7 @@ function MessagesChatInner() {
             ? replaceOptimisticOutgoing(prev, optimisticMessageUuid, pendingRow)
             : mergePendingOutgoing(prev, pendingRow),
         );
+        setDecryptedById((prev) => dropDecryptedIds(prev, [optimisticMessageUuid]));
         setThreadFetchedForViewerNorm(viewerNorm);
       } finally {
         pendingOutgoingRef.current = null;
@@ -3698,6 +3754,7 @@ function MessagesChatInner() {
     refreshConversationList,
     refreshGroups,
     replyTo,
+    resetComposeUiAfterSend,
     selectedOtherUuid,
     selectedGroupUuid,
     selectedGroupChat,
@@ -4462,6 +4519,10 @@ function MessagesChatInner() {
                   className={styles.messagesChatMessagesScroll}
                   onScroll={handleMessagesScroll}
                 >
+                  <div
+                    ref={messagesGrowthHostRef}
+                    className={styles.messagesChatMessagesGrowthHost}
+                  >
                   <div ref={messagesInnerRef} className={styles.messagesChatMessagesInner}>
                     <div className={styles.messagesChatMessagesSpacer} aria-hidden />
                   {threadRenderItems.map((item) => {
@@ -4746,6 +4807,7 @@ function MessagesChatInner() {
                       </div>
                     );
                   })}
+                  </div>
                   </div>
                 </div>
               </div>
