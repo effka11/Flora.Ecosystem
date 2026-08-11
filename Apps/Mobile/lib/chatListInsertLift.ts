@@ -1,4 +1,3 @@
-import type { FscpMessageBlock } from "@flora/client-core/fscp";
 import { getReducedMotion } from "@/lib/useReducedMotion";
 import {
   cancelAnimation,
@@ -8,31 +7,20 @@ import {
   type SharedValue,
 } from "react-native-reanimated";
 
+export {
+  BELOW_TIME_RESERVE_PX,
+  TEXT_BASE_INSERT_LIFT_PX,
+  estimateBlocksInsertLiftPx,
+  estimateRowInsertLiftPx,
+  estimateTextInsertLiftPx,
+  estimateTextVisualLineCount,
+  type InsertLiftEstimateCtx,
+} from "@/lib/chatListInsertLiftEstimate";
+
 /** Общий тайминг подъёма ленты при появлении сообщения у якоря. */
 export const CHAT_INSERT_LIFT_MS = 220;
 
 const LIFT_EASING = Easing.out(Easing.cubic);
-
-/** Оценка высоты новой строки — для counter-lift в тот же кадр, что insert. */
-export function estimateBlocksInsertLiftPx(blocks: FscpMessageBlock[]): number {
-  if (blocks.some((b) => b.kind === "voice")) return 72;
-  const images = blocks.filter((b) => b.kind === "image").length;
-  if (images === 1) return 220;
-  if (images > 1) return 280;
-  return 52;
-}
-
-export function estimateRowInsertLiftPx(row: {
-  voiceBlock?: unknown;
-  imageBlocks?: readonly unknown[];
-  text?: string;
-}): number {
-  if (row.voiceBlock) return 72;
-  const images = row.imageBlocks?.length ?? 0;
-  if (images === 1) return 220;
-  if (images > 1) return 280;
-  return 52;
-}
 
 /**
  * После insert у якоря: на кадр компенсируем скачок layout (+height), затем
