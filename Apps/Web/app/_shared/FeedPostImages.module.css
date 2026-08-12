@@ -34,12 +34,13 @@
 .images[data-count="1"] .imageCell {
   --feed-post-single-max-w: calc(22 * var(--flora-grid-step));
   --feed-post-single-max-h: calc(24 * var(--flora-grid-step));
-  border-radius: var(--flora-grid-step-fine);
+  border-radius: 15px;
   background: none;
   display: inline-block;
   width: auto;
   max-width: 100%;
   line-height: 0;
+  overflow: hidden;
 }
 
 .images[data-count="1"] .imageCell[data-shape="narrow"] {
@@ -143,7 +144,7 @@
 
 .images[data-count="1"] .imageFailed {
   min-height: calc(16 * var(--flora-grid-step));
-  border-radius: var(--flora-grid-step-fine);
+  border-radius: 15px;
 }
 
 .imageFailedText {
@@ -192,7 +193,7 @@
   max-height: var(--feed-post-single-max-h);
   object-fit: contain;
   object-position: center;
-  border-radius: 0;
+  border-radius: 15px;
 }
 
 .modalBackdrop {
