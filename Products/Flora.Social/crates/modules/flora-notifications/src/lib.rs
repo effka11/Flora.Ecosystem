@@ -31,7 +31,8 @@ use sqlx::PgPool;
 
 use crate::application::{
     HubPresencePublisher, HubReadNotifier, HubTypingNotifier, InboxNotificationDispatcher,
-    InboxService, MessagePushNotifier, PushTokenService, UserRealtimePublisher,
+    InboxService, MessagePushNotifier, NotificationSearchIndex, PushTokenService,
+    UserRealtimePublisher,
 };
 use crate::http::{
     AdminBroadcastRateLimiter, AdminBroadcastState, NotificationsState, admin_router,
@@ -75,6 +76,7 @@ pub fn compose(
     let inbox_repo = Arc::new(InboxRepo::new(pool.clone()));
     let push_repo = Arc::new(PushTokenRepo::new(pool.clone()));
     let client_platforms = Arc::new(ClientPlatformRepo::new(pool));
+    let search_index = NotificationSearchIndex::new();
     let push_tokens = Arc::new(PushTokenService::new(
         Arc::clone(&push_repo),
         cfg.get_bool("Push:SecurePreview:AndroidEnabled") != Some(false),
@@ -99,6 +101,7 @@ pub fn compose(
         client_platforms,
         Arc::clone(&push_tokens),
         Arc::clone(&realtime),
+        search_index.clone(),
     ));
     let message_sent_notifier: Arc<dyn MessageSentNotifier> =
         Arc::new(MessagePushNotifier::new(Arc::clone(&realtime)));
@@ -109,8 +112,9 @@ pub fn compose(
     let presence_publisher: Arc<dyn PresenceRealtimePublisher> =
         Arc::new(HubPresencePublisher::new(Arc::clone(&hub)));
     let push_preview_targets: Arc<dyn PushPreviewTargetProvider> = push_tokens.clone();
-    let user_notification_dispatcher: Arc<dyn UserNotificationDispatcher> =
-        Arc::new(InboxNotificationDispatcher::new(inbox_repo, realtime));
+    let user_notification_dispatcher: Arc<dyn UserNotificationDispatcher> = Arc::new(
+        InboxNotificationDispatcher::new(inbox_repo, realtime, search_index),
+    );
 
     let configured_admin_token = cfg
         .get_non_empty("Flora:AdminBroadcastToken")

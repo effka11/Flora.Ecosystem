@@ -3,6 +3,7 @@
 pub use fira_core::music as recommendations;
 
 pub mod artists;
+pub mod audio_search;
 pub mod credits;
 pub mod flow;
 pub mod genres;

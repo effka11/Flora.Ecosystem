@@ -9,8 +9,10 @@ use flora_shared::latin_identifiers::{SLUG_FORMAT_MESSAGE, has_only_slug_chars, 
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::application::communities_search::CommunitiesSearchHost;
 use crate::application::community_recommendation::CommunityRecommendationService;
 use crate::application::feed::FeedService;
+use crate::application::feed_search::FeedSearchHost;
 use crate::application::post_image_processor::{PostImageProcessError, process_avatar_image};
 use crate::application::reserved_slugs::{is_reserved, normalize_for_compare};
 use crate::application::serialize::FeedSerializer;
@@ -24,6 +26,8 @@ pub struct CommunitiesService {
     accounts: Arc<dyn AccountDirectory>,
     serialize: Arc<FeedSerializer>,
     feed: Arc<FeedService>,
+    feed_search: Arc<FeedSearchHost>,
+    search_index: Arc<CommunitiesSearchHost>,
     recommendations: Arc<CommunityRecommendationService>,
 }
 
@@ -62,6 +66,8 @@ impl CommunitiesService {
         accounts: Arc<dyn AccountDirectory>,
         serialize: Arc<FeedSerializer>,
         feed: Arc<FeedService>,
+        feed_search: Arc<FeedSearchHost>,
+        search_index: Arc<CommunitiesSearchHost>,
         recommendations: Arc<CommunityRecommendationService>,
     ) -> Self {
         Self {
@@ -69,6 +75,8 @@ impl CommunitiesService {
             accounts,
             serialize,
             feed,
+            feed_search,
+            search_index,
             recommendations,
         }
     }
@@ -127,15 +135,11 @@ impl CommunitiesService {
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let take = take.clamp(1, 50);
-        let skip = skip.max(0);
-        let lower = query.to_lowercase();
 
         let communities = self
-            .repo
-            .search_communities(user_uuid, &lower, skip, take)
-            .await
-            .map_err(|e| e.to_string())?;
+            .search_index
+            .search(user_uuid, query, skip, take)
+            .await?;
         if communities.is_empty() {
             return Ok(Vec::new());
         }
@@ -450,6 +454,18 @@ impl CommunitiesService {
             .await
             .map_err(|e| e.to_string())?;
 
+        self.search_index.on_community_upsert(
+            &CommunityRow {
+                community_id,
+                name: name.to_string(),
+                slug: normalized_slug.clone(),
+                avatar_uuid: None,
+                is_private,
+                created_at: now,
+            },
+            1,
+        );
+
         Ok(Ok(json!({
             "communityId": community_id,
             "name": name,
@@ -549,6 +565,11 @@ impl CommunitiesService {
             .member_count(community_id)
             .await
             .map_err(|e| e.to_string())?;
+        self.search_index
+            .on_community_upsert(&community, member_count);
+        self.feed_search
+            .reindex_community_posts(community_id, community.is_private, &community.name)
+            .await;
         Ok(Ok(json!({
             "communityId": community.community_id,
             "name": community.name,
@@ -644,11 +665,18 @@ impl CommunitiesService {
         {
             return Ok(Err(CommunityError::NotFound));
         }
+        let post_uuids = self
+            .repo
+            .community_post_uuids(community_id)
+            .await
+            .map_err(|e| e.to_string())?;
         let now = Utc::now();
         self.repo
             .purge_community(community_id, now)
             .await
             .map_err(|e| e.to_string())?;
+        self.search_index.on_community_deleted(community_id);
+        self.feed_search.remove_posts(&post_uuids);
         Ok(Ok(()))
     }
 

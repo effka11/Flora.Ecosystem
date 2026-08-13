@@ -70,11 +70,11 @@ export default function NotificationsScreen() {
     isError,
     refetch,
   } = useQuery({
-    queryKey: ["notifications", hasSearch ? "search" : activeCategory, search.trim()],
+    queryKey: ["notifications", activeCategory, hasSearch ? search.trim() : ""],
     queryFn: () =>
       apiListNotifications(
         hasSearch
-          ? { category: "all", search: search.trim(), take: 100 }
+          ? { category: activeCategory, search: search.trim(), take: 100 }
           : { category: activeCategory, take: 100 },
       ),
     placeholderData: keepPreviousData,
@@ -183,8 +183,7 @@ export default function NotificationsScreen() {
           onBeforeMenuOpen={() => setFilterOpen(false)}
         />
 
-        {!hasSearch ? (
-          <View style={styles.navigationRow}>
+        <View style={styles.navigationRow}>
             <NotificationCategoryPicker
               activeTab={activeTab}
               open={filterOpen}
@@ -204,8 +203,7 @@ export default function NotificationsScreen() {
               <Text style={styles.clearBtnText}>Очистить</Text>
               <Ionicons name="close" size={16} color={floraColors.greenLight} />
             </Pressable>
-          </View>
-        ) : null}
+        </View>
       </View>
 
       {items.length === 0 ? (

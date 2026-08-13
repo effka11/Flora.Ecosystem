@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use flora_users_contracts::UserProfileProvisioner;
 use uuid::Uuid;
 
 use crate::infrastructure::password::{MAX_PASSWORD_BYTES, hash_password, verify_password};
@@ -23,11 +24,12 @@ pub enum DeleteAccountError {
 
 pub struct AccountService {
     repo: Arc<AuthRepo>,
+    provisioner: Arc<dyn UserProfileProvisioner>,
 }
 
 impl AccountService {
-    pub fn new(repo: Arc<AuthRepo>) -> Self {
-        Self { repo }
+    pub fn new(repo: Arc<AuthRepo>, provisioner: Arc<dyn UserProfileProvisioner>) -> Self {
+        Self { repo, provisioner }
     }
 
     pub async fn change_password(
@@ -127,6 +129,13 @@ impl AccountService {
             .map_err(|e| DeleteAccountError::Internal(e.to_string()))?;
         if deleted == 0 {
             return Err(DeleteAccountError::NotFound("Аккаунт не найден."));
+        }
+        if let Err(error) = self.provisioner.forget_user(user_uuid).await {
+            tracing::warn!(
+                %error,
+                %user_uuid,
+                "profile forget after account delete failed"
+            );
         }
         Ok(())
     }

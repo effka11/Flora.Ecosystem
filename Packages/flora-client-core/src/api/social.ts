@@ -12,10 +12,12 @@ import { parseLikeMutation, parseViewMutation } from "../contracts/engagement.js
 import {
   parseDismissedCommunities,
   parseFeedPage,
+  parseFeedPostsList,
   parseFeedSettings,
   parseHasNewFeed,
   parseHiddenFeedAuthors,
   type DismissedCommunityDto,
+  type FeedPostDto,
   type FeedSettingsDto,
   type HiddenFeedAuthorDto,
 } from "../contracts/feed.js";
@@ -60,6 +62,12 @@ export async function apiFeedHasNew(since?: string): Promise<boolean> {
   const q = since ? `?since=${encodeURIComponent(since)}` : "";
   const raw = await authGetJson(`/api/auth/feed/has-new${q}`);
   return parseHasNewFeed(raw, ctx());
+}
+
+export async function apiSearchFeed(query: string, take = 20, skip = 0): Promise<FeedPostDto[]> {
+  const params = new URLSearchParams({ q: query.trim(), skip: String(skip), take: String(take) });
+  const raw = await authGetJson(`/api/auth/feed/search?${params}`);
+  return parseFeedPostsList(raw, ctx());
 }
 
 // ---------------------------------------------------------------------------

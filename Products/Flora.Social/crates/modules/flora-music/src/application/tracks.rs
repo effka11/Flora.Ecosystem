@@ -4,6 +4,7 @@ use std::sync::Arc;
 use flora_music_contracts::{MusicPlatformTrackDto, MusicTrackDto, TrackArtistCreditDto};
 use uuid::Uuid;
 
+use crate::application::audio_search::AudioSearchHost;
 use crate::application::time::{format_utc, format_utc_opt};
 use crate::infrastructure::repo::{
     CreditRow, MediaBlobRow, MusicRepo, TrackListRow, joiner_to_wire, scope_to_wire,
@@ -11,11 +12,32 @@ use crate::infrastructure::repo::{
 
 pub struct TrackService {
     repo: Arc<MusicRepo>,
+    audio: AudioSearchHost,
 }
 
 impl TrackService {
-    pub fn new(repo: Arc<MusicRepo>) -> Self {
-        Self { repo }
+    pub fn new(repo: Arc<MusicRepo>, audio: AudioSearchHost) -> Self {
+        Self { repo, audio }
+    }
+
+    /// Catalog-only FSA-A search. Bare `MusicTrackDto` list (no scores, no `{ items }`).
+    pub async fn search(
+        &self,
+        q: &str,
+        skip: i32,
+        take: i32,
+    ) -> Result<Vec<MusicTrackDto>, sqlx::Error> {
+        let skip = skip.max(0) as usize;
+        let take = take.clamp(1, 50) as usize;
+        let ids = self.audio.search(q, skip, take).await;
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = self.repo.list_catalog_tracks_by_uuids(&ids).await?;
+        let dtos = self.map_tracks(rows).await?;
+        let mut by_id: HashMap<Uuid, MusicTrackDto> =
+            dtos.into_iter().map(|t| (t.track_uuid, t)).collect();
+        Ok(ids.into_iter().filter_map(|id| by_id.remove(&id)).collect())
     }
 
     pub async fn list_library(&self, user: Uuid) -> Result<Vec<MusicTrackDto>, sqlx::Error> {
@@ -134,8 +156,11 @@ impl TrackService {
     pub async fn delete(&self, owner: Uuid, track_uuid: Uuid) -> Result<bool, sqlx::Error> {
         let artists = self.repo.list_artist_uuids_for_track(track_uuid).await?;
         let deleted = self.repo.delete_owned_track(owner, track_uuid).await?;
-        if deleted && !artists.is_empty() {
-            self.repo.decrement_tracks_count(&artists).await?;
+        if deleted {
+            self.audio.remove(track_uuid).await;
+            if !artists.is_empty() {
+                self.repo.decrement_tracks_count(&artists).await?;
+            }
         }
         Ok(deleted)
     }

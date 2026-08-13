@@ -69,6 +69,17 @@ function parsePost(raw: unknown, ctx?: ParseContext): FeedPostDto | null {
   };
 }
 
+/** Bare JSON array of FeedPostDto. Objects like `{ items }` yield []. */
+export function parseFeedPostsList(raw: unknown, ctx?: ParseContext): FeedPostDto[] {
+  if (!Array.isArray(raw)) return [];
+  const out: FeedPostDto[] = [];
+  for (const item of raw) {
+    const parsed = parsePost(item, ctx);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
 export function parseFeedPage(raw: unknown, ctx?: ParseContext): FeedPage {
   const empty: FeedPage = {
     items: [],

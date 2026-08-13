@@ -52,10 +52,10 @@ function filterByTab(items: NotificationItem[], activeTab: number): Notification
   return items;
 }
 
-function filterBySearch(items: NotificationItem[], query: string): NotificationItem[] {
-  const q = query.trim().toLowerCase();
-  if (q.length < 1) return items;
-  return items.filter((n) => n.text.toLowerCase().includes(q));
+function apiCategoryForTab(activeTab: number): "all" | "social" | "developer" {
+  if (activeTab === 1) return "social";
+  if (activeTab === 2) return "developer";
+  return "all";
 }
 
 export default function NotificationsPage() {
@@ -110,12 +110,10 @@ export default function NotificationsPage() {
   }, []);
 
   const visibleItems = useMemo(() => {
-    const byTab = filterByTab(notifications, activeTab);
-    return filterBySearch(byTab, searchValue);
-  }, [notifications, activeTab, searchValue]);
+    return filterByTab(notifications, activeTab);
+  }, [notifications, activeTab]);
 
   const syncIndicator = useCallback(() => {
-    if (hasSearch) return;
     const refs = [tabAllRef, tabSocialRef, tabDevRef];
     const target = refs[activeTab]?.current;
     if (!target) return;
@@ -124,14 +122,14 @@ export default function NotificationsPage() {
     if (!indicatorAnimated) {
       requestAnimationFrame(() => setIndicatorAnimated(true));
     }
-  }, [activeTab, hasSearch, indicatorAnimated]);
+  }, [activeTab, indicatorAnimated]);
 
   useEffect(() => {
-    if (!isClient || !hasToken || !tabRestoreReady || hasSearch) return;
+    if (!isClient || !hasToken || !tabRestoreReady) return;
     syncIndicator();
     window.addEventListener("resize", syncIndicator);
     return () => window.removeEventListener("resize", syncIndicator);
-  }, [isClient, hasToken, tabRestoreReady, hasSearch, syncIndicator]);
+  }, [isClient, hasToken, tabRestoreReady, syncIndicator]);
 
   useEffect(() => {
     if (!isClient || !hasToken) return;
@@ -183,7 +181,7 @@ export default function NotificationsPage() {
     try {
       const list = hasSearchQuery
         ? await apiListNotifications({
-            category: "all",
+            category: apiCategoryForTab(activeTab),
             search: searchValue,
             take: 100,
           })
@@ -200,7 +198,7 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [hasToken, searchValue]);
+  }, [hasToken, searchValue, activeTab]);
 
   const markAllVisibleAsRead = useCallback(async () => {
     if (markAllReadInFlightRef.current) return;
@@ -316,8 +314,7 @@ export default function NotificationsPage() {
                 />
               </div>
 
-              {!hasSearch ? (
-                <div className={styles.notificationsFiltersBlock}>
+              <div className={styles.notificationsFiltersBlock}>
                   <div className={styles.notificationsTabsWrap} id="notifications-tabs-wrap">
                     <div className={styles.notificationsTabs}>
                       <button
@@ -364,7 +361,6 @@ export default function NotificationsPage() {
                     </svg>
                   </button>
                 </div>
-              ) : null}
             </div>
           </div>
 

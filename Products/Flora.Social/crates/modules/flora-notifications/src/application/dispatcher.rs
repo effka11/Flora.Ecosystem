@@ -11,6 +11,7 @@ use flora_notifications_contracts::{
 use flora_shared::flora_uuid::new_uuid;
 
 use crate::application::UserRealtimePublisher;
+use crate::application::notifications_search::{NotificationSearchIndex, notification_doc};
 use crate::application::platform::{
     normalize_category, normalize_type, requires_social_aggregation,
 };
@@ -28,11 +29,20 @@ use crate::infrastructure::{InboxRepo, SocialGroupRow};
 pub struct InboxNotificationDispatcher {
     repo: Arc<InboxRepo>,
     realtime: Arc<UserRealtimePublisher>,
+    search_index: NotificationSearchIndex,
 }
 
 impl InboxNotificationDispatcher {
-    pub fn new(repo: Arc<InboxRepo>, realtime: Arc<UserRealtimePublisher>) -> Self {
-        Self { repo, realtime }
+    pub fn new(
+        repo: Arc<InboxRepo>,
+        realtime: Arc<UserRealtimePublisher>,
+        search_index: NotificationSearchIndex,
+    ) -> Self {
+        Self {
+            repo,
+            realtime,
+            search_index,
+        }
     }
 
     async fn dispatch_inner(&self, command: CreateUserNotificationCommand) -> Result<(), String> {
@@ -80,6 +90,19 @@ impl InboxNotificationDispatcher {
                 created_at,
             )
             .await?;
+
+        self.search_index.upsert_if_present(
+            command.recipient_user_uuid,
+            notification_doc(
+                notification_uuid,
+                text.clone(),
+                command.actor_user_uuid,
+                None,
+                notification_type.clone(),
+                false,
+                created_at,
+            ),
+        );
 
         let signal = RealtimeNotificationSignal {
             notification_uuid,
@@ -219,6 +242,19 @@ impl InboxNotificationDispatcher {
 
         tx.commit().await.map_err(|e| e.to_string())?;
 
+        self.search_index.upsert_if_present(
+            command.recipient_user_uuid,
+            notification_doc(
+                notification_uuid,
+                text.clone(),
+                Some(newest_actor),
+                Some(command.actor_label.clone()),
+                notification_type,
+                false,
+                created_at,
+            ),
+        );
+
         let signal = RealtimeNotificationSignal {
             notification_uuid,
             notification_type: notification_type.to_string(),
@@ -345,6 +381,9 @@ impl InboxNotificationDispatcher {
             self.repo.delete_by_uuid(&mut tx, notification_uuid).await?;
             tx.commit().await.map_err(|e| e.to_string())?;
 
+            self.search_index
+                .remove_if_present(command.recipient_user_uuid, notification_uuid);
+
             let removed = RealtimeNotificationRemovedSignal {
                 notification_uuid,
                 group_key: Some(tag),
@@ -378,6 +417,19 @@ impl InboxNotificationDispatcher {
             )
             .await?;
         tx.commit().await.map_err(|e| e.to_string())?;
+
+        self.search_index.upsert_if_present(
+            command.recipient_user_uuid,
+            notification_doc(
+                existing.notification_uuid,
+                text.clone(),
+                newest_actor,
+                actors.first().map(|a| a.label.clone()),
+                existing.notification_type.clone(),
+                existing.is_read,
+                existing.created_at,
+            ),
+        );
 
         let signal = RealtimeNotificationSignal {
             notification_uuid: existing.notification_uuid,

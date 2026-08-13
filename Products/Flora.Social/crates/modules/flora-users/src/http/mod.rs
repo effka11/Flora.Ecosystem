@@ -30,7 +30,11 @@ use crate::application::avatar::{
 };
 use crate::application::follow_notifications::{try_notify_follow, try_retract_follow};
 use crate::application::people_recommendation::PeopleRecommendationService;
+use crate::application::people_search::PeopleSearchHost;
 use crate::application::presence::{MAX_WATCH_UUIDS, PresenceService};
+use crate::application::profile::{
+    PersistProfileError, PersistProfileUpdate, persist_profile_update,
+};
 use crate::http::rate_limit::{FixedWindowLimiter, client_ip_key};
 
 /// JWT user (внедряет flora-social).
@@ -55,6 +59,7 @@ pub struct UsersState {
     pub avatars: Arc<AvatarService>,
     pub recommendations: Arc<PeopleRecommendationService>,
     pub notifications: Arc<dyn UserNotificationDispatcher>,
+    pub people_search: Arc<PeopleSearchHost>,
     pub upload_limiter: Arc<FixedWindowLimiter>,
 }
 
@@ -750,64 +755,31 @@ async fn update_profile(
         }
     }
 
-    let Some(account) = (match state.accounts.get_public(user.user_uuid).await {
-        Ok(v) => v,
-        Err(e) => return internal(e),
-    }) else {
-        return not_found("Аккаунт не найден.");
-    };
-
-    if !username.is_empty() {
-        match state
-            .accounts
-            .username_taken_by_other(&username, user.user_uuid)
-            .await
-        {
-            Ok(true) => {
-                return (
-                    StatusCode::CONFLICT,
-                    Json(serde_json::json!({ "error": "Этот юзернейм уже занят." })),
-                )
-                    .into_response();
-            }
-            Ok(false) => {}
-            Err(e) => return internal(e),
-        }
-        if let Err(e) = state
-            .accounts
-            .update_username(user.user_uuid, &username)
-            .await
-        {
-            return internal(e);
-        }
-    }
-
-    let birth = body.birth_date.as_deref().map(str::trim);
-    let birth_arg = birth;
-
-    if let Err(e) = state
-        .profiles
-        .upsert_profile_fields(
-            user.user_uuid,
-            if display_name.is_empty() {
-                None
-            } else {
-                Some(display_name.as_str())
-            },
-            body.gender,
-            birth_arg,
-            body.status.as_deref(),
-            &account.username,
-        )
-        .await
+    match persist_profile_update(
+        state.accounts.as_ref(),
+        state.profiles.as_ref(),
+        state.people_search.as_ref(),
+        PersistProfileUpdate {
+            user_uuid: user.user_uuid,
+            username,
+            display_name: &display_name,
+            gender: body.gender,
+            birth_date: body.birth_date.as_deref(),
+            status: body.status.as_deref(),
+        },
+    )
+    .await
     {
-        if e.starts_with("Неверный формат") {
-            return bad_request(e);
-        }
-        return internal(e);
+        Ok(()) => Json(serde_json::json!({ "message": "Профиль обновлён." })).into_response(),
+        Err(PersistProfileError::NotFound) => not_found("Аккаунт не найден."),
+        Err(PersistProfileError::UsernameTaken) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": "Этот юзернейм уже занят." })),
+        )
+            .into_response(),
+        Err(PersistProfileError::BadRequest(e)) => bad_request(e),
+        Err(PersistProfileError::Internal(e)) => internal(e),
     }
-
-    Json(serde_json::json!({ "message": "Профиль обновлён." })).into_response()
 }
 
 async fn follow_user(
@@ -905,48 +877,34 @@ async fn search_users(
     }
     let take = params.take.clamp(1, 50);
     let skip = params.skip.max(0);
-    let lower = query.to_ascii_lowercase();
 
-    let username_hits = match state
-        .accounts
-        .search_accounts_by_username_contains(user.user_uuid, &lower)
+    let ids = match state
+        .people_search
+        .search(&query, user.user_uuid, skip, take)
         .await
     {
         Ok(v) => v,
         Err(e) => return internal(e),
     };
-    let display_uuids = match state
-        .profiles
-        .search_user_uuids_by_display_name_contains(user.user_uuid, &lower)
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => return internal(e),
-    };
-
-    let mut merged: Vec<(Uuid, String)> = username_hits;
-    let known: std::collections::HashSet<Uuid> = merged.iter().map(|(id, _)| *id).collect();
-    let missing: Vec<Uuid> = display_uuids
-        .into_iter()
-        .filter(|id| !known.contains(id))
-        .collect();
-    if !missing.is_empty() {
-        let names = match state.accounts.usernames_by_uuids(&missing).await {
-            Ok(v) => v,
-            Err(e) => return internal(e),
-        };
-        for (id, name) in names {
-            if !name.is_empty() {
-                merged.push((id, name));
-            }
-        }
+    if ids.is_empty() {
+        return Json(serde_json::json!([])).into_response();
     }
-    merged.sort_by(|a, b| a.1.cmp(&b.1));
 
-    let page: Vec<(Uuid, String)> = merged
+    let names = match state.accounts.usernames_by_uuids(&ids).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+    let name_by: std::collections::HashMap<_, _> = names.into_iter().collect();
+    let page: Vec<(Uuid, String)> = ids
         .into_iter()
-        .skip(skip as usize)
-        .take(take as usize)
+        .filter_map(|id| {
+            let username = name_by.get(&id).cloned().unwrap_or_default();
+            if username.is_empty() {
+                None
+            } else {
+                Some((id, username))
+            }
+        })
         .collect();
     if page.is_empty() {
         return Json(serde_json::json!([])).into_response();

@@ -1,5 +1,5 @@
 import type { FeedPostDto, PostEngagementSnapshot } from "@flora/client-core/contracts";
-import { apiFeedHasNew, apiGetFeed } from "@flora/client-core/api";
+import { apiFeedHasNew, apiGetFeed, apiSearchFeed } from "@flora/client-core/api";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -96,22 +96,6 @@ function feedKindIndex(kind: FeedKind) {
   return kind === "recommendations" ? 0 : 1;
 }
 
-function filterPosts(posts: FeedPostDto[], search: string) {
-  const q = search.trim().toLowerCase();
-  if (!q) return posts;
-  return posts.filter((post) => {
-    const haystack = [
-      post.text,
-      post.authorDisplayName,
-      post.authorUsername,
-      post.communityName ?? "",
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(q);
-  });
-}
-
 function useFeedQuery(kind: FeedKind) {
   return useInfiniteQuery({
     queryKey: ["feed", kind],
@@ -184,7 +168,11 @@ type FeedPaneProps = {
   isActivePane: boolean;
   /** FRC-I / drawDistance gate — deferred after pager settle (not chrome active). */
   mediaEnabled: boolean;
-  search: string;
+  /** Catalog FSA hits; when set, the infinite feed query is not listed. */
+  listedPosts?: FeedPostDto[];
+  listedLoading?: boolean;
+  listedError?: boolean;
+  onListedRefresh?: () => Promise<void>;
   pageWidth: number;
   contentPaddingTop: number;
   contentPaddingBottom: number;
@@ -200,7 +188,10 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
     feedQuery,
     isActivePane,
     mediaEnabled,
-    search,
+    listedPosts,
+    listedLoading,
+    listedError,
+    onListedRefresh,
     pageWidth,
     contentPaddingTop,
     contentPaddingBottom,
@@ -217,11 +208,12 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
   const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking({ enabled: mediaEnabled });
 
-  const posts = useMemo(
+  const feedPosts = useMemo(
     () => feedQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [feedQuery.data?.pages],
   );
-  const visiblePosts = useMemo(() => filterPosts(posts, search), [posts, search]);
+  const isListed = listedPosts !== undefined;
+  const visiblePosts = listedPosts ?? feedPosts;
 
   // Map the viewability band → per-post decode modes so only visible/near/
   // lookahead rows enqueue FRC-I work (mount/drawDistance no longer decode all),
@@ -231,10 +223,10 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
     kind,
     feedQuery,
     isActivePane: mediaEnabled,
-    isSearching: search.trim().length > 0,
+    isSearching: isListed,
   });
-  const postsRef = useRef(posts);
-  postsRef.current = posts;
+  const postsRef = useRef(visiblePosts);
+  postsRef.current = visiblePosts;
   // FlashList v2 MVCP (on by default) re-anchors mid-list when page-0 is replaced —
   // disabled on the list below. Scroll only after refetch settles + React commit
   // (pending arm after await, not before trim, so trim's paint cannot clear it).
@@ -243,11 +235,15 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
   onScrolledToTopRef.current = onScrolledToTop;
   const [scrollToTopNonce, setScrollToTopNonce] = useState(0);
   const refreshToTop = useCallback(async () => {
-    queryClient.setQueryData(["feed", kind], trimFeedInfiniteDataToFirstPage);
-    await feedQuery.refetch();
+    if (onListedRefresh) {
+      await onListedRefresh();
+    } else {
+      queryClient.setQueryData(["feed", kind], trimFeedInfiniteDataToFirstPage);
+      await feedQuery.refetch();
+    }
     pendingScrollToTopRef.current = true;
     setScrollToTopNonce((n) => n + 1);
-  }, [feedQuery, kind, queryClient]);
+  }, [feedQuery, kind, onListedRefresh, queryClient]);
   useLayoutEffect(() => {
     if (scrollToTopNonce === 0 || !pendingScrollToTopRef.current) return;
     pendingScrollToTopRef.current = false;
@@ -256,13 +252,15 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
   }, [flashListRef, scrollToTopNonce]);
   useImperativeHandle(ref, () => ({ refreshToTop }), [refreshToTop]);
   const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(refreshToTop);
-  const emptyHint = feedQuery.isError
-    ? "Не удалось загрузить ленту. Потяните вниз, чтобы обновить."
-    : kind === "subscriptions"
-      ? "Пока нет постов в подписках."
-      : search.trim()
+  const emptyHint =
+    listedError || (!isListed && feedQuery.isError)
+      ? "Не удалось загрузить ленту. Потяните вниз, чтобы обновить."
+      : isListed
         ? "Ничего не найдено"
-        : "Лента пуста";
+        : kind === "subscriptions"
+          ? "Пока нет постов в подписках."
+          : "Лента пуста";
+  const listLoading = isListed ? Boolean(listedLoading) : feedQuery.isLoading;
 
   const handleCommentAdded = useCallback((postUuid: string) => {
     setLocalCommentCounts((prev) => ({
@@ -376,17 +374,17 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
             />
           }
           onEndReachedThreshold={PREFETCH_END_THRESHOLD_VIEWPORTS}
-          onEndReached={onApproachingEnd}
+          onEndReached={isListed ? undefined : onApproachingEnd}
           renderItem={renderFeedRow}
           ListFooterComponent={
-            feedQuery.isFetchingNextPage && posts.length > 0 ? (
+            !isListed && feedQuery.isFetchingNextPage && feedPosts.length > 0 ? (
               <View style={styles.loadingMore}>
                 <ActivityIndicator color={floraColors.greenLight} />
               </View>
             ) : null
           }
           ListEmptyComponent={
-            feedQuery.isLoading ? (
+            listLoading ? (
               <View style={styles.loadingMore}>
                 <ActivityIndicator color={floraColors.greenLight} />
               </View>
@@ -420,6 +418,8 @@ export default function FeedScreen() {
     subscriptions: null,
   });
   const [search, setSearch] = useState("");
+  const queryText = search.trim();
+  const hasSearch = queryText.length > 0;
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const estimatedHeaderHeight = insets.top + floraSpacing.grid + FEED_CHROME_BODY_HEIGHT;
   const {
@@ -563,6 +563,23 @@ export default function FeedScreen() {
 
   const recommendationsFeedQuery = useFeedQuery("recommendations");
   const subscriptionsFeedQuery = useFeedQuery("subscriptions");
+  const searchQuery = useQuery({
+    queryKey: ["feed", "search", queryText],
+    enabled: hasSearch,
+    queryFn: () => apiSearchFeed(queryText, 40),
+  });
+  const refreshSearch = useCallback(async () => {
+    await searchQuery.refetch();
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (hasSearch) {
+      setActivePane(0);
+      expandChrome(0);
+    } else {
+      setActivePane(feedKindIndex(kind));
+    }
+  }, [expandChrome, hasSearch, kind, setActivePane]);
 
   const recommendationsGeneratedAt = recommendationsFeedQuery.data?.pages[0]?.generatedAt ?? null;
 
@@ -664,44 +681,61 @@ export default function FeedScreen() {
     void hasNewQuery.refetch();
   }, [hasNewQuery, queryClient]);
 
-  const showNewPostsBanner = kind === "recommendations" && hasNewQuery.data === true;
+  const showNewPostsBanner = !hasSearch && kind === "recommendations" && hasNewQuery.data === true;
 
   return (
     <View style={styles.root}>
       <View style={styles.feedBody}>
-        <GestureDetector gesture={pagerPan}>
-          <Reanimated.View
-            style={[styles.pagerRow, { width: pageWidth * 2 }, pagerStyle]}
-          >
-            <FeedPane
-              ref={recommendationsPaneRef}
-              kind="recommendations"
-              feedQuery={recommendationsFeedQuery}
-              isActivePane={kind === "recommendations"}
-              mediaEnabled={mediaKind === "recommendations"}
-              search={search}
-              pageWidth={pageWidth}
-              contentPaddingTop={headerHeightPx}
-              contentPaddingBottom={listPaddingBottom}
-              online={network === "online"}
-              renderScrollComponent={renderScrollComponents[0]}
-              onScrolledToTop={expandRecommendationsChrome}
-            />
-            <FeedPane
-              kind="subscriptions"
-              feedQuery={subscriptionsFeedQuery}
-              isActivePane={kind === "subscriptions"}
-              mediaEnabled={mediaKind === "subscriptions"}
-              search={search}
-              pageWidth={pageWidth}
-              contentPaddingTop={headerHeightPx}
-              contentPaddingBottom={listPaddingBottom}
-              online={network === "online"}
-              renderScrollComponent={renderScrollComponents[1]}
-              onScrolledToTop={expandSubscriptionsChrome}
-            />
-          </Reanimated.View>
-        </GestureDetector>
+        {hasSearch ? (
+          <FeedPane
+            kind="recommendations"
+            feedQuery={recommendationsFeedQuery}
+            isActivePane
+            mediaEnabled
+            listedPosts={searchQuery.data ?? []}
+            listedLoading={searchQuery.isLoading}
+            listedError={searchQuery.isError}
+            onListedRefresh={refreshSearch}
+            pageWidth={pageWidth}
+            contentPaddingTop={headerHeightPx}
+            contentPaddingBottom={listPaddingBottom}
+            online={network === "online"}
+            renderScrollComponent={renderScrollComponents[0]}
+            onScrolledToTop={expandRecommendationsChrome}
+          />
+        ) : (
+          <GestureDetector gesture={pagerPan}>
+            <Reanimated.View
+              style={[styles.pagerRow, { width: pageWidth * 2 }, pagerStyle]}
+            >
+              <FeedPane
+                ref={recommendationsPaneRef}
+                kind="recommendations"
+                feedQuery={recommendationsFeedQuery}
+                isActivePane={kind === "recommendations"}
+                mediaEnabled={mediaKind === "recommendations"}
+                pageWidth={pageWidth}
+                contentPaddingTop={headerHeightPx}
+                contentPaddingBottom={listPaddingBottom}
+                online={network === "online"}
+                renderScrollComponent={renderScrollComponents[0]}
+                onScrolledToTop={expandRecommendationsChrome}
+              />
+              <FeedPane
+                kind="subscriptions"
+                feedQuery={subscriptionsFeedQuery}
+                isActivePane={kind === "subscriptions"}
+                mediaEnabled={mediaKind === "subscriptions"}
+                pageWidth={pageWidth}
+                contentPaddingTop={headerHeightPx}
+                contentPaddingBottom={listPaddingBottom}
+                online={network === "online"}
+                renderScrollComponent={renderScrollComponents[1]}
+                onScrolledToTop={expandSubscriptionsChrome}
+              />
+            </Reanimated.View>
+          </GestureDetector>
+        )}
       </View>
 
       <Reanimated.View style={[styles.topChrome, headerAnimatedStyle]}>

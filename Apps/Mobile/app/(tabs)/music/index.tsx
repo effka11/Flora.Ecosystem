@@ -237,7 +237,7 @@ export default function MusicScreen() {
 
       <View style={[styles.body, { paddingBottom: listPaddingBottom }]}>
         {hasSearch ? (
-          <MusicSearchResults query={search} tracks={tracks} />
+          <MusicSearchResults query={search} />
         ) : loading ? (
           <View style={styles.loading}>
             <ActivityIndicator color={floraColors.greenLight} />

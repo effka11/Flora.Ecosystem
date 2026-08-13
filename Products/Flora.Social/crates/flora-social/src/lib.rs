@@ -53,8 +53,17 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         background.extend(spawn_music_workers(cfg, pool.clone()));
     }
 
-    let (auth_routes, account_directory, auth_workers) =
-        auth_router_with_directory(cfg, pool.clone(), verification_port, sessions.clone());
+    let people_bundle = pool
+        .as_ref()
+        .map(|p| flora_users::people_search_bundle(p.clone()));
+
+    let (auth_routes, account_directory, auth_workers) = auth_router_with_directory(
+        cfg,
+        pool.clone(),
+        verification_port,
+        sessions.clone(),
+        people_bundle.as_ref(),
+    );
     background.extend(auth_workers);
 
     let (
@@ -94,6 +103,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         Arc::clone(&notification_dispatcher),
         presence_service.clone(),
         sessions.clone(),
+        people_bundle.as_ref().map(|p| p.people_search.clone()),
     );
     background.extend(users_workers);
     let (messaging_routes, messaging_workers) = messaging_router(
@@ -131,6 +141,7 @@ fn auth_router_with_directory(
     pool: Option<PgPool>,
     verification: Option<Arc<dyn VerificationChallengePort>>,
     sessions: Option<SessionValidator>,
+    people: Option<&flora_users::PeopleSearchBundle>,
 ) -> (
     axum::Router,
     Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
@@ -158,7 +169,10 @@ fn auth_router_with_directory(
         );
     };
     let jwt = JwtOptions::from_config(cfg);
-    let (profiles, provisioner) = flora_users::profile_ports(pool.clone());
+    let (profiles, provisioner) = match people {
+        Some(bundle) => (bundle.profiles.clone(), bundle.provisioner.clone()),
+        None => flora_users::profile_ports(pool.clone()),
+    };
     // Staged rollout выбора протокола (plan §2, runbook):
     //  - выкл. (feature off и `Auth:RetrySafeRefresh` != true) ⇒ `None` ⇒ legacy;
     //  - вкл. + валидный `Auth:ReplayKeyRing` ⇒ `Some` ⇒ retry-safe + cleanup-джоба;
@@ -196,6 +210,7 @@ fn users_router(
     notifications: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
     presence: Option<Arc<flora_users::PresenceService>>,
     sessions: Option<SessionValidator>,
+    people_search: Option<Arc<flora_users::PeopleSearchHost>>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Users:ServeNative") != Some(true) {
         return (flora_users::router(), Vec::new());
@@ -215,12 +230,15 @@ fn users_router(
             Arc::new(flora_notifications_contracts::NoopPresenceRealtimePublisher),
         )
     });
+    let people_search = people_search
+        .unwrap_or_else(|| flora_users::people_search_bundle(pool.clone()).people_search);
     let mut module = flora_users::compose(
         pool,
         accounts,
         communities,
         notifications,
         presence,
+        people_search,
         cfg.get_bool("Media:FrcI:BackfillEnabled") == Some(true),
     );
     let workers = module.image_backfill.take().into_iter().collect();

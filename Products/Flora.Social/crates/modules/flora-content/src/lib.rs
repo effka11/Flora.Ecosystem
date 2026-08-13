@@ -22,10 +22,12 @@ use sqlx::PgPool;
 
 use crate::application::comments::CommentsService;
 use crate::application::communities::CommunitiesService;
+use crate::application::communities_search::CommunitiesSearchHost;
 use crate::application::community_recommendation::CommunityRecommendationService;
 use crate::application::drafts::DraftsService;
 use crate::application::feed::FeedService;
 use crate::application::feed_controls::FeedControlsService;
+use crate::application::feed_search::FeedSearchHost;
 use crate::application::media::MediaService;
 use crate::application::post_access::PostAccessService;
 use crate::application::post_images::PostImagesService;
@@ -86,7 +88,7 @@ pub fn compose(
     let feed = Arc::new(FeedService::new(
         repo.clone(),
         follow.clone(),
-        blocklist,
+        blocklist.clone(),
         profile_access.clone(),
     ));
     let recommendations = Arc::new(CommunityRecommendationService::new(
@@ -123,9 +125,20 @@ pub fn compose(
         feed.clone(),
         Arc::clone(&notifications),
     ));
+    let feed_search = Arc::new(FeedSearchHost::new(
+        repo.clone(),
+        accounts.clone(),
+        profiles.clone(),
+        blocklist,
+        serialize.clone(),
+    ));
+    let communities_search = Arc::new(CommunitiesSearchHost::new(repo.clone()));
+    feed_search.spawn_rebuild();
+    communities_search.spawn_rebuild();
     let posts = Arc::new(PostService::new(
         repo.clone(),
         feed.clone(),
+        feed_search.clone(),
         accounts.clone(),
         profiles,
         access.clone(),
@@ -154,12 +167,15 @@ pub fn compose(
         accounts,
         serialize.clone(),
         feed.clone(),
+        feed_search.clone(),
+        communities_search,
         recommendations,
     ));
     let state = ContentState {
         feed,
         feed_controls,
         serialize,
+        feed_search,
         posts,
         comments,
         profile_posts,

@@ -25,6 +25,16 @@ pub struct PostRow {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+pub struct IndexableFeedPost {
+    pub post_uuid: Uuid,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
+    pub author_user_uuid: Uuid,
+    pub community_id: Option<Uuid>,
+    pub community_name: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ProfilePostRow {
     pub post_uuid: Uuid,
     pub content: String,
@@ -747,6 +757,24 @@ impl ContentRepo {
             .collect();
         rows.sort_by_key(|p| order.get(&p.post_uuid).copied().unwrap_or(usize::MAX));
         Ok(rows)
+    }
+
+    pub async fn list_indexable_feed_posts(&self) -> Result<Vec<IndexableFeedPost>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT p.post_uuid, p.content, p.created_at, p.author_user_uuid, p.community_id,
+                   c.name AS community_name
+            FROM flora_core.user_posts p
+            LEFT JOIN flora_core.communities c ON c.community_id = p.community_id
+            WHERE p.is_deleted = false
+              AND (
+                  p.community_id IS NULL
+                  OR c.is_private = false
+              )
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
     }
 
     pub async fn profile_posts_by_author(
@@ -2055,6 +2083,36 @@ impl ContentRepo {
         .await
     }
 
+    pub async fn list_all_communities(&self) -> Result<Vec<CommunityRow>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT community_id, name, slug, avatar_uuid, is_private, created_at
+            FROM flora_core.communities
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn community_rows_by_ids(
+        &self,
+        community_ids: &[Uuid],
+    ) -> Result<Vec<CommunityRow>, sqlx::Error> {
+        if community_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        sqlx::query_as(
+            r#"
+            SELECT community_id, name, slug, avatar_uuid, is_private, created_at
+            FROM flora_core.communities
+            WHERE community_id = ANY($1)
+            "#,
+        )
+        .bind(community_ids)
+        .fetch_all(&self.pool)
+        .await
+    }
+
     pub async fn owned_communities(
         &self,
         user_uuid: Uuid,
@@ -2480,6 +2538,37 @@ impl ContentRepo {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn posts_in_community(
+        &self,
+        community_id: Uuid,
+    ) -> Result<Vec<PostRow>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT post_uuid, content, created_at, author_user_uuid, community_id
+            FROM flora_core.user_posts
+            WHERE community_id = $1
+              AND is_deleted = false
+            "#,
+        )
+        .bind(community_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn community_post_uuids(&self, community_id: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT post_uuid
+            FROM flora_core.user_posts
+            WHERE community_id = $1
+              AND is_deleted = false
+            "#,
+        )
+        .bind(community_id)
+        .fetch_all(&self.pool)
+        .await
     }
 
     pub async fn community_posts(

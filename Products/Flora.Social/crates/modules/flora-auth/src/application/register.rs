@@ -265,7 +265,7 @@ impl RegisterService {
             .map_err(|e| RegisterVerifyError::Internal(e.to_string()))?;
 
         self.provisioner
-            .ensure_initial_profile(user_uuid, "")
+            .ensure_initial_profile(user_uuid, "", &pending.username)
             .await
             .map_err(RegisterVerifyError::Internal)?;
 

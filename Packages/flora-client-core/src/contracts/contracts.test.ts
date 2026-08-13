@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseLoginPayload, parseMePayload } from "./auth.js";
-import { parseFeedPage } from "./feed.js";
+import { parseFeedPage, parseFeedPostsList } from "./feed.js";
+import { parseMusicTracksList } from "./music.js";
 import { parseProfilePostsList } from "./profile.js";
 import { parseConversationsPage, parseMessagesPage } from "./messaging.js";
 import { parseNotificationsList, parseUnreadCount } from "./notifications.js";
@@ -146,5 +147,62 @@ describe("contract fixtures", () => {
     expect(feed.communityName).toBe("My Group");
     expect(feed.communitySlug).toBe("my-group");
     expect(feed.likedByMe).toBe(true);
+  });
+});
+
+const sampleFeedPost = {
+  postUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  authorUserUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  authorUsername: "founder",
+  authorDisplayName: "Founder",
+  content: "Search hit",
+  createdAt: "2026-06-12T10:00:00.000Z",
+  likesCount: 0,
+  commentsCount: 0,
+  repostsCount: 0,
+  viewsCount: 0,
+  liked: false,
+  reposted: false,
+  imageUuids: [],
+};
+
+const sampleMusicTrack = {
+  trackUuid: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+  scope: "platform",
+  title: "Sample Track",
+  artistDisplay: "Sample Artist",
+  artistCredits: [],
+  tags: null,
+  genreId: "rock",
+  licenseId: "cc",
+  coverColorId: "c1",
+  trackKindId: "song",
+  hasCoverImage: false,
+  durationMs: 180000,
+  createdAt: "2026-06-12T10:00:00.000Z",
+  publishedAt: "2026-06-12T10:00:00.000Z",
+};
+
+describe("bare search list parsers", () => {
+  it("parses a bare array of one feed post", () => {
+    const parsed = parseFeedPostsList([sampleFeedPost]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.postUuid).toBe(sampleFeedPost.postUuid);
+    expect(parsed[0]?.text).toBe("Search hit");
+  });
+
+  it("does not accept a feed { items } wrapper as a list", () => {
+    expect(parseFeedPostsList({ items: [sampleFeedPost] })).toEqual([]);
+  });
+
+  it("parses a bare array of one music track", () => {
+    const parsed = parseMusicTracksList([sampleMusicTrack]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.trackUuid).toBe(sampleMusicTrack.trackUuid);
+    expect(parsed[0]?.title).toBe("Sample Track");
+  });
+
+  it("does not accept a music { items } wrapper as a list", () => {
+    expect(parseMusicTracksList({ items: [sampleMusicTrack] })).toEqual([]);
   });
 });
