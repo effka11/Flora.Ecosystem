@@ -131,7 +131,6 @@ type FeedQuery = ReturnType<typeof useFeedQuery>;
 
 type FeedRowProps = {
   post: FeedPostDto;
-  viewCount: number;
   engagement: PostEngagementSnapshot;
   commentCount: number;
   commentsOpen: boolean;
@@ -146,7 +145,6 @@ type FeedRowProps = {
 const FeedRow = memo(
   function FeedRow({
     post,
-    viewCount,
     engagement,
     commentCount,
     commentsOpen,
@@ -161,7 +159,6 @@ const FeedRow = memo(
     return (
       <PostCard
         post={post}
-        viewCount={viewCount}
         engagement={engagement}
         commentCount={commentCount}
         commentsOpen={commentsOpen}
@@ -217,7 +214,7 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
-  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
+  const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking({ enabled: mediaEnabled });
 
   const posts = useMemo(
@@ -293,7 +290,6 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
 
   const rowStateRef = useRef({
     snapshotFor,
-    viewsCountFor,
     isLikePending,
     isRepostPending,
     commentsOpenPostUuid,
@@ -301,7 +297,6 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
   });
   rowStateRef.current = {
     snapshotFor,
-    viewsCountFor,
     isLikePending,
     isRepostPending,
     commentsOpenPostUuid,
@@ -310,7 +305,6 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
   const rowExtraData = useMemo(
     () => ({
       snapshotFor,
-      viewsCountFor,
       isLikePending,
       isRepostPending,
       commentsOpenPostUuid,
@@ -322,7 +316,6 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
       isRepostPending,
       localCommentCounts,
       snapshotFor,
-      viewsCountFor,
     ],
   );
   const renderFeedRow = useCallback(({ item }: { item: FeedPostDto }) => {
@@ -331,7 +324,6 @@ const FeedPane = forwardRef<FeedPaneHandle, FeedPaneProps>(function FeedPane(
     return (
       <FeedRow
         post={item}
-        viewCount={state.viewsCountFor(item)}
         engagement={engagement}
         commentCount={state.localCommentCounts[item.postUuid] ?? item.commentCount}
         commentsOpen={state.commentsOpenPostUuid === item.postUuid}

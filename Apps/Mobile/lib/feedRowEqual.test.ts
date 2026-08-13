@@ -5,7 +5,6 @@ function row(post: object) {
   const handler = () => {};
   return {
     post,
-    viewCount: 10,
     engagement: {
       liked: false,
       reposted: false,
@@ -36,7 +35,6 @@ describe("feedRowEqual", () => {
       ...previous,
       engagement: { ...previous.engagement, liked: true },
     })).toBe(false);
-    expect(feedRowEqual(previous, { ...previous, viewCount: 11 })).toBe(false);
     expect(feedRowEqual(previous, { ...previous, commentsOpen: true })).toBe(false);
   });
 });

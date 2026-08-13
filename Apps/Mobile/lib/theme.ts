@@ -55,6 +55,15 @@ export const floraTabFilter = {
 /** Карточка поста в ленте — feedPostList.module.css / feed.module.css */
 export const floraFeedPost = {
   avatarSize: 3 * floraSpacing.grid,
+  /** Левый/общий inset карточки — как padding шапки (слот гамбургера / «+»). */
+  paddingHorizontal: floraSpacing.grid,
+  /**
+   * Дополнительный правый inset наполнения (текст, фото, действия, комментарии).
+   * Шапка: 1×grid до слота «+» (45); глиф 24 по центру, штрихи плюса ещё внутри
+   * бокса → визуальный правый край ≈ 2×grid от экрана. Карточка остаётся на
+   * 1×grid, чтобы ⋮ сидел на той же вертикали, что кнопка «+».
+   */
+  contentInsetRight: floraSpacing.grid,
   paddingTop: 2 * floraSpacing.grid,
   paddingBottom: 2 * floraSpacing.grid + 2,
   columnGap: floraSpacing.grid + floraSpacing.gridFine,
@@ -84,12 +93,20 @@ export const floraFeedPost = {
    */
   textCapTrim: -((25.5 - 15) / 2),
   g20: 4 * floraSpacing.gridFine,
-  actionGap: 4 * floraSpacing.gridFine,
+  /** Иконка лайка/коммента/репоста. */
+  actionIconSize: 18,
+  /**
+   * Зазор между иконками = слот числа (40) + 1×fine воздуха до следующей иконки.
+   * Число абсолютно в зазоре, поэтому «0» и «120к» не двигают соседний глиф.
+   */
+  actionGap: 3 * floraSpacing.grid + floraSpacing.gridFine,
   actionIconGap: floraSpacing.gridFine,
-  actionsBarMarginTop: 4 * floraSpacing.gridFine,
+  /** Ширина слота счётчика — «128к» / «999», 2×grid + 2×fine. */
+  actionCountWidth: 2 * floraSpacing.grid + 2 * floraSpacing.gridFine,
+  actionsBarMarginTop: floraSpacing.grid + floraSpacing.gridFine,
   textMarginBottom: floraSpacing.grid,
-  actionFontSize: 14,
-  actionLetterSpacing: 0.42,
+  actionFontSize: 13,
+  actionLetterSpacing: 0,
   /** Как iconButton / ⋮ в Messages — центр на одной вертикали с «+»/шапкой чата. */
   moreBtnSize: 45,
   moreBtnPadding: 0,

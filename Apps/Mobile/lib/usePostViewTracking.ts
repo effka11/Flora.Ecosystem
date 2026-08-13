@@ -205,7 +205,10 @@ export function usePostViewTracking(options: UsePostViewTrackingOptions = {}) {
   ]);
 
   const viewsCountFor = useCallback(
-    (post: PostViewSource) => viewCounts[post.postUuid] ?? post.viewCount,
+    (post: PostViewSource) => {
+      const local = viewCounts[post.postUuid];
+      return local != null ? Math.max(local, post.viewCount) : post.viewCount;
+    },
     [viewCounts],
   );
 

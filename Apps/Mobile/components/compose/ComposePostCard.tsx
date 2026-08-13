@@ -118,7 +118,7 @@ export function ComposePostCard({
 
 const styles = StyleSheet.create({
   card: {
-    paddingHorizontal: floraSpacing.grid,
+    paddingHorizontal: floraFeedPost.paddingHorizontal,
     paddingTop: floraFeedPost.paddingTop,
     paddingBottom: floraFeedPost.paddingBottom,
   },
@@ -178,6 +178,7 @@ const styles = StyleSheet.create({
   },
   postBody: {
     marginTop: floraFeedPost.bodyMarginTop,
+    paddingRight: floraFeedPost.contentInsetRight,
   },
   input: {
     minHeight: 25.5 * 4,
