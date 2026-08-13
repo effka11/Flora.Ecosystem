@@ -23,10 +23,10 @@ describe("feedRowContentWidth", () => {
     expect(feedRowContentWidth(0)).toBe(1);
   });
 
-  it("puts the content right edge on the 2×grid line of the header plus glyph", () => {
+  it("puts the content right edge 1×grid + 2×fine from the screen", () => {
     expect(
       floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight,
-    ).toBe(floraSpacing.grid * 2);
+    ).toBe(floraSpacing.grid + floraSpacing.gridFine * 2);
   });
 });
 

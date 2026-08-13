@@ -59,11 +59,10 @@ export const floraFeedPost = {
   paddingHorizontal: floraSpacing.grid,
   /**
    * Дополнительный правый inset наполнения (текст, фото, действия, комментарии).
-   * Шапка: 1×grid до слота «+» (45); глиф 24 по центру, штрихи плюса ещё внутри
-   * бокса → визуальный правый край ≈ 2×grid от экрана. Карточка остаётся на
-   * 1×grid, чтобы ⋮ сидел на той же вертикали, что кнопка «+».
+   * Карточка и ⋮ остаются на 1×grid (слот «+»). Наполнение — ещё 2×fine,
+   * итого 1×grid + 2×fine от экрана.
    */
-  contentInsetRight: floraSpacing.grid,
+  contentInsetRight: floraSpacing.gridFine * 2,
   paddingTop: 2 * floraSpacing.grid,
   paddingBottom: 2 * floraSpacing.grid + 2,
   columnGap: floraSpacing.grid + floraSpacing.gridFine,
