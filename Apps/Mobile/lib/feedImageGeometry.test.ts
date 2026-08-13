@@ -8,15 +8,25 @@ import {
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
 
 describe("feedRowContentWidth", () => {
-  it("subtracts the grid margins, the avatar and the column gap", () => {
+  it("subtracts the grid margins, the extra right content inset, the avatar and the column gap", () => {
     const windowWidth = 390;
     expect(feedRowContentWidth(windowWidth)).toBe(
-      windowWidth - floraSpacing.grid * 2 - floraFeedPost.avatarSize - floraFeedPost.columnGap,
+      windowWidth -
+        floraFeedPost.paddingHorizontal * 2 -
+        floraFeedPost.contentInsetRight -
+        floraFeedPost.avatarSize -
+        floraFeedPost.columnGap,
     );
   });
 
   it("never goes below 1, even for a window narrower than the fixed chrome", () => {
     expect(feedRowContentWidth(0)).toBe(1);
+  });
+
+  it("puts the content right edge on the 2×grid line of the header plus glyph", () => {
+    expect(
+      floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight,
+    ).toBe(floraSpacing.grid * 2);
   });
 });
 

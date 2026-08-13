@@ -19,7 +19,11 @@ const GAP = floraSpacing.gridFine;
 export function feedRowContentWidth(windowWidth: number): number {
   return Math.max(
     1,
-    windowWidth - floraSpacing.grid * 2 - floraFeedPost.avatarSize - floraFeedPost.columnGap,
+    windowWidth -
+      floraFeedPost.paddingHorizontal * 2 -
+      floraFeedPost.contentInsetRight -
+      floraFeedPost.avatarSize -
+      floraFeedPost.columnGap,
   );
 }
 

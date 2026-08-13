@@ -27,7 +27,7 @@ export default function ProfileScreen() {
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
-  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
+  const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking();
 
   const username = me?.username ?? "";
@@ -158,7 +158,6 @@ export default function ProfileScreen() {
             return (
               <PostCard
                 post={item}
-                viewCount={viewsCountFor(item)}
                 engagement={engagement}
                 commentCount={commentCountFor(item)}
                 commentsOpen={commentsOpen}

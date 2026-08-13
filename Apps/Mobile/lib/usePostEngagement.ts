@@ -1,6 +1,7 @@
 import type { PostEngagementSnapshot } from "@flora/client-core/contracts";
 import { apiLikePost, apiRepostPost, apiUnlikePost, apiUnrepostPost } from "@flora/client-core/api";
 import { useCallback, useRef, useState } from "react";
+import { mergeEngagementCount } from "@/lib/mergeEngagementCount";
 
 export type PostEngagementSource = {
   postUuid: string;
@@ -43,11 +44,18 @@ export function usePostEngagement(options: UsePostEngagementOptions = {}) {
   const snapshotFor = useCallback(
     (post: PostEngagementSource): PostEngagementSnapshot => {
       const o = overrides[post.postUuid];
+      const liked = o?.liked ?? post.liked ?? false;
+      const reposted = o?.reposted ?? post.reposted ?? false;
       return {
-        liked: o?.liked ?? post.liked ?? false,
-        reposted: o?.reposted ?? post.reposted ?? false,
-        likesCount: o?.likesCount ?? post.likesCount,
-        repostsCount: o?.repostsCount ?? post.repostsCount,
+        liked,
+        reposted,
+        likesCount: mergeEngagementCount(post.likesCount, post.liked ?? false, o?.liked, o?.likesCount),
+        repostsCount: mergeEngagementCount(
+          post.repostsCount,
+          post.reposted ?? false,
+          o?.reposted,
+          o?.repostsCount,
+        ),
       };
     },
     [overrides],

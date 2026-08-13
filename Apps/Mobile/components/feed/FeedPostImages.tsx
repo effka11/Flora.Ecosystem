@@ -14,7 +14,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { collageCellWidth, threeImageLeftCellWidth } from "@/lib/feedImageGeometry";
+import { collageCellWidth, feedRowContentWidth, threeImageLeftCellWidth } from "@/lib/feedImageGeometry";
 import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
 import { getStoredImageRatio, rememberImageRatio } from "@/lib/imageRatioStore";
 import {
@@ -261,7 +261,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
     layout?.fixedWidth ??
     (containerWidth > 0
       ? containerWidth
-      : screenWidth - floraSpacing.grid * 2 - floraFeedPost.avatarSize - floraFeedPost.columnGap);
+      : feedRowContentWidth(screenWidth));
 
   if (messageMode && layout?.fixedWidth && width <= 0) return null;
 

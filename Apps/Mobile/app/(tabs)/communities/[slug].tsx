@@ -48,7 +48,7 @@ export default function CommunityScreen() {
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [deletedPostUuids, setDeletedPostUuids] = useState<Set<string>>(() => new Set());
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
-  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
+  const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking();
 
   const communityQuery = useQuery({
@@ -270,7 +270,6 @@ export default function CommunityScreen() {
             return (
               <PostCard
                 post={item}
-                viewCount={viewsCountFor(item)}
                 engagement={engagement}
                 commentCount={commentCountFor(item)}
                 commentsOpen={commentsOpen}

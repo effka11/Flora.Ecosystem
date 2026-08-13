@@ -30,7 +30,7 @@ export default function UserProfileScreen() {
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const [followBusy, setFollowBusy] = useState(false);
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
-  const { viewsCountFor, viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
+  const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking();
   const isSelfProfile = isOwnUsername(username, me?.username);
   const profileQuery = useQuery({
@@ -205,7 +205,6 @@ export default function UserProfileScreen() {
             return (
               <PostCard
                 post={item}
-                viewCount={viewsCountFor(item)}
                 engagement={engagement}
                 commentCount={commentCountFor(item)}
                 commentsOpen={commentsOpen}

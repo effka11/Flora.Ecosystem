@@ -11,18 +11,17 @@ import {
   FeedPostCommentIcon,
   FeedPostHeartIcon,
   FeedPostRepostIcon,
-  FeedPostViewsIcon,
 } from "@/components/feed/FeedPostIcons";
 import { PostMoreMenuTrigger } from "@/components/feed/PostMoreMenu";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { FrcRowMediaScope } from "@/lib/FrcImageDecodingScope";
 import { feedPostAuthor } from "@/lib/feedPostAuthor";
+import { formatCompactCount } from "@/lib/formatCompactCount";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
 type Props = {
   post: FeedPostDto;
-  viewCount?: number;
   engagement: PostEngagementSnapshot;
   commentCount: number;
   commentsOpen: boolean;
@@ -51,12 +50,20 @@ function formatRelativeTime(date: string) {
   if (diffHours < 24) return `${diffHours} ч`;
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays} д`;
-  return new Date(date).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+  return new Date(date)
+    .toLocaleDateString("ru-RU", { day: "2-digit", month: "short" })
+    .replace(/\.$/, "");
 }
+
+const ACTION_HIT_SLOP = {
+  top: floraSpacing.gridFine,
+  bottom: floraSpacing.gridFine,
+  left: floraSpacing.gridFine,
+  right: floraFeedPost.actionIconGap + floraFeedPost.actionCountWidth,
+};
 
 export const PostCard = memo(function PostCard({
   post,
-  viewCount,
   engagement,
   commentCount,
   commentsOpen,
@@ -147,41 +154,50 @@ export const PostCard = memo(function PostCard({
                   style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                   disabled={likePending}
                   onPress={onToggleLike}
+                  hitSlop={ACTION_HIT_SLOP}
                 >
                   <FeedPostHeartIcon
+                    size={floraFeedPost.actionIconSize}
                     color={engagement.liked ? floraColors.like : floraColors.gray}
                     filled={engagement.liked}
                   />
-                  <Text style={[styles.actionText, engagement.liked && styles.liked]}>{engagement.likesCount}</Text>
+                  <Text style={[styles.actionText, engagement.liked && styles.liked]} numberOfLines={1}>
+                    {formatCompactCount(engagement.likesCount)}
+                  </Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                   onPress={onToggleComments}
+                  hitSlop={ACTION_HIT_SLOP}
                 >
-                  <FeedPostCommentIcon color={commentsOpen ? floraColors.greenLight : floraColors.gray} />
-                  <Text style={[styles.actionText, commentsOpen && styles.commentsOpen]}>{commentCount}</Text>
+                  <FeedPostCommentIcon
+                    size={floraFeedPost.actionIconSize}
+                    color={commentsOpen ? floraColors.greenLight : floraColors.gray}
+                  />
+                  <Text style={[styles.actionText, commentsOpen && styles.commentsOpen]} numberOfLines={1}>
+                    {formatCompactCount(commentCount)}
+                  </Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                   disabled={repostPending}
                   onPress={onToggleRepost}
+                  hitSlop={ACTION_HIT_SLOP}
                 >
                   <FeedPostRepostIcon
+                    size={floraFeedPost.actionIconSize}
                     color={engagement.reposted ? floraColors.greenLight : floraColors.gray}
                   />
-                  <Text style={[styles.actionText, engagement.reposted && styles.reposted]}>
-                    {engagement.repostsCount}
+                  <Text style={[styles.actionText, engagement.reposted && styles.reposted]} numberOfLines={1}>
+                    {formatCompactCount(engagement.repostsCount)}
                   </Text>
                 </Pressable>
               </View>
-
-              <View style={styles.metaRight}>
-                {timeLabel ? <Text style={styles.time}>{timeLabel}</Text> : null}
-                <View style={styles.views}>
-                  <FeedPostViewsIcon color={floraColors.gray} />
-                  <Text style={styles.time}>{viewCount ?? post.viewCount}</Text>
-                </View>
-              </View>
+              {timeLabel ? (
+                <Text style={styles.time} numberOfLines={1}>
+                  {timeLabel}
+                </Text>
+              ) : null}
             </View>
             <FeedPostComments
               postUuid={post.postUuid}
@@ -199,7 +215,7 @@ export const PostCard = memo(function PostCard({
 
 const styles = StyleSheet.create({
   card: {
-    paddingHorizontal: floraSpacing.grid,
+    paddingHorizontal: floraFeedPost.paddingHorizontal,
     paddingTop: floraFeedPost.paddingTop,
     paddingBottom: floraFeedPost.paddingBottom,
     borderBottomColor: "rgba(250, 250, 250, 0.08)",
@@ -237,6 +253,7 @@ const styles = StyleSheet.create({
   },
   postBody: {
     marginTop: floraFeedPost.bodyMarginTop,
+    paddingRight: floraFeedPost.contentInsetRight,
   },
   postText: {
     marginTop: floraFeedPost.textCapTrim,
@@ -316,34 +333,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: floraFeedPost.actionGap,
+    flexShrink: 0,
+    overflow: "visible",
   },
   action: {
+    width: floraFeedPost.actionIconSize,
     minHeight: 28,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: floraFeedPost.actionIconGap,
+    justifyContent: "center",
+    overflow: "visible",
   },
   actionText: {
+    position: "absolute",
+    left: floraFeedPost.actionIconSize + floraFeedPost.actionIconGap,
+    top: 0,
+    bottom: 0,
+    width: floraFeedPost.actionCountWidth,
     color: floraColors.gray,
     fontSize: floraFeedPost.actionFontSize,
     fontWeight: "300",
     letterSpacing: floraFeedPost.actionLetterSpacing,
-  },
-  metaRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: floraSpacing.grid,
-  },
-  views: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: floraFeedPost.actionIconGap,
+    fontVariant: ["tabular-nums"],
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   time: {
+    flexShrink: 0,
     color: floraColors.gray,
     fontSize: 13,
     fontWeight: "300",
     letterSpacing: 0.39,
+    includeFontPadding: false,
   },
   liked: {
     color: floraColors.like,
