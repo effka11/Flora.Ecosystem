@@ -45,6 +45,7 @@ pub fn router(state: MusicState) -> Router {
         .route("/api/music/genres", get(get_genres))
         .route("/api/music/genres/{genre_id}", get(get_genre_page))
         .route("/api/music/tracks/library", get(get_library))
+        .route("/api/music/tracks/search", get(search_tracks))
         .route(
             "/api/music/tracks/platform",
             get(get_platform).post(uploads::upload_platform),
@@ -121,6 +122,34 @@ async fn get_library(
     Extension(user): Extension<CurrentUser>,
 ) -> Response {
     match state.tracks.list_library(user.0).await {
+        Ok(tracks) => Json(tracks).into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchTracksQuery {
+    q: Option<String>,
+    #[serde(default)]
+    skip: i32,
+    #[serde(default = "default_search_take")]
+    take: i32,
+}
+
+fn default_search_take() -> i32 {
+    20
+}
+
+async fn search_tracks(
+    State(state): State<MusicState>,
+    Extension(_user): Extension<CurrentUser>,
+    Query(q): Query<SearchTracksQuery>,
+) -> Response {
+    match state
+        .tracks
+        .search(q.q.as_deref().unwrap_or(""), q.skip, q.take)
+        .await
+    {
         Ok(tracks) => Json(tracks).into_response(),
         Err(e) => internal(e),
     }

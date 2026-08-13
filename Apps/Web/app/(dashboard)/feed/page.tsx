@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FeedPostComments } from "@/app/_shared/FeedPostComments";
 import { ExpandablePostText } from "@/app/_shared/ExpandablePostText";
 import { FeedPostImages } from "@/app/_shared/FeedPostImages";
@@ -27,6 +27,7 @@ import {
   apiGetFeed,
   apiHideFeedAuthor,
   apiMarkPostNotInterested,
+  apiSearchFeed,
   type FeedKind,
   type FeedPostDto,
 } from "@/lib/socialApi";
@@ -149,6 +150,10 @@ function FeedPageContent() {
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
 
   const [feeds, setFeeds] = useState(initialFeedsState);
+  const [searchPosts, setSearchPosts] = useState<FeedPostDto[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState("");
 
   /** Флаг баннера «Новые посты» (FIRA-F has-new polling). */
   const [hasNewPosts, setHasNewPosts] = useState(false);
@@ -159,9 +164,13 @@ function FeedPageContent() {
   const feedsRef = useRef(feeds);
   /** Sentinel-элемент в конце списка для IntersectionObserver infinite scroll. */
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
+  const searchValueRef = useRef(searchValue);
+
+  const hasSearch = searchValue.trim().length >= 1;
 
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { feedsRef.current = feeds; }, [feeds]);
+  useEffect(() => { searchValueRef.current = searchValue; }, [searchValue]);
 
   const removePostFromFeeds = useCallback((postUuid: string) => {
     const drop = (items: FeedPostDto[]) => items.filter((post) => post.postUuid !== postUuid);
@@ -169,6 +178,7 @@ function FeedPageContent() {
       recommendations: { ...prev.recommendations, items: drop(prev.recommendations.items) },
       subscriptions: { ...prev.subscriptions, items: drop(prev.subscriptions.items) },
     }));
+    setSearchPosts((prev) => drop(prev));
     setCommentsOpenPostUuid((openId) => (openId === postUuid ? null : openId));
   }, []);
 
@@ -216,6 +226,7 @@ function FeedPageContent() {
           items: prev.recommendations.items.filter(keep),
         },
       }));
+      setSearchPosts((prev) => prev.filter(keep));
       feedCacheForKind("recommendations").invalidate();
       try {
         if (isCommunity && post.communityId) {
@@ -241,6 +252,7 @@ function FeedPageContent() {
       recommendations: { ...prev.recommendations, items: bump(prev.recommendations.items) },
       subscriptions: { ...prev.subscriptions, items: bump(prev.subscriptions.items) },
     }));
+    setSearchPosts((prev) => bump(prev));
   }, []);
 
   const syncPostEngagement = useCallback(
@@ -254,6 +266,7 @@ function FeedPageContent() {
         recommendations: { ...prev.recommendations, items: patch(prev.recommendations.items) },
         subscriptions: { ...prev.subscriptions, items: patch(prev.subscriptions.items) },
       }));
+      setSearchPosts((prev) => patch(prev));
     },
     [],
   );
@@ -265,6 +278,7 @@ function FeedPageContent() {
       recommendations: { ...prev.recommendations, items: patch(prev.recommendations.items) },
       subscriptions: { ...prev.subscriptions, items: patch(prev.subscriptions.items) },
     }));
+    setSearchPosts((prev) => patch(prev));
   }, []);
 
   const recommendationsTabRef = useRef<HTMLButtonElement>(null);
@@ -480,6 +494,61 @@ function FeedPageContent() {
     }
   }, []);
 
+  const loadFeedSearch = useCallback(async (query: string) => {
+    const q = query.trim();
+    if (!q) {
+      setSearchPosts([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      const items = await apiSearchFeed(q, 30, 0);
+      setSearchPosts(items);
+      setSearchError(null);
+      setAppliedSearchQuery(q);
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : "Не удалось выполнить поиск");
+      setSearchPosts([]);
+      setAppliedSearchQuery(q);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const q = searchValue.trim();
+    if (!q) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setSearchLoading(true);
+        try {
+          const items = await apiSearchFeed(q, 30, 0);
+          if (cancelled) return;
+          setSearchPosts(items);
+          setSearchError(null);
+          setAppliedSearchQuery(q);
+        } catch (e) {
+          if (cancelled) return;
+          setSearchError(e instanceof Error ? e.message : "Не удалось выполнить поиск");
+          setSearchPosts([]);
+          setAppliedSearchQuery(q);
+        } finally {
+          if (!cancelled) setSearchLoading(false);
+        }
+      })();
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchValue]);
+
   useEffect(() => {
     if (!tabRestoreReady) return;
     void loadFeedTab("recommendations");
@@ -693,7 +762,11 @@ function FeedPageContent() {
     scrollFeedToTop();
     applyRefreshFade();
     try {
-      await loadFeedTab(activeTab, { refresh: true });
+      if (searchValue.trim().length >= 1) {
+        await loadFeedSearch(searchValue);
+      } else {
+        await loadFeedTab(activeTab, { refresh: true });
+      }
     } finally {
       window.setTimeout(() => setIsRefreshing(false), FEED_REFRESH_SPIN_MS);
     }
@@ -707,6 +780,7 @@ function FeedPageContent() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
+          if (searchValueRef.current.trim().length >= 1) return;
           void loadMoreFeedTab(activeTabRef.current);
         }
       },
@@ -755,24 +829,18 @@ function FeedPageContent() {
   }, [activeTab, tabRestoreReady]);
 
   const slot = feeds[activeTab];
-
-  const visiblePosts = useMemo(() => {
-    const q = searchValue.trim().toLowerCase();
-    const items = slot.items;
-    if (!q) return items;
-    return items.filter(
-      (p) =>
-        p.content.toLowerCase().includes(q) ||
-        p.authorDisplayName.toLowerCase().includes(q) ||
-        p.authorUsername.toLowerCase().includes(q) ||
-        (p.communityName && p.communityName.toLowerCase().includes(q))
-    );
-  }, [slot.items, searchValue]);
+  const searchPending = hasSearch && searchValue.trim() !== appliedSearchQuery;
+  const visiblePosts = hasSearch ? searchPosts : slot.items;
+  const listError = hasSearch ? searchError : slot.error;
+  const listLoading = hasSearch
+    ? (searchPending || searchLoading) && searchPosts.length === 0
+    : slot.loading && slot.items.length === 0;
 
   usePreloadFeedPostComments(visiblePosts);
 
-  const emptyHint =
-    activeTab === "subscriptions"
+  const emptyHint = hasSearch
+    ? "Ничего не найдено. Измените запрос в поиске."
+    : activeTab === "subscriptions"
       ? "Пока нет постов в подписках. Подпишитесь на людей во вкладке «Люди» или загляните в «Рекомендации»."
       : "Пока нет постов. Создайте первый во вкладке «Создать пост».";
 
@@ -834,7 +902,7 @@ function FeedPageContent() {
               type="button"
               className={`${styles.feedTabRefreshBtn} ${styles.feedTabRefreshBtnExpand}`}
               onClick={() => void handleRefresh()}
-              disabled={slot.loading || isRefreshing}
+              disabled={(hasSearch ? searchPending || searchLoading : slot.loading) || isRefreshing}
               aria-busy={isRefreshing}
               aria-label="Обновить ленту"
             >
@@ -866,7 +934,7 @@ function FeedPageContent() {
       </div>
 
       {/* Баннер «Новые посты» (FIRA-F has-new, §13.4). Sticky под компактной шапкой. */}
-      {hasNewPosts && activeTab === "recommendations" && (
+      {hasNewPosts && !hasSearch && activeTab === "recommendations" && (
         <button
           type="button"
           className={styles.newPostsBanner}
@@ -910,18 +978,24 @@ function FeedPageContent() {
                   refreshTransition === "fade" ? styles.feedListRefreshFade : styles.feedListRefreshBody
                 }
               >
-              {slot.error ? (
+              {listError ? (
                 <p className={`${styles.feedStatusLine} ${styles.feedStatusLineError}`} role="alert">
-                  {slot.error}{" "}
-                  <button type="button" className={styles.feedRetryBtn} onClick={() => void loadFeedTab(activeTab)}>
+                  {listError}{" "}
+                  <button
+                    type="button"
+                    className={styles.feedRetryBtn}
+                    onClick={() =>
+                      hasSearch ? void loadFeedSearch(searchValue) : void loadFeedTab(activeTab)
+                    }
+                  >
                     Повторить
                   </button>
                 </p>
               ) : null}
-              {slot.loading && slot.items.length === 0 ? (
+              {listLoading ? (
                 <p className={emptyHintStyles.hint}>Загрузка ленты…</p>
               ) : null}
-              {!slot.loading && !slot.error && visiblePosts.length === 0 ? (
+              {!listLoading && !listError && visiblePosts.length === 0 ? (
                 <p className={emptyHintStyles.hint}>{emptyHint}</p>
               ) : null}
               <ul className={styles.profilePostsList}>
@@ -1069,7 +1143,7 @@ function FeedPageContent() {
               </ul>
 
               {/* Спиннер «загружаем ещё» + sentinel для IntersectionObserver */}
-              {slot.loadingMore && (
+              {slot.loadingMore && !hasSearch && (
                 <div className={styles.feedLoadingMore}>
                   <span className={styles.feedLoadMoreSpinner} aria-label="Загружаем ещё…" role="status" />
                 </div>

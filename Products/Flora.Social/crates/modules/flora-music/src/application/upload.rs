@@ -8,6 +8,7 @@ use flora_music_contracts::{MusicArtistSummaryDto, UploadMusicTrackResultDto};
 use flora_shared::flora_uuid::new_uuid;
 use uuid::Uuid;
 
+use crate::application::audio_search::AudioSearchHost;
 use crate::application::credits::{
     CreditInput, compose_display, parse_artist_credits, resolve_role, validate_upload_credits,
 };
@@ -22,6 +23,7 @@ use crate::infrastructure::repo::{MusicRepo, NewTrackArtistRow, NewTrackRow};
 pub struct UploadService {
     repo: Arc<MusicRepo>,
     transcoder: Arc<FfmpegMusicAudioTranscoder>,
+    audio: AudioSearchHost,
 }
 
 #[derive(Debug)]
@@ -54,8 +56,16 @@ impl UploadError {
 }
 
 impl UploadService {
-    pub fn new(repo: Arc<MusicRepo>, transcoder: Arc<FfmpegMusicAudioTranscoder>) -> Self {
-        Self { repo, transcoder }
+    pub fn new(
+        repo: Arc<MusicRepo>,
+        transcoder: Arc<FfmpegMusicAudioTranscoder>,
+        audio: AudioSearchHost,
+    ) -> Self {
+        Self {
+            repo,
+            transcoder,
+            audio,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -238,6 +248,18 @@ impl UploadService {
         };
         self.repo.insert_track(&row).await?;
         self.attach_credits(&prepared_credits).await?;
+        self.audio
+            .upsert_if_catalog(
+                row.track_uuid,
+                row.scope,
+                &row.title,
+                &row.artist_display,
+                prepared_credits.first().map(|c| c.artist_uuid),
+                row.tags.as_deref(),
+                row.genre_id.as_deref(),
+                row.published_at,
+            )
+            .await;
         Ok(UploadMusicTrackResultDto {
             track_uuid,
             title,

@@ -16,6 +16,8 @@ import {
   authPutJson,
 } from "@/lib/authorizedFetch";
 import { clampPostContent } from "@/lib/postContentLimits";
+import { apiSearchFeed as coreSearchFeed } from "@flora/client-core/api";
+import type { FeedPostDto as CoreFeedPostDto } from "@flora/client-core/contracts";
 import {
   devDemoFeedPosts,
   devDemoFeedSubscriptions,
@@ -342,6 +344,49 @@ export async function apiGetFeed(
     hasMore,
     generatedAt: generatedAt.length > 0 ? generatedAt : null,
     expiresAt: expiresAt.length > 0 ? expiresAt : null,
+  };
+}
+
+/** GET `/api/auth/feed/search` — bare FeedPostDto array. Empty q → [] (no request). */
+export async function apiSearchFeed(query: string, take = 20, skip = 0): Promise<FeedPostDto[]> {
+  const q = query.trim();
+  if (!q) return [];
+  if (isDevLocalOfflineSession()) {
+    return [];
+  }
+  const rows = await coreSearchFeed(q, Math.min(Math.max(take, 1), 50), Math.max(0, skip));
+  return rows
+    .map(mapCoreFeedPost)
+    .filter((post) => !devDeletedPostUuids.has(post.postUuid));
+}
+
+function mapCoreFeedPost(post: CoreFeedPostDto): FeedPostDto {
+  const status: PostVideoStatus =
+    post.videoStatus === "processing" || post.videoStatus === "failed"
+      ? post.videoStatus
+      : "ready";
+  return {
+    postUuid: post.postUuid,
+    content: post.text,
+    createdAt: post.createdAt,
+    ...(post.authorUserUuid ? { authorUserUuid: post.authorUserUuid } : {}),
+    authorUsername: post.authorUsername,
+    authorDisplayName: post.authorDisplayName,
+    authorAvatarUuid: post.authorAvatarUuid,
+    communityName: post.communityName,
+    communitySlug: post.communitySlug,
+    communityAvatarUuid: post.communityAvatarUuid,
+    ...(post.communityUuid ? { communityId: post.communityUuid } : {}),
+    commentsCount: post.commentCount,
+    likesCount: post.likeCount,
+    repostsCount: post.repostCount,
+    viewsCount: post.viewCount,
+    liked: post.likedByMe,
+    reposted: post.repostedByMe,
+    imageUuids: post.imageUuids,
+    video: post.videoUuid
+      ? { videoUuid: post.videoUuid, status, width: 0, height: 0, durationMs: 0 }
+      : null,
   };
 }
 

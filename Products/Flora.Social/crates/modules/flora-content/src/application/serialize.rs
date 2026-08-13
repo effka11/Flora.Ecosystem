@@ -81,17 +81,29 @@ impl FeedSerializer {
     }
 
     pub async fn serialize_page(&self, viewer: Uuid, page: FeedPage) -> Result<Value, String> {
-        if page.post_uuids.is_empty() {
-            return Ok(json!({
-                "items": [],
-                "nextCursor": page.next_cursor,
-                "hasMore": page.has_more,
-                "generatedAt": format_utc(page.generated_at),
-                "expiresAt": format_utc(page.expires_at),
-            }));
+        let items = self
+            .serialize_feed_post_dtos(viewer, &page.post_uuids)
+            .await?;
+        Ok(json!({
+            "items": items,
+            "nextCursor": page.next_cursor,
+            "hasMore": page.has_more,
+            "generatedAt": format_utc(page.generated_at),
+            "expiresAt": format_utc(page.expires_at),
+        }))
+    }
+
+    /// Те же карточки, что элементы страницы ленты, без cursor-обёртки.
+    pub async fn serialize_feed_post_dtos(
+        &self,
+        viewer: Uuid,
+        post_uuids: &[Uuid],
+    ) -> Result<Vec<Value>, String> {
+        if post_uuids.is_empty() {
+            return Ok(Vec::new());
         }
 
-        let requested_post_uuids = page.post_uuids.clone();
+        let requested_post_uuids = post_uuids.to_vec();
         let mut posts = self
             .repo
             .load_posts_ordered(&requested_post_uuids)
@@ -323,13 +335,7 @@ impl FeedSerializer {
             })
             .collect();
 
-        Ok(json!({
-            "items": items,
-            "nextCursor": page.next_cursor,
-            "hasMore": page.has_more,
-            "generatedAt": format_utc(page.generated_at),
-            "expiresAt": format_utc(page.expires_at),
-        }))
+        Ok(items)
     }
 
     /// Паритет `BuildProfilePostsPayloadAsync` (секции posts/likes/reposts профиля).

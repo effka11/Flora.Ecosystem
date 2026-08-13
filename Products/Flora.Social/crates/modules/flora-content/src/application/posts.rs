@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::application::feed::FeedService;
+use crate::application::feed_search::FeedSearchHost;
 use crate::application::post_access::PostAccessService;
 use crate::application::time::format_utc;
 use crate::infrastructure::repo::ContentRepo;
@@ -22,6 +23,7 @@ pub const MAX_POST_CONTENT_LENGTH: usize = 2000;
 pub struct PostService {
     repo: Arc<ContentRepo>,
     feed: Arc<FeedService>,
+    feed_search: Arc<FeedSearchHost>,
     accounts: Arc<dyn AccountDirectory>,
     profiles: Arc<dyn FeedAuthorProfiles>,
     access: Arc<PostAccessService>,
@@ -32,6 +34,7 @@ impl PostService {
     pub fn new(
         repo: Arc<ContentRepo>,
         feed: Arc<FeedService>,
+        feed_search: Arc<FeedSearchHost>,
         accounts: Arc<dyn AccountDirectory>,
         profiles: Arc<dyn FeedAuthorProfiles>,
         access: Arc<PostAccessService>,
@@ -40,6 +43,7 @@ impl PostService {
         Self {
             repo,
             feed,
+            feed_search,
             accounts,
             profiles,
             access,
@@ -74,6 +78,9 @@ impl PostService {
             .await
             .map_err(|e| e.to_string())?;
         self.feed.invalidate(author);
+        self.feed_search
+            .on_post_created(post_uuid, author, content, community_id, created_at)
+            .await;
         Ok(Ok(json!({
             "postUuid": post_uuid,
             "content": content,
@@ -252,6 +259,7 @@ impl PostService {
             .await
             .map_err(|e| e.to_string())?;
         self.feed.invalidate(user_uuid);
+        self.feed_search.on_post_deleted(post_uuid);
         Ok(Ok(()))
     }
 

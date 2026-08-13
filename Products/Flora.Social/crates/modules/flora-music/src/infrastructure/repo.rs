@@ -81,6 +81,28 @@ impl MusicRepo {
         .await
     }
 
+    pub async fn list_catalog_tracks_by_uuids(
+        &self,
+        track_ids: &[Uuid],
+    ) -> Result<Vec<TrackListRow>, sqlx::Error> {
+        if track_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        sqlx::query_as::<_, TrackListRow>(
+            r#"
+            SELECT track_uuid, owner_user_uuid, scope, title, artist_display, tags,
+                   genre_id, license_id, cover_color_id, track_kind_id,
+                   (cover_data IS NOT NULL AND length(cover_data) > 0) AS has_cover_image,
+                   duration_ms, created_at, published_at
+            FROM flora_core.music_tracks
+            WHERE track_uuid = ANY($1) AND scope = 1 AND published_at IS NOT NULL
+            "#,
+        )
+        .bind(track_ids)
+        .fetch_all(&self.pool)
+        .await
+    }
+
     pub async fn list_credits_for_tracks(
         &self,
         track_ids: &[Uuid],

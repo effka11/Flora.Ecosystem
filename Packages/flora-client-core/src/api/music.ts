@@ -1,23 +1,22 @@
 import { ApiRequestError } from "./errors.js";
-import { apiUrl, authDelete, authGetArrayBuffer, authGetJson, authPostForm, authPostJson } from "./client.js";
-import type {
-  MusicArtistDetailDto,
-  MusicArtistSummaryDto,
-  MusicFlowTrackDto,
-  MusicFlowWaveDto,
-  MusicGenreCollectionDto,
-  MusicGenreDto,
-  MusicGenrePageDto,
-  MusicPlaylistDetailDto,
-  MusicPlaylistKind,
-  MusicPlaylistSummaryDto,
-  MusicSubgenreDto,
-  MusicTrackDto,
-  MusicTrackScope,
-  PagedMusicTracksDto,
-  TrackArtistCredit,
-  TrackArtistCreditInput,
-  TrackArtistJoiner,
+import { apiUrl, authDelete, authGetArrayBuffer, authGetJson, authPostForm, authPostJson, getApiClientConfig } from "./client.js";
+import {
+  parseMusicTrack,
+  parseMusicTracksList,
+  type MusicArtistDetailDto,
+  type MusicArtistSummaryDto,
+  type MusicFlowTrackDto,
+  type MusicFlowWaveDto,
+  type MusicGenreCollectionDto,
+  type MusicGenreDto,
+  type MusicGenrePageDto,
+  type MusicPlaylistDetailDto,
+  type MusicPlaylistKind,
+  type MusicPlaylistSummaryDto,
+  type MusicSubgenreDto,
+  type MusicTrackDto,
+  type PagedMusicTracksDto,
+  type TrackArtistCreditInput,
 } from "../contracts/music.js";
 
 function readStr(o: Record<string, unknown>, keys: string[]): string {
@@ -56,62 +55,8 @@ function objectOrEmpty(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 }
 
-function parseScope(raw: string): MusicTrackScope {
-  return raw === "platform" ? "platform" : "personal";
-}
-
-function parseTrackArtistJoiner(raw: string): TrackArtistJoiner {
-  switch (raw) {
-    case "And":
-    case "Ft":
-    case "Vs":
-    case "Prod":
-    case "Mix":
-    case "Remix":
-    case "Edit":
-    case "Pres":
-      return raw;
-    default:
-      return "None";
-  }
-}
-
-function parseTrackArtistCredit(raw: unknown): TrackArtistCredit | null {
-  const o = objectOrEmpty(raw);
-  const artistUuid = readStr(o, ["artistUuid", "ArtistUuid"]);
-  if (!artistUuid) return null;
-  return {
-    artistUuid,
-    displayName: readStr(o, ["displayName", "DisplayName"]),
-    joinerBefore: parseTrackArtistJoiner(readStr(o, ["joinerBefore", "JoinerBefore"])),
-  };
-}
-
-function parseTrackArtistCredits(raw: unknown): TrackArtistCredit[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map(parseTrackArtistCredit).filter((item): item is TrackArtistCredit => item !== null);
-}
-
-function parseMusicTrack(raw: unknown): MusicTrackDto | null {
-  const o = objectOrEmpty(raw);
-  const trackUuid = readStr(o, ["trackUuid", "TrackUuid"]);
-  if (!trackUuid) return null;
-  return {
-    trackUuid,
-    scope: parseScope(readStr(o, ["scope", "Scope"])),
-    title: readStr(o, ["title", "Title"]) || "Трек",
-    artistDisplay: readStr(o, ["artistDisplay", "ArtistDisplay"]),
-    artistCredits: parseTrackArtistCredits(o.artistCredits ?? o.ArtistCredits),
-    tags: readStr(o, ["tags", "Tags"]) || null,
-    genreId: readStr(o, ["genreId", "GenreId"]) || null,
-    licenseId: readStr(o, ["licenseId", "LicenseId"]) || null,
-    coverColorId: readStr(o, ["coverColorId", "CoverColorId"]) || null,
-    trackKindId: readStr(o, ["trackKindId", "TrackKindId"]) || null,
-    hasCoverImage: readBool(o, ["hasCoverImage", "HasCoverImage"]),
-    durationMs: readNum(o, ["durationMs", "DurationMs"]),
-    createdAt: readStr(o, ["createdAt", "CreatedAt"]),
-    publishedAt: readStr(o, ["publishedAt", "PublishedAt"]) || null,
-  };
+function ctx() {
+  return { onPascalFallback: getApiClientConfig().onPascalFallback };
 }
 
 function parseMusicFlowTrack(raw: unknown): MusicFlowTrackDto | null {
@@ -170,7 +115,7 @@ function parseMusicGenreCollection(raw: unknown): MusicGenreCollectionDto | null
     id,
     title: readStr(o, ["title", "Title"]),
     tracks: readArray(o, ["tracks", "Tracks"])
-      .map(parseMusicTrack)
+      .map((item) => parseMusicTrack(item))
       .filter((item): item is MusicTrackDto => item !== null),
   };
 }
@@ -203,7 +148,7 @@ function parseMusicArtist(raw: unknown): MusicArtistSummaryDto | null {
 function parsePagedMusicTracks(raw: unknown, fallbackPage: number, fallbackPageSize: number): PagedMusicTracksDto {
   const o = objectOrEmpty(raw);
   const rows = Array.isArray(raw) ? raw : readArray(o, ["tracks", "Tracks"]);
-  const tracks = rows.map(parseMusicTrack).filter((item): item is MusicTrackDto => item !== null);
+  const tracks = rows.map((item) => parseMusicTrack(item)).filter((item): item is MusicTrackDto => item !== null);
   return {
     tracks,
     totalCount: readNum(o, ["totalCount", "TotalCount"]) || tracks.length,
@@ -233,7 +178,7 @@ function parsePlaylistDetail(raw: unknown): MusicPlaylistDetailDto | null {
   if (!summary) return null;
   const o = objectOrEmpty(raw);
   const tracks = readArray(o, ["tracks", "Tracks"])
-    .map(parseMusicTrack)
+    .map((item) => parseMusicTrack(item))
     .filter((item): item is MusicTrackDto => item !== null);
   return { ...summary, tracks };
 }
@@ -259,7 +204,13 @@ export function apiGetMusicArtistCoverUrl(artistUuid: string): string {
 export async function apiGetMusicLibrary(): Promise<MusicTrackDto[]> {
   const raw = await authGetJson("/api/music/tracks/library");
   const rows = Array.isArray(raw) ? raw : readArray(objectOrEmpty(raw), ["items", "Items", "tracks", "Tracks"]);
-  return rows.map(parseMusicTrack).filter((item): item is MusicTrackDto => item !== null);
+  return rows.map((item) => parseMusicTrack(item)).filter((item): item is MusicTrackDto => item !== null);
+}
+
+export async function apiSearchMusicTracks(query: string, take = 20, skip = 0): Promise<MusicTrackDto[]> {
+  const params = new URLSearchParams({ q: query.trim(), skip: String(skip), take: String(take) });
+  const raw = await authGetJson(`/api/music/tracks/search?${params}`);
+  return parseMusicTracksList(raw, ctx());
 }
 
 export async function apiGetMusicGenreCatalog(): Promise<MusicGenreDto[]> {

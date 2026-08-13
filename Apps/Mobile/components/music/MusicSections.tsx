@@ -5,11 +5,12 @@ import {
   apiDeleteMusicTrack,
   apiGetMusicFlowWave,
   apiSearchMusicArtists,
+  apiSearchMusicTracks,
 } from "@flora/client-core/api";
 import type { MusicArtistSummaryDto, TrackArtistCreditInput } from "@flora/client-core/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -29,7 +30,7 @@ import {
   MUSIC_LICENSE_OPTIONS,
   MUSIC_TRACK_KINDS,
 } from "@/lib/music/musicCatalog";
-import type { MusicTrackItem, PlaylistItem } from "@/lib/music/musicModels";
+import { mapMusicTracksDto, type MusicTrackItem, type PlaylistItem } from "@/lib/music/musicModels";
 import { musicTrackDtosToPlayerTracks, musicTrackItemsToPlayerTracks } from "@/lib/music/musicPlayerMapping";
 import {
   formatFileSizeRu,
@@ -284,42 +285,38 @@ export function MusicTracksList({
   );
 }
 
-export function MusicSearchResults({ query, tracks }: { query: string; tracks: MusicTrackItem[] }) {
-  const q = query.trim().toLowerCase();
-  const foundTracks = useMemo(() => {
-    if (!q) return [];
-    return tracks.filter((track) => `${track.title} ${track.artist}`.toLowerCase().includes(q));
-  }, [q, tracks]);
-  const foundGenres = useMemo(() => {
-    if (!q) return [];
-    return MUSIC_GENRES.filter((genre) => genre.title.toLowerCase().includes(q));
-  }, [q]);
+export function MusicSearchResults({ query }: { query: string }) {
+  const q = query.trim();
+  const searchQuery = useQuery({
+    queryKey: ["music", "search", q],
+    enabled: q.length > 0,
+    queryFn: async () => mapMusicTracksDto(await apiSearchMusicTracks(q, 40)),
+  });
 
   if (!q) return null;
 
+  if (searchQuery.isLoading) {
+    return (
+      <View style={styles.searchStatus}>
+        <ActivityIndicator color={floraColors.greenLight} />
+        <Text style={styles.emptyHint}>Поиск треков…</Text>
+      </View>
+    );
+  }
+
+  if (searchQuery.isError) {
+    return <Text style={styles.emptyHint}>Не удалось выполнить поиск.</Text>;
+  }
+
+  const foundTracks = searchQuery.data ?? [];
+
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      {foundGenres.length > 0 ? (
-        <View style={styles.section}>
-          <SectionHeader title="Жанры" />
-          {foundGenres.map((genre) => (
-            <Pressable
-              key={genre.id}
-              style={({ pressed }) => [styles.searchRow, pressed && styles.pressed]}
-              onPress={() =>
-                router.push({ pathname: "/(tabs)/music/genre/[genreId]", params: { genreId: genre.id } })
-              }
-            >
-              <Ionicons name="radio-outline" size={18} color={floraColors.greenLight} />
-              <Text style={styles.searchTitle}>{genre.title}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-      <MusicTracksList title="Треки" tracks={foundTracks} sourceId="search" />
-      {foundTracks.length === 0 && foundGenres.length === 0 ? (
+      {foundTracks.length > 0 ? (
+        <MusicTracksList title="Треки" tracks={foundTracks} sourceId="search" />
+      ) : (
         <Text style={styles.emptyHint}>Ничего не найдено.</Text>
-      ) : null}
+      )}
     </ScrollView>
   );
 }
@@ -795,17 +792,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
   },
-  searchRow: {
-    minHeight: 48,
-    flexDirection: "row",
+  searchStatus: {
+    flex: 1,
     alignItems: "center",
-    gap: floraSpacing.gridFine * 2,
-    paddingHorizontal: floraSpacing.grid,
-  },
-  searchTitle: {
-    color: floraColors.whiteTemplate,
-    fontSize: 15,
-    fontWeight: "300",
+    justifyContent: "center",
+    gap: floraSpacing.grid,
+    paddingTop: floraSpacing.grid * 3,
   },
   uploadCard: {
     marginHorizontal: floraSpacing.grid,

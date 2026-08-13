@@ -60,10 +60,10 @@ export async function apiListNotifications(input?: {
 }): Promise<NotificationDto[]> {
   if (isDevLocalOfflineSession()) {
     const category = input?.category ?? "all";
-    const q = input?.search?.trim().toLowerCase() ?? "";
+    const q = input?.search?.trim() ?? "";
+    if (q) return [];
     return devNotifications.filter((n) => {
       if (category !== "all" && n.category !== category) return false;
-      if (q && !n.text.toLowerCase().includes(q)) return false;
       return true;
     });
   }

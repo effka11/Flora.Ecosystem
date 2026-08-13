@@ -26,7 +26,12 @@ pub trait UserProfileProvisioner: Send + Sync {
         &self,
         user_uuid: Uuid,
         display_name: &str,
+        username: &str,
     ) -> BoxFuture<'_, Result<(), String>>;
+
+    /// Auth вызывает после успешного удаления аккаунта. Users снимает карточку
+    /// с производных индексов; SQL-профиль здесь не трогаем.
+    fn forget_user(&self, user_uuid: Uuid) -> BoxFuture<'_, Result<(), String>>;
 }
 
 #[derive(Debug, Clone)]

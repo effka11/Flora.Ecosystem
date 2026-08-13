@@ -29,6 +29,7 @@ use crate::application::feed::FeedService;
 use crate::application::feed_controls::{
     FeedControlsError, FeedControlsService, FeedSettingsPatch,
 };
+use crate::application::feed_search::FeedSearchHost;
 use crate::application::media::MediaService;
 use crate::application::post_images::PostImagesService;
 use crate::application::post_videos::{MAX_POST_VIDEO_BYTES, PostVideosService};
@@ -53,6 +54,7 @@ pub struct ContentState {
     pub feed: Arc<FeedService>,
     pub feed_controls: Arc<FeedControlsService>,
     pub serialize: Arc<FeedSerializer>,
+    pub feed_search: Arc<FeedSearchHost>,
     pub posts: Arc<PostService>,
     pub comments: Arc<CommentsService>,
     pub profile_posts: Arc<ProfilePostsService>,
@@ -72,6 +74,7 @@ pub struct CurrentUser(pub Uuid);
 pub fn protected_router(state: ContentState) -> Router {
     Router::new()
         .route("/api/auth/feed", get(get_feed))
+        .route("/api/auth/feed/search", get(search_feed))
         .route("/api/auth/feed/has-new", get(feed_has_new))
         .route("/api/auth/me/feed-settings", get(get_feed_settings))
         .route("/api/auth/me/feed-settings", patch(update_feed_settings))
@@ -243,6 +246,33 @@ async fn get_feed(
             Ok(body) => Json(body).into_response(),
             Err(e) => internal(e),
         },
+        Err(e) => internal(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct FeedSearchQuery {
+    q: Option<String>,
+    skip: Option<i32>,
+    take: Option<i32>,
+}
+
+async fn search_feed(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Query(q): Query<FeedSearchQuery>,
+) -> Response {
+    match state
+        .feed_search
+        .search(
+            user.0,
+            q.q.as_deref().unwrap_or(""),
+            q.skip.unwrap_or(0),
+            q.take.unwrap_or(20),
+        )
+        .await
+    {
+        Ok(list) => Json(list).into_response(),
         Err(e) => internal(e),
     }
 }

@@ -41,6 +41,7 @@ impl UserProfileProvisioner for SqlUserProfileQueries {
         &self,
         user_uuid: Uuid,
         display_name: &str,
+        _username: &str,
     ) -> BoxFuture<'_, Result<(), String>> {
         let display_name = display_name.to_string();
         Box::pin(async move {
@@ -71,5 +72,9 @@ impl UserProfileProvisioner for SqlUserProfileQueries {
             .map_err(|e| e.to_string())?;
             Ok(())
         })
+    }
+
+    fn forget_user(&self, _user_uuid: Uuid) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Ok(()) })
     }
 }

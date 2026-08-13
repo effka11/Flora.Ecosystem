@@ -1,4 +1,5 @@
-import { parseApiErrorMessage } from "@flora/client-core/api";
+import { apiSearchMusicTracks as coreSearchMusicTracks, parseApiErrorMessage } from "@flora/client-core/api";
+import type { MusicTrackDto as CoreMusicTrackDto } from "@flora/client-core/contracts";
 import { ApiRequestError, resolvePublicApiRoot } from "@/lib/auth";
 import {
   authDelete,
@@ -380,6 +381,34 @@ export async function apiGetMusicLibrary(): Promise<MusicTrackDto[]> {
     if (parsed) out.push(parsed);
   }
   return out;
+}
+
+/** GET `/api/music/tracks/search` — published platform catalog. Empty q → [] (no request). */
+export async function apiSearchMusicTracks(query: string, take = 20, skip = 0): Promise<MusicTrackDto[]> {
+  const q = query.trim();
+  if (!q) return [];
+  return (await coreSearchMusicTracks(q, Math.min(Math.max(take, 1), 50), Math.max(0, skip))).map(
+    mapCoreMusicTrack,
+  );
+}
+
+function mapCoreMusicTrack(track: CoreMusicTrackDto): MusicTrackDto {
+  return {
+    trackUuid: track.trackUuid,
+    scope: track.scope,
+    title: track.title,
+    artistDisplay: track.artistDisplay,
+    artistCredits: track.artistCredits,
+    tags: track.tags,
+    genreId: track.genreId,
+    licenseId: track.licenseId,
+    coverColorId: track.coverColorId,
+    trackKindId: track.trackKindId,
+    hasCoverImage: track.hasCoverImage,
+    durationMs: track.durationMs,
+    createdAt: track.createdAt,
+    publishedAt: track.publishedAt,
+  };
 }
 
 export async function apiGetMusicGenreCatalog(): Promise<MusicGenreDto[]> {

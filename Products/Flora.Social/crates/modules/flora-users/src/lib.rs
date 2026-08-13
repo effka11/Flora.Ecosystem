@@ -16,6 +16,7 @@ use sqlx::PgPool;
 
 use crate::application::avatar::avatar_service;
 use crate::application::people_recommendation::PeopleRecommendationService;
+use crate::application::people_search::SearchAwareProfileProvisioner;
 use crate::http::UsersState;
 use crate::http::rate_limit::default_upload_limiter;
 use crate::infrastructure::profile_reads::SqlUserProfileQueries;
@@ -23,6 +24,7 @@ use crate::infrastructure::recommendation::SqlUserRecommendationQueries;
 use crate::infrastructure::store::SqlUsersStore;
 
 pub use application::PresenceService;
+pub use application::people_search::PeopleSearchHost;
 
 pub struct UsersModule {
     pub protected_router: axum::Router,
@@ -38,7 +40,7 @@ pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
-/// Порты Users для Auth (один sqlx-адаптер реализует read + provisioner).
+/// Порты Users для Auth без FSA-P (read + SQL provisioner).
 pub fn profile_ports(
     pool: PgPool,
 ) -> (
@@ -46,7 +48,32 @@ pub fn profile_ports(
     Arc<dyn flora_users_contracts::UserProfileProvisioner>,
 ) {
     let q = Arc::new(SqlUserProfileQueries::new(pool));
-    (q.clone(), q)
+    (
+        q.clone(),
+        q as Arc<dyn flora_users_contracts::UserProfileProvisioner>,
+    )
+}
+
+/// Один FSA-P host на процесс: Auth provisioner и Users HTTP получают один и тот же Arc.
+#[derive(Clone)]
+pub struct PeopleSearchBundle {
+    pub profiles: Arc<dyn flora_users_contracts::UserProfileReadQueries>,
+    pub provisioner: Arc<dyn flora_users_contracts::UserProfileProvisioner>,
+    pub people_search: Arc<PeopleSearchHost>,
+}
+
+pub fn people_search_bundle(pool: PgPool) -> PeopleSearchBundle {
+    let (_, blocks, _) = infrastructure::social_graph::as_ports(pool.clone());
+    let people_search = Arc::new(PeopleSearchHost::new(blocks));
+    let q = Arc::new(SqlUserProfileQueries::new(pool));
+    PeopleSearchBundle {
+        profiles: q.clone(),
+        provisioner: Arc::new(SearchAwareProfileProvisioner::new(
+            q as Arc<dyn flora_users_contracts::UserProfileProvisioner>,
+            Arc::clone(&people_search),
+        )),
+        people_search,
+    }
 }
 
 pub fn profile_read_queries(
@@ -119,11 +146,20 @@ pub fn compose(
     communities: Arc<dyn CommunityFollowStats>,
     notifications: Arc<dyn UserNotificationDispatcher>,
     presence: Arc<PresenceService>,
+    people_search: Arc<PeopleSearchHost>,
     frc_i_backfill_enabled: bool,
 ) -> UsersModule {
     let backfill_pool = pool.clone();
     let store = Arc::new(SqlUsersStore::new(pool.clone()));
     let (follow_graph, _, _) = infrastructure::social_graph::as_ports(pool.clone());
+    {
+        let host = people_search.clone();
+        let rebuild_pool = pool.clone();
+        let rebuild_accounts = accounts.clone();
+        tokio::spawn(async move {
+            host.rebuild(rebuild_pool, rebuild_accounts).await;
+        });
+    }
     let messages_access: Arc<dyn flora_users_contracts::MessagesAccess> = Arc::new(
         infrastructure::messages_access::SqlMessagesAccess::new(pool.clone()),
     );
@@ -151,6 +187,7 @@ pub fn compose(
         avatars,
         recommendations,
         notifications,
+        people_search,
         upload_limiter: default_upload_limiter(),
     };
     UsersModule {
@@ -171,12 +208,14 @@ pub fn compose_with_local_presence(
     frc_i_backfill_enabled: bool,
 ) -> UsersModule {
     let presence = build_presence_service(pool.clone(), Arc::new(NoopPresenceRealtimePublisher));
+    let people_search = people_search_bundle(pool.clone()).people_search;
     compose(
         pool,
         accounts,
         communities,
         notifications,
         presence,
+        people_search,
         frc_i_backfill_enabled,
     )
 }

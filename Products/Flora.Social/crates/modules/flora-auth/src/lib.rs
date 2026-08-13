@@ -82,7 +82,7 @@ pub fn compose_with_replay(
     let repo = Arc::new(AuthRepo::new(pool));
     let sessions = Arc::new(SessionService::new(repo.clone()));
     let security = Arc::new(SecurityService::new(repo.clone(), verification.clone()));
-    let account = Arc::new(AccountService::new(repo.clone()));
+    let account = Arc::new(AccountService::new(repo.clone(), provisioner.clone()));
     let replay_cleanup = replay
         .as_ref()
         .map(|_| spawn_replay_cleanup(repo.clone(), ReplayCleanupConfig::default()));

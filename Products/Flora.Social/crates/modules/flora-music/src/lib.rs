@@ -12,6 +12,7 @@ use std::sync::Arc;
 use sqlx::PgPool;
 
 use crate::application::artists::ArtistService;
+use crate::application::audio_search::AudioSearchHost;
 use crate::application::flow::FlowService;
 use crate::application::genres::GenreService;
 use crate::application::playlists::PlaylistService;
@@ -46,13 +47,21 @@ pub fn router() -> axum::Router {
 
 pub fn compose(pool: PgPool, media: MusicMediaOptions) -> MusicModule {
     let repo = Arc::new(MusicRepo::new(pool));
-    let tracks = Arc::new(TrackService::new(repo.clone()));
+    let audio = AudioSearchHost::new();
+    let tracks = Arc::new(TrackService::new(repo.clone(), audio.clone()));
     let playlists = Arc::new(PlaylistService::new(repo.clone(), tracks.clone()));
     let genres = Arc::new(GenreService::new(repo.clone(), tracks.clone()));
     let artists = Arc::new(ArtistService::new(repo.clone(), tracks.clone()));
     let flow = Arc::new(FlowService::new(repo.clone(), tracks.clone()));
     let transcoder = Arc::new(FfmpegMusicAudioTranscoder::new(media));
-    let uploads = Arc::new(UploadService::new(repo, transcoder));
+    let uploads = Arc::new(UploadService::new(repo.clone(), transcoder, audio.clone()));
+    tokio::spawn({
+        let audio = audio.clone();
+        let repo = repo.clone();
+        async move {
+            audio.rebuild_from_repo(&repo).await;
+        }
+    });
     let state = MusicState {
         tracks,
         playlists,

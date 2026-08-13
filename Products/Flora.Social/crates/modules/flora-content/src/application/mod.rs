@@ -2,10 +2,12 @@
 
 pub mod comments;
 pub mod communities;
+pub mod communities_search;
 pub mod community_recommendation;
 pub mod drafts;
 pub mod feed;
 pub mod feed_controls;
+pub mod feed_search;
 pub mod media;
 pub mod post_access;
 pub mod post_image_processor;

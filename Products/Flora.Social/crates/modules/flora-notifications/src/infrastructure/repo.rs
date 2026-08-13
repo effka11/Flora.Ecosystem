@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, Transaction};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 pub struct InboxRepo {
@@ -26,6 +27,23 @@ pub struct NotificationRow {
     pub post_uuid: Option<Uuid>,
 
     pub comment_uuid: Option<Uuid>,
+}
+
+/// Row used to build FSA-N `NotificationDoc` (recipient-scoped).
+#[derive(Debug, sqlx::FromRow)]
+pub struct NotificationIndexRow {
+    pub notification_uuid: Uuid,
+
+    #[sqlx(rename = "type")]
+    pub notification_type: String,
+
+    pub text: String,
+
+    pub actor_user_uuid: Option<Uuid>,
+
+    pub created_at: DateTime<Utc>,
+
+    pub is_read: bool,
 }
 
 /// Aggregated social inbox row (`group_key` / `actors_json`).
@@ -385,68 +403,111 @@ impl InboxRepo {
 
     pub async fn list(
         &self,
-
         recipient: Uuid,
-
         category: Option<&str>,
-
-        search: Option<&str>,
-
         skip: i32,
-
         take: i32,
-
         client_platform: Option<&str>,
     ) -> Result<Vec<NotificationRow>, String> {
         let rows = sqlx::query_as::<_, NotificationRow>(
-
             r#"
-
             SELECT notification_uuid, type, category, text, created_at, is_read, post_uuid, comment_uuid
-
             FROM flora_core.user_notifications
-
             WHERE recipient_user_uuid = $1
-
               AND CASE
-
                     WHEN $2::text IS NULL THEN target_platform IS NULL
-
                     ELSE target_platform IS NULL OR target_platform = $2
-
                   END
-
               AND ($3::text IS NULL OR category = $3)
-
-              AND ($4::text IS NULL OR text ILIKE $4)
-
             ORDER BY created_at DESC
-
-            OFFSET $5 LIMIT $6
-
+            OFFSET $4 LIMIT $5
             "#,
-
         )
-
         .bind(recipient)
-
         .bind(client_platform)
-
         .bind(category)
-
-        .bind(search)
-
         .bind(i64::from(skip))
-
         .bind(i64::from(take))
-
         .fetch_all(&self.pool)
-
         .await
-
         .map_err(|e| e.to_string())?;
 
         Ok(rows)
+    }
+
+    /// Hydrate FSA-N hits: only this recipient's rows, in `ids` order.
+    pub async fn list_by_ids(
+        &self,
+        recipient: Uuid,
+        ids: &[Uuid],
+        category: Option<&str>,
+        client_platform: Option<&str>,
+    ) -> Result<Vec<NotificationRow>, String> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query_as::<_, NotificationRow>(
+            r#"
+            SELECT notification_uuid, type, category, text, created_at, is_read, post_uuid, comment_uuid
+            FROM flora_core.user_notifications
+            WHERE recipient_user_uuid = $1
+              AND notification_uuid = ANY($2)
+              AND CASE
+                    WHEN $3::text IS NULL THEN target_platform IS NULL
+                    ELSE target_platform IS NULL OR target_platform = $3
+                  END
+              AND ($4::text IS NULL OR category = $4)
+            "#,
+        )
+        .bind(recipient)
+        .bind(ids)
+        .bind(client_platform)
+        .bind(category)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut by_id: HashMap<Uuid, NotificationRow> = rows
+            .into_iter()
+            .map(|row| (row.notification_uuid, row))
+            .collect();
+        Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
+    }
+
+    pub async fn list_for_index(
+        &self,
+        recipient: Uuid,
+    ) -> Result<Vec<NotificationIndexRow>, String> {
+        sqlx::query_as::<_, NotificationIndexRow>(
+            r#"
+            SELECT notification_uuid, type, text, actor_user_uuid, created_at, is_read
+            FROM flora_core.user_notifications
+            WHERE recipient_user_uuid = $1
+            "#,
+        )
+        .bind(recipient)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())
+    }
+
+    pub async fn get_for_index(
+        &self,
+        recipient: Uuid,
+        notification_uuid: Uuid,
+    ) -> Result<Option<NotificationIndexRow>, String> {
+        sqlx::query_as::<_, NotificationIndexRow>(
+            r#"
+            SELECT notification_uuid, type, text, actor_user_uuid, created_at, is_read
+            FROM flora_core.user_notifications
+            WHERE recipient_user_uuid = $1 AND notification_uuid = $2
+            "#,
+        )
+        .bind(recipient)
+        .bind(notification_uuid)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| e.to_string())
     }
 
     pub async fn unread_count(
