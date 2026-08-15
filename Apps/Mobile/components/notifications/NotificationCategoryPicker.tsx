@@ -52,7 +52,7 @@ export function NotificationCategoryPicker({ activeTab, open, onOpenChange, onSe
           <Ionicons
             name="chevron-down"
             size={16}
-            color={open ? floraColors.greenLight : floraColors.gray}
+            color={floraColors.greenLight}
             style={open ? styles.chevronOpen : undefined}
           />
         </Pressable>

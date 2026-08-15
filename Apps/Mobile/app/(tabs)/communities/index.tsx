@@ -12,26 +12,36 @@ import type { CommunityListItemDto } from "@flora/client-core/contracts";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "expo-router/react-navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   View,
   type LayoutChangeEvent,
+  type ScrollViewProps,
 } from "react-native";
+import { Pressable as GesturePressable, RefreshControl } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { FLORA_TAB_STRIP_PAD_X } from "@/components/chrome/FloraTabChipStrip";
+import { FloraTabLabel, floraTabChrome } from "@/components/chrome/FloraTabLabel";
+import { TabPagerPage, TabPagerTrack } from "@/components/chrome/TabPager";
+import { SyncPagerTabIndicator } from "@/components/chrome/tabIndicatorBridge";
 import { CreateCommunitySheet } from "@/components/communities/CreateCommunitySheet";
-import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
+import { TabScreenHeader } from "@/components/TabScreenHeader";
+import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { communityScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
+import { usePagerListScroll } from "@/lib/usePagerListScroll";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
+import { useTabPager } from "@/lib/useTabPager";
 
 type CommunityTab = "recommended" | "subscriptions";
 
@@ -47,6 +57,10 @@ const COMMUNITY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 
 function isCommunityUuid(value: string): boolean {
   return COMMUNITY_UUID_RE.test(value.trim());
+}
+
+function communityTabIndex(tab: CommunityTab) {
+  return tab === "recommended" ? 0 : 1;
 }
 
 function emptyMessage(tab: CommunityTab, hasSearch: boolean): string {
@@ -142,12 +156,113 @@ function CommunityRow({ community, showLeave, showJoin, actionBusy, onJoin, onLe
   );
 }
 
+type CommunityPaneProps = {
+  tab: CommunityTab;
+  communities: CommunityListItemDto[];
+  loading: boolean;
+  error: boolean;
+  isActive: boolean;
+  searching: boolean;
+  pageWidth: number;
+  listPaddingBottom: number;
+  renderScrollComponent: ComponentType<ScrollViewProps>;
+  extraData: string;
+  rowActions: (community: CommunityListItemDto) => { showJoin: boolean; showLeave: boolean };
+  busyCommunityId: string | null;
+  onJoin: (community: CommunityListItemDto) => void;
+  onLeave: (community: CommunityListItemDto) => void;
+  onRefresh: () => Promise<void>;
+  onScrollBeginDrag: () => void;
+};
+
+function CommunityPane({
+  tab,
+  communities,
+  loading,
+  error,
+  isActive,
+  searching,
+  pageWidth,
+  listPaddingBottom,
+  renderScrollComponent,
+  extraData,
+  rowActions,
+  busyCommunityId,
+  onJoin,
+  onLeave,
+  onRefresh,
+  onScrollBeginDrag,
+}: CommunityPaneProps) {
+  const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(onRefresh);
+  return (
+    <TabPagerPage pageWidth={pageWidth}>
+      <FlashList
+        data={communities}
+        extraData={extraData}
+        keyExtractor={(item) => item.communityId}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={onScrollBeginDrag}
+        drawDistance={isActive ? 250 : 0}
+        nestedScrollEnabled={false}
+        scrollEventThrottle={16}
+        renderScrollComponent={renderScrollComponent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isActive && pullRefreshing}
+            onRefresh={onPullRefresh}
+            tintColor={floraColors.greenLight}
+          />
+        }
+        renderItem={({ item }) => {
+          const actions = rowActions(item);
+          return (
+            <CommunityRow
+              community={item}
+              showJoin={actions.showJoin}
+              showLeave={actions.showLeave}
+              actionBusy={busyCommunityId === item.communityId}
+              onJoin={() => onJoin(item)}
+              onLeave={() => onLeave(item)}
+            />
+          );
+        }}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={floraColors.greenLight} />
+              <Text style={styles.emptyHint}>Загрузка сообществ…</Text>
+            </View>
+          ) : error ? (
+            <Text style={styles.emptyHint}>Не удалось загрузить список.</Text>
+          ) : (
+            <Text style={styles.emptyHint}>{emptyMessage(tab, searching)}</Text>
+          )
+        }
+      />
+    </TabPagerPage>
+  );
+}
+
 export default function CommunitiesScreen() {
   const insets = useSafeAreaInsets();
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
   const [search, setSearch] = useState("");
+  const [searchTagId, setSearchTagId] = useState<string>(SEARCH_SUGGESTION_TAGS.communities[0].id);
+  const holdSearchFocusRef = useRef<(() => void) | null>(null);
+  const [searchDismissEpoch, setSearchDismissEpoch] = useState(0);
+  const bumpSearchDismiss = useCallback(() => {
+    setSearchDismissEpoch((n) => n + 1);
+  }, []);
+  const pagerGenRef = useRef(0);
+  const { reportTouch, reportPager, reportStrip } = usePagerBusyFlags();
+  const chipStripBusy = useMemo(
+    () => bindChipStripBusy(reportTouch, reportStrip, bumpSearchDismiss),
+    [bumpSearchDismiss, reportStrip, reportTouch],
+  );
+  const [searchChromeOpen, setSearchChromeOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<CommunityTab>("recommended");
   const [localJoined, setLocalJoined] = useState<Record<string, boolean>>({});
@@ -156,8 +271,7 @@ export default function CommunitiesScreen() {
     recommended: null,
     subscriptions: null,
   });
-  const indicatorLeft = useRef(new Animated.Value(0)).current;
-  const indicatorWidth = useRef(new Animated.Value(0)).current;
+  const { renderScrollComponents, setActivePane } = usePagerListScroll(2);
 
   const recordTabLayout = useCallback((tab: CommunityTab, event: LayoutChangeEvent) => {
     const { x, width } = event.nativeEvent.layout;
@@ -168,43 +282,67 @@ export default function CommunitiesScreen() {
     });
   }, []);
 
-  const activeTabLayout = tabLayouts[activeTab];
+  const commitPagerIndex = useCallback(
+    (index: number) => {
+      const next: CommunityTab = index === 0 ? "recommended" : "subscriptions";
+      setActivePane(index);
+      setActiveTab((current) => (current === next ? current : next));
+    },
+    [setActivePane],
+  );
 
-  useEffect(() => {
-    if (!activeTabLayout) return;
-    Animated.parallel([
-      Animated.spring(indicatorLeft, {
-        toValue: activeTabLayout.x,
-        useNativeDriver: false,
-        stiffness: 320,
-        damping: 32,
-        mass: 0.8,
-      }),
-      Animated.spring(indicatorWidth, {
-        toValue: activeTabLayout.width,
-        useNativeDriver: false,
-        stiffness: 320,
-        damping: 32,
-        mass: 0.8,
-      }),
-    ]).start();
-  }, [activeTab, activeTabLayout, indicatorLeft, indicatorWidth]);
-
-  const tabIndicatorStyle = useMemo(() => {
-    if (!activeTabLayout) return null;
-    return {
-      width: indicatorWidth,
-      transform: [{ translateX: indicatorLeft }],
-    };
-  }, [activeTabLayout, indicatorLeft, indicatorWidth]);
-
-  const myUsername = me?.username?.replace(/^@+/, "") ?? "";
   const queryText = search.trim();
   const hasSearch = queryText.length > 0;
 
+  const {
+    scrollX,
+    pageWidth,
+    tabProgress,
+    pagerPan,
+    onBodyLayout,
+    settleToIndex,
+    pagerTargetRef,
+  } = useTabPager({
+    pageCount: 2,
+    enabled: !hasSearch && !searchChromeOpen,
+    initialIndex: 0,
+    onTouchBegin: () => {
+      bumpSearchDismiss();
+      reportTouch(true);
+    },
+    onTouchEnd: () => reportTouch(false),
+    onPagerStart: () => {
+      pagerGenRef.current = reportPager(true);
+    },
+    onMotionEnd: () => {
+      reportPager(false, pagerGenRef.current);
+    },
+    onCommitIndex: commitPagerIndex,
+  });
+
+  const selectTab = useCallback(
+    (next: CommunityTab) => {
+      const index = communityTabIndex(next);
+      if (index === pagerTargetRef.current) return;
+      bumpSearchDismiss();
+      settleToIndex(index);
+    },
+    [bumpSearchDismiss, pagerTargetRef, settleToIndex],
+  );
+
+  const syncCommunityPane = useCallback(() => {
+    setActivePane(communityTabIndex(activeTab));
+  }, [activeTab, setActivePane]);
+  useEffect(() => {
+    syncCommunityPane();
+  }, [syncCommunityPane]);
+  useFocusEffect(syncCommunityPane);
+
+  const myUsername = me?.username?.replace(/^@+/, "") ?? "";
+
   const recommendedQuery = useQuery({
     queryKey: ["communities", "recommended"],
-    enabled: !hasSearch && activeTab === "recommended",
+    enabled: !hasSearch,
     queryFn: () => apiGetRecommendedCommunities(30),
   });
 
@@ -215,7 +353,7 @@ export default function CommunitiesScreen() {
 
   const subscriptionsQuery = useQuery({
     queryKey: ["communities", "subscriptions", myUsername],
-    enabled: !hasSearch && activeTab === "subscriptions" && myUsername.length > 0,
+    enabled: !hasSearch && myUsername.length > 0,
     queryFn: () => loadSubscriptions(myUsername),
   });
 
@@ -243,41 +381,6 @@ export default function CommunitiesScreen() {
     return ids;
   }, [ownedQuery.data, subscriptionsQuery.data, recommendedQuery.data, searchQuery.data]);
 
-  const visibleCommunities = hasSearch
-    ? searchQuery.data ?? []
-    : activeTab === "subscriptions"
-      ? subscriptionsQuery.data ?? []
-      : recommendedQuery.data ?? [];
-
-  const listLoading = hasSearch
-    ? searchQuery.isLoading
-    : activeTab === "recommended"
-      ? recommendedQuery.isLoading
-      : subscriptionsQuery.isLoading;
-
-  const listError = hasSearch
-    ? searchQuery.isError
-    : activeTab === "recommended"
-      ? recommendedQuery.isError
-      : subscriptionsQuery.isError;
-
-  const pullCommunities = useCallback(async () => {
-    if (hasSearch) {
-      await searchQuery.refetch();
-      return;
-    }
-    if (activeTab === "recommended") {
-      await recommendedQuery.refetch();
-      return;
-    }
-    await subscriptionsQuery.refetch();
-  }, [activeTab, hasSearch, recommendedQuery, searchQuery, subscriptionsQuery]);
-  const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(pullCommunities);
-
-  const refreshCommunities = () => {
-    void queryClient.invalidateQueries({ queryKey: ["communities"] });
-  };
-
   const isMember = useCallback(
     (community: CommunityListItemDto) => {
       if (community.role === "Owner" || ownedIds.has(community.communityId)) return true;
@@ -289,8 +392,8 @@ export default function CommunitiesScreen() {
     [localJoined, memberIdsFromServer, ownedIds],
   );
 
-  const rowActions = useCallback(
-    (community: CommunityListItemDto) => {
+  const rowActionsFor = useCallback(
+    (tab: CommunityTab, searching: boolean) => (community: CommunityListItemDto) => {
       if (community.role === "Owner" || ownedIds.has(community.communityId)) {
         return { showJoin: false, showLeave: false };
       }
@@ -299,13 +402,29 @@ export default function CommunitiesScreen() {
       }
       const member = isMember(community);
       if (member) {
-        const showLeave = hasSearch || activeTab === "subscriptions" || community.role === "Member";
+        const showLeave = searching || tab === "subscriptions" || community.role === "Member";
         return { showJoin: false, showLeave };
       }
       return { showJoin: true, showLeave: false };
     },
-    [activeTab, hasSearch, isMember],
+    [isMember, ownedIds],
   );
+
+  const extraData = `${JSON.stringify(localJoined)}:${busyCommunityId}`;
+
+  const refreshRecommended = useCallback(async () => {
+    await recommendedQuery.refetch();
+  }, [recommendedQuery]);
+  const refreshSubscriptions = useCallback(async () => {
+    await subscriptionsQuery.refetch();
+  }, [subscriptionsQuery]);
+  const refreshSearch = useCallback(async () => {
+    await searchQuery.refetch();
+  }, [searchQuery]);
+
+  const refreshCommunities = () => {
+    void queryClient.invalidateQueries({ queryKey: ["communities"] });
+  };
 
   const toggleMembership = async (community: CommunityListItemDto, join: boolean) => {
     setBusyCommunityId(community.communityId);
@@ -327,83 +446,107 @@ export default function CommunitiesScreen() {
     router.push(communityScreenHref(community.slug));
   };
 
+  const paneBase = {
+    pageWidth,
+    listPaddingBottom,
+    extraData,
+    busyCommunityId,
+    onJoin: (community: CommunityListItemDto) => void toggleMembership(community, true),
+    onLeave: (community: CommunityListItemDto) => void toggleMembership(community, false),
+    onScrollBeginDrag: bumpSearchDismiss,
+    searching: false,
+  };
+
   return (
     <View style={styles.root}>
-      <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
-        <TabScreenSearchHeader
-          title="Сообщества"
-          placeholder="Поиск по названию или ссылке"
-          value={search}
-          onChangeText={setSearch}
-          createAction={{
-            accessibilityLabel: "Создать сообщество",
-            onPress: () => setCreateOpen(true),
-          }}
-        />
+      <TabScreenHeader
+        title="Сообщества"
+        placeholder="Поиск по названию или ссылке"
+        value={search}
+        onChangeText={setSearch}
+        dismissKey={`${activeTab}:${searchDismissEpoch}`}
+        holdSearchFocusRef={holdSearchFocusRef}
+        createAction={{
+          accessibilityLabel: "Создать сообщество",
+          onPress: () => setCreateOpen(true),
+        }}
+        searchTags={SEARCH_SUGGESTION_TAGS.communities}
+        searchTagId={searchTagId}
+        onSearchTagIdChange={setSearchTagId}
+        onSearchActiveChange={setSearchChromeOpen}
+        onChipPanBegin={chipStripBusy.onChipPanBegin}
+        onChipPanFinalize={chipStripBusy.onChipPanFinalize}
+        onChipPanDecayEnd={chipStripBusy.onChipPanDecayEnd}
+        idle={({ stripOffset }) => (
+          <View style={styles.tabs}>
+            <SyncPagerTabIndicator
+              scrollX={scrollX}
+              pageWidth={pageWidth}
+              start={tabLayouts.recommended}
+              end={tabLayouts.subscriptions}
+              insetX={FLORA_TAB_STRIP_PAD_X}
+              stripOffset={stripOffset}
+            />
+            {COMMUNITY_TABS.map((tab, index) => (
+              <GesturePressable
+                key={tab.id}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: activeTab === tab.id }}
+                style={floraTabChrome.tabButton}
+                onLayout={(event) => recordTabLayout(tab.id, event)}
+                onPress={() => selectTab(tab.id)}
+              >
+                <FloraTabLabel index={index} label={tab.label} progress={tabProgress} />
+              </GesturePressable>
+            ))}
+          </View>
+        )}
+      />
 
-        {!hasSearch ? (
-          <View style={styles.navigationRow}>
-            <View style={styles.tabs}>
-              {tabIndicatorStyle ? (
-                <Animated.View pointerEvents="none" style={[styles.tabIndicator, tabIndicatorStyle]} />
-              ) : null}
-              {COMMUNITY_TABS.map((tab) => (
-                <Pressable
-                  key={tab.id}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: activeTab === tab.id }}
-                  style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
-                  onLayout={(event) => recordTabLayout(tab.id, event)}
-                  onPress={() => setActiveTab(tab.id)}
-                >
-                  <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
-                </Pressable>
-              ))}
-            </View>
+      <View style={styles.body} onLayout={onBodyLayout}>
+        <View style={styles.pagerHost} pointerEvents={hasSearch ? "none" : "auto"}>
+          <TabPagerTrack pageCount={2} pageWidth={pageWidth} pagerPan={pagerPan} scrollX={scrollX}>
+            <CommunityPane
+              {...paneBase}
+              tab="recommended"
+              communities={recommendedQuery.data ?? []}
+              loading={recommendedQuery.isLoading}
+              error={recommendedQuery.isError}
+              isActive={!hasSearch && activeTab === "recommended"}
+              renderScrollComponent={renderScrollComponents[0]}
+              rowActions={rowActionsFor("recommended", false)}
+              onRefresh={refreshRecommended}
+            />
+            <CommunityPane
+              {...paneBase}
+              tab="subscriptions"
+              communities={subscriptionsQuery.data ?? []}
+              loading={subscriptionsQuery.isLoading}
+              error={subscriptionsQuery.isError}
+              isActive={!hasSearch && activeTab === "subscriptions"}
+              renderScrollComponent={renderScrollComponents[1]}
+              rowActions={rowActionsFor("subscriptions", false)}
+              onRefresh={refreshSubscriptions}
+            />
+          </TabPagerTrack>
+        </View>
+        {hasSearch ? (
+          <View style={styles.searchOverlay}>
+            <CommunityPane
+              {...paneBase}
+              tab={activeTab}
+              communities={searchQuery.data ?? []}
+              loading={searchQuery.isLoading}
+              error={searchQuery.isError}
+              isActive
+              searching
+              renderScrollComponent={PagerOverlayScroll}
+              rowActions={rowActionsFor(activeTab, true)}
+              onRefresh={refreshSearch}
+            />
           </View>
         ) : null}
       </View>
-
-      <FlashList
-        style={styles.list}
-        data={visibleCommunities}
-        extraData={`${activeTab}:${queryText}:${JSON.stringify(localJoined)}`}
-        keyExtractor={(item) => item.communityId}
-        contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={pullRefreshing}
-            onRefresh={onPullRefresh}
-            tintColor={floraColors.greenLight}
-          />
-        }
-        renderItem={({ item }) => {
-          const actions = rowActions(item);
-          return (
-            <CommunityRow
-              community={item}
-              showJoin={actions.showJoin}
-              showLeave={actions.showLeave}
-              actionBusy={busyCommunityId === item.communityId}
-              onJoin={() => void toggleMembership(item, true)}
-              onLeave={() => void toggleMembership(item, false)}
-            />
-          );
-        }}
-        ListEmptyComponent={
-          listLoading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={floraColors.greenLight} />
-              <Text style={styles.emptyHint}>Загрузка сообществ…</Text>
-            </View>
-          ) : listError ? (
-            <Text style={styles.emptyHint}>Не удалось загрузить список.</Text>
-          ) : (
-            <Text style={styles.emptyHint}>{emptyMessage(activeTab, hasSearch)}</Text>
-          )
-        }
-      />
 
       <CreateCommunitySheet
         visible={createOpen}
@@ -419,22 +562,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: floraColors.bg,
   },
-  topBlock: {
-    backgroundColor: floraColors.bg,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
-    borderBottomWidth: 1,
-    paddingHorizontal: floraSpacing.grid,
-    paddingBottom: 0,
-    gap: 13,
-    overflow: "visible",
+  body: {
+    flex: 1,
+    overflow: "hidden",
   },
-  list: {
+  pagerHost: {
     flex: 1,
   },
-  navigationRow: {
-    position: "relative",
-    minHeight: 35,
-    width: "100%",
+  searchOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: floraColors.bg,
+    zIndex: 1,
   },
   tabs: {
     position: "relative",
@@ -442,35 +580,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     overflow: "visible",
-  },
-  tabButton: {
-    height: 35,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  tabPressed: {
-    opacity: 0.72,
-  },
-  tabLabel: {
-    color: floraColors.gray,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 15,
-  },
-  tabLabelActive: {
-    color: floraColors.greenLight,
-  },
-  tabIndicator: {
-    position: "absolute",
-    left: 0,
-    bottom: 0,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: floraColors.greenLight,
-    zIndex: 2,
   },
   listContent: {},
   shell: {

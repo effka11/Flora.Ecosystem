@@ -15,6 +15,9 @@ const GAP = floraSpacing.gridFine;
  * Content width of a feed row before it has measured itself — the same
  * subtraction `FeedPostImages` starts from when it has no measured
  * `containerWidth` yet.
+ *
+ * `contentNudgeX` is negative (column pulled left); subtracting it matches
+ * the PostCard content column, which is 1×fine wider than the un-nudged box.
  */
 export function feedRowContentWidth(windowWidth: number): number {
   return Math.max(
@@ -23,8 +26,28 @@ export function feedRowContentWidth(windowWidth: number): number {
       floraFeedPost.paddingHorizontal * 2 -
       floraFeedPost.contentInsetRight -
       floraFeedPost.avatarSize -
-      floraFeedPost.columnGap,
+      floraFeedPost.columnGap -
+      floraFeedPost.contentNudgeX,
   );
+}
+
+/** Ignore sub-pixel / IME noise; accept rotation-scale changes. */
+export const FEED_PAGE_WIDTH_EPS_PX = 2;
+
+/**
+ * Next feed page (or collage) width from a layout measurement.
+ * Never writes while IME is up (including the first measurement).
+ * Ignores sub-2px jitter; accepts rotation-scale changes when the keyboard is hidden.
+ */
+export function nextFeedPageWidth(
+  prev: number,
+  measured: number,
+  keyboardVisible: boolean,
+): number {
+  if (keyboardVisible) return prev > 0 ? prev : 0;
+  if (!(measured > 0)) return prev > 0 ? prev : 0;
+  if (prev > 0 && Math.abs(measured - prev) < FEED_PAGE_WIDTH_EPS_PX) return prev;
+  return measured;
 }
 
 /** Width of one cell in an evenly split, `columns`-wide collage row. */

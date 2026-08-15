@@ -21,7 +21,15 @@ import Reanimated, {
   useSharedValue,
   type SharedValue,
 } from "react-native-reanimated";
-import type { MessagesFolderPagerScroll } from "@/components/messages/messagesFolderPagerScroll";
+import {
+  FLORA_TAB_INDICATOR_BASE_W,
+  floraTabIndicatorHidden,
+  floraTabIndicatorTransform,
+} from "@/components/chrome/FloraTabLabel";
+import {
+  MAX_PAGER_PAGES,
+  type MessagesFolderPagerScroll,
+} from "@/components/messages/messagesFolderPagerScroll";
 import { floraColors, floraTabFilter } from "@/lib/theme";
 
 type Props = {
@@ -35,8 +43,6 @@ type Props = {
 
 type TabLayout = { x: number; width: number };
 
-/** all + до 4 иконок папок. */
-const MAX_PAGER_PAGES = 5;
 /** Как `iconButton` в TabScreenSearchHeader — правая папка центрируется под «+». */
 const HEADER_TRAILING_ICON_SLOT = 45;
 /** Тап-зона папки: плотнее 45; padding ряда выравнивает центр последней под «+». */
@@ -183,13 +189,13 @@ export function MessagesChatFolders({
 
   const indicatorStyle = useAnimatedStyle(() => {
     if (!scrollX || !pageWidthSV || !returnFromPageSV || !returnProgressSV) {
-      return { opacity: 0, width: 0, transform: [{ translateX: 0 }] };
+      return floraTabIndicatorHidden();
     }
 
     const width = pageWidthSV.value;
     const count = pageCountSV.value;
     if (width <= 0 || count < 2) {
-      return { opacity: 0, width: 0, transform: [{ translateX: 0 }] };
+      return floraTabIndicatorHidden();
     }
 
     const xs = layoutXSV.value;
@@ -200,11 +206,10 @@ export function MessagesChatFolders({
     if (retFrom >= 1) {
       const x = xs[retFrom] ?? -1;
       const w = ws[retFrom] ?? -1;
-      if (x < 0 || w <= 0) return { opacity: 0, width: 0, transform: [{ translateX: 0 }] };
+      if (x < 0 || w <= 0) return floraTabIndicatorHidden();
       return {
+        ...floraTabIndicatorTransform(x, w),
         opacity: returnProgressSV.value,
-        width: w,
-        transform: [{ translateX: x }],
       };
     }
 
@@ -215,11 +220,10 @@ export function MessagesChatFolders({
     if (page <= 1) {
       const x = xs[1] ?? -1;
       const w = ws[1] ?? -1;
-      if (x < 0 || w <= 0) return { opacity: 0, width: 0, transform: [{ translateX: 0 }] };
+      if (x < 0 || w <= 0) return floraTabIndicatorHidden();
       return {
+        ...floraTabIndicatorTransform(x, w),
         opacity: interpolate(page, [0, 1], [0, 1], Extrapolation.CLAMP),
-        width: w,
-        transform: [{ translateX: x }],
       };
     }
 
@@ -230,14 +234,13 @@ export function MessagesChatFolders({
     const w0 = ws[i0] ?? -1;
     const x1 = xs[i1] ?? -1;
     const w1 = ws[i1] ?? -1;
-    if (x0 < 0 || w0 <= 0) return { opacity: 0, width: 0, transform: [{ translateX: 0 }] };
+    if (x0 < 0 || w0 <= 0) return floraTabIndicatorHidden();
     if (x1 < 0 || w1 <= 0 || i0 === i1) {
-      return { opacity: 1, width: w0, transform: [{ translateX: x0 }] };
+      return { ...floraTabIndicatorTransform(x0, w0), opacity: 1 };
     }
     return {
+      ...floraTabIndicatorTransform(x0 + (x1 - x0) * t, w0 + (w1 - w0) * t),
       opacity: 1,
-      width: w0 + (w1 - w0) * t,
-      transform: [{ translateX: x0 + (x1 - x0) * t }],
     };
   });
 
@@ -355,6 +358,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     bottom: 0,
+    width: FLORA_TAB_INDICATOR_BASE_W,
     height: floraTabFilter.indicatorHeight,
     borderRadius: 999,
     backgroundColor: floraColors.greenLight,

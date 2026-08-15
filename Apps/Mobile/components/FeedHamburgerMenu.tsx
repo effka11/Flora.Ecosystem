@@ -61,6 +61,7 @@ import {
 import {
   SCROLL_PHASE_COAST,
   SCROLL_PHASE_DRAG,
+  drawerPaneAt,
   useDrawerMomentumController,
 } from "@/lib/drawerMomentum";
 import { eligibleVerticalFling } from "@/lib/drawerFlingPolicy";
@@ -203,8 +204,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   const edgePanRef = momentumController.edgePanRef;
   const edgeChromeBottomY = momentumController.edgeChromeBottomY;
   const activeMomentumPane = momentumController.activePane;
-  const pane0Momentum = momentumController.panes[0];
-  const pane1Momentum = momentumController.panes[1];
+  const momentumPanes = momentumController.panes;
   const me = useSessionStore((s) => s.me);
   const panelWidth = Math.min(PANEL_MAX_WIDTH, Math.round(windowWidth * PANEL_WIDTH_RATIO));
 
@@ -279,7 +279,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   const ensureFeedCoastAfterOpen = useCallback(() => {
     runOnUI(() => {
       "worklet";
-      const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
+      const pane = drawerPaneAt(momentumPanes, activeMomentumPane.value);
       if (
         eligibleVerticalFling(
           pane.viewTag.value,
@@ -294,7 +294,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
         );
       }
     })();
-  }, [activeMomentumPane, pane0Momentum, pane1Momentum]);
+  }, [activeMomentumPane, momentumPanes]);
 
   const markPresented = useCallback(() => {
     setPresented(true);
@@ -479,7 +479,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
            * поток onScroll это живой coast: возвращаем фазу COAST.
            */
           if (edgeClaimed.value === 1 && edgeVerticalHandover.value === 0) {
-            const pane = activeMomentumPane.value === 0 ? pane0Momentum : pane1Momentum;
+            const pane = drawerPaneAt(momentumPanes, activeMomentumPane.value);
             if (pane.phase.value === SCROLL_PHASE_DRAG) {
               pane.phase.value = SCROLL_PHASE_COAST;
             }
@@ -504,8 +504,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
       edgePanRef,
       edgeVerticalHandover,
       endDrawerMediaPause,
-      pane0Momentum,
-      pane1Momentum,
+      momentumPanes,
       panelWidthSV,
       progress,
       touchStartX,

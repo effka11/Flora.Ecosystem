@@ -1,6 +1,9 @@
 import type { ChatListFolderId } from "@flora/client-core/messaging";
 import type { SharedValue } from "react-native-reanimated";
 
+/** all + до 4 иконок папок. */
+export const MAX_PAGER_PAGES = 5;
+
 /** Общий scroll pager’а папок — иконки читают его как подвкладки ленты. */
 export type MessagesFolderPagerScroll = {
   scrollX: SharedValue<number>;

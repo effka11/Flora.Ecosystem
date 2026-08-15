@@ -1,11 +1,13 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   useRef,
   type MutableRefObject,
   type ReactNode,
 } from "react";
+import { useFocusEffect } from "expo-router/react-navigation";
 import type { GestureType } from "react-native-gesture-handler";
 import { useSharedValue, type SharedValue } from "react-native-reanimated";
 import {
@@ -16,6 +18,9 @@ import {
 
 export { SCROLL_PHASE_COAST, SCROLL_PHASE_DRAG, SCROLL_PHASE_IDLE };
 
+/** Слоты гамбургера: вкладки People / папки Messages — activePane 0..4. */
+export const DRAWER_PAGER_PANE_COUNT = 5;
+
 export type DrawerMomentumPane = {
   viewTag: SharedValue<number>;
   phase: SharedValue<number>;
@@ -25,9 +30,17 @@ export type DrawerMomentumPane = {
   lastCoastEventTs: SharedValue<number>;
 };
 
+export type DrawerMomentumPanes = readonly [
+  DrawerMomentumPane,
+  DrawerMomentumPane,
+  DrawerMomentumPane,
+  DrawerMomentumPane,
+  DrawerMomentumPane,
+];
+
 export type DrawerMomentumController = {
   activePane: SharedValue<number>;
-  panes: readonly [DrawerMomentumPane, DrawerMomentumPane];
+  panes: DrawerMomentumPanes;
   edgePanRef: MutableRefObject<GestureType | undefined>;
   /** Нижняя граница top chrome в absoluteY; edge-pan ниже неё. */
   edgeChromeBottomY: SharedValue<number>;
@@ -35,63 +48,56 @@ export type DrawerMomentumController = {
 
 const DrawerMomentumContext = createContext<DrawerMomentumController | null>(null);
 
+function useDrawerMomentumPane(): DrawerMomentumPane {
+  const viewTag = useSharedValue(0);
+  const phase = useSharedValue(SCROLL_PHASE_IDLE);
+  const velocityY = useSharedValue(0);
+  const lastEventTs = useSharedValue(0);
+  const lastCoastVelocityY = useSharedValue(0);
+  const lastCoastEventTs = useSharedValue(0);
+  return useMemo(
+    () => ({
+      viewTag,
+      phase,
+      velocityY,
+      lastEventTs,
+      lastCoastVelocityY,
+      lastCoastEventTs,
+    }),
+    [lastCoastEventTs, lastCoastVelocityY, lastEventTs, phase, velocityY, viewTag],
+  );
+}
+
+export function drawerPaneAt(
+  panes: readonly DrawerMomentumPane[],
+  activePane: number,
+): DrawerMomentumPane {
+  "worklet";
+  const last = panes.length - 1;
+  const rounded = Math.round(activePane);
+  const index = rounded < 0 ? 0 : rounded > last ? last : rounded;
+  const pane = panes[index];
+  return pane ?? panes[0]!;
+}
+
 export function DrawerMomentumProvider({ children }: { children: ReactNode }) {
   const edgePanRef = useRef<GestureType | undefined>(undefined);
   const edgeChromeBottomY = useSharedValue(0);
   const activePane = useSharedValue(0);
-  const pane0Tag = useSharedValue(0);
-  const pane0Phase = useSharedValue(SCROLL_PHASE_IDLE);
-  const pane0Velocity = useSharedValue(0);
-  const pane0LastEvent = useSharedValue(0);
-  const pane0LastCoastVelocity = useSharedValue(0);
-  const pane0LastCoastEvent = useSharedValue(0);
-  const pane1Tag = useSharedValue(0);
-  const pane1Phase = useSharedValue(SCROLL_PHASE_IDLE);
-  const pane1Velocity = useSharedValue(0);
-  const pane1LastEvent = useSharedValue(0);
-  const pane1LastCoastVelocity = useSharedValue(0);
-  const pane1LastCoastEvent = useSharedValue(0);
+  const pane0 = useDrawerMomentumPane();
+  const pane1 = useDrawerMomentumPane();
+  const pane2 = useDrawerMomentumPane();
+  const pane3 = useDrawerMomentumPane();
+  const pane4 = useDrawerMomentumPane();
 
   const value = useMemo<DrawerMomentumController>(
     () => ({
       activePane,
       edgePanRef,
       edgeChromeBottomY,
-      panes: [
-        {
-          viewTag: pane0Tag,
-          phase: pane0Phase,
-          velocityY: pane0Velocity,
-          lastEventTs: pane0LastEvent,
-          lastCoastVelocityY: pane0LastCoastVelocity,
-          lastCoastEventTs: pane0LastCoastEvent,
-        },
-        {
-          viewTag: pane1Tag,
-          phase: pane1Phase,
-          velocityY: pane1Velocity,
-          lastEventTs: pane1LastEvent,
-          lastCoastVelocityY: pane1LastCoastVelocity,
-          lastCoastEventTs: pane1LastCoastEvent,
-        },
-      ],
+      panes: [pane0, pane1, pane2, pane3, pane4],
     }),
-    [
-      activePane,
-      edgeChromeBottomY,
-      pane0LastEvent,
-      pane0LastCoastEvent,
-      pane0LastCoastVelocity,
-      pane0Phase,
-      pane0Tag,
-      pane0Velocity,
-      pane1LastEvent,
-      pane1LastCoastEvent,
-      pane1LastCoastVelocity,
-      pane1Phase,
-      pane1Tag,
-      pane1Velocity,
-    ],
+    [activePane, edgeChromeBottomY, pane0, pane1, pane2, pane3, pane4],
   );
 
   return <DrawerMomentumContext.Provider value={value}>{children}</DrawerMomentumContext.Provider>;
@@ -103,4 +109,18 @@ export function useDrawerMomentumController(): DrawerMomentumController {
     throw new Error("useDrawerMomentumController must be used within DrawerMomentumProvider");
   }
   return controller;
+}
+
+/** 1 пока вкладка в фокусе — только она держит drawer viewTag / edge-fling. */
+export function useDrawerScreenActiveSv(): SharedValue<number> {
+  const screenActiveSv = useSharedValue(0);
+  useFocusEffect(
+    useCallback(() => {
+      screenActiveSv.value = 1;
+      return () => {
+        screenActiveSv.value = 0;
+      };
+    }, [screenActiveSv]),
+  );
+  return screenActiveSv;
 }

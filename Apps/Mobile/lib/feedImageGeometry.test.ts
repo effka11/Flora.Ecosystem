@@ -1,22 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
   collageCellWidth,
+  FEED_PAGE_WIDTH_EPS_PX,
   feedRowContentWidth,
   firstImageDisplayWidth,
+  nextFeedPageWidth,
   threeImageLeftCellWidth,
 } from "@/lib/feedImageGeometry";
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
 
 describe("feedRowContentWidth", () => {
-  it("subtracts the grid margins, the extra right content inset, the avatar and the column gap", () => {
+  it("subtracts the grid margins, the extra right content inset, the avatar, the column gap and the content nudge", () => {
     const windowWidth = 390;
     expect(feedRowContentWidth(windowWidth)).toBe(
       windowWidth -
         floraFeedPost.paddingHorizontal * 2 -
         floraFeedPost.contentInsetRight -
         floraFeedPost.avatarSize -
-        floraFeedPost.columnGap,
+        floraFeedPost.columnGap -
+        floraFeedPost.contentNudgeX,
     );
+  });
+
+  it("is 1×fine wider than the un-nudged box, matching PostCard contentNudgeX", () => {
+    expect(floraFeedPost.contentNudgeX).toBe(-floraSpacing.gridFine);
   });
 
   it("never goes below 1, even for a window narrower than the fixed chrome", () => {
@@ -27,6 +34,33 @@ describe("feedRowContentWidth", () => {
     expect(
       floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight,
     ).toBe(floraSpacing.grid + floraSpacing.gridFine * 2);
+  });
+});
+
+describe("nextFeedPageWidth", () => {
+  it("keeps the previous width while the keyboard is visible", () => {
+    expect(nextFeedPageWidth(390, 380, true)).toBe(390);
+  });
+
+  it("does not lock an IME measurement when there is no previous width", () => {
+    expect(nextFeedPageWidth(0, 380, true)).toBe(0);
+  });
+
+  it("takes the first positive measurement only when the keyboard is hidden", () => {
+    expect(nextFeedPageWidth(0, 390, false)).toBe(390);
+  });
+
+  it("ignores jitter smaller than the epsilon", () => {
+    expect(FEED_PAGE_WIDTH_EPS_PX).toBe(2);
+    expect(nextFeedPageWidth(390, 391, false)).toBe(390);
+  });
+
+  it("accepts a rotation-scale change when the keyboard is hidden", () => {
+    expect(nextFeedPageWidth(390, 844, false)).toBe(844);
+  });
+
+  it("keeps the previous width when the measurement is not positive", () => {
+    expect(nextFeedPageWidth(390, 0, false)).toBe(390);
   });
 });
 

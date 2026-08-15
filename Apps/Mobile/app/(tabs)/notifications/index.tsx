@@ -14,11 +14,11 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { RefreshControl } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   NOTIFICATION_CATEGORY_TABS,
@@ -26,11 +26,13 @@ import {
 } from "@/components/notifications/NotificationCategoryPicker";
 import { NotificationRow } from "@/components/notifications/NotificationRow";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
-import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
+import { TabScreenHeader } from "@/components/TabScreenHeader";
 import { dismissPresentedSocialPushNotifications } from "@/lib/pushNotifications";
 import { subscribeNotificationRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { usePagerListScroll } from "@/lib/usePagerListScroll";
 
 const TABS = NOTIFICATION_CATEGORY_TABS;
 
@@ -50,8 +52,15 @@ const EMPTY_NOTIFICATIONS: NotificationDto[] = [];
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const { renderScrollComponents, setActivePane } = usePagerListScroll(1);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [searchTagId, setSearchTagId] = useState<string>(SEARCH_SUGGESTION_TAGS.notifications[0].id);
+  const holdSearchFocusRef = useRef<(() => void) | null>(null);
+  const [searchDismissEpoch, setSearchDismissEpoch] = useState(0);
+  const bumpSearchDismiss = useCallback(() => {
+    setSearchDismissEpoch((n) => n + 1);
+  }, []);
   const [filterOpen, setFilterOpen] = useState(false);
   const { closeMenu } = useHamburgerMenu();
   const [activeTab, setActiveTab] = useState(0);
@@ -116,6 +125,14 @@ export default function NotificationsScreen() {
     });
   }, [refetch]);
 
+  const syncNotificationsPane = useCallback(() => {
+    setActivePane(0);
+  }, [setActivePane]);
+  useEffect(() => {
+    syncNotificationsPane();
+  }, [syncNotificationsPane]);
+  useFocusEffect(syncNotificationsPane);
+
   const handleRefresh = useCallback(async () => {
     if (isPullRefreshing) return;
     setIsPullRefreshing(true);
@@ -171,19 +188,26 @@ export default function NotificationsScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
-        <TabScreenSearchHeader
-          title="Уведомления"
-          placeholder="Поиск по уведомлениям"
-          value={search}
-          onChangeText={(value) => {
-            setSearch(value);
-            if (value.trim().length > 0) setFilterOpen(false);
-          }}
-          onBeforeMenuOpen={() => setFilterOpen(false)}
-        />
-
-        <View style={styles.navigationRow}>
+      <TabScreenHeader
+        title="Уведомления"
+        placeholder="Поиск по уведомлениям"
+        value={search}
+        onChangeText={(value) => {
+          setSearch(value);
+          if (value.trim().length > 0) setFilterOpen(false);
+        }}
+        dismissKey={`${activeTab}:${searchDismissEpoch}`}
+        onBeforeMenuOpen={() => setFilterOpen(false)}
+        onSearchActiveChange={(active) => {
+          if (active) setFilterOpen(false);
+        }}
+        holdSearchFocusRef={holdSearchFocusRef}
+        searchTags={SEARCH_SUGGESTION_TAGS.notifications}
+        searchTagId={searchTagId}
+        onSearchTagIdChange={setSearchTagId}
+        idleMode="custom"
+        idle={
+          <View style={styles.navigationRow}>
             <NotificationCategoryPicker
               activeTab={activeTab}
               open={filterOpen}
@@ -203,8 +227,9 @@ export default function NotificationsScreen() {
               <Text style={styles.clearBtnText}>Очистить</Text>
               <Ionicons name="close" size={16} color={floraColors.greenLight} />
             </Pressable>
-        </View>
-      </View>
+          </View>
+        }
+      />
 
       {items.length === 0 ? (
         <View style={styles.listFlex}>{listEmptyContent}</View>
@@ -214,6 +239,11 @@ export default function NotificationsScreen() {
           keyExtractor={(item) => item.notificationUuid}
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={bumpSearchDismiss}
+          nestedScrollEnabled={false}
+          scrollEventThrottle={16}
+          renderScrollComponent={renderScrollComponents[0]}
           refreshControl={
             <RefreshControl
               refreshing={isPullRefreshing}
@@ -276,15 +306,6 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
-  topBlock: {
-    backgroundColor: floraColors.bg,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
-    borderBottomWidth: 1,
-    paddingHorizontal: floraSpacing.grid,
-    paddingBottom: 0,
-    gap: 13,
-    overflow: "visible",
-  },
   navigationRow: {
     flexDirection: "row",
     alignItems: "flex-end",

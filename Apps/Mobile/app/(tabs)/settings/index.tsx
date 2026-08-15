@@ -20,7 +20,6 @@ import {
   Pressable as GesturePressable,
   ScrollView as GestureScrollView,
 } from "react-native-gesture-handler";
-import { LinearGradient } from "expo-linear-gradient";
 import Reanimated, {
   cancelAnimation,
   Extrapolation,
@@ -28,11 +27,18 @@ import Reanimated, {
   runOnJS,
   runOnUI,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withDecay,
-  type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  FloraTabLabel,
+  FloraTabStripEdgeFades,
+  floraTabChrome,
+  floraTabIndicatorHidden,
+  floraTabIndicatorTransform,
+} from "@/components/chrome/FloraTabLabel";
 import { AccountSettingsTab } from "@/components/settings/AccountSettingsTab";
 import { CustomizationSettingsTab } from "@/components/settings/CustomizationSettingsTab";
 import { FeedSettingsTab } from "@/components/settings/FeedSettingsTab";
@@ -44,7 +50,7 @@ import {
   type SettingsConfirmKind,
 } from "@/components/settings/SettingsConfirmModal";
 import { UpdatesSettingsTab } from "@/components/settings/UpdatesSettingsTab";
-import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { TabScreenHeader } from "@/components/TabScreenHeader";
 import {
   ENERGETIC_OPEN_EASING,
   ENERGETIC_OPEN_MS,
@@ -60,7 +66,7 @@ import {
   nextMountCandidate,
   reconcileMountedIds,
 } from "@/lib/settingsMountedSections";
-import { floraColors, floraSpacing, floraTabBarContentPadding, floraTabFilter } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useSettingsDraftStore } from "@/stores/settingsDraftStore";
 
@@ -74,12 +80,6 @@ const CHIP_DECAY_MIN_VX = 320;
 const STRIP_MODE_FOLLOW = 0;
 const STRIP_MODE_FREE = 1;
 const TABS_PAD_X = floraSpacing.grid;
-/**
- * База ширины индикатора: реальная ширина — через scaleX (transform), а не
- * width. Анимация width — layout-свойство: commit shadow-дерева + Yoga на
- * каждом кадре свайпа. При высоте 2px деформация скруглений не различима.
- */
-const TAB_INDICATOR_BASE_W = 120;
 /** Прогрев дальней секции — только после такой паузы во взаимодействии. */
 const WARMUP_QUIET_MS = 400;
 /** Зазор между шагами прогрева: маунт и его async-догрузки успевают осесть. */
@@ -152,47 +152,6 @@ function buildTabsChromeMotion(
   };
 }
 
-const SettingsSectionTabLabel = memo(function SettingsSectionTabLabel({
-  index,
-  label,
-  scrollX,
-  pageWidth,
-  pageCount,
-}: {
-  index: number;
-  label: string;
-  scrollX: SharedValue<number>;
-  pageWidth: number;
-  pageCount: number;
-}) {
-  /**
-   * Кроссфейд серый↔зелёный — двумя слоями текста через opacity. Анимация
-   * color текста на Fabric — это UPDATE_STATE-коммит Paragraph (клон
-   * shadow-узла + перемер текста) на каждое touch-событие свайпа: в трейсе
-   * это ~8–10 мс UI-потока на MOVE при бюджете кадра 8.3 мс (120 Гц).
-   * Opacity применяется в view напрямую без коммита; green-over-gray с
-   * альфой a = a·green + (1−a)·gray — та же линейная интерполяция цвета.
-   */
-  const overlayStyle = useAnimatedStyle(() => {
-    if (pageWidth <= 0 || pageCount <= 0) return { opacity: 0 };
-    if (pageCount === 1) return { opacity: 1 };
-    const distance = Math.abs(scrollX.value / pageWidth - index);
-    return { opacity: distance >= 1 ? 0 : 1 - distance };
-  });
-
-  return (
-    <View>
-      <Text style={styles.tabLabel}>{label}</Text>
-      <Reanimated.Text
-        pointerEvents="none"
-        style={[styles.tabLabel, styles.tabLabelActive, overlayStyle]}
-      >
-        {label}
-      </Reanimated.Text>
-    </View>
-  );
-});
-
 type SettingsSectionId =
   | "account"
   | "privacy"
@@ -208,11 +167,6 @@ type SettingsSection = {
   description: string;
   keywords: readonly string[];
 };
-
-/** Ширина фейда по краям горизонтальных подвкладок. */
-const SECTION_TABS_EDGE_FADE = floraSpacing.grid;
-const SECTION_TABS_FADE_SOLID = floraColors.bg;
-const SECTION_TABS_FADE_CLEAR = "rgba(12, 12, 12, 0)";
 
 const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
@@ -515,6 +469,10 @@ export default function SettingsScreen() {
   const stripHandoffSV = useSharedValue(0);
   const inputRangeSV = useSharedValue<number[]>([0, 1]);
   const typicalOffsetsSV = useSharedValue<number[]>([0, 0]);
+  const tabProgress = useDerivedValue(() => {
+    const w = pageWidthSV.value;
+    return w > 0 ? scrollX.value / w : 0;
+  });
 
   const hasSearch = normalizeSearch(search).length > 0;
   const visibleSections = useMemo(() => {
@@ -885,37 +843,22 @@ export default function SettingsScreen() {
     return { transform: [{ translateX: -stripOffsetSV.value }] };
   });
 
-  const tabsFadeLeftStyle = useAnimatedStyle(() => {
-    let offset = stripOffsetSV.value;
+  const stripFadeOffset = useDerivedValue(() => {
     if (stripModeSV.value === STRIP_MODE_FOLLOW) {
       const input = inputRangeSV.value;
       const typical = typicalOffsetsSV.value;
       if (input.length >= 2 && typical.length === input.length) {
-        offset = interpolate(scrollX.value, input, typical, Extrapolation.CLAMP);
+        return interpolate(scrollX.value, input, typical, Extrapolation.CLAMP);
       }
     }
-    return { opacity: offset > 1 ? 1 : 0 };
-  });
-
-  const tabsFadeRightStyle = useAnimatedStyle(() => {
-    let offset = stripOffsetSV.value;
-    if (stripModeSV.value === STRIP_MODE_FOLLOW) {
-      const input = inputRangeSV.value;
-      const typical = typicalOffsetsSV.value;
-      if (input.length >= 2 && typical.length === input.length) {
-        offset = interpolate(scrollX.value, input, typical, Extrapolation.CLAMP);
-      }
-    }
-    return {
-      opacity: maxStripOffsetSV.value > 1 && offset < maxStripOffsetSV.value - 1 ? 1 : 0,
-    };
+    return stripOffsetSV.value;
   });
 
   // Только transform/opacity — ни одного layout-свойства на кадр свайпа.
   // scaleX вокруг центра: левый край = translateX + (BASE - w) / 2.
   const tabIndicatorStyle = useAnimatedStyle(() => {
     if (!tabsChrome.ready) {
-      return { opacity: 0, transform: [{ translateX: 0 }, { scaleX: 0 }] };
+      return floraTabIndicatorHidden();
     }
     const width = interpolate(
       scrollX.value,
@@ -929,13 +872,7 @@ export default function SettingsScreen() {
       tabsChrome.indicatorX,
       Extrapolation.CLAMP,
     );
-    return {
-      opacity: 1,
-      transform: [
-        { translateX: left - (TAB_INDICATOR_BASE_W - width) / 2 },
-        { scaleX: width / TAB_INDICATOR_BASE_W },
-      ],
-    };
+    return floraTabIndicatorTransform(left, width);
   });
 
   const chipStripPan = useMemo(
@@ -1158,23 +1095,22 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
-        <TabScreenSearchHeader
-          title="Настройки"
-          searchEnabled={false}
-          discardAction={{
-            accessibilityLabel: "Сбросить изменения",
-            onPress: onRequestDiscardSettings,
-            disabled: !settingsDirty || settingsSaving,
-          }}
-          saveAction={{
-            accessibilityLabel: "Сохранить настройки",
-            onPress: onRequestSaveSettings,
-            disabled: !settingsDirty || settingsSaving,
-            busy: settingsSaving,
-          }}
-        />
-      </View>
+      <TabScreenHeader
+        title="Настройки"
+        searchEnabled={false}
+        chromeBorder={false}
+        discardAction={{
+          accessibilityLabel: "Сбросить изменения",
+          onPress: onRequestDiscardSettings,
+          disabled: !settingsDirty || settingsSaving,
+        }}
+        saveAction={{
+          accessibilityLabel: "Сохранить настройки",
+          onPress: onRequestSaveSettings,
+          disabled: !settingsDirty || settingsSaving,
+          busy: settingsSaving,
+        }}
+      />
 
       <SettingsConfirmModal
         visible={confirmKind !== null}
@@ -1210,7 +1146,7 @@ export default function SettingsScreen() {
                   {tabsChrome.ready ? (
                     <Reanimated.View
                       pointerEvents="none"
-                      style={[styles.tabIndicator, tabIndicatorStyle]}
+                      style={[floraTabChrome.tabIndicator, tabIndicatorStyle]}
                     />
                   ) : null}
                   {visibleSections.map((item, index) => {
@@ -1220,39 +1156,18 @@ export default function SettingsScreen() {
                         key={item.id}
                         accessibilityRole="tab"
                         accessibilityState={{ selected }}
-                        style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
+                        style={floraTabChrome.tabButton}
                         onLayout={(event) => recordTabLayout(item.id, event)}
                         onPress={() => switchSection(item.id)}
                       >
-                        <SettingsSectionTabLabel
-                          index={index}
-                          label={item.label}
-                          scrollX={scrollX}
-                          pageWidth={pageWidth}
-                          pageCount={visibleSections.length}
-                        />
+                        <FloraTabLabel index={index} label={item.label} progress={tabProgress} />
                       </GesturePressable>
                     );
                   })}
                 </View>
               </Reanimated.View>
             </GestureDetector>
-            <Reanimated.View pointerEvents="none" style={[styles.tabsFadeLeft, tabsFadeLeftStyle]}>
-              <LinearGradient
-                colors={[SECTION_TABS_FADE_SOLID, SECTION_TABS_FADE_CLEAR]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={StyleSheet.absoluteFill}
-              />
-            </Reanimated.View>
-            <Reanimated.View pointerEvents="none" style={[styles.tabsFadeRight, tabsFadeRightStyle]}>
-              <LinearGradient
-                colors={[SECTION_TABS_FADE_CLEAR, SECTION_TABS_FADE_SOLID]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={StyleSheet.absoluteFill}
-              />
-            </Reanimated.View>
+            <FloraTabStripEdgeFades offset={stripFadeOffset} maxOffset={maxStripOffsetSV} />
           </View>
 
           <GestureDetector gesture={pagerPan}>
@@ -1299,12 +1214,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: floraColors.bg,
   },
-  topBlock: {
-    backgroundColor: floraColors.bg,
-    paddingHorizontal: floraSpacing.grid,
-    paddingBottom: floraSpacing.gridFine,
-    gap: 13,
-  },
   pagerShell: {
     flex: 1,
   },
@@ -1327,56 +1236,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     overflow: "visible",
-  },
-  tabsFadeLeft: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: SECTION_TABS_EDGE_FADE,
-    zIndex: 3,
-  },
-  tabsFadeRight: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: SECTION_TABS_EDGE_FADE,
-    zIndex: 3,
-  },
-  tabButton: {
-    height: floraTabFilter.triggerHeight,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  tabPressed: {
-    opacity: 0.72,
-  },
-  tabLabel: {
-    color: floraColors.gray,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: floraTabFilter.triggerLabelLineHeight,
-  },
-  /** Зелёный слой кроссфейда поверх серого: одинаковая типографика, только цвет. */
-  tabLabelActive: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    color: floraColors.greenLight,
-  },
-  tabIndicator: {
-    position: "absolute",
-    left: 0,
-    bottom: 0,
-    width: TAB_INDICATOR_BASE_W,
-    height: floraTabFilter.indicatorHeight,
-    borderRadius: 999,
-    backgroundColor: floraColors.greenLight,
-    zIndex: 2,
   },
   pagerBody: {
     flex: 1,

@@ -41,3 +41,30 @@ export function ChromeMoreIcon({ size = 24, color }: Props) {
     </Svg>
   );
 }
+
+/**
+ * Сохранённый поиск: галочка, уже зеркальная по X.
+ * Правый штрих чуть длиннее стандартного stem, с зазором до лупы.
+ */
+export function ChromeSearchSavedCheck({ size = 13, color }: Props) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path
+        d="M14 18L4 6"
+        fill="none"
+        stroke={color}
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M14 18L20.5 11.5"
+        fill="none"
+        stroke={color}
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}

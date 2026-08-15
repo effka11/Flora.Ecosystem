@@ -39,12 +39,11 @@ import {
   AppState,
   BackHandler,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
+import { RefreshControl } from "react-native-gesture-handler";
 import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
@@ -63,7 +62,8 @@ import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { TabDropdownPicker, type TabDropdownOption } from "@/components/TabDropdownPicker";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
-import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
+import { TabScreenHeader } from "@/components/TabScreenHeader";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
 import {
   clearTemporaryMute,
@@ -73,6 +73,8 @@ import {
 } from "@/lib/conversationTemporaryMute";
 import { mapGroupListItem, mergeGroupListRefresh } from "@/lib/groupChatMap";
 import { groupSortAt, type GroupChat } from "@/lib/groupChatTypes";
+import { imeStableWindowWidth } from "@/lib/imeVisible";
+import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { openGroupChat } from "@/lib/openGroupChat";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
@@ -208,6 +210,12 @@ export default function MessagesScreen() {
   const retryPendingOperation = useFscpStore((s) => s.retryPendingOperation);
 
   const [search, setSearch] = useState("");
+  const [searchTagId, setSearchTagId] = useState<string>(SEARCH_SUGGESTION_TAGS.messages[0].id);
+  const holdSearchFocusRef = useRef<(() => void) | null>(null);
+  const [searchDismissEpoch, setSearchDismissEpoch] = useState(0);
+  const bumpSearchDismiss = useCallback(() => {
+    setSearchDismissEpoch((n) => n + 1);
+  }, []);
   const [sortOpen, setSortOpen] = useState(false);
   const { closeMenu } = useHamburgerMenu();
   const [sortBy, setSortBy] = useState<SortBy>("recent");
@@ -215,9 +223,8 @@ export default function MessagesScreen() {
   const folderPagerRef = useRef<MessagesFolderPagerHandle>(null);
   const createAnchorRef = useRef<View>(null);
   const selectionMoreAnchorRef = useRef<View>(null);
-  const { width: windowWidth } = useWindowDimensions();
   const folderScrollX = useSharedValue(0);
-  const folderPageWidthSV = useSharedValue(windowWidth);
+  const folderPageWidthSV = useSharedValue(imeStableWindowWidth());
   /** Тап с иконки N обратно в «все» — fade chrome на N, без проезда по промежуточным. */
   const folderReturnFromPageSV = useSharedValue(0);
   const folderReturnProgressSV = useSharedValue(0);
@@ -388,10 +395,6 @@ export default function MessagesScreen() {
     () => chatListFolderPageIds(visibleFolders),
     [visibleFolders],
   );
-
-  useEffect(() => {
-    folderPageWidthSV.value = windowWidth;
-  }, [folderPageWidthSV, windowWidth]);
 
   const folderPagerScroll = useMemo(
     () => ({
@@ -856,57 +859,64 @@ export default function MessagesScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
-        <TabScreenSearchHeader
-          title="Сообщения"
-          placeholder="Поиск чатов и сообщений"
-          value={search}
-          onChangeText={(value) => {
-            setSearch(value);
-            closeDropdowns();
-          }}
-          onBeforeMenuOpen={closeDropdowns}
-          createAction={{
-            accessibilityLabel: "Создать папку или группу",
-            anchorRef: createAnchorRef,
-            onPress: () => {
-              setSortOpen(false);
-              closeMenu();
-              setCreateMenuOpen(true);
-            },
-          }}
-          selectionChrome={
-            selectionMode
-              ? {
-                  selectedCount: selectedConversationUuids?.size ?? 0,
-                  onClose: clearConversationSelect,
-                  moreAction: {
-                    accessibilityLabel: "Действия с выбранными",
-                    anchorRef: selectionMoreAnchorRef,
-                    onPress: () => {
-                      setSortOpen(false);
-                      closeMenu();
-                      setCreateMenuOpen(false);
-                      setSelectionMenuOpen(true);
-                    },
+      <TabScreenHeader
+        title="Сообщения"
+        placeholder="Поиск чатов и сообщений"
+        value={search}
+        onChangeText={(value) => {
+          setSearch(value);
+          closeDropdowns();
+        }}
+        dismissKey={`${activeFolder}:${searchDismissEpoch}`}
+        onBeforeMenuOpen={closeDropdowns}
+        onSearchActiveChange={(active) => {
+          if (active) closeDropdowns();
+        }}
+        holdSearchFocusRef={holdSearchFocusRef}
+        createAction={{
+          accessibilityLabel: "Создать папку или группу",
+          anchorRef: createAnchorRef,
+          onPress: () => {
+            setSortOpen(false);
+            closeMenu();
+            setCreateMenuOpen(true);
+          },
+        }}
+        selectionChrome={
+          selectionMode
+            ? {
+                selectedCount: selectedConversationUuids?.size ?? 0,
+                onClose: clearConversationSelect,
+                moreAction: {
+                  accessibilityLabel: "Действия с выбранными",
+                  anchorRef: selectionMoreAnchorRef,
+                  onPress: () => {
+                    setSortOpen(false);
+                    closeMenu();
+                    setCreateMenuOpen(false);
+                    setSelectionMenuOpen(true);
                   },
-                }
-              : undefined
-          }
-        />
-
-        {banner ? (
-          <View style={styles.banner}>
-            <Text style={styles.bannerText}>{banner.text}</Text>
-            {banner.action ? (
-              <Pressable onPress={onBannerAction}>
-                <Text style={styles.bannerAction}>{banner.action}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-
-        {!hasSearch ? (
+                },
+              }
+            : undefined
+        }
+        searchTags={SEARCH_SUGGESTION_TAGS.messages}
+        searchTagId={searchTagId}
+        onSearchTagIdChange={setSearchTagId}
+        idleMode="custom"
+        extraBeforeSwap={
+          banner ? (
+            <View style={styles.banner}>
+              <Text style={styles.bannerText}>{banner.text}</Text>
+              {banner.action ? (
+                <Pressable onPress={onBannerAction}>
+                  <Text style={styles.bannerAction}>{banner.action}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null
+        }
+        idle={
           <View style={styles.navigationRow}>
             <TabDropdownPicker
               accessibilityLabel="Сортировка"
@@ -932,8 +942,8 @@ export default function MessagesScreen() {
               }}
             />
           </View>
-        ) : null}
-      </View>
+        }
+      />
 
       <ConversationMoreMenu
         open={selectionMenuOpen}
@@ -994,90 +1004,97 @@ export default function MessagesScreen() {
         </Pressable>
       </DropdownMenuOverlay>
 
-      {hasSearch ? (
-        <FlashList
-          style={styles.list}
-          data={searchListData}
-          keyExtractor={(item) =>
-            item.kind === "groupChat"
-              ? `g:${item.group.conversationUuid}`
-              : item.item.conversationUuid
-          }
-          contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled={false}
-          overScrollMode="auto"
-          refreshControl={
-            <RefreshControl
-              refreshing={pullRefreshing}
-              onRefresh={onPullRefresh}
-              tintColor={floraColors.greenLight}
+      <View style={styles.body}>
+        <View style={styles.pagerHost} pointerEvents={hasSearch ? "none" : "auto"}>
+          <MessagesFolderPager
+            ref={folderPagerRef}
+            pages={folderPages}
+            activeFolder={activeFolder}
+            onActiveFolderChange={setListFolder}
+            scrollX={folderScrollX}
+            pageWidthSV={folderPageWidthSV}
+            returnFromPageSV={folderReturnFromPageSV}
+            returnProgressSV={folderReturnProgressSV}
+            dataByPage={dataByPage}
+            listPaddingBottom={listPaddingBottom}
+            refreshing={pullRefreshing}
+            onRefresh={onPullRefresh}
+            loading={query.isLoading}
+            error={query.isError}
+            emptyMessage={(folder) => emptyListMessage(false, items.length + groupChats.length, folder)}
+            selectionMode={selectionMode}
+            selectedConversationUuids={selectedConversationUuids ?? EMPTY_SELECTED}
+            onEnterSelect={enterConversationSelect}
+            onToggleSelect={toggleConversationSelect}
+            onPanStart={bumpSearchDismiss}
+          />
+        </View>
+        {hasSearch ? (
+          <View style={styles.searchOverlay}>
+            <FlashList
+              data={searchListData}
+              keyExtractor={(item) =>
+                item.kind === "groupChat"
+                  ? `g:${item.group.conversationUuid}`
+                  : item.item.conversationUuid
+              }
+              contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={false}
+              keyboardDismissMode="on-drag"
+              onScrollBeginDrag={bumpSearchDismiss}
+              renderScrollComponent={PagerOverlayScroll}
+              refreshControl={
+                <RefreshControl
+                  refreshing={pullRefreshing}
+                  onRefresh={onPullRefresh}
+                  tintColor={floraColors.greenLight}
+                />
+              }
+              extraData={`${selectionMode ? "1" : "0"}|${[...(selectedConversationUuids ?? EMPTY_SELECTED)].join(",")}`}
+              renderItem={({ item }) => {
+                const uuid =
+                  item.kind === "groupChat"
+                    ? item.group.conversationUuid
+                    : item.item.conversationUuid;
+                const selected = selectedConversationUuids?.has(uuid) ?? false;
+                return item.kind === "groupChat" ? (
+                  <GroupConversationListRow
+                    group={item.group}
+                    preview={item.preview}
+                    selectionMode={selectionMode}
+                    selected={selected}
+                    onEnterSelect={() => enterConversationSelect(uuid)}
+                    onToggleSelect={() => toggleConversationSelect(uuid)}
+                  />
+                ) : (
+                  <ConversationListRow
+                    item={item.item}
+                    selectionMode={selectionMode}
+                    selected={selected}
+                    onEnterSelect={() => enterConversationSelect(uuid)}
+                    onToggleSelect={() => toggleConversationSelect(uuid)}
+                  />
+                );
+              }}
+              ListEmptyComponent={
+                query.isLoading ? (
+                  <View style={styles.loading}>
+                    <ActivityIndicator color={floraColors.greenLight} />
+                    <Text style={styles.emptyHint}>Загрузка чатов…</Text>
+                  </View>
+                ) : query.isError ? (
+                  <Text style={styles.emptyHint}>Не удалось загрузить чаты.</Text>
+                ) : (
+                  <Text style={styles.emptyHint}>
+                    {emptyListMessage(true, items.length, activeFolder)}
+                  </Text>
+                )
+              }
             />
-          }
-          extraData={`${selectionMode ? "1" : "0"}|${[...(selectedConversationUuids ?? EMPTY_SELECTED)].join(",")}`}
-          renderItem={({ item }) => {
-            const uuid =
-              item.kind === "groupChat"
-                ? item.group.conversationUuid
-                : item.item.conversationUuid;
-            const selected = selectedConversationUuids?.has(uuid) ?? false;
-            return item.kind === "groupChat" ? (
-              <GroupConversationListRow
-                group={item.group}
-                preview={item.preview}
-                selectionMode={selectionMode}
-                selected={selected}
-                onEnterSelect={() => enterConversationSelect(uuid)}
-                onToggleSelect={() => toggleConversationSelect(uuid)}
-              />
-            ) : (
-              <ConversationListRow
-                item={item.item}
-                selectionMode={selectionMode}
-                selected={selected}
-                onEnterSelect={() => enterConversationSelect(uuid)}
-                onToggleSelect={() => toggleConversationSelect(uuid)}
-              />
-            );
-          }}
-          ListEmptyComponent={
-            query.isLoading ? (
-              <View style={styles.loading}>
-                <ActivityIndicator color={floraColors.greenLight} />
-                <Text style={styles.emptyHint}>Загрузка чатов…</Text>
-              </View>
-            ) : query.isError ? (
-              <Text style={styles.emptyHint}>Не удалось загрузить чаты.</Text>
-            ) : (
-              <Text style={styles.emptyHint}>
-                {emptyListMessage(true, items.length, activeFolder)}
-              </Text>
-            )
-          }
-        />
-      ) : (
-        <MessagesFolderPager
-          ref={folderPagerRef}
-          pages={folderPages}
-          activeFolder={activeFolder}
-          onActiveFolderChange={setListFolder}
-          scrollX={folderScrollX}
-          pageWidthSV={folderPageWidthSV}
-          returnFromPageSV={folderReturnFromPageSV}
-          returnProgressSV={folderReturnProgressSV}
-          dataByPage={dataByPage}
-          listPaddingBottom={listPaddingBottom}
-          refreshing={pullRefreshing}
-          onRefresh={onPullRefresh}
-          loading={query.isLoading}
-          error={query.isError}
-          emptyMessage={(folder) => emptyListMessage(false, items.length + groupChats.length, folder)}
-          selectionMode={selectionMode}
-          selectedConversationUuids={selectedConversationUuids ?? EMPTY_SELECTED}
-          onEnterSelect={enterConversationSelect}
-          onToggleSelect={toggleConversationSelect}
-        />
-      )}
+          </View>
+        ) : null}
+      </View>
 
       <CreateChatFolderSheet
         visible={createFolderOpen}
@@ -1126,14 +1143,17 @@ export default function MessagesScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
-  topBlock: {
+  body: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  pagerHost: {
+    flex: 1,
+  },
+  searchOverlay: {
+    ...StyleSheet.absoluteFill,
     backgroundColor: floraColors.bg,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
-    borderBottomWidth: 1,
-    paddingHorizontal: floraSpacing.grid,
-    paddingBottom: 0,
-    gap: 13,
-    overflow: "visible",
+    zIndex: 1,
   },
   banner: {
     backgroundColor: "rgba(255, 180, 60, 0.12)",
@@ -1199,9 +1219,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "400",
     letterSpacing: 0.42,
-  },
-  list: {
-    flex: 1,
   },
   listContent: {},
   loading: {
