@@ -15,12 +15,11 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
+import { ScrollView, TextInput } from "react-native-gesture-handler";
 import { MusicTrackRow } from "@/components/music/MusicTrackRow";
 import {
   MUSIC_DEFAULT_COVER_ID,
@@ -145,7 +144,13 @@ export function MusicGenresCarousel() {
   return (
     <View style={styles.section}>
       <SectionHeader title="Жанры" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled={false}
+        overScrollMode="never"
+        contentContainerStyle={styles.horizontalList}
+      >
         {MUSIC_GENRES.map((genre) => (
           <Pressable
             key={genre.id}
@@ -193,7 +198,13 @@ export function MusicPlaylistsCarousel({
   return (
     <View style={styles.section}>
       <SectionHeader title="Плейлисты" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled={false}
+        overScrollMode="never"
+        contentContainerStyle={styles.horizontalList}
+      >
         <Pressable
           style={({ pressed }) => [styles.playlistCard, styles.createCard, pressed && styles.pressed]}
           onPress={() => setCreating((value) => !value)}
@@ -285,7 +296,13 @@ export function MusicTracksList({
   );
 }
 
-export function MusicSearchResults({ query }: { query: string }) {
+export function MusicSearchResults({
+  query,
+  onScrollBeginDrag,
+}: {
+  query: string;
+  onScrollBeginDrag?: () => void;
+}) {
   const q = query.trim();
   const searchQuery = useQuery({
     queryKey: ["music", "search", q],
@@ -311,7 +328,14 @@ export function MusicSearchResults({ query }: { query: string }) {
   const foundTracks = searchQuery.data ?? [];
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      nestedScrollEnabled={false}
+      overScrollMode="never"
+      keyboardDismissMode="on-drag"
+      onScrollBeginDrag={onScrollBeginDrag}
+    >
       {foundTracks.length > 0 ? (
         <MusicTracksList title="Треки" tracks={foundTracks} sourceId="search" />
       ) : (
@@ -326,11 +350,13 @@ export function MyMusicSection({
   playlists,
   refreshing,
   onRefresh,
+  overScrollMode = "auto",
 }: {
   tracks: MusicTrackItem[];
   playlists: PlaylistItem[];
   refreshing?: boolean;
   onRefresh: () => void;
+  overScrollMode?: "auto" | "never";
 }) {
   const queryClient = useQueryClient();
 
@@ -341,7 +367,12 @@ export function MyMusicSection({
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      nestedScrollEnabled={false}
+      overScrollMode={overScrollMode}
+    >
       {refreshing ? <ActivityIndicator color={floraColors.greenLight} style={styles.loader} /> : null}
       <MusicPlaylistsCarousel playlists={playlists} onCreated={onRefresh} />
       <MusicTracksList title="Моя музыка" tracks={tracks} sourceId="library" onDelete={deleteTrack} />
@@ -349,9 +380,18 @@ export function MyMusicSection({
   );
 }
 
-export function RecommendationsSection() {
+export function RecommendationsSection({
+  overScrollMode = "auto",
+}: {
+  overScrollMode?: "auto" | "never";
+}) {
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      nestedScrollEnabled={false}
+      overScrollMode={overScrollMode}
+    >
       <MusicFlowCard />
       <MusicGenresCarousel />
     </ScrollView>
@@ -582,7 +622,11 @@ export function AddTrackSection({
   onUploaded: () => void;
 }) {
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      nestedScrollEnabled={false}
+    >
       {uploadMode === "forSelf" ? (
         <MusicUploadForSelfForm onUploaded={onUploaded} />
       ) : (
@@ -653,7 +697,13 @@ function ChipPicker<T extends string>({
   onSelect: (id: T) => void;
 }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      nestedScrollEnabled={false}
+      overScrollMode="never"
+      contentContainerStyle={styles.chips}
+    >
       {items.map((item) => {
         const selected = item.id === activeId;
         return (

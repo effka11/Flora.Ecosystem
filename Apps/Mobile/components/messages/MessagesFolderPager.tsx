@@ -2,6 +2,7 @@ import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { ChatListFolderId } from "@flora/client-core/messaging";
 import { chatListFolderPageIndex } from "@flora/client-core/messaging";
 import { FlashList } from "@shopify/flash-list";
+import { useFocusEffect } from "expo-router/react-navigation";
 import {
   forwardRef,
   memo,
@@ -10,27 +11,30 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
+  type ComponentType,
 } from "react";
 import {
   ActivityIndicator,
-  RefreshControl,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
+  type LayoutChangeEvent,
+  type ScrollViewProps,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Reanimated, {
+import { Gesture, RefreshControl } from "react-native-gesture-handler";
+import {
   cancelAnimation,
   runOnJS,
   runOnUI,
-  useAnimatedStyle,
   useSharedValue,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
+import { TabPagerPage, TabPagerTrack } from "@/components/chrome/TabPager";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
 import { GroupConversationListRow } from "@/components/messages/GroupConversationListRow";
+import { MAX_PAGER_PAGES } from "@/components/messages/messagesFolderPagerScroll";
 import type { GroupChat } from "@/lib/groupChatTypes";
 import {
   ENERGETIC_OPEN_EASING,
@@ -38,10 +42,14 @@ import {
   settleEnergetic,
   snapPagerOffset,
 } from "@/lib/energeticSettle";
+import { nextFeedPageWidth } from "@/lib/feedImageGeometry";
+import { imeStableWindowWidth, isImeVisible } from "@/lib/imeVisible";
 import { floraColors, floraSpacing } from "@/lib/theme";
+import { useDeferredPagerMount } from "@/lib/useDeferredPagerMount";
+import { usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
+import { usePagerListScroll } from "@/lib/usePagerListScroll";
+import { PAGER_AXIS_PX } from "@/lib/useTabPager";
 
-/** Как SWIPE_AXIS_PX у drawer / feed pager — не перехватывать вертикальный скролл. */
-const PAGER_AXIS_PX = 10;
 export type MessagesFolderConversationRow = MsgConversationDto & { preview: string };
 
 export type MessagesFolderListRow =
@@ -74,6 +82,8 @@ type Props = {
   selectedConversationUuids: ReadonlySet<string>;
   onEnterSelect: (conversationUuid: string) => void;
   onToggleSelect: (conversationUuid: string) => void;
+  /** Начало горизонтального pan — закрыть поиск в шапке. */
+  onPanStart?: () => void;
 };
 
 type PageListProps = {
@@ -90,8 +100,10 @@ type PageListProps = {
   selectedConversationUuids: ReadonlySet<string>;
   onEnterSelect: (conversationUuid: string) => void;
   onToggleSelect: (conversationUuid: string) => void;
-  /** Active folder: overScroll `auto` + refreshing; RC stays mounted on all pages. */
+  /** Active folder: refreshing; RC stays mounted on all pages. */
   ptrEnabled: boolean;
+  onScrollBeginDrag?: () => void;
+  renderScrollComponent: ComponentType<ScrollViewProps>;
 };
 
 const FolderPageList = memo(function FolderPageList({
@@ -109,6 +121,8 @@ const FolderPageList = memo(function FolderPageList({
   onEnterSelect,
   onToggleSelect,
   ptrEnabled,
+  onScrollBeginDrag,
+  renderScrollComponent,
 }: PageListProps) {
   const onEnterRef = useRef(onEnterSelect);
   const onToggleRef = useRef(onToggleSelect);
@@ -166,7 +180,7 @@ const FolderPageList = memo(function FolderPageList({
   );
 
   return (
-    <View style={[styles.page, { width: pageWidth }]} collapsable={false}>
+    <TabPagerPage pageWidth={pageWidth}>
       <FlashList
         data={data as MessagesFolderListRow[]}
         keyExtractor={(item) =>
@@ -175,7 +189,10 @@ const FolderPageList = memo(function FolderPageList({
         contentContainerStyle={contentStyle}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled={false}
-        overScrollMode={ptrEnabled ? "auto" : "never"}
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={onScrollBeginDrag}
+        drawDistance={ptrEnabled ? 250 : 0}
+        renderScrollComponent={renderScrollComponent}
         refreshControl={
           <RefreshControl
             refreshing={ptrEnabled && refreshing}
@@ -187,7 +204,7 @@ const FolderPageList = memo(function FolderPageList({
         ListEmptyComponent={listEmpty}
         extraData={`${selectionMode ? "1" : "0"}|${[...selectedConversationUuids].join(",")}`}
       />
-    </View>
+    </TabPagerPage>
   );
 });
 
@@ -212,14 +229,23 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       selectedConversationUuids,
       onEnterSelect,
       onToggleSelect,
+      onPanStart,
     },
     ref,
   ) {
-    const { width: pageWidth } = useWindowDimensions();
+    const [pageWidth, setPageWidth] = useState(imeStableWindowWidth);
     const dragStartX = useSharedValue(0);
     const pageCountSV = useSharedValue(Math.max(1, pages.length));
     /** Последний запрошенный индекс (UI-thread), как цель settle. */
     const targetIndexSV = useSharedValue(0);
+    const { renderScrollComponents, setActivePane } = usePagerListScroll(MAX_PAGER_PAGES);
+    const { mountedIds, setBusy, ensureMounted, onCommitted } = useDeferredPagerMount(pages, 0);
+    const pagerGenRef = useRef(0);
+    const panActivatedRef = useRef(false);
+    const panSetPagerRef = useRef(false);
+    const { reportTouch, reportPager, getEpoch, isBusy } = usePagerBusyFlags(setBusy);
+    const onPanStartRef = useRef(onPanStart);
+    onPanStartRef.current = onPanStart;
 
     const pagesRef = useRef(pages);
     const pagesKey = pages.join("|");
@@ -228,38 +254,45 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
 
     pagesRef.current = pages;
 
+    const onBodyLayout = useCallback((event: LayoutChangeEvent) => {
+      const w = event.nativeEvent.layout.width;
+      setPageWidth((prev) => nextFeedPageWidth(prev, w, isImeVisible()));
+    }, []);
+
+    useEffect(() => {
+      const prev = pageWidthSV.value;
+      pageWidthSV.value = pageWidth;
+      if (prev > 0 && pageWidth > 0 && prev !== pageWidth) {
+        scrollX.value = scrollX.value * (pageWidth / prev);
+      }
+    }, [pageWidth, pageWidthSV, scrollX]);
+
     const jumpToIndex = useCallback(
       (index: number) => {
-        const width = pageWidth;
-        const count = Math.max(1, pagesRef.current.length);
-        const safe = Math.max(0, Math.min(count - 1, index));
-        cancelAnimation(scrollX);
-        cancelAnimation(returnProgressSV);
-        returnFromPageSV.value = 0;
-        returnProgressSV.value = 0;
-        pageWidthSV.value = width;
-        pageCountSV.value = count;
-        targetIndexSV.value = safe;
-        scrollX.value = safe * width;
+        runOnUI((safeIndex: number) => {
+          "worklet";
+          cancelAnimation(scrollX);
+          cancelAnimation(returnProgressSV);
+          returnFromPageSV.value = 0;
+          returnProgressSV.value = 0;
+          const width = pageWidthSV.value;
+          const count = pageCountSV.value;
+          const maxIndex = Math.max(0, count - 1);
+          const safe = Math.max(0, Math.min(maxIndex, safeIndex));
+          targetIndexSV.value = safe;
+          if (width > 0) scrollX.value = safe * width;
+        })(index);
       },
-      [
-        pageCountSV,
-        pageWidth,
-        pageWidthSV,
-        returnFromPageSV,
-        returnProgressSV,
-        scrollX,
-        targetIndexSV,
-      ],
+      [pageCountSV, pageWidthSV, returnFromPageSV, returnProgressSV, scrollX, targetIndexSV],
     );
 
-    // Topology / rotate: sync count+width. If current page folder still exists —
-    // reposition to its index (width change). If Архив (etc.) vanished under the
+    // Topology / rotate: sync count. If current page folder still exists —
+    // reposition to its index. If Архив (etc.) vanished under the
     // finger — soft-clamp offset only; `activeFolder`→selectFolder settles after.
     useEffect(() => {
       const count = Math.max(1, pages.length);
       pageCountSV.value = count;
-      pageWidthSV.value = pageWidth;
+      if (isBusy()) return;
       const target = pagerTargetRef.current;
       if (pages.includes(target)) {
         jumpToIndex(chatListFolderPageIndex(pages, target));
@@ -275,18 +308,41 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
           targetIndexSV.value = Math.max(0, count - 1);
         }
       })();
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- topology / rotate only
-    }, [pageWidth, pagesKey]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- topology only
+    }, [pagesKey]);
 
     const commitPageIndex = useCallback(
       (index: number) => {
         const folder = pagesRef.current[index] ?? "all";
         // Устаревший settle после cancel/быстрых тапов — цель уже другая.
         if (pagerTargetRef.current !== folder) return;
+        setActivePane(index);
         onActiveFolderChange(folder);
+        onCommitted(index);
       },
-      [onActiveFolderChange],
+      [onActiveFolderChange, onCommitted, setActivePane],
     );
+
+    const finishFolderSettle = useCallback(
+      (index: number, finished: boolean, gen: number) => {
+        if (finished !== true) return;
+        if (gen === pagerGenRef.current) {
+          panSetPagerRef.current = false;
+          panActivatedRef.current = false;
+        }
+        reportPager(false, gen);
+        commitPageIndex(index);
+      },
+      [commitPageIndex, reportPager],
+    );
+
+    const syncActivePane = useCallback(() => {
+      setActivePane(chatListFolderPageIndex(pagesRef.current, pagerTargetRef.current));
+    }, [setActivePane]);
+    useEffect(() => {
+      syncActivePane();
+    }, [syncActivePane, pagesKey, activeFolder]);
+    useFocusEffect(syncActivePane);
 
     const clearReturnChrome = useCallback(() => {
       "worklet";
@@ -295,18 +351,8 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       returnProgressSV.value = 0;
     }, [returnFromPageSV, returnProgressSV]);
 
-    const selectFolder = useCallback(
-      (folder: ChatListFolderId) => {
-        // Паритет feed `switchKind`: повтор в ту же цель — no-op.
-        // Иконки/underline уже на UI-thread от scrollX — React state только после settle
-        // (иначе FlashList'ы перерисовываются в середине анимации).
-        if (folder === pagerTargetRef.current) return;
-
-        const pagesNow = pagesRef.current;
-        const prevIndex = chatListFolderPageIndex(pagesNow, pagerTargetRef.current);
-        const nextIndex = chatListFolderPageIndex(pagesNow, folder);
-        pagerTargetRef.current = folder;
-
+    const runSelectFolderSettle = useCallback(
+      (prevIndex: number, nextIndex: number, gen: number) => {
         runOnUI(() => {
           "worklet";
           cancelAnimation(scrollX);
@@ -346,7 +392,7 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
               ENERGETIC_OPEN_MS,
               ENERGETIC_OPEN_EASING,
               (finished) => {
-                if (finished) runOnJS(commitPageIndex)(targetIndex);
+                runOnJS(finishFolderSettle)(targetIndex, finished === true, gen);
               },
             );
             returnProgressSV.value = withTiming(
@@ -382,14 +428,13 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
             ENERGETIC_OPEN_MS,
             ENERGETIC_OPEN_EASING,
             (finished) => {
-              // finished=false при cancel — новый selectFolder/pan уже ведёт.
-              if (finished) runOnJS(commitPageIndex)(targetIndex);
+              runOnJS(finishFolderSettle)(targetIndex, finished === true, gen);
             },
           );
         })();
       },
       [
-        commitPageIndex,
+        finishFolderSettle,
         pageCountSV,
         pageWidthSV,
         returnFromPageSV,
@@ -397,6 +442,47 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
         scrollX,
         targetIndexSV,
       ],
+    );
+
+    const selectFolder = useCallback(
+      (folder: ChatListFolderId) => {
+        // Паритет feed `switchKind`: повтор в ту же цель — no-op.
+        // Иконки/underline уже на UI-thread от scrollX — React state только после settle
+        // (иначе FlashList'ы перерисовываются в середине анимации).
+        if (folder === pagerTargetRef.current) return;
+
+        const pagesNow = pagesRef.current;
+        const prevFolder = pagerTargetRef.current;
+        const prevIndex = chatListFolderPageIndex(pagesNow, prevFolder);
+        const nextIndex = chatListFolderPageIndex(pagesNow, folder);
+        pagerTargetRef.current = folder;
+        const gen = reportPager(true);
+        pagerGenRef.current = gen;
+        onPanStartRef.current?.();
+        const epochAtTap = getEpoch();
+
+        let needsMount = false;
+        const targetId = pagesNow[nextIndex];
+        if (targetId != null) needsMount = ensureMounted(targetId) || needsMount;
+        if (Math.abs(nextIndex - prevIndex) > 1) {
+          const neighborIndex = nextIndex - Math.sign(nextIndex - prevIndex);
+          const neighborId = pagesNow[neighborIndex];
+          if (neighborId != null) needsMount = ensureMounted(neighborId) || needsMount;
+        }
+
+        const go = () => {
+          if (pagerTargetRef.current !== folder) return;
+          if (getEpoch() !== epochAtTap) {
+            pagerTargetRef.current = prevFolder;
+            reportPager(false, gen);
+            return;
+          }
+          runSelectFolderSettle(prevIndex, nextIndex, gen);
+        };
+        if (needsMount) requestAnimationFrame(go);
+        else go();
+      },
+      [ensureMounted, getEpoch, reportPager, runSelectFolderSettle],
     );
 
     useImperativeHandle(ref, () => ({ selectFolder }), [selectFolder]);
@@ -412,16 +498,68 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       pagerTargetRef.current = pagesRef.current[index] ?? "all";
     }, []);
 
+    const beginFolderTouch = useCallback(() => {
+      panActivatedRef.current = false;
+      panSetPagerRef.current = false;
+      reportTouch(true);
+      onPanStartRef.current?.();
+    }, [reportTouch]);
+
+    const endFolderTouch = useCallback(() => {
+      reportTouch(false);
+    }, [reportTouch]);
+
+    const markPanActivated = useCallback(() => {
+      panActivatedRef.current = true;
+    }, []);
+
+    const failPagerIfNeeded = useCallback(() => {
+      if (!panSetPagerRef.current && !panActivatedRef.current) return;
+      panSetPagerRef.current = false;
+      panActivatedRef.current = false;
+      reportPager(false, pagerGenRef.current);
+    }, [reportPager]);
+
+    const beginPanSettle = useCallback(
+      (targetIndex: number, target: number, width: number, velocityX: number) => {
+        panSetPagerRef.current = true;
+        const gen = reportPager(true);
+        pagerGenRef.current = gen;
+        preparePanTarget(targetIndex);
+        runOnUI(() => {
+          "worklet";
+          settleEnergetic(
+            scrollX,
+            target,
+            width,
+            1,
+            velocityX,
+            ENERGETIC_OPEN_MS,
+            ENERGETIC_OPEN_EASING,
+            (finished) => {
+              runOnJS(finishFolderSettle)(targetIndex, finished === true, gen);
+            },
+          );
+        })();
+      },
+      [finishFolderSettle, preparePanTarget, reportPager, scrollX],
+    );
+
     const pagerPan = useMemo(
       () =>
         Gesture.Pan()
           .activeOffsetX([-PAGER_AXIS_PX, PAGER_AXIS_PX])
           .failOffsetY([-PAGER_AXIS_PX * 2, PAGER_AXIS_PX * 2])
+          .onBegin(() => {
+            "worklet";
+            runOnJS(beginFolderTouch)();
+          })
           .onStart(() => {
             "worklet";
             cancelAnimation(scrollX);
             clearReturnChrome();
             dragStartX.value = scrollX.value;
+            runOnJS(markPanActivated)();
           })
           .onUpdate((event) => {
             "worklet";
@@ -442,47 +580,44 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
             const target = snapPagerOffset(scrollX.value, width, count, event.velocityX);
             const targetIndex = Math.round(target / width);
             targetIndexSV.value = targetIndex;
-            runOnJS(preparePanTarget)(targetIndex);
-            settleEnergetic(
-              scrollX,
-              target,
-              width,
-              1,
-              event.velocityX,
-              ENERGETIC_OPEN_MS,
-              ENERGETIC_OPEN_EASING,
-              (finished) => {
-                if (finished) runOnJS(commitPageIndex)(targetIndex);
-              },
-            );
+            runOnJS(beginPanSettle)(targetIndex, target, width, event.velocityX);
+          })
+          .onFinalize((_event, success) => {
+            "worklet";
+            runOnJS(endFolderTouch)();
+            if (!success) runOnJS(failPagerIfNeeded)();
           }),
       [
+        beginFolderTouch,
+        beginPanSettle,
         clearReturnChrome,
-        commitPageIndex,
         dragStartX,
+        endFolderTouch,
+        failPagerIfNeeded,
+        markPanActivated,
         pageCountSV,
         pageWidthSV,
-        preparePanTarget,
         scrollX,
         targetIndexSV,
       ],
     );
 
-    const pagerStyle = useAnimatedStyle(() => ({
-      transform: [{ translateX: -scrollX.value }],
-    }));
+    const pageCount = Math.max(1, pages.length);
 
     return (
-      <View style={styles.body}>
-        <GestureDetector gesture={pagerPan}>
-          <Reanimated.View
-            style={[
-              styles.pagerRow,
-              { width: Math.max(pageWidth, pageWidth * Math.max(pages.length, 1)) },
-              pagerStyle,
-            ]}
-          >
-            {pages.map((folder) => (
+      <View style={styles.body} onLayout={onBodyLayout}>
+        <TabPagerTrack
+          pageCount={pageCount}
+          pageWidth={pageWidth}
+          pagerPan={pagerPan}
+          scrollX={scrollX}
+        >
+          {pages.map((folder, index) => {
+            const scroll = renderScrollComponents[index];
+            if (!mountedIds.has(folder) || scroll == null) {
+              return <TabPagerPage key={folder} pageWidth={pageWidth} />;
+            }
+            return (
               <FolderPageList
                 key={folder}
                 folder={folder}
@@ -499,10 +634,12 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
                 onEnterSelect={onEnterSelect}
                 onToggleSelect={onToggleSelect}
                 ptrEnabled={folder === activeFolder}
+                onScrollBeginDrag={onPanStart}
+                renderScrollComponent={scroll}
               />
-            ))}
-          </Reanimated.View>
-        </GestureDetector>
+            );
+          })}
+        </TabPagerTrack>
       </View>
     );
   },
@@ -512,15 +649,6 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     overflow: "hidden",
-  },
-  pagerRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-  page: {
-    flex: 1,
-    alignSelf: "stretch",
   },
   listContent: {},
   loading: {

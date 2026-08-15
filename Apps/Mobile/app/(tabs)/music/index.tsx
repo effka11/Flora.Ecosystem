@@ -4,39 +4,56 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
   type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from "react-native";
+import { Pressable as GesturePressable } from "react-native-gesture-handler";
+import {
+  cancelAnimation,
+  runOnUI,
+  useSharedValue,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { FloraTabLabel, floraTabChrome } from "@/components/chrome/FloraTabLabel";
+import { FLORA_TAB_STRIP_PAD_X } from "@/components/chrome/FloraTabChipStrip";
+import { TabPagerTrack } from "@/components/chrome/TabPager";
+import {
+  BlendedSearchTabIndicator,
+  SyncIndexTabIndicator,
+  SyncPagerTabIndicator,
+  TabIndicatorBridgeProvider,
+} from "@/components/chrome/tabIndicatorBridge";
 import {
   AddTrackSection,
+  MusicSearchResults,
   MyMusicSection,
   RecommendationsSection,
-  MusicSearchResults,
 } from "@/components/music/MusicSections";
 import {
   MUSIC_UPLOAD_TABS,
-  MusicTabBar,
   type MusicBrowseTab,
   type MusicUploadTab,
 } from "@/components/music/MusicTabBar";
-import { TabScreenSearchHeader } from "@/components/TabScreenSearchHeader";
+import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
+import { TabScreenHeader } from "@/components/TabScreenHeader";
+import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS, settleEnergetic } from "@/lib/energeticSettle";
 import { mapMusicTracksDto, mapPlaylistSummaryDto } from "@/lib/music/musicModels";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
+import { useTabPager } from "@/lib/useTabPager";
 
 type TabLayout = { x: number; width: number };
 
 function browseTabIndex(tab: MusicBrowseTab) {
   return tab === "recommendations" ? 0 : 1;
+}
+
+function uploadTabIndex(tab: MusicUploadTab) {
+  return tab === "forSelf" ? 0 : 1;
 }
 
 type MusicPaneProps = {
@@ -46,19 +63,29 @@ type MusicPaneProps = {
   playlists: ReturnType<typeof mapPlaylistSummaryDto>[];
   refreshing: boolean;
   onRefresh: () => void;
+  overScrollMode: "auto" | "never";
 };
 
-function MusicPane({ tab, pageWidth, tracks, playlists, refreshing, onRefresh }: MusicPaneProps) {
+function MusicPane({
+  tab,
+  pageWidth,
+  tracks,
+  playlists,
+  refreshing,
+  onRefresh,
+  overScrollMode,
+}: MusicPaneProps) {
   return (
     <View style={[styles.page, { width: pageWidth }]}>
       {tab === "recommendations" ? (
-        <RecommendationsSection />
+        <RecommendationsSection overScrollMode={overScrollMode} />
       ) : (
         <MyMusicSection
           tracks={tracks}
           playlists={playlists}
           refreshing={refreshing}
           onRefresh={onRefresh}
+          overScrollMode={overScrollMode}
         />
       )}
     </View>
@@ -67,18 +94,34 @@ function MusicPane({ tab, pageWidth, tracks, playlists, refreshing, onRefresh }:
 
 export default function MusicScreen() {
   const insets = useSafeAreaInsets();
-  const { width: pageWidth } = useWindowDimensions();
   const queryClient = useQueryClient();
-  const pagerRef = useRef<ScrollView>(null);
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const uploadLineProgress = useSharedValue(0);
+  const uploadTabProgress = useSharedValue(0);
 
   const [search, setSearch] = useState("");
+  const [searchTagId, setSearchTagId] = useState<string>(SEARCH_SUGGESTION_TAGS.music[0].id);
+  const holdSearchFocusRef = useRef<(() => void) | null>(null);
+  const [searchDismissEpoch, setSearchDismissEpoch] = useState(0);
+  const bumpSearchDismiss = useCallback(() => {
+    setSearchDismissEpoch((n) => n + 1);
+  }, []);
+  const pagerGenRef = useRef(0);
+  const { reportTouch, reportPager, reportStrip } = usePagerBusyFlags();
+  const chipStripBusy = useMemo(
+    () => bindChipStripBusy(reportTouch, reportStrip, bumpSearchDismiss),
+    [bumpSearchDismiss, reportStrip, reportTouch],
+  );
+  const [searchChromeOpen, setSearchChromeOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<MusicBrowseTab>("recommendations");
   const [addTrackOpen, setAddTrackOpen] = useState(false);
   const [uploadTab, setUploadTab] = useState<MusicUploadTab>("forSelf");
   const [tabLayouts, setTabLayouts] = useState<Record<MusicBrowseTab, TabLayout | null>>({
     recommendations: null,
     myMusic: null,
+  });
+  const [uploadLayouts, setUploadLayouts] = useState<Record<MusicUploadTab, TabLayout | null>>({
+    forSelf: null,
+    forPlatform: null,
   });
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
 
@@ -96,6 +139,7 @@ export default function MusicScreen() {
   const playlists = playlistsQuery.data ?? [];
   const hasSearch = search.trim().length > 0;
   const loading = libraryQuery.isLoading || playlistsQuery.isLoading;
+  const refreshing = libraryQuery.isFetching || playlistsQuery.isFetching;
 
   const refreshMusic = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["music-library"] });
@@ -111,73 +155,68 @@ export default function MusicScreen() {
     });
   }, []);
 
-  const tabIndicatorStyle = useMemo(() => {
-    const recommendations = tabLayouts.recommendations;
-    const myMusic = tabLayouts.myMusic;
-    if (!recommendations || !myMusic || pageWidth <= 0) return null;
+  const recordUploadLayout = useCallback((tab: MusicUploadTab, event: LayoutChangeEvent) => {
+    const { x, width } = event.nativeEvent.layout;
+    setUploadLayouts((prev) => {
+      const existing = prev[tab];
+      if (existing?.x === x && existing?.width === width) return prev;
+      return { ...prev, [tab]: { x, width } };
+    });
+  }, []);
 
-    return {
-      width: scrollX.interpolate({
-        inputRange: [0, pageWidth],
-        outputRange: [recommendations.width, myMusic.width],
-        extrapolate: "clamp",
-      }),
-      transform: [
-        {
-          translateX: scrollX.interpolate({
-            inputRange: [0, pageWidth],
-            outputRange: [recommendations.x, myMusic.x],
-            extrapolate: "clamp",
-          }),
-        },
-      ],
-    };
-  }, [pageWidth, scrollX, tabLayouts.myMusic, tabLayouts.recommendations]);
+  const commitPagerIndex = useCallback((index: number) => {
+    const next: MusicBrowseTab = index === 0 ? "recommendations" : "myMusic";
+    setActiveTab((current) => (current === next ? current : next));
+  }, []);
 
-  const tabLabelColors = useMemo(() => {
-    if (pageWidth <= 0) return null;
-
-    return {
-      recommendations: scrollX.interpolate({
-        inputRange: [0, pageWidth],
-        outputRange: [floraColors.greenLight, floraColors.gray],
-        extrapolate: "clamp",
-      }),
-      myMusic: scrollX.interpolate({
-        inputRange: [0, pageWidth],
-        outputRange: [floraColors.gray, floraColors.greenLight],
-        extrapolate: "clamp",
-      }),
-    };
-  }, [pageWidth, scrollX]);
-
-  const onPagerScroll = useMemo(
-    () =>
-      Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-        useNativeDriver: false,
-      }),
-    [scrollX],
-  );
+  const {
+    scrollX,
+    pageWidth,
+    tabProgress,
+    pagerPan,
+    onBodyLayout,
+    settleToIndex,
+    pagerTargetRef,
+  } = useTabPager({
+    pageCount: 2,
+    enabled: !hasSearch && !searchChromeOpen,
+    initialIndex: browseTabIndex(activeTab),
+    onTouchBegin: () => {
+      bumpSearchDismiss();
+      reportTouch(true);
+    },
+    onTouchEnd: () => reportTouch(false),
+    onPagerStart: () => {
+      pagerGenRef.current = reportPager(true);
+    },
+    onMotionEnd: () => {
+      reportPager(false, pagerGenRef.current);
+    },
+    onCommitIndex: commitPagerIndex,
+  });
 
   const switchTab = useCallback(
     (next: MusicBrowseTab) => {
-      if (next === activeTab) return;
-      setActiveTab(next);
-      pagerRef.current?.scrollTo({
-        x: browseTabIndex(next) * pageWidth,
-        animated: true,
-      });
+      const index = browseTabIndex(next);
+      if (index === pagerTargetRef.current) return;
+      bumpSearchDismiss();
+      settleToIndex(index);
     },
-    [activeTab, pageWidth],
+    [bumpSearchDismiss, pagerTargetRef, settleToIndex],
   );
 
-  const onPagerScrollEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const index = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
-      const next: MusicBrowseTab = index === 0 ? "recommendations" : "myMusic";
-      setActiveTab((current) => (current === next ? current : next));
+  const selectUploadTab = useCallback(
+    (next: MusicUploadTab) => {
+      if (next === uploadTab) return;
+      setUploadTab(next);
+      const index = uploadTabIndex(next);
+      runOnUI((target: number) => {
+        "worklet";
+        cancelAnimation(uploadTabProgress);
+        settleEnergetic(uploadTabProgress, target, 1, 1, 0, ENERGETIC_OPEN_MS, ENERGETIC_OPEN_EASING);
+      })(index);
     },
-    [pageWidth],
+    [uploadTab, uploadTabProgress],
   );
 
   const handleUploaded = () => {
@@ -189,91 +228,91 @@ export default function MusicScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.topBlock, { paddingTop: insets.top + floraSpacing.grid }]}>
-        <TabScreenSearchHeader
-          title="Музыка"
-          placeholder="Поиск по музыке"
-          value={search}
-          onChangeText={setSearch}
-          createAction={{
-            accessibilityLabel: "Добавить трек",
-            onPress: () => setAddTrackOpen(true),
-          }}
-        />
-
-        <View style={styles.navigationRow}>
+      <TabScreenHeader
+        title="Музыка"
+        placeholder="Поиск по музыке"
+        value={search}
+        onChangeText={setSearch}
+        dismissKey={`${activeTab}:${searchDismissEpoch}`}
+        holdSearchFocusRef={holdSearchFocusRef}
+        createAction={{
+          accessibilityLabel: "Добавить трек",
+          onPress: () => setAddTrackOpen(true),
+        }}
+        searchTags={SEARCH_SUGGESTION_TAGS.music}
+        searchTagId={searchTagId}
+        onSearchTagIdChange={setSearchTagId}
+        onSearchActiveChange={setSearchChromeOpen}
+        onChipPanBegin={chipStripBusy.onChipPanBegin}
+        onChipPanFinalize={chipStripBusy.onChipPanFinalize}
+        onChipPanDecayEnd={chipStripBusy.onChipPanDecayEnd}
+        idle={({ stripOffset }) => (
           <View style={styles.tabs}>
-            {tabIndicatorStyle ? (
-              <Animated.View pointerEvents="none" style={[styles.tabIndicator, tabIndicatorStyle]} />
-            ) : null}
-            <Pressable
-              style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
+            <SyncPagerTabIndicator
+              scrollX={scrollX}
+              pageWidth={pageWidth}
+              start={tabLayouts.recommendations}
+              end={tabLayouts.myMusic}
+              insetX={FLORA_TAB_STRIP_PAD_X}
+              stripOffset={stripOffset}
+            />
+            <GesturePressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === "recommendations" }}
+              style={floraTabChrome.tabButton}
               onLayout={(event) => recordTabLayout("recommendations", event)}
               onPress={() => switchTab("recommendations")}
             >
-              <Animated.Text
-                style={[
-                  styles.tabLabel,
-                  tabLabelColors ? { color: tabLabelColors.recommendations } : styles.tabLabelActive,
-                ]}
-              >
-                Рекомендации
-              </Animated.Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.tabButton, pressed && styles.tabPressed]}
+              <FloraTabLabel index={0} label="Рекомендации" progress={tabProgress} />
+            </GesturePressable>
+            <GesturePressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === "myMusic" }}
+              style={floraTabChrome.tabButton}
               onLayout={(event) => recordTabLayout("myMusic", event)}
               onPress={() => switchTab("myMusic")}
             >
-              <Animated.Text
-                style={[styles.tabLabel, tabLabelColors ? { color: tabLabelColors.myMusic } : null]}
-              >
-                Моя музыка
-              </Animated.Text>
-            </Pressable>
+              <FloraTabLabel index={1} label="Моя музыка" progress={tabProgress} />
+            </GesturePressable>
           </View>
-        </View>
-      </View>
-
-      <View style={[styles.body, { paddingBottom: listPaddingBottom }]}>
-        {hasSearch ? (
-          <MusicSearchResults query={search} />
-        ) : loading ? (
-          <View style={styles.loading}>
-            <ActivityIndicator color={floraColors.greenLight} />
-            <Text style={styles.emptyHint}>Загрузка музыки…</Text>
-          </View>
-        ) : (
-          <Animated.ScrollView
-            ref={pagerRef}
-            horizontal
-            pagingEnabled
-            decelerationRate="fast"
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onScroll={onPagerScroll}
-            onMomentumScrollEnd={onPagerScrollEnd}
-            style={styles.pager}
-            contentContainerStyle={styles.pagerContent}
-          >
-            <MusicPane
-              tab="recommendations"
-              pageWidth={pageWidth}
-              tracks={tracks}
-              playlists={playlists}
-              refreshing={libraryQuery.isFetching || playlistsQuery.isFetching}
-              onRefresh={refreshMusic}
-            />
-            <MusicPane
-              tab="myMusic"
-              pageWidth={pageWidth}
-              tracks={tracks}
-              playlists={playlists}
-              refreshing={libraryQuery.isFetching || playlistsQuery.isFetching}
-              onRefresh={refreshMusic}
-            />
-          </Animated.ScrollView>
         )}
+      />
+
+      <View style={[styles.body, { paddingBottom: listPaddingBottom }]} onLayout={onBodyLayout}>
+        <View style={styles.pagerHost} pointerEvents={hasSearch ? "none" : "auto"}>
+          {loading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={floraColors.greenLight} />
+              <Text style={styles.emptyHint}>Загрузка музыки…</Text>
+            </View>
+          ) : (
+            <TabPagerTrack pageCount={2} pageWidth={pageWidth} pagerPan={pagerPan} scrollX={scrollX}>
+              <MusicPane
+                tab="recommendations"
+                pageWidth={pageWidth}
+                tracks={tracks}
+                playlists={playlists}
+                refreshing={refreshing}
+                onRefresh={refreshMusic}
+                overScrollMode={hasSearch || activeTab !== "recommendations" ? "never" : "auto"}
+              />
+              <MusicPane
+                tab="myMusic"
+                pageWidth={pageWidth}
+                tracks={tracks}
+                playlists={playlists}
+                refreshing={refreshing}
+                onRefresh={refreshMusic}
+                overScrollMode={hasSearch || activeTab !== "myMusic" ? "never" : "auto"}
+              />
+            </TabPagerTrack>
+          )}
+        </View>
+        {hasSearch ? (
+          <View style={styles.searchOverlay}>
+            <MusicSearchResults query={search} onScrollBeginDrag={bumpSearchDismiss} />
+          </View>
+        ) : null}
       </View>
 
       <Modal
@@ -295,9 +334,29 @@ export default function MusicScreen() {
             <Text style={styles.modalTitle}>Добавить трек</Text>
             <View style={styles.modalClose} />
           </View>
-          <View style={styles.uploadTabs}>
-            <MusicTabBar tabs={MUSIC_UPLOAD_TABS} active={uploadTab} onSelect={setUploadTab} compact />
-          </View>
+          <TabIndicatorBridgeProvider>
+            <View style={styles.uploadTabs}>
+              <View style={styles.tabs}>
+                <SyncIndexTabIndicator
+                  progress={uploadTabProgress}
+                  layouts={[uploadLayouts.forSelf, uploadLayouts.forPlatform]}
+                />
+                {MUSIC_UPLOAD_TABS.map((tab, index) => (
+                  <GesturePressable
+                    key={tab.id}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: uploadTab === tab.id }}
+                    style={floraTabChrome.tabButton}
+                    onLayout={(event) => recordUploadLayout(tab.id, event)}
+                    onPress={() => selectUploadTab(tab.id)}
+                  >
+                    <FloraTabLabel index={index} label={tab.label} progress={uploadTabProgress} />
+                  </GesturePressable>
+                ))}
+                <BlendedSearchTabIndicator progress={uploadLineProgress} />
+              </View>
+            </View>
+          </TabIndicatorBridgeProvider>
           <AddTrackSection uploadMode={uploadTab} onUploaded={handleUploaded} />
         </View>
       </Modal>
@@ -310,19 +369,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: floraColors.bg,
   },
-  topBlock: {
-    backgroundColor: floraColors.bg,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
-    borderBottomWidth: 1,
-    paddingHorizontal: floraSpacing.grid,
-    paddingBottom: 0,
-    gap: 13,
-  },
-  navigationRow: {
-    position: "relative",
-    minHeight: 35,
-    width: "100%",
-  },
   tabs: {
     position: "relative",
     flexDirection: "row",
@@ -330,43 +376,17 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     overflow: "visible",
   },
-  tabButton: {
-    height: 35,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  tabPressed: {
-    opacity: 0.72,
-  },
-  tabLabel: {
-    color: floraColors.gray,
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 15,
-  },
-  tabLabelActive: {
-    color: floraColors.greenLight,
-  },
-  tabIndicator: {
-    position: "absolute",
-    left: 0,
-    bottom: 0,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: floraColors.greenLight,
-    zIndex: 2,
-  },
   body: {
     flex: 1,
+    overflow: "hidden",
   },
-  pager: {
+  pagerHost: {
     flex: 1,
   },
-  pagerContent: {
-    flexGrow: 1,
+  searchOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: floraColors.bg,
+    zIndex: 1,
   },
   page: {
     flex: 1,

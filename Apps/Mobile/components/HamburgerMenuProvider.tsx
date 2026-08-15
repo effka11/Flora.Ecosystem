@@ -17,6 +17,7 @@ import { DrawerMomentumProvider } from "@/lib/drawerMomentum";
 type HamburgerMenuContextValue = {
   openMenu: () => void;
   closeMenu: () => void;
+  subscribeOpen: (listener: () => void) => () => void;
 };
 
 const HamburgerMenuContext = createContext<HamburgerMenuContextValue | null>(null);
@@ -28,14 +29,19 @@ const HamburgerMenuContext = createContext<HamburgerMenuContextValue | null>(nul
 function HamburgerMenuHost({
   openMenuRef,
   closeMenuRef,
+  notifyOpen,
   children,
 }: {
   openMenuRef: MutableRefObject<() => void>;
   closeMenuRef: MutableRefObject<() => void>;
+  notifyOpen: () => void;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const openMenu = useCallback(() => setOpen(true), []);
+  const openMenu = useCallback(() => {
+    notifyOpen();
+    setOpen(true);
+  }, [notifyOpen]);
   const closeMenu = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
@@ -53,11 +59,21 @@ function HamburgerMenuHost({
 export function HamburgerMenuProvider({ children }: { children: ReactNode }) {
   const openMenuRef = useRef(() => {});
   const closeMenuRef = useRef(() => {});
+  const listenersRef = useRef(new Set<() => void>());
+  const notifyOpen = useCallback(() => {
+    for (const listener of listenersRef.current) listener();
+  }, []);
   // Стабильный value: потребители (header/messages) не подписаны на open и не ререндерятся.
   const value = useMemo<HamburgerMenuContextValue>(
     () => ({
       openMenu: () => openMenuRef.current(),
       closeMenu: () => closeMenuRef.current(),
+      subscribeOpen: (listener) => {
+        listenersRef.current.add(listener);
+        return () => {
+          listenersRef.current.delete(listener);
+        };
+      },
     }),
     [],
   );
@@ -66,7 +82,11 @@ export function HamburgerMenuProvider({ children }: { children: ReactNode }) {
     <GestureHandlerRootView style={styles.host}>
       <DrawerMomentumProvider>
         <HamburgerMenuContext.Provider value={value}>
-          <HamburgerMenuHost openMenuRef={openMenuRef} closeMenuRef={closeMenuRef}>
+          <HamburgerMenuHost
+            openMenuRef={openMenuRef}
+            closeMenuRef={closeMenuRef}
+            notifyOpen={notifyOpen}
+          >
             {children}
           </HamburgerMenuHost>
         </HamburgerMenuContext.Provider>

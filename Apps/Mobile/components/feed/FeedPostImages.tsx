@@ -3,18 +3,22 @@ import { useRecyclingState } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  Modal,
   PixelRatio,
   Pressable,
   StyleSheet,
   View,
-  useWindowDimensions,
   type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { collageCellWidth, feedRowContentWidth, threeImageLeftCellWidth } from "@/lib/feedImageGeometry";
+import { useFeedLightbox } from "@/components/feed/FeedLightboxHost";
+import {
+  collageCellWidth,
+  feedRowContentWidth,
+  nextFeedPageWidth,
+  threeImageLeftCellWidth,
+} from "@/lib/feedImageGeometry";
+import { isImeVisible, imeStableWindowWidth } from "@/lib/imeVisible";
 import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
 import { getStoredImageRatio, rememberImageRatio } from "@/lib/imageRatioStore";
 import {
@@ -31,7 +35,6 @@ const DEFAULT_ROW_HEIGHT = 7 * GRID;
 const CELL_RADIUS = 10;
 const COLLAGE_RADIUS = 12;
 const SINGLE_IMAGE_RADIUS = CELL_RADIUS;
-const MODAL_IMAGE_RADIUS = GAP;
 
 export type FeedPostImagePreviewItem = {
   id: string;
@@ -173,37 +176,9 @@ function CollageCell({ uri, width, height, borderRadius, imageIndex, onPress }: 
   );
 }
 
-/**
- * Lightbox must decode FRI → PNG the same way as thumbnails (raw FRI is not
- * Image-readable). No `displayWidth`: the modal shows the image at up to full
- * screen size in either dimension (`contentFit="contain"`), which is exactly
- * what the top rung of the cache's bucket ladder is for. The thumbnail bucket
- * already acquired for this post fills the frame instantly (stretched by
- * expo-image) while the full-size variant decodes in the background — no
- * extra "show small, then large" logic needed here.
- */
-function ModalFrcImage({ uri }: { uri: string }) {
-  const resolvedUri = useFrcImageUri(uri, { force: true });
-  if (!resolvedUri) return null;
-  return (
-    <View style={[styles.modalClip, { borderRadius: MODAL_IMAGE_RADIUS }]}>
-      <Image
-        source={{ uri: resolvedUri }}
-        style={[styles.modalImage, { borderRadius: MODAL_IMAGE_RADIUS }]}
-        contentFit="contain"
-        cachePolicy={isLocalDecodedUri(resolvedUri) ? "memory" : "memory-disk"}
-        recyclingKey={resolvedUri}
-        transition={0}
-      />
-    </View>
-  );
-}
-
 export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props) {
-  const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
+  const lightbox = useFeedLightbox();
   const [containerWidth, setContainerWidth] = useState(0);
-  const [activeUri, setActiveUri] = useState<string | null>(null);
   const singleRatioLockedRef = useRef(false);
 
   const items = useMemo(() => {
@@ -250,10 +225,15 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const w = event.nativeEvent.layout.width;
-    if (w > 0) setContainerWidth(w);
+    setContainerWidth((prev) => nextFeedPageWidth(prev, w, isImeVisible()));
   }, []);
 
-  const closeModal = useCallback(() => setActiveUri(null), []);
+  const openLightbox = useCallback(
+    (uri: string) => {
+      lightbox?.open(uri);
+    },
+    [lightbox],
+  );
 
   if (items.length === 0) return null;
 
@@ -261,7 +241,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
     layout?.fixedWidth ??
     (containerWidth > 0
       ? containerWidth
-      : feedRowContentWidth(screenWidth));
+      : feedRowContentWidth(imeStableWindowWidth()));
 
   if (messageMode && layout?.fixedWidth && width <= 0) return null;
 
@@ -285,7 +265,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
             borderRadius={singleImageBorderRadius}
             imageIndex={0}
             contentFit="cover"
-            onPress={() => setActiveUri(items[0]!.uri)}
+            onPress={() => openLightbox(items[0]!.uri)}
             onLoadRatio={lockSingleRatio}
           />
         );
@@ -303,7 +283,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
           borderRadius={singleImageBorderRadius}
           imageIndex={0}
           contentFit="cover"
-          onPress={() => setActiveUri(items[0]!.uri)}
+          onPress={() => openLightbox(items[0]!.uri)}
           onLoadRatio={lockSingleRatio}
         />
       );
@@ -323,7 +303,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
                 height={cellHeight}
                 borderRadius={cellBorderRadius}
                 imageIndex={index}
-                onPress={() => setActiveUri(item.uri)}
+                onPress={() => openLightbox(item.uri)}
               />
             ))}
           </View>
@@ -343,7 +323,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
               height={totalHeight}
               borderRadius={cellBorderRadius}
               imageIndex={0}
-              onPress={() => setActiveUri(items[0]!.uri)}
+              onPress={() => openLightbox(items[0]!.uri)}
             />
             <View style={{ gap: GAP }}>
               <CollageCell
@@ -352,7 +332,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
                 height={rightCellHeight}
                 borderRadius={cellBorderRadius}
                 imageIndex={1}
-                onPress={() => setActiveUri(items[1]!.uri)}
+                onPress={() => openLightbox(items[1]!.uri)}
               />
               <CollageCell
                 uri={items[2]!.uri}
@@ -360,7 +340,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
                 height={rightCellHeight}
                 borderRadius={cellBorderRadius}
                 imageIndex={2}
-                onPress={() => setActiveUri(items[2]!.uri)}
+                onPress={() => openLightbox(items[2]!.uri)}
               />
             </View>
           </View>
@@ -380,7 +360,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
                 height={cellHeight}
                 borderRadius={cellBorderRadius}
                 imageIndex={index}
-                onPress={() => setActiveUri(item.uri)}
+                onPress={() => openLightbox(item.uri)}
               />
             ))}
           </View>
@@ -404,7 +384,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
                 height={topRowHeight}
                 borderRadius={cellBorderRadius}
                 imageIndex={index}
-                onPress={() => setActiveUri(item.uri)}
+                onPress={() => openLightbox(item.uri)}
               />
             ))}
           </View>
@@ -417,7 +397,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
                 height={restCellHeight}
                 borderRadius={cellBorderRadius}
                 imageIndex={index + 2}
-                onPress={() => setActiveUri(item.uri)}
+                onPress={() => openLightbox(item.uri)}
               />
             ))}
           </View>
@@ -433,37 +413,22 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
   };
 
   return (
-    <>
-      <View
-        style={[
-          styles.wrapOuter,
-          messageMode
-            ? messageSingleFill
-              ? messageImageAlign === "end"
-                ? styles.wrapOuterMessageEnd
-                : styles.wrapOuterMessageStart
-              : { width }
-            : styles.wrapOuterFullWidth,
-          marginBottom > 0 ? { marginBottom } : null,
-        ]}
-        onLayout={messageMode || layout?.fixedWidth ? undefined : onLayout}
-      >
-        {renderCollage()}
-      </View>
-
-      {activeUri != null ? (
-        <Modal visible transparent animationType="fade" onRequestClose={closeModal}>
-          <Pressable
-            style={[styles.modalBackdrop, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}
-            onPress={closeModal}
-          >
-            <Pressable style={styles.modalContent} onPress={closeModal}>
-              <ModalFrcImage uri={activeUri} />
-            </Pressable>
-          </Pressable>
-        </Modal>
-      ) : null}
-    </>
+    <View
+      style={[
+        styles.wrapOuter,
+        messageMode
+          ? messageSingleFill
+            ? messageImageAlign === "end"
+              ? styles.wrapOuterMessageEnd
+              : styles.wrapOuterMessageStart
+            : { width }
+          : styles.wrapOuterFullWidth,
+        marginBottom > 0 ? { marginBottom } : null,
+      ]}
+      onLayout={messageMode || layout?.fixedWidth ? undefined : onLayout}
+    >
+      {renderCollage()}
+    </View>
   );
 }
 
@@ -492,27 +457,5 @@ const styles = StyleSheet.create({
   },
   cell: {
     backgroundColor: "rgba(250, 250, 250, 0.05)",
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.85)",
-    paddingHorizontal: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalClip: {
-    width: "100%",
-    height: "100%",
-    overflow: "hidden",
-  },
-  modalImage: {
-    width: "100%",
-    height: "100%",
   },
 });

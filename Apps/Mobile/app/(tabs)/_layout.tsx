@@ -1,4 +1,5 @@
 import { FloraTabBarBackground } from "@/components/FloraTabBarBackground";
+import { FeedLightboxProvider } from "@/components/feed/FeedLightboxHost";
 import { HamburgerMenuProvider } from "@/components/HamburgerMenuProvider";
 import { SignalsTabBarIcon } from "@/components/SignalsTabBarIcon";
 import { TabBarIconWithBadge } from "@/components/TabBarIconWithBadge";
@@ -48,7 +49,8 @@ export default function TabsLayout() {
 
   return (
     <HamburgerMenuProvider>
-      <View style={styles.tabsRoot}>
+      <FeedLightboxProvider>
+        <View style={styles.tabsRoot}>
         <Tabs
           detachInactiveScreens={false}
           screenListeners={screenListeners}
@@ -182,7 +184,8 @@ export default function TabsLayout() {
         </Tabs>
         <MusicMiniPlayer />
         {overlay}
-      </View>
+        </View>
+      </FeedLightboxProvider>
     </HamburgerMenuProvider>
   );
 }
