@@ -1,7 +1,9 @@
+import { FRC_I_BITSTREAM_VERSION } from "@flora/client-core/frc-i";
 import { describe, expect, it, vi } from "vitest";
 import {
   FRC_BUCKET_WIDTHS,
   FRC_HEADER_LEN,
+  FRC_VERSION_MAX,
   FrcImageCache,
   isJpegSignature,
   isPngSignature,
@@ -45,19 +47,24 @@ describe("sniffImageHeader", () => {
     });
   });
 
-  it("accepts current wire versions including v10", () => {
+  it("tracks the TS bitstream gate", () => {
+    expect(FRC_VERSION_MAX).toBe(FRC_I_BITSTREAM_VERSION);
+  });
+
+  it("accepts current wire versions including v11", () => {
     expect(sniffImageHeader(friHeader(8, 100, 100)).kind).toBe("frc-i");
     expect(sniffImageHeader(friHeader(9, 1080, 1430)).kind).toBe("frc-i");
-    expect(sniffImageHeader(friHeader(10, 1080, 1430))).toEqual({
+    expect(sniffImageHeader(friHeader(10, 1080, 1430)).kind).toBe("frc-i");
+    expect(sniffImageHeader(friHeader(11, 1080, 1430))).toEqual({
       kind: "frc-i",
-      version: 10,
+      version: 11,
       width: 1080,
       height: 1430,
     });
   });
 
   it("rejects out-of-range version", () => {
-    expect(sniffImageHeader(friHeader(11, 100, 100)).kind).toBe("unknown");
+    expect(sniffImageHeader(friHeader(FRC_VERSION_MAX + 1, 100, 100)).kind).toBe("unknown");
     expect(sniffImageHeader(friHeader(0, 100, 100)).kind).toBe("unknown");
   });
 

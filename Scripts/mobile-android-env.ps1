@@ -188,7 +188,27 @@ function Ensure-FfmpegAndroid([string]$repoRoot, [string]$mobileDir) {
 
 function Test-FrcIAndroidNativePresent([string]$repoRoot) {
     $so = Join-Path $repoRoot "Apps\Mobile\modules\flora-frc-i\android\src\main\jniLibs\arm64-v8a\libfrc_i_mobile_ffi.so"
-    return (Test-Path $so)
+    if (-not (Test-Path $so)) { return $false }
+    $soTime = (Get-Item $so).LastWriteTimeUtc
+    $inputs = @(
+        (Join-Path $repoRoot "Cargo.lock"),
+        (Join-Path $repoRoot "Products\FRC\crates\frc-i"),
+        (Join-Path $repoRoot "Products\FRC\crates\frc-i-integration"),
+        (Join-Path $repoRoot "Products\FRC\crates\frc-i-mobile-ffi")
+    )
+    foreach ($input in $inputs) {
+        if ((Test-Path $input -PathType Leaf) -and (Get-Item $input).LastWriteTimeUtc -gt $soTime) {
+            return $false
+        }
+        if (Test-Path $input -PathType Container) {
+            $newer = Get-ChildItem $input -Recurse -File |
+                Where-Object { $_.Extension -eq ".rs" -or $_.Name -eq "Cargo.toml" } |
+                Where-Object { $_.LastWriteTimeUtc -gt $soTime } |
+                Select-Object -First 1
+            if ($newer) { return $false }
+        }
+    }
+    return $true
 }
 
 function Ensure-FrcIAndroidNative([string]$repoRoot) {
@@ -202,7 +222,8 @@ function Ensure-FrcIAndroidNative([string]$repoRoot) {
     if ($LASTEXITCODE -ne 0) {
         throw "build-frc-i-mobile-android.ps1 failed (need cargo-ndk + Android NDK)."
     }
-    if (-not (Test-FrcIAndroidNativePresent $repoRoot)) {
+    $so = Join-Path $repoRoot "Apps\Mobile\modules\flora-frc-i\android\src\main\jniLibs\arm64-v8a\libfrc_i_mobile_ffi.so"
+    if (-not (Test-Path $so)) {
         throw "FRC-I native build finished but libfrc_i_mobile_ffi.so is still missing."
     }
 }

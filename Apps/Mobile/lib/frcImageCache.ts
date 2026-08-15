@@ -1,3 +1,5 @@
+import { FRC_I_BITSTREAM_VERSION } from "@flora/client-core/frc-i";
+
 /**
  * Crash-safe, content-addressed FRC-I → display-sized image cache.
  *
@@ -27,8 +29,8 @@
 
 export const FRC_HEADER_LEN = 20;
 export const FRC_VERSION_MIN = 1;
-/** Mirrors `frc_i::format::VERSION_MAX` (v10 asymmetric AQ). */
-export const FRC_VERSION_MAX = 10;
+/** Mirrors `frc_i::format::VERSION_MAX` via the TS gate (v11 hierarchical AQ). */
+export const FRC_VERSION_MAX = FRC_I_BITSTREAM_VERSION;
 export const FRC_MAX_DIM = 32_768;
 export const FRC_MAX_PIXELS = 1 << 26; // ~67 Mpx, matches DEFAULT_MAX_PIXELS
 const FRC_MAGIC = [0x8f, 0x46, 0x52, 0x49] as const;
