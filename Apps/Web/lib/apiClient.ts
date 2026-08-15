@@ -8,6 +8,7 @@ import {
   syncStoredSessionTokens as syncCoreSessionTokens,
   type SessionRefreshOutcome,
 } from "@flora/client-core/api";
+import { redirectToLogin } from "./loginRedirect";
 import {
   runWebAuthExclusive,
   webSessionStore,
@@ -18,7 +19,6 @@ const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 // 16 s Web-Lock acquisition bound, so login/logout never bypass a live retry.
 const REFRESH_FETCH_TIMEOUT_MS = 7_000;
 let apiClientInitialized = false;
-let unauthorizedRedirectScheduled = false;
 
 /** Browser API root. Empty means same-origin Next proxy routes. */
 export function resolvePublicApiRoot(): string {
@@ -36,14 +36,11 @@ export function authPublicFetchUrl(path: string): string {
 }
 
 function scheduleUnauthorizedRedirect(): void {
-  if (typeof window === "undefined" || unauthorizedRedirectScheduled) return;
+  if (typeof window === "undefined") return;
   if (window.location.pathname === "/login") return;
-  unauthorizedRedirectScheduled = true;
   // Best-effort HttpOnly cookie tombstone; localStorage is already cleared by the coordinator.
   clearBrowserSessionCookie();
-  queueMicrotask(() => {
-    window.location.replace("/login");
-  });
+  redirectToLogin();
 }
 
 function combineAbortSignals(

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAnimatedModal } from "@/app/(dashboard)/communities/useAnimatedModal";
 import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
 import {
@@ -17,6 +16,7 @@ import {
   type SessionDto,
 } from "@/lib/auth";
 import { clearFscpMaterialForUser } from "@/lib/fscp/keys";
+import { redirectToLogin } from "@/lib/loginRedirect";
 import { SettingsFscpKeysModal } from "./SettingsFscpKeysModal";
 import { SettingsRecoveryPhraseModal } from "./SettingsRecoveryPhraseModal";
 import { SettingsSecurity2FAModal } from "./SettingsSecurity2FAModal";
@@ -42,7 +42,6 @@ function formatSessionLocation(session: SessionDto): string {
 }
 
 export function SettingsSecurityTab() {
-  const router = useRouter();
   const { me, loading, refresh } = useCurrentUser();
   const currentPasswordId = useId();
   const newPasswordId = useId();
@@ -332,15 +331,14 @@ export function SettingsSecurityTab() {
           /* best-effort after server delete; do not block navigation */
         });
       }
-      router.replace("/login");
-      router.refresh();
+      redirectToLogin();
     } catch (e) {
       setDeleteError(
         e instanceof ApiRequestError || e instanceof Error ? e.message : "Не удалось удалить аккаунт.",
       );
       setDeleteBusy(false);
     }
-  }, [deleteConfirm, deletePassword, me?.userUuid, router]);
+  }, [deleteConfirm, deletePassword, me?.userUuid]);
 
   const otherSessionsCount = sessions.filter((session) => !session.isCurrent).length;
 
