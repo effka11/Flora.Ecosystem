@@ -14,7 +14,7 @@ import { cancelInteractiveApkUpdate, runUserUpdateFromNotification } from "@/lib
 import type { ApkUpdateProgress } from "@/lib/apkUpdate/progress";
 import { isAppUpdateNotificationInstalled } from "@/lib/appLinks";
 import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 
 type NotificationRowProps = {
   item: NotificationDto;
@@ -22,6 +22,9 @@ type NotificationRowProps = {
 };
 
 const ICON_SIZE = floraSpacing.grid * 3;
+/** Как наполнение поста: padding карточки + contentInsetRight = 25px от края экрана. */
+const CONTENT_INSET_RIGHT_FROM_SCREEN =
+  floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight;
 
 function iconForType(type: string): keyof typeof Ionicons.glyphMap {
   if (type === "like") return "heart";
@@ -164,6 +167,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
           styles.item,
           !item.isRead && styles.itemUnread,
           pressed && styles.itemPressed,
+          isAppUpdate && styles.itemWithTrailing,
         ]}
         onPress={onPress}
         accessibilityRole="button"
@@ -228,6 +232,9 @@ const styles = StyleSheet.create({
     paddingTop: floraSpacing.grid * 2 - 1,
     paddingBottom: floraSpacing.grid * 2 - 2,
     paddingLeft: floraSpacing.grid,
+    paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN,
+  },
+  itemWithTrailing: {
     paddingRight: floraSpacing.gridFine,
   },
   itemPressed: {
