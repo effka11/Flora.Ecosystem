@@ -7,10 +7,13 @@ import { ConversationListSelectionMark } from "@/components/messages/Conversatio
 import type { GroupChat } from "@/lib/groupChatTypes";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { openGroupChat } from "@/lib/openGroupChat";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 
 /** Same metrics as ConversationListRow — keep group rows in the same list rhythm. */
 const AVATAR_SIZE = floraSpacing.grid * 3;
+/** Как наполнение поста: padding карточки + contentInsetRight = 25px от края экрана. */
+const CONTENT_INSET_RIGHT_FROM_SCREEN =
+  floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight;
 const LONG_PRESS_MS = 350;
 /** Как `iconButton` / «+» в TabScreenSearchHeader — центр бейджа под «+». */
 const HEADER_TRAILING_ICON_SLOT = 45;
@@ -83,7 +86,7 @@ export function GroupConversationListRow({
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_MS}
     >
-      <View style={styles.item}>
+      <View style={[styles.item, group.unreadCount > 0 && styles.itemWithTrailing]}>
         <View style={styles.avatarWrap}>
           <FloraAvatar size={AVATAR_SIZE} displayName={title} seed={group.conversationUuid} />
           {selectionMode ? (
@@ -137,6 +140,9 @@ const styles = StyleSheet.create({
     paddingTop: floraSpacing.grid * 2 - 1,
     paddingBottom: floraSpacing.grid * 2 - 2,
     paddingLeft: floraSpacing.grid,
+    paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN,
+  },
+  itemWithTrailing: {
     paddingRight: floraSpacing.gridFine,
   },
   avatarWrap: {
