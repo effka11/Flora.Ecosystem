@@ -7,11 +7,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 
 const LIST_PREVIEW_MAX_LEN = 80;
 const AVATAR_SIZE = floraSpacing.grid * 3;
+/** Как наполнение поста: padding карточки + contentInsetRight = 25px от края экрана. */
+const CONTENT_INSET_RIGHT_FROM_SCREEN =
+  floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight;
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
 const LONG_PRESS_MS = 350;
 /** Как `iconButton` / «+» в TabScreenSearchHeader — центр бейджа под «+». */
@@ -117,7 +120,7 @@ export function ConversationListRow({
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_MS}
     >
-      <View style={styles.item}>
+      <View style={[styles.item, item.unreadCount > 0 && styles.itemWithTrailing]}>
         <View style={styles.avatarWrap}>
           <FloraAvatar
             size={AVATAR_SIZE}
@@ -190,6 +193,9 @@ const styles = StyleSheet.create({
     paddingTop: floraSpacing.grid * 2 - 1,
     paddingBottom: floraSpacing.grid * 2 - 2,
     paddingLeft: floraSpacing.grid,
+    paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN,
+  },
+  itemWithTrailing: {
     paddingRight: floraSpacing.gridFine,
   },
   avatarWrap: {
