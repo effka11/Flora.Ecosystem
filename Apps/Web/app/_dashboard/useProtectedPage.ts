@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
 import {
   getAccessToken,
   hasPendingProfileSetup,
@@ -10,61 +9,65 @@ import {
   STORAGE_REFRESH,
   STORAGE_SESSION,
 } from "@/lib/auth";
+import { redirectToLogin } from "@/lib/loginRedirect";
+import { webSessionStore } from "@/lib/sessionStore";
 
-function useIsClient() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
+function subscribeSessionToken(onStoreChange: () => void): () => void {
+  const unsubCleared = webSessionStore.subscribeSessionCleared(onStoreChange);
+
+  const onSessionClearedEvent = () => onStoreChange();
+  const onStorage = (event: StorageEvent) => {
+    if (event.storageArea !== localStorage) return;
+    if (
+      event.key !== STORAGE_SESSION &&
+      event.key !== STORAGE_ACCESS &&
+      event.key !== STORAGE_REFRESH &&
+      event.key !== null
+    ) {
+      return;
+    }
+    onStoreChange();
+  };
+
+  window.addEventListener(SESSION_CLEARED_EVENT, onSessionClearedEvent);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    unsubCleared();
+    window.removeEventListener(SESSION_CLEARED_EVENT, onSessionClearedEvent);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function getHasTokenSnapshot(): boolean {
+  return Boolean(getAccessToken());
+}
+
+function getServerHasTokenSnapshot(): boolean {
+  return false;
 }
 
 export function useProtectedPage() {
-  const router = useRouter();
-  const isClient = useIsClient();
-  const hasToken = isClient && Boolean(getAccessToken());
+  const isClient = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  const hasToken = useSyncExternalStore(
+    subscribeSessionToken,
+    getHasTokenSnapshot,
+    getServerHasTokenSnapshot,
+  );
 
   useEffect(() => {
     if (!isClient) return;
-    if (!hasToken) router.replace("/login");
-  }, [hasToken, isClient, router]);
+    if (!hasToken) redirectToLogin();
+  }, [hasToken, isClient]);
 
   useEffect(() => {
     if (!isClient || !hasToken) return;
     if (!hasPendingProfileSetup()) return;
-    router.replace("/login");
-  }, [hasToken, isClient, router]);
+    redirectToLogin();
+  }, [hasToken, isClient]);
 
-  useEffect(() => {
-    if (!isClient) return;
-    let redirected = false;
-
-    const redirectIfCleared = () => {
-      if (redirected || getAccessToken()) return;
-      redirected = true;
-      router.replace("/login");
-    };
-
-    const onStorage = (event: StorageEvent) => {
-      if (event.storageArea !== localStorage) return;
-      if (
-        event.key !== STORAGE_SESSION &&
-        event.key !== STORAGE_ACCESS &&
-        event.key !== STORAGE_REFRESH &&
-        event.key !== null
-      ) {
-        return;
-      }
-      redirectIfCleared();
-    };
-
-    window.addEventListener(SESSION_CLEARED_EVENT, redirectIfCleared);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener(SESSION_CLEARED_EVENT, redirectIfCleared);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, [isClient, router]);
-
-  return { isClient, hasToken };
+  return { isClient, hasToken: isClient && hasToken };
 }

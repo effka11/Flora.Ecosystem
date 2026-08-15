@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
 import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import {
@@ -10,12 +9,12 @@ import {
   apiLogout,
   apiUploadAvatar,
 } from "@/lib/auth";
+import { redirectToLogin } from "@/lib/loginRedirect";
 import { BirthDateInput } from "./BirthDateInput";
 import { useSettings } from "./SettingsContext";
 import styles from "./settings.module.css";
 
 export function SettingsAccountTab() {
-  const router = useRouter();
   const { me, loading, refresh } = useCurrentUser();
   const { ready, draft, updateAccount, clearSaveFeedback } = useSettings();
   const fileInputId = useId();
@@ -66,13 +65,12 @@ export function SettingsAccountTab() {
     setLoggingOut(true);
     try {
       await apiLogout();
-      router.replace("/login");
-      router.refresh();
+      redirectToLogin();
     } catch (e) {
       setSessionError(e instanceof ApiRequestError || e instanceof Error ? e.message : "Не удалось выйти из аккаунта.");
       setLoggingOut(false);
     }
-  }, [router]);
+  }, []);
 
   const onDeleteAvatar = useCallback(async () => {
     if (!avatarUuid) return;
