@@ -71,7 +71,12 @@ export const floraFeedPost = {
    * На мобайле задаём напрямую, без промежуточного nudge.
    */
   nicknameGapFromAvatarTop: floraSpacing.gridFine,
+  /** Visual slot / fontSize. Do not use as the Text line box — that clips descenders. */
   nicknameLineHeight: 15,
+  /** Text line box so `g` / `@` are not clipped (15 + 1×fine). */
+  nicknamePaintLineHeight: 20,
+  /** Cancel Android half-leading so the cap height stays on the old Y. */
+  nicknamePaintShiftY: -((20 - 15) / 2),
   rowGap: floraSpacing.gridFine,
   /**
    * Верх слота ⋮: старый top (−grid/2+1) минус половина прироста слота 28→45,
