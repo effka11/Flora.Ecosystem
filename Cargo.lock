@@ -904,7 +904,7 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
 name = "fira-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "serde",
  "serde_json",
@@ -912,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "fira-core"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "chrono",
  "fira-contracts",
@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "flora-api"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "anyhow",
  "axum",
@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "flora-auth"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "argon2",
  "axum",
@@ -994,14 +994,14 @@ dependencies = [
 
 [[package]]
 name = "flora-auth-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "uuid",
 ]
 
 [[package]]
 name = "flora-chat-organizer"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "chrono",
@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "flora-chat-organizer-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "flora-shared",
  "serde",
@@ -1025,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "flora-codec-tools"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "clap",
  "frc-i",
@@ -1034,7 +1034,7 @@ dependencies = [
 
 [[package]]
 name = "flora-content"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "chrono",
@@ -1061,14 +1061,14 @@ dependencies = [
 
 [[package]]
 name = "flora-content-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "uuid",
 ]
 
 [[package]]
 name = "flora-economy"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "chrono",
@@ -1087,7 +1087,7 @@ dependencies = [
 
 [[package]]
 name = "flora-economy-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -1096,7 +1096,7 @@ dependencies = [
 
 [[package]]
 name = "flora-economy-crypto"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "ed25519-dalek",
  "serde",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "flora-economy-wasm"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "flora-economy-crypto",
  "serde_json",
@@ -1115,7 +1115,7 @@ dependencies = [
 
 [[package]]
 name = "flora-economy-witness"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "clap",
  "flora-economy-crypto",
@@ -1128,14 +1128,14 @@ dependencies = [
 
 [[package]]
 name = "flora-governance-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "fpp-contracts",
 ]
 
 [[package]]
 name = "flora-governance-crypto"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "base64",
  "blake3",
@@ -1145,11 +1145,11 @@ dependencies = [
 
 [[package]]
 name = "flora-grpc-bridge"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 
 [[package]]
 name = "flora-messaging"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "base64",
@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "flora-messaging-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "chrono",
  "serde",
@@ -1185,7 +1185,7 @@ dependencies = [
 
 [[package]]
 name = "flora-migrate"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "anyhow",
  "clap",
@@ -1205,7 +1205,7 @@ dependencies = [
 
 [[package]]
 name = "flora-music"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "chrono",
@@ -1224,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "flora-music-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "flora-shared",
  "serde",
@@ -1233,7 +1233,7 @@ dependencies = [
 
 [[package]]
 name = "flora-notifications"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "base64",
@@ -1259,7 +1259,7 @@ dependencies = [
 
 [[package]]
 name = "flora-notifications-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "chrono",
  "serde",
@@ -1268,7 +1268,7 @@ dependencies = [
 
 [[package]]
 name = "flora-parity"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "anyhow",
  "argon2",
@@ -1296,7 +1296,7 @@ dependencies = [
 
 [[package]]
 name = "flora-shared"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "chrono",
  "serde_json",
@@ -1306,7 +1306,7 @@ dependencies = [
 
 [[package]]
 name = "flora-social"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "chrono",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "flora-users"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "chrono",
@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "flora-users-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "chrono",
  "uuid",
@@ -1368,7 +1368,7 @@ dependencies = [
 
 [[package]]
 name = "flora-verification"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "axum",
  "chrono",
@@ -1391,7 +1391,7 @@ dependencies = [
 
 [[package]]
 name = "flora-verification-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "chrono",
  "uuid",
@@ -1431,11 +1431,11 @@ dependencies = [
 
 [[package]]
 name = "fpp-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 
 [[package]]
 name = "fpp-core"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "base64",
  "fpp-contracts",
@@ -1445,7 +1445,7 @@ dependencies = [
 
 [[package]]
 name = "fpp-crypto"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "flora-governance-crypto",
  "fpp-contracts",
@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "frc-a-cli"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "clap",
  "frc-a-core",
@@ -1462,11 +1462,11 @@ dependencies = [
 
 [[package]]
 name = "frc-a-core"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 
 [[package]]
 name = "frc-a-polygon"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "clap",
  "frc-a-core",
@@ -1477,11 +1477,11 @@ dependencies = [
 
 [[package]]
 name = "frc-i"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 
 [[package]]
 name = "frc-i-integration"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "frc-i",
  "image",
@@ -1490,7 +1490,7 @@ dependencies = [
 
 [[package]]
 name = "frc-i-mobile-ffi"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "frc-i",
  "frc-i-integration",
@@ -1500,25 +1500,25 @@ dependencies = [
 
 [[package]]
 name = "frc-i-wasm"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "frc-i",
 ]
 
 [[package]]
 name = "frc-v"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 
 [[package]]
 name = "frc-v-cli"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "frc-v",
 ]
 
 [[package]]
 name = "frc-v-polygon"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "clap",
  "frc-v",
@@ -1528,7 +1528,7 @@ dependencies = [
 
 [[package]]
 name = "frc-v-wasm"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "frc-v",
 ]
@@ -1541,7 +1541,7 @@ checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
 name = "fsa-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "serde",
  "serde_json",
@@ -1549,21 +1549,21 @@ dependencies = [
 
 [[package]]
 name = "fsa-core"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "fsa-contracts",
 ]
 
 [[package]]
 name = "fscp-contracts"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "uuid",
 ]
 
 [[package]]
 name = "fscp-core"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "base64",
  "chrono",
@@ -1576,7 +1576,7 @@ dependencies = [
 
 [[package]]
 name = "fscp-crypto"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "base64",
  "chacha20poly1305",
@@ -1594,7 +1594,7 @@ dependencies = [
 
 [[package]]
 name = "fscp-mobile-ffi"
-version = "0.11.0-alpha"
+version = "0.12.0-alpha"
 dependencies = [
  "base64",
  "chrono",
