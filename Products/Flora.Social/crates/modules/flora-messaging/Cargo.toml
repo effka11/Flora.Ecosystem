@@ -33,8 +33,15 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 flora-auth = { workspace = true }
+flora-auth-contracts = { workspace = true }
+flora-messaging-contracts = { workspace = true }
+flora-users-contracts = { workspace = true }
 flora-shared = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+ed25519-dalek = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+uuid = { workspace = true }

@@ -42,6 +42,19 @@ CREATE TABLE flora_core.user_push_tokens (
     "UpdatedAt"     timestamptz NOT NULL
 );
 
+-- Stub for messaging franking migration (FK + live-DELETE triggers on user_messages).
+-- Cutover-owned; not created by flora-migrate. PK is the only shape the migration needs.
+CREATE TABLE flora_core.user_messages (
+    message_uuid         uuid        NOT NULL PRIMARY KEY,
+    sender_user_uuid     uuid        NOT NULL,
+    receiver_user_uuid   uuid        NOT NULL,
+    content              text        NULL,
+    encrypted_for_receiver text      NULL,
+    encrypted_for_sender text        NULL,
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    is_read              boolean     NOT NULL DEFAULT false
+);
+
 -- Stub for notifications migrations 0002/0003 (ALTER + legacy collapse).
 -- Shape matches cutover inbox columns used by flora-notifications repo (snake_case);
 -- group_key / actor_count / actors_json are added by module migration 0002.

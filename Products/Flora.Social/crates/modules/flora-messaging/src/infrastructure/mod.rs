@@ -6,6 +6,7 @@ mod e2e;
 mod e2e_d2d_recovery;
 mod e2e_epochs;
 mod e2e_tokens;
+pub(crate) mod franking;
 mod groups;
 mod repo;
 
@@ -15,5 +16,6 @@ pub use e2e::*;
 pub use e2e_d2d_recovery::*;
 pub use e2e_epochs::*;
 pub use e2e_tokens::E2eProofTokens;
+pub use franking::{FrankingRepo, InsertFrankReceipt, StoredFrankReceipt};
 pub use groups::{GroupRepo, InsertMessageOutcome};
 pub use repo::MessagingRepo;

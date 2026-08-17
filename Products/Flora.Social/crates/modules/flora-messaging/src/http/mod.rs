@@ -2,6 +2,7 @@
 
 mod assets;
 mod e2e;
+mod franking;
 mod legacy;
 
 use std::sync::Arc;
@@ -22,7 +23,8 @@ use uuid::Uuid;
 
 use crate::application::{
     AssetService, ChatListError, ChatListService, ConversationService, E2eEpochService,
-    E2eKeyBackupService, GroupSendError, GroupService, SendMessageError,
+    E2eKeyBackupService, FrankingService, GroupSendError, GroupService, SendMessageError,
+    signing_unavailable_body,
 };
 
 /// JWT user (тот же тип, что внедряет flora-social).
@@ -40,6 +42,7 @@ pub struct MessagingState {
     pub assets: Arc<AssetService>,
     pub e2e: Arc<E2eKeyBackupService>,
     pub epochs: Arc<E2eEpochService>,
+    pub franking: Arc<FrankingService>,
 }
 
 pub fn protected_router(state: MessagingState) -> Router {
@@ -254,6 +257,47 @@ pub fn protected_router(state: MessagingState) -> Router {
         .route(
             "/api/auth/messages/{message_uuid}",
             delete(legacy::delete_message),
+        )
+        .route(
+            "/api/messaging/franking/server-key",
+            get(franking::server_key),
+        )
+        .route(
+            "/api/messaging/franking/reports",
+            post(franking::create_report),
+        )
+        .route(
+            "/api/messaging/franking/reports/{report_uuid}",
+            get(franking::get_report),
+        )
+        .route(
+            "/api/messaging/franking/reports/{report_uuid}/wraps",
+            post(franking::add_wraps),
+        )
+        .route("/api/messaging/franking/queue", get(franking::queue))
+        .route(
+            "/api/messaging/franking/reports/{report_uuid}/claim",
+            post(franking::claim),
+        )
+        .route(
+            "/api/messaging/franking/reports/{report_uuid}/release",
+            post(franking::release),
+        )
+        .route(
+            "/api/messaging/franking/reports/{report_uuid}/disclosure",
+            get(franking::disclosure),
+        )
+        .route(
+            "/api/messaging/franking/reports/{report_uuid}/forward",
+            post(franking::forward),
+        )
+        .route(
+            "/api/messaging/franking/reports/{report_uuid}/resolve",
+            post(franking::resolve),
+        )
+        .route(
+            "/api/messaging/franking/reports/{report_uuid}/audit",
+            get(franking::audit),
         )
         .layer(DefaultBodyLimit::max(MESSAGING_BODY_LIMIT))
         .with_state(state)
@@ -526,7 +570,7 @@ fn not_found_conversation() -> Response {
         .into_response()
 }
 
-fn map_send_err(e: SendMessageError) -> Response {
+pub(crate) fn map_send_err(e: SendMessageError) -> Response {
     match e {
         SendMessageError::BadRequest(msg) => (
             StatusCode::BAD_REQUEST,
@@ -541,6 +585,11 @@ fn map_send_err(e: SendMessageError) -> Response {
         SendMessageError::Forbidden(msg) => (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response(),
+        SendMessageError::SigningUnavailable => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(signing_unavailable_body()),
         )
             .into_response(),
     }
@@ -610,6 +659,7 @@ async fn get_push_preview_targets(
         )
             .into_response(),
         Err(SendMessageError::BadRequest(msg)) => internal(msg),
+        Err(e) => map_send_err(e),
     }
 }
 
@@ -640,6 +690,7 @@ async fn post_message(
             Json(serde_json::json!({ "error": msg })),
         )
             .into_response(),
+        Err(e) => map_send_err(e),
     }
 }
 
@@ -709,6 +760,13 @@ async fn delete_conversation(
             Json(serde_json::json!({ "error": "Разговор не найден." })),
         )
             .into_response(),
+        Ok(DeleteConversationOutcome::Conflict) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "Диалог сейчас нельзя удалить."
+            })),
+        )
+            .into_response(),
         Err(e) => internal(e),
     }
 }
@@ -734,6 +792,13 @@ async fn delete_message(
         Ok(DeleteMessageOutcome::Forbidden) => (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({ "error": "Можно удалить только своё сообщение." })),
+        )
+            .into_response(),
+        Ok(DeleteMessageOutcome::Conflict) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "Сообщение сейчас нельзя удалить."
+            })),
         )
             .into_response(),
         Err(e) => internal(e),

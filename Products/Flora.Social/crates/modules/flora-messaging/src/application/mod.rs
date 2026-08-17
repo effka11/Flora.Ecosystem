@@ -6,6 +6,7 @@ mod conversations;
 mod cursor;
 mod e2e;
 mod e2e_epochs;
+mod franking;
 mod groups;
 
 pub use assets::{AssetBlob, AssetError, AssetService};
@@ -19,5 +20,9 @@ pub use e2e::{
 pub use e2e_epochs::{
     AddPendingDeviceError, ApproveDeviceError, CreateEpochError, E2eEpochService, RecoverKeyError,
     RevokeDeviceError, UnlockChallengeError, UnlockCompleteError,
+};
+pub use franking::{
+    FrankingError, FrankingService, FrankingSigner, SIGNING_UNAVAILABLE_CODE, TaggedIngest,
+    parse_franking_seed, parse_reviewer_uuids, signing_unavailable_body, tagged_ingest_action,
 };
 pub use groups::{GroupSendError, GroupService};

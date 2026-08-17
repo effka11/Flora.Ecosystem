@@ -102,6 +102,32 @@ BEGIN
         RAISE EXCEPTION 'old API push-token write failed after additive migration';
     END IF;
 
+    IF to_regclass('flora_core.user_messages') IS NULL THEN
+        RAISE EXCEPTION 'cutover user_messages stub missing after migrate';
+    END IF;
+
+    IF to_regclass('flora_core.franking_reports') IS NULL
+        OR to_regclass('flora_core.user_message_frank_receipts') IS NULL
+        OR to_regclass('flora_core.franking_disclosure_wraps') IS NULL
+        OR to_regclass('flora_core.franking_report_audit') IS NULL
+        OR to_regclass('flora_core.franking_reviewers') IS NULL
+    THEN
+        RAISE EXCEPTION 'messaging franking migration 20260816120000 was not applied';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'flora_core'
+          AND c.relname = 'user_messages'
+          AND t.tgname = 'tg_user_messages_franking_live'
+          AND NOT t.tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'franking live-DELETE trigger missing on user_messages';
+    END IF;
+
     IF to_regclass('flora_core.user_notifications') IS NULL THEN
         RAISE EXCEPTION 'cutover user_notifications stub missing after migrate';
     END IF;
