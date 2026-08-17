@@ -36,7 +36,7 @@
     "@flora/client-core": "*",
     "@react-native-community/netinfo": "11.4.1",
     "@react-navigation/native": "^7.1.8",
-    "@sentry/react-native": "^6.22.0",
+    "@sentry/react-native": "^8.23.0",
     "@shopify/flash-list": "2.0.2",
     "@tanstack/react-query": "^5.90.2",
     "expo": "~56.0.11",
