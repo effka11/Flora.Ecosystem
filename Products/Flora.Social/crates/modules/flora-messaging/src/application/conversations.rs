@@ -17,6 +17,9 @@ use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAcce
 use uuid::Uuid;
 
 use crate::application::cursor::{decode_cursor, encode_cursor};
+use crate::application::franking::{
+    FrankingService, TaggedIngest, build_insert_receipt, tagged_ingest_action,
+};
 use crate::infrastructure::MessagingRepo;
 
 /// Ошибки POST message (маппятся в HTTP в `http/mod.rs`).
@@ -25,6 +28,7 @@ pub enum SendMessageError {
     BadRequest(String),
     NotFound(String),
     Forbidden(String),
+    SigningUnavailable,
 }
 
 pub struct ConversationService {
@@ -38,6 +42,7 @@ pub struct ConversationService {
     typing_notifier: Arc<dyn MessageTypingNotifier>,
     read_notifier: Arc<dyn MessageReadNotifier>,
     preview_targets: Arc<dyn PushPreviewTargetProvider>,
+    franking: Arc<FrankingService>,
 }
 
 impl ConversationService {
@@ -53,6 +58,7 @@ impl ConversationService {
         typing_notifier: Arc<dyn MessageTypingNotifier>,
         read_notifier: Arc<dyn MessageReadNotifier>,
         preview_targets: Arc<dyn PushPreviewTargetProvider>,
+        franking: Arc<FrankingService>,
     ) -> Self {
         Self {
             repo,
@@ -65,6 +71,7 @@ impl ConversationService {
             typing_notifier,
             read_notifier,
             preview_targets,
+            franking,
         }
     }
 
@@ -232,8 +239,19 @@ impl ConversationService {
                 voice_asset_uuids: m.voice_asset_uuids.clone(),
                 image_asset_uuids: m.image_asset_uuids.clone(),
                 video_asset_uuids: m.video_asset_uuids.clone(),
+                server_frank_receipt: None,
+                frank_tag_base64_url: None,
             })
             .collect();
+        let mut items = items;
+        let ids: Vec<Uuid> = items.iter().map(|m| m.message_uuid).collect();
+        let receipts = self.franking.receipts_map(&ids).await?;
+        for item in &mut items {
+            if let Some((receipt, tag)) = receipts.get(&item.message_uuid) {
+                item.server_frank_receipt = Some(receipt.clone());
+                item.frank_tag_base64_url = Some(tag.clone());
+            }
+        }
 
         let next_cursor = if has_more {
             page.last().map(|m| encode_cursor(m.created_at))
@@ -288,6 +306,13 @@ impl ConversationService {
             .map_err(SendMessageError::BadRequest)?;
         let wire_message_uuid = fscp_core::extract_message_uuid(&request.encrypted_for_receiver)
             .map_err(SendMessageError::BadRequest)?;
+        let frank_tag = fscp_core::extract_frank_tag(&request.encrypted_for_receiver)
+            .map_err(SendMessageError::BadRequest)?;
+        if tagged_ingest_action(frank_tag.is_some(), self.franking.signer().is_some())
+            == TaggedIngest::FailClosed
+        {
+            return Err(SendMessageError::SigningUnavailable);
+        }
 
         // Device revocation policy (FSCP.md §Device revocation, golden
         // fscp-revoked-device-v1.json): wire от отозванного senderDeviceUuid
@@ -362,6 +387,20 @@ impl ConversationService {
         let image_uuids = dedupe_uuids(request.image_asset_uuids);
         let video_uuids = dedupe_uuids(request.video_asset_uuids);
 
+        let frank_receipt = match (frank_tag, self.franking.signer()) {
+            (Some(tag), Some(signer)) => Some(build_insert_receipt(
+                signer.as_ref(),
+                Uuid::nil(),
+                wire_message_uuid,
+                conversation_uuid,
+                sender_uuid,
+                receiver_uuid,
+                tag,
+                Utc::now(),
+            )),
+            _ => None,
+        };
+
         let result = self
             .repo
             .send_message(
@@ -372,6 +411,7 @@ impl ConversationService {
                 &voice_uuids,
                 &image_uuids,
                 &video_uuids,
+                frank_receipt.as_ref(),
             )
             .await
             .map_err(SendMessageError::BadRequest)?;
@@ -558,7 +598,7 @@ impl ConversationService {
             .repo
             .messages_offset_page(user_uuid, other_user_uuid, skip, take)
             .await?;
-        let items = rows
+        let mut items: Vec<LegacyMessageThreadItemDto> = rows
             .into_iter()
             .map(|m| {
                 let receiver_user_uuid = if m.is_from_me {
@@ -575,9 +615,19 @@ impl ConversationService {
                     created_at: format_utc(m.created_at),
                     is_read: m.is_read,
                     is_from_me: m.is_from_me,
+                    server_frank_receipt: None,
+                    frank_tag_base64_url: None,
                 }
             })
             .collect();
+        let ids: Vec<Uuid> = items.iter().map(|m| m.message_uuid).collect();
+        let receipts = self.franking.receipts_map(&ids).await?;
+        for item in &mut items {
+            if let Some((receipt, tag)) = receipts.get(&item.message_uuid) {
+                item.server_frank_receipt = Some(receipt.clone());
+                item.frank_tag_base64_url = Some(tag.clone());
+            }
+        }
         Ok(Ok(items))
     }
 
@@ -678,16 +728,16 @@ impl ConversationService {
         &self,
         user_uuid: Uuid,
         other_user_uuid: Uuid,
-    ) -> Result<Result<(), SendMessageError>, String> {
+    ) -> Result<Result<DeleteConversationOutcome, SendMessageError>, String> {
         if other_user_uuid == user_uuid {
             return Ok(Err(SendMessageError::BadRequest(
                 "Нельзя удалить диалог с самим собой.".into(),
             )));
         }
-        self.repo
+        Ok(Ok(self
+            .repo
             .delete_conversation(user_uuid, other_user_uuid)
-            .await?;
-        Ok(Ok(()))
+            .await?))
     }
 
     /// `DELETE /api/auth/messages/{messageUuid}` — без conversationUuid в пути.

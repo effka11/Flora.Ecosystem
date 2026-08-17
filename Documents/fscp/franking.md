@@ -115,6 +115,26 @@ serverFrankReceipt = {
 - Групповые чаты — вне scope (отдельный RFC вместе с MLS/sender keys; per-member теги).
 - Метаданные, которые видит жюри при жалобе: участники, время, UUID **одного** сообщения. Это осознанная цена доказуемости.
 
+### 4.7. Продуктовая очередь (exclusive claim, 1:1)
+
+Реализация в модуле Messaging. FGP §6.5 задаёт конституцию («только добровольная жалоба, без сканирования»); продукт моделирует «жюри» как **одного ревьюера с эксклюзивным claim** и явным forward. Группы — вне scope (§4.6). Сервер **никогда** не видит plaintext и `frankingKey`; HMAC проверяет клиент ревьюера.
+
+**Ingest.** Нет `frankTagBase64Url` → доставка как в v1, квитанции нет. Тег есть и задан `Messaging:FrankingSigningSeed` → сервер подписывает `receiptPayload` (§4.3), `messageUuid` = **wire** uuid, `serverReceivedAt` = RFC3339 UTC с миллисекундами, пишет `user_message_frank_receipts`. Тег есть, seed нет → **fail-closed**: строка в `user_messages` не создаётся, стабильный код `messaging.franking.signing_unavailable` (согласовано с §4.3: нет receipt у tagged = ошибка доставки, не silent unverifiable).
+
+**Fetch участникам.** GET thread/messages отдаёт аддитивные optional `serverFrankReceipt` и `frankTagBase64Url` из таблицы квитанций (не клиентский blob). Старые клиенты поля игнорируют. Тот же receipt отдаётся claimerу на GET disclosure.
+
+**Viewer-wrap vs backup репортёра.** Наполнение заявки — непрозрачный `disclosureCiphertext` (клиент шифрует на случайный `reportContentKey`). Capability зрителя — живая wrap-строка `{userUuid, deviceUuid, wrappedKey}` на **аккаунт ревьюера** и его Active устройство из `user_device_keys`. Backup wrap репортёра на **свои** устройства — не capability: нужен, чтобы с другого устройства сделать late-wrap claimerу; в `viewerAccountCount` **не входит**.
+
+Канон аудита зрителей: `viewerAccountCount = COUNT(DISTINCT user_uuid)` живых wrap, где `user_uuid <> reporter_user_uuid`. Не число HTTP GET. Forward увеличивает счётчик. Репортёр не зритель (он уже получатель сообщения). Кап живых viewer-аккаунтов — 5 (claimer + forwards).
+
+**Exclusive claim.** `UPDATE … WHERE status = 'open'` (иначе 409). Claimer — активный ревьюер roster, **не** репортёр и **не** accused (отправитель). Viewer-wrap / forward / disclosure на accused запрещены, даже если отправитель в roster. Accused не видит очередь и GET report (404). GET audit — не сторона спора. Roster не загружен — 503 для всех, кроме reporter / claimer / живой viewer-wrap (accused не отличает отсутствие заявки). После первого claim viewer-wrap других ревьюеров уничтожаются; backup репортёра не трогают. Ciphertext + viewer-wrap callerа отдаются **только** после claim и **только** аккаунтам с живым viewer-wrap (claimer или forward); иначе 403. Очередь — страница до 200 live-заявок, `hasMore` и `nextCursor` (keyset `created_at` RFC3339 с микросекундами, `report_uuid`). Очередь и GET report — только мета (`category`, `status`, `viewerAccountCount`, `hasDisclosure`), без ciphertext. `claimedBy` / `claimedAt` видит ревьюер (очередь, GET). Репортёру claimer **не** отдаётся, кроме статуса `claimed_awaiting_disclosure` (иначе late-wrap не нацелить на устройства claimerа) — в том числе если репортёр сам в roster: очередь по своей заявке прячет claimerа так же, как GET.
+
+Опциональные submit-time viewer-wrap на текущий активный roster — только в теле `POST /reports`. Если жалобщик сразу уйдёт оффлайн, claimer с wrap в этом наборе сразу в `claimed`. Остаточный риск: дамп БД *до* claim + украденный ключ устройства ревьюера. Серверного escrow нет. После submit набор roster не расширять (иначе обход exclusive claim): late `POST …/wraps` — backup на устройства репортёра или viewer-wrap **только на текущего claimerа**.
+
+FSM: `open` → claim с wrap claimerа → `claimed`; без wrap → `claimed_awaiting_disclosure`. Release (только claimer) → `open`, `claimed_by` и `claimed_at` = NULL, все viewer-wrap уничтожены, backup оставлен; следующий claimer всегда в `claimed_awaiting_disclosure`, пока репортёр не сделает late-wrap. `claimed` → forward (кап 5) остаётся `claimed`; resolve/reject — терминальные, disclosure больше не отдавать.
+
+**Unverifiable.** Жалоба на untagged сообщение (нет receipt) имеет `verificationStatus = unverifiable`. Жалобщик обязан быть **receiver** сообщения; 1:1 only. Unique `(reporter, message)` — повторная жалоба после resolve/reject на то же сообщение тем же репортёром не создаётся. **Живая** заявка держит ciphertext: `DELETE` сообщения блокируется, пока статус `open` / `claimed` / `claimed_awaiting_disclosure`. После resolve/reject строка заявки больше не держит DM (`ON DELETE CASCADE`); квитанция по-прежнему `CASCADE` вместе с ciphertext, когда заявки уже нет.
+
 ## 5. Тест-векторы (выполнено)
 
 [`Documents/test-vectors/franking-v1.json`](../test-vectors/franking-v1.json) — генератор `_gen_fscp_franking_v1.py`, франкует **сообщение golden-транскрипта** `fscp-message-transcript-v1.json` (жалоба доказуема для реального wire; регенерировать транскрипт первым):

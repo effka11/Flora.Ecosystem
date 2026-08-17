@@ -373,6 +373,7 @@ impl MessagingRepo {
         voice_asset_uuids: &[Uuid],
         image_asset_uuids: &[Uuid],
         video_asset_uuids: &[Uuid],
+        frank_receipt: Option<&super::franking::InsertFrankReceipt>,
     ) -> Result<SendMessageRow, String> {
         let message_uuid = Uuid::now_v7();
         let created_at = Utc::now();
@@ -472,6 +473,27 @@ impl MessagingRepo {
             }
         }
 
+        if let Some(receipt) = frank_receipt {
+            sqlx::query(
+                r#"
+                INSERT INTO flora_core.user_message_frank_receipts
+                    (message_uuid, wire_message_uuid, frank_tag, receipt_payload,
+                     signature, key_id, server_received_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                "#,
+            )
+            .bind(message_uuid)
+            .bind(receipt.wire_message_uuid)
+            .bind(receipt.frank_tag.as_slice())
+            .bind(&receipt.receipt_payload)
+            .bind(receipt.signature.as_slice())
+            .bind(receipt.key_id)
+            .bind(receipt.server_received_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
         tx.commit().await.map_err(|e| e.to_string())?;
 
         Ok(SendMessageRow {
@@ -534,13 +556,20 @@ impl MessagingRepo {
 
         let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
         self.remove_message_assets_tx(&mut tx, message_uuid).await?;
-        sqlx::query("DELETE FROM flora_core.user_messages WHERE message_uuid = $1")
+        match sqlx::query("DELETE FROM flora_core.user_messages WHERE message_uuid = $1")
             .bind(message_uuid)
             .execute(&mut *tx)
             .await
-            .map_err(|e| e.to_string())?;
-        tx.commit().await.map_err(|e| e.to_string())?;
-        Ok(DeleteMessageOutcome::Success)
+        {
+            Ok(_) => {
+                tx.commit().await.map_err(|e| e.to_string())?;
+                Ok(DeleteMessageOutcome::Success)
+            }
+            Err(e) => {
+                tx.rollback().await.ok();
+                map_user_message_delete_err(e)
+            }
+        }
     }
 
     /// Legacy `DELETE /api/auth/messages/{messageUuid}` — без conversationUuid в пути.
@@ -570,13 +599,20 @@ impl MessagingRepo {
 
         let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
         self.remove_message_assets_tx(&mut tx, message_uuid).await?;
-        sqlx::query("DELETE FROM flora_core.user_messages WHERE message_uuid = $1")
+        match sqlx::query("DELETE FROM flora_core.user_messages WHERE message_uuid = $1")
             .bind(message_uuid)
             .execute(&mut *tx)
             .await
-            .map_err(|e| e.to_string())?;
-        tx.commit().await.map_err(|e| e.to_string())?;
-        Ok(DeleteMessageOutcome::Success)
+        {
+            Ok(_) => {
+                tx.commit().await.map_err(|e| e.to_string())?;
+                Ok(DeleteMessageOutcome::Success)
+            }
+            Err(e) => {
+                tx.rollback().await.ok();
+                map_user_message_delete_err(e)
+            }
+        }
     }
 
     pub async fn delete_conversation(
@@ -591,7 +627,7 @@ impl MessagingRepo {
         let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
         self.remove_peer_assets_tx(&mut tx, viewer_uuid, other_user_uuid)
             .await?;
-        sqlx::query(
+        match sqlx::query(
             r#"
             DELETE FROM flora_core.user_messages
             WHERE (sender_user_uuid = $1 AND receiver_user_uuid = $2)
@@ -602,9 +638,19 @@ impl MessagingRepo {
         .bind(other_user_uuid)
         .execute(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?;
-        tx.commit().await.map_err(|e| e.to_string())?;
-        Ok(DeleteConversationOutcome::Success)
+        {
+            Ok(_) => {
+                tx.commit().await.map_err(|e| e.to_string())?;
+                Ok(DeleteConversationOutcome::Success)
+            }
+            Err(e) => {
+                tx.rollback().await.ok();
+                match map_user_message_delete_err(e)? {
+                    DeleteMessageOutcome::Conflict => Ok(DeleteConversationOutcome::Conflict),
+                    _ => Err("удаление диалога: неожиданный FK".into()),
+                }
+            }
+        }
     }
 
     async fn remove_message_assets_tx(
@@ -719,4 +765,21 @@ fn group_assets(rows: Vec<AssetLinkRow>) -> HashMap<Uuid, Vec<Uuid>> {
         }
     }
     out
+}
+
+fn map_user_message_delete_err(err: sqlx::Error) -> Result<DeleteMessageOutcome, String> {
+    match &err {
+        sqlx::Error::Database(db) if db.code().as_deref() == Some("23503") => {
+            let live = matches!(
+                db.constraint(),
+                Some("fk_franking_reports_message" | "fk_franking_live_message")
+            ) || db.message().contains("live franking report");
+            if live {
+                Ok(DeleteMessageOutcome::Conflict)
+            } else {
+                Err(err.to_string())
+            }
+        }
+        _ => Err(err.to_string()),
+    }
 }

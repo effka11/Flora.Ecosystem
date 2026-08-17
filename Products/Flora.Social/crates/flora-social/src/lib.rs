@@ -416,6 +416,11 @@ fn messaging_router(
         .get_non_empty("Messaging:E2eTokenSecret")
         .or_else(|| cfg.get_non_empty("Jwt:Secret"))
         .map(|s| s.as_bytes().to_vec());
+    let mut reviewer_user_uuids = Vec::new();
+    if let Some(s) = cfg.get_non_empty("Messaging:FrankingReviewerUserUuids") {
+        reviewer_user_uuids.push(s.to_string());
+    }
+    reviewer_user_uuids.extend(cfg.get_string_array("Messaging:FrankingReviewerUserUuids"));
     let module = flora_messaging::compose(
         pool,
         accounts,
@@ -428,6 +433,12 @@ fn messaging_router(
         read_notifier,
         preview_targets,
         e2e_token_secret,
+        flora_messaging::FrankingHostConfig {
+            signing_seed: cfg
+                .get_non_empty("Messaging:FrankingSigningSeed")
+                .map(|s| s.to_string()),
+            reviewer_user_uuids,
+        },
     );
     (
         with_jwt(cfg, sessions, module.router),

@@ -3,6 +3,7 @@
 //! Публичные порты для Notifications (`MessageSentNotifier` / C# `IMessageSentNotifier`).
 //! Чужим модулям разрешена зависимость только от этого crate (§2.3).
 
+use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -182,6 +183,25 @@ pub struct ConversationsPageDto {
     pub has_more: bool,
 }
 
+/// Слепая квитанция сервера (franking.md §4.3). Аддитивное поле GET messages.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerFrankReceiptDto {
+    pub signature_base64_url: String,
+    pub server_franking_key_id: Uuid,
+    pub server_received_at: String,
+}
+
+impl fmt::Debug for ServerFrankReceiptDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ServerFrankReceiptDto")
+            .field("signature_base64_url", &"<redacted>")
+            .field("server_franking_key_id", &self.server_franking_key_id)
+            .field("server_received_at", &self.server_received_at)
+            .finish()
+    }
+}
+
 /// Элемент ленты сообщений (GET …/messages).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -196,6 +216,10 @@ pub struct MessageItemDto {
     pub voice_asset_uuids: Vec<Uuid>,
     pub image_asset_uuids: Vec<Uuid>,
     pub video_asset_uuids: Vec<Uuid>,
+    #[serde(default)]
+    pub server_frank_receipt: Option<ServerFrankReceiptDto>,
+    #[serde(default)]
+    pub frank_tag_base64_url: Option<String>,
 }
 
 /// Страница сообщений диалога.
@@ -241,6 +265,8 @@ pub struct SendMessageResultDto {
 pub enum DeleteMessageOutcome {
     NotFound,
     Forbidden,
+    /// Живая franking-заявка держит ciphertext.
+    Conflict,
     Success,
 }
 
@@ -248,6 +274,8 @@ pub enum DeleteMessageOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeleteConversationOutcome {
     NotFound,
+    /// Хотя бы одно сообщение диалога держит живая franking-заявка.
+    Conflict,
     Success,
 }
 
@@ -565,6 +593,10 @@ pub struct LegacyMessageThreadItemDto {
     pub created_at: String,
     pub is_read: bool,
     pub is_from_me: bool,
+    #[serde(default)]
+    pub server_frank_receipt: Option<ServerFrankReceiptDto>,
+    #[serde(default)]
+    pub frank_tag_base64_url: Option<String>,
 }
 
 /// Тело `POST /api/auth/messages` (C# `SendMessageRequest`).
@@ -770,4 +802,304 @@ pub struct SendGroupMessageResultDto {
     pub message_uuid: Uuid,
     pub created_at: String,
     pub encrypted_wire: String,
+}
+
+// ── FSCP-FRANK reports (exclusive claim) ──
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FrankingReportCategory {
+    Abuse,
+    Threats,
+    Spam,
+    Csam,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FrankingReportStatus {
+    Open,
+    Claimed,
+    ClaimedAwaitingDisclosure,
+    Resolved,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FrankingVerificationStatus {
+    Verifiable,
+    Unverifiable,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingDisclosureWrapDto {
+    pub user_uuid: Uuid,
+    pub device_uuid: Uuid,
+    pub wrapped_key: String,
+}
+
+impl fmt::Debug for FrankingDisclosureWrapDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FrankingDisclosureWrapDto")
+            .field("user_uuid", &self.user_uuid)
+            .field("device_uuid", &self.device_uuid)
+            .field("wrapped_key", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateFrankingReportRequest {
+    pub persisted_message_uuid: Uuid,
+    pub category: FrankingReportCategory,
+    pub disclosure_ciphertext: String,
+    #[serde(default)]
+    pub wraps: Vec<FrankingDisclosureWrapDto>,
+}
+
+impl fmt::Debug for CreateFrankingReportRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateFrankingReportRequest")
+            .field("persisted_message_uuid", &self.persisted_message_uuid)
+            .field("category", &self.category)
+            .field("disclosure_ciphertext", &"<redacted>")
+            .field("wraps", &self.wraps)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostFrankingWrapsRequest {
+    pub wraps: Vec<FrankingDisclosureWrapDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForwardFrankingReportRequest {
+    pub wraps: Vec<FrankingDisclosureWrapDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveFrankingReportRequest {
+    pub decision: FrankingResolveDecision,
+    #[serde(default)]
+    pub code: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FrankingResolveDecision {
+    Resolved,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingServerKeyDto {
+    pub server_franking_key_id: Option<Uuid>,
+    pub public_key_base64_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingReportMetaDto {
+    pub report_uuid: Uuid,
+    pub persisted_message_uuid: Uuid,
+    pub conversation_uuid: Uuid,
+    pub category: FrankingReportCategory,
+    pub status: FrankingReportStatus,
+    pub claimed_by: Option<Uuid>,
+    pub claimed_at: Option<String>,
+    pub created_at: String,
+    pub viewer_account_count: i64,
+    pub has_disclosure: bool,
+    pub verification_status: FrankingVerificationStatus,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingQueueDto {
+    pub items: Vec<FrankingReportMetaDto>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingOwnWrapDto {
+    pub device_uuid: Uuid,
+    pub wrapped_key: String,
+}
+
+impl fmt::Debug for FrankingOwnWrapDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FrankingOwnWrapDto")
+            .field("device_uuid", &self.device_uuid)
+            .field("wrapped_key", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingDisclosureDto {
+    pub disclosure_ciphertext: String,
+    pub wraps: Vec<FrankingOwnWrapDto>,
+    pub server_frank_receipt: Option<ServerFrankReceiptDto>,
+    pub frank_tag_base64_url: Option<String>,
+    pub verification_status: FrankingVerificationStatus,
+}
+
+impl fmt::Debug for FrankingDisclosureDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FrankingDisclosureDto")
+            .field("disclosure_ciphertext", &"<redacted>")
+            .field("wraps", &self.wraps)
+            .field("server_frank_receipt", &self.server_frank_receipt)
+            .field(
+                "frank_tag_base64_url",
+                &self.frank_tag_base64_url.as_ref().map(|_| "<redacted>"),
+            )
+            .field("verification_status", &self.verification_status)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FrankingAuditEvent {
+    WrapCreated,
+    WrapDestroyed,
+    Claimed,
+    Released,
+    Forwarded,
+    DisclosureFetched,
+    Resolved,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingAuditEventDto {
+    pub audit_uuid: Uuid,
+    pub event: FrankingAuditEvent,
+    pub actor_user_uuid: Uuid,
+    pub subject_user_uuid: Option<Uuid>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingAuditDto {
+    pub viewer_account_count: i64,
+    pub events: Vec<FrankingAuditEventDto>,
+}
+
+#[cfg(test)]
+mod franking_null_contract_tests {
+    use super::*;
+
+    #[test]
+    fn franking_optional_fields_serialize_as_explicit_null() {
+        let item = MessageItemDto {
+            message_uuid: Uuid::nil(),
+            sender_user_uuid: Uuid::nil(),
+            encrypted_for_me: None,
+            content: None,
+            created_at: String::new(),
+            is_read: false,
+            is_from_me: false,
+            voice_asset_uuids: Vec::new(),
+            image_asset_uuids: Vec::new(),
+            video_asset_uuids: Vec::new(),
+            server_frank_receipt: None,
+            frank_tag_base64_url: None,
+        };
+        let item_json = serde_json::to_value(&item).expect("item json");
+        assert!(item_json["serverFrankReceipt"].is_null());
+        assert!(item_json["frankTagBase64Url"].is_null());
+
+        let key = FrankingServerKeyDto {
+            server_franking_key_id: None,
+            public_key_base64_url: None,
+        };
+        let key_json = serde_json::to_value(&key).expect("key json");
+        assert!(key_json["serverFrankingKeyId"].is_null());
+        assert!(key_json["publicKeyBase64Url"].is_null());
+
+        let disclosure = FrankingDisclosureDto {
+            disclosure_ciphertext: String::new(),
+            wraps: Vec::new(),
+            server_frank_receipt: None,
+            frank_tag_base64_url: None,
+            verification_status: FrankingVerificationStatus::Unverifiable,
+        };
+        let disclosure_json = serde_json::to_value(&disclosure).expect("disclosure json");
+        assert!(disclosure_json["serverFrankReceipt"].is_null());
+        assert!(disclosure_json["frankTagBase64Url"].is_null());
+
+        let queue = serde_json::to_value(FrankingQueueDto {
+            items: Vec::new(),
+            next_cursor: None,
+            has_more: true,
+        })
+        .expect("queue json");
+        assert_eq!(queue["hasMore"], true);
+        assert!(queue["nextCursor"].is_null());
+        assert!(queue["items"].as_array().is_some());
+
+        let audit = serde_json::to_value(FrankingAuditEvent::WrapCreated).expect("audit json");
+        assert_eq!(audit, "wrapCreated");
+        let rejected = serde_json::to_value(FrankingAuditEvent::Rejected).expect("rejected json");
+        assert_eq!(rejected, "rejected");
+    }
+
+    #[test]
+    fn franking_secret_fields_are_redacted_in_debug() {
+        let wrap = FrankingDisclosureWrapDto {
+            user_uuid: Uuid::nil(),
+            device_uuid: Uuid::nil(),
+            wrapped_key: "wrap-secret".into(),
+        };
+        assert!(!format!("{wrap:?}").contains("wrap-secret"));
+
+        let create = CreateFrankingReportRequest {
+            persisted_message_uuid: Uuid::nil(),
+            category: FrankingReportCategory::Abuse,
+            disclosure_ciphertext: "cipher-secret".into(),
+            wraps: vec![wrap],
+        };
+        let create_debug = format!("{create:?}");
+        assert!(!create_debug.contains("cipher-secret"));
+        assert!(!create_debug.contains("wrap-secret"));
+
+        let receipt = ServerFrankReceiptDto {
+            signature_base64_url: "sig-secret".into(),
+            server_franking_key_id: Uuid::nil(),
+            server_received_at: "2026-01-01T00:00:00.000Z".into(),
+        };
+        assert!(!format!("{receipt:?}").contains("sig-secret"));
+
+        let disclosure = FrankingDisclosureDto {
+            disclosure_ciphertext: "disc-secret".into(),
+            wraps: vec![FrankingOwnWrapDto {
+                device_uuid: Uuid::nil(),
+                wrapped_key: "own-wrap-secret".into(),
+            }],
+            server_frank_receipt: Some(receipt),
+            frank_tag_base64_url: Some("tag-secret".into()),
+            verification_status: FrankingVerificationStatus::Unverifiable,
+        };
+        let disclosure_debug = format!("{disclosure:?}");
+        assert!(!disclosure_debug.contains("disc-secret"));
+        assert!(!disclosure_debug.contains("own-wrap-secret"));
+        assert!(!disclosure_debug.contains("sig-secret"));
+        assert!(!disclosure_debug.contains("tag-secret"));
+    }
 }

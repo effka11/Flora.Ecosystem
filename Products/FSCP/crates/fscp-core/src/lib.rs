@@ -4,6 +4,7 @@
 //! Golden: `Documents/test-vectors/fscp-wire-validator-v1.json`.
 
 mod d2d_recovery;
+mod franking;
 mod group;
 mod notification_preview;
 mod organizer;
@@ -19,6 +20,10 @@ pub use d2d_recovery::{
     D2D_AAD_DOMAIN, D2D_SIGNATURE_DOMAIN, D2dRecoveryEnvelopeSummary,
     device_agreement_public_key_id, try_validate_d2d_recovery_envelope,
     verify_d2d_recovery_signature,
+};
+pub use franking::{
+    FSCP_FRANKING_RECEIPT_CONTEXT_V1, FrankReceiptContextV1, frank_receipt_payload_v1,
+    franking_public_key, server_franking_key_id, sign_frank_receipt, verify_frank_receipt,
 };
 pub use fscp_contracts::{
     BOOTSTRAP_DEVICE_UUID, BOOTSTRAP_KEY_EPOCH_ID, GROUP_MAX_MEMBERS, GROUP_WIRE_PREFIX,
@@ -45,7 +50,8 @@ const MAX_MESSAGE_BODY_CIPHER_BYTES: usize = 64 * 1024;
 
 const RKE_ALGORITHM: &str = "x25519-hkdf-xchacha20poly1305";
 const AEAD_NAME: &str = "xchacha20-poly1305";
-const FLORA_NAMESPACE_DNS_SCOPE: Uuid = uuid::uuid!("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+pub(crate) const FLORA_NAMESPACE_DNS_SCOPE: Uuid =
+    uuid::uuid!("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
 
 fn uuid_v5_name(name: &str) -> Uuid {
     Uuid::new_v5(&FLORA_NAMESPACE_DNS_SCOPE, name.as_bytes())
@@ -440,6 +446,30 @@ pub fn extract_message_uuid(wire: &str) -> Result<Uuid, String> {
     guid_field(&root, "messageUuid").ok_or_else(|| String::from("FSCP wire: неверный messageUuid."))
 }
 
+/// `frankTagBase64Url` из внешнего JSON конверта. `None` — поле отсутствует (v1 без franking).
+/// Присутствие с неверной длиной — ошибка формы (не silent).
+pub fn extract_frank_tag(wire: &str) -> Result<Option<[u8; 32]>, String> {
+    let wire = wire.trim();
+    let Some(inner) = wire.strip_prefix(WIRE_PREFIX) else {
+        return Err("Неверный префикс FSCP wire (ожидается fscp1:).".into());
+    };
+    let json_utf8 = from_base64_url_like_dotnet(inner, MAX_INNER_UTF8_BYTES)?;
+    let root = parse_json_like_dotnet(&json_utf8)?;
+    match root.get("frankTagBase64Url") {
+        None | Some(Value::Null) => Ok(None),
+        Some(_) => {
+            let Some(s) = string_field(&root, "frankTagBase64Url") else {
+                return Err("FSCP wire: frankTagBase64Url должен быть непустой строкой.".into());
+            };
+            let bytes = from_base64_url_like_dotnet(s, 64)?;
+            let tag: [u8; 32] = bytes
+                .try_into()
+                .map_err(|_| String::from("FSCP wire: frankTagBase64Url должен быть 32 байта."))?;
+            Ok(Some(tag))
+        }
+    }
+}
+
 /// Извлекает UUID собеседника (участник ≠ `authenticated_sender`) без полной валидации.
 /// Порт `TryExtractReceiver`; после определения получателя вызывается `try_validate_dual_wire`.
 pub fn try_extract_receiver(wire: &str, authenticated_sender: Uuid) -> Result<Uuid, String> {
@@ -557,6 +587,7 @@ fn parse_guid_like(s: &str) -> Option<Uuid> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     // Полный паритет с C#-эталоном — golden-вектор fscp-wire-validator-v1.json,
     // consumer в Tests/parity/tests/fscp_wire_vectors.rs. Здесь — инварианты хелперов.
@@ -635,11 +666,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn extract_frank_tag_absent_or_null_is_none() {
+        for json in [r#"{"version":1}"#, r#"{"frankTagBase64Url":null}"#] {
+            let wire = format!("{WIRE_PREFIX}{}", URL_SAFE_NO_PAD.encode(json.as_bytes()));
+            assert_eq!(extract_frank_tag(&wire).unwrap(), None, "{json}");
+        }
+    }
+
+    #[test]
+    fn extract_frank_tag_accepts_32_bytes() {
+        let tag = [9u8; 32];
+        let json = serde_json::json!({
+            "frankTagBase64Url": URL_SAFE_NO_PAD.encode(tag)
+        })
+        .to_string();
+        let wire = format!("{WIRE_PREFIX}{}", URL_SAFE_NO_PAD.encode(json.as_bytes()));
+        assert_eq!(extract_frank_tag(&wire).unwrap(), Some(tag));
+    }
+
+    #[test]
+    fn extract_frank_tag_rejects_wrong_length() {
+        let json = serde_json::json!({
+            "frankTagBase64Url": URL_SAFE_NO_PAD.encode([1u8; 8])
+        })
+        .to_string();
+        let wire = format!("{WIRE_PREFIX}{}", URL_SAFE_NO_PAD.encode(json.as_bytes()));
+        assert!(extract_frank_tag(&wire).unwrap_err().contains("32 байта"));
+    }
+
     // ── verify_envelope_signature (errata-5, аддитивная криптоступень) ──────
     // Golden-паритет с TS/python — Tests/parity/tests/fscp_transcript_vectors.rs;
     // здесь — самодостаточные синтетические проверки.
 
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use ed25519_dalek::{Signer, SigningKey};
 
     fn synthetic_signed_wire(mutate_after_sign: impl FnOnce(&mut serde_json::Value)) -> String {

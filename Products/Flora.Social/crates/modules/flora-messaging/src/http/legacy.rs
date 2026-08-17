@@ -5,7 +5,9 @@ use axum::Json;
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use flora_messaging_contracts::{DeleteMessageOutcome, LegacySendMessageRequest};
+use flora_messaging_contracts::{
+    DeleteConversationOutcome, DeleteMessageOutcome, LegacySendMessageRequest,
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -92,7 +94,15 @@ pub async fn delete_conversation(
         .legacy_delete_conversation(user.0, other_user_uuid)
         .await
     {
-        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Ok(DeleteConversationOutcome::Success))
+        | Ok(Ok(DeleteConversationOutcome::NotFound)) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Ok(DeleteConversationOutcome::Conflict)) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "Диалог сейчас нельзя удалить."
+            })),
+        )
+            .into_response(),
         Ok(Err(SendMessageError::BadRequest(msg))) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": msg })),
@@ -126,6 +136,7 @@ pub async fn send_message(
             Json(serde_json::json!({ "error": msg })),
         )
             .into_response(),
+        Err(e) => crate::http::map_send_err(e),
     }
 }
 
@@ -149,6 +160,13 @@ pub async fn delete_message(
         )
             .into_response(),
         Ok(DeleteMessageOutcome::Forbidden) => StatusCode::FORBIDDEN.into_response(),
+        Ok(DeleteMessageOutcome::Conflict) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "Сообщение сейчас нельзя удалить."
+            })),
+        )
+            .into_response(),
         Err(e) => crate::http::internal(e),
     }
 }

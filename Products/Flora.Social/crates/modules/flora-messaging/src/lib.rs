@@ -20,14 +20,33 @@ use sqlx::PgPool;
 
 use crate::application::{
     AssetService, ChatListService, ConversationService, E2eEpochService, E2eKeyBackupService,
-    GroupService,
+    FrankingService, FrankingSigner, GroupService, parse_franking_seed, parse_reviewer_uuids,
 };
 use crate::http::MessagingState;
-use crate::infrastructure::{ChatListRepo, E2eProofTokens, GroupRepo, MessagingRepo};
+use crate::infrastructure::{ChatListRepo, E2eProofTokens, FrankingRepo, GroupRepo, MessagingRepo};
 
 /// Re-export FSCP validator for callers that historically used `flora_messaging::fscp`.
 pub use fscp_core as fscp;
 pub use password_reset_hook::password_reset_hook;
+
+/// Wiring-only: seed и allowlist ревьюеров из конфига хоста. Людей в коде нет.
+#[derive(Clone, Default)]
+pub struct FrankingHostConfig {
+    pub signing_seed: Option<String>,
+    pub reviewer_user_uuids: Vec<String>,
+}
+
+impl std::fmt::Debug for FrankingHostConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FrankingHostConfig")
+            .field(
+                "signing_seed",
+                &self.signing_seed.as_ref().map(|_| "<redacted>"),
+            )
+            .field("reviewer_user_uuids", &self.reviewer_user_uuids)
+            .finish()
+    }
+}
 
 /// Rust-миграции модуля Messaging (первые после cutover; применяются flora-migrate
 /// в таблицу истории `__flora_migrations_messaging`, next-architecture.md §11.1).
@@ -57,6 +76,7 @@ pub fn compose(
     read_notifier: Arc<dyn MessageReadNotifier>,
     preview_targets: Arc<dyn PushPreviewTargetProvider>,
     e2e_token_secret: Option<Vec<u8>>,
+    franking_host: FrankingHostConfig,
 ) -> MessagingModule {
     let cleanup_pool = pool.clone();
     let repo = Arc::new(MessagingRepo::new(pool.clone()));
@@ -64,6 +84,33 @@ pub fn compose(
     let chat_list = Arc::new(ChatListService::new(Arc::new(ChatListRepo::new(
         pool.clone(),
     ))));
+    let signer = match franking_host
+        .signing_seed
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        None => None,
+        Some(raw) => match parse_franking_seed(raw) {
+            Some(seed) => Some(Arc::new(FrankingSigner::from_seed(seed))),
+            None => {
+                tracing::error!(
+                    "flora-messaging: Messaging:FrankingSigningSeed невалиден — tagged send fail-closed"
+                );
+                None
+            }
+        },
+    };
+    if signer.is_none() {
+        tracing::warn!(
+            "flora-messaging: нет валидного Messaging:FrankingSigningSeed — untagged send работает, tagged — messaging.franking.signing_unavailable"
+        );
+    }
+    let franking = Arc::new(FrankingService::new(
+        Arc::new(FrankingRepo::new(pool.clone())),
+        signer,
+    ));
+    merge_reviewers_at_start(&franking, &franking_host.reviewer_user_uuids.join(","));
     let conversations = Arc::new(ConversationService::new(
         repo.clone(),
         accounts.clone(),
@@ -75,6 +122,7 @@ pub fn compose(
         typing_notifier,
         read_notifier,
         preview_targets,
+        franking.clone(),
     ));
     // Errata-5: HMAC-подписанные proof-токены recovery/approve. None → fail-closed
     // (выдача отключена, unlock-complete отклоняет любые токены).
@@ -108,6 +156,7 @@ pub fn compose(
             assets,
             e2e,
             epochs,
+            franking,
         }),
         asset_cleanup: tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 60 * 60));
@@ -127,5 +176,41 @@ pub fn compose(
                 }
             }
         }),
+    }
+}
+
+/// Allowlist из хоста должен быть в `franking_reviewers` до первого JWT-запроса.
+/// `compose` синхронный и вызывается из async `flora-api::build_host` — `block_in_place`,
+/// иначе `block_on` на worker-треде tokio дедлочит.
+fn merge_reviewers_at_start(franking: &FrankingService, raw_allowlist: &str) {
+    let reviewers = match parse_reviewer_uuids(raw_allowlist) {
+        Ok(uuids) => uuids,
+        Err(error) => {
+            tracing::error!(
+                %error,
+                "flora-messaging: allowlist ревьюеров невалиден — очередь не выдаётся как пустой roster"
+            );
+            franking.mark_reviewer_roster_unready();
+            return;
+        }
+    };
+    if reviewers.is_empty() {
+        return;
+    }
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        tracing::error!(
+            "flora-messaging: нет tokio runtime — franking_reviewers из конфига не смержены"
+        );
+        franking.mark_reviewer_roster_unready();
+        return;
+    };
+    let result =
+        tokio::task::block_in_place(|| handle.block_on(franking.merge_reviewers(&reviewers)));
+    if let Err(error) = result {
+        tracing::error!(
+            %error,
+            "flora-messaging: merge franking_reviewers не удался — allowlist из конфига не в БД"
+        );
+        franking.mark_reviewer_roster_unready();
     }
 }
