@@ -13,7 +13,8 @@ import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { TabSearchInput } from "@/app/_shared/TabSearchInput";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { ApiRequestError, isDevLocalOfflineSession } from "@/lib/auth";
-import { apiGetPushPreviewTargets } from "@flora/client-core/api";
+import { apiCreateFrankingReport, apiGetPushPreviewTargets } from "@flora/client-core/api";
+import type { FrankingReportCategory } from "@flora/client-core/contracts";
 import {
   buildNotificationPreviewBundle,
   type NotificationPreviewKind,
@@ -109,7 +110,10 @@ import {
 import { ImageMessageCard } from "./ImageMessageCard";
 import { MessageImageCollage } from "./MessageImageCollage";
 import { MessageBubbleAnchor } from "./MessageBubbleMoreMenu";
+import { canReportMessage } from "./messageReport";
+import { sealMessageReportDisclosure } from "./sealFrankingDisclosure";
 import { MessagesDeleteConversationModal } from "./MessagesDeleteConversationModal";
+import { MessagesReportMessageModal } from "./MessagesReportMessageModal";
 import { MessagesSafetyNumberModal } from "./MessagesSafetyNumberModal";
 import { MessageBubbleReplyQuote } from "./MessageBubbleReplyQuote";
 import { MessageBubbleText } from "./MessageBubbleText";
@@ -300,6 +304,7 @@ function toConversationDto(c: MsgConversationDto): ConversationListItemDto {
     unreadCount: c.unreadCount,
     otherUserIsOnline: c.otherUserIsOnline,
     otherUserLastSeenAt: c.otherUserLastSeenAt,
+    otherAccountBlocked: c.otherAccountBlocked,
   };
 }
 
@@ -622,6 +627,10 @@ function MessagesChatInner() {
   const [deleteConversationModalClosing, setDeleteConversationModalClosing] = useState(false);
   const [deleteConversationBusy, setDeleteConversationBusy] = useState(false);
   const [deleteConversationError, setDeleteConversationError] = useState<string | null>(null);
+  const [pendingReportMessage, setPendingReportMessage] = useState<MessageThreadItemDto | null>(null);
+  const [reportMessageModalClosing, setReportMessageModalClosing] = useState(false);
+  const [reportMessageBusy, setReportMessageBusy] = useState(false);
+  const [reportMessageError, setReportMessageError] = useState<string | null>(null);
   const [listFolder, setListFolder] = useState<ChatListFolderId>("all");
   const [filterFrom, setFilterFrom] = useState<"all" | "people" | "communities" | "dev">("all");
   const [dropdownSortOpen, setDropdownSortOpen] = useState(false);
@@ -2138,6 +2147,7 @@ function MessagesChatInner() {
         displayName: chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername || "Пользователь",
         username: chatHeaderPeer.otherUsername,
         seed: chatHeaderPeer.otherUserUuid,
+        accountBlocked: chatHeaderPeer.otherAccountBlocked,
       },
       more: {
         chatMenuKind: "dm" as const,
@@ -2403,6 +2413,78 @@ function MessagesChatInner() {
       }
     },
     [me?.userUuid, refreshConversationList, selectedOtherUuid, viewerNorm],
+  );
+
+  const reportMessageCloseTimerRef = useRef<number | null>(null);
+
+  const dismissReportMessageModal = useCallback(() => {
+    setReportMessageModalClosing(true);
+    if (reportMessageCloseTimerRef.current) {
+      window.clearTimeout(reportMessageCloseTimerRef.current);
+    }
+    reportMessageCloseTimerRef.current = window.setTimeout(() => {
+      setPendingReportMessage(null);
+      setReportMessageModalClosing(false);
+      setReportMessageError(null);
+      setReportMessageBusy(false);
+      reportMessageCloseTimerRef.current = null;
+    }, DELETE_CONVERSATION_MODAL_CLOSE_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (reportMessageCloseTimerRef.current) {
+        window.clearTimeout(reportMessageCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const closeReportMessageModal = useCallback(() => {
+    if (reportMessageBusy) return;
+    dismissReportMessageModal();
+  }, [dismissReportMessageModal, reportMessageBusy]);
+
+  const handleConfirmReportMessage = useCallback(
+    async (category: FrankingReportCategory) => {
+      const message = pendingReportMessage;
+      const peer = selectedOtherUuid?.trim();
+      if (!message || !peer) return;
+      if (isDevLocalOfflineSession()) {
+        setReportMessageError("Жалобы недоступны в офлайн-демо.");
+        return;
+      }
+
+      setReportMessageBusy(true);
+      setReportMessageError(null);
+      try {
+        const content = displayMessageContent(message);
+        const disclosureCiphertext = await sealMessageReportDisclosure({
+          v: 1,
+          persistedMessageUuid: message.messageUuid,
+          createdAt: message.createdAt,
+          peerUserUuid: peer,
+          plaintext: content === "failed" || content === "decrypting" ? null : content,
+        });
+        await apiCreateFrankingReport({
+          persistedMessageUuid: message.messageUuid,
+          category,
+          disclosureCiphertext,
+        });
+        dismissReportMessageModal();
+      } catch (e) {
+        setReportMessageError(
+          e instanceof ApiRequestError ? e.message : "Не удалось отправить жалобу.",
+        );
+        setReportMessageBusy(false);
+      }
+    },
+    [
+      dismissReportMessageModal,
+      displayMessageContent,
+      pendingReportMessage,
+      selectedOtherUuid,
+    ],
   );
 
   const deleteConversationCloseTimerRef = useRef<number | null>(null);
@@ -4123,6 +4205,7 @@ function MessagesChatInner() {
                             username: undefined as string | undefined,
                             communityName: item.group.title,
                             seed: item.group.conversationUuid,
+                            accountBlocked: undefined as boolean | undefined,
                           },
                           onOpen: () => openGroupChat(item.group.conversationUuid),
                           onPrefetch: undefined as (() => void) | undefined,
@@ -4159,6 +4242,7 @@ function MessagesChatInner() {
                               username: chat.otherUsername,
                               communityName: undefined as string | undefined,
                               seed: chat.otherUserUuid,
+                              accountBlocked: chat.otherAccountBlocked,
                             },
                             onOpen: () => switchChat(chat),
                             onPrefetch: () => prefetchPeerThread(chat.otherUserUuid),
@@ -4194,6 +4278,7 @@ function MessagesChatInner() {
                             username={row.avatar.username}
                             communityName={row.avatar.communityName}
                             seed={row.avatar.seed}
+                            accountBlocked={row.avatar.accountBlocked}
                           />
                           {row.kind === "dm" ? (
                             <span
@@ -4339,6 +4424,7 @@ function MessagesChatInner() {
                       displayName={openChatHeader.avatar.displayName}
                       username={openChatHeader.avatar.username}
                       seed={openChatHeader.avatar.seed}
+                      accountBlocked={openChatHeader.avatar.accountBlocked}
                     />
                   )}
                   {openChatHeader.kind === "dm" ? (
@@ -4585,6 +4671,19 @@ function MessagesChatInner() {
                               ? () => void handleDeleteMessage(message)
                               : undefined
                           }
+                          onReport={
+                            canReportMessage({
+                              isFromMe: message.isFromMe,
+                              isGroupChat: isGroupChatOpen,
+                              sendStatus: message.sendStatus,
+                            }) && displayMessageContent(message) !== "decrypting"
+                              ? () => {
+                                  setReportMessageError(null);
+                                  setReportMessageModalClosing(false);
+                                  setPendingReportMessage(message);
+                                }
+                              : undefined
+                          }
                         >
                           <div
                             className={`${styles.messagesBubble} ${message.isFromMe ? styles.messagesBubbleMe : styles.messagesBubbleThem} ${voiceOnly ? styles.messagesBubbleVoiceOnly : ""} ${photoBubble ? styles.messagesBubblePhoto : ""} ${photoCollage ? styles.messagesBubblePhotoCollage : ""} ${inlineTime ? styles.messagesBubbleInlineTime : ""}`}
@@ -4797,6 +4896,7 @@ function MessagesChatInner() {
                                   username={member?.username || ""}
                                   avatarUuid={member?.avatarUuid}
                                   seed={senderUuid || label}
+                                  accountBlocked={member?.accountBlocked}
                                 />
                               );
                             })()
@@ -5137,6 +5237,14 @@ function MessagesChatInner() {
         targetKind={pendingDeleteConversation?.kind === "group" ? "group" : "dm"}
         onClose={closeDeleteConversationModal}
         onConfirm={confirmDeleteConversation}
+      />
+      <MessagesReportMessageModal
+        open={pendingReportMessage != null}
+        closing={reportMessageModalClosing}
+        busy={reportMessageBusy}
+        error={reportMessageError}
+        onClose={closeReportMessageModal}
+        onConfirm={(category) => void handleConfirmReportMessage(category)}
       />
       <MessagesSafetyNumberModal
         open={pendingSafetyNumber != null}

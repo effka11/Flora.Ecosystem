@@ -884,12 +884,28 @@ pub struct ForwardFrankingReportRequest {
     pub wraps: Vec<FrankingDisclosureWrapDto>,
 }
 
+/// Бан accused в момент закрытия анкеты. Отсутствие поля — резолв без бана.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountBlockRequest {
+    /// Срок в днях, 1..=9999. `None` — навсегда.
+    #[serde(default)]
+    pub days: Option<u32>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveFrankingReportRequest {
     pub decision: FrankingResolveDecision,
     #[serde(default)]
     pub code: Option<String>,
+    /// Отсутствие `accountBlock` или `null` означает резолв без бана.
+    ///
+    /// Объект без `days` или с `days: null` означает бессрочный бан; `days` задаёт срок
+    /// в диапазоне 1..=9999. Диапазон и запрет бана для решения `rejected` проверяет
+    /// обработчик позже (с ответом 400 для срока вне диапазона), а не serde.
+    #[serde(default)]
+    pub account_block: Option<AccountBlockRequest>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -920,6 +936,10 @@ pub struct FrankingReportMetaDto {
     pub viewer_account_count: i64,
     pub has_disclosure: bool,
     pub verification_status: FrankingVerificationStatus,
+    /// Public username of the reporter (DM receiver). Panel/reporter meta, not journal PII.
+    pub reporter_username: Option<String>,
+    /// Public username of the accused (DM sender). Panel/reporter meta, not journal PII.
+    pub accused_username: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1006,6 +1026,14 @@ mod franking_null_contract_tests {
     use super::*;
 
     #[test]
+    fn resolve_without_account_block_deserializes_without_ban() {
+        let request: ResolveFrankingReportRequest =
+            serde_json::from_str(r#"{"decision":"rejected"}"#).expect("resolve request");
+
+        assert!(request.account_block.is_none());
+    }
+
+    #[test]
     fn franking_optional_fields_serialize_as_explicit_null() {
         let item = MessageItemDto {
             message_uuid: Uuid::nil(),
@@ -1053,6 +1081,25 @@ mod franking_null_contract_tests {
         assert_eq!(queue["hasMore"], true);
         assert!(queue["nextCursor"].is_null());
         assert!(queue["items"].as_array().is_some());
+
+        let meta = FrankingReportMetaDto {
+            report_uuid: Uuid::nil(),
+            persisted_message_uuid: Uuid::nil(),
+            conversation_uuid: Uuid::nil(),
+            category: FrankingReportCategory::Abuse,
+            status: FrankingReportStatus::Open,
+            claimed_by: None,
+            claimed_at: None,
+            created_at: String::new(),
+            viewer_account_count: 0,
+            has_disclosure: false,
+            verification_status: FrankingVerificationStatus::Unverifiable,
+            reporter_username: None,
+            accused_username: None,
+        };
+        let meta_json = serde_json::to_value(&meta).expect("meta json");
+        assert!(meta_json["reporterUsername"].is_null());
+        assert!(meta_json["accusedUsername"].is_null());
 
         let audit = serde_json::to_value(FrankingAuditEvent::WrapCreated).expect("audit json");
         assert_eq!(audit, "wrapCreated");

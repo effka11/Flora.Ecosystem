@@ -57,7 +57,10 @@ export default function UserProfileScreen() {
       displayName: profile.displayName,
       avatarUuid: profile.avatarUuid,
     };
-    return (postsQuery.data ?? []).map((post) => profilePostToFeedPost(post, author));
+    return (postsQuery.data ?? []).map((post) => ({
+      ...profilePostToFeedPost(post, author),
+      authorAccountBlocked: profile.accountBlocked ?? false,
+    }));
   }, [postsQuery.data, profile, username]);
 
   const mediaBand = useFrcMediaBand(posts, visibleRange, { online: network === "online" });
@@ -156,12 +159,14 @@ export default function UserProfileScreen() {
                   otherUsername: profile.username,
                   otherDisplayName: profile.displayName,
                   otherAvatarUuid: profile.avatarUuid,
+                  otherAccountBlocked: profile.accountBlocked,
                 })
             : undefined
         }
         isFollowing={profile?.isFollowingByMe}
         followBusy={followBusy}
         onToggleFollow={canShowOtherActions ? () => void handleToggleFollow() : undefined}
+        accountBlocked={profile?.accountBlocked}
       />
     ),
     [

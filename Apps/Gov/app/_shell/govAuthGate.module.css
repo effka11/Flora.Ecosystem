@@ -1,0 +1,65 @@
+/*
+ * Поток внутри колонки .main шелла (как /rules и /download в Social).
+ */
+
+.notice {
+  margin: 0 0 calc(2 * var(--flora-grid-step));
+  max-width: 42em;
+  color: var(--flora-gray);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.error {
+  margin: 0 0 calc(2 * var(--flora-grid-step));
+  max-width: 42em;
+  color: var(--flora-gray-light);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.retry {
+  min-height: calc(3 * var(--flora-grid-step));
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, var(--flora-gray));
+  border-radius: calc(0.6 * var(--flora-grid-step));
+  background: color-mix(in srgb, var(--flora-green-light) 18%, var(--flora-bg));
+  color: var(--flora-green-light);
+  font: 300 15px / 1 var(--font-manrope), system-ui, sans-serif;
+  letter-spacing: var(--flora-tracking-15);
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: color-mix(in srgb, var(--flora-green-light) 28%, var(--flora-bg));
+  color: var(--flora-gray-hover);
+}
+
+.statusLine {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+}
+
+.logout {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  font-size: 14px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.logout:hover,
+.logout:focus-visible {
+  color: var(--flora-gray-hover);
+}
+
+.logout:disabled {
+  cursor: default;
+  opacity: 0.45;
+}

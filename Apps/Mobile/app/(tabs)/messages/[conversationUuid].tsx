@@ -370,6 +370,7 @@ export default function ThreadScreen() {
     otherDisplayName?: string;
     otherUsername?: string;
     otherAvatarUuid?: string;
+    otherAccountBlocked?: string;
     otherUserIsOnline?: string;
     otherUserLastSeenAt?: string;
   }>();
@@ -448,6 +449,7 @@ export default function ThreadScreen() {
   const paramOtherDisplayName = routeParam(params.otherDisplayName);
   const paramOtherUsername = routeParam(params.otherUsername);
   const paramOtherAvatarUuid = routeParam(params.otherAvatarUuid);
+  const paramOtherAccountBlocked = params.otherAccountBlocked;
   const paramOtherUserIsOnline = params.otherUserIsOnline;
   const paramOtherUserLastSeenAt = routeParam(params.otherUserLastSeenAt);
   const [sending, setSending] = useState(false);
@@ -592,6 +594,7 @@ export default function ThreadScreen() {
         otherUsername: fromList.otherUsername,
         otherDisplayName: fromList.otherDisplayName,
         otherAvatarUuid: fromList.otherAvatarUuid,
+        otherAccountBlocked: fromList.otherAccountBlocked,
         otherUserIsOnline: fromList.otherUserIsOnline,
         otherUserLastSeenAt: fromList.otherUserLastSeenAt,
       };
@@ -602,12 +605,14 @@ export default function ThreadScreen() {
       otherUsername: paramOtherUsername,
       otherDisplayName: paramOtherDisplayName || paramOtherUsername || "Пользователь",
       otherAvatarUuid: paramOtherAvatarUuid.trim() ? paramOtherAvatarUuid : null,
+      otherAccountBlocked: parseBoolParam(paramOtherAccountBlocked),
       otherUserIsOnline: parseBoolParam(paramOtherUserIsOnline),
       otherUserLastSeenAt: paramOtherUserLastSeenAt.trim() || null,
     };
   }, [
     conversationUuid,
     queryClient,
+    paramOtherAccountBlocked,
     paramOtherAvatarUuid,
     paramOtherDisplayName,
     paramOtherUserIsOnline,

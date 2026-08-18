@@ -17,6 +17,8 @@ import {
   constantTimeEqual,
   frankCommitInputV1,
   frankReceiptPayloadV1,
+  openFrankingDisclosureV1,
+  sealFrankingDisclosureV1,
   verifyFrankedMessageV1,
   type FrankComplaintTupleV1,
 } from "./franking.js";
@@ -164,5 +166,13 @@ describe("golden: franking-v1.json (FSCP-FRANK, эталонная реализ�
     expect(constantTimeEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2]))).toBe(true);
     expect(constantTimeEqual(new Uint8Array([1, 2]), new Uint8Array([1, 3]))).toBe(false);
     expect(constantTimeEqual(new Uint8Array([1]), new Uint8Array([1, 0]))).toBe(false);
+  });
+
+  it("disclosure seal roundtrip: nonce||ciphertext, AAD привязан", () => {
+    const plaintext = utf8Bytes('{"v":1,"persistedMessageUuid":"x"}');
+    const { reportContentKey, sealed } = sealFrankingDisclosureV1(sodium, plaintext);
+    expect(reportContentKey.length).toBe(32);
+    expect(sealed.length).toBeGreaterThan(24);
+    expect(openFrankingDisclosureV1(sodium, sealed, reportContentKey)).toEqual(plaintext);
   });
 });

@@ -7,15 +7,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{Duration, SecondsFormat, Utc};
+use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
-    CreateFrankingReportRequest, ForwardFrankingReportRequest, FrankingAuditDto,
-    FrankingAuditEvent, FrankingAuditEventDto, FrankingDisclosureDto, FrankingDisclosureWrapDto,
-    FrankingOwnWrapDto, FrankingQueueDto, FrankingReportCategory, FrankingReportMetaDto,
-    FrankingReportStatus, FrankingResolveDecision, FrankingServerKeyDto,
+    AccountBlockRequest, CreateFrankingReportRequest, ForwardFrankingReportRequest,
+    FrankingAuditDto, FrankingAuditEvent, FrankingAuditEventDto, FrankingDisclosureDto,
+    FrankingDisclosureWrapDto, FrankingOwnWrapDto, FrankingQueueDto, FrankingReportCategory,
+    FrankingReportMetaDto, FrankingReportStatus, FrankingResolveDecision, FrankingServerKeyDto,
     FrankingVerificationStatus, PostFrankingWrapsRequest, ResolveFrankingReportRequest,
     ServerFrankReceiptDto,
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
+use flora_users_contracts::AccountSanctions;
 use uuid::Uuid;
 
 use crate::infrastructure::franking::{
@@ -26,6 +28,10 @@ pub const MAX_VIEWER_ACCOUNTS: i64 = 5;
 pub const MAX_REPORTS_PER_DAY: i64 = 20;
 pub const QUEUE_PAGE_SIZE: i64 = 200;
 pub const SIGNING_UNAVAILABLE_CODE: &str = "messaging.franking.signing_unavailable";
+/// Срок бана при закрытии заявки: 1..=9999 суток либо «навсегда» (без `days`).
+pub const MIN_ACCOUNT_BLOCK_DAYS: u32 = 1;
+pub const MAX_ACCOUNT_BLOCK_DAYS: u32 = 9999;
+const ACCOUNT_BLOCK_FOREVER_CODE: &str = "block-forever";
 
 #[derive(Debug, Clone)]
 pub enum FrankingError {
@@ -312,18 +318,68 @@ pub fn status_after_claim(has_claimer_wrap: bool) -> FrankingReportStatus {
     }
 }
 
+/// Санкция, посчитанная до записи: срок (None — навсегда) и код резолюции.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AccountBlockPlan {
+    blocked_until: Option<chrono::DateTime<Utc>>,
+    resolution_code: String,
+}
+
+/// Решение о бане по телу `resolve`. Цель санкции — accused, её здесь нет:
+/// функция чистая и знает только про решение, срок и часы.
+///
+/// `rejected` не банит никогда, даже с `accountBlock`; отсутствие `accountBlock` —
+/// закрытие без санкции. Срок вне 1..=9999 — 400, заявка остаётся открытой.
+fn plan_account_block(
+    decision: FrankingResolveDecision,
+    request: Option<&AccountBlockRequest>,
+    now: chrono::DateTime<Utc>,
+) -> Result<Option<AccountBlockPlan>, FrankingError> {
+    if decision == FrankingResolveDecision::Rejected {
+        return Ok(None);
+    }
+    let Some(request) = request else {
+        return Ok(None);
+    };
+    let Some(days) = request.days else {
+        return Ok(Some(AccountBlockPlan {
+            blocked_until: None,
+            resolution_code: ACCOUNT_BLOCK_FOREVER_CODE.to_string(),
+        }));
+    };
+    if !(MIN_ACCOUNT_BLOCK_DAYS..=MAX_ACCOUNT_BLOCK_DAYS).contains(&days) {
+        return Err(FrankingError::BadRequest(format!(
+            "accountBlock.days: {MIN_ACCOUNT_BLOCK_DAYS}..={MAX_ACCOUNT_BLOCK_DAYS} суток."
+        )));
+    }
+    Ok(Some(AccountBlockPlan {
+        blocked_until: Some(now + Duration::days(i64::from(days))),
+        resolution_code: format!("block-{days}d"),
+    }))
+}
+
 pub struct FrankingService {
     repo: Arc<FrankingRepo>,
     signer: Option<Arc<FrankingSigner>>,
     reviewer_roster_ready: AtomicBool,
+    accounts: Arc<dyn AccountDirectory>,
+    /// Право записи санкции есть только у модерации — отсюда и закрывают заявки.
+    sanctions: Arc<dyn AccountSanctions>,
 }
 
 impl FrankingService {
-    pub fn new(repo: Arc<FrankingRepo>, signer: Option<Arc<FrankingSigner>>) -> Self {
+    pub fn new(
+        repo: Arc<FrankingRepo>,
+        signer: Option<Arc<FrankingSigner>>,
+        accounts: Arc<dyn AccountDirectory>,
+        sanctions: Arc<dyn AccountSanctions>,
+    ) -> Self {
         Self {
             repo,
             signer,
             reviewer_roster_ready: AtomicBool::new(true),
+            accounts,
+            sanctions,
         }
     }
 
@@ -505,12 +561,22 @@ impl FrankingService {
             .map_err(FrankingError::Internal)?;
         let receipts_by_msg: HashMap<Uuid, StoredFrankReceipt> =
             receipts.into_iter().map(|r| (r.message_uuid, r)).collect();
+        let mut party_ids = Vec::with_capacity(rows.len() * 2);
+        for row in &rows {
+            party_ids.push(row.reporter_user_uuid);
+            party_ids.push(row.accused_user_uuid);
+        }
+        party_ids.sort_unstable();
+        party_ids.dedup();
+        let usernames = self.usernames_map(&party_ids).await?;
         let mut items = Vec::with_capacity(rows.len());
         for row in &rows {
             let mut meta = report_meta(
                 row,
                 counts.get(&row.report_uuid).copied().unwrap_or(0),
                 receipts_by_msg.get(&row.persisted_message_uuid),
+                username_from_map(&usernames, row.reporter_user_uuid),
+                username_from_map(&usernames, row.accused_user_uuid),
             )?;
             hide_claimer_from_reporter(caller, row.reporter_user_uuid, meta.status, &mut meta);
             items.push(meta);
@@ -729,11 +795,15 @@ impl FrankingService {
         body: ResolveFrankingReportRequest,
     ) -> Result<FrankingReportMetaDto, FrankingError> {
         let row = self.require_report_known_to(caller, report_uuid).await?;
-        if row.claimed_by != Some(caller)
-            || row.status != status_token(FrankingReportStatus::Claimed)
-        {
+        let live = parse_status(&row.status).is_some_and(|status| {
+            matches!(
+                status,
+                FrankingReportStatus::Claimed | FrankingReportStatus::ClaimedAwaitingDisclosure
+            )
+        });
+        if row.claimed_by != Some(caller) || !live {
             return Err(FrankingError::Forbidden(
-                "Закрыть может только claimer из статуса claimed.".into(),
+                "Закрыть может только claimer живой заявки.".into(),
             ));
         }
         let status = match body.decision {
@@ -754,9 +824,21 @@ impl FrankingService {
                 "resolution code: до 64 ascii [A-Za-z0-9_-].".into(),
             ));
         }
+        let now = Utc::now();
+        let block = plan_account_block(body.decision, body.account_block.as_ref(), now)?;
+        // Санкция — итог разбора, поэтому её код сильнее клиентского.
+        let code = match &block {
+            Some(plan) => Some(plan.resolution_code.as_str()),
+            None => code,
+        };
+        // Порядок заморожен: сперва бан, потом закрытие. Обратный порядок оставил
+        // бы «разобранную» заявку с неотбанненным accused, если запись санкции упадёт.
+        if let Some(plan) = &block {
+            self.apply_account_block(&row, caller, plan).await?;
+        }
         let ok = self
             .repo
-            .resolve(report_uuid, caller, status, code, Utc::now())
+            .resolve(report_uuid, caller, status, code, now)
             .await
             .map_err(FrankingError::Internal)?;
         if !ok {
@@ -830,6 +912,20 @@ impl FrankingService {
                 (id, receipt_to_dto(&r))
             })
             .collect())
+    }
+
+    /// Санкция всегда ложится на accused из строки заявки — не на жалобщика и
+    /// не на вызывающего; автором записи становится закрывающий ревьюер.
+    async fn apply_account_block(
+        &self,
+        row: &ReportRow,
+        caller: Uuid,
+        plan: &AccountBlockPlan,
+    ) -> Result<(), FrankingError> {
+        self.sanctions
+            .apply_block(row.accused_user_uuid, plan.blocked_until, caller)
+            .await
+            .map_err(FrankingError::Internal)
     }
 
     async fn validate_submit_wraps(
@@ -996,6 +1092,28 @@ impl FrankingService {
         Err(hidden_report())
     }
 
+    async fn usernames_map(&self, ids: &[Uuid]) -> Result<HashMap<Uuid, String>, FrankingError> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let pairs = self
+            .accounts
+            .usernames_by_uuids(ids)
+            .await
+            .map_err(FrankingError::Internal)?;
+        Ok(pairs
+            .into_iter()
+            .filter_map(|(id, name)| {
+                let trimmed = name.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some((id, trimmed.to_string()))
+                }
+            })
+            .collect())
+    }
+
     async fn meta_from_row(&self, row: &ReportRow) -> Result<FrankingReportMetaDto, FrankingError> {
         let viewer_account_count = self
             .repo
@@ -1007,7 +1125,16 @@ impl FrankingService {
             .receipt_for_message(row.persisted_message_uuid)
             .await
             .map_err(FrankingError::Internal)?;
-        report_meta(row, viewer_account_count, receipt.as_ref())
+        let usernames = self
+            .usernames_map(&[row.reporter_user_uuid, row.accused_user_uuid])
+            .await?;
+        report_meta(
+            row,
+            viewer_account_count,
+            receipt.as_ref(),
+            username_from_map(&usernames, row.reporter_user_uuid),
+            username_from_map(&usernames, row.accused_user_uuid),
+        )
     }
 
     async fn meta_from_row_for(
@@ -1037,10 +1164,16 @@ fn hide_claimer_from_reporter(
     meta.claimed_at = None;
 }
 
+fn username_from_map(map: &HashMap<Uuid, String>, user: Uuid) -> Option<String> {
+    map.get(&user).cloned()
+}
+
 fn report_meta(
     row: &ReportRow,
     viewer_account_count: i64,
     receipt: Option<&StoredFrankReceipt>,
+    reporter_username: Option<String>,
+    accused_username: Option<String>,
 ) -> Result<FrankingReportMetaDto, FrankingError> {
     let verification_status = if receipt.is_some() {
         FrankingVerificationStatus::Verifiable
@@ -1061,6 +1194,8 @@ fn report_meta(
         viewer_account_count,
         has_disclosure: row.has_disclosure,
         verification_status,
+        reporter_username,
+        accused_username,
     })
 }
 
@@ -1243,6 +1378,8 @@ mod tests {
             viewer_account_count: 1,
             has_disclosure: true,
             verification_status: FrankingVerificationStatus::Unverifiable,
+            reporter_username: Some("reporter".into()),
+            accused_username: Some("accused".into()),
         };
         hide_claimer_from_reporter(
             reporter,
@@ -1252,6 +1389,8 @@ mod tests {
         );
         assert!(claimed.claimed_by.is_none());
         assert!(claimed.claimed_at.is_none());
+        assert_eq!(claimed.reporter_username.as_deref(), Some("reporter"));
+        assert_eq!(claimed.accused_username.as_deref(), Some("accused"));
 
         let mut awaiting = claimed.clone();
         awaiting.status = FrankingReportStatus::ClaimedAwaitingDisclosure;
@@ -1273,6 +1412,15 @@ mod tests {
             &mut for_reviewer,
         );
         assert_eq!(for_reviewer.claimed_by, Some(claimer));
+    }
+
+    #[test]
+    fn username_from_map_returns_known_and_skips_missing() {
+        let mut map = HashMap::new();
+        let reporter = Uuid::from_u128(1);
+        map.insert(reporter, "alice".into());
+        assert_eq!(username_from_map(&map, reporter).as_deref(), Some("alice"));
+        assert!(username_from_map(&map, Uuid::from_u128(2)).is_none());
     }
 
     #[test]
@@ -1506,6 +1654,141 @@ mod tests {
         assert_eq!(tagged_ingest_action(false, true), TaggedIngest::Untagged);
         assert_eq!(tagged_ingest_action(true, true), TaggedIngest::Sign);
         assert_eq!(tagged_ingest_action(true, false), TaggedIngest::FailClosed);
+    }
+
+    fn plan_at_epoch(
+        decision: FrankingResolveDecision,
+        request: Option<AccountBlockRequest>,
+    ) -> Result<Option<AccountBlockPlan>, FrankingError> {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-08-18T12:00:00.000Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        plan_account_block(decision, request.as_ref(), now)
+    }
+
+    #[test]
+    fn rejected_never_bans_even_with_account_block() {
+        assert_eq!(
+            plan_at_epoch(
+                FrankingResolveDecision::Rejected,
+                Some(AccountBlockRequest { days: Some(7) })
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            plan_at_epoch(
+                FrankingResolveDecision::Rejected,
+                Some(AccountBlockRequest { days: None })
+            )
+            .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn resolve_without_account_block_never_bans() {
+        assert_eq!(
+            plan_at_epoch(FrankingResolveDecision::Resolved, None).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn missing_days_bans_forever_with_forever_code() {
+        let plan = plan_at_epoch(
+            FrankingResolveDecision::Resolved,
+            Some(AccountBlockRequest { days: None }),
+        )
+        .unwrap()
+        .expect("forever plan");
+        assert_eq!(plan.blocked_until, None);
+        assert_eq!(plan.resolution_code, "block-forever");
+    }
+
+    #[test]
+    fn days_within_range_set_deadline_and_code() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-08-18T12:00:00.000Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        for days in [MIN_ACCOUNT_BLOCK_DAYS, 7, 365, MAX_ACCOUNT_BLOCK_DAYS] {
+            let plan = plan_account_block(
+                FrankingResolveDecision::Resolved,
+                Some(&AccountBlockRequest { days: Some(days) }),
+                now,
+            )
+            .unwrap()
+            .expect("timed plan");
+            assert_eq!(
+                plan.blocked_until,
+                Some(now + Duration::days(i64::from(days)))
+            );
+            assert_eq!(plan.resolution_code, format!("block-{days}d"));
+        }
+    }
+
+    #[test]
+    fn days_outside_range_is_bad_request() {
+        for days in [0, MAX_ACCOUNT_BLOCK_DAYS + 1, u32::MAX] {
+            assert!(matches!(
+                plan_at_epoch(
+                    FrankingResolveDecision::Resolved,
+                    Some(AccountBlockRequest { days: Some(days) })
+                ),
+                Err(FrankingError::BadRequest(_))
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn block_targets_accused_and_is_authored_by_the_closing_reviewer() {
+        use crate::application::test_ports::{RecordingSanctions, StubAccounts, lazy_pool};
+
+        let sanctions = Arc::new(RecordingSanctions::default());
+        let service = FrankingService::new(
+            Arc::new(FrankingRepo::new(lazy_pool())),
+            None,
+            Arc::new(StubAccounts),
+            sanctions.clone(),
+        );
+        let reporter = Uuid::from_u128(1);
+        let accused = Uuid::from_u128(2);
+        let reviewer = Uuid::from_u128(3);
+        let deadline = chrono::DateTime::parse_from_rfc3339("2026-08-25T12:00:00.000Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let row = ReportRow {
+            report_uuid: Uuid::from_u128(4),
+            persisted_message_uuid: Uuid::from_u128(5),
+            wire_message_uuid: Uuid::from_u128(5),
+            conversation_uuid: Uuid::from_u128(6),
+            reporter_user_uuid: reporter,
+            accused_user_uuid: accused,
+            category: "abuse".into(),
+            status: "claimed".into(),
+            claimed_by: Some(reviewer),
+            claimed_at: None,
+            has_disclosure: true,
+            created_at: deadline,
+        };
+
+        service
+            .apply_account_block(
+                &row,
+                reviewer,
+                &AccountBlockPlan {
+                    blocked_until: Some(deadline),
+                    resolution_code: "block-7d".into(),
+                },
+            )
+            .await
+            .expect("apply block");
+
+        assert_eq!(
+            sanctions.calls(),
+            vec![(accused, Some(deadline), reviewer)],
+            "бан кладётся на accused, автор — закрывающий ревьюер"
+        );
     }
 
     #[test]

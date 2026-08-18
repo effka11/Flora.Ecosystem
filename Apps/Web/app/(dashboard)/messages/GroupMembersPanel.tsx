@@ -177,6 +177,8 @@ export function GroupMembersPanel({
                   displayName={member.displayName || member.username}
                   username={member.username}
                   seed={member.userUuid}
+                  avatarUuid={member.avatarUuid}
+                  accountBlocked={member.accountBlocked}
                 />
                 <div className={styles.groupMembersBody}>
                   <span className={styles.groupMembersName}>

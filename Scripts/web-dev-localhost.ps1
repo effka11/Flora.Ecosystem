@@ -1,5 +1,5 @@
 # Flora — local web against Rust flora-api :5290 (prod parity).
-# Does NOT stop/restart API or Metro (only frees Next.js ports 3000/3001).
+# Does NOT stop/restart API, Metro, or Gov (only frees Next.js port 3000).
 
 $ErrorActionPreference = "Stop"
 

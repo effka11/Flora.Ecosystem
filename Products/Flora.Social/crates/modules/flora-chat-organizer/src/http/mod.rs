@@ -1,5 +1,7 @@
 //! HTTP `/api/chat-organizer` — FSCP-ORG opaque blob (ChatOrganizer:ServeNative).
 
+mod account_block;
+
 use std::sync::Arc;
 
 use axum::extract::{DefaultBodyLimit, Extension, State};
@@ -8,6 +10,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use flora_chat_organizer_contracts::PutChatOrganizerRequest;
+use flora_users_contracts::AccountSanctionStatus;
 use uuid::Uuid;
 
 use crate::application::{OrganizerService, PutOrganizerError};
@@ -24,14 +27,15 @@ pub struct OrganizerState {
 #[derive(Clone, Copy, Debug)]
 pub struct CurrentUser(pub Uuid);
 
-pub fn router(state: OrganizerState) -> Router {
-    Router::new()
+pub fn router(state: OrganizerState, account_status: Arc<dyn AccountSanctionStatus>) -> Router {
+    let router = Router::new()
         .route(
             "/api/chat-organizer",
             get(get_blob).put(put_blob).post(put_blob),
         )
         .layer(DefaultBodyLimit::max(ORGANIZER_BODY_LIMIT))
-        .with_state(state)
+        .with_state(state);
+    account_block::write_gate(router, account_status)
 }
 
 async fn get_blob(

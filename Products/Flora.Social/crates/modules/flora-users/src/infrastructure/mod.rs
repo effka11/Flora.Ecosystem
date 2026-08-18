@@ -1,3 +1,4 @@
+pub mod account_sanctions;
 pub mod avatars;
 pub mod image_backfill;
 pub mod messages_access;

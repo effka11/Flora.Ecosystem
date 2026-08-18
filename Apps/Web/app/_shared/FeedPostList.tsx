@@ -23,6 +23,7 @@ export type FeedPostListItem = {
   authorUsername: string;
   authorDisplayName: string;
   authorAvatarUuid?: string | null;
+  authorAccountBlocked?: boolean;
   authorUserUuid?: string | null;
   /** Стена сообщества: инициалы/цвет как у community, не как у user-профиля. */
   communityName?: string | null;
@@ -135,6 +136,7 @@ export function FeedPostList({
                 username={post.authorUsername}
                 seed={post.authorUserUuid ?? post.authorUsername}
                 communityName={post.communityName ?? undefined}
+                accountBlocked={post.authorAccountBlocked}
                 className={`${styles.postAvatar} ${styles.postAvatarLink}`}
               />
               <div className={styles.postHeader}>

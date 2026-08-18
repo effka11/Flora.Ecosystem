@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use flora_auth_contracts::AccountDirectory;
 use flora_notifications_contracts::{CreateUserNotificationCommand, UserNotificationDispatcher};
 use flora_shared::flora_uuid::new_uuid;
@@ -136,12 +136,12 @@ impl CommentsService {
             .next()
             .map(|(_, name)| name)
             .unwrap_or_default();
-        let display = self
-            .profiles
-            .by_uuids(&[author])
-            .await?
-            .into_iter()
-            .next()
+        let profile = self.profiles.by_uuids(&[author]).await?.into_iter().next();
+        let author_account_blocked = profile
+            .as_ref()
+            .map(|profile| profile.account_blocked)
+            .unwrap_or(false);
+        let display = profile
             .map(|p| {
                 if p.display_name.is_empty() {
                     username.clone()
@@ -151,15 +151,16 @@ impl CommentsService {
             })
             .unwrap_or_else(|| username.clone());
 
-        Ok(Ok(json!({
-            "commentUuid": comment_uuid,
-            "authorUsername": username,
-            "authorDisplayName": display,
-            "content": content,
-            "createdAt": format_utc(created_at),
-            "repliesCount": 0,
-            "replies": [],
-        })))
+        Ok(Ok(comment_json(
+            comment_uuid,
+            username,
+            display,
+            author_account_blocked,
+            content,
+            created_at,
+            0,
+            Vec::new(),
+        )))
     }
 
     pub async fn delete(
@@ -286,8 +287,8 @@ impl CommentsService {
                 .get(&c.author_user_uuid)
                 .cloned()
                 .unwrap_or_default();
-            let display = profiles
-                .get(&c.author_user_uuid)
+            let profile = profiles.get(&c.author_user_uuid);
+            let display = profile
                 .map(|pr| {
                     if pr.display_name.is_empty() {
                         username.clone()
@@ -296,16 +297,18 @@ impl CommentsService {
                     }
                 })
                 .unwrap_or_else(|| username.clone());
+            let author_account_blocked = profile.map(|pr| pr.account_blocked).unwrap_or(false);
 
-            json!({
-                "commentUuid": c.comment_uuid,
-                "authorUsername": username,
-                "authorDisplayName": display,
-                "content": c.content,
-                "createdAt": format_utc(c.created_at),
-                "repliesCount": 0,
-                "replies": [],
-            })
+            comment_json(
+                c.comment_uuid,
+                username,
+                display,
+                author_account_blocked,
+                &c.content,
+                c.created_at,
+                0,
+                Vec::new(),
+            )
         };
 
         let mut out = Vec::with_capacity(nodes.len());
@@ -319,8 +322,8 @@ impl CommentsService {
                 .get(&c.author_user_uuid)
                 .cloned()
                 .unwrap_or_default();
-            let display = profiles
-                .get(&c.author_user_uuid)
+            let profile = profiles.get(&c.author_user_uuid);
+            let display = profile
                 .map(|pr| {
                     if pr.display_name.is_empty() {
                         username.clone()
@@ -329,6 +332,7 @@ impl CommentsService {
                     }
                 })
                 .unwrap_or_else(|| username.clone());
+            let author_account_blocked = profile.map(|pr| pr.account_blocked).unwrap_or(false);
 
             let replies: Vec<Value> = if include_replies {
                 direct_replies.iter().map(|r| map_reply(r)).collect()
@@ -336,15 +340,16 @@ impl CommentsService {
                 Vec::new()
             };
 
-            out.push(json!({
-                "commentUuid": c.comment_uuid,
-                "authorUsername": username,
-                "authorDisplayName": display,
-                "content": c.content,
-                "createdAt": format_utc(c.created_at),
-                "repliesCount": direct_replies.len(),
-                "replies": replies,
-            }));
+            out.push(comment_json(
+                c.comment_uuid,
+                username,
+                display,
+                author_account_blocked,
+                &c.content,
+                c.created_at,
+                direct_replies.len(),
+                replies,
+            ));
         }
 
         Ok(out)
@@ -426,6 +431,29 @@ impl CommentsService {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn comment_json(
+    comment_uuid: Uuid,
+    author_username: String,
+    author_display_name: String,
+    author_account_blocked: bool,
+    content: &str,
+    created_at: DateTime<Utc>,
+    replies_count: usize,
+    replies: Vec<Value>,
+) -> Value {
+    json!({
+        "commentUuid": comment_uuid,
+        "authorUsername": author_username,
+        "authorDisplayName": author_display_name,
+        "authorAccountBlocked": author_account_blocked,
+        "content": content,
+        "createdAt": format_utc(created_at),
+        "repliesCount": replies_count,
+        "replies": replies,
+    })
+}
+
 pub enum CommentsError {
     PostNotFound,
     CommentNotFound,
@@ -444,4 +472,26 @@ pub enum CreateCommentError {
 pub enum DeleteCommentError {
     NotFound,
     Forbidden,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comment_wire_uses_frozen_author_account_blocked_key() {
+        let value = comment_json(
+            Uuid::from_u128(1),
+            "blocked".to_string(),
+            "Blocked".to_string(),
+            true,
+            "comment",
+            DateTime::<Utc>::UNIX_EPOCH,
+            0,
+            Vec::new(),
+        );
+
+        assert_eq!(value.get("authorAccountBlocked"), Some(&Value::Bool(true)));
+        assert!(value.get("accountBlocked").is_none());
+    }
 }

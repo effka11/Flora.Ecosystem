@@ -1,0 +1,85 @@
+/*
+ * Full dashboard canvas overlay (1920×945 frame inside .appRoot).
+ * anchorRow=0; content flow starts row 11 (header 9 + 2 primary padding).
+ */
+
+.wall {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  width: calc(128 * var(--flora-grid-step));
+  height: calc(63 * var(--flora-grid-step));
+  background: var(--flora-bg);
+  color: var(--flora-gray-light);
+}
+
+.wallInner {
+  box-sizing: border-box;
+  height: 100%;
+  /* anchorRow=0; content column 37…90, first content row 11 */
+  padding-top: calc(11 * var(--flora-grid-step));
+  padding-left: calc(37 * var(--flora-grid-step));
+  padding-right: calc((128 - 90) * var(--flora-grid-step));
+  padding-bottom: calc(3 * var(--flora-grid-step));
+}
+
+.heading {
+  margin: 0 0 calc(3 * var(--flora-grid-step));
+  color: var(--flora-gray-light);
+  font-size: clamp(28px, 3.2vw, 36px);
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
+.intro,
+.until {
+  margin: 0 0 calc(2 * var(--flora-grid-step));
+  max-width: 42em;
+  color: var(--flora-gray);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.until {
+  color: var(--flora-white-template);
+}
+
+.error {
+  margin: 0 0 calc(2 * var(--flora-grid-step));
+  color: var(--flora-white-template);
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  line-height: calc(2 * var(--flora-grid-step));
+}
+
+.actions {
+  margin-top: calc(2 * var(--flora-grid-step));
+}
+
+.logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(3 * var(--flora-grid-step));
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, var(--flora-gray));
+  border-radius: calc(0.6 * var(--flora-grid-step));
+  background: color-mix(in srgb, var(--flora-green-light) 18%, var(--flora-bg));
+  color: var(--flora-green-light);
+  font: 300 15px / 1 var(--font-manrope), system-ui, sans-serif;
+  letter-spacing: var(--flora-tracking-15);
+  cursor: pointer;
+}
+
+.logout:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--flora-green-light) 28%, var(--flora-bg));
+  color: var(--flora-gray-hover);
+}
+
+.logout:disabled {
+  cursor: progress;
+  color: var(--flora-gray);
+  border-color: var(--flora-gray-divider);
+}

@@ -4,21 +4,25 @@
 
   ./Scripts/stop-dev-localhost.ps1 -Api
   ./Scripts/stop-dev-localhost.ps1 -Web
+  ./Scripts/stop-dev-localhost.ps1 -Gov
   ./Scripts/stop-dev-localhost.ps1 -Mobile
   ./Scripts/stop-dev-localhost.ps1 -Api -Web
 
 Вызывается из .vscode/tasks.json и Scripts/mobile-debug-android.ps1.
+-Web освобождает только 3000 (Social) и не трогает Gov на 3001.
+-Gov освобождает только 3001 и не трогает Social на 3000.
 #>
 param(
     [switch] $Api,
     [switch] $Web,
+    [switch] $Gov,
     [switch] $Mobile
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Continue"
 
-if (-not $Api -and -not $Web -and -not $Mobile) {
+if (-not $Api -and -not $Web -and -not $Gov -and -not $Mobile) {
     $Api = $true
     $Web = $true
 }
@@ -81,17 +85,45 @@ function Stop-FloraApiProcesses {
     }
 }
 
-function Stop-NextDevProcesses {
-    foreach ($port in 3000, 3001) {
-        Stop-ListenersOnPort -Port $port
-    }
+function Test-NextDevCommand {
+    param([string] $CommandLine)
+    return (
+        $CommandLine -match 'next(\.cmd)?\s+dev' -or
+        $CommandLine -match '\\next\\dist\\bin\\next'
+    )
+}
+
+function Test-GovNextCommand {
+    param([string] $CommandLine)
+    return (
+        $CommandLine -match 'Apps[\\/]Gov' -or
+        $CommandLine -match '--port\s+3001'
+    )
+}
+
+function Stop-SocialNextProcesses {
+    Stop-ListenersOnPort -Port 3000
 
     $node = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue
     foreach ($proc in $node) {
         $cmd = $proc.CommandLine
         if ($null -eq $cmd) { continue }
-        if ($cmd -notmatch 'next(\.cmd)?\s+dev' -and $cmd -notmatch '\\next\\dist\\bin\\next') { continue }
-        Stop-ProcessSafe -ProcessId $proc.ProcessId -Reason "next dev"
+        if (-not (Test-NextDevCommand -CommandLine $cmd)) { continue }
+        if (Test-GovNextCommand -CommandLine $cmd) { continue }
+        Stop-ProcessSafe -ProcessId $proc.ProcessId -Reason "next dev (Social :3000)"
+    }
+}
+
+function Stop-GovNextProcesses {
+    Stop-ListenersOnPort -Port 3001
+
+    $node = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue
+    foreach ($proc in $node) {
+        $cmd = $proc.CommandLine
+        if ($null -eq $cmd) { continue }
+        if (-not (Test-NextDevCommand -CommandLine $cmd)) { continue }
+        if (-not (Test-GovNextCommand -CommandLine $cmd)) { continue }
+        Stop-ProcessSafe -ProcessId $proc.ProcessId -Reason "next dev (Gov :3001)"
     }
 }
 
@@ -126,8 +158,14 @@ if ($Api) {
 }
 
 if ($Web) {
-    Write-Host "Flora dev: freeing Next.js ports 3000/3001..."
-    Stop-NextDevProcesses
+    Write-Host "Flora dev: freeing Next.js port 3000 (Social)..."
+    Stop-SocialNextProcesses
+    Start-Sleep -Milliseconds 200
+}
+
+if ($Gov) {
+    Write-Host "Flora dev: freeing Next.js port 3001 (Gov)..."
+    Stop-GovNextProcesses
     Start-Sleep -Milliseconds 200
 }
 

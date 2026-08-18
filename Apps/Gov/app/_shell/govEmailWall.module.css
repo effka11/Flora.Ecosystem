@@ -1,0 +1,145 @@
+/*
+ * Поток внутри колонки .main шелла, без absolute/fixed.
+ */
+
+.wall {
+  padding-bottom: calc(3 * var(--flora-grid-step));
+}
+
+.heading {
+  margin: 0 0 calc(3 * var(--flora-grid-step));
+  color: var(--flora-gray-light);
+  font-size: clamp(28px, 3.2vw, 36px);
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
+.intro {
+  margin: 0 0 calc(2 * var(--flora-grid-step));
+  color: var(--flora-gray);
+  font-size: 16px;
+  line-height: 1.7;
+  max-width: 42em;
+}
+
+.form {
+  margin: 0;
+  padding: 0;
+}
+
+.field {
+  margin-bottom: calc(3 * var(--flora-grid-step));
+  /* 24 колонки поля ввода внутри документной колонки шелла */
+  width: calc(24 * var(--flora-grid-step));
+  max-width: 100%;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: calc(1 * var(--flora-grid-step-fine));
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+}
+
+.fieldInput {
+  width: 100%;
+  min-height: calc(var(--flora-grid-step) + 4px);
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid var(--flora-gray-divider);
+  outline: none;
+  background: transparent;
+  color: var(--flora-white-template);
+  font: 300 15px / 1 var(--font-manrope), system-ui, sans-serif !important;
+}
+
+.fieldInput:focus {
+  border-bottom-color: var(--flora-green-light);
+}
+
+.fieldInput:disabled {
+  color: var(--flora-gray);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--flora-grid-step));
+  margin-bottom: calc(2 * var(--flora-grid-step));
+}
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(3 * var(--flora-grid-step));
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, var(--flora-gray));
+  border-radius: calc(0.6 * var(--flora-grid-step));
+  background: color-mix(in srgb, var(--flora-green-light) 18%, var(--flora-bg));
+  color: var(--flora-green-light);
+  font: 300 15px / 1 var(--font-manrope), system-ui, sans-serif;
+  letter-spacing: var(--flora-tracking-15);
+  cursor: pointer;
+}
+
+.submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--flora-green-light) 28%, var(--flora-bg));
+  color: var(--flora-gray-hover);
+}
+
+.submit:disabled {
+  cursor: progress;
+  color: var(--flora-gray);
+  border-color: var(--flora-gray-divider);
+}
+
+.secondary {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--flora-gray);
+  font: 300 15px / 1 var(--font-manrope), system-ui, sans-serif;
+  letter-spacing: var(--flora-tracking-15);
+  cursor: pointer;
+}
+
+.secondary:hover:not(:disabled),
+.secondary:focus-visible:not(:disabled) {
+  color: var(--flora-green-light);
+}
+
+.secondary:disabled {
+  cursor: default;
+  color: var(--flora-gray-divider);
+}
+
+.devCode {
+  margin: 0 0 calc(2 * var(--flora-grid-step));
+  padding: calc(1 * var(--flora-grid-step));
+  border: 1px dashed var(--flora-gray-divider);
+  width: calc(36 * var(--flora-grid-step));
+  max-width: 100%;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  line-height: calc(2 * var(--flora-grid-step));
+}
+
+.notice {
+  margin: 0 0 calc(1 * var(--flora-grid-step));
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-gray);
+  line-height: calc(2 * var(--flora-grid-step));
+}
+
+.error {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+  color: var(--flora-white-template);
+  line-height: calc(2 * var(--flora-grid-step));
+}

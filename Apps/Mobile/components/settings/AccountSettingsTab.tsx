@@ -143,6 +143,7 @@ export function AccountSettingsTab({ searchQuery }: AccountSettingsTabProps) {
               displayName={account.displayName || me?.displayName || ""}
               username={account.username || me?.username || ""}
               seed={me?.userUuid}
+              accountBlocked={me?.accountBlocked}
             />
             <View style={ui.avatarActions}>
               <Pressable

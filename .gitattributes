@@ -1,0 +1,3 @@
+# sqlx::migrate! checksums raw file bytes. CRLF on Windows vs LF in Docker/CI
+# makes flora-migrate report "previously applied but has been modified".
+**/migrations/*.sql text eol=lf

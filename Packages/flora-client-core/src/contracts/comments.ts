@@ -1,4 +1,4 @@
-import { asRecord, readNum, readStr, type ParseContext } from "./parse.js";
+import { asRecord, readBool, readNum, readStr, type ParseContext } from "./parse.js";
 
 export type PostCommentDto = {
   commentUuid: string;
@@ -6,6 +6,7 @@ export type PostCommentDto = {
   authorDisplayName: string;
   authorAvatarUuid: string | null;
   authorUserUuid: string | null;
+  authorAccountBlocked?: boolean;
   content: string;
   createdAt: string;
   repliesCount: number;
@@ -32,6 +33,7 @@ export function parsePostComment(raw: unknown, ctx?: ParseContext): PostCommentD
     authorDisplayName: readStr(o, ["authorDisplayName", "AuthorDisplayName"], fb),
     authorAvatarUuid: readStr(o, ["authorAvatarUuid", "AuthorAvatarUuid"], fb) || null,
     authorUserUuid: readStr(o, ["authorUserUuid", "AuthorUserUuid"], fb) || null,
+    authorAccountBlocked: readBool(o, ["authorAccountBlocked", "AuthorAccountBlocked"], fb),
     content: readStr(o, ["content", "Content", "text", "Text"], fb),
     createdAt: readStr(o, ["createdAt", "CreatedAt"], fb),
     repliesCount: readNum(o, ["repliesCount", "RepliesCount"], fb) ?? 0,

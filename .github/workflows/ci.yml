@@ -87,6 +87,37 @@ jobs:
       #   working-directory: Apps/Web
       #   run: npm run lint
 
+  gov:
+    name: gov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          # Gov depends on @flora/client-core via file:; tsc resolves into Packages/
+          # source, so workspace deps (uuid, @noble/*) must be installed at the root.
+          cache-dependency-path: |
+            package-lock.json
+            Apps/Gov/package-lock.json
+      - name: Install workspaces
+        run: npm ci
+      - name: Install Gov
+        working-directory: Apps/Gov
+        run: npm ci
+      - name: Typecheck
+        working-directory: Apps/Gov
+        run: npm run typecheck
+      # Apps/Gov is lint-clean (0 errors). Lint is enabled on purpose: unlike Apps/Web,
+      # there is no pre-existing react-hooks/* debt to wait on.
+      - name: Lint
+        working-directory: Apps/Gov
+        run: npm run lint
+      # Apps/Gov is not a root npm workspace, so root `npm run ci` never runs it.
+      - name: Test Gov
+        run: npm --prefix Apps/Gov test
+
   # Rust pipeline (repo-root Cargo.toml: Backend + Products).
   # Toolchain: rust-toolchain.toml at repo root.
   rust:

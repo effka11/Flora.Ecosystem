@@ -54,6 +54,7 @@ function CommentRow({ comment, nested, meUsername }: CommentRowProps) {
         displayName={comment.authorDisplayName}
         username={comment.authorUsername}
         seed={comment.authorUserUuid ?? comment.authorUsername}
+        accountBlocked={comment.authorAccountBlocked}
       />
       <View style={styles.commentBody}>
         <View style={styles.commentMeta}>

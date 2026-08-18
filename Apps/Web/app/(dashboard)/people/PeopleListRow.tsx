@@ -43,6 +43,7 @@ export function PeopleListRow({
             displayName={user.displayName}
             username={user.username}
             seed={user.id}
+            accountBlocked={user.accountBlocked}
             className={styles.avatar}
           />
           <span

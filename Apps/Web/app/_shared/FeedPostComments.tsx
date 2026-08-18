@@ -201,6 +201,7 @@ function CommentCard({
         displayName={c.authorDisplayName}
         username={c.authorUsername}
         seed={c.authorUserUuid ?? c.authorUsername}
+        accountBlocked={c.authorAccountBlocked}
         className={styles.avatar}
       />
       <div className={styles.metaRow}>

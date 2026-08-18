@@ -47,6 +47,7 @@ export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
         otherDisplayName: "Участник",
         otherUsername: "",
         otherAvatarUuid: null,
+        otherAccountBlocked: false,
       };
     }
     return {
@@ -54,6 +55,7 @@ export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
       otherUsername: member.username,
       otherDisplayName: member.displayName,
       otherAvatarUuid: member.avatarUuid ?? null,
+      otherAccountBlocked: member.accountBlocked,
       otherUserIsOnline: false,
       otherUserLastSeenAt: null,
       conversationUuid: peer.conversationUuid,
@@ -72,6 +74,7 @@ export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
           displayName={displayName}
           username={avatarPeer.otherUsername}
           seed={avatarPeer.otherUserUuid || displayName}
+          accountBlocked={avatarPeer.otherAccountBlocked}
         />
       </Animated.View>
       <View style={styles.bubbles}>

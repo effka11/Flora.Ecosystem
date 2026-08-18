@@ -6,6 +6,7 @@ import {
 } from "./session";
 import {
   createSessionController,
+  parseStrictMePayload,
   type SessionControllerDependencies,
 } from "./sessionController";
 
@@ -83,6 +84,53 @@ function controllerFor(
 }
 
 describe("mobile session controller", () => {
+  it("keeps /me accountBlocked so the lockout wall can mount", () => {
+    const me = parseStrictMePayload({
+      userUuid: "user-1",
+      username: "flora",
+      displayName: "Flora",
+      accountBlocked: true,
+      accountBlockedUntil: null,
+    });
+    expect(me.accountBlocked).toBe(true);
+    expect(me.accountBlockedUntil).toBeNull();
+  });
+
+  it("surfaces accountBlocked from /me onto the authenticated session", async () => {
+    const secureStore = new MemorySecureStore();
+    const sessionStore = createMobileSessionStore(secureStore);
+    await sessionStore.saveSession({
+      accessToken: "access-1",
+      refreshToken: "refresh-1",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+    });
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        userUuid: "user-1",
+        username: "flora",
+        displayName: "Flora",
+        accountBlocked: true,
+        accountBlockedUntil: null,
+      }),
+    ) as unknown as typeof fetch;
+    const { controller } = controllerFor({
+      secureStore,
+      sessionStore,
+      fetchImpl,
+    });
+
+    await controller.bootstrap();
+
+    expect(controller.getState()).toMatchObject({
+      status: "authenticated",
+      me: {
+        userUuid: "user-1",
+        accountBlocked: true,
+        accountBlockedUntil: null,
+      },
+    });
+  });
+
   it("restores refresh-only cold-start state through the shared coordinator", async () => {
     const secureStore = new MemorySecureStore();
     secureStore.values.set(LEGACY_REFRESH_KEY, "refresh-1");

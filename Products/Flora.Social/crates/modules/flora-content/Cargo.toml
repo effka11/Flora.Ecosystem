@@ -35,9 +35,11 @@ uuid = { workspace = true }
 [dev-dependencies]
 flora-auth = { workspace = true }
 flora-shared = { workspace = true }
+http-body-util = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+tower = { workspace = true, features = ["util"] }

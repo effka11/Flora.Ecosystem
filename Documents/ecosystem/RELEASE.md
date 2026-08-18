@@ -4,13 +4,16 @@
 
 ## Коммит-релиз
 
-1. Обновить `VERSION` (`ecosystem`, `products.social`, при необходимости `products.fscp` / `products.frc-i` / `products.fira`).
-2. `npm run version:sync` — обновит `Apps/*/package.json`, `Apps/Mobile/app.json`, `Packages/flora-client-core`, `Products/FSCP` / `Products/FRC`, `flora-versions.json`, `Backend/flora-versions.json`, `Cargo.toml` (`# synced-from-VERSION`).
+1. Обновить `VERSION` (`ecosystem`, `products.social`, `products.gov`, `products.mobile`; при необходимости `products.fscp` / `products.frc-i` / `products.fira`).
+   - **social** — продукт Social (API + `Apps/Web`).
+   - **gov** — портал `Apps/Gov`.
+   - **mobile** — оболочка `Apps/Mobile` (`package.json`, `app.json` `expo.version`). Стартовала с `0.12.0-alpha`, чтобы совпасть с уже установленным APK.
+2. `npm run version:sync` — обновит `Apps/Web`, `Apps/Gov`, `Apps/Mobile` (+ `app.json`), `Packages/flora-client-core`, `Products/FSCP` / `Products/FRC`, `flora-versions.json`, `Backend/flora-versions.json`, `Cargo.toml` (`# synced-from-VERSION`).
 3. Вручную:
    - `Apps/Mobile/app.json` — увеличить `expo.android.versionCode` на 1;
-   - fallback-версии в `Apps/Mobile/lib/api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`, `Apps/Web/lib/fscp/clientCore.ts`, `Apps/Web/next.config.ts`;
+   - fallback-версии в `Apps/Mobile/lib/api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`, `Apps/Web/lib/fscp/clientCore.ts`, `Apps/Web/next.config.ts`, `Apps/Gov/lib/govApiClient.ts` (`GOV_APP_VERSION`);
    - `Artifacts/contract-fixtures/api-version.json` — под новый `/version` (ecosystem / products / api);
-   - lockfiles (`package-lock.json`, `Apps/Web/package-lock.json`) — версии workspace-пакетов FSCP/FRC при их bump;
+   - lockfiles (`package-lock.json`, `Apps/Web/package-lock.json`, `Apps/Gov/package-lock.json`) — версии workspace-пакетов FSCP/FRC при их bump; корень `flora-gov` при bump `products.gov`;
    - `README.md` — имя APK `flora.social-v<version>-android.apk`.
 4. Коммит (GPG): `chore(ecosystem): v<version> release`.
 
@@ -20,6 +23,8 @@
 git tag -s ecosystem/v<version> -m "Flora.Ecosystem v<version>"
 git tag -s social/v<version> -m "Flora Social v<version>"
 ```
+
+APK, тег `social/v…` и канал `https://social.flora-s.net/apk/` пока следуют `products.social` (не `products.mobile`). Отдельная линейка `mobile/v…` и перенос канала — follow-up, чтобы не сломать sideload-обновления.
 
 ## Перед релизом
 
@@ -69,7 +74,7 @@ npm run ci
 
 ## Чеклист
 
-- [ ] `VERSION` — `ecosystem`, `products.social` (+ `fscp` / `frc-i` / `fira` при bump)
+- [ ] `VERSION` — `ecosystem`, `products.social`, `products.gov`, `products.mobile` (+ `fscp` / `frc-i` / `fira` при bump)
 - [ ] `npm run version:sync`
 - [ ] `Apps/Mobile/app.json` — `versionCode` +1
 - [ ] Fallback-версии (Mobile: `api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`; Web: `clientCore.ts`, `next.config.ts`)

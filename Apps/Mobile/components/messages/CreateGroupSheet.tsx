@@ -217,6 +217,7 @@ export function CreateGroupSheet({ visible, conversations, onClose, onCreated }:
                     username={c.otherUsername}
                     avatarUuid={c.otherAvatarUuid}
                     seed={c.otherUserUuid}
+                    accountBlocked={c.otherAccountBlocked}
                   />
                   <View style={styles.rowBody}>
                     <Text style={styles.rowName} numberOfLines={1}>

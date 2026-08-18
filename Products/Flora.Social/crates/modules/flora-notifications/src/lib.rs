@@ -26,7 +26,7 @@ use flora_messaging_contracts::{
 };
 use flora_notifications_contracts::{PresenceRealtimePublisher, UserNotificationDispatcher};
 use flora_shared::config::FloraConfig;
-use flora_users_contracts::UserProfileQueries;
+use flora_users_contracts::{AccountSanctionStatus, UserProfileQueries};
 use sqlx::PgPool;
 
 use crate::application::{
@@ -71,6 +71,7 @@ pub fn compose(
     cfg: &FloraConfig,
     profiles: Arc<dyn UserProfileQueries>,
     accounts: Arc<dyn AccountDirectory>,
+    account_status: Arc<dyn AccountSanctionStatus>,
 ) -> NotificationsModule {
     let hub = Arc::new(UserRealtimeHub::new());
     let inbox_repo = Arc::new(InboxRepo::new(pool.clone()));
@@ -140,11 +141,14 @@ pub fn compose(
     });
 
     NotificationsModule {
-        protected_router: protected_router(NotificationsState {
-            inbox: Arc::clone(&inbox),
-            push_tokens,
-            hub: Arc::clone(&hub),
-        }),
+        protected_router: protected_router(
+            NotificationsState {
+                inbox: Arc::clone(&inbox),
+                push_tokens,
+                hub: Arc::clone(&hub),
+            },
+            account_status,
+        ),
         admin_router: admin_router(AdminBroadcastState {
             inbox,
             admin_token,

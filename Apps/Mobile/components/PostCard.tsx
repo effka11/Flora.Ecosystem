@@ -96,6 +96,7 @@ export const PostCard = memo(function PostCard({
             username={authorMeta.username}
             seed={authorMeta.seed}
             communityName={authorMeta.communityName}
+            accountBlocked={authorMeta.accountBlocked}
           />
         </View>
 

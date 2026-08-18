@@ -16,7 +16,8 @@ use std::sync::Arc;
 use flora_auth_contracts::AccountDirectory;
 use flora_notifications_contracts::UserNotificationDispatcher;
 use flora_users_contracts::{
-    BidirectionalBlocklist, FeedAuthorProfiles, FollowGraphReader, ProfileAccess, UserAvatarMedia,
+    AccountSanctionStatus, BidirectionalBlocklist, FeedAuthorProfiles, FollowGraphReader,
+    ProfileAccess, UserAvatarMedia,
 };
 use sqlx::PgPool;
 
@@ -78,6 +79,7 @@ pub fn compose(
     blocklist: Arc<dyn BidirectionalBlocklist>,
     profiles: Arc<dyn FeedAuthorProfiles>,
     profile_access: Arc<dyn ProfileAccess>,
+    account_sanction_status: Arc<dyn AccountSanctionStatus>,
     user_avatars: Arc<dyn UserAvatarMedia>,
     media: MediaOptions,
     notifications: Arc<dyn UserNotificationDispatcher>,
@@ -108,6 +110,7 @@ pub fn compose(
         profiles.clone(),
         follow,
         profile_access.clone(),
+        account_sanction_status.clone(),
     ));
     let profile_posts = Arc::new(ProfilePostsService::new(
         repo.clone(),
@@ -115,7 +118,11 @@ pub fn compose(
         profile_access.clone(),
         serialize.clone(),
     ));
-    let access = Arc::new(PostAccessService::new(repo.clone(), profile_access.clone()));
+    let access = Arc::new(PostAccessService::new(
+        repo.clone(),
+        profile_access.clone(),
+        account_sanction_status.clone(),
+    ));
     let comments = Arc::new(CommentsService::new(
         repo.clone(),
         access.clone(),
@@ -188,7 +195,7 @@ pub fn compose(
         upload_limiter: default_upload_limiter(),
     };
     ContentModule {
-        protected_router: http::protected_router(state.clone()),
+        protected_router: http::protected_router(state.clone(), account_sanction_status),
         public_router: http::public_router(state),
         video_worker,
         image_backfill: frc_i_backfill_enabled

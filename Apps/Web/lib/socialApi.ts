@@ -87,6 +87,7 @@ export type FollowedReposterDto = {
   displayName: string;
   avatarUuid?: string | null;
   userUuid?: string | null;
+  accountBlocked?: boolean;
 };
 
 export type PostVideoStatus = "processing" | "ready" | "failed";
@@ -107,6 +108,7 @@ export type FeedPostDto = {
   authorUsername: string;
   authorDisplayName: string;
   authorAvatarUuid?: string | null;
+  authorAccountBlocked?: boolean;
   communityName: string | null;
   communitySlug: string | null;
   communityAvatarUuid?: string | null;
@@ -145,6 +147,7 @@ export type PostCommentDto = {
   authorDisplayName: string;
   authorAvatarUuid?: string | null;
   authorUserUuid?: string | null;
+  authorAccountBlocked?: boolean;
   content: string;
   createdAt: string;
   /** Число прямых ответов на комментарий. */
@@ -173,6 +176,7 @@ function parseFollowedReposter(raw: unknown): FollowedReposterDto | null {
     displayName: readStr(o, ["displayName", "DisplayName"]) || username,
     avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"]) || null,
     userUuid: readStr(o, ["userUuid", "UserUuid"]) || null,
+    accountBlocked: readBool(o, ["accountBlocked", "AccountBlocked"]),
   };
 }
 
@@ -235,6 +239,7 @@ function parseFeedItem(raw: unknown): FeedPostDto | null {
     authorUsername: readStr(o, ["authorUsername", "AuthorUsername"]),
     authorDisplayName: readStr(o, ["authorDisplayName", "AuthorDisplayName"]),
     authorAvatarUuid,
+    authorAccountBlocked: readBool(o, ["authorAccountBlocked", "AuthorAccountBlocked"]),
     communityName: cn.length > 0 ? cn : null,
     communitySlug: cs.length > 0 ? cs : null,
     communityAvatarUuid,
@@ -373,6 +378,7 @@ function mapCoreFeedPost(post: CoreFeedPostDto): FeedPostDto {
     authorUsername: post.authorUsername,
     authorDisplayName: post.authorDisplayName,
     authorAvatarUuid: post.authorAvatarUuid,
+    authorAccountBlocked: post.authorAccountBlocked,
     communityName: post.communityName,
     communitySlug: post.communitySlug,
     communityAvatarUuid: post.communityAvatarUuid,
@@ -721,6 +727,7 @@ function parsePostComment(raw: unknown): PostCommentDto | null {
     authorDisplayName: readStr(o, ["authorDisplayName", "AuthorDisplayName"]),
     authorAvatarUuid: readStr(o, ["authorAvatarUuid", "AuthorAvatarUuid"]) || null,
     authorUserUuid: readStr(o, ["authorUserUuid", "AuthorUserUuid"]) || null,
+    authorAccountBlocked: readBool(o, ["authorAccountBlocked", "AuthorAccountBlocked"]),
     content: readStr(o, ["content", "Content"]),
     createdAt: readStr(o, ["createdAt", "CreatedAt"]),
     repliesCount: readNum(o, ["repliesCount", "RepliesCount"]),
@@ -1533,6 +1540,7 @@ export type PublicProfileDto = {
   followersCount: number;
   followingCount: number;
   isFollowingByMe: boolean;
+  accountBlocked?: boolean;
   isOnline?: boolean;
   lastSeenAt?: string | null;
 };
@@ -1567,6 +1575,7 @@ export async function apiGetPublicProfile(username: string): Promise<PublicProfi
     followersCount: readNum(o, ["followersCount", "FollowersCount"]),
     followingCount: readNum(o, ["followingCount", "FollowingCount"]),
     isFollowingByMe: getAccessToken() ? readBool(o, ["isFollowingByMe", "IsFollowingByMe"]) : false,
+    accountBlocked: readBool(o, ["accountBlocked", "AccountBlocked"]),
     isOnline: readBool(o, ["isOnline", "IsOnline"]),
     lastSeenAt: readStr(o, ["lastSeenAt", "LastSeenAt"]) || null,
   };
@@ -1588,6 +1597,7 @@ export type ConversationListItemDto = {
   otherUserIsOnline: boolean;
   /** ISO UTC последней активности собеседника (для «Был в сети …»); может отсутствовать. */
   otherUserLastSeenAt: string | null;
+  otherAccountBlocked?: boolean;
 };
 
 function parseConversationListItem(raw: unknown): ConversationListItemDto | null {
@@ -1615,6 +1625,7 @@ function parseConversationListItem(raw: unknown): ConversationListItemDto | null
       const s = readStr(o, ["otherUserLastSeenAt", "OtherUserLastSeenAt"]).trim();
       return s.length > 0 ? s : null;
     })(),
+    otherAccountBlocked: readBool(o, ["otherAccountBlocked", "OtherAccountBlocked"]),
   };
 }
 
@@ -1871,6 +1882,7 @@ export type PeopleSearchUserDto = {
   userUuid?: string | null;
   isOnline?: boolean;
   lastSeenAt?: string | null;
+  accountBlocked?: boolean;
 };
 
 export type RecommendedUserDto = PeopleSearchUserDto & {
@@ -1893,6 +1905,7 @@ function parseRecommendedUser(raw: unknown): RecommendedUserDto | null {
     userUuid: readStr(o, ["userUuid", "UserUuid"]) || null,
     isOnline: readBool(o, ["isOnline", "IsOnline"]),
     lastSeenAt: readStr(o, ["lastSeenAt", "LastSeenAt"]) || null,
+    accountBlocked: readBool(o, ["accountBlocked", "AccountBlocked"]),
   };
 }
 
@@ -1904,6 +1917,7 @@ export type PeopleListEntryDto = {
   userUuid?: string | null;
   isOnline?: boolean;
   lastSeenAt?: string | null;
+  accountBlocked?: boolean;
 };
 
 function parsePeopleListEntry(raw: unknown): PeopleListEntryDto | null {
@@ -1921,6 +1935,7 @@ function parsePeopleListEntry(raw: unknown): PeopleListEntryDto | null {
     userUuid: readStr(o, ["userUuid", "UserUuid"]) || null,
     isOnline: readBool(o, ["isOnline", "IsOnline"]),
     lastSeenAt: readStr(o, ["lastSeenAt", "LastSeenAt"]) || null,
+    accountBlocked: readBool(o, ["accountBlocked", "AccountBlocked"]),
   };
 }
 

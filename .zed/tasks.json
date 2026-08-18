@@ -18,6 +18,21 @@
     "reveal": "always"
   },
   {
+    "label": "Flora Government: Web Dev",
+    "command": "powershell",
+    "args": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/Scripts/gov-dev-localhost.ps1"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true,
+    "reveal": "always"
+  },
+  {
     "label": "Flora DB: start (Docker)",
     "command": "powershell",
     "args": [

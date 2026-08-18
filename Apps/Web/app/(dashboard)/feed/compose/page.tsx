@@ -576,6 +576,7 @@ function ComposePostPageContent() {
               username={activeOwnedCommunity ? "" : me?.username ?? ""}
               seed={editorAvatarSeed}
               communityName={editorCommunityName}
+              accountBlocked={!activeOwnedCommunity ? me?.accountBlocked : undefined}
               className={styles.composeAvatar}
             />
             <header className={styles.composeHeader}>

@@ -78,6 +78,7 @@ export function ConversationListRow({
         otherDisplayName: item.otherDisplayName,
         otherUsername: item.otherUsername,
         otherAvatarUuid: item.otherAvatarUuid ?? "",
+        otherAccountBlocked: item.otherAccountBlocked ? "1" : "0",
         otherUserIsOnline: overlay.isOnline ? "1" : "0",
         otherUserLastSeenAt: overlay.lastSeenAt ?? "",
       },
@@ -128,6 +129,7 @@ export function ConversationListRow({
             displayName={displayName}
             username={item.otherUsername}
             seed={item.otherUserUuid ?? item.otherUsername}
+            accountBlocked={item.otherAccountBlocked}
           />
           {selectionMode ? (
             <ConversationListSelectionMark selected={selected} avatarDiameter={AVATAR_SIZE} />

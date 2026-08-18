@@ -1,0 +1,25 @@
+.article {
+  max-width: 42em;
+}
+
+.heading {
+  margin: 0 0 calc(3 * var(--flora-grid-step));
+  color: var(--flora-gray-light);
+  font-size: clamp(28px, 3.2vw, 36px);
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--flora-grid-step));
+}
+
+.body p {
+  margin: 0;
+  color: var(--flora-gray);
+  font-size: 16px;
+  line-height: 1.7;
+}

@@ -1,18 +1,25 @@
 //! MessagesAccess — паритет `ProfileAccessPolicy` для Messages.
 
-use flora_users_contracts::{BoxFuture, MessagesAccess};
+use flora_users_contracts::{AccountSanctionStatus, BoxFuture, MessagesAccess};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::infrastructure::account_sanctions::SqlAccountSanctions;
 use crate::infrastructure::store::{MSG_ALL, MSG_FRIENDS};
 
 pub struct SqlMessagesAccess {
     pool: PgPool,
+    /// Санкции читаем через собственный адаптер Users: предикат активности
+    /// («без срока либо срок не истёк») живёт в одном месте.
+    sanctions: SqlAccountSanctions,
 }
 
 impl SqlMessagesAccess {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            sanctions: SqlAccountSanctions::new(pool.clone()),
+            pool,
+        }
     }
 }
 
@@ -23,6 +30,16 @@ impl MessagesAccess for SqlMessagesAccess {
         subject_user_uuid: Uuid,
     ) -> BoxFuture<'_, Result<bool, String>> {
         Box::pin(async move {
+            // Аккаунт-санкция сильнее приватности и сильнее self-переписки:
+            // заблокированному нельзя ни писать, ни получать — включая «себе».
+            let account_blocked = self
+                .sanctions
+                .blocked_among(&[viewer_user_uuid, subject_user_uuid])
+                .await?;
+            if !account_blocked.is_empty() {
+                return Ok(false);
+            }
+
             if viewer_user_uuid == subject_user_uuid {
                 return Ok(true);
             }

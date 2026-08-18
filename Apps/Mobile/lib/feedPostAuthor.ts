@@ -12,6 +12,7 @@ export type FeedPostAuthorMeta = {
   displayName: string;
   username: string;
   communityName?: string;
+  accountBlocked?: boolean;
 };
 
 /** Синхронно с Web `feedPostAuthor()` в feed/page.tsx */
@@ -38,5 +39,6 @@ export function feedPostAuthor(post: FeedPostDto, meUsername?: string | null): F
     seed: post.authorUserUuid ?? post.authorUsername,
     displayName: post.authorDisplayName,
     username: post.authorUsername,
+    accountBlocked: post.authorAccountBlocked,
   };
 }

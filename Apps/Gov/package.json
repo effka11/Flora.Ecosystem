@@ -1,0 +1,32 @@
+{
+  "name": "flora-gov",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
+  "scripts": {
+    "dev": "next dev --webpack --port 3001",
+    "build": "next build --webpack",
+    "start": "next start --port 3001",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --import tsx --test lib/floraApiProxy.test.ts lib/floraDocumentTitle.test.ts lib/govSessionStore.test.ts lib/govAuthGate.test.ts \"app/(civic)/moderation/moderationQueue.test.ts\" \"app/(civic)/moderation/moderationFormat.test.ts\" \"app/(civic)/moderation/moderationSanctions.test.ts\""
+  },
+  "dependencies": {
+    "@flora/client-core": "file:../../Packages/flora-client-core",
+    "@fontsource-variable/manrope": "^5.2.8",
+    "flora-ecosystem-js": "file:../..",
+    "next": "16.2.10",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "jiti": "^2.7.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.2"
+  }
+}

@@ -199,6 +199,7 @@ export function CreateChatFolderSheet({ visible, onClose, conversations, onCreat
                         displayName={displayName}
                         username={c.otherUsername}
                         seed={c.otherUserUuid}
+                        accountBlocked={c.otherAccountBlocked}
                       />
                       <View style={styles.userMeta}>
                         <Text style={styles.userName} numberOfLines={1}>

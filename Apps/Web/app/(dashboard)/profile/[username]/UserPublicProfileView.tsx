@@ -179,6 +179,7 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
       ...post,
       authorUsername: publicProfile.username,
       authorDisplayName: publicProfile.displayName,
+      authorAccountBlocked: publicProfile.accountBlocked,
     }));
   }, [profilePosts, publicProfile]);
 
@@ -291,6 +292,7 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
                   displayName={publicProfile?.displayName ?? name}
                   username={publicProfile?.username ?? ""}
                   seed={publicProfile?.userUuid}
+                  accountBlocked={publicProfile?.accountBlocked}
                 />
               </div>
               <span

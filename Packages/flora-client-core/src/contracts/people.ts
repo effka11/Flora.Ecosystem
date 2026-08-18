@@ -6,6 +6,7 @@ export type PeopleUserDto = {
   avatarUuid: string | null;
   followerCount: number;
   isFollowing: boolean;
+  accountBlocked?: boolean;
   userUuid?: string;
   isOnline?: boolean;
   lastSeenAt?: string | null;
@@ -28,6 +29,7 @@ function parsePeopleUser(raw: unknown, ctx?: ParseContext, fallbackFollowing = f
     avatarUuid,
     followerCount,
     isFollowing: readBool(o, ["isFollowing", "IsFollowing"], fb) || fallbackFollowing,
+    accountBlocked: readBool(o, ["accountBlocked", "AccountBlocked"], fb),
     isOnline: readBool(o, ["isOnline", "IsOnline"], fb),
     lastSeenAt,
     ...(userUuid ? { userUuid } : {}),

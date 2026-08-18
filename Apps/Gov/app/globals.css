@@ -1,0 +1,86 @@
+/*
+ * Flora design tokens — deliberate copy for Apps/Gov (separate origin from Apps/Web).
+ * Values match Flora Social; not imported from Apps/Web.
+ */
+
+:root {
+  --flora-bg: #0c0c0c;
+  --flora-white-template: #fafafa;
+  --flora-white-template-rgb: 250, 250, 250;
+  --flora-green-light: #a4d18a;
+  --flora-green-dark: #2c3527;
+  --flora-gray-light: var(--flora-white-template);
+  /* 55% white + 45% bg */
+  --flora-gray: #8f8f8f;
+  --flora-green-muted: color-mix(in srgb, var(--flora-green-light) 24%, var(--flora-gray) 76%);
+  /* 85% white + 15% bg */
+  --flora-gray-hover: #d6d6d6;
+  --flora-gray-divider: color-mix(in srgb, var(--flora-gray) 14%, var(--flora-bg) 86%);
+  --flora-grid-step: 15px;
+  --flora-grid-step-fine: 5px;
+  /* 20% / 10% green-light + bg */
+  --flora-grid-line: #2a3325;
+  --flora-grid-line-fine: #1b2019;
+  --flora-frame-width: 1920px;
+  --flora-frame-height: 945px;
+  --flora-frame-left: 0px;
+  --flora-frame-top: 0px;
+  --flora-crop-x: 0px;
+  --flora-crop-y: 0px;
+  --flora-tracking-15: 0.45px;
+  --flora-tracking-16: 0.48px;
+  --flora-motion-base: 150ms;
+  --flora-duration-3: calc(3 * var(--flora-motion-base));
+  --flora-ease-out: cubic-bezier(0.33, 1, 0.2, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  font-weight: 300 !important;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--flora-bg);
+}
+
+html {
+  font-size: 16px;
+  font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+}
+
+body {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 300;
+}
+
+button,
+input,
+textarea,
+select,
+option {
+  font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  font-style: normal !important;
+}
+
+.flora-type-15 {
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: var(--flora-tracking-15);
+}
+
+.flora-type-16 {
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: var(--flora-tracking-16);
+}

@@ -20,6 +20,8 @@ export type MsgGroupMember = {
   displayName: string;
   avatarUuid: string | null;
   joinedAt: string;
+  /** Present on wire payloads; parsers default missing to false. */
+  accountBlocked?: boolean;
 };
 
 export type MsgGroupDetail = {
@@ -62,6 +64,7 @@ function parseMember(raw: unknown, ctx?: ParseContext): MsgGroupMember | null {
     displayName: readStr(o, ["displayName", "DisplayName"], fb),
     avatarUuid: readStr(o, ["avatarUuid", "AvatarUuid"], fb) || null,
     joinedAt: readStr(o, ["joinedAt", "JoinedAt"], fb),
+    accountBlocked: readBool(o, ["accountBlocked", "AccountBlocked"], fb),
   };
 }
 

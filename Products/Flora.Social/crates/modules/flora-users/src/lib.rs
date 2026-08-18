@@ -93,6 +93,18 @@ pub fn content_ports(
     infrastructure::social_graph::as_ports(pool)
 }
 
+pub fn account_sanctions_ports(
+    pool: PgPool,
+) -> (
+    Arc<dyn flora_users_contracts::AccountSanctions>,
+    Arc<dyn flora_users_contracts::AccountSanctionStatus>,
+) {
+    let sanctions = Arc::new(infrastructure::account_sanctions::SqlAccountSanctions::new(
+        pool,
+    ));
+    (sanctions.clone(), sanctions)
+}
+
 type MessagingPorts = (
     Arc<dyn flora_users_contracts::UserPresence>,
     Arc<dyn flora_users_contracts::FeedAuthorProfiles>,
@@ -172,6 +184,11 @@ pub fn compose(
         follow_graph.clone(),
     ));
     let avatars = avatar_service(pool.clone());
+    // Санкции — таблица Users, поэтому адаптер строится здесь же: наружу
+    // (в композицию продукта) порт не поднимается.
+    let account_blocks = Arc::new(infrastructure::account_sanctions::SqlAccountSanctions::new(
+        pool.clone(),
+    ));
     let state = UsersState {
         profiles: store.clone(),
         privacy: store.clone(),
@@ -184,6 +201,8 @@ pub fn compose(
         follow_graph,
         messages_access,
         profile_access,
+        account_status: account_blocks.clone(),
+        account_blocks,
         avatars,
         recommendations,
         notifications,

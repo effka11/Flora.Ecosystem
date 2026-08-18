@@ -53,6 +53,14 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         background.extend(spawn_music_workers(cfg, pool.clone()));
     }
 
+    let (account_sanctions, account_sanction_status) = match pool.as_ref() {
+        Some(p) => {
+            let (sanctions, status) = flora_users::account_sanctions_ports(p.clone());
+            (Some(sanctions), Some(status))
+        }
+        None => (None, None),
+    };
+
     let people_bundle = pool
         .as_ref()
         .map(|p| flora_users::people_search_bundle(p.clone()));
@@ -80,6 +88,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         pool.clone(),
         account_directory.clone(),
         sessions.clone(),
+        account_sanction_status.clone(),
     );
 
     let presence_service = pool
@@ -94,6 +103,7 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         pool.clone(),
         Arc::clone(&notification_dispatcher),
         sessions.clone(),
+        account_sanction_status.clone(),
     );
     background.extend(content_workers);
     let (users_routes, users_workers) = users_router(
@@ -116,6 +126,8 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         push_preview_targets,
         presence_service,
         sessions.clone(),
+        account_sanctions.clone(),
+        account_sanction_status.clone(),
     );
     background.extend(messaging_workers);
 
@@ -129,8 +141,13 @@ pub fn compose_product(cfg: &FloraConfig, pool: Option<PgPool>) -> ProductCompos
         .merge(notifications_routes)
         .merge(content_routes)
         .merge(messaging_routes)
-        .merge(chat_organizer_router(cfg, pool.clone(), sessions.clone()))
-        .merge(music_router(cfg, pool, sessions))
+        .merge(chat_organizer_router(
+            cfg,
+            pool.clone(),
+            sessions.clone(),
+            account_sanction_status.clone(),
+        ))
+        .merge(music_router(cfg, pool, sessions, account_sanction_status))
         .merge(economy_routes);
 
     ProductComposition { router, background }
@@ -252,6 +269,7 @@ fn chat_organizer_router(
     cfg: &FloraConfig,
     pool: Option<PgPool>,
     sessions: Option<SessionValidator>,
+    account_sanction_status: Option<Arc<dyn flora_users_contracts::AccountSanctionStatus>>,
 ) -> axum::Router {
     if cfg.get_bool("ChatOrganizer:ServeNative") != Some(true) {
         return flora_chat_organizer::router();
@@ -262,7 +280,10 @@ fn chat_organizer_router(
         );
         return flora_chat_organizer::router();
     };
-    let module = flora_chat_organizer::compose(pool);
+    let module = flora_chat_organizer::compose(
+        pool,
+        account_sanction_status.expect("account sanction status requires pool"),
+    );
     with_jwt(cfg, sessions, module.router)
 }
 
@@ -270,6 +291,7 @@ fn music_router(
     cfg: &FloraConfig,
     pool: Option<PgPool>,
     sessions: Option<SessionValidator>,
+    account_sanction_status: Option<Arc<dyn flora_users_contracts::AccountSanctionStatus>>,
 ) -> axum::Router {
     if cfg.get_bool("Music:ServeNative") != Some(true) {
         return flora_music::router();
@@ -285,7 +307,11 @@ fn music_router(
             .to_string(),
         ffprobe_path: cfg.get("Media:FfprobePath").unwrap_or("").to_string(),
     };
-    let module = flora_music::compose(pool, media);
+    let module = flora_music::compose(
+        pool,
+        media,
+        account_sanction_status.expect("account sanction status requires pool"),
+    );
     with_jwt(cfg, sessions, module.router)
 }
 
@@ -305,6 +331,7 @@ fn notifications_router(
     pool: Option<PgPool>,
     accounts: Option<Arc<dyn flora_auth_contracts::AccountDirectory>>,
     sessions: Option<SessionValidator>,
+    account_sanction_status: Option<Arc<dyn flora_users_contracts::AccountSanctionStatus>>,
 ) -> NotificationsRouterParts {
     let noop_msg: Arc<dyn flora_messaging_contracts::MessageSentNotifier> =
         Arc::new(flora_messaging_contracts::NoopMessageSentNotifier);
@@ -361,7 +388,13 @@ fn notifications_router(
         );
     };
     let profiles = flora_users::profile_queries(pool.clone());
-    let module = flora_notifications::compose(pool, cfg, profiles, accounts);
+    let module = flora_notifications::compose(
+        pool,
+        cfg,
+        profiles,
+        accounts,
+        account_sanction_status.expect("account sanction status requires pool"),
+    );
     let router = axum::Router::new()
         .merge(with_jwt(cfg, sessions, module.protected_router))
         .merge(module.admin_router);
@@ -388,6 +421,8 @@ fn messaging_router(
     preview_targets: Arc<dyn flora_messaging_contracts::PushPreviewTargetProvider>,
     presence: Option<Arc<flora_users::PresenceService>>,
     sessions: Option<SessionValidator>,
+    account_sanctions: Option<Arc<dyn flora_users_contracts::AccountSanctions>>,
+    account_sanction_status: Option<Arc<dyn flora_users_contracts::AccountSanctionStatus>>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Messaging:ServeNative") != Some(true) {
         return (flora_messaging::router(), Vec::new());
@@ -428,6 +463,8 @@ fn messaging_router(
         presence_port,
         online,
         messages_access,
+        account_sanctions.expect("account sanctions port requires pool"),
+        account_sanction_status.expect("account sanction status requires pool"),
         sent_notifier,
         typing_notifier,
         read_notifier,
@@ -451,6 +488,7 @@ fn content_router(
     pool: Option<PgPool>,
     notifications: Arc<dyn flora_notifications_contracts::UserNotificationDispatcher>,
     sessions: Option<SessionValidator>,
+    account_sanction_status: Option<Arc<dyn flora_users_contracts::AccountSanctionStatus>>,
 ) -> (axum::Router, Vec<BackgroundHandle>) {
     if cfg.get_bool("Content:ServeNative") != Some(true) {
         return (flora_content::router(), Vec::new());
@@ -478,6 +516,7 @@ fn content_router(
         blocklist,
         profiles,
         profile_access,
+        account_sanction_status.expect("account sanction status requires pool"),
         user_avatars,
         media,
         notifications,

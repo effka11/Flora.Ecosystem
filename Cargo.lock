@@ -841,7 +841,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1006,11 +1006,14 @@ dependencies = [
  "axum",
  "chrono",
  "flora-chat-organizer-contracts",
+ "flora-users-contracts",
  "fscp-core",
+ "http-body-util",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "tower",
  "tracing",
  "uuid",
 ]
@@ -1049,12 +1052,14 @@ dependencies = [
  "frc-i-integration",
  "fsa-core",
  "getrandom 0.3.4",
+ "http-body-util",
  "image",
  "reqwest",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "tower",
  "tracing",
  "uuid",
 ]
@@ -1163,12 +1168,14 @@ dependencies = [
  "fscp-core",
  "hex",
  "hmac 0.12.1",
+ "http-body-util",
  "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",
  "tokio",
+ "tower",
  "tracing",
  "uuid",
 ]
@@ -1212,12 +1219,15 @@ dependencies = [
  "fira-core",
  "flora-music-contracts",
  "flora-shared",
+ "flora-users-contracts",
  "fsa-core",
  "getrandom 0.3.4",
+ "http-body-util",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "tower",
  "tracing",
  "uuid",
 ]
@@ -1246,6 +1256,7 @@ dependencies = [
  "flora-users-contracts",
  "fsa-core",
  "futures-util",
+ "http-body-util",
  "jsonwebtoken",
  "reqwest",
  "serde",
@@ -1253,6 +1264,7 @@ dependencies = [
  "sqlx",
  "subtle",
  "tokio",
+ "tower",
  "tracing",
  "uuid",
 ]
@@ -1322,6 +1334,7 @@ dependencies = [
  "flora-notifications-contracts",
  "flora-shared",
  "flora-users",
+ "flora-users-contracts",
  "flora-verification",
  "flora-verification-contracts",
  "http",
@@ -1348,12 +1361,14 @@ dependencies = [
  "flora-users-contracts",
  "frc-i-integration",
  "fsa-core",
+ "http-body-util",
  "image",
  "reqwest",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "tower",
  "tracing",
  "uuid",
 ]
@@ -1751,9 +1766,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.15"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -1981,7 +1996,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.4",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -2951,7 +2966,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.4",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -2990,9 +3005,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.4",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3222,7 +3237,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3281,7 +3296,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3890,7 +3905,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4489,7 +4504,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

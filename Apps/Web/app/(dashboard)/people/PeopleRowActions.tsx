@@ -14,6 +14,7 @@ export type PeopleRowUser = {
   userUuid?: string | null;
   isOnline?: boolean;
   lastSeenAt?: string | null;
+  accountBlocked?: boolean;
 };
 
 type PeopleRowActionsProps = {

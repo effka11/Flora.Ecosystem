@@ -21,6 +21,7 @@ export type ChatPeerInfo = {
   otherUsername: string;
   otherDisplayName: string;
   otherAvatarUuid: string | null;
+  otherAccountBlocked?: boolean;
   otherUserIsOnline: boolean;
   otherUserLastSeenAt: string | null;
   conversationUuid?: string | null;
@@ -137,6 +138,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
           displayName={displayName}
           username={peer.otherUsername}
           seed={peer.otherUserUuid}
+          accountBlocked={peer.otherAccountBlocked}
           href={username !== "…" ? profileScreenHref(username, me?.username) : undefined}
         />
         <OnlineStatusDot

@@ -41,6 +41,7 @@ type Person = {
   userUuid?: string | null;
   isOnline?: boolean;
   lastSeenAt?: string | null;
+  accountBlocked?: boolean;
 };
 
 type PeopleTab = 0 | 1 | 2;
@@ -75,6 +76,7 @@ function toPerson(row: {
   userUuid?: string | null;
   isOnline?: boolean;
   lastSeenAt?: string | null;
+  accountBlocked?: boolean;
 }): Person {
   const username = row.username.startsWith("@") ? row.username : `@${row.username}`;
   const id = row.username.replace(/^@+/, "");
@@ -87,6 +89,7 @@ function toPerson(row: {
     userUuid: row.userUuid ?? null,
     isOnline: row.isOnline ?? false,
     lastSeenAt: row.lastSeenAt ?? null,
+    accountBlocked: row.accountBlocked,
   };
 }
 
