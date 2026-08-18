@@ -65,6 +65,14 @@ function IconDelete() {
   );
 }
 
+function IconReport() {
+  return (
+    <svg {...menuIconProps}>
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V4s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7" />
+    </svg>
+  );
+}
+
 type MenuRowProps = {
   icon: ReactNode;
   label: string;
@@ -97,6 +105,7 @@ export type MessageBubbleMoreMenuPanelProps = {
   onPin?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onReport?: () => void;
 };
 
 export function MessageBubbleMoreMenuPanel({
@@ -109,6 +118,7 @@ export function MessageBubbleMoreMenuPanel({
   onPin,
   onEdit,
   onDelete,
+  onReport,
 }: MessageBubbleMoreMenuPanelProps) {
   const pick = (handler?: () => void) => () => {
     handler?.();
@@ -136,6 +146,9 @@ export function MessageBubbleMoreMenuPanel({
       {isFromMe ? <MenuRow icon={<IconEdit />} label="Редактировать" onClick={pick(onEdit)} /> : null}
       {isFromMe ? (
         <MenuRow icon={<IconDelete />} label="Удалить" danger onClick={pick(onDelete)} />
+      ) : null}
+      {!isFromMe && onReport ? (
+        <MenuRow icon={<IconReport />} label="Пожаловаться" danger onClick={pick(onReport)} />
       ) : null}
     </>
   );

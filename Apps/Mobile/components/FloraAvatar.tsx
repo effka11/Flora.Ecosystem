@@ -11,6 +11,9 @@ import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native"
 import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
 import { floraColors } from "@/lib/theme";
 
+/** Strike colour for blocked people — static, never animated. */
+const ACCOUNT_BLOCKED_DIAGONAL = "#e8382c";
+
 export type FloraAvatarProps = {
   size?: number;
   avatarUuid?: string | null;
@@ -24,6 +27,8 @@ export type FloraAvatarProps = {
   href?: Href;
   style?: ViewStyle;
   onPress?: () => void;
+  /** People only. Communities (`communityName`) never get the strike. */
+  accountBlocked?: boolean;
 };
 
 type DefaultAvatarArtProps = {
@@ -40,6 +45,30 @@ function DefaultAvatarArt({ size, initials, backgroundColor }: DefaultAvatarArtP
   );
 }
 
+/** Static red diameter. Transform is set once — not driven per-frame. */
+function BlockedAccountDiagonal({ size }: { size: number }) {
+  const stroke = Math.max(2, Math.round(size * 0.055));
+  const length = size * Math.SQRT2;
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.blockedOverlay, { width: size, height: size, borderRadius: size / 2 }]}
+    >
+      <View
+        style={{
+          position: "absolute",
+          width: length,
+          height: stroke,
+          backgroundColor: ACCOUNT_BLOCKED_DIAGONAL,
+          top: (size - stroke) / 2,
+          left: (size - length) / 2,
+          transform: [{ rotate: "45deg" }],
+        }}
+      />
+    </View>
+  );
+}
+
 export function FloraAvatar({
   size = 45,
   avatarUuid,
@@ -52,10 +81,12 @@ export function FloraAvatar({
   href,
   style,
   onPress,
+  accountBlocked = false,
 }: FloraAvatarProps) {
+  const personBlocked = accountBlocked && !communityName;
   const [imageFailed, setImageFailed] = useState(false);
-  const trimmedPreview = previewUri?.trim() ?? "";
-  const trimmedUuid = avatarUuid?.trim() ?? "";
+  const trimmedPreview = personBlocked ? "" : (previewUri?.trim() ?? "");
+  const trimmedUuid = personBlocked ? "" : (avatarUuid?.trim() ?? "");
   const showPreview = trimmedPreview.length > 0 && !imageFailed;
   const showRemote = !showPreview && trimmedUuid.length > 0 && !imageFailed;
   const colorSeed = seed?.trim() || username.trim() || displayName.trim();
@@ -97,12 +128,19 @@ export function FloraAvatar({
     <DefaultAvatarArt size={size} initials={initials} backgroundColor={backgroundColor} />
   );
 
+  const inner = (
+    <>
+      {content}
+      {personBlocked ? <BlockedAccountDiagonal size={size} /> : null}
+    </>
+  );
+
   const wrapStyle = [{ width: size, height: size }, style];
 
   if (href) {
     return (
       <Link href={href} asChild>
-        <Pressable style={({ pressed }) => [wrapStyle, pressed && styles.pressed]}>{content}</Pressable>
+        <Pressable style={({ pressed }) => [wrapStyle, pressed && styles.pressed]}>{inner}</Pressable>
       </Link>
     );
   }
@@ -110,12 +148,12 @@ export function FloraAvatar({
   if (onPress) {
     return (
       <Pressable style={({ pressed }) => [wrapStyle, pressed && styles.pressed]} onPress={onPress}>
-        {content}
+        {inner}
       </Pressable>
     );
   }
 
-  return <View style={wrapStyle}>{content}</View>;
+  return <View style={wrapStyle}>{inner}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -134,5 +172,11 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
+  },
+  blockedOverlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    overflow: "hidden",
   },
 });

@@ -110,6 +110,7 @@ function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: 
             displayName={user.displayName}
             username={user.username}
             seed={user.userUuid ?? user.username}
+            accountBlocked={user.accountBlocked}
           />
           {user.userUuid ? (
             <OnlineStatusDot

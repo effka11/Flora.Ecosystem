@@ -1,0 +1,39 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3 * var(--flora-grid-step));
+}
+
+.subheading {
+  margin: calc(var(--flora-grid-step)) 0 0;
+  color: var(--flora-gray-light);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.15px;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.list li {
+  margin: 0;
+  padding: calc(2 * var(--flora-grid-step)) 0;
+  border-top: 1px solid var(--flora-gray-divider);
+  color: var(--flora-gray);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.list li:last-of-type {
+  border-bottom: 1px solid var(--flora-gray-divider);
+}
+
+.term {
+  color: var(--flora-gray-light);
+}

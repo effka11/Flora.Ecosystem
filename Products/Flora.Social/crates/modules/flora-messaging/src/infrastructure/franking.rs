@@ -931,7 +931,8 @@ impl FrankingRepo {
             r#"
             UPDATE flora_core.franking_reports
             SET status = $3, resolution_code = $4
-            WHERE report_uuid = $1 AND claimed_by = $2 AND status = 'claimed'
+            WHERE report_uuid = $1 AND claimed_by = $2
+              AND status IN ('claimed', 'claimed_awaiting_disclosure')
             "#,
         )
         .bind(report_uuid)

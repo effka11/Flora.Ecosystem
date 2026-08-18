@@ -8,6 +8,7 @@ pub mod infrastructure;
 
 use std::sync::Arc;
 
+use flora_users_contracts::AccountSanctionStatus;
 use sqlx::PgPool;
 
 use crate::application::OrganizerService;
@@ -27,10 +28,13 @@ pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
-pub fn compose(pool: PgPool) -> ChatOrganizerModule {
+pub fn compose(
+    pool: PgPool,
+    account_status: Arc<dyn AccountSanctionStatus>,
+) -> ChatOrganizerModule {
     let repo = Arc::new(OrganizerRepo::new(pool));
     let organizer = Arc::new(OrganizerService::new(repo));
     ChatOrganizerModule {
-        router: http::router(OrganizerState { organizer }),
+        router: http::router(OrganizerState { organizer }, account_status),
     }
 }

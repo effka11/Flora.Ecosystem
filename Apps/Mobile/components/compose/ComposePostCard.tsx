@@ -24,6 +24,7 @@ type Props = {
   onSelectionChange: (start: number, end: number) => void;
   onRemoveImage: (index: number) => void;
   onRemoveVideo: () => void;
+  accountBlocked?: boolean;
 };
 
 export function ComposePostCard({
@@ -44,6 +45,7 @@ export function ComposePostCard({
   onSelectionChange,
   onRemoveImage,
   onRemoveVideo,
+  accountBlocked = false,
 }: Props) {
   const label = communityName
     ? communityName
@@ -61,6 +63,7 @@ export function ComposePostCard({
             username={username ?? undefined}
             seed={seed}
             communityName={communityName ?? undefined}
+            accountBlocked={accountBlocked}
           />
         </View>
 

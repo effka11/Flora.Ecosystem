@@ -44,6 +44,7 @@ type ProfileCardHeaderProps = {
   isFollowing?: boolean;
   followBusy?: boolean;
   onToggleFollow?: () => void;
+  accountBlocked?: boolean;
 };
 
 export function ProfileCardHeader({
@@ -64,6 +65,7 @@ export function ProfileCardHeader({
   isFollowing,
   followBusy,
   onToggleFollow,
+  accountBlocked = false,
 }: ProfileCardHeaderProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -91,6 +93,7 @@ export function ProfileCardHeader({
                 username={username}
                 seed={userUuid ?? username}
                 cacheVersion={avatarCacheVersion}
+                accountBlocked={accountBlocked}
               />
             </Pressable>
             <OnlineStatusDot
@@ -203,6 +206,7 @@ export function ProfileCardHeader({
           userUuid={userUuid}
           avatarUuid={avatarUuid}
           cacheVersion={avatarCacheVersion}
+          accountBlocked={accountBlocked}
           onAvatarChanged={() => setAvatarCacheVersion((v) => v + 1)}
         />
       ) : null}

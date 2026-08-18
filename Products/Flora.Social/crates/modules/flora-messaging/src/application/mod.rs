@@ -8,10 +8,15 @@ mod e2e;
 mod e2e_epochs;
 mod franking;
 mod groups;
+#[cfg(test)]
+mod test_ports;
 
 pub use assets::{AssetBlob, AssetError, AssetService};
 pub use chat_list::{ChatListError, ChatListService};
-pub use conversations::{ConversationService, SendMessageError};
+pub use conversations::{
+    ConversationListItemWithBlockDto, ConversationService, ConversationsPageWithBlocksDto,
+    SendMessageError,
+};
 pub use cursor::{decode_cursor, encode_cursor};
 pub use e2e::{
     E2eKeyBackupService, GetE2ePublicKeyError, PutKeyBackupError, PutRecoveryBackupError,
@@ -22,7 +27,8 @@ pub use e2e_epochs::{
     RevokeDeviceError, UnlockChallengeError, UnlockCompleteError,
 };
 pub use franking::{
-    FrankingError, FrankingService, FrankingSigner, SIGNING_UNAVAILABLE_CODE, TaggedIngest,
-    parse_franking_seed, parse_reviewer_uuids, signing_unavailable_body, tagged_ingest_action,
+    FrankingError, FrankingService, FrankingSigner, MAX_ACCOUNT_BLOCK_DAYS, MIN_ACCOUNT_BLOCK_DAYS,
+    SIGNING_UNAVAILABLE_CODE, TaggedIngest, parse_franking_seed, parse_reviewer_uuids,
+    signing_unavailable_body, tagged_ingest_action,
 };
-pub use groups::{GroupSendError, GroupService};
+pub use groups::{GroupDetailWithBlocksDto, GroupMemberWithBlockDto, GroupSendError, GroupService};

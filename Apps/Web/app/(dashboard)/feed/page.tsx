@@ -67,6 +67,7 @@ function feedPostAuthor(post: FeedPostDto) {
     seed: post.authorUserUuid ?? post.authorUsername,
     displayName: post.authorDisplayName,
     username: post.authorUsername,
+    accountBlocked: post.authorAccountBlocked,
   };
 }
 
@@ -1020,6 +1021,7 @@ function FeedPageContent() {
                         username={authorMeta.username}
                         seed={authorMeta.seed}
                         communityName={authorMeta.communityName}
+                        accountBlocked={authorMeta.accountBlocked}
                         className={`${styles.profilePostAvatar} ${styles.profilePostAvatarLink}`}
                       />
                       <div className={styles.profilePostHeader}>

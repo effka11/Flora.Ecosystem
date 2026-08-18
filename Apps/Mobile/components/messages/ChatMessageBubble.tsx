@@ -255,6 +255,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               displayName={displayName}
               username={peer.otherUsername}
               seed={peer.otherUserUuid}
+              accountBlocked={peer.otherAccountBlocked}
             />
           </View>
         ) : null}
@@ -296,6 +297,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               displayName={displayName}
               username={peer.otherUsername}
               seed={peer.otherUserUuid}
+              accountBlocked={peer.otherAccountBlocked}
             />
           </View>
         ) : null}
@@ -398,6 +400,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             displayName={displayName}
             username={peer.otherUsername}
             seed={peer.otherUserUuid}
+            accountBlocked={peer.otherAccountBlocked}
           />
         </View>
       ) : null}

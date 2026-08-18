@@ -9,6 +9,7 @@ pub mod infrastructure;
 
 use std::sync::Arc;
 
+use flora_users_contracts::AccountSanctionStatus;
 use sqlx::PgPool;
 
 use crate::application::artists::ArtistService;
@@ -45,7 +46,11 @@ pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
-pub fn compose(pool: PgPool, media: MusicMediaOptions) -> MusicModule {
+pub fn compose(
+    pool: PgPool,
+    media: MusicMediaOptions,
+    account_status: Arc<dyn AccountSanctionStatus>,
+) -> MusicModule {
     let repo = Arc::new(MusicRepo::new(pool));
     let audio = AudioSearchHost::new();
     let tracks = Arc::new(TrackService::new(repo.clone(), audio.clone()));
@@ -71,7 +76,7 @@ pub fn compose(pool: PgPool, media: MusicMediaOptions) -> MusicModule {
         uploads,
     };
     MusicModule {
-        router: http::router(state),
+        router: http::router(state, account_status),
     }
 }
 

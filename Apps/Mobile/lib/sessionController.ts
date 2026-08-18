@@ -1,6 +1,6 @@
 import type { SessionRefreshOutcome } from "@flora/client-core/api";
 import type { SessionSnapshot, SessionStore } from "@flora/client-core/auth";
-import type { MeResponse } from "@flora/client-core/contracts";
+import { parseMePayload, type MeResponse } from "@flora/client-core/contracts";
 
 const DEFAULT_ACCESS_SKEW_MS = 120_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -53,92 +53,17 @@ export class ApiProtocolError extends Error {
   }
 }
 
-function readString(
-  row: Record<string, unknown>,
-  keys: readonly string[],
-): string {
-  for (const key of keys) {
-    if (typeof row[key] === "string") return row[key];
-  }
-  return "";
-}
-
-function readOptionalNumber(
-  row: Record<string, unknown>,
-  keys: readonly string[],
-): number | undefined {
-  for (const key of keys) {
-    const value = row[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-  }
-  return undefined;
-}
-
 export function parseStrictMePayload(raw: unknown): MeResponse {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  let me: MeResponse;
+  try {
+    me = parseMePayload(raw);
+  } catch {
     throw new ApiProtocolError("The /me response must be a JSON object.");
   }
-  const row = raw as Record<string, unknown>;
-  const userUuid = readString(row, ["userUuid", "UserUuid", "user_uuid"]).trim();
-  const username = readString(row, ["username", "Username"]);
-  const displayName = readString(row, [
-    "displayName",
-    "DisplayName",
-    "display_name",
-  ]);
-  if (!userUuid) {
+  if (!me.userUuid.trim()) {
     throw new ApiProtocolError("The /me response has no user UUID.");
   }
-
-  const optionalString = (
-    keys: readonly string[],
-  ): string | undefined => {
-    const value = readString(row, keys);
-    return value || undefined;
-  };
-  const followersCount = readOptionalNumber(row, [
-    "followersCount",
-    "FollowersCount",
-  ]);
-  const followingCount = readOptionalNumber(row, [
-    "followingCount",
-    "FollowingCount",
-  ]);
-
-  return {
-    userUuid,
-    username,
-    displayName,
-    ...(optionalString(["email", "Email"])
-      ? { email: optionalString(["email", "Email"]) }
-      : {}),
-    ...(optionalString(["phone", "Phone"])
-      ? { phone: optionalString(["phone", "Phone"]) }
-      : {}),
-    ...(optionalString(["status", "Status"])
-      ? { status: optionalString(["status", "Status"]) }
-      : {}),
-    ...(optionalString(["birthDate", "BirthDate", "birth_date"])
-      ? {
-          birthDate: optionalString([
-            "birthDate",
-            "BirthDate",
-            "birth_date",
-          ]),
-        }
-      : {}),
-    ...(optionalString(["avatarUuid", "AvatarUuid", "avatar_uuid"])
-      ? {
-          avatarUuid: optionalString([
-            "avatarUuid",
-            "AvatarUuid",
-            "avatar_uuid",
-          ]),
-        }
-      : {}),
-    ...(followersCount !== undefined ? { followersCount } : {}),
-    ...(followingCount !== undefined ? { followingCount } : {}),
-  };
+  return me;
 }
 
 function accessNeedsRefresh(

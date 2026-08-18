@@ -23,7 +23,7 @@ Flora.Ecosystem — модульная некоммерческая цифров
 
 Functional **не зависят** от Social; Social (и другие App) зависят от их kernel/contracts (и опционально `*-runtime`). «Вставить в чужой проект» = зависимость на **kernel** (+ contracts). `*-runtime` — Flora-host adapter (sqlx/axum + `flora-shared`); владеет только своими таблицами.
 
-**Apps/** остаются в корне (shells: Web, Mobile). Запрещено `Products/*` → `Apps/*`. Три слоя клиента: shell → optional App `client/` → functional TS/wasm SoT в продукте; `@flora/client-core` — транспорт + реэкспорт.
+**Apps/** остаются в корне (shells: Web, Mobile, Gov). Запрещено `Products/*` → `Apps/*`. Три слоя клиента: shell → optional App `client/` → functional TS/wasm SoT в продукте; `@flora/client-core` — транспорт + реэкспорт.
 
 Нормативные спеки — только в [`Documents/`](Documents/). Пустые каталоги будущих App не создавать.
 
@@ -63,6 +63,7 @@ flowchart TB
 flowchart TD
     subgraph apps [Apps — клиенты]
         Web["Apps/Web — Next.js 16"]
+        Gov["Apps/Gov — Next.js 16"]
         Mobile["Apps/Mobile — Expo RN"]
     end
     subgraph pkg [Packages]
@@ -91,8 +92,10 @@ flowchart TD
     Db[("PostgreSQL — схема flora_core")]
 
     Web --> Core
+    Gov --> Core
     Mobile --> Core
     Web -->|"REST / SSE"| Program
+    Gov -->|"REST"| Program
     Mobile -->|"REST / SSE"| Program
     Program --> Social
     Social --> Auth
@@ -156,6 +159,7 @@ flowchart TD
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Packages/flora-client-core** | Общий «мозг» клиента: REST-транспорт, сессии/JWT, парсеры контрактов, криптография FSCP, экономика LIV (кошелёк, лёгкий клиент, wasm-верификатор), realtime-сигналы, телеметрия, UI-хелперы.                                          | Экспорты `./api`, `./auth`, `./fscp`, `./contracts`, `./signals`, `./storage`, `./telemetry`, `./crypto`, `./economy`, `./display`; [`src/fscp/envelope.ts`](Packages/flora-client-core/src/fscp/envelope.ts), [`src/api/client.ts`](Packages/flora-client-core/src/api/client.ts), [`src/economy/`](Packages/flora-client-core/src/economy) | Платформенно-независим; конкретные хранилища/sodium внедряются приложениями.                                                                                                                                            |
 | **Apps/Web**                   | Толстый клиент (Next.js App Router). Маршруты `login` и группа `(dashboard)`: `feed`, `messages`, `people`, `communities`, `music`, `notifications`, `profile`, `settings`. | Прокси [`app/api/*/route.ts`](Apps/Web/app), API-слой [`lib/socialApi.ts`](Apps/Web/lib/socialApi.ts), [`lib/auth.ts`](Apps/Web/lib/auth.ts), [`lib/messagingApi.ts`](Apps/Web/lib/messagingApi.ts); FSCP в [`lib/fscp/`](Apps/Web/lib/fscp)                          | Использует client-core **выборочно** (fscp-bootstrap, signals, display, telemetry); держит **параллельный** REST/FSCP-слой (см. раздел 4). Состояние: React Context + TTL-кэши (без zustand/react-query).               |
+| **Apps/Gov**                   | Гражданский портал Flora Gov (в будущем `gov.flora-s.net`) — отдельный origin от Social, порт 3001. Гражданская ИА из 8 маршрутов: `overview`, `moderation`, `constitution`, `journal`, `proposals`, `sortition`, `treasury`, `circles`. Живая только модерация; секции FGP — спроектированные оболочки без runtime FGP. Регистрация остаётся в Social. | Same-origin прокси [`lib/floraApiProxy.ts`](Apps/Gov/lib/floraApiProxy.ts) на `flora-api` (HttpOnly refresh cookie); [`app/api/auth/[...path]`](Apps/Gov/app/api/auth), [`app/api/messaging/[...path]`](Apps/Gov/app/api/messaging); шелл [`app/_shell/GovShell.tsx`](Apps/Gov/app/_shell/GovShell.tsx) и гейт [`GovAuthGate.tsx`](Apps/Gov/app/_shell/GovAuthGate.tsx); сессия [`lib/govSessionStore.ts`](Apps/Gov/lib/govSessionStore.ts); модерация [`app/(civic)/moderation`](Apps/Gov/app/(civic)/moderation). | Потребляет `@flora/client-core` (auth, api, contracts); **не** импортирует `Apps/Web`. Ключ сессии `flora_gov_session_v1`, отдельно от Social. Franking-модерация — замороженный контракт `/api/messaging/franking/*`. Расшифровка disclosure в этом срезе не реализована. |
 | **Apps/Mobile**                | Expo SDK 56 / React Native. expo-router: `(auth)` и `(tabs)` (feed, music, messages, notifications, profile; people/communities скрыты).                                    | [`lib/api.ts`](Apps/Mobile/lib/api.ts), [`lib/session.ts`](Apps/Mobile/lib/session.ts), [`providers/FloraProviders.tsx`](Apps/Mobile/providers/FloraProviders.tsx), zustand-стора `stores/*`                                                                          | **Консолидирован** на `@flora/client-core` (api/auth/fscp/contracts/signals). Нативные адаптеры: expo-secure-store, react-native-mmkv, react-native-libsodium, react-native-quick-crypto. State: zustand + react-query. |
 
 ### 2.6. Граф связанности модулей (только Contracts)

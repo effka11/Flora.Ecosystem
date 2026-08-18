@@ -91,6 +91,8 @@ export type MeResponse = {
   avatarUuid?: string;
   followersCount?: number;
   followingCount?: number;
+  accountBlocked?: boolean;
+  accountBlockedUntil?: string | null;
 };
 
 type ApiError = { error?: string; Error?: string; code?: string; Code?: string };
@@ -150,17 +152,34 @@ function parseMePayload(raw: unknown): MeResponse {
   const avatarUuid = readStr(o, ["avatarUuid", "AvatarUuid", "avatar_uuid"]);
   const followersCount = readNum(o, ["followersCount", "FollowersCount"]);
   const followingCount = readNum(o, ["followingCount", "FollowingCount"]);
+  const accountBlocked = readBool(o, ["accountBlocked", "AccountBlocked"]);
+  let accountBlockedUntil: string | null | undefined;
+  if (accountBlocked) {
+    for (const k of ["accountBlockedUntil", "AccountBlockedUntil"]) {
+      if (k in o) {
+        const v = o[k];
+        if (v === null) {
+          accountBlockedUntil = null;
+        } else if (typeof v === "string") {
+          accountBlockedUntil = v;
+        }
+        break;
+      }
+    }
+  }
   return {
     userUuid: readStr(o, ["userUuid", "UserUuid", "user_uuid"]),
     username: readStr(o, ["username", "Username"]),
     displayName: readStr(o, ["displayName", "DisplayName", "display_name"]),
     status,
+    accountBlocked,
     ...(email ? { email } : {}),
     ...(phone ? { phone } : {}),
     ...(birthDate ? { birthDate } : {}),
     ...(avatarUuid ? { avatarUuid } : {}),
     ...(followersCount !== undefined ? { followersCount } : {}),
     ...(followingCount !== undefined ? { followingCount } : {}),
+    ...(accountBlockedUntil !== undefined ? { accountBlockedUntil } : {}),
   };
 }
 

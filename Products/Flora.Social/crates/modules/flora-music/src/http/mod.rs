@@ -1,5 +1,6 @@
 //! HTTP `/api/music/*` — Фаза 1. Auth: `Extension<CurrentUser>` от flora-social.
 
+mod account_block;
 mod byte_range;
 mod uploads;
 
@@ -22,6 +23,7 @@ use crate::application::tracks::TrackService;
 use crate::application::upload::UploadService;
 use crate::http::byte_range::parse_single_bytes_range;
 use flora_music_contracts::CreateMusicPlaylistBody;
+use flora_users_contracts::AccountSanctionStatus;
 
 /// ~77 MiB — паритет с C# RequestSizeLimit (70 audio + 5 cover + buffer).
 const MUSIC_BODY_LIMIT: usize = 77 * 1024 * 1024;
@@ -40,8 +42,8 @@ pub struct MusicState {
 #[derive(Clone, Copy, Debug)]
 pub struct CurrentUser(pub Uuid);
 
-pub fn router(state: MusicState) -> Router {
-    Router::new()
+pub fn router(state: MusicState, account_status: Arc<dyn AccountSanctionStatus>) -> Router {
+    let router = Router::new()
         .route("/api/music/genres", get(get_genres))
         .route("/api/music/genres/{genre_id}", get(get_genre_page))
         .route("/api/music/tracks/library", get(get_library))
@@ -86,7 +88,8 @@ pub fn router(state: MusicState) -> Router {
             post(dismiss_track).delete(undismiss_track),
         )
         .layer(DefaultBodyLimit::max(MUSIC_BODY_LIMIT))
-        .with_state(state)
+        .with_state(state);
+    account_block::write_gate(router, account_status)
 }
 
 /// §User Controls (FIRA-M): «не интересно» — трек больше не попадает в Поток.
@@ -553,7 +556,7 @@ fn ranged_media_response(data: Vec<u8>, content_type: &str, headers: &HeaderMap)
     }
 }
 
-fn internal(err: sqlx::Error) -> Response {
+fn internal(err: impl std::fmt::Display) -> Response {
     tracing::error!(error = %err, "music query failed");
     (
         StatusCode::INTERNAL_SERVER_ERROR,

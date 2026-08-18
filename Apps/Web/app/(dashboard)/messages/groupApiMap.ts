@@ -24,6 +24,7 @@ export function mapGroupDetailMembers(detail: MsgGroupDetail): GroupMember[] {
     username: m.username.replace(/^@+/, "") || "user",
     displayName: m.displayName || m.username || "Участник",
     avatarUuid: m.avatarUuid,
+    accountBlocked: m.accountBlocked,
   }));
 }
 

@@ -139,3 +139,76 @@ export function verifyFrankedMessageV1(params: {
 
   return { ok: true, commitInputUtf8, receiptPayloadUtf8 };
 }
+
+/** AAD непрозрачного disclosureCiphertext (franking.md §4.7). */
+export const FSCP_FRANKING_DISCLOSURE_AAD_V1 = "flora.fscp.franking-disclosure.v1";
+export const FSCP_FRANKING_DISCLOSURE_NONCE_BYTES = 24;
+export const FSCP_FRANKING_REPORT_CONTENT_KEY_BYTES = 32;
+
+export type FrankingDisclosureSealV1 = {
+  reportContentKey: Uint8Array;
+  sealed: Uint8Array;
+};
+
+type FrankingDisclosureSodium = {
+  randombytes_buf(length: number): Uint8Array;
+  crypto_aead_xchacha20poly1305_ietf_encrypt(
+    message: Uint8Array,
+    additional_data: string | Uint8Array | null,
+    secret_nonce: Uint8Array | null,
+    public_nonce: Uint8Array,
+    key: Uint8Array,
+  ): Uint8Array;
+  crypto_aead_xchacha20poly1305_ietf_decrypt(
+    secret_nonce: Uint8Array | null,
+    ciphertext: Uint8Array,
+    additional_data: string | Uint8Array | null,
+    public_nonce: Uint8Array,
+    key: Uint8Array,
+  ): Uint8Array;
+};
+
+/**
+ * Шифрует кортеж жалобы на случайный reportContentKey.
+ * Формат sealed: nonce (24) || ciphertext. Сервер видит только opaque bytes.
+ */
+export function sealFrankingDisclosureV1(
+  sodium: FrankingDisclosureSodium,
+  plaintext: Uint8Array,
+): FrankingDisclosureSealV1 {
+  const reportContentKey = sodium.randombytes_buf(FSCP_FRANKING_REPORT_CONTENT_KEY_BYTES);
+  const nonce = sodium.randombytes_buf(FSCP_FRANKING_DISCLOSURE_NONCE_BYTES);
+  const ciphertext = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+    plaintext,
+    utf8Bytes(FSCP_FRANKING_DISCLOSURE_AAD_V1),
+    null,
+    nonce,
+    reportContentKey,
+  );
+  const sealed = new Uint8Array(nonce.length + ciphertext.length);
+  sealed.set(nonce, 0);
+  sealed.set(ciphertext, nonce.length);
+  return { reportContentKey, sealed };
+}
+
+export function openFrankingDisclosureV1(
+  sodium: FrankingDisclosureSodium,
+  sealed: Uint8Array,
+  reportContentKey: Uint8Array,
+): Uint8Array {
+  if (sealed.length <= FSCP_FRANKING_DISCLOSURE_NONCE_BYTES) {
+    throw new Error("franking disclosure слишком короткий.");
+  }
+  if (reportContentKey.length !== FSCP_FRANKING_REPORT_CONTENT_KEY_BYTES) {
+    throw new Error("reportContentKey должен быть 32 байта.");
+  }
+  const nonce = sealed.subarray(0, FSCP_FRANKING_DISCLOSURE_NONCE_BYTES);
+  const ciphertext = sealed.subarray(FSCP_FRANKING_DISCLOSURE_NONCE_BYTES);
+  return sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+    null,
+    ciphertext,
+    utf8Bytes(FSCP_FRANKING_DISCLOSURE_AAD_V1),
+    nonce,
+    reportContentKey,
+  );
+}

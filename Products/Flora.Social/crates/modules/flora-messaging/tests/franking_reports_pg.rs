@@ -20,18 +20,19 @@ use flora_messaging::application::{
 };
 use flora_messaging::infrastructure::{FrankingRepo, InsertFrankReceipt, MessagingRepo};
 use flora_messaging_contracts::{
-    CreateFrankingReportRequest, DeleteMessageOutcome, ForwardFrankingReportRequest,
-    FrankingAuditEvent, FrankingDisclosureWrapDto, FrankingReportCategory, FrankingReportStatus,
-    FrankingResolveDecision, FrankingVerificationStatus, NoopMessageReadNotifier,
-    NoopMessageSentNotifier, NoopMessageTypingNotifier, NoopPushPreviewTargetProvider,
-    PostConversationMessageRequest, PostFrankingWrapsRequest, ResolveFrankingReportRequest,
+    AccountBlockRequest, CreateFrankingReportRequest, DeleteMessageOutcome,
+    ForwardFrankingReportRequest, FrankingAuditEvent, FrankingDisclosureWrapDto,
+    FrankingReportCategory, FrankingReportStatus, FrankingResolveDecision,
+    FrankingVerificationStatus, NoopMessageReadNotifier, NoopMessageSentNotifier,
+    NoopMessageTypingNotifier, NoopPushPreviewTargetProvider, PostConversationMessageRequest,
+    PostFrankingWrapsRequest, ResolveFrankingReportRequest,
 };
 use flora_shared::config::FloraConfig;
 use flora_shared::npgsql::NpgsqlConnectionString;
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::{
-    BoxFuture as UsersBoxFuture, FeedAuthorProfile, FeedAuthorProfiles, LastSeenRow,
-    MessagesAccess, OnlineStatusAccess, UserPresence,
+    AccountSanctionStatus, AccountSanctions, BoxFuture as UsersBoxFuture, FeedAuthorProfile,
+    FeedAuthorProfiles, LastSeenRow, MessagesAccess, OnlineStatusAccess, UserPresence,
 };
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -175,6 +176,48 @@ fn franking(pool: &PgPool, seed: Option<[u8; 32]>) -> FrankingService {
     FrankingService::new(
         Arc::new(FrankingRepo::new(pool.clone())),
         seed.map(|s| Arc::new(FrankingSigner::from_seed(s))),
+        Arc::new(AllowAll),
+        Arc::new(AllowAll),
+    )
+}
+
+/// Один `apply_block`: цель, срок (`None` — навсегда), автор.
+type BlockCall = (Uuid, Option<chrono::DateTime<Utc>>, Uuid);
+
+/// Санкции ходят в таблицу Users, которой Messaging не владеет: на живом резолве
+/// порт подменяется журналом, а проверяется взаимодействие с ним.
+#[derive(Default)]
+struct RecordedBlocks {
+    calls: std::sync::Mutex<Vec<BlockCall>>,
+}
+
+impl RecordedBlocks {
+    fn calls(&self) -> Vec<BlockCall> {
+        self.calls.lock().expect("blocks log").clone()
+    }
+}
+
+impl AccountSanctions for RecordedBlocks {
+    fn apply_block(
+        &self,
+        user_uuid: Uuid,
+        blocked_until: Option<chrono::DateTime<Utc>>,
+        created_by: Uuid,
+    ) -> UsersBoxFuture<'_, Result<(), String>> {
+        self.calls
+            .lock()
+            .expect("blocks log")
+            .push((user_uuid, blocked_until, created_by));
+        Box::pin(async { Ok(()) })
+    }
+}
+
+fn franking_with_blocks(pool: &PgPool, blocks: Arc<RecordedBlocks>) -> FrankingService {
+    FrankingService::new(
+        Arc::new(FrankingRepo::new(pool.clone())),
+        None,
+        Arc::new(AllowAll),
+        blocks,
     )
 }
 
@@ -199,9 +242,15 @@ impl AccountDirectory for AllowAll {
     }
     fn usernames_by_uuids(
         &self,
-        _: &[Uuid],
+        ids: &[Uuid],
     ) -> AuthBoxFuture<'_, Result<Vec<(Uuid, String)>, String>> {
-        Box::pin(async { Ok(Vec::new()) })
+        let ids = ids.to_vec();
+        Box::pin(async move {
+            Ok(ids
+                .into_iter()
+                .map(|id| (id, format!("user-{id}")))
+                .collect())
+        })
     }
     fn update_username(&self, _: Uuid, _: &str) -> AuthBoxFuture<'_, Result<(), String>> {
         Box::pin(async { Ok(()) })
@@ -257,6 +306,27 @@ impl OnlineStatusAccess for AllowAll {
 impl MessagesAccess for AllowAll {
     fn can_send_messages(&self, _: Uuid, _: Uuid) -> UsersBoxFuture<'_, Result<bool, String>> {
         Box::pin(async { Ok(true) })
+    }
+}
+
+/// Санкции здесь — no-op: тесты очереди проверяют ACL заявок, не бан.
+impl AccountSanctions for AllowAll {
+    fn apply_block(
+        &self,
+        _: Uuid,
+        _: Option<chrono::DateTime<Utc>>,
+        _: Uuid,
+    ) -> UsersBoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+impl AccountSanctionStatus for AllowAll {
+    fn is_blocked(&self, _: Uuid) -> UsersBoxFuture<'_, Result<bool, String>> {
+        Box::pin(async { Ok(false) })
+    }
+    fn blocked_among(&self, _: &[Uuid]) -> UsersBoxFuture<'_, Result<Vec<Uuid>, String>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 }
 
@@ -404,6 +474,8 @@ async fn exclusive_claim_acl_viewer_count_release_reclaim() {
         .expect("create");
     assert_eq!(created.status, FrankingReportStatus::Open);
     assert_eq!(created.viewer_account_count, 2);
+    assert_eq!(created.reporter_username, Some(format!("user-{reporter}")));
+    assert_eq!(created.accused_username, Some(format!("user-{sender}")));
     let stranger = Uuid::now_v7();
     assert!(matches!(
         svc.get_report(stranger, created.report_uuid).await,
@@ -442,7 +514,13 @@ async fn exclusive_claim_acl_viewer_count_release_reclaim() {
         Err(FrankingError::Forbidden(_))
     ));
     let q = svc.queue(r1, None).await.expect("queue");
-    assert!(q.items.iter().any(|i| i.report_uuid == created.report_uuid));
+    let queued = q
+        .items
+        .iter()
+        .find(|i| i.report_uuid == created.report_uuid)
+        .expect("report in queue");
+    assert_eq!(queued.reporter_username, Some(format!("user-{reporter}")));
+    assert_eq!(queued.accused_username, Some(format!("user-{sender}")));
     let q_accused = svc.queue(sender, None).await.expect("accused queue");
     assert!(
         q_accused
@@ -883,6 +961,7 @@ async fn resolve_closes_disclosure() {
         ResolveFrankingReportRequest {
             decision: FrankingResolveDecision::Rejected,
             code: Some("no".into()),
+            account_block: None,
         },
     )
     .await
@@ -932,6 +1011,150 @@ async fn resolve_closes_disclosure() {
         .expect("delete after terminal");
     assert_eq!(deleted, DeleteMessageOutcome::Success);
     cleanup(&pool, &[msg], &[reviewer], &[d_rev, d_rep]).await;
+}
+
+/// Живой резолв с `accountBlock`: цель, срок, код резолюции и статус заявки.
+/// Порядок «бан → закрытие» и состояние строки видно только на реальной БД.
+#[tokio::test]
+async fn resolve_applies_account_block_to_accused() {
+    if !enabled() {
+        eprintln!("skip: set FLORA_FRANKING_PG=1");
+        return;
+    }
+    let pool = connect().await;
+    let blocks = Arc::new(RecordedBlocks::default());
+    let svc = franking_with_blocks(&pool, blocks.clone());
+    let accused = Uuid::now_v7();
+    let reporter = Uuid::now_v7();
+    let reviewer = Uuid::now_v7();
+    svc.merge_reviewers(&[reviewer]).await.unwrap();
+    let d_rev = insert_device(&pool, reviewer).await;
+
+    let mut messages = Vec::new();
+    let claim_report = async |category| {
+        let msg = insert_message(&pool, accused, reporter).await;
+        let created = svc
+            .create_report(
+                reporter,
+                CreateFrankingReportRequest {
+                    persisted_message_uuid: msg,
+                    category,
+                    disclosure_ciphertext: b64(&[7u8; 16]),
+                    wraps: vec![wrap(reviewer, d_rev)],
+                },
+            )
+            .await
+            .expect("create");
+        svc.claim(reviewer, created.report_uuid)
+            .await
+            .expect("claim");
+        (msg, created.report_uuid)
+    };
+
+    async fn stored(pool: &PgPool, report: Uuid) -> (String, Option<String>) {
+        sqlx::query_as(
+            r#"
+            SELECT status, resolution_code
+            FROM flora_core.franking_reports
+            WHERE report_uuid = $1
+            "#,
+        )
+        .bind(report)
+        .fetch_one(pool)
+        .await
+        .expect("report row")
+    }
+
+    // Срок вне 1..=9999 — 400, заявка остаётся живой, бана нет.
+    let (msg, timed) = claim_report(FrankingReportCategory::Abuse).await;
+    messages.push(msg);
+    for days in [0u32, 10_000] {
+        assert!(matches!(
+            svc.resolve(
+                reviewer,
+                timed,
+                ResolveFrankingReportRequest {
+                    decision: FrankingResolveDecision::Resolved,
+                    code: None,
+                    account_block: Some(AccountBlockRequest { days: Some(days) }),
+                },
+            )
+            .await,
+            Err(FrankingError::BadRequest(_))
+        ));
+        assert_eq!(stored(&pool, timed).await.0, "claimed");
+        assert!(blocks.calls().is_empty());
+    }
+
+    let before = Utc::now();
+    let meta = svc
+        .resolve(
+            reviewer,
+            timed,
+            ResolveFrankingReportRequest {
+                decision: FrankingResolveDecision::Resolved,
+                code: None,
+                account_block: Some(AccountBlockRequest { days: Some(7) }),
+            },
+        )
+        .await
+        .expect("resolve with timed block");
+    assert_eq!(meta.status, FrankingReportStatus::Resolved);
+    assert_eq!(
+        stored(&pool, timed).await,
+        ("resolved".to_string(), Some("block-7d".to_string()))
+    );
+    let calls = blocks.calls();
+    assert_eq!(calls.len(), 1);
+    let (target, until, author) = calls[0];
+    assert_eq!(target, accused, "банится accused, не жалобщик");
+    assert_eq!(author, reviewer, "автор санкции — закрывающий ревьюер");
+    let until = until.expect("срок задан");
+    assert!(until >= before + chrono::Duration::days(7));
+    assert!(until <= Utc::now() + chrono::Duration::days(7));
+
+    // Бессрочный бан.
+    let (msg, forever) = claim_report(FrankingReportCategory::Threats).await;
+    messages.push(msg);
+    svc.resolve(
+        reviewer,
+        forever,
+        ResolveFrankingReportRequest {
+            decision: FrankingResolveDecision::Resolved,
+            code: Some("ignored".into()),
+            account_block: Some(AccountBlockRequest { days: None }),
+        },
+    )
+    .await
+    .expect("resolve with permanent block");
+    assert_eq!(
+        stored(&pool, forever).await,
+        ("resolved".to_string(), Some("block-forever".to_string()))
+    );
+    assert_eq!(blocks.calls().len(), 2);
+    assert_eq!(blocks.calls()[1].1, None, "None — навсегда");
+
+    // Отклонение не банит даже с `accountBlock`.
+    let (msg, rejected) = claim_report(FrankingReportCategory::Spam).await;
+    messages.push(msg);
+    svc.resolve(
+        reviewer,
+        rejected,
+        ResolveFrankingReportRequest {
+            decision: FrankingResolveDecision::Rejected,
+            code: Some("no".into()),
+            account_block: Some(AccountBlockRequest { days: Some(7) }),
+        },
+    )
+    .await
+    .expect("reject");
+    assert_eq!(
+        stored(&pool, rejected).await,
+        ("rejected".to_string(), Some("no".to_string()))
+    );
+    assert_eq!(blocks.calls().len(), 2, "rejected не добавляет бан");
+
+    cleanup(&pool, &messages, &[reviewer], &[d_rev]).await;
 }
 
 #[test]

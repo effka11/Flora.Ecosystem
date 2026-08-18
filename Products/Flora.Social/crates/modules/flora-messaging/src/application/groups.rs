@@ -6,7 +6,7 @@ use std::sync::Arc;
 use chrono::{DateTime, SecondsFormat, Utc};
 use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
-    AddGroupMemberRequest, CreateGroupRequest, GroupDetailDto, GroupListItemDto, GroupMemberDto,
+    AddGroupMemberRequest, CreateGroupRequest, GroupListItemDto, GroupMemberDto,
     GroupMessageItemDto, GroupMessagesPageDto, GroupsPageDto, MessageConversationKind,
     MessageSentContext, MessageSentNotifier, PatchGroupRequest, PostGroupMessageRequest,
     SendGroupMessageResultDto,
@@ -16,12 +16,36 @@ use fscp_core::{
     BOOTSTRAP_KEY_EPOCH_ID, GROUP_MAX_MEMBERS, REVOKED_SENDER_DEVICE_ERROR,
     try_validate_group_wire, verify_group_envelope_signature,
 };
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::application::SendMessageError;
 use crate::application::cursor::{decode_cursor, encode_cursor};
 use crate::application::e2e::E2eKeyBackupService;
+use crate::http::ACCOUNT_BLOCKED_MESSAGE;
 use crate::infrastructure::{GroupRepo, InsertMessageOutcome, MessagingRepo};
+
+/// Участник группы плюс аддитивный ключ `accountBlocked`.
+///
+/// `GroupMemberDto` заморожен в contracts-крейте, а санкция — данные Users;
+/// флаг досыпается здесь из `FeedAuthorProfiles`, которые роутер и так читает.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupMemberWithBlockDto {
+    #[serde(flatten)]
+    pub member: GroupMemberDto,
+    pub account_blocked: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupDetailWithBlocksDto {
+    pub conversation_uuid: Uuid,
+    pub title: String,
+    pub created_by_user_uuid: Uuid,
+    pub created_at: String,
+    pub members: Vec<GroupMemberWithBlockDto>,
+}
 
 pub struct GroupService {
     groups: Arc<GroupRepo>,
@@ -59,7 +83,7 @@ impl GroupService {
         &self,
         creator: Uuid,
         request: CreateGroupRequest,
-    ) -> Result<GroupDetailDto, SendMessageError> {
+    ) -> Result<GroupDetailWithBlocksDto, SendMessageError> {
         let title = normalize_title_for_create(request.title.as_deref())?;
         let mut members: HashSet<Uuid> = HashSet::new();
         members.insert(creator);
@@ -191,7 +215,7 @@ impl GroupService {
         &self,
         viewer: Uuid,
         conversation_uuid: Uuid,
-    ) -> Result<Option<GroupDetailDto>, SendMessageError> {
+    ) -> Result<Option<GroupDetailWithBlocksDto>, SendMessageError> {
         let membership = self
             .groups
             .active_membership(conversation_uuid, viewer)
@@ -237,17 +261,20 @@ impl GroupService {
                     .map(|p| p.display_name.clone())
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| username.clone());
-                GroupMemberDto {
-                    user_uuid: m.user_uuid,
-                    username,
-                    display_name: display,
-                    avatar_uuid: prof.and_then(|p| p.avatar_uuid.map(|u| u.to_string())),
-                    joined_at: format_utc(m.joined_at),
+                GroupMemberWithBlockDto {
+                    member: GroupMemberDto {
+                        user_uuid: m.user_uuid,
+                        username,
+                        display_name: display,
+                        avatar_uuid: prof.and_then(|p| p.avatar_uuid.map(|u| u.to_string())),
+                        joined_at: format_utc(m.joined_at),
+                    },
+                    account_blocked: prof.is_some_and(|p| p.account_blocked),
                 }
             })
             .collect();
 
-        Ok(Some(GroupDetailDto {
+        Ok(Some(GroupDetailWithBlocksDto {
             conversation_uuid: conv.conversation_uuid,
             title: conv.title,
             created_by_user_uuid: conv.created_by_user_uuid,
@@ -261,7 +288,7 @@ impl GroupService {
         actor: Uuid,
         conversation_uuid: Uuid,
         request: PatchGroupRequest,
-    ) -> Result<Option<GroupDetailDto>, SendMessageError> {
+    ) -> Result<Option<GroupDetailWithBlocksDto>, SendMessageError> {
         let title = normalize_title_for_patch(&request.title)?;
         let conv = self
             .groups
@@ -292,7 +319,7 @@ impl GroupService {
         actor: Uuid,
         conversation_uuid: Uuid,
         request: AddGroupMemberRequest,
-    ) -> Result<Option<GroupDetailDto>, SendMessageError> {
+    ) -> Result<Option<GroupDetailWithBlocksDto>, SendMessageError> {
         let new_user = request.user_uuid;
         if new_user.is_nil() {
             return Err(SendMessageError::BadRequest("Неверный userUuid.".into()));
@@ -491,6 +518,20 @@ impl GroupService {
         reject_group_video_assets(&request.video_asset_uuids)?;
         let voice_uuids = dedupe_uuids(&request.voice_asset_uuids);
         let image_uuids = dedupe_uuids(&request.image_asset_uuids);
+
+        // DM спрашивает порт про пару «отправитель → получатель»; у группы одного
+        // получателя нет. Аккаунт-санкция в `MessagesAccess` симметрична и покрывает
+        // самого себя, поэтому пара `(sender, sender)` — это ровно «отправителю можно
+        // писать». Опрашивать ростер нельзя: один забаненный участник заглушил бы
+        // группу для всех остальных.
+        let can_send = self
+            .messages_access
+            .can_send_messages(sender, sender)
+            .await
+            .map_err(GroupSendError::BadRequest)?;
+        if !can_send {
+            return Err(GroupSendError::Forbidden(ACCOUNT_BLOCKED_MESSAGE.into()));
+        }
 
         let mut tx = self
             .groups
@@ -773,6 +814,90 @@ fn require_group_creator(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use flora_messaging_contracts::NoopMessageSentNotifier;
+
+    use crate::application::test_ports::{
+        StubAccounts, StubMessagesAccess, StubProfiles, lazy_pool,
+    };
+    use crate::infrastructure::E2eProofTokens;
+
+    /// Гейт `MessagesAccess` стоит до первого запроса к БД, поэтому отказ
+    /// проверяется на ленивом пуле — без Postgres.
+    fn service(can_send: bool) -> GroupService {
+        let pool = lazy_pool();
+        GroupService::new(
+            Arc::new(GroupRepo::new(pool.clone())),
+            Arc::new(MessagingRepo::new(pool.clone())),
+            Arc::new(StubAccounts),
+            Arc::new(StubProfiles),
+            Arc::new(StubMessagesAccess(can_send)),
+            Arc::new(E2eKeyBackupService::new(
+                pool,
+                Arc::new(E2eProofTokens::new(None)),
+            )),
+            Arc::new(NoopMessageSentNotifier),
+        )
+    }
+
+    fn group_message(wire: &str) -> PostGroupMessageRequest {
+        PostGroupMessageRequest {
+            encrypted_wire: wire.into(),
+            voice_asset_uuids: Vec::new(),
+            image_asset_uuids: Vec::new(),
+            video_asset_uuids: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn group_send_refuses_when_messages_access_says_no() {
+        let sent = service(false)
+            .send_message(
+                Uuid::from_u128(1),
+                Uuid::from_u128(2),
+                group_message("fscp1:x"),
+            )
+            .await;
+        assert_eq!(
+            sent.err(),
+            Some(GroupSendError::Forbidden("Аккаунт заблокирован.".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn group_send_rejects_empty_wire_before_any_port_or_db_call() {
+        let sent = service(true)
+            .send_message(Uuid::from_u128(1), Uuid::from_u128(2), group_message("   "))
+            .await;
+        assert!(matches!(sent, Err(GroupSendError::BadRequest(_))));
+    }
+
+    /// Ключ `accountBlocked` на участнике заморожен: его читает `@flora/client-core`.
+    #[test]
+    fn group_member_carries_flat_account_blocked() {
+        let member = GroupMemberWithBlockDto {
+            member: GroupMemberDto {
+                user_uuid: Uuid::from_u128(2),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                avatar_uuid: None,
+                joined_at: "2026-08-18T12:00:00.000Z".into(),
+            },
+            account_blocked: true,
+        };
+        let json = serde_json::to_value(GroupDetailWithBlocksDto {
+            conversation_uuid: Uuid::from_u128(1),
+            title: "Группа".into(),
+            created_by_user_uuid: Uuid::from_u128(2),
+            created_at: "2026-08-18T12:00:00.000Z".into(),
+            members: vec![member],
+        })
+        .expect("json");
+        let first = &json["members"][0];
+        assert_eq!(first["accountBlocked"], serde_json::json!(true));
+        assert_eq!(first["username"], serde_json::json!("bob"));
+        assert!(first["avatarUuid"].is_null());
+    }
 
     /// Always-on guard: badge unread SQL must exclude archived group flags
     /// (smoke with live API is optional / env-gated).

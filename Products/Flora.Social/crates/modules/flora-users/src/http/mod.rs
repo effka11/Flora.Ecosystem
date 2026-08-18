@@ -1,5 +1,6 @@
 //! HTTP Users — me / privacy / blocks / profile (Users:ServeNative).
 
+mod account_block;
 pub mod rate_limit;
 
 use std::sync::Arc;
@@ -18,9 +19,9 @@ use flora_shared::latin_identifiers::{
     USERNAME_FORMAT_MESSAGE, has_only_username_chars, normalize_username,
 };
 use flora_users_contracts::{
-    FollowGraphReader, MessagesAccess, PrivacySettingsDto, PrivacySettingsPatch, ProfileAccess,
-    ProfileAccessField, UserBlocklist, UserFollowMutations, UserPresence, UserPrivacySettings,
-    UserProfileQueries,
+    AccountSanctionStatus, FollowGraphReader, MessagesAccess, PrivacySettingsDto,
+    PrivacySettingsPatch, ProfileAccess, ProfileAccessField, UserBlocklist, UserFollowMutations,
+    UserPresence, UserPrivacySettings, UserProfileQueries,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -36,6 +37,7 @@ use crate::application::profile::{
     PersistProfileError, PersistProfileUpdate, persist_profile_update,
 };
 use crate::http::rate_limit::{FixedWindowLimiter, client_ip_key};
+use crate::infrastructure::account_sanctions::{AccountBlockState, SqlAccountSanctions};
 
 /// JWT user (внедряет flora-social).
 #[derive(Clone, Debug)]
@@ -56,6 +58,11 @@ pub struct UsersState {
     pub follow_graph: Arc<dyn FollowGraphReader>,
     pub messages_access: Arc<dyn MessagesAccess>,
     pub profile_access: Arc<dyn ProfileAccess>,
+    /// Статус аккаунт-санкции: write-gate и `accountBlocked` в профиле/списках.
+    pub account_status: Arc<dyn AccountSanctionStatus>,
+    /// Тот же адаптер-владелец таблицы санкций: `/me` читает ещё и срок
+    /// (`accountBlockedUntil`), которого нет в порту.
+    pub account_blocks: Arc<SqlAccountSanctions>,
     pub avatars: Arc<AvatarService>,
     pub recommendations: Arc<PeopleRecommendationService>,
     pub notifications: Arc<dyn UserNotificationDispatcher>,
@@ -66,7 +73,8 @@ pub struct UsersState {
 const AVATAR_BODY_LIMIT: usize = MAX_AVATAR_SIZE_BYTES + 64 * 1024;
 
 pub fn protected_router(state: UsersState) -> Router {
-    Router::new()
+    let gate = state.account_status.clone();
+    let router = Router::new()
         .route("/api/auth/me", get(get_me))
         .route(
             "/api/auth/me/privacy",
@@ -105,11 +113,13 @@ pub fn protected_router(state: UsersState) -> Router {
             post(presence_watch).put(presence_watch),
         )
         .route("/api/auth/presence", get(presence_batch))
-        .with_state(state)
+        .with_state(state);
+    account_block::write_gate(router, gate)
 }
 
 pub fn public_router(state: UsersState) -> Router {
-    Router::new()
+    let gate = state.account_status.clone();
+    let router = Router::new()
         .route("/api/auth/profile/{username}", get(get_profile_by_username))
         .route(
             "/api/auth/profile/{username}/followers",
@@ -119,7 +129,10 @@ pub fn public_router(state: UsersState) -> Router {
             "/api/auth/profile/{username}/following",
             get(get_profile_following),
         )
-        .with_state(state)
+        .with_state(state);
+    // Публичных не-GET маршрутов сейчас нет; слой стоит, чтобы будущая мутация
+    // не появилась мимо gate.
+    account_block::write_gate(router, gate)
 }
 
 async fn get_profile_by_username(
@@ -156,6 +169,11 @@ async fn get_profile_by_username(
         ),
         None => (String::new(), String::new(), None),
     };
+    let account_blocked = match state.account_status.is_blocked(account.user_uuid).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+    let avatar_uuid = if account_blocked { None } else { avatar_uuid };
 
     let followers_count = match state.profiles.followers_count(account.user_uuid).await {
         Ok(n) => n,
@@ -234,6 +252,7 @@ async fn get_profile_by_username(
         can_message_by_me,
         is_online,
         last_seen_at,
+        account_blocked,
     })
     .into_response()
 }
@@ -360,20 +379,27 @@ async fn get_follow_list(
         Err(e) => return internal(e),
     };
 
+    let blocked_accounts = match blocked_accounts_among(&state, &ids).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+
     let list: Vec<FollowListItem> = ids
         .into_iter()
         .map(|uid| {
             let username = user_by.get(&uid).cloned().unwrap_or_default();
             let (display_name, avatar_uuid) = profile_by.get(&uid).cloned().unwrap_or_default();
             let (is_online, last_seen_at) = presence_by.get(&uid).cloned().unwrap_or((false, None));
+            let account_blocked = blocked_accounts.contains(&uid);
             FollowListItem {
                 user_uuid: uid,
                 username,
                 display_name,
-                avatar_uuid: avatar_uuid.map(|u| u.to_string()),
+                avatar_uuid: hidden_when_blocked(avatar_uuid, account_blocked),
                 follower_count: i64::from(*count_by.get(&uid).unwrap_or(&0)),
                 is_online,
                 last_seen_at,
+                account_blocked,
             }
         })
         .collect();
@@ -489,6 +515,37 @@ async fn presence_fields_for(
         .collect())
 }
 
+/// Активные аккаунт-санкции для списочных ответов: один батч, без N+1.
+async fn blocked_accounts_among(
+    state: &UsersState,
+    user_uuids: &[Uuid],
+) -> Result<std::collections::HashSet<Uuid>, String> {
+    Ok(state
+        .account_status
+        .blocked_among(user_uuids)
+        .await?
+        .into_iter()
+        .collect())
+}
+
+/// Заблокированный аккаунт отдаёт `avatarUuid: null`; сам блоб остаётся в БД.
+fn hidden_when_blocked(avatar_uuid: Option<Uuid>, account_blocked: bool) -> Option<String> {
+    if account_blocked {
+        return None;
+    }
+    avatar_uuid.map(|u| u.to_string())
+}
+
+/// `accountBlocked` + `accountBlockedUntil` для `/me`: `null` при активной
+/// санкции означает «навсегда», ISO-строка — срок.
+fn account_block_fields(state: AccountBlockState) -> (bool, Option<String>) {
+    match state {
+        AccountBlockState::Inactive => (false, None),
+        AccountBlockState::Forever => (true, None),
+        AccountBlockState::Until(until) => (true, Some(format_utc(until))),
+    }
+}
+
 async fn get_me(
     State(state): State<UsersState>,
     Extension(user): Extension<CurrentUser>,
@@ -514,6 +571,15 @@ async fn get_me(
         ),
         None => (String::new(), String::new(), None, None, None),
     };
+
+    // Заблокированный аккаунт остаётся читаемым для владельца, но отдаёт
+    // avatarUuid: null — клиент рисует дефолтный аватар с красной диагональю.
+    let (account_blocked, account_blocked_until) =
+        match state.account_blocks.block_state(user.user_uuid).await {
+            Ok(block_state) => account_block_fields(block_state),
+            Err(e) => return internal(e),
+        };
+    let avatar_uuid = if account_blocked { None } else { avatar_uuid };
 
     let followers = match state.profiles.followers_count(user.user_uuid).await {
         Ok(n) => n,
@@ -544,6 +610,8 @@ async fn get_me(
         email: account.email,
         followers_count: followers,
         following_count: following_people + following_communities,
+        account_blocked,
+        account_blocked_until,
     })
     .into_response()
 }
@@ -937,20 +1005,27 @@ async fn search_users(
         Err(e) => return internal(e),
     };
 
+    let blocked_accounts = match blocked_accounts_among(&state, &ids).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+
     let list: Vec<UserSearchItem> = page
         .into_iter()
         .map(|(id, username)| {
             let (display_name, avatar_uuid) = profile_by.get(&id).cloned().unwrap_or((None, None));
             let (is_online, last_seen_at) = presence_by.get(&id).cloned().unwrap_or((false, None));
+            let account_blocked = blocked_accounts.contains(&id);
             UserSearchItem {
                 username: username.clone(),
                 display_name: display_name.filter(|s| !s.is_empty()).unwrap_or(username),
-                avatar_uuid: avatar_uuid.map(|u| u.to_string()),
+                avatar_uuid: hidden_when_blocked(avatar_uuid, account_blocked),
                 follower_count: i64::from(*count_by.get(&id).unwrap_or(&0)),
                 is_following: following_set.contains(&id),
                 user_uuid: id,
                 is_online,
                 last_seen_at,
+                account_blocked,
             }
         })
         .collect();
@@ -1130,6 +1205,11 @@ async fn get_recommended_users(
         Err(e) => return internal(e),
     };
 
+    let blocked_accounts = match blocked_accounts_among(&state, &user_ids).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+
     let items: Vec<RecommendedUserItem> = list
         .into_iter()
         .filter_map(|x| {
@@ -1146,15 +1226,17 @@ async fn get_recommended_users(
                 .get(&x.user_uuid)
                 .cloned()
                 .unwrap_or((false, None));
+            let account_blocked = blocked_accounts.contains(&x.user_uuid);
             Some(RecommendedUserItem {
                 user_uuid: x.user_uuid,
                 username,
                 display_name,
-                avatar_uuid: x.avatar_uuid.map(|u| u.to_string()),
+                avatar_uuid: hidden_when_blocked(x.avatar_uuid, account_blocked),
                 follower_count: i64::from(x.follower_count),
                 is_following: following_set.contains(&x.user_uuid),
                 is_online,
                 last_seen_at,
+                account_blocked,
             })
         })
         .collect();
@@ -1200,13 +1282,18 @@ async fn get_user_by_username(
         .map(|p| p.display_name.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| account.username.clone());
-    let avatar_uuid = profile.and_then(|p| p.avatar_uuid).map(|u| u.to_string());
+    let account_blocked = match state.account_status.is_blocked(target_uuid).await {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+    let avatar_uuid = hidden_when_blocked(profile.and_then(|p| p.avatar_uuid), account_blocked);
 
     Json(UserByUsernameResponse {
         user_uuid: account.user_uuid,
         username: account.username,
         display_name,
         avatar_uuid,
+        account_blocked,
     })
     .into_response()
 }
@@ -1280,6 +1367,8 @@ struct PublicProfileResponse {
     can_message_by_me: bool,
     is_online: bool,
     last_seen_at: Option<String>,
+    /// Активная санкция блокировки аккаунта (`avatarUuid` при этом `null`).
+    account_blocked: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1296,6 +1385,10 @@ struct MeResponse {
     email: String,
     followers_count: i64,
     following_count: i64,
+    /// Активная санкция блокировки аккаунта.
+    account_blocked: bool,
+    /// Срок санкции; `null` при `accountBlocked: true` — навсегда.
+    account_blocked_until: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1331,6 +1424,8 @@ struct FollowListItem {
     follower_count: i64,
     is_online: bool,
     last_seen_at: Option<String>,
+    /// Активная санкция блокировки аккаунта (`avatarUuid` при этом `null`).
+    account_blocked: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1344,6 +1439,8 @@ struct UserSearchItem {
     is_following: bool,
     is_online: bool,
     last_seen_at: Option<String>,
+    /// Активная санкция блокировки аккаунта (`avatarUuid` при этом `null`).
+    account_blocked: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1358,6 +1455,8 @@ struct RecommendedUserItem {
     is_following: bool,
     is_online: bool,
     last_seen_at: Option<String>,
+    /// Активная санкция блокировки аккаунта (`avatarUuid` при этом `null`).
+    account_blocked: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1367,4 +1466,43 @@ struct UserByUsernameResponse {
     username: String,
     display_name: String,
     avatar_uuid: Option<String>,
+    /// Активная санкция блокировки аккаунта (`avatarUuid` при этом `null`).
+    account_blocked: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn me_reports_forever_block_as_null_deadline() {
+        let until = DateTime::parse_from_rfc3339("2026-08-18T10:00:00Z")
+            .expect("rfc3339")
+            .with_timezone(&Utc);
+
+        assert_eq!(
+            account_block_fields(AccountBlockState::Inactive),
+            (false, None)
+        );
+        assert_eq!(
+            account_block_fields(AccountBlockState::Forever),
+            (true, None)
+        );
+        assert_eq!(
+            account_block_fields(AccountBlockState::Until(until)),
+            (true, Some("2026-08-18T10:00:00.000Z".to_string()))
+        );
+    }
+
+    #[test]
+    fn blocked_account_hides_avatar_without_touching_the_blob() {
+        let avatar = Uuid::now_v7();
+
+        assert_eq!(hidden_when_blocked(Some(avatar), true), None);
+        assert_eq!(
+            hidden_when_blocked(Some(avatar), false),
+            Some(avatar.to_string())
+        );
+        assert_eq!(hidden_when_blocked(None, false), None);
+    }
 }

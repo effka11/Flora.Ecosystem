@@ -111,6 +111,7 @@ export function SettingsAccountTab() {
             username={username}
             seed={me?.userUuid ?? username}
             cacheVersion={avatarVersion}
+            accountBlocked={me?.accountBlocked}
             className={styles.avatarCircle}
           />
           <div className={styles.avatarActions}>

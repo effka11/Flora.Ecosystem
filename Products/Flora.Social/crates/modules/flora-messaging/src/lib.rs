@@ -15,7 +15,10 @@ use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
     MessageReadNotifier, MessageSentNotifier, MessageTypingNotifier, PushPreviewTargetProvider,
 };
-use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
+use flora_users_contracts::{
+    AccountSanctionStatus, AccountSanctions, FeedAuthorProfiles, MessagesAccess,
+    OnlineStatusAccess, UserPresence,
+};
 use sqlx::PgPool;
 
 use crate::application::{
@@ -63,6 +66,9 @@ pub fn router() -> axum::Router {
     axum::Router::new()
 }
 
+/// `account_sanctions` — право записи санкции; его получает только Messaging,
+/// потому что закрытие franking-заявки и есть акт модерации.
+/// `account_status` — read-only статус для write-gate роутера.
 #[allow(clippy::too_many_arguments)]
 pub fn compose(
     pool: PgPool,
@@ -71,6 +77,8 @@ pub fn compose(
     presence: Arc<dyn UserPresence>,
     online_access: Arc<dyn OnlineStatusAccess>,
     messages_access: Arc<dyn MessagesAccess>,
+    account_sanctions: Arc<dyn AccountSanctions>,
+    account_status: Arc<dyn AccountSanctionStatus>,
     sent_notifier: Arc<dyn MessageSentNotifier>,
     typing_notifier: Arc<dyn MessageTypingNotifier>,
     read_notifier: Arc<dyn MessageReadNotifier>,
@@ -109,6 +117,8 @@ pub fn compose(
     let franking = Arc::new(FrankingService::new(
         Arc::new(FrankingRepo::new(pool.clone())),
         signer,
+        accounts.clone(),
+        account_sanctions,
     ));
     merge_reviewers_at_start(&franking, &franking_host.reviewer_user_uuids.join(","));
     let conversations = Arc::new(ConversationService::new(
@@ -149,15 +159,18 @@ pub fn compose(
         sent_notifier,
     ));
     MessagingModule {
-        router: http::protected_router(MessagingState {
-            conversations,
-            groups,
-            chat_list,
-            assets,
-            e2e,
-            epochs,
-            franking,
-        }),
+        router: http::protected_router(
+            MessagingState {
+                conversations,
+                groups,
+                chat_list,
+                assets,
+                e2e,
+                epochs,
+                franking,
+            },
+            account_status,
+        ),
         asset_cleanup: tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 60 * 60));
             loop {

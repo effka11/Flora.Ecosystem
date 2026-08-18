@@ -11,3 +11,4 @@ export * from "./music.js";
 export * from "./people.js";
 export * from "./communities.js";
 export * from "./postDrafts.js";
+export * from "./franking.js";

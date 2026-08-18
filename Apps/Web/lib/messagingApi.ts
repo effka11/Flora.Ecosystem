@@ -52,6 +52,7 @@ export type MsgConversationDto = {
   otherUsername: string;
   otherDisplayName: string;
   otherAvatarUuid: string | null;
+  otherAccountBlocked?: boolean;
   lastMessageEncryptedForMe: string | null;
   lastMessageContent: string | null;
   lastMessageAt: string;
@@ -113,6 +114,7 @@ function parseConversation(raw: unknown): MsgConversationDto | null {
     otherUsername: readStr(o, ["otherUsername"]),
     otherDisplayName: readStr(o, ["otherDisplayName"]),
     otherAvatarUuid: avatar.length > 0 ? avatar : null,
+    otherAccountBlocked: readBool(o, ["otherAccountBlocked", "OtherAccountBlocked"]),
     lastMessageEncryptedForMe: enc.length > 0 ? enc : null,
     lastMessageContent: content.length > 0 ? content : null,
     lastMessageAt: readStr(o, ["lastMessageAt"]),

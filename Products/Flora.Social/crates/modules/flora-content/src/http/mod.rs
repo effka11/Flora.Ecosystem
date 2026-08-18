@@ -8,12 +8,15 @@ mod uploads;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Extension, Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, Method, Request, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
+use flora_users_contracts::AccountSanctionStatus;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -71,8 +74,11 @@ pub struct ContentState {
 #[derive(Clone, Copy, Debug)]
 pub struct CurrentUser(pub Uuid);
 
-pub fn protected_router(state: ContentState) -> Router {
-    Router::new()
+pub fn protected_router(
+    state: ContentState,
+    account_sanction_status: Arc<dyn AccountSanctionStatus>,
+) -> Router {
+    let router = Router::new()
         .route("/api/auth/feed", get(get_feed))
         .route("/api/auth/feed/search", get(search_feed))
         .route("/api/auth/feed/has-new", get(feed_has_new))
@@ -172,7 +178,8 @@ pub fn protected_router(state: ContentState) -> Router {
             post(uploads::upload_community_avatar)
                 .layer(DefaultBodyLimit::max(POST_IMAGES_BODY_LIMIT)),
         )
-        .with_state(state)
+        .with_state(state);
+    write_gate(router, account_sanction_status)
 }
 
 pub fn public_router(state: ContentState) -> Router {
@@ -213,6 +220,38 @@ pub fn public_router(state: ContentState) -> Router {
             get(get_post_video_status),
         )
         .with_state(state)
+}
+
+fn write_gate(router: Router, status: Arc<dyn AccountSanctionStatus>) -> Router {
+    router.layer(axum::middleware::from_fn_with_state(
+        status,
+        deny_blocked_writes,
+    ))
+}
+
+/// GET/HEAD/OPTIONS проходят всегда. Без `CurrentUser` проверять некого.
+/// Ошибка порта — fail closed (500), молчаливого пропуска записи быть не должно.
+async fn deny_blocked_writes(
+    State(status): State<Arc<dyn AccountSanctionStatus>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let method = request.method();
+    if *method == Method::GET || *method == Method::HEAD || *method == Method::OPTIONS {
+        return next.run(request).await;
+    }
+    let Some(user_uuid) = request.extensions().get::<CurrentUser>().map(|user| user.0) else {
+        return next.run(request).await;
+    };
+    match status.is_blocked(user_uuid).await {
+        Ok(false) => next.run(request).await,
+        Ok(true) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "Аккаунт заблокирован." })),
+        )
+            .into_response(),
+        Err(e) => internal(e),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1426,6 +1465,69 @@ async fn delete_community(
 
 pub fn default_write_limiter() -> Arc<FixedWindowLimiter> {
     Arc::new(FixedWindowLimiter::new(60, Duration::from_secs(5 * 60)))
+}
+
+#[cfg(test)]
+mod write_gate_tests {
+    use super::*;
+
+    use flora_users_contracts::BoxFuture;
+    use http_body_util::BodyExt;
+    use tower::util::ServiceExt;
+
+    struct StubStatus(bool);
+
+    impl AccountSanctionStatus for StubStatus {
+        fn is_blocked(&self, _user_uuid: Uuid) -> BoxFuture<'_, Result<bool, String>> {
+            Box::pin(async move { Ok(self.0) })
+        }
+
+        fn blocked_among(&self, _user_uuids: &[Uuid]) -> BoxFuture<'_, Result<Vec<Uuid>, String>> {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+    }
+
+    fn app(status: Arc<dyn AccountSanctionStatus>) -> Router {
+        write_gate(
+            Router::new()
+                .route("/api/auth/posts", post(|| async { "created" }))
+                .route("/api/auth/feed", get(|| async { "feed" })),
+            status,
+        )
+    }
+
+    async fn send(router: &Router, method: Method, uri: &str) -> (StatusCode, String) {
+        let mut request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(CurrentUser(Uuid::from_u128(1)));
+        let response = router.clone().oneshot(request).await.expect("response");
+        let status = response.status();
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("body")
+            .to_bytes();
+        (status, String::from_utf8(bytes.to_vec()).expect("utf8"))
+    }
+
+    #[tokio::test]
+    async fn blocked_caller_is_denied_content_writes_but_keeps_reads() {
+        let router = app(Arc::new(StubStatus(true)));
+
+        let (status, body) = send(&router, Method::POST, "/api/auth/posts").await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body, r#"{"error":"Аккаунт заблокирован."}"#);
+
+        let (status, body) = send(&router, Method::GET, "/api/auth/feed").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, "feed");
+    }
 }
 
 #[cfg(test)]

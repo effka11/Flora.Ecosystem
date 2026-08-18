@@ -1209,6 +1209,23 @@ impl ContentRepo {
         .await
     }
 
+    pub async fn post_author_and_community(
+        &self,
+        post_uuid: Uuid,
+    ) -> Result<Option<(Uuid, Option<Uuid>)>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT author_user_uuid, community_id
+            FROM flora_core.user_posts
+            WHERE post_uuid = $1
+              AND is_deleted = false
+            "#,
+        )
+        .bind(post_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     pub async fn is_community_private(&self, community_id: Uuid) -> Result<bool, sqlx::Error> {
         let is_private: Option<bool> = sqlx::query_scalar(
             r#"

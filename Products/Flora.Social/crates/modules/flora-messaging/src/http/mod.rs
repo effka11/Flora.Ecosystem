@@ -1,5 +1,6 @@
 //! HTTP Messaging — unread, conversations, messages, assets, E2E state (Messaging:ServeNative).
 
+mod account_block;
 mod assets;
 mod e2e;
 mod franking;
@@ -18,8 +19,11 @@ use flora_messaging_contracts::{
     DeleteConversationOutcome, DeleteMessageOutcome, PatchGroupRequest,
     PostConversationMessageRequest, PostGroupMessageRequest,
 };
+use flora_users_contracts::AccountSanctionStatus;
 use serde::Deserialize;
 use uuid::Uuid;
+
+pub(crate) use account_block::ACCOUNT_BLOCKED_MESSAGE;
 
 use crate::application::{
     AssetService, ChatListError, ChatListService, ConversationService, E2eEpochService,
@@ -45,8 +49,13 @@ pub struct MessagingState {
     pub franking: Arc<FrankingService>,
 }
 
-pub fn protected_router(state: MessagingState) -> Router {
-    Router::new()
+/// Write-gate вешается снаружи `with_state`, чтобы JWT-слой `flora-social`
+/// остался ещё выше и `Extension<CurrentUser>` уже лежал в запросе.
+pub fn protected_router(
+    state: MessagingState,
+    account_status: Arc<dyn AccountSanctionStatus>,
+) -> Router {
+    let router = Router::new()
         .route("/api/messaging/unread-count", get(get_unread_count))
         .route("/api/messaging/conversations", get(get_conversations))
         .route("/api/messaging/groups", get(list_groups).post(create_group))
@@ -300,7 +309,8 @@ pub fn protected_router(state: MessagingState) -> Router {
             get(franking::audit),
         )
         .layer(DefaultBodyLimit::max(MESSAGING_BODY_LIMIT))
-        .with_state(state)
+        .with_state(state);
+    account_block::write_gate(router, account_status)
 }
 
 #[derive(Debug, Deserialize)]

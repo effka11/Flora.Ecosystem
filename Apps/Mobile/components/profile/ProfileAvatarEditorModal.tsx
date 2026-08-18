@@ -16,6 +16,7 @@ type ProfileAvatarEditorModalProps = {
   userUuid?: string;
   avatarUuid?: string | null;
   cacheVersion?: number;
+  accountBlocked?: boolean;
   onAvatarChanged?: () => void;
 };
 
@@ -27,6 +28,7 @@ export function ProfileAvatarEditorModal({
   userUuid,
   avatarUuid,
   cacheVersion = 0,
+  accountBlocked = false,
   onAvatarChanged,
 }: ProfileAvatarEditorModalProps) {
   const setMe = useSessionStore((s) => s.setMe);
@@ -112,6 +114,7 @@ export function ProfileAvatarEditorModal({
               username={username}
               seed={userUuid ?? username}
               cacheVersion={cacheVersion + localCacheVersion}
+              accountBlocked={accountBlocked}
             />
 
             {error ? <Text style={styles.error}>{error}</Text> : null}

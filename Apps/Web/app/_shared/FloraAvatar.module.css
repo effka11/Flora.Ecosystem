@@ -1,4 +1,6 @@
 .root {
+  /* Не задаём position: потребители (сайдбар) ставят absolute по сетке.
+     Контекст для диагонали — внутренний .art. */
   display: inline-flex;
   flex-shrink: 0;
   border-radius: 50%;
@@ -6,6 +8,15 @@
   vertical-align: top;
   /* Задаётся из FloraAvatar.tsx — масштаб инициалов от диаметра. */
   --flora-avatar-size: 45px;
+}
+
+.art {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .link {
@@ -57,4 +68,15 @@
   line-height: 1;
   font-size: inherit;
   letter-spacing: inherit;
+}
+
+.blockedLine {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--flora-avatar-size) * 1.41421356);
+  height: 2px;
+  background: #e8382c;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  pointer-events: none;
 }

@@ -38,6 +38,7 @@ export type MessageBubbleMoreMenuProps = {
   onPin?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onReport?: () => void;
 };
 
 export type MessageBubbleAnchorProps = {
@@ -48,6 +49,7 @@ export type MessageBubbleAnchorProps = {
   onCopy?: () => void;
   onReply?: () => void;
   onDelete?: () => void;
+  onReport?: () => void;
   children: ReactNode;
 };
 
@@ -59,6 +61,7 @@ export function MessageBubbleAnchor({
   onCopy,
   onReply,
   onDelete,
+  onReport,
   children,
 }: MessageBubbleAnchorProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -72,6 +75,7 @@ export function MessageBubbleAnchor({
         onCopy={onCopy}
         onReply={onReply}
         onDelete={onDelete}
+        onReport={onReport}
       />
       {children}
     </div>
@@ -112,6 +116,7 @@ export function MessageBubbleMoreMenu({
   onPin,
   onEdit,
   onDelete,
+  onReport,
 }: MessageBubbleMoreMenuProps) {
   const [open, setOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -273,6 +278,7 @@ export function MessageBubbleMoreMenu({
           onPin={onPin}
           onEdit={onEdit}
           onDelete={onDelete}
+          onReport={onReport}
         />
       </div>
     ) : null;

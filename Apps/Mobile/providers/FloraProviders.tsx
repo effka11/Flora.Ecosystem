@@ -47,6 +47,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
   const bootstrapSession = useSessionStore((s) => s.bootstrap);
   const reconcileSession = useSessionStore((s) => s.reconcileSession);
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated);
+  const accountBlocked = useSessionStore((s) => s.me?.accountBlocked === true);
   const userUuid = useSessionStore((s) => s.me?.userUuid ?? null);
   const prevUserUuidRef = useRef<string | null>(null);
   const coldStartPushHandledRef = useRef(false);
@@ -234,7 +235,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       >
         <QueryClientProvider client={queryClient}>
           <QueryClientRefBridge client={queryClient} />
-          <FloraAppServices enabled={isAuthenticated} />
+          <FloraAppServices enabled={isAuthenticated && !accountBlocked} />
           <OfflineBanner />
           {isSideloadUpdatesEnabled() ? <InstallPermissionHost /> : null}
           {children}

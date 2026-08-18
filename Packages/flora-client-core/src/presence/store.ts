@@ -9,6 +9,9 @@ export const PRESENCE_FOREGROUND_CONFIRM_MS = 800;
 /** Re-PUT watch well under server WATCH_TTL (5 min). */
 export const PRESENCE_WATCH_REFRESH_MS = 2 * 60 * 1000;
 
+/** Write-gate 403: заблокированный аккаунт. Сбрасывается в `PresenceStore.clear()`. */
+let presenceMutationsDenied = false;
+
 /** Surface keys checked first when merging watch sets (cap 100). */
 const SURFACE_PRIORITY = [
   "messages",
@@ -195,7 +198,7 @@ export class PresenceStore {
     if (this.watchTimer) clearTimeout(this.watchTimer);
     this.watchTimer = setTimeout(() => {
       this.watchTimer = null;
-      void this.syncWatch();
+      void this.syncWatch().catch(() => {});
     }, 250);
   }
 
@@ -203,7 +206,7 @@ export class PresenceStore {
     if (this.refreshTimer) return;
     if (!this.connectionId || this.surfaces.size === 0) return;
     this.refreshTimer = setInterval(() => {
-      void this.syncWatch();
+      void this.syncWatch().catch(() => {});
       // Privacy/block can change without a presence transition; GET re-applies hide.
       void this.resyncSnapshots().catch(() => {});
     }, PRESENCE_WATCH_REFRESH_MS);
@@ -217,6 +220,7 @@ export class PresenceStore {
   }
 
   async syncWatch(): Promise<void> {
+    if (presenceMutationsDenied) return;
     const connectionId = this.connectionId;
     if (!connectionId) return;
     const uuids = this.mergedWatchUuids();
@@ -231,6 +235,7 @@ export class PresenceStore {
   }
 
   clear(): void {
+    presenceMutationsDenied = false;
     if (this.watchTimer) {
       clearTimeout(this.watchTimer);
       this.watchTimer = null;
@@ -247,16 +252,30 @@ export class PresenceStore {
 
 export const sharedPresenceStore = new PresenceStore();
 
-export async function apiPresenceHeartbeat(): Promise<void> {
-  const res = await authFetch("/api/auth/presence/heartbeat", { method: "POST" });
-  if (!res.ok && res.status !== 204) {
-    throw new Error(`presence heartbeat HTTP ${res.status}`);
+async function postPresenceMutation(
+  label: string,
+  path: string,
+  init: RequestInit,
+): Promise<void> {
+  const res = await authFetch(path, init);
+  if (res.status === 403) {
+    presenceMutationsDenied = true;
+    return;
   }
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`${label} HTTP ${res.status}`);
+  }
+}
+
+export async function apiPresenceHeartbeat(): Promise<void> {
+  await postPresenceMutation("presence heartbeat", "/api/auth/presence/heartbeat", {
+    method: "POST",
+  });
 }
 
 export async function apiPresenceWatch(connectionId: string, userUuids: string[]): Promise<void> {
   // POST: edge CDN rejects PUT with nginx 405 (same pattern as /api/chat-organizer).
-  const res = await authFetch("/api/auth/presence/watch", {
+  await postPresenceMutation("presence watch", "/api/auth/presence/watch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -264,9 +283,6 @@ export async function apiPresenceWatch(connectionId: string, userUuids: string[]
       userUuids: userUuids.slice(0, PRESENCE_MAX_WATCH),
     }),
   });
-  if (!res.ok && res.status !== 204) {
-    throw new Error(`presence watch HTTP ${res.status}`);
-  }
 }
 
 export async function apiGetPresence(userUuids: string[]): Promise<PresenceSnapshot[]> {
@@ -315,6 +331,10 @@ export function startPresenceHeartbeat(options?: {
 
   const tick = () => {
     if (stopped) return;
+    if (presenceMutationsDenied) {
+      stopInterval();
+      return;
+    }
     if (options?.enabled && !options.enabled()) return;
     if (options?.isVisible && !options.isVisible()) return;
     void apiPresenceHeartbeat().catch(() => {});

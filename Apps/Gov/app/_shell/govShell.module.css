@@ -1,0 +1,217 @@
+.page {
+  min-height: 100vh;
+  background: var(--flora-bg);
+  color: var(--flora-gray-light);
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  /* padding-top 2 + logo 2 + nav margin 2 + nav 2 cells + 2 fine */
+  --gov-header-height: calc(8 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--flora-bg);
+  box-sizing: border-box;
+  /* 2 клетки сверху + лого + 2 до вкладок; вкладки сидят на разделителе, как лента Social */
+  padding-top: calc(2 * var(--flora-grid-step));
+  padding-bottom: 0;
+  overflow: visible;
+}
+
+.header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--flora-gray-divider);
+  pointer-events: none;
+}
+
+.headerInner,
+.nav,
+.main {
+  width: min(calc(73 * var(--flora-grid-step)), 100%);
+  margin-left: max(0px, calc((100% - 72 * var(--flora-grid-step)) / 2));
+  margin-right: auto;
+  padding-left: calc(2 * var(--flora-grid-step));
+  padding-right: calc(2 * var(--flora-grid-step));
+  box-sizing: border-box;
+}
+
+.headerInner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(2 * var(--flora-grid-step));
+  min-height: calc(2 * var(--flora-grid-step));
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  color: var(--flora-green-light);
+  text-decoration: none;
+  letter-spacing: calc(var(--flora-grid-step-fine) - 1px);
+  font-weight: 300;
+  font-size: 17px;
+  min-height: calc(2 * var(--flora-grid-step));
+}
+
+.logo:hover {
+  color: var(--flora-gray-hover);
+}
+
+.logoMark {
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
+  flex-shrink: 0;
+}
+
+.logoMark svg {
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+  transform: rotate(7deg);
+  transform-origin: center;
+}
+
+.logoText {
+  line-height: 1;
+}
+
+.logoSuffix {
+  line-height: 1;
+  color: var(--flora-gray);
+  letter-spacing: calc(var(--flora-grid-step-fine) - 1px);
+}
+
+.logo:hover .logoSuffix {
+  color: var(--flora-gray-hover);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(2 * var(--flora-grid-step));
+  color: var(--flora-gray);
+  font-size: 14px;
+  letter-spacing: var(--flora-tracking-15);
+  white-space: nowrap;
+}
+
+.status p {
+  margin: 0;
+}
+
+.nav {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  margin-top: calc(2 * var(--flora-grid-step));
+  /* Слот ленты Social: 2 primary + 2 fine = 40px, низ = линия разделения */
+  height: calc(2 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+  overflow: visible;
+}
+
+.navTabsWrap {
+  position: relative;
+  min-width: 0;
+  /* Кнопка 35px + 5px вниз → низ вкладки на разделителе */
+  top: var(--flora-grid-step-fine);
+  overflow: visible;
+}
+
+.navTabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: visible;
+}
+
+.navLink {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(2 * var(--flora-grid-step) + var(--flora-grid-step-fine));
+  padding: 0 calc(2 * var(--flora-grid-step));
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--flora-gray);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px !important;
+  font-weight: 300;
+  letter-spacing: var(--flora-tracking-15) !important;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.navLinkLabel {
+  position: relative;
+  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+  font-family: inherit;
+  font-size: 15px !important;
+  font-weight: inherit;
+  letter-spacing: var(--flora-tracking-15) !important;
+  line-height: inherit;
+}
+
+.navLink:hover {
+  color: var(--flora-gray-hover);
+}
+
+.navLinkActive {
+  color: var(--flora-green-light);
+}
+
+.navIndicator {
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: var(--gov-tab-indicator-width, 0px);
+  background: var(--flora-green-light);
+  border-radius: 999px;
+  transform: translate3d(var(--gov-tab-indicator-left, 0px), 0, 0);
+  transition:
+    transform var(--flora-duration-3) var(--flora-ease-out),
+    width var(--flora-duration-3) var(--flora-ease-out);
+  will-change: transform, width;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.navIndicatorStatic {
+  transition: none !important;
+}
+
+.main {
+  flex: 1 1 auto;
+  padding-top: calc(3 * var(--flora-grid-step));
+  padding-bottom: calc(5 * var(--flora-grid-step));
+}
+
+@media (max-width: 720px) {
+  .headerInner,
+  .nav,
+  .main {
+    padding-left: var(--flora-grid-step);
+    padding-right: var(--flora-grid-step);
+  }
+}

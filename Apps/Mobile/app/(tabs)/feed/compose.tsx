@@ -389,6 +389,7 @@ export default function FeedComposeScreen() {
             communityName={activeCommunity?.name}
             seed={activeCommunity?.communityId ?? me?.userUuid}
             showHandle={!activeCommunity}
+            accountBlocked={me?.accountBlocked}
             text={text}
             placeholder={placeholder}
             maxLength={MAX_POST_CONTENT_LENGTH}

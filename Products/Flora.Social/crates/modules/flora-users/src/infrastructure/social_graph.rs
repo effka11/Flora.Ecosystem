@@ -3,18 +3,27 @@
 use std::sync::Arc;
 
 use flora_users_contracts::{
-    BidirectionalBlocklist, BoxFuture, FeedAuthorProfile, FeedAuthorProfiles, FollowGraphReader,
+    AccountSanctionStatus, BidirectionalBlocklist, BoxFuture, FeedAuthorProfile,
+    FeedAuthorProfiles, FollowGraphReader,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::infrastructure::account_sanctions::SqlAccountSanctions;
+
 pub struct SqlSocialGraph {
     pool: PgPool,
+    /// Санкции читаем через собственный адаптер Users: предикат активности
+    /// («без срока либо срок не истёк») живёт в одном месте.
+    sanctions: SqlAccountSanctions,
 }
 
 impl SqlSocialGraph {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            sanctions: SqlAccountSanctions::new(pool.clone()),
+            pool,
+        }
     }
 }
 
@@ -143,12 +152,24 @@ impl FeedAuthorProfiles for SqlSocialGraph {
             .fetch_all(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
+            // Батч санкций (без N+1): у заблокированного автора потребитель
+            // не должен получить avatar_uuid, сам блоб при этом сохраняется.
+            let blocked: std::collections::HashSet<Uuid> = self
+                .sanctions
+                .blocked_among(&ids)
+                .await?
+                .into_iter()
+                .collect();
             Ok(rows
                 .into_iter()
-                .map(|(user_uuid, display_name, avatar_uuid)| FeedAuthorProfile {
-                    user_uuid,
-                    display_name: display_name.unwrap_or_default(),
-                    avatar_uuid,
+                .map(|(user_uuid, display_name, avatar_uuid)| {
+                    let account_blocked = blocked.contains(&user_uuid);
+                    FeedAuthorProfile {
+                        user_uuid,
+                        display_name: display_name.unwrap_or_default(),
+                        avatar_uuid: if account_blocked { None } else { avatar_uuid },
+                        account_blocked,
+                    }
                 })
                 .collect())
         })

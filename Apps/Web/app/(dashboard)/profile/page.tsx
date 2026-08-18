@@ -110,6 +110,7 @@ function ProfilePageContent() {
       ...post,
       authorUsername: me.username,
       authorDisplayName: me.displayName ?? me.username,
+      authorAccountBlocked: me.accountBlocked,
     }));
   }, [profilePosts, me?.username, me?.displayName]);
 
@@ -199,6 +200,7 @@ function ProfilePageContent() {
                   displayName={me?.displayName ?? name}
                   username={me?.username ?? ""}
                   seed={me?.userUuid}
+                  accountBlocked={me?.accountBlocked}
                 />
               </div>
               <span

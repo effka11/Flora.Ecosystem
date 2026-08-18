@@ -5,7 +5,7 @@ use std::sync::Arc;
 use chrono::{DateTime, SecondsFormat, Utc};
 use flora_auth_contracts::AccountDirectory;
 use flora_messaging_contracts::{
-    ConversationListItemDto, ConversationsPageDto, DeleteConversationOutcome, DeleteMessageOutcome,
+    ConversationListItemDto, DeleteConversationOutcome, DeleteMessageOutcome,
     LegacyConversationListItemDto, LegacyMessageThreadItemDto, LegacySendMessageRequest,
     LegacySendMessageResultDto, MessageConversationKind, MessageItemDto, MessageReadNotifier,
     MessageSentContext, MessageSentNotifier, MessageTypingNotifier, MessagesPageDto,
@@ -14,6 +14,7 @@ use flora_messaging_contracts::{
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::{FeedAuthorProfiles, MessagesAccess, OnlineStatusAccess, UserPresence};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::application::cursor::{decode_cursor, encode_cursor};
@@ -21,6 +22,28 @@ use crate::application::franking::{
     FrankingService, TaggedIngest, build_insert_receipt, tagged_ingest_action,
 };
 use crate::infrastructure::MessagingRepo;
+
+/// Элемент списка диалогов плюс аддитивный ключ `otherAccountBlocked`.
+///
+/// Санкция — данные Users, а `ConversationListItemDto` заморожен в contracts-крейте,
+/// поэтому флаг досыпается здесь, во владельце HTTP-поверхности Messaging.
+/// Источник — `FeedAuthorProfiles` (в снимке профиля уже есть `account_blocked`),
+/// так что дополнительного запроса к Users не появляется.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationListItemWithBlockDto {
+    #[serde(flatten)]
+    pub item: ConversationListItemDto,
+    pub other_account_blocked: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationsPageWithBlocksDto {
+    pub items: Vec<ConversationListItemWithBlockDto>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
 
 /// Ошибки POST message (маппятся в HTTP в `http/mod.rs`).
 #[derive(Debug, Clone)]
@@ -108,7 +131,7 @@ impl ConversationService {
         user_uuid: Uuid,
         cursor: Option<&str>,
         take: i32,
-    ) -> Result<ConversationsPageDto, String> {
+    ) -> Result<ConversationsPageWithBlocksDto, String> {
         let take = take.clamp(1, 100) as usize;
         let cursor_at = decode_cursor(cursor);
 
@@ -125,7 +148,7 @@ impl ConversationService {
         let page: Vec<_> = filtered.into_iter().take(take).collect();
 
         if page.is_empty() {
-            return Ok(ConversationsPageDto {
+            return Ok(ConversationsPageWithBlocksDto {
                 items: Vec::new(),
                 next_cursor: None,
                 has_more: false,
@@ -167,19 +190,22 @@ impl ConversationService {
                 seen_by.get(&peer.other_user_uuid).copied(),
             );
 
-            items.push(ConversationListItemDto {
-                conversation_uuid: dm_conversation_uuid(&user_uuid, &peer.other_user_uuid),
-                other_user_uuid: peer.other_user_uuid,
-                other_username: username,
-                other_display_name: display,
-                other_avatar_uuid: avatar,
-                last_message_encrypted_for_me: peer.last_encrypted_for_me.clone(),
-                last_message_content: peer.last_content.clone(),
-                last_message_at: format_utc(peer.last_message_at),
-                last_message_is_from_me: peer.last_is_from_me,
-                unread_count: peer.unread_count,
-                other_user_is_online,
-                other_user_last_seen_at,
+            items.push(ConversationListItemWithBlockDto {
+                item: ConversationListItemDto {
+                    conversation_uuid: dm_conversation_uuid(&user_uuid, &peer.other_user_uuid),
+                    other_user_uuid: peer.other_user_uuid,
+                    other_username: username,
+                    other_display_name: display,
+                    other_avatar_uuid: avatar,
+                    last_message_encrypted_for_me: peer.last_encrypted_for_me.clone(),
+                    last_message_content: peer.last_content.clone(),
+                    last_message_at: format_utc(peer.last_message_at),
+                    last_message_is_from_me: peer.last_is_from_me,
+                    unread_count: peer.unread_count,
+                    other_user_is_online,
+                    other_user_last_seen_at,
+                },
+                other_account_blocked: prof.is_some_and(|p| p.account_blocked),
             });
         }
 
@@ -189,7 +215,7 @@ impl ConversationService {
             None
         };
 
-        Ok(ConversationsPageDto {
+        Ok(ConversationsPageWithBlocksDto {
             items,
             next_cursor,
             has_more,
@@ -810,4 +836,54 @@ fn resolve_online_for_viewer(
     }
     let last_seen_at = last_seen.map(format_utc);
     (is_online, last_seen_at)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(other_account_blocked: bool) -> ConversationListItemWithBlockDto {
+        ConversationListItemWithBlockDto {
+            item: ConversationListItemDto {
+                conversation_uuid: Uuid::from_u128(1),
+                other_user_uuid: Uuid::from_u128(2),
+                other_username: "bob".into(),
+                other_display_name: "Bob".into(),
+                other_avatar_uuid: None,
+                last_message_encrypted_for_me: None,
+                last_message_content: None,
+                last_message_at: "2026-08-18T12:00:00.000Z".into(),
+                last_message_is_from_me: false,
+                unread_count: 0,
+                other_user_is_online: false,
+                other_user_last_seen_at: None,
+            },
+            other_account_blocked,
+        }
+    }
+
+    /// Ключ `otherAccountBlocked` заморожен: его читает `@flora/client-core`.
+    #[test]
+    fn conversation_peer_carries_flat_other_account_blocked() {
+        let json = serde_json::to_value(item(true)).expect("json");
+        assert_eq!(json["otherAccountBlocked"], serde_json::json!(true));
+        assert_eq!(json["otherUsername"], serde_json::json!("bob"));
+        assert!(json["otherAvatarUuid"].is_null());
+
+        let json = serde_json::to_value(item(false)).expect("json");
+        assert_eq!(json["otherAccountBlocked"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn conversations_page_keeps_cursor_keys() {
+        let json = serde_json::to_value(ConversationsPageWithBlocksDto {
+            items: vec![item(false)],
+            next_cursor: None,
+            has_more: false,
+        })
+        .expect("json");
+        assert!(json["items"].is_array());
+        assert!(json["nextCursor"].is_null());
+        assert_eq!(json["hasMore"], serde_json::json!(false));
+    }
 }

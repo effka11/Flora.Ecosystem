@@ -4191,6 +4191,43 @@
   color: var(--flora-danger, #e85d5d);
 }
 
+.messagesReportCategoryFieldset {
+  margin: calc(2 * var(--flora-grid-step-fine)) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.messagesReportCategoryLegend {
+  margin: 0 0 var(--flora-grid-step-fine);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--flora-gray);
+}
+
+.messagesReportCategoryList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flora-grid-step-fine);
+}
+
+.messagesReportCategoryOption {
+  display: flex;
+  align-items: center;
+  gap: var(--flora-grid-step);
+  min-height: calc(2 * var(--flora-grid-step));
+  font-size: 14px;
+  color: var(--flora-white-template);
+  cursor: pointer;
+}
+
+.messagesReportCategoryOption input {
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
+  margin: 0;
+  accent-color: var(--flora-green);
+}
+
 .messagesDeleteModalActions {
   display: flex;
   flex-wrap: wrap;

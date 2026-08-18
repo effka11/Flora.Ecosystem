@@ -1,5 +1,7 @@
 //! HTTP Notifications — inbox + push-token + SSE + admin broadcast (`Notifications:ServeNative`).
 
+mod account_block;
+
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
@@ -12,6 +14,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
+use flora_users_contracts::AccountSanctionStatus;
 use futures_util::StreamExt;
 use serde::Deserialize;
 use subtle::ConstantTimeEq;
@@ -93,8 +96,11 @@ impl Default for AdminBroadcastRateLimiter {
     }
 }
 
-pub fn protected_router(state: NotificationsState) -> Router {
-    Router::new()
+pub fn protected_router(
+    state: NotificationsState,
+    account_status: Arc<dyn AccountSanctionStatus>,
+) -> Router {
+    let router = Router::new()
         .route(
             "/api/auth/notifications",
             get(list_notifications).delete(delete_notifications),
@@ -113,7 +119,10 @@ pub fn protected_router(state: NotificationsState) -> Router {
                 .delete(unregister_push_token),
         )
         .route("/api/auth/signals/stream", get(signals_stream))
-        .with_state(state)
+        .with_state(state);
+    // Write-gate после with_state: JWT-слой flora-social снаружи, Extension<CurrentUser> уже есть.
+    // Admin broadcast — без CurrentUser; gate на admin_router не вешаем.
+    account_block::write_gate(router, account_status)
 }
 
 /// Admin broadcast — NO JWT; auth via `X-Flora-Admin-Token`.

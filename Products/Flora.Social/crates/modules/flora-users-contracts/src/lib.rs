@@ -268,12 +268,37 @@ pub trait BidirectionalBlocklist: Send + Sync {
     ) -> BoxFuture<'_, Result<Vec<Uuid>, String>>;
 }
 
+/// Порт применения санкции блокировки аккаунта. Владелец данных — Users.
+/// Отделён от `AccountSanctionStatus`, чтобы право записи получала только
+/// модерация; остальным модулям достаётся read-only статус.
+pub trait AccountSanctions: Send + Sync {
+    /// Upsert блокировки. `blocked_until = None` — навсегда.
+    fn apply_block(
+        &self,
+        user_uuid: Uuid,
+        blocked_until: Option<DateTime<Utc>>,
+        created_by: Uuid,
+    ) -> BoxFuture<'_, Result<(), String>>;
+}
+
+/// Порт чтения статуса блокировки: write-gate и скрытие контента.
+/// Активность санкции (`blocked_until IS NULL OR blocked_until > now()`)
+/// вычисляет SQL-адаптер Users, потребитель срок не интерпретирует.
+pub trait AccountSanctionStatus: Send + Sync {
+    fn is_blocked(&self, user_uuid: Uuid) -> BoxFuture<'_, Result<bool, String>>;
+
+    /// Подмножество заблокированных среди кандидатов (батч, без N+1).
+    fn blocked_among(&self, user_uuids: &[Uuid]) -> BoxFuture<'_, Result<Vec<Uuid>, String>>;
+}
+
 /// Минимальный снимок автора для сериализации ленты/постов.
 #[derive(Debug, Clone)]
 pub struct FeedAuthorProfile {
     pub user_uuid: Uuid,
     pub display_name: String,
     pub avatar_uuid: Option<Uuid>,
+    /// Активная санкция блокировки аккаунта (см. `AccountSanctionStatus`).
+    pub account_blocked: bool,
 }
 
 /// Пакетное чтение профилей для Content (без бизнес-логики).

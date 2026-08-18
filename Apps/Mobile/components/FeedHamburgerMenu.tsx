@@ -671,6 +671,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
                 displayName={displayName}
                 username={me?.username ?? ""}
                 seed={me?.userUuid}
+                accountBlocked={me?.accountBlocked}
               />
               <View style={styles.userMeta}>
                 <Text style={styles.userDisplayName} numberOfLines={1}>

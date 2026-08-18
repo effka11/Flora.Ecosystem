@@ -63,6 +63,9 @@ export type MeResponse = {
   avatarUuid?: string;
   followersCount?: number;
   followingCount?: number;
+  /** Present on wire payloads; parsers default missing to false. */
+  accountBlocked?: boolean;
+  accountBlockedUntil?: string | null;
 };
 
 export function parseLoginPayload(raw: unknown, ctx?: ParseContext): LoginResponse {
@@ -157,10 +160,26 @@ export function parseMePayload(raw: unknown, ctx?: ParseContext): MeResponse {
   const avatarUuid = readStr(o, ["avatarUuid", "AvatarUuid", "avatar_uuid"], fb);
   const followersCount = readNum(o, ["followersCount", "FollowersCount"], fb);
   const followingCount = readNum(o, ["followingCount", "FollowingCount"], fb);
+  const accountBlocked = readBool(o, ["accountBlocked", "AccountBlocked"], fb);
+  let accountBlockedUntil: string | null | undefined;
+  if (accountBlocked) {
+    for (const k of ["accountBlockedUntil", "AccountBlockedUntil"]) {
+      if (k in o) {
+        const v = o[k];
+        if (v === null) {
+          accountBlockedUntil = null;
+        } else if (typeof v === "string") {
+          accountBlockedUntil = v;
+        }
+        break;
+      }
+    }
+  }
   return {
     userUuid: readStr(o, ["userUuid", "UserUuid", "user_uuid"], fb),
     username: readStr(o, ["username", "Username"], fb),
     displayName: readStr(o, ["displayName", "DisplayName", "display_name"], fb),
+    accountBlocked,
     ...(status ? { status } : {}),
     ...(email ? { email } : {}),
     ...(phone ? { phone } : {}),
@@ -168,5 +187,6 @@ export function parseMePayload(raw: unknown, ctx?: ParseContext): MeResponse {
     ...(avatarUuid ? { avatarUuid } : {}),
     ...(followersCount !== undefined ? { followersCount } : {}),
     ...(followingCount !== undefined ? { followingCount } : {}),
+    ...(accountBlockedUntil !== undefined ? { accountBlockedUntil } : {}),
   };
 }

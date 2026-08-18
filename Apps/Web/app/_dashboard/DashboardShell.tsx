@@ -40,6 +40,7 @@ import { useNotificationsUnreadCount } from "@/app/_dashboard/useNotificationsUn
 import { notifyMessagesPopToList } from "@/lib/messagingApi";
 import { formatNavBadge } from "@/lib/formatNavBadge";
 import { formatAtHandle, profileDisplayName } from "@/app/_dashboard/userDisplay";
+import { AccountBlockedWall } from "@/app/_dashboard/AccountBlockedWall";
 import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { FloraDocumentTitleProvider } from "@/app/_shared/useFloraDocumentTitle";
 import { MusicNavIcon } from "@/app/_dashboard/icons/MusicNavIcon";
@@ -237,6 +238,7 @@ function DashboardSidebar({ displayPath, onNavigateDashboard }: DashboardSidebar
             displayName={displayNameLabel}
             username={me?.username ?? ""}
             seed={me?.userUuid}
+            accountBlocked={me?.accountBlocked}
             className={`${styles.avatar} ${styles.avatarLink}`}
             onLinkClick={handleDashboardNavClick}
           />
@@ -311,7 +313,7 @@ function DashboardShellInner({ children }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { me, loading } = useCurrentUser();
-  useDashboardRealtime(!loading && Boolean(me));
+  useDashboardRealtime(!loading && Boolean(me) && me?.accountBlocked !== true);
   useDashboardDataPrefetch();
   useSessionKeepAlive();
   useViewportFrameCssVars(true);
@@ -405,22 +407,30 @@ function DashboardShellInner({ children }: DashboardShellProps) {
     []
   );
 
+  const showAccountBlockWall = !loading && me?.accountBlocked === true;
+
   return (
     <main className={styles.page}>
       <GridOverlay />
 
       <div className={styles.appRoot}>
-        <DashboardSidebar displayPath={displayPath} onNavigateDashboard={navigateDashboard} />
-        <DashboardMainContent
-          displayPath={displayPath}
-          useInstantViews={useInstantViews}
-          routeTransition={routeTransition}
-        >
-          {children}
-        </DashboardMainContent>
-        <MusicMiniPlayer />
+        {showAccountBlockWall ? (
+          <AccountBlockedWall accountBlockedUntil={me?.accountBlockedUntil} />
+        ) : (
+          <>
+            <DashboardSidebar displayPath={displayPath} onNavigateDashboard={navigateDashboard} />
+            <DashboardMainContent
+              displayPath={displayPath}
+              useInstantViews={useInstantViews}
+              routeTransition={routeTransition}
+            >
+              {children}
+            </DashboardMainContent>
+            <MusicMiniPlayer />
+          </>
+        )}
       </div>
-      <FscpUnlockModal />
+      {!showAccountBlockWall ? <FscpUnlockModal /> : null}
     </main>
   );
 }

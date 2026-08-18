@@ -173,6 +173,7 @@ export function GroupMembersSheet({
                   username={member.username}
                   avatarUuid={member.avatarUuid}
                   seed={member.userUuid}
+                  accountBlocked={member.accountBlocked}
                 />
                 <View style={styles.rowBody}>
                   <Text style={styles.rowName} numberOfLines={1}>
@@ -239,6 +240,7 @@ export function GroupMembersSheet({
                           username={c.otherUsername}
                           avatarUuid={c.otherAvatarUuid}
                           seed={c.otherUserUuid}
+                          accountBlocked={c.otherAccountBlocked}
                         />
                         <View style={styles.rowBody}>
                           <Text style={styles.rowName}>{label}</Text>

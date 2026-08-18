@@ -31,6 +31,7 @@ export function FollowedRepostStack({ reposters, profileHref, className }: Follo
             displayName={reposter.displayName}
             username={reposter.username}
             seed={reposter.userUuid ?? reposter.username}
+            accountBlocked={reposter.accountBlocked}
             size={22}
             className={styles.avatar}
             style={{ zIndex: visible.length - index }}

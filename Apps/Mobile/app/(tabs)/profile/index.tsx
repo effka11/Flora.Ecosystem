@@ -44,14 +44,15 @@ export default function ProfileScreen() {
 
   const posts = useMemo((): FeedPostDto[] => {
     if (!me) return [];
-    return (postsQuery.data ?? []).map((post) =>
-      profilePostToFeedPost(post, {
+    return (postsQuery.data ?? []).map((post) => ({
+      ...profilePostToFeedPost(post, {
         userUuid: me.userUuid,
         username: me.username,
         displayName: me.displayName,
         avatarUuid: me.avatarUuid,
       }),
-    );
+      authorAccountBlocked: me.accountBlocked ?? false,
+    }));
   }, [me, postsQuery.data]);
 
   const mediaBand = useFrcMediaBand(posts, visibleRange, { online: network === "online" });
@@ -128,6 +129,7 @@ export default function ProfileScreen() {
         }
         actionVariant="own"
         avatarEditable
+        accountBlocked={me?.accountBlocked}
       />
     ),
     [me, username, isOnline],

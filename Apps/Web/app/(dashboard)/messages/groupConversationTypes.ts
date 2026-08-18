@@ -7,6 +7,7 @@ export type GroupMember = {
   username: string;
   displayName: string;
   avatarUuid?: string | null;
+  accountBlocked?: boolean;
 };
 
 export type GroupChat = {

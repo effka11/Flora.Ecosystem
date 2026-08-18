@@ -1,0 +1,87 @@
+-- Account-wide blocks. The Users module owns this table and is its only writer.
+--
+-- ---------------------------------------------------------------------------
+-- VERIFY (manual / staging after flora-migrate apply)
+-- ---------------------------------------------------------------------------
+--   BEGIN;
+--
+--   INSERT INTO flora_core.user_account_blocks
+--       (user_uuid, blocked_until, created_at, created_by)
+--   VALUES
+--       ('00000000-0000-4000-8000-000000000001', now() + interval '1 hour', now(),
+--        '00000000-0000-4000-8000-0000000000a1'),
+--       ('00000000-0000-4000-8000-000000000002', NULL, now(),
+--        '00000000-0000-4000-8000-0000000000a1'),
+--       ('00000000-0000-4000-8000-000000000003', now() - interval '1 hour', now(),
+--        '00000000-0000-4000-8000-0000000000a1')
+--   ON CONFLICT (user_uuid) DO UPDATE
+--   SET blocked_until = EXCLUDED.blocked_until,
+--       created_at = EXCLUDED.created_at,
+--       created_by = EXCLUDED.created_by;
+--
+--   SELECT COUNT(*) = 3 AS apply_ok
+--   FROM flora_core.user_account_blocks
+--   WHERE user_uuid IN (
+--       '00000000-0000-4000-8000-000000000001',
+--       '00000000-0000-4000-8000-000000000002',
+--       '00000000-0000-4000-8000-000000000003'
+--   );
+--   -- Assert: apply_ok = true.
+--
+--   SELECT EXISTS (
+--       SELECT 1
+--       FROM flora_core.user_account_blocks
+--       WHERE user_uuid = '00000000-0000-4000-8000-000000000001'
+--         AND blocked_until > now()
+--   ) AS timed_block_ok;
+--   -- Assert: timed_block_ok = true.
+--
+--   SELECT EXISTS (
+--       SELECT 1
+--       FROM flora_core.user_account_blocks
+--       WHERE user_uuid = '00000000-0000-4000-8000-000000000002'
+--         AND blocked_until IS NULL
+--   ) AS forever_block_ok;
+--   -- Assert: forever_block_ok = true.
+--
+--   SELECT NOT EXISTS (
+--       SELECT 1
+--       FROM flora_core.user_account_blocks
+--       WHERE user_uuid = '00000000-0000-4000-8000-000000000003'
+--         AND (blocked_until IS NULL OR blocked_until > now())
+--   ) AS expiry_ok;
+--   -- Assert: expiry_ok = true.
+--
+--   INSERT INTO flora_core.user_account_blocks
+--       (user_uuid, blocked_until, created_at, created_by)
+--   VALUES
+--       ('00000000-0000-4000-8000-000000000001', NULL, now(),
+--        '00000000-0000-4000-8000-0000000000a2')
+--   ON CONFLICT (user_uuid) DO UPDATE
+--   SET blocked_until = EXCLUDED.blocked_until,
+--       created_at = EXCLUDED.created_at,
+--       created_by = EXCLUDED.created_by;
+--
+--   SELECT COUNT(*) = 1
+--          AND bool_and(blocked_until IS NULL)
+--          AND bool_and(created_by = '00000000-0000-4000-8000-0000000000a2')
+--          AS reapply_upsert_ok
+--   FROM flora_core.user_account_blocks
+--   WHERE user_uuid = '00000000-0000-4000-8000-000000000001';
+--   -- Assert: reapply_upsert_ok = true.
+--
+--   ROLLBACK;
+--
+-- ---------------------------------------------------------------------------
+-- ROLLBACK (flora-migrate is up-only; operator only)
+-- ---------------------------------------------------------------------------
+-- Valid only before production data exists:
+--   DROP TABLE IF EXISTS flora_core.user_account_blocks;
+
+CREATE TABLE IF NOT EXISTS flora_core.user_account_blocks (
+    user_uuid     uuid        NOT NULL,
+    blocked_until timestamptz,
+    created_at    timestamptz NOT NULL,
+    created_by    uuid        NOT NULL,
+    PRIMARY KEY (user_uuid)
+);

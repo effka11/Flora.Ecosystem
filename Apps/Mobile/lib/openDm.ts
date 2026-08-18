@@ -12,6 +12,7 @@ export type DmPeerParams = {
   otherUsername?: string;
   otherDisplayName?: string;
   otherAvatarUuid?: string | null;
+  otherAccountBlocked?: boolean;
   otherUserIsOnline?: boolean;
   otherUserLastSeenAt?: string | null;
 };
@@ -25,6 +26,7 @@ function threadParamsFromConversation(item: MsgConversationDto): ThreadRoutePara
     otherUsername: item.otherUsername,
     otherDisplayName: item.otherDisplayName,
     otherAvatarUuid: item.otherAvatarUuid,
+    otherAccountBlocked: item.otherAccountBlocked,
     otherUserIsOnline: item.otherUserIsOnline,
     otherUserLastSeenAt: item.otherUserLastSeenAt,
   });
@@ -40,6 +42,7 @@ export function threadParamsFromPeer(
     otherDisplayName: peer.otherDisplayName ?? "",
     otherUsername: peer.otherUsername ?? "",
     otherAvatarUuid: peer.otherAvatarUuid ?? "",
+    otherAccountBlocked: peer.otherAccountBlocked ? "1" : "0",
     otherUserIsOnline: peer.otherUserIsOnline ? "1" : "0",
     otherUserLastSeenAt: peer.otherUserLastSeenAt ?? "",
   };

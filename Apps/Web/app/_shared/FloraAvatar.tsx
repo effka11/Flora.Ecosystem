@@ -27,6 +27,8 @@ export type FloraAvatarProps = {
   communityName?: string;
   /** Без inset-обводки и text-shadow (лента, compose, люди). */
   plain?: boolean;
+  /** Заблокированный пользователь: дефолтный аватар и красная диагональ (не для сообществ). */
+  accountBlocked?: boolean;
 };
 
 type DefaultAvatarArtProps = {
@@ -68,10 +70,13 @@ export function FloraAvatar({
   onLinkClick,
   communityName,
   plain = false,
+  accountBlocked = false,
 }: FloraAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const trimmedUuid = avatarUuid?.trim() ?? "";
-  const showImage = trimmedUuid.length > 0 && !imageFailed;
+  const isCommunity = Boolean(communityName?.trim());
+  const showBlockedTreatment = accountBlocked && !isCommunity;
+  const showImage = !showBlockedTreatment && trimmedUuid.length > 0 && !imageFailed;
   const colorSeed = seed?.trim() || username.trim() || displayName.trim();
   const initials = communityName
     ? communityInitials(communityName)
@@ -87,15 +92,20 @@ export function FloraAvatar({
     .join(" ");
   const rootStyle = avatarRootStyle(size, style);
 
-  const content = showImage ? (
-    <FrcImage
-      src={`${avatarImageUrl(trimmedUuid)}${cacheVersion > 0 ? `&v=${cacheVersion}` : ""}`}
-      alt=""
-      className={styles.image}
-      onError={() => setImageFailed(true)}
-    />
-  ) : (
-    <DefaultAvatarArt initials={initials} backgroundColor={backgroundColor} />
+  const content = (
+    <span className={styles.art}>
+      {showImage ? (
+        <FrcImage
+          src={`${avatarImageUrl(trimmedUuid)}${cacheVersion > 0 ? `&v=${cacheVersion}` : ""}`}
+          alt=""
+          className={styles.image}
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <DefaultAvatarArt initials={initials} backgroundColor={backgroundColor} />
+      )}
+      {showBlockedTreatment ? <span className={styles.blockedLine} aria-hidden /> : null}
+    </span>
   );
 
   const wrapped = href ? (

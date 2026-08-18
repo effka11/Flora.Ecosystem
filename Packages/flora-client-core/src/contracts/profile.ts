@@ -33,6 +33,7 @@ export type PublicProfileDto = {
   followingCount: number;
   isFollowingByMe: boolean;
   canMessageByMe: boolean;
+  accountBlocked?: boolean;
   isOnline?: boolean;
   lastSeenAt?: string | null;
 };
@@ -55,6 +56,7 @@ export function parsePublicProfile(raw: unknown, ctx?: ParseContext): PublicProf
     followingCount: readNum(o, ["followingCount", "FollowingCount"], fb) ?? 0,
     isFollowingByMe: readBool(o, ["isFollowingByMe", "IsFollowingByMe"], fb),
     canMessageByMe: readBool(o, ["canMessageByMe", "CanMessageByMe"], fb),
+    accountBlocked: readBool(o, ["accountBlocked", "AccountBlocked"], fb),
     isOnline: readBool(o, ["isOnline", "IsOnline"], fb),
     lastSeenAt,
   };
@@ -138,6 +140,7 @@ export function profilePostToFeedPost(post: ProfilePostDto, author: ProfilePostA
     authorUsername: author.username,
     authorDisplayName: author.displayName,
     authorAvatarUuid: author.avatarUuid ?? null,
+    authorAccountBlocked: false,
     communityUuid: null,
     communityName: null,
     communitySlug: null,

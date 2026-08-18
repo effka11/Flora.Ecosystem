@@ -6,6 +6,7 @@ export type FeedPostDto = {
   authorUsername: string;
   authorDisplayName: string;
   authorAvatarUuid: string | null;
+  authorAccountBlocked?: boolean;
   communityUuid: string | null;
   communityName: string | null;
   communitySlug: string | null;
@@ -47,6 +48,7 @@ function parsePost(raw: unknown, ctx?: ParseContext): FeedPostDto | null {
     authorUsername: readStr(o, ["authorUsername", "AuthorUsername"], fb),
     authorDisplayName: readStr(o, ["authorDisplayName", "AuthorDisplayName"], fb),
     authorAvatarUuid: readStr(o, ["authorAvatarUuid", "AuthorAvatarUuid"], fb) || null,
+    authorAccountBlocked: readBool(o, ["authorAccountBlocked", "AuthorAccountBlocked"], fb),
     communityUuid:
       readStr(o, ["communityUuid", "CommunityUuid", "communityId", "CommunityId"], fb) || null,
     communityName: readStr(o, ["communityName", "CommunityName"], fb) || null,
