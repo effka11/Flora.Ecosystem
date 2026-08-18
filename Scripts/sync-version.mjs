@@ -2,6 +2,17 @@
 /**
  * Single source of truth: repo root VERSION.
  * Propagates ecosystem + product versions to package manifests and flora-api manifest.
+ *
+ * Mapping:
+ *   products.social  → Apps/Web
+ *   products.gov     → Apps/Gov
+ *   products.mobile  → Apps/Mobile (package.json + app.json expo.version)
+ *   products.fscp    → Products/FSCP
+ *   products.frc-i   → Products/FRC
+ *   ecosystem        → @flora/client-core, Cargo.toml
+ *
+ * APK filename, GitHub social/v tag, and the sideload update channel still
+ * follow products.social until a dedicated mobile download-channel cutover.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -18,10 +29,7 @@ function readManifest() {
   if (typeof manifest.ecosystem !== "string" || !manifest.ecosystem.trim()) {
     throw new Error("VERSION.ecosystem must be a non-empty semver string");
   }
-  if (typeof manifest.products?.social !== "string" || !manifest.products.social.trim()) {
-    throw new Error("VERSION.products.social must be a non-empty semver string");
-  }
-  for (const key of ["fscp", "frc-i", "fira"]) {
+  for (const key of ["social", "gov", "mobile", "fscp", "frc-i", "fira"]) {
     if (typeof manifest.products?.[key] !== "string" || !manifest.products[key].trim()) {
       throw new Error(`VERSION.products.${key} must be a non-empty semver string`);
     }
@@ -82,12 +90,15 @@ function patchBackendCargoToml(ecosystemVersion) {
 const manifest = readManifest();
 const { ecosystem, products } = manifest;
 const social = products.social;
+const gov = products.gov;
+const mobile = products.mobile;
 const fscp = products.fscp;
 const frcI = products["frc-i"];
 
 const changes = [];
 if (patchPackageJson("Apps/Web/package.json", social)) changes.push(`Apps/Web/package.json → ${social}`);
-if (patchPackageJson("Apps/Mobile/package.json", social)) changes.push(`Apps/Mobile/package.json → ${social}`);
+if (patchPackageJson("Apps/Gov/package.json", gov)) changes.push(`Apps/Gov/package.json → ${gov}`);
+if (patchPackageJson("Apps/Mobile/package.json", mobile)) changes.push(`Apps/Mobile/package.json → ${mobile}`);
 if (patchPackageJson("Packages/flora-client-core/package.json", ecosystem)) {
   changes.push(`Packages/flora-client-core/package.json → ${ecosystem}`);
 }
@@ -97,7 +108,7 @@ if (patchPackageJson("Products/FSCP/package.json", fscp)) {
 if (patchPackageJson("Products/FRC/package.json", frcI)) {
   changes.push(`Products/FRC/package.json → ${frcI}`);
 }
-if (patchAppJson(social)) changes.push(`Apps/Mobile/app.json → ${social}`);
+if (patchAppJson(mobile)) changes.push(`Apps/Mobile/app.json → ${mobile}`);
 if (writeVersionsMirror("Backend/flora-versions.json", manifest)) {
   changes.push("Backend/flora-versions.json");
 }

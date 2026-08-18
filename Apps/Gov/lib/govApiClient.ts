@@ -15,7 +15,7 @@ import { clearBrowserSessionCookie, redirectToLogin } from "./loginRedirect";
 const GOV_API_BASE_URL = "";
 
 /** Mirrors the `version` field of Apps/Gov/package.json for the X-Flora-Client header. */
-const GOV_APP_VERSION = "0.12.0-alpha";
+const GOV_APP_VERSION = "0.1.0-alpha";
 
 let apiClientInitialized = false;
 
