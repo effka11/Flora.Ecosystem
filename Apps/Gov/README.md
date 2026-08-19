@@ -1,6 +1,6 @@
 # Flora Gov (Next.js)
 
-Отдельный shell гражданского портала Flora (`gov.flora-s.net` в будущем). Это **другой origin**, чем Flora Social (`Apps/Web`, порт 3000): Gov не импортирует Web и не разделяет с ним UI.
+Отдельный shell гражданского портала Flora (`gov.flora-s.net`). Это **другой origin**, чем Flora Social (`Apps/Web`, порт 3000): Gov не импортирует Web и не разделяет с ним UI.
 
 Браузер ходит только на Next (`:3001`); Next проксирует `/api/auth/*` и `/api/messaging/*` на `flora-api`. Регистрация остаётся в Social на http://localhost:3000.
 
@@ -34,9 +34,11 @@ pwsh ./Scripts/grant-franking-reviewer.ps1 -Username egor
 
 Перезапуск API после SQL-upsert не нужен. Другой аккаунт: тот же скрипт с его `-Username`. Снять роль: `-Revoke`. Список: `-List`.
 
-## Content-Security-Policy
+## Прод
 
-Заголовки CSP в этом срезе **не** выставляются: неверный CSP ломает HMR Next в dev. Это follow-up перед продом.
+Хост: `gov.flora-s.net`. nginx vhost (прокси на `:3001`) поднимает `Apps/Web/scripts/remote-bootstrap-flora-web.sh` вместе с Social. Сборка/systemd самого Next Gov — отдельный деплой (`flora-gov` на порту 3001). Пока процесса нет, origin отвечает 502.
+
+CSP в этом срезе **не** выставляется: неверный CSP ломает HMR Next в dev. Follow-up перед открытым продом Gov.
 
 ## Сборка
 
@@ -46,7 +48,3 @@ npm start
 ```
 
 Прод-слушатель: порт **3001**. Каталог standalone: `.next/standalone`.
-
-## Будущее (вне этого среза)
-
-Прод: `server_name gov.flora-s.net`, nginx, TLS — вне скоупа этого каркаса.

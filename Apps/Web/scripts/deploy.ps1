@@ -3,10 +3,10 @@
 #   .\scripts\deploy.ps1                    # prompts for VPS IP, then SSH key path (user: root)
 #   .\scripts\deploy.ps1 -SkipBuild
 #   .\scripts\deploy.ps1 -ApiUpstreamUrl "http://127.0.0.1:5290"
-#   .\scripts\deploy.ps1 -CertbotEmail "you@mail.com"   # optional: LE on VPS (origin.* + apex redirect TLS)
-#   .\scripts\deploy.ps1 -AllowedClientIps "1.2.3.4"   # optional: lock apex/www redirect only (CDN stays public)
+#   .\scripts\deploy.ps1 -CertbotEmail "you@mail.com"   # optional: LE on VPS (origin.* + apex Www + gov.*)
+#   .\scripts\deploy.ps1 -AllowedClientIps "1.2.3.4"   # unused (public origins are not IP-locked)
 #
-# Public site: https://social.<Domain> (Selectel CDN). Apex A → VPS → 301 to social.* (see remote-bootstrap-flora-web.sh).
+# Public site: https://social.<Domain> (CDN). Apex https://<Domain> is Apps/Www (health + stub). gov.<Domain> → :3001.
 # Browsers call /api/* same-origin on https://<PublicSubdomain>.<Domain> (Next proxy). Override with -PublicApiBaseUrl for cross-origin API.
 # Windows: scp tarball then ssh (avoids broken cmd pipe to ssh). Non-Windows: tar | ssh in one shot.
 param(
@@ -87,9 +87,9 @@ if ($resolvedAllowIps -eq "-") {
     $resolvedAllowIps = ""
     Write-Host 'nginx allow-list disabled (dash).'
 } elseif ([string]::IsNullOrWhiteSpace($resolvedAllowIps)) {
-    Write-Host 'nginx allow-list: off (pass -AllowedClientIps with IP to lock apex redirect only).'
+    Write-Host 'nginx allow-list: off (AllowedClientIps is unused; apex/gov/social stay public).'
 } else {
-    Write-Host ('nginx allow-list on apex/www only: ' + $resolvedAllowIps + ' (+ 127.0.0.1). CDN ' + $PublicSubdomain + '.* stays public.')
+    Write-Host ('nginx allow-list ignored (public origins): ' + $resolvedAllowIps)
 }
 
 $nm = Join-Path $WebRoot "node_modules"
@@ -232,6 +232,12 @@ try {
     if (-not (Test-Path -LiteralPath $payloadInstallSrc)) { throw "Missing $payloadInstallSrc" }
     $null = Expand-ToUnixLfFile -SourcePath $payloadInstallSrc -StagingPath (Join-Path $stageDir "remote-deploy-payload-install.sh")
 
+    $wwwSrc = Join-Path $RepoRoot "Apps\Www\public"
+    if (-not (Test-Path -LiteralPath $wwwSrc)) { throw "Missing $wwwSrc" }
+    $wwwDest = Join-Path $stageDir "www"
+    New-Item -ItemType Directory -Path $wwwDest -Force | Out-Null
+    Get-ChildItem -LiteralPath $wwwSrc -Force | Copy-Item -Destination $wwwDest -Recurse -Force
+
     $webDest = Join-Path $stageDir "web"
     New-Item -ItemType Directory -Path $webDest -Force | Out-Null
     Get-ChildItem -LiteralPath $Standalone -Force | ForEach-Object {
@@ -268,8 +274,9 @@ try {
 
     Write-Host "Done."
     Write-Host "  Next: curl -sI http://127.0.0.1:3000/ ; curl -s http://127.0.0.1:5290/health"
-    Write-Host ('  Open https://' + $PublicSubdomain + '.' + $Domain + '/login?b=' + $webBuildId + ' (or flora-s.net redirect).')
-    Write-Host '  Selectel CDN: disable HTML cache or cache only /_next/static/ — then purge is rarely needed.'
+    Write-Host ('  Open https://' + $PublicSubdomain + '.' + $Domain + '/login?b=' + $webBuildId)
+    Write-Host ('  Apex shell: https://' + $Domain + '/health')
+    Write-Host '  CDN: cache /_next/static/ only; bypass HTML and /api/* — then purge is rarely needed.'
     if (-not [string]::IsNullOrWhiteSpace($resolvedPublic)) {
         Write-Host '  Post-media fix: if images still fail after deploy, purge CDN for /api/auth/posts/images/* (build embeds cross-origin API URLs).'
     }

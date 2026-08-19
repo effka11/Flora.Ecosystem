@@ -12,7 +12,7 @@
 - **`flora-shared`** — низкоуровневые утилиты. Бизнес-логика запрещена.
 - **Products/Flora.Social** (App) — Rust-композиция (`crates/flora-social` + `crates/modules/*`); доменные модули (Auth, Users, Content, Messaging, Music, Notifications, Verification) — **внутренности Social**.
 - **Products/{FIRA,FSA,FSCP,FRC,FGP,FEP,FPP}** (Functional) — headless/embeddable; не зависят от Social. **FSA** — поиск (ядро + модули FSA-F/A/M/P/C/N/D); мост FIRA→FSA только данными (`AffinitySnapshot`).
-- **Apps** — shells: `Apps/Web`, `Apps/Mobile` (не внутри Products).
+- **Apps** — shells: `Apps/Web` (`social.*`), `Apps/Www` (apex `flora-s.net`), `Apps/Gov` (`gov.*`), `Apps/Mobile` (не внутри Products).
 - **Packages** — `@flora/client-core` (транспорт + реэкспорт functional TS; SoT FSCP — `@flora/fscp` / `Products/FSCP`).
 - **Backend/** — host crates (`flora-api`, …); **workspace root** — repo [`Cargo.toml`](Cargo.toml) (members включают `Products/*`).
 
