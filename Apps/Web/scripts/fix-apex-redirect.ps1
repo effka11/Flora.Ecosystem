@@ -1,4 +1,4 @@
-# Apex HTTP/HTTPS redirect to https://social.<Domain>. Requires: A @ -> VPS, NO AAAA on apex.
+# Apex HTTP/HTTPS: flora-s.net Www shell. Requires: A @ -> VPS, NO AAAA on apex.
 param(
     [string] $Server = "",
     [string] $User = "deploy",
@@ -24,7 +24,7 @@ $aaaa = Resolve-DnsName $Domain -Type AAAA -Server 8.8.8.8 -ErrorAction Silently
 if ($aaaa) {
     Write-Host ""
     Write-Host "BLOCKER: apex still has AAAA -> $($aaaa[0].IPAddress)" -ForegroundColor Red
-    Write-Host "Delete the AAAA record for $Domain in Selectel DNS, wait 5-15 min, then re-run:"
+    Write-Host "Delete the AAAA record for $Domain in DNS, wait 5-15 min, then re-run:"
     Write-Host "  .\scripts\fix-apex-redirect.ps1 -CertbotEmail you@mail.com"
     exit 1
 }
@@ -38,28 +38,34 @@ scp -i $IdentityFile -o StrictHostKeyChecking=no $remoteSh "${sshTarget}:/tmp/fi
 $emailArg = if ([string]::IsNullOrWhiteSpace($CertbotEmail)) { "" } else { "CERTBOT_EMAIL=$CertbotEmail" }
 ssh -i $IdentityFile -o StrictHostKeyChecking=no $sshTarget "sudo DOMAIN=$Domain PUBLIC_SUBDOMAIN=$PublicSubdomain $emailArg bash /tmp/fix-apex-nginx-ssl.sh"
 
-# HTTP redirect vhost (fix-apex-nginx-ssl.sh only handles HTTPS after certbot).
+# HTTP: apex ACME + 301 to HTTPS; www → https://apex.
 ssh -i $IdentityFile -o StrictHostKeyChecking=no $sshTarget @"
-sudo tee /etc/nginx/sites-available/flora-apex-redirect.conf >/dev/null <<'EOF'
+sudo tee /etc/nginx/sites-available/flora-apex.conf >/dev/null <<'EOF'
 server {
     listen 80;
-    server_name $Domain www.$Domain;
+    server_name $Domain;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
     location / {
-        return 301 https://${PublicSubdomain}.$Domain`$request_uri;
+        return 301 https://$Domain`$request_uri;
     }
 }
+
+server {
+    listen 80;
+    server_name www.$Domain;
+    return 301 https://$Domain`$request_uri;
+}
 EOF
-sudo ln -sf /etc/nginx/sites-available/flora-apex-redirect.conf /etc/nginx/sites-enabled/00-flora-apex-redirect.conf
-sudo rm -f /etc/nginx/conf.d/flora-web.conf /etc/nginx/sites-enabled/00-flora-apex-site.conf /etc/nginx/sites-enabled/02-flora-apex-https.conf
+sudo ln -sf /etc/nginx/sites-available/flora-apex.conf /etc/nginx/sites-enabled/00-flora-apex.conf
+sudo rm -f /etc/nginx/conf.d/flora-web.conf /etc/nginx/sites-enabled/00-flora-apex-site.conf /etc/nginx/sites-enabled/00-flora-apex-redirect.conf /etc/nginx/sites-enabled/02-flora-apex-https-redirect.conf
 sudo nginx -t && sudo systemctl reload nginx
 "@
 
 Write-Host ""
 Write-Host "Verify:"
 Write-Host "  curl.exe -4 -sI http://$Domain"
-Write-Host "  curl.exe -4 -sI https://$Domain"
+Write-Host "  curl.exe -4 -s https://$Domain/health"
