@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
+import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ChatMessageImageCollage } from "@/components/messages/ChatMessageImageCollage";
 import { ChatVoiceMessageCard } from "@/components/messages/ChatVoiceMessageCard";
@@ -7,6 +7,7 @@ import { ChatMessageBubbleTime } from "@/components/messages/ChatMessageBubbleTi
 import { ChatMessageBubbleTextBody } from "@/components/messages/ChatMessageBubbleTextBody";
 import { ChatMessageReplyQuote } from "@/components/messages/ChatMessageReplyQuote";
 import type { BubbleAnchorRect } from "@/components/messages/MessageBubbleMoreMenu";
+import { MessageBubbleMenuDock } from "@/components/messages/MessageBubbleMoreMenu";
 import { formatChatTime } from "@/lib/formatChatTime";
 import { messageDeliveryState } from "@/lib/messageDeliveryState";
 import {
@@ -17,15 +18,23 @@ import {
   photoCaptionInnerWidth,
   voiceCaptionInnerWidth,
 } from "@/lib/messageBubbleLayout";
+import {
+  bubbleAnchorFromPress,
+  readMenuPressCoords,
+  type MenuPressCoords,
+} from "@/lib/messageBubbleMoreMenuLayout";
 import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { FRANKING_MISSING_RECEIPT_WARNING } from "@flora/client-core/display";
 import {
   StyleSheet,
+  Text,
   View,
-  Pressable,
   useWindowDimensions,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { Pressable } from "react-native-gesture-handler";
+import Reanimated from "react-native-reanimated";
 import type { ChatPeerInfo } from "./ChatThreadHeader";
 
 export type ThreadBubbleItem = {
@@ -47,6 +56,7 @@ export type ThreadBubbleItem = {
   sendStatus?: "sending";
   /** Group chats: sender for peer-run split + avatar roster lookup. */
   senderUserUuid?: string | null;
+  missingFrankReceipt?: boolean;
 };
 type Props = {
   message: ThreadBubbleItem;
@@ -55,9 +65,7 @@ type Props = {
   isPeerIndented: boolean;
   /** Пузырь внутри peer-группы: без аватара/indent, ширина как с reserved peer column. */
   inPeerGroup?: boolean;
-  isMenuTarget?: boolean;
   onPress?: (anchor: BubbleAnchorRect) => void;
-  onAnchorSync?: (anchor: BubbleAnchorRect) => void;
 };
 
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
@@ -95,56 +103,66 @@ function photoTailStyle(isFromMe: boolean): ViewStyle {
       };
 }
 
-function measureBubbleAnchor(
-  bubbleRef: RefObject<View | null>,
-  handler?: (anchor: BubbleAnchorRect) => void,
-) {
-  const node = bubbleRef.current;
-  if (!node || !handler) return;
-  node.measureInWindow((pageX, pageY, width, height) => {
-    handler({
-      top: pageY,
-      left: pageX,
-      right: pageX + width,
-      bottom: pageY + height,
-    });
-  });
-}
-
 function MessageBubbleColumn({
   tapLaneStyle,
   anchorStyle,
-  bubbleRef,
   onPress,
+  messageUuid,
+  isFromMe,
   /** Voice play sits inside the lane — use long-press for the bubble menu so it
    *  does not steal the play button's short press (nested Pressable + scaleY list). */
   menuActivation = "press",
   children,
+  footer,
 }: {
   tapLaneStyle: StyleProp<ViewStyle>;
   anchorStyle: StyleProp<ViewStyle>;
-  bubbleRef: RefObject<View | null>;
   onPress?: (anchor: BubbleAnchorRect) => void;
+  messageUuid: string;
+  isFromMe: boolean;
   menuActivation?: "press" | "longPress";
   children: ReactNode;
+  footer?: ReactNode;
 }) {
-  const handlePress = useCallback(() => {
-    measureBubbleAnchor(bubbleRef, onPress);
-  }, [bubbleRef, onPress]);
+  const touchRef = useRef<MenuPressCoords | null>(null);
+  const yogaHeightRef = useRef(0);
+  const captureTouch = useCallback((event: unknown) => {
+    const coords = readMenuPressCoords(event);
+    if (coords != null) touchRef.current = coords;
+  }, []);
+  const handlePress = useCallback(
+    (event?: unknown) => {
+      onPress?.(bubbleAnchorFromPress(event, yogaHeightRef.current, touchRef.current));
+    },
+    [onPress],
+  );
 
   return (
-    <Pressable
-      style={[styles.tapLane, tapLaneStyle]}
-      disabled={!onPress}
-      onPress={menuActivation === "press" ? handlePress : undefined}
-      onLongPress={menuActivation === "longPress" ? handlePress : undefined}
-      delayLongPress={280}
-    >
+    <View style={[styles.tapLane, tapLaneStyle]} pointerEvents="box-none">
       <View style={anchorStyle} pointerEvents="box-none">
-        {children}
+        <MessageBubbleMenuDock messageUuid={messageUuid} isFromMe={isFromMe}>
+          <Pressable
+            disabled={!onPress}
+            onLayout={(e) => {
+              yogaHeightRef.current = e.nativeEvent.layout.height;
+            }}
+            onPressIn={onPress ? captureTouch : undefined}
+            onPress={menuActivation === "press" && onPress ? handlePress : undefined}
+            onLongPress={menuActivation === "longPress" && onPress ? handlePress : undefined}
+            delayLongPress={280}
+          >
+            {children}
+          </Pressable>
+        </MessageBubbleMenuDock>
       </View>
-    </Pressable>
+      {footer}
+    </View>
   );
+}
+
+function FrankingReceiptWarning({ show }: { show?: boolean }) {
+  if (!show) return null;
+  return <Text style={styles.frankingReceiptWarn}>{FRANKING_MISSING_RECEIPT_WARNING}</Text>;
 }
 
 export const ChatMessageBubble = memo(function ChatMessageBubble({
@@ -153,9 +171,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   showPeerAvatar,
   isPeerIndented,
   inPeerGroup = false,
-  isMenuTarget = false,
   onPress,
-  onAnchorSync,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const layoutCtx = useMemo(
@@ -174,14 +190,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const textInnerWidth = useMemo(() => maxTextBubbleInnerWidth(layoutCtx), [layoutCtx]);
   const voiceCaptionInner = useMemo(() => voiceCaptionInnerWidth(layoutCtx), [layoutCtx]);
   const photoCaptionInner = useMemo(() => photoCaptionInnerWidth(layoutCtx), [layoutCtx]);
-  const bubbleMeasureRef = useRef<View>(null);
-
-  useLayoutEffect(() => {
-    if (!isMenuTarget) return;
-    measureBubbleAnchor(bubbleMeasureRef, onAnchorSync);
-    const frame = requestAnimationFrame(() => measureBubbleAnchor(bubbleMeasureRef, onAnchorSync));
-    return () => cancelAnimationFrame(frame);
-  }, [isMenuTarget, onAnchorSync]);
+  const voiceYogaHeightRef = useRef(0);
 
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
   // Чужие decrypting режет лента; свои могут показать статус. Не рисуем peer-заглушку.
@@ -226,9 +235,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const showAvatar = !message.isFromMe && showPeerAvatar && !inPeerGroup;
 
   const bubbleColumnProps = {
-    bubbleRef: bubbleMeasureRef,
     onPress,
     tapLaneStyle: message.isFromMe ? styles.tapLaneMe : styles.tapLaneThem,
+    messageUuid: message.messageUuid,
+    isFromMe: message.isFromMe,
   };
 
   const anchorStyle = [
@@ -259,9 +269,12 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             />
           </View>
         ) : null}
-        <MessageBubbleColumn anchorStyle={textAnchorStyle} {...bubbleColumnProps}>
-          <View
-            ref={bubbleMeasureRef}
+        <MessageBubbleColumn
+          anchorStyle={textAnchorStyle}
+          {...bubbleColumnProps}
+          footer={<FrankingReceiptWarning show={message.missingFrankReceipt} />}
+        >
+          <Reanimated.View
             collapsable={false}
             style={[
               styles.bubble,
@@ -279,14 +292,16 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               timeStyle={inlineTimeStyle}
               receiptColor={receiptColor}
             />
-          </View>
+          </Reanimated.View>
         </MessageBubbleColumn>
       </View>
     );
   }
 
   if (hasVoice && !hasImages) {
-    const openVoiceMenu = () => measureBubbleAnchor(bubbleMeasureRef, onPress);
+    const openVoiceMenu = (event?: unknown) => {
+      onPress?.(bubbleAnchorFromPress(event, voiceYogaHeightRef.current));
+    };
     return (
       <View style={wrapStyle}>
         {showAvatar ? (
@@ -313,9 +328,12 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           ]}
           pointerEvents="box-none"
         >
-          <View
-            ref={bubbleMeasureRef}
+          <MessageBubbleMenuDock messageUuid={message.messageUuid} isFromMe={message.isFromMe}>
+            <Reanimated.View
             collapsable={false}
+            onLayout={(e) => {
+              voiceYogaHeightRef.current = e.nativeEvent.layout.height;
+            }}
             style={[
               styles.bubbleAnchor,
               !message.isFromMe ? styles.bubbleAnchorThem : null,
@@ -351,7 +369,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               />
             </View>
             {voiceWithCaption ? (
-              <Pressable onLongPress={openVoiceMenu} delayLongPress={280}>
+              <Pressable
+                onLongPress={openVoiceMenu}
+                delayLongPress={280}
+              >
                 <View style={styles.voiceCaptionBlock}>
                   <ChatMessageBubbleTextBody
                     body={body}
@@ -365,7 +386,9 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                 </View>
               </Pressable>
             ) : null}
-          </View>
+          </Reanimated.View>
+          </MessageBubbleMenuDock>
+          <FrankingReceiptWarning show={message.missingFrankReceipt} />
         </View>
       </View>
     );
@@ -407,8 +430,9 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
       <MessageBubbleColumn
         anchorStyle={anchorStyle}
         {...bubbleColumnProps}
+        footer={<FrankingReceiptWarning show={message.missingFrankReceipt} />}
       >
-        <View ref={bubbleMeasureRef} collapsable={false} style={bubbleStyles}>
+        <Reanimated.View collapsable={false} style={bubbleStyles}>
           {replyQuote ? (
             <View
               style={[
@@ -461,7 +485,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               />
             </View>
           ) : null}
-        </View>
+        </Reanimated.View>
       </MessageBubbleColumn>
     </View>
   );
@@ -474,6 +498,7 @@ const styles = StyleSheet.create({
     width: "100%",
     paddingHorizontal: floraSpacing.grid,
     marginBottom: floraMessages.bubbleRowGap,
+    overflow: "visible",
   },
   /** Внутри peer-группы: padding/margin на оболочке группы. */
   wrapInPeerGroup: {
@@ -499,6 +524,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     alignSelf: "stretch",
+    overflow: "visible",
   },
   tapLaneMe: {
     alignItems: "flex-end",
@@ -509,6 +535,7 @@ const styles = StyleSheet.create({
   bubbleAnchor: {
     flexShrink: 1,
     minWidth: 0,
+    overflow: "visible",
   },
   bubbleAnchorThem: {
     alignItems: "flex-start",
@@ -653,6 +680,13 @@ const styles = StyleSheet.create({
   },
   bodyThem: {
     color: floraMessages.themBubbleText,
+  },
+  frankingReceiptWarn: {
+    marginTop: floraSpacing.gridFine,
+    maxWidth: "100%",
+    fontSize: 12,
+    lineHeight: 16,
+    color: floraColors.textMuted,
   },
   timeInline: {
     fontSize: floraMessages.bubbleTimeFontSize,

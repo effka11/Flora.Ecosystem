@@ -17,7 +17,11 @@ import {
 } from "@/lib/authorizedFetch";
 import { clampPostContent } from "@/lib/postContentLimits";
 import { apiSearchFeed as coreSearchFeed } from "@flora/client-core/api";
-import type { FeedPostDto as CoreFeedPostDto } from "@flora/client-core/contracts";
+import {
+  parseMessageFrankingFields,
+  type FeedPostDto as CoreFeedPostDto,
+  type ServerFrankReceiptDto,
+} from "@flora/client-core/contracts";
 import {
   devDemoFeedPosts,
   devDemoFeedSubscriptions,
@@ -1651,6 +1655,8 @@ export type MessageThreadItemDto = {
   sendStatus?: "sending";
   /** Optional sender id (mock group threads); absent for 1:1 API messages. */
   senderUserUuid?: string | null;
+  serverFrankReceipt?: ServerFrankReceiptDto | null;
+  frankTagBase64Url?: string | null;
 };
 
 function parseMessageThreadItem(raw: unknown): MessageThreadItemDto | null {
@@ -1660,6 +1666,7 @@ function parseMessageThreadItem(raw: unknown): MessageThreadItemDto | null {
   if (!messageUuid) return null;
   const content = readStr(o, ["content", "Content"]);
   const enc = readStr(o, ["encryptedForMe", "EncryptedForMe"]);
+  const franking = parseMessageFrankingFields(o);
   return {
     messageUuid,
     content: content.length > 0 ? content : null,
@@ -1667,6 +1674,8 @@ function parseMessageThreadItem(raw: unknown): MessageThreadItemDto | null {
     createdAt: readStr(o, ["createdAt", "CreatedAt"]),
     isFromMe: readBool(o, ["isFromMe", "IsFromMe"]),
     isRead: readBool(o, ["isRead", "IsRead"]),
+    serverFrankReceipt: franking.serverFrankReceipt,
+    frankTagBase64Url: franking.frankTagBase64Url,
   };
 }
 

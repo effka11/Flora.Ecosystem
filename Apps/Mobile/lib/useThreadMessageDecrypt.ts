@@ -1,4 +1,5 @@
 import type { MsgMessageDto } from "@flora/client-core/contracts";
+import { frankingMissingReceiptWarning } from "@flora/client-core/display";
 import {
   extractTextFromPlaintext,
   getImageBlocksFromPlaintext,
@@ -24,6 +25,15 @@ function isDecryptableFscpWire(enc: string | null | undefined): boolean {
   return isFscpWirePayload(t) || isFscpGroupWirePayload(t);
 }
 
+function missingFrankReceiptFromDto(m: MsgMessageDto, isGroupChat: boolean): boolean {
+  return frankingMissingReceiptWarning({
+    isGroupChat,
+    frankTagBase64Url: m.frankTagBase64Url,
+    wire: m.encryptedPayload,
+    hasServerFrankReceipt: Boolean(m.serverFrankReceipt),
+  });
+}
+
 export function messageDecryptCacheKey(m: MsgMessageDto): string {
   return `${m.messageUuid}|${(m.encryptedPayload ?? "").slice(0, 96)}`;
 }
@@ -40,7 +50,7 @@ function normalizeRow(row: ThreadBubbleItem): ThreadBubbleItem {
   };
 }
 
-function buildDecryptingRow(m: MsgMessageDto): ThreadBubbleItem {
+function buildDecryptingRow(m: MsgMessageDto, isGroupChat: boolean): ThreadBubbleItem {
   return {
     messageUuid: m.messageUuid,
     clientMessageKey: takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
@@ -53,10 +63,15 @@ function buildDecryptingRow(m: MsgMessageDto): ThreadBubbleItem {
     decryptState: "decrypting",
     isRead: m.isRead,
     senderUserUuid: m.senderUserUuid,
+    missingFrankReceipt: missingFrankReceiptFromDto(m, isGroupChat),
   };
 }
 
-function rowFromPlaintext(m: MsgMessageDto, plain: FscpMessagePlaintext): ThreadBubbleItem {
+function rowFromPlaintext(
+  m: MsgMessageDto,
+  plain: FscpMessagePlaintext,
+  isGroupChat: boolean,
+): ThreadBubbleItem {
   return {
     messageUuid: m.messageUuid,
     clientMessageKey: takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
@@ -70,10 +85,15 @@ function rowFromPlaintext(m: MsgMessageDto, plain: FscpMessagePlaintext): Thread
     decryptState: "ok",
     isRead: m.isRead,
     senderUserUuid: m.senderUserUuid,
+    missingFrankReceipt: missingFrankReceiptFromDto(m, isGroupChat),
   };
 }
 
-function rowFromPreviewText(m: MsgMessageDto, preview: string): ThreadBubbleItem {
+function rowFromPreviewText(
+  m: MsgMessageDto,
+  preview: string,
+  isGroupChat: boolean,
+): ThreadBubbleItem {
   return {
     messageUuid: m.messageUuid,
     clientMessageKey: takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
@@ -86,6 +106,7 @@ function rowFromPreviewText(m: MsgMessageDto, preview: string): ThreadBubbleItem
     decryptState: "ok",
     isRead: m.isRead,
     senderUserUuid: m.senderUserUuid,
+    missingFrankReceipt: missingFrankReceiptFromDto(m, isGroupChat),
   };
 }
 
@@ -117,7 +138,11 @@ function isConversationFullyResolved(
   });
 }
 
-function withMessageMeta(row: ThreadBubbleItem, m: MsgMessageDto): ThreadBubbleItem {
+function withMessageMeta(
+  row: ThreadBubbleItem,
+  m: MsgMessageDto,
+  isGroupChat: boolean,
+): ThreadBubbleItem {
   const optimistic = isOptimisticPayloadSentinel(m.encryptedPayload);
   return normalizeRow({
     ...row,
@@ -126,6 +151,7 @@ function withMessageMeta(row: ThreadBubbleItem, m: MsgMessageDto): ThreadBubbleI
     createdAt: m.createdAt,
     isRead: m.isRead,
     senderUserUuid: m.senderUserUuid ?? row.senderUserUuid,
+    missingFrankReceipt: missingFrankReceiptFromDto(m, isGroupChat),
     clientMessageKey:
       row.clientMessageKey ?? takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
     sendStatus: optimistic ? "sending" : undefined,
@@ -135,41 +161,47 @@ function withMessageMeta(row: ThreadBubbleItem, m: MsgMessageDto): ThreadBubbleI
 function resolveRowForMessage(
   m: MsgMessageDto,
   currentByUuid: Map<string, ThreadBubbleItem>,
+  isGroupChat: boolean,
 ): ThreadBubbleItem {
   const cacheKey = messageDecryptCacheKey(m);
   const wireCached = messageThreadDecryptCache.getMessage(cacheKey);
   if (wireCached && isRowTerminal(wireCached)) {
-    return withMessageMeta(wireCached, m);
+    return withMessageMeta(wireCached, m, isGroupChat);
   }
   const prev = currentByUuid.get(m.messageUuid);
   if (prev && isRowTerminal(prev)) {
-    return withMessageMeta(prev, m);
+    return withMessageMeta(prev, m, isGroupChat);
   }
-  return buildDecryptingRow(m);
+  return buildDecryptingRow(m, isGroupChat);
 }
 
 function rowsFromWireCache(
   conversationUuid: string,
   messages: MsgMessageDto[],
+  isGroupChat: boolean,
 ): ThreadBubbleItem[] | null {
   const cached = messageThreadDecryptCache.get(conversationUuid);
   if (!cached || !isConversationFullyResolved(messages, cached)) return null;
   const sameOrder = messages.every((m, i) => cached[i]?.messageUuid === m.messageUuid);
-  return sameOrder ? messages.map((m, i) => withMessageMeta(cached[i]!, m)) : null;
+  return sameOrder
+    ? messages.map((m, i) => withMessageMeta(cached[i]!, m, isGroupChat))
+    : null;
 }
 
 function rowsMergingCurrent(
   messages: MsgMessageDto[],
   current: ThreadBubbleItem[],
+  isGroupChat: boolean,
 ): ThreadBubbleItem[] {
   const byUuid = new Map(current.map((row) => [row.messageUuid, row]));
-  return messages.map((m) => resolveRowForMessage(m, byUuid));
+  return messages.map((m) => resolveRowForMessage(m, byUuid, isGroupChat));
 }
 
 type Args = {
   conversationUuid: string;
   messages: MsgMessageDto[];
   messagesKey: string;
+  isGroupChat: boolean;
   viewerUserUuid: string | undefined;
   fscpReady: boolean;
   fscpDecryptKey?: string | null;
@@ -180,6 +212,7 @@ export function useThreadMessageDecrypt({
   conversationUuid,
   messages,
   messagesKey,
+  isGroupChat,
   viewerUserUuid,
   fscpReady,
   fscpDecryptKey,
@@ -196,7 +229,10 @@ export function useThreadMessageDecrypt({
 
   const [rows, setRows] = useState<ThreadBubbleItem[]>(() => {
     if (!conversationUuid || messages.length === 0) return [];
-    return rowsFromWireCache(conversationUuid, messages) ?? rowsMergingCurrent(messages, []);
+    return (
+      rowsFromWireCache(conversationUuid, messages, isGroupChat) ??
+      rowsMergingCurrent(messages, [], isGroupChat)
+    );
   });
 
   const rowsRef = useRef(rows);
@@ -209,7 +245,11 @@ export function useThreadMessageDecrypt({
       return;
     }
 
-    const conversationCached = rowsFromWireCache(conversationUuid, currentMessages);
+    const conversationCached = rowsFromWireCache(
+      conversationUuid,
+      currentMessages,
+      isGroupChat,
+    );
     if (conversationCached) {
       setRows(conversationCached);
       rowsRef.current = conversationCached;
@@ -222,11 +262,11 @@ export function useThreadMessageDecrypt({
     prevFscpDecryptKeyRef.current = fscpDecryptKey;
 
     if (messagesKeyChanged || fscpKeyChanged) {
-      const seeded = rowsMergingCurrent(currentMessages, rowsRef.current);
+      const seeded = rowsMergingCurrent(currentMessages, rowsRef.current, isGroupChat);
       setRows(seeded);
       rowsRef.current = seeded;
     } else {
-      const merged = rowsMergingCurrent(currentMessages, rowsRef.current);
+      const merged = rowsMergingCurrent(currentMessages, rowsRef.current, isGroupChat);
       const changed = merged.some((row, i) => row !== rowsRef.current[i]);
       if (changed) {
         setRows(merged);
@@ -271,7 +311,7 @@ export function useThreadMessageDecrypt({
             if (enc && isDecryptableFscpWire(enc)) {
               try {
                 const plain = await decryptWirePlaintextRef.current(enc, viewerUserUuid);
-                row = rowFromPlaintext(m, plain);
+                row = rowFromPlaintext(m, plain, isGroupChat);
               } catch {
                 row = {
                   messageUuid: m.messageUuid,
@@ -285,11 +325,15 @@ export function useThreadMessageDecrypt({
                   decryptState: "failed",
                   isRead: m.isRead,
                   senderUserUuid: m.senderUserUuid,
+                  missingFrankReceipt: missingFrankReceiptFromDto(m, isGroupChat),
                 };
               }
             } else if (isOptimisticPayloadSentinel(enc)) {
               const cached = messageThreadDecryptCache.getMessage(cacheKey);
-              row = cached && isRowTerminal(cached) ? withMessageMeta(cached, m) : buildDecryptingRow(m);
+              row =
+                cached && isRowTerminal(cached)
+                  ? withMessageMeta(cached, m, isGroupChat)
+                  : buildDecryptingRow(m, isGroupChat);
             } else {
               row = rowFromPreviewText(
                 m,
@@ -299,6 +343,7 @@ export function useThreadMessageDecrypt({
                   blocks: [{ kind: "text", body: m.encryptedPayload ?? "" }],
                   clientCreatedAt: m.createdAt,
                 }),
+                isGroupChat,
               );
             }
             messageThreadDecryptCache.setMessage(cacheKey, row);
@@ -318,7 +363,7 @@ export function useThreadMessageDecrypt({
     return () => {
       cancelled = true;
     };
-  }, [conversationUuid, fscpDecryptKey, fscpReady, messagesKey, viewerUserUuid]);
+  }, [conversationUuid, fscpDecryptKey, fscpReady, isGroupChat, messagesKey, viewerUserUuid]);
 
   return rows;
 }

@@ -16,9 +16,9 @@ use crate::http::{CurrentUser, MessagingState, internal};
 
 pub async fn server_key(
     State(state): State<MessagingState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
 ) -> Response {
-    Json(state.franking.server_key()).into_response()
+    Json(state.franking.server_key_for(user.0).await).into_response()
 }
 
 pub async fn create_report(

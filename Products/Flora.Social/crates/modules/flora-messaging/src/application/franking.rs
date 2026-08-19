@@ -13,8 +13,8 @@ use flora_messaging_contracts::{
     FrankingAuditDto, FrankingAuditEvent, FrankingAuditEventDto, FrankingDisclosureDto,
     FrankingDisclosureWrapDto, FrankingOwnWrapDto, FrankingQueueDto, FrankingReportCategory,
     FrankingReportMetaDto, FrankingReportStatus, FrankingResolveDecision, FrankingServerKeyDto,
-    FrankingVerificationStatus, PostFrankingWrapsRequest, ResolveFrankingReportRequest,
-    ServerFrankReceiptDto,
+    FrankingVerificationStatus, FrankingWrapTargetsDto, PostFrankingWrapsRequest,
+    ResolveFrankingReportRequest, ServerFrankReceiptDto,
 };
 use flora_shared::uuid_v5::dm_conversation_uuid;
 use flora_users_contracts::AccountSanctions;
@@ -400,12 +400,31 @@ impl FrankingService {
             Some(signer) => FrankingServerKeyDto {
                 server_franking_key_id: Some(signer.key_id()),
                 public_key_base64_url: Some(URL_SAFE_NO_PAD.encode(signer.public_key())),
+                wrap_targets: FrankingWrapTargetsDto::default(),
+                reviewer_roster_ready: self.reviewer_roster_ready.load(Ordering::SeqCst),
             },
             None => FrankingServerKeyDto {
                 server_franking_key_id: None,
                 public_key_base64_url: None,
+                wrap_targets: FrankingWrapTargetsDto::default(),
+                reviewer_roster_ready: self.reviewer_roster_ready.load(Ordering::SeqCst),
             },
         }
+    }
+
+    pub async fn server_key_for(&self, caller: Uuid) -> FrankingServerKeyDto {
+        let mut dto = self.server_key();
+        if !dto.reviewer_roster_ready {
+            return dto;
+        }
+        let Ok(items) = self.repo.active_reviewer_wrap_targets(caller).await else {
+            return dto;
+        };
+        let Ok(own_items) = self.repo.active_own_wrap_targets(caller).await else {
+            return dto;
+        };
+        dto.wrap_targets = FrankingWrapTargetsDto { items, own_items };
+        dto
     }
 
     pub async fn create_report(
@@ -1796,9 +1815,49 @@ mod tests {
         let json = serde_json::to_value(FrankingServerKeyDto {
             server_franking_key_id: None,
             public_key_base64_url: None,
+            wrap_targets: FrankingWrapTargetsDto::default(),
+            reviewer_roster_ready: false,
         })
         .expect("json");
         assert!(json["serverFrankingKeyId"].is_null());
         assert!(json["publicKeyBase64Url"].is_null());
+        assert_eq!(json["wrapTargets"]["items"], serde_json::json!([]));
+        assert_eq!(json["wrapTargets"]["ownItems"], serde_json::json!([]));
+        assert_eq!(json["reviewerRosterReady"], false);
+    }
+
+    #[tokio::test]
+    async fn server_key_skips_wrap_roster_when_unready() {
+        use crate::application::test_ports::{RecordingSanctions, StubAccounts, lazy_pool};
+
+        let service = FrankingService::new(
+            Arc::new(FrankingRepo::new(lazy_pool())),
+            None,
+            Arc::new(StubAccounts),
+            Arc::new(RecordingSanctions::default()),
+        );
+        service.mark_reviewer_roster_unready();
+        let dto = service.server_key_for(Uuid::from_u128(1)).await;
+        assert!(!dto.reviewer_roster_ready);
+        assert!(dto.wrap_targets.items.is_empty());
+        assert!(dto.wrap_targets.own_items.is_empty());
+        assert!(dto.server_franking_key_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn server_key_stays_ok_when_wrap_roster_sql_fails() {
+        use crate::application::test_ports::{RecordingSanctions, StubAccounts, lazy_pool};
+
+        let service = FrankingService::new(
+            Arc::new(FrankingRepo::new(lazy_pool())),
+            None,
+            Arc::new(StubAccounts),
+            Arc::new(RecordingSanctions::default()),
+        );
+        let dto = service.server_key_for(Uuid::from_u128(1)).await;
+        assert!(dto.reviewer_roster_ready);
+        assert!(dto.wrap_targets.items.is_empty());
+        assert!(dto.wrap_targets.own_items.is_empty());
+        assert!(dto.server_franking_key_id.is_none());
     }
 }

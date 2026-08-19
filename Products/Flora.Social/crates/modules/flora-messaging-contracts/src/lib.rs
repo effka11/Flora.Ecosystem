@@ -915,11 +915,34 @@ pub enum FrankingResolveDecision {
     Rejected,
 }
 
+/// Signing public key plus optional submit-time wrap roster.
+///
+/// Wrap targets are nested on this frozen GET (`/franking/server-key`,
+/// next-architecture.md §1.2) instead of a new path. Roster SQL must not
+/// change the GET status: failure yields empty wraps and the signing key.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FrankingServerKeyDto {
     pub server_franking_key_id: Option<Uuid>,
     pub public_key_base64_url: Option<String>,
+    pub wrap_targets: FrankingWrapTargetsDto,
+    pub reviewer_roster_ready: bool,
+}
+
+/// Active reviewer device for submit-time viewer-wrap (franking.md §4.7).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingWrapTargetDto {
+    pub user_uuid: Uuid,
+    pub device_uuid: Uuid,
+    pub agreement_public_key_base64_url: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrankingWrapTargetsDto {
+    pub items: Vec<FrankingWrapTargetDto>,
+    pub own_items: Vec<FrankingWrapTargetDto>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1056,10 +1079,36 @@ mod franking_null_contract_tests {
         let key = FrankingServerKeyDto {
             server_franking_key_id: None,
             public_key_base64_url: None,
+            wrap_targets: FrankingWrapTargetsDto::default(),
+            reviewer_roster_ready: false,
         };
         let key_json = serde_json::to_value(&key).expect("key json");
         assert!(key_json["serverFrankingKeyId"].is_null());
         assert!(key_json["publicKeyBase64Url"].is_null());
+        assert_eq!(key_json["wrapTargets"]["items"], serde_json::json!([]));
+        assert_eq!(key_json["reviewerRosterReady"], false);
+
+        let wrap_targets = serde_json::to_value(FrankingWrapTargetsDto {
+            items: vec![FrankingWrapTargetDto {
+                user_uuid: Uuid::nil(),
+                device_uuid: Uuid::nil(),
+                agreement_public_key_base64_url: "pk".into(),
+            }],
+            own_items: vec![FrankingWrapTargetDto {
+                user_uuid: Uuid::nil(),
+                device_uuid: Uuid::nil(),
+                agreement_public_key_base64_url: "own".into(),
+            }],
+        })
+        .expect("wrap targets json");
+        assert_eq!(
+            wrap_targets["items"][0]["agreementPublicKeyBase64Url"],
+            "pk"
+        );
+        assert_eq!(
+            wrap_targets["ownItems"][0]["agreementPublicKeyBase64Url"],
+            "own"
+        );
 
         let disclosure = FrankingDisclosureDto {
             disclosure_ciphertext: String::new(),

@@ -12,8 +12,12 @@
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8Bytes } from "./base64url.js";
+import { canonicalJson } from "./canonicalJson.js";
+import { rkeUnwrapMessageKey, rkeWrapMessageKey } from "./rke.js";
 import type { SodiumModule } from "./sodium.js";
 import { toBase64Url } from "./unlockFlow.js";
+
+const URLSAFE_NO_PADDING = 7;
 
 export const FSCP_FRANKING_CONTEXT_V1 = "flora.fscp.franking.v1";
 export const FSCP_FRANKING_RECEIPT_CONTEXT_V1 = "flora.fscp.franking-receipt.v1";
@@ -180,7 +184,7 @@ export function sealFrankingDisclosureV1(
   const nonce = sodium.randombytes_buf(FSCP_FRANKING_DISCLOSURE_NONCE_BYTES);
   const ciphertext = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
     plaintext,
-    utf8Bytes(FSCP_FRANKING_DISCLOSURE_AAD_V1),
+    FSCP_FRANKING_DISCLOSURE_AAD_V1,
     null,
     nonce,
     reportContentKey,
@@ -207,8 +211,243 @@ export function openFrankingDisclosureV1(
   return sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
     null,
     ciphertext,
-    utf8Bytes(FSCP_FRANKING_DISCLOSURE_AAD_V1),
+    FSCP_FRANKING_DISCLOSURE_AAD_V1,
     nonce,
     reportContentKey,
   );
+}
+
+type FscpBase64Sodium = Pick<SodiumModule, "to_base64" | "from_base64"> & {
+  base64_variants?: { URLSAFE_NO_PADDING: number };
+};
+
+function sodiumUrlSafeVariant(sodium: FscpBase64Sodium): number {
+  return sodium.base64_variants?.URLSAFE_NO_PADDING ?? URLSAFE_NO_PADDING;
+}
+
+/** Wire base64url без `btoa` — Hermes его не даёт. */
+export function encodeFscpBase64Url(sodium: FscpBase64Sodium, bytes: Uint8Array): string {
+  if (typeof sodium.to_base64 !== "function") {
+    throw new Error("sodium.to_base64 недоступен.");
+  }
+  return sodium.to_base64(bytes, sodiumUrlSafeVariant(sodium));
+}
+
+export function decodeFscpBase64Url(sodium: FscpBase64Sodium, value: string): Uint8Array {
+  if (typeof sodium.from_base64 !== "function") {
+    throw new Error("sodium.from_base64 недоступен.");
+  }
+  return sodium.from_base64(value.trim(), sodiumUrlSafeVariant(sodium));
+}
+
+/** Кортеж жалобы в sealed disclosure (franking.md §4.4), плюс persisted UUID для POST. */
+export type FrankingComplaintDisclosureV1 = {
+  v: 1;
+  plaintextUtf8Base64Url: string;
+  frankingKeyBase64Url: string | null;
+  frankTagBase64Url: string | null;
+  serverFrankReceipt: ServerFrankReceiptV1 | null;
+  messageUuid: string;
+  persistedMessageUuid: string;
+  conversationUuid: string;
+  senderUserUuid: string;
+  senderDeviceUuid: string;
+  receiverUserUuid: string;
+  createdAt: string;
+};
+
+export type FrankingComplaintDisclosureInputV1 = {
+  plaintextUtf8: Uint8Array;
+  frankingKeyBase64Url: string | null;
+  frankTagBase64Url: string | null;
+  serverFrankReceipt: ServerFrankReceiptV1 | null;
+  messageUuid: string;
+  persistedMessageUuid: string;
+  conversationUuid: string;
+  senderUserUuid: string;
+  senderDeviceUuid: string;
+  receiverUserUuid: string;
+  createdAt: string;
+};
+
+export function encodeFrankingComplaintDisclosureV1(
+  sodium: FscpBase64Sodium,
+  input: FrankingComplaintDisclosureInputV1,
+): Uint8Array {
+  const disclosure: FrankingComplaintDisclosureV1 = {
+    v: 1,
+    plaintextUtf8Base64Url: encodeFscpBase64Url(sodium, input.plaintextUtf8),
+    frankingKeyBase64Url: input.frankingKeyBase64Url,
+    frankTagBase64Url: input.frankTagBase64Url,
+    serverFrankReceipt: input.serverFrankReceipt,
+    messageUuid: input.messageUuid,
+    persistedMessageUuid: input.persistedMessageUuid,
+    conversationUuid: input.conversationUuid,
+    senderUserUuid: input.senderUserUuid,
+    senderDeviceUuid: input.senderDeviceUuid,
+    receiverUserUuid: input.receiverUserUuid,
+    createdAt: input.createdAt,
+  };
+  return utf8Bytes(canonicalJson(disclosure));
+}
+
+export type FrankingSealedReportV1 = {
+  reportContentKey: Uint8Array;
+  disclosureCiphertext: string;
+};
+
+export function sealFrankingComplaintDisclosureV1(
+  sodium: FrankingDisclosureSodium & FscpBase64Sodium,
+  input: FrankingComplaintDisclosureInputV1,
+): FrankingSealedReportV1 {
+  const { reportContentKey, sealed } = sealFrankingDisclosureV1(
+    sodium,
+    encodeFrankingComplaintDisclosureV1(sodium, input),
+  );
+  return {
+    reportContentKey,
+    disclosureCiphertext: encodeFscpBase64Url(sodium, sealed),
+  };
+}
+
+export const FSCP_FRANKING_WRAP_CONTEXT_V1 = "flora.fscp.franking-wrap.v1";
+export const FSCP_FRANKING_WRAP_EPH_BYTES = 32;
+export const FSCP_FRANKING_WRAP_SALT_BYTES = 32;
+export const FSCP_FRANKING_WRAP_NONCE_BYTES = 24;
+
+export function frankingWrapAadV1(params: {
+  persistedMessageUuid: string;
+  userUuid: string;
+  deviceUuid: string;
+}): string {
+  return [
+    FSCP_FRANKING_WRAP_CONTEXT_V1,
+    params.persistedMessageUuid.toLowerCase(),
+    params.userUuid.toLowerCase(),
+    params.deviceUuid.toLowerCase(),
+  ].join(" | ");
+}
+
+export type FrankingWrapTargetV1 = {
+  userUuid: string;
+  deviceUuid: string;
+  agreementPublicKey: Uint8Array;
+};
+
+export type FrankingWrappedKeyV1 = {
+  userUuid: string;
+  deviceUuid: string;
+  wrappedKey: string;
+};
+
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+  let total = 0;
+  for (const part of parts) total += part.length;
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
+type FrankingWrapSodium = FrankingDisclosureSodium & FscpBase64Sodium & SodiumModule;
+
+export function wrapReportContentKeyV1(
+  sodium: FrankingWrapSodium,
+  params: {
+    reportContentKey: Uint8Array;
+    persistedMessageUuid: string;
+    target: FrankingWrapTargetV1;
+  },
+): FrankingWrappedKeyV1 {
+  if (params.reportContentKey.length !== FSCP_FRANKING_REPORT_CONTENT_KEY_BYTES) {
+    throw new Error("reportContentKey должен быть 32 байта.");
+  }
+  const aadUtf8Line = frankingWrapAadV1({
+    persistedMessageUuid: params.persistedMessageUuid,
+    userUuid: params.target.userUuid,
+    deviceUuid: params.target.deviceUuid,
+  });
+  const salt32 = sodium.randombytes_buf(FSCP_FRANKING_WRAP_SALT_BYTES);
+  const wrapped = rkeWrapMessageKey({
+    sodium,
+    ephemeralSecret: sodium.randombytes_buf(FSCP_FRANKING_WRAP_EPH_BYTES),
+    recipientAgreementPublicKey: params.target.agreementPublicKey,
+    salt32,
+    aadUtf8Line,
+    messageKey32: params.reportContentKey,
+  });
+  const packed = concatBytes([
+    wrapped.ephemeralPublicKey,
+    salt32,
+    wrapped.nonce,
+    wrapped.ciphertext,
+  ]);
+  return {
+    userUuid: params.target.userUuid,
+    deviceUuid: params.target.deviceUuid,
+    wrappedKey: encodeFscpBase64Url(sodium, packed),
+  };
+}
+
+export function unwrapReportContentKeyV1(
+  sodium: FrankingWrapSodium,
+  params: {
+    wrappedKey: string;
+    persistedMessageUuid: string;
+    userUuid: string;
+    deviceUuid: string;
+    agreementPrivateKey: Uint8Array;
+  },
+): Uint8Array {
+  const packed = decodeFscpBase64Url(sodium, params.wrappedKey);
+  const header =
+    FSCP_FRANKING_WRAP_EPH_BYTES + FSCP_FRANKING_WRAP_SALT_BYTES + FSCP_FRANKING_WRAP_NONCE_BYTES;
+  if (packed.length <= header) {
+    throw new Error("franking wrap слишком короткий.");
+  }
+  return rkeUnwrapMessageKey({
+    sodium,
+    agreementPrivateKey: params.agreementPrivateKey,
+    ephemeralPublicKey: packed.subarray(0, FSCP_FRANKING_WRAP_EPH_BYTES),
+    salt32: packed.subarray(
+      FSCP_FRANKING_WRAP_EPH_BYTES,
+      FSCP_FRANKING_WRAP_EPH_BYTES + FSCP_FRANKING_WRAP_SALT_BYTES,
+    ),
+    aadUtf8Line: frankingWrapAadV1({
+      persistedMessageUuid: params.persistedMessageUuid,
+      userUuid: params.userUuid,
+      deviceUuid: params.deviceUuid,
+    }),
+    nonce: packed.subarray(header - FSCP_FRANKING_WRAP_NONCE_BYTES, header),
+    ciphertext: packed.subarray(header),
+  });
+}
+
+export function assembleFrankingReportV1(
+  sodium: FrankingWrapSodium,
+  params: {
+    complaint: FrankingComplaintDisclosureInputV1;
+    wrapTargets: readonly FrankingWrapTargetV1[];
+  },
+): { disclosureCiphertext: string; wraps: FrankingWrappedKeyV1[] } {
+  const sealed = sealFrankingComplaintDisclosureV1(sodium, params.complaint);
+  const wraps = params.wrapTargets.map((target) =>
+    wrapReportContentKeyV1(sodium, {
+      reportContentKey: sealed.reportContentKey,
+      persistedMessageUuid: params.complaint.persistedMessageUuid,
+      target,
+    }),
+  );
+  return { disclosureCiphertext: sealed.disclosureCiphertext, wraps };
+}
+
+/** Tagged v1.1+ без квитанции — не жаловаться (franking.md §4.3). Untagged v1 — unverifiable, можно. */
+export function frankingReportBlockedByMissingReceipt(input: {
+  frankTagBase64Url?: string | null;
+  hasServerFrankReceipt: boolean;
+}): boolean {
+  return Boolean(input.frankTagBase64Url?.trim()) && !input.hasServerFrankReceipt;
 }

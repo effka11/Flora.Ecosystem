@@ -236,8 +236,10 @@ export const floraMessages = {
   bubbleMaxWidthRatio: 0.78,
   /** Вертикальный зазор между строками сообщений в ленте (и до линии compose у последнего). */
   bubbleRowGap: floraSpacing.grid,
-  /** Отступ меню от края пузыря (= ½ bubbleRowGap). */
-  bubbleMenuGap: floraSpacing.grid / 2,
+  /** Отступ меню от края пузыря (= gridFine). */
+  bubbleMenuGap: floraSpacing.gridFine,
+  /** Мин. отступ меню от линий шапка / compose (= grid + fine). */
+  bubbleMenuFeedInset: floraSpacing.grid + floraSpacing.gridFine,
   bubbleGap: 2 * floraSpacing.grid,
   /** Горизонтальный padding текстового пузыря (= var(--flora-grid-step) на вебе). */
   bubblePadding: floraSpacing.grid,

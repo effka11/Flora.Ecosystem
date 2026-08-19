@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   parseFrankingAudit,
   parseFrankingQueue,
+  parseFrankingServerKey,
+  parseFrankingWrapTargets,
+  parseMessageFrankingFields,
+  parseServerFrankReceipt,
   type FrankingReportMetaDto,
 } from "./franking.js";
 
@@ -164,5 +168,110 @@ describe("parseFrankingAudit", () => {
     expect(audit.events).toHaveLength(2);
     expect(audit.events[0]?.subjectUserUuid).toBe("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     expect(audit.events[1]?.subjectUserUuid).toBeNull();
+  });
+});
+
+describe("parseServerFrankReceipt", () => {
+  it("reads camelCase receipt or returns null", () => {
+    expect(
+      parseServerFrankReceipt({
+        signatureBase64Url: "sig",
+        serverFrankingKeyId: "kid",
+        serverReceivedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toEqual({
+      signatureBase64Url: "sig",
+      serverFrankingKeyId: "kid",
+      serverReceivedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(parseServerFrankReceipt(null)).toBeNull();
+    expect(parseServerFrankReceipt({ signatureBase64Url: "sig" })).toBeNull();
+  });
+});
+
+describe("parseFrankingWrapTargets", () => {
+  it("keeps complete device rows", () => {
+    const page = parseFrankingWrapTargets({
+      items: [
+        {
+          userUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          deviceUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          agreementPublicKeyBase64Url: "pk",
+        },
+        { userUuid: "skip" },
+      ],
+    });
+    expect(page.items).toEqual([
+      {
+        userUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        deviceUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        agreementPublicKeyBase64Url: "pk",
+      },
+    ]);
+    expect(page.ownItems).toEqual([]);
+  });
+
+  it("parses ownItems for reporter backup wraps", () => {
+    const page = parseFrankingWrapTargets({
+      items: [],
+      ownItems: [
+        {
+          userUuid: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          deviceUuid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+          agreementPublicKeyBase64Url: "own",
+        },
+      ],
+    });
+    expect(page.ownItems).toHaveLength(1);
+    expect(page.ownItems[0]?.agreementPublicKeyBase64Url).toBe("own");
+  });
+});
+
+describe("parseFrankingServerKey", () => {
+  it("reads nested wrapTargets and the top-level roster flag", () => {
+    const page = parseFrankingServerKey({
+      serverFrankingKeyId: "kid",
+      publicKeyBase64Url: "pk",
+      wrapTargets: {
+        items: [
+          {
+            userUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            deviceUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            agreementPublicKeyBase64Url: "pk",
+          },
+        ],
+        ownItems: [],
+      },
+      reviewerRosterReady: false,
+    });
+    expect(page.serverFrankingKeyId).toBe("kid");
+    expect(page.publicKeyBase64Url).toBe("pk");
+    expect(page.reviewerRosterReady).toBe(false);
+    expect(page.wrapTargets.items).toHaveLength(1);
+    expect(page.wrapTargets).not.toHaveProperty("reviewerRosterReady");
+  });
+});
+
+describe("parseMessageFrankingFields", () => {
+  it("reads frank tag and receipt from a message object", () => {
+    expect(
+      parseMessageFrankingFields({
+        frankTagBase64Url: "tag",
+        serverFrankReceipt: {
+          signatureBase64Url: "sig",
+          serverFrankingKeyId: "kid",
+          serverReceivedAt: "2026-01-01T00:00:00.000Z",
+        },
+      }),
+    ).toEqual({
+      frankTagBase64Url: "tag",
+      serverFrankReceipt: {
+        signatureBase64Url: "sig",
+        serverFrankingKeyId: "kid",
+        serverReceivedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    expect(parseMessageFrankingFields({}).frankTagBase64Url).toBeNull();
+    expect(parseMessageFrankingFields({}).serverFrankReceipt).toBeNull();
   });
 });

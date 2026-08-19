@@ -13,7 +13,7 @@ import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { TabSearchInput } from "@/app/_shared/TabSearchInput";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { ApiRequestError, isDevLocalOfflineSession } from "@/lib/auth";
-import { apiCreateFrankingReport, apiGetPushPreviewTargets } from "@flora/client-core/api";
+import { apiGetPushPreviewTargets, submitFrankingMessageReport } from "@flora/client-core/api";
 import type { FrankingReportCategory } from "@flora/client-core/contracts";
 import {
   buildNotificationPreviewBundle,
@@ -110,8 +110,7 @@ import {
 import { ImageMessageCard } from "./ImageMessageCard";
 import { MessageImageCollage } from "./MessageImageCollage";
 import { MessageBubbleAnchor } from "./MessageBubbleMoreMenu";
-import { canReportMessage } from "./messageReport";
-import { sealMessageReportDisclosure } from "./sealFrankingDisclosure";
+import { canReportMessage, FRANKING_MISSING_RECEIPT_WARNING, frankingMissingReceiptWarning } from "./messageReport";
 import { MessagesDeleteConversationModal } from "./MessagesDeleteConversationModal";
 import { MessagesReportMessageModal } from "./MessagesReportMessageModal";
 import { MessagesSafetyNumberModal } from "./MessagesSafetyNumberModal";
@@ -366,6 +365,9 @@ function toMessageDto(m: MsgMessageDto): MessageThreadItemDto {
     createdAt: m.createdAt,
     isFromMe: m.isFromMe,
     isRead: m.isRead,
+    senderUserUuid: m.senderUserUuid,
+    serverFrankReceipt: m.serverFrankReceipt ?? null,
+    frankTagBase64Url: m.frankTagBase64Url ?? null,
   };
 }
 
@@ -2458,30 +2460,36 @@ function MessagesChatInner() {
       setReportMessageBusy(true);
       setReportMessageError(null);
       try {
-        const content = displayMessageContent(message);
-        const disclosureCiphertext = await sealMessageReportDisclosure({
-          v: 1,
-          persistedMessageUuid: message.messageUuid,
-          createdAt: message.createdAt,
-          peerUserUuid: peer,
-          plaintext: content === "failed" || content === "decrypting" ? null : content,
-        });
-        await apiCreateFrankingReport({
-          persistedMessageUuid: message.messageUuid,
+        const wire = message.encryptedForMe?.trim();
+        const viewerUserUuid = me?.userUuid?.trim();
+        if (!wire || !viewerUserUuid || !fscpMaterial) {
+          throw new Error("Не удалось отправить жалобу.");
+        }
+        if (isFscpGroupWirePayload(wire) || !isFscpWirePayload(wire)) {
+          throw new Error("Жалобу можно подать только на расшифрованное FSCP-сообщение.");
+        }
+        await submitFrankingMessageReport({
           category,
-          disclosureCiphertext,
+          persistedMessageUuid: message.messageUuid,
+          wire,
+          viewerUserUuid,
+          agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+          serverFrankReceipt: message.serverFrankReceipt ?? null,
+          frankTagBase64Url: message.frankTagBase64Url ?? null,
+          localMaterial: fscpMaterial,
         });
         dismissReportMessageModal();
       } catch (e) {
         setReportMessageError(
-          e instanceof ApiRequestError ? e.message : "Не удалось отправить жалобу.",
+          e instanceof Error && e.message.trim() ? e.message : "Не удалось отправить жалобу.",
         );
         setReportMessageBusy(false);
       }
     },
     [
       dismissReportMessageModal,
-      displayMessageContent,
+      fscpMaterial,
+      me?.userUuid,
       pendingReportMessage,
       selectedOtherUuid,
     ],
@@ -4658,7 +4666,14 @@ function MessagesChatInner() {
                       const timeMeta = deliveryState ? <MessageReadReceipt state={deliveryState} /> : null;
                       const timeInlineReservePx = deliveryState ? MESSAGE_RECEIPT_INLINE_RESERVE_PX : 0;
                       const canReply = message.sendStatus !== "sending";
+                      const missingReceipt = frankingMissingReceiptWarning({
+                        isGroupChat: isGroupChatOpen,
+                        frankTagBase64Url: message.frankTagBase64Url,
+                        wire: message.encryptedForMe,
+                        hasServerFrankReceipt: Boolean(message.serverFrankReceipt),
+                      });
                       return (
+                        <>
                         <MessageBubbleAnchor
                           anchorClassName={styles.messagesBubbleAnchor}
                           isFromMe={message.isFromMe}
@@ -4676,7 +4691,14 @@ function MessagesChatInner() {
                               isFromMe: message.isFromMe,
                               isGroupChat: isGroupChatOpen,
                               sendStatus: message.sendStatus,
-                            }) && displayMessageContent(message) !== "decrypting"
+                              decryptState:
+                                content === "decrypting" || content === "failed"
+                                  ? content
+                                  : "ok",
+                              frankTagBase64Url: message.frankTagBase64Url,
+                              wire: message.encryptedForMe,
+                              hasServerFrankReceipt: Boolean(message.serverFrankReceipt),
+                            })
                               ? () => {
                                   setReportMessageError(null);
                                   setReportMessageModalClosing(false);
@@ -4836,6 +4858,12 @@ function MessagesChatInner() {
                             ) : null}
                           </div>
                         </MessageBubbleAnchor>
+                        {missingReceipt ? (
+                          <p className={styles.messagesFrankingReceiptWarn}>
+                            {FRANKING_MISSING_RECEIPT_WARNING}
+                          </p>
+                        ) : null}
+                        </>
                       );
                     };
 

@@ -12,14 +12,24 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { fromBase64Url, utf8Bytes } from "./base64url.js";
+import { peekFscpWireFrankTagBase64Url } from "./envelope.js";
+import { FSCP_WIRE_PREFIX } from "./constants.js";
 import {
+  assembleFrankingReportV1,
   computeFrankTagV1,
   constantTimeEqual,
+  decodeFscpBase64Url,
+  encodeFscpBase64Url,
+  encodeFrankingComplaintDisclosureV1,
+  frankingReportBlockedByMissingReceipt,
   frankCommitInputV1,
   frankReceiptPayloadV1,
   openFrankingDisclosureV1,
+  sealFrankingComplaintDisclosureV1,
   sealFrankingDisclosureV1,
+  unwrapReportContentKeyV1,
   verifyFrankedMessageV1,
+  wrapReportContentKeyV1,
   type FrankComplaintTupleV1,
 } from "./franking.js";
 import { configureSodiumLoader, type SodiumModule } from "./sodium.js";
@@ -174,5 +184,138 @@ describe("golden: franking-v1.json (FSCP-FRANK, эталонная реализ�
     expect(reportContentKey.length).toBe(32);
     expect(sealed.length).toBeGreaterThan(24);
     expect(openFrankingDisclosureV1(sodium, sealed, reportContentKey)).toEqual(plaintext);
+  });
+
+  it("encodeFscpBase64Url uses sodium.to_base64 URLSAFE_NO_PADDING, not btoa", () => {
+    const calls: number[] = [];
+    const encoded = encodeFscpBase64Url(
+      {
+        to_base64: (_bytes, variant) => {
+          calls.push(variant);
+          return "ok";
+        },
+        from_base64: () => new Uint8Array(),
+        base64_variants: { URLSAFE_NO_PADDING: 7 },
+      },
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(encoded).toBe("ok");
+    expect(calls).toEqual([7]);
+  });
+
+  it("complaint disclosure encodes AEAD plaintext bytes, not preview text", () => {
+    const plaintextUtf8 = utf8Bytes('{"type":"blocks","pad":"000"}');
+    const encoded = encodeFrankingComplaintDisclosureV1(sodium, {
+      plaintextUtf8,
+      frankingKeyBase64Url: "kf",
+      frankTagBase64Url: "tag",
+      serverFrankReceipt: {
+        signatureBase64Url: "sig",
+        serverFrankingKeyId: "kid",
+        serverReceivedAt: "2026-01-01T00:00:00.000Z",
+      },
+      messageUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      persistedMessageUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      conversationUuid: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      senderUserUuid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      senderDeviceUuid: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      receiverUserUuid: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const json = JSON.parse(new TextDecoder().decode(encoded)) as {
+      plaintextUtf8Base64Url: string;
+      frankingKeyBase64Url: string;
+    };
+    expect(decodeFscpBase64Url(sodium, json.plaintextUtf8Base64Url)).toEqual(plaintextUtf8);
+    expect(json.frankingKeyBase64Url).toBe("kf");
+    const { disclosureCiphertext } = sealFrankingComplaintDisclosureV1(sodium, {
+      plaintextUtf8,
+      frankingKeyBase64Url: null,
+      frankTagBase64Url: null,
+      serverFrankReceipt: null,
+      messageUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      persistedMessageUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      conversationUuid: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      senderUserUuid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      senderDeviceUuid: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      receiverUserUuid: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(disclosureCiphertext.length).toBeGreaterThan(8);
+    expect(disclosureCiphertext.includes("+")).toBe(false);
+    expect(disclosureCiphertext.includes("/")).toBe(false);
+  });
+
+  it("wraps reportContentKey to a device agreement key", () => {
+    const recipient = sodium.crypto_box_keypair();
+    const reportContentKey = sodium.randombytes_buf(32);
+    const target = {
+      userUuid: "11111111-1111-1111-1111-111111111111",
+      deviceUuid: "22222222-2222-2222-2222-222222222222",
+      agreementPublicKey: recipient.publicKey,
+    };
+    const wrapped = wrapReportContentKeyV1(sodium, {
+      reportContentKey,
+      persistedMessageUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      target,
+    });
+    expect(
+      unwrapReportContentKeyV1(sodium, {
+        wrappedKey: wrapped.wrappedKey,
+        persistedMessageUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        userUuid: target.userUuid,
+        deviceUuid: target.deviceUuid,
+        agreementPrivateKey: recipient.privateKey.subarray(0, 32),
+      }),
+    ).toEqual(reportContentKey);
+
+    const assembled = assembleFrankingReportV1(sodium, {
+      complaint: {
+        plaintextUtf8: utf8Bytes("pt"),
+        frankingKeyBase64Url: null,
+        frankTagBase64Url: null,
+        serverFrankReceipt: null,
+        messageUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        persistedMessageUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        conversationUuid: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        senderUserUuid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        senderDeviceUuid: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        receiverUserUuid: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      wrapTargets: [target],
+    });
+    expect(assembled.wraps).toHaveLength(1);
+    expect(assembled.disclosureCiphertext.length).toBeGreaterThan(8);
+  });
+
+  it("blocks tagged messages without a receipt and allows untagged v1", () => {
+    expect(
+      frankingReportBlockedByMissingReceipt({
+        frankTagBase64Url: "tag",
+        hasServerFrankReceipt: false,
+      }),
+    ).toBe(true);
+    expect(
+      frankingReportBlockedByMissingReceipt({
+        frankTagBase64Url: "tag",
+        hasServerFrankReceipt: true,
+      }),
+    ).toBe(false);
+    expect(
+      frankingReportBlockedByMissingReceipt({
+        frankTagBase64Url: null,
+        hasServerFrankReceipt: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("peekFscpWireFrankTagBase64Url", () => {
+  it("reads frankTag from envelope JSON without decrypting", () => {
+    const wire = `${FSCP_WIRE_PREFIX}${toBase64Url(utf8Bytes(JSON.stringify({ frankTagBase64Url: "tag" })))}`;
+    expect(peekFscpWireFrankTagBase64Url(wire)).toBe("tag");
+    expect(peekFscpWireFrankTagBase64Url(`${FSCP_WIRE_PREFIX}${toBase64Url(utf8Bytes("{}"))}`)).toBeNull();
+    expect(peekFscpWireFrankTagBase64Url("not-fscp")).toBeNull();
   });
 });

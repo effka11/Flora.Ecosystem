@@ -25,6 +25,7 @@ import {
   messagePlaintextFromBlocks,
   plaintextToPreview,
   type FscpMessageBlock,
+  type FscpMessageReplyRef,
 } from "@flora/client-core/fscp";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -65,8 +66,10 @@ function seedPendingDecryptRow(
   dto: MsgMessageDto,
   blocks: FscpMessageBlock[],
   clientMessageKey: string,
+  replyTo?: FscpMessageReplyRef,
 ): void {
   const plain = messagePlaintextFromBlocks(blocks, dto.createdAt);
+  if (replyTo) plain.replyTo = replyTo;
   const row: ThreadBubbleItem = {
     messageUuid: dto.messageUuid,
     clientMessageKey,
@@ -74,6 +77,7 @@ function seedPendingDecryptRow(
     previewText: plaintextToPreview(plain),
     imageBlocks: getImageBlocksFromPlaintext(plain),
     voiceBlock: getPrimaryVoiceBlock(plain),
+    replyTo,
     isFromMe: true,
     createdAt: dto.createdAt,
     decryptState: "ok",
@@ -229,6 +233,7 @@ export function useGroupChatThread(params: {
         onPending?: (clientMessageKey: string) => void;
         voiceAssetUuids?: string[];
         imageAssetUuids?: string[];
+        replyTo?: FscpMessageReplyRef;
       },
     ): Promise<
       { ok: true; clientMessageKey: string } | { ok: false; restoreDraft?: boolean }
@@ -262,7 +267,7 @@ export function useGroupChatThread(params: {
         isFromMe: true,
         isRead: false,
       };
-      seedPendingDecryptRow(pendingDto, blocks, clientMessageKey);
+      seedPendingDecryptRow(pendingDto, blocks, clientMessageKey, opts?.replyTo);
       setGroupPendingOutgoing(conversationUuid, pendingDto);
       setPendingEpoch((n) => n + 1);
       opts?.onPending?.(clientMessageKey);
@@ -280,6 +285,7 @@ export function useGroupChatThread(params: {
                 material,
                 memberUserUuids: memberUuids,
                 text: textOnly,
+                replyTo: opts?.replyTo,
               })
             : await buildGroupBlocksMessageWire({
                 conversationUuid,
@@ -287,6 +293,7 @@ export function useGroupChatThread(params: {
                 material,
                 memberUserUuids: memberUuids,
                 blocks,
+                replyTo: opts?.replyTo,
               });
         const sent = await apiSendGroupMessage(conversationUuid, wire, {
           voiceAssetUuids: opts?.voiceAssetUuids,
@@ -302,6 +309,7 @@ export function useGroupChatThread(params: {
           isRead: false,
         };
         const plain = messagePlaintextFromBlocks(blocks, sent.createdAt);
+        if (opts?.replyTo) plain.replyTo = opts.replyTo;
         const ackRow: ThreadBubbleItem = {
           messageUuid: sent.messageUuid,
           clientMessageKey,
@@ -309,6 +317,7 @@ export function useGroupChatThread(params: {
           previewText: plaintextToPreview(plain),
           imageBlocks: getImageBlocksFromPlaintext(plain),
           voiceBlock: getPrimaryVoiceBlock(plain),
+          replyTo: opts?.replyTo,
           isFromMe: true,
           createdAt: sent.createdAt,
           decryptState: "ok",
@@ -353,7 +362,7 @@ export function useGroupChatThread(params: {
   const sendText = useCallback(
     async (
       text: string,
-      opts?: { onPending?: (clientMessageKey: string) => void },
+      opts?: { onPending?: (clientMessageKey: string) => void; replyTo?: FscpMessageReplyRef },
     ): Promise<
       { ok: true; clientMessageKey: string } | { ok: false; restoreDraft?: boolean }
     > => {
