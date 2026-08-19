@@ -10,11 +10,118 @@ export const FRANKING_REPORT_CATEGORIES: readonly FrankingReportCategory[] = [
   "other",
 ];
 
+export type ServerFrankReceiptDto = {
+  signatureBase64Url: string;
+  serverFrankingKeyId: string;
+  serverReceivedAt: string;
+};
+
+export function parseServerFrankReceipt(
+  raw: unknown,
+  ctx?: ParseContext,
+): ServerFrankReceiptDto | null {
+  const o = asRecord(raw);
+  if (!o) return null;
+  const fb = ctx?.onPascalFallback;
+  const signatureBase64Url = readStr(o, ["signatureBase64Url", "SignatureBase64Url"], fb);
+  const serverFrankingKeyId = readStr(o, ["serverFrankingKeyId", "ServerFrankingKeyId"], fb);
+  const serverReceivedAt = readStr(o, ["serverReceivedAt", "ServerReceivedAt"], fb);
+  if (!signatureBase64Url || !serverFrankingKeyId || !serverReceivedAt) return null;
+  return { signatureBase64Url, serverFrankingKeyId, serverReceivedAt };
+}
+
+export function parseMessageFrankingFields(
+  raw: Record<string, unknown>,
+  ctx?: ParseContext,
+): {
+  serverFrankReceipt: ServerFrankReceiptDto | null;
+  frankTagBase64Url: string | null;
+} {
+  const fb = ctx?.onPascalFallback;
+  const frankTagBase64Url = readStr(raw, ["frankTagBase64Url", "FrankTagBase64Url"], fb);
+  return {
+    serverFrankReceipt: parseServerFrankReceipt(
+      raw.serverFrankReceipt ?? raw.ServerFrankReceipt,
+      ctx,
+    ),
+    frankTagBase64Url: frankTagBase64Url.length > 0 ? frankTagBase64Url : null,
+  };
+}
+
 export type FrankingDisclosureWrapDto = {
   userUuid: string;
   deviceUuid: string;
   wrappedKey: string;
 };
+
+export type FrankingWrapTargetDto = {
+  userUuid: string;
+  deviceUuid: string;
+  agreementPublicKeyBase64Url: string;
+};
+
+export type FrankingWrapTargetsDto = {
+  items: FrankingWrapTargetDto[];
+  ownItems: FrankingWrapTargetDto[];
+};
+
+function parseWrapTargetList(raw: unknown, ctx?: ParseContext): FrankingWrapTargetDto[] {
+  if (!Array.isArray(raw)) return [];
+  const fb = ctx?.onPascalFallback;
+  return raw.flatMap((item) => {
+    const row = asRecord(item);
+    if (!row) return [];
+    const userUuid = readStr(row, ["userUuid", "UserUuid"], fb);
+    const deviceUuid = readStr(row, ["deviceUuid", "DeviceUuid"], fb);
+    const agreementPublicKeyBase64Url = readStr(
+      row,
+      ["agreementPublicKeyBase64Url", "AgreementPublicKeyBase64Url"],
+      fb,
+    );
+    return userUuid && deviceUuid && agreementPublicKeyBase64Url
+      ? [{ userUuid, deviceUuid, agreementPublicKeyBase64Url }]
+      : [];
+  });
+}
+
+function rosterReadyFlag(raw: unknown, fallback: boolean): boolean {
+  return typeof raw === "boolean" ? raw : fallback;
+}
+
+export function parseFrankingWrapTargets(raw: unknown, ctx?: ParseContext): FrankingWrapTargetsDto {
+  const o = asRecord(raw);
+  if (!o) return { items: [], ownItems: [] };
+  return {
+    items: parseWrapTargetList(o.items ?? o.Items, ctx),
+    ownItems: parseWrapTargetList(o.ownItems ?? o.OwnItems, ctx),
+  };
+}
+
+export type FrankingServerKeyDto = {
+  serverFrankingKeyId: string | null;
+  publicKeyBase64Url: string | null;
+  wrapTargets: FrankingWrapTargetsDto;
+  reviewerRosterReady: boolean;
+};
+
+export function parseFrankingServerKey(raw: unknown, ctx?: ParseContext): FrankingServerKeyDto {
+  const o = asRecord(raw);
+  if (!o) {
+    return {
+      serverFrankingKeyId: null,
+      publicKeyBase64Url: null,
+      wrapTargets: { items: [], ownItems: [] },
+      reviewerRosterReady: true,
+    };
+  }
+  const fb = ctx?.onPascalFallback;
+  return {
+    serverFrankingKeyId: readStr(o, ["serverFrankingKeyId", "ServerFrankingKeyId"], fb) || null,
+    publicKeyBase64Url: readStr(o, ["publicKeyBase64Url", "PublicKeyBase64Url"], fb) || null,
+    wrapTargets: parseFrankingWrapTargets(o.wrapTargets ?? o.WrapTargets, ctx),
+    reviewerRosterReady: rosterReadyFlag(o.reviewerRosterReady ?? o.ReviewerRosterReady, true),
+  };
+}
 
 export type CreateFrankingReportRequest = {
   persistedMessageUuid: string;

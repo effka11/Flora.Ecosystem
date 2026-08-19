@@ -283,6 +283,7 @@ mod tests {
     #[test]
     fn franking_prefix_matches_only_franking_routes() {
         assert!(is_franking_path("/api/messaging/franking/reports"));
+        assert!(is_franking_path("/api/messaging/franking/server-key"));
         assert!(is_franking_path(
             "/api/messaging/franking/reports/019e/resolve"
         ));

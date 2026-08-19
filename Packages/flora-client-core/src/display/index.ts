@@ -5,3 +5,4 @@ export * from "./resolveDefaultAvatarColor.js";
 export * from "./avatarImageUrl.js";
 export * from "./postImageUrl.js";
 export * from "./messageBubbleTimePlacement.js";
+export * from "./frankingReport.js";

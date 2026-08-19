@@ -5,6 +5,7 @@ import {
   apiDeleteConversation,
   apiDeleteMessage,
   apiGetPushPreviewTargets,
+  submitFrankingMessageReport,
 } from "@flora/client-core/api";
 import {
   apiGetUserE2ePublicKey,
@@ -17,7 +18,11 @@ import {
   type FscpVoiceBlock,
   type NotificationPreviewKind,
 } from "@flora/client-core/fscp";
-import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
+import type {
+  FrankingReportCategory,
+  MsgConversationDto,
+  MsgMessageDto,
+} from "@flora/client-core/contracts";
 import {
   apiPostTyping,
   apiPresenceHeartbeat,
@@ -27,7 +32,7 @@ import {
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -43,10 +48,17 @@ import {
   View,
   Alert,
   type ScrollViewProps,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
+import { Pressable as GesturePressable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { KeyboardGestureArea } from "react-native-keyboard-controller";
+import { KeyboardGestureArea, KeyboardEvents } from "react-native-keyboard-controller";
 import Reanimated, {
+  measure,
+  runOnJS,
+  runOnUI,
+  useAnimatedRef,
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
@@ -73,12 +85,20 @@ import { ChatPeerMessageGroup } from "@/components/messages/ChatPeerMessageGroup
 import { ChatMessageEmojiPanel } from "@/components/messages/ChatMessageEmojiPanel";
 import { ChatGroupThreadHeader } from "@/components/messages/ChatGroupThreadHeader";
 import { ChatMoreMenu } from "@/components/messages/ChatMoreMenu";
+import { ChatReportMessageModal } from "@/components/messages/ChatReportMessageModal";
 import { GroupMembersSheet } from "@/components/messages/GroupMembersSheet";
 import {
   MessageBubbleMoreMenu,
-  bubbleAnchorsEqual,
+  useOpenMessageMenuUuid,
   type BubbleAnchorRect,
 } from "@/components/messages/MessageBubbleMoreMenu";
+import {
+  estimateMenuPanelHeight,
+  lockMenuFit,
+  MENU_ROW_HEIGHT_PX,
+  shouldCloseMessageMenuOnListMotion,
+} from "@/lib/messageBubbleMoreMenuLayout";
+import { canReportMessage, frankingReportUserError } from "@/lib/messageReport";
 import { ChatThreadHeader, type ChatPeerInfo } from "@/components/messages/ChatThreadHeader";
 import {
   floraColors,
@@ -135,7 +155,7 @@ import {
   replaceOptimisticOutgoingThreadMessage,
 } from "@/lib/messageThreadOutgoing";
 import { subscribeRead } from "@/lib/readEvents";
-import { replyDraftFromMessage, type MessageReplyDraft } from "@/lib/messageReply";
+import { replyDraftFromMessage, canReplyToMessage, type MessageReplyDraft } from "@/lib/messageReply";
 import { uploadPreparedMessageVoice } from "@/lib/messageVoiceAssets";
 import {
   clearPendingVoiceUri,
@@ -241,9 +261,16 @@ function listItemKey(item: ThreadListItem): string {
   return item.message.clientMessageKey ?? item.message.messageUuid;
 }
 
+function threadListItemHasMessage(item: ThreadListItem, messageUuid: string): boolean {
+  if (item.kind === "peerGroup") {
+    return item.messages.some((row) => row.messageUuid === messageUuid);
+  }
+  return item.message.messageUuid === messageUuid;
+}
+
 export default function ThreadScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: windowHeight } = useWindowDimensions();
   /** Исходящий текст — без peer inset (как ChatMessageBubble isFromMe). */
   const outgoingLiftCtx = useMemo(
     () => ({
@@ -322,40 +349,62 @@ export default function ThreadScreen() {
 
   const composeRef = useRef<ChatComposeFieldHandle>(null);
   const moreBtnRef = useRef<View>(null);
-  const dockFooterRef = useRef<View>(null);
+  const dockFooterRef = useAnimatedRef<Reanimated.View>();
   const chatHeaderWrapRef = useRef<View>(null);
   const atBottomRef = useRef(true);
   const prevListLengthRef = useRef(0);
   const [menuTarget, setMenuTarget] = useState<{
     message: ThreadBubbleItem;
     anchor: BubbleAnchorRect;
+    placement: "above" | "below";
+    shiftY: number;
+    panelHeight: number;
+    feedTopY: number | null;
   } | null>(null);
   const [feedTopY, setFeedTopY] = useState<number | null>(null);
   const [feedBottomY, setFeedBottomY] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState<MessageReplyDraft | null>(null);
+  const [pendingReportMessage, setPendingReportMessage] = useState<ThreadBubbleItem | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   const closeMessageMenu = useCallback(() => {
     setMenuTarget(null);
-    setFeedTopY(null);
-    setFeedBottomY(null);
+  }, []);
+  const closeMessageMenuRef = useRef(closeMessageMenu);
+  closeMessageMenuRef.current = closeMessageMenu;
+
+  const applyFeedBounds = useCallback((topY: number, bottomY: number) => {
+    setFeedTopY(topY);
+    setFeedBottomY(bottomY);
   }, []);
 
   const syncFeedBoundsY = useCallback(() => {
-    dockFooterRef.current?.measureInWindow((_dockX, dockY) => {
-      chatHeaderWrapRef.current?.measureInWindow((_headerX, headerY, _headerW, headerH) => {
-        const dividerY = headerY + headerH;
-        setFeedTopY(dividerY);
-        setFeedBottomY(dockY);
-      });
+    chatHeaderWrapRef.current?.measureInWindow((_headerX, headerY, _headerW, headerH) => {
+      const dividerY = headerY + headerH;
+      runOnUI(() => {
+        const dock = measure(dockFooterRef);
+        if (dock == null) return;
+        runOnJS(applyFeedBounds)(dividerY, dock.pageY);
+      })();
     });
-  }, []);
+  }, [applyFeedBounds, dockFooterRef]);
 
   useEffect(() => {
-    if (!menuTarget) return;
     syncFeedBoundsY();
     const frame = requestAnimationFrame(syncFeedBoundsY);
-    return () => cancelAnimationFrame(frame);
-  }, [menuTarget, syncFeedBoundsY]);
+    const willHide = KeyboardEvents.addListener("keyboardWillHide", syncFeedBoundsY);
+    const didHide = KeyboardEvents.addListener("keyboardDidHide", syncFeedBoundsY);
+    const willShow = KeyboardEvents.addListener("keyboardWillShow", syncFeedBoundsY);
+    const didShow = KeyboardEvents.addListener("keyboardDidShow", syncFeedBoundsY);
+    return () => {
+      cancelAnimationFrame(frame);
+      willHide.remove();
+      didHide.remove();
+      willShow.remove();
+      didShow.remove();
+    };
+  }, [syncFeedBoundsY]);
 
   const clearReplyDraft = useCallback(() => {
     setReplyTo(null);
@@ -781,6 +830,7 @@ export default function ThreadScreen() {
     conversationUuid,
     messages,
     messagesKey,
+    isGroupChat,
     viewerUserUuid: me?.userUuid,
     fscpReady,
     fscpDecryptKey,
@@ -799,6 +849,47 @@ export default function ThreadScreen() {
     );
     return chronological.reverse();
   }, [decrypted]);
+
+  const listDataRef = useRef(listData);
+  listDataRef.current = listData;
+  /**
+   * FlashList cells are `position: absolute`. Inner zIndex cannot stack above a
+   * later sibling cell, so a menu that opens toward older messages (visually
+   * down) is covered. Raise overflow + zIndex on the cell that owns the menu.
+   */
+  const MenuCellRenderer = useMemo(
+    () =>
+      forwardRef<
+        View,
+        { index?: number; style?: StyleProp<ViewStyle>; children?: React.ReactNode }
+      >(function MessageMenuCell({ style, index, children, ...rest }, ref) {
+        const menuUuid = useOpenMessageMenuUuid();
+        const item = typeof index === "number" ? listDataRef.current[index] : undefined;
+        const isOwner = Boolean(
+          menuUuid && item && threadListItemHasMessage(item, menuUuid),
+        );
+        const blocked = Boolean(menuUuid && !isOwner);
+        return (
+          <View
+            ref={ref}
+            collapsable={false}
+            {...rest}
+            pointerEvents="box-none"
+            style={[style, styles.menuCell, isOwner ? styles.menuCellOpen : null]}
+          >
+            {children}
+            <GesturePressable
+              accessibilityRole="button"
+              accessibilityLabel="Закрыть меню"
+              pointerEvents={blocked ? "auto" : "none"}
+              style={styles.menuCellDismiss}
+              onPress={() => closeMessageMenuRef.current()}
+            />
+          </View>
+        );
+      }),
+    [],
+  );
 
   const listMessageCount = useMemo(() => {
     let n = 0;
@@ -1021,7 +1112,9 @@ export default function ThreadScreen() {
       // промежуточный кадр собственной коррекции низа отменил бы коррекцию.
       if (atBottom) setListPinned(true);
       onEndVisible(atBottom);
-      closeMessageMenu();
+      if (shouldCloseMessageMenuOnListMotion("offset-change")) {
+        closeMessageMenu();
+      }
     },
     [closeMessageMenu, dockExtraPaddingSv, onEndVisible, setListPinned],
   );
@@ -1029,7 +1122,10 @@ export default function ThreadScreen() {
   /** Программные скроллы дока drag-событий не порождают — снимает только палец. */
   const onScrollBeginDrag = useCallback(() => {
     setListPinned(false);
-  }, [setListPinned]);
+    if (shouldCloseMessageMenuOnListMotion("user-drag")) {
+      closeMessageMenu();
+    }
+  }, [closeMessageMenu, setListPinned]);
 
   const copyMessageContent = useCallback(async (previewText: string) => {
     const ok = await copyTextToClipboard(previewText);
@@ -1043,15 +1139,14 @@ export default function ThreadScreen() {
 
   const beginReplyToMessage = useCallback(
     (message: ThreadBubbleItem) => {
-      if (isGroupChat) return;
-      const draft = replyDraftFromMessage(message, message.previewText, peerDisplayName);
+      const draft = replyDraftFromMessage(message, peerDisplayName);
       if (!draft) return;
       closeMessageMenu();
       setReplyTo(draft);
       closeEmoji();
       composeRef.current?.focusInput();
     },
-    [closeEmoji, closeMessageMenu, isGroupChat, peerDisplayName],
+    [closeEmoji, closeMessageMenu, peerDisplayName],
   );
 
   const handleDeleteMessage = useCallback(
@@ -1092,24 +1187,113 @@ export default function ThreadScreen() {
     [closeMessageMenu, conversationUuid, otherUserUuid, queryClient],
   );
 
-  const onMessagePress = useCallback(
-    (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => {
-      closeEmoji();
-      dismissKeyboard();
-      setMenuTarget((prev) =>
-        prev?.message.messageUuid === message.messageUuid ? null : { message, anchor },
-      );
+  const dismissReportMessageModal = useCallback(() => {
+    if (reportBusy) return;
+    setPendingReportMessage(null);
+    setReportError(null);
+  }, [reportBusy]);
+
+  const beginReportMessage = useCallback((message: ThreadBubbleItem) => {
+    setReportError(null);
+    setPendingReportMessage(message);
+  }, []);
+
+  const handleConfirmReportMessage = useCallback(
+    async (category: FrankingReportCategory) => {
+      const message = pendingReportMessage;
+      const peer = otherUserUuid?.trim();
+      const viewerUserUuid = me?.userUuid?.trim();
+      const material = fscpMaterial;
+      const dto = messages.find((row) => row.messageUuid === message?.messageUuid);
+      const wire = dto?.encryptedPayload?.trim();
+      if (!message || !peer || !viewerUserUuid || !material || !dto || !wire) return;
+      setReportBusy(true);
+      setReportError(null);
+      try {
+        await submitFrankingMessageReport({
+          category,
+          persistedMessageUuid: message.messageUuid,
+          wire,
+          viewerUserUuid,
+          agreementPrivateKey: material.agreementPrivateKey,
+          serverFrankReceipt: dto.serverFrankReceipt ?? null,
+          frankTagBase64Url: dto.frankTagBase64Url ?? null,
+          localMaterial: material,
+        });
+        setPendingReportMessage(null);
+      } catch (e) {
+        setReportError(frankingReportUserError(e));
+      } finally {
+        setReportBusy(false);
+      }
     },
-    [closeEmoji, dismissKeyboard],
+    [fscpMaterial, me?.userUuid, messages, otherUserUuid, pendingReportMessage],
   );
 
-  const syncMenuAnchor = useCallback((messageUuid: string, anchor: BubbleAnchorRect) => {
-    setMenuTarget((prev) => {
-      if (prev?.message.messageUuid !== messageUuid) return prev;
-      if (bubbleAnchorsEqual(prev.anchor, anchor)) return prev;
-      return { ...prev, anchor };
-    });
-  }, []);
+  const canReportThreadMessage = useCallback(
+    (message: ThreadBubbleItem) => {
+      const dto = messages.find((row) => row.messageUuid === message.messageUuid);
+      return (
+        Boolean(otherUserUuid) &&
+        canReportMessage({
+          isFromMe: message.isFromMe,
+          isGroupChat,
+          sendStatus: message.sendStatus,
+          decryptState: message.decryptState,
+          frankTagBase64Url: dto?.frankTagBase64Url,
+          wire: dto?.encryptedPayload,
+          hasServerFrankReceipt: Boolean(dto?.serverFrankReceipt),
+        })
+      );
+    },
+    [isGroupChat, messages, otherUserUuid],
+  );
+
+  const onMessagePress = useCallback(
+    (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => {
+      setMenuTarget((prev) => {
+        if (prev) return null;
+        const canDelete =
+          !isGroupChat && message.isFromMe && message.sendStatus !== "sending";
+        const canReport = canReportThreadMessage(message);
+        const panelHeight = estimateMenuPanelHeight(message.isFromMe, canDelete, canReport);
+        const allowBottomClamp = !keyboardOpen;
+        const fit = lockMenuFit({
+          visualTop: anchor.visualTop,
+          visualBottom: anchor.visualBottom,
+          pressWindowY: anchor.originY,
+          feedTopY,
+          feedBottomY,
+          windowHeight,
+          panelHeight,
+          menuGap: floraMessages.bubbleMenuGap,
+          feedInset: floraMessages.bubbleMenuFeedInset,
+          allowBottomClamp,
+        });
+        return {
+          message,
+          anchor,
+          placement: fit.placement,
+          shiftY: fit.shiftY,
+          panelHeight: panelHeight + MENU_ROW_HEIGHT_PX,
+          feedTopY,
+        };
+      });
+      closeEmoji();
+      dismissKeyboard();
+    },
+    [
+      closeEmoji,
+      canReportThreadMessage,
+      dismissKeyboard,
+      feedBottomY,
+      feedTopY,
+      isGroupChat,
+      keyboardOpen,
+      otherUserUuid,
+      windowHeight,
+    ],
+  );
 
   const renderMessage = useCallback(
     ({ item }: { item: ThreadListItem }) => {
@@ -1125,9 +1309,7 @@ export default function ThreadScreen() {
               messages={item.messages}
               peer={peer}
               groupMembers={isGroupChat ? groupThread.members : undefined}
-              menuTargetUuid={menuTarget?.message.messageUuid ?? null}
               onPress={onMessagePress}
-              onAnchorSync={syncMenuAnchor}
               holdAvatarStyle={isTrailing ? peerAvatarHoldStyle : undefined}
             />
           </View>
@@ -1135,7 +1317,6 @@ export default function ThreadScreen() {
       }
 
       const message = item.message;
-      const isMenuTarget = menuTarget?.message.messageUuid === message.messageUuid;
       const clientKey = message.clientMessageKey ?? message.messageUuid;
       return (
         <View style={styles.rowInverted}>
@@ -1145,11 +1326,7 @@ export default function ThreadScreen() {
               peer={peer}
               showPeerAvatar={false}
               isPeerIndented={false}
-              isMenuTarget={isMenuTarget}
               onPress={(anchor) => onMessagePress(message, anchor)}
-              onAnchorSync={
-                isMenuTarget ? (anchor) => syncMenuAnchor(message.messageUuid, anchor) : undefined
-              }
             />
           </ChatMessageBirthHost>
         </View>
@@ -1159,11 +1336,9 @@ export default function ThreadScreen() {
       groupThread.members,
       isGroupChat,
       listData,
-      menuTarget?.message.messageUuid,
       onMessagePress,
       peer,
       peerAvatarHoldStyle,
-      syncMenuAnchor,
     ],
   );
 
@@ -1243,6 +1418,7 @@ export default function ThreadScreen() {
         clearPendingVoiceUri(provisionalAssetUuid);
         const result = await groupThread.sendBlocks([voiceBlock], {
           voiceAssetUuids: [voiceBlock.assetUuid],
+          replyTo: activeReply ?? undefined,
           onPending: (key) => {
             seenMessageIdsRef.current.add(key);
             pinListToBottom(false);
@@ -1416,6 +1592,7 @@ export default function ThreadScreen() {
         uri: image.uri,
         contentType: image.contentType,
       }));
+      const activeReply = replyTo;
       setSending(true);
       setReplyTo(null);
       setDeleteBarHeightPx(0);
@@ -1425,6 +1602,7 @@ export default function ThreadScreen() {
       try {
         if (imageSnapshot.length === 0) {
           const result = await groupThread.sendText(trimmed, {
+            replyTo: activeReply ?? undefined,
             onPending: (clientMessageKey) => {
               seenMessageIdsRef.current.add(clientMessageKey);
               pinListToBottom(false);
@@ -1458,6 +1636,7 @@ export default function ThreadScreen() {
         if (blocks.length === 0) return;
         const result = await groupThread.sendBlocks(blocks, {
           imageAssetUuids,
+          replyTo: activeReply ?? undefined,
           onPending: (clientMessageKey) => {
             seenMessageIdsRef.current.add(clientMessageKey);
             pinListToBottom(false);
@@ -1635,7 +1814,55 @@ export default function ThreadScreen() {
 
   return (
     <View style={styles.root}>
-      <View ref={chatHeaderWrapRef} collapsable={false}>
+      <MessageBubbleMoreMenu
+        open={menuTarget != null}
+        targetUuid={menuTarget?.message.messageUuid ?? null}
+        anchor={menuTarget?.anchor ?? null}
+        placement={menuTarget?.placement ?? "above"}
+        shiftY={menuTarget?.shiftY ?? 0}
+        visualTop={menuTarget?.anchor.visualTop ?? null}
+        feedTopY={menuTarget?.feedTopY ?? null}
+        panelHeight={menuTarget?.panelHeight ?? 0}
+        menuGap={floraMessages.bubbleMenuGap}
+        feedInset={floraMessages.bubbleMenuFeedInset}
+        isFromMe={menuTarget?.message.isFromMe ?? false}
+        canReplyCopy={
+          menuTarget != null &&
+          menuTarget.message.decryptState === "ok" &&
+          menuTarget.message.previewText.length > 0
+        }
+        canReply={canReplyToMessage(menuTarget?.message)}
+        canDelete={
+          !isGroupChat &&
+          menuTarget != null &&
+          menuTarget.message.isFromMe &&
+          menuTarget.message.sendStatus !== "sending"
+        }
+        onClose={closeMessageMenu}
+        onReply={
+          menuTarget ? () => beginReplyToMessage(menuTarget.message) : undefined
+        }
+        onCopy={
+          menuTarget
+            ? () => void copyMessageContent(menuTarget.message.previewText)
+            : undefined
+        }
+        onDelete={
+          !isGroupChat && menuTarget?.message.isFromMe
+            ? () => handleDeleteMessage(menuTarget.message.messageUuid)
+            : undefined
+        }
+        onReport={
+          menuTarget && canReportThreadMessage(menuTarget.message)
+            ? () => beginReportMessage(menuTarget.message)
+            : undefined
+        }
+      >
+      <View
+        ref={chatHeaderWrapRef}
+        collapsable={false}
+        style={menuTarget != null ? styles.chromeDismissHost : undefined}
+      >
         {isGroupChat ? (
           <ChatGroupThreadHeader
             title={groupThread.title}
@@ -1657,8 +1884,17 @@ export default function ThreadScreen() {
             onMorePress={() => setMoreMenuOpen((open) => !open)}
           />
         )}
+        {menuTarget != null ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть меню"
+            style={styles.chromeDismissFill}
+            onPress={closeMessageMenu}
+          />
+        ) : null}
       </View>
 
+      <View style={menuTarget != null ? styles.chromeDismissHost : undefined}>
       {blocked ? (
         <Pressable style={styles.blockedBanner} onPress={() => setUnlockOpen(true)}>
           <Text style={styles.blockedText}>{blockedText}</Text>
@@ -1670,6 +1906,15 @@ export default function ThreadScreen() {
           <Text style={styles.blockedText}>{decryptFailHint}</Text>
         </Pressable>
       ) : null}
+        {menuTarget != null ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть меню"
+            style={styles.chromeDismissFill}
+            onPress={closeMessageMenu}
+          />
+        ) : null}
+      </View>
 
       <KeyboardGestureArea
         style={styles.chatBody}
@@ -1728,63 +1973,37 @@ export default function ThreadScreen() {
                 стоит скролл, и попадает в кадр само.
               */
               maintainVisibleContentPosition={{ disabled: true }}
+              CellRendererComponent={MenuCellRenderer}
               renderItem={renderMessage}
             />
           </Reanimated.View>
         </Reanimated.View>
 
         {showJumpToLatest ? (
-          <Reanimated.View style={[styles.jumpBtn, jumpBtnBottomStyle]}>
+          <Reanimated.View
+            style={[styles.jumpBtn, jumpBtnBottomStyle]}
+            pointerEvents={menuTarget != null ? "box-none" : "auto"}
+          >
             <Pressable onPress={() => scrollToEnd(true)}>
               <Text style={styles.jumpBtnText}>Новые сообщения</Text>
             </Pressable>
+            {menuTarget != null ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Закрыть меню"
+                style={styles.chromeDismissFill}
+                onPress={closeMessageMenu}
+              />
+            ) : null}
           </Reanimated.View>
         ) : null}
-
-        <MessageBubbleMoreMenu
-          open={menuTarget != null}
-          anchor={menuTarget?.anchor ?? null}
-          feedTopY={feedTopY}
-          feedBottomY={feedBottomY}
-          isFromMe={menuTarget?.message.isFromMe ?? false}
-          canReplyCopy={
-            menuTarget != null &&
-            menuTarget.message.decryptState === "ok" &&
-            menuTarget.message.previewText.length > 0
-          }
-          canReply={
-            !isGroupChat &&
-            menuTarget != null &&
-            menuTarget.message.decryptState === "ok" &&
-            menuTarget.message.previewText.length > 0 &&
-            menuTarget.message.sendStatus !== "sending"
-          }
-          canDelete={
-            !isGroupChat &&
-            menuTarget != null &&
-            menuTarget.message.isFromMe &&
-            menuTarget.message.sendStatus !== "sending"
-          }
-          onClose={closeMessageMenu}
-          onReply={
-            !isGroupChat && menuTarget
-              ? () => beginReplyToMessage(menuTarget.message)
-              : undefined
-          }
-          onCopy={
-            menuTarget
-              ? () => void copyMessageContent(menuTarget.message.previewText)
-              : undefined
-          }
-          onDelete={
-            !isGroupChat && menuTarget?.message.isFromMe
-              ? () => handleDeleteMessage(menuTarget.message.messageUuid)
-              : undefined
-          }
-        />
       </View>
 
-      <Reanimated.View ref={dockFooterRef} collapsable={false} style={[styles.dockFooter, dockStickyStyle]}>
+      <Reanimated.View
+        ref={dockFooterRef}
+        collapsable={false}
+        style={[styles.dockFooter, dockStickyStyle]}
+      >
         <View
           style={styles.dockColumn}
           onLayout={(e) => onDockColumnIdleLayout(e.nativeEvent.layout.height)}
@@ -1830,6 +2049,15 @@ export default function ThreadScreen() {
 
         </View>
 
+        {menuTarget != null ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть меню"
+            style={styles.chromeDismissFill}
+            onPress={closeMessageMenu}
+          />
+        ) : null}
+
         {/* При смонтированной панели полосу navInset закрывает статичная
             шторка (см. emojiNavShutter): хвост едет с доком и при открытой
             панели перекрыл бы её верх (z дока выше). Подмена одноимённой
@@ -1874,6 +2102,7 @@ export default function ThreadScreen() {
         />
       ) : null}
       </KeyboardGestureArea>
+      </MessageBubbleMoreMenu>
 
       <ChatMoreMenu
         open={moreMenuOpen}
@@ -1993,6 +2222,14 @@ export default function ThreadScreen() {
         userUuid={me?.userUuid ?? null}
         onClose={() => setUnlockOpen(false)}
       />
+
+      <ChatReportMessageModal
+        visible={pendingReportMessage != null}
+        busy={reportBusy}
+        error={reportError}
+        onDismiss={dismissReportMessageModal}
+        onConfirm={(category) => void handleConfirmReportMessage(category)}
+      />
     </View>
   );
 }
@@ -2015,6 +2252,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  chromeDismissHost: {
+    position: "relative",
+  },
+  chromeDismissFill: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 6,
+  },
+  menuCellDismiss: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 1,
+  },
   chatBody: {
     flex: 1,
     minHeight: 0,
@@ -2028,6 +2276,7 @@ const styles = StyleSheet.create({
   },
   listFill: {
     ...StyleSheet.absoluteFill,
+    overflow: "visible",
   },
   /**
    * Переворот ленты целиком: последнее сообщение оказывается в начале скролла,
@@ -2036,9 +2285,22 @@ const styles = StyleSheet.create({
   listInverted: {
     ...StyleSheet.absoluteFill,
     transform: [{ scaleY: -1 }],
+    overflow: "visible",
   },
   rowInverted: {
     transform: [{ scaleY: -1 }],
+    overflow: "visible",
+  },
+  rowMenuOpen: {
+    zIndex: 8,
+    elevation: 8,
+  },
+  menuCell: {
+    overflow: "visible",
+  },
+  menuCellOpen: {
+    zIndex: 20,
+    elevation: 20,
   },
   /**
    * В координатах скролла это низ, а на экране — верх ленты (над самым старым

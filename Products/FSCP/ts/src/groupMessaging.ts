@@ -87,6 +87,7 @@ export async function buildGroupTextMessageWire(params: {
   /** Active members including sender; sender is filtered out of RKE fan-out inputs. */
   memberUserUuids: readonly string[];
   text: string;
+  replyTo?: FscpMessagePlaintext["replyTo"];
 }): Promise<string> {
   return buildGroupBlocksMessageWire({
     conversationUuid: params.conversationUuid,
@@ -94,6 +95,7 @@ export async function buildGroupTextMessageWire(params: {
     material: params.material,
     memberUserUuids: params.memberUserUuids,
     blocks: [{ kind: "text", body: params.text }],
+    replyTo: params.replyTo,
   });
 }
 

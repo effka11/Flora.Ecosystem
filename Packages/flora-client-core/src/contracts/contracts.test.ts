@@ -104,6 +104,36 @@ describe("contract fixtures", () => {
     const msgs = loadFixture("messaging-messages.json");
     const messages = parseMessagesPage(msgs);
     expect(messages.items).toHaveLength(1);
+    expect(messages.items[0]?.serverFrankReceipt ?? null).toBeNull();
+    expect(messages.items[0]?.frankTagBase64Url ?? null).toBeNull();
+  });
+
+  it("parses franking receipt fields on messages", () => {
+    const messages = parseMessagesPage({
+      items: [
+        {
+          messageUuid: "33333333-3333-3333-3333-333333333333",
+          conversationUuid: "11111111-1111-1111-1111-111111111111",
+          senderUserUuid: "22222222-2222-2222-2222-222222222222",
+          encryptedPayload: "SGVsbG8=",
+          createdAt: "2026-06-12T10:00:00.000Z",
+          isFromMe: false,
+          frankTagBase64Url: "tag",
+          serverFrankReceipt: {
+            signatureBase64Url: "sig",
+            serverFrankingKeyId: "kid",
+            serverReceivedAt: "2026-06-12T10:00:01.000Z",
+          },
+        },
+      ],
+      nextCursor: null,
+    });
+    expect(messages.items[0]?.frankTagBase64Url).toBe("tag");
+    expect(messages.items[0]?.serverFrankReceipt).toEqual({
+      signatureBase64Url: "sig",
+      serverFrankingKeyId: "kid",
+      serverReceivedAt: "2026-06-12T10:00:01.000Z",
+    });
   });
 
   it("parses notifications unread", () => {

@@ -195,9 +195,11 @@ export const PostCard = memo(function PostCard({
                 </Pressable>
               </View>
               {timeLabel ? (
-                <Text style={styles.time} numberOfLines={1}>
-                  {timeLabel}
-                </Text>
+                <View style={styles.timeSlot}>
+                  <Text style={styles.time} numberOfLines={1}>
+                    {timeLabel}
+                  </Text>
+                </View>
               ) : null}
             </View>
             <FeedPostComments
@@ -333,8 +335,6 @@ const styles = StyleSheet.create({
     minHeight: floraSpacing.grid + floraSpacing.gridFine * 2,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: floraSpacing.grid,
     marginTop: floraFeedPost.actionsBarMarginTop,
   },
   actions: {
@@ -364,8 +364,14 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     textAlignVertical: "center",
   },
+  timeSlot: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
+    marginLeft: floraSpacing.grid,
+  },
   time: {
-    flexShrink: 0,
+    maxWidth: "100%",
     color: floraColors.gray,
     fontSize: 13,
     fontWeight: "300",

@@ -11,6 +11,7 @@ import {
   authPostJson,
   authPutJson,
 } from "@/lib/authorizedFetch";
+import { parseMessageFrankingFields } from "@flora/client-core/contracts";
 import { dmConversationUuid } from "@/lib/fscp/deriveIds";
 
 /** Relative path for authFetch / client-core. */
@@ -81,6 +82,12 @@ export type MsgMessageDto = {
   voiceAssetUuids: string[];
   imageAssetUuids: string[];
   videoAssetUuids: string[];
+  serverFrankReceipt?: {
+    signatureBase64Url: string;
+    serverFrankingKeyId: string;
+    serverReceivedAt: string;
+  } | null;
+  frankTagBase64Url?: string | null;
 };
 
 /** Paged response for a message thread. */
@@ -135,6 +142,7 @@ function parseMessage(raw: unknown): MsgMessageDto | null {
   if (!messageUuid) return null;
   const enc = readStr(o, ["encryptedForMe"]);
   const content = readStr(o, ["content"]);
+  const franking = parseMessageFrankingFields(o);
   const voiceAssetUuids: string[] = [];
   if (Array.isArray(o["voiceAssetUuids"])) {
     for (const v of o["voiceAssetUuids"]) {
@@ -164,6 +172,8 @@ function parseMessage(raw: unknown): MsgMessageDto | null {
     voiceAssetUuids,
     imageAssetUuids,
     videoAssetUuids,
+    serverFrankReceipt: franking.serverFrankReceipt,
+    frankTagBase64Url: franking.frankTagBase64Url,
   };
 }
 

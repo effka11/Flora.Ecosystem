@@ -40,6 +40,8 @@ export type FscpEnvelopeWire = {
   /** Ed25519 публичный ключ подписи отправителя (32 байта, base64url). Обязателен для новых wire; старые сообщения могут не содержать поле. */
   senderSigningPublicKeyBase64Url?: string;
   senderSignatureBase64Url: string;
+  /** FSCP-FRANK v1.1+: HMAC-тег. Отсутствует на замороженном v1. */
+  frankTagBase64Url?: string;
 };
 
 export type FscpTextBlock = {
@@ -478,7 +480,23 @@ export async function buildFscpWireEnvelope(params: {
   return wire;
 }
 
-export async function decryptFscpWireEnvelope(params: {
+export type FscpDecryptedWire = {
+  plaintext: FscpMessagePlaintext;
+  /** Ровно AEAD-байты тела, включая pad — HMAC franking (franking.md §4.1). */
+  plaintextUtf8: Uint8Array;
+  envelope: FscpEnvelopeWire;
+  frankingKeyBase64Url: string | null;
+};
+
+function readOptionalFrankingKeyBase64Url(parsed: unknown): string | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const value = (parsed as Record<string, unknown>).frankingKeyBase64Url;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export async function decryptFscpWireEnvelopeDetailed(params: {
   wire: string;
   viewerUserUuid: string;
   agreementPrivateKey: Uint8Array;
@@ -487,7 +505,7 @@ export async function decryptFscpWireEnvelope(params: {
    * По умолчанию false: неподписанные wire отклоняются (downgrade-защита).
    */
   allowUnsignedLegacy?: boolean;
-}): Promise<FscpMessagePlaintext> {
+}): Promise<FscpDecryptedWire> {
   if (!params.wire.startsWith(FSCP_WIRE_PREFIX)) {
     throw new FscpDecryptError("not_fscp_wire", "Не FSCP wire.");
   }
@@ -562,12 +580,47 @@ export async function decryptFscpWireEnvelope(params: {
     throw new FscpDecryptError("body_decrypt_failed", "AEAD тела сообщения не расшифровался (ключ/AAD не совпали).");
   }
   try {
-    return normalizeFscpMessagePlaintext(JSON.parse(new TextDecoder().decode(plain)));
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(plain));
+    return {
+      plaintext: normalizeFscpMessagePlaintext(parsed),
+      plaintextUtf8: plain,
+      envelope: env,
+      frankingKeyBase64Url: readOptionalFrankingKeyBase64Url(parsed),
+    };
   } catch {
     throw new FscpDecryptError("malformed_plaintext", "Расшифрованный plaintext сообщения имеет неверную форму.");
   }
 }
 
+export async function decryptFscpWireEnvelope(params: {
+  wire: string;
+  viewerUserUuid: string;
+  agreementPrivateKey: Uint8Array;
+  /**
+   * Читать конверты без подписи (архив до обязательной подписи).
+   * По умолчанию false: неподписанные wire отклоняются (downgrade-защита).
+   */
+  allowUnsignedLegacy?: boolean;
+}): Promise<FscpMessagePlaintext> {
+  return (await decryptFscpWireEnvelopeDetailed(params)).plaintext;
+}
+
 export function isFscpWirePayload(s: string | null | undefined): boolean {
   return typeof s === "string" && s.startsWith(FSCP_WIRE_PREFIX);
+}
+
+/** Envelope `frankTag` without decrypt (franking.md §4.3). Missing/malformed wire → null. */
+export function peekFscpWireFrankTagBase64Url(wire: string | null | undefined): string | null {
+  if (typeof wire !== "string" || !wire.startsWith(FSCP_WIRE_PREFIX)) return null;
+  try {
+    const raw = fromBase64Url(wire.slice(FSCP_WIRE_PREFIX.length));
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(raw));
+    if (!parsed || typeof parsed !== "object") return null;
+    const tag = (parsed as Record<string, unknown>).frankTagBase64Url;
+    if (typeof tag !== "string") return null;
+    const trimmed = tag.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
 }

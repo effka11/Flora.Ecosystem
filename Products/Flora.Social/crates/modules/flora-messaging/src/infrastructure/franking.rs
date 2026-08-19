@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use chrono::{DateTime, Utc};
+use flora_messaging_contracts::FrankingWrapTargetDto;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -144,6 +145,23 @@ pub struct FrankingRepo {
     pool: PgPool,
 }
 
+#[derive(sqlx::FromRow)]
+struct WrapTargetRow {
+    user_uuid: Uuid,
+    device_uuid: Uuid,
+    agreement_public_key_base64url: String,
+}
+
+fn wrap_targets_from_rows(rows: Vec<WrapTargetRow>) -> Vec<FrankingWrapTargetDto> {
+    rows.into_iter()
+        .map(|r| FrankingWrapTargetDto {
+            user_uuid: r.user_uuid,
+            device_uuid: r.device_uuid,
+            agreement_public_key_base64_url: r.agreement_public_key_base64url,
+        })
+        .collect()
+}
+
 impl FrankingRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -200,6 +218,47 @@ impl FrankingRepo {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| e.to_string())
+    }
+
+    pub async fn active_reviewer_wrap_targets(
+        &self,
+        exclude_user: Uuid,
+    ) -> Result<Vec<FrankingWrapTargetDto>, String> {
+        let rows: Vec<WrapTargetRow> = sqlx::query_as(
+            r#"
+            SELECT udk.user_uuid, udk.device_uuid, udk.agreement_public_key_base64url
+            FROM flora_core.user_device_keys udk
+            INNER JOIN flora_core.franking_reviewers fr
+                ON fr.user_uuid = udk.user_uuid AND fr.revoked_at IS NULL
+            WHERE udk.status = 'Active'
+              AND udk.user_uuid <> $1
+            ORDER BY udk.user_uuid, udk.created_at
+            "#,
+        )
+        .bind(exclude_user)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(wrap_targets_from_rows(rows))
+    }
+
+    pub async fn active_own_wrap_targets(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<Vec<FrankingWrapTargetDto>, String> {
+        let rows: Vec<WrapTargetRow> = sqlx::query_as(
+            r#"
+            SELECT user_uuid, device_uuid, agreement_public_key_base64url
+            FROM flora_core.user_device_keys
+            WHERE user_uuid = $1 AND status = 'Active'
+            ORDER BY created_at
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(wrap_targets_from_rows(rows))
     }
 
     pub async fn has_active_device(

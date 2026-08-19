@@ -6,6 +6,7 @@ import {
   apiClaimFrankingReport,
   apiCreateFrankingReport,
   apiGetFrankingQueue,
+  apiGetFrankingWrapTargets,
   apiResolveFrankingReport,
   toFrankingFailure,
 } from "./franking.js";
@@ -100,6 +101,51 @@ describe("franking API", () => {
       "https://api.test/api/messaging/franking/queue?cursor=cursor%2Fwith%2Fslash",
       expect.any(Object),
     );
+  });
+
+  it("reads wrap targets from GET /api/messaging/franking/server-key", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        serverFrankingKeyId: null,
+        publicKeyBase64Url: null,
+        wrapTargets: {
+          items: [
+            {
+              userUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+              deviceUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+              agreementPublicKeyBase64Url: "pk",
+            },
+          ],
+          ownItems: [],
+        },
+        reviewerRosterReady: true,
+      }),
+    );
+    setupClient(fetchImpl);
+    const page = await apiGetFrankingWrapTargets();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api.test/api/messaging/franking/server-key",
+      expect.any(Object),
+    );
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]?.deviceUuid).toBe("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    expect(page.ownItems).toEqual([]);
+    expect(page.reviewerRosterReady).toBe(true);
+  });
+
+  it("keeps server-key available when the reviewer roster is not ready", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        serverFrankingKeyId: null,
+        publicKeyBase64Url: null,
+        wrapTargets: { items: [], ownItems: [] },
+        reviewerRosterReady: false,
+      }),
+    );
+    setupClient(fetchImpl);
+    const page = await apiGetFrankingWrapTargets();
+    expect(page.reviewerRosterReady).toBe(false);
+    expect(page.items).toEqual([]);
   });
 
   it("posts claim to reports/{uuid}/claim", async () => {

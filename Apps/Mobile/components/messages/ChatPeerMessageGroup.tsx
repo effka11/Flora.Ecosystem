@@ -5,7 +5,10 @@ import {
   type ThreadBubbleItem,
 } from "@/components/messages/ChatMessageBubble";
 import { ChatMessageBirthHost } from "@/components/messages/ChatMessageBirthHost";
-import type { BubbleAnchorRect } from "@/components/messages/MessageBubbleMoreMenu";
+import {
+  useOpenMessageMenuUuid,
+  type BubbleAnchorRect,
+} from "@/components/messages/MessageBubbleMoreMenu";
 import type { ChatPeerInfo } from "@/components/messages/ChatThreadHeader";
 import { findGroupMember } from "@/lib/groupChatMap";
 import type { GroupMember } from "@/lib/groupChatTypes";
@@ -18,9 +21,7 @@ type Props = {
   peer: ChatPeerInfo;
   /** Group roster — when set, avatar resolves by message senderUserUuid. */
   groupMembers?: readonly GroupMember[];
-  menuTargetUuid: string | null;
   onPress: (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => void;
-  onAnchorSync: (messageUuid: string, anchor: BubbleAnchorRect) => void;
   holdAvatarStyle?: StyleProp<AnimatedStyle<ViewStyle>>;
 };
 
@@ -28,9 +29,7 @@ export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
   messages,
   peer,
   groupMembers,
-  menuTargetUuid,
   onPress,
-  onAnchorSync,
   holdAvatarStyle,
 }: Props) {
   const avatarPeer = useMemo((): ChatPeerInfo => {
@@ -64,6 +63,7 @@ export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
 
   const displayName =
     avatarPeer.otherDisplayName || avatarPeer.otherUsername || "Пользователь";
+  const openMenuUuid = useOpenMessageMenuUuid();
 
   return (
     <View style={styles.group}>
@@ -80,20 +80,19 @@ export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
       <View style={styles.bubbles}>
         {messages.map((message) => {
           const clientKey = message.clientMessageKey ?? message.messageUuid;
-          const isMenuTarget = menuTargetUuid === message.messageUuid;
           return (
-            <ChatMessageBirthHost key={clientKey} clientMessageKey={clientKey}>
+            <ChatMessageBirthHost
+              key={clientKey}
+              clientMessageKey={clientKey}
+              menuOpen={openMenuUuid === message.messageUuid}
+            >
               <ChatMessageBubble
                 message={message}
                 peer={avatarPeer}
                 showPeerAvatar={false}
                 isPeerIndented={false}
                 inPeerGroup
-                isMenuTarget={isMenuTarget}
                 onPress={(anchor) => onPress(message, anchor)}
-                onAnchorSync={
-                  isMenuTarget ? (anchor) => onAnchorSync(message.messageUuid, anchor) : undefined
-                }
               />
             </ChatMessageBirthHost>
           );
@@ -111,6 +110,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
     marginBottom: floraMessages.bubbleRowGap,
     gap: floraSpacing.grid,
+    overflow: "visible",
   },
   avatarSlot: {
     width: floraMessages.peerBubbleAvatarSize,
@@ -120,6 +120,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     maxWidth: "78%",
+    overflow: "visible",
     gap: floraMessages.bubbleRowGap,
   },
 });

@@ -1,4 +1,5 @@
 import {
+  parseFrankingServerKey,
   parseFrankingAudit,
   parseFrankingQueue,
   parseFrankingReportMeta,
@@ -7,6 +8,7 @@ import {
   type FrankingQueueDto,
   type FrankingReportMetaDto,
   type FrankingResolveDecision,
+  type FrankingWrapTargetsDto,
 } from "../contracts/franking.js";
 import { authGetJson, authPostJson, getApiClientConfig } from "./client.js";
 import { isApiRequestError } from "./errors.js";
@@ -111,6 +113,16 @@ export async function apiGetFrankingAudit(reportUuid: string): Promise<FrankingA
   return parseFrankingAudit(raw, ctx());
 }
 
+export type FrankingWrapRosterDto = FrankingWrapTargetsDto & {
+  reviewerRosterReady: boolean;
+};
+
+export async function apiGetFrankingWrapTargets(): Promise<FrankingWrapRosterDto> {
+  const raw = await authGetJson("/api/messaging/franking/server-key");
+  const page = parseFrankingServerKey(raw, ctx());
+  return { ...page.wrapTargets, reviewerRosterReady: page.reviewerRosterReady };
+}
+
 export async function apiCreateFrankingReport(
   body: CreateFrankingReportRequest,
 ): Promise<FrankingReportMetaDto> {
@@ -124,4 +136,4 @@ export async function apiCreateFrankingReport(
   return parseFrankingReportMeta(raw, ctx());
 }
 
-export type { CreateFrankingReportRequest, FrankingResolveDecision };
+export type { CreateFrankingReportRequest, FrankingResolveDecision, FrankingWrapTargetsDto };

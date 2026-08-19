@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import { TouchableOpacity } from "react-native-gesture-handler";
 import type { FscpVoiceBlock } from "@flora/client-core/fscp";
 import { TIME_INLINE_GAP_PX } from "@flora/client-core/display";
@@ -23,7 +23,7 @@ type Props = {
   isFromMe: boolean;
   localUri?: string | null;
   /** Long-press opens bubble menu. */
-  onMenuLongPress?: () => void;
+  onMenuLongPress?: (event?: GestureResponderEvent) => void;
   /** Send time on the duration row (same relation as text time ↔ last line). */
   timeSlot?: ReactNode;
 };

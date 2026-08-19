@@ -5,7 +5,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TouchableWithoutFeedback,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -96,15 +95,19 @@ export function ConversationMoreMenu({
 
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <TouchableWithoutFeedback onPress={onClose} accessible={false}>
-        <View style={styles.modalRoot}>
-          {anchor ? (
-            <TouchableWithoutFeedback>
-              <View
-                style={[styles.panel, { top: anchor.top, right: anchor.right }]}
-                accessibilityRole="menu"
-                accessibilityViewIsModal
-              >
+      <View style={styles.modalRoot} onStartShouldSetResponder={() => true}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Закрыть меню"
+          style={styles.backdrop}
+          onPress={onClose}
+        />
+        {anchor ? (
+          <View
+            style={[styles.panel, { top: anchor.top, right: anchor.right }]}
+            accessibilityRole="menu"
+            accessibilityViewIsModal
+          >
                 {isGroup ? (
                   <>
                     <MenuRow
@@ -179,13 +182,11 @@ export function ConversationMoreMenu({
                   </>
                 )}
               </View>
-            </TouchableWithoutFeedback>
-          ) : null}
-        </View>
-      </TouchableWithoutFeedback>
-    </Modal>
-  );
-}
+            ) : null}
+          </View>
+        </Modal>
+      );
+    }
 
 function MenuRow({
   icon,
@@ -252,7 +253,10 @@ function SubmenuRow({
 const styles = StyleSheet.create({
   modalRoot: {
     flex: 1,
-    backgroundColor: "transparent",
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0, 0, 0, 0.01)",
   },
   panel: {
     position: "absolute",
@@ -268,6 +272,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 24,
     elevation: 12,
+    zIndex: 1,
   },
   menuItem: {
     flexDirection: "row",

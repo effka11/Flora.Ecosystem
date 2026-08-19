@@ -1,3 +1,7 @@
+import {
+  parseMessageFrankingFields,
+  type ServerFrankReceiptDto,
+} from "./franking.js";
 import { asRecord, readBool, readNum, readStr, type ParseContext } from "./parse.js";
 
 export type MsgConversationDto = {
@@ -29,6 +33,8 @@ export type MsgMessageDto = {
   createdAt: string;
   isFromMe: boolean;
   isRead: boolean;
+  serverFrankReceipt?: ServerFrankReceiptDto | null;
+  frankTagBase64Url?: string | null;
 };
 
 export type MsgMessagesPage = {
@@ -90,6 +96,7 @@ function parseMessage(raw: unknown, ctx?: ParseContext): MsgMessageDto | null {
   const encryptedPayload =
     encryptedForMe ||
     readStr(o, ["encryptedPayload", "EncryptedPayload", "content", "Content"], fb);
+  const franking = parseMessageFrankingFields(o, ctx);
   return {
     messageUuid,
     conversationUuid: readStr(o, ["conversationUuid", "ConversationUuid"], fb),
@@ -98,6 +105,8 @@ function parseMessage(raw: unknown, ctx?: ParseContext): MsgMessageDto | null {
     createdAt: readStr(o, ["createdAt", "CreatedAt"], fb),
     isFromMe: readBool(o, ["isFromMe", "IsFromMe"], fb),
     isRead: readBool(o, ["isRead", "IsRead"], fb),
+    serverFrankReceipt: franking.serverFrankReceipt,
+    frankTagBase64Url: franking.frankTagBase64Url,
   };
 }
 
