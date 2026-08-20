@@ -523,22 +523,72 @@ describe("profile idle epoch", () => {
   });
 });
 
+describe("music idle epoch", () => {
+  afterEach(() => {
+    __resetIdleTabPreloadSerializer();
+  });
+
+  it("begin resets a previous complete stamp", () => {
+    markIdleTabPreloadComplete("music", 1);
+    expect(getIdleTabPreloadCompleteAt("music")).toBe(1);
+    beginIdleTabPreloadEpoch("music");
+    expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
+  });
+
+  it("mark sets getAt for the current epoch", () => {
+    beginIdleTabPreloadEpoch("music");
+    expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
+    markIdleTabPreloadComplete("music", 3);
+    expect(getIdleTabPreloadCompleteAt("music")).toBe(3);
+  });
+
+  it("begin after mark invalidates the previous stamp", () => {
+    markIdleTabPreloadComplete("music", 1);
+    expect(getIdleTabPreloadCompleteAt("music")).toBe(1);
+    beginIdleTabPreloadEpoch("music");
+    expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
+    markIdleTabPreloadComplete("music", 2);
+    expect(getIdleTabPreloadCompleteAt("music")).toBe(2);
+  });
+
+  it("notifies waiters when a new epoch starts", () => {
+    const listener = vi.fn();
+    const unsub = subscribeIdleTabPreloadComplete("music", listener);
+    beginIdleTabPreloadEpoch("music");
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it("does not stamp music when messages, notifications, or profile is marked", () => {
+    markIdleTabPreloadComplete("messages", 4);
+    markIdleTabPreloadComplete("notifications", 5);
+    markIdleTabPreloadComplete("profile", 6);
+    expect(getIdleTabPreloadCompleteAt("messages")).toBe(4);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(5);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(6);
+    expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
+  });
+});
+
 describe("idle tab preload stage reset", () => {
   afterEach(() => {
     __resetIdleTabPreloadSerializer();
   });
 
-  it("clears messages, notifications, and profile stages", () => {
+  it("clears messages, notifications, profile, and music stages", () => {
     markIdleTabPreloadComplete("messages", 1);
     markIdleTabPreloadComplete("notifications", 2);
     markIdleTabPreloadComplete("profile", 3);
+    markIdleTabPreloadComplete("music", 4);
     expect(getIdleTabPreloadCompleteAt("messages")).toBe(1);
     expect(getIdleTabPreloadCompleteAt("notifications")).toBe(2);
     expect(getIdleTabPreloadCompleteAt("profile")).toBe(3);
+    expect(getIdleTabPreloadCompleteAt("music")).toBe(4);
     __resetIdleTabPreloadSerializer();
     expect(getIdleTabPreloadCompleteAt("messages")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
   });
 });
 

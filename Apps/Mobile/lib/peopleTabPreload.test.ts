@@ -7,77 +7,68 @@ import {
   markIdleTabPreloadComplete,
 } from "./idleTabPreload";
 import {
-  canPrefetchMusicTab,
-  createIdleMusicTabPreloadController,
-  finishMusicIdleTabPrefetch,
-  isMusicIndexQueryKey,
-  MUSIC_TAB_PRELOAD_HREF,
-  MUSIC_TAB_PRELOAD_QUIET_MS,
-  type IdleMusicTabPreloadSnapshot,
-  type MusicTabPreloadGate,
-} from "./musicTabPreload";
+  PEOPLE_RECOMMENDED_QUERY_KEY,
+  peopleFollowersQueryKey,
+  peopleFollowingQueryKey,
+} from "./people/peopleIndexQueries";
+import {
+  canPrefetchPeopleTab,
+  createIdlePeopleTabPreloadController,
+  isPeopleIndexQueryKey,
+  PEOPLE_TAB_PRELOAD_HREF,
+  PEOPLE_TAB_PRELOAD_QUIET_MS,
+  type IdlePeopleTabPreloadSnapshot,
+  type PeopleTabPreloadGate,
+} from "./peopleTabPreload";
 
-const allow: MusicTabPreloadGate = {
+const allow: PeopleTabPreloadGate = {
   platform: "android",
   appActive: true,
-  musicIndexSuccess: true,
+  peopleIndexSuccess: true,
   scrollSettled: true,
-  quietForMs: MUSIC_TAB_PRELOAD_QUIET_MS,
-  musicTabActive: false,
+  quietForMs: PEOPLE_TAB_PRELOAD_QUIET_MS,
+  peopleTabActive: false,
   alreadyPrefetched: false,
-  profileComplete: true,
-  profileCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+  musicComplete: true,
+  musicCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
 };
 
-describe("MUSIC_TAB_PRELOAD_HREF", () => {
-  it("is the music tab index, not a nested music route", () => {
-    expect(MUSIC_TAB_PRELOAD_HREF).toBe("/(tabs)/music");
+describe("PEOPLE_TAB_PRELOAD_HREF", () => {
+  it("is the people tab index, not a nested people route", () => {
+    expect(PEOPLE_TAB_PRELOAD_HREF).toBe("/(tabs)/people");
   });
 });
 
-describe("finishMusicIdleTabPrefetch", () => {
-  afterEach(() => {
-    __resetIdleTabPreloadSerializer();
+describe("isPeopleIndexQueryKey", () => {
+  it.each([
+    ["recommended", PEOPLE_RECOMMENDED_QUERY_KEY],
+    ["followers", peopleFollowersQueryKey("alice")],
+    ["following", peopleFollowingQueryKey("alice")],
+  ] as const)("is true for index key %s", (_label, queryKey) => {
+    expect(isPeopleIndexQueryKey(queryKey)).toBe(true);
   });
-
-  it("stamps music then releases", () => {
-    const release = vi.fn(() => {
-      expect(getIdleTabPreloadCompleteAt("music")).not.toBeNull();
-    });
-    expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
-    finishMusicIdleTabPrefetch(release);
-    expect(release).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("isMusicIndexQueryKey", () => {
-  it.each([["music-library"], ["music-playlists"]] as const)(
-    "is true for index key %s",
-    (key) => {
-      expect(isMusicIndexQueryKey([key])).toBe(true);
-    },
-  );
 
   it.each([
-    ["nested playlist", ["music-playlist", "pl-1"]],
-    ["genre", ["music-genre", "g1"]],
-    ["genre nested", ["music-genre", "g1", "sg1"]],
-    ["artist", ["music-artist", "uuid"]],
-    ["artist tracks", ["music-artist-tracks", "uuid", 1]],
-    ["artists search", ["music-artists-search", "q"]],
+    ["search", ["people", "search"]],
+    ["search query", ["people", "search", "q"]],
   ] as const)("is false for %s", (_label, queryKey) => {
-    expect(isMusicIndexQueryKey(queryKey)).toBe(false);
+    expect(isPeopleIndexQueryKey(queryKey)).toBe(false);
+  });
+
+  it("shares followers and following cache keys for @alice and alice", () => {
+    expect(peopleFollowersQueryKey("@alice")).toEqual(peopleFollowersQueryKey("alice"));
+    expect(peopleFollowingQueryKey("@alice")).toEqual(peopleFollowingQueryKey("alice"));
   });
 });
 
-describe("canPrefetchMusicTab", () => {
+describe("canPrefetchPeopleTab", () => {
   it("allows when all gates are open", () => {
-    expect(canPrefetchMusicTab(allow)).toBe(true);
+    expect(canPrefetchPeopleTab(allow)).toBe(true);
   });
 
   it("allows when quiet exceeds the window", () => {
     expect(
-      canPrefetchMusicTab({ ...allow, quietForMs: MUSIC_TAB_PRELOAD_QUIET_MS + 1 }),
+      canPrefetchPeopleTab({ ...allow, quietForMs: PEOPLE_TAB_PRELOAD_QUIET_MS + 1 }),
     ).toBe(true);
   });
 
@@ -85,20 +76,20 @@ describe("canPrefetchMusicTab", () => {
     ["ios", { platform: "ios" }],
     ["web", { platform: "web" }],
     ["app inactive", { appActive: false }],
-    ["music index not success", { musicIndexSuccess: false }],
+    ["people index not success", { peopleIndexSuccess: false }],
     ["scroll not settled", { scrollSettled: false }],
-    ["quiet window", { quietForMs: MUSIC_TAB_PRELOAD_QUIET_MS - 1 }],
+    ["quiet window", { quietForMs: PEOPLE_TAB_PRELOAD_QUIET_MS - 1 }],
     ["quiet just started", { quietForMs: 0 }],
-    ["music tab active", { musicTabActive: true }],
+    ["people tab active", { peopleTabActive: true }],
     ["already prefetched", { alreadyPrefetched: true }],
-    ["profile not complete", { profileComplete: false }],
-    ["profile gap", { profileCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
+    ["music not complete", { musicComplete: false }],
+    ["music gap", { musicCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
   ] as const)("blocks when %s", (_label, override) => {
-    expect(canPrefetchMusicTab({ ...allow, ...override })).toBe(false);
+    expect(canPrefetchPeopleTab({ ...allow, ...override })).toBe(false);
   });
 });
 
-describe("createIdleMusicTabPreloadController", () => {
+describe("createIdlePeopleTabPreloadController", () => {
   afterEach(() => {
     vi.useRealTimers();
     __resetIdleTabPreloadSerializer();
@@ -107,23 +98,23 @@ describe("createIdleMusicTabPreloadController", () => {
   function makeController(
     overrides: {
       settled?: { value: boolean };
-      snapshot?: IdleMusicTabPreloadSnapshot;
-      skipProfileComplete?: boolean;
+      snapshot?: IdlePeopleTabPreloadSnapshot;
+      skipMusicComplete?: boolean;
     } = {},
   ) {
-    if (!overrides.skipProfileComplete) {
-      markIdleTabPreloadComplete("profile");
+    if (!overrides.skipMusicComplete) {
+      markIdleTabPreloadComplete("music");
     }
     const settled = overrides.settled ?? { value: true };
-    const snapshot: IdleMusicTabPreloadSnapshot = overrides.snapshot ?? {
+    const snapshot: IdlePeopleTabPreloadSnapshot = overrides.snapshot ?? {
       platform: "android",
       appActive: true,
-      musicIndexSuccess: true,
-      musicTabActive: false,
+      peopleIndexSuccess: true,
+      peopleTabActive: false,
     };
     const prefetch = vi.fn();
-    const controller = createIdleMusicTabPreloadController({
-      quietMs: MUSIC_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdlePeopleTabPreloadController({
+      quietMs: PEOPLE_TAB_PRELOAD_QUIET_MS,
       isScrollSettled: () => settled.value,
       getSnapshot: () => snapshot,
       prefetch,
@@ -135,29 +126,29 @@ describe("createIdleMusicTabPreloadController", () => {
     vi.useFakeTimers();
     const { controller, prefetch, settled } = makeController({ settled: { value: false } });
     controller.evaluate();
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPendingTimer()).toBe(false);
     settled.value = true;
     controller.onScrollSettled(true);
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS - 1);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS - 1);
     expect(prefetch).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not prefetch before both index queries succeed", () => {
+  it("does not prefetch before people index queries succeed", () => {
     vi.useFakeTimers();
     const { controller, prefetch } = makeController({
       snapshot: {
         platform: "android",
         appActive: true,
-        musicIndexSuccess: false,
-        musicTabActive: false,
+        peopleIndexSuccess: false,
+        peopleTabActive: false,
       },
     });
     controller.evaluate();
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPendingTimer()).toBe(false);
   });
@@ -170,7 +161,7 @@ describe("createIdleMusicTabPreloadController", () => {
     settled.value = false;
     controller.onScrollSettled(false);
     expect(controller.hasPendingTimer()).toBe(false);
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
   });
 
@@ -179,7 +170,7 @@ describe("createIdleMusicTabPreloadController", () => {
     const { controller, prefetch, settled } = makeController();
     controller.evaluate();
     settled.value = false;
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(false);
   });
@@ -188,21 +179,21 @@ describe("createIdleMusicTabPreloadController", () => {
     vi.useFakeTimers();
     const { controller, prefetch } = makeController();
     controller.evaluate();
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
     controller.evaluate();
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not prefetch until profile complete for 120ms", () => {
+  it("does not prefetch until music complete for 120ms", () => {
     vi.useFakeTimers();
-    const { controller, prefetch } = makeController({ skipProfileComplete: true });
+    const { controller, prefetch } = makeController({ skipMusicComplete: true });
     controller.evaluate();
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS * 4);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
 
-    markIdleTabPreloadComplete("profile");
+    markIdleTabPreloadComplete("music");
     controller.evaluate();
     vi.advanceTimersByTime(IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1);
     expect(prefetch).not.toHaveBeenCalled();
@@ -210,30 +201,32 @@ describe("createIdleMusicTabPreloadController", () => {
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not treat a previous profile stamp after a new profile epoch", () => {
+  it("does not treat a previous music stamp after a new music epoch", () => {
     vi.useFakeTimers();
-    markIdleTabPreloadComplete("profile");
-    beginIdleTabPreloadEpoch("profile");
-    const { controller, prefetch } = makeController({ skipProfileComplete: true });
+    markIdleTabPreloadComplete("music");
+    beginIdleTabPreloadEpoch("music");
+    const { controller, prefetch } = makeController({ skipMusicComplete: true });
     controller.evaluate();
-    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS * 4);
+    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
   });
 
-  it("latches skip when the music tab is already active and stamps music", () => {
+  it("latches skip when the people tab is already active and does not stamp music", () => {
     const { controller, prefetch } = makeController({
-      skipProfileComplete: true,
+      skipMusicComplete: true,
       snapshot: {
         platform: "android",
         appActive: true,
-        musicIndexSuccess: true,
-        musicTabActive: true,
+        peopleIndexSuccess: true,
+        peopleTabActive: true,
       },
     });
     controller.evaluate();
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(true);
-    expect(getIdleTabPreloadCompleteAt("music")).not.toBeNull();
+    expect(getIdleTabPreloadCompleteAt("messages")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
   });
 });

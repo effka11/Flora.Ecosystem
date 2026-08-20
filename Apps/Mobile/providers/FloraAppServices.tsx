@@ -13,6 +13,15 @@ import {
   MUSIC_LIBRARY_QUERY_KEY,
   MUSIC_PLAYLISTS_QUERY_KEY,
 } from "@/lib/music/musicIndexQueries";
+import {
+  fetchPeopleFollowersQuery,
+  fetchPeopleFollowingQuery,
+  fetchPeopleRecommendedQuery,
+  peopleFollowersQueryKey,
+  peopleFollowingQueryKey,
+  peopleIndexUsername,
+  PEOPLE_RECOMMENDED_QUERY_KEY,
+} from "@/lib/people/peopleIndexQueries";
 import { clearQueryClientRef, setQueryClientRef } from "@/lib/queryClientRef";
 import { useMobileRealtime } from "@/lib/useMobileRealtime";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -52,6 +61,21 @@ export function FloraAppServices({ enabled }: { enabled: boolean }) {
     queryKey: MUSIC_PLAYLISTS_QUERY_KEY,
     queryFn: fetchMusicPlaylistsQuery,
     enabled,
+  });
+  useQuery({
+    queryKey: PEOPLE_RECOMMENDED_QUERY_KEY,
+    queryFn: fetchPeopleRecommendedQuery,
+    enabled,
+  });
+  useQuery({
+    queryKey: peopleFollowersQueryKey(username),
+    queryFn: () => fetchPeopleFollowersQuery(username),
+    enabled: enabled && peopleIndexUsername(username).length > 0,
+  });
+  useQuery({
+    queryKey: peopleFollowingQueryKey(username),
+    queryFn: () => fetchPeopleFollowingQuery(username),
+    enabled: enabled && peopleIndexUsername(username).length > 0,
   });
 
   const userUuid = useSessionStore((s) => s.me?.userUuid ?? null);

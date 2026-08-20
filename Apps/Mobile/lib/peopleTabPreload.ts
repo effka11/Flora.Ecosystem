@@ -3,104 +3,107 @@ import { useEffect, useRef } from "react";
 import { isTabActive } from "@/lib/getActiveTabRouteKey";
 import {
   abortQueuedIdleTabPrefetch,
-  beginIdleTabPreloadEpoch,
   canPrefetchIdleTab,
   canRunQueuedIdleTabPrefetch,
   createIdleTabPreloadController,
   getIdleTabPreloadCompleteAt,
   getIdleTabPreloadSerializer,
   IDLE_TAB_PRELOAD_QUIET_MS,
-  markIdleTabPreloadComplete,
   subscribeIdleTabPreloadComplete,
   type IdleTabPreloadController,
 } from "@/lib/idleTabPreload";
 import {
-  MUSIC_LIBRARY_QUERY_KEY,
-  MUSIC_PLAYLISTS_QUERY_KEY,
-} from "@/lib/music/musicIndexQueries";
+  PEOPLE_FOLLOWERS_SEGMENT,
+  PEOPLE_FOLLOWING_SEGMENT,
+  PEOPLE_QUERY_ROOT,
+  PEOPLE_RECOMMENDED_QUERY_KEY,
+  PEOPLE_RECOMMENDED_SEGMENT,
+  peopleFollowersQueryKey,
+  peopleFollowingQueryKey,
+  peopleIndexUsername,
+} from "@/lib/people/peopleIndexQueries";
 import { isScrollSettled, subscribeScrollSettled } from "@/lib/scrollActivity";
 
 /** Quiet window after the last `settled: true` before Android UI prefetch. */
-export const MUSIC_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
+export const PEOPLE_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
 
-/** Android prefetch finish: stamp then release so People can wait on `"music"`. */
-export function finishMusicIdleTabPrefetch(release: () => void): void {
-  markIdleTabPreloadComplete("music");
-  release();
-}
+export const PEOPLE_TAB_PRELOAD_HREF = "/(tabs)/people";
 
-export const MUSIC_TAB_PRELOAD_HREF = "/(tabs)/music";
-
-/** Index-tab cache keys only — not playlist/genre/artist nested routes. */
-export function isMusicIndexQueryKey(queryKey: readonly unknown[]): boolean {
+/** Index-tab cache keys only — not People search. */
+export function isPeopleIndexQueryKey(queryKey: readonly unknown[]): boolean {
   return (
-    queryKey[0] === MUSIC_LIBRARY_QUERY_KEY[0] || queryKey[0] === MUSIC_PLAYLISTS_QUERY_KEY[0]
+    queryKey[0] === PEOPLE_QUERY_ROOT &&
+    (queryKey[1] === PEOPLE_RECOMMENDED_SEGMENT ||
+      queryKey[1] === PEOPLE_FOLLOWERS_SEGMENT ||
+      queryKey[1] === PEOPLE_FOLLOWING_SEGMENT)
   );
 }
 
-export type MusicTabPreloadGate = {
+export type PeopleTabPreloadGate = {
   platform: string; // "android" | "ios" | ...
   appActive: boolean;
-  musicIndexSuccess: boolean;
+  peopleIndexSuccess: boolean;
   scrollSettled: boolean;
   quietForMs: number;
-  musicTabActive: boolean;
+  peopleTabActive: boolean;
   alreadyPrefetched: boolean;
-  profileComplete: boolean;
-  profileCompleteForMs: number;
+  musicComplete: boolean;
+  musicCompleteForMs: number;
 };
 
-export function canPrefetchMusicTab(gate: MusicTabPreloadGate): boolean {
+export function canPrefetchPeopleTab(gate: PeopleTabPreloadGate): boolean {
   return canPrefetchIdleTab({
     platform: gate.platform,
     appActive: gate.appActive,
-    dataSuccess: gate.musicIndexSuccess,
+    dataSuccess: gate.peopleIndexSuccess,
     scrollSettled: gate.scrollSettled,
     quietForMs: gate.quietForMs,
-    tabActive: gate.musicTabActive,
+    tabActive: gate.peopleTabActive,
     alreadyPrefetched: gate.alreadyPrefetched,
-    predecessorComplete: gate.profileComplete,
-    predecessorCompleteForMs: gate.profileCompleteForMs,
+    predecessorComplete: gate.musicComplete,
+    predecessorCompleteForMs: gate.musicCompleteForMs,
   });
 }
 
-export type IdleMusicTabPreloadSnapshot = {
+export type IdlePeopleTabPreloadSnapshot = {
   platform: string;
   appActive: boolean;
-  /** Both `music-library` and `music-playlists` are success; false if either is not. */
-  musicIndexSuccess: boolean;
-  musicTabActive: boolean;
+  /**
+   * Recommended is success, and either there is no username or both
+   * followers and following are success.
+   */
+  peopleIndexSuccess: boolean;
+  peopleTabActive: boolean;
 };
 
-export type IdleMusicTabPreloadController = IdleTabPreloadController;
+export type IdlePeopleTabPreloadController = IdleTabPreloadController;
 
-/** Music binding of the generic idle machine in `lib/idleTabPreload.ts`. */
-export function createIdleMusicTabPreloadController(opts: {
+/** People binding of the generic idle machine in `lib/idleTabPreload.ts`. */
+export function createIdlePeopleTabPreloadController(opts: {
   quietMs?: number;
   now?: () => number;
   isScrollSettled: () => boolean;
-  getSnapshot: () => IdleMusicTabPreloadSnapshot;
+  getSnapshot: () => IdlePeopleTabPreloadSnapshot;
   prefetch: () => void;
-}): IdleMusicTabPreloadController {
+}): IdlePeopleTabPreloadController {
   return createIdleTabPreloadController({
-    quietMs: opts.quietMs ?? MUSIC_TAB_PRELOAD_QUIET_MS,
+    quietMs: opts.quietMs ?? PEOPLE_TAB_PRELOAD_QUIET_MS,
     now: opts.now ?? Date.now,
     isScrollSettled: opts.isScrollSettled,
     getSnapshot: () => {
       const snapshot = opts.getSnapshot();
       const now = opts.now ?? Date.now;
-      const completedAt = getIdleTabPreloadCompleteAt("profile");
+      const completedAt = getIdleTabPreloadCompleteAt("music");
       return {
         platform: snapshot.platform,
         appActive: snapshot.appActive,
-        dataSuccess: snapshot.musicIndexSuccess,
-        tabActive: snapshot.musicTabActive,
+        dataSuccess: snapshot.peopleIndexSuccess,
+        tabActive: snapshot.peopleTabActive,
         predecessorComplete: completedAt != null,
         predecessorCompleteForMs: completedAt == null ? 0 : now() - completedAt,
       };
     },
     prefetch: opts.prefetch,
-    onSkip: () => markIdleTabPreloadComplete("music"),
   });
 }
 
@@ -116,29 +119,50 @@ function loadIdlePreloadBindings() {
   return { AppState, Platform, router, clearFrcImageQueuePauseOwner, setFrcImageQueuePaused };
 }
 
-function musicIndexQueriesSuccess(
+function loadSessionStore() {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { useSessionStore } =
+    require("@/stores/sessionStore") as typeof import("@/stores/sessionStore");
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  return useSessionStore;
+}
+
+function sessionUsername(store: ReturnType<typeof loadSessionStore>): string {
+  return peopleIndexUsername(store.getState().me?.username ?? "");
+}
+
+function peopleIndexQueriesSuccess(
   queryClient: ReturnType<typeof useQueryClient>,
+  username: string,
 ): boolean {
+  if (queryClient.getQueryState(PEOPLE_RECOMMENDED_QUERY_KEY)?.status !== "success") {
+    return false;
+  }
+  const ownUsername = peopleIndexUsername(username);
+  if (ownUsername.length === 0) {
+    return true;
+  }
   return (
-    queryClient.getQueryState(MUSIC_LIBRARY_QUERY_KEY)?.status === "success" &&
-    queryClient.getQueryState(MUSIC_PLAYLISTS_QUERY_KEY)?.status === "success"
+    queryClient.getQueryState(peopleFollowersQueryKey(ownUsername))?.status === "success" &&
+    queryClient.getQueryState(peopleFollowingQueryKey(ownUsername))?.status === "success"
   );
 }
 
 /**
- * Once both Music index queries have succeeded, prefetch the Music tab index
+ * Once People index queries have succeeded, prefetch the People tab index
  * on Android after scroll has been quiet. Idle is `subscribeScrollSettled`,
  * not InteractionManager (RNGH/Reanimated gestures are invisible to it).
  * Pager touch/pager/strip and the tab-switch overlay also publish into that
  * registry. The mount itself goes through the shared serializer, so it never
- * shares a frame with another tab preload. Music waits on the profile stamp,
- * then stamps `"music"` for successors.
+ * shares a frame with another tab preload. People waits on the music stamp
+ * and does not stamp a People stage (no successor in the idle chain).
  */
-export function useIdleMusicTabPreload(segments: readonly string[]): void {
+export function useIdlePeopleTabPreload(segments: readonly string[]): void {
   const queryClient = useQueryClient();
-  const frcOwner = useRef(Symbol("music-tab-preload")).current;
+  const frcOwner = useRef(Symbol("people-tab-preload")).current;
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
+  const usernameRef = useRef("");
   const evaluateRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -154,7 +178,8 @@ export function useIdleMusicTabPreload(segments: readonly string[]): void {
       return () => clearFrcImageQueuePauseOwner(frcOwner);
     }
 
-    beginIdleTabPreloadEpoch("music");
+    const sessionStore = loadSessionStore();
+    usernameRef.current = sessionUsername(sessionStore);
 
     let cancelled = false;
     let rafOuter: number | null = null;
@@ -162,7 +187,8 @@ export function useIdleMusicTabPreload(segments: readonly string[]): void {
     let unsubScroll = () => {};
     let unsubApp = () => {};
     let unsubQuery = () => {};
-    let unsubProfile = () => {};
+    let unsubMusic = () => {};
+    let unsubSession = () => {};
 
     const cancelRafs = () => {
       if (rafOuter != null) {
@@ -182,19 +208,21 @@ export function useIdleMusicTabPreload(segments: readonly string[]): void {
       unsubApp = () => {};
       unsubQuery();
       unsubQuery = () => {};
-      unsubProfile();
-      unsubProfile = () => {};
+      unsubMusic();
+      unsubMusic = () => {};
+      unsubSession();
+      unsubSession = () => {};
     };
 
     const readSnapshot = () => ({
       platform: Platform.OS,
       appActive: AppState.currentState === "active",
-      musicIndexSuccess: musicIndexQueriesSuccess(queryClient),
-      musicTabActive: isTabActive(segmentsRef.current, "music"),
+      peopleIndexSuccess: peopleIndexQueriesSuccess(queryClient, usernameRef.current),
+      peopleTabActive: isTabActive(segmentsRef.current, "people"),
     });
 
-    const controller = createIdleMusicTabPreloadController({
-      quietMs: MUSIC_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdlePeopleTabPreloadController({
+      quietMs: PEOPLE_TAB_PRELOAD_QUIET_MS,
       isScrollSettled,
       getSnapshot: readSnapshot,
       prefetch: () => {
@@ -204,9 +232,9 @@ export function useIdleMusicTabPreload(segments: readonly string[]): void {
           (release) => {
             detachListeners();
             setFrcImageQueuePaused(frcOwner, "drag", true);
-            router.prefetch(MUSIC_TAB_PRELOAD_HREF);
+            router.prefetch(PEOPLE_TAB_PRELOAD_HREF);
             const finish = () => {
-              finishMusicIdleTabPrefetch(release);
+              release();
             };
             rafOuter = requestAnimationFrame(() => {
               rafOuter = null;
@@ -228,15 +256,15 @@ export function useIdleMusicTabPreload(segments: readonly string[]): void {
           {
             shouldRun: () => {
               const snap = readSnapshot();
-              const completedAt = getIdleTabPreloadCompleteAt("profile");
+              const completedAt = getIdleTabPreloadCompleteAt("music");
               return canRunQueuedIdleTabPrefetch({
                 cancelled,
                 platform: snap.platform,
                 appActive: snap.appActive,
-                dataSuccess: snap.musicIndexSuccess,
+                dataSuccess: snap.peopleIndexSuccess,
                 scrollSettled: isScrollSettled(),
                 quietForMs: controller.quietForMs(),
-                tabActive: snap.musicTabActive,
+                tabActive: snap.peopleTabActive,
                 predecessorComplete: completedAt != null,
                 predecessorCompleteForMs:
                   completedAt == null ? 0 : Date.now() - completedAt,
@@ -286,14 +314,22 @@ export function useIdleMusicTabPreload(segments: readonly string[]): void {
     unsubApp = () => appSub.remove();
 
     unsubQuery = queryClient.getQueryCache().subscribe((event) => {
-      if (!isMusicIndexQueryKey(event.query.queryKey)) return;
+      if (!isPeopleIndexQueryKey(event.query.queryKey)) return;
       evaluate();
-      if (readSnapshot().musicIndexSuccess !== true) abortQueued();
+      if (readSnapshot().peopleIndexSuccess !== true) abortQueued();
     });
 
-    unsubProfile = subscribeIdleTabPreloadComplete("profile", () => {
+    unsubMusic = subscribeIdleTabPreloadComplete("music", () => {
       evaluate();
-      if (getIdleTabPreloadCompleteAt("profile") == null) abortQueued();
+      if (getIdleTabPreloadCompleteAt("music") == null) abortQueued();
+    });
+
+    unsubSession = sessionStore.subscribe((state) => {
+      const next = peopleIndexUsername(state.me?.username ?? "");
+      if (next === usernameRef.current) return;
+      usernameRef.current = next;
+      evaluate();
+      if (readSnapshot().peopleIndexSuccess !== true) abortQueued();
     });
 
     evaluate();
