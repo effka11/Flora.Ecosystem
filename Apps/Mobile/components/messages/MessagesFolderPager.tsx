@@ -239,7 +239,18 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
     /** Последний запрошенный индекс (UI-thread), как цель settle. */
     const targetIndexSV = useSharedValue(0);
     const { renderScrollComponents, setActivePane } = usePagerListScroll(MAX_PAGER_PAGES);
-    const { mountedIds, setBusy, ensureMounted, onCommitted } = useDeferredPagerMount(pages, 0);
+    const [tabFocused, setTabFocused] = useState(false);
+    useFocusEffect(
+      useCallback(() => {
+        setTabFocused(true);
+        return () => setTabFocused(false);
+      }, []),
+    );
+    const { mountedIds, setBusy, ensureMounted, onCommitted } = useDeferredPagerMount(
+      pages,
+      0,
+      tabFocused,
+    );
     const pagerGenRef = useRef(0);
     const panActivatedRef = useRef(false);
     const panSetPagerRef = useRef(false);

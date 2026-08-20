@@ -71,8 +71,10 @@ import {
   setTemporaryMute,
   useTemporaryMuteUntilByPeer,
 } from "@/lib/conversationTemporaryMute";
+import { setConversationsListFocused } from "@/lib/conversationsPushCoalesce";
 import { mapGroupListItem, mergeGroupListRefresh } from "@/lib/groupChatMap";
 import { groupSortAt, type GroupChat } from "@/lib/groupChatTypes";
+import { warmGroupListPreviews } from "@/lib/groupListPreviewWarm";
 import { imeStableWindowWidth } from "@/lib/imeVisible";
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { openGroupChat } from "@/lib/openGroupChat";
@@ -257,6 +259,9 @@ export default function MessagesScreen() {
   const organizerKeysReady = Boolean(fscpMaterial && fscpCanDecrypt());
   /** Пользователь закрыл sheet — не открывать автоматически снова, пока статус не сменится. */
   const unlockDismissedRef = useRef(false);
+  /** Preload/unfocused: false until useFocusEffect. Ref for AppState/presence (same tick). */
+  const [tabFocused, setTabFocused] = useState(false);
+  const tabFocusedRef = useRef(false);
   const [presenceEpoch, setPresenceEpoch] = useState(() => sharedPresenceStore.getSessionEpoch());
 
   useEffect(() => {
@@ -277,7 +282,7 @@ export default function MessagesScreen() {
   useEffect(() => {
     if (!me?.userUuid || !fscpMaterial || !fscpCanDecrypt()) return;
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void refreshOverlay();
+      if (state === "active" && tabFocusedRef.current) void refreshOverlay();
     });
     return () => sub.remove();
   }, [me?.userUuid, refreshOverlay, fscpMaterial, fscpCanDecrypt]);
@@ -299,13 +304,15 @@ export default function MessagesScreen() {
     fscpStatus === "backup_not_found";
 
   useEffect(() => {
-    if (needsPassword && !unlockDismissedRef.current) {
+    if (needsPassword && tabFocused && !unlockDismissedRef.current) {
       setUnlockOpen(true);
     } else if (!needsPassword) {
       unlockDismissedRef.current = false;
       setUnlockOpen(false);
+    } else if (!tabFocused) {
+      setUnlockOpen(false);
     }
-  }, [needsPassword]);
+  }, [needsPassword, tabFocused]);
 
   const query = useQuery({
     queryKey: ["conversations"],
@@ -343,29 +350,28 @@ export default function MessagesScreen() {
   }, [groupsQuery.data, groupsQuery.isSuccess, setKnownGroupUuids]);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      if (!me?.userUuid || !fscpMaterial || groupChats.length === 0) return;
-      const next: Record<string, string> = {};
-      for (const g of groupChats) {
-        const wire = g.lastMessageEncryptedWire?.trim();
-        if (!wire) {
-          next[g.conversationUuid] = g.lastMessagePreview ?? "";
-          continue;
-        }
+    if (!tabFocused || !me?.userUuid || !fscpMaterial || groupChats.length === 0) return;
+    const viewerUserUuid = me.userUuid;
+    const agreementPrivateKey = fscpMaterial.agreementPrivateKey;
+    const handle = warmGroupListPreviews(groupChats, {
+      decryptOne: async (group) => {
+        const wire = group.lastMessageEncryptedWire?.trim();
+        if (!wire) return group.lastMessagePreview ?? "";
         const preview = await decryptGroupMessagePreview({
           encryptedPayload: wire,
-          viewerUserUuid: me.userUuid,
-          agreementPrivateKey: fscpMaterial.agreementPrivateKey,
+          viewerUserUuid,
+          agreementPrivateKey,
         });
-        next[g.conversationUuid] = preview ?? "🔒";
-      }
-      if (!cancelled) setGroupPreviews(next);
-    })();
+        return preview ?? "🔒";
+      },
+    });
+    void handle.done.then((next) => {
+      if (next) setGroupPreviews(next);
+    });
     return () => {
-      cancelled = true;
+      handle.cancel();
     };
-  }, [fscpMaterial, groupChats, me?.userUuid]);
+  }, [fscpMaterial, groupChats, me?.userUuid, tabFocused]);
 
   const archivedByPeer = overlayState.archivedByPeer;
   const archivedByConversation = overlayState.archivedByConversation ?? {};
@@ -713,6 +719,9 @@ export default function MessagesScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      tabFocusedRef.current = true;
+      setTabFocused(true);
+      setConversationsListFocused(true);
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
       // Папки/архив с сервера (Web мог создать, пока Mobile был в фоне).
       void refreshOverlay();
@@ -730,6 +739,12 @@ export default function MessagesScreen() {
       if (fscpStatus === "registration_pending") {
         void retryPendingOperation();
       }
+      void sharedPresenceStore.resyncSnapshots().catch(() => {});
+      return () => {
+        tabFocusedRef.current = false;
+        setTabFocused(false);
+        setConversationsListFocused(false);
+      };
     }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
   );
 
@@ -824,7 +839,9 @@ export default function MessagesScreen() {
       return () => sharedPresenceStore.unregisterSurface("messages-list");
     }
     sharedPresenceStore.registerSurface("messages-list", uuids);
-    void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    if (tabFocusedRef.current) {
+      void sharedPresenceStore.resyncSnapshots().catch(() => {});
+    }
     return () => sharedPresenceStore.unregisterSurface("messages-list");
   }, [items, presenceEpoch]);
 

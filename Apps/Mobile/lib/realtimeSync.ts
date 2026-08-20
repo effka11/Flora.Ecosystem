@@ -1,5 +1,9 @@
-import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
+import type { MsgConversationsPage } from "@flora/client-core/contracts";
+import { scheduleConversationsPushRefresh } from "@/lib/conversationsPushCoalesce";
+import { applyIncomingToConversations } from "@/lib/messageThreadOutgoing";
 import { getQueryClientRef } from "@/lib/queryClientRef";
+import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
+import { useSessionStore } from "@/stores/sessionStore";
 
 const messageListeners = new Set<(conversationUuid: string) => void>();
 const notificationListeners = new Set<() => void>();
@@ -22,12 +26,28 @@ function asRecord(data: unknown): Record<string, unknown> | null {
 export function handleMessageRealtime(
   conversationUuid?: string | null,
   kind?: "dm" | "groupChat" | null,
+  incoming?: { senderUserUuid?: string | null; sentAt?: string | null },
 ): void {
   requestTabBadgesRefresh();
   const qc = getQueryClientRef();
   if (qc) {
-    void qc.invalidateQueries({ queryKey: ["conversations"] });
-    void qc.invalidateQueries({ queryKey: ["groups"] });
+    const conv = conversationUuid?.trim() ?? "";
+    const viewerUserUuid = useSessionStore.getState().me?.userUuid?.trim() ?? "";
+    const senderUserUuid = incoming?.senderUserUuid?.trim() ?? "";
+    const sentAt = incoming?.sentAt?.trim() ?? "";
+    if (conv && viewerUserUuid && senderUserUuid && sentAt) {
+      qc.setQueryData<MsgConversationsPage>(["conversations"], (old) => {
+        if (!old) return old;
+        const items = applyIncomingToConversations(old.items, {
+          conversationUuid: conv,
+          senderUserUuid,
+          sentAt,
+          viewerUserUuid,
+        });
+        return items === old.items ? old : { ...old, items };
+      });
+    }
+    scheduleConversationsPushRefresh(qc);
   }
   if (conversationUuid) {
     // Открытый тред сам делает refetch через subscribeMessageRealtime —
@@ -73,5 +93,11 @@ export function handlePushNotificationData(data: unknown): void {
 
   const conversationUuid =
     typeof record.conversationUuid === "string" ? record.conversationUuid.trim() : "";
-  handleMessageRealtime(conversationUuid || null);
+  const senderUserUuid =
+    typeof record.senderUserUuid === "string" ? record.senderUserUuid.trim() : "";
+  const sentAt = typeof record.sentAt === "string" ? record.sentAt.trim() : "";
+  handleMessageRealtime(conversationUuid || null, null, {
+    senderUserUuid: senderUserUuid || null,
+    sentAt: sentAt || null,
+  });
 }

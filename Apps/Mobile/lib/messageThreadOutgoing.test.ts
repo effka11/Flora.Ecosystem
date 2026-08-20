@@ -2,12 +2,14 @@ import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contr
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  applyIncomingToConversations,
   applyOutgoingToConversations,
   clearPendingOutgoing,
   insertOptimisticOutgoingThreadMessage,
   mergePendingOutgoingIntoMessages,
   removeOptimisticOutgoingThreadMessage,
   replaceOptimisticOutgoingThreadMessage,
+  type IncomingConversationPatch,
   type OutgoingConversationPatch,
 } from "./messageThreadOutgoing";
 import { optimisticPayloadSentinel } from "./messageBirthRegistry";
@@ -102,6 +104,75 @@ describe("applyOutgoingToConversations", () => {
       lastMessageContent: "hello",
     });
     expect(result.lastMessageContent).toBe("hello");
+  });
+});
+
+const incomingPatch: IncomingConversationPatch = {
+  conversationUuid: "b",
+  senderUserUuid: "peer-b",
+  sentAt: "2026-07-25T12:00:00.000Z",
+  viewerUserUuid: "me",
+};
+
+describe("applyIncomingToConversations", () => {
+  it("returns the original array when the conversation is absent", () => {
+    const items = [conversation("a"), conversation("c")];
+
+    expect(applyIncomingToConversations(items, incomingPatch)).toBe(items);
+  });
+
+  it("bumps unread when the sender is not the viewer", () => {
+    const [result] = applyIncomingToConversations([conversation("b")], incomingPatch);
+
+    expect(result.unreadCount).toBe(4);
+    expect(result.lastMessageIsFromMe).toBe(false);
+    expect(result.lastMessageAt).toBe(incomingPatch.sentAt);
+  });
+
+  it("does not bump unread when the sender is the viewer", () => {
+    const original = conversation("b");
+    const [result] = applyIncomingToConversations([original], {
+      ...incomingPatch,
+      senderUserUuid: "ME",
+      viewerUserUuid: "me",
+    });
+
+    expect(result.unreadCount).toBe(original.unreadCount);
+    expect(result.lastMessageIsFromMe).toBe(true);
+  });
+
+  it("preserves lastMessageContent and lastMessageEncryptedForMe", () => {
+    const original = conversation("b");
+    const [result] = applyIncomingToConversations([original], incomingPatch);
+
+    expect(result.lastMessageContent).toBe(original.lastMessageContent);
+    expect(result.lastMessageEncryptedForMe).toBe(original.lastMessageEncryptedForMe);
+  });
+
+  it("moves the updated conversation to the front", () => {
+    const items = [conversation("a"), conversation("b"), conversation("c")];
+
+    const result = applyIncomingToConversations(items, incomingPatch);
+
+    expect(result.map((item) => item.conversationUuid)).toEqual(["b", "a", "c"]);
+  });
+
+  it("keeps an already first conversation first", () => {
+    const items = [conversation("b"), conversation("a"), conversation("c")];
+
+    const result = applyIncomingToConversations(items, incomingPatch);
+
+    expect(result.map((item) => item.conversationUuid)).toEqual(["b", "a", "c"]);
+  });
+
+  it("does not mutate the input array or its items", () => {
+    const items = [conversation("a"), conversation("b"), conversation("c")];
+    const originalItems = structuredClone(items);
+
+    applyIncomingToConversations(items, incomingPatch);
+
+    expect(items).toEqual(originalItems);
+    expect(items[1]).toEqual(originalItems[1]);
   });
 });
 
