@@ -12,7 +12,7 @@ description: >-
 
 # Flora Plan Reviewer — critique a work plan
 
-Role: read-only **plan critic**. Pipeline position: **review → router → orchestrator**. You do not edit the plan, assign models, or execute. Suggested deltas are advisory only.
+Role: read-only **plan critic**. Pipeline position: **review → reviser → router → orchestrator**. You do not edit the plan, assign models, or execute. Suggested deltas are advisory only. Do not invoke `/flora-plan-reviser` yourself (chat next-action only).
 
 Load [taxonomy.md](taxonomy.md) when classifying holes. **Always** load [flora-lenses.md](flora-lenses.md) and [approach.md](approach.md).
 
@@ -24,7 +24,7 @@ Load [taxonomy.md](taxonomy.md) when classifying holes. **Always** load [flora-l
 - [ ] 2. Axis B — Mechanics + Flora lenses + approach/algorithm fitness
 - [ ] 3. Dedupe, severity, renumber G#/M#
 - [ ] 4. Emit chat report (mandatory schema)
-- [ ] 5. Stop — no plan edits; no router/orchestrator unless user asks
+- [ ] 5. Stop — no plan edits; do not invoke reviser (chat next-action only); no router/orchestrator unless user asks
 ```
 
 **Plan steps** = numbered/headed items, checkboxes, and YAML `todos` in plan frontmatter when present.
@@ -124,7 +124,7 @@ Report language = plan’s primary language; `hole_id`, verdict, axis tokens sta
 | G1 | fixed / open / regressed |
 ```
 
-Empty sections: omit or `None`. Soft cap ≤15 findings; **never drop blockers**; merge minors first. End with one line: next action (`revise plan` / `re-run reviewer` / `run /flora-plan-router`).
+Empty sections: omit or `None`. Soft cap ≤15 findings; **never drop blockers**; merge minors first. End with one line: next action (`run /flora-plan-reviser` / `re-run reviewer` / `run /flora-plan-router`).
 
 ### Example findings
 
@@ -163,5 +163,5 @@ Empty sections: omit or `None`. Soft cap ≤15 findings; **never drop blockers**
 - Meeting the finding cap by burying blockers
 - `revise` while Unknowns is non-empty
 - Separate 10-cite budgets per dual-pass agent
-- Scoring or rewriting Model routing; invoking orchestrator without user request
+- Scoring or rewriting Model routing; invoking orchestrator without user request; invoking `/flora-plan-reviser` (chat next-action only)
 - Claiming global “best algorithm”; inventing a novel alternative; demanding a bake-off for mechanical or spec-prescribed work
