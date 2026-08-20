@@ -27,7 +27,8 @@ export type IdleTabPreloadGate = {
   alreadyPrefetched: boolean;
   /**
    * Predecessor barrier (previous tab skip/prefetch). Messages passes true;
-   * Notifications fills this from the messages stamp; Profile from notifications.
+   * Notifications fills this from the messages stamp; Profile from notifications;
+   * Music from profile.
    */
   predecessorComplete: boolean;
   /** Elapsed since predecessor prefetch-or-skip. Messages passes ≥ serial gap. */
@@ -398,7 +399,7 @@ export function abortQueuedIdleTabPrefetch(
 
 let sharedSerializer: IdleTabPreloadSerializer | null = null;
 
-export type IdleTabPreloadStage = "messages" | "notifications";
+export type IdleTabPreloadStage = "messages" | "notifications" | "profile";
 
 type IdleTabPreloadStageState = {
   epoch: number;
@@ -419,6 +420,7 @@ function createIdleTabPreloadStageState(): IdleTabPreloadStageState {
 const idleTabPreloadStages: Record<IdleTabPreloadStage, IdleTabPreloadStageState> = {
   messages: createIdleTabPreloadStageState(),
   notifications: createIdleTabPreloadStageState(),
+  profile: createIdleTabPreloadStageState(),
 };
 
 function notifyIdleTabPreloadStageListeners(stage: IdleTabPreloadStage): void {
@@ -505,4 +507,5 @@ export function __resetIdleTabPreloadSerializer(): void {
   sharedSerializer = null;
   resetIdleTabPreloadStage("messages");
   resetIdleTabPreloadStage("notifications");
+  resetIdleTabPreloadStage("profile");
 }

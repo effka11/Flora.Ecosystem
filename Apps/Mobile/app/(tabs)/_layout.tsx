@@ -15,6 +15,7 @@ import { useTabRouteTransition } from "@/components/TabRouteTransition";
 import { isTabActive, isTabRoot } from "@/lib/getActiveTabRouteKey";
 import { isMessagesInThreadPath, messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
 import { useIdleMessagesTabPreload } from "@/lib/messagesTabPreload";
+import { useIdleMusicTabPreload } from "@/lib/musicTabPreload";
 import { useIdleNotificationsTabPreload } from "@/lib/notificationsTabPreload";
 import { useIdleProfileTabPreload } from "@/lib/profileTabPreload";
 import { useFloraReduceMotion } from "@/lib/useFloraReduceMotion";
@@ -33,6 +34,7 @@ export default function TabsLayout() {
   useIdleMessagesTabPreload(segments);
   useIdleNotificationsTabPreload(segments);
   useIdleProfileTabPreload(segments);
+  useIdleMusicTabPreload(segments);
   const { screenListeners, overlay } = useTabRouteTransition(reduceMotion, tabBarBottomInset);
 
   const screenOptions = useMemo(

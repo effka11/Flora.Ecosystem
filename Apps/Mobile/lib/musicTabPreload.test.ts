@@ -7,49 +7,61 @@ import {
   markIdleTabPreloadComplete,
 } from "./idleTabPreload";
 import {
-  canPrefetchProfileTab,
-  createIdleProfileTabPreloadController,
-  isOwnProfilePostsQueryKey,
-  PROFILE_TAB_PRELOAD_QUIET_MS,
-  type IdleProfileTabPreloadSnapshot,
-  type ProfileTabPreloadGate,
-} from "./profileTabPreload";
+  canPrefetchMusicTab,
+  createIdleMusicTabPreloadController,
+  isMusicIndexQueryKey,
+  MUSIC_TAB_PRELOAD_HREF,
+  MUSIC_TAB_PRELOAD_QUIET_MS,
+  type IdleMusicTabPreloadSnapshot,
+  type MusicTabPreloadGate,
+} from "./musicTabPreload";
 
-const allow: ProfileTabPreloadGate = {
+const allow: MusicTabPreloadGate = {
   platform: "android",
   appActive: true,
-  profilePostsSuccess: true,
+  musicIndexSuccess: true,
   scrollSettled: true,
-  quietForMs: PROFILE_TAB_PRELOAD_QUIET_MS,
-  profileTabActive: false,
+  quietForMs: MUSIC_TAB_PRELOAD_QUIET_MS,
+  musicTabActive: false,
   alreadyPrefetched: false,
-  notificationsComplete: true,
-  notificationsCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+  profileComplete: true,
+  profileCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
 };
 
-describe("isOwnProfilePostsQueryKey", () => {
-  it("is true for exact own profile-posts key", () => {
-    expect(isOwnProfilePostsQueryKey(["profile-posts", "alice"], "alice")).toBe(true);
-  });
-
-  it.each([
-    ["other user's profile-posts", ["profile-posts", "bob"], "alice"],
-    ["prefix only", ["profile-posts"], "alice"],
-    ["empty username", ["profile-posts", "alice"], ""],
-    ["notifications key", ["notifications", "all", ""], "alice"],
-  ] as const)("is false for %s", (_label, queryKey, username) => {
-    expect(isOwnProfilePostsQueryKey(queryKey, username)).toBe(false);
+describe("MUSIC_TAB_PRELOAD_HREF", () => {
+  it("is the music tab index, not a nested music route", () => {
+    expect(MUSIC_TAB_PRELOAD_HREF).toBe("/(tabs)/music");
   });
 });
 
-describe("canPrefetchProfileTab", () => {
+describe("isMusicIndexQueryKey", () => {
+  it.each([["music-library"], ["music-playlists"]] as const)(
+    "is true for index key %s",
+    (key) => {
+      expect(isMusicIndexQueryKey([key])).toBe(true);
+    },
+  );
+
+  it.each([
+    ["nested playlist", ["music-playlist", "pl-1"]],
+    ["genre", ["music-genre", "g1"]],
+    ["genre nested", ["music-genre", "g1", "sg1"]],
+    ["artist", ["music-artist", "uuid"]],
+    ["artist tracks", ["music-artist-tracks", "uuid", 1]],
+    ["artists search", ["music-artists-search", "q"]],
+  ] as const)("is false for %s", (_label, queryKey) => {
+    expect(isMusicIndexQueryKey(queryKey)).toBe(false);
+  });
+});
+
+describe("canPrefetchMusicTab", () => {
   it("allows when all gates are open", () => {
-    expect(canPrefetchProfileTab(allow)).toBe(true);
+    expect(canPrefetchMusicTab(allow)).toBe(true);
   });
 
   it("allows when quiet exceeds the window", () => {
     expect(
-      canPrefetchProfileTab({ ...allow, quietForMs: PROFILE_TAB_PRELOAD_QUIET_MS + 1 }),
+      canPrefetchMusicTab({ ...allow, quietForMs: MUSIC_TAB_PRELOAD_QUIET_MS + 1 }),
     ).toBe(true);
   });
 
@@ -57,20 +69,20 @@ describe("canPrefetchProfileTab", () => {
     ["ios", { platform: "ios" }],
     ["web", { platform: "web" }],
     ["app inactive", { appActive: false }],
-    ["profile posts not success", { profilePostsSuccess: false }],
+    ["music index not success", { musicIndexSuccess: false }],
     ["scroll not settled", { scrollSettled: false }],
-    ["quiet window", { quietForMs: PROFILE_TAB_PRELOAD_QUIET_MS - 1 }],
+    ["quiet window", { quietForMs: MUSIC_TAB_PRELOAD_QUIET_MS - 1 }],
     ["quiet just started", { quietForMs: 0 }],
-    ["profile tab active", { profileTabActive: true }],
+    ["music tab active", { musicTabActive: true }],
     ["already prefetched", { alreadyPrefetched: true }],
-    ["notifications not complete", { notificationsComplete: false }],
-    ["notifications gap", { notificationsCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
+    ["profile not complete", { profileComplete: false }],
+    ["profile gap", { profileCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
   ] as const)("blocks when %s", (_label, override) => {
-    expect(canPrefetchProfileTab({ ...allow, ...override })).toBe(false);
+    expect(canPrefetchMusicTab({ ...allow, ...override })).toBe(false);
   });
 });
 
-describe("createIdleProfileTabPreloadController", () => {
+describe("createIdleMusicTabPreloadController", () => {
   afterEach(() => {
     vi.useRealTimers();
     __resetIdleTabPreloadSerializer();
@@ -79,23 +91,23 @@ describe("createIdleProfileTabPreloadController", () => {
   function makeController(
     overrides: {
       settled?: { value: boolean };
-      snapshot?: IdleProfileTabPreloadSnapshot;
-      skipNotificationsComplete?: boolean;
+      snapshot?: IdleMusicTabPreloadSnapshot;
+      skipProfileComplete?: boolean;
     } = {},
   ) {
-    if (!overrides.skipNotificationsComplete) {
-      markIdleTabPreloadComplete("notifications");
+    if (!overrides.skipProfileComplete) {
+      markIdleTabPreloadComplete("profile");
     }
     const settled = overrides.settled ?? { value: true };
-    const snapshot: IdleProfileTabPreloadSnapshot = overrides.snapshot ?? {
+    const snapshot: IdleMusicTabPreloadSnapshot = overrides.snapshot ?? {
       platform: "android",
       appActive: true,
-      profilePostsSuccess: true,
-      profileTabActive: false,
+      musicIndexSuccess: true,
+      musicTabActive: false,
     };
     const prefetch = vi.fn();
-    const controller = createIdleProfileTabPreloadController({
-      quietMs: PROFILE_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdleMusicTabPreloadController({
+      quietMs: MUSIC_TAB_PRELOAD_QUIET_MS,
       isScrollSettled: () => settled.value,
       getSnapshot: () => snapshot,
       prefetch,
@@ -107,29 +119,29 @@ describe("createIdleProfileTabPreloadController", () => {
     vi.useFakeTimers();
     const { controller, prefetch, settled } = makeController({ settled: { value: false } });
     controller.evaluate();
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPendingTimer()).toBe(false);
     settled.value = true;
     controller.onScrollSettled(true);
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS - 1);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS - 1);
     expect(prefetch).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not prefetch before profile posts success", () => {
+  it("does not prefetch before both index queries succeed", () => {
     vi.useFakeTimers();
     const { controller, prefetch } = makeController({
       snapshot: {
         platform: "android",
         appActive: true,
-        profilePostsSuccess: false,
-        profileTabActive: false,
+        musicIndexSuccess: false,
+        musicTabActive: false,
       },
     });
     controller.evaluate();
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPendingTimer()).toBe(false);
   });
@@ -142,7 +154,7 @@ describe("createIdleProfileTabPreloadController", () => {
     settled.value = false;
     controller.onScrollSettled(false);
     expect(controller.hasPendingTimer()).toBe(false);
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
   });
 
@@ -151,7 +163,7 @@ describe("createIdleProfileTabPreloadController", () => {
     const { controller, prefetch, settled } = makeController();
     controller.evaluate();
     settled.value = false;
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(false);
   });
@@ -160,21 +172,21 @@ describe("createIdleProfileTabPreloadController", () => {
     vi.useFakeTimers();
     const { controller, prefetch } = makeController();
     controller.evaluate();
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
     controller.evaluate();
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not prefetch until notifications complete for 120ms", () => {
+  it("does not prefetch until profile complete for 120ms", () => {
     vi.useFakeTimers();
-    const { controller, prefetch } = makeController({ skipNotificationsComplete: true });
+    const { controller, prefetch } = makeController({ skipProfileComplete: true });
     controller.evaluate();
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS * 4);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
 
-    markIdleTabPreloadComplete("notifications");
+    markIdleTabPreloadComplete("profile");
     controller.evaluate();
     vi.advanceTimersByTime(IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1);
     expect(prefetch).not.toHaveBeenCalled();
@@ -182,30 +194,29 @@ describe("createIdleProfileTabPreloadController", () => {
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not treat a previous notifications stamp after a new notifications epoch", () => {
+  it("does not treat a previous profile stamp after a new profile epoch", () => {
     vi.useFakeTimers();
-    markIdleTabPreloadComplete("notifications");
-    beginIdleTabPreloadEpoch("notifications");
-    const { controller, prefetch } = makeController({ skipNotificationsComplete: true });
+    markIdleTabPreloadComplete("profile");
+    beginIdleTabPreloadEpoch("profile");
+    const { controller, prefetch } = makeController({ skipProfileComplete: true });
     controller.evaluate();
-    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS * 4);
+    vi.advanceTimersByTime(MUSIC_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
   });
 
-  it("latches skip when the profile tab is already active and stamps profile", () => {
+  it("latches skip when the music tab is already active without stamping profile or inventing a music stage", () => {
     const { controller, prefetch } = makeController({
-      skipNotificationsComplete: true,
+      skipProfileComplete: true,
       snapshot: {
         platform: "android",
         appActive: true,
-        profilePostsSuccess: true,
-        profileTabActive: true,
+        musicIndexSuccess: true,
+        musicTabActive: true,
       },
     });
     controller.evaluate();
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(true);
-    expect(getIdleTabPreloadCompleteAt("profile")).not.toBeNull();
-    expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
   });
 });
