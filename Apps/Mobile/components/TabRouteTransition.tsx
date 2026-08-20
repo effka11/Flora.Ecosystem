@@ -1,8 +1,6 @@
 import { getActiveTabRouteKey } from "@/lib/getActiveTabRouteKey";
-import {
-  floraRouteKeyframeEasing,
-  floraRouteTransitionClearMs,
-} from "@/lib/floraRouteEnterFade";
+import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
+import { floraRouteTransitionClearMs } from "@/lib/floraRouteEnterFade";
 import { shouldSkipFloraMotion } from "@/lib/useFloraReduceMotion";
 import { floraColors, floraMotion, floraTabBarContentHeight } from "@/lib/theme";
 import { useNavigation } from "expo-router";
@@ -17,16 +15,14 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 
-/** Reveal overlay 1→0 — визуально то же, что content opacity 0→1 на вебе. */
+/** Reveal overlay 1→0 — та же длительность и ease-out, что тап подвкладок. */
 function runFloraRouteRevealFade(overlayOpacity: SharedValue<number>) {
-  const { tabTransitionDurationMs, tabTransitionDelayMs } = floraMotion;
-
   overlayOpacity.value = 1;
   overlayOpacity.value = withDelay(
-    tabTransitionDelayMs,
+    floraMotion.tabTransitionDelayMs,
     withTiming(0, {
-      duration: tabTransitionDurationMs,
-      easing: floraRouteKeyframeEasing,
+      duration: ENERGETIC_OPEN_MS,
+      easing: ENERGETIC_OPEN_EASING,
     }),
   );
 }
