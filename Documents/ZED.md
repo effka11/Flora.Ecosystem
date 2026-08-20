@@ -19,6 +19,7 @@
 | `/apps-web-grid-placement` | Правки `top`/margin/absolute в `Apps/Web` |
 | `/apps-web-messages-chat` | Чат Messages, голос, стикеры |
 | `/flora-fscp-e2e` | FSCP wire + E2E security, Flora.Messaging |
+| `/flora-plan-reviser` | Доработка плана по отчёту ревьюера |
 | `/diagnose`, `/review`, `/tdd` | Глобальные |
 
 Project skills: `.agents/skills/`.

@@ -145,4 +145,4 @@ pwsh ./Tools/validate-architecture-rust.ps1
 
 См. **`Documents/ZED.md`** — tasks, skills, debugger, ACP. Глобально: `%APPDATA%\Zed\docs\ZED-GLOBAL.md`.
 
-Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/rust-migration`, `/flora-plan-reviewer`, `/flora-plan-router`, `/flora-plan-orchestrator`.
+Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/rust-migration`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`.

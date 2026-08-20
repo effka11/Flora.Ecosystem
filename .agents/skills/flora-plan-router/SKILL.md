@@ -1,6 +1,6 @@
 ---
 name: flora-plan-router
-description: Splits a work plan into parts for subagents and assigns each part an optimal agent model (fable, opus, sonnet, haiku, gpt sol, terra, luna, grok, codex, gemini) with a thinking level and rationale, balancing quality and cost. The first row picks the orchestrator model. Writes the routing table into the attached plan file. Use when the user asks to distribute a plan across models/subagents, assign models to tasks, or asks which model should do what.
+description: Splits a work plan into parts for subagents and assigns each part an optimal agent model (fable, opus, sonnet, haiku, gpt sol, terra, luna, grok, codex, gemini) with a thinking level and rationale, balancing quality and cost. The first row picks the orchestrator model. Writes the routing table into the attached plan file. Use when the user asks to distribute a plan across models/subagents, assign models to tasks, or asks which model should do what. Do not route when a ## Plan review in the thread is not ready (revise/blocked) — send the user to /flora-plan-reviser first.
 ---
 
 # Flora Plan Router — route a plan across models
@@ -18,6 +18,8 @@ Input: a work plan (text, document, TODO, PRD). Output: a table of plan parts wi
 - [ ] 5. Build the table and a short budget summary
 - [ ] 6. Write the table into the plan file (if the plan is attached as a file)
 ```
+
+If the thread or plan already has `## Plan review` whose verdict is not `ready` (`revise` or `blocked`), do **not** emit a routing table — tell the user to run `/flora-plan-reviser` first. Do not guess a table over a non-ready review.
 
 ## 0) Reconcile available models (required)
 
@@ -112,7 +114,7 @@ Table requirements:
 - “Rationale” — 1 sentence: why this model and level, referencing an escalation/de-escalation criterion (for top models — Tier A/B);
 - “Wave” shows which parts can run in parallel.
 
-After the table — a 2–4 line summary: how many parts on top models (how many Opus vs Fable) and why, where budget was saved, which parts block the critical path. If the plan is too vague to split — first list the missing decisions and do not emit a guessed table; suggest running `/flora-plan-reviewer` (`.agents/skills/flora-plan-reviewer/SKILL.md`) before routing.
+After the table — a 2–4 line summary: how many parts on top models (how many Opus vs Fable) and why, where budget was saved, which parts block the critical path. If a `## Plan review` is present and not `ready` (`revise` / `blocked`) — do not emit a routing table; tell the user to run `/flora-plan-reviser` first. If there is no review yet and the plan is too vague to split — first list the missing decisions and do not emit a guessed table; suggest running `/flora-plan-reviewer` (`.agents/skills/flora-plan-reviewer/SKILL.md`) before routing.
 
 ## 6) Writing the table into the plan file (required when the plan is a file)
 
