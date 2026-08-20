@@ -7,6 +7,12 @@ import {
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import {
+  fetchMusicLibraryQuery,
+  fetchMusicPlaylistsQuery,
+  MUSIC_LIBRARY_QUERY_KEY,
+  MUSIC_PLAYLISTS_QUERY_KEY,
+} from "@/lib/music/musicIndexQueries";
 import { clearQueryClientRef, setQueryClientRef } from "@/lib/queryClientRef";
 import { useMobileRealtime } from "@/lib/useMobileRealtime";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -36,6 +42,16 @@ export function FloraAppServices({ enabled }: { enabled: boolean }) {
     queryKey: ["profile-posts", username],
     queryFn: () => apiGetProfilePosts(username, { skip: 0, take: 30 }),
     enabled: enabled && username.length > 0,
+  });
+  useQuery({
+    queryKey: MUSIC_LIBRARY_QUERY_KEY,
+    queryFn: fetchMusicLibraryQuery,
+    enabled,
+  });
+  useQuery({
+    queryKey: MUSIC_PLAYLISTS_QUERY_KEY,
+    queryFn: fetchMusicPlaylistsQuery,
+    enabled,
   });
 
   const userUuid = useSessionStore((s) => s.me?.userUuid ?? null);

@@ -1,4 +1,3 @@
-import { apiGetMusicLibrary, apiGetMusicPlaylists } from "@flora/client-core/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -41,6 +40,12 @@ import {
 import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
 import { TabScreenHeader } from "@/components/TabScreenHeader";
 import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS, settleEnergetic } from "@/lib/energeticSettle";
+import {
+  fetchMusicLibraryQuery,
+  fetchMusicPlaylistsQuery,
+  MUSIC_LIBRARY_QUERY_KEY,
+  MUSIC_PLAYLISTS_QUERY_KEY,
+} from "@/lib/music/musicIndexQueries";
 import { mapMusicTracksDto, mapPlaylistSummaryDto } from "@/lib/music/musicModels";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
@@ -126,13 +131,15 @@ export default function MusicScreen() {
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
 
   const libraryQuery = useQuery({
-    queryKey: ["music-library"],
-    queryFn: async () => mapMusicTracksDto(await apiGetMusicLibrary()),
+    queryKey: MUSIC_LIBRARY_QUERY_KEY,
+    queryFn: fetchMusicLibraryQuery,
+    refetchOnMount: false,
   });
 
   const playlistsQuery = useQuery({
-    queryKey: ["music-playlists"],
-    queryFn: async () => (await apiGetMusicPlaylists()).map(mapPlaylistSummaryDto),
+    queryKey: MUSIC_PLAYLISTS_QUERY_KEY,
+    queryFn: fetchMusicPlaylistsQuery,
+    refetchOnMount: false,
   });
 
   const tracks = libraryQuery.data ?? [];
@@ -142,8 +149,8 @@ export default function MusicScreen() {
   const refreshing = libraryQuery.isFetching || playlistsQuery.isFetching;
 
   const refreshMusic = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["music-library"] });
-    void queryClient.invalidateQueries({ queryKey: ["music-playlists"] });
+    void queryClient.invalidateQueries({ queryKey: MUSIC_LIBRARY_QUERY_KEY });
+    void queryClient.invalidateQueries({ queryKey: MUSIC_PLAYLISTS_QUERY_KEY });
   }, [queryClient]);
 
   const recordTabLayout = useCallback((tab: MusicBrowseTab, event: LayoutChangeEvent) => {

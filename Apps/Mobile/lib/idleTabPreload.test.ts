@@ -478,19 +478,67 @@ describe("notifications idle epoch", () => {
   });
 });
 
+describe("profile idle epoch", () => {
+  afterEach(() => {
+    __resetIdleTabPreloadSerializer();
+  });
+
+  it("begin resets a previous complete stamp", () => {
+    markIdleTabPreloadComplete("profile", 1);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(1);
+    beginIdleTabPreloadEpoch("profile");
+    expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
+  });
+
+  it("mark sets getAt for the current epoch", () => {
+    beginIdleTabPreloadEpoch("profile");
+    expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
+    markIdleTabPreloadComplete("profile", 3);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(3);
+  });
+
+  it("begin after mark invalidates the previous stamp", () => {
+    markIdleTabPreloadComplete("profile", 1);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(1);
+    beginIdleTabPreloadEpoch("profile");
+    expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
+    markIdleTabPreloadComplete("profile", 2);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(2);
+  });
+
+  it("notifies waiters when a new epoch starts", () => {
+    const listener = vi.fn();
+    const unsub = subscribeIdleTabPreloadComplete("profile", listener);
+    beginIdleTabPreloadEpoch("profile");
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it("does not stamp profile when messages or notifications is marked", () => {
+    markIdleTabPreloadComplete("messages", 4);
+    markIdleTabPreloadComplete("notifications", 5);
+    expect(getIdleTabPreloadCompleteAt("messages")).toBe(4);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(5);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
+  });
+});
+
 describe("idle tab preload stage reset", () => {
   afterEach(() => {
     __resetIdleTabPreloadSerializer();
   });
 
-  it("clears both stages", () => {
+  it("clears messages, notifications, and profile stages", () => {
     markIdleTabPreloadComplete("messages", 1);
     markIdleTabPreloadComplete("notifications", 2);
+    markIdleTabPreloadComplete("profile", 3);
     expect(getIdleTabPreloadCompleteAt("messages")).toBe(1);
     expect(getIdleTabPreloadCompleteAt("notifications")).toBe(2);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(3);
     __resetIdleTabPreloadSerializer();
     expect(getIdleTabPreloadCompleteAt("messages")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
   });
 });
 
