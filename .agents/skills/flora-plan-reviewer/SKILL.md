@@ -1,25 +1,27 @@
 ---
 name: flora-plan-reviewer
 description: >-
-  Reviews a work plan (план работы) on two axes — Goal closure and Mechanics
-  (holes, DoD, deps, Flora boundaries). Chat-only structured report; never edits
-  the plan. Use when the user asks to review a work plan, find holes in a plan,
-  stress-test a plan before routing/orchestration, or invokes /flora-plan-reviewer
-  / ревью плана / дыры в плане — not for code/PR diff review.
+  Reviews a work plan (план работы) on Goal closure and Mechanics (holes, DoD,
+  deps, Flora boundaries) plus approach/algorithm fitness (is this a sound way
+  to solve the task — not global “best”). Chat-only structured report; never
+  edits the plan. Use when the user asks to review a work plan, find holes,
+  stress-test before routing/orchestration, asks whether the plan’s method or
+  algorithm is the right/best way (лучший ли способ / алгоритм), or invokes
+  /flora-plan-reviewer / ревью плана / дыры в плане — not for code/PR diff review.
 ---
 
 # Flora Plan Reviewer — critique a work plan
 
 Role: read-only **plan critic**. Pipeline position: **review → router → orchestrator**. You do not edit the plan, assign models, or execute. Suggested deltas are advisory only.
 
-Load [taxonomy.md](taxonomy.md) when classifying holes. **Always** load [flora-lenses.md](flora-lenses.md).
+Load [taxonomy.md](taxonomy.md) when classifying holes. **Always** load [flora-lenses.md](flora-lenses.md) and [approach.md](approach.md).
 
 ## Workflow
 
 ```
 - [ ] 0. Locate plan (file path, attachment, or chat) + stated goal; if goal absent — ask once; still missing → blocked / goal_unstated
 - [ ] 1. Axis A — Goal closure (cited specs share ≤10 read budget with B)
-- [ ] 2. Axis B — Mechanics + Flora lenses
+- [ ] 2. Axis B — Mechanics + Flora lenses + approach/algorithm fitness
 - [ ] 3. Dedupe, severity, renumber G#/M#
 - [ ] 4. Emit chat report (mandatory schema)
 - [ ] 5. Stop — no plan edits; no router/orchestrator unless user asks
@@ -43,19 +45,20 @@ Vague one-line goal with no criteria → Goal map one row = that goal, and/or `m
 
 Goal map: any `no` → `goal_uncovered` (blocker); any `partial` → at least major.
 
-## Axis B — Mechanics + Flora
+## Axis B — Mechanics + Flora + Approach
 
 Walk steps in order. Probes:
 
 - Ambiguous ownership; missing/unverifiable DoD; hidden deps / wrong order / false parallelism; zone overlap if parallelized
 - Missing contracts cut; missing rollback / freeze awareness; stub-shaped steps; over-large steps; contradictions
 - Flora lenses (boundaries, frozen, skills, gates, risk) — see [flora-lenses.md](flora-lenses.md)
+- Approach/algorithm fitness — see [approach.md](approach.md); header **Approach** is mandatory (Fit `n/a` if not algorithm-shaped)
 
 ## Dual-pass (large plans)
 
 Use when **≥8 items**, **≥~400 lines**, or user asks for deep review. Otherwise single agent, both axes.
 
-Launch two `generalPurpose` subagents in one message (Goal-only | Mechanics+Flora-only). Parent assigns cited-path reads (**shared ≤10** total). Parent alone writes Goal map, axis status, verdict.
+Launch two `generalPurpose` subagents in one message (Goal-only | Mechanics+Flora-only). Parent assigns cited-path reads (**shared ≤10** total). Parent alone writes Goal map, **Approach** header, axis status, verdict.
 
 ### Subagent brief template
 
@@ -66,12 +69,15 @@ Plan: <absolute path — read end-to-end> OR full plan text below
 
 Read: .agents/skills/flora-plan-reviewer/taxonomy.md
 [Mechanics only] Also read: .agents/skills/flora-plan-reviewer/flora-lenses.md
+[Mechanics only] Also read: .agents/skills/flora-plan-reviewer/approach.md
 Cited paths you may read (parent-assigned; do not exceed): <list or none>
 
-Return ONLY finding bullets (no verdict, no Goal map):
+Return ONLY finding bullets (no verdict, no Goal map, no Approach header):
 - [G# or M#] `hole_id` — plan «item» — "quote" — why — suggested delta (1 line)
 
-Rules: quote required; closed taxonomy only; no invented goal criteria; no plan edits.
+Rules: quote required; closed taxonomy only; no invented goal criteria or novel algorithms; no plan edits.
+[Mechanics only] Always run the approach probe (approach.md); emit `approach_*` as M#.
+[Goal only] Do not emit `approach_*`.
 ```
 
 ## Report schema (chat only)
@@ -83,6 +89,9 @@ Report language = plan’s primary language; `hole_id`, verdict, axis tokens sta
 
 **Verdict:** ready | revise | blocked
 **Goal (as understood):** …
+**Approach:** adequate | inferior | mismatch | unjustified | n/a | unknown
+**Chosen:** … (short quote or «unspecified»)
+**Better alternative:** none identified | <one-line evidence-backed alternative>
 **Axes:** Goal: pass|fail|unknown — Mechanics: pass|fail|unknown
 
 ### Blockers
@@ -122,6 +131,8 @@ Empty sections: omit or `None`. Soft cap ≤15 findings; **never drop blockers**
 ```
 - [G1] `goal_uncovered` — plan «Goals» — "users can reset password" — no step delivers reset flow — add a step with DoD covering reset + tests
 - [M1] `contract_uncut` — plan «Auth + Users» — "update both modules" — cross-module without contracts cut — split into contracts → flora-auth → flora-users → wiring
+- [M2] `approach_inferior` — plan «Search» — "build an in-process inverted index" — FSA already owns search; plan ignores it — consume FSA via the existing data bridge; do not add a Social-owned index
+- [M3] `approach_unjustified` — plan «Sync» — "use a custom CRDT" — no why vs last-write-wins given no concurrent-edit constraint — add the constraint that forces CRDT, or switch to LWW
 ```
 
 ## Rules
@@ -140,10 +151,11 @@ Empty sections: omit or `None`. Soft cap ≤15 findings; **never drop blockers**
 - **Cited paths:** shared ≤10 reads per review; unread cites → Out of scope.
 - **Re-review:** if prior `## Plan review` in thread, reconcile fixed/open/regressed, then full schema.
 - Ask for missing goal **once**; if unanswered → `blocked` / `goal_unstated` — do not invent criteria.
+- **Approach header** is mandatory. Fit tokens and `approach_*` rules: [approach.md](approach.md). Fit `unknown` → Unknowns. Never write “best algorithm”; pass token is `adequate` or `n/a`. User questions like “лучший ли способ” do not add a Goal-map row.
 
 ## Anti-patterns
 
-- Rubber-stamp `ready` without Goal map
+- Rubber-stamp `ready` without Goal map, or Approach `adequate` without running the probe
 - Editing the plan “to help”
 - Inventing module ownership, DoD, goal criteria, or `hole_id`s
 - Collapsing Goal and Mechanics into one mixed list
@@ -152,3 +164,4 @@ Empty sections: omit or `None`. Soft cap ≤15 findings; **never drop blockers**
 - `revise` while Unknowns is non-empty
 - Separate 10-cite budgets per dual-pass agent
 - Scoring or rewriting Model routing; invoking orchestrator without user request
+- Claiming global “best algorithm”; inventing a novel alternative; demanding a bake-off for mechanical or spec-prescribed work
