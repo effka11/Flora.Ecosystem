@@ -1,8 +1,76 @@
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import { isFscpWirePayload } from "@flora/client-core/fscp";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { mapIdleSliced, type IdleSlicedDeps } from "@/lib/idleScrollGate";
 import { useFscpStore } from "@/stores/fscpStore";
 import { messagePreviewCache, messagePreviewKey } from "@/stores/messagePreviewCache";
+
+export type MessagesListPreviewDecryptOne = (item: MsgConversationDto) => Promise<string>;
+
+export type WarmMessagesListPreviewsDeps = IdleSlicedDeps & {
+  decryptOne: MessagesListPreviewDecryptOne;
+};
+
+export type WarmMessagesListPreviewsHandle = {
+  cancel: () => void;
+  done: Promise<Record<string, string> | null>;
+};
+
+let warmEpoch = 0;
+let abortActiveWarm: (() => void) | null = null;
+
+/**
+ * Idle-sliced list-preview warm: one conversation, then a macrotask yield so
+ * feed frames can run. Decrypt waits while the feed is unsettled — including
+ * after an in-flight sodium call returns. A new run (or `cancel`) aborts the
+ * previous one.
+ */
+export function warmMessagesListPreviews(
+  conversations: readonly MsgConversationDto[],
+  deps: WarmMessagesListPreviewsDeps,
+): WarmMessagesListPreviewsHandle {
+  abortActiveWarm?.();
+  const epoch = ++warmEpoch;
+
+  const sliced = mapIdleSliced(
+    conversations,
+    async (item) => {
+      const mk = messagePreviewKey(item.lastMessageEncryptedForMe, item.lastMessageAt);
+      const cached = messagePreviewCache.get(item.conversationUuid);
+      if (cached && cached.msgKey === mk) {
+        return cached.text;
+      }
+      const text = await deps.decryptOne(item);
+      messagePreviewCache.set(item.conversationUuid, mk, text);
+      return text;
+    },
+    {
+      isScrollSettled: deps.isScrollSettled,
+      subscribeScrollSettled: deps.subscribeScrollSettled,
+      yieldBetweenSteps: deps.yieldBetweenSteps,
+    },
+  );
+
+  const cancel = () => {
+    sliced.cancel();
+    if (epoch === warmEpoch) abortActiveWarm = null;
+  };
+  abortActiveWarm = cancel;
+
+  const done = sliced.done.then((rows) => {
+    if (!rows) return null;
+    const next: Record<string, string> = {};
+    for (let i = 0; i < conversations.length; i++) {
+      const item = conversations[i];
+      const text = rows[i];
+      if (item == null || text == null) continue;
+      next[item.conversationUuid] = text;
+    }
+    return next;
+  });
+
+  return { cancel, done };
+}
 
 export function useMessagesListPreviewDecrypt(
   conversations: MsgConversationDto[],
@@ -52,37 +120,22 @@ export function useMessagesListPreviewDecrypt(
 
   useEffect(() => {
     if (!viewerUserUuid || conversations.length === 0) return;
-    let cancelled = false;
-
-    (async () => {
-      const next: Record<string, string> = {};
-      for (const item of conversations) {
-        const mk = messagePreviewKey(item.lastMessageEncryptedForMe, item.lastMessageAt);
-        const cached = messagePreviewCache.get(item.conversationUuid);
-        if (cached && cached.msgKey === mk) {
-          next[item.conversationUuid] = cached.text;
-          continue;
+    const handle = warmMessagesListPreviews(conversations, { decryptOne });
+    void handle.done.then((next) => {
+      if (!next) return;
+      setPreviews((prev) => {
+        const keys = Object.keys(next);
+        if (
+          keys.length === Object.keys(prev).length &&
+          keys.every((k) => prev[k] === next[k])
+        ) {
+          return prev;
         }
-        const text = await decryptOne(item);
-        next[item.conversationUuid] = text;
-        messagePreviewCache.set(item.conversationUuid, mk, text);
-      }
-      if (!cancelled) {
-        setPreviews((prev) => {
-          const keys = Object.keys(next);
-          if (
-            keys.length === Object.keys(prev).length &&
-            keys.every((k) => prev[k] === next[k])
-          ) {
-            return prev;
-          }
-          return next;
-        });
-      }
-    })();
-
+        return next;
+      });
+    });
     return () => {
-      cancelled = true;
+      handle.cancel();
     };
   }, [conversations, decryptOne, fscpReady, viewerUserUuid]);
 

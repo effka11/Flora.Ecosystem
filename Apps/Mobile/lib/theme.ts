@@ -197,9 +197,9 @@ export const floraProfile = {
 
 export const floraMotion = {
   baseMs: 150,
-  /** dashboardShell — var(--flora-duration-6). */
-  tabTransitionDurationMs: 900,
-  /** dashboardShell — animation-delay 0.02s. */
+  /** Как ENERGETIC_OPEN_MS — тап подвкладок (рекомендации/подписки). */
+  tabTransitionDurationMs: 150 * 3,
+  /** Кадр на отрисовку новой сцены под оверлеем. */
   tabTransitionDelayMs: 20,
 };
 

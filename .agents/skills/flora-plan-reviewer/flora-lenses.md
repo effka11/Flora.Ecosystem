@@ -66,7 +66,17 @@ Risky or non-trivial steps should name a gate; else `flora_gate_missing` / `test
 
 Auth, crypto, payments, PII, session/JWT, witness co-signing (LIV/FEP): plan should name a risk/review step (or explicit acceptance of residual risk). Missing → `risk_unaddressed`. Prefer escalating when contracts or frozen surfaces are involved.
 
-## 7) Ignore for scoring (unless contradictory)
+## 7) Approach / algorithm (see [approach.md](approach.md))
+
+Always run the approach probe (Axis B). Flag:
+
+- `approach_unjustified` — algorithm-shaped, method or why missing
+- `approach_mismatch` — named method cannot close the goal under stated constraints
+- `approach_inferior` — ignores an evidence-backed better alternative (existing Functional primitive, contracts-cut, or a standard simpler method for the same class)
+
+“Better” is relative to the goal, stated constraints, and Flora primitives — not global optimality. Mechanical / spec-prescribed work → Fit `n/a`, no `approach_*` hole.
+
+## 8) Ignore for scoring (unless contradictory)
 
 - `## Model routing` / `## Маршрутизация по моделям` — do not score routing quality
 - `## Execution log` / `## Журнал исполнения` — do not score execution history

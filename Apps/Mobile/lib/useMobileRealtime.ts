@@ -51,7 +51,10 @@ export function useMobileRealtime(enabled: boolean): void {
         void sharedPresenceStore.resyncSnapshots().catch(() => {});
       },
       onMessage: (signal) => {
-        handleMessageRealtime(signal.conversationUuid, signal.kind);
+        handleMessageRealtime(signal.conversationUuid, signal.kind, {
+          senderUserUuid: signal.senderUserUuid,
+          sentAt: signal.sentAt,
+        });
       },
       onNotification: (signal) => {
         handleNotificationRealtime();

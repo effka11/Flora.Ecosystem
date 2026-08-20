@@ -3,7 +3,7 @@
 Closed set. Do **not** invent `hole_id`s. If nothing fits: nearest id + note in why, or `missing_decision`.
 
 Severity tokens: `blocker` | `major` | `minor` | `unknown`.
-Axis: `G` = Goal closure, `M` = Mechanics (+ Flora).
+Axis: `G` = Goal closure, `M` = Mechanics (+ Flora + approach).
 
 Findings with severity `unknown` go only under `### Unknowns` in the report (never under Blockers/Majors/Minors). Non-empty Unknowns ⇒ Verdict `blocked`.
 
@@ -32,6 +32,9 @@ Findings with severity `unknown` go only under `### Unknowns` in the report (nev
 | `risk_unaddressed` | M | major | auth/crypto/payments/PII change without risk/review step (blocker if frozen/auth contract change) |
 | `rollback_missing` | M | major | migration/data change without rollback/verify |
 | `test_strategy_missing` | M | major | non-trivial logic with no test/gate step |
+| `approach_unjustified` | M | major | algorithm-shaped work with no named method, no why, and no forced spec path |
+| `approach_mismatch` | M | blocker | named method cannot satisfy the stated goal/constraints |
+| `approach_inferior` | M | major | evidence-backed better alternative exists (Flora primitive or simpler standard method) and the plan ignores it |
 | `missing_decision` | G or M | unknown | cannot finish the review without a human choice |
 
 ## Severity overrides
@@ -40,3 +43,6 @@ Findings with severity `unknown` go only under `### Unknowns` in the report (nev
 - Goal map row `no` → `goal_uncovered` / `blocker`.
 - Escalate `risk_unaddressed` / `flora_skill_gap` to `blocker` when the change hits frozen HTTP/auth contracts or DB schema.
 - De-escalate to `minor` only for wording/order nits that do not affect DoD, goal closure, or boundaries — never for boundary/frozen/uncovered-goal holes.
+- De-escalate `approach_unjustified` to `minor` only when a single spec-prescribed path is obvious and only the one-line why is missing. Never de-escalate `approach_mismatch`.
+- `approach_mismatch` overlapping `goal_insufficient` / `proxy_goal`: one finding; prefer `approach_mismatch` when a method is named.
+- `approach_inferior` that is also a dependency-direction violation: prefer `flora_boundary`; mention inferior in why. Frozen-formula “improvements”: prefer `flora_frozen`.

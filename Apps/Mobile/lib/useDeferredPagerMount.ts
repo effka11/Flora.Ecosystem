@@ -4,6 +4,10 @@ import {
   type PagerMediaWakeHandle,
 } from "@/lib/feedPagerMediaWake";
 import {
+  isScrollSettled,
+  subscribeScrollSettled,
+} from "@/lib/scrollActivity";
+import {
   mountedSetsEqual,
   nextMountCandidate,
   reconcileMountedIds,
@@ -14,13 +18,28 @@ const WARMUP_QUIET_MS = 400;
 /** Зазор между шагами idle-прогрева. */
 const WARMUP_STEP_GAP_MS = 120;
 
+/** After hidden→focused, wait remaining quiet ms before expanding pager neighbors. */
+export function neighborExpandDeferMs(
+  requireQuiet: boolean,
+  quietForMs: number,
+  quietMs = WARMUP_QUIET_MS,
+): number | null {
+  if (!requireQuiet) return null;
+  if (quietForMs >= quietMs) return null;
+  return quietMs - quietForMs;
+}
+
 /**
  * Sticky-окно маунта страниц пейджера: active сразу, соседи после settle,
  * остальные по одной в тишину. Не расширять mid-pan (RNGH busy-guard).
+ *
+ * `allowIdleWarmup` (default true — People): соседи + дальние страницы в тишину.
+ * false — только активная страница (preload Messages, пока вкладка без фокуса).
  */
 export function useDeferredPagerMount<T extends string>(
   pageIds: readonly T[],
   initialIndex = 0,
+  allowIdleWarmup = true,
 ): {
   mountedIds: ReadonlySet<T>;
   setBusy: (busy: boolean) => void;
@@ -35,12 +54,17 @@ export function useDeferredPagerMount<T extends string>(
   mountedIdsRef.current = mountedIds;
   const pageIdsRef = useRef(pageIds);
   pageIdsRef.current = pageIds;
+  const allowIdleWarmupRef = useRef(allowIdleWarmup);
+  allowIdleWarmupRef.current = allowIdleWarmup;
+  const prevAllowIdleWarmupRef = useRef(allowIdleWarmup);
+  const activeIndexRef = useRef(initialIndex);
 
   const mountWakeRef = useRef<PagerMediaWakeHandle | null>(null);
   const warmupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyRef = useRef(false);
   const pendingIndexRef = useRef<number | null>(null);
   const lastInteractionAtRef = useRef(Date.now());
+  const quietNeighborsOnceRef = useRef(false);
   const scheduleAdvanceRef = useRef<(activeIndex: number) => void>(() => {});
 
   const cancelWake = useCallback(() => {
@@ -54,6 +78,7 @@ export function useDeferredPagerMount<T extends string>(
 
   const scheduleAdvance = useCallback(
     (activeIndex: number) => {
+      activeIndexRef.current = activeIndex;
       cancelWake();
       pendingIndexRef.current = null;
       mountWakeRef.current = schedulePagerMediaWake({
@@ -63,19 +88,41 @@ export function useDeferredPagerMount<T extends string>(
             pendingIndexRef.current = activeIndex;
             return;
           }
+          const expandNeighbors = allowIdleWarmupRef.current;
+          if (expandNeighbors && !isScrollSettled()) {
+            pendingIndexRef.current = activeIndex;
+            return;
+          }
+          const neighborWait = neighborExpandDeferMs(
+            expandNeighbors && quietNeighborsOnceRef.current,
+            Date.now() - lastInteractionAtRef.current,
+          );
+          if (neighborWait != null) {
+            warmupTimerRef.current = setTimeout(() => {
+              warmupTimerRef.current = null;
+              scheduleAdvanceRef.current(activeIndex);
+            }, neighborWait);
+            return;
+          }
+          if (expandNeighbors) {
+            quietNeighborsOnceRef.current = false;
+          }
           const ids = pageIdsRef.current;
           const withNeighbors = reconcileMountedIds({
             prev: mountedIdsRef.current,
             visibleIds: ids,
             activeIndex,
-            expandNeighbors: true,
+            expandNeighbors,
           });
           if (!mountedSetsEqual(mountedIdsRef.current, withNeighbors)) {
             mountedIdsRef.current = withNeighbors;
             setMountedIds(withNeighbors);
-            scheduleAdvanceRef.current(activeIndex);
+            if (expandNeighbors) {
+              scheduleAdvanceRef.current(activeIndex);
+            }
             return;
           }
+          if (!expandNeighbors) return;
           const candidate = nextMountCandidate(ids, mountedIdsRef.current, activeIndex);
           if (candidate == null) return;
           const quietFor = Date.now() - lastInteractionAtRef.current;
@@ -138,6 +185,22 @@ export function useDeferredPagerMount<T extends string>(
     scheduleAdvance(initialIndex);
     return cancelWake;
   }, [cancelWake, initialIndex, scheduleAdvance]);
+
+  useEffect(() => {
+    const prev = prevAllowIdleWarmupRef.current;
+    prevAllowIdleWarmupRef.current = allowIdleWarmup;
+    if (!prev && allowIdleWarmup) {
+      quietNeighborsOnceRef.current = true;
+      lastInteractionAtRef.current = Date.now();
+      scheduleAdvance(activeIndexRef.current);
+    }
+  }, [allowIdleWarmup, scheduleAdvance]);
+
+  useEffect(() => {
+    return subscribeScrollSettled((settled) => {
+      if (settled) flushIfIdle();
+    });
+  }, [flushIfIdle]);
 
   return { mountedIds, setBusy, ensureMounted, onCommitted };
 }

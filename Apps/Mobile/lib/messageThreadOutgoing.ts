@@ -39,6 +39,13 @@ export type OutgoingConversationPatch = {
   lastMessageContent?: string | null;
 };
 
+export type IncomingConversationPatch = {
+  conversationUuid: string;
+  senderUserUuid: string;
+  sentAt: string;
+  viewerUserUuid: string;
+};
+
 export type MessagesQueryData = { items: MsgMessageDto[]; nextCursor: string | null };
 
 export type PendingOutgoingEntry = {
@@ -53,6 +60,10 @@ const pendingByConversation = new Map<string, PendingOutgoingEntry[]>();
 
 function normConv(conversationUuid: string): string {
   return conversationUuid.trim().toLowerCase();
+}
+
+function uuidEqual(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 function messagesQueryKey(conversationUuid: string, otherUserUuid?: string) {
@@ -79,6 +90,26 @@ export function applyOutgoingToConversations(
       patch.lastMessageContent !== undefined ? patch.lastMessageContent : null,
     lastMessageAt: patch.createdAt,
     lastMessageIsFromMe: true,
+  };
+  return [updated, ...items.slice(0, index), ...items.slice(index + 1)];
+}
+
+export function applyIncomingToConversations(
+  items: MsgConversationDto[],
+  patch: IncomingConversationPatch,
+): MsgConversationDto[] {
+  const index = items.findIndex((item) =>
+    uuidEqual(item.conversationUuid, patch.conversationUuid),
+  );
+  if (index === -1) return items;
+
+  const fromMe = uuidEqual(patch.senderUserUuid, patch.viewerUserUuid);
+  const current = items[index];
+  const updated = {
+    ...current,
+    lastMessageAt: patch.sentAt,
+    lastMessageIsFromMe: fromMe,
+    unreadCount: fromMe ? current.unreadCount : current.unreadCount + 1,
   };
   return [updated, ...items.slice(0, index), ...items.slice(index + 1)];
 }
