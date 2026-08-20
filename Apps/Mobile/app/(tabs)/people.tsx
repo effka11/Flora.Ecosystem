@@ -1,12 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import {
-  apiFollowUser,
-  apiGetProfileFollowers,
-  apiGetProfileFollowing,
-  apiGetRecommendedUsers,
-  apiSearchUsers,
-  apiUnfollowUser,
-} from "@flora/client-core/api";
+import { apiFollowUser, apiSearchUsers, apiUnfollowUser } from "@flora/client-core/api";
 import type { PeopleUserDto } from "@flora/client-core/contracts";
 import { sharedPresenceStore } from "@flora/client-core/presence";
 import { FlashList } from "@shopify/flash-list";
@@ -35,6 +28,16 @@ import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
 import { TabScreenHeader } from "@/components/TabScreenHeader";
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
+import {
+  fetchPeopleFollowersQuery,
+  fetchPeopleFollowingQuery,
+  fetchPeopleRecommendedQuery,
+  peopleFollowersQueryKey,
+  peopleFollowingQueryKey,
+  peopleIndexUsername,
+  PEOPLE_RECOMMENDED_QUERY_KEY,
+} from "@/lib/people/peopleIndexQueries";
+import { peoplePresenceShouldRegister } from "@/lib/people/peoplePresence";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
@@ -267,9 +270,17 @@ export default function PeopleScreen() {
     following: null,
   });
   const { renderScrollComponents, setActivePane } = usePagerListScroll(PEOPLE_TABS.length);
+  const [tabFocused, setTabFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setTabFocused(true);
+      return () => setTabFocused(false);
+    }, []),
+  );
   const { mountedIds, setBusy, ensureMounted, onCommitted } = useDeferredPagerMount(
     PEOPLE_PAGE_IDS,
     0,
+    tabFocused,
   );
   const pagerGenRef = useRef(0);
   const { reportTouch, reportPager, reportStrip, getEpoch } = usePagerBusyFlags(setBusy);
@@ -368,24 +379,27 @@ export default function PeopleScreen() {
   const [localFollowing, setLocalFollowing] = useState<Record<string, boolean>>({});
   const [busyUsername, setBusyUsername] = useState<string | null>(null);
 
-  const myUsername = me?.username?.replace(/^@+/, "") ?? "";
+  const myUsername = peopleIndexUsername(me?.username ?? "");
 
   const recommendedQuery = useQuery({
-    queryKey: ["people", "recommended"],
+    queryKey: PEOPLE_RECOMMENDED_QUERY_KEY,
     enabled: !hasSearch,
-    queryFn: () => apiGetRecommendedUsers(40),
+    queryFn: fetchPeopleRecommendedQuery,
+    refetchOnMount: false,
   });
 
   const followersQuery = useQuery({
-    queryKey: ["people", "followers", myUsername],
+    queryKey: peopleFollowersQueryKey(myUsername),
     enabled: !hasSearch && myUsername.length > 0,
-    queryFn: () => apiGetProfileFollowers(myUsername, { take: 50 }),
+    queryFn: () => fetchPeopleFollowersQuery(myUsername),
+    refetchOnMount: false,
   });
 
   const followingQuery = useQuery({
-    queryKey: ["people", "following", myUsername],
+    queryKey: peopleFollowingQueryKey(myUsername),
     enabled: !hasSearch && myUsername.length > 0,
-    queryFn: () => apiGetProfileFollowing(myUsername, { take: 50 }),
+    queryFn: () => fetchPeopleFollowingQuery(myUsername),
+    refetchOnMount: false,
   });
 
   const searchQuery = useQuery({
@@ -436,6 +450,10 @@ export default function PeopleScreen() {
   }, []);
 
   useEffect(() => {
+    if (!peoplePresenceShouldRegister(tabFocused)) {
+      sharedPresenceStore.unregisterSurface("people");
+      return undefined;
+    }
     const uuids = presenceUsers.map((u) => u.userUuid).filter((u): u is string => !!u);
     if (!sharedPresenceStore.surfacesAccepted) {
       sharedPresenceStore.unregisterSurface("people");
@@ -444,7 +462,7 @@ export default function PeopleScreen() {
     sharedPresenceStore.registerSurface("people", uuids);
     void sharedPresenceStore.resyncSnapshots().catch(() => {});
     return () => sharedPresenceStore.unregisterSurface("people");
-  }, [presenceUsers, presenceEpoch]);
+  }, [presenceUsers, presenceEpoch, tabFocused]);
 
   const extraData = `${busyUsername}:${JSON.stringify(localFollowing)}`;
 
