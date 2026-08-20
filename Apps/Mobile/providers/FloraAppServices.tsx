@@ -1,5 +1,6 @@
 import {
   apiGetConversations,
+  apiGetProfilePosts,
   apiListGroups,
   apiListNotifications,
 } from "@flora/client-core/api";
@@ -13,6 +14,8 @@ import { useSessionStore } from "@/stores/sessionStore";
 
 export function FloraAppServices({ enabled }: { enabled: boolean }) {
   useMobileRealtime(enabled);
+
+  const username = useSessionStore((s) => s.me?.username ?? "");
 
   useQuery({
     queryKey: ["conversations"],
@@ -28,6 +31,11 @@ export function FloraAppServices({ enabled }: { enabled: boolean }) {
     queryKey: ["notifications", "all", ""],
     queryFn: () => apiListNotifications({ category: "all", take: 100 }),
     enabled,
+  });
+  useQuery({
+    queryKey: ["profile-posts", username],
+    queryFn: () => apiGetProfilePosts(username, { skip: 0, take: 30 }),
+    enabled: enabled && username.length > 0,
   });
 
   const userUuid = useSessionStore((s) => s.me?.userUuid ?? null);

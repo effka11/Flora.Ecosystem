@@ -14,7 +14,7 @@ import { setScrollActivity } from "@/lib/scrollActivity";
 /** Quiet window after the last `settled: true` before an Android UI prefetch. */
 export const IDLE_TAB_PRELOAD_QUIET_MS = 400;
 
-/** Minimum delay after Messages prefetch-or-skip before Notifications may mount. */
+/** Minimum delay after a predecessor skip/prefetch before the next tab may mount. */
 export const IDLE_TAB_PRELOAD_SERIAL_GAP_MS = 120;
 
 export type IdleTabPreloadGate = {
@@ -26,12 +26,12 @@ export type IdleTabPreloadGate = {
   tabActive: boolean;
   alreadyPrefetched: boolean;
   /**
-   * Predecessor barrier (Messages skip/prefetch). Messages passes true;
-   * Notifications fills this from `getMessagesIdlePreloadCompleteAt`.
+   * Predecessor barrier (previous tab skip/prefetch). Messages passes true;
+   * Notifications fills this from the messages stamp; Profile from notifications.
    */
-  messagesComplete: boolean;
-  /** Elapsed since Messages prefetch-or-skip. Messages passes ≥ serial gap. */
-  messagesCompleteForMs: number;
+  predecessorComplete: boolean;
+  /** Elapsed since predecessor prefetch-or-skip. Messages passes ≥ serial gap. */
+  predecessorCompleteForMs: number;
 };
 
 export function canPrefetchIdleTab(gate: IdleTabPreloadGate): boolean {
@@ -41,8 +41,8 @@ export function canPrefetchIdleTab(gate: IdleTabPreloadGate): boolean {
     gate.dataSuccess &&
     gate.scrollSettled &&
     gate.quietForMs >= IDLE_TAB_PRELOAD_QUIET_MS &&
-    gate.messagesComplete &&
-    gate.messagesCompleteForMs >= IDLE_TAB_PRELOAD_SERIAL_GAP_MS &&
+    gate.predecessorComplete &&
+    gate.predecessorCompleteForMs >= IDLE_TAB_PRELOAD_SERIAL_GAP_MS &&
     !gate.tabActive &&
     !gate.alreadyPrefetched
   );
@@ -61,8 +61,8 @@ export type IdleTabPrefetchFireGate = {
   scrollSettled: boolean;
   quietForMs: number;
   tabActive: boolean;
-  messagesComplete: boolean;
-  messagesCompleteForMs: number;
+  predecessorComplete: boolean;
+  predecessorCompleteForMs: number;
 };
 
 export function canRunQueuedIdleTabPrefetch(gate: IdleTabPrefetchFireGate): boolean {
@@ -76,8 +76,8 @@ export function canRunQueuedIdleTabPrefetch(gate: IdleTabPrefetchFireGate): bool
       quietForMs: gate.quietForMs,
       tabActive: gate.tabActive,
       alreadyPrefetched: false,
-      messagesComplete: gate.messagesComplete,
-      messagesCompleteForMs: gate.messagesCompleteForMs,
+      predecessorComplete: gate.predecessorComplete,
+      predecessorCompleteForMs: gate.predecessorCompleteForMs,
     })
   );
 }
@@ -87,8 +87,8 @@ export type IdleTabPreloadSnapshot = {
   appActive: boolean;
   dataSuccess: boolean;
   tabActive: boolean;
-  messagesComplete: boolean;
-  messagesCompleteForMs: number;
+  predecessorComplete: boolean;
+  predecessorCompleteForMs: number;
 };
 
 export type IdleTabPreloadController = {
@@ -115,7 +115,7 @@ export function createIdleTabPreloadController(opts: {
   isScrollSettled: () => boolean;
   getSnapshot: () => IdleTabPreloadSnapshot;
   prefetch: () => void;
-  /** Messages skip (tab already active) — still counts as “prefetch or skip”. */
+  /** Skip (tab already active) — still counts as “prefetch or skip”. */
   onSkip?: () => void;
 }): IdleTabPreloadController {
   const quietMs = opts.quietMs ?? IDLE_TAB_PRELOAD_QUIET_MS;
@@ -164,8 +164,8 @@ export function createIdleTabPreloadController(opts: {
       quietForMs: now() - lastSettledAt,
       tabActive: snapshot.tabActive,
       alreadyPrefetched,
-      messagesComplete: snapshot.messagesComplete,
-      messagesCompleteForMs: snapshot.messagesCompleteForMs,
+      predecessorComplete: snapshot.predecessorComplete,
+      predecessorCompleteForMs: snapshot.predecessorCompleteForMs,
     };
 
     if (canPrefetchIdleTab(gate)) {
@@ -176,12 +176,12 @@ export function createIdleTabPreloadController(opts: {
     }
 
     const readyIfTimersElapsed =
-      snapshot.messagesComplete &&
+      snapshot.predecessorComplete &&
       canPrefetchIdleTab({
         ...gate,
         quietForMs: quietMs,
-        messagesCompleteForMs: Math.max(
-          gate.messagesCompleteForMs,
+        predecessorCompleteForMs: Math.max(
+          gate.predecessorCompleteForMs,
           IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
         ),
       });
@@ -192,7 +192,7 @@ export function createIdleTabPreloadController(opts: {
 
     const wait = Math.max(
       quietMs - gate.quietForMs,
-      IDLE_TAB_PRELOAD_SERIAL_GAP_MS - gate.messagesCompleteForMs,
+      IDLE_TAB_PRELOAD_SERIAL_GAP_MS - gate.predecessorCompleteForMs,
       0,
     );
     cancelTimer();
@@ -397,13 +397,40 @@ export function abortQueuedIdleTabPrefetch(
 }
 
 let sharedSerializer: IdleTabPreloadSerializer | null = null;
-let messagesEpoch = 0;
-let messagesCompleteEpoch = -1;
-let messagesCompleteAt: number | null = null;
-const messagesCompleteListeners = new Set<() => void>();
 
-function notifyMessagesIdlePreloadListeners(): void {
-  for (const listener of messagesCompleteListeners) listener();
+export type IdleTabPreloadStage = "messages" | "notifications";
+
+type IdleTabPreloadStageState = {
+  epoch: number;
+  completeEpoch: number;
+  completeAt: number | null;
+  listeners: Set<() => void>;
+};
+
+function createIdleTabPreloadStageState(): IdleTabPreloadStageState {
+  return {
+    epoch: 0,
+    completeEpoch: -1,
+    completeAt: null,
+    listeners: new Set(),
+  };
+}
+
+const idleTabPreloadStages: Record<IdleTabPreloadStage, IdleTabPreloadStageState> = {
+  messages: createIdleTabPreloadStageState(),
+  notifications: createIdleTabPreloadStageState(),
+};
+
+function notifyIdleTabPreloadStageListeners(stage: IdleTabPreloadStage): void {
+  for (const listener of idleTabPreloadStages[stage].listeners) listener();
+}
+
+function resetIdleTabPreloadStage(stage: IdleTabPreloadStage): void {
+  const state = idleTabPreloadStages[stage];
+  state.epoch = 0;
+  state.completeEpoch = -1;
+  state.completeAt = null;
+  state.listeners.clear();
 }
 
 /** Process-wide lock shared by every tab preload hook. */
@@ -415,43 +442,67 @@ export function getIdleTabPreloadSerializer(): IdleTabPreloadSerializer {
 }
 
 /**
- * Messages-first barrier for Notifications (explicit: `notificationsTabPreload`
- * is the only subscriber). Start a Messages preload session. Invalidates a
- * previous skip/prefetch stamp so a remounted Notifications hook cannot race
- * ahead of this instance.
+ * Start a preload session for `stage`. Invalidates a previous skip/prefetch
+ * stamp so a remounted successor hook cannot race ahead of this instance.
  */
-export function beginMessagesIdlePreloadEpoch(): void {
-  messagesEpoch += 1;
-  messagesCompleteAt = null;
-  notifyMessagesIdlePreloadListeners();
+export function beginIdleTabPreloadEpoch(stage: IdleTabPreloadStage): void {
+  const state = idleTabPreloadStages[stage];
+  state.epoch += 1;
+  state.completeAt = null;
+  notifyIdleTabPreloadStageListeners(stage);
 }
 
-/** Stamp “Messages prefetch or skip finished” for the current epoch. */
+/** Stamp “prefetch or skip finished” for the current epoch of `stage`. */
+export function markIdleTabPreloadComplete(
+  stage: IdleTabPreloadStage,
+  at: number = Date.now(),
+): void {
+  const state = idleTabPreloadStages[stage];
+  if (state.completeEpoch === state.epoch && state.completeAt != null) return;
+  state.completeEpoch = state.epoch;
+  state.completeAt = at;
+  notifyIdleTabPreloadStageListeners(stage);
+}
+
+export function getIdleTabPreloadCompleteAt(stage: IdleTabPreloadStage): number | null {
+  const state = idleTabPreloadStages[stage];
+  if (state.completeEpoch !== state.epoch) return null;
+  return state.completeAt;
+}
+
+export function subscribeIdleTabPreloadComplete(
+  stage: IdleTabPreloadStage,
+  listener: () => void,
+): () => void {
+  const listeners = idleTabPreloadStages[stage].listeners;
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** Messages-named alias of `beginIdleTabPreloadEpoch("messages")`. */
+export function beginMessagesIdlePreloadEpoch(): void {
+  beginIdleTabPreloadEpoch("messages");
+}
+
+/** Messages-named alias of `markIdleTabPreloadComplete("messages")`. */
 export function markMessagesIdlePreloadComplete(at: number = Date.now()): void {
-  if (messagesCompleteEpoch === messagesEpoch && messagesCompleteAt != null) return;
-  messagesCompleteEpoch = messagesEpoch;
-  messagesCompleteAt = at;
-  notifyMessagesIdlePreloadListeners();
+  markIdleTabPreloadComplete("messages", at);
 }
 
 export function getMessagesIdlePreloadCompleteAt(): number | null {
-  if (messagesCompleteEpoch !== messagesEpoch) return null;
-  return messagesCompleteAt;
+  return getIdleTabPreloadCompleteAt("messages");
 }
 
 export function subscribeMessagesIdlePreloadComplete(listener: () => void): () => void {
-  messagesCompleteListeners.add(listener);
-  return () => {
-    messagesCompleteListeners.delete(listener);
-  };
+  return subscribeIdleTabPreloadComplete("messages", listener);
 }
 
 /** test-only */
 export function __resetIdleTabPreloadSerializer(): void {
   sharedSerializer?.dispose();
   sharedSerializer = null;
-  messagesEpoch = 0;
-  messagesCompleteEpoch = -1;
-  messagesCompleteAt = null;
-  messagesCompleteListeners.clear();
+  resetIdleTabPreloadStage("messages");
+  resetIdleTabPreloadStage("notifications");
 }

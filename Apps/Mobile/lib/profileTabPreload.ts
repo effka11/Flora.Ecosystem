@@ -3,82 +3,91 @@ import { useEffect, useRef } from "react";
 import { isTabActive } from "@/lib/getActiveTabRouteKey";
 import {
   abortQueuedIdleTabPrefetch,
-  beginMessagesIdlePreloadEpoch,
   canPrefetchIdleTab,
   canRunQueuedIdleTabPrefetch,
   createIdleTabPreloadController,
+  getIdleTabPreloadCompleteAt,
   getIdleTabPreloadSerializer,
   IDLE_TAB_PRELOAD_QUIET_MS,
-  IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
-  markMessagesIdlePreloadComplete,
+  subscribeIdleTabPreloadComplete,
   type IdleTabPreloadController,
 } from "@/lib/idleTabPreload";
 import { isScrollSettled, subscribeScrollSettled } from "@/lib/scrollActivity";
 
 /** Quiet window after the last `settled: true` before Android UI prefetch. */
-export const MESSAGES_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
+export const PROFILE_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
 
-const CONVERSATIONS_QUERY_KEY = ["conversations"] as const;
-const MESSAGES_TAB_PRELOAD_HREF = "/(tabs)/messages";
+const PROFILE_TAB_PRELOAD_HREF = "/(tabs)/profile";
 
-export type MessagesTabPreloadGate = {
+/** Own-profile posts cache key — not a prefix match on `profile-posts`. */
+export function isOwnProfilePostsQueryKey(
+  queryKey: readonly unknown[],
+  username: string,
+): boolean {
+  return username.length > 0 && queryKey[0] === "profile-posts" && queryKey[1] === username;
+}
+
+export type ProfileTabPreloadGate = {
   platform: string; // "android" | "ios" | ...
   appActive: boolean;
-  conversationsSuccess: boolean;
+  profilePostsSuccess: boolean;
   scrollSettled: boolean;
   quietForMs: number;
-  messagesTabActive: boolean;
+  profileTabActive: boolean;
   alreadyPrefetched: boolean;
+  notificationsComplete: boolean;
+  notificationsCompleteForMs: number;
 };
 
-export function canPrefetchMessagesTab(gate: MessagesTabPreloadGate): boolean {
+export function canPrefetchProfileTab(gate: ProfileTabPreloadGate): boolean {
   return canPrefetchIdleTab({
     platform: gate.platform,
     appActive: gate.appActive,
-    dataSuccess: gate.conversationsSuccess,
+    dataSuccess: gate.profilePostsSuccess,
     scrollSettled: gate.scrollSettled,
     quietForMs: gate.quietForMs,
-    tabActive: gate.messagesTabActive,
+    tabActive: gate.profileTabActive,
     alreadyPrefetched: gate.alreadyPrefetched,
-    predecessorComplete: true,
-    predecessorCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+    predecessorComplete: gate.notificationsComplete,
+    predecessorCompleteForMs: gate.notificationsCompleteForMs,
   });
 }
 
-export type IdleMessagesTabPreloadSnapshot = {
+export type IdleProfileTabPreloadSnapshot = {
   platform: string;
   appActive: boolean;
-  conversationsSuccess: boolean;
-  messagesTabActive: boolean;
+  profilePostsSuccess: boolean;
+  profileTabActive: boolean;
 };
 
-export type IdleMessagesTabPreloadController = IdleTabPreloadController;
+export type IdleProfileTabPreloadController = IdleTabPreloadController;
 
-/** Messages binding of the generic idle machine in `lib/idleTabPreload.ts`. */
-export function createIdleMessagesTabPreloadController(opts: {
+/** Profile binding of the generic idle machine in `lib/idleTabPreload.ts`. */
+export function createIdleProfileTabPreloadController(opts: {
   quietMs?: number;
   now?: () => number;
   isScrollSettled: () => boolean;
-  getSnapshot: () => IdleMessagesTabPreloadSnapshot;
+  getSnapshot: () => IdleProfileTabPreloadSnapshot;
   prefetch: () => void;
-}): IdleMessagesTabPreloadController {
+}): IdleProfileTabPreloadController {
   return createIdleTabPreloadController({
-    quietMs: opts.quietMs ?? MESSAGES_TAB_PRELOAD_QUIET_MS,
+    quietMs: opts.quietMs ?? PROFILE_TAB_PRELOAD_QUIET_MS,
     now: opts.now ?? Date.now,
     isScrollSettled: opts.isScrollSettled,
     getSnapshot: () => {
       const snapshot = opts.getSnapshot();
+      const now = opts.now ?? Date.now;
+      const completedAt = getIdleTabPreloadCompleteAt("notifications");
       return {
         platform: snapshot.platform,
         appActive: snapshot.appActive,
-        dataSuccess: snapshot.conversationsSuccess,
-        tabActive: snapshot.messagesTabActive,
-        predecessorComplete: true,
-        predecessorCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+        dataSuccess: snapshot.profilePostsSuccess,
+        tabActive: snapshot.profileTabActive,
+        predecessorComplete: completedAt != null,
+        predecessorCompleteForMs: completedAt == null ? 0 : now() - completedAt,
       };
     },
     prefetch: opts.prefetch,
-    onSkip: markMessagesIdlePreloadComplete,
   });
 }
 
@@ -94,19 +103,33 @@ function loadIdlePreloadBindings() {
   return { AppState, Platform, router, clearFrcImageQueuePauseOwner, setFrcImageQueuePaused };
 }
 
+function loadSessionStore() {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { useSessionStore } =
+    require("@/stores/sessionStore") as typeof import("@/stores/sessionStore");
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  return useSessionStore;
+}
+
+function sessionUsername(store: ReturnType<typeof loadSessionStore>): string {
+  return store.getState().me?.username ?? "";
+}
+
 /**
- * Once the conversations query has succeeded, prefetch the Messages tab index
- * on Android after scroll has been quiet. Idle is `subscribeScrollSettled`,
- * not InteractionManager (RNGH/Reanimated gestures are invisible to it).
- * Pager touch/pager/strip and the tab-switch overlay also publish into that registry.
- * The mount itself goes through the shared serializer, so it never shares a
- * frame with another tab preload.
+ * Once the signed-in user's profile-posts query has succeeded, prefetch the
+ * Profile tab index on Android after scroll has been quiet. Idle is
+ * `subscribeScrollSettled`, not InteractionManager (RNGH/Reanimated gestures
+ * are invisible to it). Pager touch/pager/strip and the tab-switch overlay
+ * also publish into that registry. The mount itself goes through the shared
+ * serializer, so it never shares a frame with another tab preload. Profile is
+ * last: it waits on the notifications stamp and does not stamp a stage.
  */
-export function useIdleMessagesTabPreload(segments: readonly string[]): void {
+export function useIdleProfileTabPreload(segments: readonly string[]): void {
   const queryClient = useQueryClient();
-  const frcOwner = useRef(Symbol("messages-tab-preload")).current;
+  const frcOwner = useRef(Symbol("profile-tab-preload")).current;
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
+  const usernameRef = useRef("");
   const evaluateRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -122,7 +145,8 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
       return () => clearFrcImageQueuePauseOwner(frcOwner);
     }
 
-    beginMessagesIdlePreloadEpoch();
+    const sessionStore = loadSessionStore();
+    usernameRef.current = sessionUsername(sessionStore);
 
     let cancelled = false;
     let rafOuter: number | null = null;
@@ -130,6 +154,8 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
     let unsubScroll = () => {};
     let unsubApp = () => {};
     let unsubQuery = () => {};
+    let unsubNotifications = () => {};
+    let unsubSession = () => {};
 
     const cancelRafs = () => {
       if (rafOuter != null) {
@@ -149,18 +175,26 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
       unsubApp = () => {};
       unsubQuery();
       unsubQuery = () => {};
+      unsubNotifications();
+      unsubNotifications = () => {};
+      unsubSession();
+      unsubSession = () => {};
     };
 
-    const readSnapshot = () => ({
-      platform: Platform.OS,
-      appActive: AppState.currentState === "active",
-      conversationsSuccess:
-        queryClient.getQueryState(CONVERSATIONS_QUERY_KEY)?.status === "success",
-      messagesTabActive: isTabActive(segmentsRef.current, "messages"),
-    });
+    const readSnapshot = () => {
+      const ownUsername = usernameRef.current;
+      return {
+        platform: Platform.OS,
+        appActive: AppState.currentState === "active",
+        profilePostsSuccess:
+          ownUsername.length > 0 &&
+          queryClient.getQueryState(["profile-posts", ownUsername])?.status === "success",
+        profileTabActive: isTabActive(segmentsRef.current, "profile"),
+      };
+    };
 
-    const controller = createIdleMessagesTabPreloadController({
-      quietMs: MESSAGES_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdleProfileTabPreloadController({
+      quietMs: PROFILE_TAB_PRELOAD_QUIET_MS,
       isScrollSettled,
       getSnapshot: readSnapshot,
       prefetch: () => {
@@ -170,9 +204,8 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
           (release) => {
             detachListeners();
             setFrcImageQueuePaused(frcOwner, "drag", true);
-            router.prefetch(MESSAGES_TAB_PRELOAD_HREF);
+            router.prefetch(PROFILE_TAB_PRELOAD_HREF);
             const finish = () => {
-              markMessagesIdlePreloadComplete();
               release();
             };
             rafOuter = requestAnimationFrame(() => {
@@ -195,16 +228,18 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
           {
             shouldRun: () => {
               const snap = readSnapshot();
+              const completedAt = getIdleTabPreloadCompleteAt("notifications");
               return canRunQueuedIdleTabPrefetch({
                 cancelled,
                 platform: snap.platform,
                 appActive: snap.appActive,
-                dataSuccess: snap.conversationsSuccess,
+                dataSuccess: snap.profilePostsSuccess,
                 scrollSettled: isScrollSettled(),
                 quietForMs: controller.quietForMs(),
-                tabActive: snap.messagesTabActive,
-                predecessorComplete: true,
-                predecessorCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+                tabActive: snap.profileTabActive,
+                predecessorComplete: completedAt != null,
+                predecessorCompleteForMs:
+                  completedAt == null ? 0 : Date.now() - completedAt,
               });
             },
             onAbort: () => {
@@ -251,9 +286,22 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
     unsubApp = () => appSub.remove();
 
     unsubQuery = queryClient.getQueryCache().subscribe((event) => {
-      if (event.query.queryKey[0] !== "conversations") return;
+      if (!isOwnProfilePostsQueryKey(event.query.queryKey, usernameRef.current)) return;
       evaluate();
-      if (readSnapshot().conversationsSuccess !== true) abortQueued();
+      if (readSnapshot().profilePostsSuccess !== true) abortQueued();
+    });
+
+    unsubNotifications = subscribeIdleTabPreloadComplete("notifications", () => {
+      evaluate();
+      if (getIdleTabPreloadCompleteAt("notifications") == null) abortQueued();
+    });
+
+    unsubSession = sessionStore.subscribe((state) => {
+      const next = state.me?.username ?? "";
+      if (next === usernameRef.current) return;
+      usernameRef.current = next;
+      evaluate();
+      if (readSnapshot().profilePostsSuccess !== true) abortQueued();
     });
 
     evaluate();

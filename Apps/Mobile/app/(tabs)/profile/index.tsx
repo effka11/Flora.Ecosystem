@@ -26,15 +26,17 @@ export default function ProfileScreen() {
   const network = useNetworkClass();
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
+  const [focused, setFocused] = useState(false);
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
   const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
-    usePostViewTracking();
+    usePostViewTracking({ enabled: focused });
 
   const username = me?.username ?? "";
   const postsQuery = useQuery({
     queryKey: ["profile-posts", username],
     enabled: username.length > 0,
     queryFn: () => apiGetProfilePosts(username, { skip: 0, take: 30 }),
+    refetchOnMount: false,
   });
 
   const pullPosts = useCallback(async () => {
@@ -64,7 +66,9 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setFocused(true);
       if (username.length > 0) void postsQuery.refetch();
+      return () => setFocused(false);
     }, [postsQuery.refetch, username]),
   );
 
@@ -97,14 +101,14 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     const uuid = me?.userUuid;
-    if (!uuid || !sharedPresenceStore.surfacesAccepted) {
+    if (!focused || !uuid || !sharedPresenceStore.surfacesAccepted) {
       sharedPresenceStore.unregisterSurface("public-profile");
       return undefined;
     }
     sharedPresenceStore.registerSurface("public-profile", [uuid]);
     void sharedPresenceStore.resyncSnapshots().catch(() => {});
     return () => sharedPresenceStore.unregisterSurface("public-profile");
-  }, [me?.userUuid, presenceEpoch]);
+  }, [focused, me?.userUuid, presenceEpoch]);
 
   const isOnline = useMemo(() => {
     void presenceTick;
@@ -145,6 +149,7 @@ export default function ProfileScreen() {
           ListHeaderComponent={header}
           contentContainerStyle={[styles.listContent, { paddingBottom: listPaddingBottom }]}
           showsVerticalScrollIndicator={false}
+          maintainVisibleContentPosition={{ disabled: true }}
           viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
           refreshControl={
             <RefreshControl
