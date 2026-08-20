@@ -15,6 +15,7 @@ import { useTabRouteTransition } from "@/components/TabRouteTransition";
 import { isTabActive, isTabRoot } from "@/lib/getActiveTabRouteKey";
 import { isMessagesInThreadPath, messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
 import { useIdleMessagesTabPreload } from "@/lib/messagesTabPreload";
+import { useIdleNotificationsTabPreload } from "@/lib/notificationsTabPreload";
 import { useFloraReduceMotion } from "@/lib/useFloraReduceMotion";
 import { floraColors, floraTabBarStyle } from "@/lib/theme";
 import { router, Tabs, usePathname, useSegments } from "expo-router";
@@ -29,6 +30,7 @@ export default function TabsLayout() {
   const pathname = usePathname();
   const segments = useSegments();
   useIdleMessagesTabPreload(segments);
+  useIdleNotificationsTabPreload(segments);
   const { screenListeners, overlay } = useTabRouteTransition(reduceMotion, tabBarBottomInset);
 
   const screenOptions = useMemo(

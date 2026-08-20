@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { __resetIdleTabPreloadSerializer, getMessagesIdlePreloadCompleteAt } from "./idleTabPreload";
 import {
   canPrefetchMessagesTab,
   createIdleMessagesTabPreloadController,
@@ -46,6 +47,7 @@ describe("canPrefetchMessagesTab", () => {
 describe("createIdleMessagesTabPreloadController", () => {
   afterEach(() => {
     vi.useRealTimers();
+    __resetIdleTabPreloadSerializer();
   });
 
   function makeController(
@@ -133,5 +135,20 @@ describe("createIdleMessagesTabPreloadController", () => {
     controller.evaluate();
     vi.advanceTimersByTime(MESSAGES_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks messages preload complete when the messages tab is already active", () => {
+    const { controller, prefetch } = makeController({
+      snapshot: {
+        platform: "android",
+        appActive: true,
+        conversationsSuccess: true,
+        messagesTabActive: true,
+      },
+    });
+    controller.evaluate();
+    expect(prefetch).not.toHaveBeenCalled();
+    expect(controller.hasPrefetched()).toBe(true);
+    expect(getMessagesIdlePreloadCompleteAt()).not.toBeNull();
   });
 });

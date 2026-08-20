@@ -1,21 +1,25 @@
 import type { MsgConversationsPage } from "@flora/client-core/contracts";
+import type { NotificationRealtimeSignal } from "@flora/client-core/signals";
 import { scheduleConversationsPushRefresh } from "@/lib/conversationsPushCoalesce";
 import { applyIncomingToConversations } from "@/lib/messageThreadOutgoing";
+import {
+  insertNotificationIntoLists,
+  removeNotificationFromLists,
+} from "@/lib/notificationsListPatch";
+import { scheduleNotificationsPushRefresh } from "@/lib/notificationsPushCoalesce";
 import { getQueryClientRef } from "@/lib/queryClientRef";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useSessionStore } from "@/stores/sessionStore";
 
+export type NotificationRealtimeEvent =
+  | { action: "upsert"; signal: NotificationRealtimeSignal }
+  | { action: "remove"; notificationUuid: string };
+
 const messageListeners = new Set<(conversationUuid: string) => void>();
-const notificationListeners = new Set<() => void>();
 
 export function subscribeMessageRealtime(listener: (conversationUuid: string) => void): () => void {
   messageListeners.add(listener);
   return () => messageListeners.delete(listener);
-}
-
-export function subscribeNotificationRealtime(listener: () => void): () => void {
-  notificationListeners.add(listener);
-  return () => notificationListeners.delete(listener);
 }
 
 function asRecord(data: unknown): Record<string, unknown> | null {
@@ -69,13 +73,20 @@ export function handleMessageRealtime(
   }
 }
 
-export function handleNotificationRealtime(): void {
+/**
+ * Без события (FCM, onOpen) — только coalesce: строки у пуша нет, а немедленный
+ * invalidate дал бы GET на каждый сигнал.
+ */
+export function handleNotificationRealtime(event?: NotificationRealtimeEvent): void {
   requestTabBadgesRefresh();
   const qc = getQueryClientRef();
-  if (qc) {
-    void qc.invalidateQueries({ queryKey: ["notifications"] });
+  if (!qc) return;
+  if (event?.action === "upsert") {
+    insertNotificationIntoLists(qc, event.signal);
+  } else if (event?.action === "remove") {
+    removeNotificationFromLists(qc, event.notificationUuid);
   }
-  notificationListeners.forEach((listener) => listener());
+  scheduleNotificationsPushRefresh(qc);
 }
 
 export function handlePushNotificationData(data: unknown): void {

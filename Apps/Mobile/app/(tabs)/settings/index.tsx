@@ -1,4 +1,5 @@
 import { useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "expo-router/react-navigation";
 import {
   memo,
   useCallback,
@@ -61,6 +62,13 @@ import {
   schedulePagerMediaWake,
   type PagerMediaWakeHandle,
 } from "@/lib/feedPagerMediaWake";
+import {
+  clearScrollActivityOwner,
+  createIdleMountHold,
+  isScrollSettled,
+  setPagerBusyActivity,
+  subscribeScrollSettled,
+} from "@/lib/scrollActivity";
 import {
   mountedSetsEqual,
   nextMountCandidate,
@@ -446,6 +454,35 @@ export default function SettingsScreen() {
   const touchCountRef = useRef(0);
   const pagerMotionRef = useRef(false);
   const stripMotionRef = useRef(false);
+  const settingsBusyOwner = useRef(Symbol("settings-pager")).current;
+  const settingsMountOwner = useRef(Symbol("settings-section-mount")).current;
+  const settingsFocusedRef = useRef(false);
+  const [sectionMountHold] = useState(() =>
+    createIdleMountHold(settingsMountOwner, (release) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(release);
+      });
+    }),
+  );
+  const commitSectionMount = useCallback(
+    (apply: () => void) => {
+      if (!settingsFocusedRef.current) {
+        apply();
+        return;
+      }
+      sectionMountHold.run(apply);
+    },
+    [sectionMountHold],
+  );
+  useFocusEffect(
+    useCallback(() => {
+      settingsFocusedRef.current = true;
+      return () => {
+        settingsFocusedRef.current = false;
+        sectionMountHold.reset();
+      };
+    }, [sectionMountHold]),
+  );
   const pendingExpandIndexRef = useRef<number | null>(null);
   /**
    * Прогрев дальних секций — только после паузы во взаимодействии: маунт,
@@ -512,9 +549,21 @@ export default function SettingsScreen() {
   }, []);
 
   const isInteractionBusy = useCallback(
-    () => touchCountRef.current > 0 || pagerMotionRef.current || stripMotionRef.current,
+    () =>
+      touchCountRef.current > 0 ||
+      pagerMotionRef.current ||
+      stripMotionRef.current ||
+      !isScrollSettled(),
     [],
   );
+
+  const syncPagerBusy = useCallback(() => {
+    setPagerBusyActivity(settingsBusyOwner, {
+      touch: touchCountRef.current > 0,
+      pager: pagerMotionRef.current,
+      strip: stripMotionRef.current,
+    });
+  }, [settingsBusyOwner]);
 
   /** Рекурсия цепочки прогрева — через ref (self-reference в useCallback). */
   const scheduleMountAdvanceRef = useRef<(activeIndex: number) => void>(() => {});
@@ -545,14 +594,16 @@ export default function SettingsScreen() {
           if (!mountedSetsEqual(mountedIdsRef.current, withNeighbors)) {
             // Ref обновляем сразу: следующий шаг цепочки не должен читать устаревший set.
             mountedIdsRef.current = withNeighbors;
-            setMountedSectionIds((prev) => {
-              const next = reconcileMountedIds({
-                prev,
-                visibleIds: visibleIdsRef.current,
-                activeIndex,
-                expandNeighbors: true,
+            commitSectionMount(() => {
+              setMountedSectionIds((prev) => {
+                const next = reconcileMountedIds({
+                  prev,
+                  visibleIds: visibleIdsRef.current,
+                  activeIndex,
+                  expandNeighbors: true,
+                });
+                return mountedSetsEqual(prev, next) ? prev : next;
               });
-              return mountedSetsEqual(prev, next) ? prev : next;
             });
             scheduleMountAdvanceRef.current(activeIndex);
             return;
@@ -576,11 +627,13 @@ export default function SettingsScreen() {
           const grown = new Set(mountedIdsRef.current);
           grown.add(candidate);
           mountedIdsRef.current = grown;
-          setMountedSectionIds((prev) => {
-            if (prev.has(candidate)) return prev;
-            const next = new Set(prev);
-            next.add(candidate);
-            return next;
+          commitSectionMount(() => {
+            setMountedSectionIds((prev) => {
+              if (prev.has(candidate)) return prev;
+              const next = new Set(prev);
+              next.add(candidate);
+              return next;
+            });
           });
           warmupTimerRef.current = setTimeout(() => {
             warmupTimerRef.current = null;
@@ -589,7 +642,7 @@ export default function SettingsScreen() {
         },
       });
     },
-    [cancelMountWake, isInteractionBusy],
+    [cancelMountWake, commitSectionMount, isInteractionBusy],
   );
 
   scheduleMountAdvanceRef.current = scheduleMountAdvance;
@@ -605,37 +658,42 @@ export default function SettingsScreen() {
   const onTouchBegin = useCallback(() => {
     lastInteractionAtRef.current = Date.now();
     touchCountRef.current += 1;
-  }, []);
+    syncPagerBusy();
+  }, [syncPagerBusy]);
 
   /** Тач полосы дополнительно снимает владение с отменённого decay. */
   const onStripTouchBegin = useCallback(() => {
     lastInteractionAtRef.current = Date.now();
     touchCountRef.current += 1;
     stripMotionRef.current = false;
-  }, []);
+    syncPagerBusy();
+  }, [syncPagerBusy]);
 
   const onTouchFinalize = useCallback(() => {
     lastInteractionAtRef.current = Date.now();
     touchCountRef.current = Math.max(0, touchCountRef.current - 1);
+    syncPagerBusy();
     flushExpandIfIdle();
-  }, [flushExpandIfIdle]);
+  }, [flushExpandIfIdle, syncPagerBusy]);
 
   const setPagerMotion = useCallback(
     (active: boolean) => {
       lastInteractionAtRef.current = Date.now();
       pagerMotionRef.current = active;
+      syncPagerBusy();
       if (!active) flushExpandIfIdle();
     },
-    [flushExpandIfIdle],
+    [flushExpandIfIdle, syncPagerBusy],
   );
 
   const setStripMotion = useCallback(
     (active: boolean) => {
       lastInteractionAtRef.current = Date.now();
       stripMotionRef.current = active;
+      syncPagerBusy();
       if (!active) flushExpandIfIdle();
     },
-    [flushExpandIfIdle],
+    [flushExpandIfIdle, syncPagerBusy],
   );
 
   const commitPagerIndex = useCallback(
@@ -647,10 +705,11 @@ export default function SettingsScreen() {
       // уже владеть экраном — wake сам отложится через isInteractionBusy).
       lastInteractionAtRef.current = Date.now();
       pagerMotionRef.current = false;
+      syncPagerBusy();
       setActiveSection((current) => (current === next.id ? current : next.id));
       scheduleMountAdvance(index);
     },
-    [scheduleMountAdvance],
+    [scheduleMountAdvance, syncPagerBusy],
   );
 
   const switchSection = useCallback(
@@ -664,13 +723,16 @@ export default function SettingsScreen() {
       pagerTargetRef.current = next;
       // Оба settle (полоса + pager) под одним владельцем; commit снимет.
       pagerMotionRef.current = true;
+      syncPagerBusy();
       const needsMount = !mountedIdsRef.current.has(next);
       if (needsMount) {
-        setMountedSectionIds((prev) => {
-          if (prev.has(next)) return prev;
-          const nextSet = new Set(prev);
-          nextSet.add(next);
-          return nextSet;
+        commitSectionMount(() => {
+          setMountedSectionIds((prev) => {
+            if (prev.has(next)) return prev;
+            const nextSet = new Set(prev);
+            nextSet.add(next);
+            return nextSet;
+          });
         });
       }
       const target = index * pageWidth;
@@ -751,20 +813,24 @@ export default function SettingsScreen() {
       stripHandoffSV,
       stripModeSV,
       stripOffsetSV,
+      syncPagerBusy,
       typicalOffsetsSV,
+      commitSectionMount,
     ],
   );
 
   useEffect(() => {
     pagerTargetRef.current = initialSection;
     setActiveSection(initialSection);
-    setMountedSectionIds(new Set([initialSection]));
+    commitSectionMount(() => {
+      setMountedSectionIds(new Set([initialSection]));
+    });
     const index = Math.max(
       0,
       visibleIdsRef.current.findIndex((id) => id === initialSection),
     );
     scheduleMountAdvance(index);
-  }, [initialSection, scheduleMountAdvance]);
+  }, [commitSectionMount, initialSection, scheduleMountAdvance]);
 
   useEffect(() => {
     if (visibleSections.length === 0) return;
@@ -797,19 +863,35 @@ export default function SettingsScreen() {
       0,
       visibleIds.findIndex((id) => id === pagerTargetRef.current),
     );
-    setMountedSectionIds((prev) => {
-      const next = reconcileMountedIds({
-        prev,
-        visibleIds,
-        activeIndex: index,
-        expandNeighbors: false,
+    commitSectionMount(() => {
+      setMountedSectionIds((prev) => {
+        const next = reconcileMountedIds({
+          prev,
+          visibleIds,
+          activeIndex: index,
+          expandNeighbors: false,
+        });
+        return mountedSetsEqual(prev, next) ? prev : next;
       });
-      return mountedSetsEqual(prev, next) ? prev : next;
     });
     scheduleMountAdvance(index);
-  }, [cancelMountWake, scheduleMountAdvance, visibleIds]);
+  }, [cancelMountWake, commitSectionMount, scheduleMountAdvance, visibleIds]);
 
-  useEffect(() => () => cancelMountWake(), [cancelMountWake]);
+  useEffect(
+    () => () => {
+      cancelMountWake();
+      sectionMountHold.dispose();
+      clearScrollActivityOwner(settingsBusyOwner);
+      clearScrollActivityOwner(settingsMountOwner);
+    },
+    [cancelMountWake, sectionMountHold, settingsBusyOwner, settingsMountOwner],
+  );
+
+  useEffect(() => {
+    return subscribeScrollSettled((settled) => {
+      if (settled) flushExpandIfIdle();
+    });
+  }, [flushExpandIfIdle]);
 
   // Синк typical/inputRange/max в UI-thread SV. Не трогаем stripOffsetSV —
   // запись с JS отменяет withTiming/withDecay и ломает follow.
