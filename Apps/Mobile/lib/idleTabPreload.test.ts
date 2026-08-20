@@ -2,16 +2,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __resetIdleTabPreloadSerializer,
   abortQueuedIdleTabPrefetch,
+  beginIdleTabPreloadEpoch,
   beginMessagesIdlePreloadEpoch,
   canPrefetchIdleTab,
   canRunQueuedIdleTabPrefetch,
   createIdleTabPreloadController,
   createIdleTabPreloadSerializer,
+  getIdleTabPreloadCompleteAt,
   getIdleTabPreloadSerializer,
   getMessagesIdlePreloadCompleteAt,
   IDLE_TAB_PRELOAD_QUIET_MS,
   IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+  markIdleTabPreloadComplete,
   markMessagesIdlePreloadComplete,
+  subscribeIdleTabPreloadComplete,
   subscribeMessagesIdlePreloadComplete,
   type IdleTabPreloadGate,
 } from "./idleTabPreload";
@@ -25,8 +29,8 @@ const allow: IdleTabPreloadGate = {
   quietForMs: IDLE_TAB_PRELOAD_QUIET_MS,
   tabActive: false,
   alreadyPrefetched: false,
-  messagesComplete: true,
-  messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+  predecessorComplete: true,
+  predecessorCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
 };
 
 describe("canPrefetchIdleTab", () => {
@@ -48,8 +52,8 @@ describe("canPrefetchIdleTab", () => {
     ["quiet just started", { quietForMs: 0 }],
     ["target tab active", { tabActive: true }],
     ["already prefetched", { alreadyPrefetched: true }],
-    ["messages not complete", { messagesComplete: false }],
-    ["messages gap", { messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
+    ["predecessor not complete", { predecessorComplete: false }],
+    ["predecessor gap", { predecessorCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
   ] as const)("blocks when %s", (_label, override) => {
     expect(canPrefetchIdleTab({ ...allow, ...override })).toBe(false);
   });
@@ -267,17 +271,17 @@ describe("createIdleTabPreloadSerializer", () => {
   });
 });
 
-describe("createIdleTabPreloadController messages barrier", () => {
+describe("createIdleTabPreloadController predecessor barrier", () => {
   afterEach(() => {
     vi.useRealTimers();
     __resetIdleTabPreloadSerializer();
   });
 
-  it("waits for messagesComplete plus the serial gap before prefetch", () => {
+  it("waits for predecessorComplete plus the serial gap before prefetch", () => {
     vi.useFakeTimers();
     let clock = 0;
-    let messagesComplete = false;
-    let messagesCompleteAt = 0;
+    let predecessorComplete = false;
+    let predecessorCompleteAt = 0;
     const prefetch = vi.fn();
     const controller = createIdleTabPreloadController({
       now: () => clock,
@@ -287,8 +291,8 @@ describe("createIdleTabPreloadController messages barrier", () => {
         appActive: true,
         dataSuccess: true,
         tabActive: false,
-        messagesComplete,
-        messagesCompleteForMs: messagesComplete ? clock - messagesCompleteAt : 0,
+        predecessorComplete,
+        predecessorCompleteForMs: predecessorComplete ? clock - predecessorCompleteAt : 0,
       }),
       prefetch,
     });
@@ -298,8 +302,8 @@ describe("createIdleTabPreloadController messages barrier", () => {
     vi.advanceTimersByTime(IDLE_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
 
-    messagesComplete = true;
-    messagesCompleteAt = clock;
+    predecessorComplete = true;
+    predecessorCompleteAt = clock;
     controller.evaluate();
     clock += IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1;
     vi.advanceTimersByTime(IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1);
@@ -321,8 +325,8 @@ describe("createIdleTabPreloadController messages barrier", () => {
         appActive: true,
         dataSuccess: true,
         tabActive: false,
-        messagesComplete: true,
-        messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+        predecessorComplete: true,
+        predecessorCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
       }),
       prefetch: vi.fn(),
     });
@@ -377,8 +381,8 @@ describe("canRunQueuedIdleTabPrefetch", () => {
     scrollSettled: true,
     quietForMs: IDLE_TAB_PRELOAD_QUIET_MS,
     tabActive: false,
-    messagesComplete: true,
-    messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+    predecessorComplete: true,
+    predecessorCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
   };
 
   it("allows when fire gates are open", () => {
@@ -401,8 +405,8 @@ describe("canRunQueuedIdleTabPrefetch", () => {
     ["quiet window", { quietForMs: IDLE_TAB_PRELOAD_QUIET_MS - 1 }],
     ["quiet just started", { quietForMs: 0 }],
     ["target tab active", { tabActive: true }],
-    ["messages not complete", { messagesComplete: false }],
-    ["messages gap", { messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
+    ["predecessor not complete", { predecessorComplete: false }],
+    ["predecessor gap", { predecessorCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
   ] as const)("blocks when %s", (_label, override) => {
     expect(canRunQueuedIdleTabPrefetch({ ...fireAllow, ...override })).toBe(false);
   });
@@ -428,6 +432,65 @@ describe("messages idle epoch", () => {
     beginMessagesIdlePreloadEpoch();
     expect(listener).toHaveBeenCalledTimes(1);
     unsub();
+  });
+});
+
+describe("notifications idle epoch", () => {
+  afterEach(() => {
+    __resetIdleTabPreloadSerializer();
+  });
+
+  it("begin resets a previous complete stamp", () => {
+    markIdleTabPreloadComplete("notifications", 1);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(1);
+    beginIdleTabPreloadEpoch("notifications");
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
+  });
+
+  it("mark sets getAt for the current epoch", () => {
+    beginIdleTabPreloadEpoch("notifications");
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
+    markIdleTabPreloadComplete("notifications", 3);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(3);
+  });
+
+  it("begin after mark invalidates the previous stamp", () => {
+    markIdleTabPreloadComplete("notifications", 1);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(1);
+    beginIdleTabPreloadEpoch("notifications");
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
+    markIdleTabPreloadComplete("notifications", 2);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(2);
+  });
+
+  it("notifies waiters when a new epoch starts", () => {
+    const listener = vi.fn();
+    const unsub = subscribeIdleTabPreloadComplete("notifications", listener);
+    beginIdleTabPreloadEpoch("notifications");
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it("does not stamp notifications when messages is marked", () => {
+    markIdleTabPreloadComplete("messages", 4);
+    expect(getIdleTabPreloadCompleteAt("messages")).toBe(4);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
+  });
+});
+
+describe("idle tab preload stage reset", () => {
+  afterEach(() => {
+    __resetIdleTabPreloadSerializer();
+  });
+
+  it("clears both stages", () => {
+    markIdleTabPreloadComplete("messages", 1);
+    markIdleTabPreloadComplete("notifications", 2);
+    expect(getIdleTabPreloadCompleteAt("messages")).toBe(1);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(2);
+    __resetIdleTabPreloadSerializer();
+    expect(getIdleTabPreloadCompleteAt("messages")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
   });
 });
 

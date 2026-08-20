@@ -178,13 +178,17 @@ export default function FeedComposeScreen() {
       }
       await queryClient.invalidateQueries({ queryKey: ["feed"] });
       await queryClient.invalidateQueries({ queryKey: ["post-drafts"] });
+      const username = me?.username ?? "";
+      if (username.length > 0) {
+        await queryClient.invalidateQueries({ queryKey: ["profile-posts", username] });
+      }
       router.back();
     } catch (e) {
       setError(isApiRequestError(e) ? e.message : "Не удалось опубликовать");
     } finally {
       setPublishing(false);
     }
-  }, [activeDraftUuid, canPublish, communityId, media.readyImageFiles, media.videoFile, queryClient, text]);
+  }, [activeDraftUuid, canPublish, communityId, me?.username, media.readyImageFiles, media.videoFile, queryClient, text]);
 
   const onSaveDraft = useCallback(async () => {
     if (!canSaveDraft || savingDraft) return;

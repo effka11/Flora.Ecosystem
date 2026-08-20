@@ -3,12 +3,14 @@ import { useEffect, useRef } from "react";
 import { isTabActive } from "@/lib/getActiveTabRouteKey";
 import {
   abortQueuedIdleTabPrefetch,
+  beginIdleTabPreloadEpoch,
   canPrefetchIdleTab,
   canRunQueuedIdleTabPrefetch,
   createIdleTabPreloadController,
   getIdleTabPreloadSerializer,
   getMessagesIdlePreloadCompleteAt,
   IDLE_TAB_PRELOAD_QUIET_MS,
+  markIdleTabPreloadComplete,
   subscribeMessagesIdlePreloadComplete,
   type IdleTabPreloadController,
 } from "@/lib/idleTabPreload";
@@ -28,6 +30,7 @@ export type NotificationsTabPreloadGate = {
   quietForMs: number;
   notificationsTabActive: boolean;
   alreadyPrefetched: boolean;
+  /** Messages skip/prefetch stamp — this wrapper still waits on Messages. */
   messagesComplete: boolean;
   messagesCompleteForMs: number;
 };
@@ -41,8 +44,8 @@ export function canPrefetchNotificationsTab(gate: NotificationsTabPreloadGate): 
     quietForMs: gate.quietForMs,
     tabActive: gate.notificationsTabActive,
     alreadyPrefetched: gate.alreadyPrefetched,
-    messagesComplete: gate.messagesComplete,
-    messagesCompleteForMs: gate.messagesCompleteForMs,
+    predecessorComplete: gate.messagesComplete,
+    predecessorCompleteForMs: gate.messagesCompleteForMs,
   });
 }
 
@@ -76,11 +79,12 @@ export function createIdleNotificationsTabPreloadController(opts: {
         appActive: snapshot.appActive,
         dataSuccess: snapshot.notificationsSuccess,
         tabActive: snapshot.notificationsTabActive,
-        messagesComplete: completedAt != null,
-        messagesCompleteForMs: completedAt == null ? 0 : now() - completedAt,
+        predecessorComplete: completedAt != null,
+        predecessorCompleteForMs: completedAt == null ? 0 : now() - completedAt,
       };
     },
     prefetch: opts.prefetch,
+    onSkip: () => markIdleTabPreloadComplete("notifications"),
   });
 }
 
@@ -123,6 +127,8 @@ export function useIdleNotificationsTabPreload(segments: readonly string[]): voi
     if (Platform.OS !== "android") {
       return () => clearFrcImageQueuePauseOwner(frcOwner);
     }
+
+    beginIdleTabPreloadEpoch("notifications");
 
     let cancelled = false;
     let rafOuter: number | null = null;
@@ -174,20 +180,24 @@ export function useIdleNotificationsTabPreload(segments: readonly string[]): voi
             detachListeners();
             setFrcImageQueuePaused(frcOwner, "drag", true);
             router.prefetch(NOTIFICATIONS_TAB_PRELOAD_HREF);
+            const finish = () => {
+              markIdleTabPreloadComplete("notifications");
+              release();
+            };
             rafOuter = requestAnimationFrame(() => {
               rafOuter = null;
               if (cancelled) {
-                release();
+                finish();
                 return;
               }
               rafInner = requestAnimationFrame(() => {
                 rafInner = null;
                 if (cancelled) {
-                  release();
+                  finish();
                   return;
                 }
                 setFrcImageQueuePaused(frcOwner, "drag", false);
-                release();
+                finish();
               });
             });
           },
@@ -203,8 +213,8 @@ export function useIdleNotificationsTabPreload(segments: readonly string[]): voi
                 scrollSettled: isScrollSettled(),
                 quietForMs: controller.quietForMs(),
                 tabActive: snap.notificationsTabActive,
-                messagesComplete: completedAt != null,
-                messagesCompleteForMs:
+                predecessorComplete: completedAt != null,
+                predecessorCompleteForMs:
                   completedAt == null ? 0 : Date.now() - completedAt,
               });
             },

@@ -1,39 +1,55 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __resetIdleTabPreloadSerializer,
-  beginMessagesIdlePreloadEpoch,
+  beginIdleTabPreloadEpoch,
   getIdleTabPreloadCompleteAt,
   IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
-  markMessagesIdlePreloadComplete,
+  markIdleTabPreloadComplete,
 } from "./idleTabPreload";
 import {
-  canPrefetchNotificationsTab,
-  createIdleNotificationsTabPreloadController,
-  NOTIFICATIONS_TAB_PRELOAD_QUIET_MS,
-  type IdleNotificationsTabPreloadSnapshot,
-  type NotificationsTabPreloadGate,
-} from "./notificationsTabPreload";
+  canPrefetchProfileTab,
+  createIdleProfileTabPreloadController,
+  isOwnProfilePostsQueryKey,
+  PROFILE_TAB_PRELOAD_QUIET_MS,
+  type IdleProfileTabPreloadSnapshot,
+  type ProfileTabPreloadGate,
+} from "./profileTabPreload";
 
-const allow: NotificationsTabPreloadGate = {
+const allow: ProfileTabPreloadGate = {
   platform: "android",
   appActive: true,
-  notificationsSuccess: true,
+  profilePostsSuccess: true,
   scrollSettled: true,
-  quietForMs: NOTIFICATIONS_TAB_PRELOAD_QUIET_MS,
-  notificationsTabActive: false,
+  quietForMs: PROFILE_TAB_PRELOAD_QUIET_MS,
+  profileTabActive: false,
   alreadyPrefetched: false,
-  messagesComplete: true,
-  messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+  notificationsComplete: true,
+  notificationsCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
 };
 
-describe("canPrefetchNotificationsTab", () => {
+describe("isOwnProfilePostsQueryKey", () => {
+  it("is true for exact own profile-posts key", () => {
+    expect(isOwnProfilePostsQueryKey(["profile-posts", "alice"], "alice")).toBe(true);
+  });
+
+  it.each([
+    ["other user's profile-posts", ["profile-posts", "bob"], "alice"],
+    ["prefix only", ["profile-posts"], "alice"],
+    ["empty username", ["profile-posts", "alice"], ""],
+    ["notifications key", ["notifications", "all", ""], "alice"],
+  ] as const)("is false for %s", (_label, queryKey, username) => {
+    expect(isOwnProfilePostsQueryKey(queryKey, username)).toBe(false);
+  });
+});
+
+describe("canPrefetchProfileTab", () => {
   it("allows when all gates are open", () => {
-    expect(canPrefetchNotificationsTab(allow)).toBe(true);
+    expect(canPrefetchProfileTab(allow)).toBe(true);
   });
 
   it("allows when quiet exceeds the window", () => {
     expect(
-      canPrefetchNotificationsTab({ ...allow, quietForMs: NOTIFICATIONS_TAB_PRELOAD_QUIET_MS + 1 }),
+      canPrefetchProfileTab({ ...allow, quietForMs: PROFILE_TAB_PRELOAD_QUIET_MS + 1 }),
     ).toBe(true);
   });
 
@@ -41,20 +57,20 @@ describe("canPrefetchNotificationsTab", () => {
     ["ios", { platform: "ios" }],
     ["web", { platform: "web" }],
     ["app inactive", { appActive: false }],
-    ["notifications not success", { notificationsSuccess: false }],
+    ["profile posts not success", { profilePostsSuccess: false }],
     ["scroll not settled", { scrollSettled: false }],
-    ["quiet window", { quietForMs: NOTIFICATIONS_TAB_PRELOAD_QUIET_MS - 1 }],
+    ["quiet window", { quietForMs: PROFILE_TAB_PRELOAD_QUIET_MS - 1 }],
     ["quiet just started", { quietForMs: 0 }],
-    ["notifications tab active", { notificationsTabActive: true }],
+    ["profile tab active", { profileTabActive: true }],
     ["already prefetched", { alreadyPrefetched: true }],
-    ["messages not complete", { messagesComplete: false }],
-    ["messages gap", { messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
+    ["notifications not complete", { notificationsComplete: false }],
+    ["notifications gap", { notificationsCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
   ] as const)("blocks when %s", (_label, override) => {
-    expect(canPrefetchNotificationsTab({ ...allow, ...override })).toBe(false);
+    expect(canPrefetchProfileTab({ ...allow, ...override })).toBe(false);
   });
 });
 
-describe("createIdleNotificationsTabPreloadController", () => {
+describe("createIdleProfileTabPreloadController", () => {
   afterEach(() => {
     vi.useRealTimers();
     __resetIdleTabPreloadSerializer();
@@ -63,23 +79,23 @@ describe("createIdleNotificationsTabPreloadController", () => {
   function makeController(
     overrides: {
       settled?: { value: boolean };
-      snapshot?: IdleNotificationsTabPreloadSnapshot;
-      skipMessagesComplete?: boolean;
+      snapshot?: IdleProfileTabPreloadSnapshot;
+      skipNotificationsComplete?: boolean;
     } = {},
   ) {
-    if (!overrides.skipMessagesComplete) {
-      markMessagesIdlePreloadComplete();
+    if (!overrides.skipNotificationsComplete) {
+      markIdleTabPreloadComplete("notifications");
     }
     const settled = overrides.settled ?? { value: true };
-    const snapshot: IdleNotificationsTabPreloadSnapshot = overrides.snapshot ?? {
+    const snapshot: IdleProfileTabPreloadSnapshot = overrides.snapshot ?? {
       platform: "android",
       appActive: true,
-      notificationsSuccess: true,
-      notificationsTabActive: false,
+      profilePostsSuccess: true,
+      profileTabActive: false,
     };
     const prefetch = vi.fn();
-    const controller = createIdleNotificationsTabPreloadController({
-      quietMs: NOTIFICATIONS_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdleProfileTabPreloadController({
+      quietMs: PROFILE_TAB_PRELOAD_QUIET_MS,
       isScrollSettled: () => settled.value,
       getSnapshot: () => snapshot,
       prefetch,
@@ -91,29 +107,29 @@ describe("createIdleNotificationsTabPreloadController", () => {
     vi.useFakeTimers();
     const { controller, prefetch, settled } = makeController({ settled: { value: false } });
     controller.evaluate();
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPendingTimer()).toBe(false);
     settled.value = true;
     controller.onScrollSettled(true);
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS - 1);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS - 1);
     expect(prefetch).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not prefetch before notifications success", () => {
+  it("does not prefetch before profile posts success", () => {
     vi.useFakeTimers();
     const { controller, prefetch } = makeController({
       snapshot: {
         platform: "android",
         appActive: true,
-        notificationsSuccess: false,
-        notificationsTabActive: false,
+        profilePostsSuccess: false,
+        profileTabActive: false,
       },
     });
     controller.evaluate();
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPendingTimer()).toBe(false);
   });
@@ -126,7 +142,7 @@ describe("createIdleNotificationsTabPreloadController", () => {
     settled.value = false;
     controller.onScrollSettled(false);
     expect(controller.hasPendingTimer()).toBe(false);
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
   });
 
@@ -135,7 +151,7 @@ describe("createIdleNotificationsTabPreloadController", () => {
     const { controller, prefetch, settled } = makeController();
     controller.evaluate();
     settled.value = false;
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(false);
   });
@@ -144,21 +160,21 @@ describe("createIdleNotificationsTabPreloadController", () => {
     vi.useFakeTimers();
     const { controller, prefetch } = makeController();
     controller.evaluate();
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
     controller.evaluate();
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not prefetch until messages preload has been complete for 120ms", () => {
+  it("does not prefetch until notifications complete for 120ms", () => {
     vi.useFakeTimers();
-    const { controller, prefetch } = makeController({ skipMessagesComplete: true });
+    const { controller, prefetch } = makeController({ skipNotificationsComplete: true });
     controller.evaluate();
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS * 4);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
 
-    markMessagesIdlePreloadComplete();
+    markIdleTabPreloadComplete("notifications");
     controller.evaluate();
     vi.advanceTimersByTime(IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1);
     expect(prefetch).not.toHaveBeenCalled();
@@ -166,28 +182,29 @@ describe("createIdleNotificationsTabPreloadController", () => {
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not treat a previous messages-complete stamp after a new epoch", () => {
+  it("does not treat a previous notifications stamp after a new notifications epoch", () => {
     vi.useFakeTimers();
-    markMessagesIdlePreloadComplete();
-    beginMessagesIdlePreloadEpoch();
-    const { controller, prefetch } = makeController({ skipMessagesComplete: true });
+    markIdleTabPreloadComplete("notifications");
+    beginIdleTabPreloadEpoch("notifications");
+    const { controller, prefetch } = makeController({ skipNotificationsComplete: true });
     controller.evaluate();
-    vi.advanceTimersByTime(NOTIFICATIONS_TAB_PRELOAD_QUIET_MS * 4);
+    vi.advanceTimersByTime(PROFILE_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
   });
 
-  it("marks notifications preload complete when the notifications tab is already active", () => {
+  it("latches skip when the profile tab is already active without stamping", () => {
     const { controller, prefetch } = makeController({
+      skipNotificationsComplete: true,
       snapshot: {
         platform: "android",
         appActive: true,
-        notificationsSuccess: true,
-        notificationsTabActive: true,
+        profilePostsSuccess: true,
+        profileTabActive: true,
       },
     });
     controller.evaluate();
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(true);
-    expect(getIdleTabPreloadCompleteAt("notifications")).not.toBeNull();
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
   });
 });
