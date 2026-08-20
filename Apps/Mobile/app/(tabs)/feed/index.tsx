@@ -32,10 +32,6 @@ import {
   type PagerMediaWakeHandle,
 } from "@/lib/feedPagerMediaWake";
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
-import {
-  clearScrollActivityOwner,
-  setScrollActivity,
-} from "@/lib/scrollActivity";
 import { composeScreenHref } from "@/lib/socialRoutes";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
@@ -55,7 +51,6 @@ export default function FeedScreen() {
   const network = useNetworkClass();
   const queryClient = useQueryClient();
   const pagerMediaPauseOwner = useRef(Symbol("feed-pager")).current;
-  const feedPagerOwner = useRef(Symbol("feed-pager-scroll")).current;
   const mediaWakeRef = useRef<PagerMediaWakeHandle | null>(null);
   const recommendationsPaneRef = useRef<FeedPostListHandle>(null);
   const kindTargetRef = useRef<FeedKind>("recommendations");
@@ -75,13 +70,7 @@ export default function FeedScreen() {
   }, []);
   const pagerGenRef = useRef(0);
   const pagerHeldRef = useRef(false);
-  const applyPagerScrollBusy = useCallback(
-    (busy: boolean) => {
-      setScrollActivity(feedPagerOwner, "drag", busy);
-    },
-    [feedPagerOwner],
-  );
-  const { reportTouch, reportPager, reportStrip } = usePagerBusyFlags(applyPagerScrollBusy);
+  const { reportTouch, reportPager, reportStrip } = usePagerBusyFlags();
   const chipStripBusy = useMemo(
     () => bindChipStripBusy(reportTouch, reportStrip, bumpSearchDismiss),
     [bumpSearchDismiss, reportStrip, reportTouch],
@@ -183,9 +172,8 @@ export default function FeedScreen() {
       mediaWakeRef.current?.cancel();
       mediaWakeRef.current = null;
       clearFrcImageQueuePauseOwner(pagerMediaPauseOwner);
-      clearScrollActivityOwner(feedPagerOwner);
     },
-    [feedPagerOwner, pagerMediaPauseOwner],
+    [pagerMediaPauseOwner],
   );
 
   const recordTabLayout = useCallback((tab: FeedKind, event: LayoutChangeEvent) => {

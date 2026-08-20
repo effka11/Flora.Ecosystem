@@ -48,6 +48,7 @@ export function useMobileRealtime(enabled: boolean): void {
       },
       onOpen: () => {
         handleMessageRealtime(null);
+        handleNotificationRealtime();
         void sharedPresenceStore.resyncSnapshots().catch(() => {});
       },
       onMessage: (signal) => {
@@ -57,7 +58,7 @@ export function useMobileRealtime(enabled: boolean): void {
         });
       },
       onNotification: (signal) => {
-        handleNotificationRealtime();
+        handleNotificationRealtime({ action: "upsert", signal });
         if (signal.type === "app_update" && signal.update) {
           void runAutoUpdateFromRealtime({
             version: signal.update.version,
@@ -71,7 +72,7 @@ export function useMobileRealtime(enabled: boolean): void {
         }
       },
       onNotificationRemoved: (signal) => {
-        handleNotificationRealtime();
+        handleNotificationRealtime({ action: "remove", notificationUuid: signal.notificationUuid });
         const key = signal.groupKey ?? signal.notificationUuid;
         if (key) void dismissSocialPushNotifications(key);
       },

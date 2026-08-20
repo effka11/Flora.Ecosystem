@@ -1,4 +1,8 @@
-import { apiGetConversations, apiListGroups } from "@flora/client-core/api";
+import {
+  apiGetConversations,
+  apiListGroups,
+  apiListNotifications,
+} from "@flora/client-core/api";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
@@ -18,6 +22,11 @@ export function FloraAppServices({ enabled }: { enabled: boolean }) {
   useQuery({
     queryKey: ["groups"],
     queryFn: () => apiListGroups(),
+    enabled,
+  });
+  useQuery({
+    queryKey: ["notifications", "all", ""],
+    queryFn: () => apiListNotifications({ category: "all", take: 100 }),
     enabled,
   });
 

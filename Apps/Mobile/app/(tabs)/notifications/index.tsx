@@ -28,8 +28,8 @@ import { NotificationRow } from "@/components/notifications/NotificationRow";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
 import { TabScreenHeader } from "@/components/TabScreenHeader";
+import { setNotificationsListFocused } from "@/lib/notificationsPushCoalesce";
 import { dismissPresentedSocialPushNotifications } from "@/lib/pushNotifications";
-import { subscribeNotificationRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
 import { usePagerListScroll } from "@/lib/usePagerListScroll";
@@ -87,7 +87,7 @@ export default function NotificationsScreen() {
           : { category: activeCategory, take: 100 },
       ),
     placeholderData: keepPreviousData,
-    refetchOnMount: true,
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
     staleTime: 30_000,
   });
@@ -114,16 +114,14 @@ export default function NotificationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setNotificationsListFocused(true);
       void markAllVisibleAsRead();
       void dismissPresentedSocialPushNotifications();
+      return () => {
+        setNotificationsListFocused(false);
+      };
     }, [markAllVisibleAsRead]),
   );
-
-  useEffect(() => {
-    return subscribeNotificationRealtime(() => {
-      void refetch();
-    });
-  }, [refetch]);
 
   const syncNotificationsPane = useCallback(() => {
     setActivePane(0);

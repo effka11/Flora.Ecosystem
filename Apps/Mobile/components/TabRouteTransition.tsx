@@ -1,13 +1,16 @@
 import { getActiveTabRouteKey } from "@/lib/getActiveTabRouteKey";
 import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
 import { floraRouteTransitionClearMs } from "@/lib/floraRouteEnterFade";
+import { bindRouteTransitionBusy } from "@/lib/routeTransitionBusy";
+import { clearScrollActivityOwner } from "@/lib/scrollActivity";
 import { shouldSkipFloraMotion } from "@/lib/useFloraReduceMotion";
 import { floraColors, floraMotion, floraTabBarContentHeight } from "@/lib/theme";
 import { useNavigation } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
 import Animated, {
   cancelAnimation,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -16,14 +19,25 @@ import Animated, {
 } from "react-native-reanimated";
 
 /** Reveal overlay 1→0 — та же длительность и ease-out, что тап подвкладок. */
-function runFloraRouteRevealFade(overlayOpacity: SharedValue<number>) {
+function runFloraRouteRevealFade(
+  overlayOpacity: SharedValue<number>,
+  onFinished: () => void,
+) {
   overlayOpacity.value = 1;
   overlayOpacity.value = withDelay(
     floraMotion.tabTransitionDelayMs,
-    withTiming(0, {
-      duration: ENERGETIC_OPEN_MS,
-      easing: ENERGETIC_OPEN_EASING,
-    }),
+    withTiming(
+      0,
+      {
+        duration: ENERGETIC_OPEN_MS,
+        easing: ENERGETIC_OPEN_EASING,
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(onFinished)();
+        }
+      },
+    ),
   );
 }
 
@@ -37,6 +51,8 @@ export function useTabRouteTransition(
   const skipAnimation = shouldSkipFloraMotion(reduceMotion);
   const coverActiveRef = useRef(false);
   const revealSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const routeBusyOwner = useRef(Symbol("tab-route-transition")).current;
+  const [routeBusy] = useState(() => bindRouteTransitionBusy(routeBusyOwner));
 
   const clearRevealSafetyTimer = useCallback(() => {
     if (revealSafetyTimerRef.current !== null) {
@@ -47,10 +63,11 @@ export function useTabRouteTransition(
 
   const resetOverlay = useCallback(() => {
     coverActiveRef.current = false;
+    routeBusy.reset();
     clearRevealSafetyTimer();
     cancelAnimation(overlayOpacity);
     overlayOpacity.value = 0;
-  }, [clearRevealSafetyTimer, overlayOpacity]);
+  }, [clearRevealSafetyTimer, overlayOpacity, routeBusy]);
 
   const scheduleRevealSafetyReset = useCallback(() => {
     clearRevealSafetyTimer();
@@ -69,10 +86,11 @@ export function useTabRouteTransition(
     }
 
     coverActiveRef.current = true;
+    routeBusy.cover();
     cancelAnimation(overlayOpacity);
     overlayOpacity.value = 1;
     scheduleRevealSafetyReset();
-  }, [overlayOpacity, scheduleRevealSafetyReset, skipAnimation]);
+  }, [overlayOpacity, routeBusy, scheduleRevealSafetyReset, skipAnimation]);
 
   const coverIfSwitchingTab = useCallback(
     (targetRouteKey?: string) => {
@@ -108,10 +126,25 @@ export function useTabRouteTransition(
     coverActiveRef.current = false;
     clearRevealSafetyTimer();
     cancelAnimation(overlayOpacity);
-    runFloraRouteRevealFade(overlayOpacity);
-  }, [clearRevealSafetyTimer, overlayOpacity, resetOverlay, skipAnimation]);
+    const { finish } = routeBusy.reveal();
+    revealSafetyTimerRef.current = setTimeout(() => {
+      revealSafetyTimerRef.current = null;
+      finish();
+    }, floraRouteTransitionClearMs);
+    runFloraRouteRevealFade(overlayOpacity, () => {
+      clearRevealSafetyTimer();
+      finish();
+    });
+  }, [clearRevealSafetyTimer, overlayOpacity, resetOverlay, routeBusy, skipAnimation]);
 
-  useEffect(() => () => clearRevealSafetyTimer(), [clearRevealSafetyTimer]);
+  useEffect(
+    () => () => {
+      clearRevealSafetyTimer();
+      routeBusy.dispose();
+      clearScrollActivityOwner(routeBusyOwner);
+    },
+    [clearRevealSafetyTimer, routeBusy, routeBusyOwner],
+  );
 
   const screenListeners = useMemo(
     () => ({

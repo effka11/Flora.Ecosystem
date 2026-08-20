@@ -3,82 +3,84 @@ import { useEffect, useRef } from "react";
 import { isTabActive } from "@/lib/getActiveTabRouteKey";
 import {
   abortQueuedIdleTabPrefetch,
-  beginMessagesIdlePreloadEpoch,
   canPrefetchIdleTab,
   canRunQueuedIdleTabPrefetch,
   createIdleTabPreloadController,
   getIdleTabPreloadSerializer,
+  getMessagesIdlePreloadCompleteAt,
   IDLE_TAB_PRELOAD_QUIET_MS,
-  IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
-  markMessagesIdlePreloadComplete,
+  subscribeMessagesIdlePreloadComplete,
   type IdleTabPreloadController,
 } from "@/lib/idleTabPreload";
 import { isScrollSettled, subscribeScrollSettled } from "@/lib/scrollActivity";
 
 /** Quiet window after the last `settled: true` before Android UI prefetch. */
-export const MESSAGES_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
+export const NOTIFICATIONS_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
 
-const CONVERSATIONS_QUERY_KEY = ["conversations"] as const;
-const MESSAGES_TAB_PRELOAD_HREF = "/(tabs)/messages";
+const NOTIFICATIONS_ALL_QUERY_KEY = ["notifications", "all", ""] as const;
+const NOTIFICATIONS_TAB_PRELOAD_HREF = "/(tabs)/notifications";
 
-export type MessagesTabPreloadGate = {
+export type NotificationsTabPreloadGate = {
   platform: string; // "android" | "ios" | ...
   appActive: boolean;
-  conversationsSuccess: boolean;
+  notificationsSuccess: boolean;
   scrollSettled: boolean;
   quietForMs: number;
-  messagesTabActive: boolean;
+  notificationsTabActive: boolean;
   alreadyPrefetched: boolean;
+  messagesComplete: boolean;
+  messagesCompleteForMs: number;
 };
 
-export function canPrefetchMessagesTab(gate: MessagesTabPreloadGate): boolean {
+export function canPrefetchNotificationsTab(gate: NotificationsTabPreloadGate): boolean {
   return canPrefetchIdleTab({
     platform: gate.platform,
     appActive: gate.appActive,
-    dataSuccess: gate.conversationsSuccess,
+    dataSuccess: gate.notificationsSuccess,
     scrollSettled: gate.scrollSettled,
     quietForMs: gate.quietForMs,
-    tabActive: gate.messagesTabActive,
+    tabActive: gate.notificationsTabActive,
     alreadyPrefetched: gate.alreadyPrefetched,
-    messagesComplete: true,
-    messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+    messagesComplete: gate.messagesComplete,
+    messagesCompleteForMs: gate.messagesCompleteForMs,
   });
 }
 
-export type IdleMessagesTabPreloadSnapshot = {
+export type IdleNotificationsTabPreloadSnapshot = {
   platform: string;
   appActive: boolean;
-  conversationsSuccess: boolean;
-  messagesTabActive: boolean;
+  notificationsSuccess: boolean;
+  notificationsTabActive: boolean;
 };
 
-export type IdleMessagesTabPreloadController = IdleTabPreloadController;
+export type IdleNotificationsTabPreloadController = IdleTabPreloadController;
 
-/** Messages binding of the generic idle machine in `lib/idleTabPreload.ts`. */
-export function createIdleMessagesTabPreloadController(opts: {
+/** Notifications binding of the generic idle machine in `lib/idleTabPreload.ts`. */
+export function createIdleNotificationsTabPreloadController(opts: {
   quietMs?: number;
   now?: () => number;
   isScrollSettled: () => boolean;
-  getSnapshot: () => IdleMessagesTabPreloadSnapshot;
+  getSnapshot: () => IdleNotificationsTabPreloadSnapshot;
   prefetch: () => void;
-}): IdleMessagesTabPreloadController {
+}): IdleNotificationsTabPreloadController {
   return createIdleTabPreloadController({
-    quietMs: opts.quietMs ?? MESSAGES_TAB_PRELOAD_QUIET_MS,
+    quietMs: opts.quietMs ?? NOTIFICATIONS_TAB_PRELOAD_QUIET_MS,
     now: opts.now ?? Date.now,
     isScrollSettled: opts.isScrollSettled,
     getSnapshot: () => {
       const snapshot = opts.getSnapshot();
+      const now = opts.now ?? Date.now;
+      const completedAt = getMessagesIdlePreloadCompleteAt();
       return {
         platform: snapshot.platform,
         appActive: snapshot.appActive,
-        dataSuccess: snapshot.conversationsSuccess,
-        tabActive: snapshot.messagesTabActive,
-        messagesComplete: true,
-        messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+        dataSuccess: snapshot.notificationsSuccess,
+        tabActive: snapshot.notificationsTabActive,
+        messagesComplete: completedAt != null,
+        messagesCompleteForMs: completedAt == null ? 0 : now() - completedAt,
       };
     },
     prefetch: opts.prefetch,
-    onSkip: markMessagesIdlePreloadComplete,
   });
 }
 
@@ -95,16 +97,16 @@ function loadIdlePreloadBindings() {
 }
 
 /**
- * Once the conversations query has succeeded, prefetch the Messages tab index
- * on Android after scroll has been quiet. Idle is `subscribeScrollSettled`,
- * not InteractionManager (RNGH/Reanimated gestures are invisible to it).
- * Pager touch/pager/strip and the tab-switch overlay also publish into that registry.
- * The mount itself goes through the shared serializer, so it never shares a
- * frame with another tab preload.
+ * Once the notifications all-list query has succeeded, prefetch the
+ * Notifications tab index on Android after scroll has been quiet. Idle is
+ * `subscribeScrollSettled`, not InteractionManager (RNGH/Reanimated gestures
+ * are invisible to it). Pager touch/pager/strip and the tab-switch overlay
+ * also publish into that registry. The mount itself goes through the shared
+ * serializer, so it never shares a frame with another tab preload.
  */
-export function useIdleMessagesTabPreload(segments: readonly string[]): void {
+export function useIdleNotificationsTabPreload(segments: readonly string[]): void {
   const queryClient = useQueryClient();
-  const frcOwner = useRef(Symbol("messages-tab-preload")).current;
+  const frcOwner = useRef(Symbol("notifications-tab-preload")).current;
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
   const evaluateRef = useRef<() => void>(() => {});
@@ -122,14 +124,13 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
       return () => clearFrcImageQueuePauseOwner(frcOwner);
     }
 
-    beginMessagesIdlePreloadEpoch();
-
     let cancelled = false;
     let rafOuter: number | null = null;
     let rafInner: number | null = null;
     let unsubScroll = () => {};
     let unsubApp = () => {};
     let unsubQuery = () => {};
+    let unsubMessages = () => {};
 
     const cancelRafs = () => {
       if (rafOuter != null) {
@@ -149,18 +150,20 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
       unsubApp = () => {};
       unsubQuery();
       unsubQuery = () => {};
+      unsubMessages();
+      unsubMessages = () => {};
     };
 
     const readSnapshot = () => ({
       platform: Platform.OS,
       appActive: AppState.currentState === "active",
-      conversationsSuccess:
-        queryClient.getQueryState(CONVERSATIONS_QUERY_KEY)?.status === "success",
-      messagesTabActive: isTabActive(segmentsRef.current, "messages"),
+      notificationsSuccess:
+        queryClient.getQueryState(NOTIFICATIONS_ALL_QUERY_KEY)?.status === "success",
+      notificationsTabActive: isTabActive(segmentsRef.current, "notifications"),
     });
 
-    const controller = createIdleMessagesTabPreloadController({
-      quietMs: MESSAGES_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdleNotificationsTabPreloadController({
+      quietMs: NOTIFICATIONS_TAB_PRELOAD_QUIET_MS,
       isScrollSettled,
       getSnapshot: readSnapshot,
       prefetch: () => {
@@ -170,41 +173,39 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
           (release) => {
             detachListeners();
             setFrcImageQueuePaused(frcOwner, "drag", true);
-            router.prefetch(MESSAGES_TAB_PRELOAD_HREF);
-            const finish = () => {
-              markMessagesIdlePreloadComplete();
-              release();
-            };
+            router.prefetch(NOTIFICATIONS_TAB_PRELOAD_HREF);
             rafOuter = requestAnimationFrame(() => {
               rafOuter = null;
               if (cancelled) {
-                finish();
+                release();
                 return;
               }
               rafInner = requestAnimationFrame(() => {
                 rafInner = null;
                 if (cancelled) {
-                  finish();
+                  release();
                   return;
                 }
                 setFrcImageQueuePaused(frcOwner, "drag", false);
-                finish();
+                release();
               });
             });
           },
           {
             shouldRun: () => {
               const snap = readSnapshot();
+              const completedAt = getMessagesIdlePreloadCompleteAt();
               return canRunQueuedIdleTabPrefetch({
                 cancelled,
                 platform: snap.platform,
                 appActive: snap.appActive,
-                dataSuccess: snap.conversationsSuccess,
+                dataSuccess: snap.notificationsSuccess,
                 scrollSettled: isScrollSettled(),
                 quietForMs: controller.quietForMs(),
-                tabActive: snap.messagesTabActive,
-                messagesComplete: true,
-                messagesCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+                tabActive: snap.notificationsTabActive,
+                messagesComplete: completedAt != null,
+                messagesCompleteForMs:
+                  completedAt == null ? 0 : Date.now() - completedAt,
               });
             },
             onAbort: () => {
@@ -251,9 +252,14 @@ export function useIdleMessagesTabPreload(segments: readonly string[]): void {
     unsubApp = () => appSub.remove();
 
     unsubQuery = queryClient.getQueryCache().subscribe((event) => {
-      if (event.query.queryKey[0] !== "conversations") return;
+      if (event.query.queryKey[0] !== "notifications") return;
       evaluate();
-      if (readSnapshot().conversationsSuccess !== true) abortQueued();
+      if (readSnapshot().notificationsSuccess !== true) abortQueued();
+    });
+
+    unsubMessages = subscribeMessagesIdlePreloadComplete(() => {
+      evaluate();
+      if (getMessagesIdlePreloadCompleteAt() == null) abortQueued();
     });
 
     evaluate();
