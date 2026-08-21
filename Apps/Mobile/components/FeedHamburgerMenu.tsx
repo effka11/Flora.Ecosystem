@@ -66,6 +66,12 @@ import {
 } from "@/lib/drawerMomentum";
 import { eligibleVerticalFling } from "@/lib/drawerFlingPolicy";
 import { floraColors, floraMotion, floraSpacing } from "@/lib/theme";
+import {
+  isHamburgerTabPathActive,
+  requestTabRouteCover,
+  requestTabRouteReveal,
+  tabNameFromHamburgerTarget,
+} from "@/lib/tabRouteCover";
 import { useSessionStore } from "@/stores/sessionStore";
 
 const FLORA_MARK_GLYPH = require("../assets/images/logo-mark-glyph.png");
@@ -112,16 +118,7 @@ function MenuItemIcon({ id, color }: { id: MenuItemId; color: string }) {
 
 /** Как web `isDashboardRouteActive`: активный пункт сайдбара — greenLight. */
 function isMenuItemActive(pathname: string, id: MenuItemId): boolean {
-  switch (id) {
-    case "people":
-      return pathname === "/people" || pathname.startsWith("/people/");
-    case "communities":
-      return pathname === "/communities" || pathname.startsWith("/communities/");
-    case "settings":
-      return pathname === "/settings" || pathname.startsWith("/settings/");
-    case "contribute":
-      return pathname === "/contribute" || pathname.startsWith("/contribute/");
-  }
+  return isHamburgerTabPathActive(pathname, id);
 }
 
 const PANEL_MAX_WIDTH = 300;
@@ -571,13 +568,32 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   const overlayPointerEvents = presented ? ("auto" as const) : ("none" as const);
 
   const openItem = (href: Href) => {
+    const tabName = typeof href === "string" ? tabNameFromHamburgerTarget(href) : null;
+    if (tabName != null && isHamburgerTabPathActive(pathname, tabName)) {
+      finishClose();
+      return;
+    }
+    if (tabName != null) requestTabRouteCover(tabName);
     finishClose();
     router.navigate(href);
+    if (tabName != null) {
+      requestAnimationFrame(() => {
+        requestTabRouteReveal();
+      });
+    }
   };
 
   const openAccountSettings = () => {
+    if (isHamburgerTabPathActive(pathname, "settings")) {
+      finishClose();
+      return;
+    }
+    requestTabRouteCover("settings");
     finishClose();
     router.push({ pathname: "/(tabs)/settings", params: { section: "account" } });
+    requestAnimationFrame(() => {
+      requestTabRouteReveal();
+    });
   };
 
   const displayName = me?.displayName?.trim() || me?.username || "Профиль";

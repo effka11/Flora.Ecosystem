@@ -1,8 +1,13 @@
-import { getActiveTabRouteKey } from "@/lib/getActiveTabRouteKey";
+import { getActiveTabRouteKey, getActiveTabRouteName } from "@/lib/getActiveTabRouteKey";
 import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
 import { floraRouteTransitionClearMs } from "@/lib/floraRouteEnterFade";
 import { bindRouteTransitionBusy } from "@/lib/routeTransitionBusy";
 import { clearScrollActivityOwner } from "@/lib/scrollActivity";
+import {
+  registerTabRouteCoverHandler,
+  registerTabRouteRevealHandler,
+  shouldCoverTabSwitch,
+} from "@/lib/tabRouteCover";
 import { shouldSkipFloraMotion } from "@/lib/useFloraReduceMotion";
 import { floraColors, floraMotion, floraTabBarContentHeight } from "@/lib/theme";
 import { useNavigation } from "expo-router";
@@ -69,6 +74,30 @@ export function useTabRouteTransition(
     overlayOpacity.value = 0;
   }, [clearRevealSafetyTimer, overlayOpacity, routeBusy]);
 
+  const revealContent = useCallback(() => {
+    if (skipAnimation) {
+      resetOverlay();
+      return;
+    }
+
+    if (!coverActiveRef.current) {
+      return;
+    }
+
+    coverActiveRef.current = false;
+    clearRevealSafetyTimer();
+    cancelAnimation(overlayOpacity);
+    const { finish } = routeBusy.reveal();
+    revealSafetyTimerRef.current = setTimeout(() => {
+      revealSafetyTimerRef.current = null;
+      finish();
+    }, floraRouteTransitionClearMs);
+    runFloraRouteRevealFade(overlayOpacity, () => {
+      clearRevealSafetyTimer();
+      finish();
+    });
+  }, [clearRevealSafetyTimer, overlayOpacity, resetOverlay, routeBusy, skipAnimation]);
+
   const scheduleRevealSafetyReset = useCallback(() => {
     clearRevealSafetyTimer();
     revealSafetyTimerRef.current = setTimeout(() => {
@@ -113,29 +142,35 @@ export function useTabRouteTransition(
     [coverContent, navigation, skipAnimation],
   );
 
-  const revealContent = useCallback(() => {
-    if (skipAnimation) {
-      resetOverlay();
-      return;
-    }
+  const coverIfSwitchingName = useCallback(
+    (targetTabName: string) => {
+      if (skipAnimation || targetTabName.length === 0) {
+        return;
+      }
 
-    if (!coverActiveRef.current) {
-      return;
-    }
+      const state = navigation.getState();
+      if (!state) {
+        return;
+      }
 
-    coverActiveRef.current = false;
-    clearRevealSafetyTimer();
-    cancelAnimation(overlayOpacity);
-    const { finish } = routeBusy.reveal();
-    revealSafetyTimerRef.current = setTimeout(() => {
-      revealSafetyTimerRef.current = null;
-      finish();
-    }, floraRouteTransitionClearMs);
-    runFloraRouteRevealFade(overlayOpacity, () => {
-      clearRevealSafetyTimer();
-      finish();
-    });
-  }, [clearRevealSafetyTimer, overlayOpacity, resetOverlay, routeBusy, skipAnimation]);
+      const activeName = getActiveTabRouteName(state);
+      if (!shouldCoverTabSwitch(activeName, targetTabName)) {
+        return;
+      }
+
+      coverContent();
+    },
+    [coverContent, navigation, skipAnimation],
+  );
+
+  useEffect(() => {
+    registerTabRouteCoverHandler(coverIfSwitchingName);
+    registerTabRouteRevealHandler(revealContent);
+    return () => {
+      registerTabRouteCoverHandler(null);
+      registerTabRouteRevealHandler(null);
+    };
+  }, [coverIfSwitchingName, revealContent]);
 
   useEffect(
     () => () => {
