@@ -70,7 +70,7 @@ import { useSessionStore } from "@/stores/sessionStore";
 
 const FLORA_MARK_GLYPH = require("../assets/images/logo-mark-glyph.png");
 
-type MenuItemId = "people" | "communities" | "settings" | "github";
+type MenuItemId = "people" | "communities" | "settings" | "contribute";
 
 type MenuItem = {
   id: MenuItemId;
@@ -82,18 +82,18 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "people", href: "/(tabs)/people", label: "Люди" },
   { id: "communities", href: "/(tabs)/communities", label: "Сообщества" },
   { id: "settings", href: "/(tabs)/settings", label: "Настройки" },
-  { id: "github", href: "/(tabs)/github", label: "GitHub" },
+  { id: "contribute", href: "/(tabs)/contribute", label: "Помощь проекту" },
 ];
 
 /**
  * Как web dashboardShell: logoMark = 2×grid (30), navIcon = 22;
- * people 24, communities 22×0.92, settings/github 22.
+ * people 24, communities 22×0.92, settings/contribute 22.
  */
 const MENU_ICON_SIZE: Record<MenuItemId, number> = {
   people: 24,
   communities: Math.round(22 * 0.92),
   settings: 22,
-  github: 22,
+  contribute: 22,
 };
 
 function MenuItemIcon({ id, color }: { id: MenuItemId; color: string }) {
@@ -105,8 +105,8 @@ function MenuItemIcon({ id, color }: { id: MenuItemId; color: string }) {
       return <SidebarCommunitiesIcon size={size} color={color} />;
     case "settings":
       return <SidebarSettingsIcon size={size} color={color} />;
-    case "github":
-      return <Ionicons name="logo-github" size={size} color={color} />;
+    case "contribute":
+      return <Ionicons name="heart" size={size} color={color} />;
   }
 }
 
@@ -119,8 +119,8 @@ function isMenuItemActive(pathname: string, id: MenuItemId): boolean {
       return pathname === "/communities" || pathname.startsWith("/communities/");
     case "settings":
       return pathname === "/settings" || pathname.startsWith("/settings/");
-    case "github":
-      return pathname === "/github" || pathname.startsWith("/github/");
+    case "contribute":
+      return pathname === "/contribute" || pathname.startsWith("/contribute/");
   }
 }
 
