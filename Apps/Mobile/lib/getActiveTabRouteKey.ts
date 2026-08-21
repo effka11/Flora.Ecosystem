@@ -1,38 +1,61 @@
 // SDK 56: без прямого импорта из @react-navigation/native — локальные типы state.
 
+type TabRouteRef = { key?: string; name?: string };
+
 type TabNavigatorState = {
   type?: string;
   index?: number;
-  routes?: ReadonlyArray<{ key?: string }>;
+  routes?: readonly TabRouteRef[];
 };
 
 type NavigationStateLike = {
   type?: string;
   index?: number;
-  routes?: ReadonlyArray<{ key?: string; state?: TabNavigatorState }>;
+  routes?: readonly { key?: string; name?: string; state?: TabNavigatorState }[];
 };
 
-function activeKeyFromTabState(tabState: TabNavigatorState | undefined): string | undefined {
+function activeTabRoute(
+  tabState: TabNavigatorState | undefined,
+): TabRouteRef | undefined {
   if (tabState?.type !== "tab" || !tabState.routes?.length) {
     return undefined;
   }
   const index = typeof tabState.index === "number" ? tabState.index : 0;
-  return tabState.routes[index]?.key;
+  return tabState.routes[index];
 }
 
-/** Ключ активной вкладки Tab navigator — из корневого Stack (экран `(tabs)`) или из tab state напрямую. */
-export function getActiveTabRouteKey(state: NavigationStateLike | undefined): string | undefined {
+function activeFieldFromTabState(
+  tabState: TabNavigatorState | undefined,
+  field: "key" | "name",
+): string | undefined {
+  return activeTabRoute(tabState)?.[field];
+}
+
+function walkActiveTabField(
+  state: NavigationStateLike | undefined,
+  field: "key" | "name",
+): string | undefined {
   if (!state) {
     return undefined;
   }
 
-  const direct = activeKeyFromTabState(state);
+  const direct = activeFieldFromTabState(state, field);
   if (direct) {
     return direct;
   }
 
   const focusedRoute = state.routes?.[typeof state.index === "number" ? state.index : 0];
-  return activeKeyFromTabState(focusedRoute?.state);
+  return activeFieldFromTabState(focusedRoute?.state, field);
+}
+
+/** Ключ активной вкладки Tab navigator — из корневого Stack (экран `(tabs)`) или из tab state напрямую. */
+export function getActiveTabRouteKey(state: NavigationStateLike | undefined): string | undefined {
+  return walkActiveTabField(state, "key");
+}
+
+/** Имя активной вкладки (`people`, `feed`, …) — не `route.key`. */
+export function getActiveTabRouteName(state: NavigationStateLike | undefined): string | undefined {
+  return walkActiveTabField(state, "name");
 }
 
 /** Индекс сегмента активной вкладки в `useSegments()` — сразу после `(tabs)`. */

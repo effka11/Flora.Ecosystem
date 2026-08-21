@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getActiveTabRouteKey,
+  getActiveTabRouteName,
   getActiveTabSegment,
   isTabActive,
   isTabRoot,
@@ -74,6 +75,42 @@ describe("getActiveTabRouteKey", () => {
     const activeKey = getActiveTabRouteKey(state);
     expect(activeKey === "feed-key").toBe(true);
     expect(activeKey === "music-key").toBe(false);
+  });
+});
+
+describe("getActiveTabRouteName", () => {
+  it("returns active tab name from direct tab state", () => {
+    const state = {
+      type: "tab",
+      index: 1,
+      routes: [
+        { key: "feed-key", name: "feed" },
+        { key: "people-key", name: "people" },
+      ],
+    };
+    expect(getActiveTabRouteName(state)).toBe("people");
+  });
+
+  it("returns active tab name from nested tab state inside focused stack route", () => {
+    const state = {
+      type: "stack",
+      index: 0,
+      routes: [
+        {
+          key: "tabs-route",
+          name: "(tabs)",
+          state: {
+            type: "tab",
+            index: 0,
+            routes: [
+              { key: "settings-key", name: "settings" },
+              { key: "people-key", name: "people" },
+            ],
+          },
+        },
+      ],
+    };
+    expect(getActiveTabRouteName(state)).toBe("settings");
   });
 });
 
