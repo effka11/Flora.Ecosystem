@@ -1,118 +1,109 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import {
+  COMMUNITIES_OWNED_QUERY_KEY,
+  COMMUNITIES_OWNED_SEGMENT,
+  COMMUNITIES_QUERY_ROOT,
+  COMMUNITIES_RECOMMENDED_QUERY_KEY,
+  COMMUNITIES_RECOMMENDED_SEGMENT,
+  COMMUNITIES_SUBSCRIPTIONS_SEGMENT,
+  communitiesIndexUsername,
+  communitiesSubscriptionsQueryKey,
+} from "@/lib/communities/communitiesIndexQueries";
 import { isTabActive } from "@/lib/getActiveTabRouteKey";
 import {
   abortQueuedIdleTabPrefetch,
-  beginIdleTabPreloadEpoch,
   canPrefetchIdleTab,
   canRunQueuedIdleTabPrefetch,
   createIdleTabPreloadController,
   getIdleTabPreloadCompleteAt,
   getIdleTabPreloadSerializer,
   IDLE_TAB_PRELOAD_QUIET_MS,
-  markIdleTabPreloadComplete,
   subscribeIdleTabPreloadComplete,
   type IdleTabPreloadController,
 } from "@/lib/idleTabPreload";
-import {
-  PEOPLE_FOLLOWERS_SEGMENT,
-  PEOPLE_FOLLOWING_SEGMENT,
-  PEOPLE_QUERY_ROOT,
-  PEOPLE_RECOMMENDED_QUERY_KEY,
-  PEOPLE_RECOMMENDED_SEGMENT,
-  peopleFollowersQueryKey,
-  peopleFollowingQueryKey,
-  peopleIndexUsername,
-} from "@/lib/people/peopleIndexQueries";
 import { isScrollSettled, subscribeScrollSettled } from "@/lib/scrollActivity";
 
 /** Quiet window after the last `settled: true` before Android UI prefetch. */
-export const PEOPLE_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
+export const COMMUNITIES_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
 
-/** Android prefetch finish: stamp then release so Communities can wait on `"people"`. */
-export function finishPeopleIdleTabPrefetch(release: () => void): void {
-  markIdleTabPreloadComplete("people");
-  release();
-}
+export const COMMUNITIES_TAB_PRELOAD_HREF = "/(tabs)/communities";
 
-export const PEOPLE_TAB_PRELOAD_HREF = "/(tabs)/people";
-
-/** Index-tab cache keys only — not People search. */
-export function isPeopleIndexQueryKey(queryKey: readonly unknown[]): boolean {
+/** Index-tab cache keys only — not Communities search. */
+export function isCommunitiesIndexQueryKey(queryKey: readonly unknown[]): boolean {
   return (
-    queryKey[0] === PEOPLE_QUERY_ROOT &&
-    (queryKey[1] === PEOPLE_RECOMMENDED_SEGMENT ||
-      queryKey[1] === PEOPLE_FOLLOWERS_SEGMENT ||
-      queryKey[1] === PEOPLE_FOLLOWING_SEGMENT)
+    queryKey[0] === COMMUNITIES_QUERY_ROOT &&
+    (queryKey[1] === COMMUNITIES_RECOMMENDED_SEGMENT ||
+      queryKey[1] === COMMUNITIES_OWNED_SEGMENT ||
+      queryKey[1] === COMMUNITIES_SUBSCRIPTIONS_SEGMENT)
   );
 }
 
-export type PeopleTabPreloadGate = {
+export type CommunitiesTabPreloadGate = {
   platform: string; // "android" | "ios" | ...
   appActive: boolean;
-  peopleIndexSuccess: boolean;
+  communitiesIndexSuccess: boolean;
   scrollSettled: boolean;
   quietForMs: number;
-  peopleTabActive: boolean;
+  communitiesTabActive: boolean;
   alreadyPrefetched: boolean;
-  musicComplete: boolean;
-  musicCompleteForMs: number;
+  peopleComplete: boolean;
+  peopleCompleteForMs: number;
 };
 
-export function canPrefetchPeopleTab(gate: PeopleTabPreloadGate): boolean {
+export function canPrefetchCommunitiesTab(gate: CommunitiesTabPreloadGate): boolean {
   return canPrefetchIdleTab({
     platform: gate.platform,
     appActive: gate.appActive,
-    dataSuccess: gate.peopleIndexSuccess,
+    dataSuccess: gate.communitiesIndexSuccess,
     scrollSettled: gate.scrollSettled,
     quietForMs: gate.quietForMs,
-    tabActive: gate.peopleTabActive,
+    tabActive: gate.communitiesTabActive,
     alreadyPrefetched: gate.alreadyPrefetched,
-    predecessorComplete: gate.musicComplete,
-    predecessorCompleteForMs: gate.musicCompleteForMs,
+    predecessorComplete: gate.peopleComplete,
+    predecessorCompleteForMs: gate.peopleCompleteForMs,
   });
 }
 
-export type IdlePeopleTabPreloadSnapshot = {
+export type IdleCommunitiesTabPreloadSnapshot = {
   platform: string;
   appActive: boolean;
   /**
-   * Recommended is success, and either there is no username or both
-   * followers and following are success.
+   * Recommended and owned are success, and either there is no username or
+   * subscriptions is success.
    */
-  peopleIndexSuccess: boolean;
-  peopleTabActive: boolean;
+  communitiesIndexSuccess: boolean;
+  communitiesTabActive: boolean;
 };
 
-export type IdlePeopleTabPreloadController = IdleTabPreloadController;
+export type IdleCommunitiesTabPreloadController = IdleTabPreloadController;
 
-/** People binding of the generic idle machine in `lib/idleTabPreload.ts`. */
-export function createIdlePeopleTabPreloadController(opts: {
+/** Communities binding of the generic idle machine in `lib/idleTabPreload.ts`. */
+export function createIdleCommunitiesTabPreloadController(opts: {
   quietMs?: number;
   now?: () => number;
   isScrollSettled: () => boolean;
-  getSnapshot: () => IdlePeopleTabPreloadSnapshot;
+  getSnapshot: () => IdleCommunitiesTabPreloadSnapshot;
   prefetch: () => void;
-}): IdlePeopleTabPreloadController {
+}): IdleCommunitiesTabPreloadController {
   return createIdleTabPreloadController({
-    quietMs: opts.quietMs ?? PEOPLE_TAB_PRELOAD_QUIET_MS,
+    quietMs: opts.quietMs ?? COMMUNITIES_TAB_PRELOAD_QUIET_MS,
     now: opts.now ?? Date.now,
     isScrollSettled: opts.isScrollSettled,
     getSnapshot: () => {
       const snapshot = opts.getSnapshot();
       const now = opts.now ?? Date.now;
-      const completedAt = getIdleTabPreloadCompleteAt("music");
+      const completedAt = getIdleTabPreloadCompleteAt("people");
       return {
         platform: snapshot.platform,
         appActive: snapshot.appActive,
-        dataSuccess: snapshot.peopleIndexSuccess,
-        tabActive: snapshot.peopleTabActive,
+        dataSuccess: snapshot.communitiesIndexSuccess,
+        tabActive: snapshot.communitiesTabActive,
         predecessorComplete: completedAt != null,
         predecessorCompleteForMs: completedAt == null ? 0 : now() - completedAt,
       };
     },
     prefetch: opts.prefetch,
-    onSkip: () => markIdleTabPreloadComplete("people"),
   });
 }
 
@@ -137,38 +128,40 @@ function loadSessionStore() {
 }
 
 function sessionUsername(store: ReturnType<typeof loadSessionStore>): string {
-  return peopleIndexUsername(store.getState().me?.username ?? "");
+  return communitiesIndexUsername(store.getState().me?.username ?? "");
 }
 
-function peopleIndexQueriesSuccess(
+function communitiesIndexQueriesSuccess(
   queryClient: ReturnType<typeof useQueryClient>,
   username: string,
 ): boolean {
-  if (queryClient.getQueryState(PEOPLE_RECOMMENDED_QUERY_KEY)?.status !== "success") {
+  if (queryClient.getQueryState(COMMUNITIES_RECOMMENDED_QUERY_KEY)?.status !== "success") {
     return false;
   }
-  const ownUsername = peopleIndexUsername(username);
+  if (queryClient.getQueryState(COMMUNITIES_OWNED_QUERY_KEY)?.status !== "success") {
+    return false;
+  }
+  const ownUsername = communitiesIndexUsername(username);
   if (ownUsername.length === 0) {
     return true;
   }
   return (
-    queryClient.getQueryState(peopleFollowersQueryKey(ownUsername))?.status === "success" &&
-    queryClient.getQueryState(peopleFollowingQueryKey(ownUsername))?.status === "success"
+    queryClient.getQueryState(communitiesSubscriptionsQueryKey(ownUsername))?.status === "success"
   );
 }
 
 /**
- * Once People index queries have succeeded, prefetch the People tab index
- * on Android after scroll has been quiet. Idle is `subscribeScrollSettled`,
+ * Once Communities index queries have succeeded, prefetch the Communities tab
+ * index on Android after scroll has been quiet. Idle is `subscribeScrollSettled`,
  * not InteractionManager (RNGH/Reanimated gestures are invisible to it).
  * Pager touch/pager/strip and the tab-switch overlay also publish into that
  * registry. The mount itself goes through the shared serializer, so it never
- * shares a frame with another tab preload. People waits on the music stamp,
- * then stamps `"people"` for successors.
+ * shares a frame with another tab preload. Communities waits on the people
+ * stamp and is last in the chain — it does not stamp a stage.
  */
-export function useIdlePeopleTabPreload(segments: readonly string[]): void {
+export function useIdleCommunitiesTabPreload(segments: readonly string[]): void {
   const queryClient = useQueryClient();
-  const frcOwner = useRef(Symbol("people-tab-preload")).current;
+  const frcOwner = useRef(Symbol("communities-tab-preload")).current;
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
   const usernameRef = useRef("");
@@ -187,8 +180,6 @@ export function useIdlePeopleTabPreload(segments: readonly string[]): void {
       return () => clearFrcImageQueuePauseOwner(frcOwner);
     }
 
-    beginIdleTabPreloadEpoch("people");
-
     const sessionStore = loadSessionStore();
     usernameRef.current = sessionUsername(sessionStore);
 
@@ -198,7 +189,7 @@ export function useIdlePeopleTabPreload(segments: readonly string[]): void {
     let unsubScroll = () => {};
     let unsubApp = () => {};
     let unsubQuery = () => {};
-    let unsubMusic = () => {};
+    let unsubPeople = () => {};
     let unsubSession = () => {};
 
     const cancelRafs = () => {
@@ -219,8 +210,8 @@ export function useIdlePeopleTabPreload(segments: readonly string[]): void {
       unsubApp = () => {};
       unsubQuery();
       unsubQuery = () => {};
-      unsubMusic();
-      unsubMusic = () => {};
+      unsubPeople();
+      unsubPeople = () => {};
       unsubSession();
       unsubSession = () => {};
     };
@@ -228,12 +219,12 @@ export function useIdlePeopleTabPreload(segments: readonly string[]): void {
     const readSnapshot = () => ({
       platform: Platform.OS,
       appActive: AppState.currentState === "active",
-      peopleIndexSuccess: peopleIndexQueriesSuccess(queryClient, usernameRef.current),
-      peopleTabActive: isTabActive(segmentsRef.current, "people"),
+      communitiesIndexSuccess: communitiesIndexQueriesSuccess(queryClient, usernameRef.current),
+      communitiesTabActive: isTabActive(segmentsRef.current, "communities"),
     });
 
-    const controller = createIdlePeopleTabPreloadController({
-      quietMs: PEOPLE_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdleCommunitiesTabPreloadController({
+      quietMs: COMMUNITIES_TAB_PRELOAD_QUIET_MS,
       isScrollSettled,
       getSnapshot: readSnapshot,
       prefetch: () => {
@@ -243,9 +234,9 @@ export function useIdlePeopleTabPreload(segments: readonly string[]): void {
           (release) => {
             detachListeners();
             setFrcImageQueuePaused(frcOwner, "drag", true);
-            router.prefetch(PEOPLE_TAB_PRELOAD_HREF);
+            router.prefetch(COMMUNITIES_TAB_PRELOAD_HREF);
             const finish = () => {
-              finishPeopleIdleTabPrefetch(release);
+              release();
             };
             rafOuter = requestAnimationFrame(() => {
               rafOuter = null;
@@ -267,15 +258,15 @@ export function useIdlePeopleTabPreload(segments: readonly string[]): void {
           {
             shouldRun: () => {
               const snap = readSnapshot();
-              const completedAt = getIdleTabPreloadCompleteAt("music");
+              const completedAt = getIdleTabPreloadCompleteAt("people");
               return canRunQueuedIdleTabPrefetch({
                 cancelled,
                 platform: snap.platform,
                 appActive: snap.appActive,
-                dataSuccess: snap.peopleIndexSuccess,
+                dataSuccess: snap.communitiesIndexSuccess,
                 scrollSettled: isScrollSettled(),
                 quietForMs: controller.quietForMs(),
-                tabActive: snap.peopleTabActive,
+                tabActive: snap.communitiesTabActive,
                 predecessorComplete: completedAt != null,
                 predecessorCompleteForMs:
                   completedAt == null ? 0 : Date.now() - completedAt,
@@ -325,22 +316,22 @@ export function useIdlePeopleTabPreload(segments: readonly string[]): void {
     unsubApp = () => appSub.remove();
 
     unsubQuery = queryClient.getQueryCache().subscribe((event) => {
-      if (!isPeopleIndexQueryKey(event.query.queryKey)) return;
+      if (!isCommunitiesIndexQueryKey(event.query.queryKey)) return;
       evaluate();
-      if (readSnapshot().peopleIndexSuccess !== true) abortQueued();
+      if (readSnapshot().communitiesIndexSuccess !== true) abortQueued();
     });
 
-    unsubMusic = subscribeIdleTabPreloadComplete("music", () => {
+    unsubPeople = subscribeIdleTabPreloadComplete("people", () => {
       evaluate();
-      if (getIdleTabPreloadCompleteAt("music") == null) abortQueued();
+      if (getIdleTabPreloadCompleteAt("people") == null) abortQueued();
     });
 
     unsubSession = sessionStore.subscribe((state) => {
-      const next = peopleIndexUsername(state.me?.username ?? "");
+      const next = communitiesIndexUsername(state.me?.username ?? "");
       if (next === usernameRef.current) return;
       usernameRef.current = next;
       evaluate();
-      if (readSnapshot().peopleIndexSuccess !== true) abortQueued();
+      if (readSnapshot().communitiesIndexSuccess !== true) abortQueued();
     });
 
     evaluate();

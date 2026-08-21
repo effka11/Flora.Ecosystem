@@ -1,13 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import {
-  apiGetCommunities,
-  apiGetOwnedCommunities,
-  apiGetRecommendedCommunities,
-  apiJoinCommunity,
-  apiLeaveCommunity,
-  apiListProfileCommunities,
-  apiSearchCommunities,
-} from "@flora/client-core/api";
+import { apiJoinCommunity, apiLeaveCommunity, apiSearchCommunities } from "@flora/client-core/api";
 import type { CommunityListItemDto } from "@flora/client-core/contracts";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +26,15 @@ import { SyncPagerTabIndicator } from "@/components/chrome/tabIndicatorBridge";
 import { CreateCommunitySheet } from "@/components/communities/CreateCommunitySheet";
 import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
 import { TabScreenHeader } from "@/components/TabScreenHeader";
+import {
+  fetchCommunitiesOwnedQuery,
+  fetchCommunitiesRecommendedQuery,
+  fetchCommunitiesSubscriptionsQuery,
+  communitiesIndexUsername,
+  communitiesSubscriptionsQueryKey,
+  COMMUNITIES_OWNED_QUERY_KEY,
+  COMMUNITIES_RECOMMENDED_QUERY_KEY,
+} from "@/lib/communities/communitiesIndexQueries";
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { communityScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -73,26 +74,6 @@ function emptyMessage(tab: CommunityTab, hasSearch: boolean): string {
 
 function formatMembers(count: number): string {
   return `${count.toLocaleString("ru-RU")} участников`;
-}
-
-async function loadSubscriptions(username: string): Promise<CommunityListItemDto[]> {
-  const [profileItems, publicList] = await Promise.all([
-    apiListProfileCommunities(username),
-    apiGetCommunities(),
-  ]);
-  const publicBySlug = new Map(publicList.map((item) => [item.slug, item]));
-  return profileItems.map((item) => {
-    const full = publicBySlug.get(item.slug);
-    if (full) return { ...full, role: "Member" as const };
-    return {
-      communityId: item.slug,
-      name: item.name,
-      slug: item.slug,
-      memberCount: 0,
-      avatarUuid: null,
-      role: "Member" as const,
-    };
-  });
 }
 
 type CommunityRowProps = {
@@ -338,23 +319,26 @@ export default function CommunitiesScreen() {
   }, [syncCommunityPane]);
   useFocusEffect(syncCommunityPane);
 
-  const myUsername = me?.username?.replace(/^@+/, "") ?? "";
+  const myUsername = communitiesIndexUsername(me?.username ?? "");
 
   const recommendedQuery = useQuery({
-    queryKey: ["communities", "recommended"],
+    queryKey: COMMUNITIES_RECOMMENDED_QUERY_KEY,
     enabled: !hasSearch,
-    queryFn: () => apiGetRecommendedCommunities(30),
+    queryFn: fetchCommunitiesRecommendedQuery,
+    refetchOnMount: false,
   });
 
   const ownedQuery = useQuery({
-    queryKey: ["communities", "owned"],
-    queryFn: () => apiGetOwnedCommunities(),
+    queryKey: COMMUNITIES_OWNED_QUERY_KEY,
+    queryFn: fetchCommunitiesOwnedQuery,
+    refetchOnMount: false,
   });
 
   const subscriptionsQuery = useQuery({
-    queryKey: ["communities", "subscriptions", myUsername],
+    queryKey: communitiesSubscriptionsQueryKey(myUsername),
     enabled: !hasSearch && myUsername.length > 0,
-    queryFn: () => loadSubscriptions(myUsername),
+    queryFn: () => fetchCommunitiesSubscriptionsQuery(myUsername),
+    refetchOnMount: false,
   });
 
   const searchQuery = useQuery({
