@@ -156,7 +156,7 @@ export default function TabsLayout() {
             }}
           />
           <Tabs.Screen
-            name="github"
+            name="contribute"
             options={{
               href: null,
               headerShown: false,
