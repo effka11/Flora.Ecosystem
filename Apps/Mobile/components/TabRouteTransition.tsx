@@ -9,7 +9,7 @@ import {
   shouldCoverTabSwitch,
 } from "@/lib/tabRouteCover";
 import { shouldSkipFloraMotion } from "@/lib/useFloraReduceMotion";
-import { floraColors, floraMotion, floraTabBarContentHeight } from "@/lib/theme";
+import { floraColors, floraTabBarContentHeight } from "@/lib/theme";
 import { useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
@@ -18,7 +18,6 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
@@ -29,20 +28,17 @@ function runFloraRouteRevealFade(
   onFinished: () => void,
 ) {
   overlayOpacity.value = 1;
-  overlayOpacity.value = withDelay(
-    floraMotion.tabTransitionDelayMs,
-    withTiming(
-      0,
-      {
-        duration: ENERGETIC_OPEN_MS,
-        easing: ENERGETIC_OPEN_EASING,
-      },
-      (finished) => {
-        if (finished) {
-          runOnJS(onFinished)();
-        }
-      },
-    ),
+  overlayOpacity.value = withTiming(
+    0,
+    {
+      duration: ENERGETIC_OPEN_MS,
+      easing: ENERGETIC_OPEN_EASING,
+    },
+    (finished) => {
+      if (finished) {
+        runOnJS(onFinished)();
+      }
+    },
   );
 }
 
