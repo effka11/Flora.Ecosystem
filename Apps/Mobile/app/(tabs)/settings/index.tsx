@@ -456,7 +456,6 @@ export default function SettingsScreen() {
   const stripMotionRef = useRef(false);
   const settingsBusyOwner = useRef(Symbol("settings-pager")).current;
   const settingsMountOwner = useRef(Symbol("settings-section-mount")).current;
-  const settingsFocusedRef = useRef(false);
   const [sectionMountHold] = useState(() =>
     createIdleMountHold(settingsMountOwner, (release) => {
       requestAnimationFrame(() => {
@@ -466,19 +465,13 @@ export default function SettingsScreen() {
   );
   const commitSectionMount = useCallback(
     (apply: () => void) => {
-      if (!settingsFocusedRef.current) {
-        apply();
-        return;
-      }
       sectionMountHold.run(apply);
     },
     [sectionMountHold],
   );
   useFocusEffect(
     useCallback(() => {
-      settingsFocusedRef.current = true;
       return () => {
-        settingsFocusedRef.current = false;
         sectionMountHold.reset();
       };
     }, [sectionMountHold]),

@@ -7,6 +7,7 @@ import {
 import {
   canPrefetchCommunitiesTab,
   createIdleCommunitiesTabPreloadController,
+  finishCommunitiesIdleTabPrefetch,
   isCommunitiesIndexQueryKey,
   COMMUNITIES_TAB_PRELOAD_HREF,
   COMMUNITIES_TAB_PRELOAD_QUIET_MS,
@@ -36,6 +37,21 @@ const allow: CommunitiesTabPreloadGate = {
 describe("COMMUNITIES_TAB_PRELOAD_HREF", () => {
   it("is the communities tab index, not a nested communities route", () => {
     expect(COMMUNITIES_TAB_PRELOAD_HREF).toBe("/(tabs)/communities");
+  });
+});
+
+describe("finishCommunitiesIdleTabPrefetch", () => {
+  afterEach(() => {
+    __resetIdleTabPreloadSerializer();
+  });
+
+  it("stamps communities then releases", () => {
+    const release = vi.fn(() => {
+      expect(getIdleTabPreloadCompleteAt("communities")).not.toBeNull();
+    });
+    expect(getIdleTabPreloadCompleteAt("communities")).toBeNull();
+    finishCommunitiesIdleTabPrefetch(release);
+    expect(release).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -210,7 +226,7 @@ describe("createIdleCommunitiesTabPreloadController", () => {
     expect(prefetch).not.toHaveBeenCalled();
   });
 
-  it("latches skip when the communities tab is already active and does not stamp people", () => {
+  it("latches skip when the communities tab is already active and stamps communities", () => {
     const { controller, prefetch } = makeController({
       skipPeopleComplete: true,
       snapshot: {
@@ -223,6 +239,7 @@ describe("createIdleCommunitiesTabPreloadController", () => {
     controller.evaluate();
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(true);
+    expect(getIdleTabPreloadCompleteAt("communities")).not.toBeNull();
     expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("messages")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();

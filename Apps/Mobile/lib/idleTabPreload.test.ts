@@ -616,6 +616,112 @@ describe("people idle epoch", () => {
     expect(getIdleTabPreloadCompleteAt("profile")).toBe(6);
     expect(getIdleTabPreloadCompleteAt("music")).toBe(7);
     expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("communities")).toBeNull();
+  });
+});
+
+describe("communities idle epoch", () => {
+  afterEach(() => {
+    __resetIdleTabPreloadSerializer();
+  });
+
+  it("begin resets a previous complete stamp", () => {
+    markIdleTabPreloadComplete("communities", 1);
+    expect(getIdleTabPreloadCompleteAt("communities")).toBe(1);
+    beginIdleTabPreloadEpoch("communities");
+    expect(getIdleTabPreloadCompleteAt("communities")).toBeNull();
+  });
+
+  it("mark sets getAt for the current epoch", () => {
+    beginIdleTabPreloadEpoch("communities");
+    expect(getIdleTabPreloadCompleteAt("communities")).toBeNull();
+    markIdleTabPreloadComplete("communities", 3);
+    expect(getIdleTabPreloadCompleteAt("communities")).toBe(3);
+  });
+
+  it("begin after mark invalidates the previous stamp", () => {
+    markIdleTabPreloadComplete("communities", 1);
+    expect(getIdleTabPreloadCompleteAt("communities")).toBe(1);
+    beginIdleTabPreloadEpoch("communities");
+    expect(getIdleTabPreloadCompleteAt("communities")).toBeNull();
+    markIdleTabPreloadComplete("communities", 2);
+    expect(getIdleTabPreloadCompleteAt("communities")).toBe(2);
+  });
+
+  it("notifies waiters when a new epoch starts", () => {
+    const listener = vi.fn();
+    const unsub = subscribeIdleTabPreloadComplete("communities", listener);
+    beginIdleTabPreloadEpoch("communities");
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it("does not stamp communities when messages, notifications, profile, music, or people is marked", () => {
+    markIdleTabPreloadComplete("messages", 4);
+    markIdleTabPreloadComplete("notifications", 5);
+    markIdleTabPreloadComplete("profile", 6);
+    markIdleTabPreloadComplete("music", 7);
+    markIdleTabPreloadComplete("people", 8);
+    expect(getIdleTabPreloadCompleteAt("messages")).toBe(4);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(5);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(6);
+    expect(getIdleTabPreloadCompleteAt("music")).toBe(7);
+    expect(getIdleTabPreloadCompleteAt("people")).toBe(8);
+    expect(getIdleTabPreloadCompleteAt("communities")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("settings")).toBeNull();
+  });
+});
+
+describe("settings idle epoch", () => {
+  afterEach(() => {
+    __resetIdleTabPreloadSerializer();
+  });
+
+  it("begin resets a previous complete stamp", () => {
+    markIdleTabPreloadComplete("settings", 1);
+    expect(getIdleTabPreloadCompleteAt("settings")).toBe(1);
+    beginIdleTabPreloadEpoch("settings");
+    expect(getIdleTabPreloadCompleteAt("settings")).toBeNull();
+  });
+
+  it("mark sets getAt for the current epoch", () => {
+    beginIdleTabPreloadEpoch("settings");
+    expect(getIdleTabPreloadCompleteAt("settings")).toBeNull();
+    markIdleTabPreloadComplete("settings", 3);
+    expect(getIdleTabPreloadCompleteAt("settings")).toBe(3);
+  });
+
+  it("begin after mark invalidates the previous stamp", () => {
+    markIdleTabPreloadComplete("settings", 1);
+    expect(getIdleTabPreloadCompleteAt("settings")).toBe(1);
+    beginIdleTabPreloadEpoch("settings");
+    expect(getIdleTabPreloadCompleteAt("settings")).toBeNull();
+    markIdleTabPreloadComplete("settings", 2);
+    expect(getIdleTabPreloadCompleteAt("settings")).toBe(2);
+  });
+
+  it("notifies waiters when a new epoch starts", () => {
+    const listener = vi.fn();
+    const unsub = subscribeIdleTabPreloadComplete("settings", listener);
+    beginIdleTabPreloadEpoch("settings");
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it("does not stamp settings when messages, notifications, profile, music, people, or communities is marked", () => {
+    markIdleTabPreloadComplete("messages", 4);
+    markIdleTabPreloadComplete("notifications", 5);
+    markIdleTabPreloadComplete("profile", 6);
+    markIdleTabPreloadComplete("music", 7);
+    markIdleTabPreloadComplete("people", 8);
+    markIdleTabPreloadComplete("communities", 9);
+    expect(getIdleTabPreloadCompleteAt("messages")).toBe(4);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(5);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(6);
+    expect(getIdleTabPreloadCompleteAt("music")).toBe(7);
+    expect(getIdleTabPreloadCompleteAt("people")).toBe(8);
+    expect(getIdleTabPreloadCompleteAt("communities")).toBe(9);
+    expect(getIdleTabPreloadCompleteAt("settings")).toBeNull();
   });
 });
 
@@ -624,23 +730,29 @@ describe("idle tab preload stage reset", () => {
     __resetIdleTabPreloadSerializer();
   });
 
-  it("clears messages, notifications, profile, music, and people stages", () => {
+  it("clears messages, notifications, profile, music, people, communities, and settings stages", () => {
     markIdleTabPreloadComplete("messages", 1);
     markIdleTabPreloadComplete("notifications", 2);
     markIdleTabPreloadComplete("profile", 3);
     markIdleTabPreloadComplete("music", 4);
     markIdleTabPreloadComplete("people", 5);
+    markIdleTabPreloadComplete("communities", 6);
+    markIdleTabPreloadComplete("settings", 7);
     expect(getIdleTabPreloadCompleteAt("messages")).toBe(1);
     expect(getIdleTabPreloadCompleteAt("notifications")).toBe(2);
     expect(getIdleTabPreloadCompleteAt("profile")).toBe(3);
     expect(getIdleTabPreloadCompleteAt("music")).toBe(4);
     expect(getIdleTabPreloadCompleteAt("people")).toBe(5);
+    expect(getIdleTabPreloadCompleteAt("communities")).toBe(6);
+    expect(getIdleTabPreloadCompleteAt("settings")).toBe(7);
     __resetIdleTabPreloadSerializer();
     expect(getIdleTabPreloadCompleteAt("messages")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("communities")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("settings")).toBeNull();
   });
 });
 
