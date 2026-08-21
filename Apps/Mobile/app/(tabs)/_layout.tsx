@@ -15,11 +15,13 @@ import { useTabRouteTransition } from "@/components/TabRouteTransition";
 import { isTabActive, isTabRoot } from "@/lib/getActiveTabRouteKey";
 import { isMessagesInThreadPath, messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
 import { useIdleCommunitiesTabPreload } from "@/lib/communitiesTabPreload";
+import { useIdleContributeTabPreload } from "@/lib/contributeTabPreload";
 import { useIdleMessagesTabPreload } from "@/lib/messagesTabPreload";
 import { useIdleMusicTabPreload } from "@/lib/musicTabPreload";
 import { useIdleNotificationsTabPreload } from "@/lib/notificationsTabPreload";
 import { useIdlePeopleTabPreload } from "@/lib/peopleTabPreload";
 import { useIdleProfileTabPreload } from "@/lib/profileTabPreload";
+import { useIdleSettingsTabPreload } from "@/lib/settingsTabPreload";
 import { useFloraReduceMotion } from "@/lib/useFloraReduceMotion";
 import { floraColors, floraTabBarStyle } from "@/lib/theme";
 import { router, Tabs, usePathname, useSegments } from "expo-router";
@@ -39,6 +41,8 @@ export default function TabsLayout() {
   useIdleMusicTabPreload(segments);
   useIdlePeopleTabPreload(segments);
   useIdleCommunitiesTabPreload(segments);
+  useIdleSettingsTabPreload(segments);
+  useIdleContributeTabPreload(segments);
   const { screenListeners, overlay } = useTabRouteTransition(reduceMotion, tabBarBottomInset);
 
   const screenOptions = useMemo(

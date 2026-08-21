@@ -1,15 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import {
-  COMMUNITIES_OWNED_QUERY_KEY,
-  COMMUNITIES_OWNED_SEGMENT,
-  COMMUNITIES_QUERY_ROOT,
-  COMMUNITIES_RECOMMENDED_QUERY_KEY,
-  COMMUNITIES_RECOMMENDED_SEGMENT,
-  COMMUNITIES_SUBSCRIPTIONS_SEGMENT,
-  communitiesIndexUsername,
-  communitiesSubscriptionsQueryKey,
-} from "@/lib/communities/communitiesIndexQueries";
 import { isTabActive } from "@/lib/getActiveTabRouteKey";
 import {
   abortQueuedIdleTabPrefetch,
@@ -27,92 +16,76 @@ import {
 import { isScrollSettled, subscribeScrollSettled } from "@/lib/scrollActivity";
 
 /** Quiet window after the last `settled: true` before Android UI prefetch. */
-export const COMMUNITIES_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
+export const SETTINGS_TAB_PRELOAD_QUIET_MS = IDLE_TAB_PRELOAD_QUIET_MS;
 
-/** Android prefetch finish: stamp then release so Settings can wait on `"communities"`. */
-export function finishCommunitiesIdleTabPrefetch(release: () => void): void {
-  markIdleTabPreloadComplete("communities");
+/** Android prefetch finish: stamp then release so Contribute can wait on `"settings"`. */
+export function finishSettingsIdleTabPrefetch(release: () => void): void {
+  markIdleTabPreloadComplete("settings");
   release();
 }
 
-export const COMMUNITIES_TAB_PRELOAD_HREF = "/(tabs)/communities";
+export const SETTINGS_TAB_PRELOAD_HREF = "/(tabs)/settings";
 
-/** Index-tab cache keys only — not Communities search. */
-export function isCommunitiesIndexQueryKey(queryKey: readonly unknown[]): boolean {
-  return (
-    queryKey[0] === COMMUNITIES_QUERY_ROOT &&
-    (queryKey[1] === COMMUNITIES_RECOMMENDED_SEGMENT ||
-      queryKey[1] === COMMUNITIES_OWNED_SEGMENT ||
-      queryKey[1] === COMMUNITIES_SUBSCRIPTIONS_SEGMENT)
-  );
-}
-
-export type CommunitiesTabPreloadGate = {
+export type SettingsTabPreloadGate = {
   platform: string; // "android" | "ios" | ...
   appActive: boolean;
-  communitiesIndexSuccess: boolean;
   scrollSettled: boolean;
   quietForMs: number;
-  communitiesTabActive: boolean;
+  settingsTabActive: boolean;
   alreadyPrefetched: boolean;
-  peopleComplete: boolean;
-  peopleCompleteForMs: number;
+  communitiesComplete: boolean;
+  communitiesCompleteForMs: number;
 };
 
-export function canPrefetchCommunitiesTab(gate: CommunitiesTabPreloadGate): boolean {
+export function canPrefetchSettingsTab(gate: SettingsTabPreloadGate): boolean {
   return canPrefetchIdleTab({
     platform: gate.platform,
     appActive: gate.appActive,
-    dataSuccess: gate.communitiesIndexSuccess,
+    dataSuccess: true,
     scrollSettled: gate.scrollSettled,
     quietForMs: gate.quietForMs,
-    tabActive: gate.communitiesTabActive,
+    tabActive: gate.settingsTabActive,
     alreadyPrefetched: gate.alreadyPrefetched,
-    predecessorComplete: gate.peopleComplete,
-    predecessorCompleteForMs: gate.peopleCompleteForMs,
+    predecessorComplete: gate.communitiesComplete,
+    predecessorCompleteForMs: gate.communitiesCompleteForMs,
   });
 }
 
-export type IdleCommunitiesTabPreloadSnapshot = {
+export type IdleSettingsTabPreloadSnapshot = {
   platform: string;
   appActive: boolean;
-  /**
-   * Recommended and owned are success, and either there is no username or
-   * subscriptions is success.
-   */
-  communitiesIndexSuccess: boolean;
-  communitiesTabActive: boolean;
+  settingsTabActive: boolean;
 };
 
-export type IdleCommunitiesTabPreloadController = IdleTabPreloadController;
+export type IdleSettingsTabPreloadController = IdleTabPreloadController;
 
-/** Communities binding of the generic idle machine in `lib/idleTabPreload.ts`. */
-export function createIdleCommunitiesTabPreloadController(opts: {
+/** Settings binding of the generic idle machine in `lib/idleTabPreload.ts`. */
+export function createIdleSettingsTabPreloadController(opts: {
   quietMs?: number;
   now?: () => number;
   isScrollSettled: () => boolean;
-  getSnapshot: () => IdleCommunitiesTabPreloadSnapshot;
+  getSnapshot: () => IdleSettingsTabPreloadSnapshot;
   prefetch: () => void;
-}): IdleCommunitiesTabPreloadController {
+}): IdleSettingsTabPreloadController {
   return createIdleTabPreloadController({
-    quietMs: opts.quietMs ?? COMMUNITIES_TAB_PRELOAD_QUIET_MS,
+    quietMs: opts.quietMs ?? SETTINGS_TAB_PRELOAD_QUIET_MS,
     now: opts.now ?? Date.now,
     isScrollSettled: opts.isScrollSettled,
     getSnapshot: () => {
       const snapshot = opts.getSnapshot();
       const now = opts.now ?? Date.now;
-      const completedAt = getIdleTabPreloadCompleteAt("people");
+      const completedAt = getIdleTabPreloadCompleteAt("communities");
       return {
         platform: snapshot.platform,
         appActive: snapshot.appActive,
-        dataSuccess: snapshot.communitiesIndexSuccess,
-        tabActive: snapshot.communitiesTabActive,
+        dataSuccess: true,
+        tabActive: snapshot.settingsTabActive,
         predecessorComplete: completedAt != null,
         predecessorCompleteForMs: completedAt == null ? 0 : now() - completedAt,
       };
     },
     prefetch: opts.prefetch,
-    onSkip: () => markIdleTabPreloadComplete("communities"),
+    onSkip: () => markIdleTabPreloadComplete("settings"),
   });
 }
 
@@ -128,52 +101,19 @@ function loadIdlePreloadBindings() {
   return { AppState, Platform, router, clearFrcImageQueuePauseOwner, setFrcImageQueuePaused };
 }
 
-function loadSessionStore() {
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const { useSessionStore } =
-    require("@/stores/sessionStore") as typeof import("@/stores/sessionStore");
-  /* eslint-enable @typescript-eslint/no-require-imports */
-  return useSessionStore;
-}
-
-function sessionUsername(store: ReturnType<typeof loadSessionStore>): string {
-  return communitiesIndexUsername(store.getState().me?.username ?? "");
-}
-
-function communitiesIndexQueriesSuccess(
-  queryClient: ReturnType<typeof useQueryClient>,
-  username: string,
-): boolean {
-  if (queryClient.getQueryState(COMMUNITIES_RECOMMENDED_QUERY_KEY)?.status !== "success") {
-    return false;
-  }
-  if (queryClient.getQueryState(COMMUNITIES_OWNED_QUERY_KEY)?.status !== "success") {
-    return false;
-  }
-  const ownUsername = communitiesIndexUsername(username);
-  if (ownUsername.length === 0) {
-    return true;
-  }
-  return (
-    queryClient.getQueryState(communitiesSubscriptionsQueryKey(ownUsername))?.status === "success"
-  );
-}
-
 /**
- * Once Communities index queries have succeeded, prefetch the Communities tab
- * index on Android after scroll has been quiet. Idle is `subscribeScrollSettled`,
- * not InteractionManager (RNGH/Reanimated gestures are invisible to it).
- * Pager touch/pager/strip and the tab-switch overlay also publish into that
- * registry. The mount itself goes through the shared serializer, so it never
- * shares a frame with another tab preload. Communities waits on the people
- * stamp, then stamps `"communities"` for Settings.
+ * Prefetch the Settings tab on Android after scroll has been quiet.
+ * Idle is `subscribeScrollSettled`, not InteractionManager (RNGH/Reanimated
+ * gestures are invisible to it). There is no query/session warm-up in this hook:
+ * privacy/feed loads run on the screen itself after the hidden mount, and
+ * `dataSuccess` is always true. The mount itself goes through the shared
+ * serializer, so it never shares a frame with another tab preload. Settings
+ * waits on the communities stamp, then stamps `"settings"` for Contribute.
  */
-export function useIdleCommunitiesTabPreload(segments: readonly string[]): void {
-  const queryClient = useQueryClient();
-  const frcOwner = useRef(Symbol("communities-tab-preload")).current;
+export function useIdleSettingsTabPreload(segments: readonly string[]): void {
+  const frcOwner = useRef(Symbol("settings-tab-preload")).current;
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
-  const usernameRef = useRef("");
   const evaluateRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -189,19 +129,14 @@ export function useIdleCommunitiesTabPreload(segments: readonly string[]): void 
       return () => clearFrcImageQueuePauseOwner(frcOwner);
     }
 
-    beginIdleTabPreloadEpoch("communities");
-
-    const sessionStore = loadSessionStore();
-    usernameRef.current = sessionUsername(sessionStore);
+    beginIdleTabPreloadEpoch("settings");
 
     let cancelled = false;
     let rafOuter: number | null = null;
     let rafInner: number | null = null;
     let unsubScroll = () => {};
     let unsubApp = () => {};
-    let unsubQuery = () => {};
-    let unsubPeople = () => {};
-    let unsubSession = () => {};
+    let unsubCommunities = () => {};
 
     const cancelRafs = () => {
       if (rafOuter != null) {
@@ -219,23 +154,18 @@ export function useIdleCommunitiesTabPreload(segments: readonly string[]): void 
       unsubScroll = () => {};
       unsubApp();
       unsubApp = () => {};
-      unsubQuery();
-      unsubQuery = () => {};
-      unsubPeople();
-      unsubPeople = () => {};
-      unsubSession();
-      unsubSession = () => {};
+      unsubCommunities();
+      unsubCommunities = () => {};
     };
 
     const readSnapshot = () => ({
       platform: Platform.OS,
       appActive: AppState.currentState === "active",
-      communitiesIndexSuccess: communitiesIndexQueriesSuccess(queryClient, usernameRef.current),
-      communitiesTabActive: isTabActive(segmentsRef.current, "communities"),
+      settingsTabActive: isTabActive(segmentsRef.current, "settings"),
     });
 
-    const controller = createIdleCommunitiesTabPreloadController({
-      quietMs: COMMUNITIES_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdleSettingsTabPreloadController({
+      quietMs: SETTINGS_TAB_PRELOAD_QUIET_MS,
       isScrollSettled,
       getSnapshot: readSnapshot,
       prefetch: () => {
@@ -245,9 +175,9 @@ export function useIdleCommunitiesTabPreload(segments: readonly string[]): void 
           (release) => {
             detachListeners();
             setFrcImageQueuePaused(frcOwner, "drag", true);
-            router.prefetch(COMMUNITIES_TAB_PRELOAD_HREF);
+            router.prefetch(SETTINGS_TAB_PRELOAD_HREF);
             const finish = () => {
-              finishCommunitiesIdleTabPrefetch(release);
+              finishSettingsIdleTabPrefetch(release);
             };
             rafOuter = requestAnimationFrame(() => {
               rafOuter = null;
@@ -269,15 +199,15 @@ export function useIdleCommunitiesTabPreload(segments: readonly string[]): void 
           {
             shouldRun: () => {
               const snap = readSnapshot();
-              const completedAt = getIdleTabPreloadCompleteAt("people");
+              const completedAt = getIdleTabPreloadCompleteAt("communities");
               return canRunQueuedIdleTabPrefetch({
                 cancelled,
                 platform: snap.platform,
                 appActive: snap.appActive,
-                dataSuccess: snap.communitiesIndexSuccess,
+                dataSuccess: true,
                 scrollSettled: isScrollSettled(),
                 quietForMs: controller.quietForMs(),
-                tabActive: snap.communitiesTabActive,
+                tabActive: snap.settingsTabActive,
                 predecessorComplete: completedAt != null,
                 predecessorCompleteForMs:
                   completedAt == null ? 0 : Date.now() - completedAt,
@@ -326,23 +256,9 @@ export function useIdleCommunitiesTabPreload(segments: readonly string[]): void 
     });
     unsubApp = () => appSub.remove();
 
-    unsubQuery = queryClient.getQueryCache().subscribe((event) => {
-      if (!isCommunitiesIndexQueryKey(event.query.queryKey)) return;
+    unsubCommunities = subscribeIdleTabPreloadComplete("communities", () => {
       evaluate();
-      if (readSnapshot().communitiesIndexSuccess !== true) abortQueued();
-    });
-
-    unsubPeople = subscribeIdleTabPreloadComplete("people", () => {
-      evaluate();
-      if (getIdleTabPreloadCompleteAt("people") == null) abortQueued();
-    });
-
-    unsubSession = sessionStore.subscribe((state) => {
-      const next = communitiesIndexUsername(state.me?.username ?? "");
-      if (next === usernameRef.current) return;
-      usernameRef.current = next;
-      evaluate();
-      if (readSnapshot().communitiesIndexSuccess !== true) abortQueued();
+      if (getIdleTabPreloadCompleteAt("communities") == null) abortQueued();
     });
 
     evaluate();
@@ -356,7 +272,7 @@ export function useIdleCommunitiesTabPreload(segments: readonly string[]): void 
       getIdleTabPreloadSerializer().release(frcOwner);
       clearFrcImageQueuePauseOwner(frcOwner);
     };
-  }, [frcOwner, queryClient]);
+  }, [frcOwner]);
 
   useEffect(() => {
     evaluateRef.current();
