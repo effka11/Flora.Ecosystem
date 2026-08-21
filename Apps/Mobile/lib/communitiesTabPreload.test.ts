@@ -1,90 +1,73 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  COMMUNITIES_OWNED_QUERY_KEY,
+  COMMUNITIES_RECOMMENDED_QUERY_KEY,
+  communitiesSubscriptionsQueryKey,
+} from "./communities/communitiesIndexQueries";
+import {
+  canPrefetchCommunitiesTab,
+  createIdleCommunitiesTabPreloadController,
+  isCommunitiesIndexQueryKey,
+  COMMUNITIES_TAB_PRELOAD_HREF,
+  COMMUNITIES_TAB_PRELOAD_QUIET_MS,
+  type CommunitiesTabPreloadGate,
+  type IdleCommunitiesTabPreloadSnapshot,
+} from "./communitiesTabPreload";
+import {
   __resetIdleTabPreloadSerializer,
   beginIdleTabPreloadEpoch,
   getIdleTabPreloadCompleteAt,
   IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
   markIdleTabPreloadComplete,
 } from "./idleTabPreload";
-import {
-  PEOPLE_RECOMMENDED_QUERY_KEY,
-  peopleFollowersQueryKey,
-  peopleFollowingQueryKey,
-} from "./people/peopleIndexQueries";
-import {
-  canPrefetchPeopleTab,
-  createIdlePeopleTabPreloadController,
-  finishPeopleIdleTabPrefetch,
-  isPeopleIndexQueryKey,
-  PEOPLE_TAB_PRELOAD_HREF,
-  PEOPLE_TAB_PRELOAD_QUIET_MS,
-  type IdlePeopleTabPreloadSnapshot,
-  type PeopleTabPreloadGate,
-} from "./peopleTabPreload";
 
-const allow: PeopleTabPreloadGate = {
+const allow: CommunitiesTabPreloadGate = {
   platform: "android",
   appActive: true,
-  peopleIndexSuccess: true,
+  communitiesIndexSuccess: true,
   scrollSettled: true,
-  quietForMs: PEOPLE_TAB_PRELOAD_QUIET_MS,
-  peopleTabActive: false,
+  quietForMs: COMMUNITIES_TAB_PRELOAD_QUIET_MS,
+  communitiesTabActive: false,
   alreadyPrefetched: false,
-  musicComplete: true,
-  musicCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
+  peopleComplete: true,
+  peopleCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS,
 };
 
-describe("PEOPLE_TAB_PRELOAD_HREF", () => {
-  it("is the people tab index, not a nested people route", () => {
-    expect(PEOPLE_TAB_PRELOAD_HREF).toBe("/(tabs)/people");
+describe("COMMUNITIES_TAB_PRELOAD_HREF", () => {
+  it("is the communities tab index, not a nested communities route", () => {
+    expect(COMMUNITIES_TAB_PRELOAD_HREF).toBe("/(tabs)/communities");
   });
 });
 
-describe("finishPeopleIdleTabPrefetch", () => {
-  afterEach(() => {
-    __resetIdleTabPreloadSerializer();
-  });
-
-  it("stamps people then releases", () => {
-    const release = vi.fn(() => {
-      expect(getIdleTabPreloadCompleteAt("people")).not.toBeNull();
-    });
-    expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
-    finishPeopleIdleTabPrefetch(release);
-    expect(release).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("isPeopleIndexQueryKey", () => {
+describe("isCommunitiesIndexQueryKey", () => {
   it.each([
-    ["recommended", PEOPLE_RECOMMENDED_QUERY_KEY],
-    ["followers", peopleFollowersQueryKey("alice")],
-    ["following", peopleFollowingQueryKey("alice")],
+    ["recommended", COMMUNITIES_RECOMMENDED_QUERY_KEY],
+    ["owned", COMMUNITIES_OWNED_QUERY_KEY],
+    ["subscriptions", communitiesSubscriptionsQueryKey("alice")],
   ] as const)("is true for index key %s", (_label, queryKey) => {
-    expect(isPeopleIndexQueryKey(queryKey)).toBe(true);
+    expect(isCommunitiesIndexQueryKey(queryKey)).toBe(true);
   });
 
   it.each([
-    ["search", ["people", "search"]],
-    ["search query", ["people", "search", "q"]],
+    ["search", ["communities", "search"]],
+    ["search query", ["communities", "search", "q"]],
   ] as const)("is false for %s", (_label, queryKey) => {
-    expect(isPeopleIndexQueryKey(queryKey)).toBe(false);
+    expect(isCommunitiesIndexQueryKey(queryKey)).toBe(false);
   });
 
-  it("shares followers and following cache keys for @alice and alice", () => {
-    expect(peopleFollowersQueryKey("@alice")).toEqual(peopleFollowersQueryKey("alice"));
-    expect(peopleFollowingQueryKey("@alice")).toEqual(peopleFollowingQueryKey("alice"));
+  it("treats @alice subscriptions as an index key", () => {
+    expect(isCommunitiesIndexQueryKey(communitiesSubscriptionsQueryKey("@alice"))).toBe(true);
   });
 });
 
-describe("canPrefetchPeopleTab", () => {
+describe("canPrefetchCommunitiesTab", () => {
   it("allows when all gates are open", () => {
-    expect(canPrefetchPeopleTab(allow)).toBe(true);
+    expect(canPrefetchCommunitiesTab(allow)).toBe(true);
   });
 
   it("allows when quiet exceeds the window", () => {
     expect(
-      canPrefetchPeopleTab({ ...allow, quietForMs: PEOPLE_TAB_PRELOAD_QUIET_MS + 1 }),
+      canPrefetchCommunitiesTab({ ...allow, quietForMs: COMMUNITIES_TAB_PRELOAD_QUIET_MS + 1 }),
     ).toBe(true);
   });
 
@@ -92,20 +75,20 @@ describe("canPrefetchPeopleTab", () => {
     ["ios", { platform: "ios" }],
     ["web", { platform: "web" }],
     ["app inactive", { appActive: false }],
-    ["people index not success", { peopleIndexSuccess: false }],
+    ["communities index not success", { communitiesIndexSuccess: false }],
     ["scroll not settled", { scrollSettled: false }],
-    ["quiet window", { quietForMs: PEOPLE_TAB_PRELOAD_QUIET_MS - 1 }],
+    ["quiet window", { quietForMs: COMMUNITIES_TAB_PRELOAD_QUIET_MS - 1 }],
     ["quiet just started", { quietForMs: 0 }],
-    ["people tab active", { peopleTabActive: true }],
+    ["communities tab active", { communitiesTabActive: true }],
     ["already prefetched", { alreadyPrefetched: true }],
-    ["music not complete", { musicComplete: false }],
-    ["music gap", { musicCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
+    ["people not complete", { peopleComplete: false }],
+    ["people gap", { peopleCompleteForMs: IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1 }],
   ] as const)("blocks when %s", (_label, override) => {
-    expect(canPrefetchPeopleTab({ ...allow, ...override })).toBe(false);
+    expect(canPrefetchCommunitiesTab({ ...allow, ...override })).toBe(false);
   });
 });
 
-describe("createIdlePeopleTabPreloadController", () => {
+describe("createIdleCommunitiesTabPreloadController", () => {
   afterEach(() => {
     vi.useRealTimers();
     __resetIdleTabPreloadSerializer();
@@ -114,23 +97,23 @@ describe("createIdlePeopleTabPreloadController", () => {
   function makeController(
     overrides: {
       settled?: { value: boolean };
-      snapshot?: IdlePeopleTabPreloadSnapshot;
-      skipMusicComplete?: boolean;
+      snapshot?: IdleCommunitiesTabPreloadSnapshot;
+      skipPeopleComplete?: boolean;
     } = {},
   ) {
-    if (!overrides.skipMusicComplete) {
-      markIdleTabPreloadComplete("music");
+    if (!overrides.skipPeopleComplete) {
+      markIdleTabPreloadComplete("people");
     }
     const settled = overrides.settled ?? { value: true };
-    const snapshot: IdlePeopleTabPreloadSnapshot = overrides.snapshot ?? {
+    const snapshot: IdleCommunitiesTabPreloadSnapshot = overrides.snapshot ?? {
       platform: "android",
       appActive: true,
-      peopleIndexSuccess: true,
-      peopleTabActive: false,
+      communitiesIndexSuccess: true,
+      communitiesTabActive: false,
     };
     const prefetch = vi.fn();
-    const controller = createIdlePeopleTabPreloadController({
-      quietMs: PEOPLE_TAB_PRELOAD_QUIET_MS,
+    const controller = createIdleCommunitiesTabPreloadController({
+      quietMs: COMMUNITIES_TAB_PRELOAD_QUIET_MS,
       isScrollSettled: () => settled.value,
       getSnapshot: () => snapshot,
       prefetch,
@@ -142,29 +125,29 @@ describe("createIdlePeopleTabPreloadController", () => {
     vi.useFakeTimers();
     const { controller, prefetch, settled } = makeController({ settled: { value: false } });
     controller.evaluate();
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPendingTimer()).toBe(false);
     settled.value = true;
     controller.onScrollSettled(true);
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS - 1);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS - 1);
     expect(prefetch).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not prefetch before people index queries succeed", () => {
+  it("does not prefetch before communities index queries succeed", () => {
     vi.useFakeTimers();
     const { controller, prefetch } = makeController({
       snapshot: {
         platform: "android",
         appActive: true,
-        peopleIndexSuccess: false,
-        peopleTabActive: false,
+        communitiesIndexSuccess: false,
+        communitiesTabActive: false,
       },
     });
     controller.evaluate();
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPendingTimer()).toBe(false);
   });
@@ -177,7 +160,7 @@ describe("createIdlePeopleTabPreloadController", () => {
     settled.value = false;
     controller.onScrollSettled(false);
     expect(controller.hasPendingTimer()).toBe(false);
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
   });
 
@@ -186,7 +169,7 @@ describe("createIdlePeopleTabPreloadController", () => {
     const { controller, prefetch, settled } = makeController();
     controller.evaluate();
     settled.value = false;
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(false);
   });
@@ -195,21 +178,21 @@ describe("createIdlePeopleTabPreloadController", () => {
     vi.useFakeTimers();
     const { controller, prefetch } = makeController();
     controller.evaluate();
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
     controller.evaluate();
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS);
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not prefetch until music complete for 120ms", () => {
+  it("does not prefetch until people complete for 120ms", () => {
     vi.useFakeTimers();
-    const { controller, prefetch } = makeController({ skipMusicComplete: true });
+    const { controller, prefetch } = makeController({ skipPeopleComplete: true });
     controller.evaluate();
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS * 4);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
 
-    markIdleTabPreloadComplete("music");
+    markIdleTabPreloadComplete("people");
     controller.evaluate();
     vi.advanceTimersByTime(IDLE_TAB_PRELOAD_SERIAL_GAP_MS - 1);
     expect(prefetch).not.toHaveBeenCalled();
@@ -217,30 +200,30 @@ describe("createIdlePeopleTabPreloadController", () => {
     expect(prefetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does not treat a previous music stamp after a new music epoch", () => {
+  it("does not treat a previous people stamp after a new people epoch", () => {
     vi.useFakeTimers();
-    markIdleTabPreloadComplete("music");
-    beginIdleTabPreloadEpoch("music");
-    const { controller, prefetch } = makeController({ skipMusicComplete: true });
+    markIdleTabPreloadComplete("people");
+    beginIdleTabPreloadEpoch("people");
+    const { controller, prefetch } = makeController({ skipPeopleComplete: true });
     controller.evaluate();
-    vi.advanceTimersByTime(PEOPLE_TAB_PRELOAD_QUIET_MS * 4);
+    vi.advanceTimersByTime(COMMUNITIES_TAB_PRELOAD_QUIET_MS * 4);
     expect(prefetch).not.toHaveBeenCalled();
   });
 
-  it("latches skip when the people tab is already active and stamps people", () => {
+  it("latches skip when the communities tab is already active and does not stamp people", () => {
     const { controller, prefetch } = makeController({
-      skipMusicComplete: true,
+      skipPeopleComplete: true,
       snapshot: {
         platform: "android",
         appActive: true,
-        peopleIndexSuccess: true,
-        peopleTabActive: true,
+        communitiesIndexSuccess: true,
+        communitiesTabActive: true,
       },
     });
     controller.evaluate();
     expect(prefetch).not.toHaveBeenCalled();
     expect(controller.hasPrefetched()).toBe(true);
-    expect(getIdleTabPreloadCompleteAt("people")).not.toBeNull();
+    expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("messages")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();

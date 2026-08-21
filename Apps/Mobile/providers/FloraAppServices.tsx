@@ -8,6 +8,15 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
 import {
+  fetchCommunitiesOwnedQuery,
+  fetchCommunitiesRecommendedQuery,
+  fetchCommunitiesSubscriptionsQuery,
+  communitiesIndexUsername,
+  communitiesSubscriptionsQueryKey,
+  COMMUNITIES_OWNED_QUERY_KEY,
+  COMMUNITIES_RECOMMENDED_QUERY_KEY,
+} from "@/lib/communities/communitiesIndexQueries";
+import {
   fetchMusicLibraryQuery,
   fetchMusicPlaylistsQuery,
   MUSIC_LIBRARY_QUERY_KEY,
@@ -76,6 +85,21 @@ export function FloraAppServices({ enabled }: { enabled: boolean }) {
     queryKey: peopleFollowingQueryKey(username),
     queryFn: () => fetchPeopleFollowingQuery(username),
     enabled: enabled && peopleIndexUsername(username).length > 0,
+  });
+  useQuery({
+    queryKey: COMMUNITIES_RECOMMENDED_QUERY_KEY,
+    queryFn: fetchCommunitiesRecommendedQuery,
+    enabled,
+  });
+  useQuery({
+    queryKey: COMMUNITIES_OWNED_QUERY_KEY,
+    queryFn: fetchCommunitiesOwnedQuery,
+    enabled,
+  });
+  useQuery({
+    queryKey: communitiesSubscriptionsQueryKey(username),
+    queryFn: () => fetchCommunitiesSubscriptionsQuery(username),
+    enabled: enabled && communitiesIndexUsername(username).length > 0,
   });
 
   const userUuid = useSessionStore((s) => s.me?.userUuid ?? null);

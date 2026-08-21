@@ -570,25 +570,77 @@ describe("music idle epoch", () => {
   });
 });
 
+describe("people idle epoch", () => {
+  afterEach(() => {
+    __resetIdleTabPreloadSerializer();
+  });
+
+  it("begin resets a previous complete stamp", () => {
+    markIdleTabPreloadComplete("people", 1);
+    expect(getIdleTabPreloadCompleteAt("people")).toBe(1);
+    beginIdleTabPreloadEpoch("people");
+    expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
+  });
+
+  it("mark sets getAt for the current epoch", () => {
+    beginIdleTabPreloadEpoch("people");
+    expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
+    markIdleTabPreloadComplete("people", 3);
+    expect(getIdleTabPreloadCompleteAt("people")).toBe(3);
+  });
+
+  it("begin after mark invalidates the previous stamp", () => {
+    markIdleTabPreloadComplete("people", 1);
+    expect(getIdleTabPreloadCompleteAt("people")).toBe(1);
+    beginIdleTabPreloadEpoch("people");
+    expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
+    markIdleTabPreloadComplete("people", 2);
+    expect(getIdleTabPreloadCompleteAt("people")).toBe(2);
+  });
+
+  it("notifies waiters when a new epoch starts", () => {
+    const listener = vi.fn();
+    const unsub = subscribeIdleTabPreloadComplete("people", listener);
+    beginIdleTabPreloadEpoch("people");
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it("does not stamp people when messages, notifications, profile, or music is marked", () => {
+    markIdleTabPreloadComplete("messages", 4);
+    markIdleTabPreloadComplete("notifications", 5);
+    markIdleTabPreloadComplete("profile", 6);
+    markIdleTabPreloadComplete("music", 7);
+    expect(getIdleTabPreloadCompleteAt("messages")).toBe(4);
+    expect(getIdleTabPreloadCompleteAt("notifications")).toBe(5);
+    expect(getIdleTabPreloadCompleteAt("profile")).toBe(6);
+    expect(getIdleTabPreloadCompleteAt("music")).toBe(7);
+    expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
+  });
+});
+
 describe("idle tab preload stage reset", () => {
   afterEach(() => {
     __resetIdleTabPreloadSerializer();
   });
 
-  it("clears messages, notifications, profile, and music stages", () => {
+  it("clears messages, notifications, profile, music, and people stages", () => {
     markIdleTabPreloadComplete("messages", 1);
     markIdleTabPreloadComplete("notifications", 2);
     markIdleTabPreloadComplete("profile", 3);
     markIdleTabPreloadComplete("music", 4);
+    markIdleTabPreloadComplete("people", 5);
     expect(getIdleTabPreloadCompleteAt("messages")).toBe(1);
     expect(getIdleTabPreloadCompleteAt("notifications")).toBe(2);
     expect(getIdleTabPreloadCompleteAt("profile")).toBe(3);
     expect(getIdleTabPreloadCompleteAt("music")).toBe(4);
+    expect(getIdleTabPreloadCompleteAt("people")).toBe(5);
     __resetIdleTabPreloadSerializer();
     expect(getIdleTabPreloadCompleteAt("messages")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("notifications")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("profile")).toBeNull();
     expect(getIdleTabPreloadCompleteAt("music")).toBeNull();
+    expect(getIdleTabPreloadCompleteAt("people")).toBeNull();
   });
 });
 

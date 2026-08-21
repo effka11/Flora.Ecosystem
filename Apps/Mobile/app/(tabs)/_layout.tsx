@@ -14,6 +14,7 @@ import { MusicMiniPlayer } from "@/components/MusicMiniPlayer";
 import { useTabRouteTransition } from "@/components/TabRouteTransition";
 import { isTabActive, isTabRoot } from "@/lib/getActiveTabRouteKey";
 import { isMessagesInThreadPath, messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
+import { useIdleCommunitiesTabPreload } from "@/lib/communitiesTabPreload";
 import { useIdleMessagesTabPreload } from "@/lib/messagesTabPreload";
 import { useIdleMusicTabPreload } from "@/lib/musicTabPreload";
 import { useIdleNotificationsTabPreload } from "@/lib/notificationsTabPreload";
@@ -37,6 +38,7 @@ export default function TabsLayout() {
   useIdleProfileTabPreload(segments);
   useIdleMusicTabPreload(segments);
   useIdlePeopleTabPreload(segments);
+  useIdleCommunitiesTabPreload(segments);
   const { screenListeners, overlay } = useTabRouteTransition(reduceMotion, tabBarBottomInset);
 
   const screenOptions = useMemo(

@@ -3,7 +3,6 @@ import {
   apiCreatePost,
   apiCreatePostDraft,
   apiDeletePostDraft,
-  apiGetOwnedCommunities,
   apiUpdatePostDraft,
   isApiRequestError,
 } from "@flora/client-core/api";
@@ -29,6 +28,10 @@ import { ComposePostCard } from "@/components/compose/ComposePostCard";
 import { ComposeToolbar } from "@/components/compose/ComposeToolbar";
 import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
 import { ChatMessageEmojiPanel } from "@/components/messages/ChatMessageEmojiPanel";
+import {
+  COMMUNITIES_OWNED_QUERY_KEY,
+  fetchCommunitiesOwnedQuery,
+} from "@/lib/communities/communitiesIndexQueries";
 import {
   COMPOSE_PROFILE_MODE_ID,
   MAX_POST_CONTENT_LENGTH,
@@ -79,8 +82,8 @@ export default function FeedComposeScreen() {
   const communityId = composeModeCommunityId(modeId);
 
   const ownedQuery = useQuery({
-    queryKey: ["communities", "owned"],
-    queryFn: apiGetOwnedCommunities,
+    queryKey: COMMUNITIES_OWNED_QUERY_KEY,
+    queryFn: fetchCommunitiesOwnedQuery,
   });
 
   useEffect(() => {
