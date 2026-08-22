@@ -71,6 +71,7 @@ export async function buildTextMessageWire(params: {
   receiverAgreementPublicKeyBase64: string;
   text: string;
   replyTo?: FscpMessagePlaintext["replyTo"];
+  emitFrankTag?: boolean;
 }): Promise<string> {
   return buildBlocksMessageWire({
     senderUserUuid: params.senderUserUuid,
@@ -79,6 +80,7 @@ export async function buildTextMessageWire(params: {
     receiverAgreementPublicKeyBase64: params.receiverAgreementPublicKeyBase64,
     blocks: [{ kind: "text", body: params.text }],
     replyTo: params.replyTo,
+    emitFrankTag: params.emitFrankTag,
   });
 }
 
@@ -89,6 +91,11 @@ export async function buildBlocksMessageWire(params: {
   receiverAgreementPublicKeyBase64: string;
   blocks: FscpMessageBlock[];
   replyTo?: FscpMessagePlaintext["replyTo"];
+  /**
+   * FSCP-FRANK v1.1 (franking.md §4.1–4.2). Прокидывается в ядро как есть:
+   * включать франкование — решение приложения (Web / Mobile), не транспортной обёртки.
+   */
+  emitFrankTag?: boolean;
 }): Promise<string> {
   const receiverAgreementPublicKey = fromBase64Url(params.receiverAgreementPublicKeyBase64);
   const payload = messagePlaintextFromBlocks(params.blocks);
@@ -100,6 +107,7 @@ export async function buildBlocksMessageWire(params: {
     senderSigningPrivateKey: params.material.signingPrivateKey,
     receiverAgreementPublicKey,
     messagePayload: payload,
+    emitFrankTag: params.emitFrankTag,
   });
 }
 

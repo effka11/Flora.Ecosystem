@@ -5,6 +5,7 @@ import { configureApiClient, resetSessionRefreshStateForTests } from "./client.j
 import {
   apiClaimFrankingReport,
   apiCreateFrankingReport,
+  apiGetFrankingDisclosure,
   apiGetFrankingQueue,
   apiGetFrankingWrapTargets,
   apiResolveFrankingReport,
@@ -146,6 +147,29 @@ describe("franking API", () => {
     const page = await apiGetFrankingWrapTargets();
     expect(page.reviewerRosterReady).toBe(false);
     expect(page.items).toEqual([]);
+  });
+
+  it("reads disclosure at GET reports/{uuid}/disclosure", async () => {
+    const reportUuid = "11111111-1111-1111-1111-111111111111";
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        disclosureCiphertext: "sealed",
+        wraps: [{ deviceUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", wrappedKey: "wk" }],
+        serverFrankReceipt: null,
+        frankTagBase64Url: null,
+        verificationStatus: "unverifiable",
+      }),
+    );
+    setupClient(fetchImpl);
+
+    const dto = await apiGetFrankingDisclosure(reportUuid);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      `https://api.test/api/messaging/franking/reports/${reportUuid}/disclosure`,
+      expect.any(Object),
+    );
+    expect(dto.disclosureCiphertext).toBe("sealed");
+    expect(dto.wraps).toHaveLength(1);
+    expect(dto.verificationStatus).toBe("unverifiable");
   });
 
   it("posts claim to reports/{uuid}/claim", async () => {

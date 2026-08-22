@@ -190,7 +190,7 @@ fscp1:<base64url(UTF-8 JSON MessageEnvelope)>
 }
 ```
 
-**Plaintext тела сообщения** (до AEAD) — блочная схема (соответствует реализации `Packages/flora-client-core/src/fscp/envelope.ts`):
+**Plaintext тела сообщения** (до AEAD) — блочная схема (соответствует реализации [`envelope.ts`](../../Products/FSCP/ts/src/envelope.ts) в `@flora/fscp`):
 
 ```json
 {
@@ -437,7 +437,7 @@ Golden: [`test-vectors/fingerprint-v1.json`](../test-vectors/fingerprint-v1.json
 
 **Canonicalization malleability (известное ограничение v1, FSCP-REVIEW п.4).** Подпись покрывает **canonical-форму** конверта, а не байты wire: получатель пересобирает `canonicalJson` из распарсенного JSON, поэтому два разных wire-представления одного конверта (порядок ключей, эквивалентные записи чисел вроде `1e2` vs `100`) дают одну и ту же подпись. Для v1 это безвредно — все смысловые поля дополнительно связаны AAD, а серверная криптопроверка (Algorithm C шаг 12) отклоняет конверты с несходящейся подписью до записи в хранилище. Новые имплементации (в т.ч. Rust client-core) обязаны: отклонять дубликаты ключей при парсинге, не «нормализовывать» числа и строки при пересборке canonical. Полная фиксация «подпись поверх байтов wire» — кандидат в v2 (несовместимо с v1).
 
-Golden-паритет canonical/AAD между `Apps/Web/lib/fscp` и `Packages/flora-client-core/src/fscp` — обязателен (см. §Test vectors, требование о consumer-тесте).
+Golden-паритет canonical/AAD между `Apps/Web/lib/fscp` и `@flora/fscp` (`Products/FSCP/ts`) — обязателен (см. §Test vectors, требование о consumer-тесте).
 
 **Nonce rules:**
 
@@ -530,16 +530,16 @@ recipientInstallationUuid | previewKeyId | issuedAt | expiresAt
 
 ## Целевой алгоритм (roadmap, не входит в замороженный v1 wire)
 
-Раздел нормативен как **план**; активируется только явным bump версии. До завершения миграции бэкенда wire v1 заморожен ([`next-architecture.md`](../../next-architecture.md) §1.2), поэтому всё ниже реализуется **после** миграции и не меняет байты v1.
+Раздел нормативен как **план**. Pre-keys и v2 активируются только явным bump версии. Wire-дельта franking **реализована в коде**, но эмиссия тега выключена (`emitFrankTag` off) — байты v1 не меняются, пока не пройдена ступень 3 [`franking.md`](./franking.md) §Активация и не снята заморозка wire ([`next-architecture.md`](../../next-architecture.md) §1.2). Остальное ниже (pre-keys, ratchet, PQ в продакшене) по-прежнему **после** bump'а.
 
-### v1.1 — one-time pre-keys (минимальная дельта к v1)
+### v1.1 — one-time pre-keys (roadmap; не текущий wire)
 
-Цель: убрать переиспользование long-term agreement key как единственного секрета RKE, не вводя полный ratchet.
+Цель: убрать переиспользование long-term agreement key как единственного секрета RKE, не вводя полный ratchet. Это **не** единственная дельта под меткой 1.1: franking уже занимает `fscpProtocolVersion = 1.1` при `preKeyId = null` (§Versioning, golden `fscp_franking_wire_v1_1`).
 
 - Устройство публикует на сервере пул **one-time pre-keys** (X25519), каждый — с `preKeyId` (uuid) и подписью epoch account identity key. Сервер раздаёт по одному и **удаляет выданный** (at-most-once); при исчерпании — fallback на signed pre-key.
 - Отправитель в RKE использует `ss = X25519(ephemeral, oneTimePreKey_recipient)` вместо long-term agreement key; `preKeyId != null` указывает, какой pre-key был использован.
-- Wire-дельта: единственное поле — `preKeyId` перестаёт быть `null`. Сервер v1.1 снимает проверку «`preKeyId == null`» для epoch v1.1 и добавляет проверку «pre-key существует/не израсходован».
-- Совместимость: bump `messageEnvelopeVersion` **не** обязателен (аддитивно), но требуется `fscpProtocolVersion = 1.1` и новые golden-векторы; клиент v1 читать v1.1-конверты не обязан (разные epoch).
+- Wire-дельта **этого** подраздела: `preKeyId` перестаёт быть `null`. Не путать с franking (`frankTag` / AAD `message.v1_1`, `preKeyId` остаётся `null`). Сервер при активации pre-keys снимает проверку «`preKeyId == null`» и добавляет «pre-key существует/не израсходован».
+- Совместимость: bump `messageEnvelopeVersion` **не** обязателен (аддитивно). Новые golden обязательны; не переиспользовать exclusive «1.1 = только pre-keys». Клиент без pre-keys читать такие конверты не обязан (разные epoch).
 
 ### v2 — X3DH + Double Ratchet (полный target)
 
@@ -603,14 +603,14 @@ MLS или sender keys — отдельная спецификация. Не с�
 
 ### Message franking (модерация E2E без раскрытия истории)
 
-Единственный санкционированный FGP канал модерации приватной переписки ([`../fgp/FGP.md`](../fgp/FGP.md) §6.5; обязательное клиентское сканирование запрещено конституционно, FGP §1.2 п. 7). Схема (target, активация в v1.1+):
+Единственный санкционированный FGP канал модерации приватной переписки ([`../fgp/FGP.md`](../fgp/FGP.md) §6.5; обязательное клиентское сканирование запрещено конституционно, FGP §1.2 п. 7). Схема (target; боевая эмиссия тега — ступень 3 [`franking.md`](./franking.md) §Активация, не вместе с pre-keys):
 
 1. **Commit при отправке:** отправитель включает franking-тег `frankTag = HMAC-SHA-256(frankingKey, commitInput)`, где `frankingKey` — случайный per-message ключ, передаётся получателю **внутри** зашифрованного тела (сервер его не видит), а `commitInput` детерминированно собирается из контекста сообщения и `SHA-256(plaintext)`.
 2. **Слепая квитанция:** сервер подписывает `receiptPayload(frankTag, messageUuid, участники, ts)` **не видя** plaintext (видит только `frankTag`), и прикладывает к доставке.
 3. **Добровольная жалоба:** получатель раскрывает жюри `plaintext`, `frankingKey`, `frankTag`, `serverFrankReceipt`. Жюри проверяет HMAC и подпись сервера → доказательство «это сообщение реально отправлено этим отправителем через этот сервер», **без** доступа к остальной переписке.
 4. **Приватность:** подделка жалобы криптографически исключена (HMAC binding + committing-конструкция поверх не-committing AEAD); сервер не может сам инициировать раскрытие; непожалованные сообщения не раскрываются.
 
-Статус: **RFC-draft принят и исполняем** — полная спецификация (байтовые форматы `commitInput`/`receiptPayload`, wire/AAD-дельта v1.1, процедура жюри, свойства безопасности) вынесена в [`franking.md`](./franking.md) (FSCP-FRANK v0.2); эталонная реализация примитивов — [`franking.ts`](../../Packages/flora-client-core/src/fscp/franking.ts) (`@flora/client-core/fscp`), поведение закреплено golden-вектором `fscp_franking_v1` с потребителями TS + Rust (§Test vectors). Gate FGP v2 «franking-RFC в FSCP принят хотя бы как draft» (FGP §8.3) — выполнен. Активация wire-дельты — только с bump `fscpProtocolVersion` после снятия заморозки.
+Статус: **RFC-draft принят и исполняем** — полная спецификация (байтовые форматы `commitInput`/`receiptPayload`, wire/AAD-дельта v1.1, процедура жюри, свойства безопасности) вынесена в [`franking.md`](./franking.md) (FSCP-FRANK v0.2); эталонная реализация примитивов — [`franking.ts`](../../Products/FSCP/ts/src/franking.ts) (`@flora/fscp`, реэкспорт `@flora/client-core/fscp`), поведение закреплено golden-вектором `fscp_franking_v1` с потребителями TS + Rust (§Test vectors). Gate FGP v2 «franking-RFC в FSCP принят хотя бы как draft» (FGP §8.3) — выполнен. Wire-дельта v1.1 **реализована в коде** (SoT `Products/FSCP/ts`, форк `Apps/Web/lib/fscp`): decrypt на обеих сторонах принимает v1 (без тега) и v1.1 (с тегом); эмиссия тега — явный параметр `emitFrankTag` у `buildFscpWireEnvelope` (проброшен через `buildBlocksMessageWire` / `buildTextMessageWire`), **выключен по умолчанию** — при выключении байты конверта и plaintext совпадают с v1. Боевое включение эмиссии — не автоматически: порядок выкладки и операционные проверки — [`franking.md`](./franking.md) §Активация. `MessageEnvelope.version` остаётся `1`, префикс `fscp1:`, `preKeyId` — `null`; это не pre-keys и не v2.
 
 ---
 
@@ -632,7 +632,9 @@ MLS или sender keys — отдельная спецификация. Не с�
 
 ## Test vectors
 
-Минимальный набор для FSCP v1:
+Каталог golden: **v1.0** (замороженный wire), аддитивная **v1.1 franking**, и **v2-draft** (вне нормы v1). Полный список файлов — [`Documents/test-vectors/README.md`](../test-vectors/README.md).
+
+**v1.0** (и платформенные, привязанные к текущему wire):
 
 | Vector id | Файл | Проверяет |
 | --- | --- | --- |
@@ -641,24 +643,37 @@ MLS или sender keys — отдельная спецификация. Не с�
 | `fscp_wire_validator_v1` | [fscp-wire-validator-v1.json](../test-vectors/fscp-wire-validator-v1.json) | Серверная структурная валидация wire: позитив + 26 негативов (27 кейсов), точные строки ошибок (форма заморожена, [`next-architecture.md`](../../next-architecture.md) §4.4 — Rust воспроизводит байт-в-байт) |
 | `fscp_message_transcript_v1` | [fscp-message-transcript-v1.json](../test-vectors/fscp-message-transcript-v1.json) | **Полный транскрипт** Algorithm A/B: plaintext (unicode) → body AEAD → RKE обоих получателей → canonical JSON → Ed25519 → `fscp1:`-wire, со всеми промежуточными значениями; варианты `signature_tampered` (клиент и серверная криптопроверка отклоняют, форма проходит) и `legacy_unsigned` (v1.0-errata-5: клиент отклоняет по умолчанию, читает только через явный `allowUnsignedLegacy`; сервер отклоняет) |
 | `fscp_franking_v1` | [franking-v1.json](../test-vectors/franking-v1.json) | Message franking ([`franking.md`](./franking.md)): commit → HMAC-тег → квитанция сервера → полная верификация жюри + негативы с причинами отказа; франкуется **сообщение транскрипт-вектора** (жалоба доказуема для реального wire) |
-| `fscp_hybrid_kem_v2draft_v1` | [fscp-hybrid-kem-v2draft-v1.json](../test-vectors/fscp-hybrid-kem-v2draft-v1.json) | **v2-draft, вне нормы v1**: гибридный KEM X25519+ML-KEM-768 (§Целевой алгоритм → Post-quantum) — детерминированные keygen/encaps/decaps FIPS 203, transcript-hash, гибридный HKDF, AEAD; негативы: implicit rejection при подмене `ct_mlkem`, расхождение AAD-метаданных |
 | `message_session_revoked_device_v1_failure` | [fscp-revoked-device-v1.json](../test-vectors/fscp-revoked-device-v1.json) | **Golden transcript revoke-сценария** (§Device revocation): M1 до revoke (decrypt ok, сессия ready) → revoke sender-устройства → M2 и повтор M1 отклоняются policy-слоем сервера (`REVOKED_SENDER_DEVICE_ERROR`) и клиента (`evaluateInboundSenderDevice` → `compromised_local`), исходящие блокирует session FSM; кейс `cryptoBypassDecrypt: ok` фиксирует, что криптография wire остаётся валидной — отказ политика, не крипто |
 | `device_to_device_recovery_envelope_v1` | [fscp-d2d-recovery-v1.json](../test-vectors/fscp-d2d-recovery-v1.json) | `DeviceToDeviceRecoveryEnvelope` ([`e2e-security.md`](./e2e-security.md) §DeviceToDeviceRecoveryEnvelope): payload → X25519+HKDF+XChaCha20 → canonical JSON → Ed25519; server-side strict-валидация + подпись, client-side open; негативы: `_wrong_challenge`, `_tampered_ciphertext`, `_foreign_signature`, `_empty_epochs` |
 
-Регенерация: RKE — `python Documents/test-vectors/_gen_fscp_rke_v1.py`, транскрипт — `python Documents/test-vectors/_gen_fscp_message_transcript_v1.py`, franking — `python Documents/test-vectors/_gen_fscp_franking_v1.py` (после транскрипта; нужны `cryptography`, `PyNaCl`), гибридный KEM — `python Documents/test-vectors/_gen_fscp_hybrid_kem_v2draft_v1.py` (дополнительно нужен `kyber-py`), revoke-транскрипт — `python Documents/test-vectors/_gen_fscp_revoked_device_v1.py`, D2D recovery — `python Documents/test-vectors/_gen_fscp_d2d_recovery_v1.py`; wire-validator — `Scripts/generate-golden-vectors.ps1` (из C#-эталона). Файлы `Documents/test-vectors/**` — **regenerate-only**, руками не редактировать ([`AGENTS.md`](../../AGENTS.md)).
+**v1.1 franking** (`fscpProtocolVersion = 1.1`, `MessageEnvelope.version` = 1, `preKeyId` = `null`; эмиссия в бою off):
+
+| Vector id | Файл | Проверяет |
+| --- | --- | --- |
+| `fscp_franking_wire_v1_1` | [fscp-franking-wire-v1_1.json](../test-vectors/fscp-franking-wire-v1_1.json) | Wire-дельта v1.1: детерминированный Algorithm A (commitInput, HMAC-тег, AAD `message.v1_1`) + recorded tagged `fscp1:` (roundtrip decrypt, подмена `frankTag` ломает AEAD) |
+| `fscp_franking_disclosure_bundle_v2` | [fscp-franking-disclosure-bundle-v2.json](../test-vectors/fscp-franking-disclosure-bundle-v2.json) | Канонические байты кортежа раскрытия v1 + bundle v2 (N независимых кортежей, кап 20) и wrap в контексте `flora.fscp.franking-wrap.v2` со скоупом `bundleUuid` |
+
+**v2-draft** (вне нормы v1):
+
+| Vector id | Файл | Проверяет |
+| --- | --- | --- |
+| `fscp_hybrid_kem_v2draft_v1` | [fscp-hybrid-kem-v2draft-v1.json](../test-vectors/fscp-hybrid-kem-v2draft-v1.json) | Гибридный KEM X25519+ML-KEM-768 (§Целевой алгоритм → Post-quantum) — детерминированные keygen/encaps/decaps FIPS 203, transcript-hash, гибридный HKDF, AEAD; негативы: implicit rejection при подмене `ct_mlkem`, расхождение AAD-метаданных |
+
+Регенерация: RKE — `python Documents/test-vectors/_gen_fscp_rke_v1.py`, транскрипт — `python Documents/test-vectors/_gen_fscp_message_transcript_v1.py`, franking — `python Documents/test-vectors/_gen_fscp_franking_v1.py` (после транскрипта; нужны `cryptography`, `PyNaCl`), гибридный KEM — `python Documents/test-vectors/_gen_fscp_hybrid_kem_v2draft_v1.py` (дополнительно нужен `kyber-py`), revoke-транскрипт — `python Documents/test-vectors/_gen_fscp_revoked_device_v1.py`, D2D recovery — `python Documents/test-vectors/_gen_fscp_d2d_recovery_v1.py`; `fscp-wire-validator-v1.json` — **заморожен** (исторически из C#-эталона, после Фазы 5 не регенерировать); franking wire v1.1 / disclosure bundle v2 — `npm run generate:franking-wire-v1-1-vector --workspace=@flora/fscp` и `npm run generate:franking-disclosure-bundle-v2-vector --workspace=@flora/fscp`. Файлы `Documents/test-vectors/**` — **regenerate-only**, руками не редактировать ([`AGENTS.md`](../../AGENTS.md)).
 
 Правила новых векторов: `protocolVersion` / `fscpProtocolVersion` в JSON, base64url без padding, AAD **байт-в-байт** как в этом документе; негативы — отдельные файлы или блок `cases` с `expectedError`.
 
-**Требование потребления (v1.0-errata-1, устраняет разрыв «вектор есть, но не проверяется»):** golden-векторы обязаны иметь **consumer-тесты**, иначе compliance-пункт считается невыполненным. Текущие потребители (все в CI через `npm run test` / `dotnet test`):
+**Требование потребления (v1.0-errata-1, устраняет разрыв «вектор есть, но не проверяется»):** golden-векторы обязаны иметь **consumer-тесты**, иначе compliance-пункт считается невыполненным. Текущие потребители (CI: `npm run test` / `cargo test`):
 
-- клиентский тест [`goldenVectors.test.ts`](../../Packages/flora-client-core/src/fscp/goldenVectors.test.ts): RKE unwrap даёт `messageKeyBase64Url` бит-в-бит (плюс покомпонентно: AAD-строка, X25519 shared secret, HKDF wrap key, детерминированный AEAD-шифротекст); `fingerprint-v1.json` — реализация safety number даёт `fingerprintSha256Hex`; `backend-parity/uuid-v1.json` — клиентские `deriveIds` сходятся с C#-эталоном;
-- **cross-impl parity:** [`webParity.test.ts`](../../Packages/flora-client-core/src/fscp/webParity.test.ts) утверждает, что `Apps/Web/lib/fscp/{constants,aad,canonicalJson,deriveIds}` дают **идентичный** результат с `Packages/flora-client-core/src/fscp/*` на общих входах (защита от дрейфа двух клиентских реализаций до их консолидации, [`next-architecture.md`](../../next-architecture.md) §9);
-- серверный тест (C#) [`FscpWireValidatorVectors.cs`](../../Tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs) прогоняет позитив и негативы `FscpWireEnvelopeValidator` из `fscp-wire-validator-v1.json`, сверяя accept/reject и **точную строку ошибки**;
-- серверный тест (Rust) [`fscp_wire_vectors.rs`](../../Backend/Tests/parity/tests/fscp_wire_vectors.rs) прогоняет тот же вектор через порт [`flora-messaging/src/fscp.rs`](../../Backend/crates/modules/flora-messaging/src/fscp.rs) — кросс-языковой паритет валидации до Фазы 4;
+- клиентский тест [`goldenVectors.test.ts`](../../Products/FSCP/ts/src/goldenVectors.test.ts): RKE unwrap даёт `messageKeyBase64Url` бит-в-бит (плюс покомпонентно: AAD-строка, X25519 shared secret, HKDF wrap key, детерминированный AEAD-шифротекст); `fingerprint-v1.json` — реализация safety number даёт `fingerprintSha256Hex`; `backend-parity/uuid-v1.json` — клиентские `deriveIds` сходятся с **замороженным** golden (исторический C#-эталон, Фаза 5 снята);
+- **cross-impl parity:** [`webParity.test.ts`](../../Products/FSCP/ts/src/webParity.test.ts) утверждает, что `Apps/Web/lib/fscp/{constants,aad,canonicalJson,deriveIds}` дают **идентичный** результат с `@flora/fscp` (`Products/FSCP/ts`) на общих входах (защита от дрейфа двух клиентских реализаций до их консолидации, [`next-architecture.md`](../../next-architecture.md) §9);
+- серверный тест (Rust) [`fscp_wire_vectors.rs`](../../Backend/Tests/parity/tests/fscp_wire_vectors.rs) прогоняет `fscp-wire-validator-v1.json` через `flora_messaging::fscp` (`fscp-core`): accept/reject и **точная строка ошибки**. Исторический C#-эталон `FscpWireEnvelopeValidator` снят вместе с хостом (Фаза 5); golden заморожен и больше не регенерируется из C#;
 - клиентская криптография на RustCrypto: [`fscp_client_crypto_vectors.rs`](../../Backend/Tests/parity/tests/fscp_client_crypto_vectors.rs) воспроизводит RKE-вектор (X25519, HKDF, XChaCha20-Poly1305) и fingerprint-вектор — тройная верификация (python-генератор ↔ TS ↔ Rust) и задел Rust client-core;
-- **полный транскрипт** `fscp_message_transcript_v1` потребляют все три стека: TS [`transcriptVector.test.ts`](../../Packages/flora-client-core/src/fscp/transcriptVector.test.ts) расшифровывает wire через публичное API `decryptFscpWireEnvelope` (получатель + self-копия отправителя) и воспроизводит canonical signing payload; Rust [`fscp_transcript_vectors.rs`](../../Backend/Tests/parity/tests/fscp_transcript_vectors.rs) проходит весь путь на RustCrypto + ed25519-dalek + порт canonical JSON [`canonical_json.rs`](../../Backend/Tests/parity/src/canonical_json.rs); C# `Message_transcript_vector_agrees_with_reference_validator` прогоняет тот же wire через боевой валидатор. Это замыкает треугольник «клиентская криптография ⇄ серверная форма ⇄ Rust-порт» на **одном** сообщении;
-- **franking** `fscp_franking_v1`: TS [`frankingVector.test.ts`](../../Packages/flora-client-core/src/fscp/frankingVector.test.ts) — эталонная реализация `franking.ts` (commit, тег, квитанция, полный verify жюри); Rust [`fscp_franking_vectors.rs`](../../Backend/Tests/parity/tests/fscp_franking_vectors.rs) дополнительно доказывает, что Rust как будущий серверный подписант детерминированно воспроизводит квитанцию из seed. C#-consumer появится вместе с серверной реализацией при активации v1.1;
-- **гибридный PQ-KEM (v2-draft)** `fscp_hybrid_kem_v2draft_v1`: TS [`hybridKemVector.test.ts`](../../Packages/flora-client-core/src/fscp/hybridKemVector.test.ts) (@noble/post-quantum, devDependency — продакшн-поверхности нет) и Rust [`fscp_hybrid_kem_vectors.rs`](../../Backend/Tests/parity/tests/fscp_hybrid_kem_vectors.rs) (RustCrypto `ml-kem`, dev-dependency) воспроизводят все шаги комбинера из §Post-quantum, включая FIPS 203 implicit rejection; вместе с генератором на kyber-py это **три независимые реализации ML-KEM-768**, согласные байт-в-байт;
+- **полный транскрипт** `fscp_message_transcript_v1` потребляют TS [`transcriptVector.test.ts`](../../Products/FSCP/ts/src/transcriptVector.test.ts) (decrypt через `decryptFscpWireEnvelope`, canonical signing payload) и Rust [`fscp_transcript_vectors.rs`](../../Backend/Tests/parity/tests/fscp_transcript_vectors.rs) (RustCrypto + ed25519-dalek + порт canonical JSON [`canonical_json.rs`](../../Backend/Tests/parity/src/canonical_json.rs)). Это замыкает пару «клиентская криптография ⇄ серверная форма/подпись» на **одном** сообщении. Исторический C#-прогон того же wire снят с Фазой 5;
+- **franking** `fscp_franking_v1`: TS [`frankingVector.test.ts`](../../Products/FSCP/ts/src/frankingVector.test.ts) — эталонная реализация `franking.ts` в `@flora/fscp` (commit, тег, квитанция, полный verify жюри); Rust [`fscp_franking_vectors.rs`](../../Backend/Tests/parity/tests/fscp_franking_vectors.rs) дополнительно доказывает, что Rust как серверный подписант детерминированно воспроизводит квитанцию из seed;
+- **franking wire v1.1** `fscp_franking_wire_v1_1`: TS [`frankingWireVectorV1_1.test.ts`](../../Products/FSCP/ts/src/frankingWireVectorV1_1.test.ts) — Algorithm A байт-в-байт, roundtrip decrypt recorded tagged wire, AEAD-отказ при подмене `frankTag`; Rust [`fscp_franking_wire_v1_1.rs`](../../Backend/Tests/parity/tests/fscp_franking_wire_v1_1.rs) — тот же HMAC/AAD и ingest (`try_validate_wire` + `verify_envelope_signature` + `extract_frank_tag`); точечная проверка формы в `fscp-core` (`tagged_v1_1_golden_wire_passes_form_and_signature`);
+- **franking disclosure/bundle v2** `fscp_franking_disclosure_bundle_v2`: TS [`frankingDisclosureBundleVector.test.ts`](../../Products/FSCP/ts/src/frankingDisclosureBundleVector.test.ts) — канонические байты кортежа и bundle, seal/wrap roundtrip; Rust в том же `fscp_franking_wire_v1_1.rs` воспроизводит HMAC кортежа и AAD wrap v2;
+- **гибридный PQ-KEM (v2-draft)** `fscp_hybrid_kem_v2draft_v1`: TS [`hybridKemVector.test.ts`](../../Products/FSCP/ts/src/hybridKemVector.test.ts) (@noble/post-quantum, devDependency — продакшн-поверхности нет) и Rust [`fscp_hybrid_kem_vectors.rs`](../../Backend/Tests/parity/tests/fscp_hybrid_kem_vectors.rs) (RustCrypto `ml-kem`, dev-dependency) воспроизводят все шаги комбинера из §Post-quantum, включая FIPS 203 implicit rejection; вместе с генератором на kyber-py это **три независимые реализации ML-KEM-768**, согласные байт-в-байт;
 - **revoke-транскрипт** `message_session_revoked_device_v1_failure`: TS `revokedDeviceVector.test.ts` (`@flora/fscp`) проигрывает всю цепочку через session FSM + `decryptFscpWireEnvelope` + `evaluateInboundSenderDevice` (включая честность вектора: crypto-bypass decrypt M2 успешен); Rust [`fscp_revoked_device_vectors.rs`](../../Backend/Tests/parity/tests/fscp_revoked_device_vectors.rs) — форма+подпись обоих wire, извлечение `senderDeviceUuid`, golden-строка policy-ошибки;
 - **D2D recovery** `device_to_device_recovery_envelope_v1`: TS `d2dRecoveryVector.test.ts` (`@flora/fscp`) — деривация `targetAgreementPublicKeyId`, AAD и canonical signing payload байт-в-байт, open success + 4 негатива по категориям; Rust [`fscp_d2d_recovery_vectors.rs`](../../Backend/Tests/parity/tests/fscp_d2d_recovery_vectors.rs) — серверная strict-валидация + проверка подписи, точные строки ошибок.
 
@@ -695,9 +710,9 @@ E2E-переписка **не** используется для рекоменд
 | E2E-ключи на вебе в `localStorage` | **известный риск** | `Apps/Web/lib/fscp/storage.ts` (Web-форк) и адаптер `keyStorage.ts` в `@flora/fscp`; target — non-extractable WebCrypto / IndexedDB |
 | Legacy dual-ciphertext API | мост | `encryptedForReceiver`/`encryptedForSender` идентичны; путь к единому `fscp1:` |
 | Safety number / fingerprint в UI | ✅ UI закрыт (errata-6) | `computeSafetyNumberV1` из `@flora/client-core/fscp` + «Проверка шифрования» в меню 1:1; peer identity берётся только из успешно расшифрованного и проверенного входящего wire, поэтому до первого входящего модал честно показывает not-ready. Локальный `verified contact` остаётся future work |
-| `FscpV1ConversationSession` / session state | **реализовано (библиотека)** | чистая FSM `conversationSession.ts` в `@flora/client-core/fscp` (переходы + re-handshake, unit-тесты); интеграция в UI-поток — вместе с safety number surface |
-| Golden-векторы в CI | ✅ подключены | consumer-тесты: `goldenVectors.test.ts` + `transcriptVector.test.ts` (клиент), `FscpWireValidatorVectors.cs` (сервер C#), `fscp_*_vectors.rs` (Rust); полный транскрипт покрывает все байт-критичные пути — см. §Test vectors |
-| Две параллельные клиентские реализации FSCP | **дрейф-риск, огорожен** | `Apps/Web/lib/fscp` vs `Packages/flora-client-core/src/fscp`; байт-критичные модули покрыты parity-тестом `webParity.test.ts`; консолидация остаётся — [`next-architecture.md`](../../next-architecture.md) §9 |
+| `FscpV1ConversationSession` / session state | **реализовано (библиотека)** | чистая FSM [`conversationSession.ts`](../../Products/FSCP/ts/src/conversationSession.ts) в `@flora/fscp` (реэкспорт `@flora/client-core/fscp`; переходы + re-handshake, unit-тесты); интеграция в UI-поток — вместе с safety number surface |
+| Golden-векторы в CI | ✅ подключены | consumer-тесты: `goldenVectors.test.ts` + `transcriptVector.test.ts` (`@flora/fscp`), `fscp_*_vectors.rs` (Rust, включая `fscp_wire_vectors.rs`); полный транскрипт покрывает байт-критичные пути — см. §Test vectors |
+| Две параллельные клиентские реализации FSCP | **дрейф-риск, огорожен** | `Apps/Web/lib/fscp` vs `@flora/fscp` (`Products/FSCP/ts`); байт-критичные модули покрыты parity-тестом `webParity.test.ts`; консолидация форка на SoT `@flora/fscp` остаётся — [`next-architecture.md`](../../next-architecture.md) §2.0 / §9 |
 | Golden transcript после device revoke | ✅ закрыто (errata-6) | `message_session_revoked_device_v1_failure` — [fscp-revoked-device-v1.json](../test-vectors/fscp-revoked-device-v1.json) + потребители TS/Rust; серверный device-policy на send-пути (`REVOKED_SENDER_DEVICE_ERROR`), клиентский inbound-policy `evaluateInboundSenderDevice`; HTTP `approve` (errata-5) и `recover-key` (errata-6) выставлены |
 | Enforcement device-policy на send-пути ограничен | by design (v1) | v1-wire несёт bootstrap sentinel device (bindings нет — проверка не срабатывает); policy активируется автоматически с переходом на реальные per-device UUID в wire (v1.1+); отзыв материала при revoke уже действует через FSM/devices API |
 
@@ -708,18 +723,19 @@ E2E-переписка **не** используется для рекоменд
 | Версия | Содержание |
 | --- | --- |
 | **FSCP v1.0** | Текущая норма (этот документ); spec freeze 2026-05-10 |
-| **FSCP v1.1** | Pre-keys (`preKeyId != null`) + активация franking wire-дельты ([`franking.md`](./franking.md)) |
+| **FSCP v1.1 franking** | Wire-дельта `frankTag` / AAD `message.v1_1` ([`franking.md`](./franking.md)): код готов, эмиссия **off**; `MessageEnvelope.version` остаётся **1**, `preKeyId` = `null`. Боевая эмиссия — ступень 3 §Активация, не вместе с pre-keys |
+| **FSCP v1.1 pre-keys** | `preKeyId != null` (roadmap, §Целевой алгоритм); в текущем wire не активировано |
 | **FSCP v2** | X3DH + ratchet; гибридный PQ-KEM X25519+ML-KEM-768 (§Целевой алгоритм → Post-quantum) |
 
 Изменения, **несовместимые с wire**, — только через bump major (`messageEnvelopeVersion`). Текстовые errata без смены байтов — в этом файле с пометкой `docs(fscp): errata` в commit message.
 
 **Compliance checklist (v1.0)** — статус на errata-6:
 
-1. ✅ Golden `fscp_rke_wrap_key_v1_success` и `fingerprint_v1_success` в CI — consumer-тесты `Packages/flora-client-core/src/fscp/goldenVectors.test.ts` (`npm run test`).
-2. ✅ Server-side validation без отклонений от §Server-side validation (реализовано, включая проверку `recipientAgreementPublicKeyId`); поведение закреплено golden-вектором `fscp_wire_validator_v1` + consumer `Tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs`.
+1. ✅ Golden `fscp_rke_wrap_key_v1_success` и `fingerprint_v1_success` в CI — consumer-тесты `Products/FSCP/ts/src/goldenVectors.test.ts` (`npm run test`).
+2. ✅ Server-side validation без отклонений от §Server-side validation (реализовано, включая проверку `recipientAgreementPublicKeyId`); поведение закреплено golden-вектором `fscp_wire_validator_v1` + consumer [`fscp_wire_vectors.rs`](../../Backend/Tests/parity/tests/fscp_wire_vectors.rs).
 3. ✅ Клиент: AAD и HKDF-info **байт-в-байт** как в §MessageEnvelope / §Key agreement (подтверждено consumer-тестами RKE-вектора).
-4. ✅ Cross-impl parity-тест `Apps/Web/lib/fscp` ↔ `Packages/flora-client-core` — `webParity.test.ts` (constants, AAD, canonical JSON, deriveIds).
-5. ✅ Полный транскрипт `fscp_message_transcript_v1`: каждая байт-критичная операция v1 (canonical JSON → подпись → RKE → тело) закреплена golden-вектором и потребляется TS + Rust + C# (§Test vectors). Полное покрытие путей Algorithm A/B достигнуто.
+4. ✅ Cross-impl parity-тест `Apps/Web/lib/fscp` ↔ `@flora/fscp` — `webParity.test.ts` (constants, AAD, canonical JSON, deriveIds).
+5. ✅ Полный транскрипт `fscp_message_transcript_v1`: каждая байт-критичная операция v1 (canonical JSON → подпись → RKE → тело) закреплена golden-вектором и потребляется TS + Rust (§Test vectors). Полное покрытие путей Algorithm A/B достигнуто.
 6. ✅ Safety number в UI 1:1 после `ready` — пункт «Проверка шифрования» показывает 64-символьный fingerprint группами и поддерживает копирование; расчёт идёт через `computeSafetyNumberV1` (golden `fingerprint-v1.json`). В текущем bootstrap/TOFU-потоке `ready` подтверждается первым успешно расшифрованным входящим wire; до него UI не выдаёт непроверенный код.
 
 ---
@@ -729,9 +745,9 @@ E2E-переписка **не** используется для рекоменд
 - ✅ Серверная криптопроверка Ed25519 подписи envelope (defense-in-depth) — выполнено в errata-5 (`fscp_core::verify_envelope_signature`, Algorithm C шаг 12).
 - ✅ Golden transcript `message_session_revoked_device_v1_failure` + HTTP `recover-key` (POST/GET, серверная валидация + хранилище с TTL) — выполнено в errata-6; `approve` выставлен ранее (errata-5, [`e2e-security.md`](./e2e-security.md) §Devices).
 - Safety number: добавить локальный `verified contact` и сбрасывать его при смене epoch identity; сам OOB fingerprint UI 1:1 выполнен в errata-6.
-- Консолидация двух клиентских реализаций на `@flora/client-core` ([`next-architecture.md`](../../next-architecture.md) §9); parity-тест уже защищает от дрейфа байт-критичных модулей.
+- Консолидация Web-форка `Apps/Web/lib/fscp` на SoT `@flora/fscp` (`Products/FSCP/ts`; `@flora/client-core/fscp` остаётся реэкспортом, [`next-architecture.md`](../../next-architecture.md) §2.0 / §9); parity-тест уже защищает от дрейфа байт-критичных модулей.
 - Переход с bootstrap epoch на реальные per-device UUID и key epochs.
-- Message franking: RFC + эталонная реализация + вектор готовы; осталась wire-дельта и серверный подписант при активации v1.1 ([`franking.md`](./franking.md)).
+- ✅ Message franking wire-дельта v1.1: реализована в `@flora/fscp` (SoT `Products/FSCP/ts`, форк `Apps/Web/lib/fscp`); серверный подписант квитанций — из конфигурации `Messaging:FrankingSigningSeed`. Эмиссия `frankTag` выключена по умолчанию (`emitFrankTag`); в бою не включена. Боевой rollout — [`franking.md`](./franking.md) §Активация (три ступени). Не закрыто продуктом: экран раскрытия Gov, multi-select в UI чата, приём bundle на Social, обязательный reject untagged-сообщений, ротация server key — см. тот же §.
 - Post-quantum: ✅ прототип комбинера X25519+ML-KEM-768 закреплён вектором `fscp_hybrid_kem_v2draft_v1` (три реализации ML-KEM, потребители TS + Rust). До v2 design review остаются: перенос комбинера в pre-key bundle/PQXDH-поток и внешний криптоаудит гибридного KDF.
 - Key transparency phase 2.
 - Групповой чат (отдельная спецификация, возможно MLS).
