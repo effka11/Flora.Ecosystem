@@ -197,8 +197,11 @@ export const floraProfile = {
 
 export const floraMotion = {
   baseMs: 150,
-  /** Как ENERGETIC_OPEN_MS — тап подвкладок (рекомендации/подписки). */
-  tabTransitionDurationMs: 150 * 3,
+  /**
+   * Overlay вкладок 1→0: --flora-duration-2.
+   * Не ENERGETIC_OPEN_MS — слайд подвкладок длиннее и с другим ease.
+   */
+  tabTransitionDurationMs: 150 * 2,
 };
 
 const COMPOSE_FIELD_MIN_HEIGHT = 45;
