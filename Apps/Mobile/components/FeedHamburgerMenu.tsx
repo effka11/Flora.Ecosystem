@@ -52,8 +52,6 @@ import {
   shouldOpenDrawer,
 } from "@/lib/drawerEdgeGesture";
 import {
-  ENERGETIC_CLOSE_EASING,
-  ENERGETIC_CLOSE_MS,
   ENERGETIC_OPEN_EASING,
   ENERGETIC_OPEN_MS,
   settleEnergetic,
@@ -124,9 +122,10 @@ function isMenuItemActive(pathname: string, id: MenuItemId): boolean {
 const PANEL_MAX_WIDTH = 300;
 const PANEL_WIDTH_RATIO = 0.78;
 const OPEN_MS = ENERGETIC_OPEN_MS;
-const CLOSE_MS = ENERGETIC_CLOSE_MS;
 const OPEN_EASING = ENERGETIC_OPEN_EASING;
-const CLOSE_EASING = ENERGETIC_CLOSE_EASING;
+/** Парирует выдвижение: тот же duration-3 и ease-out, удар сразу в обе стороны. */
+const CLOSE_MS = OPEN_MS;
+const CLOSE_EASING = OPEN_EASING;
 const MENU_EDGE_INSET = floraSpacing.grid + floraSpacing.gridFine;
 const MENU_LEAD_COL = 2 * floraSpacing.grid;
 /** Горизонтальный порог, чтобы не перехватывать тапы по пунктам меню. */
