@@ -199,8 +199,6 @@ export const floraMotion = {
   baseMs: 150,
   /** Как ENERGETIC_OPEN_MS — тап подвкладок (рекомендации/подписки). */
   tabTransitionDurationMs: 150 * 3,
-  /** Кадр на отрисовку новой сцены под оверлеем. */
-  tabTransitionDelayMs: 20,
 };
 
 const COMPOSE_FIELD_MIN_HEIGHT = 45;
