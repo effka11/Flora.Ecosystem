@@ -1,4 +1,5 @@
-import { floraNewUuid } from "@/lib/floraUuid";
+import { computeFrankTagV1, frankCommitInputV1 } from "@flora/client-core/fscp";
+import { floraNewUuid } from "../floraUuid";
 import { FSCP_BOOTSTRAP_DEVICE_UUID, FSCP_BOOTSTRAP_KEY_EPOCH_ID, FSCP_WIRE_PREFIX } from "./constants";
 import { agreementPublicKeyId, dmConversationUuid } from "./deriveIds";
 import { messageBodyAadLine, recipientKeyEnvelopeAadLine } from "./aad";
@@ -40,6 +41,8 @@ export type FscpEnvelopeWire = {
   /** Ed25519 публичный ключ подписи отправителя (32 байта, base64url). Обязателен для новых wire; старые сообщения могут не содержать поле. */
   senderSigningPublicKeyBase64Url?: string;
   senderSignatureBase64Url: string;
+  /** FSCP-FRANK v1.1+: HMAC-тег. Отсутствует на замороженном v1. */
+  frankTagBase64Url?: string;
 };
 
 export type FscpTextBlock = {
@@ -329,6 +332,14 @@ export async function buildFscpWireEnvelope(params: {
   receiverAgreementPublicKey: Uint8Array;
   messageBody?: string;
   messagePayload?: FscpMessagePlaintext;
+  /**
+   * FSCP-FRANK v1.1 (franking.md §4.1–4.2): эмитировать `frankTag` и положить
+   * per-message `frankingKey` в plaintext. Решение продуктовое — принимает
+   * вызывающая сторона (Web / Mobile), ядро своей конфигурации не имеет.
+   * По умолчанию выключено: конверт и plaintext побайтово остаются v1.
+   * Группы и organizer не франкуются (§4.6) — у них свой путь сборки.
+   */
+  emitFrankTag?: boolean;
 }): Promise<string> {
   const sodium = await getSodium();
   const messageUuid = floraNewUuid();
@@ -351,7 +362,36 @@ export async function buildFscpWireEnvelope(params: {
       blocks: [{ kind: "text", body: params.messageBody ?? "" }],
       clientCreatedAt: createdAt,
     } satisfies FscpMessagePlaintext);
-  const plaintextUtf8 = padPlaintextJsonV1(JSON.stringify(plaintextObj));
+  // §4.1: Kf — 32 случайных байта на сообщение, едет получателю внутри шифртекста
+  // соседом `blocks`; сервер его не видит. Паддинг накладывается уже поверх ключа.
+  const frankingKey = params.emitFrankTag ? sodium.randombytes_buf(32) : null;
+  const plaintextUtf8 = padPlaintextJsonV1(
+    JSON.stringify(
+      frankingKey
+        ? { ...plaintextObj, frankingKeyBase64Url: sodium.to_base64(frankingKey, VARIANT) }
+        : plaintextObj,
+    ),
+  );
+  // §4.1: commitment — по ровно тем байтам, что уходят в AEAD, включая pad.
+  const frankTagBase64Url = frankingKey
+    ? sodium.to_base64(
+        computeFrankTagV1(
+          frankingKey,
+          frankCommitInputV1(
+            {
+              conversationUuid,
+              messageUuid,
+              senderUserUuid: params.senderUserUuid,
+              senderDeviceUuid,
+              receiverUserUuid: params.receiverUserUuid,
+              createdAt,
+            },
+            utf8Bytes(plaintextUtf8),
+          ),
+        ),
+        VARIANT,
+      )
+    : null;
   const bodyAad = messageBodyAadLine({
     conversationUuid,
     keyEpochId,
@@ -360,6 +400,7 @@ export async function buildFscpWireEnvelope(params: {
     senderUserUuid: params.senderUserUuid,
     senderDeviceUuid,
     createdAt,
+    frankTagBase64Url,
   });
   const bodyNonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
   const bodyCipher = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
@@ -436,6 +477,9 @@ export async function buildFscpWireEnvelope(params: {
     aead: { name: "xchacha20-poly1305", nonceBase64Url: sodium.to_base64(bodyNonce, VARIANT) },
     recipients,
     senderSigningPublicKeyBase64Url: sodium.to_base64(signingPublicKey, VARIANT),
+    // §4.2: поле появляется только у франкованных сообщений и попадает в
+    // canonical JSON до Ed25519 — подпись отправителя покрывает тег.
+    ...(frankTagBase64Url ? { frankTagBase64Url } : {}),
   };
 
   const signPayload = utf8Bytes(`flora.messaging.envelope-signature.v1 | ${canonicalJson(envelopeNoSig)}`);
@@ -445,6 +489,19 @@ export async function buildFscpWireEnvelope(params: {
   const json = JSON.stringify(full);
   const wire = `${FSCP_WIRE_PREFIX}${sodium.to_base64(utf8Bytes(json), VARIANT)}`;
   return wire;
+}
+
+/**
+ * Тег из уже разобранного конверта. Конверт приходит из сети как `unknown`,
+ * поэтому нестроковое/пустое поле — то же самое, что отсутствие тега (сообщение
+ * читается как v1 и падает на AEAD, а не на TypeError вне классификации сбоев).
+ */
+function readOptionalFrankTagBase64Url(parsed: unknown): string | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const value = (parsed as Record<string, unknown>).frankTagBase64Url;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export async function decryptFscpWireEnvelope(params: {
@@ -506,6 +563,7 @@ export async function decryptFscpWireEnvelope(params: {
     );
   }
 
+  // Тег на конверте → AAD версии v1_1 с суффиксом (franking.md §4.2); без тега — v1.
   const bodyAad = messageBodyAadLine({
     conversationUuid: env.conversationUuid,
     keyEpochId: env.keyEpochId,
@@ -514,6 +572,7 @@ export async function decryptFscpWireEnvelope(params: {
     senderUserUuid: env.senderUserUuid,
     senderDeviceUuid: env.senderDeviceUuid,
     createdAt: env.createdAt,
+    frankTagBase64Url: readOptionalFrankTagBase64Url(env),
   });
   let plain: Uint8Array;
   try {
@@ -536,4 +595,15 @@ export async function decryptFscpWireEnvelope(params: {
 
 export function isFscpWirePayload(s: string | null | undefined): boolean {
   return typeof s === "string" && s.startsWith(FSCP_WIRE_PREFIX);
+}
+
+/** Envelope `frankTag` without decrypt (franking.md §4.3). Missing/malformed wire → null. */
+export function peekFscpWireFrankTagBase64Url(wire: string | null | undefined): string | null {
+  if (typeof wire !== "string" || !wire.startsWith(FSCP_WIRE_PREFIX)) return null;
+  try {
+    const raw = fromBase64Url(wire.slice(FSCP_WIRE_PREFIX.length));
+    return readOptionalFrankTagBase64Url(JSON.parse(new TextDecoder().decode(raw)));
+  } catch {
+    return null;
+  }
 }

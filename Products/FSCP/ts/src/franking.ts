@@ -13,6 +13,7 @@ import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8Bytes } from "./base64url.js";
 import { canonicalJson } from "./canonicalJson.js";
+import { floraNewUuid } from "./floraUuid.js";
 import { rkeUnwrapMessageKey, rkeWrapMessageKey } from "./rke.js";
 import type { SodiumModule } from "./sodium.js";
 import { toBase64Url } from "./unlockFlow.js";
@@ -154,7 +155,7 @@ export type FrankingDisclosureSealV1 = {
   sealed: Uint8Array;
 };
 
-type FrankingDisclosureSodium = {
+export type FrankingDisclosureSodium = {
   randombytes_buf(length: number): Uint8Array;
   crypto_aead_xchacha20poly1305_ietf_encrypt(
     message: Uint8Array,
@@ -217,7 +218,7 @@ export function openFrankingDisclosureV1(
   );
 }
 
-type FscpBase64Sodium = Pick<SodiumModule, "to_base64" | "from_base64"> & {
+export type FscpBase64Sodium = Pick<SodiumModule, "to_base64" | "from_base64"> & {
   base64_variants?: { URLSAFE_NO_PADDING: number };
 };
 
@@ -270,11 +271,11 @@ export type FrankingComplaintDisclosureInputV1 = {
   createdAt: string;
 };
 
-export function encodeFrankingComplaintDisclosureV1(
+function complaintDisclosureRecordV1(
   sodium: FscpBase64Sodium,
   input: FrankingComplaintDisclosureInputV1,
-): Uint8Array {
-  const disclosure: FrankingComplaintDisclosureV1 = {
+): FrankingComplaintDisclosureV1 {
+  return {
     v: 1,
     plaintextUtf8Base64Url: encodeFscpBase64Url(sodium, input.plaintextUtf8),
     frankingKeyBase64Url: input.frankingKeyBase64Url,
@@ -288,7 +289,224 @@ export function encodeFrankingComplaintDisclosureV1(
     receiverUserUuid: input.receiverUserUuid,
     createdAt: input.createdAt,
   };
-  return utf8Bytes(canonicalJson(disclosure));
+}
+
+export function encodeFrankingComplaintDisclosureV1(
+  sodium: FscpBase64Sodium,
+  input: FrankingComplaintDisclosureInputV1,
+): Uint8Array {
+  return utf8Bytes(canonicalJson(complaintDisclosureRecordV1(sodium, input)));
+}
+
+export const FSCP_FRANKING_BUNDLE_MAX_MESSAGES = 20;
+
+export type FrankingComplaintBundleV2 = {
+  v: 2;
+  bundleUuid: string;
+  messages: FrankingComplaintDisclosureV1[];
+};
+
+export type FrankingComplaintBundleInputV2 = {
+  bundleUuid: string;
+  messages: readonly FrankingComplaintDisclosureInputV1[];
+};
+
+const FRANKING_BUNDLE_UUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const FRANKING_BUNDLE_BASE64URL_RE = /^[A-Za-z0-9_-]*$/;
+const FRANKING_BUNDLE_KEYS: readonly (keyof FrankingComplaintBundleV2)[] = [
+  "v",
+  "bundleUuid",
+  "messages",
+];
+const FRANKING_BUNDLE_MESSAGE_KEYS: readonly (keyof FrankingComplaintDisclosureV1)[] = [
+  "v",
+  "plaintextUtf8Base64Url",
+  "frankingKeyBase64Url",
+  "frankTagBase64Url",
+  "serverFrankReceipt",
+  "messageUuid",
+  "persistedMessageUuid",
+  "conversationUuid",
+  "senderUserUuid",
+  "senderDeviceUuid",
+  "receiverUserUuid",
+  "createdAt",
+];
+const FRANKING_BUNDLE_RECEIPT_KEYS: readonly (keyof ServerFrankReceiptV1)[] = [
+  "signatureBase64Url",
+  "serverFrankingKeyId",
+  "serverReceivedAt",
+];
+
+function bundleError(message: string): Error {
+  return new Error(`franking complaint bundle v2: ${message}`);
+}
+
+function assertBundleExactKeys(
+  obj: Record<string, unknown>,
+  expected: readonly string[],
+  objectName: string,
+): void {
+  const at = objectName ? `${objectName}: ` : "";
+  for (const key of Object.keys(obj)) {
+    if (!expected.includes(key)) throw bundleError(`${at}лишнее поле «${key}».`);
+  }
+  for (const key of expected) {
+    if (!(key in obj)) throw bundleError(`${at}отсутствует поле «${key}».`);
+  }
+}
+
+function readBundleString(
+  obj: Record<string, unknown>,
+  key: string,
+  objectName: string,
+): string {
+  const value = obj[key];
+  if (typeof value !== "string") {
+    throw bundleError(`${objectName}.${key}: ожидается строка.`);
+  }
+  return value;
+}
+
+function readBundleUuid(
+  obj: Record<string, unknown>,
+  key: string,
+  objectName: string,
+): string {
+  const value = readBundleString(obj, key, objectName);
+  if (!FRANKING_BUNDLE_UUID_RE.test(value)) {
+    throw bundleError(`${objectName}.${key}: ожидается UUID в форме 8-4-4-4-12.`);
+  }
+  return value;
+}
+
+function readBundleBase64Url(
+  obj: Record<string, unknown>,
+  key: string,
+  objectName: string,
+): string {
+  const value = readBundleString(obj, key, objectName);
+  if (!FRANKING_BUNDLE_BASE64URL_RE.test(value) || value.length % 4 === 1) {
+    throw bundleError(`${objectName}.${key}: не base64url без паддинга.`);
+  }
+  return value;
+}
+
+function readNullableBundleBase64Url(
+  obj: Record<string, unknown>,
+  key: string,
+  objectName: string,
+): string | null {
+  return obj[key] === null ? null : readBundleBase64Url(obj, key, objectName);
+}
+
+function readBundleReceipt(
+  raw: unknown,
+  objectName: string,
+): ServerFrankReceiptV1 | null {
+  if (raw === null) return null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw bundleError(`${objectName}: ожидается объект или null.`);
+  }
+  const receipt = raw as Record<string, unknown>;
+  assertBundleExactKeys(receipt, FRANKING_BUNDLE_RECEIPT_KEYS, objectName);
+  return {
+    signatureBase64Url: readBundleBase64Url(receipt, "signatureBase64Url", objectName),
+    serverFrankingKeyId: readBundleString(receipt, "serverFrankingKeyId", objectName),
+    serverReceivedAt: readBundleString(receipt, "serverReceivedAt", objectName),
+  };
+}
+
+function readBundleMessage(raw: unknown, index: number): FrankingComplaintDisclosureV1 {
+  const objectName = `messages[${index}]`;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw bundleError(`${objectName}: ожидается JSON-объект.`);
+  }
+  const message = raw as Record<string, unknown>;
+  if (message.v !== 1) {
+    throw bundleError(`${objectName}.v=${JSON.stringify(message.v)} не поддерживается; ожидается v=1.`);
+  }
+  assertBundleExactKeys(message, FRANKING_BUNDLE_MESSAGE_KEYS, objectName);
+  return {
+    v: 1,
+    plaintextUtf8Base64Url: readBundleBase64Url(
+      message,
+      "plaintextUtf8Base64Url",
+      objectName,
+    ),
+    frankingKeyBase64Url: readNullableBundleBase64Url(
+      message,
+      "frankingKeyBase64Url",
+      objectName,
+    ),
+    frankTagBase64Url: readNullableBundleBase64Url(message, "frankTagBase64Url", objectName),
+    serverFrankReceipt: readBundleReceipt(
+      message.serverFrankReceipt,
+      `${objectName}.serverFrankReceipt`,
+    ),
+    messageUuid: readBundleUuid(message, "messageUuid", objectName),
+    persistedMessageUuid: readBundleUuid(message, "persistedMessageUuid", objectName),
+    conversationUuid: readBundleUuid(message, "conversationUuid", objectName),
+    senderUserUuid: readBundleUuid(message, "senderUserUuid", objectName),
+    senderDeviceUuid: readBundleUuid(message, "senderDeviceUuid", objectName),
+    receiverUserUuid: readBundleUuid(message, "receiverUserUuid", objectName),
+    createdAt: readBundleString(message, "createdAt", objectName),
+  };
+}
+
+function assertFrankingBundleMessageCount(count: number): void {
+  if (count < 1 || count > FSCP_FRANKING_BUNDLE_MAX_MESSAGES) {
+    throw bundleError(
+      `messages должен содержать от 1 до ${FSCP_FRANKING_BUNDLE_MAX_MESSAGES} сообщений; получено ${count}.`,
+    );
+  }
+}
+
+function assertFrankingBundleUuid(bundleUuid: string): void {
+  if (!FRANKING_BUNDLE_UUID_RE.test(bundleUuid)) {
+    throw bundleError("bundleUuid: ожидается UUID в форме 8-4-4-4-12.");
+  }
+}
+
+export function encodeFrankingComplaintBundleV2(
+  sodium: FscpBase64Sodium,
+  input: FrankingComplaintBundleInputV2,
+): Uint8Array {
+  assertFrankingBundleUuid(input.bundleUuid);
+  assertFrankingBundleMessageCount(input.messages.length);
+  const bundle: FrankingComplaintBundleV2 = {
+    v: 2,
+    bundleUuid: input.bundleUuid,
+    messages: input.messages.map((message) => complaintDisclosureRecordV1(sodium, message)),
+  };
+  return utf8Bytes(canonicalJson(bundle));
+}
+
+export function decodeFrankingComplaintBundleV2(bytes: Uint8Array): FrankingComplaintBundleV2 {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw bundleError("байты не разбираются как JSON (обрезанный или повреждённый bundle).");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw bundleError("ожидается JSON-объект.");
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (obj.v !== 2) {
+    throw bundleError(`версия v=${JSON.stringify(obj.v)} не поддерживается; ожидается v=2.`);
+  }
+  assertBundleExactKeys(obj, FRANKING_BUNDLE_KEYS, "");
+  if (!Array.isArray(obj.messages)) {
+    throw bundleError("messages: ожидается массив.");
+  }
+  assertFrankingBundleMessageCount(obj.messages.length);
+  return {
+    v: 2,
+    bundleUuid: readBundleUuid(obj, "bundleUuid", "bundle"),
+    messages: obj.messages.map((message, index) => readBundleMessage(message, index)),
+  };
 }
 
 export type FrankingSealedReportV1 = {
@@ -305,6 +523,25 @@ export function sealFrankingComplaintDisclosureV1(
     encodeFrankingComplaintDisclosureV1(sodium, input),
   );
   return {
+    reportContentKey,
+    disclosureCiphertext: encodeFscpBase64Url(sodium, sealed),
+  };
+}
+
+export type FrankingSealedReportV2 = FrankingSealedReportV1 & {
+  bundleUuid: string;
+};
+
+export function sealFrankingComplaintBundleV2(
+  sodium: FrankingDisclosureSodium & FscpBase64Sodium,
+  input: FrankingComplaintBundleInputV2,
+): FrankingSealedReportV2 {
+  const { reportContentKey, sealed } = sealFrankingDisclosureV1(
+    sodium,
+    encodeFrankingComplaintBundleV2(sodium, input),
+  );
+  return {
+    bundleUuid: input.bundleUuid,
     reportContentKey,
     disclosureCiphertext: encodeFscpBase64Url(sodium, sealed),
   };
@@ -426,6 +663,96 @@ export function unwrapReportContentKeyV1(
   });
 }
 
+export const FSCP_FRANKING_WRAP_CONTEXT_V2 = "flora.fscp.franking-wrap.v2";
+
+export function frankingWrapAadV2(params: {
+  bundleUuid: string;
+  userUuid: string;
+  deviceUuid: string;
+}): string {
+  return [
+    FSCP_FRANKING_WRAP_CONTEXT_V2,
+    params.bundleUuid.toLowerCase(),
+    params.userUuid.toLowerCase(),
+    params.deviceUuid.toLowerCase(),
+  ].join(" | ");
+}
+
+export type FrankingWrapTargetV2 = FrankingWrapTargetV1;
+export type FrankingWrappedKeyV2 = FrankingWrappedKeyV1;
+
+export function wrapReportContentKeyV2(
+  sodium: FrankingWrapSodium,
+  params: {
+    reportContentKey: Uint8Array;
+    bundleUuid: string;
+    target: FrankingWrapTargetV2;
+  },
+): FrankingWrappedKeyV2 {
+  if (params.reportContentKey.length !== FSCP_FRANKING_REPORT_CONTENT_KEY_BYTES) {
+    throw new Error("reportContentKey должен быть 32 байта.");
+  }
+  const aadUtf8Line = frankingWrapAadV2({
+    bundleUuid: params.bundleUuid,
+    userUuid: params.target.userUuid,
+    deviceUuid: params.target.deviceUuid,
+  });
+  const salt32 = sodium.randombytes_buf(FSCP_FRANKING_WRAP_SALT_BYTES);
+  const wrapped = rkeWrapMessageKey({
+    sodium,
+    ephemeralSecret: sodium.randombytes_buf(FSCP_FRANKING_WRAP_EPH_BYTES),
+    recipientAgreementPublicKey: params.target.agreementPublicKey,
+    salt32,
+    aadUtf8Line,
+    messageKey32: params.reportContentKey,
+  });
+  const packed = concatBytes([
+    wrapped.ephemeralPublicKey,
+    salt32,
+    wrapped.nonce,
+    wrapped.ciphertext,
+  ]);
+  return {
+    userUuid: params.target.userUuid,
+    deviceUuid: params.target.deviceUuid,
+    wrappedKey: encodeFscpBase64Url(sodium, packed),
+  };
+}
+
+export function unwrapReportContentKeyV2(
+  sodium: FrankingWrapSodium,
+  params: {
+    wrappedKey: string;
+    bundleUuid: string;
+    userUuid: string;
+    deviceUuid: string;
+    agreementPrivateKey: Uint8Array;
+  },
+): Uint8Array {
+  const packed = decodeFscpBase64Url(sodium, params.wrappedKey);
+  const header =
+    FSCP_FRANKING_WRAP_EPH_BYTES + FSCP_FRANKING_WRAP_SALT_BYTES + FSCP_FRANKING_WRAP_NONCE_BYTES;
+  if (packed.length <= header) {
+    throw new Error("franking wrap слишком короткий.");
+  }
+  return rkeUnwrapMessageKey({
+    sodium,
+    agreementPrivateKey: params.agreementPrivateKey,
+    ephemeralPublicKey: packed.subarray(0, FSCP_FRANKING_WRAP_EPH_BYTES),
+    salt32: packed.subarray(
+      FSCP_FRANKING_WRAP_EPH_BYTES,
+      FSCP_FRANKING_WRAP_EPH_BYTES + FSCP_FRANKING_WRAP_SALT_BYTES,
+    ),
+    aadUtf8Line: frankingWrapAadV2({
+      bundleUuid: params.bundleUuid,
+      userUuid: params.userUuid,
+      deviceUuid: params.deviceUuid,
+    }),
+    nonce: packed.subarray(header - FSCP_FRANKING_WRAP_NONCE_BYTES, header),
+    ciphertext: packed.subarray(header),
+  });
+}
+
 export function assembleFrankingReportV1(
   sodium: FrankingWrapSodium,
   params: {
@@ -442,6 +769,29 @@ export function assembleFrankingReportV1(
     }),
   );
   return { disclosureCiphertext: sealed.disclosureCiphertext, wraps };
+}
+
+export function assembleFrankingReportV2(
+  sodium: FrankingWrapSodium,
+  params: {
+    bundleUuid?: string;
+    messages: readonly FrankingComplaintDisclosureInputV1[];
+    wrapTargets: readonly FrankingWrapTargetV2[];
+  },
+): { bundleUuid: string; disclosureCiphertext: string; wraps: FrankingWrappedKeyV2[] } {
+  const bundleUuid = params.bundleUuid ?? floraNewUuid();
+  const sealed = sealFrankingComplaintBundleV2(sodium, {
+    bundleUuid,
+    messages: params.messages,
+  });
+  const wraps = params.wrapTargets.map((target) =>
+    wrapReportContentKeyV2(sodium, {
+      reportContentKey: sealed.reportContentKey,
+      bundleUuid,
+      target,
+    }),
+  );
+  return { bundleUuid, disclosureCiphertext: sealed.disclosureCiphertext, wraps };
 }
 
 /** Tagged v1.1+ без квитанции — не жаловаться (franking.md §4.3). Untagged v1 — unverifiable, можно. */

@@ -18,7 +18,9 @@
   "scripts": {
     "typecheck": "tsc -p ts/tsconfig.json --noEmit",
     "test": "vitest run --config ts/vitest.config.ts",
-    "generate:notification-preview-vector": "tsx ts/scripts/generateNotificationPreviewVector.ts"
+    "generate:notification-preview-vector": "tsx ts/scripts/generateNotificationPreviewVector.ts",
+    "generate:franking-wire-v1-1-vector": "tsx ts/scripts/generateFrankingWireV1_1Vector.ts",
+    "generate:franking-disclosure-bundle-v2-vector": "tsx ts/scripts/generateFrankingDisclosureV2Vector.ts"
   },
   "peerDependencies": {
     "@flora/client-core": "*"

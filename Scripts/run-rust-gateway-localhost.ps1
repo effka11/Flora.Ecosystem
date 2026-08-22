@@ -3,6 +3,7 @@
   Rust flora-api on :5290 — sole local API host (Phase 5: .NET removed).
 
   Requires: cargo on PATH, shared Jwt from ensure-shared-dev-jwt.ps1,
+  franking seed from ensure-franking-signing-seed.ps1 (Local/.flora),
   PostgreSQL (docker compose), Backend/appsettings.json.
 #>
 $ErrorActionPreference = "Stop"
@@ -10,10 +11,12 @@ $root = (Split-Path $PSScriptRoot -Parent | Resolve-Path).Path
 $configDir = Join-Path $root "Backend"
 
 $secret = & (Join-Path $PSScriptRoot "ensure-shared-dev-jwt.ps1")
+$frankingSeed = & (Join-Path $PSScriptRoot "ensure-franking-signing-seed.ps1")
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 $env:FLORA_ENVIRONMENT = "Development"
 $env:FLORA_CONFIG_DIR = $configDir
 $env:Jwt__Secret = $secret
+$env:Messaging__FrankingSigningSeed = $frankingSeed
 $env:Music__ServeNative = "true"
 $env:Auth__ServeNative = "true"
 $env:Users__ServeNative = "true"

@@ -1,8 +1,40 @@
 # FSCP-FRANK — Message franking для FSCP (RFC, draft)
 
-**Статус:** Draft RFC v0.2 (2026-07-14) — **исполняемый**: эталонная реализация [`franking.ts`](../../Packages/flora-client-core/src/fscp/franking.ts), golden-вектор [`franking-v1.json`](../test-vectors/franking-v1.json) с потребителями TS и Rust (§5). Удовлетворяет gate FGP v2 «franking-RFC в FSCP принят хотя бы как draft» ([`../fgp/FGP.md`](../fgp/FGP.md) §8.3).
-**Активация:** FSCP v1.1+ — **после** снятия заморозки wire ([`../../next-architecture.md`](../../next-architecture.md) §1.2). Байты FSCP v1 этот документ **не меняет**.
+**Статус:** Draft RFC v0.2 (2026-07-14) — **исполняемый**: эталонная реализация [`franking.ts`](../../Products/FSCP/ts/src/franking.ts) (`@flora/fscp`, реэкспорт `@flora/client-core/fscp`), golden-вектор [`franking-v1.json`](../test-vectors/franking-v1.json) с потребителями TS и Rust (§5). Удовлетворяет gate FGP v2 «franking-RFC в FSCP принят хотя бы как draft» ([`../fgp/FGP.md`](../fgp/FGP.md) §8.3).
+**Активация:** wire-дельта v1.1 **реализована в коде**, эмиссия тега **выключена по умолчанию**; в бою не включена. Боевое включение эмиссии — **после** снятия заморозки wire ([`../../next-architecture.md`](../../next-architecture.md) §1.2), см. ступень 3 §Активация ниже. Порядок rollout — три ступени. Без `emitFrankTag` байты FSCP v1 этот документ **не меняет**.
 **Нормативные связи:** [`FSCP.md`](./FSCP.md) §Целевой алгоритм → Message franking (обзор), [`e2e-security.md`](./e2e-security.md) §Модерация, [`../fgp/FGP.md`](../fgp/FGP.md) §1.2 п. 7 и §6.5.
+
+---
+
+## Активация
+
+### Статус реализации (код)
+
+Wire-дельта v1.1 реализована в SoT `Products/FSCP/ts` и в форке `Apps/Web/lib/fscp`. Эмиссия тега — явный параметр `emitFrankTag` у `buildFscpWireEnvelope`, проброшен через `buildBlocksMessageWire` / `buildTextMessageWire`; **по умолчанию выключен**. Пока выключен, байты конверта и plaintext совпадают с v1.
+
+При включённом `emitFrankTag`: `frankingKey` (32 байта) в plaintext рядом с `blocks`, `frankTag` на конверте, AAD тела `flora.messaging.message.v1_1` с тегом в суффиксе; тег покрыт подписью Ed25519 отправителя. Decrypt на обеих сторонах разбирает v1 (без тега) и v1.1 (с тегом).
+
+Путь раскрытия у ревьюера — `@flora/fscp` (`frankingDisclosure.ts`): разбор кортежа, разбор plaintext в блоки, фасад verify с различимыми причинами, включая «неверифицируемая» для untagged-сообщений. Типизированная поверхность для потребителя — `@flora/client-core` (`api/franking.ts` + contracts): один вызов отдаёт блоки и вердикт.
+
+Bundle из нескольких сообщений: контейнер `FrankingComplaintBundleV2` из N независимых кортежей под одним seal, кап `FSCP_FRANKING_BUNDLE_MAX_MESSAGES = 20`, wrap в контексте `flora.fscp.franking-wrap.v2` со скоупом клиентского `bundleUuid`; проверка по каждому сообщению отдельно.
+
+`MessageEnvelope.version` остаётся **1**, префикс `fscp1:`, `preKeyId` по-прежнему `null`. Это не v2 и не pre-keys.
+
+### Порядок выкладки (три ступени)
+
+1. **Серверный seed.** На API должен быть валидный секрет `Messaging:FrankingSigningSeed`; иначе любой send с тегом упрётся в `messaging.franking.signing_unavailable` (fail-closed, §4.7).
+2. **Decrypt у получателей (floor-версия).** Сборка с decrypt-веткой v1 / v1.1 у **получателей**. Web подхватит на релоаде; Mobile тянет крипту из `@flora/client-core/fscp` внутрь установленного бинаря — старая установка не расшифрует сообщение с тегом (отправитель считает AAD `v1_1`, старый получатель — `v1`). Ступень 2 должна быть подтверждена до ступени 3.
+3. **Эмиссия тега.** Только когда сборка с decrypt стала минимальной поддерживаемой версией получателей **и** снята заморозка wire ([`../../next-architecture.md`](../../next-architecture.md) §1.2), приложения включают `emitFrankTag` на боевом send — это момент, когда wire фактически меняется. Пока `emitFrankTag` выключен по умолчанию, байты v1 не меняются и заморозка не нарушается. Если ждать floor-версию нельзя, параметр включается не раньше, чем появится серверный признак min-version / capability, по которому отправитель решает, тегировать ли.
+
+### Операционные проверки (на человеке)
+
+- Выставить секрет `Messaging:FrankingSigningSeed` в окружении целевого env.
+- Прогнать аутентифицированную проверку `GET /api/messaging/franking/server-key` на том же env.
+- Подтвердить ступень 2 порядка выкладки (floor-версия получателей) до включения ступени 3.
+
+### Вне scope текущей реализации
+
+Следующее **не** реализовано и не следует считать включённым: экран раскрытия в Gov; multi-select в UI чата; приём bundle на стороне Social (форма отчёта и схема БД); обязательное отклонение untagged-сообщений; pre-key pool; Double Ratchet; консолидация Web-форка; ротация серверного ключа франкования.
 
 ---
 
@@ -110,7 +142,7 @@ serverFrankReceipt = {
 
 ### 4.6. Границы и не-цели
 
-- Franking обязателен для **отправки** в v1.1+ (сообщение без тега сервер отклоняет по форме) — иначе abuse-отправитель просто выключит его.
+- После ступени 3 §Активация franking обязателен для **отправки** (сообщение без тега сервер отклоняет по форме) — иначе abuse-отправитель просто выключит его. До этого ingest untagged — как в v1 (§4.7); обязательное отклонение — вне scope текущей реализации (§Активация).
 - Медиа-блоки: commitment покрывает plaintext JSON тела, включая `assetUuid` и AES-ключи вложений — раскрытие кортежа даёт жюри доступ к конкретному вложению. Отдельный per-asset franking не требуется.
 - Групповые чаты — вне scope (отдельный RFC вместе с MLS/sender keys; per-member теги).
 - Метаданные, которые видит жюри при жалобе: участники, время, UUID **одного** сообщения. Это осознанная цена доказуемости.
@@ -142,7 +174,9 @@ FSM: `open` → claim с wrap claimerа → `claimed`; без wrap → `claimed_
 - позитив: `commitInput`, `frankTag`, `receiptPayload`, подпись сервера, полный verify-путь жюри;
 - негативы с точной причиной отказа: `plaintext_tampered` и `franking_key_wrong` (commit-mismatch), `receipt_signature_tampered` и `receipt_time_mismatch` (receipt-signature-invalid), `message_uuid_mismatch` — демонстрирует, что metadata-binding срабатывает уже на HMAC-шаге (uuid входит в commitInput).
 
-Потребители: TS [`frankingVector.test.ts`](../../Packages/flora-client-core/src/fscp/frankingVector.test.ts) (эталон `franking.ts`), Rust [`fscp_franking_vectors.rs`](../../Backend/Tests/parity/tests/fscp_franking_vectors.rs) (включая детерминированное воспроизведение серверной подписи из seed — Rust как будущий подписант). C#-consumer — вместе с серверной реализацией при активации v1.1.
+Потребители: TS [`frankingVector.test.ts`](../../Products/FSCP/ts/src/frankingVector.test.ts) (эталон `franking.ts` в `@flora/fscp`), Rust [`fscp_franking_vectors.rs`](../../Backend/Tests/parity/tests/fscp_franking_vectors.rs) (детерминированное воспроизведение серверной подписи из seed — Rust как серверный подписант).
+
+Wire-дельта v1.1 и bundle v2 закреплены отдельными golden (регенерация из `@flora/fscp`, руками JSON не править): [`fscp-franking-wire-v1_1.json`](../test-vectors/fscp-franking-wire-v1_1.json) (Algorithm A + recorded tagged `fscp1:` + подмена `frankTag`) и [`fscp-franking-disclosure-bundle-v2.json`](../test-vectors/fscp-franking-disclosure-bundle-v2.json) (канонические байты кортежа, bundle, wrap v2). Потребители: TS `frankingWireVectorV1_1.test.ts` / `frankingDisclosureBundleVector.test.ts`; Rust [`fscp_franking_wire_v1_1.rs`](../../Backend/Tests/parity/tests/fscp_franking_wire_v1_1.rs) (ingest `try_validate_wire` + `verify_envelope_signature` + HMAC/AAD). Замороженный [`franking-v1.json`](../test-vectors/franking-v1.json) этими векторами **не** заменяется.
 
 ## 6. Открытые вопросы
 

@@ -2,7 +2,6 @@ import {
   assembleFrankingReportV1,
   decodeFscpBase64Url,
   decryptFscpWireEnvelopeDetailed,
-  deriveAgreementPublicKeyBytes,
   getSodium,
   isFscpWirePayload,
   frankingReportBlockedByMissingReceipt,
@@ -109,18 +108,9 @@ export async function submitFrankingMessageReport(params: {
     const decoded = decodeWrapTarget(sodium, item);
     if (decoded) pushTarget(decoded);
   }
-
-  const localDevice = params.localMaterial?.deviceUuidFromServer?.trim();
-  if (params.localMaterial && localDevice) {
-    const key = `${params.viewerUserUuid.trim().toLowerCase()}|${localDevice.toLowerCase()}`;
-    if (!seen.has(key)) {
-      pushTarget({
-        userUuid: params.viewerUserUuid,
-        deviceUuid: localDevice,
-        agreementPublicKey: await deriveAgreementPublicKeyBytes(params.localMaterial),
-      });
-    }
-  }
+  // Wrap только на Active-устройства из GET server-key. `deviceUuidFromServer` на
+  // клиенте часто bootstrap-сентинел (`00000000-0000-4000-8000-000000000002`) или
+  // устаревший UUID — сервер отвечает 400 «не принадлежит активному устройству».
 
   const assembled = assembleFrankingReportV1(sodium, {
     complaint: {
