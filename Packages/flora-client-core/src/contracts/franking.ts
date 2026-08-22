@@ -54,6 +54,12 @@ export type FrankingDisclosureWrapDto = {
   wrappedKey: string;
 };
 
+/** Wrap returned to the viewer on GET disclosure (`FrankingOwnWrapDto` on the wire). */
+export type FrankingOwnWrapDto = {
+  deviceUuid: string;
+  wrappedKey: string;
+};
+
 export type FrankingWrapTargetDto = {
   userUuid: string;
   deviceUuid: string;
@@ -81,6 +87,18 @@ function parseWrapTargetList(raw: unknown, ctx?: ParseContext): FrankingWrapTarg
     return userUuid && deviceUuid && agreementPublicKeyBase64Url
       ? [{ userUuid, deviceUuid, agreementPublicKeyBase64Url }]
       : [];
+  });
+}
+
+function parseOwnWrapList(raw: unknown, ctx?: ParseContext): FrankingOwnWrapDto[] {
+  if (!Array.isArray(raw)) return [];
+  const fb = ctx?.onPascalFallback;
+  return raw.flatMap((item) => {
+    const row = asRecord(item);
+    if (!row) return [];
+    const deviceUuid = readStr(row, ["deviceUuid", "DeviceUuid"], fb);
+    const wrappedKey = readStr(row, ["wrappedKey", "WrappedKey"], fb);
+    return deviceUuid && wrappedKey ? [{ deviceUuid, wrappedKey }] : [];
   });
 }
 
@@ -123,11 +141,104 @@ export function parseFrankingServerKey(raw: unknown, ctx?: ParseContext): Franki
   };
 }
 
+export function parseFrankingDisclosure(raw: unknown, ctx?: ParseContext): FrankingDisclosureDto {
+  const o = asRecord(raw);
+  if (!o) throw new Error("Некорректный ответ: нет disclosureCiphertext заявки franking.");
+  const fb = ctx?.onPascalFallback;
+  const disclosureCiphertext = readStr(o, ["disclosureCiphertext", "DisclosureCiphertext"], fb);
+  if (!disclosureCiphertext) {
+    throw new Error("Некорректный ответ: нет disclosureCiphertext заявки franking.");
+  }
+
+  const verificationStatus = parseFrankingVerificationStatus(
+    readStr(o, ["verificationStatus", "VerificationStatus"], fb),
+  );
+  if (!verificationStatus) {
+    throw new Error("Некорректный ответ: нет verificationStatus заявки franking.");
+  }
+
+  const frankTagBase64Url = readStr(o, ["frankTagBase64Url", "FrankTagBase64Url"], fb);
+  return {
+    disclosureCiphertext,
+    wraps: parseOwnWrapList(o.wraps ?? o.Wraps, ctx),
+    serverFrankReceipt: parseServerFrankReceipt(
+      o.serverFrankReceipt ?? o.ServerFrankReceipt,
+      ctx,
+    ),
+    frankTagBase64Url: frankTagBase64Url.length > 0 ? frankTagBase64Url : null,
+    verificationStatus,
+  };
+}
+
 export type CreateFrankingReportRequest = {
   persistedMessageUuid: string;
   category: FrankingReportCategory;
   disclosureCiphertext: string;
   wraps?: FrankingDisclosureWrapDto[];
+};
+
+/** GET `/api/messaging/franking/reports/{uuid}/disclosure` (frozen HTTP). */
+export type FrankingDisclosureDto = {
+  disclosureCiphertext: string;
+  wraps: FrankingOwnWrapDto[];
+  serverFrankReceipt: ServerFrankReceiptDto | null;
+  frankTagBase64Url: string | null;
+  verificationStatus: FrankingVerificationStatus;
+};
+
+/**
+ * Message blocks for the reviewer screen. Structural match for FSCP
+ * `FscpMessageBlock` — contracts must not import `@flora/fscp`.
+ */
+export type FrankingReviewedMediaEncryption = {
+  algorithm: "aes-gcm";
+  keyBase64Url: string;
+  nonceBase64Url: string;
+};
+
+export type FrankingReviewedBlock =
+  | { kind: "text"; body: string }
+  | {
+      kind: "voice";
+      assetUuid: string;
+      durationMs: number;
+      waveform: number[];
+      contentType: string;
+      encryption: FrankingReviewedMediaEncryption;
+    }
+  | {
+      kind: "image";
+      assetUuid: string;
+      contentType: string;
+      encryption: FrankingReviewedMediaEncryption;
+    }
+  | {
+      kind: "video";
+      assetUuid: string;
+      contentType: string;
+      durationMs: number;
+      width: number;
+      height: number;
+      encryption: FrankingReviewedMediaEncryption;
+    }
+  | { kind: "unknown"; originalKind: string };
+
+/** Fields the complaint tuple lacks for a cryptographic check (untagged v1). */
+export type FrankingReviewerMissingField =
+  | "frankingKeyBase64Url"
+  | "frankTagBase64Url"
+  | "serverFrankReceipt";
+
+/** Crypto verdict for the reviewer. `ok` is the boolean the screen binds to. */
+export type FrankingReviewerVerdict =
+  | { ok: true }
+  | { ok: false; reason: "commit-mismatch" | "receipt-signature-invalid" }
+  | { ok: false; reason: "unverifiable"; missing: readonly FrankingReviewerMissingField[] };
+
+/** One-call reviewer result: blocks to show + verdict. No crypto types. */
+export type FrankingReviewerResult = {
+  blocks: readonly FrankingReviewedBlock[] | null;
+  verified: FrankingReviewerVerdict;
 };
 
 export type FrankingReportStatus =

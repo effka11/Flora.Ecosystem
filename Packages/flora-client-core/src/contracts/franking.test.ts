@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseFrankingAudit,
+  parseFrankingDisclosure,
   parseFrankingQueue,
   parseFrankingServerKey,
   parseFrankingWrapTargets,
@@ -249,6 +250,55 @@ describe("parseFrankingServerKey", () => {
     expect(page.reviewerRosterReady).toBe(false);
     expect(page.wrapTargets.items).toHaveLength(1);
     expect(page.wrapTargets).not.toHaveProperty("reviewerRosterReady");
+  });
+});
+
+describe("parseFrankingDisclosure", () => {
+  it("parses ciphertext, own wraps, and optional receipt fields", () => {
+    const dto = parseFrankingDisclosure({
+      disclosureCiphertext: "sealed",
+      wraps: [
+        { deviceUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", wrappedKey: "wk" },
+        { deviceUuid: "skip-me" },
+      ],
+      serverFrankReceipt: {
+        signatureBase64Url: "sig",
+        serverFrankingKeyId: "kid",
+        serverReceivedAt: "2026-01-01T00:00:00.000Z",
+      },
+      frankTagBase64Url: "tag",
+      verificationStatus: "verifiable",
+    });
+    expect(dto.disclosureCiphertext).toBe("sealed");
+    expect(dto.wraps).toEqual([
+      { deviceUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", wrappedKey: "wk" },
+    ]);
+    expect(dto.frankTagBase64Url).toBe("tag");
+    expect(dto.verificationStatus).toBe("verifiable");
+    expect(dto.serverFrankReceipt?.serverFrankingKeyId).toBe("kid");
+  });
+
+  it("treats missing receipt and empty frank tag as null", () => {
+    const dto = parseFrankingDisclosure({
+      disclosureCiphertext: "sealed",
+      wraps: [],
+      serverFrankReceipt: null,
+      frankTagBase64Url: "",
+      verificationStatus: "unverifiable",
+    });
+    expect(dto.serverFrankReceipt).toBeNull();
+    expect(dto.frankTagBase64Url).toBeNull();
+    expect(dto.verificationStatus).toBe("unverifiable");
+  });
+
+  it("throws when ciphertext or verificationStatus is missing", () => {
+    expect(() => parseFrankingDisclosure(null)).toThrow(/disclosureCiphertext/);
+    expect(() =>
+      parseFrankingDisclosure({ wraps: [], verificationStatus: "verifiable" }),
+    ).toThrow(/disclosureCiphertext/);
+    expect(() => parseFrankingDisclosure({ disclosureCiphertext: "sealed" })).toThrow(
+      /verificationStatus/,
+    );
   });
 });
 

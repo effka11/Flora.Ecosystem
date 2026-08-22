@@ -25,6 +25,9 @@ export function recipientKeyEnvelopeAadLine(params: {
   ].join(" | ");
 }
 
+const MESSAGE_BODY_CONTEXT_V1 = "flora.messaging.message.v1";
+const MESSAGE_BODY_CONTEXT_V1_1 = "flora.messaging.message.v1_1";
+
 export function messageBodyAadLine(params: {
   conversationUuid: string;
   keyEpochId: string;
@@ -33,10 +36,17 @@ export function messageBodyAadLine(params: {
   senderUserUuid: string;
   senderDeviceUuid: string;
   createdAt: string;
+  /**
+   * FSCP-FRANK (franking.md §4.2): тег переключает строку на версию `v1_1` и уходит
+   * в суффикс — подмена тега сервером ломает AEAD у получателя. Без тега строка
+   * побайтово равна v1 (замороженный wire).
+   */
+  frankTagBase64Url?: string | null;
 }): string {
   const p = params;
-  return [
-    "flora.messaging.message.v1",
+  const frankTag = p.frankTagBase64Url?.trim();
+  const fields = [
+    frankTag ? MESSAGE_BODY_CONTEXT_V1_1 : MESSAGE_BODY_CONTEXT_V1,
     p.conversationUuid.toLowerCase(),
     p.keyEpochId.toLowerCase(),
     p.messageUuid.toLowerCase(),
@@ -44,5 +54,7 @@ export function messageBodyAadLine(params: {
     p.senderUserUuid.toLowerCase(),
     p.senderDeviceUuid.toLowerCase(),
     p.createdAt,
-  ].join(" | ");
+  ];
+  if (frankTag) fields.push(frankTag);
+  return fields.join(" | ");
 }

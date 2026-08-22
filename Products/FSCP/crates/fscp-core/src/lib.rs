@@ -695,6 +695,44 @@ mod tests {
         assert!(extract_frank_tag(&wire).unwrap_err().contains("32 байта"));
     }
 
+    fn franking_wire_v1_1() -> serde_json::Value {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        for _ in 0..4 {
+            path.pop();
+        }
+        path.push("Documents");
+        path.push("test-vectors");
+        path.push("fscp-franking-wire-v1_1.json");
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("нет {}: {e}", path.display()));
+        serde_json::from_str(&raw).expect("fscp-franking-wire-v1_1.json")
+    }
+
+    #[test]
+    fn tagged_v1_1_golden_wire_passes_form_and_signature() {
+        use base64::Engine as _;
+
+        let v = franking_wire_v1_1();
+        let recorded = &v["recordedWire"];
+        let wire = recorded["wire"].as_str().unwrap();
+        let sender = uuid::uuid!("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        let receiver: Uuid = recorded["receiver"]["userUuid"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        assert_eq!(try_validate_wire(wire, sender, receiver), Ok(()));
+        assert_eq!(verify_envelope_signature(wire), Ok(()));
+        let tag = extract_frank_tag(wire)
+            .unwrap()
+            .expect("tagged v1.1 wire must carry a 32-byte frankTag");
+        let expected = URL_SAFE_NO_PAD
+            .decode(recorded["expected"]["frankTagBase64Url"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(tag.as_slice(), expected.as_slice());
+    }
+
     // ── verify_envelope_signature (errata-5, аддитивная криптоступень) ──────
     // Golden-паритет с TS/python — Tests/parity/tests/fscp_transcript_vectors.rs;
     // здесь — самодостаточные синтетические проверки.
