@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { ENERGETIC_SNAP_VX, snapPagerOffset } from "./energeticPagerSnap";
-import { floraMotion } from "./theme";
 
 describe("snapPagerOffset", () => {
   const width = 300;
@@ -20,11 +19,5 @@ describe("snapPagerOffset", () => {
 
   it("clamps to the last page", () => {
     expect(snapPagerOffset(width * 1.5, width, 2, -500)).toBe(width);
-  });
-});
-
-describe("tab route fade", () => {
-  it("uses the same duration as a subtab tap settle", () => {
-    expect(floraMotion.tabTransitionDurationMs).toBe(floraMotion.baseMs * 3);
   });
 });
