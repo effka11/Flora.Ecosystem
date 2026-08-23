@@ -1,8 +1,6 @@
 import { getActiveTabRouteKey, getActiveTabRouteName } from "@/lib/getActiveTabRouteKey";
-import {
-  floraRouteRevealEasing,
-  floraRouteTransitionClearMs,
-} from "@/lib/floraRouteEnterFade";
+import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
+import { floraRouteTransitionClearMs } from "@/lib/floraRouteEnterFade";
 import { bindRouteTransitionBusy } from "@/lib/routeTransitionBusy";
 import { clearScrollActivityOwner } from "@/lib/scrollActivity";
 import {
@@ -20,27 +18,31 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
 
-/** Reveal overlay 1→0 — duration-2 + ease-out quad, не слайд подвкладок. */
+/** Reveal overlay 1→0 — та же длительность и ease-out, что тап подвкладок. */
 function runFloraRouteRevealFade(
   overlayOpacity: SharedValue<number>,
   onFinished: () => void,
 ) {
   overlayOpacity.value = 1;
-  overlayOpacity.value = withTiming(
-    0,
-    {
-      duration: floraMotion.tabTransitionDurationMs,
-      easing: floraRouteRevealEasing,
-    },
-    (finished) => {
-      if (finished) {
-        runOnJS(onFinished)();
-      }
-    },
+  overlayOpacity.value = withDelay(
+    floraMotion.tabTransitionDelayMs,
+    withTiming(
+      0,
+      {
+        duration: ENERGETIC_OPEN_MS,
+        easing: ENERGETIC_OPEN_EASING,
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(onFinished)();
+        }
+      },
+    ),
   );
 }
 
