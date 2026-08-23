@@ -74,7 +74,10 @@ export function TabScreenHeader({
     <View
       style={[
         styles.shell,
-        { paddingTop: insets.top + floraSpacing.grid },
+        {
+          paddingTop: insets.top + floraSpacing.grid,
+          paddingBottom: hasSwap ? 0 : floraSpacing.gridFine,
+        },
         chromeBorder ? styles.shellBorder : null,
       ]}
       onLayout={onLayout}
