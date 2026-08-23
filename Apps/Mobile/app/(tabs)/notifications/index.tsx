@@ -12,7 +12,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -24,6 +23,7 @@ import {
   NOTIFICATION_CATEGORY_TABS,
   NotificationCategoryPicker,
 } from "@/components/notifications/NotificationCategoryPicker";
+import { NotificationsClearModal } from "@/components/notifications/NotificationsClearModal";
 import { NotificationRow } from "@/components/notifications/NotificationRow";
 import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
@@ -66,6 +66,7 @@ export default function NotificationsScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const markAllReadInFlightRef = useRef(false);
 
@@ -173,12 +174,26 @@ export default function NotificationsScreen() {
     [queryClient],
   );
 
+  const dismissClearModal = useCallback(() => {
+    if (clearing) return;
+    setClearOpen(false);
+    setClearError(null);
+  }, [clearing]);
+
   const confirmClearAll = useCallback(async () => {
     setClearing(true);
+    setClearError(null);
     try {
       await apiDeleteAllNotifications();
       setClearOpen(false);
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.setQueriesData<NotificationDto[]>(
+        { queryKey: ["notifications"] },
+        () => EMPTY_NOTIFICATIONS,
+      );
+      requestTabBadgesRefresh();
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch {
+      setClearError("Не удалось удалить уведомления.");
     } finally {
       setClearing(false);
     }
@@ -216,6 +231,7 @@ export default function NotificationsScreen() {
               style={({ pressed }) => [styles.clearBtn, pressed && styles.pressed]}
               onPress={() => {
                 setFilterOpen(false);
+                setClearError(null);
                 setClearOpen(true);
               }}
               disabled={showFirstLoadSpinner}
@@ -257,47 +273,13 @@ export default function NotificationsScreen() {
         />
       )}
 
-      <Modal
+      <NotificationsClearModal
         visible={clearOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => !clearing && setClearOpen(false)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => !clearing && setClearOpen(false)}>
-          <Pressable style={styles.modalDialog} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Стереть уведомления</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Закрыть"
-                hitSlop={10}
-                onPress={() => !clearing && setClearOpen(false)}
-              >
-                <Text style={styles.modalClose}>×</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.modalText}>
-              Удалить все уведомления? Это действие нельзя отменить.
-            </Text>
-            <View style={styles.modalActions}>
-              <Pressable
-                style={({ pressed }) => [styles.modalConfirm, pressed && styles.pressed, clearing && styles.disabled]}
-                onPress={() => void confirmClearAll()}
-                disabled={clearing}
-              >
-                <Text style={styles.modalConfirmText}>{clearing ? "Удаление…" : "Удалить все"}</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.modalCancel, pressed && styles.pressed, clearing && styles.disabled]}
-                onPress={() => setClearOpen(false)}
-                disabled={clearing}
-              >
-                <Text style={styles.modalCancelText}>Отмена</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        busy={clearing}
+        error={clearError}
+        onDismiss={dismissClearModal}
+        onConfirm={() => void confirmClearAll()}
+      />
     </View>
   );
 }
@@ -348,76 +330,5 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
-  },
-  disabled: {
-    opacity: 0.5,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.65)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: floraSpacing.grid * 2,
-  },
-  modalDialog: {
-    width: "100%",
-    maxWidth: 520,
-    borderRadius: 16,
-    backgroundColor: floraColors.surface,
-    borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.12)",
-    padding: floraSpacing.grid * 2,
-    gap: floraSpacing.grid * 2,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  modalTitle: {
-    color: floraColors.whiteTemplate,
-    fontSize: 19,
-    fontWeight: "300",
-    letterSpacing: 0.57,
-  },
-  modalClose: {
-    color: floraColors.gray,
-    fontSize: 28,
-    lineHeight: 28,
-  },
-  modalText: {
-    color: "rgba(250, 250, 250, 0.85)",
-    fontSize: 15,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
-  },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
-  },
-  modalConfirm: {
-    paddingHorizontal: floraSpacing.grid * 2,
-    paddingVertical: floraSpacing.gridFine * 2,
-    borderRadius: 9999,
-    backgroundColor: floraColors.greenLight,
-  },
-  modalConfirmText: {
-    color: "#10200e",
-    fontSize: 15,
-    fontWeight: "300",
-  },
-  modalCancel: {
-    paddingHorizontal: floraSpacing.grid * 2,
-    paddingVertical: floraSpacing.gridFine * 2,
-    borderRadius: 9999,
-    borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.2)",
-  },
-  modalCancelText: {
-    color: "rgba(250, 250, 250, 0.8)",
-    fontSize: 15,
-    fontWeight: "300",
   },
 });
