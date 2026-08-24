@@ -19,14 +19,19 @@ export default function MessagesLayout() {
 
   return (
     <View style={styles.shell}>
-      <Stack screenOptions={floraNativeStackOptions}>
-        <Stack.Screen name="index" options={{ headerShown: false, animation: "none" }} />
+      <Stack screenOptions={{ ...floraNativeStackOptions, animation: "none" }}>
+        {/* freezeOnBlur: пока открыт тред, список чатов не ре-рендерится от
+            realtime/инвалидаций — JS-поток свободен для открытия треда
+            (данные обновляются, кадр применится при возврате). */}
+        <Stack.Screen
+          name="index"
+          options={{ headerShown: false, animation: "none", freezeOnBlur: true }}
+        />
         <Stack.Screen
           name="[conversationUuid]"
           options={{
             headerShown: false,
-            animation: "fade",
-            animationDuration: 180,
+            animation: "none",
             gestureEnabled: true,
             fullScreenGestureEnabled: true,
           }}

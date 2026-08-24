@@ -6,7 +6,11 @@ import type { FscpImageBlock } from "@flora/client-core/fscp";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { getStoredImageRatio } from "@/lib/imageRatioStore";
-import { ensureMessageImageUri, peekMessageImageUri } from "@/lib/messageImageAssets";
+import {
+  ensureMessageImageUri,
+  peekMessageImageFailure,
+  peekMessageImageUri,
+} from "@/lib/messageImageAssets";
 import {
   DEFAULT_MESSAGE_IMAGE_RATIO,
   messageCollageHeight,
@@ -28,6 +32,15 @@ type Props = {
   containerWidth: number;
 };
 
+/** Один WARN на ассет за сессию: повторные монтажи ячейки не шумят в лог. */
+const warnedAssets = new Set<string>();
+
+function warnDecodeFailedOnce(assetUuid: string, error: unknown): void {
+  if (!__DEV__ || warnedAssets.has(assetUuid)) return;
+  warnedAssets.add(assetUuid);
+  console.warn("[message-image] decode failed", assetUuid, error);
+}
+
 function MessageImageSource({
   block,
   onSnapshot,
@@ -37,9 +50,13 @@ function MessageImageSource({
 }) {
   const [state, setState] = useState<SlotState>(() => {
     const cached = peekMessageImageUri(block.assetUuid);
-    return cached
-      ? { uri: cached, loading: false, error: null }
-      : { uri: "", loading: true, error: null };
+    if (cached) return { uri: cached, loading: false, error: null };
+    // Терминальная неудача известна синхронно — первый кадр сразу «Ошибка»,
+    // без прыжка из «Загрузка…».
+    if (peekMessageImageFailure(block.assetUuid) != null) {
+      return { uri: "", loading: false, error: "Ошибка" };
+    }
+    return { uri: "", loading: true, error: null };
   });
 
   useEffect(() => {
@@ -48,15 +65,17 @@ function MessageImageSource({
       setState({ uri: cached, loading: false, error: null });
       return;
     }
+    if (peekMessageImageFailure(block.assetUuid) != null) {
+      setState({ uri: "", loading: false, error: "Ошибка" });
+      return;
+    }
     let cancelled = false;
     void ensureMessageImageUri(block)
       .then((uri) => {
         if (!cancelled) setState({ uri, loading: false, error: null });
       })
       .catch((error) => {
-        if (__DEV__) {
-          console.warn("[message-image] decode failed", block.assetUuid, error);
-        }
+        warnDecodeFailedOnce(block.assetUuid, error);
         if (!cancelled) setState({ uri: "", loading: false, error: "Ошибка" });
       });
     return () => {
@@ -155,7 +174,10 @@ export function ChatMessageImageCollage({
           <Text style={styles.placeholderText}>Загрузка…</Text>
         </View>
       ) : allFailed ? (
-        <View style={[styles.placeholder, styles.placeholderError, { width: containerWidth }]}>
+        // Та же зарезервированная высота, что у «Загрузка…»: переход
+        // loading → error не должен менять высоту пузыря — иначе все пузыри
+        // выше видимо съезжают в момент отказа декода.
+        <View style={[styles.placeholder, { width: containerWidth, height: loadingPlaceholderHeight }]}>
           <Text style={styles.placeholderText}>Не удалось загрузить фото</Text>
         </View>
       ) : null}
@@ -169,12 +191,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(250, 250, 250, 0.06)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  // The error state doesn't know (and no longer needs) the real collage
-  // height — it keeps the old compact reservation instead of the up-to-470px
-  // placeholder the loading state now reserves.
-  placeholderError: {
-    height: floraMessages.messageCollageRowHeight * 2,
   },
   placeholderText: {
     color: floraColors.gray,

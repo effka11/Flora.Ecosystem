@@ -160,30 +160,26 @@ export function useGroupChatThread(params: {
     titleHint,
   ]);
 
+  const fetchMessagesPage = useCallback(async (): Promise<GroupMessagesPage> => {
+    const page = await apiGetGroupMessages(conversationUuid);
+    return {
+      items: groupApiMessagesToThread(conversationUuid, page.items),
+      nextCursor: page.nextCursor,
+    };
+  }, [conversationUuid]);
+
   const messagesQuery = useQuery({
     queryKey: groupMessagesQueryKey(conversationUuid),
     enabled: enabled && !!conversationUuid,
     staleTime: 60_000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
-    queryFn: async (): Promise<GroupMessagesPage> => {
-      const page = await apiGetGroupMessages(conversationUuid);
-      return {
-        items: groupApiMessagesToThread(conversationUuid, page.items),
-        nextCursor: page.nextCursor,
-      };
-    },
+    queryFn: fetchMessagesPage,
   });
 
-  useEffect(() => {
-    if (!enabled || !conversationUuid) return;
-    void apiMarkGroupRead(conversationUuid)
-      .then(() => {
-        void queryClient.invalidateQueries({ queryKey: ["groups"] });
-        requestTabBadgesRefresh();
-      })
-      .catch(() => undefined);
-  }, [conversationUuid, enabled, queryClient]);
+  // Mark-read и тихий догруз живут на экране треда и стартуют после reveal
+  // ленты (см. [conversationUuid].tsx): раньше mark-read стрелял здесь ВТОРЫМ
+  // дублирующим вызовом прямо в окне открытия.
 
   const messages = useMemo(() => {
     void pendingEpoch;

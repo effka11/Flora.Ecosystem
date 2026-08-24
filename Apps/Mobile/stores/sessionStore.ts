@@ -18,6 +18,7 @@ import {
 import { useFscpStore } from "@/stores/fscpStore";
 import { resetBirthTracking } from "@/lib/messageBirthRegistry";
 import { clearAllPendingOutgoing } from "@/lib/messageThreadOutgoing";
+import { wipeChatDiskCache } from "@/stores/chatDiskCache";
 import { messagePreviewCache } from "@/stores/messagePreviewCache";
 import { messageThreadCache } from "@/stores/messageThreadCache";
 
@@ -121,6 +122,7 @@ mobileSessionController.subscribe((next) => {
     getQueryClientRef()?.clear();
     messagePreviewCache.clear();
     messageThreadCache.clear();
+    wipeChatDiskCache();
     clearAllPendingOutgoing();
     resetBirthTracking();
     sharedPresenceStore.clear();

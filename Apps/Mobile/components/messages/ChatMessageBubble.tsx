@@ -19,6 +19,10 @@ import {
   voiceCaptionInnerWidth,
 } from "@/lib/messageBubbleLayout";
 import {
+  messageBubbleBodyTextMetrics,
+  messageBubbleTimeTextMetrics,
+} from "@/lib/messageBubbleTextStyle";
+import {
   bubbleAnchorFromPress,
   readMenuPressCoords,
   type MenuPressCoords,
@@ -65,7 +69,12 @@ type Props = {
   isPeerIndented: boolean;
   /** Пузырь внутри peer-группы: без аватара/indent, ширина как с reserved peer column. */
   inPeerGroup?: boolean;
-  onPress?: (anchor: BubbleAnchorRect) => void;
+  /**
+   * Сообщение приходит аргументом, чтобы родитель передавал один стабильный
+   * обработчик на все пузыри: инлайн-замыкание на каждый рендер ломало memo,
+   * и любое обновление экрана перерисовывало всю ленту.
+   */
+  onPress?: (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => void;
 };
 
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
@@ -193,6 +202,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const voiceYogaHeightRef = useRef(0);
 
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
+  // Анкорная обёртка живёт внутри memo-границы — её пересоздание дёшево.
+  const pressBubble = onPress
+    ? (anchor: BubbleAnchorRect) => onPress(message, anchor)
+    : undefined;
   // Чужие decrypting режет лента; свои могут показать статус. Не рисуем peer-заглушку.
   if (!message.isFromMe && message.decryptState === "decrypting") {
     return null;
@@ -235,7 +248,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const showAvatar = !message.isFromMe && showPeerAvatar && !inPeerGroup;
 
   const bubbleColumnProps = {
-    onPress,
+    onPress: pressBubble,
     tapLaneStyle: message.isFromMe ? styles.tapLaneMe : styles.tapLaneThem,
     messageUuid: message.messageUuid,
     isFromMe: message.isFromMe,
@@ -300,7 +313,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
 
   if (hasVoice && !hasImages) {
     const openVoiceMenu = (event?: unknown) => {
-      onPress?.(bubbleAnchorFromPress(event, voiceYogaHeightRef.current));
+      pressBubble?.(bubbleAnchorFromPress(event, voiceYogaHeightRef.current));
     };
     return (
       <View style={wrapStyle}>
@@ -351,7 +364,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                 durationMs={voiceBlock.durationMs}
                 waveform={voiceBlock.waveform}
                 isFromMe={message.isFromMe}
-                onMenuLongPress={onPress ? openVoiceMenu : undefined}
+                onMenuLongPress={pressBubble ? openVoiceMenu : undefined}
                 timeSlot={
                   voiceOnly ? (
                     <ChatMessageBubbleTime
@@ -668,13 +681,8 @@ const styles = StyleSheet.create({
     minHeight: floraSpacing.grid,
     height: floraSpacing.grid,
   },
-  body: {
-    fontSize: floraMessages.bubbleFontSize,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: floraMessages.bubbleLineHeight,
-    includeFontPadding: false,
-  },
+  // Метрики — из общего источника: ими же мерит offscreen-прогрев замеров.
+  body: messageBubbleBodyTextMetrics,
   bodyMe: {
     color: floraColors.whiteTemplate,
   },
@@ -689,9 +697,7 @@ const styles = StyleSheet.create({
     color: floraColors.textMuted,
   },
   timeInline: {
-    fontSize: floraMessages.bubbleTimeFontSize,
-    lineHeight: 18,
-    includeFontPadding: false,
+    ...messageBubbleTimeTextMetrics,
     opacity: 0.85,
   },
   timeMe: {

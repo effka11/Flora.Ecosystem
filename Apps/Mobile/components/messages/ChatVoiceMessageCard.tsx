@@ -42,7 +42,8 @@ export function ChatVoiceMessageCard({
     () =>
       localUri ??
       (voiceBlock
-        ? (peekPendingVoiceUri(voiceBlock.assetUuid) ?? peekMessageVoiceUri(voiceBlock.assetUuid))
+        ? (peekPendingVoiceUri(voiceBlock.assetUuid) ??
+          peekMessageVoiceUri(voiceBlock.assetUuid, voiceBlock.contentType))
         : null),
   );
   const [loading, setLoading] = useState(false);
@@ -70,7 +71,7 @@ export function ChatVoiceMessageCard({
     }
     if (!voiceBlock) return;
     const pending = peekPendingVoiceUri(voiceBlock.assetUuid);
-    const cached = peekMessageVoiceUri(voiceBlock.assetUuid);
+    const cached = peekMessageVoiceUri(voiceBlock.assetUuid, voiceBlock.contentType);
     if (pending) setSourceUri(pending);
     else if (cached) setSourceUri(cached);
   }, [localUri, voiceBlock]);

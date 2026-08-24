@@ -6,11 +6,17 @@ import { encryptMediaBytes, decryptMediaBytes } from "@/lib/crypto/aesGcm";
 import { readExpoFileBytes, writeExpoFileBytes } from "@/lib/expoFileBytes";
 import { uploadMultipartFile } from "@/lib/multipartUpload";
 import type { PreparedMessageImage } from "@/lib/messageImages";
-import { decodeFrcBytesToCache, encodeImageUriToFrc } from "@/lib/frcImage";
+import { decodeFrcBytesToFile, encodeImageUriToFrc } from "@/lib/frcImage";
 import { apiDownloadMessageImageAsset } from "@flora/client-core/api";
 
 const uriCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
+/**
+ * Терминальные неудачи декода (например, legacy не-FRI): без этого кэша
+ * каждый монтаж пузыря заново скачивал ассет из сети и пытался декодировать —
+ * прямо в окне открытия чата. Сетевые ошибки сюда не попадают (ретраятся).
+ */
+const decodeFailed = new Map<string, Error>();
 
 function normalizeAssetId(assetUuid: string): string {
   return assetUuid.trim().toLowerCase();
@@ -110,8 +116,41 @@ export async function uploadPreparedMessageImage(params: {
   }
 }
 
+/**
+ * Детерминированный путь декодированного PNG: один asset — один файл, кэш
+ * переживает рестарт процесса (раньше имя было случайным, и каждая сессия
+ * заново качала и декодировала все фото).
+ */
+function decodedMessageImageFile(assetUuid: string): File {
+  return new File(Paths.cache, `flora-frc-message-${normalizeAssetId(assetUuid)}.png`);
+}
+
+function peekDecodedMessageImageOnDisk(assetUuid: string): string | null {
+  try {
+    const file = decodedMessageImageFile(assetUuid);
+    return file.exists && (file.size ?? 0) > 0 ? file.uri : null;
+  } catch {
+    return null;
+  }
+}
+
 export function peekMessageImageUri(assetUuid: string): string | null {
-  return uriCache.get(normalizeAssetId(assetUuid)) ?? null;
+  const id = normalizeAssetId(assetUuid);
+  const cached = uriCache.get(id);
+  if (cached) return cached;
+  // Рестарт процесса: PNG декодирован прошлой сессией — первый кадр пузыря
+  // берёт его с диска, без сети и повторного декода.
+  const onDisk = peekDecodedMessageImageOnDisk(id);
+  if (onDisk) uriCache.set(id, onDisk);
+  return onDisk;
+}
+
+/**
+ * Известная терминальная неудача декода — синхронно, для первого кадра пузыря:
+ * ячейка сразу рендерит состояние ошибки, без «Загрузка…» → подмены на ошибку.
+ */
+export function peekMessageImageFailure(assetUuid: string): Error | null {
+  return decodeFailed.get(normalizeAssetId(assetUuid)) ?? null;
 }
 
 /** Локальный URI для optimistic photo-пузыря до upload. */
@@ -122,15 +161,24 @@ export function seedMessageImageUri(assetUuid: string, uri: string): void {
 }
 
 export async function ensureMessageImageUri(block: FscpImageBlock): Promise<string> {
+  const id = normalizeAssetId(block.assetUuid);
+  const knownFailure = decodeFailed.get(id);
+  if (knownFailure) return Promise.reject(knownFailure);
+
   if (!acceptsFrcI(block.contentType)) {
-    throw new Error("Сообщение содержит не-FRI изображение (legacy больше не поддерживается).");
+    // Терминально: contentType сообщения не изменится — кэшируем, чтобы каждый
+    // монтаж пузыря не проходил через throw/warn заново.
+    const err = new Error(
+      "Сообщение содержит не-FRI изображение (legacy больше не поддерживается).",
+    );
+    decodeFailed.set(id, err);
+    return Promise.reject(err);
   }
   if (!isFloraFrcIAvailable()) {
     throw new Error("FRC-I недоступен на устройстве.");
   }
 
-  const id = normalizeAssetId(block.assetUuid);
-  const cached = uriCache.get(id);
+  const cached = peekMessageImageUri(block.assetUuid);
   if (cached) return cached;
 
   const pending = inflight.get(id);
@@ -143,7 +191,13 @@ export async function ensureMessageImageUri(block: FscpImageBlock): Promise<stri
       keyBase64Url: block.encryption.keyBase64Url,
       nonceBase64Url: block.encryption.nonceBase64Url,
     });
-    const uri = await decodeFrcBytesToCache(friBytes);
+    let uri: string;
+    try {
+      uri = await decodeFrcBytesToFile(friBytes, decodedMessageImageFile(id));
+    } catch (e) {
+      decodeFailed.set(id, e instanceof Error ? e : new Error(String(e)));
+      throw e;
+    }
     uriCache.set(id, uri);
     return uri;
   })().finally(() => {

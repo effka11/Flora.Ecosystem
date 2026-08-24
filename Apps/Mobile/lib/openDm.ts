@@ -4,7 +4,6 @@ import { dmConversationUuid } from "@flora/client-core/fscp";
 import { router } from "expo-router";
 import { rehydratePendingOutgoing } from "@/lib/messageThreadOutgoing";
 import { getQueryClientRef } from "@/lib/queryClientRef";
-import { messageThreadCache, messageThreadDecryptCache } from "@/stores/messageThreadCache";
 import { useSessionStore } from "@/stores/sessionStore";
 
 export type DmPeerParams = {
@@ -76,9 +75,6 @@ export async function openMessageFromPush(data: unknown): Promise<void> {
     return;
   }
 
-  messageThreadCache.clearConversation(conversationUuid);
-  messageThreadDecryptCache.clearConversation(conversationUuid);
-
   const meUuid = useSessionStore.getState().me?.userUuid?.trim() ?? "";
   const otherUserUuid =
     senderUserUuid && meUuid && senderUserUuid.toLowerCase() !== meUuid.toLowerCase()
@@ -86,7 +82,13 @@ export async function openMessageFromPush(data: unknown): Promise<void> {
       : "";
 
   const qc = getQueryClientRef();
-  // In-flight optimistic переживает clear — вернуть seeds + merge в RQ.
+  // Telegram-style: кэш треда НЕ чистим — экран мгновенно показывает то, что
+  // есть, а invalidate заставляет его пост-interaction fetchQuery сходить в
+  // сеть даже внутри staleTime и тихо домёржить новое сообщение из пуша.
+  if (qc) {
+    void qc.invalidateQueries({ queryKey: ["messages", conversationUuid] });
+    void qc.invalidateQueries({ queryKey: ["group-messages", conversationUuid] });
+  }
   rehydratePendingOutgoing({
     conversationUuid,
     otherUserUuid: otherUserUuid || undefined,
