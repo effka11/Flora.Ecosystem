@@ -44,3 +44,32 @@ export function warmChatOpenTextLayoutAtTap(
   }
   if (rows.length > 0) enqueueThreadTextMeasures(rows);
 }
+
+/** Строка треда, достаточная для прогрева (структурно — ThreadBubbleItem). */
+type WarmableThreadRow = {
+  decryptState: string;
+  text: string;
+  createdAt: string;
+  isFromMe: boolean;
+  voiceBlock?: unknown;
+  imageBlocks: readonly unknown[];
+};
+
+/**
+ * Прогрев замеров по уже расшифрованным строкам — вызывается на `ready` треда.
+ * Тап-прогрев выше покрывает только строки, расшифрованные ДО тапа; холодный
+ * тред (фоновый прогрев не дошёл — обычное дело при быстром хождении по
+ * чатам) расшифровывается уже после навигации. Без этого вызова первые замеры
+ * шли бы двухпроходно прямо в ячейках — коррекции высот в самом горячем окне
+ * открытия (симптом: `layout-прогрет=1/10` в трассе).
+ */
+export function warmThreadTextLayoutFromRows(rows: readonly WarmableThreadRow[]): void {
+  const warm: { text: string; createdAt: string; isFromMe: boolean }[] = [];
+  for (const row of rows.slice(-TAP_WARM_ROWS)) {
+    if (row.decryptState !== "ok") continue;
+    if (row.voiceBlock || row.imageBlocks.length > 0) continue;
+    if (row.text.trim().length === 0) continue;
+    warm.push({ text: row.text, createdAt: row.createdAt, isFromMe: row.isFromMe });
+  }
+  if (warm.length > 0) enqueueThreadTextMeasures(warm);
+}

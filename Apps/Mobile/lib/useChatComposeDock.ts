@@ -186,8 +186,6 @@ export type ChatComposeDock = {
   pinListToBottom: (animated?: boolean) => void;
   /** Включить/снять прижатие без скролла — по жестам пользователя. */
   setListPinned: (pinned: boolean) => void;
-  /** Прозрачность ленты: скрыта, пока тред не расшифрован. */
-  listRevealStyle: AnimatedStyle<ViewStyle>;
   /** Обратная прозрачность — слой заглушки под лентой. */
   listPlaceholderStyle: AnimatedStyle<ViewStyle>;
   /** Спрятать ленту до следующего показа — на смене треда. */
@@ -491,10 +489,13 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     [listLayoutQuietSv],
   );
 
-  const listRevealStyle = useAnimatedStyle(() => ({
-    opacity: listRevealSv.value,
-  }));
-
+  /**
+   * Видимость самой ленты — НЕ animated style, а React-состояние listRevealed
+   * (см. экран треда): анимированный opacity, поставленный с UI-потока,
+   * терялся на следующем React-коммите (Fabric возвращал запечённый начальный
+   * opacity:0 из useAnimatedStyle) — лента гасла через кадр после показа.
+   * listRevealSv остаётся внутренним сигналом цикла показа.
+   */
   const listPlaceholderStyle = useAnimatedStyle(() => ({
     opacity: listPlaceholderSv.value,
   }));
@@ -524,6 +525,13 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    * прозрачность живёт в доке и осталась бы от прежнего треда.
    */
   const hideListUntilReady = useCallback(() => {
+    if (__DEV__ && listRevealStartedSv.value) {
+      // Смок-сигнал «мигания»: hide прервал уже запущенный (или показанный)
+      // цикл показа. Легитимно только на реальной смене треда.
+      console.log(
+        `[chat-open] hide после старта показа (reveal=${listRevealSv.value})`,
+      );
+    }
     cancelAnimation(listRevealSv);
     cancelAnimation(listPlaceholderSv);
     listRevealStartedSv.value = false;
@@ -590,8 +598,11 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       const reveal = () => {
         cancelAnimation(listRevealSv);
         cancelAnimation(listPlaceholderSv);
-        // Без кроссфейда и без scrollTo в кадре показа: якорь верифицирован
-        // кадрами раньше, первый видимый кадр уже стоит на месте.
+        // Якорь верифицирован кадрами раньше. Пиксели показывает НЕ этот SV,
+        // а коммит markRevealed → listRevealed=true (экран треда): обычный
+        // закоммиченный opacity стабилен к последующим коммитам Fabric,
+        // в отличие от animated style с UI-потока. Лента появляется и
+        // заглушка гаснет в одном и том же коммите — атомарно.
         listRevealSv.value = 1;
         revealAtSv.value = Date.now();
         settleLogBudgetSv.value = SETTLE_TRACE_MAX_LOGS;
@@ -1234,7 +1245,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listAnimatedRef,
     pinListToBottom,
     setListPinned,
-    listRevealStyle,
     listPlaceholderStyle,
     hideListUntilReady,
     allowListReveal,

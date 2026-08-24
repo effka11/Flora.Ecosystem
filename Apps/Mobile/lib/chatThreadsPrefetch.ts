@@ -3,14 +3,16 @@
  * `["groups"]` в idle-паузы скролла последовательно
  *
  *   1. аватары верхних строк списка — в FRC-кэш (avatar lane, диск);
- *   2. расшифровываются превью списка чатов (module-cache, дедуп по msgKey);
- *   3. для топ-N тредов: decrypt-прогрев уже закэшированных сообщений
- *      (мгновенное открытие офлайн/с диска), затем — при устаревании —
- *      сетевой prefetch первой страницы и прогрев новых сообщений;
- *   4. группам дополнительно греется roster (`["group", uuid]`) и аватары
- *      участников;
- *   5. вложения новейших сообщений (фото `.fri` → детерминированный PNG +
- *      aspect ratio, голосовые → расшифрованный файл) — под бюджетом прохода.
+ *   2. расшифровываются превью видимого экрана списка чатов;
+ *   3. лёгкая фаза топ-N тредов: decrypt-прогрев кэша (мгновенное открытие
+ *      офлайн/с диска), при устаревании — сетевой prefetch первой страницы,
+ *      группам roster (`["group", uuid]`), затем offscreen-замер раскладки;
+ *   4. CPU-прогрев раскладки чатов за пределами топа (без сети);
+ *   5. тяжёлая фаза: вложения новейших сообщений (фото `.fri` →
+ *      детерминированный PNG + aspect ratio, голосовые → расшифрованный файл)
+ *      и аватары участников групп — под бюджетом прохода. Медиа в самом
+ *      конце намеренно: вложения одного чата не должны задерживать
+ *      расшифровку остальных.
  *
  * Реагирует на изменения списка (realtime/FCM-патчи уже пишут в
  * `["conversations"]`), поэтому новое сообщение в закрытом чате тихо
@@ -290,11 +292,16 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
     }
   };
 
-  const processCandidate = async (
+  /**
+   * Лёгкая фаза кандидата: кэш → сеть → расшифровка → замеры раскладки.
+   * Медиа здесь нет намеренно: тяжёлый прогрев вложений первого кандидата
+   * (скачивание+декод `.fri`) блокировал расшифровку остальных на секунды —
+   * тап в чат №3 спустя 5 секунд от старта попадал в холодный тред.
+   */
+  const processCandidateThread = async (
     candidate: ThreadPrefetchCandidate,
     viewerUserUuid: string,
     canDecrypt: boolean,
-    mediaBudget: ThreadMediaWarmBudget,
   ): Promise<void> => {
     if (stopped) return;
     // Сначала прогрев того, что уже есть (диск/память): мгновенное открытие
@@ -339,8 +346,17 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
       });
     }
 
-    // Медиа и аватары — после сети: вложения последних сообщений включены.
-    if (candidate.kind === "group" && !stopped) {
+    if (canDecrypt && !stopped) warmCandidateTextLayout(candidate);
+  };
+
+  /** Тяжёлая фаза кандидата: вложения сообщений и аватары участников группы. */
+  const processCandidateMedia = async (
+    candidate: ThreadPrefetchCandidate,
+    canDecrypt: boolean,
+    mediaBudget: ThreadMediaWarmBudget,
+  ): Promise<void> => {
+    if (stopped) return;
+    if (candidate.kind === "group") {
       const detail = queryClient.getQueryData<MsgGroupDetail>([
         "group",
         candidate.conversationUuid,
@@ -349,10 +365,7 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
         prefetchAvatar(member.avatarUuid);
       }
     }
-    if (canDecrypt && !stopped) {
-      warmCandidateTextLayout(candidate);
-      await warmCandidateMedia(candidate, mediaBudget);
-    }
+    if (canDecrypt && !stopped) await warmCandidateMedia(candidate, mediaBudget);
   };
 
   const run = async (): Promise<void> => {
@@ -416,14 +429,15 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
       activeThreadUuid: getActiveMessageThread(),
       now: Date.now(),
     });
+    // Лёгкая фаза для ВСЕХ кандидатов до тяжёлых медиа: каждый тред из топа
+    // становится «тёплым» (расшифровка+раскладка) за первые секунды прогона.
     if (candidates.length > 0) {
-      const mediaBudget = createThreadMediaWarmBudget();
       const slice = mapIdleSliced(candidates, (candidate) => {
         if (getActiveMessageThread() != null) {
           rerunRequested = true;
           return Promise.resolve(undefined);
         }
-        return processCandidate(candidate, viewerUserUuid, canDecrypt, mediaBudget).catch(
+        return processCandidateThread(candidate, viewerUserUuid, canDecrypt).catch(
           () => undefined,
         );
       });
@@ -434,6 +448,7 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
     }
 
     // Раскладка чатов за пределами кандидатов — CPU-only, из кэша тредов.
+    // Тоже до медиа: тап приходит и в чат глубже топа.
     if (canDecrypt) {
       const candidateKeys = new Set(candidates.map((c) => c.conversationUuid));
       const layoutTargets: ThreadPrefetchCandidate[] = [];
@@ -479,6 +494,24 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
         activeSlice = null;
         if (stopped) return;
       }
+    }
+
+    // Тяжёлая фаза: вложения и аватары участников — когда все треды уже тёплые.
+    if (candidates.length > 0) {
+      const mediaBudget = createThreadMediaWarmBudget();
+      const mediaSlice = mapIdleSliced(candidates, (candidate) => {
+        if (getActiveMessageThread() != null) {
+          rerunRequested = true;
+          return Promise.resolve(undefined);
+        }
+        return processCandidateMedia(candidate, canDecrypt, mediaBudget).catch(
+          () => undefined,
+        );
+      });
+      activeSlice = mediaSlice;
+      await mediaSlice.done;
+      activeSlice = null;
+      if (stopped) return;
     }
 
     await warmPreviews(conversations.slice(PREVIEW_FIRST_SCREEN_ROWS));

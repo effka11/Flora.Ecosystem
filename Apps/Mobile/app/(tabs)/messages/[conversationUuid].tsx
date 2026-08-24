@@ -123,6 +123,7 @@ import {
   noteChatOpenLayoutWarm,
   noteChatOpenScreenRender,
 } from "@/lib/chatOpenTrace";
+import { warmThreadTextLayoutFromRows } from "@/lib/chatOpenLayoutWarm";
 import { getCachedBodyMeasure } from "@/lib/messageTextMeasureCache";
 import { warmTextInnerWidthPx } from "@/lib/messageTextMeasureWarm";
 import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
@@ -360,7 +361,6 @@ export default function ThreadScreen() {
     listAnimatedRef,
     pinListToBottom,
     setListPinned,
-    listRevealStyle,
     listLiftStyle,
     listPlaceholderStyle,
     hideListUntilReady,
@@ -541,8 +541,24 @@ export default function ThreadScreen() {
    * скрытие; а поздний hide обрывал уже запущенный цикл показа, и лента
    * ждала дедлайна LIST_REVEAL_DEADLINE_MS (~секунда чёрного экрана).
    * Layout-эффект прячет ленту синхронно в коммите смены треда — до paint.
+   *
+   * Guard по uuid: перезапуск эффекта БЕЗ смены треда (flap isGroupChat из
+   * параметров маршрута и т.п.) не должен прятать уже показанную ленту.
+   * Такой ложный hide — «редкое мигание»: кадр контента → чёрный экран, и
+   * повторный показ доезжает только по потолку ожидания (FlashList без
+   * ремоунта onLoad не повторяет).
    */
+  const threadResetUuidRef = useRef("");
   useLayoutEffect(() => {
+    if (threadResetUuidRef.current === conversationUuid) {
+      if (__DEV__) {
+        console.log(
+          `[chat-open] сброс пропущен: тред тот же (${conversationUuid}, group=${String(isGroupChat)})`,
+        );
+      }
+      return;
+    }
+    threadResetUuidRef.current = conversationUuid;
     markChatOpenStage("mount", conversationUuid);
     listRevealedStaleRef.current = true;
     resetDock();
@@ -591,16 +607,25 @@ export default function ThreadScreen() {
     };
   }, [listRevealed]);
 
+  /**
+   * Инсет через ref: смена insets.bottom (скрытие таб-бара, жестовая панель)
+   * меняла бы зависимость focus-эффекта, и его cleanup дёргал resetDock
+   * посреди открытого чата — сброс базлайна дока и шум content-size.
+   */
+  const tabBarBottomInsetRef = useRef(tabBarBottomInset);
+  useEffect(() => {
+    tabBarBottomInsetRef.current = tabBarBottomInset;
+  }, [tabBarBottomInset]);
   useFocusEffect(
     useCallback(() => {
-      applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+      applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, true);
       chatUiFrameKeepAlive.setActive(true);
       return () => {
         chatUiFrameKeepAlive.setActive(false);
-        applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+        applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, false);
         resetDock();
       };
-    }, [chatUiFrameKeepAlive, navigation, tabBarBottomInset, resetDock]),
+    }, [chatUiFrameKeepAlive, navigation, resetDock]),
   );
 
   /**
@@ -1102,20 +1127,34 @@ export default function ThreadScreen() {
    * тред готов на первом кадре — и без этого условия показ попадает в окно
    * оценки.
    */
+  /** Тред, для которого FlashList уже отдал onLoad (см. self-heal ниже). */
+  const listLoadFiredUuidRef = useRef("");
   useEffect(() => {
     if (threadReady) {
       markChatOpenStage("ready", conversationUuid);
       reportChatOpenLayoutWarm(decrypted);
+      // Холодный тред: тап-прогрев покрыл только расшифрованное ДО тапа.
+      // Ставим замеры сразу после расшифровки — хост успевает до onLoad
+      // FlashList, и коррекции высот не тревожат гейт тишины.
+      warmThreadTextLayoutFromRows(decrypted);
     }
     // `listRevealed` в зависимостях — самовосстановление: hide после уже
     // запущенного цикла показа (сброс на смене треда и т.п.) роняет
     // listRevealed в false, и эффект перезапускает показ сразу, а не через
     // дедлайн LIST_REVEAL_DEADLINE_MS. После состоявшегося показа повторный
     // вызов — no-op (guard listRevealStartedSv).
-    if (threadReady && composeBaselinePx > 0) allowListReveal();
+    if (threadReady && composeBaselinePx > 0) {
+      // FlashList уже отдал onLoad для этого треда, но hide сбросил флаг —
+      // без ремоунта onLoad не повторится, и повторный показ ждал бы потолок
+      // кадров (~1 c чёрного экрана). Подтверждаем сами.
+      if (!listRevealed && listLoadFiredUuidRef.current === conversationUuid) {
+        onListLoad();
+      }
+      allowListReveal();
+    }
     // Тред мог смениться на такой же готовый — сброс делает эффект по треду выше.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowListReveal, composeBaselinePx, conversationUuid, listRevealed, threadReady]);
+  }, [allowListReveal, composeBaselinePx, conversationUuid, listRevealed, onListLoad, threadReady]);
 
   /** Момент показа ленты (JS) — окно дев-трассировки осадки пузырей. */
   const revealedAtRef = useRef(0);
@@ -1155,6 +1194,7 @@ export default function ThreadScreen() {
   );
 
   const onFlashListLoad = useCallback(() => {
+    listLoadFiredUuidRef.current = conversationUuid;
     markChatOpenStage("load", conversationUuid);
     onListLoad();
   }, [conversationUuid, onListLoad]);
@@ -2213,7 +2253,14 @@ export default function ThreadScreen() {
         */}
         <Reanimated.View
           pointerEvents="none"
-          style={[styles.listFill, styles.listPlaceholder, listPlaceholderStyle]}
+          style={[
+            styles.listFill,
+            styles.listPlaceholder,
+            listPlaceholderStyle,
+            // Тот же коммит, что показывает ленту, гасит заглушку: подмена
+            // атомарна, без кадра «обе прозрачны» между SV и состоянием.
+            listRevealed ? styles.listHiddenUntilReveal : null,
+          ]}
         >
           {/* count>0 — лента домеряется невидимо: держим пустой фон, как
               Telegram; спиннер только когда данных ещё реально нет. */}
@@ -2229,7 +2276,21 @@ export default function ThreadScreen() {
           )}
         </Reanimated.View>
 
-        <Reanimated.View style={[styles.listFill, listRevealStyle, listLiftStyle]}>
+        {/*
+          Видимость ленты — React-состояние, НЕ animated style. Анимированный
+          opacity применялся с UI-потока, а следующий React-коммит возвращал
+          запечённый начальный opacity:0 из useAnimatedStyle — лента гасла
+          через кадр после показа и не возвращалась до реального жеста
+          («редкое мигание» на первом открытии группы). Закоммиченный через
+          состояние opacity стабилен к любым последующим коммитам.
+        */}
+        <Reanimated.View
+          style={[
+            styles.listFill,
+            listRevealed ? null : styles.listHiddenUntilReveal,
+            listLiftStyle,
+          ]}
+        >
           {/* insertLift: тот же transform для ленты и нового пузыря (без отдельного bubble translate). */}
           <Reanimated.View style={[styles.listFill, listInsertLiftStyle]}>
             <FlashList
@@ -2568,6 +2629,10 @@ const styles = StyleSheet.create({
   listFill: {
     ...StyleSheet.absoluteFill,
     overflow: "visible",
+  },
+  /** До показа лента (или после показа — заглушка) прозрачна: см. listRevealed. */
+  listHiddenUntilReveal: {
+    opacity: 0,
   },
   /**
    * Переворот ленты целиком: последнее сообщение оказывается в начале скролла,
