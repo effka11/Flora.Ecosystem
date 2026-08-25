@@ -35,8 +35,14 @@ import type { TextMeasureRequest } from "@/lib/messageTextMeasureWarmQueue";
  * кадр у списка чатов, по которому пользователь в этот момент скроллит.
  */
 const BATCH_SIZE = 8;
-/** Пауза между пачками: прогрев принципиально не приоритетнее интерфейса. */
+/** Пауза между пачками: фоновый прогрев принципиально не приоритетнее UI. */
 const BATCH_GAP_MS = 96;
+/**
+ * Срочная полоса — окно показа открываемого ПРЯМО СЕЙЧАС чата: пачка на всё
+ * окно и без паузы, иначе замеры проигрывают гонку монтажу ячеек и пузыри
+ * доизмеряются уже на экране (видимый сдвиг после показа).
+ */
+const URGENT_BATCH_SIZE = 24;
 
 function requestKey(request: TextMeasureRequest): string {
   return `${request.maxInnerWidthPx}|${request.timeLabel}|${request.body}`;
@@ -55,19 +61,35 @@ export const MessageTextMeasureWarmHost = memo(function MessageTextMeasureWarmHo
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
+  /** Дев-трассировка: когда пачка ушла в рендер и была ли срочной. */
+  const batchTraceRef = useRef({ takenAt: 0, urgent: false });
+
   const pumpRef = useRef<() => void>(() => undefined);
   pumpRef.current = () => {
     if (!mountedRef.current) return;
-    if (timerRef.current != null) return;
+    const urgent = messageTextMeasureWarmQueue.hasUrgent();
+    if (timerRef.current != null) {
+      if (!urgent) return;
+      // Fast-track: срочная заявка пришла во время фоновой паузы — не ждём её.
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     if (batchRef.current.length > 0) return;
     if (messageTextMeasureWarmQueue.size() === 0) return;
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      if (!mountedRef.current) return;
-      const next = messageTextMeasureWarmQueue.takeBatch(BATCH_SIZE);
-      if (next.length === 0) return;
-      setBatch(next);
-    }, BATCH_GAP_MS);
+    timerRef.current = setTimeout(
+      () => {
+        timerRef.current = null;
+        if (!mountedRef.current) return;
+        const urgentNow = messageTextMeasureWarmQueue.hasUrgent();
+        const next = messageTextMeasureWarmQueue.takeBatch(
+          urgentNow ? URGENT_BATCH_SIZE : BATCH_SIZE,
+        );
+        if (next.length === 0) return;
+        if (__DEV__) batchTraceRef.current = { takenAt: Date.now(), urgent: urgentNow };
+        setBatch(next);
+      },
+      urgent ? 0 : BATCH_GAP_MS,
+    );
   };
 
   useEffect(() => {
@@ -100,6 +122,13 @@ export const MessageTextMeasureWarmHost = memo(function MessageTextMeasureWarmHo
     );
     if (doneCountRef.current < expected) return;
     doneCountRef.current = 0;
+    if (__DEV__ && batchTraceRef.current.urgent) {
+      // Латентность срочной полосы: сколько прошло от взятия пачки до полного
+      // замера. Большие значения = хост голодает на занятом JS-потоке.
+      console.log(
+        `[measure-host] срочная пачка ${current.length} за ${Date.now() - batchTraceRef.current.takenAt}мс`,
+      );
+    }
     messageTextMeasureWarmQueue.settleBatch(current);
     setBatch([]);
     pumpRef.current();

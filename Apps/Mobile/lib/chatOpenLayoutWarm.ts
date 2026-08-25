@@ -52,7 +52,7 @@ export function warmChatOpenTextLayoutAtTap(args: ChatOpenWarmTarget): void {
     if (row.voiceBlock || row.imageBlocks.length > 0) continue;
     rows.push({ text: row.text, createdAt: row.createdAt, isFromMe: row.isFromMe });
   }
-  if (rows.length > 0) enqueueThreadTextMeasures(rows);
+  if (rows.length > 0) enqueueThreadTextMeasures(rows, { urgent: true });
 }
 
 /**
@@ -71,13 +71,22 @@ export function warmChatOpenThreadAtPressIn(args: ChatOpenWarmTarget): void {
       ? ["messages", args.conversationUuid, args.otherUserUuid]
       : ["group-messages", args.conversationUuid];
   const items = queryClient.getQueryData<ThreadPage>(key)?.items;
-  if (!items || items.length === 0) return;
+  if (!items || items.length === 0) {
+    if (__DEV__) {
+      // Нечего греть = сетевой фетч на открытии (симптом: data>1000мс в трассе).
+      console.log("[chat-warm] press-in: сообщений в кэше нет — открытие пойдёт через сеть");
+    }
+    return;
+  }
+
+  // Уже расшифрованные строки — в замер сразу, не дожидаясь дорасшифровки:
+  // каждый выигранный кадр хоста уменьшает шанс двухпроходного замера в ячейке.
+  warmChatOpenTextLayoutAtTap(args);
 
   const fscp = useFscpStore.getState();
   const viewerUserUuid = useSessionStore.getState().me?.userUuid?.trim() ?? "";
   if (!fscp.material || !fscp.canDecrypt() || !viewerUserUuid) {
-    // Ключей нет — греем замеры по тому, что уже расшифровано.
-    warmChatOpenTextLayoutAtTap(args);
+    if (__DEV__) console.log("[chat-warm] press-in: FSCP не готов — дорасшифровка недоступна");
     return;
   }
 
@@ -122,5 +131,5 @@ export function warmThreadTextLayoutFromRows(rows: readonly WarmableThreadRow[])
     if (row.text.trim().length === 0) continue;
     warm.push({ text: row.text, createdAt: row.createdAt, isFromMe: row.isFromMe });
   }
-  if (warm.length > 0) enqueueThreadTextMeasures(warm);
+  if (warm.length > 0) enqueueThreadTextMeasures(warm, { urgent: true });
 }

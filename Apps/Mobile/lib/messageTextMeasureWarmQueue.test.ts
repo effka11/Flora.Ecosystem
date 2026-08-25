@@ -140,4 +140,39 @@ describe("createMeasureWarmQueue", () => {
     queue.enqueue([request()]);
     expect(queue.size()).toBe(1);
   });
+
+  it("срочные заявки выходят из пачки раньше фоновых", () => {
+    const queue = queueWithCache({});
+    queue.enqueue([request({ body: "фон-1" }), request({ body: "фон-2" })]);
+    queue.enqueue([request({ body: "срочная" })], { urgent: true });
+    expect(queue.hasUrgent()).toBe(true);
+    expect(queue.takeBatch(2).map((r) => r.body)).toEqual(["срочная", "фон-1"]);
+    expect(queue.hasUrgent()).toBe(false);
+  });
+
+  it("повторная срочная постановка повышает приоритет фоновой заявки", () => {
+    const queue = queueWithCache({});
+    queue.enqueue([request({ body: "фон" }), request({ body: "цель" })]);
+    queue.enqueue([request({ body: "цель" })], { urgent: true });
+    expect(queue.size()).toBe(2);
+    expect(queue.takeBatch(1)[0]?.body).toBe("цель");
+  });
+
+  it("переполнение вытесняет фоновые, но не срочные", () => {
+    const queue = queueWithCache({});
+    queue.enqueue([request({ body: "срочная" })], { urgent: true });
+    for (let i = 0; i < 450; i++) {
+      queue.enqueue([request({ body: `msg-${i}` })]);
+    }
+    expect(queue.size()).toBe(400);
+    expect(queue.takeBatch(1)[0]?.body).toBe("срочная");
+  });
+
+  it("clear снимает и срочную полосу", () => {
+    const queue = queueWithCache({});
+    queue.enqueue([request({ body: "срочная" })], { urgent: true });
+    queue.clear();
+    expect(queue.hasUrgent()).toBe(false);
+    expect(queue.size()).toBe(0);
+  });
 });

@@ -99,7 +99,7 @@ const PREVIEW_FIRST_SCREEN_ROWS = 10;
  * тёплым. Сети в фазе нет: только расшифровка новейшего окна из кэша треда
  * и заявки на offscreen-замер текста.
  */
-const LAYOUT_WARM_MAX_THREADS = 24;
+const LAYOUT_WARM_MAX_THREADS = 40;
 
 type ThreadPage = { items: MsgMessageDto[]; nextCursor: string | null };
 

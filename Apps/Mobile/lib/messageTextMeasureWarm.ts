@@ -46,8 +46,14 @@ export type WarmMeasureRow = {
  * Заявки на замер для строк треда. Только чистый текст: у пузырей с фото и
  * голосовыми ширина подписи считается от своей геометрии, а высота приходит
  * из ratio-store / волны, и первый кадр там не прыгает.
+ *
+ * `urgent` — путь открытия чата (тап/press-in/ready): без фоновой паузы хоста,
+ * иначе замеры проигрывают гонку монтажу ячеек.
  */
-export function enqueueThreadTextMeasures(rows: readonly WarmMeasureRow[]): void {
+export function enqueueThreadTextMeasures(
+  rows: readonly WarmMeasureRow[],
+  opts?: { urgent?: boolean },
+): void {
   const requests: TextMeasureRequest[] = [];
   for (const row of rows) {
     const body = row.text?.trim() ?? "";
@@ -58,5 +64,5 @@ export function enqueueThreadTextMeasures(rows: readonly WarmMeasureRow[]): void
       timeLabel: formatChatTime(row.createdAt),
     });
   }
-  if (requests.length > 0) messageTextMeasureWarmQueue.enqueue(requests);
+  if (requests.length > 0) messageTextMeasureWarmQueue.enqueue(requests, opts);
 }

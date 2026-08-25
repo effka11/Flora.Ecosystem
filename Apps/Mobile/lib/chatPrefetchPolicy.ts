@@ -9,8 +9,8 @@
 import type { MsgConversationDto, MsgGroupListItem } from "@flora/client-core/contracts";
 import type { FscpImageBlock, FscpVoiceBlock } from "@flora/client-core/fscp";
 
-export const CHAT_PREFETCH_MAX_DM = 8;
-export const CHAT_PREFETCH_MAX_GROUPS = 4;
+export const CHAT_PREFETCH_MAX_DM = 12;
+export const CHAT_PREFETCH_MAX_GROUPS = 6;
 /** Не дёргать сеть по треду, который рефетчился только что (кулдаун). */
 export const CHAT_PREFETCH_MIN_REFRESH_AGE_MS = 20_000;
 

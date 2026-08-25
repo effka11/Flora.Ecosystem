@@ -20,7 +20,12 @@ import { isOptimisticPayloadSentinel } from "@/lib/messageBirthRegistry";
 export const CHAT_DISK_SCHEMA_VERSION = 1;
 export const CHAT_DISK_MAX_CONVERSATIONS = 60;
 export const CHAT_DISK_MAX_GROUPS = 40;
-export const CHAT_DISK_MAX_THREADS = 30;
+/**
+ * 64 треда × ≤40 сообщений: только шифротекст и метаданные, ~десятки КБ на
+ * тред. Скупой потолок (30) давал сетевой фетч прямо на открытии чата за
+ * пределами верхушки (симптом: data>1000мс в трассе открытия).
+ */
+export const CHAT_DISK_MAX_THREADS = 64;
 export const CHAT_DISK_MAX_THREAD_MESSAGES = 40;
 /** Треды старше — не гидрируем (шифротекст мог протухнуть по epoch, UX-ценность нулевая). */
 export const CHAT_DISK_THREAD_TTL_MS = 14 * 24 * 60 * 60 * 1000;

@@ -60,6 +60,9 @@ import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
 export const groupMessagesQueryKey = (conversationUuid: string) =>
   ["group-messages", conversationUuid] as const;
 
+/** Стабильная ссылка «участников нет»: `?? []` ломал мемоизацию потребителей. */
+const EMPTY_MEMBERS: GroupChat["members"] = [];
+
 type GroupMessagesPage = { items: MsgMessageDto[]; nextCursor: string | null };
 
 function seedPendingDecryptRow(
@@ -514,7 +517,7 @@ export function useGroupChatThread(params: {
 
   return {
     group,
-    members: group?.members ?? [],
+    members: group?.members ?? EMPTY_MEMBERS,
     memberCount: group?.memberCount || group?.members.length || 0,
     title: (group?.title || titleHint || "Группа").trim() || "Группа",
     messages,

@@ -36,6 +36,7 @@ import {
   emojiPanelDockHeightPx,
   keyboardStickyOffsets,
 } from "@/lib/messagesDockInsets";
+import { mmkv } from "@/lib/mmkv";
 import { floraSpacing } from "@/lib/theme";
 
 /**
@@ -97,6 +98,18 @@ const LIST_PLACEHOLDER_DELAY_MS = 120;
  * onContentSizeChange.
  */
 const LIST_LAYOUT_QUIET_FRAMES = 3;
+/**
+ * Последний замер baseline дока (высота compose-колонки в покое). Док один и
+ * тот же во всех чатах — сид следующего открытия убирает ступень
+ * fallback→замер (коммит + сдвиг listGapPx) и снимает гейт composeBaselinePx>0
+ * ещё до onLayout. Персистится в MMKV: без этого ПЕРВОЕ открытие после
+ * рестарта стартовало с fallback и после замера сдвигало paddingTop ленты
+ * (в трассе: content-size +7px сразу после reveal). Смена font-scale/шрифта
+ * перезапускает приложение, а расхождение чинит первый же onLayout.
+ */
+const COMPOSE_BASELINE_MMKV_KEY = "chat.composeBaselinePx";
+let lastMeasuredComposeBaselinePx = mmkv.getNumber(COMPOSE_BASELINE_MMKV_KEY) ?? 0;
+
 /** Окно дев-трассировки осадки после reveal. */
 const SETTLE_TRACE_WINDOW_MS = 2000;
 /** Потолок строк лога осадки на один показ (не заспамить консоль анимацией). */
@@ -197,6 +210,16 @@ export type ChatComposeDock = {
    * снижает до 1, когда всё окно показа прогрето и коррекций высот не будет.
    */
   setListRevealQuietFrames: (frames: number) => void;
+  /**
+   * Гейт финальной раскладки текста окна показа: false — показ ждёт, пока
+   * замеры тел лягут в кэш (экран следит и снимает; потолок — на экране).
+   */
+  setListTextLayoutReady: (ready: boolean) => void;
+  /**
+   * Тёплый быстрый путь: показать ленту в текущем JS-коммите, минуя UI-гейты.
+   * Звать из onLoad, когда все замеры текста окна показа уже в кэше.
+   */
+  revealListNow: () => void;
   /** onLoad FlashList: каждая видимая строка замерена — раскладка финальна. */
   onListLoad: () => void;
   /**
@@ -257,7 +280,9 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   /** Постоянная часть inset ленты помимо колонки: зазор дока над низом окна. */
   const dockIdleGapPx = -ksvClosedPx;
 
-  const [composeBaselinePx, setComposeBaselinePx] = useState(0);
+  const [composeBaselinePx, setComposeBaselinePx] = useState(
+    () => lastMeasuredComposeBaselinePx,
+  );
   /** JS-зеркало высоты delete-бара — участвует в listGapPx (React-padding). */
   const [deleteBarHeightPx, setDeleteBarHeightState] = useState(0);
   const [emojiPanelMounted, setEmojiPanelMounted] = useState(false);
@@ -291,9 +316,11 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const composeGrowthHoldSv = useSharedValue(0);
   const deleteBarHeightSv = useSharedValue(0);
   const dockExtraPaddingSv = useSharedValue(
-    dockIdleGapPx + COMPOSE_BASELINE_FALLBACK_PX,
+    dockIdleGapPx + (lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX),
   );
-  const composeBaselineSv = useSharedValue(COMPOSE_BASELINE_FALLBACK_PX);
+  const composeBaselineSv = useSharedValue(
+    lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX,
+  );
   /** Всегда 0 — extraContentPadding KCSV выведен из игры (см. listGapPx). */
   const listInsetZeroSv = useSharedValue(0);
   const freezeListSv = useSharedValue(true);
@@ -302,7 +329,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
 
   const emojiActiveRef = useRef(false);
   const emojiPanelMountedRef = useRef(false);
-  const composeBaselineRef = useRef(0);
+  const composeBaselineRef = useRef(lastMeasuredComposeBaselinePx);
   /** Отложенный старт холодного открытия: анимацию запускаем ПОСЛЕ коммита слоя. */
   const pendingColdOpenTargetRef = useRef<number | null>(null);
   /** Таймер страховки готовности контента панели. */
@@ -476,6 +503,21 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     },
     [listQuietFramesSv],
   );
+
+  /**
+   * Гейт финальной раскладки текста: false, пока замеры тел окна показа не в
+   * кэше (экран следит и снимает). Без него показ успевал раньше, чем
+   * закончатся двухпроходные замеры в ячейках, и пузыри доизмерялись уже на
+   * экране — «элементы появляются не сразу». Экран страхует потолком ожидания.
+   */
+  const listTextReadySv = useSharedValue(true);
+
+  const setListTextLayoutReady = useCallback(
+    (ready: boolean) => {
+      listTextReadySv.value = ready;
+    },
+    [listTextReadySv],
+  );
   /** Момент reveal на UI-потоке — окно дев-трассировки осадки. */
   const revealAtSv = useSharedValue(0);
   /** Остаток лог-бюджета трассировки осадки текущего показа. */
@@ -562,6 +604,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listLoadedSv.value = false;
     listLayoutQuietSv.value = 0;
     listQuietFramesSv.value = LIST_LAYOUT_QUIET_FRAMES;
+    listTextReadySv.value = true;
     revealAtSv.value = 0;
     settleLogBudgetSv.value = 0;
     revealSettleUntilRef.current = 0;
@@ -574,6 +617,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listQuietFramesSv,
     listRevealSv,
     listRevealStartedSv,
+    listTextReadySv,
     revealAtSv,
     settleLogBudgetSv,
   ]);
@@ -637,6 +681,8 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         // Смена треда во время ожидания: hideListUntilReady сбросил флаг —
         // показывать нечего, следующий allowListReveal начнёт цикл заново.
         if (!listRevealStartedSv.value) return;
+        // Тёплый быстрый путь (revealListNow) уже показал — циклу делать нечего.
+        if (listRevealSv.value) return;
         // Тишина лэйаута ленты: onContentSizeChange обнуляет счётчик с JS.
         listLayoutQuietSv.value += 1;
         framesLeft -= 1;
@@ -650,6 +696,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         }
         const gatesOpen =
           listLoadedSv.value &&
+          listTextReadySv.value &&
           listLayoutQuietSv.value >= listQuietFramesSv.value;
         if (gatesOpen) {
           if (!pinToBottomSv.value) {
@@ -704,6 +751,42 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listLoadedSv,
     listPlaceholderSv,
     listQuietFramesSv,
+    listRevealSv,
+    listRevealStartedSv,
+    listScrollOffsetSv,
+    listTextReadySv,
+    markRevealed,
+    pinToBottomSv,
+    revealAtSv,
+    settleLogBudgetSv,
+  ]);
+
+  /**
+   * Тёплый быстрый путь показа: экран зовёт из JS-колбэка onLoad, когда
+   * раскладка окна финальна (все замеры текста в кэше). Высоты не изменятся —
+   * кадры тишины и верификация якоря не нужны, а каждый их кадр плюс
+   * runOnJS-роундтрип — лишние ~100–250 мс тёмной заглушки. Показываем в этом
+   * же JS-коммите. Применим только на нетронутом якоре: скролл не двигался,
+   * инвертированная лента прижата к низу с первого кадра.
+   */
+  const revealListNow = useCallback(() => {
+    if (listRevealSv.value) return;
+    if (
+      pinToBottomSv.value &&
+      Math.abs(listScrollOffsetSv.value - chatListAnchorOffset()) > 0.5
+    ) {
+      return; // якорь тронут — пусть верифицирует UI-цикл allowListReveal
+    }
+    listRevealStartedSv.value = true;
+    cancelAnimation(listRevealSv);
+    cancelAnimation(listPlaceholderSv);
+    listRevealSv.value = 1;
+    revealAtSv.value = Date.now();
+    settleLogBudgetSv.value = SETTLE_TRACE_MAX_LOGS;
+    listPlaceholderSv.value = 0;
+    markRevealed();
+  }, [
+    listPlaceholderSv,
     listRevealSv,
     listRevealStartedSv,
     listScrollOffsetSv,
@@ -791,6 +874,10 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
           : prev > 0
             ? Math.min(prev, shellHeight)
             : shellHeight;
+      if (lastMeasuredComposeBaselinePx !== baseline) {
+        lastMeasuredComposeBaselinePx = baseline;
+        mmkv.set(COMPOSE_BASELINE_MMKV_KEY, baseline);
+      }
       if (prev !== baseline || prev <= 0) {
         composeBaselineRef.current = baseline;
         composeBaselineSv.value = baseline;
@@ -1218,9 +1305,13 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     composeGrowthHoldSv.value = 0;
     deleteBarHeightSv.value = 0;
     setDeleteBarHeightState(0);
-    composeBaselineRef.current = 0;
-    composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX;
-    setComposeBaselinePx(0);
+    // Не в 0, а к последнему замеру: док одинаков во всех чатах — следующее
+    // открытие стартует с готовым listGapPx и снятым гейтом baseline>0
+    // (onLayout при совпадении высоты не коммитит вовсе).
+    composeBaselineRef.current = lastMeasuredComposeBaselinePx;
+    composeBaselineSv.value =
+      lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
+    setComposeBaselinePx(lastMeasuredComposeBaselinePx);
     Keyboard.dismiss();
   }, [
     composeBaselineSv,
@@ -1274,6 +1365,8 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     hideListUntilReady,
     allowListReveal,
     setListRevealQuietFrames,
+    setListTextLayoutReady,
+    revealListNow,
     onListLoad,
     onListContentSizeChange,
     listRevealed,

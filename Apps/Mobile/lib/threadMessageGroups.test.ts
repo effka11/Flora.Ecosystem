@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
 import {
   buildThreadListItems,
+  reuseThreadListItems,
   shouldHoldTrailingPeerAvatar,
   trailingPeerRunMessages,
   type ThreadListItem,
@@ -104,6 +105,50 @@ describe("trailingPeerRunMessages", () => {
     const b = msg({ messageUuid: "b", isFromMe: false, senderUserUuid: "u2" });
     const newestFirst = [...buildThreadListItems([a, b], () => true)].reverse();
     expect(trailingPeerRunMessages(newestFirst).map((m) => m.messageUuid)).toEqual(["b"]);
+  });
+});
+
+describe("reuseThreadListItems", () => {
+  it("returns prev array by reference when nothing changed", () => {
+    const a = msg({ messageUuid: "a", isFromMe: false });
+    const b = msg({ messageUuid: "b", isFromMe: true });
+    const prev = buildThreadListItems([a, b], () => true);
+    const next = buildThreadListItems([a, b], () => true);
+    expect(reuseThreadListItems(prev, next)).toBe(prev);
+  });
+
+  it("reuses untouched item objects when a new message is prepended", () => {
+    const a = msg({ messageUuid: "a", isFromMe: true });
+    const b = msg({ messageUuid: "b", isFromMe: true });
+    const prev = buildThreadListItems([a], () => true);
+    const next = buildThreadListItems([a, b], () => true);
+    const reused = reuseThreadListItems(prev, next);
+    expect(reused).not.toBe(prev);
+    expect(reused[0]).toBe(prev[0]);
+    expect(reused[1]!.message.messageUuid).toBe("b");
+  });
+
+  it("does not reuse when message row identity changed", () => {
+    const a1 = msg({ messageUuid: "a", isFromMe: true });
+    const a2 = msg({ messageUuid: "a", isFromMe: true, isRead: true });
+    const prev = buildThreadListItems([a1], () => true);
+    const next = buildThreadListItems([a2], () => true);
+    const reused = reuseThreadListItems(prev, next);
+    expect(reused).not.toBe(prev);
+    expect(reused[0]).not.toBe(prev[0]);
+    expect(reused[0]!.message).toBe(a2);
+  });
+
+  it("does not reuse peer item when isGroupTail flips", () => {
+    const a = msg({ messageUuid: "a", isFromMe: false });
+    const b = msg({ messageUuid: "b", isFromMe: false });
+    // Был хвостом run'а — стал серединой: item пересоздаётся, аватар уезжает.
+    const prev = buildThreadListItems([a], () => true);
+    const next = buildThreadListItems([a, b], () => true);
+    const reused = reuseThreadListItems(prev, next);
+    expect(reused[0]!.message).toBe(a);
+    expect(reused[0]).not.toBe(prev[0]);
+    expect((reused[0] as { isGroupTail: boolean }).isGroupTail).toBe(false);
   });
 });
 

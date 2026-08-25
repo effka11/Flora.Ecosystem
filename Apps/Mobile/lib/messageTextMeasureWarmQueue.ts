@@ -34,13 +34,20 @@ export type MeasureWarmQueueDeps = {
 };
 
 export type MeasureWarmQueue = {
-  /** Ставит в очередь то, чего нет ни в кэше, ни уже в очереди. */
-  enqueue: (requests: readonly TextMeasureRequest[]) => void;
-  /** Снимает следующую пачку; пустой массив — очередь исчерпана. */
+  /**
+   * Ставит в очередь то, чего нет ни в кэше, ни уже в очереди.
+   * `urgent` — полоса открытия чата: заявки уходят в начало очереди, хост
+   * исполняет их без фоновой паузы и увеличенной пачкой. Обычная заявка,
+   * поставленная повторно как срочная, переезжает в срочную полосу.
+   */
+  enqueue: (requests: readonly TextMeasureRequest[], opts?: { urgent?: boolean }) => void;
+  /** Снимает следующую пачку (срочные первыми); пустой массив — очередь исчерпана. */
   takeBatch: (maxSize: number) => TextMeasureRequest[];
   /** Пачка исполнена (замеры записаны в кэш) — снять с «в работе». */
   settleBatch: (batch: readonly TextMeasureRequest[]) => void;
   size: () => number;
+  /** Есть срочные заявки — хосту пора работать без паузы. */
+  hasUrgent: () => boolean;
   subscribe: (listener: () => void) => () => void;
   clear: () => void;
 };
@@ -53,7 +60,9 @@ export type MeasureWarmQueue = {
 const QUEUE_CAPACITY = 400;
 
 export function createMeasureWarmQueue(deps: MeasureWarmQueueDeps): MeasureWarmQueue {
-  /** Порядок = порядок постановки; ключ → заявка (дедуп). */
+  /** Срочная полоса (открываемый чат) — исполняется первой. */
+  const urgentQueued = new Map<string, TextMeasureRequest>();
+  /** Фоновая полоса; порядок = порядок постановки; ключ → заявка (дедуп). */
   const queued = new Map<string, TextMeasureRequest>();
   /** Отданные в хост, но ещё не исполненные — чтобы не выдать их дважды. */
   const inFlight = new Set<string>();
@@ -63,7 +72,8 @@ export function createMeasureWarmQueue(deps: MeasureWarmQueueDeps): MeasureWarmQ
     for (const listener of Array.from(listeners)) listener();
   };
 
-  const enqueue: MeasureWarmQueue["enqueue"] = (requests) => {
+  const enqueue: MeasureWarmQueue["enqueue"] = (requests, opts) => {
+    const urgent = opts?.urgent === true;
     let added = false;
     for (const request of requests) {
       const body = request.body;
@@ -79,15 +89,23 @@ export function createMeasureWarmQueue(deps: MeasureWarmQueueDeps): MeasureWarmQ
       const key = needsBody
         ? bodyKey(body, request.maxInnerWidthPx)
         : `time|${request.timeLabel}`;
-      if (queued.has(key) || inFlight.has(key)) continue;
-      queued.set(key, {
+      if (inFlight.has(key) || urgentQueued.has(key)) continue;
+      if (queued.has(key)) {
+        if (!urgent) continue;
+        // Повышение приоритета: фоновая заявка переезжает в срочную полосу.
+        queued.delete(key);
+      }
+      const entry = {
         body: needsBody ? body : "",
         maxInnerWidthPx: request.maxInnerWidthPx,
         timeLabel: needsTime ? request.timeLabel : "",
-      });
+      };
+      (urgent ? urgentQueued : queued).set(key, entry);
       added = true;
     }
-    while (queued.size > QUEUE_CAPACITY) {
+    // Переполнение бьёт только по фоновой полосе: срочная — это открываемый
+    // сейчас чат, её терять нельзя (да и она всегда мала — окно показа).
+    while (urgentQueued.size + queued.size > QUEUE_CAPACITY && queued.size > 0) {
       const oldest = queued.keys().next();
       if (oldest.done) break;
       queued.delete(oldest.value);
@@ -97,11 +115,14 @@ export function createMeasureWarmQueue(deps: MeasureWarmQueueDeps): MeasureWarmQ
 
   const takeBatch: MeasureWarmQueue["takeBatch"] = (maxSize) => {
     const batch: TextMeasureRequest[] = [];
-    for (const [key, request] of queued) {
+    for (const source of [urgentQueued, queued]) {
+      for (const [key, request] of source) {
+        if (batch.length >= maxSize) break;
+        source.delete(key);
+        inFlight.add(key);
+        batch.push(request);
+      }
       if (batch.length >= maxSize) break;
-      queued.delete(key);
-      inFlight.add(key);
-      batch.push(request);
     }
     return batch;
   };
@@ -120,7 +141,8 @@ export function createMeasureWarmQueue(deps: MeasureWarmQueueDeps): MeasureWarmQ
     enqueue,
     takeBatch,
     settleBatch,
-    size: () => queued.size,
+    size: () => urgentQueued.size + queued.size,
+    hasUrgent: () => urgentQueued.size > 0,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
@@ -128,6 +150,7 @@ export function createMeasureWarmQueue(deps: MeasureWarmQueueDeps): MeasureWarmQ
       };
     },
     clear: () => {
+      urgentQueued.clear();
       queued.clear();
       inFlight.clear();
     },

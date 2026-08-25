@@ -1,5 +1,5 @@
 import { TIME_INLINE_GAP_PX, type BubbleTimePlacement } from "@flora/client-core/display";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   NativeSyntheticEvent,
   StyleSheet,
@@ -20,6 +20,7 @@ import {
   getCachedTimeLabelWidth,
   setCachedBodyMeasure,
   setCachedTimeLabelWidth,
+  subscribeTextMeasureCache,
 } from "@/lib/messageTextMeasureCache";
 
 type Props = {
@@ -175,6 +176,45 @@ function ChatMessageBubbleTextBodyInner({
    */
   const needsBodyMeasure = measuredBody == null;
   const needsTimeMeasure = measuredTimeWidthPx == null;
+
+  /**
+   * Push из кэша замеров: ячейка, смонтированная ДО того как offscreen-хост
+   * дописал замер её текста, отрисована по не-замеренной раскладке (время в
+   * хвосте зауживает текст — пузырь выше финального) и без подписки чинилась
+   * бы только собственным onTextLayout — уже на экране, с видимым
+   * схлопыванием (в трассе: «ячейка … 1235→955 после reveal»). Подписка
+   * живёт только пока замера нет; после попадания эффект отписывается.
+   */
+  useEffect(() => {
+    if (!needsBodyMeasure && !needsTimeMeasure) return;
+    const check = () => {
+      if (needsBodyMeasure) {
+        const cached = getCachedBodyMeasure(body, maxBubbleInnerWidthPx);
+        if (cached) {
+          const next: BodyMeasure = {
+            body,
+            maxInnerWidthPx: maxBubbleInnerWidthPx,
+            lineWidths: cached.lineWidths,
+            lines: cached.lines,
+          };
+          setBodyMeasure((prev) => (sameBodyMeasure(prev, next) ? prev : next));
+        }
+      }
+      if (needsTimeMeasure) {
+        const widthPx = getCachedTimeLabelWidth(timeLabel);
+        if (widthPx != null) {
+          setTimeMeasure((prev) =>
+            prev?.timeLabel === timeLabel && prev.widthPx === widthPx
+              ? prev
+              : { timeLabel, widthPx },
+          );
+        }
+      }
+    };
+    // Кэш мог пополниться между рендером и эффектом — проверяем сразу.
+    check();
+    return subscribeTextMeasureCache(check);
+  }, [body, maxBubbleInnerWidthPx, needsBodyMeasure, needsTimeMeasure, timeLabel]);
 
   const renderInlineContent = () => {
     if (layoutLines.length <= 1) {

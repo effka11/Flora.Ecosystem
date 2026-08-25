@@ -37,6 +37,7 @@ import {
   ActivityIndicator,
   AppState,
   BackHandler,
+  LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -72,6 +73,7 @@ import { maxTextBubbleInnerWidth } from "@/lib/messageBubbleLayout";
 import { sliceThreadListToViewport } from "@/lib/threadListWindow";
 import {
   buildThreadListItems,
+  reuseThreadListItems,
   shouldHoldTrailingPeerAvatar,
   forEachThreadListMessage,
   trailingPeerRunMessages,
@@ -317,6 +319,23 @@ function reportChatOpenLayoutWarm(rows: readonly ThreadBubbleItem[]): {
   return { hits, total };
 }
 
+/** Тихая (без дев-счётчиков) проверка: все тексты окна показа с замером. */
+function threadWindowTextMeasuresWarm(rows: readonly ThreadBubbleItem[]): boolean {
+  for (const row of rows.slice(-THREAD_REVEAL_WINDOW)) {
+    if (row.voiceBlock || row.imageBlocks.length > 0) continue;
+    if (!row.text?.trim()) continue;
+    if (getCachedBodyMeasure(row.text, warmTextInnerWidthPx(row.isFromMe)) == null) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Опрос готовности замеров окна (кэш наполняют хост и сами ячейки). */
+const TEXT_LAYOUT_POLL_MS = 32;
+/** Потолок ожидания замеров перед показом — страховка от зависшего хоста. */
+const TEXT_LAYOUT_READY_CAP_MS = 400;
+
 function threadListItemHasMessage(item: ThreadListItem, messageUuid: string): boolean {
   return item.message.messageUuid === messageUuid;
 }
@@ -370,6 +389,8 @@ export default function ThreadScreen() {
     hideListUntilReady,
     allowListReveal,
     setListRevealQuietFrames,
+    setListTextLayoutReady,
+    revealListNow,
     onListLoad,
     onListContentSizeChange,
     listRevealed,
@@ -566,6 +587,7 @@ export default function ThreadScreen() {
     threadResetUuidRef.current = conversationUuid;
     markChatOpenStage("mount", conversationUuid);
     listRevealedStaleRef.current = true;
+    if (__DEV__) cellHeightsRef.current.clear();
     resetDock();
     hideListUntilReady();
     setMenuTarget(null);
@@ -1023,14 +1045,20 @@ export default function ThreadScreen() {
   /**
    * Лента перевёрнута: данные от новых к старым (индекс 0 у якоря).
    * Группы по raw `decrypted` (стабильный groupKey); чужие decrypting не в item —
-   * иначе мелькает «Расшифровка…».
+   * иначе мелькает «Расшифровка…». Item-обёртки переиспользуются между
+   * пересборками (reuseThreadListItems) — иначе каждый setRows ре-рендерил
+   * весь вьюпорт ячеек.
    */
+  const listDataPrevRef = useRef<readonly ThreadListItem[]>([]);
   const listData = useMemo(() => {
     const chronological = buildThreadListItems(
       decrypted,
       (m) => m.isFromMe || m.decryptState !== "decrypting",
     );
-    return chronological.reverse();
+    chronological.reverse();
+    const reused = reuseThreadListItems(listDataPrevRef.current, chronological);
+    listDataPrevRef.current = reused;
+    return reused;
   }, [decrypted]);
 
   /**
@@ -1042,11 +1070,15 @@ export default function ThreadScreen() {
    */
   const listDataWindow = useMemo(() => {
     if (listWindowExpanded) return listData;
-    return sliceThreadListToViewport(listData, windowHeight + LIST_WINDOW_BUFFER_PX, {
+    // Зона дока (listGapPx) — не вьюпорт ленты: без вычета окно тянуло в
+    // первый коммит 1–2 лишних пузыря, а монтаж ячеек — самая дорогая фаза
+    // открытия (load−cell в трассе). Запас поверх остаётся полным.
+    const target = Math.max(0, windowHeight - listGapPx) + LIST_WINDOW_BUFFER_PX;
+    return sliceThreadListToViewport(listData, target, {
       own: outgoingLiftCtx,
       peer: peerLiftCtx,
     });
-  }, [listData, listWindowExpanded, outgoingLiftCtx, peerLiftCtx, windowHeight]);
+  }, [listData, listGapPx, listWindowExpanded, outgoingLiftCtx, peerLiftCtx, windowHeight]);
   // Дев-трасса: FlashList впервые получает непустые данные в этом рендере.
   if (__DEV__ && listDataWindow.length > 0) markChatOpenStage("data", conversationUuid);
 
@@ -1057,6 +1089,13 @@ export default function ThreadScreen() {
    * later sibling cell, so a menu that opens toward older messages (visually
    * down) is covered. Raise overflow + zIndex on the cell that owns the menu.
    */
+  /**
+   * Дев-трассировка осадки по ячейкам: базовые высоты пишутся с монтажа, лог —
+   * только на изменении высоты в окне осадки после reveal. Называет виновника
+   * сдвигов content-size поимённо (какой пузырь и на сколько подрос/сжался).
+   */
+  const cellHeightsRef = useRef(new Map<string, number>());
+
   const MenuCellRenderer = useMemo(
     () =>
       forwardRef<
@@ -1069,6 +1108,29 @@ export default function ThreadScreen() {
           menuUuid && item && threadListItemHasMessage(item, menuUuid),
         );
         const blocked = Boolean(menuUuid && !isOwner);
+        const onCellLayout = __DEV__
+          ? (e: LayoutChangeEvent) => {
+              const h = Math.round(e.nativeEvent.layout.height);
+              const key = item ? item.message.messageUuid : `i${String(index)}`;
+              const prev = cellHeightsRef.current.get(key);
+              cellHeightsRef.current.set(key, h);
+              const at = revealedAtRef.current;
+              if (at <= 0 || prev == null || prev === h) return;
+              const dt = Date.now() - at;
+              if (dt > 2000) return;
+              const row = item?.message;
+              const label = !row
+                ? "?"
+                : row.voiceBlock
+                  ? "голос"
+                  : row.imageBlocks.length > 0
+                    ? "фото"
+                    : `«${row.text.slice(0, 16)}»`;
+              console.log(
+                `[chat-settle] ячейка ${label} ${prev}→${h} (+${dt}мс после reveal)`,
+              );
+            }
+          : undefined;
         return (
           <View
             ref={ref}
@@ -1076,6 +1138,7 @@ export default function ThreadScreen() {
             {...rest}
             pointerEvents="box-none"
             style={[style, styles.menuCell, isOwner ? styles.menuCellOpen : null]}
+            onLayout={onCellLayout}
           >
             {children}
             <GesturePressable
@@ -1167,6 +1230,33 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowListReveal, composeBaselinePx, conversationUuid, listRevealed, onListLoad, setListRevealQuietFrames, threadReady]);
 
+  /**
+   * Гейт финальной раскладки текста: пока замеры тел окна показа не в кэше,
+   * показ не открывается (SV-гейт дока) — иначе пузыри доизмерялись бы уже на
+   * экране (видимый сдвиг: «элементы появляются не сразу»). Кэш наполняют
+   * срочная полоса хоста замеров и сами ячейки — опрашиваем дёшево (≤16
+   * кэш-чтений раз в 32 мс); потолок — страховка от любого зависания.
+   */
+  useEffect(() => {
+    if (!threadReady) return;
+    if (threadWindowTextMeasuresWarm(decrypted)) {
+      setListTextLayoutReady(true);
+      return;
+    }
+    setListTextLayoutReady(false);
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const capped = Date.now() - startedAt >= TEXT_LAYOUT_READY_CAP_MS;
+      if (!capped && !threadWindowTextMeasuresWarm(decrypted)) return;
+      clearInterval(timer);
+      if (__DEV__ && capped) {
+        console.log("[chat-open] потолок ожидания замеров текста — показ как есть");
+      }
+      setListTextLayoutReady(true);
+    }, TEXT_LAYOUT_POLL_MS);
+    return () => clearInterval(timer);
+  }, [conversationUuid, decrypted, setListTextLayoutReady, threadReady]);
+
   /** Момент показа ленты (JS) — окно дев-трассировки осадки пузырей. */
   const revealedAtRef = useRef(0);
   const settleOffsetLogsRef = useRef(0);
@@ -1204,11 +1294,27 @@ export default function ThreadScreen() {
     [reportInsertLiftSettle],
   );
 
+  /**
+   * Зеркала для стабильного onLoad-колбэка: тёплый быстрый путь читает
+   * актуальные threadReady/decrypted без пересоздания колбэка на каждую волну.
+   */
+  const threadReadyRef = useRef(threadReady);
+  threadReadyRef.current = threadReady;
+  const decryptedRef = useRef(decrypted);
+  decryptedRef.current = decrypted;
+
   const onFlashListLoad = useCallback(() => {
     listLoadFiredUuidRef.current = conversationUuid;
     markChatOpenStage("load", conversationUuid);
     onListLoad();
-  }, [conversationUuid, onListLoad]);
+    // Тёплый быстрый путь: окно показа расшифровано и все замеры текста в
+    // кэше — высоты финальны, коррекций не будет. Показываем в этом же
+    // JS-коммите, минуя кадры тишины, верификацию якоря и runOnJS-роундтрип:
+    // на тёплом открытии это ~100–250 мс тёмной заглушки.
+    if (threadReadyRef.current && threadWindowTextMeasuresWarm(decryptedRef.current)) {
+      revealListNow();
+    }
+  }, [conversationUuid, onListLoad, revealListNow]);
 
   /**
    * Ограничение сверху на ожидание. Расшифровка может не состояться вовсе —

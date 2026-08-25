@@ -66,6 +66,42 @@ export function buildThreadListItems(
   return items;
 }
 
+function threadListItemReusable(prev: ThreadListItem, next: ThreadListItem): boolean {
+  if (prev.kind !== next.kind || prev.message !== next.message) return false;
+  if (prev.kind === "peer" && next.kind === "peer") {
+    return prev.groupKey === next.groupKey && prev.isGroupTail === next.isGroupTail;
+  }
+  return true;
+}
+
+/**
+ * Переиспользование item-объектов между пересборками ленты. Ячейки FlashList
+ * мемоизированы по item: без этого каждый setRows (волна дорасшифровки, merge
+ * меты) выдавал НОВЫЕ обёртки для всех строк — и весь вьюпорт ре-рендерился,
+ * хотя строки не менялись (симптом: cells=52 при окне 13 в трассе открытия).
+ * Совпало всё — возвращается прежний массив по ссылке: memo выше не дёргается.
+ */
+export function reuseThreadListItems(
+  prev: readonly ThreadListItem[],
+  next: ThreadListItem[],
+): readonly ThreadListItem[] {
+  if (prev.length === 0) return next;
+  const prevByUuid = new Map<string, ThreadListItem>();
+  for (const item of prev) prevByUuid.set(item.message.messageUuid, item);
+
+  let allReused = prev.length === next.length;
+  for (let i = 0; i < next.length; i++) {
+    const candidate = prevByUuid.get(next[i]!.message.messageUuid);
+    if (candidate && threadListItemReusable(candidate, next[i]!)) {
+      if (candidate !== prev[i]) allReused = false;
+      next[i] = candidate;
+    } else {
+      allReused = false;
+    }
+  }
+  return allReused ? prev : next;
+}
+
 /**
  * Hold аватара хвоста только если группа уже была на экране (есть visible,
  * не из текущего insert-batch). Если все пузыри группы новые — аватар

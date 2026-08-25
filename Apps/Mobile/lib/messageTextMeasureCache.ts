@@ -23,6 +23,25 @@ const TIME_LABEL_CACHE_CAPACITY = 64;
 let bodyMeasureCache = new LruCache<string, CachedBodyMeasure>(BODY_CACHE_CAPACITY);
 let timeLabelWidthCache = new LruCache<string, number>(TIME_LABEL_CACHE_CAPACITY);
 
+/**
+ * Подписка на пополнение кэша. Нужна пузырю, смонтированному ДО того, как
+ * offscreen-хост дописал замер его текста: без push такая ячейка рисуется по
+ * не-замеренной раскладке и исправляется собственным onTextLayout уже на
+ * экране (видимое схлопывание). Подписчики — только ждущие ячейки, их мало.
+ */
+const measureListeners = new Set<() => void>();
+
+function notifyMeasureListeners(): void {
+  for (const listener of Array.from(measureListeners)) listener();
+}
+
+export function subscribeTextMeasureCache(listener: () => void): () => void {
+  measureListeners.add(listener);
+  return () => {
+    measureListeners.delete(listener);
+  };
+}
+
 function bodyCacheKey(body: string, maxInnerWidthPx: number): string {
   return `${maxInnerWidthPx}|${body}`;
 }
@@ -40,6 +59,7 @@ export function setCachedBodyMeasure(
   measure: CachedBodyMeasure,
 ): void {
   bodyMeasureCache.set(bodyCacheKey(body, maxInnerWidthPx), measure);
+  notifyMeasureListeners();
 }
 
 export function getCachedTimeLabelWidth(timeLabel: string): number | null {
@@ -48,6 +68,7 @@ export function getCachedTimeLabelWidth(timeLabel: string): number | null {
 
 export function setCachedTimeLabelWidth(timeLabel: string, widthPx: number): void {
   timeLabelWidthCache.set(timeLabel, widthPx);
+  notifyMeasureListeners();
 }
 
 /** Test-only: drops all cached measurements so tests don't leak state into each other. */
