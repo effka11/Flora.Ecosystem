@@ -6,7 +6,11 @@
 import { Dimensions } from "react-native";
 
 import { formatChatTime } from "@/lib/formatChatTime";
-import { maxTextBubbleInnerWidth } from "@/lib/messageBubbleLayout";
+import {
+  maxTextBubbleInnerWidth,
+  photoCaptionInnerWidth,
+  voiceCaptionInnerWidth,
+} from "@/lib/messageBubbleLayout";
 import {
   getCachedBodyMeasure,
   getCachedTimeLabelWidth,
@@ -23,29 +27,48 @@ export const messageTextMeasureWarmQueue = createMeasureWarmQueue({
 });
 
 /**
- * Внутренняя ширина текстового пузыря. Лента рендерит только два контекста:
- * своё сообщение (без peer-колонки) и чужое в peer-строке (колонка под
- * аватар зарезервирована) — см. renderMessage / ChatPeerMessageRow.
+ * Контекст геометрии пузыря. Лента рендерит только два контекста: своё
+ * сообщение (без peer-колонки) и чужое в peer-строке (колонка под аватар
+ * зарезервирована, `inPeerGroup`) — см. renderMessage / ChatPeerMessageRow.
  */
-export function warmTextInnerWidthPx(isFromMe: boolean): number {
-  return maxTextBubbleInnerWidth({
+function warmLayoutCtx(isFromMe: boolean) {
+  return {
     screenWidth: Dimensions.get("window").width,
     isFromMe,
     showPeerAvatar: false,
     isPeerIndented: !isFromMe,
-  });
+  };
+}
+
+/** Внутренняя ширина чисто текстового пузыря. */
+export function warmTextInnerWidthPx(isFromMe: boolean): number {
+  return maxTextBubbleInnerWidth(warmLayoutCtx(isFromMe));
 }
 
 export type WarmMeasureRow = {
   text: string;
   createdAt: string;
   isFromMe: boolean;
+  /** Медиа-пузырь: ширина подписи считается от геометрии фото/голосового. */
+  media?: "photo" | "voice";
 };
 
 /**
- * Заявки на замер для строк треда. Только чистый текст: у пузырей с фото и
- * голосовыми ширина подписи считается от своей геометрии, а высота приходит
- * из ratio-store / волны, и первый кадр там не прыгает.
+ * Ширина текста строки с учётом медиа: подпись под фото/голосовым живёт в
+ * своей колонке. Раньше медиа-строки прогрев пропускал — длинная подпись
+ * (стих под фото) меряла себя уже в ячейке и схлопывала пузырь на экране
+ * (в трассе: «ячейка … 1235→955 после reveal»).
+ */
+export function warmMeasureRowInnerWidthPx(
+  row: Pick<WarmMeasureRow, "isFromMe" | "media">,
+): number {
+  if (row.media === "photo") return photoCaptionInnerWidth(warmLayoutCtx(row.isFromMe));
+  if (row.media === "voice") return voiceCaptionInnerWidth(warmLayoutCtx(row.isFromMe));
+  return warmTextInnerWidthPx(row.isFromMe);
+}
+
+/**
+ * Заявки на замер для строк треда — текстовых и подписей медиа.
  *
  * `urgent` — путь открытия чата (тап/press-in/ready): без фоновой паузы хоста,
  * иначе замеры проигрывают гонку монтажу ячеек.
@@ -60,7 +83,7 @@ export function enqueueThreadTextMeasures(
     if (body.length === 0) continue;
     requests.push({
       body: row.text,
-      maxInnerWidthPx: warmTextInnerWidthPx(row.isFromMe),
+      maxInnerWidthPx: warmMeasureRowInnerWidthPx(row),
       timeLabel: formatChatTime(row.createdAt),
     });
   }

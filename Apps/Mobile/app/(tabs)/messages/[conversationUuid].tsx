@@ -127,7 +127,7 @@ import {
 } from "@/lib/chatOpenTrace";
 import { warmThreadTextLayoutFromRows } from "@/lib/chatOpenLayoutWarm";
 import { getCachedBodyMeasure } from "@/lib/messageTextMeasureCache";
-import { warmTextInnerWidthPx } from "@/lib/messageTextMeasureWarm";
+import { warmMeasureRowInnerWidthPx } from "@/lib/messageTextMeasureWarm";
 import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
 import { subscribeMessageRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
@@ -299,9 +299,20 @@ function listItemKey(item: ThreadListItem): string {
 }
 
 /**
- * Сколько текстовых строк окна показа уже имеют прогретый замер раскладки.
- * Всё окно с кэш-хитом = первый кадр ленты финальный: коррекций высот не
- * будет, и гейт тишины дока можно сузить до одного кадра.
+ * Ширина текста строки окна показа — включая подписи медиа: у фото/голосового
+ * своя колонка текста. Ровно та геометрия, которой греет offscreen-хост.
+ */
+function threadRowMeasureWidthPx(row: ThreadBubbleItem): number {
+  return warmMeasureRowInnerWidthPx({
+    isFromMe: row.isFromMe,
+    media: row.voiceBlock ? "voice" : row.imageBlocks.length > 0 ? "photo" : undefined,
+  });
+}
+
+/**
+ * Сколько текстовых строк окна показа (включая подписи медиа) уже имеют
+ * прогретый замер раскладки. Всё окно с кэш-хитом = первый кадр ленты
+ * финальный: коррекций высот не будет, и гейт тишины сужается до кадра.
  */
 function reportChatOpenLayoutWarm(rows: readonly ThreadBubbleItem[]): {
   hits: number;
@@ -310,10 +321,9 @@ function reportChatOpenLayoutWarm(rows: readonly ThreadBubbleItem[]): {
   let hits = 0;
   let total = 0;
   for (const row of rows.slice(-THREAD_REVEAL_WINDOW)) {
-    if (row.voiceBlock || row.imageBlocks.length > 0) continue;
     if (!row.text?.trim()) continue;
     total += 1;
-    if (getCachedBodyMeasure(row.text, warmTextInnerWidthPx(row.isFromMe)) != null) hits += 1;
+    if (getCachedBodyMeasure(row.text, threadRowMeasureWidthPx(row)) != null) hits += 1;
   }
   if (__DEV__) noteChatOpenLayoutWarm(hits, total);
   return { hits, total };
@@ -322,9 +332,8 @@ function reportChatOpenLayoutWarm(rows: readonly ThreadBubbleItem[]): {
 /** Тихая (без дев-счётчиков) проверка: все тексты окна показа с замером. */
 function threadWindowTextMeasuresWarm(rows: readonly ThreadBubbleItem[]): boolean {
   for (const row of rows.slice(-THREAD_REVEAL_WINDOW)) {
-    if (row.voiceBlock || row.imageBlocks.length > 0) continue;
     if (!row.text?.trim()) continue;
-    if (getCachedBodyMeasure(row.text, warmTextInnerWidthPx(row.isFromMe)) == null) {
+    if (getCachedBodyMeasure(row.text, threadRowMeasureWidthPx(row)) == null) {
       return false;
     }
   }

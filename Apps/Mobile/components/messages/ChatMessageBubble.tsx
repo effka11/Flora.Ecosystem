@@ -38,7 +38,6 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Pressable } from "react-native-gesture-handler";
-import Reanimated from "react-native-reanimated";
 import type { ChatPeerInfo } from "./ChatThreadHeader";
 
 export type ThreadBubbleItem = {
@@ -287,7 +286,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           {...bubbleColumnProps}
           footer={<FrankingReceiptWarning show={message.missingFrankReceipt} />}
         >
-          <Reanimated.View
+          {/* Обычный View, не Reanimated: анимированных стилей у пузыря нет
+              (подъём ленты общий), а обёртка createAnimatedComponent давала
+              лишний вес на монтаж каждой ячейки — самой дорогой фазе открытия. */}
+          <View
             collapsable={false}
             style={[
               styles.bubble,
@@ -305,7 +307,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               timeStyle={inlineTimeStyle}
               receiptColor={receiptColor}
             />
-          </Reanimated.View>
+          </View>
         </MessageBubbleColumn>
       </View>
     );
@@ -342,7 +344,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           pointerEvents="box-none"
         >
           <MessageBubbleMenuDock messageUuid={message.messageUuid} isFromMe={message.isFromMe}>
-            <Reanimated.View
+            <View
             collapsable={false}
             onLayout={(e) => {
               voiceYogaHeightRef.current = e.nativeEvent.layout.height;
@@ -399,7 +401,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                 </View>
               </Pressable>
             ) : null}
-          </Reanimated.View>
+          </View>
           </MessageBubbleMenuDock>
           <FrankingReceiptWarning show={message.missingFrankReceipt} />
         </View>
@@ -445,7 +447,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
         {...bubbleColumnProps}
         footer={<FrankingReceiptWarning show={message.missingFrankReceipt} />}
       >
-        <Reanimated.View collapsable={false} style={bubbleStyles}>
+        <View collapsable={false} style={bubbleStyles}>
           {replyQuote ? (
             <View
               style={[
@@ -498,7 +500,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               />
             </View>
           ) : null}
-        </Reanimated.View>
+        </View>
       </MessageBubbleColumn>
     </View>
   );

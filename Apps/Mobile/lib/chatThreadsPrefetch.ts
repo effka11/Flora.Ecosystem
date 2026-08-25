@@ -56,7 +56,10 @@ import { getStoredImageRatio, rememberImageRatio } from "@/lib/imageRatioStore";
 import { isOptimisticPayloadSentinel } from "@/lib/messageBirthRegistry";
 import { ensureMessageImageUri } from "@/lib/messageImageAssets";
 import { applyMessagesPageToCaches } from "@/lib/messageThreadOutgoing";
-import { enqueueThreadTextMeasures } from "@/lib/messageTextMeasureWarm";
+import {
+  enqueueThreadTextMeasures,
+  type WarmMeasureRow,
+} from "@/lib/messageTextMeasureWarm";
 import { ensureMessageVoiceUri } from "@/lib/messageVoiceAssets";
 import { floraSpacing } from "@/lib/theme";
 import {
@@ -230,13 +233,19 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
     const items = queryClient.getQueryData<ThreadPage>(threadQueryKey(candidate))?.items;
     if (!items || items.length === 0) return;
     const newest = items.slice(-TEXT_MEASURE_WARM_ROWS);
-    const rows: { text: string; createdAt: string; isFromMe: boolean }[] = [];
+    const rows: WarmMeasureRow[] = [];
     for (const m of newest) {
       if (isOptimisticPayloadSentinel(m.encryptedPayload)) continue;
       const row = messageThreadDecryptCache.getMessage(messageDecryptCacheKey(m));
       if (!row || row.decryptState !== "ok") continue;
-      if (row.voiceBlock || row.imageBlocks.length > 0) continue;
-      rows.push({ text: row.text, createdAt: row.createdAt, isFromMe: row.isFromMe });
+      rows.push({
+        text: row.text,
+        createdAt: row.createdAt,
+        isFromMe: row.isFromMe,
+        // Подписи медиа тоже греем: их колонка уже, и без замера длинная
+        // подпись рисуется выше финала, а после домера видимо схлопывается.
+        media: row.voiceBlock ? "voice" : row.imageBlocks.length > 0 ? "photo" : undefined,
+      });
     }
     if (rows.length > 0) enqueueThreadTextMeasures(rows);
   };
