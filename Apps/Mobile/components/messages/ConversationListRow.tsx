@@ -7,7 +7,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
-import { warmChatOpenTextLayoutAtTap } from "@/lib/chatOpenLayoutWarm";
+import {
+  warmChatOpenTextLayoutAtTap,
+  warmChatOpenThreadAtPressIn,
+} from "@/lib/chatOpenLayoutWarm";
 import { markChatOpenTap } from "@/lib/chatOpenTrace";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
@@ -101,6 +104,16 @@ export function ConversationListRow({
     openChat();
   };
 
+  /** Палец коснулся строки — тред греется, пока идёт жест (~100 мс форы). */
+  const onPressIn = () => {
+    if (selectionMode) return;
+    warmChatOpenThreadAtPressIn({
+      kind: "dm",
+      conversationUuid: item.conversationUuid,
+      otherUserUuid: item.otherUserUuid,
+    });
+  };
+
   const onLongPress = () => {
     if (selectionMode) {
       onToggleSelect?.();
@@ -125,6 +138,7 @@ export function ConversationListRow({
         selected && styles.shellSelected,
         pressed && styles.shellPressed,
       ]}
+      onPressIn={onPressIn}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_MS}

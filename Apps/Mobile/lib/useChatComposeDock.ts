@@ -192,6 +192,11 @@ export type ChatComposeDock = {
   hideListUntilReady: () => void;
   /** Разрешить показ: тред расшифрован, высоты больше не поедут. */
   allowListReveal: () => void;
+  /**
+   * Сколько кадров тишины лэйаута ждать перед показом (1..дефолт). Экран
+   * снижает до 1, когда всё окно показа прогрето и коррекций высот не будет.
+   */
+  setListRevealQuietFrames: (frames: number) => void;
   /** onLoad FlashList: каждая видимая строка замерена — раскладка финальна. */
   onListLoad: () => void;
   /**
@@ -454,6 +459,23 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
 
   /** Кадры подряд без onContentSizeChange ленты (см. LIST_LAYOUT_QUIET_FRAMES). */
   const listLayoutQuietSv = useSharedValue(0);
+  /**
+   * Сколько кадров тишины требуется этому показу. По умолчанию консервативные
+   * LIST_LAYOUT_QUIET_FRAMES; экран снижает до 1, когда всё окно показа
+   * прогрето (замеры текста в кэше — коррекций высот не будет): −2 кадра
+   * до первого видимого кадра.
+   */
+  const listQuietFramesSv = useSharedValue(LIST_LAYOUT_QUIET_FRAMES);
+
+  const setListRevealQuietFrames = useCallback(
+    (frames: number) => {
+      listQuietFramesSv.value = Math.max(
+        1,
+        Math.min(LIST_LAYOUT_QUIET_FRAMES, Math.round(frames)),
+      );
+    },
+    [listQuietFramesSv],
+  );
   /** Момент reveal на UI-потоке — окно дев-трассировки осадки. */
   const revealAtSv = useSharedValue(0);
   /** Остаток лог-бюджета трассировки осадки текущего показа. */
@@ -539,6 +561,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listPlaceholderSv.value = 0;
     listLoadedSv.value = false;
     listLayoutQuietSv.value = 0;
+    listQuietFramesSv.value = LIST_LAYOUT_QUIET_FRAMES;
     revealAtSv.value = 0;
     settleLogBudgetSv.value = 0;
     revealSettleUntilRef.current = 0;
@@ -548,6 +571,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listLayoutQuietSv,
     listLoadedSv,
     listPlaceholderSv,
+    listQuietFramesSv,
     listRevealSv,
     listRevealStartedSv,
     revealAtSv,
@@ -626,7 +650,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         }
         const gatesOpen =
           listLoadedSv.value &&
-          listLayoutQuietSv.value >= LIST_LAYOUT_QUIET_FRAMES;
+          listLayoutQuietSv.value >= listQuietFramesSv.value;
         if (gatesOpen) {
           if (!pinToBottomSv.value) {
             reveal();
@@ -679,6 +703,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listLayoutQuietSv,
     listLoadedSv,
     listPlaceholderSv,
+    listQuietFramesSv,
     listRevealSv,
     listRevealStartedSv,
     listScrollOffsetSv,
@@ -1248,6 +1273,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listPlaceholderStyle,
     hideListUntilReady,
     allowListReveal,
+    setListRevealQuietFrames,
     onListLoad,
     onListContentSizeChange,
     listRevealed,

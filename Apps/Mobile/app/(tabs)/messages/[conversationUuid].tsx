@@ -297,11 +297,14 @@ function listItemKey(item: ThreadListItem): string {
 }
 
 /**
- * Дев-диагностика: сколько текстовых строк окна показа уже имеют прогретый
- * замер раскладки. Всё окно с кэш-хитом = первый кадр ленты финальный.
+ * Сколько текстовых строк окна показа уже имеют прогретый замер раскладки.
+ * Всё окно с кэш-хитом = первый кадр ленты финальный: коррекций высот не
+ * будет, и гейт тишины дока можно сузить до одного кадра.
  */
-function reportChatOpenLayoutWarm(rows: readonly ThreadBubbleItem[]): void {
-  if (!__DEV__) return;
+function reportChatOpenLayoutWarm(rows: readonly ThreadBubbleItem[]): {
+  hits: number;
+  total: number;
+} {
   let hits = 0;
   let total = 0;
   for (const row of rows.slice(-THREAD_REVEAL_WINDOW)) {
@@ -310,7 +313,8 @@ function reportChatOpenLayoutWarm(rows: readonly ThreadBubbleItem[]): void {
     total += 1;
     if (getCachedBodyMeasure(row.text, warmTextInnerWidthPx(row.isFromMe)) != null) hits += 1;
   }
-  noteChatOpenLayoutWarm(hits, total);
+  if (__DEV__) noteChatOpenLayoutWarm(hits, total);
+  return { hits, total };
 }
 
 function threadListItemHasMessage(item: ThreadListItem, messageUuid: string): boolean {
@@ -365,6 +369,7 @@ export default function ThreadScreen() {
     listPlaceholderStyle,
     hideListUntilReady,
     allowListReveal,
+    setListRevealQuietFrames,
     onListLoad,
     onListContentSizeChange,
     listRevealed,
@@ -1132,7 +1137,13 @@ export default function ThreadScreen() {
   useEffect(() => {
     if (threadReady) {
       markChatOpenStage("ready", conversationUuid);
-      reportChatOpenLayoutWarm(decrypted);
+      const warm = reportChatOpenLayoutWarm(decrypted);
+      // Всё окно показа с прогретыми замерами: высоты финальны с первого
+      // коммита, коррекций не будет — сужаем гейт тишины дока до одного
+      // кадра (−2 кадра ожидания). Иначе оставляем консервативный дефолт.
+      if (warm.total > 0 && warm.hits === warm.total) {
+        setListRevealQuietFrames(1);
+      }
       // Холодный тред: тап-прогрев покрыл только расшифрованное ДО тапа.
       // Ставим замеры сразу после расшифровки — хост успевает до onLoad
       // FlashList, и коррекции высот не тревожат гейт тишины.
@@ -1154,7 +1165,7 @@ export default function ThreadScreen() {
     }
     // Тред мог смениться на такой же готовый — сброс делает эффект по треду выше.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowListReveal, composeBaselinePx, conversationUuid, listRevealed, onListLoad, threadReady]);
+  }, [allowListReveal, composeBaselinePx, conversationUuid, listRevealed, onListLoad, setListRevealQuietFrames, threadReady]);
 
   /** Момент показа ленты (JS) — окно дев-трассировки осадки пузырей. */
   const revealedAtRef = useRef(0);

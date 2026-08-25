@@ -1,30 +1,40 @@
 /**
- * Прогрев раскладки текста в момент тапа по чату — синхронно и без сети:
- * только чтение уже расшифрованных строк из decrypt-кэша и заявки в очередь
- * offscreen-замера. Хост замеров успевает отработать за время навигации
- * (~100–200 мс до первого кадра ленты), так что чат, до которого фоновый
- * прогрев ещё не дошёл, тоже открывается с финальной раскладкой.
+ * Прогрев раскладки текста на пути «палец → открытый чат», без сети:
  *
- * Ничего не расшифровываем и не качаем: тап — самое горячее место JS-потока,
- * здесь позволительны только дешёвые кэш-чтения (<1 мс).
+ *   - onPressIn (`warmChatOpenThreadAtPressIn`) — палец лёг на строку:
+ *     дорасшифровать окно показа из кэша треда и поставить замеры текста;
+ *     жест даёт ~100 мс форы до onPress.
+ *   - onPress (`warmChatOpenTextLayoutAtTap`) — синхронные кэш-чтения (<1 мс):
+ *     заявки в очередь offscreen-замера по уже расшифрованному.
+ *   - ready треда (`warmThreadTextLayoutFromRows`) — добор строк, которые
+ *     расшифровались уже после навигации.
+ *
+ * Хост замеров успевает отработать за время навигации (~100–200 мс до первого
+ * кадра ленты), так что чат, до которого фоновый прогрев ещё не дошёл, тоже
+ * открывается с финальной раскладкой.
  */
 import type { MsgMessageDto } from "@flora/client-core/contracts";
 import { isOptimisticPayloadSentinel } from "@/lib/messageBirthRegistry";
 import { enqueueThreadTextMeasures } from "@/lib/messageTextMeasureWarm";
 import { getQueryClientRef } from "@/lib/queryClientRef";
-import { messageDecryptCacheKey } from "@/lib/useThreadMessageDecrypt";
+import {
+  messageDecryptCacheKey,
+  warmThreadDecryptRows,
+} from "@/lib/useThreadMessageDecrypt";
+import { useFscpStore } from "@/stores/fscpStore";
 import { messageThreadDecryptCache } from "@/stores/messageThreadCache";
+import { useSessionStore } from "@/stores/sessionStore";
 
 /** Ровно окно показа (THREAD_REVEAL_WINDOW): что попадёт в первый кадр. */
 const TAP_WARM_ROWS = 16;
 
 type ThreadPage = { items: MsgMessageDto[] };
 
-export function warmChatOpenTextLayoutAtTap(
-  args:
-    | { kind: "dm"; conversationUuid: string; otherUserUuid: string }
-    | { kind: "group"; conversationUuid: string },
-): void {
+type ChatOpenWarmTarget =
+  | { kind: "dm"; conversationUuid: string; otherUserUuid: string }
+  | { kind: "group"; conversationUuid: string };
+
+export function warmChatOpenTextLayoutAtTap(args: ChatOpenWarmTarget): void {
   const queryClient = getQueryClientRef();
   if (!queryClient) return;
   const key =
@@ -43,6 +53,47 @@ export function warmChatOpenTextLayoutAtTap(
     rows.push({ text: row.text, createdAt: row.createdAt, isFromMe: row.isFromMe });
   }
   if (rows.length > 0) enqueueThreadTextMeasures(rows);
+}
+
+/**
+ * Прогрев треда с момента КАСАНИЯ строки (onPressIn): палец лежит на строке
+ * ~80–120 мс до срабатывания onPress — Telegram использует это окно, чтобы
+ * чат к моменту навигации был уже тёплым. Расшифровываем новейшее окно из
+ * кэша треда (терминальные строки — бесплатный кэш-чек) и ставим замеры
+ * текста. Сеть не трогаем; сорвавшийся тап (скролл) оставляет полезный
+ * прогрев. Повторные вызовы дёшевы и идемпотентны.
+ */
+export function warmChatOpenThreadAtPressIn(args: ChatOpenWarmTarget): void {
+  const queryClient = getQueryClientRef();
+  if (!queryClient) return;
+  const key =
+    args.kind === "dm"
+      ? ["messages", args.conversationUuid, args.otherUserUuid]
+      : ["group-messages", args.conversationUuid];
+  const items = queryClient.getQueryData<ThreadPage>(key)?.items;
+  if (!items || items.length === 0) return;
+
+  const fscp = useFscpStore.getState();
+  const viewerUserUuid = useSessionStore.getState().me?.userUuid?.trim() ?? "";
+  if (!fscp.material || !fscp.canDecrypt() || !viewerUserUuid) {
+    // Ключей нет — греем замеры по тому, что уже расшифровано.
+    warmChatOpenTextLayoutAtTap(args);
+    return;
+  }
+
+  void warmThreadDecryptRows({
+    conversationUuid: args.conversationUuid,
+    messages: items.slice(-TAP_WARM_ROWS),
+    isGroupChat: args.kind === "group",
+    viewerUserUuid,
+    decryptWirePlaintext: (wire, viewer) =>
+      useFscpStore.getState().decryptWirePlaintext(wire, viewer),
+    // Микрозадачный yield вместо setTimeout: окно ≤16 строк, тап уже летит.
+    // Каждая расшифровка сама уступает поток на переходе через мост.
+    yieldBetweenSteps: () => Promise.resolve(),
+  })
+    .then(() => warmChatOpenTextLayoutAtTap(args))
+    .catch(() => undefined);
 }
 
 /** Строка треда, достаточная для прогрева (структурно — ThreadBubbleItem). */

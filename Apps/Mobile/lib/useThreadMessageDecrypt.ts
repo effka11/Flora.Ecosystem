@@ -303,6 +303,10 @@ export async function warmThreadDecryptRows(params: {
     if (!cached || !isRowTerminal(cached)) return;
     rows.push(withMessageMeta(cached, m, isGroupChat));
   }
+  // Вызовы со срезом (прогрев окна показа) не должны усаживать уже полный
+  // массив треда — иначе fast path при открытии деградирует до merge.
+  const prevThreadRows = messageThreadDecryptCache.get(conversationUuid);
+  if (prevThreadRows && prevThreadRows.length > rows.length) return;
   messageThreadDecryptCache.set(conversationUuid, rows);
 }
 

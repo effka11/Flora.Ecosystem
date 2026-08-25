@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
+import { warmChatOpenThreadAtPressIn } from "@/lib/chatOpenLayoutWarm";
 import type { GroupChat } from "@/lib/groupChatTypes";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { openGroupChat } from "@/lib/openGroupChat";
@@ -66,6 +67,12 @@ export function GroupConversationListRow({
     onEnterSelect?.();
   };
 
+  /** Палец коснулся строки — тред греется, пока идёт жест (~100 мс форы). */
+  const onPressIn = () => {
+    if (selectionMode) return;
+    warmChatOpenThreadAtPressIn({ kind: "group", conversationUuid: group.conversationUuid });
+  };
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -82,6 +89,7 @@ export function GroupConversationListRow({
         selected && styles.shellSelected,
         pressed && styles.shellPressed,
       ]}
+      onPressIn={onPressIn}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_MS}
