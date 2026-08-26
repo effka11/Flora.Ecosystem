@@ -1,14 +1,18 @@
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import { sharedPresenceStore } from "@flora/client-core/presence";
-import { router, useNavigation } from "expo-router";
+import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
+import {
+  warmChatOpenTextLayoutAtTap,
+  warmChatOpenThreadAtPressIn,
+} from "@/lib/chatOpenLayoutWarm";
+import { markChatOpenTap } from "@/lib/chatOpenTrace";
+import { armChatPushEnter } from "@/lib/chatPushTransition";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
-import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 
 const LIST_PREVIEW_MAX_LEN = 80;
 const AVATAR_SIZE = floraSpacing.grid * 3;
@@ -53,9 +57,6 @@ export function ConversationListRow({
   onToggleSelect,
   onEnterSelect,
 }: Props) {
-  const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
-  const tabBarBottomInset = Math.max(insets.bottom, 8);
   const displayName = item.otherDisplayName || item.otherUsername;
   const username = item.otherUsername.replace(/^@+/, "") || "…";
   const preview = formatConversationPreview(item, item.preview);
@@ -69,7 +70,17 @@ export function ConversationListRow({
   );
 
   const openChat = () => {
-    applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+    // Взвод push-перехода (движение начнёт сам экран треда, см. модуль).
+    armChatPushEnter();
+    markChatOpenTap(item.conversationUuid);
+    warmChatOpenTextLayoutAtTap({
+      kind: "dm",
+      conversationUuid: item.conversationUuid,
+      otherUserUuid: item.otherUserUuid,
+    });
+    // Таб-бар прячут focus-эффект треда и messages/_layout — тем же коммитом,
+    // в котором стартует слайд. Скрытие «заранее», по тапу, читалось как
+    // отдельная фаза: иконки пропадали за кадры до начала движения.
     router.push({
       pathname: "/(tabs)/messages/[conversationUuid]",
       params: {
@@ -91,6 +102,16 @@ export function ConversationListRow({
       return;
     }
     openChat();
+  };
+
+  /** Палец коснулся строки — тред греется, пока идёт жест (~100 мс форы). */
+  const onPressIn = () => {
+    if (selectionMode) return;
+    warmChatOpenThreadAtPressIn({
+      kind: "dm",
+      conversationUuid: item.conversationUuid,
+      otherUserUuid: item.otherUserUuid,
+    });
   };
 
   const onLongPress = () => {
@@ -117,6 +138,7 @@ export function ConversationListRow({
         selected && styles.shellSelected,
         pressed && styles.shellPressed,
       ]}
+      onPressIn={onPressIn}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_MS}

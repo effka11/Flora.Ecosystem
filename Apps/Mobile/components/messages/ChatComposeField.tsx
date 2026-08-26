@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -76,6 +77,16 @@ type Props = {
   onSend: (text: string) => void;
   sending: boolean;
   disabled: boolean;
+  /**
+   * Пока false — настоящий TextInput не монтируется (EditText — самая дорогая
+   * часть оболочки экрана на Android). Инпут стоит position:absolute и не
+   * участвует в layout: без него пиксели тождественны (высоту зоны ведут
+   * зеркало строк и settledInputHeight, подсказка — отдельный Text). Экран
+   * передаёт сюда показ ленты; тап по полю до этого момента монтирует инпут
+   * сам и ставит фокус. Смонтированный инпут не размонтируется (latch) — при
+   * переключении чатов повторной цены нет.
+   */
+  mountInput?: boolean;
   placeholder?: string;
   bottomInset?: number;
   emojiAccessoryActive: boolean;
@@ -121,6 +132,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
     onSend,
     sending,
     disabled,
+    mountInput = true,
     placeholder = "Сообщение",
     bottomInset = floraSpacing.grid,
     emojiAccessoryActive,
@@ -153,6 +165,30 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
   valueRef.current = value;
   const onTextChangeRef = useRef(onTextChange);
   onTextChangeRef.current = onTextChange;
+
+  /** Latch: раз смонтированный инпут живёт до конца жизни поля. */
+  const [inputMounted, setInputMounted] = useState(mountInput);
+  const inputMountedRef = useRef(inputMounted);
+  inputMountedRef.current = inputMounted;
+  /** Фокус, запрошенный до монтажа инпута, — исполняется в его первом коммите. */
+  const pendingFocusRef = useRef(false);
+  useEffect(() => {
+    if (mountInput) setInputMounted(true);
+  }, [mountInput]);
+  useEffect(() => {
+    if (!inputMounted || !pendingFocusRef.current) return;
+    pendingFocusRef.current = false;
+    inputRef.current?.focus();
+  }, [inputMounted]);
+  /** Фокус с учётом отложенного монтажа: либо сразу, либо после первого коммита. */
+  const requestInputFocus = useCallback(() => {
+    if (inputMountedRef.current) {
+      inputRef.current?.focus();
+      return;
+    }
+    pendingFocusRef.current = true;
+    setInputMounted(true);
+  }, []);
 
   const handleChangeText = (next: string) => {
     setValue(next);
@@ -352,20 +388,20 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
       KeyboardController.setFocusTo("current");
       return;
     }
-    inputRef.current?.focus();
-  }, []);
+    requestInputFocus();
+  }, [requestInputFocus]);
 
   useImperativeHandle(
     ref,
     () => ({
       insertToken,
-      focusInput: () => inputRef.current?.focus(),
+      focusInput: requestInputFocus,
       blurInput: () => inputRef.current?.blur(),
       showInputKeyboard,
       clearText,
       setText,
     }),
-    [clearText, insertToken, setText, showInputKeyboard],
+    [clearText, insertToken, requestInputFocus, setText, showInputKeyboard],
   );
 
   const handleEmojiPress = useCallback(() => {
@@ -441,29 +477,41 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
             {/* Инпут всегда с showSoftInputOnFocus: тап по сфокусированному полю
                 при открытой панели сам поднимает IME, keyboardWillShow в хуке дока
                 переводит режим в keyboard. Оверлеи и переключение флага не нужны. */}
-            <TextInput
-              ref={inputRef}
-              nativeID="chat-compose-input"
-              style={inputStyle}
-              placeholder={placeholder}
-              placeholderTextColor="transparent"
-              value={value}
-              onChangeText={handleChangeText}
-              onSelectionChange={onSelectionChange}
-              editable={!disabled}
-              multiline
-              maxLength={4000}
-              /* Android не кладёт lineHeight на пустую строку, поэтому контент
-                 короче своей коробки ровно на пустом инпуте и на пустой
-                 последней строке — а выравнивание решает, куда уйдёт этот
-                 остаток. Пустой инпут: по центру каретка стоит там же, куда
-                 встанет первый символ со спаном (иначе он «приезжал» на 2px
-                 ниже). С текстом: только по верху — там инпут ростом в потолок,
-                 и центрирование увело бы строки на середину этой высоты. */
-              textAlignVertical={isEmpty ? "center" : "top"}
-              textBreakStrategy="simple"
-              onFocus={handleInputFocus}
-            />
+            {inputMounted ? (
+              <TextInput
+                ref={inputRef}
+                nativeID="chat-compose-input"
+                style={inputStyle}
+                placeholder={placeholder}
+                placeholderTextColor="transparent"
+                value={value}
+                onChangeText={handleChangeText}
+                onSelectionChange={onSelectionChange}
+                editable={!disabled}
+                multiline
+                maxLength={4000}
+                /* Android не кладёт lineHeight на пустую строку, поэтому контент
+                   короче своей коробки ровно на пустом инпуте и на пустой
+                   последней строке — а выравнивание решает, куда уйдёт этот
+                   остаток. Пустой инпут: по центру каретка стоит там же, куда
+                   встанет первый символ со спаном (иначе он «приезжал» на 2px
+                   ниже). С текстом: только по верху — там инпут ростом в потолок,
+                   и центрирование увело бы строки на середину этой высоты. */
+                textAlignVertical={isEmpty ? "center" : "top"}
+                textBreakStrategy="simple"
+                onFocus={handleInputFocus}
+              />
+            ) : (
+              /* Фасад до монтажа инпута: тап в поле работает как обычно —
+                 монтирует EditText и ставит фокус первым же коммитом. */
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={placeholder}
+                style={StyleSheet.absoluteFill}
+                disabled={disabled}
+                onPress={requestInputFocus}
+              />
+            )}
           </Animated.View>
 
           <Pressable

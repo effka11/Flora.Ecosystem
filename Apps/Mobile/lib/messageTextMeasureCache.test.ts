@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  BODY_MEASURE_CACHE_CAPACITY,
+  clearMessageTextMeasures,
   getCachedBodyMeasure,
   getCachedTimeLabelWidth,
+  hydrateMessageTextMeasures,
   resetMessageTextMeasureCache,
   setCachedBodyMeasure,
   setCachedTimeLabelWidth,
+  setMessageTextMeasureDirtyListener,
+  snapshotMessageTextMeasures,
   type CachedBodyMeasure,
 } from "./messageTextMeasureCache";
 
@@ -34,7 +39,7 @@ describe("body measure cache", () => {
   });
 
   it("evicts the least-recently-used entry once capacity overflows", () => {
-    const capacity = 500;
+    const capacity = BODY_MEASURE_CACHE_CAPACITY;
     for (let i = 0; i < capacity; i += 1) {
       setCachedBodyMeasure(`body-${i}`, 200, { lineWidths: [i], lines: [`body-${i}`] });
     }
@@ -65,6 +70,74 @@ describe("time label width cache", () => {
   it("misses for a different time label", () => {
     setCachedTimeLabelWidth("12:34", 30);
     expect(getCachedTimeLabelWidth("12:35")).toBeNull();
+  });
+});
+
+describe("snapshot and hydrate", () => {
+  it("round-trips body and time label measurements", () => {
+    setCachedBodyMeasure("hello", 200, { lineWidths: [42], lines: ["hello"] });
+    setCachedTimeLabelWidth("12:34", 30);
+
+    const snapshot = snapshotMessageTextMeasures(10);
+    clearMessageTextMeasures();
+    expect(getCachedBodyMeasure("hello", 200)).toBeNull();
+
+    hydrateMessageTextMeasures(snapshot);
+    expect(getCachedBodyMeasure("hello", 200)).toEqual({ lineWidths: [42], lines: ["hello"] });
+    expect(getCachedTimeLabelWidth("12:34")).toBe(30);
+  });
+
+  it("keeps only the newest body entries within the persist cap", () => {
+    for (let i = 0; i < 5; i += 1) {
+      setCachedBodyMeasure(`body-${i}`, 200, { lineWidths: [i], lines: [`body-${i}`] });
+    }
+
+    const snapshot = snapshotMessageTextMeasures(2);
+    expect(snapshot.body.map(([key]) => key)).toEqual(["200|body-3", "200|body-4"]);
+  });
+
+  it("skips malformed entries instead of throwing", () => {
+    hydrateMessageTextMeasures({
+      body: [
+        ["200|ok", { lineWidths: [10], lines: ["ok"] }],
+        ["200|bad-widths", { lineWidths: ["10"], lines: ["bad"] }],
+        ["200|missing-lines", { lineWidths: [10] }],
+        [42, { lineWidths: [10], lines: ["not a string key"] }],
+        "not an entry",
+      ],
+      time: [
+        ["12:34", 30],
+        ["12:35", "30"],
+        ["12:36", Number.NaN],
+      ],
+    });
+
+    expect(getCachedBodyMeasure("ok", 200)).toEqual({ lineWidths: [10], lines: ["ok"] });
+    expect(getCachedBodyMeasure("bad-widths", 200)).toBeNull();
+    expect(getCachedBodyMeasure("missing-lines", 200)).toBeNull();
+    expect(getCachedTimeLabelWidth("12:34")).toBe(30);
+    expect(getCachedTimeLabelWidth("12:35")).toBeNull();
+    expect(getCachedTimeLabelWidth("12:36")).toBeNull();
+  });
+
+  it("ignores a payload that is not a snapshot", () => {
+    expect(() => hydrateMessageTextMeasures(null)).not.toThrow();
+    expect(() => hydrateMessageTextMeasures("nope")).not.toThrow();
+    expect(() => hydrateMessageTextMeasures({ body: 1, time: 2 })).not.toThrow();
+  });
+
+  it("marks the cache dirty on writes but not on hydration", () => {
+    const dirty = vi.fn();
+    setMessageTextMeasureDirtyListener(dirty);
+
+    hydrateMessageTextMeasures({
+      body: [["200|hydrated", { lineWidths: [10], lines: ["hydrated"] }]],
+      time: [],
+    });
+    expect(dirty).not.toHaveBeenCalled();
+
+    setCachedBodyMeasure("fresh", 200, { lineWidths: [10], lines: ["fresh"] });
+    expect(dirty).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -10,7 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { Pressable } from "react-native-gesture-handler";
 import Reanimated, {
   Easing,
@@ -255,15 +255,21 @@ export function MessageBubbleMoreMenu({
 export function MessageBubbleMenuDock({
   messageUuid,
   isFromMe,
+  style,
   children,
 }: {
   messageUuid: string;
   isFromMe: boolean;
+  /**
+   * Стили якоря пузыря кладутся прямо на хост дока (тот же бокс): отдельная
+   * обёртка была лишним узлом на каждую ячейку ленты — дорогой фазе монтажа.
+   */
+  style?: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
   const show = useIsMessageMenuOpen(messageUuid);
   return (
-    <View style={styles.dockHost} collapsable={false} pointerEvents="box-none">
+    <View style={[styles.dockHost, style]} collapsable={false} pointerEvents="box-none">
       <View pointerEvents={show ? "none" : "auto"} collapsable={false}>
         {children}
       </View>

@@ -34,14 +34,18 @@ function voiceCacheExtension(contentType: string): string {
   return "m4a";
 }
 
+/** Детерминированный файл голосового: один asset — один путь, живёт между запусками. */
+function voiceCacheFile(assetUuid: string, contentType: string): File {
+  const ext = voiceCacheExtension(contentType);
+  return new File(Paths.cache, `msg-voice-${normalizeAssetId(assetUuid)}.${ext}`);
+}
+
 async function writeBytesToCachePath(
   bytes: Uint8Array,
   assetUuid: string,
   contentType: string,
 ): Promise<string> {
-  const ext = voiceCacheExtension(contentType);
-  const name = `msg-voice-${normalizeAssetId(assetUuid)}.${ext}`;
-  const file = new File(Paths.cache, name);
+  const file = voiceCacheFile(assetUuid, contentType);
   if (file.exists) file.delete();
   file.create();
   // Copy into a fresh ArrayBuffer-backed view — some RN TypedArray bridges
@@ -165,21 +169,35 @@ function isUsableVoiceFileUri(uri: string): boolean {
   }
 }
 
-export function peekMessageVoiceUri(assetUuid: string): string | null {
+export function peekMessageVoiceUri(assetUuid: string, contentType?: string): string | null {
   const id = normalizeAssetId(assetUuid);
   const cached = uriCache.get(id);
-  if (!cached) return null;
-  // Drop stale in-memory URIs (Fast Refresh / failed writes / OS cache eviction).
-  if (!isUsableVoiceFileUri(cached)) {
-    uriCache.delete(id);
-    return null;
+  if (cached) {
+    // Drop stale in-memory URIs (Fast Refresh / failed writes / OS cache eviction).
+    if (!isUsableVoiceFileUri(cached)) {
+      uriCache.delete(id);
+      return null;
+    }
+    return cached;
   }
-  return cached;
+  // Рестарт процесса: файл детерминированный — играем с диска без сети.
+  try {
+    const onDisk = normalizePlayableAudioUri(
+      voiceCacheFile(assetUuid, contentType ?? VOICE_HE_AAC_CONTENT_TYPE).uri,
+    );
+    if (isUsableVoiceFileUri(onDisk)) {
+      uriCache.set(id, onDisk);
+      return onDisk;
+    }
+  } catch {
+    // Probe диска не должен ломать peek.
+  }
+  return null;
 }
 
 export async function ensureMessageVoiceUri(block: FscpVoiceBlock): Promise<string> {
   const id = normalizeAssetId(block.assetUuid);
-  const cached = peekMessageVoiceUri(block.assetUuid);
+  const cached = peekMessageVoiceUri(block.assetUuid, block.contentType);
   if (cached) return cached;
 
   const pending = inflight.get(id);
@@ -218,8 +236,10 @@ export async function ensureMessageVoiceUri(block: FscpVoiceBlock): Promise<stri
     if (!isUsableVoiceFileUri(uri)) {
       throw new Error(`Не удалось сохранить голосовой файл (${uri})`);
     }
-    const written = new File(uri);
-    console.warn("[chat-voice] cached", { uri, size: written.size, head });
+    if (__DEV__) {
+      const written = new File(uri);
+      console.warn("[chat-voice] cached", { uri, size: written.size, head });
+    }
     uriCache.set(id, uri);
     clearPendingVoiceUri(block.assetUuid);
     return uri;

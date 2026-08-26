@@ -6,7 +6,6 @@
 import {
   apiAddGroupMember,
   apiGetGroup,
-  apiGetGroupMessages,
   ApiRequestError,
   apiLeaveGroup,
   apiMarkGroupRead,
@@ -31,11 +30,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
-import {
-  groupApiMessagesToThread,
-  groupRosterNeedsRefresh,
-  mergeGroupDetail,
-} from "@/lib/groupChatMap";
+import { groupRosterNeedsRefresh, mergeGroupDetail } from "@/lib/groupChatMap";
 import type { GroupChat } from "@/lib/groupChatTypes";
 import {
   getGroupPendingOutgoing,
@@ -49,6 +44,10 @@ import {
   takeClientMessageKey,
 } from "@/lib/messageBirthRegistry";
 import { floraNewUuid } from "@/lib/floraUuid";
+import {
+  fetchThreadFirstPage,
+  THREAD_FIRST_PAGE_STALE_MS,
+} from "@/lib/threadFirstPage";
 import { messageDecryptCacheKey } from "@/lib/useThreadMessageDecrypt";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -59,6 +58,9 @@ import type { ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
 
 export const groupMessagesQueryKey = (conversationUuid: string) =>
   ["group-messages", conversationUuid] as const;
+
+/** Стабильная ссылка «участников нет»: `?? []` ломал мемоизацию потребителей. */
+const EMPTY_MEMBERS: GroupChat["members"] = [];
 
 type GroupMessagesPage = { items: MsgMessageDto[]; nextCursor: string | null };
 
@@ -160,30 +162,26 @@ export function useGroupChatThread(params: {
     titleHint,
   ]);
 
+  // Тот же фетч, которым греет тред prefetch по касанию строки списка (ключ
+  // `group-messages` у них общий) — открытие холодной группы идёт одним
+  // сетевым полётом, а не вторым запросом поверх прогретого.
+  const fetchMessagesPage = useCallback(
+    (): Promise<GroupMessagesPage> => fetchThreadFirstPage({ kind: "group", conversationUuid }),
+    [conversationUuid],
+  );
+
   const messagesQuery = useQuery({
     queryKey: groupMessagesQueryKey(conversationUuid),
     enabled: enabled && !!conversationUuid,
-    staleTime: 60_000,
+    staleTime: THREAD_FIRST_PAGE_STALE_MS,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
-    queryFn: async (): Promise<GroupMessagesPage> => {
-      const page = await apiGetGroupMessages(conversationUuid);
-      return {
-        items: groupApiMessagesToThread(conversationUuid, page.items),
-        nextCursor: page.nextCursor,
-      };
-    },
+    queryFn: fetchMessagesPage,
   });
 
-  useEffect(() => {
-    if (!enabled || !conversationUuid) return;
-    void apiMarkGroupRead(conversationUuid)
-      .then(() => {
-        void queryClient.invalidateQueries({ queryKey: ["groups"] });
-        requestTabBadgesRefresh();
-      })
-      .catch(() => undefined);
-  }, [conversationUuid, enabled, queryClient]);
+  // Mark-read и тихий догруз живут на экране треда и стартуют после reveal
+  // ленты (см. [conversationUuid].tsx): раньше mark-read стрелял здесь ВТОРЫМ
+  // дублирующим вызовом прямо в окне открытия.
 
   const messages = useMemo(() => {
     void pendingEpoch;
@@ -518,7 +516,7 @@ export function useGroupChatThread(params: {
 
   return {
     group,
-    members: group?.members ?? [],
+    members: group?.members ?? EMPTY_MEMBERS,
     memberCount: group?.memberCount || group?.members.length || 0,
     title: (group?.title || titleHint || "Группа").trim() || "Группа",
     messages,

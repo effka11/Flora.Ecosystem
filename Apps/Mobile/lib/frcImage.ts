@@ -236,14 +236,29 @@ export async function encodeImageUriToFrc(uri: string, quality = 85): Promise<Fi
   return output;
 }
 
-export async function decodeFrcBytesToCache(bytes: Uint8Array): Promise<string> {
+/**
+ * Декод FRI-байтов в конкретный PNG-файл (детерминированный кэш картинок
+ * сообщений: переживает рестарт процесса). Декодируем во временный файл и
+ * переименовываем: упавший посреди записи декод не должен оставить частичный
+ * PNG, который позже сойдёт за валидное кэш-попадание.
+ */
+export async function decodeFrcBytesToFile(bytes: Uint8Array, output: File): Promise<string> {
   if (!isFloraFrcIAvailable()) throw new Error("FRC-I native decoder недоступен");
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const source = new File(Paths.cache, `flora-frc-message-${stamp}.fri`);
-  const output = new File(Paths.cache, `flora-frc-message-${stamp}.png`);
+  const tmp = new File(Paths.cache, `flora-frc-message-${stamp}.tmp.png`);
   writeExpoFileBytes(source, bytes);
-  await decodeFrcFileToPng(source.uri, output.uri);
-  source.delete();
+  let moved = false;
+  try {
+    await decodeFrcFileToPng(source.uri, tmp.uri);
+    if (output.exists) output.delete();
+    tmp.move(output);
+    moved = true;
+  } finally {
+    if (source.exists) source.delete();
+    // После move() tmp.uri указывает на output — удалять только не-перемещённый.
+    if (!moved && tmp.exists) tmp.delete();
+  }
   return output.uri;
 }
 

@@ -17,6 +17,7 @@
     "allow_concurrent_runs": false,
     "reveal": "always"
   },
+  
   {
     "label": "Flora Government: Web Dev",
     "command": "powershell",

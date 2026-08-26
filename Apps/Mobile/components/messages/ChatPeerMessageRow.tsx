@@ -5,10 +5,7 @@ import {
   type ThreadBubbleItem,
 } from "@/components/messages/ChatMessageBubble";
 import { ChatMessageBirthHost } from "@/components/messages/ChatMessageBirthHost";
-import {
-  useOpenMessageMenuUuid,
-  type BubbleAnchorRect,
-} from "@/components/messages/MessageBubbleMoreMenu";
+import type { BubbleAnchorRect } from "@/components/messages/MessageBubbleMoreMenu";
 import type { ChatPeerInfo } from "@/components/messages/ChatThreadHeader";
 import { findGroupMember } from "@/lib/groupChatMap";
 import type { GroupMember } from "@/lib/groupChatTypes";
@@ -17,7 +14,9 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { type AnimatedStyle } from "react-native-reanimated";
 
 type Props = {
-  messages: ThreadBubbleItem[];
+  message: ThreadBubbleItem;
+  /** Хвост run'а (низ группы) — строка носит аватар; остальные держат отступ. */
+  showAvatar: boolean;
   peer: ChatPeerInfo;
   /** Group roster — when set, avatar resolves by message senderUserUuid. */
   groupMembers?: readonly GroupMember[];
@@ -25,19 +24,25 @@ type Props = {
   holdAvatarStyle?: StyleProp<AnimatedStyle<ViewStyle>>;
 };
 
-export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
-  messages,
+/**
+ * Одна peer-строка плоской ленты (телеграмная модель): пузырь + слот аватара.
+ * Раньше весь peer-run был одним компонентом (`ChatPeerMessageGroup`) — один
+ * item FlashList монтировал десятки пузырей, виртуализация внутри run'а не
+ * работала. Геометрия строки повторяет старую группу пиксель в пиксель:
+ * та же колонка аватара, тот же горизонтальный gap, maxWidth 78%,
+ * межстрочный отступ = bubbleRowGap (бывший gap колонки/margin группы).
+ */
+export const ChatPeerMessageRow = memo(function ChatPeerMessageRow({
+  message,
+  showAvatar,
   peer,
   groupMembers,
   onPress,
   holdAvatarStyle,
 }: Props) {
+  const senderUuid = message.senderUserUuid?.trim() || "";
   const avatarPeer = useMemo((): ChatPeerInfo => {
     if (!groupMembers?.length) return peer;
-    const senderUuid =
-      messages[messages.length - 1]?.senderUserUuid?.trim() ||
-      messages[0]?.senderUserUuid?.trim() ||
-      "";
     const member = findGroupMember(groupMembers, senderUuid);
     if (!member) {
       return {
@@ -59,51 +64,44 @@ export const ChatPeerMessageGroup = memo(function ChatPeerMessageGroup({
       otherUserLastSeenAt: null,
       conversationUuid: peer.conversationUuid,
     };
-  }, [groupMembers, messages, peer]);
+  }, [groupMembers, peer, senderUuid]);
 
   const displayName =
     avatarPeer.otherDisplayName || avatarPeer.otherUsername || "Пользователь";
-  const openMenuUuid = useOpenMessageMenuUuid();
+  const clientKey = message.clientMessageKey ?? message.messageUuid;
 
   return (
-    <View style={styles.group}>
+    <View style={styles.row}>
       <Animated.View style={[styles.avatarSlot, holdAvatarStyle]} pointerEvents="none">
-        <FloraAvatar
-          size={floraMessages.peerBubbleAvatarSize}
-          avatarUuid={avatarPeer.otherAvatarUuid}
-          displayName={displayName}
-          username={avatarPeer.otherUsername}
-          seed={avatarPeer.otherUserUuid || displayName}
-          accountBlocked={avatarPeer.otherAccountBlocked}
-        />
+        {showAvatar ? (
+          <FloraAvatar
+            size={floraMessages.peerBubbleAvatarSize}
+            avatarUuid={avatarPeer.otherAvatarUuid}
+            displayName={displayName}
+            username={avatarPeer.otherUsername}
+            seed={avatarPeer.otherUserUuid || displayName}
+            accountBlocked={avatarPeer.otherAccountBlocked}
+          />
+        ) : null}
       </Animated.View>
-      <View style={styles.bubbles}>
-        {messages.map((message) => {
-          const clientKey = message.clientMessageKey ?? message.messageUuid;
-          return (
-            <ChatMessageBirthHost
-              key={clientKey}
-              clientMessageKey={clientKey}
-              menuOpen={openMenuUuid === message.messageUuid}
-            >
-              <ChatMessageBubble
-                message={message}
-                peer={avatarPeer}
-                showPeerAvatar={false}
-                isPeerIndented={false}
-                inPeerGroup
-                onPress={(anchor) => onPress(message, anchor)}
-              />
-            </ChatMessageBirthHost>
-          );
-        })}
+      <View style={styles.bubbleSlot}>
+        <ChatMessageBirthHost clientMessageKey={clientKey}>
+          <ChatMessageBubble
+            message={message}
+            peer={avatarPeer}
+            showPeerAvatar={false}
+            isPeerIndented={false}
+            inPeerGroup
+            onPress={onPress}
+          />
+        </ChatMessageBirthHost>
       </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  group: {
+  row: {
     flexDirection: "row",
     alignItems: "flex-end",
     width: "100%",
@@ -116,11 +114,10 @@ const styles = StyleSheet.create({
     width: floraMessages.peerBubbleAvatarSize,
     flexShrink: 0,
   },
-  bubbles: {
+  bubbleSlot: {
     flex: 1,
     minWidth: 0,
     maxWidth: "78%",
     overflow: "visible",
-    gap: floraMessages.bubbleRowGap,
   },
 });

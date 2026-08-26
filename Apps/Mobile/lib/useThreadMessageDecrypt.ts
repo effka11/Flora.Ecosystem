@@ -19,6 +19,16 @@ import { messageThreadDecryptCache } from "@/stores/messageThreadCache";
 
 const DECRYPT_BATCH = 4;
 
+/**
+ * Окно готовности треда и размер первой волны расшифровки: столько новейших
+ * сообщений должно стать терминальными до показа ленты. Ждать весь тред
+ * нельзя — время открытия росло линейно с историей (волны по DECRYPT_BATCH,
+ * каждая с полным ре-рендером). Старая история дорасшифровывается фоном под
+ * уже открытым чатом: peer-строки до готовности скрыты и вставляются выше
+ * вьюпорта, у якоря (низ ленты) ничего не прыгает.
+ */
+export const THREAD_REVEAL_WINDOW = 16;
+
 function isDecryptableFscpWire(enc: string | null | undefined): boolean {
   const t = enc?.trim();
   if (!t) return false;
@@ -36,6 +46,31 @@ function missingFrankReceiptFromDto(m: MsgMessageDto, isGroupChat: boolean): boo
 
 export function messageDecryptCacheKey(m: MsgMessageDto): string {
   return `${m.messageUuid}|${(m.encryptedPayload ?? "").slice(0, 96)}`;
+}
+
+/**
+ * Дедуп параллельной расшифровки одного сообщения: press-in-прогрев и волна
+ * хука стартуют почти одновременно и без дедупа расшифровывали одни и те же
+ * 16 строк дважды (в трассе — ready≈880мс при data≈170мс). Ключ — тот же,
+ * что у кэша строк; запись снимается по завершении в любом исходе.
+ */
+const decryptWireInFlight = new Map<string, Promise<FscpMessagePlaintext>>();
+
+function decryptWireDeduped(
+  cacheKey: string,
+  enc: string,
+  viewerUserUuid: string,
+  decryptWirePlaintext: (wire: string, viewer: string) => Promise<FscpMessagePlaintext>,
+): Promise<FscpMessagePlaintext> {
+  const existing = decryptWireInFlight.get(cacheKey);
+  if (existing) return existing;
+  const p = decryptWirePlaintext(enc, viewerUserUuid);
+  decryptWireInFlight.set(cacheKey, p);
+  const drop = () => {
+    decryptWireInFlight.delete(cacheKey);
+  };
+  p.then(drop, drop);
+  return p;
 }
 
 function normalizeRow(row: ThreadBubbleItem): ThreadBubbleItem {
@@ -144,17 +179,39 @@ function withMessageMeta(
   isGroupChat: boolean,
 ): ThreadBubbleItem {
   const optimistic = isOptimisticPayloadSentinel(m.encryptedPayload);
+  const sendStatus = optimistic ? ("sending" as const) : undefined;
+  const missingFrankReceipt = missingFrankReceiptFromDto(m, isGroupChat);
+  const senderUserUuid = m.senderUserUuid ?? row.senderUserUuid;
+  const clientMessageKey =
+    row.clientMessageKey ?? takeClientMessageKey(m.messageUuid) ?? m.messageUuid;
+  // Identity-preserving merge: мета не изменилась — возвращаем тот же объект.
+  // На этом держится memo пузырей: refetch/слияние «без изменений» не должно
+  // перерисовать ни одной ячейки (раньше клонировали всегда, и каждая волна
+  // релэйаутила всю ленту).
+  if (
+    row.messageUuid === m.messageUuid &&
+    row.isFromMe === m.isFromMe &&
+    row.createdAt === m.createdAt &&
+    row.isRead === m.isRead &&
+    row.senderUserUuid === senderUserUuid &&
+    row.missingFrankReceipt === missingFrankReceipt &&
+    row.clientMessageKey === clientMessageKey &&
+    row.sendStatus === sendStatus &&
+    row.previewText != null &&
+    row.imageBlocks != null
+  ) {
+    return row;
+  }
   return normalizeRow({
     ...row,
     messageUuid: m.messageUuid,
     isFromMe: m.isFromMe,
     createdAt: m.createdAt,
     isRead: m.isRead,
-    senderUserUuid: m.senderUserUuid ?? row.senderUserUuid,
-    missingFrankReceipt: missingFrankReceiptFromDto(m, isGroupChat),
-    clientMessageKey:
-      row.clientMessageKey ?? takeClientMessageKey(m.messageUuid) ?? m.messageUuid,
-    sendStatus: optimistic ? "sending" : undefined,
+    senderUserUuid,
+    missingFrankReceipt,
+    clientMessageKey,
+    sendStatus,
   });
 }
 
@@ -172,6 +229,9 @@ function resolveRowForMessage(
   if (prev && isRowTerminal(prev)) {
     return withMessageMeta(prev, m, isGroupChat);
   }
+  // Уже decrypting — переиспользуем строку: placeholder не рисует мету,
+  // а стабильная identity не даёт merge'у ре-рендерить ячейки вьюпорта.
+  if (prev && prev.decryptState === "decrypting") return prev;
   return buildDecryptingRow(m, isGroupChat);
 }
 
@@ -197,6 +257,92 @@ function rowsMergingCurrent(
   return messages.map((m) => resolveRowForMessage(m, byUuid, isGroupChat));
 }
 
+/**
+ * Фоновый прогрев decrypt-кэша треда (idle-префетч, гидрация с диска): к
+ * моменту открытия чата все строки терминальны → `threadReady` истинен с
+ * первого кадра, без «Расшифровка…»/скрытых пузырей.
+ *
+ * Пишет в те же кэши, что и хук (`messageThreadDecryptCache`), ключи
+ * идентичны (`messageDecryptCacheKey`). Ошибка расшифровки прерывает прогрев
+ * молча — терминальный `failed` выставляет только сам хук при открытии.
+ */
+export async function warmThreadDecryptRows(params: {
+  conversationUuid: string;
+  /** Oldest-first, как в RQ-кэше треда. */
+  messages: readonly MsgMessageDto[];
+  isGroupChat: boolean;
+  viewerUserUuid: string;
+  decryptWirePlaintext: (wire: string, viewerUserUuid: string) => Promise<FscpMessagePlaintext>;
+  shouldContinue?: () => boolean;
+  yieldBetweenSteps?: () => Promise<void>;
+}): Promise<void> {
+  const {
+    conversationUuid,
+    messages,
+    isGroupChat,
+    viewerUserUuid,
+    decryptWirePlaintext,
+  } = params;
+  const shouldContinue = params.shouldContinue ?? (() => true);
+  const yieldStep =
+    params.yieldBetweenSteps ??
+    (() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  if (!conversationUuid || messages.length === 0) return;
+
+  // Новые первыми: пользователь открывает низ ленты.
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (!shouldContinue()) return;
+    const m = messages[i]!;
+    if (isOptimisticPayloadSentinel(m.encryptedPayload)) continue;
+    const cacheKey = messageDecryptCacheKey(m);
+    const cached = messageThreadDecryptCache.getMessage(cacheKey);
+    if (cached && isRowTerminal(cached)) continue;
+
+    const enc = m.encryptedPayload?.trim();
+    let row: ThreadBubbleItem;
+    if (enc && isDecryptableFscpWire(enc)) {
+      try {
+        const plain = await decryptWireDeduped(
+          cacheKey,
+          enc,
+          viewerUserUuid,
+          decryptWirePlaintext,
+        );
+        row = rowFromPlaintext(m, plain, isGroupChat);
+      } catch {
+        return;
+      }
+    } else {
+      row = rowFromPreviewText(
+        m,
+        plaintextToPreview({
+          type: "blocks",
+          version: 1,
+          blocks: [{ kind: "text", body: m.encryptedPayload ?? "" }],
+          clientCreatedAt: m.createdAt,
+        }),
+        isGroupChat,
+      );
+    }
+    messageThreadDecryptCache.setMessage(cacheKey, row);
+    await yieldStep();
+  }
+
+  if (!shouldContinue()) return;
+  // Полный массив треда — fast path `rowsFromWireCache` при открытии.
+  const rows: ThreadBubbleItem[] = [];
+  for (const m of messages) {
+    const cached = messageThreadDecryptCache.getMessage(messageDecryptCacheKey(m));
+    if (!cached || !isRowTerminal(cached)) return;
+    rows.push(withMessageMeta(cached, m, isGroupChat));
+  }
+  // Вызовы со срезом (прогрев окна показа) не должны усаживать уже полный
+  // массив треда — иначе fast path при открытии деградирует до merge.
+  const prevThreadRows = messageThreadDecryptCache.get(conversationUuid);
+  if (prevThreadRows && prevThreadRows.length > rows.length) return;
+  messageThreadDecryptCache.set(conversationUuid, rows);
+}
+
 type Args = {
   conversationUuid: string;
   messages: MsgMessageDto[];
@@ -206,7 +352,29 @@ type Args = {
   fscpReady: boolean;
   fscpDecryptKey?: string | null;
   decryptWirePlaintext: (wire: string, viewerUserUuid: string) => Promise<FscpMessagePlaintext>;
+  /**
+   * Пока true — стоят все волны, не кормящие окно показа (включая первую,
+   * если окно уже терминально из прогрева). Каждая волна — setRows →
+   * перестройка listData прямо в окне замера FlashList (ready→load):
+   * открытие длиннее, строки истории «подмигивают». Экран передаёт сюда
+   * `!listRevealed` — фон идёт после первого кадра.
+   */
+  holdBackgroundWaves?: boolean;
+  /**
+   * То же удержание, но проверяемое в момент проверки, а не пропсом: экран
+   * треда держит волны, пока играет анимация возврата. Пропсом это стоило бы
+   * ре-рендера всего экрана ровно в первом кадре ухода — дороже, чем волна,
+   * которую удержание отменяет.
+   */
+  shouldHoldBackgroundWaves?: () => boolean;
 };
+
+const HOLD_POLL_MS = 64;
+/**
+ * Потолок удержания: показ ленты — не гарантия (пустой тред, сорванный
+ * onLoad), а история обязана дорасшифроваться. Ждём разумную паузу и идём.
+ */
+const HOLD_MAX_MS = 2500;
 
 export function useThreadMessageDecrypt({
   conversationUuid,
@@ -217,12 +385,20 @@ export function useThreadMessageDecrypt({
   fscpReady,
   fscpDecryptKey,
   decryptWirePlaintext,
+  holdBackgroundWaves,
+  shouldHoldBackgroundWaves,
 }: Args): ThreadBubbleItem[] {
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
   const decryptWirePlaintextRef = useRef(decryptWirePlaintext);
   decryptWirePlaintextRef.current = decryptWirePlaintext;
+
+  const holdBackgroundWavesRef = useRef(holdBackgroundWaves === true);
+  holdBackgroundWavesRef.current = holdBackgroundWaves === true;
+
+  const shouldHoldBackgroundWavesRef = useRef(shouldHoldBackgroundWaves);
+  shouldHoldBackgroundWavesRef.current = shouldHoldBackgroundWaves;
 
   const prevMessagesKeyRef = useRef<string | null>(null);
   const prevFscpDecryptKeyRef = useRef<string | null | undefined>(undefined);
@@ -251,8 +427,16 @@ export function useThreadMessageDecrypt({
       isGroupChat,
     );
     if (conversationCached) {
-      setRows(conversationCached);
-      rowsRef.current = conversationCached;
+      // Все строки совпали по identity — setRows не нужен (лишний ре-рендер
+      // всей ленты на тёплом открытии).
+      const prev = rowsRef.current;
+      const same =
+        prev.length === conversationCached.length &&
+        conversationCached.every((row, i) => row === prev[i]);
+      if (!same) {
+        setRows(conversationCached);
+        rowsRef.current = conversationCached;
+      }
       return;
     }
 
@@ -263,8 +447,15 @@ export function useThreadMessageDecrypt({
 
     if (messagesKeyChanged || fscpKeyChanged) {
       const seeded = rowsMergingCurrent(currentMessages, rowsRef.current, isGroupChat);
-      setRows(seeded);
-      rowsRef.current = seeded;
+      // Все строки совпали по identity (тёплое повторное открытие) — коммит
+      // не нужен, иначе весь вьюпорт ячеек ре-рендерится впустую.
+      const prev = rowsRef.current;
+      const same =
+        prev.length === seeded.length && seeded.every((row, i) => row === prev[i]);
+      if (!same) {
+        setRows(seeded);
+        rowsRef.current = seeded;
+      }
     } else {
       const merged = rowsMergingCurrent(currentMessages, rowsRef.current, isGroupChat);
       const changed = merged.some((row, i) => row !== rowsRef.current[i]);
@@ -299,18 +490,53 @@ export function useThreadMessageDecrypt({
 
     void (async () => {
       const next = rowsRef.current.slice();
+      // Индекс начала окна показа: волны, не задевающие его, — чистый фон.
+      const revealWindowStart = currentMessages.length - THREAD_REVEAL_WINDOW;
 
-      for (let offset = 0; offset < pending.length; offset += DECRYPT_BATCH) {
+      for (let offset = 0; offset < pending.length; ) {
         if (cancelled) return;
-        const chunk = pending.slice(offset, offset + DECRYPT_BATCH);
+        // Первая волна = окно показа: reveal после одного setRows, а не после
+        // window/DECRYPT_BATCH ре-рендеров. pending отсортирован новыми вперёд.
+        const size = offset === 0 ? THREAD_REVEAL_WINDOW : DECRYPT_BATCH;
+        const chunk = pending.slice(offset, offset + size);
+        offset += size;
+        // Фоновые волны ждут первого видимого кадра ленты (см. Args). Держим
+        // ЛЮБУЮ волну, не кормящую окно показа, — включая первую: на тёплом
+        // открытии (прогрев с касания) pending — только старая история, и
+        // расшифровка 16 строк жгла CPU ровно в окне монтажа ячеек.
+        const feedsRevealWindow = chunk.some(({ index }) => index >= revealWindowStart);
+        const holdUntil = Date.now() + HOLD_MAX_MS;
+        while (
+          !feedsRevealWindow &&
+          (holdBackgroundWavesRef.current ||
+            shouldHoldBackgroundWavesRef.current?.() === true) &&
+          !cancelled &&
+          Date.now() < holdUntil
+        ) {
+          await new Promise<void>((resolve) => setTimeout(resolve, HOLD_POLL_MS));
+        }
+        if (cancelled) return;
         await Promise.all(
           chunk.map(async ({ m, index }) => {
             const cacheKey = messageDecryptCacheKey(m);
             const enc = m.encryptedPayload?.trim();
             let row: ThreadBubbleItem;
+            // Re-check к моменту расшифровки: pending снят до того, как
+            // press-in-прогрев дописал кэш, — без этой проверки та же строка
+            // расшифровывалась второй раз.
+            const freshCached = messageThreadDecryptCache.getMessage(cacheKey);
+            if (freshCached && isRowTerminal(freshCached)) {
+              next[index] = withMessageMeta(freshCached, m, isGroupChat);
+              return;
+            }
             if (enc && isDecryptableFscpWire(enc)) {
               try {
-                const plain = await decryptWirePlaintextRef.current(enc, viewerUserUuid);
+                const plain = await decryptWireDeduped(
+                  cacheKey,
+                  enc,
+                  viewerUserUuid,
+                  decryptWirePlaintextRef.current,
+                );
                 row = rowFromPlaintext(m, plain, isGroupChat);
               } catch {
                 row = {

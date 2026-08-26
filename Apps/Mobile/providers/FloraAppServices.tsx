@@ -4,9 +4,11 @@ import {
   apiListGroups,
   apiListNotifications,
 } from "@flora/client-core/api";
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { MessageTextMeasureWarmHost } from "@/components/messages/MessageTextMeasureWarmHost";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import { startChatThreadsPrefetch } from "@/lib/chatThreadsPrefetch";
 import {
   fetchCommunitiesOwnedQuery,
   fetchCommunitiesRecommendedQuery,
@@ -106,6 +108,14 @@ export function FloraAppServices({ enabled }: { enabled: boolean }) {
   const fscpStatus = useFscpStore((s) => s.status);
   const fscpMaterial = useFscpStore((s) => s.material);
   const fscpCanDecrypt = useFscpStore((s) => s.canDecrypt);
+  const queryClient = useQueryClient();
+
+  // Тихий прогрев топ-тредов и превью; рестарт на смену fscp-статуса —
+  // разблокировка ключей включает decrypt-прогрев.
+  useEffect(() => {
+    if (!enabled) return;
+    return startChatThreadsPrefetch(queryClient);
+  }, [enabled, fscpStatus, queryClient]);
 
   useEffect(() => {
     useChatListOverlayStore.getState().hydrate(enabled ? userUuid : null);
@@ -123,7 +133,9 @@ export function FloraAppServices({ enabled }: { enabled: boolean }) {
     }
   }, [enabled, fscpCanDecrypt, fscpMaterial, fscpStatus]);
 
-  return null;
+  // Исполнитель offscreen-замеров раскладки пузырей: невидим, нулевого
+  // размера; живёт здесь, чтобы греть замеры и с других вкладок.
+  return enabled ? <MessageTextMeasureWarmHost /> : null;
 }
 
 export function QueryClientRefBridge({ client }: { client: QueryClient }) {
