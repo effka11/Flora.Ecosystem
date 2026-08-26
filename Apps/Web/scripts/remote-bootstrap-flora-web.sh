@@ -383,7 +383,12 @@ fi
   echo 'server {'
   echo '    listen 80;'
   echo "    server_name www.${DOMAIN};"
-  echo "    return 301 https://${DOMAIN}\$request_uri;"
+  echo
+  echo '    location /.well-known/acme-challenge/ {'
+  echo '        root /var/www/certbot;'
+  echo '    }'
+  echo
+  echo "    location / { return 301 https://${DOMAIN}\$request_uri; }"
   echo '}'
 } >/etc/nginx/sites-available/flora-apex.conf
 
@@ -443,8 +448,10 @@ if [[ -n "$CERTBOT_EMAIL" ]] && [[ "$CERTBOT_EMAIL" == *"@"* ]]; then
     --keep-until-expiring || true
   certbot certonly --webroot -w /var/www/certbot \
     -d "${DOMAIN}" \
+    -d "www.${DOMAIN}" \
     --non-interactive --agree-tos -m "$CERTBOT_EMAIL" \
-    --keep-until-expiring || true
+    --cert-name "${DOMAIN}" \
+    --expand --keep-until-expiring || true
   certbot certonly --webroot -w /var/www/certbot \
     -d "gov.${DOMAIN}" \
     --non-interactive --agree-tos -m "$CERTBOT_EMAIL" \
@@ -485,6 +492,14 @@ if [[ -f "$APEX_CERT" && -f "$APEX_KEY" ]]; then
     echo "    ssl_certificate_key ${APEX_KEY};"
     echo
     emit_nginx_apex_shell
+    echo '}'
+    echo
+    echo 'server {'
+    echo '    listen 443 ssl;'
+    echo "    server_name www.${DOMAIN};"
+    echo "    ssl_certificate ${APEX_CERT};"
+    echo "    ssl_certificate_key ${APEX_KEY};"
+    echo "    return 301 https://${DOMAIN}\$request_uri;"
     echo '}'
   } >/etc/nginx/sites-available/flora-apex-https.conf
   ln -sf /etc/nginx/sites-available/flora-apex-https.conf /etc/nginx/sites-enabled/02-flora-apex-https.conf

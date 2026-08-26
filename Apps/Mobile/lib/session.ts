@@ -5,6 +5,15 @@ import type {
   SessionStore,
   SessionTokens,
 } from "@flora/client-core/auth";
+import { stripFloraOriginSlash } from "./floraPublicOrigins";
+
+export {
+  FLORA_GOV_CDN_ORIGIN,
+  FLORA_ORIGIN_DIRECT,
+  FLORA_SOCIAL_CDN_ORIGIN,
+  resolveGovOrigin,
+  resolveOriginDirect,
+} from "./floraPublicOrigins";
 
 export const MOBILE_SESSION_KEY = "flora_mobile_session_v1";
 export const LEGACY_ACCESS_KEY = "flora_access_token";
@@ -94,8 +103,8 @@ export function resolveApiBaseUrl(): string {
     return "http://localhost:5290";
   }
 
-  const explicit = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
-  if (explicit) return explicit;
+  const explicit = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (explicit) return stripFloraOriginSlash(explicit);
 
   throw new Error("EXPO_PUBLIC_API_URL must be set for release builds.");
 }

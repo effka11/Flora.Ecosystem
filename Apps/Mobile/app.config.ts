@@ -71,6 +71,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       sideloadUpdates,
       /** EAS Play AAB — never prompt for install-unknown-apps. */
       playStoreBuild: playBuild,
+      /** Cloudflare Social CDN, grey origin, Gov CDN — for future civic Linking without a rebuild of host names. */
+      floraPublicOrigins: {
+        socialCdn: "https://social.flora-s.net",
+        govCdn: "https://gov.flora-s.net",
+        originDirect: "https://origin.flora-s.net",
+      },
       eas: {
         ...((config.extra?.eas as Record<string, unknown> | undefined) ?? {}),
         build: {

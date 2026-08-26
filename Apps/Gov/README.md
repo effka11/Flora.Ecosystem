@@ -36,7 +36,7 @@ pwsh ./Scripts/grant-franking-reviewer.ps1 -Username egor
 
 ## Прод
 
-Хост: `gov.flora-s.net`. nginx vhost (прокси на `:3001`) поднимает `Apps/Web/scripts/remote-bootstrap-flora-web.sh` вместе с Social. Сборка/systemd самого Next Gov — отдельный деплой (`flora-gov` на порту 3001). Пока процесса нет, origin отвечает 502.
+Хост: `gov.flora-s.net` (Cloudflare orange, как `social.*`). nginx vhost (прокси на `:3001`) поднимает `Apps/Web/scripts/remote-bootstrap-flora-web.sh` вместе с Social. CORS `https://gov.flora-s.net` пишет тот же bootstrap в `flora-api-cors.env`. Сборка/systemd самого Next Gov — отдельный деплой (`flora-gov` на порту 3001). Пока процесса нет, origin отвечает 502. Подключение = выкатить standalone на `:3001`; DNS/CDN уже готовы.
 
 CSP в этом срезе **не** выставляется: неверный CSP ломает HMR Next в dev. Follow-up перед открытым продом Gov.
 

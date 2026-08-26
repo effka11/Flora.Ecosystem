@@ -3,7 +3,7 @@
   "products": {
     "social": "0.13.0-alpha",
     "gov": "0.1.0-alpha",
-    "mobile": "0.13.0-alpha",
+    "mobile": "0.13.1-alpha",
     "fscp": "0.5.0-alpha",
     "frc-i": "0.4.1-alpha",
     "fira": "0.1.0-alpha"
