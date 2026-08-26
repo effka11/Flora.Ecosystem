@@ -1,5 +1,5 @@
 import { TIME_INLINE_GAP_PX, type BubbleTimePlacement } from "@flora/client-core/display";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   NativeSyntheticEvent,
   StyleSheet,
@@ -20,6 +20,7 @@ import {
   getCachedTimeLabelWidth,
   setCachedBodyMeasure,
   setCachedTimeLabelWidth,
+  subscribeTextMeasureCache,
 } from "@/lib/messageTextMeasureCache";
 
 type Props = {
@@ -166,6 +167,55 @@ function ChatMessageBubbleTextBodyInner({
   const placement: BubbleTimePlacement = metaLayout?.placement ?? "inline";
   const layoutLines = measuredBody?.lines ?? [];
 
+  /**
+   * Скрытые замерные Text-узлы — только пока замера нет (в кэше или стейте).
+   * Безусловный вариант рендерил тело КАЖДОГО пузыря дважды + узел времени и
+   * давал 1–2 лишних setState на пузырь при монтаже — на открытии чата это
+   * была заметная часть стоимости первого коммита ленты. При кэш-хите
+   * (повторное открытие, recycle) пузырь монтируется одним текстом.
+   */
+  const needsBodyMeasure = measuredBody == null;
+  const needsTimeMeasure = measuredTimeWidthPx == null;
+
+  /**
+   * Push из кэша замеров: ячейка, смонтированная ДО того как offscreen-хост
+   * дописал замер её текста, отрисована по не-замеренной раскладке (время в
+   * хвосте зауживает текст — пузырь выше финального) и без подписки чинилась
+   * бы только собственным onTextLayout — уже на экране, с видимым
+   * схлопыванием (в трассе: «ячейка … 1235→955 после reveal»). Подписка
+   * живёт только пока замера нет; после попадания эффект отписывается.
+   */
+  useEffect(() => {
+    if (!needsBodyMeasure && !needsTimeMeasure) return;
+    const check = () => {
+      if (needsBodyMeasure) {
+        const cached = getCachedBodyMeasure(body, maxBubbleInnerWidthPx);
+        if (cached) {
+          const next: BodyMeasure = {
+            body,
+            maxInnerWidthPx: maxBubbleInnerWidthPx,
+            lineWidths: cached.lineWidths,
+            lines: cached.lines,
+          };
+          setBodyMeasure((prev) => (sameBodyMeasure(prev, next) ? prev : next));
+        }
+      }
+      if (needsTimeMeasure) {
+        const widthPx = getCachedTimeLabelWidth(timeLabel);
+        if (widthPx != null) {
+          setTimeMeasure((prev) =>
+            prev?.timeLabel === timeLabel && prev.widthPx === widthPx
+              ? prev
+              : { timeLabel, widthPx },
+          );
+        }
+      }
+    };
+    // Кэш мог пополниться между рендером и эффектом — проверяем сразу.
+    check();
+    return subscribeTextMeasureCache(check);
+  }, [body, maxBubbleInnerWidthPx, needsBodyMeasure, needsTimeMeasure, timeLabel]);
+
   const renderInlineContent = () => {
     if (layoutLines.length <= 1) {
       return (
@@ -217,16 +267,20 @@ function ChatMessageBubbleTextBodyInner({
         maxBubbleInnerWidthPx > 0 ? { maxWidth: maxBubbleInnerWidthPx } : null,
       ]}
     >
-      <View style={[styles.measureSlot, { width: maxBubbleInnerWidthPx }]} pointerEvents="none">
-        <Text key={maxBubbleInnerWidthPx} style={bodyStyle} onTextLayout={onBodyTextLayout}>
-          {body}
-        </Text>
-      </View>
-      <View style={styles.measureSlot} pointerEvents="none">
-        <Text style={timeStyle} onTextLayout={onTimeTextLayout}>
-          {timeLabel}
-        </Text>
-      </View>
+      {needsBodyMeasure ? (
+        <View style={[styles.measureSlot, { width: maxBubbleInnerWidthPx }]} pointerEvents="none">
+          <Text key={maxBubbleInnerWidthPx} style={bodyStyle} onTextLayout={onBodyTextLayout}>
+            {body}
+          </Text>
+        </View>
+      ) : null}
+      {needsTimeMeasure ? (
+        <View style={styles.measureSlot} pointerEvents="none">
+          <Text style={timeStyle} onTextLayout={onTimeTextLayout}>
+            {timeLabel}
+          </Text>
+        </View>
+      ) : null}
 
       {placement === "inline" ? (
         renderInlineContent()

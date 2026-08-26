@@ -1,6 +1,5 @@
 import {
   apiGetConversations,
-  apiGetMessages,
   apiMarkConversationRead,
   apiDeleteConversation,
   apiDeleteMessage,
@@ -37,7 +36,7 @@ import {
   ActivityIndicator,
   AppState,
   BackHandler,
-  InteractionManager,
+  LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -58,6 +57,7 @@ import Reanimated, {
   measure,
   runOnJS,
   runOnUI,
+  useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
   useFrameCallback,
@@ -69,10 +69,13 @@ import {
   playChatListInsertLift,
 } from "@/lib/chatListInsertLift";
 import { maxTextBubbleInnerWidth } from "@/lib/messageBubbleLayout";
+import { sliceThreadListToViewport } from "@/lib/threadListWindow";
 import {
   buildThreadListItems,
+  reuseThreadListItems,
   shouldHoldTrailingPeerAvatar,
   forEachThreadListMessage,
+  trailingPeerRunMessages,
   type ThreadListItem,
 } from "@/lib/threadMessageGroups";
 import {
@@ -81,7 +84,7 @@ import {
 } from "@/components/messages/ChatComposeField";
 import { ChatComposeReplyBar } from "@/components/messages/ChatComposeReplyBar";
 import { ChatMessageBubble, type ThreadBubbleItem } from "@/components/messages/ChatMessageBubble";
-import { ChatPeerMessageGroup } from "@/components/messages/ChatPeerMessageGroup";
+import { ChatPeerMessageRow } from "@/components/messages/ChatPeerMessageRow";
 import { ChatMessageEmojiPanel } from "@/components/messages/ChatMessageEmojiPanel";
 import { ChatGroupThreadHeader } from "@/components/messages/ChatGroupThreadHeader";
 import { ChatMoreMenu } from "@/components/messages/ChatMoreMenu";
@@ -100,12 +103,7 @@ import {
 } from "@/lib/messageBubbleMoreMenuLayout";
 import { canReportMessage, frankingReportUserError } from "@/lib/messageReport";
 import { ChatThreadHeader, type ChatPeerInfo } from "@/components/messages/ChatThreadHeader";
-import {
-  floraColors,
-  floraMessages,
-  floraNativeStackOptions,
-  floraSpacing,
-} from "@/lib/theme";
+import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
 import {
   canArchiveChatListPeer,
@@ -119,7 +117,28 @@ import {
   useTemporaryMuteUntilByPeer,
 } from "@/lib/conversationTemporaryMute";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
+import {
+  chatPushProgress,
+  isChatPushEnterArmed,
+  isChatPushExiting,
+  runChatPushEnter,
+  runChatPushExit,
+} from "@/lib/chatPushTransition";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
+import {
+  markChatOpenStage,
+  noteChatOpenCellRender,
+  noteChatOpenLayoutWarm,
+  noteChatOpenScreenRender,
+} from "@/lib/chatOpenTrace";
+import { warmThreadTextLayoutFromRows } from "@/lib/chatOpenLayoutWarm";
+import {
+  fetchThreadFirstPage,
+  threadFirstPageQueryKey,
+  THREAD_FIRST_PAGE_STALE_MS,
+} from "@/lib/threadFirstPage";
+import { getCachedBodyMeasure } from "@/lib/messageTextMeasureCache";
+import { warmMeasureRowInnerWidthPx } from "@/lib/messageTextMeasureWarm";
 import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
 import { subscribeMessageRealtime } from "@/lib/realtimeSync";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
@@ -165,7 +184,7 @@ import { useMessageComposeImages } from "@/lib/useMessageComposeImages";
 import { useMessageComposeVoice } from "@/lib/useMessageComposeVoice";
 import { useVoiceRecorder } from "@/lib/useVoiceRecorder";
 import { useGroupChatThread } from "@/lib/useGroupChatThread";
-import { useThreadMessageDecrypt } from "@/lib/useThreadMessageDecrypt";
+import { THREAD_REVEAL_WINDOW, useThreadMessageDecrypt } from "@/lib/useThreadMessageDecrypt";
 import { messageThreadCache } from "@/stores/messageThreadCache";
 import { useFscpStore } from "@/stores/fscpStore";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
@@ -205,6 +224,29 @@ const EMPTY_MESSAGES: MsgMessageDto[] = [];
 
 /** Сколько ждать расшифровки, прежде чем показать ленту как есть. */
 const LIST_REVEAL_DEADLINE_MS = 1200;
+
+/** Пауза между первым видимым кадром ленты и тихим сетевым догрузом. */
+const POST_REVEAL_REFRESH_DELAY_MS = 250;
+
+/** Запас к вьюпорту у окна первого коммита (оценки высот строк неточны). */
+const LIST_WINDOW_BUFFER_PX = 260;
+/** Доклейка хвоста истории за окном — после первого видимого кадра. */
+const LIST_WINDOW_EXPAND_DELAY_MS = 150;
+/**
+ * Отпуск фоновых волн расшифровки. Раньше они отпускались ровно в кадр
+ * показа — тяжёлый JS-коммит волны (монтаж десятков строк) совпадал с
+ * моментом, когда пользователь начинает скроллить: лента появлялась и тут же
+ * «замирала». Волны идут после доклейки окна.
+ */
+const WAVES_RELEASE_DELAY_MS = 400;
+
+/**
+ * Весь вьюпорт — одним коммитом FlashList. Дефолт v2 — прогрессивные волны по
+ * 2 ячейки (6–8 коммитов на экран чата), из-за которых пузыри монтируются
+ * пачками. Лента до onLoad скрыта, поэтому один тяжёлый коммит строго лучше
+ * восьми лёгких: меньше суммарной работы и onLoad наступает раньше.
+ */
+const LIST_INITIAL_DRAW = { initialDrawBatchSize: 32 };
 
 const PLACEHOLDER_AES = {
   algorithm: "aes-gcm" as const,
@@ -248,23 +290,73 @@ function parseBoolParam(value: string | string[] | undefined): boolean {
 }
 
 /**
- * Coarse recycle pools: voice, photo, text и peer-group имеют разный subtree.
+ * Coarse recycle pools: own/peer × voice/photo/text. Хвост run'а (строка с
+ * аватаром) — тот же пул, что и остальные peer-строки: аватар — условный
+ * ребёнок слота, а отдельный тип заставлял бы FlashList ремоунтить строку,
+ * когда isGroupTail мигрирует при доклейке сообщений в run.
  */
 const messageItemType = (item: ThreadListItem): string => {
-  if (item.kind === "peerGroup") return "peerGroup";
   const message = item.message;
-  return message.voiceBlock ? "voice" : message.imageBlocks.length > 0 ? "photo" : "text";
+  const content = message.voiceBlock
+    ? "voice"
+    : message.imageBlocks.length > 0
+      ? "photo"
+      : "text";
+  return item.kind === "own" ? content : `peer-${content}`;
 };
 
 function listItemKey(item: ThreadListItem): string {
-  if (item.kind === "peerGroup") return `peer-${item.groupKey}`;
   return item.message.clientMessageKey ?? item.message.messageUuid;
 }
 
-function threadListItemHasMessage(item: ThreadListItem, messageUuid: string): boolean {
-  if (item.kind === "peerGroup") {
-    return item.messages.some((row) => row.messageUuid === messageUuid);
+/**
+ * Ширина текста строки окна показа — включая подписи медиа: у фото/голосового
+ * своя колонка текста. Ровно та геометрия, которой греет offscreen-хост.
+ */
+function threadRowMeasureWidthPx(row: ThreadBubbleItem): number {
+  return warmMeasureRowInnerWidthPx({
+    isFromMe: row.isFromMe,
+    media: row.voiceBlock ? "voice" : row.imageBlocks.length > 0 ? "photo" : undefined,
+  });
+}
+
+/**
+ * Сколько текстовых строк окна показа (включая подписи медиа) уже имеют
+ * прогретый замер раскладки. Всё окно с кэш-хитом = первый кадр ленты
+ * финальный: коррекций высот не будет, и гейт тишины сужается до кадра.
+ */
+function reportChatOpenLayoutWarm(rows: readonly ThreadBubbleItem[]): {
+  hits: number;
+  total: number;
+} {
+  let hits = 0;
+  let total = 0;
+  for (const row of rows.slice(-THREAD_REVEAL_WINDOW)) {
+    if (!row.text?.trim()) continue;
+    total += 1;
+    if (getCachedBodyMeasure(row.text, threadRowMeasureWidthPx(row)) != null) hits += 1;
   }
+  if (__DEV__) noteChatOpenLayoutWarm(hits, total);
+  return { hits, total };
+}
+
+/** Тихая (без дев-счётчиков) проверка: все тексты окна показа с замером. */
+function threadWindowTextMeasuresWarm(rows: readonly ThreadBubbleItem[]): boolean {
+  for (const row of rows.slice(-THREAD_REVEAL_WINDOW)) {
+    if (!row.text?.trim()) continue;
+    if (getCachedBodyMeasure(row.text, threadRowMeasureWidthPx(row)) == null) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Опрос готовности замеров окна (кэш наполняют хост и сами ячейки). */
+const TEXT_LAYOUT_POLL_MS = 32;
+/** Потолок ожидания замеров перед показом — страховка от зависшего хоста. */
+const TEXT_LAYOUT_READY_CAP_MS = 400;
+
+function threadListItemHasMessage(item: ThreadListItem, messageUuid: string): boolean {
   return item.message.messageUuid === messageUuid;
 }
 
@@ -306,16 +398,23 @@ export default function ThreadScreen() {
     dockStickyStyle,
     emojiPanelLayerStyle,
     jumpBtnBottomStyle,
-    dockExtraPaddingSv,
+    listGapPx,
+    listInsetZeroSv,
     freezeListSv,
     listAnimatedRef,
     pinListToBottom,
     setListPinned,
-    listRevealStyle,
     listLiftStyle,
     listPlaceholderStyle,
+    listEnterCoverStyle,
     hideListUntilReady,
     allowListReveal,
+    setListRevealQuietFrames,
+    setListTextLayoutReady,
+    revealListNow,
+    onListLoad,
+    onListContentSizeChange,
+    listRevealed,
     finishEnterTransition,
     composeBaselinePx,
     emojiPanelHeightPx,
@@ -333,7 +432,12 @@ export default function ThreadScreen() {
     toggleEmoji,
     dismissKeyboard,
     resetDock,
-  } = useChatComposeDock({ systemNavBottomInsetPx: systemNavBottomInset });
+    // Темп проявления ленты зависит от того, едет ли ещё сцена: под слайдом
+    // движение маскирует появление контента, и фейд короче (см. док).
+  } = useChatComposeDock({
+    systemNavBottomInsetPx: systemNavBottomInset,
+    enterMotionSv: chatPushProgress,
+  });
 
   /** Зона интерактивного свайпа над клавиатурой = высота закрытого дока. */
   const kgaOffsetPx = composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
@@ -352,7 +456,6 @@ export default function ThreadScreen() {
   const dockFooterRef = useAnimatedRef<Reanimated.View>();
   const chatHeaderWrapRef = useRef<View>(null);
   const atBottomRef = useRef(true);
-  const prevListLengthRef = useRef(0);
   const [menuTarget, setMenuTarget] = useState<{
     message: ThreadBubbleItem;
     anchor: BubbleAnchorRect;
@@ -428,9 +531,18 @@ export default function ThreadScreen() {
   const isGroupChat = routeParam(params.kind) === "groupChat";
   const groupTitleHint = routeParam(params.title);
   const paramOtherUserUuid = routeParam(params.otherUserUuid);
+  // Дев-трасса: сколько раз экран перерендерился от тапа до показа.
+  if (__DEV__) noteChatOpenScreenRender(conversationUuid);
 
   const scrollTrackingReadyRef = useRef(false);
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  /**
+   * Новейший createdAt на момент посева: всё, что не новее его, — история
+   * (дорасшифровка фоном, дозагрузка страницы), а не живое сообщение.
+   * Без этой отсечки фоновые волны расшифровки длинных чатов считались
+   * «входящими»: insertLift + pin на каждую волну — лента дёргалась и мигала.
+   */
+  const seedNewestCreatedAtRef = useRef("");
   /** Компенсация скачка layout → анимация подъёма ленты+пузыря одним transform. */
   const insertLiftSv = useSharedValue(0);
   /** Контр к insertLift для аватара хвоста peer-группы (паритет Web holdViewport). */
@@ -450,7 +562,71 @@ export default function ThreadScreen() {
     "worklet";
   }, false);
 
-  useEffect(() => {
+  /** Один тихий догруз на открытие треда (сбрасывается при смене треда). */
+  const postRevealRefreshedRef = useRef<string | null>(null);
+
+  /**
+   * Свежесть listRevealed на переиспользованном экране. setListRevealed(false)
+   * из layout-сброса попадает во ВТОРОЙ коммит, а passive-эффекты ПЕРВОГО
+   * коммита нового треда выполняются с устаревшим listRevealed=true прошлого
+   * треда: mark-read с инвалидацией списка бесед, таймеры доклейки/волн и
+   * трасса reveal стреляли прямо в окно открытия. Ref взводится синхронно в
+   * layout-сбросе (раньше любых passive), снимается эффектом на
+   * listRevealed=false (второй коммит) — потребители reveal-эффектов читают
+   * его в теле и пропускают устаревший первый коммит.
+   */
+  const listRevealedStaleRef = useRef(false);
+
+  /**
+   * Пост-показ по фазам: сперва доклейка хвоста истории за окном первого
+   * коммита, затем отпуск фоновых волн расшифровки. До показа лента монтирует
+   * только окно вьюпорта — остальное принципиально после первого кадра.
+   *
+   * Состояния ключуются по uuid, а не сбрасываются эффектом: FlashList живёт
+   * через смены тредов, и в ПЕРВОМ коммите нового uuid оба флага обязаны быть
+   * ложными синхронно. Сброс эффектом опаздывал на коммит — свап рендерил
+   * ленту с раскрытым окном прошлого треда (полные данные в самом тяжёлом
+   * коммите): mount вырастал вдвое, а усадка окна доезжала после показа
+   * (видимый сдвиг content-size вниз).
+   */
+  const [windowExpandedUuid, setWindowExpandedUuid] = useState<string | null>(null);
+  const [wavesReleasedUuid, setWavesReleasedUuid] = useState<string | null>(null);
+  const listWindowExpanded = windowExpandedUuid === conversationUuid;
+  const decryptWavesReleased = wavesReleasedUuid === conversationUuid;
+
+  /**
+   * Layout-эффект, не useEffect: роутер переиспользует инстанс экрана при
+   * переходе чат → список → чат, и listRevealSv остаётся 1 от прошлого треда.
+   * Пассивный эффект гонялся с коммитом ячеек FlashList и проигрывал —
+   * пара кадров видимой неякорёной ленты нового треда (вспышка), потом
+   * скрытие; а поздний hide обрывал уже запущенный цикл показа, и лента
+   * ждала дедлайна LIST_REVEAL_DEADLINE_MS (~секунда чёрного экрана).
+   * Layout-эффект прячет ленту синхронно в коммите смены треда — до paint.
+   *
+   * Guard по uuid: перезапуск эффекта БЕЗ смены треда (flap isGroupChat из
+   * параметров маршрута и т.п.) не должен прятать уже показанную ленту.
+   * Такой ложный hide — «редкое мигание»: кадр контента → чёрный экран, и
+   * повторный показ доезжает только по потолку ожидания (FlashList без
+   * ремоунта onLoad не повторяет).
+   */
+  const threadResetUuidRef = useRef("");
+  useLayoutEffect(() => {
+    if (threadResetUuidRef.current === conversationUuid) {
+      if (__DEV__) {
+        console.log(
+          `[chat-open] сброс пропущен: тред тот же (${conversationUuid}, group=${String(isGroupChat)})`,
+        );
+      }
+      return;
+    }
+    threadResetUuidRef.current = conversationUuid;
+    markChatOpenStage("mount", conversationUuid);
+    listRevealedStaleRef.current = true;
+    // Замеры ячеек — потредные: высоты прошлого треда не должны подтверждать
+    // видимый префикс нового (uuid глобально уникальны, но Map без чистки
+    // рос бы всю жизнь экрана).
+    cellHeightsRef.current.clear();
+    windowMeasuredUuidRef.current = "";
     resetDock();
     hideListUntilReady();
     setMenuTarget(null);
@@ -458,42 +634,147 @@ export default function ThreadScreen() {
     // Позиция ленты — величина потреда: перенесённая из прошлого треда, она
     // оставила бы новый тред «отмотанным вверх» (без возврата к якорю на
     // входящие) и могла бы показать в нём чужую плашку «Новые сообщения».
+    // Сам список ремоунтится (key=uuid) и стартует с якоря, но pinToBottomSv
+    // живёт в доке и переживает смену треда — прижатие возвращаем явно.
     atBottomRef.current = true;
-    prevListLengthRef.current = 0;
+    pinListToBottom(false);
     setShowJumpToLatest(false);
     resetBirthTracking();
     scrollTrackingReadyRef.current = false;
     seenMessageIdsRef.current = new Set();
+    seedNewestCreatedAtRef.current = "";
     insertLiftSv.value = 0;
     peerAvatarHoldSv.value = 0;
+    postRevealRefreshedRef.current = null;
+    // Окно/волны сбрасывать не нужно: они ключованы по uuid и в первом же
+    // коммите нового треда ложны сами (см. windowExpandedUuid выше).
     // resetDock is stable (ref-backed); only re-run on thread / kind change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationUuid, isGroupChat]);
 
+  useEffect(() => {
+    // Устаревший true первого коммита переиспользованного экрана снимаем здесь:
+    // это самый ранний reveal-эффект, дальше по файлу все читают уже false.
+    if (!listRevealed) {
+      listRevealedStaleRef.current = false;
+      return;
+    }
+    if (listRevealedStaleRef.current) return;
+    // Доклейка раньше отпуска волн: оба — коммиты FlashList, и разнесение по
+    // времени держит кадры сразу после показа свободными для жестов.
+    const expand = setTimeout(
+      () => setWindowExpandedUuid(conversationUuid),
+      LIST_WINDOW_EXPAND_DELAY_MS,
+    );
+    const waves = setTimeout(
+      () => setWavesReleasedUuid(conversationUuid),
+      WAVES_RELEASE_DELAY_MS,
+    );
+    return () => {
+      clearTimeout(expand);
+      clearTimeout(waves);
+    };
+  }, [conversationUuid, listRevealed]);
+
+  /**
+   * Инсет через ref: смена insets.bottom (скрытие таб-бара, жестовая панель)
+   * меняла бы зависимость focus-эффекта, и его cleanup дёргал resetDock
+   * посреди открытого чата — сброс базлайна дока и шум content-size.
+   */
+  const tabBarBottomInsetRef = useRef(tabBarBottomInset);
+  useEffect(() => {
+    tabBarBottomInsetRef.current = tabBarBottomInset;
+  }, [tabBarBottomInset]);
   useFocusEffect(
     useCallback(() => {
-      applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+      applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, true);
       chatUiFrameKeepAlive.setActive(true);
       return () => {
         chatUiFrameKeepAlive.setActive(false);
-        applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+        applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, false);
         resetDock();
       };
-    }, [chatUiFrameKeepAlive, navigation, tabBarBottomInset, resetDock]),
+    }, [chatUiFrameKeepAlive, navigation, resetDock]),
   );
 
   /**
-   * Пока переход доигрывается, внутри экрана ничего не должно шевелиться — он и
-   * так проявляется целиком. Длительность берём из тех же опций стека, которыми
-   * настроен `Stack.Screen` треда, чтобы значения не разъехались.
+   * Заглушке можно появляться сразу, как только hideListUntilReady сбросил
+   * ленту: push-слайд везёт экран целиком, внутри него кадр стабилен.
+   * Эффект ниже hide-эффекта по порядку объявления — enter-флаг успевает
+   * подняться и опуститься в одном проходе, без кадра «заглушка до hide».
    */
   useEffect(() => {
-    const timer = setTimeout(
-      finishEnterTransition,
-      floraNativeStackOptions.animationDuration,
-    );
-    return () => clearTimeout(timer);
+    finishEnterTransition();
   }, [conversationUuid, finishEnterTransition]);
+
+  /**
+   * Push-переход (chatPushTransition): экран заезжает справа непрозрачным
+   * слоем поверх списка (transparentModal — список виден под нами и играет
+   * параллакс + затемнение).
+   *
+   * Стартовый driven — из isChatPushEnterArmed() ещё в первом рендере, иначе
+   * первый кадр покажет чат уже на месте; сам слайд запускается из
+   * useLayoutEffect того же коммита, то есть движение начинается кадром, где
+   * шапка и док уже нарисованы.
+   */
+  const [chatPushEnterArmed] = useState(isChatPushEnterArmed);
+  const chatPushDriven = useSharedValue(chatPushEnterArmed);
+  const chatPushSlideStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: chatPushDriven.value
+          ? (1 - chatPushProgress.value) * screenWidth
+          : 0,
+      },
+    ],
+  }));
+  useLayoutEffect(() => {
+    runChatPushEnter(chatPushDriven);
+  }, [chatPushDriven, conversationUuid]);
+
+  /**
+   * Лента — вторым коммитом (кадром позже хрома). Слайд стартует из
+   * useLayoutEffect первого коммита, поэтому цена этого коммита = пауза между
+   * тапом и движением; монтаж FlashList с начальной пачкой пузырей — её
+   * основная часть (в трассе это разрыв render→mount). Кадром позже он уже
+   * не задерживает старт и идёт под слайдом: анимация живёт на UI-потоке, JS
+   * ей не мешает. Лента всё равно скрыта enter-ковром до reveal, так что
+   * визуально кадр ничего не меняет.
+   *
+   * Ремоунт (а не пустые данные) сохраняет контракт FlashList: начальные
+   * данные — сразу окно показа, значит `initialDrawBatchSize` рисует его
+   * одним проходом, без волн и доезжающих пузырей.
+   */
+  const [listMounted, setListMounted] = useState(!chatPushEnterArmed);
+  useEffect(() => {
+    if (listMounted) return;
+    const frame = requestAnimationFrame(() => setListMounted(true));
+    return () => cancelAnimationFrame(frame);
+  }, [listMounted]);
+
+  /**
+   * Назад — зеркало входа: перехватываем pop (кнопка, системный back
+   * Android), уводим экран вправо тем же темпом и кривой, что заезд, и только
+   * потом отпускаем отложенный action. Повторный back во время анимации
+   * проходит без перехвата (closingRef) — мгновенный pop, страховка от
+   * зависания.
+   */
+  const chatPushClosingRef = useRef(false);
+  useEffect(() => {
+    chatPushClosingRef.current = false;
+    const unsubscribe = navigation.addListener("beforeRemove", (event) => {
+      if (chatPushClosingRef.current) return;
+      const action = event.data.action;
+      const started = runChatPushExit(chatPushDriven, () => {
+        navigation.dispatch(action);
+      });
+      if (started) {
+        chatPushClosingRef.current = true;
+        event.preventDefault();
+      }
+    });
+    return unsubscribe;
+  }, [chatPushDriven, navigation]);
 
   const paramOtherDisplayName = routeParam(params.otherDisplayName);
   const paramOtherUsername = routeParam(params.otherUsername);
@@ -707,14 +988,9 @@ export default function ThreadScreen() {
           })
         : undefined;
     },
-    queryFn: async () => {
-      const page = await apiGetMessages(conversationUuid, undefined, otherUserUuid || undefined);
-      return applyMessagesPageToCaches({
-        conversationUuid,
-        otherUserUuid,
-        page,
-      });
-    },
+    // Тот же фетч, которым греет тред prefetch по касанию строки списка (ключ
+    // у них общий) — открытие холодного чата идёт одним сетевым полётом.
+    queryFn: () => fetchThreadFirstPage({ kind: "dm", conversationUuid, otherUserUuid }),
   });
 
   useEffect(() => {
@@ -766,8 +1042,15 @@ export default function ThreadScreen() {
     });
   }, [conversationUuid, isGroupChat, otherUserUuid, queryClient]);
 
+  /**
+   * Read-ack — после первого видимого кадра ленты, не в окне открытия:
+   * markRead → invalidate(conversations) → рефетч списка + расшифровка превью
+   * раньше падали ровно в кадры монтажа пузырей. Смысл не меняется —
+   * «прочитано, когда увидел».
+   */
   useEffect(() => {
-    if (!conversationUuid) return;
+    if (!listRevealed || !conversationUuid) return;
+    if (listRevealedStaleRef.current) return;
     if (isGroupChat) {
       void groupThread.markRead();
       void dismissMessagePushNotifications(conversationUuid);
@@ -780,26 +1063,40 @@ export default function ThreadScreen() {
         return dismissMessagePushNotifications(conversationUuid);
       })
       .catch(() => undefined);
-  }, [conversationUuid, groupThread.markRead, isGroupChat, queryClient]);
+  }, [conversationUuid, groupThread.markRead, isGroupChat, listRevealed, queryClient]);
 
+  /**
+   * Тихий догруз треда — строго ПОСЛЕ первого видимого кадра ленты (reveal),
+   * а не «после интеракций»: InteractionManager не видит нативный push RNS
+   * и срабатывал почти сразу, сетевой merge с ре-рендерами падал в середину
+   * открытия. Строки сохраняют identity (structural sharing RQ +
+   * identity-preserving merge в decrypt-хуке), поэтому ответ «без изменений»
+   * не перерисовывает ни одной ячейки.
+   */
+  const groupThreadRef = useRef(groupThread);
+  groupThreadRef.current = groupThread;
   useEffect(() => {
-    if (isGroupChat || !conversationUuid || !otherUserUuid) return;
-    const task = InteractionManager.runAfterInteractions(() => {
-      void queryClient.fetchQuery({
-        queryKey: ["messages", conversationUuid, otherUserUuid || ""],
-        queryFn: async () => {
-          const page = await apiGetMessages(conversationUuid, undefined, otherUserUuid || undefined);
-          return applyMessagesPageToCaches({
-            conversationUuid,
-            otherUserUuid,
-            page,
-          });
-        },
-        staleTime: 60_000,
-      });
-    });
-    return () => task.cancel();
-  }, [conversationUuid, isGroupChat, otherUserUuid, queryClient]);
+    if (!listRevealed || !conversationUuid) return;
+    if (listRevealedStaleRef.current) return;
+    if (!isGroupChat && !otherUserUuid) return;
+    if (postRevealRefreshedRef.current === conversationUuid) return;
+    postRevealRefreshedRef.current = conversationUuid;
+    const timer = setTimeout(() => {
+      if (isGroupChat) {
+        void groupThreadRef.current.refetchMessages();
+        return;
+      }
+      const target = { kind: "dm", conversationUuid, otherUserUuid } as const;
+      void queryClient
+        .fetchQuery({
+          queryKey: threadFirstPageQueryKey(target),
+          queryFn: () => fetchThreadFirstPage(target),
+          staleTime: THREAD_FIRST_PAGE_STALE_MS,
+        })
+        .catch(() => undefined);
+    }, POST_REVEAL_REFRESH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [conversationUuid, isGroupChat, listRevealed, otherUserUuid, queryClient]);
 
   const messages = useMemo(() => {
     if (isGroupChat) return groupThread.messages;
@@ -835,28 +1132,88 @@ export default function ThreadScreen() {
     fscpReady,
     fscpDecryptKey,
     decryptWirePlaintext,
+    // Фоновая дорасшифровка истории — не просто после показа, а после паузы
+    // (WAVES_RELEASE_DELAY_MS): волна, отпущенная в кадр показа, коммитила
+    // десятки строк ровно в момент, когда пользователь начинает скроллить.
+    holdBackgroundWaves: !decryptWavesReleased,
+    // Уход из чата: волна коммитила ленту в кадрах анимации возврата, а экран
+    // через них всё равно размонтируется.
+    shouldHoldBackgroundWaves: isChatPushExiting,
   });
 
   /**
    * Лента перевёрнута: данные от новых к старым (индекс 0 у якоря).
    * Группы по raw `decrypted` (стабильный groupKey); чужие decrypting не в item —
-   * иначе мелькает «Расшифровка…».
+   * иначе мелькает «Расшифровка…». Item-обёртки переиспользуются между
+   * пересборками (reuseThreadListItems) — иначе каждый setRows ре-рендерил
+   * весь вьюпорт ячеек.
    */
+  const listDataPrevRef = useRef<readonly ThreadListItem[]>([]);
   const listData = useMemo(() => {
     const chronological = buildThreadListItems(
       decrypted,
       (m) => m.isFromMe || m.decryptState !== "decrypting",
     );
-    return chronological.reverse();
+    chronological.reverse();
+    const reused = reuseThreadListItems(listDataPrevRef.current, chronological);
+    listDataPrevRef.current = reused;
+    return reused;
   }, [decrypted]);
 
-  const listDataRef = useRef(listData);
-  listDataRef.current = listData;
+  /**
+   * Окно первого коммита: до показа FlashList получает только строки,
+   * закрывающие вьюпорт (+запас), — медиа-чаты не монтируют 2–3 экрана
+   * истории до первого кадра. После показа окно доклеивается до полного
+   * listData (эффект по listRevealed выше). Для коротких/текстовых лент срез
+   * не срабатывает и возвращается тот же массив — ничего не перерендеривается.
+   */
+  const listDataWindow = useMemo(() => {
+    if (listWindowExpanded) return listData;
+    // Зона дока (listGapPx) — не вьюпорт ленты: без вычета окно тянуло в
+    // первый коммит 1–2 лишних пузыря, а монтаж ячеек — самая дорогая фаза
+    // открытия (load−cell в трассе). Запас поверх остаётся полным.
+    const target = Math.max(0, windowHeight - listGapPx) + LIST_WINDOW_BUFFER_PX;
+    return sliceThreadListToViewport(listData, target, {
+      own: outgoingLiftCtx,
+      peer: peerLiftCtx,
+    });
+  }, [listData, listGapPx, listWindowExpanded, outgoingLiftCtx, peerLiftCtx, windowHeight]);
+  // Дев-трасса: FlashList впервые получает непустые данные в этом рендере.
+  if (__DEV__ && listDataWindow.length > 0) markChatOpenStage("data", conversationUuid);
+  /**
+   * Дев-трасса пересборок окна после показа: если content-size сдвигается без
+   * строки «ячейка …», виновник — сам срез (окно отдало FlashList другой набор
+   * строк: доклейка хвоста, волна расшифровки, пересчёт по listGapPx).
+   */
+  const windowSizeLogRef = useRef(0);
+  useEffect(() => {
+    if (!__DEV__) return;
+    const prev = windowSizeLogRef.current;
+    windowSizeLogRef.current = listDataWindow.length;
+    const at = revealedAtRef.current;
+    if (at <= 0 || prev === listDataWindow.length) return;
+    const dt = Date.now() - at;
+    if (dt > 2000) return;
+    console.log(
+      `[chat-settle] окно ${prev}→${listDataWindow.length} строк (+${dt}мс после reveal)`,
+    );
+  }, [listDataWindow]);
+
+  const listDataRef = useRef(listDataWindow);
+  listDataRef.current = listDataWindow;
   /**
    * FlashList cells are `position: absolute`. Inner zIndex cannot stack above a
    * later sibling cell, so a menu that opens toward older messages (visually
    * down) is covered. Raise overflow + zIndex on the cell that owns the menu.
    */
+  /**
+   * Фактические высоты ячеек по onLayout (ключ — messageUuid). Прод: гейт
+   * показа считает по ним покрытие вьюпорта (maybeConfirmWindowMeasured).
+   * Дев: та же карта питает трассировку осадки — лог на изменении высоты в
+   * окне после reveal называет виновника сдвигов content-size поимённо.
+   */
+  const cellHeightsRef = useRef(new Map<string, number>());
+
   const MenuCellRenderer = useMemo(
     () =>
       forwardRef<
@@ -869,6 +1226,37 @@ export default function ThreadScreen() {
           menuUuid && item && threadListItemHasMessage(item, menuUuid),
         );
         const blocked = Boolean(menuUuid && !isOwner);
+        const onCellLayout = (e: LayoutChangeEvent) => {
+          const h = Math.round(e.nativeEvent.layout.height);
+          const key = item ? item.message.messageUuid : `i${String(index)}`;
+          const prev = cellHeightsRef.current.get(key);
+          cellHeightsRef.current.set(key, h);
+          // Прод-часть: замер учтён — возможно, видимый префикс окна собран
+          // и пора открывать гейт показа (наш «onLoad», см.
+          // maybeConfirmWindowMeasured). После подтверждения — no-op.
+          if (item) maybeConfirmWindowMeasuredRef.current();
+          if (!__DEV__) return;
+          const at = revealedAtRef.current;
+          if (at <= 0 || prev === h) return;
+          const dt = Date.now() - at;
+          if (dt > 2000) return;
+          const row = item?.message;
+          const label = !row
+            ? "?"
+            : row.voiceBlock
+              ? "голос"
+              : row.imageBlocks.length > 0
+                ? "фото"
+                : `«${row.text.slice(0, 16)}»`;
+          // prev == null — ячейка впервые получила layout уже ПОСЛЕ показа
+          // (позднее домонтирование): раньше такие не логировались, и
+          // сдвиги content-size оставались безымянными.
+          console.log(
+            prev == null
+              ? `[chat-settle] ячейка ${label} первый замер ${h} (+${dt}мс после reveal)`
+              : `[chat-settle] ячейка ${label} ${prev}→${h} (+${dt}мс после reveal)`,
+          );
+        };
         return (
           <View
             ref={ref}
@@ -876,6 +1264,7 @@ export default function ThreadScreen() {
             {...rest}
             pointerEvents="box-none"
             style={[style, styles.menuCell, isOwner ? styles.menuCellOpen : null]}
+            onLayout={onCellLayout}
           >
             {children}
             <GesturePressable
@@ -905,20 +1294,37 @@ export default function ThreadScreen() {
   );
 
   /**
-   * Тред можно показывать, когда в visible нет decrypting: пока идут волны
-   * `DECRYPT_BATCH`, высоты пузырей меняются. Peer decrypting скрыты из ленты.
+   * Тред можно показывать, когда новейшие THREAD_REVEAL_WINDOW сообщений
+   * терминальны (включая скрытые peer-decrypting): вся видимая часть у якоря
+   * собрана и высоты больше не поедут. Ждать весь тред нельзя — время
+   * открытия росло линейно с историей. Старые строки дорасшифровываются
+   * фоном: peer-строки до готовности скрыты и появляются выше вьюпорта.
    */
   const threadReady = useMemo(() => {
     if (listMessageCount === 0) return false;
-    let hasDecrypting = false;
-    forEachThreadListMessage(listData, (row) => {
-      if (row.decryptState === "decrypting") hasDecrypting = true;
-    });
-    return !hasDecrypting;
-  }, [listData, listMessageCount]);
+    const start = Math.max(0, decrypted.length - THREAD_REVEAL_WINDOW);
+    for (let i = decrypted.length - 1; i >= start; i--) {
+      if (decrypted[i]!.decryptState === "decrypting") return false;
+    }
+    return true;
+  }, [decrypted, listMessageCount]);
   const listPending =
     (isGroupChat ? groupThread.isLoading : messagesQuery.isLoading) ||
     (listMessageCount > 0 && !threadReady);
+
+  /**
+   * Детерминированный «load»: тред, у которого замерены все строки ПЕРВОГО
+   * ВИДИМОГО КАДРА — от якоря (низ) вверх по фактическим onLayout-высотам,
+   * пока не закрыт вьюпорт. onLoad самого FlashList не годится: несмеренные
+   * строки он оценивает средним по типу, на свежем списке среднее
+   * промахивается в разы, и реальная видимая ячейка выпадает из
+   * engaged-диапазона — onLoad проходит без неё, а пузырь доезжает уже после
+   * показа (видимое «появление элементов»). Ждать ВСЁ окно (вьюпорт + запас)
+   * тоже нельзя: буферные строки за краем экрана FlashList дорисовывает
+   * лениво (сотни мс), это удерживало заглушку ради невидимых пикселей
+   * (load вырастал с ~650 до ~1200 мс).
+   */
+  const windowMeasuredUuidRef = useRef("");
 
   /**
    * Показ ждёт ещё и замера дока. У перевёрнутой ленты зазор под последним
@@ -930,9 +1336,160 @@ export default function ThreadScreen() {
    * оценки.
    */
   useEffect(() => {
-    if (threadReady && composeBaselinePx > 0) allowListReveal();
+    if (threadReady) {
+      markChatOpenStage("ready", conversationUuid);
+      const warm = reportChatOpenLayoutWarm(decrypted);
+      // Всё окно показа с прогретыми замерами: высоты финальны с первого
+      // коммита, коррекций не будет — сужаем гейт тишины дока до одного
+      // кадра (−2 кадра ожидания). Иначе оставляем консервативный дефолт.
+      if (warm.total > 0 && warm.hits === warm.total) {
+        setListRevealQuietFrames(1);
+      }
+      // Холодный тред: тап-прогрев покрыл только расшифрованное ДО тапа.
+      // Ставим замеры сразу после расшифровки — хост успевает до onLoad
+      // FlashList, и коррекции высот не тревожат гейт тишины.
+      warmThreadTextLayoutFromRows(decrypted);
+    }
+    // `listRevealed` в зависимостях — самовосстановление: hide после уже
+    // запущенного цикла показа (сброс на смене треда и т.п.) роняет
+    // listRevealed в false, и эффект перезапускает показ сразу, а не через
+    // дедлайн LIST_REVEAL_DEADLINE_MS. После состоявшегося показа повторный
+    // вызов — no-op (guard listRevealStartedSv).
+    if (threadReady && composeBaselinePx > 0) {
+      // Окно этого треда уже подтверждено замеренным, но hide сбросил флаг
+      // дока — повторного подтверждения от ячеек не будет (их layout не
+      // меняется), и повторный показ ждал бы потолок кадров (~1 с чёрного
+      // экрана). Подтверждаем сами.
+      if (!listRevealed && windowMeasuredUuidRef.current === conversationUuid) {
+        onListLoad();
+      }
+      allowListReveal();
+    }
     // Тред мог смениться на такой же готовый — сброс делает эффект по треду выше.
-  }, [allowListReveal, composeBaselinePx, conversationUuid, threadReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowListReveal, composeBaselinePx, conversationUuid, listRevealed, onListLoad, setListRevealQuietFrames, threadReady]);
+
+  /**
+   * Гейт финальной раскладки текста: пока замеры тел окна показа не в кэше,
+   * показ не открывается (SV-гейт дока) — иначе пузыри доизмерялись бы уже на
+   * экране (видимый сдвиг: «элементы появляются не сразу»). Кэш наполняют
+   * срочная полоса хоста замеров и сами ячейки — опрашиваем дёшево (≤16
+   * кэш-чтений раз в 32 мс); потолок — страховка от любого зависания.
+   */
+  useEffect(() => {
+    if (!threadReady) return;
+    if (threadWindowTextMeasuresWarm(decrypted)) {
+      setListTextLayoutReady(true);
+      return;
+    }
+    setListTextLayoutReady(false);
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const capped = Date.now() - startedAt >= TEXT_LAYOUT_READY_CAP_MS;
+      if (!capped && !threadWindowTextMeasuresWarm(decrypted)) return;
+      clearInterval(timer);
+      if (__DEV__ && capped) {
+        console.log("[chat-open] потолок ожидания замеров текста — показ как есть");
+      }
+      setListTextLayoutReady(true);
+    }, TEXT_LAYOUT_POLL_MS);
+    return () => clearInterval(timer);
+  }, [conversationUuid, decrypted, setListTextLayoutReady, threadReady]);
+
+  /** Момент показа ленты (JS) — окно дев-трассировки осадки пузырей. */
+  const revealedAtRef = useRef(0);
+  const settleOffsetLogsRef = useRef(0);
+  useEffect(() => {
+    if (listRevealed && !listRevealedStaleRef.current) {
+      revealedAtRef.current = Date.now();
+      settleOffsetLogsRef.current = 0;
+      markChatOpenStage("reveal", conversationUuid);
+    } else if (!listRevealed) {
+      revealedAtRef.current = 0;
+    }
+  }, [conversationUuid, listRevealed]);
+
+  const reportInsertLiftSettle = useCallback((liftPx: number) => {
+    const at = revealedAtRef.current;
+    if (at <= 0) return;
+    const dt = Date.now() - at;
+    if (dt > 2000) return;
+    console.log(
+      `[chat-settle] insert-lift старт ${Math.round(liftPx)}px (+${dt}мс после reveal)`,
+    );
+  }, []);
+
+  /**
+   * Дев-ловушка ложного insertLift: по гварду createdAt лифт положен только
+   * живым входящим, и запуск в первые секунды после показа — почти наверняка
+   * «прыжок пузырей», о котором речь. Логируем только старт (0 → px).
+   */
+  // Гейт __DEV__ — внутри тела: функции должны стоять прямыми аргументами
+  // хука, иначе babel-плагин Reanimated их не воркетизирует (краш UI-потока).
+  // В release prepare сразу отдаёт null — реакция не срабатывает.
+  useAnimatedReaction(
+    () => {
+      if (!__DEV__) return null;
+      return insertLiftSv.value;
+    },
+    (cur, prev) => {
+      if (!__DEV__ || cur === null || prev == null || cur === prev) return;
+      if (prev === 0 && cur !== 0) runOnJS(reportInsertLiftSettle)(cur);
+    },
+    [reportInsertLiftSettle],
+  );
+
+  /**
+   * Зеркала для стабильного onLoad-колбэка: тёплый быстрый путь читает
+   * актуальные threadReady/decrypted без пересоздания колбэка на каждую волну.
+   */
+  const threadReadyRef = useRef(threadReady);
+  threadReadyRef.current = threadReady;
+  const decryptedRef = useRef(decrypted);
+  decryptedRef.current = decrypted;
+
+  /**
+   * Наш «onLoad»: гейт listLoadedSv дока открывается, когда фактические
+   * высоты ячеек (cellHeightsRef, по onLayout) закрывают вьюпорт от якоря.
+   * Строки глубже видимого края не ждём — они монтируются после показа за
+   * экраном, как и доклейка хвоста. Вызовы: из onLayout обёртки ячейки
+   * (через ref — MenuCellRenderer мемоизирован без зависимостей) и из
+   * эффекта ниже (пере-срез окна без новых layout-событий: listGapPx
+   * устаканился, срез стал короче).
+   */
+  const maybeConfirmWindowMeasured = useCallback(() => {
+    if (windowMeasuredUuidRef.current === conversationUuid) return;
+    const window = listDataRef.current;
+    if (window.length === 0) return;
+    const measured = cellHeightsRef.current;
+    // Тот же видимый диапазон, что у среза окна (зона дока — не вьюпорт),
+    // но БЕЗ запаса: запас — буфер за краем, его замеры не влияют на кадр.
+    const targetPx = Math.max(0, windowHeight - listGapPx);
+    let coveredPx = 0;
+    for (const it of window) {
+      const h = measured.get(it.message.messageUuid);
+      // Строка видимого префикса ещё без layout — кадр не собран, ждём.
+      if (h == null) return;
+      coveredPx += h;
+      if (coveredPx >= targetPx) break;
+    }
+    // Короткий тред: вьюпорт не закрыт, но все строки замерены — готово.
+    windowMeasuredUuidRef.current = conversationUuid;
+    markChatOpenStage("load", conversationUuid);
+    onListLoad();
+    // Тёплый быстрый путь: окно показа расшифровано и все замеры текста в
+    // кэше — высоты финальны, коррекций не будет. Показываем в этом же
+    // JS-коммите, минуя кадры тишины, верификацию якоря и runOnJS-роундтрип:
+    // на тёплом открытии это ~100–250 мс тёмной заглушки.
+    if (threadReadyRef.current && threadWindowTextMeasuresWarm(decryptedRef.current)) {
+      revealListNow();
+    }
+  }, [conversationUuid, listGapPx, onListLoad, revealListNow, windowHeight]);
+  const maybeConfirmWindowMeasuredRef = useRef(maybeConfirmWindowMeasured);
+  maybeConfirmWindowMeasuredRef.current = maybeConfirmWindowMeasured;
+  useEffect(() => {
+    if (listDataWindow.length > 0) maybeConfirmWindowMeasured();
+  }, [listDataWindow, maybeConfirmWindowMeasured]);
 
   /**
    * Ограничение сверху на ожидание. Расшифровка может не состояться вовсе —
@@ -963,19 +1520,38 @@ export default function ThreadScreen() {
     if (visible) setShowJumpToLatest(false);
   }, []);
 
+  /**
+   * Геометрия контент-контейнера перевёрнутой ленты (flip-пространство):
+   *  - paddingTop — визуальный низ: зазор под доком (listGapPx). React-проп,
+   *    а не inset KCSV: animatedProps-инсет терялся на React-коммитах FlashList
+   *    (лента вставала вплотную к доку — «прыжок» в кадре показа);
+   *  - paddingBottom — визуальный верх над самым старым сообщением: столько же,
+   *    сколько marginBottom пузыря до линии compose.
+   */
+  const listContentStyle = useMemo(
+    () => ({
+      paddingTop: listGapPx,
+      paddingBottom: floraMessages.bubbleRowGap,
+    }),
+    [listGapPx],
+  );
+
   const renderScrollComponent = useCallback(
     (props: ScrollViewProps) => (
       <ChatScrollView
         {...props}
         offset={kgaOffsetRef.current}
-        extraContentPadding={dockExtraPaddingSv}
+        // Ноль: зазор дока — paddingTop контент-контейнера (listGapPx), а не
+        // inset KCSV. Инсет жил в animatedProps, и React-коммиты FlashList
+        // затирали его нативное значение — «прыжок пузырей» в кадре показа.
+        extraContentPadding={listInsetZeroSv}
         freeze={freezeListSv}
         animatedRef={listAnimatedRef}
-        // Зазор под доком уезжает в contentInset.top, «конец» — офсет у нуля.
+        // Математика KCSV перевёрнутой ленты: «конец» — офсет у нуля.
         inverted
       />
     ),
-    [dockExtraPaddingSv, freezeListSv, listAnimatedRef],
+    [freezeListSv, listAnimatedRef, listInsetZeroSv],
   );
 
   // До paint (паритет Web useLayoutEffect): иначе после idle первый кадр без
@@ -983,28 +1559,53 @@ export default function ThreadScreen() {
   useLayoutEffect(() => {
     if (!threadReady || listMessageCount === 0) return;
     if (!scrollTrackingReadyRef.current) {
+      // Посев из ПОЛНОЙ истории (`decrypted`), не из отфильтрованного listData:
+      // чужие decrypting-строки в listData скрыты, и посев по нему считал бы
+      // старую историю «входящими», когда фоновые волны расшифровки доводят её
+      // до терминала, — insertLift + pin на каждую волну, лента дёргалась и
+      // мигала при открытии длинных чатов.
       const keys: string[] = [];
       const ids = new Set<string>();
-      forEachThreadListMessage(listData, (row) => {
+      let newestCreatedAt = "";
+      for (const row of decrypted) {
         keys.push(row.clientMessageKey ?? row.messageUuid);
         ids.add(row.messageUuid);
-      });
+        // Отсечка — только по серверным createdAt: у оптимистичных строк время
+        // локальных часов, и при их уходе вперёд отсечка глотала бы живые входящие.
+        if (row.sendStatus !== "sending" && row.createdAt > newestCreatedAt) {
+          newestCreatedAt = row.createdAt;
+        }
+      }
       seedHydratedKeys(keys);
       seenMessageIdsRef.current = ids;
+      seedNewestCreatedAtRef.current = newestCreatedAt;
       scrollTrackingReadyRef.current = true;
       return;
     }
 
     const seen = seenMessageIdsRef.current;
+    const seedNewestCreatedAt = seedNewestCreatedAtRef.current;
     let incomingLiftPx = 0;
+    let anyLiveNew = false;
     const newlyPeerUuids = new Set<string>();
     forEachThreadListMessage(listData, (row) => {
-      if (seen.has(row.messageUuid)) return;
+      // Ack исходящего меняет uuid на серверный; clientMessageKey уже в seen —
+      // это не новое сообщение (иначе гонка с добавлением uuid в onSend).
+      if (seen.has(row.messageUuid) || seen.has(row.clientMessageKey ?? "")) {
+        seen.add(row.messageUuid);
+        return;
+      }
       seen.add(row.messageUuid);
       rememberClientMessageKey(
         row.messageUuid,
         row.clientMessageKey ?? row.messageUuid,
       );
+      // Не новее посева — дорасшифрованная/дозагруженная история: без lift/плашки.
+      if (row.createdAt <= seedNewestCreatedAt) {
+        seedHydratedKeys([row.clientMessageKey ?? row.messageUuid]);
+        return;
+      }
+      anyLiveNew = true;
       // Исходящие уже крутят insertLift в onSend; здесь — только peer delta.
       if (!row.isFromMe) {
         newlyPeerUuids.add(row.messageUuid);
@@ -1012,16 +1613,23 @@ export default function ThreadScreen() {
         incomingLiftPx += estimateRowInsertLiftPx(row, peerLiftCtx);
       }
     });
-    if (incomingLiftPx > 0 && atBottomRef.current) {
+    if (!anyLiveNew) return;
+    // Вне якоря приход строк позицию не трогает — только плашка (у якоря есть
+    // допуск CHAT_AT_BOTTOM_THRESHOLD_PX, строка внутри него ушла бы под док).
+    if (!atBottomRef.current) {
+      setShowJumpToLatest(true);
+      return;
+    }
+    // pin + lift в одном layout-кадре (как Web runInsertLift).
+    pinListToBottom(false);
+    setShowJumpToLatest(false);
+    if (incomingLiftPx > 0) {
       // Hold только при append в уже видимую группу; новая группа — аватар
       // едет вместе с сообщением (без контр-transform).
-      const trailing = listData[0];
-      const holdAvatar =
-        trailing?.kind === "peerGroup" &&
-        shouldHoldTrailingPeerAvatar(trailing.messages, newlyPeerUuids);
-      // pin + lift в одном layout-кадре (как Web runInsertLift).
-      pinListToBottom(false);
-      setShowJumpToLatest(false);
+      const holdAvatar = shouldHoldTrailingPeerAvatar(
+        trailingPeerRunMessages(listData),
+        newlyPeerUuids,
+      );
       playChatListInsertLift(
         insertLiftSv,
         incomingLiftPx,
@@ -1029,6 +1637,7 @@ export default function ThreadScreen() {
       );
     }
   }, [
+    decrypted,
     insertLiftSv,
     listData,
     listMessageCount,
@@ -1037,26 +1646,6 @@ export default function ThreadScreen() {
     pinListToBottom,
     threadReady,
   ]);
-
-  useEffect(() => {
-    const prevLen = prevListLengthRef.current;
-    const nextLen = listMessageCount;
-    prevListLengthRef.current = nextLen;
-    if (nextLen === 0 || nextLen === prevLen) return;
-    // Прижатие в доке доскролливает только на смену зазора под доком, приход
-    // строк его не трогает. У якоря есть допуск в CHAT_AT_BOTTOM_THRESHOLD_PX,
-    // и входящее сообщение, пришедшее внутри этого допуска, осталось бы
-    // частично под полем ввода — поэтому возврат к якорю здесь свой.
-    // Non-animated pin: подъём ленты — insertLiftSv (общий с пузырём).
-    // Считаем по числу сообщений, не items: append в peer-группу не меняет length items.
-    // Peer-insert уже pin'ит в useLayoutEffect выше — здесь догон для own/прочих.
-    if (atBottomRef.current) {
-      pinListToBottom(false);
-      setShowJumpToLatest(false);
-      return;
-    }
-    setShowJumpToLatest(true);
-  }, [listMessageCount, pinListToBottom]);
 
 
   useEffect(() => {
@@ -1102,10 +1691,26 @@ export default function ThreadScreen() {
   const onScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset } = event.nativeEvent;
-      // Лента перевёрнута: последнее сообщение стоит на якоре, а не в конце
-      // контента. Порог отсчитывается от якоря — на iOS он отрицательный.
-      const distanceFromAnchor =
-        contentOffset.y - chatListAnchorOffset(dockExtraPaddingSv.value);
+      // Лента перевёрнута: последнее сообщение стоит на якоре (офсет 0), а не
+      // в конце контента. Порог отсчитывается от якоря.
+      const distanceFromAnchor = contentOffset.y - chatListAnchorOffset();
+      if (__DEV__) {
+        // Осадка офсета после показа: лента обязана стоять на якоре; любой
+        // сдвиг в первые секунды — «прыжок» и есть. Первые 6 событий на показ.
+        const at = revealedAtRef.current;
+        if (
+          at > 0 &&
+          Date.now() - at < 2000 &&
+          Math.abs(distanceFromAnchor) > 1 &&
+          settleOffsetLogsRef.current < 6
+        ) {
+          settleOffsetLogsRef.current += 1;
+          console.log(
+            `[chat-settle] scroll-offset ${Math.round(distanceFromAnchor)}px от якоря ` +
+              `(+${Date.now() - at}мс после reveal)`,
+          );
+        }
+      }
       const atBottom = distanceFromAnchor <= CHAT_AT_BOTTOM_THRESHOLD_PX;
       atBottomRef.current = atBottom;
       // Здесь прижатие только включаем. Снять его может лишь жест — иначе
@@ -1116,7 +1721,7 @@ export default function ThreadScreen() {
         closeMessageMenu();
       }
     },
-    [closeMessageMenu, dockExtraPaddingSv, onEndVisible, setListPinned],
+    [closeMessageMenu, onEndVisible, setListPinned],
   );
 
   /** Программные скроллы дока drag-событий не порождают — снимает только палец. */
@@ -1249,68 +1854,77 @@ export default function ThreadScreen() {
     [isGroupChat, messages, otherUserUuid],
   );
 
-  const onMessagePress = useCallback(
-    (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => {
-      setMenuTarget((prev) => {
-        if (prev) return null;
-        const canDelete =
-          !isGroupChat && message.isFromMe && message.sendStatus !== "sending";
-        const canReport = canReportThreadMessage(message);
-        const panelHeight = estimateMenuPanelHeight(message.isFromMe, canDelete, canReport);
-        const allowBottomClamp = !keyboardOpen;
-        const fit = lockMenuFit({
-          visualTop: anchor.visualTop,
-          visualBottom: anchor.visualBottom,
-          pressWindowY: anchor.originY,
-          feedTopY,
-          feedBottomY,
-          windowHeight,
-          panelHeight,
-          menuGap: floraMessages.bubbleMenuGap,
-          feedInset: floraMessages.bubbleMenuFeedInset,
-          allowBottomClamp,
-        });
-        return {
-          message,
-          anchor,
-          placement: fit.placement,
-          shiftY: fit.shiftY,
-          panelHeight: panelHeight + MENU_ROW_HEIGHT_PX,
-          feedTopY,
-        };
+  /**
+   * Обработчик тапа по пузырю обязан быть НАВСЕГДА стабильным: он уходит в
+   * memo-пузыри как prop, и смена identity (клавиатура, замеры фида) вела к
+   * перерисовке всей ленты. Живые значения читаются через ref в момент тапа.
+   */
+  const onMessagePressImplRef = useRef<
+    (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => void
+  >(() => undefined);
+  onMessagePressImplRef.current = (message, anchor) => {
+    setMenuTarget((prev) => {
+      if (prev) return null;
+      const canDelete =
+        !isGroupChat && message.isFromMe && message.sendStatus !== "sending";
+      const canReport = canReportThreadMessage(message);
+      const panelHeight = estimateMenuPanelHeight(message.isFromMe, canDelete, canReport);
+      const allowBottomClamp = !keyboardOpen;
+      const fit = lockMenuFit({
+        visualTop: anchor.visualTop,
+        visualBottom: anchor.visualBottom,
+        pressWindowY: anchor.originY,
+        feedTopY,
+        feedBottomY,
+        windowHeight,
+        panelHeight,
+        menuGap: floraMessages.bubbleMenuGap,
+        feedInset: floraMessages.bubbleMenuFeedInset,
+        allowBottomClamp,
       });
-      closeEmoji();
-      dismissKeyboard();
-    },
-    [
-      closeEmoji,
-      canReportThreadMessage,
-      dismissKeyboard,
-      feedBottomY,
-      feedTopY,
-      isGroupChat,
-      keyboardOpen,
-      otherUserUuid,
-      windowHeight,
-    ],
+      return {
+        message,
+        anchor,
+        placement: fit.placement,
+        shiftY: fit.shiftY,
+        panelHeight: panelHeight + MENU_ROW_HEIGHT_PX,
+        feedTopY,
+      };
+    });
+    closeEmoji();
+    dismissKeyboard();
+  };
+  const onMessagePress = useCallback(
+    (message: ThreadBubbleItem, anchor: BubbleAnchorRect) =>
+      onMessagePressImplRef.current(message, anchor),
+    [],
   );
+
+  /**
+   * Ключ trailing peer-run'а (у якоря) — отдельной строкой, а не чтением
+   * listData внутри renderMessage: зависимость от всего массива меняла
+   * identity renderItem на каждой волне расшифровки/доклейке окна, и
+   * FlashList перерендеривал все смонтированные ячейки.
+   */
+  const trailingPeerGroupKey =
+    listData[0]?.kind === "peer" ? listData[0].groupKey : null;
 
   const renderMessage = useCallback(
     ({ item }: { item: ThreadListItem }) => {
+      if (__DEV__) noteChatOpenCellRender(conversationUuid);
       // Обратный переворот строки: лента перевёрнута целиком (см. listInverted).
-      if (item.kind === "peerGroup") {
-        // Индекс 0 после reverse — trailing peer-группа у якоря; hold avatar на insertLift.
-        const head = listData[0];
-        const isTrailing =
-          head?.kind === "peerGroup" && head.groupKey === item.groupKey;
+      if (item.kind === "peer") {
+        // Хвост trailing run'а (у якоря) — hold avatar на insertLift.
+        const isTrailingTail = item.isGroupTail && item.groupKey === trailingPeerGroupKey;
         return (
           <View style={styles.rowInverted}>
-            <ChatPeerMessageGroup
-              messages={item.messages}
+            <ChatPeerMessageRow
+              message={item.message}
+              showAvatar={item.isGroupTail}
               peer={peer}
               groupMembers={isGroupChat ? groupThread.members : undefined}
               onPress={onMessagePress}
-              holdAvatarStyle={isTrailing ? peerAvatarHoldStyle : undefined}
+              holdAvatarStyle={isTrailingTail ? peerAvatarHoldStyle : undefined}
             />
           </View>
         );
@@ -1326,19 +1940,20 @@ export default function ThreadScreen() {
               peer={peer}
               showPeerAvatar={false}
               isPeerIndented={false}
-              onPress={(anchor) => onMessagePress(message, anchor)}
+              onPress={onMessagePress}
             />
           </ChatMessageBirthHost>
         </View>
       );
     },
     [
+      conversationUuid,
       groupThread.members,
       isGroupChat,
-      listData,
       onMessagePress,
       peer,
       peerAvatarHoldStyle,
+      trailingPeerGroupKey,
     ],
   );
 
@@ -1813,7 +2428,7 @@ export default function ThreadScreen() {
         : systemNavBottomInset;
 
   return (
-    <View style={styles.root}>
+    <Reanimated.View style={[styles.root, chatPushSlideStyle]}>
       <MessageBubbleMoreMenu
         open={menuTarget != null}
         targetUuid={menuTarget?.message.messageUuid ?? null}
@@ -1924,59 +2539,118 @@ export default function ThreadScreen() {
       >
       <View style={styles.messagesArea}>
         {/*
-          Заглушка — отдельный слой под лентой, а не `ListEmptyComponent`: иначе
-          она гаснет вместе с лентой и между ней и контентом зияет пустой
-          промежуток на всю раскладку FlashList. Здесь два слоя одного перехода.
+          Видимость ленты — React-состояние, НЕ animated style. Анимированный
+          opacity применялся с UI-потока, а следующий React-коммит возвращал
+          запечённый начальный opacity:0 из useAnimatedStyle — лента гасла
+          через кадр после показа и не возвращалась до реального жеста
+          («редкое мигание» на первом открытии группы). Закоммиченный через
+          состояние opacity стабилен к любым последующим коммитам.
+        */}
+        <Reanimated.View
+          style={[
+            styles.listFill,
+            listRevealed ? null : styles.listHiddenUntilReveal,
+            listLiftStyle,
+          ]}
+        >
+          {/* insertLift: тот же transform для ленты и нового пузыря (без отдельного bubble translate). */}
+          <Reanimated.View style={[styles.listFill, listInsertLiftStyle]}>
+            {/*
+              key = ремоунт списка на смене треда — ИЗМЕРЕННОЕ решение, не
+              недосмотр. Реюз инстанса (свап данных на живом списке) проверен
+              и проиграл: перепривязка ячейки в React стоит почти как монтаж,
+              а FlashList кеширует раскладку по индексам — контент нового
+              треда жил на высотах старого, коррекции сыпались волнами уже
+              после показа (усадки content-size). С ремоунтом onLoad честно
+              стреляет на каждый тред, и initialDrawBatchSize рисует окно
+              одним проходом.
+
+              listMounted: на анимированном открытии лента приходит вторым
+              коммитом — см. комментарий у состояния.
+            */}
+            {listMounted ? (
+              <FlashList
+                key={conversationUuid}
+                data={listDataWindow}
+                keyExtractor={listItemKey}
+                getItemType={messageItemType}
+                style={styles.listInverted}
+                contentContainerStyle={listContentStyle}
+                renderScrollComponent={renderScrollComponent}
+                onScroll={onScroll}
+                onScrollBeginDrag={onScrollBeginDrag}
+                scrollEventThrottle={16}
+                // always: иначе первый тап по play только закрывает клавиатуру.
+                keyboardShouldPersistTaps="always"
+                // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
+                // соседние ячейки размонтируются прямо у края вьюпорта.
+                drawDistance={480}
+                /*
+                  `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
+                  короткий тред к низу отступом `windowSize - childContainerSize`,
+                  который уменьшался ступенями по мере домера строк — лента ехала
+                  вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
+                  стоит у низа по построению. Автоподстройка позиции тоже не нужна:
+                  новое сообщение приходит в начало данных, то есть ровно туда, где
+                  стоит скролл, и попадает в кадр само.
+                */
+                maintainVisibleContentPosition={{ disabled: true }}
+                CellRendererComponent={MenuCellRenderer}
+                // Показ ленты НЕ ждёт onLoad FlashList: он оценивает несмеренные
+                // строки средним по типу и на свежем списке срабатывает до
+                // монтажа реально видимых строк (пузырь доезжал после показа).
+                // Наш «onLoad» — maybeConfirmWindowMeasured: фактические высоты
+                // ячеек закрыли вьюпорт от якоря.
+                // Показ ждёт тишины лэйаута: пара кадров без изменений размера
+                // контента, чтобы поздние коррекции не двигали видимые пузыри.
+                onContentSizeChange={onListContentSizeChange}
+                overrideProps={LIST_INITIAL_DRAW}
+                renderItem={renderMessage}
+              />
+            ) : null}
+          </Reanimated.View>
+        </Reanimated.View>
+
+        {/*
+          Enter-ковёр поверх ленты: непрозрачный фон, пока первый кадр не
+          собран; на reveal гаснет Flora-фейдом (энергия вкладок) — сцена
+          проявляется, а не вспыхивает. Лента под ним уже видима и стоит на
+          якоре, поэтому движения нет — только проявление.
         */}
         <Reanimated.View
           pointerEvents="none"
-          style={[styles.listFill, styles.listPlaceholder, listPlaceholderStyle]}
+          style={[styles.listFill, styles.listEnterCover, listEnterCoverStyle]}
+        />
+
+        {/*
+          Заглушка — слой над ковром (спиннер должен быть виден на нём), не
+          `ListEmptyComponent`: иначе пустой FlashList занимает всю раскладку,
+          и между спиннером и контентом зияет промежуток. Opacity
+          переключается мгновенно, без кроссфейда.
+        */}
+        <Reanimated.View
+          pointerEvents="none"
+          style={[
+            styles.listFill,
+            styles.listPlaceholder,
+            listPlaceholderStyle,
+            // Тот же коммит, что показывает ленту, гасит заглушку: подмена
+            // атомарна, без кадра «обе прозрачны» между SV и состоянием.
+            listRevealed ? styles.listHiddenUntilReveal : null,
+          ]}
         >
+          {/* count>0 — лента домеряется невидимо: держим пустой фон, как
+              Telegram; спиннер только когда данных ещё реально нет. */}
           {listPending ? (
             <>
               <ActivityIndicator color={floraColors.greenLight} />
               <Text style={styles.emptyText}>Загрузка сообщений…</Text>
             </>
-          ) : (
+          ) : listMessageCount > 0 ? null : (
             <Text style={styles.emptyText}>
               {blocked ? "Расшифровка недоступна" : "Напишите первое сообщение"}
             </Text>
           )}
-        </Reanimated.View>
-
-        <Reanimated.View style={[styles.listFill, listRevealStyle, listLiftStyle]}>
-          {/* insertLift: тот же transform для ленты и нового пузыря (без отдельного bubble translate). */}
-          <Reanimated.View style={[styles.listFill, listInsertLiftStyle]}>
-            <FlashList
-              key={conversationUuid}
-              data={listData}
-              keyExtractor={listItemKey}
-              getItemType={messageItemType}
-              style={styles.listInverted}
-              contentContainerStyle={styles.listContent}
-              renderScrollComponent={renderScrollComponent}
-              onScroll={onScroll}
-              onScrollBeginDrag={onScrollBeginDrag}
-              scrollEventThrottle={16}
-              // always: иначе первый тап по play только закрывает клавиатуру.
-              keyboardShouldPersistTaps="always"
-              // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
-              // соседние ячейки размонтируются прямо у края вьюпорта.
-              drawDistance={480}
-              /*
-                `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
-                короткий тред к низу отступом `windowSize - childContainerSize`,
-                который уменьшался ступенями по мере домера строк — лента ехала
-                вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
-                стоит у низа по построению. Автоподстройка позиции тоже не нужна:
-                новое сообщение приходит в начало данных, то есть ровно туда, где
-                стоит скролл, и попадает в кадр само.
-              */
-              maintainVisibleContentPosition={{ disabled: true }}
-              CellRendererComponent={MenuCellRenderer}
-              renderItem={renderMessage}
-            />
-          </Reanimated.View>
         </Reanimated.View>
 
         {showJumpToLatest ? (
@@ -2021,6 +2695,11 @@ export default function ThreadScreen() {
             onSend={(draft) => void onSend(draft)}
             sending={sending}
             disabled={!canSend() || (!isGroupChat && !otherUserUuid)}
+            /* EditText — вне критического пути открытия: до показа ленты поле
+               живёт фасадом (инпут absolute и в layout не участвует), тап по
+               нему монтирует и фокусирует. Latch внутри — при переключении
+               чатов инпут уже смонтирован, повторной цены нет. */
+            mountInput={listRevealed}
             placeholder={blocked ? "Отправка недоступна" : "Сообщение"}
             bottomInset={composeBottomInset}
             onShellLayout={onComposeShellLayout}
@@ -2230,7 +2909,7 @@ export default function ThreadScreen() {
         onDismiss={dismissReportMessageModal}
         onConfirm={(category) => void handleConfirmReportMessage(category)}
       />
-    </View>
+    </Reanimated.View>
   );
 }
 
@@ -2278,6 +2957,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     overflow: "visible",
   },
+  /** До показа лента (или после показа — заглушка) прозрачна: см. listRevealed. */
+  listHiddenUntilReveal: {
+    opacity: 0,
+  },
+  /** Enter-ковёр области ленты: фон, гаснущий Flora-фейдом на reveal. */
+  listEnterCover: {
+    backgroundColor: floraColors.bg,
+  },
   /**
    * Переворот ленты целиком: последнее сообщение оказывается в начале скролла,
    * то есть «внизу» — это константный офсет, а не считаемый из высот предел.
@@ -2303,15 +2990,9 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   /**
-   * В координатах скролла это низ, а на экране — верх ленты (над самым старым
-   * сообщением): столько же, сколько marginBottom пузыря до линии compose.
-   */
-  listContent: {
-    paddingBottom: floraMessages.bubbleRowGap,
-  },
-  /**
    * Док — absolute-оверлей у низа: рост слота не влияет на layout ленты
-   * (лента компенсируется через extraContentPadding), двигается transform-ом.
+   * (зазор под доком несёт paddingTop контент-контейнера, см. listContentStyle),
+   * двигается transform-ом.
    */
   dockFooter: {
     position: "absolute",

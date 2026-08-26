@@ -19,6 +19,10 @@ import {
   voiceCaptionInnerWidth,
 } from "@/lib/messageBubbleLayout";
 import {
+  messageBubbleBodyTextMetrics,
+  messageBubbleTimeTextMetrics,
+} from "@/lib/messageBubbleTextStyle";
+import {
   bubbleAnchorFromPress,
   readMenuPressCoords,
   type MenuPressCoords,
@@ -34,7 +38,6 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Pressable } from "react-native-gesture-handler";
-import Reanimated from "react-native-reanimated";
 import type { ChatPeerInfo } from "./ChatThreadHeader";
 
 export type ThreadBubbleItem = {
@@ -65,7 +68,12 @@ type Props = {
   isPeerIndented: boolean;
   /** Пузырь внутри peer-группы: без аватара/indent, ширина как с reserved peer column. */
   inPeerGroup?: boolean;
-  onPress?: (anchor: BubbleAnchorRect) => void;
+  /**
+   * Сообщение приходит аргументом, чтобы родитель передавал один стабильный
+   * обработчик на все пузыри: инлайн-замыкание на каждый рендер ломало memo,
+   * и любое обновление экрана перерисовывало всю ленту.
+   */
+  onPress?: (message: ThreadBubbleItem, anchor: BubbleAnchorRect) => void;
 };
 
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
@@ -139,22 +147,21 @@ function MessageBubbleColumn({
 
   return (
     <View style={[styles.tapLane, tapLaneStyle]} pointerEvents="box-none">
-      <View style={anchorStyle} pointerEvents="box-none">
-        <MessageBubbleMenuDock messageUuid={messageUuid} isFromMe={isFromMe}>
-          <Pressable
-            disabled={!onPress}
-            onLayout={(e) => {
-              yogaHeightRef.current = e.nativeEvent.layout.height;
-            }}
-            onPressIn={onPress ? captureTouch : undefined}
-            onPress={menuActivation === "press" && onPress ? handlePress : undefined}
-            onLongPress={menuActivation === "longPress" && onPress ? handlePress : undefined}
-            delayLongPress={280}
-          >
-            {children}
-          </Pressable>
-        </MessageBubbleMenuDock>
-      </View>
+      {/* Стили якоря — на хосте дока (тот же бокс): без промежуточного View. */}
+      <MessageBubbleMenuDock style={anchorStyle} messageUuid={messageUuid} isFromMe={isFromMe}>
+        <Pressable
+          disabled={!onPress}
+          onLayout={(e) => {
+            yogaHeightRef.current = e.nativeEvent.layout.height;
+          }}
+          onPressIn={onPress ? captureTouch : undefined}
+          onPress={menuActivation === "press" && onPress ? handlePress : undefined}
+          onLongPress={menuActivation === "longPress" && onPress ? handlePress : undefined}
+          delayLongPress={280}
+        >
+          {children}
+        </Pressable>
+      </MessageBubbleMenuDock>
       {footer}
     </View>
   );
@@ -193,6 +200,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const voiceYogaHeightRef = useRef(0);
 
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
+  // Анкорная обёртка живёт внутри memo-границы — её пересоздание дёшево.
+  const pressBubble = onPress
+    ? (anchor: BubbleAnchorRect) => onPress(message, anchor)
+    : undefined;
   // Чужие decrypting режет лента; свои могут показать статус. Не рисуем peer-заглушку.
   if (!message.isFromMe && message.decryptState === "decrypting") {
     return null;
@@ -235,7 +246,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   const showAvatar = !message.isFromMe && showPeerAvatar && !inPeerGroup;
 
   const bubbleColumnProps = {
-    onPress,
+    onPress: pressBubble,
     tapLaneStyle: message.isFromMe ? styles.tapLaneMe : styles.tapLaneThem,
     messageUuid: message.messageUuid,
     isFromMe: message.isFromMe,
@@ -274,7 +285,10 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           {...bubbleColumnProps}
           footer={<FrankingReceiptWarning show={message.missingFrankReceipt} />}
         >
-          <Reanimated.View
+          {/* Обычный View, не Reanimated: анимированных стилей у пузыря нет
+              (подъём ленты общий), а обёртка createAnimatedComponent давала
+              лишний вес на монтаж каждой ячейки — самой дорогой фазе открытия. */}
+          <View
             collapsable={false}
             style={[
               styles.bubble,
@@ -292,7 +306,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               timeStyle={inlineTimeStyle}
               receiptColor={receiptColor}
             />
-          </Reanimated.View>
+          </View>
         </MessageBubbleColumn>
       </View>
     );
@@ -300,7 +314,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
 
   if (hasVoice && !hasImages) {
     const openVoiceMenu = (event?: unknown) => {
-      onPress?.(bubbleAnchorFromPress(event, voiceYogaHeightRef.current));
+      pressBubble?.(bubbleAnchorFromPress(event, voiceYogaHeightRef.current));
     };
     return (
       <View style={wrapStyle}>
@@ -329,7 +343,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           pointerEvents="box-none"
         >
           <MessageBubbleMenuDock messageUuid={message.messageUuid} isFromMe={message.isFromMe}>
-            <Reanimated.View
+            <View
             collapsable={false}
             onLayout={(e) => {
               voiceYogaHeightRef.current = e.nativeEvent.layout.height;
@@ -351,7 +365,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                 durationMs={voiceBlock.durationMs}
                 waveform={voiceBlock.waveform}
                 isFromMe={message.isFromMe}
-                onMenuLongPress={onPress ? openVoiceMenu : undefined}
+                onMenuLongPress={pressBubble ? openVoiceMenu : undefined}
                 timeSlot={
                   voiceOnly ? (
                     <ChatMessageBubbleTime
@@ -386,7 +400,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                 </View>
               </Pressable>
             ) : null}
-          </Reanimated.View>
+          </View>
           </MessageBubbleMenuDock>
           <FrankingReceiptWarning show={message.missingFrankReceipt} />
         </View>
@@ -432,7 +446,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
         {...bubbleColumnProps}
         footer={<FrankingReceiptWarning show={message.missingFrankReceipt} />}
       >
-        <Reanimated.View collapsable={false} style={bubbleStyles}>
+        <View collapsable={false} style={bubbleStyles}>
           {replyQuote ? (
             <View
               style={[
@@ -485,7 +499,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               />
             </View>
           ) : null}
-        </Reanimated.View>
+        </View>
       </MessageBubbleColumn>
     </View>
   );
@@ -668,13 +682,8 @@ const styles = StyleSheet.create({
     minHeight: floraSpacing.grid,
     height: floraSpacing.grid,
   },
-  body: {
-    fontSize: floraMessages.bubbleFontSize,
-    fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: floraMessages.bubbleLineHeight,
-    includeFontPadding: false,
-  },
+  // Метрики — из общего источника: ими же мерит offscreen-прогрев замеров.
+  body: messageBubbleBodyTextMetrics,
   bodyMe: {
     color: floraColors.whiteTemplate,
   },
@@ -689,9 +698,7 @@ const styles = StyleSheet.create({
     color: floraColors.textMuted,
   },
   timeInline: {
-    fontSize: floraMessages.bubbleTimeFontSize,
-    lineHeight: 18,
-    includeFontPadding: false,
+    ...messageBubbleTimeTextMetrics,
     opacity: 0.85,
   },
   timeMe: {

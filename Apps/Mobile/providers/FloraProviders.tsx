@@ -25,8 +25,11 @@ import {
   reconcileInstallPermissionWithOs,
 } from "@/lib/apkUpdate/autoUpdatePreference";
 import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
+import { startChatCachePersist } from "@/lib/chatCachePersist";
 import { initMobileSodium } from "@/lib/fscp/sodium";
+import { startMessageTextMeasurePersist } from "@/lib/messageTextMeasurePersist";
 import { initStorageMigrations } from "@/lib/mmkv";
+import { hydrateChatDiskCache } from "@/stores/chatDiskCache";
 import { initSentry, initTelemetry } from "@/lib/sentry";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -69,6 +72,13 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       await bootstrapSession();
       const session = useSessionStore.getState();
       if (session.isAuthenticated && session.me?.userUuid) {
+        // Синхронная гидрация чатов с диска до первого кадра: список и топ-треды
+        // рендерятся мгновенно, сеть обновит их тихо (Telegram-style cold start).
+        try {
+          hydrateChatDiskCache(queryClient, session.me.userUuid);
+        } catch {
+          // Повреждённый снапшот не должен ломать старт — просто идём по сети.
+        }
         const fscp = useFscpStore.getState();
         const norm = session.me.userUuid.trim().toLowerCase();
         const alreadyReady =
@@ -102,6 +112,19 @@ export function FloraProviders({ children }: { children: ReactNode }) {
       (fscp.ownerUserUuid === norm && fscp.status === "ready");
     if (!alreadyReady) void fscp.bootstrap(userUuid);
     prevUserUuidRef.current = norm;
+  }, [ready, isAuthenticated, userUuid]);
+
+  // Write-through персист messaging-кэшей на диск (см. lib/chatCachePersist).
+  useEffect(() => {
+    if (!ready || !isAuthenticated || !userUuid) return;
+    return startChatCachePersist(queryClient, userUuid);
+  }, [ready, isAuthenticated, userUuid]);
+
+  // Раскладка текста пузырей — с диска (шифрованный снимок, см. модуль):
+  // первый чат после перезапуска открывается с готовыми замерами.
+  useEffect(() => {
+    if (!ready || !isAuthenticated || !userUuid) return;
+    return startMessageTextMeasurePersist(userUuid);
   }, [ready, isAuthenticated, userUuid]);
 
   useEffect(() => {

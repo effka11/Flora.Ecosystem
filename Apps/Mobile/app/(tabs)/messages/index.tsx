@@ -41,10 +41,16 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { RefreshControl } from "react-native-gesture-handler";
-import { useSharedValue } from "react-native-reanimated";
+import Reanimated, {
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
 import { ConversationMoreMenu } from "@/components/messages/ConversationMoreMenu";
@@ -65,6 +71,12 @@ import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
 import { TabScreenHeader } from "@/components/TabScreenHeader";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import {
+  CHAT_PUSH_DIM,
+  CHAT_PUSH_PARALLAX,
+  chatPushProgress,
+  resetChatPushProgress,
+} from "@/lib/chatPushTransition";
 import {
   clearTemporaryMute,
   pruneExpiredTemporaryMutes,
@@ -200,6 +212,13 @@ const EMPTY_SELECTED = new Set<string>();
 // Matches the global staleTime in providers/FloraProviders.tsx.
 const CONVERSATIONS_STALE_REFETCH_MS = 15_000;
 const GROUPS_STALE_REFETCH_MS = 15_000;
+/**
+ * Пауза между фокусом списка и его сетевыми обновлениями свежести. Возврат из
+ * чата отпускает pop только после анимации (см. `chatPushTransition`), поэтому
+ * размонтирование треда и коммиты этих запросов иначе складываются в один
+ * кадр — ровно тот, с которого список снова принимает скролл.
+ */
+const FOCUS_REFRESH_DELAY_MS = 200;
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
@@ -722,30 +741,63 @@ export default function MessagesScreen() {
       tabFocusedRef.current = true;
       setTabFocused(true);
       setConversationsListFocused(true);
+      // Страховка push-перехода: exit уже отыграл к моменту фокуса,
+      // сброс чинит аварийные пути (pop без анимации).
+      resetChatPushProgress();
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
-      // Папки/архив с сервера (Web мог создать, пока Mobile был в фоне).
-      void refreshOverlay();
-      const conversationQuery = conversationQueryRef.current;
-      if (
-        Date.now() - conversationQuery.dataUpdatedAt >
-        CONVERSATIONS_STALE_REFETCH_MS
-      ) {
-        void conversationQuery.refetch();
-      }
-      const groups = groupsQueryRef.current;
-      if (Date.now() - groups.dataUpdatedAt > GROUPS_STALE_REFETCH_MS) {
-        void groups.refetch();
-      }
-      if (fscpStatus === "registration_pending") {
-        void retryPendingOperation();
-      }
-      void sharedPresenceStore.resyncSnapshots().catch(() => {});
+      // Обновления свежести — за кадрами посадки (FOCUS_REFRESH_DELAY_MS).
+      // Ни одно из них не нужно первому кадру списка: данные уже показаны из
+      // кэша, запросы лишь досыпают изменения, сделанные в других клиентах.
+      const refreshTimer = setTimeout(() => {
+        // Папки/архив с сервера (Web мог создать, пока Mobile был в фоне).
+        void refreshOverlay();
+        const conversationQuery = conversationQueryRef.current;
+        if (
+          Date.now() - conversationQuery.dataUpdatedAt >
+          CONVERSATIONS_STALE_REFETCH_MS
+        ) {
+          void conversationQuery.refetch();
+        }
+        const groups = groupsQueryRef.current;
+        if (Date.now() - groups.dataUpdatedAt > GROUPS_STALE_REFETCH_MS) {
+          void groups.refetch();
+        }
+        if (fscpStatus === "registration_pending") {
+          void retryPendingOperation();
+        }
+        void sharedPresenceStore.resyncSnapshots().catch(() => {});
+      }, FOCUS_REFRESH_DELAY_MS);
       return () => {
+        clearTimeout(refreshTimer);
         tabFocusedRef.current = false;
         setTabFocused(false);
         setConversationsListFocused(false);
       };
     }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
+  );
+
+  /**
+   * Push-переход чата (chatPushTransition): пока чат заезжает справа, список
+   * остаётся на месте с лёгким параллаксом влево и затемнением. Dim-слой на
+   * ходу перехода блокирует тапы — второй push с двойного тапа не пройдёт.
+   */
+  const { width: windowWidth } = useWindowDimensions();
+  const chatPushParallaxStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: -CHAT_PUSH_PARALLAX * windowWidth * chatPushProgress.value },
+    ],
+  }));
+  const chatPushDimStyle = useAnimatedStyle(() => ({
+    opacity: CHAT_PUSH_DIM * chatPushProgress.value,
+  }));
+  const [chatPushBlocksList, setChatPushBlocksList] = useState(false);
+  useAnimatedReaction(
+    () => chatPushProgress.value > 0.02,
+    (blocked, prev) => {
+      if (blocked !== prev) {
+        runOnJS(setChatPushBlocksList)(blocked);
+      }
+    },
   );
 
   const banner = fscpBannerMessage(fscpStatus);
@@ -875,7 +927,7 @@ export default function MessagesScreen() {
   };
 
   return (
-    <View style={styles.root}>
+    <Reanimated.View style={[styles.root, chatPushParallaxStyle]}>
       <TabScreenHeader
         title="Сообщения"
         placeholder="Поиск чатов и сообщений"
@@ -1154,12 +1206,29 @@ export default function MessagesScreen() {
           setUnlockOpen(false);
         }}
       />
-    </View>
+
+      {/* Затемнение под push чата; на ходу перехода блокирует тапы по списку. */}
+      <Reanimated.View
+        pointerEvents={chatPushBlocksList ? "auto" : "none"}
+        style={[styles.chatPushDim, chatPushDimStyle]}
+      />
+    </Reanimated.View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
+  /** Затемнение списка под push чата (внутри параллаксящего root). */
+  chatPushDim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#000",
+    opacity: 0,
+    zIndex: 200,
+  },
   body: {
     flex: 1,
     overflow: "hidden",
