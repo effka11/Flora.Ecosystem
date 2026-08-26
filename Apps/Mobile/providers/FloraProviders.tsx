@@ -27,6 +27,7 @@ import {
 import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
 import { startChatCachePersist } from "@/lib/chatCachePersist";
 import { initMobileSodium } from "@/lib/fscp/sodium";
+import { startMessageTextMeasurePersist } from "@/lib/messageTextMeasurePersist";
 import { initStorageMigrations } from "@/lib/mmkv";
 import { hydrateChatDiskCache } from "@/stores/chatDiskCache";
 import { initSentry, initTelemetry } from "@/lib/sentry";
@@ -117,6 +118,13 @@ export function FloraProviders({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready || !isAuthenticated || !userUuid) return;
     return startChatCachePersist(queryClient, userUuid);
+  }, [ready, isAuthenticated, userUuid]);
+
+  // Раскладка текста пузырей — с диска (шифрованный снимок, см. модуль):
+  // первый чат после перезапуска открывается с готовыми замерами.
+  useEffect(() => {
+    if (!ready || !isAuthenticated || !userUuid) return;
+    return startMessageTextMeasurePersist(userUuid);
   }, [ready, isAuthenticated, userUuid]);
 
   useEffect(() => {

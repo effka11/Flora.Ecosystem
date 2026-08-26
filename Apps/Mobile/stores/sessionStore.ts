@@ -18,9 +18,11 @@ import {
 import { useFscpStore } from "@/stores/fscpStore";
 import { resetBirthTracking } from "@/lib/messageBirthRegistry";
 import { clearAllPendingOutgoing } from "@/lib/messageThreadOutgoing";
+import { clearMessageTextMeasures } from "@/lib/messageTextMeasureCache";
 import { wipeChatDiskCache } from "@/stores/chatDiskCache";
 import { messagePreviewCache } from "@/stores/messagePreviewCache";
 import { messageThreadCache } from "@/stores/messageThreadCache";
+import { wipeTextMeasureDisk } from "@/stores/textMeasureDiskCache";
 
 type SessionState = {
   status: SessionControllerStatus;
@@ -123,6 +125,10 @@ mobileSessionController.subscribe((next) => {
     messagePreviewCache.clear();
     messageThreadCache.clear();
     wipeChatDiskCache();
+    // Замеры пузырей — это тексты сообщений: ни в памяти, ни на диске они не
+    // должны переживать выход из аккаунта.
+    clearMessageTextMeasures();
+    wipeTextMeasureDisk();
     clearAllPendingOutgoing();
     resetBirthTracking();
     sharedPresenceStore.clear();
