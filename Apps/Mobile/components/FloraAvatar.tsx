@@ -160,6 +160,9 @@ const styles = StyleSheet.create({
   defaultArt: {
     alignItems: "center",
     justifyContent: "center",
+    // Web `.defaultArt` inset ring — fill is `--flora-green-dark`, same as the profile cover.
+    borderWidth: 1,
+    borderColor: "rgba(250, 250, 250, 0.08)",
     shadowColor: "#000",
     shadowOpacity: 0.35,
     shadowRadius: 4,

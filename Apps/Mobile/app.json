@@ -2,7 +2,7 @@
   "expo": {
     "name": "Flora",
     "slug": "flora-mobile",
-    "version": "0.13.1-alpha",
+    "version": "0.13.2-alpha",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "flora",
@@ -17,7 +17,7 @@
     "android": {
       "package": "social.flora.mobile",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 900009,
+      "versionCode": 900010,
       "googleServicesFile": "./google-services.json",
       "backgroundColor": "#0c0c0c",
       "navigationBar": {

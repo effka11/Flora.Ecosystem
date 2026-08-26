@@ -18,10 +18,13 @@ const SHOW_PROFILE_STATUS = false;
 const AVATAR_NUDGE_X = (39 - 38) * floraSpacing.grid - 8 + floraSpacing.gridFine * 2;
 const TEXT_NUDGE_X = floraSpacing.gridFine * 2;
 const STATUS_TOP = 4 * floraSpacing.grid + 4;
-/** Outer ring box: avatar + 4px border each side. */
-const PROFILE_AVATAR_SHELL = floraProfile.avatarSize + 8;
-/** Badge scale diameter = Web `--profile-avatar-size` (border-box 98), not shell 106. */
-const PROFILE_AVATAR_DIAMETER = floraProfile.avatarSize;
+const PROFILE_AVATAR_BORDER = 4;
+/** Web `--profile-avatar-size` (border-box). Explicit px — `%` of an absolute shell collapses on Android. */
+const PROFILE_AVATAR_OUTER = floraProfile.avatarSize;
+/** Inner photo: outer − 4px ring on each side. Same as Web `FLORA_PROFILE_AVATAR_INNER_PX`. */
+const PROFILE_AVATAR_INNER = floraProfile.avatarSize - PROFILE_AVATAR_BORDER * 2;
+/** Badge scale diameter = Web `--profile-avatar-size` (border-box 98). */
+const PROFILE_AVATAR_DIAMETER = PROFILE_AVATAR_OUTER;
 /** profile.module.css — .profileDetailsTrigger */
 const DETAILS_BTN_SIZE = 8 * floraSpacing.gridFine;
 const DETAILS_ICON_SIZE = 4 * floraSpacing.gridFine;
@@ -87,7 +90,7 @@ export function ProfileCardHeader({
               style={styles.avatarWrap}
             >
               <FloraAvatar
-                size={floraProfile.avatarSize}
+                size={PROFILE_AVATAR_INNER}
                 avatarUuid={avatarUuid}
                 displayName={displayName}
                 username={username}
@@ -217,6 +220,7 @@ export function ProfileCardHeader({
 const styles = StyleSheet.create({
   root: {
     position: "relative",
+    overflow: "visible",
     paddingTop: floraSpacing.grid,
     paddingBottom: floraSpacing.grid,
     borderBottomWidth: 1,
@@ -240,6 +244,7 @@ const styles = StyleSheet.create({
   },
   infoTop: {
     position: "relative",
+    overflow: "visible",
     minHeight: floraProfile.avatarSize,
     marginBottom: floraSpacing.gridFine,
   },
@@ -247,15 +252,16 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: AVATAR_NUDGE_X,
     top: -4,
-    width: PROFILE_AVATAR_SHELL,
-    height: PROFILE_AVATAR_SHELL,
+    width: PROFILE_AVATAR_OUTER,
+    height: PROFILE_AVATAR_OUTER,
+    overflow: "visible",
   },
   avatarWrap: {
-    width: "100%",
-    height: "100%",
-    borderWidth: 4,
+    width: PROFILE_AVATAR_OUTER,
+    height: PROFILE_AVATAR_OUTER,
+    borderWidth: PROFILE_AVATAR_BORDER,
     borderColor: floraColors.bg,
-    borderRadius: floraProfile.avatarSize / 2 + 4,
+    borderRadius: PROFILE_AVATAR_OUTER / 2,
     overflow: "hidden",
   },
   status: {

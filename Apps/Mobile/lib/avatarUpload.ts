@@ -122,7 +122,7 @@ async function uploadPreparedAvatarFile(prepared: AvatarUploadFile): Promise<str
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
-        "X-Flora-Client": `${clientIdentity.platform}/${clientIdentity.appVersion ?? Constants.expoConfig?.version ?? "0.13.1-alpha"}`,
+        "X-Flora-Client": `${clientIdentity.platform}/${clientIdentity.appVersion ?? Constants.expoConfig?.version ?? "0.13.2-alpha"}`,
       },
     });
   };

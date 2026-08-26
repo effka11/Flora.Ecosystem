@@ -1,4 +1,5 @@
-import { apiGetProfilePosts } from "@flora/client-core/api";
+import { apiGetProfile, apiGetProfilePosts } from "@flora/client-core/api";
+import { apiGetMe } from "@flora/client-core/auth";
 import type { FeedPostDto } from "@flora/client-core/contracts";
 import { profilePostToFeedPost } from "@flora/client-core/contracts";
 import { sharedPresenceStore } from "@flora/client-core/presence";
@@ -11,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProfileCardHeader } from "@/components/profile/ProfileCardHeader";
 import { PostCard } from "@/components/PostCard";
 import { FrcMediaModeScope } from "@/lib/FrcImageDecodingScope";
+import { resolveOwnProfileAvatarUuid } from "@/lib/ownProfileAvatar";
 import { useFrcMediaBand } from "@/lib/useFrcMediaBand";
 import { useNetworkClass } from "@/lib/useNetworkClass";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
@@ -23,6 +25,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
   const me = useSessionStore((s) => s.me);
+  const setMe = useSessionStore((s) => s.setMe);
   const network = useNetworkClass();
   const [commentsOpenPostUuid, setCommentsOpenPostUuid] = useState<string | null>(null);
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
@@ -32,6 +35,12 @@ export default function ProfileScreen() {
     usePostViewTracking({ enabled: focused });
 
   const username = me?.username ?? "";
+  const profileQuery = useQuery({
+    queryKey: ["profile", username],
+    enabled: username.length > 0,
+    queryFn: () => apiGetProfile(username),
+    refetchOnMount: false,
+  });
   const postsQuery = useQuery({
     queryKey: ["profile-posts", username],
     enabled: username.length > 0,
@@ -39,23 +48,32 @@ export default function ProfileScreen() {
     refetchOnMount: false,
   });
 
+  const refreshMe = useCallback(async () => {
+    try {
+      setMe(await apiGetMe());
+    } catch {
+      /* keep last session me */
+    }
+  }, [setMe]);
+
   const pullPosts = useCallback(async () => {
-    await postsQuery.refetch();
-  }, [postsQuery]);
+    await Promise.all([postsQuery.refetch(), profileQuery.refetch(), refreshMe()]);
+  }, [postsQuery, profileQuery, refreshMe]);
   const { pullRefreshing, onRefresh: onPullRefresh } = usePullToRefresh(pullPosts);
 
   const posts = useMemo((): FeedPostDto[] => {
     if (!me) return [];
+    const avatarUuid = resolveOwnProfileAvatarUuid(me.avatarUuid, profileQuery.data?.avatarUuid);
     return (postsQuery.data ?? []).map((post) => ({
       ...profilePostToFeedPost(post, {
         userUuid: me.userUuid,
         username: me.username,
         displayName: me.displayName,
-        avatarUuid: me.avatarUuid,
+        avatarUuid,
       }),
       authorAccountBlocked: me.accountBlocked ?? false,
     }));
-  }, [me, postsQuery.data]);
+  }, [me, postsQuery.data, profileQuery.data?.avatarUuid]);
 
   const mediaBand = useFrcMediaBand(posts, visibleRange, { online: network === "online" });
 
@@ -67,9 +85,13 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
-      if (username.length > 0) void postsQuery.refetch();
+      if (username.length > 0) {
+        void postsQuery.refetch();
+        void profileQuery.refetch();
+        void refreshMe();
+      }
       return () => setFocused(false);
-    }, [postsQuery.refetch, username]),
+    }, [postsQuery.refetch, profileQuery.refetch, refreshMe, username]),
   );
 
   const commentCountFor = useCallback(
@@ -117,16 +139,17 @@ export default function ProfileScreen() {
     return sharedPresenceStore.overlayOnline(uuid, false, null).isOnline;
   }, [me?.userUuid, presenceTick]);
 
+  const publicProfile = profileQuery.data;
   const header = useMemo(
     () => (
       <ProfileCardHeader
         displayName={me?.displayName ?? "Профиль"}
         username={username}
-        avatarUuid={me?.avatarUuid}
+        avatarUuid={resolveOwnProfileAvatarUuid(me?.avatarUuid, publicProfile?.avatarUuid)}
         userUuid={me?.userUuid}
-        status={me?.status}
-        followersCount={me?.followersCount}
-        followingCount={me?.followingCount}
+        status={publicProfile?.status ?? me?.status}
+        followersCount={publicProfile?.followersCount ?? me?.followersCount}
+        followingCount={publicProfile?.followingCount ?? me?.followingCount}
         isOnline={isOnline}
         onSettingsPress={() =>
           router.push({ pathname: "/(tabs)/settings", params: { section: "account" } })
@@ -136,7 +159,7 @@ export default function ProfileScreen() {
         accountBlocked={me?.accountBlocked}
       />
     ),
-    [me, username, isOnline],
+    [me, publicProfile, username, isOnline],
   );
 
   return (
