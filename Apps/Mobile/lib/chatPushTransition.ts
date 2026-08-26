@@ -4,7 +4,8 @@
  * слоем (`translateX = (1-p)·width`), список остаётся на месте с лёгким
  * параллаксом влево и затемнением (`-p·PARALLAX·width`, dim `p·DIM`) — без
  * кроссфейда экранов. Кривая и темп — ENERGETIC_OPEN, та же энергия, что у
- * переключения вкладок и подвкладок; назад — ENERGETIC_CLOSE, зеркально.
+ * переключения вкладок и подвкладок; назад — то же самое зеркально (см.
+ * EXIT_MS/EXIT_EASING).
  *
  * Нативный переход выключен (`presentation: "transparentModal"` +
  * `animation: "none"`): RNS свапает сцены мгновенно и держит список видимым
@@ -33,12 +34,18 @@ import {
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
-import {
-  ENERGETIC_CLOSE_EASING,
-  ENERGETIC_CLOSE_MS,
-  ENERGETIC_OPEN_EASING,
-  ENERGETIC_OPEN_MS,
-} from "@/lib/energeticSettle";
+import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
+
+const ENTER_MS = ENERGETIC_OPEN_MS;
+const ENTER_EASING = ENERGETIC_OPEN_EASING;
+/**
+ * Возврат парирует заезд — тот же duration-3 и та же ease-out, что у входа
+ * (контракт закрытия меню-гамбургера: OPEN_MS/OPEN_EASING = CLOSE_MS/EASING).
+ * Не ENERGETIC_CLOSE: у него другой темп и ease-in, из-за чего обратный ход
+ * читался иначе, чем прямой, — жест переставал быть зеркалом.
+ */
+const EXIT_MS = ENTER_MS;
+const EXIT_EASING = ENTER_EASING;
 
 /** 0 — список в покое, 1 — чат полностью накрыл список. */
 export const chatPushProgress = makeMutable(0);
@@ -129,7 +136,7 @@ export function runChatPushEnter(driven: SharedValue<boolean>): void {
   chatPushProgress.value = 0;
   chatPushProgress.value = withTiming(
     1,
-    { duration: ENERGETIC_OPEN_MS, easing: ENERGETIC_OPEN_EASING },
+    { duration: ENTER_MS, easing: ENTER_EASING },
     (finished) => {
       "worklet";
       if (finished) {
@@ -140,8 +147,9 @@ export function runChatPushEnter(driven: SharedValue<boolean>): void {
 }
 
 /**
- * Назад из чата: progress к 0 (чат уезжает вправо, список возвращается из
- * параллакса), по завершении — onDone (dispatch отложенного pop).
+ * Назад из чата — зеркало входа: тот же progress по той же кривой и за то же
+ * время, только 1→0 (чат уезжает вправо, список возвращается из параллакса и
+ * затемнения). По завершении — onDone (dispatch отложенного pop).
  * false — анимировать нечего (reduce motion / список уже на месте, например
  * чат поверх чата): пусть pop идёт немедленно.
  */
@@ -156,7 +164,7 @@ export function runChatPushExit(
   cancelAnimation(chatPushProgress);
   chatPushProgress.value = withTiming(
     0,
-    { duration: ENERGETIC_CLOSE_MS, easing: ENERGETIC_CLOSE_EASING },
+    { duration: EXIT_MS, easing: EXIT_EASING },
     () => {
       "worklet";
       // Даже прерванная анимация обязана отпустить pop — иначе экран завис.
