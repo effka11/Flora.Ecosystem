@@ -564,9 +564,18 @@ export default function ThreadScreen() {
    * Пост-показ по фазам: сперва доклейка хвоста истории за окном первого
    * коммита, затем отпуск фоновых волн расшифровки. До показа лента монтирует
    * только окно вьюпорта — остальное принципиально после первого кадра.
+   *
+   * Состояния ключуются по uuid, а не сбрасываются эффектом: FlashList живёт
+   * через смены тредов, и в ПЕРВОМ коммите нового uuid оба флага обязаны быть
+   * ложными синхронно. Сброс эффектом опаздывал на коммит — свап рендерил
+   * ленту с раскрытым окном прошлого треда (полные данные в самом тяжёлом
+   * коммите): mount вырастал вдвое, а усадка окна доезжала после показа
+   * (видимый сдвиг content-size вниз).
    */
-  const [listWindowExpanded, setListWindowExpanded] = useState(false);
-  const [decryptWavesReleased, setDecryptWavesReleased] = useState(false);
+  const [windowExpandedUuid, setWindowExpandedUuid] = useState<string | null>(null);
+  const [wavesReleasedUuid, setWavesReleasedUuid] = useState<string | null>(null);
+  const listWindowExpanded = windowExpandedUuid === conversationUuid;
+  const decryptWavesReleased = wavesReleasedUuid === conversationUuid;
 
   /**
    * Layout-эффект, не useEffect: роутер переиспользует инстанс экрана при
@@ -596,7 +605,11 @@ export default function ThreadScreen() {
     threadResetUuidRef.current = conversationUuid;
     markChatOpenStage("mount", conversationUuid);
     listRevealedStaleRef.current = true;
-    if (__DEV__) cellHeightsRef.current.clear();
+    // Замеры ячеек — потредные: высоты прошлого треда не должны подтверждать
+    // видимый префикс нового (uuid глобально уникальны, но Map без чистки
+    // рос бы всю жизнь экрана).
+    cellHeightsRef.current.clear();
+    windowMeasuredUuidRef.current = "";
     resetDock();
     hideListUntilReady();
     setMenuTarget(null);
@@ -604,7 +617,10 @@ export default function ThreadScreen() {
     // Позиция ленты — величина потреда: перенесённая из прошлого треда, она
     // оставила бы новый тред «отмотанным вверх» (без возврата к якорю на
     // входящие) и могла бы показать в нём чужую плашку «Новые сообщения».
+    // Сам список ремоунтится (key=uuid) и стартует с якоря, но pinToBottomSv
+    // живёт в доке и переживает смену треда — прижатие возвращаем явно.
     atBottomRef.current = true;
+    pinListToBottom(false);
     setShowJumpToLatest(false);
     resetBirthTracking();
     scrollTrackingReadyRef.current = false;
@@ -613,8 +629,8 @@ export default function ThreadScreen() {
     insertLiftSv.value = 0;
     peerAvatarHoldSv.value = 0;
     postRevealRefreshedRef.current = null;
-    setListWindowExpanded(false);
-    setDecryptWavesReleased(false);
+    // Окно/волны сбрасывать не нужно: они ключованы по uuid и в первом же
+    // коммите нового треда ложны сами (см. windowExpandedUuid выше).
     // resetDock is stable (ref-backed); only re-run on thread / kind change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationUuid, isGroupChat]);
@@ -630,18 +646,18 @@ export default function ThreadScreen() {
     // Доклейка раньше отпуска волн: оба — коммиты FlashList, и разнесение по
     // времени держит кадры сразу после показа свободными для жестов.
     const expand = setTimeout(
-      () => setListWindowExpanded(true),
+      () => setWindowExpandedUuid(conversationUuid),
       LIST_WINDOW_EXPAND_DELAY_MS,
     );
     const waves = setTimeout(
-      () => setDecryptWavesReleased(true),
+      () => setWavesReleasedUuid(conversationUuid),
       WAVES_RELEASE_DELAY_MS,
     );
     return () => {
       clearTimeout(expand);
       clearTimeout(waves);
     };
-  }, [listRevealed]);
+  }, [conversationUuid, listRevealed]);
 
   /**
    * Инсет через ref: смена insets.bottom (скрытие таб-бара, жестовая панель)
@@ -1090,6 +1106,24 @@ export default function ThreadScreen() {
   }, [listData, listGapPx, listWindowExpanded, outgoingLiftCtx, peerLiftCtx, windowHeight]);
   // Дев-трасса: FlashList впервые получает непустые данные в этом рендере.
   if (__DEV__ && listDataWindow.length > 0) markChatOpenStage("data", conversationUuid);
+  /**
+   * Дев-трасса пересборок окна после показа: если content-size сдвигается без
+   * строки «ячейка …», виновник — сам срез (окно отдало FlashList другой набор
+   * строк: доклейка хвоста, волна расшифровки, пересчёт по listGapPx).
+   */
+  const windowSizeLogRef = useRef(0);
+  useEffect(() => {
+    if (!__DEV__) return;
+    const prev = windowSizeLogRef.current;
+    windowSizeLogRef.current = listDataWindow.length;
+    const at = revealedAtRef.current;
+    if (at <= 0 || prev === listDataWindow.length) return;
+    const dt = Date.now() - at;
+    if (dt > 2000) return;
+    console.log(
+      `[chat-settle] окно ${prev}→${listDataWindow.length} строк (+${dt}мс после reveal)`,
+    );
+  }, [listDataWindow]);
 
   const listDataRef = useRef(listDataWindow);
   listDataRef.current = listDataWindow;
@@ -1099,9 +1133,10 @@ export default function ThreadScreen() {
    * down) is covered. Raise overflow + zIndex on the cell that owns the menu.
    */
   /**
-   * Дев-трассировка осадки по ячейкам: базовые высоты пишутся с монтажа, лог —
-   * только на изменении высоты в окне осадки после reveal. Называет виновника
-   * сдвигов content-size поимённо (какой пузырь и на сколько подрос/сжался).
+   * Фактические высоты ячеек по onLayout (ключ — messageUuid). Прод: гейт
+   * показа считает по ним покрытие вьюпорта (maybeConfirmWindowMeasured).
+   * Дев: та же карта питает трассировку осадки — лог на изменении высоты в
+   * окне после reveal называет виновника сдвигов content-size поимённо.
    */
   const cellHeightsRef = useRef(new Map<string, number>());
 
@@ -1117,29 +1152,37 @@ export default function ThreadScreen() {
           menuUuid && item && threadListItemHasMessage(item, menuUuid),
         );
         const blocked = Boolean(menuUuid && !isOwner);
-        const onCellLayout = __DEV__
-          ? (e: LayoutChangeEvent) => {
-              const h = Math.round(e.nativeEvent.layout.height);
-              const key = item ? item.message.messageUuid : `i${String(index)}`;
-              const prev = cellHeightsRef.current.get(key);
-              cellHeightsRef.current.set(key, h);
-              const at = revealedAtRef.current;
-              if (at <= 0 || prev == null || prev === h) return;
-              const dt = Date.now() - at;
-              if (dt > 2000) return;
-              const row = item?.message;
-              const label = !row
-                ? "?"
-                : row.voiceBlock
-                  ? "голос"
-                  : row.imageBlocks.length > 0
-                    ? "фото"
-                    : `«${row.text.slice(0, 16)}»`;
-              console.log(
-                `[chat-settle] ячейка ${label} ${prev}→${h} (+${dt}мс после reveal)`,
-              );
-            }
-          : undefined;
+        const onCellLayout = (e: LayoutChangeEvent) => {
+          const h = Math.round(e.nativeEvent.layout.height);
+          const key = item ? item.message.messageUuid : `i${String(index)}`;
+          const prev = cellHeightsRef.current.get(key);
+          cellHeightsRef.current.set(key, h);
+          // Прод-часть: замер учтён — возможно, видимый префикс окна собран
+          // и пора открывать гейт показа (наш «onLoad», см.
+          // maybeConfirmWindowMeasured). После подтверждения — no-op.
+          if (item) maybeConfirmWindowMeasuredRef.current();
+          if (!__DEV__) return;
+          const at = revealedAtRef.current;
+          if (at <= 0 || prev === h) return;
+          const dt = Date.now() - at;
+          if (dt > 2000) return;
+          const row = item?.message;
+          const label = !row
+            ? "?"
+            : row.voiceBlock
+              ? "голос"
+              : row.imageBlocks.length > 0
+                ? "фото"
+                : `«${row.text.slice(0, 16)}»`;
+          // prev == null — ячейка впервые получила layout уже ПОСЛЕ показа
+          // (позднее домонтирование): раньше такие не логировались, и
+          // сдвиги content-size оставались безымянными.
+          console.log(
+            prev == null
+              ? `[chat-settle] ячейка ${label} первый замер ${h} (+${dt}мс после reveal)`
+              : `[chat-settle] ячейка ${label} ${prev}→${h} (+${dt}мс после reveal)`,
+          );
+        };
         return (
           <View
             ref={ref}
@@ -1196,6 +1239,20 @@ export default function ThreadScreen() {
     (listMessageCount > 0 && !threadReady);
 
   /**
+   * Детерминированный «load»: тред, у которого замерены все строки ПЕРВОГО
+   * ВИДИМОГО КАДРА — от якоря (низ) вверх по фактическим onLayout-высотам,
+   * пока не закрыт вьюпорт. onLoad самого FlashList не годится: несмеренные
+   * строки он оценивает средним по типу, на свежем списке среднее
+   * промахивается в разы, и реальная видимая ячейка выпадает из
+   * engaged-диапазона — onLoad проходит без неё, а пузырь доезжает уже после
+   * показа (видимое «появление элементов»). Ждать ВСЁ окно (вьюпорт + запас)
+   * тоже нельзя: буферные строки за краем экрана FlashList дорисовывает
+   * лениво (сотни мс), это удерживало заглушку ради невидимых пикселей
+   * (load вырастал с ~650 до ~1200 мс).
+   */
+  const windowMeasuredUuidRef = useRef("");
+
+  /**
    * Показ ждёт ещё и замера дока. У перевёрнутой ленты зазор под последним
    * сообщением — это `contentInset`, то есть inset задаёт видимую позицию
    * напрямую. До замера он считается по оценке `COMPOSE_BASELINE_FALLBACK_PX`,
@@ -1204,8 +1261,6 @@ export default function ThreadScreen() {
    * тред готов на первом кадре — и без этого условия показ попадает в окно
    * оценки.
    */
-  /** Тред, для которого FlashList уже отдал onLoad (см. self-heal ниже). */
-  const listLoadFiredUuidRef = useRef("");
   useEffect(() => {
     if (threadReady) {
       markChatOpenStage("ready", conversationUuid);
@@ -1227,10 +1282,11 @@ export default function ThreadScreen() {
     // дедлайн LIST_REVEAL_DEADLINE_MS. После состоявшегося показа повторный
     // вызов — no-op (guard listRevealStartedSv).
     if (threadReady && composeBaselinePx > 0) {
-      // FlashList уже отдал onLoad для этого треда, но hide сбросил флаг —
-      // без ремоунта onLoad не повторится, и повторный показ ждал бы потолок
-      // кадров (~1 c чёрного экрана). Подтверждаем сами.
-      if (!listRevealed && listLoadFiredUuidRef.current === conversationUuid) {
+      // Окно этого треда уже подтверждено замеренным, но hide сбросил флаг
+      // дока — повторного подтверждения от ячеек не будет (их layout не
+      // меняется), и повторный показ ждал бы потолок кадров (~1 с чёрного
+      // экрана). Подтверждаем сами.
+      if (!listRevealed && windowMeasuredUuidRef.current === conversationUuid) {
         onListLoad();
       }
       allowListReveal();
@@ -1318,8 +1374,33 @@ export default function ThreadScreen() {
   const decryptedRef = useRef(decrypted);
   decryptedRef.current = decrypted;
 
-  const onFlashListLoad = useCallback(() => {
-    listLoadFiredUuidRef.current = conversationUuid;
+  /**
+   * Наш «onLoad»: гейт listLoadedSv дока открывается, когда фактические
+   * высоты ячеек (cellHeightsRef, по onLayout) закрывают вьюпорт от якоря.
+   * Строки глубже видимого края не ждём — они монтируются после показа за
+   * экраном, как и доклейка хвоста. Вызовы: из onLayout обёртки ячейки
+   * (через ref — MenuCellRenderer мемоизирован без зависимостей) и из
+   * эффекта ниже (пере-срез окна без новых layout-событий: listGapPx
+   * устаканился, срез стал короче).
+   */
+  const maybeConfirmWindowMeasured = useCallback(() => {
+    if (windowMeasuredUuidRef.current === conversationUuid) return;
+    const window = listDataRef.current;
+    if (window.length === 0) return;
+    const measured = cellHeightsRef.current;
+    // Тот же видимый диапазон, что у среза окна (зона дока — не вьюпорт),
+    // но БЕЗ запаса: запас — буфер за краем, его замеры не влияют на кадр.
+    const targetPx = Math.max(0, windowHeight - listGapPx);
+    let coveredPx = 0;
+    for (const it of window) {
+      const h = measured.get(it.message.messageUuid);
+      // Строка видимого префикса ещё без layout — кадр не собран, ждём.
+      if (h == null) return;
+      coveredPx += h;
+      if (coveredPx >= targetPx) break;
+    }
+    // Короткий тред: вьюпорт не закрыт, но все строки замерены — готово.
+    windowMeasuredUuidRef.current = conversationUuid;
     markChatOpenStage("load", conversationUuid);
     onListLoad();
     // Тёплый быстрый путь: окно показа расшифровано и все замеры текста в
@@ -1329,7 +1410,12 @@ export default function ThreadScreen() {
     if (threadReadyRef.current && threadWindowTextMeasuresWarm(decryptedRef.current)) {
       revealListNow();
     }
-  }, [conversationUuid, onListLoad, revealListNow]);
+  }, [conversationUuid, listGapPx, onListLoad, revealListNow, windowHeight]);
+  const maybeConfirmWindowMeasuredRef = useRef(maybeConfirmWindowMeasured);
+  maybeConfirmWindowMeasuredRef.current = maybeConfirmWindowMeasured;
+  useEffect(() => {
+    if (listDataWindow.length > 0) maybeConfirmWindowMeasured();
+  }, [listDataWindow, maybeConfirmWindowMeasured]);
 
   /**
    * Ограничение сверху на ожидание. Расшифровка может не состояться вовсе —
@@ -2425,6 +2511,16 @@ export default function ThreadScreen() {
         >
           {/* insertLift: тот же transform для ленты и нового пузыря (без отдельного bubble translate). */}
           <Reanimated.View style={[styles.listFill, listInsertLiftStyle]}>
+            {/*
+              key = ремоунт списка на смене треда — ИЗМЕРЕННОЕ решение, не
+              недосмотр. Реюз инстанса (свап данных на живом списке) проверен
+              и проиграл: перепривязка ячейки в React стоит почти как монтаж,
+              а FlashList кеширует раскладку по индексам — контент нового
+              треда жил на высотах старого, коррекции сыпались волнами уже
+              после показа (усадки content-size). С ремоунтом onLoad честно
+              стреляет на каждый тред, и initialDrawBatchSize рисует окно
+              одним проходом.
+            */}
             <FlashList
               key={conversationUuid}
               data={listDataWindow}
@@ -2452,10 +2548,13 @@ export default function ThreadScreen() {
               */
               maintainVisibleContentPosition={{ disabled: true }}
               CellRendererComponent={MenuCellRenderer}
-              // Показ ленты ждёт onLoad: каждая видимая строка замерена.
-              onLoad={onFlashListLoad}
-              // …и тишины лэйаута: пара кадров без изменений размера контента,
-              // чтобы поздние коррекции высот не двигали уже видимые пузыри.
+              // Показ ленты НЕ ждёт onLoad FlashList: он оценивает несмеренные
+              // строки средним по типу и на свежем списке срабатывает до
+              // монтажа реально видимых строк (пузырь доезжал после показа).
+              // Наш «onLoad» — maybeConfirmWindowMeasured: фактические высоты
+              // ячеек закрыли вьюпорт от якоря.
+              // Показ ждёт тишины лэйаута: пара кадров без изменений размера
+              // контента, чтобы поздние коррекции не двигали видимые пузыри.
               onContentSizeChange={onListContentSizeChange}
               overrideProps={LIST_INITIAL_DRAW}
               renderItem={renderMessage}

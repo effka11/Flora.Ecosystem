@@ -3,12 +3,14 @@
  *
  * Одна трасса за раз: тап по строке списка → mount экрана треда → data
  * (FlashList получил непустые данные) → ready (окно расшифровки терминально)
- * → cell (первый renderItem) → load (onLoad FlashList: все видимые строки
- * замерены) → reveal (первый видимый кадр ленты). Одна строка лога на
- * reveal, в проде — no-op.
+ * → cell (первый renderItem) → load (фактические высоты ячеек закрыли
+ * вьюпорт от якоря — наш детерминированный «onLoad», см.
+ * maybeConfirmWindowMeasured; onLoad самого FlashList срабатывает раньше
+ * монтажа реально видимых строк) → reveal (первый видимый кадр ленты).
+ * Одна строка лога на reveal, в проде — no-op.
  */
 
-type ChatOpenStage = "mount" | "data" | "ready" | "cell" | "load" | "reveal";
+type ChatOpenStage = "render" | "mount" | "data" | "ready" | "cell" | "load" | "reveal";
 
 let tapAt: number | null = null;
 let tracedUuid: string | null = null;
@@ -51,6 +53,9 @@ export function noteChatOpenScreenRender(conversationUuid: string): void {
   if (!__DEV__ || tapAt == null) return;
   if (conversationUuid.trim().toLowerCase() !== tracedUuid) return;
   screenRenders += 1;
+  // Первый рендер экрана с новым uuid: tap→render — цена роутера и
+  // ре-рендера дерева навигаторов, render→mount — рендер и коммит экрана.
+  markChatOpenStage("render", conversationUuid);
 }
 
 export function markChatOpenStage(stage: ChatOpenStage, conversationUuid: string): void {
@@ -60,10 +65,10 @@ export function markChatOpenStage(stage: ChatOpenStage, conversationUuid: string
   stages[stage] = Date.now() - tapAt;
   if (stage !== "reveal") return;
   console.log(
-    `[chat-open] mount=${stages.mount ?? "?"}ms data=${stages.data ?? "?"}ms ` +
-      `ready=${stages.ready ?? "?"}ms cell=${stages.cell ?? "?"}ms ` +
-      `load=${stages.load ?? "?"}ms reveal=${stages.reveal}ms ` +
-      `cells=${cellRenders} renders=${screenRenders} ` +
+    `[chat-open] render=${stages.render ?? "?"}ms mount=${stages.mount ?? "?"}ms ` +
+      `data=${stages.data ?? "?"}ms ready=${stages.ready ?? "?"}ms ` +
+      `cell=${stages.cell ?? "?"}ms load=${stages.load ?? "?"}ms ` +
+      `reveal=${stages.reveal}ms cells=${cellRenders} renders=${screenRenders} ` +
       `layout-прогрет=${layoutWarm ?? "?"} (от тапа)`,
   );
   tapAt = null;
