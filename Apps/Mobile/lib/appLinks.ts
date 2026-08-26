@@ -3,6 +3,12 @@ import {
   buildFloraSocialApkChannelUrl,
   FLORA_DOWNLOAD_PAGE_URL,
 } from "@/lib/apkUpdate/apkChannel";
+import { resolveGovOrigin } from "@/lib/floraPublicOrigins";
+
+/** Civic portal origin (Cloudflare). Next on :3001 is a separate deploy. */
+export function getFloraGovPortalUrl(): string {
+  return resolveGovOrigin();
+}
 
 /** Public download page for Flora Social Android APK. */
 export const FLORA_DOWNLOAD_PAGE = FLORA_DOWNLOAD_PAGE_URL;
@@ -10,7 +16,7 @@ export const FLORA_DOWNLOAD_PAGE = FLORA_DOWNLOAD_PAGE_URL;
 /** @deprecated Use FLORA_DOWNLOAD_PAGE — kept for call sites during rename. */
 export const FLORA_GITHUB_RELEASES_URL = FLORA_DOWNLOAD_PAGE_URL;
 
-const FLORA_SOCIAL_VERSION_FALLBACK = "0.13.0-alpha";
+const FLORA_SOCIAL_VERSION_FALLBACK = "0.13.2-alpha";
 
 /** Installed Flora Social version (from Expo manifest). */
 export function getFloraSocialAppVersion(): string {

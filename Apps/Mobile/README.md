@@ -8,6 +8,10 @@ OS push (FCM) **не используется** в **Flora Dev** (`social.flora.
 
 Настройка push для production: `..\..\Scripts\setup-android-push.ps1`
 
+### Production API (Cloudflare)
+
+Release APK ходит на **`https://social.flora-s.net`** (оранжевый Cloudflare), не на серый `origin.*`. `EXPO_PUBLIC_GOV_URL=https://gov.flora-s.net` зашит заранее: civic-шелл на том же CDN; процесс Next на `:3001` — отдельный деплой. `EXPO_PUBLIC_ORIGIN_URL` — прямой VPS (SSE веба, крупные PUT если упрётесь в лимит тела CF).
+
 ### Release (`social.flora.mobile`)
 
 1. [Firebase Console](https://console.firebase.google.com) → Android-приложение с package **`social.flora.mobile`**.

@@ -1,6 +1,6 @@
 # Preflight for production "app update" broadcast (Android release).
 # Usage: .\Scripts\setup-app-update-broadcast.ps1
-#        .\Scripts\setup-app-update-broadcast.ps1 -ApiBaseUrl "https://origin.flora-s.net"
+#        .\Scripts\setup-app-update-broadcast.ps1 -ApiBaseUrl "https://social.flora-s.net"
 #Requires -Version 5.1
 param(
     [string] $ApiBaseUrl = ""

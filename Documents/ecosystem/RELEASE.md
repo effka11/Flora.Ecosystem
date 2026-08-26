@@ -24,7 +24,7 @@ git tag -s ecosystem/v<version> -m "Flora.Ecosystem v<version>"
 git tag -s social/v<version> -m "Flora Social v<version>"
 ```
 
-APK-канал (`flora-v<version>.apk`) следует `products.mobile`. Latest-указатель остаётся `flora.social-android-update.json` (URL зашит в уже установленных клиентах). Тег `social/v…` — продукт Social (API + Web).
+APK-канал (`flora-v<version>.apk`) следует `products.mobile`. Release REST — Cloudflare `social.*` (`EXPO_PUBLIC_API_URL`). Latest-указатель остаётся `flora.social-android-update.json` (URL зашит в уже установленных клиентах). Тег `social/v…` — продукт Social (API + Web).
 
 ## Перед релизом
 

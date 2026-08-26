@@ -29,7 +29,7 @@ if ! command -v certbot >/dev/null 2>&1; then
 fi
 
 # Delete apex AAAA in DNS before running (LE validates IPv6; stale AAAA → certbot fails).
-CERTBOT_ARGS=(certonly --webroot -w /var/www/certbot -d "${DOMAIN}" --non-interactive --agree-tos --cert-name "${DOMAIN}" --keep-until-expiring)
+CERTBOT_ARGS=(certonly --webroot -w /var/www/certbot -d "${DOMAIN}" -d "www.${DOMAIN}" --non-interactive --agree-tos --cert-name "${DOMAIN}" --expand --keep-until-expiring)
 if [[ -n "$CERTBOT_EMAIL" && "$CERTBOT_EMAIL" == *"@"* ]]; then
   CERTBOT_ARGS+=(-m "$CERTBOT_EMAIL")
 else
@@ -62,11 +62,19 @@ fi
   echo '        index index.html;'
   echo '        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;'
   echo '    }'
-  echo '}'
+    echo '}'
+    echo
+    echo 'server {'
+    echo '    listen 443 ssl;'
+    echo "    server_name www.${DOMAIN};"
+    echo "    ssl_certificate ${APEX_CERT};"
+    echo "    ssl_certificate_key ${APEX_KEY};"
+    echo "    return 301 https://${DOMAIN}\$request_uri;"
+    echo '}'
 } >/etc/nginx/sites-available/flora-apex-https.conf
 
 ln -sf /etc/nginx/sites-available/flora-apex-https.conf /etc/nginx/sites-enabled/02-flora-apex-https.conf
 nginx -t
 systemctl reload nginx
 
-echo "OK: https://${DOMAIN}/ (Www shell) and https://${DOMAIN}/health"
+echo "OK: https://${DOMAIN}/ (Www shell), https://www.${DOMAIN}/ → apex, https://${DOMAIN}/health"

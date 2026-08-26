@@ -41,6 +41,13 @@ if (-not (Test-Path $envFile)) {
     throw "Missing Apps/Mobile/.env with EXPO_PUBLIC_API_URL (see .env.production.example)."
 }
 
+# Sideload REST through Cloudflare (social.*). Grey origin.* is SSE / oversized PUT only.
+# Set here so a stale origin URL in dotenv cannot win (dotenv does not override existing vars).
+$env:EXPO_PUBLIC_API_URL = "https://social.flora-s.net"
+$env:EXPO_PUBLIC_GOV_URL = "https://gov.flora-s.net"
+$env:EXPO_PUBLIC_ORIGIN_URL = "https://origin.flora-s.net"
+Write-Host "EXPO_PUBLIC_API_URL=$($env:EXPO_PUBLIC_API_URL) (Cloudflare Social CDN)"
+
 $env:ANDROID_HOME = $sdk
 $env:ANDROID_SDK_ROOT = $sdk
 $env:JAVA_HOME = $jdk
