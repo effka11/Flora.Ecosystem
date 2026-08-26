@@ -156,6 +156,8 @@ Do not trust the subagent report. After each wave, in order:
 
 Final verification of the whole plan: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo deny check`, `pwsh ./Tools/validate-architecture-rust.ps1`, `npm run ci` — whichever are relevant to the touched stacks. Plus: any build step the gate does not run (native libs, codegen, migrations) goes in the report as a separate line of required user action — otherwise the new code physically never reaches the app.
 
+§6 is not `/flora-code-reviewer`. Do **not** invoke the code loop yourself after a wave. If the user asks to review/revise the implementation, run `/flora-code-reviewer` then `/flora-code-reviser` on that diff. Code-loop `ready` does not skip §6; a red §6 gate is not closed by a code-review report.
+
 ## 7) Failures, retries, escalation
 
 First distinguish two cases — they are treated differently:
@@ -218,3 +220,4 @@ Plus, as `AGENTS.md` requires: briefly — why this structure, how boundaries we
 - Editing the routing table or the plan itself “to match reality” — divergences go into the log.
 - Delegating an architecture decision to a subagent.
 - `git commit` on your own initiative.
+- Invoking `/flora-code-reviewer` unprompted after every wave, or using it instead of §6 gates.

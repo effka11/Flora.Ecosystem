@@ -7,7 +7,8 @@ description: >-
   edits the plan. Use when the user asks to review a work plan, find holes,
   stress-test before routing/orchestration, asks whether the plan’s method or
   algorithm is the right/best way (лучший ли способ / алгоритм), or invokes
-  /flora-plan-reviewer / ревью плана / дыры в плане — not for code/PR diff review.
+  /flora-plan-reviewer / ревью плана / дыры в плане — not for code/PR
+  diff review (use /flora-code-reviewer).
 ---
 
 # Flora Plan Reviewer — critique a work plan

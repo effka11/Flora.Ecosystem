@@ -20,6 +20,8 @@
 | `/apps-web-messages-chat` | Чат Messages, голос, стикеры |
 | `/flora-fscp-e2e` | FSCP wire + E2E security, Flora.Messaging |
 | `/flora-plan-reviser` | Доработка плана по отчёту ревьюера |
+| `/flora-code-reviewer` | Ревью git diff (не плана): тесты, границы, мёртвые пути |
+| `/flora-code-reviser` | Доработка кода по отчёту code-reviewer |
 | `/diagnose`, `/review`, `/tdd` | Глобальные |
 
 Project skills: `.agents/skills/`.
