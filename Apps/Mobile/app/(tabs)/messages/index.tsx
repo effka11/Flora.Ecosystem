@@ -212,6 +212,13 @@ const EMPTY_SELECTED = new Set<string>();
 // Matches the global staleTime in providers/FloraProviders.tsx.
 const CONVERSATIONS_STALE_REFETCH_MS = 15_000;
 const GROUPS_STALE_REFETCH_MS = 15_000;
+/**
+ * Пауза между фокусом списка и его сетевыми обновлениями свежести. Возврат из
+ * чата отпускает pop только после анимации (см. `chatPushTransition`), поэтому
+ * размонтирование треда и коммиты этих запросов иначе складываются в один
+ * кадр — ровно тот, с которого список снова принимает скролл.
+ */
+const FOCUS_REFRESH_DELAY_MS = 200;
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
@@ -738,24 +745,30 @@ export default function MessagesScreen() {
       // сброс чинит аварийные пути (pop без анимации).
       resetChatPushProgress();
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
-      // Папки/архив с сервера (Web мог создать, пока Mobile был в фоне).
-      void refreshOverlay();
-      const conversationQuery = conversationQueryRef.current;
-      if (
-        Date.now() - conversationQuery.dataUpdatedAt >
-        CONVERSATIONS_STALE_REFETCH_MS
-      ) {
-        void conversationQuery.refetch();
-      }
-      const groups = groupsQueryRef.current;
-      if (Date.now() - groups.dataUpdatedAt > GROUPS_STALE_REFETCH_MS) {
-        void groups.refetch();
-      }
-      if (fscpStatus === "registration_pending") {
-        void retryPendingOperation();
-      }
-      void sharedPresenceStore.resyncSnapshots().catch(() => {});
+      // Обновления свежести — за кадрами посадки (FOCUS_REFRESH_DELAY_MS).
+      // Ни одно из них не нужно первому кадру списка: данные уже показаны из
+      // кэша, запросы лишь досыпают изменения, сделанные в других клиентах.
+      const refreshTimer = setTimeout(() => {
+        // Папки/архив с сервера (Web мог создать, пока Mobile был в фоне).
+        void refreshOverlay();
+        const conversationQuery = conversationQueryRef.current;
+        if (
+          Date.now() - conversationQuery.dataUpdatedAt >
+          CONVERSATIONS_STALE_REFETCH_MS
+        ) {
+          void conversationQuery.refetch();
+        }
+        const groups = groupsQueryRef.current;
+        if (Date.now() - groups.dataUpdatedAt > GROUPS_STALE_REFETCH_MS) {
+          void groups.refetch();
+        }
+        if (fscpStatus === "registration_pending") {
+          void retryPendingOperation();
+        }
+        void sharedPresenceStore.resyncSnapshots().catch(() => {});
+      }, FOCUS_REFRESH_DELAY_MS);
       return () => {
+        clearTimeout(refreshTimer);
         tabFocusedRef.current = false;
         setTabFocused(false);
         setConversationsListFocused(false);

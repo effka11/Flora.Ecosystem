@@ -360,6 +360,13 @@ type Args = {
    * `!listRevealed` — фон идёт после первого кадра.
    */
   holdBackgroundWaves?: boolean;
+  /**
+   * То же удержание, но проверяемое в момент проверки, а не пропсом: экран
+   * треда держит волны, пока играет анимация возврата. Пропсом это стоило бы
+   * ре-рендера всего экрана ровно в первом кадре ухода — дороже, чем волна,
+   * которую удержание отменяет.
+   */
+  shouldHoldBackgroundWaves?: () => boolean;
 };
 
 const HOLD_POLL_MS = 64;
@@ -379,6 +386,7 @@ export function useThreadMessageDecrypt({
   fscpDecryptKey,
   decryptWirePlaintext,
   holdBackgroundWaves,
+  shouldHoldBackgroundWaves,
 }: Args): ThreadBubbleItem[] {
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -388,6 +396,9 @@ export function useThreadMessageDecrypt({
 
   const holdBackgroundWavesRef = useRef(holdBackgroundWaves === true);
   holdBackgroundWavesRef.current = holdBackgroundWaves === true;
+
+  const shouldHoldBackgroundWavesRef = useRef(shouldHoldBackgroundWaves);
+  shouldHoldBackgroundWavesRef.current = shouldHoldBackgroundWaves;
 
   const prevMessagesKeyRef = useRef<string | null>(null);
   const prevFscpDecryptKeyRef = useRef<string | null | undefined>(undefined);
@@ -497,7 +508,8 @@ export function useThreadMessageDecrypt({
         const holdUntil = Date.now() + HOLD_MAX_MS;
         while (
           !feedsRevealWindow &&
-          holdBackgroundWavesRef.current &&
+          (holdBackgroundWavesRef.current ||
+            shouldHoldBackgroundWavesRef.current?.() === true) &&
           !cancelled &&
           Date.now() < holdUntil
         ) {

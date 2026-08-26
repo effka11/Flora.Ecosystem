@@ -17,10 +17,24 @@ export type CachedBodyMeasure = {
   lines: string[];
 };
 
-const BODY_CACHE_CAPACITY = 500;
-const TIME_LABEL_CACHE_CAPACITY = 64;
+/**
+ * Ёмкость под полный проход фонового прогрева плюс запас на историю
+ * открытого треда. Один проход `startChatThreadsPrefetch` ставит замеры для
+ * (12 топ-кандидатов + 40 чатов CPU-фазы) × 16 строк окна показа ≈ 830
+ * записей; при ёмкости 500 хвост прохода вытеснял его же начало, и тап в
+ * «уже прогретый» чат находил пустой кэш (симптом: `layout-прогрет=1/10`
+ * при давно завершённом прогреве).
+ */
+export const BODY_MEASURE_CACHE_CAPACITY = 1200;
+/**
+ * Метки времени: «HH:MM» у сегодняшних сообщений, «вчера» и короткая дата у
+ * остальных — на проход прогрева это сотни различных значений. Записи
+ * копеечные (строка + число), а промах заставляет пузырь монтировать
+ * скрытый замерный узел времени в самом окне открытия.
+ */
+const TIME_LABEL_CACHE_CAPACITY = 512;
 
-let bodyMeasureCache = new LruCache<string, CachedBodyMeasure>(BODY_CACHE_CAPACITY);
+let bodyMeasureCache = new LruCache<string, CachedBodyMeasure>(BODY_MEASURE_CACHE_CAPACITY);
 let timeLabelWidthCache = new LruCache<string, number>(TIME_LABEL_CACHE_CAPACITY);
 
 /**
@@ -73,6 +87,6 @@ export function setCachedTimeLabelWidth(timeLabel: string, widthPx: number): voi
 
 /** Test-only: drops all cached measurements so tests don't leak state into each other. */
 export function resetMessageTextMeasureCache(): void {
-  bodyMeasureCache = new LruCache<string, CachedBodyMeasure>(BODY_CACHE_CAPACITY);
+  bodyMeasureCache = new LruCache<string, CachedBodyMeasure>(BODY_MEASURE_CACHE_CAPACITY);
   timeLabelWidthCache = new LruCache<string, number>(TIME_LABEL_CACHE_CAPACITY);
 }

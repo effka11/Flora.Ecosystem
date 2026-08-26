@@ -6,7 +6,6 @@
 import {
   apiAddGroupMember,
   apiGetGroup,
-  apiGetGroupMessages,
   ApiRequestError,
   apiLeaveGroup,
   apiMarkGroupRead,
@@ -31,11 +30,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
-import {
-  groupApiMessagesToThread,
-  groupRosterNeedsRefresh,
-  mergeGroupDetail,
-} from "@/lib/groupChatMap";
+import { groupRosterNeedsRefresh, mergeGroupDetail } from "@/lib/groupChatMap";
 import type { GroupChat } from "@/lib/groupChatTypes";
 import {
   getGroupPendingOutgoing,
@@ -49,6 +44,10 @@ import {
   takeClientMessageKey,
 } from "@/lib/messageBirthRegistry";
 import { floraNewUuid } from "@/lib/floraUuid";
+import {
+  fetchThreadFirstPage,
+  THREAD_FIRST_PAGE_STALE_MS,
+} from "@/lib/threadFirstPage";
 import { messageDecryptCacheKey } from "@/lib/useThreadMessageDecrypt";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -163,18 +162,18 @@ export function useGroupChatThread(params: {
     titleHint,
   ]);
 
-  const fetchMessagesPage = useCallback(async (): Promise<GroupMessagesPage> => {
-    const page = await apiGetGroupMessages(conversationUuid);
-    return {
-      items: groupApiMessagesToThread(conversationUuid, page.items),
-      nextCursor: page.nextCursor,
-    };
-  }, [conversationUuid]);
+  // Тот же фетч, которым греет тред prefetch по касанию строки списка (ключ
+  // `group-messages` у них общий) — открытие холодной группы идёт одним
+  // сетевым полётом, а не вторым запросом поверх прогретого.
+  const fetchMessagesPage = useCallback(
+    (): Promise<GroupMessagesPage> => fetchThreadFirstPage({ kind: "group", conversationUuid }),
+    [conversationUuid],
+  );
 
   const messagesQuery = useQuery({
     queryKey: groupMessagesQueryKey(conversationUuid),
     enabled: enabled && !!conversationUuid,
-    staleTime: 60_000,
+    staleTime: THREAD_FIRST_PAGE_STALE_MS,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     queryFn: fetchMessagesPage,

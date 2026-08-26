@@ -1,6 +1,5 @@
 import {
   apiGetConversations,
-  apiGetMessages,
   apiMarkConversationRead,
   apiDeleteConversation,
   apiDeleteMessage,
@@ -121,6 +120,7 @@ import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import {
   chatPushProgress,
   isChatPushEnterArmed,
+  isChatPushExiting,
   runChatPushEnter,
   runChatPushExit,
 } from "@/lib/chatPushTransition";
@@ -132,6 +132,11 @@ import {
   noteChatOpenScreenRender,
 } from "@/lib/chatOpenTrace";
 import { warmThreadTextLayoutFromRows } from "@/lib/chatOpenLayoutWarm";
+import {
+  fetchThreadFirstPage,
+  threadFirstPageQueryKey,
+  THREAD_FIRST_PAGE_STALE_MS,
+} from "@/lib/threadFirstPage";
 import { getCachedBodyMeasure } from "@/lib/messageTextMeasureCache";
 import { warmMeasureRowInnerWidthPx } from "@/lib/messageTextMeasureWarm";
 import { dismissMessagePushNotifications } from "@/lib/pushNotifications";
@@ -983,14 +988,9 @@ export default function ThreadScreen() {
           })
         : undefined;
     },
-    queryFn: async () => {
-      const page = await apiGetMessages(conversationUuid, undefined, otherUserUuid || undefined);
-      return applyMessagesPageToCaches({
-        conversationUuid,
-        otherUserUuid,
-        page,
-      });
-    },
+    // Тот же фетч, которым греет тред prefetch по касанию строки списка (ключ
+    // у них общий) — открытие холодного чата идёт одним сетевым полётом.
+    queryFn: () => fetchThreadFirstPage({ kind: "dm", conversationUuid, otherUserUuid }),
   });
 
   useEffect(() => {
@@ -1086,22 +1086,12 @@ export default function ThreadScreen() {
         void groupThreadRef.current.refetchMessages();
         return;
       }
+      const target = { kind: "dm", conversationUuid, otherUserUuid } as const;
       void queryClient
         .fetchQuery({
-          queryKey: ["messages", conversationUuid, otherUserUuid || ""],
-          queryFn: async () => {
-            const page = await apiGetMessages(
-              conversationUuid,
-              undefined,
-              otherUserUuid || undefined,
-            );
-            return applyMessagesPageToCaches({
-              conversationUuid,
-              otherUserUuid,
-              page,
-            });
-          },
-          staleTime: 60_000,
+          queryKey: threadFirstPageQueryKey(target),
+          queryFn: () => fetchThreadFirstPage(target),
+          staleTime: THREAD_FIRST_PAGE_STALE_MS,
         })
         .catch(() => undefined);
     }, POST_REVEAL_REFRESH_DELAY_MS);
@@ -1146,6 +1136,9 @@ export default function ThreadScreen() {
     // (WAVES_RELEASE_DELAY_MS): волна, отпущенная в кадр показа, коммитила
     // десятки строк ровно в момент, когда пользователь начинает скроллить.
     holdBackgroundWaves: !decryptWavesReleased,
+    // Уход из чата: волна коммитила ленту в кадрах анимации возврата, а экран
+    // через них всё равно размонтируется.
+    shouldHoldBackgroundWaves: isChatPushExiting,
   });
 
   /**

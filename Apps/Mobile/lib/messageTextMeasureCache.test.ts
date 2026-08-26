@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  BODY_MEASURE_CACHE_CAPACITY,
   getCachedBodyMeasure,
   getCachedTimeLabelWidth,
   resetMessageTextMeasureCache,
@@ -34,7 +35,7 @@ describe("body measure cache", () => {
   });
 
   it("evicts the least-recently-used entry once capacity overflows", () => {
-    const capacity = 500;
+    const capacity = BODY_MEASURE_CACHE_CAPACITY;
     for (let i = 0; i < capacity; i += 1) {
       setCachedBodyMeasure(`body-${i}`, 200, { lineWidths: [i], lines: [`body-${i}`] });
     }

@@ -60,6 +60,17 @@ const CLAIM_TIMEOUT_MS = 1200;
 
 let armed = false;
 let armSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+let exiting = false;
+
+/**
+ * Играет ли прямо сейчас анимация возврата. Экран треда держит на это время
+ * фоновую дорасшифровку истории: её коммит (setRows → пересборка listData →
+ * ре-рендер видимых ячеек) попадает мимо кадров ухода, а сам экран всё равно
+ * размонтируется по завершении анимации.
+ */
+export function isChatPushExiting(): boolean {
+  return exiting;
+}
 
 /**
  * Reduce motion читаем сами (не хуком): arm зовут и plain-функции
@@ -93,6 +104,7 @@ function clearArmSafety(): void {
 export function armChatPushEnter(): void {
   if (skipMotion()) return;
   armed = true;
+  exiting = false;
   clearArmSafety();
   cancelAnimation(chatPushProgress);
   chatPushProgress.value = 0;
@@ -126,6 +138,7 @@ export function runChatPushEnter(driven: SharedValue<boolean>): void {
   clearArmSafety();
   const play = armed && !skipMotion();
   armed = false;
+  exiting = false;
   cancelAnimation(chatPushProgress);
   if (!play) {
     driven.value = false;
@@ -160,7 +173,12 @@ export function runChatPushExit(
   if (skipMotion() || chatPushProgress.value <= 0.01) return false;
   clearArmSafety();
   armed = false;
+  exiting = true;
   driven.value = true;
+  const finish = () => {
+    exiting = false;
+    onDone();
+  };
   cancelAnimation(chatPushProgress);
   chatPushProgress.value = withTiming(
     0,
@@ -168,7 +186,7 @@ export function runChatPushExit(
     () => {
       "worklet";
       // Даже прерванная анимация обязана отпустить pop — иначе экран завис.
-      runOnJS(onDone)();
+      runOnJS(finish)();
     },
   );
   return true;
@@ -182,6 +200,7 @@ export function runChatPushExit(
 export function resetChatPushProgress(): void {
   clearArmSafety();
   armed = false;
+  exiting = false;
   cancelAnimation(chatPushProgress);
   chatPushProgress.value = 0;
 }

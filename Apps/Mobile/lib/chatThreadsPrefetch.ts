@@ -24,7 +24,7 @@
  * `uriCache` картинок/голосовых и ratio-store идентичны путям открытия чата.
  */
 
-import { apiGetGroup, apiGetGroupMessages, apiGetMessages } from "@flora/client-core/api";
+import { apiGetGroup } from "@flora/client-core/api";
 import type {
   MsgConversationDto,
   MsgConversationsPage,
@@ -50,18 +50,21 @@ import {
   type ThreadPrefetchCandidate,
 } from "@/lib/chatPrefetchPolicy";
 import { prefetchFrcImage } from "@/lib/frcImage";
-import { groupApiMessagesToThread } from "@/lib/groupChatMap";
 import { mapIdleSliced, yieldToEventLoop, type IdleSlicedHandle } from "@/lib/idleScrollGate";
 import { getStoredImageRatio, rememberImageRatio } from "@/lib/imageRatioStore";
 import { isOptimisticPayloadSentinel } from "@/lib/messageBirthRegistry";
 import { ensureMessageImageUri } from "@/lib/messageImageAssets";
-import { applyMessagesPageToCaches } from "@/lib/messageThreadOutgoing";
 import {
   enqueueThreadTextMeasures,
   type WarmMeasureRow,
 } from "@/lib/messageTextMeasureWarm";
 import { ensureMessageVoiceUri } from "@/lib/messageVoiceAssets";
 import { floraSpacing } from "@/lib/theme";
+import {
+  fetchThreadFirstPage,
+  threadFirstPageQueryKey,
+  type ThreadFirstPageTarget,
+} from "@/lib/threadFirstPage";
 import {
   messageDecryptCacheKey,
   warmThreadDecryptRows,
@@ -106,10 +109,19 @@ const LAYOUT_WARM_MAX_THREADS = 40;
 
 type ThreadPage = { items: MsgMessageDto[]; nextCursor: string | null };
 
-function threadQueryKey(candidate: ThreadPrefetchCandidate): readonly unknown[] {
+/** Кандидат → цель фетча: ключ и запрос общие с экраном треда и press-in. */
+function threadTarget(candidate: ThreadPrefetchCandidate): ThreadFirstPageTarget {
   return candidate.kind === "dm"
-    ? ["messages", candidate.conversationUuid, candidate.otherUserUuid]
-    : ["group-messages", candidate.conversationUuid];
+    ? {
+        kind: "dm",
+        conversationUuid: candidate.conversationUuid,
+        otherUserUuid: candidate.otherUserUuid,
+      }
+    : { kind: "group", conversationUuid: candidate.conversationUuid };
+}
+
+function threadQueryKey(candidate: ThreadPrefetchCandidate): readonly unknown[] {
+  return threadFirstPageQueryKey(threadTarget(candidate));
 }
 
 function probeThread(
@@ -318,29 +330,12 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
     if (canDecrypt) await warmThreadFromCache(candidate, viewerUserUuid);
 
     if (candidate.needsMessages && !stopped) {
+      const target = threadTarget(candidate);
       await queryClient.prefetchQuery({
-        queryKey: threadQueryKey(candidate),
-        queryFn:
-          candidate.kind === "dm"
-            ? async () => {
-                const page = await apiGetMessages(
-                  candidate.conversationUuid,
-                  undefined,
-                  candidate.otherUserUuid || undefined,
-                );
-                return applyMessagesPageToCaches({
-                  conversationUuid: candidate.conversationUuid,
-                  otherUserUuid: candidate.otherUserUuid,
-                  page,
-                });
-              }
-            : async (): Promise<ThreadPage> => {
-                const page = await apiGetGroupMessages(candidate.conversationUuid);
-                return {
-                  items: groupApiMessagesToThread(candidate.conversationUuid, page.items),
-                  nextCursor: page.nextCursor,
-                };
-              },
+        queryKey: threadFirstPageQueryKey(target),
+        queryFn: () => fetchThreadFirstPage(target),
+        // Короче, чем staleTime экрана: фоновый прогрев обновляет тред охотнее,
+        // чем открытие, которому свежести кэша достаточно.
         staleTime: THREAD_PREFETCH_STALE_MS,
       });
       if (canDecrypt && !stopped) await warmThreadFromCache(candidate, viewerUserUuid);
