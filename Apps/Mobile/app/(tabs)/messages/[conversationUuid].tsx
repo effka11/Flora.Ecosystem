@@ -1294,10 +1294,16 @@ export default function ThreadScreen() {
    * живым входящим, и запуск в первые секунды после показа — почти наверняка
    * «прыжок пузырей», о котором речь. Логируем только старт (0 → px).
    */
+  // Гейт __DEV__ — внутри тела: функции должны стоять прямыми аргументами
+  // хука, иначе babel-плагин Reanimated их не воркетизирует (краш UI-потока).
+  // В release prepare сразу отдаёт null — реакция не срабатывает.
   useAnimatedReaction(
-    () => insertLiftSv.value,
+    () => {
+      if (!__DEV__) return null;
+      return insertLiftSv.value;
+    },
     (cur, prev) => {
-      if (!__DEV__ || prev === null || cur === prev) return;
+      if (!__DEV__ || cur === null || prev == null || cur === prev) return;
       if (prev === 0 && cur !== 0) runOnJS(reportInsertLiftSettle)(cur);
     },
     [reportInsertLiftSettle],
@@ -2499,6 +2505,11 @@ export default function ThreadScreen() {
             onSend={(draft) => void onSend(draft)}
             sending={sending}
             disabled={!canSend() || (!isGroupChat && !otherUserUuid)}
+            /* EditText — вне критического пути открытия: до показа ленты поле
+               живёт фасадом (инпут absolute и в layout не участвует), тап по
+               нему монтирует и фокусирует. Latch внутри — при переключении
+               чатов инпут уже смонтирован, повторной цены нет. */
+            mountInput={listRevealed}
             placeholder={blocked ? "Отправка недоступна" : "Сообщение"}
             bottomInset={composeBottomInset}
             onShellLayout={onComposeShellLayout}

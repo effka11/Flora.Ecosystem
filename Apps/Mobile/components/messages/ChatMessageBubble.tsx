@@ -147,22 +147,21 @@ function MessageBubbleColumn({
 
   return (
     <View style={[styles.tapLane, tapLaneStyle]} pointerEvents="box-none">
-      <View style={anchorStyle} pointerEvents="box-none">
-        <MessageBubbleMenuDock messageUuid={messageUuid} isFromMe={isFromMe}>
-          <Pressable
-            disabled={!onPress}
-            onLayout={(e) => {
-              yogaHeightRef.current = e.nativeEvent.layout.height;
-            }}
-            onPressIn={onPress ? captureTouch : undefined}
-            onPress={menuActivation === "press" && onPress ? handlePress : undefined}
-            onLongPress={menuActivation === "longPress" && onPress ? handlePress : undefined}
-            delayLongPress={280}
-          >
-            {children}
-          </Pressable>
-        </MessageBubbleMenuDock>
-      </View>
+      {/* Стили якоря — на хосте дока (тот же бокс): без промежуточного View. */}
+      <MessageBubbleMenuDock style={anchorStyle} messageUuid={messageUuid} isFromMe={isFromMe}>
+        <Pressable
+          disabled={!onPress}
+          onLayout={(e) => {
+            yogaHeightRef.current = e.nativeEvent.layout.height;
+          }}
+          onPressIn={onPress ? captureTouch : undefined}
+          onPress={menuActivation === "press" && onPress ? handlePress : undefined}
+          onLongPress={menuActivation === "longPress" && onPress ? handlePress : undefined}
+          delayLongPress={280}
+        >
+          {children}
+        </Pressable>
+      </MessageBubbleMenuDock>
       {footer}
     </View>
   );

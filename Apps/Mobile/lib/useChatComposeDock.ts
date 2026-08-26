@@ -808,16 +808,22 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    * Всё, что законно двигает ленту, живёт на этих трёх величинах: зазор под
    * доком (listGapPx, SV-зеркало dockExtraPaddingSv), подъём (клавиатура/панель)
    * и рост поля. Любое их изменение в первые секунды после показа — источник
-   * «прыжка» пузырей; лог называет виновника и время. В проде — мёртвый код.
+   * «прыжка» пузырей; лог называет виновника и время. Гейт __DEV__ — внутри
+   * тела воркета: функции обязаны стоять прямыми аргументами хука, иначе
+   * babel-плагин Reanimated их не воркетизирует (краш на UI-потоке). В release
+   * prepare сразу возвращает null — реакция не срабатывает (null не меняется).
    */
   useAnimatedReaction(
-    () => ({
-      pad: dockExtraPaddingSv.value,
-      lift: totalLiftSv.value,
-      growth: liveComposeGrowthSv.value,
-    }),
+    () => {
+      if (!__DEV__) return null;
+      return {
+        pad: dockExtraPaddingSv.value,
+        lift: totalLiftSv.value,
+        growth: liveComposeGrowthSv.value,
+      };
+    },
     (cur, prev) => {
-      if (!__DEV__ || prev === null) return;
+      if (!__DEV__ || cur === null || prev == null) return;
       const at = revealAtSv.value;
       if (at <= 0 || settleLogBudgetSv.value <= 0) return;
       if (Date.now() - at > SETTLE_TRACE_WINDOW_MS) return;
