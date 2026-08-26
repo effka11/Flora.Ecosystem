@@ -14,7 +14,7 @@
    - fallback-версии в `Apps/Mobile/lib/api.ts`, `appLinks.ts`, `avatarUpload.ts`, `communityAvatarUpload.ts`, `Apps/Web/lib/fscp/clientCore.ts`, `Apps/Web/next.config.ts`, `Apps/Gov/lib/govApiClient.ts` (`GOV_APP_VERSION`);
    - `Artifacts/contract-fixtures/api-version.json` — под новый `/version` (ecosystem / products / api);
    - lockfiles (`package-lock.json`, `Apps/Web/package-lock.json`, `Apps/Gov/package-lock.json`) — версии workspace-пакетов FSCP/FRC при их bump; корень `flora-gov` при bump `products.gov`;
-   - `README.md` — имя APK `flora.social-v<version>-android.apk`.
+   - `README.md` — имя APK `flora-v<version>.apk`.
 4. Коммит (GPG): `chore(ecosystem): v<version> release`.
 
 Теги:
@@ -24,7 +24,7 @@ git tag -s ecosystem/v<version> -m "Flora.Ecosystem v<version>"
 git tag -s social/v<version> -m "Flora Social v<version>"
 ```
 
-APK, тег `social/v…` и канал `https://social.flora-s.net/apk/` пока следуют `products.social` (не `products.mobile`). Отдельная линейка `mobile/v…` и перенос канала — follow-up, чтобы не сломать sideload-обновления.
+APK-канал (`flora-v<version>.apk`) следует `products.mobile`. Latest-указатель остаётся `flora.social-android-update.json` (URL зашит в уже установленных клиентах). Тег `social/v…` — продукт Social (API + Web).
 
 ## Перед релизом
 
@@ -48,7 +48,7 @@ npm run ci
 # Flora Social (API + web) → VPS
 .\Scripts\deploy-flora-social.ps1
 
-# Android APK → Apps/Mobile/dist/flora.social-v<version>-android.apk
+# Android APK → Apps/Mobile/dist/flora-v<version>.apk
 # (+ flora.social-android-update.json with versionCode / sha256 / sizeBytes)
 .\Scripts\mobile-release-android.ps1
 
@@ -57,7 +57,7 @@ npm run ci
 .\Scripts\mobile-release-android.ps1 -PublishChannel
 ```
 
-Канал: `https://social.flora-s.net/apk/` (`releases.json`, `flora.social-android-update.json`, versioned APK). Страница: `/download`. Prefer `-PublishChannel` over manual upload.
+Канал: `https://social.flora-s.net/apk/` (`releases.json` + `flora-v<version>.apk` для `/download`; `flora.social-android-update.json` указывает на зеркало `flora.social-v<version>-android-{sha8}.apk`, чтобы 0.12 catch-up/FCM прошли allowlist). Prefer `-PublishChannel` over manual upload. Повторная заливка той же версии под тем же каноническим именем требует purge CDN (`/apk/` immutable); sha8-зеркало даёт новый CDN-ключ.
 
 **Signing:** use the same release keystore for every sideload APK; rotating the key breaks PackageInstaller self-updates.
 

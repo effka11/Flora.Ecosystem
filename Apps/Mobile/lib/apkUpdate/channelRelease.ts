@@ -5,6 +5,7 @@ import { parseAppUpdateVersionFromText } from "@/lib/appLinks";
 import {
   FLORA_APK_CHANNEL_LATEST_UPDATE_URL,
   FLORA_APK_CHANNEL_RELEASES_URL,
+  floraChannelApkFileName,
   type FloraApkChannelCatalog,
   type FloraApkChannelRelease,
 } from "@/lib/apkUpdate/apkChannel";
@@ -107,7 +108,7 @@ function parseManifestObject(parsed: Partial<AndroidUpdateManifest>): AndroidUpd
   return {
     version: parsed.version,
     versionCode: parsed.versionCode,
-    apkFileName: parsed.apkFileName ?? `flora.social-v${parsed.version}-android.apk`,
+    apkFileName: parsed.apkFileName ?? floraChannelApkFileName(parsed.version),
     apkUrl: parsed.apkUrl,
     sha256,
     sizeBytes: typeof parsed.sizeBytes === "number" ? parsed.sizeBytes : undefined,
@@ -157,7 +158,7 @@ function parseCatalog(body: string): FloraApkChannelCatalog | null {
         apkFileName:
           typeof r.apkFileName === "string" && r.apkFileName.trim()
             ? r.apkFileName.trim()
-            : `flora.social-v${version}-android.apk`,
+            : floraChannelApkFileName(version),
         apkUrl,
         sha256,
         sizeBytes,

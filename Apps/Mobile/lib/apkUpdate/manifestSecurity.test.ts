@@ -31,6 +31,22 @@ describe("APK update manifest security", () => {
     }
   });
 
+  it("accepts the canonical flora-v{version}.apk channel asset", () => {
+    expect(
+      isTrustedFloraSocialApkUrl("https://social.flora-s.net/apk/flora-v0.13.0-alpha.apk"),
+    ).toBe(true);
+    expect(
+      trustedFloraSocialApkVersion("https://social.flora-s.net/apk/flora-v0.13.0-alpha.apk"),
+    ).toBe("0.13.0-alpha");
+
+    for (const url of [
+      "https://social.flora-s.net/apk/flora.mobile-v0.13.0-alpha.apk",
+      "https://social.flora-s.net/apk/flora-v0.13.0-alpha.apk?redirect=evil",
+    ]) {
+      expect(isTrustedFloraSocialApkUrl(url), url).toBe(false);
+    }
+  });
+
   it("rejects GitHub release URLs (channel-only trust)", () => {
     expect(
       isTrustedFloraSocialApkUrl(

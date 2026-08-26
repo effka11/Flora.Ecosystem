@@ -300,10 +300,10 @@ Push-Location $mobile
 try {
     Remove-Item Env:APP_VARIANT -ErrorAction SilentlyContinue
 
-    Write-Host "sync VERSION -> app manifests (products.social) ..."
+    Write-Host "sync VERSION -> app manifests ..."
     node ../../Scripts/sync-version.mjs
-    $socialVersion = Get-FloraSocialVersion $root
-    Write-Host "release version: $socialVersion (VERSION.products.social)"
+    $apkVersion = Get-FloraMobileVersion $root
+    Write-Host "release version: $apkVersion (VERSION.products.mobile)"
 
     Write-Host "render Flora icons (replace Metro grid splash) ..."
     node ../../Scripts/render-flora-mobile-assets.mjs
@@ -373,22 +373,26 @@ try {
 
             $apkItem = Get-Item -LiteralPath $distApk
             $sha256 = (Get-FileHash -LiteralPath $distApk -Algorithm SHA256).Hash.ToLowerInvariant()
-            # Immutable CDN caches poisoned truncated bodies under the plain -android.apk name.
-            # Always publish as -android-{sha8}.apk so re-uploads get a fresh CDN key.
-            $sha8 = $sha256.Substring(0, 8)
-            $apkFileName = "flora.social-v${socialVersion}-android-${sha8}.apk"
-            $publishedApk = Join-Path $distDir $apkFileName
+            $canonicalFileName = Get-FloraAndroidApkFileName $root
+            $publishedApk = Join-Path $distDir $canonicalFileName
             if ($apkItem.FullName -ne $publishedApk) {
                 Copy-Item -LiteralPath $apkItem.FullName -Destination $publishedApk -Force
                 $distApk = $publishedApk
                 $apkItem = Get-Item -LiteralPath $distApk
             }
-            $apkUrl = "$FloraApkChannelBase/$apkFileName"
+            # 0.12 clients only trust flora.social-v…-android[-{sha8}].apk in apkUrl.
+            # Hashed mirror is the sideload pointer (CDN-safe); plain alias covers 0.12 fallback 2.4.
+            $sha8 = $sha256.Substring(0, 8)
+            $legacyHashedFileName = Get-FloraAndroidLegacyApkFileName $root $sha8
+            $legacyPlainFileName = Get-FloraAndroidLegacyApkFileName $root
+            Copy-Item -LiteralPath $distApk -Destination (Join-Path $distDir $legacyHashedFileName) -Force
+            Copy-Item -LiteralPath $distApk -Destination (Join-Path $distDir $legacyPlainFileName) -Force
+            $legacyApkUrl = "$FloraApkChannelBase/$legacyHashedFileName"
             $updateManifest = [ordered]@{
-                version      = $socialVersion
+                version      = $apkVersion
                 versionCode  = $versionCode
-                apkFileName  = $apkFileName
-                apkUrl       = $apkUrl
+                apkFileName  = $legacyHashedFileName
+                apkUrl       = $legacyApkUrl
                 sha256       = $sha256
                 sizeBytes    = [int64]$apkItem.Length
             }
@@ -397,6 +401,8 @@ try {
             $utf8NoBom = New-Object System.Text.UTF8Encoding $false
             [System.IO.File]::WriteAllText($updateManifestPath, $json, $utf8NoBom)
             Write-Host "Update manifest: $updateManifestPath (versionCode=$versionCode, sizeBytes=$($apkItem.Length))"
+            Write-Host "APK canonical: $canonicalFileName"
+            Write-Host "APK 0.12 mirror: $legacyHashedFileName"
         }
         else {
             $staleManifest = Join-Path $distDir "flora.social-android-update.json"
@@ -479,10 +485,26 @@ if ($PublishChannel) {
         & ssh @sshBase $remoteTarget "mkdir -p $FloraApkChannelRemoteDir"
         if ($LASTEXITCODE -ne 0) { throw "ssh mkdir failed (exit $LASTEXITCODE)" }
 
-        $remoteApk = "${remoteTarget}:${FloraApkChannelRemoteDir}/$apkFileName"
-        Write-Host "Uploading APK $apkFileName ..."
-        & scp @sshBase $distApk $remoteApk
-        if ($LASTEXITCODE -ne 0) { throw "scp APK failed (exit $LASTEXITCODE)" }
+        $distDir = Join-Path $mobile "dist"
+        $canonicalFileName = Get-FloraAndroidApkFileName $root
+        $legacyHashedFileName = [string]$manifestObj.apkFileName
+        if ($legacyHashedFileName -notmatch '^flora\.social-v.+-android') {
+            throw "Update manifest apkFileName must be the 0.12 flora.social mirror, got '$legacyHashedFileName'"
+        }
+        $legacyPlainFileName = Get-FloraAndroidLegacyApkFileName $root
+        $uploadNames = @($canonicalFileName, $legacyHashedFileName, $legacyPlainFileName) |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Unique
+        foreach ($name in $uploadNames) {
+            $localApk = Join-Path $distDir $name
+            if (-not (Test-Path -LiteralPath $localApk)) {
+                throw "Missing channel APK alias $localApk"
+            }
+            $remoteApk = "${remoteTarget}:${FloraApkChannelRemoteDir}/$name"
+            Write-Host "Uploading APK $name ..."
+            & scp @sshBase $localApk $remoteApk
+            if ($LASTEXITCODE -ne 0) { throw "scp APK $name failed (exit $LASTEXITCODE)" }
+        }
 
         $remoteLatest = "${remoteTarget}:${FloraApkChannelRemoteDir}/$FloraApkChannelLatestJson"
         Write-Host "Uploading $FloraApkChannelLatestJson ..."
@@ -534,7 +556,8 @@ if ($PublishChannel) {
         & scp @sshBase $localReleases "${remoteTarget}:${remoteReleasesPath}"
         if ($LASTEXITCODE -ne 0) { throw "scp releases.json failed (exit $LASTEXITCODE)" }
 
-        Write-Host "APK channel published: $FloraApkChannelBase/$apkFileName"
+        Write-Host "APK channel published: $FloraApkChannelBase/$canonicalFileName"
+        Write-Host "0.12 sideload pointer: $FloraApkChannelBase/$legacyHashedFileName"
     }
     finally {
         Remove-Item -LiteralPath $tmpLocal -Recurse -Force -ErrorAction SilentlyContinue

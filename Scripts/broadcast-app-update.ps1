@@ -46,7 +46,7 @@ if ($isLocal -and $Token -eq "dev-local-broadcast-token-change-me") {
     Write-Host "Using localhost default admin broadcast token (see Flora.API/appsettings.Development.json)." -ForegroundColor DarkGray
 }
 
-$version = Get-FloraSocialVersion $root
+$version = Get-FloraMobileVersion $root
 if ([string]::IsNullOrWhiteSpace($Text)) {
     $Text = Get-AppUpdateBroadcastText $version
 }
@@ -57,14 +57,14 @@ $manifest = Get-AppUpdateManifestForBroadcast -Root $root -Version $version -Pre
 if ($null -eq $manifest) {
     if ($requireUpdate) {
         throw @"
-No flora.social-android-update.json for VERSION.products.social=$version.
-Publish GitHub release social/v$version (APK), keep matching
+No flora.social-android-update.json for VERSION.products.mobile=$version.
+Publish the APK channel (flora-v$version.apk), keep matching
 Apps/Mobile/dist/flora.social-android-update.json for this broadcast, then retry.
 "@
     }
 }
 elseif (([string]$manifest.version).Trim() -ne $version) {
-    throw "Update manifest version='$($manifest.version)' does not match VERSION.products.social='$version'."
+    throw "Update manifest version='$($manifest.version)' does not match VERSION.products.mobile='$version'."
 }
 
 $update = $null
