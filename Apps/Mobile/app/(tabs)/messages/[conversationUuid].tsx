@@ -118,6 +118,12 @@ import {
   useTemporaryMuteUntilByPeer,
 } from "@/lib/conversationTemporaryMute";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
+import {
+  chatPushProgress,
+  isChatPushEnterArmed,
+  runChatPushEnter,
+  runChatPushExit,
+} from "@/lib/chatPushTransition";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import {
   markChatOpenStage,
@@ -395,6 +401,7 @@ export default function ThreadScreen() {
     setListPinned,
     listLiftStyle,
     listPlaceholderStyle,
+    listEnterCoverStyle,
     hideListUntilReady,
     allowListReveal,
     setListRevealQuietFrames,
@@ -420,7 +427,12 @@ export default function ThreadScreen() {
     toggleEmoji,
     dismissKeyboard,
     resetDock,
-  } = useChatComposeDock({ systemNavBottomInsetPx: systemNavBottomInset });
+    // Темп проявления ленты зависит от того, едет ли ещё сцена: под слайдом
+    // движение маскирует появление контента, и фейд короче (см. док).
+  } = useChatComposeDock({
+    systemNavBottomInsetPx: systemNavBottomInset,
+    enterMotionSv: chatPushProgress,
+  });
 
   /** Зона интерактивного свайпа над клавиатурой = высота закрытого дока. */
   const kgaOffsetPx = composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
@@ -681,14 +693,82 @@ export default function ThreadScreen() {
   );
 
   /**
-   * Перехода нет (`animation: "none"`): заглушке можно появляться сразу,
-   * как только hideListUntilReady сбросил ленту. Эффект ниже hide-эффекта
-   * по порядку объявления — enter-флаг успевает подняться и опуститься
-   * в одном проходе, без кадра «заглушка до hide».
+   * Заглушке можно появляться сразу, как только hideListUntilReady сбросил
+   * ленту: push-слайд везёт экран целиком, внутри него кадр стабилен.
+   * Эффект ниже hide-эффекта по порядку объявления — enter-флаг успевает
+   * подняться и опуститься в одном проходе, без кадра «заглушка до hide».
    */
   useEffect(() => {
     finishEnterTransition();
   }, [conversationUuid, finishEnterTransition]);
+
+  /**
+   * Push-переход (chatPushTransition): экран заезжает справа непрозрачным
+   * слоем поверх списка (transparentModal — список виден под нами и играет
+   * параллакс + затемнение).
+   *
+   * Стартовый driven — из isChatPushEnterArmed() ещё в первом рендере, иначе
+   * первый кадр покажет чат уже на месте; сам слайд запускается из
+   * useLayoutEffect того же коммита, то есть движение начинается кадром, где
+   * шапка и док уже нарисованы.
+   */
+  const [chatPushEnterArmed] = useState(isChatPushEnterArmed);
+  const chatPushDriven = useSharedValue(chatPushEnterArmed);
+  const chatPushSlideStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: chatPushDriven.value
+          ? (1 - chatPushProgress.value) * screenWidth
+          : 0,
+      },
+    ],
+  }));
+  useLayoutEffect(() => {
+    runChatPushEnter(chatPushDriven);
+  }, [chatPushDriven, conversationUuid]);
+
+  /**
+   * Лента — вторым коммитом (кадром позже хрома). Слайд стартует из
+   * useLayoutEffect первого коммита, поэтому цена этого коммита = пауза между
+   * тапом и движением; монтаж FlashList с начальной пачкой пузырей — её
+   * основная часть (в трассе это разрыв render→mount). Кадром позже он уже
+   * не задерживает старт и идёт под слайдом: анимация живёт на UI-потоке, JS
+   * ей не мешает. Лента всё равно скрыта enter-ковром до reveal, так что
+   * визуально кадр ничего не меняет.
+   *
+   * Ремоунт (а не пустые данные) сохраняет контракт FlashList: начальные
+   * данные — сразу окно показа, значит `initialDrawBatchSize` рисует его
+   * одним проходом, без волн и доезжающих пузырей.
+   */
+  const [listMounted, setListMounted] = useState(!chatPushEnterArmed);
+  useEffect(() => {
+    if (listMounted) return;
+    const frame = requestAnimationFrame(() => setListMounted(true));
+    return () => cancelAnimationFrame(frame);
+  }, [listMounted]);
+
+  /**
+   * Назад — зеркально: перехватываем pop (кнопка, системный back Android),
+   * уводим экран вправо кривой ENERGETIC_CLOSE и только потом отпускаем
+   * отложенный action. Повторный back во время анимации проходит без
+   * перехвата (closingRef) — мгновенный pop, страховка от зависания.
+   */
+  const chatPushClosingRef = useRef(false);
+  useEffect(() => {
+    chatPushClosingRef.current = false;
+    const unsubscribe = navigation.addListener("beforeRemove", (event) => {
+      if (chatPushClosingRef.current) return;
+      const action = event.data.action;
+      const started = runChatPushExit(chatPushDriven, () => {
+        navigation.dispatch(action);
+      });
+      if (started) {
+        chatPushClosingRef.current = true;
+        event.preventDefault();
+      }
+    });
+    return unsubscribe;
+  }, [chatPushDriven, navigation]);
 
   const paramOtherDisplayName = routeParam(params.otherDisplayName);
   const paramOtherUsername = routeParam(params.otherUsername);
@@ -986,8 +1066,8 @@ export default function ThreadScreen() {
 
   /**
    * Тихий догруз треда — строго ПОСЛЕ первого видимого кадра ленты (reveal),
-   * а не «после интеракций»: с `animation: "none"` InteractionManager
-   * срабатывал почти сразу, и сетевой merge с ре-рендерами падал в середину
+   * а не «после интеракций»: InteractionManager не видит нативный push RNS
+   * и срабатывал почти сразу, сетевой merge с ре-рендерами падал в середину
    * открытия. Строки сохраняют identity (structural sharing RQ +
    * identity-preserving merge в decrypt-хуке), поэтому ответ «без изменений»
    * не перерисовывает ни одной ячейки.
@@ -2354,7 +2434,7 @@ export default function ThreadScreen() {
         : systemNavBottomInset;
 
   return (
-    <View style={styles.root}>
+    <Reanimated.View style={[styles.root, chatPushSlideStyle]}>
       <MessageBubbleMoreMenu
         open={menuTarget != null}
         targetUuid={menuTarget?.message.messageUuid ?? null}
@@ -2465,36 +2545,6 @@ export default function ThreadScreen() {
       >
       <View style={styles.messagesArea}>
         {/*
-          Заглушка — отдельный слой под лентой, а не `ListEmptyComponent`: иначе
-          пустой FlashList занимает всю раскладку, и между спиннером и контентом
-          зияет промежуток. Opacity переключается мгновенно, без кроссфейда.
-        */}
-        <Reanimated.View
-          pointerEvents="none"
-          style={[
-            styles.listFill,
-            styles.listPlaceholder,
-            listPlaceholderStyle,
-            // Тот же коммит, что показывает ленту, гасит заглушку: подмена
-            // атомарна, без кадра «обе прозрачны» между SV и состоянием.
-            listRevealed ? styles.listHiddenUntilReveal : null,
-          ]}
-        >
-          {/* count>0 — лента домеряется невидимо: держим пустой фон, как
-              Telegram; спиннер только когда данных ещё реально нет. */}
-          {listPending ? (
-            <>
-              <ActivityIndicator color={floraColors.greenLight} />
-              <Text style={styles.emptyText}>Загрузка сообщений…</Text>
-            </>
-          ) : listMessageCount > 0 ? null : (
-            <Text style={styles.emptyText}>
-              {blocked ? "Расшифровка недоступна" : "Напишите первое сообщение"}
-            </Text>
-          )}
-        </Reanimated.View>
-
-        {/*
           Видимость ленты — React-состояние, НЕ animated style. Анимированный
           opacity применялся с UI-потока, а следующий React-коммит возвращал
           запечённый начальный opacity:0 из useAnimatedStyle — лента гасла
@@ -2520,46 +2570,93 @@ export default function ThreadScreen() {
               после показа (усадки content-size). С ремоунтом onLoad честно
               стреляет на каждый тред, и initialDrawBatchSize рисует окно
               одним проходом.
+
+              listMounted: на анимированном открытии лента приходит вторым
+              коммитом — см. комментарий у состояния.
             */}
-            <FlashList
-              key={conversationUuid}
-              data={listDataWindow}
-              keyExtractor={listItemKey}
-              getItemType={messageItemType}
-              style={styles.listInverted}
-              contentContainerStyle={listContentStyle}
-              renderScrollComponent={renderScrollComponent}
-              onScroll={onScroll}
-              onScrollBeginDrag={onScrollBeginDrag}
-              scrollEventThrottle={16}
-              // always: иначе первый тап по play только закрывает клавиатуру.
-              keyboardShouldPersistTaps="always"
-              // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
-              // соседние ячейки размонтируются прямо у края вьюпорта.
-              drawDistance={480}
-              /*
-                `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
-                короткий тред к низу отступом `windowSize - childContainerSize`,
-                который уменьшался ступенями по мере домера строк — лента ехала
-                вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
-                стоит у низа по построению. Автоподстройка позиции тоже не нужна:
-                новое сообщение приходит в начало данных, то есть ровно туда, где
-                стоит скролл, и попадает в кадр само.
-              */
-              maintainVisibleContentPosition={{ disabled: true }}
-              CellRendererComponent={MenuCellRenderer}
-              // Показ ленты НЕ ждёт onLoad FlashList: он оценивает несмеренные
-              // строки средним по типу и на свежем списке срабатывает до
-              // монтажа реально видимых строк (пузырь доезжал после показа).
-              // Наш «onLoad» — maybeConfirmWindowMeasured: фактические высоты
-              // ячеек закрыли вьюпорт от якоря.
-              // Показ ждёт тишины лэйаута: пара кадров без изменений размера
-              // контента, чтобы поздние коррекции не двигали видимые пузыри.
-              onContentSizeChange={onListContentSizeChange}
-              overrideProps={LIST_INITIAL_DRAW}
-              renderItem={renderMessage}
-            />
+            {listMounted ? (
+              <FlashList
+                key={conversationUuid}
+                data={listDataWindow}
+                keyExtractor={listItemKey}
+                getItemType={messageItemType}
+                style={styles.listInverted}
+                contentContainerStyle={listContentStyle}
+                renderScrollComponent={renderScrollComponent}
+                onScroll={onScroll}
+                onScrollBeginDrag={onScrollBeginDrag}
+                scrollEventThrottle={16}
+                // always: иначе первый тап по play только закрывает клавиатуру.
+                keyboardShouldPersistTaps="always"
+                // Строки чата выше дефолтных 250 px (коллаж — до 470), из-за чего
+                // соседние ячейки размонтируются прямо у края вьюпорта.
+                drawDistance={480}
+                /*
+                  `startRenderingFromBottom` тут больше не нужен и вреден: он прижимал
+                  короткий тред к низу отступом `windowSize - childContainerSize`,
+                  который уменьшался ступенями по мере домера строк — лента ехала
+                  вверх, и офсетом это не лечилось. У перевёрнутой ленты короткий тред
+                  стоит у низа по построению. Автоподстройка позиции тоже не нужна:
+                  новое сообщение приходит в начало данных, то есть ровно туда, где
+                  стоит скролл, и попадает в кадр само.
+                */
+                maintainVisibleContentPosition={{ disabled: true }}
+                CellRendererComponent={MenuCellRenderer}
+                // Показ ленты НЕ ждёт onLoad FlashList: он оценивает несмеренные
+                // строки средним по типу и на свежем списке срабатывает до
+                // монтажа реально видимых строк (пузырь доезжал после показа).
+                // Наш «onLoad» — maybeConfirmWindowMeasured: фактические высоты
+                // ячеек закрыли вьюпорт от якоря.
+                // Показ ждёт тишины лэйаута: пара кадров без изменений размера
+                // контента, чтобы поздние коррекции не двигали видимые пузыри.
+                onContentSizeChange={onListContentSizeChange}
+                overrideProps={LIST_INITIAL_DRAW}
+                renderItem={renderMessage}
+              />
+            ) : null}
           </Reanimated.View>
+        </Reanimated.View>
+
+        {/*
+          Enter-ковёр поверх ленты: непрозрачный фон, пока первый кадр не
+          собран; на reveal гаснет Flora-фейдом (энергия вкладок) — сцена
+          проявляется, а не вспыхивает. Лента под ним уже видима и стоит на
+          якоре, поэтому движения нет — только проявление.
+        */}
+        <Reanimated.View
+          pointerEvents="none"
+          style={[styles.listFill, styles.listEnterCover, listEnterCoverStyle]}
+        />
+
+        {/*
+          Заглушка — слой над ковром (спиннер должен быть виден на нём), не
+          `ListEmptyComponent`: иначе пустой FlashList занимает всю раскладку,
+          и между спиннером и контентом зияет промежуток. Opacity
+          переключается мгновенно, без кроссфейда.
+        */}
+        <Reanimated.View
+          pointerEvents="none"
+          style={[
+            styles.listFill,
+            styles.listPlaceholder,
+            listPlaceholderStyle,
+            // Тот же коммит, что показывает ленту, гасит заглушку: подмена
+            // атомарна, без кадра «обе прозрачны» между SV и состоянием.
+            listRevealed ? styles.listHiddenUntilReveal : null,
+          ]}
+        >
+          {/* count>0 — лента домеряется невидимо: держим пустой фон, как
+              Telegram; спиннер только когда данных ещё реально нет. */}
+          {listPending ? (
+            <>
+              <ActivityIndicator color={floraColors.greenLight} />
+              <Text style={styles.emptyText}>Загрузка сообщений…</Text>
+            </>
+          ) : listMessageCount > 0 ? null : (
+            <Text style={styles.emptyText}>
+              {blocked ? "Расшифровка недоступна" : "Напишите первое сообщение"}
+            </Text>
+          )}
         </Reanimated.View>
 
         {showJumpToLatest ? (
@@ -2818,7 +2915,7 @@ export default function ThreadScreen() {
         onDismiss={dismissReportMessageModal}
         onConfirm={(category) => void handleConfirmReportMessage(category)}
       />
-    </View>
+    </Reanimated.View>
   );
 }
 
@@ -2869,6 +2966,10 @@ const styles = StyleSheet.create({
   /** До показа лента (или после показа — заглушка) прозрачна: см. listRevealed. */
   listHiddenUntilReveal: {
     opacity: 0,
+  },
+  /** Enter-ковёр области ленты: фон, гаснущий Flora-фейдом на reveal. */
+  listEnterCover: {
+    backgroundColor: floraColors.bg,
   },
   /**
    * Переворот ленты целиком: последнее сообщение оказывается в начале скролла,

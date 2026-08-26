@@ -1,12 +1,9 @@
 import { formatGroupListPreview } from "@flora/client-core/messaging";
-import { useNavigation } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
 import { warmChatOpenThreadAtPressIn } from "@/lib/chatOpenLayoutWarm";
 import type { GroupChat } from "@/lib/groupChatTypes";
-import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import { openGroupChat } from "@/lib/openGroupChat";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 
@@ -36,9 +33,6 @@ export function GroupConversationListRow({
   onToggleSelect,
   onEnterSelect,
 }: Props) {
-  const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
-  const tabBarBottomInset = Math.max(insets.bottom, 8);
   const title = group.title.trim() || "Группа";
   const previewText = formatGroupListPreview({
     preview: preview.trim().length > 0 ? preview : group.lastMessagePreview ?? "",
@@ -47,7 +41,8 @@ export function GroupConversationListRow({
   });
 
   const open = () => {
-    applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+    // Таб-бар прячут focus-эффект треда и messages/_layout — тем же коммитом,
+    // в котором стартует слайд (см. ConversationListRow).
     openGroupChat(group.conversationUuid, title);
   };
 

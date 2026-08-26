@@ -25,6 +25,7 @@ import {
   type AnimatedStyle,
   type SharedValue,
 } from "react-native-reanimated";
+import { ENERGETIC_OPEN_EASING } from "@/lib/energeticSettle";
 import {
   commitImeHeightPx,
   getBootstrapImeHeightPx,
@@ -37,7 +38,8 @@ import {
   keyboardStickyOffsets,
 } from "@/lib/messagesDockInsets";
 import { mmkv } from "@/lib/mmkv";
-import { floraSpacing } from "@/lib/theme";
+import { floraMotion, floraSpacing } from "@/lib/theme";
+import { shouldSkipFloraMotion, useFloraReduceMotion } from "@/lib/useFloraReduceMotion";
 
 /**
  * Compose dock v11 — единый Reanimated-конвейер, один «писатель» скролла.
@@ -151,9 +153,34 @@ const KB_SHOW_RETRY_WINDOW_MS = 900;
  */
 const KB_SHOW_WATCHDOG_MS = 500;
 
+/**
+ * Проявление ленты в кадре, где экран ещё едет (push чата не сел): движение
+ * само маскирует появление контента, поэтому фейд короткий — на шаге сетки
+ * Flora — и успевает закончиться до посадки. Лента приходит вместе со сценой,
+ * а не «догружается» после неё.
+ */
+const REVEAL_COVER_FADE_IN_MOTION_MS = floraMotion.baseMs;
+/**
+ * Проявление на уже стоящей сцене (тяжёлый тред домерялся дольше слайда):
+ * маскировать нечем, поэтому мягче — но вдвое короче прежних baseMs*3, где
+ * заметно читалось «пустой чат, потом контент».
+ */
+const REVEAL_COVER_FADE_MS = floraMotion.baseMs * 2;
+
+function revealCoverFadeMs(enterMotionProgress: number): number {
+  "worklet";
+  return enterMotionProgress < 1 ? REVEAL_COVER_FADE_IN_MOTION_MS : REVEAL_COVER_FADE_MS;
+}
+
 export type ChatComposeDockConfig = {
   /** Нижний системный инсет (nav bar) — из resolveMessagesDockBottomInset. */
   systemNavBottomInsetPx: number;
+  /**
+   * Прогресс входной анимации экрана: <1 — сцена ещё едет, 1 — стоит. Нужен
+   * только темпу проявления ленты (см. revealCoverFadeMs); без него док
+   * считает, что сцена на месте.
+   */
+  enterMotionSv?: SharedValue<number>;
 };
 
 export type ChatComposeDock = {
@@ -201,6 +228,16 @@ export type ChatComposeDock = {
   setListPinned: (pinned: boolean) => void;
   /** Обратная прозрачность — слой заглушки под лентой. */
   listPlaceholderStyle: AnimatedStyle<ViewStyle>;
+  /**
+   * Enter-ковёр области ленты: непрозрачный фон поверх ленты до первого
+   * собранного кадра; на reveal гаснет Flora-фейдом (flora ease-out,
+   * задержка-кадр, темп по revealCoverFadeMs) — сцена «проявляется», а не
+   * вспыхивает.
+   * Ковёр, а не opacity самой ленты: её видимость обязана остаться
+   * React-коммитом (см. listPlaceholderStyle), а оверлей с UI-анимацией —
+   * проверенный паттерн TabRouteTransition.
+   */
+  listEnterCoverStyle: AnimatedStyle<ViewStyle>;
   /** Спрятать ленту до следующего показа — на смене треда. */
   hideListUntilReady: () => void;
   /** Разрешить показ: тред расшифрован, высоты больше не поедут. */
@@ -478,6 +515,24 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const listPlaceholderSv = useSharedValue(0);
 
   /**
+   * Enter-ковёр области ленты (см. тип). 1 = непрозрачный фон (до показа),
+   * 0 = лента открыта. Reveal стартует фейд 1→0; смена треда возвращает 1.
+   */
+  const listEnterCoverSv = useSharedValue(1);
+  /** Сцена «стоит» — дефолт для экранов без входной анимации (deep link). */
+  const ownEnterMotionSv = useSharedValue(1);
+  const enterMotionSv = config.enterMotionSv ?? ownEnterMotionSv;
+  /** Reduce motion для UI-worklet'а показа: фейд заменяется мгновенным 0. */
+  const skipMotionSv = useSharedValue(false);
+  const reduceMotion = useFloraReduceMotion();
+  useEffect(() => {
+    skipMotionSv.value = shouldSkipFloraMotion(reduceMotion);
+  }, [reduceMotion, skipMotionSv]);
+  const listEnterCoverStyle = useAnimatedStyle(() => ({
+    opacity: listEnterCoverSv.value,
+  }));
+
+  /**
    * JS-зеркало состоявшегося reveal: тяжёлую пост-работу (тихий сетевой
    * догруз треда) экран запускает только ПОСЛЕ первого видимого кадра ленты,
    * чтобы merge и ре-рендеры не крали кадры у открытия.
@@ -598,9 +653,12 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     }
     cancelAnimation(listRevealSv);
     cancelAnimation(listPlaceholderSv);
+    cancelAnimation(listEnterCoverSv);
     listRevealStartedSv.value = false;
     listRevealSv.value = 0;
     listPlaceholderSv.value = 0;
+    // Ковёр снова непрозрачен: новый тред собирается под ним.
+    listEnterCoverSv.value = 1;
     listLoadedSv.value = false;
     listLayoutQuietSv.value = 0;
     listQuietFramesSv.value = LIST_LAYOUT_QUIET_FRAMES;
@@ -611,6 +669,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     lastContentHeightRef.current = 0;
     setListRevealed(false);
   }, [
+    listEnterCoverSv,
     listLayoutQuietSv,
     listLoadedSv,
     listPlaceholderSv,
@@ -675,6 +734,22 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         revealAtSv.value = Date.now();
         settleLogBudgetSv.value = SETTLE_TRACE_MAX_LOGS;
         listPlaceholderSv.value = 0;
+        // Сцена готова под ковром — Flora-фейд входа (задержка-кадр + flora
+        // ease-out; темп по revealCoverFadeMs: под едущим слайдом короче).
+        // Лента при этом уже видима (listRevealed) — проявление делает ковёр.
+        cancelAnimation(listEnterCoverSv);
+        if (skipMotionSv.value) {
+          listEnterCoverSv.value = 0;
+        } else {
+          listEnterCoverSv.value = 1;
+          listEnterCoverSv.value = withDelay(
+            floraMotion.tabTransitionDelayMs,
+            withTiming(0, {
+              duration: revealCoverFadeMs(enterMotionSv.value),
+              easing: ENERGETIC_OPEN_EASING,
+            }),
+          );
+        }
         runOnJS(markRevealed)();
       };
       const tick = () => {
@@ -746,7 +821,9 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       requestAnimationFrame(tick);
     })();
   }, [
+    enterMotionSv,
     listAnimatedRef,
+    listEnterCoverSv,
     listLayoutQuietSv,
     listLoadedSv,
     listPlaceholderSv,
@@ -759,6 +836,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     pinToBottomSv,
     revealAtSv,
     settleLogBudgetSv,
+    skipMotionSv,
   ]);
 
   /**
@@ -784,8 +862,24 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     revealAtSv.value = Date.now();
     settleLogBudgetSv.value = SETTLE_TRACE_MAX_LOGS;
     listPlaceholderSv.value = 0;
+    // Тот же Flora-фейд входа, что в UI-цикле показа (см. reveal выше).
+    cancelAnimation(listEnterCoverSv);
+    if (skipMotionSv.value) {
+      listEnterCoverSv.value = 0;
+    } else {
+      listEnterCoverSv.value = 1;
+      listEnterCoverSv.value = withDelay(
+        floraMotion.tabTransitionDelayMs,
+        withTiming(0, {
+          duration: revealCoverFadeMs(enterMotionSv.value),
+          easing: ENERGETIC_OPEN_EASING,
+        }),
+      );
+    }
     markRevealed();
   }, [
+    enterMotionSv,
+    listEnterCoverSv,
     listPlaceholderSv,
     listRevealSv,
     listRevealStartedSv,
@@ -794,6 +888,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     pinToBottomSv,
     revealAtSv,
     settleLogBudgetSv,
+    skipMotionSv,
   ]);
 
   // --- Дев-трассировка осадки: что двигает ленту сразу после показа ---
@@ -1368,6 +1463,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     pinListToBottom,
     setListPinned,
     listPlaceholderStyle,
+    listEnterCoverStyle,
     hideListUntilReady,
     allowListReveal,
     setListRevealQuietFrames,

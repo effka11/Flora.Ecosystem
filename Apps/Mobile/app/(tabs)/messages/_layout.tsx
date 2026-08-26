@@ -20,20 +20,31 @@ export default function MessagesLayout() {
   return (
     <View style={styles.shell}>
       <Stack screenOptions={{ ...floraNativeStackOptions, animation: "none" }}>
-        {/* freezeOnBlur: пока открыт тред, список чатов не ре-рендерится от
-            realtime/инвалидаций — JS-поток свободен для открытия треда
-            (данные обновляются, кадр применится при возврате). */}
+        {/* freezeOnBlur параллаксу не мешает: на Fabric native-stack не
+            замораживает экран прямо под фокусным (!isBelowFocused в
+            NativeStackView) — под прозрачным тредом список остаётся живым
+            и рендерит параллакс; freeze сработал бы только глубже стека. */}
         <Stack.Screen
           name="index"
           options={{ headerShown: false, animation: "none", freezeOnBlur: true }}
         />
+        {/*
+          Телеграмный push на языке Flora (см. lib/chatPushTransition.ts):
+          нативный переход выключен, хореографию ведёт Reanimated с кривой
+          ENERGETIC_OPEN. transparentModal держит список видимым и живым под
+          экраном треда — чат заезжает справа непрозрачным слоем, список
+          остаётся на месте с параллаксом и затемнением; назад — зеркально
+          через beforeRemove. Нативный жест выключен: он не умеет играть
+          JS-переход, системный back Android идёт через beforeRemove.
+        */}
         <Stack.Screen
           name="[conversationUuid]"
           options={{
             headerShown: false,
+            presentation: "transparentModal",
             animation: "none",
-            gestureEnabled: true,
-            fullScreenGestureEnabled: true,
+            contentStyle: { backgroundColor: "transparent" },
+            gestureEnabled: false,
           }}
         />
       </Stack>
