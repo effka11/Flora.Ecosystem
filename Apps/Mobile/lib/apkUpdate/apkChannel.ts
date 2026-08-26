@@ -5,9 +5,12 @@ export const FLORA_APK_CHANNEL_RELEASES_URL = `${FLORA_APK_CHANNEL_BASE}/release
 export const FLORA_APK_CHANNEL_LATEST_UPDATE_URL = `${FLORA_APK_CHANNEL_BASE}/flora.social-android-update.json`;
 export const FLORA_DOWNLOAD_PAGE_URL = `${FLORA_APK_CHANNEL_ORIGIN}/download`;
 
+export function floraChannelApkFileName(version: string): string {
+  return `flora-v${version.trim()}.apk`;
+}
+
 export function buildFloraSocialApkChannelUrl(version: string): string {
-  const v = version.trim();
-  return `${FLORA_APK_CHANNEL_BASE}/flora.social-v${v}-android.apk`;
+  return `${FLORA_APK_CHANNEL_BASE}/${floraChannelApkFileName(version)}`;
 }
 
 export type FloraApkChannelRelease = {

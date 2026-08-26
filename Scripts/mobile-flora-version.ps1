@@ -24,8 +24,19 @@ function Get-FloraMobileVersion([string]$Root) {
     return $version.Trim()
 }
 
+function Get-FloraAndroidApkFileName([string]$Root) {
+    $version = Get-FloraMobileVersion $Root
+    return "flora-v$version.apk"
+}
+
+function Get-FloraAndroidLegacyApkFileName([string]$Root, [string]$Sha8 = "") {
+    $version = Get-FloraMobileVersion $Root
+    if ($Sha8) {
+        return "flora.social-v$version-android-$Sha8.apk"
+    }
+    return "flora.social-v$version-android.apk"
+}
+
 function Get-FloraAndroidDistApkPath([string]$MobileDir, [string]$Root) {
-    # Sideload channel still names APKs after products.social; cut over in a follow-up.
-    $version = Get-FloraSocialVersion $Root
-    Join-Path $MobileDir "dist\flora.social-v$version-android.apk"
+    Join-Path $MobileDir "dist\$(Get-FloraAndroidApkFileName $Root)"
 }

@@ -1,6 +1,6 @@
 /**
  * Flora Social Android APK distribution channel (independent of GitHub Releases).
- * Keep in sync with Apps/Mobile/lib/apkUpdate/apkChannel.ts.
+ * Keep in sync with Apps/Mobile/lib/apkUpdate/apkChannel.ts and manifestSecurity.ts.
  */
 export const FLORA_APK_CHANNEL_ORIGIN = "https://social.flora-s.net";
 export const FLORA_APK_CHANNEL_BASE = `${FLORA_APK_CHANNEL_ORIGIN}/apk`;
@@ -9,8 +9,10 @@ export const FLORA_APK_CHANNEL_LATEST_UPDATE_URL = `${FLORA_APK_CHANNEL_BASE}/fl
 
 const SHA256_HEX = /^[a-f0-9]{64}$/i;
 const RELEASE_VERSION = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,127}$/;
-const CHANNEL_APK_PATH =
-  /^\/apk\/flora\.social-v([0-9A-Za-z][0-9A-Za-z._+-]{0,127})-android\.apk$/;
+const CHANNEL_APK_PATHS = [
+  /^\/apk\/flora-v([0-9A-Za-z][0-9A-Za-z._+-]{0,127})\.apk$/i,
+  /^\/apk\/flora\.social-v([0-9A-Za-z][0-9A-Za-z._+-]{0,127})-android(?:-[a-f0-9]{6,16})?\.apk$/i,
+];
 
 export type FloraApkChannelRelease = {
   version: string;
@@ -27,6 +29,10 @@ export type FloraApkChannelCatalog = {
   releases: FloraApkChannelRelease[];
 };
 
+export function floraChannelApkFileName(version: string): string {
+  return `flora-v${version.trim()}.apk`;
+}
+
 export function isSafeReleaseVersion(value: string): boolean {
   return RELEASE_VERSION.test(value);
 }
@@ -36,7 +42,7 @@ export function normalizeTrustedSha256(value: unknown): string | null {
   return value.toLowerCase();
 }
 
-/** Only immutable Flora Social APK assets from the official channel. */
+/** Only immutable Flora APK assets from the official channel. */
 export function trustedFloraSocialApkVersion(value: unknown): string | null {
   if (typeof value !== "string") return null;
   try {
@@ -50,7 +56,11 @@ export function trustedFloraSocialApkVersion(value: unknown): string | null {
       url.search === "" &&
       url.hash === "";
     if (!validOrigin) return null;
-    return url.pathname.match(CHANNEL_APK_PATH)?.[1] ?? null;
+    for (const pathRe of CHANNEL_APK_PATHS) {
+      const version = url.pathname.match(pathRe)?.[1];
+      if (version) return version;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -94,7 +104,7 @@ export function parseFloraApkChannelCatalog(raw: unknown): FloraApkChannelCatalo
       apkFileName:
         typeof r.apkFileName === "string" && r.apkFileName.trim()
           ? r.apkFileName.trim()
-          : `flora.social-v${version}-android.apk`,
+          : floraChannelApkFileName(version),
       apkUrl,
       sha256,
       sizeBytes,

@@ -90,9 +90,9 @@ EAS `production` (Play AAB) / `FLORA_DISABLE_SIDELOAD_UPDATES=1`: без permiss
 
 Скрипт broadcast подхватывает `Apps/Mobile/dist/flora.social-android-update.json` (или latest с `/apk/flora.social-android-update.json`) и шлёт поле `update` в API (`apkUrl` на `social.flora-s.net/apk/…`).
 
-Манифест локально: `Apps/Mobile/dist/flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`) — SoT для broadcast/`update{}` в FCM. На канал кладутся APK + latest update.json + `releases.json`. Pending APK: `flora-update/pending.apk` в app external-files.
+Манифест локально: `Apps/Mobile/dist/flora.social-android-update.json` (`versionCode`, `sha256`, `sizeBytes`, `apkUrl`) — SoT для broadcast/`update{}` в FCM. `apkUrl` — зеркало `flora.social-v…-android-{sha8}.apk` (allowlist 0.12). На канал также кладётся канонический `flora-v{version}.apk` (`releases.json` / `/download`) и plain `flora.social-v…-android.apk` (fallback 2.4 старых клиентов). Pending APK: `flora-update/pending.apk` в app external-files.
 
-Fallback 2.4 открывает прямую ссылку на APK версии из текста уведомления (`https://social.flora-s.net/apk/flora.social-v{version}-android.apk`), не HTML-страницу. Кнопка «Обновить» для установки предпочитает **channel latest** (если VC ≥ версии из inbox), затем native READY sha256.
+Fallback 2.4 открывает прямую ссылку на APK версии из текста уведомления (`https://social.flora-s.net/apk/flora-v{version}.apk`), не HTML-страницу. Кнопка «Обновить» для установки предпочитает **channel latest** (если VC ≥ версии из inbox), затем native READY sha256.
 
 #### Smoke
 
@@ -110,7 +110,7 @@ Fallback 2.4 открывает прямую ссылку на APK версии 
 12. Regression: обычный DM FCM после wrapper FMS всё ещё доставляет.
 13. Logcat: `startAuto` не пишет `APK URL not allowlisted` для `social.flora-s.net/apk/…`.
 14. Smoke OFF→Settings требует APK со свежим `flora-apk-updater` (`openInstallPermissionSettings`).
-15. Channel sha ≠ file → native FAIL (не READY); кнопка «Обновить» → SHA256 / re-download. Republish того же VC обязан обновить `sha256` (+ SHA8 в имени APK).
+15. Channel sha ≠ file → native FAIL (не READY); кнопка «Обновить» → SHA256 / re-download. Republish того же VC обязан обновить `sha256`; catch-up/FCM идут на sha8-зеркало, канонический `flora-v{version}.apk` при той же версии требует purge CDN.
 16. Integrity: channel SHA binding; size только incomplete (`length < sizeBytes`); без hash-adoption.
 
 ### Один раз на сервере

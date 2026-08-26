@@ -1,13 +1,13 @@
 {
-  "ecosystem": "0.12.0-alpha",
+  "ecosystem": "0.13.0-alpha",
   "products": {
-    "social": "0.12.0-alpha",
+    "social": "0.13.0-alpha",
     "gov": "0.1.0-alpha",
-    "mobile": "0.12.0-alpha",
-    "fscp": "0.4.1-alpha",
+    "mobile": "0.13.0-alpha",
+    "fscp": "0.5.0-alpha",
     "frc-i": "0.4.1-alpha",
     "fira": "0.1.0-alpha"
   },
-  "api": "0.12.0-alpha",
+  "api": "0.13.0-alpha",
   "commit": null
 }

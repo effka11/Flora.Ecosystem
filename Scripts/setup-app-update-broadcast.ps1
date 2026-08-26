@@ -15,7 +15,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $resolved = Resolve-BroadcastConfig -Root $root -ApiBaseUrl $ApiBaseUrl -Production:$true
 $apiUrl = $resolved.ApiBaseUrl
 $token = $resolved.Token
-$version = Get-FloraSocialVersion $root
+$version = Get-FloraMobileVersion $root
 
 Write-Host ""
 Write-Host "Flora app-update broadcast (production)" -ForegroundColor Cyan
@@ -32,11 +32,11 @@ if (Test-IsLocalBroadcastApiUrl $apiUrl) {
     Write-Host "[OK] API URL: $apiUrl" -ForegroundColor Green
 }
 
-Write-Host "[--] VERSION.products.social: $version" -ForegroundColor DarkGray
+Write-Host "[--] VERSION.products.mobile: $version" -ForegroundColor DarkGray
 $manifest = Get-AppUpdateManifestForBroadcast -Root $root -Version $version -PreferGitHub
 if ($null -eq $manifest) {
     $ok = $false
-    Write-Host "WARN: No update.json for $version (need GitHub social/v$version or Apps/Mobile/dist)" -ForegroundColor Yellow
+    Write-Host "WARN: No update.json for $version (need Apps/Mobile/dist or channel latest)" -ForegroundColor Yellow
 } else {
     Write-Host "[OK] update.json version=$($manifest.version) versionCode=$($manifest.versionCode)" -ForegroundColor Green
 }
