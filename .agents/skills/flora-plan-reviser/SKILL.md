@@ -6,7 +6,7 @@ description: >-
   models, or execute. Use when the user asks to revise a plan after review,
   close holes from a Plan review, or invokes /flora-plan-reviser /
   «доработай план» / «закрой дыры» / «исправь план по ревью» — not for
-  routing, orchestration, or code/PR review.
+  routing, orchestration, or code/PR review (use /flora-code-reviser).
 ---
 
 # Flora Plan Reviser — edit a work plan after review
