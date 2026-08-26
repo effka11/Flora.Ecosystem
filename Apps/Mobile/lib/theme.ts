@@ -156,7 +156,11 @@ export function floraTabBarStyle(bottomInset: number) {
   };
 }
 
-/** Скрытый tab bar: не схлопываем высоту (нет белой вспышки), убираем из потока через absolute. */
+/**
+ * Tab bar «в треде»: hit-testing выключен (compose остаётся нажимаемым),
+ * высоту не схлопываем. Пиксели не гасим — видимость ведёт ChatPushTabBar
+ * по chatPushProgress (дырка справа), иначе на возврате бар вспыхивает после pop.
+ */
 export function floraTabBarHiddenStyle(bottomInset: number) {
   return {
     backgroundColor: "transparent",
@@ -165,7 +169,6 @@ export function floraTabBarHiddenStyle(bottomInset: number) {
     minHeight: floraTabBarContentHeight() + bottomInset,
     paddingTop: floraTabBarTopPad,
     paddingBottom: bottomInset,
-    opacity: 0,
     position: "absolute" as const,
     left: 0,
     right: 0,

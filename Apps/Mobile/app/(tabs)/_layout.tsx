@@ -1,3 +1,4 @@
+import { renderChatPushTabBar } from "@/components/ChatPushTabBar";
 import { FloraTabBarBackground } from "@/components/FloraTabBarBackground";
 import { FeedLightboxProvider } from "@/components/feed/FeedLightboxHost";
 import { HamburgerMenuProvider } from "@/components/HamburgerMenuProvider";
@@ -71,6 +72,7 @@ export default function TabsLayout() {
           detachInactiveScreens={false}
           screenListeners={screenListeners}
           screenOptions={screenOptions}
+          tabBar={renderChatPushTabBar}
         >
           <Tabs.Screen
             name="feed"
