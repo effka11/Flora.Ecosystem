@@ -273,6 +273,36 @@ function entryKey(hash: string, bucket: number): string {
   return `${hash}@${bucket}`;
 }
 
+/**
+ * Expo `File.uri` may percent-encode `@` in `<hash>@<bucket>.jpg` while
+ * `File.name` / a reconstructed `finalUri()` do not (or the reverse). Cache
+ * identity is the filename, not the URI spelling.
+ */
+function cacheFileName(uri: string): string {
+  const withoutQuery = uri.split("?")[0] ?? uri;
+  const slash = withoutQuery.lastIndexOf("/");
+  const name = slash >= 0 ? withoutQuery.slice(slash + 1) : withoutQuery;
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
+}
+
+function sameCacheFileUri(a: string, b: string): boolean {
+  if (a === b) return true;
+  const left = cacheFileName(a);
+  const right = cacheFileName(b);
+  return left.length > 0 && left === right;
+}
+
+function formatFromCacheUri(uri: string): FrcDecodedFormat | undefined {
+  const name = cacheFileName(uri).toLowerCase();
+  if (name.endsWith(".png")) return "png";
+  if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "jpeg";
+  return undefined;
+}
+
 export class FrcImageCache {
   private readonly entries = new Map<string, CacheEntry>();
   /** Hashes of URLs sniffed as legacy (non-FRC) images, so `peek()` can hit them too. */
@@ -282,6 +312,8 @@ export class FrcImageCache {
   private readonly pins = new Map<string, number>();
   /** `.part` files of running downloads/decodes, protected from the stale sweep. */
   private readonly inFlightParts = new Set<string>();
+  /** Rows re-peek after deferred maintenance; a deleted on-screen file must retry. */
+  private readonly maintenanceListeners = new Set<() => void>();
   private readonly maxBytes: number;
   private readonly maxEntries: number;
   private readonly maxLegacyEntries: number;
@@ -383,6 +415,24 @@ export class FrcImageCache {
     const next = (this.pins.get(uri) ?? 0) - 1;
     if (next <= 0) this.pins.delete(uri);
     else this.pins.set(uri, next);
+  }
+
+  /**
+   * Fires once the deferred index↔directory pass has finished (or been skipped
+   * because this session already ran it). Rows use this to re-peek: a file
+   * deleted under a mounted image is otherwise stuck — `useFrcImageUri` will
+   * not blank, and a mount-time cache hit never subscribed to the pipeline.
+   */
+  subscribeMaintenance(listener: () => void): () => void {
+    this.maintenanceListeners.add(listener);
+    return () => {
+      this.maintenanceListeners.delete(listener);
+    };
+  }
+
+  /** Whether a decoded cache file (or any URI the backend understands) is still on disk. */
+  fileExists(uri: string): boolean {
+    return this.backend.fileExists(uri);
   }
 
   /**
@@ -555,6 +605,7 @@ export class FrcImageCache {
     this.sweepStaleParts();
     this.reconcileIndexWithDirectory();
     this.flushIndex();
+    this.notifyMaintenance();
   }
 
   /** Persist the index now; mutations otherwise coalesce (see INDEX_FLUSH_EVERY). */
@@ -683,7 +734,7 @@ export class FrcImageCache {
       return;
     }
     for (const uri of parts) {
-      if (this.inFlightParts.has(uri)) continue;
+      if (this.isInFlightPart(uri)) continue;
       try {
         this.backend.deleteFile(uri);
       } catch {
@@ -701,11 +752,19 @@ export class FrcImageCache {
     }
     for (const [key, entry] of [...this.entries]) {
       const record = onDisk.get(key);
-      // A different file under the same key (the decoder switched container)
-      // counts as missing: the entry goes, and the loop below collects the file.
-      if (!record || record.uri !== entry.uri) {
+      if (!record) {
         this.invalidate(key);
         continue;
+      }
+      // Same key, different URI spelling (`@` vs `%40`, `file:` vs `file://`):
+      // keep the file, adopt the directory URI so later `fileExists` matches
+      // what the listing returns. A real container switch still lands here
+      // only as a size/format change of the same basename.
+      if (record.uri !== entry.uri) {
+        entry.uri = record.uri;
+        const format = formatFromCacheUri(record.uri);
+        if (format) entry.format = format;
+        this.markIndexDirty();
       }
       if (record.size !== entry.size) {
         this.totalBytes += record.size - entry.size;
@@ -715,6 +774,8 @@ export class FrcImageCache {
     }
     for (const [key, record] of onDisk) {
       if (this.entries.has(key)) continue;
+      if ((this.leases.get(key) ?? 0) > 0) continue;
+      if (this.isPinnedUri(record.uri)) continue;
       try {
         this.backend.deleteFile(record.uri);
       } catch {
@@ -722,6 +783,32 @@ export class FrcImageCache {
       }
     }
     this.enforceBudget();
+  }
+
+  private isInFlightPart(uri: string): boolean {
+    if (this.inFlightParts.has(uri)) return true;
+    for (const live of this.inFlightParts) {
+      if (sameCacheFileUri(live, uri)) return true;
+    }
+    return false;
+  }
+
+  private isPinnedUri(uri: string): boolean {
+    if ((this.pins.get(uri) ?? 0) > 0) return true;
+    for (const [pinned, count] of this.pins) {
+      if (count > 0 && sameCacheFileUri(pinned, uri)) return true;
+    }
+    return false;
+  }
+
+  private notifyMaintenance(): void {
+    for (const listener of [...this.maintenanceListeners]) {
+      try {
+        listener();
+      } catch {
+        // A row hook must not prevent the others from retrying.
+      }
+    }
   }
 
   /** Records a legacy hit and evicts the LRU legacy hash once over budget. */
@@ -745,7 +832,7 @@ export class FrcImageCache {
       let victimUsed = Infinity;
       for (const [key, entry] of this.entries) {
         if ((this.leases.get(key) ?? 0) > 0) continue;
-        if ((this.pins.get(entry.uri) ?? 0) > 0) continue;
+        if (this.isPinnedUri(entry.uri)) continue;
         if (entry.lastUsed < victimUsed) {
           victimUsed = entry.lastUsed;
           victimKey = key;

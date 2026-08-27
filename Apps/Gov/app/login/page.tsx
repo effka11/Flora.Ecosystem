@@ -12,7 +12,10 @@ import { decideGovGate, serverErrorText } from "@/lib/govAuthGate";
 import { govSessionStore } from "@/lib/govSessionStore";
 import styles from "./login.module.css";
 
-const SOCIAL_LOGIN_URL = "http://localhost:3000/login";
+const SOCIAL_LOGIN_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://social.flora-s.net/login"
+    : "http://localhost:3000/login";
 const FIRST_CIVIC_HREF = GOV_NAV_ITEMS[0].href;
 
 type LoginStage = "credentials" | "twoFactor";

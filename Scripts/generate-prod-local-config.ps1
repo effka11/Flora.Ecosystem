@@ -73,7 +73,7 @@ $json = ($doc | ConvertTo-Json -Depth 12)
 $broadcastEnvPath = Join-Path $repo "Scripts\broadcast.env"
 $broadcastEnv = @(
   "# Generated with appsettings.Production.json — same AdminBroadcastToken"
-  "FLORA_API_URL=https://origin.$ServerHost"
+  "FLORA_API_URL=https://social.$ServerHost"
   "FLORA_ADMIN_BROADCAST_TOKEN=$broadcastToken"
 ) -join "`r`n"
 [System.IO.File]::WriteAllText($broadcastEnvPath, $broadcastEnv + "`r`n")

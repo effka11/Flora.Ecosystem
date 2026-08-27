@@ -19,7 +19,7 @@ function loadFloraVersions(): FloraVersionManifest {
   } catch {
     // fall through
   }
-  return { ecosystem: "0.13.0-alpha", products: { social: "0.13.0-alpha" } };
+  return { ecosystem: "0.13.1-alpha", products: { social: "0.13.1-alpha" } };
 }
 
 const floraVersions = loadFloraVersions();
@@ -29,7 +29,7 @@ const floraVersions = loadFloraVersions();
 
 const isProd = process.env.NODE_ENV === "production";
 
-/** Cross-origin API/realtime hosts embedded at build (e.g. origin.<apex> when using -PublicApiBaseUrl). */
+/** Extra connect-src hosts when a build explicitly sets NEXT_PUBLIC_*_BASE_URL (local/dev only). */
 function resolveConnectSrcExtraOrigins(): string[] {
   const origins = new Set<string>();
   for (const raw of [

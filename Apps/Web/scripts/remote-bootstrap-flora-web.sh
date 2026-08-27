@@ -4,7 +4,7 @@
 # 5 ALLOWED_CLIENT_IPS (optional, unused: public origins are not IP-locked),
 # 6 PUBLIC_SUBDOMAIN (optional, default social — CDN site host),
 # 7 WEB_BUILD_ID (optional — CDN cache-bust ?b= without panel purge).
-# Origins: apex Www shell, gov.* → :3001, social.* + origin.* → :3000 / flora-api.
+# Origins: apex Www shell; gov.* / social.* orange Cloudflare; origin.* is CF origin-pull only.
 set -euo pipefail
 
 ARGS_FILE="${1:?path to args file}"
@@ -142,7 +142,7 @@ mkdir -p /etc/systemd/system/flora-web.service.d
 {
   printf '%s\n' '[Service]'
   printf 'Environment=FLORA_API_UPSTREAM=%s\n' "$API_UPSTREAM"
-  printf 'Environment=FLORA_AUTH_PROXY_CORS_ORIGINS=https://%s.%s,https://origin.%s\n' "$PUBLIC_SUBDOMAIN" "$DOMAIN" "$DOMAIN"
+  printf 'Environment=FLORA_AUTH_PROXY_CORS_ORIGINS=https://%s.%s,https://gov.%s\n' "$PUBLIC_SUBDOMAIN" "$DOMAIN" "$DOMAIN"
 } >/etc/systemd/system/flora-web.service.d/50-flora-api-upstream.conf
 
 systemctl daemon-reload
@@ -156,8 +156,7 @@ fi
 
 {
   printf 'FloraWeb__CorsOrigins__0=https://%s.%s\n' "$PUBLIC_SUBDOMAIN" "$DOMAIN"
-  printf 'FloraWeb__CorsOrigins__1=https://origin.%s\n' "$DOMAIN"
-  printf 'FloraWeb__CorsOrigins__2=https://gov.%s\n' "$DOMAIN"
+  printf 'FloraWeb__CorsOrigins__1=https://gov.%s\n' "$DOMAIN"
 } >/etc/flora-ecosystem/flora-api-cors.env
 chmod 644 /etc/flora-ecosystem/flora-api-cors.env
 
@@ -330,6 +329,52 @@ emit_nginx_gov_proxy() {
   echo '    }'
 }
 
+write_flora_cloudflare_origin_only_snippet() {
+  mkdir -p /etc/nginx/snippets
+  cat >/etc/nginx/snippets/flora-cloudflare-origin-only.conf <<'EOF'
+# Cloudflare anycast → this VPS (orange social.* / gov.* origin pull).
+# Direct clients (including networks where CF is blocked) get 403.
+# Source: https://www.cloudflare.com/ips-v4 and /ips-v6 (2026-08-27).
+allow 173.245.48.0/20;
+allow 103.21.244.0/22;
+allow 103.22.200.0/22;
+allow 103.31.4.0/22;
+allow 141.101.64.0/18;
+allow 108.162.192.0/18;
+allow 190.93.240.0/20;
+allow 188.114.96.0/20;
+allow 197.234.240.0/22;
+allow 198.41.128.0/17;
+allow 162.158.0.0/15;
+allow 104.16.0.0/13;
+allow 104.24.0.0/14;
+allow 172.64.0.0/13;
+allow 131.0.72.0/22;
+allow 2400:cb00::/32;
+allow 2606:4700::/32;
+allow 2803:f800::/32;
+allow 2405:b500::/32;
+allow 2405:8100::/32;
+allow 2a06:98c0::/29;
+allow 2c0f:f248::/32;
+allow 127.0.0.1;
+allow ::1;
+deny all;
+EOF
+}
+
+emit_nginx_cloudflare_origin_gate() {
+  echo '    include /etc/nginx/snippets/flora-cloudflare-origin-only.conf;'
+  echo
+}
+
+emit_nginx_acme_challenge() {
+  echo '    location /.well-known/acme-challenge/ {'
+  echo '        allow all;'
+  echo '        root /var/www/certbot;'
+  echo '    }'
+}
+
 write_flora_ip_allow_snippet() {
   if [[ -z "$ALLOWED_CLIENT_IPS" ]]; then
     rm -f /etc/nginx/snippets/flora-ip-allow.conf || true
@@ -353,12 +398,13 @@ write_flora_ip_allow_snippet() {
   } >/etc/nginx/snippets/flora-ip-allow.conf
 }
 
-# Staging IP lock is not applied: apex is the public Www shell, gov/social/origin stay public.
+# Apex Www shell stays reachable without CF. App vhosts (gov/social/origin) accept Cloudflare only.
 emit_nginx_ip_allow_lines() {
   :
 }
 
 write_flora_ip_allow_snippet
+write_flora_cloudflare_origin_only_snippet
 install_flora_www_root
 
 if [[ -n "$WEB_BUILD_ID" ]]; then
@@ -397,23 +443,22 @@ fi
   echo '    listen 80;'
   echo "    server_name gov.${DOMAIN};"
   echo
-  echo '    location /.well-known/acme-challenge/ {'
-  echo '        root /var/www/certbot;'
-  echo '    }'
+  emit_nginx_cloudflare_origin_gate
+  emit_nginx_acme_challenge
   echo
   emit_nginx_gov_proxy
   echo '}'
 } >/etc/nginx/sites-available/flora-gov.conf
 
 # Site (CDN origin :443 + HTTP :80). CDN connects to origin.<DOMAIN>:443, Host: social.<DOMAIN>.
+# nginx allows Cloudflare IPs only so grey origin.* is not a CF-bypass from blocked networks.
 {
   echo 'server {'
   echo '    listen 80;'
   echo "    server_name ${PUBLIC_SUBDOMAIN}.${DOMAIN} origin.${DOMAIN};"
   echo
-  echo '    location /.well-known/acme-challenge/ {'
-  echo '        root /var/www/certbot;'
-  echo '    }'
+  emit_nginx_cloudflare_origin_gate
+  emit_nginx_acme_challenge
   echo
   emit_nginx_proxy_next_static
   echo
@@ -468,6 +513,7 @@ if [[ -f "$ORIGIN_CERT" && -f "$ORIGIN_KEY" ]]; then
     echo "    ssl_certificate ${ORIGIN_CERT};"
     echo "    ssl_certificate_key ${ORIGIN_KEY};"
     echo
+    emit_nginx_cloudflare_origin_gate
     emit_nginx_proxy_next_static
     echo
     emit_nginx_api_admin
@@ -516,6 +562,7 @@ if [[ -f "$GOV_CERT" && -f "$GOV_KEY" ]]; then
     echo "    ssl_certificate ${GOV_CERT};"
     echo "    ssl_certificate_key ${GOV_KEY};"
     echo
+    emit_nginx_cloudflare_origin_gate
     emit_nginx_gov_proxy
     echo '}'
   } >/etc/nginx/sites-available/flora-gov-https.conf

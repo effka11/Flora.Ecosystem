@@ -10,7 +10,7 @@ OS push (FCM) **не используется** в **Flora Dev** (`social.flora.
 
 ### Production API (Cloudflare)
 
-Release APK ходит на **`https://social.flora-s.net`** (оранжевый Cloudflare), не на серый `origin.*`. `EXPO_PUBLIC_GOV_URL=https://gov.flora-s.net` зашит заранее: civic-шелл на том же CDN; процесс Next на `:3001` — отдельный деплой. `EXPO_PUBLIC_ORIGIN_URL` — прямой VPS (SSE веба, крупные PUT если упрётесь в лимит тела CF).
+Release APK ходит на **`https://social.flora-s.net`** (оранжевый Cloudflare). Серый `origin.*` в клиент не зашивается: из сетей, где CF недоступен, Flora не должна открываться. `EXPO_PUBLIC_GOV_URL=https://gov.flora-s.net` зашит заранее: civic-шелл на том же CDN; процесс Next на `:3001` — отдельный деплой.
 
 ### Release (`social.flora.mobile`)
 

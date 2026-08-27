@@ -67,7 +67,7 @@ export type ConnectSignalsStreamOptions = {
   onClose?: () => void;
   onError?: (error: unknown) => void;
   enabled?: () => boolean;
-  /** Override API host for SSE only (e.g. https://origin.flora-s.net to bypass CDN buffering). */
+  /** Override API host for SSE only (local/dev). Production stays on the same Cloudflare origin as REST. */
   streamBaseUrl?: string;
 };
 

@@ -9,10 +9,8 @@ import { stripFloraOriginSlash } from "./floraPublicOrigins";
 
 export {
   FLORA_GOV_CDN_ORIGIN,
-  FLORA_ORIGIN_DIRECT,
   FLORA_SOCIAL_CDN_ORIGIN,
   resolveGovOrigin,
-  resolveOriginDirect,
 } from "./floraPublicOrigins";
 
 export const MOBILE_SESSION_KEY = "flora_mobile_session_v1";

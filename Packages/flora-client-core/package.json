@@ -1,6 +1,6 @@
 {
   "name": "@flora/client-core",
-  "version": "0.13.0-alpha",
+  "version": "0.13.1-alpha",
   "private": true,
   "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
   "author": "Egor Ozerskikh <e.ozerskikh@gmail.com>",
