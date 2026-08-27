@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -244,7 +245,7 @@ object UpdateCoordinator {
               return
             }
             if (status == DownloadManager.STATUS_FAILED) {
-              fail(app, "DownloadManager STATUS_FAILED")
+              fail(app, downloadFailureMessage(cursor, "DownloadManager STATUS_FAILED"))
               return
             }
           }
@@ -326,6 +327,8 @@ object UpdateCoordinator {
               if (status == DownloadManager.STATUS_SUCCESSFUL) {
                 Log.i(TAG, "recover: DownloadManager SUCCESS → onDownloadComplete")
                 onDownloadComplete(application, id)
+              } else if (status == DownloadManager.STATUS_FAILED) {
+                fail(application, downloadFailureMessage(cursor, "DownloadManager STATUS_FAILED"))
               }
             }
           }
@@ -422,6 +425,7 @@ object UpdateCoordinator {
   }
 
   /** FCM / catch-up / JS auto path (Flora channel apkUrl only). */
+  @Synchronized
   fun startAuto(context: Context, manifest: UpdateManifest, showTray: Boolean) {
     val app = context.applicationContext
     val store = UpdateStateStore(app)
@@ -594,6 +598,7 @@ object UpdateCoordinator {
     store.resetToIdle()
   }
 
+  @Synchronized
   fun enqueueDownload(context: Context, manifest: UpdateManifest) {
     val app = context.applicationContext
     val store = UpdateStateStore(app)
@@ -610,6 +615,7 @@ object UpdateCoordinator {
       .setAllowedOverMetered(true)
       .setAllowedOverRoaming(true)
       .setDestinationUri(Uri.fromFile(dest))
+    applyFloraDownloadHeaders(request)
 
     val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     val id = dm.enqueue(request)
@@ -634,6 +640,7 @@ object UpdateCoordinator {
     }
 
     // Spoofed COMPLETE broadcasts: require DownloadManager to confirm SUCCESS.
+    var localUri: String? = null
     try {
       val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
       dm.query(DownloadManager.Query().setFilterById(downloadId))?.use { cursor ->
@@ -645,10 +652,12 @@ object UpdateCoordinator {
         if (status != DownloadManager.STATUS_SUCCESSFUL) {
           Log.w(TAG, "onDownloadComplete ignored: DM status=$status id=$downloadId")
           if (status == DownloadManager.STATUS_FAILED) {
-            fail(app, "DownloadManager STATUS_FAILED")
+            fail(app, downloadFailureMessage(cursor, "DownloadManager STATUS_FAILED"))
           }
           return
         }
+        val localUriIdx = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+        localUri = if (localUriIdx >= 0) cursor.getString(localUriIdx) else null
       } ?: run {
         Log.w(TAG, "onDownloadComplete: DM query null id=$downloadId")
         return
@@ -663,21 +672,25 @@ object UpdateCoordinator {
       return
     }
 
-    val expected = File(app.getExternalFilesDir(null), "flora-update/pending.apk")
     val dest = pendingApk(app)
-    var file = when {
-      expected.exists() && expected.length() > 0L -> expected
-      dest.exists() && dest.length() > 0L -> dest
-      else -> null
+    val adopted = adoptDownloadManagerFile(app, dest, localUri)
+    val file = if (adopted != null && adopted.exists() && adopted.length() > 0L) {
+      adopted
+    } else {
+      val expected = File(app.getExternalFilesDir(null), "flora-update/pending.apk")
+      if (expected.exists() && expected.length() > 0L) {
+        if (expected.absolutePath != dest.absolutePath) {
+          dest.parentFile?.mkdirs()
+          expected.copyTo(dest, overwrite = true)
+        }
+        dest
+      } else {
+        null
+      }
     }
-    if (file == null) {
+    if (file == null || !file.exists() || file.length() == 0L) {
       fail(app, "Download finished but APK missing")
       return
-    }
-    if (file.absolutePath != dest.absolutePath) {
-      dest.parentFile?.mkdirs()
-      file.copyTo(dest, overwrite = true)
-      file = dest
     }
 
     if (isIncompleteDownload(file, manifest)) {
@@ -1096,6 +1109,13 @@ object UpdateCoordinator {
     return validateUpdateApk(context, apk) == null
   }
 
+  private fun downloadFailureMessage(cursor: Cursor, prefix: String): String {
+    val reasonIdx = cursor.getColumnIndex(DownloadManager.COLUMN_REASON)
+    val reason = if (reasonIdx >= 0) cursor.getInt(reasonIdx) else -1
+    Log.w(TAG, "$prefix COLUMN_REASON=$reason")
+    return "$prefix reason=$reason"
+  }
+
   private fun fail(context: Context, message: String) {
     val app = context.applicationContext
     cancelScheduledInstalls(app)
@@ -1104,6 +1124,7 @@ object UpdateCoordinator {
     store.setLastError(message)
     store.setDownloadId(-1)
     Log.w(TAG, "Update failed: $message")
+    UpdateTrayNotifier.showDownloadFailed(app)
   }
 
   fun installedVersionCode(context: Context): Int {

@@ -215,6 +215,7 @@ class FloraApkUpdaterModule : Module() {
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(true)
             .setDestinationUri(Uri.fromFile(dest))
+          applyFloraDownloadHeaders(request)
 
           downloadId = dm.enqueue(request)
           activeDownloadId.set(downloadId)
@@ -266,16 +267,8 @@ class FloraApkUpdaterModule : Module() {
                     else -> null
                   }
 
-                  if (outFile == null && !localUri.isNullOrBlank()) {
-                    // DM may stage outside flora-update; only the destination is sandboxed.
-                    val src = File(localUri.removePrefix("file://"))
-                    if (src.exists() && src.length() > 0L) {
-                      if (src.absolutePath != dest.absolutePath) {
-                        dest.parentFile?.mkdirs()
-                        src.copyTo(dest, overwrite = true)
-                      }
-                      outFile = dest
-                    }
+                  if (outFile == null) {
+                    outFile = adoptDownloadManagerFile(context, dest, localUri)
                   }
 
                   if (outFile == null || !outFile.exists() || outFile.length() == 0L) {
