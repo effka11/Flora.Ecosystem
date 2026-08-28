@@ -34,7 +34,9 @@ Bundle из нескольких сообщений: контейнер `Frankin
 
 ### Вне scope текущей реализации
 
-Следующее **не** реализовано и не следует считать включённым: экран раскрытия в Gov; multi-select в UI чата; приём bundle на стороне Social (форма отчёта и схема БД); обязательное отклонение untagged-сообщений; pre-key pool; Double Ratchet; консолидация Web-форка; ротация серверного ключа франкования.
+Следующее **не** реализовано и не следует считать включённым: multi-select в UI чата; приём bundle на стороне Social (форма отчёта и схема БД); обязательное отклонение untagged-сообщений; pre-key pool; Double Ratchet; консолидация Web-форка; ротация серверного ключа франкования.
+
+Gov после claim при совпадении identity pubkey с `wrapTargets.ownItems` показывает `{ blocks, verified }` на клиенте; plaintext на сервер не уходит.
 
 ---
 
@@ -155,7 +157,7 @@ serverFrankReceipt = {
 
 **Fetch участникам.** GET thread/messages отдаёт аддитивные optional `serverFrankReceipt` и `frankTagBase64Url` из таблицы квитанций (не клиентский blob). Старые клиенты поля игнорируют. Тот же receipt отдаётся claimerу на GET disclosure.
 
-**Viewer-wrap vs backup репортёра.** Наполнение заявки — непрозрачный `disclosureCiphertext` (клиент шифрует на случайный `reportContentKey`). Capability зрителя — живая wrap-строка `{userUuid, deviceUuid, wrappedKey}` на **аккаунт ревьюера** и его Active устройство из `user_device_keys`. Backup wrap репортёра на **свои** устройства — не capability: нужен, чтобы с другого устройства сделать late-wrap claimerу; в `viewerAccountCount` **не входит**.
+**Viewer-wrap vs backup репортёра.** Наполнение заявки — непрозрачный `disclosureCiphertext` (клиент шифрует на случайный `reportContentKey`). Capability зрителя — живая wrap-строка `{userUuid, deviceUuid, wrappedKey}` на **аккаунт ревьюера**. Цели wrap: Active-строки `user_device_keys` и опубликованный identity agreement key в `user_e2e_keys` (bootstrap v1: чат не пишет `user_device_keys`). Gov **не** регистрирует новое Active-устройство; restore identity на клиенте должен совпасть с pubkey цели. Backup wrap репортёра на **свои** устройства / identity — не capability: нужен, чтобы с другого устройства сделать late-wrap claimerу; в `viewerAccountCount` **не входит**.
 
 Канон аудита зрителей: `viewerAccountCount = COUNT(DISTINCT user_uuid)` живых wrap, где `user_uuid <> reporter_user_uuid`. Не число HTTP GET. Forward увеличивает счётчик. Репортёр не зритель (он уже получатель сообщения). Кап живых viewer-аккаунтов — 5 (claimer + forwards).
 

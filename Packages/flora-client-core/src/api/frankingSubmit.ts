@@ -108,9 +108,11 @@ export async function submitFrankingMessageReport(params: {
     const decoded = decodeWrapTarget(sodium, item);
     if (decoded) pushTarget(decoded);
   }
-  // Wrap только на Active-устройства из GET server-key. `deviceUuidFromServer` на
-  // клиенте часто bootstrap-сентинел (`00000000-0000-4000-8000-000000000002`) или
-  // устаревший UUID — сервер отвечает 400 «не принадлежит активному устройству».
+  // Wrap только на цели GET server-key: Active `user_device_keys` и/или
+  // опубликованный identity key (`user_e2e_keys`, bootstrap v1).
+  // `deviceUuidFromServer` на клиенте часто bootstrap-сентинел
+  // (`00000000-0000-4000-8000-000000000002`) или устаревший UUID — сервер
+  // отвечает 400 «не принадлежит активному устройству».
 
   const assembled = assembleFrankingReportV1(sodium, {
     complaint: {

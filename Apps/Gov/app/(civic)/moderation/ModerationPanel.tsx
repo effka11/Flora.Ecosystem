@@ -7,25 +7,35 @@ import {
   apiGetFrankingReport,
   apiReleaseFrankingReport,
   apiResolveFrankingReport,
+  apiReviewFrankingReportWithIdentity,
   toFrankingFailure,
 } from "@flora/client-core/api";
-import type {
-  FrankingAuditDto,
-  FrankingReportMetaDto,
-} from "@flora/client-core/contracts";
+import type { FrankingReportMetaDto } from "@flora/client-core/contracts";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useGovFscp } from "@/app/_shell/GovFscpProvider";
 import { initGovApiClient } from "@/lib/govApiClient";
 import { govSessionStore } from "@/lib/govSessionStore";
 import {
   formatFrankingHandle,
   formatFrankingTimestamp,
+  frankingPeerAvatarLetters,
   readUserUuidFromAccessToken,
 } from "./moderationFormat";
 import {
+  DISCLOSURE_UNLOCK_COPY,
+  DISCLOSURE_WAITING_COPY,
+  loadAnketaDisclosure,
+  presentAnketaDisclosureView,
+  resolveAnketaDisclosureIntent,
+  type AnketaDisclosureView,
+} from "./moderationDisclosure";
+import {
   labelFrankingArea,
-  labelFrankingAuditEvent,
   labelFrankingCategory,
+  labelFrankingReviewedBlock,
   labelFrankingStatus,
+  labelFrankingVerification,
+  labelHasDisclosure,
 } from "./moderationLabels";
 import { SanctionMatrix } from "./SanctionMatrix";
 import {
@@ -45,7 +55,6 @@ import {
   dispatchResolveReport,
   filterQueueItems,
   loadInitialQueue,
-  loadReportAudit,
   mergeReportIntoQueue,
   refreshReportMeta,
   MODERATION_QUEUE_FILTERS,
@@ -62,12 +71,6 @@ type QueueViewState =
   | { phase: "refusal"; message: string }
   | { phase: "ready"; queue: QueueAccumulator };
 
-type AuditViewState =
-  | { phase: "idle" }
-  | { phase: "loading" }
-  | { phase: "error"; message: string }
-  | { phase: "ready"; audit: FrankingAuditDto };
-
 function createLiveFrankingDeps(): ModerationFrankingDeps {
   return {
     getQueue: apiGetFrankingQueue,
@@ -76,6 +79,7 @@ function createLiveFrankingDeps(): ModerationFrankingDeps {
     releaseReport: apiReleaseFrankingReport,
     resolveReport: apiResolveFrankingReport,
     getAudit: apiGetFrankingAudit,
+    reviewReport: (input) => apiReviewFrankingReportWithIdentity(input),
   };
 }
 
@@ -85,6 +89,7 @@ function queueMetaLine(report: FrankingReportMetaDto): string {
 
 export function ModerationPanel() {
   const deps = useMemo(() => createLiveFrankingDeps(), []);
+  const { fscpMaterial, fscpBootstrapLoading, openFscpUnlock } = useGovFscp();
   const [reloadToken, setReloadToken] = useState(0);
   const [queueOutcome, setQueueOutcome] = useState<AsyncOutcome<QueueLoadOutcome> | null>(null);
   const [appendBusy, setAppendBusy] = useState(false);
@@ -92,11 +97,14 @@ export function ModerationPanel() {
   const [selectedReport, setSelectedReport] = useState<FrankingReportMetaDto | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [auditOutcome, setAuditOutcome] = useState<AsyncOutcome<AuditViewState> | null>(null);
   const [detailReloadToken, setDetailReloadToken] = useState(0);
   const [queueFilter, setQueueFilter] = useState<ModerationQueueFilter>("open");
   const [viewMode, setViewMode] = useState<"list" | "anketa">("list");
   const [sanctionDrafts, setSanctionDrafts] = useState<Record<string, SanctionDraft>>({});
+  const [fetchedDisclosure, setFetchedDisclosure] = useState<{
+    key: string;
+    view: AnketaDisclosureView;
+  } | null>(null);
   const accessToken = useSyncExternalStore(
     (onStoreChange) => govSessionStore.subscribeSessionChanged(onStoreChange),
     () => govSessionStore.getAccessTokenSync(),
@@ -148,15 +156,6 @@ export function ModerationPanel() {
   const canEditSanctions =
     activeReport !== null && canCloseAsClaimer(activeReport, viewerUserUuid);
   const canConfirmDecision = canEditSanctions && hasSelectedSanctions(sanctionDraft);
-
-  const auditRequestKey = `${activeUuid ?? "none"}:${detailReloadToken}`;
-  const auditView: AuditViewState = (() => {
-    if (!activeUuid) return { phase: "idle" };
-    if (!auditOutcome || auditOutcome.key !== auditRequestKey) {
-      return { phase: "loading" };
-    }
-    return auditOutcome.value;
-  })();
 
   const updateQueue = useCallback((queue: QueueAccumulator) => {
     setQueueOutcome({ key: queueRequestKey, value: { kind: "ok", queue } });
@@ -212,28 +211,66 @@ export function ModerationPanel() {
         if (!cancelled) setSelectedReport(null);
       });
 
-    loadReportAudit(deps, activeUuid)
-      .then((audit) => {
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUuid, detailReloadToken, deps]);
+
+  const keysReady = Boolean(fscpMaterial?.agreementPrivateKey?.length);
+  const disclosureIntent =
+    isApplicationPage && activeReport
+      ? resolveAnketaDisclosureIntent(activeReport.status, keysReady)
+      : "idle";
+  const disclosureKey = `${isApplicationPage ? "anketa" : "list"}:${activeUuid ?? "none"}:${activeReport?.status ?? ""}:${keysReady ? "keys" : "nokeys"}:${fscpBootstrapLoading ? "boot" : "idle"}`;
+  const disclosureView = presentAnketaDisclosureView({
+    intent: disclosureIntent,
+    bootstrapLoading: fscpBootstrapLoading,
+    keysReady,
+    fetched: fetchedDisclosure,
+    fetchKey: disclosureKey,
+  });
+
+  useEffect(() => {
+    if (disclosureIntent !== "fetch" || !activeReport) {
+      return;
+    }
+    const agreementPrivateKey = fscpMaterial?.agreementPrivateKey;
+    if (!agreementPrivateKey) {
+      return;
+    }
+
+    const requestKey = disclosureKey;
+    let cancelled = false;
+    loadAnketaDisclosure({
+      deps,
+      report: activeReport,
+      viewerUserUuid,
+      agreementPrivateKey,
+    }).then(
+      (view) => {
+        if (!cancelled) setFetchedDisclosure({ key: requestKey, view });
+      },
+      () => {
         if (!cancelled) {
-          setAuditOutcome({ key: auditRequestKey, value: { phase: "ready", audit } });
+          setFetchedDisclosure({
+            key: requestKey,
+            view: { phase: "error", message: "Не удалось раскрыть сообщение." },
+          });
         }
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        const failure = toFrankingFailure(error);
-        setAuditOutcome({
-          key: auditRequestKey,
-          value: {
-            phase: "error",
-            message: failure?.message ?? "Не удалось загрузить аудит.",
-          },
-        });
-      });
+      },
+    );
 
     return () => {
       cancelled = true;
     };
-  }, [activeUuid, auditRequestKey, deps]);
+  }, [
+    disclosureIntent,
+    activeReport,
+    fscpMaterial,
+    viewerUserUuid,
+    deps,
+    disclosureKey,
+  ]);
 
   const handleLoadMore = () => {
     if (queueView.phase !== "ready" || appendBusy) return;
@@ -428,7 +465,8 @@ export function ModerationPanel() {
             viewerUserUuid={viewerUserUuid}
             showComplaintSummary
             confirmEnabled={canConfirmDecision}
-            auditView={auditView}
+            disclosureView={disclosureView}
+            onUnlockKeys={openFscpUnlock}
             actionBusy={actionBusy}
             rowError={rowErrors[activeReport.reportUuid]}
             onClaim={() => runAction(activeReport.reportUuid, "claim")}
@@ -496,7 +534,6 @@ export function ModerationPanel() {
             <ReportDetail
               report={activeReport}
               viewerUserUuid={viewerUserUuid}
-              auditView={auditView}
               actionBusy={actionBusy}
               onClaim={() => runAction(activeReport.reportUuid, "claim")}
               onReject={() => runAction(activeReport.reportUuid, "reject")}
@@ -531,7 +568,8 @@ type ReportDetailProps = {
   viewerUserUuid: string | null;
   showComplaintSummary?: boolean;
   confirmEnabled?: boolean;
-  auditView: AuditViewState;
+  disclosureView?: AnketaDisclosureView;
+  onUnlockKeys?: () => void;
   actionBusy: string | null;
   rowError?: string;
   onClaim: () => void;
@@ -545,7 +583,8 @@ function ReportDetail({
   viewerUserUuid,
   showComplaintSummary = false,
   confirmEnabled = false,
-  auditView,
+  disclosureView,
+  onUnlockKeys,
   actionBusy,
   rowError,
   onClaim,
@@ -576,7 +615,24 @@ function ReportDetail({
             <dt>Обвиняемый</dt>
             <dd>{formatFrankingHandle(report.accusedUsername)}</dd>
           </div>
+          <div className={styles.summaryRow}>
+            <dt>Раскрытие</dt>
+            <dd>{labelHasDisclosure(report.hasDisclosure)}</dd>
+          </div>
+          <div className={styles.summaryRow}>
+            <dt>Верификация</dt>
+            <dd>{labelFrankingVerification(report.verificationStatus)}</dd>
+          </div>
         </dl>
+      ) : null}
+
+      {showComplaintSummary ? (
+        <DisclosureSection
+          view={disclosureView}
+          senderHandle={formatFrankingHandle(report.accusedUsername)}
+          senderLetters={frankingPeerAvatarLetters(report.accusedUsername)}
+          onUnlockKeys={onUnlockKeys}
+        />
       ) : null}
 
       {rowError ? (
@@ -629,22 +685,84 @@ function ReportDetail({
           ) : null}
         </div>
       ) : null}
-
-      {auditView.phase === "error" ? (
-        <p className={styles.rowError} role="alert">
-          {auditView.message}
-        </p>
-      ) : null}
-      {auditView.phase === "ready" && auditView.audit.events.length > 0 ? (
-        <ol className={styles.auditList}>
-          {auditView.audit.events.map((event) => (
-            <li key={event.auditUuid} className={styles.auditItem}>
-              <span className={styles.auditEvent}>{labelFrankingAuditEvent(event.event)}</span>
-              <span className={styles.auditTime}>{formatFrankingTimestamp(event.createdAt)}</span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
     </section>
+  );
+}
+
+function DisclosureSection({
+  view,
+  senderHandle,
+  senderLetters,
+  onUnlockKeys,
+}: {
+  view?: AnketaDisclosureView;
+  senderHandle: string;
+  senderLetters: string;
+  onUnlockKeys?: () => void;
+}) {
+  if (!view || view.phase === "idle") return null;
+
+  if (view.phase === "loading") {
+    return (
+      <div className={styles.disclosure} aria-busy="true">
+        <p className={styles.disclosureStatus}>Загружаем раскрытие.</p>
+      </div>
+    );
+  }
+
+  if (view.phase === "waiting") {
+    return (
+      <div className={styles.disclosure}>
+        <p className={styles.disclosureStatus}>{DISCLOSURE_WAITING_COPY}</p>
+      </div>
+    );
+  }
+
+  if (view.phase === "unlock") {
+    return (
+      <div className={styles.disclosure}>
+        <p className={styles.disclosureStatus}>{DISCLOSURE_UNLOCK_COPY}</p>
+        {onUnlockKeys ? (
+          <button type="button" className={styles.ghost} onClick={onUnlockKeys}>
+            Разблокировать ключи
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (view.phase === "mismatch" || view.phase === "error") {
+    return (
+      <div className={styles.disclosure}>
+        <p className={styles.rowError} role="alert">
+          {view.message}
+        </p>
+      </div>
+    );
+  }
+
+  const blocks = view.result.blocks;
+  return (
+    <div className={styles.disclosure}>
+      {blocks && blocks.length > 0 ? (
+        <div className={styles.chat} aria-label={`Сообщение от ${senderHandle}`}>
+          <div className={styles.chatAvatar} aria-hidden>
+            {senderLetters}
+          </div>
+          <div className={styles.chatBubble}>
+            {blocks.map((block, index) => (
+              <p
+                key={`${block.kind}-${index}`}
+                className={block.kind === "text" ? styles.chatText : styles.chatMedia}
+              >
+                {labelFrankingReviewedBlock(block)}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className={styles.disclosureStatus}>Текст недоступен.</p>
+      )}
+    </div>
   );
 }

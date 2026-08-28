@@ -5,6 +5,7 @@ import {
 } from "@flora/client-core/api";
 import { apiLogout } from "@flora/client-core/auth";
 import { govSessionStore, runGovAuthExclusive } from "./govSessionStore";
+import { readUserUuidFromAccessToken } from "./govAccessToken";
 import { clearBrowserSessionCookie, redirectToLogin } from "./loginRedirect";
 
 /**
@@ -63,6 +64,17 @@ export async function syncGovSessionTokens(): Promise<void> {
  */
 export async function signOutGov(): Promise<void> {
   initGovApiClient();
+  const owner = readUserUuidFromAccessToken(govSessionStore.getAccessTokenSync());
+  try {
+    const { govFscpKeyStorage } = await import("./fscp/storage");
+    if (owner) {
+      await govFscpKeyStorage.clearProfile(owner.trim().toLowerCase());
+    } else {
+      await govFscpKeyStorage.clearAllProfiles();
+    }
+  } catch {
+    // Vault wipe is best-effort; session tombstone is mandatory.
+  }
   try {
     await apiLogout();
   } catch {

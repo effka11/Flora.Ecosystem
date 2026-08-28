@@ -2,6 +2,7 @@ import {
   decodeFscpBase64Url,
   getSodium,
   reviewFrankingComplaintDisclosureV1,
+  scalarmultBase,
   unwrapReportContentKeyV1,
 } from "@flora/fscp";
 import {
@@ -227,6 +228,94 @@ export async function apiReviewFrankingReport(
     apiGetFrankingServerKey(),
   ]);
   return reviewFrankingDisclosureFromResponses(disclosure, serverKey, viewer);
+}
+
+/** Thrown when no wrap in GET disclosure matches restored identity vs `wrapTargets.ownItems`. */
+export const FRANKING_NO_DEVICE_WRAP_MESSAGE = "Нет ключа раскрытия для этого устройства.";
+
+export type ReviewFrankingIdentityViewer = {
+  persistedMessageUuid: string;
+  viewerUserUuid: string;
+  agreementPrivateKey: Uint8Array;
+};
+
+function agreementPubkeysEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== 32 || right.length !== 32) return false;
+  let diff = 0;
+  for (let i = 0; i < 32; i++) diff |= left[i]! ^ right[i]!;
+  return diff === 0;
+}
+
+/**
+ * Crypto half for Gov: identity key + `wrapTargets.ownItems` pubkey match, then unwrap.
+ * `persistedMessageUuid` / `viewerUserUuid` come from report meta, not the disclosure DTO.
+ */
+export async function reviewFrankingDisclosureWithIdentityFromResponses(
+  disclosure: FrankingDisclosureDto,
+  serverKey: FrankingServerKeyDto,
+  viewer: ReviewFrankingIdentityViewer,
+): Promise<FrankingReviewerResult> {
+  const persistedMessageUuid = viewer.persistedMessageUuid.trim();
+  const viewerUserUuid = viewer.viewerUserUuid.trim();
+  if (!persistedMessageUuid) {
+    throw new Error("Нет persistedMessageUuid заявки franking.");
+  }
+  if (!viewerUserUuid) {
+    throw new Error("Нет viewerUserUuid заявки franking.");
+  }
+
+  const sodium = await getSodium();
+  const agreementPrivateKey =
+    viewer.agreementPrivateKey.length > 32
+      ? viewer.agreementPrivateKey.subarray(0, 32)
+      : viewer.agreementPrivateKey;
+  const identityPub = scalarmultBase(sodium, agreementPrivateKey);
+
+  for (const wrap of disclosure.wraps) {
+    const target = serverKey.wrapTargets.ownItems.find((item) =>
+      sameUuid(item.deviceUuid, wrap.deviceUuid),
+    );
+    if (!target) continue;
+    let targetPub: Uint8Array;
+    try {
+      targetPub = decodeFscpBase64Url(sodium, target.agreementPublicKeyBase64Url);
+    } catch {
+      continue;
+    }
+    if (!agreementPubkeysEqual(identityPub, targetPub)) continue;
+    return reviewFrankingDisclosureFromResponses(disclosure, serverKey, {
+      persistedMessageUuid,
+      viewerUserUuid,
+      viewerDeviceUuid: wrap.deviceUuid,
+      agreementPrivateKey,
+    });
+  }
+
+  throw new Error(FRANKING_NO_DEVICE_WRAP_MESSAGE);
+}
+
+/**
+ * Gov reviewer: GET disclosure + GET server-key, match identity pubkey to `ownItems`, unwrap.
+ * Does not extend frozen disclosure HTTP.
+ */
+export async function apiReviewFrankingReportWithIdentity(params: {
+  reportUuid: string;
+  persistedMessageUuid: string;
+  viewerUserUuid: string;
+  agreementPrivateKey: Uint8Array;
+}): Promise<FrankingReviewerResult> {
+  if (!params.persistedMessageUuid.trim()) {
+    throw new Error("Нет persistedMessageUuid заявки franking.");
+  }
+  const [disclosure, serverKey] = await Promise.all([
+    apiGetFrankingDisclosure(params.reportUuid),
+    apiGetFrankingServerKey(),
+  ]);
+  return reviewFrankingDisclosureWithIdentityFromResponses(disclosure, serverKey, {
+    persistedMessageUuid: params.persistedMessageUuid,
+    viewerUserUuid: params.viewerUserUuid,
+    agreementPrivateKey: params.agreementPrivateKey,
+  });
 }
 
 export async function apiCreateFrankingReport(

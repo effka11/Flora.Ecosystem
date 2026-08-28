@@ -7,6 +7,8 @@ import { decideGovGate, serverErrorText } from "@/lib/govAuthGate";
 import { govSessionStore } from "@/lib/govSessionStore";
 import { redirectToLogin } from "@/lib/loginRedirect";
 import { GovEmailWall } from "./GovEmailWall";
+import { GovFscpProvider } from "./GovFscpProvider";
+import { GovFscpUnlockModal } from "./GovFscpUnlockModal";
 import { GovShell } from "./GovShell";
 import styles from "./govAuthGate.module.css";
 import { useGovSessionKeepAlive } from "./useGovSessionKeepAlive";
@@ -140,7 +142,10 @@ export function GovAuthGate({ children }: { children: ReactNode }) {
       }
     >
       {decision === "shell" ? (
-        children
+        <GovFscpProvider>
+          {children}
+          <GovFscpUnlockModal />
+        </GovFscpProvider>
       ) : (
         <GovEmailWall
           onVerified={(security) =>

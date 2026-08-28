@@ -3,6 +3,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use flora_messaging_contracts::FrankingWrapTargetDto;
 use sqlx::PgPool;
@@ -162,6 +164,58 @@ fn wrap_targets_from_rows(rows: Vec<WrapTargetRow>) -> Vec<FrankingWrapTargetDto
         .collect()
 }
 
+/// `user_e2e_keys.public_key_base64` — identity X25519; колонка принимает и std, и url-safe.
+fn agreement_key_to_base64url(stored: &str) -> Option<String> {
+    let trimmed = stored.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let bytes = URL_SAFE_NO_PAD
+        .decode(trimmed)
+        .ok()
+        .or_else(|| URL_SAFE.decode(trimmed).ok())
+        .or_else(|| STANDARD_NO_PAD.decode(trimmed).ok())
+        .or_else(|| STANDARD.decode(trimmed).ok())?;
+    if bytes.len() != 32 {
+        return None;
+    }
+    Some(URL_SAFE_NO_PAD.encode(bytes))
+}
+
+fn wrap_targets_from_identity_rows(rows: Vec<WrapTargetRow>) -> Vec<FrankingWrapTargetDto> {
+    rows.into_iter()
+        .filter_map(|r| {
+            Some(FrankingWrapTargetDto {
+                user_uuid: r.user_uuid,
+                device_uuid: r.device_uuid,
+                agreement_public_key_base64_url: agreement_key_to_base64url(
+                    &r.agreement_public_key_base64url,
+                )?,
+            })
+        })
+        .collect()
+}
+
+/// Active `user_device_keys` first; published identity (`user_e2e_keys`) fills bootstrap v1
+/// accounts that never enrolled a device row. Same `(user, device)` keeps the device-keys key.
+fn merge_wrap_targets(
+    device: Vec<FrankingWrapTargetDto>,
+    identity: Vec<FrankingWrapTargetDto>,
+) -> Vec<FrankingWrapTargetDto> {
+    let mut seen = HashSet::with_capacity(device.len() + identity.len());
+    let mut out = Vec::with_capacity(device.len() + identity.len());
+    for target in device {
+        seen.insert((target.user_uuid, target.device_uuid));
+        out.push(target);
+    }
+    for target in identity {
+        if seen.insert((target.user_uuid, target.device_uuid)) {
+            out.push(target);
+        }
+    }
+    out
+}
+
 impl FrankingRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -224,7 +278,7 @@ impl FrankingRepo {
         &self,
         exclude_user: Uuid,
     ) -> Result<Vec<FrankingWrapTargetDto>, String> {
-        let rows: Vec<WrapTargetRow> = sqlx::query_as(
+        let device_rows: Vec<WrapTargetRow> = sqlx::query_as(
             r#"
             SELECT udk.user_uuid, udk.device_uuid, udk.agreement_public_key_base64url
             FROM flora_core.user_device_keys udk
@@ -239,14 +293,32 @@ impl FrankingRepo {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| e.to_string())?;
-        Ok(wrap_targets_from_rows(rows))
+        let identity_rows: Vec<WrapTargetRow> = sqlx::query_as(
+            r#"
+            SELECT ek.user_uuid, ek.device_uuid, ek.public_key_base64 AS agreement_public_key_base64url
+            FROM flora_core.user_e2e_keys ek
+            INNER JOIN flora_core.franking_reviewers fr
+                ON fr.user_uuid = ek.user_uuid AND fr.revoked_at IS NULL
+            WHERE ek.device_uuid IS NOT NULL
+              AND ek.user_uuid <> $1
+            ORDER BY ek.user_uuid, ek.updated_at
+            "#,
+        )
+        .bind(exclude_user)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(merge_wrap_targets(
+            wrap_targets_from_rows(device_rows),
+            wrap_targets_from_identity_rows(identity_rows),
+        ))
     }
 
     pub async fn active_own_wrap_targets(
         &self,
         user_uuid: Uuid,
     ) -> Result<Vec<FrankingWrapTargetDto>, String> {
-        let rows: Vec<WrapTargetRow> = sqlx::query_as(
+        let device_rows: Vec<WrapTargetRow> = sqlx::query_as(
             r#"
             SELECT user_uuid, device_uuid, agreement_public_key_base64url
             FROM flora_core.user_device_keys
@@ -258,9 +330,26 @@ impl FrankingRepo {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| e.to_string())?;
-        Ok(wrap_targets_from_rows(rows))
+        let identity_rows: Vec<WrapTargetRow> = sqlx::query_as(
+            r#"
+            SELECT user_uuid, device_uuid, public_key_base64 AS agreement_public_key_base64url
+            FROM flora_core.user_e2e_keys
+            WHERE user_uuid = $1 AND device_uuid IS NOT NULL
+            ORDER BY updated_at
+            "#,
+        )
+        .bind(user_uuid)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(merge_wrap_targets(
+            wrap_targets_from_rows(device_rows),
+            wrap_targets_from_identity_rows(identity_rows),
+        ))
     }
 
+    /// Wrap-capable binding: Active `user_device_keys` **or** published identity in `user_e2e_keys`.
+    /// Does not enroll a device; bootstrap v1 never writes `user_device_keys`.
     pub async fn has_active_device(
         &self,
         user_uuid: Uuid,
@@ -271,6 +360,9 @@ impl FrankingRepo {
             SELECT EXISTS(
                 SELECT 1 FROM flora_core.user_device_keys
                 WHERE user_uuid = $1 AND device_uuid = $2 AND status = 'Active'
+            ) OR EXISTS(
+                SELECT 1 FROM flora_core.user_e2e_keys
+                WHERE user_uuid = $1 AND device_uuid = $2
             )
             "#,
         )
@@ -1070,4 +1162,57 @@ async fn insert_audit_tx(
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod wrap_target_encoding_tests {
+    use super::{agreement_key_to_base64url, merge_wrap_targets};
+    use base64::Engine as _;
+    use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+    use flora_messaging_contracts::FrankingWrapTargetDto;
+    use uuid::Uuid;
+
+    #[test]
+    fn identity_key_std_and_url_safe_normalize_to_url_safe_no_pad() {
+        let raw = [7u8; 32];
+        let expected = URL_SAFE_NO_PAD.encode(raw);
+        assert_eq!(
+            agreement_key_to_base64url(&expected).as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            agreement_key_to_base64url(&STANDARD.encode(raw)).as_deref(),
+            Some(expected.as_str())
+        );
+        assert!(agreement_key_to_base64url("").is_none());
+        assert!(agreement_key_to_base64url(&URL_SAFE_NO_PAD.encode([1u8; 16])).is_none());
+    }
+
+    #[test]
+    fn merge_keeps_device_row_when_identity_repeats_same_device() {
+        let user = Uuid::from_u128(1);
+        let device = Uuid::from_u128(2);
+        let other = Uuid::from_u128(3);
+        let device_targets = vec![FrankingWrapTargetDto {
+            user_uuid: user,
+            device_uuid: device,
+            agreement_public_key_base64_url: "device-key".into(),
+        }];
+        let identity_targets = vec![
+            FrankingWrapTargetDto {
+                user_uuid: user,
+                device_uuid: device,
+                agreement_public_key_base64_url: "identity-key".into(),
+            },
+            FrankingWrapTargetDto {
+                user_uuid: user,
+                device_uuid: other,
+                agreement_public_key_base64_url: "other-key".into(),
+            },
+        ];
+        let merged = merge_wrap_targets(device_targets, identity_targets);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].agreement_public_key_base64_url, "device-key");
+        assert_eq!(merged[1].device_uuid, other);
+    }
 }

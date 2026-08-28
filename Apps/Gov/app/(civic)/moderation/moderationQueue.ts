@@ -4,10 +4,11 @@ import type {
   FrankingQueueDto,
   FrankingReportMetaDto,
   FrankingResolveDecision,
+  FrankingReviewerResult,
 } from "@flora/client-core/contracts";
 import type { FrankingAccountBlockRequest } from "@flora/client-core/api";
 
-/** Allowed franking HTTP surfaces for this slice — disclosure is intentionally absent. */
+/** Allowed franking HTTP surfaces for this slice. Disclosure only after claim. */
 export const ALLOWED_FRANKING_API_CALLS = [
   "queue",
   "get",
@@ -15,9 +16,17 @@ export const ALLOWED_FRANKING_API_CALLS = [
   "release",
   "resolve",
   "audit",
+  "disclosure",
 ] as const;
 
 export type FrankingApiOperation = (typeof ALLOWED_FRANKING_API_CALLS)[number];
+
+export type ReviewFrankingReportInput = {
+  reportUuid: string;
+  persistedMessageUuid: string;
+  viewerUserUuid: string;
+  agreementPrivateKey: Uint8Array;
+};
 
 export type ModerationFrankingDeps = {
   getQueue: (cursor?: string) => Promise<FrankingQueueDto>;
@@ -31,6 +40,7 @@ export type ModerationFrankingDeps = {
     accountBlock?: FrankingAccountBlockRequest,
   ) => Promise<FrankingReportMetaDto>;
   getAudit: (reportUuid: string) => Promise<FrankingAuditDto>;
+  reviewReport: (input: ReviewFrankingReportInput) => Promise<FrankingReviewerResult>;
 };
 
 export type RecordedFrankingCall = {
@@ -288,6 +298,7 @@ export function createRecordingFrankingDeps(handlers: {
     accountBlock?: FrankingAccountBlockRequest,
   ) => Promise<FrankingReportMetaDto>;
   getAudit?: (reportUuid: string) => Promise<FrankingAuditDto>;
+  reviewReport?: (input: ReviewFrankingReportInput) => Promise<FrankingReviewerResult>;
 }): { deps: ModerationFrankingDeps; calls: RecordedFrankingCall[] } {
   const calls: RecordedFrankingCall[] = [];
 
@@ -334,6 +345,11 @@ export function createRecordingFrankingDeps(handlers: {
       record("audit", [reportUuid]);
       if (!handlers.getAudit) throw new Error("getAudit handler missing");
       return handlers.getAudit(reportUuid);
+    },
+    async reviewReport(input) {
+      record("disclosure", [input.reportUuid, input.persistedMessageUuid, input.viewerUserUuid]);
+      if (!handlers.reviewReport) throw new Error("reviewReport handler missing");
+      return handlers.reviewReport(input);
     },
   };
 
