@@ -145,6 +145,35 @@ async fn insert_device(pool: &PgPool, user: Uuid) -> Uuid {
     device_uuid
 }
 
+async fn insert_e2e_key(pool: &PgPool, user: Uuid) -> Uuid {
+    let device_uuid = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO flora_core.user_e2e_keys
+            (user_uuid, public_key_base64, device_uuid, updated_at)
+        VALUES ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(user)
+    .bind(b64(&[9u8; 32]))
+    .bind(device_uuid)
+    .bind(Utc::now())
+    .execute(pool)
+    .await
+    .expect("insert e2e key");
+    device_uuid
+}
+
+async fn cleanup_e2e_keys(pool: &PgPool, users: &[Uuid]) {
+    if users.is_empty() {
+        return;
+    }
+    let _ = sqlx::query("DELETE FROM flora_core.user_e2e_keys WHERE user_uuid = ANY($1)")
+        .bind(users)
+        .execute(pool)
+        .await;
+}
+
 async fn cleanup(pool: &PgPool, messages: &[Uuid], reviewers: &[Uuid], devices: &[Uuid]) {
     if !messages.is_empty() {
         let _ = sqlx::query(
@@ -1155,6 +1184,84 @@ async fn resolve_applies_account_block_to_accused() {
     assert_eq!(blocks.calls().len(), 2, "rejected не добавляет бан");
 
     cleanup(&pool, &messages, &[reviewer], &[d_rev]).await;
+}
+
+#[tokio::test]
+async fn bootstrap_identity_keys_are_wrap_targets_without_device_bindings() {
+    if !enabled() {
+        eprintln!("skip: set FLORA_FRANKING_PG=1");
+        return;
+    }
+    let pool = connect().await;
+    let svc = franking(&pool, Some([17u8; 32]));
+    let sender = Uuid::now_v7();
+    let reporter = Uuid::now_v7();
+    let reviewer = Uuid::now_v7();
+    svc.merge_reviewers(&[reviewer]).await.unwrap();
+    let d_rev = insert_e2e_key(&pool, reviewer).await;
+    let d_rep = insert_e2e_key(&pool, reporter).await;
+    let msg = insert_message(&pool, sender, reporter).await;
+
+    let roster = svc.server_key_for(reporter).await;
+    assert_eq!(
+        roster
+            .wrap_targets
+            .items
+            .iter()
+            .filter(|t| t.user_uuid == reviewer && t.device_uuid == d_rev)
+            .count(),
+        1
+    );
+    assert_eq!(
+        roster
+            .wrap_targets
+            .own_items
+            .iter()
+            .filter(|t| t.user_uuid == reporter && t.device_uuid == d_rep)
+            .count(),
+        1
+    );
+
+    assert!(matches!(
+        svc.create_report(
+            reporter,
+            CreateFrankingReportRequest {
+                persisted_message_uuid: msg,
+                category: FrankingReportCategory::Abuse,
+                disclosure_ciphertext: b64(&[4u8; 32]),
+                wraps: vec![wrap(reviewer, Uuid::now_v7())],
+            },
+        )
+        .await,
+        Err(FrankingError::BadRequest(_))
+    ));
+
+    let created = svc
+        .create_report(
+            reporter,
+            CreateFrankingReportRequest {
+                persisted_message_uuid: msg,
+                category: FrankingReportCategory::Abuse,
+                disclosure_ciphertext: b64(&[4u8; 32]),
+                wraps: vec![wrap(reporter, d_rep), wrap(reviewer, d_rev)],
+            },
+        )
+        .await
+        .expect("create with identity wraps");
+    assert_eq!(created.status, FrankingReportStatus::Open);
+    assert_eq!(created.viewer_account_count, 1);
+
+    let claimed = svc.claim(reviewer, created.report_uuid).await.unwrap();
+    assert_eq!(claimed.status, FrankingReportStatus::Claimed);
+    let disc = svc
+        .disclosure(reviewer, created.report_uuid)
+        .await
+        .expect("identity wrap is viewer capability");
+    assert_eq!(disc.wraps.len(), 1);
+    assert_eq!(disc.wraps[0].device_uuid, d_rev);
+
+    cleanup(&pool, &[msg], &[reviewer], &[]).await;
+    cleanup_e2e_keys(&pool, &[reporter, reviewer]).await;
 }
 
 #[test]

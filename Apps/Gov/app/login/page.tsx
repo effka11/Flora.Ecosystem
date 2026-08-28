@@ -9,6 +9,7 @@ import { GOV_NAV_ITEMS } from "@/app/_shell/govNavigation";
 import { useViewportFrameCssVars } from "@/app/_shell/viewportFrame";
 import { initGovApiClient } from "@/lib/govApiClient";
 import { decideGovGate, serverErrorText } from "@/lib/govAuthGate";
+import { readUserUuidFromAccessToken } from "@/lib/govAccessToken";
 import { govSessionStore } from "@/lib/govSessionStore";
 import styles from "./login.module.css";
 
@@ -19,6 +20,18 @@ const SOCIAL_LOGIN_URL =
 const FIRST_CIVIC_HREF = GOV_NAV_ITEMS[0].href;
 
 type LoginStage = "credentials" | "twoFactor";
+
+async function provisionGovFscpAfterAuth(userUuid: string, accountPassword: string): Promise<void> {
+  const [{ govSyncFscpOnLogin }, { stashProvenAccountPassword }] = await Promise.all([
+    import("@/lib/fscp/syncOnLogin"),
+    import("@flora/client-core/fscp"),
+  ]);
+  const res = await govSyncFscpOnLogin(userUuid, accountPassword, { authoritativeOverwrite: true });
+  const restoreWasNeeded = res.bootstrap.status !== "ready";
+  if (restoreWasNeeded && res.failure === "transient") {
+    stashProvenAccountPassword(userUuid, accountPassword);
+  }
+}
 
 function IconEnvelope() {
   return (
@@ -132,6 +145,14 @@ function LoginPageInner() {
       }
 
       await saveLoginResponse(govSessionStore, result);
+      const userUuid = readUserUuidFromAccessToken(govSessionStore.getAccessTokenSync());
+      if (userUuid) {
+        try {
+          await provisionGovFscpAfterAuth(userUuid, password);
+        } catch {
+          // Civic shell still opens; unlock modal can restore identity.
+        }
+      }
       const security = await apiGetSecurityStatus();
       const decision = decideGovGate({
         hasAccessToken: Boolean(govSessionStore.getAccessTokenSync()),

@@ -15,7 +15,10 @@ import {
 import { configureApiClient, resetSessionRefreshStateForTests } from "./client.js";
 import {
   apiReviewFrankingReport,
+  apiReviewFrankingReportWithIdentity,
+  FRANKING_NO_DEVICE_WRAP_MESSAGE,
   reviewFrankingDisclosureFromResponses,
+  reviewFrankingDisclosureWithIdentityFromResponses,
 } from "./franking.js";
 
 import {
@@ -42,6 +45,7 @@ const SENDER_DEVICE = "99999999-9999-4999-8999-999999999999";
 const RECEIVER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const REVIEWER = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const REVIEWER_DEVICE = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const OTHER_DEVICE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 const CREATED_AT = "2026-08-22T11:59:59.001Z";
 const SERVER_RECEIVED_AT = "2026-08-22T12:00:00.123Z";
 
@@ -112,11 +116,24 @@ function plaintextUtf8(body: string): Uint8Array {
   );
 }
 
+function ownItem(
+  deviceUuid: string,
+  agreementPublicKey: Uint8Array,
+): { userUuid: string; deviceUuid: string; agreementPublicKeyBase64Url: string } {
+  return {
+    userUuid: REVIEWER,
+    deviceUuid,
+    agreementPublicKeyBase64Url: toBase64Url(agreementPublicKey),
+  };
+}
+
 function buildHttpBodies(params: {
   body: string;
   tagged: boolean;
   reviewer: ReviewerKeys;
   server: ServerKeys;
+  extraWrapTarget?: { deviceUuid: string; agreementPublicKey: Uint8Array };
+  ownItems?: Array<{ userUuid: string; deviceUuid: string; agreementPublicKeyBase64Url: string }>;
 }): {
   disclosureJson: Record<string, unknown>;
   serverKeyJson: Record<string, unknown>;
@@ -178,6 +195,15 @@ function buildHttpBodies(params: {
       createdAt: CREATED_AT,
     },
     wrapTargets: [
+      ...(params.extraWrapTarget
+        ? [
+            {
+              userUuid: REVIEWER,
+              deviceUuid: params.extraWrapTarget.deviceUuid,
+              agreementPublicKey: params.extraWrapTarget.agreementPublicKey,
+            },
+          ]
+        : []),
       {
         userUuid: REVIEWER,
         deviceUuid: REVIEWER_DEVICE,
@@ -185,13 +211,15 @@ function buildHttpBodies(params: {
       },
     ],
   });
-  const wrap = assembled.wraps[0];
-  if (!wrap) throw new Error("expected a reviewer wrap");
+  if (assembled.wraps.length === 0) throw new Error("expected a reviewer wrap");
 
   return {
     disclosureJson: {
       disclosureCiphertext: assembled.disclosureCiphertext,
-      wraps: [{ deviceUuid: wrap.deviceUuid, wrappedKey: wrap.wrappedKey }],
+      wraps: assembled.wraps.map((wrap) => ({
+        deviceUuid: wrap.deviceUuid,
+        wrappedKey: wrap.wrappedKey,
+      })),
       serverFrankReceipt,
       frankTagBase64Url,
       verificationStatus: params.tagged ? "verifiable" : "unverifiable",
@@ -199,7 +227,10 @@ function buildHttpBodies(params: {
     serverKeyJson: {
       serverFrankingKeyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       publicKeyBase64Url: toBase64Url(params.server.publicKey),
-      wrapTargets: { items: [], ownItems: [] },
+      wrapTargets: {
+        items: [],
+        ownItems: params.ownItems ?? [ownItem(REVIEWER_DEVICE, params.reviewer.publicKey)],
+      },
       reviewerRosterReady: true,
     },
   };
@@ -304,5 +335,136 @@ describe("reviewer franking surface", () => {
       blocks: [{ kind: "text", body: "жалоба через один вызов" }],
       verified: { ok: true },
     });
+  });
+
+  it("identity match + persistedMessageUuid from meta unwraps via ownItems", async () => {
+    const http = buildHttpBodies({
+      body: "раскрытие по identity",
+      tagged: true,
+      reviewer: reviewerKeys,
+      server: serverKeys,
+    });
+
+    const result = await reviewFrankingDisclosureWithIdentityFromResponses(
+      parseFrankingDisclosure(http.disclosureJson),
+      parseFrankingServerKey(http.serverKeyJson),
+      {
+        persistedMessageUuid: PERSISTED_MESSAGE,
+        viewerUserUuid: REVIEWER,
+        agreementPrivateKey: reviewerKeys.privateKey,
+      },
+    );
+
+    expect(result).toEqual({
+      blocks: [{ kind: "text", body: "раскрытие по identity" }],
+      verified: { ok: true },
+    });
+  });
+
+  it("picks the wrap whose ownItems pubkey matches when it is not first", async () => {
+    const otherKeys = sodium.crypto_box_keypair();
+    const http = buildHttpBodies({
+      body: "второй wrap",
+      tagged: true,
+      reviewer: reviewerKeys,
+      server: serverKeys,
+      extraWrapTarget: { deviceUuid: OTHER_DEVICE, agreementPublicKey: otherKeys.publicKey },
+      ownItems: [ownItem(REVIEWER_DEVICE, reviewerKeys.publicKey)],
+    });
+
+    const result = await reviewFrankingDisclosureWithIdentityFromResponses(
+      parseFrankingDisclosure(http.disclosureJson),
+      parseFrankingServerKey(http.serverKeyJson),
+      {
+        persistedMessageUuid: PERSISTED_MESSAGE,
+        viewerUserUuid: REVIEWER,
+        agreementPrivateKey: reviewerKeys.privateKey,
+      },
+    );
+
+    expect(result.blocks).toEqual([{ kind: "text", body: "второй wrap" }]);
+    expect(result.verified).toEqual({ ok: true });
+  });
+
+  it("rejects when wrap exists but ownItems pubkey does not match identity", async () => {
+    const otherKeys = sodium.crypto_box_keypair();
+    const http = buildHttpBodies({
+      body: "чужой pubkey",
+      tagged: true,
+      reviewer: reviewerKeys,
+      server: serverKeys,
+      ownItems: [ownItem(REVIEWER_DEVICE, otherKeys.publicKey)],
+    });
+
+    await expect(
+      reviewFrankingDisclosureWithIdentityFromResponses(
+        parseFrankingDisclosure(http.disclosureJson),
+        parseFrankingServerKey(http.serverKeyJson),
+        {
+          persistedMessageUuid: PERSISTED_MESSAGE,
+          viewerUserUuid: REVIEWER,
+          agreementPrivateKey: reviewerKeys.privateKey,
+        },
+      ),
+    ).rejects.toThrow(FRANKING_NO_DEVICE_WRAP_MESSAGE);
+  });
+
+  it("rejects identity review without persistedMessageUuid", async () => {
+    const http = buildHttpBodies({
+      body: "нет uuid",
+      tagged: true,
+      reviewer: reviewerKeys,
+      server: serverKeys,
+    });
+
+    await expect(
+      reviewFrankingDisclosureWithIdentityFromResponses(
+        parseFrankingDisclosure(http.disclosureJson),
+        parseFrankingServerKey(http.serverKeyJson),
+        {
+          persistedMessageUuid: "  ",
+          viewerUserUuid: REVIEWER,
+          agreementPrivateKey: reviewerKeys.privateKey,
+        },
+      ),
+    ).rejects.toThrow("Нет persistedMessageUuid заявки franking.");
+  });
+
+  it("apiReviewFrankingReportWithIdentity hits both GETs and requires persistedMessageUuid", async () => {
+    const http = buildHttpBodies({
+      body: "gov identity call",
+      tagged: true,
+      reviewer: reviewerKeys,
+      server: serverKeys,
+    });
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (String(url).endsWith(`/reports/${REPORT_UUID}/disclosure`)) {
+        return Response.json(http.disclosureJson);
+      }
+      if (String(url).endsWith("/api/messaging/franking/server-key")) {
+        return Response.json(http.serverKeyJson);
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    setupClient(fetchImpl);
+
+    await expect(
+      apiReviewFrankingReportWithIdentity({
+        reportUuid: REPORT_UUID,
+        persistedMessageUuid: "",
+        viewerUserUuid: REVIEWER,
+        agreementPrivateKey: reviewerKeys.privateKey,
+      }),
+    ).rejects.toThrow("Нет persistedMessageUuid заявки franking.");
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    const result = await apiReviewFrankingReportWithIdentity({
+      reportUuid: REPORT_UUID,
+      persistedMessageUuid: PERSISTED_MESSAGE,
+      viewerUserUuid: REVIEWER,
+      agreementPrivateKey: reviewerKeys.privateKey,
+    });
+    expect(result.blocks).toEqual([{ kind: "text", body: "gov identity call" }]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

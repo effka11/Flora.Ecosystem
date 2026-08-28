@@ -18,6 +18,13 @@
   --flora-gray-divider: color-mix(in srgb, var(--flora-gray) 14%, var(--flora-bg) 86%);
   --flora-grid-step: 15px;
   --flora-grid-step-fine: 5px;
+  /* Те же производные, что у чужого пузыря в Social (не импорт Web). */
+  --flora-text-on-bubble: #f2f4f2;
+  --flora-accent-fill-subtle-hover: #21281e;
+  --flora-green-bubble: #495b3e;
+  --flora-reserve-surface-them: #111210;
+  --flora-reserve-bubble-them-bg: var(--flora-reserve-surface-them);
+  --flora-reserve-substrate-gray-muted: #1c1d1b;
   /* 20% / 10% green-light + bg */
   --flora-grid-line: #2a3325;
   --flora-grid-line-fine: #1b2019;

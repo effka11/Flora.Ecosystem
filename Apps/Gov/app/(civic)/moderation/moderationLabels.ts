@@ -1,7 +1,7 @@
 import type {
-  FrankingAuditEvent,
   FrankingReportCategory,
   FrankingReportStatus,
+  FrankingReviewedBlock,
   FrankingVerificationStatus,
 } from "@flora/client-core/contracts";
 
@@ -26,17 +26,6 @@ const VERIFICATION_LABELS: Record<FrankingVerificationStatus, string> = {
   unverifiable: "Неверифицируемая",
 };
 
-const AUDIT_EVENT_LABELS: Record<FrankingAuditEvent, string> = {
-  wrapCreated: "Создан wrap",
-  wrapDestroyed: "Wrap уничтожен",
-  claimed: "Занята",
-  released: "Освобождена",
-  forwarded: "Передана",
-  disclosureFetched: "Раскрытие запрошено",
-  resolved: "Закрыта",
-  rejected: "Отклонена",
-};
-
 export function labelFrankingCategory(category: FrankingReportCategory): string {
   return CATEGORY_LABELS[category];
 }
@@ -54,10 +43,21 @@ export function labelFrankingVerification(status: FrankingVerificationStatus): s
   return VERIFICATION_LABELS[status];
 }
 
-export function labelFrankingAuditEvent(event: FrankingAuditEvent): string {
-  return AUDIT_EVENT_LABELS[event];
-}
-
 export function labelHasDisclosure(hasDisclosure: boolean): string {
   return hasDisclosure ? "Есть" : "Нет";
+}
+
+export function labelFrankingReviewedBlock(block: FrankingReviewedBlock): string {
+  switch (block.kind) {
+    case "text":
+      return block.body;
+    case "voice":
+      return "Голос";
+    case "image":
+      return "Фото";
+    case "video":
+      return "Видео";
+    case "unknown":
+      return block.originalKind;
+  }
 }

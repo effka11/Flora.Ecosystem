@@ -129,7 +129,7 @@ test("409 on claim is a recoverable per-row failure with the server text", async
   assert.equal(outcome.failure.message, ALREADY_CLAIMED);
 });
 
-test("moderation logic never records a disclosure API call", async () => {
+test("disclosure is not recorded until claimed review runs", async () => {
   const audit: FrankingAuditDto = { viewerAccountCount: 1, events: [] };
   const claimed: FrankingReportMetaDto = { ...REPORT_A, status: "claimed" };
 
@@ -156,18 +156,7 @@ test("moderation logic never records a disclosure API call", async () => {
 
   assertAllowedFrankingCalls(calls);
   const recorded = new Set(calls.map((call) => call.operation));
-  for (const operation of recorded) {
-    assert.ok(
-      (ALLOWED_FRANKING_API_CALLS as readonly string[]).includes(operation),
-      `unexpected operation ${operation}`,
-    );
-  }
-  assert.equal((recorded as Set<string>).has("disclosure"), false);
-
-  const allowedSet = new Set<string>(ALLOWED_FRANKING_API_CALLS);
-  for (const call of calls) {
-    assert.ok(allowedSet.has(call.operation));
-  }
+  assert.equal(recorded.has("disclosure"), false);
 });
 
 test("open filter keeps only unclaimed reports", () => {

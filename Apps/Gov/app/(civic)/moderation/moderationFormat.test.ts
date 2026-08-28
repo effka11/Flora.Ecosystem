@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatFrankingHandle, readUserUuidFromAccessToken } from "./moderationFormat";
+import { formatFrankingHandle, frankingPeerAvatarLetters, readUserUuidFromAccessToken } from "./moderationFormat";
 
 function jwtWithSub(sub: string): string {
   const payload = Buffer.from(JSON.stringify({ sub }), "utf8").toString("base64url");
@@ -29,4 +29,10 @@ test("formatFrankingHandle prefixes a public username with @", () => {
   assert.equal(formatFrankingHandle("  @carol  "), "@carol");
   assert.equal(formatFrankingHandle(null), "неизвестно");
   assert.equal(formatFrankingHandle("   "), "неизвестно");
+});
+
+test("frankingPeerAvatarLetters uses the same two-letter SoT as Social avatars", () => {
+  assert.equal(frankingPeerAvatarLetters("csacas"), "CS");
+  assert.equal(frankingPeerAvatarLetters("@effka"), "EF");
+  assert.equal(frankingPeerAvatarLetters(null), "?");
 });
