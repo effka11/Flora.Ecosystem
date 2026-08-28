@@ -87,39 +87,39 @@ export function FloraAvatar({
   const [imageFailed, setImageFailed] = useState(false);
   const trimmedPreview = personBlocked ? "" : (previewUri?.trim() ?? "");
   const trimmedUuid = personBlocked ? "" : (avatarUuid?.trim() ?? "");
-  const showPreview = trimmedPreview.length > 0 && !imageFailed;
-  const showRemote = !showPreview && trimmedUuid.length > 0 && !imageFailed;
   const colorSeed = seed?.trim() || username.trim() || displayName.trim();
   const initials = communityName ? communityInitials(communityName) : profileInitials(displayName, username);
   const backgroundColor = resolveDefaultAvatarColor(colorSeed);
 
-  useEffect(() => {
-    setImageFailed(false);
-  }, [trimmedPreview, trimmedUuid]);
-  const imageUri = useMemo(() => {
-    if (showPreview) return trimmedPreview;
-    if (!showRemote) return null;
+  const remoteUri = useMemo(() => {
+    if (!trimmedUuid) return "";
     const base = avatarImageUrl(trimmedUuid);
     // avatarImageUrl already has `?fmt=fri`; bust with `&v=`.
     return cacheVersion > 0 ? `${base}&v=${cacheVersion}` : base;
-  }, [cacheVersion, showPreview, showRemote, trimmedPreview, trimmedUuid]);
+  }, [cacheVersion, trimmedUuid]);
   // Avatars live outside feed viewability scopes; force decode or FRI never resolves.
   // Decode at the actual rendered size (a 45px circle never needs a 2048px PNG)
   // and on the dedicated avatar lane so a burst of avatars can't queue ahead
   // of post images. Local draft previews skip FRI decode.
-  const resolvedImageUri = useFrcImageUri(showPreview ? "" : (imageUri ?? ""), {
+  // Keep decoding even after onError: a missing cache file must not unmount
+  // the FRI subscription, or the avatar stays on initials forever.
+  const resolvedImageUri = useFrcImageUri(trimmedPreview ? "" : remoteUri, {
     force: true,
     displayWidth: size,
     lane: "avatar",
   });
-  const displayUri = showPreview ? trimmedPreview : resolvedImageUri;
+  const displayUri = trimmedPreview || resolvedImageUri;
 
-  const content = imageUri && displayUri ? (
+  useEffect(() => {
+    setImageFailed(false);
+  }, [trimmedPreview, trimmedUuid, resolvedImageUri]);
+
+  const content = displayUri && !imageFailed ? (
     <Image
       source={{ uri: displayUri }}
       style={{ width: size, height: size, borderRadius: size / 2 }}
       contentFit="cover"
-      cachePolicy={isLocalDecodedUri(displayUri) || showPreview ? "memory" : "memory-disk"}
+      cachePolicy={isLocalDecodedUri(displayUri) || Boolean(trimmedPreview) ? "memory" : "memory-disk"}
       recyclingKey={displayUri}
       transition={0}
       onError={() => setImageFailed(true)}

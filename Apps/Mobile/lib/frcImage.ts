@@ -1,6 +1,6 @@
 import { useRecyclingState } from "@shopify/flash-list";
 import { File, Paths } from "expo-file-system";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, PixelRatio } from "react-native";
 import {
   decodeFrcFileToPng,
@@ -341,11 +341,11 @@ function seedResolvedUri(uri: string, bucket: number): string {
 /**
  * Sticky decoded URI for a remote FRI image.
  *
- * The value is cleared only when `uri` itself changes, and then synchronously
- * in the render phase, so a recycled row never paints the previous post's
- * image and nothing else can blank a frame that is already on screen — not a
- * re-run of the effects, not a failed decode, not a lost race between an
- * unsubscribe and its immediate re-subscribe.
+ * The value is cleared when `uri` itself changes (synchronously in render, so
+ * a recycled row never paints the previous post's image) and when the decoded
+ * file on disk has already been deleted — in that case the pixels are gone
+ * and keeping a dead `file:` URI would pin expo-image on a missing path with
+ * no pipeline subscription. A failed decode still does not blank.
  */
 export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {}): string {
   const { imageIndex = 0, force = false, displayWidth, lane = "post" } = options;
@@ -358,6 +358,7 @@ export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {})
   const waitingSinceRef = useRef<number | null>(null);
   const priorityRef = useRef(priority);
   const subscriptionRef = useRef<QueueSubscription | null>(null);
+  const [maintenanceEpoch, setMaintenanceEpoch] = useState(0);
 
   // Only `uri` resets the value: a bucket change is an upgrade of the same
   // picture and must not blank the cell while the new variant decodes.
@@ -378,9 +379,11 @@ export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {})
       const shown = shownRef.current;
       if (shown === next) return;
       if (shown !== "" && next === "") {
-        // The bug this hook exists to prevent: keep the pixels, count the attempt.
-        diagnostics.blanked += 1;
-        return;
+        if (!(isLocalDecodedUri(shown) && !imageCache().fileExists(shown))) {
+          // Keep live pixels; a failed decode or a lost race must not flicker.
+          diagnostics.blanked += 1;
+          return;
+        }
       }
       if (next !== "" && waitingSinceRef.current !== null) {
         diagnostics.firstPaintSamples += 1;
@@ -415,6 +418,10 @@ export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {})
     return () => cache.unpinFile(resolved);
   }, [resolved]);
 
+  useEffect(() => imageCache().subscribeMaintenance(() => {
+    setMaintenanceEpoch((epoch) => epoch + 1);
+  }), []);
+
   // Pipeline subscription: torn down for a new key or a closed gate, never for
   // a priority change. Cache hits discovered after render and pipeline results
   // share the same commit gate; only the render-phase seed above bypasses it.
@@ -431,15 +438,23 @@ export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {})
       });
     };
 
-    const cached = imageCache().peek(uri, bucket);
+    const cache = imageCache();
+    const cached = cache.peek(uri, bucket);
+    const shown = shownRef.current;
+    const shownMissing =
+      shown !== "" && isLocalDecodedUri(shown) && !cache.fileExists(shown);
     // A smaller variant only fills a hole: it is stretched by expo-image until
     // the requested bucket arrives, and it never replaces a better frame.
-    if (cached && (cached.exact || !shownRef.current)) deliver(cached.uri);
+    // Drop a dead file URI synchronously: a buffered empty commit would be
+    // cancelled by the re-decode of the same path, and commit() would then
+    // no-op, leaving expo-image stuck on a missing file.
+    if (shownMissing) commit("");
+    else if (cached && (cached.exact || !shown)) deliver(cached.uri);
 
     let subscription: QueueSubscription | null = null;
-    if (!cached?.exact && decodeAllowed) {
+    if ((!cached?.exact || shownMissing) && decodeAllowed) {
       // Perceived-load window opens only while the cell has nothing to show.
-      waitingSinceRef.current = shownRef.current ? null : performance.now();
+      waitingSinceRef.current = shownRef.current && !shownMissing ? null : performance.now();
 
       subscription = imagePipeline.subscribe(
         decodeTaskKey(uri, bucket),
@@ -464,7 +479,7 @@ export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {})
       subscription?.unsubscribe();
       waitingSinceRef.current = null;
     };
-  }, [bucket, commit, decodeAllowed, lane, uri]);
+  }, [bucket, commit, decodeAllowed, lane, maintenanceEpoch, uri]);
 
   // Re-rank in place: a row moving between viewability bands changes where its
   // decode sits in the queue, not whether it is queued at all.

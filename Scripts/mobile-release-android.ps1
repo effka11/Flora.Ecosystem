@@ -41,11 +41,11 @@ if (-not (Test-Path $envFile)) {
     throw "Missing Apps/Mobile/.env with EXPO_PUBLIC_API_URL (see .env.production.example)."
 }
 
-# Sideload REST through Cloudflare (social.*). Grey origin.* is SSE / oversized PUT only.
-# Set here so a stale origin URL in dotenv cannot win (dotenv does not override existing vars).
+# Sideload REST through Cloudflare (social.*). Do not bake a grey origin.* URL:
+# that host is reachable from networks where CF is blocked.
 $env:EXPO_PUBLIC_API_URL = "https://social.flora-s.net"
 $env:EXPO_PUBLIC_GOV_URL = "https://gov.flora-s.net"
-$env:EXPO_PUBLIC_ORIGIN_URL = "https://origin.flora-s.net"
+Remove-Item Env:EXPO_PUBLIC_ORIGIN_URL -ErrorAction SilentlyContinue
 Write-Host "EXPO_PUBLIC_API_URL=$($env:EXPO_PUBLIC_API_URL) (Cloudflare Social CDN)"
 
 $env:ANDROID_HOME = $sdk
@@ -68,6 +68,7 @@ Write-Host "Android native mode: $nativeBuildMode"
 . (Join-Path $PSScriptRoot "mobile-flora-version.ps1")
 . (Join-Path $PSScriptRoot "patch-release-gradle-props.ps1")
 . (Join-Path $PSScriptRoot "mobile-android-env.ps1")
+Ensure-FrcIAndroidNative $root
 Ensure-FscpSecurePushAndroidNative $root
 
 function Stop-AndroidGradleDaemons([string]$androidDir) {

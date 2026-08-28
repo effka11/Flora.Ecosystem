@@ -16,7 +16,7 @@ export const FLORA_DOWNLOAD_PAGE = FLORA_DOWNLOAD_PAGE_URL;
 /** @deprecated Use FLORA_DOWNLOAD_PAGE — kept for call sites during rename. */
 export const FLORA_GITHUB_RELEASES_URL = FLORA_DOWNLOAD_PAGE_URL;
 
-const FLORA_SOCIAL_VERSION_FALLBACK = "0.13.2-alpha";
+const FLORA_SOCIAL_VERSION_FALLBACK = "0.13.3-alpha";
 
 /** Installed Flora Social version (from Expo manifest). */
 export function getFloraSocialAppVersion(): string {

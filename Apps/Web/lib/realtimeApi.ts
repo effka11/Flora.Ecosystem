@@ -1,18 +1,17 @@
 import { resolvePublicApiRoot } from "@/lib/auth";
 
 /**
- * SSE must bypass Selectel CDN (social.*): long-lived event-stream is buffered or cut off at the edge.
- * Browser calls origin.<apex> directly with Bearer token; API CORS allows social.*.
+ * SSE uses the same host as the rest of the Web app (`social.*` through
+ * Cloudflare). A public grey `origin.*` would be reachable from networks
+ * that block CF. nginx already proxies `/api/auth/signals/stream` to
+ * flora-api with buffering off; Cloudflare may recycle the connection ~100s,
+ * and `connectSignalsStream` reconnects.
+ *
+ * `NEXT_PUBLIC_REALTIME_API_BASE_URL` is an explicit override for local/dev
+ * only — production deploy must not set it.
  */
 export function resolveRealtimeStreamApiRoot(): string {
-  if (typeof window === "undefined") return resolvePublicApiRoot();
-
   const explicit = (process.env.NEXT_PUBLIC_REALTIME_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
   if (explicit) return explicit;
-
-  const host = window.location.hostname;
-  const social = /^social\.(.+)$/.exec(host);
-  if (social) return `https://origin.${social[1]}`;
-
   return resolvePublicApiRoot();
 }

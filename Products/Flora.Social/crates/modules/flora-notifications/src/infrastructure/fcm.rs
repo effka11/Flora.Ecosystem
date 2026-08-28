@@ -797,7 +797,7 @@ mod tests {
     fn secure_message_payload_contains_only_ciphertext_and_generic_body() {
         let data = secure_message_data(
             "Отправитель",
-            Some("https://origin.flora-s.net/api/auth/avatar/example?fmt=png"),
+            Some("https://social.flora-s.net/api/auth/avatar/example?fmt=png"),
             Uuid::now_v7(),
             Uuid::now_v7(),
             Uuid::now_v7(),
@@ -818,7 +818,7 @@ mod tests {
         );
         assert_eq!(
             data.get("senderAvatarUrl").map(String::as_str),
-            Some("https://origin.flora-s.net/api/auth/avatar/example?fmt=png")
+            Some("https://social.flora-s.net/api/auth/avatar/example?fmt=png")
         );
         assert!(!data.contains_key("messagePreview"));
         assert!(!data.contains_key("preview"));

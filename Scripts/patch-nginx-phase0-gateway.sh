@@ -33,4 +33,4 @@ fi
 nginx -t
 systemctl reload nginx
 echo "nginx reloaded; API upstream -> 127.0.0.1:${TARGET}"
-curl -fsSI https://origin.flora-s.net/health 2>/dev/null | head -n 5 || curl -fsS http://127.0.0.1/health -H 'Host: origin.flora-s.net' || true
+curl -fsS http://127.0.0.1/health -H 'Host: origin.flora-s.net' || true

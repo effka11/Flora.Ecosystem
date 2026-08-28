@@ -29,6 +29,23 @@ function nonce(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** Listing names may arrive percent-encoded (`hash%40128.jpg`). */
+function finalCacheKey(name: string): string | undefined {
+  let decoded = name;
+  try {
+    decoded = decodeURIComponent(name);
+  } catch {
+    decoded = name;
+  }
+  return FINAL_NAME.exec(decoded)?.[1];
+}
+
+function fileExistsAtUri(uri: string): boolean {
+  if (new File(uri).exists) return true;
+  const alt = uri.includes("%40") ? uri.replace(/%40/gi, "@") : uri.replace(/@/g, "%40");
+  return alt !== uri && new File(alt).exists;
+}
+
 export function createExpoFrcCacheBackend(): FrcCacheBackend {
   const dir = new Directory(Paths.cache, CACHE_NAMESPACE);
   const fileFor = (name: string) => new File(dir, name);
@@ -42,9 +59,9 @@ export function createExpoFrcCacheBackend(): FrcCacheBackend {
       if (!dir.exists) return out;
       for (const entry of dir.list()) {
         if (!(entry instanceof File)) continue;
-        const match = FINAL_NAME.exec(entry.name);
-        if (!match) continue;
-        out.push({ key: match[1], uri: entry.uri, size: entry.size ?? 0 });
+        const key = finalCacheKey(entry.name);
+        if (!key) continue;
+        out.push({ key, uri: entry.uri, size: entry.size ?? 0 });
       }
       return out;
     },
@@ -67,7 +84,7 @@ export function createExpoFrcCacheBackend(): FrcCacheBackend {
       return fileFor(`${key}.${nonce()}.${suffix}${PART_SUFFIX}`).uri;
     },
     fileExists(uri) {
-      return new File(uri).exists;
+      return fileExistsAtUri(uri);
     },
     fileSize(uri) {
       return new File(uri).size ?? 0;

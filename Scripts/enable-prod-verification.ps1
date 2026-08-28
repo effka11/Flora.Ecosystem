@@ -87,7 +87,7 @@ finally {
 if (-not $SkipApiDeploy) {
     Write-Host "Deploying API with production SMTP guard..."
     Push-Location (Join-Path $repo "Apps\Web")
-    & .\scripts\deploy.ps1 -SkipBuild -Server $Server -User $User -IdentityFile $IdentityFile -Domain flora-s.net -PublicSubdomain social -PublicApiBaseUrl "https://origin.flora-s.net" -AllowedClientIps "-"
+    & .\scripts\deploy.ps1 -SkipBuild -Server $Server -User $User -IdentityFile $IdentityFile -Domain flora-s.net -PublicSubdomain social -AllowedClientIps "-"
     Pop-Location
 }
 else {

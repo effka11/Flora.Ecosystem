@@ -15,6 +15,7 @@ object UpdateTrayNotifier {
   private const val NOTIF_ID_UPDATE = 0x710A0001
   private const val NOTIF_ID_READY = 0x710A0002
   private const val NOTIF_ID_CONFIRM = 0x710A0003
+  private const val NOTIF_ID_FAILED = 0x710A0004
 
   private fun smallIcon(context: Context): Int {
     val id = context.resources.getIdentifier("notification_icon", "drawable", context.packageName)
@@ -60,6 +61,23 @@ object UpdateTrayNotifier {
       NotificationManagerCompat.from(context).notify(NOTIF_ID_UPDATE, notification)
     } catch (_: SecurityException) {
       // POST_NOTIFICATIONS denied — silent path still continues.
+    }
+  }
+
+  fun showDownloadFailed(context: Context) {
+    ensureChannel(context)
+    val notification = NotificationCompat.Builder(context, CHANNEL_UPDATE_ID)
+      .setSmallIcon(smallIcon(context))
+      .setContentTitle("Flora")
+      .setContentText("Не удалось скачать обновление")
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setCategory(NotificationCompat.CATEGORY_ERROR)
+      .setAutoCancel(false)
+      .setOngoing(false)
+      .build()
+    try {
+      NotificationManagerCompat.from(context).notify(NOTIF_ID_FAILED, notification)
+    } catch (_: SecurityException) {
     }
   }
 

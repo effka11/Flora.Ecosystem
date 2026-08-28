@@ -48,6 +48,9 @@ npm run ci
 # Flora Social (API + web) → VPS
 .\Scripts\deploy-flora-social.ps1
 
+# Flora Gov (Next :3001) → VPS (nginx gov.* уже с social bootstrap)
+.\Scripts\deploy-flora-gov.ps1
+
 # Android APK → Apps/Mobile/dist/flora-v<version>.apk
 # (+ flora.social-android-update.json with versionCode / sha256 / sizeBytes)
 .\Scripts\mobile-release-android.ps1
@@ -85,6 +88,7 @@ npm run ci
 - [ ] `git commit -S` — `chore(ecosystem): v<version> release`
 - [ ] Теги `ecosystem/v<version>`, `social/v<version>` (push на remote)
 - [ ] `Scripts/deploy-flora-social.ps1` (API + web)
+- [ ] `Scripts/deploy-flora-gov.ps1` (Gov Next :3001)
 - [ ] nginx `/apk/` на VPS (если ещё не пропатчен)
 - [ ] `Scripts/mobile-release-android.ps1 -PublishChannel`
 - [ ] `send-apk-auto-update.ps1` (рекомендуется: fallback UX)

@@ -25,7 +25,6 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://social.flora-s.net",
         "EXPO_PUBLIC_GOV_URL": "https://gov.flora-s.net",
-        "EXPO_PUBLIC_ORIGIN_URL": "https://origin.flora-s.net",
         "FLORA_DISABLE_SIDELOAD_UPDATES": "1"
       },
       "android": {

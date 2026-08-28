@@ -74,13 +74,12 @@ Set-Location $WebRoot
 
 $resolvedPublic = $PublicApiBaseUrl.Trim().TrimEnd("/")
 if (-not [string]::IsNullOrWhiteSpace($resolvedPublic)) {
-    throw "-PublicApiBaseUrl is incompatible with host-only HttpOnly auth/media cookies. Keep Web API same-origin; use NEXT_PUBLIC_REALTIME_API_BASE_URL only for SSE."
+    throw "-PublicApiBaseUrl is incompatible with host-only HttpOnly auth/media cookies. Keep Web API same-origin (including SSE)."
 }
 Remove-Item Env:NEXT_PUBLIC_API_BASE_URL -ErrorAction SilentlyContinue
+Remove-Item Env:NEXT_PUBLIC_REALTIME_API_BASE_URL -ErrorAction SilentlyContinue
 Write-Host ('NEXT_PUBLIC_API_BASE_URL=(same-origin); browser calls /api/* on https://' + $PublicSubdomain + '.' + $Domain)
-
-$env:NEXT_PUBLIC_REALTIME_API_BASE_URL = "https://origin.$Domain"
-Write-Host "NEXT_PUBLIC_REALTIME_API_BASE_URL=$($env:NEXT_PUBLIC_REALTIME_API_BASE_URL) (SSE bypass CDN)"
+Write-Host "NEXT_PUBLIC_REALTIME_API_BASE_URL=(unset; SSE same-origin via Cloudflare)"
 
 $resolvedAllowIps = $AllowedClientIps.Trim()
 if ($resolvedAllowIps -eq "-") {

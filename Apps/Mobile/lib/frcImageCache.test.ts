@@ -570,6 +570,98 @@ describe("FrcImageCache", () => {
     expect(cold.cache.stats().totalBytes).toBe(PNG_BYTES.length);
   });
 
+  it("adopts a directory URI that differs only by encoding and does not delete the file", async () => {
+    const { store } = fakeStore();
+    const first = fakeBackend();
+    const warm = makeCache(first.backend, { index: store });
+    const kept = await warm.cache.resolve("https://x/kept", { bucket: MID_BUCKET });
+    warm.cache.flushIndex();
+
+    const encodedUri = kept.uri.replace("@", "%40");
+    const second = fakeBackend();
+    second.files.set(encodedUri, {
+      bytes: new Uint8Array(PNG_BYTES.length),
+      part: false,
+      final: true,
+      key: kept.uri.replace("final://", "").replace(/\.(?:png|jpg)$/, ""),
+    });
+    const cold = makeCache(second.backend, { index: store });
+    cold.cache.init();
+    const listened: number[] = [];
+    cold.cache.subscribeMaintenance(() => {
+      listened.push(1);
+    });
+    cold.cache.pinFile(kept.uri);
+
+    cold.runDeferred();
+
+    expect(listened).toEqual([1]);
+    expect(second.files.has(encodedUri)).toBe(true);
+    expect(cold.cache.peek("https://x/kept", MID_BUCKET)).toEqual({
+      uri: encodedUri,
+      exact: true,
+    });
+  });
+
+  it("does not delete a pinned or leased file that the index no longer claims", async () => {
+    const { backend, files } = fakeBackend();
+    const { cache, runDeferred } = makeCache(backend);
+    const kept = await cache.resolve("https://x/kept", { bucket: MID_BUCKET });
+    const leased = await cache.resolve("https://x/leased", { bucket: MID_BUCKET });
+    cache.flushIndex();
+    files.set("final://orphan@512.png", {
+      bytes: new Uint8Array(4),
+      part: false,
+      final: true,
+      key: "orphan@512",
+    });
+
+    const { store } = fakeStore();
+    const cold = makeCache(backend, { index: store });
+    cold.cache.init();
+    cold.cache.pinFile(kept.uri);
+    cold.cache.acquire("https://x/leased", MID_BUCKET);
+    cold.runDeferred();
+
+    expect(files.has(kept.uri)).toBe(true);
+    expect(files.has(leased.uri)).toBe(true);
+    expect(files.has("final://orphan@512.png")).toBe(false);
+  });
+
+  it("does not sweep an in-flight part whose listing URI is percent-encoded", async () => {
+    let releaseDownload = () => {};
+    const pending = new Promise<void>((resolve) => {
+      releaseDownload = resolve;
+    });
+    const { backend, files } = fakeBackend({ gate: () => pending });
+    const originalList = backend.listPartUris;
+    backend.listPartUris = () => originalList().map((uri) => uri.replace(/@/g, "%40"));
+    const originalDelete = backend.deleteFile;
+    const deleted: string[] = [];
+    backend.deleteFile = (uri) => {
+      deleted.push(uri);
+      originalDelete(uri);
+    };
+
+    const { cache, runDeferred } = makeCache(backend);
+    const inFlight = cache.resolve("https://x/a");
+    await Promise.resolve();
+    const streaming = [...files.keys()].filter((uri) => files.get(uri)?.part);
+    expect(streaming).toHaveLength(1);
+
+    files.set("part://stale.fri.part", { bytes: new Uint8Array(3), part: true, final: false });
+    runDeferred();
+
+    expect(deleted).toContain("part://stale.fri.part");
+    expect(files.has(streaming[0])).toBe(true);
+    expect(deleted).not.toContain(streaming[0]);
+    expect(deleted).not.toContain(streaming[0].replace(/@/g, "%40"));
+
+    releaseDownload();
+    const result = await inFlight;
+    expect(files.has(result.uri)).toBe(true);
+  });
+
   it("never sweeps the part file of a download that is still in flight", async () => {
     let releaseDownload = () => {};
     const pending = new Promise<void>((resolve) => {
