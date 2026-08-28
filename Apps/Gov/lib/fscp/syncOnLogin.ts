@@ -12,7 +12,11 @@ export async function govSyncFscpOnLogin(
     storage: govFscpKeyStorage,
     ownerUserUuid,
     accountPassword,
+    // Civic origin is restore-only for identity: never publish a stale Gov vault
+    // over Social `user_e2e_keys`. Password login/unlock replaces local from backup.
     preferBackupOverLocal: false,
+    forceRestoreFromBackupOnLogin: true,
+    autoPublishOnMismatch: false,
     authoritativeOverwrite: options?.authoritativeOverwrite ?? false,
   });
 }

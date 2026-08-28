@@ -197,19 +197,27 @@ fn wrap_targets_from_identity_rows(rows: Vec<WrapTargetRow>) -> Vec<FrankingWrap
 }
 
 /// Active `user_device_keys` first; published identity (`user_e2e_keys`) fills bootstrap v1
-/// accounts that never enrolled a device row. Same `(user, device)` keeps the device-keys key.
+/// accounts that never enrolled a device row. Same `(user, device)` keeps the device row when
+/// the pubkeys match; a different identity pubkey replaces it so backup restore can unwrap.
 fn merge_wrap_targets(
     device: Vec<FrankingWrapTargetDto>,
     identity: Vec<FrankingWrapTargetDto>,
 ) -> Vec<FrankingWrapTargetDto> {
-    let mut seen = HashSet::with_capacity(device.len() + identity.len());
+    let mut index: HashMap<(Uuid, Uuid), usize> =
+        HashMap::with_capacity(device.len() + identity.len());
     let mut out = Vec::with_capacity(device.len() + identity.len());
     for target in device {
-        seen.insert((target.user_uuid, target.device_uuid));
+        index.insert((target.user_uuid, target.device_uuid), out.len());
         out.push(target);
     }
     for target in identity {
-        if seen.insert((target.user_uuid, target.device_uuid)) {
+        let key = (target.user_uuid, target.device_uuid);
+        if let Some(&idx) = index.get(&key) {
+            if out[idx].agreement_public_key_base64_url != target.agreement_public_key_base64_url {
+                out[idx] = target;
+            }
+        } else {
+            index.insert(key, out.len());
             out.push(target);
         }
     }
@@ -1189,20 +1197,20 @@ mod wrap_target_encoding_tests {
     }
 
     #[test]
-    fn merge_keeps_device_row_when_identity_repeats_same_device() {
+    fn merge_keeps_device_row_when_identity_repeats_same_device_and_key() {
         let user = Uuid::from_u128(1);
         let device = Uuid::from_u128(2);
         let other = Uuid::from_u128(3);
         let device_targets = vec![FrankingWrapTargetDto {
             user_uuid: user,
             device_uuid: device,
-            agreement_public_key_base64_url: "device-key".into(),
+            agreement_public_key_base64_url: "shared-key".into(),
         }];
         let identity_targets = vec![
             FrankingWrapTargetDto {
                 user_uuid: user,
                 device_uuid: device,
-                agreement_public_key_base64_url: "identity-key".into(),
+                agreement_public_key_base64_url: "shared-key".into(),
             },
             FrankingWrapTargetDto {
                 user_uuid: user,
@@ -1212,7 +1220,26 @@ mod wrap_target_encoding_tests {
         ];
         let merged = merge_wrap_targets(device_targets, identity_targets);
         assert_eq!(merged.len(), 2);
-        assert_eq!(merged[0].agreement_public_key_base64_url, "device-key");
+        assert_eq!(merged[0].agreement_public_key_base64_url, "shared-key");
         assert_eq!(merged[1].device_uuid, other);
+    }
+
+    #[test]
+    fn merge_prefers_identity_when_same_device_has_different_key() {
+        let user = Uuid::from_u128(1);
+        let device = Uuid::from_u128(2);
+        let device_targets = vec![FrankingWrapTargetDto {
+            user_uuid: user,
+            device_uuid: device,
+            agreement_public_key_base64_url: "device-key".into(),
+        }];
+        let identity_targets = vec![FrankingWrapTargetDto {
+            user_uuid: user,
+            device_uuid: device,
+            agreement_public_key_base64_url: "identity-key".into(),
+        }];
+        let merged = merge_wrap_targets(device_targets, identity_targets);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].agreement_public_key_base64_url, "identity-key");
     }
 }

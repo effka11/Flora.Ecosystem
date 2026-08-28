@@ -133,6 +133,21 @@ test("403 no_wrap is waiting, not a crypto failure", () => {
     ),
     "waiting",
   );
+  assert.equal(
+    classifyDisclosureLoadError(new ApiRequestError(403, "Нет доступа.", "no_wrap")),
+    "waiting",
+  );
+});
+
+test("403 without no_wrap is a disclosure error, not waiting", () => {
+  assert.equal(
+    classifyDisclosureLoadError(new ApiRequestError(403, "Нет доступа к наполнению.")),
+    "error",
+  );
+  assert.equal(
+    classifyDisclosureLoadError(new ApiRequestError(403, "Заявка закрыта.")),
+    "error",
+  );
 });
 
 test("pubkey mismatch is a disclosure error, not waiting", async () => {

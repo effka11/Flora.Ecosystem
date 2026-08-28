@@ -53,9 +53,14 @@ export function presentAnketaDisclosureView(input: {
   return { phase: "loading" };
 }
 
+function isNoWrapDisclosureForbidden(error: { code?: string; message: string }): boolean {
+  if (error.code === "no_wrap") return true;
+  return error.message.includes("viewer-wrap");
+}
+
 export function classifyDisclosureLoadError(error: unknown): "waiting" | "mismatch" | "error" {
   if (isApiRequestError(error) && error.status === 403) {
-    return "waiting";
+    return isNoWrapDisclosureForbidden(error) ? "waiting" : "error";
   }
   if (error instanceof Error && error.message === FRANKING_NO_DEVICE_WRAP_MESSAGE) {
     return "mismatch";
