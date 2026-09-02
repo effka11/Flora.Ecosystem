@@ -36,6 +36,7 @@ import {
 } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { floraColors } from "@/lib/theme";
+import { useDeletePost } from "@/lib/useDeletePost";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
 
 export type FeedKind = "recommendations" | "subscriptions";
@@ -79,6 +80,7 @@ type FeedRowProps = {
   onToggleRepost: (source: PostEngagementSource) => void;
   onToggleComments: (postUuid: string) => void;
   onCommentAdded: (postUuid: string) => void;
+  onDeletePost: (postUuid: string) => void;
 };
 
 const FeedRow = memo(
@@ -93,6 +95,7 @@ const FeedRow = memo(
     onToggleRepost,
     onToggleComments,
     onCommentAdded,
+    onDeletePost,
   }: FeedRowProps) {
     const source = feedPostToEngagementSource(post);
     return (
@@ -107,6 +110,7 @@ const FeedRow = memo(
         onToggleRepost={() => onToggleRepost(source)}
         onToggleComments={() => onToggleComments(post.postUuid)}
         onCommentAdded={onCommentAdded}
+        onDeletePost={() => onDeletePost(post.postUuid)}
       />
     );
   },
@@ -165,6 +169,7 @@ export const FeedPostList = forwardRef<FeedPostListHandle, FeedPostListProps>(
     const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
     const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } =
       usePostEngagement();
+    const handleDeletePost = useDeletePost();
     const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
       usePostViewTracking({ enabled: mediaEnabled });
 
@@ -283,10 +288,11 @@ export const FeedPostList = forwardRef<FeedPostListHandle, FeedPostListProps>(
             onToggleRepost={handleToggleRepost}
             onToggleComments={handleToggleComments}
             onCommentAdded={handleCommentAdded}
+            onDeletePost={handleDeletePost}
           />
         );
       },
-      [handleCommentAdded, handleToggleComments, handleToggleLike, handleToggleRepost],
+      [handleCommentAdded, handleDeletePost, handleToggleComments, handleToggleLike, handleToggleRepost],
     );
 
     useEffect(() => {

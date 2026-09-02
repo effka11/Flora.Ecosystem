@@ -17,6 +17,7 @@ import { useFrcMediaBand } from "@/lib/useFrcMediaBand";
 import { useNetworkClass } from "@/lib/useNetworkClass";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
+import { useDeletePost } from "@/lib/useDeletePost";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
@@ -31,6 +32,7 @@ export default function ProfileScreen() {
   const [localCommentCounts, setLocalCommentCounts] = useState<Record<string, number>>({});
   const [focused, setFocused] = useState(false);
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
+  const handleDeletePost = useDeletePost();
   const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking({ enabled: focused });
 
@@ -199,6 +201,8 @@ export default function ProfileScreen() {
                   setCommentsOpenPostUuid((id) => (id === item.postUuid ? null : item.postUuid))
                 }
                 onCommentAdded={handleCommentAdded}
+                canDeletePost
+                onDeletePost={() => handleDeletePost(item.postUuid)}
               />
             );
           }}
