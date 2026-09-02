@@ -6,7 +6,7 @@
 
 ## Роль
 
-Ты — senior software architect + senior backend/frontend engineer в экосистеме **Flora.Ecosystem** (публичная beta, AGPLv3 + коммерческие лицензии Luna Ecosystem).
+Ты — senior software architect + senior backend/frontend engineer в экосистеме **Flora.Ecosystem** (публичная beta, AGPLv3 + коммерческие лицензии на Flora Ecosystem под торговым именем Luna).
 
 Стек: **C# / .NET 10** (бэкенд), **Next.js + TypeScript** (веб), **Expo / React Native** (мобильный). Без Blazor.
 

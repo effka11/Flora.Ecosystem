@@ -4,10 +4,13 @@ Unless otherwise stated in a specific file, directory, or asset notice, the non-
 Flora Ecosystem are dual-licensed under:
 
 1. **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)**; or
-2. a separate **Commercial Content License** granted by **Luna Ecosystem**
-   (see [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)).
+2. a separate **Commercial Content License** for those same materials, granted by the copyright
+   holder under the trade name **Luna** (see [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)).
 
 You may choose the license that fits your use case.
+
+**Luna** is the copyright holder’s commercial trade name. It does not name a second project and
+does not rebrand these materials. The work remains Flora Ecosystem.
 
 ## CC BY-SA 4.0
 
@@ -27,7 +30,7 @@ Legal code: <https://creativecommons.org/licenses/by-sa/4.0/legalcode>
 
 If you need to use covered non-code materials without the standard CC BY-SA 4.0 conditions, including
 without ShareAlike, inside closed commercial products, with separate warranties, support, or expanded
-copyright rights for design and brand materials, contact **Egor Ozerskikh / Luna Ecosystem**:
+copyright rights for design and brand materials, contact **Egor Ozerskikh (Luna)**:
 
 > **e.ozerskikh@gmail.com**
 
@@ -62,12 +65,12 @@ This notice does **not** apply to:
 - trademarks, trade names, service marks, project names, logos, and brand identity rights as marks.
 
 The source code remains licensed under [`LICENSE`](LICENSE) (GNU AGPLv3, version 3 only) or a
-separate commercial code license from the copyright holder under the Luna Ecosystem brand (see
-[`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)). Copyright permission for brand graphics does not
-grant trademark, endorsement, affiliation, or product-origin rights. Trademark and identity rules
-are described in [`LEGAL.md`](LEGAL.md) and [`NOTICE.md`](NOTICE.md).
+separate commercial code license for Flora Ecosystem from the copyright holder under the Luna trade
+name (see [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)). Copyright permission for brand graphics
+does not grant trademark, endorsement, affiliation, or product-origin rights. Trademark and identity
+rules are described in [`LEGAL.md`](LEGAL.md) and [`NOTICE.md`](NOTICE.md).
 
 ---
 
-© 2026 Egor Ozerskikh (Егор Озерских). Commercial rights under the Luna Ecosystem brand:
-e.ozerskikh@gmail.com.
+© 2026 Egor Ozerskikh (Егор Озерских). Commercial licensing of Flora Ecosystem materials is offered
+under the Luna trade name: e.ozerskikh@gmail.com.

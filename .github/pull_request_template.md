@@ -6,7 +6,7 @@
 
 ## Чек-лист (обязательно)
 
-- [ ] **CLA:** я прочитал(а) и принимаю [CLA — CONTRIBUTING.md, раздел 1](https://github.com/effka11/Flora.Ecosystem/blob/main/CONTRIBUTING.md#1-лицензионное-соглашение-контрибьютора--cla-обязательно), включая право двойного лицензирования моего Вклада правообладателем **Egor Ozerskikh** (GNU AGPLv3 / CC BY-SA 4.0 + коммерческие лицензии под брендом Luna Ecosystem)
+- [ ] **CLA:** я прочитал(а) и принимаю [CLA — CONTRIBUTING.md, раздел 1](https://github.com/effka11/Flora.Ecosystem/blob/main/CONTRIBUTING.md#1-лицензионное-соглашение-контрибьютора--cla-обязательно), включая право двойного лицензирования моего Вклада правообладателем **Egor Ozerskikh** (GNU AGPLv3 / CC BY-SA 4.0 + коммерческие лицензии на Flora Ecosystem, предлагаемые под торговым именем Luna)
 - [ ] Все коммиты подписаны GPG — бейдж **Verified** ([CONTRIBUTING.md, раздел 2](https://github.com/effka11/Flora.Ecosystem/blob/main/CONTRIBUTING.md#2-криптографическая-подпись-коммитов--gpg-обязательно))
 - [ ] Сборка и проверки проходят (CONTRIBUTING.md, раздел 5)
 - [ ] Архитектурные границы модулей соблюдены (CONTRIBUTING.md, раздел 4)

@@ -110,5 +110,5 @@ by-design допущения текущей версии. Полный реес�
 ---
 
 Контакт по вопросам безопасности: **flora.dev.hub@gmail.com**.
-Коммерческие лицензии и гарантии: **Egor Ozerskikh / Luna Ecosystem — e.ozerskikh@gmail.com**
+Коммерческие лицензии на Flora Ecosystem и гарантии: **Egor Ozerskikh (Luna) — e.ozerskikh@gmail.com**
 (см. [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)).
