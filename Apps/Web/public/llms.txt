@@ -4,7 +4,7 @@
 
 Key facts:
 
-- License: AGPLv3 (community) or a commercial license for the same Flora Ecosystem work, offered under the Luna trade name; non-code content under CC BY-SA 4.0.
+- License: AGPLv3 (community) or a commercial license for the same Flora Ecosystem work; non-code content under CC BY-SA 4.0.
 - The server physically cannot read private messages: FSCP end-to-end encryption on libsodium primitives (X25519, Ed25519, XChaCha20-Poly1305).
 - The feed/recommendation algorithm (FIRA) is a public, human-readable specification, not a black box.
 - Brand/business content is labeled and can be switched off by any user; posts of brands rank exactly like posts of people.

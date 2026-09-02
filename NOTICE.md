@@ -4,8 +4,8 @@
 
 **Copyright (c) 2026 Egor Ozerskikh (Егор Озерских).**
 
-Commercial licenses **for this work** are offered by the copyright holder under the trade name
-**Luna** (e.ozerskikh@gmail.com). Luna is a licensor name, not a second software project.
+Commercial licenses **for this work** are offered by the copyright holder
+(e.ozerskikh@gmail.com). There is no second brand or project for commercial licensing.
 
 Flora Ecosystem is dual-licensed. This file is the authoritative map of which license applies to
 which materials in this repository, and it contains the legal notices that must be preserved in all
@@ -20,12 +20,11 @@ and build/configuration files — is licensed, at your option, under either:
 1. the **GNU Affero General Public License, version 3 only (AGPL-3.0-only)** — see
    [`LICENSE`](LICENSE); or
 2. a **commercial license for Flora Ecosystem** granted by a separate written agreement with the
-   copyright holder, offered under the Luna trade name — see
-   [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
+   copyright holder — see [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
 
 SPDX expression: `AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial`, where
 `LicenseRef-Flora-Ecosystem-Commercial` refers to [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)
-and names the **work** (Flora Ecosystem), not the licensor's trade name.
+and names the work (Flora Ecosystem).
 
 The AGPL grant is made for **version 3 of the license only**; the "or any later version" option
 described in AGPLv3 §14 is **not** offered. Only the copyright holder may relicense the code under
@@ -67,22 +66,16 @@ by a Flora Ecosystem commercial license. Notable items:
 
 ## 5. Trademarks and names
 
-**Project identity** (the work and the public network): "Flora", "Flora Ecosystem", "Flora Social"
-(including the technical spellings `Flora.Ecosystem`, `Flora.Social`); the designations "FERA",
-"FIRA", "FSCP", "FGP", "FPP", "FRC", "FRC-A", "FRC-I", "FRC-V"; the project logos and Flora brand
-identity. These names identify this project. They are protected separately from the code and content
-licenses. See [`LEGAL.md`](LEGAL.md) §6.
-
-**Commercial trade name** (licensor, not a second product): "Luna", including the spellings
-"Luna Ecosystem" and `Luna.Ecosystem`. These names identify the copyright holder when offering
-commercial licenses, support, and enterprise terms **for Flora Ecosystem**. They do not name a
-separate software ecosystem.
+"Flora", "Flora Ecosystem", "Flora Social" (including the technical spellings `Flora.Ecosystem`,
+`Flora.Social`); the designations "FERA", "FIRA", "FSCP", "FGP", "FPP", "FRC", "FRC-A", "FRC-I",
+"FRC-V"; the project logos and Flora brand identity are designations of this project. They are
+protected separately from the code and content licenses. See [`LEGAL.md`](LEGAL.md) §6.
 
 Forks must use their own distinct name and must not present themselves as the official Flora
-Ecosystem or as affiliated with Flora or with the Luna licensing trade name.
+Ecosystem or as affiliated with Flora.
 
 ## 6. Contacts
 
-- Copyright holder and commercial / legal licensing: **Egor Ozerskikh (Luna)** —
+- Copyright holder and commercial / legal licensing: **Egor Ozerskikh** —
   **e.ozerskikh@gmail.com**
 - Security reports: **flora.dev.hub@gmail.com** (see [`SECURITY.md`](SECURITY.md))

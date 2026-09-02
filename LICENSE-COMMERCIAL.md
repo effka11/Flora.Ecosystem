@@ -2,28 +2,24 @@
 
 > **This document grants no rights by itself.** A commercial license to **Flora Ecosystem**
 > (the copyrighted work in this repository) is granted **only** by an explicit written agreement
-> executed with the copyright holder, **Egor Ozerskikh (Егор Озерских)**, acting under the trade
-> name **Luna**. Unless and until such an agreement is in force for you, the source code is
-> available to you exclusively under the GNU Affero General Public License, version 3 only
-> ([`LICENSE`](LICENSE)), and non-code materials under CC BY-SA 4.0
-> ([`LICENSE-CONTENT.md`](LICENSE-CONTENT.md)).
+> executed with the copyright holder, **Egor Ozerskikh (Егор Озерских)**. Unless and until such
+> an agreement is in force for you, the source code is available to you exclusively under the GNU
+> Affero General Public License, version 3 only ([`LICENSE`](LICENSE)), and non-code materials under
+> CC BY-SA 4.0 ([`LICENSE-CONTENT.md`](LICENSE-CONTENT.md)).
 
-**Luna** is the copyright holder’s commercial trade name for offering exceptions to the AGPL,
-related content licenses, and enterprise terms (support, SLA, warranties). It is not a second
-software ecosystem, not a rename of this repository, and not a separate copyrighted work. The
-thing being licensed remains Flora Ecosystem. The SPDX identifier below names that **work**, not
-the licensor’s trade name.
+There is no second brand, product, or ecosystem for commercial licensing. The work, the network,
+and the commercial exception are all Flora Ecosystem. The SPDX identifier below names that work.
 
 ## 1. Dual licensing
 
 Flora Ecosystem is one work under a dual licensing model:
 
-- **Source code:** AGPL-3.0-only **or** a commercial code license **for Flora Ecosystem**, offered
-  by the copyright holder under the Luna trade name.
+- **Source code:** AGPL-3.0-only **or** a commercial code license **for Flora Ecosystem**, granted
+  by the copyright holder.
   SPDX: `AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial` (this document is the referenced
   `LicenseRef`).
 - **Non-code materials:** CC BY-SA 4.0 **or** a commercial content license **for the same
-  materials**, offered under the Luna trade name ([`LICENSE-CONTENT.md`](LICENSE-CONTENT.md)).
+  materials**, granted by the copyright holder ([`LICENSE-CONTENT.md`](LICENSE-CONTENT.md)).
 
 The licensing map is maintained in [`NOTICE.md`](NOTICE.md); a plain-language explanation is in
 [`LEGAL.md`](LEGAL.md).
@@ -62,7 +58,7 @@ a product Flora, Flora Ecosystem, or Flora Social.
 
 ## 5. How to obtain a commercial license
 
-Contact **Egor Ozerskikh (Luna) — e.ozerskikh@gmail.com** and include:
+Contact **Egor Ozerskikh — e.ozerskikh@gmail.com** and include:
 
 1. your organization and contact person;
 2. the product or service in which Flora Ecosystem will be used;
@@ -83,9 +79,9 @@ rights under its §8.
 Contributions to this repository are accepted under the CLA described in
 [`CONTRIBUTING.md`](CONTRIBUTING.md) §1, which enables the copyright holder
 (**Egor Ozerskikh**) to license contributed material under both the open licenses (AGPLv3,
-CC BY-SA 4.0) and commercial licenses for Flora Ecosystem offered under the Luna trade name.
+CC BY-SA 4.0) and commercial licenses for Flora Ecosystem.
 
 ---
 
-© 2026 Egor Ozerskikh (Егор Озерских). Commercial licensing of Flora Ecosystem is offered under
-the Luna trade name: e.ozerskikh@gmail.com.
+© 2026 Egor Ozerskikh (Егор Озерских). Commercial licensing of Flora Ecosystem:
+e.ozerskikh@gmail.com.
