@@ -1,5 +1,4 @@
 import {
-  apiDeletePost,
   apiGetCommunityBySlug,
   apiGetCommunityPosts,
   apiJoinCommunity,
@@ -33,6 +32,7 @@ import { useFrcMediaBand } from "@/lib/useFrcMediaBand";
 import { useNetworkClass } from "@/lib/useNetworkClass";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
+import { useDeletePost } from "@/lib/useDeletePost";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 export default function CommunityScreen() {
@@ -46,8 +46,8 @@ export default function CommunityScreen() {
   const [localMembersCount, setLocalMembersCount] = useState<number | null>(null);
   const [membershipBusy, setMembershipBusy] = useState(false);
   const [membershipError, setMembershipError] = useState<string | null>(null);
-  const [deletedPostUuids, setDeletedPostUuids] = useState<Set<string>>(() => new Set());
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
+  const handleDeletePost = useDeletePost();
   const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking();
 
@@ -74,7 +74,6 @@ export default function CommunityScreen() {
   useEffect(() => {
     setLocalMembersCount(null);
     setMembershipError(null);
-    setDeletedPostUuids(new Set());
     setCommentsOpenPostUuid(null);
     setLocalCommentCounts({});
   }, [slug]);
@@ -95,9 +94,8 @@ export default function CommunityScreen() {
   const posts = useMemo((): FeedPostDto[] => {
     if (!community) return [];
     return (postsQuery.data ?? [])
-      .filter((post) => !deletedPostUuids.has(post.postUuid))
       .map((post) => communityPostToFeedPost(post, community));
-  }, [community, deletedPostUuids, postsQuery.data]);
+  }, [community, postsQuery.data]);
 
   const mediaBand = useFrcMediaBand(posts, visibleRange, { online: network === "online" });
 
@@ -168,32 +166,6 @@ export default function CommunityScreen() {
       setMembershipBusy(false);
     }
   }, [community, membershipBusy, queryClient, slug]);
-
-  const handleDeletePost = useCallback(
-    (postUuid: string) => {
-      Alert.alert("Удалить пост?", "Это действие нельзя отменить.", [
-        { text: "Отмена", style: "cancel" },
-        {
-          text: "Удалить",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              try {
-                await apiDeletePost(postUuid);
-                setDeletedPostUuids((prev) => new Set(prev).add(postUuid));
-              } catch (err) {
-                Alert.alert(
-                  "Удаление",
-                  err instanceof Error ? err.message : "Не удалось удалить пост.",
-                );
-              }
-            })();
-          },
-        },
-      ]);
-    },
-    [],
-  );
 
   const handleRefresh = useCallback(() => {
     void communityQuery.refetch();
@@ -282,7 +254,7 @@ export default function CommunityScreen() {
                 }
                 onCommentAdded={handleCommentAdded}
                 canDeletePost={isOwner}
-                onDeletePost={isOwner ? () => handleDeletePost(item.postUuid) : undefined}
+                onDeletePost={() => handleDeletePost(item.postUuid)}
               />
             );
           }}

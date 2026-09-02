@@ -17,6 +17,7 @@ import { FloraAvatar } from "@/components/FloraAvatar";
 import { FrcRowMediaScope } from "@/lib/FrcImageDecodingScope";
 import { feedPostAuthor } from "@/lib/feedPostAuthor";
 import { formatCompactCount } from "@/lib/formatCompactCount";
+import { isOwnFeedPost } from "@/lib/isOwnFeedPost";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -34,10 +35,6 @@ type Props = {
   canDeletePost?: boolean;
   onDeletePost?: () => void;
 };
-
-function handlesEqual(a: string, b: string) {
-  return a.trim().replace(/^@+/, "").toLowerCase() === b.trim().replace(/^@+/, "").toLowerCase();
-}
 
 function formatRelativeTime(date: string) {
   const ms = new Date(date).getTime();
@@ -80,7 +77,8 @@ export const PostCard = memo(function PostCard({
 
   const authorMeta = feedPostAuthor(post, me?.username);
   const timeLabel = formatRelativeTime(post.createdAt);
-  const isOwnPost = handlesEqual(me?.username ?? "", post.authorUsername);
+  const isOwnPost = isOwnFeedPost(post, me);
+  const allowDelete = Boolean(onDeletePost) && (Boolean(canDeletePost) || isOwnPost);
   const hasMedia = post.imageUuids.length > 0 || Boolean(post.videoUuid);
 
   return (
@@ -124,8 +122,8 @@ export const PostCard = memo(function PostCard({
             <View style={styles.postMore}>
               <PostMoreMenuTrigger
                 isOwnPost={isOwnPost}
-                canDeletePost={canDeletePost}
-                onDeletePost={onDeletePost}
+                canDeletePost={allowDelete}
+                onDeletePost={allowDelete ? onDeletePost : undefined}
               />
             </View>
           </View>

@@ -14,6 +14,7 @@ type FeedRowComparable = {
   onToggleRepost: unknown;
   onToggleComments: unknown;
   onCommentAdded: unknown;
+  onDeletePost: unknown;
 };
 
 export function feedRowEqual(prev: FeedRowComparable, next: FeedRowComparable): boolean {
@@ -30,6 +31,7 @@ export function feedRowEqual(prev: FeedRowComparable, next: FeedRowComparable): 
     prev.onToggleLike === next.onToggleLike &&
     prev.onToggleRepost === next.onToggleRepost &&
     prev.onToggleComments === next.onToggleComments &&
-    prev.onCommentAdded === next.onCommentAdded
+    prev.onCommentAdded === next.onCommentAdded &&
+    prev.onDeletePost === next.onDeletePost
   );
 }
