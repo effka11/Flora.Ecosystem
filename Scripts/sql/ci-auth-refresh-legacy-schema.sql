@@ -55,6 +55,42 @@ CREATE TABLE flora_core.user_messages (
     is_read              boolean     NOT NULL DEFAULT false
 );
 
+-- Stub for Content migration 0002 (ALTER user_posts / post_images / post_videos).
+-- Cutover-owned; not created by flora-migrate. UNIQUE(post_uuid) on post_videos
+-- models the live unique that 0002 replaces with ux_post_videos_current_post.
+CREATE TABLE flora_core.user_posts (
+    post_uuid        uuid        NOT NULL PRIMARY KEY,
+    author_user_uuid uuid        NOT NULL,
+    community_id     uuid        NULL,
+    content          text        NOT NULL DEFAULT '',
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    is_deleted       boolean     NOT NULL DEFAULT false,
+    deleted_at       timestamptz NULL
+);
+
+CREATE TABLE flora_core.post_images (
+    uuid         uuid    NOT NULL PRIMARY KEY,
+    post_uuid    uuid    NOT NULL,
+    content_type text    NOT NULL,
+    data         bytea   NOT NULL,
+    sort_order   integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE flora_core.post_videos (
+    uuid                uuid        NOT NULL PRIMARY KEY,
+    post_uuid           uuid        NOT NULL,
+    status              integer     NOT NULL DEFAULT 0,
+    content_type        text        NOT NULL DEFAULT 'video/mp4',
+    data                bytea       NOT NULL DEFAULT ''::bytea,
+    poster_data         bytea       NOT NULL DEFAULT ''::bytea,
+    poster_content_type text        NOT NULL DEFAULT 'image/avif',
+    width               integer     NOT NULL DEFAULT 0,
+    height              integer     NOT NULL DEFAULT 0,
+    duration_ms         integer     NOT NULL DEFAULT 0,
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ux_post_videos_post UNIQUE (post_uuid)
+);
+
 -- Stub for notifications migrations 0002/0003 (ALTER + legacy collapse).
 -- Shape matches cutover inbox columns used by flora-notifications repo (snake_case);
 -- group_key / actor_count / actors_json are added by module migration 0002.
