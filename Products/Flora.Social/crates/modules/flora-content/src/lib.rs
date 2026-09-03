@@ -5,7 +5,7 @@
 //! profile posts/likes/reposts / communities (list/owned/recommended/search/slug/join/posts/profile/create/update/delete);
 //! media GET (post images, avatars user+community, post videos+poster); post drafts CRUD;
 //! POST post images (multipart WebP); GET post video/status;
-//! POST post video + фоновый SVT-AV1 worker (Rust при ServeNative; C# dual-writer guard — follow-up).
+//! PATCH published post (text + media detach); POST post video + фоновый SVT-AV1 worker.
 
 pub mod application;
 pub mod http;

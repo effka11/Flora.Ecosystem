@@ -38,6 +38,7 @@ use crate::application::post_images::PostImagesService;
 use crate::application::post_videos::{MAX_POST_VIDEO_BYTES, PostVideosService};
 use crate::application::posts::{
     CreatePostError, DeletePostError, MAX_POST_CONTENT_LENGTH, PostActionError, PostService,
+    UpdatePostError,
 };
 use crate::application::profile_posts::{ProfilePostsOutcome, ProfilePostsService};
 use crate::application::serialize::FeedSerializer;
@@ -144,7 +145,10 @@ pub fn protected_router(
         .route("/api/auth/posts/{post_uuid}/repost", post(repost_post))
         .route("/api/auth/posts/{post_uuid}/repost", delete(unrepost_post))
         .route("/api/auth/posts/{post_uuid}/view", post(record_view))
-        .route("/api/auth/posts/{post_uuid}", delete(delete_post))
+        .route(
+            "/api/auth/posts/{post_uuid}",
+            patch(update_post).delete(delete_post),
+        )
         .route("/api/auth/posts/{post_uuid}/comments", post(create_comment))
         .route(
             "/api/auth/posts/{post_uuid}/comments/{comment_uuid}",
@@ -632,6 +636,68 @@ async fn record_view(
         Ok(Err(PostActionError::NotFound)) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "Пост не найден." })),
+        )
+            .into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdatePostBody {
+    content: Option<String>,
+    keep_image_uuids: Option<Vec<Uuid>>,
+    remove_video: Option<bool>,
+    expect_added_media: Option<bool>,
+}
+
+async fn update_post(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(post_uuid): Path<Uuid>,
+    headers: HeaderMap,
+    Json(body): Json<UpdatePostBody>,
+) -> Response {
+    let ip = client_ip_key(&headers);
+    let key = format!("write:{ip}:{}", user.0);
+    if !state.write_limiter.check_and_increment(&key) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+
+    match state
+        .posts
+        .update(
+            user.0,
+            post_uuid,
+            body.content.as_deref().unwrap_or(""),
+            body.keep_image_uuids,
+            body.remove_video.unwrap_or(false),
+            body.expect_added_media.unwrap_or(false),
+        )
+        .await
+    {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(UpdatePostError::NotFound)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Пост не найден." })),
+        )
+            .into_response(),
+        Ok(Err(UpdatePostError::Forbidden)) => StatusCode::FORBIDDEN.into_response(),
+        Ok(Err(UpdatePostError::TooLong)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Пост не более {MAX_POST_CONTENT_LENGTH} символов.")
+            })),
+        )
+            .into_response(),
+        Ok(Err(UpdatePostError::Empty)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Пост не может быть пустым." })),
+        )
+            .into_response(),
+        Ok(Err(UpdatePostError::BadImages)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Некорректный список фото." })),
         )
             .into_response(),
         Err(e) => internal(e),

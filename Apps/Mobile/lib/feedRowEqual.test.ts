@@ -20,6 +20,7 @@ function row(post: object) {
     onToggleComments: handler,
     onCommentAdded: handler,
     onDeletePost: handler,
+    onEditPost: handler,
   };
 }
 
@@ -38,5 +39,6 @@ describe("feedRowEqual", () => {
     })).toBe(false);
     expect(feedRowEqual(previous, { ...previous, commentsOpen: true })).toBe(false);
     expect(feedRowEqual(previous, { ...previous, onDeletePost: () => {} })).toBe(false);
+    expect(feedRowEqual(previous, { ...previous, onEditPost: () => {} })).toBe(false);
   });
 });

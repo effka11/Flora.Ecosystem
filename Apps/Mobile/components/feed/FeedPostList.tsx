@@ -37,6 +37,7 @@ import {
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { floraColors } from "@/lib/theme";
 import { useDeletePost } from "@/lib/useDeletePost";
+import { useEditPost } from "@/lib/useEditPost";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
 
 export type FeedKind = "recommendations" | "subscriptions";
@@ -81,6 +82,7 @@ type FeedRowProps = {
   onToggleComments: (postUuid: string) => void;
   onCommentAdded: (postUuid: string) => void;
   onDeletePost: (postUuid: string) => void;
+  onEditPost: (post: FeedPostDto) => void;
 };
 
 const FeedRow = memo(
@@ -96,6 +98,7 @@ const FeedRow = memo(
     onToggleComments,
     onCommentAdded,
     onDeletePost,
+    onEditPost,
   }: FeedRowProps) {
     const source = feedPostToEngagementSource(post);
     return (
@@ -111,6 +114,7 @@ const FeedRow = memo(
         onToggleComments={() => onToggleComments(post.postUuid)}
         onCommentAdded={onCommentAdded}
         onDeletePost={() => onDeletePost(post.postUuid)}
+        onEditPost={() => onEditPost(post)}
       />
     );
   },
@@ -170,6 +174,7 @@ export const FeedPostList = forwardRef<FeedPostListHandle, FeedPostListProps>(
     const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } =
       usePostEngagement();
     const handleDeletePost = useDeletePost();
+    const { openEditPost, editSheet } = useEditPost();
     const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
       usePostViewTracking({ enabled: mediaEnabled });
 
@@ -289,10 +294,11 @@ export const FeedPostList = forwardRef<FeedPostListHandle, FeedPostListProps>(
             onToggleComments={handleToggleComments}
             onCommentAdded={handleCommentAdded}
             onDeletePost={handleDeletePost}
+            onEditPost={openEditPost}
           />
         );
       },
-      [handleCommentAdded, handleDeletePost, handleToggleComments, handleToggleLike, handleToggleRepost],
+      [handleCommentAdded, handleDeletePost, handleToggleComments, handleToggleLike, handleToggleRepost, openEditPost],
     );
 
     useEffect(() => {
@@ -302,6 +308,7 @@ export const FeedPostList = forwardRef<FeedPostListHandle, FeedPostListProps>(
 
     return (
       <View style={[styles.feedPage, { width: pageWidth }]}>
+        {editSheet}
         <FrcMediaModeScope {...mediaBand}>
           <FlashList
             ref={flashListRef}

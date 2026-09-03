@@ -162,6 +162,63 @@ export async function apiCreatePost(input: {
   return { postUuid };
 }
 
+export type UpdatedPostDto = {
+  postUuid: string;
+  content: string;
+  createdAt: string;
+  imageUuids: string[];
+  videoUuid: string | null;
+  videoStatus: string | null;
+};
+
+function parseUpdatedPost(raw: unknown): UpdatedPostDto | null {
+  const o = asRecord(raw) ?? {};
+  const fb = ctx().onPascalFallback;
+  const postUuid = readStr(o, ["postUuid", "PostUuid"], fb);
+  if (!postUuid) return null;
+  const imageUuidsRaw = o.imageUuids ?? o.ImageUuids;
+  const imageUuids = Array.isArray(imageUuidsRaw)
+    ? imageUuidsRaw.filter((x): x is string => typeof x === "string" && Boolean(x.trim()))
+    : [];
+  const videoRaw = o.video ?? o.Video;
+  const video = asRecord(videoRaw);
+  const videoUuid = video
+    ? readStr(video, ["videoUuid", "VideoUuid"], fb) || null
+    : readStr(o, ["videoUuid", "VideoUuid"], fb) || null;
+  const videoStatus = video
+    ? readStr(video, ["status", "Status", "videoStatus", "VideoStatus"], fb) || null
+    : readStr(o, ["videoStatus", "VideoStatus"], fb) || null;
+  return {
+    postUuid,
+    content: readStr(o, ["content", "Content"], fb),
+    createdAt: readStr(o, ["createdAt", "CreatedAt"], fb),
+    imageUuids,
+    videoUuid,
+    videoStatus,
+  };
+}
+
+export async function apiUpdatePost(input: {
+  postUuid: string;
+  content: string;
+  keepImageUuids?: string[];
+  removeVideo?: boolean;
+  expectAddedMedia?: boolean;
+}): Promise<UpdatedPostDto> {
+  const id = input.postUuid.trim();
+  if (!id) throw new ApiRequestError(400, "Не указан пост.");
+  const body: Record<string, unknown> = {
+    content: clampPostContent(input.content),
+  };
+  if (input.keepImageUuids !== undefined) body.keepImageUuids = input.keepImageUuids;
+  if (input.removeVideo) body.removeVideo = true;
+  if (input.expectAddedMedia) body.expectAddedMedia = true;
+  const raw = await authPatchJson(`/api/auth/posts/${encodeURIComponent(id)}`, body);
+  const parsed = parseUpdatedPost(raw);
+  if (!parsed) throw new ApiRequestError(500, "Некорректный ответ сервера.");
+  return parsed;
+}
+
 /** Multipart: поле `files` (JPEG/PNG/WebP). На RN предпочтительнее upload через expo-file-system. */
 export async function apiUploadPostImages(
   postUuid: string,

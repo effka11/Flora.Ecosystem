@@ -23,6 +23,8 @@ export type DraftPostImage = {
   contentType: string;
   fileName: string;
   preparing: boolean;
+  /** Already stored on the post — skip upload. */
+  existingUuid?: string;
 };
 
 export type DraftPostVideo = {
@@ -30,6 +32,7 @@ export type DraftPostVideo = {
   uri: string;
   contentType: string;
   fileName: string;
+  existingUuid?: string;
 };
 
 function newDraftId(): string {
@@ -118,6 +121,11 @@ export function useComposePostMedia() {
 
   const clearVideo = useCallback(() => {
     setVideo(null);
+  }, []);
+
+  const resetMedia = useCallback((nextImages: DraftPostImage[], nextVideo: DraftPostVideo | null) => {
+    setImages(nextImages);
+    setVideo(nextVideo);
   }, []);
 
   const pickImages = useCallback(async (): Promise<string | null> => {
@@ -212,16 +220,17 @@ export function useComposePostMedia() {
 
   const hasPendingPrepare = images.some((image) => image.preparing);
   const readyImageFiles: ComposeUploadFile[] = images
-    .filter((image) => !image.preparing)
+    .filter((image) => !image.preparing && !image.existingUuid)
     .map((image) => ({
       uri: image.uri,
       fileName: image.fileName,
       mimeType: image.contentType,
     }));
 
-  const videoFile: ComposeUploadFile | null = video
-    ? { uri: video.uri, fileName: video.fileName, mimeType: video.contentType }
-    : null;
+  const videoFile: ComposeUploadFile | null =
+    video && !video.existingUuid
+      ? { uri: video.uri, fileName: video.fileName, mimeType: video.contentType }
+      : null;
 
   return {
     images,
@@ -232,6 +241,7 @@ export function useComposePostMedia() {
     clearMedia,
     removeImageAt,
     clearVideo,
+    resetMedia,
     pickImages,
     pickVideo,
   };

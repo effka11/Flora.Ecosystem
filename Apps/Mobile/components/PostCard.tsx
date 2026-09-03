@@ -34,6 +34,7 @@ type Props = {
   onCommentAdded?: (postUuid: string) => void;
   canDeletePost?: boolean;
   onDeletePost?: () => void;
+  onEditPost?: () => void;
 };
 
 function formatRelativeTime(date: string) {
@@ -72,6 +73,7 @@ export const PostCard = memo(function PostCard({
   onCommentAdded,
   canDeletePost,
   onDeletePost,
+  onEditPost,
 }: Props) {
   const me = useSessionStore((s) => s.me);
 
@@ -124,6 +126,7 @@ export const PostCard = memo(function PostCard({
                 isOwnPost={isOwnPost}
                 canDeletePost={allowDelete}
                 onDeletePost={allowDelete ? onDeletePost : undefined}
+                onEditPost={isOwnPost ? onEditPost : undefined}
               />
             </View>
           </View>

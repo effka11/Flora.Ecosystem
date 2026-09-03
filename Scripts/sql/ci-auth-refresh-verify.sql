@@ -145,5 +145,71 @@ BEGIN
     IF to_regclass('flora_core.social_notification_push_state') IS NULL THEN
         RAISE EXCEPTION 'notifications migration 0002 did not create social_notification_push_state';
     END IF;
+
+    IF to_regclass('flora_core.user_posts') IS NULL
+        OR to_regclass('flora_core.post_images') IS NULL
+        OR to_regclass('flora_core.post_videos') IS NULL
+    THEN
+        RAISE EXCEPTION 'cutover content media stubs missing after migrate';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'flora_core'
+          AND table_name = 'user_posts'
+          AND column_name = 'is_edited'
+    ) OR NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'flora_core'
+          AND table_name = 'user_posts'
+          AND column_name = 'edited_at'
+    ) THEN
+        RAISE EXCEPTION 'content migration 0002 did not add user_posts.is_edited / edited_at';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'flora_core'
+          AND table_name = 'post_images'
+          AND column_name = 'is_current'
+    ) THEN
+        RAISE EXCEPTION 'content migration 0002 did not add post_images.is_current';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'flora_core'
+          AND table_name = 'post_videos'
+          AND column_name = 'is_current'
+    ) THEN
+        RAISE EXCEPTION 'content migration 0002 did not add post_videos.is_current';
+    END IF;
+
+    IF to_regclass('flora_core.post_revisions') IS NULL THEN
+        RAISE EXCEPTION 'content migration 0002 did not create post_revisions';
+    END IF;
+
+    IF to_regclass('flora_core.ux_post_videos_current_post') IS NULL THEN
+        RAISE EXCEPTION 'content migration 0002 did not create ux_post_videos_current_post';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        JOIN pg_namespace n ON t.relnamespace = n.oid
+        WHERE n.nspname = 'flora_core'
+          AND t.relname = 'post_videos'
+          AND c.contype = 'u'
+          AND pg_get_constraintdef(c.oid) ILIKE '%post_uuid%'
+          AND pg_get_constraintdef(c.oid) NOT ILIKE '%is_current%'
+    ) THEN
+        RAISE EXCEPTION
+            'content migration 0002 left a non-partial unique on post_videos.post_uuid';
+    END IF;
 END
 $$;
