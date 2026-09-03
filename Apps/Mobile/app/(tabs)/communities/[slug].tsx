@@ -33,6 +33,7 @@ import { useNetworkClass } from "@/lib/useNetworkClass";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { useDeletePost } from "@/lib/useDeletePost";
+import { useEditPost } from "@/lib/useEditPost";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
 export default function CommunityScreen() {
@@ -48,6 +49,7 @@ export default function CommunityScreen() {
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
   const handleDeletePost = useDeletePost();
+  const { openEditPost, editSheet } = useEditPost();
   const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking();
 
@@ -218,6 +220,7 @@ export default function CommunityScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      {editSheet}
       <FrcMediaModeScope {...mediaBand}>
         <FlashList
           ref={flashListRef}
@@ -255,6 +258,7 @@ export default function CommunityScreen() {
                 onCommentAdded={handleCommentAdded}
                 canDeletePost={isOwner}
                 onDeletePost={() => handleDeletePost(item.postUuid)}
+                onEditPost={() => openEditPost(item)}
               />
             );
           }}

@@ -16,6 +16,8 @@ type Props = {
   onClear: () => void;
   onSaveDraft: () => void;
   onPublish: () => void;
+  showDraftActions?: boolean;
+  showPublish?: boolean;
 };
 
 export function ComposeToolbar({
@@ -30,6 +32,8 @@ export function ComposeToolbar({
   onClear,
   onSaveDraft,
   onPublish,
+  showDraftActions = true,
+  showPublish = true,
 }: Props) {
   const attachRef = useRef<View>(null);
   const [attachOpen, setAttachOpen] = useState(false);
@@ -63,50 +67,56 @@ export function ComposeToolbar({
 
       <View style={styles.spacer} />
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Сохранить черновик"
-        disabled={!canSaveDraft || savingDraft}
-        style={({ pressed }) => [
-          styles.iconBtn,
-          (!canSaveDraft || savingDraft) && styles.disabled,
-          pressed && canSaveDraft && styles.pressed,
-        ]}
-        onPress={onSaveDraft}
-      >
-        {savingDraft ? (
-          <ActivityIndicator color={floraColors.greenLight} size="small" />
-        ) : (
-          <Ionicons name="save-outline" size={22} color={floraColors.gray} />
-        )}
-      </Pressable>
+      {showDraftActions ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Сохранить черновик"
+          disabled={!canSaveDraft || savingDraft}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            (!canSaveDraft || savingDraft) && styles.disabled,
+            pressed && canSaveDraft && styles.pressed,
+          ]}
+          onPress={onSaveDraft}
+        >
+          {savingDraft ? (
+            <ActivityIndicator color={floraColors.greenLight} size="small" />
+          ) : (
+            <Ionicons name="save-outline" size={22} color={floraColors.gray} />
+          )}
+        </Pressable>
+      ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Очистить"
-        style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-        onPress={onClear}
-      >
-        <Ionicons name="trash-outline" size={22} color={floraColors.gray} />
-      </Pressable>
+      {showDraftActions ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Очистить"
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+          onPress={onClear}
+        >
+          <Ionicons name="trash-outline" size={22} color={floraColors.gray} />
+        </Pressable>
+      ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Опубликовать"
-        disabled={!canPublish}
-        style={({ pressed }) => [
-          styles.publishBtn,
-          !canPublish && styles.disabled,
-          pressed && canPublish && styles.pressed,
-        ]}
-        onPress={onPublish}
-      >
-        {publishing ? (
-          <ActivityIndicator color={floraColors.greenLight} size="small" />
-        ) : (
-          <Text style={styles.publishText}>Опубликовать</Text>
-        )}
-      </Pressable>
+      {showPublish ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Опубликовать"
+          disabled={!canPublish}
+          style={({ pressed }) => [
+            styles.publishBtn,
+            !canPublish && styles.disabled,
+            pressed && canPublish && styles.pressed,
+          ]}
+          onPress={onPublish}
+        >
+          {publishing ? (
+            <ActivityIndicator color={floraColors.greenLight} size="small" />
+          ) : (
+            <Text style={styles.publishText}>Опубликовать</Text>
+          )}
+        </Pressable>
+      ) : null}
 
       <DropdownMenuOverlay
         open={attachOpen}

@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
+use flora_shared::flora_uuid::new_uuid;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -95,6 +96,16 @@ pub struct VideoLite {
     pub width: i32,
     pub height: i32,
     pub duration_ms: i32,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PostUpdateRow {
+    pub post_uuid: Uuid,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
+    pub author_user_uuid: Uuid,
+    pub community_id: Option<Uuid>,
+    pub is_deleted: bool,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -1055,6 +1066,7 @@ impl ContentRepo {
             SELECT post_uuid, uuid
             FROM flora_core.post_images
             WHERE post_uuid = ANY($1)
+              AND is_current
             ORDER BY post_uuid, sort_order
             "#,
         )
@@ -1081,6 +1093,7 @@ impl ContentRepo {
             SELECT post_uuid, uuid AS video_uuid, status, width, height, duration_ms
             FROM flora_core.post_videos
             WHERE post_uuid = ANY($1)
+              AND is_current
             "#,
         )
         .bind(post_uuids)
@@ -1138,6 +1151,158 @@ impl ContentRepo {
         .bind(created_at)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    pub async fn post_for_update(
+        &self,
+        post_uuid: Uuid,
+    ) -> Result<Option<PostUpdateRow>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT post_uuid, content, created_at, author_user_uuid, community_id, is_deleted
+            FROM flora_core.user_posts
+            WHERE post_uuid = $1
+            "#,
+        )
+        .bind(post_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn current_image_uuids(&self, post_uuid: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT uuid
+            FROM flora_core.post_images
+            WHERE post_uuid = $1
+              AND is_current
+            ORDER BY sort_order, uuid
+            "#,
+        )
+        .bind(post_uuid)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn current_video(&self, post_uuid: Uuid) -> Result<Option<VideoLite>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT post_uuid, uuid AS video_uuid, status, width, height, duration_ms
+            FROM flora_core.post_videos
+            WHERE post_uuid = $1
+              AND is_current
+            LIMIT 1
+            "#,
+        )
+        .bind(post_uuid)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn commit_post_edit(
+        &self,
+        post_uuid: Uuid,
+        editor: Uuid,
+        previous_content: &str,
+        previous_images: &[Uuid],
+        previous_video: Option<Uuid>,
+        new_content: &str,
+        keep_image_uuids: &[Uuid],
+        remove_video: bool,
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        let now = Utc::now();
+        let revision_no: i32 = sqlx::query_scalar(
+            r#"
+            SELECT COALESCE(MAX(revision_no), 0)::int + 1
+            FROM flora_core.post_revisions
+            WHERE post_uuid = $1
+            "#,
+        )
+        .bind(post_uuid)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.post_revisions (
+                revision_uuid, post_uuid, revision_no, editor_user_uuid, created_at,
+                content, image_uuids, video_uuid
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            "#,
+        )
+        .bind(new_uuid())
+        .bind(post_uuid)
+        .bind(revision_no)
+        .bind(editor)
+        .bind(now)
+        .bind(previous_content)
+        .bind(previous_images)
+        .bind(previous_video)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE flora_core.user_posts
+            SET content = $2, is_edited = true, edited_at = $3
+            WHERE post_uuid = $1
+            "#,
+        )
+        .bind(post_uuid)
+        .bind(new_content)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE flora_core.post_images
+            SET is_current = false
+            WHERE post_uuid = $1
+              AND is_current
+              AND NOT (uuid = ANY($2))
+            "#,
+        )
+        .bind(post_uuid)
+        .bind(keep_image_uuids)
+        .execute(&mut *tx)
+        .await?;
+
+        for (index, image_uuid) in keep_image_uuids.iter().enumerate() {
+            sqlx::query(
+                r#"
+                UPDATE flora_core.post_images
+                SET sort_order = $3, is_current = true
+                WHERE uuid = $1
+                  AND post_uuid = $2
+                "#,
+            )
+            .bind(image_uuid)
+            .bind(post_uuid)
+            .bind(index as i32)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        if remove_video {
+            sqlx::query(
+                r#"
+                UPDATE flora_core.post_videos
+                SET is_current = false
+                WHERE post_uuid = $1
+                  AND is_current
+                "#,
+            )
+            .bind(post_uuid)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
         Ok(())
     }
 
@@ -1680,6 +1845,7 @@ impl ContentRepo {
             SELECT COUNT(*)::bigint
             FROM flora_core.post_images
             WHERE post_uuid = $1
+              AND is_current
             "#,
         )
         .bind(post_uuid)
@@ -1870,6 +2036,7 @@ impl ContentRepo {
             SELECT post_uuid, uuid AS video_uuid, status, width, height, duration_ms
             FROM flora_core.post_videos
             WHERE post_uuid = $1
+              AND is_current
             LIMIT 1
             "#,
         )
@@ -1885,6 +2052,7 @@ impl ContentRepo {
                 SELECT 1
                 FROM flora_core.post_videos
                 WHERE post_uuid = $1
+                  AND is_current
             )
             "#,
         )

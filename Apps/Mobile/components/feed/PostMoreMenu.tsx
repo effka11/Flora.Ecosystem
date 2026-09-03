@@ -16,6 +16,7 @@ type Props = {
   isOwnPost?: boolean;
   canDeletePost?: boolean;
   onDeletePost?: () => void;
+  onEditPost?: () => void;
 };
 
 type Anchor = {
@@ -27,6 +28,7 @@ export function PostMoreMenuTrigger({
   isOwnPost = false,
   canDeletePost = false,
   onDeletePost,
+  onEditPost,
 }: Props) {
   const { width: windowWidth } = useWindowDimensions();
   const wrapRef = useRef<View>(null);
@@ -34,6 +36,7 @@ export function PostMoreMenuTrigger({
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const showDelete = canDeletePost && Boolean(onDeletePost);
+  const showEdit = isOwnPost && Boolean(onEditPost);
   const showHideAuthor = !showDelete && !isOwnPost;
 
   const close = useCallback(() => {
@@ -105,6 +108,17 @@ export function PostMoreMenuTrigger({
                   ) : null}
                   {showHideAuthor ? (
                     <MenuRow icon="person-remove-outline" label="Скрыть автора" onPress={close} />
+                  ) : null}
+
+                  {showEdit ? (
+                    <MenuRow
+                      icon="create-outline"
+                      label="Редактировать"
+                      onPress={() => {
+                        onEditPost!();
+                        close();
+                      }}
+                    />
                   ) : null}
 
                   {showDelete ? (

@@ -18,6 +18,7 @@ import { useNetworkClass } from "@/lib/useNetworkClass";
 import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { useDeletePost } from "@/lib/useDeletePost";
+import { useEditPost } from "@/lib/useEditPost";
 import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -32,6 +33,7 @@ export default function UserProfileScreen() {
   const [followBusy, setFollowBusy] = useState(false);
   const { snapshotFor, toggleLike, toggleRepost, isLikePending, isRepostPending } = usePostEngagement();
   const handleDeletePost = useDeletePost();
+  const { openEditPost, editSheet } = useEditPost();
   const { viewabilityConfigCallbackPairs, flashListRef, refreshViewability, visibleRange } =
     usePostViewTracking();
   const isSelfProfile = isOwnUsername(username, me?.username);
@@ -189,6 +191,7 @@ export default function UserProfileScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      {editSheet}
       <FrcMediaModeScope {...mediaBand}>
         <FlashList
           ref={flashListRef}
@@ -225,6 +228,7 @@ export default function UserProfileScreen() {
                 onCommentAdded={handleCommentAdded}
                 canDeletePost={isOwnProfile}
                 onDeletePost={isOwnProfile ? () => handleDeletePost(item.postUuid) : undefined}
+                onEditPost={isOwnProfile ? () => openEditPost(item) : undefined}
               />
             );
           }}
