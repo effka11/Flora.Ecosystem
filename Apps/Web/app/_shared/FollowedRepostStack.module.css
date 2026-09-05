@@ -42,8 +42,13 @@
   flex-direction: row;
 }
 
-.avatar {
+.stack .avatar {
   position: relative;
+  /* Сильнее .root { overflow: hidden } — тень снаружи, фото клипит внутренний .art. */
+  overflow: visible;
+  box-shadow:
+    0 0 0 1px var(--flora-bg),
+    0 1px 3px rgba(0, 0, 0, 0.55);
   transition: transform 0.15s ease;
 }
 

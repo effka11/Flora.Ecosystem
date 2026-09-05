@@ -265,6 +265,7 @@ function buildInitialConversations(): ConversationListItemDto[] {
       otherUserUuid: peerUuid(i + 1),
       otherUsername: DEMO_HANDLES[i] ?? `friend_${i + 1}`,
       otherDisplayName: displayName,
+      otherAvatarUuid: null,
       lastMessageUuid: `20000000-0000-4000-8000-${(0x200000 + i).toString(16).padStart(12, "0")}`,
       lastMessageContent: fromMe ? myLines[i % myLines.length] : theirLines[i % theirLines.length],
       lastMessageEncryptedForMe: null,

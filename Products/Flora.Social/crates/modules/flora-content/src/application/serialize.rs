@@ -656,8 +656,8 @@ fn followed_reposts_value(
             if username.trim().is_empty() {
                 return None;
             }
-            let display_name = profiles
-                .get(user_uuid)
+            let profile = profiles.get(user_uuid);
+            let display_name = profile
                 .map(|profile| {
                     if profile.display_name.is_empty() {
                         username.clone()
@@ -666,9 +666,14 @@ fn followed_reposts_value(
                     }
                 })
                 .unwrap_or_else(|| username.clone());
+            let avatar_uuid = profile.and_then(|p| p.avatar_uuid.map(|u| u.to_string()));
+            let account_blocked = profile.map(|p| p.account_blocked).unwrap_or(false);
             Some(json!({
                 "username": username,
                 "displayName": display_name,
+                "avatarUuid": avatar_uuid,
+                "userUuid": user_uuid.to_string(),
+                "accountBlocked": account_blocked,
             }))
         })
         .collect();
@@ -733,7 +738,7 @@ mod tests {
                 FeedAuthorProfile {
                     user_uuid: visible,
                     display_name: "Visible".to_string(),
-                    avatar_uuid: None,
+                    avatar_uuid: Some(Uuid::from_u128(22)),
                     account_blocked: false,
                 },
             ),
@@ -751,6 +756,9 @@ mod tests {
             json!([{
                 "username": "visible",
                 "displayName": "Visible",
+                "avatarUuid": Uuid::from_u128(22).to_string(),
+                "userUuid": visible.to_string(),
+                "accountBlocked": false,
             }])
         );
     }

@@ -1590,6 +1590,7 @@ export type ConversationListItemDto = {
   otherUserUuid: string;
   otherUsername: string;
   otherDisplayName: string;
+  otherAvatarUuid?: string | null;
   lastMessageUuid: string;
   lastMessageContent: string | null;
   lastMessageEncryptedForMe: string | null;
@@ -1613,10 +1614,12 @@ function parseConversationListItem(raw: unknown): ConversationListItemDto | null
   const enc = readStr(o, ["lastMessageEncryptedForMe", "LastMessageEncryptedForMe"]);
   const hasEncryptedPreview = Boolean(enc.trim()) && !lastMessageContent.trim();
   const encTrim = enc.trim();
+  const avatar = readStr(o, ["otherAvatarUuid", "OtherAvatarUuid"]).trim();
   return {
     otherUserUuid,
     otherUsername: readStr(o, ["otherUsername", "OtherUsername"]),
     otherDisplayName: readStr(o, ["otherDisplayName", "OtherDisplayName"]),
+    otherAvatarUuid: avatar.length > 0 ? avatar : null,
     lastMessageUuid: readStr(o, ["lastMessageUuid", "LastMessageUuid"]),
     lastMessageContent: lastMessageContent.length > 0 ? lastMessageContent : null,
     lastMessageEncryptedForMe: encTrim.length > 0 ? enc : null,

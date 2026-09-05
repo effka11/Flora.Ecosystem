@@ -293,6 +293,7 @@ function toConversationDto(c: MsgConversationDto): ConversationListItemDto {
     otherUserUuid: c.otherUserUuid,
     otherUsername: c.otherUsername,
     otherDisplayName: c.otherDisplayName,
+    otherAvatarUuid: c.otherAvatarUuid,
     lastMessageUuid: "",
     lastMessageContent: c.lastMessageContent,
     lastMessageEncryptedForMe: c.lastMessageEncryptedForMe,
@@ -552,14 +553,6 @@ function MessageBubbleTime({
       {deliveryState ? <MessageReadReceipt state={deliveryState} /> : null}
     </span>
   );
-}
-
-function avatarLetters(name: string): string {
-  const t = name.trim();
-  if (t.length === 0) return "?";
-  const parts = t.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return t.slice(0, 2).toUpperCase();
 }
 
 function isWellFormedUuid(s: string): boolean {
@@ -1610,6 +1603,7 @@ function MessagesChatInner() {
       otherUserUuid: withUuid,
       otherUsername: u,
       otherDisplayName: n.length > 0 ? n : u.length > 0 ? u : "Пользователь",
+      otherAvatarUuid: null,
       lastMessageUuid: "",
       lastMessageContent: null,
       lastMessageEncryptedForMe: null,
@@ -1963,6 +1957,7 @@ function MessagesChatInner() {
             otherUserUuid: selectedOtherUuid,
             otherUsername: "",
             otherDisplayName: "Пользователь",
+            otherAvatarUuid: null,
             lastMessageUuid: "",
             lastMessageContent: null,
             lastMessageEncryptedForMe: null,
@@ -2148,6 +2143,7 @@ function MessagesChatInner() {
         kind: "dm" as const,
         displayName: chatHeaderPeer.otherDisplayName || chatHeaderPeer.otherUsername || "Пользователь",
         username: chatHeaderPeer.otherUsername,
+        avatarUuid: chatHeaderPeer.otherAvatarUuid,
         seed: chatHeaderPeer.otherUserUuid,
         accountBlocked: chatHeaderPeer.otherAccountBlocked,
       },
@@ -2214,12 +2210,22 @@ function MessagesChatInner() {
     [threadMessages, displayMessageContent],
   );
 
-  const peerThreadAvatarLabel = useMemo(
-    () =>
-      avatarLetters(
-        chatHeaderPeer?.otherDisplayName || chatHeaderPeer?.otherUsername || "?",
-      ),
-    [chatHeaderPeer?.otherDisplayName, chatHeaderPeer?.otherUsername],
+  const peerThreadAvatar = useMemo(
+    () => ({
+      displayName:
+        chatHeaderPeer?.otherDisplayName || chatHeaderPeer?.otherUsername || "Пользователь",
+      username: chatHeaderPeer?.otherUsername ?? "",
+      avatarUuid: chatHeaderPeer?.otherAvatarUuid ?? null,
+      seed: chatHeaderPeer?.otherUserUuid ?? "Пользователь",
+      accountBlocked: chatHeaderPeer?.otherAccountBlocked,
+    }),
+    [
+      chatHeaderPeer?.otherAccountBlocked,
+      chatHeaderPeer?.otherAvatarUuid,
+      chatHeaderPeer?.otherDisplayName,
+      chatHeaderPeer?.otherUserUuid,
+      chatHeaderPeer?.otherUsername,
+    ],
   );
 
   /**
@@ -4211,6 +4217,7 @@ function MessagesChatInner() {
                           avatar: {
                             displayName: item.group.title,
                             username: undefined as string | undefined,
+                            avatarUuid: undefined as string | null | undefined,
                             communityName: item.group.title,
                             seed: item.group.conversationUuid,
                             accountBlocked: undefined as boolean | undefined,
@@ -4248,6 +4255,7 @@ function MessagesChatInner() {
                             avatar: {
                               displayName: title,
                               username: chat.otherUsername,
+                              avatarUuid: chat.otherAvatarUuid,
                               communityName: undefined as string | undefined,
                               seed: chat.otherUserUuid,
                               accountBlocked: chat.otherAccountBlocked,
@@ -4284,6 +4292,7 @@ function MessagesChatInner() {
                             size={45}
                             displayName={row.avatar.displayName}
                             username={row.avatar.username}
+                            avatarUuid={row.avatar.avatarUuid}
                             communityName={row.avatar.communityName}
                             seed={row.avatar.seed}
                             accountBlocked={row.avatar.accountBlocked}
@@ -4431,6 +4440,7 @@ function MessagesChatInner() {
                       size={45}
                       displayName={openChatHeader.avatar.displayName}
                       username={openChatHeader.avatar.username}
+                      avatarUuid={openChatHeader.avatar.avatarUuid}
                       seed={openChatHeader.avatar.seed}
                       accountBlocked={openChatHeader.avatar.accountBlocked}
                     />
@@ -4899,9 +4909,7 @@ function MessagesChatInner() {
                         <div
                           key={`peer-avatar-${item.groupKey}`}
                           data-messages-peer-avatar=""
-                          className={`${styles.messagesBubblePeerAvatar}${
-                            selectedGroupChat ? ` ${styles.messagesBubblePeerAvatarFlora}` : ""
-                          }`}
+                          className={`${styles.messagesBubblePeerAvatar} ${styles.messagesBubblePeerAvatarFlora}`}
                           aria-hidden
                         >
                           {selectedGroupChat ? (
@@ -4929,7 +4937,15 @@ function MessagesChatInner() {
                               );
                             })()
                           ) : (
-                            peerThreadAvatarLabel
+                            <FloraAvatar
+                              plain
+                              size={45}
+                              displayName={peerThreadAvatar.displayName}
+                              username={peerThreadAvatar.username}
+                              avatarUuid={peerThreadAvatar.avatarUuid}
+                              seed={peerThreadAvatar.seed}
+                              accountBlocked={peerThreadAvatar.accountBlocked}
+                            />
                           )}
                         </div>
                       </div>
