@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { readFrcNaturalSize } from "@/lib/frcCanvasPaint";
 import { postImageUrl } from "@/lib/socialApi";
 import { FrcImage } from "./FrcImage";
 import styles from "./FeedPostImages.module.css";
@@ -23,10 +24,13 @@ const FEED_POST_COLLAGE_MAX_ITEMS = 10;
 type FeedPostImageShape = "narrow" | "portrait" | "square" | "wide";
 
 function feedPostImageShape(image: HTMLImageElement | HTMLCanvasElement): FeedPostImageShape {
+  const natural = readFrcNaturalSize(image);
   const width =
-    "naturalWidth" in image && image.naturalWidth > 0 ? image.naturalWidth : image.width;
+    natural?.width ??
+    ("naturalWidth" in image && image.naturalWidth > 0 ? image.naturalWidth : image.width);
   const height =
-    "naturalHeight" in image && image.naturalHeight > 0 ? image.naturalHeight : image.height;
+    natural?.height ??
+    ("naturalHeight" in image && image.naturalHeight > 0 ? image.naturalHeight : image.height);
   const ratio = width > 0 && height > 0 ? width / height : 1;
 
   if (ratio < 0.72) return "narrow";
