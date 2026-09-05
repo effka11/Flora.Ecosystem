@@ -3,13 +3,19 @@ import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 /** Высота компактной шапки (5 рядов первичной сетки), как --g75 в референсе. */
 export const FEED_COMPACT_LEVEL_PX = 75;
 
+/** Развёрнутая шапка: 9 рядов первичной сетки (совпадает с `9 * --flora-grid-step`). */
+export const FEED_EXPANDED_HEADER_PX = 9 * 15;
+
+/** Вход в compact: scrollTop строго выше этого порога. */
+export const FEED_COMPACT_THRESHOLD_PX = FEED_EXPANDED_HEADER_PX - FEED_COMPACT_LEVEL_PX;
+
 /**
  * Гистерезис у порога (1× primary grid): без него trackpad/wheel вокруг
- * `blockHeight - 75` гоняет compact↔normal и sticky «залипает».
+ * порога гоняет compact↔normal.
  */
 export const FEED_COMPACT_HYSTERESIS_PX = 15;
 
-const MIN_HEIGHT_CLEAR_MS = 450;
+const NO_TRANSITION_CLEAR_MS = 450;
 const COMPACT_ANIMATE_DELAY_MS = 50;
 const LEAVE_EXPAND_ANIM_MS = 420;
 
@@ -21,7 +27,7 @@ export type FeedCompactHeaderState = {
   isLeavingCompact: boolean;
 };
 
-/** CSS-module классы top-block — хук владеет classList (base + sticky/leave) в scroll-rAF. */
+/** CSS-module классы top-block — хук владеет classList (base + compact/leave) в scroll-rAF. */
 export type FeedCompactHeaderClassMap = {
   /** Базовый класс блока; всегда на узле до toggle compact. */
   base: string;
@@ -65,11 +71,9 @@ function syncCompactDomClasses(
 }
 
 /**
- * Порог и sticky/minHeight — как FloraScrollLoad.observeScrollForCompact в 2142-1.
- * Геометрия и sticky-классы — императивно в scroll-rAF (без flushSync), чтобы Chromium
- * не рвал wheel-жест sync React-коммитом. React state — только для вторичного UI.
- * Harness (`feed:compact-scroll-repro`) is a continuity regression gate; Playwright
- * wheel did not reproduce the prod freeze on the old flushSync path — see script header.
+ * Порог константный (9×15 − 75). Геометрия ящика — CSS always-sticky;
+ * хук только переключает inner-классы в scroll-rAF (без flushSync).
+ * React state — только для вторичного UI.
  */
 export function useFeedCompactHeader(
   scrollRef: RefObject<HTMLElement | null>,
@@ -83,7 +87,7 @@ export function useFeedCompactHeader(
 
   const lastCompactRef = useRef<boolean | null>(null);
   const isCompactRef = useRef(false);
-  const minHeightClearRef = useRef<number | null>(null);
+  const noTransitionClearRef = useRef<number | null>(null);
   const compactAnimateRef = useRef<number | null>(null);
   const leaveExpandClearRef = useRef<number | null>(null);
   const classMapRef = useRef(classMap);
@@ -109,9 +113,9 @@ export function useFeedCompactHeader(
     let ticking = false;
 
     const clearTimers = () => {
-      if (minHeightClearRef.current !== null) {
-        window.clearTimeout(minHeightClearRef.current);
-        minHeightClearRef.current = null;
+      if (noTransitionClearRef.current !== null) {
+        window.clearTimeout(noTransitionClearRef.current);
+        noTransitionClearRef.current = null;
       }
       if (compactAnimateRef.current !== null) {
         window.clearTimeout(compactAnimateRef.current);
@@ -123,12 +127,9 @@ export function useFeedCompactHeader(
       }
     };
 
-    const enterCompact = (block: HTMLElement, blockHeight: number) => {
+    const enterCompact = (block: HTMLElement) => {
       clearTimers();
       const map = classMapRef.current;
-      /* Сначала геометрия + classList — как 2142 до paint; React state без flushSync. */
-      block.style.minHeight = `${blockHeight}px`;
-      block.style.setProperty("--compact-stick-top", `${FEED_COMPACT_LEVEL_PX - blockHeight}px`);
       syncCompactDomClasses(block, map, {
         compact: true,
         compactAnimate: false,
@@ -157,7 +158,6 @@ export function useFeedCompactHeader(
     const leaveCompact = (block: HTMLElement) => {
       clearTimers();
       const map = classMapRef.current;
-      block.style.removeProperty("--compact-stick-top");
       syncCompactDomClasses(block, map, {
         compact: false,
         compactAnimate: false,
@@ -168,7 +168,6 @@ export function useFeedCompactHeader(
       setIsCompact(false);
       setCompactAnimate(false);
       setIsLeavingCompact(true);
-      /* Как scroll-load.js в 2142: no-transition до снятия minHeight (~450ms). */
       leaveExpandClearRef.current = window.setTimeout(() => {
         const b = topBlockRef.current;
         if (b && !isCompactRef.current) {
@@ -182,9 +181,8 @@ export function useFeedCompactHeader(
         setIsLeavingCompact(false);
         leaveExpandClearRef.current = null;
       }, LEAVE_EXPAND_ANIM_MS);
-      minHeightClearRef.current = window.setTimeout(() => {
+      noTransitionClearRef.current = window.setTimeout(() => {
         if (!isCompactRef.current) {
-          block.style.minHeight = "";
           syncCompactDomClasses(block, classMapRef.current, {
             compact: false,
             compactAnimate: false,
@@ -193,22 +191,20 @@ export function useFeedCompactHeader(
           });
           setNoTransition(false);
         }
-        minHeightClearRef.current = null;
-      }, MIN_HEIGHT_CLEAR_MS);
+        noTransitionClearRef.current = null;
+      }, NO_TRANSITION_CLEAR_MS);
     };
 
     const update = () => {
       const block = topBlockRef.current;
-      const blockHeight = block?.offsetHeight ?? 0;
       const scrollTop = root.scrollTop;
-      const threshold = Math.max(0, blockHeight - FEED_COMPACT_LEVEL_PX);
       const wasCompact = lastCompactRef.current === true;
-      const compact = shouldFeedHeaderBeCompact(scrollTop, threshold, wasCompact);
+      const compact = shouldFeedHeaderBeCompact(scrollTop, FEED_COMPACT_THRESHOLD_PX, wasCompact);
 
       if (lastCompactRef.current !== compact) {
         if (block) {
           if (compact) {
-            enterCompact(block, blockHeight);
+            enterCompact(block);
           } else if (lastCompactRef.current === true) {
             leaveCompact(block);
           }

@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   FEED_COMPACT_HYSTERESIS_PX,
+  FEED_COMPACT_THRESHOLD_PX,
   shouldFeedHeaderBeCompact,
 } from "./useFeedCompactHeader";
 
-const THRESHOLD = 60;
+const THRESHOLD = FEED_COMPACT_THRESHOLD_PX;
+
+test("compact threshold is 9-row header minus compact level", () => {
+  assert.equal(FEED_COMPACT_THRESHOLD_PX, 60);
+});
 
 test("enter compact only when scrollTop is strictly above threshold", () => {
   assert.equal(shouldFeedHeaderBeCompact(THRESHOLD, THRESHOLD, false), false);

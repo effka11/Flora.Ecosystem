@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import styles from "../app/(dashboard)/feed/feed.module.css";
 import {
   FEED_COMPACT_LEVEL_PX,
+  FEED_EXPANDED_HEADER_PX,
   useFeedCompactHeader,
   type FeedCompactHeaderClassMap,
 } from "../app/(dashboard)/feed/useFeedCompactHeader";
@@ -22,6 +23,8 @@ declare global {
       threshold: () => number;
       hasCompactClass: () => boolean;
       isCompactState: () => boolean;
+      headerHeight: () => number;
+      headerPosition: () => string;
     };
   }
 }
@@ -34,17 +37,19 @@ function FeedCompactScrollHarness() {
   useEffect(() => {
     window.__feedCompactHarness = {
       scrollTop: () => scrollRef.current?.scrollTop ?? 0,
-      threshold: () => {
-        const block = topBlockRef.current;
-        const blockHeight = block?.offsetHeight ?? 0;
-        return Math.max(0, blockHeight - FEED_COMPACT_LEVEL_PX);
-      },
+      threshold: () => Math.max(0, FEED_EXPANDED_HEADER_PX - FEED_COMPACT_LEVEL_PX),
       hasCompactClass: () => {
         const block = topBlockRef.current;
         if (!block || !classMap.compact) return false;
         return block.classList.contains(classMap.compact);
       },
       isCompactState: () => isCompact,
+      headerHeight: () => topBlockRef.current?.offsetHeight ?? 0,
+      headerPosition: () => {
+        const block = topBlockRef.current;
+        if (!block) return "";
+        return getComputedStyle(block).position;
+      },
     };
   }, [isCompact]);
 
