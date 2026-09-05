@@ -140,10 +140,12 @@ const webClientCoreFetch = (async (input: RequestInfo | URL, init?: RequestInit)
 
 /** Safe for eager imports and HMR; configuring API never controls sodium setup. */
 export function initWebApiClient(): void {
-  if (apiClientInitialized) return;
   try {
     const existing = getApiClientConfig();
-    if (existing.session === webSessionStore) {
+    if (
+      existing.session === webSessionStore &&
+      existing.retrySafeRefreshBackend === true
+    ) {
       apiClientInitialized = true;
       return;
     }
@@ -160,6 +162,7 @@ export function initWebApiClient(): void {
     },
     fetchImpl: webClientCoreFetch,
     runRefreshExclusive: runWebAuthExclusive,
+    retrySafeRefreshBackend: true,
     onUnauthorized: scheduleUnauthorizedRedirect,
   });
   apiClientInitialized = true;

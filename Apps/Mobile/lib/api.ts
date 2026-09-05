@@ -16,6 +16,7 @@ export function initFloraClient(): void {
   configureApiClient({
     apiBaseUrl,
     session: mobileSessionStore,
+    retrySafeRefreshBackend: true,
     clientIdentity: {
       platform: "android",
       appVersion: Constants.expoConfig?.version ?? "0.13.3-alpha",
