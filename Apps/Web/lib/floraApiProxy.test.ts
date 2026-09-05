@@ -96,6 +96,38 @@ test("auth proxy keeps refresh credentials out of browser-readable storage", asy
       assert.equal(payload.refreshToken, "http-only");
     });
 
+    await t.test("lifts a leftover __Host-flora_refresh cookie in non-prod", async () => {
+      let forwardedBody: unknown;
+      globalThis.fetch = (async (_input, init) => {
+        forwardedBody = await new Response(init?.body).json();
+        return Response.json({
+          accessToken: "next-access-token",
+          refreshToken: "session-id.next-secret",
+          expiresAt: "2030-01-01T00:15:00Z",
+        });
+      }) as typeof fetch;
+
+      const response = await proxyFloraApiRequest(
+        new NextRequest("https://social.flora.example/api/auth/refresh", {
+          method: "POST",
+          body: "{}",
+          headers: {
+            "content-type": "application/json",
+            cookie: "__Host-flora_refresh=session-id.legacy-host-secret",
+            origin: "https://social.flora.example",
+          },
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(forwardedBody, {
+        refreshToken: "session-id.legacy-host-secret",
+      });
+      const setCookie = response.headers.get("set-cookie") ?? "";
+      assert.match(setCookie, /flora_refresh=session-id\.next-secret/);
+      assert.match(setCookie, /__Host-flora_refresh=;[^,]*Max-Age=0/);
+    });
+
     await t.test("expires the cookie when refresh authorization fails", async () => {
       globalThis.fetch = (async () =>
         Response.json({ error: "unauthorized" }, { status: 401 })) as typeof fetch;

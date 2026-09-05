@@ -217,6 +217,93 @@ describe("session refresh client", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("legacy next resume after a lost R1 is terminal invalid", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    let requestCount = 0;
+    const fetchImpl = vi.fn(async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        throw new TypeError("Response was lost");
+      }
+      return new Response(
+        JSON.stringify({ error: "Refresh token already used" }),
+        { status: 401 },
+      );
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+    });
+
+    expect(await refreshSession()).toBe("transient");
+    expect(session.state.accessToken).toBe("old-access");
+    expect(session.state.refreshToken).toBe("old-refresh");
+
+    expect(await refreshSession()).toBe("invalid");
+    expect(session.state.accessToken).toBeNull();
+    expect(session.state.refreshToken).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("retry-safe next resume after a lost R1 stays ready", async () => {
+    const session = createSessionStore({
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const requestBodies: string[] = [];
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      requestBodies.push(String(init?.body));
+      if (requestBodies.length === 1) {
+        throw new TypeError("Response was lost");
+      }
+      if (requestBodies.length === 2) {
+        return new Response(
+          JSON.stringify({
+            accessToken: "new-access",
+            refreshToken: "new-refresh",
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          accessToken: "newer-access",
+          refreshToken: "newer-refresh",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    configureApiClient({
+      apiBaseUrl: "https://api.test",
+      session,
+      clientIdentity: { platform: "android", appVersion: "1.0.0" },
+      fetchImpl,
+      retrySafeRefreshBackend: true,
+    });
+
+    expect(await refreshSession()).toBe("ready");
+    expect(session.state.refreshToken).toBe("new-refresh");
+    expect(await refreshSession()).toBe("ready");
+    expect(session.state.accessToken).toBe("newer-access");
+    expect(session.state.refreshToken).toBe("newer-refresh");
+    expect(requestBodies).toEqual([
+      JSON.stringify({ refreshToken: "old-refresh" }),
+      JSON.stringify({ refreshToken: "old-refresh" }),
+      JSON.stringify({ refreshToken: "new-refresh" }),
+    ]);
+  });
+
   it("retries the same R1 once after a lost response", async () => {
     const session = createSessionStore({
       accessToken: "old-access",
