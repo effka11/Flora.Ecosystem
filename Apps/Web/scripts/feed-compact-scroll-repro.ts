@@ -5,12 +5,10 @@
  * Setup (once): npx playwright install chromium
  * Run: npm run feed:compact-scroll-repro
  *
- * Calibration (2026-08-09): Playwright `mouse.wheel` stayed green on the pre-fix
- * baseline that still used `flushSync` — this harness does **not** reproduce the
- * prod “freeze until mousemove” symptom. Treat PASS as “compact transition still
- * scrolls through threshold”, not as proof that removing flushSync fixed prod.
- * Prod confirmation remains a human residual on an authenticated feed.
- * Spacer/always-sticky (§4) — reopen if prod still freezes after the classList change.
+ * Always-sticky gate: PASS requires `position: sticky` at scrollTop=0 (header
+ * box does not toggle relative→sticky mid-wheel), compact-class after wheel,
+ * and header offsetHeight 135 across the transition. Monotonic scrollTop is extra.
+ * Prod visual remains a human residual on an authenticated feed.
  */
 import { mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,12 +16,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import esbuild from "esbuild";
 import CssModulesPlugin from "esbuild-css-modules-plugin";
 import { chromium } from "playwright";
+import { FEED_EXPANDED_HEADER_PX } from "../app/(dashboard)/feed/useFeedCompactHeader";
 
 type HarnessApi = {
   scrollTop: () => number;
   threshold: () => number;
   hasCompactClass: () => boolean;
   isCompactState: () => boolean;
+  headerHeight: () => number;
+  headerPosition: () => string;
 };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -39,6 +40,7 @@ const STUCK_BAND_PX = 5;
 /** Small wheels across the compact threshold — where Chromium tends to drop the gesture. */
 const THRESHOLD_PROBE_STEPS = 40;
 const THRESHOLD_PROBE_DELTA = 12;
+const SCROLL_ROLLBACK_MAX_PX = 2;
 
 async function bundle(): Promise<void> {
   mkdirSync(outDir, { recursive: true });
@@ -115,7 +117,7 @@ async function bundle(): Promise<void> {
 
 async function runRepro(): Promise<void> {
   console.log(
-    "[feed:compact-scroll-repro] calibration: pre-fix flushSync baseline was GREEN under Playwright wheel; gate ≠ prod-freeze proof"
+    "[feed:compact-scroll-repro] always-sticky at rest + compact class after wheel + height 135",
   );
   await bundle();
   const browser = await chromium.launch({ headless: true });
@@ -134,10 +136,19 @@ async function runRepro(): Promise<void> {
   // Position pointer once; subsequent wheels must not use mousemove.
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 
-  const before = await page.evaluate(() => {
+  const atRest = await page.evaluate(() => {
     const h = (window as Window & { __feedCompactHarness?: HarnessApi }).__feedCompactHarness!;
-    return { scrollTop: h.scrollTop(), threshold: h.threshold() };
+    return {
+      scrollTop: h.scrollTop(),
+      threshold: h.threshold(),
+      headerHeight: h.headerHeight(),
+      headerPosition: h.headerPosition(),
+      hasCompactClass: h.hasCompactClass(),
+    };
   });
+
+  const stickyAtRestOk = atRest.scrollTop === 0 && atRest.headerPosition === "sticky";
+  const heightAtRestOk = atRest.headerHeight === FEED_EXPANDED_HEADER_PX;
 
   // Probe A: jump just below threshold, then crawl across with small wheels (no mousemove).
   await page.evaluate(() => {
@@ -160,6 +171,8 @@ async function runRepro(): Promise<void> {
       threshold: h.threshold(),
       hasCompactClass: h.hasCompactClass(),
       isCompactState: h.isCompactState(),
+      headerHeight: h.headerHeight(),
+      headerPosition: h.headerPosition(),
     };
   });
 
@@ -175,10 +188,24 @@ async function runRepro(): Promise<void> {
   });
   await page.waitForTimeout(32);
 
+  const scrollSamples: number[] = [];
   for (let i = 0; i < WHEEL_STEPS; i++) {
     await page.mouse.wheel(0, WHEEL_DELTA);
+    scrollSamples.push(
+      await page.evaluate(() => {
+        const h = (window as Window & { __feedCompactHarness?: HarnessApi }).__feedCompactHarness!;
+        return h.scrollTop();
+      }),
+    );
   }
   await page.waitForTimeout(120);
+
+  let maxRollback = 0;
+  for (let i = 1; i < scrollSamples.length; i++) {
+    const rollback = scrollSamples[i - 1]! - scrollSamples[i]!;
+    if (rollback > maxRollback) maxRollback = rollback;
+  }
+  const monotonicOk = maxRollback <= SCROLL_ROLLBACK_MAX_PX;
 
   const afterDown = await page.evaluate(() => {
     const h = (window as Window & { __feedCompactHarness?: HarnessApi }).__feedCompactHarness!;
@@ -187,6 +214,8 @@ async function runRepro(): Promise<void> {
       threshold: h.threshold(),
       hasCompactClass: h.hasCompactClass(),
       isCompactState: h.isCompactState(),
+      headerHeight: h.headerHeight(),
+      headerPosition: h.headerPosition(),
     };
   });
 
@@ -206,6 +235,7 @@ async function runRepro(): Promise<void> {
       scrollTop: h.scrollTop(),
       threshold: h.threshold(),
       hasCompactClass: h.hasCompactClass(),
+      headerHeight: h.headerHeight(),
     };
   });
 
@@ -214,17 +244,27 @@ async function runRepro(): Promise<void> {
 
   await browser.close();
 
+  const heightStableOk =
+    afterProbe.headerHeight === FEED_EXPANDED_HEADER_PX &&
+    afterDown.headerHeight === FEED_EXPANDED_HEADER_PX &&
+    afterUp.headerHeight === FEED_EXPANDED_HEADER_PX &&
+    heightAtRestOk;
+
   const report = {
-    before,
+    atRest,
     afterProbe,
     afterDown,
     afterUp,
+    stickyAtRestOk,
+    heightStableOk,
+    monotonicOk,
+    maxRollback,
     probeOk,
     downOk,
     upOk,
   };
 
-  if (!probeOk || !downOk || !upOk) {
+  if (!stickyAtRestOk || !heightStableOk || !probeOk || !downOk || !upOk) {
     console.error("[feed:compact-scroll-repro] FAIL", JSON.stringify(report, null, 2));
     process.exitCode = 1;
     return;

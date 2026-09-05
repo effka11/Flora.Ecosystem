@@ -80,9 +80,18 @@
 }
 
 .feedTopBlock {
-  position: relative;
+  /* local origin=0 in .feedPage (not dashboard overlay §5); expanded rows 0–9;
+     compact visible = last 5 rows → sticky top (5 − 9) * step */
+  position: sticky;
+  top: calc(var(--feed-g75) - 9 * var(--flora-grid-step));
   z-index: 10;
   flex-shrink: 0;
+  height: calc(9 * var(--flora-grid-step));
+  min-height: calc(9 * var(--flora-grid-step));
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: visible;
   background: var(--flora-bg);
   overflow-anchor: none;
 }
@@ -99,11 +108,6 @@
 }
 
 .feedTopBlock:not(.feedTopBlockCompact) {
-  height: calc(9 * var(--flora-grid-step));
-  min-height: calc(9 * var(--flora-grid-step));
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
   overflow: visible;
 }
 
@@ -956,10 +960,6 @@
 /* --- Компактная шапка ленты (как feed-top-block--compact в 2142-1) --- */
 
 .feedTopBlockCompact {
-  position: sticky;
-  top: var(--compact-stick-top, 0);
-  display: flex;
-  flex-direction: column;
   justify-content: flex-end;
   border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
 }
@@ -1121,7 +1121,7 @@
     cubic-bezier(0.33, 1, 0.2, 1) forwards !important;
 }
 
-.peopleTabsCompact {
+.feedTopBlockCompact .peopleTabs {
   padding: 0;
   border: none;
   transform: none;
@@ -1322,7 +1322,7 @@
   .feedTopBlock .peopleSearchWrap,
   .feedTopBlock .peopleTabs,
   .feedTopBlockCompact .peopleSearchWrap,
-  .peopleTabsCompact,
+  .feedTopBlockCompact .peopleTabs,
   .peopleTabsExpanding,
   .peopleSearchExpanding {
     transition: none !important;
