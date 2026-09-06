@@ -14,6 +14,7 @@ export {
 } from "./floraPublicOrigins";
 
 export const MOBILE_SESSION_KEY = "flora_mobile_session_v1";
+export const MOBILE_SESSION_PENDING_KEY = "flora_mobile_session_pending_v1";
 export const LEGACY_ACCESS_KEY = "flora_access_token";
 export const LEGACY_REFRESH_KEY = "flora_refresh_token";
 export const LEGACY_EXPIRES_KEY = "flora_expires_at";
@@ -279,7 +280,19 @@ export function createMobileSessionStore(
     }
     afterNativeWrite?.();
     const readBack = await getItem(MOBILE_SESSION_KEY);
-    if (readBack !== encoded) throw new SessionStorageVerificationError();
+    if (readBack !== encoded) {
+      try {
+        await secureStore.setItemAsync(MOBILE_SESSION_PENDING_KEY, encoded);
+      } catch {
+        // Overlay remains authoritative in-process; pending is best-effort.
+      }
+      throw new SessionStorageVerificationError();
+    }
+    try {
+      await secureStore.deleteItemAsync(MOBILE_SESSION_PENDING_KEY);
+    } catch {
+      // Canonical already verified; pending cleanup is retryable.
+    }
   };
 
   const removeLegacyAfterCommit = async (): Promise<void> => {
@@ -327,10 +340,61 @@ export function createMobileSessionStore(
     return record;
   };
 
+  const adoptPending = async (
+    pending: MobileActiveSessionRecord,
+  ): Promise<MobileSessionRecord> => {
+    try {
+      await writeVerified(pending);
+    } catch {
+      effectiveOverlay = sessionFromCanonical(pending);
+    }
+    return pending;
+  };
+
   const readPersisted = async (): Promise<MobileSessionRecord> => {
     const raw = await getItem(MOBILE_SESSION_KEY);
-    // Canonical presence always wins. Corruption never falls back to legacy keys.
-    return raw === null ? migrateLegacy() : parseCanonicalRecord(raw);
+    const pendingRaw = await getItem(MOBILE_SESSION_PENDING_KEY).catch(
+      () => null,
+    );
+
+    const parsePending = (): MobileSessionRecord | null => {
+      if (!pendingRaw) return null;
+      try {
+        return parseCanonicalRecord(pendingRaw);
+      } catch {
+        return null;
+      }
+    };
+
+    const pending = parsePending();
+
+    if (raw === null) {
+      if (pending?.kind === "active") {
+        return adoptPending(pending);
+      }
+      return migrateLegacy();
+    }
+
+    let canonical: MobileSessionRecord;
+    try {
+      canonical = parseCanonicalRecord(raw);
+    } catch (error) {
+      if (!pending || pending.kind !== "active") throw error;
+      effectiveOverlay = sessionFromCanonical(pending);
+      return pending;
+    }
+
+    if (!pending || pending.kind !== "active" || pending.revision < canonical.revision) {
+      if (pendingRaw) {
+        try {
+          await secureStore.deleteItemAsync(MOBILE_SESSION_PENDING_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
+      return canonical;
+    }
+    return adoptPending(pending);
   };
 
   const writeActive = async (

@@ -41,6 +41,11 @@ const MEDIA_ACCESS_COOKIE_READ_NAMES = [
   "__Host-flora_media_access",
   "flora_media_access",
 ] as const;
+/** Accept current and pre-`__Host-` refresh cookies so a name cutover does not look like logout. */
+const REFRESH_COOKIE_READ_NAMES = [
+  "__Host-flora_refresh",
+  "flora_refresh",
+] as const;
 const REFRESH_COOKIE_MARKER = "http-only";
 const REFRESH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const BROWSER_SESSION_PATH = "/api/auth/browser-session";
@@ -68,9 +73,27 @@ function clearMediaAccessCookie(): string {
   return `${mediaAccessCookie("")}; Max-Age=0`;
 }
 
+function clearOtherRefreshCookie(): string {
+  const other =
+    REFRESH_COOKIE_NAME === "__Host-flora_refresh"
+      ? "flora_refresh"
+      : "__Host-flora_refresh";
+  const secure = IS_PRODUCTION ? "; Secure" : "";
+  return `${other}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Priority=High${secure}`;
+}
+
 function clearBrowserAuthCookies(headers: Headers): void {
   headers.set("Set-Cookie", clearRefreshCookie());
+  headers.append("Set-Cookie", clearOtherRefreshCookie());
   headers.append("Set-Cookie", clearMediaAccessCookie());
+}
+
+function refreshCookieFromRequest(request: NextRequest): string | undefined {
+  for (const name of REFRESH_COOKIE_READ_NAMES) {
+    const token = request.cookies.get(name)?.value?.trim();
+    if (token) return token;
+  }
+  return undefined;
 }
 
 function refreshTokenFromPayload(payload: Record<string, unknown>): {
@@ -266,7 +289,7 @@ export async function proxyFloraApiRequest(request: NextRequest): Promise<Respon
     request.nextUrl.pathname === "/api/auth/refresh" &&
     method === "POST"
   ) {
-    const cookieToken = request.cookies.get(REFRESH_COOKIE_NAME)?.value;
+    const cookieToken = refreshCookieFromRequest(request);
     if (cookieToken) {
       if (!isSameOrigin(request)) {
         const denied = new Headers({
@@ -342,6 +365,7 @@ export async function proxyFloraApiRequest(request: NextRequest): Promise<Respon
           "Set-Cookie",
           refreshCookie(refresh.token, REFRESH_COOKIE_MAX_AGE_SECONDS),
         );
+        responseHeaders.append("Set-Cookie", clearOtherRefreshCookie());
         if (accessToken) {
           responseHeaders.append("Set-Cookie", mediaAccessCookie(accessToken));
         }

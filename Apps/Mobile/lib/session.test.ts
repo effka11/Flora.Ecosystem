@@ -7,6 +7,7 @@ import {
   LEGACY_REFRESH_KEY,
   MOBILE_SESSION_KEY,
   MOBILE_SESSION_MAX_UTF8_BYTES,
+  MOBILE_SESSION_PENDING_KEY,
   SessionStorageBudgetError,
   SessionStorageCorruptError,
   SessionStorageUnavailableError,
@@ -25,6 +26,7 @@ class MemorySecureStore implements SecureStoreLike {
   readonly operations: string[] = [];
   failReads = false;
   failWrites = false;
+  skipCanonicalPersist = false;
   tamperNextCanonicalReadAfterWrite = false;
   private canonicalWasWritten = false;
 
@@ -49,6 +51,10 @@ class MemorySecureStore implements SecureStoreLike {
   async setItemAsync(key: string, value: string): Promise<void> {
     this.operations.push(`set:${key}`);
     if (this.failWrites) throw new Error("keychain write failed");
+    if (key === MOBILE_SESSION_KEY && this.skipCanonicalPersist) {
+      this.canonicalWasWritten = true;
+      return;
+    }
     this.values.set(key, value);
     if (key === MOBILE_SESSION_KEY) this.canonicalWasWritten = true;
   }
@@ -189,6 +195,57 @@ describe("mobile atomic session storage", () => {
     expect(secureStore.values.get(MOBILE_SESSION_KEY)).toBe(canonicalBefore);
     expect(await store.getAccessToken()).toBe("access-r2");
     expect(await store.getRefreshToken()).toBe("refresh-r2");
+  });
+
+  it("recovers a rotated pair from pending SecureStore after process death", async () => {
+    const secureStore = new MemorySecureStore();
+    const store = createMobileSessionStore(secureStore);
+    await store.saveSession(firstTokens);
+    const baseline = await store.readSession();
+    secureStore.skipCanonicalPersist = true;
+
+    await expect(
+      store.compareAndSetSession(baseline.revision, {
+        accessToken: "access-r2",
+        refresh: { kind: "token", token: "refresh-r2" },
+        expiresAt: "2030-01-01T00:15:00.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SessionStorageVerificationError);
+
+    expect(secureStore.values.get(MOBILE_SESSION_PENDING_KEY)).toContain("refresh-r2");
+    expect(JSON.parse(secureStore.values.get(MOBILE_SESSION_KEY) ?? "").refreshToken).toBe(
+      "refresh-1",
+    );
+
+    const restarted = createMobileSessionStore(secureStore);
+    expect(await restarted.getRefreshToken()).toBe("refresh-r2");
+    expect(await restarted.getAccessToken()).toBe("access-r2");
+  });
+
+  it("recovers pending when the canonical key is missing", async () => {
+    const secureStore = new MemorySecureStore();
+    const store = createMobileSessionStore(secureStore);
+    await store.saveSession(firstTokens);
+    const baseline = await store.readSession();
+    secureStore.skipCanonicalPersist = true;
+
+    await expect(
+      store.compareAndSetSession(baseline.revision, {
+        accessToken: "access-r2",
+        refresh: { kind: "token", token: "refresh-r2" },
+        expiresAt: "2030-01-01T00:15:00.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SessionStorageVerificationError);
+
+    secureStore.values.delete(MOBILE_SESSION_KEY);
+    expect(secureStore.values.get(MOBILE_SESSION_PENDING_KEY)).toContain("refresh-r2");
+
+    secureStore.skipCanonicalPersist = false;
+    const restarted = createMobileSessionStore(secureStore);
+    expect(await restarted.getRefreshToken()).toBe("refresh-r2");
+    expect(JSON.parse(secureStore.values.get(MOBILE_SESSION_KEY) ?? "").refreshToken).toBe(
+      "refresh-r2",
+    );
   });
 
   it("requires exact read-back before confirming logout", async () => {
