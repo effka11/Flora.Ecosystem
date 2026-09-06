@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiGetProfile, apiGetProfilePosts } from "@flora/client-core/api";
 import { apiGetMe } from "@flora/client-core/auth";
 import type { FeedPostDto } from "@flora/client-core/contracts";
@@ -227,7 +228,7 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
   listContent: {},
   loading: {
@@ -241,4 +242,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.42,
   },
-});
+}));

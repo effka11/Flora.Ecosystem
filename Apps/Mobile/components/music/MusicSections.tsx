@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import {
   apiCreateMusicArtist,
@@ -720,7 +721,7 @@ function ChipPicker<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   content: {
     paddingVertical: floraSpacing.grid,
     paddingBottom: floraSpacing.grid * 7,
@@ -1033,4 +1034,4 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
-});
+}));

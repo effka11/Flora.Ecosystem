@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { StyleSheet } from "react-native";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
@@ -5,7 +6,7 @@ const DIVIDER = "rgba(250, 250, 250, 0.08)";
 const INPUT_BORDER = "rgba(250, 250, 250, 0.15)";
 
 /** Визуальный язык вкладки настроек — паритет с Apps/Web settings.module.css. */
-export const settingsUi = StyleSheet.create({
+export const settingsUi = liveGridStyles(() => StyleSheet.create({
   tabBody: {
     gap: floraSpacing.grid * 2,
     paddingTop: floraSpacing.grid,
@@ -515,4 +516,4 @@ export const settingsUi = StyleSheet.create({
     borderColor: "rgba(164, 209, 138, 0.55)",
     backgroundColor: "rgba(164, 209, 138, 0.15)",
   },
-});
+}));

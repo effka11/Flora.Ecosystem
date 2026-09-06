@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { apiListPostDrafts } from "@flora/client-core/api";
 import type { PostDraftDto } from "@flora/client-core/contracts";
@@ -282,7 +283,7 @@ export function ComposeDraftsSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -461,4 +462,4 @@ const styles = StyleSheet.create({
     color: floraColors.greenLight,
     fontSize: 15,
   },
-});
+}));

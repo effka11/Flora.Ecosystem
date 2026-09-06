@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { memo } from "react";
 import { StyleSheet, View } from "react-native";
@@ -51,7 +52,7 @@ function ChatMessageReadReceiptInner({
 
 export const ChatMessageReadReceipt = memo(ChatMessageReadReceiptInner);
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   /** Fixed 18×10 slot so sending/sent/read never resize the bubble (parity web). */
   receipt: {
     flexDirection: "row",
@@ -72,4 +73,4 @@ const styles = StyleSheet.create({
   receiptReadSecond: {
     marginLeft: -8,
   },
-});
+}));

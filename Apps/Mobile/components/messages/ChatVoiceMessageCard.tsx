@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
@@ -159,7 +160,7 @@ export function ChatVoiceMessageCard({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
@@ -212,4 +213,4 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     marginLeft: "auto",
   },
-});
+}));

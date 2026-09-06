@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import {
   forwardRef,
@@ -42,7 +43,7 @@ function composeInputHeight(rows: number): number {
 }
 
 /** Потолок роста: высота инпута с текстом — всегда она (см. inputStyle). */
-const COMPOSE_INPUT_MAX_HEIGHT = composeInputHeight(floraMessages.composeInputMaxLines);
+const COMPOSE_INPUT_MAX_HEIGHT = () => composeInputHeight(floraMessages.composeInputMaxLines);
 
 /** Рост/сжатие поля — паритет web `transition: height 0.18s var(--flora-ease-out)`. */
 const COMPOSE_GROW_TIMING = {
@@ -347,7 +348,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
    * каретки (см. textAlignVertical), а переполнить окно нечем.
    */
   const inputStyle = useMemo(
-    () => [styles.input, { height: isEmpty ? composeInputHeight(1) : COMPOSE_INPUT_MAX_HEIGHT }],
+    () => [styles.input, { height: isEmpty ? composeInputHeight(1) : COMPOSE_INPUT_MAX_HEIGHT() }],
     [isEmpty],
   );
 
@@ -593,7 +594,7 @@ const composeInputTypography = {
   includeFontPadding: false,
 } as const;
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   shell: {
     paddingHorizontal: floraSpacing.grid,
     paddingTop: floraMessages.composeShellPaddingTop,
@@ -692,4 +693,4 @@ const styles = StyleSheet.create({
     color: floraColors.gray,
     ...composeInputTypography,
   },
-});
+}));

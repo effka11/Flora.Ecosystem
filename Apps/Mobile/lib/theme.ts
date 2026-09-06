@@ -1,4 +1,5 @@
 import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
+import { getFloraGridRuntime, liveGridRecord } from "@/lib/floraGridRuntime";
 
 const t = FLORA_THEME_TOKENS;
 
@@ -37,8 +38,12 @@ export const floraAuthTypography = {
 };
 
 export const floraSpacing = {
-  grid: 15,
-  gridFine: 5,
+  get grid() {
+    return getFloraGridRuntime().step;
+  },
+  get gridFine() {
+    return getFloraGridRuntime().stepFine;
+  },
 };
 
 /** Триггеры фильтров (сообщения, уведомления) — совпадают с tabButton в ленте. */
@@ -53,7 +58,7 @@ export const floraTabFilter = {
 };
 
 /** Карточка поста в ленте — feedPostList.module.css / feed.module.css */
-export const floraFeedPost = {
+export const floraFeedPost = liveGridRecord(() => ({
   avatarSize: 3 * floraSpacing.grid,
   /** Левый/общий inset карточки — как padding шапки (слот гамбургера / «+»). */
   paddingHorizontal: floraSpacing.grid,
@@ -82,7 +87,7 @@ export const floraFeedPost = {
    * Верх слота ⋮: старый top (−grid/2+1) минус половина прироста слота 28→45,
    * чтобы центр глифа остался на горизонтали ника.
    */
-  moreMenuTop: -floraSpacing.grid / 2 + 1 - (45 - (2 * floraSpacing.gridFine + 18)) / 2,
+  moreMenuTop: -floraSpacing.grid / 2 + 1 - (3 * floraSpacing.grid - (2 * floraSpacing.gridFine + 18)) / 2,
   contentNudgeX: -floraSpacing.gridFine,
   /**
    * Низ аватара → верх наполнения (текст/фото) = 1×fine
@@ -112,7 +117,7 @@ export const floraFeedPost = {
   actionFontSize: 13,
   actionLetterSpacing: 0,
   /** Как iconButton / ⋮ в Messages — центр на одной вертикали с «+»/шапкой чата. */
-  moreBtnSize: 45,
+  moreBtnSize: 3 * floraSpacing.grid,
   moreBtnPadding: 0,
   /** Сдвиг по Y к горизонтали ника (как до выравнивания слота). */
   moreBtnNudgeY: floraSpacing.gridFine + 3,
@@ -122,17 +127,19 @@ export const floraFeedPost = {
   moreCloseGlyphSize: 24,
   /** Отступ панели ниже ⋮: web gap + 1 primary step (визуальный зазор под крестиком). */
   moreMenuGapBelow: floraSpacing.grid * 2 + floraSpacing.gridFine + 3,
-};
+}));
 
 /** Высота зоны иконок нижнего tab bar. */
 export const floraTabBarHeight = 49;
 
 /** Отступ от верхней линии до иконок. */
-export const floraTabBarTopPad = floraSpacing.gridFine * 2;
+export function floraTabBarTopPad() {
+  return getFloraGridRuntime().stepFine * 2;
+}
 
 /** Полная высота контента tab bar без safe-area. */
 export function floraTabBarContentHeight() {
-  return floraTabBarHeight + floraTabBarTopPad;
+  return floraTabBarHeight + floraTabBarTopPad();
 }
 
 /** Нижний отступ списков, чтобы контент не прятался под absolute tab bar. */
@@ -150,7 +157,7 @@ export function floraTabBarStyle(bottomInset: number) {
     backgroundColor: "transparent",
     borderTopWidth: 0,
     elevation: 0,
-    paddingTop: floraTabBarTopPad,
+    paddingTop: floraTabBarTopPad(),
     paddingBottom: bottomInset,
     height: floraTabBarContentHeight() + bottomInset,
   };
@@ -167,7 +174,7 @@ export function floraTabBarHiddenStyle(bottomInset: number) {
     borderTopWidth: 0,
     height: floraTabBarContentHeight() + bottomInset,
     minHeight: floraTabBarContentHeight() + bottomInset,
-    paddingTop: floraTabBarTopPad,
+    paddingTop: floraTabBarTopPad(),
     paddingBottom: bottomInset,
     position: "absolute" as const,
     left: 0,
@@ -190,13 +197,13 @@ export const floraNativeStackOptions = {
 };
 
 /** Карточка профиля — profile.module.css / ProfileCardStatus */
-export const floraProfile = {
+export const floraProfile = liveGridRecord(() => ({
   coverHeight: 7 * floraSpacing.grid,
   avatarSize: 98,
   statusFontSize: 15,
   statusLineHeight: 31.5,
   statusStripe: "rgba(250, 250, 250, 0.08)",
-};
+}));
 
 export const floraMotion = {
   baseMs: 150,
@@ -230,7 +237,7 @@ const COMPOSE_INPUT_PADDING_VERTICAL =
 const COMPOSE_INPUT_MAX_LINES = 6;
 
 /** Чат — messages.module.css / messagesChatView */
-export const floraMessages = {
+export const floraMessages = liveGridRecord(() => ({
   headerHeight: 8 * floraSpacing.grid,
   headerAvatarSize: 3 * floraSpacing.grid,
   peerBubbleAvatarSize: 3 * floraSpacing.grid,
@@ -292,4 +299,4 @@ export const floraMessages = {
   themBubbleText: t.messagesBubbleThemText,
   themBubbleTime: t.messagesBubbleThemTime,
   divider: t.reservePopoverDivider,
-};
+}));

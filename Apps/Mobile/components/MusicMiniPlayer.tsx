@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { usePathname } from "expo-router";
@@ -152,7 +153,7 @@ export function MusicMiniPlayer() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   bar: {
     position: "absolute",
     left: 0,
@@ -232,4 +233,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

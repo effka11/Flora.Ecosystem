@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Image } from "expo-image";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { floraColors, floraSpacing } from "@/lib/theme";
@@ -42,7 +43,7 @@ export function ChatComposeImageStrip({ images, onRemoveAt }: Props) {
 
 const THUMB = 56;
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   strip: {
     gap: floraSpacing.gridFine,
     paddingBottom: floraSpacing.gridFine,
@@ -91,4 +92,4 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: -1,
   },
-});
+}));

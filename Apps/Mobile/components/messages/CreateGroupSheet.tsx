@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiCreateGroup,
 } from "@flora/client-core/api";
@@ -242,7 +243,7 @@ export function CreateGroupSheet({ visible, conversations, onClose, onCreated }:
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -319,4 +320,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: floraSpacing.gridFine,
   },
-});
+}));

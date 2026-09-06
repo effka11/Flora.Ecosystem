@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiUpdatePost, isApiRequestError } from "@flora/client-core/api";
 import type { FeedPostDto } from "@flora/client-core/contracts";
 import { postImageUrl } from "@flora/client-core/display";
@@ -335,7 +336,7 @@ export function EditPostSheet({ post, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   host: {
     flex: 1,
   },
@@ -409,4 +410,4 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.4,
   },
-});
+}));

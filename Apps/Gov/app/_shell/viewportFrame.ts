@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
-
-export const FLORA_BASE_WIDTH = 1920;
-export const FLORA_BASE_HEIGHT = 945;
+import {
+  FLORA_GRID_WEB_BASE_HEIGHT,
+  FLORA_GRID_WEB_BASE_WIDTH,
+  applyWebGridFrameCssVars,
+  resolveWebGridFrame,
+  takeFloraGridDebugView,
+  type ResolvedWebGridFrame
+} from "@flora/client-core/display";
 
 export type ViewportFrame = {
   viewportWidth: number;
@@ -16,6 +21,9 @@ export type ViewportFrame = {
   frameBottom: number;
   cropOffsetX: number;
   cropOffsetY: number;
+  step: number;
+  stepFine: number;
+  templateId: string;
 };
 
 type ViewportSize = {
@@ -23,56 +31,80 @@ type ViewportSize = {
   height: number;
 };
 
+/** Hysteresis: last web template id for this document. */
+let lastWebTemplateId: string | undefined;
+
+function logFloraGrid(width: number, height: number, previousId: string | undefined, resolved: ResolvedWebGridFrame) {
+  if (process.env.NODE_ENV === "production") return;
+  const view = takeFloraGridDebugView({
+    family: "web",
+    width,
+    height,
+    previousId,
+    chosen: resolved.template,
+    canvas: resolved.canvas,
+    place: resolved.place
+  });
+  if (!view) return;
+  console.warn(`[flora-grid] ${view.reasonLabel}  ${view.headline}`);
+  for (const line of view.lines) {
+    console.warn(`[flora-grid]   ${line.label.padEnd(10)} ${line.value}`);
+  }
+}
+
 function getViewportSize(): ViewportSize {
   if (typeof window === "undefined") {
-    return { width: FLORA_BASE_WIDTH, height: FLORA_BASE_HEIGHT };
+    // эталон s=1
+    return { width: FLORA_GRID_WEB_BASE_WIDTH, height: FLORA_GRID_WEB_BASE_HEIGHT };
   }
 
   const vv = window.visualViewport;
   if (vv) {
     return {
       width: Math.round(vv.width),
-      height: Math.round(vv.height),
+      height: Math.round(vv.height)
     };
   }
 
   return {
     width: document.documentElement.clientWidth,
-    height: document.documentElement.clientHeight,
+    height: document.documentElement.clientHeight
   };
 }
 
 export function getViewportFrame(
   viewportWidth: number = getViewportSize().width,
-  viewportHeight: number = getViewportSize().height,
+  viewportHeight: number = getViewportSize().height
 ): ViewportFrame {
-  const frameWidth = Math.min(viewportWidth, FLORA_BASE_WIDTH);
-  const frameHeight = Math.min(viewportHeight, FLORA_BASE_HEIGHT);
-  const frameLeft = (viewportWidth - frameWidth) / 2;
-  const frameTop = (viewportHeight - frameHeight) / 2;
-
+  const resolved = resolveWebGridFrame(viewportWidth, viewportHeight, lastWebTemplateId);
+  logFloraGrid(viewportWidth, viewportHeight, lastWebTemplateId, resolved);
+  lastWebTemplateId = resolved.template.id;
+  const { place, canvas, template } = resolved;
   return {
     viewportWidth,
     viewportHeight,
-    frameWidth,
-    frameHeight,
-    frameLeft,
-    frameTop,
-    frameRight: frameLeft + frameWidth,
-    frameBottom: frameTop + frameHeight,
-    cropOffsetX: Math.max(0, (FLORA_BASE_WIDTH - frameWidth) / 2),
-    cropOffsetY: Math.max(0, (FLORA_BASE_HEIGHT - frameHeight) / 2),
+    frameWidth: place.frameWidth,
+    frameHeight: place.frameHeight,
+    frameLeft: place.frameLeft,
+    frameTop: place.frameTop,
+    frameRight: place.frameLeft + place.frameWidth,
+    frameBottom: place.frameTop + place.frameHeight,
+    cropOffsetX: place.cropX,
+    cropOffsetY: place.cropY,
+    step: canvas.step,
+    stepFine: canvas.stepFine,
+    templateId: template.id
   };
+}
+
+export function snapToGrid(value: number, origin: number, step: number): number {
+  return origin + Math.round((value - origin) / step) * step;
 }
 
 export function applyViewportFrameCssVars(frame: ViewportFrame, target?: HTMLElement) {
   const host = target ?? document.documentElement;
-  host.style.setProperty("--flora-frame-width", `${frame.frameWidth}px`);
-  host.style.setProperty("--flora-frame-height", `${frame.frameHeight}px`);
-  host.style.setProperty("--flora-frame-left", `${frame.frameLeft}px`);
-  host.style.setProperty("--flora-frame-top", `${frame.frameTop}px`);
-  host.style.setProperty("--flora-crop-x", `${frame.cropOffsetX}px`);
-  host.style.setProperty("--flora-crop-y", `${frame.cropOffsetY}px`);
+  const resolved = resolveWebGridFrame(frame.viewportWidth, frame.viewportHeight, frame.templateId);
+  applyWebGridFrameCssVars(host, resolved);
 }
 
 export function useViewportFrameCssVars(enabled: boolean = true) {

@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { formatAtHandle, profileDisplayName } from "@flora/client-core/display";
 import type { RefObject } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
@@ -119,7 +120,7 @@ export function ComposePostCard({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   card: {
     paddingHorizontal: floraFeedPost.paddingHorizontal,
     paddingTop: floraFeedPost.paddingTop,
@@ -216,4 +217,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     marginTop: floraSpacing.gridFine,
   },
-});
+}));

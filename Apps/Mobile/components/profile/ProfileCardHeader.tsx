@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
@@ -15,19 +16,19 @@ import { floraColors, floraProfile, floraSpacing } from "@/lib/theme";
 /** Временно скрываем статус на карточке профиля (mobile layout в доработке). */
 const SHOW_PROFILE_STATUS = false;
 
-const AVATAR_NUDGE_X = (39 - 38) * floraSpacing.grid - 8 + floraSpacing.gridFine * 2;
-const TEXT_NUDGE_X = floraSpacing.gridFine * 2;
-const STATUS_TOP = 4 * floraSpacing.grid + 4;
+const AVATAR_NUDGE_X = () => (39 - 38) * floraSpacing.grid - 8 + floraSpacing.gridFine * 2;
+const TEXT_NUDGE_X = () => floraSpacing.gridFine * 2;
+const STATUS_TOP = () => 4 * floraSpacing.grid + 4;
 const PROFILE_AVATAR_BORDER = 4;
 /** Web `--profile-avatar-size` (border-box). Explicit px — `%` of an absolute shell collapses on Android. */
-const PROFILE_AVATAR_OUTER = floraProfile.avatarSize;
+const PROFILE_AVATAR_OUTER = () => floraProfile.avatarSize;
 /** Inner photo: outer − 4px ring on each side. Same as Web `FLORA_PROFILE_AVATAR_INNER_PX`. */
-const PROFILE_AVATAR_INNER = floraProfile.avatarSize - PROFILE_AVATAR_BORDER * 2;
+const PROFILE_AVATAR_INNER = () => floraProfile.avatarSize - PROFILE_AVATAR_BORDER * 2;
 /** Badge scale diameter = Web `--profile-avatar-size` (border-box 98). */
-const PROFILE_AVATAR_DIAMETER = PROFILE_AVATAR_OUTER;
+const PROFILE_AVATAR_DIAMETER = () => PROFILE_AVATAR_OUTER();
 /** profile.module.css — .profileDetailsTrigger */
-const DETAILS_BTN_SIZE = 8 * floraSpacing.gridFine;
-const DETAILS_ICON_SIZE = 4 * floraSpacing.gridFine;
+const DETAILS_BTN_SIZE = () => 8 * floraSpacing.gridFine;
+const DETAILS_ICON_SIZE = () => 4 * floraSpacing.gridFine;
 
 type ProfileCardHeaderProps = {
   displayName: string;
@@ -90,7 +91,7 @@ export function ProfileCardHeader({
               style={styles.avatarWrap}
             >
               <FloraAvatar
-                size={PROFILE_AVATAR_INNER}
+                size={PROFILE_AVATAR_INNER()}
                 avatarUuid={avatarUuid}
                 displayName={displayName}
                 username={username}
@@ -102,7 +103,7 @@ export function ProfileCardHeader({
             <OnlineStatusDot
               online={isOnline}
               identityKey={userUuid ?? username}
-              avatarDiameter={PROFILE_AVATAR_DIAMETER}
+              avatarDiameter={PROFILE_AVATAR_DIAMETER()}
               sizeAtRef={ONLINE_STATUS_PROFILE_DOT_SIZE}
               edgeNudge={ONLINE_STATUS_PROFILE_EDGE_NUDGE}
             />
@@ -147,7 +148,7 @@ export function ProfileCardHeader({
               hitSlop={8}
               style={({ pressed }) => [styles.detailsBtn, pressed && styles.detailsBtnPressed]}
             >
-              <Ionicons name="chatbox-outline" size={DETAILS_ICON_SIZE} color="rgba(250, 250, 250, 0.7)" />
+              <Ionicons name="chatbox-outline" size={DETAILS_ICON_SIZE()} color="rgba(250, 250, 250, 0.7)" />
             </Pressable>
           </View>
         ) : null}
@@ -217,7 +218,7 @@ export function ProfileCardHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     position: "relative",
     overflow: "visible",
@@ -240,7 +241,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
     paddingBottom: floraSpacing.grid,
     marginTop: floraProfile.coverHeight - floraSpacing.grid * 3,
-    paddingRight: DETAILS_BTN_SIZE + floraSpacing.grid * 2,
+    paddingRight: DETAILS_BTN_SIZE() + floraSpacing.grid * 2,
   },
   infoTop: {
     position: "relative",
@@ -250,25 +251,25 @@ const styles = StyleSheet.create({
   },
   avatarShell: {
     position: "absolute",
-    left: AVATAR_NUDGE_X,
+    left: AVATAR_NUDGE_X(),
     top: -4,
-    width: PROFILE_AVATAR_OUTER,
-    height: PROFILE_AVATAR_OUTER,
+    width: PROFILE_AVATAR_OUTER(),
+    height: PROFILE_AVATAR_OUTER(),
     overflow: "visible",
   },
   avatarWrap: {
-    width: PROFILE_AVATAR_OUTER,
-    height: PROFILE_AVATAR_OUTER,
+    width: PROFILE_AVATAR_OUTER(),
+    height: PROFILE_AVATAR_OUTER(),
     borderWidth: PROFILE_AVATAR_BORDER,
     borderColor: floraColors.bg,
-    borderRadius: PROFILE_AVATAR_OUTER / 2,
+    borderRadius: PROFILE_AVATAR_OUTER() / 2,
     overflow: "hidden",
   },
   status: {
     position: "absolute",
     left: floraProfile.avatarSize + floraSpacing.grid,
     right: 0,
-    top: STATUS_TOP,
+    top: STATUS_TOP(),
     transform: [{ translateX: -floraSpacing.grid }],
   },
   nameRow: {
@@ -276,7 +277,7 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     flexWrap: "wrap",
     gap: floraSpacing.grid,
-    paddingLeft: TEXT_NUDGE_X,
+    paddingLeft: TEXT_NUDGE_X(),
     marginTop: floraSpacing.gridFine,
   },
   name: {
@@ -293,7 +294,7 @@ const styles = StyleSheet.create({
   },
   stats: {
     color: floraColors.gray,
-    paddingLeft: TEXT_NUDGE_X,
+    paddingLeft: TEXT_NUDGE_X(),
     marginTop: floraSpacing.gridFine + 2,
     fontSize: 14,
     fontWeight: "300",
@@ -305,13 +306,13 @@ const styles = StyleSheet.create({
     bottom: floraSpacing.grid,
   },
   detailsBtn: {
-    width: DETAILS_BTN_SIZE,
-    height: DETAILS_BTN_SIZE,
+    width: DETAILS_BTN_SIZE(),
+    height: DETAILS_BTN_SIZE(),
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.12)",
-    borderRadius: DETAILS_BTN_SIZE / 2,
+    borderRadius: DETAILS_BTN_SIZE() / 2,
     backgroundColor: "transparent",
   },
   detailsBtnPressed: {
@@ -383,4 +384,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.45,
   },
-});
+}));

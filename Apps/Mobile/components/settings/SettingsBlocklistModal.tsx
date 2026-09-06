@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiBlockUser, apiGetBlocklist, apiUnblockUser } from "@flora/client-core/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
@@ -200,7 +201,7 @@ export function SettingsBlocklistModal({ visible, onClose }: SettingsBlocklistMo
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.55)",
@@ -312,4 +313,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "300",
   },
-});
+}));

@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiGetDismissedCommunities,
   apiGetHiddenFeedAuthors,
@@ -185,7 +186,7 @@ export function SettingsFeedHiddenModal({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.55)",
@@ -283,4 +284,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "300",
   },
-});
+}));

@@ -16,6 +16,7 @@
   /* 85% white + 15% bg */
   --flora-gray-hover: #d6d6d6;
   --flora-gray-divider: color-mix(in srgb, var(--flora-gray) 14%, var(--flora-bg) 86%);
+  /* Квант при s=1 (эталон). Живые значения пишет resolveWebGridFrame. */
   --flora-grid-step: 15px;
   --flora-grid-step-fine: 5px;
   /* Те же производные, что у чужого пузыря в Social (не импорт Web). */
@@ -28,8 +29,9 @@
   /* 20% / 10% green-light + bg */
   --flora-grid-line: #2a3325;
   --flora-grid-line-fine: #1b2019;
-  --flora-frame-width: 1920px;
-  --flora-frame-height: 945px;
+  /* Fallback кадра: эталон s=1, пока JS не выставит шаблон. */
+  --flora-frame-width: calc(128 * var(--flora-grid-step));
+  --flora-frame-height: calc(63 * var(--flora-grid-step));
   --flora-frame-left: 0px;
   --flora-frame-top: 0px;
   --flora-crop-x: 0px;

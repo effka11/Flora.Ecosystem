@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -67,7 +68,7 @@ export function AccountBlockedWall() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -120,4 +121,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.42,
   },
-});
+}));

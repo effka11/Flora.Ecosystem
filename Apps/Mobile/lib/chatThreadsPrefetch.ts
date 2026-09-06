@@ -86,7 +86,7 @@ const GROUP_DETAIL_PREFETCH_STALE_MS = 30_000;
  * peerBubbleAvatarSize = 3×grid): прогрев в тот же bucket FRC-кэша, что
  * запросят строки, — иначе exact-hit не случится.
  */
-const AVATAR_WARM_PX = floraSpacing.grid * 3;
+const AVATAR_WARM_PX = () => floraSpacing.grid * 3;
 /** Сколько верхних строк списка греть аватарами (примерно два экрана). */
 const AVATAR_WARM_MAX_ROWS = 30;
 /** Аватары участников группы (peer-пузыри) — только верхушка ростера. */
@@ -191,7 +191,7 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
     if (!id || stopped) return;
     avatarPrefetchCancels.push(
       prefetchFrcImage(avatarImageUrl(id), {
-        displayWidth: AVATAR_WARM_PX,
+        displayWidth: AVATAR_WARM_PX(),
         lane: "avatar",
       }),
     );

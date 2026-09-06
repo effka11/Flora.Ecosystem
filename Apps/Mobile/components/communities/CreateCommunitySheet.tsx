@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { apiCreateCommunity } from "@flora/client-core/api";
 import { parseCommunityListItem, type CommunityListItemDto } from "@flora/client-core/contracts";
@@ -185,7 +186,7 @@ export function CreateCommunitySheet({ visible, onClose, onCreated }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -292,4 +293,4 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.45,
   },
-});
+}));

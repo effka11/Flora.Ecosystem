@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import {
   apiCreatePost,
@@ -462,7 +463,7 @@ export default function FeedComposeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -547,4 +548,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

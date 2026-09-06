@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiGetCommunityBySlug,
   apiGetCommunityPosts,
@@ -289,7 +290,7 @@ export default function CommunityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
   listContent: {
     paddingBottom: floraSpacing.grid * 2,
@@ -305,4 +306,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.42,
   },
-});
+}));

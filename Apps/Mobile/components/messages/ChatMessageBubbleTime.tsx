@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { memo } from "react";
 import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 
@@ -36,7 +37,7 @@ function ChatMessageBubbleTimeInner({
 
 export const ChatMessageBubbleTime = memo(ChatMessageBubbleTimeInner);
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -56,4 +57,4 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-});
+}));

@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useLayoutEffect, useRef, useState, type ElementRef } from "react";
 import {
@@ -171,7 +172,7 @@ function MenuRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   wrap: {
     position: "relative",
   },
@@ -237,4 +238,4 @@ const styles = StyleSheet.create({
   menuItemDanger: {
     color: "#f6a8a8",
   },
-});
+}));

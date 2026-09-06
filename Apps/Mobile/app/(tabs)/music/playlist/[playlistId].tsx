@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { apiDeleteMusicPlaylist, apiGetMusicPlaylistDetail } from "@flora/client-core/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -91,7 +92,7 @@ export default function MusicPlaylistScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   content: {
     paddingVertical: floraSpacing.grid,
     paddingBottom: floraSpacing.grid * 7,
@@ -165,4 +166,4 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
-});
+}));

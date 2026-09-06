@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { memo, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -106,7 +107,7 @@ function ChatVoiceComposeBarInner({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   /**
    * Ровно та же геометрия pill, что у styles.field в ChatComposeField:
    * бар рендерится внутри общего shell и обязан совпадать по высоте с полем.
@@ -157,5 +158,5 @@ const styles = StyleSheet.create({
     minWidth: 36,
     textAlign: "left",
   },
-});
+}));
 export const ChatVoiceComposeBar = memo(ChatVoiceComposeBarInner);

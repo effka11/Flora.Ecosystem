@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useEffect, useMemo } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
@@ -47,7 +48,7 @@ export function ChatVoiceWaveform({ levels, isFromMe = true, live = false, style
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   waveform: {
     flexDirection: "row",
     alignItems: "center",
@@ -61,4 +62,4 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexShrink: 0,
   },
-});
+}));

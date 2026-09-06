@@ -31,9 +31,13 @@ const MENU_PANEL_CHROME_PX = 15;
 export const MENU_ROW_HEIGHT_PX = 39;
 
 /** FloraRectMenu: 0.5×fine toward the aligned edge. */
-export const MENU_PANEL_EMERGE_X_PX = 0.5 * floraSpacing.gridFine;
+export function MENU_PANEL_EMERGE_X_PX() {
+  return 0.5 * floraSpacing.gridFine;
+}
 /** FloraRectMenu: fine + 3 toward the bubble. */
-export const MENU_PANEL_EMERGE_Y_PX = floraSpacing.gridFine + 3;
+export function MENU_PANEL_EMERGE_Y_PX() {
+  return floraSpacing.gridFine + 3;
+}
 
 export type MenuPanelTransformOrigin = "top right" | "top left" | "bottom right" | "bottom left";
 
@@ -51,8 +55,8 @@ export function resolveMenuPanelMotion(
   placement: "above" | "below",
   isFromMe: boolean,
 ): MenuPanelMotion {
-  const emergeX = isFromMe ? MENU_PANEL_EMERGE_X_PX : -MENU_PANEL_EMERGE_X_PX;
-  const emergeY = placement === "below" ? -MENU_PANEL_EMERGE_Y_PX : MENU_PANEL_EMERGE_Y_PX;
+  const emergeX = isFromMe ? MENU_PANEL_EMERGE_X_PX() : -MENU_PANEL_EMERGE_X_PX();
+  const emergeY = placement === "below" ? -MENU_PANEL_EMERGE_Y_PX() : MENU_PANEL_EMERGE_Y_PX();
   const transformOrigin: MenuPanelTransformOrigin =
     placement === "below"
       ? isFromMe

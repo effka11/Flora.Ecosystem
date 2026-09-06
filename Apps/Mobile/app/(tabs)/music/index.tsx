@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -260,7 +261,7 @@ export default function MusicScreen() {
               pageWidth={pageWidth}
               start={tabLayouts.recommendations}
               end={tabLayouts.myMusic}
-              insetX={FLORA_TAB_STRIP_PAD_X}
+              insetX={FLORA_TAB_STRIP_PAD_X()}
               stripOffset={stripOffset}
             />
             <GesturePressable
@@ -371,7 +372,7 @@ export default function MusicScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -440,4 +441,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
     paddingBottom: floraSpacing.gridFine,
   },
-});
+}));

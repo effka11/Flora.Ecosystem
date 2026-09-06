@@ -1,8 +1,9 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
-const ACTION_BTN_HEIGHT = floraSpacing.grid * 2 + floraSpacing.gridFine * 2;
+const ACTION_BTN_HEIGHT = () => floraSpacing.grid * 2 + floraSpacing.gridFine * 2;
 const FOLLOW_ICON_SIZE = 18;
 
 type ProfileCardActionsProps =
@@ -91,7 +92,7 @@ export function ProfileCardActions(props: ProfileCardActionsProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -101,7 +102,7 @@ const styles = StyleSheet.create({
     marginTop: floraSpacing.grid,
   },
   btn: {
-    minHeight: ACTION_BTN_HEIGHT,
+    minHeight: ACTION_BTN_HEIGHT(),
     paddingHorizontal: floraSpacing.gridFine * 4,
     justifyContent: "center",
     alignItems: "center",
@@ -123,9 +124,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.45,
   },
   iconBtn: {
-    width: ACTION_BTN_HEIGHT,
-    height: ACTION_BTN_HEIGHT,
-    borderRadius: ACTION_BTN_HEIGHT / 2,
+    width: ACTION_BTN_HEIGHT(),
+    height: ACTION_BTN_HEIGHT(),
+    borderRadius: ACTION_BTN_HEIGHT() / 2,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -135,4 +136,4 @@ const styles = StyleSheet.create({
   iconBtnPressed: {
     backgroundColor: "rgba(164, 209, 138, 0.16)",
   },
-});
+}));

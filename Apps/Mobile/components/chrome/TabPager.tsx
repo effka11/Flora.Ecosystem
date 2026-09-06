@@ -12,6 +12,7 @@ import Reanimated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { typicalChipStripOffset } from "@/components/chrome/FloraTabChipStrip";
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 
 type TabPagerTrackProps = {
   pageCount: number;
@@ -67,15 +68,16 @@ export function PagerChipStripFollow({
   const typicalOffsetsSV = useSharedValue<number[]>([]);
   const rangeSV = useSharedValue<number[]>([]);
   const ready = layouts.length > 0 && layouts.every(Boolean);
+  const stripPadX = useFloraGrid().step;
 
   const syncTypicals = useCallback(
     (vw: number, max: number) => {
       if (!ready) return;
       typicalOffsetsSV.value = layouts.map((layout) =>
-        typicalChipStripOffset(layout?.x ?? 0, layout?.width ?? 0, vw, max),
+        typicalChipStripOffset(layout?.x ?? 0, layout?.width ?? 0, vw, max, stripPadX),
       );
     },
-    [layouts, ready, typicalOffsetsSV],
+    [layouts, ready, stripPadX, typicalOffsetsSV],
   );
 
   useEffect(() => {

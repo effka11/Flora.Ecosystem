@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "expo-router/react-navigation";
 import {
@@ -87,7 +88,7 @@ const CHIP_DECAY_MIN_VX = 320;
 /** Chip strip: follow pager vs free pan + decay. */
 const STRIP_MODE_FOLLOW = 0;
 const STRIP_MODE_FREE = 1;
-const TABS_PAD_X = floraSpacing.grid;
+const TABS_PAD_X = () => floraSpacing.grid;
 /** Прогрев дальней секции — только после такой паузы во взаимодействии. */
 const WARMUP_QUIET_MS = 400;
 /** Зазор между шагами прогрева: маунт и его async-догрузки успевают осесть. */
@@ -137,7 +138,7 @@ function buildTabsChromeMotion(
     inputRange.push(i * pageWidth);
     indicatorX.push(layout.x);
     indicatorW.push(layout.width);
-    const focus = TABS_PAD_X + layout.x + layout.width / 2;
+    const focus = TABS_PAD_X() + layout.x + layout.width / 2;
     const offset =
       maxStripOffset <= 0 ? 0 : Math.max(0, Math.min(maxStripOffset, focus - viewportW / 2));
     stripOffset.push(offset);
@@ -1284,7 +1285,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -1302,7 +1303,7 @@ const styles = StyleSheet.create({
   tabsTrack: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: TABS_PAD_X,
+    paddingHorizontal: TABS_PAD_X(),
     alignSelf: "flex-start",
   },
   tabs: {
@@ -1344,4 +1345,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

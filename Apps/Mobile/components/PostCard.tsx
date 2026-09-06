@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { FeedPostDto, PostEngagementSnapshot } from "@flora/client-core/contracts";
 import { formatAtHandle } from "@flora/client-core/display";
 import { Ionicons } from "@expo/vector-icons";
@@ -217,7 +218,7 @@ export const PostCard = memo(function PostCard({
   );
 });
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   card: {
     paddingHorizontal: floraFeedPost.paddingHorizontal,
     paddingTop: floraFeedPost.paddingTop,
@@ -391,4 +392,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

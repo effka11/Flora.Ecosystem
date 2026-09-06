@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { isApiRequestError } from "@flora/client-core/api";
 import { apiDeleteAvatar, apiGetMe } from "@flora/client-core/auth";
 import * as ImagePicker from "expo-image-picker";
@@ -151,7 +152,7 @@ export function ProfileAvatarEditorModal({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.65)",
@@ -224,4 +225,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
   },
-});
+}));

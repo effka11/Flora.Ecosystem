@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useState } from "react";
 import {
   NativeSyntheticEvent,
@@ -68,7 +69,7 @@ export function ProfileCardStatus({ status, loading = false, style }: ProfileCar
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     minWidth: 0,
     width: "100%",
@@ -91,4 +92,4 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: floraProfile.statusStripe,
   },
-});
+}));

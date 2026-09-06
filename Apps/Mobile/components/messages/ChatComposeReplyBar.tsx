@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { MessageReplyDraft } from "@/lib/messageReply";
@@ -40,7 +41,7 @@ export function ChatComposeReplyBar({ reply, onDismiss, onLayout }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   strip: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: floraMessages.composeBorderColor,
@@ -85,4 +86,4 @@ const styles = StyleSheet.create({
   dismissBtnPressed: {
     backgroundColor: "rgba(250, 250, 250, 0.06)",
   },
-});
+}));

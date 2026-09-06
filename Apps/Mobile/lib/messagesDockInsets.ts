@@ -1,16 +1,20 @@
 import { Platform } from "react-native";
 import type { EdgeInsets } from "react-native-safe-area-context";
 import { floraMessages, floraSpacing } from "@/lib/theme";
+import { liveGridRecord } from "@/lib/floraGridRuntime";
 
 /** shell paddingTop + border + field min + shell paddingBottomExtra (without system nav). */
-export const COMPOSE_BASELINE_FALLBACK_PX =
-  floraMessages.composeShellPaddingTop +
+export function COMPOSE_BASELINE_FALLBACK_PX() {
+  return floraMessages.composeShellPaddingTop +
   1 +
   floraMessages.composeFieldMinHeight +
   floraMessages.composeShellPaddingBottomExtra;
+}
 
 /** Scroll distance from end treated as "at bottom" (jump btn + atBottomRef). */
-export const CHAT_AT_BOTTOM_THRESHOLD_PX = floraSpacing.grid * 2;
+export function CHAT_AT_BOTTOM_THRESHOLD_PX() {
+  return floraSpacing.grid * 2;
+}
 
 /**
  * Nav height for KSV offsets (Android A+) and iOS compose padding.
@@ -72,8 +76,8 @@ export function emojiPanelDockHeightPx(
 }
 
 /** Внутренние отступы контента панели (панель = fixed-height слой в слоте дока). */
-export const emojiPanelChromePadding = {
+export const emojiPanelChromePadding = liveGridRecord(() => ({
   paddingTop: floraMessages.emojiPanelOuterGap,
   paddingHorizontal: floraMessages.emojiPanelOuterGap,
   paddingBottom: floraMessages.emojiPanelBottomExtra,
-} as const;
+}));

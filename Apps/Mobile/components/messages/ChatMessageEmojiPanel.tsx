@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -245,7 +246,7 @@ function ChatMessageEmojiPanelInner({ onPickEmoji }: Props) {
 /** memo: панель тяжёлая (FlashList на ~1900 эмодзи); не перерисовываем при наборе текста/скролле. */
 export const ChatMessageEmojiPanel = memo(ChatMessageEmojiPanelInner);
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   panel: {
     flex: 1,
     flexDirection: "row",
@@ -381,4 +382,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.42,
   },
-});
+}));

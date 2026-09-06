@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { memo, useMemo } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import {
@@ -100,7 +101,7 @@ export const ChatPeerMessageRow = memo(function ChatPeerMessageRow({
   );
 });
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -120,4 +121,4 @@ const styles = StyleSheet.create({
     maxWidth: "78%",
     overflow: "visible",
   },
-});
+}));

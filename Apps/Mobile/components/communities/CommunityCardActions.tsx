@@ -1,8 +1,9 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { CommunityRole } from "@flora/client-core/contracts";
 import { floraColors, floraSpacing } from "@/lib/theme";
 
-const ACTION_BTN_HEIGHT = floraSpacing.grid * 2 + floraSpacing.gridFine * 2;
+const ACTION_BTN_HEIGHT = () => floraSpacing.grid * 2 + floraSpacing.gridFine * 2;
 
 type CommunityCardActionsProps = {
   role?: CommunityRole | null;
@@ -96,7 +97,7 @@ export function CommunityCardActions({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   wrap: {
     gap: floraSpacing.gridFine,
   },
@@ -109,7 +110,7 @@ const styles = StyleSheet.create({
     marginTop: floraSpacing.grid,
   },
   btn: {
-    minHeight: ACTION_BTN_HEIGHT,
+    minHeight: ACTION_BTN_HEIGHT(),
     paddingHorizontal: floraSpacing.gridFine * 4,
     justifyContent: "center",
     alignItems: "center",
@@ -137,4 +138,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "300",
   },
-});
+}));
