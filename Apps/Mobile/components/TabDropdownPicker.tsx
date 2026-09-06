@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -90,7 +91,7 @@ export function TabDropdownPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   wrap: {
     position: "relative",
     flexShrink: 1,
@@ -176,4 +177,4 @@ const styles = StyleSheet.create({
   menuItemLabelActive: {
     color: floraColors.greenLight,
   },
-});
+}));

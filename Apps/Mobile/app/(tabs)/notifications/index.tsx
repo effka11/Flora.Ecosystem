@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiDeleteAllNotifications,
   apiListNotifications,
@@ -284,7 +285,7 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
   navigationRow: {
     flexDirection: "row",
@@ -331,4 +332,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

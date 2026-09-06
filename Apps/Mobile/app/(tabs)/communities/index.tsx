@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { apiJoinCommunity, apiLeaveCommunity, apiSearchCommunities } from "@flora/client-core/api";
 import type { CommunityListItemDto } from "@flora/client-core/contracts";
@@ -53,7 +54,7 @@ const COMMUNITY_TABS: readonly { id: CommunityTab; label: string }[] = [
   { id: "subscriptions", label: "Подписки" },
 ];
 
-const AVATAR_SIZE = floraSpacing.grid * 3;
+const AVATAR_SIZE = () => floraSpacing.grid * 3;
 const COMMUNITY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isCommunityUuid(value: string): boolean {
@@ -95,7 +96,7 @@ function CommunityRow({ community, showLeave, showJoin, actionBusy, onJoin, onLe
         onPress={() => router.push(communityScreenHref(community.slug))}
       >
         <FloraAvatar
-          size={AVATAR_SIZE}
+          size={AVATAR_SIZE()}
           avatarUuid={community.avatarUuid}
           displayName={community.name}
           communityName={community.name}
@@ -468,7 +469,7 @@ export default function CommunitiesScreen() {
               pageWidth={pageWidth}
               start={tabLayouts.recommended}
               end={tabLayouts.subscriptions}
-              insetX={FLORA_TAB_STRIP_PAD_X}
+              insetX={FLORA_TAB_STRIP_PAD_X()}
               stripOffset={stripOffset}
             />
             {COMMUNITY_TABS.map((tab, index) => (
@@ -541,7 +542,7 @@ export default function CommunitiesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -646,4 +647,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

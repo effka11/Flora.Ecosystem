@@ -1,5 +1,5 @@
 /*
- * Full dashboard canvas overlay (1920×945 frame inside .appRoot).
+ * Full dashboard canvas overlay (128×63 cells inside .appRoot; эталон s=1 = 1920×945).
  * anchorRow=0; content flow starts row 11 (header 9 + 2 primary padding).
  */
 

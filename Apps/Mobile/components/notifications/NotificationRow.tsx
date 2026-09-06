@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import type { NotificationDto } from "@flora/client-core/contracts";
 import { useEffect, useRef, useState } from "react";
@@ -21,10 +22,9 @@ type NotificationRowProps = {
   onPress: () => void;
 };
 
-const ICON_SIZE = floraSpacing.grid * 3;
+const ICON_SIZE = () => floraSpacing.grid * 3;
 /** Как наполнение поста: padding карточки + contentInsetRight = 25px от края экрана. */
-const CONTENT_INSET_RIGHT_FROM_SCREEN =
-  floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight;
+const CONTENT_INSET_RIGHT_FROM_SCREEN = () => floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight;
 
 function iconForType(type: string): keyof typeof Ionicons.glyphMap {
   if (type === "like") return "heart";
@@ -215,7 +215,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   shell: {
     flexDirection: "row",
     alignItems: "center",
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     paddingTop: floraSpacing.grid * 2 - 1,
     paddingBottom: floraSpacing.grid * 2 - 2,
     paddingLeft: floraSpacing.grid,
-    paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN,
+    paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN(),
   },
   itemWithTrailing: {
     paddingRight: floraSpacing.gridFine,
@@ -244,9 +244,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(164, 209, 138, 0.06)",
   },
   iconWrap: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
-    borderRadius: ICON_SIZE / 2,
+    width: ICON_SIZE(),
+    height: ICON_SIZE(),
+    borderRadius: ICON_SIZE() / 2,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -303,4 +303,4 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     letterSpacing: 0.39,
   },
-});
+}));

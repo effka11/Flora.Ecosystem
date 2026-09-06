@@ -32,12 +32,12 @@ import {
 } from "@/lib/frcImage";
 import {
   DRAWER_EDGE_GUARD_VERTICAL_SLOP,
-  DRAWER_EDGE_HIT_WIDTH,
 } from "@/lib/drawerEdgeGesture";
 import {
   clearScrollActivityOwner,
   setScrollActivity,
 } from "@/lib/scrollActivity";
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import {
   SCROLL_PHASE_COAST,
   SCROLL_PHASE_DRAG,
@@ -94,6 +94,7 @@ export function createPagerFlashListScroll(
     props: ScrollViewProps,
     ref: Ref<Reanimated.ScrollView>,
   ) {
+    const { step } = useFloraGrid();
     const animatedRef = useAnimatedRef<Reanimated.ScrollView>();
     const mediaPauseOwner = useRef(Symbol("pager-scroll")).current;
     const momentumFallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -249,7 +250,7 @@ export function createPagerFlashListScroll(
         handler.registerForEvents(viewTag);
         installEdgeFlingGuard(
           viewTag,
-          DRAWER_EDGE_HIT_WIDTH,
+          4 * step,
           DRAWER_EDGE_GUARD_VERTICAL_SLOP,
         );
         return () => {
@@ -258,7 +259,7 @@ export function createPagerFlashListScroll(
           if (pane.viewTag.value === viewTag) pane.viewTag.value = 0;
         };
       });
-    }, [animatedRef, armed, scrollEvents]);
+    }, [animatedRef, armed, scrollEvents, step]);
 
     useEffect(
       () => () => {

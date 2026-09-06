@@ -6,8 +6,8 @@
 
 .appRoot {
   /* Для страниц с fixed-панелями (напр. рейл чатов) — правый край холста, не только .content. */
-  --flora-app-root-w: 1920px;
-  --flora-app-root-h: 945px;
+  --flora-app-root-w: calc(128 * var(--flora-grid-step));
+  --flora-app-root-h: calc(63 * var(--flora-grid-step));
   position: fixed;
   left: calc(var(--flora-frame-left) - var(--flora-crop-x));
   top: calc(var(--flora-frame-top) - var(--flora-crop-y));

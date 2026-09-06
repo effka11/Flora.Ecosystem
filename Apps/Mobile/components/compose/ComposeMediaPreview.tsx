@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -59,9 +60,9 @@ export function ComposeMediaPreview({ images, video, onRemoveImage, onRemoveVide
   );
 }
 
-const THUMB = floraSpacing.grid * 5;
+const THUMB = () => floraSpacing.grid * 5;
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   scroll: {
     flexGrow: 0,
   },
@@ -71,12 +72,12 @@ const styles = StyleSheet.create({
     paddingVertical: floraSpacing.gridFine,
   },
   thumbWrap: {
-    width: THUMB,
-    height: THUMB,
+    width: THUMB(),
+    height: THUMB(),
   },
   thumb: {
-    width: THUMB,
-    height: THUMB,
+    width: THUMB(),
+    height: THUMB(),
     borderRadius: 10,
     backgroundColor: floraColors.surface,
   },
@@ -91,7 +92,7 @@ const styles = StyleSheet.create({
     color: floraColors.gray,
     fontSize: 11,
     fontWeight: "300",
-    maxWidth: THUMB - 12,
+    maxWidth: THUMB() - 12,
   },
   preparing: {
     ...StyleSheet.absoluteFill,
@@ -112,4 +113,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiDeleteConversation,
   apiGetConversations,
@@ -1216,7 +1217,7 @@ export default function MessagesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
   /** Затемнение списка под push чата (внутри параллаксящего root). */
   chatPushDim: {
@@ -1322,4 +1323,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.45,
     lineHeight: 22,
   },
-});
+}));

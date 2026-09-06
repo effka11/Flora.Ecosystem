@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import {
   canRequestPackageInstalls,
@@ -553,7 +554,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   actionsCard: {
     borderRadius: 12,
     borderWidth: 1,
@@ -668,4 +669,4 @@ const styles = StyleSheet.create({
   channelOptionLabelSelected: {
     color: floraColors.greenLight,
   },
-});
+}));

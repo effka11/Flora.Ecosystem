@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Linking, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
@@ -194,7 +195,7 @@ export default function ContributeScreen() {
               pageWidth={pageWidth}
               start={tabLayouts.development}
               end={tabLayouts.donations}
-              insetX={FLORA_TAB_STRIP_PAD_X}
+              insetX={FLORA_TAB_STRIP_PAD_X()}
               stripOffset={stripOffset}
             />
             {CONTRIBUTE_TABS.map((tab, index) => (
@@ -233,7 +234,7 @@ export default function ContributeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -289,4 +290,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

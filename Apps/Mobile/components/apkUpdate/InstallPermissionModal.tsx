@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { floraColors, floraSpacing } from "@/lib/theme";
@@ -64,7 +65,7 @@ export function InstallPermissionModal({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.55)",
@@ -141,4 +142,4 @@ const styles = StyleSheet.create({
   btnDisabled: {
     opacity: 0.7,
   },
-});
+}));

@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiGetConversations,
   apiMarkConversationRead,
@@ -440,7 +441,7 @@ export default function ThreadScreen() {
   });
 
   /** Зона интерактивного свайпа над клавиатурой = высота закрытого дока. */
-  const kgaOffsetPx = composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
+  const kgaOffsetPx = composeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX();
   /**
    * FlashList строит тип анимированного компонента из `renderScrollComponent`
    * и мемоизирует его по идентичности колбэка, поэтому новая идентичность
@@ -1329,7 +1330,7 @@ export default function ThreadScreen() {
   /**
    * Показ ждёт ещё и замера дока. У перевёрнутой ленты зазор под последним
    * сообщением — это `contentInset`, то есть inset задаёт видимую позицию
-   * напрямую. До замера он считается по оценке `COMPOSE_BASELINE_FALLBACK_PX`,
+   * напрямую. До замера он считается по оценке `COMPOSE_BASELINE_FALLBACK_PX()`,
    * и пока она не сошлась с реальной высотой поля, лента стоит не на месте.
    * На холодном открытии это незаметно (расшифровка дольше замера), на тёплом
    * тред готов на первом кадре — и без этого условия показ попадает в окно
@@ -1615,7 +1616,7 @@ export default function ThreadScreen() {
     });
     if (!anyLiveNew) return;
     // Вне якоря приход строк позицию не трогает — только плашка (у якоря есть
-    // допуск CHAT_AT_BOTTOM_THRESHOLD_PX, строка внутри него ушла бы под док).
+    // допуск CHAT_AT_BOTTOM_THRESHOLD_PX(), строка внутри него ушла бы под док).
     if (!atBottomRef.current) {
       setShowJumpToLatest(true);
       return;
@@ -1711,7 +1712,7 @@ export default function ThreadScreen() {
           );
         }
       }
-      const atBottom = distanceFromAnchor <= CHAT_AT_BOTTOM_THRESHOLD_PX;
+      const atBottom = distanceFromAnchor <= CHAT_AT_BOTTOM_THRESHOLD_PX();
       atBottomRef.current = atBottom;
       // Здесь прижатие только включаем. Снять его может лишь жест — иначе
       // промежуточный кадр собственной коррекции низа отменил бы коррекцию.
@@ -2913,7 +2914,7 @@ export default function ThreadScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     minHeight: 0,
@@ -3080,4 +3081,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.39,
   },
-});
+}));

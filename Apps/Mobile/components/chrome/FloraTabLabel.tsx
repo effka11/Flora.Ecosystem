@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { LinearGradient } from "expo-linear-gradient";
 import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -62,7 +63,7 @@ export const FloraTabLabel = memo(function FloraTabLabel({
   );
 });
 
-export const floraTabChrome = StyleSheet.create({
+export const floraTabChrome = liveGridStyles(() => StyleSheet.create({
   tabButton: {
     height: floraTabFilter.triggerHeight,
     borderRadius: 999,
@@ -96,7 +97,7 @@ export const floraTabChrome = StyleSheet.create({
     width: floraSpacing.grid,
     zIndex: 4,
   },
-});
+}));
 
 const EDGE_FADE_SOLID = floraColors.bg;
 const EDGE_FADE_CLEAR = "rgba(12, 12, 12, 0)";

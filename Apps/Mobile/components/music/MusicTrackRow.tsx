@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { MusicTrackItem } from "@/lib/music/musicModels";
@@ -48,7 +49,7 @@ export function MusicTrackRow({ track, playing = false, onPress, onDelete }: Pro
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     minHeight: 64,
     flexDirection: "row",
@@ -100,4 +101,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

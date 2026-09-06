@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   FeedPostImages,
   type FeedPostImagePreviewItem,
@@ -185,7 +186,7 @@ export function ChatMessageImageCollage({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   placeholder: {
     borderRadius: floraMessages.composeRadius,
     backgroundColor: "rgba(250, 250, 250, 0.06)",
@@ -196,4 +197,4 @@ const styles = StyleSheet.create({
     color: floraColors.gray,
     fontSize: 13,
   },
-});
+}));

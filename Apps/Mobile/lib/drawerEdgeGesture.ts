@@ -3,7 +3,9 @@ import { floraSpacing } from "@/lib/theme";
 export type DrawerEdgeIntent = "pending" | "activate" | "fail";
 
 /** Зона edge-swipe гамбургер-меню (60px на всю высоту, без вырезов). */
-export const DRAWER_EDGE_HIT_WIDTH = 4 * floraSpacing.grid;
+export function DRAWER_EDGE_HIT_WIDTH() {
+  return 4 * floraSpacing.grid;
+}
 /** Быстрый vertical fail edge-pan: ScrollView не ждёт PENDING при waitFor. */
 export const DRAWER_EDGE_FAIL_OFFSET_Y = 8;
 /**

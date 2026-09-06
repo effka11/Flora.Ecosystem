@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { PRESENCE_TYPING_PEER_TTL_MS, sharedPresenceStore } from "@flora/client-core/presence";
 import { router } from "expo-router";
@@ -188,7 +189,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     position: "relative",
     flexDirection: "row",
@@ -268,4 +269,4 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: floraMessages.divider,
   },
-});
+}));

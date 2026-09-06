@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { PostCommentDto } from "@flora/client-core/contracts";
 import { apiAddPostComment, apiGetPostComments } from "@flora/client-core/api";
 import { formatAtHandle, profileDisplayName } from "@flora/client-core/display";
@@ -172,7 +173,7 @@ export function FeedPostComments({ postUuid, open, meUsername, onCommentAdded }:
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   panel: {
     marginTop: floraSpacing.gridFine * 2,
     paddingTop: floraSpacing.gridFine * 2,
@@ -283,4 +284,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

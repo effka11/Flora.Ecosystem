@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { postImageUrl } from "@flora/client-core/display";
 import { useRecyclingState } from "@shopify/flash-list";
 import { Image } from "expo-image";
@@ -29,9 +30,9 @@ import {
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
 
 const MAX_ITEMS = COLLAGE_MAX_ITEMS;
-const GRID = floraSpacing.grid;
-const GAP = floraSpacing.gridFine;
-const DEFAULT_ROW_HEIGHT = 7 * GRID;
+const GRID = () => floraSpacing.grid;
+const GAP = () => floraSpacing.gridFine;
+const defaultRowHeight = () => 7 * GRID();
 const CELL_RADIUS = 10;
 const COLLAGE_RADIUS = 12;
 const SINGLE_IMAGE_RADIUS = CELL_RADIUS;
@@ -51,11 +52,11 @@ function shapeFromRatio(ratio: number): ImageShape {
 }
 
 const SINGLE_MAX: Record<ImageShape | "default", { w: number; h: number }> = {
-  narrow: { w: 16 * GRID, h: 22 * GRID },
-  portrait: { w: 20 * GRID, h: 24 * GRID },
-  square: { w: 26 * GRID, h: 26 * GRID },
-  wide: { w: 36 * GRID, h: 20 * GRID },
-  default: { w: 22 * GRID, h: 24 * GRID },
+  narrow: { w: 16 * GRID(), h: 22 * GRID() },
+  portrait: { w: 20 * GRID(), h: 24 * GRID() },
+  square: { w: 26 * GRID(), h: 26 * GRID() },
+  wide: { w: 36 * GRID(), h: 20 * GRID() },
+  default: { w: 22 * GRID(), h: 24 * GRID() },
 };
 
 function roundLayoutPx(value: number): number {
@@ -200,7 +201,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
   );
   const singleShape: ImageShape = singleRatio != null ? shapeFromRatio(singleRatio) : "square";
 
-  const rowHeight = layout?.rowHeight ?? DEFAULT_ROW_HEIGHT;
+  const rowHeight = layout?.rowHeight ?? defaultRowHeight();
   const marginBottom = layout?.marginBottom ?? floraFeedPost.textMarginBottom;
   const collageBorderRadius = layout?.collageBorderRadius ?? COLLAGE_RADIUS;
   const cellBorderRadius = layout?.cellBorderRadius ?? CELL_RADIUS;
@@ -294,7 +295,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
         const cellWidth = collageCellWidth(width, 2);
         const cellHeight = rowHeight * 2;
         return (
-          <View style={[styles.row, { gap: GAP, width }]}>
+          <View style={[styles.row, { gap: GAP(), width }]}>
             {items.map((item, index) => (
               <CollageCell
                 key={item.id}
@@ -312,11 +313,11 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
 
       if (count === 3) {
         const leftWidth = threeImageLeftCellWidth(width);
-        const rightWidth = Math.floor((width - GAP) / 3);
+        const rightWidth = Math.floor((width - GAP()) / 3);
         const totalHeight = rowHeight * 2;
-        const rightCellHeight = Math.floor((totalHeight - GAP) / 2);
+        const rightCellHeight = Math.floor((totalHeight - GAP()) / 2);
         return (
-          <View style={[styles.row, { gap: GAP, height: totalHeight, width }]}>
+          <View style={[styles.row, { gap: GAP(), height: totalHeight, width }]}>
             <CollageCell
               uri={items[0]!.uri}
               width={leftWidth}
@@ -325,7 +326,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
               imageIndex={0}
               onPress={() => openLightbox(items[0]!.uri)}
             />
-            <View style={{ gap: GAP }}>
+            <View style={{ gap: GAP() }}>
               <CollageCell
                 uri={items[1]!.uri}
                 width={rightWidth}
@@ -351,7 +352,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
         const cellWidth = collageCellWidth(width, 2);
         const cellHeight = rowHeight;
         return (
-          <View style={[styles.wrap, { gap: GAP, width }]}>
+          <View style={[styles.wrap, { gap: GAP(), width }]}>
             {items.map((item, index) => (
               <CollageCell
                 key={item.id}
@@ -374,8 +375,8 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
       const rest = items.slice(2);
 
       return (
-        <View style={{ gap: GAP, width }}>
-          <View style={[styles.row, { gap: GAP, width }]}>
+        <View style={{ gap: GAP(), width }}>
+          <View style={[styles.row, { gap: GAP(), width }]}>
             {items.slice(0, 2).map((item, index) => (
               <CollageCell
                 key={item.id}
@@ -388,7 +389,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
               />
             ))}
           </View>
-          <View style={[styles.wrap, { gap: GAP, width }]}>
+          <View style={[styles.wrap, { gap: GAP(), width }]}>
             {rest.map((item, index) => (
               <CollageCell
                 key={item.id}
@@ -432,7 +433,7 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   wrapOuter: {
     alignSelf: "flex-start",
   },
@@ -458,4 +459,4 @@ const styles = StyleSheet.create({
   cell: {
     backgroundColor: "rgba(250, 250, 250, 0.05)",
   },
-});
+}));

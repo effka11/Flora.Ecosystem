@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import {
@@ -250,7 +251,7 @@ function SubmenuRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   modalRoot: {
     flex: 1,
   },
@@ -333,4 +334,4 @@ const styles = StyleSheet.create({
   submenuItemLabelDisabled: {
     color: "rgba(250, 250, 250, 0.45)",
   },
-});
+}));

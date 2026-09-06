@@ -335,7 +335,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    */
   const listGapPx =
     dockIdleGapPx +
-    (composeBaselinePx > 0 ? composeBaselinePx : COMPOSE_BASELINE_FALLBACK_PX) +
+    (composeBaselinePx > 0 ? composeBaselinePx : COMPOSE_BASELINE_FALLBACK_PX()) +
     deleteBarHeightPx;
 
   const { height: kbHeightSv, progress: kbProgressSv } =
@@ -353,10 +353,10 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const composeGrowthHoldSv = useSharedValue(0);
   const deleteBarHeightSv = useSharedValue(0);
   const dockExtraPaddingSv = useSharedValue(
-    dockIdleGapPx + (lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX),
+    dockIdleGapPx + (lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX()),
   );
   const composeBaselineSv = useSharedValue(
-    lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX,
+    lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX(),
   );
   /** Всегда 0 — extraContentPadding KCSV выведен из игры (см. listGapPx). */
   const listInsetZeroSv = useSharedValue(0);
@@ -994,7 +994,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       if (height <= 0) return;
       if (emojiPanelMountedRef.current) {
         // Пока панель открыта, baseline не калибруем — только рост поля.
-        const baseline = composeBaselineRef.current || COMPOSE_BASELINE_FALLBACK_PX;
+        const baseline = composeBaselineRef.current || COMPOSE_BASELINE_FALLBACK_PX();
         composeGrowthSv.value = Math.max(0, height - baseline);
         return;
       }
@@ -1018,7 +1018,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const recalibrateComposeBaseline = useCallback(() => {
     if (emojiPanelMountedRef.current) return;
     composeBaselineRef.current = 0;
-    composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX;
+    composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX();
     setComposeBaselinePx(0);
     composeGrowthSv.value = 0;
     // Догонять нечего: геометрия пересобирается заново, лента должна стоять
@@ -1411,7 +1411,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     // (onLayout при совпадении высоты не коммитит вовсе).
     composeBaselineRef.current = lastMeasuredComposeBaselinePx;
     composeBaselineSv.value =
-      lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX;
+      lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX();
     setComposeBaselinePx(lastMeasuredComposeBaselinePx);
     Keyboard.dismiss();
   }, [

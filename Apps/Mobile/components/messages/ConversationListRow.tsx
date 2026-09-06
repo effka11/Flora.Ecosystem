@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import { sharedPresenceStore } from "@flora/client-core/presence";
 import { router } from "expo-router";
@@ -15,10 +16,9 @@ import { armChatPushEnter } from "@/lib/chatPushTransition";
 import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
 
 const LIST_PREVIEW_MAX_LEN = 80;
-const AVATAR_SIZE = floraSpacing.grid * 3;
+const AVATAR_SIZE = () => floraSpacing.grid * 3;
 /** Как наполнение поста: padding карточки + contentInsetRight = 25px от края экрана. */
-const CONTENT_INSET_RIGHT_FROM_SCREEN =
-  floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight;
+const CONTENT_INSET_RIGHT_FROM_SCREEN = () => floraFeedPost.paddingHorizontal + floraFeedPost.contentInsetRight;
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
 const LONG_PRESS_MS = 350;
 /** Как `iconButton` / «+» в TabScreenSearchHeader — центр бейджа под «+». */
@@ -146,7 +146,7 @@ export function ConversationListRow({
       <View style={[styles.item, item.unreadCount > 0 && styles.itemWithTrailing]}>
         <View style={styles.avatarWrap}>
           <FloraAvatar
-            size={AVATAR_SIZE}
+            size={AVATAR_SIZE()}
             avatarUuid={item.otherAvatarUuid}
             displayName={displayName}
             username={item.otherUsername}
@@ -154,13 +154,13 @@ export function ConversationListRow({
             accountBlocked={item.otherAccountBlocked}
           />
           {selectionMode ? (
-            <ConversationListSelectionMark selected={selected} avatarDiameter={AVATAR_SIZE} />
+            <ConversationListSelectionMark selected={selected} avatarDiameter={AVATAR_SIZE()} />
           ) : (
             <OnlineStatusDot
               key={item.otherUserUuid}
               identityKey={item.otherUserUuid}
               online={overlay.isOnline}
-              avatarDiameter={AVATAR_SIZE}
+              avatarDiameter={AVATAR_SIZE()}
             />
           )}
         </View>
@@ -191,10 +191,11 @@ export function ConversationListRow({
   );
 }
 
-export const CONVERSATION_ROW_ESTIMATED_HEIGHT =
-  AVATAR_SIZE + (floraSpacing.grid * 2 - 1) + (floraSpacing.grid * 2 - 2);
+export function CONVERSATION_ROW_ESTIMATED_HEIGHT() {
+  return AVATAR_SIZE() + (floraSpacing.grid * 2 - 1) + (floraSpacing.grid * 2 - 2);
+}
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   shell: {
     flexDirection: "row",
     alignItems: "center",
@@ -217,15 +218,15 @@ const styles = StyleSheet.create({
     paddingTop: floraSpacing.grid * 2 - 1,
     paddingBottom: floraSpacing.grid * 2 - 2,
     paddingLeft: floraSpacing.grid,
-    paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN,
+    paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN(),
   },
   itemWithTrailing: {
     paddingRight: floraSpacing.gridFine,
   },
   avatarWrap: {
     position: "relative",
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
+    width: AVATAR_SIZE(),
+    height: AVATAR_SIZE(),
     flexShrink: 0,
   },
   body: {
@@ -285,4 +286,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.39,
   },
-});
+}));

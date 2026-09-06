@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
@@ -120,7 +121,7 @@ export function AppUpdateProgressModal({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.55)",
@@ -214,4 +215,4 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     letterSpacing: 0.42,
   },
-});
+}));

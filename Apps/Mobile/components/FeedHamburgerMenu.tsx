@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, usePathname, type Href } from "expo-router";
@@ -126,8 +127,8 @@ const OPEN_EASING = ENERGETIC_OPEN_EASING;
 /** Парирует выдвижение: тот же duration-3 и ease-out, удар сразу в обе стороны. */
 const CLOSE_MS = OPEN_MS;
 const CLOSE_EASING = OPEN_EASING;
-const MENU_EDGE_INSET = floraSpacing.grid + floraSpacing.gridFine;
-const MENU_LEAD_COL = 2 * floraSpacing.grid;
+const MENU_EDGE_INSET = () => floraSpacing.grid + floraSpacing.gridFine;
+const MENU_LEAD_COL = () => 2 * floraSpacing.grid;
 /** Горизонтальный порог, чтобы не перехватывать тапы по пунктам меню. */
 const SWIPE_AXIS_PX = 10;
 /** Быстрый vertical fail edge-pan: ScrollView не ждёт PENDING при waitFor. */
@@ -137,7 +138,7 @@ const EDGE_FAIL_OFFSET_Y = DRAWER_EDGE_FAIL_OFFSET_Y;
 const SWIPE_CLOSE_RATIO = 0.28;
 /** Мягкий порог открытия: медленный осознанный drag тоже коммитится. */
 const SWIPE_OPEN_RATIO = 0.12;
-const SWIPE_OPEN_MIN_PX = 2 * floraSpacing.grid;
+const SWIPE_OPEN_MIN_PX = () => 2 * floraSpacing.grid;
 /** Gesture Handler сообщает velocity в points/sec. */
 const SWIPE_CLOSE_VX = -650;
 const SWIPE_OPEN_VX = 220;
@@ -146,9 +147,10 @@ const SWIPE_OPEN_VX = 220;
  * Pan на обёртке контента (не absolute overlay): тапы остаются детям,
  * свайп забирается через manualActivation после горизонтального сдвига.
  */
-const EDGE_HIT_WIDTH = DRAWER_EDGE_HIT_WIDTH;
+const EDGE_HIT_WIDTH = () => DRAWER_EDGE_HIT_WIDTH();
 /** Высота chromeRow / iconButton — floor для исключения гамбургера из edge claim. */
-const EDGE_CHROME_ROW_PX = 45;
+/** Высота chromeRow / iconButton — floor для исключения гамбургера из edge claim. */
+const EDGE_CHROME_ROW_PX = () => 3 * floraSpacing.grid;
 /**
  * Доводка progress к 0|1 — та же energetic-политика, что у свайпа подвкладок ленты.
  */
@@ -208,7 +210,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   const progress = useSharedValue(visible ? 1 : 0);
   const dragStartProgress = useSharedValue(0);
   const panelWidthSV = useSharedValue(panelWidth);
-  const edgeMaxX = useSharedValue(insets.left + EDGE_HIT_WIDTH);
+  const edgeMaxX = useSharedValue(insets.left + EDGE_HIT_WIDTH());
   const edgeEnabled = useSharedValue(visible ? 0 : 1);
   /** Старт касания — translationX до activate() часто 0, считаем delta сами. */
   const touchStartX = useSharedValue(0);
@@ -228,15 +230,15 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   }, [panelWidth, panelWidthSV]);
 
   useEffect(() => {
-    edgeMaxX.value = insets.left + EDGE_HIT_WIDTH;
-  }, [edgeMaxX, insets.left]);
+    edgeMaxX.value = insets.left + EDGE_HIT_WIDTH();
+  }, [edgeMaxX, insets.left, windowWidth]);
 
   useEffect(() => {
-    const floor = insets.top + floraSpacing.grid + EDGE_CHROME_ROW_PX;
+    const floor = insets.top + floraSpacing.grid + EDGE_CHROME_ROW_PX();
     if (edgeChromeBottomY.value < floor) {
       edgeChromeBottomY.value = floor;
     }
-  }, [edgeChromeBottomY, insets.top]);
+  }, [edgeChromeBottomY, insets.top, windowWidth]);
 
   useEffect(() => {
     edgeEnabled.value = !visible && !presented ? 1 : 0;
@@ -454,7 +456,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
             width,
             event.velocityX,
             SWIPE_OPEN_RATIO,
-            SWIPE_OPEN_MIN_PX,
+            SWIPE_OPEN_MIN_PX(),
             SWIPE_OPEN_VX,
           );
           if (shouldOpen) {
@@ -706,7 +708,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   contentSlot: {
     flex: 1,
   },
@@ -723,8 +725,8 @@ const styles = StyleSheet.create({
     backgroundColor: floraColors.bg,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: "rgba(250, 250, 250, 0.06)",
-    paddingLeft: MENU_EDGE_INSET,
-    paddingRight: MENU_EDGE_INSET,
+    paddingLeft: MENU_EDGE_INSET(),
+    paddingRight: MENU_EDGE_INSET(),
     justifyContent: "flex-start",
   },
   header: {
@@ -739,8 +741,8 @@ const styles = StyleSheet.create({
     gap: floraSpacing.grid,
   },
   logoMark: {
-    width: MENU_LEAD_COL,
-    height: MENU_LEAD_COL,
+    width: MENU_LEAD_COL(),
+    height: MENU_LEAD_COL(),
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
@@ -774,8 +776,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(250, 250, 250, 0.06)",
   },
   navIconWrap: {
-    width: MENU_LEAD_COL,
-    height: MENU_LEAD_COL,
+    width: MENU_LEAD_COL(),
+    height: MENU_LEAD_COL(),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -814,4 +816,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.45,
   },
-});
+}));

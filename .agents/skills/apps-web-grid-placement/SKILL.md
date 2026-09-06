@@ -15,19 +15,20 @@ description: Точное позиционирование Apps/Web по сет�
   - `width = (C - A + 1) * step`
   - Нельзя использовать `width = (C - A) * step`, иначе правый край уедет на 1 клетку влево
     (типичный косяк: визуально получается до `C - 1`, например "до 76 вместо 77").
-- Для `primary` шаг = `15px`, для `secondary` шаг = `5px`.
-- Для `Apps/Web/login` базовый кадр: `1920x945`.
+- Для `primary` шаг = `var(--flora-grid-step)` (**15px при `s = 1`**), для `secondary` = `var(--flora-grid-step-fine)` (5px при `s = 1`). Не хардкодить 15px в новых формулах.
+- Эталонный чертёж: **128×63** клетки = **1920×945 при `s = 1`**. Кадр на экране: `128 * step` × `63 * step` (шаблон из `@flora/client-core/display`). Закон: `Documents/design/FLORA-GRID.md`.
 
 ## 2) Единая система координат (без дрейфа при zoom/resize)
 
-Всегда считать через ту же математику, что в `useGridBindings`:
+Всегда считать через ту же математику, что в `placeGridCanvas` / `useGridBindings` (холст текущего шаблона, не литерал 1920×945):
 
-- `frameWidth = min(100vw, 1920px)`
-- `frameHeight = min(100vh, 945px)`
+- `canvasW = 128 * step`, `canvasH = 63 * step` (`step = var(--flora-grid-step)`)
+- `frameWidth = min(100vw, canvasW)`
+- `frameHeight = min(100vh, canvasH)`
 - `frameLeft = (100vw - frameWidth) / 2`
 - `frameTop = (100vh - frameHeight) / 2`
-- `cropOffsetX = max(0px, (1920px - frameWidth) / 2)`
-- `cropOffsetY = max(0px, (945px - frameHeight) / 2)`
+- `cropOffsetX = max(0px, (canvasW - frameWidth) / 2)` — 0, пока холст влезает (поля вокруг)
+- `cropOffsetY = max(0px, (canvasH - frameHeight) / 2)`
 - Позиция в viewport:
   - `left = frameLeft + X * step - cropOffsetX`
   - `top = frameTop + Y * step - cropOffsetY`
@@ -40,7 +41,7 @@ description: Точное позиционирование Apps/Web по сет�
 Для линии с требованием «низ на строке `Y`» в кадре login (`useGridBindings`):
 
 - `top = (Y + 1) * step` в системе §2.
-- Пример: низ на `28` → `29 * 15px`.
+- Пример при `s = 1`: низ на `28` → `29 * step` (15px).
 
 Это **не** подставлять вслепую в dashboard: там другой якорь (§5).
 
@@ -97,7 +98,7 @@ top: calc((H + 1 - var(--anchor-row)) * var(--flora-grid-step));
 
 Контекст: `.messagesComposeField`, якорь **`anchorCol = 38`** (левый край поля). Пример: стикер между **84 и 85** → `--messages-sticker-center-col: 84.5`.
 
-Кнопка шириной **2 первичные клетки** (30px), центр на линии `L.5`:
+Кнопка шириной **2 первичные клетки** (`2 * step`, при `s = 1` — 30px), центр на линии `L.5`:
 
 ```css
 left: calc((L.5 - var(--messages-compose-field-col) - 0.5) * var(--flora-grid-step));
@@ -159,5 +160,5 @@ transform: translateY(-50%); /* только по Y */
 
 ### Проверка на overlay
 
-- Сверять **визуально** с линиями GRID 15, не только координату `c15y`: `floor(y / 15) === H` для **всей** полосы между линиями H и H+1 — hover на «центре» всё равно покажет **H**.
+- Сверять **визуально** с линиями GRID (шаг = `--flora-grid-step`), не только координату `c15y`: `floor(y / step) === H` для **всей** полосы между линиями H и H+1 — hover на «центре» всё равно покажет **H**.
 - В CSS — комментарий: `/* anchorRow=…; между H–(H+1) → top (H+1)*step */`.

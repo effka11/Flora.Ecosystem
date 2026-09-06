@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFollowUser, apiSearchUsers, apiUnfollowUser } from "@flora/client-core/api";
 import type { PeopleUserDto } from "@flora/client-core/contracts";
@@ -59,7 +60,7 @@ const PEOPLE_TABS: readonly { id: PeopleTabId; label: string }[] = [
 ];
 const PEOPLE_PAGE_IDS: readonly PeopleTabId[] = PEOPLE_TABS.map((tab) => tab.id);
 
-const AVATAR_SIZE = floraSpacing.grid * 3;
+const AVATAR_SIZE = () => floraSpacing.grid * 3;
 /** Match Web People `.onlineBadge` (10px on 45px avatar). */
 const PEOPLE_ONLINE_DOT_AT_REF = 10;
 
@@ -108,7 +109,7 @@ function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: 
       >
         <View style={styles.avatarWrap}>
           <FloraAvatar
-            size={AVATAR_SIZE}
+            size={AVATAR_SIZE()}
             avatarUuid={user.avatarUuid}
             displayName={user.displayName}
             username={user.username}
@@ -120,7 +121,7 @@ function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: 
               key={user.userUuid}
               identityKey={user.userUuid}
               online={overlay.isOnline}
-              avatarDiameter={AVATAR_SIZE}
+              avatarDiameter={AVATAR_SIZE()}
               sizeAtRef={PEOPLE_ONLINE_DOT_AT_REF}
               style={styles.peopleOnlineInset}
             />
@@ -551,7 +552,7 @@ export default function PeopleScreen() {
                 progress={tabProgress}
                 layouts={indicatorLayouts}
                 scrollX={stripOffset}
-                insetX={FLORA_TAB_STRIP_PAD_X}
+                insetX={FLORA_TAB_STRIP_PAD_X()}
               />
               {PEOPLE_TABS.map((tab, index) => (
                 <GesturePressable
@@ -656,7 +657,7 @@ export default function PeopleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -704,8 +705,8 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     position: "relative",
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
+    width: AVATAR_SIZE(),
+    height: AVATAR_SIZE(),
     flexShrink: 0,
   },
   /** Match Web People `.onlineBadge` inset (−1), not SE-edge formula. */
@@ -787,4 +788,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

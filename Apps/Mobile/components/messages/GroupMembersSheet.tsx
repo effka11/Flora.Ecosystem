@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
@@ -263,7 +264,7 @@ export function GroupMembersSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -318,4 +319,4 @@ const styles = StyleSheet.create({
   rowHandle: { color: floraColors.gray, fontSize: 13 },
   kick: { color: "#f6a8a8", fontSize: 13 },
   error: { color: "#f6a8a8", fontSize: 13, marginTop: floraSpacing.gridFine },
-});
+}));

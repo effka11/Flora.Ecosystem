@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiFeedHasNew, apiSearchFeed } from "@flora/client-core/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -326,7 +327,7 @@ export default function FeedScreen() {
                 pageWidth={pageWidth}
                 start={tabLayouts.recommendations}
                 end={tabLayouts.subscriptions}
-                insetX={FLORA_TAB_STRIP_PAD_X}
+                insetX={FLORA_TAB_STRIP_PAD_X()}
                 stripOffset={stripOffset}
               />
               <GesturePressable
@@ -369,7 +370,7 @@ export default function FeedScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
   topChrome: {
     position: "absolute",
@@ -429,4 +430,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

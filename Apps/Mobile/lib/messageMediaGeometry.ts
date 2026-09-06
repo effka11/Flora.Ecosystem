@@ -9,7 +9,7 @@
  */
 import { floraSpacing } from "@/lib/theme";
 
-const GAP = floraSpacing.gridFine;
+const GAP = () => floraSpacing.gridFine;
 
 /** Same cap `FeedPostImages` applies to `imageUuids`/`previewItems`. */
 export const COLLAGE_MAX_ITEMS = 10;
@@ -28,10 +28,10 @@ export function messageCollageHeight(count: number, rowHeight: number): number {
   if (clamped <= 1) return 0;
   if (clamped === 2) return rowHeight * 2;
   if (clamped === 3) return rowHeight * 2;
-  if (clamped === 4) return rowHeight * 2 + GAP;
+  if (clamped === 4) return rowHeight * 2 + GAP();
 
   const restRows = Math.ceil((clamped - 2) / 2);
-  return rowHeight * 2 + GAP + restRows * rowHeight + (restRows - 1) * GAP;
+  return rowHeight * 2 + GAP() + restRows * rowHeight + (restRows - 1) * GAP();
 }
 
 /**

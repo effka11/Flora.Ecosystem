@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ChatMessageImageCollage } from "@/components/messages/ChatMessageImageCollage";
@@ -505,7 +506,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   );
 });
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   wrap: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -707,4 +708,4 @@ const styles = StyleSheet.create({
   timeThem: {
     color: floraMessages.themBubbleTime,
   },
-});
+}));

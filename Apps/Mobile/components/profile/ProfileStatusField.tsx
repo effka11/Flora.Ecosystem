@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useState } from "react";
 import {
   NativeSyntheticEvent,
@@ -23,7 +24,7 @@ type ProfileStatusFieldProps = Omit<TextInputProps, "multiline" | "style"> & {
   onChangeText: (text: string) => void;
 };
 
-const TEXTAREA_LINE_HEIGHT = floraSpacing.grid * 1.5;
+const TEXTAREA_LINE_HEIGHT = () => floraSpacing.grid * 1.5;
 
 /** Поле «Описание» — textarea как на web, полоски по визуальным строкам текста. */
 export function ProfileStatusField({
@@ -82,7 +83,7 @@ export function ProfileStatusField({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   group: {
     gap: 0,
   },
@@ -114,7 +115,7 @@ const styles = StyleSheet.create({
     top: floraSpacing.grid,
     fontSize: floraProfile.statusFontSize,
     fontWeight: "300",
-    lineHeight: TEXTAREA_LINE_HEIGHT,
+    lineHeight: TEXTAREA_LINE_HEIGHT(),
   },
   stripe: {
     position: "absolute",
@@ -129,7 +130,7 @@ const styles = StyleSheet.create({
     color: floraColors.whiteTemplate,
     fontSize: floraProfile.statusFontSize,
     fontWeight: "300",
-    lineHeight: TEXTAREA_LINE_HEIGHT,
+    lineHeight: TEXTAREA_LINE_HEIGHT(),
     backgroundColor: "transparent",
   },
-});
+}));

@@ -18,6 +18,7 @@ import { isNativePushEnabled } from "@/lib/pushCapabilities";
 import { setSecurePushAppForeground } from "flora-secure-push";
 import { canRequestPackageInstalls } from "flora-apk-updater";
 import { FloraAppServices, QueryClientRefBridge } from "@/providers/FloraAppServices";
+import { FloraGridProvider } from "@/lib/FloraGridProvider";
 import { runAppUpdateCatchUp } from "@/lib/apkUpdate/autoUpdate";
 import {
   isAutoUpdateEnabled,
@@ -251,19 +252,21 @@ export function FloraProviders({ children }: { children: ReactNode }) {
 
   return (
     <SafeAreaProvider>
-      <KeyboardProvider
-        statusBarTranslucent
-        navigationBarTranslucent
-        preserveEdgeToEdge
-      >
-        <QueryClientProvider client={queryClient}>
-          <QueryClientRefBridge client={queryClient} />
-          <FloraAppServices enabled={isAuthenticated && !accountBlocked} />
-          <OfflineBanner />
-          {isSideloadUpdatesEnabled() ? <InstallPermissionHost /> : null}
-          {children}
-        </QueryClientProvider>
-      </KeyboardProvider>
+      <FloraGridProvider>
+        <KeyboardProvider
+          statusBarTranslucent
+          navigationBarTranslucent
+          preserveEdgeToEdge
+        >
+          <QueryClientProvider client={queryClient}>
+            <QueryClientRefBridge client={queryClient} />
+            <FloraAppServices enabled={isAuthenticated && !accountBlocked} />
+            <OfflineBanner />
+            {isSideloadUpdatesEnabled() ? <InstallPermissionHost /> : null}
+            {children}
+          </QueryClientProvider>
+        </KeyboardProvider>
+      </FloraGridProvider>
     </SafeAreaProvider>
   );
 }

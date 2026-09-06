@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Image } from "expo-image";
 import {
   createContext,
@@ -26,7 +27,7 @@ type FeedLightboxApi = {
 const FeedLightboxContext = createContext<FeedLightboxApi | null>(null);
 
 const LIGHTBOX_FADE_MS = Math.round(floraMotion.baseMs * 2);
-const IMAGE_RADIUS = floraSpacing.gridFine;
+const IMAGE_RADIUS = () => floraSpacing.gridFine;
 
 /**
  * Lightbox must decode FRI → PNG the same way as thumbnails (raw FRI is not
@@ -37,10 +38,10 @@ function LightboxFrcImage({ uri }: { uri: string }) {
   const resolvedUri = useFrcImageUri(uri, { force: true });
   if (!resolvedUri) return null;
   return (
-    <View style={[styles.clip, { borderRadius: IMAGE_RADIUS }]}>
+    <View style={[styles.clip, { borderRadius: IMAGE_RADIUS() }]}>
       <Image
         source={{ uri: resolvedUri }}
-        style={[styles.image, { borderRadius: IMAGE_RADIUS }]}
+        style={[styles.image, { borderRadius: IMAGE_RADIUS() }]}
         contentFit="contain"
         cachePolicy={isLocalDecodedUri(resolvedUri) ? "memory" : "memory-disk"}
         recyclingKey={resolvedUri}
@@ -110,7 +111,7 @@ export function useFeedLightbox(): FeedLightboxApi | null {
   return useContext(FeedLightboxContext);
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   providerRoot: {
     flex: 1,
   },
@@ -140,4 +141,4 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-});
+}));

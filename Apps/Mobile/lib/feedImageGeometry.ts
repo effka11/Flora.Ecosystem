@@ -9,7 +9,7 @@
  */
 import { floraFeedPost, floraSpacing } from "@/lib/theme";
 
-const GAP = floraSpacing.gridFine;
+const GAP = () => floraSpacing.gridFine;
 
 /**
  * Content width of a feed row before it has measured itself — the same
@@ -52,12 +52,12 @@ export function nextFeedPageWidth(
 
 /** Width of one cell in an evenly split, `columns`-wide collage row. */
 export function collageCellWidth(totalWidth: number, columns: number): number {
-  return Math.floor((totalWidth - GAP * (columns - 1)) / columns);
+  return Math.floor((totalWidth - GAP() * (columns - 1)) / columns);
 }
 
 /** Width of the wide left cell in the three-image layout (2/3 of the row, minus the gap). */
 export function threeImageLeftCellWidth(totalWidth: number): number {
-  return Math.floor(((totalWidth - GAP) * 2) / 3);
+  return Math.floor(((totalWidth - GAP()) * 2) / 3);
 }
 
 /**

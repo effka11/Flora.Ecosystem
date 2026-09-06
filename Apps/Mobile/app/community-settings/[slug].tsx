@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiDeleteCommunity,
   apiGetCommunityBySlug,
@@ -318,7 +319,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
   content: {
     padding: floraSpacing.grid,
@@ -434,4 +435,4 @@ const styles = StyleSheet.create({
     color: floraColors.text,
   },
   pressed: { opacity: 0.85 },
-});
+}));

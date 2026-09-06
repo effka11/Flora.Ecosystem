@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { ChatListFolderId } from "@flora/client-core/messaging";
 import { chatListFolderPageIndex } from "@flora/client-core/messaging";
@@ -656,7 +657,7 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
   },
 );
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   body: {
     flex: 1,
     overflow: "hidden",
@@ -676,4 +677,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.45,
   },
-});
+}));

@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { type ReactNode, useMemo } from "react";
 import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -13,7 +14,9 @@ import { FloraTabStripEdgeFades } from "@/components/chrome/FloraTabLabel";
 import { floraSpacing, floraTabFilter } from "@/lib/theme";
 
 /** Как settings `TABS_PAD_X`: отступ на треке, не на вьюпорте. */
-export const FLORA_TAB_STRIP_PAD_X = floraSpacing.grid;
+export function FLORA_TAB_STRIP_PAD_X() {
+  return floraSpacing.grid;
+}
 /** Чипы: выше порог, чем pager — тап не уезжает в pan. */
 const CHIP_PAN_AXIS_PX = 24;
 /** Ниже — без withDecay (короткий жест/тап не запускает инерцию). */
@@ -22,16 +25,18 @@ const CHIP_DECAY_MIN_VX = 320;
 /**
  * Целевой offset полосы, чтобы чип оказался в центре вьюпорта.
  * `layoutX` — onLayout кнопки относительно ряда табов (без pad трека).
+ * `padX` передавать числом с JS-потока — из worklet нельзя звать `FLORA_TAB_STRIP_PAD_X`.
  */
 export function typicalChipStripOffset(
   layoutX: number,
   layoutW: number,
   viewportW: number,
   maxOffset: number,
+  padX: number,
 ): number {
   "worklet";
   if (maxOffset <= 0 || viewportW <= 0) return 0;
-  const focus = FLORA_TAB_STRIP_PAD_X + layoutX + layoutW / 2;
+  const focus = padX + layoutX + layoutW / 2;
   const next = focus - viewportW / 2;
   return next < 0 ? 0 : next > maxOffset ? maxOffset : next;
 }
@@ -131,7 +136,7 @@ export function FloraTabChipStrip({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   wrap: {
     position: "relative",
     overflow: "hidden",
@@ -140,7 +145,7 @@ const styles = StyleSheet.create({
   track: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: FLORA_TAB_STRIP_PAD_X,
+    paddingHorizontal: FLORA_TAB_STRIP_PAD_X(),
     alignSelf: "flex-start",
   },
-});
+}));

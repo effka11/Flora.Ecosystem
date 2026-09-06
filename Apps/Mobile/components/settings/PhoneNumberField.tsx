@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 // RNGH TextInput: при активации pager-pan получает ACTION_CANCEL — иначе
@@ -64,7 +65,7 @@ export function PhoneNumberField({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   wrap: {
     position: "relative",
     justifyContent: "center",
@@ -86,4 +87,4 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: floraColors.whiteTemplate,
   },
-});
+}));

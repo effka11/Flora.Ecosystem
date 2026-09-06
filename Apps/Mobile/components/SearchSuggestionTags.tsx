@@ -13,7 +13,6 @@ import Reanimated, {
   useSharedValue,
 } from "react-native-reanimated";
 import {
-  FLORA_TAB_STRIP_PAD_X,
   FloraTabChipStrip,
   typicalChipStripOffset,
 } from "@/components/chrome/FloraTabChipStrip";
@@ -25,6 +24,7 @@ import {
 } from "@/components/chrome/FloraTabLabel";
 import { useTabIndicatorBridge } from "@/components/chrome/tabIndicatorBridge";
 import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS, settleEnergetic } from "@/lib/energeticSettle";
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import { floraTabFilter } from "@/lib/theme";
 
 export type SearchSuggestionTag = {
@@ -106,6 +106,7 @@ export function SearchSuggestionTags({
   onSelectedIdChange,
   holdFocusRef,
 }: Props) {
+  const stripPadX = useFloraGrid().step;
   const [layouts, setLayouts] = useState<Partial<Record<string, TabLayout>>>({});
   const progress = useSharedValue(0);
   const hasPositioned = useRef(false);
@@ -152,7 +153,7 @@ export function SearchSuggestionTags({
           Extrapolation.CLAMP,
         ),
         left:
-          FLORA_TAB_STRIP_PAD_X +
+          stripPadX +
           interpolate(
             progress.value,
             chrome.inputRange,
@@ -232,7 +233,7 @@ export function SearchSuggestionTags({
       progress.value = index;
       return;
     }
-    runOnUI((target: number, x: number, width: number) => {
+    runOnUI((target: number, x: number, width: number, padX: number) => {
       "worklet";
       cancelAnimation(progress);
       settleEnergetic(
@@ -250,6 +251,7 @@ export function SearchSuggestionTags({
         width,
         stripViewportW.value,
         maxStripOffset.value,
+        padX,
       );
       settleEnergetic(
         stripOffset,
@@ -260,7 +262,7 @@ export function SearchSuggestionTags({
         ENERGETIC_OPEN_MS,
         ENERGETIC_OPEN_EASING,
       );
-    })(index, layoutX, layoutW);
+    })(index, layoutX, layoutW, stripPadX);
   };
 
   return (

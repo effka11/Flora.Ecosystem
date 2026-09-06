@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { floraColors, floraSpacing } from "@/lib/theme";
@@ -74,7 +75,7 @@ export function NotificationsClearModal({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.55)",
@@ -158,4 +159,4 @@ const styles = StyleSheet.create({
   btnDisabled: {
     opacity: 0.7,
   },
-});
+}));

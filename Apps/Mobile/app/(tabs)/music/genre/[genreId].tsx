@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiGetMusicGenrePage } from "@flora/client-core/api";
 import { useQuery } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
@@ -69,7 +70,7 @@ export default function MusicGenreScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   content: {
     paddingVertical: floraSpacing.grid,
     paddingBottom: floraSpacing.grid * 7,
@@ -114,4 +115,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

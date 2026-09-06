@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { StyleSheet, Text, View } from "react-native";
 import type { FscpMessageReplyRef } from "@flora/client-core/fscp";
 import { floraColors, floraSpacing } from "@/lib/theme";
@@ -26,7 +27,7 @@ export function ChatMessageReplyQuote({ reply, isFromMe }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     position: "relative",
     flexDirection: "row",
@@ -70,4 +71,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.26,
     color: "rgba(242, 244, 246, 0.72)",
   },
-});
+}));

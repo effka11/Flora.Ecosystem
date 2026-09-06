@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
@@ -73,7 +74,7 @@ export function SettingsSelectField<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   select: {
     flexDirection: "row",
     alignItems: "center",
@@ -137,4 +138,4 @@ const styles = StyleSheet.create({
   optionLabelSelected: {
     color: floraColors.greenLight,
   },
-});
+}));

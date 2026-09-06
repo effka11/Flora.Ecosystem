@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useRecyclingState } from "@shopify/flash-list";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import {
@@ -42,7 +43,7 @@ const LAST_PART_EXTRA_LINES = 5;
 const TRUNCATION_ELLIPSIS = "...";
 const CLIP_ANIM_MS = 380;
 const EXPAND_EASING = Easing.bezier(0.22, 1, 0.36, 1);
-const TOGGLE_MARGIN_TOP = 5 * floraSpacing.gridFine;
+const TOGGLE_MARGIN_TOP = () => 5 * floraSpacing.gridFine;
 const ESTIMATED_LINE_HEIGHT_PX = 25.5;
 
 /** Bump when the text style or truncation math changes so cached layouts invalidate. */
@@ -490,7 +491,7 @@ export const ExpandablePostText = memo(function ExpandablePostText({
   );
 });
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     position: "relative",
   },
@@ -510,7 +511,7 @@ const styles = StyleSheet.create({
   },
   toggle: {
     alignSelf: "flex-start",
-    marginTop: TOGGLE_MARGIN_TOP,
+    marginTop: TOGGLE_MARGIN_TOP(),
   },
   toggleText: {
     color: floraColors.greenLight,
@@ -522,4 +523,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.72,
   },
-});
+}));

@@ -54,7 +54,13 @@ export function useGridBindings<T extends string>({
   );
 
   const getStep = useCallback(
-    (mode: SnapMode) => (mode === "grid5" ? stepSecondary : stepPrimary),
+    (mode: SnapMode) => {
+      const frame = getViewportFrame();
+      if (mode === "grid5") {
+        return stepSecondary === 5 ? frame.stepFine : stepSecondary;
+      }
+      return stepPrimary === 15 ? frame.step : stepPrimary;
+    },
     [stepPrimary, stepSecondary]
   );
 
@@ -84,10 +90,10 @@ export function useGridBindings<T extends string>({
       const baseY = frame.cropOffsetY + y;
 
       setGridCoords({
-        c15x: Math.floor(baseX / stepPrimary),
-        c15y: Math.floor(baseY / stepPrimary),
-        c5x: Math.floor(baseX / stepSecondary),
-        c5y: Math.floor(baseY / stepSecondary),
+        c15x: Math.floor(baseX / frame.step),
+        c15y: Math.floor(baseY / frame.step),
+        c5x: Math.floor(baseX / frame.stepFine),
+        c5y: Math.floor(baseY / frame.stepFine),
         left: e.clientX + 12,
         top: e.clientY + 12
       });

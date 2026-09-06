@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { type ReactNode, useMemo } from "react";
 import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
@@ -134,7 +135,7 @@ export function TabScreenHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   shell: {
     backgroundColor: floraColors.bg,
     paddingBottom: 0,
@@ -150,4 +151,4 @@ const styles = StyleSheet.create({
   customIdle: {
     paddingHorizontal: floraSpacing.grid,
   },
-});
+}));

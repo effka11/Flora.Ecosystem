@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import {
   CHAT_LIST_FOLDER_ICON_NAMES,
@@ -228,7 +229,7 @@ export function CreateChatFolderSheet({ visible, onClose, conversations, onCreat
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: floraColors.bg,
@@ -356,4 +357,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.42,
     lineHeight: 20,
   },
-});
+}));

@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import {
   createContext,
@@ -502,7 +503,7 @@ function MenuRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   providerRoot: {
     flex: 1,
     minHeight: 0,
@@ -596,4 +597,4 @@ const styles = StyleSheet.create({
   menuItemDanger: {
     color: "#f6a8a8",
   },
-});
+}));

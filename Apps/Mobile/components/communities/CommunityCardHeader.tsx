@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
@@ -6,8 +7,8 @@ import { FloraAvatar } from "@/components/FloraAvatar";
 import { CommunityCardActions } from "@/components/communities/CommunityCardActions";
 import { floraColors, floraProfile, floraSpacing } from "@/lib/theme";
 
-const AVATAR_NUDGE_X = (39 - 38) * floraSpacing.grid - 8 + floraSpacing.gridFine * 2;
-const TEXT_NUDGE_X = floraSpacing.gridFine * 2;
+const AVATAR_NUDGE_X = () => (39 - 38) * floraSpacing.grid - 8 + floraSpacing.gridFine * 2;
+const TEXT_NUDGE_X = () => floraSpacing.gridFine * 2;
 
 type CommunityCardHeaderProps = {
   name: string;
@@ -121,7 +122,7 @@ export function CommunityCardHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     position: "relative",
     paddingTop: floraSpacing.grid,
@@ -151,7 +152,7 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     position: "absolute",
-    left: AVATAR_NUDGE_X,
+    left: AVATAR_NUDGE_X(),
     top: -4,
     borderWidth: 4,
     borderColor: floraColors.bg,
@@ -163,7 +164,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexWrap: "wrap",
     gap: floraSpacing.gridFine * 2,
-    paddingLeft: TEXT_NUDGE_X,
+    paddingLeft: TEXT_NUDGE_X(),
     marginTop: floraSpacing.gridFine,
     minHeight: 28,
   },
@@ -191,7 +192,7 @@ const styles = StyleSheet.create({
   },
   statsPressable: {
     alignSelf: "flex-start",
-    paddingLeft: TEXT_NUDGE_X,
+    paddingLeft: TEXT_NUDGE_X(),
     marginTop: floraSpacing.gridFine + 2,
   },
   statsPressed: {
@@ -245,4 +246,4 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 0.42,
   },
-});
+}));

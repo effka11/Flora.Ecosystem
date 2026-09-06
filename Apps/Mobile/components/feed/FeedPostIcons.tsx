@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -25,14 +26,14 @@ const REPOST_D = "M21 13v2a4 4 0 0 1-4 4H3";
 
 const VIEWS_EYE = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z";
 
-const glyphSlot = StyleSheet.create({
+const glyphSlot = liveGridStyles(() => StyleSheet.create({
   slot: {
     width: floraFeedPost.moreGlyphSlot,
     height: floraFeedPost.moreGlyphSlot,
     alignItems: "center",
     justifyContent: "center",
   },
-});
+}));
 
 export function FeedPostHeartIcon({ size = 18, color, filled = false }: IconProps) {
   return (

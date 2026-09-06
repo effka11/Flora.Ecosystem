@@ -13,9 +13,6 @@ type GridCoords = {
   top: number;
 };
 
-const PRIMARY_STEP = 15;
-const SECONDARY_STEP = 5;
-
 /** Dev-only grid overlay + toggles; layout frame vars still sync in production (login has no DashboardShell). */
 const GRID_DEBUG_ENABLED = process.env.NODE_ENV !== "production";
 
@@ -47,10 +44,10 @@ export function GridOverlay() {
       const baseY = frame.cropOffsetY + y;
 
       setGridCoords({
-        c15x: Math.floor(baseX / PRIMARY_STEP),
-        c15y: Math.floor(baseY / PRIMARY_STEP),
-        c5x: Math.floor(baseX / SECONDARY_STEP),
-        c5y: Math.floor(baseY / SECONDARY_STEP),
+        c15x: Math.floor(baseX / frame.step),
+        c15y: Math.floor(baseY / frame.step),
+        c5x: Math.floor(baseX / frame.stepFine),
+        c5y: Math.floor(baseY / frame.stepFine),
         left: event.clientX + 12,
         top: event.clientY + 12
       });
