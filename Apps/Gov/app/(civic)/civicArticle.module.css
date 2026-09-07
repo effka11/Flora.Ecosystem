@@ -5,10 +5,14 @@
 .heading {
   margin: 0 0 calc(3 * var(--flora-grid-step));
   color: var(--flora-gray-light);
-  font-size: clamp(28px, 3.2vw, 36px);
+  font-size: clamp(
+    calc(1px * round(28 * var(--flora-grid-s))),
+    calc(1px * round(36 * var(--flora-grid-s))),
+    calc(1px * round(36 * var(--flora-grid-s)))
+  );
   font-weight: 400;
   line-height: 1.2;
-  letter-spacing: 0.2px;
+  letter-spacing: calc(0.2px * var(--flora-grid-s));
 }
 
 .body {
@@ -20,6 +24,6 @@
 .body p {
   margin: 0;
   color: var(--flora-gray);
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   line-height: 1.7;
 }

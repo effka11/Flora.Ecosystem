@@ -1,24 +1,28 @@
 .gridToggle {
   position: fixed;
-  top: 14px;
-  right: 14px;
+  top: var(--flora-sPx-14);
+  right: var(--flora-sPx-14);
   z-index: 70;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 9px;
+  height: calc(1px * round(32 * var(--flora-grid-s)));
+  padding: 0 var(--flora-sPx-12);
+  border-radius: calc(1px * round(9 * var(--flora-grid-s)));
   border: 1px solid color-mix(in srgb, var(--flora-green-light) 45%, var(--flora-gray));
   background: color-mix(in srgb, var(--flora-bg) 78%, #000);
   color: var(--flora-gray-light);
   font-family: inherit;
-  font-size: 11px;
+  font-size: max(1px, var(--flora-sPx-11));
   font-weight: 300;
-  letter-spacing: 1.1px;
+  letter-spacing: calc(1.1px * var(--flora-grid-s));
   cursor: pointer;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(var(--flora-sPx-6));
 }
 
 .gridToggleSecondary {
-  right: 122px;
+  /* inset + height + gap + label band: 14 + 32 + 12 + 64 = 122 at s=1 */
+  right: calc(
+    var(--flora-sPx-14) + calc(1px * round(32 * var(--flora-grid-s))) + var(--flora-sPx-12) +
+      calc(4 * var(--flora-grid-step) + var(--flora-sPx-4))
+  );
 }
 
 .gridToggle.on {
@@ -63,26 +67,26 @@
   position: fixed;
   z-index: 75;
   pointer-events: none;
-  padding: 4px 8px;
-  border-radius: 7px;
+  padding: var(--flora-sPx-4) var(--flora-sPx-8);
+  border-radius: var(--flora-sPx-7);
   border: 1px solid color-mix(in srgb, var(--flora-green-light) 55%, var(--flora-gray));
   background: color-mix(in srgb, var(--flora-bg) 82%, #000);
   color: var(--flora-white-template);
-  font-size: 11px;
+  font-size: max(1px, var(--flora-sPx-11));
   font-weight: 300;
-  letter-spacing: 0.7px;
+  letter-spacing: calc(0.7px * var(--flora-grid-s));
 }
 
 .gridCenterDot {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 6px;
-  height: 6px;
+  width: var(--flora-sPx-6);
+  height: var(--flora-sPx-6);
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: color-mix(in srgb, var(--flora-green-light) 85%, #fff);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 70%, transparent);
+  box-shadow: 0 0 var(--flora-sPx-8) color-mix(in srgb, var(--flora-green-light) 70%, transparent);
   opacity: 0.9;
   pointer-events: none;
 }

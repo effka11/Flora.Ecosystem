@@ -38,7 +38,7 @@
 
 .title {
   margin: 0;
-  font-size: 17px;
+  font-size: max(1px, var(--flora-sPx-17));
   color: var(--flora-gray-light);
   letter-spacing: var(--flora-tracking-15);
 }
@@ -50,7 +50,7 @@
   border: 0;
   background: transparent;
   color: var(--flora-gray);
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   line-height: 1;
   cursor: pointer;
 }
@@ -69,7 +69,7 @@
 
 .text {
   margin: 0;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   line-height: calc(2 * var(--flora-grid-step));
   color: var(--flora-gray);
   letter-spacing: var(--flora-tracking-15);
@@ -83,7 +83,7 @@
   border-bottom: 1px solid var(--flora-gray-divider);
   background: transparent;
   color: var(--flora-gray-light);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   outline: none;
 }
@@ -94,14 +94,14 @@
 
 .error {
   margin: 0;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   color: #e85d5d;
   letter-spacing: var(--flora-tracking-15);
 }
 
 .hint {
   margin: 0;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   line-height: calc(2 * var(--flora-grid-step));
   color: var(--flora-gray);
   letter-spacing: var(--flora-tracking-15);
@@ -116,15 +116,15 @@
 .btnPrimary,
 .btnGhost {
   min-height: calc(3 * var(--flora-grid-step));
-  padding: 0 calc(2 * var(--flora-grid-step)) 3px;
-  font-size: 15px;
-  letter-spacing: 1.6px;
+  padding: 0 calc(2 * var(--flora-grid-step)) var(--flora-sPx-3);
+  font-size: max(1px, var(--flora-sPx-15));
+  letter-spacing: calc(1.6px * var(--flora-grid-s));
   cursor: pointer;
 }
 
 .btnPrimary {
   border: 1px solid var(--flora-green-light);
-  border-radius: 16px;
+  border-radius: var(--flora-sPx-16);
   background: transparent;
   color: var(--flora-green-light);
 }

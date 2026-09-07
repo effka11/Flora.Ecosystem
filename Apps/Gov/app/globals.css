@@ -16,9 +16,28 @@
   /* 85% white + 15% bg */
   --flora-gray-hover: #d6d6d6;
   --flora-gray-divider: color-mix(in srgb, var(--flora-gray) 14%, var(--flora-bg) 86%);
-  /* Квант при s=1 (эталон). Живые значения пишет resolveWebGridFrame. */
+  /* Квант при s=1 (эталон). Живые значения пишет applyWebGridFrameCssVars. */
   --flora-grid-step: 15px;
   --flora-grid-step-fine: 5px;
+  --flora-grid-s: 1;
+  --flora-sPx-2: 2px;
+  --flora-sPx-3: 3px;
+  --flora-sPx-4: 4px;
+  --flora-sPx-6: 6px;
+  --flora-sPx-7: 7px;
+  --flora-sPx-8: 8px;
+  --flora-sPx-10: 10px;
+  --flora-sPx-11: 11px;
+  --flora-sPx-12: 12px;
+  --flora-sPx-13: 13px;
+  --flora-sPx-14: 14px;
+  --flora-sPx-15: 15px;
+  --flora-sPx-16: 16px;
+  --flora-sPx-17: 17px;
+  --flora-sPx-18: 18px;
+  --flora-sPx-20: 20px;
+  --flora-sPx-22: 22px;
+  --flora-sPx-24: 24px;
   /* Те же производные, что у чужого пузыря в Social (не импорт Web). */
   --flora-text-on-bubble: #f2f4f2;
   --flora-accent-fill-subtle-hover: #21281e;
@@ -36,8 +55,10 @@
   --flora-frame-top: 0px;
   --flora-crop-x: 0px;
   --flora-crop-y: 0px;
-  --flora-tracking-15: 0.45px;
-  --flora-tracking-16: 0.48px;
+  --flora-grid-origin-x: calc(var(--flora-frame-left) - var(--flora-crop-x));
+  --flora-grid-origin-y: calc(var(--flora-frame-top) - var(--flora-crop-y));
+  --flora-tracking-15: calc(0.45px * var(--flora-grid-s));
+  --flora-tracking-16: calc(0.48px * var(--flora-grid-s));
   --flora-motion-base: 150ms;
   --flora-duration-3: calc(3 * var(--flora-motion-base));
   --flora-ease-out: cubic-bezier(0.33, 1, 0.2, 1);
@@ -58,7 +79,7 @@ body {
 }
 
 html {
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -67,7 +88,7 @@ html {
 
 body {
   font-family: inherit;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
 }
 
@@ -83,13 +104,13 @@ option {
 .flora-type-15 {
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
 }
 
 .flora-type-16 {
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   letter-spacing: var(--flora-tracking-16);
 }
