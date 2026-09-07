@@ -9,16 +9,20 @@
 .heading {
   margin: 0 0 calc(3 * var(--flora-grid-step));
   color: var(--flora-gray-light);
-  font-size: clamp(28px, 3.2vw, 36px);
+  font-size: clamp(
+    calc(1px * round(28 * var(--flora-grid-s))),
+    calc(1px * round(36 * var(--flora-grid-s))),
+    calc(1px * round(36 * var(--flora-grid-s)))
+  );
   font-weight: 400;
   line-height: 1.2;
-  letter-spacing: 0.2px;
+  letter-spacing: calc(0.2px * var(--flora-grid-s));
 }
 
 .intro {
   margin: 0 0 calc(2 * var(--flora-grid-step));
   color: var(--flora-gray);
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   line-height: 1.7;
   max-width: 42em;
 }
@@ -38,21 +42,21 @@
 .fieldLabel {
   display: block;
   margin-bottom: calc(1 * var(--flora-grid-step-fine));
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
 }
 
 .fieldInput {
   width: 100%;
-  min-height: calc(var(--flora-grid-step) + 4px);
+  min-height: calc(var(--flora-grid-step) + var(--flora-sPx-4));
   padding: 0;
   border: none;
   border-bottom: 1px solid var(--flora-gray-divider);
   outline: none;
   background: transparent;
   color: var(--flora-white-template);
-  font: 300 15px / 1 var(--font-manrope), system-ui, sans-serif !important;
+  font: 300 max(1px, var(--flora-sPx-15)) / 1 var(--font-manrope), system-ui, sans-serif !important;
 }
 
 .fieldInput:focus {
@@ -80,7 +84,7 @@
   border-radius: calc(0.6 * var(--flora-grid-step));
   background: color-mix(in srgb, var(--flora-green-light) 18%, var(--flora-bg));
   color: var(--flora-green-light);
-  font: 300 15px / 1 var(--font-manrope), system-ui, sans-serif;
+  font: 300 max(1px, var(--flora-sPx-15)) / 1 var(--font-manrope), system-ui, sans-serif;
   letter-spacing: var(--flora-tracking-15);
   cursor: pointer;
 }
@@ -101,7 +105,7 @@
   border: none;
   background: transparent;
   color: var(--flora-gray);
-  font: 300 15px / 1 var(--font-manrope), system-ui, sans-serif;
+  font: 300 max(1px, var(--flora-sPx-15)) / 1 var(--font-manrope), system-ui, sans-serif;
   letter-spacing: var(--flora-tracking-15);
   cursor: pointer;
 }
@@ -122,7 +126,7 @@
   border: 1px dashed var(--flora-gray-divider);
   width: calc(36 * var(--flora-grid-step));
   max-width: 100%;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
   line-height: calc(2 * var(--flora-grid-step));
@@ -130,7 +134,7 @@
 
 .notice {
   margin: 0 0 calc(1 * var(--flora-grid-step));
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
   line-height: calc(2 * var(--flora-grid-step));
@@ -138,7 +142,7 @@
 
 .error {
   margin: 0;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-white-template);
   line-height: calc(2 * var(--flora-grid-step));

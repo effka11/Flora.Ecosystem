@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px 20px 28px;
+  padding: var(--flora-sPx-16) calc(4 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step) - var(--flora-sPx-2));
   font-family: inherit;
   position: relative;
   isolation: isolate;
@@ -16,7 +16,7 @@
 
 .inner {
   width: 100%;
-  max-width: 380px;
+  max-width: calc(25 * var(--flora-grid-step) + var(--flora-grid-step-fine));
   margin: 0 auto;
 }
 
@@ -29,46 +29,46 @@
   flex-wrap: wrap;
   justify-content: flex-start;
   align-items: baseline;
-  gap: 0 12px;
+  gap: 0 var(--flora-sPx-12);
   margin: 0;
-  min-height: 66px;
+  min-height: calc(4 * var(--flora-grid-step) + var(--flora-sPx-6));
   z-index: 31;
 }
 
 .logoLetter {
-  font-size: 40px;
+  font-size: max(1px, calc(1px * round(40 * var(--flora-grid-s))));
   font-weight: 300;
-  line-height: 30px;
+  line-height: calc(2 * var(--flora-grid-step));
   color: var(--flora-green-light);
-  letter-spacing: calc(var(--flora-grid-step-fine) - 2px);
+  letter-spacing: calc(var(--flora-grid-step-fine) - var(--flora-sPx-2));
   user-select: none;
 }
 
 .formStack {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--flora-sPx-14);
 }
 
 .fieldBlock {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--flora-sPx-4);
 }
 
 .fieldRow {
   display: grid;
-  grid-template-columns: 24px 1fr 26px;
-  column-gap: 11px;
+  grid-template-columns: var(--flora-sPx-24) 1fr calc(2 * var(--flora-grid-step) - var(--flora-sPx-4));
+  column-gap: var(--flora-sPx-11);
   align-items: center;
-  min-height: 42px;
+  min-height: calc(2 * var(--flora-grid-step) + var(--flora-sPx-12));
 }
 
 .iconCell {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: var(--flora-sPx-24);
 }
 
 .emailIconCell,
@@ -92,16 +92,16 @@
 }
 
 .iconSvg {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
   color: color-mix(in srgb, var(--flora-gray-light) 86%, var(--flora-gray));
   flex-shrink: 0;
   transition: color 0.2s ease;
 }
 
 .passwordIconSvg {
-  width: 23px;
-  height: 23px;
+  width: calc(var(--flora-grid-step) + var(--flora-sPx-8));
+  height: calc(var(--flora-grid-step) + var(--flora-sPx-8));
 }
 
 .fieldInputWrap {
@@ -109,7 +109,7 @@
   /* anchorRow=0; cols 53-77 inclusive */
   left: calc(var(--flora-grid-origin-x) + 53 * var(--flora-grid-step));
   width: calc((77 - 53 + 1) * var(--flora-grid-step));
-  min-height: calc(var(--flora-grid-step) + 4px);
+  min-height: calc(var(--flora-grid-step) + var(--flora-sPx-4));
   z-index: 31;
   display: flex;
   align-items: center;
@@ -124,18 +124,20 @@
 }
 
 .fieldInput {
-  font: 300 15px / 1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  font-weight: 300;
+  font-size: max(1px, var(--flora-sPx-15)) !important;
+  font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
   width: 100%;
-  min-height: calc(var(--flora-grid-step) + 4px);
+  min-height: calc(var(--flora-grid-step) + var(--flora-sPx-4));
   border: none;
   outline: none;
   background: transparent !important;
   color: var(--flora-gray-light);
-  letter-spacing: 1.8px !important;
+  letter-spacing: calc(1.8px * var(--flora-grid-s)) !important;
   font-style: normal !important;
   line-height: 1.2 !important;
-  padding: 0 0 2px 0;
-  padding-right: calc(var(--flora-grid-step) + 4px);
+  padding: 0 0 var(--flora-sPx-2) 0;
+  padding-right: calc(var(--flora-grid-step) + var(--flora-sPx-4));
 }
 
 .fieldInput::placeholder {
@@ -147,18 +149,22 @@
 .fieldInput:-webkit-autofill:hover,
 .fieldInput:-webkit-autofill:focus,
 .fieldInput:-webkit-autofill:active {
-  font: 300 15px / 1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
-  letter-spacing: 1.8px !important;
+  font-weight: 300;
+  font-size: max(1px, var(--flora-sPx-15)) !important;
+  font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  letter-spacing: calc(1.8px * var(--flora-grid-s)) !important;
   font-style: normal !important;
   -webkit-text-fill-color: var(--flora-gray-light);
-  box-shadow: 0 0 0 1000px transparent inset !important;
+  box-shadow: 0 0 0 calc(80 * var(--flora-grid-step)) transparent inset !important;
   background-color: transparent !important;
   transition: background-color 9999s ease-in-out 0s;
 }
 
 .fieldInput:-webkit-autofill::first-line {
-  font: 300 15px / 1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
-  letter-spacing: 1.8px !important;
+  font-weight: 300;
+  font-size: max(1px, var(--flora-sPx-15)) !important;
+  font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  letter-spacing: calc(1.8px * var(--flora-grid-s)) !important;
 }
 
 .underlineTrack {
@@ -223,8 +229,8 @@
 }
 
 .passwordToggle svg {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
   flex-shrink: 0;
 }
 
@@ -235,20 +241,22 @@
 
 .passwordToggle:focus-visible {
   outline: 1px solid var(--flora-green-dark);
-  outline-offset: 2px;
+  outline-offset: var(--flora-sPx-2);
 }
 
 .submit {
-  margin-top: 15px;
+  margin-top: var(--flora-grid-step);
   width: 100%;
-  height: 52px;
-  border-radius: 16px;
+  height: calc(3 * var(--flora-grid-step) + var(--flora-sPx-7));
+  border-radius: var(--flora-sPx-16);
   border: 1px solid var(--flora-gray);
   background: transparent;
   color: var(--flora-gray-light);
-  font: 300 15px / 1 var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
-  letter-spacing: 1.6px !important;
-  padding: 0 22px 3px;
+  font-weight: 300;
+  font-size: max(1px, var(--flora-sPx-15)) !important;
+  font-family: var(--font-manrope), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  letter-spacing: calc(1.6px * var(--flora-grid-s)) !important;
+  padding: 0 var(--flora-sPx-22) var(--flora-sPx-3);
   cursor: pointer;
   box-shadow: none;
   transition:
@@ -266,7 +274,7 @@
   top: calc(var(--flora-grid-origin-y) + 36 * var(--flora-grid-step));
   width: calc((77 - 50 + 1) * var(--flora-grid-step));
   height: calc((37 - 35 + 2) * var(--flora-grid-step));
-  border-radius: 20px;
+  border-radius: calc(4 * var(--flora-grid-step-fine));
   margin-top: 0;
   z-index: 31;
 }
@@ -297,15 +305,15 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 15px;
+  gap: var(--flora-grid-step);
   flex-wrap: wrap;
   z-index: 31;
 }
 
 .linkMuted {
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
-  letter-spacing: 1.8px;
+  letter-spacing: calc(1.8px * var(--flora-grid-s));
   color: var(--flora-gray);
   background: none;
   border: none;
@@ -316,9 +324,9 @@
 }
 
 .linkAccent {
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
-  letter-spacing: 1.8px;
+  letter-spacing: calc(1.8px * var(--flora-grid-s));
   color: var(--flora-green-light);
   background: none;
   border: none;
@@ -334,12 +342,12 @@
 }
 
 .error {
-  font-size: 12px;
+  font-size: max(1px, var(--flora-sPx-12));
   font-weight: 300;
   color: var(--flora-gray);
   text-align: center;
   line-height: 1.4;
-  margin: 0 0 4px;
+  margin: 0 0 var(--flora-sPx-4);
 }
 
 .busyOverlay {
@@ -354,9 +362,9 @@
 }
 
 .busyDot {
-  width: 32px;
-  height: 32px;
-  border: 2px solid var(--flora-green-light);
+  width: calc(2 * var(--flora-grid-step) + var(--flora-sPx-2));
+  height: calc(2 * var(--flora-grid-step) + var(--flora-sPx-2));
+  border: var(--flora-sPx-2) solid var(--flora-green-light);
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;

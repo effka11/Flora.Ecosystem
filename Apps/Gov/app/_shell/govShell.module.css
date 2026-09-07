@@ -1,5 +1,6 @@
 .page {
-  min-height: 100vh;
+  min-height: calc(100vh - var(--flora-grid-origin-y));
+  margin-top: var(--flora-grid-origin-y);
   background: var(--flora-bg);
   color: var(--flora-gray-light);
   font-family: inherit;
@@ -7,11 +8,13 @@
   flex-direction: column;
   /* padding-top 2 + logo 2 + nav margin 2 + nav 2 cells + 2 fine */
   --gov-header-height: calc(8 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine));
+  /* 73 клетки на холсте 128: старт col 28 (как (100% − 72×step)/2 при crop=0). */
+  --gov-col-start: 28;
 }
 
 .header {
   position: sticky;
-  top: 0;
+  top: max(0px, var(--flora-grid-origin-y));
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -37,8 +40,8 @@
 .headerInner,
 .nav,
 .main {
-  width: min(calc(73 * var(--flora-grid-step)), 100%);
-  margin-left: max(0px, calc((100% - 72 * var(--flora-grid-step)) / 2));
+  width: calc(73 * var(--flora-grid-step));
+  margin-left: calc(var(--flora-grid-origin-x) + var(--gov-col-start) * var(--flora-grid-step));
   margin-right: auto;
   padding-left: calc(2 * var(--flora-grid-step));
   padding-right: calc(2 * var(--flora-grid-step));
@@ -61,7 +64,7 @@
   text-decoration: none;
   letter-spacing: calc(var(--flora-grid-step-fine) - 1px);
   font-weight: 300;
-  font-size: 17px;
+  font-size: max(1px, var(--flora-sPx-17));
   min-height: calc(2 * var(--flora-grid-step));
 }
 
@@ -72,7 +75,7 @@
 .logoMark {
   width: calc(2 * var(--flora-grid-step));
   height: calc(2 * var(--flora-grid-step));
-  border-radius: 10px;
+  border-radius: var(--flora-sPx-10);
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
@@ -105,7 +108,7 @@
   align-items: center;
   min-height: calc(2 * var(--flora-grid-step));
   color: var(--flora-gray);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   letter-spacing: var(--flora-tracking-15);
   white-space: nowrap;
 }
@@ -153,7 +156,7 @@
   background: transparent;
   color: var(--flora-gray);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px !important;
+  font-size: max(1px, var(--flora-sPx-15)) !important;
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15) !important;
   line-height: 1;
@@ -164,9 +167,9 @@
 
 .navLinkLabel {
   position: relative;
-  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+  top: calc(-1 * var(--flora-grid-step-fine) + var(--flora-sPx-2));
   font-family: inherit;
-  font-size: 15px !important;
+  font-size: max(1px, var(--flora-sPx-15)) !important;
   font-weight: inherit;
   letter-spacing: var(--flora-tracking-15) !important;
   line-height: inherit;
@@ -183,8 +186,8 @@
 .navIndicator {
   position: absolute;
   left: 0;
-  bottom: -2px;
-  height: 2px;
+  bottom: calc(-1 * var(--flora-sPx-2));
+  height: var(--flora-sPx-2);
   width: var(--gov-tab-indicator-width, 0px);
   background: var(--flora-green-light);
   border-radius: 999px;

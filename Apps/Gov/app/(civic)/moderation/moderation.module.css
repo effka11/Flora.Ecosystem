@@ -8,10 +8,11 @@
 .sidebar {
   position: fixed;
   z-index: 4;
-  left: calc(var(--flora-frame-left) + 2 * var(--flora-grid-step));
+  left: calc(var(--flora-grid-origin-x) + 2 * var(--flora-grid-step));
   /* header + 1 клетка до ленты + 2 клетки паддинга строки очереди */
   top: calc(
-    var(--gov-header-height, calc(8 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine))) +
+    var(--flora-grid-origin-y) +
+      var(--gov-header-height, calc(8 * var(--flora-grid-step) + 2 * var(--flora-grid-step-fine))) +
       3 * var(--flora-grid-step)
   );
   width: calc(16 * var(--flora-grid-step));
@@ -69,7 +70,7 @@
   border: 0;
   background: transparent;
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
   text-align: left;
@@ -110,7 +111,7 @@
 .notice {
   margin: 0;
   color: var(--flora-gray);
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   line-height: 1.7;
 }
 
@@ -171,7 +172,7 @@
 
 .queueCategory {
   color: var(--flora-gray-light);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
 }
@@ -179,7 +180,7 @@
 .queueArea {
   margin: 0;
   color: var(--flora-gray);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
 }
@@ -187,14 +188,14 @@
 .detailArea {
   margin: var(--flora-grid-step) 0 0;
   color: var(--flora-gray);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   letter-spacing: var(--flora-tracking-15);
   line-height: var(--flora-grid-step);
 }
 
 .queueMeta {
   color: var(--flora-gray);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
 }
@@ -212,7 +213,7 @@
 
 .rowError {
   margin: 0 0 calc(2 * var(--flora-grid-step));
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-green-light);
   line-height: 1.5;
@@ -225,7 +226,7 @@
   border: 0;
   background: transparent;
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
   cursor: pointer;
@@ -258,16 +259,16 @@
 .detailTitle {
   margin: 0;
   color: var(--flora-gray-light);
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   font-weight: 300;
   line-height: calc(2 * var(--flora-grid-step));
-  letter-spacing: 0.15px;
+  letter-spacing: calc(0.15px * var(--flora-grid-s));
 }
 
 .detailMeta {
   margin: 0;
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
 }
@@ -288,7 +289,7 @@
 .summaryRow dt {
   margin: 0;
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
   min-width: calc(12 * var(--flora-grid-step));
@@ -297,7 +298,7 @@
 .summaryRow dd {
   margin: 0;
   color: var(--flora-gray-light);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
 }
@@ -313,7 +314,7 @@
 .disclosureStatus {
   margin: 0;
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
 }
@@ -337,8 +338,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 19px;
-  letter-spacing: 0.57px;
+  font-size: max(1px, calc(1px * round(19 * var(--flora-grid-s))));
+  letter-spacing: calc(0.57px * var(--flora-grid-s));
   line-height: 1;
   overflow: hidden;
 }
@@ -351,8 +352,8 @@
   /* Однострочник как в чате: 10 + 25 + 10 = 45px (3 клетки), не 13.5-паддинг без времени. */
   padding: calc(2 * var(--flora-grid-step-fine)) var(--flora-grid-step);
   border: none;
-  border-radius: 18px;
-  border-bottom-left-radius: 6px;
+  border-radius: var(--flora-sPx-18);
+  border-bottom-left-radius: var(--flora-sPx-6);
   box-shadow: none;
   background: color-mix(
     in srgb,
@@ -365,7 +366,7 @@
     var(--flora-reserve-substrate-gray-muted) 25%
   );
   color: color-mix(in srgb, var(--flora-text-on-bubble) 74%, var(--flora-gray) 26%);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
 }
 
@@ -375,7 +376,7 @@
   color: inherit;
   font-size: inherit;
   letter-spacing: inherit;
-  line-height: 25px;
+  line-height: calc(5 * var(--flora-grid-step-fine));
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -395,14 +396,14 @@
 .primary,
 .danger {
   min-height: calc(3 * var(--flora-grid-step));
-  padding: 0 calc(2 * var(--flora-grid-step)) 3px;
+  padding: 0 calc(2 * var(--flora-grid-step)) var(--flora-sPx-3);
   border: 1px solid var(--flora-green-light);
-  border-radius: 16px;
+  border-radius: var(--flora-sPx-16);
   background: transparent;
   color: var(--flora-green-light);
   font: inherit;
-  font-size: 15px;
-  letter-spacing: 1.6px;
+  font-size: max(1px, var(--flora-sPx-15));
+  letter-spacing: calc(1.6px * var(--flora-grid-s));
   cursor: pointer;
   transition:
     background 0.15s ease,
@@ -449,7 +450,7 @@
   border: 0;
   background: transparent;
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
   cursor: pointer;
@@ -472,7 +473,7 @@
 
 .matrixKind {
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
   white-space: nowrap;
@@ -500,7 +501,7 @@
 .matrixOptionLabelActive {
   min-width: calc(8 * var(--flora-grid-step));
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
   white-space: nowrap;
@@ -520,7 +521,7 @@
   outline: none;
   background: transparent;
   color: var(--flora-gray-light);
-  font: 300 15px / calc(2 * var(--flora-grid-step)) var(--font-manrope), system-ui, sans-serif;
+  font: 300 max(1px, var(--flora-sPx-15)) / calc(2 * var(--flora-grid-step)) var(--font-manrope), system-ui, sans-serif;
   letter-spacing: var(--flora-tracking-15);
   text-align: center;
 }
@@ -535,7 +536,7 @@
 
 .matrixDaysUnit {
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: calc(2 * var(--flora-grid-step));
   white-space: nowrap;

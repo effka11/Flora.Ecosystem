@@ -32,7 +32,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: repoRoot,
-  transpilePackages: ["@flora/client-core", "@flora/fscp"],
+  transpilePackages: ["@flora/client-core", "@flora/design", "@flora/fscp"],
   // Next copies this into webpack `resolve.extensionAlias` before user webpack().
   experimental: {
     extensionAlias,

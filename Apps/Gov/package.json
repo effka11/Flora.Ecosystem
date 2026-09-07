@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@flora/client-core": "file:../../Packages/flora-client-core",
+    "@flora/design": "file:../../Packages/flora-design",
     "@fontsource-variable/manrope": "^5.2.8",
     "flora-ecosystem-js": "file:../..",
     "libsodium-wrappers-sumo": "^0.8.4",

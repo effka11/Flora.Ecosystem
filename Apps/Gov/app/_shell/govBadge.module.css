@@ -1,6 +1,6 @@
 .badge {
   margin: calc(3 * var(--flora-grid-step)) 0 0;
   color: var(--flora-gray);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   line-height: 1.65;
 }
