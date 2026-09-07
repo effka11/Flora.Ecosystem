@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { FeedPostList, type FeedPostListItem } from "@/app/_shared/FeedPostList";
-import { FloraAvatar, FLORA_PROFILE_AVATAR_INNER_PX } from "@/app/_shared/FloraAvatar";
+import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { ProfileCardStatus } from "@/app/(dashboard)/profile/ProfileCardStatus";
 import type { CommunityRecord } from "@/app/(dashboard)/communities/communitiesSeed";
 import { isCommunityUuid } from "@/app/(dashboard)/communities/communityProfile";
@@ -20,7 +20,6 @@ import { CommunityOwnHeaderActions } from "./CommunityOwnHeaderActions";
 import styles from "@/app/(dashboard)/profile/profile.module.css";
 
 const MODAL_CLOSE_MS = 220;
-const PROFILE_AVATAR_INNER_PX = FLORA_PROFILE_AVATAR_INNER_PX;
 
 function useAnimatedModal() {
   const [open, setOpen] = useState(false);
@@ -235,7 +234,7 @@ export function CommunityPageContent({
             <div className={styles.profileAvatarWrap}>
               <div className={styles.profileAvatar}>
                 <FloraAvatar
-                  size={PROFILE_AVATAR_INNER_PX}
+                  fill
                   avatarUuid={community.avatarUuid}
                   displayName={community.name}
                   communityName={community.name}

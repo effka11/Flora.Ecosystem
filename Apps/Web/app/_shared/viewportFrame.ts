@@ -8,7 +8,7 @@ import {
   resolveWebGridFrame,
   takeFloraGridDebugView,
   type ResolvedWebGridFrame
-} from "@flora/client-core/display";
+} from "@flora/design";
 
 export type ViewportFrame = {
   viewportWidth: number;
@@ -24,6 +24,7 @@ export type ViewportFrame = {
   step: number;
   stepFine: number;
   templateId: string;
+  s: number;
 };
 
 type ViewportSize = {
@@ -94,7 +95,8 @@ export function getViewportFrame(
     cropOffsetY: place.cropY,
     step: canvas.step,
     stepFine: canvas.stepFine,
-    templateId: template.id
+    templateId: template.id,
+    s: template.s
   };
 }
 

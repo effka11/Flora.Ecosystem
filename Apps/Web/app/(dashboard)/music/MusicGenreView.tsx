@@ -12,6 +12,7 @@ import {
   type SVGProps,
 } from "react";
 import { useRouter } from "next/navigation";
+import { FLORA_GRID_PRIMARY_PX } from "@flora/design";
 import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
 import {
   GenreArtPop,
@@ -202,7 +203,8 @@ function readSubgenreFadeStrength(el: HTMLElement): SubgenreFadeStrength {
   }
 
   const step =
-    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--flora-grid-step")) || 15;
+    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--flora-grid-step")) ||
+    FLORA_GRID_PRIMARY_PX;
   const fadeRange = SUBGENRE_FADE_RANGE_CELLS * step;
   return {
     left: Math.min(1, el.scrollLeft / fadeRange),

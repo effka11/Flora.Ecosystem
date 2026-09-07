@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { sPx } from "@flora/design";
 import { TabSearchInput } from "@/app/_shared/TabSearchInput";
 import {
   applyCountDelta,
@@ -19,6 +20,7 @@ import {
   profileCommunityToRecord,
 } from "@/app/(dashboard)/communities/communityProfile";
 import { FloraAvatar } from "@/app/_shared/FloraAvatar";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 import { CreateCommunityModal, type CreatedCommunity } from "./CreateCommunityModal";
 import { useAnimatedModal } from "./useAnimatedModal";
 import { apiGetMe, isDevLocalOfflineSession } from "@/lib/auth";
@@ -37,8 +39,6 @@ import {
 import { ApiRequestError } from "@/lib/auth";
 import { notifyOwnedCommunitiesChanged, OWNED_COMMUNITIES_CHANGED_EVENT } from "./ownedCommunitiesEvents";
 import styles from "./communities.module.css";
-
-const COMMUNITY_LIST_AVATAR_PX = 45;
 
 function ownedCommunityToRecord(item: CreatedCommunity): CommunityRecord {
   return communityListItemToRecord(item, "owned");
@@ -505,6 +505,7 @@ export default function CommunitiesPage() {
     if (hasSearch || activeTab !== "recommendations") return null;
     if (community.tab === "owned" || !isCommunityUuid(community.id)) return null;
     if (memberCommunityIds.has(community.id)) return null;
+    const dismissIconPx = sPx(18, getViewportFrame().s);
     return (
       <button
         className={styles.btnDismiss}
@@ -517,7 +518,7 @@ export default function CommunitiesPage() {
           void onDismissCommunity(community);
         }}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+        <svg width={dismissIconPx} height={dismissIconPx} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
           <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
         </svg>
       </button>
@@ -534,7 +535,6 @@ export default function CommunitiesPage() {
           <div className={styles.userMain}>
             <FloraAvatar
               plain
-              size={COMMUNITY_LIST_AVATAR_PX}
               avatarUuid={display.avatarUuid}
               displayName={display.name}
               communityName={display.name}

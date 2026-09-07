@@ -16,7 +16,9 @@ description: Точное позиционирование Apps/Web по сет�
   - Нельзя использовать `width = (C - A) * step`, иначе правый край уедет на 1 клетку влево
     (типичный косяк: визуально получается до `C - 1`, например "до 76 вместо 77").
 - Для `primary` шаг = `var(--flora-grid-step)` (**15px при `s = 1`**), для `secondary` = `var(--flora-grid-step-fine)` (5px при `s = 1`). Не хардкодить 15px в новых формулах.
-- Эталонный чертёж: **128×63** клетки = **1920×945 при `s = 1`**. Кадр на экране: `128 * step` × `63 * step` (шаблон из `@flora/client-core/display`). Закон: `Documents/design/FLORA-GRID.md`.
+- Эталонный чертёж: **128×63** клетки = **1920×945 при `s = 1`**. Кадр на экране: `128 * step` × `63 * step` (шаблон из `@flora/design`). Закон: `Documents/design/FLORA-GRID.md`.
+- SoT шаблонов, `pickGridTemplate` / `placeGridCanvas`, `sPx`: пакет `@flora/design` (реэкспорт `@flora/client-core/display`).
+- Вне сетки клеток (иконки, кегль, прочие размеры не 5/15): SoT `sPx` / `SPX_LADDER` в `@flora/design` (`sPx(n, s) = Math.round(n * s)` — без `Math.max(1, …)`). В CSS — `var(--flora-sPx-N)` и `--flora-grid-s`. Кегль: `max(1px, var(--flora-sPx-N))`. Off-ladder: `calc(1px * round(N * var(--flora-grid-s)))` или JS `sPx(N, frame.s)`. Hairline 1px без масштаба. Не хардкодить пиксели лестницы и не расширять `SPX_LADDER`.
 
 ## 2) Единая система координат (без дрейфа при zoom/resize)
 
@@ -124,7 +126,7 @@ transform: translateY(-50%); /* только по Y */
 | Задача | Формула (`anchorRow` = строка origin предка) |
 |--------|---------------------------------------------|
 | Разделитель 1px между H–(H+1) | `top: calc((H + 1 - anchorRow) * step)` |
-| Тонкая полоса высотой **N** px по той же линии | `top: calc((H + 1 - anchorRow) * step - N / 2)` (3px → `- 1px`) |
+| Тонкая полоса высотой extra-grid (`--flora-sPx-N` / `sPx`) по той же линии | `top: calc((H + 1 - anchorRow) * step - N / 2)` (sPx-3 → hairline `- 1px`) |
 | Заполнить **всю** ячейку строки H (от линии H до H+1) | `top: calc((H - anchorRow) * step); height: step` |
 
 **Запрещено** для «между H и H+1» (тонкий бар / hr / progress):
@@ -151,7 +153,7 @@ transform: translateY(-50%); /* только по Y */
 .miniDockChild {
   position: absolute;
   left: calc(Col * var(--flora-grid-step));
-  /* между 60–61: top: calc(61 * var(--flora-grid-step) - 1px); height: 3px; */
+  /* между 60–61: top: calc(61 * var(--flora-grid-step) - 1px); height: var(--flora-sPx-3); */
   pointer-events: auto;
 }
 ```

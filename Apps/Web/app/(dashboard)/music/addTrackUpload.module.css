@@ -137,8 +137,8 @@
 }
 
 .addTrackArtistPlusBtn svg {
-  width: 24px;
-  height: 24px;
+  width: var(--flora-sPx-24);
+  height: var(--flora-sPx-24);
   display: block;
 }
 
@@ -168,11 +168,11 @@
   padding: var(--flora-grid-step-fine);
   background: var(--add-track-menu-bg);
   border: 1px solid var(--add-track-menu-border);
-  border-radius: 12px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  border-radius: var(--flora-sPx-12);
+  box-shadow: 0 var(--flora-sPx-8) calc(var(--flora-sPx-24) + var(--flora-sPx-4)) rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--flora-sPx-2);
   isolation: isolate;
 }
 
@@ -222,7 +222,7 @@
 }
 
 .addTrackFormPlatform .addTrackFormMain .addTrackCheckboxRow .addTrackCheckboxLabel {
-  transform: translateY(-3px);
+  transform: translateY(calc(-1 * var(--flora-sPx-3)));
 }
 
 .addTrackFormPlatform .addTrackDropSection {
@@ -280,7 +280,7 @@
   height: calc((5 - 3 + 1) * var(--flora-grid-step));
   padding: 0 calc(var(--flora-grid-step) - 1px);
   box-sizing: border-box;
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   border: 1px solid var(--flora-green-dark);
   background: transparent;
 }
@@ -297,7 +297,7 @@
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1;
   letter-spacing: var(--flora-tracking-15);
 }
@@ -327,7 +327,7 @@
   pointer-events: none;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1;
   letter-spacing: var(--flora-tracking-15);
 }
@@ -376,7 +376,7 @@
   min-height: calc(3 * var(--flora-grid-step));
   box-sizing: border-box;
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: rgba(var(--flora-white-template-rgb), 0.03);
   display: flex;
   align-items: center;
@@ -410,7 +410,7 @@
   white-space: nowrap;
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
 }
@@ -422,7 +422,7 @@
   padding: 0;
   margin: 0;
   border: none;
-  border-radius: 999px;
+  border-radius: 50%;
   background: transparent;
   color: var(--flora-gray);
   display: grid;
@@ -437,8 +437,8 @@
 }
 
 .artistPickerRemoveBtn svg {
-  width: 16px;
-  height: 16px;
+  width: var(--flora-sPx-16);
+  height: var(--flora-sPx-16);
 }
 
 .artistPickerSearchBlock {
@@ -464,7 +464,7 @@
   margin: 0;
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--flora-green-light) 45%, transparent);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: transparent;
   color: var(--flora-green-light);
   display: grid;
@@ -484,8 +484,8 @@
 }
 
 .artistPickerAddBtn svg {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
 }
 
 .artistPickerResults {
@@ -497,9 +497,9 @@
   max-height: calc(16 * var(--flora-grid-step));
   overflow-y: auto;
   border: 1px solid var(--add-track-menu-border);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: var(--add-track-menu-bg);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 var(--flora-sPx-8) calc(var(--flora-sPx-24) + var(--flora-sPx-4)) rgba(0, 0, 0, 0.55);
   padding: var(--flora-grid-step-fine);
 }
 
@@ -513,7 +513,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--flora-sPx-2);
   cursor: pointer;
   text-align: left;
   transition: background 0.15s ease;
@@ -569,7 +569,7 @@
   flex-direction: column;
   width: min(calc(36 * var(--flora-grid-step)), 92vw);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: var(--flora-bg);
   box-shadow: var(--flora-reserve-popover-shadow);
 }
@@ -586,7 +586,7 @@
   margin: 0;
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-weight: 400;
 }
 
@@ -596,10 +596,10 @@
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: transparent;
   color: var(--flora-gray);
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   line-height: 1;
   cursor: pointer;
 }
@@ -620,7 +620,7 @@
   margin: 0;
   color: var(--flora-gray);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   line-height: 1.45;
 }
@@ -643,7 +643,7 @@
   height: calc(6 * var(--flora-grid-step));
   overflow: hidden;
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background:
     radial-gradient(circle at 76% 18%, color-mix(in srgb, var(--flora-green-light) 18%, transparent) 0%, transparent 58%),
     linear-gradient(145deg, color-mix(in srgb, var(--flora-green-light) 24%, #121212) 0%, #121212 100%);
@@ -651,7 +651,7 @@
   place-items: center;
   color: var(--flora-green-light);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 32px;
+  font-size: max(1px, calc(var(--flora-sPx-24) + var(--flora-sPx-8)));
   font-weight: 400;
 }
 
@@ -674,7 +674,7 @@
   width: 100%;
   color: var(--flora-gray);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
 }
 
 .artistCreateCoverHint {
@@ -693,7 +693,7 @@
 .artistCreateModalBtnCancel {
   min-height: calc(3 * var(--flora-grid-step));
   padding: 0 calc(2 * var(--flora-grid-step));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   border: 1px solid transparent;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
@@ -765,7 +765,7 @@
   justify-content: center;
   border-radius: calc(2 * var(--flora-grid-step-fine));
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 var(--flora-sPx-12) calc(var(--flora-sPx-24) + var(--flora-sPx-8)) rgba(0, 0, 0, 0.35);
   transition: background 0.2s ease;
 }
 
@@ -775,7 +775,7 @@
   width: calc(8 * var(--flora-grid-step));
   height: calc(8 * var(--flora-grid-step));
   color: rgba(var(--flora-white-template-rgb), 0.92);
-  filter: drop-shadow(0 2px 16px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 var(--flora-sPx-2) var(--flora-sPx-16) rgba(0, 0, 0, 0.45));
   pointer-events: none;
 }
 
@@ -811,7 +811,7 @@
   height: var(--cover-swatch-size);
   padding: 0;
   box-sizing: border-box;
-  border: 2px solid transparent;
+  border: var(--flora-sPx-2) solid transparent;
   border-radius: calc(2 * var(--flora-grid-step-fine));
   cursor: pointer;
   transition:
@@ -833,7 +833,7 @@
   height: var(--cover-swatch-size);
   padding: 0;
   box-sizing: border-box;
-  border: 2px solid transparent;
+  border: var(--flora-sPx-2) solid transparent;
   border-radius: calc(2 * var(--flora-grid-step-fine));
   background: rgba(var(--flora-white-template-rgb), 0.06);
   color: var(--flora-gray);
@@ -946,8 +946,8 @@
 }
 
 .addTrackDropZoneCompact .addTrackDropIcon svg {
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
 }
 
 .addTrackDropZoneText {
@@ -956,7 +956,7 @@
   align-items: flex-start;
   flex: 1;
   min-width: 0;
-  gap: 2px;
+  gap: var(--flora-sPx-2);
 }
 
 .addTrackDropTitle {
@@ -1023,7 +1023,7 @@
   color: var(--flora-gray);
   cursor: pointer;
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-underline-offset: var(--flora-sPx-3);
   transition: color 0.15s ease;
 }
 
@@ -1093,7 +1093,7 @@
   align-items: center;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1;
   letter-spacing: var(--flora-tracking-15);
   text-align: left;
@@ -1121,11 +1121,11 @@
   padding: var(--flora-grid-step-fine);
   background: var(--add-track-menu-bg);
   border: 1px solid var(--add-track-menu-border);
-  border-radius: 12px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  border-radius: var(--flora-sPx-12);
+  box-shadow: 0 var(--flora-sPx-8) calc(var(--flora-sPx-24) + var(--flora-sPx-4)) rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--flora-sPx-2);
   isolation: isolate;
 }
 
@@ -1176,7 +1176,7 @@
   background: var(--add-track-menu-bg);
   border-bottom: 1px solid var(--add-track-menu-border);
   border-radius: var(--flora-grid-step-fine) var(--flora-grid-step-fine) 0 0;
-  margin-bottom: 2px;
+  margin-bottom: var(--flora-sPx-2);
 }
 
 .addTrackGenreMenuBack:hover {
@@ -1184,8 +1184,8 @@
 }
 
 .addTrackSelectIcon {
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
   color: var(--flora-gray);
   pointer-events: none;
   margin-left: calc(2 * var(--flora-grid-step-fine));
@@ -1206,8 +1206,8 @@
 .addTrackLabelInfoBtn {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
   border-radius: 50%;
   border: none;
   background: rgba(var(--flora-white-template-rgb), 0.1);
@@ -1233,8 +1233,8 @@
 .addTrackLabelWarningBtn {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
   border-radius: 50%;
   border: none;
   background: color-mix(in srgb, #e0a843 15%, transparent);
@@ -1254,21 +1254,21 @@
   left: calc(100% + 2 * var(--flora-grid-step-fine));
   top: 50%;
   transform: translateY(-50%);
-  width: 280px;
+  width: calc(56 * var(--flora-grid-step-fine));
   padding: calc(1.5 * var(--flora-grid-step));
   border-radius: calc(2 * var(--flora-grid-step-fine));
   background: color-mix(in srgb, var(--flora-bg) 95%, #e0a843);
   border: 1px solid color-mix(in srgb, #e0a843 35%, transparent);
   color: #e0a843;
   line-height: 1.4;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   text-align: left;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.2s ease, visibility 0.2s ease;
   pointer-events: none;
   z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 var(--flora-sPx-4) var(--flora-sPx-12) rgba(0, 0, 0, 0.2);
 }
 
 .addTrackLabelWarningWrap:hover .addTrackLabelInfoTooltip {
@@ -1387,7 +1387,7 @@
 .addTrackCheckboxLabel a {
   color: var(--flora-green-light);
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-underline-offset: var(--flora-sPx-3);
 }
 
 .addTrackCheckboxLabel a:hover {
@@ -1429,7 +1429,7 @@
 .addTrackPrimaryBtn {
   height: calc(8 * var(--flora-grid-step-fine));
   padding: 0 calc(6 * var(--flora-grid-step-fine));
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   border: none;
   background: var(--flora-green-light);
   color: var(--flora-bg);
@@ -1445,7 +1445,7 @@
 .addTrackSecondaryBtn {
   height: calc(8 * var(--flora-grid-step-fine));
   padding: 0 calc(4 * var(--flora-grid-step-fine));
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   border: 1px solid var(--flora-gray);
   background: transparent;
   color: var(--flora-gray);

@@ -18,7 +18,7 @@
 
 .underline {
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: var(--flora-sPx-2);
 }
 
 .strikethrough {
@@ -29,13 +29,13 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.94em;
   background: rgba(var(--flora-white-template-rgb), 0.08);
-  border-radius: 3px;
+  border-radius: var(--flora-sPx-3);
 }
 
 .link {
   color: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: var(--flora-sPx-2);
 }
 
 .mention {
@@ -43,8 +43,8 @@
 }
 
 .spoiler {
-  border-radius: 4px;
-  padding: 0 2px;
+  border-radius: var(--flora-sPx-4);
+  padding: 0 var(--flora-sPx-2);
   background: rgba(var(--flora-white-template-rgb), 0.16);
   color: transparent;
   transition: color 0.15s ease, background-color 0.15s ease;

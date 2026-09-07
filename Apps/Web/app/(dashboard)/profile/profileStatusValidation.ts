@@ -1,3 +1,5 @@
+import { sPx } from "@flora/design";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 import styles from "./profile.module.css";
 
 /** Как в 2142-1 / PATCH /api/auth/profile. */
@@ -13,10 +15,11 @@ export function profileStatusFitsThreeLines(text: string, contentWidthPx?: numbe
   if (!text.trim()) return true;
   if (typeof document === "undefined") return true;
 
+  const frame = getViewportFrame();
   const width =
     contentWidthPx ??
     document.querySelector<HTMLElement>("[data-profile-status-measure]")?.clientWidth ??
-    Math.round(54 * 15);
+    54 * frame.step;
 
   const wrapper = document.createElement("div");
   wrapper.setAttribute("aria-hidden", "true");
@@ -37,11 +40,11 @@ export function profileStatusFitsThreeLines(text: string, contentWidthPx?: numbe
   wrapper.appendChild(top);
   document.body.appendChild(wrapper);
 
-  const lineHeight = Number.parseFloat(getComputedStyle(status).lineHeight) || 20;
+  const lineHeight = Number.parseFloat(getComputedStyle(status).lineHeight) || sPx(20, frame.s);
   const height = status.offsetHeight;
   document.body.removeChild(wrapper);
 
-  return height <= lineHeight * 3 + 2;
+  return height <= lineHeight * 3 + sPx(2, frame.s);
 }
 
 export function validateProfileStatus(text: string): string | null {

@@ -1,51 +1,110 @@
 /** Геометрия SVG clip-path панели с вырезом под триггер (post ⋮ / compose +). */
 
-export const NOTCH_PANEL_CORNER_R = 10;
-export const NOTCH_PANEL_DEPTH = 46;
-export const NOTCH_PANEL_FINE_GRID_PX = 5;
-export const NOTCH_PANEL_PRIMARY_GRID_PX = 3 * NOTCH_PANEL_FINE_GRID_PX;
+import { sPx } from "@flora/design";
+import { getViewportFrame } from "./viewportFrame";
 
-/** Зазор от края панели до внутреннего угла выреза (калибровка при W ≈ 225). */
-export const NOTCH_PANEL_GAP_PX = 225 - (154 + 5 * NOTCH_PANEL_FINE_GRID_PX);
+type NotchPanelMetrics = {
+  cornerR: number;
+  depth: number;
+  fine: number;
+  primary: number;
+  gap: number;
+  minWidth: number;
+  clipMinH: number;
+};
 
-export const NOTCH_PANEL_MIN_WIDTH_PX =
-  Math.ceil((NOTCH_PANEL_GAP_PX + NOTCH_PANEL_CORNER_R * 2) / NOTCH_PANEL_PRIMARY_GRID_PX) *
-  NOTCH_PANEL_PRIMARY_GRID_PX;
+function notchPanelMetrics(): NotchPanelMetrics {
+  const { s, step, stepFine } = getViewportFrame();
+  const cornerR = sPx(10, s);
+  const depth = sPx(46, s);
+  const fine = stepFine;
+  const primary = step;
+  const gap = sPx(225, s) - (sPx(154, s) + 5 * fine);
+  const minWidth = Math.ceil((gap + cornerR * 2) / primary) * primary;
+  const clipMinH = depth + cornerR + sPx(8, s);
+  return { cornerR, depth, fine, primary, gap, minWidth, clipMinH };
+}
 
-export const NOTCH_PANEL_CLIP_MIN_H = NOTCH_PANEL_DEPTH + NOTCH_PANEL_CORNER_R + 8;
+/** Live px getter typed as number so PostMoreMenu (sot-spx) can add / useState. */
+function livePx(get: () => number): number {
+  const fn = Object.assign(
+    function livePxValue(): number {
+      return get();
+    },
+    {
+      valueOf: get,
+      [Symbol.toPrimitive]: get,
+    },
+  );
+  return fn as unknown as number;
+}
+
+export function notchPanelCornerR(): number {
+  return notchPanelMetrics().cornerR;
+}
+
+export function notchPanelDepthPx(): number {
+  return notchPanelMetrics().depth;
+}
+
+export function notchPanelFineGridPx(): number {
+  return notchPanelMetrics().fine;
+}
+
+export function notchPanelPrimaryGridPx(): number {
+  return notchPanelMetrics().primary;
+}
+
+export function notchPanelGapPx(): number {
+  return notchPanelMetrics().gap;
+}
+
+export function notchPanelMinWidthPx(): number {
+  return notchPanelMetrics().minWidth;
+}
+
+export function notchPanelClipMinH(): number {
+  return notchPanelMetrics().clipMinH;
+}
+
+export const NOTCH_PANEL_CORNER_R = livePx(notchPanelCornerR);
+export const NOTCH_PANEL_DEPTH = livePx(notchPanelDepthPx);
+export const NOTCH_PANEL_FINE_GRID_PX = livePx(notchPanelFineGridPx);
+export const NOTCH_PANEL_PRIMARY_GRID_PX = livePx(notchPanelPrimaryGridPx);
+export const NOTCH_PANEL_GAP_PX = livePx(notchPanelGapPx);
+export const NOTCH_PANEL_MIN_WIDTH_PX = livePx(notchPanelMinWidthPx);
+export const NOTCH_PANEL_CLIP_MIN_H = livePx(notchPanelClipMinH);
 
 export function snapNotchPanelWidthToFineGrid(px: number): number {
-  return Math.max(
-    NOTCH_PANEL_MIN_WIDTH_PX,
-    Math.ceil(px / NOTCH_PANEL_FINE_GRID_PX) * NOTCH_PANEL_FINE_GRID_PX,
-  );
+  const { fine, minWidth } = notchPanelMetrics();
+  return Math.max(minWidth, Math.ceil(px / fine) * fine);
 }
 
 /** Вырез сверху справа (меню под ⋮ в посте). */
 export function notchPanelPathTopRight(h: number, w: number): string {
+  const { cornerR: R, depth, gap, clipMinH } = notchPanelMetrics();
   const W = snapNotchPanelWidthToFineGrid(Math.round(w));
-  const H = Math.max(NOTCH_PANEL_CLIP_MIN_H, Math.round(h));
-  const R = NOTCH_PANEL_CORNER_R;
-  const notchInnerX = W - NOTCH_PANEL_GAP_PX;
-  const yBeforeInnerFillet = NOTCH_PANEL_DEPTH - R;
+  const H = Math.max(clipMinH, Math.round(h));
+  const notchInnerX = W - gap;
+  const yBeforeInnerFillet = depth - R;
   const xAfterInnerFillet = notchInnerX + R;
   const brArcEndX = W - R;
-  return `M ${R} 0 H ${notchInnerX - R} A ${R} ${R} 0 0 1 ${notchInnerX} ${R} V ${yBeforeInnerFillet} A ${R} ${R} 0 0 0 ${xAfterInnerFillet} ${NOTCH_PANEL_DEPTH} H ${brArcEndX} A ${R} ${R} 0 0 1 ${W} ${NOTCH_PANEL_DEPTH + R} V ${H - R} A ${R} ${R} 0 0 1 ${brArcEndX} ${H} H ${R} A ${R} ${R} 0 0 1 0 ${H - R} V ${R} A ${R} ${R} 0 0 1 ${R} 0 Z`;
+  return `M ${R} 0 H ${notchInnerX - R} A ${R} ${R} 0 0 1 ${notchInnerX} ${R} V ${yBeforeInnerFillet} A ${R} ${R} 0 0 0 ${xAfterInnerFillet} ${depth} H ${brArcEndX} A ${R} ${R} 0 0 1 ${W} ${depth + R} V ${H - R} A ${R} ${R} 0 0 1 ${brArcEndX} ${H} H ${R} A ${R} ${R} 0 0 1 0 ${H - R} V ${R} A ${R} ${R} 0 0 1 ${R} 0 Z`;
 }
 
 /** Вырез снизу слева (меню над + в поле сообщения). */
 export function notchPanelPathBottomLeft(
   h: number,
   w: number,
-  gapPx: number = NOTCH_PANEL_GAP_PX,
+  gapPx: number = notchPanelGapPx(),
 ): string {
+  const { cornerR: R, depth, fine, clipMinH } = notchPanelMetrics();
   const W = snapNotchPanelWidthToFineGrid(Math.round(w));
-  const H = Math.max(NOTCH_PANEL_CLIP_MIN_H, Math.round(h));
-  const R = NOTCH_PANEL_CORNER_R;
-  const notchInnerX = Math.max(R + NOTCH_PANEL_FINE_GRID_PX, Math.round(gapPx));
-  const yAboveInnerFillet = H - NOTCH_PANEL_DEPTH + R;
+  const H = Math.max(clipMinH, Math.round(h));
+  const notchInnerX = Math.max(R + fine, Math.round(gapPx));
+  const yAboveInnerFillet = H - depth + R;
   const xBeforeInnerFillet = notchInnerX + R;
-  return `M ${R} 0 H ${W - R} A ${R} ${R} 0 0 1 ${W} ${R} V ${H - R} A ${R} ${R} 0 0 1 ${W - R} ${H} H ${xBeforeInnerFillet} A ${R} ${R} 0 0 1 ${notchInnerX} ${H - R} V ${yAboveInnerFillet} A ${R} ${R} 0 0 0 ${notchInnerX - R} ${H - NOTCH_PANEL_DEPTH} H ${R} A ${R} ${R} 0 0 1 0 ${H - NOTCH_PANEL_DEPTH - R} V ${R} A ${R} ${R} 0 0 1 ${R} 0 Z`;
+  return `M ${R} 0 H ${W - R} A ${R} ${R} 0 0 1 ${W} ${R} V ${H - R} A ${R} ${R} 0 0 1 ${W - R} ${H} H ${xBeforeInnerFillet} A ${R} ${R} 0 0 1 ${notchInnerX} ${H - R} V ${yAboveInnerFillet} A ${R} ${R} 0 0 0 ${notchInnerX - R} ${H - depth} H ${R} A ${R} ${R} 0 0 1 0 ${H - depth - R} V ${R} A ${R} ${R} 0 0 1 ${R} 0 Z`;
 }
 
 export function notchPanelClipPath(
@@ -61,15 +120,13 @@ export function notchPanelClipPath(
   return `path("${d}")`;
 }
 
-/** Зазор выреза от края панели до триггера (как post-more: ширина кнопки + 6px, шаг 5px). */
+/** Зазор выреза от края панели до триггера (как post-more: ширина кнопки + sPx(6), шаг fine). */
 export function notchPanelGapForTriggerWidthPx(triggerWidthPx: number): number {
-  const raw = Math.max(
-    NOTCH_PANEL_CORNER_R + NOTCH_PANEL_FINE_GRID_PX,
-    Math.round(triggerWidthPx) + 6,
-  );
-  return Math.ceil(raw / NOTCH_PANEL_FINE_GRID_PX) * NOTCH_PANEL_FINE_GRID_PX;
+  const { cornerR, fine } = notchPanelMetrics();
+  const raw = Math.max(cornerR + fine, Math.round(triggerWidthPx) + sPx(6, getViewportFrame().s));
+  return Math.ceil(raw / fine) * fine;
 }
 
 export function readNotchPanelClipHeightPx(el: HTMLElement): number {
-  return Math.max(NOTCH_PANEL_CLIP_MIN_H, Math.round(el.offsetHeight));
+  return Math.max(notchPanelClipMinH(), Math.round(el.offsetHeight));
 }

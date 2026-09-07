@@ -83,8 +83,8 @@
 .root .postItem {
   padding-left: var(--flora-grid-step);
   padding-right: var(--g45);
-  /* +2px: Ð½Ð¸Ð¶Ð½Ð¸Ð¹ Ð¾Ñ‚ÑÑ‚ÑƒÐ¿ Ð´Ð¾ Ð¿Ð¾Ð»Ð¾ÑÐºÐ¸ Ð¼ÐµÐ¶Ð´Ñƒ Ð¿Ð¾ÑÑ‚Ð°Ð¼Ð¸ (:not(:last-child)). */
-  padding-bottom: calc(2 * var(--flora-grid-step) + 2px);
+  /* +sPx-2: нижний отступ до полоски между постами (:not(:last-child)). */
+  padding-bottom: calc(2 * var(--flora-grid-step) + var(--flora-sPx-2));
   width: 100%;
   max-width: 100%;
   position: relative;
@@ -103,6 +103,7 @@
 
 .postAvatar {
   grid-area: post-avatar;
+  --flora-avatar-size: var(--feed-post-avatar-size);
   width: var(--feed-post-avatar-size);
   height: var(--feed-post-avatar-size);
   min-width: var(--feed-post-avatar-size);
@@ -116,7 +117,7 @@
   justify-content: center;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   letter-spacing: var(--flora-tracking-16);
   overflow: hidden;
 }
@@ -189,13 +190,13 @@
 }
 
 .root .postMetaLink {
-  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - 2px);
+  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - var(--flora-sPx-2));
 }
 
 .postMetaLink:hover .postAuthor,
 .postMetaLink:hover .postHandle {
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: var(--flora-sPx-2);
 }
 
 .postAuthor {
@@ -218,8 +219,8 @@
   margin-left: auto;
   margin-right: calc(-1 * var(--g20));
   position: relative;
-  /* Ð’Ð¸Ð·ÑƒÐ°Ð»ÑŒÐ½Ñ‹Ð¹ Ð½Ð¸Ð· â‹®: + fine+3px Ð¸Ð·-Ð·Ð° translateY Ñƒ .triggerLift. */
-  --flora-rect-menu-gap-below: calc(var(--flora-grid-step) + var(--flora-grid-step-fine) + 3px);
+  /* Визуальный низ ⋮: + fine+sPx-3 из-за translateY у .triggerLift. */
+  --flora-rect-menu-gap-below: calc(var(--flora-grid-step) + var(--flora-grid-step-fine) + var(--flora-sPx-3));
 }
 
 .postMoreBtn {
@@ -227,7 +228,7 @@
   color: var(--flora-gray);
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--flora-sPx-6);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -245,7 +246,7 @@
 }
 
 .postMoreBtn:active:not(:disabled) {
-  transform: translateY(calc(var(--flora-grid-step-fine) + 3px)) scale(0.92);
+  transform: translateY(calc(var(--flora-grid-step-fine) + var(--flora-sPx-3))) scale(0.92);
 }
 
 .postContent {
@@ -263,7 +264,7 @@
   margin: calc(2 * var(--flora-grid-step-fine)) 0 var(--flora-grid-step);
   width: 100%;
   border-radius: calc(var(--flora-grid-step-fine));
-  max-height: min(560px, 70vh);
+  max-height: min(calc(112 * var(--flora-grid-step-fine)), 70vh);
   object-fit: cover;
 }
 
@@ -358,7 +359,7 @@
   background: none;
   color: var(--flora-gray);
   cursor: pointer;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   letter-spacing: var(--flora-tracking-15);
   transition: color 0.15s ease;
 }
@@ -383,8 +384,8 @@
 }
 
 .postAction svg {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
 }
 
 .postMetaRight {
@@ -415,8 +416,8 @@
 }
 
 .postTime {
-  font-size: 13px;
-  letter-spacing: 0.39px;
+  font-size: max(1px, var(--flora-sPx-13));
+  letter-spacing: calc(0.39px * var(--flora-grid-s));
   color: var(--flora-gray);
 }
 
@@ -435,8 +436,8 @@
 }
 
 .postViews {
-  font-size: 13px;
-  letter-spacing: 0.39px;
+  font-size: max(1px, var(--flora-sPx-13));
+  letter-spacing: calc(0.39px * var(--flora-grid-s));
   color: var(--flora-gray);
 }
 
@@ -453,15 +454,15 @@
   );
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
+  width: var(--flora-sPx-16);
+  height: var(--flora-sPx-16);
 }
 
 .root .postViews > span:last-child {
   position: absolute;
   left: calc(
     100% * (var(--feed-post-meta-views-icon-col) - var(--feed-post-text-col-start)) / var(--feed-post-text-col-span) +
-      16px + var(--flora-grid-step)
+      var(--flora-sPx-16) + var(--flora-grid-step)
   );
   top: 50%;
   transform: translateY(-50%);

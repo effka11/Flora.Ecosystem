@@ -38,7 +38,6 @@ export function PeopleListRow({
         <span className={styles.avatarWrap}>
           <FloraAvatar
             plain
-            size={45}
             avatarUuid={user.avatarUuid}
             displayName={user.displayName}
             username={user.username}

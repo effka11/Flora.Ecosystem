@@ -10,6 +10,7 @@ import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { PostMoreMenuRect } from "@/app/_shared/PostMoreMenuRect";
 import postMoreMenuStyles from "@/app/_shared/PostMoreMenu.module.css";
 import { FloraAvatar } from "@/app/_shared/FloraAvatar";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 import { TabSearchInput } from "@/app/_shared/TabSearchInput";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { ApiRequestError, isDevLocalOfflineSession } from "@/lib/auth";
@@ -146,7 +147,6 @@ import {
 } from "./chatListInsertLift";
 import { dropDecryptedIds } from "./optimisticDecrypt";
 import {
-  MESSAGES_NEAR_BOTTOM_PX,
   MESSAGES_OPEN_REVEAL_DEADLINE_MS,
   MESSAGES_REPIN_WINDOW_MS,
   isMessagesNearBottom,
@@ -398,9 +398,20 @@ const LIST_PREVIEW_MAX_LEN = 80;
 
 /** Синхронно с `--flora-duration-6` в messages.module.css (как MUSIC_TAB_TRANSITION_CLEAR_MS). */
 const MESSAGES_PANEL_TRANSITION_CLEAR_MS = 950;
-const COMPOSE_TEXT_LINE_HEIGHT_PX = 25;
-const COMPOSE_TEXT_VERTICAL_PADDING_PX = 10;
 const COMPOSE_MAX_EXTRA_ROWS = 3;
+
+function composeTextLineHeightPx(): number {
+  return 5 * getViewportFrame().stepFine;
+}
+
+function composeTextVerticalPaddingPx(): number {
+  return 2 * getViewportFrame().stepFine;
+}
+
+function composeStripHeightPx(): number {
+  const { step, stepFine } = getViewportFrame();
+  return 5 * step + 2 * stepFine;
+}
 /** Синхронно с `messagesStickerPanelOut` (`--flora-duration-2`). */
 const STICKER_PANEL_CLOSE_MS = floraDurationMs(2) + 50;
 
@@ -809,7 +820,7 @@ function MessagesChatInner() {
     measure.value = input.value || input.placeholder;
     measure.setAttribute("aria-hidden", "true");
     measure.style.position = "fixed";
-    measure.style.left = "-9999px";
+    measure.style.left = "-100vw";
     measure.style.top = "0";
     measure.style.width = `${input.clientWidth}px`;
     measure.style.minHeight = "0";
@@ -826,21 +837,21 @@ function MessagesChatInner() {
     document.body.appendChild(measure);
     const visibleRows = Math.max(
       1,
-      Math.ceil((measure.scrollHeight - COMPOSE_TEXT_VERTICAL_PADDING_PX) / COMPOSE_TEXT_LINE_HEIGHT_PX)
+      Math.ceil((measure.scrollHeight - composeTextVerticalPaddingPx()) / composeTextLineHeightPx())
     );
     measure.remove();
 
     setComposeExtraRows(Math.min(COMPOSE_MAX_EXTRA_ROWS, Math.max(0, visibleRows - 1)));
   }, [compose.mode, compose.text]);
 
-  const composeExtraHeight = composeExtraRows * COMPOSE_TEXT_LINE_HEIGHT_PX;
-  /* Каждая полоса над textarea (ответ / медиа): 15px + 60px + 10px gap = 85px. */
+  const composeExtraHeight = composeExtraRows * composeTextLineHeightPx();
+  /* Каждая полоса над textarea (ответ / медиа): 1×step + 4×step + 2×fine gap. */
   const composeStripCount =
     compose.mode === "text"
       ? (replyTo ? 1 : 0) +
         (compose.images.length > 0 || compose.videos.length > 0 ? 1 : 0)
       : 0;
-  const composeImagesExtraHeight = composeStripCount * 85;
+  const composeImagesExtraHeight = composeStripCount * composeStripHeightPx();
   const messagesChatViewStyle = useMemo(
     () =>
       ({
@@ -1713,7 +1724,7 @@ function MessagesChatInner() {
   const handleMessagesScroll = useCallback(() => {
     const el = scrollMessagesRef.current;
     if (!el) return;
-    const nearBottom = isMessagesNearBottom(el, MESSAGES_NEAR_BOTTOM_PX);
+    const nearBottom = isMessagesNearBottom(el);
     atBottomRef.current = nearBottom;
     if (nearBottom) setPeerBelowScrollCount(0);
   }, []);
@@ -2271,7 +2282,7 @@ function MessagesChatInner() {
     const peerNew = newly.filter((m) => !m.isFromMe);
     const ownNew = newly.filter((m) => m.isFromMe);
     const nearBottom =
-      atBottomRef.current || isMessagesNearBottom(el, MESSAGES_NEAR_BOTTOM_PX);
+      atBottomRef.current || isMessagesNearBottom(el);
 
     const runInsertLift = (
       rows: MessageThreadItemDto[],
@@ -3984,7 +3995,7 @@ function MessagesChatInner() {
                     <span className={styles.messagesDropdownBtnLeft} aria-hidden={true} />
                     <span className={styles.messagesDropdownBtnText}>{sortBy === "recent" ? "Последние" : "Непрочитанные"}</span>
                     <span className={styles.messagesDropdownBtnRight}>
-                      <svg className={styles.messagesDropdownIcon} width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <svg className={styles.messagesDropdownIcon} width="var(--flora-sPx-16)" height="var(--flora-sPx-16)" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                         <path d="M7 10l5 5 5-5z" />
                       </svg>
                     </span>
@@ -4036,7 +4047,7 @@ function MessagesChatInner() {
                             : "От разработчика"}
                     </span>
                     <span className={styles.messagesDropdownBtnRight}>
-                      <svg className={styles.messagesDropdownIcon} width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <svg className={styles.messagesDropdownIcon} width="var(--flora-sPx-16)" height="var(--flora-sPx-16)" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                         <path d="M7 10l5 5 5-5z" />
                       </svg>
                     </span>
@@ -4110,7 +4121,7 @@ function MessagesChatInner() {
                     setCreateMenuOpen((open) => !open);
                   }}
                 >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                  <svg width="var(--flora-sPx-22)" height="var(--flora-sPx-22)" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                     <path d="M12 5v14M5 12h14" strokeLinecap="round" />
                   </svg>
                 </button>
@@ -4132,7 +4143,7 @@ function MessagesChatInner() {
                       }}
                     >
                       <span className={styles.messagesCreateMenuItemIcon}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                        <svg width="var(--flora-sPx-18)" height="var(--flora-sPx-18)" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                           <path d="M3 7a2 2 0 012-2h5l2 2h9a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
                         </svg>
                       </span>
@@ -4148,7 +4159,7 @@ function MessagesChatInner() {
                       }}
                     >
                       <span className={styles.messagesCreateMenuItemIcon}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                        <svg width="var(--flora-sPx-18)" height="var(--flora-sPx-18)" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                           <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
                           <circle cx="9" cy="7" r="4" />
                           <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
@@ -4289,7 +4300,7 @@ function MessagesChatInner() {
                         <div className={styles.messagesConversationAvatarWrap}>
                           <FloraAvatar
                             plain
-                            size={45}
+                            fill
                             displayName={row.avatar.displayName}
                             username={row.avatar.username}
                             avatarUuid={row.avatar.avatarUuid}
@@ -4412,8 +4423,8 @@ function MessagesChatInner() {
                   aria-label="Назад к списку чатов"
                 >
                   <svg
-                    width="18"
-                    height="18"
+                    width="var(--flora-sPx-18)"
+                    height="var(--flora-sPx-18)"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -4429,7 +4440,7 @@ function MessagesChatInner() {
                   {openChatHeader.avatar.kind === "group" ? (
                     <FloraAvatar
                       plain
-                      size={45}
+                      fill
                       displayName={openChatHeader.avatar.title}
                       communityName={openChatHeader.avatar.title}
                       seed={openChatHeader.avatar.seed}
@@ -4437,7 +4448,7 @@ function MessagesChatInner() {
                   ) : (
                     <FloraAvatar
                       plain
-                      size={45}
+                      fill
                       displayName={openChatHeader.avatar.displayName}
                       username={openChatHeader.avatar.username}
                       avatarUuid={openChatHeader.avatar.avatarUuid}
@@ -4927,7 +4938,7 @@ function MessagesChatInner() {
                               return (
                                 <FloraAvatar
                                   plain
-                                  size={45}
+                                  fill
                                   displayName={label}
                                   username={member?.username || ""}
                                   avatarUuid={member?.avatarUuid}
@@ -4939,7 +4950,7 @@ function MessagesChatInner() {
                           ) : (
                             <FloraAvatar
                               plain
-                              size={45}
+                              fill
                               displayName={peerThreadAvatar.displayName}
                               username={peerThreadAvatar.username}
                               avatarUuid={peerThreadAvatar.avatarUuid}
@@ -4962,7 +4973,7 @@ function MessagesChatInner() {
                   onClick={jumpToLatestMessages}
                   aria-label={`Новые сообщения: ${peerBelowScrollCount}. Прокрутить вниз.`}
                 >
-                  <svg className={styles.messagesJumpToLatestIcon} width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <svg className={styles.messagesJumpToLatestIcon} width="var(--flora-sPx-18)" height="var(--flora-sPx-18)" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                     <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
                   </svg>
                   <span className={styles.messagesJumpToLatestBadge}>
@@ -5076,7 +5087,7 @@ function MessagesChatInner() {
                     disabled={sending || threadLoading}
                     onClick={discardVoiceRecording}
                   >
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <svg width="var(--flora-sPx-22)" height="var(--flora-sPx-22)" viewBox="0 0 24 24" fill="none" aria-hidden>
                       <path d="M4 7h16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
                       <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
                       <path
@@ -5110,7 +5121,7 @@ function MessagesChatInner() {
                     </span>
                     <div className={styles.messagesVoiceInlineWave} aria-hidden>
                       {voiceComposeBars.map((level, index) => (
-                        <span key={index} style={{ height: `${Math.round(5 + level * 22)}px` }} />
+                        <span key={index} style={{ height: `calc(var(--flora-grid-step-fine) + ${level} * var(--flora-sPx-22))` }} />
                       ))}
                     </div>
                     {voiceRecorder.error ? <span className={styles.messagesVoiceInlineError}>{voiceRecorder.error}</span> : null}
@@ -5155,7 +5166,7 @@ function MessagesChatInner() {
                       disabled={composeStickersDisabled}
                       onClick={toggleStickerPanel}
                     >
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <svg width="var(--flora-sPx-22)" height="var(--flora-sPx-22)" viewBox="0 0 24 24" fill="none" aria-hidden>
                         <path
                           d="M12 20.2a8.2 8.2 0 1 0 0-16.4 8.2 8.2 0 0 0 0 16.4Z"
                           stroke="currentColor"
@@ -5196,7 +5207,7 @@ function MessagesChatInner() {
                         disabled={sending || threadLoading || (!voiceRecorder.recording && !compose.voice)}
                         onClick={sendVoiceCompose}
                       >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                        <svg width="var(--flora-sPx-20)" height="var(--flora-sPx-20)" viewBox="0 0 24 24" fill="none" aria-hidden>
                           <path
                             d="M4 20 20 12 4 4l3 8-3 8Z"
                             stroke="currentColor"
@@ -5221,7 +5232,7 @@ function MessagesChatInner() {
                       onClick={startVoiceRecording}
                       disabled={composeMediaDisabled}
                     >
-                      <MusicTrackKindIcon kind="mic" className={styles.messagesComposeMicIcon} size={22} />
+                      <MusicTrackKindIcon kind="mic" className={styles.messagesComposeMicIcon} />
                     </button>
                   ) : (
                     <button
@@ -5231,7 +5242,7 @@ function MessagesChatInner() {
                       disabled={sending || threadLoading}
                       onClick={() => void handleSend()}
                     >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <svg width="var(--flora-sPx-20)" height="var(--flora-sPx-20)" viewBox="0 0 24 24" fill="none" aria-hidden>
                         <path
                           d="M4 20 20 12 4 4l3 8-3 8Z"
                           stroke="currentColor"

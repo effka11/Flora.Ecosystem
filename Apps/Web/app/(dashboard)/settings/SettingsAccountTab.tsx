@@ -105,7 +105,11 @@ export function SettingsAccountTab() {
         <h3 className={styles.formSectionTitle}>Аватар</h3>
         <div className={styles.avatarBlock}>
           <FloraAvatar
-            size={105}
+            style={{
+              width: "calc(7 * var(--flora-grid-step))",
+              height: "calc(7 * var(--flora-grid-step))",
+              ["--flora-avatar-size" as string]: "calc(7 * var(--flora-grid-step))",
+            }}
             avatarUuid={avatarUuid || null}
             displayName={displayName}
             username={username}

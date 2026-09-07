@@ -12,6 +12,19 @@ export const FLORA_GRID_WEB_ROWS = 63;
 export const FLORA_GRID_WEB_BASE_WIDTH = FLORA_GRID_WEB_COLS * FLORA_GRID_PRIMARY_PX;
 export const FLORA_GRID_WEB_BASE_HEIGHT = FLORA_GRID_WEB_ROWS * FLORA_GRID_PRIMARY_PX;
 
+/**
+ * Extra-grid CSS px (layout / icons / kegl) — not the 5/15 cell.
+ * Frozen: Math.round(n * s) only.
+ */
+export function sPx(n: number, s: number): number {
+  return Math.round(n * s);
+}
+
+/** Closed ladder for live `--flora-sPx-N` (N at s=1). */
+export const SPX_LADDER = [
+  2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24
+] as const;
+
 export type GridFamily = "web" | "mobile";
 
 export type GridTemplate = {
@@ -202,9 +215,11 @@ export function resolveWebGridFrame(
 export function applyWebGridFrameCssVars(host: {
   style: { setProperty: (name: string, value: string) => void };
 }, resolved: ResolvedWebGridFrame): void {
-  const { canvas, place } = resolved;
+  const { canvas, place, template } = resolved;
+  const s = template.s;
   host.style.setProperty("--flora-grid-step", `${canvas.step}px`);
   host.style.setProperty("--flora-grid-step-fine", `${canvas.stepFine}px`);
+  host.style.setProperty("--flora-grid-s", `${s}`);
   host.style.setProperty("--flora-frame-width", `${place.frameWidth}px`);
   host.style.setProperty("--flora-frame-height", `${place.frameHeight}px`);
   host.style.setProperty("--flora-frame-left", `${place.frameLeft}px`);
@@ -213,4 +228,7 @@ export function applyWebGridFrameCssVars(host: {
   host.style.setProperty("--flora-crop-y", `${place.cropY}px`);
   host.style.setProperty("--flora-app-root-w", `${canvas.width}px`);
   host.style.setProperty("--flora-app-root-h", `${canvas.height}px`);
+  for (const n of SPX_LADDER) {
+    host.style.setProperty(`--flora-sPx-${n}`, `${sPx(n, s)}px`);
+  }
 }

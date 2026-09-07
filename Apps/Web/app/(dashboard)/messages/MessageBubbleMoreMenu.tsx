@@ -327,7 +327,7 @@ export function MessageBubbleMoreMenu({
             className={`${triggerStyles.triggerGlyph} ${showCloseGlyph ? "" : triggerStyles.triggerGlyphVisible}`}
             aria-hidden
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <svg width="var(--flora-sPx-18)" height="var(--flora-sPx-18)" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <circle cx="12" cy="6" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />
               <circle cx="12" cy="18" r="1.5" />
@@ -339,8 +339,8 @@ export function MessageBubbleMoreMenu({
           >
             <span className={triggerStyles.triggerCloseWrap}>
               <svg
-                width="10"
-                height="10"
+                width="var(--flora-sPx-10)"
+                height="var(--flora-sPx-10)"
                 viewBox="6 6 12 12"
                 fill="none"
                 stroke="currentColor"

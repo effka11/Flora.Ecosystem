@@ -9,11 +9,7 @@ import { avatarImageUrl } from "@/lib/auth";
 import { FrcImage } from "./FrcImage";
 import styles from "./FloraAvatar.module.css";
 
-/** Внутренний диаметр аватара в profile.module.css (98px ring − 4px border × 2). */
-export const FLORA_PROFILE_AVATAR_INNER_PX = 90;
-
 export type FloraAvatarProps = {
-  size?: number;
   avatarUuid?: string | null;
   displayName: string;
   username?: string;
@@ -27,6 +23,10 @@ export type FloraAvatarProps = {
   communityName?: string;
   /** Без inset-обводки и text-shadow (лента, compose, люди). */
   plain?: boolean;
+  /** Мини-аватары (стек репостов): сдвиг кириллицы в круге. */
+  compact?: boolean;
+  /** Заполнить родителя (шапка профиля: кольцо − border). */
+  fill?: boolean;
   /** Заблокированный пользователь: дефолтный аватар и красная диагональ (не для сообществ). */
   accountBlocked?: boolean;
 };
@@ -48,17 +48,7 @@ function DefaultAvatarArt({ initials, backgroundColor }: DefaultAvatarArtProps) 
   );
 }
 
-function avatarRootStyle(size: number, style?: CSSProperties): CSSProperties {
-  return {
-    width: size,
-    height: size,
-    ["--flora-avatar-size" as string]: `${size}px`,
-    ...style,
-  };
-}
-
 export function FloraAvatar({
-  size = 45,
   avatarUuid,
   displayName,
   username = "",
@@ -70,6 +60,8 @@ export function FloraAvatar({
   onLinkClick,
   communityName,
   plain = false,
+  compact = false,
+  fill = false,
   accountBlocked = false,
 }: FloraAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -85,12 +77,12 @@ export function FloraAvatar({
   const rootClass = [
     styles.root,
     plain ? styles.plain : null,
-    size <= 28 ? styles.smallInitials : null,
+    compact ? styles.smallInitials : null,
+    fill ? styles.fill : null,
     className,
   ]
     .filter(Boolean)
     .join(" ");
-  const rootStyle = avatarRootStyle(size, style);
 
   const content = (
     <span className={styles.art}>
@@ -112,13 +104,13 @@ export function FloraAvatar({
     <Link
       href={href}
       className={`${rootClass} ${styles.link}`}
-      style={rootStyle}
+      style={style}
       onClick={onLinkClick}
     >
       {content}
     </Link>
   ) : (
-    <span className={rootClass} style={rootStyle}>
+    <span className={rootClass} style={style}>
       {content}
     </span>
   );

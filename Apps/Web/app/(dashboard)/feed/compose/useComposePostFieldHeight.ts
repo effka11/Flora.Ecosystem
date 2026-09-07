@@ -1,9 +1,16 @@
 import { useCallback, useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
+import { FLORA_GRID_FINE_PX, FLORA_GRID_PRIMARY_PX } from "@flora/design";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 
-export const COMPOSE_POST_LINE_HEIGHT_PX = 25;
-/** Совпадает с --compose-post-base-height: 5×15 + 5px */
-export const COMPOSE_POST_BASE_HEIGHT_PX = 5 * 15 + 5;
+export const COMPOSE_POST_LINE_HEIGHT_PX = 5 * FLORA_GRID_FINE_PX;
+/** Совпадает с --compose-post-base-height: 5×primary + 1×fine. s=1. */
+export const COMPOSE_POST_BASE_HEIGHT_PX = 5 * FLORA_GRID_PRIMARY_PX + FLORA_GRID_FINE_PX;
 const COMPOSE_POST_MAX_EXTRA_ROWS = 20;
+
+function composePostMetricsPx(): { lineHeight: number; baseHeight: number } {
+  const { step, stepFine } = getViewportFrame();
+  return { lineHeight: 5 * stepFine, baseHeight: 5 * step + stepFine };
+}
 
 function measureContentMetrics(input: HTMLTextAreaElement): { contentExtraPx: number; contentRows: number } {
   const computed = window.getComputedStyle(input);
@@ -27,8 +34,9 @@ function measureContentMetrics(input: HTMLTextAreaElement): { contentExtraPx: nu
   measure.style.overflow = "hidden";
   document.body.appendChild(measure);
 
-  const contentRows = Math.max(1, Math.ceil(measure.scrollHeight / COMPOSE_POST_LINE_HEIGHT_PX));
-  const growthPx = Math.max(0, measure.scrollHeight - COMPOSE_POST_BASE_HEIGHT_PX);
+  const { lineHeight, baseHeight } = composePostMetricsPx();
+  const contentRows = Math.max(1, Math.ceil(measure.scrollHeight / lineHeight));
+  const growthPx = Math.max(0, measure.scrollHeight - baseHeight);
   measure.remove();
 
   return { contentExtraPx: growthPx, contentRows };
@@ -56,9 +64,9 @@ function measureViewportMaxExtraPx(scrollEl: HTMLElement, fieldWrapEl: HTMLEleme
   const paddingBottom = Number.parseFloat(window.getComputedStyle(scrollEl).paddingBottom) || 0;
   const belowPx = contentBottom + paddingBottom - wrapRect.bottom;
 
+  const { lineHeight, baseHeight } = composePostMetricsPx();
   const maxFieldPx = scrollEl.clientHeight - fieldTopOffset - belowPx;
-  const maxExtraPx = Math.floor((maxFieldPx - COMPOSE_POST_BASE_HEIGHT_PX) / COMPOSE_POST_LINE_HEIGHT_PX) *
-    COMPOSE_POST_LINE_HEIGHT_PX;
+  const maxExtraPx = Math.floor((maxFieldPx - baseHeight) / lineHeight) * lineHeight;
   return Math.max(0, maxExtraPx);
 }
 
@@ -83,8 +91,9 @@ export function useComposePostFieldHeight(
     if (!input) return;
 
     const { contentExtraPx, contentRows } = measureContentMetrics(input);
-    const contentExtraRows = Math.ceil(contentExtraPx / COMPOSE_POST_LINE_HEIGHT_PX);
-    let extraPx = Math.min(contentExtraRows, COMPOSE_POST_MAX_EXTRA_ROWS) * COMPOSE_POST_LINE_HEIGHT_PX;
+    const { lineHeight, baseHeight } = composePostMetricsPx();
+    const contentExtraRows = Math.ceil(contentExtraPx / lineHeight);
+    let extraPx = Math.min(contentExtraRows, COMPOSE_POST_MAX_EXTRA_ROWS) * lineHeight;
 
     const scrollEl = scrollRef?.current;
     const fieldWrapEl = input.parentElement;
@@ -92,9 +101,7 @@ export function useComposePostFieldHeight(
       extraPx = Math.min(extraPx, measureViewportMaxExtraPx(scrollEl, fieldWrapEl));
     }
 
-    const displayedRows = Math.floor(
-      (COMPOSE_POST_BASE_HEIGHT_PX + extraPx) / COMPOSE_POST_LINE_HEIGHT_PX,
-    );
+    const displayedRows = Math.floor((baseHeight + extraPx) / lineHeight);
     setExtraHeightPx(extraPx);
     setVisibleRows(Math.max(1, Math.min(contentRows, displayedRows)));
     // Высота только из CSS (как в messages); сброс inline, чтобы поле сужалось при удалении текста.

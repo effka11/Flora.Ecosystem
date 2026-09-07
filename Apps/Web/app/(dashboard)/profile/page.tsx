@@ -8,7 +8,7 @@ import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { formatAtHandle, profileDisplayName } from "@/app/_dashboard/userDisplay";
 import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
-import { FloraAvatar, FLORA_PROFILE_AVATAR_INNER_PX } from "@/app/_shared/FloraAvatar";
+import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { ApiRequestError } from "@/lib/auth";
 import { invalidateProfileCache, profileBundleCache } from "@/lib/dashboardPreload";
 import { apiDeletePost, type ProfilePostDto, type PublicProfileDto } from "@/lib/socialApi";
@@ -17,9 +17,6 @@ import { ProfileOwnHeaderActions } from "./ProfileOwnHeaderActions";
 import styles from "./profile.module.css";
 
 const MODAL_CLOSE_MS = 220;
-
-/** Внутренний диаметр зелёного круга: profile-avatar-size минус 4px border с каждой стороны. */
-const PROFILE_AVATAR_INNER_PX = FLORA_PROFILE_AVATAR_INNER_PX;
 
 function useAnimatedModal() {
   const [open, setOpen] = useState(false);
@@ -195,7 +192,7 @@ function ProfilePageContent() {
             <div className={styles.profileAvatarWrap}>
               <div className={styles.profileAvatar}>
                 <FloraAvatar
-                  size={PROFILE_AVATAR_INNER_PX}
+                  fill
                   avatarUuid={me?.avatarUuid ?? publicProfile?.avatarUuid}
                   displayName={me?.displayName ?? name}
                   username={me?.username ?? ""}

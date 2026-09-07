@@ -1,11 +1,17 @@
 "use client";
 
 import { useLayoutEffect, useRef, type RefObject } from "react";
+import { sPx } from "@flora/design";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 import { floraDurationMs } from "@/lib/floraMotion";
 
 const FLIP_MS = floraDurationMs(2);
 const TAB_SWAP_FADE_MS = floraDurationMs(6);
-const FLIP_MIN_DELTA_PX = 2;
+
+function flipMinDeltaPx(): number {
+  return sPx(2, getViewportFrame().s);
+}
+
 const FOOTER_KEY = "footer";
 const SCOPE_IDS_SEP = "\x1e";
 
@@ -72,7 +78,7 @@ function animateFooterFlip(
   if (prevTop === undefined || relTop === undefined) return;
 
   const deltaY = prevTop - relTop;
-  if (Math.abs(deltaY) < FLIP_MIN_DELTA_PX) return;
+  if (Math.abs(deltaY) < flipMinDeltaPx()) return;
 
   animateFlip(footer, deltaY);
 }
@@ -133,7 +139,7 @@ export function useComposeDraftsSidebarFlip(
           const newTop = nextIndexTops[index];
           if (prevTop !== undefined && newTop !== undefined) {
             const deltaY = prevTop - newTop;
-            if (Math.abs(deltaY) >= FLIP_MIN_DELTA_PX) {
+            if (Math.abs(deltaY) >= flipMinDeltaPx()) {
               animateFlip(el, deltaY);
             }
           }
@@ -159,7 +165,7 @@ export function useComposeDraftsSidebarFlip(
           }
 
           const deltaY = prevTop - relTop;
-          if (Math.abs(deltaY) < FLIP_MIN_DELTA_PX) return;
+          if (Math.abs(deltaY) < flipMinDeltaPx()) return;
 
           flipCandidates.push({ el, deltaY });
         });

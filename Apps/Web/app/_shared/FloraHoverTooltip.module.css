@@ -9,14 +9,14 @@
 .bubble {
   position: fixed;
   z-index: 300;
-  max-width: min(280px, calc(100vw - 2 * var(--flora-grid-step)));
+  max-width: min(calc(1px * round(280 * var(--flora-grid-s))), calc(100vw - 2 * var(--flora-grid-step)));
   padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: var(--flora-bg);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 var(--flora-sPx-4) var(--flora-sPx-24) rgba(0, 0, 0, 0.4);
   font-family: var(--flora-font, var(--font-manrope), system-ui, sans-serif);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   font-weight: 300;
   line-height: 1.35;
   letter-spacing: 0.02em;

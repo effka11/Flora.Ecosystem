@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import styles from "./FloraHoverTooltip.module.css";
+import { getViewportFrame } from "./viewportFrame";
 
 type TooltipPosition = { top: number; left: number };
 
@@ -24,9 +25,7 @@ type FloraHoverTooltipProps = {
 
 function measureTooltipPosition(anchor: HTMLElement): TooltipPosition {
   const rect = anchor.getBoundingClientRect();
-  const root = anchor.ownerDocument.documentElement;
-  const gap =
-    Number.parseFloat(getComputedStyle(root).getPropertyValue("--flora-grid-step-fine")) || 5;
+  const gap = getViewportFrame().stepFine;
   return {
     top: rect.top - gap,
     left: rect.left + rect.width / 2,

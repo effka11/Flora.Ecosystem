@@ -173,7 +173,6 @@ export function GroupMembersPanel({
               <li key={member.userUuid} className={styles.groupMembersRow}>
                 <FloraAvatar
                   plain
-                  size={45}
                   displayName={member.displayName || member.username}
                   username={member.username}
                   seed={member.userUuid}

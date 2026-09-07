@@ -9,8 +9,8 @@ import {
 import type { ReactNode } from "react";
 
 const iconProps = {
-  width: 18,
-  height: 18,
+  width: "var(--flora-sPx-18)",
+  height: "var(--flora-sPx-18)",
   viewBox: "0 0 24 24" as const,
   fill: "none" as const,
   stroke: "currentColor",

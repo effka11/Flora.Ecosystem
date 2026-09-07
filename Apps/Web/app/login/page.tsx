@@ -92,7 +92,7 @@ function IconAt() {
 
 function IconEyeOpen() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M1 12s4.5-7.5 11-7.5S23 12 23 12s-4.5 7.5-11 7.5S1 12 1 12Z"
         stroke="currentColor"
@@ -113,7 +113,7 @@ function IconEyeOpen() {
 
 function IconEyeOff() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M1 12s4.5-7.5 11-7.5S23 12 23 12s-4.5 7.5-11 7.5S1 12 1 12Z"
         stroke="currentColor"
@@ -683,7 +683,7 @@ export default function LoginPage() {
           </span>
         ))}
         {"ID".split("").map((ch, i) => (
-          <span key={`id-title-${i}`} className={styles.logoLetter} style={i === 0 ? { marginLeft: 27 } : undefined}>
+          <span key={`id-title-${i}`} className={`${styles.logoLetter} ${i === 0 ? styles.logoIdFirst : ""}`}>
             {ch}
           </span>
         ))}

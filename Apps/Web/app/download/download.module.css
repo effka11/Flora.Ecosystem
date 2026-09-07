@@ -5,15 +5,16 @@
 .title {
   margin: 0 0 calc(2 * var(--flora-grid-step));
   color: var(--flora-gray-light);
-  font-size: clamp(28px, 3.2vw, 36px);
+  /* s=1 canvas was clamp(28px, 3.2vw, 36px) → 36px on the 128-col frame; no vw */
+  font-size: max(1px, calc(1px * round(36 * var(--flora-grid-s))));
   line-height: 1.2;
-  letter-spacing: 0.2px;
+  letter-spacing: calc(0.2px * var(--flora-grid-s));
 }
 
 .intro {
   margin: 0;
   color: var(--flora-gray);
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   line-height: 1.7;
   max-width: 42em;
 }
@@ -33,7 +34,7 @@
   border-radius: calc(0.6 * var(--flora-grid-step));
   background: color-mix(in srgb, var(--flora-green-light) 18%, var(--flora-bg));
   color: var(--flora-green-light);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   text-decoration: none;
   white-space: nowrap;
@@ -53,7 +54,7 @@
 .meta {
   margin: calc(2 * var(--flora-grid-step)) 0 0;
   color: var(--flora-gray);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   line-height: 1.5;
   letter-spacing: var(--flora-tracking-15);
 }
@@ -61,9 +62,9 @@
 .sectionTitle {
   margin: 0 0 calc(2 * var(--flora-grid-step));
   color: var(--flora-gray-light);
-  font-size: 18px;
+  font-size: max(1px, var(--flora-sPx-18));
   line-height: 1.35;
-  letter-spacing: 0.15px;
+  letter-spacing: calc(0.15px * var(--flora-grid-s));
   font-weight: 500;
 }
 
@@ -99,19 +100,19 @@
 
 .version {
   color: var(--flora-gray-light);
-  font-size: 15px;
-  letter-spacing: 0.15px;
+  font-size: max(1px, var(--flora-sPx-15));
+  letter-spacing: calc(0.15px * var(--flora-grid-s));
 }
 
 .rowMeta {
   color: var(--flora-gray);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   letter-spacing: var(--flora-tracking-15);
 }
 
 .rowLink {
   color: var(--flora-green-light);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   letter-spacing: var(--flora-tracking-15);
   text-decoration: none;
   white-space: nowrap;
@@ -126,7 +127,7 @@
 .empty {
   margin: 0;
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1.7;
 }
 

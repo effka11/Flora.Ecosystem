@@ -69,13 +69,13 @@
 .settingsPlaceholderCard {
   margin-top: calc(2 * var(--flora-grid-step));
   padding: calc(2 * var(--flora-grid-step));
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
   background: color-mix(in srgb, var(--flora-white-template) 3%, var(--flora-bg));
   color: var(--flora-gray);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: 1.4;
 }
@@ -119,12 +119,12 @@
   padding: 0 calc(2 * var(--flora-grid-step-fine));
   box-sizing: border-box;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: transparent;
   text-align: left;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: 1;
   color: var(--flora-gray);
@@ -182,7 +182,7 @@
 .settingsSidebarFeedbackSuccess {
   margin: 0;
   padding: 0 calc(2 * var(--flora-grid-step-fine));
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   line-height: 1.35;
 }
 
@@ -210,11 +210,11 @@
 
 .formSectionTitle {
   position: relative;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-weight: 400;
   color: var(--flora-white-template);
   margin: 0;
-  /* Высота 2 клетки (30px), из них 1px уходит на линию ::after */
+  /* Высота 2 клетки; 1px hairline уходит на линию ::after */
   line-height: calc(2 * var(--flora-grid-step));
   padding-bottom: calc(var(--flora-grid-step) - 1px);
   border-bottom: none;
@@ -288,7 +288,7 @@
   gap: calc(2 * var(--flora-grid-step));
   padding: calc(1 * var(--flora-grid-step)) calc(1.5 * var(--flora-grid-step));
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: color-mix(in srgb, var(--flora-white-template) 2%, var(--flora-bg));
   min-height: calc(5 * var(--flora-grid-step));
   box-sizing: border-box;
@@ -301,7 +301,7 @@
 }
 
 .listCardTitle {
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 400;
   color: var(--flora-white-template);
   margin: 0;
@@ -309,7 +309,7 @@
 }
 
 .listCardDesc {
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   color: var(--flora-gray);
   margin: 0;
   line-height: calc(1 * var(--flora-grid-step));
@@ -342,10 +342,10 @@
 
 .toggleThumb {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: calc(5 * var(--flora-grid-step-fine) - 4px);
-  height: calc(5 * var(--flora-grid-step-fine) - 4px);
+  top: var(--flora-sPx-2);
+  left: var(--flora-sPx-2);
+  width: calc(5 * var(--flora-grid-step-fine) - var(--flora-sPx-4));
+  height: calc(5 * var(--flora-grid-step-fine) - var(--flora-sPx-4));
   border-radius: 50%;
   background: var(--flora-white-template);
   transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
@@ -365,7 +365,7 @@
   align-items: center;
   cursor: pointer;
   gap: var(--flora-grid-step);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   color: rgba(var(--flora-white-template-rgb), 0.8);
   user-select: none;
 }
@@ -375,7 +375,7 @@
   width: calc(4 * var(--flora-grid-step-fine));
   height: calc(4 * var(--flora-grid-step-fine));
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.3);
-  border-radius: 6px;
+  border-radius: var(--flora-sPx-6);
   background: transparent;
   cursor: pointer;
   position: relative;
@@ -391,12 +391,12 @@
 .checkboxInput:checked::after {
   content: "";
   position: absolute;
-  left: 6px;
-  top: 2px;
-  width: 4px;
-  height: 9px;
+  left: var(--flora-sPx-6);
+  top: var(--flora-sPx-2);
+  width: var(--flora-sPx-4);
+  height: calc(1px * round(9 * var(--flora-grid-s)));
   border: solid var(--flora-bg);
-  border-width: 0 2px 2px 0;
+  border-width: 0 var(--flora-sPx-2) var(--flora-sPx-2) 0;
   transform: rotate(45deg);
 }
 
@@ -416,7 +416,7 @@
 .matrixTable th {
   padding: 0 0 calc(1 * var(--flora-grid-step)) 0;
   border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   font-weight: 300;
   color: var(--flora-gray);
   letter-spacing: var(--flora-tracking-15);
@@ -425,7 +425,7 @@
 .matrixTable td {
   padding: calc(1 * var(--flora-grid-step)) 0;
   border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   color: var(--flora-white-template);
 }
@@ -449,7 +449,7 @@
 
 .previewCard {
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.15);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   padding: calc(1 * var(--flora-grid-step));
   cursor: pointer;
   transition: all 0.15s ease;
@@ -478,7 +478,7 @@
 
 .themePreviewBox {
   height: calc(6 * var(--flora-grid-step));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   overflow: hidden;
   display: flex;
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
@@ -490,10 +490,10 @@
   height: 100%;
   background: color-mix(in srgb, var(--flora-white-template) 2%, var(--flora-bg));
   border-right: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
-  padding: 6px;
+  padding: var(--flora-sPx-6);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--flora-sPx-4);
 }
 
 .themePreviewMain {
@@ -501,20 +501,20 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--flora-sPx-6);
+  padding: var(--flora-sPx-8);
 }
 
 .themePreviewLine {
-  height: 4px;
-  border-radius: 2px;
+  height: var(--flora-sPx-4);
+  border-radius: var(--flora-sPx-2);
   background: rgba(var(--flora-white-template-rgb), 0.1);
   width: 80%;
 }
 
 .themePreviewBubble {
-  height: 10px;
-  border-radius: 5px;
+  height: var(--flora-sPx-10);
+  border-radius: calc(1px * round(5 * var(--flora-grid-s)));
   background: rgba(var(--flora-white-template-rgb), 0.08);
   width: 60%;
 }
@@ -526,7 +526,7 @@
 }
 
 .previewCardTitle {
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 400;
   color: var(--flora-white-template);
   margin: 0;
@@ -534,7 +534,7 @@
 }
 
 .previewCardDesc {
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   color: var(--flora-gray);
   margin: 0;
   line-height: 1;
@@ -542,7 +542,7 @@
 
 .animPreviewBox {
   height: calc(4 * var(--flora-grid-step));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: rgba(var(--flora-white-template-rgb), 0.04);
   display: flex;
   align-items: center;
@@ -594,6 +594,9 @@
   flex-shrink: 0;
   overflow: hidden;
   border-radius: 50%;
+  width: calc(7 * var(--flora-grid-step));
+  height: calc(7 * var(--flora-grid-step));
+  --flora-avatar-size: calc(7 * var(--flora-grid-step));
 }
 
 .avatarImage {
@@ -616,7 +619,7 @@
 }
 
 .formHint {
-  font-size: 12px;
+  font-size: max(1px, var(--flora-sPx-12));
   font-weight: 300;
   color: var(--flora-gray);
   margin: 0 0 calc(2 * var(--flora-grid-step));
@@ -625,7 +628,7 @@
 
 .formFeedbackError,
 .formFeedbackSuccess {
-  font-size: 12px;
+  font-size: max(1px, var(--flora-sPx-12));
   font-weight: 300;
   text-align: left;
   line-height: 1.4;
@@ -668,7 +671,7 @@
   margin: 0;
   padding: 0;
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: rgba(var(--flora-white-template-rgb), 0.04);
   color: var(--flora-gray);
   cursor: pointer;
@@ -710,14 +713,14 @@
   display: flex;
   align-items: flex-start;
   gap: calc(2 * var(--flora-grid-step));
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   color: var(--flora-gray);
   line-height: 1.4;
   cursor: pointer;
 }
 
 .securityDeleteConfirm input {
-  margin-top: 2px;
+  margin-top: var(--flora-sPx-2);
   flex-shrink: 0;
 }
 
@@ -731,8 +734,8 @@
   display: inline-block;
   margin-left: calc(2 * var(--flora-grid-step-fine));
   padding: 0 calc(var(--flora-grid-step-fine));
-  font-size: 12px;
-  line-height: calc(2 * var(--flora-grid-step-fine) + 8px);
+  font-size: max(1px, var(--flora-sPx-12));
+  line-height: calc(2 * var(--flora-grid-step-fine) + var(--flora-sPx-8));
   color: var(--flora-green-light);
   border: 1px solid color-mix(in srgb, var(--flora-green-light) 40%, transparent);
   border-radius: 999px;
@@ -742,7 +745,7 @@
 .securityVerifiedBadge {
   display: inline-block;
   margin-left: calc(2 * var(--flora-grid-step-fine));
-  font-size: 12px;
+  font-size: max(1px, var(--flora-sPx-12));
   color: var(--flora-green-muted);
   font-weight: 300;
 }
@@ -750,10 +753,10 @@
 .securityMonospaceBlock {
   margin: 0;
   padding: calc(2 * var(--flora-grid-step-fine));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: rgba(var(--flora-white-template-rgb), 0.05);
   font-family: ui-monospace, "Cascadia Code", monospace;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   line-height: 1.5;
   word-break: break-word;
 }
@@ -762,7 +765,7 @@
   display: flex;
   align-items: center;
   gap: var(--flora-grid-step-fine);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   color: var(--flora-gray);
   cursor: pointer;
 }
@@ -786,7 +789,7 @@
 }
 
 .avatarActions .btn {
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
 }
 
 /* Как .btnMain в people.module.css (кнопка «Подписаться»). */
@@ -803,7 +806,7 @@
   justify-content: center;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   line-height: 1;
   white-space: nowrap;
@@ -816,16 +819,16 @@
 }
 
 .btnMain:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
-  outline-offset: 2px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: var(--flora-sPx-2);
 }
 
 .btn {
   height: calc(3 * var(--flora-grid-step));
   padding: 0 calc(2 * var(--flora-grid-step));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   font-weight: 300;
   line-height: calc(3 * var(--flora-grid-step));
   cursor: pointer;
@@ -902,12 +905,12 @@
 }
 
 .label {
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   color: var(--flora-gray);
   margin: 0;
-  padding-left: 2px;
+  padding-left: var(--flora-sPx-2);
   letter-spacing: var(--flora-tracking-15);
-  /* Высота 2 клетки (30px), текст прижат к низу с отступом 5px */
+  /* Высота 2 клетки; текст прижат к низу с отступом 1 fine */
   height: calc(2 * var(--flora-grid-step));
   display: flex;
   align-items: flex-end;
@@ -921,10 +924,10 @@
 .select {
   background: transparent;
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.15);
-  border-radius: 10px;
+  border-radius: var(--flora-sPx-10);
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   transition: border-color 0.15s ease;
   color-scheme: dark;
@@ -936,7 +939,7 @@
 .select {
   height: calc(3 * var(--flora-grid-step));
   padding: 0 calc(1 * var(--flora-grid-step));
-  line-height: calc(3 * var(--flora-grid-step) - 2px);
+  line-height: calc(3 * var(--flora-grid-step) - var(--flora-sPx-2));
 }
 
 .select {
@@ -1043,8 +1046,8 @@
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  width: min(420px, 92vw);
-  border-radius: 12px;
+  width: min(calc(28 * var(--flora-grid-step)), 92vw);
+  border-radius: var(--flora-sPx-12);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
   background: var(--flora-bg);
   box-shadow: var(--flora-reserve-popover-shadow);
@@ -1065,7 +1068,7 @@
 
 .settingsConfirmModalTitle {
   margin: 0;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-weight: 400;
   color: var(--flora-white-template);
 }
@@ -1079,10 +1082,10 @@
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: transparent;
   color: var(--flora-gray);
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   line-height: 1;
   cursor: pointer;
 }
@@ -1101,7 +1104,7 @@
 
 .settingsConfirmModalText {
   margin: 0;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1.45;
   color: var(--flora-gray);
 }

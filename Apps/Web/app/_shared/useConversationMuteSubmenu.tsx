@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties, 
 import { createPortal } from "react-dom";
 import { floraDurationMs } from "@/lib/floraMotion";
 import { FLORA_RECT_MENU_OVERLAY_ATTR, FLORA_RECT_MENU_PANEL_ATTR } from "./floraRectMenuOverlay";
+import { getViewportFrame } from "./viewportFrame";
 import rectStyles from "./FloraRectMenu.module.css";
 
 export const SUBMENU_CLOSE_ANIM_MS = floraDurationMs(1) + 50;
@@ -11,8 +12,7 @@ export const SUBMENU_CLOSE_ANIM_MS = floraDurationMs(1) + 50;
 export type SubmenuPosition = { top: number; left: number };
 
 export function measureMuteSubmenuPosition(trigger: HTMLElement): SubmenuPosition {
-  const root = trigger.ownerDocument.documentElement;
-  const step = Number.parseFloat(getComputedStyle(root).getPropertyValue("--flora-grid-step")) || 15;
+  const step = getViewportFrame().step;
   const panel = trigger.closest(`[${FLORA_RECT_MENU_PANEL_ATTR}]`);
   const anchor = panel instanceof HTMLElement ? panel : trigger;
   const rect = anchor.getBoundingClientRect();

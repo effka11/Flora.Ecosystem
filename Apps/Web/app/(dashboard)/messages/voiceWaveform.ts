@@ -1,7 +1,7 @@
 /** Полосок в инлайн-волне записи (колонки 45–81). */
 export const VOICE_INLINE_WAVE_BAR_COUNT = 84;
 
-/** Полосок в волне голосового пузыря (ширина ~375px, play слева). */
+/** Полосок в волне голосового пузыря (play слева, шкала sPx / step). */
 export const VOICE_BUBBLE_WAVE_BAR_COUNT = 48;
 
 export const VOICE_WAVE_MIN_LEVEL = 0.12;

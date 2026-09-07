@@ -1,4 +1,6 @@
 import type { FscpMessageBlock, FscpMessagePlaintext } from "@/lib/fscp";
+import { sPx } from "@flora/design";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 
 /** Общий тайминг подъёма ленты при появлении сообщения у якоря (паритет Mobile). */
 export const CHAT_INSERT_LIFT_MS = 220;
@@ -12,18 +14,28 @@ export const COMPOSE_LIST_GROWTH_MS = 180;
 /** SoT: `--flora-ease-out` в `Apps/Web/app/flora-motion.css` (WAAPI не резолвит CSS vars). */
 export const CHAT_INSERT_LIFT_EASING = "cubic-bezier(0.33, 1, 0.2, 1)";
 
-/** Базовый lift однострочного текста (паритет Mobile). */
+function bubbleMetrics() {
+  const frame = getViewportFrame();
+  return {
+    lineHeight: 5 * frame.stepFine,
+    fontSize: sPx(15, frame.s),
+    paddingX: frame.step,
+    baseLift: sPx(52, frame.s),
+    belowTime: sPx(16, frame.s),
+    voiceLift: sPx(72, frame.s),
+    imageLift: sPx(220, frame.s),
+    collageLift: sPx(280, frame.s),
+  };
+}
+
+/** Базовый lift однострочного текста (паритет Mobile); эталон s=1. */
 export const TEXT_BASE_INSERT_LIFT_PX = 52;
 
-/** Запас на meta-ряд below (время + gap), когда lines ≥ 2. */
+/** Запас на meta-ряд below (время + gap), когда lines ≥ 2; эталон s=1. */
 export const BELOW_TIME_RESERVE_PX = 16;
 
-/** Паритет Web `--messages-bubble-line-step` / Mobile `bubbleLineHeight`. */
-const BUBBLE_LINE_HEIGHT_PX = 25;
-const BUBBLE_FONT_SIZE_PX = 15;
 const AVG_CHAR_WIDTH_FACTOR = 0.55;
 const BUBBLE_MAX_WIDTH_RATIO = 0.78;
-const BUBBLE_PADDING_X_PX = 15;
 
 const liftGenerationByEl = new WeakMap<HTMLElement, number>();
 const liftAnimationsByEl = new WeakMap<HTMLElement, Animation[]>();
@@ -44,7 +56,7 @@ export function estimateTextVisualLineCount(
     return hardFloor;
   }
 
-  const avgCharWidth = BUBBLE_FONT_SIZE_PX * AVG_CHAR_WIDTH_FACTOR;
+  const avgCharWidth = bubbleMetrics().fontSize * AVG_CHAR_WIDTH_FACTOR;
   const maxChars = Math.max(1, Math.floor(maxInnerWidthPx / avgCharWidth));
 
   let lines = 0;
@@ -62,12 +74,13 @@ export function estimateTextInsertLiftPx(
   body: string | undefined,
   ctx?: InsertLiftEstimateCtx,
 ): number {
+  const { baseLift, lineHeight, belowTime } = bubbleMetrics();
   const text = body ?? "";
-  if (text.length === 0) return TEXT_BASE_INSERT_LIFT_PX;
+  if (text.length === 0) return baseLift;
 
   const lines = estimateTextVisualLineCount(text, ctx?.maxInnerWidthPx);
-  let heightPx = TEXT_BASE_INSERT_LIFT_PX + (lines - 1) * BUBBLE_LINE_HEIGHT_PX;
-  if (lines >= 2) heightPx += BELOW_TIME_RESERVE_PX;
+  let heightPx = baseLift + (lines - 1) * lineHeight;
+  if (lines >= 2) heightPx += belowTime;
   return heightPx;
 }
 
@@ -81,10 +94,11 @@ export function estimateBlocksInsertLiftPx(
   blocks: FscpMessageBlock[],
   ctx?: InsertLiftEstimateCtx,
 ): number {
-  if (blocks.some((b) => b.kind === "voice")) return 72;
+  const { voiceLift, imageLift, collageLift } = bubbleMetrics();
+  if (blocks.some((b) => b.kind === "voice")) return voiceLift;
   const images = blocks.filter((b) => b.kind === "image").length;
-  if (images === 1) return 220;
-  if (images > 1) return 280;
+  if (images === 1) return imageLift;
+  if (images > 1) return collageLift;
   return estimateTextInsertLiftPx(textBodyFromBlocks(blocks), ctx);
 }
 
@@ -92,7 +106,7 @@ export function estimateMessageInsertLiftPx(
   content: FscpMessagePlaintext | "decrypting" | "failed",
   ctx?: InsertLiftEstimateCtx,
 ): number {
-  if (content === "decrypting" || content === "failed") return TEXT_BASE_INSERT_LIFT_PX;
+  if (content === "decrypting" || content === "failed") return bubbleMetrics().baseLift;
   return estimateBlocksInsertLiftPx(content.blocks, ctx);
 }
 
@@ -100,7 +114,7 @@ export function estimateMessageInsertLiftPx(
 export function maxTextBubbleInnerWidthFromChatInner(innerEl: HTMLElement): number {
   const w = innerEl.clientWidth;
   if (w <= 0) return 0;
-  return Math.max(0, Math.floor(w * BUBBLE_MAX_WIDTH_RATIO) - 2 * BUBBLE_PADDING_X_PX);
+  return Math.max(0, Math.floor(w * BUBBLE_MAX_WIDTH_RATIO) - 2 * bubbleMetrics().paddingX);
 }
 
 /**

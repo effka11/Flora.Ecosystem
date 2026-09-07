@@ -9,12 +9,12 @@
 .menuPanel {
   display: flex;
   flex-direction: column;
-  min-width: 180px;
+  min-width: calc(12 * var(--flora-grid-step));
   padding: calc(1.5 * var(--flora-grid-step-fine));
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: var(--flora-bg);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 var(--flora-sPx-4) var(--flora-sPx-24) rgba(0, 0, 0, 0.4);
   transform-origin: bottom left;
 }
 
@@ -51,7 +51,7 @@
 @keyframes menuPanelIn {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.95);
+    transform: translateY(var(--flora-sPx-8)) scale(0.95);
   }
   to {
     opacity: 1;
@@ -66,14 +66,14 @@
   }
   to {
     opacity: 0;
-    transform: translateY(8px) scale(0.95);
+    transform: translateY(var(--flora-sPx-8)) scale(0.95);
   }
 }
 
 @keyframes menuPanelInAbove {
   from {
     opacity: 0;
-    transform: translateY(-8px) scale(0.95);
+    transform: translateY(calc(-1 * var(--flora-sPx-8))) scale(0.95);
   }
   to {
     opacity: 1;
@@ -88,7 +88,7 @@
   }
   to {
     opacity: 0;
-    transform: translateY(-8px) scale(0.95);
+    transform: translateY(calc(-1 * var(--flora-sPx-8))) scale(0.95);
   }
 }
 
@@ -100,10 +100,10 @@
   padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   color: rgba(var(--flora-white-template-rgb), 0.9);
   font-family: var(--flora-font, inherit);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   font-weight: 400;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
@@ -115,16 +115,16 @@
 }
 
 .menuItem:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
-  outline-offset: -2px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: calc(-1 * var(--flora-sPx-2));
 }
 
 .menuItemIcon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: var(--flora-sPx-24);
+  height: var(--flora-sPx-24);
   color: var(--flora-gray);
   transition: color 0.15s ease;
 }
@@ -149,8 +149,8 @@
 
 .composeTriggerGlyphStack {
   position: relative;
-  width: 22px;
-  height: 22px;
+  width: var(--flora-sPx-22);
+  height: var(--flora-sPx-22);
   flex-shrink: 0;
 }
 

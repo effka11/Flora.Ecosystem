@@ -23,7 +23,7 @@ description: Чат Messages (Apps/Web Flora) — сетка compose, стике
 - `voiceCapture.ts`, `useVoiceRecorder.ts`, `voiceWaveform.ts`, `voiceCrypto.ts`
 - `VoiceMessageCard.tsx`, `messageBlocks.ts`, `useMessageComposeDraft.ts`
 
-## Сетка поля ввода (первичная 15px)
+## Сетка поля ввода (первичная клетка = `--flora-grid-step`)
 
 Якорь для `position: absolute` внутри `.messagesComposeField`:
 
@@ -45,7 +45,7 @@ description: Чат Messages (Apps/Web Flora) — сетка compose, стике
 
 ## Кнопка стикеров (не повторять сдвиг на 84)
 
-**Требование:** центр круга 2×15px **между вертикалями 84 и 85** (линия `84.5`).
+**Требование:** центр круга **2×step** **между вертикалями 84 и 85** (линия `84.5`).
 
 **Рабочая формула** (проверено overlay, июнь 2026):
 
@@ -55,7 +55,7 @@ description: Чат Messages (Apps/Web Flora) — сетка compose, стике
   --messages-sticker-center-col: 84.5;
 }
 
-/* anchorRow=38, центр 2×15px на 84.5 */
+/* anchorRow=38, центр 2×step на 84.5 */
 .messagesStickerButton {
   position: absolute;
   left: calc(
@@ -95,12 +95,13 @@ description: Чат Messages (Apps/Web Flora) — сетка compose, стике
 
 ## Голосовые — пузырь (`VoiceMessageCard`)
 
-- Высота карточки в пузыре: **3×15px** (90px), фиксированная — иначе дрейф сетки ленты.
+- Высота карточки в пузыре: **`3 × var(--flora-grid-step)`**, фиксированная — иначе дрейф сетки ленты.
+- Пузырь voice-only (border-box): **`6 × var(--flora-grid-step)`**.
 - Play: **`FlowPlayIcon`**, не текстовые `▶`/`Ⅱ`.
 - Зазор play ↔ волна: **`gap: var(--flora-grid-step)`** (1 первичная клетка) в `.messagesBubble .voiceCard`.
 - Волна в пузыре: **48** баров (`VOICE_BUBBLE_WAVE_BAR_COUNT`) из 84 через `bucketVoiceWaveformByMax`.
 - Цвета play: **me** — светлый круг + тёмно-зелёная иконка; **them** — `--flora-green-light` + `--flora-on-accent`.
-- Иконка play в пузыре: ~20px, `translateX(-1px) scale(1.08)` на `[data-state="play"]` (оптический центр в SVG).
+- Иконка play в пузыре: **`var(--flora-sPx-20)`**, `translateX(-1px) scale(1.08)` на `[data-state="play"]` (оптический центр в SVG; `-1px` — hairline).
 
 ## Z-index (чат)
 

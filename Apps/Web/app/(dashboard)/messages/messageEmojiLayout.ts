@@ -1,19 +1,35 @@
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 import type { EmojiCategoryId, MessageEmojiCategory } from "./messageEmojiCategories";
 
 /** Синхрон с --messages-emoji-grid-cols в messages.module.css */
 export const MESSAGE_EMOJI_GRID_COLS = 10;
 
-export const EMOJI_CELL_PX = 30;
-export const EMOJI_ROW_GAP_PX = 10;
-/** Шаг строки сетки: 30px ячейка + 10px зазор. */
-export const EMOJI_ROW_STRIDE_PX = EMOJI_CELL_PX + EMOJI_ROW_GAP_PX;
-
 /** Первичная сетка: зазор категория ↔ линия разделения (сверху и снизу линии по 2 кл.). */
 const EMOJI_SECTION_GAP_CELLS = 2;
-const GRID_STEP_PX = 15;
-const SECTION_PAD_Y_PX = EMOJI_SECTION_GAP_CELLS * GRID_STEP_PX;
 const SECTION_DIVIDER_PX = 1;
-const GRID_INSET_PX = GRID_STEP_PX;
+
+type EmojiLayoutMetrics = {
+  cell: number;
+  rowGap: number;
+  rowStride: number;
+  sectionPadY: number;
+  gridInset: number;
+  divider: number;
+};
+
+function emojiLayoutMetrics(): EmojiLayoutMetrics {
+  const { step, stepFine } = getViewportFrame();
+  const cell = 2 * step;
+  const rowGap = 2 * stepFine;
+  return {
+    cell,
+    rowGap,
+    rowStride: cell + rowGap,
+    sectionPadY: EMOJI_SECTION_GAP_CELLS * step,
+    gridInset: step,
+    divider: SECTION_DIVIDER_PX,
+  };
+}
 
 /** Запас строк сверху/снизу viewport при виртуализации. */
 export const EMOJI_VIRTUAL_OVERSCAN_ROWS = 2;
@@ -45,14 +61,16 @@ export type EmojiVirtualModel = {
   totalHeight: number;
 };
 
-const VIRTUAL_MODEL_LAYOUT_VERSION = 4;
+const VIRTUAL_MODEL_LAYOUT_VERSION = 5;
 
 let cachedVirtualModel: EmojiVirtualModel | null = null;
 let cachedVirtualModelLayoutVersion = 0;
+let cachedVirtualModelStep = 0;
 
 export function buildEmojiVirtualModel(
   categories: readonly MessageEmojiCategory[],
 ): EmojiVirtualModel {
+  const { cell, rowGap, sectionPadY, divider } = emojiLayoutMetrics();
   const sections: EmojiVirtualSection[] = [];
   const rows: EmojiVirtualRow[] = [];
   const rowOffsetTops: number[] = [];
@@ -62,7 +80,7 @@ export function buildEmojiVirtualModel(
 
   for (let categoryIndex = 0; categoryIndex < categories.length; categoryIndex++) {
     const category = categories[categoryIndex];
-    if (categoryIndex > 0) offsetTop += SECTION_PAD_Y_PX;
+    if (categoryIndex > 0) offsetTop += sectionPadY;
 
     const sectionStart = offsetTop;
     const firstRowOffsetTop = offsetTop;
@@ -80,11 +98,11 @@ export function buildEmojiVirtualModel(
       });
       rowOffsetTops.push(offsetTop);
       sectionIndexByRow.push(categoryIndex);
-      offsetTop += EMOJI_CELL_PX;
+      offsetTop += cell;
       if (isLastRow) {
-        offsetTop += SECTION_PAD_Y_PX + SECTION_DIVIDER_PX;
+        offsetTop += sectionPadY + divider;
       } else {
-        offsetTop += EMOJI_ROW_GAP_PX;
+        offsetTop += rowGap;
       }
     }
 
@@ -109,13 +127,19 @@ export function buildEmojiVirtualModel(
   };
 }
 
-/** Одна модель на сессию — данные категорий статичны. */
+/** Одна модель на сессию шаблона сетки — данные категорий статичны. */
 export function getEmojiVirtualModel(
   categories: readonly MessageEmojiCategory[],
 ): EmojiVirtualModel {
-  if (!cachedVirtualModel || cachedVirtualModelLayoutVersion !== VIRTUAL_MODEL_LAYOUT_VERSION) {
+  const step = getViewportFrame().step;
+  if (
+    !cachedVirtualModel ||
+    cachedVirtualModelLayoutVersion !== VIRTUAL_MODEL_LAYOUT_VERSION ||
+    cachedVirtualModelStep !== step
+  ) {
     cachedVirtualModel = buildEmojiVirtualModel(categories);
     cachedVirtualModelLayoutVersion = VIRTUAL_MODEL_LAYOUT_VERSION;
+    cachedVirtualModelStep = step;
   }
   return cachedVirtualModel;
 }
@@ -146,10 +170,11 @@ export function findEmojiVisibleRowRange(
   const { rowOffsetTops, rows } = model;
   if (rows.length === 0) return { start: 0, end: 0 };
 
-  const overscanPx = overscanRows * EMOJI_ROW_STRIDE_PX;
+  const { rowStride } = emojiLayoutMetrics();
+  const overscanPx = overscanRows * rowStride;
   const start = findRowIndexAtOrBefore(rowOffsetTops, scrollTop - overscanPx);
 
-  const viewportPx = viewportHeight > 0 ? viewportHeight : EMOJI_ROW_STRIDE_PX * 12;
+  const viewportPx = viewportHeight > 0 ? viewportHeight : rowStride * 12;
   const end = Math.min(
     rows.length,
     Math.max(
@@ -164,14 +189,15 @@ export function estimateEmojiCategorySectionHeight(
   emojiCount: number,
   options?: { isFirst?: boolean },
 ): number {
+  const { cell, rowGap, sectionPadY, gridInset, divider } = emojiLayoutMetrics();
   if (emojiCount <= 0) {
-    return options?.isFirst ? GRID_INSET_PX : SECTION_PAD_Y_PX;
+    return options?.isFirst ? gridInset : sectionPadY;
   }
   const rowCount = Math.ceil(emojiCount / MESSAGE_EMOJI_GRID_COLS);
-  const gridHeight = rowCount * EMOJI_CELL_PX + Math.max(0, rowCount - 1) * EMOJI_ROW_GAP_PX;
-  const topPad = options?.isFirst ? 0 : SECTION_PAD_Y_PX;
-  const wrapTopInset = options?.isFirst ? GRID_INSET_PX : 0;
-  return wrapTopInset + topPad + gridHeight + SECTION_PAD_Y_PX + SECTION_DIVIDER_PX;
+  const gridHeight = rowCount * cell + Math.max(0, rowCount - 1) * rowGap;
+  const topPad = options?.isFirst ? 0 : sectionPadY;
+  const wrapTopInset = options?.isFirst ? gridInset : 0;
+  return wrapTopInset + topPad + gridHeight + sectionPadY + divider;
 }
 
 /** Сколько категорий в RGI-наборе (для CSS без загрузки data). */

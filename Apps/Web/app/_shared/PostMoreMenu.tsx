@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { sPx } from "@flora/design";
 import { floraDurationMs } from "@/lib/floraMotion";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 import {
   NOTCH_PANEL_CLIP_MIN_H,
-  NOTCH_PANEL_FINE_GRID_PX,
   NOTCH_PANEL_GAP_PX,
-  NOTCH_PANEL_PRIMARY_GRID_PX,
   notchPanelClipPath,
   notchPanelPathTopRight,
   readNotchPanelClipHeightPx,
@@ -15,21 +15,16 @@ import {
 } from "@/app/_shared/floraNotchPanel";
 import styles from "./PostMoreMenu.module.css";
 
-/** Горизонтальные поля 1-й строки (синхронно с CSS). */
-const POST_MORE_PAD_LEFT_TRIM_PX = 6;
-const POST_MORE_PAD_RIGHT_EXTRA_PX = 3;
-const FIRST_ROW_PAD_X_PX =
-  5 * NOTCH_PANEL_PRIMARY_GRID_PX -
-  NOTCH_PANEL_FINE_GRID_PX -
-  POST_MORE_PAD_LEFT_TRIM_PX +
-  POST_MORE_PAD_RIGHT_EXTRA_PX;
+/** Горизонтальные поля 1-й строки (синхронно с CSS --post-more-pad-x-*). */
+function postMoreFirstRowPadXPx(): number {
+  const { s, step, stepFine } = getViewportFrame();
+  return 5 * step - stepFine - sPx(6, s) + sPx(2, s) + 1;
+}
 
 /** Синхронно с `postMorePopoverOut` (`--flora-duration-1` в PostMoreMenu.module.css). */
 const CLOSE_ANIM_MS = floraDurationMs(1) + 50;
 
 const menuIconProps = {
-  width: 18,
-  height: 18,
   viewBox: "0 0 24 24" as const,
   fill: "none" as const,
   stroke: "currentColor",
@@ -184,7 +179,7 @@ export function PostMoreMenu({
       const scroll = scrollRef.current;
       const btn = firstActionRef.current;
       /* Видимый правый край на высоте 1-й строки — вертикаль у x = W − NOTCH_GAP (вырез под ⋮), не x = W. */
-      const firstMin = btn ? btn.scrollWidth + FIRST_ROW_PAD_X_PX + NOTCH_PANEL_GAP_PX : 0;
+      const firstMin = btn ? btn.scrollWidth + postMoreFirstRowPadXPx() + NOTCH_PANEL_GAP_PX : 0;
       const rawW = Math.max(band?.offsetWidth ?? 0, scroll?.offsetWidth ?? 0, firstMin);
       const w = snapNotchPanelWidthToFineGrid(rawW);
       inner.style.width = `${w}px`;
@@ -347,7 +342,7 @@ export function PostMoreMenu({
       >
         <span className={styles.triggerGlyphStack}>
           <span className={`${styles.triggerGlyph} ${showCloseGlyph ? "" : styles.triggerGlyphVisible}`} aria-hidden>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <circle cx="12" cy="6" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />
               <circle cx="12" cy="18" r="1.5" />
@@ -356,8 +351,6 @@ export function PostMoreMenu({
           <span className={`${styles.triggerGlyph} ${showCloseGlyph ? styles.triggerGlyphVisible : ""}`} aria-hidden>
             <span className={styles.triggerCloseWrap}>
               <svg
-                width="10"
-                height="10"
                 viewBox="6 6 12 12"
                 fill="none"
                 stroke="currentColor"
