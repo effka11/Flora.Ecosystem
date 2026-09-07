@@ -41,7 +41,7 @@
   text-decoration: none;
   letter-spacing: calc(var(--flora-grid-step-fine) - 1px);
   font-weight: 300;
-  font-size: 17px;
+  font-size: max(1px, var(--flora-sPx-17));
   padding: 0;
   min-height: calc(2 * var(--flora-grid-step));
 }
@@ -49,15 +49,15 @@
 .logoMark {
   width: calc(2 * var(--flora-grid-step));
   height: calc(2 * var(--flora-grid-step));
-  border-radius: 10px;
+  border-radius: var(--flora-sPx-10);
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
 }
 
 .logoMark svg {
-  width: 15px;
-  height: 15px;
+  width: var(--flora-grid-step);
+  height: var(--flora-grid-step);
   transform: rotate(7deg);
   transform-origin: center;
 }
@@ -107,21 +107,21 @@
 
 .navIconBadge {
   position: absolute;
-  top: -4px;
-  right: -6px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
+  top: calc(-1 * var(--flora-sPx-4));
+  right: calc(-1 * var(--flora-sPx-6));
+  min-width: var(--flora-sPx-14);
+  height: var(--flora-sPx-14);
+  padding: 0 var(--flora-sPx-3);
   border-radius: 999px;
   background: var(--flora-green-light);
   color: #10200e;
-  font-size: 9px;
+  font-size: max(1px, calc(1px * round(9 * var(--flora-grid-s))));
   font-weight: 700;
-  line-height: 14px;
+  line-height: var(--flora-sPx-14);
   text-align: center;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
-  box-shadow: 0 0 0 1.5px var(--flora-bg);
+  box-shadow: 0 0 0 calc(1px * round(1.5 * var(--flora-grid-s))) var(--flora-bg);
 }
 
 .navLink:hover {
@@ -134,59 +134,59 @@
 }
 
 .navIcon {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  min-height: 22px;
+  width: var(--flora-sPx-22);
+  height: var(--flora-sPx-22);
+  min-width: var(--flora-sPx-22);
+  min-height: var(--flora-sPx-22);
   flex-shrink: 0;
-  margin-left: calc(-1 * var(--flora-grid-step) + 4px);
-  margin-top: -2px;
+  margin-left: calc(-1 * var(--flora-grid-step) + var(--flora-sPx-4));
+  margin-top: calc(-1 * var(--flora-sPx-2));
 }
 
 .navList li:first-child .navIcon {
-  margin-top: -3px;
+  margin-top: calc(-1 * var(--flora-sPx-3));
 }
 
 .navIconMessages {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  min-height: 22px;
-  margin-top: -3px;
+  width: var(--flora-sPx-22);
+  height: var(--flora-sPx-22);
+  min-width: var(--flora-sPx-22);
+  min-height: var(--flora-sPx-22);
+  margin-top: calc(-1 * var(--flora-sPx-3));
 }
 
 .navIconCommunities {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  min-height: 22px;
+  width: var(--flora-sPx-22);
+  height: var(--flora-sPx-22);
+  min-width: var(--flora-sPx-22);
+  min-height: var(--flora-sPx-22);
   transform: scale(0.92);
 }
 
 .navIconMusic {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  min-height: 22px;
-  margin-top: -3px;
+  width: var(--flora-sPx-22);
+  height: var(--flora-sPx-22);
+  min-width: var(--flora-sPx-22);
+  min-height: var(--flora-sPx-22);
+  margin-top: calc(-1 * var(--flora-sPx-3));
   transform: scale(0.9);
   transform-origin: center;
 }
 
 .navIconNotifications {
-  width: 23px;
-  height: 23px;
-  min-width: 23px;
-  min-height: 23px;
-  margin-top: -3px;
+  width: calc(1px * round(23 * var(--flora-grid-s)));
+  height: calc(1px * round(23 * var(--flora-grid-s)));
+  min-width: calc(1px * round(23 * var(--flora-grid-s)));
+  min-height: calc(1px * round(23 * var(--flora-grid-s)));
+  margin-top: calc(-1 * var(--flora-sPx-3));
 }
 
 .navIconPeople {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  min-height: 24px;
-  margin-top: -3px;
+  width: var(--flora-sPx-24);
+  height: var(--flora-sPx-24);
+  min-width: var(--flora-sPx-24);
+  min-height: var(--flora-sPx-24);
+  margin-top: calc(-1 * var(--flora-sPx-3));
 }
 
 .postCta {
@@ -235,10 +235,10 @@
 
 .settingsIcon {
   position: absolute;
-  left: calc((var(--flora-grid-step) - 22px) / 2);
-  top: calc((var(--flora-grid-step) - 22px) / 2);
-  width: 22px;
-  height: 22px;
+  left: calc((var(--flora-grid-step) - var(--flora-sPx-22)) / 2);
+  top: calc((var(--flora-grid-step) - var(--flora-sPx-22)) / 2);
+  width: var(--flora-sPx-22);
+  height: var(--flora-sPx-22);
 }
 
 .userCard {
@@ -248,7 +248,7 @@
   --sidebar-user-avatar-d: calc(3 * var(--flora-grid-step));
   /* Как шапка чата: 1 первичная клетка между аватаром и колонкой текста (имя + @ник, аватар absolute). */
   gap: var(--flora-grid-step);
-  padding: calc(var(--flora-grid-step) - 6px) calc(var(--flora-grid-step) - 4px);
+  padding: calc(var(--flora-grid-step) - var(--flora-sPx-6)) calc(var(--flora-grid-step) - var(--flora-sPx-4));
   padding-left: calc(4 * var(--flora-grid-step));
   border-radius: 0;
   background: transparent;
@@ -282,16 +282,17 @@
   position: absolute;
   left: 0;
   top: calc(58 * var(--flora-grid-step));
-  width: calc(3 * var(--flora-grid-step));
-  height: calc(3 * var(--flora-grid-step));
-  min-width: calc(3 * var(--flora-grid-step));
-  min-height: calc(3 * var(--flora-grid-step));
+  --flora-avatar-size: var(--sidebar-user-avatar-d);
+  width: var(--sidebar-user-avatar-d);
+  height: var(--sidebar-user-avatar-d);
+  min-width: var(--sidebar-user-avatar-d);
+  min-height: var(--sidebar-user-avatar-d);
   border-radius: 50%;
   background: var(--flora-green-dark);
   color: var(--flora-green-light);
   display: grid;
   place-items: center;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   letter-spacing: var(--flora-tracking-16);
   font-weight: 300;
 }
@@ -404,29 +405,3 @@
   overflow: visible;
 }
 
-@media (max-width: 1280px) {
-  .logoText,
-  .navText,
-  .userProfileStackLink .userAtHandle {
-    display: none;
-  }
-
-  .sidebar {
-    width: calc(7 * var(--flora-grid-step));
-    align-items: center;
-  }
-
-  .navLink {
-    justify-content: center;
-    width: calc(4 * var(--flora-grid-step));
-    height: calc(4 * var(--flora-grid-step));
-    padding: 0;
-  }
-
-  .postCta {
-    justify-content: center;
-    width: calc(4 * var(--flora-grid-step));
-    height: calc(4 * var(--flora-grid-step));
-    padding: 0;
-  }
-}

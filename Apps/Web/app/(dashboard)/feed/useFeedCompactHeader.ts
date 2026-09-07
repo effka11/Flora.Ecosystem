@@ -1,19 +1,20 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { FLORA_GRID_PRIMARY_PX } from "@flora/design";
 
-/** Высота компактной шапки (5 рядов первичной сетки), как --g75 в референсе. */
-export const FEED_COMPACT_LEVEL_PX = 75;
+/** Высота компактной шапки (5 рядов первичной сетки), как --g75 в референсе. s=1. */
+export const FEED_COMPACT_LEVEL_PX = 5 * FLORA_GRID_PRIMARY_PX;
 
-/** Развёрнутая шапка: 9 рядов первичной сетки (совпадает с `9 * --flora-grid-step`). */
-export const FEED_EXPANDED_HEADER_PX = 9 * 15;
+/** Развёрнутая шапка: 9 рядов первичной сетки (совпадает с `9 * --flora-grid-step`). s=1. */
+export const FEED_EXPANDED_HEADER_PX = 9 * FLORA_GRID_PRIMARY_PX;
 
-/** Вход в compact: scrollTop строго выше этого порога. */
+/** Вход в compact: scrollTop строго выше этого порога. s=1. */
 export const FEED_COMPACT_THRESHOLD_PX = FEED_EXPANDED_HEADER_PX - FEED_COMPACT_LEVEL_PX;
 
 /**
  * Гистерезис у порога (1× primary grid): без него trackpad/wheel вокруг
- * порога гоняет compact↔normal.
+ * порога гоняет compact↔normal. s=1.
  */
-export const FEED_COMPACT_HYSTERESIS_PX = 15;
+export const FEED_COMPACT_HYSTERESIS_PX = FLORA_GRID_PRIMARY_PX;
 
 const NO_TRANSITION_CLEAR_MS = 450;
 const COMPACT_ANIMATE_DELAY_MS = 50;
@@ -71,7 +72,7 @@ function syncCompactDomClasses(
 }
 
 /**
- * Порог константный (9×15 − 75). Геометрия ящика — CSS always-sticky;
+ * Порог в scroll-rAF — 4× живой `--flora-grid-step` (9−5 рядов). Геометрия ящика — CSS always-sticky;
  * хук только переключает inner-классы в scroll-rAF (без flushSync).
  * React state — только для вторичного UI.
  */
@@ -198,8 +199,12 @@ export function useFeedCompactHeader(
     const update = () => {
       const block = topBlockRef.current;
       const scrollTop = root.scrollTop;
+      const stepRaw = Number.parseFloat(getComputedStyle(root).getPropertyValue("--flora-grid-step"));
+      const step = Number.isFinite(stepRaw) && stepRaw > 0 ? stepRaw : FLORA_GRID_PRIMARY_PX;
+      const threshold = 4 * step;
+      const hysteresis = step;
       const wasCompact = lastCompactRef.current === true;
-      const compact = shouldFeedHeaderBeCompact(scrollTop, FEED_COMPACT_THRESHOLD_PX, wasCompact);
+      const compact = shouldFeedHeaderBeCompact(scrollTop, threshold, wasCompact, hysteresis);
 
       if (lastCompactRef.current !== compact) {
         if (block) {

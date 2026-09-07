@@ -1,4 +1,6 @@
 import type { CSSProperties } from "react";
+import { sPx } from "@flora/design";
+import { getViewportFrame } from "./viewportFrame";
 
 /** Портал подменю PostMoreMenuRect — клик внутри не закрывает основное меню. */
 export const FLORA_RECT_MENU_OVERLAY_ATTR = "data-flora-rect-menu-overlay";
@@ -30,15 +32,13 @@ export function resolveCssLengthPx(host: HTMLElement, value: string, fallbackPx:
   return px > 0 ? px : fallbackPx;
 }
 
-/** Портал ⋮ у пузыря: 1 первичная клетка правее якоря; top = верх якоря − fine + 6px. */
+/** Портал ⋮ у пузыря: 1 первичная клетка правее якоря; top = верх якоря − fine + sPx(6). */
 export function measureMessageBubbleMoreTriggerPosition(anchor: HTMLElement): CSSProperties {
   const anchorRect = anchor.getBoundingClientRect();
-  const cs = getComputedStyle(anchor);
-  const step = Number.parseFloat(cs.getPropertyValue("--flora-grid-step")) || 15;
-  const fine = resolveCssLengthPx(anchor, cs.getPropertyValue("--flora-grid-step-fine"), 5);
+  const { s, step, stepFine } = getViewportFrame();
   return {
     position: "fixed",
-    top: anchorRect.top - fine + 6,
+    top: anchorRect.top - stepFine + sPx(6, s),
     left: anchorRect.right + step,
     right: "auto",
   };
@@ -53,10 +53,10 @@ export function measureRectMenuPanelPosition(
   const wrapRect = wrap.getBoundingClientRect();
   const triggerRect = trigger.getBoundingClientRect();
   const cs = getComputedStyle(wrap);
-  const step = Number.parseFloat(cs.getPropertyValue("--flora-grid-step")) || 15;
+  const { s, step } = getViewportFrame();
 
   if (anchor === "bottom-left") {
-    const bottomCss = wrapRect.height - 8 - step + 2;
+    const bottomCss = wrapRect.height - sPx(8, s) - step + sPx(2, s);
     return {
       position: "fixed",
       bottom: window.innerHeight - wrapRect.bottom + bottomCss,
@@ -92,12 +92,12 @@ export type ComposePopoverMeasureResult = {
 };
 
 function measureComposePopoverPosition(
-  host: HTMLElement,
+  _host: HTMLElement,
   trigger: HTMLElement,
   horizontal: CSSProperties,
   options?: ComposePopoverMeasureOptions,
 ): ComposePopoverMeasureResult {
-  const step = resolveCssLengthPx(host, "var(--flora-grid-step)", 15);
+  const step = getViewportFrame().step;
   const gap = step;
   const aboveGap = options?.preferAbove === true ? step * 2 : step;
   const triggerRect = trigger.getBoundingClientRect();

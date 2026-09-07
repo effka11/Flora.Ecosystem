@@ -151,7 +151,7 @@ export function VoiceMessageCard({
       <div className={styles.voiceCardBody}>
         <div className={styles.voiceWaveform} aria-hidden>
           {bars.map((v, i) => (
-            <span key={i} style={{ height: `${Math.round(6 + v * 22)}px` }} />
+            <span key={i} style={{ height: `calc(var(--flora-sPx-6) + ${v} * var(--flora-sPx-22))` }} />
           ))}
         </div>
         <div className={styles.voiceDurationRow}>

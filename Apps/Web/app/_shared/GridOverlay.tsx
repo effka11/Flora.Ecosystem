@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sPx } from "@flora/design";
 import styles from "./gridOverlay.module.css";
 import { getViewportFrame, useViewportFrameCssVars } from "./viewportFrame";
 
@@ -48,8 +49,8 @@ export function GridOverlay() {
         c15y: Math.floor(baseY / frame.step),
         c5x: Math.floor(baseX / frame.stepFine),
         c5y: Math.floor(baseY / frame.stepFine),
-        left: event.clientX + 12,
-        top: event.clientY + 12
+        left: event.clientX + sPx(12, frame.s),
+        top: event.clientY + sPx(12, frame.s)
       });
     };
 

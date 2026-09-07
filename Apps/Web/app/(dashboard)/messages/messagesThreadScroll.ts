@@ -1,4 +1,12 @@
-/** Порог «у низа» ленты сообщений (px). */
+import { sPx } from "@flora/design";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
+
+/** Порог «у низа» ленты сообщений. */
+export function messagesNearBottomPx(): number {
+  return sPx(72, getViewportFrame().s);
+}
+
+/** Эталон s=1 (тесты / fallback). Живое значение — messagesNearBottomPx(). */
 export const MESSAGES_NEAR_BOTTOM_PX = 72;
 
 /** Как Mobile LIST_REVEAL_DEADLINE — не ждать decrypt вечно при open. */
@@ -11,7 +19,7 @@ export function messagesScrollGapPx(el: HTMLElement): number {
   return el.scrollHeight - el.scrollTop - el.clientHeight;
 }
 
-export function isMessagesNearBottom(el: HTMLElement, nearBottomPx = MESSAGES_NEAR_BOTTOM_PX): boolean {
+export function isMessagesNearBottom(el: HTMLElement, nearBottomPx = messagesNearBottomPx()): boolean {
   return messagesScrollGapPx(el) < nearBottomPx;
 }
 

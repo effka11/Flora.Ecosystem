@@ -6,8 +6,8 @@
   gap: var(--flora-grid-step-fine);
   /* Наполнение-фото: +1 вторичная клетка ниже (относительно шапки / текста). */
   margin-top: var(--flora-grid-step-fine);
-  margin-bottom: 12px;
-  border-radius: 12px;
+  margin-bottom: var(--flora-sPx-12);
+  border-radius: var(--flora-sPx-12);
   overflow: hidden;
   width: 100%;
   max-width: min(100%, calc(48 * var(--flora-grid-step)));
@@ -26,7 +26,7 @@
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: var(--flora-sPx-10);
   background: rgba(var(--flora-white-template-rgb), 0.05);
   grid-column: span 4;
 }
@@ -34,7 +34,7 @@
 .images[data-count="1"] .imageCell {
   --feed-post-single-max-w: calc(22 * var(--flora-grid-step));
   --feed-post-single-max-h: calc(24 * var(--flora-grid-step));
-  border-radius: 15px;
+  border-radius: var(--flora-sPx-15);
   background: none;
   display: inline-block;
   width: auto;
@@ -107,16 +107,16 @@
 
 .removePreviewBtn {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--flora-sPx-8);
+  right: var(--flora-sPx-8);
   z-index: 1;
   border: none;
   background: rgba(0, 0, 0, 0.55);
   color: #f2f4f2;
   border-radius: 9999px;
-  width: 28px;
-  height: 28px;
-  font-size: 1.2rem;
+  width: calc(1px * round(28 * var(--flora-grid-s)));
+  height: calc(1px * round(28 * var(--flora-grid-s)));
+  font-size: max(1px, var(--flora-sPx-20));
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -134,21 +134,21 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--flora-sPx-8);
   min-height: calc(12 * var(--flora-grid-step));
   padding: calc(2 * var(--flora-grid-step));
   text-align: center;
   background: rgba(var(--flora-white-template-rgb), 0.05);
-  border-radius: 10px;
+  border-radius: var(--flora-sPx-10);
 }
 
 .images[data-count="1"] .imageFailed {
   min-height: calc(16 * var(--flora-grid-step));
-  border-radius: 15px;
+  border-radius: var(--flora-sPx-15);
 }
 
 .imageFailedText {
-  font-size: 0.875rem;
+  font-size: max(1px, var(--flora-sPx-14));
   line-height: 1.35;
   color: rgba(var(--flora-white-template-rgb), 0.55);
 }
@@ -158,8 +158,8 @@
   background: rgba(var(--flora-white-template-rgb), 0.1);
   color: rgba(var(--flora-white-template-rgb), 0.85);
   border-radius: 9999px;
-  padding: 6px 14px;
-  font-size: 0.8125rem;
+  padding: var(--flora-sPx-6) var(--flora-sPx-14);
+  font-size: max(1px, var(--flora-sPx-13));
   cursor: pointer;
 }
 
@@ -193,7 +193,7 @@
   max-height: var(--feed-post-single-max-h);
   object-fit: contain;
   object-position: center;
-  border-radius: 15px;
+  border-radius: var(--flora-sPx-15);
 }
 
 .modalBackdrop {
@@ -203,13 +203,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 30px;
+  padding: calc(2 * var(--flora-grid-step));
   background: rgba(0, 0, 0, 0.85);
   animation: feedPostImageModalIn 0.22s ease both;
 }
 
 .modal {
-  width: min(90vw, 1200px);
+  width: min(90vw, calc(80 * var(--flora-grid-step)));
   height: 85vh;
   display: flex;
   align-items: center;
@@ -221,7 +221,7 @@
   max-height: 100%;
   object-fit: contain;
   cursor: pointer;
-  border-radius: 5px;
+  border-radius: var(--flora-grid-step-fine);
 }
 
 @keyframes feedPostImageModalIn {

@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   FLORA_GRID_WEB_BASE_HEIGHT,
   FLORA_GRID_WEB_BASE_WIDTH,
+  SPX_LADDER,
+  applyWebGridFrameCssVars,
   gridCanvasSize,
   pickGridTemplate,
-  placeGridCanvas
+  placeGridCanvas,
+  resolveWebGridFrame,
+  sPx
 } from "./floraGridTemplates.js";
 
 describe("gridCanvasSize", () => {
@@ -158,5 +162,44 @@ describe("3×grid slot", () => {
     );
     expect(3 * phone.step).toBe(45);
     expect(3 * tablet.step).toBe(54);
+  });
+});
+
+describe("sPx", () => {
+  it("rounds 2×0.6 to 1", () => {
+    expect(sPx(2, 0.6)).toBe(1);
+  });
+
+  it("rounds 22×0.6 to 13", () => {
+    expect(sPx(22, 0.6)).toBe(13);
+  });
+
+  it("rounds 15×1.2 to 18", () => {
+    expect(sPx(15, 1.2)).toBe(18);
+  });
+});
+
+describe("applyWebGridFrameCssVars", () => {
+  it("writes --flora-grid-s and ladder --flora-sPx-N from template.s", () => {
+    const vars = new Map<string, string>();
+    const host = {
+      style: {
+        setProperty: (name: string, value: string) => {
+          vars.set(name, value);
+        }
+      }
+    };
+    applyWebGridFrameCssVars(host, resolveWebGridFrame(1366, 768));
+    expect(vars.get("--flora-grid-s")).toBe("0.6");
+    expect(vars.get("--flora-sPx-2")).toBe("1px");
+    expect(vars.get("--flora-sPx-22")).toBe("13px");
+    for (const n of SPX_LADDER) {
+      expect(vars.get(`--flora-sPx-${n}`)).toBe(`${sPx(n, 0.6)}px`);
+    }
+
+    vars.clear();
+    applyWebGridFrameCssVars(host, resolveWebGridFrame(2560, 1440));
+    expect(vars.get("--flora-grid-s")).toBe("1.2");
+    expect(vars.get("--flora-sPx-15")).toBe("18px");
   });
 });

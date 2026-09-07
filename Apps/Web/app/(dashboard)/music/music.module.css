@@ -79,7 +79,7 @@
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transform: translateY(2px);
+  transform: translateY(var(--flora-sPx-2));
   transition: color 0.15s ease;
 }
 
@@ -122,11 +122,11 @@
 }
 
 .musicAddBtnIcon {
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
   margin: 0;
   display: block;
-  transform: translate(-3px, 0);
+  transform: translate(calc(-1 * var(--flora-sPx-3)), 0);
   shape-rendering: geometricPrecision;
 }
 
@@ -151,14 +151,14 @@
   height: 100%;
   padding: 0 calc(var(--flora-grid-step) - 1px);
   box-sizing: border-box;
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   border: 1px solid var(--flora-green-dark);
   background: transparent;
 }
 
 .musicSearchIcon {
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
   color: var(--flora-gray);
   flex-shrink: 0;
 }
@@ -172,7 +172,7 @@
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1;
   letter-spacing: var(--flora-tracking-15);
 }
@@ -182,8 +182,8 @@
 }
 
 .musicSearchSendBtn {
-  width: 28px;
-  height: 28px;
+  width: calc(var(--flora-sPx-24) + var(--flora-sPx-4));
+  height: calc(var(--flora-sPx-24) + var(--flora-sPx-4));
   border-radius: 50%;
   border: none;
   display: grid;
@@ -216,7 +216,7 @@
 .musicTabsWrap {
   position: relative;
   min-width: 0;
-  top: 5px;
+  top: var(--flora-grid-step-fine);
   max-width: calc((87 - 38 + 1) * var(--flora-grid-step) - (14 * var(--flora-grid-step)));
 }
 
@@ -241,12 +241,12 @@
   background: transparent;
   color: var(--flora-gray);
   cursor: pointer;
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
 }
 
 .musicTabLabel {
   position: relative;
-  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+  top: calc(-1 * var(--flora-grid-step-fine) + var(--flora-sPx-2));
 }
 
 .musicTab:hover {
@@ -264,11 +264,11 @@
 .musicTabIndicator {
   position: absolute;
   left: 0;
-  bottom: -2px;
-  height: 2px;
+  bottom: calc(-1 * var(--flora-sPx-2));
+  height: var(--flora-sPx-2);
   width: var(--music-tab-indicator-width, 0px);
   background: var(--flora-green-light);
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   transform: translate3d(var(--music-tab-indicator-left, 0px), 0, 0);
   transition:
     transform var(--flora-duration-3) var(--flora-ease-out),
@@ -397,7 +397,7 @@
   0%,
   8% {
     opacity: 0;
-    transform: translateX(-8px) translateZ(0);
+    transform: translateX(calc(-1 * var(--flora-sPx-8))) translateZ(0);
   }
 
   100% {
@@ -410,7 +410,7 @@
   0%,
   8% {
     opacity: 0;
-    transform: translateX(8px) translateZ(0);
+    transform: translateX(var(--flora-sPx-8)) translateZ(0);
   }
 
   100% {
@@ -561,9 +561,9 @@
   margin: 0 0 0 var(--flora-grid-step);
   padding: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 20px;
+  font-size: max(1px, var(--flora-sPx-20));
   font-weight: 300;
-  letter-spacing: 0.57px;
+  letter-spacing: calc(0.57 * 1px * var(--flora-grid-s));
   color: var(--flora-white-template);
   line-height: 1.2;
   flex-shrink: 0;
@@ -607,13 +607,13 @@
 }
 
 .playlistAddBtn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 42%, transparent);
-  outline-offset: 2px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+  outline-offset: var(--flora-sPx-2);
 }
 
 .playlistAddBtnIcon {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
   display: block;
 }
 
@@ -626,9 +626,9 @@
 }
 
 .genresScroll {
-  /* Запас сверху под hover translateY(-4px); сдвиг карточек — на .genresGrid. */
-  padding-top: 4px;
-  padding-bottom: calc(12px + 4 * var(--flora-grid-step-fine));
+  /* Запас сверху под hover translateY(calc(-1 * var(--flora-sPx-4))); сдвиг карточек — на .genresGrid. */
+  padding-top: var(--flora-sPx-4);
+  padding-bottom: calc(var(--flora-sPx-12) + 4 * var(--flora-grid-step-fine));
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -668,12 +668,12 @@
   color: color-mix(in srgb, var(--flora-green-light) 92%, #fff 8%);
   border-color: color-mix(in srgb, var(--flora-green-light) 50%, transparent);
   background: transparent;
-  box-shadow: 0 0 14px color-mix(in srgb, var(--flora-green-light) 16%, transparent);
+  box-shadow: 0 0 var(--flora-sPx-14) color-mix(in srgb, var(--flora-green-light) 16%, transparent);
 }
 
 .genresNavBtn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 42%, transparent);
-  outline-offset: 2px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+  outline-offset: var(--flora-sPx-2);
 }
 
 .genresNavBtnInactive,
@@ -693,8 +693,8 @@
 }
 
 .genresNavIcon {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
   display: block;
 }
 
@@ -703,7 +703,7 @@
   flex-direction: row;
   gap: calc(4 * var(--flora-grid-step-fine));
   width: max-content;
-  margin-top: 4px;
+  margin-top: var(--flora-sPx-4);
   padding: 0;
 }
 
@@ -715,7 +715,7 @@
   height: var(--flora-music-carousel-card-size);
   box-sizing: border-box;
   scroll-snap-align: start;
-  border-radius: 16px;
+  border-radius: var(--flora-sPx-16);
   background: #121212;
   padding: calc(1.2 * var(--flora-grid-step));
   display: flex;
@@ -743,13 +743,13 @@
 
 .genreCard:hover,
 .genreCard:focus-visible {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+  transform: translateY(calc(-1 * var(--flora-sPx-4)));
+  box-shadow: 0 var(--flora-sPx-12) var(--flora-sPx-24) rgba(0, 0, 0, 0.2);
 }
 
 .genreCard:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--genre-color) 42%, transparent);
-  outline-offset: 3px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--genre-color) 42%, transparent);
+  outline-offset: var(--flora-sPx-3);
 }
 
 .genreCardBg {
@@ -796,11 +796,11 @@
   position: relative;
   z-index: 2;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-weight: 400;
   color: var(--flora-white-template);
   line-height: 1.2;
-  letter-spacing: 0.2px;
+  letter-spacing: calc(0.2 * 1px * var(--flora-grid-s));
 }
 
 .artistCard {
@@ -810,7 +810,7 @@
   height: var(--flora-music-carousel-card-size);
   box-sizing: border-box;
   scroll-snap-align: start;
-  border-radius: 16px;
+  border-radius: var(--flora-sPx-16);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
   background: linear-gradient(145deg, color-mix(in srgb, var(--flora-green-light) 14%, #121212) 0%, #121212 100%);
   padding: calc(1.2 * var(--flora-grid-step));
@@ -845,13 +845,13 @@
 .artistCard:hover,
 .artistCard:focus-visible {
   border-color: rgba(var(--flora-white-template-rgb), 0.15);
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+  transform: translateY(calc(-1 * var(--flora-sPx-4)));
+  box-shadow: 0 var(--flora-sPx-12) var(--flora-sPx-24) rgba(0, 0, 0, 0.2);
 }
 
 .artistCard:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 42%, transparent);
-  outline-offset: 3px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+  outline-offset: var(--flora-sPx-3);
 }
 
 .artistCardAvatar {
@@ -867,9 +867,9 @@
   display: grid;
   place-items: center;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 24px;
+  font-size: max(1px, var(--flora-sPx-24));
   font-weight: 400;
-  letter-spacing: 0.2px;
+  letter-spacing: calc(0.2 * 1px * var(--flora-grid-s));
 }
 
 .artistCardTitle {
@@ -882,11 +882,11 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-weight: 400;
   color: var(--flora-white-template);
   line-height: 1.14;
-  letter-spacing: 0.2px;
+  letter-spacing: calc(0.2 * 1px * var(--flora-grid-s));
   text-wrap: balance;
 }
 
@@ -913,7 +913,7 @@
   height: var(--flora-music-carousel-card-size);
   box-sizing: border-box;
   scroll-snap-align: start;
-  border-radius: 16px;
+  border-radius: var(--flora-sPx-16);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
   background: #121212;
   padding: calc(1.2 * var(--flora-grid-step));
@@ -970,7 +970,7 @@
 .playlistCardEmpty {
   --playlist-color: var(--flora-gray);
   background: transparent;
-  border: 2px dashed rgba(var(--flora-white-template-rgb), 0.28);
+  border: var(--flora-sPx-2) dashed rgba(var(--flora-white-template-rgb), 0.28);
   align-items: center;
   justify-content: center;
   text-align: center;
@@ -992,8 +992,8 @@
 
 .playlistCard:hover {
   border-color: rgba(var(--flora-white-template-rgb), 0.15);
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+  transform: translateY(calc(-1 * var(--flora-sPx-4)));
+  box-shadow: 0 var(--flora-sPx-12) var(--flora-sPx-24) rgba(0, 0, 0, 0.2);
 }
 
 .playlistCardBg {
@@ -1029,11 +1029,11 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-weight: 400;
   color: var(--flora-white-template);
   line-height: 1.14;
-  letter-spacing: 0.2px;
+  letter-spacing: calc(0.2 * 1px * var(--flora-grid-s));
   text-wrap: balance;
 }
 
@@ -1055,7 +1055,7 @@
   /* Ширина контента поста + по 1 первичной клетке влево и вправо: 37…88. */
   max-width: calc((88 - 37 + 1) * var(--flora-grid-step));
   height: calc(9 * var(--flora-grid-step));
-  border-radius: 20px;
+  border-radius: var(--flora-sPx-20);
   overflow: visible;
   display: flex;
   align-items: center;
@@ -1121,7 +1121,7 @@
 .flowPlayerTitle {
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-16);
   color: var(--flora-white-template);
@@ -1155,9 +1155,9 @@
 }
 
 .flowPlayerBtn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 42%, transparent);
-  outline-offset: 3px;
-  border-radius: 4px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 42%, transparent);
+  outline-offset: var(--flora-sPx-3);
+  border-radius: var(--flora-sPx-4);
 }
 
 .flowPlayerBtnIcon {
@@ -1243,7 +1243,7 @@
   height: calc(4 * var(--flora-grid-step));
   min-height: calc(4 * var(--flora-grid-step));
   padding: 0 calc(1 * var(--flora-grid-step));
-  border-radius: 16px;
+  border-radius: var(--flora-sPx-16);
   background: rgba(var(--flora-white-template-rgb), 0.04);
   overflow: hidden;
 }
@@ -1282,7 +1282,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   line-height: 1.15;
   letter-spacing: var(--flora-tracking-15);
 }
@@ -1291,7 +1291,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   line-height: 1.2;
 }
 
@@ -1333,7 +1333,7 @@
   align-items: center;
   column-gap: calc(1 * var(--flora-grid-step));
   padding: calc(1 * var(--flora-grid-step));
-  border-radius: 20px;
+  border-radius: var(--flora-sPx-20);
   background: transparent;
 }
 
@@ -1344,7 +1344,7 @@
   top: calc(61 * var(--flora-grid-step) - 1px);
   pointer-events: auto;
   width: calc((114 - 97 + 1) * var(--flora-grid-step));
-  height: 3px;
+  height: var(--flora-sPx-3);
   box-sizing: border-box;
   cursor: pointer;
   touch-action: none;
@@ -1365,7 +1365,7 @@
   z-index: 1;
   width: 100%;
   height: 100%;
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   background: rgba(var(--flora-white-template-rgb), 0.12);
   overflow: hidden;
 }
@@ -1388,7 +1388,7 @@
   padding-right: 0;
   text-align: right;
   color: var(--flora-gray);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   line-height: 1;
@@ -1399,7 +1399,7 @@
   position: relative;
   width: var(--flow-mini-cover-d);
   height: var(--flow-mini-cover-d);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   overflow: hidden;
   background: #151515;
 }
@@ -1443,7 +1443,7 @@
   pointer-events: none;
 }
 
-/* anchorRow=0; центр 2.8×15px в клетках 113 / 116 / 119; по Y — центр блока плеера (строки 56–61). */
+/* anchorRow=0; центр 2.8×step в клетках 113 / 116 / 119; по Y — центр блока плеера (строки 56–61). */
 .flowMiniControlAt113,
 .flowMiniControlAt116,
 .flowMiniControlAt119,
@@ -1459,7 +1459,7 @@
 }
 
 .flowMiniControlAt116 {
-  left: calc((116 + 0.5) * var(--flora-grid-step) - 2px);
+  left: calc((116 + 0.5) * var(--flora-grid-step) - var(--flora-sPx-2));
 }
 
 .flowMiniControlAt119 {
@@ -1495,8 +1495,8 @@
 }
 
 .flowMiniCloseBtn svg {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
 }
 
 .flowMiniRoundBtn,
@@ -1528,13 +1528,13 @@
 }
 
 .flowMiniIconBtn svg {
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
 }
 
 .flowMiniPlayIcon {
-  width: 24px;
-  height: 24px;
+  width: var(--flora-sPx-24);
+  height: var(--flora-sPx-24);
   display: block;
   overflow: visible;
 }
@@ -1586,8 +1586,8 @@
 
 .flowMiniRoundBtn:focus-visible,
 .flowMiniIconBtn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 38%, transparent);
-  outline-offset: 3px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 38%, transparent);
+  outline-offset: var(--flora-sPx-3);
 }
 
 .flowMiniRoundBtn:disabled,
@@ -1651,7 +1651,7 @@
 .myMusicTrackCoverBtn {
   --my-music-track-hue: 140;
   --track-cover-size: calc(3 * var(--flora-grid-step));
-  --track-cover-radius: 10px;
+  --track-cover-radius: var(--flora-sPx-10);
   --track-cover-overlay: color-mix(in srgb, #000 58%, transparent);
   --track-cover-playing-overlay: color-mix(in srgb, #000 42%, transparent);
   --track-cover-playing-brightness: 0.56;
@@ -1688,7 +1688,7 @@
   outline: none;
   box-shadow:
     inset 0 0 0 1px rgba(var(--flora-white-template-rgb), 0.12),
-    0 0 0 2px color-mix(in srgb, var(--flora-white-template) 32%, transparent);
+    0 0 0 var(--flora-sPx-2) color-mix(in srgb, var(--flora-white-template) 32%, transparent);
 }
 
 .myMusicTrackCoverBtn:disabled {
@@ -1717,7 +1717,7 @@
   width: 54%;
   height: 54%;
   color: rgba(var(--flora-white-template-rgb), 0.92);
-  filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 1px var(--flora-sPx-6) rgba(0, 0, 0, 0.45));
   pointer-events: none;
 }
 
@@ -1783,11 +1783,11 @@
   width: calc(1.9 * var(--flora-grid-step));
   height: calc(1.9 * var(--flora-grid-step));
   border: 1px solid var(--track-cover-glass-border);
-  border-radius: 9999px;
+  border-radius: 50%;
   background: var(--track-cover-glass);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  box-shadow: 0 var(--flora-sPx-6) var(--flora-sPx-18) rgba(0, 0, 0, 0.24);
+  -webkit-backdrop-filter: blur(var(--flora-sPx-8));
+  backdrop-filter: blur(var(--flora-sPx-8));
   transform: scale(0.92);
   transition: transform 180ms var(--flora-ease-out);
 }
@@ -1811,7 +1811,7 @@
   width: calc(1.4 * var(--flora-grid-step));
   height: calc(1.4 * var(--flora-grid-step));
   color: var(--track-cover-accent);
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.32));
+  filter: drop-shadow(0 1px var(--flora-sPx-3) rgba(0, 0, 0, 0.32));
 }
 
 .myMusicTrackCoverPlayMark {
@@ -1820,20 +1820,20 @@
   border-top: calc(0.4 * var(--flora-grid-step)) solid transparent;
   border-bottom: calc(0.4 * var(--flora-grid-step)) solid transparent;
   border-left: calc(0.62 * var(--flora-grid-step)) solid currentColor;
-  transform: translateX(2px);
+  transform: translateX(var(--flora-sPx-2));
 }
 
 .myMusicTrackCoverPauseMark {
   display: none;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: var(--flora-sPx-4);
 }
 
 .myMusicTrackCoverPauseMark span {
-  width: 3px;
+  width: var(--flora-sPx-3);
   height: calc(0.85 * var(--flora-grid-step));
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   background: currentColor;
 }
 
@@ -1850,7 +1850,7 @@
   z-index: 1;
   width: calc(1.25 * var(--flora-grid-step));
   height: calc(1.25 * var(--flora-grid-step));
-  border: 2px solid color-mix(in srgb, var(--flora-gray) 32%, transparent);
+  border: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-gray) 32%, transparent);
   border-top-color: var(--track-cover-accent);
   border-radius: 50%;
   animation: myMusicTrackCoverSpin 0.7s linear infinite;
@@ -1868,7 +1868,7 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  gap: 3px;
+  gap: var(--flora-sPx-3);
   height: calc(1.35 * var(--flora-grid-step));
   box-sizing: border-box;
   opacity: 0;
@@ -1880,12 +1880,12 @@
 
 .myMusicTrackCoverEqualizer span {
   display: block;
-  width: 3px;
+  width: var(--flora-sPx-3);
   height: 100%;
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   background: var(--track-cover-accent-muted);
   opacity: 0.92;
-  box-shadow: 0 0 8px rgba(var(--flora-white-template-rgb), 0.06);
+  box-shadow: 0 0 var(--flora-sPx-8) rgba(var(--flora-white-template-rgb), 0.06);
   transform-origin: center bottom;
   animation: myMusicTrackCoverEqA 0.86s ease-in-out infinite;
 }
@@ -2022,7 +2022,7 @@
   align-items: center;
   flex-shrink: 0;
   margin-left: var(--flora-grid-step);
-  transform: translateY(2px);
+  transform: translateY(var(--flora-sPx-2));
   outline: none;
 }
 
@@ -2031,14 +2031,14 @@
   left: calc(100% + var(--flora-grid-step-fine));
   top: 50%;
   transform: translateY(-50%);
-  width: 280px;
+  width: calc(56 * var(--flora-grid-step-fine));
   padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: var(--flora-bg);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 var(--flora-sPx-4) var(--flora-sPx-24) rgba(0, 0, 0, 0.4);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   font-weight: 300;
   line-height: 1.35;
   letter-spacing: 0.02em;
@@ -2064,8 +2064,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
   color: var(--flora-gray);
   cursor: default;
 }
@@ -2076,8 +2076,8 @@
 }
 
 .myMusicTrackOwnBadgeIcon {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
   display: block;
   overflow: visible;
 }
@@ -2105,7 +2105,7 @@
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-text-primary);
   white-space: nowrap;
@@ -2119,7 +2119,7 @@
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
   white-space: nowrap;
@@ -2201,7 +2201,7 @@
   color: var(--flora-gray);
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--flora-sPx-6);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -2311,7 +2311,7 @@
   margin: 0 0 var(--flora-grid-step);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
 }
@@ -2336,12 +2336,12 @@
   align-items: center;
   height: calc(8 * var(--flora-grid-step-fine));
   padding: 0 calc(2 * var(--flora-grid-step-fine));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: color-mix(in srgb, var(--flora-green-light) 12%, transparent);
   color: var(--flora-green-light);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   text-decoration: none;
   transition:
@@ -2362,13 +2362,13 @@
   gap: var(--flora-grid-step);
   min-height: calc(8 * var(--flora-grid-step-fine));
   padding: 0 calc(2 * var(--flora-grid-step-fine));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
 }
 
 .musicSearchSimpleTitle {
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-text-primary);
 }
@@ -2376,7 +2376,7 @@
 .musicSearchSimpleMeta {
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
   white-space: nowrap;
@@ -2439,8 +2439,8 @@
 }
 
 .playlistCloseBtnIcon {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
   display: block;
 }
 
@@ -2466,7 +2466,7 @@
   border: none;
   background: transparent;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   color: #ff7e7e;
@@ -2528,7 +2528,7 @@
   flex: 0 0 calc(16 * var(--flora-grid-step));
   width: calc(16 * var(--flora-grid-step));
   height: calc(16 * var(--flora-grid-step));
-  border-radius: 16px;
+  border-radius: var(--flora-sPx-16);
   overflow: hidden;
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
 }
@@ -2559,7 +2559,7 @@
 .playlistHeroTitle {
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 32px;
+  font-size: max(1px, calc(var(--flora-sPx-24) + var(--flora-sPx-8)));
   font-weight: 400;
   line-height: 1.15;
   color: var(--flora-white-template);
@@ -2588,7 +2588,7 @@
   margin: 0;
   border: none;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 400;
   color: var(--flora-white-template);
   cursor: pointer;
@@ -2623,7 +2623,7 @@
   width: calc(3 * var(--flora-grid-step));
   height: calc(3 * var(--flora-grid-step));
   padding: 0;
-  border-radius: 999px;
+  border-radius: 50%;
   background: rgba(var(--flora-white-template-rgb), 0.08);
   display: inline-grid;
   place-items: center;
@@ -2635,8 +2635,8 @@
 }
 
 .playlistHeroListenBtn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
-  outline-offset: 2px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: var(--flora-sPx-2);
 }
 
 .playlistHeroActionBtn:hover,
@@ -2646,13 +2646,13 @@
 }
 
 .playlistHeroPlayIcon {
-  width: 16px;
-  height: 16px;
+  width: var(--flora-sPx-16);
+  height: var(--flora-sPx-16);
 }
 
 .playlistHeroActionIcon {
-  width: 19px;
-  height: 19px;
+  width: calc(var(--flora-sPx-17) + var(--flora-sPx-2));
+  height: calc(var(--flora-sPx-17) + var(--flora-sPx-2));
 }
 
 .playlistEmptyHint {
@@ -2687,7 +2687,7 @@
   z-index: 1;
   color: var(--flora-green-light);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 72px;
+  font-size: max(1px, calc(3 * var(--flora-sPx-24)));
   font-weight: 400;
   line-height: 1;
 }
@@ -2711,7 +2711,7 @@
 .artistHeroProfileLink:focus-visible {
   color: color-mix(in srgb, var(--flora-green-light) 86%, #fff 14%);
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-underline-offset: var(--flora-sPx-3);
 }
 
 .artistTracksMoreBtn {
@@ -2770,10 +2770,10 @@
   flex: 0 0 calc(18 * var(--flora-grid-step));
   width: calc(18 * var(--flora-grid-step));
   min-height: calc(18 * var(--flora-grid-step));
-  border-radius: 22px;
+  border-radius: var(--flora-sPx-22);
   overflow: hidden;
   background: #121212;
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 var(--flora-sPx-18) calc(var(--flora-sPx-24) + var(--flora-sPx-22)) rgba(0, 0, 0, 0.24);
 }
 
 .genreHeroArt {
@@ -2814,7 +2814,7 @@
 .genreHeroTitle {
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 40px;
+  font-size: max(1px, calc(8 * var(--flora-grid-step-fine)));
   font-weight: 400;
   line-height: 1.08;
   letter-spacing: -0.02em;
@@ -2839,7 +2839,7 @@
   display: inline-flex;
   align-items: center;
   padding: 0 calc(1.5 * var(--flora-grid-step));
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
   background: rgba(var(--flora-white-template-rgb), 0.04);
 }
@@ -2882,12 +2882,12 @@
   align-items: center;
   justify-content: center;
   padding: 0 calc(1.5 * var(--flora-grid-step));
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
   background: rgba(var(--flora-white-template-rgb), 0.04);
   color: var(--flora-gray);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   text-decoration: none;
@@ -2905,8 +2905,8 @@
 }
 
 .genreSubgenreChip:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 36%, transparent);
-  outline-offset: 2px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 36%, transparent);
+  outline-offset: var(--flora-sPx-2);
 }
 
 .genreSubgenreChipActive,
@@ -2932,7 +2932,7 @@
 .genreCollections {
   display: flex;
   flex-direction: column;
-  gap: calc(3 * var(--flora-grid-step) - 10px);
+  gap: calc(3 * var(--flora-grid-step) - var(--flora-sPx-10));
 }
 
 .genreCollectionSection {
@@ -2941,7 +2941,7 @@
 
 /* Подборки жанра: единые отступы заголовка, обложки и названия трека. */
 .genreCollectionSection .genreCollectionTitle {
-  margin-top: -4px;
+  margin-top: calc(-1 * var(--flora-sPx-4));
 }
 
 .genreCollectionSection .genreTrackCard {
@@ -2966,7 +2966,7 @@
 
 .genreCollectionSection .genreTrackCover {
   flex-shrink: 0;
-  margin-top: 3px;
+  margin-top: var(--flora-sPx-3);
   border: none;
   background: transparent;
   box-shadow: none;
@@ -2978,7 +2978,7 @@
   border: none;
   background: transparent;
   box-shadow: none;
-  transform: translateY(-2px);
+  transform: translateY(calc(-1 * var(--flora-sPx-2)));
 }
 
 .genreCollectionSection .genreTrackBody {
@@ -2989,7 +2989,7 @@
 }
 
 .genreCollectionSection .genreTrackTitle {
-  margin-top: calc(-0.5 * var(--flora-grid-step) + 4px);
+  margin-top: calc(-0.5 * var(--flora-grid-step) + var(--flora-sPx-4));
 }
 
 .genreCollectionHeader {
@@ -3003,7 +3003,7 @@
 .genreCollectionTitle {
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   font-weight: 300;
   line-height: 1.15;
   letter-spacing: var(--flora-tracking-16);
@@ -3017,7 +3017,7 @@
 
 .genreCollectionRows,
 .genreCollectionBody {
-  border-radius: 18px;
+  border-radius: var(--flora-sPx-18);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
   background: rgba(var(--flora-white-template-rgb), 0.025);
   padding: calc(1 * var(--flora-grid-step)) calc(1 * var(--flora-grid-step));
@@ -3040,7 +3040,7 @@
   grid-auto-flow: column;
   grid-auto-columns: calc(14 * var(--flora-grid-step));
   gap: calc(1 * var(--flora-grid-step));
-  padding: 4px 0 calc(1 * var(--flora-grid-step));
+  padding: var(--flora-sPx-4) 0 calc(1 * var(--flora-grid-step));
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -3061,7 +3061,7 @@
   min-width: 0;
   min-height: calc(19 * var(--flora-grid-step));
   padding: calc(1 * var(--flora-grid-step));
-  border-radius: 18px;
+  border-radius: var(--flora-sPx-18);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
   background: rgba(var(--flora-white-template-rgb), 0.025);
   color: var(--flora-white-template);
@@ -3080,12 +3080,12 @@
 .genreTrackCard:focus-visible {
   border-color: rgba(var(--flora-white-template-rgb), 0.14);
   background: rgba(var(--flora-white-template-rgb), 0.045);
-  transform: translateY(-2px);
+  transform: translateY(calc(-1 * var(--flora-sPx-2)));
 }
 
 .genreTrackCard:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 34%, transparent);
-  outline-offset: 3px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 34%, transparent);
+  outline-offset: var(--flora-sPx-3);
 }
 
 .genreTrackCard:disabled {
@@ -3105,7 +3105,7 @@
   text-align: left;
   cursor: pointer;
   aspect-ratio: 1;
-  border-radius: 14px;
+  border-radius: var(--flora-sPx-14);
   overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(var(--flora-white-template-rgb), 0.08);
 }
@@ -3116,8 +3116,8 @@
 }
 
 .genreTrackCover:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 34%, transparent);
-  outline-offset: 3px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 34%, transparent);
+  outline-offset: var(--flora-sPx-3);
 }
 
 .genreTrackCoverArt {
@@ -3139,7 +3139,7 @@
   top: 50%;
   width: calc(4 * var(--flora-grid-step-fine));
   height: calc(4 * var(--flora-grid-step-fine));
-  border-radius: 999px;
+  border-radius: 50%;
   background: rgba(0, 0, 0, 0.48);
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.92);
@@ -3155,19 +3155,19 @@
   top: 50%;
   width: 0;
   height: 0;
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  border-left: 8px solid var(--flora-green-light);
+  border-top: var(--flora-grid-step-fine) solid transparent;
+  border-bottom: var(--flora-grid-step-fine) solid transparent;
+  border-left: var(--flora-sPx-8) solid var(--flora-green-light);
   transform: translate(calc(-50% + 1px), -50%);
 }
 
 .genreTrackPlay[data-playing]::before {
-  width: 8px;
-  height: 11px;
+  width: var(--flora-sPx-8);
+  height: var(--flora-sPx-11);
   border-top: none;
   border-bottom: none;
-  border-left: 3px solid var(--flora-green-light);
-  border-right: 3px solid var(--flora-green-light);
+  border-left: var(--flora-sPx-3) solid var(--flora-green-light);
+  border-right: var(--flora-sPx-3) solid var(--flora-green-light);
   transform: translate(-50%, -50%);
 }
 
@@ -3190,7 +3190,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-weight: 400;
   line-height: 1.2;
   color: var(--flora-white-template);
@@ -3205,7 +3205,7 @@
 }
 
 .genreCollectionSection .genreTrackArtist {
-  margin-top: 2px;
+  margin-top: var(--flora-sPx-2);
 }
 
 .genreCollectionEmpty,
@@ -3245,10 +3245,10 @@
   flex: 0 0 calc(18 * var(--flora-grid-step));
   width: calc(18 * var(--flora-grid-step));
   min-height: calc(18 * var(--flora-grid-step));
-  border-radius: 20px;
+  border-radius: var(--flora-sPx-20);
   overflow: hidden;
   background: #121212;
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 var(--flora-sPx-18) calc(var(--flora-sPx-24) + var(--flora-sPx-12)) rgba(0, 0, 0, 0.24);
 }
 
 .genreHeroArt {
@@ -3293,7 +3293,7 @@
 .genreHeroTitle {
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 36px;
+  font-size: max(1px, calc(var(--flora-sPx-24) + var(--flora-sPx-12)));
   font-weight: 400;
   line-height: 1.08;
   letter-spacing: -0.02em;
@@ -3349,12 +3349,12 @@
   min-width: calc(6 * var(--flora-grid-step));
   height: calc(9 * var(--flora-grid-step-fine));
   padding: 0 calc(2 * var(--flora-grid-step-fine));
-  border-radius: 999px;
+  border-radius: calc(64 * var(--flora-grid-step));
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
   background: rgba(var(--flora-white-template-rgb), 0.04);
   color: var(--flora-gray);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   text-decoration: none;
@@ -3469,13 +3469,13 @@
 .genreCollections {
   display: flex;
   flex-direction: column;
-  gap: calc(3 * var(--flora-grid-step) - 10px);
+  gap: calc(3 * var(--flora-grid-step) - var(--flora-sPx-10));
 }
 
 .genreCollectionsPanel {
   display: flex;
   flex-direction: column;
-  gap: calc(3 * var(--flora-grid-step) - 10px);
+  gap: calc(3 * var(--flora-grid-step) - var(--flora-sPx-10));
   min-width: 0;
 }
 
@@ -3491,7 +3491,7 @@
 
 /* Подборки жанра: единые отступы заголовка, обложки и названия трека. */
 .genreCollectionSection .genreCollectionTitle {
-  margin-top: -4px;
+  margin-top: calc(-1 * var(--flora-sPx-4));
 }
 
 .genreCollectionSection .genreTrackCard {
@@ -3516,7 +3516,7 @@
 
 .genreCollectionSection .genreTrackCover {
   flex-shrink: 0;
-  margin-top: 3px;
+  margin-top: var(--flora-sPx-3);
   border: none;
   background: transparent;
   box-shadow: none;
@@ -3528,7 +3528,7 @@
   border: none;
   background: transparent;
   box-shadow: none;
-  transform: translateY(-2px);
+  transform: translateY(calc(-1 * var(--flora-sPx-2)));
 }
 
 .genreCollectionSection .genreTrackBody {
@@ -3539,7 +3539,7 @@
 }
 
 .genreCollectionSection .genreTrackTitle {
-  margin-top: calc(-0.5 * var(--flora-grid-step) + 4px);
+  margin-top: calc(-0.5 * var(--flora-grid-step) + var(--flora-sPx-4));
 }
 
 .genreCollectionHeader {
@@ -3553,10 +3553,10 @@
 .genreCollectionTitle {
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 20px;
+  font-size: max(1px, var(--flora-sPx-20));
   font-weight: 300;
   line-height: 1.2;
-  letter-spacing: 0.57px;
+  letter-spacing: calc(0.57 * 1px * var(--flora-grid-s));
   color: var(--flora-white-template);
 }
 
@@ -3568,7 +3568,7 @@
 .genreTrackCarousel {
   display: flex;
   gap: calc(3 * var(--flora-grid-step-fine));
-  padding: 4px 0 calc(2 * var(--flora-grid-step-fine));
+  padding: var(--flora-sPx-4) 0 calc(2 * var(--flora-grid-step-fine));
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -3604,7 +3604,7 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
-  border-radius: 16px;
+  border-radius: var(--flora-sPx-16);
   overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(var(--flora-white-template-rgb), 0.08);
   transition:
@@ -3618,8 +3618,8 @@
 }
 
 .genreTrackCover:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 34%, transparent);
-  outline-offset: 3px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 34%, transparent);
+  outline-offset: var(--flora-sPx-3);
 }
 
 .genreTrackCoverArt {
@@ -3633,10 +3633,10 @@
 
 .genreTrackCover:hover,
 .genreTrackCover:focus-visible {
-  transform: translateY(-2px);
+  transform: translateY(calc(-1 * var(--flora-sPx-2)));
   box-shadow:
     inset 0 0 0 1px rgba(var(--flora-white-template-rgb), 0.12),
-    0 14px 28px rgba(0, 0, 0, 0.22);
+    0 var(--flora-sPx-14) calc(var(--flora-sPx-24) + var(--flora-sPx-4)) rgba(0, 0, 0, 0.22);
 }
 
 .genreTrackCover::after {
@@ -3676,18 +3676,18 @@
   content: "";
   width: 0;
   height: 0;
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  border-left: 8px solid currentColor;
+  border-top: var(--flora-grid-step-fine) solid transparent;
+  border-bottom: var(--flora-grid-step-fine) solid transparent;
+  border-left: var(--flora-sPx-8) solid currentColor;
 }
 
 .genreTrackPlay[data-playing]::before {
-  width: 3px;
-  height: 12px;
+  width: var(--flora-sPx-3);
+  height: var(--flora-sPx-12);
   border: none;
   background: currentColor;
-  box-shadow: 5px 0 0 currentColor;
-  transform: translateX(calc(-1 * (3px + 5px) / 2));
+  box-shadow: var(--flora-grid-step-fine) 0 0 currentColor;
+  transform: translateX(calc(-1 * (var(--flora-sPx-3) + var(--flora-grid-step-fine)) / 2));
 }
 
 .genreTrackCover:hover .genreTrackPlay,
@@ -3714,7 +3714,7 @@
 
 .genreTrackTitle {
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 400;
   line-height: 1.24;
   letter-spacing: var(--flora-tracking-15);
@@ -3727,7 +3727,7 @@
 }
 
 .genreCollectionSection .genreTrackArtist {
-  margin-top: 2px;
+  margin-top: var(--flora-sPx-2);
 }
 
 .genreCollectionRows .myMusicTracksSection {
@@ -3807,8 +3807,8 @@
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  width: min(420px, 92vw);
-  border-radius: 12px;
+  width: min(calc(28 * var(--flora-grid-step)), 92vw);
+  border-radius: var(--flora-sPx-12);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
   background: var(--flora-bg);
   box-shadow: var(--flora-reserve-popover-shadow);
@@ -3829,7 +3829,7 @@
 
 .musicDeleteModalTitle {
   margin: 0;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   font-weight: 400;
   color: var(--flora-white-template);
 }
@@ -3843,10 +3843,10 @@
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: transparent;
   color: var(--flora-gray);
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   line-height: 1;
   cursor: pointer;
 }
@@ -3865,14 +3865,14 @@
 
 .musicDeleteModalText {
   margin: 0;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1.45;
   color: var(--flora-gray);
 }
 
 .musicDeleteModalError {
   margin: 0;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   line-height: 1.4;
   color: var(--flora-danger, #e85d5d);
 }
@@ -3888,10 +3888,10 @@
 .musicDeleteModalBtnCancel {
   min-height: calc(8 * var(--flora-grid-step-fine));
   padding: 0 calc(3 * var(--flora-grid-step-fine));
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   border: 1px solid transparent;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 400;
   cursor: pointer;
 }

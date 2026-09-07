@@ -9,12 +9,12 @@
   position: absolute;
   display: flex;
   flex-direction: column;
-  min-width: 200px;
+  min-width: calc(1px * round(200 * var(--flora-grid-s)));
   padding: calc(1.5 * var(--flora-grid-step-fine));
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: var(--flora-bg);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 var(--flora-sPx-4) var(--flora-sPx-24) rgba(0, 0, 0, 0.4);
 }
 
 /* Портал в body — не обрезается overflow у .feedPage и других скроллов. */
@@ -33,9 +33,9 @@
 }
 
 .menuPanelAnchorBottomLeft {
-  bottom: calc(100% - 8px - var(--flora-grid-step) + 2px);
-  left: calc(1px - 2px);
-  transform-origin: 2px calc(100% - 2px);
+  bottom: calc(100% - var(--flora-sPx-8) - var(--flora-grid-step) + var(--flora-sPx-2));
+  left: calc(1px - var(--flora-sPx-2));
+  transform-origin: var(--flora-sPx-2) calc(100% - var(--flora-sPx-2));
   animation: floraRectMenuInBottomLeft var(--flora-duration-1) var(--flora-ease-in-out) both;
 }
 
@@ -58,7 +58,7 @@
     opacity: 0;
     transform: translate3d(
         calc(0.5 * var(--flora-grid-step-fine)),
-        calc(-1 * var(--flora-rect-menu-gap-below, var(--flora-grid-step)) - var(--flora-grid-step-fine) - 3px),
+        calc(-1 * var(--flora-rect-menu-gap-below, var(--flora-grid-step)) - var(--flora-grid-step-fine) - var(--flora-sPx-3)),
         0
       )
       scale(0.92);
@@ -80,7 +80,7 @@
     opacity: 0;
     transform: translate3d(
         calc(0.5 * var(--flora-grid-step-fine)),
-        calc(-1 * var(--flora-rect-menu-gap-below, var(--flora-grid-step)) - var(--flora-grid-step-fine) - 3px),
+        calc(-1 * var(--flora-rect-menu-gap-below, var(--flora-grid-step)) - var(--flora-grid-step-fine) - var(--flora-sPx-3)),
         0
       )
       scale(0.92);
@@ -90,7 +90,7 @@
 @keyframes floraRectMenuInBottomLeft {
   from {
     opacity: 0;
-    transform: translate3d(calc(-0.5 * var(--flora-grid-step-fine)), calc(var(--flora-grid-step-fine) + 3px), 0)
+    transform: translate3d(calc(-0.5 * var(--flora-grid-step-fine)), calc(var(--flora-grid-step-fine) + var(--flora-sPx-3)), 0)
       scale(0.92);
   }
 
@@ -108,7 +108,7 @@
 
   to {
     opacity: 0;
-    transform: translate3d(calc(-0.5 * var(--flora-grid-step-fine)), calc(var(--flora-grid-step-fine) + 3px), 0)
+    transform: translate3d(calc(-0.5 * var(--flora-grid-step-fine)), calc(var(--flora-grid-step-fine) + var(--flora-sPx-3)), 0)
       scale(0.92);
   }
 }
@@ -121,10 +121,10 @@
   padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   color: rgba(var(--flora-white-template-rgb), 0.9);
   font-family: var(--flora-font, inherit);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   font-weight: 400;
   cursor: pointer;
   text-decoration: none;
@@ -138,16 +138,16 @@
 }
 
 .menuItem:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
-  outline-offset: -2px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: calc(-1 * var(--flora-sPx-2));
 }
 
 .menuItemIcon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: var(--flora-sPx-24);
+  height: var(--flora-sPx-24);
   flex-shrink: 0;
   color: var(--flora-gray);
   transition: color 0.15s ease;
@@ -165,7 +165,7 @@
 .menuItemChevron {
   flex-shrink: 0;
   margin-left: calc(1 * var(--flora-grid-step-fine));
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   line-height: 1;
   color: var(--flora-gray);
   transition: color 0.15s ease;
@@ -200,12 +200,12 @@
   z-index: 201;
   display: flex;
   flex-direction: column;
-  min-width: 168px;
+  min-width: calc(1px * round(168 * var(--flora-grid-s)));
   padding: calc(1.5 * var(--flora-grid-step-fine));
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: var(--flora-bg);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 var(--flora-sPx-4) var(--flora-sPx-24) rgba(0, 0, 0, 0.4);
 }
 
 /* Портал справа от основного меню: origin слева сверху, выезд из зазора 1×15px. */
@@ -225,7 +225,7 @@
   from {
     opacity: 0;
     transform: translate3d(
-        calc(-1 * var(--flora-grid-step) - var(--flora-grid-step-fine) - 3px),
+        calc(-1 * var(--flora-grid-step) - var(--flora-grid-step-fine) - var(--flora-sPx-3)),
         0,
         0
       )
@@ -247,7 +247,7 @@
   to {
     opacity: 0;
     transform: translate3d(
-        calc(-1 * var(--flora-grid-step) - var(--flora-grid-step-fine) - 3px),
+        calc(-1 * var(--flora-grid-step) - var(--flora-grid-step-fine) - var(--flora-sPx-3)),
         0,
         0
       )
@@ -270,11 +270,11 @@
   width: 100%;
   padding: calc(1.5 * var(--flora-grid-step-fine)) calc(2 * var(--flora-grid-step-fine));
   border: none;
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: transparent;
   color: rgba(var(--flora-white-template-rgb), 0.9);
   font-family: var(--flora-font, inherit);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   font-weight: 400;
   text-align: left;
   cursor: pointer;
@@ -288,8 +288,8 @@
 }
 
 .menuSubmenuItem:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
-  outline-offset: -2px;
+  outline: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 55%, transparent);
+  outline-offset: calc(-1 * var(--flora-sPx-2));
 }
 
 .menuSubmenuItem:disabled {

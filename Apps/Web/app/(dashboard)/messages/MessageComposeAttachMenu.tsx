@@ -35,7 +35,7 @@ const ATTACH_ITEMS: readonly AttachMenuItem[] = [
 ];
 
 const iconProps = {
-  width: 18, height: 18,
+  width: "var(--flora-sPx-18)", height: "var(--flora-sPx-18)",
   viewBox: "0 0 24 24" as const,
   fill: "none" as const,
   stroke: "currentColor",
@@ -74,20 +74,20 @@ function AttachMenuTriggerGlyph({
 }) {
   if (showClose) {
     return (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
+      <svg width="var(--flora-sPx-22)" height="var(--flora-sPx-22)" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
         <path d="M18 6L6 18M6 6l12 12" />
       </svg>
     );
   }
   if (variant === "paperclip") {
     return (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <svg width="var(--flora-sPx-22)" height="var(--flora-sPx-22)" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M21.44 11.05l-9.2 9.19a5 5 0 1 1-7.07-7.07l9.19-9.2a3 3 0 0 1 4.24 4.24l-9.2 9.2" />
       </svg>
     );
   }
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <svg width="var(--flora-sPx-22)" height="var(--flora-sPx-22)" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
     </svg>
   );

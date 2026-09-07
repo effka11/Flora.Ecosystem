@@ -63,14 +63,14 @@
   height: 100%;
   padding: 0 calc(var(--flora-grid-step) - 1px);
   box-sizing: border-box;
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   border: 1px solid var(--flora-green-dark);
   background: transparent;
 }
 
 .communitiesSearchIcon {
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
   color: var(--flora-gray);
   flex-shrink: 0;
 }
@@ -84,7 +84,7 @@
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1;
   letter-spacing: var(--flora-tracking-15);
 }
@@ -94,8 +94,8 @@
 }
 
 .communitiesSearchSendBtn {
-  width: 28px;
-  height: 28px;
+  width: calc(1px * round(28 * var(--flora-grid-s)));
+  height: calc(1px * round(28 * var(--flora-grid-s)));
   border-radius: 50%;
   border: none;
   display: grid;
@@ -127,7 +127,7 @@
 .communitiesTabsWrap {
   position: relative;
   min-width: 0;
-  top: 5px;
+  top: var(--flora-grid-step-fine);
   max-width: calc((87 - 38 + 1) * var(--flora-grid-step) - (14 * var(--flora-grid-step)));
 }
 
@@ -157,7 +157,7 @@
 
 .communitiesTabLabel {
   position: relative;
-  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+  top: calc(-1 * var(--flora-grid-step-fine) + var(--flora-sPx-2));
 }
 
 .communitiesTab:hover {
@@ -175,8 +175,8 @@
 .communitiesTabIndicator {
   position: absolute;
   left: 0;
-  bottom: -2px;
-  height: 2px;
+  bottom: calc(-1 * var(--flora-sPx-2));
+  height: var(--flora-sPx-2);
   width: var(--communities-tab-indicator-width, 0px);
   background: var(--flora-green-light);
   border-radius: 999px;
@@ -196,14 +196,14 @@
 .communitiesCreateBtn {
   position: absolute;
   left: calc((87 - 38 + 1) * var(--flora-grid-step));
-  bottom: 2px;
+  bottom: var(--flora-sPx-2);
   transform: translateX(-100%);
   margin: 0;
   padding: calc(2 * var(--flora-grid-step-fine)) 0 calc(2 * var(--flora-grid-step-fine)) var(--flora-grid-step);
   border: none;
   background: transparent;
   color: var(--flora-gray);
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1;
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
@@ -236,7 +236,7 @@
   background: transparent;
   color: var(--flora-green-light);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   cursor: pointer;
@@ -279,7 +279,7 @@
   0%,
   8% {
     opacity: 0;
-    transform: translateX(-8px) translateZ(0);
+    transform: translateX(calc(-1 * var(--flora-sPx-8))) translateZ(0);
   }
 
   100% {
@@ -292,7 +292,7 @@
   0%,
   8% {
     opacity: 0;
-    transform: translateX(8px) translateZ(0);
+    transform: translateX(var(--flora-sPx-8)) translateZ(0);
   }
 
   100% {
@@ -338,7 +338,7 @@
   justify-content: space-between;
   gap: var(--flora-grid-step);
   /* −1px снизу: border-bottom + высота текста; иначе разделитель уезжает от сетки. */
-  padding: calc(var(--flora-list-row-pad-y) - 1px) var(--flora-grid-step) calc(var(--flora-list-row-pad-y) - 2px);
+  padding: calc(var(--flora-list-row-pad-y) - 1px) var(--flora-grid-step) calc(var(--flora-list-row-pad-y) - var(--flora-sPx-2));
   border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
   transition: background 0.15s;
   position: relative;
@@ -390,7 +390,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-white-template);
   /* Как .messagesChatHeaderNameRow */
@@ -408,7 +408,7 @@
   display: flex;
   align-items: baseline;
   gap: calc(2 * var(--flora-grid-step-fine));
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
   white-space: nowrap;
@@ -513,8 +513,8 @@ button.btnJoined:hover {
 }
 
 .btnDismiss:focus-visible {
-  outline: 2px solid rgba(var(--flora-white-template-rgb), 0.28);
-  outline-offset: 2px;
+  outline: var(--flora-sPx-2) solid rgba(var(--flora-white-template-rgb), 0.28);
+  outline-offset: var(--flora-sPx-2);
 }
 
 @keyframes createCommunityModalBackdropIn {
@@ -588,10 +588,10 @@ button.btnJoined:hover {
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  width: min(480px, 92vw);
+  width: min(calc(32 * var(--flora-grid-step)), 92vw);
   min-height: 0;
   max-height: 85vh;
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
   background: var(--flora-bg);
   box-shadow: var(--flora-reserve-popover-shadow);
@@ -614,7 +614,7 @@ button.btnJoined:hover {
 .createCommunityModalTitle {
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 18px;
+  font-size: max(1px, var(--flora-sPx-18));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-white-template);
@@ -625,7 +625,7 @@ button.btnJoined:hover {
   padding: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
   border: none;
   background: transparent;
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   line-height: 1;
   color: var(--flora-gray);
   cursor: pointer;
@@ -659,9 +659,9 @@ button.btnJoined:hover {
 
 .createCommunityLabel {
   margin: 0;
-  padding-left: 2px;
+  padding-left: var(--flora-sPx-2);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   font-weight: 300;
   color: var(--flora-gray);
   letter-spacing: var(--flora-tracking-15);
@@ -673,11 +673,11 @@ button.btnJoined:hover {
   height: calc(3 * var(--flora-grid-step));
   padding: 0 calc(1 * var(--flora-grid-step));
   border: 1px solid var(--flora-green-dark);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   background: transparent;
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   transition: border-color var(--flora-duration-1) var(--flora-ease-out);
@@ -706,7 +706,7 @@ button.btnJoined:hover {
 .createCommunitySlugPrefix {
   flex-shrink: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
@@ -721,7 +721,7 @@ button.btnJoined:hover {
 .createCommunityError {
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 12px;
+  font-size: max(1px, var(--flora-sPx-12));
   line-height: 1.4;
   font-weight: 300;
   color: #f6a8a8;
@@ -743,7 +743,7 @@ button.btnJoined:hover {
   padding: 0 calc(2 * var(--flora-grid-step));
   border-radius: calc(2 * var(--flora-grid-step-fine));
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   line-height: 1;
@@ -788,7 +788,7 @@ button.btnJoined:hover {
 .formFeedbackError {
   margin: 0 0 calc(2 * var(--flora-grid-step));
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 12px;
+  font-size: max(1px, var(--flora-sPx-12));
   font-weight: 300;
   line-height: 1.4;
   color: #f6a8a8;

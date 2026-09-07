@@ -20,8 +20,6 @@ import triggerStyles from "./PostMoreMenu.module.css";
 const CLOSE_ANIM_MS = floraDurationMs(1) + 50;
 
 const menuIconProps = {
-  width: 18,
-  height: 18,
   viewBox: "0 0 24 24" as const,
   fill: "none" as const,
   stroke: "currentColor",
@@ -497,7 +495,7 @@ export function PostMoreMenuRect({
             className={`${triggerStyles.triggerGlyph} ${showCloseGlyph ? "" : triggerStyles.triggerGlyphVisible}`}
             aria-hidden
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <circle cx="12" cy="6" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />
               <circle cx="12" cy="18" r="1.5" />
@@ -509,8 +507,6 @@ export function PostMoreMenuRect({
           >
             <span className={triggerStyles.triggerCloseWrap}>
               <svg
-                width="10"
-                height="10"
                 viewBox="6 6 12 12"
                 fill="none"
                 stroke="currentColor"

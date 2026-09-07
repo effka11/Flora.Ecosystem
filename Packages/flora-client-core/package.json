@@ -94,6 +94,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@flora/design": "file:../flora-design",
     "@flora/frc-i": "file:../../Products/FRC",
     "@flora/fscp": "file:../../Products/FSCP",
     "@noble/curves": "^1.9.7",

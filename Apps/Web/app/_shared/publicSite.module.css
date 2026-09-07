@@ -46,7 +46,7 @@
   text-decoration: none;
   letter-spacing: calc(var(--flora-grid-step-fine) - 1px);
   font-weight: 300;
-  font-size: 17px;
+  font-size: max(1px, var(--flora-sPx-17));
   min-height: calc(2 * var(--flora-grid-step));
 }
 
@@ -57,7 +57,7 @@
 .logoMark {
   width: calc(2 * var(--flora-grid-step));
   height: calc(2 * var(--flora-grid-step));
-  border-radius: 10px;
+  border-radius: var(--flora-sPx-10);
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
@@ -81,7 +81,7 @@
   height: calc(2 * var(--flora-grid-step));
   margin-right: calc(2 * var(--flora-grid-step));
   color: var(--flora-gray);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   letter-spacing: var(--flora-tracking-15);
   text-decoration: none;
   white-space: nowrap;

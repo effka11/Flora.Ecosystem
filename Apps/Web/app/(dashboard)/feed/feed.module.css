@@ -151,14 +151,14 @@
   width: 100%;
   height: 100%;
   padding: 0 calc(var(--flora-grid-step) - 1px);
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   border: 1px solid var(--flora-green-dark);
   background: transparent;
 }
 
 .peopleSearchIcon {
-  width: 20px;
-  height: 20px;
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
   color: var(--flora-gray);
   flex-shrink: 0;
 }
@@ -172,7 +172,7 @@
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1;
   letter-spacing: var(--flora-tracking-15);
 }
@@ -182,8 +182,8 @@
 }
 
 .peopleSearchSendBtn {
-  width: 28px;
-  height: 28px;
+  width: calc(1px * round(28 * var(--flora-grid-s)));
+  height: calc(1px * round(28 * var(--flora-grid-s)));
   border-radius: 50%;
   border: none;
   display: grid;
@@ -216,7 +216,7 @@
 .peopleTabsWrap {
   position: relative;
   min-width: 0;
-  top: 5px;
+  top: var(--flora-grid-step-fine);
   overflow: visible;
 }
 
@@ -241,7 +241,7 @@
   border-radius: 999px;
   cursor: pointer;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px !important;
+  font-size: max(1px, var(--flora-sPx-15)) !important;
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15) !important;
   line-height: 1;
@@ -249,9 +249,9 @@
 
 .peopleTabLabel {
   position: relative;
-  top: calc(-1 * var(--flora-grid-step-fine) + 2px);
+  top: calc(-1 * var(--flora-grid-step-fine) + var(--flora-sPx-2));
   font-family: inherit;
-  font-size: 15px !important;
+  font-size: max(1px, var(--flora-sPx-15)) !important;
   font-weight: inherit;
   letter-spacing: var(--flora-tracking-15) !important;
   line-height: inherit;
@@ -268,8 +268,8 @@
 .peopleTabIndicator {
   position: absolute;
   left: 0;
-  bottom: -2px;
-  height: 2px;
+  bottom: calc(-1 * var(--flora-sPx-2));
+  height: var(--flora-sPx-2);
   width: var(--feed-tab-indicator-width, 0px);
   background: var(--flora-green-light);
   border-radius: 999px;
@@ -292,7 +292,7 @@
   left: 0;
   right: 0;
   /* +1 вторичная клетка вниз + небольшой px-дожим */
-  top: calc(2 * var(--flora-grid-step-fine) + 2px);
+  top: calc(2 * var(--flora-grid-step-fine) + var(--flora-sPx-2));
   height: var(--flora-grid-step);
   min-height: var(--flora-grid-step);
   border: none;
@@ -309,7 +309,7 @@
 
 .feedTabRefreshBtn:hover {
   color: rgba(var(--flora-white-template-rgb), 0.84);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+  text-shadow: 0 0 var(--flora-sPx-8) color-mix(in srgb, var(--flora-green-light) 45%, transparent);
 }
 
 .feedTabRefreshBtnExpand {
@@ -329,8 +329,8 @@
 }
 
 .feedTabRefreshIcon {
-  width: calc(var(--flora-grid-step) - 2px);
-  height: calc(var(--flora-grid-step) - 2px);
+  width: calc(var(--flora-grid-step) - var(--flora-sPx-2));
+  height: calc(var(--flora-grid-step) - var(--flora-sPx-2));
   display: block;
   object-fit: contain;
   position: absolute;
@@ -348,7 +348,7 @@
   left: auto;
   /* На 2 первичные клетки правее якоря кол. 87 (как раньше с icon left: 50×step). */
   right: calc(var(--feed-refresh-right) - 2 * var(--flora-grid-step));
-  top: calc(2 * var(--flora-grid-step-fine) + 2px);
+  top: calc(2 * var(--flora-grid-step-fine) + var(--flora-sPx-2));
   width: auto;
   height: var(--flora-grid-step);
   min-height: var(--flora-grid-step);
@@ -404,7 +404,7 @@
 .feedTabRefreshBtn:hover .feedTabRefreshIcon,
 .feedTopBlock:not(.feedTopBlockCompact) .feedTabRefreshBtnExpand:hover .feedTabRefreshIcon {
   color: color-mix(in srgb, var(--flora-green-light) 92%, #fff 8%);
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--flora-green-light) 55%, transparent));
+  filter: drop-shadow(0 0 var(--flora-sPx-10) color-mix(in srgb, var(--flora-green-light) 55%, transparent));
 }
 
 .feedList {
@@ -478,7 +478,7 @@
   0%,
   8% {
     opacity: 0;
-    transform: translateX(-8px) translateZ(0);
+    transform: translateX(calc(-1 * var(--flora-sPx-8))) translateZ(0);
   }
 
   100% {
@@ -491,7 +491,7 @@
   0%,
   8% {
     opacity: 0;
-    transform: translateX(8px) translateZ(0);
+    transform: translateX(var(--flora-sPx-8)) translateZ(0);
   }
 
   100% {
@@ -564,8 +564,8 @@
 .feedList .feed .profilePostItem {
   padding-left: var(--flora-grid-step);
   padding-right: var(--g45);
-  /* +2px: нижний отступ до полоски между постами (:not(:last-child)). */
-  padding-bottom: calc(2 * var(--flora-grid-step) + 2px);
+  /* +sPx-2: нижний отступ до полоски между постами (:not(:last-child)). */
+  padding-bottom: calc(2 * var(--flora-grid-step) + var(--flora-sPx-2));
   width: 100%;
   max-width: 100%;
   position: relative;
@@ -584,6 +584,7 @@
 
 .profilePostAvatar {
   grid-area: post-avatar;
+  --flora-avatar-size: var(--feed-post-avatar-size);
   width: var(--feed-post-avatar-size);
   height: var(--feed-post-avatar-size);
   min-width: var(--feed-post-avatar-size);
@@ -595,7 +596,7 @@
   justify-content: center;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   letter-spacing: var(--flora-tracking-16);
   overflow: hidden;
 }
@@ -668,13 +669,13 @@
 }
 
 .feedList .feed .profilePostMetaLink {
-  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - 2px);
+  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - var(--flora-sPx-2));
 }
 
 .profilePostMetaLink:hover .profilePostAuthor,
 .profilePostMetaLink:hover .profilePostHandle {
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: var(--flora-sPx-2);
 }
 
 .profilePostAuthor {
@@ -697,8 +698,8 @@
   margin-left: auto;
   margin-right: calc(-1 * var(--g20));
   position: relative;
-  /* Визуальный низ ⋮: + fine+3px из-за translateY у .triggerLift. */
-  --flora-rect-menu-gap-below: calc(var(--flora-grid-step) + var(--flora-grid-step-fine) + 3px);
+  /* Визуальный низ ⋮: + fine+sPx-3 из-за translateY у .triggerLift. */
+  --flora-rect-menu-gap-below: calc(var(--flora-grid-step) + var(--flora-grid-step-fine) + var(--flora-sPx-3));
 }
 
 .profilePostMoreBtn {
@@ -706,7 +707,7 @@
   color: var(--flora-gray);
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--flora-sPx-6);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -724,7 +725,7 @@
 }
 
 .profilePostMoreBtn:active:not(:disabled) {
-  transform: translateY(calc(var(--flora-grid-step-fine) + 3px)) scale(0.92);
+  transform: translateY(calc(var(--flora-grid-step-fine) + var(--flora-sPx-3))) scale(0.92);
 }
 
 .profilePostContent {
@@ -742,7 +743,7 @@
   margin: calc(2 * var(--flora-grid-step-fine)) 0 var(--flora-grid-step);
   width: 100%;
   border-radius: calc(var(--flora-grid-step-fine));
-  max-height: min(560px, 70vh);
+  max-height: min(calc(112 * var(--flora-grid-step-fine)), 70vh);
   object-fit: cover;
 }
 
@@ -847,7 +848,7 @@
   background: none;
   color: var(--flora-gray);
   cursor: pointer;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   letter-spacing: var(--flora-tracking-15);
   transition: color 0.15s ease;
 }
@@ -872,8 +873,8 @@
 }
 
 .profilePostAction svg {
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
 }
 
 .profilePostMetaRight {
@@ -904,8 +905,8 @@
 }
 
 .profilePostTime {
-  font-size: 13px;
-  letter-spacing: 0.39px;
+  font-size: max(1px, var(--flora-sPx-13));
+  letter-spacing: calc(0.39px * var(--flora-grid-s));
   color: var(--flora-gray);
 }
 
@@ -924,8 +925,8 @@
 }
 
 .profilePostViews {
-  font-size: 13px;
-  letter-spacing: 0.39px;
+  font-size: max(1px, var(--flora-sPx-13));
+  letter-spacing: calc(0.39px * var(--flora-grid-s));
   color: var(--flora-gray);
 }
 
@@ -942,15 +943,15 @@
   );
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
+  width: var(--flora-sPx-16);
+  height: var(--flora-sPx-16);
 }
 
 .feedList .feed .profilePostViews > span:last-child {
   position: absolute;
   left: calc(
     100% * (var(--feed-post-meta-views-icon-col) - var(--feed-post-text-col-start)) / var(--feed-post-text-col-span) +
-      16px + var(--flora-grid-step)
+      var(--flora-sPx-16) + var(--flora-grid-step)
   );
   top: 50%;
   transform: translateY(-50%);
@@ -1056,7 +1057,7 @@
 }
 
 .feedTopBlockCompact .peopleSearchInput {
-  font-size: 0.9rem;
+  font-size: max(1px, var(--flora-sPx-14));
 }
 
 .feedTopBlockCompact .feedFiltersBlock {
@@ -1075,8 +1076,8 @@
 }
 
 .feedTopBlockCompact .peopleTabsWrap {
-  /* Базовый top: 5px (= 1 fine) — поднять на 1 вторичную клетку, как в обычном режиме по сетке. */
-  top: calc(5px - var(--flora-grid-step-fine));
+  /* Базовый top: 1 fine — поднять на 1 вторичную клетку, как в обычном режиме по сетке. */
+  top: 0;
   margin-left: calc(
     (var(--feed-tabs-compact-col-start) - var(--feed-content-primary-col-left) - 1) * var(--flora-grid-step)
   );
@@ -1146,7 +1147,7 @@
     (var(--feed-refresh-compact-col) - var(--feed-content-primary-col-left) - 1) * var(--flora-grid-step)
   );
   top: calc(
-    (var(--feed-refresh-compact-row) - var(--feed-search-compact-row-start)) * var(--flora-grid-step) + 3px
+    (var(--feed-refresh-compact-row) - var(--feed-search-compact-row-start)) * var(--flora-grid-step) + var(--flora-sPx-3)
   );
   right: auto;
   width: var(--flora-grid-step);
@@ -1164,8 +1165,8 @@
   position: static;
   left: auto;
   top: auto;
-  width: calc(var(--flora-grid-step) - 2px);
-  height: calc(var(--flora-grid-step) - 2px);
+  width: calc(var(--flora-grid-step) - var(--flora-sPx-2));
+  height: calc(var(--flora-grid-step) - var(--flora-sPx-2));
   transform: scaleX(-1);
 }
 
@@ -1207,14 +1208,14 @@
 }
 
 .feedScrollTopBtn svg {
-  width: calc(var(--flora-grid-step) + 3px);
-  height: calc(var(--flora-grid-step) + 3px);
+  width: calc(var(--flora-grid-step) + var(--flora-sPx-3));
+  height: calc(var(--flora-grid-step) + var(--flora-sPx-3));
   display: block;
 }
 
 .feedScrollTopBtn:hover {
   color: rgba(var(--flora-white-template-rgb), 0.84);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--flora-green-light) 45%, transparent);
+  text-shadow: 0 0 var(--flora-sPx-8) color-mix(in srgb, var(--flora-green-light) 45%, transparent);
 }
 
 @keyframes feedSearchToCompactIn {
@@ -1340,7 +1341,7 @@
 /* ─── Баннер «Новые посты» (FIRA-F has-new polling) ──────────────────────── */
 
 .newPostsBanner {
-  /* Стикает под компактной шапкой (5 рядов = 75px = FEED_COMPACT_LEVEL_PX). */
+  /* Стикает под компактной шапкой (5 рядов первичной сетки). */
   position: sticky;
   top: calc(5 * var(--flora-grid-step));
   z-index: 8;
@@ -1351,7 +1352,7 @@
   border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
   cursor: pointer;
   color: var(--flora-green-light);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   font-family: inherit;
   letter-spacing: 0.03em;
   text-align: center;
@@ -1371,10 +1372,12 @@
 .newPostsBannerIcon {
   flex-shrink: 0;
   opacity: 0.8;
+  width: var(--flora-sPx-14);
+  height: var(--flora-sPx-14);
 }
 
 @keyframes newPostsBannerIn {
-  from { opacity: 0; transform: translateY(-6px); }
+  from { opacity: 0; transform: translateY(calc(-1 * var(--flora-sPx-6))); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -1393,9 +1396,9 @@
 }
 
 .feedLoadMoreSpinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(var(--flora-white-template-rgb), 0.12);
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
+  border: var(--flora-sPx-2) solid rgba(var(--flora-white-template-rgb), 0.12);
   border-top-color: rgba(var(--flora-white-template-rgb), 0.55);
   border-radius: 50%;
   animation: feedSpinnerSpin 0.72s linear infinite;

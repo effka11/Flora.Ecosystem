@@ -1,6 +1,6 @@
 # Flora — сетка UI (квант и шаблоны)
 
-Документ фиксирует **закон раскладки**: квант 5/15, эталонный чертёж web, дискретное масштабирование `s`, семьи шаблонов. Числа шаблонов (список `s`, пороги mobile) живут только в машинном SoT — [`Packages/flora-client-core/src/display/floraGridTemplates.ts`](../../Packages/flora-client-core/src/display/floraGridTemplates.ts). Здесь — правила, не вторая таблица.
+Документ фиксирует **закон раскладки**: квант 5/15, эталонный чертёж web, дискретное масштабирование `s`, семьи шаблонов. Числа шаблонов (список `s`, пороги mobile) живут только в машинном SoT — [`Packages/flora-design`](../../Packages/flora-design) (`@flora/design`, `floraGridTemplates.ts`). Здесь — правила, не вторая таблица.
 
 Зафиксировано: **2026-09-06**.
 
@@ -17,6 +17,8 @@
 Допустимые масштабные коэффициенты только `s = k / 5` (k целое ≥ 1), чтобы **оба** шага оставались целыми CSS-px: `step = 15s`, `stepFine = 5s`.
 
 Нельзя: разный scale по осям; добавлять колонки «по ширине окна»; умножать шаг на `devicePixelRatio`; масштабировать 1px-штрихи как клетку (hairline остаётся 1 CSS-px или 1 физический пиксель).
+
+Вне сетки клеток (иконки, кегль, прочие размеры не из 5/15) масштабируются как `sPx(N, s) = round(N × s)`. Hairline остаётся 1 CSS-px без масштаба. На web живые значения пишет `applyWebGridFrameCssVars`: `--flora-grid-s` и `--flora-sPx-N` (лестница N только в машинном SoT).
 
 ---
 
@@ -66,8 +68,8 @@
 | Слой | Файл | Роль |
 |------|------|------|
 | Закон | этот документ | квант, семьи, камера, запреты |
-| Машинный SoT | `floraGridTemplates.ts` | список шаблонов, `pickGridTemplate`, `placeGridCanvas` |
-| Web/Gov | CSS vars `--flora-grid-step`, холст `128×step × 63×step` | применение |
+| Машинный SoT | `Packages/flora-design` (`floraGridTemplates.ts`) | список шаблонов, `pickGridTemplate`, `placeGridCanvas`, `sPx` |
+| Web/Gov | CSS vars `--flora-grid-step`, `--flora-sPx-N`, холст `128×step × 63×step` | применение |
 | Mobile | провайдер + хук шага | живой spacing |
 
-**Правило изменений:** править числа шаблонов только в `floraGridTemplates.ts` (+ тесты там же). Этот документ не дублирует таблицу `s`.
+**Правило изменений:** править числа шаблонов и лестницу `sPx` только в `Packages/flora-design` (+ тесты там же). Этот документ не дублирует таблицу `s`.

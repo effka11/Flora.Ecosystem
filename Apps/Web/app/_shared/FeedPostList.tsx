@@ -179,8 +179,6 @@ export function FeedPostList({
                       onClick={() => void toggleLike(post)}
                     >
                       <svg
-                        width="18"
-                        height="18"
                         viewBox="0 0 24 24"
                         fill={engagement.liked ? "currentColor" : "none"}
                         stroke="currentColor"
@@ -198,7 +196,7 @@ export function FeedPostList({
                       aria-label={commentsOpen ? "Скрыть комментарии к посту" : "Показать комментарии к посту"}
                       onClick={() => setCommentsOpenPostUuid((id) => (id === post.postUuid ? null : post.postUuid))}
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                       </svg>
                       <span>{commentsCount}</span>
@@ -211,7 +209,7 @@ export function FeedPostList({
                       disabled={isRepostPending(post.postUuid)}
                       onClick={() => void toggleRepost(post)}
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                         <path d="M17 1l4 4-4 4" />
                         <path d="M3 11V9a4 4 0 0 1 4-4h14" />
                         <path d="M7 23l-4-4 4-4" />
@@ -225,7 +223,7 @@ export function FeedPostList({
                       {timeLabel}
                     </time>
                     <span className={styles.postViews}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                         <circle cx="12" cy="12" r="3" />
                       </svg>

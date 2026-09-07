@@ -4,7 +4,7 @@ import composeStyles from "./compose.module.css";
 
 export function ComposeEmojiStickerIcon() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden className={composeStyles.composeEmojiStickerIcon}>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden className={composeStyles.composeEmojiStickerIcon}>
       <path
         d="M12 20.2a8.2 8.2 0 1 0 0-16.4 8.2 8.2 0 0 0 0 16.4Z"
         stroke="currentColor"

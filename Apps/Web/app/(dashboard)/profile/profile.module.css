@@ -5,18 +5,16 @@
   --g30: calc(2 * var(--flora-grid-step));
   --g45: calc(3 * var(--flora-grid-step));
   --profile-cover-h: calc((9 - 2 + 1) * var(--flora-grid-step));
-  --profile-avatar-d: calc((44 - 39 + 1) * var(--flora-grid-step));
-  --profile-avatar-trim-right: 7px;
-  --profile-avatar-size: calc(
-    var(--profile-avatar-d) - var(--profile-avatar-trim-right) + var(--flora-grid-step)
-  );
-  /* Меньше Messages (15), центр на SE-крае аватара: inset = R(1−√2/2) − d/2 */
-  --profile-online-badge-base: 10px;
+  /* Inner 90 (cols 39–44) = 6×step; ring = inner + 2×sPx(4) border */
+  --profile-avatar-d: calc(6 * var(--flora-grid-step));
+  --profile-avatar-size: calc(var(--profile-avatar-d) + 2 * var(--flora-sPx-4));
+  /* Меньше Messages (1×step), центр на SE-крае аватара: inset = R(1−√2/2) − d/2 */
+  --profile-online-badge-base: var(--flora-sPx-10);
   --profile-online-badge-d: calc(
     var(--profile-online-badge-base) * var(--profile-avatar-size) / var(--g45)
   );
   --profile-online-badge-border: calc(
-    3.5px * var(--profile-online-badge-base) / 15px * var(--profile-avatar-size) / var(--g45)
+    3.5 / 15 * var(--profile-online-badge-base) * var(--profile-avatar-size) / var(--g45)
   );
   --profile-online-badge-inset: calc(
     var(--profile-avatar-size) * 0.1464466094 - var(--profile-online-badge-d) / 2 + 1px
@@ -24,8 +22,8 @@
   /* .profileCard padding-top 10 − .profileInfo margin-top 3 → верх .profileInfo на строке 7 */
   --profile-info-anchor-row: 7;
   --profile-name-row-line: 14;
-  --profile-name-row-nudge-y: calc(7px + 2 * var(--flora-grid-step));
-  --profile-stats-nudge-y: 6px;
+  --profile-name-row-nudge-y: calc(var(--flora-sPx-7) + 2 * var(--flora-grid-step));
+  --profile-stats-nudge-y: var(--flora-sPx-6);
   --profile-actions-row-start: 22;
   --profile-actions-row-end: 24;
   --profile-actions-band-h: calc(
@@ -55,9 +53,8 @@
   );
   --feed-comment-timer-overlay-line-end: 265;
   --feed-comment-timer-overlay-line-measured: 249;
-  --feed-comment-timer-secondary-end-nudge: calc(
-    (var(--feed-comment-timer-overlay-line-end) - var(--feed-comment-timer-overlay-line-measured)) * 1px
-  );
+  /* overlay 265−249 at s=1 → 16 extra-grid */
+  --feed-comment-timer-secondary-end-nudge: var(--flora-sPx-16);
   height: 100%;
   min-height: 0;
   min-width: 0;
@@ -104,7 +101,7 @@
   width: 100%;
   height: var(--profile-cover-h);
   background: #2c3527;
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
 }
 
 .profileInfo {
@@ -133,17 +130,18 @@
   height: var(--profile-avatar-size);
   min-width: var(--profile-avatar-size);
   min-height: var(--profile-avatar-size);
-  margin-left: calc((39 - 38) * var(--flora-grid-step) - 8px);
-  margin-top: -4px;
+  margin-left: calc((39 - 38) * var(--flora-grid-step) - var(--flora-sPx-8));
+  margin-top: calc(-1 * var(--flora-sPx-4));
 }
 
 .profileAvatar {
+  --flora-avatar-size: var(--profile-avatar-d);
   width: 100%;
   height: 100%;
   min-width: 100%;
   min-height: 100%;
   border-radius: 50%;
-  border: 4px solid var(--flora-bg);
+  border: var(--flora-sPx-4) solid var(--flora-bg);
   box-sizing: border-box;
   overflow: hidden;
   display: grid;
@@ -183,18 +181,19 @@
   }
 }
 
-/* Статус: как в 2142-1 app.css — top:60px, padding-left:280px чтобы текст уходил вправо */
+/* Статус: как в 2142-1 — top 4×step + sPx(4); padding-left off-ladder 280 */
 .profileInfoTop .profileStatus {
   display: block;
   position: absolute;
   left: calc(var(--profile-avatar-size) + var(--flora-grid-step));
   right: 0;
-  top: calc(4 * var(--flora-grid-step) + 4px);
+  /* anchorRow=7 (.profileInfo); 4×step + sPx(4) */
+  top: calc(4 * var(--flora-grid-step) + var(--flora-sPx-4));
   margin: 0;
-  padding: 0 0 var(--flora-grid-step-fine) 280px;
+  padding: 0 0 var(--flora-grid-step-fine) calc(1px * round(280 * var(--flora-grid-s)));
   transform: translateX(calc(-1 * var(--flora-grid-step)));
   min-width: 0;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
@@ -233,14 +232,14 @@
 
 .profileName {
   margin: 0;
-  font-size: 20px;
+  font-size: max(1px, var(--flora-sPx-20));
   font-weight: 300;
   color: var(--flora-white-template);
 }
 
 .profileHandle {
   margin: 0;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   color: var(--flora-gray);
 }
 
@@ -248,10 +247,10 @@
   position: absolute;
   left: calc(4 * var(--flora-grid-step-fine));
   margin-left: calc(-1 * var(--flora-grid-step-fine));
-  /* ниже горизонтали 14: отступ 1 клетка + 6px + доп. сдвиг счётчиков */
+  /* ниже горизонтали 14: отступ 1 клетка + sPx(6) + доп. сдвиг счётчиков */
   top: calc(
-    (var(--profile-name-row-line) - var(--profile-info-anchor-row)) * var(--flora-grid-step) + var(--flora-grid-step) + 6px +
-      var(--profile-name-row-nudge-y) + var(--profile-stats-nudge-y)
+    (var(--profile-name-row-line) - var(--profile-info-anchor-row)) * var(--flora-grid-step) + var(--flora-grid-step) +
+      var(--flora-sPx-6) + var(--profile-name-row-nudge-y) + var(--profile-stats-nudge-y)
   );
   display: flex;
   flex-wrap: wrap;
@@ -268,7 +267,7 @@
   background: transparent;
   font: inherit;
   color: var(--flora-gray);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   letter-spacing: var(--flora-tracking-15);
   line-height: 1;
   cursor: pointer;
@@ -283,7 +282,7 @@
 
 .profileStatBtn:hover {
   color: var(--flora-green-light);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--flora-green-light) 35%, transparent);
+  text-shadow: 0 0 var(--flora-sPx-12) color-mix(in srgb, var(--flora-green-light) 35%, transparent);
 }
 
 .profileStatBtn:hover strong {
@@ -316,7 +315,7 @@
   height: var(--profile-action-btn-h);
   min-height: var(--profile-action-btn-h);
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   line-height: 1.25;
@@ -345,7 +344,7 @@
   color: var(--flora-green-light) !important;
   border-color: color-mix(in srgb, var(--flora-green-light) 30%, transparent) !important;
   background: color-mix(in srgb, var(--flora-green-light) 10%, transparent) !important;
-  text-shadow: 0 0 12px color-mix(in srgb, var(--flora-green-light) 30%, transparent);
+  text-shadow: 0 0 var(--flora-sPx-12) color-mix(in srgb, var(--flora-green-light) 30%, transparent);
 }
 
 /* Кнопка-триггер описания профиля (нижний правый угол .profileInfo) */
@@ -438,7 +437,7 @@
 
 .profileListModalDialog {
   pointer-events: auto;
-  width: min(560px, 92vw);
+  width: min(calc(1px * round(560 * var(--flora-grid-s))), 92vw);
   min-height: calc(56 * var(--flora-grid-step-fine));
   max-height: 85vh;
   display: flex;
@@ -464,7 +463,7 @@
 
 .profileListModalTitle {
   margin: 0;
-  font-size: 18px;
+  font-size: max(1px, var(--flora-sPx-18));
   font-weight: 300;
   color: var(--flora-white-template);
 }
@@ -474,7 +473,7 @@
   padding: var(--flora-grid-step-fine) calc(2 * var(--flora-grid-step-fine));
   border: none;
   background: transparent;
-  font-size: 22px;
+  font-size: max(1px, var(--flora-sPx-22));
   line-height: 1;
   color: var(--flora-gray);
   cursor: pointer;
@@ -483,7 +482,7 @@
 
 .profileListModalClose:hover {
   color: rgba(var(--flora-white-template-rgb), 0.85);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--flora-green-light) 30%, transparent);
+  text-shadow: 0 0 var(--flora-sPx-12) color-mix(in srgb, var(--flora-green-light) 30%, transparent);
 }
 
 /* Вкладки в модальном окне */
@@ -499,10 +498,10 @@
   margin: 0;
   padding: var(--flora-grid-step) var(--flora-grid-step);
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: var(--flora-sPx-2) solid transparent;
   background: transparent;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
@@ -512,7 +511,7 @@
 
 .profileListModalTab:hover {
   color: rgba(var(--flora-white-template-rgb), 0.72);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--flora-green-light) 25%, transparent);
+  text-shadow: 0 0 var(--flora-sPx-12) color-mix(in srgb, var(--flora-green-light) 25%, transparent);
 }
 
 .profileListModalTabActive {
@@ -541,7 +540,7 @@
 .profileCommunitiesList li {
   padding: calc(2 * var(--flora-grid-step-fine)) 0;
   border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   color: var(--flora-white-template);
 }
 
@@ -569,7 +568,7 @@
   display: grid;
   grid-template-columns: auto 1fr;
   gap: calc(2 * var(--flora-grid-step-fine)) calc(6 * var(--flora-grid-step-fine));
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
 }
 
 .profileDescriptionDl dt {
@@ -585,7 +584,7 @@
 
 .profileLoadingText {
   margin: var(--flora-grid-step) 0;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   color: var(--flora-gray);
 }
 
@@ -600,12 +599,12 @@
 .profileEditForm {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--flora-grid-step) - 4px);
+  gap: calc(var(--flora-grid-step) - var(--flora-sPx-4));
   padding: var(--flora-grid-step) 0 0;
 }
 
 .profileEditLabel {
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   color: var(--flora-gray);
   margin: 0;
 }
@@ -617,20 +616,20 @@
   background: rgba(var(--flora-white-template-rgb), 0.06);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
   color: var(--flora-white-template);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 15px;
+  border-radius: var(--flora-sPx-8);
+  padding: var(--flora-sPx-10) var(--flora-sPx-12);
+  font-size: max(1px, var(--flora-sPx-15));
   font-family: inherit;
 }
 
 .profileEditTextarea {
-  min-height: 72px;
+  min-height: calc(1px * round(72 * var(--flora-grid-s)));
   resize: vertical;
 }
 
 .profileEditError {
   color: #c98a7a;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   margin: 0;
 }
 
@@ -646,10 +645,10 @@
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.2);
   background: transparent;
   color: var(--flora-gray-light);
-  padding: 8px 16px;
-  border-radius: 8px;
+  padding: var(--flora-sPx-8) var(--flora-sPx-16);
+  border-radius: var(--flora-sPx-8);
   cursor: pointer;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
 }
 
 .profileEditCancelBtn:disabled {
@@ -658,14 +657,14 @@
 }
 
 .profileEditSaveBtn {
-  min-width: 120px;
+  min-width: calc(8 * var(--flora-grid-step));
 }
 
 .profilePostsHint,
 .profilePostsError {
   padding: 0 calc(4 * var(--flora-grid-step-fine)) var(--flora-grid-step);
   margin: 0;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   color: var(--flora-gray);
 }
 

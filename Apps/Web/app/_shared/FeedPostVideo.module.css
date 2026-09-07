@@ -19,14 +19,14 @@
 
 .placeholderText {
   color: var(--flora-gray);
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
 }
 
 .spinner {
   width: calc(4 * var(--flora-grid-step-fine));
   height: calc(4 * var(--flora-grid-step-fine));
   border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--flora-green-light) 30%, transparent);
+  border: var(--flora-sPx-2) solid color-mix(in srgb, var(--flora-green-light) 30%, transparent);
   border-top-color: var(--flora-green-light);
   animation: feed-post-video-spin 0.9s linear infinite;
 }

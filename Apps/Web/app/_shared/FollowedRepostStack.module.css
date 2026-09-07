@@ -6,11 +6,11 @@
 }
 
 .moreBtn {
-  /* +1 вторичная клетка (5px) к базовой 1 клетке между стеком и «и ещё n». */
+  /* +1 вторичная клетка (5px at s=1) к базовой 1 клетке между стеком и «и ещё n». */
   margin-left: calc(2 * var(--flora-grid-step-fine));
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--flora-sPx-2);
   padding: 0;
   border: none;
   background: none;
@@ -25,13 +25,13 @@
 }
 
 .moreLabel {
-  font-size: 12px;
+  font-size: max(1px, var(--flora-sPx-12));
   letter-spacing: var(--flora-tracking-15);
 }
 
 .moreArrow {
-  width: 12px;
-  height: 12px;
+  width: var(--flora-sPx-12);
+  height: var(--flora-sPx-12);
   flex-shrink: 0;
   opacity: 0.85;
 }
@@ -43,17 +43,23 @@
 }
 
 .stack .avatar {
+  /* 22px at s=1 → ближайшая клетка fine: 4×step-fine (20 at s=1). */
+  --flora-avatar-size: calc(4 * var(--flora-grid-step-fine));
+  width: var(--flora-avatar-size);
+  height: var(--flora-avatar-size);
+  min-width: var(--flora-avatar-size);
+  min-height: var(--flora-avatar-size);
   position: relative;
   /* Сильнее .root { overflow: hidden } — тень снаружи, фото клипит внутренний .art. */
   overflow: visible;
   box-shadow:
     0 0 0 1px var(--flora-bg),
-    0 1px 3px rgba(0, 0, 0, 0.55);
+    0 1px var(--flora-sPx-3) rgba(0, 0, 0, 0.55);
   transition: transform 0.15s ease;
 }
 
 .avatar:not(:first-child) {
-  margin-left: -8px;
+  margin-left: calc(-1 * var(--flora-sPx-8));
 }
 
 .avatar:hover {

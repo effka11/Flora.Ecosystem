@@ -94,7 +94,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: repoRoot,
-  transpilePackages: ["@flora/client-core"],
+  transpilePackages: ["@flora/client-core", "@flora/design"],
   env: {
     NEXT_PUBLIC_APP_VERSION:
       process.env.NEXT_PUBLIC_APP_VERSION ?? floraVersions.products.social,

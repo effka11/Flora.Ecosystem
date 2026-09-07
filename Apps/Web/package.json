@@ -23,6 +23,7 @@
     "@ffmpeg/ffmpeg": "^0.12.10",
     "@ffmpeg/util": "^0.12.2",
     "@flora/client-core": "file:../../Packages/flora-client-core",
+    "@flora/design": "file:../../Packages/flora-design",
     "@flora/frc-i": "file:../../Products/FRC",
     "@flora/fscp": "file:../../Products/FSCP",
     "@fontsource-variable/cormorant": "^5.2.8",

@@ -7,8 +7,8 @@ export function MessagesConversationMuteIcon({ className }: MessagesConversation
   return (
     <svg
       className={className}
-      width={14}
-      height={14}
+      width="var(--flora-sPx-14)"
+      height="var(--flora-sPx-14)"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

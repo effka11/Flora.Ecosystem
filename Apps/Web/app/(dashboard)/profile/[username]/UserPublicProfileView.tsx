@@ -10,7 +10,7 @@ import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
 import { useProtectedPage } from "@/app/_dashboard/useProtectedPage";
 import { formatAtHandle, profileDisplayName } from "@/app/_dashboard/userDisplay";
 import { useFloraPageTitleOverride } from "@/app/_shared/useFloraDocumentTitle";
-import { FloraAvatar, FLORA_PROFILE_AVATAR_INNER_PX } from "@/app/_shared/FloraAvatar";
+import { FloraAvatar } from "@/app/_shared/FloraAvatar";
 import { ApiRequestError } from "@/lib/auth";
 import { messagesOpenChatQuery } from "@/lib/messagesUrl";
 import {
@@ -287,7 +287,7 @@ function UserPublicProfileContent({ usernameSlugOverride }: { usernameSlugOverri
             <div className={styles.profileAvatarWrap}>
               <div className={styles.profileAvatar}>
                 <FloraAvatar
-                  size={FLORA_PROFILE_AVATAR_INNER_PX}
+                  fill
                   avatarUuid={publicProfile?.avatarUuid}
                   displayName={publicProfile?.displayName ?? name}
                   username={publicProfile?.username ?? ""}

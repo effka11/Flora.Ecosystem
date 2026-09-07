@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DependencyList, Dispatch, RefObject, SetStateAction } from "react";
+import { sPx } from "@flora/design";
 import { getViewportFrame, snapToGrid } from "@/app/_shared/viewportFrame";
 
 export type SnapMode = "none" | "grid15" | "grid5";
@@ -22,8 +23,6 @@ type UseGridBindingsOptions<T extends string> = {
   refs: Record<T, RefObject<HTMLElement>>;
   panelTarget: T;
   initialBinding?: Partial<Record<T, SnapMode>>;
-  stepPrimary?: number;
-  stepSecondary?: number;
   effectDeps?: DependencyList;
 };
 
@@ -32,8 +31,6 @@ export function useGridBindings<T extends string>({
   refs,
   panelTarget,
   initialBinding,
-  stepPrimary = 15,
-  stepSecondary = 5,
   effectDeps = []
 }: UseGridBindingsOptions<T>) {
   const targets = useMemo(() => Object.keys(refs) as T[], [refs]);
@@ -53,16 +50,13 @@ export function useGridBindings<T extends string>({
     targets.reduce((acc, key) => ({ ...acc, [key]: null }), {} as Record<T, Offset | null>)
   );
 
-  const getStep = useCallback(
-    (mode: SnapMode) => {
-      const frame = getViewportFrame();
-      if (mode === "grid5") {
-        return stepSecondary === 5 ? frame.stepFine : stepSecondary;
-      }
-      return stepPrimary === 15 ? frame.step : stepPrimary;
-    },
-    [stepPrimary, stepSecondary]
-  );
+  const getStep = useCallback((mode: SnapMode) => {
+    const frame = getViewportFrame();
+    if (mode === "grid5") {
+      return frame.stepFine;
+    }
+    return frame.step;
+  }, []);
 
   const clearGridCoords = useCallback(() => setGridCoords(null), []);
 
@@ -88,17 +82,18 @@ export function useGridBindings<T extends string>({
       const y = e.clientY - frame.frameTop;
       const baseX = frame.cropOffsetX + x;
       const baseY = frame.cropOffsetY + y;
+      const tooltipOffset = sPx(12, frame.s);
 
       setGridCoords({
         c15x: Math.floor(baseX / frame.step),
         c15y: Math.floor(baseY / frame.step),
         c5x: Math.floor(baseX / frame.stepFine),
         c5y: Math.floor(baseY / frame.stepFine),
-        left: e.clientX + 12,
-        top: e.clientY + 12
+        left: e.clientX + tooltipOffset,
+        top: e.clientY + tooltipOffset
       });
     },
-    [gridEnabled, stepPrimary, stepSecondary]
+    [gridEnabled]
   );
 
   const recomputeBindings = useCallback(() => {
@@ -163,4 +158,3 @@ export function useGridBindings<T extends string>({
     offsets
   };
 }
-

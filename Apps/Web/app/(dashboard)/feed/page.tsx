@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { sPx } from "@flora/design";
 import { usePreloadFeedPostComments } from "@/app/_shared/usePreloadFeedPostComments";
 import emptyHintStyles from "@/app/_shared/emptyPageHint.module.css";
 import { TabSearchInput } from "@/app/_shared/TabSearchInput";
@@ -23,6 +24,7 @@ import {
 } from "@/lib/socialApi";
 import { usePostEngagement } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
+import { getViewportFrame } from "@/app/_shared/viewportFrame";
 import styles from "./feed.module.css";
 import { useFeedCompactHeader } from "./useFeedCompactHeader";
 
@@ -37,7 +39,6 @@ const FEED_REFRESH_SPIN_MS = 550;
 /** Подкат линии при выходе из компакта — как _feedExpandedEntry* в 2142 index.html. */
 const FEED_EXPANDED_INDICATOR_DELAY_MS = 20;
 const FEED_EXPANDED_INDICATOR_DURATION_MS = 400;
-const FEED_EXPANDED_INDICATOR_DELTA_PX = 20;
 const FEED_EXPANDED_UI_CLEANUP_MS = 600;
 
 /** CSS-переменные индикатора вкладок (не входят в стандартный `CSSProperties` без индекса). */
@@ -562,7 +563,7 @@ function FeedPageContent() {
     if (tabW <= 0) return;
 
     const toLeft = left;
-    const fromLeft = toLeft + FEED_EXPANDED_INDICATOR_DELTA_PX;
+    const fromLeft = toLeft + sPx(20, getViewportFrame().s);
     let cancelled = false;
 
     setIndicatorMotionEnabled(false);
@@ -740,7 +741,7 @@ function FeedPageContent() {
           void loadMoreFeedTab(activeTabRef.current);
         }
       },
-      { rootMargin: "300px", threshold: 0 }
+      { rootMargin: `${20 * getViewportFrame().step}px`, threshold: 0 }
     );
 
     observer.observe(sentinel);
@@ -909,8 +910,6 @@ function FeedPageContent() {
         >
           <svg
             className={styles.newPostsBannerIcon}
-            width="14"
-            height="14"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"

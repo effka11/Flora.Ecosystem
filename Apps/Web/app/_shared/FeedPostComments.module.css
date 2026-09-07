@@ -111,7 +111,7 @@
   margin-left: 0;
   min-width: 0;
   /* row-gap между post-body и post-comments = 1×вторичная клетка; margin-top дополняет до линии от панели счётчиков (−3px к прежнему зазору). */
-  margin-top: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) - 3px);
+  margin-top: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) - var(--flora-sPx-3));
   /* От верхней линии раздела до первого ряда (аватар) — 2 первичные клетки. */
   padding-top: calc(2 * var(--flora-grid-step));
   border-top: none;
@@ -189,7 +189,7 @@
 /* Линия между корневыми комментариями — см. .item:not(:last-child)::after. */
 .item:not(:last-child) {
   /* Как у поста в ленте (свернутые комментарии): row-gap + padding-bottom карточки → 2×primary − 1×fine до линии; +3px — линия ниже. */
-  padding-bottom: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) + 3px);
+  padding-bottom: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) + var(--flora-sPx-3));
   margin-bottom: calc(2 * var(--flora-grid-step));
 }
 
@@ -208,6 +208,7 @@
 
 .avatar {
   grid-area: comment-avatar;
+  --flora-avatar-size: var(--comment-avatar-d);
   width: var(--comment-avatar-d);
   height: var(--comment-avatar-d);
   min-width: var(--comment-avatar-d);
@@ -219,9 +220,9 @@
   justify-content: center;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 16px;
+  font-size: max(1px, var(--flora-sPx-16));
   letter-spacing: var(--flora-tracking-16, 0.03em);
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 var(--flora-sPx-2) var(--flora-sPx-4) rgba(0, 0, 0, 0.35);
   text-decoration: none;
   overflow: hidden;
   transition: opacity 0.15s ease;
@@ -296,7 +297,7 @@
   color: var(--flora-gray);
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--flora-sPx-6);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -314,7 +315,7 @@
 }
 
 .commentMoreBtn:active:not(:disabled) {
-  transform: translateY(calc(var(--flora-grid-step-fine) + 3px)) scale(0.92);
+  transform: translateY(calc(var(--flora-grid-step-fine) + var(--flora-sPx-3))) scale(0.92);
 }
 
 .authorLink {
@@ -327,14 +328,14 @@
   flex-wrap: nowrap;
   align-items: baseline;
   /* Как .feedList .feed .profilePostMetaLink: имя — ник. */
-  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - 2px);
+  gap: var(--flora-grid-step-fine) calc(var(--flora-grid-step) - var(--flora-sPx-2));
 }
 
 .author {
   position: relative;
   top: calc(-1 * var(--flora-grid-step-fine));
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15, 0.02em);
   color: var(--flora-white-template);
   white-space: nowrap;
@@ -349,7 +350,7 @@
   top: calc(-1 * var(--flora-grid-step-fine));
   flex-shrink: 0;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15, 0.02em);
   color: var(--flora-gray);
   white-space: nowrap;
@@ -359,7 +360,7 @@
   margin: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   letter-spacing: var(--flora-tracking-15, 0.02em);
   line-height: 1.45;
   /* Как .profilePostContent в ленте/профиле. */
@@ -379,7 +380,7 @@
   padding-right: calc(
     (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) +
       var(--flora-grid-step) -
-      var(--feed-comment-timer-secondary-end-nudge, calc(16 * 1px)) -
+      var(--feed-comment-timer-secondary-end-nudge, var(--flora-sPx-16)) -
       2 * var(--flora-grid-step-fine) -
       3 * var(--flora-grid-step)
   );
@@ -391,7 +392,7 @@
   transform: translateY(-50%);
   right: calc(
     (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) -
-      var(--feed-comment-timer-secondary-end-nudge, calc(16 * 1px)) -
+      var(--feed-comment-timer-secondary-end-nudge, var(--flora-sPx-16)) -
       2 * var(--flora-grid-step-fine) -
       3 * var(--flora-grid-step)
   );
@@ -399,8 +400,8 @@
   align-items: center;
   margin: 0;
   font-weight: 300;
-  font-size: 13px;
-  letter-spacing: 0.39px;
+  font-size: max(1px, var(--flora-sPx-13));
+  letter-spacing: calc(0.39px * var(--flora-grid-s));
   line-height: 1;
   color: var(--flora-gray);
   white-space: nowrap;
@@ -411,7 +412,7 @@
   padding-right: calc(
     (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) +
       var(--flora-grid-step) -
-      var(--feed-comment-timer-secondary-end-nudge, calc(16 * 1px)) -
+      var(--feed-comment-timer-secondary-end-nudge, var(--flora-sPx-16)) -
       2 * var(--flora-grid-step-fine) -
       3 * var(--flora-grid-step) -
       var(--flora-grid-step-fine)
@@ -421,7 +422,7 @@
 .replyItem .actions .time {
   right: calc(
     (var(--feed-post-text-col-end) - var(--feed-post-meta-timer-end-col)) * var(--flora-grid-step) -
-      var(--feed-comment-timer-secondary-end-nudge, calc(16 * 1px)) -
+      var(--feed-comment-timer-secondary-end-nudge, var(--flora-sPx-16)) -
       2 * var(--flora-grid-step-fine) -
       3 * var(--flora-grid-step) -
       var(--flora-grid-step-fine)
@@ -534,7 +535,7 @@
   position: absolute;
   left: calc(-4 * var(--flora-grid-step-fine));
   right: calc(-1 * var(--flora-grid-step));
-  top: calc(1px - 4px);
+  top: calc(1px - var(--flora-sPx-4));
   height: 1px;
   background: var(--flora-gray-divider);
   pointer-events: none;
@@ -577,7 +578,7 @@
 }
 
 .replyItem:not(:last-child) {
-  padding-bottom: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) + 3px);
+  padding-bottom: calc(2 * var(--flora-grid-step) - var(--flora-grid-step-fine) + var(--flora-sPx-3));
   margin-bottom: calc(2 * var(--flora-grid-step));
   box-shadow: none;
 }
@@ -599,7 +600,7 @@
   padding: 0 0 calc(2 * var(--flora-grid-step-fine));
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   letter-spacing: var(--flora-tracking-15);
   line-height: 1.45;
   color: var(--flora-gray);
@@ -615,7 +616,7 @@
   cursor: pointer;
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   letter-spacing: var(--flora-tracking-15);
   line-height: 1;
   color: var(--flora-gray);
@@ -640,15 +641,15 @@
 .actionBtn svg {
   flex-shrink: 0;
   display: block;
-  width: 18px;
-  height: 18px;
+  width: var(--flora-sPx-18);
+  height: var(--flora-sPx-18);
 }
 
 .statusLine {
   margin: 0 0 calc(2 * var(--flora-grid-step-fine));
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1.45;
   letter-spacing: var(--flora-tracking-15);
   color: var(--flora-gray);
@@ -670,7 +671,7 @@
   /* От низа композера до линии между постами — 2 первичные клетки (поле ввода без подсказки — тот же зазор). */
   padding-bottom: calc(2 * var(--flora-grid-step));
   /* Компенсация единого padding-bottom карточки поста (.postItem / .profilePostItem). */
-  margin-bottom: calc((2 * var(--flora-grid-step-fine) - 1px) - (2 * var(--flora-grid-step) + 2px));
+  margin-bottom: calc((2 * var(--flora-grid-step-fine) - 1px) - (2 * var(--flora-grid-step) + var(--flora-sPx-2)));
 }
 
 /* Линия над полем ввода: как у ::after между корнями (−1 слева, −2 справа). */
@@ -701,7 +702,7 @@
   flex: 1 1 auto;
   min-width: 0;
   font-family: var(--font-manrope), system-ui, sans-serif;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
   line-height: 1.35;
@@ -733,7 +734,7 @@
   width: 100%;
   min-width: 0;
   min-height: calc(6 * var(--flora-grid-step));
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   border: 1px solid var(--flora-green-dark);
   background: transparent;
   padding: calc(var(--flora-grid-step))
@@ -768,7 +769,7 @@
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1.4;
   letter-spacing: var(--flora-tracking-15, 0.02em);
   outline: none;
@@ -806,7 +807,7 @@
 .body .mentionChip:hover {
   color: var(--flora-gray-hover);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: var(--flora-sPx-2);
 }
 
 .mentionSuggest {
@@ -816,30 +817,30 @@
   margin: 0;
   padding: var(--flora-grid-step-fine);
   min-width: min(100%, calc(18 * var(--flora-grid-step)));
-  max-width: min(calc(100vw - 32px), calc(24 * var(--flora-grid-step)));
+  max-width: min(calc(100vw - 1px * round(32 * var(--flora-grid-s))), calc(24 * var(--flora-grid-step)));
   max-height: calc(8 * var(--flora-grid-step));
   overflow-y: auto;
-  border-radius: 10px;
+  border-radius: var(--flora-sPx-10);
   border: 1px solid color-mix(in srgb, var(--flora-green-light) 28%, rgba(var(--flora-white-template-rgb), 0.14) 72%);
   background: color-mix(in srgb, #0a1210 88%, var(--flora-green-dark) 12%);
   box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.42),
+    0 var(--flora-sPx-10) calc(1px * round(28 * var(--flora-grid-s))) rgba(0, 0, 0, 0.42),
     0 0 0 1px rgba(0, 0, 0, 0.22) inset;
 }
 
 .mentionSuggestItem {
   display: flex;
   align-items: baseline;
-  gap: calc(var(--flora-grid-step-fine) + 2px);
+  gap: calc(var(--flora-grid-step-fine) + var(--flora-sPx-2));
   width: 100%;
-  padding: calc(var(--flora-grid-step-fine) + 3px) calc(var(--flora-grid-step-fine) + 2px);
+  padding: calc(var(--flora-grid-step-fine) + var(--flora-sPx-3)) calc(var(--flora-grid-step-fine) + var(--flora-sPx-2));
   border: none;
-  border-radius: 8px;
+  border-radius: var(--flora-sPx-8);
   background: transparent;
   color: var(--flora-gray-light);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 14px;
+  font-size: max(1px, var(--flora-sPx-14));
   line-height: 1.35;
   text-align: left;
   cursor: pointer;
@@ -901,25 +902,25 @@
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1.35em));
   gap: var(--flora-grid-step-fine);
-  padding: calc(var(--flora-grid-step-fine) + 2px);
-  border-radius: calc(var(--flora-grid-step-fine) + 2px);
+  padding: calc(var(--flora-grid-step-fine) + var(--flora-sPx-2));
+  border-radius: calc(var(--flora-grid-step-fine) + var(--flora-sPx-2));
   background: color-mix(in srgb, var(--flora-green-dark) 88%, #000 12%);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.1);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 var(--flora-sPx-8) var(--flora-sPx-24) rgba(0, 0, 0, 0.35);
   z-index: 6;
-  min-width: min(100vw - 32px, calc(12 * var(--flora-grid-step)));
+  min-width: min(calc(100vw - 1px * round(32 * var(--flora-grid-s))), calc(12 * var(--flora-grid-step)));
 }
 
 .emojiPick {
   display: grid;
   place-items: center;
   margin: 0;
-  padding: 2px;
+  padding: var(--flora-sPx-2);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--flora-sPx-4);
   background: transparent;
   cursor: pointer;
-  font-size: 1.25rem;
+  font-size: max(1px, var(--flora-sPx-20));
   line-height: 1;
   color: inherit;
   transition: background-color 0.12s ease;
@@ -927,6 +928,11 @@
 
 .emojiPick:hover {
   background: rgba(var(--flora-white-template-rgb), 0.1);
+}
+
+.composerIconBtn svg {
+  width: var(--flora-sPx-20);
+  height: var(--flora-sPx-20);
 }
 
 .composerIconBtn {
@@ -937,7 +943,7 @@
   padding: 0;
   margin: 0;
   border: none;
-  border-radius: calc(var(--flora-grid-step-fine) + 2px);
+  border-radius: calc(var(--flora-grid-step-fine) + var(--flora-sPx-2));
   background: transparent;
   color: var(--flora-gray);
   cursor: pointer;
@@ -985,7 +991,7 @@
 
 .attachNotice {
   margin: 0;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   font-weight: 300;
   color: rgba(var(--flora-green-light), 0.78);
 }
@@ -1020,13 +1026,13 @@
     calc(var(--flora-grid-step) + 3 * (var(--flora-grid-step) + var(--flora-grid-step-fine)) + 3 * var(--flora-grid-step) - 3 * var(--flora-grid-step-fine))
     calc(var(--flora-grid-step)) calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
   /* Обводка как у поисковых полей: шаблонный тёмно-зелёный (--flora-green-dark). */
-  border-radius: 12px;
+  border-radius: var(--flora-sPx-12);
   border: 1px solid var(--flora-green-dark);
   background: transparent;
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
-  font-size: 15px;
+  font-size: max(1px, var(--flora-sPx-15));
   line-height: 1.4;
   letter-spacing: var(--flora-tracking-15, 0.02em);
   outline: none;
@@ -1046,7 +1052,7 @@
 
 .submitErr {
   margin: 0;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   font-weight: 300;
   color: color-mix(in srgb, #f87171 88%, var(--flora-white-template) 12%);
 }

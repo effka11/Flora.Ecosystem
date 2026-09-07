@@ -10,6 +10,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { sPx } from "@flora/design";
 import { formatAtHandle } from "@/app/_dashboard/userDisplay";
 import {
   abandonMentionQuery,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/commentMentionComposer";
 import { apiSearchUsers, type PeopleSearchUserDto } from "@/lib/socialApi";
 import styles from "./FeedPostComments.module.css";
+import { getViewportFrame } from "./viewportFrame";
 
 export type CommentMentionComposerHandle = {
   focus: () => void;
@@ -123,7 +125,7 @@ export const CommentMentionComposer = forwardRef<CommentMentionComposerHandle, C
       const box = editor.getBoundingClientRect();
       if (!caret) return;
       setSuggestStyle({
-        top: caret.bottom - box.top + 4,
+        top: caret.bottom - box.top + sPx(4, getViewportFrame().s),
         left: Math.max(0, caret.left - box.left),
       });
     }, []);

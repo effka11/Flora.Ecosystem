@@ -1,14 +1,14 @@
 .banner {
-  margin: 0 calc(15px * 2) calc(15px * 1);
-  padding: calc(15px * 1);
-  border-radius: 8px;
+  margin: 0 calc(2 * var(--flora-grid-step)) var(--flora-grid-step);
+  padding: var(--flora-grid-step);
+  border-radius: var(--flora-sPx-8);
   background: rgba(255, 193, 7, 0.12);
   border: 1px solid rgba(255, 193, 7, 0.35);
 }
 
 .text {
   margin: 0;
-  font-size: 13px;
+  font-size: max(1px, var(--flora-sPx-13));
   line-height: 1.45;
   color: var(--flora-text, #e8e8e8);
 }
