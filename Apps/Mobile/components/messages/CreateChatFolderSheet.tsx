@@ -17,7 +17,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 export type CreateChatFolderResult = {
   name: string;
@@ -38,6 +39,7 @@ const FOLDER_ICONS = CHAT_LIST_FOLDER_ICON_NAMES;
 /** Sheet создания папки списка чатов (после развилки «+»). */
 export function CreateChatFolderSheet({ visible, onClose, conversations, onCreate }: Props) {
   const insets = useSafeAreaInsets();
+  const sp = useSPx();
   const [folderIcon, setFolderIcon] = useState<ChatListFolderIconName>("folder-outline");
   const [folderName, setFolderName] = useState("");
   const [selectedUserUuids, setSelectedUserUuids] = useState<Set<string>>(() => new Set());
@@ -106,7 +108,7 @@ export function CreateChatFolderSheet({ visible, onClose, conversations, onCreat
             style={styles.headerSide}
             onPress={onClose}
           >
-            <Ionicons name="close" size={24} color={floraColors.gray} />
+            <Ionicons name="close" size={sp(24)} color={floraColors.gray} />
           </Pressable>
           <Text style={styles.title}>Новая папка</Text>
           <Pressable
@@ -155,7 +157,7 @@ export function CreateChatFolderSheet({ visible, onClose, conversations, onCreat
                   >
                     <Ionicons
                       name={icon as keyof typeof Ionicons.glyphMap}
-                      size={22}
+                      size={sp(22)}
                       color={active ? floraColors.greenLight : floraColors.gray}
                     />
                   </Pressable>
@@ -195,7 +197,7 @@ export function CreateChatFolderSheet({ visible, onClose, conversations, onCreat
                       onPress={() => toggleUser(c.otherUserUuid)}
                     >
                       <FloraAvatar
-                        size={36}
+                        size={sPx(36)}
                         avatarUuid={c.otherAvatarUuid}
                         displayName={displayName}
                         username={c.otherUsername}
@@ -212,7 +214,7 @@ export function CreateChatFolderSheet({ visible, onClose, conversations, onCreat
                       </View>
                       <Ionicons
                         name={selected ? "checkmark-circle" : "ellipse-outline"}
-                        size={22}
+                        size={sp(22)}
                         color={selected ? floraColors.greenLight : floraColors.gray}
                       />
                     </Pressable>
@@ -242,8 +244,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     marginBottom: floraSpacing.grid * 2,
   },
   headerSide: {
-    width: 72,
-    minHeight: 36,
+    width: sPx(72),
+    minHeight: sPx(36),
     alignItems: "flex-start",
     justifyContent: "center",
   },
@@ -252,15 +254,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   headerActionText: {
     color: floraColors.greenLight,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 16,
+    fontSize: kegl(16),
     fontWeight: "300",
-    letterSpacing: 0.48,
+    letterSpacing: tracking(0.48),
   },
   scroll: {
     flex: 1,
@@ -274,20 +276,20 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   label: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   input: {
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
     borderColor: floraColors.greenDark,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    borderRadius: sPx(12),
+    paddingHorizontal: sPx(14),
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   iconGrid: {
     flexDirection: "row",
@@ -295,9 +297,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.gridFine,
   },
   iconCell: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
+    width: sPx(48),
+    height: sPx(48),
+    borderRadius: 2 * floraSpacing.gridFine,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -317,7 +319,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 1.5,
     paddingHorizontal: floraSpacing.gridFine * 2,
-    borderRadius: 12,
+    borderRadius: sPx(12),
     borderWidth: 1,
     borderColor: "transparent",
   },
@@ -328,33 +330,33 @@ const styles = liveGridStyles(() => StyleSheet.create({
   userMeta: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: sPx(2),
   },
   userName: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   userHandle: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   emptyUsers: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
-    lineHeight: 20,
+    letterSpacing: tracking(0.42),
+    lineHeight: 4 * floraSpacing.gridFine,
     paddingVertical: floraSpacing.grid,
   },
   error: {
     color: floraColors.error,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
-    lineHeight: 20,
+    letterSpacing: tracking(0.42),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
 }));

@@ -18,7 +18,8 @@ import {
   View,
 } from "react-native";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 type Props = {
   visible: boolean;
@@ -26,6 +27,7 @@ type Props = {
 };
 
 export function SettingsFeedHiddenModal({ visible, onClose }: Props) {
+  const sp = useSPx();
   const [authors, setAuthors] = useState<HiddenFeedAuthorDto[]>([]);
   const [communities, setCommunities] = useState<DismissedCommunityDto[]>([]);
   const [loading, setLoading] = useState(false);
@@ -93,7 +95,7 @@ export function SettingsFeedHiddenModal({ visible, onClose }: Props) {
               accessibilityRole="button"
               accessibilityLabel="Закрыть"
             >
-              <Ionicons name="close" size={22} color={floraColors.gray} />
+              <Ionicons name="close" size={sp(22)} color={floraColors.gray} />
             </Pressable>
           </View>
 
@@ -210,9 +212,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   title: {
     flex: 1,
     color: floraColors.whiteTemplate,
-    fontSize: 18,
+    fontSize: kegl(18),
     fontWeight: "300",
-    letterSpacing: 0.54,
+    letterSpacing: tracking(0.54),
   },
   closeBtn: {
     width: floraSpacing.grid * 2,
@@ -222,21 +224,21 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   body: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    lineHeight: 20,
+    lineHeight: sPx(20),
   },
   list: {
-    maxHeight: 360,
+    maxHeight: sPx(360),
   },
   loader: {
     marginVertical: floraSpacing.grid * 2,
   },
   sectionLabel: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
-    letterSpacing: 0.36,
+    letterSpacing: tracking(0.36),
     marginBottom: floraSpacing.gridFine,
   },
   sectionLabelSpaced: {
@@ -244,7 +246,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   empty: {
     color: "rgba(250, 250, 250, 0.35)",
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
     marginBottom: floraSpacing.gridFine,
   },
@@ -259,29 +261,29 @@ const styles = liveGridStyles(() => StyleSheet.create({
   rowCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: sPx(2),
   },
   rowTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   rowMeta: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
   },
   actionBtn: {
     minHeight: floraSpacing.grid * 2 + floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.grid,
-    borderRadius: 8,
+    borderRadius: sPx(8),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(164, 209, 138, 0.12)",
   },
   actionText: {
     color: floraColors.greenLight,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
   },
 }));

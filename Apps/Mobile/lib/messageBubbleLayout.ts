@@ -1,11 +1,9 @@
 import {
-  MESSAGE_RECEIPT_INLINE_RESERVE_PX,
-  TIME_INLINE_GAP_PX,
   resolveBubbleTimePlacementFromLineWidths,
   type BubbleTimePlacement,
 } from "@flora/client-core/display";
 
-import { floraMessages, floraSpacing } from "@/lib/theme";
+import { floraMessages, floraSpacing, sPx } from "@/lib/theme";
 
 type BubbleRowContext = {
   screenWidth: number;
@@ -96,7 +94,7 @@ export type BubbleMetaLayout = {
 /** Ширина блока «время + галочки» вместе с отступом от хвоста текста. */
 export function bubbleMetaWidth(timeLabelWidthPx: number, hasReceipt: boolean): number {
   return (
-    timeLabelWidthPx + TIME_INLINE_GAP_PX + (hasReceipt ? MESSAGE_RECEIPT_INLINE_RESERVE_PX : 0)
+    timeLabelWidthPx + 1 * floraSpacing.grid + (hasReceipt ? sPx(28) : 0)
   );
 }
 

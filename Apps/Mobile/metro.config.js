@@ -40,7 +40,15 @@ function shouldRemapJsToTs(moduleName) {
  * Custom resolver must chain via `context.resolveRequest` so Expo can still
  * apply tsconfig paths (`@/…`), autolinking, etc. (see withMetroResolvers).
  */
+const QUICK_CRYPTO_WEB_SHIM = path.resolve(projectRoot, "lib/shims/quickCryptoWeb.ts");
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Native package throws at import when QuickCrypto JSI is absent. Web static
+  // render evaluates the app graph, so the web bundle must not load it.
+  if (platform === "web" && moduleName === "react-native-quick-crypto") {
+    return { type: "sourceFile", filePath: QUICK_CRYPTO_WEB_SHIM };
+  }
+
   const nobleAlias = NOBLE_HASHES_ALIASES[moduleName];
   if (nobleAlias) {
     try {

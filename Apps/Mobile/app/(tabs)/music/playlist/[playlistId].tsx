@@ -9,13 +9,15 @@ import { MusicTracksList } from "@/components/music/MusicSections";
 import { mapPlaylistDetailDto } from "@/lib/music/musicModels";
 import { musicTrackItemsToPlayerTracks } from "@/lib/music/musicPlayerMapping";
 import { useMusicStore } from "@/stores/musicStore";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 function routeParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
 export default function MusicPlaylistScreen() {
+  const sp = useSPx();
   const params = useLocalSearchParams<{ playlistId?: string }>();
   const playlistId = routeParam(params.playlistId);
   const queryClient = useQueryClient();
@@ -52,7 +54,7 @@ export default function MusicPlaylistScreen() {
       action={
         playlist?.canDelete ? (
           <Pressable style={({ pressed }) => [styles.headerBtn, pressed && styles.pressed]} onPress={deletePlaylist}>
-            <Ionicons name="trash-outline" size={18} color={floraColors.gray} />
+            <Ionicons name="trash-outline" size={sp(18)} color={floraColors.gray} />
           </Pressable>
         ) : null
       }
@@ -80,7 +82,7 @@ export default function MusicPlaylistScreen() {
                 }}
                 disabled={(playlist.tracks?.length ?? 0) === 0}
               >
-                <Ionicons name="play" size={16} color={floraColors.greenDark} />
+                <Ionicons name="play" size={sp(16)} color={floraColors.greenDark} />
                 <Text style={styles.playAllText}>Слушать</Text>
               </Pressable>
             </View>
@@ -109,9 +111,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     marginTop: floraSpacing.grid * 3,
   },
   headerBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: sPx(38),
+    height: sPx(38),
+    borderRadius: sPx(19),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -120,15 +122,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     gap: floraSpacing.grid,
     padding: floraSpacing.grid,
-    borderRadius: 18,
+    borderRadius: sPx(18),
     backgroundColor: floraColors.surface,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
   },
   heroCover: {
-    width: 92,
-    height: 92,
-    borderRadius: 20,
+    width: sPx(92),
+    height: sPx(92),
+    borderRadius: sPx(20),
   },
   heroMeta: {
     flex: 1,
@@ -138,16 +140,16 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   heroTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 20,
+    fontSize: kegl(20),
     fontWeight: "300",
   },
   heroSubtitle: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
   },
   playAllBtn: {
     alignSelf: "flex-start",
-    minHeight: 36,
+    minHeight: sPx(36),
     borderRadius: 999,
     flexDirection: "row",
     alignItems: "center",
@@ -158,7 +160,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   playAllText: {
     color: floraColors.greenDark,
-    fontSize: 14,
+    fontSize: kegl(14),
   },
   pressed: {
     opacity: 0.72,

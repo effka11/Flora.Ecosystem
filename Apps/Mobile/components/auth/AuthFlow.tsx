@@ -25,6 +25,7 @@ import {
 import { AuthScreenLayout } from "./AuthScreenLayout";
 import { AuthSubmitButton } from "./AuthSubmitButton";
 import { authStyles } from "./styles";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { mobileSessionStore } from "@/lib/session";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -53,6 +54,7 @@ type AuthFlowProps = {
 };
 
 export function AuthFlow({ initialMode = "login" }: AuthFlowProps) {
+  const sp = useSPx();
   const [mode, setMode] = useState<AuthFlowMode>(initialMode);
   const [modeAnim, setModeAnim] = useState<AuthPanelAnim>("none");
   const [email, setEmail] = useState("");
@@ -467,7 +469,7 @@ export function AuthFlow({ initialMode = "login" }: AuthFlowProps) {
                 onPress={goReset}
                 accessibilityRole="button"
                 accessibilityLabel="Восстановить пароль"
-                hitSlop={8}
+                hitSlop={sp(8)}
               >
                 <Text style={authStyles.forgotPasswordLink}>Забыли пароль?</Text>
               </Pressable>

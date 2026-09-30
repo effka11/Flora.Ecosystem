@@ -2,7 +2,8 @@ import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { MessageReplyDraft } from "@/lib/messageReply";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraMessages, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 type Props = {
   reply: MessageReplyDraft;
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function ChatComposeReplyBar({ reply, onDismiss, onLayout }: Props) {
+  const sp = useSPx();
   return (
     <View
       style={styles.strip}
@@ -32,9 +34,9 @@ export function ChatComposeReplyBar({ reply, onDismiss, onLayout }: Props) {
           accessibilityLabel="Отменить ответ"
           style={({ pressed }) => [styles.dismissBtn, pressed && styles.dismissBtnPressed]}
           onPress={onDismiss}
-          hitSlop={8}
+          hitSlop={sp(8)}
         >
-          <Ionicons name="close" size={20} color={floraColors.gray} />
+          <Ionicons name="close" size={sp(20)} color={floraColors.gray} />
         </Pressable>
       </View>
     </View>
@@ -56,32 +58,32 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: 0,
   },
   accent: {
-    width: 3,
+    width: sPx(3),
     alignSelf: "stretch",
-    borderRadius: 2,
+    borderRadius: sPx(2),
     backgroundColor: floraColors.greenLight,
   },
   textBlock: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: sPx(2),
   },
   author: {
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "500",
     color: floraColors.greenLight,
   },
   preview: {
-    fontSize: 13,
+    fontSize: kegl(13),
     color: floraColors.gray,
-    lineHeight: 18,
+    lineHeight: sPx(18),
   },
   dismissBtn: {
-    width: 32,
-    height: 32,
+    width: sPx(32),
+    height: sPx(32),
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 16,
+    borderRadius: sPx(16),
   },
   dismissBtnPressed: {
     backgroundColor: "rgba(250, 250, 250, 0.06)",

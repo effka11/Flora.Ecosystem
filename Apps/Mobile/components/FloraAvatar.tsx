@@ -9,7 +9,8 @@ import { Link, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
-import { floraColors } from "@/lib/theme";
+import { liveGridStyles } from "@/lib/liveGridStyles";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 /** Strike colour for blocked people — static, never animated. */
 const ACCOUNT_BLOCKED_DIAGONAL = "#e8382c";
@@ -40,14 +41,14 @@ type DefaultAvatarArtProps = {
 function DefaultAvatarArt({ size, initials, backgroundColor }: DefaultAvatarArtProps) {
   return (
     <View style={[styles.defaultArt, { width: size, height: size, borderRadius: size / 2, backgroundColor }]}>
-      <Text style={[styles.initials, { fontSize: Math.max(12, Math.round(size * 0.36)) }]}>{initials}</Text>
+      <Text style={[styles.initials, { fontSize: Math.max(kegl(12), Math.round(size * 0.36)) }]}>{initials}</Text>
     </View>
   );
 }
 
 /** Static red diameter. Transform is set once — not driven per-frame. */
 function BlockedAccountDiagonal({ size }: { size: number }) {
-  const stroke = Math.max(2, Math.round(size * 0.055));
+  const stroke = Math.max(sPx(2), Math.round(size * 0.055));
   const length = size * Math.SQRT2;
   return (
     <View
@@ -70,7 +71,7 @@ function BlockedAccountDiagonal({ size }: { size: number }) {
 }
 
 export function FloraAvatar({
-  size = 45,
+  size = 3 * floraSpacing.grid,
   avatarUuid,
   previewUri,
   displayName,
@@ -156,7 +157,7 @@ export function FloraAvatar({
   return <View style={wrapStyle}>{inner}</View>;
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   defaultArt: {
     alignItems: "center",
     justifyContent: "center",
@@ -171,7 +172,7 @@ const styles = StyleSheet.create({
   initials: {
     color: floraColors.greenLight,
     fontWeight: "300",
-    letterSpacing: 0.48,
+    letterSpacing: tracking(0.48),
   },
   pressed: {
     opacity: 0.72,
@@ -182,4 +183,4 @@ const styles = StyleSheet.create({
     top: 0,
     overflow: "hidden",
   },
-});
+}));

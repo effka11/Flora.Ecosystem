@@ -1,5 +1,6 @@
 import { Linking, StyleSheet, Text, View } from "react-native";
-import { floraColors } from "@/lib/theme";
+import { liveGridStyles } from "@/lib/liveGridStyles";
+import { floraColors, kegl, sPx } from "@/lib/theme";
 
 export default function UpgradeRequiredScreen() {
   return (
@@ -15,9 +16,9 @@ export default function UpgradeRequiredScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: floraColors.bg, padding: 24, justifyContent: "center", gap: 12 },
-  title: { color: floraColors.text, fontSize: 22, fontWeight: "700" },
-  text: { color: floraColors.textMuted, lineHeight: 22 },
-  link: { color: floraColors.accent, marginTop: 12 },
-});
+const styles = liveGridStyles(() => StyleSheet.create({
+  root: { flex: 1, backgroundColor: floraColors.bg, padding: sPx(24), justifyContent: "center", gap: sPx(12) },
+  title: { color: floraColors.text, fontSize: kegl(22), fontWeight: "700" },
+  text: { color: floraColors.textMuted, lineHeight: sPx(22) },
+  link: { color: floraColors.accent, marginTop: sPx(12) },
+}));

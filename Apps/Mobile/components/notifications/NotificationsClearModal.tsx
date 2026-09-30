@@ -1,7 +1,8 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   visible: boolean;
@@ -19,6 +20,7 @@ export function NotificationsClearModal({
   onDismiss,
   onConfirm,
 }: Props) {
+  const sp = useSPx();
   return (
     <Modal
       visible={visible}
@@ -38,7 +40,7 @@ export function NotificationsClearModal({
             {busy ? (
               <ActivityIndicator color="#f6a8a8" />
             ) : (
-              <Ionicons name="trash-outline" size={28} color="#f6a8a8" />
+              <Ionicons name="trash-outline" size={sp(28)} color="#f6a8a8" />
             )}
           </View>
 
@@ -85,7 +87,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   card: {
     width: "100%",
-    maxWidth: 320,
+    maxWidth: sPx(320),
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surfaceElevated,
     borderWidth: 1,
@@ -106,40 +108,40 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "500",
-    letterSpacing: 0.34,
+    letterSpacing: tracking(0.34),
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: sPx(22),
   },
   body: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: sPx(20),
   },
   error: {
     color: "#f6a8a8",
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
     textAlign: "center",
-    lineHeight: 17,
+    lineHeight: sPx(17),
   },
   confirmBtn: {
     marginTop: floraSpacing.gridFine,
     width: "100%",
-    paddingVertical: floraSpacing.gridFine * 2 + 2,
+    paddingVertical: floraSpacing.gridFine * 2 + sPx(2),
     borderRadius: 9999,
     backgroundColor: "rgba(246, 168, 168, 0.18)",
     alignItems: "center",
   },
   confirmBtnText: {
     color: "#f6a8a8",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   secondaryBtn: {
     width: "100%",
@@ -149,9 +151,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   secondaryBtnText: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   btnPressed: {
     opacity: 0.85,

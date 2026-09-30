@@ -17,7 +17,7 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
-import { floraMotion, floraSpacing } from "@/lib/theme";
+import { floraMotion, floraSpacing, sPx } from "@/lib/theme";
 
 type FeedLightboxApi = {
   open: (uri: string) => void;
@@ -78,7 +78,7 @@ function FeedLightboxLayer({ uri, onClose }: { uri: string; onClose: () => void 
       <Pressable
         style={[
           styles.backdrop,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 },
+          { paddingTop: insets.top + sPx(16), paddingBottom: insets.bottom + sPx(16) },
         ]}
         onPress={onClose}
         accessibilityRole="button"
@@ -122,7 +122,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.85)",
-    paddingHorizontal: 16,
+    paddingHorizontal: sPx(16),
     justifyContent: "center",
     alignItems: "center",
   },

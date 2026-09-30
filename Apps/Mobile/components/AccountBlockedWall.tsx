@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { accountBlockedWallBody } from "@/lib/accountBlockedWallCopy";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
 /**
@@ -81,27 +81,27 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.text,
-    fontSize: 22,
+    fontSize: kegl(22),
     fontWeight: "300",
-    letterSpacing: 0.54,
+    letterSpacing: tracking(0.54),
   },
   body: {
     color: floraColors.textMuted,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(22),
   },
   error: {
     color: "#f6a8a8",
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
-    lineHeight: 17,
+    lineHeight: sPx(17),
   },
   logout: {
     alignSelf: "stretch",
     minHeight: floraSpacing.grid * 3,
-    borderRadius: 8,
+    borderRadius: sPx(8),
     borderWidth: 1,
     borderColor: "rgba(246, 168, 168, 0.55)",
     backgroundColor: "transparent",
@@ -117,8 +117,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   logoutLabel: {
     color: "#f6a8a8",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
 }));

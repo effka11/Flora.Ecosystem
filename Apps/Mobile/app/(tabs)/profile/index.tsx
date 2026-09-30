@@ -22,11 +22,11 @@ import { useDeletePost } from "@/lib/useDeletePost";
 import { useEditPost } from "@/lib/useEditPost";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
 import { useSessionStore } from "@/stores/sessionStore";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const me = useSessionStore((s) => s.me);
   const setMe = useSessionStore((s) => s.setMe);
   const network = useNetworkClass();
@@ -238,8 +238,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     color: floraColors.gray,
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.grid * 2,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
 }));

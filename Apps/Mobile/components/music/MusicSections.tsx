@@ -42,7 +42,8 @@ import {
 } from "@/lib/music/musicUpload";
 import { pickMusicAudioFile, pickMusicCoverFile } from "@/lib/music/musicMediaPickers";
 import { useMusicStore } from "@/stores/musicStore";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 const FLOW_WAVE_SIZE = 12;
 
@@ -79,6 +80,7 @@ export function MusicFlowCard({
     : genreId
       ? `flow:${genreId}`
       : "flow";
+  const sp = useSPx();
   const active = sourceId === scopedSourceId && current !== null;
 
   const loadMore = useCallback(async () => {
@@ -123,7 +125,7 @@ export function MusicFlowCard({
   return (
     <View style={styles.flowCard}>
       <View style={styles.flowArt}>
-        <Ionicons name="sparkles" size={26} color={floraColors.greenDark} />
+        <Ionicons name="sparkles" size={sp(26)} color={floraColors.greenDark} />
       </View>
       <View style={styles.flowMeta}>
         <Text style={styles.cardTitle}>{title}</Text>
@@ -134,7 +136,7 @@ export function MusicFlowCard({
         {starting ? (
           <ActivityIndicator color={floraColors.greenDark} />
         ) : (
-          <Ionicons name={active && playing ? "pause" : "play"} size={20} color={floraColors.greenDark} />
+          <Ionicons name={active && playing ? "pause" : "play"} size={sp(20)} color={floraColors.greenDark} />
         )}
       </Pressable>
     </View>
@@ -142,6 +144,7 @@ export function MusicFlowCard({
 }
 
 export function MusicGenresCarousel() {
+  const sp = useSPx();
   return (
     <View style={styles.section}>
       <SectionHeader title="Жанры" />
@@ -160,7 +163,7 @@ export function MusicGenresCarousel() {
               router.push({ pathname: "/(tabs)/music/genre/[genreId]", params: { genreId: genre.id } })
             }
           >
-            <Ionicons name="radio-outline" size={20} color={floraColors.greenLight} />
+            <Ionicons name="radio-outline" size={sp(20)} color={floraColors.greenLight} />
             <Text style={styles.genreTitle}>{genre.title}</Text>
           </Pressable>
         ))}
@@ -176,6 +179,7 @@ export function MusicPlaylistsCarousel({
   playlists: PlaylistItem[];
   onCreated: () => void;
 }) {
+  const sp = useSPx();
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -210,7 +214,7 @@ export function MusicPlaylistsCarousel({
           style={({ pressed }) => [styles.playlistCard, styles.createCard, pressed && styles.pressed]}
           onPress={() => setCreating((value) => !value)}
         >
-          <Ionicons name="add" size={24} color={floraColors.greenLight} />
+          <Ionicons name="add" size={sp(24)} color={floraColors.greenLight} />
           <Text style={styles.playlistTitle}>Создать</Text>
         </Pressable>
         {playlists.map((playlist) => (
@@ -530,6 +534,7 @@ export function MusicUploadForSelfForm({ onUploaded }: { onUploaded: () => void 
 }
 
 export function MusicUploadForPlatformForm({ onUploaded }: { onUploaded: () => void }) {
+  const sp = useSPx();
   const [title, setTitle] = useState("");
   const [artistCredits, setArtistCredits] = useState<TrackArtistCreditInput[]>([]);
   const [genreId, setGenreId] = useState(MUSIC_GENRES[0]!.id);
@@ -596,7 +601,7 @@ export function MusicUploadForPlatformForm({ onUploaded }: { onUploaded: () => v
       <FilePickerButton label="Обложка (необязательно)" file={cover} error={coverError} onPick={() => void chooseCover()} />
       <Pressable style={({ pressed }) => [styles.checkboxRow, pressed && styles.pressed]} onPress={() => setTermsAccepted((value) => !value)}>
         <View style={[styles.checkbox, termsAccepted && styles.checkboxOn]}>
-          {termsAccepted ? <Ionicons name="checkmark" size={14} color={floraColors.greenDark} /> : null}
+          {termsAccepted ? <Ionicons name="checkmark" size={sp(14)} color={floraColors.greenDark} /> : null}
         </View>
         <Text style={styles.checkboxText}>Я подтверждаю права на публикацию трека.</Text>
       </Pressable>
@@ -648,11 +653,12 @@ function FilePickerButton({
   error?: string | null;
   onPick: () => void;
 }) {
+  const sp = useSPx();
   return (
     <View style={styles.inlineForm}>
       <Text style={styles.label}>{label}</Text>
       <Pressable style={({ pressed }) => [styles.filePicker, pressed && styles.pressed]} onPress={onPick}>
-        <Ionicons name="cloud-upload-outline" size={20} color={floraColors.greenLight} />
+        <Ionicons name="cloud-upload-outline" size={sp(20)} color={floraColors.greenLight} />
         <View style={styles.fileMeta}>
           <Text style={styles.fileTitle} numberOfLines={1}>
             {file?.name ?? "Выбрать файл"}
@@ -738,18 +744,18 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   sectionTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 18,
+    fontSize: kegl(18),
     fontWeight: "300",
-    letterSpacing: 0.54,
+    letterSpacing: tracking(0.54),
   },
   sectionAction: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
   },
   flowCard: {
     marginHorizontal: floraSpacing.grid,
     padding: floraSpacing.grid,
-    borderRadius: 18,
+    borderRadius: sPx(18),
     borderWidth: 1,
     borderColor: "rgba(164, 209, 138, 0.26)",
     backgroundColor: "rgba(164, 209, 138, 0.1)",
@@ -758,9 +764,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.grid,
   },
   flowArt: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
+    width: sPx(54),
+    height: sPx(54),
+    borderRadius: sPx(18),
     backgroundColor: floraColors.greenLight,
     alignItems: "center",
     justifyContent: "center",
@@ -771,21 +777,21 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   cardTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 19,
+    fontSize: kegl(19),
     fontWeight: "300",
-    letterSpacing: 0.57,
+    letterSpacing: tracking(0.57),
   },
   cardSubtitle: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
-    marginTop: 3,
+    letterSpacing: tracking(0.39),
+    marginTop: sPx(3),
   },
   roundBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: sPx(44),
+    height: sPx(44),
+    borderRadius: sPx(22),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: floraColors.greenLight,
@@ -795,9 +801,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
   },
   genreCard: {
-    width: 132,
-    minHeight: 86,
-    borderRadius: 18,
+    width: sPx(132),
+    minHeight: sPx(86),
+    borderRadius: sPx(18),
     padding: floraSpacing.grid,
     justifyContent: "space-between",
     backgroundColor: floraColors.surface,
@@ -806,13 +812,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   genreTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   playlistCard: {
-    width: 132,
-    minHeight: 150,
-    borderRadius: 18,
+    width: sPx(132),
+    minHeight: sPx(150),
+    borderRadius: sPx(18),
     padding: floraSpacing.grid,
     gap: floraSpacing.gridFine,
     backgroundColor: floraColors.surface,
@@ -824,18 +830,18 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "center",
   },
   playlistCover: {
-    height: 78,
-    borderRadius: 16,
+    height: sPx(78),
+    borderRadius: sPx(16),
     marginBottom: floraSpacing.gridFine,
   },
   playlistTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
   },
   playlistCount: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
   },
   trackList: {
     backgroundColor: floraColors.surface,
@@ -853,7 +859,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   uploadCard: {
     marginHorizontal: floraSpacing.grid,
     padding: floraSpacing.grid,
-    borderRadius: 18,
+    borderRadius: sPx(18),
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
     backgroundColor: floraColors.surface,
@@ -864,24 +870,24 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   label: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
   },
   input: {
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
     borderColor: floraColors.greenDark,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: sPx(12),
     color: floraColors.whiteTemplate,
-    paddingHorizontal: 14,
-    fontSize: 15,
+    paddingHorizontal: sPx(14),
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   filePicker: {
-    minHeight: 58,
+    minHeight: sPx(58),
     borderColor: floraColors.greenDark,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: sPx(14),
     paddingHorizontal: floraSpacing.grid,
     flexDirection: "row",
     alignItems: "center",
@@ -893,13 +899,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   fileTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
   },
   fileSize: {
     color: floraColors.gray,
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: kegl(12),
+    marginTop: sPx(2),
   },
   palette: {
     flexDirection: "row",
@@ -907,10 +913,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.gridFine * 2,
   },
   paletteDot: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2,
+    width: sPx(34),
+    height: sPx(34),
+    borderRadius: sPx(17),
+    borderWidth: sPx(2),
     borderColor: "transparent",
   },
   paletteDotActive: {
@@ -921,7 +927,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingRight: floraSpacing.grid,
   },
   chip: {
-    minHeight: 34,
+    minHeight: sPx(34),
     borderRadius: 999,
     paddingHorizontal: floraSpacing.grid,
     alignItems: "center",
@@ -935,14 +941,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   chipText: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
   },
   chipTextActive: {
     color: floraColors.greenLight,
   },
   artistRow: {
-    minHeight: 42,
-    borderRadius: 12,
+    minHeight: sPx(42),
+    borderRadius: sPx(12),
     paddingHorizontal: floraSpacing.grid,
     flexDirection: "row",
     alignItems: "center",
@@ -955,11 +961,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   artistName: {
     color: floraColors.whiteTemplate,
-    fontSize: 14,
+    fontSize: kegl(14),
   },
   artistCount: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
   },
   checkboxRow: {
     flexDirection: "row",
@@ -967,9 +973,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.gridFine * 2,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+    width: sPx(22),
+    height: sPx(22),
+    borderRadius: sPx(6),
     borderWidth: 1,
     borderColor: floraColors.greenDark,
     alignItems: "center",
@@ -982,11 +988,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
   checkboxText: {
     flex: 1,
     color: floraColors.gray,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: kegl(13),
+    lineHeight: sPx(18),
   },
   primaryBtn: {
-    minHeight: 44,
+    minHeight: sPx(44),
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
@@ -995,11 +1001,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   primaryBtnText: {
     color: floraColors.greenDark,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   secondaryBtn: {
-    minHeight: 38,
+    minHeight: sPx(38),
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
@@ -1008,7 +1014,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   secondaryBtnText: {
     color: floraColors.greenLight,
-    fontSize: 13,
+    fontSize: kegl(13),
   },
   loader: {
     marginTop: floraSpacing.grid,
@@ -1018,15 +1024,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
     textAlign: "center",
     marginTop: floraSpacing.grid * 3,
     paddingHorizontal: floraSpacing.grid * 2,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(22),
   },
   errorText: {
     color: floraColors.error,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: kegl(12),
+    lineHeight: sPx(17),
   },
   pressed: {
     opacity: 0.72,

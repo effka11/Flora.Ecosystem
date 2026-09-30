@@ -32,7 +32,8 @@ import { TabScreenHeader } from "@/components/TabScreenHeader";
 import { setNotificationsListFocused } from "@/lib/notificationsPushCoalesce";
 import { dismissPresentedSocialPushNotifications } from "@/lib/pushNotifications";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { usePagerListScroll } from "@/lib/usePagerListScroll";
 
 const TABS = NOTIFICATION_CATEGORY_TABS;
@@ -51,8 +52,9 @@ function emptyMessage(activeTab: number, hasSearch: boolean): string {
 const EMPTY_NOTIFICATIONS: NotificationDto[] = [];
 
 export default function NotificationsScreen() {
+  const sp = useSPx();
   const insets = useSafeAreaInsets();
-  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const { renderScrollComponents, setActivePane } = usePagerListScroll(1);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -240,7 +242,7 @@ export default function NotificationsScreen() {
               accessibilityLabel="Очистить"
             >
               <Text style={styles.clearBtnText}>Очистить</Text>
-              <Ionicons name="close" size={16} color={floraColors.greenLight} />
+              <Ionicons name="close" size={sp(16)} color={floraColors.greenLight} />
             </Pressable>
           </View>
         }
@@ -301,14 +303,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: floraSpacing.gridFine,
-    height: 35,
+    height: sPx(35),
     paddingHorizontal: floraSpacing.grid,
   },
   clearBtnText: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   listFlex: {
     flex: 1,
@@ -324,10 +326,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     textAlign: "center",
     marginTop: floraSpacing.grid * 3,
     paddingHorizontal: floraSpacing.grid * 2,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(22),
   },
   pressed: {
     opacity: 0.72,

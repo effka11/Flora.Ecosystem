@@ -21,7 +21,8 @@ import {
   normalizeCommunitySlug,
 } from "@/lib/communitySlug";
 import { isReservedCommunitySlug, RESERVED_COMMUNITY_SLUG_MESSAGE } from "@/lib/communityReservedSlugs";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   visible: boolean;
@@ -30,6 +31,7 @@ type Props = {
 };
 
 export function CreateCommunitySheet({ visible, onClose, onCreated }: Props) {
+  const sp = useSPx();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -116,7 +118,7 @@ export function CreateCommunitySheet({ visible, onClose, onCreated }: Props) {
             style={({ pressed }) => [styles.headerSide, pressed && styles.pressed]}
             onPress={onClose}
           >
-            <Ionicons name="close" size={24} color={floraColors.gray} />
+            <Ionicons name="close" size={sp(24)} color={floraColors.gray} />
           </Pressable>
           <Text style={styles.title}>Новое сообщество</Text>
           <Pressable
@@ -199,8 +201,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     marginBottom: floraSpacing.grid * 2,
   },
   headerSide: {
-    width: 72,
-    minHeight: 36,
+    width: sPx(72),
+    minHeight: sPx(36),
     alignItems: "flex-start",
     justifyContent: "center",
   },
@@ -209,15 +211,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   headerActionText: {
     color: floraColors.greenLight,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 16,
+    fontSize: kegl(16),
     fontWeight: "300",
-    letterSpacing: 0.48,
+    letterSpacing: tracking(0.48),
   },
   form: {
     gap: floraSpacing.grid * 2,
@@ -227,20 +229,20 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   label: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   input: {
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
     borderColor: floraColors.greenDark,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    borderRadius: sPx(12),
+    paddingHorizontal: sPx(14),
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   slugRow: {
     flexDirection: "row",
@@ -249,9 +251,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   slugPrefix: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   slugInput: {
     flex: 1,
@@ -269,23 +271,23 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   switchLabel: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   switchHint: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
-    lineHeight: 18,
+    letterSpacing: tracking(0.39),
+    lineHeight: sPx(18),
   },
   error: {
     color: floraColors.error,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
-    lineHeight: 20,
+    letterSpacing: tracking(0.42),
+    lineHeight: sPx(20),
   },
   pressed: {
     opacity: 0.72,

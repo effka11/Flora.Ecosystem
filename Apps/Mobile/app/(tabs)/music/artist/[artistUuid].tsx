@@ -9,13 +9,15 @@ import { MusicTracksList } from "@/components/music/MusicSections";
 import { mapMusicTracksDto } from "@/lib/music/musicModels";
 import { musicTrackItemsToPlayerTracks } from "@/lib/music/musicPlayerMapping";
 import { useMusicStore } from "@/stores/musicStore";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 function routeParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
 export default function MusicArtistScreen() {
+  const sp = useSPx();
   const params = useLocalSearchParams<{ artistUuid?: string }>();
   const artistUuid = routeParam(params.artistUuid);
   const playQueue = useMusicStore((s) => s.playQueue);
@@ -46,7 +48,7 @@ export default function MusicArtistScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.hero}>
             <View style={styles.artistCover}>
-              <Ionicons name="person" size={34} color={floraColors.greenDark} />
+              <Ionicons name="person" size={sp(34)} color={floraColors.greenDark} />
             </View>
             <View style={styles.heroMeta}>
               <Text style={styles.heroTitle}>{artist.displayName}</Text>
@@ -60,7 +62,7 @@ export default function MusicArtistScreen() {
                 }}
                 disabled={tracks.length === 0}
               >
-                <Ionicons name="play" size={16} color={floraColors.greenDark} />
+                <Ionicons name="play" size={sp(16)} color={floraColors.greenDark} />
                 <Text style={styles.playAllText}>Слушать</Text>
               </Pressable>
             </View>
@@ -93,15 +95,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     gap: floraSpacing.grid,
     padding: floraSpacing.grid,
-    borderRadius: 18,
+    borderRadius: sPx(18),
     backgroundColor: floraColors.surface,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
   },
   artistCover: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+    width: sPx(92),
+    height: sPx(92),
+    borderRadius: sPx(46),
     backgroundColor: floraColors.greenLight,
     alignItems: "center",
     justifyContent: "center",
@@ -114,16 +116,16 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   heroTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 20,
+    fontSize: kegl(20),
     fontWeight: "300",
   },
   heroSubtitle: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
   },
   playAllBtn: {
     alignSelf: "flex-start",
-    minHeight: 36,
+    minHeight: sPx(36),
     borderRadius: 999,
     flexDirection: "row",
     alignItems: "center",
@@ -134,7 +136,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   playAllText: {
     color: floraColors.greenDark,
-    fontSize: 14,
+    fontSize: kegl(14),
   },
   pressed: {
     opacity: 0.72,

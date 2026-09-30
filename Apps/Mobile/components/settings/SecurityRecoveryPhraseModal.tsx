@@ -16,10 +16,12 @@ import {
   Text,
   View,
 } from "react-native";
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { floraNewUuid } from "@/lib/floraUuid";
-import { floraColors } from "@/lib/theme";
+import { floraColors, sPx } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -29,6 +31,7 @@ type Props = {
 };
 
 export function SecurityRecoveryPhraseModal({ visible, onClose }: Props) {
+  const sp = useSPx();
   const me = useSessionStore((s) => s.me);
   const material = useFscpStore((s) => s.material);
   const [existingCount, setExistingCount] = useState(0);
@@ -125,7 +128,7 @@ export function SecurityRecoveryPhraseModal({ visible, onClose }: Props) {
           <View style={ui.modalHeader}>
             <Text style={ui.modalTitle}>Ключ-фраза</Text>
             <Pressable onPress={onClose} disabled={busy} style={({ pressed }) => pressed && ui.pressed}>
-              <Ionicons name="close" size={22} color={floraColors.gray} />
+              <Ionicons name="close" size={sp(22)} color={floraColors.gray} />
             </Pressable>
           </View>
 
@@ -168,7 +171,7 @@ export function SecurityRecoveryPhraseModal({ visible, onClose }: Props) {
             >
               <View style={[ui.confirmCheckBox, confirmed && ui.confirmCheckBoxOn]}>
                 {confirmed ? (
-                  <Ionicons name="checkmark" size={14} color={floraColors.greenLight} />
+                  <Ionicons name="checkmark" size={sp(14)} color={floraColors.greenLight} />
                 ) : null}
               </View>
               <Text style={ui.confirmCheckLabel}>Я сохранил(а) фразу в надёжном месте</Text>
@@ -197,11 +200,11 @@ export function SecurityRecoveryPhraseModal({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   phraseBox: {
-    maxHeight: 150,
+    maxHeight: sPx(150),
   },
   phraseScroll: {
-    maxHeight: 110,
+    maxHeight: sPx(110),
   },
-});
+}));

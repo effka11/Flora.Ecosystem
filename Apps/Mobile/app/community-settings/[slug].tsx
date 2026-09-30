@@ -34,7 +34,7 @@ import {
 } from "@/lib/communitySettingsDraft";
 import { COMMUNITY_SLUG_FORMAT_MESSAGE, hasOnlyCommunitySlugChars } from "@/lib/communitySlug";
 import { communityScreenHref, decodeRouteParam } from "@/lib/socialRoutes";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 export default function CommunitySettingsScreen() {
   const { slug: rawSlug } = useLocalSearchParams<{ slug: string | string[] }>();
@@ -335,35 +335,35 @@ const styles = liveGridStyles(() => StyleSheet.create({
   section: {
     gap: floraSpacing.grid,
     padding: floraSpacing.grid,
-    borderRadius: 12,
+    borderRadius: sPx(12),
     borderWidth: 1,
     borderColor: floraColors.border,
     backgroundColor: floraColors.surface,
   },
   sectionTitle: {
     color: floraColors.text,
-    fontSize: 16,
+    fontSize: kegl(16),
     fontWeight: "600",
   },
   field: { gap: floraSpacing.gridFine * 2 },
   fieldLabel: {
     color: floraColors.textMuted,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
   },
   fieldHint: {
     color: floraColors.textMuted,
-    fontSize: 12,
+    fontSize: kegl(12),
   },
   input: {
     backgroundColor: floraColors.bg,
     borderColor: floraColors.border,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: sPx(8),
     color: floraColors.text,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+    paddingHorizontal: sPx(12),
+    paddingVertical: floraSpacing.gridFine * 2,
+    fontSize: kegl(15),
   },
   avatarRow: {
     flexDirection: "row",
@@ -372,7 +372,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   avatarHint: {
     color: floraColors.greenLight,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
   },
   switchRow: {
@@ -383,19 +383,19 @@ const styles = liveGridStyles(() => StyleSheet.create({
   switchCopy: { flex: 1, gap: floraSpacing.gridFine },
   switchTitle: {
     color: floraColors.text,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "400",
   },
   switchDesc: {
     color: floraColors.textMuted,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    lineHeight: 18,
+    lineHeight: sPx(18),
   },
   saveBtn: {
     backgroundColor: floraColors.accentDark,
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderRadius: sPx(8),
+    paddingVertical: sPx(14),
     alignItems: "center",
   },
   saveBtnDisabled: { opacity: 0.5 },
@@ -405,12 +405,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   dangerHint: {
     color: floraColors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: kegl(13),
+    lineHeight: sPx(18),
   },
   dangerBtn: {
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderRadius: sPx(8),
+    paddingVertical: sPx(14),
     alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(246, 168, 168, 0.5)",
@@ -421,7 +421,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   errorText: {
     color: floraColors.error,
-    fontSize: 14,
+    fontSize: kegl(14),
     textAlign: "center",
   },
   backBtn: {
@@ -429,7 +429,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingVertical: floraSpacing.grid,
     borderWidth: 1,
     borderColor: floraColors.border,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   backBtnText: {
     color: floraColors.text,

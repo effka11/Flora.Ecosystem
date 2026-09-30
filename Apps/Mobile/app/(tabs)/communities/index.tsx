@@ -39,7 +39,8 @@ import {
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { communityScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
 import { usePagerListScroll } from "@/lib/usePagerListScroll";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
@@ -87,6 +88,7 @@ type CommunityRowProps = {
 };
 
 function CommunityRow({ community, showLeave, showJoin, actionBusy, onJoin, onLeave }: CommunityRowProps) {
+  const sp = useSPx();
   return (
     <View style={styles.shell}>
       <Pressable
@@ -119,7 +121,7 @@ function CommunityRow({ community, showLeave, showJoin, actionBusy, onJoin, onLe
             style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed, actionBusy && styles.disabled]}
             onPress={onLeave}
           >
-            <Ionicons name="person-remove-outline" size={18} color={floraColors.greenLight} />
+            <Ionicons name="person-remove-outline" size={sp(18)} color={floraColors.greenLight} />
           </Pressable>
         ) : null}
         {showJoin ? (
@@ -130,7 +132,7 @@ function CommunityRow({ community, showLeave, showJoin, actionBusy, onJoin, onLe
             style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed, actionBusy && styles.disabled]}
             onPress={onJoin}
           >
-            <Ionicons name="person-add-outline" size={18} color={floraColors.greenLight} />
+            <Ionicons name="person-add-outline" size={sp(18)} color={floraColors.greenLight} />
           </Pressable>
         ) : null}
       </View>
@@ -228,7 +230,7 @@ function CommunityPane({
 
 export default function CommunitiesScreen() {
   const insets = useSafeAreaInsets();
-  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
   const [search, setSearch] = useState("");
@@ -581,7 +583,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: 0,
     gap: floraSpacing.grid,
     paddingTop: floraSpacing.grid * 2 - 1,
-    paddingBottom: floraSpacing.grid * 2 - 2,
+    paddingBottom: floraSpacing.grid * 2 - sPx(2),
     paddingLeft: floraSpacing.grid,
     paddingRight: floraSpacing.gridFine,
   },
@@ -595,17 +597,17 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   displayName: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(20),
   },
   members: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(20),
   },
   trailing: {
     flexDirection: "row",
@@ -615,13 +617,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignSelf: "stretch",
     paddingRight: floraSpacing.grid,
     paddingTop: floraSpacing.grid * 2 - 1,
-    paddingBottom: floraSpacing.grid * 2 - 2,
-    minWidth: floraSpacing.grid + 34,
+    paddingBottom: floraSpacing.grid * 2 - sPx(2),
+    minWidth: floraSpacing.grid + sPx(34),
   },
   iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: sPx(34),
+    height: sPx(34),
+    borderRadius: sPx(17),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(164, 209, 138, 0.08)",
@@ -636,10 +638,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     textAlign: "center",
     marginTop: floraSpacing.grid * 3,
     paddingHorizontal: floraSpacing.grid * 2,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(22),
   },
   disabled: {
     opacity: 0.45,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Animated, Easing } from "react-native";
+import { sPx } from "@/lib/theme";
 
 export type AuthPanelAnim = "none" | "exitLeft" | "enterLeft" | "exitRight" | "enterRight";
 
@@ -30,7 +31,7 @@ export function AuthPanelTransition({ anim, children }: AuthPanelTransitionProps
       opacity.setValue(1);
       Animated.parallel([
         Animated.timing(translateX, {
-          toValue: -SLIDE_OUT,
+          toValue: -sPx(SLIDE_OUT),
           duration: EXIT_MS,
           easing: EXIT_EASING,
           useNativeDriver: true,
@@ -50,7 +51,7 @@ export function AuthPanelTransition({ anim, children }: AuthPanelTransitionProps
       opacity.setValue(1);
       Animated.parallel([
         Animated.timing(translateX, {
-          toValue: SLIDE_OUT,
+          toValue: sPx(SLIDE_OUT),
           duration: EXIT_MS,
           easing: EXIT_EASING,
           useNativeDriver: true,
@@ -66,7 +67,7 @@ export function AuthPanelTransition({ anim, children }: AuthPanelTransitionProps
     }
 
     if (anim === "enterLeft") {
-      translateX.setValue(SLIDE_IN);
+      translateX.setValue(sPx(SLIDE_IN));
       opacity.setValue(0);
       Animated.parallel([
         Animated.timing(translateX, {
@@ -86,7 +87,7 @@ export function AuthPanelTransition({ anim, children }: AuthPanelTransitionProps
     }
 
     if (anim === "enterRight") {
-      translateX.setValue(-SLIDE_IN);
+      translateX.setValue(-sPx(SLIDE_IN));
       opacity.setValue(0);
       Animated.parallel([
         Animated.timing(translateX, {

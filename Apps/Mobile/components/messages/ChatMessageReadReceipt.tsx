@@ -3,7 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { memo } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, sPx } from "@/lib/theme";
 import type { MessageDeliveryState } from "@/lib/messageDeliveryState";
 
 type Props = {
@@ -19,12 +20,13 @@ function ChatMessageReadReceiptInner({
   sentColor = "rgba(242, 244, 246, 0.78)",
   compactMargin = false,
 }: Props) {
+  const sp = useSPx();
   const receiptStyle = [styles.receipt, compactMargin && styles.receiptCompactMargin];
 
   if (state === "sending") {
     return (
       <View style={receiptStyle} accessibilityLabel="Отправляется">
-        <Ionicons name="time-outline" size={10} color={sentColor} />
+        <Ionicons name="time-outline" size={sp(10)} color={sentColor} />
       </View>
     );
   }
@@ -32,10 +34,10 @@ function ChatMessageReadReceiptInner({
   if (state === "read") {
     return (
       <View style={[receiptStyle, styles.receiptRead]} accessibilityLabel="Прочитано">
-        <Ionicons name="checkmark" size={11} color={floraColors.greenLight} />
+        <Ionicons name="checkmark" size={sp(11)} color={floraColors.greenLight} />
         <Ionicons
           name="checkmark"
-          size={11}
+          size={sp(11)}
           color={floraColors.greenLight}
           style={styles.receiptReadSecond}
         />
@@ -45,7 +47,7 @@ function ChatMessageReadReceiptInner({
 
   return (
     <View style={receiptStyle} accessibilityLabel="Отправлено">
-      <Ionicons name="checkmark" size={11} color={sentColor} />
+      <Ionicons name="checkmark" size={sp(11)} color={sentColor} />
     </View>
   );
 }
@@ -58,19 +60,19 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    width: 18,
-    height: 10,
+    width: sPx(18),
+    height: 2 * floraSpacing.gridFine,
     marginLeft: floraSpacing.gridFine * 2,
     opacity: 0.82,
   },
   receiptCompactMargin: {
-    marginLeft: 2,
+    marginLeft: sPx(2),
   },
   receiptRead: {
     justifyContent: "flex-start",
     opacity: 1,
   },
   receiptReadSecond: {
-    marginLeft: -8,
+    marginLeft: -sPx(8),
   },
 }));

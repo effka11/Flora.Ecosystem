@@ -13,7 +13,8 @@ import {
   View,
 } from "react-native";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 type BlocklistEntry = {
   userUuid: string;
@@ -51,6 +52,7 @@ type SettingsBlocklistModalProps = {
 };
 
 export function SettingsBlocklistModal({ visible, onClose }: SettingsBlocklistModalProps) {
+  const sp = useSPx();
   const [entries, setEntries] = useState<BlocklistEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
@@ -124,7 +126,7 @@ export function SettingsBlocklistModal({ visible, onClose }: SettingsBlocklistMo
               accessibilityRole="button"
               accessibilityLabel="Закрыть"
             >
-              <Ionicons name="close" size={22} color={floraColors.gray} />
+              <Ionicons name="close" size={sp(22)} color={floraColors.gray} />
             </Pressable>
           </View>
 
@@ -225,21 +227,21 @@ const styles = liveGridStyles(() => StyleSheet.create({
   title: {
     flex: 1,
     color: floraColors.whiteTemplate,
-    fontSize: 18,
+    fontSize: kegl(18),
     fontWeight: "300",
-    letterSpacing: 0.54,
+    letterSpacing: tracking(0.54),
   },
   closeBtn: {
-    width: 36,
-    height: 36,
+    width: sPx(36),
+    height: sPx(36),
     alignItems: "center",
     justifyContent: "center",
   },
   body: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    lineHeight: 20,
+    lineHeight: sPx(20),
   },
   addRow: {
     flexDirection: "row",
@@ -251,9 +253,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: 0,
   },
   addBtn: {
-    minWidth: 72,
+    minWidth: sPx(72),
     height: floraSpacing.grid * 3,
-    borderRadius: 8,
+    borderRadius: sPx(8),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: floraColors.greenLight,
@@ -261,18 +263,18 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   addBtnText: {
     color: floraColors.bg,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
   },
   list: {
-    maxHeight: 280,
+    maxHeight: sPx(280),
   },
   loader: {
     marginVertical: floraSpacing.grid * 2,
   },
   empty: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
     paddingVertical: floraSpacing.grid,
   },
@@ -287,22 +289,22 @@ const styles = liveGridStyles(() => StyleSheet.create({
   rowCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: sPx(2),
   },
   rowTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   rowMeta: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
   },
   unblockBtn: {
-    minWidth: 88,
-    minHeight: 36,
-    borderRadius: 8,
+    minWidth: sPx(88),
+    minHeight: sPx(36),
+    borderRadius: sPx(8),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(246, 168, 168, 0.15)",
@@ -310,7 +312,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   unblockText: {
     color: "#f6a8a8",
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
   },
 }));

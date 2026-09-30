@@ -15,7 +15,7 @@ import { FloraAvatar } from "@/components/FloraAvatar";
 import { ProfileStatusField } from "@/components/profile/ProfileStatusField";
 import { BirthDateField } from "@/components/settings/BirthDateField";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
-import { floraColors } from "@/lib/theme";
+import { floraColors, floraSpacing } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useSettingsDraftStore } from "@/stores/settingsDraftStore";
 
@@ -137,7 +137,7 @@ export function AccountSettingsTab({ searchQuery }: AccountSettingsTabProps) {
           <Text style={ui.sectionTitle}>Аватар</Text>
           <View style={ui.avatarRow}>
             <FloraAvatar
-              size={105}
+              size={7 * floraSpacing.grid}
               avatarUuid={displayAvatarUuid}
               previewUri={previewUri}
               displayName={account.displayName || me?.displayName || ""}

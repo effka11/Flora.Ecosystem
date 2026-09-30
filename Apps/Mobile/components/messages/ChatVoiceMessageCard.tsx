@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode 
 import { ActivityIndicator, Alert, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import { TouchableOpacity } from "react-native-gesture-handler";
 import type { FscpVoiceBlock } from "@flora/client-core/fscp";
-import { TIME_INLINE_GAP_PX } from "@flora/client-core/display";
+
 import {
   getChatVoiceSession,
   isChatVoicePlaying,
@@ -14,7 +14,8 @@ import {
 import { ensureMessageVoiceUri, peekMessageVoiceUri } from "@/lib/messageVoiceAssets";
 import { peekPendingVoiceUri } from "@/lib/pendingVoiceOutgoing";
 import { ChatVoiceWaveform } from "@/components/messages/ChatVoiceWaveform";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraMessages, floraSpacing, sPx, tracking } from "@/lib/theme";
 import { formatVoiceDuration } from "@/lib/voiceWaveform";
 
 type Props = {
@@ -121,6 +122,7 @@ export function ChatVoiceMessageCard({
   // (shouldPlay && !playing used to look like "starting" forever).
   const label = error ?? (loading ? "Загрузка…" : formatVoiceDuration(durationMs));
   const playIconColor = floraColors.greenDark;
+  const sp = useSPx();
 
   return (
     <TouchableOpacity
@@ -142,7 +144,7 @@ export function ChatVoiceMessageCard({
         ) : (
           <Ionicons
             name={playing ? "pause" : "play"}
-            size={18}
+            size={sp(18)}
             color={playIconColor}
           />
         )}
@@ -185,13 +187,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
   body: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: sPx(2),
   },
   durationRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: TIME_INLINE_GAP_PX,
+    gap: 1 * floraSpacing.grid,
     minWidth: 0,
     width: "100%",
     height: floraSpacing.grid,
@@ -199,7 +201,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   duration: {
     fontSize: floraMessages.bubbleTimeFontSize,
     includeFontPadding: false,
-    letterSpacing: 0.36,
+    letterSpacing: tracking(0.36),
     lineHeight: floraSpacing.grid,
     flexShrink: 1,
   },

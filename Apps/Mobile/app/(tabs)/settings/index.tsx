@@ -1,3 +1,4 @@
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "expo-router/react-navigation";
@@ -75,7 +76,7 @@ import {
   nextMountCandidate,
   reconcileMountedIds,
 } from "@/lib/settingsMountedSections";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useSettingsDraftStore } from "@/stores/settingsDraftStore";
 
@@ -345,6 +346,7 @@ const SettingsSectionPage = memo(function SettingsSectionPage({
   listPaddingBottom: number;
   isActive: boolean;
 }) {
+  useFloraGrid();
   return (
     <View style={[styles.page, { width: pageWidth }]} collapsable={false}>
       {/* RNGH ScrollView, как скролл ленты: при активации pager-pan RNGH
@@ -373,7 +375,7 @@ const SettingsSectionPage = memo(function SettingsSectionPage({
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { width: pageWidth } = useWindowDimensions();
-  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const params = useLocalSearchParams<{ section?: string }>();
   const initialSection = useMemo(() => parseSectionId(params.section), [params.section]);
   const me = useSessionStore((s) => s.me);
@@ -1337,10 +1339,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     textAlign: "center",
     marginTop: floraSpacing.grid * 3,
     paddingHorizontal: floraSpacing.grid * 2,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(22),
   },
   pressed: {
     opacity: 0.72,

@@ -1,8 +1,8 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { floraSpacing } from "@/lib/theme";
+import { floraSpacing, sPx } from "@/lib/theme";
 import {
   bucketVoiceWaveformByMax,
   VOICE_BUBBLE_WAVE_BAR_COUNT,
@@ -53,12 +53,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 2,
+    gap: sPx(2),
     height: floraSpacing.grid * 2,
     overflow: "hidden",
   },
   waveBar: {
-    width: 2,
+    width: sPx(2),
     borderRadius: 999,
     flexShrink: 0,
   },

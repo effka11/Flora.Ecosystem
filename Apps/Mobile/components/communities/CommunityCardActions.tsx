@@ -1,7 +1,7 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { CommunityRole } from "@flora/client-core/contracts";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, tracking } from "@/lib/theme";
 
 const ACTION_BTN_HEIGHT = () => floraSpacing.grid * 2 + floraSpacing.gridFine * 2;
 
@@ -127,15 +127,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   btnText: {
     color: floraColors.greenLight,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   error: {
     color: floraColors.error,
     paddingLeft: floraSpacing.gridFine * 2,
     marginTop: floraSpacing.gridFine,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
   },
 }));

@@ -34,12 +34,14 @@ import {
 } from "@/lib/feedPagerMediaWake";
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { composeScreenHref } from "@/lib/socialRoutes";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
 import { useTabPager } from "@/lib/useTabPager";
 
 /** chromeRow 45 + gap 5 + tabs 35 + border 1 */
-const FEED_CHROME_BODY_HEIGHT = 45 + 5 + 35 + 1;
+const FEED_CHROME_BODY_HEIGHT = () =>
+  3 * floraSpacing.grid + floraSpacing.gridFine + 7 * floraSpacing.gridFine + 1;
 
 type TabLayout = { x: number; width: number };
 
@@ -48,6 +50,7 @@ function feedKindIndex(kind: FeedKind) {
 }
 
 export default function FeedScreen() {
+  const sp = useSPx();
   const insets = useSafeAreaInsets();
   const network = useNetworkClass();
   const queryClient = useQueryClient();
@@ -80,7 +83,7 @@ export default function FeedScreen() {
   const queryText = search.trim();
   const hasSearch = queryText.length > 0;
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
-  const estimatedHeaderHeight = insets.top + floraSpacing.grid + FEED_CHROME_BODY_HEIGHT;
+  const estimatedHeaderHeight = insets.top + floraSpacing.grid + FEED_CHROME_BODY_HEIGHT();
   const {
     headerHeightPx,
     onHeaderLayout,
@@ -357,7 +360,7 @@ export default function FeedScreen() {
             style={({ pressed }) => [styles.banner, pressed && styles.pressed]}
             onPress={refreshFeeds}
           >
-            <Ionicons name="arrow-up-outline" size={14} color={floraColors.greenLight} />
+            <Ionicons name="arrow-up-outline" size={sp(14)} color={floraColors.greenLight} />
             <Text style={styles.bannerText}>Новые посты — нажмите, чтобы обновить</Text>
           </Pressable>
         ) : null}
@@ -408,24 +411,24 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   banner: {
     marginHorizontal: floraSpacing.grid,
-    marginTop: 10,
+    marginTop: 2 * floraSpacing.gridFine,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(164, 209, 138, 0.28)",
     backgroundColor: "rgba(164, 209, 138, 0.12)",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: sPx(14),
+    paddingVertical: sPx(9),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
+    gap: sPx(7),
   },
   bannerText: {
     color: floraColors.greenLight,
     textAlign: "center",
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   pressed: {
     opacity: 0.72,

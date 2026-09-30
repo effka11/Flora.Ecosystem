@@ -37,7 +37,8 @@ import {
   phoneValueForApi,
   type PhoneDraft,
 } from "@/lib/phoneNumber";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { useSessionStore } from "@/stores/sessionStore";
 
 function normalizeSearch(value: string): string {
@@ -82,6 +83,7 @@ function FieldLabel({
   const [tipAnchor, setTipAnchor] = useState<SettingsHintAnchor | null>(null);
   const statusAnchorRef = useRef<View>(null);
   const showStatus = verified !== undefined;
+  const sp = useSPx();
 
   const openTip = () => {
     if (!statusHint) return;
@@ -100,25 +102,25 @@ function FieldLabel({
         <View ref={statusAnchorRef} collapsable={false}>
           <Pressable
             onPress={openTip}
-            hitSlop={8}
+            hitSlop={sp(8)}
             accessibilityRole="button"
             accessibilityLabel={statusHint ?? (verified ? "Подтверждён" : "Не подтверждён")}
           >
             {verified ? (
               <Ionicons
                 name="checkmark"
-                size={16}
+                size={sp(16)}
                 color={floraColors.greenLight}
-                style={{ transform: [{ translateY: -3 }] }}
+                style={{ transform: [{ translateY: -sPx(3) }] }}
               />
             ) : (
               <Text
                 style={{
                   color: "#f6a8a8",
-                  fontSize: 19,
+                  fontSize: kegl(19),
                   fontWeight: "300",
-                  lineHeight: 19,
-                  transform: [{ translateY: -2 }],
+                  lineHeight: sPx(19),
+                  transform: [{ translateY: -sPx(2) }],
                 }}
               >
                 ×
@@ -153,6 +155,7 @@ function ConfirmCheck({
   disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
+  const sp = useSPx();
   return (
     <Pressable
       style={({ pressed }) => [ui.confirmCheckRow, pressed && !disabled && ui.pressed]}
@@ -162,7 +165,7 @@ function ConfirmCheck({
       accessibilityState={{ checked }}
     >
       <View style={[ui.confirmCheckBox, checked && ui.confirmCheckBoxOn]}>
-        {checked ? <Ionicons name="checkmark" size={14} color={floraColors.greenLight} /> : null}
+        {checked ? <Ionicons name="checkmark" size={sp(14)} color={floraColors.greenLight} /> : null}
       </View>
       <Text style={ui.confirmCheckLabel}>{label}</Text>
     </Pressable>

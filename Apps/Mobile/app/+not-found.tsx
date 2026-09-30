@@ -2,6 +2,8 @@ import { Link, Stack } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
+import { liveGridStyles } from '@/lib/liveGridStyles';
+import { floraSpacing, kegl, sPx } from '@/lib/theme';
 
 export default function NotFoundScreen() {
   return (
@@ -18,23 +20,23 @@ export default function NotFoundScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: sPx(20),
   },
   title: {
-    fontSize: 20,
+    fontSize: kegl(20),
     fontWeight: 'bold',
   },
   link: {
-    marginTop: 15,
-    paddingVertical: 15,
+    marginTop: floraSpacing.grid,
+    paddingVertical: floraSpacing.grid,
   },
   linkText: {
-    fontSize: 14,
+    fontSize: kegl(14),
     color: '#2e78b7',
   },
-});
+}));

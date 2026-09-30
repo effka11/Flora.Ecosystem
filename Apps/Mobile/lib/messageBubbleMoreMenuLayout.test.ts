@@ -790,7 +790,7 @@ describe("resolveAboveDockTop", () => {
 describe("estimateMenuPanelHeight", () => {
   it("adds a report row for peer DMs", () => {
     expect(estimateMenuPanelHeight(false, false, true)).toBe(
-      estimateMenuPanelHeight(false, false, false) + MENU_ROW_HEIGHT_PX,
+      estimateMenuPanelHeight(false, false, false) + MENU_ROW_HEIGHT_PX(),
     );
   });
 });

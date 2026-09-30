@@ -17,7 +17,8 @@ import {
 } from "react-native";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
-import { floraColors } from "@/lib/theme";
+import { floraColors, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 type Props = {
   visible: boolean;
@@ -29,6 +30,7 @@ type Props = {
 const PH = "rgba(250, 250, 250, 0.3)";
 
 export function Security2FAModal({ visible, enabled, onClose, onChanged }: Props) {
+  const sp = useSPx();
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [secret, setSecret] = useState("");
@@ -104,7 +106,7 @@ export function Security2FAModal({ visible, enabled, onClose, onChanged }: Props
           <View style={ui.modalHeader}>
             <Text style={ui.modalTitle}>Двухфакторная аутентификация</Text>
             <Pressable onPress={onClose} disabled={busy} style={({ pressed }) => pressed && ui.pressed}>
-              <Ionicons name="close" size={22} color={floraColors.gray} />
+              <Ionicons name="close" size={sp(22)} color={floraColors.gray} />
             </Pressable>
           </View>
 
@@ -152,7 +154,7 @@ export function Security2FAModal({ visible, enabled, onClose, onChanged }: Props
                 style={({ pressed }) => [ui.monoBlock, pressed && ui.pressed]}
                 onPress={() => void copyTextToClipboard(secret)}
               >
-                <Text style={[ui.monoText, { letterSpacing: 1.2 }]}>{secret}</Text>
+                <Text style={[ui.monoText, { letterSpacing: tracking(1.2) }]}>{secret}</Text>
                 <Text style={ui.monoHint}>Нажмите, чтобы скопировать</Text>
               </Pressable>
               <TextInput

@@ -7,7 +7,7 @@ import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } fr
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { avatarUploadErrorMessage, uploadAvatarFromPickerAsset } from "@/lib/avatarUpload";
 import { useSessionStore } from "@/stores/sessionStore";
-import { floraColors, floraProfile, floraSpacing } from "@/lib/theme";
+import { floraColors, floraProfile, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 type ProfileAvatarEditorModalProps = {
   visible: boolean;
@@ -99,7 +99,7 @@ export function ProfileAvatarEditorModal({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Закрыть"
-              hitSlop={10}
+              hitSlop={sPx(10)}
               onPress={handleClose}
               disabled={busy}
             >
@@ -162,7 +162,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   dialog: {
     width: "100%",
-    maxWidth: 360,
+    maxWidth: sPx(360),
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surface,
     borderWidth: 1,
@@ -180,13 +180,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 18,
+    fontSize: kegl(18),
     fontWeight: "300",
   },
   close: {
     color: floraColors.gray,
-    fontSize: 28,
-    lineHeight: 28,
+    fontSize: kegl(28),
+    lineHeight: sPx(28),
   },
   body: {
     alignItems: "center",
@@ -202,11 +202,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   button: {
     backgroundColor: floraColors.accentDark,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: sPx(8),
+    paddingVertical: sPx(12),
+    paddingHorizontal: sPx(16),
     alignItems: "center",
-    minWidth: 120,
+    minWidth: sPx(120),
   },
   buttonGhost: {
     backgroundColor: floraColors.surface,
@@ -222,7 +222,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   error: {
     color: floraColors.error,
-    fontSize: 14,
+    fontSize: kegl(14),
     textAlign: "center",
   },
 }));

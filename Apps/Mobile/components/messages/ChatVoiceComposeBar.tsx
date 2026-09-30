@@ -4,7 +4,8 @@ import { memo, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { ChatVoiceLiveWaveform } from "@/components/messages/ChatVoiceLiveWaveform";
 import { ChatVoiceWaveform } from "@/components/messages/ChatVoiceWaveform";
-import { floraColors, floraMessages } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraMessages, floraSpacing, sPx } from "@/lib/theme";
 import { formatVoiceDuration } from "@/lib/voiceWaveform";
 
 type Props = {
@@ -32,6 +33,7 @@ function ChatVoiceComposeBarInner({
   sending = false,
   canSend = false,
 }: Props) {
+  const sp = useSPx();
   const [recordingMs, setRecordingMs] = useState(0);
 
   useEffect(() => {
@@ -56,7 +58,7 @@ function ChatVoiceComposeBarInner({
         style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
         onPress={onDiscard}
       >
-        <Ionicons name="trash-outline" size={20} color={floraColors.gray} />
+        <Ionicons name="trash-outline" size={sp(20)} color={floraColors.gray} />
       </Pressable>
 
       <Text style={styles.timer}>{timerLabel}</Text>
@@ -73,7 +75,7 @@ function ChatVoiceComposeBarInner({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Остановить запись"
-          hitSlop={10}
+          hitSlop={2 * floraSpacing.gridFine}
           android_disableSound
           style={({ pressed }) => [styles.stopBtn, pressed && styles.iconBtnPressed]}
           onPress={onStop}
@@ -97,7 +99,7 @@ function ChatVoiceComposeBarInner({
           ) : (
             <Ionicons
               name="send"
-              size={18}
+              size={sp(18)}
               color={canSend ? floraColors.greenLight : floraColors.gray}
             />
           )}
@@ -141,9 +143,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     backgroundColor: "rgba(220, 60, 60, 0.9)",
   },
   stopSquare: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
+    width: sPx(12),
+    height: sPx(12),
+    borderRadius: sPx(2),
     backgroundColor: floraColors.whiteTemplate,
   },
   waveArea: {
@@ -155,7 +157,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     color: floraColors.gray,
     fontSize: floraMessages.bubbleTimeFontSize,
     fontVariant: ["tabular-nums"],
-    minWidth: 36,
+    minWidth: sPx(36),
     textAlign: "left",
   },
 }));

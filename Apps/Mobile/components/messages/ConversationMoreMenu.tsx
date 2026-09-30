@@ -9,7 +9,8 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type FolderPickOption = {
   id: string;
@@ -204,6 +205,7 @@ function MenuRow({
   chevron?: boolean;
   active?: boolean;
 }) {
+  const sp = useSPx();
   return (
     <Pressable
       accessibilityRole="menuitem"
@@ -216,7 +218,7 @@ function MenuRow({
       onPress={onPress}
     >
       <View style={styles.menuItemIcon}>
-        <Ionicons name={icon} size={18} color={danger ? "#f6a8a8" : floraColors.gray} />
+        <Ionicons name={icon} size={sp(18)} color={danger ? "#f6a8a8" : floraColors.gray} />
       </View>
       <Text style={[styles.menuItemLabel, danger && styles.menuItemDanger]}>{label}</Text>
       {chevron ? <Text style={styles.menuItemChevron}>{">"}</Text> : null}
@@ -261,9 +263,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   panel: {
     position: "absolute",
-    minWidth: 220,
-    maxWidth: 300,
-    borderRadius: 12,
+    minWidth: sPx(220),
+    maxWidth: 20 * floraSpacing.grid,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.06)",
@@ -282,7 +284,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: "100%",
     paddingVertical: floraSpacing.gridFine * 1.5,
     paddingHorizontal: floraSpacing.gridFine * 2,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   menuItemActive: {
     backgroundColor: "rgba(250, 250, 250, 0.06)",
@@ -291,45 +293,45 @@ const styles = liveGridStyles(() => StyleSheet.create({
     backgroundColor: "rgba(250, 250, 250, 0.06)",
   },
   menuItemIcon: {
-    width: 24,
-    height: 24,
+    width: sPx(24),
+    height: sPx(24),
     alignItems: "center",
     justifyContent: "center",
   },
   menuItemLabel: {
     flex: 1,
     color: "rgba(250, 250, 250, 0.9)",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   menuItemDanger: {
     color: "#f6a8a8",
   },
   menuItemChevron: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
     paddingLeft: floraSpacing.gridFine,
   },
   submenu: {
-    marginLeft: 24 + floraSpacing.grid,
+    marginLeft: sPx(24) + floraSpacing.grid,
     marginBottom: floraSpacing.gridFine,
-    gap: 2,
+    gap: sPx(2),
   },
   submenuItem: {
     paddingVertical: floraSpacing.gridFine * 1.5,
     paddingHorizontal: floraSpacing.gridFine * 2,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   submenuItemDisabled: {
     opacity: 0.45,
   },
   submenuItemLabel: {
     color: "rgba(250, 250, 250, 0.9)",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   submenuItemLabelDisabled: {
     color: "rgba(250, 250, 250, 0.45)",

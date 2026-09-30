@@ -3,7 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 type Option<T extends string> = {
   value: T;
@@ -24,6 +25,7 @@ export function SettingsSelectField<T extends string>({
   options,
   onChange,
 }: SettingsSelectFieldProps<T>) {
+  const sp = useSPx();
   const [open, setOpen] = useState(false);
   const current = options.find((item) => item.value === value)?.label ?? value;
 
@@ -39,7 +41,7 @@ export function SettingsSelectField<T extends string>({
         <Text style={styles.selectValue} numberOfLines={1}>
           {current}
         </Text>
-        <Ionicons name="chevron-down" size={18} color={floraColors.gray} />
+        <Ionicons name="chevron-down" size={sp(18)} color={floraColors.gray} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -62,7 +64,7 @@ export function SettingsSelectField<T extends string>({
                     {option.label}
                   </Text>
                   {selected ? (
-                    <Ionicons name="checkmark" size={20} color={floraColors.greenLight} />
+                    <Ionicons name="checkmark" size={sp(20)} color={floraColors.greenLight} />
                   ) : null}
                 </Pressable>
               );
@@ -82,7 +84,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     backgroundColor: "transparent",
     borderColor: "rgba(250, 250, 250, 0.15)",
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: sPx(10),
     paddingHorizontal: floraSpacing.grid,
     height: floraSpacing.grid * 3,
   },
@@ -90,7 +92,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flex: 1,
     minWidth: 0,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   backdrop: {
@@ -102,8 +104,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   sheet: {
     width: "100%",
-    maxWidth: 320,
-    borderRadius: 12,
+    maxWidth: sPx(320),
+    borderRadius: sPx(12),
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
     backgroundColor: floraColors.surfaceElevated,
@@ -114,9 +116,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   sheetTitle: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     paddingHorizontal: floraSpacing.gridFine,
     paddingVertical: floraSpacing.gridFine * 2,
   },
@@ -131,9 +133,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   optionLabel: {
     flex: 1,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   optionLabelSelected: {
     color: floraColors.greenLight,

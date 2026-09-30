@@ -1,7 +1,7 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { StyleSheet, Text, View } from "react-native";
 import type { FscpMessageReplyRef } from "@flora/client-core/fscp";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   reply: FscpMessageReplyRef;
@@ -35,8 +35,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     marginBottom: floraSpacing.gridFine * 2,
     paddingVertical: floraSpacing.gridFine * 2,
     paddingRight: floraSpacing.gridFine * 2,
-    paddingLeft: floraSpacing.gridFine * 3 + 3,
-    borderRadius: 8,
+    paddingLeft: floraSpacing.gridFine * 3 + sPx(3),
+    borderRadius: sPx(8),
     overflow: "hidden",
     minWidth: 0,
   },
@@ -51,8 +51,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     left: floraSpacing.gridFine * 2,
     top: floraSpacing.gridFine * 2,
     bottom: floraSpacing.gridFine * 2,
-    width: 3,
-    borderRadius: 2,
+    width: sPx(3),
+    borderRadius: sPx(2),
     backgroundColor: floraColors.greenLight,
   },
   textBlock: {
@@ -61,14 +61,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: 1,
   },
   author: {
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "500",
-    letterSpacing: 0.26,
+    letterSpacing: tracking(0.26),
     color: floraColors.greenLight,
   },
   preview: {
-    fontSize: 13,
-    letterSpacing: 0.26,
+    fontSize: kegl(13),
+    letterSpacing: tracking(0.26),
     color: "rgba(242, 244, 246, 0.72)",
   },
 }));

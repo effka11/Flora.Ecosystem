@@ -1,10 +1,11 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { memo } from "react";
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 
 import { ChatMessageReadReceipt } from "@/components/messages/ChatMessageReadReceipt";
 import type { MessageDeliveryState } from "@/lib/messageDeliveryState";
-import { floraMessages } from "@/lib/theme";
+import { floraMessages, sPx } from "@/lib/theme";
 
 type Props = {
   timeLabel: string;
@@ -21,6 +22,7 @@ function ChatMessageBubbleTimeInner({
   containerStyle,
   receiptColor,
 }: Props) {
+  useFloraGrid();
   return (
     <View style={[styles.row, containerStyle]}>
       <Text style={[styles.timeLabel, timeStyle, deliveryState ? styles.timeLabelWithReceipt : null]}>
@@ -41,19 +43,19 @@ const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 18,
+    minHeight: sPx(18),
   },
   timeLabel: {
     fontSize: floraMessages.bubbleTimeFontSize,
-    lineHeight: 18,
+    lineHeight: sPx(18),
   },
   /** Оптическое выравнивание даты с галочками (Android font padding). */
   timeLabelWithReceipt: {
     transform: [{ translateY: 1 }],
   },
   receiptSlot: {
-    width: 18,
-    height: 18,
+    width: sPx(18),
+    height: sPx(18),
     justifyContent: "center",
     alignItems: "center",
   },

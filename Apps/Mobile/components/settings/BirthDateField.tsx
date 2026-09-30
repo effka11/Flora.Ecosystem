@@ -11,6 +11,7 @@ import {
   isBirthDateDigitsComplete,
   isoToBirthDateDigits,
 } from "@/lib/birthDateMask";
+import { tracking } from "@/lib/theme";
 
 type BirthDateFieldProps = {
   label?: string;
@@ -48,7 +49,7 @@ export function BirthDateField({ label = "Дата рождения", value, onC
     <View style={ui.fieldGroup}>
       <Text style={ui.fieldLabel}>{label}</Text>
       <TextInput
-        style={[ui.input, { fontVariant: ["tabular-nums"], letterSpacing: 0.6 }]}
+        style={[ui.input, { fontVariant: ["tabular-nums"], letterSpacing: tracking(0.6) }]}
         value={displayValue}
         onChangeText={(raw) => {
           const next = raw.replace(/\D/g, "").slice(0, 8);

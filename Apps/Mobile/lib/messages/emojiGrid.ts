@@ -2,8 +2,6 @@ import type { EmojiCategoryId, MessageEmojiCategory } from "@/lib/messages/emoji
 
 /** Синхрон с web MESSAGE_EMOJI_GRID_COLS — на узком экране 8 колонок. */
 export const MOBILE_EMOJI_GRID_COLS = 8;
-export const MOBILE_EMOJI_CELL_SIZE = 30;
-export const MOBILE_EMOJI_CELL_GAP = 10;
 
 export type EmojiGridRow = {
   key: string;

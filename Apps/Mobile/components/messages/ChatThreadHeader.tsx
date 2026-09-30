@@ -10,7 +10,8 @@ import { ChromeBackIcon, ChromeMoreIcon } from "@/components/chrome/ChromeIcons"
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
 import { formatWasOnlineRu } from "@/lib/lastSeenRu";
 import { profileScreenHref } from "@/lib/socialRoutes";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraMessages, floraSpacing, kegl, tracking } from "@/lib/theme";
 import { subscribeTyping } from "@/lib/typingEvents";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -37,6 +38,7 @@ type Props = {
 
 export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, moreButtonRef }: Props) {
   const insets = useSafeAreaInsets();
+  const sp = useSPx();
   const me = useSessionStore((s) => s.me);
   const displayName = peer.otherDisplayName || peer.otherUsername || "Пользователь";
   const username = peer.otherUsername.replace(/^@+/, "") || "…";
@@ -174,10 +176,10 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
           accessibilityState={{ expanded: moreMenuOpen }}
           style={({ pressed }) => [styles.moreBtn, pressed && styles.moreBtnPressed]}
           onPress={onMorePress}
-          hitSlop={8}
+          hitSlop={sp(8)}
         >
           {moreMenuOpen ? (
-            <Ionicons name="close-outline" size={24} color={floraColors.gray} />
+            <Ionicons name="close-outline" size={sp(24)} color={floraColors.gray} />
           ) : (
             <ChromeMoreIcon color={floraColors.gray} />
           )}
@@ -196,7 +198,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignItems: "center",
     gap: floraSpacing.grid,
     /** Нижний зазор чуть меньше полной 8-й клетки (−16px), контент не смещается. */
-    minHeight: floraMessages.headerHeight - 20,
+    minHeight: floraMessages.headerHeight - 4 * floraSpacing.gridFine,
     paddingBottom: floraSpacing.grid,
     paddingHorizontal: floraSpacing.grid,
     backgroundColor: floraColors.bg,
@@ -231,30 +233,30 @@ const styles = liveGridStyles(() => StyleSheet.create({
   name: {
     flexShrink: 1,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   handle: {
     flexShrink: 0,
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   status: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   /** Как `iconButton` / ⋮ при выделении в TabScreenSearchHeader — центр под «+». */
   moreBtn: {
-    width: 45,
-    height: 45,
+    width: 3 * floraSpacing.grid,
+    height: 3 * floraSpacing.grid,
     alignItems: "center",
     justifyContent: "center",
   },

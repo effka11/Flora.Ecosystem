@@ -7,8 +7,6 @@ import {
   type EmojiCategoryId,
 } from "@/lib/messages/emojiCategories";
 import {
-  MOBILE_EMOJI_CELL_GAP,
-  MOBILE_EMOJI_CELL_SIZE,
   MOBILE_EMOJI_GRID_COLS,
   buildEmojiGridSections,
   emojiSectionIndex,
@@ -16,7 +14,8 @@ import {
   type EmojiGridSection,
 } from "@/lib/messages/emojiGrid";
 import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { useFloraGrid } from "@/lib/FloraGridProvider";
+import { floraColors, floraMessages, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 const FLORA_GITHUB_URL = "https://github.com/effka11/Flora.Ecosystem";
 
@@ -42,6 +41,7 @@ function buildFlatItems(sections: EmojiGridSection[]): ListItem[] {
 }
 
 function ChatMessageEmojiPanelInner({ onPickEmoji }: Props) {
+  useFloraGrid();
   const [tab, setTab] = useState<StickerPanelTab>("emoji");
   const [activeCategory, setActiveCategory] = useState<EmojiCategoryId>("smileys_emotion");
   // Грид монтируем после кадра открытия панели — тяжёлый FlashList не должен блокировать JS-поток
@@ -258,7 +258,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     overflow: "hidden",
   },
   rail: {
-    width: 44,
+    width: sPx(44),
     borderRightWidth: 1,
     borderRightColor: floraMessages.divider,
     backgroundColor: floraColors.popoverRail,
@@ -272,9 +272,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignItems: "center",
   },
   railBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: sPx(36),
+    height: sPx(36),
+    borderRadius: sPx(8),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -285,8 +285,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     opacity: 0.72,
   },
   railIcon: {
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: kegl(20),
+    lineHeight: sPx(24),
   },
   body: {
     flex: 1,
@@ -302,7 +302,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   tab: {
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   tabActive: {
     backgroundColor: FLORA_THEME_TOKENS.reservePopoverAccentChip,
@@ -312,9 +312,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   tabText: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   tabTextActive: {
     color: floraColors.greenLight,
@@ -338,26 +338,26 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   emojiRow: {
     flexDirection: "row",
-    gap: MOBILE_EMOJI_CELL_GAP,
-    marginBottom: MOBILE_EMOJI_CELL_GAP,
+    gap: 2 * floraSpacing.gridFine,
+    marginBottom: 2 * floraSpacing.gridFine,
   },
   emojiCell: {
-    width: MOBILE_EMOJI_CELL_SIZE,
-    height: MOBILE_EMOJI_CELL_SIZE,
+    width: 2 * floraSpacing.grid,
+    height: 2 * floraSpacing.grid,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 6,
+    borderRadius: sPx(6),
   },
   emojiCellSpacer: {
-    width: MOBILE_EMOJI_CELL_SIZE,
-    height: MOBILE_EMOJI_CELL_SIZE,
+    width: 2 * floraSpacing.grid,
+    height: 2 * floraSpacing.grid,
   },
   emojiCellPressed: {
     backgroundColor: "rgba(250, 250, 250, 0.08)",
   },
   emojiText: {
-    fontSize: 22,
-    lineHeight: 26,
+    fontSize: kegl(22),
+    lineHeight: sPx(26),
   },
   stickersPlaceholder: {
     flex: 1,
@@ -368,18 +368,18 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   stickersText: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    lineHeight: 20,
-    letterSpacing: 0.42,
+    lineHeight: 4 * floraSpacing.gridFine,
+    letterSpacing: tracking(0.42),
   },
   stickersLinkWrap: {
     alignSelf: "flex-start",
   },
   stickersLink: {
     color: floraColors.greenLight,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
 }));

@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { MusicDetailLayout } from "@/components/music/MusicDetailLayout";
 import { MusicFlowCard, MusicTracksList } from "@/components/music/MusicSections";
 import { mapMusicTracksDto } from "@/lib/music/musicModels";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 function routeParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -91,7 +91,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   sectionTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 18,
+    fontSize: kegl(18),
     fontWeight: "300",
     paddingHorizontal: floraSpacing.grid,
   },
@@ -100,7 +100,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
   },
   chip: {
-    minHeight: 34,
+    minHeight: sPx(34),
     borderRadius: 999,
     paddingHorizontal: floraSpacing.grid,
     alignItems: "center",
@@ -110,7 +110,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   chipText: {
     color: floraColors.greenLight,
-    fontSize: 13,
+    fontSize: kegl(13),
   },
   pressed: {
     opacity: 0.72,

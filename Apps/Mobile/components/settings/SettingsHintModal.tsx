@@ -1,6 +1,6 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Modal, StyleSheet, Text, TouchableWithoutFeedback, useWindowDimensions, View } from "react-native";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 export type SettingsHintAnchor = {
   x: number;
@@ -17,7 +17,7 @@ type Props = {
   anchor: SettingsHintAnchor | null;
 };
 
-const PANEL_MAX_WIDTH = 260;
+const PANEL_MAX_WIDTH = () => sPx(260);
 const SIDE_GAP = () => floraSpacing.grid;
 
 /** Мини-подсказка строго справа от якоря — символ не перекрывается. */
@@ -29,7 +29,7 @@ export function SettingsHintModal({ visible, message, onDismiss, anchor }: Props
     const left = anchor.x + anchor.width + SIDE_GAP();
     const available = windowWidth - left - floraSpacing.grid;
     if (available < floraSpacing.grid * 6) return null;
-    const maxWidth = Math.min(PANEL_MAX_WIDTH, available);
+    const maxWidth = Math.min(PANEL_MAX_WIDTH(), available);
     const top = Math.min(
       Math.max(floraSpacing.grid, anchor.y),
       windowHeight - floraSpacing.grid * 4,
@@ -77,7 +77,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   panel: {
     position: "absolute",
-    borderRadius: 12,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.06)",
@@ -92,9 +92,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   message: {
     color: "rgba(250, 250, 250, 0.9)",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
-    lineHeight: 20,
+    letterSpacing: tracking(0.42),
+    lineHeight: sPx(20),
   },
 }));

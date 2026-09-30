@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -8,7 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { floraColors } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 import { useFscpStore } from "@/stores/fscpStore";
 
 type FscpUnlockSheetProps = {
@@ -119,7 +120,7 @@ export function FscpUnlockSheet({ visible, userUuid, onClose }: FscpUnlockSheetP
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   backdrop: {
     position: "absolute",
     top: 0,
@@ -131,49 +132,49 @@ const styles = StyleSheet.create({
   wrap: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: sPx(20),
   },
   sheet: {
     backgroundColor: floraColors.surfaceElevated,
     borderColor: floraColors.border,
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 18,
-    gap: 14,
+    borderRadius: sPx(16),
+    padding: sPx(18),
+    gap: sPx(14),
   },
   title: {
     color: floraColors.text,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "600",
   },
   text: {
     color: floraColors.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: kegl(13),
+    lineHeight: sPx(19),
   },
   input: {
     backgroundColor: floraColors.surface,
     borderColor: floraColors.border,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: sPx(10),
     color: floraColors.text,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    paddingHorizontal: sPx(14),
+    paddingVertical: sPx(12),
+    fontSize: kegl(15),
   },
   error: {
     color: "#ff7a7a",
-    fontSize: 13,
+    fontSize: kegl(13),
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: 10,
+    gap: floraSpacing.gridFine * 2,
   },
   btn: {
-    height: 42,
-    paddingHorizontal: 18,
-    borderRadius: 10,
+    height: sPx(42),
+    paddingHorizontal: sPx(18),
+    borderRadius: sPx(10),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -195,4 +196,4 @@ const styles = StyleSheet.create({
   btnDisabled: {
     opacity: 0.5,
   },
-});
+}));

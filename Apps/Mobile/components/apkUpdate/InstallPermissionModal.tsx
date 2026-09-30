@@ -1,7 +1,8 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   visible: boolean;
@@ -18,6 +19,7 @@ export function InstallPermissionModal({
   onDecline,
   onAllow,
 }: Props) {
+  const sp = useSPx();
   return (
     <Modal
       visible={visible}
@@ -28,7 +30,7 @@ export function InstallPermissionModal({
       <View style={styles.backdrop}>
         <View style={styles.card} accessibilityViewIsModal>
           <View style={styles.iconWrap}>
-            <Ionicons name="shield-checkmark-outline" size={28} color={floraColors.greenLight} />
+            <Ionicons name="shield-checkmark-outline" size={sp(28)} color={floraColors.greenLight} />
           </View>
 
           <Text style={styles.title}>Обновления приложения</Text>
@@ -75,7 +77,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   card: {
     width: "100%",
-    maxWidth: 320,
+    maxWidth: sPx(320),
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surfaceElevated,
     borderWidth: 1,
@@ -96,33 +98,33 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "500",
-    letterSpacing: 0.34,
+    letterSpacing: tracking(0.34),
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: sPx(22),
   },
   body: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: sPx(20),
   },
   primaryBtn: {
     marginTop: floraSpacing.gridFine,
     width: "100%",
-    paddingVertical: floraSpacing.gridFine * 2 + 2,
+    paddingVertical: floraSpacing.gridFine * 2 + sPx(2),
     borderRadius: 9999,
     backgroundColor: floraColors.greenLight,
     alignItems: "center",
   },
   primaryBtnText: {
     color: floraColors.bg,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   secondaryBtn: {
     width: "100%",
@@ -132,9 +134,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   secondaryBtnText: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   btnPressed: {
     opacity: 0.85,

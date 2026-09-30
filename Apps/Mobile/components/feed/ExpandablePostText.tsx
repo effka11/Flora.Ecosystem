@@ -1,3 +1,4 @@
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useRecyclingState } from "@shopify/flash-list";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
@@ -18,7 +19,7 @@ import {
 } from "react-native";
 import { LruCache } from "@/lib/lruCache";
 import { useReducedMotion } from "@/lib/useReducedMotion";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type ExpandablePostTextProps = {
   postUuid: string;
@@ -44,7 +45,7 @@ const TRUNCATION_ELLIPSIS = "...";
 const CLIP_ANIM_MS = 380;
 const EXPAND_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 const TOGGLE_MARGIN_TOP = () => 5 * floraSpacing.gridFine;
-const ESTIMATED_LINE_HEIGHT_PX = 25.5;
+const ESTIMATED_LINE_HEIGHT_PX = () => 1.7 * kegl(15);
 
 /** Bump when the text style or truncation math changes so cached layouts invalidate. */
 const LAYOUT_SCHEMA = "v2";
@@ -190,7 +191,7 @@ function resolveTargetHeight(
 }
 
 function estimateCollapsedHeight(collapsedLines: number): number {
-  return collapsedLines * ESTIMATED_LINE_HEIGHT_PX;
+  return collapsedLines * ESTIMATED_LINE_HEIGHT_PX();
 }
 
 function readCachedVisibleLines(postUuid: string, collapsedLines: number): number {
@@ -214,6 +215,7 @@ export const ExpandablePostText = memo(function ExpandablePostText({
   containerStyle,
   textStyle,
 }: ExpandablePostTextProps) {
+  useFloraGrid();
   const layoutText = useMemo(() => trimTrailingEmptyLines(text), [text]);
   const collapsedLines = hasMedia ? COLLAPSED_WITH_MEDIA_LINES : COLLAPSED_TEXT_LINES;
   const expandChunkLines = hasMedia ? EXPAND_CHUNK_WITH_MEDIA_LINES : EXPAND_CHUNK_TEXT_LINES;
@@ -515,10 +517,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   toggleText: {
     color: floraColors.greenLight,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    lineHeight: 18,
-    letterSpacing: 0.42,
+    lineHeight: sPx(18),
+    letterSpacing: tracking(0.42),
   },
   pressed: {
     opacity: 0.72,

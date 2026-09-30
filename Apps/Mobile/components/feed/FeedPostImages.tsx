@@ -27,15 +27,15 @@ import {
   DEFAULT_MESSAGE_IMAGE_RATIO,
   messageSingleImageSize,
 } from "@/lib/messageMediaGeometry";
-import { floraFeedPost, floraSpacing } from "@/lib/theme";
+import { floraFeedPost, floraSpacing, sPx } from "@/lib/theme";
 
 const MAX_ITEMS = COLLAGE_MAX_ITEMS;
 const GRID = () => floraSpacing.grid;
 const GAP = () => floraSpacing.gridFine;
 const defaultRowHeight = () => 7 * GRID();
-const CELL_RADIUS = 10;
-const COLLAGE_RADIUS = 12;
-const SINGLE_IMAGE_RADIUS = CELL_RADIUS;
+const CELL_RADIUS = () => 2 * floraSpacing.gridFine;
+const COLLAGE_RADIUS = () => sPx(12);
+const SINGLE_IMAGE_RADIUS = () => CELL_RADIUS();
 
 export type FeedPostImagePreviewItem = {
   id: string;
@@ -203,9 +203,9 @@ export function FeedPostImages({ imageUuids = [], previewItems, layout }: Props)
 
   const rowHeight = layout?.rowHeight ?? defaultRowHeight();
   const marginBottom = layout?.marginBottom ?? floraFeedPost.textMarginBottom;
-  const collageBorderRadius = layout?.collageBorderRadius ?? COLLAGE_RADIUS;
-  const cellBorderRadius = layout?.cellBorderRadius ?? CELL_RADIUS;
-  const singleImageBorderRadius = layout?.singleImageBorderRadius ?? SINGLE_IMAGE_RADIUS;
+  const collageBorderRadius = layout?.collageBorderRadius ?? COLLAGE_RADIUS();
+  const cellBorderRadius = layout?.cellBorderRadius ?? CELL_RADIUS();
+  const singleImageBorderRadius = layout?.singleImageBorderRadius ?? SINGLE_IMAGE_RADIUS();
   const singleMaxHeight = layout?.singleMaxHeight;
   const messageSingleFill = layout?.messageSingleFill ?? false;
   const messageImageAlign = layout?.messageImageAlign ?? "start";

@@ -1,3 +1,4 @@
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { memo, useMemo } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
@@ -41,6 +42,7 @@ export const ChatPeerMessageRow = memo(function ChatPeerMessageRow({
   onPress,
   holdAvatarStyle,
 }: Props) {
+  useFloraGrid();
   const senderUuid = message.senderUserUuid?.trim() || "";
   const avatarPeer = useMemo((): ChatPeerInfo => {
     if (!groupMembers?.length) return peer;

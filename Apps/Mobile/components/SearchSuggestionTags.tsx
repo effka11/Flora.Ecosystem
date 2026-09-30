@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { Pressable as GesturePressable } from "react-native-gesture-handler";
@@ -304,7 +305,7 @@ export function SearchSuggestionTags({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     minHeight: floraTabFilter.triggerHeight,
     justifyContent: "center",
@@ -317,4 +318,4 @@ const styles = StyleSheet.create({
     overflow: "visible",
     minHeight: floraTabFilter.triggerHeight,
   },
-});
+}));

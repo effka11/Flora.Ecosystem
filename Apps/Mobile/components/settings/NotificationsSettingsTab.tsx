@@ -26,6 +26,7 @@ import {
   type NotificationEventKey,
 } from "@/lib/settingsNotificationsDraft";
 import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { useSettingsDraftStore } from "@/stores/settingsDraftStore";
 
 function normalizeSearch(value: string): string {
@@ -84,22 +85,24 @@ function MatrixCheck({
   checked: boolean;
   onToggle: () => void;
 }) {
+  const sp = useSPx();
   return (
     <Pressable
       onPress={onToggle}
-      hitSlop={6}
+      hitSlop={sp(6)}
       accessibilityRole="checkbox"
       accessibilityState={{ checked }}
       style={({ pressed }) => [pressed && ui.pressed]}
     >
       <View style={[ui.matrixCheck, checked && ui.matrixCheckOn]}>
-        {checked ? <Ionicons name="checkmark" size={14} color={floraColors.greenLight} /> : null}
+        {checked ? <Ionicons name="checkmark" size={sp(14)} color={floraColors.greenLight} /> : null}
       </View>
     </Pressable>
   );
 }
 
 export function NotificationsSettingsTab({ searchQuery }: Props) {
+  const sp = useSPx();
   const notifications = useSettingsDraftStore((s) => s.notifications);
   const updateNotifications = useSettingsDraftStore((s) => s.updateNotifications);
   const clearSaveFeedback = useSettingsDraftStore((s) => s.clearSaveFeedback);
@@ -332,7 +335,7 @@ export function NotificationsSettingsTab({ searchQuery }: Props) {
                       ]}
                     >
                       {notifications.quietAllowImportant ? (
-                        <Ionicons name="checkmark" size={14} color={floraColors.greenLight} />
+                        <Ionicons name="checkmark" size={sp(14)} color={floraColors.greenLight} />
                       ) : null}
                     </View>
                     <Text style={ui.confirmCheckLabel}>

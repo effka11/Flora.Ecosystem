@@ -7,6 +7,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { floraColors } from "@/lib/theme";
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 
 const FADE_MS = 220;
 
@@ -54,7 +55,7 @@ type Props = {
    * animated values snap to the new `online` without cross-fading the previous peer.
    */
   identityKey?: string;
-  /** Outer avatar diameter; defaults to Messages 45px reference. */
+  /** Outer avatar diameter; defaults to live Messages avatar (3 grid). */
   avatarDiameter?: number;
   /** Dot diameter at the 45px reference (default 15 = Messages). Profile uses 10. */
   sizeAtRef?: number;
@@ -73,6 +74,7 @@ export function OnlineStatusDot({
   edgeNudge,
   style,
 }: Props) {
+  const { step } = useFloraGrid();
   const opacity = useRef(new Animated.Value(online ? 1 : 0)).current;
   const scaleAnim = useRef(new Animated.Value(online ? 1 : 0.55)).current;
   const identityRef = useRef(identityKey);
@@ -80,11 +82,11 @@ export function OnlineStatusDot({
   const layout = useMemo(
     () =>
       onlineStatusDotLayout(
-        avatarDiameter ?? ONLINE_STATUS_REF_AVATAR,
+        avatarDiameter ?? 3 * step,
         sizeAtRef ?? ONLINE_STATUS_DOT_SIZE,
         edgeNudge ?? 0,
       ),
-    [avatarDiameter, sizeAtRef, edgeNudge],
+    [avatarDiameter, sizeAtRef, edgeNudge, step],
   );
 
   useEffect(() => {

@@ -1,10 +1,10 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 const ACTION_BTN_HEIGHT = () => floraSpacing.grid * 2 + floraSpacing.gridFine * 2;
-const FOLLOW_ICON_SIZE = 18;
 
 type ProfileCardActionsProps =
   | {
@@ -20,6 +20,7 @@ type ProfileCardActionsProps =
     };
 
 export function ProfileCardActions(props: ProfileCardActionsProps) {
+  const sp = useSPx();
   if (props.variant === "own") {
     return (
       <View style={styles.row}>
@@ -83,7 +84,7 @@ export function ProfileCardActions(props: ProfileCardActionsProps) {
         >
           <Ionicons
             name={isFollowing ? "person-remove-outline" : "person-add-outline"}
-            size={FOLLOW_ICON_SIZE}
+            size={sp(18)}
             color={floraColors.greenLight}
           />
         </Pressable>
@@ -119,9 +120,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   btnText: {
     color: floraColors.greenLight,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   iconBtn: {
     width: ACTION_BTN_HEIGHT(),

@@ -10,6 +10,7 @@ import {
   floraGridRuntimeFromTemplate,
   getFloraGridRuntime,
   setFloraGridRuntime,
+  sPx,
   type FloraGridRuntime
 } from "@/lib/floraGridRuntime";
 
@@ -69,4 +70,10 @@ export function FloraGridProvider({ children }: { children: ReactNode }) {
 
 export function useFloraGrid(): FloraGridRuntime {
   return useContext(FloraGridContext);
+}
+
+/** Extra-grid px at the live `s`; subscribes so icon `size` rebuilds with the template. */
+export function useSPx(): (n: number) => number {
+  const { s } = useFloraGrid();
+  return (n: number) => sPx(n, s);
 }

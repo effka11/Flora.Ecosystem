@@ -104,7 +104,7 @@ import {
 } from "@/lib/messageBubbleMoreMenuLayout";
 import { canReportMessage, frankingReportUserError } from "@/lib/messageReport";
 import { ChatThreadHeader, type ChatPeerInfo } from "@/components/messages/ChatThreadHeader";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { floraColors, floraMessages, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
 import {
   canArchiveChatListPeer,
@@ -230,7 +230,7 @@ const LIST_REVEAL_DEADLINE_MS = 1200;
 const POST_REVEAL_REFRESH_DELAY_MS = 250;
 
 /** Запас к вьюпорту у окна первого коммита (оценки высот строк неточны). */
-const LIST_WINDOW_BUFFER_PX = 260;
+const LIST_WINDOW_BUFFER_PX = () => 52 * floraSpacing.gridFine;
 /** Доклейка хвоста истории за окном — после первого видимого кадра. */
 const LIST_WINDOW_EXPAND_DELAY_MS = 150;
 /**
@@ -1173,7 +1173,7 @@ export default function ThreadScreen() {
     // Зона дока (listGapPx) — не вьюпорт ленты: без вычета окно тянуло в
     // первый коммит 1–2 лишних пузыря, а монтаж ячеек — самая дорогая фаза
     // открытия (load−cell в трассе). Запас поверх остаётся полным.
-    const target = Math.max(0, windowHeight - listGapPx) + LIST_WINDOW_BUFFER_PX;
+    const target = Math.max(0, windowHeight - listGapPx) + LIST_WINDOW_BUFFER_PX();
     return sliceThreadListToViewport(listData, target, {
       own: outgoingLiftCtx,
       peer: peerLiftCtx,
@@ -1888,7 +1888,7 @@ export default function ThreadScreen() {
         anchor,
         placement: fit.placement,
         shiftY: fit.shiftY,
-        panelHeight: panelHeight + MENU_ROW_HEIGHT_PX,
+        panelHeight: panelHeight + MENU_ROW_HEIGHT_PX(),
         feedTopY,
       };
     });
@@ -2925,12 +2925,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.grid,
     marginHorizontal: floraSpacing.grid,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   blockedText: {
     color: floraColors.text,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: kegl(13),
+    lineHeight: sPx(18),
   },
   chromeDismissHost: {
     position: "relative",
@@ -3059,9 +3059,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     color: floraColors.gray,
     textAlign: "center",
     marginTop: floraSpacing.grid * 4,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   jumpBtn: {
     position: "absolute",
@@ -3069,7 +3069,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     zIndex: 10,
     elevation: 10,
     backgroundColor: floraColors.greenDark,
-    borderRadius: 16,
+    borderRadius: sPx(16),
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,
     borderWidth: 1,
@@ -3077,8 +3077,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   jumpBtnText: {
     color: floraColors.greenLight,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
 }));

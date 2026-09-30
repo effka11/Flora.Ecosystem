@@ -3,7 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
-import { floraColors, floraSpacing, floraTabFilter } from "@/lib/theme";
+import { floraColors, floraSpacing, floraTabFilter, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 export type TabDropdownOption = {
   id: string;
@@ -27,6 +28,7 @@ export function TabDropdownPicker({
   onOpenChange,
   onSelect,
 }: Props) {
+  const sp = useSPx();
   const anchorRef = useRef<View>(null);
   const activeLabel = options.find((option) => option.id === activeId)?.label ?? options[0]?.label ?? "";
 
@@ -60,7 +62,7 @@ export function TabDropdownPicker({
           <Text style={[styles.triggerLabel, open && styles.triggerLabelOpen]}>{activeLabel}</Text>
           <Ionicons
             name="chevron-down"
-            size={16}
+            size={sp(16)}
             color={floraColors.greenLight}
             style={open ? styles.chevronOpen : undefined}
           />
@@ -126,13 +128,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "center",
     gap: floraSpacing.gridFine,
     height: floraTabFilter.triggerHeight,
-    paddingHorizontal: 30,
+    paddingHorizontal: 2 * floraSpacing.grid,
   },
   triggerLabel: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     lineHeight: floraTabFilter.triggerLabelLineHeight,
   },
   triggerLabelOpen: {
@@ -142,9 +144,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     transform: [{ rotate: "180deg" }],
   },
   menu: {
-    minWidth: 200,
-    maxWidth: 280,
-    borderRadius: 12,
+    minWidth: sPx(200),
+    maxWidth: sPx(280),
+    borderRadius: sPx(12),
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.06)",
     backgroundColor: floraColors.bg,
@@ -160,7 +162,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: "100%",
     paddingHorizontal: floraSpacing.gridFine * 2,
     paddingVertical: floraSpacing.gridFine * 1.5,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   menuItemActive: {
     backgroundColor: "rgba(250, 250, 250, 0.06)",
@@ -170,9 +172,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   menuItemLabel: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   menuItemLabelActive: {
     color: floraColors.greenLight,

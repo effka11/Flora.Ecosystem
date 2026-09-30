@@ -1,3 +1,4 @@
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { ChatListFolderId } from "@flora/client-core/messaging";
@@ -45,7 +46,7 @@ import {
 } from "@/lib/energeticSettle";
 import { nextFeedPageWidth } from "@/lib/feedImageGeometry";
 import { imeStableWindowWidth, isImeVisible } from "@/lib/imeVisible";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, tracking } from "@/lib/theme";
 import { useDeferredPagerMount } from "@/lib/useDeferredPagerMount";
 import { usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
 import { usePagerListScroll } from "@/lib/usePagerListScroll";
@@ -125,6 +126,7 @@ const FolderPageList = memo(function FolderPageList({
   onScrollBeginDrag,
   renderScrollComponent,
 }: PageListProps) {
+  useFloraGrid();
   const onEnterRef = useRef(onEnterSelect);
   const onToggleRef = useRef(onToggleSelect);
   onEnterRef.current = onEnterSelect;
@@ -673,8 +675,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     textAlign: "center",
     marginTop: floraSpacing.grid * 3,
     paddingHorizontal: floraSpacing.grid * 2,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
 }));

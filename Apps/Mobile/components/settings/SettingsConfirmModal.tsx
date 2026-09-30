@@ -1,7 +1,8 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 export type SettingsConfirmKind = "save" | "discard";
 
@@ -58,6 +59,7 @@ export function SettingsConfirmModal({
   onDismiss,
   onConfirm,
 }: SettingsConfirmModalProps) {
+  const sp = useSPx();
   if (!kind) return null;
   const copy = COPY[kind];
 
@@ -80,7 +82,7 @@ export function SettingsConfirmModal({
             {busy ? (
               <ActivityIndicator color={copy.iconColor} />
             ) : (
-              <Ionicons name={copy.icon} size={28} color={copy.iconColor} />
+              <Ionicons name={copy.icon} size={sp(28)} color={copy.iconColor} />
             )}
           </View>
 
@@ -135,7 +137,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   card: {
     width: "100%",
-    maxWidth: 320,
+    maxWidth: sPx(320),
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surfaceElevated,
     borderWidth: 1,
@@ -155,31 +157,31 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "500",
-    letterSpacing: 0.34,
+    letterSpacing: tracking(0.34),
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: sPx(22),
   },
   body: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: sPx(20),
   },
   error: {
     color: "#f6a8a8",
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
     textAlign: "center",
-    lineHeight: 17,
+    lineHeight: sPx(17),
   },
   confirmBtn: {
     marginTop: floraSpacing.gridFine,
     width: "100%",
-    paddingVertical: floraSpacing.gridFine * 2 + 2,
+    paddingVertical: floraSpacing.gridFine * 2 + sPx(2),
     borderRadius: 9999,
     alignItems: "center",
   },
@@ -190,9 +192,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     backgroundColor: "rgba(246, 168, 168, 0.18)",
   },
   confirmBtnText: {
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   confirmBtnTextPrimary: {
     color: floraColors.bg,
@@ -208,9 +210,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   secondaryBtnText: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   btnPressed: {
     opacity: 0.85,

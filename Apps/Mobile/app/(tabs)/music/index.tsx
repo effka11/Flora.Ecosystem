@@ -48,7 +48,8 @@ import {
   MUSIC_PLAYLISTS_QUERY_KEY,
 } from "@/lib/music/musicIndexQueries";
 import { mapMusicTracksDto, mapPlaylistSummaryDto } from "@/lib/music/musicModels";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
 import { useTabPager } from "@/lib/useTabPager";
 
@@ -99,6 +100,7 @@ function MusicPane({
 }
 
 export default function MusicScreen() {
+  const sp = useSPx();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const uploadLineProgress = useSharedValue(0);
@@ -129,7 +131,7 @@ export default function MusicScreen() {
     forSelf: null,
     forPlatform: null,
   });
-  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
 
   const libraryQuery = useQuery({
     queryKey: MUSIC_LIBRARY_QUERY_KEY,
@@ -337,7 +339,7 @@ export default function MusicScreen() {
               style={({ pressed }) => [styles.modalClose, pressed && styles.pressed]}
               onPress={() => setAddTrackOpen(false)}
             >
-              <Ionicons name="close" size={24} color={floraColors.gray} />
+              <Ionicons name="close" size={sp(24)} color={floraColors.gray} />
             </Pressable>
             <Text style={styles.modalTitle}>Добавить трек</Text>
             <View style={styles.modalClose} />
@@ -407,9 +409,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   emptyHint: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   pressed: {
     opacity: 0.72,
@@ -426,16 +428,16 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingBottom: floraSpacing.gridFine,
   },
   modalClose: {
-    width: 40,
-    height: 40,
+    width: sPx(40),
+    height: sPx(40),
     alignItems: "center",
     justifyContent: "center",
   },
   modalTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "300",
-    letterSpacing: 0.51,
+    letterSpacing: tracking(0.51),
   },
   uploadTabs: {
     paddingHorizontal: floraSpacing.grid,

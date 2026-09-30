@@ -35,7 +35,7 @@ import { feedPostToEngagementSource, usePostEngagement } from "@/lib/usePostEnga
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
 import { useDeletePost } from "@/lib/useDeletePost";
 import { useEditPost } from "@/lib/useEditPost";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, tracking } from "@/lib/theme";
 
 export default function CommunityScreen() {
   const { slug: rawSlug } = useLocalSearchParams<{ slug: string | string[] }>();
@@ -302,8 +302,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     color: floraColors.gray,
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.grid * 2,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
 }));

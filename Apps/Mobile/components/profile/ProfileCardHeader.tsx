@@ -11,19 +11,20 @@ import {
 import { ProfileAvatarEditorModal } from "@/components/profile/ProfileAvatarEditorModal";
 import { ProfileCardActions } from "@/components/profile/ProfileCardActions";
 import { ProfileCardStatus } from "@/components/profile/ProfileCardStatus";
-import { floraColors, floraProfile, floraSpacing } from "@/lib/theme";
+import { floraColors, floraProfile, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 /** Временно скрываем статус на карточке профиля (mobile layout в доработке). */
 const SHOW_PROFILE_STATUS = false;
 
-const AVATAR_NUDGE_X = () => (39 - 38) * floraSpacing.grid - 8 + floraSpacing.gridFine * 2;
+const AVATAR_NUDGE_X = () => (39 - 38) * floraSpacing.grid - sPx(8) + floraSpacing.gridFine * 2;
 const TEXT_NUDGE_X = () => floraSpacing.gridFine * 2;
-const STATUS_TOP = () => 4 * floraSpacing.grid + 4;
-const PROFILE_AVATAR_BORDER = 4;
+const STATUS_TOP = () => 4 * floraSpacing.grid + sPx(4);
+const PROFILE_AVATAR_BORDER = () => sPx(4);
 /** Web `--profile-avatar-size` (border-box). Explicit px — `%` of an absolute shell collapses on Android. */
 const PROFILE_AVATAR_OUTER = () => floraProfile.avatarSize;
-/** Inner photo: outer − 4px ring on each side. Same as Web `FLORA_PROFILE_AVATAR_INNER_PX`. */
-const PROFILE_AVATAR_INNER = () => floraProfile.avatarSize - PROFILE_AVATAR_BORDER * 2;
+/** Inner photo: outer − live ring on each side. Same as Web `FLORA_PROFILE_AVATAR_INNER_PX`. */
+const PROFILE_AVATAR_INNER = () => floraProfile.avatarSize - PROFILE_AVATAR_BORDER() * 2;
 /** Badge scale diameter = Web `--profile-avatar-size` (border-box 98). */
 const PROFILE_AVATAR_DIAMETER = () => PROFILE_AVATAR_OUTER();
 /** profile.module.css — .profileDetailsTrigger */
@@ -71,6 +72,7 @@ export function ProfileCardHeader({
   onToggleFollow,
   accountBlocked = false,
 }: ProfileCardHeaderProps) {
+  const sp = useSPx();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [avatarCacheVersion, setAvatarCacheVersion] = useState(0);
@@ -145,7 +147,7 @@ export function ProfileCardHeader({
               onPress={() => setDetailsOpen(true)}
               accessibilityRole="button"
               accessibilityLabel="Подробнее о профиле"
-              hitSlop={8}
+              hitSlop={sp(8)}
               style={({ pressed }) => [styles.detailsBtn, pressed && styles.detailsBtnPressed]}
             >
               <Ionicons name="chatbox-outline" size={DETAILS_ICON_SIZE()} color="rgba(250, 250, 250, 0.7)" />
@@ -162,10 +164,10 @@ export function ProfileCardHeader({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Закрыть"
-                hitSlop={10}
+                hitSlop={sp(10)}
                 onPress={() => setDetailsOpen(false)}
               >
-                <Ionicons name="close" size={22} color={floraColors.gray} />
+                <Ionicons name="close" size={sp(22)} color={floraColors.gray} />
               </Pressable>
             </View>
 
@@ -233,7 +235,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     right: floraSpacing.grid,
     top: floraSpacing.grid,
     height: floraProfile.coverHeight,
-    borderRadius: 12,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.accentDark,
   },
   info: {
@@ -252,7 +254,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   avatarShell: {
     position: "absolute",
     left: AVATAR_NUDGE_X(),
-    top: -4,
+    top: -sPx(4),
     width: PROFILE_AVATAR_OUTER(),
     height: PROFILE_AVATAR_OUTER(),
     overflow: "visible",
@@ -260,7 +262,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   avatarWrap: {
     width: PROFILE_AVATAR_OUTER(),
     height: PROFILE_AVATAR_OUTER(),
-    borderWidth: PROFILE_AVATAR_BORDER,
+    borderWidth: PROFILE_AVATAR_BORDER(),
     borderColor: floraColors.bg,
     borderRadius: PROFILE_AVATAR_OUTER() / 2,
     overflow: "hidden",
@@ -282,23 +284,23 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   name: {
     color: floraColors.whiteTemplate,
-    fontSize: 20,
+    fontSize: kegl(20),
     fontWeight: "300",
-    letterSpacing: 0.6,
+    letterSpacing: tracking(0.6),
   },
   username: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   stats: {
     color: floraColors.gray,
     paddingLeft: TEXT_NUDGE_X(),
-    marginTop: floraSpacing.gridFine + 2,
-    fontSize: 14,
+    marginTop: floraSpacing.gridFine + sPx(2),
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   detailsBtnWrap: {
     position: "absolute",
@@ -327,7 +329,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   modalDialog: {
     width: "100%",
-    maxWidth: 560,
+    maxWidth: sPx(560),
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surface,
     borderWidth: 1,
@@ -345,7 +347,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   modalTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 18,
+    fontSize: kegl(18),
     fontWeight: "300",
   },
   modalBody: {
@@ -358,18 +360,18 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   detailLabel: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
   },
   detailValue: {
     color: floraColors.whiteTemplate,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
   },
   editBtn: {
     marginHorizontal: floraSpacing.grid,
     marginBottom: floraSpacing.grid,
-    paddingVertical: 12,
+    paddingVertical: sPx(12),
     alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(164, 209, 138, 0.4)",
@@ -380,8 +382,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   editBtnText: {
     color: floraColors.greenLight,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
 }));

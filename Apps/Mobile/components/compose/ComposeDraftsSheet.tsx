@@ -21,7 +21,8 @@ import {
   COMPOSE_PROFILE_MODE_ID,
   composeModeCommunityId,
 } from "@/lib/compose/composeModes";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 export type ComposeDraftGroup = {
   modeId: string;
@@ -52,6 +53,7 @@ export function ComposeDraftsSheet({
   onRename,
   onDelete,
 }: Props) {
+  const sp = useSPx();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -132,12 +134,12 @@ export function ComposeDraftsSheet({
               style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
               onPress={onClose}
             >
-              <Ionicons name="close" size={24} color={floraColors.gray} />
+              <Ionicons name="close" size={sp(24)} color={floraColors.gray} />
             </Pressable>
 
             {searchOpen ? (
               <View style={styles.searchBox}>
-                <Ionicons name="search-outline" size={20} color={floraColors.gray} />
+                <Ionicons name="search-outline" size={sp(20)} color={floraColors.gray} />
                 <TextInput
                   ref={searchInputRef}
                   style={styles.searchInput}
@@ -156,7 +158,7 @@ export function ComposeDraftsSheet({
                   accessibilityRole="button"
                   accessibilityLabel="Закрыть поиск"
                 >
-                  <Ionicons name="close" size={18} color={floraColors.greenLight} />
+                  <Ionicons name="close" size={sp(18)} color={floraColors.greenLight} />
                 </Pressable>
               </View>
             ) : (
@@ -176,7 +178,7 @@ export function ComposeDraftsSheet({
                   style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                   onPress={() => setSearchOpen(true)}
                 >
-                  <Ionicons name="search-outline" size={22} color={floraColors.gray} />
+                  <Ionicons name="search-outline" size={sp(22)} color={floraColors.gray} />
                 </Pressable>
               ) : null}
               <Pressable
@@ -185,7 +187,7 @@ export function ComposeDraftsSheet({
                 style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                 onPress={() => onCreate(scopeModeId)}
               >
-                <Ionicons name="add" size={24} color={floraColors.greenLight} />
+                <Ionicons name="add" size={sp(24)} color={floraColors.greenLight} />
               </Pressable>
             </View>
           </View>
@@ -247,7 +249,7 @@ export function ComposeDraftsSheet({
                     onPress={() => confirmDelete(item)}
                     style={({ pressed }) => [styles.deleteBtn, pressed && styles.pressed]}
                   >
-                    <Ionicons name="trash-outline" size={18} color={floraColors.gray} />
+                    <Ionicons name="trash-outline" size={sp(18)} color={floraColors.gray} />
                   </Pressable>
                 </Pressable>
               );
@@ -300,11 +302,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 0,
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
   },
   iconButton: {
-    width: 45,
-    minHeight: 45,
+    width: 3 * floraSpacing.grid,
+    minHeight: 3 * floraSpacing.grid,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
@@ -313,10 +315,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexShrink: 1,
     marginLeft: floraSpacing.grid,
     color: floraColors.whiteTemplate,
-    fontSize: 22,
+    fontSize: kegl(22),
     fontWeight: "300",
-    letterSpacing: 0.88,
-    lineHeight: 28,
+    letterSpacing: tracking(0.88),
+    lineHeight: sPx(28),
   },
   spacer: {
     flex: 1,
@@ -325,36 +327,36 @@ const styles = liveGridStyles(() => StyleSheet.create({
   trailingActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: sPx(6),
     marginLeft: floraSpacing.gridFine,
   },
   searchBox: {
     flex: 1,
     minWidth: 0,
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
     marginLeft: floraSpacing.gridFine * 2,
     borderColor: floraColors.greenDark,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: sPx(12),
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 14,
+    gap: 2 * floraSpacing.gridFine,
+    paddingHorizontal: sPx(14),
     backgroundColor: "transparent",
   },
   searchInput: {
     flex: 1,
     minWidth: 0,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     paddingVertical: 0,
   },
   searchClear: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: sPx(28),
+    height: sPx(28),
+    borderRadius: sPx(14),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(164, 209, 138, 0.12)",
@@ -372,7 +374,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   empty: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
     textAlign: "center",
     marginTop: floraSpacing.grid * 2,
@@ -380,10 +382,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    gap: 2 * floraSpacing.gridFine,
+    paddingVertical: sPx(12),
+    paddingHorizontal: sPx(12),
+    borderRadius: sPx(12),
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
     backgroundColor: floraColors.surface,
@@ -394,22 +396,22 @@ const styles = liveGridStyles(() => StyleSheet.create({
   rowBody: {
     flex: 1,
     minWidth: 0,
-    gap: 4,
+    gap: sPx(4),
   },
   rowTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "400",
   },
   rowPreview: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    lineHeight: 18,
+    lineHeight: sPx(18),
   },
   deleteBtn: {
-    width: 36,
-    height: 36,
+    width: sPx(36),
+    height: sPx(36),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -425,25 +427,25 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   renameCard: {
     width: "100%",
-    maxWidth: 360,
-    borderRadius: 14,
+    maxWidth: 24 * floraSpacing.grid,
+    borderRadius: sPx(14),
     backgroundColor: floraColors.surfaceElevated,
     padding: floraSpacing.grid,
     gap: floraSpacing.gridFine * 2,
   },
   renameTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 16,
+    fontSize: kegl(16),
     fontWeight: "400",
   },
   renameInput: {
-    minHeight: 44,
-    borderRadius: 10,
+    minHeight: sPx(44),
+    borderRadius: 2 * floraSpacing.gridFine,
     borderWidth: 1,
     borderColor: floraColors.greenDark,
-    paddingHorizontal: 12,
+    paddingHorizontal: sPx(12),
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
   },
   renameActions: {
     flexDirection: "row",
@@ -451,15 +453,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.grid,
   },
   renameAction: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingVertical: sPx(8),
+    paddingHorizontal: sPx(4),
   },
   renameCancel: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
   },
   renameSave: {
     color: floraColors.greenLight,
-    fontSize: 15,
+    fontSize: kegl(15),
   },
 }));
