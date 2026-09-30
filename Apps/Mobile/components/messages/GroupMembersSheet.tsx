@@ -21,7 +21,8 @@ import {
   normalizeGroupTitlePatch,
   type GroupMember,
 } from "@/lib/groupChatTypes";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 type Props = {
   open: boolean;
@@ -53,6 +54,7 @@ export function GroupMembersSheet({
   onAddMember,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const sp = useSPx();
   const [draftTitle, setDraftTitle] = useState(title);
   const [addQuery, setAddQuery] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -123,13 +125,13 @@ export function GroupMembersSheet({
             accessibilityRole="button"
             onPress={onClose}
             disabled={busy}
-            hitSlop={8}
+            hitSlop={sPx(8)}
           >
             <Text style={styles.ghost}>Закрыть</Text>
           </Pressable>
           <Text style={styles.title}>{formatGroupMembersLabel(members.length)}</Text>
           {isCreator && titleDirty ? (
-            <Pressable accessibilityRole="button" onPress={saveTitle} disabled={busy} hitSlop={8}>
+            <Pressable accessibilityRole="button" onPress={saveTitle} disabled={busy} hitSlop={sPx(8)}>
               {busy ? (
                 <ActivityIndicator color={floraColors.greenLight} />
               ) : (
@@ -169,7 +171,7 @@ export function GroupMembersSheet({
             return (
               <View key={member.userUuid} style={styles.row}>
                 <FloraAvatar
-                  size={40}
+                  size={8 * floraSpacing.gridFine}
                   displayName={label}
                   username={member.username}
                   avatarUuid={member.avatarUuid}
@@ -236,7 +238,7 @@ export function GroupMembersSheet({
                         }}
                       >
                         <FloraAvatar
-                          size={40}
+                          size={8 * floraSpacing.gridFine}
                           displayName={label}
                           username={c.otherUsername}
                           avatarUuid={c.otherAvatarUuid}
@@ -249,7 +251,7 @@ export function GroupMembersSheet({
                             @{c.otherUsername.replace(/^@+/, "")}
                           </Text>
                         </View>
-                        <Ionicons name="add-circle-outline" size={22} color={floraColors.greenLight} />
+                        <Ionicons name="add-circle-outline" size={sp(22)} color={floraColors.greenLight} />
                       </Pressable>
                     );
                   })
@@ -275,35 +277,35 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: floraSpacing.grid,
-    minHeight: 40,
+    minHeight: 8 * floraSpacing.gridFine,
   },
-  headerSpacer: { width: 64 },
+  headerSpacer: { width: sPx(64) },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "300",
   },
-  ghost: { color: floraColors.gray, fontSize: 15, fontWeight: "300" },
-  action: { color: floraColors.greenLight, fontSize: 15, fontWeight: "300" },
+  ghost: { color: floraColors.gray, fontSize: kegl(15), fontWeight: "300" },
+  action: { color: floraColors.greenLight, fontSize: kegl(15), fontWeight: "300" },
   label: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     marginBottom: floraSpacing.gridFine,
     marginTop: floraSpacing.gridFine,
   },
   input: {
     borderWidth: 1,
     borderColor: "rgba(250,250,250,0.1)",
-    borderRadius: 10,
+    borderRadius: 2 * floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     marginBottom: floraSpacing.grid,
   },
   readonlyTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 16,
+    fontSize: kegl(16),
     marginBottom: floraSpacing.grid,
   },
   list: { flex: 1 },
@@ -314,9 +316,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingVertical: floraSpacing.gridFine * 1.5,
   },
   rowPressed: { opacity: 0.85 },
-  rowBody: { flex: 1, minWidth: 0, gap: 2 },
-  rowName: { color: floraColors.whiteTemplate, fontSize: 15, fontWeight: "300" },
-  rowHandle: { color: floraColors.gray, fontSize: 13 },
-  kick: { color: "#f6a8a8", fontSize: 13 },
-  error: { color: "#f6a8a8", fontSize: 13, marginTop: floraSpacing.gridFine },
+  rowBody: { flex: 1, minWidth: 0, gap: sPx(2) },
+  rowName: { color: floraColors.whiteTemplate, fontSize: kegl(15), fontWeight: "300" },
+  rowHandle: { color: floraColors.gray, fontSize: kegl(13) },
+  kick: { color: "#f6a8a8", fontSize: kegl(13) },
+  error: { color: "#f6a8a8", fontSize: kegl(13), marginTop: floraSpacing.gridFine },
 }));

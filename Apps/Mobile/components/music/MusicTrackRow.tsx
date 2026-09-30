@@ -3,7 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { MusicTrackItem } from "@/lib/music/musicModels";
 import { formatMusicDuration } from "@/lib/music/musicModels";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   track: MusicTrackItem;
@@ -13,12 +14,13 @@ type Props = {
 };
 
 export function MusicTrackRow({ track, playing = false, onPress, onDelete }: Props) {
+  const sp = useSPx();
   return (
     <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]} onPress={onPress}>
       <View style={[styles.cover, { backgroundColor: track.coverColor }]}>
         <Ionicons
           name={playing ? "pause" : "musical-note"}
-          size={18}
+          size={sp(18)}
           color={playing ? floraColors.greenDark : "rgba(12, 12, 12, 0.82)"}
         />
       </View>
@@ -35,14 +37,14 @@ export function MusicTrackRow({ track, playing = false, onPress, onDelete }: Pro
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Удалить трек"
-          hitSlop={10}
+          hitSlop={sp(10)}
           style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           onPress={(event) => {
             event.stopPropagation();
             onDelete();
           }}
         >
-          <Ionicons name="trash-outline" size={17} color={floraColors.gray} />
+          <Ionicons name="trash-outline" size={sp(17)} color={floraColors.gray} />
         </Pressable>
       ) : null}
     </Pressable>
@@ -51,7 +53,7 @@ export function MusicTrackRow({ track, playing = false, onPress, onDelete }: Pro
 
 const styles = liveGridStyles(() => StyleSheet.create({
   row: {
-    minHeight: 64,
+    minHeight: sPx(64),
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.gridFine * 2,
@@ -61,9 +63,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderBottomColor: "rgba(250, 250, 250, 0.08)",
   },
   cover: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: sPx(42),
+    height: sPx(42),
+    borderRadius: sPx(12),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -73,28 +75,28 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   artist: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
-    letterSpacing: 0.36,
-    marginTop: 3,
+    letterSpacing: tracking(0.36),
+    marginTop: sPx(3),
   },
   duration: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
-    minWidth: 38,
+    minWidth: sPx(38),
     textAlign: "right",
   },
   iconBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: sPx(28),
+    height: sPx(28),
+    borderRadius: sPx(14),
     alignItems: "center",
     justifyContent: "center",
   },

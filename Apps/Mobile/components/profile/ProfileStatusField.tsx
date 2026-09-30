@@ -9,7 +9,7 @@ import {
   View,
   type TextInputProps,
 } from "react-native";
-import { floraColors, floraProfile, floraSpacing } from "@/lib/theme";
+import { floraColors, floraProfile, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type TextLine = {
   x: number;
@@ -89,13 +89,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   label: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     height: floraSpacing.grid * 2,
     lineHeight: floraSpacing.grid + floraSpacing.gridFine,
     paddingBottom: floraSpacing.gridFine,
-    paddingLeft: 2,
+    paddingLeft: sPx(2),
     textAlignVertical: "bottom",
     includeFontPadding: false,
   },
@@ -104,7 +104,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minHeight: floraSpacing.grid * 6,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.15)",
-    borderRadius: 10,
+    borderRadius: sPx(10),
     overflow: "hidden",
   },
   mirror: {

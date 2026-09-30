@@ -30,7 +30,9 @@ import {
   MAX_PAGER_PAGES,
   type MessagesFolderPagerScroll,
 } from "@/components/messages/messagesFolderPagerScroll";
-import { floraColors, floraTabFilter } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { liveGridStyles } from "@/lib/liveGridStyles";
+import { floraColors, floraSpacing, floraTabFilter, sPx } from "@/lib/theme";
 
 type Props = {
   folders: readonly ChatListFolderDef[];
@@ -43,11 +45,7 @@ type Props = {
 
 type TabLayout = { x: number; width: number };
 
-/** Как `iconButton` в TabScreenSearchHeader — правая папка центрируется под «+». */
-const HEADER_TRAILING_ICON_SLOT = 45;
-/** Тап-зона папки: плотнее 45; padding ряда выравнивает центр последней под «+». */
-const FOLDER_ICON_SLOT = 36;
-const FOLDER_ICON_GAP = 8;
+
 
 function resolveFolderIcon(folder: ChatListFolderDef): keyof typeof Ionicons.glyphMap {
   if (folder.id === CHAT_LIST_ARCHIVE_FOLDER_ID) return "archive-outline";
@@ -76,6 +74,7 @@ function FolderIconSynced({
   returnFromPageSV: SharedValue<number>;
   returnProgressSV: SharedValue<number>;
 }) {
+  const sp = useSPx();
   const idleStyle = useAnimatedStyle(() => {
     const retFrom = returnFromPageSV.value;
     if (retFrom >= 1) {
@@ -104,10 +103,10 @@ function FolderIconSynced({
   return (
     <View style={styles.iconStack}>
       <Reanimated.View style={[styles.iconLayer, idleStyle]}>
-        <Ionicons name={name} size={18} color={floraColors.gray} />
+        <Ionicons name={name} size={sp(18)} color={floraColors.gray} />
       </Reanimated.View>
       <Reanimated.View style={[styles.iconLayer, styles.iconLayerActive, activeStyle]}>
-        <Ionicons name={name} size={18} color={floraColors.greenLight} />
+        <Ionicons name={name} size={sp(18)} color={floraColors.greenLight} />
       </Reanimated.View>
     </View>
   );
@@ -124,6 +123,7 @@ export function MessagesChatFolders({
   onDeleteFolder,
   pagerScroll = null,
 }: Props) {
+  const sp = useSPx();
   const ordered = useMemo(() => orderChatListFolders(folders), [folders]);
   const knownIds = useMemo(() => new Set(ordered.map((f) => f.id)), [ordered]);
   const pages = pagerScroll?.pages ?? null;
@@ -281,7 +281,7 @@ export function MessagesChatFolders({
               onPress={() => onSelect(active ? "all" : folder.id)}
               onLongPress={canDelete ? () => requestDelete(folder) : undefined}
               delayLongPress={380}
-              hitSlop={6}
+              hitSlop={sp(6)}
             >
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={styles.groupAvatar} />
@@ -301,7 +301,7 @@ export function MessagesChatFolders({
               ) : (
                 <Ionicons
                   name={resolveFolderIcon(folder)}
-                  size={18}
+                  size={sp(18)}
                   color={active ? floraColors.greenLight : floraColors.gray}
                 />
               )}
@@ -313,33 +313,33 @@ export function MessagesChatFolders({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     marginLeft: "auto",
     // Сдвиг: центр последней иконки совпадает с центром «+» (slot 45).
-    paddingRight: (HEADER_TRAILING_ICON_SLOT - FOLDER_ICON_SLOT) / 2,
+    paddingRight: (3 * floraSpacing.grid - sPx(36)) / 2,
     height: floraTabFilter.triggerHeight,
   },
   foldersTrack: {
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
-    gap: FOLDER_ICON_GAP,
+    gap: sPx(8),
     height: floraTabFilter.triggerHeight,
     overflow: "visible",
   },
   folderBtn: {
-    width: FOLDER_ICON_SLOT,
+    width: sPx(36),
     height: floraTabFilter.triggerHeight,
     alignItems: "center",
     justifyContent: "center",
   },
   iconStack: {
-    width: 18,
-    height: 18,
+    width: sPx(18),
+    height: sPx(18),
   },
   iconLayer: {
     ...StyleSheet.absoluteFill,
@@ -350,9 +350,9 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   groupAvatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: sPx(22),
+    height: sPx(22),
+    borderRadius: sPx(11),
   },
   underline: {
     position: "absolute",
@@ -364,4 +364,4 @@ const styles = StyleSheet.create({
     backgroundColor: floraColors.greenLight,
     zIndex: 2,
   },
-});
+}));

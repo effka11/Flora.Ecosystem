@@ -1,4 +1,4 @@
-import { TIME_INLINE_GAP_PX, type BubbleTimePlacement } from "@flora/client-core/display";
+import { type BubbleTimePlacement } from "@flora/client-core/display";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   NativeSyntheticEvent,
@@ -13,7 +13,10 @@ import {
 
 import { ChatMessageBubbleTime } from "@/components/messages/ChatMessageBubbleTime";
 import { ChatMessageReadReceipt } from "@/components/messages/ChatMessageReadReceipt";
+import { useFloraGrid } from "@/lib/FloraGridProvider";
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { resolveBubbleMetaLayout } from "@/lib/messageBubbleLayout";
+import { floraSpacing, sPx } from "@/lib/theme";
 import type { MessageDeliveryState } from "@/lib/messageDeliveryState";
 import {
   getCachedBodyMeasure,
@@ -104,6 +107,7 @@ function ChatMessageBubbleTextBodyInner({
   timeStyle,
   receiptColor,
 }: Props) {
+  useFloraGrid();
   const [bodyMeasure, setBodyMeasure] = useState<BodyMeasure | null>(null);
   const [timeMeasure, setTimeMeasure] = useState<TimeMeasure | null>(null);
 
@@ -302,7 +306,7 @@ function ChatMessageBubbleTextBodyInner({
 
 export const ChatMessageBubbleTextBody = memo(ChatMessageBubbleTextBodyInner);
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   inlineWrap: {
     position: "relative",
     alignSelf: "flex-start",
@@ -329,7 +333,7 @@ const styles = StyleSheet.create({
   inlineMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginLeft: TIME_INLINE_GAP_PX,
+    marginLeft: 1 * floraSpacing.grid,
     flexShrink: 0,
   },
   inlineMetaRowAnchored: {
@@ -340,9 +344,9 @@ const styles = StyleSheet.create({
     transform: [{ translateY: 1 }],
   },
   belowBlock: {
-    gap: 2,
+    gap: sPx(2),
   },
   meta: {
     alignSelf: "flex-end",
   },
-});
+}));

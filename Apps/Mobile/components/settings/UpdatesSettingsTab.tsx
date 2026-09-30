@@ -43,7 +43,8 @@ import {
 } from "@/lib/apkUpdate";
 import { waitForInstallPermissionResult } from "@/lib/apkUpdate/waitForInstallPermission";
 import { FLORA_DOWNLOAD_PAGE, getFloraSocialAppVersion } from "@/lib/appLinks";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 function normalizeSearch(value: string): string {
   return value.trim().toLowerCase();
@@ -95,6 +96,7 @@ function ToggleCard({
 }
 
 export function UpdatesSettingsTab({ searchQuery }: Props) {
+  const sp = useSPx();
   const sideload = isSideloadUpdatesEnabled();
   const installedVersion = getFloraSocialAppVersion();
   const installedCode = getInstalledVersionCode();
@@ -415,7 +417,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
                     {labelForUpdateChannel(updateChannel)}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={floraColors.gray} />
+                <Ionicons name="chevron-forward" size={sp(18)} color={floraColors.gray} />
               </Pressable>
 
               <View style={styles.actionsDivider} />
@@ -451,7 +453,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
                   accessibilityLabel="Открыть страницу загрузки"
                 >
                   <Text style={styles.downloadLinkText}>Канал загрузки</Text>
-                  <Ionicons name="open-outline" size={15} color={floraColors.gray} />
+                  <Ionicons name="open-outline" size={sp(15)} color={floraColors.gray} />
                 </Pressable>
               </View>
             </View>
@@ -534,7 +536,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
                     {option.label}
                   </Text>
                   {selected ? (
-                    <Ionicons name="checkmark" size={20} color={floraColors.greenLight} />
+                    <Ionicons name="checkmark" size={sp(20)} color={floraColors.greenLight} />
                   ) : null}
                 </Pressable>
               );
@@ -556,7 +558,7 @@ export function UpdatesSettingsTab({ searchQuery }: Props) {
 
 const styles = liveGridStyles(() => StyleSheet.create({
   actionsCard: {
-    borderRadius: 12,
+    borderRadius: sPx(12),
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
     backgroundColor: "rgba(250, 250, 250, 0.03)",
@@ -573,19 +575,19 @@ const styles = liveGridStyles(() => StyleSheet.create({
   channelRowText: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: sPx(2),
   },
   channelRowLabel: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
-    letterSpacing: 0.36,
+    letterSpacing: tracking(0.36),
   },
   channelRowValue: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   actionsDivider: {
     height: StyleSheet.hairlineWidth,
@@ -600,16 +602,16 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   checkButton: {
     height: floraSpacing.grid * 3,
-    borderRadius: 10,
+    borderRadius: sPx(10),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: floraColors.greenLight,
   },
   checkButtonText: {
     color: floraColors.bg,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   downloadLink: {
     alignSelf: "flex-start",
@@ -621,9 +623,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   downloadLinkText: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   channelBackdrop: {
     flex: 1,
@@ -634,8 +636,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   channelSheet: {
     width: "100%",
-    maxWidth: 320,
-    borderRadius: 12,
+    maxWidth: sPx(320),
+    borderRadius: sPx(12),
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.08)",
     backgroundColor: floraColors.surfaceElevated,
@@ -645,9 +647,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   channelSheetTitle: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     paddingHorizontal: floraSpacing.gridFine,
     paddingVertical: floraSpacing.gridFine * 2,
   },
@@ -662,9 +664,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   channelOptionLabel: {
     flex: 1,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   channelOptionLabelSelected: {
     color: floraColors.greenLight,

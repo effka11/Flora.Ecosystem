@@ -64,7 +64,8 @@ import {
   useDrawerMomentumController,
 } from "@/lib/drawerMomentum";
 import { eligibleVerticalFling } from "@/lib/drawerFlingPolicy";
-import { floraColors, floraMotion, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraMotion, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 import {
   isHamburgerTabPathActive,
   requestTabRouteCover,
@@ -94,15 +95,10 @@ const MENU_ITEMS: MenuItem[] = [
  * Как web dashboardShell: logoMark = 2×grid (30), navIcon = 22;
  * people 24, communities 22×0.92, settings/contribute 22.
  */
-const MENU_ICON_SIZE: Record<MenuItemId, number> = {
-  people: 24,
-  communities: Math.round(22 * 0.92),
-  settings: 22,
-  contribute: 22,
-};
-
 function MenuItemIcon({ id, color }: { id: MenuItemId; color: string }) {
-  const size = MENU_ICON_SIZE[id];
+  const sp = useSPx();
+  const size =
+    id === "people" ? sp(24) : id === "communities" ? Math.round(sp(22) * 0.92) : sp(22);
   switch (id) {
     case "people":
       return <SidebarPeopleIcon size={size} color={color} />;
@@ -120,7 +116,7 @@ function isMenuItemActive(pathname: string, id: MenuItemId): boolean {
   return isHamburgerTabPathActive(pathname, id);
 }
 
-const PANEL_MAX_WIDTH = 300;
+const PANEL_MAX_WIDTH = () => 20 * floraSpacing.grid;
 const PANEL_WIDTH_RATIO = 0.78;
 const OPEN_MS = ENERGETIC_OPEN_MS;
 const OPEN_EASING = ENERGETIC_OPEN_EASING;
@@ -138,6 +134,7 @@ const EDGE_FAIL_OFFSET_Y = DRAWER_EDGE_FAIL_OFFSET_Y;
 const SWIPE_CLOSE_RATIO = 0.28;
 /** Мягкий порог открытия: медленный осознанный drag тоже коммитится. */
 const SWIPE_OPEN_RATIO = 0.12;
+/** 2×grid. В worklet — уже число: с UI-потока функцию звать нельзя. */
 const SWIPE_OPEN_MIN_PX = () => 2 * floraSpacing.grid;
 /** Gesture Handler сообщает velocity в points/sec. */
 const SWIPE_CLOSE_VX = -650;
@@ -204,7 +201,8 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
   const activeMomentumPane = momentumController.activePane;
   const momentumPanes = momentumController.panes;
   const me = useSessionStore((s) => s.me);
-  const panelWidth = Math.min(PANEL_MAX_WIDTH, Math.round(windowWidth * PANEL_WIDTH_RATIO));
+  const panelWidth = Math.min(PANEL_MAX_WIDTH(), Math.round(windowWidth * PANEL_WIDTH_RATIO));
+  const swipeOpenMinPx = SWIPE_OPEN_MIN_PX();
 
   const [presented, setPresented] = useState(visible);
   const progress = useSharedValue(visible ? 1 : 0);
@@ -456,7 +454,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
             width,
             event.velocityX,
             SWIPE_OPEN_RATIO,
-            SWIPE_OPEN_MIN_PX(),
+            swipeOpenMinPx,
             SWIPE_OPEN_VX,
           );
           if (shouldOpen) {
@@ -505,6 +503,7 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
       momentumPanes,
       panelWidthSV,
       progress,
+      swipeOpenMinPx,
       touchStartX,
       touchStartY,
     ],
@@ -732,7 +731,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
     marginBottom: floraSpacing.grid * 3,
   },
   logoRow: {
@@ -743,7 +742,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   logoMark: {
     width: MENU_LEAD_COL(),
     height: MENU_LEAD_COL(),
-    borderRadius: 10,
+    borderRadius: 2 * floraSpacing.gridFine,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(164, 209, 138, 0.2)",
@@ -755,9 +754,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   logoText: {
     color: floraColors.greenLight,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "300",
-    letterSpacing: 4,
+    letterSpacing: tracking(4),
   },
   navList: {
     flex: 1,
@@ -768,9 +767,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.grid,
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
     paddingRight: floraSpacing.grid,
-    borderRadius: 12,
+    borderRadius: sPx(12),
   },
   navItemPressed: {
     backgroundColor: "rgba(250, 250, 250, 0.06)",
@@ -783,9 +782,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   navLabel: {
     color: floraColors.whiteTemplate,
-    fontSize: 16,
+    fontSize: kegl(16),
     fontWeight: "300",
-    letterSpacing: 0.48,
+    letterSpacing: tracking(0.48),
   },
   navLabelActive: {
     color: floraColors.greenLight,
@@ -794,8 +793,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.grid,
-    paddingVertical: floraSpacing.grid - 6,
-    borderRadius: 12,
+    paddingVertical: floraSpacing.grid - sPx(6),
+    borderRadius: sPx(12),
     marginTop: floraSpacing.grid,
   },
   userMeta: {
@@ -806,14 +805,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   userDisplayName: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   userHandle: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
 }));

@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { sPx } from "@/lib/theme";
 import { AuthErrorToast } from "./AuthErrorToast";
 import { authStyles } from "./styles";
 
@@ -59,7 +60,7 @@ export function AuthScreenLayout({
       <ScrollView
         contentContainerStyle={[
           authStyles.scrollContent,
-          { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 28) },
+          { paddingTop: Math.max(insets.top, sPx(16)), paddingBottom: Math.max(insets.bottom, sPx(28)) },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

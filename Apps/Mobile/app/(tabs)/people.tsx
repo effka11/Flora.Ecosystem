@@ -41,7 +41,8 @@ import {
 import { peoplePresenceShouldRegister } from "@/lib/people/peoplePresence";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { useSessionStore } from "@/stores/sessionStore";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { useDeferredPagerMount } from "@/lib/useDeferredPagerMount";
 import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
 import { usePagerListScroll } from "@/lib/usePagerListScroll";
@@ -91,6 +92,7 @@ type PeopleRowProps = {
 };
 
 function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: PeopleRowProps) {
+  const sp = useSPx();
   const profileHref = profileScreenHref(user.username, meUsername);
   const [presenceTick, setPresenceTick] = useState(0);
   useEffect(() => sharedPresenceStore.subscribe(() => setPresenceTick((n) => n + 1)), []);
@@ -148,7 +150,7 @@ function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: 
             style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed, actionBusy && styles.disabled]}
             onPress={onToggleFollow}
           >
-            <Ionicons name="person-remove-outline" size={18} color={floraColors.greenLight} />
+            <Ionicons name="person-remove-outline" size={sp(18)} color={floraColors.greenLight} />
           </Pressable>
         ) : (
           <Pressable
@@ -158,7 +160,7 @@ function PeopleRow({ user, following, actionBusy, onToggleFollow, meUsername }: 
             style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed, actionBusy && styles.disabled]}
             onPress={onToggleFollow}
           >
-            <Ionicons name="person-add-outline" size={18} color={floraColors.greenLight} />
+            <Ionicons name="person-add-outline" size={sp(18)} color={floraColors.greenLight} />
           </Pressable>
         )}
       </View>
@@ -252,7 +254,7 @@ function PeoplePane({
 
 export default function PeopleScreen() {
   const insets = useSafeAreaInsets();
-  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
   const [search, setSearch] = useState("");
@@ -696,7 +698,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: 0,
     gap: floraSpacing.grid,
     paddingTop: floraSpacing.grid * 2 - 1,
-    paddingBottom: floraSpacing.grid * 2 - 2,
+    paddingBottom: floraSpacing.grid * 2 - sPx(2),
     paddingLeft: floraSpacing.grid,
     paddingRight: floraSpacing.gridFine,
   },
@@ -729,25 +731,25 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(20),
   },
   username: {
     flexShrink: 0,
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(20),
   },
   followers: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(20),
   },
   trailing: {
     flexDirection: "row",
@@ -757,12 +759,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignSelf: "stretch",
     paddingRight: floraSpacing.grid,
     paddingTop: floraSpacing.grid * 2 - 1,
-    paddingBottom: floraSpacing.grid * 2 - 2,
+    paddingBottom: floraSpacing.grid * 2 - sPx(2),
   },
   iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: sPx(34),
+    height: sPx(34),
+    borderRadius: sPx(17),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(164, 209, 138, 0.08)",
@@ -777,10 +779,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     textAlign: "center",
     marginTop: floraSpacing.grid * 3,
     paddingHorizontal: floraSpacing.grid * 2,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(22),
   },
   disabled: {
     opacity: 0.45,

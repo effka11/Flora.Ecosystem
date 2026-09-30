@@ -12,7 +12,8 @@ import {
   labelForApkUpdatePhase,
   type ApkUpdateProgress,
 } from "@/lib/apkUpdate/progress";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   visible: boolean;
@@ -31,6 +32,7 @@ export function AppUpdateProgressModal({
   onCancel,
   cancelling = false,
 }: Props) {
+  const sp = useSPx();
   const phase = progress?.phase ?? "checking";
   const isError = phase === "error";
   const isDone = phase === "done";
@@ -67,11 +69,11 @@ export function AppUpdateProgressModal({
               style={({ pressed }) => [styles.xBtn, pressed && styles.xBtnPressed]}
               onPress={handleRequestClose}
               disabled={cancelling}
-              hitSlop={12}
+              hitSlop={sp(12)}
               accessibilityRole="button"
               accessibilityLabel={canDismiss ? "Закрыть" : "Отменить обновление"}
             >
-              <Ionicons name="close" size={22} color={floraColors.gray} />
+              <Ionicons name="close" size={sp(22)} color={floraColors.gray} />
             </Pressable>
           ) : null}
 
@@ -79,9 +81,9 @@ export function AppUpdateProgressModal({
             {cancelling ? (
               <ActivityIndicator color={floraColors.greenLight} size="large" />
             ) : isError ? (
-              <Ionicons name="alert-circle-outline" size={28} color={floraColors.error} />
+              <Ionicons name="alert-circle-outline" size={sp(28)} color={floraColors.error} />
             ) : isDone ? (
-              <Ionicons name="checkmark-circle-outline" size={28} color={floraColors.greenLight} />
+              <Ionicons name="checkmark-circle-outline" size={sp(28)} color={floraColors.greenLight} />
             ) : (
               <ActivityIndicator color={floraColors.greenLight} size="large" />
             )}
@@ -131,7 +133,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   card: {
     width: "100%",
-    maxWidth: 320,
+    maxWidth: sPx(320),
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surfaceElevated,
     borderWidth: 1,
@@ -146,9 +148,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     position: "absolute",
     top: floraSpacing.gridFine * 2,
     right: floraSpacing.gridFine * 2,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: sPx(32),
+    height: sPx(32),
+    borderRadius: sPx(16),
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
@@ -157,28 +159,28 @@ const styles = liveGridStyles(() => StyleSheet.create({
     backgroundColor: "rgba(250, 250, 250, 0.08)",
   },
   iconWrap: {
-    height: 36,
+    height: sPx(36),
     alignItems: "center",
     justifyContent: "center",
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 16,
+    fontSize: kegl(16),
     fontWeight: "400",
-    letterSpacing: 0.32,
+    letterSpacing: tracking(0.32),
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: sPx(22),
   },
   barTrack: {
     width: "100%",
-    height: 4,
-    borderRadius: 2,
+    height: sPx(4),
+    borderRadius: sPx(2),
     backgroundColor: "rgba(250, 250, 250, 0.08)",
     overflow: "hidden",
   },
   barFill: {
     height: "100%",
-    borderRadius: 2,
+    borderRadius: sPx(2),
     backgroundColor: floraColors.greenLight,
   },
   barIndeterminate: {
@@ -186,15 +188,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   pct: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   hint: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
     textAlign: "center",
   },
   closeBtn: {
@@ -203,7 +205,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingVertical: floraSpacing.gridFine * 2,
     borderRadius: 9999,
     backgroundColor: floraColors.greenLight,
-    minWidth: 120,
+    minWidth: sPx(120),
     alignItems: "center",
   },
   closeBtnPressed: {
@@ -211,8 +213,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   closeBtnText: {
     color: floraColors.bg,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
 }));

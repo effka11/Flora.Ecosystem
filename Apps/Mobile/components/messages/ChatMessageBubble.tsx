@@ -1,3 +1,4 @@
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
@@ -28,7 +29,7 @@ import {
   readMenuPressCoords,
   type MenuPressCoords,
 } from "@/lib/messageBubbleMoreMenuLayout";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { floraColors, floraMessages, floraSpacing, kegl, sPx } from "@/lib/theme";
 import { FRANKING_MISSING_RECEIPT_WARNING } from "@flora/client-core/display";
 import {
   StyleSheet,
@@ -181,6 +182,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   inPeerGroup = false,
   onPress,
 }: Props) {
+  useFloraGrid();
   const { width: screenWidth } = useWindowDimensions();
   const layoutCtx = useMemo(
     () => ({
@@ -653,10 +655,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
    * Send time on the duration row (like text time ↔ last line).
    */
   bubbleVoiceOnly: {
-    height: 5 * floraSpacing.grid - 3,
-    minHeight: 5 * floraSpacing.grid - 3,
-    paddingTop: floraSpacing.grid - 1.5,
-    paddingBottom: floraSpacing.grid - 1.5,
+    height: 5 * floraSpacing.grid - sPx(3),
+    minHeight: 5 * floraSpacing.grid - sPx(3),
+    paddingTop: floraSpacing.grid - sPx(1.5),
+    paddingBottom: floraSpacing.grid - sPx(1.5),
     justifyContent: "flex-start",
     gap: 0,
   },
@@ -684,7 +686,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     height: floraSpacing.grid,
   },
   // Метрики — из общего источника: ими же мерит offscreen-прогрев замеров.
-  body: messageBubbleBodyTextMetrics,
+  // Снимок, не сам прокси: dev StyleSheet.create замораживает значение стиля.
+  body: {
+    ...messageBubbleBodyTextMetrics,
+  },
   bodyMe: {
     color: floraColors.whiteTemplate,
   },
@@ -694,8 +699,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   frankingReceiptWarn: {
     marginTop: floraSpacing.gridFine,
     maxWidth: "100%",
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: kegl(12),
+    lineHeight: sPx(16),
     color: floraColors.textMuted,
   },
   timeInline: {

@@ -37,6 +37,9 @@ export function liveGridStyles<T extends NamedStyles<T>>(factory: () => T): T {
     },
     has(_target, prop) {
       return prop in (resolve() as object);
+    },
+    preventExtensions() {
+      return false;
     }
   });
 }

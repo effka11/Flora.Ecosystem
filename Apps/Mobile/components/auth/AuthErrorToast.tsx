@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { sPx } from "@/lib/theme";
 import { authStyles } from "./styles";
 
 const AUTO_DISMISS_MS = 4500;
@@ -82,7 +83,7 @@ export function AuthErrorToast({ message, onDismiss }: AuthErrorToastProps) {
 
   const translateY = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: [28, 0],
+    outputRange: [sPx(28), 0],
   });
 
   return (
@@ -91,7 +92,7 @@ export function AuthErrorToast({ message, onDismiss }: AuthErrorToastProps) {
       style={[
         authStyles.errorToastWrap,
         {
-          paddingBottom: Math.max(insets.bottom, 16),
+          paddingBottom: Math.max(insets.bottom, sPx(16)),
           opacity: progress,
           transform: [{ translateY }],
         },

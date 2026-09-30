@@ -3,7 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { DropdownMenuOverlay } from "@/components/DropdownMenuOverlay";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   emojiOpen: boolean;
@@ -36,6 +37,7 @@ export function ComposeToolbar({
   showDraftActions = true,
   showPublish = true,
 }: Props) {
+  const sp = useSPx();
   const attachRef = useRef<View>(null);
   const [attachOpen, setAttachOpen] = useState(false);
 
@@ -48,7 +50,7 @@ export function ComposeToolbar({
           style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           onPress={() => setAttachOpen(true)}
         >
-          <Ionicons name="attach-outline" size={24} color={floraColors.gray} />
+          <Ionicons name="attach-outline" size={sp(24)} color={floraColors.gray} />
         </Pressable>
       </View>
 
@@ -61,7 +63,7 @@ export function ComposeToolbar({
       >
         <Ionicons
           name={emojiOpen ? "keypad-outline" : "happy-outline"}
-          size={24}
+          size={sp(24)}
           color={emojiOpen ? floraColors.greenLight : floraColors.gray}
         />
       </Pressable>
@@ -83,7 +85,7 @@ export function ComposeToolbar({
           {savingDraft ? (
             <ActivityIndicator color={floraColors.greenLight} size="small" />
           ) : (
-            <Ionicons name="save-outline" size={22} color={floraColors.gray} />
+            <Ionicons name="save-outline" size={sp(22)} color={floraColors.gray} />
           )}
         </Pressable>
       ) : null}
@@ -95,7 +97,7 @@ export function ComposeToolbar({
           style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           onPress={onClear}
         >
-          <Ionicons name="trash-outline" size={22} color={floraColors.gray} />
+          <Ionicons name="trash-outline" size={sp(22)} color={floraColors.gray} />
         </Pressable>
       ) : null}
 
@@ -134,7 +136,7 @@ export function ComposeToolbar({
             onPickPhoto();
           }}
         >
-          <Ionicons name="image-outline" size={20} color={floraColors.greenLight} />
+          <Ionicons name="image-outline" size={sp(20)} color={floraColors.greenLight} />
           <Text style={styles.attachLabel}>Фото</Text>
         </Pressable>
         <Pressable
@@ -145,7 +147,7 @@ export function ComposeToolbar({
             onPickVideo();
           }}
         >
-          <Ionicons name="videocam-outline" size={20} color={floraColors.greenLight} />
+          <Ionicons name="videocam-outline" size={sp(20)} color={floraColors.greenLight} />
           <Text style={styles.attachLabel}>Видео</Text>
         </Pressable>
       </DropdownMenuOverlay>
@@ -157,13 +159,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
   root: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: sPx(2),
     paddingHorizontal: floraSpacing.gridFine,
     paddingVertical: floraSpacing.gridFine,
   },
   iconBtn: {
-    width: 44,
-    height: 44,
+    width: sPx(44),
+    height: sPx(44),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -171,9 +173,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flex: 1,
   },
   publishBtn: {
-    minHeight: 36,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    minHeight: sPx(36),
+    paddingHorizontal: sPx(14),
+    borderRadius: 2 * floraSpacing.gridFine,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(164, 209, 138, 0.14)",
@@ -181,32 +183,32 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   publishText: {
     color: floraColors.greenLight,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.4,
+    letterSpacing: tracking(0.4),
   },
   disabled: {
     opacity: 0.4,
   },
   attachMenu: {
-    minWidth: 160,
-    borderRadius: 12,
+    minWidth: 32 * floraSpacing.gridFine,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.popoverInset,
     borderWidth: 1,
     borderColor: floraColors.popoverDivider,
-    paddingVertical: 6,
+    paddingVertical: sPx(6),
     overflow: "hidden",
   },
   attachItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    gap: sPx(12),
+    paddingHorizontal: sPx(14),
+    paddingVertical: sPx(12),
   },
   attachLabel: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   pressed: {

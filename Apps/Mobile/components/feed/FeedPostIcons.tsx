@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { floraFeedPost } from "@/lib/theme";
 
 type IconProps = {
@@ -35,25 +36,31 @@ const glyphSlot = liveGridStyles(() => StyleSheet.create({
   },
 }));
 
-export function FeedPostHeartIcon({ size = 18, color, filled = false }: IconProps) {
+export function FeedPostHeartIcon({ size, color, filled = false }: IconProps) {
+  const sp = useSPx();
+  const px = size ?? sp(18);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Path d={HEART} fill={filled ? color : "none"} stroke={color} strokeWidth={STROKE} />
     </Svg>
   );
 }
 
-export function FeedPostCommentIcon({ size = 18, color }: IconProps) {
+export function FeedPostCommentIcon({ size, color }: IconProps) {
+  const sp = useSPx();
+  const px = size ?? sp(18);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Path d={COMMENT} fill="none" stroke={color} strokeWidth={STROKE} />
     </Svg>
   );
 }
 
-export function FeedPostRepostIcon({ size = 18, color }: IconProps) {
+export function FeedPostRepostIcon({ size, color }: IconProps) {
+  const sp = useSPx();
+  const px = size ?? sp(18);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Path d={REPOST_A} fill="none" stroke={color} strokeWidth={STROKE} />
       <Path d={REPOST_B} fill="none" stroke={color} strokeWidth={STROKE} />
       <Path d={REPOST_C} fill="none" stroke={color} strokeWidth={STROKE} />
@@ -62,9 +69,11 @@ export function FeedPostRepostIcon({ size = 18, color }: IconProps) {
   );
 }
 
-export function FeedPostViewsIcon({ size = 16, color }: IconProps) {
+export function FeedPostViewsIcon({ size, color }: IconProps) {
+  const sp = useSPx();
+  const px = size ?? sp(16);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Path d={VIEWS_EYE} fill="none" stroke={color} strokeWidth={STROKE} />
       <Circle cx={12} cy={12} r={3} fill="none" stroke={color} strokeWidth={STROKE} />
     </Svg>

@@ -13,7 +13,7 @@ import {
 } from "@/lib/chatOpenLayoutWarm";
 import { markChatOpenTap } from "@/lib/chatOpenTrace";
 import { armChatPushEnter } from "@/lib/chatPushTransition";
-import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
+import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 const LIST_PREVIEW_MAX_LEN = 80;
 const AVATAR_SIZE = () => floraSpacing.grid * 3;
@@ -22,7 +22,7 @@ const CONTENT_INSET_RIGHT_FROM_SCREEN = () => floraFeedPost.paddingHorizontal + 
 const DECRYPT_FAIL_LABEL = "[ не удалось расшифровать ]";
 const LONG_PRESS_MS = 350;
 /** Как `iconButton` / «+» в TabScreenSearchHeader — центр бейджа под «+». */
-const HEADER_TRAILING_ICON_SLOT = 45;
+const HEADER_TRAILING_ICON_SLOT = () => 3 * floraSpacing.grid;
 
 export function formatConversationPreview(
   item: Pick<MsgConversationDto, "lastMessageIsFromMe">,
@@ -192,7 +192,7 @@ export function ConversationListRow({
 }
 
 export function CONVERSATION_ROW_ESTIMATED_HEIGHT() {
-  return AVATAR_SIZE() + (floraSpacing.grid * 2 - 1) + (floraSpacing.grid * 2 - 2);
+  return AVATAR_SIZE() + (floraSpacing.grid * 2 - 1) + (floraSpacing.grid * 2 - sPx(2));
 }
 
 const styles = liveGridStyles(() => StyleSheet.create({
@@ -216,7 +216,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: 0,
     gap: floraSpacing.grid,
     paddingTop: floraSpacing.grid * 2 - 1,
-    paddingBottom: floraSpacing.grid * 2 - 2,
+    paddingBottom: floraSpacing.grid * 2 - sPx(2),
     paddingLeft: floraSpacing.grid,
     paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN(),
   },
@@ -243,28 +243,28 @@ const styles = liveGridStyles(() => StyleSheet.create({
   name: {
     flexShrink: 1,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   handle: {
     flexShrink: 0,
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   preview: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   trailing: {
-    width: HEADER_TRAILING_ICON_SLOT,
+    width: HEADER_TRAILING_ICON_SLOT(),
     // Как paddingHorizontal topBlock — правый край слота = правый край «+».
     marginRight: floraSpacing.grid,
     alignItems: "center",
@@ -275,15 +275,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: floraSpacing.gridFine * 4,
     height: floraSpacing.gridFine * 4,
     paddingHorizontal: floraSpacing.gridFine,
-    borderRadius: 11,
+    borderRadius: sPx(11),
     backgroundColor: "rgba(164, 209, 138, 0.9)",
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: {
     color: "#10200e",
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
 }));

@@ -1,7 +1,7 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Image } from "expo-image";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 import type { DraftMessageImage } from "@/lib/useMessageComposeImages";
 
 type Props = {
@@ -41,17 +41,15 @@ export function ChatComposeImageStrip({ images, onRemoveAt }: Props) {
   );
 }
 
-const THUMB = 56;
-
 const styles = liveGridStyles(() => StyleSheet.create({
   strip: {
     gap: floraSpacing.gridFine,
     paddingBottom: floraSpacing.gridFine,
   },
   item: {
-    width: THUMB,
-    height: THUMB,
-    borderRadius: 10,
+    width: sPx(56),
+    height: sPx(56),
+    borderRadius: 2 * floraSpacing.gridFine,
     overflow: "hidden",
     backgroundColor: floraColors.surfaceElevated,
   },
@@ -65,20 +63,20 @@ const styles = liveGridStyles(() => StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: "rgba(0,0,0,0.55)",
-    paddingVertical: 2,
+    paddingVertical: sPx(2),
   },
   badgeText: {
     color: floraColors.whiteTemplate,
-    fontSize: 10,
+    fontSize: kegl(10),
     textAlign: "center",
   },
   removeBtn: {
     position: "absolute",
-    top: 2,
-    right: 2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    top: sPx(2),
+    right: sPx(2),
+    width: 4 * floraSpacing.gridFine,
+    height: 4 * floraSpacing.gridFine,
+    borderRadius: 2 * floraSpacing.gridFine,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.55)",
@@ -88,8 +86,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   removeText: {
     color: floraColors.whiteTemplate,
-    fontSize: 14,
-    lineHeight: 16,
+    fontSize: kegl(14),
+    lineHeight: sPx(16),
     marginTop: -1,
   },
 }));

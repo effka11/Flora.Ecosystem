@@ -15,7 +15,8 @@ import { cancelInteractiveApkUpdate, runUserUpdateFromNotification } from "@/lib
 import type { ApkUpdateProgress } from "@/lib/apkUpdate/progress";
 import { isAppUpdateNotificationInstalled } from "@/lib/appLinks";
 import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
-import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type NotificationRowProps = {
   item: NotificationDto;
@@ -51,6 +52,7 @@ function iconColorsForType(type: string) {
 }
 
 export function NotificationRow({ item, onPress }: NotificationRowProps) {
+  const sp = useSPx();
   const iconName = iconForType(item.type);
   const iconColors = iconColorsForType(item.type);
   const isAppUpdate = item.type === "app_update";
@@ -173,7 +175,7 @@ export function NotificationRow({ item, onPress }: NotificationRowProps) {
         accessibilityRole="button"
       >
         <View style={[styles.iconWrap, { backgroundColor: iconColors.bg }]}>
-          <Ionicons name={iconName} size={20} color={iconColors.color} />
+          <Ionicons name={iconName} size={sp(20)} color={iconColors.color} />
         </View>
         <View style={styles.body}>
           <Text style={[styles.text, !item.isRead && styles.textUnread]} numberOfLines={2}>
@@ -230,7 +232,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: 0,
     gap: floraSpacing.grid,
     paddingTop: floraSpacing.grid * 2 - 1,
-    paddingBottom: floraSpacing.grid * 2 - 2,
+    paddingBottom: floraSpacing.grid * 2 - sPx(2),
     paddingLeft: floraSpacing.grid,
     paddingRight: CONTENT_INSET_RIGHT_FROM_SCREEN(),
   },
@@ -258,10 +260,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   text: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(20),
   },
   textUnread: {
     fontWeight: "500",
@@ -269,10 +271,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   time: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(20),
   },
   updateBtn: {
     flexShrink: 0,
@@ -281,26 +283,26 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingVertical: floraSpacing.gridFine * 2,
     borderRadius: 9999,
     backgroundColor: floraColors.greenLight,
-    minWidth: 88,
+    minWidth: sPx(88),
     alignItems: "center",
     justifyContent: "center",
   },
   updateBtnText: {
     color: floraColors.bg,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "400",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   updatedLabel: {
     flexShrink: 0,
     marginRight: floraSpacing.grid,
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,
-    minWidth: 88,
+    minWidth: sPx(88),
     textAlign: "center",
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "400",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
 }));

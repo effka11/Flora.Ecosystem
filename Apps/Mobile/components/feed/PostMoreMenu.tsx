@@ -10,7 +10,8 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
+import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { FeedPostCloseIcon, FeedPostMoreIcon } from "./FeedPostIcons";
 
 type Props = {
@@ -158,6 +159,7 @@ function MenuRow({
   onPress: () => void;
   danger?: boolean;
 }) {
+  const sp = useSPx();
   return (
     <Pressable
       accessibilityRole="menuitem"
@@ -165,7 +167,7 @@ function MenuRow({
       onPress={onPress}
     >
       <View style={styles.menuItemIcon}>
-        <Ionicons name={icon} size={18} color={danger ? "#f6a8a8" : floraColors.gray} />
+        <Ionicons name={icon} size={sp(18)} color={danger ? "#f6a8a8" : floraColors.gray} />
       </View>
       <Text style={[styles.menuItemLabel, danger && styles.menuItemDanger]}>{label}</Text>
     </Pressable>
@@ -183,7 +185,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: floraFeedPost.moreBtnSize,
     height: floraFeedPost.moreBtnSize,
     padding: floraFeedPost.moreBtnPadding,
-    borderRadius: 6,
+    borderRadius: sPx(6),
     alignItems: "center",
     justifyContent: "center",
     transform: [{ translateY: floraFeedPost.moreBtnNudgeY }],
@@ -197,9 +199,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   panel: {
     position: "absolute",
-    minWidth: 200,
-    maxWidth: 280,
-    borderRadius: 12,
+    minWidth: 40 * floraSpacing.gridFine,
+    maxWidth: 56 * floraSpacing.gridFine,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.06)",
@@ -217,23 +219,23 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: "100%",
     paddingVertical: floraSpacing.gridFine * 1.5,
     paddingHorizontal: floraSpacing.gridFine * 2,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   menuItemPressed: {
     backgroundColor: "rgba(250, 250, 250, 0.06)",
   },
   menuItemIcon: {
-    width: 24,
-    height: 24,
+    width: sPx(24),
+    height: sPx(24),
     alignItems: "center",
     justifyContent: "center",
   },
   menuItemLabel: {
     flex: 1,
     color: "rgba(250, 250, 250, 0.9)",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   menuItemDanger: {
     color: "#f6a8a8",

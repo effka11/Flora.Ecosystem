@@ -9,7 +9,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { floraColors, floraProfile, floraSpacing } from "@/lib/theme";
+import { floraColors, floraProfile, floraSpacing, tracking } from "@/lib/theme";
 
 type TextLine = {
   x: number;
@@ -82,7 +82,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     color: floraColors.gray,
     fontSize: floraProfile.statusFontSize,
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     lineHeight: floraProfile.statusLineHeight,
     textAlign: "right",
     transform: [{ translateY: floraSpacing.gridFine }],

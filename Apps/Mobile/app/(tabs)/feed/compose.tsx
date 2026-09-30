@@ -43,12 +43,16 @@ import {
 } from "@/lib/compose/composeModes";
 import { uploadPostImagesNative, uploadPostVideoNative } from "@/lib/compose/postMediaUpload";
 import { useComposePostMedia } from "@/lib/compose/useComposePostMedia";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { useSessionStore } from "@/stores/sessionStore";
 import {
   floraColors,
   floraMessages,
   floraSpacing,
   floraTabBarContentPadding,
+  kegl,
+  sPx,
+  tracking,
 } from "@/lib/theme";
 
 function routeParam(value: string | string[] | undefined): string {
@@ -56,6 +60,7 @@ function routeParam(value: string | string[] | undefined): string {
 }
 
 export default function FeedComposeScreen() {
+  const sp = useSPx();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
@@ -321,7 +326,7 @@ export default function FeedComposeScreen() {
               style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
               onPress={() => router.back()}
             >
-              <Ionicons name="chevron-back" size={24} color={floraColors.gray} />
+              <Ionicons name="chevron-back" size={sp(24)} color={floraColors.gray} />
             </Pressable>
             <Text style={styles.title} numberOfLines={1}>
               {title}
@@ -335,7 +340,7 @@ export default function FeedComposeScreen() {
                 style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                 onPress={() => setHeaderMenuOpen(true)}
               >
-                <Ionicons name="ellipsis-vertical" size={22} color={floraColors.gray} />
+                <Ionicons name="ellipsis-vertical" size={sp(22)} color={floraColors.gray} />
               </Pressable>
             </View>
           </View>
@@ -357,7 +362,7 @@ export default function FeedComposeScreen() {
               setDraftsOpen(true);
             }}
           >
-            <Ionicons name="documents-outline" size={18} color={floraColors.gray} />
+            <Ionicons name="documents-outline" size={sp(18)} color={floraColors.gray} />
             <Text style={styles.headerMenuLabel}>Черновики</Text>
           </Pressable>
           <Pressable
@@ -368,7 +373,7 @@ export default function FeedComposeScreen() {
               void onSaveDraft();
             }}
           >
-            <Ionicons name="save-outline" size={18} color={floraColors.gray} />
+            <Ionicons name="save-outline" size={sp(18)} color={floraColors.gray} />
             <Text style={styles.headerMenuLabel}>Сохранить</Text>
           </Pressable>
           <Pressable
@@ -379,7 +384,7 @@ export default function FeedComposeScreen() {
               clearAll();
             }}
           >
-            <Ionicons name="trash-outline" size={18} color={floraColors.gray} />
+            <Ionicons name="trash-outline" size={sp(18)} color={floraColors.gray} />
             <Text style={styles.headerMenuLabel}>Очистить</Text>
           </Pressable>
         </DropdownMenuOverlay>
@@ -483,11 +488,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 0,
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
   },
   iconButton: {
-    width: 45,
-    minHeight: 45,
+    width: 3 * floraSpacing.grid,
+    minHeight: 3 * floraSpacing.grid,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
@@ -496,34 +501,34 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexShrink: 1,
     marginLeft: floraSpacing.grid,
     color: floraColors.whiteTemplate,
-    fontSize: 22,
+    fontSize: kegl(22),
     fontWeight: "300",
-    letterSpacing: 0.88,
-    lineHeight: 28,
+    letterSpacing: tracking(0.88),
+    lineHeight: sPx(28),
   },
   spacer: {
     flex: 1,
     minWidth: 0,
   },
   headerMenu: {
-    minWidth: 180,
-    borderRadius: 12,
+    minWidth: 12 * floraSpacing.grid,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.popoverInset,
     borderWidth: 1,
     borderColor: floraColors.popoverDivider,
-    paddingVertical: 6,
+    paddingVertical: sPx(6),
     overflow: "hidden",
   },
   headerMenuItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    gap: sPx(12),
+    paddingHorizontal: sPx(14),
+    paddingVertical: sPx(12),
   },
   headerMenuLabel: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   editorScroll: {
@@ -540,7 +545,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingTop: floraSpacing.grid,
   },
   emojiCard: {
-    height: 320,
+    height: 64 * floraSpacing.gridFine,
     borderRadius: floraMessages.emojiPanelRadius,
     overflow: "hidden",
     backgroundColor: floraColors.surface,

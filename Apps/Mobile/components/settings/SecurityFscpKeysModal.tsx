@@ -18,8 +18,10 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { settingsUi as ui } from "@/components/settings/settingsUi";
-import { floraColors } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { useFscpStore } from "@/stores/fscpStore";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -49,6 +51,7 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 }
 
 export function SecurityFscpKeysModal({ visible, onClose }: Props) {
+  const sp = useSPx();
   const me = useSessionStore((s) => s.me);
   const fscpStatus = useFscpStore((s) => s.status);
   const material = useFscpStore((s) => s.material);
@@ -221,7 +224,7 @@ export function SecurityFscpKeysModal({ visible, onClose }: Props) {
           <View style={ui.modalHeader}>
             <Text style={ui.modalTitle}>Ключи сообщений FSCP</Text>
             <Pressable onPress={onClose} disabled={busy} style={({ pressed }) => pressed && ui.pressed}>
-              <Ionicons name="close" size={22} color={floraColors.gray} />
+              <Ionicons name="close" size={sp(22)} color={floraColors.gray} />
             </Pressable>
           </View>
 
@@ -323,27 +326,27 @@ export function SecurityFscpKeysModal({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   scroll: {
     flexGrow: 0,
   },
   scrollContent: {
-    gap: 15,
-    paddingBottom: 4,
+    gap: floraSpacing.grid,
+    paddingBottom: sPx(4),
   },
   metaRow: {
-    gap: 2,
+    gap: sPx(2),
   },
   metaLabel: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
-    letterSpacing: 0.3,
+    letterSpacing: tracking(0.3),
   },
   metaValue: {
     color: floraColors.whiteTemplate,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.3,
+    letterSpacing: tracking(0.3),
   },
-});
+}));

@@ -32,11 +32,15 @@ import {
   type DraftPostVideo,
 } from "@/lib/compose/useComposePostMedia";
 import { patchPostInSocialCaches } from "@/lib/patchPostInSocialCaches";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { useEnergeticSheetMotion } from "@/lib/useEnergeticSheetMotion";
 import {
   floraColors,
   floraMessages,
   floraSpacing,
+  kegl,
+  sPx,
+  tracking,
 } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -68,6 +72,7 @@ function seedVideo(post: FeedPostDto): DraftPostVideo | null {
 }
 
 export function EditPostSheet({ post, onClose }: Props) {
+  const sp = useSPx();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
@@ -238,7 +243,7 @@ export function EditPostSheet({ post, onClose }: Props) {
             style={({ pressed }) => [styles.headerSide, pressed && styles.pressed]}
             onPress={onClose}
           >
-            <Ionicons name="close" size={24} color={floraColors.gray} />
+            <Ionicons name="close" size={sp(24)} color={floraColors.gray} />
           </Pressable>
           <Text style={styles.title}>Редактировать</Text>
           <Pressable
@@ -362,28 +367,28 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderBottomWidth: 1,
   },
   headerSide: {
-    width: 45,
-    minHeight: 45,
+    width: 3 * floraSpacing.grid,
+    minHeight: 3 * floraSpacing.grid,
     alignItems: "center",
     justifyContent: "center",
   },
   headerAction: {
-    width: 88,
+    width: sPx(88),
     alignItems: "flex-end",
   },
   headerActionText: {
     color: floraColors.greenLight,
-    fontSize: 16,
+    fontSize: kegl(16),
     fontWeight: "400",
-    letterSpacing: 0.4,
+    letterSpacing: tracking(0.4),
   },
   title: {
     flex: 1,
     textAlign: "center",
     color: floraColors.whiteTemplate,
-    fontSize: 18,
+    fontSize: kegl(18),
     fontWeight: "300",
-    letterSpacing: 0.6,
+    letterSpacing: tracking(0.6),
   },
   editorScroll: {
     paddingBottom: floraSpacing.grid,
@@ -399,7 +404,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingTop: floraSpacing.grid,
   },
   emojiCard: {
-    height: 320,
+    height: 64 * floraSpacing.gridFine,
     borderRadius: floraMessages.emojiPanelRadius,
     overflow: "hidden",
     backgroundColor: floraColors.surface,

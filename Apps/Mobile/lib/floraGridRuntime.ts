@@ -3,6 +3,20 @@ import {
   FLORA_GRID_PRIMARY_PX,
   type GridTemplate
 } from "@flora/client-core/display";
+import { sPx as designSPx } from "@flora/design";
+
+/** Extra-grid px at the given `s`, or the live Mobile `s` when omitted. */
+export function sPx(n: number, s: number = getFloraGridRuntime().s): number {
+  return designSPx(n, s);
+}
+
+export function kegl(n: number): number {
+  return Math.max(1, sPx(n, getFloraGridRuntime().s));
+}
+
+export function tracking(n: number): number {
+  return n * getFloraGridRuntime().s;
+}
 
 export type FloraGridRuntime = {
   step: number;
@@ -63,6 +77,11 @@ export function liveGridRecord<T extends object>(factory: () => T): T {
     },
     has(_target, prop) {
       return prop in (resolve() as object);
+    },
+    // StyleSheet.create freezes style objects in dev. Accepting that on an
+    // empty target makes the next ownKeys throw for the rest of the session.
+    preventExtensions() {
+      return false;
     }
   });
 }

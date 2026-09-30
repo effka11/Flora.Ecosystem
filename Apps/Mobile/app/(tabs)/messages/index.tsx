@@ -93,7 +93,8 @@ import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { openGroupChat } from "@/lib/openGroupChat";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -223,8 +224,9 @@ const FOCUS_REFRESH_DELAY_MS = 200;
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
+  const sp = useSPx();
   const navigation = useNavigation();
-  const tabBarBottomInset = Math.max(insets.bottom, 8);
+  const tabBarBottomInset = Math.max(insets.bottom, sPx(8));
   const listPaddingBottom = floraTabBarContentPadding(tabBarBottomInset);
   const me = useSessionStore((s) => s.me);
   const fscpStatus = useFscpStore((s) => s.status);
@@ -1055,7 +1057,7 @@ export default function MessagesScreen() {
           }}
         >
           <View style={styles.createMenuItemIcon}>
-            <Ionicons name="folder-outline" size={18} color={floraColors.gray} />
+            <Ionicons name="folder-outline" size={sp(18)} color={floraColors.gray} />
           </View>
           <Text style={styles.createMenuLabel}>Папка</Text>
         </Pressable>
@@ -1068,7 +1070,7 @@ export default function MessagesScreen() {
           }}
         >
           <View style={styles.createMenuItemIcon}>
-            <Ionicons name="people-outline" size={18} color={floraColors.gray} />
+            <Ionicons name="people-outline" size={sp(18)} color={floraColors.gray} />
           </View>
           <Text style={styles.createMenuLabel}>Группа</Text>
         </Pressable>
@@ -1244,18 +1246,18 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   banner: {
     backgroundColor: "rgba(255, 180, 60, 0.12)",
-    borderRadius: 8,
-    padding: 12,
-    gap: 8,
+    borderRadius: sPx(8),
+    padding: sPx(12),
+    gap: sPx(8),
   },
   bannerText: {
     color: floraColors.text,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: kegl(13),
+    lineHeight: sPx(18),
   },
   bannerAction: {
     color: floraColors.greenLight,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "600",
   },
   navigationRow: {
@@ -1268,9 +1270,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   /** Как PostMoreMenu / TabDropdown — не popoverInset из compose. */
   createMenu: {
-    minWidth: 200,
-    maxWidth: 280,
-    borderRadius: 12,
+    minWidth: 40 * floraSpacing.gridFine,
+    maxWidth: 56 * floraSpacing.gridFine,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.06)",
@@ -1289,23 +1291,23 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: "100%",
     paddingVertical: floraSpacing.gridFine * 1.5,
     paddingHorizontal: floraSpacing.gridFine * 2,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   createMenuItemPressed: {
     backgroundColor: "rgba(250, 250, 250, 0.06)",
   },
   createMenuItemIcon: {
-    width: 24,
-    height: 24,
+    width: sPx(24),
+    height: sPx(24),
     alignItems: "center",
     justifyContent: "center",
   },
   createMenuLabel: {
     flex: 1,
     color: "rgba(250, 250, 250, 0.9)",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   listContent: {},
   loading: {
@@ -1318,9 +1320,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     textAlign: "center",
     marginTop: floraSpacing.grid * 3,
     paddingHorizontal: floraSpacing.grid * 2,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(22),
   },
 }));

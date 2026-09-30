@@ -5,9 +5,10 @@ import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "rea
 import type { CommunityRole } from "@flora/client-core/contracts";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { CommunityCardActions } from "@/components/communities/CommunityCardActions";
-import { floraColors, floraProfile, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraProfile, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
-const AVATAR_NUDGE_X = () => (39 - 38) * floraSpacing.grid - 8 + floraSpacing.gridFine * 2;
+const AVATAR_NUDGE_X = () => (39 - 38) * floraSpacing.grid - sPx(8) + floraSpacing.gridFine * 2;
 const TEXT_NUDGE_X = () => floraSpacing.gridFine * 2;
 
 type CommunityCardHeaderProps = {
@@ -43,6 +44,7 @@ export function CommunityCardHeader({
   onSubscribePress,
   onUnsubscribePress,
 }: CommunityCardHeaderProps) {
+  const sp = useSPx();
   const [membersOpen, setMembersOpen] = useState(false);
   const membersLabel = memberCount.toLocaleString("ru-RU");
 
@@ -108,10 +110,10 @@ export function CommunityCardHeader({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Закрыть"
-                hitSlop={10}
+                hitSlop={sp(10)}
                 onPress={() => setMembersOpen(false)}
               >
-                <Ionicons name="close" size={22} color={floraColors.gray} />
+                <Ionicons name="close" size={sp(22)} color={floraColors.gray} />
               </Pressable>
             </View>
             <Text style={styles.modalBody}>Список участников появится позже.</Text>
@@ -136,7 +138,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     right: floraSpacing.grid,
     top: floraSpacing.grid,
     height: floraProfile.coverHeight,
-    borderRadius: 12,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.accentDark,
   },
   info: {
@@ -153,10 +155,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
   avatarWrap: {
     position: "absolute",
     left: AVATAR_NUDGE_X(),
-    top: -4,
-    borderWidth: 4,
+    top: -sPx(4),
+    borderWidth: sPx(4),
     borderColor: floraColors.bg,
-    borderRadius: floraProfile.avatarSize / 2 + 4,
+    borderRadius: floraProfile.avatarSize / 2 + sPx(4),
     overflow: "hidden",
   },
   nameRow: {
@@ -166,7 +168,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.gridFine * 2,
     paddingLeft: TEXT_NUDGE_X(),
     marginTop: floraSpacing.gridFine,
-    minHeight: 28,
+    minHeight: sPx(28),
   },
   nameLoader: {
     alignSelf: "flex-start",
@@ -174,35 +176,35 @@ const styles = liveGridStyles(() => StyleSheet.create({
   name: {
     flexShrink: 1,
     color: floraColors.whiteTemplate,
-    fontSize: 20,
+    fontSize: kegl(20),
     fontWeight: "300",
-    letterSpacing: 0.6,
+    letterSpacing: tracking(0.6),
   },
   privateBadge: {
     borderWidth: 1,
     borderColor: "rgba(164, 209, 138, 0.35)",
     borderRadius: floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.gridFine * 2,
-    paddingVertical: 2,
+    paddingVertical: sPx(2),
   },
   privateBadgeText: {
     color: floraColors.greenLight,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
   },
   statsPressable: {
     alignSelf: "flex-start",
     paddingLeft: TEXT_NUDGE_X(),
-    marginTop: floraSpacing.gridFine + 2,
+    marginTop: floraSpacing.gridFine + sPx(2),
   },
   statsPressed: {
     opacity: 0.75,
   },
   stats: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   statsStrong: {
     color: floraColors.whiteTemplate,
@@ -217,7 +219,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   modalDialog: {
     width: "100%",
-    maxWidth: 560,
+    maxWidth: sPx(560),
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surface,
     borderWidth: 1,
@@ -235,15 +237,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   modalTitle: {
     color: floraColors.whiteTemplate,
-    fontSize: 18,
+    fontSize: kegl(18),
     fontWeight: "300",
   },
   modalBody: {
     color: floraColors.gray,
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.grid * 2,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
 }));

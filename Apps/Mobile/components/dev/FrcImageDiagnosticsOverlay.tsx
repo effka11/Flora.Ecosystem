@@ -1,3 +1,5 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
+import { kegl, sPx, tracking } from "@/lib/floraGridRuntime";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -118,19 +120,19 @@ export function FrcImageDiagnosticsOverlay() {
   return <FrcImageDiagnosticsOverlayDev />;
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   host: {
     position: "absolute",
     zIndex: 50,
-    maxWidth: 220,
+    maxWidth: sPx(220),
   },
   badge: {
     backgroundColor: "rgba(18, 18, 18, 0.72)",
     borderColor: "rgba(250, 250, 250, 0.16)",
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: sPx(10),
+    paddingVertical: sPx(6),
   },
   badgeAlert: {
     borderColor: "rgba(255, 90, 90, 0.7)",
@@ -138,35 +140,35 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: floraColors.gray,
-    fontSize: 11,
+    fontSize: kegl(11),
     fontWeight: "500",
-    letterSpacing: 0.2,
+    letterSpacing: tracking(0.2),
   },
   panel: {
     backgroundColor: "rgba(18, 18, 18, 0.82)",
     borderColor: "rgba(250, 250, 250, 0.16)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 3,
+    borderRadius: sPx(10),
+    paddingHorizontal: sPx(10),
+    paddingVertical: sPx(8),
+    gap: sPx(3),
   },
   title: {
     color: floraColors.greenLight,
-    fontSize: 11,
+    fontSize: kegl(11),
     fontWeight: "600",
-    letterSpacing: 0.3,
-    marginBottom: 2,
+    letterSpacing: tracking(0.3),
+    marginBottom: sPx(2),
   },
   row: {
     color: floraColors.grayLight,
-    fontSize: 11,
+    fontSize: kegl(11),
     fontWeight: "400",
-    letterSpacing: 0.15,
-    lineHeight: 14,
+    letterSpacing: tracking(0.15),
+    lineHeight: sPx(14),
   },
   alertText: {
     color: "#ff6b6b",
     fontWeight: "700",
   },
-});
+}));

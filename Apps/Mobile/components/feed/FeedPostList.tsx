@@ -35,7 +35,8 @@ import {
   type PostEngagementSource,
 } from "@/lib/usePostEngagement";
 import { usePostViewTracking } from "@/lib/usePostViewTracking";
-import { floraColors } from "@/lib/theme";
+import { floraColors, floraSpacing, sPx, tracking } from "@/lib/theme";
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useDeletePost } from "@/lib/useDeletePost";
 import { useEditPost } from "@/lib/useEditPost";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
@@ -362,21 +363,21 @@ export const FeedPostList = forwardRef<FeedPostListHandle, FeedPostListProps>(
   },
 );
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   feedPage: {
     flex: 1,
     alignSelf: "stretch",
   },
   listContent: {},
   loadingMore: {
-    paddingVertical: 20,
+    paddingVertical: 4 * floraSpacing.gridFine,
     alignItems: "center",
   },
   empty: {
     color: floraColors.gray,
     textAlign: "center",
-    marginTop: 40,
+    marginTop: sPx(40),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
-});
+}));

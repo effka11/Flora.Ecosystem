@@ -9,7 +9,7 @@ import {
   estimateTextInsertLiftPx,
   estimateTextVisualLineCount,
 } from "./chatListInsertLiftEstimate";
-import { floraMessages } from "./theme";
+import { floraMessages, sPx } from "./theme";
 
 describe("estimateTextVisualLineCount", () => {
   it("counts hard-breaks without width", () => {
@@ -28,19 +28,19 @@ describe("estimateTextVisualLineCount", () => {
 
 describe("estimateTextInsertLiftPx", () => {
   it("returns base for short single-line text", () => {
-    expect(estimateTextInsertLiftPx("hi")).toBe(TEXT_BASE_INSERT_LIFT_PX);
+    expect(estimateTextInsertLiftPx("hi")).toBe(TEXT_BASE_INSERT_LIFT_PX());
   });
 
   it("returns base for empty body", () => {
-    expect(estimateTextInsertLiftPx("")).toBe(TEXT_BASE_INSERT_LIFT_PX);
-    expect(estimateTextInsertLiftPx(undefined)).toBe(TEXT_BASE_INSERT_LIFT_PX);
+    expect(estimateTextInsertLiftPx("")).toBe(TEXT_BASE_INSERT_LIFT_PX());
+    expect(estimateTextInsertLiftPx(undefined)).toBe(TEXT_BASE_INSERT_LIFT_PX());
   });
 
   it("adds line steps and below-reserve for 3 hard-lines", () => {
     const expected =
-      TEXT_BASE_INSERT_LIFT_PX +
+      TEXT_BASE_INSERT_LIFT_PX() +
       2 * floraMessages.bubbleLineHeight +
-      BELOW_TIME_RESERVE_PX;
+      BELOW_TIME_RESERVE_PX();
     expect(estimateTextInsertLiftPx("a\nb\nc")).toBe(expected);
   });
 
@@ -48,14 +48,14 @@ describe("estimateTextInsertLiftPx", () => {
     const long = "word ".repeat(40).trim();
     expect(
       estimateTextInsertLiftPx(long, { maxInnerWidthPx: 120 }),
-    ).toBeGreaterThan(TEXT_BASE_INSERT_LIFT_PX);
+    ).toBeGreaterThan(TEXT_BASE_INSERT_LIFT_PX());
   });
 
   it("without width still floors on hard-breaks", () => {
     const expected =
-      TEXT_BASE_INSERT_LIFT_PX +
+      TEXT_BASE_INSERT_LIFT_PX() +
       2 * floraMessages.bubbleLineHeight +
-      BELOW_TIME_RESERVE_PX;
+      BELOW_TIME_RESERVE_PX();
     expect(estimateTextInsertLiftPx("a\nb\nc")).toBe(expected);
   });
 });
@@ -66,35 +66,35 @@ describe("estimateBlocksInsertLiftPx", () => {
       estimateBlocksInsertLiftPx([
         { kind: "voice" } as FscpMessageBlock,
       ]),
-    ).toBe(72);
+    ).toBe(sPx(72));
     expect(
       estimateBlocksInsertLiftPx([{ kind: "image" } as FscpMessageBlock]),
-    ).toBe(220);
+    ).toBe(sPx(220));
     expect(
       estimateBlocksInsertLiftPx([
         { kind: "image" } as FscpMessageBlock,
         { kind: "image" } as FscpMessageBlock,
       ]),
-    ).toBe(280);
+    ).toBe(sPx(280));
   });
 
   it("estimates text body with ctx", () => {
     expect(
       estimateBlocksInsertLiftPx([{ kind: "text", body: "hi" }], { maxInnerWidthPx: 280 }),
-    ).toBe(TEXT_BASE_INSERT_LIFT_PX);
+    ).toBe(TEXT_BASE_INSERT_LIFT_PX());
   });
 });
 
 describe("estimateRowInsertLiftPx", () => {
   it("keeps media constants and estimates text", () => {
-    expect(estimateRowInsertLiftPx({ voiceBlock: {} })).toBe(72);
-    expect(estimateRowInsertLiftPx({ imageBlocks: [{}] })).toBe(220);
-    expect(estimateRowInsertLiftPx({ imageBlocks: [{}, {}] })).toBe(280);
-    expect(estimateRowInsertLiftPx({ text: "hi" })).toBe(TEXT_BASE_INSERT_LIFT_PX);
+    expect(estimateRowInsertLiftPx({ voiceBlock: {} })).toBe(sPx(72));
+    expect(estimateRowInsertLiftPx({ imageBlocks: [{}] })).toBe(sPx(220));
+    expect(estimateRowInsertLiftPx({ imageBlocks: [{}, {}] })).toBe(sPx(280));
+    expect(estimateRowInsertLiftPx({ text: "hi" })).toBe(TEXT_BASE_INSERT_LIFT_PX());
     expect(estimateRowInsertLiftPx({ text: "a\nb\nc" })).toBe(
-      TEXT_BASE_INSERT_LIFT_PX +
+      TEXT_BASE_INSERT_LIFT_PX() +
         2 * floraMessages.bubbleLineHeight +
-        BELOW_TIME_RESERVE_PX,
+        BELOW_TIME_RESERVE_PX(),
     );
   });
 });

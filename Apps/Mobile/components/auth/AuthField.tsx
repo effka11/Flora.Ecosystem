@@ -7,6 +7,7 @@ import {
   View,
   type TextInputProps,
 } from "react-native";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { floraColors } from "@/lib/theme";
 import { authStyles } from "./styles";
 
@@ -38,6 +39,7 @@ export function AuthField({
   style,
   ...inputProps
 }: AuthFieldProps) {
+  const sp = useSPx();
   const focusAnim = useRef(new Animated.Value(0)).current;
   const iconColor = whiteTheme ? floraColors.whiteTemplate : "rgba(250, 250, 250, 0.86)";
 
@@ -58,7 +60,7 @@ export function AuthField({
     <View style={authStyles.fieldBlock}>
       <View style={authStyles.fieldRow}>
         <View style={authStyles.iconCell}>
-          <Ionicons name={iconMap[icon]} size={icon === "lock" ? 20 : 18} color={iconColor} />
+          <Ionicons name={iconMap[icon]} size={icon === "lock" ? sp(20) : sp(18)} color={iconColor} />
         </View>
         <View style={authStyles.fieldInputWrap}>
           <TextInput
@@ -85,7 +87,7 @@ export function AuthField({
             >
               <Ionicons
                 name={secureVisible ? "eye-outline" : "eye-off-outline"}
-                size={18}
+                size={sp(18)}
                 color={floraColors.whiteTemplate}
               />
             </Pressable>

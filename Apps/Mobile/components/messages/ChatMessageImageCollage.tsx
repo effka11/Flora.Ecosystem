@@ -17,7 +17,7 @@ import {
   messageCollageHeight,
   messageSingleImageSize,
 } from "@/lib/messageMediaGeometry";
-import { floraColors, floraMessages } from "@/lib/theme";
+import { floraColors, floraMessages, kegl } from "@/lib/theme";
 
 type SlotState = {
   uri: string;
@@ -195,6 +195,6 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   placeholderText: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
   },
 }));

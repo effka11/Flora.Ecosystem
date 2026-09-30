@@ -36,7 +36,8 @@ import {
   SEARCH_CHROME_MS,
   useSearchChromeLayerStyles,
 } from "@/components/chrome/searchChromeLayers";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 
 export type HeaderIconAction = {
@@ -120,6 +121,7 @@ export function TabScreenSearchHeader({
   selectionChrome,
   below,
 }: TabScreenSearchHeaderProps) {
+  const sp = useSPx();
   const { openMenu, subscribeOpen } = useHamburgerMenu();
   const reduceMotion = useReducedMotion();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -413,7 +415,7 @@ export function TabScreenSearchHeader({
                 style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                 onPress={selectionChrome.onClose}
               >
-                <Ionicons name="close-outline" size={26} color={floraColors.gray} />
+                <Ionicons name="close-outline" size={sp(26)} color={floraColors.gray} />
               </Pressable>
 
               <View style={styles.titleRow}>
@@ -446,7 +448,7 @@ export function TabScreenSearchHeader({
                 style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                 onPressIn={handleMenuPressIn}
               >
-                <Ionicons name="menu-outline" size={24} color={floraColors.gray} />
+                <Ionicons name="menu-outline" size={sp(24)} color={floraColors.gray} />
               </Pressable>
 
               <View style={styles.titleRow}>
@@ -476,7 +478,7 @@ export function TabScreenSearchHeader({
                         <ChromeSearchSavedCheck color={floraColors.greenLight} />
                       </Animated.View>
                     ) : null}
-                    <Ionicons name="search-outline" size={22} color={floraColors.gray} />
+                    <Ionicons name="search-outline" size={sp(22)} color={floraColors.gray} />
                   </Pressable>
                 ) : null}
                 {discardAction ? (
@@ -491,7 +493,7 @@ export function TabScreenSearchHeader({
                     ]}
                     onPress={discardAction.onPress}
                   >
-                    <Ionicons name="close-outline" size={28} color={floraColors.gray} />
+                    <Ionicons name="close-outline" size={sp(28)} color={floraColors.gray} />
                   </Pressable>
                 ) : null}
                 {saveAction ? (
@@ -509,7 +511,7 @@ export function TabScreenSearchHeader({
                     {saveAction.busy ? (
                       <ActivityIndicator size="small" color={floraColors.greenLight} />
                     ) : (
-                      <Ionicons name="checkmark" size={26} color={floraColors.greenLight} />
+                      <Ionicons name="checkmark" size={sp(26)} color={floraColors.greenLight} />
                     )}
                   </Pressable>
                 ) : null}
@@ -521,7 +523,7 @@ export function TabScreenSearchHeader({
                       style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                       onPress={createAction.onPress}
                     >
-                      <Ionicons name="add" size={24} color={floraColors.greenLight} />
+                      <Ionicons name="add" size={sp(24)} color={floraColors.greenLight} />
                     </Pressable>
                   </View>
                 ) : null}
@@ -537,7 +539,7 @@ export function TabScreenSearchHeader({
             importantForAccessibility={searchLayerActive ? "auto" : "no-hide-descendants"}
           >
             <View style={styles.searchBox}>
-              <Ionicons name="search-outline" size={20} color={floraColors.gray} />
+              <Ionicons name="search-outline" size={sp(20)} color={floraColors.gray} />
               <TextInput
                 ref={inputRef}
                 style={styles.searchInput}
@@ -561,7 +563,7 @@ export function TabScreenSearchHeader({
               >
                 <Ionicons
                   name="add"
-                  size={24}
+                  size={sp(24)}
                   color={floraColors.greenLight}
                   style={styles.searchClearIcon}
                 />
@@ -581,7 +583,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 0,
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
   },
   idleLayer: {
     flex: 1,
@@ -605,10 +607,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexShrink: 1,
     marginLeft: floraSpacing.grid,
     color: floraColors.whiteTemplate,
-    fontSize: 22,
+    fontSize: kegl(22),
     fontWeight: "300",
-    letterSpacing: 0.88,
-    lineHeight: 28,
+    letterSpacing: tracking(0.88),
+    lineHeight: sPx(28),
   },
   titleRow: {
     flexShrink: 1,
@@ -620,15 +622,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
   titleBadge: {
     marginLeft: 0,
     paddingHorizontal: floraSpacing.gridFine * 2,
-    paddingVertical: 3,
+    paddingVertical: sPx(3),
     borderRadius: 9999,
     backgroundColor: "#e8b84a",
   },
   titleBadgeText: {
     color: "#1a1408",
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "700",
-    letterSpacing: 0.3,
+    letterSpacing: tracking(0.3),
   },
   spacer: {
     flex: 1,
@@ -638,20 +640,20 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     // Чуть плотнее: поиск и «+» читаются одной группой.
-    gap: 4,
+    gap: sPx(4),
     marginLeft: floraSpacing.gridFine,
   },
   iconButton: {
-    width: 45,
-    minHeight: 45,
+    width: 3 * floraSpacing.grid,
+    minHeight: 3 * floraSpacing.grid,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
   },
   searchSavedMark: {
     position: "absolute",
-    left: 2,
-    bottom: 10,
+    left: sPx(2),
+    bottom: sPx(10),
   },
   iconButtonDisabled: {
     opacity: 0.45,
@@ -660,28 +662,28 @@ const styles = liveGridStyles(() => StyleSheet.create({
   searchBox: {
     flex: 1,
     minWidth: 0,
-    minHeight: 45,
+    minHeight: 3 * floraSpacing.grid,
     borderColor: floraColors.greenDark,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: sPx(12),
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 14,
+    gap: sPx(10),
+    paddingHorizontal: sPx(14),
     backgroundColor: "transparent",
   },
   searchInput: {
     flex: 1,
     minWidth: 0,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     paddingVertical: 0,
   },
   searchClear: {
-    width: 28,
-    height: 28,
+    width: sPx(28),
+    height: sPx(28),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",

@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
@@ -8,7 +9,7 @@ import {
   View,
   type LayoutChangeEvent,
 } from "react-native";
-import { floraColors, floraMotion } from "@/lib/theme";
+import { floraColors, floraMotion, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 export type ComposeModeTab = {
   id: string;
@@ -108,7 +109,7 @@ export function ComposeModeTabs({ tabs, activeId, onSelect }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   scroll: {
     flexGrow: 0,
   },
@@ -121,24 +122,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     overflow: "visible",
-    minHeight: 35,
+    minHeight: 7 * floraSpacing.gridFine,
   },
   tabButton: {
-    height: 35,
+    height: 7 * floraSpacing.gridFine,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 24,
+    paddingHorizontal: sPx(24),
   },
   tabPressed: {
     opacity: 0.72,
   },
   tabLabel: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 15,
+    letterSpacing: tracking(0.45),
+    lineHeight: kegl(15),
   },
   tabLabelActive: {
     color: floraColors.greenLight,
@@ -147,9 +148,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     bottom: 0,
-    height: 2,
+    height: sPx(2),
     borderRadius: 999,
     backgroundColor: floraColors.greenLight,
     zIndex: 2,
   },
-});
+}));

@@ -26,7 +26,8 @@ import {
   resolveMenuPanelMotion,
   type BubbleAnchorRect,
 } from "@/lib/messageBubbleMoreMenuLayout";
-import { floraColors, floraMessages, floraMotion, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraMessages, floraMotion, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 
 export type { BubbleAnchorRect, BubbleBoxRect } from "@/lib/messageBubbleMoreMenuLayout";
@@ -478,6 +479,7 @@ function MenuRow({
   danger?: boolean;
   disabled?: boolean;
 }) {
+  const sp = useSPx();
   return (
     <Pressable
       accessibilityRole="menuitem"
@@ -492,7 +494,7 @@ function MenuRow({
       <View style={styles.menuItemIcon}>
         <Ionicons
           name={icon}
-          size={18}
+          size={sp(18)}
           color={danger ? "#f6a8a8" : disabled ? "rgba(250,250,250,0.35)" : floraColors.gray}
         />
       </View>
@@ -554,8 +556,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignItems: "flex-end",
   },
   panel: {
-    width: 200,
-    borderRadius: 12,
+    width: 40 * floraSpacing.gridFine,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
     borderColor: "rgba(250, 250, 250, 0.06)",
@@ -570,7 +572,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: "100%",
     paddingVertical: floraSpacing.gridFine * 1.5,
     paddingHorizontal: floraSpacing.gridFine * 2,
-    borderRadius: 8,
+    borderRadius: sPx(8),
   },
   menuItemPressed: {
     backgroundColor: "rgba(250, 250, 250, 0.06)",
@@ -579,17 +581,17 @@ const styles = liveGridStyles(() => StyleSheet.create({
     opacity: 0.45,
   },
   menuItemIcon: {
-    width: 24,
-    height: 24,
+    width: sPx(24),
+    height: sPx(24),
     alignItems: "center",
     justifyContent: "center",
   },
   menuItemLabel: {
     flex: 1,
     color: "rgba(250, 250, 250, 0.9)",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   menuItemLabelDisabled: {
     color: "rgba(250, 250, 250, 0.45)",

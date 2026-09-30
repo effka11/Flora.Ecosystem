@@ -8,13 +8,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mobileSessionStore } from "@/lib/session";
 import { useMusicStore } from "@/stores/musicStore";
 import { formatMusicDuration } from "@/lib/music/musicModels";
-import { floraColors, floraSpacing, floraTabBarContentHeight } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabBarContentHeight, kegl, sPx, tracking } from "@/lib/theme";
 
 function isMessagesPath(pathname: string): boolean {
   return pathname === "/messages" || pathname.startsWith("/messages/");
 }
 
 export function MusicMiniPlayer() {
+  const sp = useSPx();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const current = useMusicStore((s) => s.current);
@@ -105,11 +107,11 @@ export function MusicMiniPlayer() {
     <View
       style={[
         styles.bar,
-        { bottom: floraTabBarContentHeight() + Math.max(insets.bottom, 8) },
+        { bottom: floraTabBarContentHeight() + Math.max(insets.bottom, sPx(8)) },
       ]}
     >
       <View style={[styles.cover, { backgroundColor: current.coverColor }]}>
-        <Ionicons name="musical-notes" size={18} color={floraColors.greenDark} />
+        <Ionicons name="musical-notes" size={sp(18)} color={floraColors.greenDark} />
       </View>
       <View style={styles.meta}>
         <Text style={styles.title} numberOfLines={1}>
@@ -132,22 +134,22 @@ export function MusicMiniPlayer() {
       </View>
       <Text style={styles.time}>{formatMusicDuration(positionMs)}</Text>
       <Pressable style={({ pressed }) => [styles.control, pressed && styles.pressed]} onPress={prev}>
-        <Ionicons name="play-skip-back" size={18} color={floraColors.greenLight} />
+        <Ionicons name="play-skip-back" size={sp(18)} color={floraColors.greenLight} />
       </Pressable>
       <Pressable style={({ pressed }) => [styles.playControl, pressed && styles.pressed]} onPress={togglePlay}>
-        <Ionicons name={playing ? "pause" : "play"} size={18} color={floraColors.greenDark} />
+        <Ionicons name={playing ? "pause" : "play"} size={sp(18)} color={floraColors.greenDark} />
       </Pressable>
       <Pressable style={({ pressed }) => [styles.control, pressed && styles.pressed]} onPress={() => void next()}>
-        <Ionicons name="play-skip-forward" size={18} color={floraColors.greenLight} />
+        <Ionicons name="play-skip-forward" size={sp(18)} color={floraColors.greenLight} />
       </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Скрыть плеер"
         style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
         onPress={stop}
-        hitSlop={6}
+        hitSlop={sp(6)}
       >
-        <Ionicons name="close" size={20} color={floraColors.gray} />
+        <Ionicons name="close" size={sp(20)} color={floraColors.gray} />
       </Pressable>
     </View>
   );
@@ -169,9 +171,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.gridFine * 2,
   },
   cover: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: sPx(38),
+    height: sPx(38),
+    borderRadius: sPx(12),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -181,18 +183,18 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   artist: {
     color: floraColors.textMuted,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
-    marginTop: 2,
+    marginTop: sPx(2),
   },
   progressTrack: {
-    height: 3,
+    height: sPx(3),
     borderRadius: 999,
     backgroundColor: "rgba(250, 250, 250, 0.13)",
     marginTop: floraSpacing.gridFine,
@@ -205,27 +207,27 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   time: {
     color: floraColors.gray,
-    fontSize: 11,
-    minWidth: 34,
+    fontSize: kegl(11),
+    minWidth: sPx(34),
     textAlign: "right",
   },
   control: {
-    width: 28,
-    height: 28,
+    width: sPx(28),
+    height: sPx(28),
     alignItems: "center",
     justifyContent: "center",
   },
   playControl: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: sPx(34),
+    height: sPx(34),
+    borderRadius: sPx(17),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: floraColors.greenLight,
   },
   closeBtn: {
-    width: 28,
-    height: 28,
+    width: sPx(28),
+    height: sPx(28),
     alignItems: "center",
     justifyContent: "center",
     marginLeft: floraSpacing.gridFine,

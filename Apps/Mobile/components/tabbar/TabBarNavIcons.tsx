@@ -1,5 +1,6 @@
 import type { ColorValue } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 type IconProps = {
   size?: number;
@@ -32,23 +33,26 @@ const MUSIC =
   "M 429.5,-0.5 C 433.5,-0.5 437.5,-0.5 441.5,-0.5C 445.479,1.31481 448.312,4.31481 450,8.5C 450.667,125.167 450.667,241.833 450,358.5C 445.141,385.385 430.307,404.552 405.5,416C 370.58,428.312 340.746,420.812 316,393.5C 299.166,369.676 295.833,344.01 306,316.5C 325.33,279.588 355.497,265.421 396.5,274C 404.672,276.669 412.172,280.502 419,285.5C 419.833,232.83 419.667,180.164 418.5,127.5C 349.539,153.765 280.539,179.932 211.5,206C 210.988,288.466 210.154,370.966 209,453.5C 199.92,485.083 179.42,504.417 147.5,511.5C 139.5,511.5 131.5,511.5 123.5,511.5C 92.018,504.523 71.518,485.523 62,454.5C 55.3383,414.657 69.8383,385.49 105.5,367C 131.726,357.28 156.392,360.113 179.5,375.5C 180.005,282.421 180.838,189.421 182,96.5C 183.765,93.527 186.265,91.3604 189.5,90C 269.715,60.0993 349.715,29.9326 429.5,-0.5 Z";
 
 export function TabBarFeedIcon({ size = 24, color }: IconProps) {
+  const px = useSPx()(size);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={fillColor(color)} accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" fill={fillColor(color)} accessibilityElementsHidden>
       <Path d={FEED_HOME} />
     </Svg>
   );
 }
 
 export function TabBarMessagesIcon({ size = 24, color }: IconProps) {
+  const px = useSPx()(size);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={fillColor(color)} accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" fill={fillColor(color)} accessibilityElementsHidden>
       <Path d={MESSAGES} />
     </Svg>
   );
 }
 
 export function TabBarMusicIcon({ size = 24, color }: IconProps) {
-  const draw = Math.round(size * 0.9);
+  const px = useSPx()(size);
+  const draw = Math.round(px * 0.9);
   return (
     <Svg width={draw} height={draw} viewBox="0 0 512 512" fill={fillColor(color)} accessibilityElementsHidden>
       <Path d={MUSIC} fillRule="evenodd" clipRule="evenodd" />
@@ -57,16 +61,18 @@ export function TabBarMusicIcon({ size = 24, color }: IconProps) {
 }
 
 export function TabBarNotificationsIcon({ size = 24, color }: IconProps) {
+  const px = useSPx()(size);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={fillColor(color)} accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" fill={fillColor(color)} accessibilityElementsHidden>
       <Path d={NOTIFICATIONS} />
     </Svg>
   );
 }
 
 export function TabBarProfileIcon({ size = 24, color }: IconProps) {
+  const px = useSPx()(size);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={fillColor(color)} accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" fill={fillColor(color)} accessibilityElementsHidden>
       <Path d={PROFILE} />
     </Svg>
   );

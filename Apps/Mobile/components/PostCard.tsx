@@ -19,7 +19,8 @@ import { FrcRowMediaScope } from "@/lib/FrcImageDecodingScope";
 import { feedPostAuthor } from "@/lib/feedPostAuthor";
 import { formatCompactCount } from "@/lib/formatCompactCount";
 import { isOwnFeedPost } from "@/lib/isOwnFeedPost";
-import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
 type Props = {
@@ -76,6 +77,7 @@ export const PostCard = memo(function PostCard({
   onDeletePost,
   onEditPost,
 }: Props) {
+  const sp = useSPx();
   const me = useSessionStore((s) => s.me);
 
   const authorMeta = feedPostAuthor(post, me?.username);
@@ -146,7 +148,7 @@ export const PostCard = memo(function PostCard({
             {post.imageUuids.length > 0 ? <FeedPostImages imageUuids={post.imageUuids} /> : null}
             {post.videoUuid ? (
               <View style={styles.mediaPill}>
-                <Ionicons name="play-circle-outline" size={16} color={floraColors.greenLight} />
+                <Ionicons name="play-circle-outline" size={sp(16)} color={floraColors.greenLight} />
                 <Text style={styles.mediaText}>Видео · {post.videoStatus ?? "ready"}</Text>
               </View>
             ) : null}
@@ -278,14 +280,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
     overflow: "visible",
   },
   postMetaGap: {
-    width: floraSpacing.grid - 2,
+    width: floraSpacing.grid - sPx(2),
     flexShrink: 0,
   },
   author: {
     color: floraColors.whiteTemplate,
     fontWeight: "300",
-    fontSize: 15,
-    letterSpacing: 0.45,
+    fontSize: kegl(15),
+    letterSpacing: tracking(0.45),
     lineHeight: floraFeedPost.nicknamePaintLineHeight,
     flexShrink: 1,
     includeFontPadding: false,
@@ -296,8 +298,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   handle: {
     color: floraColors.gray,
     fontWeight: "300",
-    fontSize: 15,
-    letterSpacing: 0.45,
+    fontSize: kegl(15),
+    letterSpacing: tracking(0.45),
     lineHeight: floraFeedPost.nicknamePaintLineHeight,
     flexShrink: 0,
     includeFontPadding: false,
@@ -310,28 +312,28 @@ const styles = liveGridStyles(() => StyleSheet.create({
     fontSize: floraFeedPost.textFontSize,
     fontWeight: "300",
     lineHeight: floraFeedPost.textLineHeight,
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     includeFontPadding: false,
   },
   mediaPill: {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: sPx(7),
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(164, 209, 138, 0.28)",
     backgroundColor: "rgba(164, 209, 138, 0.08)",
-    paddingHorizontal: 11,
-    paddingVertical: 7,
+    paddingHorizontal: sPx(11),
+    paddingVertical: sPx(7),
     marginTop: floraSpacing.gridFine * 2,
     marginBottom: floraFeedPost.textMarginBottom,
   },
   mediaText: {
     color: floraColors.greenLight,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   actionsBar: {
     minHeight: floraSpacing.grid + floraSpacing.gridFine * 2,
@@ -348,7 +350,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   action: {
     width: floraFeedPost.actionIconSize,
-    minHeight: 28,
+    minHeight: sPx(28),
     justifyContent: "center",
     overflow: "visible",
   },
@@ -375,9 +377,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   time: {
     maxWidth: "100%",
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
     includeFontPadding: false,
   },
   liked: {

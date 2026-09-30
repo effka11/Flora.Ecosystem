@@ -1,3 +1,4 @@
+import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import Reanimated, { type SharedValue } from "react-native-reanimated";
@@ -62,7 +63,7 @@ export function TabScreenSearchSwap({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   row: {
     position: "relative",
     minHeight: floraTabFilter.triggerHeight,
@@ -79,4 +80,4 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: floraColors.bg,
   },
-});
+}));

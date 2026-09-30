@@ -4,7 +4,8 @@ import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 export function MusicDetailLayout({
   title,
@@ -18,6 +19,7 @@ export function MusicDetailLayout({
   children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const sp = useSPx();
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + floraSpacing.grid }]}>
@@ -27,7 +29,7 @@ export function MusicDetailLayout({
           style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
           onPress={() => router.back()}
         >
-          <Ionicons name="chevron-back" size={24} color={floraColors.greenLight} />
+          <Ionicons name="chevron-back" size={sp(24)} color={floraColors.greenLight} />
         </Pressable>
         <View style={styles.titleBlock}>
           <Text style={styles.title} numberOfLines={1}>
@@ -52,7 +54,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     backgroundColor: floraColors.bg,
   },
   header: {
-    minHeight: 72,
+    minHeight: sPx(72),
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.gridFine * 2,
@@ -63,9 +65,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     backgroundColor: floraColors.bg,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: sPx(38),
+    height: sPx(38),
+    borderRadius: sPx(19),
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -77,14 +79,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 19,
+    fontSize: kegl(19),
     fontWeight: "300",
-    letterSpacing: 0.57,
+    letterSpacing: tracking(0.57),
   },
   subtitle: {
     color: floraColors.gray,
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: kegl(12),
+    marginTop: sPx(2),
   },
   pressed: {
     opacity: 0.72,

@@ -12,7 +12,8 @@ import { FloraTabLabel, floraTabChrome } from "@/components/chrome/FloraTabLabel
 import { TabPagerPage, TabPagerTrack } from "@/components/chrome/TabPager";
 import { SyncPagerTabIndicator } from "@/components/chrome/tabIndicatorBridge";
 import { TabScreenHeader } from "@/components/TabScreenHeader";
-import { floraColors, floraSpacing, floraTabBarContentPadding } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { bindChipStripBusy, usePagerBusyFlags } from "@/lib/usePagerBusyFlags";
 import { useTabPager } from "@/lib/useTabPager";
 
@@ -51,6 +52,7 @@ type PaneProps = {
 };
 
 function DevelopmentPane({ pageWidth, listPaddingBottom, isActive }: PaneProps) {
+  const sp = useSPx();
   const openRepo = () => {
     void Linking.openURL(GITHUB_REPO_URL);
   };
@@ -77,7 +79,7 @@ function DevelopmentPane({ pageWidth, listPaddingBottom, isActive }: PaneProps) 
           style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
           onPress={openRepo}
         >
-          <Ionicons name="logo-github" size={20} color={floraColors.bg} />
+          <Ionicons name="logo-github" size={sp(20)} color={floraColors.bg} />
           <Text style={styles.primaryBtnLabel}>Открыть на GitHub</Text>
         </GesturePressable>
       </GestureScrollView>
@@ -86,6 +88,7 @@ function DevelopmentPane({ pageWidth, listPaddingBottom, isActive }: PaneProps) 
 }
 
 function DonationsPane({ pageWidth, listPaddingBottom, isActive }: PaneProps) {
+  const sp = useSPx();
   const openBoosty = () => {
     void Linking.openURL(BOOSTY_DONATE_URL);
   };
@@ -112,7 +115,7 @@ function DonationsPane({ pageWidth, listPaddingBottom, isActive }: PaneProps) {
           style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
           onPress={openBoosty}
         >
-          <Ionicons name="heart" size={20} color={floraColors.bg} />
+          <Ionicons name="heart" size={sp(20)} color={floraColors.bg} />
           <Text style={styles.primaryBtnLabel}>Пожертвовать на Boosty</Text>
         </GesturePressable>
       </GestureScrollView>
@@ -122,7 +125,7 @@ function DonationsPane({ pageWidth, listPaddingBottom, isActive }: PaneProps) {
 
 export default function ContributeScreen() {
   const insets = useSafeAreaInsets();
-  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const pagerGenRef = useRef(0);
   const { reportTouch, reportPager, reportStrip } = usePagerBusyFlags();
   const chipStripBusy = useMemo(
@@ -266,26 +269,26 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   description: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 22,
+    letterSpacing: tracking(0.45),
+    lineHeight: sPx(22),
   },
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: floraSpacing.gridFine * 2,
-    minHeight: 45,
-    borderRadius: 12,
+    minHeight: 3 * floraSpacing.grid,
+    borderRadius: sPx(12),
     backgroundColor: floraColors.greenLight,
     paddingHorizontal: floraSpacing.grid * 2,
   },
   primaryBtnLabel: {
     color: floraColors.bg,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "400",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
   },
   pressed: {
     opacity: 0.72,

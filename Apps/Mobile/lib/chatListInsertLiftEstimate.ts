@@ -1,11 +1,15 @@
 import type { FscpMessageBlock } from "@flora/client-core/fscp";
-import { floraMessages } from "@/lib/theme";
+import { floraMessages, sPx } from "@/lib/theme";
 
 /** Базовый lift однострочного текста (эмпирика; ≈ bubble + вклад row gap). */
-export const TEXT_BASE_INSERT_LIFT_PX = 52;
+export function TEXT_BASE_INSERT_LIFT_PX() {
+  return sPx(52);
+}
 
 /** Запас на meta-ряд `below` (время + gap), когда lines ≥ 2. */
-export const BELOW_TIME_RESERVE_PX = 16;
+export function BELOW_TIME_RESERVE_PX() {
+  return sPx(16);
+}
 
 /**
  * Средняя ширина глифа ≈ 0.55 × fontSize (калибровка плана).
@@ -48,11 +52,11 @@ export function estimateTextInsertLiftPx(
   ctx?: InsertLiftEstimateCtx,
 ): number {
   const text = body ?? "";
-  if (text.length === 0) return TEXT_BASE_INSERT_LIFT_PX;
+  if (text.length === 0) return TEXT_BASE_INSERT_LIFT_PX();
 
   const lines = estimateTextVisualLineCount(text, ctx?.maxInnerWidthPx);
-  let heightPx = TEXT_BASE_INSERT_LIFT_PX + (lines - 1) * floraMessages.bubbleLineHeight;
-  if (lines >= 2) heightPx += BELOW_TIME_RESERVE_PX;
+  let heightPx = TEXT_BASE_INSERT_LIFT_PX() + (lines - 1) * floraMessages.bubbleLineHeight;
+  if (lines >= 2) heightPx += BELOW_TIME_RESERVE_PX();
   return heightPx;
 }
 
@@ -66,10 +70,10 @@ export function estimateBlocksInsertLiftPx(
   blocks: FscpMessageBlock[],
   ctx?: InsertLiftEstimateCtx,
 ): number {
-  if (blocks.some((b) => b.kind === "voice")) return 72;
+  if (blocks.some((b) => b.kind === "voice")) return sPx(72);
   const images = blocks.filter((b) => b.kind === "image").length;
-  if (images === 1) return 220;
-  if (images > 1) return 280;
+  if (images === 1) return sPx(220);
+  if (images > 1) return sPx(280);
   return estimateTextInsertLiftPx(textBodyFromBlocks(blocks), ctx);
 }
 
@@ -81,9 +85,9 @@ export function estimateRowInsertLiftPx(
   },
   ctx?: InsertLiftEstimateCtx,
 ): number {
-  if (row.voiceBlock) return 72;
+  if (row.voiceBlock) return sPx(72);
   const images = row.imageBlocks?.length ?? 0;
-  if (images === 1) return 220;
-  if (images > 1) return 280;
+  if (images === 1) return sPx(220);
+  if (images > 1) return sPx(280);
   return estimateTextInsertLiftPx(row.text, ctx);
 }

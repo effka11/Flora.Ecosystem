@@ -19,3 +19,7 @@ Tray dismiss for aggregated social notifications uses `@flora/client-core` `isSo
 - Canonical FCM tags: `like`, `repost`, `follow` (one slot per recipient + activity kind).
 - Legacy tags still dismissed: `like:{postUuid}`, `repost:{postUuid}`.
 - Helpers: `dismissSocialPushNotifications`, `dismissPresentedSocialPushNotifications` in `lib/pushNotifications.ts`.
+
+## Сетка и внесенка (sPx)
+
+Ритм layout — `N × floraSpacing.grid` (15s) / `gridFine` (5s). Внесенка (кегль, иконки, радиусы, off-ladder) — `sPx(n)` / `kegl(n)` / `tracking(n)` из `@flora/design` через [`lib/floraGridRuntime.ts`](lib/floraGridRuntime.ts); SoT шаблонов — `@flora/design`. Unitless web line-height → `ratio * kegl(размерШрифта)`, не `sPx` от произведения. Hairline `1` / `0.5` не масштабировать. Не `export const x = sPx(49)` и не модульный `StyleSheet.create`, который зовёт `sPx`/`kegl`/`tracking` или читает live-токены — только `liveGridStyles` / `liveGridRecord` / create в рендере. Ionicons `size` — `useSPx()(n)` или уже живой токен.

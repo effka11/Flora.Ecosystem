@@ -33,7 +33,8 @@ import { ChatComposeImageStrip } from "@/components/messages/ChatComposeImageStr
 import { ChatVoiceComposeBar } from "@/components/messages/ChatVoiceComposeBar";
 import { ENERGETIC_OPEN_EASING } from "@/lib/energeticSettle";
 import type { DraftMessageImage } from "@/lib/useMessageComposeImages";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraMessages, floraSpacing, kegl, tracking } from "@/lib/theme";
 
 /** Высота инпута (border-box) под n видимых строк. */
 function composeInputHeight(rows: number): number {
@@ -160,6 +161,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
   },
   ref,
 ) {
+  const sp = useSPx();
   const inputRef = useRef<TextInput>(null);
   const [value, setValue] = useState("");
   const valueRef = useRef(value);
@@ -449,7 +451,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
             disabled={disabled || !onPickImages}
             onPress={onPickImages}
           >
-            <Ionicons name="add" size={20} color={disabled || !onPickImages ? floraColors.gray : floraColors.greenLight} />
+            <Ionicons name="add" size={sp(20)} color={disabled || !onPickImages ? floraColors.gray : floraColors.greenLight} />
           </Pressable>
 
           <Animated.View style={inputZoneStyle}>
@@ -525,7 +527,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
           >
             <Ionicons
               name={emojiChrome ? "keypad-outline" : "happy-outline"}
-              size={20}
+              size={sp(20)}
               color={floraColors.gray}
             />
           </Pressable>
@@ -540,7 +542,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
             >
               <Ionicons
                 name="send"
-                size={18}
+                size={sp(18)}
                 color={canSendText ? floraColors.greenLight : floraColors.gray}
               />
             </Pressable>
@@ -554,7 +556,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
             >
               <Ionicons
                 name="mic-outline"
-                size={20}
+                size={sp(20)}
                 color={canStartVoice ? floraColors.greenLight : floraColors.gray}
               />
             </Pressable>
@@ -582,19 +584,16 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
   );
 });
 
-/**
- * Одна типографика на инпут, зеркало строк и подсказку: расхождение шрифта или
- * межбуквенного сдвинуло бы переносы, и зеркало насчитало бы не те строки.
- */
-const composeInputTypography = {
-  fontSize: 15,
-  fontWeight: "300",
-  letterSpacing: 0.45,
-  lineHeight: floraMessages.composeInputLineHeight,
-  includeFontPadding: false,
-} as const;
+const styles = liveGridStyles(() => {
+  const composeInputTypography = {
+    fontSize: kegl(15),
+    fontWeight: "300" as const,
+    letterSpacing: tracking(0.45),
+    lineHeight: floraMessages.composeInputLineHeight,
+    includeFontPadding: false,
+  };
 
-const styles = liveGridStyles(() => StyleSheet.create({
+  return StyleSheet.create({
   shell: {
     paddingHorizontal: floraSpacing.grid,
     paddingTop: floraMessages.composeShellPaddingTop,
@@ -693,4 +692,5 @@ const styles = liveGridStyles(() => StyleSheet.create({
     color: floraColors.gray,
     ...composeInputTypography,
   },
-}));
+  });
+});

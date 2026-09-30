@@ -5,7 +5,7 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { ComposeMediaPreview } from "@/components/compose/ComposeMediaPreview";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import type { DraftPostImage, DraftPostVideo } from "@/lib/compose/useComposePostMedia";
-import { floraColors, floraFeedPost, floraSpacing } from "@/lib/theme";
+import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   displayName: string;
@@ -160,14 +160,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
     overflow: "visible",
   },
   postMetaGap: {
-    width: floraSpacing.grid - 2,
+    width: floraSpacing.grid - sPx(2),
     flexShrink: 0,
   },
   author: {
     color: floraColors.whiteTemplate,
     fontWeight: "300",
-    fontSize: 15,
-    letterSpacing: 0.45,
+    fontSize: kegl(15),
+    letterSpacing: tracking(0.45),
     lineHeight: floraFeedPost.nicknamePaintLineHeight,
     flexShrink: 1,
     includeFontPadding: false,
@@ -178,8 +178,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   handle: {
     color: floraColors.gray,
     fontWeight: "300",
-    fontSize: 15,
-    letterSpacing: 0.45,
+    fontSize: kegl(15),
+    letterSpacing: tracking(0.45),
     lineHeight: floraFeedPost.nicknamePaintLineHeight,
     flexShrink: 0,
     includeFontPadding: false,
@@ -192,13 +192,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingRight: floraFeedPost.contentInsetRight,
   },
   input: {
-    minHeight: 25.5 * 4,
+    minHeight: 1.7 * kegl(15) * 4,
     marginBottom: floraFeedPost.textMarginBottom,
     color: floraColors.grayLight,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    lineHeight: 25.5,
-    letterSpacing: 0.45,
+    lineHeight: 1.7 * kegl(15),
+    letterSpacing: tracking(0.45),
     paddingTop: 0,
     paddingBottom: 0,
     paddingHorizontal: 0,
@@ -206,14 +206,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   counter: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
     textAlign: "right",
     marginTop: floraSpacing.gridFine,
   },
   error: {
     color: floraColors.error,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
     marginTop: floraSpacing.gridFine,
   },

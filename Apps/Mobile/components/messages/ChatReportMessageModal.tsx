@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import type { FrankingReportCategory } from "@flora/client-core/contracts";
 import { FRANKING_REPORT_CATEGORY_OPTIONS } from "@/lib/messageReport";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   visible: boolean;
@@ -22,6 +23,7 @@ export function ChatReportMessageModal({
   onDismiss,
   onConfirm,
 }: Props) {
+  const sp = useSPx();
   const [category, setCategory] = useState<FrankingReportCategory>("abuse");
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function ChatReportMessageModal({
             {busy ? (
               <ActivityIndicator color="#f6a8a8" />
             ) : (
-              <Ionicons name="flag-outline" size={28} color="#f6a8a8" />
+              <Ionicons name="flag-outline" size={sp(28)} color="#f6a8a8" />
             )}
           </View>
 
@@ -127,7 +129,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   card: {
     width: "100%",
-    maxWidth: 320,
+    maxWidth: sPx(320),
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surfaceElevated,
     borderWidth: 1,
@@ -148,11 +150,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "500",
-    letterSpacing: 0.34,
+    letterSpacing: tracking(0.34),
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: sPx(22),
   },
   categoryList: {
     width: "100%",
@@ -178,10 +180,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
   optionLabel: {
     flex: 1,
     color: "rgba(250, 250, 250, 0.9)",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
-    lineHeight: 20,
+    letterSpacing: tracking(0.42),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   optionLabelSelected: {
     color: floraColors.whiteTemplate,
@@ -189,7 +191,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   error: {
     color: "#f6a8a8",
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
     textAlign: "center",
     lineHeight: floraSpacing.grid,
@@ -204,9 +206,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   confirmBtnText: {
     color: "#f6a8a8",
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "400",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
     lineHeight: floraSpacing.grid,
   },
   secondaryBtn: {
@@ -218,9 +220,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   secondaryBtnText: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
     lineHeight: floraSpacing.grid,
   },
   btnPressed: {

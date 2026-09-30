@@ -1,4 +1,5 @@
 import Svg, { Circle, Path } from "react-native-svg";
+import { useSPx } from "@/lib/FloraGridProvider";
 
 type Props = {
   size?: number;
@@ -14,9 +15,11 @@ const DOT_R = 1.35;
  * Стрелка назад: размер как у лупы/«+», толщина stroke как у search-outline.
  * Общий chrome (Messages / Feed) — не домен messages.
  */
-export function ChromeBackIcon({ size = 24, color }: Props) {
+export function ChromeBackIcon({ size, color }: Props) {
+  const sp = useSPx();
+  const px = size ?? sp(24);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Path
         d="M15 18l-6-6 6-6"
         fill="none"
@@ -32,9 +35,11 @@ export function ChromeBackIcon({ size = 24, color }: Props) {
 /**
  * Вертикальное ⋮: тонкие точки, слот 24. Общий chrome (Messages / Feed).
  */
-export function ChromeMoreIcon({ size = 24, color }: Props) {
+export function ChromeMoreIcon({ size, color }: Props) {
+  const sp = useSPx();
+  const px = size ?? sp(24);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Circle cx={12} cy={6.5} r={DOT_R} fill={color} />
       <Circle cx={12} cy={12} r={DOT_R} fill={color} />
       <Circle cx={12} cy={17.5} r={DOT_R} fill={color} />
@@ -46,9 +51,11 @@ export function ChromeMoreIcon({ size = 24, color }: Props) {
  * Сохранённый поиск: галочка, уже зеркальная по X.
  * Правый штрих чуть длиннее стандартного stem, с зазором до лупы.
  */
-export function ChromeSearchSavedCheck({ size = 13, color }: Props) {
+export function ChromeSearchSavedCheck({ size, color }: Props) {
+  const sp = useSPx();
+  const px = size ?? sp(13);
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+    <Svg width={px} height={px} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Path
         d="M14 18L4 6"
         fill="none"

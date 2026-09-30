@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ChromeBackIcon, ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { formatGroupMembersLabel } from "@/lib/groupChatTypes";
-import { floraColors, floraMessages, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraMessages, floraSpacing, kegl, tracking } from "@/lib/theme";
 
 type Props = {
   title: string;
@@ -29,6 +30,7 @@ export function ChatGroupThreadHeader({
   moreButtonRef,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const sp = useSPx();
   const label = title.trim() || "Группа";
   const subtitle = formatGroupMembersLabel(memberCount);
 
@@ -76,10 +78,10 @@ export function ChatGroupThreadHeader({
           accessibilityState={{ expanded: moreMenuOpen }}
           style={({ pressed }) => [styles.moreBtn, pressed && styles.moreBtnPressed]}
           onPress={onMorePress}
-          hitSlop={8}
+          hitSlop={sp(8)}
         >
           {moreMenuOpen ? (
-            <Ionicons name="close-outline" size={24} color={floraColors.gray} />
+            <Ionicons name="close-outline" size={sp(24)} color={floraColors.gray} />
           ) : (
             <ChromeMoreIcon color={floraColors.gray} />
           )}
@@ -97,7 +99,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: floraSpacing.grid,
-    minHeight: floraMessages.headerHeight - 20,
+    minHeight: floraMessages.headerHeight - 4 * floraSpacing.gridFine,
     paddingBottom: floraSpacing.grid,
     paddingHorizontal: floraSpacing.grid,
     backgroundColor: floraColors.bg,
@@ -142,22 +144,22 @@ const styles = liveGridStyles(() => StyleSheet.create({
   name: {
     flexShrink: 1,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   status: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
-    lineHeight: 20,
+    letterSpacing: tracking(0.45),
+    lineHeight: 4 * floraSpacing.gridFine,
   },
   /** Как `iconButton` / ⋮ при выделении в TabScreenSearchHeader — центр под «+». */
   moreBtn: {
-    width: 45,
-    height: 45,
+    width: 3 * floraSpacing.grid,
+    height: 3 * floraSpacing.grid,
     alignItems: "center",
     justifyContent: "center",
   },

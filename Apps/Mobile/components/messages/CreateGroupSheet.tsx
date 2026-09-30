@@ -23,7 +23,8 @@ import {
   GROUP_CHAT_MAX_PEER_SELECTION,
   normalizeGroupTitleInput,
 } from "@/lib/groupChatTypes";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   visible: boolean;
@@ -35,6 +36,7 @@ type Props = {
 /** Sheet создания FSCP-G группы (кандидаты — из DM-списка). */
 export function CreateGroupSheet({ visible, conversations, onClose, onCreated }: Props) {
   const insets = useSafeAreaInsets();
+  const sp = useSPx();
   const [title, setTitle] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState("");
@@ -145,7 +147,7 @@ export function CreateGroupSheet({ visible, conversations, onClose, onCreated }:
             accessibilityLabel="Закрыть"
             onPress={onClose}
             disabled={busy}
-            hitSlop={8}
+            hitSlop={sPx(8)}
           >
             <Text style={styles.ghost}>Закрыть</Text>
           </Pressable>
@@ -155,7 +157,7 @@ export function CreateGroupSheet({ visible, conversations, onClose, onCreated }:
             accessibilityLabel="Создать группу"
             onPress={submit}
             disabled={busy}
-            hitSlop={8}
+            hitSlop={sPx(8)}
           >
             {busy ? (
               <ActivityIndicator color={floraColors.greenLight} />
@@ -213,7 +215,7 @@ export function CreateGroupSheet({ visible, conversations, onClose, onCreated }:
                   onPress={() => toggle(c.otherUserUuid)}
                 >
                   <FloraAvatar
-                    size={40}
+                    size={8 * floraSpacing.gridFine}
                     displayName={label}
                     username={c.otherUsername}
                     avatarUuid={c.otherAvatarUuid}
@@ -229,7 +231,7 @@ export function CreateGroupSheet({ visible, conversations, onClose, onCreated }:
                     </Text>
                   </View>
                   {checked ? (
-                    <Ionicons name="checkmark-circle" size={22} color={floraColors.greenLight} />
+                    <Ionicons name="checkmark-circle" size={sp(22)} color={floraColors.greenLight} />
                   ) : null}
                 </Pressable>
               );
@@ -254,44 +256,44 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: floraSpacing.grid,
-    minHeight: 40,
+    minHeight: 8 * floraSpacing.gridFine,
   },
   title: {
     color: floraColors.whiteTemplate,
-    fontSize: 17,
+    fontSize: kegl(17),
     fontWeight: "300",
-    letterSpacing: 0.5,
+    letterSpacing: tracking(0.5),
   },
   ghost: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   action: {
     color: floraColors.greenLight,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   label: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     marginBottom: floraSpacing.gridFine,
     marginTop: floraSpacing.gridFine,
   },
   input: {
     borderWidth: 1,
     borderColor: "rgba(250,250,250,0.1)",
-    borderRadius: 10,
+    borderRadius: 2 * floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     marginBottom: floraSpacing.grid,
   },
   list: { flex: 1 },
   empty: {
     color: floraColors.gray,
-    fontSize: 14,
+    fontSize: kegl(14),
     textAlign: "center",
     marginTop: floraSpacing.grid * 2,
   },
@@ -301,23 +303,23 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 1.5,
     paddingHorizontal: floraSpacing.gridFine,
-    borderRadius: 10,
+    borderRadius: 2 * floraSpacing.gridFine,
   },
   rowActive: { backgroundColor: "rgba(164, 209, 138, 0.1)" },
   rowPressed: { opacity: 0.85 },
-  rowBody: { flex: 1, minWidth: 0, gap: 2 },
+  rowBody: { flex: 1, minWidth: 0, gap: sPx(2) },
   rowName: {
     color: floraColors.whiteTemplate,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
   },
   rowHandle: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
   },
   error: {
     color: "#f6a8a8",
-    fontSize: 13,
+    fontSize: kegl(13),
     marginTop: floraSpacing.gridFine,
   },
 }));

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, View } from "react-native";
 import { ONLINE_STATUS_REF_AVATAR } from "@/components/messages/OnlineStatusDot";
-import { floraColors } from "@/lib/theme";
+import { floraColors, floraSpacing } from "@/lib/theme";
 
 /** Чуть крупнее online-dot, чтобы галочка читалась. */
 const MARK_SIZE_AT_REF = 18;
@@ -17,7 +17,7 @@ type Props = {
  */
 export function ConversationListSelectionMark({
   selected,
-  avatarDiameter = ONLINE_STATUS_REF_AVATAR,
+  avatarDiameter = 3 * floraSpacing.grid,
 }: Props) {
   if (!selected) return null;
 

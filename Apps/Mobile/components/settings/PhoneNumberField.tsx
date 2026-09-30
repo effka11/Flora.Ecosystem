@@ -12,7 +12,7 @@ import {
   isPhoneInputAtRegionLimit,
   type PhoneDraft,
 } from "@/lib/phoneNumber";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 type Props = {
   value: string;
@@ -83,8 +83,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "center",
   },
   flag: {
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: kegl(18),
+    lineHeight: sPx(22),
     color: floraColors.whiteTemplate,
   },
 }));

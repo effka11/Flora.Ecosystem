@@ -13,7 +13,8 @@ import {
 } from "react-native";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { profileScreenHref } from "@/lib/socialRoutes";
-import { floraColors, floraSpacing } from "@/lib/theme";
+import { useSPx } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 type Props = {
   postUuid: string;
@@ -43,13 +44,14 @@ type CommentRowProps = {
 };
 
 function CommentRow({ comment, nested, meUsername }: CommentRowProps) {
+  const sp = useSPx();
   const author = profileDisplayName(comment.authorDisplayName, comment.authorUsername);
   const timeLabel = formatRelativeTime(comment.createdAt);
 
   return (
     <View style={[styles.commentRow, nested && styles.commentRowNested]}>
       <FloraAvatar
-        size={nested ? 28 : 32}
+        size={nested ? sp(28) : sp(32)}
         href={profileScreenHref(comment.authorUsername, meUsername)}
         avatarUuid={comment.authorAvatarUuid}
         displayName={comment.authorDisplayName}
@@ -187,15 +189,15 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   emptyText: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   errorText: {
     color: floraColors.error,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   commentRow: {
     flexDirection: "row",
@@ -219,28 +221,28 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   commentAuthor: {
     color: floraColors.whiteTemplate,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   commentHandle: {
     color: floraColors.gray,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   commentTime: {
     color: floraColors.gray,
-    fontSize: 12,
+    fontSize: kegl(12),
     fontWeight: "300",
-    letterSpacing: 0.36,
+    letterSpacing: tracking(0.36),
   },
   commentText: {
     color: floraColors.grayLight,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    lineHeight: 22,
-    letterSpacing: 0.42,
+    lineHeight: sPx(22),
+    letterSpacing: tracking(0.42),
   },
   composer: {
     flexDirection: "row",
@@ -250,20 +252,20 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   composerInput: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: 120,
+    minHeight: sPx(40),
+    maxHeight: 8 * floraSpacing.grid,
     borderWidth: 1,
     borderColor: "rgba(164, 209, 138, 0.22)",
     borderRadius: floraSpacing.gridFine * 2,
     paddingHorizontal: floraSpacing.gridFine * 2,
     paddingVertical: floraSpacing.gridFine * 2,
     color: floraColors.grayLight,
-    fontSize: 14,
+    fontSize: kegl(14),
     fontWeight: "300",
-    letterSpacing: 0.42,
+    letterSpacing: tracking(0.42),
   },
   sendBtn: {
-    minHeight: 40,
+    minHeight: sPx(40),
     paddingHorizontal: floraSpacing.grid,
     alignItems: "center",
     justifyContent: "center",
@@ -277,9 +279,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   sendBtnText: {
     color: floraColors.greenLight,
-    fontSize: 13,
+    fontSize: kegl(13),
     fontWeight: "300",
-    letterSpacing: 0.39,
+    letterSpacing: tracking(0.39),
   },
   pressed: {
     opacity: 0.72,

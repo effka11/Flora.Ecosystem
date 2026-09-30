@@ -3,7 +3,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Reanimated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
-import { floraColors, floraSpacing, floraTabFilter } from "@/lib/theme";
+import { useFloraGrid } from "@/lib/FloraGridProvider";
+import { floraColors, floraSpacing, floraTabFilter, kegl, sPx, tracking } from "@/lib/theme";
 
 /**
  * База ширины индикатора: реальная ширина — через scaleX (transform), а не
@@ -42,6 +43,7 @@ export const FloraTabLabel = memo(function FloraTabLabel({
   label: string;
   progress: SharedValue<number>;
 }) {
+  useFloraGrid();
   const overlayStyle = useAnimatedStyle(() => {
     const distance = Math.abs(progress.value - index);
     return { opacity: distance >= 1 ? 0 : 1 - distance };
@@ -69,7 +71,7 @@ export const floraTabChrome = liveGridStyles(() => StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 24,
+    paddingHorizontal: sPx(24),
   },
   tabIndicator: {
     position: "absolute",
@@ -147,15 +149,15 @@ export function FloraTabStripEdgeFades({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = liveGridStyles(() => StyleSheet.create({
   tabLabelWrap: {
     position: "relative",
   },
   tabLabel: {
     color: floraColors.gray,
-    fontSize: 15,
+    fontSize: kegl(15),
     fontWeight: "300",
-    letterSpacing: 0.45,
+    letterSpacing: tracking(0.45),
     lineHeight: floraTabFilter.triggerLabelLineHeight,
     includeFontPadding: false,
   },
@@ -166,4 +168,4 @@ const styles = StyleSheet.create({
     right: 0,
     color: floraColors.greenLight,
   },
-});
+}));

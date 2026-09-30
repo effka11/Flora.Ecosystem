@@ -1,5 +1,5 @@
 import type { ViewStyle } from "react-native";
-import { floraSpacing } from "@/lib/theme";
+import { floraSpacing, sPx } from "@/lib/theme";
 
 export type BubbleBoxRect = {
   top: number;
@@ -25,10 +25,14 @@ export type BubbleAnchorRect = BubbleBoxRect & {
 
 export type MessageMenuListMotion = "offset-change" | "user-drag";
 
-/** Chrome around rows — padding of the panel (1.5×fine × 2). */
-const MENU_PANEL_CHROME_PX = 15;
+/** Chrome around rows — padding of the panel (1×grid × 2 halves). */
+function menuPanelChromePx() {
+  return floraSpacing.grid;
+}
 /** One MenuRow: vertical padding + icon line. */
-export const MENU_ROW_HEIGHT_PX = 39;
+export function MENU_ROW_HEIGHT_PX() {
+  return sPx(39);
+}
 
 /** FloraRectMenu: 0.5×fine toward the aligned edge. */
 export function MENU_PANEL_EMERGE_X_PX() {
@@ -36,7 +40,7 @@ export function MENU_PANEL_EMERGE_X_PX() {
 }
 /** FloraRectMenu: fine + 3 toward the bubble. */
 export function MENU_PANEL_EMERGE_Y_PX() {
-  return floraSpacing.gridFine + 3;
+  return floraSpacing.gridFine + sPx(3);
 }
 
 export type MenuPanelTransformOrigin = "top right" | "top left" | "bottom right" | "bottom left";
@@ -97,7 +101,7 @@ export function estimateMenuPanelHeight(
 ): number {
   const extra =
     (isFromMe ? 1 : 0) + (isFromMe && canDelete ? 1 : 0) + (!isFromMe && canReport ? 1 : 0);
-  return MENU_PANEL_CHROME_PX + (4 + extra) * MENU_ROW_HEIGHT_PX;
+  return menuPanelChromePx() + (4 + extra) * MENU_ROW_HEIGHT_PX();
 }
 
 export function shiftMenuAnchor(prev: BubbleAnchorRect, box: BubbleBoxRect): BubbleAnchorRect {

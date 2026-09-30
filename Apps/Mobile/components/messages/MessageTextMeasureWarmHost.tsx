@@ -18,6 +18,7 @@ import {
   type TextLayoutEventData,
 } from "react-native";
 
+import { useFloraGrid } from "@/lib/FloraGridProvider";
 import {
   messageBubbleBodyTextMetrics,
   messageBubbleTimeTextMetrics,
@@ -49,6 +50,7 @@ function requestKey(request: TextMeasureRequest): string {
 }
 
 export const MessageTextMeasureWarmHost = memo(function MessageTextMeasureWarmHost() {
+  useFloraGrid();
   const [batch, setBatch] = useState<TextMeasureRequest[]>([]);
   const batchRef = useRef<TextMeasureRequest[]>([]);
   batchRef.current = batch;
@@ -151,7 +153,7 @@ export const MessageTextMeasureWarmHost = memo(function MessageTextMeasureWarmHo
             {body.trim().length > 0 ? (
               <View style={[styles.slot, { width: request.maxInnerWidthPx }]}>
                 <Text
-                  style={messageBubbleBodyTextMetrics}
+                  style={{ ...messageBubbleBodyTextMetrics }}
                   onTextLayout={(event: NativeSyntheticEvent<TextLayoutEventData>) => {
                     const lines = event.nativeEvent.lines;
                     setCachedBodyMeasure(body, request.maxInnerWidthPx, {
@@ -168,7 +170,7 @@ export const MessageTextMeasureWarmHost = memo(function MessageTextMeasureWarmHo
             {request.timeLabel ? (
               <View style={styles.slot}>
                 <Text
-                  style={messageBubbleTimeTextMetrics}
+                  style={{ ...messageBubbleTimeTextMetrics }}
                   onTextLayout={(event: NativeSyntheticEvent<TextLayoutEventData>) => {
                     setCachedTimeLabelWidth(
                       request.timeLabel,
