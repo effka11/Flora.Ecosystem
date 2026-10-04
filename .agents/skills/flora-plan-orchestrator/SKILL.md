@@ -39,9 +39,9 @@ Read and execute the `/flora-plan-router` skill (`.agents/skills/flora-plan-rout
 Before the first wave, for each part determine five things:
 
 1. **File zone** — concrete files/directories the part is allowed to change. This is the most important item: local subagents share one working directory, so overlapping zones in one wave = lost edits. If the zone is unclear — send a cheap reconnaissance subagent (`subagent_type: explore`, grok/gemini-class model per router) **before** the waves: that also cheapens implementation parts because they get ready context.
-2. **Acceptance gate** — concrete commands from “Commands” in `AGENTS.md`, narrowed to the affected crate/workspace.
+2. **Acceptance gate** — concrete commands from “Commands” in `agents.md`, narrowed to the affected crate/workspace.
 3. **Result contract** — what the subagent must return in its final message (see §4).
-4. **Required context** — which specs and skills the subagent must read: `Apps/Web` edits → `/apps-web-grid-placement` (and `/apps-web-messages-chat` for chat), messaging/E2E → `/flora-fscp-e2e`, C# → Rust migration and `Backend/` edits → `/rust-migration`, `Apps/Mobile` → `Apps/Mobile/AGENTS.md`.
+4. **Required context** — which specs and skills the subagent must read: `apps/Web` edits → `/apps-web-grid-placement` (and `/apps-web-messages-chat` for chat), messaging/E2E → `/flora-fscp-e2e`, C# → Rust migration and `backend/` edits → `/rust-migration`, `apps/Mobile` → `apps/Mobile/AGENTS.md`.
 5. **DoD verifiability.** What exactly proves the part is done: a gate command — or a human with a device. Second-kind items (perf measurements, “no flicker”, “no junk”, threshold tuning, visual acceptance) are not closed by a gate: they must not be a `done` condition for a part. Collect them into one “needs a human” list, tell the user about it **before** the first wave, and repeat it in the final report.
 
 Then rebuild waves — by file zones **and** by code dependencies:
@@ -78,7 +78,7 @@ Task: <plan item wording verbatim + 1–3 clarifying sentences>
 Files in your zone (change only these): <paths>
 Do not touch: <other zones in this wave, frozen surfaces>
 
-Read before starting: AGENTS.md; <skills and specs — see §2 item 4>
+Read before starting: agents.md; <skills and specs — see §2 item 4>
 Context from prior waves: <what is already done and what to build on: contracts, DTOs, migrations>
 
 Definition of done: <verifiable outcome>
@@ -86,7 +86,7 @@ Gate (run yourself before returning): <commands>
 
 Boundaries: a module sees other modules only through their *-contracts crate; business logic
 only in modules (not in flora-shared / flora-api / Products composition); own DB — own only.
-Forbidden: git commit/push; hand-editing Documents/test-vectors/** and Artifacts/contract-fixtures/**;
+Forbidden: git commit/push; hand-editing documents/test-vectors/** and artifacts/contract-fixtures/**;
 changing the public HTTP contract or DB schema; leaving the file zone; quick hacks without explanation;
 stubs (unimplemented!/TODO/commented-out tests) instead of implementation;
 new dependencies (package.json / Cargo.toml) without explicit permission in this brief.
@@ -116,11 +116,11 @@ Plan part 3 «Implementation in module flora-auth»
 Task: implement ports from flora-auth-contracts in module flora-auth: handlers, repository,
 error mapping. The contract is already fixed in part 1 — do not change it.
 
-Files in your zone (change only these): Products/Flora.Social/crates/modules/flora-auth/**
-Do not touch: flora-auth-contracts (part 1, frozen), Packages/flora-client-core (part 4, running in parallel),
+Files in your zone (change only these): products/Flora.Social/crates/modules/flora-auth/**
+Do not touch: flora-auth-contracts (part 1, frozen), packages/flora-client-core (part 4, running in parallel),
 migrations (part 2), flora-api and flora-social.
 
-Read before starting: AGENTS.md; .agents/skills/rust-migration/SKILL.md
+Read before starting: agents.md; .agents/skills/rust-migration/SKILL.md
 Context from prior waves: DTOs and port traits in flora-auth-contracts; part 2 migration already
 applied — tables exist, do not change the schema.
 
@@ -150,11 +150,11 @@ Do not trust the subagent report. After each wave, in order:
 3. **Test diffs must be additive only.** Deleted cases, weakened asserts, expectations fitted to whatever the implementation produced — part failure, even when the run is green. Checked by reading the test-file diff, not by test count.
 4. `ReadLints` on changed files; read key diffs (contracts, migrations, auth, public surfaces) with your own eyes.
 5. **The mechanism must execute, not only compile.** For a new surface find a live consumer and confirm its entry condition is reachable at runtime: a prefetch bar deeper than the list ever mounts rows; a branch no call ever hits; a parameter nobody passes — “implemented and covered by tests but never called” is not done. Checked by searching call sites and reading the path from the consumer, not by the subagent report.
-6. Boundaries: `pwsh ./Tools/validate-architecture-rust.ps1`; no imports of other modules’ internal types; business logic did not migrate into `flora-shared`/`flora-api`/Products composition. Also check import cycles: a cycle that “works because references are read from function bodies” is hidden debt, not a solution.
-7. Stubs, `unimplemented!()`, `TODO` instead of code, disabled or implementation-fitted tests, hand-editing `Documents/test-vectors/**` — that is part **failure**, not “done”.
+6. Boundaries: `pwsh ./tools/validate-architecture-rust.ps1`; no imports of other modules’ internal types; business logic did not migrate into `flora-shared`/`flora-api`/Products composition. Also check import cycles: a cycle that “works because references are read from function bodies” is hidden debt, not a solution.
+7. Stubs, `unimplemented!()`, `TODO` instead of code, disabled or implementation-fitted tests, hand-editing `documents/test-vectors/**` — that is part **failure**, not “done”.
 8. **Record new invariants in the log as a frozen contract** before starting a dependent wave: what must not be displaced, when commits are forbidden, who owns the formula, which signature is frozen. An invariant that lives only in your head will be broken by the next part — and that is your error, not theirs.
 
-Final verification of the whole plan: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo deny check`, `pwsh ./Tools/validate-architecture-rust.ps1`, `npm run ci` — whichever are relevant to the touched stacks. Plus: any build step the gate does not run (native libs, codegen, migrations) goes in the report as a separate line of required user action — otherwise the new code physically never reaches the app.
+Final verification of the whole plan: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo deny check`, `pwsh ./tools/validate-architecture-rust.ps1`, `npm run ci` — whichever are relevant to the touched stacks. Plus: any build step the gate does not run (native libs, codegen, migrations) goes in the report as a separate line of required user action — otherwise the new code physically never reaches the app.
 
 §6 is not `/flora-code-reviewer`. Do **not** invoke the code loop yourself after a wave. If the user asks to review/revise the implementation, run `/flora-code-reviewer` then `/flora-code-reviser` on that diff. Code-loop `ready` does not skip §6; a red §6 gate is not closed by a code-review report.
 
@@ -175,8 +175,8 @@ Then for failures:
 
 ## 8) When to stop and ask the user
 
-- The part would require violating `AGENTS.md` boundaries: access to another module’s DB, business logic in Shared/API/Products, a direct dependency between App products, functional → Social. Do not execute — reject and propose an alternative.
-- Need to change something frozen: public HTTP contract, DB schema, FIRA formulas, `Documents/test-vectors/**`, `Artifacts/contract-fixtures/**`.
+- The part would require violating `agents.md` boundaries: access to another module’s DB, business logic in Shared/API/Products, a direct dependency between App products, functional → Social. Do not execute — reject and propose an alternative.
+- Need to change something frozen: public HTTP contract, DB schema, FIRA formulas, `documents/test-vectors/**`, `artifacts/contract-fixtures/**`.
 - Need `git commit`/`push` or preparing commits — only on an explicit user request.
 - The model family from the table is not in the environment.
 - The plan is internally contradictory or a key decision is missing — list what is missing and do not start a wave on guesses.
@@ -202,7 +202,7 @@ No commits made; execution log written to <plan file>
 
 Call out foreign tree edits unrelated to the plan (someone changed files before you) on a separate line in the report — otherwise the user will attribute them to you.
 
-Plus, as `AGENTS.md` requires: briefly — why this structure, how boundaries were kept, why it is safe to scale (the module can be extracted to a service without a large refactor).
+Plus, as `agents.md` requires: briefly — why this structure, how boundaries were kept, why it is safe to scale (the module can be extracted to a service without a large refactor).
 
 ## Anti-patterns
 

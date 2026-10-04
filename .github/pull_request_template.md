@@ -6,9 +6,9 @@
 
 ## Чек-лист (обязательно)
 
-- [ ] **CLA:** я прочитал(а) и принимаю [CLA — CONTRIBUTING.md, раздел 1](https://github.com/effka11/Flora.Ecosystem/blob/main/CONTRIBUTING.md#1-лицензионное-соглашение-контрибьютора--cla-обязательно), включая право двойного лицензирования моего Вклада правообладателем **Egor Ozerskikh** (GNU AGPLv3 / CC BY-SA 4.0 + коммерческие лицензии на Flora Ecosystem)
-- [ ] Все коммиты подписаны GPG — бейдж **Verified** ([CONTRIBUTING.md, раздел 2](https://github.com/effka11/Flora.Ecosystem/blob/main/CONTRIBUTING.md#2-криптографическая-подпись-коммитов--gpg-обязательно))
-- [ ] Сборка и проверки проходят (CONTRIBUTING.md, раздел 5)
-- [ ] Архитектурные границы модулей соблюдены (CONTRIBUTING.md, раздел 4)
+- [ ] **CLA:** я прочитал(а) и принимаю [CLA — contributing.md, раздел 1](https://github.com/effka11/Flora.Ecosystem/blob/main/contributing.md#1-лицензионное-соглашение-контрибьютора--cla-обязательно), включая право двойного лицензирования моего Вклада правообладателем **Egor Ozerskikh** (GNU AGPLv3 / CC BY-SA 4.0 + коммерческие лицензии на Flora Ecosystem)
+- [ ] Все коммиты подписаны GPG — бейдж **Verified** ([contributing.md, раздел 2](https://github.com/effka11/Flora.Ecosystem/blob/main/contributing.md#2-криптографическая-подпись-коммитов--gpg-обязательно))
+- [ ] Сборка и проверки проходят (contributing.md, раздел 5)
+- [ ] Архитектурные границы модулей соблюдены (contributing.md, раздел 4)
 - [ ] В PR нет секретов, ключей, `.env` и других чувствительных данных
 - [ ] Сторонние материалы (если есть) указаны с источником и лицензией, совместимой с двойным лицензированием проекта

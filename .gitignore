@@ -23,20 +23,20 @@ yarn-error.log*
 pnpm-debug.log*
 *.tsbuildinfo
 
-# Next.js (Apps/Web)
+# Next.js (apps/Web)
 .next/
 out/
 
-# Expo / React Native (Apps/Mobile)
+# Expo / React Native (apps/Mobile)
 .expo/
 .metro-health-check*
 **/android/
 **/ios/
 # Local Expo native modules must stay in git (not prebuild output).
-!Apps/Mobile/modules/*/android/
-!Apps/Mobile/modules/*/android/**
-Apps/Mobile/modules/*/android/build/
-Apps/Mobile/modules/*/android/.gradle/
+!apps/Mobile/modules/*/android/
+!apps/Mobile/modules/*/android/**
+apps/Mobile/modules/*/android/build/
+apps/Mobile/modules/*/android/.gradle/
 .kotlin/
 
 # Environment — never commit secrets; examples are ok
@@ -46,8 +46,8 @@ Apps/Mobile/modules/*/android/.gradle/
 !.env.example
 
 # Secrets / local-only config (never commit; *.example.* templates are ok)
-# All machine-local files live under /Local/ (not in remote).
-/Local/
+# All machine-local files live under /local/ (not in remote).
+/local/
 # Legacy locations (pre-Local/); keep ignored if recreated at root
 .flora/
 appsettings.Local.json
@@ -55,28 +55,28 @@ appsettings.Production.json
 appsettings.*.Local.json
 Flora.API/cursor-temp-bootstrap.sql
 SECRETS-ROTATION.local.md
-# App-update broadcast (prod): Scripts/broadcast.env.example is committed
-Scripts/broadcast.env
-Scripts/broadcast.env.local
+# App-update broadcast (prod): scripts/broadcast.env.example is committed
+scripts/broadcast.env
+scripts/broadcast.env.local
 **/flora-broadcast-token-once.txt
-!Scripts/broadcast.env.example
+!scripts/broadcast.env.example
 *.secrets.local.*
 
 # Firebase Admin SDK / any real service-account creds (local API push) — keep only *.example
 Flora.API/secrets/*
 !Flora.API/secrets/*.example
 !Flora.API/secrets/*.example.*
-Backend/secrets/*
-!Backend/secrets/*.example
-!Backend/secrets/*.example.*
+backend/secrets/*
+!backend/secrets/*.example
+!backend/secrets/*.example.*
 
 # Build / test artifacts (keep contract-fixtures for CI clones)
-Artifacts/*
-!Artifacts/contract-fixtures/
-!Artifacts/contract-fixtures/**
+artifacts/*
+!artifacts/contract-fixtures/
+!artifacts/contract-fixtures/**
 .tmp-build-check/
 .tmp-apk-inspect/
-Apps/Web/.tmp-feed-compact-scroll/
+apps/Web/.tmp-feed-compact-scroll/
 .expo-export-test/
 **/.expo-export-test/
 **/android_gen/
@@ -91,17 +91,16 @@ Thumbs.db
 *.swo
 .idea/
 
-# Rust (workspace root Cargo.toml → ./Target via .cargo/config.toml)
-/Target/
+# Rust (workspace root Cargo.toml → ./target via .cargo/config.toml)
 /target/
-# Custom CARGO_TARGET_DIR for A/B benches (Target-v79-*, Target-v710-*, …)
-/Target-*/
-Backend/Target/
-Backend/target/
+# Custom CARGO_TARGET_DIR for A/B benches (target-v79-*, target-v710-*, …)
+/target-*/
+backend/Target/
+backend/target/
 **/Cargo.toml.orig
-Apps/Web/public/frc/*.wasm
-Apps/Mobile/modules/flora-frc-i/android/src/main/jniLibs/
-Apps/Mobile/modules/flora-frc-i/ios/lib/
+apps/Web/public/frc/*.wasm
+apps/Mobile/modules/flora-frc-i/android/src/main/jniLibs/
+apps/Mobile/modules/flora-frc-i/ios/lib/
 
 # Python bytecode (compete/audit probes)
 **/__pycache__/

@@ -34,7 +34,7 @@ Model-family profiles live in [models.md](models.md). Versions and available thi
 
 Before splitting, identify and record in 3–5 lines:
 
-- which modules/workspaces are touched (for Flora: `Products/*/crates/modules/*`, `Backend/crates/*`, `Apps/Web`, `Apps/Mobile`, `Packages/*`);
+- which modules/workspaces are touched (for Flora: `products/*/crates/modules/*`, `backend/crates/*`, `apps/Web`, `apps/Mobile`, `packages/*`);
 - high-risk zones: DB migrations, public HTTP contracts, auth/security, concurrency, frozen surfaces;
 - which work depends on what, and what can proceed in parallel;
 - overall scale (hours/days) — this drives whether an expensive orchestrator is warranted.

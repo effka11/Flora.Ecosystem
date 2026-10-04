@@ -1,18 +1,18 @@
 ---
 name: apps-web-messages-chat
-description: Чат Messages (Apps/Web Flora) — сетка compose, стикеры/эмодзи, голосовые сообщения, плеер в пузыре. Вызывай перед правками Apps/Web/app/(dashboard)/messages/** и voice assets API.
+description: Чат Messages (apps/Web Flora) — сетка compose, стикеры/эмодзи, голосовые сообщения, плеер в пузыре. Вызывай перед правками apps/Web/app/(dashboard)/messages/** и voice assets API.
 ---
 
 # Messages chat — compose, стикеры, голос
 
-Применять при правках `Apps/Web/app/(dashboard)/messages/**` и связанного API голосовых ассетов.
+Применять при правках `apps/Web/app/(dashboard)/messages/**` и связанного API голосовых ассетов.
 
 ## Архитектура (границы)
 
 | Слой | Что здесь |
 |------|-----------|
 | **Modules / Products** | Загрузка/скачивание voice asset, FSCP-блоки, лимиты (`MaxVoiceAssetBytes`, длительность) |
-| **Apps/Web** | Запись, waveform UI, `VoiceMessageCard`, compose, вставка emoji — **без** бизнес-правил в API |
+| **apps/Web** | Запись, waveform UI, `VoiceMessageCard`, compose, вставка emoji — **без** бизнес-правил в API |
 
 Зависимости: `Apps → API → Products → Modules`. Не тащить логику Messaging в Shared.
 

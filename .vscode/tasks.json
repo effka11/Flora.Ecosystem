@@ -10,7 +10,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\zed-dev-api-web.ps1"
+        "${workspaceFolder}\\scripts\\zed-dev-api-web.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -31,7 +31,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\gov-dev-localhost.ps1"
+        "${workspaceFolder}\\scripts\\gov-dev-localhost.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -73,7 +73,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\stop-dev-localhost.ps1",
+        "${workspaceFolder}\\scripts\\stop-dev-localhost.ps1",
         "-Api"
       ],
       "options": {
@@ -100,7 +100,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\run-rust-gateway-localhost.ps1"
+        "${workspaceFolder}\\scripts\\run-rust-gateway-localhost.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -137,7 +137,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\run-rust-gateway-localhost.ps1"
+        "${workspaceFolder}\\scripts\\run-rust-gateway-localhost.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -173,7 +173,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\run-rust-gateway-localhost.ps1"
+        "${workspaceFolder}\\scripts\\run-rust-gateway-localhost.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -209,7 +209,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\run-rust-gateway-localhost.ps1"
+        "${workspaceFolder}\\scripts\\run-rust-gateway-localhost.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -267,7 +267,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\web-dev-localhost.ps1"
+        "${workspaceFolder}\\scripts\\web-dev-localhost.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -303,7 +303,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\mobile-debug-android.ps1"
+        "${workspaceFolder}\\scripts\\mobile-debug-android.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -350,7 +350,7 @@
         "$env:NEXT_PUBLIC_DEV_AUTO_AUTH='1'; npm run dev"
       ],
       "options": {
-        "cwd": "${workspaceFolder}\\Apps\\Web"
+        "cwd": "${workspaceFolder}\\apps\\Web"
       },
       "presentation": {
         "reveal": "always",
@@ -368,7 +368,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\deploy-flora-social-from-task.ps1"
+        "${workspaceFolder}\\scripts\\deploy-flora-social-from-task.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -393,10 +393,10 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\mobile-release-android.ps1"
+        "${workspaceFolder}\\scripts\\mobile-release-android.ps1"
       ],
       "options": {
-        "cwd": "${workspaceFolder}\\Apps\\Mobile"
+        "cwd": "${workspaceFolder}\\apps\\Mobile"
       },
       "group": {
         "kind": "build",
@@ -418,11 +418,11 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\mobile-release-android.ps1",
+        "${workspaceFolder}\\scripts\\mobile-release-android.ps1",
         "-PublishGitHub"
       ],
       "options": {
-        "cwd": "${workspaceFolder}\\Apps\\Mobile"
+        "cwd": "${workspaceFolder}\\apps\\Mobile"
       },
       "group": {
         "kind": "build",
@@ -444,7 +444,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\send-apk-auto-update.ps1",
+        "${workspaceFolder}\\scripts\\send-apk-auto-update.ps1",
         "-Production",
         "-Confirm"
       ],
@@ -468,7 +468,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\send-apk-auto-update.ps1"
+        "${workspaceFolder}\\scripts\\send-apk-auto-update.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}",
@@ -493,10 +493,10 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\mobile-install-release-android.ps1"
+        "${workspaceFolder}\\scripts\\mobile-install-release-android.ps1"
       ],
       "options": {
-        "cwd": "${workspaceFolder}\\Apps\\Mobile"
+        "cwd": "${workspaceFolder}\\apps\\Mobile"
       },
       "presentation": {
         "reveal": "always",
@@ -514,7 +514,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\Scripts\\setup-app-update-broadcast.ps1"
+        "${workspaceFolder}\\scripts\\setup-app-update-broadcast.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}"

@@ -1,70 +1,70 @@
 # Flora.Ecosystem Cargo workspace (next-architecture.md §2).
-# Root includes Backend/crates (host) + Products/* (App + Functional).
-# Future "Platform" rename = this root layout. Rules: §2.3, Tools/validate-architecture-rust.ps1.
+# Root includes backend/crates (host) + products/* (App + Functional).
+# Future "Platform" rename = this root layout. Rules: §2.3, tools/validate-architecture-rust.ps1.
 
 [workspace]
 resolver = "3"
 members = [
-    "Backend/crates/flora-api",
-    "Backend/crates/flora-shared",
-    "Backend/crates/flora-migrate",
-    "Backend/crates/infrastructure/flora-grpc-bridge",
-    "Backend/Tests/parity",
+    "backend/crates/flora-api",
+    "backend/crates/flora-shared",
+    "backend/crates/flora-migrate",
+    "backend/crates/infrastructure/flora-grpc-bridge",
+    "backend/Tests/parity",
     # App: Flora.Social
-    "Products/Flora.Social/crates/flora-social",
-    "Products/Flora.Social/crates/modules/flora-auth",
-    "Products/Flora.Social/crates/modules/flora-auth-contracts",
-    "Products/Flora.Social/crates/modules/flora-users",
-    "Products/Flora.Social/crates/modules/flora-users-contracts",
-    "Products/Flora.Social/crates/modules/flora-content",
-    "Products/Flora.Social/crates/modules/flora-content-contracts",
-    "Products/Flora.Social/crates/modules/flora-messaging",
-    "Products/Flora.Social/crates/modules/flora-messaging-contracts",
-    "Products/Flora.Social/crates/modules/flora-chat-organizer",
-    "Products/Flora.Social/crates/modules/flora-chat-organizer-contracts",
-    "Products/Flora.Social/crates/modules/flora-music",
-    "Products/Flora.Social/crates/modules/flora-music-contracts",
-    "Products/Flora.Social/crates/modules/flora-notifications",
-    "Products/Flora.Social/crates/modules/flora-notifications-contracts",
-    "Products/Flora.Social/crates/modules/flora-verification",
-    "Products/Flora.Social/crates/modules/flora-verification-contracts",
+    "products/Flora.Social/crates/flora-social",
+    "products/Flora.Social/crates/modules/flora-auth",
+    "products/Flora.Social/crates/modules/flora-auth-contracts",
+    "products/Flora.Social/crates/modules/flora-users",
+    "products/Flora.Social/crates/modules/flora-users-contracts",
+    "products/Flora.Social/crates/modules/flora-content",
+    "products/Flora.Social/crates/modules/flora-content-contracts",
+    "products/Flora.Social/crates/modules/flora-messaging",
+    "products/Flora.Social/crates/modules/flora-messaging-contracts",
+    "products/Flora.Social/crates/modules/flora-chat-organizer",
+    "products/Flora.Social/crates/modules/flora-chat-organizer-contracts",
+    "products/Flora.Social/crates/modules/flora-music",
+    "products/Flora.Social/crates/modules/flora-music-contracts",
+    "products/Flora.Social/crates/modules/flora-notifications",
+    "products/Flora.Social/crates/modules/flora-notifications-contracts",
+    "products/Flora.Social/crates/modules/flora-verification",
+    "products/Flora.Social/crates/modules/flora-verification-contracts",
     # Functional: FSCP
-    "Products/FSCP/crates/fscp-contracts",
-    "Products/FSCP/crates/fscp-core",
-    "Products/FSCP/crates/fscp-crypto",
-    "Products/FSCP/crates/fscp-mobile-ffi",
+    "products/FSCP/crates/fscp-contracts",
+    "products/FSCP/crates/fscp-core",
+    "products/FSCP/crates/fscp-crypto",
+    "products/FSCP/crates/fscp-mobile-ffi",
     # Functional: FIRA
-    "Products/FIRA/crates/fira-contracts",
-    "Products/FIRA/crates/fira-core",
+    "products/FIRA/crates/fira-contracts",
+    "products/FIRA/crates/fira-core",
     # Functional: FSA
-    "Products/FSA/crates/fsa-contracts",
-    "Products/FSA/crates/fsa-core",
+    "products/FSA/crates/fsa-contracts",
+    "products/FSA/crates/fsa-core",
     # Functional: FEP
-    "Products/FEP/crates/flora-economy",
-    "Products/FEP/crates/flora-economy-contracts",
-    "Products/FEP/crates/flora-economy-crypto",
-    "Products/FEP/crates/flora-economy-wasm",
-    "Products/FEP/crates/flora-economy-witness",
+    "products/FEP/crates/flora-economy",
+    "products/FEP/crates/flora-economy-contracts",
+    "products/FEP/crates/flora-economy-crypto",
+    "products/FEP/crates/flora-economy-wasm",
+    "products/FEP/crates/flora-economy-witness",
     # Functional: FGP
-    "Products/FGP/crates/flora-governance-crypto",
-    "Products/FGP/crates/flora-governance-contracts",
+    "products/FGP/crates/flora-governance-crypto",
+    "products/FGP/crates/flora-governance-contracts",
     # Functional: FPP
-    "Products/FPP/crates/fpp-contracts",
-    "Products/FPP/crates/fpp-core",
-    "Products/FPP/crates/fpp-crypto",
+    "products/FPP/crates/fpp-contracts",
+    "products/FPP/crates/fpp-core",
+    "products/FPP/crates/fpp-crypto",
     # Functional: FRC
-    "Products/FRC/crates/frc-i",
-    "Products/FRC/crates/frc-i-integration",
-    "Products/FRC/crates/frc-i-mobile-ffi",
-    "Products/FRC/crates/flora-codec-tools",
-    "Products/FRC/crates/frc-a-core",
-    "Products/FRC/crates/frc-a-cli",
-    "Products/FRC/crates/frc-a-polygon",
-    "Products/FRC/crates/frc-v",
-    "Products/FRC/crates/frc-v-cli",
-    "Products/FRC/crates/frc-v-polygon",
-    "Products/FRC/crates/frc-v-wasm",
-    "Products/FRC/crates/frc-i-wasm",
+    "products/FRC/crates/frc-i",
+    "products/FRC/crates/frc-i-integration",
+    "products/FRC/crates/frc-i-mobile-ffi",
+    "products/FRC/crates/flora-codec-tools",
+    "products/FRC/crates/frc-a-core",
+    "products/FRC/crates/frc-a-cli",
+    "products/FRC/crates/frc-a-polygon",
+    "products/FRC/crates/frc-v",
+    "products/FRC/crates/frc-v-cli",
+    "products/FRC/crates/frc-v-polygon",
+    "products/FRC/crates/frc-v-wasm",
+    "products/FRC/crates/frc-i-wasm",
 ]
 
 [workspace.package]
@@ -78,47 +78,47 @@ publish = false
 unsafe_code = "forbid"
 
 [workspace.dependencies]
-flora-shared = { path = "Backend/crates/flora-shared" }
-flora-social = { path = "Products/Flora.Social/crates/flora-social" }
-flora-auth = { path = "Products/Flora.Social/crates/modules/flora-auth" }
-flora-auth-contracts = { path = "Products/Flora.Social/crates/modules/flora-auth-contracts" }
-flora-users = { path = "Products/Flora.Social/crates/modules/flora-users" }
-flora-users-contracts = { path = "Products/Flora.Social/crates/modules/flora-users-contracts" }
-flora-content = { path = "Products/Flora.Social/crates/modules/flora-content" }
-flora-content-contracts = { path = "Products/Flora.Social/crates/modules/flora-content-contracts" }
-flora-messaging = { path = "Products/Flora.Social/crates/modules/flora-messaging" }
-flora-messaging-contracts = { path = "Products/Flora.Social/crates/modules/flora-messaging-contracts" }
-flora-chat-organizer = { path = "Products/Flora.Social/crates/modules/flora-chat-organizer" }
-flora-chat-organizer-contracts = { path = "Products/Flora.Social/crates/modules/flora-chat-organizer-contracts" }
-flora-music = { path = "Products/Flora.Social/crates/modules/flora-music" }
-flora-music-contracts = { path = "Products/Flora.Social/crates/modules/flora-music-contracts" }
-flora-notifications = { path = "Products/Flora.Social/crates/modules/flora-notifications" }
-flora-notifications-contracts = { path = "Products/Flora.Social/crates/modules/flora-notifications-contracts" }
-flora-verification = { path = "Products/Flora.Social/crates/modules/flora-verification" }
-flora-verification-contracts = { path = "Products/Flora.Social/crates/modules/flora-verification-contracts" }
-fscp-contracts = { path = "Products/FSCP/crates/fscp-contracts" }
-fscp-core = { path = "Products/FSCP/crates/fscp-core" }
-fscp-crypto = { path = "Products/FSCP/crates/fscp-crypto" }
-fscp-mobile-ffi = { path = "Products/FSCP/crates/fscp-mobile-ffi" }
-fira-contracts = { path = "Products/FIRA/crates/fira-contracts" }
-fira-core = { path = "Products/FIRA/crates/fira-core" }
-fsa-contracts = { path = "Products/FSA/crates/fsa-contracts" }
-fsa-core = { path = "Products/FSA/crates/fsa-core" }
-flora-economy = { path = "Products/FEP/crates/flora-economy" }
-flora-economy-contracts = { path = "Products/FEP/crates/flora-economy-contracts" }
-flora-economy-crypto = { path = "Products/FEP/crates/flora-economy-crypto" }
-flora-governance-crypto = { path = "Products/FGP/crates/flora-governance-crypto" }
-flora-governance-contracts = { path = "Products/FGP/crates/flora-governance-contracts" }
-fpp-contracts = { path = "Products/FPP/crates/fpp-contracts" }
-fpp-core = { path = "Products/FPP/crates/fpp-core" }
-fpp-crypto = { path = "Products/FPP/crates/fpp-crypto" }
-frc-i = { path = "Products/FRC/crates/frc-i" }
-frc-i-integration = { path = "Products/FRC/crates/frc-i-integration" }
-frc-i-mobile-ffi = { path = "Products/FRC/crates/frc-i-mobile-ffi" }
-frc-a-core = { path = "Products/FRC/crates/frc-a-core" }
-frc-v = { path = "Products/FRC/crates/frc-v" }
-frc-i-wasm = { path = "Products/FRC/crates/frc-i-wasm" }
-flora-grpc-bridge = { path = "Backend/crates/infrastructure/flora-grpc-bridge" }
+flora-shared = { path = "backend/crates/flora-shared" }
+flora-social = { path = "products/Flora.Social/crates/flora-social" }
+flora-auth = { path = "products/Flora.Social/crates/modules/flora-auth" }
+flora-auth-contracts = { path = "products/Flora.Social/crates/modules/flora-auth-contracts" }
+flora-users = { path = "products/Flora.Social/crates/modules/flora-users" }
+flora-users-contracts = { path = "products/Flora.Social/crates/modules/flora-users-contracts" }
+flora-content = { path = "products/Flora.Social/crates/modules/flora-content" }
+flora-content-contracts = { path = "products/Flora.Social/crates/modules/flora-content-contracts" }
+flora-messaging = { path = "products/Flora.Social/crates/modules/flora-messaging" }
+flora-messaging-contracts = { path = "products/Flora.Social/crates/modules/flora-messaging-contracts" }
+flora-chat-organizer = { path = "products/Flora.Social/crates/modules/flora-chat-organizer" }
+flora-chat-organizer-contracts = { path = "products/Flora.Social/crates/modules/flora-chat-organizer-contracts" }
+flora-music = { path = "products/Flora.Social/crates/modules/flora-music" }
+flora-music-contracts = { path = "products/Flora.Social/crates/modules/flora-music-contracts" }
+flora-notifications = { path = "products/Flora.Social/crates/modules/flora-notifications" }
+flora-notifications-contracts = { path = "products/Flora.Social/crates/modules/flora-notifications-contracts" }
+flora-verification = { path = "products/Flora.Social/crates/modules/flora-verification" }
+flora-verification-contracts = { path = "products/Flora.Social/crates/modules/flora-verification-contracts" }
+fscp-contracts = { path = "products/FSCP/crates/fscp-contracts" }
+fscp-core = { path = "products/FSCP/crates/fscp-core" }
+fscp-crypto = { path = "products/FSCP/crates/fscp-crypto" }
+fscp-mobile-ffi = { path = "products/FSCP/crates/fscp-mobile-ffi" }
+fira-contracts = { path = "products/FIRA/crates/fira-contracts" }
+fira-core = { path = "products/FIRA/crates/fira-core" }
+fsa-contracts = { path = "products/FSA/crates/fsa-contracts" }
+fsa-core = { path = "products/FSA/crates/fsa-core" }
+flora-economy = { path = "products/FEP/crates/flora-economy" }
+flora-economy-contracts = { path = "products/FEP/crates/flora-economy-contracts" }
+flora-economy-crypto = { path = "products/FEP/crates/flora-economy-crypto" }
+flora-governance-crypto = { path = "products/FGP/crates/flora-governance-crypto" }
+flora-governance-contracts = { path = "products/FGP/crates/flora-governance-contracts" }
+fpp-contracts = { path = "products/FPP/crates/fpp-contracts" }
+fpp-core = { path = "products/FPP/crates/fpp-core" }
+fpp-crypto = { path = "products/FPP/crates/fpp-crypto" }
+frc-i = { path = "products/FRC/crates/frc-i" }
+frc-i-integration = { path = "products/FRC/crates/frc-i-integration" }
+frc-i-mobile-ffi = { path = "products/FRC/crates/frc-i-mobile-ffi" }
+frc-a-core = { path = "products/FRC/crates/frc-a-core" }
+frc-v = { path = "products/FRC/crates/frc-v" }
+frc-i-wasm = { path = "products/FRC/crates/frc-i-wasm" }
+flora-grpc-bridge = { path = "backend/crates/infrastructure/flora-grpc-bridge" }
 
 axum = "0.8.9"
 tower = "0.5.3"

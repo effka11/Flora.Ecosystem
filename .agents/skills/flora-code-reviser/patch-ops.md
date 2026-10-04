@@ -26,7 +26,7 @@ Format: **operation + forbid**. `do-not-patch (AskQuestion)` = do not edit for t
 - `flora_frozen` — patch ONLY if (1) the thread already has an explicit user decision **and** the delta cites those frozen paths, apply that delta only; or (2) the delta explicitly lists frozen paths to **revert**, revert those only. Else do-not-patch (AskQuestion). Never lift freeze. Never guess revert vs keep.
 - `dead_path` — patch ONLY if the delta picks one side and is concrete: wire a live consumer **or** revert the dead surface. Vague → do-not-patch (AskQuestion). Skip if the review already marked contracts/later-wave (no op).
 - `plan_drift` — do-not-patch (AskQuestion): finding must already be in Unknowns; ask whether the plan or the code is canonical. Do not rewrite either.
-- `skill_scar` — apply the scar fix named in the delta / zone skill / `Apps/Mobile/AGENTS.md`; do not invent a new perf architecture.
+- `skill_scar` — apply the scar fix named in the delta / zone skill / `apps/Mobile/AGENTS.md`; do not invent a new perf architecture.
 - `new_dep` — revert the dependency unless the thread already has explicit permission to add it; do not swap in a different crate.
 - `test_gap` — add tests **only** for the cited production paths in the delta (concrete predicate); never fit expectations to a buggy impl; do not add an unrelated suite.
 - `gate_red` — fix production code in zone until the scoped gate is green; **forbidden:** deleting/skipping/fitting tests to go green. Do not “fix” pre-existing red outside the range.

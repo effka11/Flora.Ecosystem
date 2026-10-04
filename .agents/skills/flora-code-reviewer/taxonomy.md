@@ -27,7 +27,7 @@ This loop judges **code that already exists**. Do not re-score a work plan (that
 | `flora_frozen` | C | blocker | frozen surface (HTTP, schema, FIRA formula, test-vectors, contract-fixtures) without an explicit user decision |
 | `dead_path` | C | major | new surface/API/branch never reached from a live in-repo consumer (skip: `*-contracts` / contracts-only zone when a later wiring part is in the cited plan/brief) |
 | `plan_drift` | C | unknown | method or scope differs from the cited plan (skip if no plan); which side is canonical is a human choice |
-| `skill_scar` | C | major | violated a named scar in a required zone skill / `Apps/Mobile/AGENTS.md` |
+| `skill_scar` | C | major | violated a named scar in a required zone skill / `apps/Mobile/AGENTS.md` |
 | `new_dep` | C | major | new `package.json` / `Cargo.toml` dependency without explicit permission in the thread |
 | `test_gap` | C | major | non-trivial new logic in the diff with no corresponding test |
 | `gate_red` | C | major | scoped gate failed and the failure is in this diff’s zone |

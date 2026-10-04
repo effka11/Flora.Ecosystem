@@ -1,6 +1,6 @@
 # next-architecture — целевая архитектура Flora.Ecosystem (Rust + TS) и план миграции
 
-> **Статус: draft v1 (2026-07-13).** Нормативный план перевода бэкенда с **C# / .NET 10** на **Rust** при неизменных TypeScript-клиентах. Текущее состояние системы описано в [`ARCHITECTURE.md`](ARCHITECTURE.md) — этот документ описывает **конечное состояние** и **безопасный путь** к нему. По завершении миграции документ станет основой нового `ARCHITECTURE.md`.
+> **Статус: draft v1 (2026-07-13).** Нормативный план перевода бэкенда с **C# / .NET 10** на **Rust** при неизменных TypeScript-клиентах. Текущее состояние системы описано в [`architecture.md`](architecture.md) — этот документ описывает **конечное состояние** и **безопасный путь** к нему. По завершении миграции документ станет основой нового `architecture.md`.
 
 ---
 
@@ -19,8 +19,8 @@
 ### 1.1. Цели
 
 1. Полностью заменить .NET-бэкенд на Rust без остановки сервиса и без изменений в клиентах.
-2. Сохранить модульный монолит и правила границ из [`AGENTS.md`](AGENTS.md): Clean Architecture внутри модуля, общение только через контракты, однонаправленные зависимости `Apps → API → Products → Modules → Infrastructure`.
-3. По пути погасить главный долг: декомпозировать god-контроллер [`ImportedSocialController.cs`](Products/Flora.Social/ImportedSocialController.cs) (~3.5k строк, ~87 эндпоинтов) на модульные роутеры.
+2. Сохранить модульный монолит и правила границ из [`agents.md`](agents.md): Clean Architecture внутри модуля, общение только через контракты, однонаправленные зависимости `Apps → API → Products → Modules → Infrastructure`.
+3. По пути погасить главный долг: декомпозировать god-контроллер [`ImportedSocialController.cs`](products/Flora.Social/ImportedSocialController.cs) (~3.5k строк, ~87 эндпоинтов) на модульные роутеры.
 4. Сохранить возможность выноса любого модуля в отдельный сервис (после миграции — без изменения доменного кода, сменой композиции).
 
 ### 1.2. Не-цели (жёсткие ограничения на время миграции)
@@ -41,35 +41,35 @@
 
 ### 2.0. Продуктовая топология (App vs Functional)
 
-Пиры под [`Products/`](Products/). Классы и правила — [`ARCHITECTURE.md`](ARCHITECTURE.md) §1.1. Кратко:
+Пиры под [`products/`](products/). Классы и правила — [`architecture.md`](architecture.md) §1.1. Кратко:
 
 - **App:** Flora.Social (доменные модули Auth/Users/… — внутренности Social, не пиры). Зарезервированы без пустых папок: Browser, Email, OS.
 - **Functional (headless/embeddable):** FIRA, FSA, FSCP, FRC, FGP, FEP, FPP — kernel/contracts (+ опц. runtime); не зависят от Social.
 - **UIP** — DTO в `fira-contracts`; Users владеет персистенцией и маппит в `InterestProfile`.
-- **FSA** — kernel+contracts в `Products/FSA` (поиск: анализ/индекс/BM25F/персонализация); мост FIRA→FSA — данные (`AffinitySnapshot`), не код. Спека — [`Documents/fsa/FSA.md`](Documents/fsa/FSA.md).
-- **FPP** — kernel+contracts в `Products/FPP`; таблицы `personhood_*` пишет только Verification (Social).
-- **FSCP product scope:** wire + crypto + server validator + client session FSM. Epochs/backup/devices — Messaging / [`Documents/fscp/e2e-security.md`](Documents/fscp/e2e-security.md).
-- **TS SoT** functional-клиента — в `Products/<Name>/` (напр. `@flora/fscp`); `Packages/flora-client-core` реэкспортирует.
+- **FSA** — kernel+contracts в `products/FSA` (поиск: анализ/индекс/BM25F/персонализация); мост FIRA→FSA — данные (`AffinitySnapshot`), не код. Спека — [`documents/fsa/FSA.md`](documents/fsa/FSA.md).
+- **FPP** — kernel+contracts в `products/FPP`; таблицы `personhood_*` пишет только Verification (Social).
+- **FSCP product scope:** wire + crypto + server validator + client session FSM. Epochs/backup/devices — Messaging / [`documents/fscp/e2e-security.md`](documents/fscp/e2e-security.md).
+- **TS SoT** functional-клиента — в `products/<Name>/` (напр. `@flora/fscp`); `packages/flora-client-core` реэкспортирует.
 - **Один Cargo workspace** (корень [`Cargo.toml`](Cargo.toml)). Members включают **все** Products crates, в т.ч. FRC.
 - Functional → Social = **запрещено** (валидатор).
 
 ### 2.1. Расположение и структура
 
-Единый Cargo workspace — **корень репозитория** [`Cargo.toml`](Cargo.toml) (= будущий Platform; каталог `Backend/` хранит host-crates и конфиг).
+Единый Cargo workspace — **корень репозитория** [`Cargo.toml`](Cargo.toml) (= будущий Platform; каталог `backend/` хранит host-crates и конфиг).
 
 ```
-Cargo.toml                      # workspace members → Backend/crates + Products/*/crates
-Products/
+Cargo.toml                      # workspace members → backend/crates + products/*/crates
+products/
   Flora.Social/                 # PRODUCT_CLASS: app (C# as-is + Rust crates/)
   FIRA/ FSA/ FSCP/ FRC/ FEP/ FGP/ FPP/
-Backend/
+backend/
   crates/ flora-api, flora-shared, flora-migrate, infrastructure/
-  Tests/parity/
+  tests/parity/
   appsettings.json
-Apps/  Packages/  Documents/
+apps/  packages/  documents/
 ```
 
-C#-каталоги (`Flora.API`, `Modules/`, …) удаляются на **Фазе 5**; до cutover C# `Products/Flora.Social` не ломать.
+C#-каталоги (`Flora.API`, `Modules/`, …) удаляются на **Фазе 5**; до cutover C# `products/Flora.Social` не ломать.
 
 ### 2.2. Гранулярность crate'ов
 
@@ -90,7 +90,7 @@ C#-каталоги (`Flora.API`, `Modules/`, …) удаляются на **Ф�
 | `flora-shared` | только внешние crates |
 | Любой Functional | **не** `flora-social` и не `modules/flora-*` Social |
 
-Проверка — `Tools/validate-architecture-rust.ps1` + CI (`fmt`, `clippy -D warnings`, `cargo deny`).
+Проверка — `tools/validate-architecture-rust.ps1` + CI (`fmt`, `clippy -D warnings`, `cargo deny`).
 
 ### 2.4. Композиция вместо DI-контейнера
 
@@ -132,7 +132,7 @@ Rust-реализация обязана воспроизводить следу
 
 | Инвариант | Значение | Источник |
 | --- | --- | --- |
-| JWT | HS256, issuer `Flora.Auth`, audience `Flora.Ecosystem`, access 15 мин, clock skew **1 мин**, секрет ≥32 символов (`Jwt__Secret`) | [`JwtTokenService.cs`](Modules/Flora.Auth/Flora.Auth.Infrastructure/Services/JwtTokenService.cs), [`FloraJwtExtensions.cs`](Products/Flora.Social/FloraJwtExtensions.cs) |
+| JWT | HS256, issuer `Flora.Auth`, audience `Flora.Ecosystem`, access 15 мин, clock skew **1 мин**, секрет ≥32 символов (`Jwt__Secret`) | [`JwtTokenService.cs`](Modules/Flora.Auth/Flora.Auth.Infrastructure/Services/JwtTokenService.cs), [`FloraJwtExtensions.cs`](products/Flora.Social/FloraJwtExtensions.cs) |
 | Клеймы токена | `sub`, `email`, `jti` (+ дубли через .NET outbound mapping — фактический wire-набор зафиксировать фикстурой **до Фазы 2b**) | там же |
 | Refresh | 64 случайных байта → Base64; ротация: новый `jti`, новый refresh, `RotationId++`, продление на 7 дней; статус-модель `UserSession` | `AuthCredentialOperations.cs` |
 | Пароли | Argon2id: salt 16 B, hash 32 B, **t=4, m=65536 KiB, p=2**, хранение `Base64(salt‖hash)` (не PHC-строка!) | [`Argon2PasswordHasher.cs`](Modules/Flora.Auth/Flora.Auth.Infrastructure/Services/Argon2PasswordHasher.cs) |
@@ -156,9 +156,9 @@ Rust-реализация обязана воспроизводить следу
 
 ### 4.4. FSCP (серверная валидация формы конверта)
 
-Сервер не расшифровывает — только структурная валидация `fscp1:base64url(JSON)`. Паритет с [`FscpWireEnvelopeValidator.cs`](Products/Flora.Social/FscpWireEnvelopeValidator.cs): версия=1, лимиты (конверт ≤200k символов, внутренний JSON ≤120k байт, тело ≤64 KB), bootstrap-epoch `00000000-0000-4000-8000-000000000001`, ровно 2 получателя (1:1 DM), `conversationUuid`/`agreementPublicKeyId` через UUID v5 (§4.2), RKE `x25519-hkdf-xchacha20poly1305` (ephemeral 32 B, salt 32 B, nonce 24 B), Ed25519 (pub 32 B, подпись 64 B), совпадение `encryptedForReceiver == encryptedForSender`. Проверяется на golden-векторах [`Documents/test-vectors/`](Documents/test-vectors/README.md) + негативных кейсах, извлечённых из C#-тестов. Нормативные спецификации: [`Documents/fscp/FSCP.md`](Documents/fscp/FSCP.md), [`Documents/fscp/e2e-security.md`](Documents/fscp/e2e-security.md).
+Сервер не расшифровывает — только структурная валидация `fscp1:base64url(JSON)`. Паритет с [`FscpWireEnvelopeValidator.cs`](products/Flora.Social/FscpWireEnvelopeValidator.cs): версия=1, лимиты (конверт ≤200k символов, внутренний JSON ≤120k байт, тело ≤64 KB), bootstrap-epoch `00000000-0000-4000-8000-000000000001`, ровно 2 получателя (1:1 DM), `conversationUuid`/`agreementPublicKeyId` через UUID v5 (§4.2), RKE `x25519-hkdf-xchacha20poly1305` (ephemeral 32 B, salt 32 B, nonce 24 B), Ed25519 (pub 32 B, подпись 64 B), совпадение `encryptedForReceiver == encryptedForSender`. Проверяется на golden-векторах [`documents/test-vectors/`](documents/test-vectors/README.md) + негативных кейсах, извлечённых из C#-тестов. Нормативные спецификации: [`documents/fscp/FSCP.md`](documents/fscp/FSCP.md), [`documents/fscp/e2e-security.md`](documents/fscp/e2e-security.md).
 
-**Статус:** порт выполнен заранее (чистая функция без БД/HTTP, форма заморожена): [`flora-messaging/src/fscp.rs`](Backend/crates/modules/flora-messaging/src/fscp.rs). Паритет закреплён вектором `fscp-wire-validator-v1.json` (позитив + 22 негатива, **точные строки ошибок**) и consumer-тестами с обеих сторон — C# [`FscpWireValidatorVectors.cs`](Tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs), Rust [`fscp_wire_vectors.rs`](Backend/Tests/parity/tests/fscp_wire_vectors.rs); клиентская криптография RKE/fingerprint дополнительно сверена на RustCrypto ([`fscp_client_crypto_vectors.rs`](Backend/Tests/parity/tests/fscp_client_crypto_vectors.rs)). Сверх того, полный golden-транскрипт `fscp-message-transcript-v1.json` проходит на Rust весь клиентский путь — canonical JSON ([`canonical_json.rs`](Backend/Tests/parity/src/canonical_json.rs), байт-паритет с TS), Ed25519-подпись, RKE unwrap, расшифровка тела ([`fscp_transcript_vectors.rs`](Backend/Tests/parity/tests/fscp_transcript_vectors.rs)) — готовый фундамент будущего Rust client-core. Пост-квантовое направление FSCP v2 (гибрид X25519+ML-KEM-768) также закреплено на Rust заранее: [`fscp_hybrid_kem_vectors.rs`](Backend/Tests/parity/tests/fscp_hybrid_kem_vectors.rs) потребляет вектор `fscp-hybrid-kem-v2draft-v1.json` через RustCrypto `ml-kem` (dev-dependency паритет-харнесса, в продакшн-крейты не входит). Владение модулем **не меняется** (§6.0): до cutover Фазы 4 Rust-код трафик не обслуживает. Осознанные отличия на патологических входах задокументированы в шапке `fscp.rs` (дубликаты JSON-ключей, не-объектный корень в `TryExtractReceiver`, X-форма GUID).
+**Статус:** порт выполнен заранее (чистая функция без БД/HTTP, форма заморожена): [`flora-messaging/src/fscp.rs`](backend/crates/modules/flora-messaging/src/fscp.rs). Паритет закреплён вектором `fscp-wire-validator-v1.json` (позитив + 22 негатива, **точные строки ошибок**) и consumer-тестами с обеих сторон — C# [`FscpWireValidatorVectors.cs`](tests/Flora.GoldenVectors/FscpWireValidatorVectors.cs), Rust [`fscp_wire_vectors.rs`](backend/Tests/parity/tests/fscp_wire_vectors.rs); клиентская криптография RKE/fingerprint дополнительно сверена на RustCrypto ([`fscp_client_crypto_vectors.rs`](backend/Tests/parity/tests/fscp_client_crypto_vectors.rs)). Сверх того, полный golden-транскрипт `fscp-message-transcript-v1.json` проходит на Rust весь клиентский путь — canonical JSON ([`canonical_json.rs`](backend/Tests/parity/src/canonical_json.rs), байт-паритет с TS), Ed25519-подпись, RKE unwrap, расшифровка тела ([`fscp_transcript_vectors.rs`](backend/Tests/parity/tests/fscp_transcript_vectors.rs)) — готовый фундамент будущего Rust client-core. Пост-квантовое направление FSCP v2 (гибрид X25519+ML-KEM-768) также закреплено на Rust заранее: [`fscp_hybrid_kem_vectors.rs`](backend/Tests/parity/tests/fscp_hybrid_kem_vectors.rs) потребляет вектор `fscp-hybrid-kem-v2draft-v1.json` через RustCrypto `ml-kem` (dev-dependency паритет-харнесса, в продакшн-крейты не входит). Владение модулем **не меняется** (§6.0): до cutover Фазы 4 Rust-код трафик не обслуживает. Осознанные отличия на патологических входах задокументированы в шапке `fscp.rs` (дубликаты JSON-ключей, не-объектный корень в `TryExtractReceiver`, X-форма GUID).
 
 ### 4.5. Rate limiting (fixed window, 429)
 
@@ -199,7 +199,7 @@ Rust-хост читает **те же ключи** и источники: JSON-
 
 ```mermaid
 flowchart LR
-    Clients["Apps/Web (Next proxy)<br/>Apps/Mobile"] --> Nginx["nginx (VPS)"]
+    Clients["apps/Web (Next proxy)<br/>apps/Mobile"] --> Nginx["nginx (VPS)"]
     Nginx --> Gate["flora-api (Rust)<br/>единая точка входа"]
     Gate -->|"мигрированные маршруты"| RustMods["Rust-модули<br/>(flora-social)"]
     Gate -->|"fallback: реверс-прокси"| DotNet["Flora.API (.NET)<br/>внутренний порт"]
@@ -216,7 +216,7 @@ flowchart LR
 
 ### 5.2. Межъязыковые порты (переходные)
 
-Когда модуль уезжает в Rust, а его потребители ещё на C# (или наоборот), in-process порт заменяется на **внутренний gRPC** — это штатная «лестница коммуникаций» из AGENTS.md (шаг 3) и осознанное оживление спящего каркаса [`Infrastructure/Flora.gRPC`](Infrastructure/Flora.gRPC). Protos лежат в `Infrastructure/Flora.gRPC/Protos/` (единый источник для `prost` и `Grpc.Tools`), транспорт — localhost, наружу не публикуется. C#-адаптеры портов живут в `*.Infrastructure` модулей (ссылка на `Flora.gRPC` там разрешена валидатором).
+Когда модуль уезжает в Rust, а его потребители ещё на C# (или наоборот), in-process порт заменяется на **внутренний gRPC** — это штатная «лестница коммуникаций» из agents.md (шаг 3) и осознанное оживление спящего каркаса [`infrastructure/Flora.gRPC`](infrastructure/Flora.gRPC). Protos лежат в `infrastructure/Flora.gRPC/Protos/` (единый источник для `prost` и `Grpc.Tools`), транспорт — localhost, наружу не публикуется. C#-адаптеры портов живут в `*.Infrastructure` модулей (ссылка на `Flora.gRPC` там разрешена валидатором).
 
 | Порт (Contracts) | Направление в переходный период | Живёт с фазы | Умирает в фазе |
 | --- | --- | --- | --- |
@@ -250,11 +250,11 @@ flowchart LR
 | 4 | **Messaging + Notifications** (FSCP, SSE, FCM) | 51 (13 legacy + 27 + 11) | 3.8k + `MessagingController` | все мосты умирают |
 | 5 | Вывод .NET, смена тулинга | — | −22k | — |
 
-Каждая фаза **может** завершаться соаком на 100% трафика перед стартом следующей — полезно при живых пользователях. **Пока прод-аудитории нет**, обязательный соак/freeze между фазами **не требуется**: можно сразу идти в следующий срез (сейчас — Music). Прогресс-порядок по связанности без изменений (см. граф в ARCHITECTURE.md §2.6): Music → identity → Content → Messaging.
+Каждая фаза **может** завершаться соаком на 100% трафика перед стартом следующей — полезно при живых пользователях. **Пока прод-аудитории нет**, обязательный соак/freeze между фазами **не требуется**: можно сразу идти в следующий срез (сейчас — Music). Прогресс-порядок по связанности без изменений (см. граф в architecture.md §2.6): Music → identity → Content → Messaging.
 
 ### 6.0. Статус миграции (единственный источник истины о владении)
 
-> Обновляется **в том же PR**, что и событие: старт фазы, freeze, cutover, откат, вывод. Агенты и люди обязаны сверяться с этой таблицей до правок кода модуля (см. AGENTS.md, skill `/rust-migration`).
+> Обновляется **в том же PR**, что и событие: старт фазы, freeze, cutover, откат, вывод. Агенты и люди обязаны сверяться с этой таблицей до правок кода модуля (см. agents.md, skill `/rust-migration`).
 
 | Единица | Владелец сейчас | Статус | Freeze-окно |
 | --- | --- | --- | --- |
@@ -268,13 +268,13 @@ flowchart LR
 | Notifications | **Rust** | cutover inbox + SSE + FCM | — |
 | Economy (FEP) | **Rust** (родной) | вне strangler; `Economy:Enabled` | — |
 
-Статусы (исторические): `не начат → в переносе → freeze → cutover → Rust`. **Фаза 5 завершена (2026-07-15):** проекты `Flora.API`, `Modules/*`, `Flora.Shared`, `Flora.Migrations`, C#-часть `Products/Flora.Social` удалены; CI без `dotnet`; protos оставлены в `Infrastructure/Flora.gRPC/Protos/`.
+Статусы (исторические): `не начат → в переносе → freeze → cutover → Rust`. **Фаза 5 завершена (2026-07-15):** проекты `Flora.API`, `Modules/*`, `Flora.Shared`, `Flora.Migrations`, C#-часть `products/Flora.Social` удалены; CI без `dotnet`; protos оставлены в `infrastructure/Flora.gRPC/Protos/`.
 
 > Примечание: при пустом `Gateway:DotnetUpstream` незаматченные маршруты отвечают 404 (нет .NET fallback).
 
 ### Фаза 0 — Фундамент и шлюз
 
-**Делаем:** workspace `Backend/` (§2.1); `flora-api` с конфигом (§4.8), tracing, `/`, `/health`, `/version` (читает `flora-versions.json` — паритет с [`FloraVersions.cs`](Flora.API/FloraVersions.cs)); прозрачный реверс-прокси на .NET (§5.1); `flora-shared` с golden-тестами UUID v5/v7 против C#-векторов; parity-харнесс (`Tests/parity`): прогон существующих contract fixtures + differential-инструмент `flora-diff` (replay GET-трафика на оба апстрима, семантический дифф JSON); расширение генератора фикстур (`Tests/Flora.ContractFixtures`, `UPDATE_CONTRACT_FIXTURES=1`) на Music/Content/E2E-поверхности; CI: fmt, clippy, test, `validate-architecture-rust`, `cargo deny`; обновление AGENTS.md (команды cargo, правила `Backend/`).
+**Делаем:** workspace `backend/` (§2.1); `flora-api` с конфигом (§4.8), tracing, `/`, `/health`, `/version` (читает `flora-versions.json` — паритет с [`FloraVersions.cs`](Flora.API/FloraVersions.cs)); прозрачный реверс-прокси на .NET (§5.1); `flora-shared` с golden-тестами UUID v5/v7 против C#-векторов; parity-харнесс (`tests/parity`): прогон существующих contract fixtures + differential-инструмент `flora-diff` (replay GET-трафика на оба апстрима, семантический дифф JSON); расширение генератора фикстур (`tests/Flora.ContractFixtures`, `UPDATE_CONTRACT_FIXTURES=1`) на Music/Content/E2E-поверхности; CI: fmt, clippy, test, `validate-architecture-rust`, `cargo deny`; обновление agents.md (команды cargo, правила `backend/`).
 
 **Выход:** шлюз в проде отвечает на `/`/`/health`/`/version`, proxy на .NET прозрачен (SSE/multipart/медиа); кросс-языковой JWT-тест зелёный. Обязательный соак ≥1 недели **не требуется**, пока нет прод-аудитории. **Откат:** nginx → .NET напрямую.
 
@@ -282,7 +282,7 @@ flowchart LR
 
 Идеальный пилот: ни входящих, ни исходящих межмодульных зависимостей, свой контроллер уже в модуле. Скоуп: 22 эндпоинта `/api/music/*`, аудио-транскод ffmpeg, обложки/аудио из `bytea`, FIRA-M (`/flow`), таксономия жанров, воркеры `MusicArtistBackfillHostedService` (однократный) и `MusicArtistOrphanCleanupHostedService` (5 мин). Нативные JWT-валидация для `/api/music/*` при флаге **`Music:ServeNative=true`** (дефолт `false` до cutover; rate-limit на Music нет — §11.2).
 
-FIRA-M: формулы as-built ([`FIRA-M.md`](Documents/fira/FIRA-M.md) §Implementation Status) переносятся 1:1. **Статус:** golden-вектор [`fira-m-scorer-v1.json`](Documents/test-vectors/fira/fira-m-scorer-v1.json) снят, чистый скорер портирован заранее ([`flora-music/src/application/recommendations.rs`](Backend/crates/modules/flora-music/src/application/recommendations.rs), consumer-тест [`fira_vectors.rs`](Backend/Tests/parity/tests/fira_vectors.rs)) — формулы заморожены, остаток фазы — HTTP/БД/воркеры. Конфиг-секция `FiraMusic` в `appsettings.json` **отсутствует** — production работает на дефолтах кода (`WeightBeta = 0.75`, `WeightGamma = 0.25`, `RecencyBoostDays = 14`, `MaxCandidates = 500` и др.), дефолты продублированы в Rust (`Default` в `MusicRecommendationOptions`) и сверяются паритет-тестом. Exploration-хвост волны стохастический — исключается из diff-сравнения (`flora-diff` сравнивает детерминированный префикс).
+FIRA-M: формулы as-built ([`FIRA-M.md`](documents/fira/FIRA-M.md) §Implementation Status) переносятся 1:1. **Статус:** golden-вектор [`fira-m-scorer-v1.json`](documents/test-vectors/fira/fira-m-scorer-v1.json) снят, чистый скорер портирован заранее ([`flora-music/src/application/recommendations.rs`](backend/crates/modules/flora-music/src/application/recommendations.rs), consumer-тест [`fira_vectors.rs`](backend/Tests/parity/tests/fira_vectors.rs)) — формулы заморожены, остаток фазы — HTTP/БД/воркеры. Конфиг-секция `FiraMusic` в `appsettings.json` **отсутствует** — production работает на дефолтах кода (`WeightBeta = 0.75`, `WeightGamma = 0.25`, `RecencyBoostDays = 14`, `MaxCandidates = 500` и др.), дефолты продублированы в Rust (`Default` в `MusicRecommendationOptions`) и сверяются паритет-тестом. Exploration-хвост волны стохастический — исключается из diff-сравнения (`flora-diff` сравнивает детерминированный префикс).
 
 **Выход:** фикстуры и диффы зелёные; канарейка (например, `GET`-маршруты → 10% → 100%, затем записи) без регрессий; p95 и память не хуже .NET. **Откат:** флип маршрутов на прокси + остановка Rust-воркеров.
 
@@ -296,13 +296,13 @@ FIRA-M: формулы as-built ([`FIRA-M.md`](Documents/fira/FIRA-M.md) §Imple
 
 Мигрируют вместе (Auth → `IUserProfileProvisioner`/`IUserProfileReadQueries` остаются in-process). Скоуп: 35 эндпоинтов (login/refresh/logout/2FA/sessions/email-change; профили/аватары/подписки/блокировки/поиск/FIRA-P), таблицы `user_accounts`, `user_sessions`, `pending_registrations`, `user_security_logs`, `user_profiles`, `user_avatars`, `user_followers` и др. Все инварианты §4.1 доказываются до флипа; сессии продолжают жить в той же таблице — активные пользователи ничего не замечают. Поднимаются мосты: Rust-серверы users-read/auth-read для C# Content/Notifications; Rust-клиент к C# content-stats.
 
-FIRA-P: формулы as-built ([`FIRA-P.md`](Documents/fira/FIRA-P.md) §Implementation Status) и конфиг-секция `UserRecommendation` переносятся 1:1. **Статус:** v1.1-гигиена (двунаправленный блоклист в кандидатном пуле — критичное приватностное отклонение) закрыта на C#-стороне, **после** неё снят golden-вектор [`fira-p-scorer-v1.json`](Documents/test-vectors/fira/fira-p-scorer-v1.json) — дефект не заморожен; чистый скорер портирован заранее ([`flora-users/src/application/people.rs`](Backend/crates/modules/flora-users/src/application/people.rs), consumer-тест `fira_vectors.rs`).
+FIRA-P: формулы as-built ([`FIRA-P.md`](documents/fira/FIRA-P.md) §Implementation Status) и конфиг-секция `UserRecommendation` переносятся 1:1. **Статус:** v1.1-гигиена (двунаправленный блоклист в кандидатном пуле — критичное приватностное отклонение) закрыта на C#-стороне, **после** неё снят golden-вектор [`fira-p-scorer-v1.json`](documents/test-vectors/fira/fira-p-scorer-v1.json) — дефект не заморожен; чистый скорер портирован заранее ([`flora-users/src/application/people.rs`](backend/crates/modules/flora-users/src/application/people.rs), consumer-тест `fira_vectors.rs`).
 
 **Выход:** логин, refresh-ротация, 2FA, регистрация с email-кодом — в проде на Rust; кросс-языковая валидность JWT подтверждена в бою. **Откат:** флип маршрутов (сессии совместимы, C#-код на месте).
 
 ### Фаза 3 — Content
 
-Самая большая HTTP-поверхность (39): лента + FIRA-F, посты/черновики/комментарии/лайки/репосты/просмотры, изображения/видео (`PostVideoTranscodeWorker`), сообщества + FIRA-C. Мосты Users↔Content умирают (порты снова in-process). Особое внимание — **числовой паритет FIRA**: формулы те же (f64), сравнение ранжирования differential-тестами top-K с допуском; конфиг-секции `FiraFeed`/`FeedRecommendation`/`CommunityRecommendation` читаются без изменений (refresh-ключи `FiraFeed` в `appsettings.json` отсутствуют — дефолты кода продублированы в Rust `Default`). **Статус:** golden-вектора скореров и постобработки сняты ([`fira-f-scorer-v1.json`](Documents/test-vectors/fira/fira-f-scorer-v1.json), [`fira-f-postprocessing-v1.json`](Documents/test-vectors/fira/fira-f-postprocessing-v1.json), [`fira-c-scorer-v1.json`](Documents/test-vectors/fira/fira-c-scorer-v1.json)); чистые скореры и постобработка портированы заранее ([`flora-content/src/application/`](Backend/crates/modules/flora-content/src/application/), consumer-тест `fira_vectors.rs`) — формулы заморожены. Нормативные as-built формулы и стохастические точки (exploration `ORDER BY random()`, refresh-shuffle — исключаются из диффа): [`FIRA-F.md`](Documents/fira/FIRA-F.md), [`FIRA-C.md`](Documents/fira/FIRA-C.md) §Implementation Status; дифф ленты — при `refresh=false` ([`FIRA.md`](Documents/fira/FIRA.md) §15).
+Самая большая HTTP-поверхность (39): лента + FIRA-F, посты/черновики/комментарии/лайки/репосты/просмотры, изображения/видео (`PostVideoTranscodeWorker`), сообщества + FIRA-C. Мосты Users↔Content умирают (порты снова in-process). Особое внимание — **числовой паритет FIRA**: формулы те же (f64), сравнение ранжирования differential-тестами top-K с допуском; конфиг-секции `FiraFeed`/`FeedRecommendation`/`CommunityRecommendation` читаются без изменений (refresh-ключи `FiraFeed` в `appsettings.json` отсутствуют — дефолты кода продублированы в Rust `Default`). **Статус:** golden-вектора скореров и постобработки сняты ([`fira-f-scorer-v1.json`](documents/test-vectors/fira/fira-f-scorer-v1.json), [`fira-f-postprocessing-v1.json`](documents/test-vectors/fira/fira-f-postprocessing-v1.json), [`fira-c-scorer-v1.json`](documents/test-vectors/fira/fira-c-scorer-v1.json)); чистые скореры и постобработка портированы заранее ([`flora-content/src/application/`](backend/crates/modules/flora-content/src/application/), consumer-тест `fira_vectors.rs`) — формулы заморожены. Нормативные as-built формулы и стохастические точки (exploration `ORDER BY random()`, refresh-shuffle — исключаются из диффа): [`FIRA-F.md`](documents/fira/FIRA-F.md), [`FIRA-C.md`](documents/fira/FIRA-C.md) §Implementation Status; дифф ленты — при `refresh=false` ([`FIRA.md`](documents/fira/FIRA.md) §15).
 
 **Выход:** дифф ленты в допуске, транскод стабилен, канарейка → 100%. **Откат:** флип маршрутов + остановка воркера транскода.
 
@@ -314,14 +314,14 @@ FIRA-P: формулы as-built ([`FIRA-P.md`](Documents/fira/FIRA-P.md) §Imple
 
 ### Фаза 5 — Вывод .NET
 
-**Статус: выполнено (2026-07-15).** Удалены C#-проекты (`Flora.API`, `Modules/*`, `Flora.Shared`, `Flora.Migrations`, C# `Products/Flora.Social`); CI без `dotnet`; `Validate-Architecture.ps1` снят (остался `validate-architecture-rust.ps1`); `Gateway:DotnetUpstream` пуст; protos сохранены в `Infrastructure/Flora.gRPC/Protos/`. Миграции схемы — `flora-migrate`; contract fixtures / golden vectors уже закоммичены в `artifacts/` и `Documents/test-vectors/` (ручная правка запрещена).
+**Статус: выполнено (2026-07-15).** Удалены C#-проекты (`Flora.API`, `Modules/*`, `Flora.Shared`, `Flora.Migrations`, C# `products/Flora.Social`); CI без `dotnet`; `Validate-Architecture.ps1` снят (остался `validate-architecture-rust.ps1`); `Gateway:DotnetUpstream` пуст; protos сохранены в `infrastructure/Flora.gRPC/Protos/`. Миграции схемы — `flora-migrate`; contract fixtures / golden vectors уже закоммичены в `artifacts/` и `documents/test-vectors/` (ручная правка запрещена).
 
 ---
 
 ## 7. Стратегия верификации
 
-1. **Golden-вектора (unit):** UUID v5/v7, Argon2 (verify хешей, созданных C#), TOTP, JWT (кросс-языковая валидация), FSCP-конверты, FIRA-скореры всех четырёх компонентов «кандидат → Score» + позиционные фикстуры постобработки FIRA-F ([`Documents/test-vectors/`](Documents/test-vectors/README.md) + негативные кейсы; детерминизм и tie-break'и — [`FIRA.md`](Documents/fira/FIRA.md) §15). Вектора генерируются из C# **до** переноса соответствующего кода. FIRA-вектора сняты: [`Documents/test-vectors/fira/`](Documents/test-vectors/fira/), consumer-тесты — C# `GoldenVectorTests.cs` (freeze-контроль) и Rust [`fira_vectors.rs`](Backend/Tests/parity/tests/fira_vectors.rs) (скореры портированы заранее; паритетные примитивы `flora_shared::dotnet_time` / `flora_shared::ordinal`).
-2. **Contract fixtures (контракт):** существующий механизм [`Tests/Flora.ContractFixtures`](Tests/Flora.ContractFixtures) → `Artifacts/contract-fixtures/` → TS-тесты client-core. Расширяется на все мигрируемые поверхности; Rust-интеграционные тесты обязаны выдавать те же формы. Один и тот же набор фикстур проверяет **оба** бэкенда, пока они живы.
+1. **Golden-вектора (unit):** UUID v5/v7, Argon2 (verify хешей, созданных C#), TOTP, JWT (кросс-языковая валидация), FSCP-конверты, FIRA-скореры всех четырёх компонентов «кандидат → Score» + позиционные фикстуры постобработки FIRA-F ([`documents/test-vectors/`](documents/test-vectors/README.md) + негативные кейсы; детерминизм и tie-break'и — [`FIRA.md`](documents/fira/FIRA.md) §15). Вектора генерируются из C# **до** переноса соответствующего кода. FIRA-вектора сняты: [`documents/test-vectors/fira/`](documents/test-vectors/fira/), consumer-тесты — C# `GoldenVectorTests.cs` (freeze-контроль) и Rust [`fira_vectors.rs`](backend/Tests/parity/tests/fira_vectors.rs) (скореры портированы заранее; паритетные примитивы `flora_shared::dotnet_time` / `flora_shared::ordinal`).
+2. **Contract fixtures (контракт):** существующий механизм [`tests/Flora.ContractFixtures`](tests/Flora.ContractFixtures) → `artifacts/contract-fixtures/` → TS-тесты client-core. Расширяется на все мигрируемые поверхности; Rust-интеграционные тесты обязаны выдавать те же формы. Один и тот же набор фикстур проверяет **оба** бэкенда, пока они живы.
 3. **Differential/shadow (система):** `flora-diff` — replay реального GET-трафика на оба апстрима с семантическим диффом (нормализация дат, tolerance для FIRA-скоринга); на staging — постоянно, в проде — зеркалирование читающих маршрутов перед канарейкой фазы.
 4. **Смоки клиентов (e2e):** `npm run ci` (contract-парсеры client-core) на фикстурах обоих бэкендов + ручной прогон критических сценариев Web/Mobile на staging перед каждым cutover (логин, лента, отправка E2E-сообщения, пуш).
 5. **Нагрузочные:** k6/vegeta на горячие маршруты (feed, messages, отдача медиа) и удержание массовых SSE-подключений; критерий — p95 и RSS не хуже .NET-базлайна, снятого в Фазе 0.
@@ -332,19 +332,19 @@ FIRA-P: формулы as-built ([`FIRA-P.md`](Documents/fira/FIRA-P.md) §Imple
 
 - **Деплой:** тот же VPS; `flora-api` — systemd-юнит (или контейнер) на внутреннем порту рядом с .NET; nginx смотрит на Rust-шлюз с Фазы 0. Канарейка — на уровне таблицы маршрутов шлюза (процент/пользовательская когорта), откат — конфиг-флип без redeploy.
 - **Наблюдаемость:** tracing (JSON) с полями, совместимыми с текущим анализом логов; метрики шлюза: доля проксируемого трафика, диффы shadow-тестов, латентность per-route по апстримам — это главный дашборд миграции.
-- **Секреты:** без изменений (`Jwt__Secret`, `Smtp__*`, `Push__Firebase__*`, `Flora__AdminBroadcastToken` — те же env), см. `Local/SECRETS-ROTATION.local.md` (gitignored).
+- **Секреты:** без изменений (`Jwt__Secret`, `Smtp__*`, `Push__Firebase__*`, `Flora__AdminBroadcastToken` — те же env), см. `local/SECRETS-ROTATION.local.md` (gitignored).
 - **CI:** к текущим `npm run ci` / `dotnet build+test` добавляется cargo-конвейер (§2.3) и джоб паритета фикстур; после Фазы 5 dotnet-джобы удаляются.
 
 ---
 
 ## 9. Долг, который гасим по пути
 
-| Долг (ARCHITECTURE.md §4) | Как закрывается |
+| Долг (architecture.md §4) | Как закрывается |
 | --- | --- |
 | God-контроллер `ImportedSocialController` (~3.5k строк) | Не переносится как файл: его эндпоинты уезжают в HTTP-слои Rust-модулей по фазам 2b–4 |
 | `MessagingController` с прямым EF в продукте | Поглощается `flora-messaging` в Фазе 4 |
 | Интерфейсы в Application вместо Contracts (`IConversationService` и др.) | В Rust публичные порты изначально только в `*-contracts` |
-| Параллельный FSCP/REST-слой в Apps/Web | Отдельный TS-трек: консолидация веба на client-core **до Фазы 4** — предусловие вывода legacy-маршрутов |
+| Параллельный FSCP/REST-слой в apps/Web | Отдельный TS-трек: консолидация веба на client-core **до Фазы 4** — предусловие вывода legacy-маршрутов |
 | gRPC-каркас без потребителей | Оживает как межъязыковой мост (§5.2), решение о его судьбе — Фаза 5 |
 | No-op `Map*ModuleEndpoints`, `Class1.cs`-имена | Исчезают вместе с C#-кодом |
 
@@ -369,15 +369,15 @@ FIRA-P: формулы as-built ([`FIRA-P.md`](Documents/fira/FIRA-P.md) §Imple
 ## 11. Открытые вопросы (закрыть до соответствующей фазы)
 
 1. **До Фазы 0 — закрыто:**
-   - Миграции — **sqlx migrate**: история на модуль через `Migrator::dangerous_set_table_name("__flora_migrations_<module>")` (продолжение паттерна `__EFMigrationsHistory_*`; реестр — `Backend/crates/flora-migrate/src/registry.rs`). refinery отвергнут: sqlx уже в стеке, второй инструмент не нужен.
-   - Пиновка версий — toolchain в `Backend/rust-toolchain.toml` (обновление осознанным коммитом); версии crates объявляются только в `workspace.dependencies`, фактическая пиновка — закоммиченный `Cargo.lock` (CI собирает с `--locked`); `cargo deny` следит за лицензиями (AGPL-совместимость), дублями и advisories.
-   - Конфиг Rust-хоста — те же слои и семантика, что у ASP.NET (§4.8): `Backend/appsettings.json` → `appsettings.{Environment}.json` → (Development) `appsettings.Local.json` → env-переменные с `__`; ключи регистронезависимы; каталог переопределяется `FLORA_CONFIG_DIR`; реализация — `flora_shared::config`.
+   - Миграции — **sqlx migrate**: история на модуль через `Migrator::dangerous_set_table_name("__flora_migrations_<module>")` (продолжение паттерна `__EFMigrationsHistory_*`; реестр — `backend/crates/flora-migrate/src/registry.rs`). refinery отвергнут: sqlx уже в стеке, второй инструмент не нужен.
+   - Пиновка версий — toolchain в `backend/rust-toolchain.toml` (обновление осознанным коммитом); версии crates объявляются только в `workspace.dependencies`, фактическая пиновка — закоммиченный `Cargo.lock` (CI собирает с `--locked`); `cargo deny` следит за лицензиями (AGPL-совместимость), дублями и advisories.
+   - Конфиг Rust-хоста — те же слои и семантика, что у ASP.NET (§4.8): `backend/appsettings.json` → `appsettings.{Environment}.json` → (Development) `appsettings.Local.json` → env-переменные с `__`; ключи регистронезависимы; каталог переопределяется `FLORA_CONFIG_DIR`; реализация — `flora_shared::config`.
 2. **До Фазы 1 — закрыто:**
    - Rate-limit на `/api/music/*`: на [`MusicController`](Modules/Flora.Music/MusicController.cs) нет `[EnableRateLimiting]` — политик нет; в Rust **не** добавлять лимитер «на всякий случай».
    - Обложки/аудио: серверного resize нет — байты и `Content-Type` хранятся as-uploaded / после ffmpeg-транскода аудио (`content_type` + `bytea`). FRC dual-read (FRC-A/I) — отдельной задачей после cutover Music, **без** смены схемы таблиц (opaque payload + MIME уже в колонках).
 3. **До Фазы 2b:** фикстура фактического JWT (полный wire-набор клеймов); инвентаризация форматов `nextCursor` по всем эндпоинтам identity; серверный пайплайн аватаров (resize?).
 4. **До Фазы 4:** решение по 13 legacy-маршрутам messaging (вывод vs перенос) — зависит от консолидации веба на client-core; стратегия дренажа SSE-подключений при cutover (мягкое закрытие → reconnect на Rust).
-5. **Фаза 5:** судьба protos (`Infrastructure/Flora.gRPC`) — контракты будущих микросервисов или архив.
+5. **Фаза 5:** судьба protos (`infrastructure/Flora.gRPC`) — контракты будущих микросервисов или архив.
 
 ---
 
@@ -385,10 +385,10 @@ FIRA-P: формулы as-built ([`FIRA-P.md`](Documents/fira/FIRA-P.md) §Imple
 
 | Тема | Документ |
 | --- | --- |
-| Текущая архитектура (as-is) | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
-| Правила границ и процессов | [`AGENTS.md`](AGENTS.md) |
-| E2E-протокол | [`Documents/fscp/FSCP.md`](Documents/fscp/FSCP.md), [`Documents/fscp/e2e-security.md`](Documents/fscp/e2e-security.md) |
-| Рекомендации | [`Documents/fira/FIRA.md`](Documents/fira/FIRA.md) |
-| Поиск | [`Documents/fsa/FSA.md`](Documents/fsa/FSA.md) |
-| Golden-вектора | [`Documents/test-vectors/README.md`](Documents/test-vectors/README.md) |
-| Кросс-языковые фикстуры | [`Tests/Flora.ContractFixtures`](Tests/Flora.ContractFixtures) |
+| Текущая архитектура (as-is) | [`architecture.md`](architecture.md) |
+| Правила границ и процессов | [`agents.md`](agents.md) |
+| E2E-протокол | [`documents/fscp/FSCP.md`](documents/fscp/FSCP.md), [`documents/fscp/e2e-security.md`](documents/fscp/e2e-security.md) |
+| Рекомендации | [`documents/fira/FIRA.md`](documents/fira/FIRA.md) |
+| Поиск | [`documents/fsa/FSA.md`](documents/fsa/FSA.md) |
+| Golden-вектора | [`documents/test-vectors/README.md`](documents/test-vectors/README.md) |
+| Кросс-языковые фикстуры | [`tests/Flora.ContractFixtures`](tests/Flora.ContractFixtures) |

@@ -93,9 +93,9 @@ export function shellDecision(command) {
     return {
       permission: "deny",
       user_message:
-        "Blocked: command references a secret path (Local/.flora, .env, SECRETS, etc.). Run secret scripts in your own terminal, not via Agent.",
+        "Blocked: command references a secret path (local/.flora, .env, SECRETS, etc.). Run secret scripts in your own terminal, not via Agent.",
       agent_message:
-        "Shell command denied by Flora lethal-triad gate: secret-path marker in argv. Do not read or dump Local/ secrets; ask the user to run Scripts/ensure-shared-dev-jwt.ps1 themselves if needed.",
+        "Shell command denied by Flora lethal-triad gate: secret-path marker in argv. Do not read or dump local/ secrets; ask the user to run scripts/ensure-shared-dev-jwt.ps1 themselves if needed.",
     };
   }
   if (permission === "ask") {

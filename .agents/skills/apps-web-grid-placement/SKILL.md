@@ -1,9 +1,9 @@
 ---
 name: apps-web-grid-placement
-description: Точное позиционирование Apps/Web по сетке Flora — координаты A.B, anchorRow, разделители между горизонталями H–(H+1), dashboard (шапка 9 / контент 11). Вызывай перед правками top/margin/absolute/fixed в Apps/Web.
+description: Точное позиционирование apps/Web по сетке Flora — координаты A.B, anchorRow, разделители между горизонталями H–(H+1), dashboard (шапка 9 / контент 11). Вызывай перед правками top/margin/absolute/fixed в apps/Web.
 ---
 
-# Apps/Web: точное позиционирование по сетке
+# apps/Web: точное позиционирование по сетке
 
 Применять при координатах `A.B - C.D`, привязке к **горизонталям** страницы, `position: absolute` / `fixed`, разделителях `hr`, отступах «на N-ю строку сетки».
 
@@ -16,7 +16,7 @@ description: Точное позиционирование Apps/Web по сет�
   - Нельзя использовать `width = (C - A) * step`, иначе правый край уедет на 1 клетку влево
     (типичный косяк: визуально получается до `C - 1`, например "до 76 вместо 77").
 - Для `primary` шаг = `var(--flora-grid-step)` (**15px при `s = 1`**), для `secondary` = `var(--flora-grid-step-fine)` (5px при `s = 1`). Не хардкодить 15px в новых формулах.
-- Эталонный чертёж: **128×63** клетки = **1920×945 при `s = 1`**. Кадр на экране: `128 * step` × `63 * step` (шаблон из `@flora/design`). Закон: `Documents/design/FLORA-GRID.md`.
+- Эталонный чертёж: **128×63** клетки = **1920×945 при `s = 1`**. Кадр на экране: `128 * step` × `63 * step` (шаблон из `@flora/design`). Закон: `documents/design/FLORA-GRID.md`.
 - SoT шаблонов, `pickGridTemplate` / `placeGridCanvas`, `sPx`: пакет `@flora/design` (реэкспорт `@flora/client-core/display`).
 - Вне сетки клеток (иконки, кегль, прочие размеры не 5/15): SoT `sPx` / `SPX_LADDER` в `@flora/design` (`sPx(n, s) = Math.round(n * s)` — без `Math.max(1, …)`). В CSS — `var(--flora-sPx-N)` и `--flora-grid-s`. Кегль: `max(1px, var(--flora-sPx-N))`. Off-ladder: `calc(1px * round(N * var(--flora-grid-s)))` или JS `sPx(N, frame.s)`. Hairline 1px без масштаба. Не хардкодить пиксели лестницы и не расширять `SPX_LADDER`.
 
