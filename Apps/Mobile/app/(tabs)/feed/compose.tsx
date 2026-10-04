@@ -9,8 +9,8 @@ import {
 } from "@flora/client-core/api";
 import type { CommunityListItemDto, PostDraftDto } from "@flora/client-core/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -20,8 +20,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
+import Reanimated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ComposeDraftsSheet } from "@/components/compose/ComposeDraftsSheet";
 import { ComposeModeTabs } from "@/components/compose/ComposeModeTabs";
@@ -41,6 +43,12 @@ import {
   composeModeCommunityId,
   pickRandomComposeBodyPlaceholder,
 } from "@/lib/compose/composeModes";
+import {
+  composePushProgress,
+  isComposePushEnterArmed,
+  runComposePushEnter,
+  runComposePushExit,
+} from "@/lib/chatPushTransition";
 import { uploadPostImagesNative, uploadPostVideoNative } from "@/lib/compose/postMediaUpload";
 import { useComposePostMedia } from "@/lib/compose/useComposePostMedia";
 import { useSPx } from "@/lib/FloraGridProvider";
@@ -49,7 +57,6 @@ import {
   floraColors,
   floraMessages,
   floraSpacing,
-  floraTabBarContentPadding,
   kegl,
   sPx,
   tracking,
@@ -62,6 +69,8 @@ function routeParam(value: string | string[] | undefined): string {
 export default function FeedComposeScreen() {
   const sp = useSPx();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const { width: screenWidth } = useWindowDimensions();
   const queryClient = useQueryClient();
   const me = useSessionStore((s) => s.me);
   const params = useLocalSearchParams<{ communityUuid?: string | string[] }>();
@@ -306,13 +315,51 @@ export default function FeedComposeScreen() {
     if (err) setError(err);
   }, [media]);
 
-  const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, 8));
+  const listPaddingBottom = Math.max(insets.bottom, sPx(8));
+
+  /**
+   * Тот же push, что у чата: экран заезжает справа поверх ленты.
+   * Стартовый driven читается в первом рендере, иначе первый кадр покажет
+   * пост уже на месте.
+   */
+  const [composePushEnterArmed] = useState(isComposePushEnterArmed);
+  const composePushDriven = useSharedValue(composePushEnterArmed);
+  const composePushSlideStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: composePushDriven.value
+          ? (1 - composePushProgress.value) * screenWidth
+          : 0,
+      },
+    ],
+  }));
+  useLayoutEffect(() => {
+    runComposePushEnter(composePushDriven);
+  }, [composePushDriven]);
+
+  const composePushClosingRef = useRef(false);
+  useEffect(() => {
+    composePushClosingRef.current = false;
+    const unsubscribe = navigation.addListener("beforeRemove", (event) => {
+      if (composePushClosingRef.current) return;
+      const action = event.data.action;
+      const started = runComposePushExit(composePushDriven, () => {
+        navigation.dispatch(action);
+      });
+      if (started) {
+        composePushClosingRef.current = true;
+        event.preventDefault();
+      }
+    });
+    return unsubscribe;
+  }, [composePushDriven, navigation]);
+
   const title = activeDraftUuid
     ? activeDraftLabel.trim() || "Без названия"
     : "Новый пост";
 
   return (
-    <View style={styles.root}>
+    <Reanimated.View style={[styles.root, composePushSlideStyle]}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -464,7 +511,7 @@ export default function FeedComposeScreen() {
         onRename={(draft, label) => void onRenameDraft(draft, label)}
         onDelete={(draft) => void onDeleteDraft(draft)}
       />
-    </View>
+    </Reanimated.View>
   );
 }
 

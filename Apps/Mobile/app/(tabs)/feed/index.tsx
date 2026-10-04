@@ -5,9 +5,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useFocusEffect } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View, type LayoutChangeEvent } from "react-native";
 import { Pressable as GesturePressable } from "react-native-gesture-handler";
-import Reanimated from "react-native-reanimated";
+import Reanimated, {
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FLORA_TAB_STRIP_PAD_X } from "@/components/chrome/FloraTabChipStrip";
 import { FloraTabLabel, floraTabChrome } from "@/components/chrome/FloraTabLabel";
@@ -33,6 +37,14 @@ import {
   type PagerMediaWakeHandle,
 } from "@/lib/feedPagerMediaWake";
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
+import {
+  armComposePushEnter,
+  CHAT_PUSH_DIM,
+  CHAT_PUSH_PARALLAX,
+  composePushProgress,
+  isComposePushEnterArmed,
+  resetComposePushProgress,
+} from "@/lib/chatPushTransition";
 import { composeScreenHref } from "@/lib/socialRoutes";
 import { useSPx } from "@/lib/FloraGridProvider";
 import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
@@ -215,6 +227,38 @@ export default function FeedScreen() {
 
   useFocusEffect(syncFeedPane);
 
+  useFocusEffect(
+    useCallback(() => {
+      // Взвод живёт до первого коммита compose. Сброс здесь погасил бы слайд,
+      // если фокус ленты мигнёт между тапом и маунтом.
+      if (isComposePushEnterArmed()) return;
+      resetComposePushProgress();
+    }, []),
+  );
+
+  /**
+   * Push создания поста — тот же ход, что чат: лента остаётся, слегка
+   * уезжает влево и темнеет, пока экран заезжает справа.
+   */
+  const { width: windowWidth } = useWindowDimensions();
+  const composePushParallaxStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: -CHAT_PUSH_PARALLAX * windowWidth * composePushProgress.value },
+    ],
+  }));
+  const composePushDimStyle = useAnimatedStyle(() => ({
+    opacity: CHAT_PUSH_DIM * composePushProgress.value,
+  }));
+  const [composePushBlocksList, setComposePushBlocksList] = useState(false);
+  useAnimatedReaction(
+    () => composePushProgress.value > 0.02,
+    (blocked, prev) => {
+      if (blocked !== prev) {
+        runOnJS(setComposePushBlocksList)(blocked);
+      }
+    },
+  );
+
   const recommendationsGeneratedAt = recommendationsFeedQuery.data?.pages[0]?.generatedAt ?? null;
 
   const hasNewQuery = useQuery({
@@ -244,7 +288,7 @@ export default function FeedScreen() {
   const showNewPostsBanner = !hasSearch && kind === "recommendations" && hasNewQuery.data === true;
 
   return (
-    <View style={styles.root}>
+    <Reanimated.View style={[styles.root, composePushParallaxStyle]}>
       <View
         style={[styles.feedBody, pageWidth > 0 ? { width: pageWidth } : null]}
         onLayout={onBodyLayout}
@@ -313,7 +357,10 @@ export default function FeedScreen() {
           holdSearchFocusRef={holdSearchFocusRef}
           createAction={{
             accessibilityLabel: "Создать пост",
-            onPress: () => router.push(composeScreenHref()),
+            onPress: () => {
+              armComposePushEnter();
+              router.push(composeScreenHref());
+            },
           }}
           searchTags={SEARCH_SUGGESTION_TAGS.feed}
           searchTagId={searchTagId}
@@ -369,12 +416,27 @@ export default function FeedScreen() {
       <View pointerEvents="none" style={[styles.statusBarFill, { height: insets.top }]} />
 
       <FrcImageDiagnosticsOverlay />
-    </View>
+
+      <Reanimated.View
+        pointerEvents={composePushBlocksList ? "auto" : "none"}
+        style={[styles.composePushDim, composePushDimStyle]}
+      />
+    </Reanimated.View>
   );
 }
 
 const styles = liveGridStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: floraColors.bg },
+  composePushDim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#000",
+    opacity: 0,
+    zIndex: 200,
+  },
   topChrome: {
     position: "absolute",
     top: 0,

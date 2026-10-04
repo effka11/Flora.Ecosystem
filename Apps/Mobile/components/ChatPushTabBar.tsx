@@ -11,6 +11,7 @@ import {
   CHAT_PUSH_DIM,
   CHAT_PUSH_PARALLAX,
   chatPushProgress,
+  composePushProgress,
 } from "@/lib/chatPushTransition";
 import { tabBarMaskTranslateXPx, uncoveredWidthPx } from "@/lib/chatPushTabBarClip";
 import { floraTabBarContentHeight } from "@/lib/theme";
@@ -34,23 +35,23 @@ export function renderChatPushTabBar(props: BottomTabBarProps) {
 }
 
 /**
- * Таб-бар едет с chat push: тот же progress, что список (параллакс + dim),
- * плюс дырка справа в экранных координатах. Clip — маска на translateX
+ * Таб-бар едет с push чата и создания поста: max двух progress (параллакс +
+ * dim), плюс дырка справа в экранных координатах. Clip — маска на translateX
  * полноширинного белого слоя (не layout-width, не scaleX+inverse, не fade 1-p).
  *
  * Хост только высота бара: absoluteFill накрывал бы весь Tabs и ел тапы
- * по списку. Пока тред открыт (tabBarStyle pointerEvents none или
- * chatPushProgress > 0) хост сам `none` — иначе MaskedView ест compose,
+ * по списку. Пока верхний экран открыт (tabBarStyle pointerEvents none или
+ * progress > 0) хост сам `none` — иначе MaskedView ест док,
  * хотя пикселей справа нет.
  */
 export function ChatPushTabBar(props: BottomTabBarProps) {
   const { width: screenWidth } = useWindowDimensions();
   const barHeight = floraTabBarContentHeight() + Math.max(props.insets.bottom, 8);
   const [pushCoversDock, setPushCoversDock] = useState(
-    () => chatPushProgress.value > 0.01,
+    () => Math.max(chatPushProgress.value, composePushProgress.value) > 0.01,
   );
   useAnimatedReaction(
-    () => chatPushProgress.value > 0.01,
+    () => Math.max(chatPushProgress.value, composePushProgress.value) > 0.01,
     (covers, prev) => {
       if (covers !== prev) {
         runOnJS(setPushCoversDock)(covers);
@@ -61,23 +62,28 @@ export function ChatPushTabBar(props: BottomTabBarProps) {
   const hostPointerEvents = passThrough ? "none" : "box-none";
 
   const maskStyle = useAnimatedStyle(() => {
-    const uncovered = uncoveredWidthPx(chatPushProgress.value, screenWidth);
+    const progress = Math.max(chatPushProgress.value, composePushProgress.value);
+    const uncovered = uncoveredWidthPx(progress, screenWidth);
     return {
       opacity: uncovered <= 0 ? 0 : 1,
-      transform: [
-        { translateX: tabBarMaskTranslateXPx(chatPushProgress.value, screenWidth) },
-      ],
+      transform: [{ translateX: tabBarMaskTranslateXPx(progress, screenWidth) }],
     };
   });
 
   const parallaxStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: -CHAT_PUSH_PARALLAX * screenWidth * chatPushProgress.value },
+      {
+        translateX:
+          -CHAT_PUSH_PARALLAX *
+          screenWidth *
+          Math.max(chatPushProgress.value, composePushProgress.value),
+      },
     ],
   }));
 
   const dimStyle = useAnimatedStyle(() => ({
-    opacity: CHAT_PUSH_DIM * chatPushProgress.value,
+    opacity:
+      CHAT_PUSH_DIM * Math.max(chatPushProgress.value, composePushProgress.value),
   }));
 
   return (
