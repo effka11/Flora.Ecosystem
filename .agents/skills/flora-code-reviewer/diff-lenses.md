@@ -1,6 +1,6 @@
 # Diff lenses — code-text checklists
 
-Load always with the taxonomy. Source of policy: repo root [`AGENTS.md`](../../../AGENTS.md). Flora dependency/ownership/freeze/gates: [`../flora-plan-reviewer/flora-lenses.md`](../flora-plan-reviewer/flora-lenses.md) — apply those checks to the **diff**, not to plan wording. Do not copy that file here.
+Load always with the taxonomy. Source of policy: repo root [`agents.md`](../../../agents.md). Flora dependency/ownership/freeze/gates: [`../flora-plan-reviewer/flora-lenses.md`](../flora-plan-reviewer/flora-lenses.md) — apply those checks to the **diff**, not to plan wording. Do not copy that file here.
 
 This loop adds probes the plan loop cannot see. Skip a probe when it does not apply (no stated zone → skip `zone_escape`; no plan → skip `plan_drift`).
 
@@ -21,7 +21,7 @@ Then:
 1. Read `git status --short` and `git diff` for that range, plus untracked source in range.
 2. Ignore generated noise unless it is the change: `node_modules`, `target`, `.expo`, `android/**/build`, `*.lock` except when the finding is `new_dep`.
 3. Every finding quotes a diff hunk or a concrete new-file snippet. No quote → not a finding.
-4. Do not fish the uncited repo. Extra reads: `AGENTS.md`; **mandatory** zone skill / `Apps/Mobile/AGENTS.md` when that zone is in the range (counts toward the budget); call sites of **new** exports (few targeted greps). Shared cited-path budget with Goal axis: **≤15** file reads besides the diff itself.
+4. Do not fish the uncited repo. Extra reads: `agents.md`; **mandatory** zone skill / `apps/Mobile/AGENTS.md` when that zone is in the range (counts toward the budget); call sites of **new** exports (few targeted greps). Shared cited-path budget with Goal axis: **≤15** file reads besides the diff itself.
 
 ## 1) Tests are a contract
 
@@ -52,10 +52,10 @@ If the range touches a row below, **load the Required read before Axis B**. Do n
 
 | Zone in the diff | Required read | Typical `skill_scar` |
 |------------------|---------------|----------------------|
-| `Apps/Web` `top` / margin / absolute / fixed | `/apps-web-grid-placement` | pixel placement, missing grid coordinates |
-| `Apps/Web` messages chat | `/apps-web-messages-chat` | compose / stickers / voice player off the skill |
-| `Apps/Web` UI copy / titles | `.cursor/rules/flora-ui-dash-separator.mdc` | em-dash `—` instead of `FLORA_TITLE_SEPARATOR` |
-| `Apps/Mobile` | `Apps/Mobile/AGENTS.md` | per-frame text `color`; RN `ScrollView`/`TextInput` inside a pager (must be RNGH); `removeClippedSubviews` on a `translateX` container |
+| `apps/Web` `top` / margin / absolute / fixed | `/apps-web-grid-placement` | pixel placement, missing grid coordinates |
+| `apps/Web` messages chat | `/apps-web-messages-chat` | compose / stickers / voice player off the skill |
+| `apps/Web` UI copy / titles | `.cursor/rules/flora-ui-dash-separator.mdc` | em-dash `—` instead of `FLORA_TITLE_SEPARATOR` |
+| `apps/Mobile` | `apps/Mobile/AGENTS.md` | per-frame text `color`; RN `ScrollView`/`TextInput` inside a pager (must be RNGH); `removeClippedSubviews` on a `translateX` container |
 | Messaging / FSCP E2E | `/flora-fscp-e2e` | wire/security improvisation |
 | `package.json` / `Cargo.toml` deps | thread permission | `new_dep` |
 

@@ -10,7 +10,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/zed-dev-api-web.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/zed-dev-api-web.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
@@ -26,7 +26,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/gov-dev-localhost.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/gov-dev-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
@@ -54,7 +54,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/stop-dev-localhost.ps1",
+      "$ZED_WORKTREE_ROOT/scripts/stop-dev-localhost.ps1",
       "-Api"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
@@ -68,7 +68,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/run-rust-gateway-localhost.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/run-rust-gateway-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
@@ -83,7 +83,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/run-rust-gateway-localhost.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/run-rust-gateway-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
@@ -98,7 +98,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/run-rust-gateway-localhost.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/run-rust-gateway-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
@@ -126,7 +126,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/run-rust-gateway-localhost.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/run-rust-gateway-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
@@ -141,7 +141,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/web-dev-localhost.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/web-dev-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
@@ -158,7 +158,7 @@
       "-Command",
       "$env:NEXT_PUBLIC_DEV_AUTO_AUTH='1'; npm run dev"
     ],
-    "cwd": "$ZED_WORKTREE_ROOT/Apps/Web",
+    "cwd": "$ZED_WORKTREE_ROOT/apps/Web",
     "use_new_terminal": true,
     "reveal": "always"
   },
@@ -170,7 +170,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/deploy-flora-social-from-task.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/deploy-flora-social-from-task.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "reveal": "always"
@@ -183,7 +183,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/mobile-debug-android.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/mobile-debug-android.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "use_new_terminal": true,
@@ -198,9 +198,9 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/mobile-release-android.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/mobile-release-android.ps1"
     ],
-    "cwd": "$ZED_WORKTREE_ROOT/Apps/Mobile",
+    "cwd": "$ZED_WORKTREE_ROOT/apps/Mobile",
     "reveal": "always"
   },
   {
@@ -211,10 +211,10 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/mobile-release-android.ps1",
+      "$ZED_WORKTREE_ROOT/scripts/mobile-release-android.ps1",
       "-PublishGitHub"
     ],
-    "cwd": "$ZED_WORKTREE_ROOT/Apps/Mobile",
+    "cwd": "$ZED_WORKTREE_ROOT/apps/Mobile",
     "reveal": "always"
   },
   {
@@ -225,7 +225,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/send-apk-auto-update.ps1",
+      "$ZED_WORKTREE_ROOT/scripts/send-apk-auto-update.ps1",
       "-Production",
       "-Confirm"
     ],
@@ -241,7 +241,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/send-apk-auto-update.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/send-apk-auto-update.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "env": {
@@ -258,9 +258,9 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/mobile-install-release-android.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/mobile-install-release-android.ps1"
     ],
-    "cwd": "$ZED_WORKTREE_ROOT/Apps/Mobile",
+    "cwd": "$ZED_WORKTREE_ROOT/apps/Mobile",
     "reveal": "always"
   },
   {
@@ -271,7 +271,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/broadcast-app-update.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/broadcast-app-update.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "env": {
@@ -288,7 +288,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/broadcast-app-update.ps1",
+      "$ZED_WORKTREE_ROOT/scripts/broadcast-app-update.ps1",
       "-Production",
       "-Confirm"
     ],
@@ -303,7 +303,7 @@
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      "$ZED_WORKTREE_ROOT/Scripts/setup-app-update-broadcast.ps1"
+      "$ZED_WORKTREE_ROOT/scripts/setup-app-update-broadcast.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "reveal": "always"

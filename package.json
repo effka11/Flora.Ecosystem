@@ -4,25 +4,25 @@
   "license": "AGPL-3.0-only OR LicenseRef-Flora-Ecosystem-Commercial",
   "author": "Egor Ozerskikh <e.ozerskikh@gmail.com>",
   "workspaces": [
-    "Apps/Mobile",
-    "Packages/*",
-    "Products/FSCP",
-    "Products/FRC"
+    "apps/Mobile",
+    "packages/*",
+    "products/FSCP",
+    "products/FRC"
   ],
   "scripts": {
     "mobile": "npm run dev --workspace=@flora/mobile",
-    "mobile:android": "powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/mobile-android.ps1",
-    "mobile:android:install": "powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/mobile-install-debug-android.ps1",
+    "mobile:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/mobile-android.ps1",
+    "mobile:android:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/mobile-install-debug-android.ps1",
     "mobile:android:usb": "npm run android:usb --workspace=@flora/mobile",
-    "debug:android:usb": "powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/mobile-debug-android.ps1",
+    "debug:android:usb": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/mobile-debug-android.ps1",
     "debug:mobile:usb": "npm run debug:android:usb",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "ci": "npm run typecheck && npm run lint && npm run test",
-    "test:slopsquat": "node --test Tools/slopsquat/provenance.test.mjs Tools/slopsquat/names.test.mjs Tools/slopsquat/check.test.mjs && node Tools/slopsquat/check.mjs",
-    "version:sync": "node Scripts/sync-version.mjs",
-    "postinstall": "node Scripts/patch-rn-foojay.mjs && node Scripts/patch-react-native-libsodium.mjs && node Scripts/patch-ffmpeg-kit.mjs"
+    "test:slopsquat": "node --test tools/slopsquat/provenance.test.mjs tools/slopsquat/names.test.mjs tools/slopsquat/check.test.mjs && node tools/slopsquat/check.mjs",
+    "version:sync": "node scripts/sync-version.mjs",
+    "postinstall": "node scripts/patch-rn-foojay.mjs && node scripts/patch-react-native-libsodium.mjs && node scripts/patch-ffmpeg-kit.mjs"
   },
   "engines": {
     "node": ">=20.19"

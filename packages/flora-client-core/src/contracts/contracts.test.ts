@@ -1,0 +1,238 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { parseLoginPayload, parseMePayload } from "./auth.js";
+import { parseFeedPage, parseFeedPostsList } from "./feed.js";
+import { parseMusicTracksList } from "./music.js";
+import { parseProfilePostsList } from "./profile.js";
+import { parseConversationsPage, parseMessagesPage } from "./messaging.js";
+import { parseNotificationsList, parseUnreadCount } from "./notifications.js";
+import {
+  communityPostToFeedPost,
+  parseCommunityPost,
+  parseCommunityProfile,
+} from "./communities.js";
+
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "../../../../artifacts/contract-fixtures");
+
+function loadFixture(name: string): unknown {
+  return JSON.parse(readFileSync(join(fixturesDir, name), "utf8"));
+}
+
+describe("contract fixtures", () => {
+  it("parses auth-login.json", () => {
+    const parsed = parseLoginPayload(loadFixture("auth-login.json"));
+    expect(parsed.accessToken).toContain("eyJ");
+    expect(parsed.refreshToken).toBe("refresh-token-sample");
+  });
+
+  it("parses auth-refresh.json", () => {
+    const parsed = parseLoginPayload(loadFixture("auth-refresh.json"));
+    expect(parsed.accessToken).toContain("rotated");
+  });
+
+  it("parses auth-me.json", () => {
+    const parsed = parseMePayload(loadFixture("auth-me.json"));
+    expect(parsed.username).toBe("flora_user");
+    expect(parsed.followersCount).toBe(10);
+  });
+
+  it("parses feed-page.json", () => {
+    const parsed = parseFeedPage(loadFixture("feed-page.json"));
+    expect(parsed.items).toHaveLength(1);
+    expect(parsed.items[0]?.text).toBe("Hello Flora");
+  });
+
+  it("parses community fields on feed posts", () => {
+    const parsed = parseFeedPage({
+      items: [
+        {
+          postUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          authorUserUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          authorUsername: "founder",
+          authorDisplayName: "Founder",
+          communityId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          communityName: "My Group",
+          communitySlug: "my-group",
+          communityAvatarUuid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+          content: "Community post",
+          createdAt: "2026-06-12T10:00:00.000Z",
+          likesCount: 0,
+          commentsCount: 0,
+          repostsCount: 0,
+          viewsCount: 0,
+          liked: false,
+          reposted: false,
+          imageUuids: [],
+        },
+      ],
+    });
+    expect(parsed.items).toHaveLength(1);
+    const post = parsed.items[0]!;
+    expect(post.communityUuid).toBe("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    expect(post.communityName).toBe("My Group");
+    expect(post.communitySlug).toBe("my-group");
+    expect(post.communityAvatarUuid).toBe("dddddddd-dddd-dddd-dddd-dddddddddddd");
+  });
+
+  it("parses profile posts array", () => {
+    const parsed = parseProfilePostsList([
+      {
+        postUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        content: "Hello profile",
+        createdAt: "2026-06-12T10:00:00.000Z",
+        commentsCount: 2,
+        likesCount: 5,
+        repostsCount: 1,
+        viewsCount: 10,
+        liked: true,
+        reposted: false,
+        imageUuids: ["img-1"],
+      },
+    ]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.content).toBe("Hello profile");
+    expect(parsed[0]?.likesCount).toBe(5);
+    expect(parsed[0]?.imageUuids).toEqual(["img-1"]);
+  });
+
+  it("parses messaging fixtures", () => {
+    const conv = loadFixture("messaging-conversations.json");
+    const parsed = parseConversationsPage(conv);
+    expect(parsed.items).toHaveLength(1);
+    const msgs = loadFixture("messaging-messages.json");
+    const messages = parseMessagesPage(msgs);
+    expect(messages.items).toHaveLength(1);
+    expect(messages.items[0]?.serverFrankReceipt ?? null).toBeNull();
+    expect(messages.items[0]?.frankTagBase64Url ?? null).toBeNull();
+  });
+
+  it("parses franking receipt fields on messages", () => {
+    const messages = parseMessagesPage({
+      items: [
+        {
+          messageUuid: "33333333-3333-3333-3333-333333333333",
+          conversationUuid: "11111111-1111-1111-1111-111111111111",
+          senderUserUuid: "22222222-2222-2222-2222-222222222222",
+          encryptedPayload: "SGVsbG8=",
+          createdAt: "2026-06-12T10:00:00.000Z",
+          isFromMe: false,
+          frankTagBase64Url: "tag",
+          serverFrankReceipt: {
+            signatureBase64Url: "sig",
+            serverFrankingKeyId: "kid",
+            serverReceivedAt: "2026-06-12T10:00:01.000Z",
+          },
+        },
+      ],
+      nextCursor: null,
+    });
+    expect(messages.items[0]?.frankTagBase64Url).toBe("tag");
+    expect(messages.items[0]?.serverFrankReceipt).toEqual({
+      signatureBase64Url: "sig",
+      serverFrankingKeyId: "kid",
+      serverReceivedAt: "2026-06-12T10:00:01.000Z",
+    });
+  });
+
+  it("parses notifications unread", () => {
+    const parsed = parseUnreadCount({ count: 3 });
+    expect(parsed).toBe(3);
+    const list = parseNotificationsList(loadFixture("notifications-page.json"));
+    expect(list.length).toBeGreaterThan(0);
+  });
+
+  it("parses community profile and maps community post to feed", () => {
+    const profile = parseCommunityProfile({
+      communityId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      name: "My Group",
+      slug: "my-group",
+      memberCount: 42,
+      role: "Owner",
+      avatarUuid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      isPrivate: false,
+    });
+    expect(profile?.slug).toBe("my-group");
+    expect(profile?.role).toBe("Owner");
+
+    const post = parseCommunityPost({
+      postUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      content: "Hello community",
+      createdAt: "2026-06-12T10:00:00.000Z",
+      authorUserUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      authorUsername: "founder",
+      authorDisplayName: "Founder",
+      commentsCount: 1,
+      likesCount: 2,
+      repostsCount: 0,
+      viewsCount: 10,
+      liked: true,
+      reposted: false,
+      imageUuids: [],
+    });
+    expect(post?.authorUserUuid).toBe("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+    const feed = communityPostToFeedPost(post!, profile!);
+    expect(feed.communityName).toBe("My Group");
+    expect(feed.communitySlug).toBe("my-group");
+    expect(feed.likedByMe).toBe(true);
+  });
+});
+
+const sampleFeedPost = {
+  postUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  authorUserUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  authorUsername: "founder",
+  authorDisplayName: "Founder",
+  content: "Search hit",
+  createdAt: "2026-06-12T10:00:00.000Z",
+  likesCount: 0,
+  commentsCount: 0,
+  repostsCount: 0,
+  viewsCount: 0,
+  liked: false,
+  reposted: false,
+  imageUuids: [],
+};
+
+const sampleMusicTrack = {
+  trackUuid: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+  scope: "platform",
+  title: "Sample Track",
+  artistDisplay: "Sample Artist",
+  artistCredits: [],
+  tags: null,
+  genreId: "rock",
+  licenseId: "cc",
+  coverColorId: "c1",
+  trackKindId: "song",
+  hasCoverImage: false,
+  durationMs: 180000,
+  createdAt: "2026-06-12T10:00:00.000Z",
+  publishedAt: "2026-06-12T10:00:00.000Z",
+};
+
+describe("bare search list parsers", () => {
+  it("parses a bare array of one feed post", () => {
+    const parsed = parseFeedPostsList([sampleFeedPost]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.postUuid).toBe(sampleFeedPost.postUuid);
+    expect(parsed[0]?.text).toBe("Search hit");
+  });
+
+  it("does not accept a feed { items } wrapper as a list", () => {
+    expect(parseFeedPostsList({ items: [sampleFeedPost] })).toEqual([]);
+  });
+
+  it("parses a bare array of one music track", () => {
+    const parsed = parseMusicTracksList([sampleMusicTrack]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.trackUuid).toBe(sampleMusicTrack.trackUuid);
+    expect(parsed[0]?.title).toBe("Sample Track");
+  });
+
+  it("does not accept a music { items } wrapper as a list", () => {
+    expect(parseMusicTracksList({ items: [sampleMusicTrack] })).toEqual([]);
+  });
+});

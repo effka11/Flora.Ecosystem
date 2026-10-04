@@ -1,2 +1,0 @@
-﻿# Workspace root is the repository Cargo.toml (includes Backend/crates + Products/*).
-# Run cargo from the repo root: `cargo test --workspace`.

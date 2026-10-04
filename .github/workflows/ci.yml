@@ -1,6 +1,6 @@
 # CI Flora.Ecosystem — обязательные ворота перед merge в main.
 # Имена джобов (architecture, ts, web, rust, supply-chain) используются как required status checks
-# в защите ветки — см. Scripts/setup-github-protection.ps1. Не переименовывать без синхронизации.
+# в защите ветки — см. scripts/setup-github-protection.ps1. Не переименовывать без синхронизации.
 name: CI
 
 on:
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate Rust crate boundaries
         shell: pwsh
-        run: ./Tools/validate-architecture-rust.ps1
+        run: ./tools/validate-architecture-rust.ps1
 
   ts:
     name: ts
@@ -34,8 +34,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      # Workspaces: Apps/Mobile + Packages/* (client-core). Тесты client-core читают
-      # Artifacts/contract-fixtures — кросс-языковой контракт с бэкендом.
+      # Workspaces: apps/Mobile + packages/* (client-core). Тесты client-core читают
+      # artifacts/contract-fixtures — кросс-языковой контракт с бэкендом.
       - name: Install
         run: npm ci
       - name: Typecheck + lint + test
@@ -65,26 +65,26 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          # Web depends on @flora/client-core via file:; tsc resolves into Packages/
+          # Web depends on @flora/client-core via file:; tsc resolves into packages/
           # source, so workspace deps (uuid, @noble/*) must be installed at the root.
           cache-dependency-path: |
             package-lock.json
-            Apps/Web/package-lock.json
+            apps/Web/package-lock.json
       - name: Install workspaces
         run: npm ci
       - name: Install Web
-        working-directory: Apps/Web
+        working-directory: apps/Web
         run: npm ci
       - name: Typecheck
-        working-directory: Apps/Web
+        working-directory: apps/Web
         run: npm run typecheck
-      # Apps/Web is not a root npm workspace, so root `npm run ci` never runs it.
+      # apps/Web is not a root npm workspace, so root `npm run ci` never runs it.
       - name: Test Web
-        run: npm --prefix Apps/Web test
-      # TODO: включить после погашения eslint-долга в Apps/Web (~109 существующих ошибок
+        run: npm --prefix apps/Web test
+      # TODO: включить после погашения eslint-долга в apps/Web (~109 существующих ошибок
       # react-hooks/* — чинить отдельной задачей, не в рамках настройки CI):
       # - name: Lint
-      #   working-directory: Apps/Web
+      #   working-directory: apps/Web
       #   run: npm run lint
 
   gov:
@@ -96,27 +96,27 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          # Gov depends on @flora/client-core via file:; tsc resolves into Packages/
+          # Gov depends on @flora/client-core via file:; tsc resolves into packages/
           # source, so workspace deps (uuid, @noble/*) must be installed at the root.
           cache-dependency-path: |
             package-lock.json
-            Apps/Gov/package-lock.json
+            apps/Gov/package-lock.json
       - name: Install workspaces
         run: npm ci
       - name: Install Gov
-        working-directory: Apps/Gov
+        working-directory: apps/Gov
         run: npm ci
       - name: Typecheck
-        working-directory: Apps/Gov
+        working-directory: apps/Gov
         run: npm run typecheck
-      # Apps/Gov is lint-clean (0 errors). Lint is enabled on purpose: unlike Apps/Web,
+      # apps/Gov is lint-clean (0 errors). Lint is enabled on purpose: unlike apps/Web,
       # there is no pre-existing react-hooks/* debt to wait on.
       - name: Lint
-        working-directory: Apps/Gov
+        working-directory: apps/Gov
         run: npm run lint
-      # Apps/Gov is not a root npm workspace, so root `npm run ci` never runs it.
+      # apps/Gov is not a root npm workspace, so root `npm run ci` never runs it.
       - name: Test Gov
-        run: npm --prefix Apps/Gov test
+        run: npm --prefix apps/Gov test
 
   # Rust pipeline (repo-root Cargo.toml: Backend + Products).
   # Toolchain: rust-toolchain.toml at repo root.
@@ -149,7 +149,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
-      # flora-verification (prost/tonic) — gRPC stubs from Infrastructure/Flora.gRPC/Protos
+      # flora-verification (prost/tonic) — gRPC stubs from infrastructure/Flora.gRPC/Protos
       - name: Install protoc and PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler postgresql-client
       - uses: Swatinem/rust-cache@v2
@@ -162,7 +162,7 @@ jobs:
       - name: Prepare disposable cutover schema
         run: >-
           psql --set=ON_ERROR_STOP=1
-          --file=Scripts/sql/ci-auth-refresh-legacy-schema.sql
+          --file=scripts/sql/ci-auth-refresh-legacy-schema.sql
       - name: Apply real module migrations
         run: |
           cargo run -p flora-migrate --locked -- --dry-run
@@ -170,7 +170,7 @@ jobs:
       - name: Verify migration and old API compatibility
         run: >-
           psql --set=ON_ERROR_STOP=1
-          --file=Scripts/sql/ci-auth-refresh-verify.sql
+          --file=scripts/sql/ci-auth-refresh-verify.sql
       - name: Test Auth replay against PostgreSQL
         env:
           FLORA_AUTH_REPLAY_PG: "1"
@@ -185,7 +185,7 @@ jobs:
         with:
           manifest-path: Cargo.toml
 
-  # FEP wasm32 (Products/FEP): ядро и C-ABI шим клиентской верификации LIV
+  # FEP wasm32 (products/FEP): ядро и C-ABI шим клиентской верификации LIV
   # (FEP.md §10 — обязательная проверка; потребитель — @flora/client-core/economy).
   fep-wasm:
     name: fep-wasm
@@ -204,7 +204,7 @@ jobs:
       - name: Check FEP WASM shim on wasm32
         run: cargo check -p flora-economy-wasm --target wasm32-unknown-unknown --locked
 
-  # FGP wasm32 (Products/FGP): крипто-ядро governance обязано собираться под
+  # FGP wasm32 (products/FGP): крипто-ядро governance обязано собираться под
   # wasm32 — клиентская верификация журнала/жеребьёвок (FGP-CRYPTO.md §2, §10).
   fgp-wasm:
     name: fgp-wasm
@@ -221,7 +221,7 @@ jobs:
       - name: Check FGP crypto core on wasm32
         run: cargo check -p flora-governance-crypto --target wasm32-unknown-unknown --locked
 
-  # FRC cores wasm32 (Products/FRC, same workspace).
+  # FRC cores wasm32 (products/FRC, same workspace).
   codecs-frc:
     name: codecs-frc
     runs-on: ubuntu-latest

@@ -1,10 +1,10 @@
 ---
 description: Flora UI dash separator — en-dash with double NBSP (HTML collapse)
-globs: Apps/Web/**/*.{ts,tsx}
+globs: apps/Web/**/*.{ts,tsx}
 alwaysApply: false
 ---
 
-# Разделитель «тире» в UI-тексте Apps/Web
+# Разделитель «тире» в UI-тексте apps/Web
 
 В пользовательском копирайте (правила, aria-label, описания, вкладки браузера) **не** использовать длинное тире `—` (U+2014).
 
@@ -12,7 +12,7 @@ alwaysApply: false
 
 Формат: **два неразрывных пробела + en-dash + два неразрывных пробела**.
 
-- Константа SoT: `FLORA_TITLE_SEPARATOR` в `Apps/Web/lib/floraDocumentTitle.ts`
+- Константа SoT: `FLORA_TITLE_SEPARATOR` в `apps/Web/lib/floraDocumentTitle.ts`
 - Значение: `"\u00A0\u00A0–\u00A0\u00A0"` → визуально `Flora  –  Сообщения`
 
 ## Почему NBSP
