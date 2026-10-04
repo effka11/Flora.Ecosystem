@@ -413,20 +413,19 @@ fn eval_block4(
     qx: usize,
     qy: usize,
     qmat4: &[u16; 16],
-    lambda: f32,
+    rd: RdLambda,
 ) -> (SubBlock4, f32) {
     let orig = gather_block4_i32(buf, w, h, qx, qy);
     let cfl_block = cfl_luma.map(|luma| gather_block4_i32(luma, w, h, qx, qy));
     let b = border4(recon, w, h, qx, qy);
-    let ac_bias = AC_BIAS_V7;
+    let lambda = rd.decision;
     let (mode, pred, quantized, cost) =
-        choose_mode4(&orig, &b, cfl_block.as_ref(), qmat4, lambda, ac_bias);
+        choose_mode4(&orig, &b, cfl_block.as_ref(), qmat4, lambda, rd.ac_bias);
     let (tx, quantized, cost) = choose_transform(
         &orig,
         &pred,
         qmat4,
-        lambda,
-        ac_bias,
+        rd,
         quantized,
         cost,
         forward_tx4,
@@ -523,8 +522,13 @@ fn eval_node8(
     by: usize,
     qmat: &[u16; 64],
     qmat4: &[u16; 16],
-    lambda: f32,
+    rd: RdLambda,
 ) -> (Node8, f32) {
+    let lambda = rd.decision;
+    // Компенсация недооценённой цены четырёх DC/мод — на базовой λ во всех
+    // версиях (см. `RdLambda`): в v12 она намеренно не масштабируется вместе
+    // с λ решений.
+    let split8_extra = rd.base * SPLIT8_EXTRA_BITS as f32;
     let orig = gather_block_i32(buf, w, h, bx, by);
     let hint = split_hint8(&orig);
     let partial = (bx + 1) * 8 > w || (by + 1) * 8 > h;
@@ -533,19 +537,18 @@ fn eval_node8(
         let mut subs = Vec::with_capacity(4);
         let mut split_cost = 0f32;
         for (qx, qy) in child_blocks4(bx, by, w, h) {
-            let (sub, cost) = eval_block4(buf, recon, cfl_luma, w, h, qx, qy, qmat4, lambda);
+            let (sub, cost) = eval_block4(buf, recon, cfl_luma, w, h, qx, qy, qmat4, rd);
             subs.push(sub);
             split_cost += cost;
         }
         return (
             Node8::Split { subs },
-            split_cost + lambda * (SPLIT_COST_BITS + SPLIT8_EXTRA_BITS) as f32,
+            split_cost + lambda * SPLIT_COST_BITS as f32 + split8_extra,
         );
     }
 
     let b = border(recon, w, h, bx, by);
     let cfl_block = cfl_luma.map(|luma| gather_block_i32(luma, w, h, bx, by));
-    let ac_bias = AC_BIAS_V7;
     let (mode, pred, quantized, whole_base) = choose_mode_v7(
         &orig,
         &b,
@@ -553,14 +556,13 @@ fn eval_node8(
         qmat,
         lambda,
         mode_limit_v7(cfl_luma.is_some()),
-        ac_bias,
+        rd.ac_bias,
     );
     let (tx, quantized, whole_base) = choose_transform(
         &orig,
         &pred,
         qmat,
-        lambda,
-        ac_bias,
+        rd,
         quantized,
         whole_base,
         forward_tx8,
@@ -585,14 +587,14 @@ fn eval_node8(
     let mut subs = Vec::with_capacity(4);
     let mut split_cost = 0f32;
     for (qx, qy) in child_blocks4(bx, by, w, h) {
-        let (sub, cost) = eval_block4(buf, recon, cfl_luma, w, h, qx, qy, qmat4, lambda);
+        let (sub, cost) = eval_block4(buf, recon, cfl_luma, w, h, qx, qy, qmat4, rd);
         subs.push(sub);
         split_cost += cost;
-        if split_cost + lambda * SPLIT8_EXTRA_BITS as f32 > whole_cost {
+        if split_cost + split8_extra > whole_cost {
             break;
         }
     }
-    let adjusted_split_cost = split_cost + lambda * SPLIT8_EXTRA_BITS as f32;
+    let adjusted_split_cost = split_cost + split8_extra;
 
     if whole_cost <= adjusted_split_cost {
         restore_region8(recon, w, h, bx, by, &backup);
@@ -937,13 +939,13 @@ fn eval_node16(
     qmat: &[u16; 64],
     qmat4: &[u16; 16],
     qmat16: &[u16; 256],
-    lambda: f32,
+    rd: RdLambda,
 ) -> (Node16, f32) {
+    let lambda = rd.decision;
     let orig16 = gather_block16_i32(buf, w, h, sbx, sby);
     let hint = split_hint(&orig16);
 
     let eval_whole = |recon: &mut [i16]| {
-        let ac_bias = AC_BIAS_V7;
         let b = border16(recon, w, h, sbx, sby);
         let cfl_block = cfl_luma.map(|luma| gather_block16_i32(luma, w, h, sbx, sby));
         let (mode, pred, quantized, cost) = choose_mode16_v7(
@@ -953,14 +955,13 @@ fn eval_node16(
             qmat16,
             lambda,
             mode_limit_v7(cfl_luma.is_some()),
-            ac_bias,
+            rd.ac_bias,
         );
         let (tx, quantized, cost) = choose_transform(
             &orig16,
             &pred,
             qmat16,
-            lambda,
-            ac_bias,
+            rd,
             quantized,
             cost,
             forward_tx16,
@@ -987,8 +988,7 @@ fn eval_node16(
         let mut nodes = Vec::with_capacity(4);
         let mut cost = 0f32;
         for (bx, by) in sub_blocks(sbx, sby, w, h) {
-            let (node, node_cost) =
-                eval_node8(buf, recon, cfl_luma, w, h, bx, by, qmat, qmat4, lambda);
+            let (node, node_cost) = eval_node8(buf, recon, cfl_luma, w, h, bx, by, qmat, qmat4, rd);
             nodes.push(node);
             cost += node_cost;
         }
@@ -1005,7 +1005,7 @@ fn eval_node16(
     let mut split_cost = 0f32;
     let mut split_complete = true;
     for (bx, by) in sub_blocks(sbx, sby, w, h) {
-        let (node, node_cost) = eval_node8(buf, recon, cfl_luma, w, h, bx, by, qmat, qmat4, lambda);
+        let (node, node_cost) = eval_node8(buf, recon, cfl_luma, w, h, bx, by, qmat, qmat4, rd);
         nodes.push(node);
         split_cost += node_cost;
         if split_cost > whole_cost {
@@ -1191,11 +1191,12 @@ fn encode_root(
     qmat4: &[u16; 16],
     qmat16: &[u16; 256],
     qmat32: &[u16; 1024],
-    lambda: f32,
+    rd: RdLambda,
     st: &mut CtxV7,
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
 ) {
+    let lambda = rd.decision;
     // Неполный корень всегда раскрывается: сравнение DCT32 с меньшим
     // числом дочерних узлов на реплицированном краю было бы смещено.
     let partial = (rx + 1) * 32 > w || (ry + 1) * 32 > h;
@@ -1203,7 +1204,7 @@ fn encode_root(
         syms.push((CTX7_SPLIT32, SPLIT_QUAD));
         for (sbx, sby) in child_nodes16(rx, ry, w, h) {
             let (node, _) = eval_node16(
-                buf, recon, cfl_luma, w, h, sbx, sby, qmat, qmat4, qmat16, lambda,
+                buf, recon, cfl_luma, w, h, sbx, sby, qmat, qmat4, qmat16, rd,
             );
             emit_node16(&node, st, syms, raw);
         }
@@ -1216,24 +1217,28 @@ fn encode_root(
         syms.push((CTX7_SPLIT32, SPLIT_QUAD));
         for (sbx, sby) in child_nodes16(rx, ry, w, h) {
             let (node, _) = eval_node16(
-                buf, recon, cfl_luma, w, h, sbx, sby, qmat, qmat4, qmat16, lambda,
+                buf, recon, cfl_luma, w, h, sbx, sby, qmat, qmat4, qmat16, rd,
             );
             emit_node16(&node, st, syms, raw);
         }
         return;
     }
 
-    let ac_bias = AC_BIAS_V7;
     let b32 = border32(recon, w, h, rx, ry);
     let cfl_block = cfl_luma.map(|luma| gather_block32_i32(luma, w, h, rx, ry));
-    let (mode32, pred32, quant32, cost32) =
-        choose_mode32(&orig32, &b32, cfl_block.as_ref(), qmat32, lambda, ac_bias);
+    let (mode32, pred32, quant32, cost32) = choose_mode32(
+        &orig32,
+        &b32,
+        cfl_block.as_ref(),
+        qmat32,
+        lambda,
+        rd.ac_bias,
+    );
     let (tx32, quant32, cost32) = choose_transform(
         &orig32,
         pred32.as_ref(),
         qmat32,
-        lambda,
-        ac_bias,
+        rd,
         *quant32,
         cost32,
         forward_tx32,
@@ -1257,7 +1262,7 @@ fn encode_root(
     let mut split_complete = true;
     for (sbx, sby) in child_nodes16(rx, ry, w, h) {
         let (node, cost) = eval_node16(
-            buf, recon, cfl_luma, w, h, sbx, sby, qmat, qmat4, qmat16, lambda,
+            buf, recon, cfl_luma, w, h, sbx, sby, qmat, qmat4, qmat16, rd,
         );
         nodes.push(node);
         split_cost += cost;
@@ -1297,14 +1302,14 @@ pub(super) fn encode_tile_plane(
     let qmat4 = quant_matrix4(qmat);
     let qmat16 = quant_matrix16(qmat);
     let qmat32 = quant_matrix32(qmat);
-    let lambda = plane_lambda(qmat);
+    let rd = RdLambda::for_plane(qmat, RdTuning::LEGACY);
     let mut recon = vec![0i16; w * h];
     let mut st = CtxV7::default();
 
     for ry in 0..root_rows {
         for rx in 0..root_cols {
             encode_root(
-                buf, &mut recon, cfl_luma, w, h, rx, ry, qmat, &qmat4, &qmat16, &qmat32, lambda,
+                buf, &mut recon, cfl_luma, w, h, rx, ry, qmat, &qmat4, &qmat16, &qmat32, rd,
                 &mut st, syms, raw,
             );
         }
@@ -1328,17 +1333,15 @@ fn dq_scale_qmat(qmat: &[u16; 64], dq: u8) -> [u16; 64] {
     core::array::from_fn(|i| ((u32::from(qmat[i]) * num + 32) >> 6).clamp(1, 255) as u16)
 }
 
-/// Матрицы и лагранжиан одной ступени delta-Q.
+/// Нормативные матрицы одной ступени delta-Q.
 struct DqMats {
     qmat: [u16; 64],
     qmat4: [u16; 16],
     qmat16: [u16; 256],
     qmat32: Box<[u16; 1024]>,
-    lambda: f32,
 }
 
-/// Все ступени delta-Q плоскости; общие для кодера и декодера
-/// (лагранжиан декодеру не нужен, его расчёт дёшев).
+/// Все ступени delta-Q плоскости; общие для кодера и декодера.
 fn dq_variants(qmat: &[u16; 64]) -> Vec<DqMats> {
     (0..DQ_NUMERATORS.len() as u8)
         .map(|dq| {
@@ -1347,10 +1350,16 @@ fn dq_variants(qmat: &[u16; 64]) -> Vec<DqMats> {
                 qmat4: quant_matrix4(&q8),
                 qmat16: quant_matrix16(&q8),
                 qmat32: Box::new(quant_matrix32(&q8)),
-                lambda: plane_lambda(&q8),
                 qmat: q8,
             }
         })
+        .collect()
+}
+
+/// Лагранжианы кодера для каждой ступени delta-Q (параллельно `dq_variants`).
+fn dq_lambdas(mats: &[DqMats], tuning: RdTuning) -> Vec<RdLambda> {
+    mats.iter()
+        .map(|m| RdLambda::for_plane(&m.qmat, tuning))
         .collect()
 }
 
@@ -1458,6 +1467,7 @@ pub(super) fn encode_tile_plane_v9(
     let root_cols = w.div_ceil(32);
     let root_rows = h.div_ceil(32);
     let mats = dq_variants(qmat);
+    let rds = dq_lambdas(&mats, RdTuning::LEGACY);
     let dqs = choose_dq_indices(buf, w, h, tuning);
     let mut recon = vec![0i16; w * h];
     let mut st = CtxV7::default();
@@ -1468,8 +1478,21 @@ pub(super) fn encode_tile_plane_v9(
             syms.push((CTX9_DQ, dq));
             let m = &mats[usize::from(dq)];
             encode_root(
-                buf, &mut recon, cfl_luma, w, h, rx, ry, &m.qmat, &m.qmat4, &m.qmat16, &m.qmat32,
-                m.lambda, &mut st, syms, raw,
+                buf,
+                &mut recon,
+                cfl_luma,
+                w,
+                h,
+                rx,
+                ry,
+                &m.qmat,
+                &m.qmat4,
+                &m.qmat16,
+                &m.qmat32,
+                rds[usize::from(dq)],
+                &mut st,
+                syms,
+                raw,
             );
         }
     }
@@ -1991,6 +2014,7 @@ fn encode_root_v11(
     rx: usize,
     ry: usize,
     mats: &[DqMats],
+    rds: &[RdLambda],
     root_dq: u8,
     ideal16: &[u8],
     sb_cols: usize,
@@ -2000,6 +2024,8 @@ fn encode_root_v11(
     raw: &mut BitWriter,
 ) {
     let rm = &mats[usize::from(root_dq)];
+    let rd = rds[usize::from(root_dq)];
+    let lambda = rd.decision;
     let hi = refine.max_up.clamp(0, DQR_RADIUS);
     let lo = -refine.max_down.clamp(0, DQR_RADIUS);
     let child_sym = |sbx: usize, sby: usize| -> u8 {
@@ -2018,10 +2044,11 @@ fn encode_root_v11(
         () => {
             for (sbx, sby) in child_nodes16(rx, ry, w, h) {
                 let sym = child_sym(sbx, sby);
-                let m = &mats[dqr_effective(root_dq, sym)];
+                let level = dqr_effective(root_dq, sym);
+                let m = &mats[level];
                 syms.push((CTX11_DQR, sym));
                 let (node, _) = eval_node16(
-                    buf, recon, cfl_luma, w, h, sbx, sby, &m.qmat, &m.qmat4, &m.qmat16, m.lambda,
+                    buf, recon, cfl_luma, w, h, sbx, sby, &m.qmat, &m.qmat4, &m.qmat16, rds[level],
                 );
                 emit_node16(&node, st, syms, raw);
             }
@@ -2043,7 +2070,6 @@ fn encode_root_v11(
         return;
     }
 
-    let ac_bias = AC_BIAS_V7;
     let b32 = border32(recon, w, h, rx, ry);
     let cfl_block = cfl_luma.map(|luma| gather_block32_i32(luma, w, h, rx, ry));
     let (mode32, pred32, quant32, cost32) = choose_mode32(
@@ -2051,15 +2077,14 @@ fn encode_root_v11(
         &b32,
         cfl_block.as_ref(),
         &rm.qmat32,
-        rm.lambda,
-        ac_bias,
+        lambda,
+        rd.ac_bias,
     );
     let (tx32, quant32, cost32) = choose_transform(
         &orig32,
         pred32.as_ref(),
         &rm.qmat32,
-        rm.lambda,
-        ac_bias,
+        rd,
         *quant32,
         cost32,
         forward_tx32,
@@ -2081,14 +2106,14 @@ fn encode_root_v11(
     // детей занижала бы цену split). Уточнённые ступени применяются только
     // к эмиссии уже выбранного split-дерева: дерево — по RD на единой
     // ступени, ступени — по перцептивной эвристике (философия root-DQ).
-    let whole_cost = cost32 + rm.lambda * (MODE_COST_BITS + TX_COST_BITS) as f32;
+    let whole_cost = cost32 + lambda * (MODE_COST_BITS + TX_COST_BITS) as f32;
     let backup = save_region32(recon, w, h, rx, ry);
     let mut nodes: Vec<Node16> = Vec::with_capacity(4);
     let mut split_cost = 0f32;
     let mut split_complete = true;
     for (sbx, sby) in child_nodes16(rx, ry, w, h) {
         let (node, cost) = eval_node16(
-            buf, recon, cfl_luma, w, h, sbx, sby, &rm.qmat, &rm.qmat4, &rm.qmat16, rm.lambda,
+            buf, recon, cfl_luma, w, h, sbx, sby, &rm.qmat, &rm.qmat4, &rm.qmat16, rd,
         );
         nodes.push(node);
         split_cost += cost;
@@ -2113,10 +2138,11 @@ fn encode_root_v11(
             // intra-предикции соответствовали финальному recon декодера.
             restore_region32(recon, w, h, rx, ry, &backup);
             for (sbx, sby, sym) in child_syms {
-                let m = &mats[dqr_effective(root_dq, sym)];
+                let level = dqr_effective(root_dq, sym);
+                let m = &mats[level];
                 syms.push((CTX11_DQR, sym));
                 let (node, _) = eval_node16(
-                    buf, recon, cfl_luma, w, h, sbx, sby, &m.qmat, &m.qmat4, &m.qmat16, m.lambda,
+                    buf, recon, cfl_luma, w, h, sbx, sby, &m.qmat, &m.qmat4, &m.qmat16, rds[level],
                 );
                 emit_node16(&node, st, syms, raw);
             }
@@ -2131,8 +2157,9 @@ fn encode_root_v11(
     }
 }
 
-/// Кодирует тайл-плоскость v11: per-root delta-Q (wire v9) плюс refinement
-/// дочерних узлов 16×16 расщеплённых корней.
+/// Кодирует тайл-плоскость v11/v12: per-root delta-Q (wire v9) плюс
+/// refinement дочерних узлов 16×16 расщеплённых корней. Версии различает
+/// только RD-калибровка `rd_tuning` (v11 — `LEGACY`, v12 — `V12`), wire общий.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn encode_tile_plane_v11(
     buf: &[i16],
@@ -2141,6 +2168,7 @@ pub(super) fn encode_tile_plane_v11(
     h: usize,
     qmat: &[u16; 64],
     tuning: DqTuning,
+    rd_tuning: RdTuning,
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
 ) -> Vec<i16> {
@@ -2150,6 +2178,7 @@ pub(super) fn encode_tile_plane_v11(
     let root_rows = h.div_ceil(32);
     let sb_cols = w.div_ceil(16);
     let mats = dq_variants(qmat);
+    let rds = dq_lambdas(&mats, rd_tuning);
     let dqs = choose_dq_indices(buf, w, h, tuning);
     let ideal16 = choose_dq_ideal16(buf, w, h, tuning);
     let mut recon = vec![0i16; w * h];
@@ -2168,6 +2197,7 @@ pub(super) fn encode_tile_plane_v11(
                 rx,
                 ry,
                 &mats,
+                &rds,
                 dq,
                 &ideal16,
                 sb_cols,
@@ -2446,7 +2476,17 @@ mod tests {
     ) -> Vec<(u8, u8)> {
         let mut syms = Vec::new();
         let mut raw = BitWriter::new();
-        let expected = encode_tile_plane_v11(buf, None, w, h, qmat, tuning, &mut syms, &mut raw);
+        let expected = encode_tile_plane_v11(
+            buf,
+            None,
+            w,
+            h,
+            qmat,
+            tuning,
+            RdTuning::LEGACY,
+            &mut syms,
+            &mut raw,
+        );
 
         let (groups, kinds) = ctx_meta_v11();
         let mut enc_bank = ModelBank::new(groups.clone(), kinds.clone());
@@ -2627,11 +2667,11 @@ mod tests {
         let (w, h) = (8, 8);
         let qmat = quant_matrix(&BASE_LUMA, 75);
         let qmat4 = quant_matrix4(&qmat);
-        let lambda = plane_lambda(&qmat);
+        let rd = RdLambda::for_plane(&qmat, RdTuning::LEGACY);
 
         let flat = vec![140i16; w * h];
         let mut recon = vec![0i16; w * h];
-        let (node, _) = eval_node8(&flat, &mut recon, None, w, h, 0, 0, &qmat, &qmat4, lambda);
+        let (node, _) = eval_node8(&flat, &mut recon, None, w, h, 0, 0, &qmat, &qmat4, rd);
         assert!(matches!(node, Node8::Whole(_)));
 
         let mut heterogeneous = vec![128i16; w * h];
@@ -2653,8 +2693,49 @@ mod tests {
             0,
             &qmat,
             &qmat4,
-            lambda,
+            rd,
         );
         assert!(matches!(node, Node8::Split { .. }));
+    }
+
+    /// v12 отличается от v11 только RD-калибровкой: `LEGACY` даёт λ решений
+    /// = базе треллиса (байты v7–v11 не меняются), `V12` понижает λ решений
+    /// и dead-zone, не трогая треллис; на реальной плоскости это меняет
+    /// решения кодера.
+    #[test]
+    fn v12_rd_tuning_changes_decisions_but_not_trellis_lambda() {
+        let qmat = quant_matrix(&BASE_LUMA, 70);
+        let legacy = RdLambda::for_plane(&qmat, RdTuning::LEGACY);
+        let v12 = RdLambda::for_plane(&qmat, RdTuning::V12);
+        assert_eq!(legacy.decision, legacy.base);
+        assert_eq!(legacy.ac_bias, AC_BIAS_V7);
+        assert_eq!(v12.base, legacy.base);
+        assert!(v12.decision < legacy.decision * 0.05);
+        assert!(v12.ac_bias < legacy.ac_bias);
+
+        let (w, h) = (64, 64);
+        let buf = heterogeneous_plane(w, h);
+        let tuning = DqTuning {
+            strength: 0.0,
+            up_scale: 1.0,
+            quadrant_min: false,
+            max_up: 0,
+            max_down: 0,
+            deadzone: 0.0,
+            structure_discount: 0.0,
+            up_floor: 0.0,
+            refine_scale: 0.0,
+            refine_max_up: 0,
+            refine_max_down: 0,
+            refine_deadzone: 1,
+            refine_up_floor: 0.0,
+        };
+        let encode = |rd: RdTuning| {
+            let mut syms = Vec::new();
+            let mut raw = BitWriter::new();
+            encode_tile_plane_v11(&buf, None, w, h, &qmat, tuning, rd, &mut syms, &mut raw);
+            syms
+        };
+        assert_ne!(encode(RdTuning::LEGACY), encode(RdTuning::V12));
     }
 }

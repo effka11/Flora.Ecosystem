@@ -10,7 +10,7 @@ import {
 describe("FRC-I integration contracts", () => {
   it("keeps the current wire gate and MIME constants", () => {
     // FRC_I_BITSTREAM_VERSION == frc_i::BITSTREAM_VERSION (wasm high byte after predev).
-    expect(FRC_I_BITSTREAM_VERSION).toBe(11);
+    expect(FRC_I_BITSTREAM_VERSION).toBe(12);
     expect(FRC_I_WASM_ABI_VERSION).toBe(2);
     expect(FRC_I_MIME).toBe("image/x-flora-frc-i");
     expect(FRC_I_EXTENSION).toBe("fri");
