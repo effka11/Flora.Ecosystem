@@ -145,6 +145,12 @@ fn adaptive_ac_bias(activity: f32) -> f32 {
 /// activity mask over-prunes textured AC. Kept separate so v1-v6 reference
 /// encoder decisions remain frozen.
 const AC_BIAS_V7: f32 = AC_BIAS;
+/// v12 (FRC-I.md §11.10): dead-zone AC блочного слоя при перекалиброванной
+/// λ решений. При низкой λ дерево выбирает моды/разбиения по дисторсии, а
+/// размер держит dead-zone: 0.30 возвращает лестницу q↔байты к v11
+/// (ratio 1.004) и добавляет −0.7% S2 / −0.9% BA к одной лишь λ; 0.25
+/// уже хуже по обеим метрикам (насыщение, Kodak 24).
+const AC_BIAS_V12: f32 = 0.30;
 
 #[inline]
 fn run_ctx(pos: usize) -> u8 {
@@ -359,11 +365,72 @@ fn predict_block(b: &Border, mode: u8) -> [i32; 64] {
     out
 }
 
-/// Множитель лагранжиана RD-выбора моды: `λ = LAMBDA_SCALE · qstep²`,
+/// Множитель лагранжиана RD-выбора моды v1–v11: `λ = LAMBDA_SCALE · qstep²`,
 /// где qstep — средний шаг квантования матрицы (модель H.264/HEVC).
-/// Калибровка по корпусу: плато 0.05..10 (решения совпадают), ниже —
-/// кодер игнорирует rate и раздувает поток; выбран центр плато.
+/// Калибровка PSNR-эпохи: «плато 0.05..10, решения совпадают» было
+/// установлено по PSNR и размеру — метрики, слепые к тому, что видят
+/// SSIMULACRA2/Butteraugli (§11.10 опровергает плато: λ×0.5 уже даёт
+/// измеримые −0.3% S2). Остаётся базой треллиса ([`TRELLIS_LAMBDA_SCALE`])
+/// для всех версий и λ решений для замороженных v1–v11.
 const LAMBDA_SCALE: f32 = 0.85;
+/// v12 (FRC-I.md §11.10): λ решений mode/split/TX блочного слоя,
+/// перекалиброванная под перцептивные метрики: `λ = 0.038 · qstep²`, то есть
+/// ×0.045 от [`LAMBDA_SCALE`]. Свип множителя ×{0.5, 0.25, 0.1, 0.045,
+/// 0.038, 0.028, 0.02, 0.01, 0} от v11 монотонен до плато ×0.028–0.045 и
+/// разворачивается ниже ×0.02 (rate-blind ×0 → +3.3% S2). Близость к
+/// треллисной λ (0.055·0.85 ≈ 0.047·qstep²) — независимое подтверждение:
+/// треллис калибровался измерением ещё в v7, λ решений была в 18 раз выше.
+const LAMBDA_SCALE_V12: f32 = 0.038;
+
+/// Per-version RD-калибровка кодера блочного слоя v7+ (свобода кодера, §8).
+/// Замороженные версии держат свои константы навсегда: golden v7..v11
+/// проверяют байты кодера, не только декодера.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct RdTuning {
+    /// Множитель λ решений mode/split/TX: `λ_decision = lambda_scale · qstep²`.
+    pub(crate) lambda_scale: f32,
+    /// Dead-zone AC квантования блочного слоя.
+    pub(crate) ac_bias: f32,
+}
+
+impl RdTuning {
+    /// v7–v11: калибровка PSNR-эпохи.
+    pub(crate) const LEGACY: Self = Self {
+        lambda_scale: LAMBDA_SCALE,
+        ac_bias: AC_BIAS_V7,
+    };
+    /// v12: перцептивная калибровка (FRC-I.md §11.10).
+    pub(crate) const V12: Self = Self {
+        lambda_scale: LAMBDA_SCALE_V12,
+        ac_bias: AC_BIAS_V12,
+    };
+}
+
+/// Лагранжианы одной матрицы квантования. `decision` — λ решений mode/split/TX
+/// (стоимость `D + λ·R` по legacy-оценке бит); `base` — λ PSNR-эпохи
+/// `LAMBDA_SCALE·qstep²`, на которой остаются база треллиса
+/// (`TRELLIS_LAMBDA_SCALE`) и компенсация `SPLIT8_EXTRA_BITS` разбиения 8→4:
+/// обе калибровались измерением отдельно и в v12 не менялись (§11.10 —
+/// равномерное масштабирование компенсации сдвигает рабочую точку, ratio
+/// 1.035). Для `RdTuning::LEGACY` `decision == base` — решения v7–v11
+/// байт-в-байт.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct RdLambda {
+    pub(super) decision: f32,
+    pub(super) base: f32,
+    pub(super) ac_bias: f32,
+}
+
+impl RdLambda {
+    pub(super) fn for_plane(qmat: &[u16; 64], tuning: RdTuning) -> Self {
+        let mean: f32 = qmat.iter().map(|&q| f32::from(q)).sum::<f32>() / 64.0;
+        Self {
+            decision: tuning.lambda_scale * mean * mean,
+            base: LAMBDA_SCALE * mean * mean,
+            ac_bias: tuning.ac_bias,
+        }
+    }
+}
 
 /// Число мод, проходящих полный RD после SAD-предотбора (свобода кодера).
 /// Калибровка по корпусу q=75: топ-4 из 6 нейтрален по размеру/PSNR
@@ -801,14 +868,18 @@ fn choose_transform<const LEN: usize>(
     orig: &[i32; LEN],
     pred: &[i32; LEN],
     qmat: &[u16; LEN],
-    lambda: f32,
-    ac_bias: f32,
+    rd: RdLambda,
     baseline_quantized: [i32; LEN],
     baseline_cost: f32,
     forward: fn(&[f32; LEN], &mut [f32; LEN], u8),
     scan_for_tx: fn(u8) -> &'static [usize; LEN],
     quant_err: QuantErrFn,
 ) -> (u8, [i32; LEN], f32) {
+    let RdLambda {
+        decision: lambda,
+        base,
+        ac_bias,
+    } = rd;
     let mut residual = [0f32; LEN];
     for i in 0..LEN {
         residual[i] = (orig[i] - pred[i]) as f32;
@@ -840,7 +911,7 @@ fn choose_transform<const LEN: usize>(
         freq = best_freq;
     }
     let scan = scan_for_tx(best.0);
-    let (quantized, distortion) = trellis_rdoq(&freq, qmat, best.1, lambda, scan, quant_err);
+    let (quantized, distortion) = trellis_rdoq(&freq, qmat, best.1, base, scan, quant_err);
     let rate = legacy_coeff_cost(&quantized, scan) + tx_rate_extra_bits(best.0);
     (best.0, quantized, distortion + lambda * rate as f32)
 }
@@ -2183,10 +2254,11 @@ pub fn encode_tile_plane_v11(
     h: usize,
     qmat: &[u16; 64],
     tuning: DqTuning,
+    rd_tuning: RdTuning,
     syms: &mut Vec<(u8, u8)>,
     raw: &mut BitWriter,
 ) -> Vec<i16> {
-    v72::encode_tile_plane_v11(buf, cfl_luma, w, h, qmat, tuning, syms, raw)
+    v72::encode_tile_plane_v11(buf, cfl_luma, w, h, qmat, tuning, rd_tuning, syms, raw)
 }
 
 /// Сохранённая реализация v7.1 для локального A/B во время разработки v7.2.

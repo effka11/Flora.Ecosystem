@@ -1,8 +1,8 @@
 # CODECS — Flora Media Codec Policy
 
 **Status:** Released  
-**Version:** 1.4  
-**Date:** 2026-08-11
+**Version:** 1.5  
+**Date:** 2026-10-04
 
 ---
 
@@ -18,8 +18,8 @@ CODECS — политика сжатия и хранения медиа в эк�
 
 Нативные кодеки Flora (семейство **FRC**, Flora Relativistic Codec, разработка):
 
-- [`FRC-I.md`](./FRC-I.md) — фото (FRC-I), замороженный битстрим v11
-  (ранее FMC/FIC; decoder compatibility v1..v11).
+- [`FRC-I.md`](./FRC-I.md) — фото (FRC-I), замороженный битстрим v12
+  (ранее FMC/FIC; decoder compatibility v1..v12).
 - [`FRC-I-VERSION-BUMP.md`](./FRC-I-VERSION-BUMP.md) — playbook: поднять wire-версию
   и согласовать Rust / TS gate / wasm / goldens (без «пустых фото» на Web).
 - [`FRC-A.md`](./FRC-A.md) — аудио (FRC-A), битстрим v0 (draft).
@@ -152,7 +152,7 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 
 | Кодек | Сигнатура | Расширение | MIME (предложение) | Статус |
 | --- | --- | --- | --- | --- |
-| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v11 (hierarchical refinement delta-Q детей 16×16 поверх per-root AQ v9/v10); S2 −0.18%/BA −0.27% vs v10 (Kodak), encode speed unchanged ([FRC-I.md](./FRC-I.md)) |
+| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v12 (wire v11; перцептивная RD-калибровка reference-кодера: λ решений ÷22, dead-zone 0.30); S2 −4.15%/BA −4.83% vs v11 (Kodak), −4.20%/−4.34% (picsum), encode/decode speed unchanged ([FRC-I.md](./FRC-I.md) §7.20, §11.10) |
 | FRC-V | FourCC `FRV1` в IVF (dev); magic `8F 46 52 56` (`\x8F FRV`) в `.frv` | `.frv`, `.ivf` | `video/x-flora-frc-v` | кадр `BITSTREAM_VERSION=2`; контейнер FRC-V |
 | FRC-A | **as-built:** ASCII `FRAS` (4 B) в файловом контейнере инструментов; **резерв:** magic `8F 46 52 41` (`\x8F FRA`) под нативный `.fra` | `.fras` (dev), `.fra` (резерв) | `audio/x-flora-frc-a` | битстрим v0 |
 

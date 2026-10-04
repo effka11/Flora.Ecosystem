@@ -11,8 +11,8 @@ use crate::error::EncodeError;
 use crate::format::{
     CHUNK_ICC, DEFAULT_MAX_PIXELS, HEADER_LEN, Header, MAX_DIM, MAX_METADATA, MAX_PALETTE,
     VERSION_ADAPTIVE, VERSION_ASYMMETRIC_AQ, VERSION_CURRENT, VERSION_DEBLOCK, VERSION_HIER_AQ,
-    VERSION_MAX, VERSION_METADATA, VERSION_MIN, VERSION_PERCEPTUAL, VERSION_RECT,
-    build_metadata_block, tile_grid,
+    VERSION_MAX, VERSION_METADATA, VERSION_MIN, VERSION_PERCEPTUAL, VERSION_PERCEPTUAL_RD,
+    VERSION_RECT, build_metadata_block, tile_grid,
 };
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
@@ -154,11 +154,23 @@ fn dq_tunings(version: u8) -> (lossy::DqTuning, lossy::DqTuning) {
     per_version[idx]
 }
 
+/// RD-калибровка блочного слоя по версии (FRC-I.md §11.10): v12 — перцептивная
+/// λ решений и dead-zone, все предыдущие версии — константы PSNR-эпохи.
+/// Без env-переопределений: калибровочные ручки линии были инструментом
+/// A/B-прогонов и сняты при freeze.
+fn rd_tuning(version: u8) -> lossy::RdTuning {
+    if version >= VERSION_PERCEPTUAL_RD {
+        lossy::RdTuning::V12
+    } else {
+        lossy::RdTuning::LEGACY
+    }
+}
+
 pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeError> {
     encode_impl(img, mode, base_version(mode), None)
 }
 
-/// Кодирует с вложением ICC-профиля. Lossy использует текущий v11, lossless —
+/// Кодирует с вложением ICC-профиля. Lossy использует текущий v12, lossless —
 /// минимальный v6, в котором появился блок метаданных.
 pub fn encode_with_icc(
     img: &ImageView<'_>,
@@ -168,17 +180,17 @@ pub fn encode_with_icc(
     encode_with_icc_version(img, mode, icc, base_version(mode).max(VERSION_METADATA))
 }
 
-/// Версию диктует набор инструментов: lossy пишет текущий v11, lossless —
+/// Версию диктует набор инструментов: lossy пишет текущий v12, lossless —
 /// v3 (слой блоков не используется, файл не должен требовать более нового
 /// декодера).
 fn base_version(mode: EncodeMode) -> u8 {
     match mode {
-        EncodeMode::Lossy { .. } => VERSION_HIER_AQ,
+        EncodeMode::Lossy { .. } => VERSION_PERCEPTUAL_RD,
         EncodeMode::Lossless => VERSION_CURRENT,
     }
 }
 
-/// Кодирует с явной версией битстрима (1..=11). Публичный кодер выбирает
+/// Кодирует с явной версией битстрима (1..=12). Публичный кодер выбирает
 /// версию сам (см. `encode`); явные версии — только для генерации
 /// golden-векторов и тестов.
 #[doc(hidden)]
@@ -190,8 +202,8 @@ pub fn encode_with_version(
     encode_impl(img, mode, version, None)
 }
 
-/// Кодирует с ICC-профилем и явной версией битстрима: заморозка v7..v11 golden
-/// (`encode_with_icc` пишет текущий v11).
+/// Кодирует с ICC-профилем и явной версией битстрима: заморозка v7..v12 golden
+/// (`encode_with_icc` пишет текущий v12).
 #[doc(hidden)]
 pub fn encode_with_icc_version(
     img: &ImageView<'_>,
@@ -593,6 +605,7 @@ fn encode_lossy(
         [q_luma, q_chroma, q_chroma]
     };
     let (dq_luma, dq_chroma) = dq_tunings(version);
+    let rd = rd_tuning(version);
 
     let tiles = tile_grid(img.width, img.height);
     let payloads = par_map(&tiles, |t| {
@@ -623,6 +636,7 @@ fn encode_lossy(
                 deblock: header.deblock,
                 cdef: true,
                 dq: dq_luma,
+                rd,
             },
             bank.as_mut(),
             &mut payload,
@@ -653,6 +667,7 @@ fn encode_lossy(
                     deblock: header.deblock,
                     cdef: true,
                     dq: dq_chroma,
+                    rd,
                 },
                 bank.as_mut(),
                 &mut payload,
@@ -674,6 +689,9 @@ struct DctConfig {
     cdef: bool,
     /// Настройки адаптивной квантизации v9/v10 (игнорируются до v9).
     dq: lossy::DqTuning,
+    /// RD-калибровка блочного слоя v11/v12 (игнорируется до v11:
+    /// замороженные v7–v10 держат `RdTuning::LEGACY` внутри).
+    rd: lossy::RdTuning,
 }
 
 fn dct_payload(
@@ -689,10 +707,13 @@ fn dct_payload(
     let mut syms = Vec::new();
     let mut raw = BitWriter::new();
     if config.version >= VERSION_ADAPTIVE {
-        // v7..v11 делят дерево и энтропию; v8 меняет цвет/qmat, v9+
-        // добавляет per-root delta-Q, v11 — refinement детей 16×16.
+        // v7..v12 делят дерево и энтропию; v8 меняет цвет/qmat, v9+
+        // добавляет per-root delta-Q, v11 — refinement детей 16×16,
+        // v12 — только RD-калибровку кодера (wire v11).
         let recon = if config.version >= VERSION_HIER_AQ {
-            lossy::encode_tile_plane_v11(buf, cfl_luma, w, h, qmat, config.dq, &mut syms, &mut raw)
+            lossy::encode_tile_plane_v11(
+                buf, cfl_luma, w, h, qmat, config.dq, config.rd, &mut syms, &mut raw,
+            )
         } else if config.version >= VERSION_PERCEPTUAL {
             lossy::encode_tile_plane_v9(buf, cfl_luma, w, h, qmat, config.dq, &mut syms, &mut raw)
         } else {
