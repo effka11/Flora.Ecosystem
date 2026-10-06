@@ -4,8 +4,11 @@ import type { FscpImageBlock, FscpVoiceBlock } from "@flora/client-core/fscp";
 import {
   CHAT_PREFETCH_MIN_REFRESH_AGE_MS,
   createThreadMediaWarmBudget,
+  readChatPrefetchGates,
+  resetChatPrefetchGatesForTests,
   selectThreadMediaWarmTargets,
   selectThreadPrefetchCandidates,
+  setChatPrefetchGatesForTests,
   threadNeedsMessagesFetch,
   type ThreadFreshnessProbe,
   type ThreadMediaRow,
@@ -266,5 +269,17 @@ describe("selectThreadMediaWarmTargets", () => {
     const out = selectThreadMediaWarmTargets(rows, createThreadMediaWarmBudget());
     expect(out.images.map((b) => b.assetUuid)).toEqual(["img"]);
     expect(out.voices.map((b) => b.assetUuid)).toEqual(["v"]);
+  });
+});
+
+describe("chat prefetch gates", () => {
+  it("defaults on and can be turned off for the process", () => {
+    resetChatPrefetchGatesForTests();
+    expect(readChatPrefetchGates()).toEqual({ prefetch: true, warmReveal: true });
+    setChatPrefetchGatesForTests({ prefetch: false, warmReveal: false });
+    expect(readChatPrefetchGates()).toEqual({ prefetch: false, warmReveal: false });
+    resetChatPrefetchGatesForTests();
+    expect(readChatPrefetchGates().prefetch).toBe(true);
+    expect(readChatPrefetchGates().warmReveal).toBe(true);
   });
 });

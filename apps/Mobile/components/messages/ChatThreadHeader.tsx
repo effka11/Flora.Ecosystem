@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ChromeBackIcon, ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
+import { dismissChatPush } from "@/lib/chatPushTransition";
 import { formatWasOnlineRu } from "@/lib/lastSeenRu";
 import { profileScreenHref } from "@/lib/socialRoutes";
 import { useSPx } from "@/lib/FloraGridProvider";
@@ -129,7 +130,10 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
         accessibilityRole="button"
         accessibilityLabel="Назад к списку чатов"
         style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-        onPress={() => router.back()}
+        onPress={() => {
+          if (dismissChatPush() === "handled") return;
+          router.back();
+        }}
       >
         <ChromeBackIcon color={floraColors.gray} />
       </Pressable>
@@ -142,6 +146,7 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
           username={peer.otherUsername}
           seed={peer.otherUserUuid}
           accountBlocked={peer.otherAccountBlocked}
+          syncCommit
           href={username !== "…" ? profileScreenHref(username, me?.username) : undefined}
         />
         <OnlineStatusDot

@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiGetMe, ensureFreshAccessToken, getAccessToken, type MeResponse } from "@/lib/auth";
+import { resetMessagingSessionCaches } from "@/lib/messagingSessionCaches";
 import type {
   FscpBootstrapResult,
   FscpBootstrapStatus,
@@ -74,7 +75,11 @@ function fscpStatusHint(status: FscpBootstrapStatus): string {
 export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fscpMaterial, setFscpMaterial] = useState<FscpLocalMaterial | null>(null);
+  const [fscpMaterial, setFscpMaterialState] = useState<FscpLocalMaterial | null>(null);
+  const setFscpMaterial = useCallback((value: FscpLocalMaterial | null) => {
+    if (value == null) resetMessagingSessionCaches();
+    setFscpMaterialState(value);
+  }, []);
   const [fscpBootstrapLoading, setFscpBootstrapLoading] = useState(false);
   const [fscpBootstrapError, setFscpBootstrapError] = useState<string | null>(null);
   const [fscpStatus, setFscpStatus] = useState<FscpBootstrapStatus | null>(null);
@@ -129,7 +134,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setFscpMaterial]);
 
   useEffect(() => {
     void refresh();
@@ -161,7 +166,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         setFscpBootstrapError(fscpStatusHint(result.status));
       }
     },
-    [],
+    [setFscpMaterial],
   );
 
   useEffect(() => {
@@ -296,7 +301,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       cancelledRef.current = true;
       clearFscpRetryTimer();
     };
-  }, [me?.userUuid, applyFscpBootstrapResult, clearFscpRetryTimer]);
+  }, [me?.userUuid, applyFscpBootstrapResult, clearFscpRetryTimer, setFscpMaterial]);
 
   const openFscpUnlock = useCallback(() => {
     fscpUnlockDismissedRef.current = false;
@@ -343,7 +348,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       }
       return status;
     },
-    [me],
+    [me, setFscpMaterial],
   );
 
   const value = useMemo(

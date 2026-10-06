@@ -270,6 +270,55 @@ export function isLocalDecodedUri(uri: string): boolean {
 const NOOP_PREFETCH = (): void => {};
 
 /**
+ * Decoded file for this display width, or "" when the index has nothing.
+ * A smaller bucket is enough: the circle stretches it, and the exact bucket
+ * upgrades on the image view without holding the chat carpet. No disk stat —
+ * a cold `fileExists` after process start was 100–280 ms per avatar.
+ */
+export function peekFrcImageFile(uri: string, displayWidth?: number): string {
+  if (!uri || !needsRemoteFrcDecode(uri)) return "";
+  const cache = imageCache();
+  const bucket = cache.bucketForWidth(displayWidth);
+  return cache.peekCached(uri, bucket)?.uri ?? "";
+}
+
+/**
+ * Resolves a decoded file for this width. An index hit (exact or a smaller
+ * bucket) returns immediately. Timeout and decode failure resolve to "" so a
+ * caller can stop waiting.
+ */
+export function whenFrcImageReady(
+  uri: string,
+  options: { displayWidth?: number; lane?: FrcImageLane; timeoutMs?: number } = {},
+): Promise<string> {
+  const peeked = peekFrcImageFile(uri, options.displayWidth);
+  if (peeked) return Promise.resolve(peeked);
+  if (!uri || !needsRemoteFrcDecode(uri)) return Promise.resolve("");
+  const timeoutMs = options.timeoutMs ?? 0;
+  const bucket = imageCache().bucketForWidth(options.displayWidth);
+  return new Promise((resolve) => {
+    let settled = false;
+    let subscription: QueueSubscription | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (value: string) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      subscription?.unsubscribe();
+      resolve(value);
+    };
+    if (timeoutMs > 0) timer = setTimeout(() => finish(""), timeoutMs);
+    subscription = imagePipeline.subscribe(
+      decodeTaskKey(uri, bucket),
+      options.lane ?? "avatar",
+      (value) => finish(value),
+      () => finish(""),
+      "visible",
+    );
+  });
+}
+
+/**
  * Warm an image no component is displaying yet: the row it belongs to is not
  * mounted, so there is no state to commit and no commit buffer involved — the
  * result lands in the cache, and the row that mounts later takes it from
@@ -318,6 +367,12 @@ export type UseFrcImageUriOptions = {
   displayWidth?: number;
   /** Полоса конвейера: мелкие аватары не должны стоять в FIFO перед картинками постов. */
   lane?: FrcImageLane;
+  /**
+   * Коммит URI сразу, не через буфер «до конца жеста».
+   * Буфер держит аватар на инициалах, пока палец на строке списка, и картинка
+   * доезжает уже на слайде.
+   */
+  syncCommit?: boolean;
 };
 
 /**
@@ -348,7 +403,7 @@ function seedResolvedUri(uri: string, bucket: number): string {
  * no pipeline subscription. A failed decode still does not blank.
  */
 export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {}): string {
-  const { imageIndex = 0, force = false, displayWidth, lane = "post" } = options;
+  const { imageIndex = 0, force = false, displayWidth, lane = "post", syncCommit = false } = options;
   const mode = useFrcRowMediaMode();
   const decodeAllowed = force || shouldDecodeImage(mode, imageIndex);
   const priority: QueuePriority = force ? "visible" : priorityForMode(mode);
@@ -431,6 +486,10 @@ export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {})
     let active = true;
     let cancelPendingCommit: (() => void) | null = null;
     const deliver = (next: string) => {
+      if (syncCommit) {
+        if (active) commit(next);
+        return;
+      }
       cancelPendingCommit?.();
       cancelPendingCommit = commitBuffer.enqueue(() => {
         cancelPendingCommit = null;
@@ -479,7 +538,7 @@ export function useFrcImageUri(uri: string, options: UseFrcImageUriOptions = {})
       subscription?.unsubscribe();
       waitingSinceRef.current = null;
     };
-  }, [bucket, commit, decodeAllowed, lane, maintenanceEpoch, uri]);
+  }, [bucket, commit, decodeAllowed, lane, maintenanceEpoch, syncCommit, uri]);
 
   // Re-rank in place: a row moving between viewability bands changes where its
   // decode sits in the queue, not whether it is queued at all.

@@ -313,7 +313,7 @@ function DashboardShellInner({ children }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { me, loading } = useCurrentUser();
-  useDashboardRealtime(!loading && Boolean(me) && me?.accountBlocked !== true);
+  useDashboardRealtime(!loading && Boolean(me) && me?.accountBlocked !== true, me?.userUuid);
   useDashboardDataPrefetch();
   useSessionKeepAlive();
   useViewportFrameCssVars(true);

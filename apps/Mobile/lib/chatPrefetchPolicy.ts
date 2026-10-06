@@ -11,6 +11,31 @@ import type { FscpImageBlock, FscpVoiceBlock } from "@flora/client-core/fscp";
 
 export const CHAT_PREFETCH_MAX_DM = 12;
 export const CHAT_PREFETCH_MAX_GROUPS = 6;
+
+/** Фоновый прогрев тредов. Читается один раз при старте контроллера. */
+export const CHAT_PREFETCH_ENABLED = true;
+/** Мгновенный показ полностью тёплого треда. Читается один раз на монтирование экрана. */
+export const CHAT_WARM_REVEAL_ENABLED = true;
+
+let chatPrefetchEnabled = CHAT_PREFETCH_ENABLED;
+let chatWarmRevealEnabled = CHAT_WARM_REVEAL_ENABLED;
+
+export function readChatPrefetchGates(): { prefetch: boolean; warmReveal: boolean } {
+  return { prefetch: chatPrefetchEnabled, warmReveal: chatWarmRevealEnabled };
+}
+
+export function setChatPrefetchGatesForTests(next: {
+  prefetch?: boolean;
+  warmReveal?: boolean;
+}): void {
+  if (next.prefetch !== undefined) chatPrefetchEnabled = next.prefetch;
+  if (next.warmReveal !== undefined) chatWarmRevealEnabled = next.warmReveal;
+}
+
+export function resetChatPrefetchGatesForTests(): void {
+  chatPrefetchEnabled = CHAT_PREFETCH_ENABLED;
+  chatWarmRevealEnabled = CHAT_WARM_REVEAL_ENABLED;
+}
 /** Не дёргать сеть по треду, который рефетчился только что (кулдаун). */
 export const CHAT_PREFETCH_MIN_REFRESH_AGE_MS = 20_000;
 

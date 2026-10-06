@@ -3,8 +3,8 @@
  *
  * Отдельный инстанс `flora-chat-cache`: полный wipe на logout не задевает
  * настройки приложения. На диске — только server-visible DTO (шифротексты и
- * метаданные, которые сервер и так хранит); plaintext не персистится, ключи
- * остаются в SecureStore.
+ * метаданные, которые сервер и так хранит). Plaintext хвоста — в зашифрованном
+ * контейнере `flora-decrypt-warm`, не здесь. Ключи сессии остаются в SecureStore.
  */
 
 import type { QueryClient } from "@tanstack/react-query";

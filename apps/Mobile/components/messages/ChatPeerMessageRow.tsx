@@ -84,6 +84,7 @@ export const ChatPeerMessageRow = memo(function ChatPeerMessageRow({
             username={avatarPeer.otherUsername}
             seed={avatarPeer.otherUserUuid || displayName}
             accountBlocked={avatarPeer.otherAccountBlocked}
+            syncCommit
           />
         ) : null}
       </Animated.View>

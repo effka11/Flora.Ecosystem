@@ -1,11 +1,27 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { formatGroupListPreview } from "@flora/client-core/messaging";
+import { router } from "expo-router";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
+import { warmParkedChatAvatars } from "@/lib/chatOpenAvatarWarm";
 import { warmChatOpenThreadAtPressIn } from "@/lib/chatOpenLayoutWarm";
+import { markChatOpenPark, markChatOpenTap } from "@/lib/chatOpenTrace";
 import type { GroupChat } from "@/lib/groupChatTypes";
-import { openGroupChat } from "@/lib/openGroupChat";
+import {
+  armChatPushEnter,
+  cancelScheduledChatRowPark,
+  didScrollCancelChatPark,
+  flushScheduledChatRowPark,
+  isChatPushHoldingSlide,
+  isChatPushPressBlocked,
+  isChatPushTracked,
+  prepareChatPushPress,
+  parkChatPush,
+  requestChatPushPlay,
+  scheduleChatRowPark,
+} from "@/lib/chatPushTransition";
 import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 /** Same metrics as ConversationListRow — keep group rows in the same list rhythm. */
@@ -33,6 +49,7 @@ export function GroupConversationListRow({
   onToggleSelect,
   onEnterSelect,
 }: Props) {
+  const [lit, setLit] = useState(false);
   const title = group.title.trim() || "Группа";
   const previewText = formatGroupListPreview({
     preview: preview.trim().length > 0 ? preview : group.lastMessagePreview ?? "",
@@ -40,15 +57,52 @@ export function GroupConversationListRow({
     senderDisplayName: group.lastMessageSenderDisplayName,
   });
 
+  const threadParams = {
+    conversationUuid: group.conversationUuid,
+    kind: "groupChat",
+    title,
+  };
+
+  const pushThread = () => {
+    router.push({
+      pathname: "/(tabs)/messages/[conversationUuid]",
+      params: threadParams,
+    });
+  };
+
   const open = () => {
-    // Таб-бар прячут focus-эффект треда и messages/_layout — тем же коммитом,
-    // в котором стартует слайд (см. ConversationListRow).
-    openGroupChat(group.conversationUuid, title);
+    // Reduce motion и пути без парковки: экран встаёт сразу.
+    armChatPushEnter();
+    markChatOpenTap(group.conversationUuid);
+    pushThread();
+  };
+
+  const parkRow = () => {
+    warmChatOpenThreadAtPressIn({ kind: "group", conversationUuid: group.conversationUuid });
+    void warmParkedChatAvatars(group.members.map((member) => member.avatarUuid));
+    const parked = parkChatPush({
+      params: threadParams,
+      navigate: pushThread,
+    });
+    if (parked === "parked") markChatOpenPark(group.conversationUuid);
   };
 
   const onPress = () => {
+    const scrollCancelled = didScrollCancelChatPark();
     if (selectionMode) {
       onToggleSelect?.();
+      return;
+    }
+    if (scrollCancelled) {
+      cancelScheduledChatRowPark();
+      return;
+    }
+    flushScheduledChatRowPark();
+    if (isChatPushPressBlocked()) return;
+    prepareChatPushPress();
+    if (isChatPushTracked(group.conversationUuid)) {
+      markChatOpenTap(group.conversationUuid);
+      if (isChatPushHoldingSlide()) requestChatPushPlay(group.conversationUuid);
       return;
     }
     open();
@@ -62,10 +116,10 @@ export function GroupConversationListRow({
     onEnterSelect?.();
   };
 
-  /** Палец коснулся строки — тред греется, пока идёт жест (~100 мс форы). */
-  const onPressIn = () => {
+  const beginPress = () => {
     if (selectionMode) return;
-    warmChatOpenThreadAtPressIn({ kind: "group", conversationUuid: group.conversationUuid });
+    setLit(true);
+    scheduleChatRowPark(parkRow);
   };
 
   return (
@@ -82,9 +136,12 @@ export function GroupConversationListRow({
       style={({ pressed }) => [
         styles.shell,
         selected && styles.shellSelected,
-        pressed && styles.shellPressed,
+        (pressed || lit) && styles.shellPressed,
       ]}
-      onPressIn={onPressIn}
+      onTouchStart={beginPress}
+      onTouchCancel={() => setLit(false)}
+      onPressIn={beginPress}
+      onPressOut={() => setLit(false)}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_MS}

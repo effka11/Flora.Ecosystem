@@ -20,6 +20,7 @@ import { resetBirthTracking } from "@/lib/messageBirthRegistry";
 import { clearAllPendingOutgoing } from "@/lib/messageThreadOutgoing";
 import { clearMessageTextMeasures } from "@/lib/messageTextMeasureCache";
 import { wipeChatDiskCache } from "@/stores/chatDiskCache";
+import { wipeDecryptWarmDisk } from "@/stores/decryptWarmDiskCache";
 import { messagePreviewCache } from "@/stores/messagePreviewCache";
 import { messageThreadCache } from "@/stores/messageThreadCache";
 import { wipeTextMeasureDisk } from "@/stores/textMeasureDiskCache";
@@ -125,6 +126,7 @@ mobileSessionController.subscribe((next) => {
     messagePreviewCache.clear();
     messageThreadCache.clear();
     wipeChatDiskCache();
+    wipeDecryptWarmDisk();
     // Замеры пузырей — это тексты сообщений: ни в памяти, ни на диске они не
     // должны переживать выход из аккаунта.
     clearMessageTextMeasures();

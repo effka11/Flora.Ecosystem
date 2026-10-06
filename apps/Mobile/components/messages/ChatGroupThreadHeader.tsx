@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ChromeBackIcon, ChromeMoreIcon } from "@/components/chrome/ChromeIcons";
+import { dismissChatPush } from "@/lib/chatPushTransition";
 import { formatGroupMembersLabel } from "@/lib/groupChatTypes";
 import { useSPx } from "@/lib/FloraGridProvider";
 import { floraColors, floraMessages, floraSpacing, kegl, tracking } from "@/lib/theme";
@@ -40,7 +41,10 @@ export function ChatGroupThreadHeader({
         accessibilityRole="button"
         accessibilityLabel="Назад к списку чатов"
         style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-        onPress={() => router.back()}
+        onPress={() => {
+          if (dismissChatPush() === "handled") return;
+          router.back();
+        }}
       >
         <ChromeBackIcon color={floraColors.gray} />
       </Pressable>

@@ -1,16 +1,17 @@
 /**
  * Дев-замер открытия чата: тормозит — мерить, не гадать.
  *
- * Одна трасса за раз: тап по строке списка → mount экрана треда → data
+ * Одна трасса за раз: парковка (press-in) → mount экрана треда → data
  * (FlashList получил непустые данные) → ready (окно расшифровки терминально)
  * → cell (первый renderItem) → load (фактические высоты ячеек закрыли
  * вьюпорт от якоря — наш детерминированный «onLoad», см.
  * maybeConfirmWindowMeasured; onLoad самого FlashList срабатывает раньше
- * монтажа реально видимых строк) → reveal (первый видимый кадр ленты).
- * Одна строка лога на reveal, в проде — no-op.
+ * монтажа реально видимых строк) → play (старт runEnter) → reveal.
+ * Тап ту же трассу не обнуляет: cell и load парковки остаются и сравниваются
+ * с play. Одна строка лога на reveal, в проде — no-op.
  */
 
-type ChatOpenStage = "render" | "mount" | "data" | "ready" | "cell" | "load" | "reveal";
+type ChatOpenStage = "render" | "mount" | "data" | "ready" | "cell" | "load" | "play" | "reveal";
 
 let tapAt: number | null = null;
 let tracedUuid: string | null = null;
@@ -18,15 +19,71 @@ let stages: Partial<Record<ChatOpenStage, number>> = {};
 let layoutWarm: string | null = null;
 let cellRenders = 0;
 let screenRenders = 0;
+/** Снимок тёплого пути на этом открытии. В строку reveal попадает последний. */
+let warmLine: string | null = null;
+/** Кто показал ленту: тёплый коммит, холодный цикл якоря или потолок кадров. */
+let revealPath: "warm" | "cold" | "deadline" | null = null;
 
-export function markChatOpenTap(conversationUuid: string): void {
-  if (!__DEV__) return;
+function beginChatOpenTrace(uuid: string): void {
   tapAt = Date.now();
-  tracedUuid = conversationUuid.trim().toLowerCase();
+  tracedUuid = uuid;
   stages = {};
   layoutWarm = null;
   cellRenders = 0;
   screenRenders = 0;
+  warmLine = null;
+  revealPath = null;
+}
+
+/** Старт трассы на press-in. Повтор того же uuid трассу не сбрасывает. */
+export function markChatOpenPark(conversationUuid: string): void {
+  if (!__DEV__) return;
+  const uuid = conversationUuid.trim().toLowerCase();
+  if (!uuid) return;
+  if (tapAt != null && tracedUuid === uuid) return;
+  beginChatOpenTrace(uuid);
+}
+
+/**
+ * Тап. Если парковка этого uuid уже ведёт трассу — не обнулять:
+ * cell и load должны остаться раньше play.
+ */
+export function markChatOpenTap(conversationUuid: string): void {
+  if (!__DEV__) return;
+  const uuid = conversationUuid.trim().toLowerCase();
+  if (!uuid) return;
+  if (tapAt != null && tracedUuid === uuid) return;
+  beginChatOpenTrace(uuid);
+}
+
+/** Старт runEnter. Повтор не затирает первую метку. */
+export function markChatOpenPlay(): void {
+  if (!__DEV__ || tapAt == null || tracedUuid == null) return;
+  markChatOpenStage("play", tracedUuid);
+}
+
+/**
+ * Решение тёплого показа. Пишется сразу, не дожидаясь reveal: если лента
+ * остаётся тёмной, в логе уже есть, какого кэша не хватило.
+ */
+export function noteChatOpenWarmCheck(conversationUuid: string, line: string): void {
+  if (!__DEV__) return;
+  const uuid = conversationUuid.trim().toLowerCase();
+  if (tapAt != null && tracedUuid != null && uuid !== tracedUuid) return;
+  warmLine = line;
+  const at = tapAt == null ? "?" : String(Date.now() - tapAt);
+  console.log(`[chat-open] warm +${at}ms ${line}`);
+}
+
+/**
+ * Путь показа. `warm` не перебивается. `deadline` заменяет `cold`.
+ * `cold` пишется только если путь ещё не выбран.
+ */
+export function noteChatOpenRevealPath(path: "warm" | "cold" | "deadline"): void {
+  if (!__DEV__ || tapAt == null) return;
+  if (revealPath === "warm") return;
+  if (path === "cold" && revealPath != null) return;
+  revealPath = path;
 }
 
 /**
@@ -65,15 +122,19 @@ export function markChatOpenStage(stage: ChatOpenStage, conversationUuid: string
   stages[stage] = Date.now() - tapAt;
   if (stage !== "reveal") return;
   console.log(
-    `[chat-open] render=${stages.render ?? "?"}ms mount=${stages.mount ?? "?"}ms ` +
+    `[chat-open] path=${revealPath ?? "?"} ` +
+      `render=${stages.render ?? "?"}ms mount=${stages.mount ?? "?"}ms ` +
       `data=${stages.data ?? "?"}ms ready=${stages.ready ?? "?"}ms ` +
       `cell=${stages.cell ?? "?"}ms load=${stages.load ?? "?"}ms ` +
+      `play=${stages.play ?? "?"}ms ` +
       `reveal=${stages.reveal}ms cells=${cellRenders} renders=${screenRenders} ` +
-      `layout-прогрет=${layoutWarm ?? "?"} (от тапа)`,
+      `layout-прогрет=${layoutWarm ?? "?"} ${warmLine ?? "warm=?"} (от тапа)`,
   );
   tapAt = null;
   tracedUuid = null;
   layoutWarm = null;
   cellRenders = 0;
   screenRenders = 0;
+  warmLine = null;
+  revealPath = null;
 }

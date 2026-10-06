@@ -40,18 +40,16 @@ export function renderChatPushTabBar(props: BottomTabBarProps) {
  * полноширинного белого слоя (не layout-width, не scaleX+inverse, не fade 1-p).
  *
  * Хост только высота бара: absoluteFill накрывал бы весь Tabs и ел тапы
- * по списку. Пока верхний экран открыт (tabBarStyle pointerEvents none или
- * progress > 0) хост сам `none` — иначе MaskedView ест док,
- * хотя пикселей справа нет.
+ * по списку. Пока создание поста открыто (progress > 0) или tabBarStyle
+ * pointerEvents none, хост сам `none`. Слайд чата маску не сопровождает
+ * setState и не закрывает кнопки бара: пиксели едут от progress.
  */
 export function ChatPushTabBar(props: BottomTabBarProps) {
   const { width: screenWidth } = useWindowDimensions();
   const barHeight = floraTabBarContentHeight() + Math.max(props.insets.bottom, 8);
-  const [pushCoversDock, setPushCoversDock] = useState(
-    () => Math.max(chatPushProgress.value, composePushProgress.value) > 0.01,
-  );
+  const [pushCoversDock, setPushCoversDock] = useState(() => composePushProgress.value > 0.01);
   useAnimatedReaction(
-    () => Math.max(chatPushProgress.value, composePushProgress.value) > 0.01,
+    () => composePushProgress.value > 0.01,
     (covers, prev) => {
       if (covers !== prev) {
         runOnJS(setPushCoversDock)(covers);
