@@ -25,7 +25,6 @@ import { FSCP_WIRE_PREFIX } from "@/lib/fscp/constants";
 import { dmConversationUuid } from "@/lib/fscp/deriveIds";
 import {
   buildFscpWireEnvelope,
-  decryptFscpWireEnvelope,
   isFscpWirePayload,
   type FscpImageBlock,
   type FscpVideoBlock,
@@ -63,7 +62,6 @@ import { conversationsCache } from "@/lib/dashboardPreload";
 import {
   getConversationThread,
   invalidateConversationThread,
-  peekConversationThread,
 } from "@/lib/conversationThreadsCache";
 import { floraNewUuid } from "@/lib/floraUuid";
 import {
@@ -77,7 +75,6 @@ import {
   msgDeleteConversationForUser,
   type MsgConversationDto,
   type MsgConversationsPage,
-  type MsgMessageDto,
 } from "@/lib/messagingApi";
 import {
   devDemoAppendOutgoingMessage,
@@ -252,6 +249,22 @@ import {
   getGroupConversationThread,
   invalidateGroupConversationThread,
 } from "@/lib/groupThreadsCache";
+import { noteMessagesListScroll } from "@/lib/messagesListScrollActivity";
+import { setOpenMessagesConversation } from "@/lib/messagesOpenConversation";
+import { THREAD_OPEN_PLAINTEXT_TAIL } from "@/lib/threadPlaintextWarm";
+import { loadGroupThreadAfterOpen } from "./groupThreadOpen";
+import {
+  markMessagesOpenClick,
+  markMessagesOpenFirstRows,
+  markMessagesOpenPin,
+} from "./messagesOpenTrace";
+import {
+  groupApiMessagesToThread,
+  threadOpenSnapshot,
+  toMessageDto,
+  type ThreadOpenTarget,
+} from "./threadOpenSnapshot";
+import { useThreadDecrypt } from "./useThreadDecrypt";
 import { MessagesChatFolders } from "./MessagesChatFolders";
 import { useMessagesListPreviewDecrypt } from "./useMessagesListPreviewDecrypt";
 import { usePreloadConversationThreads } from "./usePreloadConversationThreads";
@@ -355,40 +368,6 @@ function patchConversationsPageForOutgoing(
     ...page,
     items: [updated, ...page.items.filter((c) => c.otherUserUuid !== patch.peerUuid)],
   };
-}
-
-/** Converts MsgMessageDto (new /api/messaging) to the legacy MessageThreadItemDto shape. */
-function toMessageDto(m: MsgMessageDto): MessageThreadItemDto {
-  return {
-    messageUuid: m.messageUuid,
-    content: m.content,
-    encryptedForMe: m.encryptedForMe,
-    createdAt: m.createdAt,
-    isFromMe: m.isFromMe,
-    isRead: m.isRead,
-    senderUserUuid: m.senderUserUuid,
-    serverFrankReceipt: m.serverFrankReceipt ?? null,
-    frankTagBase64Url: m.frankTagBase64Url ?? null,
-  };
-}
-
-function groupApiMessagesToThread(
-  items: readonly {
-    messageUuid: string;
-    senderUserUuid: string;
-    encryptedWire: string;
-    createdAt: string;
-    isFromMe: boolean;
-  }[],
-): MessageThreadItemDto[] {
-  return items.map((m) => ({
-    messageUuid: m.messageUuid,
-    content: null,
-    encryptedForMe: m.encryptedWire,
-    createdAt: m.createdAt,
-    isFromMe: m.isFromMe,
-    senderUserUuid: m.senderUserUuid,
-  }));
 }
 
 /** Текст пузыря при любой ошибке расшифровки FSCP (в т.ч. сообщения libsodium на англ.). */
@@ -657,11 +636,9 @@ function MessagesChatInner() {
   const compose = useMessageComposeDraft();
   const [decryptedById, setDecryptedById] = useState<Record<string, FscpMessagePlaintext>>({});
   const [decryptFailById, setDecryptFailById] = useState<Record<string, string>>({});
-  const decryptingRef = useRef<Set<string>>(new Set());
   const conversationsRef = useRef<ConversationListItemDto[]>([]);
   /** Пока идёт POST+GET после отправки — подмешиваем в ответ листинга, если messageUuid ещё нет. */
   const pendingOutgoingRef = useRef<MessageThreadItemDto | null>(null);
-  const threadFetchContextRef = useRef<{ peer: string | null; viewerNorm: string }>({ peer: null, viewerNorm: "" });
   const scrollMessagesRef = useRef<HTMLDivElement | null>(null);
   /** Outer: compose-growth release. Inner: insertLift. */
   const messagesGrowthHostRef = useRef<HTMLDivElement | null>(null);
@@ -1178,6 +1155,23 @@ function MessagesChatInner() {
     [requireOrganizerKeys],
   );
 
+  const applyThreadOpen = useCallback(
+    (target: ThreadOpenTarget) => {
+      const viewerNorm = me?.userUuid?.trim().toLowerCase() ?? "";
+      const snap = threadOpenSnapshot(viewerNorm, target);
+      setThreadMessages(snap.messages);
+      setThreadLoading(false);
+      setThreadFetchedForViewerNorm(snap.fetchedForViewerNorm);
+      setDecryptedById(snap.decryptedById);
+      setDecryptFailById(snap.decryptFailById);
+      setThreadError(null);
+      const traceId = target.kind === "dm" ? target.peerUuid : target.conversationUuid;
+      markMessagesOpenClick(traceId);
+      if (snap.messages.length > 0) markMessagesOpenFirstRows(traceId);
+    },
+    [me?.userUuid],
+  );
+
   const switchChat = useCallback(
     (chat: ConversationListItemDto) => {
       if (
@@ -1207,8 +1201,9 @@ function MessagesChatInner() {
 
       setSelectedPeer(chat);
       setSelectedTarget({ kind: "dm", otherUserUuid: chat.otherUserUuid });
+      applyThreadOpen({ kind: "dm", peerUuid: chat.otherUserUuid });
     },
-    [applyPanelTransition, selectedTarget],
+    [applyPanelTransition, applyThreadOpen, selectedTarget],
   );
 
   const openGroupChat = useCallback(
@@ -1222,8 +1217,9 @@ function MessagesChatInner() {
       applyPanelTransition("fromRight");
       setSelectedPeer(null);
       setSelectedTarget({ kind: "groupChat", conversationUuid });
+      applyThreadOpen({ kind: "group", conversationUuid });
     },
-    [applyPanelTransition, selectedTarget],
+    [applyPanelTransition, applyThreadOpen, selectedTarget],
   );
 
   const applyConversationPage = useCallback((page: MsgConversationsPage) => {
@@ -1409,12 +1405,27 @@ function MessagesChatInner() {
 
   const viewerUuid = me?.userUuid?.trim() ?? "";
   const viewerNorm = viewerUuid.toLowerCase();
+
+  useEffect(() => {
+    if (selectedTarget?.kind === "groupChat" && selectedGroupUuid) {
+      setOpenMessagesConversation(selectedGroupUuid);
+      return () => setOpenMessagesConversation(null);
+    }
+    if (selectedTarget?.kind === "dm" && selectedOtherUuid && viewerUuid) {
+      setOpenMessagesConversation(dmConversationUuid(viewerUuid, selectedOtherUuid));
+      return () => setOpenMessagesConversation(null);
+    }
+    setOpenMessagesConversation(null);
+    return undefined;
+  }, [selectedGroupUuid, selectedOtherUuid, selectedTarget, viewerUuid]);
   const { listPreviewDecryptedByPeer, listPreviewDecryptFailByPeer, seedListPreview } =
     useMessagesListPreviewDecrypt(conversations, fscpMaterial, viewerUuid);
-  const { prefetchPeerThread } = usePreloadConversationThreads(viewerNorm, conversations, {
-    viewerUuid,
-    fscpMaterial,
-  });
+  const { prefetchPeerThread, prefetchGroupThread, cancelPeerThreadWarm, cancelGroupThreadWarm } =
+    usePreloadConversationThreads(viewerNorm, conversations, {
+      viewerUuid,
+      fscpMaterial,
+      groups: groupChats,
+    });
   usePreloadThreadMessageMedia(decryptedById);
 
   /**
@@ -1471,9 +1482,6 @@ function MessagesChatInner() {
   composeResetRef.current = compose.reset;
 
   useEffect(() => {
-    setDecryptedById({});
-    setDecryptFailById({});
-    decryptingRef.current.clear();
     scrollTrackingReadyRef.current = false;
     prevSeenMessageIdsRef.current = new Set();
     pendingInsertLiftRef.current = false;
@@ -1548,55 +1556,72 @@ function MessagesChatInner() {
       setGroupMembersBusy(false);
       return;
     }
-    const viewerNorm = me?.userUuid?.trim().toLowerCase() ?? "";
-    if (!viewerNorm) return;
+    const groupViewerNorm = me?.userUuid?.trim().toLowerCase() ?? "";
+    if (!groupViewerNorm) return;
     let cancelled = false;
-    setThreadLoading(true);
     setThreadError(null);
-    void (async () => {
-      try {
-        invalidateGroupConversationThread(viewerNorm, selectedGroupUuid);
-        const [page, detail] = await Promise.all([
-          getGroupConversationThread(viewerNorm, selectedGroupUuid),
-          apiGetGroup(selectedGroupUuid),
-        ]);
-        if (cancelled) return;
-        setThreadMessages(groupApiMessagesToThread(page.items));
-        setThreadFetchedForViewerNorm(viewerNorm);
+    void loadGroupThreadAfterOpen({
+      fetchMessages: () => getGroupConversationThread(groupViewerNorm, selectedGroupUuid),
+      fetchDetail: () => apiGetGroup(selectedGroupUuid),
+      markRead: async () => {
+        await apiMarkGroupRead(selectedGroupUuid);
+        setGroupChats((prev) =>
+          prev.map((group) =>
+            group.conversationUuid === selectedGroupUuid ? { ...group, unreadCount: 0 } : group,
+          ),
+        );
+        notifyMessagesUnreadChanged();
+      },
+      onMessages: (page) => {
+        let rows = groupApiMessagesToThread(page.items);
+        const pending = pendingOutgoingRef.current;
+        if (pending && !rows.some((row) => row.messageUuid === pending.messageUuid)) {
+          rows = mergePendingOutgoing(rows, pending);
+        }
+        setThreadMessages(rows);
+        setThreadFetchedForViewerNorm(groupViewerNorm);
+        setThreadLoading(false);
+      },
+      onDetail: (detail) => {
         setGroupChats((prev) => {
-          const existing = prev.find((g) => g.conversationUuid === selectedGroupUuid);
-          const base = existing ?? mapGroupListItem({
-            conversationUuid: detail.conversationUuid,
-            title: detail.title,
-            createdByUserUuid: detail.createdByUserUuid,
-            createdAt: detail.createdAt,
-            memberCount: detail.members.length,
-            lastMessageEncryptedWire: null,
-            lastMessageAt: null,
-            lastMessageIsFromMe: false,
-            lastMessageSenderDisplayName: null,
-            unreadCount: 0,
-          });
+          const existing = prev.find((group) => group.conversationUuid === selectedGroupUuid);
+          const base =
+            existing ??
+            mapGroupListItem({
+              conversationUuid: detail.conversationUuid,
+              title: detail.title,
+              createdByUserUuid: detail.createdByUserUuid,
+              createdAt: detail.createdAt,
+              memberCount: detail.members.length,
+              lastMessageEncryptedWire: null,
+              lastMessageAt: null,
+              lastMessageIsFromMe: false,
+              lastMessageSenderDisplayName: null,
+              unreadCount: 0,
+            });
           const merged = mergeGroupDetail(base, detail);
           if (existing) {
-            return prev.map((g) =>
-              g.conversationUuid === selectedGroupUuid ? { ...merged, unreadCount: 0 } : g,
+            return prev.map((group) =>
+              group.conversationUuid === selectedGroupUuid ? merged : group,
             );
           }
-          return [...prev, { ...merged, unreadCount: 0 }];
+          return [...prev, merged];
         });
-        await apiMarkGroupRead(selectedGroupUuid);
-        notifyMessagesUnreadChanged();
-      } catch (e) {
-        if (!cancelled) {
-          setThreadError(
-            e instanceof ApiRequestError ? e.message : "Не удалось загрузить группу.",
-          );
-        }
-      } finally {
-        if (!cancelled) setThreadLoading(false);
+      },
+      afterPaint: (run) => {
+        requestAnimationFrame(() => {
+          if (!cancelled) run();
+        });
+      },
+      isCancelled: () => cancelled,
+    }).catch((error: unknown) => {
+      if (!cancelled) {
+        setThreadError(
+          error instanceof ApiRequestError ? error.message : "Не удалось загрузить группу.",
+        );
+        setThreadLoading(false);
       }
-    })();
+    });
     return () => {
       cancelled = true;
     };
@@ -1626,68 +1651,46 @@ function MessagesChatInner() {
       otherUserLastSeenAt: null,
     });
     setSelectedTarget({ kind: "dm", otherUserUuid: withUuid });
+    applyThreadOpen({ kind: "dm", peerUuid: withUuid });
     router.replace("/messages", { scroll: false });
-  }, [isClient, hasToken, router, searchParams, applyPanelTransition]);
+  }, [isClient, hasToken, router, searchParams, applyPanelTransition, applyThreadOpen]);
 
   useEffect(() => {
     if (!isClient || !hasToken || !selectedOtherUuid) {
       if (selectedGroupUuid) return;
-      threadFetchContextRef.current = { peer: null, viewerNorm: "" };
       setThreadMessages([]);
       setThreadFetchedForViewerNorm(null);
       setThreadLoading(false);
       setThreadError(null);
       return;
     }
-    const viewerNorm = me?.userUuid?.trim().toLowerCase() ?? "";
-    if (!viewerNorm) {
-      threadFetchContextRef.current = { peer: null, viewerNorm: "" };
-      setThreadMessages([]);
-      setThreadFetchedForViewerNorm(null);
-      setThreadLoading(false);
-      setThreadError(null);
-      return;
-    }
-
-    const prev = threadFetchContextRef.current;
-    const contextChanged = prev.peer !== selectedOtherUuid || prev.viewerNorm !== viewerNorm;
-    if (contextChanged) {
-      threadFetchContextRef.current = { peer: selectedOtherUuid, viewerNorm };
-      const cached = peekConversationThread(viewerNorm, selectedOtherUuid);
-      if (cached) {
-        setThreadMessages(cached.items.map(toMessageDto));
-        setThreadFetchedForViewerNorm(viewerNorm);
-        setThreadLoading(false);
-      } else {
-        setThreadMessages([]);
-        setThreadFetchedForViewerNorm(null);
-        setThreadLoading(true);
-      }
-    }
+    const dmViewerNorm = me?.userUuid?.trim().toLowerCase() ?? "";
+    if (!dmViewerNorm) return;
 
     let cancelled = false;
     setThreadError(null);
-    if (!peekConversationThread(viewerNorm, selectedOtherUuid)) {
-      setThreadLoading(true);
-    }
-    (async () => {
+    void (async () => {
       try {
-        const page = await getConversationThread(viewerNorm, selectedOtherUuid);
+        const page = await getConversationThread(dmViewerNorm, selectedOtherUuid);
         const rows = page.items.map(toMessageDto);
         const pending = pendingOutgoingRef.current;
         let next = rows;
-        if (pending && !rows.some((r) => r.messageUuid === pending.messageUuid)) {
+        if (pending && !rows.some((row) => row.messageUuid === pending.messageUuid)) {
           next = mergePendingOutgoing(rows, pending);
         }
         if (!cancelled) {
           setThreadMessages(next);
-          setThreadFetchedForViewerNorm(viewerNorm);
+          setThreadFetchedForViewerNorm(dmViewerNorm);
         }
         try {
-          await msgMarkReadForUser(viewerNorm, selectedOtherUuid);
+          await msgMarkReadForUser(dmViewerNorm, selectedOtherUuid);
           if (!cancelled) {
             setConversations((prev) =>
-              prev.map((c) => (c.otherUserUuid === selectedOtherUuid ? { ...c, unreadCount: 0 } : c))
+              prev.map((conversation) =>
+                conversation.otherUserUuid === selectedOtherUuid
+                  ? { ...conversation, unreadCount: 0 }
+                  : conversation,
+              ),
             );
             notifyMessagesUnreadChanged();
           }
@@ -1697,8 +1700,6 @@ function MessagesChatInner() {
       } catch (e) {
         if (!cancelled) {
           setThreadError(e instanceof ApiRequestError ? e.message : "Не удалось загрузить сообщения");
-          setThreadMessages([]);
-          setThreadFetchedForViewerNorm(null);
         }
       } finally {
         if (!cancelled) setThreadLoading(false);
@@ -1729,74 +1730,19 @@ function MessagesChatInner() {
     if (nearBottom) setPeerBelowScrollCount(0);
   }, []);
 
-  useEffect(() => {
-    const viewerNorm = me?.userUuid?.trim().toLowerCase() ?? "";
-    if (!viewerNorm || !fscpMaterial || !me) return;
-    if (!threadFetchedForViewerNorm || threadFetchedForViewerNorm !== viewerNorm) return;
-    setDecryptFailById({});
-    for (const m of threadMessages) {
-      if (decryptedById[m.messageUuid]) continue;
-      const enc = m.encryptedForMe?.trim();
-      if (!enc) {
-        if (m.content?.trim()) continue;
-        continue;
-      }
-      const demoPlain = parseDemoPlaintextWire(enc);
-      if (demoPlain) {
-        setDecryptedById((prev) => ({ ...prev, [m.messageUuid]: demoPlain }));
-        continue;
-      }
-      if (m.content?.trim()) continue;
-      if (isFscpGroupWirePayload(enc)) {
-        if (decryptingRef.current.has(m.messageUuid)) continue;
-        decryptingRef.current.add(m.messageUuid);
-        void decryptGroupMessageWire({
-          wire: enc,
-          viewerUserUuid: me.userUuid.trim(),
-          agreementPrivateKey: fscpMaterial.agreementPrivateKey,
-        })
-          .then((plain) => {
-            setDecryptFailById((prev) => {
-              if (!(m.messageUuid in prev)) return prev;
-              const next = { ...prev };
-              delete next[m.messageUuid];
-              return next;
-            });
-            setDecryptedById((prev) => ({ ...prev, [m.messageUuid]: plain.plaintext }));
-          })
-          .catch(() => {
-            setDecryptFailById((prev) => ({ ...prev, [m.messageUuid]: FSCP_DECRYPT_FAIL_LABEL }));
-          })
-          .finally(() => {
-            decryptingRef.current.delete(m.messageUuid);
-          });
-        continue;
-      }
-      if (!isFscpWirePayload(enc)) continue;
-      if (decryptingRef.current.has(m.messageUuid)) continue;
-      decryptingRef.current.add(m.messageUuid);
-      void decryptFscpWireEnvelope({
-        wire: enc,
-        viewerUserUuid: me.userUuid.trim(),
-        agreementPrivateKey: fscpMaterial.agreementPrivateKey,
-      })
-        .then((plain) => {
-          setDecryptFailById((prev) => {
-            if (!(m.messageUuid in prev)) return prev;
-            const next = { ...prev };
-            delete next[m.messageUuid];
-            return next;
-          });
-          setDecryptedById((prev) => ({ ...prev, [m.messageUuid]: plain }));
-        })
-        .catch(() => {
-          setDecryptFailById((prev) => ({ ...prev, [m.messageUuid]: FSCP_DECRYPT_FAIL_LABEL }));
-        })
-        .finally(() => {
-          decryptingRef.current.delete(m.messageUuid);
-        });
-    }
-  }, [threadMessages, me?.userUuid, fscpMaterial, threadFetchedForViewerNorm]);
+  useThreadDecrypt({
+    viewerNorm,
+    threadKind: selectedGroupUuid ? "group" : selectedOtherUuid ? "dm" : null,
+    threadId: selectedGroupUuid ?? selectedOtherUuid,
+    messages: threadMessages,
+    decryptedById,
+    decryptFailById,
+    setDecryptedById,
+    setDecryptFailById,
+    viewerUserUuid: me?.userUuid?.trim() ?? "",
+    agreementPrivateKey: fscpMaterial?.agreementPrivateKey ?? null,
+    threadFetchedForViewerNorm,
+  });
 
   const [presenceTick, setPresenceTick] = useState(0);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -2257,8 +2203,9 @@ function MessagesChatInner() {
     const el = scrollMessagesRef.current;
     if (!el) return;
 
-    const hasPeerDecrypting = threadMessages.some(
-      (m) => !m.isFromMe && displayMessageContent(m) === "decrypting",
+    const tail = threadMessages.slice(-THREAD_OPEN_PLAINTEXT_TAIL);
+    const hasPeerDecrypting = tail.some(
+      (message) => !message.isFromMe && displayMessageContent(message) === "decrypting",
     );
     const openReady = !hasPeerDecrypting || openRevealDeadlineElapsed;
 
@@ -2269,6 +2216,7 @@ function MessagesChatInner() {
       atBottomRef.current = true;
       openRepinUntilRef.current = performance.now() + MESSAGES_REPIN_WINDOW_MS;
       pinMessagesToBottom("auto");
+      markMessagesOpenPin(selectedOtherUuid ?? selectedGroupUuid ?? "");
       return;
     }
 
@@ -4204,7 +4152,7 @@ function MessagesChatInner() {
             ) : null}
 
             {mergedListItems.length > 0 ? (
-              <ul className={styles.messagesConversationList}>
+              <ul className={styles.messagesConversationList} onScroll={() => noteMessagesListScroll()}>
                 {mergedListItems.map((item) => {
                   const row =
                     item.kind === "groupChat"
@@ -4234,7 +4182,8 @@ function MessagesChatInner() {
                             accountBlocked: undefined as boolean | undefined,
                           },
                           onOpen: () => openGroupChat(item.group.conversationUuid),
-                          onPrefetch: undefined as (() => void) | undefined,
+                          onPrefetch: () => prefetchGroupThread(item.group.conversationUuid),
+                          onCancelPrefetch: () => cancelGroupThreadWarm(item.group.conversationUuid),
                           more: {
                             conversationMenuKind: "group" as const,
                             accessibility: {
@@ -4273,6 +4222,7 @@ function MessagesChatInner() {
                             },
                             onOpen: () => switchChat(chat),
                             onPrefetch: () => prefetchPeerThread(chat.otherUserUuid),
+                            onCancelPrefetch: () => cancelPeerThreadWarm(chat.otherUserUuid),
                             more: {
                               conversationMenuKind: "dm" as const,
                               accessibility: {
@@ -4295,7 +4245,9 @@ function MessagesChatInner() {
                         className={`${styles.messagesConversationItem} flora-type-15`}
                         onClick={row.onOpen}
                         onPointerEnter={row.onPrefetch}
+                        onPointerLeave={row.onCancelPrefetch}
                         onFocus={row.onPrefetch}
+                        onBlur={row.onCancelPrefetch}
                       >
                         <div className={styles.messagesConversationAvatarWrap}>
                           <FloraAvatar

@@ -513,6 +513,30 @@ describe("FrcImageCache", () => {
     expect(dense.bucketForWidth(360)).toBe(768);
   });
 
+  it("serves an indexed file without stating it, and adopts a file the index missed", () => {
+    const { store } = fakeStore();
+    const { backend, files } = fakeBackend();
+    const { cache } = makeCache(backend, { index: store });
+    cache.init();
+    const bucket = cache.bucketForWidth(45);
+    const key = `${backend.hashUrl("https://x/avatar")}@${bucket}`;
+    const uri = backend.finalUri(key, "png");
+    files.set(uri, {
+      bytes: new Uint8Array(PNG_BYTES),
+      part: false,
+      final: true,
+      key,
+    });
+    const exists = vi.spyOn(backend, "fileExists");
+
+    expect(cache.peekCached("https://x/avatar", bucket)).toBeUndefined();
+    expect(cache.adoptExact("https://x/avatar", bucket)).toBe(uri);
+    expect(exists).toHaveBeenCalled();
+    exists.mockClear();
+    expect(cache.peekCached("https://x/avatar", bucket)).toEqual({ uri, exact: true });
+    expect(exists).not.toHaveBeenCalled();
+  });
+
   it("restores the index from the store without walking the directory", async () => {
     const { store } = fakeStore();
     const first = fakeBackend();

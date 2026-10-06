@@ -17,7 +17,6 @@ import {
   useAnimatedRef,
   useAnimatedStyle,
   useDerivedValue,
-  useScrollOffset,
   useSharedValue,
   withDelay,
   withTiming,
@@ -25,6 +24,8 @@ import {
   type AnimatedStyle,
   type SharedValue,
 } from "react-native-reanimated";
+import { canScrollChatList } from "@/lib/chatListEnterMount";
+import { noteChatOpenRevealPath } from "@/lib/chatOpenTrace";
 import { ENERGETIC_OPEN_EASING } from "@/lib/energeticSettle";
 import {
   commitImeHeightPx,
@@ -135,6 +136,17 @@ export function chatListAnchorOffset(): number {
   "worklet";
   return 0;
 }
+
+/** scrollTo только на прикреплённый ref: иначе Reanimated предупреждает на старте слайда. */
+function scrollChatListTo(
+  animatedRef: AnimatedRef<Reanimated.ScrollView>,
+  y: number,
+  animated: boolean,
+) {
+  "worklet";
+  if (!canScrollChatList(animatedRef())) return;
+  scrollTo(animatedRef, 0, y, animated);
+}
 /**
  * Окно, в котором показ IME после openEmoji считается устаревшим (запрошен
  * ДО нажатия эмодзи) и повторно гасится вместо перехвата режима.
@@ -220,6 +232,12 @@ export type ChatComposeDock = {
   /** Animated-ref внутреннего скролла ленты (для worklet-скролла). */
   listAnimatedRef: AnimatedRef<Reanimated.ScrollView>;
   /**
+   * Офсет ленты. Пишет useScrollOffset в ChatScrollView — том же коммите, что
+   * FlashList, когда ref уже прикреплён. В доке первого коммита хука нет:
+   * иначе observe стреляет по пустому ref на старте слайда.
+   */
+  listScrollOffsetSv: SharedValue<number>;
+  /**
    * Вернуть ленту к последнему сообщению (началу скролла у перевёрнутой ленты)
    * и держать её там, пока пользователь не отмотает вверх.
    */
@@ -256,7 +274,7 @@ export type ChatComposeDock = {
    * Тёплый быстрый путь: показать ленту в текущем JS-коммите, минуя UI-гейты.
    * Звать из onLoad, когда все замеры текста окна показа уже в кэше.
    */
-  revealListNow: () => void;
+  revealListNow: (options?: { immediateCover?: boolean }) => void;
   /** onLoad FlashList: каждая видимая строка замерена — раскладка финальна. */
   onListLoad: () => void;
   /**
@@ -486,8 +504,10 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    * «я отправил scrollTo» не значит «лента на якоре» — компенсирующий scrollBy
    * декоратора инсета KCSV может приземлиться ПОЗЖЕ и сбить якорь. Показ
    * верифицирует офсет, а не верит команде.
+   * Сам useScrollOffset живёт в ChatScrollView и пишет в этот SV: до монтажа
+   * списка ref пуст, и хук в доке предупреждал бы на каждом открытии.
    */
-  const listScrollOffsetSv = useScrollOffset(listAnimatedRef);
+  const listScrollOffsetSv = useSharedValue(0);
 
   // Компенсационной реакции на смену зазора больше нет: зазор — React-padding
   // контент-контейнера (listGapPx). У якоря (офсет 0) смена padding сама сдвигает
@@ -623,7 +643,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     (animated = false) => {
       pinToBottomSv.value = true;
       runOnUI(() => {
-        scrollTo(listAnimatedRef, 0, chatListAnchorOffset(), animated);
+        scrollChatListTo(listAnimatedRef, chatListAnchorOffset(), animated);
       })();
     },
     [listAnimatedRef, pinToBottomSv],
@@ -659,6 +679,8 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listPlaceholderSv.value = 0;
     // Ковёр снова непрозрачен: новый тред собирается под ним.
     listEnterCoverSv.value = 1;
+    // Новый список стартует с якоря. Старый офсет отклонил бы тёплый показ.
+    listScrollOffsetSv.value = 0;
     listLoadedSv.value = false;
     listLayoutQuietSv.value = 0;
     listQuietFramesSv.value = LIST_LAYOUT_QUIET_FRAMES;
@@ -676,6 +698,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listQuietFramesSv,
     listRevealSv,
     listRevealStartedSv,
+    listScrollOffsetSv,
     listTextReadySv,
     revealAtSv,
     settleLogBudgetSv,
@@ -711,6 +734,10 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    * подряд ровно на якоре; любой снос до показа ловится и перезаякоривается
    * невидимо. Потолок ожидания — страховка от зависших случаев.
    */
+  const noteRevealPath = useCallback((path: "cold" | "deadline") => {
+    noteChatOpenRevealPath(path);
+  }, []);
+
   const allowListReveal = useCallback(() => {
     if (listRevealStartedSv.value) return;
     listRevealStartedSv.value = true;
@@ -722,7 +749,8 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       // Кадры подряд, в которые офсет фактически замерен на якоре (Android),
       // либо кадры с момента посадки (iOS — см. ветку ниже).
       let anchoredFrames = 0;
-      const reveal = () => {
+      const reveal = (path: "cold" | "deadline") => {
+        runOnJS(noteRevealPath)(path);
         cancelAnimation(listRevealSv);
         cancelAnimation(listPlaceholderSv);
         // Якорь верифицирован кадрами раньше. Пиксели показывает НЕ этот SV,
@@ -764,9 +792,9 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         if (framesLeft <= 0) {
           // Потолок: показываем как есть, предварительно бросив якорь.
           if (pinToBottomSv.value) {
-            scrollTo(listAnimatedRef, 0, chatListAnchorOffset(), false);
+            scrollChatListTo(listAnimatedRef, chatListAnchorOffset(), false);
           }
-          reveal();
+          reveal("deadline");
           return;
         }
         const gatesOpen =
@@ -775,7 +803,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
           listLayoutQuietSv.value >= listQuietFramesSv.value;
         if (gatesOpen) {
           if (!pinToBottomSv.value) {
-            reveal();
+            reveal("cold");
             return;
           }
           const target = chatListAnchorOffset();
@@ -789,17 +817,17 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
                   `[chat-anchor] снос до показа: ${Math.round(listScrollOffsetSv.value)} → якорь ${Math.round(target)}`,
                 );
               }
-              scrollTo(listAnimatedRef, 0, target, false);
+              scrollChatListTo(listAnimatedRef, target, false);
               anchoredFrames = 0;
             } else {
               // Страховка от застоявшегося SV в первом кадре фазы: явный
               // якорь один раз, даже если офсет уже читается верным.
               if (anchoredFrames === 0) {
-                scrollTo(listAnimatedRef, 0, target, false);
+                scrollChatListTo(listAnimatedRef, target, false);
               }
               anchoredFrames += 1;
               if (anchoredFrames >= 2) {
-                reveal();
+                reveal("cold");
                 return;
               }
             }
@@ -807,11 +835,11 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
             // iOS: setContentOffset в тот же офсет не шлёт события — SV мог
             // застояться; верифицировать нечем. Якорь + два кадра на доезд.
             if (anchoredFrames === 0) {
-              scrollTo(listAnimatedRef, 0, target, false);
+              scrollChatListTo(listAnimatedRef, target, false);
             }
             anchoredFrames += 1;
             if (anchoredFrames >= 3) {
-              reveal();
+              reveal("cold");
               return;
             }
           }
@@ -833,6 +861,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listScrollOffsetSv,
     listTextReadySv,
     markRevealed,
+    noteRevealPath,
     pinToBottomSv,
     revealAtSv,
     settleLogBudgetSv,
@@ -847,14 +876,25 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    * же JS-коммите. Применим только на нетронутом якоре: скролл не двигался,
    * инвертированная лента прижата к низу с первого кадра.
    */
-  const revealListNow = useCallback(() => {
-    if (listRevealSv.value) return;
+  const revealListNow = useCallback((options?: { immediateCover?: boolean }) => {
+    const immediateCover = options?.immediateCover === true;
+    if (listRevealSv.value && !immediateCover) {
+      if (__DEV__) console.log("[chat-open] revealNow пропущен: лента уже показана");
+      return;
+    }
     if (
+      !immediateCover &&
       pinToBottomSv.value &&
       Math.abs(listScrollOffsetSv.value - chatListAnchorOffset()) > 0.5
     ) {
+      if (__DEV__) {
+        console.log(
+          `[chat-open] revealNow отклонён: якорь offset=${Math.round(listScrollOffsetSv.value)} target=${Math.round(chatListAnchorOffset())}`,
+        );
+      }
       return; // якорь тронут — пусть верифицирует UI-цикл allowListReveal
     }
+    if (__DEV__) noteChatOpenRevealPath("warm");
     listRevealStartedSv.value = true;
     cancelAnimation(listRevealSv);
     cancelAnimation(listPlaceholderSv);
@@ -864,7 +904,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listPlaceholderSv.value = 0;
     // Тот же Flora-фейд входа, что в UI-цикле показа (см. reveal выше).
     cancelAnimation(listEnterCoverSv);
-    if (skipMotionSv.value) {
+    if (immediateCover || skipMotionSv.value) {
       listEnterCoverSv.value = 0;
     } else {
       listEnterCoverSv.value = 1;
@@ -1460,6 +1500,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     listInsetZeroSv,
     freezeListSv,
     listAnimatedRef,
+    listScrollOffsetSv,
     pinListToBottom,
     setListPinned,
     listPlaceholderStyle,

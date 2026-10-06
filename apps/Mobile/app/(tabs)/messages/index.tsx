@@ -6,7 +6,7 @@ import {
   apiListGroups,
   ApiRequestError,
 } from "@flora/client-core/api";
-import type { MsgConversationDto } from "@flora/client-core/contracts";
+import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
 import {
   decryptGroupMessagePreview,
   type FscpBootstrapStatus,
@@ -46,12 +46,7 @@ import {
   View,
 } from "react-native";
 import { RefreshControl } from "react-native-gesture-handler";
-import Reanimated, {
-  runOnJS,
-  useAnimatedReaction,
-  useAnimatedStyle,
-  useSharedValue,
-} from "react-native-reanimated";
+import Reanimated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationListRow } from "@/components/messages/ConversationListRow";
 import { ConversationMoreMenu } from "@/components/messages/ConversationMoreMenu";
@@ -72,11 +67,19 @@ import { useHamburgerMenu } from "@/components/HamburgerMenuProvider";
 import { SEARCH_SUGGESTION_TAGS } from "@/components/SearchSuggestionTags";
 import { TabScreenHeader } from "@/components/TabScreenHeader";
 import { useChatListOverlayStore } from "@/lib/chatListOverlayStore";
+import { warmChatOpenThreadAtPressIn } from "@/lib/chatOpenLayoutWarm";
 import {
   CHAT_PUSH_DIM,
   CHAT_PUSH_PARALLAX,
+  cancelChatPushParkFromLeave,
+  cancelChatPushParkFromScroll,
   chatPushProgress,
   resetChatPushProgress,
+  setChatWarmAssemblyEnabled,
+  setChatWarmCachedProbe,
+  setChatWarmHeldProbe,
+  syncChatWarmTargets,
+  type ChatPushParkParams,
 } from "@/lib/chatPushTransition";
 import {
   clearTemporaryMute,
@@ -89,6 +92,10 @@ import { mapGroupListItem, mergeGroupListRefresh } from "@/lib/groupChatMap";
 import { groupSortAt, type GroupChat } from "@/lib/groupChatTypes";
 import { warmGroupListPreviews } from "@/lib/groupListPreviewWarm";
 import { imeStableWindowWidth } from "@/lib/imeVisible";
+import { isScrollSettled, subscribeScrollSettled } from "@/lib/scrollActivity";
+import { isChatWarmBenchPageReady } from "@/lib/chatWarmReveal";
+import { threadFirstPageQueryKey } from "@/lib/threadFirstPage";
+import { messageDecryptCacheKey } from "@/lib/useThreadMessageDecrypt";
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { openGroupChat } from "@/lib/openGroupChat";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
@@ -98,6 +105,7 @@ import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracki
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useFscpStore } from "@/stores/fscpStore";
+import { messageThreadDecryptCache } from "@/stores/messageThreadCache";
 import { useSessionStore } from "@/stores/sessionStore";
 
 type SortBy = "recent" | "unread";
@@ -175,6 +183,28 @@ function toConversationRows(
   });
 }
 
+/** Параметры окна без живого presence: тики онлайна не пересобирают скамью. */
+function parkParamsFromListRow(row: MessagesFolderListRow): ChatPushParkParams {
+  if (row.kind === "groupChat") {
+    return {
+      conversationUuid: row.group.conversationUuid,
+      kind: "groupChat",
+      title: row.group.title,
+    };
+  }
+  const item = row.item;
+  return {
+    conversationUuid: item.conversationUuid,
+    otherUserUuid: item.otherUserUuid,
+    otherDisplayName: item.otherDisplayName,
+    otherUsername: item.otherUsername,
+    otherAvatarUuid: item.otherAvatarUuid ?? "",
+    otherAccountBlocked: item.otherAccountBlocked ? "1" : "0",
+    otherUserIsOnline: item.otherUserIsOnline ? "1" : "0",
+    otherUserLastSeenAt: item.otherUserLastSeenAt ?? "",
+  };
+}
+
 function fscpBannerMessage(status: FscpBootstrapStatus): { text: string; action?: string } | null {
   switch (status) {
     case "needs_restore":
@@ -239,6 +269,9 @@ export default function MessagesScreen() {
   const [searchDismissEpoch, setSearchDismissEpoch] = useState(0);
   const bumpSearchDismiss = useCallback(() => {
     setSearchDismissEpoch((n) => n + 1);
+  }, []);
+  const onListScrollBegan = useCallback(() => {
+    cancelChatPushParkFromScroll();
   }, []);
   const [sortOpen, setSortOpen] = useState(false);
   const { closeMenu } = useHamburgerMenu();
@@ -748,6 +781,11 @@ export default function MessagesScreen() {
       // сброс чинит аварийные пути (pop без анимации).
       resetChatPushProgress();
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+      // Сборка окон — следующий кадр, не вместе с сетевым добором свежести.
+      const warmFrame = requestAnimationFrame(() => {
+        if (!tabFocusedRef.current) return;
+        setChatWarmAssemblyEnabled(isScrollSettled());
+      });
       // Обновления свежести — за кадрами посадки (FOCUS_REFRESH_DELAY_MS).
       // Ни одно из них не нужно первому кадру списка: данные уже показаны из
       // кэша, запросы лишь досыпают изменения, сделанные в других клиентах.
@@ -772,17 +810,25 @@ export default function MessagesScreen() {
       }, FOCUS_REFRESH_DELAY_MS);
       return () => {
         clearTimeout(refreshTimer);
+        cancelAnimationFrame(warmFrame);
         tabFocusedRef.current = false;
         setTabFocused(false);
         setConversationsListFocused(false);
+        setChatWarmAssemblyEnabled(false);
       };
     }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
   );
+  useEffect(() => {
+    // Уход со списка (вкладка, другой экран). Push play уже не holding — не снимается.
+    return navigation.addListener("blur", () => {
+      cancelChatPushParkFromLeave();
+    });
+  }, [navigation]);
 
   /**
-   * Push-переход чата (chatPushTransition): пока чат заезжает справа, список
-   * остаётся на месте с лёгким параллаксом влево и затемнением. Dim-слой на
-   * ходу перехода блокирует тапы — второй push с двойного тапа не пройдёт.
+   * Push-переход чата: список остаётся на месте с параллаксом и затемнением.
+   * Dim только opacity и касания не перехватывает — кнопки списка и таб-бара
+   * живы, пока чат ещё не встал на место.
    */
   const { width: windowWidth } = useWindowDimensions();
   const chatPushParallaxStyle = useAnimatedStyle(() => ({
@@ -793,16 +839,6 @@ export default function MessagesScreen() {
   const chatPushDimStyle = useAnimatedStyle(() => ({
     opacity: CHAT_PUSH_DIM * chatPushProgress.value,
   }));
-  const [chatPushBlocksList, setChatPushBlocksList] = useState(false);
-  useAnimatedReaction(
-    () => chatPushProgress.value > 0.02,
-    (blocked, prev) => {
-      if (blocked !== prev) {
-        runOnJS(setChatPushBlocksList)(blocked);
-      }
-    },
-  );
-
   const banner = fscpBannerMessage(fscpStatus);
 
   const filterFolderList = useCallback(
@@ -842,6 +878,66 @@ export default function MessagesScreen() {
     previews,
     sortBy,
   ]);
+
+  const chatWarmTargets = useMemo(() => {
+    const ordered: ChatPushParkParams[] = [];
+    const seen = new Set<string>();
+    const pushFolder = (folder: ChatListFolderId) => {
+      const rows = dataByPage.get(folder);
+      if (!rows) return;
+      for (const row of rows) {
+        const params = parkParamsFromListRow(row);
+        const id = params.conversationUuid.trim().toLowerCase();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        ordered.push(params);
+      }
+    };
+    pushFolder(activeFolder);
+    for (const folder of folderPages) pushFolder(folder);
+    return ordered;
+  }, [activeFolder, dataByPage, folderPages]);
+  useEffect(() => {
+    const byId = new Map(
+      chatWarmTargets.map((params) => [params.conversationUuid.trim().toLowerCase(), params]),
+    );
+    const readPage = (id: string): readonly MsgMessageDto[] | null | undefined => {
+      const params = byId.get(id);
+      if (params == null) return null;
+      const key = threadFirstPageQueryKey(
+        params.kind === "groupChat"
+          ? { kind: "group", conversationUuid: params.conversationUuid }
+          : {
+              kind: "dm",
+              conversationUuid: params.conversationUuid,
+              otherUserUuid: params.otherUserUuid ?? "",
+            },
+      );
+      return queryClient.getQueryData<{ items?: readonly MsgMessageDto[] }>(key)?.items;
+    };
+    const readDecrypt = (message: MsgMessageDto) =>
+      messageThreadDecryptCache.getMessage(messageDecryptCacheKey(message));
+    // Слот берёт только терминальный хвост. Страница без расшифровки не
+    // холодная: иначе очередь монтирует ленту поверх того же decrypt.
+    setChatWarmCachedProbe((id) =>
+      isChatWarmBenchPageReady({ messages: readPage(id), readDecrypt }),
+    );
+    setChatWarmHeldProbe((id) => {
+      const messages = readPage(id);
+      if (messages == null) return false;
+      return !isChatWarmBenchPageReady({ messages, readDecrypt });
+    });
+    syncChatWarmTargets(chatWarmTargets);
+    return () => {
+      setChatWarmCachedProbe(null);
+      setChatWarmHeldProbe(null);
+    };
+  }, [chatWarmTargets, queryClient]);
+  useEffect(() => {
+    return subscribeScrollSettled((settled) => {
+      setChatWarmAssemblyEnabled(tabFocusedRef.current && settled);
+    });
+  }, []);
 
   /** Поиск — один список без pager (папки скрыты). */
   const searchListData = useMemo(() => {
@@ -1099,6 +1195,21 @@ export default function MessagesScreen() {
             onEnterSelect={enterConversationSelect}
             onToggleSelect={toggleConversationSelect}
             onPanStart={bumpSearchDismiss}
+            onListScrollBegin={onListScrollBegan}
+            onListIdle={(row) => {
+              if (row.kind === "groupChat") {
+                warmChatOpenThreadAtPressIn({
+                  kind: "group",
+                  conversationUuid: row.group.conversationUuid,
+                });
+                return;
+              }
+              warmChatOpenThreadAtPressIn({
+                kind: "dm",
+                conversationUuid: row.item.conversationUuid,
+                otherUserUuid: row.item.otherUserUuid,
+              });
+            }}
           />
         </View>
         {hasSearch ? (
@@ -1114,7 +1225,10 @@ export default function MessagesScreen() {
               showsVerticalScrollIndicator={false}
               nestedScrollEnabled={false}
               keyboardDismissMode="on-drag"
-              onScrollBeginDrag={bumpSearchDismiss}
+              onScrollBeginDrag={() => {
+                bumpSearchDismiss();
+                onListScrollBegan();
+              }}
               renderScrollComponent={PagerOverlayScroll}
               refreshControl={
                 <RefreshControl
@@ -1210,11 +1324,7 @@ export default function MessagesScreen() {
         }}
       />
 
-      {/* Затемнение под push чата; на ходу перехода блокирует тапы по списку. */}
-      <Reanimated.View
-        pointerEvents={chatPushBlocksList ? "auto" : "none"}
-        style={[styles.chatPushDim, chatPushDimStyle]}
-      />
+      <Reanimated.View pointerEvents="none" style={[styles.chatPushDim, chatPushDimStyle]} />
     </Reanimated.View>
   );
 }

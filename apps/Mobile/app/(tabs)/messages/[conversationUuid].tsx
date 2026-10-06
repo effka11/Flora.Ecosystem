@@ -1,3 +1,4 @@
+import { ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiGetConversations,
@@ -32,7 +33,16 @@ import {
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -119,20 +129,55 @@ import {
 } from "@/lib/conversationTemporaryMute";
 import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import {
+  type ChatPushParkParams,
   chatPushProgress,
+  abortChatPushBeforeShell,
+  didAlreadyRunChatPushEnter,
+  getChatPushDriven,
+  getChatPushEnterGeneration,
+  getChatPushHolding,
+  getChatPushSliding,
   isChatPushEnterArmed,
   isChatPushExiting,
+  isChatPushHoldingSlide,
+  isChatPushOverlayOwner,
+  isChatPushSlideHeld,
+  notifyChatPushListMounted,
+  notifyChatPushWindowClosed,
+  notifyChatWarmMeasureYielded,
+  notifyChatWarmWindowClosed,
+  completeChatPushExitVisual,
+  registerChatPushDriven,
+  unregisterChatPushDriven,
   runChatPushEnter,
   runChatPushExit,
+  subscribeChatPush,
 } from "@/lib/chatPushTransition";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
+import {
+  chatPushRepeatBackKeepsIntercept,
+  nextChatListMounted,
+  shouldRevealMeasuredWindow,
+  warmLayoutEffectMayReveal,
+  warmLayoutRevealAction,
+} from "@/lib/chatListEnterMount";
+import {
+  diagnoseChatWarmOpen,
+  formatChatWarmOpenDiagnosis,
+} from "@/lib/chatWarmReveal";
+import { readChatPrefetchGates } from "@/lib/chatPrefetchPolicy";
+import { shouldRefetchThreadAfterReveal } from "@/lib/threadRevealRefresh";
 import {
   markChatOpenStage,
   noteChatOpenCellRender,
   noteChatOpenLayoutWarm,
   noteChatOpenScreenRender,
+  noteChatOpenWarmCheck,
 } from "@/lib/chatOpenTrace";
+import { warmParkedChatAvatars } from "@/lib/chatOpenAvatarWarm";
+import { chatOpenAvatarsNeedPaint, collectChatOpenAvatarUuids } from "@/lib/chatOpenAvatars";
 import { warmThreadTextLayoutFromRows } from "@/lib/chatOpenLayoutWarm";
+import { findGroupMember } from "@/lib/groupChatMap";
 import {
   fetchThreadFirstPage,
   threadFirstPageQueryKey,
@@ -185,8 +230,12 @@ import { useMessageComposeImages } from "@/lib/useMessageComposeImages";
 import { useMessageComposeVoice } from "@/lib/useMessageComposeVoice";
 import { useVoiceRecorder } from "@/lib/useVoiceRecorder";
 import { useGroupChatThread } from "@/lib/useGroupChatThread";
-import { THREAD_REVEAL_WINDOW, useThreadMessageDecrypt } from "@/lib/useThreadMessageDecrypt";
-import { messageThreadCache } from "@/stores/messageThreadCache";
+import { THREAD_REVEAL_WINDOW, messageDecryptCacheKey, useThreadMessageDecrypt } from "@/lib/useThreadMessageDecrypt";
+import {
+  messageThreadCache,
+  messageThreadDecryptCache,
+  retainMessageDecryptThreads,
+} from "@/stores/messageThreadCache";
 import { useFscpStore } from "@/stores/fscpStore";
 import { FscpUnlockSheet } from "@/components/fscp/FscpUnlockSheet";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -361,7 +410,49 @@ function threadListItemHasMessage(item: ThreadListItem, messageUuid: string): bo
   return item.message.messageUuid === messageUuid;
 }
 
-export default function ThreadScreen() {
+/** Холодный FRI должен успеть нарисоваться за краем, до первого кадра слайда. */
+function afterNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+/**
+ * Декод кругов треда уже мог идти с press-in. Дополнительный кадр нужен только
+ * если холодный файл ещё не вызвал onLoad у круга треда. Готовый bitmap
+ * (onLoad) или синхронный файл этот кадр не ждут.
+ */
+async function finishParkedAvatarWarm(uuids: readonly string[]): Promise<void> {
+  await warmParkedChatAvatars(uuids);
+  if (chatOpenAvatarsNeedPaint(uuids)) await afterNextPaint();
+}
+
+function subscribeChatWarmIdle(): () => void {
+  return () => {};
+}
+
+function chatPushHoldingOff(): boolean {
+  return false;
+}
+
+function chatPushSlidingOff(): boolean {
+  return false;
+}
+
+function chatPushGenerationIdle(): number {
+  return 0;
+}
+
+export function ThreadScreen({
+  overlayParams,
+  bench = false,
+}: {
+  overlayParams?: ChatPushParkParams;
+  /** Окно собирается за краем и не участвует в слайде. */
+  bench?: boolean;
+} = {}) {
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: windowHeight } = useWindowDimensions();
   /** Исходящий текст — без peer inset (как ChatMessageBubble isFromMe). */
@@ -403,6 +494,7 @@ export default function ThreadScreen() {
     listInsetZeroSv,
     freezeListSv,
     listAnimatedRef,
+    listScrollOffsetSv,
     pinListToBottom,
     setListPinned,
     listLiftStyle,
@@ -515,7 +607,7 @@ export default function ThreadScreen() {
     setDeleteBarHeightPx(0);
   }, [setDeleteBarHeightPx]);
 
-  const params = useLocalSearchParams<{
+  const routeParams = useLocalSearchParams<{
     conversationUuid: string;
     kind?: string;
     title?: string;
@@ -527,6 +619,24 @@ export default function ThreadScreen() {
     otherUserIsOnline?: string;
     otherUserLastSeenAt?: string;
   }>();
+  const params = overlayParams ?? routeParams;
+  const overlayHost = overlayParams != null;
+  const benchRef = useRef(bench);
+  benchRef.current = bench;
+  // Чужие окна не подписываются на слайд: иначе каждый кадр входа перерисовывает всю скамью.
+  const chatPushHolding = useSyncExternalStore(
+    bench ? subscribeChatWarmIdle : subscribeChatPush,
+    bench ? chatPushHoldingOff : getChatPushHolding,
+  );
+  const chatPushSliding = useSyncExternalStore(
+    bench ? subscribeChatWarmIdle : subscribeChatPush,
+    bench ? chatPushSlidingOff : getChatPushSliding,
+  );
+  const chatPushEnterGeneration = useSyncExternalStore(
+    bench ? subscribeChatWarmIdle : subscribeChatPush,
+    bench ? chatPushGenerationIdle : getChatPushEnterGeneration,
+  );
+  const preparingWindow = bench || chatPushHolding;
 
   const conversationUuid = routeParam(params.conversationUuid);
   const isGroupChat = routeParam(params.kind) === "groupChat";
@@ -577,6 +687,10 @@ export default function ThreadScreen() {
    * его в теле и пропускают устаревший первый коммит.
    */
   const listRevealedStaleRef = useRef(false);
+  /** Парковый показ: layout-эффект после коммита listRevealed гасит ковёр в переходе. */
+  const parkCarpetCommitRef = useRef(false);
+  const listRevealedLiveRef = useRef(false);
+  listRevealedLiveRef.current = listRevealed;
 
   /**
    * Пост-показ по фазам: сперва доклейка хвоста истории за окном первого
@@ -623,22 +737,24 @@ export default function ThreadScreen() {
     threadResetUuidRef.current = conversationUuid;
     markChatOpenStage("mount", conversationUuid);
     listRevealedStaleRef.current = true;
+    parkCarpetCommitRef.current = false;
     // Замеры ячеек — потредные: высоты прошлого треда не должны подтверждать
     // видимый префикс нового (uuid глобально уникальны, но Map без чистки
     // рос бы всю жизнь экрана).
     cellHeightsRef.current.clear();
     windowMeasuredUuidRef.current = "";
+    parkAvatarWaitRef.current = false;
+    parkedOpenGenRef.current += 1;
     resetDock();
     hideListUntilReady();
     setMenuTarget(null);
     setReplyTo(null);
     // Позиция ленты — величина потреда: перенесённая из прошлого треда, она
-    // оставила бы новый тред «отмотанным вверх» (без возврата к якорю на
-    // входящие) и могла бы показать в нём чужую плашку «Новые сообщения».
-    // Сам список ремоунтится (key=uuid) и стартует с якоря, но pinToBottomSv
-    // живёт в доке и переживает смену треда — прижатие возвращаем явно.
+    // оставила бы новый тред «отмотанным вверх» и могла бы показать в нём
+    // чужую плашку «Новые сообщения». pinToBottomSv живёт в доке и переживает
+    // смену треда. scrollTo — отдельным эффектом, когда FlashList уже
+    // смонтирован: до этого ref пуст и Reanimated предупреждает на слайде.
     atBottomRef.current = true;
-    pinListToBottom(false);
     setShowJumpToLatest(false);
     resetBirthTracking();
     scrollTrackingReadyRef.current = false;
@@ -653,6 +769,16 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationUuid, isGroupChat]);
 
+  useLayoutEffect(() => {
+    // Только парковый показ. Дедлайн и deep link ковёр слайда не гасят.
+    // Коммит listRevealed уже прошёл: если палец поднят, runEnter — следующий кадр.
+    if (!overlayHost || !parkCarpetCommitRef.current) return;
+    if (!listRevealed || listRevealedStaleRef.current) return;
+    parkCarpetCommitRef.current = false;
+    notifyChatWarmWindowClosed(conversationUuid);
+    notifyChatPushWindowClosed(conversationUuid);
+  }, [conversationUuid, listRevealed, overlayHost]);
+
   useEffect(() => {
     // Устаревший true первого коммита переиспользованного экрана снимаем здесь:
     // это самый ранний reveal-эффект, дальше по файлу все читают уже false.
@@ -661,21 +787,27 @@ export default function ThreadScreen() {
       return;
     }
     if (listRevealedStaleRef.current) return;
+    // В парковке и на скамье хвост не доклеивать: play ещё впереди.
+    if (preparingWindow) return;
     // Доклейка раньше отпуска волн: оба — коммиты FlashList, и разнесение по
     // времени держит кадры сразу после показа свободными для жестов.
+    // Пока слайд ещё едет, ждём его конец. На конце progress уже 1 — второй
+    // паузы нет: снимок «парковка» держал эффект молча всю дорогу.
+    const slidePad =
+      chatPushSliding && chatPushProgress.value < 1 ? ENERGETIC_OPEN_MS : 0;
     const expand = setTimeout(
       () => setWindowExpandedUuid(conversationUuid),
-      LIST_WINDOW_EXPAND_DELAY_MS,
+      slidePad + LIST_WINDOW_EXPAND_DELAY_MS,
     );
     const waves = setTimeout(
       () => setWavesReleasedUuid(conversationUuid),
-      WAVES_RELEASE_DELAY_MS,
+      slidePad + WAVES_RELEASE_DELAY_MS,
     );
     return () => {
       clearTimeout(expand);
       clearTimeout(waves);
     };
-  }, [conversationUuid, listRevealed]);
+  }, [bench, chatPushHolding, chatPushSliding, conversationUuid, listRevealed]);
 
   /**
    * Инсет через ref: смена insets.bottom (скрытие таб-бара, жестовая панель)
@@ -688,6 +820,9 @@ export default function ThreadScreen() {
   }, [tabBarBottomInset]);
   useFocusEffect(
     useCallback(() => {
+      // Оверлей парковки не экран маршрута: фокус и таб-бар остаются у списка,
+      // пока play не запушит оболочку треда.
+      if (overlayHost) return;
       applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, true);
       chatUiFrameKeepAlive.setActive(true);
       return () => {
@@ -695,8 +830,15 @@ export default function ThreadScreen() {
         applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, false);
         resetDock();
       };
-    }, [chatUiFrameKeepAlive, navigation, resetDock]),
+    }, [chatUiFrameKeepAlive, navigation, overlayHost, resetDock]),
   );
+  useEffect(() => {
+    if (!overlayHost || preparingWindow) return;
+    chatUiFrameKeepAlive.setActive(true);
+    return () => {
+      chatUiFrameKeepAlive.setActive(false);
+    };
+  }, [bench, chatPushHolding, chatUiFrameKeepAlive, overlayHost]);
 
   /**
    * Заглушке можно появляться сразу, как только hideListUntilReady сбросил
@@ -718,55 +860,138 @@ export default function ThreadScreen() {
    * useLayoutEffect того же коммита, то есть движение начинается кадром, где
    * шапка и док уже нарисованы.
    */
-  const [chatPushEnterArmed] = useState(isChatPushEnterArmed);
+  const [chatPushEnterArmed] = useState(
+    () => !bench && (isChatPushEnterArmed() || isChatPushHoldingSlide()),
+  );
   const chatPushDriven = useSharedValue(chatPushEnterArmed);
-  const chatPushSlideStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX: chatPushDriven.value
-          ? (1 - chatPushProgress.value) * screenWidth
-          : 0,
-      },
-    ],
-  }));
+  const slideOwnedSv = useSharedValue(!bench);
   useLayoutEffect(() => {
+    slideOwnedSv.value = !bench;
+  }, [bench, slideOwnedSv]);
+  const chatPushSlideStyle = useAnimatedStyle(() => {
+    if (!slideOwnedSv.value) {
+      return { transform: [{ translateX: screenWidth }] };
+    }
+    return {
+      transform: [
+        {
+          translateX: chatPushDriven.value
+            ? (1 - chatPushProgress.value) * screenWidth
+            : 0,
+        },
+      ],
+    };
+  });
+  useLayoutEffect(() => {
+    if (bench) return;
+    registerChatPushDriven(chatPushDriven);
+    // Оверлей при progress 0 остаётся за краем, пока runEnter не поехал.
+    if (overlayHost) chatPushDriven.value = true;
+    return () => unregisterChatPushDriven(chatPushDriven);
+  }, [bench, chatPushDriven, overlayHost]);
+  useLayoutEffect(() => {
+    // Скамья слайд не начинает. Парковка и закоммиченный play — тоже:
+    // вход зовёт сам переход, иначе runEnter делит кадры с коммитом треда.
+    if (bench) return;
+    if (isChatPushHoldingSlide() || isChatPushSlideHeld()) return;
+    if (didAlreadyRunChatPushEnter()) return;
     runChatPushEnter(chatPushDriven);
-  }, [chatPushDriven, conversationUuid]);
+  }, [bench, chatPushDriven, chatPushEnterGeneration, conversationUuid]);
 
   /**
-   * Лента — вторым коммитом (кадром позже хрома). Слайд стартует из
-   * useLayoutEffect первого коммита, поэтому цена этого коммита = пауза между
-   * тапом и движением; монтаж FlashList с начальной пачкой пузырей — её
-   * основная часть (в трассе это разрыв render→mount). Кадром позже он уже
-   * не задерживает старт и идёт под слайдом: анимация живёт на UI-потоке, JS
-   * ей не мешает. Лента всё равно скрыта enter-ковром до reveal, так что
-   * визуально кадр ничего не меняет.
+   * В парковке FlashList монтируется сразу: коммит пузырей идёт, пока экран
+   * стоит за правым краем. На уже едущем слайде ленту не начинать. Уже
+   * смонтированная остаётся и на слайде, и на выходе.
+   *
+   * Взведённый вход без парковки (deep link сюда не входит — он не armed)
+   * гасит защёлку в этом же рендере: слайд едет без FlashList, список
+   * появляется на progress = 1. Shared value в рендере не читаем.
    *
    * Ремоунт (а не пустые данные) сохраняет контракт FlashList: начальные
    * данные — сразу окно показа, значит `initialDrawBatchSize` рисует его
    * одним проходом, без волн и доезжающих пузырей.
    */
-  const [listMounted, setListMounted] = useState(!chatPushEnterArmed);
-  useEffect(() => {
-    if (listMounted) return;
-    const frame = requestAnimationFrame(() => setListMounted(true));
-    return () => cancelAnimationFrame(frame);
-  }, [listMounted]);
+  const listEnterSettledRef = useRef(false);
+  const [, setListMountEpoch] = useState(0);
+  const enterArmedAtRender = isChatPushEnterArmed();
+  // Свежий arm без парковки снимает ленту на время слайда. play из парковки
+  // уже sliding — защёлку не сбрасывать, коммит не начинается заново.
+  if (enterArmedAtRender && !chatPushHolding && !chatPushSliding) {
+    listEnterSettledRef.current = false;
+  }
+  const listMounted = nextChatListMounted({
+    parked: preparingWindow,
+    sliding: chatPushSliding,
+    enterArmed: enterArmedAtRender,
+    enterProgress: listEnterSettledRef.current ? 1 : 0,
+    mounted: listEnterSettledRef.current,
+  });
+  if (listMounted) listEnterSettledRef.current = true;
+  const latchListMounted = useCallback(() => {
+    const next = nextChatListMounted({
+      parked: isChatPushHoldingSlide(),
+      sliding: getChatPushSliding(),
+      enterArmed: isChatPushEnterArmed(),
+      enterProgress: chatPushProgress.value,
+      mounted: listEnterSettledRef.current,
+    });
+    if (listEnterSettledRef.current === next) return;
+    listEnterSettledRef.current = next;
+    if (next) setListMountEpoch((epoch) => epoch + 1);
+  }, []);
+  useLayoutEffect(() => {
+    if (listMounted) notifyChatPushListMounted(conversationUuid);
+  }, [conversationUuid, listMounted]);
+  useLayoutEffect(() => {
+    // Мгновенный вход (deep link, reduce motion): runEnter уже поставил
+    // progress = 1 и снял driven. Анимированный вход здесь ещё едет —
+    // защёлку закроет реакция, когда progress дойдёт до 1.
+    // Парковка монтирует ленту в рендере, не дожидаясь progress = 1.
+    if (chatPushHolding) return;
+    if (chatPushDriven.value) return;
+    if (chatPushProgress.value < 1) return;
+    latchListMounted();
+  }, [chatPushDriven, chatPushHolding, conversationUuid, latchListMounted]);
+  useAnimatedReaction(
+    () => {
+      if (!slideOwnedSv.value) return -1;
+      return chatPushProgress.value;
+    },
+    (progress, prev) => {
+      if (progress < 0) return;
+      if (prev == null || prev >= 1 || progress < 1) return;
+      runOnJS(latchListMounted)();
+    },
+    [latchListMounted],
+  );
+  useLayoutEffect(() => {
+    if (!listMounted) return;
+    if (!atBottomRef.current) return;
+    pinListToBottom(false);
+  }, [conversationUuid, listMounted, pinListToBottom]);
 
   /**
    * Назад — зеркало входа: перехватываем pop (кнопка, системный back
    * Android), уводим экран вправо тем же темпом и кривой, что заезд, и только
-   * потом отпускаем отложенный action. Повторный back во время анимации
-   * проходит без перехвата (closingRef) — мгновенный pop, страховка от
-   * зависания.
+   * потом отпускаем отложенный action. Повторный back в том же выходе
+   * остаётся перехваченным. Отложенный dispatch в конце слайда помечен
+   * pass-флагом и проходит.
    */
   const chatPushClosingRef = useRef(false);
+  const chatPushPassRemoveRef = useRef(false);
   useEffect(() => {
+    if (overlayHost) return;
     chatPushClosingRef.current = false;
+    chatPushPassRemoveRef.current = false;
     const unsubscribe = navigation.addListener("beforeRemove", (event) => {
-      if (chatPushClosingRef.current) return;
+      if (chatPushPassRemoveRef.current) return;
+      if (chatPushRepeatBackKeepsIntercept(chatPushClosingRef.current || isChatPushExiting())) {
+        event.preventDefault();
+        return;
+      }
       const action = event.data.action;
       const started = runChatPushExit(chatPushDriven, () => {
+        chatPushPassRemoveRef.current = true;
         navigation.dispatch(action);
       });
       if (started) {
@@ -775,7 +1000,7 @@ export default function ThreadScreen() {
       }
     });
     return unsubscribe;
-  }, [chatPushDriven, navigation]);
+  }, [chatPushDriven, navigation, overlayHost]);
 
   const paramOtherDisplayName = routeParam(params.otherDisplayName);
   const paramOtherUsername = routeParam(params.otherUsername);
@@ -995,18 +1220,26 @@ export default function ThreadScreen() {
   });
 
   useEffect(() => {
-    if (!conversationUuid) return;
+    if (!conversationUuid || bench) return;
+    // Парковка ещё не открытие: список в фокусе, тред не считаем активным.
+    if (isChatPushHoldingSlide()) return;
     setActiveMessageThread(conversationUuid);
-    return () => setActiveMessageThread(null);
-  }, [conversationUuid]);
+    retainMessageDecryptThreads("open", [conversationUuid]);
+    return () => {
+      setActiveMessageThread(null);
+      retainMessageDecryptThreads("open", []);
+    };
+  }, [bench, chatPushHolding, conversationUuid]);
 
   useEffect(() => {
     if (!conversationUuid) return;
     const norm = conversationUuid.toLowerCase();
     return subscribeMessageRealtime((incomingUuid) => {
       if (incomingUuid.toLowerCase() !== norm) return;
+      if (benchRef.current) return;
       // Background/push must not mark-read (or imply the user is looking at chat).
       if (AppState.currentState !== "active") return;
+      if (isChatPushHoldingSlide()) return;
       if (isGroupChat) {
         void groupThread.refetchMessages();
         void groupThread.markRead();
@@ -1052,19 +1285,24 @@ export default function ThreadScreen() {
   useEffect(() => {
     if (!listRevealed || !conversationUuid) return;
     if (listRevealedStaleRef.current) return;
-    if (isGroupChat) {
-      void groupThread.markRead();
-      void dismissMessagePushNotifications(conversationUuid);
-      return;
-    }
-    void apiMarkConversationRead(conversationUuid)
-      .then(() => {
-        void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-        requestTabBadgesRefresh();
-        return dismissMessagePushNotifications(conversationUuid);
-      })
-      .catch(() => undefined);
-  }, [conversationUuid, groupThread.markRead, isGroupChat, listRevealed, queryClient]);
+    if (bench || isChatPushHoldingSlide()) return;
+    const delay = getChatPushSliding() && chatPushProgress.value < 1 ? ENERGETIC_OPEN_MS : 0;
+    const timer = setTimeout(() => {
+      if (isGroupChat) {
+        void groupThread.markRead();
+        void dismissMessagePushNotifications(conversationUuid);
+        return;
+      }
+      void apiMarkConversationRead(conversationUuid)
+        .then(() => {
+          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          requestTabBadgesRefresh();
+          return dismissMessagePushNotifications(conversationUuid);
+        })
+        .catch(() => undefined);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [bench, chatPushHolding, conversationUuid, groupThread.markRead, isGroupChat, listRevealed, queryClient]);
 
   /**
    * Тихий догруз треда — строго ПОСЛЕ первого видимого кадра ленты (reveal),
@@ -1079,25 +1317,99 @@ export default function ThreadScreen() {
   useEffect(() => {
     if (!listRevealed || !conversationUuid) return;
     if (listRevealedStaleRef.current) return;
+    if (bench || isChatPushHoldingSlide()) return;
     if (!isGroupChat && !otherUserUuid) return;
     if (postRevealRefreshedRef.current === conversationUuid) return;
     postRevealRefreshedRef.current = conversationUuid;
+    const slidePad = getChatPushSliding() && chatPushProgress.value < 1 ? ENERGETIC_OPEN_MS : 0;
     const timer = setTimeout(() => {
+      const target = isGroupChat
+        ? ({ kind: "group", conversationUuid } as const)
+        : ({ kind: "dm", conversationUuid, otherUserUuid } as const);
+      const queryKey = threadFirstPageQueryKey(target);
+      const state = queryClient.getQueryState(queryKey);
+      const page = queryClient.getQueryData<{ items: { createdAt: string }[] }>(queryKey);
+      const newestCreatedAt =
+        page?.items && page.items.length > 0
+          ? (page.items[page.items.length - 1]?.createdAt ?? null)
+          : null;
+      const lastMessageAt = isGroupChat
+        ? (queryClient
+            .getQueryData<{ conversationUuid: string; lastMessageAt: string | null }[]>(["groups"])
+            ?.find((group) => group.conversationUuid === conversationUuid)?.lastMessageAt ?? null)
+        : (queryClient
+            .getQueryData<{ items: { conversationUuid: string; lastMessageAt: string | null }[] }>([
+              "conversations",
+            ])
+            ?.items.find((conversation) => conversation.conversationUuid === conversationUuid)
+            ?.lastMessageAt ?? null);
+      if (
+        !shouldRefetchThreadAfterReveal({
+          isInvalidated: state?.isInvalidated === true,
+          lastMessageAt,
+          newestCreatedAt,
+        })
+      ) {
+        return;
+      }
       if (isGroupChat) {
         void groupThreadRef.current.refetchMessages();
         return;
       }
-      const target = { kind: "dm", conversationUuid, otherUserUuid } as const;
       void queryClient
         .fetchQuery({
-          queryKey: threadFirstPageQueryKey(target),
+          queryKey,
           queryFn: () => fetchThreadFirstPage(target),
           staleTime: THREAD_FIRST_PAGE_STALE_MS,
         })
         .catch(() => undefined);
-    }, POST_REVEAL_REFRESH_DELAY_MS);
+    }, slidePad + POST_REVEAL_REFRESH_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [conversationUuid, isGroupChat, listRevealed, otherUserUuid, queryClient]);
+  }, [bench, chatPushHolding, conversationUuid, isGroupChat, listRevealed, otherUserUuid, queryClient]);
+
+  const chatWarmRevealOnMountRef = useRef(readChatPrefetchGates().warmReveal);
+  useLayoutEffect(() => {
+    if (!conversationUuid) return;
+    const gateOn = chatWarmRevealOnMountRef.current;
+    let diagnosisWarm = false;
+    if (__DEV__) {
+      const queryKey = threadFirstPageQueryKey(
+        isGroupChat
+          ? { kind: "group", conversationUuid }
+          : { kind: "dm", conversationUuid, otherUserUuid: otherUserUuid || "" },
+      );
+      const page = queryClient.getQueryData<{ items: MsgMessageDto[] }>(queryKey);
+      const diagnosis = diagnoseChatWarmOpen({
+        messages: page?.items ?? null,
+        readDecrypt: (message) =>
+          messageThreadDecryptCache.getMessage(messageDecryptCacheKey(message)),
+        hasMeasure: (row) => {
+          const text = row.text?.trim() ?? "";
+          if (!text) return true;
+          return getCachedBodyMeasure(text, threadRowMeasureWidthPx(row)) != null;
+        },
+      });
+      diagnosisWarm = diagnosis.warm;
+      const action = warmLayoutRevealAction({ gateOn, listMounted, diagnosisWarm });
+      noteChatOpenWarmCheck(
+        conversationUuid,
+        `mounted=${listMounted ? 1 : 0} gate=${gateOn ? "on" : "off"} ${formatChatWarmOpenDiagnosis(diagnosis)} → ${action}`,
+      );
+    }
+    // Показ не здесь: ковёр держим, пока maybeConfirmWindowMeasured не закроет
+    // окно реальными onLayout. Иначе фейд стартует по пустому content-size.
+    if (
+      warmLayoutEffectMayReveal({
+        gateOn,
+        listMounted,
+        diagnosisWarm,
+        parked: isChatPushHoldingSlide() || bench,
+        windowClosedByHeights: windowMeasuredUuidRef.current === conversationUuid,
+      })
+    ) {
+      revealListNow({ immediateCover: true });
+    }
+  }, [bench, conversationUuid, isGroupChat, listMounted, otherUserUuid, queryClient, revealListNow]);
 
   const messages = useMemo(() => {
     if (isGroupChat) return groupThread.messages;
@@ -1312,6 +1624,75 @@ export default function ThreadScreen() {
   const listPending =
     (isGroupChat ? groupThread.isLoading : messagesQuery.isLoading) ||
     (listMessageCount > 0 && !threadReady);
+  const threadLoading = isGroupChat ? groupThread.isLoading : messagesQuery.isLoading;
+  const collectParkedAvatars = useCallback(
+    (items: readonly ThreadListItem[]) => {
+      const header = isGroupChat ? null : peer.otherAvatarUuid;
+      const tails = items.flatMap((item) => {
+        if (item.kind !== "peer" || !item.isGroupTail) return [];
+        const avatarUuid = isGroupChat
+          ? findGroupMember(groupThread.members, item.message.senderUserUuid)?.avatarUuid
+          : header;
+        return [{ avatarUuid }];
+      });
+      return collectChatOpenAvatarUuids(header, tails);
+    },
+    [groupThread.members, isGroupChat, peer.otherAvatarUuid],
+  );
+  useEffect(() => {
+    // Декод хвостов идёт вместе с onLayout, не после него. Закрытие окна
+    // по-прежнему ждёт и высоты, и paint — этот эффект слайд не открывает.
+    if (!preparingWindow || !listMounted) return;
+    if (isGroupChat && groupThread.members.length === 0 && groupThread.isLoading) return;
+    void warmParkedChatAvatars(collectParkedAvatars(listDataWindow));
+  }, [
+    bench,
+    chatPushHolding,
+    collectParkedAvatars,
+    groupThread.isLoading,
+    groupThread.members.length,
+    isGroupChat,
+    listDataWindow,
+    listMounted,
+  ]);
+
+  const commitParkCarpet = useCallback(() => {
+    const already = listRevealedLiveRef.current && !listRevealedStaleRef.current;
+    // Уже закоммиченный показ: ковёр гасим здесь, вход — следующий кадр, не этот вызов.
+    parkCarpetCommitRef.current = !already;
+    revealListNow({ immediateCover: true });
+    if (already) {
+      notifyChatWarmWindowClosed(conversationUuid);
+      notifyChatPushWindowClosed(conversationUuid);
+    }
+  }, [conversationUuid, revealListNow]);
+
+  useEffect(() => {
+    // Пустой тред не даёт onLayout ячеек — окно закрыто, как только страница пришла.
+    // Шапка всё равно носит FRI: play ждёт bitmap, иначе круг вспыхивает на слайде.
+    if (!preparingWindow || !listMounted || listMessageCount > 0 || threadLoading) return;
+    let cancelled = false;
+    const gen = parkedOpenGenRef.current;
+    const header = isGroupChat ? null : peer.otherAvatarUuid;
+    void finishParkedAvatarWarm(header ? [header] : []).then(() => {
+      if (cancelled || parkedOpenGenRef.current !== gen) return;
+      if ((!isChatPushHoldingSlide() && !benchRef.current) || listDataRef.current.length > 0) return;
+      commitParkCarpet();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bench,
+    chatPushHolding,
+    conversationUuid,
+    isGroupChat,
+    listMessageCount,
+    listMounted,
+    peer.otherAvatarUuid,
+    commitParkCarpet,
+    threadLoading,
+  ]);
 
   /**
    * Детерминированный «load»: тред, у которого замерены все строки ПЕРВОГО
@@ -1326,6 +1707,10 @@ export default function ThreadScreen() {
    * (load вырастал с ~650 до ~1200 мс).
    */
   const windowMeasuredUuidRef = useRef("");
+  /** Пока ждём bitmap аватаров, повторный onLayout не стартует второй warm. */
+  const parkAvatarWaitRef = useRef(false);
+  /** Смена треда отменяет warm, который ещё не открыл слайд. */
+  const parkedOpenGenRef = useRef(0);
 
   /**
    * Показ ждёт ещё и замера дока. У перевёрнутой ленты зазор под последним
@@ -1356,7 +1741,11 @@ export default function ThreadScreen() {
     // listRevealed в false, и эффект перезапускает показ сразу, а не через
     // дедлайн LIST_REVEAL_DEADLINE_MS. После состоявшегося показа повторный
     // вызов — no-op (guard listRevealStartedSv).
-    if (threadReady && composeBaselinePx > 0) {
+    // Цикл показа не стартует, пока списка нет: иначе 60 кадров тикают на
+    // пустом слайде и дедлайн гасит ковёр в момент монтажа, до onLayout.
+    // Парковка сама гасит ковёр, когда bitmap аватаров готов. Цикл фейда
+    // здесь снял бы его раньше и круг вспыхнул бы уже на слайде.
+    if (threadReady && composeBaselinePx > 0 && listMounted && !isChatPushHoldingSlide() && !benchRef.current) {
       // Окно этого треда уже подтверждено замеренным, но hide сбросил флаг
       // дока — повторного подтверждения от ячеек не будет (их layout не
       // меняется), и повторный показ ждал бы потолок кадров (~1 с чёрного
@@ -1368,7 +1757,7 @@ export default function ThreadScreen() {
     }
     // Тред мог смениться на такой же готовый — сброс делает эффект по треду выше.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowListReveal, composeBaselinePx, conversationUuid, listRevealed, onListLoad, setListRevealQuietFrames, threadReady]);
+  }, [allowListReveal, composeBaselinePx, conversationUuid, listMounted, listRevealed, onListLoad, setListRevealQuietFrames, threadReady]);
 
   /**
    * Гейт финальной раскладки текста: пока замеры тел окна показа не в кэше,
@@ -1467,25 +1856,67 @@ export default function ThreadScreen() {
     // но БЕЗ запаса: запас — буфер за краем, его замеры не влияют на кадр.
     const targetPx = Math.max(0, windowHeight - listGapPx);
     let coveredPx = 0;
+    let windowClosedByHeights = false;
     for (const it of window) {
       const h = measured.get(it.message.messageUuid);
       // Строка видимого префикса ещё без layout — кадр не собран, ждём.
-      if (h == null) return;
+      if (h == null) {
+        windowClosedByHeights = false;
+        break;
+      }
       coveredPx += h;
+      windowClosedByHeights = true;
       if (coveredPx >= targetPx) break;
     }
     // Короткий тред: вьюпорт не закрыт, но все строки замерены — готово.
+    if (!windowClosedByHeights) return;
+    const preparing = isChatPushHoldingSlide() || benchRef.current;
+    if (preparing) {
+      if (parkAvatarWaitRef.current) return;
+      // Ростер группы ещё в пути: без него круги — инициалы, и FRI доезжает на слайде.
+      if (isGroupChat && groupThread.members.length === 0 && groupThread.isLoading) return;
+      parkAvatarWaitRef.current = true;
+      markChatOpenStage("load", conversationUuid);
+      onListLoad();
+      const gen = parkedOpenGenRef.current;
+      const avatars = collectParkedAvatars(listDataRef.current);
+      void finishParkedAvatarWarm(avatars).then(() => {
+        if (parkedOpenGenRef.current !== gen) return;
+        if (!isChatPushHoldingSlide() && !benchRef.current) return;
+        windowMeasuredUuidRef.current = conversationUuid;
+        // Ковёр и listRevealed в этом проходе, до runEnter. Вход — следующий
+        // кадр после коммита, если палец уже поднят.
+        commitParkCarpet();
+      });
+      return;
+    }
     windowMeasuredUuidRef.current = conversationUuid;
     markChatOpenStage("load", conversationUuid);
     onListLoad();
-    // Тёплый быстрый путь: окно показа расшифровано и все замеры текста в
-    // кэше — высоты финальны, коррекций не будет. Показываем в этом же
-    // JS-коммите, минуя кадры тишины, верификацию якоря и runOnJS-роундтрип:
-    // на тёплом открытии это ~100–250 мс тёмной заглушки.
-    if (threadReadyRef.current && threadWindowTextMeasuresWarm(decryptedRef.current)) {
+    // Тёплый показ — в этом же JS-коммите, но только по уже собранной ленте:
+    // высоты onLayout закрыли вьюпорт и замеры текста хвоста в кэше. Ковёр
+    // до этого непрозрачный, фейд идёт opacity и не двигает ячейки.
+    if (
+      shouldRevealMeasuredWindow({
+        windowClosedByHeights,
+        threadReady: threadReadyRef.current,
+        textMeasuresWarm: threadWindowTextMeasuresWarm(decryptedRef.current),
+      })
+    ) {
       revealListNow();
     }
-  }, [conversationUuid, listGapPx, onListLoad, revealListNow, windowHeight]);
+  }, [
+    collectParkedAvatars,
+    conversationUuid,
+    groupThread.isLoading,
+    groupThread.members,
+    isGroupChat,
+    listGapPx,
+    commitParkCarpet,
+    onListLoad,
+    peer.otherAvatarUuid,
+    windowHeight,
+  ]);
   const maybeConfirmWindowMeasuredRef = useRef(maybeConfirmWindowMeasured);
   maybeConfirmWindowMeasuredRef.current = maybeConfirmWindowMeasured;
   useEffect(() => {
@@ -1498,9 +1929,15 @@ export default function ThreadScreen() {
    * этого лента не показалась бы никогда.
    */
   useEffect(() => {
-    const timer = setTimeout(allowListReveal, LIST_REVEAL_DEADLINE_MS);
+    const timer = setTimeout(() => {
+      if (benchRef.current) {
+        if (!listRevealedLiveRef.current) notifyChatWarmMeasureYielded(conversationUuid);
+        return;
+      }
+      allowListReveal();
+    }, LIST_REVEAL_DEADLINE_MS);
     return () => clearTimeout(timer);
-  }, [allowListReveal, conversationUuid]);
+  }, [allowListReveal, bench, conversationUuid]);
 
   /**
    * Скроллит док: он единственный писатель офсета. Своей ручки скролла у ленты
@@ -1548,11 +1985,12 @@ export default function ThreadScreen() {
         extraContentPadding={listInsetZeroSv}
         freeze={freezeListSv}
         animatedRef={listAnimatedRef}
+        scrollOffsetSv={listScrollOffsetSv}
         // Математика KCSV перевёрнутой ленты: «конец» — офсет у нуля.
         inverted
       />
     ),
-    [freezeListSv, listAnimatedRef, listInsetZeroSv],
+    [freezeListSv, listAnimatedRef, listInsetZeroSv, listScrollOffsetSv],
   );
 
   // До paint (паритет Web useLayoutEffect): иначе после idle первый кадр без
@@ -1673,6 +2111,8 @@ export default function ThreadScreen() {
         closeMessageMenu();
         return true;
       }
+      // Оболочки ещё нет: back отменяет слайд и не пушит маршрут.
+      if (abortChatPushBeforeShell()) return true;
       return false;
     });
     return () => sub.remove();
@@ -2429,7 +2869,12 @@ export default function ThreadScreen() {
         : systemNavBottomInset;
 
   return (
-    <Reanimated.View style={[styles.root, chatPushSlideStyle]}>
+    // Пока слайд не встал, хиты остаются у списка и таб-бара: transform не
+    // двигает hit-box, и кнопки под кадром анимации не должны глохнуть.
+    <Reanimated.View
+      pointerEvents={preparingWindow ? "none" : "auto"}
+      style={[styles.root, chatPushSlideStyle]}
+    >
       <MessageBubbleMoreMenu
         open={menuTarget != null}
         targetUuid={menuTarget?.message.messageUuid ?? null}
@@ -2550,7 +2995,12 @@ export default function ThreadScreen() {
         <Reanimated.View
           style={[
             styles.listFill,
-            listRevealed ? null : styles.listHiddenUntilReveal,
+            // Парковка: лента opacity 1 под непрозрачным ковром и за правым
+            // краем. opacity 0 не даёт expo-image снять bitmap, и FRI
+            // вспыхивает в первом кадре слайда (reveal на ~кадр позже play).
+            listRevealed || (overlayHost && (chatPushHolding || chatPushSliding))
+              ? null
+              : styles.listHiddenUntilReveal,
             listLiftStyle,
           ]}
         >
@@ -2566,8 +3016,8 @@ export default function ThreadScreen() {
               стреляет на каждый тред, и initialDrawBatchSize рисует окно
               одним проходом.
 
-              listMounted: на анимированном открытии лента приходит вторым
-              коммитом — см. комментарий у состояния.
+              listMounted: в парковке лента уже в дереве за правым краем.
+              На едущем слайде без ленты её не начинать.
             */}
             {listMounted ? (
               <FlashList
@@ -2912,6 +3362,50 @@ export default function ThreadScreen() {
       />
     </Reanimated.View>
   );
+}
+
+function OverlayRouteShell() {
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const tabBarBottomInset = Math.max(insets.bottom, 8);
+  useFocusEffect(
+    useCallback(() => {
+      applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+      return () => {
+        applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+      };
+    }, [navigation, tabBarBottomInset]),
+  );
+  const closingRef = useRef(false);
+  useEffect(() => {
+    closingRef.current = false;
+    const unsubscribe = navigation.addListener("beforeRemove", (event) => {
+      // Повторный back в том же выходе не pop-ает список. Первый back оболочку
+      // не удерживает: пустой экран иначе съедает касания, пока слайд ещё едет.
+      if (chatPushRepeatBackKeepsIntercept(closingRef.current)) {
+        event.preventDefault();
+        return;
+      }
+      const driven = getChatPushDriven();
+      if (!driven) return;
+      const started = runChatPushExit(driven, () => {
+        completeChatPushExitVisual();
+      });
+      if (started) closingRef.current = true;
+    });
+    return unsubscribe;
+  }, [navigation]);
+  return null;
+}
+
+export default function ThreadRoute() {
+  const params = useLocalSearchParams<{ conversationUuid?: string }>();
+  const conversationUuid = routeParam(params.conversationUuid);
+  const overlayOwner = useSyncExternalStore(subscribeChatPush, () =>
+    isChatPushOverlayOwner(conversationUuid),
+  );
+  if (overlayOwner) return <OverlayRouteShell />;
+  return <ThreadScreen />;
 }
 
 const styles = liveGridStyles(() => StyleSheet.create({

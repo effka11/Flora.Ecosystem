@@ -86,6 +86,10 @@ type Props = {
   onToggleSelect: (conversationUuid: string) => void;
   /** Начало горизонтального pan — закрыть поиск в шапке. */
   onPanStart?: () => void;
+  /** Верхняя видимая строка после остановки скролла — только предзагрузка. */
+  onListIdle?: (row: MessagesFolderListRow) => void;
+  /** Вертикальный скролл или горизонтальный pan забрал жест. */
+  onListScrollBegin?: () => void;
 };
 
 type PageListProps = {
@@ -105,6 +109,7 @@ type PageListProps = {
   /** Active folder: refreshing; RC stays mounted on all pages. */
   ptrEnabled: boolean;
   onScrollBeginDrag?: () => void;
+  onListIdle?: (row: MessagesFolderListRow) => void;
   renderScrollComponent: ComponentType<ScrollViewProps>;
 };
 
@@ -124,13 +129,44 @@ const FolderPageList = memo(function FolderPageList({
   onToggleSelect,
   ptrEnabled,
   onScrollBeginDrag,
+  onListIdle,
   renderScrollComponent,
 }: PageListProps) {
   useFloraGrid();
   const onEnterRef = useRef(onEnterSelect);
   const onToggleRef = useRef(onToggleSelect);
+  const onListIdleRef = useRef(onListIdle);
+  const topRowRef = useRef<MessagesFolderListRow | null>(null);
   onEnterRef.current = onEnterSelect;
   onToggleRef.current = onToggleSelect;
+  onListIdleRef.current = onListIdle;
+  const preloadTopRow = useCallback(() => {
+    if (!ptrEnabled) return;
+    const row = topRowRef.current;
+    if (row) onListIdleRef.current?.(row);
+  }, [ptrEnabled]);
+  const onViewableItemsChanged = useRef(
+    ({
+      viewableItems,
+    }: {
+      viewableItems: ReadonlyArray<{
+        isViewable: boolean;
+        index: number | null;
+        item: MessagesFolderListRow | null;
+      }>;
+    }) => {
+      let best: MessagesFolderListRow | null = null;
+      let bestIndex = Number.POSITIVE_INFINITY;
+      for (const token of viewableItems) {
+        if (!token.isViewable || token.index == null || token.item == null) continue;
+        if (token.index < bestIndex) {
+          bestIndex = token.index;
+          best = token.item;
+        }
+      }
+      topRowRef.current = best;
+    },
+  ).current;
 
   const renderItem = useCallback(
     ({ item }: { item: MessagesFolderListRow }) => {
@@ -194,6 +230,13 @@ const FolderPageList = memo(function FolderPageList({
         nestedScrollEnabled={false}
         keyboardDismissMode="on-drag"
         onScrollBeginDrag={onScrollBeginDrag}
+        onScrollEndDrag={(event) => {
+          const velocityY = event.nativeEvent.velocity?.y ?? 0;
+          if (velocityY === 0) preloadTopRow();
+        }}
+        onMomentumScrollEnd={preloadTopRow}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={FOLDER_ROW_VIEWABILITY}
         drawDistance={ptrEnabled ? 250 : 0}
         renderScrollComponent={renderScrollComponent}
         refreshControl={
@@ -233,6 +276,8 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
       onEnterSelect,
       onToggleSelect,
       onPanStart,
+      onListIdle,
+      onListScrollBegin,
     },
     ref,
   ) {
@@ -259,7 +304,9 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
     const panSetPagerRef = useRef(false);
     const { reportTouch, reportPager, getEpoch, isBusy } = usePagerBusyFlags(setBusy);
     const onPanStartRef = useRef(onPanStart);
+    const onListScrollBeginRef = useRef(onListScrollBegin);
     onPanStartRef.current = onPanStart;
+    onListScrollBeginRef.current = onListScrollBegin;
 
     const pagesRef = useRef(pages);
     const pagesKey = pages.join("|");
@@ -525,6 +572,7 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
 
     const markPanActivated = useCallback(() => {
       panActivatedRef.current = true;
+      onListScrollBeginRef.current?.();
     }, []);
 
     const failPagerIfNeeded = useCallback(() => {
@@ -648,7 +696,11 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
                 onEnterSelect={onEnterSelect}
                 onToggleSelect={onToggleSelect}
                 ptrEnabled={folder === activeFolder}
-                onScrollBeginDrag={onPanStart}
+                onScrollBeginDrag={() => {
+                  onPanStart?.();
+                  onListScrollBegin?.();
+                }}
+                onListIdle={folder === activeFolder ? onListIdle : undefined}
                 renderScrollComponent={scroll}
               />
             );
@@ -658,6 +710,8 @@ export const MessagesFolderPager = forwardRef<MessagesFolderPagerHandle, Props>(
     );
   },
 );
+
+const FOLDER_ROW_VIEWABILITY = { itemVisiblePercentThreshold: 10 };
 
 const styles = liveGridStyles(() => StyleSheet.create({
   body: {

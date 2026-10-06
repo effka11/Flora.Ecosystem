@@ -8,6 +8,7 @@ import {
 } from "@/lib/notificationsListPatch";
 import { scheduleNotificationsPushRefresh } from "@/lib/notificationsPushCoalesce";
 import { getQueryClientRef } from "@/lib/queryClientRef";
+import { invalidateThreadForRealtime } from "@/lib/threadRealtimeInvalidate";
 import { requestTabBadgesRefresh } from "@/lib/useTabBadges";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -54,21 +55,10 @@ export function handleMessageRealtime(
     scheduleConversationsPushRefresh(qc);
   }
   if (conversationUuid) {
-    // Открытый тред сам делает refetch через subscribeMessageRealtime —
-    // лишний invalidate даёт двойную работу. Без слушателей — пометить stale.
-    if (messageListeners.size === 0) {
-      const client = getQueryClientRef();
-      if (client) {
-        if (kind === "groupChat") {
-          void client.invalidateQueries({ queryKey: ["group-messages", conversationUuid] });
-        } else if (kind === "dm") {
-          void client.invalidateQueries({ queryKey: ["messages", conversationUuid] });
-        } else {
-          void client.invalidateQueries({ queryKey: ["messages", conversationUuid] });
-          void client.invalidateQueries({ queryKey: ["group-messages", conversationUuid] });
-        }
-      }
-    }
+    // Всегда пометить страницу устаревшей, без refetch неактивного query.
+    // Открытый тред обновляется сам через subscribeMessageRealtime.
+    const client = getQueryClientRef();
+    if (client) invalidateThreadForRealtime(client, conversationUuid, kind);
     messageListeners.forEach((listener) => listener(conversationUuid));
   }
 }

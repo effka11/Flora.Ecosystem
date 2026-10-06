@@ -2,7 +2,7 @@ import { forwardRef, useCallback } from "react";
 import { Platform, type ScrollViewProps } from "react-native";
 import { KeyboardChatScrollView } from "react-native-keyboard-controller";
 import type Reanimated from "react-native-reanimated";
-import type { AnimatedRef, SharedValue } from "react-native-reanimated";
+import { useScrollOffset, type AnimatedRef, type SharedValue } from "react-native-reanimated";
 
 export type ChatScrollViewRef = React.ElementRef<typeof KeyboardChatScrollView>;
 
@@ -26,12 +26,19 @@ type Props = ScrollViewProps &
      * Второй ручки скролла тут намеренно нет: офсет пишет только док.
      */
     animatedRef?: AnimatedRef<Reanimated.ScrollView>;
+    /**
+     * Офсет для дока. Хук живёт здесь, рядом со списком: ref прикрепляется в
+     * этом же коммите, до useEffect observe. В доке экрана на первом кадре
+     * списка ещё нет.
+     */
+    scrollOffsetSv: SharedValue<number>;
   };
 
 export const ChatScrollView = forwardRef<ChatScrollViewRef, Props>(function ChatScrollView(
-  { animatedRef, offset, extraContentPadding, freeze, inverted, ...scrollProps },
+  { animatedRef, scrollOffsetSv, offset, extraContentPadding, freeze, inverted, ...scrollProps },
   ref,
 ) {
+  useScrollOffset(animatedRef ?? null, scrollOffsetSv);
   const combinedRef = useCallback(
     (instance: ChatScrollViewRef | null) => {
       if (typeof ref === "function") {

@@ -40,8 +40,11 @@ import {
   getActiveMessageThread,
   subscribeActiveMessageThread,
 } from "@/lib/activeMessageThread";
+import { allowChatWarmColdFill, kickChatWarmAssembly } from "@/lib/chatPushTransition";
+import { isScrollSettled } from "@/lib/scrollActivity";
 import {
   createThreadMediaWarmBudget,
+  readChatPrefetchGates,
   selectThreadMediaWarmTargets,
   selectThreadPrefetchCandidates,
   type ThreadFreshnessProbe,
@@ -49,6 +52,12 @@ import {
   type ThreadMediaWarmBudget,
   type ThreadPrefetchCandidate,
 } from "@/lib/chatPrefetchPolicy";
+import {
+  backgroundDecryptWindowUnits,
+  messagesForBackgroundDecrypt,
+  noteBackgroundDecryptWindow,
+  resetBackgroundDecryptWindowUnits,
+} from "@/lib/backgroundDecryptWindow";
 import { prefetchFrcImage } from "@/lib/frcImage";
 import { mapIdleSliced, yieldToEventLoop, type IdleSlicedHandle } from "@/lib/idleScrollGate";
 import { getStoredImageRatio, rememberImageRatio } from "@/lib/imageRatioStore";
@@ -71,7 +80,10 @@ import {
 } from "@/lib/useThreadMessageDecrypt";
 import { useFscpStore } from "@/stores/fscpStore";
 import { messagePreviewCache, messagePreviewKey } from "@/stores/messagePreviewCache";
-import { messageThreadDecryptCache } from "@/stores/messageThreadCache";
+import {
+  messageThreadDecryptCache,
+  retainMessageDecryptThreads,
+} from "@/stores/messageThreadCache";
 import { useSessionStore } from "@/stores/sessionStore";
 
 const EVALUATE_DEBOUNCE_MS = 400;
@@ -171,6 +183,7 @@ async function warmOneListPreview(
 }
 
 export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
+  if (!readChatPrefetchGates().prefetch) return () => {};
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let activeSlice: IdleSlicedHandle<unknown> | null = null;
@@ -200,12 +213,13 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
   const warmThreadFromCache = async (
     candidate: ThreadPrefetchCandidate,
     viewerUserUuid: string,
+    rank: number,
   ): Promise<void> => {
     const items = queryClient.getQueryData<ThreadPage>(threadQueryKey(candidate))?.items;
     if (!items || items.length === 0) return;
     await warmThreadDecryptRows({
       conversationUuid: candidate.conversationUuid,
-      messages: items,
+      messages: messagesForBackgroundDecrypt(items, rank),
       isGroupChat: candidate.kind === "group",
       viewerUserUuid,
       decryptWirePlaintext,
@@ -323,11 +337,12 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
     candidate: ThreadPrefetchCandidate,
     viewerUserUuid: string,
     canDecrypt: boolean,
+    rank: number,
   ): Promise<void> => {
     if (stopped) return;
     // Сначала прогрев того, что уже есть (диск/память): мгновенное открытие
     // даже офлайн, до любых сетевых попыток.
-    if (canDecrypt) await warmThreadFromCache(candidate, viewerUserUuid);
+    if (canDecrypt) await warmThreadFromCache(candidate, viewerUserUuid, rank);
 
     if (candidate.needsMessages && !stopped) {
       const target = threadTarget(candidate);
@@ -338,7 +353,7 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
         // чем открытие, которому свежести кэша достаточно.
         staleTime: THREAD_PREFETCH_STALE_MS,
       });
-      if (canDecrypt && !stopped) await warmThreadFromCache(candidate, viewerUserUuid);
+      if (canDecrypt && !stopped) await warmThreadFromCache(candidate, viewerUserUuid, rank);
     }
 
     if (candidate.kind === "group" && candidate.needsDetail && !stopped) {
@@ -350,7 +365,14 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
       });
     }
 
-    if (canDecrypt && !stopped) warmCandidateTextLayout(candidate);
+    if (canDecrypt && !stopped) {
+      const items = queryClient.getQueryData<ThreadPage>(threadQueryKey(candidate))?.items;
+      if (items && items.length > 0) {
+        noteBackgroundDecryptWindow(messagesForBackgroundDecrypt(items, rank).length);
+      }
+      warmCandidateTextLayout(candidate);
+    }
+    if (!stopped) kickChatWarmAssembly();
   };
 
   /** Тяжёлая фаза кандидата: вложения сообщений и аватары участников группы. */
@@ -377,6 +399,10 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
     // прогрев чужих чатов переносится и сам возобновится после выхода.
     if (getActiveMessageThread() != null) {
       schedule(THREAD_OPEN_RECHECK_MS);
+      return;
+    }
+    if (!isScrollSettled()) {
+      schedule();
       return;
     }
     const viewerUserUuid = useSessionStore.getState().me?.userUuid?.trim() ?? "";
@@ -436,18 +462,30 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
     // Лёгкая фаза для ВСЕХ кандидатов до тяжёлых медиа: каждый тред из топа
     // становится «тёплым» (расшифровка+раскладка) за первые секунды прогона.
     if (candidates.length > 0) {
-      const slice = mapIdleSliced(candidates, (candidate) => {
+      resetBackgroundDecryptWindowUnits();
+      retainMessageDecryptThreads(
+        "prefetch",
+        candidates.map((candidate) => candidate.conversationUuid),
+      );
+      const ranked = candidates.map((candidate, index) => ({
+        candidate,
+        rank: index + 1,
+      }));
+      const slice = mapIdleSliced(ranked, ({ candidate, rank }) => {
         if (getActiveMessageThread() != null) {
           rerunRequested = true;
           return Promise.resolve(undefined);
         }
-        return processCandidateThread(candidate, viewerUserUuid, canDecrypt).catch(
+        return processCandidateThread(candidate, viewerUserUuid, canDecrypt, rank).catch(
           () => undefined,
         );
       });
       activeSlice = slice;
       await slice.done;
       activeSlice = null;
+      if (__DEV__) {
+        console.log(`[chat-prefetch] decrypt-window ${backgroundDecryptWindowUnits()}`);
+      }
       if (stopped) return;
     }
 
@@ -491,7 +529,11 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
             rerunRequested = true;
             return Promise.resolve(undefined);
           }
-          return warmThreadLayoutFromCache(target, viewerUserUuid).catch(() => undefined);
+          return warmThreadLayoutFromCache(target, viewerUserUuid)
+            .catch(() => undefined)
+            .finally(() => {
+              if (!stopped) kickChatWarmAssembly();
+            });
         });
         activeSlice = layoutSlice;
         await layoutSlice.done;
@@ -499,6 +541,10 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
         if (stopped) return;
       }
     }
+
+    // Кэш топа уже разобран. Холодные чаты ниже можно собирать, не перебивая
+    // расшифровку первых страниц. Медиа идёт следом и слоты не занимает.
+    allowChatWarmColdFill();
 
     // Тяжёлая фаза: вложения и аватары участников — когда все треды уже тёплые.
     if (candidates.length > 0) {
@@ -565,6 +611,7 @@ export function startChatThreadsPrefetch(queryClient: QueryClient): () => void {
 
   return () => {
     stopped = true;
+    retainMessageDecryptThreads("prefetch", []);
     unsubscribe();
     unsubscribeActiveThread();
     if (timer != null) {

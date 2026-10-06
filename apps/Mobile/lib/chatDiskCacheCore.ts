@@ -2,7 +2,8 @@
  * Pure schema + sanitizers for the chat disk snapshot (Telegram-style silent
  * cold start). Persisted payloads contain ONLY server-visible data: DTOs with
  * ciphertext wires and metadata the server already stores. Decrypted plaintext
- * never reaches disk — decrypt caches stay in memory and are re-warmed on boot.
+ * does not belong here: it lives in the encrypted warm container
+ * (`lib/decryptWarmDiskCore.ts`), opened after login and wiped on logout.
  *
  * RN-free on purpose: unit-tested with vitest (binding lives in
  * `stores/chatDiskCache.ts`).

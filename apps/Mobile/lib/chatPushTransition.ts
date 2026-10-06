@@ -15,13 +15,20 @@
  * не заводим.
  *
  * Протокол — как push в Telegram/iOS: едет ОДИН слой, и этот слой с первого
- * кадра — настоящий экран, а не пустая подложка. Тап → arm*Enter() только
- * взводит переход (движения нет) → router.push → первый коммит верхнего
- * экрана, run*Enter() из useLayoutEffect играет весь слайд 0→1 разом.
+ * кадра — настоящий экран, а не пустая подложка.
+ *
+ * Список диалогов: press-in паркует тред за правым краем (progress = 0, без
+ * анимации и без фокуса маршрута). Отпускание без скролла коммитит play, но
+ * runEnter зовётся только когда ковёр уже 0: в том же вызове, если ковёр
+ * погас до пальца, и на следующем кадре после коммита listRevealed, если
+ * ковёр гаснет позже. Маршрут оболочки пушится в конце withTiming, не на
+ * старте. Deep link и reduce motion по-прежнему ставят экран сразу:
+ * arm*Enter() → router.push → run*Enter() из useLayoutEffect.
  *
  * Назад: beforeRemove → run*Exit() ведёт progress к 0 и после этого
- * отпускает отложенный pop. Если push не состоялся — страховочный таймер
- * возвращает 0.
+ * отпускает отложенный pop. Пока оболочки нет, закрытие играет тот же
+ * выход от текущего progress и список не pop-ает. Если push не состоялся —
+ * страховочный таймер возвращает 0.
  */
 import { AccessibilityInfo } from "react-native";
 import {
@@ -31,6 +38,18 @@ import {
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
+import {
+  CHAT_WARM_LIVE_MAX,
+  chatPushBackAction,
+  chatPushPressBlockedByPlay,
+  chatPushSlideStartOnCarpet,
+  chatPushSlideStartOnRelease,
+  chatWarmMountedIds,
+  selectChatWarmMeasureIds,
+} from "@/lib/chatListEnterMount";
+import { setActiveMessageThread } from "@/lib/activeMessageThread";
+import { clearChatOpenAvatarPaint } from "@/lib/chatOpenAvatars";
+import { markChatOpenPlay } from "@/lib/chatOpenTrace";
 import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
 
 const ENTER_MS = ENERGETIC_OPEN_MS;
@@ -60,6 +79,7 @@ const CLAIM_TIMEOUT_MS = 1200;
 let reduceMotion: boolean | null = null;
 void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
   reduceMotion ??= enabled;
+  if (reduceMotion === false) pumpWarm();
 });
 AccessibilityInfo.addEventListener("reduceMotionChanged", (enabled) => {
   reduceMotion = enabled;
@@ -75,8 +95,10 @@ type CoverPush = {
   isExiting: () => boolean;
   armEnter: () => void;
   isEnterArmed: () => boolean;
-  runEnter: (driven: SharedValue<boolean>) => void;
-  runExit: (driven: SharedValue<boolean>, onDone: () => void) => boolean;
+  /** Слайд из парковки: взвод без таймера и без сброса progress. */
+  primeEnter: () => void;
+  runEnter: (driven: SharedValue<boolean>, onFinished?: () => void) => void;
+  runExit: (driven: SharedValue<boolean>, onDone: () => void, force?: boolean) => boolean;
   reset: () => void;
 };
 
@@ -117,12 +139,17 @@ function createCoverPush(): CoverPush {
     isEnterArmed() {
       return armed && !skipMotion();
     },
+    primeEnter() {
+      armed = true;
+      exiting = false;
+      clearArmSafety();
+    },
     /**
      * Первый коммит верхнего экрана: весь слайд разом. Без тапа (deep link,
      * reduce motion) экран встаёт на место мгновенно. `driven` снимается по
      * завершении входа; прерванный вход (finished=false) флаг не снимает.
      */
-    runEnter(driven) {
+    runEnter(driven, onFinished) {
       clearArmSafety();
       const play = armed && !skipMotion();
       armed = false;
@@ -131,6 +158,7 @@ function createCoverPush(): CoverPush {
       if (!play) {
         driven.value = false;
         progress.value = 1;
+        onFinished?.();
         return;
       }
       driven.value = true;
@@ -142,6 +170,7 @@ function createCoverPush(): CoverPush {
           "worklet";
           if (finished) {
             driven.value = false;
+            if (onFinished) runOnJS(onFinished)();
           }
         },
       );
@@ -150,8 +179,10 @@ function createCoverPush(): CoverPush {
      * Зеркало входа: 1→0, затем onDone (dispatch отложенного pop).
      * false — анимировать нечего: pop идёт немедленно.
      */
-    runExit(driven, onDone) {
-      if (skipMotion() || progress.value <= 0.01) return false;
+    runExit(driven, onDone, force = false) {
+      // force — закрытие до оболочки: JS-значение progress отстаёт от кадра,
+      // а UI уже вывез чат. withTiming стартует с текущего UI-значения.
+      if (skipMotion() || (!force && progress.value <= 0.01)) return false;
       clearArmSafety();
       armed = false;
       exiting = true;
@@ -207,6 +238,7 @@ export function isChatPushEnterArmed(): boolean {
 }
 
 export function runChatPushEnter(driven: SharedValue<boolean>): void {
+  markChatOpenPlay();
   chatPush.runEnter(driven);
 }
 
@@ -214,11 +246,825 @@ export function runChatPushExit(
   driven: SharedValue<boolean>,
   onDone: () => void,
 ): boolean {
-  return chatPush.runExit(driven, onDone);
+  const nextEpoch = reverseEpoch + 1;
+  const started = chatPush.runExit(driven, () => {
+    if (nextEpoch !== reverseEpoch) return;
+    if (parkPhase === "parked" || parkPhase === "play-wait") return;
+    onDone();
+  });
+  if (!started) return false;
+  // Слайд ещё едет, но hit-box больше не накрывает список и таб-бар.
+  reverseEpoch = nextEpoch;
+  slideEpoch += 1;
+  setChatPushOffEdge(true);
+  return true;
+}
+
+/**
+ * Конец слайда. Оболочку маршрута уже сняли, тред на оверлее не разбираем:
+ * те же bitmap'ы аватаров держит список, и unmount заставляет их мигнуть.
+ */
+export function completeChatPushExitVisual(): void {
+  if (parkPhase === "parked" || parkPhase === "play-wait") return;
+  if (parkPhase !== "playing") return;
+  retainChatPushOffEdge();
 }
 
 export function resetChatPushProgress(): void {
+  // Фокус списка возвращается в тот же кадр, что и pop оболочки. Слайд
+  // ещё на оверлее — сброс здесь оборвал бы уход.
+  if (chatPush.isExiting()) return;
+  // Переподписка фокуса списка не снимает парковку и ещё не доехавший слайд:
+  // список остаётся в фокусе, пока оболочка не запушена.
+  if (parkPhase === "parked" || parkPhase === "play-wait") return;
+  if (parkPhase === "playing" && !shellPushed) return;
+  releaseChatPark();
   chatPush.reset();
+}
+
+/**
+ * Парковка треда до play. Оверлей, не маршрут: список остаётся в фокусе,
+ * таб-бар не прячется. Оболочка пушится в конце слайда, когда фаза уже
+ * playing, и не монтирует второй FlashList — живой остаётся оверлей.
+ */
+export type ChatPushParkParams = {
+  conversationUuid: string;
+  kind?: string;
+  title?: string;
+  otherUserUuid?: string;
+  otherDisplayName?: string;
+  otherUsername?: string;
+  otherAvatarUuid?: string;
+  otherAccountBlocked?: string;
+  otherUserIsOnline?: string;
+  otherUserLastSeenAt?: string;
+};
+
+type ChatParkPhase = "idle" | "parked" | "play-wait" | "playing";
+
+const parkListeners = new Set<() => void>();
+let parkPhase: ChatParkPhase = "idle";
+let parkedUuid: string | null = null;
+/** Ковёр уже 0 и listRevealed закоммичен. До этого слайд не стартует. */
+let parkCarpetDown = false;
+let parkNavigate: (() => void) | null = null;
+let overlaySnap: ChatPushParkParams | null = null;
+let holdingSnap = false;
+let slidingSnap = false;
+let enterGeneration = 0;
+let enteredGeneration = -1;
+let drivenRef: SharedValue<boolean> | null = null;
+let scrollCancelledPark = false;
+/**
+ * Play закоммичен. Layout-эффект не зовёт runEnter: вход идёт из
+ * request/carpet, а после слайда — не второй раз.
+ */
+let slideHold = false;
+/** Оболочка уже запушена. До этого back снимает парк и маршрут не толкает. */
+let shellPushed = false;
+let enterStarted = false;
+/** Инкремент отменяет отложенный runEnter и поздний колбэк withTiming. */
+let slideEpoch = 0;
+/** Эпоха входа, которую ждёт стабильный колбэк withTiming. */
+let parkedEnterEpoch = 0;
+/** Эпоха обратного слайда до оболочки. Новый press её отменяет. */
+let reverseEpoch = 0;
+/**
+ * UI-поток уже видит чат за правым краем. JS-значение progress на старте
+ * withTiming отстаёт, поэтому хиты и back смотрят сюда.
+ */
+let exitOffEdge = true;
+/** Парковка строки после кадра подсветки, чтобы Pressable успел отрисоваться. */
+let pendingParkRun: (() => void) | null = null;
+let pendingParkFrame: number | null = null;
+
+/**
+ * Окна чатов, собранные до тапа. Высоты и картинки закрывает тот же ковёр,
+ * что и парк пальца: слайд чужого чата стартует уже с `parkCarpetDown`.
+ * Слоты берут треды с уже расшифрованным хвостом, пачкой до лимита.
+ * Закрытые остаются смонтированными.
+ */
+type WarmEntry = {
+  params: ChatPushParkParams;
+  closed: boolean;
+  yielded: boolean;
+  started: boolean;
+};
+
+export type ChatWarmSlot = {
+  id: string;
+  params: ChatPushParkParams;
+};
+
+const warmListeners = new Set<() => void>();
+const warmById = new Map<string, WarmEntry>();
+let warmOrder: string[] = [];
+let assemblyEnabled = false;
+let warmSnap: readonly ChatWarmSlot[] = [];
+/** Хвост уже терминален. Список подставляет, очередь читает в момент слота. */
+let warmPageCached: ((conversationUuid: string) => boolean) | null = null;
+/** Страница в кэше, но хвост ещё не терминален. Холодный слот такой чат не берёт. */
+let warmPageHeld: ((conversationUuid: string) => boolean) | null = null;
+/**
+ * Холодный чат без страницы в кэше не монтируем, пока лёгкий прогрев не
+ * отдал топ. Иначе три FlashList спорят с расшифровкой и слоты стоят.
+ */
+let warmColdAllowed = false;
+let coldFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+const CHAT_WARM_COLD_FALLBACK_MS = 2500;
+
+function normParkUuid(uuid: string): string {
+  return uuid.trim().toLowerCase();
+}
+
+function publishPark(): void {
+  holdingSnap = parkPhase === "parked" || parkPhase === "play-wait";
+  slidingSnap = parkPhase === "playing";
+  for (const listener of parkListeners) listener();
+}
+
+function warmParamsKey(params: ChatPushParkParams): string {
+  return [
+    params.conversationUuid,
+    params.kind ?? "",
+    params.title ?? "",
+    params.otherUserUuid ?? "",
+    params.otherDisplayName ?? "",
+    params.otherUsername ?? "",
+    params.otherAvatarUuid ?? "",
+    params.otherAccountBlocked ?? "",
+  ].join("\u0001");
+}
+
+function slideOccupiesWarm(): boolean {
+  if (chatPush.isExiting()) return true;
+  if (parkPhase !== "playing") return false;
+  // Удержанный за краем после выхода — очередь может собирать следующий.
+  // slideHold: play уже запрошен, enterStarted ещё нет — это тоже слайд.
+  if (!shellPushed && !enterStarted && !slideHold && exitOffEdge) return false;
+  return true;
+}
+
+function parkedMeasuringId(): string | null {
+  if (parkPhase !== "parked" && parkPhase !== "play-wait") return null;
+  if (parkedUuid == null) return null;
+  if (warmById.get(parkedUuid)?.closed === true) return null;
+  return parkedUuid;
+}
+
+function rebuildWarmSnap(): readonly ChatWarmSlot[] {
+  const startedIds: string[] = [];
+  for (const [id, entry] of warmById) {
+    if (entry.started) startedIds.push(id);
+  }
+  const activeId = parkPhase === "idle" ? null : parkedUuid;
+  const ids = chatWarmMountedIds({
+    order: warmOrder,
+    startedIds,
+    measuringId: null,
+    activeId,
+  });
+  const slots: ChatWarmSlot[] = [];
+  for (const id of ids) {
+    const entry = warmById.get(id);
+    const params =
+      entry?.params ??
+      (overlaySnap != null && normParkUuid(overlaySnap.conversationUuid) === id ? overlaySnap : null);
+    if (params == null) continue;
+    slots.push({ id, params });
+  }
+  return slots;
+}
+
+function warmSnapSame(prev: readonly ChatWarmSlot[], next: readonly ChatWarmSlot[]): boolean {
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (a == null || b == null || a.id !== b.id || a.params !== b.params) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function publishWarm(): void {
+  const next = rebuildWarmSnap();
+  if (warmSnapSame(warmSnap, next)) return;
+  warmSnap = next;
+  for (const listener of warmListeners) listener();
+}
+
+function warmInFlightIds(): string[] {
+  const ids: string[] = [];
+  for (const id of warmOrder) {
+    const entry = warmById.get(id);
+    if (entry == null || !entry.started || entry.closed || entry.yielded) continue;
+    ids.push(id);
+  }
+  return ids;
+}
+
+function warmIdsWhere(probe: ((conversationUuid: string) => boolean) | null): string[] {
+  if (probe == null) return [];
+  const ids: string[] = [];
+  for (const id of warmOrder) {
+    if (probe(id)) ids.push(id);
+  }
+  return ids;
+}
+
+function warmCachedIds(): string[] {
+  return warmIdsWhere(warmPageCached);
+}
+
+function warmHeldIds(): string[] {
+  return warmIdsWhere(warmPageHeld);
+}
+
+function warmLiveCount(): number {
+  let count = 0;
+  for (const entry of warmById.values()) {
+    if (entry.started && !entry.closed) count += 1;
+  }
+  return count;
+}
+
+function armColdFallback(): void {
+  if (warmColdAllowed || coldFallbackTimer != null) return;
+  coldFallbackTimer = setTimeout(() => {
+    coldFallbackTimer = null;
+    if (!assemblyEnabled) return;
+    warmColdAllowed = true;
+    pumpWarm();
+  }, CHAT_WARM_COLD_FALLBACK_MS);
+}
+
+function pumpWarm(): void {
+  if (skipMotion()) return;
+  // Уже едущий слайд не начинает новые окна. Те, что уже в дереве, остаются.
+  if (slideOccupiesWarm()) return;
+  const finger = parkedMeasuringId();
+  if (!assemblyEnabled && finger == null) return;
+  const closedIds: string[] = [];
+  const yieldedIds: string[] = [];
+  for (const [id, entry] of warmById) {
+    if (entry.closed) closedIds.push(id);
+    if (entry.yielded) yieldedIds.push(id);
+  }
+  const desired = selectChatWarmMeasureIds({
+    order: warmOrder,
+    cachedIds: warmCachedIds(),
+    closedIds,
+    yieldedIds,
+    inFlightIds: warmInFlightIds(),
+    slideBusy: false,
+    assemblyEnabled: assemblyEnabled || finger != null,
+    parkedMeasuringId: finger,
+    allowUncached: warmColdAllowed,
+    heldIds: warmHeldIds(),
+  });
+  // Свободные слоты — в этом проходе. По одному на кадр очередь не успевала:
+  // следующий кадр приходил уже после расшифровки чужого треда.
+  let changed = false;
+  let live = warmLiveCount();
+  for (const id of desired) {
+    const entry = warmById.get(id);
+    if (entry == null || entry.started) continue;
+    if (live >= CHAT_WARM_LIVE_MAX && id !== finger) continue;
+    entry.started = true;
+    live += 1;
+    changed = true;
+  }
+  if (changed) publishWarm();
+}
+
+function warmPeerStillAssembling(id: string): boolean {
+  for (const [otherId, other] of warmById) {
+    if (otherId !== id && other.started && !other.closed) return true;
+  }
+  return false;
+}
+
+function rememberWarmTarget(params: ChatPushParkParams): WarmEntry {
+  const id = normParkUuid(params.conversationUuid);
+  const prev = warmById.get(id);
+  if (prev) {
+    prev.params = params;
+    prev.started = true;
+    return prev;
+  }
+  const entry: WarmEntry = { params, closed: false, yielded: false, started: true };
+  warmById.set(id, entry);
+  warmOrder = [id, ...warmOrder.filter((existing) => existing !== id)];
+  return entry;
+}
+
+function markWarmWindowClosed(id: string | null): void {
+  if (id == null) return;
+  const entry = warmById.get(id);
+  if (entry == null || entry.closed) return;
+  entry.closed = true;
+  entry.yielded = false;
+  entry.started = true;
+}
+
+function releaseChatPark(): void {
+  slideEpoch += 1;
+  reverseEpoch += 1;
+  exitOffEdge = true;
+  parkPhase = "idle";
+  parkedUuid = null;
+  parkCarpetDown = false;
+  parkNavigate = null;
+  overlaySnap = null;
+  enterGeneration = 0;
+  enteredGeneration = -1;
+  slideHold = false;
+  shellPushed = false;
+  enterStarted = false;
+  publishPark();
+}
+
+/**
+ * Слайд доиграл, чат за правым краем. Оверлей и его картинки остаются:
+ * следующий заход того же треда не монтирует их заново, список не мигает.
+ * Фазу не публикуем — подписчики списка не перерисовываются.
+ */
+function retainChatPushOffEdge(): void {
+  if (overlaySnap == null || parkedUuid == null) {
+    releaseChatPark();
+    chatPush.reset();
+    return;
+  }
+  slideEpoch += 1;
+  reverseEpoch += 1;
+  exitOffEdge = true;
+  shellPushed = false;
+  enterStarted = false;
+  slideHold = false;
+  setActiveMessageThread(null);
+  markWarmWindowClosed(parkedUuid);
+  chatPush.reset();
+  publishWarm();
+  pumpWarm();
+}
+
+export function subscribeChatPush(listener: () => void): () => void {
+  parkListeners.add(listener);
+  return () => {
+    parkListeners.delete(listener);
+  };
+}
+
+export function getChatPushHolding(): boolean {
+  return holdingSnap;
+}
+
+export function getChatPushOffEdge(): boolean {
+  return exitOffEdge;
+}
+
+/** С UI-потока: progress пересёк край. Лишние публикации не шлём. */
+export function setChatPushOffEdge(off: boolean): void {
+  if (exitOffEdge === off) return;
+  exitOffEdge = off;
+  publishPark();
+}
+
+export function getChatPushSliding(): boolean {
+  return slidingSnap;
+}
+
+export function getChatPushEnterGeneration(): number {
+  return enterGeneration;
+}
+
+export function getChatPushOverlay(): ChatPushParkParams | null {
+  return overlaySnap;
+}
+
+export function subscribeChatWarm(listener: () => void): () => void {
+  warmListeners.add(listener);
+  return () => {
+    warmListeners.delete(listener);
+  };
+}
+
+/** Смонтированные окна. Снимок стабилен, пока набор и params не сменились. */
+export function getChatWarmBench(): readonly ChatWarmSlot[] {
+  return warmSnap;
+}
+
+/**
+ * Порядок чатов списка. Новые не монтируются все сразу: `pumpWarm` берёт один.
+ * Уже закрытые остаются, пока uuid есть в этом списке.
+ */
+export function syncChatWarmTargets(params: readonly ChatPushParkParams[]): void {
+  const nextOrder: string[] = [];
+  const seen = new Set<string>();
+  let changed = false;
+  for (const raw of params) {
+    const id = normParkUuid(raw.conversationUuid);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    nextOrder.push(id);
+    const prev = warmById.get(id);
+    if (prev == null) {
+      warmById.set(id, { params: raw, closed: false, yielded: false, started: false });
+      changed = true;
+    } else if (warmParamsKey(prev.params) !== warmParamsKey(raw)) {
+      prev.params = raw;
+      changed = true;
+    }
+  }
+  for (const id of [...warmById.keys()]) {
+    if (seen.has(id)) continue;
+    const active = parkedUuid === id && parkPhase !== "idle";
+    if (active) {
+      nextOrder.push(id);
+      continue;
+    }
+    warmById.delete(id);
+    changed = true;
+  }
+  if (nextOrder.join("\u0001") !== warmOrder.join("\u0001")) {
+    warmOrder = nextOrder;
+    changed = true;
+  }
+  if (changed) publishWarm();
+  pumpWarm();
+}
+
+/** Список на экране и скролл успокоился. Иначе очередь не начинает новый замер. */
+export function setChatWarmAssemblyEnabled(enabled: boolean): void {
+  if (!enabled && coldFallbackTimer != null) {
+    clearTimeout(coldFallbackTimer);
+    coldFallbackTimer = null;
+  }
+  if (enabled) armColdFallback();
+  if (assemblyEnabled === enabled) {
+    if (enabled) pumpWarm();
+    return;
+  }
+  assemblyEnabled = enabled;
+  pumpWarm();
+}
+
+/** Страница треда уже в кэше — можно собрать её окно, не дожидаясь конца очереди. */
+export function kickChatWarmAssembly(): void {
+  pumpWarm();
+}
+
+/** Лёгкий прогрев топа закончился: дальше слоты можно отдавать и холодным чатам. */
+export function allowChatWarmColdFill(): void {
+  if (coldFallbackTimer != null) {
+    clearTimeout(coldFallbackTimer);
+    coldFallbackTimer = null;
+  }
+  warmColdAllowed = true;
+  pumpWarm();
+}
+
+/** Есть ли первая страница треда уже в кэше. Без подписки списка на каждый ответ. */
+export function setChatWarmCachedProbe(
+  probe: ((conversationUuid: string) => boolean) | null,
+): void {
+  warmPageCached = probe;
+}
+
+/** Страница есть, хвост ещё нет. Такие чаты не занимают холодный слот. */
+export function setChatWarmHeldProbe(
+  probe: ((conversationUuid: string) => boolean) | null,
+): void {
+  warmPageHeld = probe;
+}
+
+/** Ковёр этого треда погашен реальными высотами. Очередь берёт следующий. */
+export function notifyChatWarmWindowClosed(conversationUuid: string): void {
+  const id = normParkUuid(conversationUuid);
+  const entry = warmById.get(id);
+  if (entry == null || entry.closed) return;
+  markWarmWindowClosed(id);
+  publishWarm();
+  pumpWarm();
+}
+
+/**
+ * Дедлайн без закрытого окна. Слот замера отпускаем, экран не помечаем готовым:
+ * слайд такого чата по-прежнему ждёт настоящий ковёр.
+ */
+export function notifyChatWarmMeasureYielded(conversationUuid: string): void {
+  const id = normParkUuid(conversationUuid);
+  const entry = warmById.get(id);
+  if (entry == null || entry.closed) return;
+  if (entry.yielded) return;
+  entry.yielded = true;
+  publishWarm();
+  pumpWarm();
+}
+
+export function isChatPushOverlayOwner(conversationUuid: string): boolean {
+  if (overlaySnap == null || parkPhase !== "playing") return false;
+  return normParkUuid(overlaySnap.conversationUuid) === normParkUuid(conversationUuid);
+}
+
+export function registerChatPushDriven(driven: SharedValue<boolean>): void {
+  drivenRef = driven;
+}
+
+/** Снятие только своего shared value: чужой cleanup не обнуляет активный слайд. */
+export function unregisterChatPushDriven(driven: SharedValue<boolean>): void {
+  if (drivenRef === driven) drivenRef = null;
+}
+
+export function getChatPushDriven(): SharedValue<boolean> | null {
+  return drivenRef;
+}
+
+export function didAlreadyRunChatPushEnter(): boolean {
+  return enteredGeneration > 0 && enteredGeneration === enterGeneration;
+}
+
+export function isChatPushHoldingSlide(): boolean {
+  return holdingSnap;
+}
+
+/** Play закоммичен: layout-эффект не зовёт второй runEnter. */
+export function isChatPushSlideHeld(): boolean {
+  return slideHold;
+}
+
+/** Отпускание уже было. Повторный тап не паркует другой чат и не пушит маршрут. */
+export function isChatPushPlayCommitted(): boolean {
+  return parkPhase === "playing";
+}
+
+/** Press списка глотается, только пока уехавший чат ещё закрывает экран. */
+export function isChatPushPressBlocked(): boolean {
+  return chatPushPressBlockedByPlay({
+    playCommitted: parkPhase === "playing",
+    offEdge: exitOffEdge,
+  });
+}
+
+/**
+ * Выход уже увёл чат за край, а фаза ещё `playing` (фокус списка не сбросил).
+ * Следующий press снова паркует этот uuid, ковёр того же треда не сбрасывается.
+ */
+function reviveOffEdgePlay(): void {
+  if (parkPhase !== "playing" || !exitOffEdge) return;
+  reverseEpoch += 1;
+  slideEpoch += 1;
+  enterStarted = false;
+  slideHold = false;
+  shellPushed = false;
+  parkPhase = "parked";
+  publishPark();
+}
+
+/** Перед request play: вернуть парковку, если выход уже освободил экран. */
+export function prepareChatPushPress(): void {
+  reviveOffEdgePlay();
+}
+
+function releaseParkAtEdge(): void {
+  reverseEpoch += 1;
+  cancelAnimation(chatPush.progress);
+  chatPush.progress.value = 0;
+  exitOffEdge = true;
+  releaseChatPark();
+  chatPush.reset();
+}
+
+function beginReverseExit(): void {
+  const epoch = ++reverseEpoch;
+  slideEpoch += 1;
+  const driven = drivenRef;
+  if (!driven) {
+    releaseParkAtEdge();
+    return;
+  }
+  const started = chatPush.runExit(
+    driven,
+    () => {
+      if (epoch !== reverseEpoch) return;
+      if (parkPhase === "parked" || parkPhase === "play-wait") return;
+      retainChatPushOffEdge();
+    },
+    true,
+  );
+  if (started) setChatPushOffEdge(true);
+  if (!started) releaseParkAtEdge();
+}
+
+/**
+ * Шапка и аппаратный back. `handled` — список не pop-ать.
+ * `route` — оболочка ещё в стеке: pop сразу, слайд остаётся на оверлее.
+ */
+export function dismissChatPush(): "handled" | "route" {
+  const action = chatPushBackAction({
+    shellPushed,
+    active: parkPhase !== "idle",
+    offEdge: exitOffEdge,
+    exiting: chatPush.isExiting(),
+  });
+  if (action === "pop-route") return "route";
+  if (action === "keep") return "handled";
+  if (action === "release") {
+    releaseParkAtEdge();
+    return "handled";
+  }
+  beginReverseExit();
+  return "handled";
+}
+
+/**
+ * Back, пока оболочки ещё нет: обратный слайд от текущего progress, затем
+ * снять парк. false — оболочка уже в стеке, выход играет beforeRemove.
+ */
+export function abortChatPushBeforeShell(): boolean {
+  return dismissChatPush() === "handled";
+}
+
+/** Тот же uuid уже стоит за краем или едет — второй push не нужен. */
+export function isChatPushTracked(conversationUuid: string): boolean {
+  if (parkedUuid == null) return false;
+  if (parkPhase === "idle") return false;
+  return parkedUuid === normParkUuid(conversationUuid);
+}
+
+/**
+ * press-in. `skipped` — reduce motion, вызывающий открывает сразу.
+ * `same` — этот uuid уже припаркован, маршрут не толкать.
+ */
+export function parkChatPush(args: {
+  params: ChatPushParkParams;
+  navigate: () => void;
+}): "skipped" | "same" | "parked" {
+  if (skipMotion()) return "skipped";
+  const id = normParkUuid(args.params.conversationUuid);
+  if (!id) return "skipped";
+  scrollCancelledPark = false;
+  // Чат ещё на экране — чужой uuid не подменяет парк.
+  // За краем фаза playing больше не держит press: этот uuid паркуется снова.
+  if (parkPhase === "playing" && !exitOffEdge) return "same";
+  reviveOffEdgePlay();
+  if ((parkPhase === "parked" || parkPhase === "play-wait") && parkedUuid === id) {
+    return "same";
+  }
+  const entry = rememberWarmTarget(args.params);
+  parkPhase = "parked";
+  parkedUuid = id;
+  // Уже собранное окно не открываем заново: слайд стартует в этом отпускании.
+  parkCarpetDown = entry.closed;
+  if (!entry.closed && !warmPeerStillAssembling(id)) clearChatOpenAvatarPaint();
+  parkNavigate = args.navigate;
+  overlaySnap = args.params;
+  // Предыдущий экран ещё держит driven до коммита. Вход нового — следующий кадр.
+  drivenRef = null;
+  cancelAnimation(chatPush.progress);
+  chatPush.progress.value = 0;
+  publishWarm();
+  publishPark();
+  return "parked";
+}
+
+export function didScrollCancelChatPark(): boolean {
+  const cancelled = scrollCancelledPark;
+  scrollCancelledPark = false;
+  return cancelled;
+}
+
+/**
+ * Кадр подсветки строки раньше монтажа треда. Быстрый тап сбрасывает
+ * отложенную парковку в onPress, скролл её отменяет.
+ */
+export function scheduleChatRowPark(run: () => void): void {
+  pendingParkRun = run;
+  if (pendingParkFrame != null) return;
+  pendingParkFrame = requestAnimationFrame(() => {
+    pendingParkFrame = null;
+    const runNow = pendingParkRun;
+    pendingParkRun = null;
+    runNow?.();
+  });
+}
+
+export function flushScheduledChatRowPark(): void {
+  if (pendingParkFrame != null) {
+    cancelAnimationFrame(pendingParkFrame);
+    pendingParkFrame = null;
+  }
+  const runNow = pendingParkRun;
+  pendingParkRun = null;
+  runNow?.();
+}
+
+export function cancelScheduledChatRowPark(): void {
+  if (pendingParkFrame != null) {
+    cancelAnimationFrame(pendingParkFrame);
+    pendingParkFrame = null;
+  }
+  pendingParkRun = null;
+}
+
+/** Жест стал скроллом до отпускания. После play отмена не действует. */
+export function cancelChatPushParkFromScroll(): void {
+  const hadSchedule = pendingParkRun != null || pendingParkFrame != null;
+  cancelScheduledChatRowPark();
+  if (parkPhase !== "parked" && parkPhase !== "play-wait") {
+    if (hadSchedule) scrollCancelledPark = true;
+    return;
+  }
+  scrollCancelledPark = true;
+  releaseChatPark();
+  chatPush.reset();
+}
+
+/** Уход со списка, пока палец ещё не отпущен. */
+export function cancelChatPushParkFromLeave(): void {
+  cancelScheduledChatRowPark();
+  if (parkPhase !== "parked" && parkPhase !== "play-wait") return;
+  releaseChatPark();
+  chatPush.reset();
+}
+
+/** Монтаж ленты слайд не стартует. */
+export function notifyChatPushListMounted(conversationUuid: string): void {
+  if (parkedUuid == null || normParkUuid(conversationUuid) !== parkedUuid) return;
+}
+
+/**
+ * Ковёр погашен после коммита listRevealed. Палец ещё на строке — только
+ * запоминаем. Палец уже поднят — runEnter на следующем кадре, без маршрута.
+ */
+export function notifyChatPushWindowClosed(conversationUuid: string): void {
+  if (parkedUuid == null || normParkUuid(conversationUuid) !== parkedUuid) return;
+  if (parkCarpetDown) return;
+  parkCarpetDown = true;
+  scheduleParkedEnter(
+    chatPushSlideStartOnCarpet({ playRequested: parkPhase === "playing" }),
+  );
+}
+
+/**
+ * Отпускание без скролла. Фаза playing без publishPark: повторный тап не
+ * паркует второй чат, а тред не перерисовывается в кадрах withTiming.
+ * Ковёр уже 0 — runEnter в этом вызове. Иначе ждём ковёр.
+ */
+export function requestChatPushPlay(conversationUuid: string): void {
+  if (parkedUuid == null || normParkUuid(conversationUuid) !== parkedUuid) return;
+  if (parkPhase !== "parked" && parkPhase !== "play-wait") return;
+  parkPhase = "playing";
+  slideHold = true;
+  scheduleParkedEnter(
+    chatPushSlideStartOnRelease({ scrollCancelled: false, carpetDown: parkCarpetDown }),
+  );
+}
+
+function scheduleParkedEnter(issue: { runEnter: boolean; waitFrames: number }): void {
+  if (!issue.runEnter || issue.waitFrames < 0) return;
+  const epoch = ++slideEpoch;
+  const start = () => {
+    if (epoch !== slideEpoch) return;
+    startParkedEnter(epoch);
+  };
+  if (issue.waitFrames === 0) {
+    start();
+    return;
+  }
+  requestAnimationFrame(start);
+}
+
+function startParkedEnter(epoch: number, attempt = 0): void {
+  if (epoch !== slideEpoch || enterStarted || shellPushed || parkPhase !== "playing") return;
+  const driven = drivenRef;
+  if (!driven) {
+    if (attempt >= 2) return;
+    requestAnimationFrame(() => startParkedEnter(epoch, attempt + 1));
+    return;
+  }
+  enterStarted = true;
+  enterGeneration += 1;
+  enteredGeneration = enterGeneration;
+  parkedEnterEpoch = epoch;
+  chatPush.primeEnter();
+  markChatOpenPlay();
+  chatPush.runEnter(driven, finishParkedEnterFromUi);
+}
+
+function finishParkedEnterFromUi(): void {
+  if (parkedEnterEpoch !== slideEpoch) return;
+  completeParkedEnter();
+}
+
+/** Конец withTiming. Фаза уже playing — первый рендер маршрута это оболочка. */
+function completeParkedEnter(): void {
+  if (parkPhase !== "playing" || shellPushed) return;
+  shellPushed = true;
+  publishPark();
+  parkNavigate?.();
 }
 
 /** 0 — лента в покое, 1 — создание поста полностью накрыло ленту. */

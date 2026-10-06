@@ -29,6 +29,7 @@ import { mobileFscpKeyStorage } from "@/lib/fscp/storage";
 import { decryptThreadWirePlaintext } from "@/lib/groupThreadCrypto";
 import "@/lib/messageThreadOutgoing"; // registers optimistic decrypt reseed after clearDecryptCaches
 import { messagePreviewCache } from "@/stores/messagePreviewCache";
+import { hydrateDecryptWarmDisk } from "@/stores/decryptWarmDiskCache";
 import { messageThreadCache } from "@/stores/messageThreadCache";
 
 function applyBootstrapResult(result: FscpBootstrapResult): Partial<FscpState> {
@@ -93,6 +94,12 @@ const initialRuntime = {
   passwordSyncedForOwner: null as string | null,
 };
 
+function restoreWarmTail(ownerUserUuid: string): void {
+  messageThreadCache.clearDecryptCaches();
+  messagePreviewCache.clear();
+  hydrateDecryptWarmDisk(ownerUserUuid);
+}
+
 export const useFscpStore = create<FscpState>((set, get) => ({
   ...initialRuntime,
   canDecrypt() {
@@ -125,8 +132,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
       ownerUserUuid: ownerNorm,
     });
     if (result.status === "ready" && prevStatus !== "ready") {
-      messageThreadCache.clearDecryptCaches();
-      messagePreviewCache.clear();
+      restoreWarmTail(ownerUserUuid);
     }
     return result;
   },
@@ -146,8 +152,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
       passwordSyncedForOwner: sync.bootstrap.status === "ready" ? ownerNorm : null,
     });
     if (sync.bootstrap.status === "ready") {
-      messageThreadCache.clearDecryptCaches();
-      messagePreviewCache.clear();
+      restoreWarmTail(ownerUserUuid);
     }
     return sync.bootstrap;
   },
@@ -189,8 +194,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
       passwordSyncedForOwner: sync.bootstrap.status === "ready" ? ownerNorm : null,
     });
     if (sync.bootstrap.status === "ready") {
-      messageThreadCache.clearDecryptCaches();
-      messagePreviewCache.clear();
+      restoreWarmTail(ownerUserUuid);
     }
     return sync.bootstrap;
   },
@@ -205,8 +209,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
       unlocked: false,
       passwordSyncedForOwner: null,
     });
-    messageThreadCache.clearDecryptCaches();
-    messagePreviewCache.clear();
+    restoreWarmTail(ownerUserUuid);
     return get().syncOnLogin(ownerUserUuid, accountPassword);
   },
   async publishLocalKeyConfirmed() {
@@ -220,8 +223,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     });
     set(applyBootstrapResult(result));
     if (result.status === "ready") {
-      messageThreadCache.clearDecryptCaches();
-      messagePreviewCache.clear();
+      restoreWarmTail(ownerUserUuid);
     }
   },
   async retryPendingOperation() {
@@ -237,8 +239,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
     });
     set(applyBootstrapResult(result));
     if (result.status === "ready") {
-      messageThreadCache.clearDecryptCaches();
-      messagePreviewCache.clear();
+      restoreWarmTail(ownerUserUuid);
     }
   },
   async unlock(input) {
@@ -279,8 +280,7 @@ export const useFscpStore = create<FscpState>((set, get) => ({
       passwordSyncedForOwner: result.status === "ready" ? ownerNorm : null,
     });
     if (result.status === "ready") {
-      messageThreadCache.clearDecryptCaches();
-      messagePreviewCache.clear();
+      restoreWarmTail(ownerUserUuid);
     }
   },
   async deleteLocalMaterial() {

@@ -327,6 +327,8 @@ export class FrcImageCache {
   private legacyNamespacePurged = false;
   private indexDirty = false;
   private pendingIndexWrites = 0;
+  /** One flush for a burst of decodes, so a reload does not lose the tail. */
+  private flushScheduled = false;
 
   constructor(
     private readonly backend: FrcCacheBackend,
@@ -455,6 +457,49 @@ export class FrcImageCache {
       if (rung >= bucket) continue;
       const smaller = this.hit(entryKey(hash, rung));
       if (smaller) return { uri: smaller, exact: false };
+    }
+    return undefined;
+  }
+
+  /**
+   * Index hit with no filesystem stat. A cold `fileExists` on the chat-open
+   * path was measuring 100–280 ms per avatar after a process start. A missing
+   * file still fails in the image view; reconciliation drops the ghost.
+   */
+  peekCached(url: string, bucket: number = FULL_BUCKET): FrcPeekResult | undefined {
+    const hash = this.backend.hashUrl(url);
+    const exact = this.entries.get(entryKey(hash, bucket));
+    if (exact) return { uri: exact.uri, exact: true };
+    if (this.legacyHashes.has(hash)) return { uri: url, exact: true };
+    for (let i = FRC_BUCKET_WIDTHS.length - 1; i >= 0; i -= 1) {
+      const rung = FRC_BUCKET_WIDTHS[i];
+      if (rung >= bucket) continue;
+      const smaller = this.entries.get(entryKey(hash, rung));
+      if (smaller) return { uri: smaller.uri, exact: false };
+    }
+    return undefined;
+  }
+
+  /**
+   * The decoded file is on disk but the index was not flushed (reload, kill).
+   * One stat of the expected name, then the entry is in memory for the rest
+   * of the session. Returns ""-equivalent undefined when nothing is there.
+   */
+  adoptExact(url: string, bucket: number): string | undefined {
+    const key = entryKey(this.backend.hashUrl(url), bucket);
+    const formats: FrcDecodedFormat[] = ["png", "jpeg"];
+    for (const format of formats) {
+      const uri = this.backend.finalUri(key, format);
+      if (!this.backend.fileExists(uri)) continue;
+      let size = 0;
+      try {
+        size = this.backend.fileSize(uri);
+      } catch {
+        size = 0;
+      }
+      this.put(key, { uri, size, format, lastUsed: ++this.tick });
+      this.flushIndex();
+      return uri;
     }
     return undefined;
   }
@@ -669,7 +714,16 @@ export class FrcImageCache {
   private markIndexDirty(): void {
     this.indexDirty = true;
     this.pendingIndexWrites += 1;
-    if (this.pendingIndexWrites >= INDEX_FLUSH_EVERY) this.flushIndex();
+    if (this.pendingIndexWrites >= INDEX_FLUSH_EVERY) {
+      this.flushIndex();
+      return;
+    }
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    queueMicrotask(() => {
+      this.flushScheduled = false;
+      this.flushIndex();
+    });
   }
 
   private restoreIndex(): void {

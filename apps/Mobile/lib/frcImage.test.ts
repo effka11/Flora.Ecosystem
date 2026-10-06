@@ -131,7 +131,7 @@ vi.mock("@/lib/frcImageCacheExpo", () => {
   };
 });
 
-const { prefetchFrcImage } = await import("@/lib/frcImage");
+const { peekFrcImageFile, prefetchFrcImage } = await import("@/lib/frcImage");
 const { getMediaBandwidthEstimate, resetMediaBandwidth } = await import(
   "@/lib/mediaBandwidth"
 );
@@ -226,5 +226,32 @@ describe("prefetchFrcImage", () => {
     expect(estimate.rowsAhead).toBe(10);
 
     cancel();
+  });
+});
+
+describe("peekFrcImageFile", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
+    harness.reset();
+    resetMediaBandwidth();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns a smaller indexed variant without decoding the exact bucket", async () => {
+    const url = "https://cdn/avatar-stretch.fri";
+    prefetchFrcImage(url, { displayWidth: 100 });
+    await settlePipeline();
+    expect(harness.decodes).toHaveLength(1);
+
+    const exact = peekFrcImageFile(url, 100);
+    expect(exact.startsWith("final://")).toBe(true);
+    // 300 pt asks for a wider bucket than the one just decoded. The carpet
+    // must use the file already in the index, not stat or decode another.
+    expect(peekFrcImageFile(url, 300)).toBe(exact);
+    expect(harness.downloads).toEqual([url]);
+    expect(harness.decodes).toHaveLength(1);
   });
 });

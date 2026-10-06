@@ -15,6 +15,8 @@ function assertFriImage(block: FscpImageBlock): void {
 
 const TTL_MS = 300_000;
 const MAX_IDLE_PRELOAD_ASSETS = 16;
+/** Session-wide object URLs. Evicting one revokes its blob URL. */
+export const MESSAGE_MEDIA_CACHE_LIMIT = 64;
 
 type EncryptedMediaBlock = {
   assetUuid: string;
@@ -39,14 +41,53 @@ function isFresh(entry: CachedMedia): boolean {
   return Date.now() - entry.fetchedAt < TTL_MS;
 }
 
+function evictMediaOverflow(keepId: string): void {
+  while (cache.size > MESSAGE_MEDIA_CACHE_LIMIT) {
+    let oldest: string | undefined;
+    for (const key of cache.keys()) {
+      if (key === keepId) continue;
+      oldest = key;
+      break;
+    }
+    if (!oldest) break;
+    const evicted = cache.get(oldest);
+    if (evicted) URL.revokeObjectURL(evicted.objectUrl);
+    cache.delete(oldest);
+  }
+}
+
 function storeBlob(assetUuid: string, blob: Blob): string {
   const id = normalizeAssetId(assetUuid);
   const existing = cache.get(id);
-  if (existing && isFresh(existing)) return existing.objectUrl;
+  if (existing && isFresh(existing)) {
+    cache.delete(id);
+    cache.set(id, existing);
+    return existing.objectUrl;
+  }
   if (existing) URL.revokeObjectURL(existing.objectUrl);
   const objectUrl = URL.createObjectURL(blob);
+  cache.delete(id);
   cache.set(id, { blob, objectUrl, fetchedAt: Date.now() });
+  evictMediaOverflow(id);
   return objectUrl;
+}
+
+export function cacheDecryptedMessageMedia(assetUuid: string, blob: Blob): string {
+  return storeBlob(assetUuid, blob);
+}
+
+export function messageMediaCacheSize(): number {
+  return cache.size;
+}
+
+export function messageMediaObjectUrls(): string[] {
+  return [...cache.values()].map((entry) => entry.objectUrl);
+}
+
+export function clearAllMessageMedia(): void {
+  for (const entry of cache.values()) URL.revokeObjectURL(entry.objectUrl);
+  cache.clear();
+  inflight.clear();
 }
 
 async function downloadAndDecrypt(

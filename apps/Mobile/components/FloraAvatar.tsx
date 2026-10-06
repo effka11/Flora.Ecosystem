@@ -8,6 +8,7 @@ import { Image } from "expo-image";
 import { Link, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { noteChatOpenAvatarPainted } from "@/lib/chatOpenAvatars";
 import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
@@ -30,6 +31,11 @@ export type FloraAvatarProps = {
   onPress?: () => void;
   /** People only. Communities (`communityName`) never get the strike. */
   accountBlocked?: boolean;
+  /**
+   * Тред: URI картинки коммитится сразу, не после отпускания пальца.
+   * Иначе круг с инициалов перескакивает на FRI уже на слайде.
+   */
+  syncCommit?: boolean;
 };
 
 type DefaultAvatarArtProps = {
@@ -83,6 +89,7 @@ export function FloraAvatar({
   style,
   onPress,
   accountBlocked = false,
+  syncCommit = false,
 }: FloraAvatarProps) {
   const personBlocked = accountBlocked && !communityName;
   const [imageFailed, setImageFailed] = useState(false);
@@ -108,6 +115,7 @@ export function FloraAvatar({
     force: true,
     displayWidth: size,
     lane: "avatar",
+    syncCommit,
   });
   const displayUri = trimmedPreview || resolvedImageUri;
 
@@ -123,6 +131,11 @@ export function FloraAvatar({
       cachePolicy={isLocalDecodedUri(displayUri) || Boolean(trimmedPreview) ? "memory" : "memory-disk"}
       recyclingKey={displayUri}
       transition={0}
+      onLoad={
+        syncCommit && trimmedUuid
+          ? () => noteChatOpenAvatarPainted(trimmedUuid)
+          : undefined
+      }
       onError={() => setImageFailed(true)}
     />
   ) : (

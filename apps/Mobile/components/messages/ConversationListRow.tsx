@@ -7,12 +7,25 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { FloraAvatar } from "@/components/FloraAvatar";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
+import { warmParkedChatAvatars } from "@/lib/chatOpenAvatarWarm";
 import {
   warmChatOpenTextLayoutAtTap,
   warmChatOpenThreadAtPressIn,
 } from "@/lib/chatOpenLayoutWarm";
-import { markChatOpenTap } from "@/lib/chatOpenTrace";
-import { armChatPushEnter } from "@/lib/chatPushTransition";
+import { markChatOpenPark, markChatOpenTap } from "@/lib/chatOpenTrace";
+import {
+  armChatPushEnter,
+  cancelScheduledChatRowPark,
+  didScrollCancelChatPark,
+  flushScheduledChatRowPark,
+  isChatPushHoldingSlide,
+  isChatPushPressBlocked,
+  isChatPushTracked,
+  prepareChatPushPress,
+  parkChatPush,
+  requestChatPushPlay,
+  scheduleChatRowPark,
+} from "@/lib/chatPushTransition";
 import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
 const LIST_PREVIEW_MAX_LEN = 80;
@@ -61,6 +74,7 @@ export function ConversationListRow({
   const username = item.otherUsername.replace(/^@+/, "") || "…";
   const preview = formatConversationPreview(item, item.preview);
   const [presenceTick, setPresenceTick] = useState(0);
+  const [lit, setLit] = useState(false);
   useEffect(() => sharedPresenceStore.subscribe(() => setPresenceTick((n) => n + 1)), []);
   void presenceTick;
   const overlay = sharedPresenceStore.overlayOnline(
@@ -69,8 +83,26 @@ export function ConversationListRow({
     item.otherUserLastSeenAt,
   );
 
+  const threadParams = {
+    conversationUuid: item.conversationUuid,
+    otherUserUuid: item.otherUserUuid,
+    otherDisplayName: item.otherDisplayName,
+    otherUsername: item.otherUsername,
+    otherAvatarUuid: item.otherAvatarUuid ?? "",
+    otherAccountBlocked: item.otherAccountBlocked ? "1" : "0",
+    otherUserIsOnline: overlay.isOnline ? "1" : "0",
+    otherUserLastSeenAt: overlay.lastSeenAt ?? "",
+  };
+
+  const pushThread = () => {
+    router.push({
+      pathname: "/(tabs)/messages/[conversationUuid]",
+      params: threadParams,
+    });
+  };
+
   const openChat = () => {
-    // Взвод push-перехода (движение начнёт сам экран треда, см. модуль).
+    // Reduce motion и пути без парковки: экран встаёт сразу, без ожидания окна.
     armChatPushEnter();
     markChatOpenTap(item.conversationUuid);
     warmChatOpenTextLayoutAtTap({
@@ -78,40 +110,49 @@ export function ConversationListRow({
       conversationUuid: item.conversationUuid,
       otherUserUuid: item.otherUserUuid,
     });
-    // Таб-бар прячут focus-эффект треда и messages/_layout — тем же коммитом,
-    // в котором стартует слайд. Скрытие «заранее», по тапу, читалось как
-    // отдельная фаза: иконки пропадали за кадры до начала движения.
-    router.push({
-      pathname: "/(tabs)/messages/[conversationUuid]",
-      params: {
-        conversationUuid: item.conversationUuid,
-        otherUserUuid: item.otherUserUuid,
-        otherDisplayName: item.otherDisplayName,
-        otherUsername: item.otherUsername,
-        otherAvatarUuid: item.otherAvatarUuid ?? "",
-        otherAccountBlocked: item.otherAccountBlocked ? "1" : "0",
-        otherUserIsOnline: overlay.isOnline ? "1" : "0",
-        otherUserLastSeenAt: overlay.lastSeenAt ?? "",
-      },
-    });
+    pushThread();
   };
 
-  const onPress = () => {
-    if (selectionMode) {
-      onToggleSelect?.();
-      return;
-    }
-    openChat();
-  };
-
-  /** Палец коснулся строки — тред греется, пока идёт жест (~100 мс форы). */
-  const onPressIn = () => {
-    if (selectionMode) return;
+  const parkRow = () => {
     warmChatOpenThreadAtPressIn({
       kind: "dm",
       conversationUuid: item.conversationUuid,
       otherUserUuid: item.otherUserUuid,
     });
+    void warmParkedChatAvatars([item.otherAvatarUuid]);
+    const parked = parkChatPush({
+      params: threadParams,
+      navigate: pushThread,
+    });
+    if (parked === "parked") markChatOpenPark(item.conversationUuid);
+  };
+
+  const onPress = () => {
+    const scrollCancelled = didScrollCancelChatPark();
+    if (selectionMode) {
+      onToggleSelect?.();
+      return;
+    }
+    if (scrollCancelled) {
+      cancelScheduledChatRowPark();
+      return;
+    }
+    flushScheduledChatRowPark();
+    if (isChatPushPressBlocked()) return;
+    prepareChatPushPress();
+    if (isChatPushTracked(item.conversationUuid)) {
+      markChatOpenTap(item.conversationUuid);
+      if (isChatPushHoldingSlide()) requestChatPushPlay(item.conversationUuid);
+      return;
+    }
+    openChat();
+  };
+
+  /** Подсветка в кадр касания. Монтаж треда — на следующем кадре, не в этом. */
+  const beginPress = () => {
+    if (selectionMode) return;
+    setLit(true);
+    scheduleChatRowPark(parkRow);
   };
 
   const onLongPress = () => {
@@ -136,9 +177,12 @@ export function ConversationListRow({
       style={({ pressed }) => [
         styles.shell,
         selected && styles.shellSelected,
-        pressed && styles.shellPressed,
+        (pressed || lit) && styles.shellPressed,
       ]}
-      onPressIn={onPressIn}
+      onTouchStart={beginPress}
+      onTouchCancel={() => setLit(false)}
+      onPressIn={beginPress}
+      onPressOut={() => setLit(false)}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_MS}

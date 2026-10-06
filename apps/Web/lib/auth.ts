@@ -237,6 +237,7 @@ export function clearSession() {
   webSessionStore.clearSessionSync();
   clearBrowserSessionCookie();
   sharedPresenceStore.clear();
+  void import("@/lib/messagingSessionCaches").then((mod) => mod.resetMessagingSessionCaches());
   /**
    * Device-held FSCP material (sealed IndexedDB vault + residual LS) **не** удаляем: после повторного
    * входа тот же браузер восстанавливает ключи и может расшифровать историю

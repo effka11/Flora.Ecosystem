@@ -17,12 +17,13 @@ import {
   notifyReadChanged,
   notifyTypingChanged,
 } from "@/lib/realtimeEvents";
+import { refreshClosedThreadOnMessageSignal } from "@/lib/closedThreadRefresh";
 import { resolveRealtimeStreamApiRoot } from "@/lib/realtimeApi";
 
 /** Дать Next скомпилировать /api/* до long-lived SSE (иначе abort/Failed to fetch на cold start). */
 const SSE_CONNECT_DELAY_MS = 750;
 
-export function useDashboardRealtime(enabled: boolean): void {
+export function useDashboardRealtime(enabled: boolean, viewerUuid?: string | null): void {
   useEffect(() => {
     if (!enabled) return;
 
@@ -70,6 +71,7 @@ export function useDashboardRealtime(enabled: boolean): void {
           },
           onMessage: (signal) => {
             conversationsCache.invalidate();
+            refreshClosedThreadOnMessageSignal(signal, viewerUuid);
             notifyMessagesUnreadChanged({
               conversationUuid: signal.conversationUuid,
               senderUserUuid: signal.senderUserUuid,
@@ -107,5 +109,5 @@ export function useDashboardRealtime(enabled: boolean): void {
       sharedPresenceStore.setConnectionId(null);
       stream?.close();
     };
-  }, [enabled]);
+  }, [enabled, viewerUuid]);
 }

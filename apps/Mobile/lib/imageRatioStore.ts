@@ -5,6 +5,7 @@
  * it back on a short debounce whenever the cache reports a change — so a
  * burst of images decoding on the same frame collapses into a single write.
  */
+import { Platform } from "react-native";
 import { mmkv } from "@/lib/mmkv";
 import {
   getImageRatio,
@@ -20,7 +21,13 @@ const PERSIST_DEBOUNCE_MS = 1000;
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Node-рендер Expo Router не имеет localStorage. На устройстве и в браузере окно есть. */
+function storageAvailable(): boolean {
+  return Platform.OS !== "web" || typeof window !== "undefined";
+}
+
 function schedulePersist(): void {
+  if (!storageAvailable()) return;
   if (persistTimer != null) return;
   persistTimer = setTimeout(() => {
     persistTimer = null;
@@ -28,7 +35,9 @@ function schedulePersist(): void {
   }, PERSIST_DEBOUNCE_MS);
 }
 
-hydrateImageRatios(mmkv.getString(IMAGE_ASPECT_RATIOS_MMKV_KEY) ?? null);
+hydrateImageRatios(
+  storageAvailable() ? (mmkv.getString(IMAGE_ASPECT_RATIOS_MMKV_KEY) ?? null) : null,
+);
 setImageRatioDirtyListener(schedulePersist);
 
 export function getStoredImageRatio(id: string): number | null {

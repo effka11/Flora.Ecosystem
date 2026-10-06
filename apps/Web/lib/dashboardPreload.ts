@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth";
 import { createCachedResource, createKeyedCachedResource, type CachedResource } from "@/lib/cachedResource";
 import { preloadConversationThreads } from "@/lib/conversationThreadsCache";
+import { preloadGroupConversationThreads } from "@/lib/groupThreadsCache";
 import { msgGetConversations, type MsgConversationsPage } from "@/lib/messagingApi";
 import {
   apiGetMusicLibrary,
@@ -223,6 +224,17 @@ function runTopThreadPrefetch(viewerNorm: string, page: MsgConversationsPage): v
   if (lastThreadPrefetchSignature === signature) return;
   lastThreadPrefetchSignature = signature;
   preloadConversationThreads(viewerNorm, peerUuids);
+}
+
+/** Ciphertext only: refresh stale DM and group pages of the idle warm set. */
+export function refreshIdleCiphertext(
+  viewerNorm: string,
+  peerUuids: readonly string[],
+  groupUuids: readonly string[],
+): void {
+  if (!viewerNorm.trim()) return;
+  preloadConversationThreads(viewerNorm, [...peerUuids]);
+  preloadGroupConversationThreads(viewerNorm, [...groupUuids]);
 }
 
 /**

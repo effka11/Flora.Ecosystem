@@ -27,10 +27,12 @@ import {
 } from "@/lib/apkUpdate/autoUpdatePreference";
 import { isSideloadUpdatesEnabled } from "@/lib/apkUpdate/capabilities";
 import { startChatCachePersist } from "@/lib/chatCachePersist";
+import { startDecryptWarmPersist } from "@/lib/decryptWarmPersist";
 import { initMobileSodium } from "@/lib/fscp/sodium";
 import { startMessageTextMeasurePersist } from "@/lib/messageTextMeasurePersist";
 import { initStorageMigrations } from "@/lib/mmkv";
 import { hydrateChatDiskCache } from "@/stores/chatDiskCache";
+import { hydrateDecryptWarmDisk } from "@/stores/decryptWarmDiskCache";
 import { initSentry, initTelemetry } from "@/lib/sentry";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useFscpStore } from "@/stores/fscpStore";
@@ -77,6 +79,7 @@ export function FloraProviders({ children }: { children: ReactNode }) {
         // рендерятся мгновенно, сеть обновит их тихо (Telegram-style cold start).
         try {
           hydrateChatDiskCache(queryClient, session.me.userUuid);
+          hydrateDecryptWarmDisk(session.me.userUuid);
         } catch {
           // Повреждённый снапшот не должен ломать старт — просто идём по сети.
         }
@@ -126,6 +129,13 @@ export function FloraProviders({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready || !isAuthenticated || !userUuid) return;
     return startMessageTextMeasurePersist(userUuid);
+  }, [ready, isAuthenticated, userUuid]);
+
+  // Расшифрованный хвост — тот же момент входа. Контейнер уже открыт в
+  // bootstrap; здесь только дописываем новые хвосты, пока сессия жива.
+  useEffect(() => {
+    if (!ready || !isAuthenticated || !userUuid) return;
+    return startDecryptWarmPersist(userUuid);
   }, [ready, isAuthenticated, userUuid]);
 
   useEffect(() => {
