@@ -152,15 +152,24 @@ import {
   runChatPushEnter,
   runChatPushExit,
   subscribeChatPush,
+  clearChatWarmGateOwner,
+  setChatWarmScreenFocused,
+  setChatWarmScrollBusy,
 } from "@/lib/chatPushTransition";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import {
+  CHAT_WARM_THREAD_SETTLE_MS,
+  chatBenchPromoteKeepsReveal,
+  chatBenchSlotTranslateX,
+  chatListHiddenUntilReveal,
   chatPushRepeatBackKeepsIntercept,
+  chatThreadListRevealInput,
   nextChatListMounted,
   shouldRevealMeasuredWindow,
   warmLayoutEffectMayReveal,
   warmLayoutRevealAction,
 } from "@/lib/chatListEnterMount";
+import { createScrollBusyTracker } from "@/lib/chatWarmAssemblyGate";
 import {
   diagnoseChatWarmOpen,
   formatChatWarmOpenDiagnosis,
@@ -169,13 +178,19 @@ import { readChatPrefetchGates } from "@/lib/chatPrefetchPolicy";
 import { shouldRefetchThreadAfterReveal } from "@/lib/threadRevealRefresh";
 import {
   markChatOpenStage,
+  noteChatBenchWindowClosed,
   noteChatOpenCellRender,
   noteChatOpenLayoutWarm,
   noteChatOpenScreenRender,
   noteChatOpenWarmCheck,
 } from "@/lib/chatOpenTrace";
-import { warmParkedChatAvatars } from "@/lib/chatOpenAvatarWarm";
-import { chatOpenAvatarsNeedPaint, collectChatOpenAvatarUuids } from "@/lib/chatOpenAvatars";
+import {
+  finishParkedAvatarWarm,
+  parkedChatAvatarsReadyNow,
+  prefetchMeasuringChatAvatars,
+  warmParkedChatAvatars,
+} from "@/lib/chatOpenAvatarWarm";
+import { collectChatOpenAvatarUuids } from "@/lib/chatOpenAvatars";
 import { warmThreadTextLayoutFromRows } from "@/lib/chatOpenLayoutWarm";
 import { findGroupMember } from "@/lib/groupChatMap";
 import {
@@ -410,25 +425,6 @@ function threadListItemHasMessage(item: ThreadListItem, messageUuid: string): bo
   return item.message.messageUuid === messageUuid;
 }
 
-/** Холодный FRI должен успеть нарисоваться за краем, до первого кадра слайда. */
-function afterNextPaint(): Promise<void> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
-    });
-  });
-}
-
-/**
- * Декод кругов треда уже мог идти с press-in. Дополнительный кадр нужен только
- * если холодный файл ещё не вызвал onLoad у круга треда. Готовый bitmap
- * (onLoad) или синхронный файл этот кадр не ждут.
- */
-async function finishParkedAvatarWarm(uuids: readonly string[]): Promise<void> {
-  await warmParkedChatAvatars(uuids);
-  if (chatOpenAvatarsNeedPaint(uuids)) await afterNextPaint();
-}
-
 function subscribeChatWarmIdle(): () => void {
   return () => {};
 }
@@ -448,10 +444,22 @@ function chatPushGenerationIdle(): number {
 export function ThreadScreen({
   overlayParams,
   bench = false,
+  benchAttempt = 0,
+  measureFrame = false,
 }: {
   overlayParams?: ChatPushParkParams;
-  /** Окно собирается за краем и не участвует в слайде. */
+  /** Окно собирается на скамье и не владеет слайдом, пока его не повысили. */
   bench?: boolean;
+  /**
+   * Повтор замера yielded-окна (очередь вернула слот). Тот же инстанс:
+   * сбрасывает ожидание кругов и перепроверяет высоты, дедлайн заводится заново.
+   */
+  benchAttempt?: number;
+  /**
+   * Единственный слот в кадре замера: без translateX, список его закрывает.
+   * Закрытый слот и активный до runEnter остаются на `translateX: screenWidth`.
+   */
+  measureFrame?: boolean;
 } = {}) {
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: windowHeight } = useWindowDimensions();
@@ -623,6 +631,8 @@ export function ThreadScreen({
   const overlayHost = overlayParams != null;
   const benchRef = useRef(bench);
   benchRef.current = bench;
+  const measureFrameRef = useRef(measureFrame);
+  measureFrameRef.current = measureFrame;
   // Чужие окна не подписываются на слайд: иначе каждый кадр входа перерисовывает всю скамью.
   const chatPushHolding = useSyncExternalStore(
     bench ? subscribeChatWarmIdle : subscribeChatPush,
@@ -689,6 +699,8 @@ export function ThreadScreen({
   const listRevealedStaleRef = useRef(false);
   /** Парковый показ: layout-эффект после коммита listRevealed гасит ковёр в переходе. */
   const parkCarpetCommitRef = useRef(false);
+  /** Закрытие скамьи: false, если bitmap отпустил только потолок 200 мс. */
+  const benchCloseWarmRef = useRef(true);
   const listRevealedLiveRef = useRef(false);
   listRevealedLiveRef.current = listRevealed;
 
@@ -717,6 +729,7 @@ export function ThreadScreen({
    * скрытие; а поздний hide обрывал уже запущенный цикл показа, и лента
    * ждала дедлайна LIST_REVEAL_DEADLINE_MS (~секунда чёрного экрана).
    * Layout-эффект прячет ленту синхронно в коммите смены треда — до paint.
+   * bench → active тот же uuid: показ не сбрасывается и второй reveal не ждётся.
    *
    * Guard по uuid: перезапуск эффекта БЕЗ смены треда (flap isGroupChat из
    * параметров маршрута и т.п.) не должен прятать уже показанную ленту.
@@ -775,6 +788,9 @@ export function ThreadScreen({
     if (!overlayHost || !parkCarpetCommitRef.current) return;
     if (!listRevealed || listRevealedStaleRef.current) return;
     parkCarpetCommitRef.current = false;
+    if (benchRef.current) {
+      noteChatBenchWindowClosed(conversationUuid, benchCloseWarmRef.current);
+    }
     notifyChatWarmWindowClosed(conversationUuid);
     notifyChatPushWindowClosed(conversationUuid);
   }, [conversationUuid, listRevealed, overlayHost]);
@@ -818,6 +834,12 @@ export function ThreadScreen({
   useEffect(() => {
     tabBarBottomInsetRef.current = tabBarBottomInset;
   }, [tabBarBottomInset]);
+  /**
+   * Владелец записей гейта скамьи: фокус маршрута и скролл этого инстанса.
+   * Скамья и оверлей-парковка фокуса не держат (их маршрут — список).
+   */
+  const warmGateOwner = useMemo(() => Symbol("chat-thread"), []);
+  useEffect(() => () => clearChatWarmGateOwner(warmGateOwner), [warmGateOwner]);
   useFocusEffect(
     useCallback(() => {
       // Оверлей парковки не экран маршрута: фокус и таб-бар остаются у списка,
@@ -825,12 +847,16 @@ export function ThreadScreen({
       if (overlayHost) return;
       applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, true);
       chatUiFrameKeepAlive.setActive(true);
+      // Тред маршрута — экран вкладки Messages: очередь скамьи продолжает под
+      // ним, после паузы на доклейку окна и волны расшифровки этого чата.
+      setChatWarmScreenFocused(warmGateOwner, true, CHAT_WARM_THREAD_SETTLE_MS);
       return () => {
+        setChatWarmScreenFocused(warmGateOwner, false);
         chatUiFrameKeepAlive.setActive(false);
         applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, false);
         resetDock();
       };
-    }, [chatUiFrameKeepAlive, navigation, overlayHost, resetDock]),
+    }, [chatUiFrameKeepAlive, navigation, overlayHost, resetDock, warmGateOwner]),
   );
   useEffect(() => {
     if (!overlayHost || preparingWindow) return;
@@ -865,22 +891,21 @@ export function ThreadScreen({
   );
   const chatPushDriven = useSharedValue(chatPushEnterArmed);
   const slideOwnedSv = useSharedValue(!bench);
+  const measureFrameSv = useSharedValue(measureFrame);
   useLayoutEffect(() => {
     slideOwnedSv.value = !bench;
-  }, [bench, slideOwnedSv]);
+    measureFrameSv.value = measureFrame;
+  }, [bench, measureFrame, measureFrameSv, slideOwnedSv]);
   const chatPushSlideStyle = useAnimatedStyle(() => {
-    if (!slideOwnedSv.value) {
-      return { transform: [{ translateX: screenWidth }] };
-    }
-    return {
-      transform: [
-        {
-          translateX: chatPushDriven.value
-            ? (1 - chatPushProgress.value) * screenWidth
-            : 0,
-        },
-      ],
-    };
+    const translateX = chatBenchSlotTranslateX({
+      measureFrame: measureFrameSv.value,
+      slideOwned: slideOwnedSv.value,
+      slideDriven: chatPushDriven.value,
+      slideProgress: chatPushProgress.value,
+      screenWidth,
+    });
+    if (translateX == null) return {};
+    return { transform: [{ translateX }] };
   });
   useLayoutEffect(() => {
     if (bench) return;
@@ -1398,6 +1423,14 @@ export function ThreadScreen({
     }
     // Показ не здесь: ковёр держим, пока maybeConfirmWindowMeasured не закроет
     // окно реальными onLayout. Иначе фейд стартует по пустому content-size.
+    // Повышение закрытого слота показ не повторяет: listRevealed уже true.
+    if (
+      !bench &&
+      chatBenchPromoteKeepsReveal(listRevealedLiveRef.current) &&
+      windowMeasuredUuidRef.current === conversationUuid
+    ) {
+      return;
+    }
     if (
       warmLayoutEffectMayReveal({
         gateOn,
@@ -1655,6 +1688,21 @@ export function ThreadScreen({
     listDataWindow,
     listMounted,
   ]);
+  useEffect(() => {
+    // Prefetch только у слота в кадре замера. На тап его не вешаем: строка
+    // списка уже могла декодировать URI, и ожидание prefetch держало ковёр.
+    if (!measureFrame || !listMounted) return;
+    if (isGroupChat && groupThread.members.length === 0 && groupThread.isLoading) return;
+    void prefetchMeasuringChatAvatars(collectParkedAvatars(listDataWindow));
+  }, [
+    collectParkedAvatars,
+    groupThread.isLoading,
+    groupThread.members.length,
+    isGroupChat,
+    listDataWindow,
+    listMounted,
+    measureFrame,
+  ]);
 
   const commitParkCarpet = useCallback(() => {
     const already = listRevealedLiveRef.current && !listRevealedStaleRef.current;
@@ -1662,6 +1710,9 @@ export function ThreadScreen({
     parkCarpetCommitRef.current = !already;
     revealListNow({ immediateCover: true });
     if (already) {
+      if (benchRef.current) {
+        noteChatBenchWindowClosed(conversationUuid, benchCloseWarmRef.current);
+      }
       notifyChatWarmWindowClosed(conversationUuid);
       notifyChatPushWindowClosed(conversationUuid);
     }
@@ -1671,12 +1722,15 @@ export function ThreadScreen({
     // Пустой тред не даёт onLayout ячеек — окно закрыто, как только страница пришла.
     // Шапка всё равно носит FRI: play ждёт bitmap, иначе круг вспыхивает на слайде.
     if (!preparingWindow || !listMounted || listMessageCount > 0 || threadLoading) return;
+    if (bench && !measureFrame) return;
     let cancelled = false;
     const gen = parkedOpenGenRef.current;
     const header = isGroupChat ? null : peer.otherAvatarUuid;
-    void finishParkedAvatarWarm(header ? [header] : []).then(() => {
+    void finishParkedAvatarWarm(header ? [header] : []).then((pace) => {
       if (cancelled || parkedOpenGenRef.current !== gen) return;
       if ((!isChatPushHoldingSlide() && !benchRef.current) || listDataRef.current.length > 0) return;
+      if (benchRef.current && !measureFrameRef.current && pace !== "ready") return;
+      benchCloseWarmRef.current = pace === "ready";
       commitParkCarpet();
     });
     return () => {
@@ -1684,7 +1738,9 @@ export function ThreadScreen({
     };
   }, [
     bench,
+    benchAttempt,
     chatPushHolding,
+    measureFrame,
     conversationUuid,
     isGroupChat,
     listMessageCount,
@@ -1872,18 +1928,36 @@ export function ThreadScreen({
     if (!windowClosedByHeights) return;
     const preparing = isChatPushHoldingSlide() || benchRef.current;
     if (preparing) {
+      // Сосед за краем onLayout не снимает. Кадр замера — один, без translateX.
+      if (benchRef.current && !measureFrameRef.current) return;
       if (parkAvatarWaitRef.current) return;
       // Ростер группы ещё в пути: без него круги — инициалы, и FRI доезжает на слайде.
       if (isGroupChat && groupThread.members.length === 0 && groupThread.isLoading) return;
       parkAvatarWaitRef.current = true;
       markChatOpenStage("load", conversationUuid);
       onListLoad();
-      const gen = parkedOpenGenRef.current;
       const avatars = collectParkedAvatars(listDataRef.current);
-      void finishParkedAvatarWarm(avatars).then(() => {
+      // Bitmap уже в cache первого кадра или круг уже снял onLoad. Файл в
+      // индексе после рестарта этого не значит. Тап по закрытому окну слайд
+      // стартует сразу, без второго reveal и без prefetch.
+      if (parkedChatAvatarsReadyNow(avatars)) {
+        windowMeasuredUuidRef.current = conversationUuid;
+        benchCloseWarmRef.current = true;
+        commitParkCarpet();
+        return;
+      }
+      // Иначе ждём onLoad или prefetch в тот же cache. Потолок отпускает
+      // показ, но такое закрытие не тёплое.
+      const gen = parkedOpenGenRef.current;
+      void finishParkedAvatarWarm(avatars).then((pace) => {
         if (parkedOpenGenRef.current !== gen) return;
         if (!isChatPushHoldingSlide() && !benchRef.current) return;
+        if (benchRef.current && !measureFrameRef.current && pace !== "ready") {
+          parkAvatarWaitRef.current = false;
+          return;
+        }
         windowMeasuredUuidRef.current = conversationUuid;
+        benchCloseWarmRef.current = pace === "ready";
         // Ковёр и listRevealed в этом проходе, до runEnter. Вход — следующий
         // кадр после коммита, если палец уже поднят.
         commitParkCarpet();
@@ -1922,11 +1996,25 @@ export function ThreadScreen({
   useEffect(() => {
     if (listDataWindow.length > 0) maybeConfirmWindowMeasured();
   }, [listDataWindow, maybeConfirmWindowMeasured]);
+  useEffect(() => {
+    // Очередь вернула слот yielded-окну. Инстанс тот же: снять ожидание кругов
+    // прошлой попытки и перепроверить высоты — onLayout заново не придёт.
+    if (!bench || benchAttempt === 0) return;
+    parkAvatarWaitRef.current = false;
+    maybeConfirmWindowMeasuredRef.current();
+  }, [bench, benchAttempt]);
+  useEffect(() => {
+    // Слот снова в кадре замера после чужого слайда. Прерванный потолок
+    // окно не закрыл — высоты перепроверяем на том же инстансе.
+    if (!bench || !measureFrame || parkAvatarWaitRef.current) return;
+    maybeConfirmWindowMeasuredRef.current();
+  }, [bench, measureFrame]);
 
   /**
    * Ограничение сверху на ожидание. Расшифровка может не состояться вовсе —
    * при `blocked` (`!fscpReady`) строки остаются в `decrypting` навсегда, и без
-   * этого лента не показалась бы никогда.
+   * этого лента не показалась бы никогда. На скамье дедлайн отдаёт слот
+   * (`yielded`), не показывает; повтор слота заводит его заново.
    */
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1937,7 +2025,7 @@ export function ThreadScreen({
       allowListReveal();
     }, LIST_REVEAL_DEADLINE_MS);
     return () => clearTimeout(timer);
-  }, [allowListReveal, bench, conversationUuid]);
+  }, [allowListReveal, bench, benchAttempt, conversationUuid]);
 
   /**
    * Скроллит док: он единственный писатель офсета. Своей ручки скролла у ленты
@@ -2165,13 +2253,43 @@ export function ThreadScreen({
     [closeMessageMenu, onEndVisible, setListPinned],
   );
 
+  /**
+   * Скролл открытого треда глушит очередь скамьи: коммит чужого FlashList не
+   * должен попасть в кадры жеста. Скамья и парковка жестов не получают.
+   */
+  const threadScrollBusy = useMemo(
+    () =>
+      createScrollBusyTracker({
+        setBusy: (busy) => setChatWarmScrollBusy(warmGateOwner, busy),
+        schedule: (run, ms) => {
+          const timer = setTimeout(run, ms);
+          return () => clearTimeout(timer);
+        },
+      }),
+    [warmGateOwner],
+  );
+  useEffect(() => () => threadScrollBusy.dispose(), [threadScrollBusy]);
+
   /** Программные скроллы дока drag-событий не порождают — снимает только палец. */
   const onScrollBeginDrag = useCallback(() => {
+    threadScrollBusy.beginDrag();
     setListPinned(false);
     if (shouldCloseMessageMenuOnListMotion("user-drag")) {
       closeMessageMenu();
     }
-  }, [closeMessageMenu, setListPinned]);
+  }, [closeMessageMenu, setListPinned, threadScrollBusy]);
+  const onScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      threadScrollBusy.endDrag(event.nativeEvent.velocity?.y ?? 0);
+    },
+    [threadScrollBusy],
+  );
+  const onMomentumScrollBegin = useCallback(() => {
+    threadScrollBusy.momentumBegin();
+  }, [threadScrollBusy]);
+  const onMomentumScrollEnd = useCallback(() => {
+    threadScrollBusy.momentumEnd();
+  }, [threadScrollBusy]);
 
   const copyMessageContent = useCallback(async (previewText: string) => {
     const ok = await copyTextToClipboard(previewText);
@@ -2998,9 +3116,17 @@ export function ThreadScreen({
             // Парковка: лента opacity 1 под непрозрачным ковром и за правым
             // краем. opacity 0 не даёт expo-image снять bitmap, и FRI
             // вспыхивает в первом кадре слайда (reveal на ~кадр позже play).
-            listRevealed || (overlayHost && (chatPushHolding || chatPushSliding))
-              ? null
-              : styles.listHiddenUntilReveal,
+            chatListHiddenUntilReveal(
+              chatThreadListRevealInput({
+                listRevealed,
+                overlayHost,
+                bench,
+                holding: chatPushHolding,
+                sliding: chatPushSliding,
+              }),
+            )
+              ? styles.listHiddenUntilReveal
+              : null,
             listLiftStyle,
           ]}
         >
@@ -3030,6 +3156,9 @@ export function ThreadScreen({
                 renderScrollComponent={renderScrollComponent}
                 onScroll={onScroll}
                 onScrollBeginDrag={onScrollBeginDrag}
+                onScrollEndDrag={onScrollEndDrag}
+                onMomentumScrollBegin={onMomentumScrollBegin}
+                onMomentumScrollEnd={onMomentumScrollEnd}
                 scrollEventThrottle={16}
                 // always: иначе первый тап по play только закрывает клавиатуру.
                 keyboardShouldPersistTaps="always"
@@ -3368,13 +3497,19 @@ function OverlayRouteShell() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
+  const warmGateOwner = useMemo(() => Symbol("chat-thread-shell"), []);
+  useEffect(() => () => clearChatWarmGateOwner(warmGateOwner), [warmGateOwner]);
   useFocusEffect(
     useCallback(() => {
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+      // Оболочка — экран вкладки Messages: список потерял фокус, но вкладка
+      // на месте, и очередь скамьи продолжает под открытым чатом.
+      setChatWarmScreenFocused(warmGateOwner, true, CHAT_WARM_THREAD_SETTLE_MS);
       return () => {
+        setChatWarmScreenFocused(warmGateOwner, false);
         applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
       };
-    }, [navigation, tabBarBottomInset]),
+    }, [navigation, tabBarBottomInset, warmGateOwner]),
   );
   const closingRef = useRef(false);
   useEffect(() => {

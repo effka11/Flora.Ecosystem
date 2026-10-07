@@ -74,10 +74,12 @@ import {
   cancelChatPushParkFromLeave,
   cancelChatPushParkFromScroll,
   chatPushProgress,
+  clearChatWarmGateOwner,
   resetChatPushProgress,
-  setChatWarmAssemblyEnabled,
   setChatWarmCachedProbe,
   setChatWarmHeldProbe,
+  setChatWarmScreenFocused,
+  setChatWarmScrollBusy,
   syncChatWarmTargets,
   type ChatPushParkParams,
 } from "@/lib/chatPushTransition";
@@ -772,6 +774,13 @@ export default function MessagesScreen() {
     if (listFolder !== activeFolder) setListFolder(activeFolder);
   }, [activeFolder, listFolder]);
 
+  /**
+   * Владелец записей гейта скамьи: фокус списка и его скролл. Пуш треда
+   * снимает фокус отсюда, но оболочка треда тут же держит вкладку сама —
+   * очередь не гаснет, пока открыт чат; гаснет уход с вкладки Messages.
+   */
+  const warmGateOwner = useMemo(() => Symbol("chat-list"), []);
+  useEffect(() => () => clearChatWarmGateOwner(warmGateOwner), [warmGateOwner]);
   useFocusEffect(
     useCallback(() => {
       tabFocusedRef.current = true;
@@ -781,11 +790,9 @@ export default function MessagesScreen() {
       // сброс чинит аварийные пути (pop без анимации).
       resetChatPushProgress();
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
-      // Сборка окон — следующий кадр, не вместе с сетевым добором свежести.
-      const warmFrame = requestAnimationFrame(() => {
-        if (!tabFocusedRef.current) return;
-        setChatWarmAssemblyEnabled(isScrollSettled());
-      });
+      // Сборка окон — гейт включает её следующим кадром, не вместе с сетевым
+      // добором свежести; скролл списка он читает сам (см. ниже).
+      setChatWarmScreenFocused(warmGateOwner, true);
       // Обновления свежести — за кадрами посадки (FOCUS_REFRESH_DELAY_MS).
       // Ни одно из них не нужно первому кадру списка: данные уже показаны из
       // кэша, запросы лишь досыпают изменения, сделанные в других клиентах.
@@ -810,13 +817,19 @@ export default function MessagesScreen() {
       }, FOCUS_REFRESH_DELAY_MS);
       return () => {
         clearTimeout(refreshTimer);
-        cancelAnimationFrame(warmFrame);
         tabFocusedRef.current = false;
         setTabFocused(false);
         setConversationsListFocused(false);
-        setChatWarmAssemblyEnabled(false);
+        setChatWarmScreenFocused(warmGateOwner, false);
       };
-    }, [fscpStatus, navigation, refreshOverlay, retryPendingOperation, tabBarBottomInset]),
+    }, [
+      fscpStatus,
+      navigation,
+      refreshOverlay,
+      retryPendingOperation,
+      tabBarBottomInset,
+      warmGateOwner,
+    ]),
   );
   useEffect(() => {
     // Уход со списка (вкладка, другой экран). Push play уже не holding — не снимается.
@@ -934,10 +947,13 @@ export default function MessagesScreen() {
     };
   }, [chatWarmTargets, queryClient]);
   useEffect(() => {
+    // Скролл списка (реестр scrollActivity) — пауза очереди; покой — пачка
+    // следующим кадром. Фокус вкладки гейт складывает сам.
+    setChatWarmScrollBusy(warmGateOwner, !isScrollSettled());
     return subscribeScrollSettled((settled) => {
-      setChatWarmAssemblyEnabled(tabFocusedRef.current && settled);
+      setChatWarmScrollBusy(warmGateOwner, !settled);
     });
-  }, []);
+  }, [warmGateOwner]);
 
   /** Поиск — один список без pager (папки скрыты). */
   const searchListData = useMemo(() => {
