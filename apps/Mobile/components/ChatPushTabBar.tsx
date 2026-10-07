@@ -7,6 +7,7 @@ import Reanimated, {
   useAnimatedReaction,
   useAnimatedStyle,
 } from "react-native-reanimated";
+import { CHAT_PUSH_OFF_EDGE } from "@/lib/chatListEnterMount";
 import {
   CHAT_PUSH_DIM,
   CHAT_PUSH_PARALLAX,
@@ -14,6 +15,7 @@ import {
   composePushProgress,
 } from "@/lib/chatPushTransition";
 import { tabBarMaskTranslateXPx, uncoveredWidthPx } from "@/lib/chatPushTabBarClip";
+import { chatPushTabBarHits } from "@/lib/chatPushTabBarHits";
 import { floraTabBarContentHeight } from "@/lib/theme";
 
 /** Дырка маски визуальная: hit-test всё равно по полной ширине хоста над доком. */
@@ -24,6 +26,42 @@ function tabBarStyleBlocksHits(props: BottomTabBarProps): boolean {
   }
   const flat = StyleSheet.flatten(props.descriptors[route.key]?.options.tabBarStyle);
   return flat != null && "pointerEvents" in flat && flat.pointerEvents === "none";
+}
+
+/**
+ * `none` на стиле самой панели хост не перекрывает — то же значение предиката
+ * уходит в tabBarStyle, который читает BottomTabBar.
+ */
+function withTabBarPointerEvents(
+  props: BottomTabBarProps,
+  pointerEvents: "none" | "box-none",
+): BottomTabBarProps {
+  const route = props.state.routes[props.state.index];
+  if (route == null) {
+    return props;
+  }
+  const descriptor = props.descriptors[route.key];
+  if (descriptor == null) {
+    return props;
+  }
+  const flat = StyleSheet.flatten(descriptor.options.tabBarStyle);
+  const current = flat != null && "pointerEvents" in flat ? flat.pointerEvents : undefined;
+  if (current === pointerEvents) {
+    return props;
+  }
+  return {
+    ...props,
+    descriptors: {
+      ...props.descriptors,
+      [route.key]: {
+        ...descriptor,
+        options: {
+          ...descriptor.options,
+          tabBarStyle: [descriptor.options.tabBarStyle, { pointerEvents }],
+        },
+      },
+    },
+  };
 }
 
 /**
@@ -40,9 +78,9 @@ export function renderChatPushTabBar(props: BottomTabBarProps) {
  * полноширинного белого слоя (не layout-width, не scaleX+inverse, не fade 1-p).
  *
  * Хост только высота бара: absoluteFill накрывал бы весь Tabs и ел тапы
- * по списку. Пока создание поста открыто (progress > 0) или tabBarStyle
- * pointerEvents none, хост сам `none`. Слайд чата маску не сопровождает
- * setState и не закрывает кнопки бара: пиксели едут от progress.
+ * по списку. Хиты глушатся, только пока док закрыт (создание поста или чат
+ * ещё на экране при стиле `none`). За краем и хост, и стиль панели —
+ * `box-none`. Слайд не дёргает React, пока кадр не пересёк порог.
  */
 export function ChatPushTabBar(props: BottomTabBarProps) {
   const { width: screenWidth } = useWindowDimensions();
@@ -56,8 +94,23 @@ export function ChatPushTabBar(props: BottomTabBarProps) {
       }
     },
   );
-  const passThrough = tabBarStyleBlocksHits(props) || pushCoversDock;
-  const hostPointerEvents = passThrough ? "none" : "box-none";
+  const [chatOffEdge, setChatOffEdge] = useState(
+    () => chatPushProgress.value <= CHAT_PUSH_OFF_EDGE,
+  );
+  useAnimatedReaction(
+    () => chatPushProgress.value <= CHAT_PUSH_OFF_EDGE,
+    (off, prev) => {
+      if (off !== prev) {
+        runOnJS(setChatOffEdge)(off);
+      }
+    },
+  );
+  const hits = chatPushTabBarHits({
+    styleBlocksHits: tabBarStyleBlocksHits(props),
+    chatProgress: chatOffEdge ? 0 : 1,
+    composeCoversDock: pushCoversDock,
+  });
+  const hostPointerEvents = hits.host;
 
   const maskStyle = useAnimatedStyle(() => {
     const progress = Math.max(chatPushProgress.value, composePushProgress.value);
@@ -100,7 +153,7 @@ export function ChatPushTabBar(props: BottomTabBarProps) {
         }
       >
         <Reanimated.View pointerEvents="box-none" style={[styles.mask, parallaxStyle]}>
-          <BottomTabBar {...props} />
+          <BottomTabBar {...withTabBarPointerEvents(props, hits.tabBar)} />
           <Reanimated.View pointerEvents="none" style={[styles.dim, dimStyle]} />
         </Reanimated.View>
       </MaskedView>

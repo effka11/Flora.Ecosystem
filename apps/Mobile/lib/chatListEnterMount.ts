@@ -193,20 +193,46 @@ export type ChatPushBackAction = "reverse" | "pop-route" | "release" | "keep";
 
 /**
  * Закрытие. Уже идущий выход не перезапускать и не pop-ать список повторно.
- * Оболочка в стеке и выход ещё не начат — pop: пустой экран не держит хиты.
+ * Оболочка ещё в стеке — pop, даже если `shellPushed` уже сброшен и кадр за
+ * краем. «В стеке» не равно `shellPushed`. После pop стека нет — не pop-route.
  * Без оболочки и экран за краем — снять парк, список не pop-ать.
  * Без оболочки и экран ещё виден — обратный слайд от текущего progress.
  */
 export function chatPushBackAction(args: {
   shellPushed: boolean;
+  /** Маршрут оболочки ещё в стеке. Жест открытия чата этот предикат не зовёт. */
+  shellInStack: boolean;
   active: boolean;
   offEdge: boolean;
   exiting: boolean;
 }): ChatPushBackAction {
   if (args.exiting) return "keep";
-  if (args.shellPushed || !args.active) return "pop-route";
+  if (args.shellInStack || args.shellPushed || !args.active) return "pop-route";
   if (args.offEdge) return "release";
   return "reverse";
+}
+
+export type ChatPushShellPhase = "idle" | "parked" | "play-wait" | "playing";
+
+/**
+ * Снять пустую оболочку. Порог сам маршрут не снимает: только уже начатый
+ * выход, кадр ушёл за край вниз, оболочка в фокусе и ещё в стеке.
+ * `parked` / `play-wait` — не pop (`parkChatPush` пишет progress = 0).
+ * Повтор после снятия маршрута — не второй back.
+ */
+export function chatPushShellShouldPop(args: {
+  exitStarted: boolean;
+  phase: ChatPushShellPhase;
+  progress: number;
+  crossedDown: boolean;
+  shellFocused: boolean;
+  shellInStack: boolean;
+}): boolean {
+  if (!args.exitStarted || !args.crossedDown || !args.shellFocused || !args.shellInStack) {
+    return false;
+  }
+  if (args.phase === "parked" || args.phase === "play-wait") return false;
+  return chatPushIsOffEdge(args.progress);
 }
 
 /** Повторный back в том же выходе не отпускает pop и не режет слайд. */
