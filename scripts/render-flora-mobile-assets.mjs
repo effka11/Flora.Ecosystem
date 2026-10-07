@@ -13,7 +13,8 @@ const FLORA_GREEN_DARK = "#2c3527";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mobile = join(root, "apps", "Mobile");
-const assets = join(mobile, "assets");
+/** Brand marks. Mobile only receives the rendered Expo bitmaps. */
+const assets = join(root, "packages", "flora-design", "assets");
 const images = join(mobile, "assets", "images");
 
 async function pngFromSvg(svgPath, outPath, size) {
