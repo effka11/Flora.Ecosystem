@@ -40,6 +40,7 @@ import {
 } from "react-native-reanimated";
 import {
   CHAT_WARM_LIVE_MAX,
+  CHAT_WARM_RETRY_MAX,
   chatPushBackAction,
   chatPushPressBlockedByPlay,
   chatPushSlideStartOnCarpet,
@@ -47,6 +48,7 @@ import {
   chatWarmMountedIds,
   selectChatWarmMeasureIds,
 } from "@/lib/chatListEnterMount";
+import { createChatWarmAssemblyGate } from "@/lib/chatWarmAssemblyGate";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import { clearChatOpenAvatarPaint } from "@/lib/chatOpenAvatars";
 import { markChatOpenPlay } from "@/lib/chatOpenTrace";
@@ -349,11 +351,20 @@ type WarmEntry = {
   closed: boolean;
   yielded: boolean;
   started: boolean;
+  /**
+   * Сколько раз yielded-окно получало слот снова. Экран не ремоунтится —
+   * новый номер попытки перепроверяет высоты и круги на том же инстансе.
+   */
+  attempt: number;
 };
 
 export type ChatWarmSlot = {
   id: string;
   params: ChatPushParkParams;
+  /** Номер попытки замера; меняется только на повторе yielded-окна. */
+  attempt: number;
+  /** Окно уже закрыто высотами и bitmap. Слот остаётся в дереве. */
+  closed: boolean;
 };
 
 const warmListeners = new Set<() => void>();
@@ -399,9 +410,12 @@ function warmParamsKey(params: ChatPushParkParams): string {
 function slideOccupiesWarm(): boolean {
   if (chatPush.isExiting()) return true;
   if (parkPhase !== "playing") return false;
+  // Оболочка запушена, выход не идёт: чат стоит на месте. Пуш треда сборку
+  // не гасит — хост скамьи живёт в лэйауте, следующие окна собираются под ним.
+  if (shellPushed) return false;
   // Удержанный за краем после выхода — очередь может собирать следующий.
   // slideHold: play уже запрошен, enterStarted ещё нет — это тоже слайд.
-  if (!shellPushed && !enterStarted && !slideHold && exitOffEdge) return false;
+  if (!enterStarted && !slideHold && exitOffEdge) return false;
   return true;
 }
 
@@ -431,7 +445,7 @@ function rebuildWarmSnap(): readonly ChatWarmSlot[] {
       entry?.params ??
       (overlaySnap != null && normParkUuid(overlaySnap.conversationUuid) === id ? overlaySnap : null);
     if (params == null) continue;
-    slots.push({ id, params });
+    slots.push({ id, params, attempt: entry?.attempt ?? 0, closed: entry?.closed === true });
   }
   return slots;
 }
@@ -441,7 +455,14 @@ function warmSnapSame(prev: readonly ChatWarmSlot[], next: readonly ChatWarmSlot
   for (let i = 0; i < prev.length; i++) {
     const a = prev[i];
     const b = next[i];
-    if (a == null || b == null || a.id !== b.id || a.params !== b.params) {
+    if (
+      a == null ||
+      b == null ||
+      a.id !== b.id ||
+      a.params !== b.params ||
+      a.attempt !== b.attempt ||
+      a.closed !== b.closed
+    ) {
       return false;
     }
   }
@@ -508,9 +529,13 @@ function pumpWarm(): void {
   if (!assemblyEnabled && finger == null) return;
   const closedIds: string[] = [];
   const yieldedIds: string[] = [];
+  const retryIds: string[] = [];
   for (const [id, entry] of warmById) {
     if (entry.closed) closedIds.push(id);
-    if (entry.yielded) yieldedIds.push(id);
+    if (entry.yielded) {
+      yieldedIds.push(id);
+      if (entry.attempt < CHAT_WARM_RETRY_MAX) retryIds.push(id);
+    }
   }
   const desired = selectChatWarmMeasureIds({
     order: warmOrder,
@@ -523,6 +548,7 @@ function pumpWarm(): void {
     parkedMeasuringId: finger,
     allowUncached: warmColdAllowed,
     heldIds: warmHeldIds(),
+    retryIds,
   });
   // Свободные слоты — в этом проходе. По одному на кадр очередь не успевала:
   // следующий кадр приходил уже после расшифровки чужого треда.
@@ -530,7 +556,16 @@ function pumpWarm(): void {
   let live = warmLiveCount();
   for (const id of desired) {
     const entry = warmById.get(id);
-    if (entry == null || entry.started) continue;
+    if (entry == null) continue;
+    if (entry.yielded) {
+      // Повтор yielded-окна: экран уже в дереве (live его считает), слот снова
+      // его. Новый номер попытки перепроверяет высоты и круги без ремоунта.
+      entry.yielded = false;
+      entry.attempt += 1;
+      changed = true;
+      continue;
+    }
+    if (entry.started) continue;
     if (live >= CHAT_WARM_LIVE_MAX && id !== finger) continue;
     entry.started = true;
     live += 1;
@@ -554,7 +589,13 @@ function rememberWarmTarget(params: ChatPushParkParams): WarmEntry {
     prev.started = true;
     return prev;
   }
-  const entry: WarmEntry = { params, closed: false, yielded: false, started: true };
+  const entry: WarmEntry = {
+    params,
+    closed: false,
+    yielded: false,
+    started: true,
+    attempt: 0,
+  };
   warmById.set(id, entry);
   warmOrder = [id, ...warmOrder.filter((existing) => existing !== id)];
   return entry;
@@ -671,7 +712,13 @@ export function syncChatWarmTargets(params: readonly ChatPushParkParams[]): void
     nextOrder.push(id);
     const prev = warmById.get(id);
     if (prev == null) {
-      warmById.set(id, { params: raw, closed: false, yielded: false, started: false });
+      warmById.set(id, {
+        params: raw,
+        closed: false,
+        yielded: false,
+        started: false,
+        attempt: 0,
+      });
       changed = true;
     } else if (warmParamsKey(prev.params) !== warmParamsKey(raw)) {
       prev.params = raw;
@@ -696,7 +743,10 @@ export function syncChatWarmTargets(params: readonly ChatPushParkParams[]): void
   pumpWarm();
 }
 
-/** Список на экране и скролл успокоился. Иначе очередь не начинает новый замер. */
+/**
+ * Вкладка Messages на экране и ничто не скроллится. Иначе очередь не начинает
+ * новый замер. Экраны сюда не пишут напрямую — только через гейт ниже.
+ */
 export function setChatWarmAssemblyEnabled(enabled: boolean): void {
   if (!enabled && coldFallbackTimer != null) {
     clearTimeout(coldFallbackTimer);
@@ -709,6 +759,39 @@ export function setChatWarmAssemblyEnabled(enabled: boolean): void {
   }
   assemblyEnabled = enabled;
   pumpWarm();
+}
+
+/**
+ * Кто разрешает сборку: экраны вкладки (список, оболочка треда) — фокусом,
+ * список и открытый тред — скроллом. Пуш треда снимает фокус со списка, но
+ * оболочка тут же берёт его сама, и очередь продолжает под открытым чатом.
+ * Выключение сразу, включение — следующим кадром или после `settleMs`.
+ */
+const warmGate = createChatWarmAssemblyGate({
+  apply: setChatWarmAssemblyEnabled,
+  schedule: (run, settleMs) => {
+    if (settleMs > 0) {
+      const timer = setTimeout(run, settleMs);
+      return () => clearTimeout(timer);
+    }
+    const frame = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(frame);
+  },
+});
+
+/** Экран вкладки Messages получил или потерял фокус маршрута. */
+export function setChatWarmScreenFocused(owner: symbol, focused: boolean, settleMs = 0): void {
+  warmGate.setScreenFocused(owner, focused, settleMs);
+}
+
+/** Список или открытый тред в движении: новые окна не начинать. */
+export function setChatWarmScrollBusy(owner: symbol, busy: boolean): void {
+  warmGate.setScrollBusy(owner, busy);
+}
+
+/** Unmount экрана: снять его фокус и скролл разом. */
+export function clearChatWarmGateOwner(owner: symbol): void {
+  warmGate.clearOwner(owner);
 }
 
 /** Страница треда уже в кэше — можно собрать её окно, не дожидаясь конца очереди. */

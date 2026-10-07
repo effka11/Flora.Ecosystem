@@ -4,7 +4,12 @@ import { StyleSheet, View } from "react-native";
 import { runOnJS, useAnimatedReaction } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThreadScreen } from "./[conversationUuid]";
-import { CHAT_PUSH_OFF_EDGE, chatPushHostIgnoresHits } from "@/lib/chatListEnterMount";
+import {
+  CHAT_PUSH_OFF_EDGE,
+  chatBenchHostRaised,
+  chatPushHostIgnoresHits,
+  layoutChatBenchSlots,
+} from "@/lib/chatListEnterMount";
 import { applyMessagesTabBarHidden, isMessagesInThread, isMessagesInThreadPath } from "@/lib/messagesTabBar";
 import {
   chatPushProgress,
@@ -94,23 +99,39 @@ function ParkedChatHost() {
   if (!parked && bench.length === 0) return null;
   // Пока чат за правым краем, хост не участник hit-test: transform уводит
   // картинку, но рамка лэйаута остаётся на весь экран и съедала бы тап.
-  const ignoreHits = chatPushHostIgnoresHits({ holding, offEdge });
+  const hostRaised = chatBenchHostRaised({ holding, offEdge });
+  const ignoreHits = !hostRaised || chatPushHostIgnoresHits({ holding, offEdge });
   const activeId = parked?.conversationUuid.trim().toLowerCase() ?? "";
-  const resting = bench.filter((slot) => slot.id !== activeId);
-  const activeSlot = bench.filter((slot) => slot.id === activeId);
-  const ordered =
-    parked && activeId && activeSlot.length === 0
-      ? [...resting, { id: activeId, params: parked }]
-      : [...resting, ...activeSlot];
+  const slots =
+    parked && activeId && !bench.some((slot) => slot.id === activeId)
+      ? [...bench, { id: activeId, params: parked, attempt: 0, closed: false }]
+      : bench;
+  // Замер — один верхний слот без translateX, под списком. Закрытый уезжает
+  // за край и остаётся в дереве. На press-in хост поднимается разово, активный
+  // слот становится верхним и до runEnter стоит за краем.
+  const frames = layoutChatBenchSlots({
+    slots,
+    activeId: activeId || null,
+    hostRaised,
+  });
+  const byId = new Map(slots.map((slot) => [slot.id, slot]));
   return (
-    <View pointerEvents={ignoreHits ? "none" : "box-none"} style={styles.parkHost}>
-      {ordered.map((slot) => {
-        const active = slot.id === activeId && parked != null;
+    <View
+      collapsable={false}
+      pointerEvents={ignoreHits ? "none" : "box-none"}
+      style={[styles.parkHost, hostRaised ? styles.parkHostRaised : styles.parkHostUnder]}
+    >
+      {frames.map((frame) => {
+        const slot = byId.get(frame.id);
+        if (slot == null) return null;
+        const active = frame.layer === "active" && parked != null;
         return (
-          <View key={slot.id} pointerEvents="box-none" style={styles.parkSlot}>
+          <View key={slot.id} collapsable={false} pointerEvents="box-none" style={styles.parkSlot}>
             <ParkedThreadSlot
               params={active && parked ? parked : slot.params}
               bench={!active}
+              attempt={slot.attempt}
+              measureFrame={frame.layer === "measure"}
             />
           </View>
         );
@@ -122,11 +143,24 @@ function ParkedChatHost() {
 const ParkedThreadSlot = memo(function ParkedThreadSlot({
   params,
   bench,
+  attempt,
+  measureFrame,
 }: {
   params: NonNullable<ReturnType<typeof getChatPushOverlay>>;
   bench: boolean;
+  /** Повтор yielded-окна: тот же инстанс перепроверяет высоты и круги. */
+  attempt: number;
+  /** Единственный слот в кадре замера: без translateX и без соседа поверх. */
+  measureFrame: boolean;
 }) {
-  return <ThreadScreen overlayParams={params} bench={bench} />;
+  return (
+    <ThreadScreen
+      overlayParams={params}
+      bench={bench}
+      benchAttempt={attempt}
+      measureFrame={measureFrame}
+    />
+  );
 });
 
 const styles = StyleSheet.create({
@@ -140,6 +174,13 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
+  },
+  /** Под списком: слот замера в окне, хиты остаются у ленты чатов. */
+  parkHostUnder: {
+    zIndex: -1,
+  },
+  /** Разовый подъём на press-in. Не анимируется кадром жеста. */
+  parkHostRaised: {
     zIndex: 2,
   },
   parkSlot: {

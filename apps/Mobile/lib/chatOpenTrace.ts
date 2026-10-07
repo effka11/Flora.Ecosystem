@@ -35,6 +35,21 @@ function beginChatOpenTrace(uuid: string): void {
   revealPath = null;
 }
 
+const benchClosedLogged = new Set<string>();
+
+/**
+ * Скамья закрыла окно до тапа. Строка пишется сразу, не в трассе пальца:
+ * `markChatOpenPark` на press-in её уже не обгоняет.
+ * `warm=0` — сработал потолок bitmap, показ отпущен, открытие не тёплое.
+ */
+export function noteChatBenchWindowClosed(conversationUuid: string, warm: boolean): void {
+  if (!__DEV__) return;
+  const uuid = conversationUuid.trim().toLowerCase();
+  if (!uuid || benchClosedLogged.has(uuid)) return;
+  benchClosedLogged.add(uuid);
+  console.log(`[chat-open] bench-close ${uuid} warm=${warm ? 1 : 0}`);
+}
+
 /** Старт трассы на press-in. Повтор того же uuid трассу не сбрасывает. */
 export function markChatOpenPark(conversationUuid: string): void {
   if (!__DEV__) return;

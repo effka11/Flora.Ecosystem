@@ -9,8 +9,13 @@ import {
   chatPushRepeatBackKeepsIntercept,
   chatPushSlideStartOnCarpet,
   chatPushSlideStartOnRelease,
+  chatBenchHostRaised,
+  chatBenchPromoteKeepsReveal,
+  chatBenchSlotTranslateX,
   chatWarmMountedIds,
   chatListHiddenUntilReveal,
+  chatThreadListRevealInput,
+  layoutChatBenchSlots,
   nextChatListMounted,
   selectChatWarmMeasureIds,
   shouldRevealMeasuredWindow,
@@ -167,6 +172,39 @@ describe("chat list mount", () => {
     expect(
       chatListHiddenUntilReveal({ ...hidden, listRevealed: true, preparingWindow: false }),
     ).toBe(false);
+  });
+
+  it("feeds the screen JSX arguments so a resting bench list is not hidden", () => {
+    const bench = chatThreadListRevealInput({
+      listRevealed: false,
+      overlayHost: true,
+      bench: true,
+      holding: false,
+      sliding: false,
+    });
+    expect(bench.preparingWindow).toBe(true);
+    expect(bench.sliding).toBe(false);
+    expect(chatListHiddenUntilReveal(bench)).toBe(false);
+
+    const finger = chatThreadListRevealInput({
+      listRevealed: false,
+      overlayHost: true,
+      bench: false,
+      holding: true,
+      sliding: false,
+    });
+    expect(finger.preparingWindow).toBe(true);
+    expect(chatListHiddenUntilReveal(finger)).toBe(false);
+
+    const route = chatThreadListRevealInput({
+      listRevealed: false,
+      overlayHost: false,
+      bench: false,
+      holding: false,
+      sliding: false,
+    });
+    expect(route.preparingWindow).toBe(false);
+    expect(chatListHiddenUntilReveal(route)).toBe(true);
   });
 });
 
@@ -351,19 +389,20 @@ describe("chat warm windows", () => {
   });
 
   it("does not start a cold chat while a decrypted window is still open", () => {
-    expect(
-      selectChatWarmMeasureIds({
-        order: ["hot", "cold"],
-        cachedIds: ["hot"],
-        closedIds: [],
-        yieldedIds: ["hot"],
-        inFlightIds: [],
-        slideBusy: false,
-        assemblyEnabled: true,
-        parkedMeasuringId: null,
-        allowUncached: true,
-      }),
-    ).toEqual([]);
+    const yieldedHot = {
+      order: ["hot", "cold"],
+      cachedIds: ["hot"],
+      closedIds: [],
+      yieldedIds: ["hot"],
+      inFlightIds: [],
+      slideBusy: false,
+      assemblyEnabled: true,
+      parkedMeasuringId: null,
+      allowUncached: true,
+    };
+    expect(selectChatWarmMeasureIds(yieldedHot)).toEqual([]);
+    // Повтор yielded-окна тоже не открывает дорогу холодному.
+    expect(selectChatWarmMeasureIds({ ...yieldedHot, retryIds: ["hot"] })).toEqual(["hot"]);
   });
 
   it("does not mount a page that is still decrypting when cold fill is on", () => {
@@ -413,6 +452,54 @@ describe("chat warm windows", () => {
     ).toEqual(["b"]);
   });
 
+  it("gives a yielded chat with a warm tail a slot again once the queue is free", () => {
+    const base = {
+      order: ["retry", "hot", "cold"],
+      cachedIds: ["retry", "hot"],
+      closedIds: [],
+      yieldedIds: ["retry"],
+      inFlightIds: [],
+      slideBusy: false,
+      assemblyEnabled: true,
+      parkedMeasuringId: null,
+      allowUncached: true,
+      retryIds: ["retry"],
+    };
+    // Тот, кто ещё не пробовал, идёт первым; повтор — только в оставшийся слот.
+    expect(selectChatWarmMeasureIds({ ...base, limit: 1 })).toEqual(["hot"]);
+    expect(selectChatWarmMeasureIds({ ...base, limit: 2 })).toEqual(["hot", "retry"]);
+    // Закрытые соседи: очередь свободна — слот снова у yielded-чата.
+    expect(
+      selectChatWarmMeasureIds({ ...base, closedIds: ["hot"], limit: 3 }),
+    ).toEqual(["retry"]);
+    // Дедлайн исчерпан (нет в retryIds) — чат больше не трогаем.
+    expect(
+      selectChatWarmMeasureIds({ ...base, closedIds: ["hot"], retryIds: [], limit: 3 }),
+    ).toEqual([]);
+    // Холодный yielded ждёт свою страницу, даже если повтор разрешён:
+    // слот уходит холодному соседу, не ему.
+    expect(
+      selectChatWarmMeasureIds({
+        ...base,
+        cachedIds: ["hot"],
+        closedIds: ["hot"],
+        limit: 3,
+      }),
+    ).toEqual(["cold"]);
+    // Палец без разрешённой сборки берёт свой слот и тёплых соседей, но
+    // повторов не раздаёт.
+    expect(
+      selectChatWarmMeasureIds({
+        ...base,
+        assemblyEnabled: false,
+        parkedMeasuringId: "cold",
+        limit: 3,
+      }),
+    ).toEqual(["cold", "hot"]);
+    // Слайд на экране: только уже начатые, повторов нет.
+    expect(selectChatWarmMeasureIds({ ...base, slideBusy: true, limit: 3 })).toEqual([]);
+  });
+
   it("keeps a closed window mounted and includes the chat being opened", () => {
     expect(
       chatWarmMountedIds({
@@ -430,6 +517,113 @@ describe("chat warm windows", () => {
         activeId: null,
       }),
     ).toEqual(["a"]);
+  });
+});
+
+describe("chat bench slot frame", () => {
+  const width = 400;
+
+  it("keeps a single measuring slot in the window and uncovered", () => {
+    const frames = layoutChatBenchSlots({
+      slots: [
+        { id: "a", closed: false },
+        { id: "b", closed: false },
+      ],
+      activeId: null,
+      hostRaised: false,
+    });
+    const measuring = frames.filter((frame) => frame.layer === "measure");
+    expect(measuring).toHaveLength(1);
+    expect(measuring[0]?.id).toBe("a");
+    expect(measuring[0]?.occluded).toBe(false);
+    expect(frames[frames.length - 1]?.id).toBe("a");
+    expect(
+      chatBenchSlotTranslateX({
+        measureFrame: true,
+        slideOwned: false,
+        slideDriven: false,
+        slideProgress: 0,
+        screenWidth: width,
+      }),
+    ).toBeNull();
+    expect(frames.every((frame) => frame.remount === false)).toBe(true);
+  });
+
+  it("parks a closed slot at screenWidth on the same list instance", () => {
+    const frames = layoutChatBenchSlots({
+      slots: [
+        { id: "a", closed: true },
+        { id: "b", closed: false },
+      ],
+      activeId: null,
+      hostRaised: false,
+    });
+    const closed = frames.find((frame) => frame.id === "a");
+    expect(closed?.layer).toBe("parked");
+    expect(closed?.remount).toBe(false);
+    expect(
+      chatBenchSlotTranslateX({
+        measureFrame: false,
+        slideOwned: false,
+        slideDriven: false,
+        slideProgress: 0,
+        screenWidth: width,
+      }),
+    ).toBe(width);
+    expect(frames.find((frame) => frame.id === "b")?.layer).toBe("measure");
+  });
+
+  it("lets the next slot into the measure frame only after the current one is closed", () => {
+    const open = layoutChatBenchSlots({
+      slots: [
+        { id: "a", closed: false },
+        { id: "b", closed: false },
+      ],
+      activeId: null,
+      hostRaised: false,
+    });
+    expect(open.find((frame) => frame.layer === "measure")?.id).toBe("a");
+    expect(open.find((frame) => frame.id === "b")?.layer).toBe("parked");
+    const next = layoutChatBenchSlots({
+      slots: [
+        { id: "a", closed: true },
+        { id: "b", closed: false },
+      ],
+      activeId: null,
+      hostRaised: false,
+    });
+    expect(next.find((frame) => frame.layer === "measure")?.id).toBe("b");
+    expect(next.find((frame) => frame.id === "b")?.occluded).toBe(false);
+  });
+
+  it("holds the active slot at screenWidth until runEnter", () => {
+    const frames = layoutChatBenchSlots({
+      slots: [
+        { id: "closed", closed: true },
+        { id: "open", closed: false },
+      ],
+      activeId: "closed",
+      hostRaised: true,
+    });
+    expect(frames.some((frame) => frame.layer === "measure")).toBe(false);
+    expect(frames[frames.length - 1]?.id).toBe("closed");
+    expect(frames[frames.length - 1]?.layer).toBe("active");
+    expect(
+      chatBenchSlotTranslateX({
+        measureFrame: false,
+        slideOwned: true,
+        slideDriven: true,
+        slideProgress: 0,
+        screenWidth: width,
+      }),
+    ).toBe(width);
+    expect(chatBenchHostRaised({ holding: true, offEdge: true })).toBe(true);
+    expect(chatBenchHostRaised({ holding: false, offEdge: true })).toBe(false);
+  });
+
+  it("does not reset reveal when a closed bench slot is promoted", () => {
+    expect(chatBenchPromoteKeepsReveal(true)).toBe(true);
+    expect(chatBenchPromoteKeepsReveal(false)).toBe(false);
   });
 });
 

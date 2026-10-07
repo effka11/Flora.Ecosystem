@@ -129,6 +129,31 @@ export function chatListHiddenUntilReveal(args: {
 }
 
 /**
+ * Аргументы `chatListHiddenUntilReveal`, которые передаёт JSX экрана чата.
+ * Скамья (`bench`) — тоже окно подготовки: лента рисуется до тапа, а не только
+ * под пальцем (`holding`).
+ */
+export function chatThreadListRevealInput(args: {
+  listRevealed: boolean;
+  overlayHost: boolean;
+  bench: boolean;
+  holding: boolean;
+  sliding: boolean;
+}): {
+  listRevealed: boolean;
+  overlayHost: boolean;
+  preparingWindow: boolean;
+  sliding: boolean;
+} {
+  return {
+    listRevealed: args.listRevealed,
+    overlayHost: args.overlayHost,
+    preparingWindow: args.bench || args.holding,
+    sliding: args.sliding,
+  };
+}
+
+/**
  * scrollTo: shadow node списка уже есть.
  * `0` — пустой view tag (как `if (!tag)` у useScrollOffset).
  */
@@ -211,11 +236,27 @@ export const CHAT_WARM_LIVE_MAX = 5;
 export const CHAT_WARM_SLOT_MS = 400;
 
 /**
+ * Сколько раз yielded-чат с тёплым хвостом снова получает слот. Окно, которое
+ * не закрылось за столько дедлайнов, держит что-то структурное (расшифровка
+ * заблокирована, ростер группы не пришёл) — дальше его не трогаем.
+ */
+export const CHAT_WARM_RETRY_MAX = 2;
+
+/**
+ * Пауза между посадкой треда (оболочка запушена) и следующей пачкой скамьи.
+ * Открытый чат сразу после слайда доклеивает окно (+150 мс) и отпускает
+ * волны расшифровки (+400 мс) — коммиты скамьи идут после них.
+ */
+export const CHAT_WARM_THREAD_SETTLE_MS = 600;
+
+/**
  * Кого сейчас собирать. Уже начатые не снимать. Свободные слоты сначала
  * отдают чатам с расшифрованным хвостом. Холодный замер не занимает слот,
  * пока такой чат ещё ждёт, и не стартует, пока хоть одно такое окно не
  * закрыто. Страница без расшифровки (`heldIds`) слот не берёт: её добьёт
  * лёгкий прогрев. Слайд на экране новых не добавляет. Палец занимает слот.
+ * Yielded-чаты из `retryIds` с тёплым хвостом берут только оставшиеся слоты
+ * — после всех, кто ещё не пробовал.
  */
 export function selectChatWarmMeasureIds(args: {
   order: readonly string[];
@@ -229,6 +270,11 @@ export function selectChatWarmMeasureIds(args: {
   allowUncached?: boolean;
   /** Страница уже есть, хвост ещё нет. Не монтировать как холодный чат. */
   heldIds?: readonly string[];
+  /**
+   * Yielded-чаты, которым ещё можно вернуть слот (дедлайн не исчерпан).
+   * Берутся только с тёплым хвостом (`cachedIds`) и только в свободные места.
+   */
+  retryIds?: readonly string[];
   limit?: number;
 }): string[] {
   const limit = args.limit ?? CHAT_WARM_PARALLEL;
@@ -239,6 +285,7 @@ export function selectChatWarmMeasureIds(args: {
   const yielded = new Set(args.yieldedIds);
   const cached = new Set(args.cachedIds);
   const held = new Set(args.heldIds ?? []);
+  const retry = new Set(args.retryIds ?? []);
   const inFlight = new Set(args.inFlightIds);
   let cachedWaiting = false;
   let cachedOpen = false;
@@ -250,8 +297,9 @@ export function selectChatWarmMeasureIds(args: {
   }
   const chosen: string[] = [];
   const seen = new Set<string>();
-  const add = (id: string | null) => {
-    if (!id || seen.has(id) || closed.has(id) || yielded.has(id)) return;
+  const add = (id: string | null, allowYielded = false) => {
+    if (!id || seen.has(id) || closed.has(id)) return;
+    if (yielded.has(id) && !allowYielded) return;
     const reserved = id === args.parkedMeasuringId;
     if (chosen.length >= limit && !reserved) return;
     seen.add(id);
@@ -272,7 +320,82 @@ export function selectChatWarmMeasureIds(args: {
       add(id);
     }
   }
+  if (args.assemblyEnabled) {
+    // Промах дедлайна не вычёркивает чат на всю сессию: тёплый хвост снова
+    // берёт слот, когда очередь свободна. Холодный yielded ждёт свою страницу.
+    for (const id of args.order) {
+      if (retry.has(id) && yielded.has(id) && cached.has(id)) add(id, true);
+    }
+  }
   return chosen;
+}
+
+/**
+ * Хост скамьи над списком только на время слайда. Пока палец не лёг и чат
+ * за краем, слот замера лежит под списком: иначе полный кадр закрыл бы ленту.
+ * Смена — разовая, не на кадр жеста.
+ */
+export function chatBenchHostRaised(args: { holding: boolean; offEdge: boolean }): boolean {
+  return args.holding || !args.offEdge;
+}
+
+export type ChatBenchSlotLayer = "measure" | "parked" | "active";
+
+export type ChatBenchSlotFrame = {
+  id: string;
+  layer: ChatBenchSlotLayer;
+  /** Другой слот в кадре замера лежит поверх: onLayout и onLoad сюда не дойдут. */
+  occluded: boolean;
+  /** Поза не меняет инстанс ленты. */
+  remount: false;
+};
+
+/**
+ * Один слот в кадре замера — последний, без соседа поверх. Закрытые и
+ * ожидающие остаются в дереве, но не в этом кадре. Пока хост поднят на слайд,
+ * кадра замера нет: активный слот последний и до runEnter стоит за краем.
+ */
+export function layoutChatBenchSlots(args: {
+  slots: readonly { id: string; closed: boolean }[];
+  activeId: string | null;
+  hostRaised: boolean;
+}): ChatBenchSlotFrame[] {
+  const measureId = args.hostRaised
+    ? null
+    : (args.slots.find((slot) => !slot.closed && slot.id !== args.activeId)?.id ?? null);
+  const topId = args.hostRaised ? args.activeId : measureId;
+  const rest = args.slots.filter((slot) => slot.id !== topId);
+  const top = topId == null ? [] : args.slots.filter((slot) => slot.id === topId);
+  const ordered = [...rest, ...top];
+  return ordered.map((slot, index) => {
+    const layer: ChatBenchSlotLayer =
+      slot.id === measureId ? "measure" : slot.id === args.activeId ? "active" : "parked";
+    const occluded = ordered.slice(index + 1).some((above) => above.id === measureId);
+    return { id: slot.id, layer, occluded, remount: false };
+  });
+}
+
+/**
+ * `null` — нет translateX, слот в окне. Закрытый слот и активный до runEnter
+ * (`slideProgress` 0 при driven) — `screenWidth`. Слайд читает progress.
+ */
+export function chatBenchSlotTranslateX(args: {
+  measureFrame: boolean;
+  slideOwned: boolean;
+  slideDriven: boolean;
+  slideProgress: number;
+  screenWidth: number;
+}): number | null {
+  "worklet";
+  if (args.measureFrame && !args.slideOwned) return null;
+  if (!args.slideOwned) return args.screenWidth;
+  if (!args.slideDriven) return 0;
+  return (1 - args.slideProgress) * args.screenWidth;
+}
+
+/** bench → active не сбрасывает показ и не ждёт второй reveal. */
+export function chatBenchPromoteKeepsReveal(listRevealed: boolean): boolean {
+  return listRevealed;
 }
 
 /**
