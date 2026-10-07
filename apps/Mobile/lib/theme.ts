@@ -171,7 +171,10 @@ export function floraTabBarContentPadding(bottomInset: number) {
   return floraTabBarContentHeight() + bottomInset + floraSpacing.grid;
 }
 
-/** Единый стиль tab bar — чёрный фон, absolute. */
+/**
+ * Единый стиль tab bar — чёрный фон, absolute.
+ * `box-none` явно, чтобы видимый стиль заменял `none` скрытого, а не оставлял его.
+ */
 export function floraTabBarStyle(bottomInset: number) {
   return {
     position: "absolute" as const,
@@ -184,6 +187,7 @@ export function floraTabBarStyle(bottomInset: number) {
     paddingTop: floraTabBarTopPad(),
     paddingBottom: bottomInset,
     height: floraTabBarContentHeight() + bottomInset,
+    pointerEvents: "box-none" as const,
   };
 }
 

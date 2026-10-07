@@ -47,6 +47,7 @@ import {
   chatPushSlideStartOnRelease,
   chatWarmMountedIds,
   selectChatWarmMeasureIds,
+  type ChatPushShellPhase,
 } from "@/lib/chatListEnterMount";
 import { createChatWarmAssemblyGate } from "@/lib/chatWarmAssemblyGate";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
@@ -256,6 +257,7 @@ export function runChatPushExit(
   });
   if (!started) return false;
   // Слайд ещё едет, но hit-box больше не накрывает список и таб-бар.
+  exitPopArmed = true;
   reverseEpoch = nextEpoch;
   slideEpoch += 1;
   setChatPushOffEdge(true);
@@ -274,12 +276,13 @@ export function completeChatPushExitVisual(): void {
 
 export function resetChatPushProgress(): void {
   // Фокус списка возвращается в тот же кадр, что и pop оболочки. Слайд
-  // ещё на оверлее — сброс здесь оборвал бы уход.
+  // ещё на оверлее — сброс здесь оборвал бы уход. progress = 0 здесь не pop.
   if (chatPush.isExiting()) return;
   // Переподписка фокуса списка не снимает парковку и ещё не доехавший слайд:
   // список остаётся в фокусе, пока оболочка не запушена.
   if (parkPhase === "parked" || parkPhase === "play-wait") return;
   if (parkPhase === "playing" && !shellPushed) return;
+  exitPopArmed = false;
   releaseChatPark();
   chatPush.reset();
 }
@@ -324,6 +327,13 @@ let scrollCancelledPark = false;
 let slideHold = false;
 /** Оболочка уже запушена. До этого back снимает парк и маршрут не толкает. */
 let shellPushed = false;
+/**
+ * Маршрут оболочки ещё смонтирован. Не равен `shellPushed`: retain сбрасывает
+ * флаг пуша, пока прозрачный экран ещё в стеке.
+ */
+let chatShellInStack = false;
+/** runChatPushExit уже начат. park и reset фокуса списка снимают, чтобы не pop. */
+let exitPopArmed = false;
 let enterStarted = false;
 /** Инкремент отменяет отложенный runEnter и поздний колбэк withTiming. */
 let slideEpoch = 0;
@@ -611,6 +621,7 @@ function markWarmWindowClosed(id: string | null): void {
 }
 
 function releaseChatPark(): void {
+  exitPopArmed = false;
   slideEpoch += 1;
   reverseEpoch += 1;
   exitOffEdge = true;
@@ -912,6 +923,7 @@ export function prepareChatPushPress(): void {
 }
 
 function releaseParkAtEdge(): void {
+  exitPopArmed = false;
   reverseEpoch += 1;
   cancelAnimation(chatPush.progress);
   chatPush.progress.value = 0;
@@ -941,6 +953,27 @@ function beginReverseExit(): void {
   if (!started) releaseParkAtEdge();
 }
 
+export function isChatPushExitPopArmed(): boolean {
+  return exitPopArmed;
+}
+
+/** Снять взвод pop. park и возврат фокуса списка зовут до записи progress = 0. */
+export function disarmChatPushExitPop(): void {
+  exitPopArmed = false;
+}
+
+export function setChatPushShellInStack(inStack: boolean): void {
+  chatShellInStack = inStack;
+}
+
+export function getChatPushShellInStack(): boolean {
+  return chatShellInStack;
+}
+
+export function getChatPushParkPhase(): ChatPushShellPhase {
+  return parkPhase;
+}
+
 /**
  * Шапка и аппаратный back. `handled` — список не pop-ать.
  * `route` — оболочка ещё в стеке: pop сразу, слайд остаётся на оверлее.
@@ -948,6 +981,7 @@ function beginReverseExit(): void {
 export function dismissChatPush(): "handled" | "route" {
   const action = chatPushBackAction({
     shellPushed,
+    shellInStack: chatShellInStack,
     active: parkPhase !== "idle",
     offEdge: exitOffEdge,
     exiting: chatPush.isExiting(),
@@ -1005,7 +1039,9 @@ export function parkChatPush(args: {
   parkNavigate = args.navigate;
   overlaySnap = args.params;
   // Предыдущий экран ещё держит driven до коммита. Вход нового — следующий кадр.
+  // progress = 0 здесь — следующий чат, не конец выхода. Pop оболочки не звать.
   drivenRef = null;
+  exitPopArmed = false;
   cancelAnimation(chatPush.progress);
   chatPush.progress.value = 0;
   publishWarm();

@@ -4,6 +4,7 @@ import {
   canScrollChatList,
   chatPushBackAction,
   chatPushHostIgnoresHits,
+  chatPushShellShouldPop,
   chatPushIsOffEdge,
   chatPushPressBlockedByPlay,
   chatPushRepeatBackKeepsIntercept,
@@ -273,25 +274,142 @@ describe("chat push return", () => {
 
   it("reverses a close before the shell exists and keeps a second back on the same exit", () => {
     expect(
-      chatPushBackAction({ shellPushed: false, active: true, offEdge: false, exiting: false }),
+      chatPushBackAction({
+        shellPushed: false,
+        shellInStack: false,
+        active: true,
+        offEdge: false,
+        exiting: false,
+      }),
     ).toBe("reverse");
     expect(
-      chatPushBackAction({ shellPushed: false, active: true, offEdge: true, exiting: false }),
+      chatPushBackAction({
+        shellPushed: false,
+        shellInStack: false,
+        active: true,
+        offEdge: true,
+        exiting: false,
+      }),
     ).toBe("release");
     expect(
-      chatPushBackAction({ shellPushed: false, active: true, offEdge: false, exiting: true }),
+      chatPushBackAction({
+        shellPushed: false,
+        shellInStack: false,
+        active: true,
+        offEdge: false,
+        exiting: true,
+      }),
     ).toBe("keep");
     expect(
-      chatPushBackAction({ shellPushed: true, active: true, offEdge: false, exiting: false }),
+      chatPushBackAction({
+        shellPushed: true,
+        shellInStack: false,
+        active: true,
+        offEdge: false,
+        exiting: false,
+      }),
     ).toBe("pop-route");
     expect(
-      chatPushBackAction({ shellPushed: true, active: true, offEdge: true, exiting: true }),
+      chatPushBackAction({
+        shellPushed: true,
+        shellInStack: true,
+        active: true,
+        offEdge: true,
+        exiting: true,
+      }),
     ).toBe("keep");
     expect(
-      chatPushBackAction({ shellPushed: false, active: false, offEdge: true, exiting: false }),
+      chatPushBackAction({
+        shellPushed: false,
+        shellInStack: false,
+        active: false,
+        offEdge: true,
+        exiting: false,
+      }),
     ).toBe("pop-route");
     expect(chatPushRepeatBackKeepsIntercept(true)).toBe(true);
     expect(chatPushRepeatBackKeepsIntercept(false)).toBe(false);
+  });
+
+  it("pops a shell that is still in the stack after shellPushed was cleared", () => {
+    expect(
+      chatPushBackAction({
+        shellPushed: false,
+        shellInStack: true,
+        active: true,
+        offEdge: true,
+        exiting: false,
+      }),
+    ).toBe("pop-route");
+    expect(
+      chatPushBackAction({
+        shellPushed: false,
+        shellInStack: false,
+        active: true,
+        offEdge: true,
+        exiting: false,
+      }),
+    ).toBe("release");
+  });
+});
+
+describe("chat push shell pop", () => {
+  it("does not pop when progress is 0 in the parked phase", () => {
+    expect(
+      chatPushShellShouldPop({
+        exitStarted: false,
+        phase: "parked",
+        progress: 0,
+        crossedDown: true,
+        shellFocused: true,
+        shellInStack: true,
+      }),
+    ).toBe(false);
+    expect(
+      chatPushShellShouldPop({
+        exitStarted: true,
+        phase: "parked",
+        progress: 0,
+        crossedDown: true,
+        shellFocused: true,
+        shellInStack: true,
+      }),
+    ).toBe(false);
+    expect(
+      chatPushShellShouldPop({
+        exitStarted: true,
+        phase: "play-wait",
+        progress: 0,
+        crossedDown: true,
+        shellFocused: true,
+        shellInStack: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("pops once when an exit has started, the frame is off the edge, and the shell is still in the stack", () => {
+    const exitAtEdge = {
+      exitStarted: true,
+      phase: "playing" as const,
+      progress: 0,
+      crossedDown: true,
+      shellFocused: true,
+      shellInStack: true,
+    };
+    expect(chatPushShellShouldPop(exitAtEdge)).toBe(true);
+    expect(chatPushShellShouldPop({ ...exitAtEdge, shellInStack: false })).toBe(false);
+    expect(chatPushShellShouldPop({ ...exitAtEdge, shellFocused: false })).toBe(false);
+    expect(chatPushShellShouldPop({ ...exitAtEdge, exitStarted: false })).toBe(false);
+    expect(
+      chatPushShellShouldPop({
+        exitStarted: false,
+        phase: "idle",
+        progress: 0,
+        crossedDown: true,
+        shellFocused: true,
+        shellInStack: true,
+      }),
+    ).toBe(false);
   });
 });
 

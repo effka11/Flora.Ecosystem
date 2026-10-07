@@ -147,19 +147,26 @@ import {
   notifyChatWarmMeasureYielded,
   notifyChatWarmWindowClosed,
   completeChatPushExitVisual,
+  disarmChatPushExitPop,
+  getChatPushParkPhase,
+  getChatPushShellInStack,
+  isChatPushExitPopArmed,
   registerChatPushDriven,
   unregisterChatPushDriven,
   runChatPushEnter,
   runChatPushExit,
   subscribeChatPush,
   clearChatWarmGateOwner,
+  setChatPushShellInStack,
   setChatWarmScreenFocused,
   setChatWarmScrollBusy,
 } from "@/lib/chatPushTransition";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import {
+  CHAT_PUSH_OFF_EDGE,
   CHAT_WARM_THREAD_SETTLE_MS,
   chatBenchPromoteKeepsReveal,
+  chatPushShellShouldPop,
   chatBenchSlotTranslateX,
   chatListHiddenUntilReveal,
   chatPushRepeatBackKeepsIntercept,
@@ -3498,20 +3505,58 @@ function OverlayRouteShell() {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
   const warmGateOwner = useMemo(() => Symbol("chat-thread-shell"), []);
+  const closingRef = useRef(false);
+  const shellFocusedRef = useRef(false);
+  const shellPopOnceRef = useRef(false);
   useEffect(() => () => clearChatWarmGateOwner(warmGateOwner), [warmGateOwner]);
+  useLayoutEffect(() => {
+    setChatPushShellInStack(true);
+    return () => {
+      setChatPushShellInStack(false);
+      shellFocusedRef.current = false;
+    };
+  }, []);
+  const popShellAtEdge = useCallback(() => {
+    // Шапка уже сняла маршрут — второго back нет. park (progress = 0) сюда
+    // доходит как пересечение вниз, но фаза parked и снятый взвод его гасят.
+    // В предикат кладём 0: порог уже пройден на UI, JS-значение progress отстаёт.
+    if (shellPopOnceRef.current || closingRef.current) return;
+    const should = chatPushShellShouldPop({
+      exitStarted: isChatPushExitPopArmed(),
+      phase: getChatPushParkPhase(),
+      progress: 0,
+      crossedDown: true,
+      shellFocused: shellFocusedRef.current,
+      shellInStack: getChatPushShellInStack(),
+    });
+    if (!should) return;
+    shellPopOnceRef.current = true;
+    disarmChatPushExitPop();
+    router.back();
+  }, []);
+  useAnimatedReaction(
+    () => chatPushProgress.value,
+    (progress, prev) => {
+      if (prev == null || prev <= CHAT_PUSH_OFF_EDGE) return;
+      if (progress > CHAT_PUSH_OFF_EDGE) return;
+      runOnJS(popShellAtEdge)();
+    },
+    [popShellAtEdge],
+  );
   useFocusEffect(
     useCallback(() => {
+      shellFocusedRef.current = true;
       applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
       // Оболочка — экран вкладки Messages: список потерял фокус, но вкладка
       // на месте, и очередь скамьи продолжает под открытым чатом.
       setChatWarmScreenFocused(warmGateOwner, true, CHAT_WARM_THREAD_SETTLE_MS);
       return () => {
+        shellFocusedRef.current = false;
         setChatWarmScreenFocused(warmGateOwner, false);
         applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
       };
     }, [navigation, tabBarBottomInset, warmGateOwner]),
   );
-  const closingRef = useRef(false);
   useEffect(() => {
     closingRef.current = false;
     const unsubscribe = navigation.addListener("beforeRemove", (event) => {
