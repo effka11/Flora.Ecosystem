@@ -817,6 +817,7 @@ export default function MessagesScreen() {
       }, FOCUS_REFRESH_DELAY_MS);
       return () => {
         clearTimeout(refreshTimer);
+        cancelAnimationFrame(warmFrame);
         tabFocusedRef.current = false;
         setTabFocused(false);
         setConversationsListFocused(false);
