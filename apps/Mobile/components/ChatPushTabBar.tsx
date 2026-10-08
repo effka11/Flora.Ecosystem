@@ -1,18 +1,19 @@
 import MaskedView from "@react-native-masked-view/masked-view";
 import { BottomTabBar, type BottomTabBarProps } from "expo-router/tabs";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 import Reanimated, {
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
 } from "react-native-reanimated";
-import { CHAT_PUSH_OFF_EDGE } from "@/lib/chatListEnterMount";
+import { CHAT_PUSH_OFF_EDGE, chatPushTabBarOffEdgeCommit } from "@/lib/chatListEnterMount";
 import {
   CHAT_PUSH_DIM,
   CHAT_PUSH_PARALLAX,
   chatPushProgress,
   composePushProgress,
+  subscribeChatPushDockHits,
 } from "@/lib/chatPushTransition";
 import { tabBarMaskTranslateXPx, uncoveredWidthPx } from "@/lib/chatPushTabBarClip";
 import { chatPushTabBarHits } from "@/lib/chatPushTabBarHits";
@@ -80,7 +81,8 @@ export function renderChatPushTabBar(props: BottomTabBarProps) {
  * Хост только высота бара: absoluteFill накрывал бы весь Tabs и ел тапы
  * по списку. Хиты глушатся, только пока док закрыт (создание поста или чат
  * ещё на экране при стиле `none`). За краем и хост, и стиль панели —
- * `box-none`. Слайд не дёргает React, пока кадр не пересёк порог.
+ * `box-none`. Заезд на пороге 0.01 не делает setState. Падение progress
+ * до края коммитит chatOffEdge в том же кадре.
  */
 export function ChatPushTabBar(props: BottomTabBarProps) {
   const { width: screenWidth } = useWindowDimensions();
@@ -97,12 +99,18 @@ export function ChatPushTabBar(props: BottomTabBarProps) {
   const [chatOffEdge, setChatOffEdge] = useState(
     () => chatPushProgress.value <= CHAT_PUSH_OFF_EDGE,
   );
+  useEffect(
+    () =>
+      subscribeChatPushDockHits((off) => {
+        setChatOffEdge(off);
+      }),
+    [],
+  );
   useAnimatedReaction(
-    () => chatPushProgress.value <= CHAT_PUSH_OFF_EDGE,
-    (off, prev) => {
-      if (off !== prev) {
-        runOnJS(setChatOffEdge)(off);
-      }
+    () => chatPushProgress.value,
+    (progress, prev) => {
+      if (!chatPushTabBarOffEdgeCommit(prev, progress)) return;
+      runOnJS(setChatOffEdge)(true);
     },
   );
   const hits = chatPushTabBarHits({

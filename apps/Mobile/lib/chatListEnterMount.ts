@@ -357,12 +357,82 @@ export function selectChatWarmMeasureIds(args: {
 }
 
 /**
- * Хост скамьи над списком только на время слайда. Пока палец не лёг и чат
+ * Хост скамьи над списком, пока слайд ещё виден. Пока палец не лёг и чат
  * за краем, слот замера лежит под списком: иначе полный кадр закрыл бы ленту.
+ * `offEdge` раньше конца выхода влияет только на хиты: картинка остаётся
+ * сверху, пока `exiting`. `enterPaint` — фаза заезда уже опубликована, а
+ * кадр для хитов ещё за краем, слот не прячется под список до withTiming.
+ * После progress = 0 и снятого exiting хост снова под списком.
  * Смена — разовая, не на кадр жеста.
  */
-export function chatBenchHostRaised(args: { holding: boolean; offEdge: boolean }): boolean {
+export function chatBenchHostRaised(args: {
+  holding: boolean;
+  offEdge: boolean;
+  exiting: boolean;
+  enterPaint: boolean;
+}): boolean {
+  if (args.exiting || args.enterPaint) return true;
   return args.holding || !args.offEdge;
+}
+
+/**
+ * Первое отпускание прогретого чата. Публикация фазы — до withTiming, слот
+ * ещё за правым краем; тайминг — следующий кадр. На `completeParkedEnter`
+ * эту публикацию не переносить: слот остаётся в hold и runEnter с этого
+ * отпускания не стартует.
+ */
+export function chatPushEnterKickoff(args: {
+  scrollCancelled: boolean;
+  carpetDown: boolean;
+}): {
+  runEnter: boolean;
+  publishBeforeTiming: boolean;
+  timingNextFrame: boolean;
+  deferPublishToComplete: false;
+} {
+  const start = chatPushSlideStartOnRelease(args);
+  if (!start.runEnter) {
+    return {
+      runEnter: false,
+      publishBeforeTiming: false,
+      timingNextFrame: false,
+      deferPublishToComplete: false,
+    };
+  }
+  return {
+    runEnter: true,
+    publishBeforeTiming: true,
+    timingNextFrame: true,
+    deferPublishToComplete: false,
+  };
+}
+
+/**
+ * Запись off-edge на пороге 0.01 во время withTiming заезда флаг пишет,
+ * подписчиков не будит. Выход (кадр ушёл за край) по-прежнему публикует хиты.
+ */
+export function chatPushOffEdgeNotifies(args: {
+  prevOff: boolean;
+  nextOff: boolean;
+  enterTiming: boolean;
+}): boolean {
+  if (args.prevOff === args.nextOff) return false;
+  if (args.enterTiming && args.prevOff && !args.nextOff) return false;
+  return true;
+}
+
+/**
+ * Решение реакции таб-бара. Заезд через 0.01 не коммитит `chatOffEdge`.
+ * Падение до <= 0.01 коммитит `offEdge = true`. Снятие обратной ветки
+ * красит тест: функция перестаёт возвращать true на падении.
+ */
+export function chatPushTabBarOffEdgeCommit(prev: number | null, progress: number): boolean {
+  "worklet";
+  if (prev == null) return false;
+  const off = progress <= CHAT_PUSH_OFF_EDGE;
+  const wasOff = prev <= CHAT_PUSH_OFF_EDGE;
+  if (wasOff && !off) return false;
+  return !wasOff && off;
 }
 
 export type ChatBenchSlotLayer = "measure" | "parked" | "active";

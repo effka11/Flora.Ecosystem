@@ -18,12 +18,13 @@
  * кадра — настоящий экран, а не пустая подложка.
  *
  * Список диалогов: press-in паркует тред за правым краем (progress = 0, без
- * анимации и без фокуса маршрута). Отпускание без скролла коммитит play, но
- * runEnter зовётся только когда ковёр уже 0: в том же вызове, если ковёр
- * погас до пальца, и на следующем кадре после коммита listRevealed, если
- * ковёр гаснет позже. Маршрут оболочки пушится в конце withTiming, не на
- * старте. Deep link и reduce motion по-прежнему ставят экран сразу:
- * arm*Enter() → router.push → run*Enter() из useLayoutEffect.
+ * анимации и без фокуса маршрута). Отпускание без скролла коммитит play.
+ * Ковёр уже 0 — publishPark один раз до withTiming, слот ещё за краем, тайминг
+ * со следующего кадра. Порог 0.01 на заезде подписчиков не будит. Ковёр гаснет
+ * позже — runEnter на следующем кадре после listRevealed. Маршрут оболочки
+ * пушится в конце withTiming, не на старте. Deep link и reduce motion
+ * по-прежнему ставят экран сразу: arm*Enter() → router.push → run*Enter()
+ * из useLayoutEffect.
  *
  * Назад: beforeRemove → run*Exit() ведёт progress к 0 и после этого
  * отпускает отложенный pop. Пока оболочки нет, закрытие играет тот же
@@ -39,12 +40,14 @@ import {
   type SharedValue,
 } from "react-native-reanimated";
 import {
+  CHAT_PUSH_OFF_EDGE,
   CHAT_WARM_LIVE_MAX,
   CHAT_WARM_RETRY_MAX,
   chatPushBackAction,
+  chatPushEnterKickoff,
+  chatPushOffEdgeNotifies,
   chatPushPressBlockedByPlay,
   chatPushSlideStartOnCarpet,
-  chatPushSlideStartOnRelease,
   chatWarmMountedIds,
   selectChatWarmMeasureIds,
   type ChatPushShellPhase,
@@ -54,6 +57,7 @@ import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import { clearChatOpenAvatarPaint } from "@/lib/chatOpenAvatars";
 import { markChatOpenPlay } from "@/lib/chatOpenTrace";
 import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
+import { setFrcImageQueuePaused } from "@/lib/frcImage";
 
 const ENTER_MS = ENERGETIC_OPEN_MS;
 const ENTER_EASING = ENERGETIC_OPEN_EASING;
@@ -220,6 +224,41 @@ function createCoverPush(): CoverPush {
 const chatPush = createCoverPush();
 const composePush = createCoverPush();
 
+/** Отдельный owner слайда чата: пауза декода не делит причину с пейджером ленты. */
+const chatSlideFrcOwner = Symbol("chat-push-slide");
+let chatSlideImagesPaused = false;
+
+function beginChatSlideImagePause(): void {
+  if (chatSlideImagesPaused) return;
+  chatSlideImagesPaused = true;
+  setFrcImageQueuePaused(chatSlideFrcOwner, "drag", true);
+}
+
+function endChatSlideImagePause(): void {
+  if (!chatSlideImagesPaused) return;
+  chatSlideImagesPaused = false;
+  setFrcImageQueuePaused(chatSlideFrcOwner, "drag", false);
+}
+
+const dockHitListeners = new Set<(offEdge: boolean) => void>();
+
+/** Хиты дока. Не подписчик publishPark: порог 0.01 заезда этот набор не будит. */
+export function subscribeChatPushDockHits(listener: (offEdge: boolean) => void): () => void {
+  dockHitListeners.add(listener);
+  return () => {
+    dockHitListeners.delete(listener);
+  };
+}
+
+function emitDockHits(offEdge: boolean): void {
+  for (const listener of dockHitListeners) listener(offEdge);
+}
+
+function finishChatSlideExitFrame(): void {
+  endChatSlideImagePause();
+  if (chatPush.progress.value <= CHAT_PUSH_OFF_EDGE) emitDockHits(true);
+}
+
 /** 0 — список диалогов в покое, 1 — чат полностью накрыл список. */
 export const chatPushProgress = chatPush.progress;
 
@@ -242,7 +281,9 @@ export function isChatPushEnterArmed(): boolean {
 
 export function runChatPushEnter(driven: SharedValue<boolean>): void {
   markChatOpenPlay();
-  chatPush.runEnter(driven);
+  emitDockHits(false);
+  beginChatSlideImagePause();
+  chatPush.runEnter(driven, endChatSlideImagePause);
 }
 
 export function runChatPushExit(
@@ -252,10 +293,12 @@ export function runChatPushExit(
   const nextEpoch = reverseEpoch + 1;
   const started = chatPush.runExit(driven, () => {
     if (nextEpoch !== reverseEpoch) return;
+    finishChatSlideExitFrame();
     if (parkPhase === "parked" || parkPhase === "play-wait") return;
     onDone();
   });
   if (!started) return false;
+  beginChatSlideImagePause();
   // Слайд ещё едет, но hit-box больше не накрывает список и таб-бар.
   exitPopArmed = true;
   reverseEpoch = nextEpoch;
@@ -316,6 +359,13 @@ let parkNavigate: (() => void) | null = null;
 let overlaySnap: ChatPushParkParams | null = null;
 let holdingSnap = false;
 let slidingSnap = false;
+/** Снимок exiting на публикации. Живой флаг читает isChatPushExiting. */
+let exitingSnap = false;
+/**
+ * Заезд опубликован, React ещё видит кадр за краем. Хост остаётся сверху,
+ * пока withTiming не доехал и конец слайда не снял offEdge.
+ */
+let enterPaintSnap = false;
 let enterGeneration = 0;
 let enteredGeneration = -1;
 let drivenRef: SharedValue<boolean> | null = null;
@@ -401,6 +451,9 @@ function normParkUuid(uuid: string): string {
 function publishPark(): void {
   holdingSnap = parkPhase === "parked" || parkPhase === "play-wait";
   slidingSnap = parkPhase === "playing";
+  // Снятие парка уже idle: живой exiting сбрасывает reset следом, хост не держим.
+  exitingSnap = parkPhase !== "idle" && chatPush.isExiting();
+  enterPaintSnap = enterStarted && parkPhase === "playing" && exitOffEdge && !exitingSnap;
   for (const listener of parkListeners) listener();
 }
 
@@ -635,13 +688,16 @@ function releaseChatPark(): void {
   slideHold = false;
   shellPushed = false;
   enterStarted = false;
+  endChatSlideImagePause();
+  emitDockHits(true);
   publishPark();
 }
 
 /**
  * Слайд доиграл, чат за правым краем. Оверлей и его картинки остаются:
  * следующий заход того же треда не монтирует их заново, список не мигает.
- * Фазу не публикуем — подписчики списка не перерисовываются.
+ * Публикуем снятый exiting: holding и sliding не меняются, тред по своим
+ * снимкам не перерисовывается, хост уходит под список.
  */
 function retainChatPushOffEdge(): void {
   if (overlaySnap == null || parkedUuid == null) {
@@ -658,6 +714,8 @@ function retainChatPushOffEdge(): void {
   setActiveMessageThread(null);
   markWarmWindowClosed(parkedUuid);
   chatPush.reset();
+  endChatSlideImagePause();
+  publishPark();
   publishWarm();
   pumpWarm();
 }
@@ -677,11 +735,27 @@ export function getChatPushOffEdge(): boolean {
   return exitOffEdge;
 }
 
-/** С UI-потока: progress пересёк край. Лишние публикации не шлём. */
+/**
+ * С UI-потока: progress пересёк край. На заезде порог 0.01 пишет флаг для
+ * press, pop оболочки и хитов и не будит подписчиков. Выход публикует сразу.
+ */
 export function setChatPushOffEdge(off: boolean): void {
   if (exitOffEdge === off) return;
+  const notify = chatPushOffEdgeNotifies({
+    prevOff: exitOffEdge,
+    nextOff: off,
+    enterTiming: enterStarted && !chatPush.isExiting(),
+  });
   exitOffEdge = off;
-  publishPark();
+  if (notify) publishPark();
+}
+
+export function getChatPushExiting(): boolean {
+  return exitingSnap;
+}
+
+export function getChatPushEnterPaint(): boolean {
+  return enterPaintSnap;
 }
 
 export function getChatPushSliding(): boolean {
@@ -914,6 +988,9 @@ function reviveOffEdgePlay(): void {
   slideHold = false;
   shellPushed = false;
   parkPhase = "parked";
+  // Паузу декода снимаем здесь: поздний колбэк выхода уже другой эпохи и
+  // не должен трогать следующий слайд. Хиты дока — только порог 0.01.
+  endChatSlideImagePause();
   publishPark();
 }
 
@@ -944,12 +1021,16 @@ function beginReverseExit(): void {
     driven,
     () => {
       if (epoch !== reverseEpoch) return;
+      finishChatSlideExitFrame();
       if (parkPhase === "parked" || parkPhase === "play-wait") return;
       retainChatPushOffEdge();
     },
     true,
   );
-  if (started) setChatPushOffEdge(true);
+  if (started) {
+    beginChatSlideImagePause();
+    setChatPushOffEdge(true);
+  }
   if (!started) releaseParkAtEdge();
 }
 
@@ -1024,8 +1105,11 @@ export function parkChatPush(args: {
   if (!id) return "skipped";
   scrollCancelledPark = false;
   // Чат ещё на экране — чужой uuid не подменяет парк.
-  // За краем фаза playing больше не держит press: этот uuid паркуется снова.
-  if (parkPhase === "playing" && !exitOffEdge) return "same";
+  // Заезд уже принят, кадр ещё не пересёк 0.01: второй press не возвращает hold.
+  // За краем после выхода фаза playing больше не держит press: uuid паркуется снова.
+  if (parkPhase === "playing" && (!exitOffEdge || (enterStarted && !chatPush.isExiting()))) {
+    return "same";
+  }
   reviveOffEdgePlay();
   if ((parkPhase === "parked" || parkPhase === "play-wait") && parkedUuid === id) {
     return "same";
@@ -1128,18 +1212,23 @@ export function notifyChatPushWindowClosed(conversationUuid: string): void {
 }
 
 /**
- * Отпускание без скролла. Фаза playing без publishPark: повторный тап не
- * паркует второй чат, а тред не перерисовывается в кадрах withTiming.
- * Ковёр уже 0 — runEnter в этом вызове. Иначе ждём ковёр.
+ * Отпускание без скролла. Первое отпускание прогретого чата в этот же тап
+ * вызывает runEnter. publishPark — один раз до withTiming, слот ещё за краем.
+ * Порог 0.01 посреди слайда подписчиков не будит. Ковёр ещё не 0 — ждём его.
  */
 export function requestChatPushPlay(conversationUuid: string): void {
   if (parkedUuid == null || normParkUuid(conversationUuid) !== parkedUuid) return;
   if (parkPhase !== "parked" && parkPhase !== "play-wait") return;
   parkPhase = "playing";
   slideHold = true;
-  scheduleParkedEnter(
-    chatPushSlideStartOnRelease({ scrollCancelled: false, carpetDown: parkCarpetDown }),
-  );
+  const kickoff = chatPushEnterKickoff({
+    scrollCancelled: false,
+    carpetDown: parkCarpetDown,
+  });
+  scheduleParkedEnter({
+    runEnter: kickoff.runEnter,
+    waitFrames: 0,
+  });
 }
 
 function scheduleParkedEnter(issue: { runEnter: boolean; waitFrames: number }): void {
@@ -1170,7 +1259,18 @@ function startParkedEnter(epoch: number, attempt = 0): void {
   parkedEnterEpoch = epoch;
   chatPush.primeEnter();
   markChatOpenPlay();
-  chatPush.runEnter(driven, finishParkedEnterFromUi);
+  // Фаза уходит подписчикам, пока translateX ещё screenWidth. withTiming — следующий кадр.
+  publishPark();
+  emitDockHits(false);
+  requestAnimationFrame(() => {
+    if (epoch !== slideEpoch || parkPhase !== "playing") return;
+    beginChatSlideImagePause();
+    chatPush.runEnter(driven, () => {
+      if (parkedEnterEpoch !== slideEpoch) return;
+      endChatSlideImagePause();
+      finishParkedEnterFromUi();
+    });
+  });
 }
 
 function finishParkedEnterFromUi(): void {
@@ -1182,6 +1282,7 @@ function finishParkedEnterFromUi(): void {
 function completeParkedEnter(): void {
   if (parkPhase !== "playing" || shellPushed) return;
   shellPushed = true;
+  if (chatPush.progress.value > CHAT_PUSH_OFF_EDGE) exitOffEdge = false;
   publishPark();
   parkNavigate?.();
 }

@@ -13,6 +13,8 @@ import {
 import { applyMessagesTabBarHidden, isMessagesInThread, isMessagesInThreadPath } from "@/lib/messagesTabBar";
 import {
   chatPushProgress,
+  getChatPushEnterPaint,
+  getChatPushExiting,
   getChatPushHolding,
   getChatPushOffEdge,
   getChatPushOverlay,
@@ -88,6 +90,8 @@ function ParkedChatHost() {
   const parked = useSyncExternalStore(subscribeChatPush, getChatPushOverlay);
   const holding = useSyncExternalStore(subscribeChatPush, getChatPushHolding);
   const offEdge = useSyncExternalStore(subscribeChatPush, getChatPushOffEdge);
+  const exiting = useSyncExternalStore(subscribeChatPush, getChatPushExiting);
+  const enterPaint = useSyncExternalStore(subscribeChatPush, getChatPushEnterPaint);
   const bench = useSyncExternalStore(subscribeChatWarm, getChatWarmBench);
   useAnimatedReaction(
     () => chatPushProgress.value <= CHAT_PUSH_OFF_EDGE,
@@ -99,7 +103,7 @@ function ParkedChatHost() {
   if (!parked && bench.length === 0) return null;
   // Пока чат за правым краем, хост не участник hit-test: transform уводит
   // картинку, но рамка лэйаута остаётся на весь экран и съедала бы тап.
-  const hostRaised = chatBenchHostRaised({ holding, offEdge });
+  const hostRaised = chatBenchHostRaised({ holding, offEdge, exiting, enterPaint });
   const ignoreHits = !hostRaised || chatPushHostIgnoresHits({ holding, offEdge });
   const activeId = parked?.conversationUuid.trim().toLowerCase() ?? "";
   const slots =
