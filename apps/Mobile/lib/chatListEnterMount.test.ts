@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   canIssueChatPushPlay,
   canScrollChatList,
+  CHAT_PUSH_OFF_EDGE,
   chatPushBackAction,
+  chatPushEnterKickoff,
   chatPushHostIgnoresHits,
+  chatPushOffEdgeNotifies,
   chatPushShellShouldPop,
   chatPushIsOffEdge,
   chatPushPressBlockedByPlay,
   chatPushRepeatBackKeepsIntercept,
   chatPushSlideStartOnCarpet,
   chatPushSlideStartOnRelease,
+  chatPushTabBarOffEdgeCommit,
   chatBenchHostRaised,
   chatBenchPromoteKeepsReveal,
   chatBenchSlotTranslateX,
@@ -244,6 +248,63 @@ describe("chat push slide start", () => {
     expect(chatPushSlideStartOnRelease({ scrollCancelled: true, carpetDown: false }).runEnter).toBe(
       false,
     );
+  });
+
+  it("starts enter on the first release and publishes before timing, not at complete", () => {
+    expect(
+      chatPushEnterKickoff({ scrollCancelled: false, carpetDown: true }),
+    ).toEqual({
+      runEnter: true,
+      publishBeforeTiming: true,
+      timingNextFrame: true,
+      deferPublishToComplete: false,
+    });
+  });
+
+  it("does not start enter on release while the warm window is still open", () => {
+    expect(chatPushEnterKickoff({ scrollCancelled: false, carpetDown: false }).runEnter).toBe(
+      false,
+    );
+    expect(
+      chatPushEnterKickoff({ scrollCancelled: false, carpetDown: false }).publishBeforeTiming,
+    ).toBe(false);
+  });
+});
+
+describe("chat push off-edge subscribers", () => {
+  it("does not wake subscribers when the 0.01 edge clears during enter timing", () => {
+    expect(
+      chatPushOffEdgeNotifies({ prevOff: true, nextOff: false, enterTiming: true }),
+    ).toBe(false);
+  });
+
+  it("wakes subscribers when the exit flag returns list hits", () => {
+    expect(
+      chatPushOffEdgeNotifies({ prevOff: false, nextOff: true, enterTiming: false }),
+    ).toBe(true);
+    expect(
+      chatPushOffEdgeNotifies({ prevOff: false, nextOff: true, enterTiming: true }),
+    ).toBe(true);
+  });
+});
+
+describe("chat push tab bar off-edge reaction", () => {
+  it("does not commit chatOffEdge when enter crosses 0.01", () => {
+    expect(chatPushTabBarOffEdgeCommit(0, 0.02)).toBe(false);
+    expect(chatPushTabBarOffEdgeCommit(0, 1)).toBe(false);
+    expect(chatPushTabBarOffEdgeCommit(CHAT_PUSH_OFF_EDGE, 0.5)).toBe(false);
+  });
+
+  it("commits offEdge when progress falls to the edge", () => {
+    expect(chatPushTabBarOffEdgeCommit(1, 0)).toBe(true);
+    expect(chatPushTabBarOffEdgeCommit(0.5, CHAT_PUSH_OFF_EDGE)).toBe(true);
+    expect(chatPushTabBarOffEdgeCommit(0.02, 0)).toBe(true);
+  });
+
+  it("does not commit when the edge side does not change", () => {
+    expect(chatPushTabBarOffEdgeCommit(null, 0)).toBe(false);
+    expect(chatPushTabBarOffEdgeCommit(0, CHAT_PUSH_OFF_EDGE)).toBe(false);
+    expect(chatPushTabBarOffEdgeCommit(1, 0.4)).toBe(false);
   });
 });
 
@@ -735,8 +796,38 @@ describe("chat bench slot frame", () => {
         screenWidth: width,
       }),
     ).toBe(width);
-    expect(chatBenchHostRaised({ holding: true, offEdge: true })).toBe(true);
-    expect(chatBenchHostRaised({ holding: false, offEdge: true })).toBe(false);
+    expect(
+      chatBenchHostRaised({
+        holding: true,
+        offEdge: true,
+        exiting: false,
+        enterPaint: false,
+      }),
+    ).toBe(true);
+    expect(
+      chatBenchHostRaised({
+        holding: false,
+        offEdge: true,
+        exiting: false,
+        enterPaint: false,
+      }),
+    ).toBe(false);
+    expect(
+      chatBenchHostRaised({
+        holding: false,
+        offEdge: true,
+        exiting: true,
+        enterPaint: false,
+      }),
+    ).toBe(true);
+    expect(
+      chatBenchHostRaised({
+        holding: false,
+        offEdge: true,
+        exiting: false,
+        enterPaint: true,
+      }),
+    ).toBe(true);
   });
 
   it("does not reset reveal when a closed bench slot is promoted", () => {
