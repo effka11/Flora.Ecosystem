@@ -81,8 +81,8 @@ jobs:
       # apps/Web is not a root npm workspace, so root `npm run ci` never runs it.
       - name: Test Web
         run: npm --prefix apps/Web test
-      # TODO: включить после погашения eslint-долга в apps/Web (~109 существующих ошибок
-      # react-hooks/* — чинить отдельной задачей, не в рамках настройки CI):
+      # TODO: включить после погашения eslint-долга в apps/Web (~121 ошибок
+      # react-hooks/* после Next 16.4 / React 19.3 — чинить отдельной задачей, не в рамках настройки CI):
       # - name: Lint
       #   working-directory: apps/Web
       #   run: npm run lint
