@@ -357,21 +357,26 @@ export function selectChatWarmMeasureIds(args: {
 }
 
 /**
- * Хост скамьи над списком, пока слайд ещё виден. Пока палец не лёг и чат
- * за краем, слот замера лежит под списком: иначе полный кадр закрыл бы ленту.
- * `offEdge` раньше конца выхода влияет только на хиты: картинка остаётся
- * сверху, пока `exiting`. `enterPaint` — фаза заезда уже опубликована, а
- * кадр для хитов ещё за краем, слот не прячется под список до withTiming.
- * После progress = 0 и снятого exiting хост снова под списком.
- * Смена — разовая, не на кадр жеста.
+ * Хост скамьи над списком, пока слайд ещё виден. Пока палец держит слот, а
+ * его окно не закрыто, хост остаётся под списком: иначе слот замера уезжает
+ * за край и новых onLayout нет. `enterPaint` и `exiting` поднимают хост и
+ * при открытом ковре. `offEdge` раньше конца выхода влияет только на хиты:
+ * картинка остаётся сверху, пока `exiting`. После progress = 0 и снятого
+ * exiting хост снова под списком. Смена — разовая, не на кадр жеста.
  */
 export function chatBenchHostRaised(args: {
   holding: boolean;
   offEdge: boolean;
   exiting: boolean;
   enterPaint: boolean;
+  /**
+   * Ковёр активного слота погашен. Нет аргумента — считаем погашенным:
+   * прежние вызовы по-прежнему поднимают хост на holding.
+   */
+  carpetDown?: boolean;
 }): boolean {
   if (args.exiting || args.enterPaint) return true;
+  if (args.holding && args.carpetDown === false) return false;
   return args.holding || !args.offEdge;
 }
 
@@ -448,17 +453,24 @@ export type ChatBenchSlotFrame = {
 
 /**
  * Один слот в кадре замера — последний, без соседа поверх. Закрытые и
- * ожидающие остаются в дереве, но не в этом кадре. Пока хост поднят на слайд,
- * кадра замера нет: активный слот последний и до runEnter стоит за краем.
+ * ожидающие остаются в дереве, но не в этом кадре. Хост под списком и
+ * активный слот ещё не закрыт — кадр замера у него (`measure`, не `active`),
+ * сосед в окно не попадает. Пока хост поднят, кадра замера нет: закрытый
+ * активный слот последний и до runEnter стоит за краем.
  */
 export function layoutChatBenchSlots(args: {
   slots: readonly { id: string; closed: boolean }[];
   activeId: string | null;
   hostRaised: boolean;
 }): ChatBenchSlotFrame[] {
+  const active =
+    args.activeId == null ? undefined : args.slots.find((slot) => slot.id === args.activeId);
+  const measureOpenActive = !args.hostRaised && active != null && !active.closed;
   const measureId = args.hostRaised
     ? null
-    : (args.slots.find((slot) => !slot.closed && slot.id !== args.activeId)?.id ?? null);
+    : measureOpenActive
+      ? active.id
+      : (args.slots.find((slot) => !slot.closed && slot.id !== args.activeId)?.id ?? null);
   const topId = args.hostRaised ? args.activeId : measureId;
   const rest = args.slots.filter((slot) => slot.id !== topId);
   const top = topId == null ? [] : args.slots.filter((slot) => slot.id === topId);

@@ -103,16 +103,23 @@ function ParkedChatHost() {
   if (!parked && bench.length === 0) return null;
   // Пока чат за правым краем, хост не участник hit-test: transform уводит
   // картинку, но рамка лэйаута остаётся на весь экран и съедала бы тап.
-  const hostRaised = chatBenchHostRaised({ holding, offEdge, exiting, enterPaint });
-  const ignoreHits = !hostRaised || chatPushHostIgnoresHits({ holding, offEdge });
   const activeId = parked?.conversationUuid.trim().toLowerCase() ?? "";
   const slots =
     parked && activeId && !bench.some((slot) => slot.id === activeId)
       ? [...bench, { id: activeId, params: parked, attempt: 0, closed: false }]
       : bench;
-  // Замер — один верхний слот без translateX, под списком. Закрытый уезжает
-  // за край и остаётся в дереве. На press-in хост поднимается разово, активный
-  // слот становится верхним и до runEnter стоит за краем.
+  const activeSlot = activeId ? slots.find((slot) => slot.id === activeId) : undefined;
+  const hostRaised = chatBenchHostRaised({
+    holding,
+    offEdge,
+    exiting,
+    enterPaint,
+    carpetDown: activeSlot?.closed ?? true,
+  });
+  const ignoreHits = !hostRaised || chatPushHostIgnoresHits({ holding, offEdge });
+  // Замер — один верхний слот без translateX, под списком. Пока палец держит
+  // незакрытый слот, хост не поднимается и кадр замера остаётся у него.
+  // Закрытый активный слот при поднятом хосте до runEnter стоит за краем.
   const frames = layoutChatBenchSlots({
     slots,
     activeId: activeId || null,
@@ -183,7 +190,7 @@ const styles = StyleSheet.create({
   parkHostUnder: {
     zIndex: -1,
   },
-  /** Разовый подъём на press-in. Не анимируется кадром жеста. */
+  /** Подъём после закрытия окна и на enterPaint / exiting. Не анимируется кадром жеста. */
   parkHostRaised: {
     zIndex: 2,
   },
