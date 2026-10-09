@@ -1,6 +1,5 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { router, usePathname, type Href } from "expo-router";
 import {
   memo,
@@ -72,9 +71,13 @@ import {
   requestTabRouteReveal,
   tabNameFromHamburgerTarget,
 } from "@/lib/tabRouteCover";
+import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
+import Svg, { G, Path, Rect } from "react-native-svg";
 import { useSessionStore } from "@/stores/sessionStore";
 
-const FLORA_MARK_GLYPH = require("../assets/images/logo-mark-glyph.png");
+/** Same mark as flora-logo-v1, without the black plate, so the chip behind it shows. */
+const FLORA_LOGO_MARK_D =
+  "m 645.152,273.786 c -29.909,35.499 -55.65616,55.45109 -87.231,78.518 -54.54582,39.84829 -86.819,102.407 -84.541,214.986 0.323,15.978 -1.773,28.766 -4.7,47.009 -7.221,44.998 -2.139,82.536 15.802,124.43 4.212,9.835 -24.096,-0.778 -42.662,-6.069 -61.475,-17.519 -85.342,-63.107 -119.05,-111.94 -17.47,-25.309 -45.263,-29.138 -72.026,-30.481 5.069,-6.929 12.261,-12.831 17.046,-19.959 16.398,-24.427 26.276,-49.174 60.7,-49.25 33.946,-0.074 58.272,18.909 83.84,38.19 19.413,14.64 31.891,2.721 24,-19.07 -25.58,-70.641 -14.45446,-151.3706 33.68093,-205.49996 26.78229,-30.1173 53.81732,-46.12487 104.80966,-77.01147 39.49466,-23.92233 61.46569,-43.48292 82.8896,-62.32508 22.5422,-19.82568 31.49003,-35.72516 33.99403,-36.47216 2.505,-0.748 5.26778,27.48867 5.55378,29.70667 7.863,60.878 -1.825,146.532 -23.654,206.5 -10.914,29.983 -25.323,50.03 -60.056,66.465 -17.813,8.429 -33.331,13.15 -60.026,23.871 -29.19,11.722 -48.535,34.244 -47.747,27.368 5.566,-48.555 23.84644,-97.9137 67.18,-131.6 72.89509,-56.66661 96.185,-135.838 72.197,-107.366 z M 596.98,562.659 c -19.16,9.811 -31.053,22.47 -41.107,38.795 -9.716,15.777 -15.088,40.49 -12.852,63.528 7.141,73.551 71.005,109.01 139.024,143.782 4.058,2.074 0.132,4.427 -4.295,5.506 -41.528,10.125 -87.419,8.813 -121.47,-18.99 -74.08,-60.488 -89.94519,-201.27497 -10.54,-263.95 16.2017,-12.7881 35.50569,-18.06656 54.39962,-23.28347 24.31833,-6.71468 43.73467,-15.83416 62.53038,-31.82653 5.11222,-4.34974 12.035,-12.072 15.474,-17.836 4.143,-6.943 18.567,105.265 -46.434,172.886 -28.768,29.928 -40.058,44.51 -39.203,81.76 0.043,1.866 -0.39,2.688 -1.163,2.668 -4.381,-0.114 -19.702,-27.261 -21.471,-44.521 -3.012,-29.391 -0.746,-42.185 14.445,-63.906 15.376,-21.986 39.083,-24.582 57.318,-57.999 14.228,-26.074 15.783,-33.957 -1.745,-15.721 -11.065,11.513 -22.942,18.883 -42.911,29.108 z";
 
 type MenuItemId = "people" | "communities" | "settings" | "contribute";
 
@@ -641,12 +644,24 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
             <View style={styles.header}>
               <View style={styles.logoRow}>
                 <View style={styles.logoMark} accessibilityElementsHidden>
-                  <Image
-                    source={FLORA_MARK_GLYPH}
-                    style={styles.logoMarkGlyph}
-                    contentFit="contain"
-                    accessibilityIgnoresInvertColors
-                  />
+                  <Svg
+                    width={MENU_LEAD_COL()}
+                    height={MENU_LEAD_COL()}
+                    viewBox="0 0 1024 1024"
+                    style={styles.logoMarkSvg}
+                  >
+                    <Rect width="1024" height="1024" fill={FLORA_THEME_TOKENS.accentGreenOverlay20} />
+                    <G transform="matrix(0.88713921, 0, 0, 0.88713921, 42.574128, 58.006452)">
+                      <Path
+                        d={FLORA_LOGO_MARK_D}
+                        fill="#a1cd87"
+                        stroke="#a1cd87"
+                        strokeWidth={0.5}
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
+                    </G>
+                  </Svg>
                 </View>
                 <Text style={styles.logoText}>FLORA</Text>
               </View>
@@ -743,14 +758,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: MENU_LEAD_COL(),
     height: MENU_LEAD_COL(),
     borderRadius: 2 * floraSpacing.gridFine,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(164, 209, 138, 0.2)",
+    overflow: "hidden",
+    backgroundColor: FLORA_THEME_TOKENS.accentGreenOverlay20,
   },
-  logoMarkGlyph: {
-    width: floraSpacing.grid,
-    height: floraSpacing.grid,
-    transform: [{ rotate: "7deg" }],
+  logoMarkSvg: {
+    backgroundColor: "transparent",
   },
   logoText: {
     color: floraColors.greenLight,

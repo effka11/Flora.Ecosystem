@@ -46,22 +46,6 @@
   min-height: calc(2 * var(--flora-grid-step));
 }
 
-.logoMark {
-  width: calc(2 * var(--flora-grid-step));
-  height: calc(2 * var(--flora-grid-step));
-  border-radius: var(--flora-sPx-10);
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
-}
-
-.logoMark svg {
-  width: var(--flora-grid-step);
-  height: var(--flora-grid-step);
-  transform: rotate(7deg);
-  transform-origin: center;
-}
-
 .navList {
   list-style: none;
   margin: 0;
