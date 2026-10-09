@@ -1005,6 +1005,9 @@ function releaseParkAtEdge(): void {
   cancelAnimation(chatPush.progress);
   chatPush.progress.value = 0;
   exitOffEdge = true;
+  // Play помечает тред до оболочки. Снятие парка без маршрута иначе
+  // оставляет prefetch выключенным: экран на скамье cleanup не ставил.
+  setActiveMessageThread(null);
   releaseChatPark();
   chatPush.reset();
 }
@@ -1215,10 +1218,13 @@ export function notifyChatPushWindowClosed(conversationUuid: string): void {
  * Отпускание без скролла. Первое отпускание прогретого чата в этот же тап
  * вызывает runEnter. publishPark — один раз до withTiming, слот ещё за краем.
  * Порог 0.01 посреди слайда подписчиков не будит. Ковёр ещё не 0 — ждём его.
+ * Тред помечаем активным здесь: пока holding, экран его не ставит, и
+ * decrypt-window не отдаёт JS.
  */
 export function requestChatPushPlay(conversationUuid: string): void {
   if (parkedUuid == null || normParkUuid(conversationUuid) !== parkedUuid) return;
   if (parkPhase !== "parked" && parkPhase !== "play-wait") return;
+  setActiveMessageThread(conversationUuid);
   parkPhase = "playing";
   slideHold = true;
   const kickoff = chatPushEnterKickoff({

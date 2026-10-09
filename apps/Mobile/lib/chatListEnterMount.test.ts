@@ -830,6 +830,65 @@ describe("chat bench slot frame", () => {
     ).toBe(true);
   });
 
+  it("does not raise the host while the finger holds an open carpet", () => {
+    expect(
+      chatBenchHostRaised({
+        holding: true,
+        offEdge: true,
+        exiting: false,
+        enterPaint: false,
+        carpetDown: false,
+      }),
+    ).toBe(false);
+    expect(
+      chatBenchHostRaised({
+        holding: true,
+        offEdge: true,
+        exiting: true,
+        enterPaint: false,
+        carpetDown: false,
+      }),
+    ).toBe(true);
+    expect(
+      chatBenchHostRaised({
+        holding: true,
+        offEdge: true,
+        exiting: false,
+        enterPaint: true,
+        carpetDown: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("raises the host while holding once the carpet is down", () => {
+    expect(
+      chatBenchHostRaised({
+        holding: true,
+        offEdge: true,
+        exiting: false,
+        enterPaint: false,
+        carpetDown: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps the open active slot as the only measure frame while the host stays down", () => {
+    const frames = layoutChatBenchSlots({
+      slots: [
+        { id: "neighbor", closed: false },
+        { id: "open", closed: false },
+      ],
+      activeId: "open",
+      hostRaised: false,
+    });
+    const measuring = frames.filter((frame) => frame.layer === "measure");
+    expect(measuring).toHaveLength(1);
+    expect(measuring[0]?.id).toBe("open");
+    expect(measuring[0]?.occluded).toBe(false);
+    expect(frames.find((frame) => frame.id === "neighbor")?.layer).toBe("parked");
+    expect(frames.find((frame) => frame.id === "open")?.layer).toBe("measure");
+  });
+
   it("does not reset reveal when a closed bench slot is promoted", () => {
     expect(chatBenchPromoteKeepsReveal(true)).toBe(true);
     expect(chatBenchPromoteKeepsReveal(false)).toBe(false);
