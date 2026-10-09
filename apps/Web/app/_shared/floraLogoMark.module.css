@@ -1,0 +1,15 @@
+.mark {
+  width: calc(2 * var(--flora-grid-step));
+  height: calc(2 * var(--flora-grid-step));
+  border-radius: var(--flora-sPx-10);
+  overflow: hidden;
+  display: block;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
+}
+
+.mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

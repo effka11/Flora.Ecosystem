@@ -7,8 +7,8 @@ const PROD_ICON = "./assets/images/icon.png";
 const DEV_ICON = "./assets/images/icon-dev.png";
 const ADAPTIVE_FOREGROUND = "./assets/images/android-icon-foreground.png";
 const ADAPTIVE_MONOCHROME = "./assets/images/android-icon-monochrome.png";
-const PROD_ADAPTIVE_BG = "#2c3527";
-const DEV_ADAPTIVE_BG = "#0c0c0c";
+const PROD_ADAPTIVE_BG = "#0a0a0a";
+const DEV_ADAPTIVE_BG = "#0a0a0a";
 
 export const isDevelopmentVariant = () => process.env.APP_VARIANT === "development";
 
