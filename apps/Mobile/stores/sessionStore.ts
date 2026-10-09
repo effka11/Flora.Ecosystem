@@ -49,7 +49,7 @@ const mobileSessionController = createSessionController({
   supersedeRefresh: supersedeSessionRefresh,
   fetchImpl: ((input, init) => fetch(input, init)) as typeof fetch,
   apiBaseUrl: resolveApiBaseUrl(),
-  clientHeader: "android/0.13.3-alpha",
+  clientHeader: "android/0.14.0-alpha",
   clock: { now: () => Date.now() },
 });
 

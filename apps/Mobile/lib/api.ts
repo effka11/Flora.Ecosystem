@@ -19,7 +19,7 @@ export function initFloraClient(): void {
     retrySafeRefreshBackend: true,
     clientIdentity: {
       platform: "android",
-      appVersion: Constants.expoConfig?.version ?? "0.13.3-alpha",
+      appVersion: Constants.expoConfig?.version ?? "0.14.0-alpha",
     },
     onUnauthorized: () => {
       handleSessionUnauthorized();
