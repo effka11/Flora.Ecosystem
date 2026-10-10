@@ -329,43 +329,13 @@ emit_nginx_gov_proxy() {
   echo '    }'
 }
 
+# DNS for social/origin/gov points at this VPS. There is no Cloudflare proxy.
 write_flora_cloudflare_origin_only_snippet() {
-  mkdir -p /etc/nginx/snippets
-  cat >/etc/nginx/snippets/flora-cloudflare-origin-only.conf <<'EOF'
-# Cloudflare anycast → this VPS (orange social.* / gov.* origin pull).
-# Direct clients (including networks where CF is blocked) get 403.
-# Source: https://www.cloudflare.com/ips-v4 and /ips-v6 (2026-08-27).
-allow 173.245.48.0/20;
-allow 103.21.244.0/22;
-allow 103.22.200.0/22;
-allow 103.31.4.0/22;
-allow 141.101.64.0/18;
-allow 108.162.192.0/18;
-allow 190.93.240.0/20;
-allow 188.114.96.0/20;
-allow 197.234.240.0/22;
-allow 198.41.128.0/17;
-allow 162.158.0.0/15;
-allow 104.16.0.0/13;
-allow 104.24.0.0/14;
-allow 172.64.0.0/13;
-allow 131.0.72.0/22;
-allow 2400:cb00::/32;
-allow 2606:4700::/32;
-allow 2803:f800::/32;
-allow 2405:b500::/32;
-allow 2405:8100::/32;
-allow 2a06:98c0::/29;
-allow 2c0f:f248::/32;
-allow 127.0.0.1;
-allow ::1;
-deny all;
-EOF
+  rm -f /etc/nginx/snippets/flora-cloudflare-origin-only.conf || true
 }
 
 emit_nginx_cloudflare_origin_gate() {
-  echo '    include /etc/nginx/snippets/flora-cloudflare-origin-only.conf;'
-  echo
+  :
 }
 
 emit_nginx_acme_challenge() {
@@ -398,7 +368,7 @@ write_flora_ip_allow_snippet() {
   } >/etc/nginx/snippets/flora-ip-allow.conf
 }
 
-# Apex Www shell stays reachable without CF. App vhosts (gov/social/origin) accept Cloudflare only.
+# Public vhosts accept browsers directly. DNS points at this VPS.
 emit_nginx_ip_allow_lines() {
   :
 }
@@ -450,8 +420,7 @@ fi
   echo '}'
 } >/etc/nginx/sites-available/flora-gov.conf
 
-# Site (CDN origin :443 + HTTP :80). CDN connects to origin.<DOMAIN>:443, Host: social.<DOMAIN>.
-# nginx allows Cloudflare IPs only so grey origin.* is not a CF-bypass from blocked networks.
+# social.<DOMAIN> and origin.<DOMAIN> on :80. Browsers connect to this VPS directly.
 {
   echo 'server {'
   echo '    listen 80;'

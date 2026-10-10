@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Restrict social/origin/gov nginx vhosts to Cloudflare origin-pull IPs.
-# Do not run this until Web SSE is same-origin on social.* (otherwise live
-# browsers still calling origin.flora-s.net will get 403).
+# Obsolete. social/origin/gov DNS points at the VPS; there is no Cloudflare proxy.
+# Installing the origin-pull allowlist makes every direct browser request 403.
+echo "Refusing to install the Cloudflare origin allowlist: the domain points at this VPS." >&2
+exit 1
 set -euo pipefail
 
 snippet=/etc/nginx/snippets/flora-cloudflare-origin-only.conf
