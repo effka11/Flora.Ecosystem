@@ -87,6 +87,8 @@ apps/Web/.tmp-feed-compact-scroll/
 # OS / editors
 .DS_Store
 Thumbs.db
+# Local code index: logs and DB contain machine paths.
+**/.chunkhound/
 *.swp
 *.swo
 .idea/
