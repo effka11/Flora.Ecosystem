@@ -407,7 +407,7 @@ function DashboardShellInner({ children }: DashboardShellProps) {
   const showAccountBlockWall = !loading && me?.accountBlocked === true;
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-flora-shell="dashboard">
       <GridOverlay />
 
       <div className={styles.appRoot}>

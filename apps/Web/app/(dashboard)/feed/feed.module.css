@@ -70,6 +70,8 @@
   /* Иначе Chromium scroll-anchoring гоняет scrollTop вокруг порога compact↔normal. */
   overflow-anchor: none;
   scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+  -ms-overflow-style: none;
   display: flex;
   flex-direction: column;
   background: var(--flora-bg);
@@ -79,11 +81,16 @@
   display: none;
 }
 
+/* overflow-anchor не наследуется: без этого якорем становится пост, и лента залипает. */
+.feedPage * {
+  overflow-anchor: none;
+}
+
 .feedTopBlock {
-  /* local origin=0 in .feedPage (not dashboard overlay §5); expanded rows 0–9;
-     compact visible = last 5 rows → sticky top (5 − 9) * step */
+  /* local origin=0 in .feedPage (not dashboard overlay §5); rows 0–9 stay fully visible.
+     top: 0 — шапка не сдвигается вверх на (9−5) рядов при скролле. */
   position: sticky;
-  top: calc(var(--feed-g75) - 9 * var(--flora-grid-step));
+  top: 0;
   z-index: 10;
   flex-shrink: 0;
   height: calc(9 * var(--flora-grid-step));
@@ -91,6 +98,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  /* visible: подчёркивание вкладки на 2px ниже коробки, hidden его срезает. */
   overflow: visible;
   background: var(--flora-bg);
   overflow-anchor: none;
@@ -107,10 +115,6 @@
   pointer-events: none;
 }
 
-.feedTopBlock:not(.feedTopBlockCompact) {
-  overflow: visible;
-}
-
 .feedTopBlock:not(.feedTopBlockCompact) .feedTopBlockInner {
   flex: 1;
   min-height: 0;
@@ -123,7 +127,6 @@
   position: relative;
   padding: 0;
   height: calc(9 * var(--flora-grid-step));
-  transition: padding 0.25s ease, gap 0.25s ease;
 }
 
 .searchHeader {
@@ -436,8 +439,11 @@
   min-width: 0;
   /* Список на ширину 37…90; padding-right убран — иначе полоска не доходит до верт. 90. ⋮ — внутри широкой карточки. */
   padding: 0;
-  overflow-x: hidden;
+  /* clip, не hidden: hidden + overflow-y:visible в Firefox становится overflow-y:auto
+     и этот узел перехватывает колесо ровно на пороге компактной шапки. */
+  overflow-x: clip;
   overflow-y: visible;
+  scrollbar-width: none;
 }
 
 /* Переключение Рекомендации ↔ Подписки (как people-content-from-left/right в 2142-1). */
@@ -962,7 +968,8 @@
 
 .feedTopBlockCompact {
   justify-content: flex-end;
-  border-bottom: 1px solid rgba(var(--flora-white-template-rgb), 0.08);
+  /* inset, не border: border меняет коробку sticky во время жеста и обрывает колесо. */
+  box-shadow: inset 0 -1px 0 rgba(var(--flora-white-template-rgb), 0.08);
 }
 
 .feedTopBlockCompact::after {
@@ -1105,6 +1112,7 @@
 
 .feedTopBlock:not(.feedTopBlockCompact) .peopleSearchWrap.peopleSearchExpanding .peopleSearchBox {
   overflow: hidden;
+  transform-origin: left center;
   animation: feedSearchBoxExpandedStretch var(--feed-compact-duration) var(--feed-compact-delay)
     cubic-bezier(0.33, 1, 0.2, 1) both !important;
 }
@@ -1221,33 +1229,11 @@
 @keyframes feedSearchToCompactIn {
   0% {
     opacity: 0;
-    left: calc(
-      (var(--feed-search-compact-col-start) - var(--feed-content-primary-col-left)) * var(--flora-grid-step)
-    );
-    width: calc(
-      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1 + 2) * var(--flora-grid-step)
-    );
-    min-width: calc(
-      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1 + 2) * var(--flora-grid-step)
-    );
-    max-width: calc(
-      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1 + 2) * var(--flora-grid-step)
-    );
+    transform: translate3d(calc(2 * var(--flora-grid-step)), 0, 0);
   }
   100% {
     opacity: 1;
-    left: calc(
-      (var(--feed-search-compact-col-start) - var(--feed-content-primary-col-left)) * var(--flora-grid-step)
-    );
-    width: calc(
-      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
-    );
-    min-width: calc(
-      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
-    );
-    max-width: calc(
-      (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) * var(--flora-grid-step)
-    );
+    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -1275,25 +1261,12 @@
 
 @keyframes feedSearchBoxExpandedStretch {
   0% {
-    width: calc(
-      100% * (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) /
-        (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 3)
-    );
-    min-width: calc(
-      100% * (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) /
-        (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 3)
-    );
-    max-width: calc(
-      100% * (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 1) /
-        (var(--feed-search-compact-col-end) - var(--feed-search-compact-col-start) + 3)
-    );
     opacity: 0;
+    transform: scaleX(0.85) translateZ(0);
   }
   100% {
-    width: 100%;
-    min-width: 100%;
-    max-width: 100%;
     opacity: 1;
+    transform: scaleX(1) translateZ(0);
   }
 }
 
@@ -1341,9 +1314,9 @@
 /* ─── Баннер «Новые посты» (FIRA-F has-new polling) ──────────────────────── */
 
 .newPostsBanner {
-  /* Стикает под компактной шапкой (5 рядов первичной сетки). */
+  /* Стикает под полной шапкой (9 рядов первичной сетки). */
   position: sticky;
-  top: calc(5 * var(--flora-grid-step));
+  top: calc(9 * var(--flora-grid-step));
   z-index: 8;
   width: 100%;
   padding: calc(var(--flora-grid-step) * 0.6) calc(2 * var(--flora-grid-step));

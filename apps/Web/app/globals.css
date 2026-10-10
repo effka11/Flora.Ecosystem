@@ -118,6 +118,33 @@ body {
   font-weight: 300;
 }
 
+/*
+  Оболочка дашборда — фиксированный холст, скролл только у внутренних колонок.
+  Иначе документ (html) остаётся скроллпортом: системная полоса и scroll-anchoring
+  у порога компактной шапки. На .feedPage эти свойства документ не наследуют.
+*/
+html:has([data-flora-shell="dashboard"]),
+html:has([data-flora-shell="dashboard"]) body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  overflow-anchor: none;
+}
+
+html:has([data-flora-shell="dashboard"])::-webkit-scrollbar,
+html:has([data-flora-shell="dashboard"]) body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Лента: полоса скрыта и там, где module-класс не доезжает (Firefox). */
+#central-scroll-feed {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+
 /* Не скрываем body до гидратации — иначе при долгой dev-компиляции страница кажется «мёртвой». */
 body.fonts-ready {
   visibility: visible;

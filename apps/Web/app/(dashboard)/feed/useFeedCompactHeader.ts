@@ -19,6 +19,17 @@ export const FEED_COMPACT_HYSTERESIS_PX = FLORA_GRID_PRIMARY_PX;
 const NO_TRANSITION_CLEAR_MS = 450;
 const COMPACT_ANIMATE_DELAY_MS = 50;
 const LEAVE_EXPAND_ANIM_MS = 420;
+/**
+ * Пока идёт жест колеса/тача, класс шапки не трогаем.
+ * Смена layout в этом кадре отменяет жест: Firefox и Chrome дальше не скроллят,
+ * пока курсор не сдвинется. Коммит — на scrollend или после тишины.
+ */
+const GESTURE_QUIET_MS = 80;
+
+/** Временно выключено: переключение compact на скролле не используется. */
+export function isFeedCompactSwitchEnabled(): boolean {
+  return false;
+}
 
 export type FeedCompactHeaderState = {
   isCompact: boolean;
@@ -72,8 +83,8 @@ function syncCompactDomClasses(
 }
 
 /**
- * Порог в scroll-rAF — 4× живой `--flora-grid-step` (9−5 рядов). Геометрия ящика — CSS always-sticky;
- * хук только переключает inner-классы в scroll-rAF (без flushSync).
+ * Порог — 4× живой `--flora-grid-step` (9−5 рядов). Геометрия ящика — CSS always-sticky.
+ * Сейчас выключено isFeedCompactSwitchEnabled: класс compact на скролле не ставится.
  * React state — только для вторичного UI.
  */
 export function useFeedCompactHeader(
@@ -111,7 +122,19 @@ export function useFeedCompactHeader(
       });
     }
 
+    if (!isFeedCompactSwitchEnabled()) return;
+
     let ticking = false;
+    let gestureActive = false;
+    let quietTimer: number | null = null;
+    let stepPx = FLORA_GRID_PRIMARY_PX;
+
+    const readStep = () => {
+      const stepRaw = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--flora-grid-step")
+      );
+      stepPx = Number.isFinite(stepRaw) && stepRaw > 0 ? stepRaw : FLORA_GRID_PRIMARY_PX;
+    };
 
     const clearTimers = () => {
       if (noTransitionClearRef.current !== null) {
@@ -196,13 +219,11 @@ export function useFeedCompactHeader(
       }, NO_TRANSITION_CLEAR_MS);
     };
 
-    const update = () => {
+    const commit = () => {
       const block = topBlockRef.current;
       const scrollTop = root.scrollTop;
-      const stepRaw = Number.parseFloat(getComputedStyle(root).getPropertyValue("--flora-grid-step"));
-      const step = Number.isFinite(stepRaw) && stepRaw > 0 ? stepRaw : FLORA_GRID_PRIMARY_PX;
-      const threshold = 4 * step;
-      const hysteresis = step;
+      const threshold = 4 * stepPx;
+      const hysteresis = stepPx;
       const wasCompact = lastCompactRef.current === true;
       const compact = shouldFeedHeaderBeCompact(scrollTop, threshold, wasCompact, hysteresis);
 
@@ -220,21 +241,66 @@ export function useFeedCompactHeader(
         }
         lastCompactRef.current = compact;
       }
-      ticking = false;
     };
 
-    const onScroll = () => {
-      if (!ticking) {
-        ticking = true;
-        requestAnimationFrame(update);
+    const clearQuiet = () => {
+      if (quietTimer !== null) {
+        window.clearTimeout(quietTimer);
+        quietTimer = null;
       }
     };
 
+    const armGesture = () => {
+      gestureActive = true;
+      clearQuiet();
+      quietTimer = window.setTimeout(() => {
+        quietTimer = null;
+        gestureActive = false;
+        commit();
+      }, GESTURE_QUIET_MS);
+    };
+
+    const onScroll = () => {
+      if (gestureActive) {
+        armGesture();
+        return;
+      }
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(() => {
+          ticking = false;
+          if (gestureActive) return;
+          commit();
+        });
+      }
+    };
+
+    const onScrollEnd = () => {
+      /* scrollend посреди серии wheel не коммитим: таймер тишины закроет жест целиком. */
+      if (gestureActive) return;
+      commit();
+    };
+
+    const onResize = () => {
+      readStep();
+      if (!gestureActive) commit();
+    };
+
+    readStep();
+    root.addEventListener("wheel", armGesture, { passive: true });
+    root.addEventListener("touchmove", armGesture, { passive: true });
     root.addEventListener("scroll", onScroll, { passive: true });
-    update();
+    root.addEventListener("scrollend", onScrollEnd);
+    window.addEventListener("resize", onResize);
+    commit();
 
     return () => {
+      root.removeEventListener("wheel", armGesture);
+      root.removeEventListener("touchmove", armGesture);
       root.removeEventListener("scroll", onScroll);
+      root.removeEventListener("scrollend", onScrollEnd);
+      window.removeEventListener("resize", onResize);
+      clearQuiet();
       clearTimers();
     };
   }, [scrollRef, topBlockRef]);
