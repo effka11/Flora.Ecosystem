@@ -218,7 +218,7 @@
     "reveal": "always"
   },
   {
-    "label": "Flora Social: Send auto-update & notifications to side-APK",
+    "label": "Flora Social: notify new Android version",
     "command": "powershell",
     "args": [
       "-NoProfile",
@@ -231,10 +231,10 @@
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "reveal": "always",
-    "description": "Prod: inbox + data-only HIGH FCM app_update with update{} for all Android sideload clients (same wire as one-user smoke). Requires GitHub social/v{VERSION} + flora-api with send_app_update_push."
+    "description": "Prod inbox app_update with «Обновить». Sends update{} for the button; does not start a download."
   },
   {
-    "label": "Flora: send auto-update (local)",
+    "label": "Flora: notify new Android version (local)",
     "command": "powershell",
     "args": [
       "-NoProfile",

@@ -1,11 +1,11 @@
-# Prod/local sideload auto-update push for ALL Android clients.
-# Same wire as one-user smoke: inbox app_update + data-only HIGH FCM with update{}.
-# No APK build / no GitHub publish — release must already exist.
+# Inbox notice that a new Android version is published (same app_update row + button).
+# Does not start an automatic download — the user taps «Обновить».
+# Release APK must already be on the Flora channel.
 #
 #   .\scripts\send-apk-auto-update.ps1
 #   .\scripts\send-apk-auto-update.ps1 -Production -Confirm
 #
-# Task: "Flora Social: Send auto-update & notifications to side-APK"
+# Task: "Flora Social: notify new Android version"
 param(
     [string] $ApiBaseUrl = "",
     [string] $Token = "",

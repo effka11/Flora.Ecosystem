@@ -8,14 +8,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
-/** App canvas behind splash. The logo field itself is LOGO_BG. */
+/** App canvas behind splash and the system bars. */
 const FLORA_BG = "#0c0c0c";
+/** Plate baked into flora-logo-v1.svg. plantCoverage measures the plant against this field. */
 const LOGO_BG = "#0a0a0a";
+/** Launcher icon field. Brand greenDark, not the logo plate. */
+const ICON_BG = "#2c3527";
 const LOGO_GREEN = "#a1cd87";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mobile = join(root, "apps", "Mobile");
 const webPublic = join(root, "apps", "Web", "public");
+/** Next file-convention favicons. These win the browser tab over public/. */
+const webApp = join(root, "apps", "Web", "app");
 /** Brand mark. Mobile and web only receive rendered copies. */
 const assets = join(root, "packages", "flora-design", "assets");
 const images = join(mobile, "assets", "images");
@@ -194,7 +199,7 @@ async function syncAndroidGenRes() {
     if (!existsSync(dir)) continue;
     await sharp(fgSource).resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toFile(join(dir, "ic_launcher_foreground.webp"));
     await sharp(monoSource).resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toFile(join(dir, "ic_launcher_monochrome.webp"));
-    await solidWebp(join(dir, "ic_launcher_background.webp"), size, LOGO_BG);
+    await solidWebp(join(dir, "ic_launcher_background.webp"), size, ICON_BG);
   }
 
   // Always overwrite tray icons — release may skip expo prebuild when splash/version are fresh.
@@ -207,7 +212,20 @@ async function syncAndroidGenRes() {
       .toFile(join(dir, "notification_icon.png"));
   }
 
+  await syncLauncherIconBackground(resRoot);
   console.log("Synced Flora splash/icons into apps/Mobile/android_gen/");
+}
+
+/** Expo prebuild writes this once; a fresh android_gen skips prebuild, so keep the color here. */
+async function syncLauncherIconBackground(resRoot) {
+  const colorsPath = join(resRoot, "values", "colors.xml");
+  if (!existsSync(colorsPath)) return;
+  const xml = await readFile(colorsPath, "utf8");
+  const next = xml.replace(
+    /(<color name="iconBackground">)#[0-9A-Fa-f]{3,8}(<\/color>)/,
+    `$1${ICON_BG}$2`,
+  );
+  if (next !== xml) await writeFile(colorsPath, next);
 }
 
 /** Longest side of the glyph, as a fraction of the tab icon. */
@@ -269,7 +287,7 @@ async function renderScaledMark(size, color) {
 
 async function renderAppIcon(size) {
   const mark = await renderScaledMark(size);
-  const { r, g, b } = hexRgb(LOGO_BG);
+  const { r, g, b } = hexRgb(ICON_BG);
   return sharp({
     create: { width: size, height: size, channels: 4, background: { r, g, b, alpha: 255 } },
   })
@@ -291,8 +309,8 @@ async function main() {
   await writePng(join(images, "android-icon-foreground.png"), await renderScaledMark(1024));
   await writePng(join(images, "android-icon-monochrome.png"), await renderScaledMark(1024, "#ffffff"));
   await notificationIconPng(join(images, "notification-icon.png"), 192);
-  await solidPng(join(images, "android-icon-background.png"), 1024, LOGO_BG);
-  await solidPng(join(images, "android-icon-background-dev.png"), 1024, LOGO_BG);
+  await solidPng(join(images, "android-icon-background.png"), 1024, ICON_BG);
+  await solidPng(join(images, "android-icon-background-dev.png"), 1024, ICON_BG);
   await splashPng(join(images, "splash-icon.png"), 1024);
   await splashPng(join(images, "favicon.png"), 48);
 
@@ -306,10 +324,15 @@ async function main() {
   const tabSvgBuf = Buffer.from(tabSvg);
   const tabPng = (size) =>
     sharp(tabSvgBuf, { density: 384 }).resize(size, size, { fit: "fill" }).png().toBuffer();
-  await writePng(join(webPublic, "favicon-32.png"), await tabPng(32));
-  await writePng(join(webPublic, "apple-icon.png"), await tabPng(180));
+  const favicon = await tabPng(32);
+  const apple = await tabPng(180);
+  await writePng(join(webPublic, "favicon-32.png"), favicon);
+  await writePng(join(webPublic, "apple-icon.png"), apple);
+  await writePng(join(webApp, "icon.png"), favicon);
+  await writePng(join(webApp, "apple-icon.png"), apple);
 
   await syncAndroidGenRes();
+  await syncLauncherIconBackground(join(mobile, "android", "app", "src", "main", "res"));
 
   console.log("Flora logo rendered for Mobile assets and Web tab icons.");
 }

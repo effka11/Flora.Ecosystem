@@ -39,7 +39,7 @@ Relative cost scale: $ (cheap) → $$$$ (flagship). Thinking levels — typical 
 
 - Close top-tier escalation criteria with **Opus**, not Fable — Fable only when Opus clearly falls short on horizon/oversight.
 - Do not assign two flagships in a dependency chain if the intermediate result is verified by tests — give the middle part to sonnet/terra.
-- Do exploration (“understand how X is built”) with grok/gemini **before** the implementation wave — that cheapens implementation parts because they get ready context.
+- Do exploration (“understand how X is built”) before the implementation wave via `/flora-smart-agent-economy`: the gatherer returns a brief, and the parent does not hold the file bodies. Later parts start from that context.
 - If the part is “write code strictly from a frozen spec”, codex/sonnet is almost always enough no matter how important the module is: importance was already covered at the spec stage.
 - If unsure between levels — take the lower model, higher thinking: usually cheaper and no worse on mid-size coding tasks.
 - Between Opus (high) and Fable (high) at comparable part complexity — choose Opus.

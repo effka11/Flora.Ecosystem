@@ -44,35 +44,11 @@ class FloraSecurePushMessagingService : FirebaseMessagingService() {
   }
 
   /**
-   * Soft-call flora-apk-updater UpdateCoordinator (absent on Play builds).
-   * Downloads only when native auto-update preference is ON.
+   * Inbox-only wake for `app_update`. Download/install starts when the user taps
+   * «Обновить»; catch-up / channel self-update stays outside this path.
    */
-  private fun handleAppUpdate(data: Map<String, String>) {
-    Log.i(TAG, "app_update FCM received")
-    try {
-      val clazz = Class.forName(UPDATE_COORDINATOR)
-      val instance = clazz.getField("INSTANCE").get(null)
-      val parse = clazz.getMethod("parseManifestFromData", Map::class.java)
-      val manifest = parse.invoke(instance, data) ?: run {
-        Log.w(TAG, "app_update missing/invalid update fields — ignored")
-        return
-      }
-      val manifestClass = Class.forName(UPDATE_MANIFEST)
-      val start =
-        clazz.getMethod(
-          "startAuto",
-          Context::class.java,
-          manifestClass,
-          Boolean::class.javaPrimitiveType,
-        )
-      start.invoke(instance, applicationContext, manifest, false)
-    } catch (_: ClassNotFoundException) {
-      Log.i(TAG, "app_update: FloraApkUpdater not linked — inbox only")
-    } catch (_: NoClassDefFoundError) {
-      Log.i(TAG, "app_update: FloraApkUpdater not linked — inbox only")
-    } catch (e: Exception) {
-      Log.w(TAG, "app_update startAuto failed", e)
-    }
+  private fun handleAppUpdate(@Suppress("UNUSED_PARAMETER") data: Map<String, String>) {
+    Log.i(TAG, "app_update FCM received — inbox only (no auto download)")
   }
 
   override fun onNewToken(token: String) {
@@ -382,8 +358,6 @@ class FloraSecurePushMessagingService : FirebaseMessagingService() {
     const val DEDUPE_PREFS = "flora_secure_push_dedupe"
     const val DEDUPE_KEY = "message_ids"
     const val EXPO_FMS = "expo.modules.notifications.service.ExpoFirebaseMessagingService"
-    const val UPDATE_COORDINATOR = "expo.modules.floraapkupdater.UpdateCoordinator"
-    const val UPDATE_MANIFEST = "expo.modules.floraapkupdater.UpdateManifest"
     const val AVATAR_CONNECT_TIMEOUT_MS = 2_000
     const val AVATAR_READ_TIMEOUT_MS = 2_500
     const val AVATAR_MAX_DIMENSION = 256
