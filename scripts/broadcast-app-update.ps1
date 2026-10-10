@@ -1,12 +1,13 @@
-# Broadcast sideload "app_update" to all Android clients (inbox + data-only HIGH FCM).
-# Same payload as the one-user smoke: update{version,versionCode,apkUrl,sha256,sizeBytes}.
+# Broadcast sideload "app_update" to all Android clients (inbox row + «Обновить»).
+# Includes update{version,versionCode,apkUrl,sha256,sizeBytes} for the button.
+# Clients do not start a download from this push — the user taps «Обновить».
 #
 # Requires Flora:AdminBroadcastToken on API (flora-api.env on VPS).
 #
 # Local:
 #   .\scripts\broadcast-app-update.ps1
 #
-# Production (after APK is on GitHub releases + flora-api with send_app_update_push):
+# Production (after APK is on the Flora channel):
 #   .\scripts\setup-app-update-broadcast.ps1
 #   .\scripts\broadcast-app-update.ps1 -Production -Confirm
 #
@@ -89,7 +90,7 @@ if (-not $Force -and ($Confirm -or -not $isLocal)) {
     }
     Write-Host "  API:         $ApiBaseUrl"
     Write-Host "  Audience:    active users with Android client/push token"
-    Write-Host "  Type:        app_update (inbox + data-only HIGH FCM, no system tray)"
+    Write-Host "  Type:        app_update (inbox + «Обновить»; no auto download)"
     Write-Host "  Text:        $Text"
     if ($null -ne $update) {
         Write-Host "  version:     $($update.version)"
@@ -103,7 +104,7 @@ if (-not $Force -and ($Confirm -or -not $isLocal)) {
         Write-Host "  update:      (none - local only)" -ForegroundColor DarkYellow
     }
     Write-Host ""
-    $answer = (Read-Host "Send to all Android sideload clients? [y/N]").Trim().ToLowerInvariant()
+    $answer = (Read-Host "Send the new-version notice? [y/N]").Trim().ToLowerInvariant()
     if ($answer -ne "y" -and $answer -ne "yes") {
         Write-Host "Cancelled."
         exit 0
@@ -141,7 +142,7 @@ try {
     $recipients = $response.recipients
     if ($null -eq $recipients) { $recipients = $response.Recipients }
     Write-Host "Broadcast sent to $recipients recipient(s)."
-    Write-Host "Each recipient: inbox app_update + data-only FCM (native download/install)." -ForegroundColor DarkGray
+    Write-Host "Each recipient: inbox app_update with «Обновить» (no auto download)." -ForegroundColor DarkGray
 }
 catch {
     $detail = $_.Exception.Message

@@ -436,7 +436,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Flora Social: Send auto-update & notifications to side-APK",
+      "label": "Flora Social: notify new Android version",
       "type": "process",
       "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
@@ -460,7 +460,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Flora: send auto-update (local)",
+      "label": "Flora: notify new Android version (local)",
       "type": "process",
       "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [

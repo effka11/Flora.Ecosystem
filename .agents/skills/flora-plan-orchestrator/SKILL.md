@@ -38,7 +38,7 @@ Read and execute the `/flora-plan-router` skill (`.agents/skills/flora-plan-rout
 
 Before the first wave, for each part determine five things:
 
-1. **File zone** — concrete files/directories the part is allowed to change. This is the most important item: local subagents share one working directory, so overlapping zones in one wave = lost edits. If the zone is unclear — send a cheap reconnaissance subagent (`subagent_type: explore`, grok/gemini-class model per router) **before** the waves: that also cheapens implementation parts because they get ready context.
+1. **File zone** — concrete files/directories the part is allowed to change. This is the most important item: local subagents share one working directory, so overlapping zones in one wave = lost edits. If the zone is unclear — gather it with `/flora-smart-agent-economy` (`.agents/skills/flora-smart-agent-economy/SKILL.md`) **before** the waves. The lead keeps the brief, not the file bodies; implementation parts then start from ready context.
 2. **Acceptance gate** — concrete commands from “Commands” in `agents.md`, narrowed to the affected crate/workspace.
 3. **Result contract** — what the subagent must return in its final message (see §4).
 4. **Required context** — which specs and skills the subagent must read: `apps/Web` edits → `/apps-web-grid-placement` (and `/apps-web-messages-chat` for chat), messaging/E2E → `/flora-fscp-e2e`, C# → Rust migration and `backend/` edits → `/rust-migration`, `apps/Mobile` → `apps/Mobile/AGENTS.md`.
@@ -207,6 +207,7 @@ Plus, as `agents.md` requires: briefly — why this structure, how boundaries we
 ## Anti-patterns
 
 - The orchestrator writes part code itself (“faster than explaining”) — nullifies the point of routing and the budget.
+- The lead pulls file bodies, a search fan-out, logs, or a comparison of several places into its own context instead of `/flora-smart-agent-economy`. One known file, one symbol, an answer already in the chat, and the span being edited stay on the lead. Acceptance still reads the key diff (§6).
 - One mega-brief “do the whole plan” to one subagent.
 - A parallel wave with overlapping file zones.
 - A parallel wave “as in the table” where one part imports what another creates.
