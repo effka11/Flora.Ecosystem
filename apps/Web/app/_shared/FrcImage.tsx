@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   type CanvasHTMLAttributes,
@@ -69,28 +70,45 @@ function stepwiseDrawImage(
   context.drawImage(source, sx, sy, sw, sh, rect.dx, rect.dy, rect.dw, rect.dh);
 }
 
+const paintedBitmap = new WeakMap<HTMLCanvasElement, ImageBitmap>();
+
+function backingMatches(width: number, height: number, destWidth: number, destHeight: number): boolean {
+  return Math.abs(width - destWidth) <= 1 && Math.abs(height - destHeight) <= 1;
+}
+
 async function paintFrcCanvas(
   canvas: HTMLCanvasElement,
   bitmap: ImageBitmap,
   generation: number,
   currentGeneration: () => number,
 ): Promise<boolean> {
-  writeFrcNaturalSize(canvas, bitmap.width, bitmap.height);
+  let bitmapWidth = 0;
+  let bitmapHeight = 0;
+  try {
+    bitmapWidth = bitmap.width;
+    bitmapHeight = bitmap.height;
+  } catch {
+    return false;
+  }
+  writeFrcNaturalSize(canvas, bitmapWidth, bitmapHeight);
   const dest = destBackingSize(
     canvas.clientWidth,
     canvas.clientHeight,
     window.devicePixelRatio || 1,
-    bitmap.width,
-    bitmap.height,
+    bitmapWidth,
+    bitmapHeight,
   );
-  if (canvas.width !== dest.width) canvas.width = dest.width;
-  if (canvas.height !== dest.height) canvas.height = dest.height;
   if (currentGeneration() !== generation) return false;
+  // Same bitmap already on this backing store. A 1px box jitter (scroll / ResizeObserver)
+  // must not clear the canvas and wait out another resize.
+  if (paintedBitmap.get(canvas) === bitmap && backingMatches(canvas.width, canvas.height, dest.width, dest.height)) {
+    return true;
+  }
 
   const style = window.getComputedStyle(canvas);
   const rect = objectFitDrawRect(
-    bitmap.width,
-    bitmap.height,
+    bitmapWidth,
+    bitmapHeight,
     dest.width,
     dest.height,
     parseObjectFit(style.objectFit),
@@ -111,7 +129,16 @@ async function paintFrcCanvas(
     resized?.close();
     return false;
   }
+  if (!resized) {
+    try {
+      void bitmap.width;
+    } catch {
+      return false;
+    }
+  }
 
+  // Buffer reset drops pixels immediately. Do it in the same turn as the draw,
+  // after the resized bitmap exists, so the compositor never presents an empty frame.
   if (canvas.width !== dest.width) canvas.width = dest.width;
   if (canvas.height !== dest.height) canvas.height = dest.height;
   const context = canvas.getContext("2d");
@@ -120,21 +147,46 @@ async function paintFrcCanvas(
     return false;
   }
   context.clearRect(0, 0, canvas.width, canvas.height);
-  if (resized) {
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(resized, rect.dx, rect.dy);
-    resized.close();
-    return true;
+  try {
+    if (resized) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(resized, rect.dx, rect.dy);
+      resized.close();
+      resized = null;
+    } else {
+      stepwiseDrawImage(context, bitmap, rect);
+    }
+  } catch {
+    resized?.close();
+    return false;
   }
-  stepwiseDrawImage(context, bitmap, rect);
-  return currentGeneration() === generation;
+  if (currentGeneration() !== generation) return false;
+  paintedBitmap.set(canvas, bitmap);
+  return true;
 }
 
 export function FrcImage({ src, onLoad, onError, alt, loading, ...props }: Props) {
   const resolved = useFrcImageSource(src);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const source = resolved.source;
+  const notifyLoaded = useEffectEvent(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !onLoad) return;
+    const event = {
+      currentTarget: canvas,
+      target: canvas,
+    } as unknown as SyntheticEvent<HTMLImageElement>;
+    onLoad(event);
+  });
+  const notifyFailed = useEffectEvent(() => {
+    if (!onError) return;
+    const event = {
+      currentTarget: canvasRef.current,
+      target: canvasRef.current,
+    } as unknown as SyntheticEvent<HTMLImageElement>;
+    onError(event);
+  });
 
   useLayoutEffect(() => {
     if (!source || source.kind !== "bitmap") return;
@@ -145,31 +197,55 @@ export function FrcImage({ src, onLoad, onError, alt, loading, ...props }: Props
     let paintGen = 0;
     let cancelled = false;
     let loadNotified = false;
+    let skipResizeNotifications = 0;
 
     const currentGeneration = () => (cancelled ? -1 : paintGen);
     const notifyLoad = () => {
-      if (loadNotified || cancelled || !onLoad) return;
+      if (loadNotified || cancelled) return;
       loadNotified = true;
-      const event = {
-        currentTarget: canvas,
-        target: canvas,
-      } as unknown as SyntheticEvent<HTMLImageElement>;
-      onLoad(event);
+      notifyLoaded();
+    };
+
+    // width/height:auto sizes from the canvas buffer, so the first pass copies
+    // the bitmap's pixel size. Assigning width clears the buffer — never do that
+    // again for a bitmap that is already on screen (feed re-renders while scrolling).
+    const establishIntrinsic = () => {
+      if (paintedBitmap.get(canvas) === bitmap) return;
+      let bitmapWidth = 0;
+      let bitmapHeight = 0;
+      try {
+        bitmapWidth = bitmap.width;
+        bitmapHeight = bitmap.height;
+      } catch {
+        return;
+      }
+      writeFrcNaturalSize(canvas, bitmapWidth, bitmapHeight);
+      if (canvas.width === bitmapWidth && canvas.height === bitmapHeight) return;
+      skipResizeNotifications += 1;
+      canvas.width = bitmapWidth;
+      canvas.height = bitmapHeight;
+      requestAnimationFrame(() => {
+        skipResizeNotifications = 0;
+      });
     };
 
     const run = () => {
       if (cancelled) return;
+      establishIntrinsic();
       const generation = ++paintGen;
       void paintFrcCanvas(canvas, bitmap, generation, currentGeneration).then((ok) => {
         if (ok) notifyLoad();
       });
     };
 
-    writeFrcNaturalSize(canvas, bitmap.width, bitmap.height);
-    if (canvas.width !== bitmap.width) canvas.width = bitmap.width;
-    if (canvas.height !== bitmap.height) canvas.height = bitmap.height;
     run();
-    const observer = new ResizeObserver(run);
+    const observer = new ResizeObserver(() => {
+      if (skipResizeNotifications > 0) {
+        skipResizeNotifications -= 1;
+        return;
+      }
+      run();
+    });
     observer.observe(canvas);
     const unsubscribeDpr = subscribeDevicePixelRatio(run);
     return () => {
@@ -178,17 +254,11 @@ export function FrcImage({ src, onLoad, onError, alt, loading, ...props }: Props
       observer.disconnect();
       unsubscribeDpr();
     };
-  }, [source, onLoad]);
+  }, [source]);
 
   useEffect(() => {
-    if (resolved.error && onError) {
-      const event = {
-        currentTarget: canvasRef.current,
-        target: canvasRef.current,
-      } as unknown as SyntheticEvent<HTMLImageElement>;
-      onError(event);
-    }
-  }, [resolved.error, onError]);
+    if (resolved.error) notifyFailed();
+  }, [resolved.error]);
 
   if (source?.kind === "url" && source.url) {
     return (
