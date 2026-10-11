@@ -118,6 +118,12 @@ body {
   font-weight: 300;
 }
 
+/* Лента: полоса скрыта и там, где module-класс не доезжает (Firefox). */
+#central-scroll-feed {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+
 /* Не скрываем body до гидратации — иначе при долгой dev-компиляции страница кажется «мёртвой». */
 body.fonts-ready {
   visibility: visible;

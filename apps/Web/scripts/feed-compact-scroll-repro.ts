@@ -16,7 +16,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import esbuild from "esbuild";
 import CssModulesPlugin from "esbuild-css-modules-plugin";
 import { chromium } from "playwright";
-import { FEED_EXPANDED_HEADER_PX } from "../app/(dashboard)/feed/useFeedCompactHeader";
+import {
+  FEED_EXPANDED_HEADER_PX,
+  isFeedCompactSwitchEnabled,
+} from "../app/(dashboard)/feed/useFeedCompactHeader";
 
 type HarnessApi = {
   scrollTop: () => number;
@@ -274,6 +277,10 @@ async function runRepro(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  if (!isFeedCompactSwitchEnabled()) {
+    console.log("[feed:compact-scroll-repro] SKIP compact switch disabled");
+    return;
+  }
   try {
     await runRepro();
   } finally {

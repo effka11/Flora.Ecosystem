@@ -20,6 +20,11 @@ const NO_TRANSITION_CLEAR_MS = 450;
 const COMPACT_ANIMATE_DELAY_MS = 50;
 const LEAVE_EXPAND_ANIM_MS = 420;
 
+/** Временно выключено: переключение compact на скролле не используется. */
+export function isFeedCompactSwitchEnabled(): boolean {
+  return false;
+}
+
 export type FeedCompactHeaderState = {
   isCompact: boolean;
   compactAnimate: boolean;
@@ -72,8 +77,8 @@ function syncCompactDomClasses(
 }
 
 /**
- * Порог в scroll-rAF — 4× живой `--flora-grid-step` (9−5 рядов). Геометрия ящика — CSS always-sticky;
- * хук только переключает inner-классы в scroll-rAF (без flushSync).
+ * Порог в scroll-rAF — 4× живой `--flora-grid-step` (9−5 рядов). Геометрия ящика — CSS sticky top: 0.
+ * Сейчас выключено isFeedCompactSwitchEnabled: класс compact на скролле не ставится.
  * React state — только для вторичного UI.
  */
 export function useFeedCompactHeader(
@@ -110,6 +115,8 @@ export function useFeedCompactHeader(
         leaving: false,
       });
     }
+
+    if (!isFeedCompactSwitchEnabled()) return;
 
     let ticking = false;
 
