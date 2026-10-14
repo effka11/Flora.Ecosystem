@@ -781,6 +781,8 @@ export function devDemoPostComments(postUuid: string): PostCommentDto[] {
         content: DEMO_COMMENT_BODIES[(Math.abs(h) + i + j + 1) % DEMO_COMMENT_BODIES.length],
         createdAt: new Date(Date.now() - (i + 1) * 720000 - j * 3600000 - (Math.abs(h) % 60000)).toISOString(),
         repliesCount: 0,
+        likesCount: 0,
+        liked: false,
         replies: [],
       });
     }
@@ -791,6 +793,8 @@ export function devDemoPostComments(postUuid: string): PostCommentDto[] {
       content: DEMO_COMMENT_BODIES[(Math.abs(h) + i) % DEMO_COMMENT_BODIES.length],
       createdAt: new Date(Date.now() - (i + 1) * 720000 - (Math.abs(h) % 60000)).toISOString(),
       repliesCount: nReplies,
+      likesCount: 0,
+      liked: false,
       replies,
     });
   }

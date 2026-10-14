@@ -159,6 +159,8 @@ impl CommentsService {
             content,
             created_at,
             0,
+            0,
+            false,
             Vec::new(),
         )))
     }
@@ -216,7 +218,9 @@ impl CommentsService {
             .take(take as usize)
             .collect();
 
-        let list = self.map_nodes(&all, &roots, include_replies).await?;
+        let list = self
+            .map_nodes(&all, &roots, include_replies, viewer)
+            .await?;
         Ok(Ok(list))
     }
 
@@ -250,8 +254,86 @@ impl CommentsService {
             .filter(|c| c.parent_comment_uuid == Some(comment_uuid))
             .collect();
 
-        let list = self.map_nodes(&all, &direct, false).await?;
+        let list = self.map_nodes(&all, &direct, false, viewer).await?;
         Ok(Ok(list))
+    }
+
+    pub async fn like(
+        &self,
+        user_uuid: Uuid,
+        post_uuid: Uuid,
+        comment_uuid: Uuid,
+    ) -> Result<Result<Value, CommentsError>, String> {
+        if !self.access.can_view(post_uuid, Some(user_uuid)).await? {
+            return Ok(Err(CommentsError::PostNotFound));
+        }
+        if !self
+            .repo
+            .comment_exists(post_uuid, comment_uuid)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            return Ok(Err(CommentsError::CommentNotFound));
+        }
+        let already = self
+            .repo
+            .has_comment_liked(comment_uuid, user_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
+        if !already {
+            self.repo
+                .insert_comment_like(post_uuid, comment_uuid, user_uuid, Utc::now())
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        let count = self
+            .repo
+            .comment_like_count(comment_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(Ok(json!({
+            "liked": true,
+            "likesCount": count,
+        })))
+    }
+
+    pub async fn unlike(
+        &self,
+        user_uuid: Uuid,
+        post_uuid: Uuid,
+        comment_uuid: Uuid,
+    ) -> Result<Result<Value, CommentsError>, String> {
+        if !self.access.can_view(post_uuid, Some(user_uuid)).await? {
+            return Ok(Err(CommentsError::PostNotFound));
+        }
+        if !self
+            .repo
+            .comment_exists(post_uuid, comment_uuid)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            return Ok(Err(CommentsError::CommentNotFound));
+        }
+        let liked = self
+            .repo
+            .has_comment_liked(comment_uuid, user_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
+        if liked {
+            self.repo
+                .delete_comment_like(comment_uuid, user_uuid)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        let count = self
+            .repo
+            .comment_like_count(comment_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(Ok(json!({
+            "liked": false,
+            "likesCount": count,
+        })))
     }
 
     async fn map_nodes(
@@ -259,6 +341,7 @@ impl CommentsService {
         all: &[CommentRow],
         nodes: &[&CommentRow],
         include_replies: bool,
+        viewer: Option<Uuid>,
     ) -> Result<Vec<Value>, String> {
         let author_ids: Vec<Uuid> = all
             .iter()
@@ -281,6 +364,32 @@ impl CommentsService {
             .into_iter()
             .map(|p| (p.user_uuid, p))
             .collect::<HashMap<_, _>>();
+
+        let mut like_ids = Vec::new();
+        for c in nodes {
+            like_ids.push(c.comment_uuid);
+            if include_replies {
+                for reply in all
+                    .iter()
+                    .filter(|r| r.parent_comment_uuid == Some(c.comment_uuid))
+                {
+                    like_ids.push(reply.comment_uuid);
+                }
+            }
+        }
+        let like_counts = self
+            .repo
+            .comment_like_counts(&like_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        let liked_by_viewer = match viewer {
+            Some(user_uuid) => self
+                .repo
+                .comment_liked_by_viewer(user_uuid, &like_ids)
+                .await
+                .map_err(|e| e.to_string())?,
+            None => std::collections::HashSet::new(),
+        };
 
         let map_reply = |c: &CommentRow| -> Value {
             let username = usernames
@@ -307,6 +416,8 @@ impl CommentsService {
                 &c.content,
                 c.created_at,
                 0,
+                like_counts.get(&c.comment_uuid).copied().unwrap_or(0),
+                liked_by_viewer.contains(&c.comment_uuid),
                 Vec::new(),
             )
         };
@@ -348,6 +459,8 @@ impl CommentsService {
                 &c.content,
                 c.created_at,
                 direct_replies.len(),
+                like_counts.get(&c.comment_uuid).copied().unwrap_or(0),
+                liked_by_viewer.contains(&c.comment_uuid),
                 replies,
             ));
         }
@@ -440,6 +553,8 @@ fn comment_json(
     content: &str,
     created_at: DateTime<Utc>,
     replies_count: usize,
+    likes_count: i64,
+    liked: bool,
     replies: Vec<Value>,
 ) -> Value {
     json!({
@@ -450,6 +565,8 @@ fn comment_json(
         "content": content,
         "createdAt": format_utc(created_at),
         "repliesCount": replies_count,
+        "likesCount": likes_count,
+        "liked": liked,
         "replies": replies,
     })
 }
@@ -488,10 +605,14 @@ mod tests {
             "comment",
             DateTime::<Utc>::UNIX_EPOCH,
             0,
+            0,
+            false,
             Vec::new(),
         );
 
         assert_eq!(value.get("authorAccountBlocked"), Some(&Value::Bool(true)));
         assert!(value.get("accountBlocked").is_none());
+        assert_eq!(value.get("likesCount"), Some(&json!(0)));
+        assert_eq!(value.get("liked"), Some(&Value::Bool(false)));
     }
 }

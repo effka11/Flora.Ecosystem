@@ -191,6 +191,12 @@ struct CountRow {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+struct CommentLikeCountRow {
+    comment_uuid: Uuid,
+    count: i64,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
 struct TrendingWindowRow {
     post_uuid: Uuid,
     created_at: DateTime<Utc>,
@@ -1697,6 +1703,135 @@ impl ContentRepo {
         .bind(comment_uuid)
         .fetch_one(&self.pool)
         .await
+    }
+
+    pub async fn has_comment_liked(
+        &self,
+        comment_uuid: Uuid,
+        user_uuid: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM flora_core.comment_likes
+                WHERE comment_uuid = $1
+                  AND user_uuid = $2
+            )
+            "#,
+        )
+        .bind(comment_uuid)
+        .bind(user_uuid)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    /// Пишет лайк только если комментарий принадлежит посту и не удалён.
+    /// Повтор той же пары (comment, user) не создаёт вторую строку.
+    pub async fn insert_comment_like(
+        &self,
+        post_uuid: Uuid,
+        comment_uuid: Uuid,
+        user_uuid: Uuid,
+        created_at: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO flora_core.comment_likes (comment_uuid, user_uuid, created_at)
+            SELECT $2, $3, $4
+            FROM flora_core.post_comments
+            WHERE comment_uuid = $2
+              AND post_uuid = $1
+              AND is_deleted = false
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(post_uuid)
+        .bind(comment_uuid)
+        .bind(user_uuid)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_comment_like(
+        &self,
+        comment_uuid: Uuid,
+        user_uuid: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            DELETE FROM flora_core.comment_likes
+            WHERE comment_uuid = $1
+              AND user_uuid = $2
+            "#,
+        )
+        .bind(comment_uuid)
+        .bind(user_uuid)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn comment_like_count(&self, comment_uuid: Uuid) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM flora_core.comment_likes
+            WHERE comment_uuid = $1
+            "#,
+        )
+        .bind(comment_uuid)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn comment_like_counts(
+        &self,
+        comment_uuids: &[Uuid],
+    ) -> Result<HashMap<Uuid, i64>, sqlx::Error> {
+        if comment_uuids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = sqlx::query_as::<_, CommentLikeCountRow>(
+            r#"
+            SELECT comment_uuid, COUNT(*)::bigint AS count
+            FROM flora_core.comment_likes
+            WHERE comment_uuid = ANY($1)
+            GROUP BY comment_uuid
+            "#,
+        )
+        .bind(comment_uuids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.comment_uuid, row.count))
+            .collect())
+    }
+
+    pub async fn comment_liked_by_viewer(
+        &self,
+        user_uuid: Uuid,
+        comment_uuids: &[Uuid],
+    ) -> Result<HashSet<Uuid>, sqlx::Error> {
+        if comment_uuids.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let rows: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            SELECT comment_uuid
+            FROM flora_core.comment_likes
+            WHERE user_uuid = $1
+              AND comment_uuid = ANY($2)
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(comment_uuids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().collect())
     }
 
     pub async fn post_author_uuid(&self, post_uuid: Uuid) -> Result<Option<Uuid>, sqlx::Error> {

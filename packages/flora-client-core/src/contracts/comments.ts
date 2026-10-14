@@ -10,6 +10,8 @@ export type PostCommentDto = {
   content: string;
   createdAt: string;
   repliesCount: number;
+  likesCount: number;
+  liked: boolean;
   replies: PostCommentDto[];
 };
 
@@ -37,6 +39,8 @@ export function parsePostComment(raw: unknown, ctx?: ParseContext): PostCommentD
     content: readStr(o, ["content", "Content", "text", "Text"], fb),
     createdAt: readStr(o, ["createdAt", "CreatedAt"], fb),
     repliesCount: readNum(o, ["repliesCount", "RepliesCount"], fb) ?? 0,
+    likesCount: readNum(o, ["likesCount", "LikesCount", "likeCount", "LikeCount"], fb) ?? 0,
+    liked: readBool(o, ["liked", "Liked"], fb),
     replies,
   };
 }
