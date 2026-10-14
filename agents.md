@@ -6,7 +6,7 @@
 
 ## Обзор системы
 
-Модульный монолит + **пиры продуктов** под `products/` (App vs Functional — [`architecture.md`](architecture.md) §1.1, [`next-architecture.md`](next-architecture.md) §2.0).
+Модульный монолит + **пиры продуктов** под `products/` (App vs Functional — [`architecture.md`](architecture.md) §1.1).
 
 - **Rust `flora-api`** (`backend/crates/flora-api`) — точка входа (маршрутизация, middleware). Бизнес-логика запрещена.
 - **`flora-shared`** — низкоуровневые утилиты. Бизнес-логика запрещена.
@@ -20,8 +20,6 @@
 
 Спеки: `documents/` (FSCP, FIRA, FSA, FGP, FPP, FEP, codecs). Поиск (FSA) — `documents/fsa/FSA.md` + 7 модульных (FSA-F/A/M/P/C/N/D). Economy (FEP) — Rust-native в `products/FEP`; валюта **LIV** — `documents/fep/LIV.md` (канонический формат сумм, витнесс-косайнинг, верификация клиентом).
 
-C# / .NET хост удалён (Фаза 5, `next-architecture.md`). Protos для межсервисных контрактов — [`infrastructure/Flora.gRPC/Protos/`](infrastructure/Flora.gRPC/Protos/).
-
 ## Направления зависимостей
 
 Разрешено: **Apps → Packages → API/host → App-product → modules / Functional kernels**.
@@ -33,6 +31,7 @@ C# / .NET хост удалён (Фаза 5, `next-architecture.md`). Protos д�
 - Modules → Apps; Infrastructure → Modules (кроме интерфейсов)
 - прямые зависимости между App-продуктами
 - functional kernel → sqlx / axum / flora-shared (portable surface)
+- импорт чужого модуля мимо его `*-contracts`; публичные порты вне contracts-crate
 
 ## Жёсткие запреты
 
@@ -48,7 +47,7 @@ C# / .NET хост удалён (Фаза 5, `next-architecture.md`). Protos д�
 
 1. Вызовы в процессе (тот же модуль)
 2. Контракты (DTO) — все контракты в отдельном слое **Contracts**, без бизнес-логики
-3. gRPC (межмодульно / будущие микросервисы)
+3. gRPC (межмодульно / будущие микросервисы). Protos — [`infrastructure/Flora.gRPC/Protos/`](infrastructure/Flora.gRPC/Protos/)
 4. События (асинхронно)
 
 ## Процесс мышления (перед кодом)
@@ -103,25 +102,20 @@ pwsh ./tools/validate-architecture-rust.ps1
 
 См. `apps/Mobile/AGENTS.md` перед любыми изменениями в мобильном приложении.
 
+## FSCP и E2E
+
+Перед правками wire, крипто сообщений, key backup, эпох, устройств, freeze, franking, группового конверта или органайзера чатов — skill **`/flora-fscp-e2e`**. Спеки — `documents/fscp/`. Сетка и UI чата — **`/apps-web-messages-chat`**.
+
 ## Данные и миграции
 
 - Каждый модуль владеет своими данными; меняет их только модуль-владелец.
-- Схема БД заморожена с cutover; эволюция — через `flora-migrate` (`backend/crates/flora-migrate`), не через EF.
+- Публичный HTTP-контракт и схема БД заморожены. Формулы (FIRA и пр.) не менять без отдельного решения.
+- Эволюция схемы — через `flora-migrate` (`backend/crates/flora-migrate`).
+- `documents/test-vectors/**` и `artifacts/contract-fixtures/**` руками не редактировать — только регенерация из эталонной реализации.
 
 ## Эволюция
 
 Каждое решение должно позволять: вынести модуль в отдельный сервис; заменить транспорт (REST ↔ gRPC); сменить реализацию без изменения контрактов.
-
-## Миграция бэкенда на Rust
-
-Нормативный план — **`next-architecture.md`**. **Фаза 5 выполнена:** C#/`.NET` удалён из репозитория; единственный HTTP-хост — Rust `flora-api`.
-
-- Публичный HTTP-контракт и схема БД **заморожены** относительно cutover. Формулы (FIRA и пр.) не «улучшать» без отдельного решения.
-- `documents/test-vectors/**` и `artifacts/contract-fixtures/**` руками не редактировать — только регенерация из эталонной реализации.
-- Правила зависимостей crate'ов — `next-architecture.md` §2.3: модуль видит чужие только через `*-contracts`; публичные порты объявляются только в contracts-crate.
-- Исторический чек-лист переноса: skill **`/rust-migration`** (архив strangler).
-
-Структура: `Cargo.toml` (workspace) + `backend/crates` (host) + `products/*` (App/Functional). Кросс-языковые golden-векторы: `documents/test-vectors/backend-parity/`.
 
 ## Медиакодеки (products/FRC)
 
@@ -135,10 +129,6 @@ pwsh ./tools/validate-architecture-rust.ps1
 
 Реестр сигнатур — `documents/codecs/CODECS.md`.
 
-## Второй контур (код)
-
-После реализации, не вместо плана: **`/flora-code-reviewer`** → **`/flora-code-reviser`** (циклы при необходимости). Объект — git diff, не план. Тесты только усиливать; подгонка ожиданий — blocker. Не заменяет гейты оркестратора.
-
 ## Git
 
 - **Не делать `git commit`, `git push` и не готовить коммиты** без явного запроса пользователя.
@@ -149,4 +139,4 @@ pwsh ./tools/validate-architecture-rust.ps1
 
 См. **`documents/ZED.md`** — tasks, skills, debugger, ACP. Глобально: `%APPDATA%\Zed\docs\ZED-GLOBAL.md`.
 
-Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/rust-migration`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`, `/flora-smart-agent-economy`, `/flora-code-reviewer`, `/flora-code-reviser`.
+Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`, `/flora-smart-agent-economy`, `/flora-code-reviewer`, `/flora-code-reviser`.
