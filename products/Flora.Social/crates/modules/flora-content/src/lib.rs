@@ -1,7 +1,7 @@
 //! Модуль Content. Перенос — Фаза 3 (next-architecture.md §6); владелец — таблица §6.0.
 //!
 //! Уже перенесено: FIRA-F/C scorers; ServeNative HTTP: feed / has-new / create+delete post /
-//! like / unlike / repost / view / create+delete comment / comments (+ replies) /
+//! like / unlike / repost / view / create+delete comment / comment like / comments (+ replies) /
 //! profile posts/likes/reposts / communities (list/owned/recommended/search/slug/join/posts/profile/create/update/delete);
 //! media GET (post images, avatars user+community, post videos+poster); post drafts CRUD;
 //! POST post images (multipart WebP); GET post video/status;
