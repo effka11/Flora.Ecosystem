@@ -148,3 +148,90 @@ async fn edit_snapshots_revision_and_hides_detached_images() {
         .await
         .expect("cleanup");
 }
+
+#[tokio::test]
+async fn comment_like_is_one_row_and_hidden_comments_are_not_written() {
+    if !enabled() {
+        eprintln!("skip: set FLORA_CONTENT_POST_EDIT_PG=1");
+        return;
+    }
+
+    let pool = connect().await;
+    let author: Uuid = sqlx::query_scalar(
+        r#"
+        SELECT author_user_uuid
+        FROM flora_core.user_posts
+        LIMIT 1
+        "#,
+    )
+    .fetch_optional(&pool)
+    .await
+    .expect("author query")
+    .expect("need at least one user_posts row for author uuid");
+
+    let repo = ContentRepo::new(pool.clone());
+    let post_uuid = new_uuid();
+    let other_post_uuid = new_uuid();
+    let comment_uuid = new_uuid();
+    repo.insert_post(post_uuid, author, "comment like post", None, Utc::now())
+        .await
+        .expect("insert post");
+    repo.insert_comment(comment_uuid, post_uuid, author, "hello", None, Utc::now())
+        .await
+        .expect("insert comment");
+
+    repo.insert_comment_like(post_uuid, comment_uuid, author, Utc::now())
+        .await
+        .expect("like");
+    assert_eq!(
+        repo.comment_like_count(comment_uuid).await.expect("count"),
+        1
+    );
+
+    repo.insert_comment_like(post_uuid, comment_uuid, author, Utc::now())
+        .await
+        .expect("like again");
+    assert_eq!(
+        repo.comment_like_count(comment_uuid)
+            .await
+            .expect("count after repeat"),
+        1
+    );
+
+    repo.delete_comment_like(comment_uuid, author)
+        .await
+        .expect("unlike");
+    assert_eq!(
+        repo.comment_like_count(comment_uuid)
+            .await
+            .expect("count after unlike"),
+        0
+    );
+
+    repo.insert_comment_like(other_post_uuid, comment_uuid, author, Utc::now())
+        .await
+        .expect("like on other post");
+    assert_eq!(
+        repo.comment_like_count(comment_uuid)
+            .await
+            .expect("count after wrong post"),
+        0
+    );
+
+    repo.soft_delete_comment(comment_uuid, Utc::now())
+        .await
+        .expect("delete comment");
+    repo.insert_comment_like(post_uuid, comment_uuid, author, Utc::now())
+        .await
+        .expect("like deleted comment");
+    assert_eq!(
+        repo.comment_like_count(comment_uuid)
+            .await
+            .expect("count after deleted"),
+        0
+    );
+
+    repo.soft_delete_post(post_uuid, Utc::now())
+        .await
+        .expect("cleanup");
+}

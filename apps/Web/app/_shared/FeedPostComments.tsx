@@ -28,6 +28,8 @@ import {
 import {
   apiCreatePostComment,
   apiGetCommentReplies,
+  apiLikeComment,
+  apiUnlikeComment,
   type PeopleSearchUserDto,
   type PostCommentDto,
 } from "@/lib/socialApi";
@@ -76,7 +78,7 @@ function insertCommentReply(
 function buildLikeState(comments: PostCommentDto[]): Record<string, { count: number; liked: boolean }> {
   const likes: Record<string, { count: number; liked: boolean }> = {};
   const seed = (x: PostCommentDto) => {
-    likes[x.commentUuid] = { count: likeSeed(x.commentUuid), liked: false };
+    likes[x.commentUuid] = { count: x.likesCount, liked: x.liked };
     for (const r of x.replies ?? []) seed(r);
   };
   for (const c of comments) seed(c);
@@ -94,10 +96,19 @@ function findCommentInTree(nodes: PostCommentDto[], commentUuid: string): PostCo
   return null;
 }
 
-function likeSeed(commentUuid: string): number {
-  let h = 0;
-  for (let i = 0; i < commentUuid.length; i++) h = (h * 31 + commentUuid.charCodeAt(i)) | 0;
-  return Math.abs(h) % 19;
+function patchCommentLike(
+  items: PostCommentDto[],
+  commentUuid: string,
+  likesCount: number,
+  liked: boolean,
+): PostCommentDto[] {
+  return items.map((c) => {
+    if (c.commentUuid === commentUuid) return { ...c, likesCount, liked };
+    if (c.replies?.length) {
+      return { ...c, replies: patchCommentLike(c.replies, commentUuid, likesCount, liked) };
+    }
+    return c;
+  });
 }
 
 type ReplyComposerTarget = {
@@ -450,6 +461,8 @@ export function FeedPostComments({ postUuid, open, onCommentAdded }: FeedPostCom
     const cached = getCachedPostComments(postUuid);
     return cached ? buildLikeState(cached) : {};
   });
+  const likeStateRef = useRef(likeState);
+  likeStateRef.current = likeState;
   const [composerPlain, setComposerPlain] = useState("");
   const [replyTo, setReplyTo] = useState<ReplyComposerTarget | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -460,6 +473,7 @@ export function FeedPostComments({ postUuid, open, onCommentAdded }: FeedPostCom
   const [repliesFetching, setRepliesFetching] = useState<Record<string, boolean>>({});
   const itemsRef = useRef(items);
   const repliesFetchInFlightRef = useRef(new Set<string>());
+  const likeInFlightRef = useRef(new Set<string>());
   itemsRef.current = items;
   const composerRef = useRef<CommentMentionComposerHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -624,15 +638,36 @@ export function FeedPostComments({ postUuid, open, onCommentAdded }: FeedPostCom
   );
 
   const toggleLike = useCallback((commentUuid: string) => {
-    setLikeState((prev) => {
-      const cur = prev[commentUuid] ?? { count: 0, liked: false };
-      const liked = !cur.liked;
-      return {
-        ...prev,
-        [commentUuid]: { count: Math.max(0, cur.count + (liked ? 1 : -1)), liked },
-      };
-    });
-  }, []);
+    if (likeInFlightRef.current.has(commentUuid)) return;
+    const snapshot = likeStateRef.current[commentUuid] ?? { count: 0, liked: false };
+    const liked = !snapshot.liked;
+    setLikeState((prev) => ({
+      ...prev,
+      [commentUuid]: { count: Math.max(0, snapshot.count + (liked ? 1 : -1)), liked },
+    }));
+    likeInFlightRef.current.add(commentUuid);
+    const request = snapshot.liked
+      ? apiUnlikeComment(postUuid, commentUuid)
+      : apiLikeComment(postUuid, commentUuid);
+    void request
+      .then((res) => {
+        setLikeState((prev) => ({
+          ...prev,
+          [commentUuid]: { count: res.likesCount, liked: res.liked },
+        }));
+        setItems((prev) => {
+          const next = patchCommentLike(prev, commentUuid, res.likesCount, res.liked);
+          setCachedPostComments(postUuid, next);
+          return next;
+        });
+      })
+      .catch(() => {
+        setLikeState((prev) => ({ ...prev, [commentUuid]: snapshot }));
+      })
+      .finally(() => {
+        likeInFlightRef.current.delete(commentUuid);
+      });
+  }, [postUuid]);
 
   const beginReply = useCallback((c: PostCommentDto, options: BeginReplyOptions) => {
     const parent =
@@ -686,7 +721,7 @@ export function FeedPostComments({ postUuid, open, onCommentAdded }: FeedPostCom
       }
       setLikeState((prev) => ({
         ...prev,
-        [created.commentUuid]: { count: likeSeed(created.commentUuid), liked: false },
+        [created.commentUuid]: { count: created.likesCount, liked: created.liked },
       }));
       composerRef.current?.clear();
       setComposerPlain("");

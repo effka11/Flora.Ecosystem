@@ -1,7 +1,7 @@
 import { authDelete, authFetch, authGetJson, authPatchJson, authPostJson } from "./client.js";
 import { getApiClientConfig } from "./client.js";
 import { parsePostComment, parsePostCommentsList } from "../contracts/comments.js";
-import { parseRepostMutation } from "../contracts/engagement.js";
+import { parseLikeMutation, parseRepostMutation } from "../contracts/engagement.js";
 import { parsePeopleUsersList, type PeopleUserDto } from "../contracts/people.js";
 import {
   parseCommunityList,
@@ -264,6 +264,36 @@ export async function apiAddPostComment(
   const parsed = parsePostComment(raw, ctx());
   if (!parsed) throw new ApiRequestError(500, "Некорректный ответ сервера.");
   return parsed;
+}
+
+export async function apiLikeComment(
+  postUuid: string,
+  commentUuid: string,
+): Promise<{ liked: boolean; likesCount: number }> {
+  const postId = postUuid.trim();
+  const commentId = commentUuid.trim();
+  if (!postId || !commentId) throw new ApiRequestError(400, "Не указан комментарий.");
+  const raw = await authPostJson(
+    `/api/auth/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/like`,
+    {},
+  );
+  return parseLikeMutation(raw);
+}
+
+export async function apiUnlikeComment(
+  postUuid: string,
+  commentUuid: string,
+): Promise<{ liked: boolean; likesCount: number }> {
+  const postId = postUuid.trim();
+  const commentId = commentUuid.trim();
+  if (!postId || !commentId) throw new ApiRequestError(400, "Не указан комментарий.");
+  const r = await authFetch(
+    `/api/auth/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/like`,
+    { method: "DELETE" },
+  );
+  if (!r.ok) throw new ApiRequestError(r.status, await r.text());
+  const raw = await r.json().catch(() => ({}));
+  return parseLikeMutation(raw);
 }
 
 export async function apiListPostDrafts(input?: { communityId?: string }): Promise<PostDraftDto[]> {

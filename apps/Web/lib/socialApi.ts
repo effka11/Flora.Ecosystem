@@ -156,6 +156,10 @@ export type PostCommentDto = {
   createdAt: string;
   /** Число прямых ответов на комментарий. */
   repliesCount: number;
+  /** Сколько пользователей лайкнули комментарий. */
+  likesCount: number;
+  /** Лайк текущего зрителя. У гостя всегда false. */
+  liked: boolean;
   /** Вложенные ответы (дерево с сервера). */
   replies: PostCommentDto[];
 };
@@ -735,6 +739,8 @@ function parsePostComment(raw: unknown): PostCommentDto | null {
     content: readStr(o, ["content", "Content"]),
     createdAt: readStr(o, ["createdAt", "CreatedAt"]),
     repliesCount: readNum(o, ["repliesCount", "RepliesCount"]),
+    likesCount: readNum(o, ["likesCount", "LikesCount"]),
+    liked: readBool(o, ["liked", "Liked"]),
     replies,
   };
 }
@@ -831,6 +837,8 @@ export async function apiCreatePostComment(
       content: trimmed,
       createdAt: new Date().toISOString(),
       repliesCount: 0,
+      likesCount: 0,
+      liked: false,
       replies: [],
     };
   }
@@ -845,6 +853,53 @@ export async function apiCreatePostComment(
     throw new ApiRequestError(500, "Некорректный ответ сервера.");
   }
   return parsed;
+}
+
+const devCommentLikes = new Map<string, { count: number; liked: boolean }>();
+
+function devCommentLike(
+  commentUuid: string,
+  like: boolean,
+): { liked: boolean; likesCount: number } {
+  const cur = devCommentLikes.get(commentUuid) ?? { count: 0, liked: false };
+  const next = like
+    ? { liked: true, count: cur.liked ? cur.count : cur.count + 1 }
+    : { liked: false, count: cur.liked ? Math.max(0, cur.count - 1) : cur.count };
+  devCommentLikes.set(commentUuid, next);
+  return { liked: next.liked, likesCount: next.count };
+}
+
+export async function apiLikeComment(
+  postUuid: string,
+  commentUuid: string,
+): Promise<{ liked: boolean; likesCount: number }> {
+  const postId = postUuid.trim();
+  const commentId = commentUuid.trim();
+  if (!postId || !commentId) throw new ApiRequestError(400, "Не указан комментарий.");
+  if (isDevLocalOfflineSession()) return devCommentLike(commentId, true);
+  const raw = await authPostJson(
+    apiUrl(
+      `/api/auth/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/like`,
+    ),
+    {},
+  );
+  return parseLikeMutation(raw);
+}
+
+export async function apiUnlikeComment(
+  postUuid: string,
+  commentUuid: string,
+): Promise<{ liked: boolean; likesCount: number }> {
+  const postId = postUuid.trim();
+  const commentId = commentUuid.trim();
+  if (!postId || !commentId) throw new ApiRequestError(400, "Не указан комментарий.");
+  if (isDevLocalOfflineSession()) return devCommentLike(commentId, false);
+  const raw = await authDeleteJson(
+    apiUrl(
+      `/api/auth/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/like`,
+    ),
+  );
+  return parseLikeMutation(raw);
 }
 
 export async function apiCreatePost(

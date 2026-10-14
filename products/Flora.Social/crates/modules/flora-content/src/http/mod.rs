@@ -154,6 +154,14 @@ pub fn protected_router(
             "/api/auth/posts/{post_uuid}/comments/{comment_uuid}",
             delete(delete_comment),
         )
+        .route(
+            "/api/auth/posts/{post_uuid}/comments/{comment_uuid}/like",
+            post(like_comment),
+        )
+        .route(
+            "/api/auth/posts/{post_uuid}/comments/{comment_uuid}/like",
+            delete(unlike_comment),
+        )
         .route("/api/auth/communities/owned", get(get_owned_communities))
         .route(
             "/api/auth/communities/recommended",
@@ -946,6 +954,45 @@ async fn delete_comment(
         )
             .into_response(),
         Ok(Err(DeleteCommentError::Forbidden)) => StatusCode::FORBIDDEN.into_response(),
+        Err(e) => internal(e),
+    }
+}
+
+fn comment_like_error(err: CommentsError) -> Response {
+    match err {
+        CommentsError::PostNotFound => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Пост не найден." })),
+        )
+            .into_response(),
+        CommentsError::CommentNotFound => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Комментарий не найден." })),
+        )
+            .into_response(),
+    }
+}
+
+async fn like_comment(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path((post_uuid, comment_uuid)): Path<(Uuid, Uuid)>,
+) -> Response {
+    match state.comments.like(user.0, post_uuid, comment_uuid).await {
+        Ok(Ok(body)) => Json(body).into_response(),
+        Ok(Err(err)) => comment_like_error(err),
+        Err(e) => internal(e),
+    }
+}
+
+async fn unlike_comment(
+    State(state): State<ContentState>,
+    Extension(user): Extension<CurrentUser>,
+    Path((post_uuid, comment_uuid)): Path<(Uuid, Uuid)>,
+) -> Response {
+    match state.comments.unlike(user.0, post_uuid, comment_uuid).await {
+        Ok(Ok(body)) => Json(body).into_response(),
+        Ok(Err(err)) => comment_like_error(err),
         Err(e) => internal(e),
     }
 }
