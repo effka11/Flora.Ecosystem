@@ -19,7 +19,7 @@ use crate::application::post_images::MAX_POST_IMAGES_COUNT;
 use crate::application::time::format_utc;
 use crate::infrastructure::repo::{ContentRepo, VideoLite};
 
-pub const MAX_POST_CONTENT_LENGTH: usize = 2000;
+pub const MAX_POST_CONTENT_LENGTH: usize = 5000;
 
 pub struct PostService {
     repo: Arc<ContentRepo>,
@@ -682,8 +682,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        UpdatePostError, authorize_post_edit, plan_like_unlike_retract, plan_post_edit,
-        should_retract_social_after_remove,
+        MAX_POST_CONTENT_LENGTH, UpdatePostError, authorize_post_edit, plan_like_unlike_retract,
+        plan_post_edit, should_retract_social_after_remove,
     };
 
     #[test]
@@ -728,7 +728,7 @@ mod tests {
 
     #[test]
     fn edit_too_long_is_rejected() {
-        let long = "я".repeat(2001);
+        let long = "я".repeat(MAX_POST_CONTENT_LENGTH + 1);
         let err = plan_post_edit("hi", &[], None, &long, None, false, false).unwrap_err();
         assert!(matches!(err, UpdatePostError::TooLong));
     }
