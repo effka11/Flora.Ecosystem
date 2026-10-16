@@ -627,9 +627,10 @@ impl FeedService {
             }
         }
 
+        let pin_since = now - chrono::Duration::hours(effective.own_post_pin_hours);
         if pool.is_empty() {
             return self
-                .build_cold_start(user_uuid, since_sub, &blocked, not_interested)
+                .build_cold_start(user_uuid, since_sub, &blocked, not_interested, pin_since)
                 .await;
         }
 
@@ -726,7 +727,7 @@ impl FeedService {
 
         let own = self
             .repo
-            .own_post_ids(user_uuid, 100)
+            .own_post_ids(user_uuid, 100, pin_since)
             .await
             .map_err(|e| e.to_string())?;
         let own_set: HashSet<Uuid> = own.iter().copied().collect();
@@ -754,10 +755,11 @@ impl FeedService {
         since_sub: DateTime<Utc>,
         blocked: &HashSet<Uuid>,
         not_interested: &HashSet<Uuid>,
+        pin_since: DateTime<Utc>,
     ) -> Result<Vec<Uuid>, String> {
         let own = self
             .repo
-            .own_post_ids(user_uuid, 100)
+            .own_post_ids(user_uuid, 100, pin_since)
             .await
             .map_err(|e| e.to_string())?;
         let exploration_take = self.pool_limit(0.15).clamp(20, 100) as usize;

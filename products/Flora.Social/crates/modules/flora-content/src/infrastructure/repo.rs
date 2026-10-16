@@ -359,18 +359,25 @@ impl ContentRepo {
         .await
     }
 
-    pub async fn own_post_ids(&self, user_uuid: Uuid, take: i32) -> Result<Vec<Uuid>, sqlx::Error> {
+    pub async fn own_post_ids(
+        &self,
+        user_uuid: Uuid,
+        take: i32,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<Uuid>, sqlx::Error> {
         sqlx::query_scalar(
             r#"
             SELECT post_uuid
             FROM flora_core.user_posts
             WHERE author_user_uuid = $1
               AND is_deleted = false
+              AND created_at >= $2
             ORDER BY created_at DESC
-            LIMIT $2
+            LIMIT $3
             "#,
         )
         .bind(user_uuid)
+        .bind(since)
         .bind(i64::from(take))
         .fetch_all(&self.pool)
         .await

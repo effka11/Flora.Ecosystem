@@ -66,6 +66,15 @@ pub struct FiraFeedConfig {
     pub not_interested_author_penalty: f64,
     /// Максимум учитываемых отметок «не интересно» по автору (ограничение степени).
     pub not_interested_author_cap: i32,
+
+    /// Гасить `SocialProximity` тем же `exp(−λ · ageHours)`, что и `GlobalRelevance`.
+    /// Сырой `Default` оставляет `false`: golden-векторы v1 считают SP без возраста.
+    /// `apply_preferences` включает флаг для всех режимов свежести.
+    pub decay_social_proximity: bool,
+
+    /// Сколько часов собственный пост висит над лентой вне скоринга.
+    /// Дальше он не закреплён: иначе архив автора постоянно держит новые посты внизу.
+    pub own_post_pin_hours: i64,
 }
 
 impl FiraFeedConfig {
@@ -99,6 +108,8 @@ impl Default for FiraFeedConfig {
             seen_demotion_factor: 0.3,
             not_interested_author_penalty: 0.5,
             not_interested_author_cap: 3,
+            decay_social_proximity: false,
+            own_post_pin_hours: OWN_POST_PIN_HOURS_BALANCED,
         }
     }
 }
@@ -108,6 +119,9 @@ impl Default for FiraFeedConfig {
 const FRESHNESS_LAMBDA_FRESH: f64 = 0.10;
 const FRESHNESS_LAMBDA_BALANCED: f64 = 0.05;
 const FRESHNESS_LAMBDA_POPULAR: f64 = 0.025;
+const OWN_POST_PIN_HOURS_FRESH: i64 = 24;
+const OWN_POST_PIN_HOURS_BALANCED: i64 = 48;
+const OWN_POST_PIN_HOURS_POPULAR: i64 = 24 * 7;
 const EXPLORATION_QUOTA_OFF: f64 = 0.0;
 const EXPLORATION_QUOTA_LOW: f64 = 0.08;
 const EXPLORATION_QUOTA_STANDARD: f64 = 0.15;
@@ -121,6 +135,13 @@ pub fn apply_preferences(cfg: &mut FiraFeedConfig, prefs: &FeedPreferences) {
         FeedFreshness::Fresh => FRESHNESS_LAMBDA_FRESH,
         FeedFreshness::Balanced => FRESHNESS_LAMBDA_BALANCED,
         FeedFreshness::Popular => FRESHNESS_LAMBDA_POPULAR,
+    };
+    // Без этого λ двигает только вирусность, а лайк подписки держит старый пост сверху.
+    cfg.decay_social_proximity = true;
+    cfg.own_post_pin_hours = match prefs.freshness {
+        FeedFreshness::Fresh => OWN_POST_PIN_HOURS_FRESH,
+        FeedFreshness::Balanced => OWN_POST_PIN_HOURS_BALANCED,
+        FeedFreshness::Popular => OWN_POST_PIN_HOURS_POPULAR,
     };
     cfg.exploration_quota = match prefs.exploration {
         ExplorationLevel::Off => EXPLORATION_QUOTA_OFF,
@@ -178,7 +199,10 @@ pub struct FeedCandidate {
 pub fn score(c: &FeedCandidate, cfg: &FiraFeedConfig, now_utc: DateTime<Utc>) -> f64 {
     let ia = individual_affinity(c);
     let gr = global_relevance(c, cfg, now_utc);
-    let sp = social_proximity(c, ia, cfg);
+    let mut sp = social_proximity(c, ia, cfg);
+    if cfg.decay_social_proximity {
+        sp *= freshness_decay(age_hours(c.created_at, now_utc), cfg.decay_lambda);
+    }
 
     let mut score = cfg.alpha_phase0 * ia + cfg.beta_phase0 * gr + cfg.gamma_phase0 * sp;
     if c.seen {
@@ -206,11 +230,18 @@ pub fn individual_affinity(c: &FeedCandidate) -> f64 {
 
 /// §GlobalRelevance: viral × exp(−λ × ageHours), viral = engagement / ln(followers + 2).
 pub fn global_relevance(c: &FeedCandidate, cfg: &FiraFeedConfig, now_utc: DateTime<Utc>) -> f64 {
-    let age_hours = 0.0_f64.max(total_hours(ticks_between(c.created_at, now_utc)));
     let eng = engagement_score(c);
     // ln(authorFollowers + 2): при 0 подписчиков = ln(2) ≈ 0.693 (нет деления на 0)
     let viral = eng / f64::from(c.author_follower_count + 2).ln();
-    viral * (-cfg.decay_lambda * age_hours).exp()
+    viral * freshness_decay(age_hours(c.created_at, now_utc), cfg.decay_lambda)
+}
+
+fn age_hours(created_at: DateTime<Utc>, now_utc: DateTime<Utc>) -> f64 {
+    0.0_f64.max(total_hours(ticks_between(created_at, now_utc)))
+}
+
+fn freshness_decay(age_hours: f64, lambda: f64) -> f64 {
+    (-lambda * age_hours).exp()
 }
 
 /// §SocialProximity: ln(followedLikers + 1) × 3.0 + repostBoost.
@@ -448,15 +479,65 @@ mod tests {
 
     #[test]
     fn balanced_standard_preferences_keep_default_config() {
-        // Balanced/Standard/показывать всё = конфиг v1 (кроме продуктового дефолта seen=Demote,
-        // который в конфиг не входит — обрабатывается кандидатами).
+        // Balanced/Standard/показывать всё = конфиг v1, кроме двух рычагов свежести:
+        // SP стареет тем же λ, свой пост закреплён только 48 ч. Сырой Default их не включает,
+        // чтобы golden-векторы остались бит-в-бит.
         let mut cfg = FiraFeedConfig::default();
         let prefs = FeedPreferences {
             seen_posts: SeenPostsMode::Show,
             ..FeedPreferences::default()
         };
         apply_preferences(&mut cfg, &prefs);
-        assert_eq!(cfg, FiraFeedConfig::default());
+        let expected = FiraFeedConfig {
+            decay_social_proximity: true,
+            own_post_pin_hours: 48,
+            ..FiraFeedConfig::default()
+        };
+        assert_eq!(cfg, expected);
+    }
+
+    #[test]
+    fn balanced_ages_social_proximity_below_a_newer_post() {
+        let now = DateTime::parse_from_rfc3339("2026-07-13T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let mut cfg = FiraFeedConfig::default();
+        apply_preferences(&mut cfg, &FeedPreferences::default());
+
+        let old = FeedCandidate {
+            post_uuid: Uuid::from_u128(1),
+            created_at: now - chrono::Duration::hours(200),
+            likes_48h: 0,
+            comments_48h: 0,
+            reposts_48h: 0,
+            views_48h: 0,
+            author_follower_count: 0,
+            author_affinity: 0.0,
+            followed_likers_count: 3,
+            followed_reposters_count: 0,
+            ..candidate()
+        };
+        let fresh = FeedCandidate {
+            post_uuid: Uuid::from_u128(2),
+            created_at: now - chrono::Duration::hours(20),
+            likes_48h: 2,
+            comments_48h: 0,
+            reposts_48h: 0,
+            views_48h: 0,
+            author_follower_count: 0,
+            author_affinity: 0.0,
+            followed_likers_count: 0,
+            followed_reposters_count: 0,
+            ..candidate()
+        };
+
+        let mut frozen = cfg.clone();
+        frozen.decay_social_proximity = false;
+        let frozen_order = rank(&[fresh, old], &frozen, now);
+        assert_eq!(frozen_order[0].post_uuid, old.post_uuid);
+
+        let balanced = rank(&[fresh, old], &cfg, now);
+        assert_eq!(balanced[0].post_uuid, fresh.post_uuid);
     }
 
     #[test]
@@ -474,6 +555,8 @@ mod tests {
             },
         );
         assert_eq!(cfg.decay_lambda, 0.10);
+        assert!(cfg.decay_social_proximity);
+        assert_eq!(cfg.own_post_pin_hours, 24);
         assert_eq!(cfg.exploration_quota, 0.25);
         assert_eq!(cfg.repost_weight, 0.0);
         assert_eq!(cfg.max_consecutive_same_author, 1);
@@ -489,6 +572,8 @@ mod tests {
             },
         );
         assert_eq!(cfg2.decay_lambda, 0.025);
+        assert!(cfg2.decay_social_proximity);
+        assert_eq!(cfg2.own_post_pin_hours, 24 * 7);
         assert_eq!(cfg2.exploration_quota, 0.0);
         assert_eq!(cfg2.max_consecutive_same_author, i32::MAX);
         // show_reposts=true не трогает репостный вес.
