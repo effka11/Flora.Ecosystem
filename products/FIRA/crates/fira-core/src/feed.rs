@@ -56,7 +56,6 @@ pub struct FiraFeedConfig {
     // Явный refresh (ключи отсутствуют в appsettings.json — действуют эти дефолты)
     pub refresh_shuffle_window: i32,
     pub refresh_position_swap_probabilities: Vec<f64>,
-    pub refresh_own_post_protect_minutes: i32,
 
     // §User Controls (v1.1): негативный фидбек и просмотренные.
     // Нейтральные входы кандидата (seen=false, count=0) дают бит-в-бит прежний Score.
@@ -71,10 +70,6 @@ pub struct FiraFeedConfig {
     /// Сырой `Default` оставляет `false`: golden-векторы v1 считают SP без возраста.
     /// `apply_preferences` включает флаг для всех режимов свежести.
     pub decay_social_proximity: bool,
-
-    /// Сколько часов собственный пост висит над лентой вне скоринга.
-    /// Дальше он не закреплён: иначе архив автора постоянно держит новые посты внизу.
-    pub own_post_pin_hours: i64,
 }
 
 impl FiraFeedConfig {
@@ -104,12 +99,10 @@ impl Default for FiraFeedConfig {
             cache_ttl_seconds: 120,
             refresh_shuffle_window: 5,
             refresh_position_swap_probabilities: vec![1.0, 0.75, 0.55, 0.35, 0.15],
-            refresh_own_post_protect_minutes: 60,
             seen_demotion_factor: 0.3,
             not_interested_author_penalty: 0.5,
             not_interested_author_cap: 3,
             decay_social_proximity: false,
-            own_post_pin_hours: OWN_POST_PIN_HOURS_BALANCED,
         }
     }
 }
@@ -119,9 +112,6 @@ impl Default for FiraFeedConfig {
 const FRESHNESS_LAMBDA_FRESH: f64 = 0.10;
 const FRESHNESS_LAMBDA_BALANCED: f64 = 0.05;
 const FRESHNESS_LAMBDA_POPULAR: f64 = 0.025;
-const OWN_POST_PIN_HOURS_FRESH: i64 = 24;
-const OWN_POST_PIN_HOURS_BALANCED: i64 = 48;
-const OWN_POST_PIN_HOURS_POPULAR: i64 = 24 * 7;
 const EXPLORATION_QUOTA_OFF: f64 = 0.0;
 const EXPLORATION_QUOTA_LOW: f64 = 0.08;
 const EXPLORATION_QUOTA_STANDARD: f64 = 0.15;
@@ -138,11 +128,6 @@ pub fn apply_preferences(cfg: &mut FiraFeedConfig, prefs: &FeedPreferences) {
     };
     // Без этого λ двигает только вирусность, а лайк подписки держит старый пост сверху.
     cfg.decay_social_proximity = true;
-    cfg.own_post_pin_hours = match prefs.freshness {
-        FeedFreshness::Fresh => OWN_POST_PIN_HOURS_FRESH,
-        FeedFreshness::Balanced => OWN_POST_PIN_HOURS_BALANCED,
-        FeedFreshness::Popular => OWN_POST_PIN_HOURS_POPULAR,
-    };
     cfg.exploration_quota = match prefs.exploration {
         ExplorationLevel::Off => EXPLORATION_QUOTA_OFF,
         ExplorationLevel::Low => EXPLORATION_QUOTA_LOW,
@@ -479,9 +464,8 @@ mod tests {
 
     #[test]
     fn balanced_standard_preferences_keep_default_config() {
-        // Balanced/Standard/показывать всё = конфиг v1, кроме двух рычагов свежести:
-        // SP стареет тем же λ, свой пост закреплён только 48 ч. Сырой Default их не включает,
-        // чтобы golden-векторы остались бит-в-бит.
+        // Balanced/Standard/показывать всё = конфиг v1, кроме затухания SocialProximity.
+        // Сырой Default его не включает, чтобы golden-векторы остались бит-в-бит.
         let mut cfg = FiraFeedConfig::default();
         let prefs = FeedPreferences {
             seen_posts: SeenPostsMode::Show,
@@ -490,7 +474,6 @@ mod tests {
         apply_preferences(&mut cfg, &prefs);
         let expected = FiraFeedConfig {
             decay_social_proximity: true,
-            own_post_pin_hours: 48,
             ..FiraFeedConfig::default()
         };
         assert_eq!(cfg, expected);
@@ -556,7 +539,6 @@ mod tests {
         );
         assert_eq!(cfg.decay_lambda, 0.10);
         assert!(cfg.decay_social_proximity);
-        assert_eq!(cfg.own_post_pin_hours, 24);
         assert_eq!(cfg.exploration_quota, 0.25);
         assert_eq!(cfg.repost_weight, 0.0);
         assert_eq!(cfg.max_consecutive_same_author, 1);
@@ -573,7 +555,6 @@ mod tests {
         );
         assert_eq!(cfg2.decay_lambda, 0.025);
         assert!(cfg2.decay_social_proximity);
-        assert_eq!(cfg2.own_post_pin_hours, 24 * 7);
         assert_eq!(cfg2.exploration_quota, 0.0);
         assert_eq!(cfg2.max_consecutive_same_author, i32::MAX);
         // show_reposts=true не трогает репостный вес.

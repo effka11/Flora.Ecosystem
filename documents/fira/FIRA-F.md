@@ -66,7 +66,7 @@ Flora.Social (HTTP controller)
 
 В as-built v1 реализованы первые пять источников; CF требует UIP и ANN-инфраструктуры. «Вес пула» в v1 фактически используется только как приоритет при дедупликации источников — реальное управление составом пула идёт через долевые лимиты выборки (см. Implementation Status).
 
-Собственные посты пользователя не участвуют в ранжировании только пока они свежие: закрепление сверху ограничено окном режима (`fresh` 24 ч, `balanced` 48 ч, `popular` 7 суток). Более старые свои посты в этот блок не попадают — иначе архив автора постоянно держит чужие новые посты внизу.
+Собственные посты пользователя входят в тот же кандидатный пул и получают тот же Score, что и чужие. Отдельного закрепления сверху нет.
 
 Репосты от подписок включаются в пул как отдельные кандидаты с прикреплённым `repostMeta` (§ Repost Signal).
 
@@ -239,7 +239,7 @@ repostBoost = repostWeight
 
 Нормативный раздел: реальные рычаги пользователя над рекомендательной лентой. Владелец данных и логики — модуль Content (`flora-content`); отображение настроек на параметры ядра — чистая функция `apply_preferences` в [`fira-core/src/feed.rs`](../../products/FIRA/crates/fira-core/src/feed.rs).
 
-**Инвариант паритета:** сырой `FiraFeedConfig::default()` и golden-векторы по-прежнему считают `SocialProximity` без возраста. После `apply_preferences` (в том числе дефолт `balanced`) к SP применяется тот же `exp(−λ · ageHours)`, и свой пост закрепляется только на окно режима. Остальной Score при `seen = false` и пустом негативном фидбеке совпадает с v1. (*дефолт `seenPosts = demote` влияет только на кандидатов с `seen = true`; в golden-векторах таких нет.)
+**Инвариант паритета:** сырой `FiraFeedConfig::default()` и golden-векторы по-прежнему считают `SocialProximity` без возраста. После `apply_preferences` (в том числе дефолт `balanced`) к SP применяется тот же `exp(−λ · ageHours)`. Остальной Score при `seen = false` и пустом негативном фидбеке совпадает с v1. (*дефолт `seenPosts = demote` влияет только на кандидатов с `seen = true`; в golden-векторах таких нет.)
 
 ### Настройки (`user_feed_settings`)
 
@@ -247,7 +247,7 @@ repostBoost = repostWeight
 
 | Поле | Значения (дефолт **жирным**) | Эффект в pipeline |
 |------|------------------------------|-------------------|
-| `freshness` | `fresh` / **`balanced`** / `popular` | `DecayLambda`: 0.10 / **0.05** / 0.025 — скорость затухания и `GlobalRelevance`, и `SocialProximity`. Свой пост закреплён сверху 24 ч / **48 ч** / 7 суток |
+| `freshness` | `fresh` / **`balanced`** / `popular` | `DecayLambda`: 0.10 / **0.05** / 0.025 — скорость затухания и `GlobalRelevance`, и `SocialProximity` |
 | `exploration` | `off` / `low` / **`standard`** / `high` | `ExplorationQuota`: 0.0 / 0.08 / **0.15** / 0.25 — интерливинг exploration-постов |
 | `showReposts` | **`true`** / `false` | `false`: `RepostWeight = 0` + репостный пул не собирается; в «Подписках» репосты скрыты |
 | `communityPosts` | **`true`** / `false` | `false`: источник «сообщества пользователя» исключается из пула |
@@ -418,7 +418,7 @@ Explicit onboarding (выбор тем) переводит систему из P
 | Репосты подписок | 10 % | 0.6 | 30 дней |
 | Exploration (backfill) | до `MinFeedSize` | 0.15 | 30 дней → +23 дня → без ограничения |
 
-Trending определяется как топ по упрощённому engagement-скору `likes + 2·comments + 2.5·reposts` за окно (все взаимодействия, не 48h-срез), исключая авторов-подписок. Окно кандидатов детерминировано (v1.1): `ORDER BY CreatedAt desc, PostUuid asc` **до** `Take(limit·3)`, ранжирование — `score desc → CreatedAt desc → PostUuid asc`. Срез видимости (не удалён; не из чужого приватного сообщества) применяется на **каждом** кандидатном запросе (`VisiblePosts`, v1.1), блокировки в любом направлении вырезаются при сборке пула (`MergePool` + фильтры источников). Собственные посты пользователя не скорятся, только если они моложе окна режима (`own_post_pin_hours`: 24 / 48 / 168): prepend в начало ленты (до 100 внутри окна). При пустом пуле — cold-start-ветка: own + exploration, затем latest.
+Trending определяется как топ по упрощённому engagement-скору `likes + 2·comments + 2.5·reposts` за окно (все взаимодействия, не 48h-срез), исключая авторов-подписок. Окно кандидатов детерминировано (v1.1): `ORDER BY CreatedAt desc, PostUuid asc` **до** `Take(limit·3)`, ранжирование — `score desc → CreatedAt desc → PostUuid asc`. Срез видимости (не удалён; не из чужого приватного сообщества) применяется на **каждом** кандидатном запросе (`VisiblePosts`, v1.1), блокировки в любом направлении вырезаются при сборке пула (`MergePool` + фильтры источников). Собственные посты пользователя входят в пул наравне с остальными (окно то же, до 100) и скорятся обычной формулой. При пустом пуле — cold-start-ветка: exploration, затем latest.
 
 **Шаг 2 — фичи.** Батч-запросы: engagement 48h по постам; кол-во подписчиков авторов; сырой балл взаимодействий пользователя с каждым автором за `InteractionHistoryDays = 90` (`likes×1 + comments×2 + reposts×2.5`); кол-во подписок-лайкеров по постам. Кол-во подписок-репостеров берётся из уже загруженного репост-среза Шага 1.
 
@@ -426,7 +426,7 @@ Trending определяется как топ по упрощённому enga
 
 **Шаг 4 — постобработка.** Author diversity (`MaxConsecutiveSameAuthor = 2`; строгий двухпроходный алгоритм v1.1: вытесненные дописываются с повторной проверкой серий, неизбежные серии одного автора — только в самом конце); затем интерливинг exploration: `mainSlots = MaxCandidates·(1−ε)`, вставка 1 exploration-поста после каждых `period = max(1, round(1/ε − 1)) = 6` основных → доля 1/7 ≈ 14.3 % (округление к чётному — паритет `MidpointRounding.ToEven` ↔ `round_ties_even`). Дедуп гарантирован конструкцией (exploration-запрос исключает уже выбранные id). Чистые функции — [`FiraFeedPostProcessing.cs`](../../Modules/Flora.Content/Flora.Content.Application/Feed/FiraFeedPostProcessing.cs).
 
-**Шаг 5 — выдача.** Snapshot (список id) в per-user кэше `flora:fira-f:v4:{userUuid}` с TTL `CacheTtlSeconds = 120`; страница — `Skip/Take` по offset-курсору; `GeneratedAt`/`ExpiresAt` из snapshot. `forceRefresh=true` на первой странице пересобирает snapshot и применяет позиционный shuffle к прежнему топу (`RefreshShuffleWindow = 5`, вероятности свопа `[1.0, 0.75, 0.55, 0.35, 0.15]`, свежий собственный пост защищён `RefreshOwnPostProtectMinutes = 60`). `has-new` проверяет только новые посты подписок (не community/trending). Инвалидация кэша — вызовами `InvalidateFeedCache` из контроллера по триггерам §13.2 FIRA.md.
+**Шаг 5 — выдача.** Snapshot (список id) в per-user кэше `flora:fira-f:v4:{userUuid}` с TTL `CacheTtlSeconds = 120`; страница — `Skip/Take` по offset-курсору; `GeneratedAt`/`ExpiresAt` из snapshot. `forceRefresh=true` на первой странице пересобирает snapshot и применяет позиционный shuffle к прежнему топу (`RefreshShuffleWindow = 5`, вероятности свопа `[1.0, 0.75, 0.55, 0.35, 0.15]`). `has-new` проверяет только новые посты подписок (не community/trending). Инвалидация кэша — вызовами `InvalidateFeedCache` из контроллера по триггерам §13.2 FIRA.md.
 
 ### Конфигурация (production)
 
@@ -444,7 +444,7 @@ Trending определяется как топ по упрощённому enga
 | `MaxCandidates / MinFeedSize` | 1000 / 20 | да |
 | `FollowingWindowDays / TrendingWindowDays / InteractionHistoryDays` | 7 / 2 / 90 | да |
 | `EnableCache / CacheTtlSeconds` | true / 120 | да |
-| `RefreshShuffleWindow / RefreshPositionSwapProbabilities / RefreshOwnPostProtectMinutes` | 5 / [1.0, 0.75, 0.55, 0.35, 0.15] / 60 | **нет — дефолты кода** |
+| `RefreshShuffleWindow / RefreshPositionSwapProbabilities` | 5 / [1.0, 0.75, 0.55, 0.35, 0.15] | **нет — дефолты кода** |
 
 Смежная секция `FeedRecommendation` (вкладка «Подписки», без алгоритма): `MaxCandidates = 2000`, `FollowingPostsDays = 30`, кэш 120 с.
 

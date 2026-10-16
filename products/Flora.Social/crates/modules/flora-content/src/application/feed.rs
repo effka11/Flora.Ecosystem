@@ -314,8 +314,7 @@ impl FeedService {
         if let Some(prev) = previous_top
             && !prev.is_empty()
         {
-            self.apply_refresh_shuffle(user_uuid, &prev, &mut fresh)
-                .await?;
+            self.apply_refresh_shuffle(&prev, &mut fresh);
         }
         self.store_snapshot(user_uuid, fresh)
     }
@@ -345,25 +344,12 @@ impl FeedService {
         Ok(snapshot)
     }
 
-    async fn apply_refresh_shuffle(
-        &self,
-        user_uuid: Uuid,
-        previous_top: &[Uuid],
-        fresh: &mut [Uuid],
-    ) -> Result<(), String> {
+    fn apply_refresh_shuffle(&self, previous_top: &[Uuid], fresh: &mut [Uuid]) {
         if fresh.is_empty() {
-            return Ok(());
+            return;
         }
         let window = (self.fira.refresh_shuffle_window.max(1) as usize).min(fresh.len());
-        let meta_posts = self
-            .repo
-            .posts_by_ids(&fresh[..window], user_uuid)
-            .await
-            .map_err(|e| e.to_string())?;
-        let meta: HashMap<Uuid, FeedPostLite> =
-            meta_posts.into_iter().map(|p| (p.post_uuid, p)).collect();
         let probs = &self.fira.refresh_position_swap_probabilities;
-        let now = Utc::now();
 
         for i in 0..window {
             if i > 0 {
@@ -376,15 +362,6 @@ impl FeedService {
             if prev_id.is_nil() || fresh[i] != prev_id {
                 continue;
             }
-            if is_protected_own(
-                &meta,
-                fresh[i],
-                user_uuid,
-                now,
-                self.fira.refresh_own_post_protect_minutes,
-            ) {
-                continue;
-            }
             let candidate = fresh
                 .iter()
                 .enumerate()
@@ -394,7 +371,6 @@ impl FeedService {
                 fresh.swap(i, j);
             }
         }
-        Ok(())
     }
 
     fn subscription_window_days(&self) -> i32 {
@@ -476,6 +452,12 @@ impl FeedService {
         };
 
         let mut pool: HashMap<Uuid, (FeedPostLite, f64)> = HashMap::new();
+        let own_posts = self
+            .repo
+            .posts_by_authors_since(&[user_uuid], since_sub, 100, user_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
+        merge_pool(&mut pool, own_posts, 1.0, &blocked, not_interested);
         merge_pool(
             &mut pool,
             subscription_posts
@@ -627,10 +609,9 @@ impl FeedService {
             }
         }
 
-        let pin_since = now - chrono::Duration::hours(effective.own_post_pin_hours);
         if pool.is_empty() {
             return self
-                .build_cold_start(user_uuid, since_sub, &blocked, not_interested, pin_since)
+                .build_cold_start(user_uuid, since_sub, &blocked, not_interested)
                 .await;
         }
 
@@ -725,28 +706,15 @@ impl FeedService {
         let merged =
             interleave_exploration(main_ids, &exploration_ids, effective.exploration_quota);
 
-        let own = self
-            .repo
-            .own_post_ids(user_uuid, 100, pin_since)
-            .await
-            .map_err(|e| e.to_string())?;
-        let own_set: HashSet<Uuid> = own.iter().copied().collect();
-        let mut result: Vec<Uuid> = own
-            .into_iter()
-            .chain(merged.into_iter().filter(|id| !own_set.contains(id)))
-            .collect();
-
-        result = self
-            .ensure_min_feed_size(
-                user_uuid,
-                result,
-                &subscription_posts,
-                since_sub,
-                &blocked,
-                not_interested,
-            )
-            .await?;
-        Ok(result)
+        self.ensure_min_feed_size(
+            user_uuid,
+            merged,
+            &subscription_posts,
+            since_sub,
+            &blocked,
+            not_interested,
+        )
+        .await
     }
 
     async fn build_cold_start(
@@ -755,25 +723,19 @@ impl FeedService {
         since_sub: DateTime<Utc>,
         blocked: &HashSet<Uuid>,
         not_interested: &HashSet<Uuid>,
-        pin_since: DateTime<Utc>,
     ) -> Result<Vec<Uuid>, String> {
-        let own = self
-            .repo
-            .own_post_ids(user_uuid, 100, pin_since)
-            .await
-            .map_err(|e| e.to_string())?;
         let exploration_take = self.pool_limit(0.15).clamp(20, 100) as usize;
         let exploration = self
             .get_exploration_ids(
                 user_uuid,
                 since_sub,
-                &own,
+                &[],
                 blocked,
                 not_interested,
                 exploration_take,
             )
             .await?;
-        if own.is_empty() && exploration.is_empty() {
+        if exploration.is_empty() {
             return self
                 .latest_visible_ids(
                     user_uuid,
@@ -783,13 +745,15 @@ impl FeedService {
                 )
                 .await;
         }
-        let own_set: HashSet<Uuid> = own.iter().copied().collect();
-        let merged: Vec<Uuid> = own
-            .into_iter()
-            .chain(exploration.into_iter().filter(|id| !own_set.contains(id)))
-            .collect();
-        self.ensure_min_feed_size(user_uuid, merged, &[], since_sub, blocked, not_interested)
-            .await
+        self.ensure_min_feed_size(
+            user_uuid,
+            exploration,
+            &[],
+            since_sub,
+            blocked,
+            not_interested,
+        )
+        .await
     }
 
     async fn ensure_min_feed_size(
@@ -953,20 +917,6 @@ fn merge_pool(
             }
         }
     }
-}
-
-fn is_protected_own(
-    meta: &HashMap<Uuid, FeedPostLite>,
-    post_id: Uuid,
-    user_uuid: Uuid,
-    now: DateTime<Utc>,
-    protect_minutes: i32,
-) -> bool {
-    let Some(post) = meta.get(&post_id) else {
-        return false;
-    };
-    post.author_user_uuid == user_uuid
-        && (now - post.created_at).num_minutes() < i64::from(protect_minutes)
 }
 
 fn parse_cursor(cursor: Option<&str>) -> usize {
