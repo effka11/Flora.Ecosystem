@@ -26,7 +26,7 @@ import { ApiRequestError } from "./errors.js";
 declare const __DEV__: boolean | undefined;
 
 /** Синхронно с ImportedSocialController / Web postContentLimits. */
-export const MAX_POST_CONTENT_LENGTH = 2000;
+export const MAX_POST_CONTENT_LENGTH = 5000;
 export const MAX_POST_IMAGES = 10;
 export const MAX_POST_IMAGE_BYTES = 5 * 1024 * 1024;
 export const MAX_POST_VIDEO_BYTES = 200 * 1024 * 1024;
