@@ -126,6 +126,12 @@ test("auth proxy keeps refresh credentials out of browser-readable storage", asy
       const setCookie = response.headers.get("set-cookie") ?? "";
       assert.match(setCookie, /flora_refresh=session-id\.next-secret/);
       assert.match(setCookie, /__Host-flora_refresh=;[^,]*Max-Age=0/);
+      const clearedHost = response.headers
+        .getSetCookie()
+        .find((cookie) => cookie.startsWith("__Host-flora_refresh="));
+      assert.ok(clearedHost);
+      assert.match(clearedHost, /Secure/);
+      assert.match(clearedHost, /Max-Age=0/);
     });
 
     await t.test("expires the cookie when refresh authorization fails", async () => {
@@ -147,6 +153,12 @@ test("auth proxy keeps refresh credentials out of browser-readable storage", asy
       assert.equal(response.status, 401);
       assert.match(response.headers.get("set-cookie") ?? "", /Max-Age=0/);
       assert.match(response.headers.get("set-cookie") ?? "", /flora_media_access=/);
+      const clearedHost = response.headers
+        .getSetCookie()
+        .find((cookie) => cookie.startsWith("__Host-flora_refresh="));
+      assert.ok(clearedHost);
+      assert.match(clearedHost, /Secure/);
+      assert.match(clearedHost, /Max-Age=0/);
     });
 
     await t.test("does not spend a refresh cookie for a cross-origin request", async () => {
@@ -414,6 +426,64 @@ test("auth proxy keeps refresh credentials out of browser-readable storage", asy
 
       assert.equal(response.status, 204);
       assert.equal(upstreamAuthorization, "Bearer explicit-access");
+    });
+
+    await t.test("keeps refresh Set-Cookie when the browser Origin is CORS-allowed", async () => {
+      const originalCors = process.env.FLORA_AUTH_PROXY_CORS_ORIGINS;
+      process.env.FLORA_AUTH_PROXY_CORS_ORIGINS = "https://social.flora-s.net";
+      const assertRefreshCookie = (response: Response, token: string) => {
+        assert.equal(response.headers.get("access-control-allow-origin"), "https://social.flora-s.net");
+        const refresh = response.headers.getSetCookie().find((cookie) => {
+          return cookie.startsWith(`flora_refresh=${token}`) && /Max-Age=604800/.test(cookie);
+        });
+        assert.ok(refresh);
+        assert.match(refresh, /HttpOnly/);
+        assert.match(refresh, /Max-Age=604800/);
+      };
+      try {
+        globalThis.fetch = (async () =>
+          Response.json({
+            accessToken: "access-token",
+            refreshToken: "session-id.secret",
+            expiresAt: "2030-01-01T00:00:00Z",
+          })) as typeof fetch;
+
+        const login = await proxyFloraApiRequest(
+          new NextRequest("https://social.flora-s.net/api/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ login: "alice", password: "correct horse battery staple" }),
+            headers: {
+              "content-type": "application/json",
+              origin: "https://social.flora-s.net",
+            },
+          }),
+        );
+        assertRefreshCookie(login, "session-id.secret");
+
+        globalThis.fetch = (async () =>
+          Response.json({
+            accessToken: "next-access-token",
+            refreshToken: "session-id.next-secret",
+            expiresAt: "2030-01-01T00:15:00Z",
+          })) as typeof fetch;
+
+        const refresh = await proxyFloraApiRequest(
+          new NextRequest("https://social.flora-s.net/api/auth/refresh", {
+            method: "POST",
+            body: "{}",
+            headers: {
+              "content-type": "application/json",
+              cookie: "flora_refresh=session-id.secret",
+              origin: "https://social.flora-s.net",
+            },
+          }),
+        );
+        assert.equal(refresh.status, 200);
+        assertRefreshCookie(refresh, "session-id.next-secret");
+      } finally {
+        if (originalCors === undefined) delete process.env.FLORA_AUTH_PROXY_CORS_ORIGINS;
+        else process.env.FLORA_AUTH_PROXY_CORS_ORIGINS = originalCors;
+      }
     });
 
     await t.test("Web Lock orders a stale proxy refresh response before a new login cookie", async () => {
