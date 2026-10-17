@@ -55,9 +55,16 @@ const AUTH_TOKEN_RESPONSE_PATHS = new Set([
   "/api/auth/verify-registration",
 ]);
 
+/** `__Host-` is ignored by the browser unless Secure is present, including when deleting. */
+function cookieSecureSuffix(name: string): string {
+  return IS_PRODUCTION || name.startsWith("__Host-") ? "; Secure" : "";
+}
+
 function refreshCookie(value: string, maxAgeSeconds: number): string {
-  const secure = IS_PRODUCTION ? "; Secure" : "";
-  return `${REFRESH_COOKIE_NAME}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}; Priority=High${secure}`;
+  return (
+    `${REFRESH_COOKIE_NAME}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}; Priority=High` +
+    cookieSecureSuffix(REFRESH_COOKIE_NAME)
+  );
 }
 
 function clearRefreshCookie(): string {
@@ -78,8 +85,7 @@ function clearOtherRefreshCookie(): string {
     REFRESH_COOKIE_NAME === "__Host-flora_refresh"
       ? "flora_refresh"
       : "__Host-flora_refresh";
-  const secure = IS_PRODUCTION ? "; Secure" : "";
-  return `${other}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Priority=High${secure}`;
+  return `${other}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Priority=High${cookieSecureSuffix(other)}`;
 }
 
 function clearBrowserAuthCookies(headers: Headers): void {
@@ -239,6 +245,13 @@ function withProxyCors(request: NextRequest, res: Response): Response {
   const allow = corsAllowedOrigin(request);
   if (!allow) return res;
   const h = new Headers(res.headers);
+  // Set-Cookie is a list. Copying Headers can drop or comma-join it, which
+  // would drop the refresh cookie on the CORS path and end the session with access.
+  const cookies = res.headers.getSetCookie();
+  if (cookies.length > 0) {
+    h.delete("set-cookie");
+    for (const cookie of cookies) h.append("set-cookie", cookie);
+  }
   h.set("Access-Control-Allow-Origin", allow);
   h.set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS");
   const reqHdrs = request.headers.get("access-control-request-headers");

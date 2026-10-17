@@ -27,6 +27,7 @@ import {
   saveSession,
   setPendingProfileSetup,
 } from "@/lib/auth";
+import { resumeWebSession } from "@/lib/resumeWebSession";
 import { useGridBindings } from "./useGridBindings";
 import styles from "./login.module.css";
 
@@ -222,6 +223,7 @@ export default function LoginPage() {
   const [modeAnim, setModeAnim] = useState<ModeAnim>("none");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resumeSettled, setResumeSettled] = useState(false);
   const exitTimerRef = useRef<number | null>(null);
   const enterTimerRef = useRef<number | null>(null);
   const transitionTokenRef = useRef(0);
@@ -595,6 +597,28 @@ export default function LoginPage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+    void resumeWebSession()
+      .then((destination) => {
+        if (cancelled) return;
+        if (destination === "feed") {
+          router.replace("/feed");
+          return;
+        }
+        // `hold` already retried sync once. Show the form; do not clear the session or submit login.
+        if (destination === "profile") enterProfileSetupSync();
+        setResumeSettled(true);
+      })
+      .catch(() => {
+        if (!cancelled) setResumeSettled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router, enterProfileSetupSync]);
+
+  useEffect(() => {
+    if (!resumeSettled) return;
     if (typeof window === "undefined") return;
     if (!getAccessToken() || !hasPendingProfileSetup()) return;
     if (mode === "profileSetup" || mode === "verify" || mode === "register") return;
@@ -621,7 +645,7 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [mode, enterProfileSetupSync]);
+  }, [mode, enterProfileSetupSync, resumeSettled]);
 
   useEffect(() => {
     return () => {
@@ -655,6 +679,10 @@ export default function LoginPage() {
   }, [mode, verificationToken]);
 
   const twoFactorField = mode === "login" && awaitingTwoFactor;
+
+  if (!resumeSettled) {
+    return <main className={styles.page} aria-busy="true" />;
+  }
 
   return (
     <main
