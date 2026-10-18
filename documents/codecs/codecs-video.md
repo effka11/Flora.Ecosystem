@@ -3,7 +3,7 @@
 **Status:** Released  
 **Version:** 1.0  
 **Date:** 2026-06-18  
-**Depends on:** [`CODECS.md`](./CODECS.md)
+**Depends on:** [`codecs.md`](./codecs.md)
 
 ---
 
@@ -23,7 +23,7 @@ CODECS-VIDEO описывает сжатие видео в двух контур
 
 **Non-Goals:**
 
-- Аудио-кодеки — [`CODECS-AUDIO.md`](./CODECS-AUDIO.md).
+- Аудио-кодеки — [`codecs-audio.md`](./codecs-audio.md).
 - Live-стриминг / WebRTC calls.
 - Серверный транскод E2E-видео (запрещён моделью доверия).
 
@@ -61,7 +61,7 @@ ffmpeg -i <вход> -map_metadata -1 \
 
 Раздача: `GET /api/auth/posts/videos/{uuid}` с `enableRangeProcessing: true`; `GET /api/auth/posts/videos/{uuid}/poster` — постер.
 
-Серверный ffmpeg: см. [`CODECS.md` §Shared infrastructure](./CODECS.md#shared-infrastructure-ffmpeg). Требуется `libsvtav1`; иначе upload → HTTP 503.
+Серверный ffmpeg: см. [`codecs.md` §Shared infrastructure](./codecs.md#shared-infrastructure-ffmpeg). Требуется `libsvtav1`; иначе upload → HTTP 503.
 
 ---
 

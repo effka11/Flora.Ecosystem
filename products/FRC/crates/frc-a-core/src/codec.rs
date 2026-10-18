@@ -1,4 +1,4 @@
-//! Энкодер и декодер кадров FRC-A v0 (FRC-A.md, «Codec overview» и «Кадр (packet)»).
+//! Энкодер и декодер кадров FRC-A v0 (frc-a.md, «Codec overview» и «Кадр (packet)»).
 
 use core::f32::consts::FRAC_1_SQRT_2;
 
@@ -770,7 +770,7 @@ fn shape_norm(v: &[f32]) -> f32 {
         .sqrt() as f32
 }
 
-/// Детерминированный noise-fill (FRC-A.md): xorshift32 от seed из номера кадра,
+/// Детерминированный noise-fill (frc-a.md): xorshift32 от seed из номера кадра,
 /// плоскости и полосы; вектор нормируется к декодированному gain'у.
 fn noise_fill(dst: &mut [f32], frame_index: u32, plane: u32, band: u32, gain: f32) {
     let mut x = noise_seed(frame_index, plane, band, 0);

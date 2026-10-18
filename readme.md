@@ -23,10 +23,10 @@
 * **[FSCP](documents/fscp/FSCP.md)**  –  сквозное шифрование переписки (сервер хранит шифртекст); также [криптографические жалобы](documents/fscp/franking.md), [обзор шифрования](documents/fscp/e2e-security.md)
 * **[FIRA](documents/fira/FIRA.md)**  –  читаемый алгоритм рекомендаций: [F](documents/fira/FIRA-F.md) лента · [M](documents/fira/FIRA-M.md) музыка · [P](documents/fira/FIRA-P.md) люди · [C](documents/fira/FIRA-C.md) сообщества
 * **[FSA](documents/fsa/FSA.md)**  –  полнотекстовый поиск (ядро + поверхности F/A/M/P/C/N/D), реализация в [`products/FSA`](products/FSA)
-* **[FRC-I](documents/codecs/FRC-I.md)**  –  свой фото-кодек на Rust (формат заморожен; в проде пишется вместе с запасным WebP)
-* **[CODECS](documents/codecs/CODECS.md)**  –  политика медиа (фото / аудио / видео), в том числе для зашифрованных сообщений
+* **[FRC-I](documents/codecs/frc-i.md)**  –  свой фото-кодек на Rust (формат заморожен; в проде пишется вместе с запасным WebP)
+* **[CODECS](documents/codecs/codecs.md)**  –  политика медиа (фото / аудио / видео), в том числе для зашифрованных сообщений
 
-Семейство FRC также включает **[FRC-A](documents/codecs/FRC-A.md)** (аудио) и **[FRC-V](documents/codecs/FRC-V.md)** (видео)  –  ядра в [`products/FRC`](products/FRC); в пользовательском контуре флагман  –  FRC-I.
+Семейство FRC также включает **[FRC-A](documents/codecs/frc-a.md)** (аудио) и **[FRC-V](documents/codecs/frc-v.md)** (видео)  –  ядра в [`products/FRC`](products/FRC); в пользовательском контуре флагман  –  FRC-I.
 
 Черновики следующих слоёв (спека + ядра, не выдаём за прод): [FGP](documents/fgp/FGP.md) (управление общим), [FPP](documents/fpp/FPP.md) (подтверждение личности), [FEP](documents/fep/FEP.md) / [LIV](documents/fep/LIV.md) (экономика).
 

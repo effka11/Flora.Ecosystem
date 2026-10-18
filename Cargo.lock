@@ -1514,6 +1514,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "frc-i-polygon"
+version = "0.14.0-alpha"
+dependencies = [
+ "clap",
+ "image",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "frc-i-wasm"
 version = "0.14.0-alpha"
 dependencies = [

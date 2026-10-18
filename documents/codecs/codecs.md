@@ -12,18 +12,18 @@ CODECS — политика сжатия и хранения медиа в эк�
 
 Спецификации по доменам (сторонние кодеки, текущий прод):
 
-- [`CODECS-AUDIO.md`](./CODECS-AUDIO.md) — музыка (Flora.Music) и голосовые (Flora.Messaging / apps/Web).
-- [`CODECS-VIDEO.md`](./CODECS-VIDEO.md) — видео постов (Flora.Content) и видео в чате (Flora.Messaging / apps/Web).
-- [`CODECS-IMAGE.md`](./CODECS-IMAGE.md) — фото постов/аватаров и E2E-фото (FRC-I + WebP fallback).
+- [`codecs-audio.md`](./codecs-audio.md) — музыка (Flora.Music) и голосовые (Flora.Messaging / apps/Web).
+- [`codecs-video.md`](./codecs-video.md) — видео постов (Flora.Content) и видео в чате (Flora.Messaging / apps/Web).
+- [`codecs-image.md`](./codecs-image.md) — фото постов/аватаров и E2E-фото (FRC-I + WebP fallback).
 
-Нативные кодеки Flora (семейство **FRC**, Flora Relativistic Codec, разработка):
+Нативные кодеки Flora (семейство **FRC**, Flora Reproducible Codec, разработка):
 
-- [`FRC-I.md`](./FRC-I.md) — фото (FRC-I), замороженный битстрим v12
-  (ранее FMC/FIC; decoder compatibility v1..v12).
-- [`FRC-I-VERSION-BUMP.md`](./FRC-I-VERSION-BUMP.md) — playbook: поднять wire-версию
+- [`frc-i.md`](./frc-i.md) — фото (FRC-I), замороженный битстрим v13
+  (ранее FMC/FIC; decoder compatibility v1..v13).
+- [`frc-i-version-bump.md`](./frc-i-version-bump.md) — playbook: поднять wire-версию
   и согласовать Rust / TS gate / wasm / goldens (без «пустых фото» на Web).
-- [`FRC-A.md`](./FRC-A.md) — аудио (FRC-A), битстрим v0 (draft).
-- [`FRC-V.md`](./FRC-V.md) — видео (FRC-V), битстрим кадра **v2**; контейнерный FourCC/magic — `FRV1` / `\x8F FRV`.
+- [`frc-a.md`](./frc-a.md) — аудио (FRC-A), битстрим v0 (draft).
+- [`frc-v.md`](./frc-v.md) — видео (FRC-V), битстрим кадра **v2**; контейнерный FourCC/magic — `FRV1` / `\x8F FRV`.
 
 Этот документ нормативен: реализация пайплайнов **обязана** соответствовать описанным здесь правилам и компонентным спекам.
 
@@ -41,7 +41,7 @@ CODECS — политика сжатия и хранения медиа в эк�
 
 - Спецификация FSCP wire-format — [`documents/fscp/FSCP.md`](../fscp/FSCP.md).
 - Выбор UI плеера и дизайн контролов — зона apps/Web.
-  Фото-пайплайн (FRC-I + WebP) — [`CODECS-IMAGE.md`](./CODECS-IMAGE.md).
+  Фото-пайплайн (FRC-I + WebP) — [`codecs-image.md`](./codecs-image.md).
 
 ---
 
@@ -118,16 +118,16 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 
 | Компонент | Модуль | Спека |
 | --- | --- | --- |
-| CODECS-AUDIO | Flora.Music, Flora.Messaging | [`CODECS-AUDIO.md`](./CODECS-AUDIO.md) |
-| CODECS-VIDEO | Flora.Content, Flora.Messaging | [`CODECS-VIDEO.md`](./CODECS-VIDEO.md) |
-| CODECS-IMAGE | Flora.Content, Flora.Users, Flora.Messaging | [`CODECS-IMAGE.md`](./CODECS-IMAGE.md) |
-| FRC-I (фото, FRC) | библиотека `products/FRC/crates/frc-i` | [`FRC-I.md`](./FRC-I.md) |
-| FRC-A (аудио, FRC) | библиотека `products/FRC/crates/frc-a-*` | [`FRC-A.md`](./FRC-A.md) |
-| FRC-V (видео, FRC) | библиотека `products/FRC/crates/frc-v*` | [`FRC-V.md`](./FRC-V.md) |
+| CODECS-AUDIO | Flora.Music, Flora.Messaging | [`codecs-audio.md`](./codecs-audio.md) |
+| CODECS-VIDEO | Flora.Content, Flora.Messaging | [`codecs-video.md`](./codecs-video.md) |
+| CODECS-IMAGE | Flora.Content, Flora.Users, Flora.Messaging | [`codecs-image.md`](./codecs-image.md) |
+| FRC-I (фото, FRC) | библиотека `products/FRC/crates/frc-i` | [`frc-i.md`](./frc-i.md) |
+| FRC-A (аудио, FRC) | библиотека `products/FRC/crates/frc-a-*` | [`frc-a.md`](./frc-a.md) |
+| FRC-V (видео, FRC) | библиотека `products/FRC/crates/frc-v*` | [`frc-v.md`](./frc-v.md) |
 
 ---
 
-## FRC — Flora Relativistic Codec (нативное семейство)
+## FRC — Flora Reproducible Codec (нативное семейство)
 
 Собственные кодеки Flora на Rust. Три параллельных трека: **FRC-I** (фото),
 **FRC-V** (видео), **FRC-A** (аудио). Общие конвенции семейства — здесь, чтобы
@@ -152,7 +152,7 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 
 | Кодек | Сигнатура | Расширение | MIME (предложение) | Статус |
 | --- | --- | --- | --- | --- |
-| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v12 (wire v11; перцептивная RD-калибровка reference-кодера: λ решений ÷22, dead-zone 0.30); S2 −4.15%/BA −4.83% vs v11 (Kodak), −4.20%/−4.34% (picsum), encode/decode speed unchanged ([FRC-I.md](./FRC-I.md) §7.20, §11.10) |
+| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v13 (wire v11; rate-aware докалибровка reference-кодера: split 8→4 ×0.20, поиск transform ×1.05, dead-zone 0.32); на Kodak v12 хуже на S2 +4.7%/BA +5.7%/PSNR +3.8%, encode v13 12.3 Мп/с против 12.7 у v12; JXL e9 лучше по S2 на 21% BD и хуже по PSNR на 18% ([frc-i.md](./frc-i.md) §7.21, §11.11) |
 | FRC-V | FourCC `FRV1` в IVF (dev); magic `8F 46 52 56` (`\x8F FRV`) в `.frv` | `.frv`, `.ivf` | `video/x-flora-frc-v` | кадр `BITSTREAM_VERSION=2`; контейнер FRC-V |
 | FRC-A | **as-built:** ASCII `FRAS` (4 B) в файловом контейнере инструментов; **резерв:** magic `8F 46 52 41` (`\x8F FRA`) под нативный `.fra` | `.fras` (dev), `.fra` (резерв) | `audio/x-flora-frc-a` | битстрим v0 |
 
@@ -167,7 +167,7 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 - Детерминизм: никакой платформозависимой математики (libm, FMA); константы
   преобразований фиксируются литералами/таблицами в коде и спеке.
 - Декодер обязан быть безопасным на недоверенном вводе: без паник, лимиты
-  до аллокаций, строгая валидация структуры (см. FRC-I.md §9 как образец).
+  до аллокаций, строгая валидация структуры (см. frc-i.md §9 как образец).
 - Замороженные форматы фиксируются golden-векторами в `tests/data/`
   соответствующего crate (регенерация — `FRC_I_UPDATE_GOLDEN=1` /
   `FRC_V_UPDATE_GOLDEN=1`); до заморозки (v0.x) битстримы могут меняться без

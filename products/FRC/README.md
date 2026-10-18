@@ -1,5 +1,5 @@
 # PRODUCT_CLASS: functional
-# FRC — Flora Relativistic Codec family (headless / embeddable)
+# FRC — Flora Reproducible Codec family (headless / embeddable)
 #
 # Spec: documents/codecs/
 # Crates (repo Cargo workspace members):
@@ -7,5 +7,5 @@
 #   frc-a-*, frc-v*, flora-codec-tools
 #
 # TS package: @flora/frc-i (./ts) — WASM encode/decode for apps/Web
-# Image product playbook: documents/codecs/CODECS-IMAGE.md
-# Bitstream bump checklist: documents/codecs/FRC-I-VERSION-BUMP.md
+# Image product playbook: documents/codecs/codecs-image.md
+# Bitstream bump checklist: documents/codecs/frc-i-version-bump.md

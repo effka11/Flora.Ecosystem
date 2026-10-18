@@ -148,7 +148,7 @@ SPDX-выражение для кода: `AGPL-3.0-only OR LicenseRef-Flora-Ecos
 - Архитектурные обозначения **FERA** (Flora Ecosystem Reference Architecture), **FIRA** (Flora
   Individual Recommendation Algorithm), протоколы **FSCP** (Flora Secure Communication Protocol),
   **FGP** (Flora Governance Protocol), **FPP** (Flora Personhood Protocol) и медиа-форматы
-  семейства **FRC** (Flora Relativistic Codec: **FRC-I** — фото, **FRC-V** — видео, **FRC-A** — аудио)
+  семейства **FRC** (Flora Reproducible Codec: **FRC-I** — фото, **FRC-V** — видео, **FRC-A** — аудио)
   открыты для изучения и реализации в рамках соответствующих лицензий, но их имена и брендинг
   защищены.
 - Вы **можете** форкать и модифицировать код, документацию и спецификации в рамках применимых

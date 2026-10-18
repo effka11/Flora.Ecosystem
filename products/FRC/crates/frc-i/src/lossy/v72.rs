@@ -14,12 +14,11 @@ use crate::dct::{
 
 /// Стоимость одного бинарного split-флага в грубой RD-модели.
 const SPLIT_COST_BITS: u32 = 1;
-/// Компенсация недооценённой цены четырёх DC/мод в грубой RD-модели.
-const SPLIT8_EXTRA_BITS: u32 = 4;
+/// Компенсация недооценённой цены четырёх DC/мод в грубой RD-модели
+/// (бит на базовой λ; множитель линии — `RdTuning::split8_scale`).
+pub(super) const SPLIT8_EXTRA_BITS: u32 = 4;
 /// На малом блоке форсируем 4×4 только при выраженной неоднородности.
 const SPLIT8_CONTRAST: f32 = 20.0;
-/// DCT32 дорог: после SAD полный RD проходят только две лучшие моды.
-const RD_CANDIDATES32: usize = 2;
 
 // Массивы намеренно inline: дерево живёт только до эмиссии одного корня,
 // а heap-аллокация на каждый узел заметна в encode-профиле.
@@ -291,6 +290,9 @@ fn quantize_freq4(freq: &[f32; 16], qmat4: &[u16; 16], ac_bias: f32) -> ([i32; 1
     (quantized, distortion)
 }
 
+/// Выбор моды 4×4: `n_candidates` — число мод полного RD после SAD-предотбора
+/// (`RdLambda::candidates[0]`, общий с 8×8; v7–v12 — `RD_CANDIDATES`).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn choose_mode4(
     orig: &[i32; 16],
     b: &Border4,
@@ -298,6 +300,7 @@ pub(super) fn choose_mode4(
     qmat4: &[u16; 16],
     lambda: f32,
     ac_bias: f32,
+    n_candidates: usize,
 ) -> (u8, [i32; 16], [i32; 16], f32) {
     let mut spatial = [0f32; 16];
     for i in 0..16 {
@@ -332,10 +335,10 @@ pub(super) fn choose_mode4(
         preds[usize::from(mode)] = pred;
         sads.push((mode, sad));
     }
-    let candidates = preselect_modes::<RD_CANDIDATES>(&sads);
+    let (candidates, n_candidates) = preselect_modes(&sads, n_candidates);
 
     let mut best: Option<(u8, [i32; 16], [i32; 16], f32)> = None;
-    for &mode in &candidates {
+    for &mode in &candidates[..n_candidates] {
         let pred = preds[usize::from(mode)];
         match mode {
             MODE_DC => fdct4_const(pred[0] as f32, &mut freq_pred),
@@ -419,8 +422,15 @@ fn eval_block4(
     let cfl_block = cfl_luma.map(|luma| gather_block4_i32(luma, w, h, qx, qy));
     let b = border4(recon, w, h, qx, qy);
     let lambda = rd.decision;
-    let (mode, pred, quantized, cost) =
-        choose_mode4(&orig, &b, cfl_block.as_ref(), qmat4, lambda, rd.ac_bias);
+    let (mode, pred, quantized, cost) = choose_mode4(
+        &orig,
+        &b,
+        cfl_block.as_ref(),
+        qmat4,
+        lambda,
+        rd.ac_bias,
+        usize::from(rd.candidates[0]),
+    );
     let (tx, quantized, cost) = choose_transform(
         &orig,
         &pred,
@@ -525,10 +535,10 @@ fn eval_node8(
     rd: RdLambda,
 ) -> (Node8, f32) {
     let lambda = rd.decision;
-    // Компенсация недооценённой цены четырёх DC/мод — на базовой λ во всех
-    // версиях (см. `RdLambda`): в v12 она намеренно не масштабируется вместе
-    // с λ решений.
-    let split8_extra = rd.base * SPLIT8_EXTRA_BITS as f32;
+    // Компенсация недооценённой цены четырёх DC/мод — на базовой λ (см.
+    // `RdLambda::for_plane`): в v12 она намеренно не масштабируется вместе
+    // с λ решений; множитель линии v13 — `RdTuning::split8_scale`.
+    let split8_extra = rd.split8_extra;
     let orig = gather_block_i32(buf, w, h, bx, by);
     let hint = split_hint8(&orig);
     let partial = (bx + 1) * 8 > w || (by + 1) * 8 > h;
@@ -557,6 +567,7 @@ fn eval_node8(
         lambda,
         mode_limit_v7(cfl_luma.is_some()),
         rd.ac_bias,
+        usize::from(rd.candidates[0]),
     );
     let (tx, quantized, whole_base) = choose_transform(
         &orig,
@@ -724,6 +735,8 @@ fn quantize_freq32(freq: &[f32; 1024], qmat32: &[u16; 1024], ac_bias: f32) -> ([
 
 pub(super) type Mode32Result = (u8, Box<[i32; 1024]>, Box<[i32; 1024]>, f32);
 
+/// Выбор моды корня 32×32: `n_candidates` — число мод полного RD после
+/// SAD-предотбора (`RdLambda::candidates[2]`; v7–v12 — `RD_CANDIDATES32`).
 pub(super) fn choose_mode32(
     orig: &[i32; 1024],
     b: &Border32,
@@ -731,6 +744,7 @@ pub(super) fn choose_mode32(
     qmat32: &[u16; 1024],
     lambda: f32,
     ac_bias: f32,
+    n_candidates: usize,
 ) -> Mode32Result {
     let mut spatial = [0f32; 1024];
     for i in 0..1024 {
@@ -762,10 +776,10 @@ pub(super) fn choose_mode32(
             .sum();
         sads.push((mode, sad));
     }
-    let candidates = preselect_modes::<RD_CANDIDATES32>(&sads);
+    let (candidates, n_candidates) = preselect_modes(&sads, n_candidates);
 
     let mut best: Option<Mode32Result> = None;
-    for &mode in &candidates {
+    for &mode in &candidates[..n_candidates] {
         let pred = if cfl_alpha_q4(mode).is_some() {
             predict_cfl(
                 cfl_luma.expect("CfL candidate requires luma"),
@@ -956,6 +970,7 @@ fn eval_node16(
             lambda,
             mode_limit_v7(cfl_luma.is_some()),
             rd.ac_bias,
+            usize::from(rd.candidates[1]),
         );
         let (tx, quantized, cost) = choose_transform(
             &orig16,
@@ -1233,6 +1248,7 @@ fn encode_root(
         qmat32,
         lambda,
         rd.ac_bias,
+        usize::from(rd.candidates[2]),
     );
     let (tx32, quant32, cost32) = choose_transform(
         &orig32,
@@ -2079,6 +2095,7 @@ fn encode_root_v11(
         &rm.qmat32,
         lambda,
         rd.ac_bias,
+        usize::from(rd.candidates[2]),
     );
     let (tx32, quant32, cost32) = choose_transform(
         &orig32,
@@ -2352,6 +2369,7 @@ mod tests {
             &qmat4,
             plane_lambda(&qmat),
             AC_BIAS,
+            RD_CANDIDATES,
         );
         assert_eq!(mode, 13);
     }
@@ -2712,6 +2730,15 @@ mod tests {
         assert_eq!(v12.base, legacy.base);
         assert!(v12.decision < legacy.decision * 0.05);
         assert!(v12.ac_bias < legacy.ac_bias);
+        // Константы PSNR-эпохи, вынесенные в калибровку линией v13, у
+        // замороженных v7–v12 равны историческим значениям байт-в-байт:
+        // компенсация split 8→4 — ровно `base · 4`, поиск transform — без
+        // рейта, кандидаты — 4/3/2.
+        for rd in [legacy, v12] {
+            assert_eq!(rd.split8_extra, rd.base * SPLIT8_EXTRA_BITS as f32);
+            assert_eq!(rd.tx_search, 0.0);
+            assert_eq!(rd.candidates, [4, 3, 2]);
+        }
 
         let (w, h) = (64, 64);
         let buf = heterogeneous_plane(w, h);

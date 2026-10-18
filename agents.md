@@ -121,13 +121,13 @@ pwsh ./tools/validate-architecture-rust.ps1
 
 Семейство **FRC** — functional-продукт [`products/FRC`](products/FRC) (members общего workspace). Спеки — `documents/codecs/`.
 
-- FRC-A: `products/FRC/crates/frc-a-core` — `documents/codecs/FRC-A.md`; wasm32 обязателен для ядра.
-- FRC-I: `products/FRC/crates/frc-i` — `documents/codecs/FRC-I.md`; wasm: `--no-default-features`.
-  Bump wire-версии: `documents/codecs/FRC-I-VERSION-BUMP.md` (согласовать TS gate с wasm).
-- FRC-V: `products/FRC/crates/frc-v` — `documents/codecs/FRC-V.md`.
+- FRC-A: `products/FRC/crates/frc-a-core` — `documents/codecs/frc-a.md`; wasm32 обязателен для ядра.
+- FRC-I: `products/FRC/crates/frc-i` — `documents/codecs/frc-i.md`; wasm: `--no-default-features`.
+  Bump wire-версии: `documents/codecs/frc-i-version-bump.md` (согласовать TS gate с wasm).
+- FRC-V: `products/FRC/crates/frc-v` — `documents/codecs/frc-v.md`.
 - CLI: `flora-codec-tools`, `frc-a-cli`, `frc-v-cli`.
 
-Реестр сигнатур — `documents/codecs/CODECS.md`.
+Реестр сигнатур — `documents/codecs/codecs.md`.
 
 ## Git
 

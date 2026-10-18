@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Честный RD-полигон FRC-I vs JPEG / AVIF / JPEG XL (FRC-I.md §11.2).
+Честный RD-полигон FRC-I vs JPEG / AVIF / JPEG XL (frc-i.md §11.2).
 
 Корпус: Kodak (24 PNG, 768x512; скачивается `--fetch-kodak`).
 Метрики: размер, PSNR(RGB), encode time; BD-rate (Bjontegaard) по парам кодеков.

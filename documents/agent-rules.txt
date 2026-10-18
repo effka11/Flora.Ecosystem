@@ -57,7 +57,7 @@ tools/                 — Validate-Architecture.ps1 и прочие прове�
 | E2E чат (wire, RKE, envelope) | `documents/fscp/FSCP.md` |
 | E2E платформа (epochs, backup, FSM, API) | `documents/fscp/e2e-security.md` |
 | Рекомендации (ядро + компоненты) | `documents/fira/FIRA.md`, `FIRA-F/P/C/M.md` |
-| Медиа-кодеки | `documents/codecs/CODECS.md`, `CODECS-AUDIO.md`, `CODECS-VIDEO.md` |
+| Медиа-кодеки | `documents/codecs/codecs.md`, `codecs-audio.md`, `codecs-video.md` |
 | Golden-векторы FSCP | `documents/test-vectors/` |
 | Безопасность / MVP-ограничения | `security.md` |
 | Участие, CLA, GPG | `contributing.md` |

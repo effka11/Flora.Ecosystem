@@ -1,4 +1,4 @@
-//! Lossy-кодер плоскости (FRC-I.md §7): intra-предикция от реконструированных
+//! Lossy-кодер плоскости (frc-i.md §7): intra-предикция от реконструированных
 //! соседей, DCT 8x8 остатка, перцептивное квантование с dead-zone,
 //! run/level кодирование AC-коэффициентов.
 //!
@@ -102,7 +102,7 @@ const CFL_ALPHA_Q4: [i32; 8] = [-8, -4, -2, -1, 1, 2, 4, 8];
 /// за −0.08 dB (q=75, photo) против округления 0.5. Свобода кодера.
 const AC_BIAS: f32 = 0.40;
 
-// --- adaptive quantization (v3, свобода кодера; FRC-I.md §8) -------------------
+// --- adaptive quantization (v3, свобода кодера; frc-i.md §8) -------------------
 //
 // Перцептивное маскирование: в текстурных блоках ошибки квантования не видны,
 // в гладких — видны (бандинг). Кодер варьирует dead-zone AC по активности
@@ -145,12 +145,15 @@ fn adaptive_ac_bias(activity: f32) -> f32 {
 /// activity mask over-prunes textured AC. Kept separate so v1-v6 reference
 /// encoder decisions remain frozen.
 const AC_BIAS_V7: f32 = AC_BIAS;
-/// v12 (FRC-I.md §11.10): dead-zone AC блочного слоя при перекалиброванной
+/// v12 (frc-i.md §11.10): dead-zone AC блочного слоя при перекалиброванной
 /// λ решений. При низкой λ дерево выбирает моды/разбиения по дисторсии, а
 /// размер держит dead-zone: 0.30 возвращает лестницу q↔байты к v11
 /// (ratio 1.004) и добавляет −0.7% S2 / −0.9% BA к одной лишь λ; 0.25
 /// уже хуже по обеим метрикам (насыщение, Kodak 24).
 const AC_BIAS_V12: f32 = 0.30;
+/// v13 (frc-i.md §11.11): dead-zone 0.32 — центр плато 0.31–0.33 на
+/// полном пакете v13 (0.30 и 0.34 хуже по S2/BA, Kodak 24).
+const AC_BIAS_V13: f32 = 0.32;
 
 #[inline]
 fn run_ctx(pos: usize) -> u8 {
@@ -373,7 +376,7 @@ fn predict_block(b: &Border, mode: u8) -> [i32; 64] {
 /// измеримые −0.3% S2). Остаётся базой треллиса ([`TRELLIS_LAMBDA_SCALE`])
 /// для всех версий и λ решений для замороженных v1–v11.
 const LAMBDA_SCALE: f32 = 0.85;
-/// v12 (FRC-I.md §11.10): λ решений mode/split/TX блочного слоя,
+/// v12 (frc-i.md §11.10): λ решений mode/split/TX блочного слоя,
 /// перекалиброванная под перцептивные метрики: `λ = 0.038 · qstep²`, то есть
 /// ×0.045 от [`LAMBDA_SCALE`]. Свип множителя ×{0.5, 0.25, 0.1, 0.045,
 /// 0.038, 0.028, 0.02, 0.01, 0} от v11 монотонен до плато ×0.028–0.045 и
@@ -383,14 +386,27 @@ const LAMBDA_SCALE: f32 = 0.85;
 const LAMBDA_SCALE_V12: f32 = 0.038;
 
 /// Per-version RD-калибровка кодера блочного слоя v7+ (свобода кодера, §8).
-/// Замороженные версии держат свои константы навсегда: golden v7..v11
+/// Замороженные версии держат свои константы навсегда: golden v7..v13
 /// проверяют байты кодера, не только декодера.
+///
+/// Поля `split8_scale`, `tx_search_scale`, `rd_candidates` — бывшие
+/// константы PSNR-эпохи, докалиброванные линией v13 (frc-i.md §11.11): у
+/// `LEGACY` и `V12` они равны историческим константам, поэтому решения
+/// v7–v12 байт-в-байт прежние.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RdTuning {
     /// Множитель λ решений mode/split/TX: `λ_decision = lambda_scale · qstep²`.
     pub(crate) lambda_scale: f32,
     /// Dead-zone AC квантования блочного слоя.
     pub(crate) ac_bias: f32,
+    /// Множитель компенсации split 8→4 (`SPLIT8_EXTRA_BITS` бит на базовой
+    /// λ `LAMBDA_SCALE·qstep²`): `1.0` — v7–v12.
+    pub(crate) split8_scale: f32,
+    /// Доля λ решений, участвующая в поиске transform (`D + λ·k·R`):
+    /// `0.0` — v7–v12 (выбор базиса только по дисторсии, §7.12).
+    pub(crate) tx_search_scale: f32,
+    /// Число RD-кандидатов после SAD-предотбора: `[8×8 и 4×4, 16×16, 32×32]`.
+    pub(crate) rd_candidates: [u8; 3],
 }
 
 impl RdTuning {
@@ -398,11 +414,36 @@ impl RdTuning {
     pub(crate) const LEGACY: Self = Self {
         lambda_scale: LAMBDA_SCALE,
         ac_bias: AC_BIAS_V7,
+        split8_scale: 1.0,
+        tx_search_scale: TX_SEARCH_LAMBDA_SCALE,
+        rd_candidates: RD_CANDIDATES_V7,
     };
-    /// v12: перцептивная калибровка (FRC-I.md §11.10).
+    /// v12: перцептивная калибровка λ/dead-zone (frc-i.md §11.10); прочие
+    /// константы — PSNR-эпохи.
     pub(crate) const V12: Self = Self {
         lambda_scale: LAMBDA_SCALE_V12,
         ac_bias: AC_BIAS_V12,
+        ..Self::LEGACY
+    };
+    /// v13 (frc-i.md §11.11): rate-aware докалибровка оставшихся констант
+    /// PSNR-эпохи на перцептивном полигоне (Kodak 24 + picsum 12 + synth 14,
+    /// BD против замороженного v12):
+    /// - `split8_scale` 1.0 → 0.20: компенсация 4 бит за split 8→4,
+    ///   наследие равномерной λ PSNR-эпохи, при λ v12 завышена в 5 раз
+    ///   (плато 0.10–0.30 в пределах ±0.1%, меньше — крупнее файлы);
+    /// - `tx_search_scale` 0.0 → 1.05: выбор базиса с полной стоимостью
+    ///   рейта; потолок 1.05 — выше (≥1.08) сдвигается lossless-порог
+    ///   palette-контента (регресс q45, §11.11);
+    /// - `ac_bias` 0.30 → 0.32 (центр плато 0.31–0.33);
+    /// - `lambda_scale` и SAD-кандидаты `[4, 3, 2]` подтверждены свипами
+    ///   без изменений (плато; 6/6 даёт около +1 п.п. BD за −13% encode
+    ///   и в референс не вошло, §11.11).
+    pub(crate) const V13: Self = Self {
+        lambda_scale: LAMBDA_SCALE_V12,
+        ac_bias: AC_BIAS_V13,
+        split8_scale: 0.20,
+        tx_search_scale: 1.05,
+        rd_candidates: RD_CANDIDATES_V7,
     };
 }
 
@@ -419,15 +460,27 @@ pub(super) struct RdLambda {
     pub(super) decision: f32,
     pub(super) base: f32,
     pub(super) ac_bias: f32,
+    /// Готовая компенсация split 8→4: `base · SPLIT8_EXTRA_BITS · split8_scale`.
+    pub(super) split8_extra: f32,
+    /// Доля λ решений в поиске transform (см. [`RdTuning::tx_search_scale`]).
+    pub(super) tx_search: f32,
+    /// Кандидаты полного RD после SAD-предотбора (см. [`RdTuning::rd_candidates`]).
+    pub(super) candidates: [u8; 3],
 }
 
 impl RdLambda {
     pub(super) fn for_plane(qmat: &[u16; 64], tuning: RdTuning) -> Self {
         let mean: f32 = qmat.iter().map(|&q| f32::from(q)).sum::<f32>() / 64.0;
+        let base = LAMBDA_SCALE * mean * mean;
         Self {
             decision: tuning.lambda_scale * mean * mean,
-            base: LAMBDA_SCALE * mean * mean,
+            base,
             ac_bias: tuning.ac_bias,
+            // При `split8_scale == 1.0` произведение в скобках равно ровно
+            // `SPLIT8_EXTRA_BITS as f32` — байты v7–v12 не меняются.
+            split8_extra: base * (v72::SPLIT8_EXTRA_BITS as f32 * tuning.split8_scale),
+            tx_search: tuning.tx_search_scale,
+            candidates: tuning.rd_candidates,
         }
     }
 }
@@ -438,19 +491,32 @@ impl RdLambda {
 const RD_CANDIDATES: usize = 4;
 /// То же для суперблоков 16×16: DCT дороже, а разброс мод меньше.
 const RD_CANDIDATES16: usize = 3;
+/// DCT32 дорог: после SAD полный RD проходят только две лучшие моды.
+const RD_CANDIDATES32: usize = 2;
+/// Кандидаты v7–v12 по уровням `[8×8 и 4×4, 16×16, 32×32]` (см. `RdTuning`).
+const RD_CANDIDATES_V7: [u8; 3] = [
+    RD_CANDIDATES as u8,
+    RD_CANDIDATES16 as u8,
+    RD_CANDIDATES32 as u8,
+];
+/// Потолок кандидатов: семь intra-мод v7 плюс один CfL-кандидат.
+const MAX_RD_CANDIDATES: usize = ENCODE_MODES_V7.len() + 1;
 
-/// SAD-предотбор: индексы `RD_CANDIDATES` мод с наименьшей суммой |orig-pred|
-/// (при равенстве — младшая мода; полный порядок детерминирован).
-fn preselect_modes<const N: usize>(
+/// SAD-предотбор: индексы `n` мод с наименьшей суммой |orig-pred| (при
+/// равенстве — младшая мода; полный порядок детерминирован). Возвращает
+/// буфер и фактическое число кандидатов `min(n, sads.len(), MAX)`.
+fn preselect_modes(
     sads: &[(u8, u64)], // (мода, SAD) в порядке возрастания номера моды
-) -> [u8; N] {
+    n: usize,
+) -> ([u8; MAX_RD_CANDIDATES], usize) {
     let mut order: Vec<(u64, u8)> = sads.iter().map(|&(m, s)| (s, m)).collect();
     order.sort_unstable();
-    let mut out = [0u8; N];
-    for (slot, &(_, m)) in out.iter_mut().zip(order.iter()) {
+    let n = n.min(order.len()).min(MAX_RD_CANDIDATES);
+    let mut out = [0u8; MAX_RD_CANDIDATES];
+    for (slot, &(_, m)) in out.iter_mut().zip(order.iter()).take(n) {
         *slot = m;
     }
-    out
+    (out, n)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -462,6 +528,7 @@ fn choose_mode_with_rate(
     lambda: f32,
     max_mode: u8,
     ac_bias: f32,
+    n_candidates: usize,
     coeff_rate: fn(&[i32; 64]) -> u32,
 ) -> (u8, [i32; 64], [i32; 64], f32) {
     // Линейность DCT: F(orig - pred) = F(orig) - F(pred). Спектр источника
@@ -507,8 +574,7 @@ fn choose_mode_with_rate(
             sads.push((mode, sad));
         }
     }
-    let candidates = preselect_modes::<RD_CANDIDATES>(&sads);
-    let n_candidates = sads.len().min(RD_CANDIDATES);
+    let (candidates, n_candidates) = preselect_modes(&sads, n_candidates);
 
     let mut best: Option<(u8, [i32; 64], [i32; 64], f32)> = None;
     for &mode in &candidates[..n_candidates] {
@@ -566,10 +632,21 @@ fn choose_mode(
     ac_bias: f32,
 ) -> (u8, [i32; 64], [i32; 64], f32) {
     choose_mode_with_rate(
-        orig, b, cfl_luma, qmat, lambda, max_mode, ac_bias, coeff_cost,
+        orig,
+        b,
+        cfl_luma,
+        qmat,
+        lambda,
+        max_mode,
+        ac_bias,
+        RD_CANDIDATES,
+        coeff_cost,
     )
 }
 
+/// Выбор моды 8×8 линии v7+: число RD-кандидатов — из калибровки версии
+/// (`RdLambda::candidates[0]`; v7–v12 — `RD_CANDIDATES`).
+#[allow(clippy::too_many_arguments)]
 fn choose_mode_v7(
     orig: &[i32; 64],
     b: &Border,
@@ -578,9 +655,18 @@ fn choose_mode_v7(
     lambda: f32,
     max_mode: u8,
     ac_bias: f32,
+    n_candidates: usize,
 ) -> (u8, [i32; 64], [i32; 64], f32) {
     choose_mode_with_rate(
-        orig, b, cfl_luma, qmat, lambda, max_mode, ac_bias, coeff_cost,
+        orig,
+        b,
+        cfl_luma,
+        qmat,
+        lambda,
+        max_mode,
+        ac_bias,
+        n_candidates,
+        coeff_cost,
     )
 }
 
@@ -879,6 +965,8 @@ fn choose_transform<const LEN: usize>(
         decision: lambda,
         base,
         ac_bias,
+        tx_search,
+        ..
     } = rd;
     let mut residual = [0f32; LEN];
     for i in 0..LEN {
@@ -886,11 +974,13 @@ fn choose_transform<const LEN: usize>(
     }
     let base_rate = legacy_coeff_cost(&baseline_quantized, scan_for_tx(TX_DCT_DCT));
     let base_distortion = baseline_cost - lambda * base_rate as f32;
+    // `tx_search` = 0 (v7–v12): выбор базиса только по дисторсии; выражение
+    // сохранено в прежней форме `λ·k·R`, чтобы при k = 0 байты не менялись.
     let mut best = (
         TX_DCT_DCT,
         baseline_quantized,
         baseline_cost,
-        base_distortion + lambda * TX_SEARCH_LAMBDA_SCALE * base_rate as f32,
+        base_distortion + lambda * tx_search * base_rate as f32,
     );
     let mut freq = [0f32; LEN];
     let mut best_freq = [0f32; LEN];
@@ -898,7 +988,7 @@ fn choose_transform<const LEN: usize>(
         forward(&residual, &mut freq, tx);
         let (quantized, distortion) = quantize_freq_tx(&freq, qmat, ac_bias, quant_err);
         let rate = legacy_coeff_cost(&quantized, scan_for_tx(tx)) + tx_rate_extra_bits(tx);
-        let search_cost = distortion + lambda * TX_SEARCH_LAMBDA_SCALE * rate as f32;
+        let search_cost = distortion + lambda * tx_search * rate as f32;
         if search_cost < best.3 {
             let cost = distortion + lambda * rate as f32;
             best = (tx, quantized, cost, search_cost);
@@ -1396,6 +1486,7 @@ fn choose_mode16_with_rate(
     lambda: f32,
     max_mode: u8,
     ac_bias: f32,
+    n_candidates: usize,
     coeff_rate: fn(&[i32; 256]) -> u32,
 ) -> (u8, [i32; 256], [i32; 256], f32) {
     let mut spatial = [0f32; 256];
@@ -1441,10 +1532,10 @@ fn choose_mode16_with_rate(
             sads.push((mode, sad));
         }
     }
-    let candidates = preselect_modes::<RD_CANDIDATES16>(&sads);
+    let (candidates, n_candidates) = preselect_modes(&sads, n_candidates);
 
     let mut best: Option<(u8, [i32; 256], [i32; 256], f32)> = None;
-    for &mode in &candidates[..RD_CANDIDATES16] {
+    for &mode in &candidates[..n_candidates] {
         let pred = &preds[usize::from(mode)];
         match mode {
             MODE_DC => fdct16_const(pred[0] as f32, &mut freq_pred),
@@ -1503,10 +1594,14 @@ fn choose_mode16(
         lambda,
         max_mode,
         ac_bias,
+        RD_CANDIDATES16,
         coeff_cost16,
     )
 }
 
+/// Выбор моды 16×16 линии v7+: число RD-кандидатов — из калибровки версии
+/// (`RdLambda::candidates[1]`; v7–v12 — `RD_CANDIDATES16`).
+#[allow(clippy::too_many_arguments)]
 fn choose_mode16_v7(
     orig: &[i32; 256],
     b: &Border16,
@@ -1515,6 +1610,7 @@ fn choose_mode16_v7(
     lambda: f32,
     max_mode: u8,
     ac_bias: f32,
+    n_candidates: usize,
 ) -> (u8, [i32; 256], [i32; 256], f32) {
     choose_mode16_with_rate(
         orig,
@@ -1524,6 +1620,7 @@ fn choose_mode16_v7(
         lambda,
         max_mode,
         ac_bias,
+        n_candidates,
         coeff_cost16,
     )
 }
@@ -2606,6 +2703,36 @@ mod tests {
     use super::*;
     use crate::dct::{BASE_LUMA, quant_matrix};
     use crate::section::{read_dct_section, write_dct_section};
+
+    /// Предотбор с runtime-числом кандидатов воспроизводит порядок
+    /// const-generic версии v7–v12: по возрастанию SAD, при равенстве —
+    /// младшая мода; `n` клампится числом мод и потолком.
+    #[test]
+    fn preselect_modes_order_and_clamp() {
+        let sads = [
+            (0u8, 50u64),
+            (1, 10),
+            (2, 10),
+            (3, 70),
+            (4, 5),
+            (5, 10),
+            (6, 90),
+        ];
+        let (order, n) = preselect_modes(&sads, 4);
+        assert_eq!(n, 4);
+        assert_eq!(&order[..n], &[4, 1, 2, 5]);
+        let (order, n) = preselect_modes(&sads, 2);
+        assert_eq!((n, &order[..n]), (2, &[4u8, 1][..]));
+        // Больше, чем мод: усечение по числу мод.
+        let (order, n) = preselect_modes(&sads[..3], 8);
+        assert_eq!(n, 3);
+        assert_eq!(&order[..n], &[1, 2, 0]);
+        // Потолок — семь intra-мод v7 плюс CfL.
+        assert_eq!(MAX_RD_CANDIDATES, 8);
+        let (_, n) = preselect_modes(&sads, 100);
+        assert_eq!(n, sads.len());
+        assert_eq!(RD_CANDIDATES_V7, [4, 3, 2]);
+    }
 
     fn psnr(a: &[i16], b: &[i16]) -> f64 {
         let mse: f64 = a

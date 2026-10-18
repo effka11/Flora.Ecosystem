@@ -1,5 +1,5 @@
 //! Инструмент разработки FRC-A: генерация тестовых сигналов, кодирование,
-//! декодирование и roundtrip-метрики. Спецификация: documents/codecs/FRC-A.md.
+//! декодирование и roundtrip-метрики. Спецификация: documents/codecs/frc-a.md.
 
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
@@ -14,7 +14,7 @@ type CliResult<T> = Result<T, Box<dyn std::error::Error>>;
 #[command(
     name = "frc-a",
     version,
-    about = "FRC-A (Flora Relativistic Codec — Audio) — инструмент разработки"
+    about = "FRC-A (Flora Reproducible Codec — Audio) — инструмент разработки"
 )]
 struct Cli {
     #[command(subcommand)]

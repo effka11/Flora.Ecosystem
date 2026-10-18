@@ -3,7 +3,7 @@
 **Status:** Released  
 **Version:** 1.0  
 **Date:** 2026-06-18  
-**Depends on:** [`CODECS.md`](./CODECS.md)
+**Depends on:** [`codecs.md`](./codecs.md)
 
 ---
 
@@ -23,7 +23,7 @@ CODECS-AUDIO описывает сжатие аудио в двух контур
 
 **Non-Goals:**
 
-- Транскод видео — [`CODECS-VIDEO.md`](./CODECS-VIDEO.md).
+- Транскод видео — [`codecs-video.md`](./codecs-video.md).
 - Стриминг-протокол (HLS/DASH) — вне v1.
 - Дублирование audio pipeline в `Flora.Content` / `Flora.Messaging`.
 
@@ -66,7 +66,7 @@ ffmpeg -i <вход> -vn -map_metadata -1 \
 
 Принимаемые загрузки: `audio/*`, MP3, M4A, FLAC, WAV, OGG, Opus, WebM и др. (до 70 МБ).
 
-Серверный ffmpeg: см. [`CODECS.md` §Shared infrastructure](./CODECS.md#shared-infrastructure-ffmpeg). Нужен энкодер `aac`.
+Серверный ffmpeg: см. [`codecs.md` §Shared infrastructure](./codecs.md#shared-infrastructure-ffmpeg). Нужен энкодер `aac`.
 
 ---
 

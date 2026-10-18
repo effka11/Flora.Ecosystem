@@ -62,7 +62,7 @@ impl PlaneShape {
 }
 
 impl SampleRange {
-    /// Битов на отсчёт в raw-секции (FRC-I.md §4.1): битовая длина размаха.
+    /// Битов на отсчёт в raw-секции (frc-i.md §4.1): битовая длина размаха.
     pub fn raw_bits(&self) -> u32 {
         let span = (self.hi - self.lo) as u32;
         32 - span.max(1).leading_zeros()

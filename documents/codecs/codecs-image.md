@@ -5,9 +5,9 @@
 **Date:** 2026-07-19
 
 Нормативный playbook для фото в Flora.Social поверх замороженного FRC-I
-(текущий битстрим v12; [`FRC-I.md`](./FRC-I.md) §10, §12). Политика
-семейства — [`CODECS.md`](./CODECS.md). Playbook не зависит от версии
-битстрима: контейнер `.fri` один, декодер читает v1..v12.
+(текущий битстрим v13; [`frc-i.md`](./frc-i.md) §10, §12). Политика
+семейства — [`codecs.md`](./codecs.md). Playbook не зависит от версии
+битстрима: контейнер `.fri` один, декодер читает v1..v13.
 
 ---
 
@@ -81,4 +81,4 @@ WASM artifact: `apps/Web/public/frc/frc_i_wasm.wasm` (build via
 `apps/Web/scripts/build-frc-i-wasm.ts`).
 
 При bump wire-версии FRC-I — чеклист согласования TS/`FRC_I_BITSTREAM_VERSION`
-с wasm: [`FRC-I-VERSION-BUMP.md`](./FRC-I-VERSION-BUMP.md).
+с wasm: [`frc-i-version-bump.md`](./frc-i-version-bump.md).

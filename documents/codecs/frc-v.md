@@ -1,9 +1,9 @@
-# FRC-V — Flora Relativistic Codec — Video
+# FRC-V — Flora Reproducible Codec — Video
 
 **Status:** Draft (битстрим **v2** заморожен golden-векторами)  
 **Version:** 1.1  
 **Date:** 2026-07-16  
-**Family:** FRC — Flora Relativistic Codec (см. [`CODECS.md`](./CODECS.md))  
+**Family:** FRC — Flora Reproducible Codec (см. [`codecs.md`](./codecs.md))  
 **Reference implementation:** `products/FRC/crates/frc-v` (Rust, pure std, `unsafe` запрещён)
 
 ---
@@ -69,7 +69,7 @@ FRC-V — нативный видеокодек экосистемы FLORA. **v1
 `DKIF`, затем кадры `u32 size ‖ u64 pts ‖ payload`). CLI выбирает формат
 по расширению (`.ivf` → IVF, иначе `.frv`).
 
-Продуктовый A/V-mux с FRC-A — отдельный формат FRC (реестр — [`CODECS.md`](./CODECS.md)).
+Продуктовый A/V-mux с FRC-A — отдельный формат FRC (реестр — [`codecs.md`](./codecs.md)).
 
 ---
 
