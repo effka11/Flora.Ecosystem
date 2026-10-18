@@ -1,11 +1,11 @@
 # FRC-I — поднятие версии битстрима (playbook)
 
 **Status:** Operational  
-**SoT формата:** [`FRC-I.md`](./FRC-I.md) §10  
-**Продуктовый пайплайн:** [`CODECS-IMAGE.md`](./CODECS-IMAGE.md)
+**SoT формата:** [`frc-i.md`](./frc-i.md) §10  
+**Продуктовый пайплайн:** [`codecs-image.md`](./codecs-image.md)
 
 Этот документ — **как согласовать bump** wire-версии FRC-I со всеми артефактами репо.
-Спецификация wire — только в `FRC-I.md`; здесь чеклист, чтобы не сломать Web/Mobile декод.
+Спецификация wire — только в `frc-i.md`; здесь чеклист, чтобы не сломать Web/Mobile декод.
 
 ---
 
@@ -29,8 +29,8 @@
 | # | Артефакт | Где | Правило |
 | --- | --- | --- | --- |
 | 1 | Wire / decoder max | `products/FRC/crates/frc-i` → `format::VERSION_MAX`, `BITSTREAM_VERSION` | = `N` |
-| 2 | Спека | `documents/codecs/FRC-I.md` Status + §10 | Frozen `vN`, decoder `v1..vN` |
-| 3 | Реестр | `documents/codecs/CODECS.md` строка FRC-I | frozen `vN` |
+| 2 | Спека | `documents/codecs/frc-i.md` Status + §10 | Frozen `vN`, decoder `v1..vN` |
+| 3 | Реестр | `documents/codecs/codecs.md` строка FRC-I | frozen `vN` |
 | 4 | TS gate | `products/FRC/ts/src/index.ts` → `FRC_I_BITSTREAM_VERSION` | = `N` |
 | 5 | TS contract test | `products/FRC/ts/test/contracts.test.ts` | `toBe(N)` |
 | 6 | WASM ABI | `frc-i-wasm` `frc_i_version` младший байт ↔ `FRC_I_WASM_ABI_VERSION` | сейчас `2`; bump ABI отдельно от wire |
@@ -59,7 +59,7 @@ MIME `image/x-flora-frc-i` **не** несёт номер wire (`acceptsFrcI` с
 Делай **в одном PR** (или связке с явным DoD): TS gate и Rust `BITSTREAM_VERSION` меняются вместе.
 Иначе после `predev` новый wasm + старый TS → пустые фото.
 
-1. **Спека** — tool в `FRC-I.md`, `VERSION_MAX = N`, decoder `v1..vN`, Status.
+1. **Спека** — tool в `frc-i.md`, `VERSION_MAX = N`, decoder `v1..vN`, Status.
 2. **Rust** — encode/decode; публичный lossy `encode()` пишет `N`; старые — `encode_with_version` / CLI `--bitstream`.
 3. **Goldens** — `golden-vN-*.fri` по §10; `cargo test -p frc-i --test golden`.
 4. **TS** — `FRC_I_BITSTREAM_VERSION = N` + тест `toBe(N)` **в том же коммите**, что Rust `BITSTREAM_VERSION = N`.
@@ -67,7 +67,7 @@ MIME `image/x-flora-frc-i` **не** несёт номер wire (`acceptsFrcI` с
    `npx tsx apps/Web/scripts/build-frc-i-wasm.ts`  
    или `npm run predev` / `prebuild` в `apps/Web`. Артефакт gitignored.
 6. **Реестры semver продукта** — при релизе пакета: `products/FRC/package.json`, `flora-versions.json`, `backend/flora-versions.json`; fixtures — только через regen-скрипт.
-7. **CODECS.md / CODECS-IMAGE.md** — строка «frozen vN» (+ stamp `CODECS.md` Version/Date при материальном изменении реестра).
+7. **codecs.md / codecs-image.md** — строка «frozen vN» (+ stamp `codecs.md` Version/Date при материальном изменении реестра).
 8. **Mobile** — `FRC_VERSION_MAX = FRC_I_BITSTREAM_VERSION` в `apps/Mobile/lib/frcImageCache.ts` + native rebuild + encode/decode smoke.
 
 ### Минимальная проверка согласования (из корня репо, после сборки wasm)

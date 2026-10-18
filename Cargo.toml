@@ -56,6 +56,7 @@ members = [
     "products/FRC/crates/frc-i",
     "products/FRC/crates/frc-i-integration",
     "products/FRC/crates/frc-i-mobile-ffi",
+    "products/FRC/crates/frc-i-polygon",
     "products/FRC/crates/flora-codec-tools",
     "products/FRC/crates/frc-a-core",
     "products/FRC/crates/frc-a-cli",

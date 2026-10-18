@@ -370,7 +370,7 @@ def real_ideal_bits_by_kind(real_syntax: dict[str, Any]) -> dict[str, float]:
 def real_estimated_bits_by_kind(real_syntax: dict[str, Any]) -> dict[str, float]:
     """`estimated_bits` в терминах audit_v7/`finalize_aggregate`: ideal_bits
     арифметической части + raw-биты (dc magnitude, run/level hybrid-uint raw,
-    level sign), суммарно по Y/Cb/Cr. Это "estimated bits" из FRC-I.md §11.3,
+    level sign), суммарно по Y/Cb/Cr. Это "estimated bits" из frc-i.md §11.3,
     а НЕ размер файла (см. traps #3 в брифе)."""
     bits = real_ideal_bits_by_kind(real_syntax)
     for name in audit_v7.PLANE_NAMES:

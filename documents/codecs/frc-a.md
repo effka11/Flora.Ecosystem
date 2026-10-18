@@ -1,9 +1,9 @@
-# FRC-A — Flora Relativistic Codec — Audio (битстрим FRC-A)
+# FRC-A — Flora Reproducible Codec — Audio (битстрим FRC-A)
 
 **Status:** Draft  
 **Version:** 0.8 (bitstream v0, не заморожен; 0.8 **не меняет битстрим** относительно 0.7: адаптация трима — ненормативное поведение эталонного энкодера, декодер по-прежнему читает символ трима из кадра)  
 **Date:** 2026-08-02  
-**Depends on:** [`CODECS.md`](./CODECS.md), [`CODECS-AUDIO.md`](./CODECS-AUDIO.md)  
+**Depends on:** [`codecs.md`](./codecs.md), [`codecs-audio.md`](./codecs-audio.md)  
 **Reference implementation:** `products/FRC/crates/frc-a-*` (Rust, crates `frc-a-core`, `frc-a-cli`, полигон качества `frc-a-polygon`)
 
 ---
@@ -42,7 +42,7 @@ products/FRC  (members общего Cargo workspace, чистый Rust, no unsaf
                       JSON-снимки и сравнение с baseline (регрессии)
 
 Потребители (будущая интеграция, направление зависимостей →):
-  apps/Web (wasm)        → frc-a-core   # голосовые E2E: сжатие ДО шифрования, как требует CODECS.md
+  apps/Web (wasm)        → frc-a-core   # голосовые E2E: сжатие ДО шифрования, как требует codecs.md
   apps/Mobile (FFI)      → frc-a-core
   backend/flora-music    → frc-a-core   # серверный транскод музыки
 ```
@@ -337,7 +337,7 @@ frame_n u16le = 960 | num_samples u64le (на канал, без задержк�
 ## Module boundaries
 
 - Кодек — только `products/FRC` (`frc-a-core`). Модули/приложения используют его как библиотеку; обратных зависимостей нет.
-- Транскод-пайплайны остаются в своих владельцах (`Flora.Music`, `apps/Web`) — FRC-A не двигает границы `CODECS.md`.
+- Транскод-пайплайны остаются в своих владельцах (`Flora.Music`, `apps/Web`) — FRC-A не двигает границы `codecs.md`.
 - E2E-инвариант сохраняется: голосовые кодируются на клиенте до шифрования.
 
 ## Roadmap
@@ -352,7 +352,7 @@ frame_n u16le = 960 | num_samples u64le (на канал, без задержк�
 8. **v0.9** — per-band M/S/intensity-стерео; ресемблер 44.1/16 кГц; спектральный fold вместо нулей выше 20 кГц; низколатентный режим (5/10 мс), pitch-постфильтр для голоса, компактная финализация RC (сырые биты с хвоста буфера, CELT-стиль) для ультранизких битрейтов.
 9. **v1** — заморозка битстрима, фиксированная точность декодера (бит-в-бит кросс-платформенно), fuzzing-кампания, тест-векторы, WASM/FFI-обвязка.
 10. **FRC-A-NC** — нейропрофиль: RVQ-энкодер/декодер (обучение — PyTorch, вне этого workspace; инференс — Rust `candle`/`tract`, int8), голос 3–8 kbps, музыка 12–24 kbps. Гейт на ввод в прод: слепые тесты против Opus на целевых битрейтах.
-11. **Интеграция** — `voiceBlock.contentType = audio/x-flora-frc-a` (FSCP, клиентское кодирование), ladder Flora.Music; обновление `CODECS-AUDIO.md` отдельным PR.
+11. **Интеграция** — `voiceBlock.contentType = audio/x-flora-frc-a` (FSCP, клиентское кодирование), ladder Flora.Music; обновление `codecs-audio.md` отдельным PR.
 
 ## Open Questions
 

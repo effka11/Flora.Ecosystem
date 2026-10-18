@@ -17,7 +17,7 @@ use frc_v::y4m::{VideoParams, Y4mReader, Y4mWriter};
 use frc_v::{Decoder, Encoder, EncoderConfig};
 
 const USAGE: &str = "\
-FRC-V — Flora Relativistic Codec (video, битстрим FRV1 v1)
+FRC-V — Flora Reproducible Codec (video, битстрим FRV1 v1)
 
 Использование:
   frc-v encode -i <in.y4m> -o <out.frv|out.ivf> [--qp <0..63>] [--speed <0..2>] [--bitrate <kbps>] [--keyint <N>] [--ssim-tune] [--no-filter] [--no-scene-cut] [--frames <N>]

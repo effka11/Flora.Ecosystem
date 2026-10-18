@@ -1,6 +1,6 @@
-//! # FRC-V — Flora Relativistic Codec (video)
+//! # FRC-V — Flora Reproducible Codec (video)
 //!
-//! Референсная реализация FRC-V (спека: `documents/codecs/FRC-V.md`):
+//! Референсная реализация FRC-V (спека: `documents/codecs/frc-v.md`):
 //! битстрим кадра `BITSTREAM_VERSION = 2`, контейнерный FourCC IVF — **`FRV1`**,
 //! нативный `.frv` magic — `\x8F FRV`.
 //! YUV 4:2:0 8 бит, ключевые (intra) и P-кадры (компенсация движения

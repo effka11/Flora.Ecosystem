@@ -1,0 +1,23 @@
+[package]
+name = "frc-i-polygon"
+description = "Полигон FRC-I: детерминированный синтетический корпус + эталонные наборы (Kodak, picsum), A/B калибровок кодера (env-ручки линии), прогон против JPEG/WebP/AVIF/JXL в равных условиях, единые метрики (PSNR/SSIM/SSIMULACRA2/butteraugli), BD-rate (PCHIP), размер лестницы, iso-size, RD-графики и регрессионные снимки."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "frc-i-polygon"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# PNG — обменный формат корпуса и декодов; метрики полигона читают пиксели
+# из него же, что и внешние инструменты (ssimulacra2/butteraugli).
+image.workspace = true
+
+[lints]
+workspace = true

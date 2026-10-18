@@ -1,6 +1,6 @@
 [package]
 name = "frc-v"
-description = "FRC-V — Flora Relativistic Codec (video). Референсная реализация битстрима FRV1 (энкодер + декодер). Ядро без внешних зависимостей."
+description = "FRC-V — Flora Reproducible Codec (video). Референсная реализация битстрима FRV1 (энкодер + декодер). Ядро без внешних зависимостей."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

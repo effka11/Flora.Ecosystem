@@ -1,4 +1,4 @@
-//! rANS-энтропийный кодер (range Asymmetric Numeral Systems, FRC-I.md §3.2).
+//! rANS-энтропийный кодер (range Asymmetric Numeral Systems, frc-i.md §3.2).
 //!
 //! 32-битное состояние, побайтовая ренормализация, точность вероятностей
 //! 12 бит (сумма частот таблицы всегда 4096). Кодер пишет символы в обратном
@@ -114,7 +114,7 @@ impl FreqTable {
         sym as u8
     }
 
-    /// Разреженная сериализация таблицы (FRC-I.md §3.3).
+    /// Разреженная сериализация таблицы (frc-i.md §3.3).
     pub fn serialize(&self, out: &mut Vec<u8>) {
         let first = self.freq.iter().position(|&f| f > 0).unwrap_or(0);
         let last = self.freq.iter().rposition(|&f| f > 0).unwrap_or(0);

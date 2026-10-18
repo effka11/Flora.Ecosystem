@@ -12,7 +12,7 @@ use std::process::ExitCode;
 #[derive(Parser)]
 #[command(
     name = "flora-codec",
-    about = "Инструменты кодеков FRC (Flora Relativistic Codec)"
+    about = "Инструменты кодеков FRC (Flora Reproducible Codec)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -21,7 +21,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum TopCommand {
-    /// Фото-кодек FRC-I (Flora Relativistic Codec — Image)
+    /// Фото-кодек FRC-I (Flora Reproducible Codec — Image)
     #[command(subcommand)]
     Image(image_cmd::ImageCommand),
 }

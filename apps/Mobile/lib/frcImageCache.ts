@@ -29,7 +29,7 @@ import { FRC_I_BITSTREAM_VERSION } from "@flora/client-core/frc-i";
 
 export const FRC_HEADER_LEN = 20;
 export const FRC_VERSION_MIN = 1;
-/** Mirrors `frc_i::format::VERSION_MAX` via the TS gate (v12 perceptual RD; wire v11). */
+/** Mirrors `frc_i::format::VERSION_MAX` via the TS gate (v13 rate-aware RD; wire v11). */
 export const FRC_VERSION_MAX = FRC_I_BITSTREAM_VERSION;
 export const FRC_MAX_DIM = 32_768;
 export const FRC_MAX_PIXELS = 1 << 26; // ~67 Mpx, matches DEFAULT_MAX_PIXELS
