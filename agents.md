@@ -11,14 +11,14 @@
 - **Rust `flora-api`** (`backend/crates/flora-api`) — точка входа (маршрутизация, middleware). Бизнес-логика запрещена.
 - **`flora-shared`** — низкоуровневые утилиты. Бизнес-логика запрещена.
 - **products/Flora.Social** (App) — Rust-композиция (`crates/flora-social` + `crates/modules/*`); доменные модули (Auth, Users, Content, Messaging, Music, Notifications, Verification) — **внутренности Social**.
-- **products/{FIRA,FSA,FSCP,FRC,FGP,FEP,FPP}** (Functional) — headless/embeddable; не зависят от Social. **FSA** — поиск (ядро + модули FSA-F/A/M/P/C/N/D); мост FIRA→FSA только данными (`AffinitySnapshot`).
+- **products/{FIRA,FSA,FSCP,FRC,FGP,FEP,FPP,FGCE}** (Functional) — headless/embeddable; не зависят от Social. **FSA** — поиск (ядро + модули FSA-F/A/M/P/C/N/D); мост FIRA→FSA только данными (`AffinitySnapshot`). **FGCE Trellis** — композиция 2D, спека [`documents/fgce/fgce.md`](documents/fgce/fgce.md); крейта в дереве ещё нет.
 - **Apps** — shells: `apps/Web` (`social.*`), `apps/Www` (apex `flora-s.net`), `apps/Gov` (`gov.*`), `apps/Mobile` (не внутри Products).
 - **Packages** — `@flora/client-core` (транспорт + реэкспорт functional TS; SoT FSCP — `@flora/fscp` / `products/FSCP`).
 - **backend/** — host crates (`flora-api`, …); **workspace root** — repo [`Cargo.toml`](Cargo.toml) (members включают `products/*`).
 
 Стек: **Rust**, PostgreSQL (`flora_core`), Next.js 16 / TypeScript, Expo / React Native.
 
-Спеки: `documents/` (FSCP, FIRA, FSA, FGP, FPP, FEP, codecs). Поиск (FSA) — `documents/fsa/FSA.md` + 7 модульных (FSA-F/A/M/P/C/N/D). Economy (FEP) — Rust-native в `products/FEP`; валюта **LIV** — `documents/fep/LIV.md` (канонический формат сумм, витнесс-косайнинг, верификация клиентом).
+Спеки: `documents/` (FSCP, FIRA, FSA, FGP, FPP, FEP, FGCE, codecs). Поиск (FSA) — `documents/fsa/FSA.md` + 7 модульных (FSA-F/A/M/P/C/N/D). Economy (FEP) — Rust-native в `products/FEP`; валюта **LIV** — `documents/fep/LIV.md` (канонический формат сумм, витнесс-косайнинг, верификация клиентом).
 
 ## Направления зависимостей
 
@@ -139,4 +139,4 @@ pwsh ./tools/validate-architecture-rust.ps1
 
 См. **`documents/ZED.md`** — tasks, skills, debugger, ACP. Глобально: `%APPDATA%\Zed\docs\ZED-GLOBAL.md`.
 
-Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`, `/flora-smart-agent-economy`, `/flora-code-reviewer`, `/flora-code-reviser`.
+Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`, `/flora-smart-agent-economy`, `/flora-code-reviewer`, `/flora-code-reviser`, `/flora-agents-arena`.

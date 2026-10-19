@@ -44,7 +44,7 @@
 Пиры под [`products/`](products/). Классы и правила — [`architecture.md`](architecture.md) §1.1. Кратко:
 
 - **App:** Flora.Social (доменные модули Auth/Users/… — внутренности Social, не пиры). Зарезервированы без пустых папок: Browser, Email, OS.
-- **Functional (headless/embeddable):** FIRA, FSA, FSCP, FRC, FGP, FEP, FPP — kernel/contracts (+ опц. runtime); не зависят от Social.
+- **Functional (headless/embeddable):** FIRA, FSA, FSCP, FRC, FGP, FEP, FPP, FGCE Trellis — kernel/contracts (+ опц. runtime); не зависят от Social. FGCE Trellis — один крейт `fgce`, спека [`documents/fgce/fgce.md`](documents/fgce/fgce.md); крейта в дереве ещё нет.
 - **UIP** — DTO в `fira-contracts`; Users владеет персистенцией и маппит в `InterestProfile`.
 - **FSA** — kernel+contracts в `products/FSA` (поиск: анализ/индекс/BM25F/персонализация); мост FIRA→FSA — данные (`AffinitySnapshot`), не код. Спека — [`documents/fsa/FSA.md`](documents/fsa/FSA.md).
 - **FPP** — kernel+contracts в `products/FPP`; таблицы `personhood_*` пишет только Verification (Social).
@@ -61,7 +61,7 @@
 Cargo.toml                      # workspace members → backend/crates + products/*/crates
 products/
   Flora.Social/                 # PRODUCT_CLASS: app (C# as-is + Rust crates/)
-  FIRA/ FSA/ FSCP/ FRC/ FEP/ FGP/ FPP/
+  FIRA/ FSA/ FSCP/ FRC/ FEP/ FGP/ FPP/ FGCE/
 backend/
   crates/ flora-api, flora-shared, flora-migrate, infrastructure/
   tests/parity/
