@@ -96,7 +96,7 @@ pwsh ./tools/validate-architecture-rust.ps1
 - Полный контракт позиционирования по сетке: вызови skill **`/apps-web-grid-placement`** перед любыми правками `top`/`margin`/позиционирования в `apps/Web`.
 - Чат Messages (compose, стикеры, голосовые, плеер): вызови skill **`/apps-web-messages-chat`** перед правками чата.
 - Диагностика «обрезки» под шапкой: сначала проверить перекрытие слоями (DOM-порядок, `z-index`, непрозрачный фон), а не только `overflow`. Для flex+scroll: `flex: 1 1 0%` + `min-height: 0` на пути к скролл-контейнеру.
-- **Разделитель «тире» в UI-тексте:** не длинное `—`; формат как у вкладок — `FLORA_TITLE_SEPARATOR` (`\u00A0\u00A0–\u00A0\u00A0`) из `apps/Web/lib/floraDocumentTitle.ts`. Обычные пробелы вокруг тире HTML схлопывает; всегда NBSP. Правило: `.cursor/rules/flora-ui-dash-separator.mdc`.
+- **Разделитель «тире» в UI-тексте:** не длинное `—` (U+2014). Формат вкладок — `FLORA_TITLE_SEPARATOR` (`"\u00A0\u00A0–\u00A0\u00A0"`) из `apps/Web/lib/floraDocumentTitle.ts`. Обычные пробелы HTML схлопывает, поэтому только NBSP: `` `…${FLORA_TITLE_SEPARATOR}…` ``. Заголовки вкладок — `formatFloraDocumentTitle` / `floraPageMetadata`. Тот же текст: `.cursor/rules/flora-ui-dash-separator.mdc`.
 
 ## Правила apps/Mobile
 
@@ -139,4 +139,4 @@ pwsh ./tools/validate-architecture-rust.ps1
 
 См. **`documents/ZED.md`** — tasks, skills, debugger, ACP. Глобально: `%APPDATA%\Zed\docs\ZED-GLOBAL.md`.
 
-Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`, `/flora-smart-agent-economy`, `/flora-code-reviewer`, `/flora-code-reviser`, `/flora-agents-arena`.
+Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`, `/flora-smart-agent-economy`, `/flora-code-reviewer`, `/flora-code-reviser`.
