@@ -1,6 +1,6 @@
 # Архитектурная карта Flora.Ecosystem
 
-> Высокоуровневая карта системы «с высоты птичьего полёта»: глобальное назначение, границы модулей, сквозные потоки данных и технический долг. Документ описывает **взаимосвязи**, а не внутренности методов. Нормативные спецификации лежат в [`documents/`](documents/), правила границ — в [`.agents/skills/`](.agents/skills/) и [`agents.md`](agents.md). Целевая продуктовая топология (пиры App / Functional) и путь миграции C#→Rust — [`next-architecture.md`](next-architecture.md).
+> Высокоуровневая карта системы «с высоты птичьего полёта»: глобальное назначение, границы модулей, сквозные потоки данных и технический долг. Документ описывает **взаимосвязи**, а не внутренности методов. Нормативные спецификации лежат в [`documents/`](documents/), правила границ — в [`.agents/skills/`](.agents/skills/) и [`AGENTS.md`](AGENTS.md). Целевая продуктовая топология (пиры App / Functional) и путь миграции C#→Rust — [`next-architecture.md`](next-architecture.md).
 
 ---
 
@@ -356,7 +356,7 @@ sequenceDiagram
 | Что и как собирается в продукт         | [`products/Flora.Social/Class1.cs`](products/Flora.Social/Class1.cs)                                                                                                                         |
 | Email-верификация (модуль)             | [`Modules/Flora.Verification`](Modules/Flora.Verification), порт [`IVerificationChallengeService`](Modules/Flora.Verification/Flora.Verification.Contracts/IVerificationChallengeService.cs) |
 | HTTP Music / Notifications (в модулях) | [`Modules/Flora.Music/MusicController.cs`](Modules/Flora.Music/MusicController.cs), [`Modules/Flora.Notifications/`](Modules/Flora.Notifications/)                                           |
-| Границы и правила                      | [`agents.md`](agents.md), [`.agents/skills/`](.agents/skills/)                                                                                                                               |
+| Границы и правила                      | [`AGENTS.md`](AGENTS.md), [`.agents/skills/`](.agents/skills/)                                                                                                                               |
 | E2E-протокол                           | [`documents/fscp/FSCP.md`](documents/fscp/FSCP.md), [`packages/flora-client-core/src/fscp/`](packages/flora-client-core/src/fscp)                                                                      |
 | Рекомендации                           | [`documents/fira/FIRA.md`](documents/fira/FIRA.md)                                                                                                                                                     |
 | Поиск (ядро + модули)                  | [`documents/fsa/FSA.md`](documents/fsa/FSA.md), [`products/FSA`](products/FSA)                                                                                                                          |

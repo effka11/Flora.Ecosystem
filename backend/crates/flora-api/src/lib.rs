@@ -1,5 +1,5 @@
 //! Хост Flora (порт `Flora.API`): конфиг, tracing, нативные маршруты, gateway-fallback.
-//! Бизнес-логика запрещена (agents.md) — только маршрутизация, middleware и композиция.
+//! Бизнес-логика запрещена (AGENTS.md) — только маршрутизация, middleware и композиция.
 
 pub mod access_log;
 pub mod client_ip;

@@ -37,7 +37,7 @@
 | 7 | WASM artifact | `apps/Web/public/frc/frc_i_wasm.wasm` | **не в git** (`.gitignore`); всегда пересобирать из workspace (`apps/Web` `predev`/`prebuild` → `build-frc-i-wasm.ts`) |
 | 8 | Goldens | `products/FRC/crates/frc-i/tests/data/golden-vN-*.fri` | по правилам §10 (см. ниже) |
 | 9 | Package / ecosystem | `products/FRC/package.json` (+ `description` wire), корневой / `backend/flora-versions.json` | bump semver продукта `@flora/frc-i` при релизе (wire `N` ≠ `0.x.y-alpha`) |
-| 10 | Contract fixtures | `artifacts/contract-fixtures/api-version.json` | **не править руками** — только регенерация из эталона (`agents.md`) |
+| 10 | Contract fixtures | `artifacts/contract-fixtures/api-version.json` | **не править руками** — только регенерация из эталона (`AGENTS.md`) |
 | 11 | Mobile FFI + sniff | `frc-i-mobile-ffi` / Expo `flora-frc-i`; `apps/Mobile/lib/frcImageCache.ts` → `FRC_VERSION_MAX` | тот же Rust `frc-i`; `FRC_VERSION_MAX = FRC_I_BITSTREAM_VERSION`; native rebuild обязателен |
 
 MIME `image/x-flora-frc-i` **не** несёт номер wire (`acceptsFrcI` смотрит только тип до `;`).

@@ -1,6 +1,6 @@
 # Zed — Flora.Ecosystem
 
-Onboarding для Zed Agent и внешних агентов (ACP). Общие правила репозитория — [`AGENTS.md`](../AGENTS.md) в корне. На Windows это тот же файл, что `agents.md`.
+Onboarding для Zed Agent и внешних агентов (ACP). Общие правила репозитория — [`AGENTS.md`](../AGENTS.md) в корне.
 
 ## Куда попали правила
 
@@ -74,9 +74,9 @@ Jwt и franking seed скрипт поднимает сам (`scripts/ensure-sha
 
 ## MCP
 
-Глобально (user settings): context7, chunkhound, git, playwright, github. Postgres/redis/docker в тех же settings — контур Luna, не Flora. База Flora — `docker compose` и task `Flora DB`.
+Глобально (user settings): context7, chunkhound, git, playwright. GitHub — через авторизованный `gh` CLI: старый PAT в MCP вернул 401, entry отключён (инструкция по возврату — комментарий в settings). Postgres/redis в тех же settings — контур Luna, не Flora. База Flora — `docker compose` и task `Flora DB`.
 
-Песочница агента: сеть по allowlist (GitHub, crates.io, docs.rs, npm, zed.dev, localhost). Новый хост — через prompt. `allow_all_hosts` не включать.
+Агентский terminal на Windows работает в host shell без OS-песочницы: WSL-песочница недоступна (в дистрибутиве нет `bwrap`), а host-specific `network_hosts` на Windows не поддерживается. Zed записал `agent.sandbox_permissions.allow_unsandboxed: true`; команды выполняются с правами пользователя, сеть доступна без per-host allowlist.
 
 ## ACP (внешние агенты)
 
@@ -84,6 +84,7 @@ Agent Panel → **+** → Install from Registry (`zed: acp registry`):
 
 | Агент | Правила, которые он реально читает |
 |-------|--------------------------------------|
+| OpenCode | Уже в user `agent_servers` (`type: registry`). Свой auth и модели, project `AGENTS.md`. |
 | Claude | `~/.claude/CLAUDE.md` + project `AGENTS.md`. Billing отдельно, `/login`. |
 | Cursor | Правила аккаунта Cursor + project `AGENTS.md`. |
 | Codex | Свой конфиг + project `AGENTS.md`, если агент его подхватывает. |
@@ -92,11 +93,11 @@ Agent Panel → **+** → Install from Registry (`zed: acp registry`):
 
 ## Проверка после правок
 
-`cargo test -p <crate>` и clippy затронутого крейта; для TS — `npm run typecheck`. Полный прогон — tasks выше.
+`cargo test -p <crate>` и clippy затронутого крейта; для TS — `npm run typecheck`. `apps/Web` и `apps/Gov` вне корневых npm workspaces: у них свой `package-lock.json`, поэтому typecheck/lint/test запускаются из их каталогов. В `apps/Web` lint зелёный (0 errors) с 149 warnings: 122 — новые React Compiler rules из `eslint-config-next` 16.4, понижены до `warn` до миграции hooks; 27 — старые. Полный прогон — tasks выше.
 
 ## Smoke-test
 
-1. Agent Panel → Settings → MCP зелёные (context7, chunkhound).
+1. Agent Panel → Settings → MCP зелёные (context7, chunkhound, git, playwright; postgres/redis — при запущенном Docker).
 2. `/` в треде показывает `apps-web-*` и `flora-*` из `.agents/skills`.
 3. `Ctrl+Shift+T` → `cargo fmt --check`.
 4. Открытый `.rs` не запускает clippy всего workspace (диагностика пакета).
