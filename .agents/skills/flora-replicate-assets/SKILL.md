@@ -39,6 +39,28 @@ description: >-
 - **Выход:** `local/replicate-output` (gitignored). Перенос ассета в репозиторий — осознанный `move`, не автокопирование.
 - **Большие изображения** возвращаются путями (`local_paths`), а не инлайном — читать через `read_file`.
 
+## Разрешение
+
+- **Целевой размер по умолчанию — 1920×1080** (16:9). Вертикаль для сторис и рилс — 1080×1920, квадрат — 1080×1080. Другой размер задаётся только явно пользователем.
+- Генераторы отдают нативный кадр (`aspect_ratio: "16:9"` → 1344×768), поэтому финал всегда проходит цепочку: **генерация → `replicate_upscale_image` (`nightmareai/real-esrgan`, `scale: 4`, $0.003) → Lanczos-даунскейл под целевой размер**.
+- Апскейл принимает только URL: локальный файл сначала прогоняется через `replicate_upload_file`, результат скачивается в `local/replicate-output`.
+- Точный 16:9 получается кропом по высоте (5376×3072 → 5376×3024) и ресайзом в 1920×1080 — без растяжения кадра.
+- `size` и `aspect_ratio` вместе не передавать: при заданном `aspect_ratio` поле `size` игнорируется (проверено на `recraft-v4.1`). У моделей с `size` размер задаётся им, `aspect_ratio` не передаётся.
+
+```py
+from PIL import Image, ImageFilter
+
+im = Image.open(src).convert("RGB")
+w, h = im.size
+th = round(w * 9 / 16)
+if h > th:
+    top = (h - th) // 2
+    im = im.crop((0, top, w, top + th))
+im.resize((1920, 1080), Image.LANCZOS).filter(
+    ImageFilter.UnsharpMask(radius=1.0, percent=50, threshold=3)
+).save(dst, optimize=True)
+```
+
 ## Инфраструктура
 
 - Токен: `local/replicate-token` (gitignored). Не читать, не логировать, в чат не копировать.
