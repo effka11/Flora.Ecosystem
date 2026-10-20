@@ -1,6 +1,6 @@
 /**
  * Flora UI grid templates — machine SoT.
- * Law: documents/design/FLORA-GRID.md (do not duplicate the scale table there).
+ * Law: documents/design/flora-grid.md (do not duplicate the scale table there).
  */
 
 export const FLORA_GRID_FINE_PX = 5;
