@@ -12,7 +12,7 @@ workspace = true
 
 # Правило §2.3 (расширенное для *-crypto ядер, ср. flora-governance-crypto, FGP §8.1):
 # ядро зависит только от внешних crates и не видит ни один бизнес-модуль.
-# Криптопримитивы — RustCrypto/dalek без C-зависимостей (agents.md, next-architecture.md §4.4);
+# Криптопримитивы — RustCrypto/dalek без C-зависимостей (AGENTS.md, next-architecture.md §4.4);
 # нет uuid/getrandom в графе, поэтому сборка под wasm32-unknown-unknown чистая.
 [dependencies]
 sha2 = { workspace = true }

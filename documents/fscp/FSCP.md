@@ -565,7 +565,7 @@ SK  = HKDF(DH1 ‖ DH2 ‖ DH3 ‖ DH4)  # root key начальной сесс�
 
 - старая история v1 остаётся читаемой (клиент выбирает путь по `keyEpochId`/`version`);
 - нельзя понижать версию беседы (см. [`e2e-security.md`](./e2e-security.md) §Rollback policy);
-- новые golden transcript-векторы (`documents/test-vectors/`, регенерация из эталонной реализации — руками не править, [`agents.md`](../../agents.md)).
+- новые golden transcript-векторы (`documents/test-vectors/`, регенерация из эталонной реализации — руками не править, [`AGENTS.md`](../../AGENTS.md)).
 
 ### Post-quantum (v2+, нормативное направление)
 
@@ -659,7 +659,7 @@ MLS или sender keys — отдельная спецификация. Не с�
 | --- | --- | --- |
 | `fscp_hybrid_kem_v2draft_v1` | [fscp-hybrid-kem-v2draft-v1.json](../test-vectors/fscp-hybrid-kem-v2draft-v1.json) | Гибридный KEM X25519+ML-KEM-768 (§Целевой алгоритм → Post-quantum) — детерминированные keygen/encaps/decaps FIPS 203, transcript-hash, гибридный HKDF, AEAD; негативы: implicit rejection при подмене `ct_mlkem`, расхождение AAD-метаданных |
 
-Регенерация: RKE — `python documents/test-vectors/_gen_fscp_rke_v1.py`, транскрипт — `python documents/test-vectors/_gen_fscp_message_transcript_v1.py`, franking — `python documents/test-vectors/_gen_fscp_franking_v1.py` (после транскрипта; нужны `cryptography`, `PyNaCl`), гибридный KEM — `python documents/test-vectors/_gen_fscp_hybrid_kem_v2draft_v1.py` (дополнительно нужен `kyber-py`), revoke-транскрипт — `python documents/test-vectors/_gen_fscp_revoked_device_v1.py`, D2D recovery — `python documents/test-vectors/_gen_fscp_d2d_recovery_v1.py`; `fscp-wire-validator-v1.json` — **заморожен** (исторически из C#-эталона, после Фазы 5 не регенерировать); franking wire v1.1 / disclosure bundle v2 — `npm run generate:franking-wire-v1-1-vector --workspace=@flora/fscp` и `npm run generate:franking-disclosure-bundle-v2-vector --workspace=@flora/fscp`. Файлы `documents/test-vectors/**` — **regenerate-only**, руками не редактировать ([`agents.md`](../../agents.md)).
+Регенерация: RKE — `python documents/test-vectors/_gen_fscp_rke_v1.py`, транскрипт — `python documents/test-vectors/_gen_fscp_message_transcript_v1.py`, franking — `python documents/test-vectors/_gen_fscp_franking_v1.py` (после транскрипта; нужны `cryptography`, `PyNaCl`), гибридный KEM — `python documents/test-vectors/_gen_fscp_hybrid_kem_v2draft_v1.py` (дополнительно нужен `kyber-py`), revoke-транскрипт — `python documents/test-vectors/_gen_fscp_revoked_device_v1.py`, D2D recovery — `python documents/test-vectors/_gen_fscp_d2d_recovery_v1.py`; `fscp-wire-validator-v1.json` — **заморожен** (исторически из C#-эталона, после Фазы 5 не регенерировать); franking wire v1.1 / disclosure bundle v2 — `npm run generate:franking-wire-v1-1-vector --workspace=@flora/fscp` и `npm run generate:franking-disclosure-bundle-v2-vector --workspace=@flora/fscp`. Файлы `documents/test-vectors/**` — **regenerate-only**, руками не редактировать ([`AGENTS.md`](../../AGENTS.md)).
 
 Правила новых векторов: `protocolVersion` / `fscpProtocolVersion` в JSON, base64url без padding, AAD **байт-в-байт** как в этом документе; негативы — отдельные файлы или блок `cases` с `expectedError`.
 

@@ -2,7 +2,7 @@
 
 Load always (Flora-first). Check whether the **plan** acknowledges these rules; read cited paths (shared ≤10 budget with Goal axis). Do not fish the uncited codebase.
 
-Source of truth for live policy: repo root [`agents.md`](../../../agents.md). This file is a compact review checklist, not a replacement.
+Source of truth for live policy: repo root [`AGENTS.md`](../../../AGENTS.md). This file is a compact review checklist, not a replacement.
 
 ## 1) Dependency direction
 
@@ -50,7 +50,7 @@ If the plan touches a zone but does not name the required skill/doc → `flora_s
 | `apps/Web` messages chat | `/apps-web-messages-chat` |
 | Messaging / FSCP E2E | `/flora-fscp-e2e` |
 | `apps/Mobile` | `apps/Mobile/AGENTS.md` (+ Expo v56 docs) |
-| C#→Rust migration / `backend/` host cutover context | `/rust-migration` |
+| `backend/` host cutover context | `AGENTS.md` + `next-architecture.md` §6.0 |
 
 ## 5) Gates by stack
 

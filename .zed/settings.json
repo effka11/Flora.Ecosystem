@@ -3,28 +3,57 @@
   "file_scan_exclusions": [
     "**/.git",
     "**/node_modules",
+    "**/target",
     "**/bin",
     "**/obj",
     "**/artifacts",
     "**/.next",
-    "**/dist"
+    "**/dist",
+    "**/.turbo",
+    "**/coverage",
+    "**/playwright-report",
+    "**/*.secret",
+    "local/.flora/**",
+    "backend/secrets/**"
   ],
   "auto_install_extensions": {
-    "csharp": true,
     "dockerfile": true,
     "env": true
   },
-  // Extension IDs: verify in Zed → Extensions if auto-install fails (csharp = C# + netcoredbg)
   "languages": {
-    "C#": { "tab_size": 4 },
+    "Rust": {
+      "tab_size": 4,
+      "format_on_save": "on",
+      "formatter": "language_server"
+    },
     "TypeScript": {
       "tab_size": 2,
       "code_actions_on_format": { "source.organizeImports": true }
     },
     "TSX": { "tab_size": 2 },
     "JavaScript": {
-      // Правило проекта: новые JS-файлы запрещены, только TS
+      // Новые JS-файлы в apps/Web запрещены; формат только для уже существующего кода
       "format_on_save": "on"
+    }
+  },
+  // check.workspace: false — clippy по пакету открытого файла, не по всему workspace.
+  // Полный clippy — задача «cargo clippy (workspace, -D warnings)».
+  // analyzerTargetDir отделяет rust-analyzer от cargo run/test.
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "check": {
+          "command": "clippy",
+          "workspace": false
+        },
+        "cargo": {
+          "features": "all",
+          "allTargets": true
+        },
+        "rust": {
+          "analyzerTargetDir": true
+        }
+      }
     }
   }
 }

@@ -19,7 +19,7 @@
 ### 1.1. Цели
 
 1. Полностью заменить .NET-бэкенд на Rust без остановки сервиса и без изменений в клиентах.
-2. Сохранить модульный монолит и правила границ из [`agents.md`](agents.md): Clean Architecture внутри модуля, общение только через контракты, однонаправленные зависимости `Apps → API → Products → Modules → Infrastructure`.
+2. Сохранить модульный монолит и правила границ из [`AGENTS.md`](AGENTS.md): Clean Architecture внутри модуля, общение только через контракты, однонаправленные зависимости `Apps → API → Products → Modules → Infrastructure`.
 3. По пути погасить главный долг: декомпозировать god-контроллер [`ImportedSocialController.cs`](products/Flora.Social/ImportedSocialController.cs) (~3.5k строк, ~87 эндпоинтов) на модульные роутеры.
 4. Сохранить возможность выноса любого модуля в отдельный сервис (после миграции — без изменения доменного кода, сменой композиции).
 
@@ -44,7 +44,7 @@
 Пиры под [`products/`](products/). Классы и правила — [`architecture.md`](architecture.md) §1.1. Кратко:
 
 - **App:** Flora.Social (доменные модули Auth/Users/… — внутренности Social, не пиры). Зарезервированы без пустых папок: Browser, Email, OS.
-- **Functional (headless/embeddable):** FIRA, FSA, FSCP, FRC, FGP, FEP, FPP — kernel/contracts (+ опц. runtime); не зависят от Social.
+- **Functional (headless/embeddable):** FIRA, FSA, FSCP, FRC, FGP, FEP, FPP, FGCE Trellis — kernel/contracts (+ опц. runtime); не зависят от Social. FGCE Trellis — один крейт `fgce`, спека [`documents/fgce/fgce.md`](documents/fgce/fgce.md); крейта в дереве ещё нет.
 - **UIP** — DTO в `fira-contracts`; Users владеет персистенцией и маппит в `InterestProfile`.
 - **FSA** — kernel+contracts в `products/FSA` (поиск: анализ/индекс/BM25F/персонализация); мост FIRA→FSA — данные (`AffinitySnapshot`), не код. Спека — [`documents/fsa/FSA.md`](documents/fsa/FSA.md).
 - **FPP** — kernel+contracts в `products/FPP`; таблицы `personhood_*` пишет только Verification (Social).
@@ -61,7 +61,7 @@
 Cargo.toml                      # workspace members → backend/crates + products/*/crates
 products/
   Flora.Social/                 # PRODUCT_CLASS: app (C# as-is + Rust crates/)
-  FIRA/ FSA/ FSCP/ FRC/ FEP/ FGP/ FPP/
+  FIRA/ FSA/ FSCP/ FRC/ FEP/ FGP/ FPP/ FGCE/
 backend/
   crates/ flora-api, flora-shared, flora-migrate, infrastructure/
   tests/parity/
@@ -216,7 +216,7 @@ flowchart LR
 
 ### 5.2. Межъязыковые порты (переходные)
 
-Когда модуль уезжает в Rust, а его потребители ещё на C# (или наоборот), in-process порт заменяется на **внутренний gRPC** — это штатная «лестница коммуникаций» из agents.md (шаг 3) и осознанное оживление спящего каркаса [`infrastructure/Flora.gRPC`](infrastructure/Flora.gRPC). Protos лежат в `infrastructure/Flora.gRPC/Protos/` (единый источник для `prost` и `Grpc.Tools`), транспорт — localhost, наружу не публикуется. C#-адаптеры портов живут в `*.Infrastructure` модулей (ссылка на `Flora.gRPC` там разрешена валидатором).
+Когда модуль уезжает в Rust, а его потребители ещё на C# (или наоборот), in-process порт заменяется на **внутренний gRPC** — это штатная «лестница коммуникаций» из AGENTS.md (шаг 3) и осознанное оживление спящего каркаса [`infrastructure/Flora.gRPC`](infrastructure/Flora.gRPC). Protos лежат в `infrastructure/Flora.gRPC/Protos/` (единый источник для `prost` и `Grpc.Tools`), транспорт — localhost, наружу не публикуется. C#-адаптеры портов живут в `*.Infrastructure` модулей (ссылка на `Flora.gRPC` там разрешена валидатором).
 
 | Порт (Contracts) | Направление в переходный период | Живёт с фазы | Умирает в фазе |
 | --- | --- | --- | --- |
@@ -254,7 +254,7 @@ flowchart LR
 
 ### 6.0. Статус миграции (единственный источник истины о владении)
 
-> Обновляется **в том же PR**, что и событие: старт фазы, freeze, cutover, откат, вывод. Агенты и люди обязаны сверяться с этой таблицей до правок кода модуля (см. agents.md, skill `/rust-migration`).
+> Обновляется **в том же PR**, что и событие: старт фазы, freeze, cutover, откат, вывод. Агенты и люди обязаны сверяться с этой таблицей до правок кода модуля (см. AGENTS.md; эта таблица — источник истины о владении).
 
 | Единица | Владелец сейчас | Статус | Freeze-окно |
 | --- | --- | --- | --- |
@@ -274,7 +274,7 @@ flowchart LR
 
 ### Фаза 0 — Фундамент и шлюз
 
-**Делаем:** workspace `backend/` (§2.1); `flora-api` с конфигом (§4.8), tracing, `/`, `/health`, `/version` (читает `flora-versions.json` — паритет с [`FloraVersions.cs`](Flora.API/FloraVersions.cs)); прозрачный реверс-прокси на .NET (§5.1); `flora-shared` с golden-тестами UUID v5/v7 против C#-векторов; parity-харнесс (`tests/parity`): прогон существующих contract fixtures + differential-инструмент `flora-diff` (replay GET-трафика на оба апстрима, семантический дифф JSON); расширение генератора фикстур (`tests/Flora.ContractFixtures`, `UPDATE_CONTRACT_FIXTURES=1`) на Music/Content/E2E-поверхности; CI: fmt, clippy, test, `validate-architecture-rust`, `cargo deny`; обновление agents.md (команды cargo, правила `backend/`).
+**Делаем:** workspace `backend/` (§2.1); `flora-api` с конфигом (§4.8), tracing, `/`, `/health`, `/version` (читает `flora-versions.json` — паритет с [`FloraVersions.cs`](Flora.API/FloraVersions.cs)); прозрачный реверс-прокси на .NET (§5.1); `flora-shared` с golden-тестами UUID v5/v7 против C#-векторов; parity-харнесс (`tests/parity`): прогон существующих contract fixtures + differential-инструмент `flora-diff` (replay GET-трафика на оба апстрима, семантический дифф JSON); расширение генератора фикстур (`tests/Flora.ContractFixtures`, `UPDATE_CONTRACT_FIXTURES=1`) на Music/Content/E2E-поверхности; CI: fmt, clippy, test, `validate-architecture-rust`, `cargo deny`; обновление AGENTS.md (команды cargo, правила `backend/`).
 
 **Выход:** шлюз в проде отвечает на `/`/`/health`/`/version`, proxy на .NET прозрачен (SSE/multipart/медиа); кросс-языковой JWT-тест зелёный. Обязательный соак ≥1 недели **не требуется**, пока нет прод-аудитории. **Откат:** nginx → .NET напрямую.
 
@@ -386,7 +386,7 @@ FIRA-P: формулы as-built ([`FIRA-P.md`](documents/fira/FIRA-P.md) §Imple
 | Тема | Документ |
 | --- | --- |
 | Текущая архитектура (as-is) | [`architecture.md`](architecture.md) |
-| Правила границ и процессов | [`agents.md`](agents.md) |
+| Правила границ и процессов | [`AGENTS.md`](AGENTS.md) |
 | E2E-протокол | [`documents/fscp/FSCP.md`](documents/fscp/FSCP.md), [`documents/fscp/e2e-security.md`](documents/fscp/e2e-security.md) |
 | Рекомендации | [`documents/fira/FIRA.md`](documents/fira/FIRA.md) |
 | Поиск | [`documents/fsa/FSA.md`](documents/fsa/FSA.md) |
