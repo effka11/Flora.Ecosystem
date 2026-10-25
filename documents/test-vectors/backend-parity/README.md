@@ -1,7 +1,7 @@
 # Backend parity vectors (исторический C# ⇄ Rust)
 
 Golden-векторы паритета бэкенда для миграции на Rust (`next-architecture.md` §4, §7.1).
-Файлы **regenerate-only** — руками не редактировать (правило agents.md).
+Файлы **regenerate-only** — руками не редактировать (правило AGENTS.md).
 
 C#-хост снят с Фазой 5. Векторы, которые когда-то генерировал `tests/Flora.GoldenVectors`, **заморожены**; `scripts/generate-golden-vectors.ps1` сразу выходит с ошибкой и **не** является текущим regen.
 

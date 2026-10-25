@@ -1,6 +1,6 @@
 ---
 name: flora-plan-orchestrator
-description: Executes an attached work plan as an engineering lead: reads the routing table from flora-plan-router, splits execution into waves, launches subagents with assigned models, runs gates itself (cargo/npm/architecture validator), resolves conflicts, and keeps an execution log in the plan file. If the plan has no routing table — first invokes the flora-plan-router skill. Use when the user asks to execute/implement a plan, distribute a plan to subagents, run a plan from a routing table, or orchestrate agents against a plan.
+description: Executes an attached work plan as an engineering lead — reads the routing table from flora-plan-router, splits execution into waves, launches subagents with assigned models, runs gates itself (cargo/npm/architecture validator), resolves conflicts, and keeps an execution log in the plan file. If the plan has no routing table — first invokes the flora-plan-router skill. Use when the user asks to execute/implement a plan, distribute a plan to subagents, run a plan from a routing table, or orchestrate agents against a plan.
 ---
 
 # Flora Plan Orchestrator — execute a plan with subagents
@@ -39,9 +39,9 @@ Read and execute the `/flora-plan-router` skill (`.agents/skills/flora-plan-rout
 Before the first wave, for each part determine five things:
 
 1. **File zone** — concrete files/directories the part is allowed to change. This is the most important item: local subagents share one working directory, so overlapping zones in one wave = lost edits. If the zone is unclear — gather it with `/flora-smart-agent-economy` (`.agents/skills/flora-smart-agent-economy/SKILL.md`) **before** the waves. The lead keeps the brief, not the file bodies; implementation parts then start from ready context.
-2. **Acceptance gate** — concrete commands from “Commands” in `agents.md`, narrowed to the affected crate/workspace.
+2. **Acceptance gate** — concrete commands from “Commands” in `AGENTS.md`, narrowed to the affected crate/workspace.
 3. **Result contract** — what the subagent must return in its final message (see §4).
-4. **Required context** — which specs and skills the subagent must read: `apps/Web` edits → `/apps-web-grid-placement` (and `/apps-web-messages-chat` for chat), messaging/E2E → `/flora-fscp-e2e`, C# → Rust migration and `backend/` edits → `/rust-migration`, `apps/Mobile` → `apps/Mobile/AGENTS.md`.
+4. **Required context** — which specs and skills the subagent must read: `apps/Web` edits → `/apps-web-grid-placement` (and `/apps-web-messages-chat` for chat), messaging/E2E → `/flora-fscp-e2e`, `backend/` host edits → `AGENTS.md` + `next-architecture.md` §6.0, `apps/Mobile` → `apps/Mobile/AGENTS.md`.
 5. **DoD verifiability.** What exactly proves the part is done: a gate command — or a human with a device. Second-kind items (perf measurements, “no flicker”, “no junk”, threshold tuning, visual acceptance) are not closed by a gate: they must not be a `done` condition for a part. Collect them into one “needs a human” list, tell the user about it **before** the first wave, and repeat it in the final report.
 
 Then rebuild waves — by file zones **and** by code dependencies:
@@ -78,7 +78,7 @@ Task: <plan item wording verbatim + 1–3 clarifying sentences>
 Files in your zone (change only these): <paths>
 Do not touch: <other zones in this wave, frozen surfaces>
 
-Read before starting: agents.md; <skills and specs — see §2 item 4>
+Read before starting: AGENTS.md; <skills and specs — see §2 item 4>
 Context from prior waves: <what is already done and what to build on: contracts, DTOs, migrations>
 
 Definition of done: <verifiable outcome>
@@ -120,7 +120,7 @@ Files in your zone (change only these): products/Flora.Social/crates/modules/flo
 Do not touch: flora-auth-contracts (part 1, frozen), packages/flora-client-core (part 4, running in parallel),
 migrations (part 2), flora-api and flora-social.
 
-Read before starting: agents.md; .agents/skills/rust-migration/SKILL.md
+Read before starting: AGENTS.md; next-architecture.md §6.0
 Context from prior waves: DTOs and port traits in flora-auth-contracts; part 2 migration already
 applied — tables exist, do not change the schema.
 
@@ -175,7 +175,7 @@ Then for failures:
 
 ## 8) When to stop and ask the user
 
-- The part would require violating `agents.md` boundaries: access to another module’s DB, business logic in Shared/API/Products, a direct dependency between App products, functional → Social. Do not execute — reject and propose an alternative.
+- The part would require violating `AGENTS.md` boundaries: access to another module’s DB, business logic in Shared/API/Products, a direct dependency between App products, functional → Social. Do not execute — reject and propose an alternative.
 - Need to change something frozen: public HTTP contract, DB schema, FIRA formulas, `documents/test-vectors/**`, `artifacts/contract-fixtures/**`.
 - Need `git commit`/`push` or preparing commits — only on an explicit user request.
 - The model family from the table is not in the environment.
@@ -202,7 +202,7 @@ No commits made; execution log written to <plan file>
 
 Call out foreign tree edits unrelated to the plan (someone changed files before you) on a separate line in the report — otherwise the user will attribute them to you.
 
-Plus, as `agents.md` requires: briefly — why this structure, how boundaries were kept, why it is safe to scale (the module can be extracted to a service without a large refactor).
+Plus, as `AGENTS.md` requires: briefly — why this structure, how boundaries were kept, why it is safe to scale (the module can be extracted to a service without a large refactor).
 
 ## Anti-patterns
 

@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "label": "flora-api: debug",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "sourceLanguages": ["rust"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "program": "$ZED_WORKTREE_ROOT/target/debug/flora-api",
+    "build": {
+      "command": "cargo",
+      "args": ["build", "-p", "flora-api"]
+    },
+    "env": {
+      "ASPNETCORE_ENVIRONMENT": "Development",
+      "FLORA_ENVIRONMENT": "Development",
+      "FLORA_CONFIG_DIR": "$ZED_WORKTREE_ROOT/backend",
+      "Music__ServeNative": "true",
+      "Auth__ServeNative": "true",
+      "Users__ServeNative": "true",
+      "Content__ServeNative": "true",
+      "Messaging__ServeNative": "true",
+      "ChatOrganizer__ServeNative": "true",
+      "Notifications__ServeNative": "true",
+      "Verification__ServeNative": "true",
+      "Verification__GrpcListen": "127.0.0.1:50051",
+      "Gateway__Listen": "127.0.0.1:5290",
+      "Gateway__DotnetUpstream": ""
+    }
+  }
+]

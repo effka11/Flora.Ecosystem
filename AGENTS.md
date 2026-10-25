@@ -11,14 +11,14 @@
 - **Rust `flora-api`** (`backend/crates/flora-api`) — точка входа (маршрутизация, middleware). Бизнес-логика запрещена.
 - **`flora-shared`** — низкоуровневые утилиты. Бизнес-логика запрещена.
 - **products/Flora.Social** (App) — Rust-композиция (`crates/flora-social` + `crates/modules/*`); доменные модули (Auth, Users, Content, Messaging, Music, Notifications, Verification) — **внутренности Social**.
-- **products/{FIRA,FSA,FSCP,FRC,FGP,FEP,FPP}** (Functional) — headless/embeddable; не зависят от Social. **FSA** — поиск (ядро + модули FSA-F/A/M/P/C/N/D); мост FIRA→FSA только данными (`AffinitySnapshot`).
+- **products/{FIRA,FSA,FSCP,FRC,FGP,FEP,FPP,FGCE}** (Functional) — headless/embeddable; не зависят от Social. **FSA** — поиск (ядро + модули FSA-F/A/M/P/C/N/D); мост FIRA→FSA только данными (`AffinitySnapshot`). **FGCE Trellis** — композиция 2D, спека [`documents/fgce/fgce.md`](documents/fgce/fgce.md); крейта в дереве ещё нет.
 - **Apps** — shells: `apps/Web` (`social.*`), `apps/Www` (apex `flora-s.net`), `apps/Gov` (`gov.*`), `apps/Mobile` (не внутри Products).
 - **Packages** — `@flora/client-core` (транспорт + реэкспорт functional TS; SoT FSCP — `@flora/fscp` / `products/FSCP`).
 - **backend/** — host crates (`flora-api`, …); **workspace root** — repo [`Cargo.toml`](Cargo.toml) (members включают `products/*`).
 
 Стек: **Rust**, PostgreSQL (`flora_core`), Next.js 16 / TypeScript, Expo / React Native.
 
-Спеки: `documents/` (FSCP, FIRA, FSA, FGP, FPP, FEP, codecs). Поиск (FSA) — `documents/fsa/FSA.md` + 7 модульных (FSA-F/A/M/P/C/N/D). Economy (FEP) — Rust-native в `products/FEP`; валюта **LIV** — `documents/fep/LIV.md` (канонический формат сумм, витнесс-косайнинг, верификация клиентом).
+Спеки: `documents/` (FSCP, FIRA, FSA, FGP, FPP, FEP, FGCE, codecs). Поиск (FSA) — `documents/fsa/FSA.md` + 7 модульных (FSA-F/A/M/P/C/N/D). Economy (FEP) — Rust-native в `products/FEP`; валюта **LIV** — `documents/fep/LIV.md` (канонический формат сумм, витнесс-косайнинг, верификация клиентом).
 
 ## Направления зависимостей
 
@@ -92,11 +92,13 @@ pwsh ./tools/validate-architecture-rust.ps1
 ## Правила apps/Web
 
 - **Только TypeScript**: `*.ts`, `*.tsx`, `*.d.ts`. Новые `*.js`/`*.jsx` запрещены. Legacy JS — сначала миграция в TS, потом функциональные изменения.
-- **Сетка UI обязательна.** Координаты вида `A.B - C.D` — это диапазон ячеек (колонка.строка), не пиксели. Квант: первичная клетка **15px при `s = 1`**, вторичная **5px** (`primary = 3 × fine`). Живой шаг — `--flora-grid-step` / шаблон из `@flora/client-core/display` (`documents/design/FLORA-GRID.md`). Если сетка не указана — уточнить.
+- **Брендовые цвета:** эталон — [`documents/design/color-reference.md`](documents/design/color-reference.md); живые токены — `apps/Web/app/globals.css` (`--flora-bg`, `--flora-white-template`, `--flora-green-light`, `--flora-green-dark`). В UI и ассетах использовать токены, hex в компонентах не хардкодить.
+- **Знак:** канон и публичные адреса — [`documents/design/assets.md`](documents/design/assets.md).
+- **Сетка UI обязательна.** Координаты вида `A.B - C.D` — это диапазон ячеек (колонка.строка), не пиксели. Квант: первичная клетка **15px при `s = 1`**, вторичная **5px** (`primary = 3 × fine`). Живой шаг — `--flora-grid-step` / шаблон из `@flora/client-core/display` (`documents/design/flora-grid.md`). Если сетка не указана — уточнить.
 - Полный контракт позиционирования по сетке: вызови skill **`/apps-web-grid-placement`** перед любыми правками `top`/`margin`/позиционирования в `apps/Web`.
 - Чат Messages (compose, стикеры, голосовые, плеер): вызови skill **`/apps-web-messages-chat`** перед правками чата.
 - Диагностика «обрезки» под шапкой: сначала проверить перекрытие слоями (DOM-порядок, `z-index`, непрозрачный фон), а не только `overflow`. Для flex+scroll: `flex: 1 1 0%` + `min-height: 0` на пути к скролл-контейнеру.
-- **Разделитель «тире» в UI-тексте:** не длинное `—`; формат как у вкладок — `FLORA_TITLE_SEPARATOR` (`\u00A0\u00A0–\u00A0\u00A0`) из `apps/Web/lib/floraDocumentTitle.ts`. Обычные пробелы вокруг тире HTML схлопывает; всегда NBSP. Правило: `.cursor/rules/flora-ui-dash-separator.mdc`.
+- **Разделитель «тире» в UI-тексте:** не длинное `—` (U+2014). Формат вкладок — `FLORA_TITLE_SEPARATOR` (`"\u00A0\u00A0–\u00A0\u00A0"`) из `apps/Web/lib/floraDocumentTitle.ts`. Обычные пробелы HTML схлопывает, поэтому только NBSP: `` `…${FLORA_TITLE_SEPARATOR}…` ``. Заголовки вкладок — `formatFloraDocumentTitle` / `floraPageMetadata`. Тот же текст: `.cursor/rules/flora-ui-dash-separator.mdc`.
 
 ## Правила apps/Mobile
 
@@ -139,4 +141,4 @@ pwsh ./tools/validate-architecture-rust.ps1
 
 См. **`documents/ZED.md`** — tasks, skills, debugger, ACP. Глобально: `%APPDATA%\Zed\docs\ZED-GLOBAL.md`.
 
-Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`, `/flora-smart-agent-economy`, `/flora-code-reviewer`, `/flora-code-reviser`.
+Skills: `/apps-web-grid-placement`, `/apps-web-messages-chat`, `/flora-fscp-e2e`, `/flora-plan-reviewer`, `/flora-plan-reviser`, `/flora-plan-router`, `/flora-plan-orchestrator`, `/flora-smart-agent-economy`, `/flora-code-reviewer`, `/flora-code-reviser`, `/flora-replicate-assets`.

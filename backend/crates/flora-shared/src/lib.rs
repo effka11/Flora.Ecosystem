@@ -1,4 +1,4 @@
-//! Порт `Flora.Shared` — низкоуровневые утилиты без бизнес-логики (agents.md).
+//! Порт `Flora.Shared` — низкоуровневые утилиты без бизнес-логики (AGENTS.md).
 //!
 //! Паритет с C# доказывается golden-векторами `documents/test-vectors/backend-parity/`
 //! (генерация из эталона: `scripts/generate-golden-vectors.ps1`).

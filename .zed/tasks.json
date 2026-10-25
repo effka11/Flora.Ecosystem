@@ -112,11 +112,14 @@
       "-NoProfile",
       "-ExecutionPolicy",
       "Bypass",
-      "-Command",
-      "Write-Host 'Strangler local: start «Flora API: .NET upstream» then «Flora Gateway: Rust», or one-shot «Flora: API + Web».'; exit 0"
+      "-File",
+      "$ZED_WORKTREE_ROOT/scripts/run-rust-gateway-localhost.ps1"
     ],
     "cwd": "$ZED_WORKTREE_ROOT",
-    "reveal": "always"
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true,
+    "reveal": "always",
+    "description": "Rust flora-api on :5290. Same script as «Flora API: Rust localhost»."
   },
   {
     "label": "Flora API: dev localhost (silent)",
@@ -309,16 +312,43 @@
     "reveal": "always"
   },
   {
-    "label": "dotnet build",
-    "command": "dotnet",
-    "args": ["build", "Flora.Ecosystem.slnx"],
+    "label": "cargo fmt --check",
+    "command": "cargo",
+    "args": ["fmt", "--all", "--check"],
     "cwd": "$ZED_WORKTREE_ROOT",
     "reveal": "always"
   },
   {
-    "label": "dotnet test",
-    "command": "dotnet",
-    "args": ["test", "Flora.Ecosystem.slnx"],
+    "label": "cargo clippy (workspace, -D warnings)",
+    "command": "cargo",
+    "args": ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "always"
+  },
+  {
+    "label": "cargo test (workspace)",
+    "command": "cargo",
+    "args": ["test", "--workspace"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "always"
+  },
+  {
+    "label": "cargo deny check",
+    "command": "cargo",
+    "args": ["deny", "check"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "always"
+  },
+  {
+    "label": "Flora: validate architecture (Rust)",
+    "command": "powershell",
+    "args": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "$ZED_WORKTREE_ROOT/tools/validate-architecture-rust.ps1"
+    ],
     "cwd": "$ZED_WORKTREE_ROOT",
     "reveal": "always"
   },

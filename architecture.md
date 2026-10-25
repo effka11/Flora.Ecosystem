@@ -1,6 +1,6 @@
 # Архитектурная карта Flora.Ecosystem
 
-> Высокоуровневая карта системы «с высоты птичьего полёта»: глобальное назначение, границы модулей, сквозные потоки данных и технический долг. Документ описывает **взаимосвязи**, а не внутренности методов. Нормативные спецификации лежат в [`documents/`](documents/), правила границ — в [`.agents/skills/`](.agents/skills/) и [`agents.md`](agents.md). Целевая продуктовая топология (пиры App / Functional) и путь миграции C#→Rust — [`next-architecture.md`](next-architecture.md).
+> Высокоуровневая карта системы «с высоты птичьего полёта»: глобальное назначение, границы модулей, сквозные потоки данных и технический долг. Документ описывает **взаимосвязи**, а не внутренности методов. Нормативные спецификации лежат в [`documents/`](documents/), правила границ — в [`.agents/skills/`](.agents/skills/) и [`AGENTS.md`](AGENTS.md). Целевая продуктовая топология (пиры App / Functional) и путь миграции C#→Rust — [`next-architecture.md`](next-architecture.md).
 
 ---
 
@@ -19,7 +19,7 @@ Flora.Ecosystem — модульная некоммерческая цифров
 | Класс | Примеры | Суть |
 | --- | --- | --- |
 | **App** (`PRODUCT_CLASS: app`) | Flora.Social; зарезервированы: Flora.Browser, Flora.Email, Flora.OS | Конечное приложение: composition, HTTP, свои доменные модули; опционально `client/` для shells |
-| **Functional** (`PRODUCT_CLASS: functional`) | FIRA, FSA, FSCP, FRC, FGP, FEP, FPP | Headless / **embeddable**: без своего Apps-shell; встраиваемая функция (алгоритм, поиск, крипто, кодек, экономика, governance, personhood) |
+| **Functional** (`PRODUCT_CLASS: functional`) | FIRA, FSA, FSCP, FRC, FGP, FEP, FPP, FGCE Trellis | Headless / **embeddable**: без своего Apps-shell; встраиваемая функция (алгоритм, поиск, крипто, кодек, экономика, governance, personhood, композиция 2D). FGCE Trellis — спека [`documents/fgce/fgce.md`](documents/fgce/fgce.md), крейта в дереве ещё нет |
 
 Functional **не зависят** от Social; Social (и другие App) зависят от их kernel/contracts (и опционально `*-runtime`). «Вставить в чужой проект» = зависимость на **kernel** (+ contracts). `*-runtime` — Flora-host adapter (sqlx/axum + `flora-shared`); владеет только своими таблицами.
 
@@ -40,6 +40,7 @@ flowchart TB
     FGP["FGP"]
     FEP["FEP"]
     FPP["FPP"]
+    FGCE["FGCE Trellis"]
   end
   Social --> FIRA
   Social --> FSA
@@ -48,6 +49,7 @@ flowchart TB
   Social --> FGP
   Social --> FEP
   Social --> FPP
+  Social --> FGCE
   FSA -. "AffinitySnapshot (данные, не код)" .-> FIRA
 ```
 
@@ -354,7 +356,7 @@ sequenceDiagram
 | Что и как собирается в продукт         | [`products/Flora.Social/Class1.cs`](products/Flora.Social/Class1.cs)                                                                                                                         |
 | Email-верификация (модуль)             | [`Modules/Flora.Verification`](Modules/Flora.Verification), порт [`IVerificationChallengeService`](Modules/Flora.Verification/Flora.Verification.Contracts/IVerificationChallengeService.cs) |
 | HTTP Music / Notifications (в модулях) | [`Modules/Flora.Music/MusicController.cs`](Modules/Flora.Music/MusicController.cs), [`Modules/Flora.Notifications/`](Modules/Flora.Notifications/)                                           |
-| Границы и правила                      | [`agents.md`](agents.md), [`.agents/skills/`](.agents/skills/)                                                                                                                               |
+| Границы и правила                      | [`AGENTS.md`](AGENTS.md), [`.agents/skills/`](.agents/skills/)                                                                                                                               |
 | E2E-протокол                           | [`documents/fscp/FSCP.md`](documents/fscp/FSCP.md), [`packages/flora-client-core/src/fscp/`](packages/flora-client-core/src/fscp)                                                                      |
 | Рекомендации                           | [`documents/fira/FIRA.md`](documents/fira/FIRA.md)                                                                                                                                                     |
 | Поиск (ядро + модули)                  | [`documents/fsa/FSA.md`](documents/fsa/FSA.md), [`products/FSA`](products/FSA)                                                                                                                          |
