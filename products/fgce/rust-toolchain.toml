@@ -1,0 +1,5 @@
+# Toolchain pinned by the FGCE product, independent of any host repository.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

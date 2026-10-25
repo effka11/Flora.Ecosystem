@@ -1,0 +1,16 @@
+[package]
+name = "fgce"
+description = "FGCE: 2D composition engine — sPx, 5/15 lattice, box tree, raster, vector, clip, frame."
+version = "0.1.0-alpha"
+edition = "2024"
+rust-version = "1.97"
+license = "AGPL-3.0-only"
+readme = "README.md"
+publish = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# Portable delivery: the crate directory is copied into another project and built
+# there, so no field may be inherited from a workspace.
+[dependencies]

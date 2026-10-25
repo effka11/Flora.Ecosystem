@@ -1,0 +1,140 @@
+{
+  "abi": 2,
+  "description": "Frozen request bytes. Every FGCE binding must encode the same logical call to the same bytes.",
+  "vectors": [
+    {
+      "name": "begin 4x4",
+      "op": "begin",
+      "args": {
+        "width": 4,
+        "height": 4
+      },
+      "requestHex": "070400000004000000"
+    },
+    {
+      "name": "info",
+      "op": "info",
+      "args": {},
+      "requestHex": "01"
+    },
+    {
+      "name": "upload alpha8 2x2",
+      "op": "upload",
+      "args": {
+        "id": 9,
+        "width": 2,
+        "height": 2,
+        "stride": 2,
+        "format": "alpha8",
+        "alpha": "premul",
+        "bytesHex": "01020304"
+      },
+      "requestHex": "0a0900000002000000020000000200000002001b0000000400000001020304"
+    },
+    {
+      "name": "measure move+line without stroke",
+      "op": "measure",
+      "args": {
+        "verbs": [
+          {
+            "kind": "move",
+            "x": 1,
+            "y": 2
+          },
+          {
+            "kind": "line",
+            "x": 3,
+            "y": 4
+          }
+        ],
+        "fill": {
+          "rule": "nonZero"
+        }
+      },
+      "requestHex": "060c00000012000000010000000100000002000000010300000004000000"
+    },
+    {
+      "name": "flat entity after blend and radius fields",
+      "op": "entity",
+      "args": {
+        "id": 5,
+        "kind": {
+          "kind": "flat",
+          "color": {
+            "r": 1,
+            "g": 2,
+            "b": 3,
+            "a": 255
+          }
+        },
+        "edges": {
+          "x1": {
+            "kind": "pixel",
+            "value": 0
+          },
+          "y1": {
+            "kind": "pixel",
+            "value": 0
+          },
+          "x2": {
+            "kind": "pixel",
+            "value": 7
+          },
+          "y2": {
+            "kind": "pixel",
+            "value": 7
+          }
+        },
+        "options": {
+          "onGrid": false
+        }
+      },
+      "requestHex": "0d0500000003010203ff01000100000000010000000001070000000107000000000000"
+    },
+    {
+      "name": "box entity with a 50% radius",
+      "op": "entity",
+      "args": {
+        "id": 5,
+        "kind": {
+          "kind": "box",
+          "fill": {
+            "rule": "nonZero"
+          },
+          "color": {
+            "r": 1,
+            "g": 2,
+            "b": 3,
+            "a": 255
+          }
+        },
+        "edges": {
+          "x1": {
+            "kind": "pixel",
+            "value": 0
+          },
+          "y1": {
+            "kind": "pixel",
+            "value": 0
+          },
+          "x2": {
+            "kind": "pixel",
+            "value": 7
+          },
+          "y2": {
+            "kind": "pixel",
+            "value": 7
+          }
+        },
+        "options": {
+          "onGrid": false,
+          "radius": {
+            "kind": "percent",
+            "value": 50
+          }
+        }
+      },
+      "requestHex": "0d0500000004010000010203ff010001000000000100000000010700000001070000000000010132"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+[package]
+name = "fgce-conformance"
+description = "FGCE §12 conformance suite. Test package only: no delivery, no second API door."
+version = "0.1.0-alpha"
+edition = "2024"
+rust-version = "1.97"
+license = "AGPL-3.0-only"
+publish = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+fgce = { path = "../../crates/fgce" }

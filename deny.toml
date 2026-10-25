@@ -9,8 +9,11 @@ version = 2
 yanked = "deny"
 # rsa via jsonwebtoken (FCM): no constant-time fix yet (Marvin Attack).
 # Review when jsonwebtoken drops rsa or rsa ships a patch.
+# crypto-bigint via jsonwebtoken→p256/p384→elliptic-curve 0.13: no 0.5.x fix.
+# Review when jsonwebtoken moves to a newer elliptic-curve.
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "jsonwebtoken→rsa; no safe upgrade; FCM service-account JWT only" },
+    { id = "RUSTSEC-2026-0387", reason = "jsonwebtoken→p256/p384→elliptic-curve 0.13→crypto-bigint 0.5; jsonwebtoken pins 0.13; APNs ES256 provider token only" },
 ]
 
 [licenses]
