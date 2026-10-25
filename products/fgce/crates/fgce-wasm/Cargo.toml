@@ -1,0 +1,21 @@
+# Portable C ABI adapter for FGCE hosts. No page presets or host geometry.
+
+[package]
+name = "fgce-wasm"
+description = "FGCE host adapter: C ABI + binary protocol (wasm32-unknown-unknown)."
+version = "0.1.0-alpha"
+edition = "2024"
+rust-version = "1.97"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fgce = { path = "../fgce" }
+
+# Raw pointers are allowed only in this FFI shim.
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"

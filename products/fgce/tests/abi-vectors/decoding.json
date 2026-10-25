@@ -1,0 +1,48 @@
+{
+  "abi": 2,
+  "description": "Frozen response bytes. Every FGCE binding must decode the same response to the same values.",
+  "vectors": [
+    {
+      "name": "error BufferLayout",
+      "responseHex": "0a06",
+      "expect": {
+        "kind": "error",
+        "code": "BufferLayout",
+        "codeIndex": 6
+      }
+    },
+    {
+      "name": "frame 2x2 with stride",
+      "responseHex": "0702000000020000000800000010000000ff0000ff000000000000000000000000",
+      "expect": {
+        "kind": "frame",
+        "width": 2,
+        "height": 2,
+        "stride": 8,
+        "pixelsHex": "ff0000ff000000000000000000000000"
+      }
+    },
+    {
+      "name": "snapshot with one node",
+      "responseHex": "0903000000000000000100000007000000000000000a000000140000001e00000028000000",
+      "expect": {
+        "kind": "snapshot",
+        "snapshot": {
+          "generation": 3,
+          "nodes": [
+            {
+              "id": 7,
+              "parent": 0,
+              "rect": {
+                "x1": 10,
+                "y1": 20,
+                "x2": 30,
+                "y2": 40
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

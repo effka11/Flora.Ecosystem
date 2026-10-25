@@ -1,0 +1,26 @@
+{
+  "name": "fgce",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "description": "FGCE browser client: WASM loader, binary protocol and typed engine facade",
+  "main": "./bindings/ts/src/index.ts",
+  "types": "./bindings/ts/src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./bindings/ts/src/index.ts",
+      "import": "./bindings/ts/src/index.ts",
+      "default": "./bindings/ts/src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p bindings/ts/tsconfig.json --noEmit",
+    "test": "vitest run --config bindings/ts/vitest.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4"
+  }
+}

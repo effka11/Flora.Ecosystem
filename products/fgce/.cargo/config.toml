@@ -1,0 +1,3 @@
+# FGCE owns its build output, so the product stays self-contained when copied.
+[build]
+target-dir = "target"

@@ -1,0 +1,11 @@
+# FGCE standalone workspace.
+#
+# `crates/fgce` remains copyable on its own: its manifest uses literal fields
+# and never inherits from a workspace (`*.workspace = true` is forbidden).
+[workspace]
+resolver = "3"
+members = [
+    "crates/fgce",
+    "crates/fgce-wasm",
+    "tests/conformance",
+]
