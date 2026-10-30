@@ -1,5 +1,5 @@
 {
-  "abi": 2,
+  "abi": 3,
   "description": "Frozen response bytes. Every FGCE binding must decode the same response to the same values.",
   "vectors": [
     {

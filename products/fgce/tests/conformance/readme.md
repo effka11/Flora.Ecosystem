@@ -78,7 +78,7 @@ cargo test -p fgce-conformance -- --ignored --nocapture   # regen fixtures
 | 64 | typed | `Flat` всегда несёт `color`; `tree.rs::row_64_flat_color_is_written_to_the_frame` |
 | 65 | typed | `Entity.edges` обязателен в контракте |
 | 66 | typed | `Fill.rule` обязателен; `tree.rs::row_66_vector_branch_needs_its_parameters` (ветки и `BadStroke`) |
-| 67 | typed | `Stroke.width` обязателен; `width = 0` → `vector_stroke.rs::stroke_zero_width_is_bad_stroke` |
+| 67 | typed | `Stroke.width_q8` обязателен; `width_q8 = 0` → `vector_stroke.rs::stroke_zero_width_is_bad_stroke` |
 | 68 | conformance | `tree.rs::row_68_place_pin_zero_inverts_the_fraction` |
 | 69 | conformance | `tree.rs::row_69_place_uses_the_live_window_near` |
 | 70 | conformance | `store_blit.rs::row_70_blit_src_includes_width` |
@@ -169,9 +169,83 @@ cargo test -p fgce-conformance -- --ignored --nocapture   # regen fixtures
 | 155 | conformance | `tree.rs::row_155_second_transition_in_a_frame_is_busy` |
 | 156 | conformance | `tree.rs::row_156_missing_reference_does_not_spend_the_transition` |
 | 157 | conformance | `state_frame.rs::row_157_error_keeps_state_and_bytes` |
-| 158 | conformance | `meta_spx_lattice.rs::row_158_crate_has_no_dependencies`; сборка хоста и wasm32 — CI job `fgce-wasm` (`cargo check --target wasm32-unknown-unknown`, `scripts/check-standalone.ps1`) |
-| 159 | conformance | `meta_spx_lattice.rs::row_159_portable_copy_has_no_workspace_inheritance`; standalone-сборка — `scripts/check-standalone.ps1` в CI job `fgce-wasm` |
+| 158 | conformance | `meta_spx_lattice.rs::row_158_crate_has_no_dependencies`; сборка хоста и wasm32 — CI job `fgce` (`cargo check --target wasm32-unknown-unknown`, `scripts/check-standalone.ps1`) |
+| 159 | conformance | `meta_spx_lattice.rs::row_159_portable_copy_has_no_workspace_inheritance`; standalone-сборка — `scripts/check-standalone.ps1` в CI job `fgce` |
 
+| 160 | conformance | `color.rs::row_w1_linear_oracle_table_ab_over_0e` |
+| 161 | conformance | `vector_stroke.rs::row_g7_center_ink_and_symmetry` |
+| 162 | conformance | `color.rs::row_w1_coverage_drift_between_colors_is_at_most_one_255th`, `color.rs::row_w1_color_drift_is_one_fraction` |
+| 163 | conformance | `color.rs::row_w1_full_cover_is_the_color_itself` |
+| 164 | unit | `span.rs::dst_out_keeps_premultiplied_invariant` |
+| 165 | unit | `span.rs::dst_out_scales_destination_by_coverage` |
+| 166 | unit | `span.rs::dst_out_scales_destination_by_coverage` |
+| 167 | unit | `span.rs::dst_out_scales_destination_by_coverage` |
+| 168 | unit | `span.rs::partial_coverage_clear_is_noop` |
+| 169 | unit | `round.rs::percent_fifty_is_a_circle_on_a_square`, `round.rs::percent_fifty_is_a_circle` |
+| 170 | unit | `round.rs::percent_fifty_is_a_circle_on_a_square` |
+| 171 | unit | `round.rs::percent_fifty_is_a_circle_on_a_square` |
+| 172 | conformance | `round.rs::bad_radius_is_rejected` |
+| 173 | conformance | `round.rs::bad_radius_is_rejected` |
+| 174 | conformance | `round.rs::bad_radius_is_rejected` |
+| 175 | conformance | `round.rs::rounded_blit_cuts_what_is_under_it` |
+| 176 | conformance | `round.rs::rounded_flat_clears_the_corners` |
+| 177 | conformance | `round.rs::a_box_without_paint_is_bad_path` |
+| 178 | conformance | `draw_tree.rs::draw_tree_is_idempotent_and_end_does_not_paint_it_again` |
+| 179 | conformance | `draw_tree.rs::draw_tree_before_begin_is_not_begun` |
+| 180 | conformance | `draw_tree.rs::immediate_layer_after_draw_tree_lies_on_top` |
+| 181 | conformance | `draw_tree.rs::draw_tree_keeps_the_snapshot` |
+| 182 | conformance | `draw_tree.rs::empty_is_invisible_but_present_in_the_snapshot` |
+| 183 | conformance | `draw_tree.rs::empty_place_and_show_match_flat` |
+| 184 | conformance | `draw_tree.rs::empty_anchor_and_radius_codes` |
+| 185 | conformance | `draw_tree.rs::repeated_empty_entity_replaces_its_fields` |
+| 186 | conformance | `vector_stroke.rs::row_g7_center_odd_and_even_widths` |
+| 187 | conformance | `vector_stroke.rs::row_g7_center_ink_and_symmetry` |
+| 188 | conformance | `vector_stroke.rs::stroke_inside_rejects_an_open_contour`, `vector_stroke.rs::stroke_outside_rejects_an_open_contour` |
+| 189 | conformance | `fill_radius.rs::row_g1_fill_rect_radius_matches_box` |
+| 190 | conformance | `fill_radius.rs::row_g2_none_and_zero_radius_are_the_plain_rect` |
+| 191 | conformance | `fill_radius.rs::fill_rect_dst_out_erases_the_shape` |
+| 192 | conformance | `fill_radius.rs::row_g1_stroke_round_rect_matches_box_stroke` |
+| 193 | conformance | `fill_radius.rs::stroke_round_rect_validation_and_plain_rectangle` |
+| 194 | conformance | `fill_radius.rs::stroke_round_rect_inside_stays_within_the_rect` |
+| 195 | conformance | `fill_radius.rs::fill_rect_radius_is_validated` |
+| 196 | conformance | `fill_lattice.rs::row_g5_lattice_matches_fill_rects` |
+| 197 | conformance | `fill_lattice.rs::row_g5_lattice_rejects_bad_steps`, `fill_lattice.rs::row_g5_lattice_state_precedes_bad_cell` |
+| 198 | conformance | `fill_lattice.rs::row_g5_lattice_does_not_move_the_snapshot_or_place` |
+| 199 | conformance | `fill_lattice.rs::row_g5_lattice_respects_the_clip` |
+| 200 | conformance | `fill_lattice.rs::row_g5_lattice_horizontal_wins_at_a_crossing` |
+| 201 | conformance | `debug.rs::row_g6_disabled_layer_does_not_touch_the_frame`, `debug.rs::row_g6_state_survives_begin_and_labels_survive_disable` |
+| 202 | conformance | `debug.rs::row_g6_label_validation_keeps_the_state`, `debug.rs::row_g6_label_scale_and_alpha_change_the_pixels`, `debug.rs::row_g6_default_label_is_hash_id` |
+| 203 | conformance | `debug.rs::row_g6_three_levels_use_base_middle_and_tip`, `debug.rs::row_g6_five_levels_interpolate_base_to_tip`, `debug.rs::row_g6_invisible_branch_does_not_count_in_max_depth`, `debug.rs::row_g6_empty_entity_is_outlined` |
+| 204 | conformance | `debug.rs::row_g6_hover_over_empty_space_draws_no_labels`, `debug.rs::row_g6_hover_none_removes_the_labels`, `debug.rs::row_g6_pin_moves_the_label_corner`, `debug.rs::row_g6_hover_labels_only_the_hovered_branch`, `debug.rs::row_g6_label_clamps_into_the_frame_at_the_bottom_edge` |
+| 205 | conformance | `debug.rs::row_g6_window_label_is_supported`, `debug.rs::row_g6_debug_layer_is_painted_after_the_immediate_overlay` |
+| 206 | conformance | `debug.rs::row_g6_label_alpha_zero_disables_labels` |
+| 207 | conformance | `debug.rs::row_g6_remove_and_redefine_forget_names` |
+| 208 | conformance | `debug.rs::row_g6_text_fixtures_are_frozen`, `debug.rs::row_g6_arrow_fixture_is_frozen` |
+| 209 | conformance | `peak.rs::row_g9_light_is_the_default_and_keeps_the_frame` |
+| 210 | conformance | `peak.rs::row_g9_diagonal_and_horizontal_peak_are_equal` |
+| 211 | conformance | `peak.rs::row_g9_peak_is_global_and_scales_the_whole_stroke` |
+| 212 | conformance | `peak.rs::row_g9_mixed_orientation_with_an_axial_segment_stays_light` |
+| 213 | conformance | `peak.rs::row_g9_empty_geometry_is_a_no_op` |
+| 214 | conformance | `peak.rs::row_g9_carriers_normalize_the_same_diagonal` |
+| 215 | conformance | `peak.rs::row_g9_diagonal_is_not_byte_identical_to_light` |
+| 216 | conformance | `icons.rs::row_g10_minus_icon_is_fourteen_by_one` |
+| 217 | conformance | `icons.rs::row_g10_frame_icon_is_thirteen_by_thirteen` |
+| 218 | conformance | `icons.rs::row_g10_cross_icon_is_eleven_by_eleven`, `icons.rs::row_g10_cross_light_ink_is_lower_than_nominal` |
+| 219 | conformance | `icons.rs::row_g10_radius_none_matches_a_plain_stroke_path` |
+| 220 | conformance | `fixtures.rs::row_g8_opaque_frame_is_unchanged`, `fixtures.rs::row_g2_fill_rect_plain_is_frozen`, `fixtures.rs::stroke_closed_010_is_frozen` |
+| 221 | conformance | `fractional_stroke.rs::row_g12_whole_width_is_256` |
+| 222 | conformance | `fractional_stroke.rs::row_g12_zero_width_q8_is_bad_stroke` |
+| 223 | conformance | `fractional_stroke.rs::row_g12_frame_icon_with_a_fractional_width` |
+| 224 | conformance | `fractional_stroke.rs::row_g12_cross_icon_with_a_fractional_width` |
+| 225 | conformance | `fractional_stroke.rs::row_g12_light_keeps_the_band_light` |
+| 226 | conformance | `fractional_stroke.rs::row_g12_nominal_lifts_the_fractional_peak` |
+| 227 | conformance | `fractional_stroke.rs::row_g12_carriers_agree_on_a_fraction`, `fractional_stroke.rs::row_g12_outside_band_paints_the_fraction` |
+| 228 | conformance | `fractional_stroke.rs::row_g12_measure_includes_the_fractional_band` |
+| 229 | conformance | `fixtures.rs::row_g12_fractional_stroke_is_frozen` |
+| 230 | conformance | `debug.rs::row_g12_labels_have_their_own_scale` |
+| 231 | conformance | `debug.rs::row_g12_default_label_colors_keep_the_frame` |
+| 232 | conformance | `debug.rs::row_g12_arrows_follow_the_label_color` |
+| 233 | conformance | `fractional_stroke.rs::row_g12_center_joins_caps_and_radius_keep_the_fraction` |
 ## Вспомогательные тесты
 
 Тесты без номера строки проверяют контрактные инварианты вокруг строки:
@@ -179,13 +253,21 @@ cargo test -p fgce-conformance -- --ignored --nocapture   # regen fixtures
 - `show_place_end.rs::show_and_place_reject_empty_rectangles` — `BadCell` для `Show`/`Place` (§4.7, строка 41).
 - `show_place_end.rs::reference_switch_shows_only_the_new_tree` — смена эталона отдаёт только новое дерево (строка 96).
 - `vector_stroke.rs::stroke_inside_rejects_an_open_contour` — `BadPath` для `Inside` по незамкнутому контуру (§8.4, строка 111).
-- `vector_stroke.rs::stroke_zero_width_is_bad_stroke` — `width = 0` (строка 67).
+- `vector_stroke.rs::stroke_zero_width_is_bad_stroke` — `width_q8 = 0` (строка 67).
 - `vector_stroke.rs::stroke_measure_rounds_like_the_spec_bounds` — `Measure` внутренней обводки (§8.4).
 - `vector_fill.rs::path_rectangle_rect_helper_matches_spec_bounds` — границы `Measure` на отрицательных координатах.
 - `frame_fill.rs::fill_rect_blend_src_and_clear` — `FillRect` с `Blend::Src` и `Blend::Clear` (§6).
 - `color.rs::row_98_pixel_format_of_the_table_is_rgba8` — формат `Info`.
 - `fuzz.rs::err_does_not_move_state_or_bytes` — 10 000 детерминированных последовательностей; после `Err` отпечаток состояния и байтов не меняется.
 - `fixtures.rs::regen_fixtures` — `#[ignore]`, регенерация замороженных байтов.
+
+- `debug.rs::regen_debug_fixtures` — `#[ignore]`, регенерация дебаг-фикстур.
+- `fixtures.rs::regen_baseline_fixtures` — `#[ignore]`, регенерация базовых фикстур 0.1.0.
+- `state_frame.rs::state_table_remove_works_before_begin` — `Remove` доступен в `Empty` (§5.0).
+- `state_frame.rs::state_table_place_works_after_end` — `Place` доступен в `Ended` (§5.0).
+- `color.rs::row_w1_blit_alpha8_half_coverage_mixes_in_light` — `Blit` `Alpha8` на полупокрытии (§6).
+- `color.rs::row_w1_rgba_semi_transparent_tint_mixes_in_light` — `Rgba8` с полупрозрачным `tint` (§6).
+- `round.rs::box_with_fill_and_stroke_is_a_ring` — кольцо `Box` с радиусом и `Inside`-штрихом (§8.5).
 
 ## Аудит §11
 
@@ -215,6 +297,18 @@ cargo test -p fgce-conformance -- --ignored --nocapture   # regen fixtures
 `fixtures/bowtie.bin` и `fixtures/miter_45.bin` — байты кадра, сгенерированные
 один раз эталонной реализацией (D8). Ручная правка запрещена; регенерация —
 только `--ignored` тестом с ревью диффа.
+
+`fixtures/opaque_010.bin`, `fill_rect_plain.bin` и `stroke_closed_010.bin` — байты
+реализации `0.1.0` (тег `fgce/v0.1.0-alpha`), созданные write-once. Происхождение
+доказано побайтовым воспроизведением: хеши и метод — `docs/questions.md` D17.
+
+`fixtures/fractional_stroke.bin` — приёмка REQ-9: рамка 13×13 при `Inside`,
+`width_q8 = 205`, `Peak::Light` и крестик 11×11 от угла к углу при `Center`,
+`width_q8 = 179`, `Peak::Nominal`. Регенерируется вместе с `bowtie` и `miter_45`
+тестом `fixtures.rs::regen_fixtures`; golden-числа — §12 строки 221–233.
+
+`fixtures/debug_text_1.bin`, `debug_text_3.bin` и `debug_arrows.bin` — дебаг-слой
+с `label_base = base` и `label_tip = tip`; отдельная шкала подписей их не меняет.
 
 ## Границы
 

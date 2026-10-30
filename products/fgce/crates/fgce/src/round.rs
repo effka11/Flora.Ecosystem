@@ -77,9 +77,10 @@ pub(crate) fn resolve(radius: Radius, rect: Rect, k: u32) -> Result<i32, Error> 
 
 /// Paints the rounded `rect` inside `view` (already intersected with the clip).
 /// `radius` is a resolved sPx value; the shape is clamped to the box again so a
-/// stale radius can never spill outside.
+/// stale radius can never spill outside. `Blend` applies to the shape itself:
+/// `DstOut` erases the rounded shape, not its corners.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn fill(
+pub(crate) fn fill_shape(
     bytes: &mut [u8],
     stride: usize,
     view: Rect,
@@ -95,18 +96,12 @@ pub(crate) fn fill(
     }
     let half = (rect.width().min(rect.height()) / 2) as i32;
     let radius = radius.clamp(0, half);
-    // `DstOut` keeps the shape and clears everything outside it, so the shape
-    // coverage turns into `1 - coverage`. A radius of 0 has nothing outside.
-    let mask = blend == Blend::DstOut;
     if radius == 0 {
-        if !mask {
-            fill::fill_rect(bytes, stride, clipped, color, blend);
-        }
+        fill::fill_rect(bytes, stride, clipped, color, blend);
         return;
     }
 
-    let cached = radius <= MAX_CACHED_RADIUS;
-    let corner_mask = if cached {
+    let corner_mask = if radius <= MAX_CACHED_RADIUS {
         Some(corners.mask(radius))
     } else {
         None
@@ -128,15 +123,13 @@ pub(crate) fn fill(
             None
         };
         let Some(depth) = depth else {
-            if !mask {
-                span::paint(row, clipped.x1, clipped.x2, color, span::FULL_COVER, blend);
-            }
+            span::paint(row, clipped.x1, clipped.x2, color, span::FULL_COVER, blend);
             continue;
         };
 
         let middle_from = left_last + 1;
         let middle_to = right_first - 1;
-        if !mask && middle_from <= middle_to {
+        if middle_from <= middle_to {
             let from = clipped.x1.max(middle_from);
             let to = clipped.x2.min(middle_to);
             if from <= to {
@@ -149,7 +142,7 @@ pub(crate) fn fill(
             let to = clipped.x2.min(left_last);
             for x in from..=to {
                 let coverage = corner_coverage_at(corner_mask, radius, x - rect.x1, depth);
-                span::paint(row, x, x, color, invert(coverage, mask), blend);
+                span::paint(row, x, x, color, coverage, blend);
             }
         }
         if clipped.x2 >= right_first {
@@ -157,7 +150,73 @@ pub(crate) fn fill(
             let to = clipped.x2;
             for x in from..=to {
                 let coverage = corner_coverage_at(corner_mask, radius, rect.x2 - x, depth);
-                span::paint(row, x, x, color, invert(coverage, mask), blend);
+                span::paint(row, x, x, color, coverage, blend);
+            }
+        }
+    }
+}
+
+/// Erases everything outside the rounded shape with `DstOut`, including the
+/// corner pixels; the interior is untouched. The source color is irrelevant.
+pub(crate) fn mask_corners(
+    bytes: &mut [u8],
+    stride: usize,
+    view: Rect,
+    rect: Rect,
+    radius: i32,
+    corners: &mut CornerCache,
+) {
+    let clipped = view.intersect(rect);
+    if clipped.is_empty() {
+        return;
+    }
+    let half = (rect.width().min(rect.height()) / 2) as i32;
+    let radius = radius.clamp(0, half);
+    if radius == 0 {
+        return;
+    }
+    let corner_mask = if radius <= MAX_CACHED_RADIUS {
+        Some(corners.mask(radius))
+    } else {
+        None
+    };
+    let left_last = rect.x1 + radius - 1;
+    let right_first = rect.x2 - radius + 1;
+    let top_last = rect.y1 + radius - 1;
+    let bottom_first = rect.y2 - radius + 1;
+    let clear = Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 255,
+    };
+    for y in clipped.y1..=clipped.y2 {
+        let depth = if y <= top_last {
+            Some(y - rect.y1)
+        } else if y >= bottom_first {
+            Some(rect.y2 - y)
+        } else {
+            None
+        };
+        let Some(depth) = depth else {
+            continue;
+        };
+        let start = y as usize * stride;
+        let row = &mut bytes[start..start + stride];
+        if clipped.x1 <= left_last {
+            let from = clipped.x1;
+            let to = clipped.x2.min(left_last);
+            for x in from..=to {
+                let coverage = corner_coverage_at(corner_mask, radius, x - rect.x1, depth);
+                span::paint(row, x, x, clear, span::FULL_COVER - coverage, Blend::DstOut);
+            }
+        }
+        if clipped.x2 >= right_first {
+            let from = clipped.x1.max(right_first);
+            let to = clipped.x2;
+            for x in from..=to {
+                let coverage = corner_coverage_at(corner_mask, radius, rect.x2 - x, depth);
+                span::paint(row, x, x, clear, span::FULL_COVER - coverage, Blend::DstOut);
             }
         }
     }
@@ -167,14 +226,6 @@ fn corner_coverage_at(mask: Option<&[u16]>, radius: i32, i: i32, j: i32) -> u16 
     match mask {
         Some(mask) => mask[(j * radius + i) as usize],
         None => corner_coverage(i, j, radius),
-    }
-}
-
-fn invert(coverage: u16, mask: bool) -> u16 {
-    if mask {
-        span::FULL_COVER - coverage
-    } else {
-        coverage
     }
 }
 
@@ -301,6 +352,15 @@ mod tests {
         let rect = box_rect(0, 0, 44, 44);
         assert_eq!(resolve(Radius::Percent(50), rect, 5), Ok(22));
         assert_eq!(
+            resolve(Radius::Percent(50), box_rect(0, 0, 45, 45), 5),
+            Ok(23)
+        );
+        assert_eq!(
+            resolve(Radius::Edge(Edge::Pixel(100)), box_rect(0, 0, 19, 29), 5),
+            Ok(10)
+        );
+        assert_eq!(resolve(Radius::Percent(51), rect, 5), Err(Error::BadRadius));
+        assert_eq!(
             resolve(Radius::Percent(100), rect, 5),
             Err(Error::BadRadius)
         );
@@ -335,7 +395,7 @@ mod tests {
         let stride = 32;
         let mut bytes = vec![0_u8; stride * 8];
         let mut corners = CornerCache::default();
-        fill(
+        fill_shape(
             &mut bytes,
             stride,
             box_rect(0, 0, 7, 7),
@@ -357,11 +417,11 @@ mod tests {
     }
 
     #[test]
-    fn dst_out_clears_the_corners_and_keeps_the_middle() {
+    fn dst_out_erases_the_shape_not_its_corners() {
         let stride = 32;
         let mut bytes = vec![255_u8; stride * 8];
         let mut corners = CornerCache::default();
-        fill(
+        fill_shape(
             &mut bytes,
             stride,
             box_rect(0, 0, 7, 7),
@@ -371,9 +431,30 @@ mod tests {
             Blend::DstOut,
             &mut corners,
         );
+        assert_eq!(coverage(&bytes, stride, 4, 4), 0, "the shape is erased");
+        assert_eq!(
+            coverage(&bytes, stride, 0, 0),
+            255,
+            "the outside of the shape is untouched"
+        );
+    }
+
+    #[test]
+    fn mask_corners_erases_outside_and_keeps_the_middle() {
+        let stride = 32;
+        let mut bytes = vec![255_u8; stride * 8];
+        let mut corners = CornerCache::default();
+        mask_corners(
+            &mut bytes,
+            stride,
+            box_rect(0, 0, 7, 7),
+            box_rect(0, 0, 7, 7),
+            4,
+            &mut corners,
+        );
         assert_eq!(coverage(&bytes, stride, 0, 0), 0);
         assert_eq!(coverage(&bytes, stride, 4, 4), 255);
-        assert_eq!(&bytes[0..4], &[0, 0, 0, 0], "dst_out zeroes every channel");
+        assert_eq!(&bytes[0..4], &[0, 0, 0, 0], "mask zeroes every channel");
     }
 
     #[test]
@@ -381,7 +462,7 @@ mod tests {
         let stride = 16;
         let mut bytes = vec![0_u8; stride * 8];
         let mut corners = CornerCache::default();
-        fill(
+        fill_shape(
             &mut bytes,
             stride,
             box_rect(0, 0, 3, 3),
@@ -400,7 +481,7 @@ mod tests {
         let stride = 32;
         let mut bytes = vec![0_u8; stride * 8];
         let mut corners = CornerCache::default();
-        fill(
+        fill_shape(
             &mut bytes,
             stride,
             box_rect(4, 4, 7, 7),

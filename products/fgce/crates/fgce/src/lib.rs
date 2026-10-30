@@ -9,6 +9,8 @@
 mod blit;
 mod color;
 mod contract;
+mod debug;
+mod debug_font;
 mod dispatch;
 mod fill;
 mod frame;
@@ -54,6 +56,9 @@ pub struct Engine {
     pub(crate) builtin_canon: Option<(u32, u32)>,
     pub(crate) references: tree::References,
     pub(crate) live_dirty: bool,
+    /// Set by `DrawTree`; `End` then paints only the debug layer.
+    pub(crate) tree_drawn: bool,
+    pub(crate) debug: debug::DebugState,
 }
 
 impl Engine {
@@ -69,6 +74,8 @@ impl Engine {
             builtin_canon: None,
             references: tree::References::new(),
             live_dirty: false,
+            tree_drawn: false,
+            debug: debug::DebugState::default(),
         }
     }
 
@@ -193,6 +200,7 @@ mod tests {
                         a: 255
                     },
                     blend: None,
+                    radius: None,
                 })
                 .unwrap_err(),
             Error::NotBegun
@@ -278,6 +286,7 @@ mod tests {
                         a: 1
                     },
                     blend: None,
+                    radius: None,
                 })
                 .unwrap_err(),
             Error::NotBegun
@@ -327,6 +336,27 @@ mod tests {
             engine.submit(Request::Grid { k: 41 }).unwrap_err(),
             Error::ScaleOutOfRange
         );
+    }
+
+    #[test]
+    fn draw_tree_and_end_paint_the_tree_once() {
+        let mut engine = Engine::new();
+        engine
+            .submit(Request::Begin {
+                width: 10,
+                height: 10,
+            })
+            .unwrap();
+        engine.submit(Request::DrawTree).unwrap();
+        assert_eq!(engine.frame.tree_passes(), 1);
+        engine.submit(Request::DrawTree).unwrap();
+        assert_eq!(
+            engine.frame.tree_passes(),
+            1,
+            "a second DrawTree is a no-op"
+        );
+        engine.submit(Request::End).unwrap();
+        assert_eq!(engine.frame.tree_passes(), 1, "End does not paint again");
     }
 
     #[test]

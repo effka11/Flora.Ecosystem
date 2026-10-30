@@ -10,7 +10,7 @@ describe("wasm smoke", () => {
     const bytes = new Uint8Array(await readFile(wasmPath as string));
     const engine = await FgceEngine.load(new Response(bytes));
     try {
-      expect(engine.info().version).toBe("0.1.0-alpha");
+      expect(engine.info().version).toBe("0.2.0");
       engine.begin(4, 4);
       engine.fillRect(
         { x1: 0, y1: 0, x2: 3, y2: 3 },

@@ -1,7 +1,7 @@
-# FGCE 0.1.0-alpha — release preparation
+# FGCE 0.2.0 — release preparation
 
-**Status:** release candidate for the first alpha.
-**Date:** 2026-10-25.
+**Status:** release candidate for `0.2.0`.
+**Date:** 2026-10-30.
 **Product root:** `products/fgce`.
 
 This branch contains only the FGCE product: the portable kernel, the C ABI
@@ -10,7 +10,7 @@ products and apps are intentionally absent.
 
 ## Version sources
 
-The product version is `0.1.0-alpha` and is recorded literally in four places:
+The product version is `0.2.0` and is recorded literally in four places:
 
 | File | Field |
 |------|-------|
@@ -19,7 +19,7 @@ The product version is `0.1.0-alpha` and is recorded literally in four places:
 | `tests/conformance/Cargo.toml` | `package.version` |
 | `package.json` | `version` |
 
-The wasm ABI has its own version (`ABI_VERSION = 2` in
+The wasm ABI has its own version (`ABI_VERSION = 3` in
 `crates/fgce-wasm/src/lib.rs`); it is independent from the product version.
 
 ## Release gates
@@ -50,14 +50,17 @@ values that are unreachable through `submit`.
 
 Verified on `x86_64-pc-windows-gnu`, rustc 1.97.0:
 
-- `cargo test --workspace --locked`: 352 passed, 0 failed, 1 ignored
+- `cargo test --workspace --locked`: 450 passed, 0 failed, 3 ignored
   (fixture regeneration only).
 - `cargo fmt --all --check`: clean.
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`: clean.
+- `cargo deny check`: passed (advisory and license warnings only).
+- `tools/validate-architecture-rust.ps1`: passed (53 crates).
 - `scripts/check-standalone.ps1`: host and `wasm32-unknown-unknown` checks pass
   outside the product workspace.
-- `scripts/check-release.ps1`: passed end to end.
-- TypeScript: `tsc` clean; 13 tests passed, 1 fixture-regeneration test skipped.
+- `scripts/check-release.ps1 -Version 0.2.0`: passed end to end.
+- TypeScript: `tsc` clean; 12 tests passed without the wasm artifact (2 skipped:
+  wasm smoke and vector regeneration), 13 passed with `FGCE_WASM_PATH` set.
 - Runtime npm dependencies: none; `npm audit --omit=dev` reports 0
   vulnerabilities. Dev-tooling advisories are build-time only and are not
   shipped with the binding.
@@ -65,7 +68,7 @@ Verified on `x86_64-pc-windows-gnu`, rustc 1.97.0:
 ## Distribution
 
 - Kernel: copy `crates/fgce` as a directory; depend on it with
-  `fgce = { path = "...", version = "=0.1.0-alpha" }`.
+  `fgce = { path = "...", version = "=0.2.0" }`.
 - Full product source: copy `products/fgce` (kernel, adapter, TS binding,
   conformance, docs, `LICENSE`, `NOTICE.md`).
 - `publish = false` on every crate: this release is not on crates.io.
@@ -74,12 +77,12 @@ Verified on `x86_64-pc-windows-gnu`, rustc 1.97.0:
 
 ## Tag
 
-The release tag is `fgce/v0.1.0-alpha`. It is not created by this preparation;
+The release tag is `fgce/v0.2.0`. It is not created by this preparation;
 create and push it only after the gates and the release diff are reviewed:
 
 ```sh
-git tag -a fgce/v0.1.0-alpha -m "FGCE 0.1.0-alpha"
-git push origin release/fgce-0.1.0-alpha fgce/v0.1.0-alpha
+git tag -a fgce/v0.2.0 -m "FGCE 0.2.0"
+git push origin release/fgce-0.2.0 fgce/v0.2.0
 ```
 
 ## Known limitations
@@ -90,5 +93,6 @@ git push origin release/fgce-0.1.0-alpha fgce/v0.1.0-alpha
   Avoid `-C target-cpu=native` when byte-identical frames are required.
 - Public request/response/error enums are exhaustive. Under `0.y`, adding a
   variant is a breaking change and follows Cargo's minor-version rule.
-- GPU rasterization, partial redraw, rotation, gradients, path clips, linear
-  light and scaled `Photo`/`Glyph` are outside `0.1.0`.
+- GPU rasterization, partial redraw, rotation, gradients, path clips and scaled
+  `Photo`/`Glyph` are outside `0.2.0`. Fractional stroke width is inside it as
+  `Stroke::width_q8`.

@@ -1,8 +1,10 @@
-# FGCE — C ABI адаптера `fgce-wasm` v2
+# FGCE — C ABI адаптера `fgce-wasm` v3
 
-Статус: `0.1.0-alpha`-адаптер, ABI `2`. Закон ядра — [`fgce.md`](./fgce.md); этот документ описывает только границу «хост ↔ wasm» и формул §5–§8 не меняет.
+Статус: `0.2.0`-адаптер, ABI `3`. Закон ядра — [`fgce.md`](./fgce.md); этот документ описывает только границу «хост ↔ wasm» и формул §5–§8 не меняет.
 
-**v2:** `radius?` у `Entity` и `Blit` (§8.5), `EntityKind::Box` (тег 4), `Blend::DstOut` (код 3), ошибка `BadRadius` (код 23). Старые запросы без новых полей несовместимы: форма `Entity`/`Blit` выросла на одно опциональное поле.
+**v3:** `DrawTree` (код 27), `StrokeRoundRect` (28), `FillLattice` (29), `DebugGrid` (30), `DebugHover` (31), `DebugLabel` (32); `StrokeAlign::Center` (код 2); поле `peak` в каждом `stroke?` (код 0/1); `EntityKind::Empty` (тег 5); `radius?` у `FillRect`. `Stroke.width_q8` (1/256 sPx) вместо целого `width` — та же позиция и тот же `u32`; у `DebugGridStyle` два опциональных цвета подписей. Старые запросы со штрихом и `FillRect` несовместимы: их форма выросла на поле, а ширина сменила единицу.
+
+**v2:** `radius?` у `Entity` и `Blit` (§8.5), `EntityKind::Box` (тег 4), `Blend::DstOut` (код 3), ошибка `BadRadius` (код 23).
 
 | Роль | Путь |
 | --- | --- |
@@ -17,7 +19,7 @@
 
 | Экспорт | Сигнатура | Смысл |
 | --- | --- | --- |
-| `fgce_abi_version` | `() -> u32` | Версия ABI (`2`), не версия ядра |
+| `fgce_abi_version` | `() -> u32` | Версия ABI (`3`), не версия ядра |
 | `fgce_engine_new` | `() -> *mut HostEngine` | Движок + буфер последнего ответа |
 | `fgce_engine_free` | `(*mut HostEngine)` | Уничтожает движок; `null` игнорируется |
 | `fgce_alloc` | `(len: usize) -> *mut u8` | Буфер запроса; `len == 0` → `null` |
@@ -66,7 +68,7 @@
 | `ReadPixels` | 9 | `rect`, `u8 alpha` (`0 premul`, `1 straight`) |
 | `Upload` | 10 | `u32 id, width, height, stride`, `u8 format`, `u8 alpha`, `bytes(off/len)` |
 | `Drop` | 11 | `u32 id` |
-| `FillRect` | 12 | `rect`, `color`, `blend?` |
+| `FillRect` | 12 | `rect`, `color`, `blend?`, `radius?` |
 | `Entity` | 13 | `u32 id`, `kind`, `bool onGrid?` + `bool`, `edges`, `bool align?` + `i8 x, y`, `blend?`, `radius?` |
 | `Group` | 14 | `u32 id, parent`, `children(off/len)`, `i8 pinX, pinY`, `bool snap`, `inset?` |
 | `Arbitrary` | 15 | `u32 id, parent`, `bool onGrid?` + `bool`, `edges`, `children(off/len)`, `i8 pinX, pinY`, `bool snap`, `inset?` |
@@ -81,10 +83,16 @@
 | `Blit` | 24 | `u32 id`, `rect dest`, `rect src`, `u8 sample` (`0 crisp`, `1 area`), `tint?`, `blend?`, `radius?` |
 | `FillPath` | 25 | `verbs(off/len)`, `u8 rule`, `color`, `blend?` |
 | `StrokePath` | 26 | `verbs(off/len)`, `stroke`, `color`, `blend?` |
+| `DrawTree` | 27 | — |
+| `StrokeRoundRect` | 28 | `rect`, `radius?`, `stroke`, `color`, `blend?` |
+| `FillLattice` | 29 | `rect`, `u32 step`, `bool primaryStep?` + `u32`, `color fine`, `color primary`, `blend?` |
+| `DebugGrid` | 30 | `bool style?` + `color base`, `color tip`, `bool labelBase?` + `color`, `bool labelTip?` + `color`, `u8 labelAlpha`, `u8 labelScale` |
+| `DebugHover` | 31 | `bool point?` + `i32 x, y` |
+| `DebugLabel` | 32 | `u32 id`, `bool text?` + `text(off/len)` |
 
 `fill?` = `bool` + `u8 rule` (`0 nonZero`, `1 evenOdd`).
 
-`stroke?` = `bool` + `u32 width`, `u8 align` (`0 inside`, `1 outside`), `u8 join` (`0 miter` + `u32 limitQ8`, `1 bevel`, `2 round`), `u8 cap` (`0 butt`, `1 square`, `2 round`).
+`stroke?` = `bool` + `u32 widthQ8` (1/256 sPx), `u8 align` (`0 inside`, `1 outside`, `2 center`), `u8 join` (`0 miter` + `u32 limitQ8`, `1 bevel`, `2 round`), `u8 cap` (`0 butt`, `1 square`, `2 round`), `u8 peak` (`0 light`, `1 nominal`). Целая ширина `n` sPx — это `n · 256`; `0` — `BadStroke`.
 
 `kind` (тег `u8`):
 
@@ -95,6 +103,7 @@
 | 2 | `Vector` | `verbs(off/len)`, `fill?`, `stroke?`, `color` |
 | 3 | `Flat` | `color` |
 | 4 | `Box` | `fill?`, `stroke?`, `color` |
+| 5 | `Empty` | — |
 
 `format`: `0 rgb8`, `1 rgba8`, `2 alpha8`. `tint?` = `bool` + `color`.
 
@@ -108,7 +117,7 @@
 | 3 | `Cubic` | `c0x, c0y, c1x, c1y, x, y` |
 | 4 | `Close` | — |
 
-`children` блоб — `len` раз по `u32` id узла.
+`children` блоб — `len` раз по `u32` id узла. `text` блоб `DebugLabel` — UTF-8, не длиннее 64 байт; длина больше или невалидный UTF-8 — `BufferLayout`.
 
 ## 3. Кадрирование ответа
 

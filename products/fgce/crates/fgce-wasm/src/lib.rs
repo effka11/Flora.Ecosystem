@@ -15,7 +15,7 @@ use std::slice;
 use fgce::Engine;
 
 /// Version of this ABI, not of the kernel. The kernel version comes from `Info`.
-const ABI_VERSION: u32 = 2;
+const ABI_VERSION: u32 = 3;
 
 /// Engine plus the last encoded response. The response is valid until the next
 /// `fgce_submit`; the host copies what it needs before submitting again.
@@ -134,9 +134,10 @@ pub unsafe extern "C" fn fgce_response_len(engine: *const HostEngine) -> usize {
 mod tests {
     use super::*;
     use wire::{
-        KIND_ERROR, KIND_FRAME, KIND_INFO, KIND_PIXELS, KIND_SNAPSHOT, OP_BEGIN,
-        OP_DEFINE_REFERENCE, OP_END, OP_ENTITY, OP_FILL_RECT, OP_INFO, OP_READ_PIXELS, OP_SNAPSHOT,
-        OP_UPLOAD, OP_USE_REFERENCE, Writer,
+        KIND_ERROR, KIND_FRAME, KIND_INFO, KIND_NONE, KIND_PIXELS, KIND_SNAPSHOT, OP_BEGIN,
+        OP_DEBUG_GRID, OP_DEBUG_HOVER, OP_DEBUG_LABEL, OP_DEFINE_REFERENCE, OP_DRAW_TREE, OP_END,
+        OP_ENTITY, OP_FILL_LATTICE, OP_FILL_RECT, OP_INFO, OP_READ_PIXELS, OP_SNAPSHOT,
+        OP_STROKE_ROUND_RECT, OP_UPLOAD, OP_USE_REFERENCE, Writer,
     };
 
     const WHITE: [u8; 4] = [255, 255, 255, 255];
@@ -167,6 +168,7 @@ mod tests {
         writer.i32(x2);
         writer.i32(y2);
         writer.bytes(&color);
+        writer.bool(false);
         writer.bool(false);
         writer.out
     }
@@ -249,7 +251,7 @@ mod tests {
         assert_eq!(payload[0], KIND_INFO);
         let mut reader = wire::Reader::new(&payload[1..]);
         let version_len = reader.u32().unwrap() as usize;
-        assert_eq!(reader.bytes(version_len).unwrap(), b"0.1.0-alpha");
+        assert_eq!(reader.bytes(version_len).unwrap(), b"0.2.0");
         assert_eq!(reader.u32().unwrap(), 8192);
         assert_eq!(reader.u32().unwrap(), 40);
         assert_eq!(reader.u32().unwrap(), 32);
@@ -291,6 +293,100 @@ mod tests {
         assert_eq!(reader.u32().unwrap(), 4);
         let bytes_len = reader.u32().unwrap() as usize;
         assert_eq!(reader.bytes(bytes_len).unwrap(), &WHITE);
+        // SAFETY: the engine was created by fgce_engine_new.
+        unsafe { fgce_engine_free(engine) };
+    }
+
+    #[test]
+    fn new_request_opcodes_are_decoded() {
+        let engine = fgce_engine_new();
+        assert_eq!(response(engine, &begin(8, 8))[0], KIND_NONE);
+
+        let mut fill = Writer::new();
+        fill.u8(OP_FILL_RECT);
+        for value in [0, 0, 7, 7] {
+            fill.i32(value);
+        }
+        fill.bytes(&WHITE);
+        fill.bool(false);
+        fill.bool(true);
+        fill.u8(1);
+        fill.u8(50);
+        assert_eq!(response(engine, &fill.out)[0], KIND_NONE);
+
+        let mut rounded = Writer::new();
+        rounded.u8(OP_STROKE_ROUND_RECT);
+        for value in [0, 0, 7, 7] {
+            rounded.i32(value);
+        }
+        rounded.bool(true);
+        rounded.u8(1);
+        rounded.u8(50);
+        rounded.u32(256);
+        rounded.u8(2);
+        rounded.u8(1);
+        rounded.u8(0);
+        rounded.u8(1);
+        rounded.bytes(&WHITE);
+        rounded.bool(false);
+        assert_eq!(response(engine, &rounded.out)[0], KIND_NONE);
+
+        let mut lattice = Writer::new();
+        lattice.u8(OP_FILL_LATTICE);
+        for value in [0, 0, 7, 7] {
+            lattice.i32(value);
+        }
+        lattice.u32(5);
+        lattice.bool(true);
+        lattice.u32(15);
+        lattice.bytes(&WHITE);
+        lattice.bytes(&WHITE);
+        lattice.bool(false);
+        assert_eq!(response(engine, &lattice.out)[0], KIND_NONE);
+
+        assert_eq!(response(engine, &[OP_DRAW_TREE])[0], KIND_NONE);
+        assert_eq!(response(engine, &[OP_END])[0], KIND_FRAME);
+        // SAFETY: the engine was created by fgce_engine_new.
+        unsafe { fgce_engine_free(engine) };
+    }
+
+    #[test]
+    fn debug_requests_are_decoded() {
+        let engine = fgce_engine_new();
+        assert_eq!(response(engine, &begin(4, 4))[0], KIND_NONE);
+
+        let mut grid = Writer::new();
+        grid.u8(OP_DEBUG_GRID);
+        grid.bool(true);
+        grid.bytes(&[171, 171, 171, 255]);
+        grid.bytes(&[255, 0, 0, 128]);
+        grid.bool(false);
+        grid.bool(true);
+        grid.bytes(&[242, 242, 242, 255]);
+        grid.u8(200);
+        grid.u8(2);
+        assert_eq!(response(engine, &grid.out)[0], KIND_NONE);
+
+        let mut hover = Writer::new();
+        hover.u8(OP_DEBUG_HOVER);
+        hover.bool(true);
+        hover.i32(3);
+        hover.i32(-4);
+        assert_eq!(response(engine, &hover.out)[0], KIND_NONE);
+
+        let mut label = Writer::new();
+        label.u8(OP_DEBUG_LABEL);
+        label.u32(0);
+        label.bool(true);
+        let offset_position = label.out.len();
+        label.u32(0);
+        label.u32(6);
+        let offset = label.out.len() as u32;
+        label.bytes(b"window");
+        label.out[offset_position..offset_position + 4].copy_from_slice(&offset.to_le_bytes());
+        assert_eq!(response(engine, &label.out)[0], KIND_NONE);
+
+        assert_eq!(response(engine, &[OP_END])[0], KIND_FRAME);
         // SAFETY: the engine was created by fgce_engine_new.
         unsafe { fgce_engine_free(engine) };
     }

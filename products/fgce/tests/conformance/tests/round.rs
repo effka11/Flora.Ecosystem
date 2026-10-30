@@ -1,8 +1,8 @@
 //! §12 rows for §8.5 rounded boxes and `Blend::DstOut`.
 
 use fgce::{
-    AlphaMode, Blend, Color, Edge, Entity, EntityKind, Error, ImageId, NodeId, Radius, Request,
-    Sample, Verb,
+    AlphaMode, Blend, Color, Edge, Entity, EntityKind, Error, ImageId, NodeId, Peak, Radius,
+    Request, Sample, Verb,
 };
 use fgce_conformance::{Harness, pixels, rect};
 
@@ -99,10 +99,11 @@ fn box_with_fill_and_stroke_is_a_ring() {
         kind: EntityKind::Box {
             fill: None,
             stroke: Some(fgce::Stroke {
-                width: 1,
+                width_q8: 256,
                 align: fgce::StrokeAlign::Inside,
                 join: fgce::Join::Round,
                 cap: fgce::Cap::Butt,
+                peak: Peak::Light,
             }),
             color: WHITE,
         },

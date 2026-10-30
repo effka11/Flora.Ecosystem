@@ -5,9 +5,9 @@
 //! the operation index.
 
 use fgce::{
-    Align, AlphaMode, Blend, Cap, Color, Edge, Edges, Entity, EntityKind, Error, Fill, FillRule,
-    ImageId, Inset, Join, NodeId, Pin, PixelFormat, ReferenceId, Request, Sample, Stroke,
-    StrokeAlign, Verb,
+    Align, AlphaMode, Blend, Cap, Color, DebugGridStyle, DebugPoint, Edge, Edges, Entity,
+    EntityKind, Error, Fill, FillRule, ImageId, Inset, Join, NodeId, Peak, Pin, PixelFormat,
+    Radius, ReferenceId, Request, Sample, Stroke, StrokeAlign, Verb,
 };
 use fgce_conformance::{Harness, Lcg, bpp};
 
@@ -84,11 +84,11 @@ fn triangle(lcg: &mut Lcg) -> [Verb; 4] {
 
 fn stroke(lcg: &mut Lcg) -> Stroke {
     Stroke {
-        width: lcg.below(4),
-        align: if lcg.pick(2) == 0 {
-            StrokeAlign::Inside
-        } else {
-            StrokeAlign::Outside
+        width_q8: lcg.below(4) * fgce::SPX_Q8 + lcg.below(fgce::SPX_Q8),
+        align: match lcg.pick(3) {
+            0 => StrokeAlign::Inside,
+            1 => StrokeAlign::Outside,
+            _ => StrokeAlign::Center,
         },
         join: match lcg.pick(3) {
             0 => Join::Miter { limit_q8: 1024 },
@@ -100,11 +100,16 @@ fn stroke(lcg: &mut Lcg) -> Stroke {
             1 => Cap::Square,
             _ => Cap::Round,
         },
+        peak: if lcg.pick(2) == 0 {
+            Peak::Light
+        } else {
+            Peak::Nominal
+        },
     }
 }
 
 fn entity(lcg: &mut Lcg) -> Entity<'static> {
-    let kind = match lcg.pick(4) {
+    let kind = match lcg.pick(5) {
         0 => EntityKind::Flat { color: color(lcg) },
         1 => EntityKind::Photo {
             format: PixelFormat::Rgba8,
@@ -116,6 +121,7 @@ fn entity(lcg: &mut Lcg) -> Entity<'static> {
             image: ImageId(lcg.below(3)),
             tint: None,
         },
+        3 => EntityKind::Empty,
         _ => EntityKind::Vector {
             verbs: &[],
             fill: Some(Fill {
@@ -144,7 +150,7 @@ fn entity(lcg: &mut Lcg) -> Entity<'static> {
 }
 
 fn one_op(h: &mut Harness, lcg: &mut Lcg) -> Result<(), Error> {
-    match lcg.pick(18) {
+    match lcg.pick(24) {
         0 => h.try_begin(lcg.below(80), lcg.below(80)).map(|_| ()),
         1 => h.submit(Request::End).map(|_| ()),
         2 => {
@@ -189,6 +195,11 @@ fn one_op(h: &mut Harness, lcg: &mut Lcg) -> Result<(), Error> {
                     1 => Blend::Src,
                     _ => Blend::Clear,
                 }),
+                radius: if lcg.pick(3) == 0 {
+                    Some(Radius::Percent(lcg.below(51) as u8))
+                } else {
+                    None
+                },
             })
             .map(|_| ()),
         5 => h
@@ -297,16 +308,77 @@ fn one_op(h: &mut Harness, lcg: &mut Lcg) -> Result<(), Error> {
                 let stroke = stroke(lcg);
                 h.submit(Request::StrokePath {
                     verbs: &verbs,
-                    width: stroke.width,
-                    align: stroke.align,
-                    join: stroke.join,
-                    cap: stroke.cap,
+                    stroke,
                     color: color(lcg),
                     blend: None,
                 })
                 .map(|_| ())
             }
         }
+        18 => h.submit(Request::DrawTree).map(|_| ()),
+        19 => {
+            let radius = if lcg.pick(2) == 0 {
+                Some(Radius::Percent(lcg.below(51) as u8))
+            } else {
+                None
+            };
+            h.submit(Request::StrokeRoundRect {
+                rect: area(lcg),
+                radius,
+                stroke: stroke(lcg),
+                color: color(lcg),
+                blend: None,
+            })
+            .map(|_| ())
+        }
+        20 => {
+            let step = 1 + lcg.below(15);
+            let primary_step = if lcg.pick(2) == 0 {
+                Some(1 + lcg.below(45))
+            } else {
+                None
+            };
+            h.submit(Request::FillLattice {
+                rect: area(lcg),
+                step,
+                primary_step,
+                fine_color: color(lcg),
+                primary_color: color(lcg),
+                blend: None,
+            })
+            .map(|_| ())
+        }
+        21 => {
+            let style = DebugGridStyle {
+                base: color(lcg),
+                tip: color(lcg),
+                label_base: (lcg.pick(2) == 0).then(|| color(lcg)),
+                label_tip: (lcg.pick(2) == 0).then(|| color(lcg)),
+                label_alpha: lcg.next_u32() as u8,
+                label_scale: 1 + lcg.below(4) as u8,
+            };
+            h.submit(Request::DebugGrid {
+                style: if lcg.pick(4) == 0 { None } else { Some(style) },
+            })
+            .map(|_| ())
+        }
+        22 => {
+            let point = if lcg.pick(2) == 0 {
+                None
+            } else {
+                Some(DebugPoint {
+                    x: lcg.range(-8, 40),
+                    y: lcg.range(-8, 40),
+                })
+            };
+            h.submit(Request::DebugHover(point)).map(|_| ())
+        }
+        23 => h
+            .submit(Request::DebugLabel {
+                id: NodeId(lcg.below(8)),
+                text: if lcg.pick(2) == 0 { None } else { Some("fuzz") },
+            })
+            .map(|_| ()),
         _ => {
             let verbs = triangle(lcg);
             h.submit(Request::Measure {

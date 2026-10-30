@@ -15,7 +15,8 @@ FGCE рисует по одному кадру: хост отправляет з
 | [`docs/fgce.md`](docs/fgce.md) | нормативный закон композиции: sPx, решётка, дерево боксов, эталоны, растр, вектор, клип, кадр |
 | [`docs/wasm-abi.md`](docs/wasm-abi.md) | C ABI wasm-адаптера и его бинарный wire-протокол |
 | [`docs/questions.md`](docs/questions.md) | решения по спорным местам спецификации |
-| [`CHANGELOG.md`](CHANGELOG.md) | история версий и ограничения `0.1.0-alpha` |
+| [`CHANGELOG.md`](CHANGELOG.md) | история версий и ограничения `0.2.0` |
+| [`docs/migration-0.2.0.md`](docs/migration-0.2.0.md) | переход с `0.1.0-alpha`: палитра, `Center`, `Peak`, дробная ширина, подписи, иконки |
 | [`RELEASE.md`](RELEASE.md) | чек-лист выпуска, ворота и запись проверки |
 | [`LICENSE`](LICENSE) | GNU AGPL v3 only (AGPL-3.0-only) |
 | [`NOTICE.md`](NOTICE.md) | copyright, условия AGPLv3 §7 и товарные знаки |
@@ -33,11 +34,13 @@ FGCE рисует по одному кадру: хост отправляет з
 | `src/lattice.rs` | живая решётка окна (§3.4) |
 | `src/frame.rs` | буфер кадра, стек клипа, жизненный цикл, отрисовка дерева (§5.2, §7) |
 | `src/store.rs` | загрузка и удаление изображений, premultiplied-store (§5.3, §6) |
-| `src/fill.rs` | сплошной прямоугольник в спаны (§8.1) |
-| `src/round.rs` | скруглённые боксы: разрешение радиуса, быстрая заливка, маска `DstOut`, обводка (§8.5) |
+| `src/fill.rs` | сплошной прямоугольник и решётка в спаны (§8.1, §5.3) |
+| `src/round.rs` | скруглённые боксы: разрешение радиуса, `fill_shape`, `mask_corners`, контур (§8.5) |
 | `src/blit.rs` | растровая выборка `Crisp` и `Area` (§8.2) |
-| `src/span.rs` | единственный писатель байтов кадра (§7, §11) |
-| `src/color.rs` | `pm`, `over`, `straight` (§6) |
+| `src/span.rs` | единственный писатель байтов кадра, SrcOver в линейном свете, `DstOut` (§7, §11) |
+| `src/color.rs` | `pm`, `over`, `straight`, `decode`/`encode`, `mix_straight` (§6) |
+| `src/debug.rs` | дебаг-слой: обводки, hover, подписи, стрелки (§5.3) |
+| `src/debug_font.rs` | нормативная таблица 5×7 для подписей (приложение A) |
 | `src/tree.rs` | узлы, эталоны, канонические боксы, `zero` (§4, §5.5) |
 | `src/place.rs` | канонический и живой проходы, обратный `pin` у `Place` (§4.6, §4.7) |
 | `src/vector.rs` | разворачивание пути, растеризация покрытия, обводка (§8.3, §8.4) |
@@ -80,10 +83,10 @@ Smoke-тест wasm читает путь к артефакту из `FGCE_WASM_
 FGCE_WASM_PATH=target/wasm32-unknown-unknown/release/fgce_wasm.wasm npm test
 ```
 
-## Релиз 0.1.0-alpha
+## Релиз 0.2.0
 
-Текущая версия — `0.1.0-alpha`; она записана в `crates/fgce`, `crates/fgce-wasm`,
-`tests/conformance` и `package.json`. Тег выпуска — `fgce/v0.1.0-alpha`. Крейты не
+Текущая версия — `0.2.0`; она записана в `crates/fgce`, `crates/fgce-wasm`,
+`tests/conformance` и `package.json`. Тег выпуска — `fgce/v0.2.0`. Крейты не
 публикуются на crates.io (`publish = false`): поставка идёт копированием каталога.
 Полный чек-лист, ворота и запись проверки — в [`RELEASE.md`](RELEASE.md).
 
@@ -95,7 +98,7 @@ FGCE_WASM_PATH=target/wasm32-unknown-unknown/release/fgce_wasm.wasm npm test
 
 ```toml
 [dependencies]
-fgce = { path = "third_party/fgce", version = "=0.1.0-alpha" }
+fgce = { path = "third_party/fgce", version = "=0.2.0" }
 ```
 
 Адаптер (`crates/fgce-wasm`), TS-клиент (`bindings/ts`) и набор conformance

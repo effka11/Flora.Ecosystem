@@ -13,11 +13,16 @@ import {
   encodeBlit,
   encodeClipPop,
   encodeClipPush,
+  encodeDebugGrid,
+  encodeDebugHover,
+  encodeDebugLabel,
   encodeDefineReference,
+  encodeDrawTree,
   encodeDrop,
   encodeEdgePx,
   encodeEnd,
   encodeEntity,
+  encodeFillLattice,
   encodeFillPath,
   encodeFillRect,
   encodeGrid,
@@ -32,6 +37,7 @@ import {
   encodeShow,
   encodeSnapshot,
   encodeStrokePath,
+  encodeStrokeRoundRect,
   encodeUpload,
   encodeUseReference,
   FgceError,
@@ -40,6 +46,8 @@ import {
   type Blend,
   type BoxOptions,
   type Color,
+  type DebugGridStyle,
+  type DebugPoint,
   type Edge,
   type Edges,
   type EntityKind,
@@ -62,7 +70,7 @@ import {
 } from "./protocol";
 
 /** ABI version this client speaks; `tests/abi-vectors` pin the same number. */
-export const FGCE_ABI_VERSION = 2;
+export const FGCE_ABI_VERSION = 3;
 
 const instances = new Map<string, Promise<WebAssembly.Instance>>();
 
@@ -223,8 +231,45 @@ export class FgceEngine {
     this.ok(encodeDrop(id));
   }
 
-  fillRect(rect: Rect, color: Color, blend?: Blend): void {
-    this.ok(encodeFillRect(rect, color, blend));
+  fillRect(rect: Rect, color: Color, blend?: Blend, radius?: Radius): void {
+    this.ok(encodeFillRect(rect, color, blend, radius));
+  }
+
+  drawTree(): void {
+    this.ok(encodeDrawTree());
+  }
+
+  strokeRoundRect(
+    rect: Rect,
+    radius: Radius | undefined,
+    stroke: Stroke,
+    color: Color,
+    blend?: Blend,
+  ): void {
+    this.ok(encodeStrokeRoundRect(rect, radius, stroke, color, blend));
+  }
+
+  fillLattice(
+    rect: Rect,
+    step: number,
+    primaryStep: number | undefined,
+    fineColor: Color,
+    primaryColor: Color,
+    blend?: Blend,
+  ): void {
+    this.ok(encodeFillLattice(rect, step, primaryStep, fineColor, primaryColor, blend));
+  }
+
+  debugGrid(style?: DebugGridStyle): void {
+    this.ok(encodeDebugGrid(style));
+  }
+
+  debugHover(point?: DebugPoint): void {
+    this.ok(encodeDebugHover(point));
+  }
+
+  debugLabel(id: number, text?: string): void {
+    this.ok(encodeDebugLabel(id, text));
   }
 
   entity(id: number, kind: EntityKind, edges: Edges, options?: EntityOptions): void {

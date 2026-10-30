@@ -1,7 +1,9 @@
 //! Vector paths: parsing, curve flattening, exact fill coverage, stroke outline
 //! and `Measure` (`fgce.md` §8.3, §8.4).
 
-use crate::contract::{Blend, Cap, Color, Error, FillRule, Join, Rect, Stroke, StrokeAlign, Verb};
+use crate::contract::{
+    Blend, Cap, Color, Error, FillRule, Join, Peak, Rect, Stroke, StrokeAlign, Verb,
+};
 use crate::{MAX_COORD, MAX_VERTICES, span};
 
 const MAX_DEPTH: u32 = 64;
@@ -906,7 +908,9 @@ struct JoinRequest {
     dir_prev: (i128, i128),
     dir_next: (i128, i128),
     width_q8: i128,
-    width: u32,
+    /// `1` for `Inside`/`Outside`, `2` for `Center`: the miter length of a
+    /// centered stroke is twice the distance to its half offset.
+    miter_scale: i128,
 }
 
 fn point_from_q8(x: i128, y: i128) -> Result<PointQ8, Error> {
@@ -1006,12 +1010,23 @@ fn miter_intersection(
     ))
 }
 
-fn miter_fits(corner: (i128, i128), vertex: PointQ8, limit_q8: u32, width: u32) -> bool {
-    let dx = corner.0 - vertex.x as i128;
-    let dy = corner.1 - vertex.y as i128;
+fn miter_fits(
+    corner: (i128, i128),
+    vertex: PointQ8,
+    limit_q8: u32,
+    width_q8: i128,
+    scale: i128,
+) -> bool {
+    let dx = (corner.0 - vertex.x as i128) * scale;
+    let dy = (corner.1 - vertex.y as i128) * scale;
     let length_sq = dx * dx + dy * dy;
-    let limit = limit_q8 as u128 * width as u128;
-    length_sq as u128 <= limit * limit
+    // `k · d_sPx ≤ (limit_q8 / 256) · (width_q8 / 256)`, that is
+    // `k · d_q8 · 256 ≤ limit_q8 · width_q8`. Squared in whole units so no root
+    // is needed: `(k · d_q8)² · 256² ≤ (limit_q8 · width_q8)²`. With `u32` inputs
+    // both sides fit `u128`: `limit_q8 · width_q8 < 2^64` and `(k · d_q8)²` is
+    // bounded by the `i32` vertex coordinates.
+    let limit = limit_q8 as u128 * width_q8.max(0) as u128;
+    (length_sq as u128) * 65536 <= limit * limit
 }
 
 fn arc_mid(center: PointQ8, p0: PointQ8, p1: PointQ8, radius_q8: i128) -> Result<PointQ8, Error> {
@@ -1088,7 +1103,13 @@ fn join_points(out: &mut Vec<PointQ8>, request: &JoinRequest, join: Join) -> Res
                 push_point(out, b);
                 return Ok(());
             };
-            if miter_fits(corner, request.vertex, limit_q8, request.width) {
+            if miter_fits(
+                corner,
+                request.vertex,
+                limit_q8,
+                request.width_q8,
+                request.miter_scale,
+            ) {
                 push_point(out, point_from_q8(corner.0, corner.1)?);
             } else {
                 push_point(out, a);
@@ -1103,6 +1124,31 @@ fn join_points(out: &mut Vec<PointQ8>, request: &JoinRequest, join: Join) -> Res
             let a = offset_vertex(request.vertex, request.normal_prev)?;
             let b = offset_vertex(request.vertex, request.normal_next)?;
             push_point(out, a);
+            let dot =
+                request.dir_prev.0 * request.dir_next.0 + request.dir_prev.1 * request.dir_next.1;
+            let cross =
+                request.dir_prev.0 * request.dir_next.1 - request.dir_prev.1 * request.dir_next.0;
+            if cross == 0 && dot < 0 {
+                // A half turn has no bisector: the arc goes around the tip in the
+                // incoming direction. Both half offsets meet there, so a centered
+                // stroke wraps the same half disc on both sides.
+                let length = isqrt(
+                    (request.dir_prev.0 * request.dir_prev.0
+                        + request.dir_prev.1 * request.dir_prev.1) as u128,
+                ) as i128;
+                if length != 0 {
+                    let mid = point_from_q8(
+                        request.vertex.x as i128
+                            + div_round(request.width_q8 * request.dir_prev.0, length),
+                        request.vertex.y as i128
+                            + div_round(request.width_q8 * request.dir_prev.1, length),
+                    )?;
+                    arc_into(out, request.vertex, a, mid, request.width_q8, 0)?;
+                    arc_into(out, request.vertex, mid, b, request.width_q8, 0)?;
+                    push_point(out, b);
+                    return Ok(());
+                }
+            }
             arc_into(out, request.vertex, a, b, request.width_q8, 0)?;
             push_point(out, b);
         }
@@ -1115,9 +1161,10 @@ fn offset_chain(
     closed: bool,
     right: bool,
     width_q8: i128,
-    width: u32,
     join: Join,
+    miter_scale: i128,
 ) -> Result<Vec<PointQ8>, Error> {
+    debug_assert!(points.len() >= 2);
     let count = points.len();
     let edge_count = if closed { count } else { count - 1 };
     let mut normals = Vec::with_capacity(edge_count);
@@ -1170,7 +1217,7 @@ fn offset_chain(
                 dir_prev,
                 dir_next,
                 width_q8,
-                width,
+                miter_scale,
             },
             join,
         )?;
@@ -1184,89 +1231,204 @@ fn offset_chain(
     Ok(out)
 }
 
-fn append_end_cap(
-    polygon: &mut Vec<PointQ8>,
-    points: &[PointQ8],
-    offset: &[PointQ8],
-    cap: Cap,
-    width_q8: i128,
+/// Advances a point by half a stroke width along a unit 8.8 direction.
+fn advance_half(point: PointQ8, direction: (i128, i128), half_q8: i128) -> Result<PointQ8, Error> {
+    point_from_q8(
+        point.x as i128 + direction.0 * half_q8 / 256,
+        point.y as i128 + direction.1 * half_q8 / 256,
+    )
+}
+
+/// Appends a polygon with a consistent positive winding. Overlapping pieces of
+/// a centered band then add up under `NonZero` instead of cancelling.
+fn push_oriented(out: &mut Vec<Contour>, mut points: Vec<PointQ8>) {
+    if points.len() < 3 {
+        return;
+    }
+    if signed_area(&points) < 0 {
+        points.reverse();
+    }
+    out.push(Contour {
+        points,
+        closed: true,
+    });
+}
+
+fn append_sector(
+    out: &mut Vec<Contour>,
+    vertex: PointQ8,
+    a: PointQ8,
+    b: PointQ8,
+    radius_q8: i128,
 ) -> Result<(), Error> {
-    if cap == Cap::Butt {
-        return Ok(());
-    }
-    let last = points.len() - 1;
-    let Some(direction) = unit_q8(points[last - 1], points[last]) else {
-        return Ok(());
-    };
-    let vertex = points[last];
-    let width = width_q8 / 256;
-    let tip = point_from_q8(
-        vertex.x as i128 + direction.0 * width,
-        vertex.y as i128 + direction.1 * width,
-    )?;
-    let corner = *offset.last().expect("offset chain is non-empty");
-    match cap {
-        Cap::Butt => {}
-        Cap::Square => {
-            push_point(polygon, tip);
-            push_point(
-                polygon,
-                point_from_q8(
-                    corner.x as i128 + direction.0 * width,
-                    corner.y as i128 + direction.1 * width,
-                )?,
-            );
-        }
-        Cap::Round => {
-            push_point(polygon, tip);
-            arc_into(polygon, vertex, tip, corner, width_q8, 0)?;
-        }
-    }
+    let mut sector = vec![vertex, a];
+    arc_into(&mut sector, vertex, a, b, radius_q8, 0)?;
+    push_point(&mut sector, b);
+    push_oriented(out, sector);
     Ok(())
 }
 
-fn append_start_cap(
-    polygon: &mut Vec<PointQ8>,
-    points: &[PointQ8],
-    offset: &[PointQ8],
-    cap: Cap,
-    width_q8: i128,
-) -> Result<(), Error> {
-    if cap == Cap::Butt {
-        return Ok(());
-    }
-    let Some(direction) = unit_q8(points[1], points[0]) else {
-        return Ok(());
+/// Centered stroke as the union of per-segment rectangles, join wedges and
+/// caps. The union is the same band as an offset outline, but degenerate turns
+/// (a half turn, a retraced segment) do not cancel their winding.
+fn center_band(points: &[PointQ8], closed: bool, stroke: &Stroke) -> Result<Vec<Contour>, Error> {
+    let width_q8 = stroke.width_q8 as i128;
+    // A fractional width has no exact half in 8.8: the left side takes the
+    // ceiling and the right side the floor, so the band stays exactly
+    // `width_q8` wide and its middle is off by at most 1/512 sPx.
+    let half_left = width_q8 - width_q8 / 2;
+    let half_right = width_q8 / 2;
+    let count = points.len();
+    let edge_count = if closed { count } else { count - 1 };
+    let next_index = |index: usize| {
+        if closed {
+            (index + 1) % count
+        } else {
+            index + 1
+        }
     };
-    let vertex = points[0];
-    let width = width_q8 / 256;
-    let tip = point_from_q8(
-        vertex.x as i128 + direction.0 * width,
-        vertex.y as i128 + direction.1 * width,
-    )?;
-    let corner = *offset.first().expect("offset chain is non-empty");
-    match cap {
-        Cap::Butt => {}
-        Cap::Square => {
-            push_point(
-                polygon,
-                point_from_q8(
-                    corner.x as i128 + direction.0 * width,
-                    corner.y as i128 + direction.1 * width,
-                )?,
-            );
-            push_point(polygon, tip);
+    let mut contours = Vec::new();
+    for index in 0..edge_count {
+        let a = points[index];
+        let b = points[next_index(index)];
+        let left = edge_normal(a, b, half_left, false).ok_or(Error::BadPath)?;
+        let right = edge_normal(a, b, half_right, true).ok_or(Error::BadPath)?;
+        let al = offset_vertex(a, left)?;
+        let bl = offset_vertex(b, left)?;
+        let ar = offset_vertex(a, right)?;
+        let br = offset_vertex(b, right)?;
+        push_oriented(&mut contours, vec![al, bl, br, ar]);
+    }
+
+    let join_count = if closed {
+        count
+    } else {
+        count.saturating_sub(2)
+    };
+    for index in 0..join_count {
+        let vertex_index = if closed { index } else { index + 1 };
+        let vertex = points[vertex_index];
+        let previous = if vertex_index == 0 {
+            points[count - 1]
+        } else {
+            points[vertex_index - 1]
+        };
+        let next = if vertex_index + 1 == count {
+            points[0]
+        } else {
+            points[vertex_index + 1]
+        };
+        let dir_prev = (
+            vertex.x as i128 - previous.x as i128,
+            vertex.y as i128 - previous.y as i128,
+        );
+        let dir_next = (
+            next.x as i128 - vertex.x as i128,
+            next.y as i128 - vertex.y as i128,
+        );
+        let cross = dir_prev.0 * dir_next.1 - dir_prev.1 * dir_next.0;
+        let dot = dir_prev.0 * dir_next.0 + dir_prev.1 * dir_next.1;
+        if cross == 0 && dot > 0 {
+            continue;
         }
-        Cap::Round => {
-            arc_into(polygon, vertex, corner, tip, width_q8, 0)?;
-            push_point(polygon, tip);
+        if cross == 0 && dot < 0 {
+            if stroke.join == Join::Round {
+                let mut circle = Vec::new();
+                for step in 0..8 {
+                    let angle = std::f64::consts::FRAC_PI_4 * step as f64;
+                    let x = vertex.x as f64 + half_left as f64 * angle.cos();
+                    let y = vertex.y as f64 + half_left as f64 * angle.sin();
+                    circle.push(PointQ8 {
+                        x: x.round() as i32,
+                        y: y.round() as i32,
+                    });
+                }
+                push_oriented(&mut contours, circle);
+            }
+            continue;
+        }
+        let outward_right = cross < 0;
+        let half = if outward_right { half_right } else { half_left };
+        let normal_prev =
+            edge_normal(previous, vertex, half, outward_right).ok_or(Error::BadPath)?;
+        let normal_next = edge_normal(vertex, next, half, outward_right).ok_or(Error::BadPath)?;
+        let a = offset_vertex(vertex, normal_prev)?;
+        let b = offset_vertex(vertex, normal_next)?;
+        match stroke.join {
+            Join::Miter { limit_q8 } => {
+                let Some(corner) = miter_intersection(a, dir_prev, b, dir_next) else {
+                    continue;
+                };
+                if miter_fits(corner, vertex, limit_q8, width_q8, 2) {
+                    let corner = point_from_q8(corner.0, corner.1)?;
+                    push_oriented(&mut contours, vec![a, b, corner]);
+                }
+            }
+            Join::Bevel => {}
+            Join::Round => append_sector(&mut contours, vertex, a, b, half)?,
         }
     }
-    Ok(())
+
+    if !closed {
+        let last = count - 1;
+        let direction = unit_q8(points[last - 1], points[last]).ok_or(Error::BadPath)?;
+        let vertex = points[last];
+        let left = edge_normal(points[last - 1], vertex, half_left, false).ok_or(Error::BadPath)?;
+        let right =
+            edge_normal(points[last - 1], vertex, half_right, true).ok_or(Error::BadPath)?;
+        let left_end = offset_vertex(vertex, left)?;
+        let right_end = offset_vertex(vertex, right)?;
+        match stroke.cap {
+            Cap::Butt => {}
+            Cap::Square => {
+                let left_tip = advance_half(left_end, direction, half_left)?;
+                let right_tip = advance_half(right_end, direction, half_left)?;
+                push_oriented(
+                    &mut contours,
+                    vec![left_end, left_tip, right_tip, right_end],
+                );
+            }
+            Cap::Round => {
+                let tip = advance_half(vertex, direction, half_left)?;
+                let mut cap = vec![vertex, left_end, tip];
+                arc_into(&mut cap, vertex, left_end, tip, half_left, 0)?;
+                arc_into(&mut cap, vertex, tip, right_end, half_left, 0)?;
+                push_point(&mut cap, right_end);
+                push_oriented(&mut contours, cap);
+            }
+        }
+
+        let direction = unit_q8(points[1], points[0]).ok_or(Error::BadPath)?;
+        let vertex = points[0];
+        let left = edge_normal(points[0], points[1], half_left, false).ok_or(Error::BadPath)?;
+        let right = edge_normal(points[0], points[1], half_right, true).ok_or(Error::BadPath)?;
+        let left_start = offset_vertex(vertex, left)?;
+        let right_start = offset_vertex(vertex, right)?;
+        match stroke.cap {
+            Cap::Butt => {}
+            Cap::Square => {
+                let left_tip = advance_half(left_start, direction, half_left)?;
+                let right_tip = advance_half(right_start, direction, half_left)?;
+                push_oriented(
+                    &mut contours,
+                    vec![right_start, right_tip, left_tip, left_start],
+                );
+            }
+            Cap::Round => {
+                let tip = advance_half(vertex, direction, half_left)?;
+                let mut cap = vec![vertex, right_start, tip];
+                arc_into(&mut cap, vertex, right_start, tip, half_left, 0)?;
+                arc_into(&mut cap, vertex, tip, left_start, half_left, 0)?;
+                push_point(&mut cap, left_start);
+                push_oriented(&mut contours, cap);
+            }
+        }
+    }
+    Ok(contours)
 }
 
 fn build_stroke(path: &Path, stroke: &Stroke) -> Result<Vec<Contour>, Error> {
-    let width_q8 = stroke.width as i128 * 256;
+    let width_q8 = stroke.width_q8 as i128;
     let mut contours = Vec::new();
     for contour in &path.contours {
         let mut points = contour.points.clone();
@@ -1278,48 +1440,33 @@ fn build_stroke(path: &Path, stroke: &Stroke) -> Result<Vec<Contour>, Error> {
         if points.len() < 2 {
             continue;
         }
-        if stroke.align == StrokeAlign::Inside && !closed {
-            return Err(Error::BadPath);
-        }
         let area = signed_area(&points);
         let closed = closed && area != 0 && points.len() >= 3;
-        if stroke.align == StrokeAlign::Inside && !closed {
-            return Err(Error::BadPath);
-        }
-        let right = if closed {
-            match stroke.align {
-                StrokeAlign::Inside => area > 0,
-                StrokeAlign::Outside => area < 0,
-            }
-        } else {
-            true
-        };
-        let offset = offset_chain(&points, closed, right, width_q8, stroke.width, stroke.join)?;
-        if closed {
-            contours.push(Contour {
-                points: points.clone(),
-                closed: true,
-            });
-            let mut reversed = offset;
-            reversed.reverse();
-            if reversed.len() >= 3 {
+        match stroke.align {
+            StrokeAlign::Inside | StrokeAlign::Outside => {
+                if !closed {
+                    return Err(Error::BadPath);
+                }
+                let right = match stroke.align {
+                    StrokeAlign::Inside => area > 0,
+                    StrokeAlign::Outside | StrokeAlign::Center => area < 0,
+                };
+                let offset = offset_chain(&points, true, right, width_q8, stroke.join, 1)?;
                 contours.push(Contour {
-                    points: reversed,
+                    points: points.clone(),
                     closed: true,
                 });
+                let mut reversed = offset;
+                reversed.reverse();
+                if reversed.len() >= 3 {
+                    contours.push(Contour {
+                        points: reversed,
+                        closed: true,
+                    });
+                }
             }
-        } else {
-            let mut polygon = points.clone();
-            append_end_cap(&mut polygon, &points, &offset, stroke.cap, width_q8)?;
-            for point in offset.iter().rev() {
-                push_point(&mut polygon, *point);
-            }
-            append_start_cap(&mut polygon, &points, &offset, stroke.cap, width_q8)?;
-            if polygon.len() >= 3 {
-                contours.push(Contour {
-                    points: polygon,
-                    closed: true,
-                });
+            StrokeAlign::Center => {
+                contours.extend(center_band(&points, closed, stroke)?);
             }
         }
     }
@@ -1327,7 +1474,7 @@ fn build_stroke(path: &Path, stroke: &Stroke) -> Result<Vec<Contour>, Error> {
 }
 
 fn stroke_outline(verbs: &[Verb], stroke: &Stroke) -> Result<Vec<Contour>, Error> {
-    if stroke.width == 0 {
+    if stroke.width_q8 == 0 {
         return Err(Error::BadStroke);
     }
     let path = Path::parse(verbs)?;
@@ -1354,11 +1501,14 @@ pub(crate) fn stroke_path(
     let Some(bounds) = outline.bounds() else {
         return Ok(());
     };
-    let target = pixel_bounds(bounds).intersect(clip);
+    let geometry = pixel_bounds(bounds);
+    let target = geometry.intersect(clip);
     if target.is_empty() {
         return Ok(());
     }
-    if outline.is_orthogonal() {
+    // A centered odd width puts edges on half pixels; the span path only knows
+    // integer sub-pixel edges, so `Center` always takes the coverage rasterizer.
+    if stroke.align != StrokeAlign::Center && outline.is_orthogonal() {
         fill_orthogonal(
             bytes,
             stride,
@@ -1378,12 +1528,37 @@ pub(crate) fn stroke_path(
     if edges.is_empty() {
         return Ok(());
     }
+    let peak = match stroke.peak {
+        Peak::Light => 256,
+        Peak::Nominal => {
+            let width = (geometry.x2 - geometry.x1 + 1) as usize;
+            let mut peak = 0_u16;
+            for y in geometry.y1..=geometry.y2 {
+                row_coverage(
+                    &edges,
+                    FillRule::NonZero,
+                    y,
+                    geometry.x1,
+                    geometry.x2,
+                    scratch,
+                );
+                for &cover in &scratch.covers[..width] {
+                    peak = peak.max(cover);
+                }
+            }
+            peak
+        }
+    };
+    if peak == 0 {
+        return Ok(());
+    }
     let width = (target.x2 - target.x1 + 1) as usize;
     for y in target.y1..=target.y2 {
         row_coverage(&edges, FillRule::NonZero, y, target.x1, target.x2, scratch);
         let start = y as usize * stride;
         let row = &mut bytes[start..start + stride];
         for (index, &cover) in scratch.covers[..width].iter().enumerate() {
+            let cover = normalize_cover(cover, peak);
             if cover > 0 {
                 let x = target.x1 + index as i32;
                 span::paint(row, x, x, color, cover, blend);
@@ -1391,6 +1566,16 @@ pub(crate) fn stroke_path(
         }
     }
     Ok(())
+}
+
+/// `coverage' = min(256, (coverage * 256 + peak / 2) / peak)`; `peak = 256`
+/// is the identity, so `Peak::Light` paints the exact coverage.
+fn normalize_cover(cover: u16, peak: u16) -> u16 {
+    if peak == 256 {
+        return cover;
+    }
+    let value = (cover as u32 * 256 + peak as u32 / 2) / peak as u32;
+    value.min(256) as u16
 }
 
 /// `Measure` for the stroke branch (`fgce.md` §5.1).
@@ -1638,6 +1823,7 @@ mod tests {
             },
             color: white(),
             blend: None,
+            radius: None,
         })
         .unwrap();
 
@@ -1880,10 +2066,11 @@ mod tests {
                     rule: FillRule::NonZero,
                 }),
                 stroke: Some(Stroke {
-                    width: 1,
+                    width_q8: 256,
                     align: StrokeAlign::Outside,
                     join: Join::Bevel,
                     cap: Cap::Butt,
+                    peak: Peak::Light,
                 }),
             })
             .unwrap_err();
@@ -1895,10 +2082,11 @@ mod tests {
                 verbs: &rectangle(0, 0, 1, 1),
                 fill: None,
                 stroke: Some(Stroke {
-                    width: 1,
+                    width_q8: 256,
                     align: StrokeAlign::Outside,
                     join: Join::Bevel,
                     cap: Cap::Butt,
+                    peak: Peak::Light,
                 }),
             })
             .unwrap();
@@ -2085,10 +2273,13 @@ mod tests {
         let error = engine
             .submit(Request::StrokePath {
                 verbs: &rectangle(0, 0, 1, 1),
-                width: 1,
-                align: StrokeAlign::Outside,
-                join: Join::Bevel,
-                cap: Cap::Butt,
+                stroke: Stroke {
+                    width_q8: 256,
+                    align: StrokeAlign::Outside,
+                    join: Join::Bevel,
+                    cap: Cap::Butt,
+                    peak: Peak::Light,
+                },
                 color: white(),
                 blend: None,
             })
@@ -2114,6 +2305,7 @@ mod tests {
                     a: 255,
                 },
                 blend: None,
+                radius: None,
             })
             .unwrap();
         fill(
@@ -2190,14 +2382,24 @@ mod tests {
         engine
             .submit(Request::StrokePath {
                 verbs,
-                width,
-                align,
-                join,
-                cap,
+                stroke: Stroke {
+                    width_q8: width * 256,
+                    align,
+                    join,
+                    cap,
+                    peak: Peak::Light,
+                },
                 color: white(),
                 blend: None,
             })
             .unwrap();
+    }
+
+    fn alpha_sum(engine: &mut Engine) -> f64 {
+        frame_bytes(engine)
+            .chunks_exact(4)
+            .map(|pixel| pixel[3] as f64)
+            .sum()
     }
 
     fn frame_bytes(engine: &mut Engine) -> Vec<u8> {
@@ -2271,32 +2473,101 @@ mod tests {
     }
 
     #[test]
-    fn stroke_square_cap_extends_but_butt_does_not() {
+    fn center_square_cap_extends_but_butt_does_not() {
         let verbs = [Verb::Move(0, 0), Verb::Line(10, 0)];
         let mut square = engine();
         stroke(
             &mut square,
             &verbs,
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Bevel,
             Cap::Square,
         );
-        assert_eq!(pixel(&mut square, 9, 0), [255, 255, 255, 255]);
-        assert_eq!(pixel(&mut square, 10, 0), [255, 255, 255, 255]);
-        assert_eq!(pixel(&mut square, 11, 0), [0, 0, 0, 0]);
+        assert_eq!(pixel(&mut square, 9, 0)[3], 128);
+        assert_eq!(pixel(&mut square, 10, 0)[3], 64, "half-width extension");
+        assert_eq!(pixel(&mut square, 11, 0)[3], 0);
 
         let mut butt = engine();
         stroke(
             &mut butt,
             &verbs,
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Bevel,
             Cap::Butt,
         );
-        assert_eq!(pixel(&mut butt, 9, 0), [255, 255, 255, 255]);
-        assert_eq!(pixel(&mut butt, 10, 0), [0, 0, 0, 0]);
+        assert_eq!(pixel(&mut butt, 9, 0)[3], 128);
+        assert_eq!(pixel(&mut butt, 10, 0)[3], 0);
+    }
+
+    #[test]
+    fn center_ring_uses_half_pixels_on_odd_width() {
+        let mut odd = engine();
+        stroke(
+            &mut odd,
+            &rectangle(1, 1, 11, 11),
+            1,
+            StrokeAlign::Center,
+            Join::Miter { limit_q8: 1024 },
+            Cap::Butt,
+        );
+        assert_eq!(pixel(&mut odd, 0, 5)[3], 128);
+        assert_eq!(pixel(&mut odd, 1, 5)[3], 128);
+        assert_eq!(pixel(&mut odd, 2, 5)[3], 0);
+        assert_eq!(pixel(&mut odd, 6, 5)[3], 0);
+
+        let mut even = engine();
+        stroke(
+            &mut even,
+            &rectangle(1, 1, 11, 11),
+            2,
+            StrokeAlign::Center,
+            Join::Miter { limit_q8: 1024 },
+            Cap::Butt,
+        );
+        assert_eq!(pixel(&mut even, 0, 5)[3], 255);
+        assert_eq!(pixel(&mut even, 1, 5)[3], 255);
+        assert_eq!(pixel(&mut even, 2, 5)[3], 0);
+        assert_eq!(pixel(&mut even, 6, 5)[3], 0);
+    }
+
+    #[test]
+    fn center_stroke_is_symmetric_and_keeps_its_light() {
+        let mut horizontal = engine();
+        stroke(
+            &mut horizontal,
+            &[Verb::Move(0, 5), Verb::Line(10, 5)],
+            1,
+            StrokeAlign::Center,
+            Join::Bevel,
+            Cap::Butt,
+        );
+        let mut diagonal = engine();
+        stroke(
+            &mut diagonal,
+            &[Verb::Move(0, 0), Verb::Line(8, 8)],
+            1,
+            StrokeAlign::Center,
+            Join::Bevel,
+            Cap::Butt,
+        );
+        let horizontal_ink = alpha_sum(&mut horizontal);
+        let diagonal_ink = alpha_sum(&mut diagonal);
+        let length = 10.0_f64;
+        let diagonal_length = 8.0 * 2.0_f64.sqrt();
+        let tolerance = 0.02;
+        assert!(
+            (horizontal_ink - (length * 255.0)).abs() / (length * 255.0) <= tolerance,
+            "horizontal ink {horizontal_ink}"
+        );
+        assert!(
+            (diagonal_ink - (diagonal_length * 255.0)).abs() / (diagonal_length * 255.0)
+                <= tolerance,
+            "diagonal ink {diagonal_ink}"
+        );
+        assert_eq!(pixel(&mut diagonal, 3, 4)[3], pixel(&mut diagonal, 4, 3)[3]);
+        assert_eq!(pixel(&mut diagonal, 3, 3)[3], pixel(&mut diagonal, 4, 4)[3]);
     }
 
     #[test]
@@ -2355,28 +2626,34 @@ mod tests {
     }
 
     #[test]
-    fn round_cap_fills_a_quarter_disc() {
+    fn center_round_cap_fills_a_quarter_disc() {
         let mut engine = engine();
         stroke(
             &mut engine,
             &[Verb::Move(0, 0), Verb::Line(10, 0)],
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Bevel,
             Cap::Round,
         );
-        assert_eq!(pixel(&mut engine, 10, 0)[3], 180);
+        assert_eq!(pixel(&mut engine, 10, 0)[3], 32);
         assert_eq!(pixel(&mut engine, 10, 1)[3], 0);
-        assert_eq!(pixel(&mut engine, 9, 0)[3], 255);
+        assert_eq!(pixel(&mut engine, 9, 0)[3], 128);
     }
 
     #[test]
     fn miter_limit_boundary_is_inclusive() {
         let vertex = PointQ8 { x: 0, y: 0 };
-        assert!(miter_fits((1024, 0), vertex, 1024, 1));
-        assert!(!miter_fits((1280, 0), vertex, 1024, 1));
-        assert!(miter_fits((2048, 0), vertex, 1024, 2));
-        assert!(!miter_fits((2049, 0), vertex, 1024, 2));
+        assert!(miter_fits((1024, 0), vertex, 1024, 256, 1));
+        assert!(!miter_fits((1280, 0), vertex, 1024, 256, 1));
+        assert!(miter_fits((2048, 0), vertex, 1024, 512, 1));
+        assert!(!miter_fits((2049, 0), vertex, 1024, 512, 1));
+        // `Center` measures the full miter: twice the half-offset distance.
+        assert!(miter_fits((512, 0), vertex, 1024, 256, 2));
+        assert!(!miter_fits((513, 0), vertex, 1024, 256, 2));
+        // A fractional width scales the same threshold: `1024 · 205 / 256`.
+        assert!(miter_fits((820, 0), vertex, 1024, 205, 1));
+        assert!(!miter_fits((821, 0), vertex, 1024, 205, 1));
     }
 
     #[test]
@@ -2387,10 +2664,11 @@ mod tests {
                 verbs: &rectangle(0, 0, 10, 10),
                 fill: None,
                 stroke: Some(Stroke {
-                    width: 1,
+                    width_q8: 256,
                     align: StrokeAlign::Outside,
                     join: Join::Miter { limit_q8: 1024 },
                     cap: Cap::Butt,
+                    peak: Peak::Light,
                 }),
             })
             .unwrap();
@@ -2415,10 +2693,13 @@ mod tests {
         let error = engine
             .submit(Request::StrokePath {
                 verbs: &rectangle(0, 0, 10, 10),
-                width: 1,
-                align: StrokeAlign::Inside,
-                join: Join::Miter { limit_q8: 1024 },
-                cap: Cap::Butt,
+                stroke: Stroke {
+                    width_q8: 256,
+                    align: StrokeAlign::Inside,
+                    join: Join::Miter { limit_q8: 1024 },
+                    cap: Cap::Butt,
+                    peak: Peak::Light,
+                },
                 color: white(),
                 blend: None,
             })
@@ -2437,10 +2718,11 @@ mod tests {
         let rect = measure_stroke(
             &verbs,
             &Stroke {
-                width: 1,
+                width_q8: 256,
                 align: StrokeAlign::Inside,
                 join: Join::Miter { limit_q8: 1024 },
                 cap: Cap::Butt,
+                peak: Peak::Light,
             },
         )
         .unwrap();
@@ -2456,16 +2738,54 @@ mod tests {
     }
 
     #[test]
+    fn stroke_outside_rejects_open_contours() {
+        let open = [Verb::Move(0, 0), Verb::Line(10, 0)];
+        assert_eq!(
+            measure_stroke(
+                &open,
+                &Stroke {
+                    width_q8: 256,
+                    align: StrokeAlign::Outside,
+                    join: Join::Bevel,
+                    cap: Cap::Butt,
+                    peak: Peak::Light,
+                }
+            )
+            .unwrap_err(),
+            Error::BadPath
+        );
+        let mut engine = engine();
+        assert_eq!(
+            engine
+                .submit(Request::StrokePath {
+                    verbs: &open,
+                    stroke: Stroke {
+                        width_q8: 256,
+                        align: StrokeAlign::Outside,
+                        join: Join::Bevel,
+                        cap: Cap::Butt,
+                        peak: Peak::Light,
+                    },
+                    color: white(),
+                    blend: None,
+                })
+                .unwrap_err(),
+            Error::BadPath
+        );
+    }
+
+    #[test]
     fn stroke_inside_rejects_open_contours() {
         let open = [Verb::Move(0, 0), Verb::Line(10, 0)];
         assert_eq!(
             measure_stroke(
                 &open,
                 &Stroke {
-                    width: 1,
+                    width_q8: 256,
                     align: StrokeAlign::Inside,
                     join: Join::Bevel,
                     cap: Cap::Butt,
+                    peak: Peak::Light,
                 }
             )
             .unwrap_err(),
@@ -2476,10 +2796,13 @@ mod tests {
         let error = engine
             .submit(Request::StrokePath {
                 verbs: &open,
-                width: 1,
-                align: StrokeAlign::Inside,
-                join: Join::Bevel,
-                cap: Cap::Butt,
+                stroke: Stroke {
+                    width_q8: 256,
+                    align: StrokeAlign::Inside,
+                    join: Join::Bevel,
+                    cap: Cap::Butt,
+                    peak: Peak::Light,
+                },
                 color: white(),
                 blend: None,
             })
@@ -2493,10 +2816,13 @@ mod tests {
         let error = engine
             .submit(Request::StrokePath {
                 verbs: &rectangle(0, 0, 10, 10),
-                width: 0,
-                align: StrokeAlign::Outside,
-                join: Join::Miter { limit_q8: 1024 },
-                cap: Cap::Butt,
+                stroke: Stroke {
+                    width_q8: 0,
+                    align: StrokeAlign::Outside,
+                    join: Join::Miter { limit_q8: 1024 },
+                    cap: Cap::Butt,
+                    peak: Peak::Light,
+                },
                 color: white(),
                 blend: None,
             })
@@ -2522,13 +2848,15 @@ mod tests {
             &mut engine,
             &[Verb::Move(0, 0), Verb::Line(8, 8)],
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Bevel,
             Cap::Butt,
         );
-        let alpha = pixel(&mut engine, 3, 4)[3];
-        assert!(alpha > 0 && alpha < 255);
-        assert_eq!(pixel(&mut engine, 4, 3)[3], 0);
+        let first = pixel(&mut engine, 3, 4)[3];
+        let second = pixel(&mut engine, 4, 3)[3];
+        assert!(first > 0 && first < 255, "partial edge coverage: {first}");
+        assert_eq!(first, second, "a centered diagonal is symmetric");
+        assert!(pixel(&mut engine, 4, 4)[3] > first, "the centre is denser");
     }
 
     #[test]
@@ -2605,7 +2933,7 @@ mod tests {
             &mut miter,
             &verbs,
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Miter { limit_q8: 1024 },
             Cap::Butt,
         );
@@ -2616,126 +2944,128 @@ mod tests {
             &mut bevel,
             &verbs,
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Bevel,
             Cap::Butt,
         );
         let bevel_frame = frame_bytes(&mut bevel);
 
         assert_eq!(miter_frame, bevel_frame);
-        assert_eq!(pixel(&mut miter, 5, 10)[3], 255);
+        assert!(
+            pixel(&mut miter, 5, 10)[3] > 128,
+            "the joined band is painted"
+        );
     }
 
     #[test]
-    fn half_turn_round_join_fills_the_outside_half_disc() {
+    fn center_half_turn_round_join_fills_the_tip() {
         let mut engine = engine();
         stroke(
             &mut engine,
             &[Verb::Move(0, 5), Verb::Line(10, 5), Verb::Line(5, 5)],
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Round,
             Cap::Butt,
         );
-        assert_eq!(pixel(&mut engine, 10, 5)[3], 180);
-        assert_eq!(pixel(&mut engine, 10, 4)[3], 180);
-        assert_eq!(pixel(&mut engine, 9, 5)[3], 255);
-        assert_eq!(pixel(&mut engine, 9, 4)[3], 255);
+        let tip_low = pixel(&mut engine, 10, 5)[3];
+        let tip_high = pixel(&mut engine, 10, 4)[3];
+        assert!(tip_low > 0 && tip_low < 128, "tip low {tip_low}");
+        assert!(tip_high > 0 && tip_high < 128, "tip high {tip_high}");
+        assert_eq!(pixel(&mut engine, 9, 5)[3], 128);
+        assert_eq!(pixel(&mut engine, 9, 4)[3], 128);
         assert_eq!(pixel(&mut engine, 11, 5)[3], 0);
     }
 
     #[test]
     fn measure_stroke_includes_miter_arc_and_square() {
-        let v = [Verb::Move(0, 0), Verb::Line(10, 10), Verb::Line(20, 0)];
+        let triangle = [
+            Verb::Move(0, 0),
+            Verb::Line(10, 10),
+            Verb::Line(20, 0),
+            Verb::Close,
+        ];
         let measure_with = |join: Join, width: u32| {
             measure_stroke(
-                &v,
+                &triangle,
                 &Stroke {
-                    width,
+                    width_q8: width * 256,
                     align: StrokeAlign::Outside,
                     join,
                     cap: Cap::Butt,
+                    peak: Peak::Light,
                 },
             )
             .unwrap()
         };
 
-        let miter = measure_with(Join::Miter { limit_q8: 1024 }, 1);
         assert_eq!(
-            miter,
-            Rect {
-                x1: -1,
-                y1: 0,
-                x2: 20,
-                y2: 11
-            }
-        );
-        let bevel = measure_with(Join::Bevel, 1);
-        assert_eq!(
-            bevel,
-            Rect {
-                x1: -1,
-                y1: 0,
-                x2: 20,
-                y2: 10
-            }
-        );
-        let round = measure_with(Join::Round, 4);
-        assert_eq!(
-            round,
+            measure_with(Join::Miter { limit_q8: 1024 }, 1),
             Rect {
                 x1: -3,
-                y1: 0,
+                y1: -1,
                 x2: 22,
+                y2: 11
+            },
+            "miter spike is included"
+        );
+        assert_eq!(
+            measure_with(Join::Bevel, 1),
+            Rect {
+                x1: -1,
+                y1: -1,
+                x2: 20,
+                y2: 10
+            },
+            "bevel does not include the spike"
+        );
+        assert_eq!(
+            measure_with(Join::Round, 4),
+            Rect {
+                x1: -4,
+                y1: -4,
+                x2: 23,
                 y2: 13
             }
         );
-        let bevel_wide = measure_with(Join::Bevel, 4);
         assert_eq!(
-            bevel_wide,
+            measure_with(Join::Bevel, 4),
             Rect {
                 x1: -3,
-                y1: 0,
+                y1: -4,
                 x2: 22,
                 y2: 12
             }
         );
 
         let line = [Verb::Move(0, 5), Verb::Line(10, 5)];
-        let butt = measure_stroke(
-            &line,
-            &Stroke {
-                width: 1,
-                align: StrokeAlign::Outside,
-                join: Join::Bevel,
-                cap: Cap::Butt,
-            },
-        )
-        .unwrap();
+        let measure_line = |cap: Cap| {
+            measure_stroke(
+                &line,
+                &Stroke {
+                    width_q8: 256,
+                    align: StrokeAlign::Center,
+                    join: Join::Bevel,
+                    cap,
+                    peak: Peak::Light,
+                },
+            )
+            .unwrap()
+        };
         assert_eq!(
-            butt,
+            measure_line(Cap::Butt),
             Rect {
                 x1: 0,
-                y1: 5,
+                y1: 4,
                 x2: 9,
                 y2: 5
             }
         );
-        let square = measure_stroke(
-            &line,
-            &Stroke {
-                width: 1,
-                align: StrokeAlign::Outside,
-                join: Join::Bevel,
-                cap: Cap::Square,
-            },
-        )
-        .unwrap();
         assert_eq!(
-            square,
+            measure_line(Cap::Square),
             Rect {
                 x1: -1,
-                y1: 5,
+                y1: 4,
                 x2: 10,
                 y2: 5
             }
@@ -2751,12 +3081,12 @@ mod tests {
             &mut square,
             &verbs,
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Bevel,
             Cap::Square,
         );
-        assert_eq!(pixel(&mut square, 4, 5)[3], 255);
-        assert_eq!(pixel(&mut square, 10, 5)[3], 255);
+        assert_eq!(pixel(&mut square, 4, 5)[3], 64);
+        assert_eq!(pixel(&mut square, 10, 5)[3], 64);
         assert_eq!(pixel(&mut square, 11, 5)[3], 0);
 
         let mut butt = engine();
@@ -2764,12 +3094,12 @@ mod tests {
             &mut butt,
             &verbs,
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Bevel,
             Cap::Butt,
         );
         assert_eq!(pixel(&mut butt, 4, 5)[3], 0);
-        assert_eq!(pixel(&mut butt, 9, 5)[3], 255);
+        assert_eq!(pixel(&mut butt, 9, 5)[3], 128);
         assert_eq!(pixel(&mut butt, 10, 5)[3], 0);
 
         let mut round = engine();
@@ -2777,11 +3107,11 @@ mod tests {
             &mut round,
             &verbs,
             1,
-            StrokeAlign::Outside,
+            StrokeAlign::Center,
             Join::Bevel,
             Cap::Round,
         );
-        assert_eq!(pixel(&mut round, 4, 5)[3], 180);
-        assert_eq!(pixel(&mut round, 10, 5)[3], 180);
+        assert_eq!(pixel(&mut round, 4, 5)[3], 32);
+        assert_eq!(pixel(&mut round, 10, 5)[3], 32);
     }
 }

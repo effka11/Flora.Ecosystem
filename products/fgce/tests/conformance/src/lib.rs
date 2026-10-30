@@ -260,6 +260,7 @@ impl Harness {
             rect: area,
             color,
             blend: None,
+            radius: None,
         });
     }
 
@@ -297,10 +298,39 @@ impl Harness {
     ) {
         self.ok(Request::StrokePath {
             verbs,
-            width,
-            align,
-            join,
-            cap,
+            stroke: fgce::Stroke {
+                width_q8: width * fgce::SPX_Q8,
+                align,
+                join,
+                cap,
+                peak: fgce::Peak::Light,
+            },
+            color,
+            blend: None,
+        });
+    }
+
+    /// `StrokePath` with a 1/256 sPx width and an explicit peak (§8.4).
+    #[allow(clippy::too_many_arguments)]
+    pub fn stroke_path_q8(
+        &mut self,
+        verbs: &[fgce::Verb],
+        width_q8: u32,
+        align: fgce::StrokeAlign,
+        join: fgce::Join,
+        cap: fgce::Cap,
+        peak: fgce::Peak,
+        color: Color,
+    ) {
+        self.ok(Request::StrokePath {
+            verbs,
+            stroke: fgce::Stroke {
+                width_q8,
+                align,
+                join,
+                cap,
+                peak,
+            },
             color,
             blend: None,
         });
@@ -318,10 +348,13 @@ impl Harness {
     ) -> Error {
         self.err(Request::StrokePath {
             verbs,
-            width,
-            align,
-            join,
-            cap,
+            stroke: fgce::Stroke {
+                width_q8: width * fgce::SPX_Q8,
+                align,
+                join,
+                cap,
+                peak: fgce::Peak::Light,
+            },
             color,
             blend: None,
         })
@@ -406,6 +439,7 @@ impl Harness {
             rect: area,
             color,
             blend: Some(blend),
+            radius: None,
         });
     }
 

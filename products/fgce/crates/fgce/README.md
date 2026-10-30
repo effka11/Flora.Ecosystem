@@ -15,7 +15,7 @@ there. The manifest uses literal fields and never inherits from a workspace.
 
 ```toml
 [dependencies]
-fgce = { path = "third_party/fgce", version = "=0.1.0-alpha" }
+fgce = { path = "third_party/fgce", version = "=0.2.0" }
 ```
 
 The exact `=` is required: replacing the directory without updating the version
