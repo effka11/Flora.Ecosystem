@@ -1,5 +1,5 @@
 /**
- * Binary wire protocol of the FGCE host adapter (`docs/wasm-abi.md`, v1).
+ * Binary wire protocol of the FGCE host adapter (`docs/wasm-abi.md`, v3).
  *
  * Little-endian. Variable payloads (`verbs`, `children`, `Upload` bytes) are
  * appended to the request and addressed by offsets relative to its start.
@@ -32,8 +32,36 @@ export type Verb =
 export type Fill = { rule: "nonZero" | "evenOdd" };
 export type Join = { kind: "miter"; limitQ8: number } | { kind: "bevel" } | { kind: "round" };
 export type Cap = "butt" | "square" | "round";
-export type StrokeAlign = "inside" | "outside";
-export type Stroke = { width: number; align: StrokeAlign; join: Join; cap: Cap };
+export type StrokeAlign = "inside" | "outside" | "center";
+export type Peak = "light" | "nominal";
+
+/** One whole sPx in the 1/256 units of `Stroke.widthQ8` (`fgce.md` §8.4). */
+export const STROKE_SPX_Q8 = 256;
+
+/** Whole sPx to the `widthQ8` field: `strokeWidth(0.8) === 205`. */
+export const strokeWidth = (pixels: number): number =>
+  Math.round(pixels * STROKE_SPX_Q8);
+
+export type Stroke = {
+  /** Perpendicular width in 1/256 sPx; `0` is `BadStroke`. */
+  widthQ8: number;
+  align: StrokeAlign;
+  join: Join;
+  cap: Cap;
+  peak?: Peak;
+};
+
+export type DebugGridStyle = {
+  base: Color;
+  tip: Color;
+  /** Label scale start; omitted inherits `base`. */
+  labelBase?: Color;
+  /** Label scale end; omitted inherits `tip`. */
+  labelTip?: Color;
+  labelAlpha: number;
+  labelScale: number;
+};
+export type DebugPoint = { x: number; y: number };
 
 export type PixelFormat = "rgb8" | "rgba8" | "alpha8";
 export type AlphaMode = "premul" | "straight";
@@ -45,7 +73,8 @@ export type EntityKind =
   | { kind: "glyph"; format: PixelFormat; image: number; tint?: Color }
   | { kind: "vector"; verbs: Verb[]; fill?: Fill; stroke?: Stroke; color: Color }
   | { kind: "flat"; color: Color }
-  | { kind: "box"; fill?: Fill; stroke?: Stroke; color: Color };
+  | { kind: "box"; fill?: Fill; stroke?: Stroke; color: Color }
+  | { kind: "empty" };
 
 export type EntityOptions = { onGrid?: boolean; align?: Align; blend?: Blend; radius?: Radius };
 export type BoxOptions = { pin?: Pin; snap?: boolean; inset?: Inset };
@@ -284,10 +313,11 @@ const ALPHA_CODE: Record<AlphaMode, number> = { premul: 0, straight: 1 };
 const BLEND_CODE: Record<Blend, number> = { srcOver: 0, src: 1, clear: 2, dstOut: 3 };
 const RULE_CODE: Record<Fill["rule"], number> = { nonZero: 0, evenOdd: 1 };
 const SAMPLE_CODE: Record<Sample, number> = { crisp: 0, area: 1 };
-const STROKE_ALIGN_CODE: Record<StrokeAlign, number> = { inside: 0, outside: 1 };
+const STROKE_ALIGN_CODE: Record<StrokeAlign, number> = { inside: 0, outside: 1, center: 2 };
+const PEAK_CODE: Record<Peak, number> = { light: 0, nominal: 1 };
 const CAP_CODE: Record<Cap, number> = { butt: 0, square: 1, round: 2 };
 const VERB_CODE = { move: 0, line: 1, quad: 2, cubic: 3, close: 4 } as const;
-const ENTITY_CODE = { photo: 0, glyph: 1, vector: 2, flat: 3, box: 4 } as const;
+const ENTITY_CODE = { photo: 0, glyph: 1, vector: 2, flat: 3, box: 4, empty: 5 } as const;
 
 export function writeRect(writer: Writer, rect: Rect): void {
   writer.i32(rect.x1);
@@ -368,7 +398,7 @@ function writeOptionalFill(writer: Writer, fill: Fill | undefined): void {
 }
 
 function writeStroke(writer: Writer, stroke: Stroke): void {
-  writer.u32(stroke.width);
+  writer.u32(stroke.widthQ8);
   writer.u8(STROKE_ALIGN_CODE[stroke.align]);
   if (stroke.join.kind === "miter") {
     writer.u8(0);
@@ -377,6 +407,7 @@ function writeStroke(writer: Writer, stroke: Stroke): void {
     writer.u8(stroke.join.kind === "bevel" ? 1 : 2);
   }
   writer.u8(CAP_CODE[stroke.cap]);
+  writer.u8(PEAK_CODE[stroke.peak ?? "light"]);
 }
 
 function writeOptionalStroke(writer: Writer, stroke: Stroke | undefined): void {
@@ -457,6 +488,8 @@ function writeKind(writer: Writer, kind: EntityKind): void {
       writeOptionalStroke(writer, kind.stroke);
       writeColor(writer, kind.color);
       break;
+    case "empty":
+      break;
   }
 }
 
@@ -487,6 +520,12 @@ export const OP = {
   blit: 24,
   fillPath: 25,
   strokePath: 26,
+  drawTree: 27,
+  strokeRoundRect: 28,
+  fillLattice: 29,
+  debugGrid: 30,
+  debugHover: 31,
+  debugLabel: 32,
 } as const;
 
 export function encodeInfo(): Uint8Array {
@@ -552,6 +591,12 @@ export function encodeEnd(): Uint8Array {
   return writer.finish();
 }
 
+export function encodeDrawTree(): Uint8Array {
+  const writer = new Writer(1);
+  writer.u8(OP.drawTree);
+  return writer.finish();
+}
+
 export function encodeReadPixels(rect: Rect, alpha: AlphaMode): Uint8Array {
   const writer = new Writer(22);
   writer.u8(OP.readPixels);
@@ -588,10 +633,33 @@ export function encodeDrop(id: number): Uint8Array {
   return writer.finish();
 }
 
-export function encodeFillRect(rect: Rect, color: Color, blend?: Blend): Uint8Array {
-  const writer = new Writer(26);
+export function encodeFillRect(
+  rect: Rect,
+  color: Color,
+  blend?: Blend,
+  radius?: Radius,
+): Uint8Array {
+  const writer = new Writer(40);
   writer.u8(OP.fillRect);
   writeRect(writer, rect);
+  writeColor(writer, color);
+  writeOptionalBlend(writer, blend);
+  writeOptionalRadius(writer, radius);
+  return writer.finish();
+}
+
+export function encodeStrokeRoundRect(
+  rect: Rect,
+  radius: Radius | undefined,
+  stroke: Stroke,
+  color: Color,
+  blend?: Blend,
+): Uint8Array {
+  const writer = new Writer(48);
+  writer.u8(OP.strokeRoundRect);
+  writeRect(writer, rect);
+  writeOptionalRadius(writer, radius);
+  writeStroke(writer, stroke);
   writeColor(writer, color);
   writeOptionalBlend(writer, blend);
   return writer.finish();
@@ -759,6 +827,26 @@ export function encodeFillPath(verbs: Verb[], rule: Fill["rule"], color: Color, 
   return writer.finish();
 }
 
+export function encodeFillLattice(
+  rect: Rect,
+  step: number,
+  primaryStep: number | undefined,
+  fineColor: Color,
+  primaryColor: Color,
+  blend?: Blend,
+): Uint8Array {
+  const writer = new Writer(44);
+  writer.u8(OP.fillLattice);
+  writeRect(writer, rect);
+  writer.u32(step);
+  writer.bool(primaryStep !== undefined);
+  if (primaryStep !== undefined) writer.u32(primaryStep);
+  writeColor(writer, fineColor);
+  writeColor(writer, primaryColor);
+  writeOptionalBlend(writer, blend);
+  return writer.finish();
+}
+
 export function encodeStrokePath(
   verbs: Verb[],
   stroke: Stroke,
@@ -771,6 +859,41 @@ export function encodeStrokePath(
   writeStroke(writer, stroke);
   writeColor(writer, color);
   writeOptionalBlend(writer, blend);
+  return writer.finish();
+}
+
+export function encodeDebugGrid(style?: DebugGridStyle): Uint8Array {
+  const writer = new Writer(24);
+  writer.u8(OP.debugGrid);
+  writer.bool(style !== undefined);
+  if (style) {
+    writeColor(writer, style.base);
+    writeColor(writer, style.tip);
+    writeOptionalColor(writer, style.labelBase);
+    writeOptionalColor(writer, style.labelTip);
+    writer.u8(style.labelAlpha);
+    writer.u8(style.labelScale);
+  }
+  return writer.finish();
+}
+
+export function encodeDebugHover(point?: DebugPoint): Uint8Array {
+  const writer = new Writer(9);
+  writer.u8(OP.debugHover);
+  writer.bool(point !== undefined);
+  if (point) {
+    writer.i32(point.x);
+    writer.i32(point.y);
+  }
+  return writer.finish();
+}
+
+export function encodeDebugLabel(id: number, text?: string): Uint8Array {
+  const writer = new Writer(16);
+  writer.u8(OP.debugLabel);
+  writer.u32(id);
+  writer.bool(text !== undefined);
+  if (text !== undefined) writer.deferredBlob(new TextEncoder().encode(text));
   return writer.finish();
 }
 

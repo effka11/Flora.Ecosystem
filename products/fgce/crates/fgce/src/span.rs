@@ -27,23 +27,29 @@ pub(crate) fn paint(row: &mut [u8], x1: i32, x2: i32, color: Color, coverage: u1
     if coverage == 0 {
         return;
     }
-    let src = if coverage >= FULL_COVER {
-        Premul::from_color(color)
+    let a = if coverage >= FULL_COVER {
+        color.a
     } else {
-        let a = (cover_alpha(coverage) as u32 * color.a as u32 + 127) / 255;
-        Premul {
-            r: color::pm(color.r, a as u8),
-            g: color::pm(color.g, a as u8),
-            b: color::pm(color.b, a as u8),
-            a: a as u8,
-        }
+        ((cover_alpha(coverage) as u32 * color.a as u32 + 127) / 255) as u8
     };
-    write_row(row, x1, x2, src, blend, coverage);
+    let src = Premul::from_color(Color {
+        r: color.r,
+        g: color.g,
+        b: color.b,
+        a,
+    });
+    write_row(row, x1, x2, src, color, blend, coverage);
 }
 
 /// Paints an already premultiplied texel into one row at full coverage.
 pub(crate) fn paint_premul(row: &mut [u8], x1: i32, x2: i32, src: Premul, blend: Blend) {
-    write_row(row, x1, x2, src, blend, FULL_COVER);
+    let straight = Color {
+        r: color::straight(src.r, src.a),
+        g: color::straight(src.g, src.a),
+        b: color::straight(src.b, src.a),
+        a: src.a,
+    };
+    write_row(row, x1, x2, src, straight, blend, FULL_COVER);
 }
 
 /// Copies a premultiplied span into one row; the caller guarantees the ranges.
@@ -67,7 +73,15 @@ pub(crate) fn straight_row(src: &[u8], out: &mut Vec<u8>) {
     }
 }
 
-fn write_row(row: &mut [u8], x1: i32, x2: i32, src: Premul, blend: Blend, coverage: u16) {
+fn write_row(
+    row: &mut [u8],
+    x1: i32,
+    x2: i32,
+    src: Premul,
+    straight: Color,
+    blend: Blend,
+    coverage: u16,
+) {
     if x2 < x1 {
         return;
     }
@@ -101,7 +115,7 @@ fn write_row(row: &mut [u8], x1: i32, x2: i32, src: Premul, blend: Blend, covera
             if src.a == 255 {
                 write_solid(dst, src);
             } else {
-                write_over(dst, src);
+                write_over(dst, straight, src.a);
             }
         }
     }
@@ -122,16 +136,37 @@ fn write_solid(dst: &mut [u8], src: Premul) {
     }
 }
 
-fn write_over(dst: &mut [u8], src: Premul) {
+/// `SrcOver` of a partially opaque source. Channels are composed in linear light
+/// (`fgce.md` §6); alpha keeps the byte `over` formula. A transparent destination
+/// is the source itself, so no round trip through the transfer tables happens.
+fn write_over(dst: &mut [u8], src: Color, src_a: u8) {
     for pixel in dst.chunks_exact_mut(4) {
-        let dst_pixel = Premul {
-            r: pixel[0],
-            g: pixel[1],
-            b: pixel[2],
-            a: pixel[3],
-        };
-        let mixed = src.over(dst_pixel);
-        pixel.copy_from_slice(&[mixed.r, mixed.g, mixed.b, mixed.a]);
+        let dst_a = pixel[3];
+        if dst_a == 0 {
+            pixel.copy_from_slice(&[
+                color::pm(src.r, src_a),
+                color::pm(src.g, src_a),
+                color::pm(src.b, src_a),
+                src_a,
+            ]);
+            continue;
+        }
+        let out_a = color::over(src_a, dst_a, src_a);
+        if out_a == 0 {
+            pixel.copy_from_slice(&[0, 0, 0, 0]);
+            continue;
+        }
+        let mixed = [
+            color::mix_straight(src.r, src_a, color::straight(pixel[0], dst_a), dst_a, out_a),
+            color::mix_straight(src.g, src_a, color::straight(pixel[1], dst_a), dst_a, out_a),
+            color::mix_straight(src.b, src_a, color::straight(pixel[2], dst_a), dst_a, out_a),
+        ];
+        pixel.copy_from_slice(&[
+            color::pm(mixed[0], out_a),
+            color::pm(mixed[1], out_a),
+            color::pm(mixed[2], out_a),
+            out_a,
+        ]);
     }
 }
 
@@ -316,6 +351,45 @@ mod tests {
             Blend::DstOut,
         );
         assert_eq!(pixel(&bytes, 0), [0, 0, 0, 0]);
+
+        let mut untouched = buffer();
+        untouched[0..4].copy_from_slice(&[40, 20, 10, 40]);
+        paint(
+            &mut untouched,
+            0,
+            0,
+            Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            0,
+            Blend::DstOut,
+        );
+        assert_eq!(pixel(&untouched, 0), [40, 20, 10, 40]);
+    }
+
+    #[test]
+    fn dst_out_keeps_premultiplied_invariant() {
+        let mut bytes = buffer();
+        // Premultiplied c = a = 128 is a valid pixel; `DstOut` with cover 128
+        // scales every premul channel, including alpha, by 127/255.
+        bytes[0..4].copy_from_slice(&[128, 128, 128, 128]);
+        paint(
+            &mut bytes,
+            0,
+            0,
+            Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            128,
+            Blend::DstOut,
+        );
+        assert_eq!(pixel(&bytes, 0), [64, 64, 64, 64]);
     }
 
     #[test]

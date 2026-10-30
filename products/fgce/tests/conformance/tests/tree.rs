@@ -7,7 +7,7 @@
 
 use fgce::{
     Align, Cap, Edge, Edges, Entity, EntityKind, Error, Fill, FillRule, ImageId, Inset, Join,
-    NodeId, Pin, PixelFormat, Request, Stroke, StrokeAlign, Verb,
+    NodeId, Peak, Pin, PixelFormat, Request, Stroke, StrokeAlign, Verb,
 };
 use fgce_conformance::{Harness, RED, WHITE, flat, grid, photo, pixels, rect};
 
@@ -654,10 +654,11 @@ fn row_66_vector_branch_needs_its_parameters() {
     h.begin(20, 20);
     let verbs = [Verb::Move(0, 0), Verb::Line(9, 0), Verb::Line(0, 9)];
     let stroke = Some(Stroke {
-        width: 1,
+        width_q8: 256,
         align: StrokeAlign::Outside,
         join: Join::Bevel,
         cap: Cap::Butt,
+        peak: Peak::Light,
     });
     let vector = |fill: Option<Fill>, stroke: Option<Stroke>| Entity {
         id: NodeId(1),
@@ -692,10 +693,11 @@ fn row_66_vector_branch_needs_its_parameters() {
         h.err(Request::Entity(vector(
             None,
             Some(Stroke {
-                width: 0,
+                width_q8: 0,
                 align: StrokeAlign::Outside,
                 join: Join::Bevel,
                 cap: Cap::Butt,
+                peak: Peak::Light,
             })
         ))),
         Error::BadStroke,

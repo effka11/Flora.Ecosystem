@@ -1,13 +1,13 @@
-//! Binary wire protocol of the FGCE host adapter (`docs/wasm-abi.md`, v1).
+//! Binary wire protocol of the FGCE host adapter (`docs/wasm-abi.md`, v3).
 //!
 //! Little-endian. Variable payloads (`verbs`, `children`, `Upload` bytes) are
 //! addressed by offsets **relative to the request buffer**, so the adapter never
 //! casts host pointers: only the request slice itself crosses the FFI boundary.
 
 use fgce::{
-    Align, AlphaMode, Blend, Cap, Color, Edge, Edges, Entity, EntityKind, Error, Fill, FillRule,
-    ImageId, Inset, Join, NodeId, Pin, PixelFormat, Radius, Rect, ReferenceId, Request, Response,
-    Sample, Stroke, StrokeAlign, Verb,
+    Align, AlphaMode, Blend, Cap, Color, DebugGridStyle, DebugPoint, Edge, Edges, Entity,
+    EntityKind, Error, Fill, FillRule, ImageId, Inset, Join, NodeId, Peak, Pin, PixelFormat,
+    Radius, Rect, ReferenceId, Request, Response, Sample, Stroke, StrokeAlign, Verb,
 };
 
 pub(crate) const OP_INFO: u8 = 1;
@@ -36,6 +36,12 @@ pub(crate) const OP_CLIP_POP: u8 = 23;
 pub(crate) const OP_BLIT: u8 = 24;
 pub(crate) const OP_FILL_PATH: u8 = 25;
 pub(crate) const OP_STROKE_PATH: u8 = 26;
+pub(crate) const OP_DRAW_TREE: u8 = 27;
+pub(crate) const OP_STROKE_ROUND_RECT: u8 = 28;
+pub(crate) const OP_FILL_LATTICE: u8 = 29;
+pub(crate) const OP_DEBUG_GRID: u8 = 30;
+pub(crate) const OP_DEBUG_HOVER: u8 = 31;
+pub(crate) const OP_DEBUG_LABEL: u8 = 32;
 
 pub(crate) const KIND_NONE: u8 = 0;
 pub(crate) const KIND_INFO: u8 = 1;
@@ -81,6 +87,7 @@ pub(crate) enum Decoded {
         height: u32,
     },
     End,
+    DrawTree,
     ReadPixels {
         rect: Rect,
         alpha: AlphaMode,
@@ -101,6 +108,32 @@ pub(crate) enum Decoded {
         rect: Rect,
         color: Color,
         blend: Option<Blend>,
+        radius: Option<Radius>,
+    },
+    StrokeRoundRect {
+        rect: Rect,
+        radius: Option<Radius>,
+        stroke: Stroke,
+        color: Color,
+        blend: Option<Blend>,
+    },
+    FillLattice {
+        rect: Rect,
+        step: u32,
+        primary_step: Option<u32>,
+        fine_color: Color,
+        primary_color: Color,
+        blend: Option<Blend>,
+    },
+    DebugGrid {
+        style: Option<DebugGridStyle>,
+    },
+    DebugHover {
+        point: Option<DebugPoint>,
+    },
+    DebugLabel {
+        id: NodeId,
+        text: Option<String>,
     },
     Entity(EntityOwned),
     Group(BoxOwned),
@@ -192,6 +225,7 @@ pub(crate) enum KindOwned {
         stroke: Option<Stroke>,
         color: Color,
     },
+    Empty,
 }
 
 pub(crate) struct BoxOwned {
@@ -405,10 +439,11 @@ fn read_verb(reader: &mut Reader<'_>) -> Result<Verb, Error> {
 }
 
 fn read_stroke(reader: &mut Reader<'_>) -> Result<Stroke, Error> {
-    let width = reader.u32()?;
+    let width_q8 = reader.u32()?;
     let align = match reader.u8()? {
         0 => StrokeAlign::Inside,
         1 => StrokeAlign::Outside,
+        2 => StrokeAlign::Center,
         _ => return Err(Error::BufferLayout),
     };
     let join = match reader.u8()? {
@@ -425,11 +460,17 @@ fn read_stroke(reader: &mut Reader<'_>) -> Result<Stroke, Error> {
         2 => Cap::Round,
         _ => return Err(Error::BufferLayout),
     };
+    let peak = match reader.u8()? {
+        0 => Peak::Light,
+        1 => Peak::Nominal,
+        _ => return Err(Error::BufferLayout),
+    };
     Ok(Stroke {
-        width,
+        width_q8,
         align,
         join,
         cap,
+        peak,
     })
 }
 
@@ -495,6 +536,7 @@ fn read_kind(data: &[u8], reader: &mut Reader<'_>) -> Result<KindOwned, Error> {
             stroke: read_opt(reader, read_stroke)?,
             color: read_color(reader)?,
         }),
+        5 => Ok(KindOwned::Empty),
         _ => Err(Error::BufferLayout),
     }
 }
@@ -539,6 +581,7 @@ pub(crate) fn decode_request(data: &[u8]) -> Result<Decoded, Error> {
             height: reader.u32()?,
         },
         OP_END => Decoded::End,
+        OP_DRAW_TREE => Decoded::DrawTree,
         OP_READ_PIXELS => Decoded::ReadPixels {
             rect: read_rect(&mut reader)?,
             alpha: match reader.u8()? {
@@ -577,6 +620,22 @@ pub(crate) fn decode_request(data: &[u8]) -> Result<Decoded, Error> {
         OP_FILL_RECT => Decoded::FillRect {
             rect: read_rect(&mut reader)?,
             color: read_color(&mut reader)?,
+            blend: read_opt(&mut reader, read_blend)?,
+            radius: read_opt(&mut reader, read_radius)?,
+        },
+        OP_STROKE_ROUND_RECT => Decoded::StrokeRoundRect {
+            rect: read_rect(&mut reader)?,
+            radius: read_opt(&mut reader, read_radius)?,
+            stroke: read_stroke(&mut reader)?,
+            color: read_color(&mut reader)?,
+            blend: read_opt(&mut reader, read_blend)?,
+        },
+        OP_FILL_LATTICE => Decoded::FillLattice {
+            rect: read_rect(&mut reader)?,
+            step: reader.u32()?,
+            primary_step: read_opt(&mut reader, |reader| reader.u32())?,
+            fine_color: read_color(&mut reader)?,
+            primary_color: read_color(&mut reader)?,
             blend: read_opt(&mut reader, read_blend)?,
         },
         OP_ENTITY => Decoded::Entity(EntityOwned {
@@ -647,6 +706,29 @@ pub(crate) fn decode_request(data: &[u8]) -> Result<Decoded, Error> {
             color: read_color(&mut reader)?,
             blend: read_opt(&mut reader, read_blend)?,
         },
+        OP_DEBUG_GRID => Decoded::DebugGrid {
+            style: read_opt(&mut reader, read_debug_style)?,
+        },
+        OP_DEBUG_HOVER => Decoded::DebugHover {
+            point: read_opt(&mut reader, |r| {
+                Ok(DebugPoint {
+                    x: r.i32()?,
+                    y: r.i32()?,
+                })
+            })?,
+        },
+        OP_DEBUG_LABEL => {
+            let id = NodeId(reader.u32()?);
+            let text = if reader.bool()? {
+                let offset = reader.u32()?;
+                let len = reader.u32()?;
+                let bytes = sub_slice(data, offset, len)?;
+                Some(String::from_utf8(bytes.to_vec()).map_err(|_| Error::BufferLayout)?)
+            } else {
+                None
+            };
+            Decoded::DebugLabel { id, text }
+        }
         _ => return Err(Error::BufferLayout),
     };
     Ok(decoded)
@@ -656,6 +738,17 @@ fn read_align(reader: &mut Reader<'_>) -> Result<Align, Error> {
     Ok(Align {
         x: reader.i8()?,
         y: reader.i8()?,
+    })
+}
+
+fn read_debug_style(reader: &mut Reader<'_>) -> Result<DebugGridStyle, Error> {
+    Ok(DebugGridStyle {
+        base: read_color(reader)?,
+        tip: read_color(reader)?,
+        label_base: read_opt(reader, read_color)?,
+        label_tip: read_opt(reader, read_color)?,
+        label_alpha: reader.u8()?,
+        label_scale: reader.u8()?,
     })
 }
 
@@ -748,6 +841,7 @@ pub(crate) fn to_request(decoded: &Decoded) -> Request<'_> {
             height: *height,
         },
         Decoded::End => Request::End,
+        Decoded::DrawTree => Request::DrawTree,
         Decoded::ReadPixels { rect, alpha } => Request::ReadPixels {
             rect: *rect,
             alpha: *alpha,
@@ -770,10 +864,50 @@ pub(crate) fn to_request(decoded: &Decoded) -> Request<'_> {
             bytes,
         },
         Decoded::Drop { id } => Request::Drop { id: *id },
-        Decoded::FillRect { rect, color, blend } => Request::FillRect {
+        Decoded::FillRect {
+            rect,
+            color,
+            blend,
+            radius,
+        } => Request::FillRect {
             rect: *rect,
             color: *color,
             blend: *blend,
+            radius: *radius,
+        },
+        Decoded::StrokeRoundRect {
+            rect,
+            radius,
+            stroke,
+            color,
+            blend,
+        } => Request::StrokeRoundRect {
+            rect: *rect,
+            radius: *radius,
+            stroke: *stroke,
+            color: *color,
+            blend: *blend,
+        },
+        Decoded::FillLattice {
+            rect,
+            step,
+            primary_step,
+            fine_color,
+            primary_color,
+            blend,
+        } => Request::FillLattice {
+            rect: *rect,
+            step: *step,
+            primary_step: *primary_step,
+            fine_color: *fine_color,
+            primary_color: *primary_color,
+            blend: *blend,
+        },
+        Decoded::DebugGrid { style } => Request::DebugGrid { style: *style },
+        Decoded::DebugHover { point } => Request::DebugHover(*point),
+        Decoded::DebugLabel { id, text } => Request::DebugLabel {
+            id: *id,
+            text: text.as_deref(),
         },
         Decoded::Entity(entity) => Request::Entity(Entity {
             id: entity.id,
@@ -869,10 +1003,7 @@ pub(crate) fn to_request(decoded: &Decoded) -> Request<'_> {
             blend,
         } => Request::StrokePath {
             verbs,
-            width: stroke.width,
-            align: stroke.align,
-            join: stroke.join,
-            cap: stroke.cap,
+            stroke: *stroke,
             color: *color,
             blend: *blend,
         },
@@ -920,6 +1051,7 @@ fn to_kind(kind: &KindOwned) -> EntityKind<'_> {
             stroke: *stroke,
             color: *color,
         },
+        KindOwned::Empty => EntityKind::Empty,
     }
 }
 

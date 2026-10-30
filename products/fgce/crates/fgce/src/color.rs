@@ -1,4 +1,10 @@
 //! Pure color formulas (`fgce.md` §6).
+//!
+//! The frame stays premultiplied sRGB. A `SrcOver` mix of a partially covered or
+//! partially transparent source is composed in linear light; dense opaque writes
+//! keep the byte formulas unchanged.
+
+use std::sync::OnceLock;
 
 use crate::contract::Color;
 
@@ -20,15 +26,6 @@ impl Premul {
             a: color.a,
         }
     }
-
-    pub(crate) fn over(self, dst: Premul) -> Premul {
-        Premul {
-            r: over(self.r, dst.r, self.a),
-            g: over(self.g, dst.g, self.a),
-            b: over(self.b, dst.b, self.a),
-            a: over(self.a, dst.a, self.a),
-        }
-    }
 }
 
 pub(crate) fn pm(c: u8, a: u8) -> u8 {
@@ -46,6 +43,71 @@ pub(crate) fn straight(c: u8, a: u8) -> u8 {
     } else {
         ((c as u32 * 255 + a as u32 / 2) / a as u32).min(255) as u8
     }
+}
+
+/// sRGB EOTF in 16-bit light: `decode[c]` is `round(65535 * linear(c / 255))`.
+fn decode_table() -> &'static [u16; 256] {
+    static TABLE: OnceLock<[u16; 256]> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut table = [0_u16; 256];
+        for (value, slot) in table.iter_mut().enumerate() {
+            let encoded = value as f64 / 255.0;
+            let linear = if encoded <= 0.040_45 {
+                encoded / 12.92
+            } else {
+                ((encoded + 0.055) / 1.055).powf(2.4)
+            };
+            *slot = (linear * 65535.0).round() as u16;
+        }
+        table
+    })
+}
+
+/// Inverse sRGB transfer for every 16-bit light value.
+fn encode_table() -> &'static [u8; 65536] {
+    static TABLE: OnceLock<Box<[u8; 65536]>> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut table = Box::new([0_u8; 65536]);
+        for (value, slot) in table.iter_mut().enumerate() {
+            let linear = value as f64 / 65535.0;
+            let encoded = if linear <= 0.003_130_8 {
+                12.92 * linear
+            } else {
+                1.055 * linear.powf(1.0 / 2.4) - 0.055
+            };
+            *slot = (encoded * 255.0).round().clamp(0.0, 255.0) as u8;
+        }
+        table
+    })
+}
+
+pub(crate) fn decode(c: u8) -> u16 {
+    decode_table()[c as usize]
+}
+
+pub(crate) fn encode(light: u16) -> u8 {
+    encode_table()[light as usize]
+}
+
+/// Mixes two straight sRGB channels in linear light and returns the encoded
+/// straight result. `out_a` is the premultiplied `over` alpha of the same mix.
+///
+/// ```text
+/// light = (L(src) * src_a * 255 + L(dst) * dst_a * (255 - src_a))
+///         / (255 * out_a)
+/// ```
+///
+/// No intermediate 8-bit quantization happens: both operands enter the formula
+/// as 16-bit light and the result is encoded once.
+pub(crate) fn mix_straight(src: u8, src_a: u8, dst: u8, dst_a: u8, out_a: u8) -> u8 {
+    if out_a == 0 {
+        return 0;
+    }
+    let numerator = decode(src) as u64 * src_a as u64 * 255
+        + decode(dst) as u64 * dst_a as u64 * (255 - src_a) as u64;
+    let denominator = 255 * out_a as u64;
+    let light = ((numerator + denominator / 2) / denominator).min(65535) as u16;
+    encode(light)
 }
 
 #[cfg(test)]
@@ -102,6 +164,32 @@ mod tests {
     }
 
     #[test]
+    fn decode_encode_round_trip_is_within_one() {
+        for value in 0..=255_u8 {
+            let round = encode(decode(value));
+            assert!(
+                round.abs_diff(value) <= 1,
+                "round trip of {value} gave {round}"
+            );
+        }
+    }
+
+    #[test]
+    fn linear_mix_matches_the_oracle_table() {
+        // §12: #AB over #0E in linear light, table of coverage to encoded channel.
+        let cases: [(f64, u8); 4] = [(0.25, 91), (0.44, 118), (0.70, 146), (1.00, 171)];
+        for (coverage, expected) in cases {
+            let src_a = (coverage * 255.0).round() as u8;
+            let out_a = over(src_a, 255, src_a);
+            let mixed = mix_straight(0xAB, src_a, 0x0E, 255, out_a);
+            assert!(
+                mixed.abs_diff(expected) <= 1,
+                "coverage {coverage}: expected {expected}, got {mixed}"
+            );
+        }
+    }
+
+    #[test]
     fn opaque_source_over_writes_source() {
         for value in 0..=255_u8 {
             assert_eq!(over(value, 42, 255), value);
@@ -117,16 +205,14 @@ mod tests {
             a: 200,
         };
         let pixel = Premul::from_color(color);
-        assert_eq!(pixel.r, 157);
-        assert_eq!(pixel.g, 78);
-        assert_eq!(pixel.b, 39);
-        assert_eq!(pixel.a, 200);
-        let zero = Premul {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-        };
-        assert_eq!(pixel.over(zero), pixel);
+        assert_eq!(
+            pixel,
+            Premul {
+                r: 157,
+                g: 78,
+                b: 39,
+                a: 200,
+            }
+        );
     }
 }

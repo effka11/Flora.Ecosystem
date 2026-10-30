@@ -6,7 +6,7 @@
 
 Языконезависимый контракт:
 
-- [`../docs/wasm-abi.md`](../docs/wasm-abi.md) — C ABI v2 и бинарный wire-формат;
+- [`../docs/wasm-abi.md`](../docs/wasm-abi.md) — C ABI v3 и бинарный wire-формат;
 - `ABI_VERSION` в [`../crates/fgce-wasm/src/lib.rs`](../crates/fgce-wasm/src/lib.rs);
 - [`../tests/abi-vectors`](../tests/abi-vectors) — байты запросов и ответов, которые
   обязан воспроизводить каждый клиент.

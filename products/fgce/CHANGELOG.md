@@ -3,6 +3,77 @@
 All notable changes to FGCE are recorded here. The product version is the
 kernel version from `crates/fgce/Cargo.toml`; the wasm ABI has its own number.
 
+## 0.2.0 — 2026-10-30
+
+Second release: closes FGCE-REQ-1…10. Product version `0.2.0`, wasm ABI `3`.
+
+### Added
+
+- **`DrawTree` and `EntityKind::Empty`** — an explicit tree pass inside the
+  frame and a layout-only node that paints nothing.
+- **`StrokeAlign::Center`** — a symmetric band around the contour, including
+  odd widths, joins and caps; open contours are supported only by `Center`.
+- **Immediate rounding** — `FillRect { radius }` and `StrokeRoundRect` through
+  the same rounded-form path as `Box`.
+- **`FillLattice`** — one-sPx lattice lines with an optional primary step.
+- **Debug tree layer** — `DebugGrid`, `DebugHover`, `DebugLabel`, the normative
+  5×7 font (appendix A) and a stateful name map.
+- **`Peak`** — `Stroke.peak` with `Light` (default) and opt-in `Nominal`
+  normalization of the whole stroke by its global coverage peak.
+- **Fractional stroke width** — `Stroke::width_q8` counts 1/256 sPx, so a frame
+  weighs 0.8 (`205`) and a cross 0.7 (`179`). Coverage is the exact band area
+  `width_q8 / 256`, not a pixel-rounded one; `Stroke::px`/`Stroke::q8` are the
+  short constructors. Works in `StrokePath`, `StrokeRoundRect`, `Vector`,
+  `Box { stroke }`, `Measure`, `Inside`/`Outside`/`Center` and both peaks.
+  `width_q8 = 0` is `BadStroke`.
+- **Debug label color scale** — `DebugGridStyle.label_base` and `label_tip`
+  interpolate labels (and their arrows) over `depth / max_depth` independently
+  of the outline colors, then apply `label_alpha`. Unset ends inherit `base`
+  and `tip`, so an existing style keeps its bytes.
+
+### Changed
+
+- **Linear light** — partial coverage and `SrcOver` with `src.a < 255` mix in
+  linear light; opaque pixels stay byte-identical. `DstOut` remains
+  premultiplied bytes.
+- **Rounded `DstOut`** — `FillRect`/`Flat`/`Box` with a radius erase the shape;
+  `Blit`/`Photo`/`Glyph` keep the corner mask.
+- **Icons** — the three Luna icons have new golden numbers; see
+  `docs/migration-0.2.0.md`. The fractional widths give a 13×13 frame at
+  channel 164 / ink 39.043 (`width_q8 = 205`, `Inside`, `Peak::Light`) and an
+  edge-to-edge 11×11 cross at channel 171 / ink 25.663 (`width_q8 = 179`,
+  `Center`, `Peak::Nominal`).
+- **Debug labels** — `label_base = #F2`, `label_tip = #8E`, `label_alpha = 200`
+  over `#0E` render the window label at 217 and the leaf at 127.
+
+### Breaking
+
+- Public `Request`, `EntityKind`, `Stroke` and `Error` enums changed: new
+  variants and fields. Under `0.y` this is a minor release, hence `0.2.0`.
+- `StrokePath` now takes `stroke: Stroke` instead of separate fields;
+  `FillRect` carries `radius`; `stroke?` carries `peak` in the wire format.
+- `Stroke.width` became `Stroke.width_q8` in 1/256 sPx. A host multiplies whole
+  pixels by 256; the core no longer rounds a width to a whole pixel.
+- `DebugGridStyle` grew `label_base` and `label_tip` (optional on the wire).
+- `Inside`/`Outside` on an open contour are `BadPath`; use `Center`.
+- Wasm ABI bumped `2 → 3`: opcodes 27–32, `StrokeAlign` code 2, `Peak` codes
+  0/1, `EntityKind` tag 5, `FillRect.radius`, `stroke?` in q8 units and the two
+  optional label colors. `0.2.0` is not released yet, so these changes stay in
+  ABI `3`.
+
+### Verification
+
+- `cargo test --workspace`: 450 passed, 0 failed, 3 ignored (fixture
+  regeneration) on `x86_64-pc-windows-gnu`, rustc 1.97.0.
+- `cargo fmt --all --check` and
+  `cargo clippy --workspace --all-targets -- -D warnings` are clean.
+- `cargo deny check` passes; `tools/validate-architecture-rust.ps1` passes
+  (53 crates).
+- `scripts/check-standalone.ps1` passes host and `wasm32-unknown-unknown`.
+- TypeScript: `tsc` clean; 12 tests pass without the wasm artifact (2 skipped:
+  wasm smoke and vector regeneration). ABI vectors pin `abi = 3`, the fractional
+  `widthQ8` and the label colors.
+
 ## 0.1.0-alpha — 2026-10-25
 
 First alpha of the portable composition engine.

@@ -1,9 +1,9 @@
 //! One `match` over `Request`; no formulas here (`fgce.md` §13).
 
-use crate::contract::{Blend, Error, Grid, Info, PixelFormat, Request, Response, Stroke};
+use crate::contract::{Blend, Error, Grid, Info, PixelFormat, Request, Response};
 use crate::{
-    Engine, MAX_CLIP, MAX_COORD, MAX_K, MAX_SIDE, MAX_VERTICES, State, VERSION, frame, lattice,
-    place, spx, store, tree, vector,
+    Engine, MAX_CLIP, MAX_COORD, MAX_K, MAX_SIDE, MAX_VERTICES, State, VERSION, debug, fill, frame,
+    lattice, place, round, spx, store, tree, vector,
 };
 
 pub(crate) fn submit<'e, 'r>(
@@ -66,6 +66,7 @@ pub(crate) fn submit<'e, 'r>(
                 height,
             )?;
             engine.scratch.fit(width as usize);
+            engine.tree_drawn = false;
             engine.references.begin(engine.builtin_canon, width, height);
             if engine.references.clear_shows() {
                 engine.live_dirty = true;
@@ -81,21 +82,60 @@ pub(crate) fn submit<'e, 'r>(
             if engine.state != State::Begun {
                 return Err(Error::NotBegun);
             }
-            ensure_live(engine)?;
-            let key = engine.references.active_key();
-            let k = engine.references.context().ok_or(Error::NotBegun)?.k;
-            frame::draw_tree(
-                &mut engine.frame,
-                &engine.store,
-                engine.references.tree(key),
-                &mut engine.scratch,
-                &mut engine.corners,
-                k,
-            )?;
+            if !engine.tree_drawn {
+                draw_tree(engine)?;
+            }
+            if let Some(style) = engine.debug.style {
+                let key = engine.references.active_key();
+                let pin = engine
+                    .references
+                    .live_params()
+                    .map(|params| params.pin)
+                    .unwrap_or(crate::Pin { x: -1, y: 1 });
+                debug::draw(
+                    &mut engine.frame,
+                    engine.references.tree(key),
+                    style,
+                    engine.debug.hover,
+                    &engine.debug.labels,
+                    pin,
+                );
+            }
             Ok(Response::Frame(frame::end(
                 &mut engine.frame,
                 &mut engine.state,
             )?))
+        }
+        Request::DebugGrid { style } => {
+            if let Some(style) = style
+                && !(1..=4).contains(&style.label_scale)
+            {
+                return Err(Error::BufferLayout);
+            }
+            engine.debug.style = style;
+            Ok(Response::None)
+        }
+        Request::DebugHover(point) => {
+            engine.debug.hover = point;
+            Ok(Response::None)
+        }
+        Request::DebugLabel { id, text } => {
+            if let Some(text) = text
+                && text.len() > 64
+            {
+                return Err(Error::BufferLayout);
+            }
+            engine.debug.set_label(id, text);
+            Ok(Response::None)
+        }
+        Request::DrawTree => {
+            if engine.state != State::Begun {
+                return Err(Error::NotBegun);
+            }
+            if !engine.tree_drawn {
+                draw_tree(engine)?;
+            }
+            Ok(Response::None)
         }
         Request::ReadPixels { rect, alpha } => Ok(Response::Pixels(frame::read_pixels(
             &engine.frame,
@@ -151,7 +191,13 @@ pub(crate) fn submit<'e, 'r>(
             engine.store.drop_image(id)?;
             Ok(Response::None)
         }
-        Request::FillRect { rect, color, blend } => {
+        Request::FillRect {
+            rect,
+            color,
+            blend,
+            radius,
+        } => {
+            let k = engine.references.context().ok_or(Error::NotBegun)?.k;
             frame::fill_rect(
                 engine.state,
                 &mut engine.frame,
@@ -159,6 +205,44 @@ pub(crate) fn submit<'e, 'r>(
                 rect,
                 color,
                 blend.unwrap_or(Blend::SrcOver),
+                radius,
+                &mut engine.corners,
+                k,
+            )?;
+            Ok(Response::None)
+        }
+        Request::StrokeRoundRect {
+            rect,
+            radius,
+            stroke,
+            color,
+            blend,
+        } => {
+            if engine.state != State::Begun {
+                return Err(Error::NotBegun);
+            }
+            if stroke.width_q8 == 0 {
+                return Err(Error::BadStroke);
+            }
+            if rect.is_empty() {
+                return Ok(Response::None);
+            }
+            let k = engine.references.context().ok_or(Error::NotBegun)?.k;
+            let value = match radius {
+                Some(radius) => round::resolve(radius, rect, k)?,
+                None => 0,
+            };
+            let mut path = Vec::new();
+            round::path(rect, value, &mut path);
+            frame::stroke_path(
+                engine.state,
+                &mut engine.frame,
+                &engine.clip,
+                &path,
+                &stroke,
+                color,
+                blend.unwrap_or(Blend::SrcOver),
+                &mut engine.scratch,
             )?;
             Ok(Response::None)
         }
@@ -192,6 +276,41 @@ pub(crate) fn submit<'e, 'r>(
             )?;
             Ok(Response::None)
         }
+        Request::FillLattice {
+            rect,
+            step,
+            primary_step,
+            fine_color,
+            primary_color,
+            blend,
+        } => {
+            if engine.state != State::Begun {
+                return Err(Error::NotBegun);
+            }
+            if step == 0 {
+                return Err(Error::BadCell);
+            }
+            if let Some(primary_step) = primary_step
+                && (primary_step == 0 || primary_step % step != 0)
+            {
+                return Err(Error::BadCell);
+            }
+            let lines = fill::LatticeLines {
+                rect,
+                step,
+                primary_step,
+            };
+            frame::fill_lattice(
+                engine.state,
+                &mut engine.frame,
+                &engine.clip,
+                &lines,
+                fine_color,
+                primary_color,
+                blend.unwrap_or(Blend::SrcOver),
+            )?;
+            Ok(Response::None)
+        }
         Request::FillPath {
             verbs,
             rule,
@@ -212,19 +331,10 @@ pub(crate) fn submit<'e, 'r>(
         }
         Request::StrokePath {
             verbs,
-            width,
-            align,
-            join,
-            cap,
+            stroke,
             color,
             blend,
         } => {
-            let stroke = Stroke {
-                width,
-                align,
-                join,
-                cap,
-            };
             frame::stroke_path(
                 engine.state,
                 &mut engine.frame,
@@ -260,6 +370,11 @@ pub(crate) fn submit<'e, 'r>(
             enter_cols,
             enter_rows,
         } => {
+            let removed = engine
+                .references
+                .service_tree(id)
+                .map(|tree| tree.all_ids())
+                .unwrap_or_default();
             engine.references.define(&tree::DefineOp {
                 id,
                 canon_w,
@@ -270,6 +385,9 @@ pub(crate) fn submit<'e, 'r>(
                 enter_cols,
                 enter_rows,
             })?;
+            for id in removed {
+                engine.debug.forget(id);
+            }
             engine.live_dirty = true;
             Ok(Response::None)
         }
@@ -369,12 +487,16 @@ pub(crate) fn submit<'e, 'r>(
         }
         Request::Remove { id } => {
             let key = engine.references.active_key();
+            let removed = engine.references.tree(key).subtree_ids(id);
             let mut next = engine.references.tree(key).clone();
             tree::apply_remove(&mut next, id)?;
             let context = engine.references.context().ok_or(Error::NotBegun)?;
             place::canonical_pass(&mut next, &context);
             tree::validate_tree(&next)?;
             commit(engine, key, next);
+            for id in removed {
+                engine.debug.forget(id);
+            }
             Ok(Response::None)
         }
         Request::Show { id, rect } => {
@@ -424,6 +546,24 @@ pub(crate) fn submit<'e, 'r>(
             )))
         }
     }
+}
+
+/// Paints the active tree once and marks the frame; a second `DrawTree` and a
+/// later `End` are no-ops for the tree (`fgce.md` §5.0, §5.2).
+fn draw_tree(engine: &mut Engine) -> Result<(), Error> {
+    ensure_live(engine)?;
+    let key = engine.references.active_key();
+    let k = engine.references.context().ok_or(Error::NotBegun)?.k;
+    frame::draw_tree(
+        &mut engine.frame,
+        &engine.store,
+        engine.references.tree(key),
+        &mut engine.scratch,
+        &mut engine.corners,
+        k,
+    )?;
+    engine.tree_drawn = true;
+    Ok(())
 }
 
 fn commit(engine: &mut Engine, key: tree::RefKey, next: tree::Tree) {

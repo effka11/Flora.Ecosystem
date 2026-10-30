@@ -19,7 +19,7 @@ Flora.Ecosystem — модульная некоммерческая цифров
 | Класс | Примеры | Суть |
 | --- | --- | --- |
 | **App** (`PRODUCT_CLASS: app`) | Flora.Social; зарезервированы: Flora.Browser, Flora.Email, Flora.OS | Конечное приложение: composition, HTTP, свои доменные модули; опционально `client/` для shells |
-| **Functional** (`PRODUCT_CLASS: functional`) | FIRA, FSA, FSCP, FRC, FGP, FEP, FPP, FGCE Trellis | Headless / **embeddable**: без своего Apps-shell; встраиваемая функция (алгоритм, поиск, крипто, кодек, экономика, governance, personhood, композиция 2D). FGCE Trellis — спека [`documents/fgce/fgce.md`](documents/fgce/fgce.md), крейта в дереве ещё нет |
+| **Functional** (`PRODUCT_CLASS: functional`) | FIRA, FSA, FSCP, FRC, FGP, FEP, FPP, FGCE Trellis | Headless / **embeddable**: без своего Apps-shell; встраиваемая функция (алгоритм, поиск, крипто, кодек, экономика, governance, personhood, композиция 2D). FGCE Trellis — продукт [`products/fgce`](products/fgce) с собственным standalone workspace; нормативная спека — [`products/fgce/docs/fgce.md`](products/fgce/docs/fgce.md), карточка — [`documents/fgce/fgce.md`](documents/fgce/fgce.md) |
 
 Functional **не зависят** от Social; Social (и другие App) зависят от их kernel/contracts (и опционально `*-runtime`). «Вставить в чужой проект» = зависимость на **kernel** (+ contracts). `*-runtime` — Flora-host adapter (sqlx/axum + `flora-shared`); владеет только своими таблицами.
 

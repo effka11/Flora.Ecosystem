@@ -155,6 +155,8 @@ pub struct Fill {
 pub enum StrokeAlign {
     Inside,
     Outside,
+    /// Half of `width` on each side of the contour (`fgce.md` §8.4).
+    Center,
 }
 
 /// Stroke join.
@@ -176,13 +178,99 @@ pub enum Cap {
     Round,
 }
 
-/// Stroke branch of a vector entity or of `Measure`.
+/// Peak normalization of a stroke (`fgce.md` §8.4).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Peak {
+    /// The exact light of the geometry; the current behaviour.
+    #[default]
+    Light,
+    /// Scale the whole stroke so its global coverage peak becomes full coverage
+    /// (`256`); for `width_q8 = 256` that is the nominal 1 sPx.
+    Nominal,
+}
+
+/// One whole sPx in the 1/256 units of `Stroke::width_q8`.
+pub const SPX_Q8: u32 = 256;
+
+/// Stroke branch of a vector entity or of `Measure` (`fgce.md` §8.4).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Stroke {
-    pub width: u32,
+    /// Perpendicular width in 1/256 sPx; `0` is `BadStroke`.
+    pub width_q8: u32,
     pub align: StrokeAlign,
     pub join: Join,
     pub cap: Cap,
+    pub peak: Peak,
+}
+
+impl Stroke {
+    /// Whole-sPx width with the common defaults: `Miter { limit_q8: 1024 }`,
+    /// `Cap::Butt` and `Peak::Light`.
+    pub const fn px(width: u32, align: StrokeAlign) -> Self {
+        Stroke {
+            width_q8: width.saturating_mul(SPX_Q8),
+            align,
+            join: Join::Miter { limit_q8: 1024 },
+            cap: Cap::Butt,
+            peak: Peak::Light,
+        }
+    }
+
+    /// Width already in 1/256 sPx, same defaults as `px`.
+    pub const fn q8(width_q8: u32, align: StrokeAlign) -> Self {
+        Stroke {
+            width_q8,
+            align,
+            join: Join::Miter { limit_q8: 1024 },
+            cap: Cap::Butt,
+            peak: Peak::Light,
+        }
+    }
+}
+
+/// Colors and text scale of the debug tree layer (`fgce.md` §5.3).
+///
+/// Labels interpolate `label_base → label_tip` over the same depth fraction as
+/// the outlines; `None` inherits `base` and `tip`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DebugGridStyle {
+    pub base: Color,
+    pub tip: Color,
+    pub label_base: Option<Color>,
+    pub label_tip: Option<Color>,
+    pub label_alpha: u8,
+    pub label_scale: u8,
+}
+
+impl DebugGridStyle {
+    /// Outlines and labels share one `base → tip` scale; `label_alpha` and
+    /// `label_scale` keep the label pass on or off.
+    pub const fn new(base: Color, tip: Color, label_alpha: u8, label_scale: u8) -> Self {
+        DebugGridStyle {
+            base,
+            tip,
+            label_base: None,
+            label_tip: None,
+            label_alpha,
+            label_scale,
+        }
+    }
+
+    /// A separate brightness scale for labels; arrows follow it as well.
+    pub const fn with_label_colors(self, label_base: Color, label_tip: Color) -> Self {
+        DebugGridStyle {
+            label_base: Some(label_base),
+            label_tip: Some(label_tip),
+            ..self
+        }
+    }
+}
+
+/// Window-space point used by `DebugHover`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DebugPoint {
+    pub x: i32,
+    pub y: i32,
 }
 
 /// Raster sampling of `Blit`.
@@ -230,6 +318,8 @@ pub enum EntityKind<'a> {
         stroke: Option<Stroke>,
         color: Color,
     },
+    /// Layout-only box: occupies its coordinate box and paints nothing.
+    Empty,
 }
 
 /// Entity request body (`fgce.md` §5.0).
@@ -276,6 +366,8 @@ pub enum Request<'a> {
         height: u32,
     },
     End,
+    /// Paints the active tree once inside the current frame; idempotent.
+    DrawTree,
     ReadPixels {
         rect: Rect,
         alpha: AlphaMode,
@@ -296,6 +388,7 @@ pub enum Request<'a> {
         rect: Rect,
         color: Color,
         blend: Option<Blend>,
+        radius: Option<Radius>,
     },
     Blit {
         id: ImageId,
@@ -314,12 +407,37 @@ pub enum Request<'a> {
     },
     StrokePath {
         verbs: &'a [Verb],
-        width: u32,
-        align: StrokeAlign,
-        join: Join,
-        cap: Cap,
+        stroke: Stroke,
         color: Color,
         blend: Option<Blend>,
+    },
+    /// Stroke of a rounded rectangle; `radius: None` is a plain rectangle.
+    StrokeRoundRect {
+        rect: Rect,
+        radius: Option<Radius>,
+        stroke: Stroke,
+        color: Color,
+        blend: Option<Blend>,
+    },
+    /// One-sPx lattice lines inside `rect`; verticals first, then horizontals.
+    FillLattice {
+        rect: Rect,
+        step: u32,
+        primary_step: Option<u32>,
+        fine_color: Color,
+        primary_color: Color,
+        blend: Option<Blend>,
+    },
+    /// Enables or disables the debug tree layer; `None` keeps the names.
+    DebugGrid {
+        style: Option<DebugGridStyle>,
+    },
+    /// Hover point of the debug layer; `None` removes the labels.
+    DebugHover(Option<DebugPoint>),
+    /// Name of a node in the debug layer; `None` removes it.
+    DebugLabel {
+        id: NodeId,
+        text: Option<&'a str>,
     },
     ClipPush {
         rect: Rect,

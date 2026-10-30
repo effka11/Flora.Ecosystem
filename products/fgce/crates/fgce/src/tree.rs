@@ -66,6 +66,8 @@ pub(crate) enum EntityData {
         stroke: Option<Stroke>,
         color: Color,
     },
+    /// Layout-only node: carries a coordinate box and paints no pixels.
+    Empty,
 }
 
 #[derive(Clone, Debug)]
@@ -210,6 +212,17 @@ impl Tree {
             },
             None => (node.a_x, node.a_y),
         }
+    }
+
+    /// Ids of `id` and its descendants, for debug-label cleanup.
+    pub(crate) fn subtree_ids(&self, id: NodeId) -> Vec<NodeId> {
+        let mut out = Vec::new();
+        self.collect_subtree(id, &mut out);
+        out
+    }
+
+    pub(crate) fn all_ids(&self) -> Vec<NodeId> {
+        self.nodes.keys().copied().collect()
     }
 
     fn collect_subtree(&self, id: NodeId, out: &mut Vec<NodeId>) {
@@ -748,7 +761,6 @@ impl References {
         self.active
     }
 
-    #[cfg(test)]
     pub(crate) fn service_tree(&self, id: ReferenceId) -> Option<&Tree> {
         self.service.get(&id).map(|reference| &reference.tree)
     }
@@ -893,6 +905,7 @@ fn entity_data(
                 0,
             ))
         }
+        EntityKind::Empty => Ok((EntityData::Empty, 0, 0)),
     }
 }
 
@@ -925,12 +938,17 @@ pub(crate) fn apply_entity(
     }
     if matches!(
         entity.kind,
-        EntityKind::Vector { .. } | EntityKind::Flat { .. } | EntityKind::Box { .. }
+        EntityKind::Vector { .. }
+            | EntityKind::Flat { .. }
+            | EntityKind::Box { .. }
+            | EntityKind::Empty
     ) && (align.x != 0 || align.y != 0)
     {
         return Err(Error::BadAnchor);
     }
-    if matches!(entity.kind, EntityKind::Vector { .. }) && entity.radius.is_some() {
+    if matches!(entity.kind, EntityKind::Vector { .. } | EntityKind::Empty)
+        && entity.radius.is_some()
+    {
         return Err(Error::BadRadius);
     }
     let edges = spx::parse_edges(entity.edges, on_grid, context.k)?;
@@ -967,7 +985,10 @@ pub(crate) fn apply_entity(
     let zero_y = zero_point(near_y, context.origin_y, context.step);
 
     let (data, mut entity_size_x, mut entity_size_y) = entity_data(entity.kind, store, scratch)?;
-    if matches!(data, EntityData::Flat { .. } | EntityData::Box { .. }) {
+    if matches!(
+        data,
+        EntityData::Flat { .. } | EntityData::Box { .. } | EntityData::Empty
+    ) {
         entity_size_x = size_x;
         entity_size_y = size_y;
     }
@@ -1445,6 +1466,7 @@ pub(crate) fn validate_tree(tree: &Tree) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::Engine;
+    use crate::Peak;
     use crate::contract::{
         AlphaMode, Cap, Edge, Fill, FillRule, Join, Pixels, Request, Response, Snapshot,
         StrokeAlign,
@@ -2381,10 +2403,11 @@ mod tests {
             Verb::Close,
         ];
         let stroke = Stroke {
-            width: 1,
+            width_q8: 256,
             align: StrokeAlign::Outside,
             join: Join::Bevel,
             cap: Cap::Butt,
+            peak: Peak::Light,
         };
         let vector_entity = |id: u32, fill: Option<Fill>, stroke: Option<Stroke>| Entity {
             id: NodeId(id),
@@ -2680,10 +2703,11 @@ mod tests {
                 verbs: &verbs,
                 fill: None,
                 stroke: Some(Stroke {
-                    width: 0,
+                    width_q8: 0,
                     align: StrokeAlign::Outside,
                     join: Join::Bevel,
                     cap: Cap::Butt,
+                    peak: Peak::Light,
                 }),
                 color: Color {
                     r: 255,
@@ -3620,6 +3644,7 @@ mod tests {
                 },
                 color: green,
                 blend: None,
+                radius: None,
             })
             .unwrap();
         engine.submit(Request::End).unwrap();

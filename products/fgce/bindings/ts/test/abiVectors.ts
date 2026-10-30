@@ -8,10 +8,19 @@ import type {
 } from "../src/protocol";
 import {
   encodeBegin,
+  encodeDebugGrid,
+  encodeDebugHover,
+  encodeDebugLabel,
+  encodeDrawTree,
   encodeEntity,
+  encodeFillLattice,
+  encodeFillRect,
   encodeInfo,
   encodeMeasure,
+  encodeStrokePath,
+  encodeStrokeRoundRect,
   encodeUpload,
+  strokeWidth,
 } from "../src/protocol";
 import { FGCE_ABI_VERSION } from "../src/engine";
 
@@ -73,6 +82,16 @@ const measureVerbs: Verb[] = [
 
 const measureFill = { rule: "nonZero" } as const;
 
+const pixelRect = { x1: 0, y1: 0, x2: 7, y2: 7 };
+const ink = { r: 1, g: 2, b: 3, a: 255 };
+const centeredStroke = {
+  widthQ8: strokeWidth(0.8),
+  align: "center",
+  join: { kind: "bevel" },
+  cap: "butt",
+  peak: "nominal",
+} as const;
+
 const uploadBytes = new Uint8Array([1, 2, 3, 4]);
 
 /** Frozen request bytes, built by the reference encoder only. */
@@ -131,6 +150,157 @@ export function buildEncodingFile(): EncodingFile {
         requestHex: toHex(
           encodeEntity(5, flatKind, pixelEdges, { onGrid: false }),
         ),
+      },
+      {
+        name: "draw tree",
+        op: "drawTree",
+        args: {},
+        requestHex: toHex(encodeDrawTree()),
+      },
+      {
+        name: "empty entity",
+        op: "entity",
+        args: {
+          id: 6,
+          kind: { kind: "empty" } satisfies EntityKind,
+          edges: {
+            x1: { kind: "pixel", value: 0 },
+            y1: { kind: "pixel", value: 0 },
+            x2: { kind: "pixel", value: 3 },
+            y2: { kind: "pixel", value: 3 },
+          },
+          options: { onGrid: false } satisfies EntityOptions,
+        },
+        requestHex: toHex(
+          encodeEntity(
+            6,
+            { kind: "empty" },
+            {
+              x1: { kind: "pixel", value: 0 },
+              y1: { kind: "pixel", value: 0 },
+              x2: { kind: "pixel", value: 3 },
+              y2: { kind: "pixel", value: 3 },
+            },
+            { onGrid: false },
+          ),
+        ),
+      },
+      {
+        name: "fill rect with a 50% radius",
+        op: "fillRect",
+        args: {
+          rect: pixelRect,
+          color: ink,
+          radius: { kind: "percent", value: 50 },
+        },
+        requestHex: toHex(
+          encodeFillRect(pixelRect, ink, undefined, { kind: "percent", value: 50 }),
+        ),
+      },
+      {
+        name: "stroke round rect with center and nominal peak",
+        op: "strokeRoundRect",
+        args: {
+          rect: pixelRect,
+          radius: { kind: "percent", value: 50 },
+          stroke: centeredStroke,
+          color: ink,
+        },
+        requestHex: toHex(
+          encodeStrokeRoundRect(pixelRect, { kind: "percent", value: 50 }, centeredStroke, ink),
+        ),
+      },
+      {
+        name: "fill lattice with a primary step",
+        op: "fillLattice",
+        args: {
+          rect: pixelRect,
+          step: 5,
+          primaryStep: 15,
+          fineColor: ink,
+          primaryColor: ink,
+        },
+        requestHex: toHex(
+          encodeFillLattice(pixelRect, 5, 15, ink, ink),
+        ),
+      },
+      {
+        name: "stroke path with center and nominal peak",
+        op: "strokePath",
+        args: {
+          verbs: measureVerbs,
+          stroke: centeredStroke,
+          color: ink,
+        },
+        requestHex: toHex(encodeStrokePath(measureVerbs, centeredStroke, ink)),
+      },
+      {
+        name: "stroke path with a fractional width",
+        op: "strokePath",
+        args: {
+          verbs: measureVerbs,
+          stroke: { ...centeredStroke, widthQ8: strokeWidth(0.7), peak: "light" },
+          color: ink,
+        },
+        requestHex: toHex(
+          encodeStrokePath(measureVerbs, { ...centeredStroke, widthQ8: strokeWidth(0.7), peak: "light" }, ink),
+        ),
+      },
+      {
+        name: "debug grid with a style",
+        op: "debugGrid",
+        args: {
+          style: {
+            base: { r: 171, g: 171, b: 171, a: 255 },
+            tip: { r: 255, g: 0, b: 0, a: 128 },
+            labelBase: { r: 242, g: 242, b: 242, a: 255 },
+            labelTip: { r: 142, g: 142, b: 142, a: 255 },
+            labelAlpha: 200,
+            labelScale: 2,
+          },
+        },
+        requestHex: toHex(
+          encodeDebugGrid({
+            base: { r: 171, g: 171, b: 171, a: 255 },
+            tip: { r: 255, g: 0, b: 0, a: 128 },
+            labelBase: { r: 242, g: 242, b: 242, a: 255 },
+            labelTip: { r: 142, g: 142, b: 142, a: 255 },
+            labelAlpha: 200,
+            labelScale: 2,
+          }),
+        ),
+      },
+      {
+        name: "debug grid with outline colors only",
+        op: "debugGrid",
+        args: {
+          style: {
+            base: { r: 171, g: 171, b: 171, a: 255 },
+            tip: { r: 255, g: 0, b: 0, a: 128 },
+            labelAlpha: 255,
+            labelScale: 1,
+          },
+        },
+        requestHex: toHex(
+          encodeDebugGrid({
+            base: { r: 171, g: 171, b: 171, a: 255 },
+            tip: { r: 255, g: 0, b: 0, a: 128 },
+            labelAlpha: 255,
+            labelScale: 1,
+          }),
+        ),
+      },
+      {
+        name: "debug hover point",
+        op: "debugHover",
+        args: { point: { x: 3, y: -4 } },
+        requestHex: toHex(encodeDebugHover({ x: 3, y: -4 })),
+      },
+      {
+        name: "debug label on the window",
+        op: "debugLabel",
+        args: { id: 0, text: "window" },
+        requestHex: toHex(encodeDebugLabel(0, "window")),
       },
       {
         name: "box entity with a 50% radius",

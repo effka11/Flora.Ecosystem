@@ -228,6 +228,7 @@ pub(crate) fn clip_pop(state: State, clip: &mut Vec<Rect>) -> Result<(), Error> 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn fill_rect(
     state: State,
     buf: &mut FrameBuffer,
@@ -235,6 +236,9 @@ pub(crate) fn fill_rect(
     rect: Rect,
     color: Color,
     blend: Blend,
+    radius: Option<Radius>,
+    corners: &mut CornerCache,
+    k: u32,
 ) -> Result<(), Error> {
     if state != State::Begun {
         return Err(Error::NotBegun);
@@ -244,7 +248,50 @@ pub(crate) fn fill_rect(
         return Ok(());
     }
     let stride = buf.stride() as usize;
-    fill::fill_rect(buf.bytes_mut(), stride, view, color, blend);
+    let radius = match radius {
+        Some(radius) => round::resolve(radius, rect, k)?,
+        None => 0,
+    };
+    if radius <= 0 {
+        fill::fill_rect(buf.bytes_mut(), stride, view, color, blend);
+    } else {
+        round::fill_shape(
+            buf.bytes_mut(),
+            stride,
+            view,
+            rect,
+            radius,
+            color,
+            blend,
+            corners,
+        );
+    }
+    Ok(())
+}
+
+pub(crate) fn fill_lattice(
+    state: State,
+    buf: &mut FrameBuffer,
+    clip: &[Rect],
+    lines: &fill::LatticeLines,
+    fine_color: Color,
+    primary_color: Color,
+    blend: Blend,
+) -> Result<(), Error> {
+    if state != State::Begun {
+        return Err(Error::NotBegun);
+    }
+    let stride = buf.stride() as usize;
+    let target = current_clip(clip, frame_rect(buf));
+    fill::fill_lattice(
+        buf.bytes_mut(),
+        stride,
+        target,
+        lines,
+        fine_color,
+        primary_color,
+        blend,
+    );
     Ok(())
 }
 
@@ -376,21 +423,7 @@ fn mask_radius(
         return Ok(());
     }
     let stride = buf.stride() as usize;
-    round::fill(
-        buf.bytes_mut(),
-        stride,
-        view,
-        dest,
-        value,
-        Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 255,
-        },
-        Blend::DstOut,
-        corners,
-    );
+    round::mask_corners(buf.bytes_mut(), stride, view, dest, value, corners);
     Ok(())
 }
 
@@ -442,6 +475,9 @@ fn draw_node(
     if clip.is_empty() {
         return Ok(());
     }
+    if matches!(node.class, Class::Entity(EntityData::Empty)) {
+        return Ok(());
+    }
     let width = node.entity_size_x;
     let height = node.entity_size_y;
     let dest = Rect {
@@ -457,7 +493,7 @@ fn draw_node(
                 let stride = buf.stride() as usize;
                 let radius = resolved(node.radius, dest, k)?;
                 if radius > 0 {
-                    round::fill(
+                    round::fill_shape(
                         buf.bytes_mut(),
                         stride,
                         view,
@@ -485,7 +521,7 @@ fn draw_node(
             let radius = resolved(node.radius, dest, k)?;
             if box_fill.is_some() {
                 if radius > 0 {
-                    round::fill(
+                    round::fill_shape(
                         buf.bytes_mut(),
                         stride,
                         view,
@@ -567,7 +603,7 @@ fn draw_node(
                 _ => {}
             }
         }
-        Class::Group { .. } | Class::Arbitrary { .. } => {}
+        Class::Group { .. } | Class::Arbitrary { .. } | Class::Entity(EntityData::Empty) => {}
     }
     Ok(())
 }
@@ -673,6 +709,9 @@ mod tests {
             },
             red,
             Blend::SrcOver,
+            None,
+            &mut CornerCache::default(),
+            5,
         )
         .unwrap();
         assert_eq!(buf.pixel(0, 0), [255, 0, 0, 255]);
@@ -791,6 +830,9 @@ mod tests {
             },
             red,
             Blend::SrcOver,
+            None,
+            &mut CornerCache::default(),
+            5,
         )
         .unwrap();
         end(&mut buf, &mut state).unwrap();
@@ -859,6 +901,9 @@ mod tests {
             },
             color,
             Blend::SrcOver,
+            None,
+            &mut CornerCache::default(),
+            5,
         )
         .unwrap();
         let premul = read_pixels(
@@ -912,6 +957,9 @@ mod tests {
                 a: 0,
             },
             Blend::SrcOver,
+            None,
+            &mut CornerCache::default(),
+            5,
         )
         .unwrap_err();
         assert_eq!(error, Error::NotBegun);
@@ -949,6 +997,9 @@ mod tests {
                 a: 255,
             },
             Blend::SrcOver,
+            None,
+            &mut CornerCache::default(),
+            5,
         )
         .unwrap();
         clip_pop(State::Begun, &mut clip).unwrap();

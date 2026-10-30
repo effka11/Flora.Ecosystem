@@ -45,6 +45,7 @@ fn row_80_drawing_after_end() {
             rect: rect(0, 0, 0, 0),
             color: WHITE,
             blend: None,
+            radius: None,
         }),
         Error::NotBegun
     );

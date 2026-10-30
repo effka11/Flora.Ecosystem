@@ -3,9 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   decodeResponse,
   encodeBegin,
+  encodeDebugGrid,
+  encodeDebugHover,
+  encodeDebugLabel,
+  encodeDrawTree,
   encodeEntity,
+  encodeFillLattice,
+  encodeFillRect,
   encodeInfo,
   encodeMeasure,
+  encodeStrokePath,
+  encodeStrokeRoundRect,
   encodeUpload,
   Reader,
   type AlphaMode,
@@ -35,6 +43,8 @@ function encodeVector(vector: EncodingVector): Uint8Array {
     }
     case "info":
       return encodeInfo();
+    case "drawTree":
+      return encodeDrawTree();
     case "upload": {
       const args = vector.args as {
         id: number;
@@ -71,6 +81,68 @@ function encodeVector(vector: EncodingVector): Uint8Array {
         options?: EntityOptions;
       };
       return encodeEntity(args.id, args.kind, args.edges, args.options);
+    }
+    case "fillRect": {
+      const args = vector.args as {
+        rect: { x1: number; y1: number; x2: number; y2: number };
+        color: { r: number; g: number; b: number; a: number };
+        radius?: { kind: "percent"; value: number };
+      };
+      return encodeFillRect(args.rect, args.color, undefined, args.radius);
+    }
+    case "strokeRoundRect": {
+      const args = vector.args as {
+        rect: { x1: number; y1: number; x2: number; y2: number };
+        radius?: { kind: "percent"; value: number };
+        stroke: Stroke;
+        color: { r: number; g: number; b: number; a: number };
+      };
+      return encodeStrokeRoundRect(args.rect, args.radius, args.stroke, args.color);
+    }
+    case "fillLattice": {
+      const args = vector.args as {
+        rect: { x1: number; y1: number; x2: number; y2: number };
+        step: number;
+        primaryStep?: number;
+        fineColor: { r: number; g: number; b: number; a: number };
+        primaryColor: { r: number; g: number; b: number; a: number };
+      };
+      return encodeFillLattice(
+        args.rect,
+        args.step,
+        args.primaryStep,
+        args.fineColor,
+        args.primaryColor,
+      );
+    }
+    case "strokePath": {
+      const args = vector.args as {
+        verbs: Verb[];
+        stroke: Stroke;
+        color: { r: number; g: number; b: number; a: number };
+      };
+      return encodeStrokePath(args.verbs, args.stroke, args.color);
+    }
+    case "debugGrid": {
+      const args = vector.args as {
+        style?: {
+          base: { r: number; g: number; b: number; a: number };
+          tip: { r: number; g: number; b: number; a: number };
+          labelBase?: { r: number; g: number; b: number; a: number };
+          labelTip?: { r: number; g: number; b: number; a: number };
+          labelAlpha: number;
+          labelScale: number;
+        };
+      };
+      return encodeDebugGrid(args.style);
+    }
+    case "debugHover": {
+      const args = vector.args as { point?: { x: number; y: number } };
+      return encodeDebugHover(args.point);
+    }
+    case "debugLabel": {
+      const args = vector.args as { id: number; text?: string };
+      return encodeDebugLabel(args.id, args.text);
     }
     default:
       throw new Error(`unknown ABI vector op: ${vector.op}`);

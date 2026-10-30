@@ -185,6 +185,55 @@ jobs:
         with:
           manifest-path: Cargo.toml
 
+  # FGCE (products/fgce): собственный standalone workspace — не входит в корневой
+  # Cargo workspace. Джоб собирает ядро, адаптер, conformance и TS-зеркало.
+  fgce:
+    name: fgce
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: products/fgce
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: products/fgce
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Build wasm adapter
+        run: cargo build -p fgce-wasm --target wasm32-unknown-unknown --release --locked
+      - name: Licenses, bans, advisories (cargo deny)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: products/fgce/Cargo.toml
+          command: check
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: products/fgce/package-lock.json
+      - name: Install TS binding
+        run: npm ci
+      - name: Typecheck and test TS binding
+        env:
+          FGCE_WASM_PATH: target/wasm32-unknown-unknown/release/fgce_wasm.wasm
+        run: npm run typecheck && npm test
+      - name: Standalone and release gates
+        shell: pwsh
+        run: ./scripts/check-standalone.ps1
+      - name: Validate repository architecture
+        working-directory: .
+        shell: pwsh
+        run: ./tools/validate-architecture-rust.ps1
+
   # FEP wasm32 (products/FEP): ядро и C-ABI шим клиентской верификации LIV
   # (FEP.md §10 — обязательная проверка; потребитель — @flora/client-core/economy).
   fep-wasm:

@@ -332,7 +332,10 @@ pub(crate) fn place_node(
     node.a_y = a_y;
     node.size_x = size_x;
     node.size_y = size_y;
-    if matches!(node.class, Class::Entity(EntityData::Flat { .. })) {
+    if matches!(
+        node.class,
+        Class::Entity(EntityData::Flat { .. } | EntityData::Empty)
+    ) {
         node.entity_size_x = size_x;
         node.entity_size_y = size_y;
     }
