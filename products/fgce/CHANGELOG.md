@@ -3,6 +3,48 @@
 All notable changes to FGCE are recorded here. The product version is the
 kernel version from `crates/fgce/Cargo.toml`; the wasm ABI has its own number.
 
+## 0.2.1 — 2026-10-31
+
+Debug-layer behaviour fix. Product version `0.2.1`, wasm ABI stays `3`; public
+request and type names are unchanged.
+
+### Changed
+
+- **`Arbitrary` may be a leaf** — an arbitrary box owns explicit edges, so zero
+  children is valid and stays valid after `Remove`/`Place`. A `Group` still
+  requires exactly two children.
+- **Outlines on cell boundaries** — the right and bottom lines are drawn at
+  `x2 + 1`/`y2 + 1` and clipped like lattice lines instead of being clamped to
+  the last frame pixel.
+- **Normative label layout** — labels reserve their own arrow column
+  (`ARROW_SIDE = 7`, `ARROW_GAP = 2`), sit `LABEL_PAD = 2` from the box edge,
+  stack with `STACK_GAP = 2`, and follow the node pin. The root label follows
+  the live window pin (top-left by default) instead of a fixed corner.
+- **7×7 pin arrows** — straight arrows use a 7-pixel shaft with 4-pixel barbs;
+  diagonals use a shaft to the opposite corner with L-shaped 4-pixel barbs;
+  `Pin { x: 0, y: 0 }` is a circle. Arrows use their label colour.
+- **Regenerated debug fixtures** — `debug_text_1`, `debug_text_3` and
+  `debug_arrows` changed because the label and arrow pixels changed.
+
+### Added
+
+- **Debug conformance probe** — `tests/conformance/tests/debug_probe.rs` pins
+  the tree leaf rule, outline clipping, label stacking, the window pin, all nine
+  arrow masks, label colours and the disabled-mode frame through the public API.
+- **Small-frame label degradation** — the spec now states that a label chain
+  taller than the frame is clamped to the bottom band and may overlap;
+  `small_frame_clamps_the_label_chain_into_the_bottom_band` fixes that
+  behaviour.
+- **`examples/debug_grid.rs`** — a dependency-free example that builds a tree,
+  enables `DebugGrid`, hovers a node and prints the frame as ASCII art.
+
+### Verification
+
+- `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`
+  and `cargo test --workspace --locked` pass.
+- `cargo run -p fgce --example debug_grid` prints a frame with outlines and the
+  hover label chain.
+
 ## 0.2.0 — 2026-10-30
 
 Second release: closes FGCE-REQ-1…10. Product version `0.2.0`, wasm ABI `3`.

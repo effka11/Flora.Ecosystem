@@ -15,7 +15,7 @@ FGCE рисует по одному кадру: хост отправляет з
 | [`docs/fgce.md`](docs/fgce.md) | нормативный закон композиции: sPx, решётка, дерево боксов, эталоны, растр, вектор, клип, кадр |
 | [`docs/wasm-abi.md`](docs/wasm-abi.md) | C ABI wasm-адаптера и его бинарный wire-протокол |
 | [`docs/questions.md`](docs/questions.md) | решения по спорным местам спецификации |
-| [`CHANGELOG.md`](CHANGELOG.md) | история версий и ограничения `0.2.0` |
+| [`CHANGELOG.md`](CHANGELOG.md) | история версий и ограничения `0.2.1` |
 | [`docs/migration-0.2.0.md`](docs/migration-0.2.0.md) | переход с `0.1.0-alpha`: палитра, `Center`, `Peak`, дробная ширина, подписи, иконки |
 | [`RELEASE.md`](RELEASE.md) | чек-лист выпуска, ворота и запись проверки |
 | [`LICENSE`](LICENSE) | GNU AGPL v3 only (AGPL-3.0-only) |
@@ -83,10 +83,10 @@ Smoke-тест wasm читает путь к артефакту из `FGCE_WASM_
 FGCE_WASM_PATH=target/wasm32-unknown-unknown/release/fgce_wasm.wasm npm test
 ```
 
-## Релиз 0.2.0
+## Релиз 0.2.1
 
-Текущая версия — `0.2.0`; она записана в `crates/fgce`, `crates/fgce-wasm`,
-`tests/conformance` и `package.json`. Тег выпуска — `fgce/v0.2.0`. Крейты не
+Текущая версия — `0.2.1`; она записана в `crates/fgce`, `crates/fgce-wasm`,
+`tests/conformance` и `package.json`. Тег выпуска — `fgce/v0.2.1`. Крейты не
 публикуются на crates.io (`publish = false`): поставка идёт копированием каталога.
 Полный чек-лист, ворота и запись проверки — в [`RELEASE.md`](RELEASE.md).
 
@@ -98,7 +98,7 @@ FGCE_WASM_PATH=target/wasm32-unknown-unknown/release/fgce_wasm.wasm npm test
 
 ```toml
 [dependencies]
-fgce = { path = "third_party/fgce", version = "=0.2.0" }
+fgce = { path = "third_party/fgce", version = "=0.2.1" }
 ```
 
 Адаптер (`crates/fgce-wasm`), TS-клиент (`bindings/ts`) и набор conformance

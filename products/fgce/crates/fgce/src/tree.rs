@@ -1243,15 +1243,11 @@ fn apply_box(
     }
 
     lattice::check_pin(request.pin)?;
-    let required = if request.allow_arbitrary { 1 } else { 2 };
-    if request.children.len() < required
-        || (!request.allow_arbitrary && request.children.len() != 2)
-    {
-        return Err(if request.allow_arbitrary {
-            Error::BadArbitrary
-        } else {
-            Error::BadGroup
-        });
+    // An arbitrary box owns explicit edges, so children are optional: a pinned
+    // container may legitimately be a leaf. A group is a derived union and
+    // still needs exactly two children.
+    if !request.allow_arbitrary && request.children.len() != 2 {
+        return Err(Error::BadGroup);
     }
     validate_children(tree, id, request.children, request.allow_arbitrary)?;
     if request.inset.is_some() && current_parent.is_some() {
@@ -1434,9 +1430,6 @@ pub(crate) fn validate_tree(tree: &Tree) -> Result<(), Error> {
                 }
             }
             Class::Arbitrary { .. } => {
-                if node.children.is_empty() {
-                    return Err(Error::BadArbitrary);
-                }
                 for &child in &node.children {
                     let Some(child_node) = tree.nodes.get(&child) else {
                         return Err(Error::BadParent);
@@ -1936,25 +1929,24 @@ mod tests {
     }
 
     #[test]
-    fn arbitrary_requires_children_and_stays_inside_parent() {
+    fn arbitrary_children_are_optional_and_stay_inside_parent() {
         let mut engine = service(Pin { x: -1, y: 1 });
         add_flat(&mut engine, 1, 0, 0, 9, 9).unwrap();
         add_flat(&mut engine, 2, 5, 0, 9, 9).unwrap();
         add_flat(&mut engine, 3, 5, 0, 9, 9).unwrap();
         add_flat(&mut engine, 4, 20, 0, 29, 9).unwrap();
 
-        assert_eq!(
-            arbitrary(
-                &mut engine,
-                20,
-                0,
-                Some(false),
-                pixel_edges(0, 0, 19, 19),
-                &[]
-            )
-            .unwrap_err(),
-            Error::BadArbitrary
-        );
+        // Explicit edges make children optional: a pinned container may be a
+        // leaf.
+        arbitrary(
+            &mut engine,
+            20,
+            0,
+            Some(false),
+            pixel_edges(0, 0, 19, 19),
+            &[],
+        )
+        .unwrap();
         arbitrary(
             &mut engine,
             10,
@@ -2181,7 +2173,9 @@ mod tests {
             &[NodeId(1)],
         )
         .unwrap();
-        assert_eq!(remove(&mut engine, 1).unwrap_err(), Error::BadArbitrary);
+        // An arbitrary box may end up without children: it stays a leaf.
+        remove(&mut engine, 1).unwrap();
+        assert!(tree(&engine).nodes[&NodeId(20)].children.is_empty());
         group(&mut engine, 10, 0, &[NodeId(2), NodeId(3)]).unwrap();
         assert_eq!(remove(&mut engine, 2).unwrap_err(), Error::BadGroup);
         assert_eq!(remove(&mut engine, 0).unwrap_err(), Error::BadParent);
