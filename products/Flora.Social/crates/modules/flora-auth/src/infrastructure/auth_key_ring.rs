@@ -1,13 +1,14 @@
-//! Auth-owned XChaCha20-Poly1305 key ring для replay-grant'ов (plan §2).
+//! Auth-owned XChaCha20-Poly1305 key ring (replay-grant'ы, TOTP at-rest).
 //!
-//! Отдельный от `Jwt:Secret` ключ: `active_key_id` шифрует новые grant'ы,
-//! старые key id остаются только для расшифровки, пока не истёк replay TTL и
-//! cleanup их не убрал. Startup fail-fast без active key (см. `from_config`).
+//! Кольцо одно, префикс конфигурации — параметр: у replay-ключей и TOTP-ключей
+//! разные жизненные циклы, поэтому каждая подсистема поднимает своё кольцо.
+//! `active_key_id` шифрует новые значения, старые key id остаются только для
+//! расшифровки. Startup fail-fast без active key (см. `from_config`).
 //!
 //! Формат конфигурации (плоские ключи, как в остальном Flora config):
-//! - `Auth:ReplayKeyRing:ActiveKeyId` — id активного ключа.
-//! - `Auth:ReplayKeyRing:KeyIds:0`, `:1`, … — все известные key id.
-//! - `Auth:ReplayKeyRing:Key:<id>` — base64 (standard) 32-байтного ключа.
+//! - `<prefix>:ActiveKeyId` — id активного ключа.
+//! - `<prefix>:KeyIds:0`, `:1`, … — все известные key id.
+//! - `<prefix>:Key:<id>` — base64 (standard) 32-байтного ключа.
 
 use std::collections::HashMap;
 
@@ -30,20 +31,32 @@ pub enum KeyRingError {
     InvalidKeyMaterial(String),
 }
 
+impl KeyRingError {
+    /// Текст с префиксом конфигурации. Вызывающий слой знает, какое кольцо он
+    /// поднимает (`Auth:ReplayKeyRing`, `Auth:TotpKeyRing`), а сами ошибки
+    /// остаются префикс-независимыми.
+    pub fn with_prefix(&self, prefix: &str) -> String {
+        match self {
+            KeyRingError::MissingActiveKey => format!("{prefix}:ActiveKeyId не задан"),
+            KeyRingError::ActiveKeyNotConfigured => {
+                format!("активный key id отсутствует среди {prefix}:Key:*")
+            }
+            KeyRingError::InvalidKeyMaterial(id) => {
+                format!("{prefix}:Key:{id} не base64/не 32 байта")
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for KeyRingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KeyRingError::MissingActiveKey => {
-                write!(f, "Auth:ReplayKeyRing:ActiveKeyId не задан")
-            }
+            KeyRingError::MissingActiveKey => write!(f, "ActiveKeyId не задан"),
             KeyRingError::ActiveKeyNotConfigured => {
-                write!(
-                    f,
-                    "активный replay key id отсутствует среди Auth:ReplayKeyRing:Key:*"
-                )
+                write!(f, "активный key id отсутствует среди Key:*")
             }
             KeyRingError::InvalidKeyMaterial(id) => {
-                write!(f, "replay key '{id}' не base64/не 32 байта")
+                write!(f, "key '{id}' не base64/не 32 байта")
             }
         }
     }
@@ -54,7 +67,7 @@ impl std::error::Error for KeyRingError {}
 /// Ошибка AEAD-операции. Никогда не приводит к ложному отзыву сессии —
 /// вызывающий слой обязан вернуть transient 5xx.
 #[derive(Debug, PartialEq, Eq)]
-pub enum ReplayCryptoError {
+pub enum KeyRingCryptoError {
     /// Key id не найден в key ring (например, удалён после ротации).
     UnknownKeyId(String),
     /// Nonce неверной длины.
@@ -63,45 +76,45 @@ pub enum ReplayCryptoError {
     Decrypt,
 }
 
-impl std::fmt::Display for ReplayCryptoError {
+impl std::fmt::Display for KeyRingCryptoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReplayCryptoError::UnknownKeyId(id) => write!(f, "неизвестный replay key id '{id}'"),
-            ReplayCryptoError::BadNonce => write!(f, "replay nonce неверной длины"),
-            ReplayCryptoError::Decrypt => {
-                write!(f, "replay ciphertext не расшифрован (corruption)")
+            KeyRingCryptoError::UnknownKeyId(id) => write!(f, "неизвестный key id '{id}'"),
+            KeyRingCryptoError::BadNonce => write!(f, "nonce неверной длины"),
+            KeyRingCryptoError::Decrypt => {
+                write!(f, "ciphertext не расшифрован (corruption)")
             }
         }
     }
 }
 
-impl std::error::Error for ReplayCryptoError {}
+impl std::error::Error for KeyRingCryptoError {}
 
-/// Результат шифрования grant'а.
+/// Результат шифрования: key id + nonce + ciphertext.
 #[derive(Debug, Clone)]
-pub struct SealedGrant {
+pub struct SealedBlob {
     pub key_id: String,
     pub nonce: Vec<u8>,
     pub ciphertext: Vec<u8>,
 }
 
 /// Кольцо ключей: активный ключ шифрует, все ключи расшифровывают.
-pub struct ReplayKeyRing {
+pub struct AuthKeyRing {
     active_key_id: String,
     keys: HashMap<String, [u8; KEY_LEN]>,
 }
 
 // Redact key material из Debug: логируем только id и количество ключей.
-impl std::fmt::Debug for ReplayKeyRing {
+impl std::fmt::Debug for AuthKeyRing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ReplayKeyRing")
+        f.debug_struct("AuthKeyRing")
             .field("active_key_id", &self.active_key_id)
             .field("keys", &format_args!("<{} redacted>", self.keys.len()))
             .finish()
     }
 }
 
-impl ReplayKeyRing {
+impl AuthKeyRing {
     /// Явная сборка (тесты / программная конфигурация). Fail-fast если активного
     /// ключа нет среди `keys`.
     pub fn new(
@@ -121,16 +134,18 @@ impl ReplayKeyRing {
         })
     }
 
-    /// Чтение key ring из конфигурации. `Ok(None)` — key ring не сконфигурирован
-    /// (нет active key id и нет ключей); вызывающий решает, ошибка это или нет.
-    /// `Err(..)` — конфигурация неполна/битая (startup fail-fast).
+    /// Чтение key ring из конфигурации под префиксом `prefix`
+    /// (`Auth:ReplayKeyRing` / `Auth:TotpKeyRing`). `Ok(None)` — key ring не
+    /// сконфигурирован (нет active key id и нет ключей); вызывающий решает,
+    /// ошибка это или нет. `Err(..)` — конфигурация неполна/битая.
     pub fn from_config(
         cfg: &flora_shared::config::FloraConfig,
+        prefix: &str,
     ) -> Result<Option<Self>, KeyRingError> {
         let active = cfg
-            .get_non_empty("Auth:ReplayKeyRing:ActiveKeyId")
+            .get_non_empty(&format!("{prefix}:ActiveKeyId"))
             .map(str::to_string);
-        let key_ids = cfg.get_string_array("Auth:ReplayKeyRing:KeyIds");
+        let key_ids = cfg.get_string_array(&format!("{prefix}:KeyIds"));
         if active.is_none() && key_ids.is_empty() {
             return Ok(None);
         }
@@ -139,7 +154,7 @@ impl ReplayKeyRing {
         let mut keys = HashMap::new();
         for id in key_ids {
             let raw = cfg
-                .get_non_empty(&format!("Auth:ReplayKeyRing:Key:{id}"))
+                .get_non_empty(&format!("{prefix}:Key:{id}"))
                 .ok_or_else(|| KeyRingError::InvalidKeyMaterial(id.clone()))?;
             let bytes = STANDARD
                 .decode(raw)
@@ -156,8 +171,8 @@ impl ReplayKeyRing {
         &self.active_key_id
     }
 
-    /// Зашифровать grant активным ключом со случайным 24-байтным nonce.
-    pub fn seal(&self, aad: &[u8], plaintext: &[u8]) -> SealedGrant {
+    /// Зашифровать значение активным ключом со случайным 24-байтным nonce.
+    pub fn seal(&self, aad: &[u8], plaintext: &[u8]) -> SealedBlob {
         let key = self
             .keys
             .get(&self.active_key_id)
@@ -174,27 +189,28 @@ impl ReplayKeyRing {
                 },
             )
             .expect("XChaCha20-Poly1305 seal бесконечно не падает");
-        SealedGrant {
+        SealedBlob {
             key_id: self.active_key_id.clone(),
             nonce: nonce.to_vec(),
             ciphertext,
         }
     }
 
-    /// Расшифровать grant по key_id + nonce + aad. Любая ошибка — transient, не отзыв.
+    /// Расшифровать значение по key_id + nonce + aad. Любая ошибка — transient,
+    /// не отзыв.
     pub fn open(
         &self,
         key_id: &str,
         nonce: &[u8],
         aad: &[u8],
         ciphertext: &[u8],
-    ) -> Result<Vec<u8>, ReplayCryptoError> {
+    ) -> Result<Vec<u8>, KeyRingCryptoError> {
         let key = self
             .keys
             .get(key_id)
-            .ok_or_else(|| ReplayCryptoError::UnknownKeyId(key_id.to_string()))?;
+            .ok_or_else(|| KeyRingCryptoError::UnknownKeyId(key_id.to_string()))?;
         if nonce.len() != NONCE_LEN {
-            return Err(ReplayCryptoError::BadNonce);
+            return Err(KeyRingCryptoError::BadNonce);
         }
         let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
         cipher
@@ -205,7 +221,7 @@ impl ReplayKeyRing {
                     aad,
                 },
             )
-            .map_err(|_| ReplayCryptoError::Decrypt)
+            .map_err(|_| KeyRingCryptoError::Decrypt)
     }
 }
 
@@ -213,11 +229,13 @@ impl ReplayKeyRing {
 mod tests {
     use super::*;
 
-    fn ring() -> ReplayKeyRing {
+    const REPLAY_PREFIX: &str = "Auth:ReplayKeyRing";
+
+    fn ring() -> AuthKeyRing {
         let mut keys = HashMap::new();
         keys.insert("k-active".to_string(), [7_u8; KEY_LEN]);
         keys.insert("k-old".to_string(), [9_u8; KEY_LEN]);
-        ReplayKeyRing::new("k-active", keys).unwrap()
+        AuthKeyRing::new("k-active", keys).unwrap()
     }
 
     #[test]
@@ -243,7 +261,7 @@ mod tests {
         let sealed = ring.seal(b"aad-a", b"payload");
         assert_eq!(
             ring.open("k-active", &sealed.nonce, b"aad-b", &sealed.ciphertext),
-            Err(ReplayCryptoError::Decrypt)
+            Err(KeyRingCryptoError::Decrypt)
         );
     }
 
@@ -253,20 +271,20 @@ mod tests {
         let sealed = ring.seal(b"aad", b"payload");
         assert_eq!(
             ring.open("k-deleted", &sealed.nonce, b"aad", &sealed.ciphertext),
-            Err(ReplayCryptoError::UnknownKeyId("k-deleted".into()))
+            Err(KeyRingCryptoError::UnknownKeyId("k-deleted".into()))
         );
     }
 
     #[test]
     fn decrypt_only_old_key_still_opens_its_ciphertext() {
-        // grant, зашифрованный старым активным ключом, читается после ротации.
+        // значение, зашифрованное старым активным ключом, читается после ротации.
         let mut keys = HashMap::new();
         keys.insert("k-old".to_string(), [3_u8; KEY_LEN]);
-        let old_ring = ReplayKeyRing::new("k-old", keys.clone()).unwrap();
+        let old_ring = AuthKeyRing::new("k-old", keys.clone()).unwrap();
         let sealed = old_ring.seal(b"aad", b"payload");
 
         keys.insert("k-new".to_string(), [4_u8; KEY_LEN]);
-        let rotated = ReplayKeyRing::new("k-new", keys).unwrap();
+        let rotated = AuthKeyRing::new("k-new", keys).unwrap();
         assert_eq!(rotated.active_key_id(), "k-new");
         let opened = rotated
             .open(&sealed.key_id, &sealed.nonce, b"aad", &sealed.ciphertext)
@@ -277,11 +295,11 @@ mod tests {
     #[test]
     fn missing_active_key_fails_fast() {
         assert_eq!(
-            ReplayKeyRing::new("", HashMap::new()).unwrap_err(),
+            AuthKeyRing::new("", HashMap::new()).unwrap_err(),
             KeyRingError::MissingActiveKey
         );
         assert_eq!(
-            ReplayKeyRing::new("absent", HashMap::new()).unwrap_err(),
+            AuthKeyRing::new("absent", HashMap::new()).unwrap_err(),
             KeyRingError::ActiveKeyNotConfigured
         );
     }
@@ -289,7 +307,11 @@ mod tests {
     #[test]
     fn from_config_none_when_unconfigured() {
         let cfg = flora_shared::config::FloraConfig::from_layers("Production", &[], &[]);
-        assert!(ReplayKeyRing::from_config(&cfg).unwrap().is_none());
+        assert!(
+            AuthKeyRing::from_config(&cfg, REPLAY_PREFIX)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -308,8 +330,37 @@ mod tests {
             })],
             &[],
         );
-        let ring = ReplayKeyRing::from_config(&cfg).unwrap().unwrap();
+        let ring = AuthKeyRing::from_config(&cfg, REPLAY_PREFIX)
+            .unwrap()
+            .unwrap();
         assert_eq!(ring.active_key_id(), "k1");
+    }
+
+    #[test]
+    fn from_config_ignores_other_ring_prefix() {
+        let key_b64 = STANDARD.encode([2_u8; KEY_LEN]);
+        let cfg = flora_shared::config::FloraConfig::from_layers(
+            "Production",
+            &[serde_json::json!({
+                "Auth": {
+                    "TotpKeyRing": {
+                        "ActiveKeyId": "t1",
+                        "KeyIds": ["t1"],
+                        "Key": { "t1": key_b64 }
+                    }
+                }
+            })],
+            &[],
+        );
+        assert!(
+            AuthKeyRing::from_config(&cfg, REPLAY_PREFIX)
+                .unwrap()
+                .is_none()
+        );
+        let totp = AuthKeyRing::from_config(&cfg, "Auth:TotpKeyRing")
+            .unwrap()
+            .unwrap();
+        assert_eq!(totp.active_key_id(), "t1");
     }
 
     #[test]
@@ -322,8 +373,53 @@ mod tests {
             &[],
         );
         assert!(matches!(
-            ReplayKeyRing::from_config(&cfg),
+            AuthKeyRing::from_config(&cfg, REPLAY_PREFIX),
             Err(KeyRingError::InvalidKeyMaterial(_))
         ));
+    }
+
+    #[test]
+    fn key_material_must_be_32_bytes() {
+        let short_b64 = STANDARD.encode([1_u8; 16]);
+        let cfg = flora_shared::config::FloraConfig::from_layers(
+            "Production",
+            &[serde_json::json!({
+                "Auth": {
+                    "ReplayKeyRing": {
+                        "ActiveKeyId": "k1",
+                        "KeyIds": ["k1"],
+                        "Key": { "k1": short_b64 }
+                    }
+                }
+            })],
+            &[],
+        );
+        assert_eq!(
+            AuthKeyRing::from_config(&cfg, REPLAY_PREFIX).unwrap_err(),
+            KeyRingError::InvalidKeyMaterial("k1".into())
+        );
+    }
+
+    #[test]
+    fn error_text_is_prefixed_at_the_caller_boundary() {
+        assert_eq!(
+            KeyRingError::MissingActiveKey.with_prefix("Auth:TotpKeyRing"),
+            "Auth:TotpKeyRing:ActiveKeyId не задан"
+        );
+        assert_eq!(
+            KeyRingError::ActiveKeyNotConfigured.with_prefix("Auth:ReplayKeyRing"),
+            "активный key id отсутствует среди Auth:ReplayKeyRing:Key:*"
+        );
+        assert_eq!(
+            KeyRingError::InvalidKeyMaterial("k1".into()).with_prefix("Auth:TotpKeyRing"),
+            "Auth:TotpKeyRing:Key:k1 не base64/не 32 байта"
+        );
+    }
+
+    #[test]
+    fn debug_redacts_key_material() {
+        let rendered = format!("{:?}", ring());
+        assert!(rendered.contains("<2 redacted>"));
+        assert!(rendered.contains("k-active"));
     }
 }

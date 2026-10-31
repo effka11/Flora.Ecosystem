@@ -7,3 +7,4 @@ pub mod replay_cleanup;
 pub mod replay_grant;
 pub mod security;
 pub mod sessions;
+pub mod totp_reseal;

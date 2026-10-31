@@ -13,6 +13,7 @@ use crate::infrastructure::tokens::{
     generate_csrf_token, generate_hmac_key, generate_jwt_id, generate_refresh_token,
 };
 use crate::infrastructure::totp::verify_totp;
+use crate::infrastructure::totp_at_rest::TotpAtRest;
 
 const MAX_LOGIN_FAILURES: u8 = 5;
 const LOCKOUT_MINUTES: i64 = 15;
@@ -38,6 +39,7 @@ pub struct LoginService {
     repo: Arc<AuthRepo>,
     jwt: JwtOptions,
     profiles: Arc<dyn UserProfileReadQueries>,
+    totp: Arc<TotpAtRest>,
 }
 
 impl LoginService {
@@ -45,11 +47,13 @@ impl LoginService {
         repo: Arc<AuthRepo>,
         jwt: JwtOptions,
         profiles: Arc<dyn UserProfileReadQueries>,
+        totp: Arc<TotpAtRest>,
     ) -> Self {
         Self {
             repo,
             jwt,
             profiles,
+            totp,
         }
     }
 
@@ -131,7 +135,8 @@ impl LoginService {
                     error: None,
                 }));
             }
-            if !verify_totp(user.two_factor_secret.as_deref(), code) {
+            let secret = self.totp_secret(user.user_uuid, user.two_factor_secret.as_deref())?;
+            if !verify_totp(secret.as_deref(), code) {
                 self.register_failure(user.user_uuid, now).await?;
                 return Err(LoginError::TwoFactor(TwoFactorChallengeResponse {
                     requires_two_factor: true,
@@ -204,6 +209,23 @@ impl LoginService {
             token_type: "Bearer".into(),
             requires_profile_completion: requires_profile,
         })
+    }
+
+    /// base32-секрет для проверки кода. Сломанный ключ или ciphertext — 5xx
+    /// **до** `register_failure`: недоступность расшифровки не должна
+    /// блокировать аккаунт.
+    fn totp_secret(
+        &self,
+        user_uuid: Uuid,
+        stored: Option<&str>,
+    ) -> Result<Option<String>, LoginError> {
+        let Some(stored) = stored.map(str::trim).filter(|s| !s.is_empty()) else {
+            return Ok(None);
+        };
+        self.totp
+            .open(user_uuid, stored)
+            .map(Some)
+            .map_err(|e| LoginError::Internal(e.to_string()))
     }
 
     async fn register_failure(

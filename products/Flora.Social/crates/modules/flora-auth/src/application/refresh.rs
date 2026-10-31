@@ -7,8 +7,8 @@ use flora_users_contracts::UserProfileReadQueries;
 use crate::application::replay_grant::{ReplayGrantV1, replay_aad};
 use crate::domain::refresh_machine::REFRESH_GRACE_SECONDS;
 use crate::http::{LoginResponse, format_utc};
+use crate::infrastructure::auth_key_ring::AuthKeyRing;
 use crate::infrastructure::jwt::{AccessTokenClaims, JwtOptions, issue_access_token};
-use crate::infrastructure::replay_keys::ReplayKeyRing;
 use crate::infrastructure::repo::{AuthRepo, PreparedGrant, RefreshOutcome};
 use crate::infrastructure::tokens::{
     generate_jwt_id, generate_refresh_token, hash_refresh_token, refresh_token_session_id,
@@ -16,6 +16,8 @@ use crate::infrastructure::tokens::{
 
 const REPLAY_GRANT_VERSION: i32 = 1;
 const INVALID_REFRESH: &str = "Invalid or expired refresh token.";
+/// Префикс конфигурации replay-кольца.
+const REPLAY_KEY_RING_PREFIX: &str = "Auth:ReplayKeyRing";
 
 #[derive(Debug)]
 pub enum RefreshError {
@@ -31,7 +33,7 @@ pub enum RefreshError {
 /// legacy-ротация (revoke on reuse). Grace фиксирован (`G=60s`).
 #[derive(Clone)]
 pub struct ReplayConfig {
-    key_ring: Arc<ReplayKeyRing>,
+    key_ring: Arc<AuthKeyRing>,
     grace_seconds: i64,
     /// Drain-переключатель (rollback, plan §3). Общий на инстанс: в drain новые
     /// ротации отдают 503, replay в grace продолжает обслуживаться.
@@ -39,7 +41,7 @@ pub struct ReplayConfig {
 }
 
 impl ReplayConfig {
-    pub fn new(key_ring: Arc<ReplayKeyRing>) -> Self {
+    pub fn new(key_ring: Arc<AuthKeyRing>) -> Self {
         Self {
             key_ring,
             grace_seconds: REFRESH_GRACE_SECONDS,
@@ -59,8 +61,8 @@ impl ReplayConfig {
         if !enabled {
             return Ok(None);
         }
-        let ring = ReplayKeyRing::from_config(cfg)
-            .map_err(|e| e.to_string())?
+        let ring = AuthKeyRing::from_config(cfg, REPLAY_KEY_RING_PREFIX)
+            .map_err(|e| e.with_prefix(REPLAY_KEY_RING_PREFIX))?
             .ok_or_else(|| {
                 "retry-safe refresh включён, но Auth:ReplayKeyRing не задан (startup fail-fast)"
                     .to_string()
@@ -570,7 +572,7 @@ mod tests {
     fn set_drain_toggles_at_runtime() {
         let mut keys = std::collections::HashMap::new();
         keys.insert("k1".to_string(), [1_u8; 32]);
-        let config = ReplayConfig::new(Arc::new(ReplayKeyRing::new("k1", keys).unwrap()));
+        let config = ReplayConfig::new(Arc::new(AuthKeyRing::new("k1", keys).unwrap()));
         assert!(!config.is_draining());
         config.set_drain(true);
         assert!(config.is_draining());

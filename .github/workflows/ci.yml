@@ -178,6 +178,13 @@ jobs:
         run: >-
           cargo test -p flora-auth --test refresh_replays_pg --locked --
           --nocapture --test-threads=1
+      - name: Test Auth TOTP at-rest against PostgreSQL
+        env:
+          FLORA_AUTH_TOTP_PG: "1"
+          FLORA_AUTH_TOTP_PG_URL: ${{ env.FLORA_CI_PG_CONNECTION }}
+        run: >-
+          cargo test -p flora-auth --test totp_reseal_pg --locked --
+          --nocapture --test-threads=1
       - name: Test
         run: cargo test --workspace --locked
       - name: Licenses, bans, advisories (cargo deny)

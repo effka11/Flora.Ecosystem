@@ -1,7 +1,7 @@
 //! Версионированный внутренний `ReplayGrantV1` (plan §2).
 //!
 //! Это НЕ HTTP DTO: сериализуется в приватный payload, который шифруется key
-//! ring'ом ([`crate::infrastructure::replay_keys`]) и хранится в
+//! ring'ом ([`crate::infrastructure::auth_key_ring`]) и хранится в
 //! `auth_refresh_replays`. Содержит точную token pair и метаданные ответа,
 //! чтобы повтор в пределах grace вернул ровно тот же ответ, что и первая ротация.
 

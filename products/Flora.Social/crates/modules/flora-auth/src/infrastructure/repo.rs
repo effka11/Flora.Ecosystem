@@ -62,6 +62,13 @@ pub struct SecurityLogRow {
     pub login_locked_until: Option<DateTime<Utc>>,
 }
 
+/// Строка TOTP-секрета для фонового бэкфилла и ротации ключей.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct TotpSecretRow {
+    pub user_uuid: Uuid,
+    pub two_factor_secret: String,
+}
+
 pub struct AuthRepo {
     pool: PgPool,
 }
@@ -1218,6 +1225,78 @@ impl AuthRepo {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Keyset-страница legacy plaintext-секретов (`NOT LIKE 'v1:%'`) по PK.
+    /// `after` — последний обработанный `user_uuid` предыдущей страницы.
+    pub async fn list_plaintext_totp_secrets(
+        &self,
+        after: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<TotpSecretRow>, sqlx::Error> {
+        sqlx::query_as::<_, TotpSecretRow>(
+            r#"
+            SELECT user_uuid, two_factor_secret
+            FROM flora_core.user_accounts
+            WHERE two_factor_secret IS NOT NULL AND two_factor_secret <> ''
+              AND two_factor_secret NOT LIKE 'v1:%'
+              AND ($1::uuid IS NULL OR user_uuid > $1::uuid)
+            ORDER BY user_uuid
+            LIMIT $2
+            "#,
+        )
+        .bind(after)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// Строки, запечатанные неактивным key id. Точное сравнение по `split_part`:
+    /// `_` и `%` в key id не должны работать как wildcard.
+    pub async fn list_totp_secrets_not_under_key(
+        &self,
+        active_key_id: &str,
+        limit: i64,
+    ) -> Result<Vec<TotpSecretRow>, sqlx::Error> {
+        sqlx::query_as::<_, TotpSecretRow>(
+            r#"
+            SELECT user_uuid, two_factor_secret
+            FROM flora_core.user_accounts
+            WHERE two_factor_secret LIKE 'v1:%'
+              AND split_part(two_factor_secret, ':', 2) <> $1
+            ORDER BY user_uuid
+            LIMIT $2
+            "#,
+        )
+        .bind(active_key_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// Compare-and-swap секрета: не перетираем гонку с `begin_two_factor_setup`.
+    /// `true` — строка обновлена, `false` — значение уже другое.
+    pub async fn compare_and_swap_two_factor_secret(
+        &self,
+        user_uuid: Uuid,
+        expected: &str,
+        replacement: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flora_core.user_accounts
+            SET two_factor_secret = $3, updated_at = $4
+            WHERE user_uuid = $1 AND two_factor_secret = $2
+            "#,
+        )
+        .bind(user_uuid)
+        .bind(expected)
+        .bind(replacement)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn get_account_public(
