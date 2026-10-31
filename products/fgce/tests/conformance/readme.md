@@ -46,7 +46,7 @@ cargo test -p fgce-conformance -- --ignored --nocapture   # regen fixtures
 | 27 | conformance | `tree.rs::row_27_place_child_does_not_move_the_sibling` |
 | 28 | conformance | `tree.rs::row_28_place_child_of_a_nested_group_keeps_the_outer_neighbour` |
 | 29 | conformance | `tree.rs::row_29_repeated_entity_recomputes_the_group_union` |
-| 30 | conformance | `tree.rs::row_30_arbitrary_without_children_is_bad_arbitrary` |
+| 30 | conformance | `tree.rs::row_30_arbitrary_without_children_is_a_leaf` |
 | 31 | conformance | `tree.rs::row_31_inset_needs_a_window_parent` |
 | 32–34 | conformance | `layout.rs::row_32_34_inset_clamps_the_pin_origin` |
 | 35–36 | conformance | `layout.rs::row_35_36_inset_shortage_splits_both_gaps` |
@@ -71,7 +71,7 @@ cargo test -p fgce-conformance -- --ignored --nocapture   # regen fixtures
 | 57 | conformance | `tree.rs::row_57_place_nested_arbitrary_uses_the_rect` |
 | 58 | conformance | `tree.rs::row_58_place_nested_arbitrary_outside_the_parent_overflows` |
 | 59 | conformance | `show_place_end.rs::row_59_show_of_a_nested_arbitrary_shifts_children` |
-| 60 | conformance | `tree.rs::row_60_remove_the_only_arbitrary_child_is_bad_arbitrary` |
+| 60 | conformance | `tree.rs::row_60_remove_the_only_arbitrary_child_leaves_a_leaf` |
 | 61 | conformance | `tree.rs::row_61_transfer_keeps_the_absolute_pixel` |
 | 62 | conformance | `tree.rs::row_62_photo_needs_a_stored_image` |
 | 63 | conformance | `tree.rs::row_63_vector_needs_verbs` |
@@ -213,39 +213,43 @@ cargo test -p fgce-conformance -- --ignored --nocapture   # regen fixtures
 | 198 | conformance | `fill_lattice.rs::row_g5_lattice_does_not_move_the_snapshot_or_place` |
 | 199 | conformance | `fill_lattice.rs::row_g5_lattice_respects_the_clip` |
 | 200 | conformance | `fill_lattice.rs::row_g5_lattice_horizontal_wins_at_a_crossing` |
-| 201 | conformance | `debug.rs::row_g6_disabled_layer_does_not_touch_the_frame`, `debug.rs::row_g6_state_survives_begin_and_labels_survive_disable` |
-| 202 | conformance | `debug.rs::row_g6_label_validation_keeps_the_state`, `debug.rs::row_g6_label_scale_and_alpha_change_the_pixels`, `debug.rs::row_g6_default_label_is_hash_id` |
-| 203 | conformance | `debug.rs::row_g6_three_levels_use_base_middle_and_tip`, `debug.rs::row_g6_five_levels_interpolate_base_to_tip`, `debug.rs::row_g6_invisible_branch_does_not_count_in_max_depth`, `debug.rs::row_g6_empty_entity_is_outlined` |
-| 204 | conformance | `debug.rs::row_g6_hover_over_empty_space_draws_no_labels`, `debug.rs::row_g6_hover_none_removes_the_labels`, `debug.rs::row_g6_pin_moves_the_label_corner`, `debug.rs::row_g6_hover_labels_only_the_hovered_branch`, `debug.rs::row_g6_label_clamps_into_the_frame_at_the_bottom_edge` |
-| 205 | conformance | `debug.rs::row_g6_window_label_is_supported`, `debug.rs::row_g6_debug_layer_is_painted_after_the_immediate_overlay` |
-| 206 | conformance | `debug.rs::row_g6_label_alpha_zero_disables_labels` |
-| 207 | conformance | `debug.rs::row_g6_remove_and_redefine_forget_names` |
-| 208 | conformance | `debug.rs::row_g6_text_fixtures_are_frozen`, `debug.rs::row_g6_arrow_fixture_is_frozen` |
-| 209 | conformance | `peak.rs::row_g9_light_is_the_default_and_keeps_the_frame` |
-| 210 | conformance | `peak.rs::row_g9_diagonal_and_horizontal_peak_are_equal` |
-| 211 | conformance | `peak.rs::row_g9_peak_is_global_and_scales_the_whole_stroke` |
-| 212 | conformance | `peak.rs::row_g9_mixed_orientation_with_an_axial_segment_stays_light` |
-| 213 | conformance | `peak.rs::row_g9_empty_geometry_is_a_no_op` |
-| 214 | conformance | `peak.rs::row_g9_carriers_normalize_the_same_diagonal` |
-| 215 | conformance | `peak.rs::row_g9_diagonal_is_not_byte_identical_to_light` |
-| 216 | conformance | `icons.rs::row_g10_minus_icon_is_fourteen_by_one` |
-| 217 | conformance | `icons.rs::row_g10_frame_icon_is_thirteen_by_thirteen` |
-| 218 | conformance | `icons.rs::row_g10_cross_icon_is_eleven_by_eleven`, `icons.rs::row_g10_cross_light_ink_is_lower_than_nominal` |
-| 219 | conformance | `icons.rs::row_g10_radius_none_matches_a_plain_stroke_path` |
-| 220 | conformance | `fixtures.rs::row_g8_opaque_frame_is_unchanged`, `fixtures.rs::row_g2_fill_rect_plain_is_frozen`, `fixtures.rs::stroke_closed_010_is_frozen` |
-| 221 | conformance | `fractional_stroke.rs::row_g12_whole_width_is_256` |
-| 222 | conformance | `fractional_stroke.rs::row_g12_zero_width_q8_is_bad_stroke` |
-| 223 | conformance | `fractional_stroke.rs::row_g12_frame_icon_with_a_fractional_width` |
-| 224 | conformance | `fractional_stroke.rs::row_g12_cross_icon_with_a_fractional_width` |
-| 225 | conformance | `fractional_stroke.rs::row_g12_light_keeps_the_band_light` |
-| 226 | conformance | `fractional_stroke.rs::row_g12_nominal_lifts_the_fractional_peak` |
-| 227 | conformance | `fractional_stroke.rs::row_g12_carriers_agree_on_a_fraction`, `fractional_stroke.rs::row_g12_outside_band_paints_the_fraction` |
-| 228 | conformance | `fractional_stroke.rs::row_g12_measure_includes_the_fractional_band` |
-| 229 | conformance | `fixtures.rs::row_g12_fractional_stroke_is_frozen` |
-| 230 | conformance | `debug.rs::row_g12_labels_have_their_own_scale` |
-| 231 | conformance | `debug.rs::row_g12_default_label_colors_keep_the_frame` |
-| 232 | conformance | `debug.rs::row_g12_arrows_follow_the_label_color` |
-| 233 | conformance | `fractional_stroke.rs::row_g12_center_joins_caps_and_radius_keep_the_fraction` |
+| 201 | conformance | `debug.rs::row_g6_disabled_layer_does_not_touch_the_frame`, `debug.rs::row_g6_state_survives_begin_and_labels_survive_disable`, `debug_probe.rs::disabled_grid_restores_the_plain_frame`, `debug_probe.rs::debug_state_survives_begin`, `debug_probe.rs::repeated_debug_grid_replaces_the_style` |
+| 202 | conformance | `debug.rs::row_g6_label_validation_keeps_the_state`, `debug.rs::row_g6_label_scale_and_alpha_change_the_pixels`, `debug.rs::row_g6_default_label_is_hash_id`, `debug_probe.rs::label_validation_limits` |
+| 203 | conformance | `debug.rs::row_g6_three_levels_use_base_middle_and_tip`, `debug.rs::row_g6_five_levels_interpolate_base_to_tip`, `debug.rs::row_g6_invisible_branch_does_not_count_in_max_depth`, `debug.rs::row_g6_empty_entity_is_outlined`, `debug_probe.rs::outline_ramp_matches_three_and_five_levels` |
+| 204 | conformance | `debug_probe.rs::outlines_follow_cell_boundaries_and_clip_at_the_frame` |
+| 205 | conformance | `debug_probe.rs::label_chain_stacks_without_overlap_inside_the_frame`, `debug_probe.rs::small_frame_clamps_the_label_chain_into_the_bottom_band` |
+| 206 | conformance | `debug.rs::row_g6_window_label_is_supported`, `debug_probe.rs::root_label_follows_the_window_pin` |
+| 207 | conformance | `debug_probe.rs::pin_masks_match_the_calibrated_geometry`, `debug_probe.rs::pin_directions_place_the_arrow`, `debug_probe.rs::diagonal_arrow_spans_seven_pixels`, `debug_probe.rs::pin_moves_the_label_and_arrow_corner`, `debug.rs::row_g6_pin_moves_the_label_corner` |
+| 208 | conformance | `debug.rs::row_g6_hover_over_empty_space_draws_no_labels`, `debug.rs::row_g6_hover_none_removes_the_labels`, `debug.rs::row_g6_hover_labels_only_the_hovered_branch`, `debug.rs::row_g6_label_clamps_into_the_frame_at_the_bottom_edge`, `debug_probe.rs::label_alpha_zero_and_no_hover_draw_no_labels`, `debug_probe.rs::hover_over_empty_space_draws_no_labels` |
+| 209 | conformance | `debug.rs::row_g6_debug_layer_is_painted_after_the_immediate_overlay`, `debug_probe.rs::debug_layer_draws_over_immediate_commands` |
+| 210 | conformance | `debug.rs::row_g6_label_alpha_zero_disables_labels` |
+| 211 | conformance | `debug.rs::row_g6_remove_and_redefine_forget_names`, `debug_probe.rs::remove_forgets_the_label_and_unnamed_nodes_use_their_id`, `debug_probe.rs::reference_reset_forgets_labels` |
+| 212 | conformance | `debug.rs::row_g6_text_fixtures_are_frozen`, `debug.rs::row_g6_arrow_fixture_is_frozen` |
+| 213 | conformance | `peak.rs::row_g9_light_is_the_default_and_keeps_the_frame` |
+| 214 | conformance | `peak.rs::row_g9_diagonal_and_horizontal_peak_are_equal` |
+| 215 | conformance | `peak.rs::row_g9_peak_is_global_and_scales_the_whole_stroke` |
+| 216 | conformance | `peak.rs::row_g9_mixed_orientation_with_an_axial_segment_stays_light` |
+| 217 | conformance | `peak.rs::row_g9_empty_geometry_is_a_no_op` |
+| 218 | conformance | `peak.rs::row_g9_carriers_normalize_the_same_diagonal` |
+| 219 | conformance | `peak.rs::row_g9_diagonal_is_not_byte_identical_to_light` |
+| 220 | conformance | `icons.rs::row_g10_minus_icon_is_fourteen_by_one` |
+| 221 | conformance | `icons.rs::row_g10_frame_icon_is_thirteen_by_thirteen` |
+| 222 | conformance | `icons.rs::row_g10_cross_icon_is_eleven_by_eleven`, `icons.rs::row_g10_cross_light_ink_is_lower_than_nominal` |
+| 223 | conformance | `icons.rs::row_g10_radius_none_matches_a_plain_stroke_path` |
+| 224 | conformance | `fixtures.rs::row_g8_opaque_frame_is_unchanged`, `fixtures.rs::row_g2_fill_rect_plain_is_frozen`, `fixtures.rs::stroke_closed_010_is_frozen` |
+| 225 | conformance | `fractional_stroke.rs::row_g12_whole_width_is_256` |
+| 226 | conformance | `fractional_stroke.rs::row_g12_zero_width_q8_is_bad_stroke` |
+| 227 | conformance | `fractional_stroke.rs::row_g12_frame_icon_with_a_fractional_width` |
+| 228 | conformance | `fractional_stroke.rs::row_g12_cross_icon_with_a_fractional_width` |
+| 229 | conformance | `fractional_stroke.rs::row_g12_light_keeps_the_band_light` |
+| 230 | conformance | `fractional_stroke.rs::row_g12_nominal_lifts_the_fractional_peak` |
+| 231 | conformance | `fractional_stroke.rs::row_g12_carriers_agree_on_a_fraction`, `fractional_stroke.rs::row_g12_outside_band_paints_the_fraction` |
+| 232 | conformance | `fractional_stroke.rs::row_g12_measure_includes_the_fractional_band` |
+| 233 | conformance | `fixtures.rs::row_g12_fractional_stroke_is_frozen` |
+| 234 | conformance | `debug.rs::row_g12_labels_have_their_own_scale`, `debug_probe.rs::label_colors_interpolate_on_their_own_scale`, `debug_probe.rs::label_colours_match_the_documented_brightness` |
+| 235 | conformance | `debug.rs::row_g12_default_label_colors_keep_the_frame`, `debug_probe.rs::label_color_overrides_fall_back_to_the_outline_ends` |
+| 236 | conformance | `debug.rs::row_g12_arrows_follow_the_label_color`, `debug_probe.rs::arrow_uses_the_label_color` |
+| 237 | conformance | `fractional_stroke.rs::row_g12_center_joins_caps_and_radius_keep_the_fraction` |
 ## Вспомогательные тесты
 
 Тесты без номера строки проверяют контрактные инварианты вокруг строки:

@@ -114,18 +114,18 @@ fn collect(tree: &Tree, frame: Rect) -> Vec<Visible<'_>> {
     visible
 }
 
-fn level_color(style: DebugGridStyle, depth: i32, max_depth: i32) -> Color {
-    interpolate(style.base, style.tip, depth, max_depth)
+fn level_color(style: DebugGridStyle, node: &Visible<'_>, max_depth: i32) -> Color {
+    interpolate(style.base, style.tip, node.depth, max_depth)
 }
 
 /// Labels keep their own `label_base → label_tip` scale; unset ends inherit the
 /// outline ends, so a style without label colors renders exactly as before.
-fn label_color(style: DebugGridStyle, depth: i32, max_depth: i32) -> Color {
+fn label_color(style: DebugGridStyle, node: &Visible<'_>, max_depth: i32) -> Color {
     let base = style.label_base.unwrap_or(style.base);
     let tip = style.label_tip.unwrap_or(style.tip);
     Color {
         a: style.label_alpha,
-        ..interpolate(base, tip, depth, max_depth)
+        ..interpolate(base, tip, node.depth, max_depth)
     }
 }
 
@@ -177,7 +177,7 @@ fn draw_outlines(
         let Some(node) = by_id.get(&id) else {
             continue;
         };
-        let color = level_color(style, node.depth, max_depth);
+        let color = level_color(style, node, max_depth);
         draw_outline(buf, node.rect, color, frame);
     }
 }
@@ -187,8 +187,11 @@ fn draw_outline(buf: &mut FrameBuffer, rect: Rect, color: Color, frame: Rect) {
         return;
     }
     let stride = buf.stride() as usize;
-    let right = rect.x2.saturating_add(1).min(frame.x2);
-    let bottom = rect.y2.saturating_add(1).min(frame.y2);
+    // Right and bottom follow the cell boundary (`x2 + 1`) without clamping:
+    // when the boundary is outside the frame the line is clipped exactly like
+    // the lattice line, so group outlines always stay on the grid.
+    let right = rect.x2.saturating_add(1);
+    let bottom = rect.y2.saturating_add(1);
     let lines = [
         Rect {
             x1: rect.x1,
@@ -286,20 +289,23 @@ fn draw_labels(
         if width <= 0 || height <= 0 {
             continue;
         }
-        let (mut x, mut y) = label_origin(buf, node, width, height);
-        x = x.clamp(frame.x1, (frame.x2 + 1 - width).max(frame.x1));
+        // The arrow occupies its own column to the right of the text, so the
+        // collision box and the edge clamp cover both.
+        let block = label_block_width(node, window_pin, width);
+        let (mut x, mut y) = label_origin(buf, node, block, height, window_pin);
+        x = x.clamp(frame.x1, (frame.x2 + 1 - block).max(frame.x1));
         y = y.clamp(frame.y1, (frame.y2 + 1 - height).max(frame.y1));
         loop {
             let overlap = placed.iter().find(|placed| {
                 x < placed.x2 + 1
-                    && placed.x1 < x + width
+                    && placed.x1 < x + block
                     && y < placed.y2 + 1
                     && placed.y1 < y + height
             });
             let Some(placed) = overlap else {
                 break;
             };
-            y = placed.y2 + 1;
+            y = placed.y2 + 1 + STACK_GAP;
             if y + height > frame.y2 + 1 {
                 y = (frame.y2 + 1 - height).max(frame.y1);
                 break;
@@ -308,21 +314,60 @@ fn draw_labels(
         let rect = Rect {
             x1: x,
             y1: y,
-            x2: x + width - 1,
+            x2: x + block - 1,
             y2: y + height - 1,
         };
-        let color = label_color(style, node.depth, max_depth);
+        let color = label_color(style, node, max_depth);
         draw_text(buf, &text, x, y, style.label_scale as i32, color, frame);
-        draw_arrow(buf, node, window_pin, color, frame);
+        if let Some(pin) = label_pin(node, window_pin) {
+            let arrow_y = y + (height - ARROW_SIDE) / 2;
+            draw_arrow(buf, x + width + ARROW_GAP, arrow_y, pin, color, frame);
+        }
         placed.push(rect);
     }
 }
 
-fn label_origin(buf: &FrameBuffer, node: &Visible<'_>, width: i32, height: i32) -> (i32, i32) {
+/// Arrow side in pixels; the pin masks are 7×7, the calibrated host size.
+const ARROW_SIDE: i32 = 7;
+/// Gap between the label text and its pin arrow.
+const ARROW_GAP: i32 = 2;
+/// Inset of a label from the box edge.
+const LABEL_PAD: i32 = 2;
+/// Blank rows between the labels of one hover chain.
+const STACK_GAP: i32 = 2;
+
+/// Pin drawn next to the label; entities are leaves and have no pin arrow.
+fn label_pin(node: &Visible<'_>, window_pin: Pin) -> Option<Pin> {
+    match node.class {
+        None => Some(window_pin),
+        Some(Class::Group { pin, .. }) | Some(Class::Arbitrary { pin, .. }) => Some(*pin),
+        Some(Class::Entity(_)) => None,
+    }
+}
+
+/// Label width including the arrow column, so the layout and the clamp keep the
+/// arrow visible instead of letting the text run over it.
+fn label_block_width(node: &Visible<'_>, window_pin: Pin, text_width: i32) -> i32 {
+    if label_pin(node, window_pin).is_some() {
+        text_width + ARROW_GAP + ARROW_SIDE
+    } else {
+        text_width
+    }
+}
+
+fn label_origin(
+    buf: &FrameBuffer,
+    node: &Visible<'_>,
+    block: i32,
+    height: i32,
+    window_pin: Pin,
+) -> (i32, i32) {
     let rect = node.rect;
     let frame = frame_rect(buf);
     match node.class {
-        None => (rect.x1 + 1, rect.y2 + 1 - height),
+        // The root label follows its pin like any group: the window pin is the
+        // reference anchor, top-left by default.
+        None => pinned_origin(rect, window_pin, block, height),
         Some(Class::Entity(_)) => {
             let above = rect.y1 - height - 1;
             if above >= frame.y1 {
@@ -332,19 +377,23 @@ fn label_origin(buf: &FrameBuffer, node: &Visible<'_>, width: i32, height: i32) 
             }
         }
         Some(Class::Group { pin, .. }) | Some(Class::Arbitrary { pin, .. }) => {
-            let x = if pin.x == 1 {
-                rect.x2 + 1 - width
-            } else {
-                rect.x1
-            };
-            let y = if pin.y == -1 {
-                rect.y2 + 1 - height
-            } else {
-                rect.y1
-            };
-            (x, y)
+            pinned_origin(rect, *pin, block, height)
         }
     }
+}
+
+fn pinned_origin(rect: Rect, pin: Pin, block: i32, height: i32) -> (i32, i32) {
+    let x = if pin.x == 1 {
+        rect.x2 + 1 - LABEL_PAD - block
+    } else {
+        rect.x1 + LABEL_PAD
+    };
+    let y = if pin.y == -1 {
+        rect.y2 + 1 - LABEL_PAD - height
+    } else {
+        rect.y1 + LABEL_PAD
+    };
+    (x, y)
 }
 
 fn draw_text(
@@ -384,43 +433,17 @@ fn draw_text(
     }
 }
 
-fn draw_arrow(
-    buf: &mut FrameBuffer,
-    node: &Visible<'_>,
-    window_pin: Pin,
-    color: Color,
-    frame: Rect,
-) {
+fn draw_arrow(buf: &mut FrameBuffer, x: i32, y: i32, pin: Pin, color: Color, frame: Rect) {
     if color.a == 0 {
         return;
     }
-    let pin = match node.class {
-        None => window_pin,
-        Some(Class::Group { pin, .. }) | Some(Class::Arbitrary { pin, .. }) => *pin,
-        Some(Class::Entity(_)) => return,
-    };
     let Some(mask) = arrow_mask(pin.x, pin.y) else {
         return;
     };
-    let rect = node.rect;
-    let x = if pin.x == 1 {
-        rect.x2 - 4
-    } else if pin.x == -1 {
-        rect.x1
-    } else {
-        (rect.x1 + rect.x2) / 2 - 2
-    };
-    let y = if pin.y == 1 {
-        rect.y1
-    } else if pin.y == -1 {
-        rect.y2 - 4
-    } else {
-        (rect.y1 + rect.y2) / 2 - 2
-    };
     let stride = buf.stride() as usize;
     for (row, bits) in mask.iter().enumerate() {
-        for column in 0..5 {
-            if bits & (1 << (4 - column)) == 0 {
+        for column in 0..ARROW_SIDE {
+            if bits & (1 << (ARROW_SIDE - 1 - column)) == 0 {
                 continue;
             }
             let pixel = Rect {
@@ -437,17 +460,22 @@ fn draw_arrow(
     }
 }
 
-const ARROW_UP: [u8; 5] = [0x04, 0x0E, 0x15, 0x04, 0x04];
-const ARROW_DOWN: [u8; 5] = [0x04, 0x04, 0x15, 0x0E, 0x04];
-const ARROW_LEFT: [u8; 5] = [0x04, 0x08, 0x1F, 0x08, 0x04];
-const ARROW_RIGHT: [u8; 5] = [0x04, 0x02, 0x1F, 0x02, 0x04];
-const ARROW_UP_LEFT: [u8; 5] = [0x10, 0x18, 0x1C, 0x1E, 0x1F];
-const ARROW_UP_RIGHT: [u8; 5] = [0x01, 0x03, 0x07, 0x0F, 0x1F];
-const ARROW_DOWN_LEFT: [u8; 5] = [0x1F, 0x1E, 0x1C, 0x18, 0x10];
-const ARROW_DOWN_RIGHT: [u8; 5] = [0x1F, 0x0F, 0x07, 0x03, 0x01];
-const ARROW_CIRCLE: [u8; 5] = [0x0E, 0x11, 0x11, 0x11, 0x0E];
+// Bit 6 is the leftmost column of a 7-pixel row.
+const ARROW_UP: [u8; 7] = [0x08, 0x14, 0x22, 0x49, 0x08, 0x08, 0x08];
+const ARROW_DOWN: [u8; 7] = [0x08, 0x08, 0x08, 0x49, 0x22, 0x14, 0x08];
+const ARROW_LEFT: [u8; 7] = [0x08, 0x10, 0x20, 0x7F, 0x20, 0x10, 0x08];
+const ARROW_RIGHT: [u8; 7] = [0x08, 0x04, 0x02, 0x7F, 0x02, 0x04, 0x08];
+// Diagonals repeat the old host geometry: a shaft to the opposite corner and
+// two 4-pixel barbs along the edges that meet at the pinned corner. The barbs
+// keep the point readable at the label scale; a filled wedge would read as a
+// corner marker instead of a direction.
+const ARROW_UP_LEFT: [u8; 7] = [0x78, 0x60, 0x50, 0x48, 0x04, 0x02, 0x01];
+const ARROW_UP_RIGHT: [u8; 7] = [0x0F, 0x03, 0x05, 0x09, 0x10, 0x20, 0x40];
+const ARROW_DOWN_LEFT: [u8; 7] = [0x01, 0x02, 0x04, 0x48, 0x50, 0x60, 0x78];
+const ARROW_DOWN_RIGHT: [u8; 7] = [0x40, 0x20, 0x10, 0x09, 0x05, 0x03, 0x0F];
+const ARROW_CIRCLE: [u8; 7] = [0x1C, 0x22, 0x41, 0x41, 0x41, 0x22, 0x1C];
 
-fn arrow_mask(x: i8, y: i8) -> Option<&'static [u8; 5]> {
+fn arrow_mask(x: i8, y: i8) -> Option<&'static [u8; 7]> {
     match (x.signum(), y.signum()) {
         (0, 1) => Some(&ARROW_UP),
         (0, -1) => Some(&ARROW_DOWN),

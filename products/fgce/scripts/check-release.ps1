@@ -1,9 +1,9 @@
-# Release gate for FGCE 0.2.0.
+# Release gate for FGCE 0.2.1.
 # Checks version sources and license files, then runs the full product gates.
 
 param(
     [string]$ProductRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")),
-    [string]$Version = "0.2.0"
+    [string]$Version = "0.2.1"
 )
 
 Set-StrictMode -Version Latest

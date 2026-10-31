@@ -1,7 +1,7 @@
 [package]
 name = "fgce-conformance"
 description = "FGCE §12 conformance suite. Test package only: no delivery, no second API door."
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.97"
 license = "AGPL-3.0-only"

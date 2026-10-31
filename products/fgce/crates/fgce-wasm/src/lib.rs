@@ -251,7 +251,7 @@ mod tests {
         assert_eq!(payload[0], KIND_INFO);
         let mut reader = wire::Reader::new(&payload[1..]);
         let version_len = reader.u32().unwrap() as usize;
-        assert_eq!(reader.bytes(version_len).unwrap(), b"0.2.0");
+        assert_eq!(reader.bytes(version_len).unwrap(), b"0.2.1");
         assert_eq!(reader.u32().unwrap(), 8192);
         assert_eq!(reader.u32().unwrap(), 40);
         assert_eq!(reader.u32().unwrap(), 32);

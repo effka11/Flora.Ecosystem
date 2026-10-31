@@ -71,29 +71,6 @@ fn arbitrary(
     });
 }
 
-#[allow(clippy::too_many_arguments)]
-fn try_arbitrary(
-    h: &mut Harness,
-    id: u32,
-    parent: u32,
-    on_grid: bool,
-    edges: Edges,
-    children: &[NodeId],
-    pin: Pin,
-    inset: Option<Inset>,
-) -> Error {
-    h.err(Request::Arbitrary {
-        id: NodeId(id),
-        parent: NodeId(parent),
-        on_grid: Some(on_grid),
-        edges,
-        children,
-        pin,
-        snap: false,
-        inset,
-    })
-}
-
 fn node_rect(h: &mut Harness, id: u32) -> Option<fgce::Rect> {
     h.snapshot()
         .nodes
@@ -308,23 +285,24 @@ fn row_29_repeated_entity_recomputes_the_group_union() {
 }
 
 #[test]
-fn row_30_arbitrary_without_children_is_bad_arbitrary() {
+fn row_30_arbitrary_without_children_is_a_leaf() {
     let mut h = Harness::new();
     h.begin(100, 100);
     h.ok(flat(1, 0, 0, 9, 9, WHITE));
-    assert_eq!(
-        try_arbitrary(
-            &mut h,
-            20,
-            0,
-            false,
-            pixels(0, 0, 19, 19),
-            &[],
-            CENTER,
-            None
-        ),
-        Error::BadArbitrary
+    arbitrary(
+        &mut h,
+        20,
+        0,
+        false,
+        pixels(0, 0, 19, 19),
+        &[],
+        CENTER,
+        None,
     );
+    assert_eq!(node_rect(&mut h, 20), Some(rect(0, 0, 19, 19)));
+    h.place(20, rect(5, 5, 24, 24));
+    assert_eq!(node_rect(&mut h, 20), Some(rect(5, 5, 24, 24)));
+    h.end();
 }
 
 #[test]
@@ -537,7 +515,7 @@ fn row_58_place_nested_arbitrary_outside_the_parent_overflows() {
 }
 
 #[test]
-fn row_60_remove_the_only_arbitrary_child_is_bad_arbitrary() {
+fn row_60_remove_the_only_arbitrary_child_leaves_a_leaf() {
     let mut h = Harness::new();
     h.begin(100, 100);
     h.ok(flat(1, 0, 0, 9, 9, WHITE));
@@ -551,8 +529,16 @@ fn row_60_remove_the_only_arbitrary_child_is_bad_arbitrary() {
         CENTER,
         None,
     );
-    assert_eq!(h.try_remove(1), Error::BadArbitrary);
-    assert_eq!(node_rect(&mut h, 1), Some(rect(0, 0, 9, 9)));
+    h.remove(1);
+    assert_eq!(node_rect(&mut h, 1), None);
+    assert_eq!(node_rect(&mut h, 10), Some(rect(0, 0, 19, 19)));
+    let snapshot = h.snapshot();
+    assert!(
+        snapshot.nodes.iter().all(|node| node.parent != NodeId(10)),
+        "the arbitrary box keeps no children"
+    );
+    h.remove(10);
+    assert_eq!(node_rect(&mut h, 10), None);
 }
 
 #[test]

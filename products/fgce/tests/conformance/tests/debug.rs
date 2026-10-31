@@ -336,7 +336,13 @@ fn row_g12_default_label_colors_keep_the_frame() {
 fn row_g12_arrows_follow_the_label_color() {
     let arrow = |style: DebugGridStyle| {
         let frame = own_scale_frame(style);
-        let at = 0;
+        // The root label `#0` starts at (2, 2). Its arrow column begins after
+        // the text and ARROW_GAP: `#0` is two glyphs at scale 1, so the
+        // documented advance gives text_width = 2 * 6 - 1 = 11.
+        let text_width = 2 * 6 - 1;
+        let arrow_x = 2 + text_width + 2;
+        let stride = 32 * 4;
+        let at = 2 * stride + arrow_x * 4;
         [frame[at], frame[at + 1], frame[at + 2], frame[at + 3]]
     };
     let shared = arrow(DebugGridStyle::new(BLACK, BLACK, 200, 1));
@@ -344,8 +350,8 @@ fn row_g12_arrows_follow_the_label_color() {
         arrow(DebugGridStyle::new(BLACK, BLACK, 200, 1).with_label_colors(LABEL_BASE, LABEL_TIP));
     assert_eq!(
         shared,
-        [0, 0, 0, 255],
-        "the window arrow keeps the outline color"
+        [3, 3, 3, 255],
+        "the window arrow keeps the outline color at label_alpha 200 over #0E"
     );
     assert_eq!(
         own,
