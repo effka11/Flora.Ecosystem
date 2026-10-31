@@ -50,6 +50,68 @@
   `epochSetHash` и отклоняет backup при несовпадении с outer metadata.
   Реализация: [`products/FSCP`](products/FSCP) + Web-копия
   [`apps/Web/lib/fscp/keyBackup.ts`](apps/Web/lib/fscp/keyBackup.ts).
+- **Auth TOTP at-rest (`auth-totp-sealed`):** `user_accounts.two_factor_secret` не хранится base32
+  открытым текстом. Формат `v1:<keyId>:<nonce_b64>:<ct_b64>` (XChaCha20-Poly1305), AAD привязан к
+  `user_uuid`, ключ — отдельное кольцо `Auth:TotpKeyRing` в том же secret store, что `Jwt:Secret`.
+  Реализация: [`products/Flora.Social/crates/modules/flora-auth`](products/Flora.Social/crates/modules/flora-auth)
+  (`infrastructure/totp_at_rest.rs`, `application/totp_reseal.rs`). Production без `Auth:TotpKeyRing`
+  не стартует; development остаётся plaintext (эфемерный `Jwt:Secret` не может быть стабильным ключом).
+  **Остаточный риск:** компрометация БД вместе с конфиг-ключом → клонирование 2FA; потеря ключа →
+  2FA недоступна до точечного сброса (см. runbook ниже).
+
+---
+
+## Runbook: TOTP at-rest
+
+Область действия — Production-развёртывание, где Auth обслуживает Rust-модуль (`Auth:ServeNative=true`).
+Development без `Auth:TotpKeyRing` работает в plaintext-режиме; проверочный SQL на dev-БД не применяется.
+
+**Pre-flight (до деплоя):** ожидаем `sealed = 0`.
+
+```sql
+SELECT count(*) FILTER (WHERE two_factor_secret IS NOT NULL AND two_factor_secret <> ''
+                          AND two_factor_secret NOT LIKE 'v1:%') AS plaintext,
+       count(*) FILTER (WHERE two_factor_secret LIKE 'v1:%')       AS sealed
+FROM flora_core.user_accounts;
+```
+
+**Раскатка:**
+
+1. Доставить ключ на сервер: `Auth__TotpKeyRing__ActiveKeyId`, `Auth__TotpKeyRing__KeyIds__0`,
+   `Auth__TotpKeyRing__Key__<id>` в systemd-юнит flora-api **или** gitignored
+   `appsettings.Production.json` в `FLORA_CONFIG_DIR`. `scripts/deploy-flora-api.ps1` копирует только
+   `backend/appsettings.json` — ключ доставляется отдельным шагом, из secret store.
+2. Задеплоить бинарь. Без ключа старт намеренно падает (fail-fast).
+3. Наблюдать лог `flora_auth::totp_reseal` (только счётчики), повторять SQL до `plaintext = 0`.
+
+**Ротация ключа:**
+
+1. Добавить новый `keyId` в `Auth:TotpKeyRing:KeyIds`, прописать его ключ, сделать активным
+   (`ActiveKeyId`). Старый ключ остаётся в кольце для расшифровки.
+2. Дождаться прохода ротации (`resealed` в логе) — воркер перепечатывает строки старого id под активный.
+3. Гейт вывода старого ключа — `count = 0` для его id:
+
+```sql
+SELECT split_part(two_factor_secret, ':', 2) AS key_id, count(*)
+FROM flora_core.user_accounts
+WHERE two_factor_secret LIKE 'v1:%'
+GROUP BY 1;
+```
+
+4. Только после `count = 0` удалить старый key id из `Auth:TotpKeyRing`.
+
+**Откат — только вперёд.** После первой `v1:`-строки старый бинарь её не прочитает, и 2FA-вход сломается.
+Окно безопасного отката кода — до первого sealed-ряда; после — только restore БД либо новый код.
+
+**Потеря ключа:** 2FA-вход недоступен. Восстановить ключ из бэкапа secret store, иначе точечный сброс:
+
+```sql
+UPDATE flora_core.user_accounts
+SET two_factor_secret = NULL, two_factor_enabled = false, updated_at = now()
+WHERE user_uuid = $1;
+```
+
+Доступ возвращается, пользователь проходит повторный enrolment.
 
 ---
 
@@ -61,14 +123,12 @@ by-design допущения текущей версии. Полный реес�
 
 Кратко (часто цитируемое):
 
-1. **TOTP-секреты в БД plaintext** (`auth-totp-plaintext`) — компрометация БД клонирует 2FA.
-   Refresh-токены в БД уже хранятся как хэш `sha256:`.
-2. **Нет ratchet / bootstrap epoch v1** (`fscp-no-ratchet`) — нет forward secrecy и
+1. **Нет ratchet / bootstrap epoch v1** (`fscp-no-ratchet`) — нет forward secrecy и
    post-compromise security между сообщениями FSCP v1.
-3. **Двойной FSCP-стек на Web** (`fscp-web-fork`) — `apps/Web/lib/fscp` vs SoT `@flora/fscp`.
-4. **SEC-1 остаточный XSS** (`fscp-vault-xss`) — sealed vault закрывает at-rest plaintext в
+2. **Двойной FSCP-стек на Web** (`fscp-web-fork`) — `apps/Web/lib/fscp` vs SoT `@flora/fscp`.
+3. **SEC-1 остаточный XSS** (`fscp-vault-xss`) — sealed vault закрывает at-rest plaintext в
    `localStorage`, но не живой XSS в открытой вкладке.
-5. **Метка «Официальная» APK без SHA** (`mobile-apk-official-no-sha`) — сверка только
+4. **Метка «Официальная» APK без SHA** (`mobile-apk-official-no-sha`) — сверка только
    `version` + `versionCode` с каталогом канала.
 
 Эксплуатация с чувствительными данными должна учитывать реестр целиком.

@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use chrono::{Duration, Utc};
 use flora_auth::application::replay_grant::{ReplayGrantV1, replay_aad};
 use flora_auth::http::LoginResponse;
-use flora_auth::infrastructure::replay_keys::ReplayKeyRing;
+use flora_auth::infrastructure::auth_key_ring::AuthKeyRing;
 use flora_auth::infrastructure::repo::{AuthRepo, PreparedGrant, RefreshOutcome, StoredGrant};
 use flora_auth::infrastructure::tokens::{
     generate_jwt_id, generate_refresh_token, hash_refresh_token,
@@ -37,18 +37,18 @@ fn enabled() -> bool {
     std::env::var("FLORA_AUTH_REPLAY_PG").ok().as_deref() == Some("1")
 }
 
-fn key_ring() -> ReplayKeyRing {
+fn key_ring() -> AuthKeyRing {
     let mut keys = HashMap::new();
     keys.insert("k1".to_string(), [11_u8; 32]);
-    ReplayKeyRing::new("k1", keys).unwrap()
+    AuthKeyRing::new("k1", keys).unwrap()
 }
 
-fn rotated_key_ring() -> ReplayKeyRing {
+fn rotated_key_ring() -> AuthKeyRing {
     // k1 остаётся decrypt-only, активным становится k2.
     let mut keys = HashMap::new();
     keys.insert("k1".to_string(), [11_u8; 32]);
     keys.insert("k2".to_string(), [22_u8; 32]);
-    ReplayKeyRing::new("k2", keys).unwrap()
+    AuthKeyRing::new("k2", keys).unwrap()
 }
 
 async fn connect() -> PgPool {
@@ -145,7 +145,7 @@ fn prepare(
     session_id: Uuid,
     presented_token: &str,
     expected_rotation: i64,
-    ring: &ReplayKeyRing,
+    ring: &AuthKeyRing,
 ) -> (PreparedGrant, LoginResponse) {
     let now = Utc::now();
     let new_refresh = generate_refresh_token(session_id, SECRET);
@@ -185,7 +185,7 @@ fn prepare(
     )
 }
 
-fn open_stored(ring: &ReplayKeyRing, stored: &StoredGrant) -> LoginResponse {
+fn open_stored(ring: &AuthKeyRing, stored: &StoredGrant) -> LoginResponse {
     let aad = replay_aad(
         stored.session_id,
         stored.replacement_rotation_id,

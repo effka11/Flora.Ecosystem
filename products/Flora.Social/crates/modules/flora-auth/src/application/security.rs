@@ -11,6 +11,7 @@ use crate::http::{EmailChangeBeginResponse, TwoFactorSetupResponse, format_utc};
 use crate::infrastructure::password::verify_password;
 use crate::infrastructure::repo::AuthRepo;
 use crate::infrastructure::totp::{generate_totp_secret, otp_auth_uri, verify_totp};
+use crate::infrastructure::totp_at_rest::TotpAtRest;
 
 #[derive(Debug)]
 pub enum SecurityMutationError {
@@ -22,11 +23,20 @@ pub enum SecurityMutationError {
 pub struct SecurityService {
     repo: Arc<AuthRepo>,
     verification: Arc<dyn VerificationChallengePort>,
+    totp: Arc<TotpAtRest>,
 }
 
 impl SecurityService {
-    pub fn new(repo: Arc<AuthRepo>, verification: Arc<dyn VerificationChallengePort>) -> Self {
-        Self { repo, verification }
+    pub fn new(
+        repo: Arc<AuthRepo>,
+        verification: Arc<dyn VerificationChallengePort>,
+        totp: Arc<TotpAtRest>,
+    ) -> Self {
+        Self {
+            repo,
+            verification,
+            totp,
+        }
     }
 
     pub async fn status(
@@ -289,7 +299,7 @@ impl SecurityService {
         let secret = generate_totp_secret();
         let now = chrono::Utc::now();
         self.repo
-            .set_two_factor_secret(user_uuid, &secret, now)
+            .set_two_factor_secret(user_uuid, &self.totp.seal(user_uuid, &secret), now)
             .await
             .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
 
@@ -332,9 +342,13 @@ impl SecurityService {
             return Err(SecurityMutationError::BadRequest("2FA уже включена."));
         }
 
+        // Ошибка unseal — 5xx, не «Неверный код»: ключ недоступен, а не код.
+        let secret = self
+            .totp
+            .open(user_uuid, &secret)
+            .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
         let code_owned = code.to_string();
-        let secret_owned = secret;
-        let ok = tokio::task::spawn_blocking(move || verify_totp(Some(&secret_owned), &code_owned))
+        let ok = tokio::task::spawn_blocking(move || verify_totp(Some(&secret), &code_owned))
             .await
             .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
         if !ok {
@@ -392,8 +406,11 @@ impl SecurityService {
         }
 
         let code_owned = code.to_string();
-        let secret_owned = secret;
-        let ok = tokio::task::spawn_blocking(move || verify_totp(Some(&secret_owned), &code_owned))
+        let secret = self
+            .totp
+            .open(user_uuid, &secret)
+            .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
+        let ok = tokio::task::spawn_blocking(move || verify_totp(Some(&secret), &code_owned))
             .await
             .map_err(|e| SecurityMutationError::Internal(e.to_string()))?;
         if !ok {

@@ -203,9 +203,31 @@ fn auth_router_with_directory(
         ),
     };
     let password_reset_hook = Some(flora_messaging::password_reset_hook(pool.clone()));
+    // TOTP at-rest (`auth-totp-plaintext`): в Production без key ring не стартуем.
+    // Development остаётся в plaintext: эфемерный `Jwt:Secret` пересоздаётся на
+    // рестарте и не может быть стабильным ключом.
+    let totp_at_rest = match flora_auth::infrastructure::totp_at_rest::TotpAtRest::from_config(cfg)
+    {
+        Ok(Some(at_rest)) => at_rest,
+        Ok(None) if cfg.is_development() => {
+            tracing::warn!(
+                target: "flora_auth::totp_at_rest",
+                "Auth:TotpKeyRing не задан — TOTP-секреты хранятся plaintext (development)"
+            );
+            flora_auth::infrastructure::totp_at_rest::TotpAtRest::plain()
+        }
+        Ok(None) => panic!(
+            "flora-auth: Auth:TotpKeyRing обязателен в Production — отказ от старта, \
+             чтобы не писать TOTP-секреты в БД открытым текстом"
+        ),
+        Err(reason) => panic!(
+            "flora-auth: Auth:TotpKeyRing сконфигурирован некорректно — отказ от старта: {reason}"
+        ),
+    };
     let module = flora_auth::compose_with_replay(
         pool,
         jwt,
+        totp_at_rest,
         profiles,
         provisioner,
         verification,
@@ -213,7 +235,7 @@ fn auth_router_with_directory(
         password_reset_hook,
     );
     let directory = module.account_directory.clone();
-    let workers: Vec<BackgroundHandle> = module.replay_cleanup.into_iter().collect();
+    let workers: Vec<BackgroundHandle> = module.background;
     let router = axum::Router::new()
         .merge(with_jwt(cfg, sessions, module.protected_router))
         .merge(module.public_router);

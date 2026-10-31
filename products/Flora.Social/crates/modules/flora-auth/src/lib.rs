@@ -20,9 +20,11 @@ use crate::application::register::RegisterService;
 use crate::application::replay_cleanup::{ReplayCleanupConfig, spawn_replay_cleanup};
 use crate::application::security::SecurityService;
 use crate::application::sessions::SessionService;
+use crate::application::totp_reseal::{TotpResealConfig, spawn_totp_reseal};
 use crate::http::{AuthState, PublicAuthState};
 use crate::infrastructure::jwt::JwtOptions;
 use crate::infrastructure::repo::AuthRepo;
+use crate::infrastructure::totp_at_rest::TotpAtRest;
 
 /// Rust-миграции модуля Auth (регистрируются в flora-migrate, §11.1). Additive
 /// replay-grant таблица для retry-safe refresh (plan §2).
@@ -39,9 +41,10 @@ pub struct AuthModule {
     pub public_router: axum::Router,
     /// Порт каталога аккаунтов для Users.
     pub account_directory: Arc<dyn flora_auth_contracts::AccountDirectory>,
-    /// Периодическая очистка истёкших replay-строк. `Some` только когда retry-safe
-    /// refresh включён; при legacy-режиме `None` (джоба не спавнится).
-    pub replay_cleanup: Option<WorkerHandle>,
+    /// Фоновые Auth-задачи: cleanup истёкших replay-строк (только при retry-safe
+    /// refresh) и бэкфилл/ротация sealed TOTP-секретов (только в sealed-режиме).
+    /// Хост abort-ит их при shutdown.
+    pub background: Vec<WorkerHandle>,
 }
 
 /// Пустой роутер — gateway-fallback на .NET.
@@ -53,6 +56,7 @@ pub fn router() -> axum::Router {
 pub fn compose(
     pool: PgPool,
     jwt: JwtOptions,
+    totp_at_rest: TotpAtRest,
     profiles: Arc<dyn UserProfileReadQueries>,
     provisioner: Arc<dyn UserProfileProvisioner>,
     verification: Arc<dyn VerificationChallengePort>,
@@ -61,6 +65,7 @@ pub fn compose(
     compose_with_replay(
         pool,
         jwt,
+        totp_at_rest,
         profiles,
         provisioner,
         verification,
@@ -70,9 +75,13 @@ pub fn compose(
 }
 
 /// Композиция с опциональным retry-safe replay-протоколом.
+// Точка сборки модуля: параметры — порты и конфигурация, которые раздаются внутрь
+// сервисов как есть; сокрытие их в структуру не даёт выигрыша в безопасности границ.
+#[allow(clippy::too_many_arguments)]
 pub fn compose_with_replay(
     pool: PgPool,
     jwt: JwtOptions,
+    totp_at_rest: TotpAtRest,
     profiles: Arc<dyn UserProfileReadQueries>,
     provisioner: Arc<dyn UserProfileProvisioner>,
     verification: Arc<dyn VerificationChallengePort>,
@@ -80,12 +89,28 @@ pub fn compose_with_replay(
     password_reset_hook: Option<Arc<dyn PasswordResetHook>>,
 ) -> AuthModule {
     let repo = Arc::new(AuthRepo::new(pool));
+    let totp_at_rest = Arc::new(totp_at_rest);
     let sessions = Arc::new(SessionService::new(repo.clone()));
-    let security = Arc::new(SecurityService::new(repo.clone(), verification.clone()));
+    let security = Arc::new(SecurityService::new(
+        repo.clone(),
+        verification.clone(),
+        totp_at_rest.clone(),
+    ));
     let account = Arc::new(AccountService::new(repo.clone(), provisioner.clone()));
-    let replay_cleanup = replay
-        .as_ref()
-        .map(|_| spawn_replay_cleanup(repo.clone(), ReplayCleanupConfig::default()));
+    let mut background = Vec::new();
+    if replay.is_some() {
+        background.push(spawn_replay_cleanup(
+            repo.clone(),
+            ReplayCleanupConfig::default(),
+        ));
+    }
+    if totp_at_rest.is_sealed() {
+        background.push(spawn_totp_reseal(
+            repo.clone(),
+            totp_at_rest.clone(),
+            TotpResealConfig::default(),
+        ));
+    }
     let refresh = Arc::new(RefreshService::with_replay(
         repo.clone(),
         jwt.clone(),
@@ -96,6 +121,7 @@ pub fn compose_with_replay(
         repo.clone(),
         jwt.clone(),
         profiles.clone(),
+        totp_at_rest,
     ));
     let password_reset = Arc::new(PasswordResetService::new(
         repo.clone(),
@@ -123,7 +149,7 @@ pub fn compose_with_replay(
             password_reset,
         }),
         account_directory,
-        replay_cleanup,
+        background,
     }
 }
 

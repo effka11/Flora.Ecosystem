@@ -12,7 +12,10 @@
 
 | ID | Суть | Риск / следствие | Источник | Статус |
 | --- | --- | --- | --- | --- |
-| `auth-totp-plaintext` | Секреты TOTP хранятся в БД без шифрования at-rest (`two_factor_secret`) | Компрометация БД → клонирование 2FA | [`security.md`](../../security.md); `flora-auth` repo | открыто |
+| `auth-totp-survives-password-reset` | `PasswordResetService::complete` меняет пароль и отзывает сессии, но не ротирует `two_factor_secret` | Клон TOTP-секрета переживает сброс пароля: второй фактор остаётся у того, кто его скопировал | [`security.md`](../../security.md); `flora-auth/application/password_reset.rs` | открыто |
+
+TOTP at-rest закрыт: см. `auth-totp-sealed` в разделе
+[«Закрыто недавно»](#закрыто-недавно-не-тащить-обратно-как-дыру).
 
 ---
 
@@ -58,11 +61,16 @@
 
 | ID | Что закрыто | Где зафиксировано |
 | --- | --- | --- |
+| `auth-totp-sealed` | TOTP-секреты в БД не plaintext: `v1:<keyId>:<nonce_b64>:<ct_b64>` (XChaCha20-Poly1305, AAD привязан к `user_uuid`), отдельное кольцо `Auth:TotpKeyRing`; бэкфилл — воркер модуля | [`security.md`](../../security.md) §TOTP at-rest |
 | `SEC-1` | Device private keys на web не в plaintext `localStorage` | [`security.md`](../../security.md) posture |
 | `SEC-2` / errata-5 | Серверная Ed25519-проверка подписи envelope | [`security.md`](../../security.md); [`FSCP.md`](../fscp/FSCP.md) Algorithm C шаг 12 |
 | `epochSetHash` | Клиент отклоняет key backup при несовпадении commitment | [`security.md`](../../security.md); [`e2e-security.md`](../fscp/e2e-security.md) |
 | `auth-refresh-hashed` | Refresh в БД как `sha256:` | `flora-auth` |
 | FSCP-REVIEW 1–3, 5 | Unsigned reject, random signing fallback, FSM DoS, unknown blocks | [`FSCP-REVIEW.md`](../FSCP-REVIEW.md) §Remediation |
+
+> `auth-totp-sealed` — остаточный риск: компрометация БД **вместе** с конфиг-ключом (secret store) снова даёт
+> рабочий второй фактор; потеря ключа → ручной сброс 2FA. Это hardening at-rest, не снятие класса угрозы
+> «утечка БД + утечка секретов».
 
 ---
 

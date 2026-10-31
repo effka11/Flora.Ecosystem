@@ -12,8 +12,32 @@ SET search_path TO flora_core, public;
 -- (e.g. 0002_lowercase_usernames). Not a full production shape.
 CREATE TABLE flora_core.user_accounts (
     user_uuid  uuid        NOT NULL PRIMARY KEY,
-    username   text        NULL,
-    updated_at timestamptz NOT NULL DEFAULT now()
+    username   text        NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    -- Колонки, которые читает flora-auth: без них PG-кейс
+    -- setup -> воркер бэкфилла -> enable_two_factor не собирается.
+    password_hash        text        NOT NULL,
+    email                text        NULL,
+    phone                text        NOT NULL,
+    phone_verified       boolean     NOT NULL DEFAULT false,
+    status               integer     NOT NULL DEFAULT 0,
+    two_factor_enabled   boolean     NOT NULL DEFAULT false,
+    two_factor_secret    text        NULL
+);
+
+-- Stub for the Auth login path: `cleanup_expired_pending` + lockout counter.
+-- Cutover-owned; минимальная форма, которую читает flora-auth repo.
+CREATE TABLE flora_core.pending_registrations (
+    expires_at timestamptz NOT NULL
+);
+
+CREATE TABLE flora_core.user_security_logs (
+    user_uuid           uuid        NOT NULL PRIMARY KEY,
+    password_updated_at timestamptz NULL,
+    login_failures      smallint    NOT NULL DEFAULT 0,
+    login_locked_until  timestamptz NULL,
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    updated_at          timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE flora_core.user_sessions (
